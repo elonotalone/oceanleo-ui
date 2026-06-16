@@ -88,6 +88,20 @@ body {
 .v-pop { animation: v-pop 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
 .v-pulse-dot { animation: v-pulse-dot 1.6s ease-in-out infinite; }
 
+/* ---------- unified page-open entrance (复刻 oceanleo.com/tasks/new) ----------
+   每次进入/切换页面，主区内容做「从上而下」阶梯淡入。这是把主站 home-content.tsx
+   手写的 v-fade-up + animationDelay(60/120/180ms) 模式做成全站可复用的单一事实源：
+   AppShell 用 key={pathname} 的容器套上 .v-page，其直接子元素自动按出场顺序错峰
+   淡入。各站无需逐页手写动画——bump 包版本即全站统一获得此入场体验。 */
+.v-page > * { animation: v-fade-up 0.34s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+.v-page > *:nth-child(1) { animation-delay: 0ms; }
+.v-page > *:nth-child(2) { animation-delay: 55ms; }
+.v-page > *:nth-child(3) { animation-delay: 110ms; }
+.v-page > *:nth-child(4) { animation-delay: 165ms; }
+.v-page > *:nth-child(5) { animation-delay: 220ms; }
+.v-page > *:nth-child(6) { animation-delay: 275ms; }
+.v-page > *:nth-child(n + 7) { animation-delay: 320ms; }
+
 .v-skeleton {
   background: linear-gradient(
     90deg,
@@ -190,5 +204,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .v-fade-in, .v-fade-up, .v-scale-in, .v-pop,
-  .leo-pop-in, .leo-halo { animation: none; }
+  .leo-pop-in, .leo-halo,
+  .v-page > * { animation: none; }
 }

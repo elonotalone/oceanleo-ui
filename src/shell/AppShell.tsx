@@ -332,7 +332,12 @@ export function AppShell({
               : `flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`
           }
         >
-          {children}
+          {/* 统一页面入场动画（复刻 oceanleo.com/tasks/new 的从上而下阶梯淡入）。
+              key={pathname} 让每次切页都重新挂载 → 重新触发 .v-page 的错峰淡入。
+              这是全站「打开/切换页面」动画的唯一事实源，各站无需逐页手写。 */}
+          <div key={pathname} className="v-page contents">
+            {children}
+          </div>
         </main>
       </div>
     </div>
