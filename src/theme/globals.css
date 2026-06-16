@@ -1,0 +1,194 @@
+/* ============================================================================
+ * @oceanleo/ui — 全家桶统一全局样式（单一事实源）
+ * ----------------------------------------------------------------------------
+ * 这是所有 *.oceanleo.com 站共享的「Tailwind 版本无关」基础样式：字体、底色、
+ * 以及全套 v-* / leo-* 动画原语 + 滚动条样式。
+ *
+ * 用法（在各站自己的 app/globals.css 顶部，紧跟 Tailwind 指令之后）：
+ *   Tailwind v4 站：
+ *     @import "tailwindcss";
+ *     @import "@oceanleo/ui/theme/globals.css";
+ *   Tailwind v3 站：
+ *     @tailwind base;
+ *     @tailwind components;
+ *     @tailwind utilities;
+ *     @import "@oceanleo/ui/theme/globals.css";
+ *
+ * 注意：本文件**不含** @tailwind / @import "tailwindcss"，因为那与各站 Tailwind
+ * 版本绑定，必须由各站自己声明。改这里 = 改所有站的动画/字体/滚动条，一处生效。
+ * ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: #f7f3eb;
+  color: #292524;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  font-family:
+    "Noto Sans SC",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+/* ---------- account / settings / workbench motion primitives (v-*) ---------- */
+
+@keyframes v-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes v-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes v-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes v-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes v-pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.45); }
+  50% { opacity: 0.75; box-shadow: 0 0 0 4px rgba(14, 165, 233, 0); }
+}
+
+@keyframes v-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes v-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes v-spin {
+  to { transform: rotate(360deg); }
+}
+
+.v-fade-in { animation: v-fade-in 0.25s ease both; }
+.v-fade-up { animation: v-fade-up 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+.v-scale-in { animation: v-scale-in 0.18s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+.v-pop { animation: v-pop 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+.v-pulse-dot { animation: v-pulse-dot 1.6s ease-in-out infinite; }
+
+.v-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.05) 25%,
+    rgba(0, 0, 0, 0.09) 37%,
+    rgba(0, 0, 0, 0.05) 63%
+  );
+  background-size: 400px 100%;
+  animation: v-shimmer 1.4s ease infinite;
+}
+
+.v-caret::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  border-radius: 1px;
+  animation: v-blink 0.9s steps(1) infinite;
+}
+
+.v-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  animation: v-spin 0.7s linear infinite;
+}
+
+@keyframes v-sheen {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.v-running-pill { position: relative; overflow: hidden; }
+.v-running-pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  animation: v-sheen 1.8s ease-in-out infinite;
+}
+
+@keyframes v-bounce-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+.v-typing-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: v-bounce-dot 1.2s ease-in-out infinite;
+}
+.v-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.v-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+.v-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.v-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 9999px;
+}
+.v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
+.v-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- recommender / smart-search aura (leo-*) ---------- */
+
+@keyframes leo-pop-in {
+  0% { opacity: 0; transform: translateY(10px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.leo-pop-in { animation: leo-pop-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes leo-halo-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 var(--leo-halo, rgba(99, 102, 241, 0.45)),
+      0 0 10px 1px var(--leo-halo, rgba(99, 102, 241, 0.35));
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px transparent,
+      0 0 22px 6px var(--leo-halo, rgba(99, 102, 241, 0.55));
+  }
+}
+.leo-halo { animation: leo-halo-breathe 2.6s ease-in-out infinite; }
+.leo-card-move { transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .v-fade-in, .v-fade-up, .v-scale-in, .v-pop,
+  .leo-pop-in, .leo-halo { animation: none; }
+}
