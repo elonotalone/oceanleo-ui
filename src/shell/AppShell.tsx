@@ -26,10 +26,23 @@ import { IconBell, IconChat, IconGift, IconPanel, IconSearch } from "./icons";
 
 export interface ShellNavItem {
   label: string;
-  href: string;
+  /** 真实路由；省略 href 时必须给 onClick（如「搜索」这种纯动作项） */
+  href?: string;
   icon: ReactNode;
   /** 精确匹配（如首页 "/"）；默认前缀匹配 */
   exact?: boolean;
+  /** 纯动作项（无 href）：点击触发，如打开命令面板/搜索 */
+  onClick?: () => void;
+  /** 右侧快捷键提示（如 "⌘ K"） */
+  shortcut?: string;
+  /** 自定义高亮判断（覆盖默认 href 匹配）；接收已去掉 locale 前缀的逻辑路由 */
+  match?: (pathname: string) => boolean;
+}
+
+/** 分组导航（带可选小标题）。传 navGroups 时优先于扁平 nav。 */
+export interface ShellNavGroup {
+  heading?: string;
+  items: ShellNavItem[];
 }
 
 export interface AppShellBrand {
@@ -42,14 +55,23 @@ export interface AppShellBrand {
 }
 
 function isActive(pathname: string, item: ShellNavItem): boolean {
+  if (item.match) return item.match(pathname);
+  if (!item.href) return false; // 纯动作项（搜索等）不高亮
   if (item.exact || item.href === "/") return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 export interface AppShellProps {
   brand: AppShellBrand;
-  nav: ShellNavItem[];
+  /** 扁平导航。与 navGroups 二选一（传 navGroups 时本字段忽略）。 */
+  nav?: ShellNavItem[];
+  /** 分组导航（带小标题）。传了就用分组渲染，覆盖 nav。 */
+  navGroups?: ShellNavGroup[];
   children: ReactNode;
+  /** 品牌区点击回调（如 i18n 站要用自己的 router.push("/")）；不传则用 <Link href="/">。 */
+  onBrandClick?: () => void;
+  /** 把含 locale 前缀的 pathname 归一成逻辑路由再做高亮匹配（i18n 站传入）。 */
+  stripLocale?: (pathname: string) => string;
   /** localStorage 收起状态 key，建议 "<site>_sidebar_collapsed" */
   collapseKey?: string;
   /** 当前用户邮箱，无则显示「未登录」 */
@@ -65,6 +87,8 @@ export interface AppShellProps {
   onSignOut?: () => void;
   /** 左下角账户按钮跳转路由（默认 /account） */
   accountHref?: string;
+  /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
+  onAccountClick?: () => void;
   /** API 管理页路由（默认 /api），ModelPicker 底部「管理模型」跳这里 */
   apiHref?: string;
   // --- 右侧主区顶部 header ---
@@ -87,7 +111,10 @@ export interface AppShellProps {
 export function AppShell({
   brand,
   nav,
+  navGroups,
   children,
+  onBrandClick,
+  stripLocale,
   collapseKey = "oceanleo_sidebar_collapsed",
   userEmail,
   credits,
@@ -96,6 +123,7 @@ export function AppShell({
   recentSlot,
   onSignOut,
   accountHref = "/account",
+  onAccountClick,
   apiHref = "/api",
   modelCategories,
   siteId = "default",
@@ -104,7 +132,8 @@ export function AppShell({
   headerRight,
   hideHeader = false,
 }: AppShellProps) {
-  const pathname = usePathname() || "/";
+  const rawPathname = usePathname() || "/";
+  const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -119,17 +148,80 @@ export function AppShell({
     localStorage.setItem(collapseKey, next ? "1" : "0");
   }
 
+  function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
+    const active = isActive(pathname, item);
+    const cls = `group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
+      active
+        ? "bg-neutral-200/80 font-medium text-neutral-900"
+        : "text-neutral-600 hover:bg-neutral-200/50 hover:text-neutral-900"
+    }`;
+    const style = active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : undefined;
+    const inner = (
+      <>
+        <span className="transition-colors" style={{ color: active ? brand.accent : undefined }}>
+          {item.icon}
+        </span>
+        <span className="flex-1 truncate">{item.label}</span>
+        {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
+      </>
+    );
+    // 纯动作项（无 href）渲染为 button；有 href 渲染为 Link。
+    if (!item.href || item.onClick) {
+      return (
+        <button
+          key={item.href ?? item.label ?? idx}
+          type="button"
+          onClick={() => {
+            setMobileOpen(false);
+            item.onClick?.();
+          }}
+          className={cls}
+          style={style}
+        >
+          {inner}
+        </button>
+      );
+    }
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setMobileOpen(false)}
+        className={cls}
+        style={style}
+      >
+        {inner}
+      </Link>
+    );
+  }
+
   const showHeader = !hideHeader && (Boolean(modelCategories?.length) || Boolean(headerRight));
 
   const sidebarBody = (
     <>
       <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <Link href="/" className="flex items-center gap-2 text-neutral-900">
-          <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
-            {brand.logo}
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-        </Link>
+        {onBrandClick ? (
+          <button
+            type="button"
+            onClick={() => {
+              setMobileOpen(false);
+              onBrandClick();
+            }}
+            className="flex items-center gap-2 text-neutral-900"
+          >
+            <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+              {brand.logo}
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
+          </button>
+        ) : (
+          <Link href="/" className="flex items-center gap-2 text-neutral-900">
+            <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+              {brand.logo}
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
+          </Link>
+        )}
         <div className="flex items-center gap-1 text-neutral-500">
           {onSearch && (
             <button
@@ -187,28 +279,21 @@ export function AppShell({
         </div>
       )}
 
-      <nav className="mt-1 space-y-0.5 px-2">
-        {nav.map((item) => {
-          const active = isActive(pathname, item);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-              className={`group/nav flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150 ${
-                active
-                  ? "bg-neutral-200/80 font-medium text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-200/50 hover:text-neutral-900"
-              }`}
-              style={active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : undefined}
-            >
-              <span className="transition-colors" style={{ color: active ? brand.accent : undefined }}>
-                {item.icon}
-              </span>
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="mt-1 px-2">
+        {navGroups?.length ? (
+          navGroups.map((group, gi) => (
+            <div key={group.heading ?? gi} className="mb-1">
+              {group.heading && (
+                <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-500">{group.heading}</div>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item, ii) => renderNavItem(item, ii))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="space-y-0.5">{(nav ?? []).map((item, ii) => renderNavItem(item, ii))}</div>
+        )}
       </nav>
 
       {recentSlot && <div className="mt-3 flex min-h-0 flex-1 flex-col px-2">{recentSlot}</div>}
@@ -229,25 +314,45 @@ export function AppShell({
         </div>
 
         {/* 账户按钮 —— 进入账户管理页。退出登录统一移到 /account 页内，侧栏不放
-            独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。*/}
-        <Link
-          href={accountHref}
-          className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-neutral-200/50"
-        >
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-medium text-white"
-            style={{ background: brand.accent }}
-          >
-            {userEmail ? userEmail[0].toUpperCase() : "?"}
-          </div>
-          <span className="flex-1 truncate text-[13px] font-medium text-neutral-800">
-            {userEmail ? userEmail.split("@")[0] : "未登录"}
-          </span>
-          <span className="flex items-center gap-1 text-neutral-400">
-            <IconChat className="h-3.5 w-3.5" />
-            <IconBell className="h-3.5 w-3.5" />
-          </span>
-        </Link>
+            独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
+            i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/}
+        {(() => {
+          const accountInner = (
+            <>
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-medium text-white"
+                style={{ background: brand.accent }}
+              >
+                {userEmail ? userEmail[0].toUpperCase() : "?"}
+              </div>
+              <span className="flex-1 truncate text-[13px] font-medium text-neutral-800">
+                {userEmail ? userEmail.split("@")[0] : "未登录"}
+              </span>
+              <span className="flex items-center gap-1 text-neutral-400">
+                <IconChat className="h-3.5 w-3.5" />
+                <IconBell className="h-3.5 w-3.5" />
+              </span>
+            </>
+          );
+          const accountCls =
+            "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
+          return onAccountClick ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                onAccountClick();
+              }}
+              className={accountCls}
+            >
+              {accountInner}
+            </button>
+          ) : (
+            <Link href={accountHref} className={accountCls}>
+              {accountInner}
+            </Link>
+          );
+        })()}
       </div>
     </>
   );
