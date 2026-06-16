@@ -68,10 +68,16 @@ export interface AppShellProps {
   /** API 管理页路由（默认 /api），ModelPicker 底部「管理模型」跳这里 */
   apiHref?: string;
   // --- 右侧主区顶部 header ---
-  /** 顶部模型选择需要的类目；不传则不渲染 ModelPicker（如纯展示页） */
+  /** 顶部模型选择需要的模态；不传则不渲染 ModelPicker（如纯展示页） */
   modelCategories?: ModelCategory[];
-  /** 模型选中回调（各站拿去驱动生成调用） */
-  onModelChange?: (model: PreferredModel) => void;
+  /** 站点标识（用于模型选择「站点 × 用户」持久化）。建议传，默认 "default"。 */
+  siteId?: string;
+  /** 某模态选中变化回调：(模态, 模型)。各站拿去驱动对应生成调用。 */
+  onModelChange?: (category: ModelCategory, model: PreferredModel) => void;
+  /** 整体已选模态映射变化回调：{模态: 模型}。 */
+  onModelSelectionChange?: (
+    selection: Partial<Record<ModelCategory, PreferredModel>>,
+  ) => void;
   /** header 右侧自定义插槽（各站放自己的操作按钮） */
   headerRight?: ReactNode;
   /** true 时隐藏顶部 header（业务页自带顶栏时用） */
@@ -92,7 +98,9 @@ export function AppShell({
   accountHref = "/account",
   apiHref = "/api",
   modelCategories,
+  siteId = "default",
   onModelChange,
+  onModelSelectionChange,
   headerRight,
   hideHeader = false,
 }: AppShellProps) {
@@ -293,11 +301,13 @@ export function AppShell({
               collapsed ? "md:pl-14" : "md:pl-8"
             }`}
           >
-            <div>
+            <div className="min-w-0">
               {modelCategories?.length ? (
                 <ModelPicker
                   categories={modelCategories}
+                  siteId={siteId}
                   onChange={onModelChange}
+                  onSelectionChange={onModelSelectionChange}
                   apiHref={apiHref}
                 />
               ) : (

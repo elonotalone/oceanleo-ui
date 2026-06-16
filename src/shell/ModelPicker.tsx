@@ -3,23 +3,26 @@
 // ============================================================================
 // @oceanleo/ui — 统一模型选择器（单一事实源）
 // ----------------------------------------------------------------------------
-// 这是「右上模型选择」的唯一实现。全家桶任何站都用它，行为一致：
-//   - 按 `categories` 拉取用户在「账户 → API」页选好的多类目模型
-//     （text 文本 / image 图片 / video 视频 / threed 3D / audio 语音）
-//   - 多类目时分组显示（带类目标题图标），单类目时平铺
-//   - 选中项通过 onChange 回调驱动各站本次生成调用
-//   - 未登录 / 无选择 / 拉取失败 → 回落到该类目兜底模型（来自 account.ts）
+// 布局（= 操作员 2026-06-16 指定）：
+//   左：固定标签「模型选择」
+//   右：各模态入口横排 —— 文本 / 图片 / 视频 / 3D / 音频（按各站 categories）。
+//       每个模态是一个 chip：点开 → 下方弹出该模态的模型列表（风格与下拉一致）。
+//       **不设默认模型**：未选时只显示模态名；选中后模态名后面跟所选模型名。
+//   每个模态各自独立选择（修掉「不同模态只能选一个」的旧 bug）。
 //
-// 之前的 bug：主站只取 text 一类（getSelectedTextModels 写死 g.id==="text"），
-// 子站则根本没有模型选择器。本组件用 getSelectedModelsByCategory(cat) 按需取
-// 任意类目，一举解决「只有 LLM」与「子站没有模型选择」两个问题。
+// 持久化：按「站点 × 用户」记住每个模态的选择（localStorage）。各 oceanleo 站
+// 的 categories 可不同，选择互不干扰、各自记住。
+//
+// 数据来源：getSelectedModelsByCategory(cat)（用户在「账户 → API」页选好的该模态
+// 模型；未登录/无选择时返回该模态兜底单项，仅用于「可选项」，不自动选中）。
 // ============================================================================
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getSelectedModelsByCategory,
   type PreferredModel,
 } from "../lib/auth/account";
+import { getUserId } from "../lib/auth/client";
 import { IconCategory, IconCheck, IconChevronDown } from "./icons";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
@@ -29,37 +32,77 @@ const CATEGORY_LABEL: Record<ModelCategory, string> = {
   image: "图片",
   video: "视频",
   threed: "3D",
-  audio: "语音",
+  audio: "音频",
 };
 
 export interface ModelPickerProps {
-  /** 本站需要的模型类目（按顺序展示）。如 image 站传 ["image"]，主站传全部。 */
+  /** 本站需要的模态（按顺序展示）。如 image 站传 ["image"]，主站传全部。 */
   categories: ModelCategory[];
-  /** 受控：当前选中的复合 key "<provider>:<model>"。不传则内部自管。 */
-  value?: string;
-  /** 选中变化回调，参数是完整的 PreferredModel，方便各站直接拿去调网关。 */
-  onChange?: (model: PreferredModel) => void;
-  /** API 管理页路由（默认 /api）。点击下拉底部「管理模型」跳转。 */
+  /** 站点标识（用于「站点 × 用户」持久化 key）。强烈建议传，缺省用 "default"。 */
+  siteId?: string;
+  /** 某模态选中变化的回调：参数是 (模态, 选中的模型)。 */
+  onChange?: (category: ModelCategory, model: PreferredModel) => void;
+  /** 整体选择变化的回调：参数是 {模态: 模型} 的全量映射（已选的）。 */
+  onSelectionChange?: (selection: Partial<Record<ModelCategory, PreferredModel>>) => void;
+  /** API 管理页路由（默认 /api）。下拉底部「管理模型」跳转。 */
   apiHref?: string;
   className?: string;
 }
 
+const STORE_PREFIX = "oceanleo_model_pick_v2";
+
+function storeKey(siteId: string, userId: string) {
+  return `${STORE_PREFIX}:${siteId}:${userId}`;
+}
+
+function readStore(siteId: string, userId: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(storeKey(siteId, userId));
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStore(siteId: string, userId: string, sel: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(storeKey(siteId, userId), JSON.stringify(sel));
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
+
 export function ModelPicker({
   categories,
-  value,
+  siteId = "default",
   onChange,
+  onSelectionChange,
   apiHref = "/api",
   className = "",
 }: ModelPickerProps) {
-  // grouped[catId] = 该类目下用户已选模型
-  const [grouped, setGrouped] = useState<Record<string, PreferredModel[]>>({});
-  const [open, setOpen] = useState(false);
-  const [innerKey, setInnerKey] = useState<string | undefined>(value);
-  const ref = useRef<HTMLDivElement>(null);
+  // 每个模态的可选模型列表
+  const [options, setOptions] = useState<Record<string, PreferredModel[]>>({});
+  // 每个模态当前选中的复合 key（未选 = 不在表里）
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  // 当前展开的模态（null = 都收起）
+  const [openCat, setOpenCat] = useState<ModelCategory | null>(null);
+  const [userId, setUserId] = useState<string>("anon");
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  const selectedKey = value ?? innerKey;
+  // 取用户 id（用于「站点 × 用户」持久化）。未登录用 "anon"。
+  useEffect(() => {
+    let alive = true;
+    getUserId().then((id) => {
+      if (alive) setUserId(id || "anon");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  // 拉取每个类目的已选模型
+  // 拉取每个模态的可选模型
   useEffect(() => {
     let alive = true;
     Promise.all(
@@ -70,13 +113,7 @@ export function ModelPicker({
       if (!alive) return;
       const next: Record<string, PreferredModel[]> = {};
       for (const [c, list] of pairs) next[c] = list;
-      setGrouped(next);
-      // 默认选中第一个类目的第一个模型
-      const first = pairs.flatMap(([, list]) => list)[0];
-      if (first && selectedKey == null) {
-        setInnerKey(first.key);
-        onChange?.(first);
-      }
+      setOptions(next);
     });
     return () => {
       alive = false;
@@ -84,19 +121,39 @@ export function ModelPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories.join(",")]);
 
-  // 外部 value 变化时同步
+  // 载入持久化的选择（按 站点 × 用户）。注意：不设默认，未存过就保持未选。
   useEffect(() => {
-    if (value != null) setInnerKey(value);
-  }, [value]);
+    setPicked(readStore(siteId, userId));
+  }, [siteId, userId]);
+
+  const emitSelection = useCallback(
+    (sel: Record<string, string>) => {
+      if (!onSelectionChange) return;
+      const out: Partial<Record<ModelCategory, PreferredModel>> = {};
+      for (const c of categories) {
+        const key = sel[c];
+        const m = (options[c] || []).find((x) => x.key === key);
+        if (m) out[c] = m;
+      }
+      onSelectionChange(out);
+    },
+    [categories, options, onSelectionChange],
+  );
+
+  // 选项就绪 / 选择变化时，向外广播一次全量已选映射
+  useEffect(() => {
+    emitSelection(picked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, options]);
 
   // 点外面 / Esc 关闭
   useEffect(() => {
-    if (!open) return;
+    if (!openCat) return;
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpenCat(null);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setOpenCat(null);
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -104,72 +161,90 @@ export function ModelPicker({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [openCat]);
 
-  const allModels = categories.flatMap((c) => grouped[c] || []);
-  const active = allModels.find((m) => m.key === selectedKey) || allModels[0];
-  const multiCat = categories.length > 1;
-
-  function pick(m: PreferredModel) {
-    setInnerKey(m.key);
-    onChange?.(m);
-    setOpen(false);
+  function pick(cat: ModelCategory, m: PreferredModel) {
+    const next = { ...picked, [cat]: m.key };
+    setPicked(next);
+    writeStore(siteId, userId, next);
+    onChange?.(cat, m);
+    setOpenCat(null);
   }
 
   return (
-    <div className={`relative ${className}`} ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-neutral-800 transition hover:bg-neutral-100"
-      >
-        {active?.label || "选择模型"}
-        <span className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`}>
-          <IconChevronDown />
-        </span>
-      </button>
-      {open && (
-        <div className="v-scale-in absolute left-0 top-full z-30 mt-1 max-h-[360px] w-72 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
-          {categories.map((cat) => {
-            const list = grouped[cat] || [];
-            if (list.length === 0) return null;
-            return (
-              <div key={cat}>
-                {multiCat && (
-                  <div className="flex items-center gap-1.5 px-3.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
-                    <IconCategory category={cat} className="h-3.5 w-3.5" />
-                    {CATEGORY_LABEL[cat]}
-                  </div>
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`} ref={rootRef}>
+      <span className="text-[13px] font-medium text-neutral-500">模型选择</span>
+
+      {categories.map((cat) => {
+        const list = options[cat] || [];
+        const sel = list.find((m) => m.key === picked[cat]) || null;
+        const isOpen = openCat === cat;
+        return (
+          <div key={cat} className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenCat(isOpen ? null : cat)}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] transition ${
+                isOpen
+                  ? "border-neutral-300 bg-neutral-50"
+                  : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50"
+              }`}
+            >
+              <span className="text-neutral-400">
+                <IconCategory category={cat} className="h-3.5 w-3.5" />
+              </span>
+              <span className="font-medium text-neutral-700">{CATEGORY_LABEL[cat]}</span>
+              {sel ? (
+                <span className="max-w-[160px] truncate text-neutral-900">· {sel.label}</span>
+              ) : (
+                <span className="text-neutral-400">未选</span>
+              )}
+              <span className={`text-neutral-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}>
+                <IconChevronDown className="h-3.5 w-3.5" />
+              </span>
+            </button>
+
+            {isOpen && (
+              <div className="v-scale-in absolute left-0 top-full z-30 mt-1 max-h-[360px] w-72 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
+                <div className="flex items-center gap-1.5 px-3.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
+                  <IconCategory category={cat} className="h-3.5 w-3.5" />
+                  {CATEGORY_LABEL[cat]}模型
+                </div>
+                {list.length === 0 ? (
+                  <p className="px-3.5 py-6 text-center text-[12px] text-neutral-400">
+                    暂无可选模型，去 API 页选择
+                  </p>
+                ) : (
+                  list.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => pick(cat, m)}
+                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left transition hover:bg-neutral-50 ${
+                        m.key === picked[cat] ? "bg-neutral-50" : ""
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-neutral-900">{m.label}</p>
+                        <p className="mt-0.5 text-[11px] text-neutral-500">{m.provider_label}</p>
+                      </span>
+                      {m.key === picked[cat] && (
+                        <IconCheck className="h-4 w-4 shrink-0 text-neutral-900" />
+                      )}
+                    </button>
+                  ))
                 )}
-                {list.map((m) => (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => pick(m)}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left transition hover:bg-neutral-50 ${
-                      m.key === selectedKey ? "bg-neutral-50" : ""
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <p className="truncate text-[13px] font-medium text-neutral-900">{m.label}</p>
-                      <p className="mt-0.5 text-[11px] text-neutral-500">{m.provider_label}</p>
-                    </span>
-                    {m.key === selectedKey && (
-                      <IconCheck className="h-4 w-4 shrink-0 text-neutral-900" />
-                    )}
-                  </button>
-                ))}
+                <a
+                  href={apiHref}
+                  className="mt-1 block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
+                >
+                  + 在「API」页管理模型
+                </a>
               </div>
-            );
-          })}
-          <a
-            href={apiHref}
-            className="mt-1 block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
-          >
-            + 在「API」页管理模型
-          </a>
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
