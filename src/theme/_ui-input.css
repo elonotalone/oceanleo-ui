@@ -1,0 +1,8 @@
+/* 构建输入：把共享包自身组件用到的 Tailwind 工具类编译进 theme/ui.css。
+ * 见 package.json 的 build:css 脚本。消费端只需 @import 产物，无需扫描 node_modules。
+ * 注意：所有 @import 必须在最前面（CSS 规范），@source 紧随其后。 */
+@import "tailwindcss";
+@import "./globals.css";
+
+/* 只扫描本包自己的组件源码（相对本文件）。 */
+@source "../**/*.{ts,tsx}";

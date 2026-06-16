@@ -8,6 +8,10 @@
   "sideEffects": [
     "*.css"
   ],
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/theme/_ui-input.css -o ./src/theme/ui.css --minify",
+    "typecheck": "tsc --noEmit"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./shell": "./src/shell/index.ts",
@@ -15,8 +19,11 @@
     "./ui": "./src/ui/index.ts",
     "./lib": "./src/lib/index.ts",
     "./lib/auth": "./src/lib/auth/index.ts",
+    "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
     "./theme/globals.css": "./src/theme/globals.css",
-    "./tailwind-preset": "./src/theme/tailwind-preset.ts"
+    "./theme/ui.css": "./src/theme/ui.css",
+    "./tailwind-preset": "./src/theme/tailwind-preset.ts",
+    "./*": "./src/*"
   },
   "files": [
     "src"
@@ -34,9 +41,11 @@
     }
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.1",
     "@types/node": "20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "tailwindcss": "^4.3.1",
     "typescript": "^5"
   }
 }

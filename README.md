@@ -43,11 +43,17 @@ export default {
 };
 ```
 
-4. `app/globals.css` 顶部（Tailwind 指令之后）：
+4. `app/globals.css` 顶部（Tailwind 指令之后）引入**预编译的 ui.css**——它已包含
+   共享组件用到的全部工具类 + 字体/底色/动画/滚动条。**这样消费端的 Tailwind 不必
+   扫描 node_modules**（pnpm git 依赖目录名含 `#`，Tailwind v4 的 `@source` 无法
+   正确 glob，故采用预编译产物，v3/v4 站都适用）：
 
 ```css
-@import "@oceanleo/ui/theme/globals.css";
+@import "@oceanleo/ui/theme/ui.css";
 ```
+
+   > `theme/ui.css` 是构建产物（`pnpm build:css` 由 Tailwind 编译本包源码生成），
+   > 已提交进仓库。改了共享组件的 class 后，必须重跑 `pnpm build:css` 再提交。
 
 5. 外壳：
 
