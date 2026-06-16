@@ -16,7 +16,7 @@
     ".": "./src/index.ts",
     "./shell": "./src/shell/index.ts",
     "./pages": "./src/pages/index.ts",
-    "./ui": "./src/ui/index.ts",
+    "./ui": "./src/ui/index.tsx",
     "./lib": "./src/lib/index.ts",
     "./lib/auth": "./src/lib/auth/index.ts",
     "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
