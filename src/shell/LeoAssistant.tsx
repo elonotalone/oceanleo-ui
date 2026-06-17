@@ -2,26 +2,45 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Floating OceanLeo "助手建议" — a pure content-supplement helper that drives the
-// HOST PAGE's real input box.
+// ============================================================================
+// @oceanleo/ui — leo 助手（原「助手建议」，全家桶单一事实源）
+// ----------------------------------------------------------------------------
+// leo 助手是一个「内容补充」助手：它驱动 *宿主页面真实的 AI 输入框*。
 //
-// Faithful clone of generator.oceanleo.com/generate/ppt's 助手建议: the user
-// writes their task/requirement in the site's own input box ("Prompt"); this
-// widget reads that box as the base prompt, asks the gateway for clickable
-// enrichment options, and writes adopted options straight back into that same
-// box. The popup itself contains ONLY the suggestion stream + an ask field —
-// there is NO separate "你的内容" textarea (that lives in the host page).
+// 产品逻辑（操作员 2026-06-17 定稿）：
+//   1. 用户在某个「与 AI 生成有关」的输入框里写需求；
+//   2. 用户点输入框旁的「leo 建议」按钮（或浮窗按钮）打开 leo 助手；
+//   3. leo 捕捉该输入框现有内容作为 basePrompt，向网关要可点击的补充选项；
+//   4. 用户点某个选项 → leo 把它整理进那个 AI 输入框；
+//      用户在 leo 助手里输入并「发送」→ leo 也直接整理那个 AI 输入框；
+//   5. 每当输入框内容因上面任一操作而更新，leo 给的选项随之刷新。
 //
-// Binding is automatic and zero-touch: we track the textarea / text input the
-// user most recently focused (preferring one marked [data-ai-assistant-target]),
-// so the widget always augments whatever box the user is actually working in.
+// 即：leo 助手能「读」与「改」用户在 AI 输入框里的内容。
 //
-// Public + operator-funded (no login / API-key wall) via /v1/assistant/suggest.
+// 绑定是零配置自动的：跟踪用户最近聚焦的 textarea / text input
+// （优先 [data-ai-assistant-target] 标记的那个），所以它总是增益用户正在用的框。
+//
+// 「leo 建议」按钮触发方式：派发 `oceanleo:open-leo` 自定义事件即可打开本浮窗，
+// 这样组合输入框（LeoComposer）里的按钮与本组件解耦——任何地方都能开 leo。
+//
+// 公开 + 操作员买单（无登录 / 无 API-key 墙）：走 /v1/assistant/suggest。
+// ============================================================================
 
 const GATEWAY_BASE =
-  process.env.NEXT_PUBLIC_GATEWAY_URL ||
-  process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY ||
+  (typeof process !== "undefined" &&
+    (process.env.NEXT_PUBLIC_GATEWAY_URL ||
+      process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY)) ||
   "https://api.oceanleo.com";
+
+/** 触发打开 leo 助手浮窗的全局事件名。LeoComposer 的「leo 建议」按钮派发它。 */
+export const OPEN_LEO_EVENT = "oceanleo:open-leo";
+
+/** 任意位置调用即可打开 leo 助手浮窗（按钮、快捷键等）。 */
+export function openLeoAssistant(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(OPEN_LEO_EVENT));
+  }
+}
 
 type HostInput = HTMLTextAreaElement | HTMLInputElement;
 
@@ -121,20 +140,32 @@ function useHostInput() {
   return { resolve, hasTarget };
 }
 
-export function AiAssistant({
-  siteId,
-  docType = "doc",
-  title = "助手建议",
-}: {
+export interface LeoAssistantProps {
   siteId: string;
   docType?: string;
   title?: string;
-}) {
+  /** 隐藏右下角常驻浮窗触发按钮——只能由「leo 建议」按钮 / openLeoAssistant() 打开。 */
+  hideFloatingButton?: boolean;
+}
+
+export function LeoAssistant({
+  siteId,
+  docType = "doc",
+  title = "leo 助手",
+  hideFloatingButton = false,
+}: LeoAssistantProps) {
   const [open, setOpen] = useState(false);
+
+  // 让任意「leo 建议」按钮（或快捷键）通过派发 OPEN_LEO_EVENT 打开本浮窗。
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_LEO_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_LEO_EVENT, onOpen);
+  }, []);
 
   return (
     <div data-ai-assistant-root>
-      {!open && (
+      {!open && !hideFloatingButton && (
         <button
           onClick={() => setOpen(true)}
           aria-label={title}
@@ -180,7 +211,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
     const target = resolve();
     const basePrompt = target?.value ?? "";
     if (!userInput.trim() && !basePrompt.trim()) {
-      setErr("请先在页面输入框里写一句需求，或在下面告诉助手你想做什么。");
+      setErr("请先在页面输入框里写一句需求，或在下面告诉 leo 你想做什么。");
       return;
     }
     setLoading(true);
@@ -199,7 +230,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
       return;
     }
     const d = res.data;
-    // Write the enriched prompt back into the host page's own input box.
+    // Write the enriched prompt back into the host page's own AI input box.
     if (d.updatedPrompt && target) setHostValue(target, d.updatedPrompt);
     setQuestion(d.question || "");
     setOptions(d.options || []);
@@ -219,6 +250,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
       setHostValue(target, cur ? `${cur}\n- ${opt}` : `- ${opt}`);
     }
     setOptions((o) => o.filter((x) => x !== opt));
+    // 输入框内容已更新 → 立即基于新内容刷新选项。
     void ask("");
   };
 
@@ -231,13 +263,13 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
         )}
         {!question && options.length === 0 && !loading && !err && (
           <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs leading-relaxed text-slate-500">
-            输入一句需求，助手会基于当前 Prompt 持续给出可点击补充项。
+            输入一句需求，leo 会基于当前输入框内容持续给出可点击补充项。
           </p>
         )}
         {loading && (
           <p className="flex items-center gap-2 text-xs text-slate-400">
             <Spinner />
-            助手正在思考…
+            leo 正在思考…
           </p>
         )}
         {question && (
@@ -285,7 +317,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="告诉助手你还想补充什么"
+            placeholder="告诉 leo 你还想补充什么"
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition focus:border-slate-400"
           />
           <button
@@ -321,3 +353,7 @@ function Sparkle() {
     </svg>
   );
 }
+
+// 向后兼容别名：旧站可能仍 `import { AiAssistant }`。默认标题已是「leo 助手」。
+export const AiAssistant = LeoAssistant;
+export type AiAssistantProps = LeoAssistantProps;
