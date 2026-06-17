@@ -22,7 +22,7 @@ import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
-import { IconBell, IconChat, IconGift, IconPanel, IconSearch } from "./icons";
+import { IconGift, IconPanel, IconSearch } from "./icons";
 
 export interface ShellNavItem {
   label: string;
@@ -328,10 +328,6 @@ export function AppShell({
               <span className="flex-1 truncate text-[13px] font-medium text-neutral-800">
                 {userEmail ? userEmail.split("@")[0] : "未登录"}
               </span>
-              <span className="flex items-center gap-1 text-neutral-400">
-                <IconChat className="h-3.5 w-3.5" />
-                <IconBell className="h-3.5 w-3.5" />
-              </span>
             </>
           );
           const accountCls =
@@ -362,10 +358,10 @@ export function AppShell({
       {/* desktop sidebar with width animation */}
       <aside
         className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-[#f7f7f7] transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
-          collapsed ? "w-0 border-r-0" : "w-[248px]"
+          collapsed ? "w-0 border-r-0" : "w-[186px]"
         }`}
       >
-        <div className="flex h-full w-[248px] flex-col">{sidebarBody}</div>
+        <div className="flex h-full w-[186px] flex-col">{sidebarBody}</div>
       </aside>
 
       {/* mobile drawer */}
