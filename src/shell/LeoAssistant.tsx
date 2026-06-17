@@ -207,6 +207,9 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const askRef = useRef<((u: string) => void) | null>(null);
+  const autoAskedRef = useRef(false);
+
   const ask = async (userInput: string) => {
     const target = resolve();
     const basePrompt = target?.value ?? "";
@@ -253,6 +256,18 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
     // 输入框内容已更新 → 立即基于新内容刷新选项。
     void ask("");
   };
+
+  // 浮窗一打开就基于「当前输入框已有内容」自动给建议——用户在输入框里写了需求、
+  // 点「leo 建议」后，无需再手动输入即可立即看到补充项（操作员 2026-06-17 定稿）。
+  askRef.current = ask;
+  useEffect(() => {
+    if (autoAskedRef.current) return;
+    autoAskedRef.current = true;
+    const basePrompt = resolve()?.value?.trim();
+    if (basePrompt) askRef.current?.("");
+    // 只在面板挂载（= 浮窗打开）那一刻跑一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
