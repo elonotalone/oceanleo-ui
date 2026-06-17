@@ -27,8 +27,18 @@ export interface AccountMenuItem {
 }
 
 const DEFAULT_MENU: AccountMenuItem[] = [
+  {
+    label: "我的数据库",
+    href: "/database",
+    desc: "你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）",
+  },
   { label: "API", href: "/api", desc: "选择模型、查看价格与 token 余额" },
-  { label: "账户设置", href: "/settings", desc: "个人资料、用量记录" },
+  { label: "账户设置", href: "/settings", desc: "个人资料、用量与知识库" },
+  {
+    label: "插件与连接器",
+    href: "/plugins",
+    desc: "技能、连接器与 MCP 服务器",
+  },
 ];
 
 export interface AccountPageProps {

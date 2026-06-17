@@ -7,4 +7,11 @@ export { LeoAssistant, AiAssistant, openLeoAssistant, OPEN_LEO_EVENT } from "./L
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
 export type { LeoComposerProps } from "./LeoComposer";
+// 三栏工作台模板（= image 站版式，全站统一）。
+export { Studio } from "./Studio";
+export type { StudioProps } from "./Studio";
+export { StudioSection, CollapsibleSection } from "./StudioSection";
+export type { StudioSectionProps } from "./StudioSection";
+export { ResultCanvas, CanvasEmpty } from "./ResultCanvas";
+export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 export * from "./icons";

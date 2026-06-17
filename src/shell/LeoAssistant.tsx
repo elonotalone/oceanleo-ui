@@ -144,7 +144,11 @@ export interface LeoAssistantProps {
   siteId: string;
   docType?: string;
   title?: string;
-  /** 隐藏右下角常驻浮窗触发按钮——只能由「leo 建议」按钮 / openLeoAssistant() 打开。 */
+  /**
+   * 右下角常驻浮窗触发按钮。**默认隐藏**（操作员 2026-06-17 定稿）：全 OceanLeo
+   * 系列默认不再常驻显示 leo 浮窗，只能由「leo 建议」按钮 / openLeoAssistant()
+   * 打开。极个别站若想恢复常驻浮窗，显式传 hideFloatingButton={false}。
+   */
   hideFloatingButton?: boolean;
 }
 
@@ -152,7 +156,7 @@ export function LeoAssistant({
   siteId,
   docType = "doc",
   title = "leo 助手",
-  hideFloatingButton = false,
+  hideFloatingButton = true,
 }: LeoAssistantProps) {
   const [open, setOpen] = useState(false);
 

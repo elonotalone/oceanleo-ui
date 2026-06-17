@@ -3,3 +3,7 @@ export { AccountPage } from "./AccountPage";
 export type { AccountPageProps, AccountMenuItem } from "./AccountPage";
 export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
+export { MyDatabasePage, MyDatabasePanel } from "./MyDatabasePage";
+export type { MyDatabasePageProps, MyDatabasePanelProps } from "./MyDatabasePage";
+export { PluginsPage } from "./PluginsPage";
+export type { PluginsPageProps } from "./PluginsPage";
