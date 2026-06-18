@@ -13,6 +13,9 @@ export type { InputCardProps, InputAttachment } from "./InputCard";
 // 三栏工作台模板（= image 站版式，全站统一）。
 export { Studio } from "./Studio";
 export type { StudioProps } from "./Studio";
+// 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
+export { OperatorConsole } from "./OperatorConsole";
+export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty } from "./ResultCanvas";
