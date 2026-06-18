@@ -24,6 +24,13 @@ import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 
+/** 外壳布局：
+ *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
+ *  - "topbar"：删除左侧边栏，改为顶部一条 bar——左=站名标题（原左上角位置）+
+ *    右侧紧跟模型选择，右=token 余额 + 账户按钮（账户在 token 右边）。
+ *    用于「单页操作台」站（侧栏只有一个功能按键，没有真正的站级导航需要）。 */
+export type AppShellLayout = "sidebar" | "topbar";
+
 export interface ShellNavItem {
   label: string;
   /** 真实路由；省略 href 时必须给 onClick（如「搜索」这种纯动作项） */
@@ -63,6 +70,11 @@ function isActive(pathname: string, item: ShellNavItem): boolean {
 
 export interface AppShellProps {
   brand: AppShellBrand;
+  /**
+   * 外壳布局，默认 "sidebar"。单页操作台站传 "topbar"：删左侧边栏，站名留左上、
+   * 模型选择紧跟站名右侧、token 余额 + 账户按钮移到右上角（账户在余额右边）。
+   */
+  layout?: AppShellLayout;
   /** 扁平导航。与 navGroups 二选一（传 navGroups 时本字段忽略）。 */
   nav?: ShellNavItem[];
   /** 分组导航（带小标题）。传了就用分组渲染，覆盖 nav。 */
@@ -110,6 +122,7 @@ export interface AppShellProps {
 
 export function AppShell({
   brand,
+  layout = "sidebar",
   nav,
   navGroups,
   children,
@@ -146,6 +159,80 @@ export function AppShell({
   function toggleCollapsed(next: boolean) {
     setCollapsed(next);
     localStorage.setItem(collapseKey, next ? "1" : "0");
+  }
+
+  // 账户按钮（头像 + 用户名）——sidebar 与 topbar 共用。退出登录统一在账户页内。
+  function renderAccountButton(): ReactNode {
+    const accountInner = (
+      <>
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-medium text-white"
+          style={{ background: brand.accent }}
+        >
+          {userEmail ? userEmail[0].toUpperCase() : "?"}
+        </div>
+        <span className="max-w-[120px] flex-1 truncate text-[13px] font-medium text-neutral-800">
+          {userEmail ? userEmail.split("@")[0] : "未登录"}
+        </span>
+      </>
+    );
+    const accountCls =
+      "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
+    return onAccountClick ? (
+      <button
+        type="button"
+        onClick={() => {
+          setMobileOpen(false);
+          onAccountClick();
+        }}
+        className={accountCls}
+      >
+        {accountInner}
+      </button>
+    ) : (
+      <Link href={accountHref} className={accountCls}>
+        {accountInner}
+      </Link>
+    );
+  }
+
+  // 只读 token 余额胶囊——sidebar 与 topbar 共用。
+  function renderCredits(): ReactNode {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-1.5">
+        <span style={{ color: brand.accent }}>
+          <IconGift className="h-3.5 w-3.5" />
+        </span>
+        <span className="text-[12px] text-neutral-600">token 余额</span>
+        <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
+          {credits != null ? `¥${credits.toFixed(2)}` : "…"}
+        </span>
+      </div>
+    );
+  }
+
+  function renderBrand(): ReactNode {
+    const brandInner = (
+      <>
+        <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+          {brand.logo}
+        </span>
+        <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
+      </>
+    );
+    return onBrandClick ? (
+      <button
+        type="button"
+        onClick={onBrandClick}
+        className="flex items-center gap-2 text-neutral-900"
+      >
+        {brandInner}
+      </button>
+    ) : (
+      <Link href="/" className="flex items-center gap-2 text-neutral-900">
+        {brandInner}
+      </Link>
+    );
   }
 
   function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
@@ -316,42 +403,48 @@ export function AppShell({
         {/* 账户按钮 —— 进入账户管理页。退出登录统一移到 /account 页内，侧栏不放
             独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
             i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/}
-        {(() => {
-          const accountInner = (
-            <>
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-medium text-white"
-                style={{ background: brand.accent }}
-              >
-                {userEmail ? userEmail[0].toUpperCase() : "?"}
-              </div>
-              <span className="flex-1 truncate text-[13px] font-medium text-neutral-800">
-                {userEmail ? userEmail.split("@")[0] : "未登录"}
-              </span>
-            </>
-          );
-          const accountCls =
-            "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
-          return onAccountClick ? (
-            <button
-              type="button"
-              onClick={() => {
-                setMobileOpen(false);
-                onAccountClick();
-              }}
-              className={accountCls}
-            >
-              {accountInner}
-            </button>
-          ) : (
-            <Link href={accountHref} className={accountCls}>
-              {accountInner}
-            </Link>
-          );
-        })()}
+        <div className="[&>a]:w-full [&>button]:w-full">{renderAccountButton()}</div>
       </div>
     </>
   );
+
+  // ── topbar 布局：无侧边栏。顶部一条 bar——左=站名(+模型选择)，右=余额+账户。
+  //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
+  if (layout === "topbar") {
+    return (
+      <div className="flex min-h-screen flex-col bg-transparent">
+        <header className="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-sm md:px-6">
+          {/* 左：站名标题（原左上角位置）+ 紧跟其右的模型选择 */}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            {renderBrand()}
+            {modelCategories?.length ? (
+              <div className="min-w-0">
+                <ModelPicker
+                  categories={modelCategories}
+                  siteId={siteId}
+                  onChange={onModelChange}
+                  onSelectionChange={onModelSelectionChange}
+                  apiHref={apiHref}
+                />
+              </div>
+            ) : null}
+          </div>
+          {/* 右：自定义插槽 + token 余额 + 账户（账户在余额右边） */}
+          <div className="flex shrink-0 items-center gap-2">
+            {headerRight}
+            {renderCredits()}
+            {renderAccountButton()}
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1">
+          <div key={pathname} className="v-page contents">
+            {children}
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
