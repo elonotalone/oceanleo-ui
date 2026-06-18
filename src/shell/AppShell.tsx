@@ -354,10 +354,12 @@ export function AppShell({
   );
 
   return (
-    <div className="flex min-h-screen bg-white">
+    /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
+       侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
+    <div className="flex min-h-screen bg-transparent">
       {/* desktop sidebar with width animation */}
       <aside
-        className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-[#f7f7f7] transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
+        className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
           collapsed ? "w-0 border-r-0" : "w-[186px]"
         }`}
       >

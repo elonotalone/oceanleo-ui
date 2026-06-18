@@ -28,9 +28,19 @@ html,
 body {
   padding: 0;
   margin: 0;
-  background: #f7f3eb;
+  /* 全家桶统一浅色渐变底（操作员 2026-06-18 指定，参考 video 操作台背景）：
+     左上偏冷白蓝 → 中部近白 → 右下偏暖白/淡紫，柔和大尺度径向 + 线性叠加。
+     fixed 让渐变不随内容滚动；min-height:100% 保证短页也铺满。 */
+  background:
+    radial-gradient(120% 120% at 0% 0%, #eef2fb 0%, rgba(238, 242, 251, 0) 45%),
+    radial-gradient(120% 120% at 100% 100%, #f7eef7 0%, rgba(247, 238, 247, 0) 50%),
+    linear-gradient(135deg, #f3f6fc 0%, #fafaf9 45%, #f9f3f8 100%);
+  background-attachment: fixed;
   color: #292524;
 }
+
+html { min-height: 100%; }
+body { min-height: 100vh; }
 
 body {
   -webkit-font-smoothing: antialiased;
