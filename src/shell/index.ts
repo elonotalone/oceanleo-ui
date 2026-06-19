@@ -26,4 +26,24 @@ export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
+// 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
+export { SplitWorkspace } from "./SplitWorkspace";
+export type { SplitWorkspaceProps } from "./SplitWorkspace";
+// 极简 Markdown 渲染（零依赖）。
+export { Markdown } from "./Markdown";
+// agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
+export { AgentChat } from "./AgentChat";
+export type { AgentChatProps } from "./AgentChat";
+// 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
+export { HomeIntro } from "./HomeIntro";
+export type { HomeIntroProps } from "./HomeIntro";
+// 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
+export { FileLibrary } from "./FileLibrary";
+export type { FileLibraryProps, SiteOption } from "./FileLibrary";
+// 历史记录页。
+export { HistoryPage } from "./HistoryPage";
+export type { HistoryPageProps } from "./HistoryPage";
+// 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
+export { workspaceNav, pageFromPath } from "./WorkspacePages";
+export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";

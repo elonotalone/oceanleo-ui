@@ -71,7 +71,8 @@ export interface DatabaseOverview {
   works: WorkItem[];
   assets: AssetItem[];
   knowledge: KnowledgeItem[];
-  counts: { works: number; assets: number; knowledge: number };
+  files?: FileItem[];
+  counts: { works: number; assets: number; knowledge: number; files?: number };
 }
 
 type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
@@ -193,6 +194,72 @@ export function deleteAsset(id: string) {
   return authed<{ ok: boolean }>(`/v1/database/assets/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+// ---------- files (用户上传的文件，文件库) ----------
+export interface FileItem {
+  id: string;
+  url: string;
+  thumb_url?: string;
+  title?: string;
+  media_type?: MediaType;
+  mime?: string;
+  bytes?: number;
+  site_id?: string;
+  meta?: Record<string, unknown>;
+  created_at?: string;
+}
+
+/** 文件库列表。scope="site"（默认当前站）| "all"（跨站全系列）。 */
+export function listFiles(
+  opts: { siteId?: string; scope?: "site" | "all"; limit?: number } = {},
+) {
+  return authed<{ items: FileItem[]; scope: string }>(
+    `/v1/database/files${qs({ site_id: opts.siteId, scope: opts.scope, limit: opts.limit })}`,
+  );
+}
+
+/** 上传一个文件到文件库（multipart）。归当前 siteId 分区，跨站可见。 */
+export async function uploadFile(
+  file: File,
+  opts: { siteId?: string; title?: string } = {},
+): Promise<Result<{ ok: boolean; file: FileItem }>> {
+  const token = await accessToken();
+  if (!token) return { ok: false, error: "未登录", status: 401 };
+  const fd = new FormData();
+  fd.append("file", file);
+  if (opts.siteId) fd.append("site_id", opts.siteId);
+  if (opts.title) fd.append("title", opts.title);
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/database/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* non-JSON */
+  }
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: (data as { detail?: string } | null)?.detail || `HTTP ${res.status}`,
+      status: res.status,
+    };
+  }
+  return { ok: true, data: data as { ok: boolean; file: FileItem } };
+}
+
+/** 删除一个上传的文件（底层即 user_assets 删除）。 */
+export function deleteFile(id: string) {
+  return deleteAsset(id);
 }
 
 // ---------- knowledge ----------

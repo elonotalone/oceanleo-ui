@@ -71,6 +71,44 @@ export function IconCheck({ className = "h-4 w-4" }: IconProps): ReactNode {
   );
 }
 
+// 站级四页导航图标（首页 / 工作台 / 文件库 / 历史记录）
+export function IconHome({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M3 11l9-7 9 7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 10v9a1 1 0 001 1h12a1 1 0 001-1v-9" strokeLinejoin="round" />
+      <path d="M9 20v-6h6v6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconWorkspace({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M9 9v11" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconLibrary({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 4h4v16H4zM10 4h4v16h-4z" strokeLinejoin="round" />
+      <path d="M16.5 5l3.5.8-3 14.6-3.4-.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconHistory({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 4v3.3h3.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // 模型类目图标（ModelPicker 分组标题用）
 export function IconCategory({ category, className = "h-4 w-4" }: { category: string; className?: string }): ReactNode {
   switch (category) {
