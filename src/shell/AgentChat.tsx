@@ -268,8 +268,9 @@ function DefaultArtifact({ artifact, content }: { artifact: ArtifactMeta; conten
   }
   // map / canvas / novel / ppt / sheet / doc / markdown → render markdown.
   // Each site may override via renderArtifact for a richer editor.
+  // overflow-y-auto so long deliverables scroll inside the (flex-filled) pane.
   return (
-    <div className="p-5">
+    <div className="h-full overflow-y-auto p-5">
       <Markdown>{content}</Markdown>
     </div>
   );

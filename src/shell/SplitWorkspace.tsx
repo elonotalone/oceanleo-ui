@@ -143,6 +143,14 @@ export function SplitWorkspace({
     );
   }
 
+  // The pane body fills remaining height as a flex column and forces its single
+  // child to fill + manage its own overflow. This lets BOTH usage shapes work
+  // inside the same skeleton: (a) self-scrolling content (AgentChat's stream,
+  // ResultCanvas which has its own tab header + scroll body) and (b) plain long
+  // content (wrap it in an overflow-y-auto child yourself, e.g. Studio's ops).
+  const bodyClass =
+    "flex min-h-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1";
+
   // Single-pane mode (no right content): just render left full-width.
   if (!hasRight) {
     return (
@@ -150,8 +158,8 @@ export function SplitWorkspace({
         className={`px-4 py-4 ${className}`}
         style={{ height: `calc(100dvh - ${headerHeight}px)` }}
       >
-        <div className="h-full overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
-          <div className="h-full overflow-y-auto">{left}</div>
+        <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
+          <div className={bodyClass}>{left}</div>
         </div>
       </div>
     );
@@ -177,7 +185,7 @@ export function SplitWorkspace({
         <PaneHeader label={leftLabel}>
           <MaxButton which="left" />
         </PaneHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">{left}</div>
+        <div className={bodyClass}>{left}</div>
       </section>
 
       {/* 竖线（拖动条）—— 仅桌面、未大屏时可见 */}
@@ -210,7 +218,7 @@ export function SplitWorkspace({
         <PaneHeader label={rightLabel}>
           <MaxButton which="right" />
         </PaneHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">{right}</div>
+        <div className={bodyClass}>{right}</div>
       </section>
     </div>
   );

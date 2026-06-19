@@ -58,8 +58,16 @@ export interface OperatorConsoleProps {
   canvas?: ReactNode;
   /** 强调色（功能按键选中态 / 序号徽章），默认 #4f46e5（indigo-600）。 */
   accent?: string;
-  /** 中列操作区宽度（px），默认 380。透传给 <Studio>。 */
+  /** 中列操作区初始宽度（px），默认 380。透传给 <Studio>（折算成初始比例）。 */
   opsWidth?: number;
+  /** 左栏初始占比（0–1）。给了它就忽略 opsWidth。透传给 <Studio>。 */
+  defaultRatio?: number;
+  /** 分栏比例记忆 key（按站区分）。透传给 <Studio>；不传则不持久化。 */
+  storageKey?: string;
+  /** 左栏（操作台）标题，默认「操作台」。透传给 <Studio>。 */
+  opsLabel?: ReactNode;
+  /** 右栏（结果）标题，默认「结果」。透传给 <Studio>。 */
+  canvasLabel?: ReactNode;
   /** 顶部 header 高度（px），默认 56（= AppShell header）。透传给 <Studio>。 */
   headerHeight?: number;
   /** 功能按键条上方可选标题区（如功能描述 / 提示）。 */
@@ -75,6 +83,10 @@ export function OperatorConsole({
   canvas,
   accent = "#4f46e5",
   opsWidth = 380,
+  defaultRatio,
+  storageKey,
+  opsLabel,
+  canvasLabel,
   headerHeight = 56,
   header,
   className = "",
@@ -116,6 +128,11 @@ export function OperatorConsole({
       ops={ops}
       canvas={active?.canvas ?? canvas ?? null}
       opsWidth={opsWidth}
+      defaultRatio={defaultRatio}
+      storageKey={storageKey}
+      opsLabel={opsLabel}
+      canvasLabel={canvasLabel}
+      accent={accent}
       headerHeight={headerHeight}
       className={className}
     />
