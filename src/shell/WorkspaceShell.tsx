@@ -139,7 +139,10 @@ export function WorkspaceShell({
             src={embedSrc}
             title={active.name}
             className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
-            allow="clipboard-write; clipboard-read"
+            // fullscreen：子站功能区（如画布工作流）内的「全屏」按钮要能调
+            // requestFullscreen()，跨源 iframe 必须显式授权 fullscreen，否则被拒。
+            allow="clipboard-write; clipboard-read; fullscreen"
+            allowFullScreen
           />
         ) : active && !embedSrc ? (
           <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
