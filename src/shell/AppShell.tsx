@@ -412,8 +412,11 @@ export function AppShell({
   //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
   if (layout === "topbar") {
     return (
-      <div className="flex min-h-screen flex-col bg-transparent">
-        <header className="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-sm md:px-6">
+      <div className="flex min-h-screen flex-col bg-transparent" data-oceanleo-shell>
+        <header
+          data-oceanleo-chrome
+          className="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-sm md:px-6"
+        >
           {/* 左：站名标题（原左上角位置）+ 紧跟其右的模型选择 */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
             {renderBrand()}
@@ -449,9 +452,10 @@ export function AppShell({
   return (
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
        侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
-    <div className="flex min-h-screen bg-transparent">
+    <div className="flex min-h-screen bg-transparent" data-oceanleo-shell>
       {/* desktop sidebar with width animation */}
       <aside
+        data-oceanleo-chrome
         className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
           collapsed ? "w-0 border-r-0" : "w-[186px]"
         }`}
@@ -461,7 +465,7 @@ export function AppShell({
 
       {/* mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-[80] md:hidden">
+        <div data-oceanleo-chrome className="fixed inset-0 z-[80] md:hidden">
           <div className="v-fade-in absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 flex h-full w-[280px] flex-col overflow-y-auto bg-[#f7f7f7] shadow-xl">
             {sidebarBody}
@@ -473,6 +477,7 @@ export function AppShell({
         {collapsed && (
           <button
             type="button"
+            data-oceanleo-chrome
             onClick={() => toggleCollapsed(false)}
             className="fixed left-3 top-3 z-50 hidden rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:block"
             title="展开侧栏"
@@ -482,6 +487,7 @@ export function AppShell({
         )}
         <button
           type="button"
+          data-oceanleo-chrome
           onClick={() => setMobileOpen(true)}
           className="fixed left-3 top-3 z-50 rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:hidden"
           title="打开菜单"
@@ -493,6 +499,7 @@ export function AppShell({
             选择」的唯一落点，与 oceanleo 主站截图一致。 */}
         {showHeader && (
           <div
+            data-oceanleo-chrome
             className={`flex items-center justify-between border-b border-neutral-100 px-8 py-3 pl-14 ${
               collapsed ? "md:pl-14" : "md:pl-8"
             }`}

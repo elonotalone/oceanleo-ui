@@ -1,4 +1,6 @@
 export { AppShell, PageTitle } from "./AppShell";
+// 工作台 iframe 内嵌「外壳闪屏」pre-paint 杀手（root layout 放一次）。
+export { EmbedChrome } from "./EmbedChrome";
 export type {
   AppShellProps,
   AppShellBrand,
