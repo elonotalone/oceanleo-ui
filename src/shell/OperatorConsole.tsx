@@ -125,16 +125,21 @@ export function OperatorConsole({
     onChange?.(id);
   };
 
-  const single = functions.length <= 1 || hideTabs;
+  // doctrine v3（操作员 2026-06-21）：功能按键条不仅在「多功能」时显示——只要存在
+  // 任一带 agent 的功能区，即便是单功能站也要把那条按键显示出来，让用户看到该功能
+  // 区的「✦ agent」标记（单 agent 站也是一个功能区=一个 agent）。纯单功能且无 agent
+  // 的站（无标记价值）才隐藏。solo 模式（hideTabs）始终隐藏。
+  const hasAgent = functions.some((f) => f.agentId);
+  const showTabs = (functions.length > 1 || hasAgent) && !hideTabs;
 
   // 顶栏 = 可选 header + 功能按键条。它在「操作台 / 结果」两栏标题之上，整条横跨
   // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
   // hideTabs（solo 模式）：彻底不渲染功能按键条 + header。
-  const showTopBar = (!single && !hideTabs) || (header != null && !hideTabs);
+  const showTopBar = (showTabs || header != null) && !hideTabs;
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
-      {!single && (
+      {showTabs && (
         <FunctionTabs
           functions={functions}
           activeId={active?.id ?? ""}
