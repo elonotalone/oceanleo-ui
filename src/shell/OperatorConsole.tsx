@@ -44,6 +44,11 @@ export interface ConsoleFunction {
   /** 可选：「热」「新」之类的小角标。 */
   badge?: string;
   /**
+   * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
+   * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
+   */
+  agentId?: string;
+  /**
    * 该功能的中列操作流（通常是若干 <StudioSection> + 底部主按钮）。
    * 用函数形式以便消费端按需惰性渲染。
    */
@@ -199,6 +204,16 @@ function FunctionTabs({
           >
             {f.icon != null && <span className="shrink-0">{f.icon}</span>}
             <span>{f.label}</span>
+            {f.agentId && (
+              <span
+                title="此功能区有专属 agent"
+                className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${
+                  on ? "bg-white/25 text-white" : "bg-indigo-100 text-indigo-700"
+                }`}
+              >
+                ✦ agent
+              </span>
+            )}
             {f.badge && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${

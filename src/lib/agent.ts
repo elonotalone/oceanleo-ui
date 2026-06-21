@@ -15,6 +15,7 @@
 
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+import type { OpsPatch } from "./fn-agent";
 
 type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
 
@@ -69,6 +70,9 @@ export interface AgentMessage {
     image_url?: string;
     final?: boolean;
     plan?: unknown;
+    /** doctrine v3: structured patch the function agent wants applied to the
+     *  operator console (left pane). Frontend applies it to the real ops state. */
+    ops_patch?: OpsPatch;
     [k: string]: unknown;
   };
   created_at?: string;
@@ -110,6 +114,10 @@ export function createTask(body: {
   siteId?: string;
   agentModel?: string;
   projectId?: string;
+  /** doctrine v3: bind this conversation to a function-area agent. */
+  agentId?: string;
+  /** doctrine v3: compact snapshot of the operator-console state for the agent. */
+  opsState?: Record<string, unknown>;
 }) {
   return authed<{ task_id: string; status: string; mode: string }>(
     "/v1/agent/tasks",
@@ -121,8 +129,67 @@ export function createTask(body: {
         site_id: body.siteId || "",
         agent_model: body.agentModel || "",
         project_id: body.projectId || null,
+        agent_id: body.agentId || "",
+        ops_state: body.opsState || null,
       }),
     },
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// OceanLeo Agents marketplace + 我的 agents (doctrine v3)
+// --------------------------------------------------------------------------- //
+export interface AgentDef {
+  agent_id: string;
+  site_id: string;
+  fn_id: string;
+  name: string;
+  tagline: string;
+  icon: string;
+  capabilities: string;
+  category: string;
+  enabled: boolean;
+  sort_order: number;
+  saved?: boolean;
+}
+
+/** Public marketplace (works signed-out; `saved` annotated when signed-in). */
+export async function listAgents(): Promise<Result<{ items: AgentDef[] }>> {
+  const token = await accessToken();
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/agents`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "网络错误", status: 0 };
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* */
+  }
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
+  return { ok: true, data: data as { items: AgentDef[] } };
+}
+
+export function listMyAgents() {
+  return authed<{ items: AgentDef[] }>("/v1/agents/mine");
+}
+
+export function saveAgent(agentId: string) {
+  return authed<{ agent_id: string; saved: boolean }>("/v1/agents/mine", {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId }),
+  });
+}
+
+export function unsaveAgent(agentId: string) {
+  return authed<{ agent_id: string; saved: boolean }>(
+    `/v1/agents/mine/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
   );
 }
 
@@ -172,6 +239,15 @@ export function latestArtifact(messages: AgentMessage[]): {
   for (let i = messages.length - 1; i >= 0; i--) {
     const a = messages[i].meta?.artifact;
     if (a) return { meta: a, content: messages[i].content };
+  }
+  return null;
+}
+
+/** 找出某次会话里最新的「操作台补丁」（agent 想写进左侧操作台的结构化结果）。 */
+export function latestOpsPatch(messages: AgentMessage[]): OpsPatch | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const p = messages[i].meta?.ops_patch;
+    if (p) return p;
   }
   return null;
 }

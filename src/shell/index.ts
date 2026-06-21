@@ -34,6 +34,12 @@ export { Markdown } from "./Markdown";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
 export { AgentChat } from "./AgentChat";
 export type { AgentChatProps } from "./AgentChat";
+// 功能区「操作台 / agent」双形态左栏（doctrine v3：一个功能区=一个操作台=一个 agent）。
+export { FunctionAgentChat } from "./FunctionAgentChat";
+export type { FunctionAgentChatProps } from "./FunctionAgentChat";
+// 主站「工作台」母页面壳（iframe 内嵌子站功能区 + 选/加 agent）。
+export { WorkspaceShell } from "./WorkspaceShell";
+export type { WorkspaceShellProps } from "./WorkspaceShell";
 // 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
 export { HomeIntro } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
