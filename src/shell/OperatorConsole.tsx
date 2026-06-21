@@ -9,13 +9,18 @@
 // 设计文档：docs/architecture/oceanleo-single-page-operator-console.md（oceandino repo）。
 //
 //   ┌──────────┬────────────────────────────────┬────────────────────────┐
-//   │ 侧边栏    │ 中：操作台 OperatorConsole       │ 右：结果 / 素材查看区    │
-//   │(AppShell) │  [功能A][功能B][功能C]…(顶部)    │ (ResultCanvas)         │
-//   │ 站级导航  │  ① 步骤一 / ② 步骤二 …(下方竖排) │ 生成结果 / 素材库 …     │
+//   │ 侧边栏    │ [功能A][功能B][功能C]…(整条顶栏，跨中+右两栏)              │
+//   │(AppShell) │ ┌──────────────┬───────────────────────────────────────┐│
+//   │ 站级导航  │ │ 操作台         │ 结果 / 素材查看区                       ││
+//   │           │ │  ① 步骤一 …    │ (ResultCanvas)                        ││
+//   │           │ └──────────────┴───────────────────────────────────────┘│
 //   └──────────┴────────────────────────────────┴────────────────────────┘
 //
-// 与 <Studio> 的关系：OperatorConsole = 顶部功能按键条 + 下方 <Studio>（中列操作
-// 流 + 右列 canvas）。单功能站也可直接用 <Studio>；多功能站用本组件统一翻页。
+// 与 <Studio> 的关系：OperatorConsole = 顶部功能按键条（在「操作台/结果」两栏标题
+// 之上，整条横跨）+ 下方 <Studio>（中列操作流 + 右列 canvas）。单功能站也可直接
+// 用 <Studio>；多功能站用本组件统一翻页。
+// 操作员 2026-06-21：功能按键条从「操作台」栏内部上移到整个 Studio 之上 —— 即在
+// 「操作台」标题栏上面，作为整页顶栏，而不是塞在「操作台」栏体里。
 //
 // 框架无关：不 import next/navigation。深链同步交给消费端——传 `value`/`onChange`
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
@@ -23,6 +28,11 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
+
+// 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
+// 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
+// 留一点呼吸空间；带 header 时再加一截。
+const TABS_BAR_HEIGHT = 60;
 
 export interface ConsoleFunction {
   /** 功能唯一 id（用于受控选中 / 深链 ?fn=<id>）。 */
@@ -105,9 +115,11 @@ export function OperatorConsole({
 
   const single = functions.length <= 1;
 
-  // 中列 = 顶部功能按键条（多功能时）+ 当前功能的操作流。
-  const ops = (
-    <div className="space-y-3">
+  // 顶栏 = 可选 header + 功能按键条。它在「操作台 / 结果」两栏标题之上，整条横跨
+  // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
+  const showTopBar = !single || header != null;
+  const topBar = showTopBar ? (
+    <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
       {!single && (
         <FunctionTabs
@@ -118,24 +130,33 @@ export function OperatorConsole({
           onSelect={select}
         />
       )}
-      {/* key 用 active.id：切功能时重置该功能操作流内部状态。 */}
-      <div key={active?.id}>{active?.ops}</div>
     </div>
-  );
+  ) : null;
+
+  // 中列 = 当前功能的操作流（功能按键条已上移到顶栏）。
+  // key 用 active.id：切功能时重置该功能操作流内部状态。
+  const ops = <div key={active?.id}>{active?.ops}</div>;
+
+  // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏
+  // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏
+  // 整体仍恰好一屏、不溢出。无需依赖 h-full 的高度链路。
+  const studioHeaderHeight = headerHeight + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
   return (
-    <Studio
-      ops={ops}
-      canvas={active?.canvas ?? canvas ?? null}
-      opsWidth={opsWidth}
-      defaultRatio={defaultRatio}
-      storageKey={storageKey}
-      opsLabel={opsLabel}
-      canvasLabel={canvasLabel}
-      accent={accent}
-      headerHeight={headerHeight}
-      className={className}
-    />
+    <div className={className}>
+      {topBar}
+      <Studio
+        ops={ops}
+        canvas={active?.canvas ?? canvas ?? null}
+        opsWidth={opsWidth}
+        defaultRatio={defaultRatio}
+        storageKey={storageKey}
+        opsLabel={opsLabel}
+        canvasLabel={canvasLabel}
+        accent={accent}
+        headerHeight={studioHeaderHeight}
+      />
+    </div>
   );
 }
 

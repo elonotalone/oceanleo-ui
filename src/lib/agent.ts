@@ -92,6 +92,8 @@ export interface AgentTask {
   plan?: unknown;
   favorite?: boolean;
   credits_spent?: number;
+  /** 任务所属站点（驱动每站「历史记录」过滤）。空 = 主站 oceanleo.com。 */
+  site_id?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -142,8 +144,24 @@ export function getTask(taskId: string) {
   return authed<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}`);
 }
 
-export function listTasks(limit = 50) {
-  return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?limit=${limit}`);
+/**
+ * 历史列表（按时间倒序）。
+ * - `siteId` 给了 → 只列该站的会话（每站「历史记录」用）。
+ * - `siteId` 省略 / 空 → 列全部站的会话（主站 oceanleo.com hub 用）。
+ */
+export function listTasks(limit = 50, siteId?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const site = (siteId || "").trim();
+  if (site) params.set("site_id", site);
+  return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`);
+}
+
+/** 永久删除一条会话（连带其消息 / 产出，后端 FK 级联）。 */
+export function deleteTask(taskId: string) {
+  return authed<{ task_id: string; deleted: boolean }>(
+    `/v1/agent/tasks/${encodeURIComponent(taskId)}`,
+    { method: "DELETE" },
+  );
 }
 
 /** 找出某次会话里最新的「分屏产物」（有 artifact 标记的消息）。 */
