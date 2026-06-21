@@ -41,7 +41,7 @@ export function ResultCanvas({
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
   return (
     <div
-      className={`relative flex min-w-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-white/70 ${className}`}
+      className={`relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-white/70 ${className}`}
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-3">
         <div className="flex gap-1 rounded-xl bg-stone-100 p-1">

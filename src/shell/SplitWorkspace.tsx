@@ -19,7 +19,33 @@
 // - 框架无关：左右内容都由消费端传入。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+// ----------------------------------------------------------------------------
+// 左栏标题（PaneHeader）插槽。doctrine v3（2026-06-21 操作员）：功能区的
+// 「操作台 / agent」切换不再是栏体内部的一个 pill 按钮（那会和「操作台」标题
+// 文字重复），而是**直接替换左栏标题**——「操作台」标题本身就是可切换的
+// 「操作台 | agent」开关。FunctionAgentChat 作为左栏 body 的后代，通过此 context
+// 把自己的开关装进左栏标题位置。
+// ----------------------------------------------------------------------------
+interface LeftPaneSlot {
+  /** 用一个节点替换左栏标题（「操作台」文字）。传 null 恢复默认。 */
+  setLeftLabel: (node: ReactNode | null) => void;
+}
+const LeftPaneCtx = createContext<LeftPaneSlot | null>(null);
+/** 供 FunctionAgentChat 等左栏 body 后代使用：把「操作台|agent」开关装到左栏标题。 */
+export function useLeftPaneSlot(): LeftPaneSlot | null {
+  return useContext(LeftPaneCtx);
+}
 
 export interface SplitWorkspaceProps {
   /** 左栏内容（AI 推导 / 模板操控）。 */
@@ -63,6 +89,13 @@ export function SplitWorkspace({
   const [maxed, setMaxed] = useState<Maxed>("none");
   const [dragging, setDragging] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // 左栏标题覆盖（FunctionAgentChat 通过 context 装入「操作台|agent」开关）。
+  const [leftLabelOverride, setLeftLabelOverride] = useState<ReactNode | null>(null);
+  const slot = useMemo<LeftPaneSlot>(
+    () => ({ setLeftLabel: (node) => setLeftLabelOverride(node) }),
+    [],
+  );
+  const effectiveLeftLabel = leftLabelOverride ?? leftLabel;
 
   // restore remembered ratio
   useEffect(() => {
@@ -154,18 +187,24 @@ export function SplitWorkspace({
   // Single-pane mode (no right content): just render left full-width.
   if (!hasRight) {
     return (
-      <div
-        className={`px-4 py-4 ${className}`}
-        style={{ height: `calc(100dvh - ${headerHeight}px)` }}
-      >
-        <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
-          <div className={bodyClass}>{left}</div>
+      <LeftPaneCtx.Provider value={slot}>
+        <div
+          className={`px-4 py-4 ${className}`}
+          style={{ height: `calc(100dvh - ${headerHeight}px)` }}
+        >
+          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
+            {(effectiveLeftLabel != null) && (
+              <PaneHeader label={effectiveLeftLabel} />
+            )}
+            <div className={bodyClass}>{left}</div>
+          </div>
         </div>
-      </div>
+      </LeftPaneCtx.Provider>
     );
   }
 
   return (
+    <LeftPaneCtx.Provider value={slot}>
     <div
       ref={wrapRef}
       className={`gap-0 px-4 py-4 ${className} md:flex`}
@@ -182,7 +221,7 @@ export function SplitWorkspace({
             : { flexBasis: `${defaultRatio * 100}%`, flexGrow: 0, flexShrink: 0 }
         }
       >
-        <PaneHeader label={leftLabel}>
+        <PaneHeader label={effectiveLeftLabel}>
           <MaxButton which="left" />
         </PaneHeader>
         <div className={bodyClass}>{left}</div>
@@ -221,15 +260,23 @@ export function SplitWorkspace({
         <div className={bodyClass}>{right}</div>
       </section>
     </div>
+    </LeftPaneCtx.Provider>
   );
 }
 
 function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNode }) {
   if (!label && !children) return null;
+  // label 可以是纯文字（默认「操作台 / 结果」），也可以是一个交互节点（如功能区
+  // 的「操作台 | agent」开关）。纯字符串时套灰色小标题样式；节点时原样渲染。
+  const isPlain = typeof label === "string" || typeof label === "number";
   return (
-    <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-3 py-2">
-      <span className="truncate text-[12px] font-medium text-stone-500">{label}</span>
-      <div className="flex items-center gap-1">{children}</div>
+    <div className="flex min-h-[2.5rem] shrink-0 items-center justify-between gap-2 border-b border-stone-100 px-3 py-1.5">
+      {isPlain ? (
+        <span className="truncate text-[12px] font-medium text-stone-500">{label}</span>
+      ) : (
+        <div className="min-w-0">{label}</div>
+      )}
+      <div className="flex shrink-0 items-center gap-1">{children}</div>
     </div>
   );
 }

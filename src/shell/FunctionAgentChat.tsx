@@ -19,11 +19,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
+import { useLeftPaneSlot } from "./SplitWorkspace";
 import {
   createTask,
   followUp,
   getTask,
-  latestOpsPatch,
   type AgentMessage,
 } from "../lib/agent";
 import type { OpsPatch, OpsSchema } from "../lib/fn-agent";
@@ -74,6 +74,37 @@ export function FunctionAgentChat({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef<Set<number>>(new Set());
+
+  // doctrine v3（2026-06-21）：把「操作台 | agent」开关装到**左栏标题位置**
+  // （SplitWorkspace 的左栏 PaneHeader），不再在栏体内放一个会与「操作台」标题
+  // 文字重复的 pill。若不在 SplitWorkspace 内（slot 为 null），回退到栏体内嵌。
+  const slot = useLeftPaneSlot();
+  const toggle = (
+    <div className="inline-flex rounded-lg bg-stone-100 p-0.5 text-[13px]">
+      {(["ops", "agent"] as const).map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => setTab(t)}
+          className={`rounded-md px-3 py-1 font-medium transition-colors ${
+            tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
+          }`}
+          style={tab === t ? { background: accent } : undefined}
+        >
+          {t === "ops" ? opsLabel : "agent"}
+        </button>
+      ))}
+    </div>
+  );
+  // 安装/更新左栏标题开关（toggle 节点选中态随 tab 变化）。卸载时清空，避免离开
+  // 该功能区后残留旧开关。中间更新不置 null（不闪烁）。
+  useEffect(() => {
+    slot?.setLeftLabel(toggle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot, tab, accent, opsLabel]);
+  useEffect(() => {
+    return () => slot?.setLeftLabel(null);
+  }, [slot]);
 
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
@@ -157,22 +188,8 @@ export function FunctionAgentChat({
 
   return (
     <div className="flex h-full flex-col">
-      {/* 操作台 / agent 切换 */}
-      <div className="mb-3 inline-flex shrink-0 self-start rounded-xl border border-stone-200 bg-white/80 p-1 text-sm">
-        {(["ops", "agent"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`rounded-lg px-3.5 py-1.5 font-medium transition-colors ${
-              tab === t ? "text-white" : "text-stone-600 hover:bg-stone-100"
-            }`}
-            style={tab === t ? { background: accent } : undefined}
-          >
-            {t === "ops" ? opsLabel : "agent"}
-          </button>
-        ))}
-      </div>
+      {/* 回退：只有当不在 SplitWorkspace 内（无左栏标题插槽）时，才在栏体内放开关。 */}
+      {!slot && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
 
       {tab === "ops" ? (
         <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>

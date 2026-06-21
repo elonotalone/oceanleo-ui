@@ -87,6 +87,12 @@ export interface OperatorConsoleProps {
   headerHeight?: number;
   /** 功能按键条上方可选标题区（如功能描述 / 提示）。 */
   header?: ReactNode;
+  /**
+   * 隐藏顶部功能区按键条，只渲染当前选中的那一个功能区（含其操作台/agent + 结果）。
+   * 主站工作台 iframe 内嵌子站时用 `?solo=1` 触发——主站那条「我的 Agents」行已经
+   * 是功能区选择器，子站不该再带出整站的功能区按键。
+   */
+  hideTabs?: boolean;
   className?: string;
 }
 
@@ -104,6 +110,7 @@ export function OperatorConsole({
   canvasLabel,
   headerHeight = 56,
   header,
+  hideTabs = false,
   className = "",
 }: OperatorConsoleProps) {
   const groupId = useId();
@@ -118,11 +125,12 @@ export function OperatorConsole({
     onChange?.(id);
   };
 
-  const single = functions.length <= 1;
+  const single = functions.length <= 1 || hideTabs;
 
   // 顶栏 = 可选 header + 功能按键条。它在「操作台 / 结果」两栏标题之上，整条横跨
   // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
-  const showTopBar = !single || header != null;
+  // hideTabs（solo 模式）：彻底不渲染功能按键条 + header。
+  const showTopBar = (!single && !hideTabs) || (header != null && !hideTabs);
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
