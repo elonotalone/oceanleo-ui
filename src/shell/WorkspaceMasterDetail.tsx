@@ -62,7 +62,7 @@ export function ConsoleFnSubNav({
             {f.icon && <span className="shrink-0 text-base leading-none">{f.icon}</span>}
             <span className="min-w-0 flex-1 truncate font-medium">{f.label}</span>
             {f.agentId && (
-              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title="该功能区有专属 agent">
+              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title="该功能区有专属 app">
                 ✦
               </span>
             )}
@@ -113,10 +113,10 @@ export function WorkspaceSubNav({
 
   return (
     <div className="space-y-0.5">
-      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 agent…</p>}
+      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app…</p>}
       {!loading && mine.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">
-          还没有 agent。点下方「＋ 添加 agent」从 OceanLeo Agents 里挑选。
+          还没有 app。点下方「＋ 添加 app」从 OceanLeo app 里挑选。
         </p>
       )}
       {mine.map((a) => {
@@ -166,7 +166,7 @@ export function WorkspaceSubNav({
         href={addAgentHref}
         className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition hover:border-sky-300 hover:text-sky-600"
       >
-        ＋ 添加 agent
+        ＋ 添加 app
       </a>
     </div>
   );
@@ -215,21 +215,21 @@ export function WorkspaceDetail({
         />
       ) : active && !embedSrc ? (
         <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-          该 agent 所属站点暂未接入内嵌工作台。
+          该 app 所属站点暂未接入内嵌工作台。
         </div>
       ) : !loading && mine.length === 0 ? (
         <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center">
           <div className="max-w-sm space-y-3">
             <p className="text-sm text-stone-500">
-              还没有添加 agent。点左侧「＋ 添加 agent」从 OceanLeo Agents 里挑选；
-              选好的 agent 会作为功能区出现在左侧栏。
+              还没有添加 app。点左侧「＋ 添加 app」从 OceanLeo app 里挑选；
+              选好的 app 会作为功能区出现在左侧栏。
             </p>
             <a
               href={addAgentHref}
               className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
               style={{ background: accent }}
             >
-              ＋ 添加 agent
+              ＋ 添加 app
             </a>
           </div>
         </div>

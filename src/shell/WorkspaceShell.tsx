@@ -100,7 +100,7 @@ export function WorkspaceShell({
       <div className="shrink-0 px-1.5 pt-1.5">
         <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-stone-200/80 bg-white/80 p-1.5 shadow-sm">
           {loading && (
-            <span className="px-3 py-2 text-sm text-stone-400">加载 agent…</span>
+            <span className="px-3 py-2 text-sm text-stone-400">加载 app…</span>
           )}
           {!loading &&
             mine.map((a) => {
@@ -121,12 +121,12 @@ export function WorkspaceShell({
                 </button>
               );
             })}
-          {/* 最右：添加 agent */}
+          {/* 最右：添加 app */}
           <a
             href={addAgentHref}
             className="ml-auto flex items-center gap-1.5 rounded-xl border border-dashed border-stone-300 px-3 py-2 text-sm font-medium text-stone-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
           >
-            ＋ 添加 agent
+            ＋ 添加 app
           </a>
         </div>
       </div>
@@ -146,21 +146,21 @@ export function WorkspaceShell({
           />
         ) : active && !embedSrc ? (
           <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-            该 agent 所属站点暂未接入内嵌工作台。
+            该 app 所属站点暂未接入内嵌工作台。
           </div>
         ) : !loading && mine.length === 0 ? (
           <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center">
             <div className="max-w-sm space-y-3">
               <p className="text-sm text-stone-500">
-                还没有添加 agent。点上方右侧「＋ 添加 agent」从 OceanLeo Agents 里挑选，
-                选好的 agent 会作为功能区出现在这条顶栏。
+                还没有添加 app。点上方右侧「＋ 添加 app」从 OceanLeo app 里挑选，
+                选好的 app 会作为功能区出现在这条顶栏。
               </p>
               <a
                 href={addAgentHref}
                 className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
                 style={{ background: accent }}
               >
-                ＋ 添加 agent
+                ＋ 添加 app
               </a>
             </div>
           </div>

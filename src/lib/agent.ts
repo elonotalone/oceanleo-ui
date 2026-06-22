@@ -118,6 +118,8 @@ export function createTask(body: {
   agentId?: string;
   /** doctrine v3: compact snapshot of the operator-console state for the agent. */
   opsState?: Record<string, unknown>;
+  /** agent.oceanleo.com: bind this conversation to a「专家团」(multi-agent). */
+  teamId?: string;
 }) {
   return authed<{ task_id: string; status: string; mode: string }>(
     "/v1/agent/tasks",
@@ -131,6 +133,7 @@ export function createTask(body: {
         project_id: body.projectId || null,
         agent_id: body.agentId || "",
         ops_state: body.opsState || null,
+        team_id: body.teamId || "",
       }),
     },
   );
@@ -189,6 +192,86 @@ export function saveAgent(agentId: string) {
 export function unsaveAgent(agentId: string) {
   return authed<{ agent_id: string; saved: boolean }>(
     `/v1/agents/mine/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// 专家团（agent.oceanleo.com）marketplace + 我的专家团
+// --------------------------------------------------------------------------- //
+export interface TeamDef {
+  team_id: string;
+  site_id: string;
+  name: string;
+  tagline: string;
+  icon: string;
+  category: string;
+  prompt?: string;
+  tags?: string[];
+  enabled: boolean;
+  sort_order: number;
+  member_ids?: string[];
+  member_count?: number;
+  members?: AgentDef[];
+  saved?: boolean;
+}
+
+export async function listTeams(): Promise<Result<{ items: TeamDef[] }>> {
+  const token = await accessToken();
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/agent-teams`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "网络错误", status: 0 };
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* */
+  }
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
+  return { ok: true, data: data as { items: TeamDef[] } };
+}
+
+export async function getTeam(teamId: string): Promise<Result<{ team: TeamDef }>> {
+  const token = await accessToken();
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/agent-teams/${encodeURIComponent(teamId)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "网络错误", status: 0 };
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* */
+  }
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
+  return { ok: true, data: data as { team: TeamDef } };
+}
+
+export function listMyTeams() {
+  return authed<{ items: TeamDef[] }>("/v1/agent-teams/mine");
+}
+
+export function saveTeam(teamId: string) {
+  return authed<{ team_id: string; saved: boolean }>("/v1/agent-teams/mine", {
+    method: "POST",
+    body: JSON.stringify({ team_id: teamId }),
+  });
+}
+
+export function unsaveTeam(teamId: string) {
+  return authed<{ team_id: string; saved: boolean }>(
+    `/v1/agent-teams/mine/${encodeURIComponent(teamId)}`,
     { method: "DELETE" },
   );
 }

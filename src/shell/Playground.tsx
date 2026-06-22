@@ -210,7 +210,7 @@ export function PlaygroundDetail({
             disabled={!active || saving}
             className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
             style={{ background: accent }}
-            title="把这个 agent 加入「我的 Agents」，之后在工作台直接用"
+            title="把这个 app 加入「我的 app」，之后在工作台直接用"
           >
             ＋ 放入工作台
           </button>
@@ -231,8 +231,8 @@ export function PlaygroundDetail({
         ) : (
           <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center text-[13px] text-neutral-400">
             {active
-              ? "该 agent 所属站点暂未接入内嵌功能区。"
-              : "在左侧选择一个场景，再选一个 agent 即可在此直接试玩，无需加入工作台。"}
+              ? "该 app 所属站点暂未接入内嵌功能区。"
+              : "在左侧选择一个场景，再选一个 app 即可在此直接试玩，无需加入工作台。"}
           </div>
         )}
       </div>

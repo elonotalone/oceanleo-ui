@@ -91,7 +91,7 @@ export function FunctionAgentChat({
           }`}
           style={tab === t ? { background: accent } : undefined}
         >
-          {t === "ops" ? opsLabel : "agent"}
+          {t === "ops" ? opsLabel : "app"}
         </button>
       ))}
     </div>
@@ -161,7 +161,7 @@ export function FunctionAgentChat({
       });
       setBusy(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? "登录后即可使用 agent。" : r.error || "创建失败");
+        setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建失败");
         return;
       }
       setTaskId(r.data.task_id);
@@ -198,7 +198,7 @@ export function FunctionAgentChat({
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {messages.length === 0 && !running && (
               <p className="py-8 text-center text-sm text-stone-400">
-                跟「{schema.title}」agent 说说你想要什么，
+                跟「{schema.title}」app 说说你想要什么，
                 <br />它会帮你填好左侧操作台并生成结果。
               </p>
             )}

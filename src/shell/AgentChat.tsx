@@ -47,6 +47,10 @@ export interface AgentChatProps {
   taskId?: string;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
   mode?: "agent" | "chat";
+  /** 绑定单个 agent（专家）。format "<site_id>.<fn_id>"，如 "agent.senior-engineer"。 */
+  agentId?: string;
+  /** 绑定一个「专家团」(agent.oceanleo.com)。format "team.<slug>"。 */
+  teamId?: string;
   /** 选中的文本模型复合 key（来自 ModelPicker），透传给引擎。 */
   agentModel?: string;
   accent?: string;
@@ -63,6 +67,8 @@ export function AgentChat({
   initialPrompt,
   taskId: initialTaskId,
   mode = "agent",
+  agentId = "",
+  teamId = "",
   agentModel = "",
   accent = "#4f46e5",
   headerHeight = 56,
@@ -122,10 +128,10 @@ export function AgentChat({
     setBusy(true);
     setError(null);
     setMessages([{ id: -1, role: "user", kind: "text", content: prompt }]);
-    const r = await createTask({ prompt, mode, siteId, agentModel });
+    const r = await createTask({ prompt, mode, siteId, agentModel, agentId, teamId });
     setBusy(false);
     if (!r.ok || !r.data) {
-      setError(r.status === 401 ? "登录后即可使用 agent。" : r.error || "创建任务失败");
+      setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建任务失败");
       return;
     }
     setTaskId(r.data.task_id);
