@@ -30,14 +30,16 @@ import {
   type KnowledgeItem,
 } from "../lib/database";
 
-type Tab = "files" | "works" | "assets" | "knowledge";
+export type LibraryTab = "files" | "works" | "assets" | "knowledge";
+type Tab = LibraryTab;
 
-const TABS: { id: Tab; label: string }[] = [
+export const LIBRARY_TABS: { id: Tab; label: string }[] = [
   { id: "files", label: "上传文件" },
   { id: "works", label: "作品" },
   { id: "assets", label: "素材" },
   { id: "knowledge", label: "知识库" },
 ];
+const TABS = LIBRARY_TABS;
 
 export interface SiteOption {
   id: string;
@@ -54,6 +56,11 @@ export interface FileLibraryProps {
   accent?: string;
   defaultTab?: Tab;
   title?: ReactNode;
+  /** doctrine v4：受控 tab（由侧栏 LibrarySubNav 驱动）。不传则内部自管 + 顶部渲染 tab 条。 */
+  tab?: Tab;
+  onTabChange?: (tab: Tab) => void;
+  /** doctrine v4：true 时隐藏顶部标题 + tab 条（tab 已上提到侧栏子栏）。 */
+  hideHeader?: boolean;
 }
 
 export function FileLibrary({
@@ -63,37 +70,49 @@ export function FileLibrary({
   accent = "#4f46e5",
   defaultTab = "files",
   title = "文件库",
+  tab: controlledTab,
+  onTabChange,
+  hideHeader = false,
 }: FileLibraryProps) {
-  const [tab, setTab] = useState<Tab>(defaultTab);
+  const [internalTab, setInternalTab] = useState<Tab>(defaultTab);
+  const tab = controlledTab ?? internalTab;
+  const setTab = (t: Tab) => {
+    if (controlledTab === undefined) setInternalTab(t);
+    onTabChange?.(t);
+  };
   // 站点分区：当前站 id | "__all__"（全部站）| 指定 site id
   const [scopeSite, setScopeSite] = useState<string>(siteId);
 
   return (
-    <div className="flex h-[calc(100dvh-1px)] flex-col px-8 py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            上传文件供本站 AI 使用；作品 / 素材 / 知识库全 OceanLeo 系列共享，跨站可见。
-          </p>
+    <div className={`flex h-[calc(100dvh-1px)] flex-col ${hideHeader ? "px-4 py-4" : "px-8 py-6"}`}>
+      {!hideHeader && (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
+            <p className="mt-1 text-[13px] text-neutral-500">
+              上传文件供本站 AI 使用；作品 / 素材 / 知识库全 OceanLeo 系列共享，跨站可见。
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
-                tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className={`flex flex-wrap items-center gap-3 ${hideHeader ? "" : "mt-5"}`}>
+        {!hideHeader && (
+          <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                  tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 站点分区选择器（仅「上传文件 / 作品」可跨站分区） */}
         {(tab === "files" || tab === "works") && (
@@ -107,7 +126,7 @@ export function FileLibrary({
         )}
       </div>
 
-      <div className="mt-5 min-h-0 flex-1">
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {tab === "files" && (
           <FilesPanel siteId={siteId} scopeSite={scopeSite} accent={accent} />
         )}

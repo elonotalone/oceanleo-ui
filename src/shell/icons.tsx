@@ -109,6 +109,16 @@ export function IconHistory({ className = "h-4 w-4" }: IconProps): ReactNode {
   );
 }
 
+// Playground 入口图标（火花 / 试玩）
+export function IconSparkles({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" strokeLinejoin="round" />
+      <path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // 模型类目图标（ModelPicker 分组标题用）
 export function IconCategory({ category, className = "h-4 w-4" }: { category: string; className?: string }): ReactNode {
   switch (category) {

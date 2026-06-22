@@ -185,11 +185,13 @@ export function SplitWorkspace({
     "flex min-h-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1";
 
   // Single-pane mode (no right content): just render left full-width.
+  // doctrine v4（2026-06-22）：紧凑内边距——四周（尤其上下）几乎不留白，两栏几乎
+  // 占满可视高度。原 px-4 py-4 → p-1.5。
   if (!hasRight) {
     return (
       <LeftPaneCtx.Provider value={slot}>
         <div
-          className={`px-4 py-4 ${className}`}
+          className={`p-1.5 ${className}`}
           style={{ height: `calc(100dvh - ${headerHeight}px)` }}
         >
           <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
@@ -207,7 +209,7 @@ export function SplitWorkspace({
     <LeftPaneCtx.Provider value={slot}>
     <div
       ref={wrapRef}
-      className={`gap-0 px-4 py-4 ${className} md:flex`}
+      className={`gap-0 p-1.5 ${className} md:flex`}
       style={{ height: `calc(100dvh - ${headerHeight}px)` }}
     >
       {/* 左栏 */}
@@ -245,7 +247,7 @@ export function SplitWorkspace({
 
       {/* 右栏 */}
       <section
-        className={`mt-4 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
+        className={`mt-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
           maxed === "left" ? "hidden md:flex" : "flex"
         }`}
         style={

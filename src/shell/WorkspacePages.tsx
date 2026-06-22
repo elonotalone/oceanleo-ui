@@ -17,10 +17,10 @@
 // ============================================================================
 
 import type { ReactNode } from "react";
-import type { ShellNavItem } from "./AppShell";
-import { IconHome, IconWorkspace, IconLibrary, IconHistory } from "./icons";
+import type { ShellNavItem, ShellSubNav } from "./AppShell";
+import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles } from "./icons";
 
-export type WorkspacePage = "home" | "workspace" | "library" | "history";
+export type WorkspacePage = "home" | "workspace" | "library" | "history" | "playground";
 
 export interface WorkspaceNavOptions {
   /** 路由前缀（i18n 站传 "/zh" 之类）。默认 ""。 */
@@ -29,6 +29,10 @@ export interface WorkspaceNavOptions {
   labels?: Partial<Record<WorkspacePage, string>>;
   /** 工作台是否启用（少数站没有「固定模板工作台」，只有 agent 首页）。默认 true。 */
   withWorkspace?: boolean;
+  /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
+  withPlayground?: boolean;
+  /** doctrine v4：为某些页提供覆盖式左栏子栏（master-detail）。 */
+  subNav?: Partial<Record<WorkspacePage, ShellSubNav>>;
 }
 
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
@@ -36,6 +40,7 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   workspace: "工作台",
   library: "文件库",
   history: "历史记录",
+  playground: "Playground",
 };
 
 const HREF: Record<WorkspacePage, string> = {
@@ -43,6 +48,7 @@ const HREF: Record<WorkspacePage, string> = {
   workspace: "/workspace",
   library: "/library",
   history: "/history",
+  playground: "/playground",
 };
 
 const ICON: Record<WorkspacePage, ReactNode> = {
@@ -50,21 +56,26 @@ const ICON: Record<WorkspacePage, ReactNode> = {
   workspace: <IconWorkspace />,
   library: <IconLibrary />,
   history: <IconHistory />,
+  playground: <IconSparkles />,
 };
 
-/** 构造 AppShell 的四页导航。顺序固定：首页 → 工作台 → 文件库 → 历史记录。 */
+/** 构造 AppShell 的导航。顺序：首页 → 工作台 → 文件库 → 历史记录 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
-  const pages: WorkspacePage[] =
-    opts.withWorkspace === false
-      ? ["home", "library", "history"]
-      : ["home", "workspace", "library", "history"];
+  const pages: WorkspacePage[] = [
+    "home",
+    ...(opts.withWorkspace === false ? [] : (["workspace"] as WorkspacePage[])),
+    "library",
+    "history",
+    ...(opts.withPlayground ? (["playground"] as WorkspacePage[]) : []),
+  ];
   return pages.map((p) => ({
     label: labels[p],
     href: `${base}${HREF[p]}`,
     icon: ICON[p],
     exact: p === "home",
+    subNav: opts.subNav?.[p],
   }));
 }
 
@@ -74,5 +85,6 @@ export function pageFromPath(pathname: string, basePath = ""): WorkspacePage {
   if (p.startsWith("/workspace")) return "workspace";
   if (p.startsWith("/library")) return "library";
   if (p.startsWith("/history")) return "history";
+  if (p.startsWith("/playground")) return "playground";
   return "home";
 }

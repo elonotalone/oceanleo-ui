@@ -7,7 +7,20 @@ export type {
   AppShellLayout,
   ShellNavItem,
   ShellNavGroup,
+  ShellSubNav,
 } from "./AppShell";
+// doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
+export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
+export type { SelectionNamespace } from "./WorkspaceSelection";
+// doctrine v4：工作台 master-detail（侧栏我的Agents+删除图标 / 主区内嵌功能区）。
+export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
+export type { ConsoleFnItem } from "./WorkspaceMasterDetail";
+// doctrine v4：历史记录 master-detail（侧栏列表+删除 / 主区回看）。
+export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
+// doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
+export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
+// doctrine v4：Playground（侧栏场景→agent / 主区全模态模型+放入工作台+内嵌功能区）。
+export { PlaygroundSubNav, PlaygroundDetail } from "./Playground";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。
@@ -50,8 +63,8 @@ export type { WorkspaceShellProps } from "./WorkspaceShell";
 export { HomeIntro } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
-export { FileLibrary } from "./FileLibrary";
-export type { FileLibraryProps, SiteOption } from "./FileLibrary";
+export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";
+export type { FileLibraryProps, SiteOption, LibraryTab } from "./FileLibrary";
 // 历史记录页。
 export { HistoryPage } from "./HistoryPage";
 export type { HistoryPageProps } from "./HistoryPage";

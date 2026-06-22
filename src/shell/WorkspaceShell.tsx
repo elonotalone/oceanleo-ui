@@ -97,7 +97,7 @@ export function WorkspaceShell({
   return (
     <div className="flex flex-col" style={{ height: `calc(100dvh - ${headerHeight}px)` }}>
       {/* 顶部：我的 Agents = 功能区按键条 + 最右「＋ 添加 agent」 */}
-      <div className="shrink-0 px-4 pt-4">
+      <div className="shrink-0 px-1.5 pt-1.5">
         <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-stone-200/80 bg-white/80 p-1.5 shadow-sm">
           {loading && (
             <span className="px-3 py-2 text-sm text-stone-400">加载 agent…</span>
@@ -132,7 +132,7 @@ export function WorkspaceShell({
       </div>
 
       {/* 主体：选中 agent → 内嵌子站功能区；未选 → 主站兜底对话 */}
-      <div className="min-h-0 min-w-0 flex-1 p-4">
+      <div className="min-h-0 min-w-0 flex-1 p-1.5">
         {active && embedSrc ? (
           <iframe
             key={active.agent_id}

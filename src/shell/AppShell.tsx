@@ -23,6 +23,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
+import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
@@ -30,6 +31,16 @@ import { IconGift, IconPanel, IconSearch } from "./icons";
  *    右侧紧跟模型选择，右=token 余额 + 账户按钮（账户在 token 右边）。
  *    用于「单页操作台」站（侧栏只有一个功能按键，没有真正的站级导航需要）。 */
 export type AppShellLayout = "sidebar" | "topbar";
+
+/** doctrine v4：覆盖式左栏子栏（master-detail）。带 subNav 的 nav item 被点击后，
+ *  AppShell 进入「子栏态」——隐藏主导航，渲染「← 返回」+ title + body。主区由路由
+ *  页负责（深链不变）。直接深链进入该 item 的路由时也自动进入子栏态。 */
+export interface ShellSubNav {
+  /** 子栏顶部标题（返回键右侧）。 */
+  title: ReactNode;
+  /** 子栏列表 body。`close` 调用回到主导航态（不改路由）。 */
+  render: (close: () => void) => ReactNode;
+}
 
 export interface ShellNavItem {
   label: string;
@@ -44,6 +55,8 @@ export interface ShellNavItem {
   shortcut?: string;
   /** 自定义高亮判断（覆盖默认 href 匹配）；接收已去掉 locale 前缀的逻辑路由 */
   match?: (pathname: string) => boolean;
+  /** doctrine v4：覆盖式左栏子栏。点击该项 → 侧栏切到该子栏列表（master-detail）。 */
+  subNav?: ShellSubNav;
 }
 
 /** 分组导航（带可选小标题）。传 navGroups 时优先于扁平 nav。 */
@@ -120,7 +133,17 @@ export interface AppShellProps {
   hideHeader?: boolean;
 }
 
-export function AppShell({
+// doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
+// 同时渲染两者，故在此统一包一层 WorkspaceSelectionProvider，各消费站零接线即可用。
+export function AppShell(props: AppShellProps) {
+  return (
+    <WorkspaceSelectionProvider>
+      <AppShellInner {...props} />
+    </WorkspaceSelectionProvider>
+  );
+}
+
+function AppShellInner({
   brand,
   layout = "sidebar",
   nav,
@@ -151,6 +174,26 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [term, setTerm] = useState("");
+
+  // doctrine v4：覆盖式左栏子栏（master-detail）。把所有带 subNav 的项摊平，按
+  // pathname 找出当前应展开哪个子栏（深链直达也进子栏态）。手动「返回」可临时收回。
+  const flatNav: ShellNavItem[] = navGroups?.length
+    ? navGroups.flatMap((g) => g.items)
+    : nav ?? [];
+  const routeSubNavItem = flatNav.find((it) => it.subNav && isActive(pathname, it));
+  // null = 跟随路由（默认）；false = 用户手动返回主导航；item = 用户手动展开某项。
+  const [subNavOverride, setSubNavOverride] = useState<ShellNavItem | false | null>(null);
+  // 路由变了就重置手动覆盖，回到「跟随路由」。
+  useEffect(() => {
+    setSubNavOverride(null);
+  }, [pathname]);
+  const activeSubItem: ShellNavItem | null =
+    subNavOverride === false
+      ? null
+      : subNavOverride
+        ? subNavOverride
+        : routeSubNavItem || null;
+  const closeSubNav = () => setSubNavOverride(false);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(collapseKey) === "1");
@@ -252,6 +295,11 @@ export function AppShell({
         {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
       </>
     );
+    // doctrine v4：带 subNav 的项点击后，让侧栏进入该子栏态（即便已在同路由）。
+    const onActivate = () => {
+      setMobileOpen(false);
+      if (item.subNav) setSubNavOverride(item);
+    };
     // 纯动作项（无 href）渲染为 button；有 href 渲染为 Link。
     if (!item.href || item.onClick) {
       return (
@@ -259,7 +307,7 @@ export function AppShell({
           key={item.href ?? item.label ?? idx}
           type="button"
           onClick={() => {
-            setMobileOpen(false);
+            onActivate();
             item.onClick?.();
           }}
           className={cls}
@@ -273,7 +321,7 @@ export function AppShell({
       <Link
         key={item.href}
         href={item.href}
-        onClick={() => setMobileOpen(false)}
+        onClick={onActivate}
         className={cls}
         style={style}
       >
@@ -366,25 +414,52 @@ export function AppShell({
         </div>
       )}
 
-      <nav className="mt-1 px-2">
-        {navGroups?.length ? (
-          navGroups.map((group, gi) => (
-            <div key={group.heading ?? gi} className="mb-1">
-              {group.heading && (
-                <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-500">{group.heading}</div>
-              )}
-              <div className="space-y-0.5">
-                {group.items.map((item, ii) => renderNavItem(item, ii))}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="space-y-0.5">{(nav ?? []).map((item, ii) => renderNavItem(item, ii))}</div>
-        )}
-      </nav>
+      {activeSubItem?.subNav ? (
+        /* doctrine v4 覆盖式子栏态：「← 返回」+ 标题 + 该项子栏 body（占满中部，可滚动） */
+        <div className="mt-1 flex min-h-0 flex-1 flex-col px-2">
+          <button
+            type="button"
+            onClick={closeSubNav}
+            className="group/back mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-200/60"
+          >
+            <svg
+              className="h-4 w-4 shrink-0 text-neutral-400 transition-colors group-hover/back:text-neutral-700"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="truncate">{activeSubItem.subNav.title}</span>
+          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {activeSubItem.subNav.render(closeSubNav)}
+          </div>
+        </div>
+      ) : (
+        <>
+          <nav className="mt-1 px-2">
+            {navGroups?.length ? (
+              navGroups.map((group, gi) => (
+                <div key={group.heading ?? gi} className="mb-1">
+                  {group.heading && (
+                    <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-500">{group.heading}</div>
+                  )}
+                  <div className="space-y-0.5">
+                    {group.items.map((item, ii) => renderNavItem(item, ii))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="space-y-0.5">{(nav ?? []).map((item, ii) => renderNavItem(item, ii))}</div>
+            )}
+          </nav>
 
-      {recentSlot && <div className="mt-3 flex min-h-0 flex-1 flex-col px-2">{recentSlot}</div>}
-      {!recentSlot && <div className="min-h-0 flex-1" />}
+          {recentSlot && <div className="mt-3 flex min-h-0 flex-1 flex-col px-2">{recentSlot}</div>}
+          {!recentSlot && <div className="min-h-0 flex-1" />}
+        </>
+      )}
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* token 余额 —— 只读展示，不可点击（实时余额由各站传入） */}
@@ -453,14 +528,17 @@ export function AppShell({
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
        侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
     <div className="flex min-h-screen bg-transparent" data-oceanleo-shell>
-      {/* desktop sidebar with width animation */}
+      {/* desktop sidebar with width animation。doctrine v4：子栏态加宽到 256px
+          以容纳列表（文件名 / 历史标题 / agent 名），主导航态保持紧凑 186px。 */}
       <aside
         data-oceanleo-chrome
         className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
-          collapsed ? "w-0 border-r-0" : "w-[186px]"
+          collapsed ? "w-0 border-r-0" : activeSubItem ? "w-[256px]" : "w-[186px]"
         }`}
       >
-        <div className="flex h-full w-[186px] flex-col">{sidebarBody}</div>
+        <div className={`flex h-full flex-col ${activeSubItem ? "w-[256px]" : "w-[186px]"}`}>
+          {sidebarBody}
+        </div>
       </aside>
 
       {/* mobile drawer */}
