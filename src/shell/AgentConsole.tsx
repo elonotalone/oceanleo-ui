@@ -29,6 +29,7 @@ import {
   type ResultRender,
   initialState,
   manifestToOpsSchema,
+  normalizeConsoleManifest,
   renderTemplate,
 } from "../lib/manifest";
 import { runCapability as defaultRunCapability } from "../lib/capabilities";
@@ -170,7 +171,8 @@ function ManifestPane({
   runCapability?: RunCapabilityFn;
 }) {
   const runCap = runCapability ?? defaultRunCapability;
-  const con = m.console;
+  const con = useMemo(() => normalizeConsoleManifest(m.console), [m.console]);
+  const hasOpsForm = con.sections.length > 0;
   const [state, setState] = useState<Record<string, unknown>>(() => initialState(con));
   const [openSec, setOpenSec] = useState<string | null>(con.sections[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
@@ -190,6 +192,7 @@ function ManifestPane({
   );
 
   const runGenerate = useCallback(async () => {
+    if (!hasOpsForm) return;
     setError(null);
     // required 校验
     for (const sec of con.sections) {
@@ -225,11 +228,16 @@ function ManifestPane({
     } finally {
       setBusy(false);
     }
-  }, [con, state, siteId, setField, runCap]);
+  }, [con, hasOpsForm, state, siteId, setField, runCap]);
 
   // 左栏：操作台表单（StudioSection 竖排）+ 主行动按钮。
   const opsContent = (
     <div className="space-y-3">
+      {!hasOpsForm ? (
+        <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs leading-relaxed text-stone-500">
+          该 agent 暂未配置操作台表单。切换到左侧「agent」形态，用对话完成工作。
+        </p>
+      ) : null}
       {con.sections.map((sec, i) => {
         const filled = sec.fields.some((f) => String(state[f.key] ?? "").trim());
         return (
@@ -254,15 +262,17 @@ function ManifestPane({
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
       )}
-      <button
-        type="button"
-        onClick={() => void runGenerate()}
-        disabled={busy}
-        className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
-        style={{ background: accent }}
-      >
-        {busy ? "生成中…" : `${con.action.label} ✦`}
-      </button>
+      {hasOpsForm ? (
+        <button
+          type="button"
+          onClick={() => void runGenerate()}
+          disabled={busy}
+          className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
+          style={{ background: accent }}
+        >
+          {busy ? "生成中…" : `${con.action.label} ✦`}
+        </button>
+      ) : null}
     </div>
   );
 

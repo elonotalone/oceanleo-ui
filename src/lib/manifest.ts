@@ -102,6 +102,123 @@ export interface ConsoleManifest {
   editableByStaff?: boolean;
 }
 
+const DEFAULT_ACTION: ManifestAction = {
+  label: "生成",
+  capability: "chat",
+  systemTemplate: "",
+  userTemplate: "",
+  output: { key: "result", control: "editable-text" },
+};
+
+const DEFAULT_CANVAS_TABS: ManifestCanvasTab[] = [
+  {
+    id: "result",
+    label: "结果",
+    render: "editable-text",
+    from: "result",
+    emptyTitle: "结果会显示在这里",
+  },
+];
+
+function asObject(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function normalizeField(raw: unknown, index: number): ManifestField | null {
+  const f = asObject(raw);
+  const key = String(f.key || "").trim();
+  if (!key) return null;
+  const control = String(f.control || "text") as FieldControl;
+  const options = Array.isArray(f.options) ? f.options : undefined;
+  return {
+    key,
+    label: String(f.label || key),
+    control,
+    placeholder: f.placeholder != null ? String(f.placeholder) : undefined,
+    required: Boolean(f.required),
+    options: options as ManifestField["options"],
+    default: f.default,
+    hint: f.hint != null ? String(f.hint) : undefined,
+    userPicksOnly: f.userPicksOnly === true,
+  };
+}
+
+function normalizeSection(raw: unknown, index: number): ManifestSection {
+  const sec = asObject(raw);
+  const fieldsRaw = Array.isArray(sec.fields) ? sec.fields : [];
+  const fields = fieldsRaw
+    .map((f, i) => normalizeField(f, i))
+    .filter((f): f is ManifestField => Boolean(f));
+  return {
+    id: String(sec.id || `section-${index + 1}`),
+    title: String(sec.title || `区块 ${index + 1}`),
+    fields,
+  };
+}
+
+/** 把网关/草稿里残缺或空的 console 规范成 AgentConsole 可安全渲染的形状。 */
+export function normalizeConsoleManifest(raw: unknown): ConsoleManifest {
+  const c = asObject(raw);
+  const sections = Array.isArray(c.sections)
+    ? c.sections.map((sec, i) => normalizeSection(sec, i))
+    : [];
+
+  const actionRaw = asObject(c.action);
+  const outputRaw = asObject(actionRaw.output);
+  const action: ManifestAction = {
+    ...DEFAULT_ACTION,
+    label: String(actionRaw.label || DEFAULT_ACTION.label),
+    capability: (String(actionRaw.capability || DEFAULT_ACTION.capability) as Capability),
+    systemTemplate:
+      actionRaw.systemTemplate != null ? String(actionRaw.systemTemplate) : DEFAULT_ACTION.systemTemplate,
+    userTemplate:
+      actionRaw.userTemplate != null ? String(actionRaw.userTemplate) : DEFAULT_ACTION.userTemplate,
+    params:
+      actionRaw.params && typeof actionRaw.params === "object" && !Array.isArray(actionRaw.params)
+        ? (actionRaw.params as Record<string, string>)
+        : undefined,
+    output: {
+      key: String(outputRaw.key || DEFAULT_ACTION.output.key),
+      control: (String(outputRaw.control || DEFAULT_ACTION.output.control) as ResultRender),
+    },
+  };
+
+  const canvasRaw = asObject(c.canvas);
+  const tabs = Array.isArray(canvasRaw.tabs)
+    ? canvasRaw.tabs
+        .map((tab, i) => {
+          const t = asObject(tab);
+          const from = String(t.from || action.output.key);
+          return {
+            id: String(t.id || `tab-${i + 1}`),
+            label: String(t.label || `结果 ${i + 1}`),
+            render: (String(t.render || "editable-text") as ResultRender),
+            from,
+            emptyTitle: t.emptyTitle != null ? String(t.emptyTitle) : undefined,
+            emptyHint: t.emptyHint != null ? String(t.emptyHint) : undefined,
+          } satisfies ManifestCanvasTab;
+        })
+        .filter((t) => t.from)
+    : DEFAULT_CANVAS_TABS.map((t) => ({ ...t, from: action.output.key }));
+
+  return {
+    title: String(c.title || "操作台"),
+    accent: c.accent != null ? String(c.accent) : undefined,
+    sections,
+    action,
+    canvas: { tabs: tabs.length ? tabs : DEFAULT_CANVAS_TABS },
+    editableByStaff: c.editableByStaff === false ? false : true,
+  };
+}
+
+/** 规范化完整 AgentManifest（重点修复 console.sections 非数组导致的崩溃）。 */
+export function normalizeAgentManifest(raw: AgentManifest): AgentManifest {
+  return {
+    ...raw,
+    console: normalizeConsoleManifest(raw.console),
+  };
+}
+
 // 完整 manifest（注册 + prompt + console），网关 /v1/agents/{id}/manifest 返回。
 export interface AgentManifest {
   agent_id: string;
