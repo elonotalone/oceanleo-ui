@@ -156,12 +156,21 @@ export interface AgentDef {
   saved?: boolean;
 }
 
-/** Public marketplace (works signed-out; `saved` annotated when signed-in). */
-export async function listAgents(): Promise<Result<{ items: AgentDef[] }>> {
+/** Public marketplace (works signed-out; `saved` annotated when signed-in).
+ *
+ * `siteId` 给了 → 只列该站的 agent（agent.oceanleo.com 专家广场用，传 "agent"）。
+ * `siteId` 省略 / 空 → 列全站 marketplace（主站 /all-sites?tab=app 用）。 */
+export async function listAgents(
+  siteId?: string,
+): Promise<Result<{ items: AgentDef[] }>> {
   const token = await accessToken();
+  const site = (siteId || "").trim();
+  const url = site
+    ? `${GATEWAY_BASE}/v1/agents?site_id=${encodeURIComponent(site)}`
+    : `${GATEWAY_BASE}/v1/agents`;
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}/v1/agents`, {
+    res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
     });
@@ -216,11 +225,17 @@ export interface TeamDef {
   saved?: boolean;
 }
 
-export async function listTeams(): Promise<Result<{ items: TeamDef[] }>> {
+export async function listTeams(
+  siteId?: string,
+): Promise<Result<{ items: TeamDef[] }>> {
   const token = await accessToken();
+  const site = (siteId || "").trim();
+  const url = site
+    ? `${GATEWAY_BASE}/v1/agent-teams?site_id=${encodeURIComponent(site)}`
+    : `${GATEWAY_BASE}/v1/agent-teams`;
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}/v1/agent-teams`, {
+    res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
     });
