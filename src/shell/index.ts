@@ -42,7 +42,7 @@ export type { FunctionAgentChatProps } from "./FunctionAgentChat";
 // 宗旨 v4：由 manifest 渲染的通用操作台（可迁移核心）。任何站点同一组件渲染同一份
 // manifest → 显示一致、零代码搬迁。
 export { AgentConsole } from "./AgentConsole";
-export type { AgentConsoleProps } from "./AgentConsole";
+export type { AgentConsoleProps, RunCapabilityFn } from "./AgentConsole";
 // 主站「工作台」母页面壳（iframe 内嵌子站功能区 + 选/加 agent）。
 export { WorkspaceShell } from "./WorkspaceShell";
 export type { WorkspaceShellProps } from "./WorkspaceShell";

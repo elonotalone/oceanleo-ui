@@ -31,8 +31,17 @@ import {
   manifestToOpsSchema,
   renderTemplate,
 } from "../lib/manifest";
-import { runCapability } from "../lib/capabilities";
+import { runCapability as defaultRunCapability } from "../lib/capabilities";
+import type { CapabilityResult } from "../lib/capabilities";
+import type { Capability } from "../lib/manifest";
 import type { OpsPatch } from "../lib/fn-agent";
+
+// 能力执行器签名（可被 host 注入，如 oceanbizs 走服务端代理而非用户 OceanLeo token）。
+export type RunCapabilityFn = (
+  capability: Capability,
+  input: Record<string, unknown>,
+  ctx: { siteId: string },
+) => Promise<CapabilityResult>;
 
 const inputCls =
   "w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
@@ -51,6 +60,11 @@ export interface AgentConsoleProps {
   /** solo：隐藏顶部功能区按键条（主站 iframe 内嵌单个功能区时）。 */
   hideTabs?: boolean;
   headerHeight?: number;
+  /**
+   * 可选：覆盖能力执行器。默认用内置 SDK（直连网关，需用户 OceanLeo token）。
+   * oceanbizs 等无 OceanLeo 登录态的场景注入一个走自家服务端代理的实现。
+   */
+  runCapability?: RunCapabilityFn;
 }
 
 // 顶部功能区按键条占用的竖向高度（px），与 OperatorConsole 一致，供 Studio 扣除。
@@ -65,6 +79,7 @@ export function AgentConsole({
   onChange,
   hideTabs = false,
   headerHeight = 56,
+  runCapability,
 }: AgentConsoleProps) {
   const list = useMemo(
     () => (manifests && manifests.length ? manifests : manifest ? [manifest] : []),
@@ -132,6 +147,7 @@ export function AgentConsole({
         siteId={siteId}
         accent={active.console.accent || accent}
         headerHeight={studioHeaderHeight}
+        runCapability={runCapability}
       />
     </div>
   );
@@ -145,12 +161,15 @@ function ManifestPane({
   siteId,
   accent,
   headerHeight = 56,
+  runCapability,
 }: {
   m: AgentManifest;
   siteId: string;
   accent: string;
   headerHeight?: number;
+  runCapability?: RunCapabilityFn;
 }) {
+  const runCap = runCapability ?? defaultRunCapability;
   const con = m.console;
   const [state, setState] = useState<Record<string, unknown>>(() => initialState(con));
   const [openSec, setOpenSec] = useState<string | null>(con.sections[0]?.id ?? null);
@@ -194,7 +213,7 @@ function ManifestPane({
               ...mapParams(a.params, state),
               prompt: renderTemplate(a.params?.prompt || a.userTemplate || "", state) || undefined,
             };
-      const r = await runCapability(a.capability, input, { siteId });
+      const r = await runCap(a.capability, input, { siteId });
       if (!r.ok) {
         setError(r.error || "生成失败，请重试。");
         return;
@@ -206,7 +225,7 @@ function ManifestPane({
     } finally {
       setBusy(false);
     }
-  }, [con, state, siteId, setField]);
+  }, [con, state, siteId, setField, runCap]);
 
   // 左栏：操作台表单（StudioSection 竖排）+ 主行动按钮。
   const opsContent = (
