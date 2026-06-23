@@ -79,6 +79,37 @@ import { ApiPage, AccountPage, SettingsPage } from "@oceanleo/ui/pages";
 // 各自包进本站 <AppShell> 即可
 ```
 
+## i18n（中英双语，v0.23.0+）
+
+全家桶统一 **next-intl**，**cookie(`NEXT_LOCALE`) 选语言、不加 URL 前缀**、默认 `zh`。
+provider + 切换器 + helper 都在本包，各站 3 步接入（决策与 runbook 见 oceandino repo
+`docs/architecture/oceanleo-i18n.md`）：
+
+```ts
+// 1. <site>/i18n/request.ts
+import { createI18nRequest } from "@oceanleo/ui/i18n/server";
+export default createI18nRequest(
+  async (locale) => (await import(`../messages/${locale}.json`)).default,
+);
+```
+```ts
+// 2. <site>/next.config.ts
+import createNextIntlPlugin from "next-intl/plugin";
+const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
+export default withNextIntl(nextConfig);
+```
+```tsx
+// 3. <site>/app/layout.tsx
+import { I18nProvider, LanguageSwitcher } from "@oceanleo/ui/i18n";
+// <I18nProvider>{children}</I18nProvider>，某处放 <LanguageSwitcher />
+```
+
+取翻译：client `const t = useT(); t("common.login")`；server
+`import { getT } from "@oceanleo/ui/i18n/server"; const t = await getT();`。
+
+文案翻译用 AI 批量脚本（不逐词手翻）：
+`node scripts/i18n-ai-translate.mjs <站目录>`（oceandino repo `scripts/`）。
+
 ## 包结构
 
 ```
@@ -87,6 +118,7 @@ src/
   pages/   ApiPage · AccountPage · SettingsPage
   ui/      Modal · ConfirmDialog · Switch · Select · Skeleton · …
   lib/auth SSO（config/client/account/middleware）+ 网关 + 模型选择
+  i18n/    config · request(server) · provider · LanguageSwitcher · useT · messages
   theme/   globals.css · tailwind-preset.ts
 ```
 

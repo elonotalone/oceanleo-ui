@@ -1,0 +1,39 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "Log In / Sign Up",
+    "logout": "Log Out",
+    "loggedOut": "Logged Out",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "rename": "Rename",
+    "save": "Save",
+    "search": "Search",
+    "loading": "Loading...",
+    "back": "Back",
+    "more": "More"
+  },
+  "account": {
+    "title": "Account",
+    "tokenBalance": "token Balance",
+    "monthSpend": "Monthly Spend",
+    "taskCount": "Task Count",
+    "freePlan": "Free Plan",
+    "notLoggedIn": "Not Logged In",
+    "loginPrompt": "Log in to create tasks, view your token balance, and check task history.",
+    "signupBonus": "Sign up for free credits. After topping up, billing is real-time based on token usage."
+  },
+  "nav": {
+    "newTask": "New Task",
+    "workspace": "Workspace",
+    "allApps": "All Apps",
+    "playground": "Playground",
+    "plugins": "Plugins",
+    "schedules": "Scheduled Tasks",
+    "library": "Library",
+    "history": "History",
+    "downloadApp": "Download App",
+    "projects": "Projects"
+  }
+}
