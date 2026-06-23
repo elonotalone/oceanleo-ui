@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AgentChat } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
+import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 
 // ----------------------------------------------------------------------------
@@ -98,7 +99,7 @@ function useMyAgents() {
 // ----------------------------------------------------------------------------
 export function WorkspaceSubNav({
   accent = "#0ea5e9",
-  addAgentHref = "/all-sites?tab=agent",
+  addAgentHref = "/all-sites?tab=app",
 }: {
   accent?: string;
   addAgentHref?: string;
@@ -113,10 +114,11 @@ export function WorkspaceSubNav({
 
   return (
     <div className="space-y-0.5">
-      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app…</p>}
+      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app / skill…</p>}
       {!loading && mine.length === 0 && (
-        <p className="px-3 py-2 text-[12px] text-neutral-400">
-          还没有 app。点下方「＋ 添加 app」从 OceanLeo app 里挑选。
+        <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
+          还没有 app 或 skill。点下方「＋ 添加 app / skill」，从「全部应用」里挑选
+          app（能干活）或 skill（纯聊天）。
         </p>
       )}
       {mine.map((a) => {
@@ -166,7 +168,7 @@ export function WorkspaceSubNav({
         href={addAgentHref}
         className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition hover:border-sky-300 hover:text-sky-600"
       >
-        ＋ 添加 app
+        ＋ 添加 app / skill
       </a>
     </div>
   );
@@ -179,12 +181,21 @@ export function WorkspaceDetail({
   siteOrigin,
   accent = "#0ea5e9",
   homeSiteId = "",
-  addAgentHref = "/all-sites?tab=agent",
+  addAgentHref = "/all-sites?tab=app",
+  modelCategories = ["text", "image", "video", "threed", "audio"],
+  modelSiteId = "oceanleo",
+  apiHref = "/api",
 }: {
   siteOrigin: Record<string, string>;
   accent?: string;
   homeSiteId?: string;
   addAgentHref?: string;
+  /** 顶部模型选择器要展示的模态。主站给全部 5 个。传 [] 则不显示模型选择条。 */
+  modelCategories?: ModelCategory[];
+  /** 模型选择「站点 × 用户」持久化标识。 */
+  modelSiteId?: string;
+  /** 模型选择下拉底部「管理模型」跳转。 */
+  apiHref?: string;
 }) {
   const { mine, loading } = useMyAgents();
   const [sel] = useWorkspaceSelection("workspace");
@@ -202,44 +213,61 @@ export function WorkspaceDetail({
     return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(active.agent_id)}`;
   }, [active, siteOrigin]);
 
+  // 顶部模型选择条：主站工作台内嵌子站时，子站的 ?embed=1 会隐藏它自己的外壳
+  // （含模型选择），所以模型选择由主站工作台统一在顶部承载（操作员 2026-06-23）。
+  const showModelBar = modelCategories.length > 0;
+
   return (
-    <div className="h-[calc(100dvh-1px)] p-1.5">
-      {active && embedSrc ? (
-        <iframe
-          key={active.agent_id}
-          src={embedSrc}
-          title={active.name}
-          className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
-          allow="clipboard-write; clipboard-read; fullscreen"
-          allowFullScreen
-        />
-      ) : active && !embedSrc ? (
-        <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-          该 app 所属站点暂未接入内嵌工作台。
-        </div>
-      ) : !loading && mine.length === 0 ? (
-        <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center">
-          <div className="max-w-sm space-y-3">
-            <p className="text-sm text-stone-500">
-              还没有添加 app。点左侧「＋ 添加 app」从 OceanLeo app 里挑选；
-              选好的 app 会作为功能区出现在左侧栏。
-            </p>
-            <a
-              href={addAgentHref}
-              className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
-              style={{ background: accent }}
-            >
-              ＋ 添加 app
-            </a>
-          </div>
-        </div>
-      ) : loading ? (
-        <div className="grid h-full place-items-center text-sm text-stone-400">加载…</div>
-      ) : (
-        <div className="h-full overflow-hidden rounded-2xl border border-stone-200 bg-white/60">
-          <AgentChat siteId={homeSiteId} accent={accent} headerHeight={56} />
+    <div className="flex h-[calc(100dvh-1px)] flex-col">
+      {showModelBar && (
+        <div className="flex shrink-0 items-center border-b border-neutral-100 px-4 py-2.5">
+          <ModelPicker
+            categories={modelCategories}
+            siteId={modelSiteId}
+            apiHref={apiHref}
+          />
         </div>
       )}
+      <div className="min-h-0 flex-1 p-1.5">
+        {active && embedSrc ? (
+          <iframe
+            key={active.agent_id}
+            src={embedSrc}
+            title={active.name}
+            className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+            allow="clipboard-write; clipboard-read; fullscreen"
+            allowFullScreen
+          />
+        ) : active && !embedSrc ? (
+          <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
+            该 app 所属站点暂未接入内嵌工作台。
+          </div>
+        ) : !loading && mine.length === 0 ? (
+          <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center">
+            <div className="max-w-sm space-y-3">
+              <p className="text-sm text-stone-500">
+                还没有添加 app 或 skill。点左侧「＋ 添加 app / skill」，从「全部应用」里：
+                <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
+                <br />· <b>skill</b> = 纯聊天助手，跟它对话答疑。
+                <br />加入后都会出现在左侧栏，随时调用。
+              </p>
+              <a
+                href={addAgentHref}
+                className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
+                style={{ background: accent }}
+              >
+                ＋ 添加 app / skill
+              </a>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="grid h-full place-items-center text-sm text-stone-400">加载…</div>
+        ) : (
+          <div className="h-full overflow-hidden rounded-2xl border border-stone-200 bg-white/60">
+            <AgentChat siteId={homeSiteId} accent={accent} headerHeight={56} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
