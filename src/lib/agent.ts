@@ -122,6 +122,9 @@ export function createTask(body: {
   opsState?: Record<string, unknown>;
   /** agent.oceanleo.com: bind this conversation to a「专家团」(multi-agent). */
   teamId?: string;
+  /** doctrine v6: per-conversation skill-prompt override (用户编辑了 skill prompt
+   *  并选「用这段 prompt 直接干活」)。只对本次会话生效，不写回 manifest。 */
+  promptOverride?: string;
 }) {
   return authed<{ task_id: string; status: string; mode: string }>(
     "/v1/agent/tasks",
@@ -136,6 +139,7 @@ export function createTask(body: {
         agent_id: body.agentId || "",
         ops_state: body.opsState || null,
         team_id: body.teamId || "",
+        prompt_override: body.promptOverride || "",
       }),
     },
   );
@@ -191,6 +195,54 @@ export async function listAgents(
 
 export function listMyAgents() {
   return authed<{ items: AgentDef[] }>("/v1/agents/mine");
+}
+
+/** Create a user-owned skill (visible only to the creator). Doctrine v6:
+ *  used by the shared CreateSkillModal — both「创建 skill」(agent 站) and
+ *  「保存为我的 skill」(any oceanleo site's prompt panel) go through here. */
+export function createCustomSkill(body: {
+  name: string;
+  tagline?: string;
+  icon?: string;
+  category?: string;
+  tags?: string[];
+  prompt: string;
+}) {
+  return authed<{ agent_id: string; name: string }>("/v1/agents/custom", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteCustomSkill(agentId: string) {
+  return authed<{ agent_id: string; deleted: boolean }>(
+    `/v1/agents/custom/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Create a user-owned skill team (multi-skill collaboration). */
+export function createCustomSkillTeam(body: {
+  name: string;
+  tagline?: string;
+  icon?: string;
+  category?: string;
+  prompt?: string;
+  member_agent_ids: string[];
+  leader_agent_id?: string;
+  tags?: string[];
+}) {
+  return authed<{ team_id: string; name: string; leader_agent_id: string }>(
+    "/v1/agent-teams/custom",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function deleteCustomSkillTeam(teamId: string) {
+  return authed<{ team_id: string; deleted: boolean }>(
+    `/v1/agent-teams/custom/${encodeURIComponent(teamId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function saveAgent(agentId: string) {

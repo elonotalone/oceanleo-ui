@@ -52,6 +52,12 @@ export type { AgentChatProps } from "./AgentChat";
 // 功能区「操作台 / agent」双形态左栏（doctrine v3：一个功能区=一个操作台=一个 agent）。
 export { FunctionAgentChat } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
+// doctrine v6：skill prompt 开源面板（展开/编辑/直接用/保存为我的 skill）。
+export { SkillPromptPanel } from "./SkillPromptPanel";
+export type { SkillPromptPanelProps } from "./SkillPromptPanel";
+// doctrine v6：创建 / 保存 skill 的统一弹窗（「创建 skill」+「保存为我的 skill」共用）。
+export { CreateSkillModal, CreateSkillTeamModal } from "./CreateSkillModal";
+export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateSkillModal";
 // 宗旨 v4：由 manifest 渲染的通用操作台（可迁移核心）。任何站点同一组件渲染同一份
 // manifest → 显示一致、零代码搬迁。
 export { AgentConsole } from "./AgentConsole";

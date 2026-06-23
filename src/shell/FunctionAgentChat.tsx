@@ -3,13 +3,18 @@
 // ============================================================================
 // @oceanleo/ui — 功能区「操作台 / agent / skill」三形态左栏（单一事实源）
 // ----------------------------------------------------------------------------
-// Doctrine v5（2026-06-23）：一个 app（左操作台 + 右结果，整块）里有：
+// Doctrine v6（2026-06-23）：一个 app（左操作台 + 右结果，整块）里有：
 //   - 操作台：固定模板操控（各站传进来的 <StudioSection> 表单 + 主按钮）。
 //   - agent ：有真实能力的智能体——对话流（绑定本功能区 agent_id），产出
 //             OpsPatch → onApplyPatch 落到真实操作台 state，右栏随之重渲染。
-//             这是「app 帮你填操作台并生成结果」的入口。
+//             v6 起，agent 同时**扮演本功能区 skill 的人设**（后端把 skill 的
+//             manifest.prompt 拼进 agent 的 system）——既会聊又能填操作台。
 //   - skill ：纯 prompt 套壳的聊天助手——直接和这个 app 聊天答疑，不操作操作台、
 //             不产 ops_patch（mode=skill）。这是「跟这个 app 直接聊聊」的入口。
+//
+// v6 prompt「开源」：agent / skill 两 tab 都在「leo 建议」上方放一个
+// <SkillPromptPanel>——展开/收起/编辑该 skill 的 prompt，可「用这段 prompt 直接
+// 干活」（带 promptOverride，只对本次会话生效）或「保存为我的 skill」。
 //
 // 三者隔离：只持有本功能区的 agentId + schema，看不到别的功能区。
 // 用法：把它放进 OperatorConsole 的 `ops`（左栏内容）。右栏（结果）照旧由
@@ -19,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
+import { SkillPromptPanel } from "./SkillPromptPanel";
 import { useLeftPaneSlot } from "./SplitWorkspace";
 import {
   createTask,
@@ -79,6 +85,9 @@ export function FunctionAgentChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // doctrine v6: per-conversation skill-prompt overrides (agent / skill 各一份)。
+  const [promptOverride, setPromptOverride] = useState("");
+  const [skillOverride, setSkillOverride] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef<Set<number>>(new Set());
 
@@ -202,6 +211,8 @@ export function FunctionAgentChat({
         agentModel,
         // 只有 agent 形态需要把操作台快照带过去；skill 是纯聊天，不读操作台。
         opsState: isSkill ? undefined : snapshot(),
+        // doctrine v6：编辑过的 prompt 直接干活（只对本次会话生效）。
+        promptOverride: isSkill ? skillOverride : promptOverride,
       });
       setBusy(false);
       if (!r.ok || !r.data) {
@@ -281,7 +292,18 @@ export function FunctionAgentChat({
             )}
             {error && <p className="text-[13px] text-rose-500">{error}</p>}
           </div>
-          <div className="shrink-0 pt-3">
+          <div className="shrink-0 space-y-2 pt-3">
+            {/* doctrine v6：skill prompt 开源面板（展开/编辑/直接用/保存为我的 skill）。
+                agent / skill 两 tab 各持一份会话覆盖。 */}
+            {agentId && (
+              <SkillPromptPanel
+                agentId={agentId}
+                name={schema.title}
+                accent={accent}
+                onUseOverride={isSkillTab ? setSkillOverride : setPromptOverride}
+                overrideActive={Boolean(isSkillTab ? skillOverride : promptOverride)}
+              />
+            )}
             <LeoComposer
               value={input}
               onChange={setInput}
