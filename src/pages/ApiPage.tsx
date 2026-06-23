@@ -7,10 +7,12 @@
 // 逐字相同（纯拼接），各站 api/page.tsx 只负责 <SiteShell><AccountApi/></SiteShell>。
 //
 // 功能：
-//   1. 顶部：token 余额(¥) + 充值入口 + 计费规则说明（服务运维费 30% 只在这里讲）。
-//   2. 价格来源：三家厂商（阿里云百炼 / 火山方舟 / OpenRouter）各自的更新时间 +
+//   1. 顶部：token 余额(¥) + 充值入口 + 计费规则说明（零服务费：费用即模型市场价）。
+//   2. BYOK：自带 API key 管理（用自己的 key 免费用全家桶）+ 指导文档入口。
+//   3. 用量记录：每次调用真实计费 + 「查看内容」审计弹窗（迁自 /settings）。
+//   4. 价格来源：三家厂商（阿里云百炼 / 火山方舟 / OpenRouter）各自的更新时间 +
 //      官方链接 + 可下载「官方原文 / PDF 表格」+ 在线查看 HTML 表格。
-//   3. 模型市场：二维选择器（布局 A）——左侧竖栏选「类目」(文本/图片/视频/3D/语音)，
+//   5. 模型市场：二维选择器（布局 A）——左侧竖栏选「类目」(文本/图片/视频/3D/语音)，
 //      右上 tab 选「供应商」(全部供应商 / 阿里云百炼 / 火山方舟 / OpenRouter)，中间是
 //      唯一一个固定高度可滚动列表（只渲染「当前类目 × 当前供应商」那一份）。供应商选择
 //      全页保持（切类目不打断；所选供应商在新类目没模型时自动回落到「全部供应商」）。
@@ -35,6 +37,8 @@ import {
   type CatalogModel,
   type CatalogGroup,
 } from "../lib/auth";
+import { ByokKeys } from "./ByokKeys";
+import { UsageHistory } from "./UsageHistory";
 
 // 「全部供应商」这个虚拟 tab 的 id（与真实厂商 id 不冲突）。
 const ALL_PROVIDERS = "__all__";
@@ -53,7 +57,7 @@ function fmt(n: number): string {
   return s.replace(/\.?0+$/, "");
 }
 
-// 每个模型显示「原价」（不含 30% 服务费）。
+// 每个模型显示「token 市场价」（OceanLeo 不加价，费用即此价）。
 function priceText(m: CatalogModel): string {
   if (m?.unpriced) return "免费 / 未公布";
   const p = m?.price;
@@ -155,7 +159,6 @@ export function ApiPage() {
     });
   }, [user]);
 
-  const markup = catalog?.pricing?.markup_pct ?? wallet?.markup_pct ?? 30;
   const providers = catalog?.providers || [];
   const modelCount = catalog?.model_count || 0;
 
@@ -199,7 +202,7 @@ export function ApiPage() {
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">API</h1>
 
       <div className="mx-auto mt-6 max-w-3xl space-y-8">
-        {/* 余额 + 计费说明（30% 服务费只在这里讲） */}
+        {/* 余额 + 计费说明（零服务费宗旨只在这里讲） */}
         <section className="v-fade-up">
           <div className="rounded-2xl border border-neutral-200 p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
@@ -209,20 +212,35 @@ export function ApiPage() {
                   {wallet ? `¥${toNum(wallet.balance_yuan).toFixed(4)}` : checked && !user ? "登录后查看" : "…"}
                 </p>
               </div>
-              <a
-                href="https://oceanleo.com/billing"
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
-              >
-                充值
-              </a>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/api/guide"
+                  className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  指导文档
+                </a>
+                <a
+                  href="https://oceanleo.com/billing"
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+                >
+                  充值
+                </a>
+              </div>
             </div>
-            <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800">
-              计费规则：所有模型由 <span className="font-semibold">阿里云百炼 / 火山方舟 / OpenRouter</span> 提供。
-              你支付的价格 = 模型实际成本 ×（1 + 服务运维费）。
-              当前 <span className="font-semibold">OceanLeo 加收 {markup}% 作为服务运维费</span>。
+            <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-[12px] leading-relaxed text-emerald-800">
+              计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。
+              <span className="font-semibold">OceanLeo 不加价、不抽成</span>——你花的每一分，都是模型本身的 token 成本。
+              每一笔开销都可在下方「用量记录」里点开，逐字审计本次发给模型与模型返回的全部内容。
+              想完全免费？在下方填入你自己的厂商 API key（BYOK），用自己的 key 调用全程不扣你的钱包。
             </div>
           </div>
         </section>
+
+        {/* BYOK：自带 API key 管理 */}
+        <ByokKeys loggedIn={!!user} />
+
+        {/* 用量记录 + 审计（迁自 /settings） */}
+        <UsageHistory />
 
         {/* 我的模型选择总览：5 个类目 → 已选模型 / 供应商 / 价格 */}
         <SelectionSummary catalog={catalog} selection={selection} user={!!user} />
@@ -391,7 +409,7 @@ function SelectionSummary({
         </table>
       </div>
       <p className="mt-1.5 text-[11px] text-neutral-400">
-        共已选 {total} 个模型（跨全部类目）。价格为原价（不含服务运维费）。
+        共已选 {total} 个模型（跨全部类目）。价格即 token 市场价，OceanLeo 不加价。
       </p>
     </section>
   );

@@ -8,8 +8,11 @@ import { GATEWAY_BASE } from "./config";
 //   - per-site usage (tokens + CNY spent)
 //   - model catalog (Bailian models grouped by category, with prices)
 //   - per-user model selection (the API page)
-// 2026-06-14: BYOK key management removed. All requests run on OceanLeo's
-// platform key; users top up a CNY wallet and pay model cost × 1.3.
+//   - BYOK key management (bring your own provider key → free usage)
+//   - per-call audit (the exact content sent to / returned by the model API)
+// 2026-06-23: ZERO service fee — the price a user pays IS the provider's exact
+// token market cost (markup 0). BYOK is back: a user's own key runs for free.
+// Every call is auditable (full request/response, 24h retention, owner-only).
 
 // 后端返回的数值字段可能缺失 / 为 null / 是字符串（不同部署阶段的网关行为不一致）。
 // 前端直接 `.toFixed()` 会抛 "Cannot read properties of undefined/null"，整页崩成 500。
@@ -112,9 +115,9 @@ function normalizeWallet(raw: Partial<WalletInfo> | null | undefined): WalletInf
     balance_fen: num(r.balance_fen),
     currency: r.currency || "CNY",
     signup_grant_yuan: num(r.signup_grant_yuan),
-    markup_pct: num(r.markup_pct, 30),
+    markup_pct: num(r.markup_pct, 0),
     pricing: {
-      markup_pct: num(p.markup_pct, num(r.markup_pct, 30)),
+      markup_pct: num(p.markup_pct, num(r.markup_pct, 0)),
       source: p.source || "",
       currency: p.currency || "CNY",
       library: p.library || "",
@@ -234,7 +237,7 @@ function normalizePrice(raw: Partial<ModelPrice> | null | undefined): ModelPrice
   const p = raw || {};
   return {
     billing: p.billing === "job" ? "job" : "token",
-    markup_pct: num(p.markup_pct, 30),
+    markup_pct: num(p.markup_pct, 0),
     unit: p.unit || "",
     input_cny_per_m: num(p.input_cny_per_m),
     output_cny_per_m: num(p.output_cny_per_m),
@@ -295,7 +298,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
         ? r.default_selection
         : {},
     pricing: {
-      markup_pct: num(r.pricing?.markup_pct, 30),
+      markup_pct: num(r.pricing?.markup_pct, 0),
       source: r.pricing?.source || "",
       source_url: r.pricing?.source_url || "",
       source_file: r.pricing?.source_file || "",
@@ -453,4 +456,84 @@ export async function getPreferredModel(
 ): Promise<PreferredModel> {
   const list = await getSelectedModelsByCategory(category);
   return list[0] || CATEGORY_FALLBACK[category] || CATEGORY_FALLBACK.text;
+}
+
+// ---------------------------------------------------------------------------
+// BYOK — 自带 API key（厂商元数据 + key 增删查）
+// ---------------------------------------------------------------------------
+// 用户在「账户 → API」页填自己的厂商 key，即可免费使用全家桶服务（用自己的 key、
+// 自己的成本）。明文 key 经 AES-256-GCM 加密存储，前端只拿得到指纹（sk-…ab3f），
+// 绝不回显明文。一个厂商一把 active key。
+
+export interface ProviderMetaBYOK {
+  id: string;
+  name: string;
+  needs_base_url: boolean;
+  default_model: string;
+  protocol: string;
+  capabilities: string[]; // text / image / video / audio / threed
+  key_help_url: string;
+  key_prefix: string;
+}
+
+export function getKeyProviders() {
+  return publicGet<{ providers: ProviderMetaBYOK[] }>("/v1/keys/providers");
+}
+
+export interface UserKey {
+  id: string;
+  provider: string;
+  label: string;
+  fingerprint: string; // 安全展示用：sk-…ab3f
+  base_url: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export function listUserKeys() {
+  return authed<{ keys: UserKey[] }>("/v1/keys");
+}
+
+export function addUserKey(input: {
+  provider: string;
+  api_key: string;
+  label?: string;
+  base_url?: string;
+}) {
+  return authed<{ key: UserKey }>("/v1/keys", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteUserKey(keyId: string) {
+  return authed<{ ok: boolean }>(`/v1/keys/${keyId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// 审计 — 每次调用「发给 API / 从 API 得到」的完整内容（仅保留 24 小时，仅本人可读）
+// ---------------------------------------------------------------------------
+
+export interface AuditMedia {
+  src: string;
+  snapshot: string; // 转存后的 24h URL；空则用 src（可能已过期）
+}
+
+export interface AuditRecord {
+  request_id: string;
+  site_id: string;
+  endpoint: string;
+  provider: string;
+  model: string;
+  key_mode: string; // platform | byok
+  request_json: Record<string, unknown>;
+  response_json: Record<string, unknown>;
+  price_cny: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  created_at: string;
+}
+
+export function getAudit(requestId: string) {
+  return authed<AuditRecord>(`/v1/audit/${requestId}`);
 }
