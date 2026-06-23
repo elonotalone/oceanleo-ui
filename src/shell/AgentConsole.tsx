@@ -235,7 +235,7 @@ function ManifestPane({
     <div className="space-y-3">
       {!hasOpsForm ? (
         <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs leading-relaxed text-stone-500">
-          该 app 暂未配置操作台表单。切换到左侧「app」形态，用对话完成工作。
+          该 app 暂未配置操作台表单。切换到左侧「agent」形态，用对话完成工作；或用「skill」直接聊天。
         </p>
       ) : null}
       {con.sections.map((sec, i) => {

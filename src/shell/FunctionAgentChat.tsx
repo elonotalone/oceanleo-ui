@@ -1,19 +1,19 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 功能区「操作台 / agent」双形态左栏（单一事实源）
+// @oceanleo/ui — 功能区「操作台 / agent / skill」三形态左栏（单一事实源）
 // ----------------------------------------------------------------------------
-// Doctrine v3: docs/architecture/oceanleo-function-agent-and-app-shell.md
-//   一个功能区 = 一个操作台 = 一个 agent.
+// Doctrine v5（2026-06-23）：一个 app（左操作台 + 右结果，整块）里有：
+//   - 操作台：固定模板操控（各站传进来的 <StudioSection> 表单 + 主按钮）。
+//   - agent ：有真实能力的智能体——对话流（绑定本功能区 agent_id），产出
+//             OpsPatch → onApplyPatch 落到真实操作台 state，右栏随之重渲染。
+//             这是「app 帮你填操作台并生成结果」的入口。
+//   - skill ：纯 prompt 套壳的聊天助手——直接和这个 app 聊天答疑，不操作操作台、
+//             不产 ops_patch（mode=skill）。这是「跟这个 app 直接聊聊」的入口。
 //
-// 这是每个功能区左栏的统一容器：顶部一排「操作台 / agent」切换，下面：
-//   - 操作台 tab：固定模板操控（各站传进来的 <StudioSection> 表单 + 主按钮）。
-//   - agent  tab：对话流（绑定本功能区 agent_id）。agent 产出 OpsPatch → 经
-//                 onApplyPatch 落到真实操作台 state；右栏随之重渲染。隔离：只持
-//                 有本功能区的 agentId + schema，看不到别的功能区。
-//
+// 三者隔离：只持有本功能区的 agentId + schema，看不到别的功能区。
 // 用法：把它放进 OperatorConsole 的 `ops`（左栏内容）。右栏（结果）照旧由
-// OperatorConsole 的 canvas 渲染——agent 和操作台共用同一个右栏。
+// OperatorConsole 的 canvas 渲染——三种形态共用同一个右栏。
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -49,8 +49,11 @@ export interface FunctionAgentChatProps {
   /** 操作台 tab 标签，默认「操作台」。 */
   opsLabel?: string;
   /** 默认显示哪个 tab，默认 "ops"。 */
-  defaultTab?: "ops" | "agent";
+  defaultTab?: FnTab;
 }
+
+// 左栏三形态：操作台（表单）/ agent（有能力，控操作台）/ skill（纯聊天）。
+type FnTab = "ops" | "agent" | "skill";
 
 export function FunctionAgentChat({
   agentId,
@@ -65,10 +68,14 @@ export function FunctionAgentChat({
   opsLabel = "操作台",
   defaultTab = "ops",
 }: FunctionAgentChatProps) {
-  const [tab, setTab] = useState<"ops" | "agent">(defaultTab);
+  const [tab, setTab] = useState<FnTab>(defaultTab);
+  // agent / skill 各自一条独立会话（互不串台）。
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [skillTaskId, setSkillTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [skillMessages, setSkillMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState("");
+  const [skillStatus, setSkillStatus] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,19 +86,27 @@ export function FunctionAgentChat({
   // （SplitWorkspace 的左栏 PaneHeader），不再在栏体内放一个会与「操作台」标题
   // 文字重复的 pill。若不在 SplitWorkspace 内（slot 为 null），回退到栏体内嵌。
   const slot = useLeftPaneSlot();
+  const TAB_LABEL: Record<FnTab, string> = { ops: opsLabel, agent: "agent", skill: "skill" };
   const toggle = (
     <div className="inline-flex rounded-lg bg-stone-100 p-0.5 text-[13px]">
-      {(["ops", "agent"] as const).map((t) => (
+      {(["ops", "agent", "skill"] as const).map((t) => (
         <button
           key={t}
           type="button"
           onClick={() => setTab(t)}
+          title={
+            t === "ops"
+              ? "固定模板操控"
+              : t === "agent"
+                ? "让 agent 帮你填操作台并生成结果"
+                : "纯聊天助手：直接和这个 app 聊聊（不操作操作台）"
+          }
           className={`rounded-md px-3 py-1 font-medium transition-colors ${
             tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
           }`}
           style={tab === t ? { background: accent } : undefined}
         >
-          {t === "ops" ? opsLabel : "app"}
+          {TAB_LABEL[t]}
         </button>
       ))}
     </div>
@@ -106,6 +121,7 @@ export function FunctionAgentChat({
     return () => slot?.setLeftLabel(null);
   }, [slot]);
 
+  // 刷新某条会话（按当前形态写回对应 thread）。agent / skill 各自的 setter。
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
     if (r.ok && r.data) {
@@ -116,7 +132,17 @@ export function FunctionAgentChat({
     return "";
   }, []);
 
-  // poll while running
+  const refreshSkill = useCallback(async (id: string) => {
+    const r = await getTask(id);
+    if (r.ok && r.data) {
+      setSkillMessages(r.data.messages || []);
+      setSkillStatus(r.data.task?.status || "");
+      return r.data.task?.status || "";
+    }
+    return "";
+  }, []);
+
+  // poll agent thread while running
   useEffect(() => {
     if (!taskId) return;
     if (status && status !== "running") return;
@@ -127,11 +153,24 @@ export function FunctionAgentChat({
     return () => clearInterval(t);
   }, [taskId, status, refresh]);
 
+  // poll skill thread while running
+  useEffect(() => {
+    if (!skillTaskId) return;
+    if (skillStatus && skillStatus !== "running") return;
+    const t = setInterval(async () => {
+      const s = await refreshSkill(skillTaskId);
+      if (s && s !== "running") clearInterval(t);
+    }, 1500);
+    return () => clearInterval(t);
+  }, [skillTaskId, skillStatus, refreshSkill]);
+
+  const viewMessages = tab === "skill" ? skillMessages : messages;
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [viewMessages]);
 
   // Apply any NEW ops_patch the agent produced → real operator-console state.
+  // Only the agent thread can drive the console; skills never patch it.
   useEffect(() => {
     for (const m of messages) {
       const p = m.meta?.ops_patch;
@@ -148,32 +187,51 @@ export function FunctionAgentChat({
     if (!prompt || busy) return;
     setInput("");
     setError(null);
-    setMessages((m) => [...m, { id: Date.now(), role: "user", kind: "text", content: prompt }]);
-    if (!taskId) {
+    const isSkill = tab === "skill";
+    const appendUser = isSkill ? setSkillMessages : setMessages;
+    appendUser((m) => [...m, { id: Date.now(), role: "user", kind: "text", content: prompt }]);
+
+    const curTaskId = isSkill ? skillTaskId : taskId;
+    if (!curTaskId) {
       setBusy(true);
       const r = await createTask({
         prompt,
-        mode: "agent",
+        mode: isSkill ? "skill" : "agent",
         siteId,
         agentId,
         agentModel,
-        opsState: snapshot(),
+        // 只有 agent 形态需要把操作台快照带过去；skill 是纯聊天，不读操作台。
+        opsState: isSkill ? undefined : snapshot(),
       });
       setBusy(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建失败");
+        const msg =
+          r.status === 401
+            ? isSkill
+              ? "登录后即可使用 skill。"
+              : "登录后即可使用 agent。"
+            : r.error || "创建失败";
+        setError(msg);
         return;
       }
-      setTaskId(r.data.task_id);
-      setStatus("running");
-      void refresh(r.data.task_id);
+      if (isSkill) {
+        setSkillTaskId(r.data.task_id);
+        setSkillStatus("running");
+        void refreshSkill(r.data.task_id);
+      } else {
+        setTaskId(r.data.task_id);
+        setStatus("running");
+        void refresh(r.data.task_id);
+      }
       return;
     }
     setBusy(true);
-    const r = await followUp(taskId, prompt);
+    const r = await followUp(curTaskId, prompt);
     setBusy(false);
-    if (r.ok) setStatus("running");
-    else setError(r.error || "发送失败");
+    if (r.ok) {
+      if (isSkill) setSkillStatus("running");
+      else setStatus("running");
+    } else setError(r.error || "发送失败");
   }
 
   function snapshot(): Record<string, unknown> {
@@ -184,7 +242,9 @@ export function FunctionAgentChat({
     }
   }
 
-  const running = status === "running" || busy;
+  const isSkillTab = tab === "skill";
+  const running =
+    (isSkillTab ? skillStatus === "running" : status === "running") || busy;
 
   return (
     <div className="flex h-full flex-col">
@@ -196,18 +256,27 @@ export function FunctionAgentChat({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {messages.length === 0 && !running && (
+            {viewMessages.length === 0 && !running && (
               <p className="py-8 text-center text-sm text-stone-400">
-                跟「{schema.title}」app 说说你想要什么，
-                <br />它会帮你填好左侧操作台并生成结果。
+                {isSkillTab ? (
+                  <>
+                    跟「{schema.title}」skill 直接聊聊，
+                    <br />答疑、出主意、给建议（不会动左侧操作台）。
+                  </>
+                ) : (
+                  <>
+                    让「{schema.title}」agent 帮你做事，
+                    <br />它会帮你填好左侧操作台并生成结果。
+                  </>
+                )}
               </p>
             )}
-            {messages.map((m) => (
+            {viewMessages.map((m) => (
               <Bubble key={m.id} m={m} accent={accent} />
             ))}
             {running && (
               <div className="flex items-center gap-2 text-[13px] text-stone-400">
-                <span className="v-spinner" /> agent 正在处理…
+                <span className="v-spinner" /> {isSkillTab ? "skill" : "agent"} 正在处理…
               </div>
             )}
             {error && <p className="text-[13px] text-rose-500">{error}</p>}
@@ -219,7 +288,11 @@ export function FunctionAgentChat({
               onSubmit={send}
               loading={busy}
               leoSuggest
-              placeholder={`让 agent 帮你做「${schema.title}」…`}
+              placeholder={
+                isSkillTab
+                  ? `跟「${schema.title}」skill 聊聊…`
+                  : `让 agent 帮你做「${schema.title}」…`
+              }
               rows={1}
             />
           </div>

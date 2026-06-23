@@ -1,17 +1,19 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — Playground（doctrine v4，单一事实源）
+// @oceanleo/ui — Playground（doctrine v5，单一事实源）
 // ----------------------------------------------------------------------------
-// 主站 oceanleo.com/playground：不加入工作台即可试玩任一 agent。
-//   子栏（侧栏 PlaygroundSubNav）：从上到下列「场景（= agent 的 category）」；选场景
-//     后列该场景下的 agent，点 agent → 主区显示其功能区。
+// 主站 oceanleo.com/playground：不加入工作台即可试玩任一 app。
+//   子栏（侧栏 PlaygroundSubNav）：从上到下列「app」（= 每个产品站 / OceanLeo App）；
+//     选一个 app 后列该 app 下的「agent / skill」，点一个 → 主区内嵌它。
+//     所有纯聊天的 skill（site_id="agent" 的「OceanLeo App」）收进同一个 app 里，
+//     不再把每个套壳 prompt 平铺成一个独立条目。
 //   主区（PlaygroundDetail）：右栏顶部一条「全模态 ModelPicker」（作用域仅 playground，
 //     独立持久化 key），右上角「放入工作台」按钮（saveAgent）；下方 iframe 内嵌选中
-//     agent 的子站功能区（与正常使用完全一致）。
+//     条目的子站功能区（与正常使用完全一致）。
 //
 // 子栏与主区通过 useWorkspaceSelection("playground") 共享选中态。选中值用复合 key
-// "<category>::<agent_id>"，便于子栏同时记住「当前场景」与「当前 agent」。
+// "<app_id>::<agent_id>"，便于子栏同时记住「当前 app」与「当前条目」。
 // ============================================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -19,32 +21,57 @@ import { ModelPicker } from "./ModelPicker";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
 
-const CATEGORY_NAMES: Record<string, string> = {
-  media: "图像与视频",
-  office: "文档与办公",
-  design: "电商与设计",
-  search: "搜索与对话",
-  audio: "音频",
-  agent: "智能体与建站",
-  money: "生活理财",
+// site_id（= app id）→ 展示名。各站可经 PlaygroundDetail.appNames 覆盖；未提供时
+// 回退到这里的内置名，再回退到 site_id 本身。site_id="agent" 是「OceanLeo App」，
+// 其条目是纯聊天 skill。
+const APP_NAMES: Record<string, string> = {
+  agent: "OceanLeo App（聊天 skill）",
+  image: "LeoImage",
+  video: "LeoVideo",
+  music: "LeoMusic",
+  resume: "LeoResume",
+  ppt: "LeoSlides",
+  word: "LeoDoc",
+  excel: "LeoSheet",
+  logo: "LeoLogo",
+  interior: "LeoInterior",
+  design: "LeoDesign",
+  novel: "LeoNovel",
+  script: "LeoScript",
+  paper: "LeoPaper",
+  law: "LeoLaw",
+  money: "LeoMoney",
+  search: "LeoSearch",
+  meeting: "LeoMeeting",
+  study: "LeoStudy",
+  threed: "Leo3D",
+  aihuman: "LeoHuman",
+  ecommerce: "LeoStudio",
+  make: "LeoMake",
+  converter: "LeoConvert",
+  website: "Website",
+  trade: "Trade",
 };
+
+// site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
+const SKILL_APP_ID = "agent";
 
 // playground 模型选择作用域：用独立 siteId，使其与各站正常工作台选择互不干扰。
 const PLAYGROUND_MODEL_SITE = "__playground__";
 
-function categoryLabel(cat: string): string {
-  return CATEGORY_NAMES[cat] || cat || "其他";
+function appLabel(siteId: string, override?: Record<string, string>): string {
+  return override?.[siteId] || APP_NAMES[siteId] || siteId || "其他 app";
 }
 
-/** 复合选中值：`<category>::<agent_id>`。空 agent 表示只选了场景。 */
-function packSel(category: string, agentId: string): string {
-  return `${category}::${agentId}`;
+/** 复合选中值：`<app_id>::<agent_id>`。空 agent 表示只选了 app。 */
+function packSel(appId: string, agentId: string): string {
+  return `${appId}::${agentId}`;
 }
-function unpackSel(v: string | null): { category: string; agentId: string } {
-  if (!v) return { category: "", agentId: "" };
+function unpackSel(v: string | null): { appId: string; agentId: string } {
+  if (!v) return { appId: "", agentId: "" };
   const i = v.indexOf("::");
-  if (i < 0) return { category: v, agentId: "" };
-  return { category: v.slice(0, i), agentId: v.slice(i + 2) };
+  if (i < 0) return { appId: v, agentId: "" };
+  return { appId: v.slice(0, i), agentId: v.slice(i + 2) };
 }
 
 // 共享 agent 列表（子栏与主区各自拉一次成本低，但用一个 hook 收敛逻辑）。
@@ -67,39 +94,53 @@ function useAgents(): { agents: AgentDef[]; loading: boolean } {
 }
 
 // ----------------------------------------------------------------------------
-// 侧栏子栏：场景（category）→ agent
+// 侧栏子栏：app（site_id）→ 该 app 下的 agent / skill
 // ----------------------------------------------------------------------------
-export function PlaygroundSubNav({ accent = "#0ea5e9" }: { accent?: string }) {
+export function PlaygroundSubNav({
+  accent = "#0ea5e9",
+  appNames,
+}: {
+  accent?: string;
+  /** site_id → app 展示名（覆盖内置 APP_NAMES）。 */
+  appNames?: Record<string, string>;
+}) {
   const { agents, loading } = useAgents();
   const [sel, setSel] = useWorkspaceSelection("playground");
-  const { category, agentId } = unpackSel(sel);
+  const { appId, agentId } = unpackSel(sel);
 
-  const categories = useMemo(() => {
+  // 按 app（site_id）聚合。site_id 缺失时归到 "other"。
+  const apps = useMemo(() => {
     const seen = new Map<string, number>();
     for (const a of agents) {
-      const c = a.category || "other";
-      seen.set(c, (seen.get(c) || 0) + 1);
+      const s = a.site_id || "other";
+      seen.set(s, (seen.get(s) || 0) + 1);
     }
-    return Array.from(seen.entries()).map(([id, n]) => ({ id, n }));
+    // OceanLeo App（纯 skill）排最前，其余按条目数降序。
+    return Array.from(seen.entries())
+      .map(([id, n]) => ({ id, n }))
+      .sort((x, y) =>
+        x.id === SKILL_APP_ID ? -1 : y.id === SKILL_APP_ID ? 1 : y.n - x.n,
+      );
   }, [agents]);
 
-  const inCategory = useMemo(
-    () => agents.filter((a) => (a.category || "other") === category),
-    [agents, category],
+  const inApp = useMemo(
+    () => agents.filter((a) => (a.site_id || "other") === appId),
+    [agents, appId],
   );
+  const isSkillApp = appId === SKILL_APP_ID;
 
   if (loading) {
-    return <p className="px-3 py-4 text-[12px] text-neutral-400">加载场景…</p>;
+    return <p className="px-3 py-4 text-[12px] text-neutral-400">加载 app…</p>;
   }
 
   return (
     <div className="space-y-2">
       <div className="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-        选择场景
+        选择 app
       </div>
       <div className="space-y-0.5">
-        {categories.map((c) => {
-          const on = c.id === category;
+        {apps.map((c) => {
+          const on = c.id === appId;
           return (
             <button
               key={c.id}
@@ -110,26 +151,26 @@ export function PlaygroundSubNav({ accent = "#0ea5e9" }: { accent?: string }) {
               }`}
               style={on ? { background: "rgba(0,0,0,0.04)", boxShadow: `inset 3px 0 0 ${accent}` } : undefined}
             >
-              <span className="truncate">{categoryLabel(c.id)}</span>
+              <span className="truncate">{appLabel(c.id, appNames)}</span>
               <span className="ml-2 shrink-0 text-[11px] text-neutral-400">{c.n}</span>
             </button>
           );
         })}
       </div>
 
-      {category && (
+      {appId && (
         <>
           <div className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-            {categoryLabel(category)} · agent
+            {appLabel(appId, appNames)} · {isSkillApp ? "skill" : "agent"}
           </div>
           <div className="space-y-0.5">
-            {inCategory.map((a) => {
+            {inApp.map((a) => {
               const on = a.agent_id === agentId;
               return (
                 <button
                   key={a.agent_id}
                   type="button"
-                  onClick={() => setSel(packSel(category, a.agent_id))}
+                  onClick={() => setSel(packSel(appId, a.agent_id))}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition ${
                     on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
                   }`}
@@ -141,8 +182,10 @@ export function PlaygroundSubNav({ accent = "#0ea5e9" }: { accent?: string }) {
                 </button>
               );
             })}
-            {inCategory.length === 0 && (
-              <p className="px-3 py-2 text-[12px] text-neutral-400">该场景暂无 agent。</p>
+            {inApp.length === 0 && (
+              <p className="px-3 py-2 text-[12px] text-neutral-400">
+                该 app 暂无{isSkillApp ? " skill" : " agent"}。
+              </p>
             )}
           </div>
         </>

@@ -62,7 +62,7 @@ export function ConsoleFnSubNav({
             {f.icon && <span className="shrink-0 text-base leading-none">{f.icon}</span>}
             <span className="min-w-0 flex-1 truncate font-medium">{f.label}</span>
             {f.agentId && (
-              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title="该功能区有专属 app">
+              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title="该 app 有专属 agent">
                 ✦
               </span>
             )}

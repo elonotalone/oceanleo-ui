@@ -92,7 +92,7 @@ export interface AgentTask {
   id: string;
   title?: string;
   status: "running" | "done" | "failed" | "stopped" | string;
-  mode: "agent" | "chat" | string;
+  mode: "agent" | "chat" | "skill" | string;
   plan?: unknown;
   favorite?: boolean;
   credits_spent?: number;
@@ -110,7 +110,9 @@ export interface TaskDetail {
 
 export function createTask(body: {
   prompt: string;
-  mode?: "agent" | "chat";
+  // agent = task loop (controls console) | chat = quick reply (may patch
+  // console) | skill = pure-persona chat for an app's skill (no console control)
+  mode?: "agent" | "chat" | "skill";
   siteId?: string;
   agentModel?: string;
   projectId?: string;
