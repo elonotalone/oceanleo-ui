@@ -110,6 +110,16 @@ const SITE_INDUSTRY: Record<string, IndustryId> = {
   website: "internet",
   agent: "tools",
   crm: "internet",
+  asset: "media",
+  // 开源行业站（Track F）。
+  wiki: "tools",
+  helpdesk: "life",
+  bi: "finance",
+  marketing: "media",
+  recruit: "life",
+  forms: "tools",
+  status: "internet",
+  code: "internet",
 };
 
 // site_id → 内容类型。
@@ -142,6 +152,16 @@ const SITE_CONTENT: Record<string, ContentId> = {
   website: "web",
   agent: "chat",
   crm: "data",
+  asset: "image",
+  // 开源行业站（Track F）。
+  wiki: "doc",
+  helpdesk: "chat",
+  bi: "data",
+  marketing: "data",
+  recruit: "doc",
+  forms: "data",
+  status: "data",
+  code: "web",
 };
 
 // 旧 category（agents 表 / leo_sites 表里的分区 id）→ 行业 / 内容，作为 site 未命中

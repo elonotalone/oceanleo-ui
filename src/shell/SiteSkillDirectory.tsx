@@ -19,7 +19,7 @@ import { listAgents, type AgentDef } from "../lib/agent";
 import { relatedSkillCategories } from "../lib/taxonomy";
 
 const SKILL_SITE_ID = "agent";
-const LEOSKILL_ORIGIN = "https://agent.oceanleo.com";
+const LEOSKILL_ORIGIN = "https://skill.oceanleo.com";
 
 export interface SiteSkillDirectoryProps {
   /** 当前产品站 site_id（决定展示哪些 skill 分类）。 */
