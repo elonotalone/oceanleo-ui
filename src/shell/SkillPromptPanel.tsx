@@ -52,8 +52,20 @@ export interface SkillPromptPanelProps {
   /**
    * 渲染形态：
    *   - "inline"（默认）：一个 prompt 小图标按钮，点开浮层（放进输入框「leo 建议」旁）。
-   *   - "panel"：一整块可折叠面板（旧版式，skill 站对话栏等仍可用）。 */
-  variant?: "inline" | "panel";
+   *   - "panel"：一整块可折叠面板（旧版式，skill 站对话栏等仍可用）。
+   *   - "modal"：无触发按钮，直接渲染**居中弹窗**（由父级 open 控制开关）。
+   *     用于「点节点直接弹出 prompt」（playground organization/workflow）。 */
+  variant?: "inline" | "panel" | "modal";
+  /** variant="modal" 时由父级控制弹窗开关（受控）。 */
+  open?: boolean;
+  /** variant="modal" 时弹窗关闭回调（点 ✕ / Esc / 遮罩）。 */
+  onClose?: () => void;
+  /**
+   * 弹窗底部「删除」按钮回调。提供则在弹窗底部显示一个独立的删除区
+   *（如「删除节点」）。playground 用它删除画布节点（操作员 2026-06-24）。 */
+  onDelete?: () => void;
+  /** 删除按钮文字，默认「删除」。 */
+  deleteLabel?: string;
 }
 
 // manifest.prompt 为空时，由身份信息合成一段「人设说明」，作为开源 prompt 的兜底。
@@ -78,8 +90,22 @@ export function SkillPromptPanel({
   overrideActive = false,
   onSavedAsSkill,
   variant = "inline",
+  open: openProp,
+  onClose,
+  onDelete,
+  deleteLabel = "删除",
 }: SkillPromptPanelProps) {
-  const [open, setOpen] = useState(false);
+  const [openSelf, setOpenSelf] = useState(false);
+  // modal 形态受控（父级 open / onClose）；inline / panel 形态自管开关。
+  const isModal = variant === "modal";
+  const open = isModal ? Boolean(openProp) : openSelf;
+  const setOpen = (v: boolean) => {
+    if (isModal) {
+      if (!v) onClose?.();
+    } else {
+      setOpenSelf(v);
+    }
+  };
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   // 官方 prompt（manifest.prompt，空时退合成身份）与「正在编辑的草稿」。
@@ -88,9 +114,11 @@ export function SkillPromptPanel({
   const [showSave, setShowSave] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // 拉取 manifest prompt（未直接提供时）。换 agent 时重置。
+  // 拉取 manifest prompt（未直接提供时）。换 agent 时重置编辑态 / prompt 草稿。
+  // 注意：modal 形态 open 受父级控制，这里不动它（避免 onClose 回环）；inline/panel
+  // 形态收起浮层。
   useEffect(() => {
-    setOpen(false);
+    if (!isModal) setOpenSelf(false);
     setEditing(false);
     setBasePrompt(promptProp || "");
     setDraft(promptProp || "");
@@ -194,6 +222,23 @@ export function SkillPromptPanel({
           </PanelBtn>
         </div>
       )}
+
+      {/* 底部删除区（onDelete 提供时）：与上面的操作按钮分隔，醒目的危险色。
+          playground 用它「删除节点」（操作员 2026-06-24）。 */}
+      {!loading && onDelete && (
+        <div className="mt-1 flex justify-end border-t border-stone-100 pt-3">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-600 transition hover:bg-rose-100 active:scale-[0.98]"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {deleteLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -218,9 +263,57 @@ export function SkillPromptPanel({
     />
   ) : null;
 
-  // ── inline 形态：输入框里的 prompt 小图标 → 打开**居中弹窗**（不再是窄列里被裁切
-  //    的小浮层）。弹窗宽 + 大字号 + 充足滚动高度，prompt 完整可读（操作员 2026-06-24
-  //    截图 80eeefcf：旧浮层挤在 SplitWorkspace 窄左栏、横向溢出被裁，完全看不清）。
+  // ── 居中弹窗（image 站同款）：header 图标+标题+副标题 / 正文（可查看·编辑·直接用·
+  //    保存·删除）。inline / modal 两种形态共用此弹窗 markup。 ──
+  const promptModal =
+    open && !showSave ? (
+      <Modal onClose={() => setOpen(false)} className="max-w-2xl">
+        <div className="flex items-center gap-2 border-b border-stone-100 px-5 py-3.5">
+          <span
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white"
+            style={{ background: accent }}
+          >
+            <PromptIcon light />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14px] font-semibold text-stone-900">
+              {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
+            </p>
+            <p className="text-[12px] text-stone-400">
+              这个 agent 的设定完全开源——可查看、编辑、直接用，或存成你自己的 agent。
+            </p>
+          </div>
+          {overrideActive && (
+            <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700">
+              已用自定义
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+            title="关闭"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5">{body}</div>
+      </Modal>
+    ) : null;
+
+  // ── modal 形态：无触发按钮，直接渲染弹窗（受控）。playground 点节点直接弹。 ──
+  if (isModal) {
+    return (
+      <>
+        {promptModal}
+        {saveModal}
+      </>
+    );
+  }
+
+  // ── inline 形态：输入框里的 prompt 小图标 → 打开居中弹窗（promptModal）。 ──
   if (variant === "inline") {
     return (
       <div ref={wrapRef} className="inline-flex">
@@ -240,43 +333,7 @@ export function SkillPromptPanel({
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
           )}
         </button>
-
-        {open && !showSave && (
-          <Modal onClose={() => setOpen(false)} className="max-w-2xl">
-            <div className="flex items-center gap-2 border-b border-stone-100 px-5 py-3.5">
-              <span
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white"
-                style={{ background: accent }}
-              >
-                <PromptIcon light />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-semibold text-stone-900">
-                  {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
-                </p>
-                <p className="text-[12px] text-stone-400">
-                  这个 agent 的设定完全开源——可查看、编辑、直接用，或存成你自己的 agent。
-                </p>
-              </div>
-              {overrideActive && (
-                <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700">
-                  已用自定义
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
-                title="关闭"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-5">{body}</div>
-          </Modal>
-        )}
+        {promptModal}
         {saveModal}
       </div>
     );
@@ -287,7 +344,7 @@ export function SkillPromptPanel({
     <div className="rounded-xl border border-stone-200/80 bg-white/70">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-stone-600 hover:bg-stone-50"
       >
         <PromptIcon />

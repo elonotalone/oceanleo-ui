@@ -215,11 +215,21 @@ export function PlaygroundDetail({
     );
   }
 
-  // ── organization / workflow 分区：目录页与 app/agent **完全同一套外层版式**
-  //   （mx-auto max-w-6xl px-6 py-8），所以切 tab 时标题/卡片位置纹丝不动、不上移。
-  //   进编辑器时，消费端的 EditorInner 自己用 `fixed inset-0` 全屏覆盖在上层——
-  //   目录页面流不被打扰，board 也始终挂在同一树位置（不 remount）。
+  // ── organization / workflow 分区 ──
+  //   目录页：与 app/agent **完全同一套外层版式**（mx-auto max-w-6xl px-6 py-8），
+  //     切 tab 时标题/卡片位置纹丝不动、不上移。
+  //   编辑器（boardEditing=true）：换成**全宽满高**外层（h-[calc(100dvh-1px)]，无
+  //     max-w / padding / 标题 / tab），编辑器铺满 <main> 区。<main> 本身就在侧栏
+  //     右侧，所以**左侧侧栏始终在**（操作员 2026-06-24：之前编辑器用 fixed inset-0
+  //     盖住了整屏含侧栏，要求侧栏默认不消失）。board 始终挂在同一树位置（不 remount）。
   if (tab === "organization" || tab === "workflow") {
+    if (boardEditing) {
+      return (
+        <div className="h-[calc(100dvh-1px)] w-full">
+          {renderBoard?.({ kind: tab, onEditingChange: setBoardEditing })}
+        </div>
+      );
+    }
     return (
       <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <div className="mb-5">

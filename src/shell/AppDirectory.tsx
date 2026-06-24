@@ -37,6 +37,8 @@ export interface DirectoryItem {
   category?: string;
   /** 是否已加入工作台（控制「加入工作台」按钮态）。 */
   added?: boolean;
+  /** 是否可删除（控制卡片右上角「删除」按钮是否出现）。需配合 AppDirectory.onDelete。 */
+  deletable?: boolean;
 }
 
 export interface AppDirectoryProps {
@@ -50,6 +52,11 @@ export interface AppDirectoryProps {
   onOpen?: (item: DirectoryItem) => void;
   /** 点「加入工作台」。不传则不显示该按钮（如「网站」分区只跳转、不收藏）。 */
   onAdd?: (item: DirectoryItem) => void;
+  /**
+   * 点卡片右上角「删除」（仅对 item.deletable 的条目显示）。供 organization /
+   * workflow 等「我的项目」目录删除项目用（操作员 2026-06-24）。
+   */
+  onDelete?: (item: DirectoryItem) => void;
   /** 正在处理「加入」的条目 id（按钮转圈）。 */
   addingId?: string | null;
   /** 卡片底部「打开」动作的文字，默认「打开」。 */
@@ -78,6 +85,7 @@ export function AppDirectory({
   leadingCards = [],
   onOpen,
   onAdd,
+  onDelete,
   addingId,
   openLabel = "打开",
   accent = "#4f46e5",
@@ -248,6 +256,7 @@ export function AppDirectory({
               openLabel={openLabel}
               onOpen={onOpen}
               onAdd={onAdd}
+              onDelete={onDelete}
               adding={addingId === it.id}
             />
           ))}
@@ -263,6 +272,7 @@ function DirectoryCard({
   openLabel,
   onOpen,
   onAdd,
+  onDelete,
   adding,
   variant = "default",
 }: {
@@ -271,12 +281,14 @@ function DirectoryCard({
   openLabel: string;
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
+  onDelete?: (item: DirectoryItem) => void;
   adding?: boolean;
   /** "new" = 「＋ 新建」首卡（虚线描边 + 强调色），视觉上区别于普通条目。 */
   variant?: "default" | "new";
 }) {
   const tileBg = item.accent || accent;
   const isNew = variant === "new";
+  const canDelete = Boolean(onDelete && item.deletable);
   return (
     <div
       role={onOpen ? "button" : undefined}
@@ -288,13 +300,28 @@ function DirectoryCard({
           onOpen(item);
         }
       }}
-      className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
         isNew
           ? "border-2 border-dashed bg-white/70 hover:border-solid"
           : "border-stone-200/80 bg-white/85 hover:border-stone-300"
       } ${onOpen ? "cursor-pointer" : ""}`}
       style={isNew ? { borderColor: `${accent}99` } : undefined}
     >
+      {canDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete?.(item);
+          }}
+          className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+          title="删除"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-3">
           <span
