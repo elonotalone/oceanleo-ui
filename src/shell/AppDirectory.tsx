@@ -41,6 +41,11 @@ export interface DirectoryItem {
 
 export interface AppDirectoryProps {
   items: DirectoryItem[];
+  /**
+   * 置顶卡片：永远渲染在卡片网格最前，**不受分类 chips / 关键词筛选影响**。
+   * 用于 agent / organization / workflow 分区的「＋ 新建」首卡（操作员 2026-06-24）。
+   */
+  leadingCards?: DirectoryItem[];
   /** 点整张卡片 → 打开 / 体验该条目。 */
   onOpen?: (item: DirectoryItem) => void;
   /** 点「加入工作台」。不传则不显示该按钮（如「网站」分区只跳转、不收藏）。 */
@@ -70,6 +75,7 @@ export interface AppDirectoryProps {
 
 export function AppDirectory({
   items,
+  leadingCards = [],
   onOpen,
   onAdd,
   addingId,
@@ -219,10 +225,21 @@ export function AppDirectory({
       {/* ── 卡片网格（ce335cef：整块可点开 + 底部「加入工作台」） ── */}
       {loading ? (
         <CardGridSkeleton />
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && leadingCards.length === 0 ? (
         <p className="py-12 text-center text-sm text-stone-400">{emptyText}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {leadingCards.map((it) => (
+            <DirectoryCard
+              key={it.id}
+              item={it}
+              accent={accent}
+              openLabel={openLabel}
+              onOpen={onOpen}
+              adding={addingId === it.id}
+              variant="new"
+            />
+          ))}
           {visible.map((it) => (
             <DirectoryCard
               key={it.id}
@@ -247,6 +264,7 @@ function DirectoryCard({
   onOpen,
   onAdd,
   adding,
+  variant = "default",
 }: {
   item: DirectoryItem;
   accent: string;
@@ -254,8 +272,11 @@ function DirectoryCard({
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
   adding?: boolean;
+  /** "new" = 「＋ 新建」首卡（虚线描边 + 强调色），视觉上区别于普通条目。 */
+  variant?: "default" | "new";
 }) {
   const tileBg = item.accent || accent;
+  const isNew = variant === "new";
   return (
     <div
       role={onOpen ? "button" : undefined}
@@ -267,9 +288,12 @@ function DirectoryCard({
           onOpen(item);
         }
       }}
-      className={`group flex flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white/85 shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md ${
-        onOpen ? "cursor-pointer" : ""
-      }`}
+      className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        isNew
+          ? "border-2 border-dashed bg-white/70 hover:border-solid"
+          : "border-stone-200/80 bg-white/85 hover:border-stone-300"
+      } ${onOpen ? "cursor-pointer" : ""}`}
+      style={isNew ? { borderColor: `${accent}99` } : undefined}
     >
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-3">

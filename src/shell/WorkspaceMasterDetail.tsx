@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { BackButton } from "./Playground";
+import { BackButton, type PlaygroundBoardKind } from "./Playground";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 
 // ----------------------------------------------------------------------------
@@ -115,11 +115,11 @@ export function WorkspaceSubNav({
 
   return (
     <div className="space-y-0.5">
-      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app / skill…</p>}
+      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app / agent…</p>}
       {!loading && mine.length === 0 && (
         <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
-          还没有 app 或 skill。点下方「＋ 添加 app / skill」，从「全部应用」里挑选
-          app（能干活）或 skill（纯聊天）。
+          还没有 app 或 agent。点下方「＋ 添加 app / agent」，从「全部应用」里挑选
+          app（能干活）或 agent（纯聊天）。
         </p>
       )}
       {mine.map((a) => {
@@ -169,7 +169,7 @@ export function WorkspaceSubNav({
         href={addAgentHref}
         className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition hover:border-sky-300 hover:text-sky-600"
       >
-        ＋ 添加 app / skill
+        ＋ 添加 app / agent
       </a>
     </div>
   );
@@ -191,7 +191,10 @@ export interface WorkspaceSiteItem {
   href: string;
 }
 
-type WorkspaceTab = "site" | "app" | "skill";
+// doctrine v9（2026-06-24）：workspace 也加 organization / workflow（与 playground 同
+// 一块编排画布，由消费端 renderBoard 注入，避免 @xyflow/react 进 @oceanleo/ui）。
+// 「skill」面向用户的标签正名为「agent」（内部值仍叫 skill，不破坏技术标识层）。
+type WorkspaceTab = "site" | "app" | "skill" | "organization" | "workflow";
 
 export function WorkspaceDetail({
   siteOrigin,
@@ -202,6 +205,7 @@ export function WorkspaceDetail({
   modelSiteId = "oceanleo",
   apiHref = "/api",
   sites = [],
+  renderBoard,
 }: {
   siteOrigin: Record<string, string>;
   accent?: string;
@@ -215,6 +219,8 @@ export function WorkspaceDetail({
   apiHref?: string;
   /** 「网站」分区要列的站点（主站传全家桶 SITES）。 */
   sites?: WorkspaceSiteItem[];
+  /** organization / workflow 编排画布（消费端注入；不传 → 这两 tab 隐藏）。 */
+  renderBoard?: (kind: PlaygroundBoardKind) => ReactNode;
 }) {
   const { mine, loading } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
@@ -238,7 +244,38 @@ export function WorkspaceDetail({
 
   const showModelBar = modelCategories.length > 0;
 
-  // ── 选中一个 app/skill：整页换成内嵌功能区 ──
+  // 顶部 tab 条（目录页 + organization/workflow 早返回共用）。「skill」标签正名为「agent」。
+  const TABS: { id: WorkspaceTab; label: string }[] = [
+    { id: "site", label: "网站" },
+    { id: "app", label: "app" },
+    { id: "skill", label: "agent" },
+    ...(renderBoard
+      ? ([
+          { id: "organization", label: "organization" },
+          { id: "workflow", label: "workflow" },
+        ] as { id: WorkspaceTab; label: string }[])
+      : []),
+  ];
+  const tabsBar = (
+    <div className="inline-flex rounded-xl bg-neutral-100 p-1">
+      {TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => setTab(t.id)}
+          className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
+            tab === t.id
+              ? "bg-white text-neutral-900 shadow-sm"
+              : "text-neutral-500 hover:text-neutral-700"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // ── 选中一个 app/agent：整页换成内嵌功能区 ──
   //   顶部一行（操作员 2026-06-24）：左 = 返回 + app 名；右 = 模型选择（收成一个按键，
   //   点开才弹出各模态 chip 面板）。保证最上方只有一行。
   if (active) {
@@ -284,7 +321,17 @@ export function WorkspaceDetail({
     );
   }
 
-  // ── 目录页：网站 / app / skill 三分区（同 all-sites），选择全在主区 ──
+  // ── organization / workflow 分区：整页编排画布（消费端注入 React Flow） ──
+  if (renderBoard && (tab === "organization" || tab === "workflow")) {
+    return (
+      <div className="flex h-[calc(100dvh-1px)] flex-col">
+        <div className="shrink-0 px-6 pt-6">{tabsBar}</div>
+        <div className="min-h-0 flex-1">{renderBoard(tab)}</div>
+      </div>
+    );
+  }
+
+  // ── 目录页：网站 / app / agent 三分区（同 all-sites），选择全在主区 ──
   const appItems: DirectoryItem[] = myApps.map((a) => ({
     id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
     icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
@@ -303,7 +350,7 @@ export function WorkspaceDetail({
         <p className="text-sm text-stone-500">
           还没有{label}。从「全部应用」里挑选加入——
           <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
-          <br />· <b>skill</b> = 纯聊天助手，跟它对话答疑。
+          <br />· <b>agent</b> = 纯聊天助手，跟它对话答疑。
         </p>
         <a
           href={addAgentHref}
@@ -322,35 +369,18 @@ export function WorkspaceDetail({
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
           <p className="mt-1 text-[13px] text-neutral-500">
-            你加入的 <b>网站 / app / skill</b>，点开即用。app / skill 在本页直接操作，网站会新开对应站点。
+            你加入的 <b>网站 / app / agent</b>，点开即用；或在 <b>organization / workflow</b> 里搭一支会协作的 agent 团队。
           </p>
         </div>
         <a
           href={addAgentHref}
           className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition hover:border-sky-300 hover:text-sky-600"
         >
-          ＋ 添加 app / skill
+          ＋ 添加 app / agent
         </a>
       </div>
 
-      <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
-        {([
-          { id: "site", label: "网站" },
-          { id: "app", label: "app" },
-          { id: "skill", label: "skill" },
-        ] as const).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
-              tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="mb-6">{tabsBar}</div>
 
       {tab === "site" ? (
         <AppDirectory
@@ -379,7 +409,7 @@ export function WorkspaceDetail({
       ) : loading ? (
         <AppDirectory items={[]} loading accent={accent} />
       ) : mySkills.length === 0 ? (
-        emptyState(" skill")
+        emptyState(" agent")
       ) : (
         <AppDirectory
           items={skillItems}

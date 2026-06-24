@@ -45,6 +45,8 @@ export interface Organization {
   tagline: string;
   icon: string;
   kind: OrgKind;
+  /** 分类标签（如「内容创作」「增长」），驱动 playground 目录页分类 chips。 */
+  category?: string;
   graph: OrgGraph;
   summary?: string;
   is_template: boolean;
@@ -73,7 +75,9 @@ export function createOrganization(body: {
   tagline?: string;
   icon?: string;
   kind?: OrgKind;
+  category?: string;
   graph?: OrgGraph;
+  summary?: string;
   template_id?: string;
 }) {
   return authed<{ organization: Organization }>("/v1/organizations", {
@@ -84,12 +88,28 @@ export function createOrganization(body: {
 
 export function updateOrganization(
   id: string,
-  body: { name?: string; tagline?: string; icon?: string; graph?: OrgGraph; summary?: string },
+  body: {
+    name?: string;
+    tagline?: string;
+    icon?: string;
+    category?: string;
+    graph?: OrgGraph;
+    summary?: string;
+  },
 ) {
   return authed<{ organization: Organization }>(`/v1/organizations/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+/** AI 据用户需求自动挑成员 + 分层，产出 {name, summary, graph} 并写回该 org。
+ *  前端拿到 organization（含 hydrated agents）后直接渲染到画布。 */
+export function designOrganization(id: string, prompt: string, agentModel?: string) {
+  return authed<{ organization: Organization; name: string; summary: string }>(
+    `/v1/organizations/${encodeURIComponent(id)}/design`,
+    { method: "POST", body: JSON.stringify({ prompt, agent_model: agentModel || "" }) },
+  );
 }
 
 export function deleteOrganization(id: string) {

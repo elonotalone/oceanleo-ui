@@ -18,11 +18,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ModelPicker } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { CreateSkillModal } from "./CreateSkillModal";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
 const PLAYGROUND_MODEL_SITE = "__playground__";
+// 「＋ 新建」首卡的哨兵 id（agent / organization / workflow 三个可创建分区共用）。
+const NEW_CARD_ID = "__new__";
 
 // 侧栏子栏：doctrine v7 起 playground 的选择全部搬到右侧主区，侧栏不再列东西。
 export function PlaygroundSubNav() {
@@ -33,7 +36,7 @@ export function PlaygroundSubNav() {
   );
 }
 
-function useAgents(): { agents: AgentDef[]; loading: boolean } {
+function useAgents(refreshKey = 0): { agents: AgentDef[]; loading: boolean } {
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -47,7 +50,7 @@ function useAgents(): { agents: AgentDef[]; loading: boolean } {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [refreshKey]);
   return { agents, loading };
 }
 
@@ -74,11 +77,13 @@ export function PlaygroundDetail({
    */
   renderBoard?: (kind: PlaygroundBoardKind) => ReactNode;
 }) {
-  const { agents, loading } = useAgents();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { agents, loading } = useAgents(refreshKey);
   const [tab, setTab] = useState<Tab>("app");
   const [activeId, setActiveId] = useState<string>("");
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showCreateAgent, setShowCreateAgent] = useState(false);
 
   // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
   const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
@@ -87,7 +92,7 @@ export function PlaygroundDetail({
 
   const items: DirectoryItem[] = useMemo(
     () =>
-      list.map((a) => ({
+      list.map<DirectoryItem>((a) => ({
         id: a.agent_id,
         name: a.name,
         tagline: a.tagline,
@@ -98,6 +103,25 @@ export function PlaygroundDetail({
         category: a.category,
       })),
     [list, accent],
+  );
+
+  // agent 分区：第一张卡固定「＋ 新建」（创建自己的 agent，与别处一致）。leadingCards
+  // 永远渲染在最前、不受分类/筛选影响。
+  const agentLeadingCards: DirectoryItem[] = useMemo(
+    () =>
+      tab === "skill"
+        ? [
+            {
+              id: NEW_CARD_ID,
+              name: "新建 agent",
+              tagline: "创建一个属于你自己的 agent（人格预设 + 工具）",
+              icon: "＋",
+              accent,
+              category: "新建",
+            },
+          ]
+        : [],
+    [tab, accent],
   );
 
   const active = useMemo(
@@ -217,15 +241,32 @@ export function PlaygroundDetail({
 
       <AppDirectory
         items={items}
+        leadingCards={agentLeadingCards}
         accent={accent}
         loading={loading}
         openLabel="试玩"
         emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 agent。"}
-        onOpen={(it) => setActiveId(it.id)}
+        onOpen={(it) => {
+          if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
+          else setActiveId(it.id);
+        }}
         // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
         nativeLabel="按技能"
       />
+
+      {showCreateAgent && (
+        <CreateSkillModal
+          accent={accent}
+          title="创建 agent"
+          submitLabel="创建 agent"
+          onClose={() => setShowCreateAgent(false)}
+          onCreated={() => {
+            setShowCreateAgent(false);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
     </div>
   );
 }
