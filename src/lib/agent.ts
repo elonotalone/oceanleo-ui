@@ -19,7 +19,7 @@ import type { OpsPatch } from "./fn-agent";
 
 type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
 
-async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
+export async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;

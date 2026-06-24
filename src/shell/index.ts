@@ -22,8 +22,10 @@ export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
 export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
 // doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
 export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
-// doctrine v7：Playground（选择全部在右侧主区：app/skill 二选一 + 目录 + 内嵌 + 返回）。
+// doctrine v8：Playground（右侧主区：app/agent/organization/workflow 四分区 + 目录 +
+// 内嵌 + 返回）。organization/workflow 画布由消费端经 renderBoard 注入。
 export { PlaygroundSubNav, PlaygroundDetail, BackButton } from "./Playground";
+export type { PlaygroundBoardKind } from "./Playground";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。

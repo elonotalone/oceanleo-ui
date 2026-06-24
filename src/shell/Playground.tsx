@@ -15,7 +15,7 @@
 //     目录页；顶部一条全模态 ModelPicker（作用域仅 playground）+「放入工作台」。
 // ============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ModelPicker } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
@@ -51,15 +51,28 @@ function useAgents(): { agents: AgentDef[]; loading: boolean } {
   return { agents, loading };
 }
 
-type Tab = "app" | "skill";
+// doctrine v8（2026-06-24）：playground 在 app / agent 之外新增两个「编排」分区——
+//   organization：可视化搭 agent 团队 / 公司架构图（节点=agent，边=关系如「汇报」）。
+//   workflow    ：流程编排图（可导入 organization、可直接导入单个 agent）。
+// 这两块的重型画布（React Flow grid-snap）由消费端（oceanleo 主站）通过 renderBoard
+// 注入——这样 @xyflow/react 依赖只落在主站，不强加给全部 @oceanleo/ui 消费站。
+type Tab = "app" | "skill" | "organization" | "workflow";
+
+export type PlaygroundBoardKind = "organization" | "workflow";
 
 export function PlaygroundDetail({
   siteOrigin,
   accent = "#0ea5e9",
+  renderBoard,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
   accent?: string;
+  /**
+   * 渲染 organization / workflow 编排画布。由消费端注入（持有 React Flow 依赖）。
+   * 不传 → 这两个分区显示「即将开放」占位。
+   */
+  renderBoard?: (kind: PlaygroundBoardKind) => ReactNode;
 }) {
   const { agents, loading } = useAgents();
   const [tab, setTab] = useState<Tab>("app");
@@ -168,32 +181,38 @@ export function PlaygroundDetail({
     );
   }
 
-  // ── 目录页：app / skill 二选一 + 统一目录 ──
+  // ── organization / workflow 分区：整页编排画布（消费端注入 React Flow） ──
+  if (tab === "organization" || tab === "workflow") {
+    return (
+      <div className="flex h-[calc(100dvh-1px)] flex-col">
+        <div className="shrink-0 px-6 pt-6">
+          <PlaygroundTabs tab={tab} setTab={setTab} />
+        </div>
+        <div className="min-h-0 flex-1">
+          {renderBoard ? (
+            renderBoard(tab)
+          ) : (
+            <div className="grid h-full place-items-center p-8 text-center text-[13px] text-neutral-400">
+              {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── 目录页：app / agent 二选一 + 统一目录 ──
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
       <div className="mb-5">
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
         <p className="mt-1 text-[13px] text-neutral-500">
-          挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元），点开即可在本页直接试玩，无需加入工作台。
+          挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
         </p>
       </div>
 
-      <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
-        {([
-          { id: "app", label: "app" },
-          { id: "skill", label: "agent" },
-        ] as const).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
-              tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-6">
+        <PlaygroundTabs tab={tab} setTab={setTab} />
       </div>
 
       <AppDirectory
@@ -207,6 +226,30 @@ export function PlaygroundDetail({
         nativeFirst={tab === "skill"}
         nativeLabel="按技能"
       />
+    </div>
+  );
+}
+
+function PlaygroundTabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  return (
+    <div className="inline-flex rounded-xl bg-neutral-100 p-1">
+      {([
+        { id: "app", label: "app" },
+        { id: "skill", label: "agent" },
+        { id: "organization", label: "organization" },
+        { id: "workflow", label: "workflow" },
+      ] as const).map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => setTab(t.id)}
+          className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
+            tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }
