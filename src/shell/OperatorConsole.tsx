@@ -341,7 +341,13 @@ export function OperatorConsole({
   // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏
   // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏
   // 整体仍恰好一屏、不溢出。无需依赖 h-full 的高度链路。
-  const studioHeaderHeight = headerHeight + (showTopBar ? TABS_BAR_HEIGHT : 0);
+  //
+  // 关键修正（操作员 2026-06-24，截图 9e80ed94「下方空白太大」）：本组件渲染右上角
+  // 模型选择时会 setSuppressHeaderModel(true)，AppShell 那条 56px header **被隐藏**。
+  // 此时还按 headerHeight(默认 56) 去扣，Studio 就比视口矮了 56px → 下方一大块空白。
+  // 所以 header 被我们顶掉时，AppShell header 高度按 0 算，只扣自己的顶栏条。
+  const appShellHeader = showModelPicker ? 0 : headerHeight;
+  const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
   return (
     <div className={className}>

@@ -146,17 +146,17 @@ export function SkillPromptPanel({
   const body = (
     <div className="space-y-2 p-3">
       {loading ? (
-        <p className="py-4 text-center text-[12px] text-stone-400">加载 prompt…</p>
+        <p className="py-4 text-center text-[12px] text-stone-500">加载 prompt…</p>
       ) : editing ? (
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={10}
-          className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[12px] leading-relaxed text-stone-700 outline-none focus:border-violet-300"
+          className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[13px] leading-relaxed text-stone-800 outline-none focus:border-violet-400"
           placeholder="编辑这个 skill 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…"
         />
       ) : (
-        <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg bg-stone-50 p-3 font-sans text-[12px] leading-relaxed text-stone-600">
+        <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-stone-50 p-3 font-sans text-[13px] leading-relaxed text-stone-700">
           {basePrompt}
         </pre>
       )}
@@ -247,8 +247,8 @@ export function SkillPromptPanel({
         </button>
 
         {open && (
-          <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,80vw)] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xl">
-            <div className="flex items-center gap-2 border-b border-stone-100 px-3 py-2 text-[12px] font-medium text-stone-700">
+          <div className="absolute bottom-full left-1/2 z-40 mb-2 w-[min(24rem,calc(100vw-2rem))] max-w-[92vw] -translate-x-1/2 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl">
+            <div className="flex items-center gap-2 border-b border-stone-100 bg-white px-3 py-2 text-[12px] font-medium text-stone-700">
               <PromptIcon />
               <span className="min-w-0 flex-1 truncate">
                 {name ? `${name} 的 prompt` : "skill 设定（prompt）"}
@@ -258,8 +258,18 @@ export function SkillPromptPanel({
                   已用自定义
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="shrink-0 rounded p-0.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+                title="关闭"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
-            {body}
+            <div className="bg-white">{body}</div>
           </div>
         )}
         {saveModal}
