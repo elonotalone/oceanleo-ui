@@ -146,7 +146,7 @@ export function SkillPromptPanel({
           onChange={(e) => setDraft(e.target.value)}
           rows={14}
           className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[14px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          placeholder="编辑这个 skill 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…"
+          placeholder="编辑这个 agent 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…"
         />
       ) : (
         <pre className="max-h-[55vh] min-h-[8rem] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-stone-100 bg-stone-50 p-4 font-sans text-[14px] leading-[1.75] text-stone-700">
@@ -189,8 +189,8 @@ export function SkillPromptPanel({
             <PanelBtn onClick={() => onUseOverride("")}>恢复官方 prompt</PanelBtn>
           )}
 
-          <PanelBtn onClick={() => setShowSave(true)} title="把当前 prompt 存成你自己的 skill">
-            保存为我的 skill
+          <PanelBtn onClick={() => setShowSave(true)} title="把当前 prompt 存成你自己的 agent">
+            保存为我的 agent
           </PanelBtn>
         </div>
       )}
@@ -200,8 +200,8 @@ export function SkillPromptPanel({
   const saveModal = showSave ? (
     <CreateSkillModal
       accent={accent}
-      title="保存为我的 skill"
-      submitLabel="保存为我的 skill"
+      title="保存为我的 agent"
+      submitLabel="保存为我的 agent"
       categories={categories}
       initial={{
         name: name ? `${name}（我的）` : "",
@@ -232,7 +232,7 @@ export function SkillPromptPanel({
               ? "bg-violet-50 text-violet-700"
               : "text-neutral-600 hover:bg-neutral-100"
           }`}
-          title="查看 / 编辑这个 skill 的 prompt（开源）"
+          title="查看 / 编辑这个 agent 的 prompt（开源）"
         >
           <PromptIcon />
           prompt
@@ -252,10 +252,10 @@ export function SkillPromptPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] font-semibold text-stone-900">
-                  {name ? `${name} 的 prompt` : "skill 设定（prompt）"}
+                  {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
                 </p>
                 <p className="text-[12px] text-stone-400">
-                  这个 skill 的设定完全开源——可查看、编辑、直接用，或存成你自己的 skill。
+                  这个 agent 的设定完全开源——可查看、编辑、直接用，或存成你自己的 agent。
                 </p>
               </div>
               {overrideActive && (
@@ -292,7 +292,7 @@ export function SkillPromptPanel({
       >
         <PromptIcon />
         <span className="min-w-0 flex-1 truncate font-medium text-stone-700">
-          {name ? `${name} 的 prompt` : "skill 设定（prompt）"}
+          {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
         </span>
         {overrideActive && (
           <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700">

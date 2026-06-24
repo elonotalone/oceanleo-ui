@@ -257,12 +257,12 @@ export function OperatorConsole({
           </div>
         )}
 
-        {/* app / skill 切换（操作员 2026-06-24）：app = 本站功能区；skill = 相关 LeoSkill。 */}
+        {/* app / agent 切换（正名 v8）：app = 本站功能区；agent = 相关 LeoAgent。 */}
         {showSkillTab && (
           <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
             {([
               { id: "app", label: "app" },
-              { id: "skill", label: "skill" },
+              { id: "skill", label: "agent" },
             ] as const).map((t) => (
               <button
                 key={t.id}

@@ -1,16 +1,17 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 站内「相关 skill」目录（单一事实源，操作员 2026-06-24）
+// @oceanleo/ui — 站内「相关 agent」目录（单一事实源，操作员 2026-06-24，正名 v8）
 // ----------------------------------------------------------------------------
-// 需求：把已有 skill 放到合适的 oceanleo 系列网站里，各站工作台也能切 app/skill。
+// 需求：把已有 agent 放到合适的 oceanleo 系列网站里，各站工作台也能切 app/agent。
 //
-// 做法（非破坏）：143 个 skill 物理上仍属 LeoSkill（site_id="agent"）。本组件按
-// `relatedSkillCategories(siteId)` 过滤出**与当前产品站相关**的 skill，用统一
-// AppDirectory 卡片展示；点开 → 新开 LeoSkill 对应 skill 直接开聊
+// 做法（非破坏）：143 个 agent 物理上仍属 LeoAgent（site_id="agent"）。本组件按
+// `relatedSkillCategories(siteId)` 过滤出**与当前产品站相关**的 agent，用统一
+// AppDirectory 卡片展示；点开 → 新开 LeoAgent 对应 agent 直接开聊
 // （agent.oceanleo.com/workspace?agent=<id>，本站内嵌时也可由父站接管）。
 //
-// 用在每个产品站工作台的「skill」视图（OperatorConsole 顶部 app/skill 切换）。
+// 用在每个产品站工作台的「agent」视图（OperatorConsole 顶部 app/agent 切换）。
+// 组件 / prop / 函数名（SiteSkillDirectory / onOpenSkill）= 技术标识层，不随正名改。
 // ============================================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -19,13 +20,15 @@ import { listAgents, type AgentDef } from "../lib/agent";
 import { relatedSkillCategories } from "../lib/taxonomy";
 
 const SKILL_SITE_ID = "agent";
-const LEOSKILL_ORIGIN = "https://skill.oceanleo.com";
+// canonical 主域已切到 agent.oceanleo.com（旧域 skill.* 301 跳转过来）。直接用新域，
+// 省一次 301 hop。
+const LEOSKILL_ORIGIN = "https://agent.oceanleo.com";
 
 export interface SiteSkillDirectoryProps {
-  /** 当前产品站 site_id（决定展示哪些 skill 分类）。 */
+  /** 当前产品站 site_id（决定展示哪些 agent 分类）。 */
   siteId: string;
   accent?: string;
-  /** 打开一个 skill 的行为。默认新开 LeoSkill 对应 skill。 */
+  /** 打开一个 agent 的行为。默认新开 LeoAgent 对应 agent。 */
   onOpenSkill?: (agentId: string) => void;
 }
 
@@ -92,7 +95,7 @@ export function SiteSkillDirectory({
       accent={accent}
       loading={loading}
       openLabel="开聊"
-      emptyText="暂无与本站相关的 skill。"
+      emptyText="暂无与本站相关的 agent。"
       onOpen={(it) => openSkill(it.id)}
       nativeFirst
       nativeLabel="按技能"

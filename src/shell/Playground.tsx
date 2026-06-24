@@ -7,8 +7,10 @@
 // 操作员 2026-06-24 改版：
 //   - **选择从左侧窄侧栏搬到右侧主区**（PlaygroundDetail 自带目录页）。侧栏不再
 //     显示具体 app / 分类（PlaygroundSubNav 退化为不渲染列表）。
-//   - 顶部「app / skill」二选一（**没有网站**——app 与 skill 都能在 oceanleo.com
+//   - 顶部「app / agent」二选一（**没有网站**——app 与 agent 都能在 oceanleo.com
 //     站内直接操作，不必跳子站）。下面是统一 AppDirectory（二元分类器 + 卡片）。
+//   - doctrine v8（2026-06-24）：原「skill」分区正名为「agent」（Tab 内部值仍叫 skill，
+//     技术标识层不改；只改面向用户的标签 / 文案）。
 //   - 点一个条目 → 右侧整页换成它的内嵌功能区（iframe），右上角出现「← 返回」回到
 //     目录页；顶部一条全模态 ModelPicker（作用域仅 playground）+「放入工作台」。
 // ============================================================================
@@ -26,7 +28,7 @@ const PLAYGROUND_MODEL_SITE = "__playground__";
 export function PlaygroundSubNav() {
   return (
     <p className="px-3 py-4 text-[12px] leading-relaxed text-neutral-400">
-      在右侧选择 app 或 skill 直接试玩，无需加入工作台。
+      在右侧选择 app 或 agent 直接试玩，无需加入工作台。
     </p>
   );
 }
@@ -65,7 +67,7 @@ export function PlaygroundDetail({
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；skill 分区 = LeoAgent 套壳。
+  // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
   const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
   const skillAgents = useMemo(() => agents.filter((a) => (a.site_id || "") === SKILL_APP_ID), [agents]);
   const list = tab === "app" ? appAgents : skillAgents;
@@ -172,14 +174,14 @@ export function PlaygroundDetail({
       <div className="mb-5">
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
         <p className="mt-1 text-[13px] text-neutral-500">
-          挑一个 <b>app</b>（能填操作台、出产物）或 <b>skill</b>（纯聊天助手），点开即可在本页直接试玩，无需加入工作台。
+          挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元），点开即可在本页直接试玩，无需加入工作台。
         </p>
       </div>
 
       <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
         {([
           { id: "app", label: "app" },
-          { id: "skill", label: "skill" },
+          { id: "skill", label: "agent" },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -199,9 +201,9 @@ export function PlaygroundDetail({
         accent={accent}
         loading={loading}
         openLabel="试玩"
-        emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 skill。"}
+        emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 agent。"}
         onOpen={(it) => setActiveId(it.id)}
-        // skill 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
+        // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
         nativeLabel="按技能"
       />
