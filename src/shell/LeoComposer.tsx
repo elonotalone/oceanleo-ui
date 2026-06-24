@@ -41,6 +41,11 @@ export interface LeoComposerProps {
   leoSuggest?: boolean;
   /** 左下角自定义控制区（主站放 对话/Agent/设计；普通站留空） */
   leftSlot?: ReactNode;
+  /**
+   * 左下角「leo 建议」旁边的额外控件（doctrine v7：skill prompt 开源入口移进输入框）。
+   * 放在 leftSlot / leo 建议 之后、同一行内。
+   */
+  inlineSlot?: ReactNode;
   rows?: number;
   /** textarea 自增高上限（px），默认 280 */
   maxHeight?: number;
@@ -58,6 +63,7 @@ export function LeoComposer({
   loading = false,
   leoSuggest = false,
   leftSlot,
+  inlineSlot,
   rows = 2,
   maxHeight = 280,
   className = "",
@@ -133,6 +139,7 @@ export function LeoComposer({
               leo 建议
             </button>
           )}
+          {inlineSlot}
         </div>
         {onSubmit && (
           <button

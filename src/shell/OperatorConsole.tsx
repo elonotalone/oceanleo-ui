@@ -28,6 +28,8 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
+import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { BackButton } from "./Playground";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -43,6 +45,10 @@ export interface ConsoleFunction {
   icon?: ReactNode;
   /** 可选：「热」「新」之类的小角标。 */
   badge?: string;
+  /** 目录卡片用的一句话简介。 */
+  tagline?: string;
+  /** 目录卡片正文（更长的能力说明）。 */
+  capabilities?: string;
   /**
    * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
    * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
@@ -94,6 +100,19 @@ export interface OperatorConsoleProps {
    */
   hideTabs?: boolean;
   className?: string;
+  /**
+   * doctrine v7：目录模式。开启后——多功能站先显示一个「功能/app 目录页」（卡片网格），
+   * 点一张卡片才进入该功能区，并在右上角显示「← 返回」回到目录。这样侧栏不必再列
+   * 功能，符合「侧栏不显示具体 app」+「右上角返回」的统一版式。
+   * 默认 false（兼容旧行为）。embed/solo（hideTabs）时强制关闭（主站已是选择器）。
+   */
+  directory?: boolean;
+  /** 目录页标题（directory 模式）。 */
+  directoryTitle?: ReactNode;
+  /** 目录页副标题。 */
+  directorySubtitle?: ReactNode;
+  /** 目录卡片的分类输入（用于二元分类器）：每个功能区的 site_id / category。 */
+  siteId?: string;
 }
 
 export function OperatorConsole({
@@ -112,6 +131,10 @@ export function OperatorConsole({
   header,
   hideTabs = false,
   className = "",
+  directory = false,
+  directoryTitle,
+  directorySubtitle,
+  siteId = "",
 }: OperatorConsoleProps) {
   const groupId = useId();
   const first = functions[0]?.id ?? "";
@@ -125,6 +148,55 @@ export function OperatorConsole({
     onChange?.(id);
   };
 
+  // doctrine v7 目录模式：先列功能目录，点开才进入功能区（带返回）。
+  // embed/solo（hideTabs）或单功能时不启用（没有目录可选）。
+  const directoryMode = directory && !hideTabs && functions.length > 1;
+  // null = 还在目录页；非空 = 已进入某功能区。受控时跟随 value（外部已选则视为进入）。
+  const [opened, setOpened] = useState<string | null>(value ? value : null);
+  const isOpened = value !== undefined ? Boolean(value) : opened !== null;
+
+  const openFn = (id: string) => {
+    setOpened(id);
+    select(id);
+  };
+  const backToDirectory = () => {
+    setOpened(null);
+    onChange?.("");
+  };
+
+  if (directoryMode && !isOpened) {
+    const items: DirectoryItem[] = functions.map((f) => ({
+      id: f.id,
+      name: f.label,
+      tagline: f.tagline,
+      capabilities: f.capabilities,
+      icon: f.icon,
+      accent,
+      site_id: siteId,
+      category: "",
+    }));
+    return (
+      <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
+        {(directoryTitle || directorySubtitle) && (
+          <div className="mb-5">
+            {directoryTitle && (
+              <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{directoryTitle}</h1>
+            )}
+            {directorySubtitle && (
+              <p className="mt-1 text-[13px] text-neutral-500">{directorySubtitle}</p>
+            )}
+          </div>
+        )}
+        <AppDirectory
+          items={items}
+          accent={accent}
+          openLabel="打开"
+          onOpen={(it) => openFn(it.id)}
+        />
+      </div>
+    );
+  }
+
   // doctrine v3（操作员 2026-06-21）：功能按键条不仅在「多功能」时显示——只要存在
   // 任一带 agent 的功能区，即便是单功能站也要把那条按键显示出来，让用户看到该功能
   // 区的「✦ agent」标记（单 agent 站也是一个功能区=一个 agent）。纯单功能且无 agent
@@ -135,18 +207,34 @@ export function OperatorConsole({
   // 顶栏 = 可选 header + 功能按键条。它在「操作台 / 结果」两栏标题之上，整条横跨
   // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
   // hideTabs（solo 模式）：彻底不渲染功能按键条 + header。
-  const showTopBar = (showTabs || header != null) && !hideTabs;
+  // directory 模式且已进入：顶栏改为「← 返回」（回目录），不再列全部功能按键。
+  const showTopBar = (showTabs || header != null || directoryMode) && !hideTabs;
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
-      {showTabs && (
-        <FunctionTabs
-          functions={functions}
-          activeId={active?.id ?? ""}
-          accent={accent}
-          groupId={groupId}
-          onSelect={select}
-        />
+      {directoryMode ? (
+        <div className="flex items-center gap-2">
+          <BackButton onClick={backToDirectory} />
+          <span className="truncate text-[13px] font-medium text-stone-600">
+            {active?.icon != null && <span className="mr-1">{active.icon}</span>}
+            {active?.label}
+            {active?.agentId && (
+              <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
+                ✦ agent
+              </span>
+            )}
+          </span>
+        </div>
+      ) : (
+        showTabs && (
+          <FunctionTabs
+            functions={functions}
+            activeId={active?.id ?? ""}
+            accent={accent}
+            groupId={groupId}
+            onSelect={select}
+          />
+        )
       )}
     </div>
   ) : null;

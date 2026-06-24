@@ -56,6 +56,13 @@ export interface FunctionAgentChatProps {
   opsLabel?: string;
   /** 默认显示哪个 tab，默认 "ops"。 */
   defaultTab?: FnTab;
+  /**
+   * 该功能区所属 app 的展示名（如「LeoImage」）。给了它，agent / skill 形态会在
+   * 顶部显示「所属 app」的小标签，让用户知道当前 agent 隶属于哪个 app（doctrine v7）。
+   */
+  appLabel?: string;
+  /** app 图标（emoji / 单字），与 appLabel 一起展示。 */
+  appIcon?: string;
 }
 
 // 左栏三形态：操作台（表单）/ agent（有能力，控操作台）/ skill（纯聊天）。
@@ -73,6 +80,8 @@ export function FunctionAgentChat({
   accent = "#4f46e5",
   opsLabel = "操作台",
   defaultTab = "ops",
+  appLabel,
+  appIcon,
 }: FunctionAgentChatProps) {
   const [tab, setTab] = useState<FnTab>(defaultTab);
   // agent / skill 各自一条独立会话（互不串台）。
@@ -85,8 +94,7 @@ export function FunctionAgentChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // doctrine v6: per-conversation skill-prompt overrides (agent / skill 各一份)。
-  const [promptOverride, setPromptOverride] = useState("");
+  // doctrine v7: 只有 skill tab 有 prompt 开源覆盖（agent tab 不再展示 prompt 面板）。
   const [skillOverride, setSkillOverride] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef<Set<number>>(new Set());
@@ -211,8 +219,8 @@ export function FunctionAgentChat({
         agentModel,
         // 只有 agent 形态需要把操作台快照带过去；skill 是纯聊天，不读操作台。
         opsState: isSkill ? undefined : snapshot(),
-        // doctrine v6：编辑过的 prompt 直接干活（只对本次会话生效）。
-        promptOverride: isSkill ? skillOverride : promptOverride,
+        // doctrine v7：仅 skill 形态可带编辑过的 prompt 覆盖（只对本次会话生效）。
+        promptOverride: isSkill ? skillOverride : "",
       });
       setBusy(false);
       if (!r.ok || !r.data) {
@@ -266,6 +274,17 @@ export function FunctionAgentChat({
         <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
+          {/* doctrine v7：顶部「所属 app」小标签——让用户知道当前 agent / skill 隶属
+              哪个 app（agent 部分不再展示 prompt，但要显示对应 app）。 */}
+          {appLabel && (
+            <div className="mb-2 flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
+              <span>所属 app</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
+                {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
+                {appLabel}
+              </span>
+            </div>
+          )}
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {viewMessages.length === 0 && !running && (
               <p className="py-8 text-center text-sm text-stone-400">
@@ -293,23 +312,27 @@ export function FunctionAgentChat({
             {error && <p className="text-[13px] text-rose-500">{error}</p>}
           </div>
           <div className="shrink-0 space-y-2 pt-3">
-            {/* doctrine v6：skill prompt 开源面板（展开/编辑/直接用/保存为我的 skill）。
-                agent / skill 两 tab 各持一份会话覆盖。 */}
-            {agentId && (
-              <SkillPromptPanel
-                agentId={agentId}
-                name={schema.title}
-                accent={accent}
-                onUseOverride={isSkillTab ? setSkillOverride : setPromptOverride}
-                overrideActive={Boolean(isSkillTab ? skillOverride : promptOverride)}
-              />
-            )}
+            {/* doctrine v7：skill prompt 开源入口收进输入框（「leo 建议」旁的 prompt
+                小图标）。**仅 skill tab** 显示——agent tab 不再展示 prompt 面板
+                （但 agent 形态后端仍会把这段 skill prompt 拼进人设，能力不变）。 */}
             <LeoComposer
               value={input}
               onChange={setInput}
               onSubmit={send}
               loading={busy}
               leoSuggest
+              inlineSlot={
+                isSkillTab && agentId ? (
+                  <SkillPromptPanel
+                    agentId={agentId}
+                    name={schema.title}
+                    accent={accent}
+                    variant="inline"
+                    onUseOverride={setSkillOverride}
+                    overrideActive={Boolean(skillOverride)}
+                  />
+                ) : null
+              }
               placeholder={
                 isSkillTab
                   ? `跟「${schema.title}」skill 聊聊…`

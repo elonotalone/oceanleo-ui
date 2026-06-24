@@ -12,15 +12,15 @@ export type {
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
 export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
 export type { SelectionNamespace } from "./WorkspaceSelection";
-// doctrine v4：工作台 master-detail（侧栏我的Agents+删除图标 / 主区内嵌功能区）。
+// doctrine v7：工作台 master-detail（主区自带 网站/app/skill 目录 + 内嵌 + 返回）。
 export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
-export type { ConsoleFnItem } from "./WorkspaceMasterDetail";
+export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
 // doctrine v4：历史记录 master-detail（侧栏列表+删除 / 主区回看）。
 export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
 // doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
 export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
-// doctrine v4：Playground（侧栏场景→agent / 主区全模态模型+放入工作台+内嵌功能区）。
-export { PlaygroundSubNav, PlaygroundDetail } from "./Playground";
+// doctrine v7：Playground（选择全部在右侧主区：app/skill 二选一 + 目录 + 内嵌 + 返回）。
+export { PlaygroundSubNav, PlaygroundDetail, BackButton } from "./Playground";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。
@@ -52,9 +52,12 @@ export type { AgentChatProps } from "./AgentChat";
 // 功能区「操作台 / agent」双形态左栏（doctrine v3：一个功能区=一个操作台=一个 agent）。
 export { FunctionAgentChat } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
-// doctrine v6：skill prompt 开源面板（展开/编辑/直接用/保存为我的 skill）。
+// doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
 export { SkillPromptPanel } from "./SkillPromptPanel";
 export type { SkillPromptPanelProps } from "./SkillPromptPanel";
+// doctrine v7：统一应用目录（二元分类器 + ce335cef 卡片 + 加入工作台）。
+export { AppDirectory } from "./AppDirectory";
+export type { AppDirectoryProps, DirectoryItem } from "./AppDirectory";
 // doctrine v6：创建 / 保存 skill 的统一弹窗（「创建 skill」+「保存为我的 skill」共用）。
 export { CreateSkillModal, CreateSkillTeamModal } from "./CreateSkillModal";
 export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateSkillModal";

@@ -57,6 +57,12 @@ export interface AgentChatProps {
   headerHeight?: number;
   /** 任务创建后回调（如把 id 写进 URL / 历史高亮）。 */
   onTaskCreated?: (taskId: string) => void;
+  /**
+   * site_id → app 展示名（doctrine v7：历史回看 / agent 界面要显示「所属 app」）。
+   * 回看历史时本组件从 task.site_id 解析出 app 名，显示在左栏标题旁。 */
+  appNames?: Record<string, string>;
+  /** 直接指定「所属 app」展示名（覆盖 appNames 解析）。 */
+  appLabel?: string;
   /** 右栏自定义渲染器：按 artifact.type 返回专用编辑器（map/canvas/ppt…）。
    *  不传或返回 null → 回退到内置 Markdown / 图片渲染。 */
   renderArtifact?: (artifact: ArtifactMeta, content: string) => React.ReactNode;
@@ -74,10 +80,14 @@ export function AgentChat({
   headerHeight = 56,
   onTaskCreated,
   renderArtifact,
+  appNames,
+  appLabel: appLabelProp,
 }: AgentChatProps) {
   const [taskId, setTaskId] = useState<string | null>(initialTaskId ?? null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
+  // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
+  const [taskSiteId, setTaskSiteId] = useState<string>("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +113,7 @@ export function AgentChat({
     if (r.ok && r.data) {
       setMessages(r.data.messages || []);
       setStatus(r.data.task?.status || "");
+      if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
       return r.data.task?.status || "";
     }
     return "";
@@ -159,6 +170,21 @@ export function AgentChat({
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
 
+  // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
+  const resolvedApp =
+    appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
+  // 左栏标题：「agent」+（有 app 时）所属 app 小标签。
+  const leftLabelNode = resolvedApp ? (
+    <span className="flex items-center gap-2">
+      <span className="text-[12px] font-medium text-stone-500">agent</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+        所属 app · {resolvedApp}
+      </span>
+    </span>
+  ) : (
+    "agent"
+  );
+
   const stream = (
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -194,7 +220,7 @@ export function AgentChat({
     return (
       <SplitWorkspace
         left={stream}
-        leftLabel="agent"
+        leftLabel={leftLabelNode}
         accent={accent}
         headerHeight={headerHeight}
       />
@@ -206,11 +232,22 @@ export function AgentChat({
       <DefaultArtifact artifact={art.meta} content={art.content} />
     );
 
+  const splitLeftLabel = resolvedApp ? (
+    <span className="flex items-center gap-2">
+      <span className="text-[12px] font-medium text-stone-500">AI 推导</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+        所属 app · {resolvedApp}
+      </span>
+    </span>
+  ) : (
+    "AI 推导"
+  );
+
   return (
     <SplitWorkspace
       left={stream}
       right={right}
-      leftLabel="AI 推导"
+      leftLabel={splitLeftLabel}
       rightLabel={ARTIFACT_LABEL[art.meta.type] || art.meta.title || "结果"}
       defaultRatio={1 / 3}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}

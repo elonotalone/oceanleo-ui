@@ -305,6 +305,8 @@ function ManifestPane({
       opsContent={opsContent}
       getOpsState={() => state}
       onApplyPatch={applyPatch}
+      appLabel={m.name}
+      appIcon={typeof m.icon === "string" ? m.icon : undefined}
     />
   );
 

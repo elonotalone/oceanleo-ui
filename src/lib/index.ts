@@ -7,3 +7,5 @@ export * from "./embed";
 export * from "./manifest";
 export * from "./capabilities";
 export * from "./manifest-fetch";
+// 全家桶二元分类器（行业 / 内容类型）的单一事实源。
+export * from "./taxonomy";

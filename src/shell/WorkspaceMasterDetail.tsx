@@ -14,9 +14,10 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AgentChat } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { BackButton } from "./Playground";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 
 // ----------------------------------------------------------------------------
@@ -175,8 +176,23 @@ export function WorkspaceSubNav({
 }
 
 // ----------------------------------------------------------------------------
-// 主区详情：选中 agent → iframe 内嵌功能区；未选 → 兜底对话
+// 主区详情（doctrine v7）：右侧主区自带「我的 网站 / app / skill」目录页——选择不再
+// 在左侧窄侧栏。点一个 app/skill → 整页换成它的内嵌功能区 + 右上角「← 返回」回到目录；
+// 网站 tab 的卡片点击直接新开子站。
 // ----------------------------------------------------------------------------
+const SKILL_SITE_ID = "agent";
+
+export interface WorkspaceSiteItem {
+  /** site_id（= AgentDef.site_id），用于跳子站。 */
+  key: string;
+  name: string;
+  tagline?: string;
+  icon?: ReactNode;
+  href: string;
+}
+
+type WorkspaceTab = "site" | "app" | "skill";
+
 export function WorkspaceDetail({
   siteOrigin,
   accent = "#0ea5e9",
@@ -185,6 +201,7 @@ export function WorkspaceDetail({
   modelCategories = ["text", "image", "video", "threed", "audio"],
   modelSiteId = "oceanleo",
   apiHref = "/api",
+  sites = [],
 }: {
   siteOrigin: Record<string, string>;
   accent?: string;
@@ -196,9 +213,15 @@ export function WorkspaceDetail({
   modelSiteId?: string;
   /** 模型选择下拉底部「管理模型」跳转。 */
   apiHref?: string;
+  /** 「网站」分区要列的站点（主站传全家桶 SITES）。 */
+  sites?: WorkspaceSiteItem[];
 }) {
   const { mine, loading } = useMyAgents();
-  const [sel] = useWorkspaceSelection("workspace");
+  const [sel, setSel] = useWorkspaceSelection("workspace");
+  const [tab, setTab] = useState<WorkspaceTab>("app");
+
+  const myApps = useMemo(() => mine.filter((a) => (a.site_id || "") !== SKILL_SITE_ID), [mine]);
+  const mySkills = useMemo(() => mine.filter((a) => (a.site_id || "") === SKILL_SITE_ID), [mine]);
 
   const active = useMemo(
     () => mine.find((a) => a.agent_id === sel) || null,
@@ -213,61 +236,155 @@ export function WorkspaceDetail({
     return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(active.agent_id)}`;
   }, [active, siteOrigin]);
 
-  // 顶部模型选择条：主站工作台内嵌子站时，子站的 ?embed=1 会隐藏它自己的外壳
-  // （含模型选择），所以模型选择由主站工作台统一在顶部承载（操作员 2026-06-23）。
   const showModelBar = modelCategories.length > 0;
 
-  return (
-    <div className="flex h-[calc(100dvh-1px)] flex-col">
-      {showModelBar && (
-        <div className="flex shrink-0 items-center border-b border-neutral-100 px-4 py-2.5">
-          <ModelPicker
-            categories={modelCategories}
-            siteId={modelSiteId}
-            apiHref={apiHref}
-          />
-        </div>
-      )}
-      <div className="min-h-0 flex-1 p-1.5">
-        {active && embedSrc ? (
-          <iframe
-            key={active.agent_id}
-            src={embedSrc}
-            title={active.name}
-            className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
-            allow="clipboard-write; clipboard-read; fullscreen"
-            allowFullScreen
-          />
-        ) : active && !embedSrc ? (
-          <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-            该 app 所属站点暂未接入内嵌工作台。
-          </div>
-        ) : !loading && mine.length === 0 ? (
-          <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center">
-            <div className="max-w-sm space-y-3">
-              <p className="text-sm text-stone-500">
-                还没有添加 app 或 skill。点左侧「＋ 添加 app / skill」，从「全部应用」里：
-                <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
-                <br />· <b>skill</b> = 纯聊天助手，跟它对话答疑。
-                <br />加入后都会出现在左侧栏，随时调用。
-              </p>
-              <a
-                href={addAgentHref}
-                className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
-                style={{ background: accent }}
-              >
-                ＋ 添加 app / skill
-              </a>
+  // ── 选中一个 app/skill：整页换成内嵌功能区 + 顶部模型选择 + 返回 ──
+  if (active) {
+    return (
+      <div className="flex h-[calc(100dvh-1px)] flex-col">
+        <div className="flex shrink-0 items-center gap-3 border-b border-neutral-100 px-3 py-2">
+          <BackButton onClick={() => setSel(null)} />
+          {showModelBar && (
+            <div className="min-w-0">
+              <ModelPicker categories={modelCategories} siteId={modelSiteId} apiHref={apiHref} />
             </div>
-          </div>
-        ) : loading ? (
-          <div className="grid h-full place-items-center text-sm text-stone-400">加载…</div>
-        ) : (
-          <div className="h-full overflow-hidden rounded-2xl border border-stone-200 bg-white/60">
-            <AgentChat siteId={homeSiteId} accent={accent} headerHeight={56} />
-          </div>
-        )}
+          )}
+          <span className="ml-auto truncate text-[13px] font-medium text-stone-600">
+            {active.icon ? `${active.icon} ` : ""}
+            {active.name}
+          </span>
+        </div>
+        <div className="min-h-0 flex-1 p-1.5">
+          {embedSrc ? (
+            <iframe
+              key={active.agent_id}
+              src={embedSrc}
+              title={active.name}
+              className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+              allow="clipboard-write; clipboard-read; fullscreen"
+              allowFullScreen
+            />
+          ) : (
+            <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
+              该 app 所属站点暂未接入内嵌工作台。
+            </div>
+          )}
+        </div>
       </div>
+    );
+  }
+
+  // ── 目录页：网站 / app / skill 三分区（同 all-sites），选择全在主区 ──
+  const appItems: DirectoryItem[] = myApps.map((a) => ({
+    id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
+    icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
+  }));
+  const skillItems: DirectoryItem[] = mySkills.map((a) => ({
+    id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
+    icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
+  }));
+  const siteItems: DirectoryItem[] = sites.map((s) => ({
+    id: s.key, name: s.name, tagline: s.tagline, icon: s.icon, accent, site_id: s.key,
+  }));
+
+  const emptyState = (label: string) => (
+    <div className="grid place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-10 text-center">
+      <div className="max-w-sm space-y-3">
+        <p className="text-sm text-stone-500">
+          还没有{label}。从「全部应用」里挑选加入——
+          <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
+          <br />· <b>skill</b> = 纯聊天助手，跟它对话答疑。
+        </p>
+        <a
+          href={addAgentHref}
+          className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
+          style={{ background: accent }}
+        >
+          ＋ 去全部应用挑选
+        </a>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-6 py-8">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
+          <p className="mt-1 text-[13px] text-neutral-500">
+            你加入的 <b>网站 / app / skill</b>，点开即用。app / skill 在本页直接操作，网站会新开对应站点。
+          </p>
+        </div>
+        <a
+          href={addAgentHref}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition hover:border-sky-300 hover:text-sky-600"
+        >
+          ＋ 添加 app / skill
+        </a>
+      </div>
+
+      <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
+        {([
+          { id: "site", label: "网站" },
+          { id: "app", label: "app" },
+          { id: "skill", label: "skill" },
+        ] as const).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
+              tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "site" ? (
+        <AppDirectory
+          items={siteItems}
+          accent={accent}
+          openLabel="打开"
+          emptyText="暂无网站。"
+          onOpen={(it) => {
+            const s = sites.find((x) => x.key === it.id);
+            if (s) window.open(s.href, "_blank", "noopener,noreferrer");
+          }}
+        />
+      ) : tab === "app" ? (
+        loading ? (
+          <AppDirectory items={[]} loading accent={accent} />
+        ) : myApps.length === 0 ? (
+          emptyState(" app")
+        ) : (
+          <AppDirectory
+            items={appItems}
+            accent={accent}
+            openLabel="打开"
+            onOpen={(it) => setSel(it.id)}
+          />
+        )
+      ) : loading ? (
+        <AppDirectory items={[]} loading accent={accent} />
+      ) : mySkills.length === 0 ? (
+        emptyState(" skill")
+      ) : (
+        <AppDirectory
+          items={skillItems}
+          accent={accent}
+          openLabel="打开"
+          onOpen={(it) => setSel(it.id)}
+        />
+      )}
+
+      {/* 兜底：完全没有任何 app/skill 且当前在 app/skill tab 时，AgentChat 入口仍可用 */}
+      {!loading && mine.length === 0 && tab !== "site" && homeSiteId === "" && (
+        <p className="mt-6 text-center text-[12px] text-stone-400">
+          也可以直接到「新建任务」让 OceanLeo agent 帮你做事。
+        </p>
+      )}
     </div>
   );
 }

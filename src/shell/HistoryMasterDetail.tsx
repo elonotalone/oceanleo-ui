@@ -136,7 +136,16 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
 // ----------------------------------------------------------------------------
 // 主区详情：选中会话 → AgentChat 回看
 // ----------------------------------------------------------------------------
-export function HistoryDetail({ siteId = "", accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
+export function HistoryDetail({
+  siteId = "",
+  accent = "#0ea5e9",
+  appNames,
+}: {
+  siteId?: string;
+  accent?: string;
+  /** site_id → app 展示名（回看时在 agent 界面显示「所属 app」）。 */
+  appNames?: Record<string, string>;
+}) {
   const [sel] = useWorkspaceSelection("history");
   if (!sel) {
     return (
@@ -147,7 +156,7 @@ export function HistoryDetail({ siteId = "", accent = "#0ea5e9" }: { siteId?: st
   }
   return (
     <div className="h-[calc(100dvh-1px)]">
-      <AgentChat key={sel} siteId={siteId} taskId={sel} accent={accent} headerHeight={0} />
+      <AgentChat key={sel} siteId={siteId} taskId={sel} accent={accent} headerHeight={0} appNames={appNames} />
     </div>
   );
 }
