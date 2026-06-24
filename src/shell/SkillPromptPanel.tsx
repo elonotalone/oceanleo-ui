@@ -93,19 +93,35 @@ export function SkillPromptPanel({
     setEditing(false);
     setBasePrompt(promptProp || "");
     setDraft(promptProp || "");
-    if (!agentId || promptProp) return;
+    // 已直接拿到 prompt（promptProp）或无 agent → 不必拉取。务必把 loading 复位，
+    // 否则若上一轮（promptProp 还没到时）已 setLoading(true)，这一轮 early-return
+    // 不复位就会卡在「加载 prompt…」永远转圈（操作员 2026-06-24 反馈的 bug）。
+    if (!agentId || promptProp) {
+      setLoading(false);
+      return;
+    }
     let alive = true;
     setLoading(true);
-    void fetchManifest(agentId).then((m) => {
-      if (!alive) return;
-      // manifest.prompt 优先；为空则用身份信息合成（绝不显示「暂未填写」）。
-      const p =
-        (m?.prompt || "").trim() ||
-        synthIdentity(m?.name || name, m?.tagline || tagline, m?.capabilities);
-      setBasePrompt(p);
-      setDraft(p);
-      setLoading(false);
-    });
+    void fetchManifest(agentId)
+      .then((m) => {
+        if (!alive) return;
+        // manifest.prompt 优先；为空则用身份信息合成（绝不显示「暂未填写」）。
+        const p =
+          (m?.prompt || "").trim() ||
+          synthIdentity(m?.name || name, m?.tagline || tagline, m?.capabilities);
+        setBasePrompt(p);
+        setDraft(p);
+      })
+      .catch(() => {
+        // 拉取异常也要落地一段兜底 prompt，绝不空白。
+        if (!alive) return;
+        const p = synthIdentity(name, tagline);
+        setBasePrompt(p);
+        setDraft(p);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
     return () => {
       alive = false;
     };

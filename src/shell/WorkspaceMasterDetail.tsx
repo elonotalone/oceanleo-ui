@@ -238,21 +238,31 @@ export function WorkspaceDetail({
 
   const showModelBar = modelCategories.length > 0;
 
-  // ── 选中一个 app/skill：整页换成内嵌功能区 + 顶部模型选择 + 返回 ──
+  // ── 选中一个 app/skill：整页换成内嵌功能区 ──
+  //   顶部一行（操作员 2026-06-24）：左 = 返回 + app 名；右 = 模型选择（收成一个按键，
+  //   点开才弹出各模态 chip 面板）。保证最上方只有一行。
   if (active) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className="flex shrink-0 items-center gap-3 border-b border-neutral-100 px-3 py-2">
-          <BackButton onClick={() => setSel(null)} />
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <BackButton onClick={() => setSel(null)} />
+            <span className="min-w-0 truncate text-[13px] font-medium text-stone-600">
+              {active.icon ? `${active.icon} ` : ""}
+              {active.name}
+            </span>
+          </div>
           {showModelBar && (
-            <div className="min-w-0">
-              <ModelPicker categories={modelCategories} siteId={modelSiteId} apiHref={apiHref} />
+            <div className="shrink-0">
+              <ModelPicker
+                categories={modelCategories}
+                siteId={modelSiteId}
+                apiHref={apiHref}
+                variant="popover"
+                align="right"
+              />
             </div>
           )}
-          <span className="ml-auto truncate text-[13px] font-medium text-stone-600">
-            {active.icon ? `${active.icon} ` : ""}
-            {active.name}
-          </span>
         </div>
         <div className="min-h-0 flex-1 p-1.5">
           {embedSrc ? (

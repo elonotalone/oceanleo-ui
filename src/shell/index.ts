@@ -12,6 +12,9 @@ export type {
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
 export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
 export type { SelectionNamespace } from "./WorkspaceSelection";
+// 操作员 2026-06-24：外壳「顶栏控制」上下文——主区自带模型选择时，让 AppShell 隐藏
+// 它 header 里的模型选择条（消灭子站工作台「两行顶栏」）。
+export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 // doctrine v7：工作台 master-detail（主区自带 网站/app/skill 目录 + 内嵌 + 返回）。
 export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
 export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
@@ -58,6 +61,9 @@ export type { SkillPromptPanelProps } from "./SkillPromptPanel";
 // doctrine v7：统一应用目录（二元分类器 + ce335cef 卡片 + 加入工作台）。
 export { AppDirectory } from "./AppDirectory";
 export type { AppDirectoryProps, DirectoryItem } from "./AppDirectory";
+// 操作员 2026-06-24：站内「相关 skill」目录（按 relatedSkillCategories 过滤 LeoSkill）。
+export { SiteSkillDirectory } from "./SiteSkillDirectory";
+export type { SiteSkillDirectoryProps } from "./SiteSkillDirectory";
 // doctrine v6：创建 / 保存 skill 的统一弹窗（「创建 skill」+「保存为我的 skill」共用）。
 export { CreateSkillModal, CreateSkillTeamModal } from "./CreateSkillModal";
 export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateSkillModal";

@@ -47,6 +47,15 @@ export interface ModelPickerProps {
   /** API 管理页路由（默认 /api）。下拉底部「管理模型」跳转。 */
   apiHref?: string;
   className?: string;
+  /**
+   * 渲染形态（操作员 2026-06-24）：
+   *   - "bar"（默认）：横排——左标签「模型选择」+ 各模态 chip 平铺。模态多时会换行。
+   *   - "popover"：收成**一个**「模型选择」按键，点开在其下方弹出面板，里面才是各模态
+   *     chip。用于顶栏右上角——保证最上方永远只有一行（chip 不再把顶栏撑成两行）。
+   */
+  variant?: "bar" | "popover";
+  /** popover 形态：面板相对按钮的对齐，默认右对齐（顶栏右上角用）。 */
+  align?: "left" | "right";
 }
 
 const STORE_PREFIX = "oceanleo_model_pick_v2";
@@ -81,6 +90,8 @@ export function ModelPicker({
   onSelectionChange,
   apiHref = "/api",
   className = "",
+  variant = "bar",
+  align = "right",
 }: ModelPickerProps) {
   // 每个模态的可选模型列表
   const [options, setOptions] = useState<Record<string, PreferredModel[]>>({});
@@ -88,6 +99,8 @@ export function ModelPicker({
   const [picked, setPicked] = useState<Record<string, string>>({});
   // 当前展开的模态（null = 都收起）
   const [openCat, setOpenCat] = useState<ModelCategory | null>(null);
+  // popover 形态：整体面板的开合。
+  const [panelOpen, setPanelOpen] = useState(false);
   const [userId, setUserId] = useState<string>("anon");
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -146,14 +159,20 @@ export function ModelPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked, options]);
 
-  // 点外面 / Esc 关闭
+  // 点外面 / Esc 关闭（模态下拉 + popover 面板）
   useEffect(() => {
-    if (!openCat) return;
+    if (!openCat && !panelOpen) return;
     function onDoc(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpenCat(null);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpenCat(null);
+        setPanelOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpenCat(null);
+      if (e.key === "Escape") {
+        setOpenCat(null);
+        setPanelOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -161,7 +180,7 @@ export function ModelPicker({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [openCat]);
+  }, [openCat, panelOpen]);
 
   function pick(cat: ModelCategory, m: PreferredModel) {
     const next = { ...picked, [cat]: m.key };
@@ -171,10 +190,14 @@ export function ModelPicker({
     setOpenCat(null);
   }
 
-  return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`} ref={rootRef}>
-      <span className="text-[13px] font-medium text-neutral-500">模型选择</span>
+  // 已选模态数（popover 按钮上做小角标提示）。
+  const pickedCount = categories.filter((c) => {
+    const list = options[c] || [];
+    return list.some((m) => m.key === picked[c]);
+  }).length;
 
+  const categoryChips = (
+    <>
       {categories.map((cat) => {
         const list = options[cat] || [];
         const sel = list.find((m) => m.key === picked[cat]) || null;
@@ -245,6 +268,56 @@ export function ModelPicker({
           </div>
         );
       })}
+    </>
+  );
+
+  // ── popover 形态：一个「模型选择」按键 → 下方弹出含各模态 chip 的面板 ──
+  if (variant === "popover") {
+    return (
+      <div className={`relative ${className}`} ref={rootRef}>
+        <button
+          type="button"
+          onClick={() => setPanelOpen((v) => !v)}
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition ${
+            panelOpen
+              ? "border-neutral-300 bg-neutral-50"
+              : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50"
+          }`}
+          title="模型选择"
+        >
+          <span className="text-neutral-400">
+            <IconCategory category="text" className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-medium text-neutral-700">模型选择</span>
+          {pickedCount > 0 && (
+            <span className="rounded-full bg-neutral-900 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+              {pickedCount}
+            </span>
+          )}
+          <span className={`text-neutral-400 transition-transform duration-150 ${panelOpen ? "rotate-180" : ""}`}>
+            <IconChevronDown className="h-3.5 w-3.5" />
+          </span>
+        </button>
+
+        {panelOpen && (
+          <div
+            className={`v-scale-in absolute top-full z-40 mt-1.5 w-[min(20rem,86vw)] rounded-xl border border-neutral-200 bg-white p-3 shadow-xl ${
+              align === "right" ? "right-0" : "left-0"
+            }`}
+          >
+            <p className="mb-2 px-0.5 text-[12px] font-medium text-neutral-500">模型选择</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{categoryChips}</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── bar 形态（默认）：左标签 +各模态 chip 平铺 ──
+  return (
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`} ref={rootRef}>
+      <span className="text-[13px] font-medium text-neutral-500">模型选择</span>
+      {categoryChips}
     </div>
   );
 }

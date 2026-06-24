@@ -24,6 +24,7 @@ import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
+import { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
@@ -136,9 +137,20 @@ export interface AppShellProps {
 // doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
 // 同时渲染两者，故在此统一包一层 WorkspaceSelectionProvider，各消费站零接线即可用。
 export function AppShell(props: AppShellProps) {
+  // 把本站的模型选择配置透传进 ShellChrome——主区组件（OperatorConsole 等）可零接线
+  // fallback 取用，免得每个站的工作台页再各自把 modelCategories 传一遍。
+  const modelConfig = props.modelCategories?.length
+    ? {
+        categories: props.modelCategories as string[],
+        siteId: props.siteId || "default",
+        apiHref: props.apiHref || "/api",
+      }
+    : null;
   return (
     <WorkspaceSelectionProvider>
-      <AppShellInner {...props} />
+      <ShellChromeProvider modelConfig={modelConfig}>
+        <AppShellInner {...props} />
+      </ShellChromeProvider>
     </WorkspaceSelectionProvider>
   );
 }
@@ -170,6 +182,8 @@ function AppShellInner({
 }: AppShellProps) {
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
+  // 主区（如 OperatorConsole 工作台）自带模型选择时，header 不再重复渲染（消灭两行顶栏）。
+  const { suppressHeaderModel } = useShellChrome();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -330,7 +344,9 @@ function AppShellInner({
     );
   }
 
-  const showHeader = !hideHeader && (Boolean(modelCategories?.length) || Boolean(headerRight));
+  // header 里的模型选择：主区已自带（suppressHeaderModel）时不再渲染，避免两行顶栏。
+  const showModelInHeader = Boolean(modelCategories?.length) && !suppressHeaderModel;
+  const showHeader = !hideHeader && (showModelInHeader || Boolean(headerRight));
 
   const sidebarBody = (
     <>
@@ -495,10 +511,10 @@ function AppShellInner({
           {/* 左：站名标题（原左上角位置）+ 紧跟其右的模型选择 */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
             {renderBrand()}
-            {modelCategories?.length ? (
+            {showModelInHeader ? (
               <div className="min-w-0">
                 <ModelPicker
-                  categories={modelCategories}
+                  categories={modelCategories!}
                   siteId={siteId}
                   onChange={onModelChange}
                   onSelectionChange={onModelSelectionChange}
@@ -585,9 +601,9 @@ function AppShellInner({
             }`}
           >
             <div className="min-w-0">
-              {modelCategories?.length ? (
+              {showModelInHeader ? (
                 <ModelPicker
-                  categories={modelCategories}
+                  categories={modelCategories!}
                   siteId={siteId}
                   onChange={onModelChange}
                   onSelectionChange={onModelSelectionChange}

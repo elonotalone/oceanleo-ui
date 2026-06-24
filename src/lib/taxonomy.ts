@@ -208,3 +208,76 @@ export function labelFor(mode: TaxonomyMode, id: string): string {
   const opt = optionsFor(mode).find((o) => o.id === id);
   return opt?.label || id;
 }
+
+// ============================================================================
+// 站点 → 相关 skill 分类（操作员 2026-06-24）
+// ----------------------------------------------------------------------------
+// 「把已有 skill 放到合适的 oceanleo 系列网站里」+「各站也能切 app/skill」。
+// 全部 143 个 skill 物理上仍属 LeoSkill（site_id="agent"，单一事实源不破坏），
+// 这里只声明**每个产品站该展示哪些 skill 分类**——产品站的工作台多一个「skill」
+// 视图，按这张表过滤 LeoSkill 的 skill 列表展示、点开即去 LeoSkill 对应 skill 开聊。
+//
+// skill 的 category 取值（agents 表，site_id="agent"）：技术工程 / 内容创作 /
+// 营销增长 / 金融投资 / 销售商务 / 运营人力 / 产品设计 / 数据智能 / 生活服务 /
+// 学术教育 / 电商零售 / 法律行政 / 一人公司 / 文档办公 / 腾讯专区 / 游戏空间 /
+// 客户服务 / 项目管理。
+//
+// 新站只需补一行；未列出的站回退到「按内容类型相近」推断（relatedSkillCategories）。
+// ============================================================================
+const SITE_SKILL_CATEGORIES: Record<string, string[]> = {
+  image: ["内容创作", "产品设计", "营销增长"],
+  video: ["内容创作", "营销增长"],
+  music: ["内容创作", "游戏空间"],
+  aihuman: ["内容创作", "营销增长"],
+  threed: ["产品设计", "游戏空间"],
+  ecommerce: ["电商零售", "营销增长", "销售商务"],
+  design: ["产品设计", "内容创作"],
+  make: ["产品设计", "生活服务"],
+  logo: ["产品设计", "营销增长"],
+  interior: ["产品设计", "生活服务"],
+  ppt: ["文档办公", "销售商务", "内容创作"],
+  word: ["文档办公", "内容创作"],
+  excel: ["文档办公", "数据智能"],
+  converter: ["文档办公"],
+  resume: ["运营人力", "文档办公"],
+  bizdev: ["销售商务", "营销增长", "一人公司"],
+  meeting: ["文档办公", "项目管理"],
+  paper: ["学术教育", "数据智能"],
+  law: ["法律行政"],
+  study: ["学术教育"],
+  novel: ["内容创作"],
+  script: ["内容创作", "游戏空间"],
+  money: ["金融投资", "数据智能"],
+  search: ["数据智能", "技术工程"],
+  chat: ["客户服务", "运营人力"],
+  website: ["技术工程", "产品设计"],
+  // 主站全家桶聚合站可展示全部，故不在这里限制（传 [] 表示不过滤）。
+};
+
+// 内容类型 → 兜底相关 skill 分类（站没在上表时用）。
+const CONTENT_SKILL_FALLBACK: Record<string, string[]> = {
+  image: ["内容创作", "产品设计"],
+  video: ["内容创作"],
+  audio: ["内容创作"],
+  threed: ["产品设计"],
+  doc: ["文档办公", "内容创作"],
+  sheet: ["数据智能", "文档办公"],
+  slide: ["文档办公", "内容创作"],
+  web: ["技术工程"],
+  data: ["数据智能"],
+  chat: ["客户服务"],
+};
+
+/**
+ * 一个产品站该展示哪些 skill 分类。返回空数组 = 不过滤（展示全部 skill，主站用）。
+ * 返回非空 = 只展示这些 category 的 skill。
+ */
+export function relatedSkillCategories(siteId?: string): string[] {
+  const s = (siteId || "").trim();
+  if (!s) return [];
+  if (SITE_SKILL_CATEGORIES[s]) return SITE_SKILL_CATEGORIES[s];
+  // 兜底：按站的内容类型推断。
+  const c = SITE_CONTENT[s];
+  if (c && CONTENT_SKILL_FALLBACK[c]) return CONTENT_SKILL_FALLBACK[c];
+  return [];
+}

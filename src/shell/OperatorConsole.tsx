@@ -26,10 +26,13 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
+import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import { useShellChrome } from "./ShellChrome";
+import { SiteSkillDirectory } from "./SiteSkillDirectory";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -113,6 +116,25 @@ export interface OperatorConsoleProps {
   directorySubtitle?: ReactNode;
   /** 目录卡片的分类输入（用于二元分类器）：每个功能区的 site_id / category。 */
   siteId?: string;
+  /**
+   * 顶栏右上角「模型选择」（操作员 2026-06-24）：给了模态，本组件会在自己那条顶栏的
+   * **右上角**渲染一个收起态「模型选择」按键（点开才弹出各模态 chip 面板），并通知外层
+   * AppShell 隐藏它 header 里的模型选择条——这样子站工作台「最上方只有一行」。
+   * solo/embed（hideTabs）时不渲染（主站 iframe 内嵌，模型选择由主站那一行承担）。
+   */
+  modelCategories?: ModelCategory[];
+  /** 模型选择「站点 × 用户」持久化标识（一般 = siteId）。 */
+  modelSiteId?: string;
+  /** 模型选择下拉底部「管理模型」跳转，默认 /api。 */
+  apiHref?: string;
+  /**
+   * directory 模式：在目录页顶部加一个「app / skill」切换（操作员 2026-06-24）。
+   *   - app：本站功能区卡片（默认）。
+   *   - skill：与本站相关的 LeoSkill skill（按 relatedSkillCategories(siteId) 过滤），
+   *     点开去 LeoSkill 对应 skill 开聊。
+   * 默认 true（directory 模式且有 siteId 时生效）。传 false 关闭。
+   */
+  skillTab?: boolean;
 }
 
 export function OperatorConsole({
@@ -135,8 +157,14 @@ export function OperatorConsole({
   directoryTitle,
   directorySubtitle,
   siteId = "",
+  modelCategories,
+  modelSiteId,
+  apiHref = "/api",
+  skillTab = true,
 }: OperatorConsoleProps) {
   const groupId = useId();
+  // directory 模式目录页的「app / skill」切换态。
+  const [dirTab, setDirTab] = useState<"app" | "skill">("app");
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
@@ -149,8 +177,10 @@ export function OperatorConsole({
   };
 
   // doctrine v7 目录模式：先列功能目录，点开才进入功能区（带返回）。
-  // embed/solo（hideTabs）或单功能时不启用（没有目录可选）。
-  const directoryMode = directory && !hideTabs && functions.length > 1;
+  // embed/solo（hideTabs）时不启用。多功能站本就启用；单功能站若开了 app/skill 切换
+  // （skillTab）也启用——这样单功能站也有「app / skill」目录页（操作员 2026-06-24）。
+  const hasSkillTab = skillTab && Boolean(siteId);
+  const directoryMode = directory && !hideTabs && (functions.length > 1 || hasSkillTab);
   // null = 还在目录页；非空 = 已进入某功能区。受控时跟随 value（外部已选则视为进入）。
   const [opened, setOpened] = useState<string | null>(value ? value : null);
   const isOpened = value !== undefined ? Boolean(value) : opened !== null;
@@ -164,6 +194,32 @@ export function OperatorConsole({
     onChange?.("");
   };
 
+  // 顶栏右上角模型选择：非 solo/embed 时渲染。模态来源——优先本组件 props
+  // （modelCategories），否则 fallback 到外层 AppShell 透传的 modelConfig（这样各站
+  // 工作台页不必再手动传一遍）。渲染时通知 AppShell 隐藏它 header 里那条（避免两行顶栏）。
+  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
+  const effectiveModelCategories =
+    (modelCategories as string[] | undefined) ?? modelConfig?.categories;
+  const effectiveModelSiteId =
+    modelSiteId || siteId || modelConfig?.siteId || "default";
+  const effectiveApiHref = apiHref || modelConfig?.apiHref || "/api";
+  const showModelPicker = Boolean(effectiveModelCategories?.length) && !hideTabs;
+  useEffect(() => {
+    if (!showModelPicker) return;
+    setSuppressHeaderModel(true);
+    return () => setSuppressHeaderModel(false);
+  }, [showModelPicker, setSuppressHeaderModel]);
+
+  const modelPicker = showModelPicker ? (
+    <ModelPicker
+      categories={effectiveModelCategories as ModelCategory[]}
+      siteId={effectiveModelSiteId}
+      apiHref={effectiveApiHref}
+      variant="popover"
+      align="right"
+    />
+  ) : null;
+
   if (directoryMode && !isOpened) {
     const items: DirectoryItem[] = functions.map((f) => ({
       id: f.id,
@@ -175,24 +231,56 @@ export function OperatorConsole({
       site_id: siteId,
       category: "",
     }));
+    const showSkillTab = hasSkillTab;
     return (
       <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
-        {(directoryTitle || directorySubtitle) && (
-          <div className="mb-5">
-            {directoryTitle && (
-              <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{directoryTitle}</h1>
-            )}
-            {directorySubtitle && (
-              <p className="mt-1 text-[13px] text-neutral-500">{directorySubtitle}</p>
-            )}
+        {(directoryTitle || directorySubtitle || modelPicker) && (
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {directoryTitle && (
+                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{directoryTitle}</h1>
+              )}
+              {directorySubtitle && (
+                <p className="mt-1 text-[13px] text-neutral-500">{directorySubtitle}</p>
+              )}
+            </div>
+            {modelPicker && <div className="shrink-0">{modelPicker}</div>}
           </div>
         )}
-        <AppDirectory
-          items={items}
-          accent={accent}
-          openLabel="打开"
-          onOpen={(it) => openFn(it.id)}
-        />
+
+        {/* app / skill 切换（操作员 2026-06-24）：app = 本站功能区；skill = 相关 LeoSkill。 */}
+        {showSkillTab && (
+          <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
+            {([
+              { id: "app", label: "app" },
+              { id: "skill", label: "skill" },
+            ] as const).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setDirTab(t.id)}
+                className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
+                  dirTab === t.id
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showSkillTab && dirTab === "skill" ? (
+          <SiteSkillDirectory siteId={siteId} accent={accent} />
+        ) : (
+          <AppDirectory
+            items={items}
+            accent={accent}
+            openLabel="打开"
+            onOpen={(it) => openFn(it.id)}
+          />
+        )}
       </div>
     );
   }
@@ -208,34 +296,41 @@ export function OperatorConsole({
   // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
   // hideTabs（solo 模式）：彻底不渲染功能按键条 + header。
   // directory 模式且已进入：顶栏改为「← 返回」（回目录），不再列全部功能按键。
-  const showTopBar = (showTabs || header != null || directoryMode) && !hideTabs;
+  // 顶栏右上角放收起态模型选择（modelPicker），与左侧返回/功能名同一行 → 最上方一行。
+  const showTopBar =
+    (showTabs || header != null || directoryMode || modelPicker != null) && !hideTabs;
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
-      {directoryMode ? (
-        <div className="flex items-center gap-2">
-          <BackButton onClick={backToDirectory} />
-          <span className="truncate text-[13px] font-medium text-stone-600">
-            {active?.icon != null && <span className="mr-1">{active.icon}</span>}
-            {active?.label}
-            {active?.agentId && (
-              <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
-                ✦ agent
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {directoryMode ? (
+            <div className="flex items-center gap-2">
+              <BackButton onClick={backToDirectory} />
+              <span className="truncate text-[13px] font-medium text-stone-600">
+                {active?.icon != null && <span className="mr-1">{active.icon}</span>}
+                {active?.label}
+                {active?.agentId && (
+                  <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
+                    ✦ agent
+                  </span>
+                )}
               </span>
-            )}
-          </span>
+            </div>
+          ) : (
+            showTabs && (
+              <FunctionTabs
+                functions={functions}
+                activeId={active?.id ?? ""}
+                accent={accent}
+                groupId={groupId}
+                onSelect={select}
+              />
+            )
+          )}
         </div>
-      ) : (
-        showTabs && (
-          <FunctionTabs
-            functions={functions}
-            activeId={active?.id ?? ""}
-            accent={accent}
-            groupId={groupId}
-            onSelect={select}
-          />
-        )
-      )}
+        {modelPicker && <div className="shrink-0">{modelPicker}</div>}
+      </div>
     </div>
   ) : null;
 

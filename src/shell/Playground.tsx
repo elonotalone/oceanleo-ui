@@ -109,32 +109,41 @@ export function PlaygroundDetail({
     setTimeout(() => setSavedMsg(null), 2600);
   }
 
-  // ── 选中某条目：整页换成它的内嵌功能区 + 顶部模型选择 + 返回 ──
+  // ── 选中某条目：整页换成它的内嵌功能区 ──
+  //   顶部一行（操作员 2026-06-24）：左 = 返回 + 放入工作台 + app 名；右 = 模型选择
+  //   （收成一个按键，点开才弹出各模态 chip 面板）。保证最上方永远只有一行。
   if (active) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2">
             <BackButton onClick={() => setActiveId("")} />
-            <div className="min-w-0">
-              <ModelPicker
-                categories={["text", "image", "video", "threed", "audio"]}
-                siteId={PLAYGROUND_MODEL_SITE}
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {savedMsg && <span className="text-[12px] text-emerald-600">{savedMsg}</span>}
             <button
               type="button"
               onClick={addToWorkspace}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: accent }}
               title="把这个 app 加入「我的 app」，之后在工作台直接用"
             >
               ＋ 放入工作台
             </button>
+            {savedMsg ? (
+              <span className="truncate text-[12px] text-emerald-600">{savedMsg}</span>
+            ) : (
+              <span className="min-w-0 truncate text-[13px] font-medium text-stone-600">
+                {active.icon ? `${active.icon} ` : ""}
+                {active.name}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0">
+            <ModelPicker
+              categories={["text", "image", "video", "threed", "audio"]}
+              siteId={PLAYGROUND_MODEL_SITE}
+              variant="popover"
+              align="right"
+            />
           </div>
         </div>
         <div className="min-h-0 flex-1 p-1.5">
