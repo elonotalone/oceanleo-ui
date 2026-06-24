@@ -16,7 +16,7 @@
 import { useMemo, useState } from "react";
 import {
   classify,
-  labelFor,
+  nativeOptions,
   optionsFor,
   type TaxonomyMode,
 } from "../lib/taxonomy";
@@ -58,6 +58,14 @@ export interface AppDirectoryProps {
   toolbarExtra?: React.ReactNode;
   /** compact：不渲染分类器工具条 + chips，只渲染卡片网格（用于「推荐」这种小列表）。 */
   compact?: boolean;
+  /**
+   * nativeFirst：把「按分类」（条目自带的原始 category，如 skill 的「技术工程 /
+   * 内容创作」18 类）作为**首选且默认**的分类维度，排在「按行业 / 按内容」之前。
+   * skill 目录用它——保留作者既定的细粒度分类（操作员 2026-06-24）。
+   */
+  nativeFirst?: boolean;
+  /** 「按分类」维度的标签，默认「按分类」（skill 站可传「按技能」）。 */
+  nativeLabel?: string;
 }
 
 export function AppDirectory({
@@ -71,11 +79,29 @@ export function AppDirectory({
   emptyText = "暂无内容",
   toolbarExtra,
   compact = false,
+  nativeFirst = false,
+  nativeLabel = "按分类",
 }: AppDirectoryProps) {
-  // 分类方式（行业 / 内容）+ 当前选中分类（"all" = 全部）。
-  const [mode, setMode] = useState<TaxonomyMode>("industry");
+  // 分类方式 + 当前选中分类（"all" = 全部）。nativeFirst 时默认「按分类」（原生 category）。
+  const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
   const [filter, setFilter] = useState("");
+
+  // 分类方式切换器的选项（nativeFirst 时把「按分类」排首位并默认）。
+  const modeTabs = useMemo(
+    () =>
+      (nativeFirst
+        ? ([
+            { id: "native", label: nativeLabel },
+            { id: "industry", label: "按行业" },
+            { id: "content", label: "按内容" },
+          ] as const)
+        : ([
+            { id: "industry", label: "按行业" },
+            { id: "content", label: "按内容" },
+          ] as const)) as readonly { id: TaxonomyMode; label: string }[],
+    [nativeFirst, nativeLabel],
+  );
 
   // 当前维度下，每个分类的条目数（只统计实际出现的分类）。
   const counts = useMemo(() => {
@@ -88,10 +114,11 @@ export function AppDirectory({
   }, [items, mode]);
 
   // 当前维度可见的分类 chips（「全部」恒在最前；其余仅显示有条目的）。
+  // native 维度的可选分类是数据驱动的（从条目集合现算），其余维度用固定枚举。
   const chips = useMemo(() => {
-    const opts = optionsFor(mode);
+    const opts = mode === "native" ? nativeOptions(items) : optionsFor(mode);
     return opts.filter((o) => o.id === "all" || (counts.get(o.id) || 0) > 0);
-  }, [mode, counts]);
+  }, [mode, counts, items]);
 
   const normFilter = filter.trim().toLowerCase();
   const visible = useMemo(() => {
@@ -118,13 +145,10 @@ export function AppDirectory({
     <div className="space-y-5">
       {!compact && (
       <>
-      {/* ── 顶部工具条：分类方式（行业/内容）二选一 + 关键词筛选 ── */}
+      {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-xl bg-stone-100 p-1">
-          {([
-            { id: "industry", label: "按行业" },
-            { id: "content", label: "按内容" },
-          ] as const).map((m) => (
+          {modeTabs.map((m) => (
             <button
               key={m.id}
               type="button"

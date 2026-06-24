@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchManifest } from "../lib/manifest-fetch";
 import { CreateSkillModal } from "./CreateSkillModal";
+import { Modal } from "../ui";
 
 export interface SkillPromptPanelProps {
   /** 绑定的 skill / 功能区 agent id（"<site_id>.<fn_id>"）。空 → 不渲染。 */
@@ -127,42 +128,34 @@ export function SkillPromptPanel({
     };
   }, [agentId, promptProp, name, tagline]);
 
-  // inline 浮层：点外面关闭。
-  useEffect(() => {
-    if (!open || variant !== "inline") return;
-    function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open, variant]);
+  // inline 形态现在用居中 Modal（自带 Esc / 点遮罩关闭），不再需要手写「点外面关闭」。
 
   if (!agentId) return null;
 
   const dirty = draft.trim() !== basePrompt.trim();
 
+  // 正文（modal / panel 共用）：大字号、宽松行距、足够高度 —— 保证 prompt 完全看得清
+  // （操作员 2026-06-24 截图 80eeefcf：旧版挤在窄列浮层里、被裁切、完全看不清）。
   const body = (
-    <div className="space-y-2 p-3">
+    <div className="space-y-3">
       {loading ? (
-        <p className="py-4 text-center text-[12px] text-stone-500">加载 prompt…</p>
+        <p className="py-8 text-center text-[13px] text-stone-500">加载 prompt…</p>
       ) : editing ? (
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          rows={10}
-          className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[13px] leading-relaxed text-stone-800 outline-none focus:border-violet-400"
+          rows={14}
+          className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[14px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
           placeholder="编辑这个 skill 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…"
         />
       ) : (
-        <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-stone-50 p-3 font-sans text-[13px] leading-relaxed text-stone-700">
+        <pre className="max-h-[55vh] min-h-[8rem] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-stone-100 bg-stone-50 p-4 font-sans text-[14px] leading-[1.75] text-stone-700">
           {basePrompt}
         </pre>
       )}
 
       {!loading && (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {!editing ? (
             <PanelBtn onClick={() => setEditing(true)}>编辑</PanelBtn>
           ) : (
@@ -225,13 +218,15 @@ export function SkillPromptPanel({
     />
   ) : null;
 
-  // ── inline 形态：输入框里的 prompt 小图标 + 上弹浮层 ──────────────────────
+  // ── inline 形态：输入框里的 prompt 小图标 → 打开**居中弹窗**（不再是窄列里被裁切
+  //    的小浮层）。弹窗宽 + 大字号 + 充足滚动高度，prompt 完整可读（操作员 2026-06-24
+  //    截图 80eeefcf：旧浮层挤在 SplitWorkspace 窄左栏、横向溢出被裁，完全看不清）。
   if (variant === "inline") {
     return (
-      <div ref={wrapRef} className="relative inline-flex">
+      <div ref={wrapRef} className="inline-flex">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setOpen(true)}
           className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] transition-all duration-200 active:scale-95 ${
             overrideActive
               ? "bg-violet-50 text-violet-700"
@@ -246,31 +241,41 @@ export function SkillPromptPanel({
           )}
         </button>
 
-        {open && (
-          <div className="absolute bottom-full left-1/2 z-40 mb-2 w-[min(24rem,calc(100vw-2rem))] max-w-[92vw] -translate-x-1/2 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl">
-            <div className="flex items-center gap-2 border-b border-stone-100 bg-white px-3 py-2 text-[12px] font-medium text-stone-700">
-              <PromptIcon />
-              <span className="min-w-0 flex-1 truncate">
-                {name ? `${name} 的 prompt` : "skill 设定（prompt）"}
+        {open && !showSave && (
+          <Modal onClose={() => setOpen(false)} className="max-w-2xl">
+            <div className="flex items-center gap-2 border-b border-stone-100 px-5 py-3.5">
+              <span
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white"
+                style={{ background: accent }}
+              >
+                <PromptIcon light />
               </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[14px] font-semibold text-stone-900">
+                  {name ? `${name} 的 prompt` : "skill 设定（prompt）"}
+                </p>
+                <p className="text-[12px] text-stone-400">
+                  这个 skill 的设定完全开源——可查看、编辑、直接用，或存成你自己的 skill。
+                </p>
+              </div>
               {overrideActive && (
-                <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700">
+                <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700">
                   已用自定义
                 </span>
               )}
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="shrink-0 rounded p-0.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+                className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
                 title="关闭"
               >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
                 </svg>
               </button>
             </div>
-            <div className="bg-white">{body}</div>
-          </div>
+            <div className="p-5">{body}</div>
+          </Modal>
         )}
         {saveModal}
       </div>
@@ -296,7 +301,7 @@ export function SkillPromptPanel({
         )}
         <span className="shrink-0 text-stone-400">{open ? "收起" : "展开"}</span>
       </button>
-      {open && <div className="border-t border-stone-100">{body}</div>}
+      {open && <div className="border-t border-stone-100 p-3">{body}</div>}
       {saveModal}
     </div>
   );
@@ -335,9 +340,15 @@ function PanelBtn({
   );
 }
 
-function PromptIcon() {
+function PromptIcon({ light }: { light?: boolean } = {}) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 shrink-0" stroke="currentColor" strokeWidth="2">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`shrink-0 ${light ? "h-4 w-4" : "h-3.5 w-3.5"}`}
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <path d="M4 6h16M4 12h10M4 18h7" strokeLinecap="round" />
     </svg>
   );

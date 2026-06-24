@@ -188,6 +188,54 @@ const CATEGORY_CONTENT: Record<string, ContentId> = {
   discover: "web",
 };
 
+// ── skill（LeoSkill，site_id="agent"）专用分类映射（操作员 2026-06-24）──────────
+// 全部 143 个 skill 物理上 site_id 都是 "agent"。若按 SITE_INDUSTRY["agent"]="tools"
+// 一刀切，则所有 skill 都挤进「通用工具 / 对话」一个桶里——这正是「skill 没有分类好」
+// 的根因（playground / 各站 skill 目录全堆一起）。skill 自带一套丰富的 `category`
+// （技术工程 / 内容创作 / 营销增长 …18 类，见 agents 表）。这里把这 18 类各自映射到
+// 稳定的「行业 / 内容」二维，使 skill 能像 app 一样被正确分桶、筛选。
+const SKILL_CAT = "agent"; // skill 的 site_id
+const SKILL_INDUSTRY: Record<string, IndustryId> = {
+  技术工程: "internet",
+  内容创作: "media",
+  营销增长: "media",
+  金融投资: "finance",
+  销售商务: "internet",
+  运营人力: "life",
+  产品设计: "media",
+  数据智能: "internet",
+  生活服务: "life",
+  学术教育: "education",
+  电商零售: "life",
+  法律行政: "law",
+  一人公司: "internet",
+  文档办公: "tools",
+  腾讯专区: "internet",
+  游戏空间: "film",
+  客户服务: "life",
+  项目管理: "tools",
+};
+const SKILL_CONTENT: Record<string, ContentId> = {
+  技术工程: "web",
+  内容创作: "doc",
+  营销增长: "data",
+  金融投资: "data",
+  销售商务: "chat",
+  运营人力: "doc",
+  产品设计: "image",
+  数据智能: "data",
+  生活服务: "chat",
+  学术教育: "doc",
+  电商零售: "image",
+  法律行政: "doc",
+  一人公司: "chat",
+  文档办公: "doc",
+  腾讯专区: "chat",
+  游戏空间: "threed",
+  客户服务: "chat",
+  项目管理: "data",
+};
+
 export interface TaxonomyInput {
   site_id?: string;
   category?: string;
@@ -196,8 +244,10 @@ export interface TaxonomyInput {
 /** 把任意条目（带 site_id / category）映射到行业 id。 */
 export function industryOf(item: TaxonomyInput): IndustryId {
   const s = (item.site_id || "").trim();
-  if (s && SITE_INDUSTRY[s]) return SITE_INDUSTRY[s];
   const c = (item.category || "").trim();
+  // skill：优先用它自带的丰富 category（绝不一刀切到 "agent" 的单一行业）。
+  if (s === SKILL_CAT && c && SKILL_INDUSTRY[c]) return SKILL_INDUSTRY[c];
+  if (s && SITE_INDUSTRY[s]) return SITE_INDUSTRY[s];
   if (c && CATEGORY_INDUSTRY[c]) return CATEGORY_INDUSTRY[c];
   return "other";
 }
@@ -205,26 +255,47 @@ export function industryOf(item: TaxonomyInput): IndustryId {
 /** 把任意条目（带 site_id / category）映射到内容类型 id。 */
 export function contentOf(item: TaxonomyInput): ContentId {
   const s = (item.site_id || "").trim();
-  if (s && SITE_CONTENT[s]) return SITE_CONTENT[s];
   const c = (item.category || "").trim();
+  if (s === SKILL_CAT && c && SKILL_CONTENT[c]) return SKILL_CONTENT[c];
+  if (s && SITE_CONTENT[s]) return SITE_CONTENT[s];
   if (c && CATEGORY_CONTENT[c]) return CATEGORY_CONTENT[c];
   return "other";
 }
 
-export type TaxonomyMode = "industry" | "content";
+// "native" = 用条目自带的原始 `category`（如 skill 的「技术工程 / 内容创作」18 类）
+// 直接分桶，保留作者既定的细粒度分类。skill 目录默认用它（操作员 2026-06-24：
+// 「需要按类型分类的，分类本身已完成好，只是没显示好」——就是要回到原生分类）。
+export type TaxonomyMode = "industry" | "content" | "native";
 
-/** 按当前分类维度取条目的归属 id。 */
+/** 按当前分类维度取条目的归属 id。native 直接取原始 category（空→"other"）。 */
 export function classify(item: TaxonomyInput, mode: TaxonomyMode): string {
+  if (mode === "native") return (item.category || "").trim() || "other";
   return mode === "industry" ? industryOf(item) : contentOf(item);
 }
 
-/** 当前维度的可选项（含「全部」）。 */
+/**
+ * 当前维度的可选项（含「全部」）。native 维度的分类是数据驱动的（运行时从条目集合
+ * 提取），不是固定枚举，故由 AppDirectory 用 nativeOptions() 现算；这里 native 只
+ * 返回「全部」占位，真实 chips 由调用方补齐。
+ */
 export function optionsFor(mode: TaxonomyMode): TaxonomyOption[] {
+  if (mode === "native") return [{ id: "all", label: "全部", icon: "✦" }];
   return mode === "industry" ? INDUSTRIES : CONTENTS;
+}
+
+/** 从一组条目里提取 native 分类 chips（按出现顺序，「全部」恒在最前）。 */
+export function nativeOptions(items: TaxonomyInput[]): TaxonomyOption[] {
+  const seen: string[] = [];
+  for (const it of items) {
+    const c = (it.category || "").trim() || "其它";
+    if (!seen.includes(c)) seen.push(c);
+  }
+  return [{ id: "all", label: "全部", icon: "✦" }, ...seen.map((c) => ({ id: c, label: c, icon: "▪" }))];
 }
 
 /** id → 展示名（找不到回退 id 本身）。 */
 export function labelFor(mode: TaxonomyMode, id: string): string {
+  if (mode === "native") return id;
   const opt = optionsFor(mode).find((o) => o.id === id);
   return opt?.label || id;
 }

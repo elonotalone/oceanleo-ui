@@ -201,6 +201,9 @@ export function PlaygroundDetail({
         openLabel="试玩"
         emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 skill。"}
         onOpen={(it) => setActiveId(it.id)}
+        // skill 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
+        nativeFirst={tab === "skill"}
+        nativeLabel="按技能"
       />
     </div>
   );

@@ -94,6 +94,8 @@ export function SiteSkillDirectory({
       openLabel="开聊"
       emptyText="暂无与本站相关的 skill。"
       onOpen={(it) => openSkill(it.id)}
+      nativeFirst
+      nativeLabel="按技能"
     />
   );
 }

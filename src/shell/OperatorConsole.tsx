@@ -181,9 +181,18 @@ export function OperatorConsole({
   // （skillTab）也启用——这样单功能站也有「app / skill」目录页（操作员 2026-06-24）。
   const hasSkillTab = skillTab && Boolean(siteId);
   const directoryMode = directory && !hideTabs && (functions.length > 1 || hasSkillTab);
-  // null = 还在目录页；非空 = 已进入某功能区。受控时跟随 value（外部已选则视为进入）。
-  const [opened, setOpened] = useState<string | null>(value ? value : null);
-  const isOpened = value !== undefined ? Boolean(value) : opened !== null;
+
+  // 「目录页 ↔ 已进入功能区」由本组件**自管**（opened），与受控的 `value` 解耦。
+  // 关键修复（操作员 2026-06-24，截图 2552c5a6「返回键形同虚设」）：
+  //   受控站（bizdev/resume）总是把一个**非空默认功能 id**作为 `value` 传进来（如
+  //   "reply"），从不为空。旧逻辑 `isOpened = Boolean(value)` 因此恒为 true：
+  //     ① 一进工作台就直接落到某功能区、跳过了目录卡片页；
+  //     ② 点「返回」时父站又把 value 归位到默认功能 → 永远回不到目录，返回键摆设。
+  //   现改为：目录模式下**一律从目录页起步**（opened=null），点卡片才进功能区、
+  //   点返回才回目录。opened 是「在不在目录页」的单一事实源，不被 value 牵着走；
+  //   value 只决定「进入后激活哪个功能」。这样无论站点是否受控，返回键都真实可用。
+  const [opened, setOpened] = useState<string | null>(null);
+  const isOpened = opened !== null;
 
   const openFn = (id: string) => {
     setOpened(id);
