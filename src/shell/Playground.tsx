@@ -63,6 +63,14 @@ type Tab = "app" | "skill" | "organization" | "workflow";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
+/** renderBoard 的注入选项：消费端的画布通过 onEditingChange 告诉外壳「现在是否在
+ *  编辑器里」——编辑器（打开了某个具体 organization/workflow）时外壳隐藏标题+tab，
+ *  和打开 app/agent 时一致（操作员 2026-06-24）。 */
+export interface PlaygroundBoardCtx {
+  kind: PlaygroundBoardKind;
+  onEditingChange: (editing: boolean) => void;
+}
+
 export function PlaygroundDetail({
   siteOrigin,
   accent = "#0ea5e9",
@@ -75,7 +83,7 @@ export function PlaygroundDetail({
    * 渲染 organization / workflow 编排画布。由消费端注入（持有 React Flow 依赖）。
    * 不传 → 这两个分区显示「即将开放」占位。
    */
-  renderBoard?: (kind: PlaygroundBoardKind) => ReactNode;
+  renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
@@ -84,6 +92,8 @@ export function PlaygroundDetail({
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
+  // organization/workflow 画布是否进了编辑器（进了就隐藏标题+tab，全屏编辑）。
+  const [boardEditing, setBoardEditing] = useState(false);
 
   // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
   const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
@@ -205,16 +215,25 @@ export function PlaygroundDetail({
     );
   }
 
-  // ── organization / workflow 分区：整页编排画布（消费端注入 React Flow） ──
+  // ── organization / workflow 分区：目录页（标题+intro+tab 常驻）↔ 编辑器（全屏） ──
+  //   未进编辑器：和 app/agent 目录页一样，顶部保留 Playground 标题 + intro + tab 条。
+  //   进了编辑器（打开某个具体 organization/workflow）：隐藏标题+tab，全屏编辑（与
+  //   打开 app/agent 时一致）——由消费端画布经 onEditingChange 通知（操作员 2026-06-24）。
   if (tab === "organization" || tab === "workflow") {
+    // 关键：board 在「目录↔编辑器」两态下必须挂在**同一树位置**，否则会因父节点
+    // 结构变化而 remount、丢掉 openOrg → 死循环。所以标题+tab 用 `hidden` 收起，
+    // 而不是从树里摘掉 board（操作员 2026-06-24）。
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className="shrink-0 px-6 pt-6">
-          <PlaygroundTabs tab={tab} setTab={setTab} />
+        <div className={`shrink-0 px-6 pt-8 ${boardEditing ? "hidden" : ""}`}>
+          <PlaygroundHeader />
+          <div className="mt-6">
+            <PlaygroundTabs tab={tab} setTab={setTab} />
+          </div>
         </div>
         <div className="min-h-0 flex-1">
           {renderBoard ? (
-            renderBoard(tab)
+            renderBoard({ kind: tab, onEditingChange: setBoardEditing })
           ) : (
             <div className="grid h-full place-items-center p-8 text-center text-[13px] text-neutral-400">
               {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
@@ -229,10 +248,7 @@ export function PlaygroundDetail({
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
       <div className="mb-5">
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
-        <p className="mt-1 text-[13px] text-neutral-500">
-          挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
-        </p>
+        <PlaygroundHeader />
       </div>
 
       <div className="mb-6">
@@ -268,6 +284,19 @@ export function PlaygroundDetail({
         />
       )}
     </div>
+  );
+}
+
+// Playground 标题 + 一句话介绍。操作员 2026-06-24：打开 organization / workflow 目录
+// 时这段文案不能消失，所以抽成共用组件，目录页与 org/workflow 分区都渲染它。
+function PlaygroundHeader() {
+  return (
+    <>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
+      <p className="mt-1 text-[13px] text-neutral-500">
+        挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
+      </p>
+    </>
   );
 }
 

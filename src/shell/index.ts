@@ -25,7 +25,7 @@ export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 // doctrine v8：Playground（右侧主区：app/agent/organization/workflow 四分区 + 目录 +
 // 内嵌 + 返回）。organization/workflow 画布由消费端经 renderBoard 注入。
 export { PlaygroundSubNav, PlaygroundDetail, BackButton } from "./Playground";
-export type { PlaygroundBoardKind } from "./Playground";
+export type { PlaygroundBoardKind, PlaygroundBoardCtx } from "./Playground";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。
@@ -47,7 +47,7 @@ export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
-export { SplitWorkspace } from "./SplitWorkspace";
+export { SplitWorkspace, useLeftPaneSlot } from "./SplitWorkspace";
 export type { SplitWorkspaceProps } from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";

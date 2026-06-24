@@ -345,7 +345,9 @@ export function OperatorConsole({
 
   // 中列 = 当前功能的操作流（功能按键条已上移到顶栏）。
   // key 用 active.id：切功能时重置该功能操作流内部状态。
-  const ops = <div key={active?.id}>{active?.ops}</div>;
+  // h-full：让 agent/chat 形态（FunctionAgentChat 的 `flex h-full flex-col`）能撑满
+  // 左栏整高、把输入框压到最底（操作员 2026-06-24：输入框原来浮在半空）。
+  const ops = <div key={active?.id} className="h-full">{active?.ops}</div>;
 
   // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏
   // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏

@@ -103,7 +103,9 @@ export function FunctionAgentChat({
   // （SplitWorkspace 的左栏 PaneHeader），不再在栏体内放一个会与「操作台」标题
   // 文字重复的 pill。若不在 SplitWorkspace 内（slot 为 null），回退到栏体内嵌。
   const slot = useLeftPaneSlot();
-  const TAB_LABEL: Record<FnTab, string> = { ops: opsLabel, agent: "agent", skill: "skill" };
+  // 第三形态「skill」面向用户正名为「chat」（纯聊天）。内部值仍叫 skill（不破坏技术
+  // 标识层 / mode=skill 接口契约），只改标签 + 文案（操作员 2026-06-24）。
+  const TAB_LABEL: Record<FnTab, string> = { ops: opsLabel, agent: "agent", skill: "chat" };
   const toggle = (
     <div className="inline-flex rounded-lg bg-stone-100 p-0.5 text-[13px]">
       {(["ops", "agent", "skill"] as const).map((t) => (
@@ -227,7 +229,7 @@ export function FunctionAgentChat({
         const msg =
           r.status === 401
             ? isSkill
-              ? "登录后即可使用 skill。"
+              ? "登录后即可使用 chat。"
               : "登录后即可使用 agent。"
             : r.error || "创建失败";
         setError(msg);
@@ -290,7 +292,7 @@ export function FunctionAgentChat({
               <p className="py-8 text-center text-sm text-stone-400">
                 {isSkillTab ? (
                   <>
-                    跟「{schema.title}」skill 直接聊聊，
+                    跟「{schema.title}」直接 chat，
                     <br />答疑、出主意、给建议（不会动左侧操作台）。
                   </>
                 ) : (
@@ -306,7 +308,7 @@ export function FunctionAgentChat({
             ))}
             {running && (
               <div className="flex items-center gap-2 text-[13px] text-stone-400">
-                <span className="v-spinner" /> {isSkillTab ? "skill" : "agent"} 正在处理…
+                <span className="v-spinner" /> {isSkillTab ? "chat" : "agent"} 正在处理…
               </div>
             )}
             {error && <p className="text-[13px] text-rose-500">{error}</p>}
@@ -335,7 +337,7 @@ export function FunctionAgentChat({
               }
               placeholder={
                 isSkillTab
-                  ? `跟「${schema.title}」skill 聊聊…`
+                  ? `跟「${schema.title}」chat 聊聊…`
                   : `让 agent 帮你做「${schema.title}」…`
               }
               rows={1}

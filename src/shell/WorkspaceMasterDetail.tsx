@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { BackButton, type PlaygroundBoardKind } from "./Playground";
+import { BackButton, type PlaygroundBoardCtx } from "./Playground";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 
 // ----------------------------------------------------------------------------
@@ -220,11 +220,12 @@ export function WorkspaceDetail({
   /** 「网站」分区要列的站点（主站传全家桶 SITES）。 */
   sites?: WorkspaceSiteItem[];
   /** organization / workflow 编排画布（消费端注入；不传 → 这两 tab 隐藏）。 */
-  renderBoard?: (kind: PlaygroundBoardKind) => ReactNode;
+  renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
 }) {
   const { mine, loading } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
   const [tab, setTab] = useState<WorkspaceTab>("app");
+  const [boardEditing, setBoardEditing] = useState(false);
 
   const myApps = useMemo(() => mine.filter((a) => (a.site_id || "") !== SKILL_SITE_ID), [mine]);
   const mySkills = useMemo(() => mine.filter((a) => (a.site_id || "") === SKILL_SITE_ID), [mine]);
@@ -321,12 +322,20 @@ export function WorkspaceDetail({
     );
   }
 
-  // ── organization / workflow 分区：整页编排画布（消费端注入 React Flow） ──
+  // ── organization / workflow 分区：目录页（标题+tab 常驻）↔ 编辑器（全屏） ──
+  // board 在「目录↔编辑器」两态下挂在同一树位置（标题用 hidden 收起，不摘 board），
+  // 否则 remount 丢 openOrg → 死循环（操作员 2026-06-24）。
   if (renderBoard && (tab === "organization" || tab === "workflow")) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className="shrink-0 px-6 pt-6">{tabsBar}</div>
-        <div className="min-h-0 flex-1">{renderBoard(tab)}</div>
+        <div className={`shrink-0 px-6 pt-8 ${boardEditing ? "hidden" : ""}`}>
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
+          <p className="mt-1 text-[13px] text-neutral-500">
+            你加入的 <b>网站 / app / agent</b>，点开即用；或在 <b>organization / workflow</b> 里搭一支会协作的 agent 团队。
+          </p>
+          <div className="mt-6">{tabsBar}</div>
+        </div>
+        <div className="min-h-0 flex-1">{renderBoard({ kind: tab, onEditingChange: setBoardEditing })}</div>
       </div>
     );
   }
