@@ -322,20 +322,20 @@ export function WorkspaceDetail({
     );
   }
 
-  // ── organization / workflow 分区：目录页（标题+tab 常驻）↔ 编辑器（全屏） ──
-  // board 在「目录↔编辑器」两态下挂在同一树位置（标题用 hidden 收起，不摘 board），
-  // 否则 remount 丢 openOrg → 死循环（操作员 2026-06-24）。
+  // ── organization / workflow 分区：与「网站/app/agent」目录同一套外层版式（不上移）。
+  //   编辑器由消费端 EditorInner 以 `fixed inset-0` 全屏覆盖在上层；board 始终挂在
+  //   同一树位置（不 remount）。
   if (renderBoard && (tab === "organization" || tab === "workflow")) {
     return (
-      <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className={`shrink-0 px-6 pt-8 ${boardEditing ? "hidden" : ""}`}>
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
           <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
           <p className="mt-1 text-[13px] text-neutral-500">
             你加入的 <b>网站 / app / agent</b>，点开即用；或在 <b>organization / workflow</b> 里搭一支会协作的 agent 团队。
           </p>
-          <div className="mt-6">{tabsBar}</div>
         </div>
-        <div className="min-h-0 flex-1">{renderBoard({ kind: tab, onEditingChange: setBoardEditing })}</div>
+        <div className="mb-6">{tabsBar}</div>
+        {renderBoard({ kind: tab, onEditingChange: setBoardEditing })}
       </div>
     );
   }

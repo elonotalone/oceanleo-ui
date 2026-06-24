@@ -215,31 +215,26 @@ export function PlaygroundDetail({
     );
   }
 
-  // ── organization / workflow 分区：目录页（标题+intro+tab 常驻）↔ 编辑器（全屏） ──
-  //   未进编辑器：和 app/agent 目录页一样，顶部保留 Playground 标题 + intro + tab 条。
-  //   进了编辑器（打开某个具体 organization/workflow）：隐藏标题+tab，全屏编辑（与
-  //   打开 app/agent 时一致）——由消费端画布经 onEditingChange 通知（操作员 2026-06-24）。
+  // ── organization / workflow 分区：目录页与 app/agent **完全同一套外层版式**
+  //   （mx-auto max-w-6xl px-6 py-8），所以切 tab 时标题/卡片位置纹丝不动、不上移。
+  //   进编辑器时，消费端的 EditorInner 自己用 `fixed inset-0` 全屏覆盖在上层——
+  //   目录页面流不被打扰，board 也始终挂在同一树位置（不 remount）。
   if (tab === "organization" || tab === "workflow") {
-    // 关键：board 在「目录↔编辑器」两态下必须挂在**同一树位置**，否则会因父节点
-    // 结构变化而 remount、丢掉 openOrg → 死循环。所以标题+tab 用 `hidden` 收起，
-    // 而不是从树里摘掉 board（操作员 2026-06-24）。
     return (
-      <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className={`shrink-0 px-6 pt-8 ${boardEditing ? "hidden" : ""}`}>
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
           <PlaygroundHeader />
-          <div className="mt-6">
-            <PlaygroundTabs tab={tab} setTab={setTab} />
+        </div>
+        <div className="mb-6">
+          <PlaygroundTabs tab={tab} setTab={setTab} />
+        </div>
+        {renderBoard ? (
+          renderBoard({ kind: tab, onEditingChange: setBoardEditing })
+        ) : (
+          <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
+            {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
           </div>
-        </div>
-        <div className="min-h-0 flex-1">
-          {renderBoard ? (
-            renderBoard({ kind: tab, onEditingChange: setBoardEditing })
-          ) : (
-            <div className="grid h-full place-items-center p-8 text-center text-[13px] text-neutral-400">
-              {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
-            </div>
-          )}
-        </div>
+        )}
       </div>
     );
   }
