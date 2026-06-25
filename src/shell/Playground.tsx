@@ -216,35 +216,59 @@ export function PlaygroundDetail({
   }
 
   // ── organization / workflow 分区 ──
-  //   目录页：与 app/agent **完全同一套外层版式**（mx-auto max-w-6xl px-6 py-8），
-  //     切 tab 时标题/卡片位置纹丝不动、不上移。
+  //   目录页（boardEditing=false）：与 app/agent **完全同一套外层版式**
+  //     （mx-auto max-w-6xl px-6 py-8 + 标题 + tab），切 tab 时位置纹丝不动。
   //   编辑器（boardEditing=true）：换成**全宽满高**外层（h-[calc(100dvh-1px)]，无
   //     max-w / padding / 标题 / tab），编辑器铺满 <main> 区。<main> 本身就在侧栏
-  //     右侧，所以**左侧侧栏始终在**（操作员 2026-06-24：之前编辑器用 fixed inset-0
-  //     盖住了整屏含侧栏，要求侧栏默认不消失）。board 始终挂在同一树位置（不 remount）。
+  //     右侧，所以左侧侧栏始终在。
+  //
+  //   关键（2026-06-25 修「点卡片闪一下打不开」）：**board 必须挂在同一棵树的同一
+  //   位置、同一 key**，否则 boardEditing 翻转时整段 <OrgWorkflowBoard> 会 unmount /
+  //   remount——它内部刚 setOpenOrg(card) 的状态被清回 null，于是「打开编辑器 →
+  //   立刻被重挂回目录」造成闪烁、永远打不开。之前用两个 early-return 返回**结构
+  //   不同**的两棵树（目录页 board 在第 3 个子节点，编辑页 board 在唯一子节点），
+  //   React 按位置 diff 判定类型变化 → 强制 remount。现在统一成**一棵树**：外层 div
+  //   的 className 随 boardEditing 切换，标题 + tab 仅在非编辑态渲染，board 永远是
+  //   最后一个子节点、位置恒定，从而不再 remount。
   if (tab === "organization" || tab === "workflow") {
-    if (boardEditing) {
+    if (!renderBoard) {
       return (
-        <div className="h-[calc(100dvh-1px)] w-full">
-          {renderBoard?.({ kind: tab, onEditingChange: setBoardEditing })}
+        <div className="mx-auto w-full max-w-6xl px-6 py-8">
+          <div className="mb-5">
+            <PlaygroundHeader />
+          </div>
+          <div className="mb-6">
+            <PlaygroundTabs tab={tab} setTab={setTab} />
+          </div>
+          <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
+            {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
+          </div>
         </div>
       );
     }
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <PlaygroundHeader />
-        </div>
-        <div className="mb-6">
-          <PlaygroundTabs tab={tab} setTab={setTab} />
-        </div>
-        {renderBoard ? (
-          renderBoard({ kind: tab, onEditingChange: setBoardEditing })
-        ) : (
-          <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
-            {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
-          </div>
+      <div
+        className={
+          boardEditing
+            ? "h-[calc(100dvh-1px)] w-full"
+            : "mx-auto w-full max-w-6xl px-6 py-8"
+        }
+      >
+        {!boardEditing && (
+          <>
+            <div className="mb-5">
+              <PlaygroundHeader />
+            </div>
+            <div className="mb-6">
+              <PlaygroundTabs tab={tab} setTab={setTab} />
+            </div>
+          </>
         )}
+        {/* board 永远是该 div 的最后一个子节点：boardEditing 翻转时它的相对位置不变，
+            React 复用同一实例（不 remount），编辑器内部 openOrg 状态得以保留。 */}
+        <div key={`board-${tab}`} className={boardEditing ? "h-full" : ""}>
+          {renderBoard({ kind: tab, onEditingChange: setBoardEditing })}
+        </div>
       </div>
     );
   }
