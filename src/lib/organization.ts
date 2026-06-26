@@ -26,6 +26,15 @@ export interface OrgGraphNode {
   agent_id: string;
   x: number;
   y: number;
+  /**
+   * doctrine v11（2026-06-26）：workflow 步骤节点扩展（均可选，老图照常）。
+   *   kind="step"(默认) | "gate"(人工确认门)；
+   *   title 步骤名；instruction 该步给 agent 的指令；gate_prompt 确认门给用户看的话。
+   */
+  kind?: "step" | "gate";
+  title?: string;
+  instruction?: string;
+  gate_prompt?: string;
 }
 export interface OrgGraphEdge {
   source: string;
@@ -131,6 +140,27 @@ export function runOrganization(id: string, prompt: string, agentModel?: string)
     {
       method: "POST",
       body: JSON.stringify({ prompt, agent_model: agentModel || "" }),
+    },
+  );
+}
+
+/**
+ * doctrine v11（2026-06-26）：继续一个停在「人工确认门」的 workflow 任务。
+ *   decision="approve" → 从该门下游继续执行；"reject" → 在此结束。
+ *   feedback 可选（用户在确认门写下的意见，会作为下游步骤的上下文）。
+ * 后端据 task_id 反查其 organization_id（workflow），从门的下游继续驱动。
+ */
+export function resumeWorkflow(
+  taskId: string,
+  decision: "approve" | "reject" = "approve",
+  feedback = "",
+  agentModel = "",
+) {
+  return authed<{ task_id: string; status: string }>(
+    `/v1/organizations/run/${encodeURIComponent(taskId)}/resume`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision, feedback, agent_model: agentModel }),
     },
   );
 }

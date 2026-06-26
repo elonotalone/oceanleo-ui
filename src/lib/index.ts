@@ -2,6 +2,8 @@ export * from "./auth";
 export * from "./database";
 export * from "./agent";
 export * from "./organization";
+// doctrine v11：通用 AI 智能推荐（app/agent/org/workflow 四分区共用）。
+export * from "./recommend";
 export * from "./fn-agent";
 export * from "./embed";
 // 宗旨 v4：Agent Manifest（可迁移操作台）+ 能力 SDK + manifest 拉取/上架。

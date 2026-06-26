@@ -26,6 +26,11 @@ export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 // 内嵌 + 返回）。organization/workflow 画布由消费端经 renderBoard 注入。
 export { PlaygroundSubNav, PlaygroundDetail, BackButton } from "./Playground";
 export type { PlaygroundBoardKind, PlaygroundBoardCtx } from "./Playground";
+// doctrine v11：通用 AI 智能推荐输入框（四分区共用）+ 卡片详情弹窗（WorkBuddy 式）。
+export { AiRecommendBox } from "./AiRecommendBox";
+export type { AiRecommendBoxProps } from "./AiRecommendBox";
+export { ItemDetailModal } from "./ItemDetailModal";
+export type { ItemDetailModalProps } from "./ItemDetailModal";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。

@@ -20,8 +20,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ModelPicker } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { AiRecommendBox } from "./AiRecommendBox";
+import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
+import type { ItemRecommendation } from "../lib/recommend";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
@@ -111,25 +114,47 @@ export function PlaygroundDetail({
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   // organization/workflow 画布是否进了编辑器（进了就隐藏标题+tab，全屏编辑）。
   const [boardEditing, setBoardEditing] = useState(false);
+  // doctrine v11：点卡片先弹详情弹窗（WorkBuddy 式），点「召唤」才进内嵌功能区。
+  const [detailId, setDetailId] = useState<string>("");
+  // doctrine v11：AI 推荐命中的 id 顺序（置顶高亮）；空 = 未推荐，显示全部。
+  const [recIds, setRecIds] = useState<string[] | null>(null);
 
   // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
   const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
   const skillAgents = useMemo(() => agents.filter((a) => (a.site_id || "") === SKILL_APP_ID), [agents]);
   const list = tab === "app" ? appAgents : skillAgents;
 
-  const items: DirectoryItem[] = useMemo(
-    () =>
-      list.map<DirectoryItem>((a) => ({
-        id: a.agent_id,
-        name: a.name,
-        tagline: a.tagline,
-        capabilities: a.capabilities,
-        icon: a.icon,
-        accent,
-        site_id: a.site_id,
-        category: a.category,
-      })),
-    [list, accent],
+  const items: DirectoryItem[] = useMemo(() => {
+    const base = list.map<DirectoryItem>((a) => ({
+      id: a.agent_id,
+      name: a.name,
+      tagline: a.tagline,
+      capabilities: a.capabilities,
+      icon: a.icon,
+      accent,
+      site_id: a.site_id,
+      category: a.category,
+    }));
+    // AI 推荐命中时，把命中项按匹配度置顶（其余保持原序）。
+    if (recIds && recIds.length) {
+      const rank = new Map(recIds.map((id, i) => [id, i]));
+      return [...base].sort((x, y) => {
+        const rx = rank.has(x.id) ? rank.get(x.id)! : Number.MAX_SAFE_INTEGER;
+        const ry = rank.has(y.id) ? rank.get(y.id)! : Number.MAX_SAFE_INTEGER;
+        return rx - ry;
+      });
+    }
+    return base;
+  }, [list, accent, recIds]);
+
+  // 切 tab 时清掉推荐高亮（不同分区候选集不同）。
+  useEffect(() => {
+    setRecIds(null);
+  }, [tab]);
+
+  const detailAgent = useMemo(
+    () => agents.find((a) => a.agent_id === detailId) || null,
+    [agents, detailId],
   );
 
   // agent 分区：第一张卡固定「＋ 新建」（创建自己的 agent，与别处一致）。leadingCards
@@ -317,6 +342,31 @@ export function PlaygroundDetail({
         <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
       </div>
 
+      {/* doctrine v11：AI 智能推荐（按分区定制文案，候选 = 当前分区全部条目）。 */}
+      <AiRecommendBox
+        candidates={items.map((it) => ({
+          id: it.id,
+          name: it.name,
+          tagline: it.tagline,
+          capabilities: it.capabilities,
+          category: it.category,
+        }))}
+        kindLabel={tab === "app" ? "app" : "agent"}
+        placeholder={
+          tab === "app"
+            ? "说说你想做什么，AI 帮你推荐最合适的 app…  例如：帮我做一份简历"
+            : "说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品"
+        }
+        examples={
+          tab === "app"
+            ? ["帮我做一份求职简历", "给商品做主图和卖点", "把录音整理成纪要"]
+            : ["帮我写一份商业计划", "做竞品分析", "优化我的小红书文案"]
+        }
+        accent={accent}
+        onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
+        onClear={() => setRecIds(null)}
+      />
+
       <AppDirectory
         items={items}
         leadingCards={agentLeadingCards}
@@ -326,12 +376,37 @@ export function PlaygroundDetail({
         emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 agent。"}
         onOpen={(it) => {
           if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
-          else setActiveId(it.id);
+          else setDetailId(it.id); // 先弹详情弹窗，点「召唤」才进入内嵌功能区
         }}
         // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
         nativeLabel="按技能"
       />
+
+      {/* doctrine v11：卡片详情弹窗（WorkBuddy 式）。点「召唤」→ 进入内嵌功能区。 */}
+      {detailAgent && (
+        <ItemDetailModal
+          open
+          onClose={() => setDetailId("")}
+          name={detailAgent.name}
+          icon={detailAgent.icon}
+          tagline={detailAgent.tagline}
+          capabilities={detailAgent.capabilities || detailAgent.tagline}
+          tags={[tab === "app" ? "app" : "agent", detailAgent.category || ""].filter(Boolean)}
+          strengths={(detailAgent.capabilities || "")
+            .split(/[、,，;；]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 4)}
+          launchLabel="召唤"
+          accent={accent}
+          onLaunch={() => {
+            const id = detailAgent.agent_id;
+            setDetailId("");
+            setActiveId(id);
+          }}
+        />
+      )}
 
       {showCreateAgent && (
         <CreateSkillModal
