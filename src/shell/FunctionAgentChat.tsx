@@ -30,7 +30,9 @@ import {
   createTask,
   followUp,
   getTask,
+  latestArtifact,
   type AgentMessage,
+  type ArtifactMeta,
 } from "../lib/agent";
 import type { OpsPatch, OpsSchema } from "../lib/fn-agent";
 
@@ -47,6 +49,11 @@ export interface FunctionAgentChatProps {
   getOpsState: () => Record<string, unknown>;
   /** 把 agent 产出的补丁应用到真实操作台 state。 */
   onApplyPatch: (patch: OpsPatch) => void;
+  /**
+   * agent 产出「分屏产物」(artifact，如生成的图片 / 文档) 时回报给宿主，让右侧结果
+   * 画布把它显示出来。修掉「app 里用 agent 生成的图片只进历史、右栏不显示」的 bug
+   * （操作员 2026-06-26）。 */
+  onArtifact?: (artifact: ArtifactMeta, content: string) => void;
   /** 触发某操作台动作（如 generate / export-pdf）。run=frontend 时各站自己执行。 */
   onRunAction?: (actionId: string) => void;
   /** 文本模型复合 key（来自 ModelPicker）。 */
@@ -75,6 +82,7 @@ export function FunctionAgentChat({
   opsContent,
   getOpsState,
   onApplyPatch,
+  onArtifact,
   onRunAction,
   agentModel = "",
   accent = "#4f46e5",
@@ -98,6 +106,7 @@ export function FunctionAgentChat({
   const [skillOverride, setSkillOverride] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef<Set<number>>(new Set());
+  const reportedArtifactRef = useRef<string>("");
 
   // doctrine v3（2026-06-21）：把「操作台 | agent」开关装到**左栏标题位置**
   // （SplitWorkspace 的左栏 PaneHeader），不再在栏体内放一个会与「操作台」标题
@@ -200,6 +209,20 @@ export function FunctionAgentChat({
       }
     }
   }, [messages, onApplyPatch, onRunAction]);
+
+  // 把 agent 线程里**最新的 artifact**（生成的图片 / 文档…）回报给宿主 → 右侧结果画布
+  // 显示它。这是修复「app 里让 agent 生成图片，右栏不显示、只能在历史看到」的关键：
+  // 图片生成走 artifact 消息（meta.artifact.url），而不一定带 ops_patch，所以单靠
+  // ops_patch 永远填不进结果区。这里用 latestArtifact 兜住所有 artifact 形态。
+  useEffect(() => {
+    if (!onArtifact) return;
+    const a = latestArtifact(messages);
+    if (!a) return;
+    const sig = `${a.meta.type}:${a.meta.url || ""}:${a.content.slice(0, 64)}`;
+    if (reportedArtifactRef.current === sig) return;
+    reportedArtifactRef.current = sig;
+    onArtifact(a.meta, a.content);
+  }, [messages, onArtifact]);
 
   async function send() {
     const prompt = input.trim();

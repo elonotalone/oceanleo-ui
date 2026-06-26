@@ -249,7 +249,9 @@ export function AgentChat({
       right={right}
       leftLabel={splitLeftLabel}
       rightLabel={ARTIFACT_LABEL[art.meta.type] || art.meta.title || "结果"}
-      defaultRatio={1 / 3}
+      // 推理（AI 推导）合理展开：左栏默认占比从 1/3 提到 0.46——推理过程更宽更可读，
+      // 又不至于完全占满（右栏结果仍有空间）。用户可拖动竖线进一步调整并记忆。
+      defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
       headerHeight={headerHeight}

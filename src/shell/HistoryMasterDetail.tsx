@@ -79,17 +79,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const [sel, setSel] = useWorkspaceSelection("history");
   const [pending, setPending] = useState<AgentTask | null>(null);
 
+  // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列历史记录本身。
   return (
     <div className="space-y-0.5">
-      {/* 顶部模型选择（5 模态）—— 与各 app 顶栏一致。回看时若用户追问，用所选模型。 */}
-      <div className="mb-1 flex items-center justify-end border-b border-neutral-100 px-1 pb-2">
-        <ModelPicker
-          categories={["text", "image", "video", "threed", "audio"]}
-          siteId={siteId || "history"}
-          variant="popover"
-          align="right"
-        />
-      </div>
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{error}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载…</p>}
       {!error && !loading && items.length === 0 && (
@@ -170,16 +162,46 @@ export function HistoryDetail({
   appNames?: Record<string, string>;
 }) {
   const [sel] = useWorkspaceSelection("history");
+  // 主区右上角模型选择（5 模态，popover）——回看时若用户追问，用所选「文本」模型。
+  // 这是模型选择的唯一落点（与各 app 顶栏一致），不再放在左侧子栏里。
+  const [agentModel, setAgentModel] = useState("");
+  const modelBar = (
+    <div className="flex shrink-0 items-center justify-end border-b border-neutral-100 px-3 py-2">
+      <ModelPicker
+        categories={["text", "image", "video", "threed", "audio"]}
+        siteId={siteId || "history"}
+        variant="popover"
+        align="right"
+        onChange={(cat, m) => {
+          if (cat === "text") setAgentModel(m.key);
+        }}
+      />
+    </div>
+  );
   if (!sel) {
     return (
-      <div className="grid h-[calc(100dvh-1px)] place-items-center p-8 text-center text-[13px] text-neutral-400">
-        在左侧选择一条历史记录，即可在此回看该次对话与产出。
+      <div className="flex h-[calc(100dvh-1px)] flex-col">
+        {modelBar}
+        <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-neutral-400">
+          在左侧选择一条历史记录，即可在此回看该次对话与产出。
+        </div>
       </div>
     );
   }
   return (
-    <div className="h-[calc(100dvh-1px)]">
-      <AgentChat key={sel} siteId={siteId} taskId={sel} accent={accent} headerHeight={0} appNames={appNames} />
+    <div className="flex h-[calc(100dvh-1px)] flex-col">
+      {modelBar}
+      <div className="min-h-0 flex-1">
+        <AgentChat
+          key={sel}
+          siteId={siteId}
+          taskId={sel}
+          agentModel={agentModel}
+          accent={accent}
+          headerHeight={49}
+          appNames={appNames}
+        />
+      </div>
     </div>
   );
 }
@@ -216,17 +238,9 @@ export function PendingSubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const [sel, setSel] = useWorkspaceSelection("history");
   const [pending, setPending] = useState<AgentTask | null>(null);
 
+  // 模型选择已移到主区右上角（PendingDetail/HistoryDetail），侧栏子栏只列任务本身。
   return (
     <div className="space-y-0.5">
-      {/* 顶部模型选择（5 模态）—— 与各 app 顶栏一致。 */}
-      <div className="mb-1 flex items-center justify-end border-b border-neutral-100 px-1 pb-2">
-        <ModelPicker
-          categories={["text", "image", "video", "threed", "audio"]}
-          siteId={siteId || "pending"}
-          variant="popover"
-          align="right"
-        />
-      </div>
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{error}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载…</p>}
       {!error && !loading && items.length === 0 && (

@@ -191,6 +191,19 @@ function ManifestPane({
     [],
   );
 
+  // agent 线程产出 artifact（图片 / 文档…）→ 写进结果字段，让右侧画布显示它。
+  // 图片：值 = url(s)（image-grid 渲染）；其它：值 = markdown 内容。这样在 app 里用
+  // agent 生成的图片/文档也会在右栏出现，而不再只进历史（操作员 2026-06-26）。
+  const applyArtifact = useCallback(
+    (meta: { type: string; url?: string }, content: string) => {
+      const key = con.action.output.key;
+      const value = meta.type === "image" && meta.url ? meta.url : content;
+      if (!value) return;
+      setState((s) => ({ ...s, [key]: value }));
+    },
+    [con.action.output.key],
+  );
+
   const runGenerate = useCallback(async () => {
     if (!hasOpsForm) return;
     setError(null);
@@ -305,6 +318,7 @@ function ManifestPane({
       opsContent={opsContent}
       getOpsState={() => state}
       onApplyPatch={applyPatch}
+      onArtifact={applyArtifact}
       appLabel={m.name}
       appIcon={typeof m.icon === "string" ? m.icon : undefined}
     />
@@ -446,6 +460,24 @@ function ResultView({
   if (!has) return <CanvasEmpty title={emptyTitle} hint={emptyHint} />;
 
   const urls = String(value).split("\n").filter(Boolean);
+
+  // 鲁棒兜底：值本身就是图片 URL(s) 时，无论 manifest 声明的 render 是什么都按图片渲染。
+  // 这样 agent 生成的图片即便落进一个声明为 editable-text 的结果字段，也会正常显示成图片
+  // （而不是把一串 URL 当纯文本显示）。
+  const looksLikeImage =
+    urls.length > 0 &&
+    urls.every((u) => /^https?:\/\//i.test(u) && /\.(jpg|jpeg|png|gif|webp|avif)(\?|$)/i.test(u));
+  if (looksLikeImage && render !== "image-grid") {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {urls.map((u) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={u} src={u} alt="" className="w-full rounded-xl border border-stone-200" />
+        ))}
+      </div>
+    );
+  }
+
   switch (render) {
     case "markdown":
       return (
