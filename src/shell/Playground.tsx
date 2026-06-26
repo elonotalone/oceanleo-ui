@@ -13,6 +13,8 @@
 //     技术标识层不改；只改面向用户的标签 / 文案）。
 //   - 点一个条目 → 右侧整页换成它的内嵌功能区（iframe），右上角出现「← 返回」回到
 //     目录页；顶部一条全模态 ModelPicker（作用域仅 playground）+「放入工作台」。
+//   - doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（站卡片 + AI 智能推荐）
+//     并入这里，成为第一个 tab。站点清单由消费端经 renderSites 注入，/all-sites 路由删除。
 // ============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -59,7 +61,10 @@ function useAgents(refreshKey = 0): { agents: AgentDef[]; loading: boolean } {
 //   workflow    ：流程编排图（可导入 organization、可直接导入单个 agent）。
 // 这两块的重型画布（React Flow grid-snap）由消费端（oceanleo 主站）通过 renderBoard
 // 注入——这样 @xyflow/react 依赖只落在主站，不强加给全部 @oceanleo/ui 消费站。
-type Tab = "app" | "skill" | "organization" | "workflow";
+// doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（全家桶站卡片 + AI 智能推荐）
+//   并入 playground，成为第一个 tab。站点清单 + 推荐网关是消费端 lib/sites 的事，所以
+//   由消费端通过 renderSites 注入（与 renderBoard 同一范式），不把 SITES 耦合进本包。
+type Tab = "site" | "app" | "skill" | "organization" | "workflow";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
@@ -69,12 +74,18 @@ export type PlaygroundBoardKind = "organization" | "workflow";
 export interface PlaygroundBoardCtx {
   kind: PlaygroundBoardKind;
   onEditingChange: (editing: boolean) => void;
+  /**
+   * doctrine v10（2026-06-26）：工作台只展示用户已加入的——传 true 时 board 目录页
+   * 只列「我的」organization/workflow（隐藏预设模板）。playground 不传（= 全部含预设）。
+   */
+  mineOnly?: boolean;
 }
 
 export function PlaygroundDetail({
   siteOrigin,
   accent = "#0ea5e9",
   renderBoard,
+  renderSites,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
@@ -84,10 +95,16 @@ export function PlaygroundDetail({
    * 不传 → 这两个分区显示「即将开放」占位。
    */
   renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
+  /**
+   * 渲染「网站」分区（全家桶站卡片 + AI 智能推荐 + 加入工作台）。由消费端注入
+   * （持有 lib/sites 站点清单 + /v1/recommend 网关）。不传 → 不显示「网站」tab。
+   */
+  renderSites?: () => ReactNode;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
-  const [tab, setTab] = useState<Tab>("app");
+  // 有「网站」分区时默认落在它（它是第一个 tab）；否则落 app。
+  const [tab, setTab] = useState<Tab>(renderSites ? "site" : "app");
   const [activeId, setActiveId] = useState<string>("");
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -215,6 +232,22 @@ export function PlaygroundDetail({
     );
   }
 
+  // ── 网站分区（doctrine v10）：全家桶站卡片 + AI 智能推荐，由消费端 renderSites 注入。
+  //   与 app/agent 目录同一套外层版式（mx-auto max-w-6xl + 标题 + tab）。
+  if (tab === "site" && renderSites) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
+          <PlaygroundHeader />
+        </div>
+        <div className="mb-6">
+          <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+        </div>
+        {renderSites()}
+      </div>
+    );
+  }
+
   // ── organization / workflow 分区 ──
   //   目录页（boardEditing=false）：与 app/agent **完全同一套外层版式**
   //     （mx-auto max-w-6xl px-6 py-8 + 标题 + tab），切 tab 时位置纹丝不动。
@@ -238,7 +271,7 @@ export function PlaygroundDetail({
             <PlaygroundHeader />
           </div>
           <div className="mb-6">
-            <PlaygroundTabs tab={tab} setTab={setTab} />
+            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
           </div>
           <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
             {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
@@ -260,7 +293,7 @@ export function PlaygroundDetail({
               <PlaygroundHeader />
             </div>
             <div className="mb-6">
-              <PlaygroundTabs tab={tab} setTab={setTab} />
+              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
             </div>
           </>
         )}
@@ -281,7 +314,7 @@ export function PlaygroundDetail({
       </div>
 
       <div className="mb-6">
-        <PlaygroundTabs tab={tab} setTab={setTab} />
+        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
       </div>
 
       <AppDirectory
@@ -323,21 +356,37 @@ function PlaygroundHeader() {
     <>
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
       <p className="mt-1 text-[13px] text-neutral-500">
-        挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
+        浏览全家桶 <b>网站</b>（或用 AI 智能推荐找站）、挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
       </p>
     </>
   );
 }
 
-function PlaygroundTabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+function PlaygroundTabs({
+  tab,
+  setTab,
+  hasSites,
+  hasBoard,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  hasSites?: boolean;
+  hasBoard?: boolean;
+}) {
+  const tabs = [
+    ...(hasSites ? [{ id: "site" as Tab, label: "网站" }] : []),
+    { id: "app" as Tab, label: "app" },
+    { id: "skill" as Tab, label: "agent" },
+    ...(hasBoard
+      ? [
+          { id: "organization" as Tab, label: "organization" },
+          { id: "workflow" as Tab, label: "workflow" },
+        ]
+      : []),
+  ];
   return (
     <div className="inline-flex rounded-xl bg-neutral-100 p-1">
-      {([
-        { id: "app", label: "app" },
-        { id: "skill", label: "agent" },
-        { id: "organization", label: "organization" },
-        { id: "workflow", label: "workflow" },
-      ] as const).map((t) => (
+      {tabs.map((t) => (
         <button
           key={t.id}
           type="button"

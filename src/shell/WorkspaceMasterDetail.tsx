@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // 「工作台」侧栏子栏（master）+ 主区详情（detail）：
 //   子栏 WorkspaceSubNav：列「我的 Agents」(= 功能区)，每项右侧带「删除」图标
-//     （从我的 Agents 移除，调 unsaveAgent）；底部「＋ 添加 agent」跳 /all-sites?tab=agent。
+//     （从我的 Agents 移除，调 unsaveAgent）；底部「＋ 添加 agent」跳 /playground。
 //   主区 WorkspaceDetail：选中 agent → iframe 内嵌该子站功能区
 //     (/workspace?embed=1&solo=1&fn=&agent=)；未选 → 兜底对话 AgentChat。
 //
@@ -100,7 +100,7 @@ function useMyAgents() {
 // ----------------------------------------------------------------------------
 export function WorkspaceSubNav({
   accent = "#0ea5e9",
-  addAgentHref = "/all-sites?tab=app",
+  addAgentHref = "/playground",
 }: {
   accent?: string;
   addAgentHref?: string;
@@ -118,7 +118,7 @@ export function WorkspaceSubNav({
       {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app / agent…</p>}
       {!loading && mine.length === 0 && (
         <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
-          还没有 app 或 agent。点下方「＋ 添加 app / agent」，从「全部应用」里挑选
+          还没有 app 或 agent。点下方「＋ 添加 app / agent」，到「Playground」里挑选
           app（能干活）或 agent（纯聊天）。
         </p>
       )}
@@ -200,12 +200,13 @@ export function WorkspaceDetail({
   siteOrigin,
   accent = "#0ea5e9",
   homeSiteId = "",
-  addAgentHref = "/all-sites?tab=app",
+  addAgentHref = "/playground",
   modelCategories = ["text", "image", "video", "threed", "audio"],
   modelSiteId = "oceanleo",
   apiHref = "/api",
   sites = [],
   renderBoard,
+  renderSites,
 }: {
   siteOrigin: Record<string, string>;
   accent?: string;
@@ -217,10 +218,19 @@ export function WorkspaceDetail({
   modelSiteId?: string;
   /** 模型选择下拉底部「管理模型」跳转。 */
   apiHref?: string;
-  /** 「网站」分区要列的站点（主站传全家桶 SITES）。 */
+  /**
+   * 「网站」分区要列的站点（已废弃，doctrine v10 改用 renderSites 注入「已加入」站）。
+   * 仅在未传 renderSites 时作为回退（列全部）。
+   */
   sites?: WorkspaceSiteItem[];
   /** organization / workflow 编排画布（消费端注入；不传 → 这两 tab 隐藏）。 */
   renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
+  /**
+   * doctrine v10（2026-06-26）：「网站」分区只列**用户已加入**的站。由消费端注入
+   * （持有 lib/sites + localStorage 收藏集），传 savedOnly=true 渲染已加入集。
+   * 不传 → 回退到 sites（全家桶全列，旧行为）。
+   */
+  renderSites?: () => ReactNode;
 }) {
   const { mine, loading } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
@@ -335,7 +345,8 @@ export function WorkspaceDetail({
           </p>
         </div>
         <div className="mb-6">{tabsBar}</div>
-        {renderBoard({ kind: tab, onEditingChange: setBoardEditing })}
+        {/* doctrine v10：工作台只列「我的」organization/workflow（隐藏预设模板）。 */}
+        {renderBoard({ kind: tab, onEditingChange: setBoardEditing, mineOnly: true })}
       </div>
     );
   }
@@ -357,7 +368,7 @@ export function WorkspaceDetail({
     <div className="grid place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-10 text-center">
       <div className="max-w-sm space-y-3">
         <p className="text-sm text-stone-500">
-          还没有{label}。从「全部应用」里挑选加入——
+          还没有{label}。到「Playground」里挑选加入——
           <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
           <br />· <b>agent</b> = 纯聊天助手，跟它对话答疑。
         </p>
@@ -366,7 +377,7 @@ export function WorkspaceDetail({
           className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
           style={{ background: accent }}
         >
-          ＋ 去全部应用挑选
+          ＋ 去 Playground 挑选
         </a>
       </div>
     </div>
@@ -392,16 +403,21 @@ export function WorkspaceDetail({
       <div className="mb-6">{tabsBar}</div>
 
       {tab === "site" ? (
-        <AppDirectory
-          items={siteItems}
-          accent={accent}
-          openLabel="打开"
-          emptyText="暂无网站。"
-          onOpen={(it) => {
-            const s = sites.find((x) => x.key === it.id);
-            if (s) window.open(s.href, "_blank", "noopener,noreferrer");
-          }}
-        />
+        // doctrine v10：只列用户已加入的站（renderSites savedOnly）。未注入则回退列全部。
+        renderSites ? (
+          renderSites()
+        ) : (
+          <AppDirectory
+            items={siteItems}
+            accent={accent}
+            openLabel="打开"
+            emptyText="暂无网站。"
+            onOpen={(it) => {
+              const s = sites.find((x) => x.key === it.id);
+              if (s) window.open(s.href, "_blank", "noopener,noreferrer");
+            }}
+          />
+        )
       ) : tab === "app" ? (
         loading ? (
           <AppDirectory items={[]} loading accent={accent} />
