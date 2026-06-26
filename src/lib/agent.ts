@@ -95,11 +95,24 @@ export interface AgentTask {
   mode: "agent" | "chat" | "skill" | string;
   plan?: unknown;
   favorite?: boolean;
+  /** 旧口径：整分累加（每次调用 ceil 到 ≥1 分，会虚高）。展示请优先用 nano_spent。 */
   credits_spent?: number;
+  /** 精确花费（nano-yuan, 1e-9 CNY）== 钱包真实扣款口径。展示口径的单一事实源。 */
+  nano_spent?: number;
+  /** 「待处理」语义：用户是否已查看过此任务（打开任务详情即置 true）。 */
+  seen?: boolean;
   /** 任务所属站点（驱动每站「历史记录」过滤）。空 = 主站 oceanleo.com。 */
   site_id?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+/** 任务花费 → 元（精确口径单一事实源）：优先 nano_spent，回退旧的整分 credits_spent。 */
+export function taskCostYuan(t: { nano_spent?: number; credits_spent?: number }): number {
+  if (typeof t.nano_spent === "number" && t.nano_spent > 0) {
+    return t.nano_spent / 1_000_000_000;
+  }
+  return (t.credits_spent ?? 0) / 100;
 }
 
 export interface TaskDetail {
@@ -368,10 +381,11 @@ export function getTask(taskId: string) {
  * - `siteId` 给了 → 只列该站的会话（每站「历史记录」用）。
  * - `siteId` 省略 / 空 → 列全部站的会话（主站 oceanleo.com hub 用）。
  */
-export function listTasks(limit = 50, siteId?: string) {
+export function listTasks(limit = 50, siteId?: string, pending = false) {
   const params = new URLSearchParams({ limit: String(limit) });
   const site = (siteId || "").trim();
   if (site) params.set("site_id", site);
+  if (pending) params.set("pending", "true");
   return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`);
 }
 
