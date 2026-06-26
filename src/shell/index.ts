@@ -37,7 +37,12 @@ export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 export { LeoAssistant, AiAssistant, openLeoAssistant, OPEN_LEO_EVENT } from "./LeoAssistant";
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
-export type { LeoComposerProps } from "./LeoComposer";
+export type {
+  LeoComposerProps,
+  ComposerRecentFile,
+  ComposerAttachment,
+  ComposerMenuItem,
+} from "./LeoComposer";
 // 标准输入卡片（= image 站「① 输入」规范：文字 + 上传/拖拽参考，二合一）。
 export { InputCard } from "./InputCard";
 export type { InputCardProps, InputAttachment } from "./InputCard";
