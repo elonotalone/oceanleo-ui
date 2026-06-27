@@ -33,6 +33,9 @@ export { ItemDetailModal } from "./ItemDetailModal";
 export type { ItemDetailModalProps } from "./ItemDetailModal";
 export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
+// Stage C：agent 引擎选择器（OceanLeo 原生 / 4 外部引擎 BYOK）。
+export { EnginePicker } from "./EnginePicker";
+export type { EnginePickerProps } from "./EnginePicker";
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。
 export { LeoAssistant, AiAssistant, openLeoAssistant, OPEN_LEO_EVENT } from "./LeoAssistant";
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";

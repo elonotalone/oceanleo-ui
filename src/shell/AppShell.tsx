@@ -21,6 +21,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import { EnginePicker } from "./EnginePicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
@@ -132,6 +133,11 @@ export interface AppShellProps {
   headerRight?: ReactNode;
   /** true 时隐藏顶部 header（业务页自带顶栏时用） */
   hideHeader?: boolean;
+  /** Stage C：true 时在模型选择旁渲染 agent 引擎选择器（OceanLeo 原生 / 4 外部
+   *  引擎 BYOK）。主站首页传 true。 */
+  showEnginePicker?: boolean;
+  /** 引擎选择变化回调（参数是引擎 id）。各站拿去在 createTask 时带 engine 字段。 */
+  onEngineChange?: (engineId: string) => void;
 }
 
 // doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
@@ -179,6 +185,8 @@ function AppShellInner({
   onModelSelectionChange,
   headerRight,
   hideHeader = false,
+  showEnginePicker = false,
+  onEngineChange,
 }: AppShellProps) {
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
@@ -512,7 +520,7 @@ function AppShellInner({
           <div className="flex min-w-0 flex-1 items-center gap-4">
             {renderBrand()}
             {showModelInHeader ? (
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
                 <ModelPicker
                   categories={modelCategories!}
                   siteId={siteId}
@@ -520,7 +528,12 @@ function AppShellInner({
                   onSelectionChange={onModelSelectionChange}
                   apiHref={apiHref}
                 />
+                {showEnginePicker && (
+                  <EnginePicker siteId={siteId} apiHref={apiHref} onChange={onEngineChange} />
+                )}
               </div>
+            ) : showEnginePicker ? (
+              <EnginePicker siteId={siteId} apiHref={apiHref} onChange={onEngineChange} />
             ) : null}
           </div>
           {/* 右：自定义插槽 + token 余额 + 账户（账户在余额右边） */}
@@ -600,7 +613,7 @@ function AppShellInner({
               collapsed ? "md:pl-14" : "md:pl-8"
             }`}
           >
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
               {showModelInHeader ? (
                 <ModelPicker
                   categories={modelCategories!}
@@ -609,9 +622,11 @@ function AppShellInner({
                   onSelectionChange={onModelSelectionChange}
                   apiHref={apiHref}
                 />
-              ) : (
-                <span />
+              ) : null}
+              {showEnginePicker && (
+                <EnginePicker siteId={siteId} apiHref={apiHref} onChange={onEngineChange} />
               )}
+              {!showModelInHeader && !showEnginePicker && <span />}
             </div>
             {headerRight && <div className="flex items-center gap-2">{headerRight}</div>}
           </div>
