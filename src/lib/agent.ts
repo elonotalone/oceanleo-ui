@@ -138,10 +138,6 @@ export function createTask(body: {
   /** doctrine v6: per-conversation skill-prompt override (用户编辑了 skill prompt
    *  并选「用这段 prompt 直接干活」)。只对本次会话生效，不写回 manifest。 */
   promptOverride?: string;
-  /** Stage C: pluggable agent engine. "" / "oceanleo" = 平台托管原生引擎（用平台
-   *  key, 零服务费）。claude-code|codex|opencode|cline = 外部引擎，在 gVisor 沙箱里
-   *  跑，用用户自带 key (BYOK)。 */
-  engine?: string;
 }) {
   return authed<{ task_id: string; status: string; mode: string }>(
     "/v1/agent/tasks",
@@ -157,27 +153,9 @@ export function createTask(body: {
         ops_state: body.opsState || null,
         team_id: body.teamId || "",
         prompt_override: body.promptOverride || "",
-        engine: body.engine || "",
       }),
     },
   );
-}
-
-// --------------------------------------------------------------------------- //
-// Stage C: 可插拔 agent 引擎目录（主页引擎选择器用）
-// --------------------------------------------------------------------------- //
-export interface AgentEngine {
-  id: string;            // oceanleo | claude-code | codex | opencode | cline
-  label: string;
-  external: boolean;     // false = 平台原生引擎；true = 外部引擎（BYOK）
-  provider: string;      // 外部引擎需要的 provider key（anthropic/openai/openrouter）
-  byok: boolean;         // 外部引擎一律 BYOK
-  key_ready: boolean;    // 用户是否已为该 provider 配好 key（外部引擎才有意义）
-}
-
-/** 列出可选引擎，并标注用户是否已为外部引擎配好 BYOK key。 */
-export function listEngines() {
-  return authed<{ engines: AgentEngine[] }>("/v1/agent/engines");
 }
 
 // --------------------------------------------------------------------------- //

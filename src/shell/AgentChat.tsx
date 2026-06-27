@@ -53,9 +53,6 @@ export interface AgentChatProps {
   teamId?: string;
   /** 选中的文本模型复合 key（来自 ModelPicker），透传给引擎。 */
   agentModel?: string;
-  /** Stage C：选中的 agent 引擎（来自 EnginePicker）。""/"oceanleo" = 原生引擎
-   *  (平台 key)；claude-code|codex|opencode|cline = 外部引擎(BYOK, gVisor 沙箱)。 */
-  engine?: string;
   accent?: string;
   headerHeight?: number;
   /** 任务创建后回调（如把 id 写进 URL / 历史高亮）。 */
@@ -79,7 +76,6 @@ export function AgentChat({
   agentId = "",
   teamId = "",
   agentModel = "",
-  engine = "",
   accent = "#4f46e5",
   headerHeight = 56,
   onTaskCreated,
@@ -143,7 +139,7 @@ export function AgentChat({
     setBusy(true);
     setError(null);
     setMessages([{ id: -1, role: "user", kind: "text", content: prompt }]);
-    const r = await createTask({ prompt, mode, siteId, agentModel, agentId, teamId, engine });
+    const r = await createTask({ prompt, mode, siteId, agentModel, agentId, teamId });
     setBusy(false);
     if (!r.ok || !r.data) {
       setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建任务失败");
