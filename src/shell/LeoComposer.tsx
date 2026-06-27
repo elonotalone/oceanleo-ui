@@ -27,6 +27,14 @@ import { openLeoAssistant } from "./LeoAssistant";
 //      SpeechRecognition（Web Speech API）边说边转写，回调把结果交给调用方。
 //   3. 附件缩略条：attachments + onRemoveAttachment（业务持有状态，本组件只展示）。
 //
+// 2026-06-27 升级（主站「会议录音纪要」诉求，对照 Manus「Meeting minutes」截图）：
+//   4. 会议录音：传 onMeetingRecording 才出现「会议纪要」录音键。点它把输入框区域
+//      切换成一张「录音卡片」——顶部右上角标题、中部提示「录音结束后自动生成纪要」、
+//      底部计时器 `0:00 / 上限` + 「放弃 / 开始（→ 停止）」按钮、最下方合规提示。
+//      录音用浏览器原生 getUserMedia + MediaRecorder（格式自协商：webm/opus 优先，
+//      iOS 回落 mp4/aac，都在阿里云 paraformer-v2 文件转写支持列表内），停止后把整段
+//      音频 File 交给 onMeetingRecording，由调用方上传 + 转写 + 生成纪要。本组件只管录。
+//
 // 与主站的历史差异：主站左下角原是「对话 / Agent / 设计」三件套；2026-06-26 起主站
 // 改为「自动」（去掉手动 chat/agent 切换，后端按输入自动判断），设计开关并入 quick
 // pill，故主站不再传 leftSlot 的三件套。其余站当输入框「与 AI 生成有关」时，左下角
@@ -115,6 +123,15 @@ export interface LeoComposerProps {
   onVoiceTranscript?: (text: string) => void;
   /** 语音识别语言，默认 "zh-CN"。 */
   voiceLang?: string;
+
+  // --- 会议录音纪要（2026-06-27） ---
+  /**
+   * 传它才出现「会议纪要」录音键 + 录音卡片。停止录音后，把整段音频 File 回调给调用方
+   * （由调用方负责上传 → ASR 转写 → 生成纪要 → 跳任务页）。本组件只负责浏览器端录音。
+   */
+  onMeetingRecording?: (file: File) => void;
+  /** 录音时长上限（秒），默认 7200（2 小时）。到点自动停止并回调。 */
+  meetingRecordingMaxSec?: number;
 }
 
 export function LeoComposer({
@@ -142,9 +159,13 @@ export function LeoComposer({
   onRemoveAttachment,
   onVoiceTranscript,
   voiceLang = "zh-CN",
+  onMeetingRecording,
+  meetingRecordingMaxSec = 7200,
 }: LeoComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
+  const [meetingOpen, setMeetingOpen] = useState(false);
 
   const autogrow = useCallback(() => {
     const el = ref.current;
@@ -189,6 +210,21 @@ export function LeoComposer({
     if (!list || !onAttachFiles) return;
     const files = Array.from(list);
     if (files.length) onAttachFiles(files);
+  }
+
+  if (onMeetingRecording && meetingOpen) {
+    return (
+      <div className={className}>
+        <MeetingRecorderCard
+          maxSec={meetingRecordingMaxSec}
+          onClose={() => setMeetingOpen(false)}
+          onDone={(file) => {
+            setMeetingOpen(false);
+            onMeetingRecording(file);
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -273,6 +309,18 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {onMeetingRecording && (
+            <button
+              type="button"
+              onClick={() => setMeetingOpen(true)}
+              disabled={disabled}
+              aria-label="会议录音纪要"
+              title="会议录音纪要"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-150 hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
+            >
+              <MeetingGlyph />
+            </button>
+          )}
           {onVoiceTranscript && (
             <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={disabled} />
           )}
@@ -556,6 +604,257 @@ function VoiceButton({
   );
 }
 
+// --- 会议录音纪要卡片（getUserMedia + MediaRecorder） ----------------------
+// 录制策略（对照阿里云 paraformer-v2 文件转写支持的格式列表，已查 upstream 文档）：
+//   - 桌面 Chrome/Edge/Firefox：audio/webm;codecs=opus（受支持）。
+//   - iOS/部分 Safari：webm 不被支持，回落 audio/mp4 / audio/aac（受支持）。
+//   - 全部失败：交给浏览器默认（不传 mimeType），仍能录，文件名后缀按实际 mime 推断。
+const MEETING_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/ogg;codecs=opus",
+];
+
+function pickRecorderMime(): string {
+  if (typeof window === "undefined" || typeof (window as any).MediaRecorder === "undefined") {
+    return "";
+  }
+  const MR = (window as any).MediaRecorder;
+  if (typeof MR.isTypeSupported !== "function") return "";
+  for (const m of MEETING_MIME_CANDIDATES) {
+    try {
+      if (MR.isTypeSupported(m)) return m;
+    } catch {
+      /* noop */
+    }
+  }
+  return "";
+}
+
+function extForMime(mime: string): string {
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4")) return "mp4";
+  if (mime.includes("aac")) return "aac";
+  if (mime.includes("ogg")) return "ogg";
+  return "webm";
+}
+
+function fmtClock(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${mm}:${pad(ss)}`;
+}
+
+function MeetingRecorderCard({
+  maxSec,
+  onClose,
+  onDone,
+}: {
+  maxSec: number;
+  onClose: () => void;
+  onDone: (file: File) => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "recording" | "saving">("idle");
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const recRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mimeRef = useRef<string>("");
+  // 录音停止后是否要把成品交回去（放弃时置 false，stop 的 onstop 据此决定）。
+  const emitRef = useRef<boolean>(true);
+
+  const cleanup = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    const stream = streamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => cleanup(), [cleanup]);
+
+  const start = useCallback(async () => {
+    setError(null);
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function" ||
+      typeof (window as any).MediaRecorder === "undefined"
+    ) {
+      setError("当前浏览器不支持录音，请用最新版 Chrome / Edge / Safari。");
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError("没拿到麦克风权限。请在浏览器地址栏允许麦克风后重试。");
+      return;
+    }
+    streamRef.current = stream;
+    const mime = pickRecorderMime();
+    mimeRef.current = mime;
+    chunksRef.current = [];
+    emitRef.current = true;
+    let rec: MediaRecorder;
+    try {
+      rec = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+    } catch {
+      rec = new MediaRecorder(stream);
+    }
+    recRef.current = rec;
+    rec.ondataavailable = (e: BlobEvent) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    rec.onstop = () => {
+      cleanup();
+      const outMime = mimeRef.current || rec.mimeType || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: outMime });
+      chunksRef.current = [];
+      if (!emitRef.current || blob.size === 0) {
+        setPhase("idle");
+        setElapsed(0);
+        return;
+      }
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const file = new File([blob], `meeting-${stamp}.${extForMime(outMime)}`, {
+        type: outMime,
+      });
+      setPhase("saving");
+      onDone(file);
+    };
+    rec.start(1000); // 每秒切片，长录音更稳。
+    setPhase("recording");
+    setElapsed(0);
+    timerRef.current = setInterval(() => {
+      setElapsed((prev) => {
+        const next = prev + 1;
+        if (next >= maxSec) {
+          // 到上限自动停止（onstop 会回调）。
+          try {
+            recRef.current?.stop();
+          } catch {
+            /* noop */
+          }
+        }
+        return next;
+      });
+    }, 1000);
+  }, [cleanup, maxSec, onDone]);
+
+  const stopAndEmit = useCallback(() => {
+    emitRef.current = true;
+    try {
+      recRef.current?.stop();
+    } catch {
+      cleanup();
+      setPhase("idle");
+    }
+  }, [cleanup]);
+
+  const discard = useCallback(() => {
+    if (phase === "recording") {
+      emitRef.current = false;
+      try {
+        recRef.current?.stop();
+      } catch {
+        /* noop */
+      }
+    }
+    cleanup();
+    setElapsed(0);
+    setPhase("idle");
+    onClose();
+  }, [phase, cleanup, onClose]);
+
+  const recording = phase === "recording";
+  const saving = phase === "saving";
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white px-5 pb-4 pt-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-end">
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-neutral-500">
+          <MeetingGlyph />
+          会议录音纪要
+        </span>
+      </div>
+
+      <div className="border-t border-dashed border-neutral-200 pt-4">
+        <p className="min-h-[40px] text-[14px] leading-relaxed text-neutral-500">
+          {error ? (
+            <span className="text-rose-600">{error}</span>
+          ) : recording ? (
+            "正在录音… 结束后将自动转写并生成会议纪要。"
+          ) : saving ? (
+            "录音已结束，正在上传并转写…"
+          ) : (
+            "录音结束后将自动转写并整理成会议纪要。"
+          )}
+        </p>
+
+        <div className="mt-3 flex items-center justify-between">
+          <span className="font-mono text-[13px] tabular-nums text-neutral-400">
+            {recording && (
+              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-rose-500 align-middle" />
+            )}
+            {fmtClock(elapsed)} / {fmtClock(maxSec)}
+          </span>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={discard}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 active:scale-95 disabled:opacity-50"
+            >
+              <TrashGlyph />
+              放弃
+            </button>
+            {recording ? (
+              <button
+                type="button"
+                onClick={stopAndEmit}
+                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95"
+              >
+                <StopGlyph />
+                停止
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={start}
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95 disabled:opacity-50"
+              >
+                {saving ? <span className="v-spinner text-[12px]" /> : <RecordGlyph />}
+                {saving ? "处理中" : "开始"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-3 text-[12px] leading-relaxed text-neutral-400">
+          开始录音即代表你已获得在场各方的录音同意。
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ArrowUp() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -589,6 +888,41 @@ function MicGlyph() {
     <svg className="relative h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M5 11a7 7 0 0014 0M12 18v3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MeetingGlyph() {
+  // 麦克风 + 声波，区别于「语音输入」的纯麦克风，表达「整段会议录音」。
+  return (
+    <svg className="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <rect x="9" y="2.5" width="6" height="10" rx="3" />
+      <path d="M6 10.5a6 6 0 0012 0M12 16.5v3" strokeLinecap="round" />
+      <path d="M3 9v3M21 9v3" strokeLinecap="round" opacity="0.7" />
+    </svg>
+  );
+}
+
+function RecordGlyph() {
+  return (
+    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="7" />
+    </svg>
+  );
+}
+
+function StopGlyph() {
+  return (
+    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
