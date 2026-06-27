@@ -42,6 +42,30 @@ export function openLeoAssistant(): void {
   }
 }
 
+/**
+ * leo 建议「快速版」（宗旨 v9，2026-06-27）：一键自动补充，**不弹浮窗、不需用户选方向**。
+ * 直接调 /v1/assistant/suggest（base_prompt = 当前文本），返回补全后的 updatedPrompt。
+ * 主站首页 / 各站输入框的「⚡ 一键补充」按钮用它：拿到结果直接写回输入框即可。
+ *
+ * 入参 basePrompt 为空时，让 leo 基于站点定位起个头（user_input 给一句通用引导）。
+ */
+export async function runLeoQuickSuggest(opts: {
+  siteId: string;
+  docType?: string;
+  basePrompt: string;
+}): Promise<{ ok: boolean; prompt?: string; error?: string }> {
+  const base = (opts.basePrompt || "").trim();
+  const res = await suggest({
+    site_id: opts.siteId,
+    doc_type: opts.docType || "doc",
+    base_prompt: base,
+    user_input: base ? "请帮我把这段需求补充得更完整、可直接执行。" : "请帮我起一个清晰、可直接执行的需求草稿。",
+  });
+  if (!res.ok || !res.data) return { ok: false, error: res.error || "请求失败，请稍后再试。" };
+  const updated = (res.data.updatedPrompt || "").trim();
+  return { ok: true, prompt: updated || base };
+}
+
 type HostInput = HTMLTextAreaElement | HTMLInputElement;
 
 interface SuggestResult {

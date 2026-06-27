@@ -30,14 +30,13 @@ import {
   initialState,
   manifestToOpsSchema,
   normalizeConsoleManifest,
-  renderTemplate,
 } from "../lib/manifest";
-import { runCapability as defaultRunCapability } from "../lib/capabilities";
 import type { CapabilityResult } from "../lib/capabilities";
 import type { Capability } from "../lib/manifest";
 import type { OpsPatch } from "../lib/fn-agent";
 
-// 能力执行器签名（可被 host 注入，如 oceanbizs 走服务端代理而非用户 OceanLeo token）。
+// 能力执行器签名（保留为公开类型 + 向后兼容 prop；宗旨 v9 起灵感台无生成按钮，
+// 生成统一在 agent 页发生，本组件不再直接调用它）。
 export type RunCapabilityFn = (
   capability: Capability,
   input: Record<string, unknown>,
@@ -82,6 +81,7 @@ export function AgentConsole({
   headerHeight = 56,
   runCapability,
 }: AgentConsoleProps) {
+  void runCapability; // 宗旨 v9：灵感台无生成按钮，保留 prop 仅为向后兼容。
   const list = useMemo(
     () => (manifests && manifests.length ? manifests : manifest ? [manifest] : []),
     [manifest, manifests],
@@ -148,7 +148,6 @@ export function AgentConsole({
         siteId={siteId}
         accent={active.console.accent || accent}
         headerHeight={studioHeaderHeight}
-        runCapability={runCapability}
       />
     </div>
   );
@@ -162,21 +161,18 @@ function ManifestPane({
   siteId,
   accent,
   headerHeight = 56,
-  runCapability,
 }: {
   m: AgentManifest;
   siteId: string;
   accent: string;
   headerHeight?: number;
-  runCapability?: RunCapabilityFn;
 }) {
-  const runCap = runCapability ?? defaultRunCapability;
   const con = useMemo(() => normalizeConsoleManifest(m.console), [m.console]);
   const hasOpsForm = con.sections.length > 0;
   const [state, setState] = useState<Record<string, unknown>>(() => initialState(con));
   const [openSec, setOpenSec] = useState<string | null>(con.sections[0]?.id ?? null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 宗旨 v9：busy 仅用于右栏「agent 生成中」态（由 onArtifact 之前的 agent 线程驱动）。
+  const [busy] = useState(false);
 
   const setField = useCallback((key: string, v: unknown) => {
     setState((s) => ({ ...s, [key]: v }));
@@ -184,16 +180,12 @@ function ManifestPane({
 
   const schema = useMemo(() => manifestToOpsSchema(m.agent_id, con), [m.agent_id, con]);
 
-  const applyPatch = useCallback(
-    (patch: OpsPatch) => {
-      if (patch.set) setState((s) => ({ ...s, ...patch.set }));
-    },
-    [],
-  );
+  // agent 经 ops_patch 回填灵感台（让用户继续微调）。
+  const applyPatch = useCallback((patch: OpsPatch) => {
+    if (patch.set) setState((s) => ({ ...s, ...patch.set }));
+  }, []);
 
   // agent 线程产出 artifact（图片 / 文档…）→ 写进结果字段，让右侧画布显示它。
-  // 图片：值 = url(s)（image-grid 渲染）；其它：值 = markdown 内容。这样在 app 里用
-  // agent 生成的图片/文档也会在右栏出现，而不再只进历史（操作员 2026-06-26）。
   const applyArtifact = useCallback(
     (meta: { type: string; url?: string }, content: string) => {
       const key = con.action.output.key;
@@ -204,51 +196,14 @@ function ManifestPane({
     [con.action.output.key],
   );
 
-  const runGenerate = useCallback(async () => {
-    if (!hasOpsForm) return;
-    setError(null);
-    // required 校验
-    for (const sec of con.sections) {
-      for (const f of sec.fields) {
-        if (f.required && !String(state[f.key] ?? "").trim()) {
-          setError(`请填写「${f.label}」。`);
-          return;
-        }
-      }
-    }
-    setBusy(true);
-    try {
-      const a = con.action;
-      const input: Record<string, unknown> =
-        a.capability === "chat"
-          ? {
-              system: renderTemplate(a.systemTemplate || "", state),
-              user: renderTemplate(a.userTemplate || "", state),
-            }
-          : {
-              ...mapParams(a.params, state),
-              prompt: renderTemplate(a.params?.prompt || a.userTemplate || "", state) || undefined,
-            };
-      const r = await runCap(a.capability, input, { siteId });
-      if (!r.ok) {
-        setError(r.error || "生成失败，请重试。");
-        return;
-      }
-      const out = r.text ?? (r.urls && r.urls.length ? r.urls.join("\n") : "");
-      setField(a.output.key, out);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "生成失败，请重试。");
-    } finally {
-      setBusy(false);
-    }
-  }, [con, hasOpsForm, state, siteId, setField, runCap]);
-
-  // 左栏：操作台表单（StudioSection 竖排）+ 主行动按钮。
+  // 左栏「灵感台」：纯 StudioSection 表单（prompt 提示器）。宗旨 v9：**无生成按钮**——
+  // 用户勾选/填写 → FunctionAgentChat 把已填字段整理成文本同步进 agent 输入框，
+  // 真正的生成只在 agent 页发生。
   const opsContent = (
     <div className="space-y-3">
       {!hasOpsForm ? (
         <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs leading-relaxed text-stone-500">
-          该 app 暂未配置操作台表单。切换到左侧「agent」形态，用对话完成工作；或用「skill」直接聊天。
+          该 app 暂无可填写的灵感台选项。直接用上方「agent」对话完成工作即可。
         </p>
       ) : null}
       {con.sections.map((sec, i) => {
@@ -261,7 +216,7 @@ function ManifestPane({
             accent={accent}
             open={openSec === sec.id}
             onToggle={() => setOpenSec((cur) => (cur === sec.id ? null : sec.id))}
-            summary={filled ? "已填写" : sec.fields.some((f) => f.required) ? "必填" : "可选"}
+            summary={filled ? "已填写" : sec.fields.some((f) => f.required) ? "建议填" : "可选"}
           >
             <div className="space-y-3">
               {sec.fields.map((f) => (
@@ -271,21 +226,6 @@ function ManifestPane({
           </StudioSection>
         );
       })}
-
-      {error && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
-      )}
-      {hasOpsForm ? (
-        <button
-          type="button"
-          onClick={() => void runGenerate()}
-          disabled={busy}
-          className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
-          style={{ background: accent }}
-        >
-          {busy ? "生成中…" : `${con.action.label} ✦`}
-        </button>
-      ) : null}
     </div>
   );
 
@@ -316,6 +256,7 @@ function ManifestPane({
       schema={schema}
       accent={accent}
       opsContent={opsContent}
+      showOps={hasOpsForm}
       getOpsState={() => state}
       onApplyPatch={applyPatch}
       onArtifact={applyArtifact}
@@ -334,19 +275,6 @@ function ManifestPane({
       storageKey={`agentconsole:${m.agent_id}`}
     />
   );
-}
-
-// 非 chat 能力：把 action.params（值含 {{field}} 模板）展开成请求参数。
-function mapParams(
-  params: Record<string, string> | undefined,
-  state: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (!params) return out;
-  for (const [k, tpl] of Object.entries(params)) {
-    out[k] = renderTemplate(tpl, state);
-  }
-  return out;
 }
 
 // 单个字段控件渲染。

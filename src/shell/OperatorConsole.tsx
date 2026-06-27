@@ -32,7 +32,6 @@ import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
-import { SiteSkillDirectory } from "./SiteSkillDirectory";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -128,11 +127,8 @@ export interface OperatorConsoleProps {
   /** 模型选择下拉底部「管理模型」跳转，默认 /api。 */
   apiHref?: string;
   /**
-   * directory 模式：在目录页顶部加一个「app / skill」切换（操作员 2026-06-24）。
-   *   - app：本站功能区卡片（默认）。
-   *   - skill：与本站相关的 LeoSkill skill（按 relatedSkillCategories(siteId) 过滤），
-   *     点开去 LeoSkill 对应 skill 开聊。
-   * 默认 true（directory 模式且有 siteId 时生效）。传 false 关闭。
+   * @deprecated 宗旨 v9（2026-06-27）：skill 形态整套删除，目录页不再有「app / skill」
+   * 切换。此 prop 保留只为向后兼容（各站传不传都无效），不再渲染任何 skill 入口。
    */
   skillTab?: boolean;
 }
@@ -160,11 +156,10 @@ export function OperatorConsole({
   modelCategories,
   modelSiteId,
   apiHref = "/api",
-  skillTab = true,
+  skillTab: _skillTab,
 }: OperatorConsoleProps) {
+  void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
   const groupId = useId();
-  // directory 模式目录页的「app / skill」切换态。
-  const [dirTab, setDirTab] = useState<"app" | "skill">("app");
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
@@ -177,10 +172,9 @@ export function OperatorConsole({
   };
 
   // doctrine v7 目录模式：先列功能目录，点开才进入功能区（带返回）。
-  // embed/solo（hideTabs）时不启用。多功能站本就启用；单功能站若开了 app/skill 切换
-  // （skillTab）也启用——这样单功能站也有「app / skill」目录页（操作员 2026-06-24）。
-  const hasSkillTab = skillTab && Boolean(siteId);
-  const directoryMode = directory && !hideTabs && (functions.length > 1 || hasSkillTab);
+  // embed/solo（hideTabs）时不启用。宗旨 v9：目录页不再有 app/skill 切换，单功能站
+  // 直接进入唯一功能区（无目录页）；多功能站才有 app 功能区目录。
+  const directoryMode = directory && !hideTabs && functions.length > 1;
 
   // 「目录页 ↔ 已进入功能区」由本组件**自管**（opened），与受控的 `value` 解耦。
   // 关键修复（操作员 2026-06-24，截图 2552c5a6「返回键形同虚设」）：
@@ -240,7 +234,6 @@ export function OperatorConsole({
       site_id: siteId,
       category: "",
     }));
-    const showSkillTab = hasSkillTab;
     return (
       <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
         {(directoryTitle || directorySubtitle || modelPicker) && (
@@ -257,39 +250,12 @@ export function OperatorConsole({
           </div>
         )}
 
-        {/* app / agent 切换（正名 v8）：app = 本站功能区；agent = 相关 LeoAgent。 */}
-        {showSkillTab && (
-          <div className="mb-6 inline-flex rounded-xl bg-neutral-100 p-1">
-            {([
-              { id: "app", label: "app" },
-              { id: "skill", label: "agent" },
-            ] as const).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setDirTab(t.id)}
-                className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
-                  dirTab === t.id
-                    ? "bg-white text-neutral-900 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {showSkillTab && dirTab === "skill" ? (
-          <SiteSkillDirectory siteId={siteId} accent={accent} />
-        ) : (
-          <AppDirectory
-            items={items}
-            accent={accent}
-            openLabel="打开"
-            onOpen={(it) => openFn(it.id)}
-          />
-        )}
+        <AppDirectory
+          items={items}
+          accent={accent}
+          openLabel="打开"
+          onOpen={(it) => openFn(it.id)}
+        />
       </div>
     );
   }

@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { openLeoAssistant } from "./LeoAssistant";
+import { openLeoAssistant, runLeoQuickSuggest } from "./LeoAssistant";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -83,6 +83,10 @@ export interface LeoComposerProps {
   loading?: boolean;
   /** 是否显示「leo 建议」按钮（仅与 AI 生成有关的输入框传 true） */
   leoSuggest?: boolean;
+  /**
+   * 「leo 建议·快速版」（宗旨 v9）：传它才显示「⚡ 一键补充」按钮——点了**不弹浮窗、
+   * 不需用户选方向**，直接调网关把当前输入框内容补全后写回。需要 siteId（计量/分诊）。 */
+  leoQuickSuggest?: { siteId: string; docType?: string };
   /** 左下角自定义控制区（向后兼容；主站 2026-06-26 起不再放三件套） */
   leftSlot?: ReactNode;
   /**
@@ -141,6 +145,7 @@ export function LeoComposer({
   placeholder = "给 OceanLeo 布置一个任务...",
   loading = false,
   leoSuggest = false,
+  leoQuickSuggest,
   leftSlot,
   inlineSlot,
   rows = 2,
@@ -166,6 +171,8 @@ export function LeoComposer({
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
   const [meetingOpen, setMeetingOpen] = useState(false);
+  // leo 建议·快速版（⚡ 一键补充）请求态。
+  const [quickBusy, setQuickBusy] = useState(false);
 
   const autogrow = useCallback(() => {
     const el = ref.current;
@@ -204,6 +211,25 @@ export function LeoComposer({
     ref.current?.setAttribute("data-ai-assistant-target", "");
     ref.current?.focus();
     openLeoAssistant();
+  }
+
+  async function handleQuickSuggest() {
+    if (!leoQuickSuggest || quickBusy) return;
+    setQuickBusy(true);
+    const r = await runLeoQuickSuggest({
+      siteId: leoQuickSuggest.siteId,
+      docType: leoQuickSuggest.docType,
+      basePrompt: value,
+    });
+    setQuickBusy(false);
+    if (r.ok && r.prompt && r.prompt !== value) {
+      onChange(r.prompt);
+      // 自增高 + 焦点回到框，方便用户继续编辑。
+      requestAnimationFrame(() => {
+        ref.current?.focus();
+        autogrow();
+      });
+    }
   }
 
   function emitFiles(list: FileList | null) {
@@ -299,10 +325,22 @@ export function LeoComposer({
               type="button"
               onClick={handleLeoSuggest}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-200 hover:bg-neutral-100 active:scale-95"
-              title="让 leo 帮你补充 / 整理这段内容"
+              title="让 leo 帮你补充 / 整理这段内容（可逐项选择）"
             >
               <Sparkle />
               leo 建议
+            </button>
+          )}
+          {leoQuickSuggest && (
+            <button
+              type="button"
+              onClick={handleQuickSuggest}
+              disabled={quickBusy || disabled}
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium text-indigo-600 transition-all duration-200 hover:bg-indigo-50 active:scale-95 disabled:opacity-50"
+              title="一键补充：让 leo 直接把你的需求补全（无需逐项选择）"
+            >
+              {quickBusy ? <span className="v-spinner text-[11px]" /> : <Bolt />}
+              一键补充
             </button>
           )}
           {inlineSlot}
@@ -879,6 +917,14 @@ function PlusGlyph() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function Bolt() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+      <path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13l0-8z" />
     </svg>
   );
 }
