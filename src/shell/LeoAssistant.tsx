@@ -1,27 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActiveOpsConsole, type OpsConsoleEntry } from "./OpsConsoleBridge";
+import { mergeOpsBlock, opsStateToPromptText } from "../lib/fn-agent";
 
 // ============================================================================
-// @oceanleo/ui — leo 助手（原「助手建议」，全家桶单一事实源）
+// @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
 // ----------------------------------------------------------------------------
-// leo 助手是一个「内容补充」助手：它驱动 *宿主页面真实的 AI 输入框*。
+// 浮窗承载两页，顶部一对切换键共用同一个显示框（理解 A，操作员 2026-06-27）：
 //
-// 产品逻辑（操作员 2026-06-17 定稿）：
+//   ┌─ [可拖动标题栏] leo 助手 ───────────────────── ✕ ┐
+//   │  [ leo 建议 | 操作台 ]  ← 两页切换（操作台仅当有     │
+//   │                          功能区注册操作台时出现）    │
+//   │  ── leo 建议 页（默认）──                            │
+//   │   leo 给可点击补充项，点一下追加到当前 AI 输入框      │
+//   │  ── 操作台 页 ──                                     │
+//   │   各功能区的 StudioSection 表单（**无生成按钮**）；    │
+//   │   勾选/填写 → 整理成「字段：值」文本 → 哨兵块单向      │
+//   │   写进当前 AI 输入框（整块替换/追加/移除）             │
+//   └───────────────────────────────────────────────────┘
+//
+// 「leo 建议」页（原有逻辑）：驱动宿主页面真实的 AI 输入框——
 //   1. 用户在某个「与 AI 生成有关」的输入框里写需求；
-//   2. 用户点输入框旁的「leo 建议」按钮（或浮窗按钮）打开 leo 助手；
-//   3. leo 捕捉该输入框现有内容作为 basePrompt，向网关要可点击的补充选项；
-//   4. 用户点某个选项 → leo 把它整理进那个 AI 输入框；
-//      用户在 leo 助手里输入并「发送」→ leo 也直接整理那个 AI 输入框；
-//   5. 每当输入框内容因上面任一操作而更新，leo 给的选项随之刷新。
+//   2. 点输入框旁的「leo 建议」按钮（派发 OPEN_LEO_EVENT）打开本浮窗；
+//   3. leo 捕捉该输入框现有内容作为 basePrompt，向网关要可点击补充项；
+//   4. 点某选项 → 追加进输入框；选项随输入框内容刷新。
 //
-// 即：leo 助手能「读」与「改」用户在 AI 输入框里的内容。
+// 「操作台」页（理解 A 新增）：把原左栏的「操作台 / 灵感台」表单搬进浮窗。表单元素
+//   由各功能区（FunctionAgentChat）经 OpsConsoleBridge 注册进来，本浮窗只负责：
+//   渲染它 + 监听其 state 变化（注册项的 rev）→ opsStateToPromptText → mergeOpsBlock
+//   写进当前 AI 输入框。生成仍只发生在 agent（操作台无生成按钮）。
 //
-// 绑定是零配置自动的：跟踪用户最近聚焦的 textarea / text input
-// （优先 [data-ai-assistant-target] 标记的那个），所以它总是增益用户正在用的框。
-//
-// 「leo 建议」按钮触发方式：派发 `oceanleo:open-leo` 自定义事件即可打开本浮窗，
-// 这样组合输入框（LeoComposer）里的按钮与本组件解耦——任何地方都能开 leo。
+// 浮窗可四处拖动：抓住标题栏拖动，位置写进 localStorage（按浏览器记忆）。
 //
 // 公开 + 操作员买单（无登录 / 无 API-key 墙）：走 /v1/assistant/suggest。
 // ============================================================================
@@ -176,6 +186,36 @@ export interface LeoAssistantProps {
   hideFloatingButton?: boolean;
 }
 
+// 浮窗尺寸（拖动边界计算用）。
+const PANEL_W = 380;
+const PANEL_H = 520;
+const POS_KEY = "oceanleo:leo-assistant-pos";
+
+interface Pos {
+  left: number;
+  top: number;
+}
+
+/** 默认位置：右下角（与历史一致的 bottom-5 right-5 观感）。 */
+function defaultPos(): Pos {
+  if (typeof window === "undefined") return { left: 0, top: 0 };
+  const margin = 20;
+  return {
+    left: Math.max(margin, window.innerWidth - PANEL_W - margin),
+    top: Math.max(margin, window.innerHeight - PANEL_H - margin),
+  };
+}
+
+function clampPos(p: Pos): Pos {
+  if (typeof window === "undefined") return p;
+  const maxLeft = Math.max(0, window.innerWidth - PANEL_W);
+  const maxTop = Math.max(0, window.innerHeight - PANEL_H);
+  return {
+    left: Math.min(Math.max(0, p.left), maxLeft),
+    top: Math.min(Math.max(0, p.top), maxTop),
+  };
+}
+
 export function LeoAssistant({
   siteId,
   docType = "doc",
@@ -183,6 +223,13 @@ export function LeoAssistant({
   hideFloatingButton = true,
 }: LeoAssistantProps) {
   const [open, setOpen] = useState(false);
+  // 浮窗里的两页：leo 建议 / 操作台。操作台仅当有功能区注册时可用。
+  const [page, setPage] = useState<"suggest" | "ops">("suggest");
+  const ops = useActiveOpsConsole();
+  // 顶层 resolve（无条件调用，符合 hooks 规则）：操作台页用它把整理文本写进当前
+  // AI 输入框。Panel（leo 建议页）内部另起一个 useHostInput 实例，二者指向同一套
+  // 「最近聚焦的宿主输入框」DOM 逻辑，互不干扰。
+  const { resolve: resolveHostInput } = useHostInput();
 
   // 让任意「leo 建议」按钮（或快捷键）通过派发 OPEN_LEO_EVENT 打开本浮窗。
   useEffect(() => {
@@ -190,6 +237,78 @@ export function LeoAssistant({
     window.addEventListener(OPEN_LEO_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_LEO_EVENT, onOpen);
   }, []);
+
+  // 没有注册操作台时强制回到「leo 建议」页（避免停留在已消失的操作台页）。
+  useEffect(() => {
+    if (!ops && page === "ops") setPage("suggest");
+  }, [ops, page]);
+
+  // ── 拖动 ────────────────────────────────────────────────────────────────
+  const [pos, setPos] = useState<Pos | null>(null);
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  // 打开浮窗时确定初始位置：优先 localStorage 记忆，否则右下角。
+  useEffect(() => {
+    if (!open) return;
+    let initial = defaultPos();
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Pos;
+        if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) initial = saved;
+      }
+    } catch {
+      /* noop */
+    }
+    setPos(clampPos(initial));
+  }, [open]);
+
+  // 视口变化时把浮窗夹回可视范围。
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => setPos((p) => (p ? clampPos(p) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
+
+  const onDragStart = useCallback(
+    (e: React.PointerEvent) => {
+      if (!pos) return;
+      // 标题栏上的按钮（关闭/切换页）不触发拖动。
+      if ((e.target as HTMLElement).closest("[data-leo-no-drag]")) return;
+      e.preventDefault();
+      dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top };
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    [pos],
+  );
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setPos(clampPos({ left: e.clientX - d.dx, top: e.clientY - d.dy }));
+  }, []);
+
+  const onDragEnd = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      setPos((p) => {
+        if (p) {
+          try {
+            localStorage.setItem(POS_KEY, JSON.stringify(p));
+          } catch {
+            /* noop */
+          }
+        }
+        return p;
+      });
+    },
+    [],
+  );
+
+  const accent = ops?.accent || "#4f46e5";
 
   return (
     <div data-ai-assistant-root>
@@ -204,13 +323,33 @@ export function LeoAssistant({
         </button>
       )}
       {open && (
-        <div className="fixed bottom-5 right-5 z-50 flex h-[520px] w-[380px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <div
+          className="fixed z-50 flex max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          style={{
+            left: pos ? pos.left : undefined,
+            top: pos ? pos.top : undefined,
+            width: PANEL_W,
+            height: PANEL_H,
+            // pos 未就绪（SSR / 首帧）时回退右下角，避免闪到左上。
+            right: pos ? undefined : 20,
+            bottom: pos ? undefined : 20,
+          }}
+        >
+          {/* 可拖动标题栏 */}
+          <div
+            onPointerDown={onDragStart}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={onDragEnd}
+            className="flex cursor-move touch-none items-center justify-between border-b border-slate-100 px-4 py-3"
+          >
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
               <Sparkle />
               {title}
+              <DragDots />
             </div>
             <button
+              data-leo-no-drag
               onClick={() => setOpen(false)}
               aria-label="关闭"
               className="text-slate-400 transition hover:text-slate-700"
@@ -218,10 +357,96 @@ export function LeoAssistant({
               ✕
             </button>
           </div>
-          <Panel siteId={siteId} docType={docType} />
+
+          {/* 两页切换键（操作台仅当有功能区注册时出现） */}
+          {ops && (
+            <div className="flex shrink-0 items-center gap-1 border-b border-slate-100 px-3 py-2">
+              <PageTab on={page === "suggest"} accent={accent} onClick={() => setPage("suggest")}>
+                leo 建议
+              </PageTab>
+              <PageTab on={page === "ops"} accent={accent} onClick={() => setPage("ops")}>
+                {ops.label || "操作台"}
+              </PageTab>
+              {ops.appLabel && (
+                <span className="ml-auto truncate text-[11px] text-slate-400">{ops.appLabel}</span>
+              )}
+            </div>
+          )}
+
+          {page === "ops" && ops ? (
+            <OpsPage entry={ops} resolve={resolveHostInput} />
+          ) : (
+            <Panel siteId={siteId} docType={docType} />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ── 操作台页 ────────────────────────────────────────────────────────────────
+// 渲染各功能区注册进来的表单内容；监听 entry.rev（state 变化）→ 把已填字段整理成
+// 文本 → mergeOpsBlock 单向写进当前 AI 输入框。**无生成按钮**——生成只在 agent 发生。
+function OpsPage({
+  entry,
+  resolve,
+}: {
+  entry: OpsConsoleEntry;
+  resolve: () => HostInput | null;
+}) {
+  // entry.rev 变了（用户在表单里勾选/填写导致 FunctionAgentChat re-register）→ 整理
+  // 文本并同步进输入框。首次进入操作台页也同步一次当前已填内容。
+  useEffect(() => {
+    const target = resolve();
+    if (!target) return;
+    const state = (() => {
+      try {
+        return entry.getState() || {};
+      } catch {
+        return {};
+      }
+    })();
+    const body = opsStateToPromptText(entry.schema, state, entry.excludeKeys || []);
+    const next = mergeOpsBlock(target.value, body);
+    if (next !== target.value) setHostValue(target, next);
+    // 依赖 rev：每次操作台 state 变化都重算一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.rev, entry.id]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <p className="shrink-0 border-b border-slate-50 px-4 py-2.5 text-[12px] leading-relaxed text-slate-500">
+        操作台帮你整理思路：勾选 / 填写下面的选项，会自动整理成需求，写进左侧 agent 的
+        输入框。回到「{`leo 建议`}」或直接发送让 agent 据此生成。
+      </p>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">{entry.content}</div>
+    </div>
+  );
+}
+
+function PageTab({
+  on,
+  accent,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  accent: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      data-leo-no-drag
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
+        on ? "text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+      }`}
+      style={on ? { background: accent } : undefined}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -393,6 +618,20 @@ function Sparkle() {
         fill="currentColor"
       />
       <path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z" fill="currentColor" opacity="0.6" />
+    </svg>
+  );
+}
+
+// 标题栏「可拖动」视觉提示（六点抓手）。
+function DragDots() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-slate-300" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="4" r="1.2" />
+      <circle cx="11" cy="4" r="1.2" />
+      <circle cx="5" cy="8" r="1.2" />
+      <circle cx="11" cy="8" r="1.2" />
+      <circle cx="5" cy="12" r="1.2" />
+      <circle cx="11" cy="12" r="1.2" />
     </svg>
   );
 }

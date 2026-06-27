@@ -1,31 +1,33 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 功能区左栏「agent / 灵感台」统一显示框（单一事实源）
+// @oceanleo/ui — 功能区左栏「只有 agent」+ 操作台搬进 leo 助手浮窗（单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v9（2026-06-27，操作员）：彻底删除 skill 形态，左栏只保留 agent；把原「操作台」
-// 降级为一个**纯 prompt 提示器「灵感台」**。docs/architecture/
+// 宗旨 v9 修订（理解 A，操作员 2026-06-27）：docs/architecture/
 // oceanleo-agent-only-console-and-prompt-helper.md
 //
-//   左栏 = 一个统一显示框，顶部一对切换键在两页之间翻页：
-//     - agent  ：唯一能生成的智能体。对话流（绑定本功能区 agent_id）+ 输入框
-//                （带「leo 建议」）。agent **只看用户发给它的消息**，不再读 opsState。
-//     - 灵感台 ：帮用户整理思路的 prompt 提示器（原操作台表单，**无生成按钮**）。
-//                用户勾选/输入的内容自动整理成「字段：值」文本，**单向**同步进 agent
-//                输入框的「灵感台块」（哨兵包裹，整块替换/追加/移除）。
+//   左栏 = 只有 agent。没有「agent / 灵感台」两页切换了——左栏自始至终是 agent
+//   对话流 + 输入框（带「leo 建议」）。
 //
-// agent 仍可经 ops_patch 把结构化结果回填灵感台（让用户继续微调），但灵感台不再
-// 据此触发任何生成动作。skill thread / SkillPromptPanel 内联入口整套删除。
+//   原「操作台 / 灵感台」表单**搬进右下角的 leo 助手浮窗**，作为浮窗里的第二页
+//   （浮窗顶部「leo 建议 | 操作台」一对切换键，共用同一个浮窗显示框）。本组件在
+//   「成为当前活跃功能区」时，把自己的操作台（schema + 表单内容 + 读 state）通过
+//   OpsConsoleBridge 注册给浮窗；浮窗渲染操作台页、把用户勾选整理成文本**单向**写进
+//   当前 AI 输入框（= 本组件这个 LeoComposer）。
+//
+//   agent **只看用户发给它的消息**（输入框里的文本，含浮窗整理进来的「操作台块」），
+//   不再读 opsState。agent 仍可经 ops_patch 把结构化结果回填操作台 state（让用户在
+//   浮窗里继续微调），但操作台不再据此触发任何生成动作。
 //
 // 隔离：只持有本功能区的 agentId + schema，看不到别的功能区。
-// 用法：把它放进 OperatorConsole 的 `ops`（左栏内容）。右栏（结果）照旧由
-// OperatorConsole 的 canvas 渲染——两页共用同一个右栏。
+// 用法不变：把它放进 OperatorConsole 的某功能区 `ops`（左栏内容）。右栏（结果）照旧
+// 由 OperatorConsole / AgentConsole 的 canvas 渲染。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
-import { useLeftPaneSlot } from "./SplitWorkspace";
+import { registerOpsConsole, type OpsConsoleHandle } from "./OpsConsoleBridge";
 import {
   createTask,
   followUp,
@@ -34,40 +36,37 @@ import {
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
-import {
-  mergeOpsBlock,
-  opsStateToPromptText,
-  type OpsPatch,
-  type OpsSchema,
-} from "../lib/fn-agent";
+import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
 
 export interface FunctionAgentChatProps {
   /** 本功能区 agent id（"<site_id>.<fn_id>"）。 */
   agentId: string;
   /** 本站 site_id（计量 + 历史分区）。 */
   siteId?: string;
-  /** 灵感台 schema（用于把已填字段整理成「字段：值」文本喂进 agent 输入框）。 */
+  /** 操作台 schema（用于把已填字段整理成「字段：值」文本喂进 agent 输入框）。 */
   schema: OpsSchema;
-  /** 灵感台页的内容（各站现成的 StudioSection 表单，**不含生成按钮**）。 */
+  /** 操作台页的内容（各站现成的 StudioSection 表单，**不含生成按钮**）。 */
   opsContent: React.ReactNode;
-  /** 读当前灵感台 state（用于整理成 prompt 文本同步进 agent 输入框）。 */
+  /** 读当前操作台 state（用于整理成 prompt 文本同步进 agent 输入框）。 */
   getOpsState: () => Record<string, unknown>;
-  /** 把 agent 产出的补丁应用到真实灵感台 state（agent 仍可回填，让用户继续微调）。 */
+  /** 把 agent 产出的补丁应用到真实操作台 state（agent 仍可回填，让用户继续微调）。 */
   onApplyPatch: (patch: OpsPatch) => void;
   /**
    * agent 产出「分屏产物」(artifact，如生成的图片 / 文档) 时回报给宿主，让右侧结果
    * 画布把它显示出来。 */
   onArtifact?: (artifact: ArtifactMeta, content: string) => void;
-  /** 触发某灵感台动作（保留向后兼容；灵感台已无主行动按钮，通常不再使用）。 */
+  /** 触发某操作台动作（保留向后兼容；操作台已无主行动按钮，通常不再使用）。 */
   onRunAction?: (actionId: string) => void;
   /** 文本模型复合 key（来自 ModelPicker）。 */
   agentModel?: string;
   accent?: string;
-  /** 灵感台页标签，默认「灵感台」。 */
+  /** 操作台页标签，默认「操作台」。 */
   opsLabel?: string;
-  /** 默认显示哪一页，默认 "agent"（主推 agent）。 */
-  defaultTab?: FnTab;
-  /** 不含灵感台表单（纯对话型功能区）时传 false，隐藏「灵感台」切换页。 */
+  /**
+   * @deprecated 理解 A：左栏不再有页切换，本 prop 不再控制左栏。保留仅为向后兼容。
+   */
+  defaultTab?: "agent" | "ops";
+  /** 不含操作台表单（纯对话型功能区）时传 false，浮窗不出现「操作台」页。 */
   showOps?: boolean;
   /**
    * 该功能区所属 app 的展示名（如「LeoImage」）。给了它，agent 页会在顶部显示
@@ -76,9 +75,6 @@ export interface FunctionAgentChatProps {
   /** app 图标（emoji / 单字），与 appLabel 一起展示。 */
   appIcon?: string;
 }
-
-// 左栏两页：agent（唯一能生成）/ ops（灵感台，prompt 提示器）。
-type FnTab = "agent" | "ops";
 
 export function FunctionAgentChat({
   agentId,
@@ -91,13 +87,13 @@ export function FunctionAgentChat({
   onRunAction,
   agentModel = "",
   accent = "#4f46e5",
-  opsLabel = "灵感台",
-  defaultTab = "agent",
+  opsLabel = "操作台",
+  defaultTab: _defaultTab,
   showOps = true,
   appLabel,
   appIcon,
 }: FunctionAgentChatProps) {
-  const [tab, setTab] = useState<FnTab>(showOps ? defaultTab : "agent");
+  void _defaultTab;
   const [taskId, setTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState("");
@@ -108,64 +104,55 @@ export function FunctionAgentChat({
   const appliedRef = useRef<Set<number>>(new Set());
   const reportedArtifactRef = useRef<string>("");
 
-  const slot = useLeftPaneSlot();
-  // 结果/输出字段：不进灵感台 prompt 文本。
-  const outputKeys = useMemo(
+  // 结果/输出字段：不进操作台 prompt 文本。
+  const excludeKeys = useMemo(
     () => schema.fields.filter((f) => f.key.endsWith("result") || f.label.includes("结果")).map((f) => f.key),
     [schema],
   );
 
-  // ── 灵感台 → agent 输入框 的单向传递 ─────────────────────────────────────
-  // 每次灵感台 state 变化（在灵感台页操作）→ 把已填字段整理成文本块，合并进输入框。
-  const syncOpsToInput = useCallback(() => {
+  // ── 把操作台注册给 leo 助手浮窗（理解 A）─────────────────────────────────
+  // mount 时注册一次拿到 handle，unmount 注销；每次 render（父层操作台 state 变化）
+  // 通过 handle.update 原地把最新内容/state/rev 推给浮窗——不 unregister/re-register，
+  // 避免「操作台」tab 抖动消失。getOpsState 是闭包，总能读到最新 state。
+  const revRef = useRef(0);
+  const handleRef = useRef<OpsConsoleHandle | null>(null);
+  useEffect(() => {
     if (!showOps) return;
-    const state = (() => {
-      try {
-        return getOpsState() || {};
-      } catch {
-        return {};
-      }
-    })();
-    const body = opsStateToPromptText(schema, state, outputKeys);
-    setInput((cur) => mergeOpsBlock(cur, body));
-  }, [showOps, getOpsState, schema, outputKeys]);
-
-  // 左栏标题位的「agent | 灵感台」切换。不在 SplitWorkspace 内时回退到栏体内嵌。
-  const TAB_LABEL: Record<FnTab, string> = { agent: "agent", ops: opsLabel };
-  const tabs: FnTab[] = showOps ? ["agent", "ops"] : ["agent"];
-  const toggle = (
-    <div className="inline-flex rounded-lg bg-stone-100 p-0.5 text-[13px]">
-      {tabs.map((t) => (
-        <button
-          key={t}
-          type="button"
-          onClick={() => {
-            // 离开灵感台时，把最新选择整理进输入框（保证回到 agent 页就能看到）。
-            if (tab === "ops" && t === "agent") syncOpsToInput();
-            setTab(t);
-          }}
-          title={
-            t === "agent"
-              ? "和 agent 对话——它能帮你生成结果"
-              : "灵感台：整理思路的 prompt 提示器，勾选项会自动整理进 agent 输入框"
-          }
-          className={`rounded-md px-3 py-1 font-medium transition-colors ${
-            tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
-          }`}
-          style={tab === t ? { background: accent } : undefined}
-        >
-          {TAB_LABEL[t]}
-        </button>
-      ))}
-    </div>
-  );
-  useEffect(() => {
-    slot?.setLeftLabel(toggle);
+    revRef.current += 1;
+    handleRef.current = registerOpsConsole({
+      id: agentId,
+      schema,
+      content: opsContent,
+      getState: getOpsState,
+      excludeKeys,
+      accent,
+      label: opsLabel,
+      appLabel,
+      rev: revRef.current,
+    });
+    return () => {
+      handleRef.current?.unregister();
+      handleRef.current = null;
+    };
+    // 仅按 agentId/showOps 决定注册生命周期；内容更新走下面的 update effect。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, tab, accent, opsLabel, showOps]);
+  }, [agentId, showOps]);
+
+  // 每次 render 把最新内容/state 推给浮窗（rev 递增触发浮窗重算同步文本）。
   useEffect(() => {
-    return () => slot?.setLeftLabel(null);
-  }, [slot]);
+    if (!showOps || !handleRef.current) return;
+    revRef.current += 1;
+    handleRef.current.update({
+      schema,
+      content: opsContent,
+      getState: getOpsState,
+      excludeKeys,
+      accent,
+      label: opsLabel,
+      appLabel,
+      rev: revRef.current,
+    });
+  });
 
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
@@ -192,7 +179,7 @@ export function FunctionAgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Apply any NEW ops_patch the agent produced → real 灵感台 state（回填，供用户微调）。
+  // Apply any NEW ops_patch the agent produced → real 操作台 state（回填，供用户微调）。
   useEffect(() => {
     for (const m of messages) {
       const p = m.meta?.ops_patch;
@@ -230,7 +217,7 @@ export function FunctionAgentChat({
         siteId,
         agentId,
         agentModel,
-        // 宗旨 v9：agent 只看用户发给它的消息（输入框文本含灵感台块），不再带 opsState。
+        // 宗旨 v9：agent 只看用户发给它的消息（输入框文本含操作台块），不再带 opsState。
       });
       setBusy(false);
       if (!r.ok || !r.data) {
@@ -253,68 +240,53 @@ export function FunctionAgentChat({
 
   return (
     <div className="flex h-full flex-col">
-      {/* 回退：不在 SplitWorkspace 内（无左栏标题插槽）时，才在栏体内放切换键。 */}
-      {!slot && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
-
-      {tab === "ops" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <p className="mb-3 rounded-xl border border-stone-200 bg-stone-50/70 px-3 py-2 text-[12px] leading-relaxed text-stone-500">
-            灵感台帮你整理思路：勾选/填写下面的选项，会自动整理成需求发给 agent。点上方
-            「agent」即可让它据此为你生成。
-          </p>
-          {opsContent}
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {appLabel && (
-            <div className="mb-2 flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
-              <span>所属 app</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
-                {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
-                {appLabel}
-              </span>
-            </div>
-          )}
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {messages.length === 0 && !running && (
-              <p className="py-8 text-center text-sm text-stone-400">
-                让「{schema.title}」agent 帮你做事，
-                <br />
-                它会为你生成结果。
-                {showOps && (
-                  <>
-                    <br />
-                    <span className="text-[12px] text-stone-300">
-                      不知怎么描述？切到「{opsLabel}」勾几个选项，需求自动整理好。
-                    </span>
-                  </>
-                )}
-              </p>
-            )}
-            {messages.map((m) => (
-              <Bubble key={m.id} m={m} accent={accent} />
-            ))}
-            {running && (
-              <div className="flex items-center gap-2 text-[13px] text-stone-400">
-                <span className="v-spinner" /> agent 正在处理…
-              </div>
-            )}
-            {error && <p className="text-[13px] text-rose-500">{error}</p>}
-          </div>
-          <div className="shrink-0 space-y-2 pt-3">
-            <LeoComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={send}
-              loading={busy}
-              leoSuggest
-              leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
-              placeholder={`让 agent 帮你做「${schema.title}」…`}
-              rows={1}
-            />
-          </div>
+      {appLabel && (
+        <div className="mb-2 flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
+          <span>所属 app</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
+            {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
+            {appLabel}
+          </span>
         </div>
       )}
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {messages.length === 0 && !running && (
+          <p className="py-8 text-center text-sm text-stone-400">
+            让「{schema.title}」agent 帮你做事，
+            <br />
+            它会为你生成结果。
+            {showOps && (
+              <>
+                <br />
+                <span className="text-[12px] text-stone-300">
+                  不知怎么描述？点输入框的「leo 建议」，在「{opsLabel}」页勾几个选项，需求自动整理好。
+                </span>
+              </>
+            )}
+          </p>
+        )}
+        {messages.map((m) => (
+          <Bubble key={m.id} m={m} accent={accent} />
+        ))}
+        {running && (
+          <div className="flex items-center gap-2 text-[13px] text-stone-400">
+            <span className="v-spinner" /> agent 正在处理…
+          </div>
+        )}
+        {error && <p className="text-[13px] text-rose-500">{error}</p>}
+      </div>
+      <div className="shrink-0 space-y-2 pt-3">
+        <LeoComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={send}
+          loading={busy}
+          leoSuggest
+          leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
+          placeholder={`让 agent 帮你做「${schema.title}」…`}
+          rows={1}
+        />
+      </div>
     </div>
   );
 }
