@@ -5,8 +5,9 @@
 // ----------------------------------------------------------------------------
 // 操作员 2026-06-19 定稿：每个 OceanLeo 产品站「首页」统一长这样：
 //   - 站点介绍：2–3 句，不花哨。
-//   - 盈利说明（固定文案）：OceanLeo 系列网站的盈利 = 用户在 OceanLeo 平台
-//     使用 AI token 成本的 30%。
+//   - 收费说明（固定文案，2026-06-28 改版）：平台仅按用户使用 AI token 的
+//     成本价收费（不加价、不抽成）；用户也可自带各平台 API key 免费使用。
+//     旧文案「盈利 = token 成本的 30%」已作废（网关 SERVICE_MARKUP=0）。
 //   - 一个大输入框（对照主站「我能为你做什么 / 给 OceanLeo 布置一个任务…」）。
 //     用户提交 → onStart(prompt) 进入 agent 工作界面（高级任务自动一分为二）。
 // ============================================================================
@@ -30,9 +31,12 @@ export interface HomeIntroProps {
   /** leftSlot：主站放「对话/Agent/设计」；普通站留空。 */
   leftSlot?: ReactNode;
   accent?: string;
-  /** 盈利说明分成比例（%），默认 30（= 网关 markup_pct，单一事实源）。 */
+  /** @deprecated 旧「30% 分成」文案已作废（网关 SERVICE_MARKUP=0）。保留以兼容旧调用方，不再渲染。 */
   markupPct?: number;
 }
+
+// BYOK 支持的平台（与 oceanleo-byok-audit-zerofee.md §5 指导文档一致）。
+const BYOK_PROVIDERS = "OpenAI / Anthropic Claude / DeepSeek / 阿里云百炼 / 火山方舟 / OpenRouter";
 
 export function HomeIntro({
   siteName,
@@ -43,8 +47,10 @@ export function HomeIntro({
   onStart,
   leftSlot,
   accent = "#4f46e5",
-  markupPct = 30,
+  // markupPct 已作废，仅为兼容旧调用方保留，不再使用。
+  markupPct: _markupPct,
 }: HomeIntroProps) {
+  void _markupPct;
   const [value, setValue] = useState("");
   const submit = () => {
     const p = value.trim();
@@ -92,11 +98,12 @@ export function HomeIntro({
 
       <div className="mt-10 max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500">
         <span className="font-medium text-stone-600">{siteName}</span> 属于 OceanLeo 系列。
-        本系列网站的盈利 = 用户在 OceanLeo 平台使用 AI token 成本的{" "}
+        平台仅按用户在 OceanLeo 平台使用 AI token 的成本价收费。你也可以自带各平台的 API key（
+        {BYOK_PROVIDERS}），
         <span className="font-semibold" style={{ color: accent }}>
-          {markupPct}%
+          免费
         </span>
-        。
+        使用 OceanLeo 的功能。
       </div>
     </div>
   );
