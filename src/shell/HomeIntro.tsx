@@ -98,8 +98,11 @@ export function HomeIntro({
 
       <div className="mt-10 max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500">
         <span className="font-medium text-stone-600">{siteName}</span> 属于 OceanLeo 系列。
-        平台仅按用户在 OceanLeo 平台使用 AI token 的成本价收费。你也可以自带各平台的 API key（
-        {BYOK_PROVIDERS}），
+        平台仅按用户在 OceanLeo 平台使用 AI token 的
+        <span className="font-semibold" style={{ color: accent }}>
+          成本价
+        </span>
+        收费。你也可以自带各平台的 API key（{BYOK_PROVIDERS}），
         <span className="font-semibold" style={{ color: accent }}>
           免费
         </span>
