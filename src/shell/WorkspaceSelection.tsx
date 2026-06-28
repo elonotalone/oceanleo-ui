@@ -50,14 +50,25 @@ export function WorkspaceSelectionProvider({ children }: { children: ReactNode }
 /**
  * 读写某子栏命名空间的选中项。返回 [selected, select]。
  * 不在 Provider 内时降级为组件局部 state（子栏与主区在同一棵树时仍可用）。
+ *
+ * 关键（2026-06-28 修目录路由风暴）：返回的 setter 必须是**稳定引用**，否则消费端
+ * 依赖它的 useEffect 会因为「每次渲染都是新函数」而反复触发——叠加受控站 fn↔sel
+ * 双向同步时会造成 router.replace 风暴（ERR_INSUFFICIENT_RESOURCES）。Provider 的
+ * `set` 已是稳定 useCallback；这里把它 bind 到 ns 后再用 useCallback 锁定，使
+ * setSelection 跨渲染恒等。`ctx.get(ns)` 仍随选中态变化（这是值，本就该变）。
  */
 export function useWorkspaceSelection(
   ns: SelectionNamespace,
 ): [string | null, (v: string | null) => void] {
   const ctx = useContext(Ctx);
   const [local, setLocal] = useState<string | null>(null);
-  if (ctx) {
-    return [ctx.get(ns), (v) => ctx.set(ns, v)];
-  }
-  return [local, setLocal];
+  const ctxSet = ctx?.set;
+  const setSelection = useCallback(
+    (v: string | null) => {
+      if (ctxSet) ctxSet(ns, v);
+      else setLocal(v);
+    },
+    [ctxSet, ns],
+  );
+  return [ctx ? ctx.get(ns) : local, setSelection];
 }
