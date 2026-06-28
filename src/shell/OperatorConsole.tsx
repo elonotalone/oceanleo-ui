@@ -310,6 +310,11 @@ export function OperatorConsole({
   // 左栏整高、把输入框压到最底（操作员 2026-06-24：输入框原来浮在半空）。
   const ops = <div key={active?.id} className="h-full">{active?.ops}</div>;
 
+  // 宗旨 v11（2026-06-28）：进入某功能区时整块「从上到下」阶梯淡入（与 AppShell 切页
+  // 同款 .v-page 动画）。目录→功能区是同路由状态切换，AppShell 的 key={pathname} 不会
+  // 重新触发，所以这里用 key={active.id} 的 .v-page 包裹自行触发。
+  const pageKey = active?.id ?? "ops";
+
   // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏
   // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏
   // 整体仍恰好一屏、不溢出。无需依赖 h-full 的高度链路。
@@ -317,24 +322,41 @@ export function OperatorConsole({
   // 关键修正（操作员 2026-06-24，截图 9e80ed94「下方空白太大」）：本组件渲染右上角
   // 模型选择时会 setSuppressHeaderModel(true)，AppShell 那条 56px header **被隐藏**。
   // 此时还按 headerHeight(默认 56) 去扣，Studio 就比视口矮了 56px → 下方一大块空白。
-  // 所以 header 被我们顶掉时，AppShell header 高度按 0 算，只扣自己的顶栏条。
-  const appShellHeader = showModelPicker ? 0 : headerHeight;
+  //
+  // 宗旨 v11 再修（操作员 2026-06-28，截图 8e767da8 design「上面空白很大」）：上面那次
+  // 只覆盖了「本组件自带模型选择」分支。还有一类站——**既没给 OperatorConsole 传
+  // modelCategories（showModelPicker=false），也没给 AppShell 传 modelCategories /
+  // headerRight**（如 design）。这种站 AppShell 的 header 根本不渲染（showHeader=false），
+  // 高度本应按 0 算，旧逻辑却仍按 headerHeight(56) 扣 → 顶部一大截空白。
+  //
+  // 统一口径：AppShell header 实际占的竖向高度 =
+  //   - 本组件自带模型选择（showModelPicker）→ 它 setSuppressHeaderModel(true)，AppShell
+  //     header 被隐藏 → 0；
+  //   - 否则看 AppShell 是否还有 header 内容：modelConfig（站给 AppShell 传了 modelCategories）
+  //     存在 → AppShell 会渲染 header → headerHeight；都没有 → header 不渲染 → 0。
+  // 这样三类站（自带模型选择 / 用 AppShell header 模型选择 / 完全无 header）都精确扣高，
+  // 顶部不再留空白。
+  const appShellRendersHeader = !showModelPicker && Boolean(modelConfig?.categories?.length);
+  const appShellHeader = appShellRendersHeader ? headerHeight : 0;
   const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
   return (
     <div className={className}>
       {topBar}
-      <Studio
-        ops={ops}
-        canvas={active?.canvas ?? canvas ?? null}
-        opsWidth={opsWidth}
-        defaultRatio={defaultRatio}
-        storageKey={storageKey}
-        opsLabel={opsLabel}
-        canvasLabel={canvasLabel}
-        accent={accent}
-        headerHeight={studioHeaderHeight}
-      />
+      {/* 进功能区「从上到下」阶梯淡入（宗旨 v11）。key 变化重挂 → 重新触发 .v-page。 */}
+      <div key={pageKey} className="v-page contents">
+        <Studio
+          ops={ops}
+          canvas={active?.canvas ?? canvas ?? null}
+          opsWidth={opsWidth}
+          defaultRatio={defaultRatio}
+          storageKey={storageKey}
+          opsLabel={opsLabel}
+          canvasLabel={canvasLabel}
+          accent={accent}
+          headerHeight={studioHeaderHeight}
+        />
+      </div>
     </div>
   );
 }

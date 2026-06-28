@@ -47,6 +47,23 @@ export function useLeftPaneSlot(): LeftPaneSlot | null {
   return useContext(LeftPaneCtx);
 }
 
+// ----------------------------------------------------------------------------
+// 右栏标题（PaneHeader）插槽。宗旨 v11（2026-06-28 操作员）：消除右栏「框中框」。
+// 原来右栏 = 外层 <section>（圆角边框 + PaneHeader「结果」标题）再套 ResultCanvas
+// （又一层圆角边框 + 标签条）= 两层嵌套。现让 ResultCanvas 把自己的标签条**挂到右栏
+// PaneHeader 标题位**（同左栏「操作台|agent」开关的做法），自身不再画边框 → 内容直接
+// 贴右栏框、无中间嵌套层。
+// ----------------------------------------------------------------------------
+interface RightPaneSlot {
+  /** 用一个节点替换右栏标题（「结果」文字）。传 null 恢复默认。 */
+  setRightLabel: (node: ReactNode | null) => void;
+}
+const RightPaneCtx = createContext<RightPaneSlot | null>(null);
+/** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
+export function useRightPaneSlot(): RightPaneSlot | null {
+  return useContext(RightPaneCtx);
+}
+
 export interface SplitWorkspaceProps {
   /** 左栏内容（AI 推导 / 模板操控）。 */
   left: ReactNode;
@@ -96,6 +113,13 @@ export function SplitWorkspace({
     [],
   );
   const effectiveLeftLabel = leftLabelOverride ?? leftLabel;
+  // 右栏标题覆盖（ResultCanvas 通过 context 装入标签条 → 去框中框）。
+  const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
+  const rightSlot = useMemo<RightPaneSlot>(
+    () => ({ setRightLabel: (node) => setRightLabelOverride(node) }),
+    [],
+  );
+  const effectiveRightLabel = rightLabelOverride ?? rightLabel;
 
   // restore remembered ratio
   useEffect(() => {
@@ -207,6 +231,7 @@ export function SplitWorkspace({
 
   return (
     <LeftPaneCtx.Provider value={slot}>
+    <RightPaneCtx.Provider value={rightSlot}>
     <div
       ref={wrapRef}
       className={`gap-0 p-1.5 ${className} md:flex`}
@@ -256,12 +281,13 @@ export function SplitWorkspace({
             : { flexBasis: `${(1 - defaultRatio) * 100}%`, flexGrow: 1, flexShrink: 1 }
         }
       >
-        <PaneHeader label={rightLabel}>
+        <PaneHeader label={effectiveRightLabel}>
           <MaxButton which="right" />
         </PaneHeader>
         <div className={bodyClass}>{right}</div>
       </section>
     </div>
+    </RightPaneCtx.Provider>
     </LeftPaneCtx.Provider>
   );
 }
@@ -276,7 +302,7 @@ function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNo
       {isPlain ? (
         <span className="truncate text-[12px] font-medium text-stone-500">{label}</span>
       ) : (
-        <div className="min-w-0">{label}</div>
+        <div className="min-w-0 flex-1">{label}</div>
       )}
       <div className="flex shrink-0 items-center gap-1">{children}</div>
     </div>

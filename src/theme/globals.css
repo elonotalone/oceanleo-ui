@@ -188,6 +188,27 @@ body {
 }
 .v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
 .v-scroll::-webkit-scrollbar-track { background: transparent; }
+.v-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.18) transparent; }
+
+/* ---------- 全家桶统一：壳内所有滚动区 = 细滚动条 + 稳定滚动槽 ----------
+   操作员 2026-06-28（宗旨 v11）：工作台「中＋右」两栏的滚动条统一为细滚动条
+   （webkit 6px / Firefox thin），且 `scrollbar-gutter: stable` 预留滚动槽——
+   滚动条出现/消失时不再回流挤压左侧功能块（截图 a391b03a 的「滑动条挤压功能块」
+   病根）。作用域限定在 `[data-oceanleo-shell]`（AppShell 的根容器）内，避免影响
+   各站自定义的非壳区域。各组件无需逐个挂 `.v-scroll`，落到一处。
+   设计：docs/architecture/oceanleo-right-canvas-and-shell-polish.md。 */
+[data-oceanleo-shell] *::-webkit-scrollbar { width: 6px; height: 6px; }
+[data-oceanleo-shell] *::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 9999px;
+}
+[data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
+[data-oceanleo-shell] *::-webkit-scrollbar-track { background: transparent; }
+[data-oceanleo-shell] * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.18) transparent; }
+
+/* 稳定滚动槽工具类：给「内容会变长而出现/消失滚动条」的容器加上，避免回流挤压。
+   单一事实源——SplitWorkspace / Studio / ResultCanvas 的滚动 body 统一带它。 */
+.v-scroll-stable { scrollbar-gutter: stable; }
 
 /* ---------- recommender / smart-search aura (leo-*) ---------- */
 

@@ -205,7 +205,7 @@ export function PlaygroundDetail({
   //   （收成一个按键，点开才弹出各模态 chip 面板）。保证最上方永远只有一行。
   if (active) {
     return (
-      <div className="flex h-[calc(100dvh-1px)] flex-col">
+      <div key={active.agent_id} className="v-fade-up flex h-[calc(100dvh-1px)] flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2">
             <BackButton onClick={() => setActiveId("")} />

@@ -78,9 +78,11 @@ export function Studio({
   return (
     <SplitWorkspace
       left={
-        <div className="h-full space-y-3 overflow-y-auto px-4 py-4">{ops}</div>
+        <div className="v-scroll-stable h-full space-y-3 overflow-y-auto px-4 py-4">{ops}</div>
       }
-      right={<div className="flex h-full min-h-0 flex-col p-3">{canvas}</div>}
+      // 宗旨 v11：右栏不再外包一层带内边距的 div——canvas（ResultCanvas）自己挂右栏
+      // 标题位、自管内边距与滚动，避免「框中框」。canvas 直接填右栏 body。
+      right={<div className="flex h-full min-h-0 flex-col">{canvas}</div>}
       defaultRatio={initialRatio}
       storageKey={storageKey}
       leftLabel={opsLabel}

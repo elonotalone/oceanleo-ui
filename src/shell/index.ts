@@ -55,10 +55,11 @@ export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
-export { ResultCanvas, CanvasEmpty } from "./ResultCanvas";
+export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
-export { SplitWorkspace, useLeftPaneSlot } from "./SplitWorkspace";
+// 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
+export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorkspace";
 export type { SplitWorkspaceProps } from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";
