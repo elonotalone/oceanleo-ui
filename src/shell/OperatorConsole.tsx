@@ -26,7 +26,7 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
@@ -159,7 +159,6 @@ export function OperatorConsole({
   skillTab: _skillTab,
 }: OperatorConsoleProps) {
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
-  const groupId = useId();
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
@@ -260,26 +259,26 @@ export function OperatorConsole({
     );
   }
 
-  // doctrine v3（操作员 2026-06-21）：功能按键条不仅在「多功能」时显示——只要存在
-  // 任一带 agent 的功能区，即便是单功能站也要把那条按键显示出来，让用户看到该功能
-  // 区的「✦ agent」标记（单 agent 站也是一个功能区=一个 agent）。纯单功能且无 agent
-  // 的站（无标记价值）才隐藏。solo 模式（hideTabs）始终隐藏。
-  const hasAgent = functions.some((f) => f.agentId);
-  const showTabs = (functions.length > 1 || hasAgent) && !hideTabs;
+  // 宗旨 v10（操作员 2026-06-28）：一个 app 功能页 = 一个功能 = 一个操作台，进入
+  // 功能区后**绝不显示顶部功能切换条**（参考图 law 案例检索页：顶栏只有 ← 返回 /
+  // 功能名 / 模型选择）。换功能靠「返回目录 → 选另一张卡片」，不在页内横切。多功能
+  // 站走 directory 目录模式选功能；非目录的多功能站（理论上少见）默认进入第一个功能
+  // 区，仍不显示切换条。
 
-  // 顶栏 = 可选 header + 功能按键条。它在「操作台 / 结果」两栏标题之上，整条横跨
-  // 中+右两栏（即 Studio 之上），不再塞进「操作台」栏体里。
-  // hideTabs（solo 模式）：彻底不渲染功能按键条 + header。
-  // directory 模式且已进入：顶栏改为「← 返回」（回目录），不再列全部功能按键。
+  // 顶栏 = 可选 header + 「← 返回 / 当前功能名 / 模型选择」（宗旨 v10：无功能切换条）。
+  // 它在「操作台 / 结果」两栏标题之上，整条横跨中+右两栏（即 Studio 之上）。
+  // hideTabs（solo 模式）：彻底不渲染顶栏（主站 iframe 内嵌，模型选择由主站那行承担）。
+  // directory 模式且已进入：顶栏左侧是「← 返回」（回目录）+ 当前功能名。
+  // 非目录站：顶栏只承载可选 header + 右上角模型选择（无功能切换）。
   // 顶栏右上角放收起态模型选择（modelPicker），与左侧返回/功能名同一行 → 最上方一行。
   const showTopBar =
-    (showTabs || header != null || directoryMode || modelPicker != null) && !hideTabs;
+    (header != null || directoryMode || modelPicker != null) && !hideTabs;
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {directoryMode ? (
+          {directoryMode && (
             <div className="flex items-center gap-2">
               <BackButton onClick={backToDirectory} />
               <span className="truncate text-[13px] font-medium text-stone-600">
@@ -292,16 +291,6 @@ export function OperatorConsole({
                 )}
               </span>
             </div>
-          ) : (
-            showTabs && (
-              <FunctionTabs
-                functions={functions}
-                activeId={active?.id ?? ""}
-                accent={accent}
-                groupId={groupId}
-                onSelect={select}
-              />
-            )
           )}
         </div>
         {modelPicker && <div className="shrink-0">{modelPicker}</div>}
@@ -340,71 +329,6 @@ export function OperatorConsole({
         accent={accent}
         headerHeight={studioHeaderHeight}
       />
-    </div>
-  );
-}
-
-// 顶部功能按键条：横排可换行的 pill 按钮，选中态用 accent 着色。
-function FunctionTabs({
-  functions,
-  activeId,
-  accent,
-  groupId,
-  onSelect,
-}: {
-  functions: ConsoleFunction[];
-  activeId: string;
-  accent: string;
-  groupId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="功能选择"
-      className="flex flex-wrap gap-1.5 rounded-2xl border border-stone-200/80 bg-white/80 p-1.5 shadow-sm"
-    >
-      {functions.map((f) => {
-        const on = f.id === activeId;
-        return (
-          <button
-            key={f.id}
-            id={`${groupId}-tab-${f.id}`}
-            role="tab"
-            type="button"
-            aria-selected={on}
-            onClick={() => onSelect(f.id)}
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-              on
-                ? "text-white shadow-sm"
-                : "text-stone-600 hover:bg-stone-100"
-            }`}
-            style={on ? { background: accent } : undefined}
-          >
-            {f.icon != null && <span className="shrink-0">{f.icon}</span>}
-            <span>{f.label}</span>
-            {f.agentId && (
-              <span
-                title="此功能区有专属 agent"
-                className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${
-                  on ? "bg-white/25 text-white" : "bg-indigo-100 text-indigo-700"
-                }`}
-              >
-                ✦ agent
-              </span>
-            )}
-            {f.badge && (
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${
-                  on ? "bg-white/25 text-white" : "bg-rose-500 text-white"
-                }`}
-              >
-                {f.badge}
-              </span>
-            )}
-          </button>
-        );
-      })}
     </div>
   );
 }

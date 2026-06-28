@@ -1,35 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useActiveOpsConsole, type OpsConsoleEntry } from "./OpsConsoleBridge";
-import { mergeOpsBlock, opsStateToPromptText } from "../lib/fn-agent";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
 // ----------------------------------------------------------------------------
-// 浮窗承载两页，顶部一对切换键共用同一个显示框（理解 A，操作员 2026-06-27）：
+// 宗旨 v10（操作员 2026-06-28）：docs/architecture/
+// oceanleo-pro-site-console-agent-coplane.md
+//   推翻 v9（理解 A）的「操作台搬进浮窗当第二页」。专业子站的操作台回到左栏第一公民
+//   （操作台 | agent 同栏双形态），**不再进浮窗**。本浮窗回到只有「leo 建议」一页的
+//   纯助手形态——主站首页 + 各站输入框仍用它给可点击补充项。
 //
 //   ┌─ [可拖动标题栏] leo 助手 ───────────────────── ✕ ┐
-//   │  [ leo 建议 | 操作台 ]  ← 两页切换（操作台仅当有     │
-//   │                          功能区注册操作台时出现）    │
-//   │  ── leo 建议 页（默认）──                            │
+//   │  ── leo 建议 ──                                     │
 //   │   leo 给可点击补充项，点一下追加到当前 AI 输入框      │
-//   │  ── 操作台 页 ──                                     │
-//   │   各功能区的 StudioSection 表单（**无生成按钮**）；    │
-//   │   勾选/填写 → 整理成「字段：值」文本 → 哨兵块单向      │
-//   │   写进当前 AI 输入框（整块替换/追加/移除）             │
 //   └───────────────────────────────────────────────────┘
 //
-// 「leo 建议」页（原有逻辑）：驱动宿主页面真实的 AI 输入框——
+// 「leo 建议」：驱动宿主页面真实的 AI 输入框——
 //   1. 用户在某个「与 AI 生成有关」的输入框里写需求；
 //   2. 点输入框旁的「leo 建议」按钮（派发 OPEN_LEO_EVENT）打开本浮窗；
 //   3. leo 捕捉该输入框现有内容作为 basePrompt，向网关要可点击补充项；
 //   4. 点某选项 → 追加进输入框；选项随输入框内容刷新。
-//
-// 「操作台」页（理解 A 新增）：把原左栏的「操作台 / 灵感台」表单搬进浮窗。表单元素
-//   由各功能区（FunctionAgentChat）经 OpsConsoleBridge 注册进来，本浮窗只负责：
-//   渲染它 + 监听其 state 变化（注册项的 rev）→ opsStateToPromptText → mergeOpsBlock
-//   写进当前 AI 输入框。生成仍只发生在 agent（操作台无生成按钮）。
 //
 // 浮窗可四处拖动：抓住标题栏拖动，位置写进 localStorage（按浏览器记忆）。
 //
@@ -223,13 +214,6 @@ export function LeoAssistant({
   hideFloatingButton = true,
 }: LeoAssistantProps) {
   const [open, setOpen] = useState(false);
-  // 浮窗里的两页：leo 建议 / 操作台。操作台仅当有功能区注册时可用。
-  const [page, setPage] = useState<"suggest" | "ops">("suggest");
-  const ops = useActiveOpsConsole();
-  // 顶层 resolve（无条件调用，符合 hooks 规则）：操作台页用它把整理文本写进当前
-  // AI 输入框。Panel（leo 建议页）内部另起一个 useHostInput 实例，二者指向同一套
-  // 「最近聚焦的宿主输入框」DOM 逻辑，互不干扰。
-  const { resolve: resolveHostInput } = useHostInput();
 
   // 让任意「leo 建议」按钮（或快捷键）通过派发 OPEN_LEO_EVENT 打开本浮窗。
   useEffect(() => {
@@ -237,11 +221,6 @@ export function LeoAssistant({
     window.addEventListener(OPEN_LEO_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_LEO_EVENT, onOpen);
   }, []);
-
-  // 没有注册操作台时强制回到「leo 建议」页（避免停留在已消失的操作台页）。
-  useEffect(() => {
-    if (!ops && page === "ops") setPage("suggest");
-  }, [ops, page]);
 
   // ── 拖动 ────────────────────────────────────────────────────────────────
   const [pos, setPos] = useState<Pos | null>(null);
@@ -308,8 +287,6 @@ export function LeoAssistant({
     [],
   );
 
-  const accent = ops?.accent || "#4f46e5";
-
   return (
     <div data-ai-assistant-root>
       {!open && !hideFloatingButton && (
@@ -358,95 +335,10 @@ export function LeoAssistant({
             </button>
           </div>
 
-          {/* 两页切换键（操作台仅当有功能区注册时出现） */}
-          {ops && (
-            <div className="flex shrink-0 items-center gap-1 border-b border-slate-100 px-3 py-2">
-              <PageTab on={page === "suggest"} accent={accent} onClick={() => setPage("suggest")}>
-                leo 建议
-              </PageTab>
-              <PageTab on={page === "ops"} accent={accent} onClick={() => setPage("ops")}>
-                {ops.label || "操作台"}
-              </PageTab>
-              {ops.appLabel && (
-                <span className="ml-auto truncate text-[11px] text-slate-400">{ops.appLabel}</span>
-              )}
-            </div>
-          )}
-
-          {page === "ops" && ops ? (
-            <OpsPage entry={ops} resolve={resolveHostInput} />
-          ) : (
-            <Panel siteId={siteId} docType={docType} />
-          )}
+          <Panel siteId={siteId} docType={docType} />
         </div>
       )}
     </div>
-  );
-}
-
-// ── 操作台页 ────────────────────────────────────────────────────────────────
-// 渲染各功能区注册进来的表单内容；监听 entry.rev（state 变化）→ 把已填字段整理成
-// 文本 → mergeOpsBlock 单向写进当前 AI 输入框。**无生成按钮**——生成只在 agent 发生。
-function OpsPage({
-  entry,
-  resolve,
-}: {
-  entry: OpsConsoleEntry;
-  resolve: () => HostInput | null;
-}) {
-  // entry.rev 变了（用户在表单里勾选/填写导致 FunctionAgentChat re-register）→ 整理
-  // 文本并同步进输入框。首次进入操作台页也同步一次当前已填内容。
-  useEffect(() => {
-    const target = resolve();
-    if (!target) return;
-    const state = (() => {
-      try {
-        return entry.getState() || {};
-      } catch {
-        return {};
-      }
-    })();
-    const body = opsStateToPromptText(entry.schema, state, entry.excludeKeys || []);
-    const next = mergeOpsBlock(target.value, body);
-    if (next !== target.value) setHostValue(target, next);
-    // 依赖 rev：每次操作台 state 变化都重算一次。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.rev, entry.id]);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <p className="shrink-0 border-b border-slate-50 px-4 py-2.5 text-[12px] leading-relaxed text-slate-500">
-        操作台帮你整理思路：勾选 / 填写下面的选项，会自动整理成需求，写进左侧 agent 的
-        输入框。回到「{`leo 建议`}」或直接发送让 agent 据此生成。
-      </p>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">{entry.content}</div>
-    </div>
-  );
-}
-
-function PageTab({
-  on,
-  accent,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  accent: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      data-leo-no-drag
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
-        on ? "text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-      }`}
-      style={on ? { background: accent } : undefined}
-    >
-      {children}
-    </button>
   );
 }
 

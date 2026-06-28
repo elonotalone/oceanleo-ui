@@ -65,12 +65,10 @@ export { Markdown } from "./Markdown";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
 export { AgentChat } from "./AgentChat";
 export type { AgentChatProps } from "./AgentChat";
-// 功能区左栏「只有 agent」（理解 A，2026-06-27）：操作台搬进 leo 助手浮窗。
+// 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
+// agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
-// 理解 A：操作台 ⟷ leo 助手浮窗 的全局桥（功能区把操作台注册给浮窗的第二页）。
-export { registerOpsConsole, useActiveOpsConsole } from "./OpsConsoleBridge";
-export type { OpsConsoleEntry } from "./OpsConsoleBridge";
 // doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
 export { SkillPromptPanel } from "./SkillPromptPanel";
 export type { SkillPromptPanelProps } from "./SkillPromptPanel";

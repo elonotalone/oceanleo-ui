@@ -1,16 +1,14 @@
 // ============================================================================
-// @oceanleo/ui — 功能区 agent ↔ 操作台 结构化协议（单一事实源）
+// @oceanleo/ui — 功能区操作台结构化类型（单一事实源）
 // ----------------------------------------------------------------------------
-// Doctrine v3: docs/architecture/oceanleo-function-agent-and-app-shell.md
-//   一个功能区 = 一个操作台 = 一个 agent.
+// 宗旨 v10: docs/architecture/oceanleo-pro-site-console-agent-coplane.md
+//   一个功能页 = 一个功能 = 一个操作台。操作台与 agent 在左栏「操作台 | agent」同栏
+//   双形态切换，但**彼此独立**：agent 不读、不写操作台 state（不再产 OpsPatch 回填）。
 //
-// 每个功能区声明一份 OpsSchema（操作台有哪些可读写字段 + 有哪些可触发动作）。
-// agent 后端产出 OpsPatch（对操作台字段的结构化补丁），前端 applyPatch 落到真实
-// 操作台 state；右栏随之重渲染。这样「agent 在控制操作台，操作台再渲染结果」。
-//
-// 省 token 原则（操作员 2026-06-21）：agent「能点生成」不要求前端逐字段回放 —— 能
-// 在后端一次出结果就在后端出；OpsPatch 只承载「需要回填到操作台、让用户继续手改」
-// 的结构化字段。模板/素材类字段标 userPicksOnly：agent 不替选，必要时只提示用户。
+// 这里保留 OpsSchema / OpsField / OpsAction / OpsPatch 类型 + applyOpsPatch /
+// opsSnapshot 工具——它们仍是各站描述操作台字段、内部更新 state 的通用类型/工具；
+// agent 工具能力 / 历史数据形态也可能引用。v9 的「灵感台→输入框单向传递」工具
+// （mergeOpsBlock / opsStateToPromptText / OPS_BLOCK_*）已随操作台不再进浮窗而移除。
 // ============================================================================
 
 export type OpsFieldType =
@@ -124,7 +122,7 @@ function setPath(
   return root;
 }
 
-/** 从操作台 state 抽出 agent 关心的精简快照（只取 schema 声明的字段）。 */
+/** 从操作台 state 抽出精简快照（只取 schema 声明的字段）。供各站内部需要时使用。 */
 export function opsSnapshot(
   schema: OpsSchema,
   state: Record<string, unknown>,
@@ -135,80 +133,4 @@ export function opsSnapshot(
     if (v !== undefined && v !== null && v !== "") snap[f.key] = v;
   }
   return snap;
-}
-
-// --------------------------------------------------------------------------- //
-// 宗旨 v9（2026-06-27）：灵感台 → agent 输入框 的「单向传递」。
-//   - 灵感台不再是 agent 能读写的隐藏上下文，而是一个 prompt 提示器：用户在它里面
-//     勾选/输入，结果整理成一段文本，单向同步进 agent 的输入框。
-//   - agent 只看「用户发给它的消息」（输入框里的文本），不再读 opsState。
-//   docs/architecture/oceanleo-agent-only-console-and-prompt-helper.md
-// --------------------------------------------------------------------------- //
-
-/** 灵感台同步进输入框的文本块哨兵（用于「整块替换 / 移除」，不锁定用户手打内容）。 */
-export const OPS_BLOCK_OPEN = "⟦灵感台⟧";
-export const OPS_BLOCK_CLOSE = "⟦/灵感台⟧";
-
-// 把单个字段值渲染成人类可读字符串：enum 取其 label，boolean 取「是/否」，其余原样。
-function fieldValueText(field: OpsField, value: unknown): string {
-  if (field.type === "boolean") return value ? "是" : "";
-  if (field.type === "enum" && field.enumValues) {
-    const hit = field.enumValues.find((o) => o.value === value);
-    if (hit) return hit.label;
-  }
-  if (Array.isArray(value)) return value.map((v) => String(v)).join("、");
-  return value == null ? "" : String(value);
-}
-
-/**
- * 把灵感台 state 整理成多行「字段label：值」文本（只取已填字段；排除结果/输出字段）。
- * 空时返回空串。`excludeKeys` 用于排除「结果」类字段（不应进 prompt）。
- */
-export function opsStateToPromptText(
-  schema: OpsSchema,
-  state: Record<string, unknown>,
-  excludeKeys: string[] = [],
-): string {
-  const skip = new Set(excludeKeys);
-  const lines: string[] = [];
-  for (const f of schema.fields) {
-    if (skip.has(f.key)) continue;
-    if (f.userPicksOnly) {
-      // 素材/模板类：用户自己在右栏选，不进 prompt 文本（避免塞一堆 id）。
-      continue;
-    }
-    const raw = getPath(state, f.key);
-    const text = fieldValueText(f, raw).trim();
-    if (!text) continue;
-    lines.push(`${f.label}：${text}`);
-  }
-  return lines.join("\n");
-}
-
-/**
- * 把一段「灵感台文本块」合并进 agent 输入框现有内容（单向传递的合并算法）。
- *   - 输入框已含上一版哨兵块 → 整块替换为新块（用户改选项即时反映）；
- *   - 不含 → 追加到尾部（保留用户已手打的话）；
- *   - 新块为空（灵感台全空）→ 移除哨兵块，不留空壳。
- * 用户仍可自由编辑哨兵块内外文字；哨兵只是定位锚。
- */
-export function mergeOpsBlock(currentInput: string, blockBody: string): string {
-  const body = blockBody.trim();
-  const block = body ? `${OPS_BLOCK_OPEN}\n${body}\n${OPS_BLOCK_CLOSE}` : "";
-  const openIdx = currentInput.indexOf(OPS_BLOCK_OPEN);
-  const closeIdx = currentInput.indexOf(OPS_BLOCK_CLOSE);
-
-  if (openIdx !== -1 && closeIdx !== -1 && closeIdx > openIdx) {
-    const before = currentInput.slice(0, openIdx);
-    const after = currentInput.slice(closeIdx + OPS_BLOCK_CLOSE.length);
-    if (!block) {
-      // 移除旧块；清理它周围多余空行。
-      return `${before.replace(/\n+$/, "")}\n${after.replace(/^\n+/, "")}`.trim();
-    }
-    return `${before}${block}${after}`.replace(/\n{3,}/g, "\n\n").trimEnd();
-  }
-
-  if (!block) return currentInput;
-  const head = currentInput.trim();
-  return head ? `${head}\n\n${block}` : block;
 }
