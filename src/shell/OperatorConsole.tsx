@@ -177,14 +177,20 @@ export function OperatorConsole({
 
   // 「目录页 ↔ 已进入功能区」由本组件**自管**（opened），与受控的 `value` 解耦。
   // 关键修复（操作员 2026-06-24，截图 2552c5a6「返回键形同虚设」）：
-  //   受控站（bizdev/resume）总是把一个**非空默认功能 id**作为 `value` 传进来（如
-  //   "reply"），从不为空。旧逻辑 `isOpened = Boolean(value)` 因此恒为 true：
+  //   受控站（bizdev/resume）旧逻辑 `isOpened = Boolean(value)` 恒为 true：
   //     ① 一进工作台就直接落到某功能区、跳过了目录卡片页；
   //     ② 点「返回」时父站又把 value 归位到默认功能 → 永远回不到目录，返回键摆设。
-  //   现改为：目录模式下**一律从目录页起步**（opened=null），点卡片才进功能区、
-  //   点返回才回目录。opened 是「在不在目录页」的单一事实源，不被 value 牵着走；
-  //   value 只决定「进入后激活哪个功能」。这样无论站点是否受控，返回键都真实可用。
-  const [opened, setOpened] = useState<string | null>(null);
+  //   宗旨 v10.1（2026-06-28）：单一事实源回到 URL `?fn=`，各站把功能选择收口成——
+  //   有 `?fn=` → 传非空 value（深链直达该功能区）；无 `?fn=`（含点「返回」清掉
+  //   fn）→ 传 undefined/空（显示目录）。所以 opened **以受控 value 初始化**：进站
+  //   带 ?fn= 直接进功能区；返回时父站把 value 清空、本组件回目录。value 为空时
+  //   opened 也为空（目录）。这样深链能直达、返回键也真实可用。
+  const [opened, setOpened] = useState<string | null>(value || null);
+  // value 受控变化（父站改 ?fn=）时同步 opened：清空→回目录；置值→进该功能区。
+  useEffect(() => {
+    if (value === undefined) return; // 非受控站不跟随
+    setOpened(value || null);
+  }, [value]);
   const isOpened = opened !== null;
 
   const openFn = (id: string) => {
