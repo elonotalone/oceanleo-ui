@@ -132,8 +132,23 @@ export interface AppShellProps {
   headerRight?: ReactNode;
   /** true 时隐藏顶部 header（业务页自带顶栏时用） */
   hideHeader?: boolean;
+  /**
+   * 判定「当前是操作台路由」（OperatorConsole 拥有右上角模型选择，header 的那条该
+   * 隐藏）的同步谓词。接收已去掉 locale 前缀的逻辑路由。默认匹配 `/workspace`
+   * （全家桶单页操作台站的统一路由）。返回 true → 首帧（含 SSR）就不渲染 header
+   * 模型选择，杜绝「左上闪一下跳右上」。控制台路由非 `/workspace` 的站可自传谓词。
+   * 传 `() => false` 可彻底关闭本机制（恢复纯 effect 行为）。
+   */
+  consoleRouteMatch?: (logicalPathname: string) => boolean;
   /** Stage C：true 时在模型选择旁渲染 agent 引擎选择器（OceanLeo 原生 / 4 外部
    *  引擎 BYOK）。主站首页传 true。 */
+}
+
+/** 默认「操作台路由」判定：匹配 `/workspace`（含其子路由）。全家桶单页操作台站
+ *  （interior/image/law/resume/… 经 (main)/(app) route group 后 URL 仍是 /workspace）
+ *  统一走这条；控制台路由不同的站可在 AppShell 传 `consoleRouteMatch` 覆盖。 */
+function defaultConsoleRouteMatch(logicalPathname: string): boolean {
+  return logicalPathname === "/workspace" || logicalPathname.startsWith("/workspace/");
 }
 
 // doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
@@ -148,9 +163,20 @@ export function AppShell(props: AppShellProps) {
         apiHref: props.apiHref || "/api",
       }
     : null;
+
+  // 同步（render 阶段，SSR 也生效）判定「当前是操作台路由」，据此让 header 模型选择
+  // 从首帧起就不渲染——杀掉「模型选择左上闪一下跳右上」（操作员 2026-06-29）。
+  const rawPathname = usePathname() || "/";
+  const logicalPathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
+  const matchConsole = props.consoleRouteMatch ?? defaultConsoleRouteMatch;
+  const routeSuppressHeaderModel = matchConsole(logicalPathname);
+
   return (
     <WorkspaceSelectionProvider>
-      <ShellChromeProvider modelConfig={modelConfig}>
+      <ShellChromeProvider
+        modelConfig={modelConfig}
+        routeSuppressHeaderModel={routeSuppressHeaderModel}
+      >
         <AppShellInner {...props} />
       </ShellChromeProvider>
     </WorkspaceSelectionProvider>

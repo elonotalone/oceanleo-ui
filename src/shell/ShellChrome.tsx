@@ -40,14 +40,32 @@ const ShellChromeContext = createContext<ShellChromeValue | null>(null);
 export function ShellChromeProvider({
   children,
   modelConfig = null,
+  routeSuppressHeaderModel = false,
 }: {
   children: ReactNode;
   modelConfig?: ShellModelConfig | null;
+  /**
+   * 由 AppShell 在 render 阶段按当前路由同步算出的「本路由是操作台路由，header 的
+   * 模型选择该隐藏」信号。它与 OperatorConsole 挂载后 `setSuppressHeaderModel(true)`
+   * 的动态信号取**或**——只要其一为真就隐藏 header 模型选择。
+   *
+   * 为什么需要它（操作员 2026-06-29 反馈的「模型选择从左上闪到右上」）：单页操作台
+   * 站（OperatorConsole）的模型选择该落在主区那一行的**右上角**，AppShell header 的
+   * 那条应隐藏。过去只靠 OperatorConsole 挂载后的 `useEffect → setSuppressHeaderModel(true)`，
+   * effect 在**首帧绘制之后**才跑：SSR/首帧先把 header 的模型选择画在**左上**（且
+   * OperatorConsole 因 useSearchParams 走 CSR bailout，主区右上那个此刻还没出现），
+   * effect 跑完才摘掉左上、补上右上 → 肉眼可见「左上闪一下跳到右上」。任何 effect 都
+   * 修不掉「服务端已经吐出来的那一帧」。本信号在 render 阶段同步生效（SSR 也算），故
+   * header 从第一帧起就不渲染模型选择，杜绝左上那一帧。它随路由变化而**响应式**更新
+   * （离开操作台路由 → 自动恢复 header 模型选择），不像 useState 初值只在挂载时取一次。
+   */
+  routeSuppressHeaderModel?: boolean;
 }) {
   const [suppressHeaderModel, setSuppressHeaderModel] = useState(false);
+  const effectiveSuppress = suppressHeaderModel || routeSuppressHeaderModel;
   const value = useMemo(
-    () => ({ suppressHeaderModel, setSuppressHeaderModel, modelConfig }),
-    [suppressHeaderModel, modelConfig],
+    () => ({ suppressHeaderModel: effectiveSuppress, setSuppressHeaderModel, modelConfig }),
+    [effectiveSuppress, modelConfig],
   );
   return <ShellChromeContext.Provider value={value}>{children}</ShellChromeContext.Provider>;
 }
