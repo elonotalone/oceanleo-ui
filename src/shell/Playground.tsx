@@ -67,7 +67,11 @@ function useAgents(refreshKey = 0): { agents: AgentDef[]; loading: boolean } {
 // doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（全家桶站卡片 + AI 智能推荐）
 //   并入 playground，成为第一个 tab。站点清单 + 推荐网关是消费端 lib/sites 的事，所以
 //   由消费端通过 renderSites 注入（与 renderBoard 同一范式），不把 SITES 耦合进本包。
-type Tab = "site" | "app" | "skill" | "organization" | "workflow";
+// doctrine v12（2026-06-30）：新增「客户端app」一级 tab（与网站/app/agent/organization/
+//   workflow 并列），原右下角「原生骨架预览」浮层升级而来。点进去先选客户端（哪个
+//   网站对应的 app），再看它有哪些 app。客户端清单 + 原生骨架预览是消费端的事，所以
+//   同样由消费端经 renderClientApps 注入（与 renderSites/renderBoard 同一范式）。
+type Tab = "site" | "app" | "skill" | "clientapp" | "organization" | "workflow";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
@@ -89,6 +93,7 @@ export function PlaygroundDetail({
   accent = "#0ea5e9",
   renderBoard,
   renderSites,
+  renderClientApps,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
@@ -103,6 +108,12 @@ export function PlaygroundDetail({
    * （持有 lib/sites 站点清单 + /v1/recommend 网关）。不传 → 不显示「网站」tab。
    */
   renderSites?: () => ReactNode;
+  /**
+   * doctrine v12（2026-06-30）：渲染「客户端app」分区（选客户端 → 看它的 app +
+   * 原生骨架预览）。由消费端注入（持有客户端 app 注册表 + 5 系统骨架预览）。
+   * 不传 → 不显示「客户端app」tab。
+   */
+  renderClientApps?: () => ReactNode;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
@@ -266,9 +277,37 @@ export function PlaygroundDetail({
           <PlaygroundHeader />
         </div>
         <div className="mb-6">
-          <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+          <PlaygroundTabs
+            tab={tab}
+            setTab={setTab}
+            hasSites={!!renderSites}
+            hasBoard={!!renderBoard}
+            hasClientApps={!!renderClientApps}
+          />
         </div>
         {renderSites()}
+      </div>
+    );
+  }
+
+  // ── 客户端app 分区（doctrine v12，2026-06-30）：选客户端 → 它的 app + 原生骨架
+  //   预览，由消费端 renderClientApps 注入。与其余分区同一套外层版式。
+  if (tab === "clientapp" && renderClientApps) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
+          <PlaygroundHeader />
+        </div>
+        <div className="mb-6">
+          <PlaygroundTabs
+            tab={tab}
+            setTab={setTab}
+            hasSites={!!renderSites}
+            hasBoard={!!renderBoard}
+            hasClientApps={!!renderClientApps}
+          />
+        </div>
+        {renderClientApps()}
       </div>
     );
   }
@@ -296,7 +335,7 @@ export function PlaygroundDetail({
             <PlaygroundHeader />
           </div>
           <div className="mb-6">
-            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
           </div>
           <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
             {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
@@ -318,7 +357,7 @@ export function PlaygroundDetail({
               <PlaygroundHeader />
             </div>
             <div className="mb-6">
-              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
             </div>
           </>
         )}
@@ -339,7 +378,7 @@ export function PlaygroundDetail({
       </div>
 
       <div className="mb-6">
-        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
       </div>
 
       {/* doctrine v11：AI 智能推荐（按分区定制文案，候选 = 当前分区全部条目）。 */}
@@ -442,16 +481,19 @@ function PlaygroundTabs({
   setTab,
   hasSites,
   hasBoard,
+  hasClientApps,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   hasSites?: boolean;
   hasBoard?: boolean;
+  hasClientApps?: boolean;
 }) {
   const tabs = [
     ...(hasSites ? [{ id: "site" as Tab, label: "网站" }] : []),
     { id: "app" as Tab, label: "app" },
     { id: "skill" as Tab, label: "agent" },
+    ...(hasClientApps ? [{ id: "clientapp" as Tab, label: "客户端app" }] : []),
     ...(hasBoard
       ? [
           { id: "organization" as Tab, label: "organization" },
