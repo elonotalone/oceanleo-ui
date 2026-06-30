@@ -39,27 +39,52 @@ function fmt(ts?: string): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+/** 两个任务列表是否「实质相同」——id 序列 + 影响展示的字段（状态/标题/花费）都没变。
+ * 轮询静默刷新时用它判断，避免每次都 setItems 出一个新数组引用导致整列表重渲染抽动。 */
+function sameTasks(a: AgentTask[], b: AgentTask[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.status !== y.status ||
+      x.title !== y.title ||
+      (x.nano_spent ?? null) !== (y.nano_spent ?? null) ||
+      (x.credits_spent ?? null) !== (y.credits_spent ?? null)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function useHistory(siteId?: string, pending = false, authMsg = "登录后即可查看历史记录。") {
   const [items, setItems] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(() => {
-    setLoading(true);
+  // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
+  // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）才显示首次加载骨架。
+  const reload = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     listTasks(100, siteId, pending).then((r) => {
-      setLoading(false);
+      if (!silent) setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? authMsg : r.error || "加载失败");
+        // 静默轮询失败不打断已有列表（只在首次加载时报错）。
+        if (!silent) setError(r.status === 401 ? authMsg : r.error || "加载失败");
         return;
       }
       setError(null);
-      setItems(r.data.items || []);
+      const next = r.data.items || [];
+      setItems((prev) => (sameTasks(prev, next) ? prev : next));
     });
   }, [siteId, pending, authMsg]);
-  useEffect(() => reload(), [reload]);
-  // 「待处理」需要随任务进展刷新（running → done/未读 / 工作流流到人工）。轻量轮询。
+  useEffect(() => reload(false), [reload]);
+  // 「待处理」需要随任务进展刷新（running → done/未读 / 工作流流到人工）。轻量轮询，
+  // 静默进行——不再每 8s 把列表替成「加载…」再跳回来。
   useEffect(() => {
     if (!pending) return;
-    const t = setInterval(reload, 8000);
+    const t = setInterval(() => reload(true), 8000);
     return () => clearInterval(t);
   }, [pending, reload]);
   const remove = useCallback(async (id: string) => {
