@@ -28,11 +28,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
+import { useAttachments } from "./useAttachments";
 import {
   createTask,
   followUp,
   getTask,
   latestArtifact,
+  type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
@@ -111,6 +113,11 @@ export function FunctionAgentChat({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const reportedArtifactRef = useRef<string>("");
+  const atts = useAttachments(siteId, setError);
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInput((v) => (v ? v + " " : "") + text);
+  }, []);
 
   // ── 「操作台 | agent」切换键装进左栏标题位（宗旨 v10，复用 v0.41.0 机制）──────
   // SplitWorkspace 的左栏 PaneHeader 标题本身就是这枚开关；不在 SplitWorkspace 内
@@ -190,19 +197,27 @@ export function FunctionAgentChat({
 
   async function send() {
     const prompt = input.trim();
-    if (!prompt || busy) return;
+    const uploaded = atts.ready();
+    if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     setInput("");
+    atts.clear();
     setError(null);
-    setMessages((m) => [...m, { id: Date.now(), role: "user", kind: "text", content: prompt }]);
+    const effectivePrompt = prompt || "请分析我上传的文件。";
+    const meta = uploaded.length ? { attachments: uploaded } : undefined;
+    setMessages((m) => [
+      ...m,
+      { id: Date.now(), role: "user", kind: "text", content: effectivePrompt, meta },
+    ]);
 
     if (!taskId) {
       setBusy(true);
       const r = await createTask({
-        prompt,
+        prompt: effectivePrompt,
         mode: "agent",
         siteId,
         agentId,
         agentModel,
+        attachments: uploaded,
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
       });
       setBusy(false);
@@ -216,7 +231,7 @@ export function FunctionAgentChat({
       return;
     }
     setBusy(true);
-    const r = await followUp(taskId, prompt);
+    const r = await followUp(taskId, effectivePrompt, uploaded);
     setBusy(false);
     if (r.ok) setStatus("running");
     else setError(r.error || "发送失败");
@@ -282,8 +297,12 @@ export function FunctionAgentChat({
           loading={busy}
           leoSuggest
           leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
-          placeholder={`让 agent 帮你做「${schema.title}」…`}
+          placeholder={`让 agent 帮你做「${schema.title}」，可上传文件…`}
           rows={1}
+          onAttachFiles={atts.handleAttachFiles}
+          attachments={atts.composerAttachments}
+          onRemoveAttachment={atts.removeAttachment}
+          onVoiceTranscript={handleVoiceTranscript}
         />
       </div>
     </div>
@@ -292,14 +311,24 @@ export function FunctionAgentChat({
 
 function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
   if (m.role === "user") {
+    const attList = m.meta?.attachments || [];
     return (
-      <div className="flex justify-end">
-        <div
-          className="max-w-[88%] whitespace-pre-wrap rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
-          style={{ background: accent }}
-        >
-          {m.content}
-        </div>
+      <div className="flex flex-col items-end gap-1.5">
+        {attList.length > 0 && (
+          <div className="flex max-w-[88%] flex-wrap justify-end gap-1.5">
+            {attList.map((a, i) => (
+              <FnAttachmentChip key={i} att={a} />
+            ))}
+          </div>
+        )}
+        {m.content && (
+          <div
+            className="max-w-[88%] whitespace-pre-wrap rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
+            style={{ background: accent }}
+          >
+            {m.content}
+          </div>
+        )}
       </div>
     );
   }
@@ -322,5 +351,38 @@ function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
         <Markdown>{m.content}</Markdown>
       </div>
     </div>
+  );
+}
+
+function FnAttachmentChip({ att }: { att: AgentAttachment }) {
+  const isImage =
+    (att.mime || "").startsWith("image/") ||
+    att.media_type === "image" ||
+    /\.(png|jpe?g|webp|gif)$/i.test((att.url || "").split("?")[0]);
+  if (isImage && att.url) {
+    return (
+      <a href={att.url} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={att.url}
+          alt={att.name || ""}
+          className="h-16 w-16 rounded-lg border border-stone-200 object-cover"
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={att.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50"
+    >
+      <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+        <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="max-w-[140px] truncate">{att.name || "附件"}</span>
+    </a>
   );
 }

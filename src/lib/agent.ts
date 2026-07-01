@@ -73,6 +73,8 @@ export interface AgentMessage {
     /** doctrine v3: structured patch the function agent wants applied to the
      *  operator console (left pane). Frontend applies it to the real ops state. */
     ops_patch?: OpsPatch;
+    /** 用户随这条消息上传的附件（回看历史时渲染在用户气泡上）。 */
+    attachments?: AgentAttachment[];
     [k: string]: unknown;
   };
   created_at?: string;
@@ -121,6 +123,17 @@ export interface TaskDetail {
   artifacts: AgentArtifact[];
 }
 
+/** 用户随消息上传的附件（文件/图片/语音）。上传到文件库拿到公网 url 后传给 agent：
+ *  audio 会被后端自动转写成文字进 prompt；其它文件的 url 交给 CodeAgent 在内核里下载分析
+ *  （如账单 PDF → Excel）。见 docs/architecture/oceanleo-agent-file-upload.md。 */
+export interface AgentAttachment {
+  url: string;
+  mime?: string;
+  name?: string;
+  /** image | doc | video | audio | ...（用于前端展示 + 后端识别语音） */
+  media_type?: string;
+}
+
 export function createTask(body: {
   prompt: string;
   // agent = task loop (controls console) | chat = quick reply (may patch
@@ -138,6 +151,8 @@ export function createTask(body: {
   /** doctrine v6: per-conversation skill-prompt override (用户编辑了 skill prompt
    *  并选「用这段 prompt 直接干活」)。只对本次会话生效，不写回 manifest。 */
   promptOverride?: string;
+  /** 用户上传的附件（文件/图片/语音的公网 url）。 */
+  attachments?: AgentAttachment[];
 }) {
   return authed<{ task_id: string; status: string; mode: string }>(
     "/v1/agent/tasks",
@@ -153,6 +168,7 @@ export function createTask(body: {
         ops_state: body.opsState || null,
         team_id: body.teamId || "",
         prompt_override: body.promptOverride || "",
+        attachments: body.attachments || [],
       }),
     },
   );
@@ -358,10 +374,17 @@ export function unsaveTeam(teamId: string) {
   );
 }
 
-export function followUp(taskId: string, prompt: string) {
+export function followUp(
+  taskId: string,
+  prompt: string,
+  attachments?: AgentAttachment[],
+) {
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
-    { method: "POST", body: JSON.stringify({ prompt }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ prompt, attachments: attachments || [] }),
+    },
   );
 }
 

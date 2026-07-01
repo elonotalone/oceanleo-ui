@@ -23,9 +23,11 @@ import {
   followUp,
   getTask,
   latestArtifact,
+  type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
+import { useAttachments } from "./useAttachments";
 
 const ARTIFACT_LABEL: Record<string, string> = {
   map: "地图",
@@ -93,6 +95,11 @@ export function AgentChat({
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const atts = useAttachments(siteId, setError);
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInput((v) => (v ? v + " " : "") + text);
+  }, []);
 
   // auto-create the task on first mount when an initialPrompt is given.
   useEffect(() => {
@@ -135,11 +142,16 @@ export function AgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function start(prompt: string) {
+  async function start(prompt: string, uploaded?: AgentAttachment[]) {
     setBusy(true);
     setError(null);
-    setMessages([{ id: -1, role: "user", kind: "text", content: prompt }]);
-    const r = await createTask({ prompt, mode, siteId, agentModel, agentId, teamId });
+    setMessages([
+      { id: -1, role: "user", kind: "text", content: prompt,
+        meta: uploaded && uploaded.length ? { attachments: uploaded } : undefined },
+    ]);
+    const r = await createTask({
+      prompt, mode, siteId, agentModel, agentId, teamId, attachments: uploaded,
+    });
     setBusy(false);
     if (!r.ok || !r.data) {
       setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建任务失败");
@@ -153,15 +165,24 @@ export function AgentChat({
 
   async function send() {
     const prompt = input.trim();
-    if (!prompt || busy) return;
+    // Allow send when there's an attachment even if the text is empty. But block
+    // while any attachment is still uploading.
+    const uploaded = atts.ready();
+    if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     setInput("");
+    atts.clear();
+    const effectivePrompt = prompt || "请分析我上传的文件。";
     if (!taskId) {
-      await start(prompt);
+      await start(effectivePrompt, uploaded);
       return;
     }
     setBusy(true);
-    setMessages((m) => [...m, { id: Date.now(), role: "user", kind: "text", content: prompt }]);
-    const r = await followUp(taskId, prompt);
+    setMessages((m) => [
+      ...m,
+      { id: Date.now(), role: "user", kind: "text", content: effectivePrompt,
+        meta: uploaded.length ? { attachments: uploaded } : undefined },
+    ]);
+    const r = await followUp(taskId, effectivePrompt, uploaded);
     setBusy(false);
     if (r.ok) setStatus("running");
     else setError(r.error || "发送失败");
@@ -208,8 +229,12 @@ export function AgentChat({
           onSubmit={send}
           loading={busy}
           leoSuggest
-          placeholder="继续追问，或布置下一步…"
+          placeholder="继续追问，或上传文件让 agent 分析…"
           rows={1}
+          onAttachFiles={atts.handleAttachFiles}
+          attachments={atts.composerAttachments}
+          onRemoveAttachment={atts.removeAttachment}
+          onVoiceTranscript={handleVoiceTranscript}
         />
       </div>
     </div>
@@ -261,14 +286,24 @@ export function AgentChat({
 
 function MessageBubble({ m, accent }: { m: AgentMessage; accent: string }) {
   if (m.role === "user") {
+    const atts = m.meta?.attachments || [];
     return (
-      <div className="flex justify-end">
-        <div
-          className="max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
-          style={{ background: accent }}
-        >
-          {m.content}
-        </div>
+      <div className="flex flex-col items-end gap-1.5">
+        {atts.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+            {atts.map((a, i) => (
+              <UserAttachmentChip key={i} att={a} />
+            ))}
+          </div>
+        )}
+        {m.content && (
+          <div
+            className="max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
+            style={{ background: accent }}
+          >
+            {m.content}
+          </div>
+        )}
       </div>
     );
   }
@@ -299,6 +334,39 @@ function MessageBubble({ m, accent }: { m: AgentMessage; accent: string }) {
     <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white px-3.5 py-2 shadow-sm ring-1 ring-stone-100">
       <Markdown>{m.content}</Markdown>
     </div>
+  );
+}
+
+function UserAttachmentChip({ att }: { att: AgentAttachment }) {
+  const isImage =
+    (att.mime || "").startsWith("image/") ||
+    att.media_type === "image" ||
+    /\.(png|jpe?g|webp|gif)$/i.test((att.url || "").split("?")[0]);
+  if (isImage && att.url) {
+    return (
+      <a href={att.url} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={att.url}
+          alt={att.name || ""}
+          className="h-16 w-16 rounded-lg border border-stone-200 object-cover"
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={att.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50"
+    >
+      <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+        <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="max-w-[140px] truncate">{att.name || "附件"}</span>
+    </a>
   );
 }
 
