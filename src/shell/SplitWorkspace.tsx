@@ -30,6 +30,7 @@ import {
   type ReactNode,
 } from "react";
 import { IconLibrary } from "./icons";
+import { useUI } from "../i18n/ui/useUI";
 
 // ----------------------------------------------------------------------------
 // 左栏标题（PaneHeader）插槽。doctrine v3（2026-06-21 操作员）：功能区的
@@ -137,6 +138,7 @@ export function SplitWorkspace({
   soloMaxWidth = "48rem",
   library,
 }: SplitWorkspaceProps) {
+  const tt = useUI();
   // 「库」= 右版面显隐开关（不内建内容）。默认关。支持受控（消费端持有 open，如点素材
   // 要打开库）与非受控（本组件自管）。传了 library 才有「库」行为。
   const [internalOpen, setInternalOpen] = useState(false);
@@ -167,13 +169,13 @@ export function SplitWorkspace({
   // 「库」开关按钮（放左栏标题右侧）。默认关态；库【打开后此按钮隐藏】——避免出现两个
   // 「库」（右版面顶栏已有居中「库」标题 + ✕ 关闭）。样式：主站黑胶囊白字，子站默认 accent
   // 胶囊；消费端可用 library.buttonClassName 覆盖关态样式。
-  const libraryLabel = library?.label ?? "库";
+  const libraryLabel = library?.label ?? tt("库");
   const libraryToggle =
     library && !libraryOpen ? (
       <button
         type="button"
         onClick={() => setLibraryOpen(true)}
-        title="打开库"
+        title={tt("打开库")}
         className={
           library.buttonClassName ??
           "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
@@ -279,10 +281,10 @@ export function SplitWorkspace({
           on ? "text-white" : "text-stone-500 hover:bg-stone-100"
         }`}
         style={on ? { background: accent } : undefined}
-        title={on ? "恢复双栏" : "这一栏切大屏"}
+        title={on ? tt("恢复双栏") : tt("这一栏切大屏")}
       >
         {on ? <IconCompress /> : <IconExpand />}
-        {on ? "恢复" : "大屏"}
+        {on ? tt("恢复") : tt("大屏")}
       </button>
     );
   }
@@ -305,16 +307,23 @@ export function SplitWorkspace({
           className={`p-1.5 ${className}`}
           style={{ height: `calc(100dvh - ${headerHeight}px)` }}
         >
-          {/* 单栏：内容限宽居中（操作员 2026-07-01「操作台不能铺满整页，横向范围与
-              agent 对话框一致」）。soloMaxWidth=null 时退回铺满（旧行为）。 */}
-          <div
-            className="mx-auto flex h-full w-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70"
-            style={soloMaxWidth ? { maxWidth: soloMaxWidth } : undefined}
-          >
+          {/* 单栏：外框卡片【铺满】整个可用宽度（边框不再被压窄——操作员 2026-07-01
+              「我不想让边框显得太窄」）。限宽 soloMaxWidth 只作用在【内容】上、居中，
+              让内容横向范围与 agent 对话框一致，同时外框仍是一块饱满的卡片。
+              soloMaxWidth=null → 内容也铺满（旧行为）。 */}
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
             {(effectiveLeftLabel != null) && (
               <PaneHeader label={effectiveLeftLabel} />
             )}
-            <div className={bodyClass}>{left}</div>
+            <div className={bodyClass}>
+              {soloMaxWidth ? (
+                <div className="mx-auto w-full" style={{ maxWidth: soloMaxWidth }}>
+                  {left}
+                </div>
+              ) : (
+                left
+              )}
+            </div>
           </div>
         </div>
       </LeftPaneCtx.Provider>
@@ -354,7 +363,7 @@ export function SplitWorkspace({
           aria-orientation="vertical"
           onPointerDown={onPointerDown}
           className="group relative hidden w-3 shrink-0 cursor-col-resize items-center justify-center md:flex"
-          title="拖动调整左右比例"
+          title={tt("拖动调整左右比例")}
         >
           <div
             className="h-16 w-1 rounded-full bg-stone-300 transition-colors group-hover:bg-stone-400"
@@ -386,7 +395,7 @@ export function SplitWorkspace({
                 <button
                   type="button"
                   onClick={() => setLibraryOpen(false)}
-                  aria-label="关闭"
+                  aria-label={tt("关闭")}
                   className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
                 >
                   ✕

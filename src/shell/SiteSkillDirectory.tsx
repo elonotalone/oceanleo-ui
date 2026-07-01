@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { listAgents, type AgentDef } from "../lib/agent";
 import { relatedSkillCategories } from "../lib/taxonomy";
+import { useUI } from "../i18n/ui/useUI";
 
 const SKILL_SITE_ID = "agent";
 // canonical 主域已切到 agent.oceanleo.com（旧域 skill.* 301 跳转过来）。直接用新域，
@@ -37,6 +38,7 @@ export function SiteSkillDirectory({
   accent = "#7c3aed",
   onOpenSkill,
 }: SiteSkillDirectoryProps) {
+  const tt = useUI();
   const [skills, setSkills] = useState<AgentDef[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -94,11 +96,11 @@ export function SiteSkillDirectory({
       items={items}
       accent={accent}
       loading={loading}
-      openLabel="开聊"
-      emptyText="暂无与本站相关的 agent。"
+      openLabel={tt("开聊")}
+      emptyText={tt("暂无与本站相关的 agent。")}
       onOpen={(it) => openSkill(it.id)}
       nativeFirst
-      nativeLabel="按技能"
+      nativeLabel={tt("按技能")}
     />
   );
 }

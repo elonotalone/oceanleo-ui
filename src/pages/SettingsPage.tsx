@@ -13,6 +13,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getUserEmail } from "../lib/auth";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface SettingsPageProps {
   /** 站点特有的额外区块（如主站的「知识库」）。 */
@@ -20,6 +21,7 @@ export interface SettingsPageProps {
 }
 
 export function SettingsPage({ extraSections }: SettingsPageProps) {
+  const tt = useUI();
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,19 +30,19 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">设置</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("设置")}</h1>
 
       <div className="mx-auto mt-8 max-w-xl space-y-8">
         <section className="v-fade-up">
-          <h2 className="mb-3 text-[14px] font-semibold text-neutral-900">个人资料</h2>
+          <h2 className="mb-3 text-[14px] font-semibold text-neutral-900">{tt("个人资料")}</h2>
           <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
             <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-[13px] text-neutral-700">邮箱</span>
+              <span className="text-[13px] text-neutral-700">{tt("邮箱")}</span>
               <span className="text-[13px] text-neutral-900">{email || "—"}</span>
             </div>
             <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-[13px] text-neutral-700">语言</span>
-              <span className="text-[13px] text-neutral-900">中文（简体）</span>
+              <span className="text-[13px] text-neutral-700">{tt("语言")}</span>
+              <span className="text-[13px] text-neutral-900">{tt("中文（简体）")}</span>
             </div>
           </div>
         </section>
@@ -48,16 +50,15 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
         {extraSections}
 
         <section className="v-fade-up" style={{ animationDelay: "120ms" }}>
-          <h2 className="mb-1 text-[14px] font-semibold text-neutral-900">用量记录与计费</h2>
+          <h2 className="mb-1 text-[14px] font-semibold text-neutral-900">{tt("用量记录与计费")}</h2>
           <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
-            用量记录（每次调用的真实计费 + 可逐字审计的调用内容）、token 余额、
-            自带 API key（BYOK）与模型选择，已统一搬到「API」页。
+            {tt("用量记录（每次调用的真实计费 + 可逐字审计的调用内容）、token 余额、\n            自带 API key（BYOK）与模型选择，已统一搬到「API」页。")}
           </p>
           <a
             href="/api"
             className="inline-flex items-center rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
           >
-            前往 API 页 →
+            {tt("前往 API 页 →")}
           </a>
         </section>
       </div>

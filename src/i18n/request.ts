@@ -72,12 +72,26 @@ async function resolveLocale(): Promise<Locale> {
   return DEFAULT_LOCALE;
 }
 
-// 站内 messages 覆盖共享 messages（浅合并：站可整组覆盖共享同名 namespace 顶层键）。
-function mergeMessages(
-  shared: Record<string, unknown>,
-  site: Record<string, unknown>,
+// 深合并两个 messages 树（后者覆盖前者；对象递归合并，标量/数组直接覆盖）。
+// 用于：① 共享层 + 站内（站内键覆盖共享）；② 目标语言以【默认中文】为底兜底
+// （目标语言缺的 key 自动回退到中文，绝不显示 raw key 或崩溃）。
+function deepMerge(
+  base: Record<string, unknown>,
+  over: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...shared, ...site };
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(over)) {
+    const b = out[k];
+    if (
+      v && typeof v === "object" && !Array.isArray(v) &&
+      b && typeof b === "object" && !Array.isArray(b)
+    ) {
+      out[k] = deepMerge(b as Record<string, unknown>, v as Record<string, unknown>);
+    } else if (v !== undefined) {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 export function createI18nRequest(loadSiteMessages: SiteMessagesLoader) {
@@ -89,9 +103,34 @@ export function createI18nRequest(loadSiteMessages: SiteMessagesLoader) {
     } catch {
       siteMessages = {};
     }
+    let siteFallback: Record<string, unknown> = {};
+    if (locale !== DEFAULT_LOCALE) {
+      try {
+        siteFallback = (await loadSiteMessages(DEFAULT_LOCALE)) || {};
+      } catch {
+        siteFallback = {};
+      }
+    }
+
+    // 兜底底座 = 默认中文（共享 + 站内），保证任何语言缺的 key 都回退成中文，
+    // 界面永远有意义的文案、绝不出现 raw key / 崩溃（关键：让「渐进式翻译」安全）。
+    const zhBase = deepMerge(SHARED_MESSAGES[DEFAULT_LOCALE] || {}, siteFallback);
+    // 目标语言层（共享 + 站内）。
+    const localeLayer = deepMerge(SHARED_MESSAGES[locale] || {}, siteMessages);
+    // 最终：中文底座 ← 目标语言覆盖。
+    const messages = deepMerge(zhBase, localeLayer);
+
     return {
       locale,
-      messages: mergeMessages(SHARED_MESSAGES[locale] || {}, siteMessages),
+      messages,
+      // 缺 key / 格式错误：静默回退到 key 的最后一段可读名，绝不抛错中断渲染。
+      onError() {
+        /* 吞掉 MISSING_MESSAGE 等——已有中文兜底，无需噪音 */
+      },
+      getMessageFallback({ key }: { key: string; namespace?: string }) {
+        const seg = key.split(".").pop() || key;
+        return seg;
+      },
     };
   });
 }

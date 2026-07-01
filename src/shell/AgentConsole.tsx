@@ -34,6 +34,7 @@ import {
 import { runCapability as defaultRunCapability } from "../lib/capabilities";
 import type { CapabilityResult } from "../lib/capabilities";
 import type { Capability } from "../lib/manifest";
+import { useUI } from "../i18n/ui/useUI";
 
 // 能力执行器签名。宗旨 v10：操作台**直接生成**——主行动按钮点了就经此 SDK 出结果填
 // 进右栏（agent 形态另有自己的工具调用链路，与操作台独立）。
@@ -81,6 +82,7 @@ export function AgentConsole({
   headerHeight = 56,
   runCapability,
 }: AgentConsoleProps) {
+  const tt = useUI();
   const list = useMemo(
     () => (manifests && manifests.length ? manifests : manifest ? [manifest] : []),
     [manifest, manifests],
@@ -99,7 +101,7 @@ export function AgentConsole({
   if (list.length === 0) {
     return (
       <div className="grid h-full place-items-center p-8 text-center text-sm text-stone-400">
-        该 agent 暂无可渲染的操作台配置。
+        {tt("该 agent 暂无可渲染的操作台配置。")}
       </div>
     );
   }
@@ -169,6 +171,7 @@ function ManifestPane({
   headerHeight?: number;
   runCapability?: RunCapabilityFn;
 }) {
+  const tt = useUI();
   const runCap = runCapability ?? defaultRunCapability;
   const con = useMemo(() => normalizeConsoleManifest(m.console), [m.console]);
   const hasOpsForm = con.sections.length > 0;
@@ -190,7 +193,7 @@ function ManifestPane({
     for (const sec of con.sections) {
       for (const f of sec.fields) {
         if (f.required && !String(state[f.key] ?? "").trim()) {
-          setError(`请填写「${f.label}」。`);
+          setError(tt("请填写「{label}」。", { label: f.label }));
           return;
         }
       }
@@ -210,13 +213,13 @@ function ManifestPane({
             };
       const r = await runCap(a.capability, input, { siteId });
       if (!r.ok) {
-        setError(r.error || "生成失败，请重试。");
+        setError(r.error || tt("生成失败，请重试。"));
         return;
       }
       const out = r.text ?? (r.urls && r.urls.length ? r.urls.join("\n") : "");
       setField(a.output.key, out);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "生成失败，请重试。");
+      setError(e instanceof Error ? e.message : tt("生成失败，请重试。"));
     } finally {
       setBusy(false);
     }
@@ -238,7 +241,7 @@ function ManifestPane({
     <div className="space-y-3">
       {!hasOpsForm ? (
         <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs leading-relaxed text-stone-500">
-          该 app 暂无可填写的操作台选项。切到上方「agent」用对话完成工作即可。
+          {tt("该 app 暂无可填写的操作台选项。切到上方「agent」用对话完成工作即可。")}
         </p>
       ) : null}
       {con.sections.map((sec, i) => {
@@ -251,7 +254,7 @@ function ManifestPane({
             accent={accent}
             open={openSec === sec.id}
             onToggle={() => setOpenSec((cur) => (cur === sec.id ? null : sec.id))}
-            summary={filled ? "已填写" : sec.fields.some((f) => f.required) ? "必填" : "可选"}
+            summary={filled ? tt("已填写") : sec.fields.some((f) => f.required) ? tt("必填") : tt("可选")}
           >
             <div className="space-y-3">
               {sec.fields.map((f) => (
@@ -273,7 +276,7 @@ function ManifestPane({
           className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
           style={{ background: accent }}
         >
-          {busy ? "生成中…" : `${con.action.label} ✦`}
+          {busy ? tt("生成中…") : `${con.action.label} ✦`}
         </button>
       ) : null}
     </div>
@@ -289,7 +292,7 @@ function ManifestPane({
         render={t.render}
         value={state[t.from]}
         busy={busy}
-        emptyTitle={t.emptyTitle || "结果会显示在这里"}
+        emptyTitle={t.emptyTitle || tt("结果会显示在这里")}
         emptyHint={t.emptyHint}
         onEdit={(v) => setField(t.from, v)}
       />
@@ -350,6 +353,7 @@ function FieldControl({
   onChange: (v: unknown) => void;
   accent: string;
 }) {
+  const tt = useUI();
   const v = value ?? "";
   switch (f.control) {
     case "longtext":
@@ -402,7 +406,7 @@ function FieldControl({
       return (
         <input
           className={inputCls}
-          placeholder={f.placeholder || "粘贴图片 URL（上传控件待接入对象存储）"}
+          placeholder={f.placeholder || tt("粘贴图片 URL（上传控件待接入对象存储）")}
           value={String(v)}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -435,13 +439,14 @@ function ResultView({
   emptyHint?: string;
   onEdit: (v: string) => void;
 }) {
+  const tt = useUI();
   const has = value != null && String(value).trim() !== "";
   if (busy && !has) {
     return (
       <div className="grid h-full place-items-center py-16">
         <div className="text-center">
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-[3px] border-indigo-200 border-t-indigo-600" />
-          <p className="mt-3 text-xs text-stone-400">生成中…</p>
+          <p className="mt-3 text-xs text-stone-400">{tt("生成中…")}</p>
         </div>
       </div>
     );
@@ -490,7 +495,7 @@ function ResultView({
     case "3d-preview":
       return (
         <div className="space-y-2">
-          <p className="text-xs text-stone-500">3D 模型已生成：</p>
+          <p className="text-xs text-stone-500">{tt("3D 模型已生成：")}</p>
           {urls.map((u) => (
             <a key={u} href={u} target="_blank" rel="noreferrer" className="block truncate text-sm text-indigo-600 underline">
               {u}

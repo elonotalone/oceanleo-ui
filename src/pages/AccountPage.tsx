@@ -19,32 +19,13 @@ import {
   signOutEverywhere,
 } from "../lib/auth";
 import { ConfirmDialog } from "../ui";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface AccountMenuItem {
   label: string;
   href: string;
   desc: string;
 }
-
-const DEFAULT_MENU: AccountMenuItem[] = [
-  {
-    label: "通用",
-    href: "/general",
-    desc: "语言与主题（浅色 / 深色 / 自动）等外观设置",
-  },
-  {
-    label: "我的数据库",
-    href: "/database",
-    desc: "你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）",
-  },
-  { label: "API", href: "/api", desc: "选择模型、查看价格与 token 余额" },
-  { label: "账户设置", href: "/settings", desc: "个人资料、用量与知识库" },
-  {
-    label: "插件与连接器",
-    href: "/plugins",
-    desc: "技能、连接器与 MCP 服务器",
-  },
-];
 
 export interface AccountPageProps {
   /** 账户菜单项（默认 API + 账户设置）。 */
@@ -58,11 +39,31 @@ export interface AccountPageProps {
 }
 
 export function AccountPage({
-  menuItems = DEFAULT_MENU,
+  menuItems,
   extraStats = [],
   onSignInClick,
   onSignedOut,
 }: AccountPageProps) {
+  const tt = useUI();
+  const resolvedMenu: AccountMenuItem[] = menuItems ?? [
+    {
+      label: tt("通用"),
+      href: "/general",
+      desc: tt("语言与主题（浅色 / 深色 / 自动）等外观设置"),
+    },
+    {
+      label: tt("我的数据库"),
+      href: "/database",
+      desc: tt("你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）"),
+    },
+    { label: "API", href: "/api", desc: tt("选择模型、查看价格与 token 余额") },
+    { label: tt("账户设置"), href: "/settings", desc: tt("个人资料、用量与知识库") },
+    {
+      label: tt("插件与连接器"),
+      href: "/plugins",
+      desc: tt("技能、连接器与 MCP 服务器"),
+    },
+  ];
   const [email, setEmail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
@@ -111,21 +112,21 @@ export function AccountPage({
   if (checked && !email) {
     return (
       <div className="px-8 py-6">
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">账户</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("账户")}</h1>
         <div className="v-fade-up mx-auto mt-16 max-w-sm text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-2xl">
             👤
           </div>
-          <h2 className="mt-5 text-[17px] font-semibold text-neutral-900">尚未登录</h2>
+          <h2 className="mt-5 text-[17px] font-semibold text-neutral-900">{tt("尚未登录")}</h2>
           <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
-            登录后即可使用全部功能、查看 token 余额与记录。
+            {tt("登录后即可使用全部功能、查看 token 余额与记录。")}
           </p>
           <button
             type="button"
             onClick={onSignInClick}
             className="mt-6 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99]"
           >
-            登录
+            {tt("登录")}
           </button>
         </div>
       </div>
@@ -135,11 +136,11 @@ export function AccountPage({
   const stats = [
     {
       value: credits !== null ? `¥${credits.toFixed(2)}` : "...",
-      label: "token 余额",
+      label: tt("token 余额"),
     },
     {
       value: monthSpend !== null ? `¥${monthSpend.toFixed(2)}` : "—",
-      label: "本月消耗",
+      label: tt("本月消耗"),
     },
     ...extraStats,
   ];
@@ -148,15 +149,15 @@ export function AccountPage({
     <div className="px-8 py-6">
       {confirmLogout && (
         <ConfirmDialog
-          title="退出登录"
-          body="退出后需要重新登录才能使用任务与 token 余额。"
-          confirmLabel="退出登录"
+          title={tt("退出登录")}
+          body={tt("退出后需要重新登录才能使用任务与 token 余额。")}
+          confirmLabel={tt("退出登录")}
           danger
           onConfirm={handleLogout}
           onCancel={() => setConfirmLogout(false)}
         />
       )}
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">账户</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("账户")}</h1>
 
       <div className="v-fade-up mx-auto mt-8 max-w-lg">
         <div className="flex items-center gap-4 rounded-2xl border border-neutral-200 p-5">
@@ -165,7 +166,7 @@ export function AccountPage({
           </div>
           <div>
             <p className="text-[16px] font-semibold text-neutral-900">
-              {email ? email.split("@")[0] : "未登录"}
+              {email ? email.split("@")[0] : tt("未登录")}
             </p>
             <p className="text-[13px] text-neutral-500">{email || "—"}</p>
           </div>
@@ -184,7 +185,7 @@ export function AccountPage({
         </div>
 
         <div className="mt-6 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
-          {menuItems.map((item) => (
+          {resolvedMenu.map((item) => (
             <a
               key={item.label}
               href={item.href}
@@ -206,7 +207,7 @@ export function AccountPage({
           onClick={() => setConfirmLogout(true)}
           className="mt-6 w-full rounded-xl border border-neutral-200 py-2.5 text-[13px] text-red-600 transition hover:border-red-200 hover:bg-red-50 active:scale-[0.99]"
         >
-          退出登录
+          {tt("退出登录")}
         </button>
       </div>
     </div>

@@ -31,6 +31,7 @@
 import { type ReactNode, useRef, useState } from "react";
 import { LeoComposer } from "./LeoComposer";
 import { StudioSection } from "./StudioSection";
+import { useUI } from "../i18n/ui/useUI";
 
 /** 已选附件（业务上传后回传进来渲染缩略条；本组件不负责上传）。 */
 export interface InputAttachment {
@@ -88,10 +89,10 @@ export function InputCard({
   value,
   onChange,
   onSubmit,
-  placeholder = "描述你想要的内容，可输入文字，或上传 / 拖拽文件做参考（也可从右侧素材库 / 我的数据库直接拖过来）",
+  placeholder: placeholderProp,
   loading = false,
   index,
-  title = "输入",
+  title: titleProp,
   accent = "#4f46e5",
   open,
   onToggle,
@@ -99,13 +100,19 @@ export function InputCard({
   onFiles,
   accept,
   multiple = true,
-  uploadLabel = "上传文件（可多选）",
+  uploadLabel: uploadLabelProp,
   attachments,
   onRemoveAttachment,
   belowComposer,
   submitLabel,
   submitDisabled,
   }: InputCardProps) {
+  const tt = useUI();
+  const placeholder =
+    placeholderProp ??
+    tt("描述你想要的内容，可输入文字，或上传 / 拖拽文件做参考（也可从右侧素材库 / 我的数据库直接拖过来）");
+  const title = titleProp ?? tt("输入");
+  const uploadLabel = uploadLabelProp ?? tt("上传文件（可多选）");
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -169,13 +176,13 @@ export function InputCard({
                   <FileGlyph />
                 </span>
               )}
-              <span className="max-w-[120px] truncate">{a.name || "附件"}</span>
+              <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
               {a.uploading && <span className="v-spinner text-[10px] text-stone-400" />}
               {onRemoveAttachment && (
                 <button
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
-                  aria-label="移除"
+                  aria-label={tt("移除")}
                   className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
                 >
                   ×
@@ -237,7 +244,7 @@ export function InputCard({
         accent={accent}
         open={open}
         onToggle={onToggle}
-        summary={summary ?? (hasContent ? "已填写" : "未填写")}
+        summary={summary ?? (hasContent ? tt("已填写") : tt("未填写"))}
       >
         {body}
       </StudioSection>

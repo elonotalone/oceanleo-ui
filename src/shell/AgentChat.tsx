@@ -28,17 +28,20 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { useAttachments } from "./useAttachments";
+import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
-const ARTIFACT_LABEL: Record<string, string> = {
-  map: "地图",
-  canvas: "画布",
-  novel: "小说",
-  ppt: "演示文稿",
-  sheet: "表格",
-  doc: "文档",
-  markdown: "结果文档",
-  image: "图片",
-};
+function artifactLabels(tt: UITranslate): Record<string, string> {
+  return {
+    map: tt("地图"),
+    canvas: tt("画布"),
+    novel: tt("小说"),
+    ppt: tt("演示文稿"),
+    sheet: tt("表格"),
+    doc: tt("文档"),
+    markdown: tt("结果文档"),
+    image: tt("图片"),
+  };
+}
 
 export interface AgentChatProps {
   /** 站点 id（驱动 per-site 工具 md + 计量）。 */
@@ -110,6 +113,8 @@ export function AgentChat({
   placeholder,
   emptyHint,
 }: AgentChatProps) {
+  const tt = useUI();
+  const ARTIFACT_LABEL = artifactLabels(tt);
   // 「库」= 右版面（结果/预览）显隐开关。默认关（对话占满）；生成结果(artifact)到达时
   // 自动打开右版面显示，用户也可用「库」按钮手动开合。显式 false 关闭库按钮。
   const [rightOpen, setRightOpen] = useState(false);
@@ -183,7 +188,7 @@ export function AgentChat({
     });
     setBusy(false);
     if (!r.ok || !r.data) {
-      setError(r.status === 401 ? "登录后即可使用 app。" : r.error || "创建任务失败");
+      setError(r.status === 401 ? tt("登录后即可使用 app。") : r.error || tt("创建任务失败"));
       return;
     }
     setTaskId(r.data.task_id);
@@ -200,7 +205,7 @@ export function AgentChat({
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     setInput("");
     atts.clear();
-    const effectivePrompt = prompt || "请分析我上传的文件。";
+    const effectivePrompt = prompt || tt("请分析我上传的文件。");
     if (!taskId) {
       await start(effectivePrompt, uploaded);
       return;
@@ -214,7 +219,7 @@ export function AgentChat({
     const r = await followUp(taskId, effectivePrompt, uploaded);
     setBusy(false);
     if (r.ok) setStatus("running");
-    else setError(r.error || "发送失败");
+    else setError(r.error || tt("发送失败"));
   }
 
   const art = latestArtifact(messages);
@@ -235,10 +240,10 @@ export function AgentChat({
     library === false
       ? undefined
       : {
-          label: "库",
+          label: tt("库"),
           open: rightOpen,
           onOpenChange: setRightOpen,
-          paneTitle: "库",
+          paneTitle: tt("库"),
           ...(library || {}),
         };
 
@@ -250,7 +255,7 @@ export function AgentChat({
     <span className="flex items-center gap-2">
       <span className="text-[12px] font-medium text-stone-500">agent</span>
       <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-        所属 app · {resolvedApp}
+        {tt("所属 app · {app}", { app: resolvedApp })}
       </span>
     </span>
   ) : (
@@ -264,7 +269,7 @@ export function AgentChat({
         <div className="mx-auto w-full max-w-2xl space-y-3">
           {messages.length === 0 && !running && (
             <div className="py-10 text-center text-[15px] text-stone-400">
-              {emptyHint ?? "在下方输入，开始与 agent 对话。"}
+              {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
             </div>
           )}
           {messages.map((m) => (
@@ -272,7 +277,7 @@ export function AgentChat({
           ))}
           {running && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> agent 正在思考…
+              <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
           {error && <p className="text-[14px] text-rose-500">{error}</p>}
@@ -289,7 +294,7 @@ export function AgentChat({
             onSubmit={send}
             loading={busy}
             leoSuggest
-            placeholder={placeholder ?? "继续追问，或上传文件让 agent 分析…"}
+            placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}
             rows={1}
             onAttachFiles={atts.handleAttachFiles}
             attachments={atts.composerAttachments}
@@ -313,7 +318,7 @@ export function AgentChat({
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <p className="text-[13px]">还没有生成结果。让 agent 帮你生成后，结果会显示在这里。</p>
+          <p className="text-[13px]">{tt("还没有生成结果。让 agent 帮你生成后，结果会显示在这里。")}</p>
         </div>
       );
 
@@ -322,7 +327,7 @@ export function AgentChat({
       left={stream}
       right={right}
       leftLabel={leftLabelNode}
-      rightLabel={art ? ARTIFACT_LABEL[art.meta.type] || art.meta.title || "结果" : "结果"}
+      rightLabel={art ? ARTIFACT_LABEL[art.meta.type] || art.meta.title || tt("结果") : tt("结果")}
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
@@ -335,6 +340,8 @@ export function AgentChat({
 }
 
 function MessageBubble({ m }: { m: AgentMessage }) {
+  const tt = useUI();
+  const ARTIFACT_LABEL = artifactLabels(tt);
   if (m.role === "user") {
     const atts = m.meta?.attachments || [];
     return (
@@ -376,7 +383,9 @@ function MessageBubble({ m }: { m: AgentMessage }) {
   if (m.meta?.artifact && m.meta?.final) {
     return (
       <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[14px] text-emerald-700">
-        ✅ 已生成结果，见右侧「{ARTIFACT_LABEL[m.meta.artifact.type] || "结果"}」面板。
+        {tt("✅ 已生成结果，见右侧「{label}」面板。", {
+          label: ARTIFACT_LABEL[m.meta.artifact.type] || tt("结果"),
+        })}
       </div>
     );
   }
@@ -388,6 +397,7 @@ function MessageBubble({ m }: { m: AgentMessage }) {
 }
 
 function UserAttachmentChip({ att }: { att: AgentAttachment }) {
+  const tt = useUI();
   const isImage =
     (att.mime || "").startsWith("image/") ||
     att.media_type === "image" ||
@@ -415,7 +425,7 @@ function UserAttachmentChip({ att }: { att: AgentAttachment }) {
         <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
         <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span className="max-w-[140px] truncate">{att.name || "附件"}</span>
+      <span className="max-w-[140px] truncate">{att.name || tt("附件")}</span>
     </a>
   );
 }

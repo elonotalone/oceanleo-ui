@@ -18,6 +18,7 @@ import { ModelPicker } from "./ModelPicker";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { listTasks, deleteTask, taskCostYuan, type AgentTask } from "../lib/agent";
 import { ConfirmDialog } from "../ui";
+import { useUI } from "../i18n/ui/useUI";
 
 /** 任务花费 → 「¥x.xx」展示（精确口径）。0 / 无花费返回空串。 */
 function fmtCost(t: AgentTask): string {
@@ -59,7 +60,9 @@ function sameTasks(a: AgentTask[], b: AgentTask[]): boolean {
   return true;
 }
 
-function useHistory(siteId?: string, pending = false, authMsg = "登录后即可查看历史记录。") {
+function useHistory(siteId?: string, pending = false, authMsg?: string) {
+  const tt = useUI();
+  const authMessage = authMsg ?? tt("登录后即可查看历史记录。");
   const [items, setItems] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,14 +74,14 @@ function useHistory(siteId?: string, pending = false, authMsg = "登录后即可
       if (!silent) setLoading(false);
       if (!r.ok || !r.data) {
         // 静默轮询失败不打断已有列表（只在首次加载时报错）。
-        if (!silent) setError(r.status === 401 ? authMsg : r.error || "加载失败");
+        if (!silent) setError(r.status === 401 ? authMessage : r.error || tt("加载失败"));
         return;
       }
       setError(null);
       const next = r.data.items || [];
       setItems((prev) => (sameTasks(prev, next) ? prev : next));
     });
-  }, [siteId, pending, authMsg]);
+  }, [siteId, pending, authMessage, tt]);
   useEffect(() => reload(false), [reload]);
   // 「待处理」需要随任务进展刷新（running → done/未读 / 工作流流到人工）。轻量轮询，
   // 静默进行——不再每 8s 把列表替成「加载…」再跳回来。
@@ -100,6 +103,7 @@ function useHistory(siteId?: string, pending = false, authMsg = "登录后即可
 // 侧栏子栏：历史列表（可删除）
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
+  const tt = useUI();
   const { items, loading, error, remove } = useHistory(siteId);
   const [sel, setSel] = useWorkspaceSelection("history");
   const [pending, setPending] = useState<AgentTask | null>(null);
@@ -108,9 +112,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   return (
     <div className="space-y-0.5">
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{error}</p>}
-      {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载…</p>}
+      {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
       {!error && !loading && items.length === 0 && (
-        <p className="px-3 py-2 text-[12px] text-neutral-400">还没有历史记录。</p>
+        <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有历史记录。")}</p>
       )}
       {items.map((t) => {
         const on = t.id === sel;
@@ -129,7 +133,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[t.status] || "bg-stone-400"}`} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{t.title || "未命名任务"}</span>
+                <span className="block truncate font-medium">{t.title || tt("未命名任务")}</span>
                 <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
                   {fmt(t.created_at)}
                   {!siteId && t.site_id ? ` · ${t.site_id}` : ""}
@@ -140,8 +144,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
             <button
               type="button"
               onClick={() => setPending(t)}
-              title="删除这条历史记录"
-              aria-label="删除"
+              title={tt("删除这条历史记录")}
+              aria-label={tt("删除")}
               className={`shrink-0 rounded p-0.5 transition ${
                 on ? "text-white/70 hover:bg-white/20 hover:text-white" : "text-neutral-300 opacity-0 hover:text-rose-500 group-hover:opacity-100"
               }`}
@@ -157,9 +161,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
 
       {pending && (
         <ConfirmDialog
-          title="删除历史记录"
-          body={`确定删除「${pending.title || "未命名任务"}」？该会话的消息与产出将一并删除，不可恢复。`}
-          confirmLabel="删除"
+          title={tt("删除历史记录")}
+          body={tt("确定删除「{title}」？该会话的消息与产出将一并删除，不可恢复。", { title: pending.title || tt("未命名任务") })}
+          confirmLabel={tt("删除")}
           danger
           onConfirm={() => {
             void remove(pending.id);
@@ -186,6 +190,7 @@ export function HistoryDetail({
   /** site_id → app 展示名（回看时在 agent 界面显示「所属 app」）。 */
   appNames?: Record<string, string>;
 }) {
+  const tt = useUI();
   const [sel] = useWorkspaceSelection("history");
   // 主区右上角模型选择（5 模态，popover）——回看时若用户追问，用所选「文本」模型。
   // 这是模型选择的唯一落点（与各 app 顶栏一致），不再放在左侧子栏里。
@@ -208,7 +213,7 @@ export function HistoryDetail({
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         {modelBar}
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-neutral-400">
-          在左侧选择一条历史记录，即可在此回看该次对话与产出。
+          {tt("在左侧选择一条历史记录，即可在此回看该次对话与产出。")}
         </div>
       </div>
     );

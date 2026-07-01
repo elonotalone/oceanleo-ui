@@ -25,6 +25,7 @@ import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
 import type { ItemRecommendation } from "../lib/recommend";
+import { useUI } from "../i18n/ui/useUI";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
@@ -34,9 +35,10 @@ const NEW_CARD_ID = "__new__";
 
 // 侧栏子栏：doctrine v7 起 playground 的选择全部搬到右侧主区，侧栏不再列东西。
 export function PlaygroundSubNav() {
+  const tt = useUI();
   return (
     <p className="px-3 py-4 text-[12px] leading-relaxed text-neutral-400">
-      在右侧选择 app 或 agent 直接试玩，无需加入工作台。
+      {tt("在右侧选择 app 或 agent 直接试玩，无需加入工作台。")}
     </p>
   );
 }
@@ -115,6 +117,7 @@ export function PlaygroundDetail({
    */
   renderClientApps?: () => ReactNode;
 }) {
+  const tt = useUI();
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
   // 有「网站」分区时默认落在它（它是第一个 tab）；否则落 app。
@@ -176,15 +179,15 @@ export function PlaygroundDetail({
         ? [
             {
               id: NEW_CARD_ID,
-              name: "新建 agent",
-              tagline: "创建一个属于你自己的 agent（人格预设 + 工具）",
+              name: tt("新建 agent"),
+              tagline: tt("创建一个属于你自己的 agent（人格预设 + 工具）"),
               icon: "＋",
               accent,
-              category: "新建",
+              category: tt("新建"),
             },
           ]
         : [],
-    [tab, accent],
+    [tab, accent, tt],
   );
 
   const active = useMemo(
@@ -205,9 +208,9 @@ export function PlaygroundDetail({
     setSaving(true);
     const r = await saveAgent(active.agent_id);
     setSaving(false);
-    if (r.ok) setSavedMsg("已放入工作台 ✓");
-    else if (r.status === 401) setSavedMsg("请先登录");
-    else setSavedMsg("操作失败");
+    if (r.ok) setSavedMsg(tt("已放入工作台 ✓"));
+    else if (r.status === 401) setSavedMsg(tt("请先登录"));
+    else setSavedMsg(tt("操作失败"));
     setTimeout(() => setSavedMsg(null), 2600);
   }
 
@@ -226,9 +229,9 @@ export function PlaygroundDetail({
               disabled={saving}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: accent }}
-              title="把这个 app 加入「我的 app」，之后在工作台直接用"
+              title={tt("把这个 app 加入「我的 app」，之后在工作台直接用")}
             >
-              ＋ 放入工作台
+              {tt("＋ 放入工作台")}
             </button>
             {savedMsg ? (
               <span className="truncate text-[12px] text-emerald-600">{savedMsg}</span>
@@ -260,7 +263,7 @@ export function PlaygroundDetail({
             />
           ) : (
             <div className="grid h-full place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-8 text-center text-[13px] text-neutral-400">
-              该 app 所属站点暂未接入内嵌功能区。
+              {tt("该 app 所属站点暂未接入内嵌功能区。")}
             </div>
           )}
         </div>
@@ -338,7 +341,7 @@ export function PlaygroundDetail({
             <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
           </div>
           <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
-            {tab === "organization" ? "组织编排" : "流程编排"}画布即将开放。
+            {tab === "organization" ? tt("组织编排") : tt("流程编排")}画布即将开放。
           </div>
         </div>
       );
@@ -393,13 +396,13 @@ export function PlaygroundDetail({
         kindLabel={tab === "app" ? "app" : "agent"}
         placeholder={
           tab === "app"
-            ? "说说你想做什么，AI 帮你推荐最合适的 app…  例如：帮我做一份简历"
-            : "说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品"
+            ? tt("说说你想做什么，AI 帮你推荐最合适的 app…  例如：帮我做一份简历")
+            : tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")
         }
         examples={
           tab === "app"
-            ? ["帮我做一份求职简历", "给商品做主图和卖点", "把录音整理成纪要"]
-            : ["帮我写一份商业计划", "做竞品分析", "优化我的小红书文案"]
+            ? [tt("帮我做一份求职简历"), tt("给商品做主图和卖点"), tt("把录音整理成纪要")]
+            : [tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]
         }
         accent={accent}
         onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
@@ -411,15 +414,15 @@ export function PlaygroundDetail({
         leadingCards={agentLeadingCards}
         accent={accent}
         loading={loading}
-        openLabel="试玩"
-        emptyText={tab === "app" ? "暂无可试玩的 app。" : "暂无可试玩的 agent。"}
+        openLabel={tt("试玩")}
+        emptyText={tab === "app" ? tt("暂无可试玩的 app。") : tt("暂无可试玩的 agent。")}
         onOpen={(it) => {
           if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
           else setDetailId(it.id); // 先弹详情弹窗，点「召唤」才进入内嵌功能区
         }}
         // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
-        nativeLabel="按技能"
+        nativeLabel={tt("按技能")}
       />
 
       {/* doctrine v11：卡片详情弹窗（WorkBuddy 式）。点「召唤」→ 进入内嵌功能区。 */}
@@ -437,7 +440,7 @@ export function PlaygroundDetail({
             .map((s) => s.trim())
             .filter(Boolean)
             .slice(0, 4)}
-          launchLabel="召唤"
+          launchLabel={tt("召唤")}
           accent={accent}
           onLaunch={() => {
             const id = detailAgent.agent_id;
@@ -450,8 +453,8 @@ export function PlaygroundDetail({
       {showCreateAgent && (
         <CreateSkillModal
           accent={accent}
-          title="创建 agent"
-          submitLabel="创建 agent"
+          title={tt("创建 agent")}
+          submitLabel={tt("创建 agent")}
           onClose={() => setShowCreateAgent(false)}
           onCreated={() => {
             setShowCreateAgent(false);
@@ -466,11 +469,12 @@ export function PlaygroundDetail({
 // Playground 标题 + 一句话介绍。操作员 2026-06-24：打开 organization / workflow 目录
 // 时这段文案不能消失，所以抽成共用组件，目录页与 org/workflow 分区都渲染它。
 function PlaygroundHeader() {
+  const tt = useUI();
   return (
     <>
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
       <p className="mt-1 text-[13px] text-neutral-500">
-        浏览全家桶 <b>网站</b>（或用 AI 智能推荐找站）、挑一个 <b>app</b>（能填操作台、出产物）或 <b>agent</b>（人格预设 + 可调工具的工作单元）直接试玩；或在 <b>organization</b> / <b>workflow</b> 里可视化搭一支会协作的 agent 团队。
+        {tt("浏览全家桶")} <b>{tt("网站")}</b>{tt("（或用 AI 智能推荐找站）、挑一个")} <b>app</b>{tt("（能填操作台、出产物）或")} <b>agent</b>{tt("（人格预设 + 可调工具的工作单元）直接试玩；或在")} <b>organization</b> / <b>workflow</b> {tt("里可视化搭一支会协作的 agent 团队。")}
       </p>
     </>
   );
@@ -489,11 +493,12 @@ function PlaygroundTabs({
   hasBoard?: boolean;
   hasClientApps?: boolean;
 }) {
+  const tt = useUI();
   const tabs = [
-    ...(hasSites ? [{ id: "site" as Tab, label: "网站" }] : []),
+    ...(hasSites ? [{ id: "site" as Tab, label: tt("网站") }] : []),
     { id: "app" as Tab, label: "app" },
     { id: "skill" as Tab, label: "agent" },
-    ...(hasClientApps ? [{ id: "clientapp" as Tab, label: "客户端app" }] : []),
+    ...(hasClientApps ? [{ id: "clientapp" as Tab, label: tt("客户端app") }] : []),
     ...(hasBoard
       ? [
           { id: "organization" as Tab, label: "organization" },
@@ -519,18 +524,19 @@ function PlaygroundTabs({
   );
 }
 
-export function BackButton({ onClick, label = "返回" }: { onClick: () => void; label?: string }) {
+export function BackButton({ onClick, label }: { onClick: () => void; label?: string }) {
+  const tt = useUI();
   return (
     <button
       type="button"
       onClick={onClick}
       className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50 active:scale-95"
-      title="返回选择页"
+      title={tt("返回选择页")}
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      {label}
+      {label ?? tt("返回")}
     </button>
   );
 }

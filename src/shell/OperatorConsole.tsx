@@ -33,6 +33,7 @@ import { BackButton } from "./Playground";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
+import { useUI } from "../i18n/ui/useUI";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -173,6 +174,7 @@ export function OperatorConsole({
   library,
   soloMaxWidth = "48rem",
 }: OperatorConsoleProps) {
+  const tt = useUI();
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
   // 「库」= 右版面显隐开关（右版面内容 = 各功能的 canvas，即该站自己的结果/库）。
   // solo/embed（hideTabs）不显示；显式 false 关闭；否则默认启用（子站用 accent 胶囊按钮）。
@@ -181,7 +183,7 @@ export function OperatorConsole({
       ? undefined
       : library
         ? library
-        : { label: "库" };
+        : { label: tt("库") };
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
@@ -281,7 +283,7 @@ export function OperatorConsole({
         <AppDirectory
           items={items}
           accent={accent}
-          openLabel="打开"
+          openLabel={tt("打开")}
           onOpen={(it) => openFn(it.id)}
         />
       </div>

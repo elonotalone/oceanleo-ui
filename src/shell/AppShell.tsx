@@ -27,6 +27,7 @@ import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import { useUI } from "../i18n/ui/useUI";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
@@ -205,7 +206,7 @@ function AppShellInner({
   userEmail,
   credits,
   onSearch,
-  searchPlaceholder = "搜索...",
+  searchPlaceholder,
   recentSlot,
   onSignOut,
   accountHref = "/account",
@@ -220,6 +221,7 @@ function AppShellInner({
   showThemeSwitcher = false,
   showLanguageSwitcher = false,
 }: AppShellProps) {
+  const tt = useUI();
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
   // 主区（如 OperatorConsole 工作台）自带模型选择时，header 不再重复渲染（消灭两行顶栏）。
@@ -269,7 +271,7 @@ function AppShellInner({
           {userEmail ? userEmail[0].toUpperCase() : "?"}
         </div>
         <span className="max-w-[120px] flex-1 truncate text-[13px] font-medium text-neutral-800">
-          {userEmail ? userEmail.split("@")[0] : "未登录"}
+          {userEmail ? userEmail.split("@")[0] : tt("未登录")}
         </span>
       </>
     );
@@ -311,7 +313,7 @@ function AppShellInner({
         <span style={{ color: brand.accent }}>
           <IconGift className="h-3.5 w-3.5" />
         </span>
-        <span className="text-[12px] text-neutral-600">token 余额</span>
+        <span className="text-[12px] text-neutral-600">{tt("token 余额")}</span>
         <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
           {credits != null ? `¥${credits.toFixed(2)}` : "…"}
         </span>
@@ -430,7 +432,7 @@ function AppShellInner({
               type="button"
               onClick={() => setSearchOpen((v) => !v)}
               className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
-              title="搜索"
+              title={tt("搜索")}
             >
               <IconSearch />
             </button>
@@ -442,7 +444,7 @@ function AppShellInner({
               setMobileOpen(false);
             }}
             className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
-            title="收起侧栏"
+            title={tt("收起侧栏")}
           >
             <IconPanel />
           </button>
@@ -461,7 +463,7 @@ function AppShellInner({
                 <IconSearch className="h-3.5 w-3.5 text-neutral-400" />
                 <input
                   className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
-                  placeholder={searchPlaceholder}
+                  placeholder={searchPlaceholder ?? tt("搜索...")}
                   value={term}
                   onChange={(e) => {
                     setTerm(e.target.value);
@@ -538,7 +540,7 @@ function AppShellInner({
             <span style={{ color: brand.accent }}>
               <IconGift className="h-3.5 w-3.5" />
             </span>
-            token 余额
+            {tt("token 余额")}
           </span>
           <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
             {credits != null ? `¥${credits.toFixed(2)}` : "…"}
@@ -631,7 +633,7 @@ function AppShellInner({
             data-oceanleo-chrome
             onClick={() => toggleCollapsed(false)}
             className="fixed left-3 top-3 z-50 hidden rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:block"
-            title="展开侧栏"
+            title={tt("展开侧栏")}
           >
             <IconPanel />
           </button>
@@ -641,7 +643,7 @@ function AppShellInner({
           data-oceanleo-chrome
           onClick={() => setMobileOpen(true)}
           className="fixed left-3 top-3 z-50 rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:hidden"
-          title="打开菜单"
+          title={tt("打开菜单")}
         >
           <IconPanel />
         </button>

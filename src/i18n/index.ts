@@ -41,3 +41,7 @@ export type { LanguageSwitcherProps } from "./LanguageSwitcher";
 
 // client hooks（来自 "next-intl"，client-safe）。
 export { useT, useLocale, useMessages, useFormatter } from "./useT.client";
+
+// 存量 UI 文案本地化（「中文原文即 key」，见 ./ui/useUI.ts）。
+export { useUI } from "./ui/useUI";
+export type { UITranslate } from "./ui/useUI";

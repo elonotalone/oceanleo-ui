@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { Modal } from "../ui";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface ItemDetailModalProps {
   open: boolean;
@@ -51,12 +52,14 @@ export function ItemDetailModal({
   tags = [],
   strengths = [],
   examples = [],
-  launchLabel = "召唤",
+  launchLabel,
   source,
   accent = "#0ea5e9",
   onLaunch,
 }: ItemDetailModalProps) {
+  const tt = useUI();
   if (!open) return null;
+  const launch = launchLabel ?? tt("召唤");
   const allTags = [...(source ? [source] : []), ...tags].filter(Boolean);
   return (
     <Modal onClose={onClose} className="max-w-xl">
@@ -87,7 +90,7 @@ export function ItemDetailModal({
           type="button"
           onClick={onClose}
           className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
-          title="关闭"
+          title={tt("关闭")}
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -98,7 +101,7 @@ export function ItemDetailModal({
       <div className="space-y-5 px-6 py-5">
         {(capabilities || tagline) && (
           <div>
-            <p className="mb-1.5 text-[13px] font-semibold text-stone-700">能力介绍</p>
+            <p className="mb-1.5 text-[13px] font-semibold text-stone-700">{tt("能力介绍")}</p>
             <p className="text-[13px] leading-relaxed text-stone-600">
               {capabilities || tagline}
             </p>
@@ -107,7 +110,7 @@ export function ItemDetailModal({
 
         {strengths.length > 0 && (
           <div>
-            <p className="mb-2 text-[13px] font-semibold text-stone-700">擅长领域</p>
+            <p className="mb-2 text-[13px] font-semibold text-stone-700">{tt("擅长领域")}</p>
             <div className="flex flex-wrap gap-2">
               {strengths.map((s) => (
                 <span
@@ -123,7 +126,7 @@ export function ItemDetailModal({
 
         {examples.length > 0 && (
           <div>
-            <p className="mb-2 text-[13px] font-semibold text-stone-700">试试这样问我</p>
+            <p className="mb-2 text-[13px] font-semibold text-stone-700">{tt("试试这样问我")}</p>
             <div className="space-y-2">
               {examples.map((ex) => (
                 <button
@@ -156,7 +159,7 @@ export function ItemDetailModal({
           onClick={() => onLaunch()}
           className="w-full rounded-xl bg-stone-900 px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition hover:bg-stone-800 active:scale-[0.99]"
         >
-          {launchLabel} {name}
+          {launch} {name}
         </button>
       </div>
     </Modal>

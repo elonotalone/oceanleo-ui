@@ -39,6 +39,7 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface FunctionAgentChatProps {
   /** 本功能区 agent id（"<site_id>.<fn_id>"）。 */
@@ -94,7 +95,7 @@ export function FunctionAgentChat({
   onRunAction: _onRunAction,
   agentModel = "",
   accent = "#4f46e5",
-  opsLabel = "操作台",
+  opsLabel: opsLabelProp,
   defaultTab = "ops",
   showOps = true,
   appLabel,
@@ -103,6 +104,8 @@ export function FunctionAgentChat({
   void _getOpsState;
   void _onApplyPatch;
   void _onRunAction;
+  const tt = useUI();
+  const opsLabel = opsLabelProp ?? tt("操作台");
   // 无操作台表单的纯对话功能区：强制 agent 形态、不显示切换键。
   const [tab, setTab] = useState<FnTab>(showOps ? defaultTab : "agent");
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -132,8 +135,8 @@ export function FunctionAgentChat({
           onClick={() => setTab(t)}
           title={
             t === "ops"
-              ? "操作台：直接精细操控、直接生成"
-              : "agent：跟它说话，它带工具帮你生成（不会动操作台）"
+              ? tt("操作台：直接精细操控、直接生成")
+              : tt("agent：跟它说话，它带工具帮你生成（不会动操作台）")
           }
           className={`rounded-md px-3 py-1 font-medium transition-colors ${
             tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
@@ -202,7 +205,7 @@ export function FunctionAgentChat({
     setInput("");
     atts.clear();
     setError(null);
-    const effectivePrompt = prompt || "请分析我上传的文件。";
+    const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
     setMessages((m) => [
       ...m,
@@ -222,7 +225,7 @@ export function FunctionAgentChat({
       });
       setBusy(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? "登录后即可使用 agent。" : r.error || "创建失败");
+        setError(r.status === 401 ? tt("登录后即可使用 agent。") : r.error || tt("创建失败"));
         return;
       }
       setTaskId(r.data.task_id);
@@ -234,7 +237,7 @@ export function FunctionAgentChat({
     const r = await followUp(taskId, effectivePrompt, uploaded);
     setBusy(false);
     if (r.ok) setStatus("running");
-    else setError(r.error || "发送失败");
+    else setError(r.error || tt("发送失败"));
   }
 
   const running = status === "running" || busy;
@@ -260,7 +263,7 @@ export function FunctionAgentChat({
         <div className="mx-auto w-full max-w-2xl space-y-3">
           {appLabel && (
             <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
-              <span>所属 app</span>
+              <span>{tt("所属 app")}</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
                 {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
                 {appLabel}
@@ -269,14 +272,14 @@ export function FunctionAgentChat({
           )}
           {messages.length === 0 && !running && (
             <p className="py-10 text-center text-[15px] text-stone-400">
-              让「{schema.title}」agent 帮你做事，
+              {tt("让「{title}」agent 帮你做事，", { title: schema.title })}
               <br />
-              它会调用工具为你生成结果。
+              {tt("它会调用工具为你生成结果。")}
               {showOps && (
                 <>
                   <br />
                   <span className="text-[13px] text-stone-300">
-                    想自己精细操控？切到「{opsLabel}」直接调参生成。
+                    {tt("想自己精细操控？切到「{label}」直接调参生成。", { label: opsLabel })}
                   </span>
                 </>
               )}
@@ -287,7 +290,7 @@ export function FunctionAgentChat({
           ))}
           {running && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> agent 正在处理…
+              <span className="v-spinner" /> {tt("agent 正在处理…")}
             </div>
           )}
           {error && <p className="text-[14px] text-rose-500">{error}</p>}
@@ -302,7 +305,7 @@ export function FunctionAgentChat({
             loading={busy}
             leoSuggest
             leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
-            placeholder={`让 agent 帮你做「${schema.title}」，可上传文件…`}
+            placeholder={tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })}
             rows={1}
             onAttachFiles={atts.handleAttachFiles}
             attachments={atts.composerAttachments}
@@ -359,6 +362,7 @@ function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
 }
 
 function FnAttachmentChip({ att }: { att: AgentAttachment }) {
+  const tt = useUI();
   const isImage =
     (att.mime || "").startsWith("image/") ||
     att.media_type === "image" ||
@@ -386,7 +390,7 @@ function FnAttachmentChip({ att }: { att: AgentAttachment }) {
         <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
         <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span className="max-w-[140px] truncate">{att.name || "附件"}</span>
+      <span className="max-w-[140px] truncate">{att.name || tt("附件")}</span>
     </a>
   );
 }

@@ -25,6 +25,7 @@
 
 import { useMemo, type ReactNode } from "react";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface StudioProps {
   /** 左侧操作列内容（通常是若干 <StudioSection> + 底部主按钮）。 */
@@ -71,14 +72,15 @@ export function Studio({
   opsWidth = 380,
   defaultRatio,
   storageKey,
-  opsLabel = "操作台",
-  canvasLabel = "结果",
+  opsLabel,
+  canvasLabel,
   accent = "#4f46e5",
   headerHeight = 56,
   className = "",
   library,
   soloMaxWidth = "48rem",
 }: StudioProps) {
+  const tt = useUI();
   // 把旧的 px 固定宽近似成初始比例（夹在 SplitWorkspace 的 18%–82% 内）。
   const initialRatio = useMemo(() => {
     if (typeof defaultRatio === "number") return defaultRatio;
@@ -96,8 +98,8 @@ export function Studio({
       right={<div className="flex h-full min-h-0 flex-col">{canvas}</div>}
       defaultRatio={initialRatio}
       storageKey={storageKey}
-      leftLabel={opsLabel}
-      rightLabel={canvasLabel}
+      leftLabel={opsLabel ?? tt("操作台")}
+      rightLabel={canvasLabel ?? tt("结果")}
       accent={accent}
       headerHeight={headerHeight}
       className={className}

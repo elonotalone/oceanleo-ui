@@ -14,6 +14,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useUI } from "../i18n/ui/useUI";
 import {
   listFiles,
   uploadFile,
@@ -72,12 +73,13 @@ export function FileLibrary({
   sites,
   accent = "#4f46e5",
   defaultTab = "files",
-  title = "文件库",
+  title,
   tab: controlledTab,
   onTabChange,
   hideHeader = false,
   fill = false,
 }: FileLibraryProps) {
+  const tt = useUI();
   const [internalTab, setInternalTab] = useState<Tab>(defaultTab);
   const tab = controlledTab ?? internalTab;
   const setTab = (t: Tab) => {
@@ -92,9 +94,9 @@ export function FileLibrary({
       {!hideHeader && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
+            <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("文件库")}</h1>
             <p className="mt-1 text-[13px] text-neutral-500">
-              上传文件供本站 AI 使用；作品 / 素材 / 知识库全 OceanLeo 系列共享，跨站可见。
+              {tt("上传文件供本站 AI 使用；作品 / 素材 / 知识库全 OceanLeo 系列共享，跨站可见。")}
             </p>
           </div>
         </div>
@@ -112,7 +114,7 @@ export function FileLibrary({
                   tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
                 }`}
               >
-                {t.label}
+                {tt(t.label)}
               </button>
             ))}
           </div>
@@ -156,16 +158,17 @@ function SitePartition({
   sites?: SiteOption[];
   onChange: (v: string) => void;
 }) {
+  const tt = useUI();
   return (
     <div className="flex items-center gap-1.5 text-[12px]">
-      <span className="text-stone-400">分区</span>
+      <span className="text-stone-400">{tt("分区")}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[12px] text-stone-700 outline-none focus:border-stone-400"
       >
-        <option value={currentSiteId}>{currentSiteName}（当前站）</option>
-        <option value="__all__">全部 OceanLeo 站</option>
+        <option value={currentSiteId}>{tt("{name}（当前站）", { name: currentSiteName })}</option>
+        <option value="__all__">{tt("全部 OceanLeo 站")}</option>
         {(sites || [])
           .filter((s) => s.id !== currentSiteId)
           .map((s) => (
@@ -188,6 +191,7 @@ function FilesPanel({
   scopeSite: string;
   accent: string;
 }) {
+  const tt = useUI();
   const [items, setItems] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -205,11 +209,11 @@ function FilesPanel({
     });
     setLoading(false);
     if (!r.ok || !r.data) {
-      setError(r.status === 401 ? "登录后即可使用文件库。" : r.error || "加载失败");
+      setError(r.status === 401 ? tt("登录后即可使用文件库。") : r.error || tt("加载失败"));
       return;
     }
     setItems(r.data.items || []);
-  }, [scopeSite]);
+  }, [scopeSite, tt]);
 
   useEffect(() => {
     void load();
@@ -222,7 +226,7 @@ function FilesPanel({
     for (const f of Array.from(files)) {
       const r = await uploadFile(f, { siteId });
       if (!r.ok) {
-        setError(r.error || `上传失败：${f.name}`);
+        setError(r.error || tt("上传失败：{name}", { name: f.name }));
         break;
       }
     }
@@ -252,9 +256,9 @@ function FilesPanel({
       >
         <span className="text-2xl">📎</span>
         <p className="text-sm text-stone-600">
-          点击或拖拽文件到此处上传（归「当前站」，可被本站 AI 使用）
+          {tt("点击或拖拽文件到此处上传（归「当前站」，可被本站 AI 使用）")}
         </p>
-        <p className="text-xs text-stone-400">单文件 ≤ 20MB · 图片 / 文档 / 音视频均可</p>
+        <p className="text-xs text-stone-400">{tt("单文件 ≤ 20MB · 图片 / 文档 / 音视频均可")}</p>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -262,7 +266,7 @@ function FilesPanel({
           className="mt-1 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-60"
           style={{ background: accent }}
         >
-          {uploading ? "上传中…" : "选择文件"}
+          {uploading ? tt("上传中…") : tt("选择文件")}
         </button>
         <input
           ref={inputRef}
@@ -274,9 +278,9 @@ function FilesPanel({
       </div>
 
       {loading && items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-stone-400">加载中…</p>
+        <p className="py-8 text-center text-sm text-stone-400">{tt("加载中…")}</p>
       ) : items.length === 0 ? (
-        <PanelMessage text="还没有上传文件。拖拽或点击上方区域上传第一个文件。" />
+        <PanelMessage text={tt("还没有上传文件。拖拽或点击上方区域上传第一个文件。")} />
       ) : (
         <div className="space-y-2">
           {items.map((f) => (
@@ -297,8 +301,9 @@ function FileRow({
   crossSite: boolean;
   onDelete: (id: string) => void;
 }) {
+  const tt = useUI();
   const isImg = f.media_type === "image";
-  const name = (f.meta?.filename as string) || f.title || "文件";
+  const name = (f.meta?.filename as string) || f.title || tt("文件");
   return (
     <div className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-stone-100">
@@ -312,7 +317,7 @@ function FileRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-stone-800">{name}</p>
         <p className="text-[11px] text-stone-400">
-          {MEDIA_TYPE_LABEL[(f.media_type as keyof typeof MEDIA_TYPE_LABEL) || "other"] || "文件"}
+          {MEDIA_TYPE_LABEL[(f.media_type as keyof typeof MEDIA_TYPE_LABEL) || "other"] || tt("文件")}
           {f.bytes ? ` · ${(f.bytes / 1024).toFixed(0)}KB` : ""}
           {crossSite && f.site_id ? ` · ${f.site_id}` : ""}
         </p>
@@ -323,13 +328,13 @@ function FileRow({
         rel="noreferrer"
         className="rounded-lg px-2.5 py-1 text-[12px] text-stone-500 transition hover:bg-stone-100"
       >
-        打开
+        {tt("打开")}
       </a>
       <button
         type="button"
         onClick={() => onDelete(f.id)}
         className="text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500"
-        aria-label="删除"
+        aria-label={tt("删除")}
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -341,6 +346,7 @@ function FileRow({
 
 // --- 作品 / 素材 / 知识库（复用 overview，跨站分区作用于 works） -----------
 function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }) {
+  const tt = useUI();
   const [items, setItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -352,7 +358,7 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
       if (!alive) return;
       setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? "登录后即可查看。" : r.error || "加载失败");
+        setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
         return;
       }
       const all = r.data.works || [];
@@ -361,7 +367,7 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
     return () => {
       alive = false;
     };
-  }, [scopeSite]);
+  }, [scopeSite, tt]);
 
   if (error) return <PanelMessage text={error} />;
   return (
@@ -369,7 +375,7 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
       loading={loading}
       items={items}
       accent={accent}
-      emptyText="该分区还没有作品。"
+      emptyText={tt("该分区还没有作品。")}
       onDelete={async (id) => {
         setItems((xs) => xs.filter((x) => x.id !== id));
         await deleteWork(id);
@@ -381,6 +387,7 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
 }
 
 function AssetsPanel({ accent }: { accent: string }) {
+  const tt = useUI();
   const [items, setItems] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -390,7 +397,7 @@ function AssetsPanel({ accent }: { accent: string }) {
       if (!alive) return;
       setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? "登录后即可查看。" : r.error || "加载失败");
+        setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
         return;
       }
       // 素材 = 收藏的（非上传）。上传的在「上传文件」tab，这里排除。
@@ -399,14 +406,14 @@ function AssetsPanel({ accent }: { accent: string }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [tt]);
   if (error) return <PanelMessage text={error} />;
   return (
     <MediaGrid
       loading={loading}
       items={items}
       accent={accent}
-      emptyText="还没有收藏素材。"
+      emptyText={tt("还没有收藏素材。")}
       onDelete={async (id) => {
         setItems((xs) => xs.filter((x) => x.id !== id));
         await deleteAsset(id);
@@ -417,6 +424,7 @@ function AssetsPanel({ accent }: { accent: string }) {
 }
 
 function KnowledgePanel({ accent }: { accent: string }) {
+  const tt = useUI();
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
@@ -450,14 +458,14 @@ function KnowledgePanel({ accent }: { accent: string }) {
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="知识条目标题（如：我的品牌调性）"
+          placeholder={tt("知识条目标题（如：我的品牌调性）")}
           className="w-full border-0 bg-transparent px-1 py-1 text-[14px] font-medium text-stone-800 outline-none placeholder:text-stone-400"
         />
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={3}
-          placeholder="写下供各站 AI 生成时参考的内容…"
+          placeholder={tt("写下供各站 AI 生成时参考的内容…")}
           className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-stone-700 outline-none placeholder:text-stone-400"
         />
         <div className="flex justify-end">
@@ -468,12 +476,12 @@ function KnowledgePanel({ accent }: { accent: string }) {
             className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-50"
             style={{ background: accent }}
           >
-            {saving ? "保存中…" : "添加到知识库"}
+            {saving ? tt("保存中…") : tt("添加到知识库")}
           </button>
         </div>
       </div>
       {!loading && items.length === 0 ? (
-        <PanelMessage text="还没有知识条目，添加第一条吧。" />
+        <PanelMessage text={tt("还没有知识条目，添加第一条吧。")} />
       ) : (
         <div className="space-y-2">
           {items.map((k) => (
@@ -489,7 +497,7 @@ function KnowledgePanel({ accent }: { accent: string }) {
                   await deleteKnowledge(k.id);
                 }}
                 className="shrink-0 text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500"
-                aria-label="删除"
+                aria-label={tt("删除")}
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -520,6 +528,7 @@ function MediaGrid({
   badge?: (it: WorkItem | AssetItem) => string | undefined;
   crossSite?: boolean;
 }) {
+  const tt = useUI();
   const [zoom, setZoom] = useState<string | null>(null);
   if (!loading && items.length === 0) return <PanelMessage text={emptyText} />;
   return (
@@ -560,7 +569,7 @@ function MediaGrid({
                     type="button"
                     onClick={() => onDelete(c.id)}
                     className="absolute right-1.5 top-1.5 z-10 hidden h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
-                    aria-label="删除"
+                    aria-label={tt("删除")}
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -576,7 +585,7 @@ function MediaGrid({
           onClick={() => setZoom(null)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={zoom} alt="放大预览" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+          <img src={zoom} alt={tt("放大预览")} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
         </div>
       )}
     </>

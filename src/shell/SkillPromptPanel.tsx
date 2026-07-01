@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchManifest } from "../lib/manifest-fetch";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { Modal } from "../ui";
+import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 export interface SkillPromptPanelProps {
   /** 绑定的 skill / 功能区 agent id（"<site_id>.<fn_id>"）。空 → 不渲染。 */
@@ -69,11 +70,16 @@ export interface SkillPromptPanelProps {
 }
 
 // manifest.prompt 为空时，由身份信息合成一段「人设说明」，作为开源 prompt 的兜底。
-function synthIdentity(name?: string, tagline?: string, capabilities?: string): string {
+function synthIdentity(
+  tt: UITranslate,
+  name?: string,
+  tagline?: string,
+  capabilities?: string,
+): string {
   const lines: string[] = [];
-  if (name) lines.push(`你是「${name}」。`);
+  if (name) lines.push(tt("你是「{name}」。", { name }));
   if (tagline) lines.push(tagline);
-  if (capabilities) lines.push(`\n你的能力：${capabilities}`);
+  if (capabilities) lines.push(tt("\n你的能力：{capabilities}", { capabilities }));
   return lines.join("\n").trim();
 }
 
@@ -93,8 +99,9 @@ export function SkillPromptPanel({
   open: openProp,
   onClose,
   onDelete,
-  deleteLabel = "删除",
+  deleteLabel,
 }: SkillPromptPanelProps) {
+  const tt = useUI();
   const [openSelf, setOpenSelf] = useState(false);
   // modal 形态受控（父级 open / onClose）；inline / panel 形态自管开关。
   const isModal = variant === "modal";
@@ -137,14 +144,14 @@ export function SkillPromptPanel({
         // manifest.prompt 优先；为空则用身份信息合成（绝不显示「暂未填写」）。
         const p =
           (m?.prompt || "").trim() ||
-          synthIdentity(m?.name || name, m?.tagline || tagline, m?.capabilities);
+          synthIdentity(tt, m?.name || name, m?.tagline || tagline, m?.capabilities);
         setBasePrompt(p);
         setDraft(p);
       })
       .catch(() => {
         // 拉取异常也要落地一段兜底 prompt，绝不空白。
         if (!alive) return;
-        const p = synthIdentity(name, tagline);
+        const p = synthIdentity(tt, name, tagline);
         setBasePrompt(p);
         setDraft(p);
       })
@@ -154,7 +161,7 @@ export function SkillPromptPanel({
     return () => {
       alive = false;
     };
-  }, [agentId, promptProp, name, tagline]);
+  }, [agentId, promptProp, name, tagline, tt]);
 
   // inline 形态现在用居中 Modal（自带 Esc / 点遮罩关闭），不再需要手写「点外面关闭」。
 
@@ -167,14 +174,14 @@ export function SkillPromptPanel({
   const body = (
     <div className="space-y-3">
       {loading ? (
-        <p className="py-8 text-center text-[13px] text-stone-500">加载 prompt…</p>
+        <p className="py-8 text-center text-[13px] text-stone-500">{tt("加载 prompt…")}</p>
       ) : editing ? (
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={14}
           className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[14px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          placeholder="编辑这个 agent 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…"
+          placeholder={tt("编辑这个 agent 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…")}
         />
       ) : (
         <pre className="max-h-[55vh] min-h-[8rem] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-stone-100 bg-stone-50 p-4 font-sans text-[14px] leading-[1.75] text-stone-700">
@@ -185,7 +192,7 @@ export function SkillPromptPanel({
       {!loading && (
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {!editing ? (
-            <PanelBtn onClick={() => setEditing(true)}>编辑</PanelBtn>
+            <PanelBtn onClick={() => setEditing(true)}>{tt("编辑")}</PanelBtn>
           ) : (
             <PanelBtn
               onClick={() => {
@@ -193,7 +200,7 @@ export function SkillPromptPanel({
                 setEditing(false);
               }}
             >
-              取消编辑
+              {tt("取消编辑")}
             </PanelBtn>
           )}
 
@@ -207,18 +214,18 @@ export function SkillPromptPanel({
                 setEditing(false);
                 setOpen(false);
               }}
-              title="用当前（可能编辑过的）prompt 直接在本页面对话办事，只对本次会话生效"
+              title={tt("用当前（可能编辑过的）prompt 直接在本页面对话办事，只对本次会话生效")}
             >
-              用这段 prompt 直接干活
+              {tt("用这段 prompt 直接干活")}
             </PanelBtn>
           )}
 
           {overrideActive && onUseOverride && (
-            <PanelBtn onClick={() => onUseOverride("")}>恢复官方 prompt</PanelBtn>
+            <PanelBtn onClick={() => onUseOverride("")}>{tt("恢复官方 prompt")}</PanelBtn>
           )}
 
-          <PanelBtn onClick={() => setShowSave(true)} title="把当前 prompt 存成你自己的 agent">
-            保存为我的 agent
+          <PanelBtn onClick={() => setShowSave(true)} title={tt("把当前 prompt 存成你自己的 agent")}>
+            {tt("保存为我的 agent")}
           </PanelBtn>
         </div>
       )}
@@ -235,7 +242,7 @@ export function SkillPromptPanel({
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            {deleteLabel}
+            {deleteLabel ?? tt("删除")}
           </button>
         </div>
       )}
@@ -245,11 +252,11 @@ export function SkillPromptPanel({
   const saveModal = showSave ? (
     <CreateSkillModal
       accent={accent}
-      title="保存为我的 agent"
-      submitLabel="保存为我的 agent"
+      title={tt("保存为我的 agent")}
+      submitLabel={tt("保存为我的 agent")}
       categories={categories}
       initial={{
-        name: name ? `${name}（我的）` : "",
+        name: name ? tt("{name}（我的）", { name }) : "",
         tagline,
         icon,
         category,
@@ -277,22 +284,22 @@ export function SkillPromptPanel({
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[14px] font-semibold text-stone-900">
-              {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
+              {name ? tt("{name} 的 prompt", { name }) : tt("agent 设定（prompt）")}
             </p>
             <p className="text-[12px] text-stone-400">
-              这个 agent 的设定完全开源——可查看、编辑、直接用，或存成你自己的 agent。
+              {tt("这个 agent 的设定完全开源——可查看、编辑、直接用，或存成你自己的 agent。")}
             </p>
           </div>
           {overrideActive && (
             <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700">
-              已用自定义
+              {tt("已用自定义")}
             </span>
           )}
           <button
             type="button"
             onClick={() => setOpen(false)}
             className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
-            title="关闭"
+            title={tt("关闭")}
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -325,7 +332,7 @@ export function SkillPromptPanel({
               ? "bg-violet-50 text-violet-700"
               : "text-neutral-600 hover:bg-neutral-100"
           }`}
-          title="查看 / 编辑这个 agent 的 prompt（开源）"
+          title={tt("查看 / 编辑这个 agent 的 prompt（开源）")}
         >
           <PromptIcon />
           prompt
@@ -349,14 +356,14 @@ export function SkillPromptPanel({
       >
         <PromptIcon />
         <span className="min-w-0 flex-1 truncate font-medium text-stone-700">
-          {name ? `${name} 的 prompt` : "agent 设定（prompt）"}
+          {name ? tt("{name} 的 prompt", { name }) : tt("agent 设定（prompt）")}
         </span>
         {overrideActive && (
           <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700">
-            已用自定义
+            {tt("已用自定义")}
           </span>
         )}
-        <span className="shrink-0 text-stone-400">{open ? "收起" : "展开"}</span>
+        <span className="shrink-0 text-stone-400">{open ? tt("收起") : tt("展开")}</span>
       </button>
       {open && <div className="border-t border-stone-100 p-3">{body}</div>}
       {saveModal}

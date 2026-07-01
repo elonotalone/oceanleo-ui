@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
+import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
 import { THEME_MODES, type ThemeMode } from "../theme/theme-config";
 import {
@@ -48,12 +49,6 @@ function setLocaleCookie(locale: Locale) {
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${domainAttr}`;
 }
 
-const DEFAULT_THEME_LABELS: Record<ThemeMode, string> = {
-  light: "浅色",
-  dark: "深色",
-  auto: "自动",
-};
-
 function ThemeIcon({ mode }: { mode: ThemeMode }) {
   if (mode === "light") {
     return (
@@ -82,19 +77,26 @@ function ThemeIcon({ mode }: { mode: ThemeMode }) {
   );
 }
 
-export function GeneralPage({ title = "通用", themeLabels, labels }: GeneralPageProps) {
+export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const router = useRouter();
+  const tt = useUI();
   const active = normalizeLocale(useLocale());
   const { mode, setMode } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const TL = { ...DEFAULT_THEME_LABELS, ...themeLabels };
-  const L = {
-    appearance: labels?.appearance ?? "外观",
-    language: labels?.language ?? "语言",
-    theme: labels?.theme ?? "主题",
+  // 默认文案随当前语言本地化（未显式传 props 时）。
+  const TL: Record<ThemeMode, string> = {
+    light: themeLabels?.light ?? tt("浅色"),
+    dark: themeLabels?.dark ?? tt("深色"),
+    auto: themeLabels?.auto ?? tt("自动"),
   };
+  const L = {
+    appearance: labels?.appearance ?? tt("外观"),
+    language: labels?.language ?? tt("语言"),
+    theme: labels?.theme ?? tt("主题"),
+  };
+  const pageTitle = title ?? tt("通用");
 
   useEffect(() => {
     if (!langOpen) return;
@@ -114,7 +116,7 @@ export function GeneralPage({ title = "通用", themeLabels, labels }: GeneralPa
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{pageTitle}</h1>
 
       <div className="mx-auto mt-8 max-w-xl">
         <section className="v-fade-up">

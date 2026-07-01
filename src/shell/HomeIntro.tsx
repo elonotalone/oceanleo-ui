@@ -14,6 +14,7 @@
 
 import { useState, type ReactNode } from "react";
 import { LeoComposer } from "./LeoComposer";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface HomeIntroProps {
   /** 站名（如「LeoImage」）。 */
@@ -41,8 +42,8 @@ const BYOK_PROVIDERS = "OpenAI / Anthropic Claude / DeepSeek / 阿里云百炼 /
 export function HomeIntro({
   siteName,
   intro,
-  heading = "我能为你做什么？",
-  placeholder = "给 OceanLeo 布置一个任务...",
+  heading: headingProp,
+  placeholder: placeholderProp,
   suggestions = [],
   onStart,
   leftSlot,
@@ -51,6 +52,9 @@ export function HomeIntro({
   markupPct: _markupPct,
 }: HomeIntroProps) {
   void _markupPct;
+  const tt = useUI();
+  const heading = headingProp ?? tt("我能为你做什么？");
+  const placeholder = placeholderProp ?? tt("给 OceanLeo 布置一个任务...");
   const [value, setValue] = useState("");
   const submit = () => {
     const p = value.trim();
@@ -97,16 +101,16 @@ export function HomeIntro({
       )}
 
       <div className="mt-10 max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500">
-        <span className="font-medium text-stone-600">{siteName}</span> 属于 OceanLeo 系列。
-        平台仅按用户在 OceanLeo 平台使用 AI token 的
+        <span className="font-medium text-stone-600">{siteName}</span>{" "}
+        {tt("属于 OceanLeo 系列。平台仅按用户在 OceanLeo 平台使用 AI token 的")}
         <span className="font-semibold" style={{ color: accent }}>
-          成本价
+          {tt("成本价")}
         </span>
-        收费。你也可以自带各平台的 API key（{BYOK_PROVIDERS}），
+        {tt("收费。你也可以自带各平台的 API key（{providers}），", { providers: BYOK_PROVIDERS })}
         <span className="font-semibold" style={{ color: accent }}>
-          免费
+          {tt("免费")}
         </span>
-        使用 OceanLeo 的功能。
+        {tt("使用 OceanLeo 的功能。")}
       </div>
     </div>
   );

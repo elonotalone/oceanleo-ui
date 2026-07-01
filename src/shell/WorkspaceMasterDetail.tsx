@@ -19,6 +19,7 @@ import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton, type PlaygroundBoardCtx } from "./Playground";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
+import { useUI } from "../i18n/ui/useUI";
 
 // ----------------------------------------------------------------------------
 // 子站工作台子栏：把站点自己的「功能区名称」（ConsoleFunction）列到侧栏。
@@ -42,6 +43,7 @@ export function ConsoleFnSubNav({
   accent?: string;
   defaultId?: string;
 }) {
+  const tt = useUI();
   const [sel, setSel] = useWorkspaceSelection("workspace");
   useEffect(() => {
     if (!sel && functions.length > 0) setSel(defaultId || functions[0].id);
@@ -64,7 +66,7 @@ export function ConsoleFnSubNav({
             {f.icon && <span className="shrink-0 text-base leading-none">{f.icon}</span>}
             <span className="min-w-0 flex-1 truncate font-medium">{f.label}</span>
             {f.agentId && (
-              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title="该 app 有专属 agent">
+              <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title={tt("该 app 有专属 agent")}>
                 ✦
               </span>
             )}
@@ -105,6 +107,7 @@ export function WorkspaceSubNav({
   accent?: string;
   addAgentHref?: string;
 }) {
+  const tt = useUI();
   const { mine, loading, remove } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
 
@@ -115,11 +118,10 @@ export function WorkspaceSubNav({
 
   return (
     <div className="space-y-0.5">
-      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">加载 app / agent…</p>}
+      {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载 app / agent…")}</p>}
       {!loading && mine.length === 0 && (
         <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
-          还没有 app 或 agent。点下方「＋ 添加 app / agent」，到「Playground」里挑选
-          app（能干活）或 agent（纯聊天）。
+          {tt("还没有 app 或 agent。点下方「＋ 添加 app / agent」，到「Playground」里挑选 app（能干活）或 agent（纯聊天）。")}
         </p>
       )}
       {mine.map((a) => {
@@ -148,8 +150,8 @@ export function WorkspaceSubNav({
                 void remove(a.agent_id);
                 if (on) setSel(null);
               }}
-              title="从工作台移除"
-              aria-label="移除"
+              title={tt("从工作台移除")}
+              aria-label={tt("移除")}
               className={`shrink-0 rounded p-0.5 transition ${
                 on
                   ? "text-white/70 hover:bg-white/20 hover:text-white"
@@ -169,7 +171,7 @@ export function WorkspaceSubNav({
         href={addAgentHref}
         className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition hover:border-sky-300 hover:text-sky-600"
       >
-        ＋ 添加 app / agent
+        {tt("＋ 添加 app / agent")}
       </a>
     </div>
   );
@@ -232,6 +234,7 @@ export function WorkspaceDetail({
    */
   renderSites?: () => ReactNode;
 }) {
+  const tt = useUI();
   const { mine, loading } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
   const [tab, setTab] = useState<WorkspaceTab>("app");
@@ -257,7 +260,7 @@ export function WorkspaceDetail({
 
   // 顶部 tab 条（目录页 + organization/workflow 早返回共用）。「skill」标签正名为「agent」。
   const TABS: { id: WorkspaceTab; label: string }[] = [
-    { id: "site", label: "网站" },
+    { id: "site", label: tt("网站") },
     { id: "app", label: "app" },
     { id: "skill", label: "agent" },
     ...(renderBoard
@@ -324,7 +327,7 @@ export function WorkspaceDetail({
             />
           ) : (
             <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-              该 app 所属站点暂未接入内嵌工作台。
+              {tt("该 app 所属站点暂未接入内嵌工作台。")}
             </div>
           )}
         </div>
@@ -339,9 +342,9 @@ export function WorkspaceDetail({
     return (
       <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <div className="mb-5">
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
           <p className="mt-1 text-[13px] text-neutral-500">
-            你加入的 <b>网站 / app / agent</b>，点开即用；或在 <b>organization / workflow</b> 里搭一支会协作的 agent 团队。
+            {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
           </p>
         </div>
         <div className="mb-6">{tabsBar}</div>
@@ -368,16 +371,16 @@ export function WorkspaceDetail({
     <div className="grid place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-10 text-center">
       <div className="max-w-sm space-y-3">
         <p className="text-sm text-stone-500">
-          还没有{label}。到「Playground」里挑选加入——
-          <br />· <b>app</b> = 一整套操作台＋agent，能帮你填表单并生成产物；
-          <br />· <b>agent</b> = 纯聊天助手，跟它对话答疑。
+          {tt("还没有{label}。到「Playground」里挑选加入——", { label })}
+          <br />· <b>app</b> = {tt("一整套操作台＋agent，能帮你填表单并生成产物；")}
+          <br />· <b>agent</b> = {tt("纯聊天助手，跟它对话答疑。")}
         </p>
         <a
           href={addAgentHref}
           className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
           style={{ background: accent }}
         >
-          ＋ 去 Playground 挑选
+          {tt("＋ 去 Playground 挑选")}
         </a>
       </div>
     </div>
@@ -387,16 +390,16 @@ export function WorkspaceDetail({
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">工作台</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
           <p className="mt-1 text-[13px] text-neutral-500">
-            你加入的 <b>网站 / app / agent</b>，点开即用；或在 <b>organization / workflow</b> 里搭一支会协作的 agent 团队。
+            {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
           </p>
         </div>
         <a
           href={addAgentHref}
           className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition hover:border-sky-300 hover:text-sky-600"
         >
-          ＋ 添加 app / agent
+          {tt("＋ 添加 app / agent")}
         </a>
       </div>
 
@@ -410,8 +413,8 @@ export function WorkspaceDetail({
           <AppDirectory
             items={siteItems}
             accent={accent}
-            openLabel="打开"
-            emptyText="暂无网站。"
+            openLabel={tt("打开")}
+            emptyText={tt("暂无网站。")}
             onOpen={(it) => {
               const s = sites.find((x) => x.key === it.id);
               if (s) window.open(s.href, "_blank", "noopener,noreferrer");
@@ -427,7 +430,7 @@ export function WorkspaceDetail({
           <AppDirectory
             items={appItems}
             accent={accent}
-            openLabel="打开"
+            openLabel={tt("打开")}
             onOpen={(it) => setSel(it.id)}
           />
         )
@@ -439,7 +442,7 @@ export function WorkspaceDetail({
         <AppDirectory
           items={skillItems}
           accent={accent}
-          openLabel="打开"
+          openLabel={tt("打开")}
           onOpen={(it) => setSel(it.id)}
         />
       )}
@@ -447,7 +450,7 @@ export function WorkspaceDetail({
       {/* 兜底：完全没有任何 app/skill 且当前在 app/skill tab 时，AgentChat 入口仍可用 */}
       {!loading && mine.length === 0 && tab !== "site" && homeSiteId === "" && (
         <p className="mt-6 text-center text-[12px] text-stone-400">
-          也可以直接到「新建任务」让 OceanLeo agent 帮你做事。
+          {tt("也可以直接到「新建任务」让 OceanLeo agent 帮你做事。")}
         </p>
       )}
     </div>

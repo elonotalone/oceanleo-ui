@@ -27,6 +27,7 @@ import {
   type AssetItem,
   type KnowledgeItem,
 } from "../lib/database";
+import { useUI } from "../i18n/ui/useUI";
 
 type Tab = "works" | "assets" | "knowledge";
 
@@ -53,6 +54,7 @@ export function MyDatabasePanel({
   onPick,
   mediaType,
 }: MyDatabasePanelProps) {
+  const tt = useUI();
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [ov, setOv] = useState<DatabaseOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,11 +67,11 @@ export function MyDatabasePanel({
     const r = await getDatabaseOverview({ mediaType, limit: 200 });
     setLoading(false);
     if (!r.ok || !r.data) {
-      setError(r.status === 401 ? "登录后即可在这里看到你的数据库。" : r.error || "加载失败");
+      setError(r.status === 401 ? tt("登录后即可在这里看到你的数据库。") : r.error || tt("加载失败"));
       return;
     }
     setOv(r.data);
-  }, [mediaType]);
+  }, [mediaType, tt]);
 
   useEffect(() => {
     const id = setTimeout(() => void load(), 0);
@@ -113,13 +115,13 @@ export function MyDatabasePanel({
                   tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
                 }`}
               >
-                {t.label}
+                {tt(t.label)}
                 {n > 0 && <span className="ml-1 text-[11px] text-stone-400">{n}</span>}
               </button>
             );
           })}
         </div>
-        <span className="text-xs text-stone-400">{loading ? "加载中…" : "全 OceanLeo 系列共享 · 跨站可见"}</span>
+        <span className="text-xs text-stone-400">{loading ? tt("加载中…") : tt("全 OceanLeo 系列共享 · 跨站可见")}</span>
       </div>
 
       <div className="min-h-0 flex-1">
@@ -128,7 +130,7 @@ export function MyDatabasePanel({
             loading={loading}
             items={ov?.works ?? []}
             accent={accent}
-            emptyText="还没有作品，去各站生成第一件作品吧。"
+            emptyText={tt("还没有作品，去各站生成第一件作品吧。")}
             onZoom={setZoom}
             onPick={onPick}
             onDelete={onDeleteWork}
@@ -140,7 +142,7 @@ export function MyDatabasePanel({
             loading={loading}
             items={ov?.assets ?? []}
             accent={accent}
-            emptyText="还没有上传素材。生成时上传/拖入的图片会归档到这里。"
+            emptyText={tt("还没有上传素材。生成时上传/拖入的图片会归档到这里。")}
             onZoom={setZoom}
             onPick={onPick}
             onDelete={onDeleteAsset}
@@ -164,7 +166,7 @@ export function MyDatabasePanel({
           onClick={() => setZoom(null)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={zoom} alt="放大预览" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+          <img src={zoom} alt={tt("放大预览")} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
         </div>
       )}
     </div>
@@ -195,6 +197,7 @@ function MediaGrid({
   onDelete: (id: string) => void;
   badge?: (it: WorkItem | AssetItem) => string | undefined;
 }) {
+  const tt = useUI();
   if (!loading && items.length === 0) {
     return (
       <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center text-stone-400">
@@ -237,14 +240,14 @@ function MediaGrid({
                 )}
                 {mt && (
                   <span className="absolute left-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {MEDIA_TYPE_LABEL[mt as keyof typeof MEDIA_TYPE_LABEL] || mt}
+                    {tt(MEDIA_TYPE_LABEL[mt as keyof typeof MEDIA_TYPE_LABEL] || mt)}
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => onDelete(c.id)}
                   className="absolute right-1.5 top-1.5 z-10 hidden h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
-                  aria-label="删除"
+                  aria-label={tt("删除")}
                 >
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -257,7 +260,7 @@ function MediaGrid({
                     className="absolute inset-x-1.5 bottom-1.5 hidden rounded-lg py-1 text-[11px] font-medium text-white group-hover:block"
                     style={{ background: `${accent}e6` }}
                   >
-                    用作参考
+                    {tt("用作参考")}
                   </button>
                 )}
               </div>
@@ -280,6 +283,7 @@ function KnowledgeList({
   onAdded: () => void;
   onDelete: (id: string) => void;
 }) {
+  const tt = useUI();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
@@ -302,14 +306,14 @@ function KnowledgeList({
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="知识条目标题（如：我的品牌调性）"
+          placeholder={tt("知识条目标题（如：我的品牌调性）")}
           className="w-full border-0 bg-transparent px-1 py-1 text-[14px] font-medium text-stone-800 outline-none placeholder:text-stone-400"
         />
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={3}
-          placeholder="写下供各站 AI 生成时参考的内容…"
+          placeholder={tt("写下供各站 AI 生成时参考的内容…")}
           className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-stone-700 outline-none placeholder:text-stone-400"
         />
         <div className="flex justify-end">
@@ -320,13 +324,13 @@ function KnowledgeList({
             className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-50"
             style={{ background: accent }}
           >
-            {saving ? "保存中…" : "添加到知识库"}
+            {saving ? tt("保存中…") : tt("添加到知识库")}
           </button>
         </div>
       </div>
 
       {!loading && items.length === 0 ? (
-        <p className="px-1 py-6 text-center text-sm text-stone-400">还没有知识条目，添加第一条吧。</p>
+        <p className="px-1 py-6 text-center text-sm text-stone-400">{tt("还没有知识条目，添加第一条吧。")}</p>
       ) : (
         <div className="space-y-2">
           {items.map((k) => (
@@ -339,7 +343,7 @@ function KnowledgeList({
                 type="button"
                 onClick={() => onDelete(k.id)}
                 className="shrink-0 text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500"
-                aria-label="删除"
+                aria-label={tt("删除")}
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -359,12 +363,13 @@ export interface MyDatabasePageProps {
   title?: ReactNode;
 }
 
-export function MyDatabasePage({ accent = "#4f46e5", title = "我的数据库" }: MyDatabasePageProps) {
+export function MyDatabasePage({ accent = "#4f46e5", title }: MyDatabasePageProps) {
+  const tt = useUI();
   return (
     <div className="flex h-[calc(100dvh-1px)] flex-col px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("我的数据库")}</h1>
       <p className="mt-1 text-[13px] text-neutral-500">
-        你在全 OceanLeo 系列里产出的作品、上传的素材与知识库，统一汇集于此，跨站可用。
+        {tt("你在全 OceanLeo 系列里产出的作品、上传的素材与知识库，统一汇集于此，跨站可用。")}
       </p>
       <div className="mt-5 min-h-0 flex-1">
         <MyDatabasePanel accent={accent} />

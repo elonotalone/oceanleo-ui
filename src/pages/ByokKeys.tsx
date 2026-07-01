@@ -17,6 +17,7 @@ import {
   type ProviderMetaBYOK,
   type UserKey,
 } from "../lib/auth";
+import { useUI } from "../i18n/ui/useUI";
 
 const CAP_LABEL: Record<string, string> = {
   text: "文本",
@@ -27,6 +28,7 @@ const CAP_LABEL: Record<string, string> = {
 };
 
 export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
+  const tt = useUI();
   const [providers, setProviders] = useState<ProviderMetaBYOK[]>([]);
   const [keys, setKeys] = useState<UserKey[]>([]);
   const [provider, setProvider] = useState<string>("");
@@ -59,11 +61,11 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   async function submit() {
     setError("");
     if (!apiKey.trim()) {
-      setError("请填入 API key");
+      setError(tt("请填入 API key"));
       return;
     }
     if (needsBaseUrl && !baseUrl.trim()) {
-      setError("自定义厂商需要填写 base_url");
+      setError(tt("自定义厂商需要填写 base_url"));
       return;
     }
     setBusy(true);
@@ -74,7 +76,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     });
     setBusy(false);
     if (!r.ok) {
-      setError(r.error || "添加失败");
+      setError(r.error || tt("添加失败"));
       return;
     }
     setApiKey("");
@@ -97,9 +99,9 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     <section className="v-fade-up" style={{ animationDelay: "30ms" }}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[14px] font-semibold text-neutral-900">
-          自带 API key（BYOK）
+          {tt("自带 API key（BYOK）")}
           <span className="ml-2 text-[11px] font-normal text-neutral-400">
-            填你自己的厂商 key，免费使用全家桶（不扣钱包）
+            {tt("填你自己的厂商 key，免费使用全家桶（不扣钱包）")}
           </span>
         </h2>
         {loggedIn && (
@@ -108,14 +110,14 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             onClick={() => setOpen((v) => !v)}
             className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-neutral-800"
           >
-            {open ? "取消" : "+ 添加 key"}
+            {open ? tt("取消") : tt("+ 添加 key")}
           </button>
         )}
       </div>
 
       {!loggedIn ? (
         <div className="rounded-xl border border-dashed border-neutral-300 p-6 text-center text-[13px] text-neutral-500">
-          登录后即可添加你自己的 API key，免费使用 OceanLeo 全家桶。
+          {tt("登录后即可添加你自己的 API key，免费使用 OceanLeo 全家桶。")}
         </div>
       ) : (
         <>
@@ -123,7 +125,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             <div className="mb-3 space-y-3 rounded-2xl border border-neutral-200 p-4">
               <div>
                 <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                  厂商
+                  {tt("厂商")}
                 </label>
                 <select
                   value={provider}
@@ -143,7 +145,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                         key={c}
                         className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700"
                       >
-                        {CAP_LABEL[c] || c}
+                        {tt(CAP_LABEL[c] || c)}
                       </span>
                     ))}
                     {selected.key_help_url && (
@@ -153,7 +155,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                         rel="noreferrer"
                         className="text-[11px] text-blue-600 hover:underline"
                       >
-                        如何获取该厂商的 key ↗
+                        {tt("如何获取该厂商的 key ↗")}
                       </a>
                     )}
                   </div>
@@ -172,7 +174,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={selected?.key_prefix ? `${selected.key_prefix}…` : "粘贴你的 API key"}
+                  placeholder={selected?.key_prefix ? `${selected.key_prefix}…` : tt("粘贴你的 API key")}
                   autoComplete="off"
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 outline-none focus:border-neutral-400"
                 />
@@ -180,7 +182,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               {needsBaseUrl && (
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                    base_url（OpenAI 兼容端点）
+                    {tt("base_url（OpenAI 兼容端点）")}
                   </label>
                   <input
                     type="text"
@@ -199,10 +201,10 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                   onClick={submit}
                   className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
                 >
-                  {busy ? "保存中…" : "保存 key"}
+                  {busy ? tt("保存中…") : tt("保存 key")}
                 </button>
                 <span className="text-[11px] text-neutral-400">
-                  key 会加密存储，我们只保留指纹，绝不回显明文。
+                  {tt("key 会加密存储，我们只保留指纹，绝不回显明文。")}
                 </span>
               </div>
             </div>
@@ -210,17 +212,17 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
 
           {keys.length === 0 ? (
             <div className="rounded-xl border border-dashed border-neutral-300 p-6 text-center text-[13px] text-neutral-500">
-              还没有添加任何 key。添加后，对应厂商的调用将用你的 key、免费进行。
+              {tt("还没有添加任何 key。添加后，对应厂商的调用将用你的 key、免费进行。")}
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-neutral-200">
               <table className="w-full text-left text-[12px]">
                 <thead className="bg-neutral-50 text-neutral-500">
                   <tr>
-                    <th className="px-3 py-2 font-medium">厂商</th>
-                    <th className="px-3 py-2 font-medium">指纹</th>
-                    <th className="px-3 py-2 font-medium">添加时间</th>
-                    <th className="px-3 py-2 text-right font-medium">操作</th>
+                    <th className="px-3 py-2 font-medium">{tt("厂商")}</th>
+                    <th className="px-3 py-2 font-medium">{tt("指纹")}</th>
+                    <th className="px-3 py-2 font-medium">{tt("添加时间")}</th>
+                    <th className="px-3 py-2 text-right font-medium">{tt("操作")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -243,7 +245,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                           onClick={() => remove(k.id)}
                           className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-rose-600 transition hover:bg-rose-50"
                         >
-                          删除
+                          {tt("删除")}
                         </button>
                       </td>
                     </tr>
@@ -253,7 +255,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             </div>
           )}
           <p className="mt-1.5 text-[11px] text-neutral-400">
-            用你自己的 key 调用全程免费，仍会记录用量与审计内容，方便你核对自己的 token 开销。
+            {tt("用你自己的 key 调用全程免费，仍会记录用量与审计内容，方便你核对自己的 token 开销。")}
           </p>
         </>
       )}

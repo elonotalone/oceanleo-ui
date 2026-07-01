@@ -20,6 +20,7 @@ import {
   optionsFor,
   type TaxonomyMode,
 } from "../lib/taxonomy";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface DirectoryItem {
   /** 唯一 id（agent_id / site key）。 */
@@ -87,15 +88,19 @@ export function AppDirectory({
   onAdd,
   onDelete,
   addingId,
-  openLabel = "打开",
+  openLabel,
   accent = "#4f46e5",
   loading = false,
-  emptyText = "暂无内容",
+  emptyText,
   toolbarExtra,
   compact = false,
   nativeFirst = false,
-  nativeLabel = "按分类",
+  nativeLabel,
 }: AppDirectoryProps) {
+  const tt = useUI();
+  const openLabelText = openLabel ?? tt("打开");
+  const emptyTextText = emptyText ?? tt("暂无内容");
+  const nativeLabelText = nativeLabel ?? tt("按分类");
   // 分类方式 + 当前选中分类（"all" = 全部）。nativeFirst 时默认「按分类」（原生 category）。
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
@@ -106,15 +111,15 @@ export function AppDirectory({
     () =>
       (nativeFirst
         ? ([
-            { id: "native", label: nativeLabel },
-            { id: "industry", label: "按行业" },
-            { id: "content", label: "按内容" },
+            { id: "native", label: nativeLabelText },
+            { id: "industry", label: tt("按行业") },
+            { id: "content", label: tt("按内容") },
           ] as const)
         : ([
-            { id: "industry", label: "按行业" },
-            { id: "content", label: "按内容" },
+            { id: "industry", label: tt("按行业") },
+            { id: "content", label: tt("按内容") },
           ] as const)) as readonly { id: TaxonomyMode; label: string }[],
-    [nativeFirst, nativeLabel],
+    [nativeFirst, nativeLabelText, tt],
   );
 
   // 当前维度下，每个分类的条目数（只统计实际出现的分类）。
@@ -187,7 +192,7 @@ export function AppDirectory({
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="按名称筛选…"
+              placeholder={tt("按名称筛选…")}
               className="w-40 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400"
             />
             {filter && (
@@ -234,7 +239,7 @@ export function AppDirectory({
       {loading ? (
         <CardGridSkeleton />
       ) : visible.length === 0 && leadingCards.length === 0 ? (
-        <p className="py-12 text-center text-sm text-stone-400">{emptyText}</p>
+        <p className="py-12 text-center text-sm text-stone-400">{emptyTextText}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {leadingCards.map((it) => (
@@ -242,7 +247,7 @@ export function AppDirectory({
               key={it.id}
               item={it}
               accent={accent}
-              openLabel={openLabel}
+              openLabel={openLabelText}
               onOpen={onOpen}
               adding={addingId === it.id}
               variant="new"
@@ -253,7 +258,7 @@ export function AppDirectory({
               key={it.id}
               item={it}
               accent={accent}
-              openLabel={openLabel}
+              openLabel={openLabelText}
               onOpen={onOpen}
               onAdd={onAdd}
               onDelete={onDelete}
@@ -286,6 +291,7 @@ function DirectoryCard({
   /** "new" = 「＋ 新建」首卡（虚线描边 + 强调色），视觉上区别于普通条目。 */
   variant?: "default" | "new";
 }) {
+  const tt = useUI();
   const tileBg = item.accent || accent;
   const isNew = variant === "new";
   const canDelete = Boolean(onDelete && item.deletable);
@@ -315,7 +321,7 @@ function DirectoryCard({
             onDelete?.(item);
           }}
           className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-          title="删除"
+          title={tt("删除")}
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
@@ -370,7 +376,7 @@ function DirectoryCard({
             }`}
             style={item.added ? undefined : { background: accent }}
           >
-            {adding ? "…" : item.added ? "已在工作台 ✓" : "＋ 加入工作台"}
+            {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
           </button>
         )}
       </div>

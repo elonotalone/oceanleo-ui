@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import { recommendItems, type RecommendCandidate, type ItemRecommendation } from "../lib/recommend";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface AiRecommendBoxProps {
   /** 候选集（当前分区全部条目）。 */
@@ -40,6 +41,7 @@ export function AiRecommendBox({
   onClear,
   accent = "#6366f1",
 }: AiRecommendBoxProps) {
+  const tt = useUI();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +55,7 @@ export function AiRecommendBox({
     const r = await recommendItems(v, candidates, kindLabel);
     setLoading(false);
     if (!r.ok) {
-      setError(r.error || "推荐服务暂时不可用");
+      setError(r.error || tt("推荐服务暂时不可用"));
       setCount(0);
       onRecommend([]);
       return;
@@ -92,7 +94,7 @@ export function AiRecommendBox({
           />
           <div className="flex items-center justify-between border-t border-stone-100 px-3 py-2">
             <span className="text-[11px] text-stone-400">
-              {loading ? `AI 正在为你匹配${kindLabel}…` : "Enter 发送 · Shift+Enter 换行"}
+              {loading ? tt("AI 正在为你匹配{kind}…", { kind: kindLabel }) : tt("Enter 发送 · Shift+Enter 换行")}
             </span>
             <div className="flex items-center gap-2">
               {count !== null && (
@@ -101,7 +103,7 @@ export function AiRecommendBox({
                   onClick={clear}
                   className="rounded-full px-3 py-1.5 text-xs font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
                 >
-                  清空
+                  {tt("清空")}
                 </button>
               )}
               <button
@@ -120,7 +122,7 @@ export function AiRecommendBox({
                     <path d="M12 2l1.6 5L19 8.6 14 11l-2 5-2-5L5 8.6 10.4 7 12 2z" fill="currentColor" />
                   </svg>
                 )}
-                智能推荐
+                {tt("智能推荐")}
               </button>
             </div>
           </div>
@@ -148,12 +150,12 @@ export function AiRecommendBox({
       {error && <p className="mt-3 text-center text-xs text-rose-500">{error}</p>}
       {count !== null && count === 0 && !error && (
         <p className="mt-3 text-center text-xs text-stone-400">
-          没有找到完全匹配的{kindLabel}，下面是全部内容，欢迎浏览。
+          {tt("没有找到完全匹配的{kind}，下面是全部内容，欢迎浏览。", { kind: kindLabel })}
         </p>
       )}
       {count !== null && count > 0 && (
         <p className="mt-3 text-center text-xs font-medium" style={{ color: accent }}>
-          为你推荐 {count} 个最合适的{kindLabel} ✨ 已在最上方高亮
+          {tt("为你推荐 {count} 个最合适的{kind} ✨ 已在最上方高亮", { count, kind: kindLabel })}
         </p>
       )}
     </section>

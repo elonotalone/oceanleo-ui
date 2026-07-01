@@ -8,6 +8,8 @@
 // 纯静态内容，只依赖 react。各站把它包进自己的 shell，挂在 /api/guide。
 // ============================================================================
 
+import { useUI } from "../i18n/ui/useUI";
+
 interface Platform {
   id: string;
   name: string;
@@ -127,6 +129,7 @@ const PLATFORMS: Platform[] = [
 ];
 
 export function ApiGuidePage() {
+  const tt = useUI();
   return (
     <div className="px-8 py-6">
       <div className="flex items-center gap-3">
@@ -134,19 +137,16 @@ export function ApiGuidePage() {
           href="/api"
           className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
         >
-          ← 返回 API
+          {tt("← 返回 API")}
         </a>
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
-          指导文档
+          {tt("指导文档")}
         </h1>
       </div>
 
       <div className="mx-auto mt-6 max-w-3xl space-y-6">
         <div className="rounded-2xl border border-neutral-200 bg-neutral-50/60 p-5 text-[13px] leading-relaxed text-neutral-600">
-          OceanLeo 全家桶支持 <span className="font-semibold text-neutral-900">BYOK（自带 API key）</span>：
-          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「API」页，即可用自己的 key
-          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。
-          下面是 6 家主流平台的购买与取 token 步骤。
+          {tt("OceanLeo 全家桶支持")} <span className="font-semibold text-neutral-900">{tt("BYOK（自带 API key）")}</span>{tt("：\n          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「API」页，即可用自己的 key\n          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。\n          下面是 6 家主流平台的购买与取 token 步骤。")}
         </div>
 
         {PLATFORMS.map((p) => (
@@ -155,7 +155,7 @@ export function ApiGuidePage() {
             className="v-fade-up rounded-2xl border border-neutral-200 p-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[15px] font-semibold text-neutral-900">{p.name}</h2>
+              <h2 className="text-[15px] font-semibold text-neutral-900">{tt(p.name)}</h2>
               <span
                 className={[
                   "rounded-full px-2.5 py-0.5 text-[11px] font-medium",
@@ -164,7 +164,7 @@ export function ApiGuidePage() {
                     : "bg-amber-50 text-amber-700",
                 ].join(" ")}
               >
-                {p.china === "easy" ? "大陆可直连" : "需海外网络/支付"}
+                {p.china === "easy" ? tt("大陆可直连") : tt("需海外网络/支付")}
               </span>
             </div>
 
@@ -174,14 +174,14 @@ export function ApiGuidePage() {
                   <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-neutral-900 text-[10px] text-white">
                     {i + 1}
                   </span>
-                  <span>{s}</span>
+                  <span>{tt(s)}</span>
                 </li>
               ))}
             </ol>
 
             {p.note && (
               <p className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-[12px] leading-relaxed text-neutral-500">
-                {p.note}
+                {tt(p.note)}
               </p>
             )}
 
@@ -192,7 +192,7 @@ export function ApiGuidePage() {
                 rel="noreferrer"
                 className="rounded-md bg-neutral-900 px-2.5 py-1 font-medium text-white transition hover:bg-neutral-800"
               >
-                获取 API key ↗
+                {tt("获取 API key ↗")}
               </a>
               <a
                 href={p.pricingUrl}
@@ -200,7 +200,7 @@ export function ApiGuidePage() {
                 rel="noreferrer"
                 className="rounded-md border border-neutral-200 px-2.5 py-1 text-neutral-600 transition hover:bg-neutral-50"
               >
-                价格说明 ↗
+                {tt("价格说明 ↗")}
               </a>
               <span className="rounded-md border border-neutral-200 px-2.5 py-1 font-mono text-neutral-500">
                 base_url: {p.baseUrl}

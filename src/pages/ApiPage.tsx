@@ -39,6 +39,7 @@ import {
 } from "../lib/auth";
 import { ByokKeys } from "./ByokKeys";
 import { UsageHistory } from "./UsageHistory";
+import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 // 「全部供应商」这个虚拟 tab 的 id（与真实厂商 id 不冲突）。
 const ALL_PROVIDERS = "__all__";
@@ -58,8 +59,8 @@ function fmt(n: number): string {
 }
 
 // 每个模型显示「token 市场价」（OceanLeo 不加价，费用即此价）。
-function priceText(m: CatalogModel): string {
-  if (m?.unpriced) return "免费 / 未公布";
+function priceText(m: CatalogModel, tt: UITranslate): string {
+  if (m?.unpriced) return tt("免费 / 未公布");
   const p = m?.price;
   if (!p) return "—";
   if (p.billing === "job") {
@@ -102,8 +103,9 @@ function modelsForProvider(g: CatalogGroup, provider: string): CatalogModel[] {
 function providerLabel(
   provider: string,
   providerLabels: Record<string, string>,
+  tt: UITranslate,
 ): string {
-  if (provider === ALL_PROVIDERS) return "全部供应商";
+  if (provider === ALL_PROVIDERS) return tt("全部供应商");
   return providerLabels[provider] || provider;
 }
 
@@ -120,6 +122,7 @@ function matchModel(m: CatalogModel, q: string): boolean {
 }
 
 export function ApiPage() {
+  const tt = useUI();
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -191,7 +194,7 @@ export function ApiPage() {
       <div className="px-8 py-6">
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">API</h1>
         <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
-          登录服务尚未配置（缺少 Supabase 环境变量）。
+          {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
         </div>
       </div>
     );
@@ -207,9 +210,9 @@ export function ApiPage() {
           <div className="rounded-2xl border border-neutral-200 p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="text-[12px] text-neutral-500">token 余额</p>
+                <p className="text-[12px] text-neutral-500">{tt("token 余额")}</p>
                 <p className="mt-1 text-[26px] font-semibold tabular-nums text-neutral-900">
-                  {wallet ? `¥${toNum(wallet.balance_yuan).toFixed(4)}` : checked && !user ? "登录后查看" : "…"}
+                  {wallet ? `¥${toNum(wallet.balance_yuan).toFixed(4)}` : checked && !user ? tt("登录后查看") : "…"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -217,21 +220,19 @@ export function ApiPage() {
                   href="/api/guide"
                   className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
                 >
-                  指导文档
+                  {tt("指导文档")}
                 </a>
                 <a
                   href="https://oceanleo.com/billing"
                   className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
                 >
-                  充值
+                  {tt("充值")}
                 </a>
               </div>
             </div>
             <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-[12px] leading-relaxed text-emerald-800">
-              计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。
-              <span className="font-semibold">OceanLeo 不加价、不抽成</span>——你花的每一分，都是模型本身的 token 成本。
-              每一笔开销都可在下方「用量记录」里点开，逐字审计本次发给模型与模型返回的全部内容。
-              想完全免费？在下方填入你自己的厂商 API key（BYOK），用自己的 key 调用全程不扣你的钱包。
+              {tt("计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。")}
+              <span className="font-semibold">{tt("OceanLeo 不加价、不抽成")}</span>{tt("——你花的每一分，都是模型本身的 token 成本。\n              每一笔开销都可在下方「用量记录」里点开，逐字审计本次发给模型与模型返回的全部内容。\n              想完全免费？在下方填入你自己的厂商 API key（BYOK），用自己的 key 调用全程不扣你的钱包。")}
             </div>
           </div>
         </section>
@@ -248,10 +249,9 @@ export function ApiPage() {
         {/* 价格来源 + 各厂商更新时间 + 下载 */}
         <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
           <div className="rounded-2xl border border-neutral-200 p-5">
-            <p className="text-[13px] font-semibold text-neutral-900">价格数据来源</p>
+            <p className="text-[13px] font-semibold text-neutral-900">{tt("价格数据来源")}</p>
             <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
-              百炼/火山为官方价格页确定性解析，OpenRouter 为其官方 API 实时价。
-              共收录 <span className="font-medium text-neutral-700">{modelCount}</span> 个模型。
+              {tt("百炼/火山为官方价格页确定性解析，OpenRouter 为其官方 API 实时价。\n              共收录")} <span className="font-medium text-neutral-700">{modelCount}</span> {tt("个模型。")}
             </p>
             <div className="mt-3 space-y-2.5">
               {providers.map((p) => (
@@ -266,7 +266,7 @@ export function ApiPage() {
                     rel="noreferrer"
                     className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition hover:bg-neutral-50"
                   >
-                    在线查看
+                    {tt("在线查看")}
                   </a>
                   <a
                     href={pricingDocUrl(p.id, "pdf")}
@@ -278,7 +278,7 @@ export function ApiPage() {
                     href={pricingDocUrl(p.id, "source")}
                     className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition hover:bg-neutral-50"
                   >
-                    原始数据
+                    {tt("原始数据")}
                   </a>
                   {p.source_url && (
                     <a
@@ -287,7 +287,7 @@ export function ApiPage() {
                       rel="noreferrer"
                       className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-neutral-50"
                     >
-                      官方页 ↗
+                      {tt("官方页 ↗")}
                     </a>
                   )}
                 </div>
@@ -299,7 +299,7 @@ export function ApiPage() {
         {/* 模型市场：二维选择器（左=类目栏 / 上=厂商 tab / 中=单一可滚动列表） */}
         {!catalog || (catalog.groups?.length ?? 0) === 0 ? (
           <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-[13px] text-neutral-500">
-            正在加载模型列表…
+            {tt("正在加载模型列表…")}
           </div>
         ) : (
           <ModelMarket
@@ -316,7 +316,7 @@ export function ApiPage() {
 
         {checked && !user && (
           <p className="pb-4 text-center text-[12px] text-neutral-400">
-            登录后即可选择厂商 + 模型并保存（全家桶通用）。
+            {tt("登录后即可选择厂商 + 模型并保存（全家桶通用）。")}
           </p>
         )}
       </div>
@@ -336,6 +336,7 @@ function SelectionSummary({
   selection: Record<string, string[]>;
   user: boolean;
 }) {
+  const tt = useUI();
   const byKey = useMemo(() => {
     const m = new Map<string, CatalogModel>();
     for (const g of catalog?.groups || []) {
@@ -355,9 +356,9 @@ function SelectionSummary({
     <section className="v-fade-up" style={{ animationDelay: "20ms" }}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[14px] font-semibold text-neutral-900">
-          我的模型选择
+          {tt("我的模型选择")}
           <span className="ml-2 text-[11px] font-normal text-neutral-400">
-            各 OceanLeo 应用会使用你在这里选好的模型
+            {tt("各 OceanLeo 应用会使用你在这里选好的模型")}
           </span>
         </h2>
       </div>
@@ -366,10 +367,10 @@ function SelectionSummary({
         <table className="w-full text-left text-[12px]">
           <thead className="bg-neutral-50 text-neutral-500">
             <tr>
-              <th className="w-[88px] px-3 py-2 font-medium">类目</th>
-              <th className="px-3 py-2 font-medium">模型</th>
-              <th className="w-[112px] px-3 py-2 font-medium">供应商</th>
-              <th className="px-3 py-2 text-right font-medium">价格</th>
+              <th className="w-[88px] px-3 py-2 font-medium">{tt("类目")}</th>
+              <th className="px-3 py-2 font-medium">{tt("模型")}</th>
+              <th className="w-[112px] px-3 py-2 font-medium">{tt("供应商")}</th>
+              <th className="px-3 py-2 text-right font-medium">{tt("价格")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -383,7 +384,7 @@ function SelectionSummary({
                   <tr key={g.id} className="align-top">
                     <td className="px-3 py-2.5 font-medium text-neutral-700">{g.label}</td>
                     <td className="px-3 py-2.5 text-neutral-400" colSpan={3}>
-                      {user ? "未选择（在下方模型市场选择）" : "登录后查看你的选择"}
+                      {user ? tt("未选择（在下方模型市场选择）") : tt("登录后查看你的选择")}
                     </td>
                   </tr>
                 );
@@ -400,7 +401,7 @@ function SelectionSummary({
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-neutral-600">
-                    {priceText(m)}
+                    {priceText(m, tt)}
                   </td>
                 </tr>
               ));
@@ -441,6 +442,7 @@ function ModelMarket({
   isSelected: (cat: string, key: string) => boolean;
   onToggle: (cat: string, key: string) => void;
 }) {
+  const tt = useUI();
   // 全局厂商 id→名映射（即使某类目没收录某厂商也能显示其名）。
   const providerLabels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -486,12 +488,12 @@ function ModelMarket({
     <section className="v-fade-up" style={{ animationDelay: "80ms" }}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[14px] font-semibold text-neutral-900">
-          模型市场
+          {tt("模型市场")}
           <span className="ml-2 text-[11px] font-normal text-neutral-400">
             已选 {totalSelected} 个（跨全部类目）
           </span>
         </h2>
-        {saving && <span className="text-[11px] text-neutral-400">保存中…</span>}
+        {saving && <span className="text-[11px] text-neutral-400">{tt("保存中…")}</span>}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-neutral-200">
@@ -568,7 +570,7 @@ function ModelMarket({
                           : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200",
                     ].join(" ")}
                   >
-                    {providerLabel(pId, providerLabels)}
+                    {providerLabel(pId, providerLabels, tt)}
                     <span
                       className={[
                         "ml-1",
@@ -591,6 +593,7 @@ function ModelMarket({
                 placeholder={`在「${group?.label || ""} · ${providerLabel(
                   effectiveProvider,
                   providerLabels,
+                  tt,
                 )}」中搜索模型…`}
                 className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
               />
@@ -600,7 +603,7 @@ function ModelMarket({
             <div className="max-h-[400px] overflow-y-auto rounded-xl border border-neutral-200">
               {filtered.length === 0 ? (
                 <p className="px-3.5 py-10 text-center text-[12px] text-neutral-400">
-                  {query ? "没有匹配的模型" : "该类目下此供应商暂无模型"}
+                  {query ? tt("没有匹配的模型") : tt("该类目下此供应商暂无模型")}
                 </p>
               ) : (
                 filtered.map((m, mi) => (
@@ -617,7 +620,7 @@ function ModelMarket({
               )}
             </div>
             <p className="mt-1.5 text-[11px] text-neutral-400">
-              共 {filtered.length} 个{query ? "（已过滤）" : ""} · 在容器内滚动查看与选择
+              共 {filtered.length} 个{query ? tt("（已过滤）") : ""} · 在容器内滚动查看与选择
             </p>
           </div>
         </div>
@@ -641,6 +644,7 @@ function ModelRow({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const tt = useUI();
   return (
     <button
       type="button"
@@ -671,7 +675,7 @@ function ModelRow({
         )}
       </span>
       <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-600">
-        {priceText(m)}
+        {priceText(m, tt)}
       </span>
     </button>
   );

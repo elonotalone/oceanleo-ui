@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
@@ -210,9 +211,11 @@ function clampPos(p: Pos): Pos {
 export function LeoAssistant({
   siteId,
   docType = "doc",
-  title = "leo 助手",
+  title,
   hideFloatingButton = true,
 }: LeoAssistantProps) {
+  const tt = useUI();
+  const panelTitle = title ?? tt("leo 助手");
   const [open, setOpen] = useState(false);
 
   // 让任意「leo 建议」按钮（或快捷键）通过派发 OPEN_LEO_EVENT 打开本浮窗。
@@ -322,13 +325,13 @@ export function LeoAssistant({
           >
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
               <Sparkle />
-              {title}
+              {panelTitle}
               <DragDots />
             </div>
             <button
               data-leo-no-drag
               onClick={() => setOpen(false)}
-              aria-label="关闭"
+              aria-label={tt("关闭")}
               className="text-slate-400 transition hover:text-slate-700"
             >
               ✕
@@ -343,6 +346,7 @@ export function LeoAssistant({
 }
 
 function Panel({ siteId, docType }: { siteId: string; docType: string }) {
+  const tt = useUI();
   const { resolve, hasTarget } = useHostInput();
   const [input, setInput] = useState("");
   const [question, setQuestion] = useState("");
@@ -359,7 +363,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
     const target = resolve();
     const basePrompt = target?.value ?? "";
     if (!userInput.trim() && !basePrompt.trim()) {
-      setErr("请先在页面输入框里写一句需求，或在下面告诉 leo 你想做什么。");
+      setErr(tt("请先在页面输入框里写一句需求，或在下面告诉 leo 你想做什么。"));
       return;
     }
     setLoading(true);
@@ -374,7 +378,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
     });
     setLoading(false);
     if (!res.ok || !res.data) {
-      setErr(res.error || "请求失败，请稍后再试。");
+      setErr(res.error || tt("请求失败，请稍后再试。"));
       return;
     }
     const d = res.data;
@@ -423,13 +427,13 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
         )}
         {!question && options.length === 0 && !loading && !err && (
           <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs leading-relaxed text-slate-500">
-            输入一句需求，leo 会基于当前输入框内容持续给出可点击补充项。
+            {tt("输入一句需求，leo 会基于当前输入框内容持续给出可点击补充项。")}
           </p>
         )}
         {loading && (
           <p className="flex items-center gap-2 text-xs text-slate-400">
             <Spinner />
-            leo 正在思考…
+            {tt("leo 正在思考…")}
           </p>
         )}
         {question && (
@@ -444,13 +448,13 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
               }}
               className="ml-1 rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-slate-50"
             >
-              跳过
+              {tt("跳过")}
             </button>
           </div>
         )}
         {options.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[11px] text-slate-400">点击采纳，自动追加到当前输入框并继续补充</p>
+            <p className="text-[11px] text-slate-400">{tt("点击采纳，自动追加到当前输入框并继续补充")}</p>
             {options.map((opt, i) => (
               <button
                 key={i}
@@ -477,7 +481,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="告诉 leo 你还想补充什么"
+            placeholder={tt("告诉 leo 你还想补充什么")}
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition focus:border-slate-400"
           />
           <button
@@ -485,7 +489,7 @@ function Panel({ siteId, docType }: { siteId: string; docType: string }) {
             disabled={loading || (!input.trim() && !hasTarget)}
             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {loading ? "…" : "发送"}
+            {loading ? "…" : tt("发送")}
           </button>
         </form>
       </div>

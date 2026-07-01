@@ -19,6 +19,7 @@
 
 import { useState, type ReactNode } from "react";
 import { createCustomSkill, createCustomSkillTeam, type AgentDef } from "../lib/agent";
+import { useUI } from "../i18n/ui/useUI";
 
 const DEFAULT_ACCENT = "#7c3aed";
 
@@ -39,13 +40,14 @@ export interface CreateSkillModalProps {
 
 export function CreateSkillModal({
   accent = DEFAULT_ACCENT,
-  title = "创建 agent",
-  submitLabel = "创建",
+  title,
+  submitLabel,
   initial,
   categories = [],
   onClose,
   onCreated,
 }: CreateSkillModalProps) {
+  const tt = useUI();
   const [name, setName] = useState(initial?.name || "");
   const [tagline, setTagline] = useState(initial?.tagline || "");
   const [icon, setIcon] = useState(initial?.icon || "");
@@ -56,7 +58,7 @@ export function CreateSkillModal({
 
   async function submit() {
     if (!name.trim() || !prompt.trim()) {
-      setErr("请填写名称与 prompt");
+      setErr(tt("请填写名称与 prompt"));
       return;
     }
     setBusy(true);
@@ -69,28 +71,28 @@ export function CreateSkillModal({
     });
     setBusy(false);
     if (!r.ok || !r.data) {
-      setErr(r.status === 401 ? "登录后即可保存为我的 agent。" : r.error || "创建失败");
+      setErr(r.status === 401 ? tt("登录后即可保存为我的 agent。") : r.error || tt("创建失败"));
       return;
     }
     onCreated(r.data.agent_id);
   }
 
   return (
-    <Modal title={title} onClose={onClose}>
-      <Field label="名称" value={name} onChange={setName} placeholder="例如：小红书爆款文案 agent" />
-      <Field label="一句话定位" value={tagline} onChange={setTagline} placeholder="它擅长什么、为谁服务" />
+    <Modal title={title ?? tt("创建 agent")} onClose={onClose}>
+      <Field label={tt("名称")} value={name} onChange={setName} placeholder={tt("例如：小红书爆款文案 agent")} />
+      <Field label={tt("一句话定位")} value={tagline} onChange={setTagline} placeholder={tt("它擅长什么、为谁服务")} />
       <div className="mb-3 grid grid-cols-3 gap-2">
         <div className="col-span-1">
-          <Field label="图标（emoji）" value={icon} onChange={setIcon} placeholder="✦" />
+          <Field label={tt("图标（emoji）")} value={icon} onChange={setIcon} placeholder="✦" />
         </div>
         <label className="col-span-2 block text-[12px] text-stone-600">
-          分类
+          {tt("分类")}
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
           >
-            <option value="我的 Agent">我的 Agent</option>
+            <option value="我的 Agent">{tt("我的 Agent")}</option>
             {categories.map((c) => (
               <option key={c.id} value={c.label}>
                 {c.label}
@@ -100,12 +102,12 @@ export function CreateSkillModal({
         </label>
       </div>
       <label className="mb-4 block text-[12px] text-stone-600">
-        完整设定（prompt）
+        {tt("完整设定（prompt）")}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={8}
-          placeholder="描述这个 agent 的人设、专业领域、回答风格、能力边界…"
+          placeholder={tt("描述这个 agent 的人设、专业领域、回答风格、能力边界…")}
           className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px] leading-relaxed"
         />
       </label>
@@ -117,7 +119,7 @@ export function CreateSkillModal({
         className="w-full rounded-xl py-2.5 text-[14px] font-medium text-white disabled:opacity-60"
         style={{ background: accent }}
       >
-        {busy ? "保存中…" : submitLabel}
+        {busy ? tt("保存中…") : submitLabel ?? tt("创建")}
       </button>
     </Modal>
   );
@@ -137,6 +139,7 @@ export function CreateSkillTeamModal({
   onClose,
   onCreated,
 }: CreateSkillTeamModalProps) {
+  const tt = useUI();
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -155,7 +158,7 @@ export function CreateSkillTeamModal({
 
   async function submit() {
     if (!name.trim() || picked.length < 2) {
-      setErr("请填写团队名称并至少选 2 个 agent 成员");
+      setErr(tt("请填写团队名称并至少选 2 个 agent 成员"));
       return;
     }
     setBusy(true);
@@ -168,17 +171,17 @@ export function CreateSkillTeamModal({
     });
     setBusy(false);
     if (!r.ok || !r.data) {
-      setErr(r.status === 401 ? "登录后即可创建 agent 团队。" : r.error || "创建失败");
+      setErr(r.status === 401 ? tt("登录后即可创建 agent 团队。") : r.error || tt("创建失败"));
       return;
     }
     onCreated(r.data.team_id);
   }
 
   return (
-    <Modal title="创建 agent 团队" onClose={onClose}>
-      <Field label="团队名称" value={name} onChange={setName} />
-      <Field label="一句话定位" value={tagline} onChange={setTagline} />
-      <label className="mb-2 block text-[12px] font-medium text-stone-600">选择成员（≥2）</label>
+    <Modal title={tt("创建 agent 团队")} onClose={onClose}>
+      <Field label={tt("团队名称")} value={name} onChange={setName} />
+      <Field label={tt("一句话定位")} value={tagline} onChange={setTagline} />
+      <label className="mb-2 block text-[12px] font-medium text-stone-600">{tt("选择成员（≥2）")}</label>
       <div className="mb-3 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-stone-200 p-2">
         {skills.map((e) => (
           <label key={e.agent_id} className="flex cursor-pointer items-center gap-2 text-[12px]">
@@ -189,7 +192,7 @@ export function CreateSkillTeamModal({
       </div>
       {picked.length > 0 && (
         <label className="mb-3 block text-[12px] text-stone-600">
-          负责人
+          {tt("负责人")}
           <select
             value={leader || picked[0]}
             onChange={(e) => setLeader(e.target.value)}
@@ -207,12 +210,12 @@ export function CreateSkillTeamModal({
         </label>
       )}
       <label className="mb-4 block text-[12px] text-stone-600">
-        协作规程（负责人专用，不合并成员 prompt）
+        {tt("协作规程（负责人专用，不合并成员 prompt）")}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={4}
-          placeholder="描述负责人如何调度成员、如何向用户汇报…"
+          placeholder={tt("描述负责人如何调度成员、如何向用户汇报…")}
           className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
         />
       </label>
@@ -224,7 +227,7 @@ export function CreateSkillTeamModal({
         className="w-full rounded-xl py-2.5 text-[14px] font-medium text-white disabled:opacity-60"
         style={{ background: accent }}
       >
-        {busy ? "创建中…" : "创建 agent 团队"}
+        {busy ? tt("创建中…") : tt("创建 agent 团队")}
       </button>
     </Modal>
   );

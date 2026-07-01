@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { openLeoAssistant, runLeoQuickSuggest } from "./LeoAssistant";
+import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -143,7 +144,7 @@ export function LeoComposer({
   value,
   onChange,
   onSubmit,
-  placeholder = "给 OceanLeo 布置一个任务...",
+  placeholder,
   loading = false,
   leoSuggest = false,
   leoQuickSuggest,
@@ -168,6 +169,8 @@ export function LeoComposer({
   onMeetingRecording,
   meetingRecordingMaxSec = 7200,
 }: LeoComposerProps) {
+  const tt = useUI();
+  const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
@@ -305,7 +308,7 @@ export function LeoComposer({
             <path d="M12 16V4m0 0l-4 4m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
           </svg>
-          <span className="text-[13px] font-medium">松开即可上传文件</span>
+          <span className="text-[13px] font-medium">{tt("松开即可上传文件")}</span>
         </div>
       )}
       <textarea
@@ -317,7 +320,7 @@ export function LeoComposer({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         onInput={autogrow}
-        placeholder={placeholder}
+        placeholder={placeholderText}
         onKeyDown={handleKeyDown}
       />
 
@@ -341,13 +344,13 @@ export function LeoComposer({
                   <FileGlyph />
                 </span>
               )}
-              <span className="max-w-[120px] truncate">{a.name || "附件"}</span>
+              <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
               {a.uploading && <span className="v-spinner text-[10px] text-neutral-400" />}
               {onRemoveAttachment && !a.uploading && (
                 <button
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
-                  aria-label="移除"
+                  aria-label={tt("移除")}
                   className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
                 >
                   ×
@@ -376,10 +379,10 @@ export function LeoComposer({
               type="button"
               onClick={handleLeoSuggest}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-200 hover:bg-neutral-100 active:scale-95"
-              title="让 leo 帮你补充 / 整理这段内容（可逐项选择）"
+              title={tt("让 leo 帮你补充 / 整理这段内容（可逐项选择）")}
             >
               <Sparkle />
-              leo 建议
+              {tt("leo 建议")}
             </button>
           )}
           {leoQuickSuggest && (
@@ -388,10 +391,10 @@ export function LeoComposer({
               onClick={handleQuickSuggest}
               disabled={quickBusy || disabled}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium text-indigo-600 transition-all duration-200 hover:bg-indigo-50 active:scale-95 disabled:opacity-50"
-              title="一键补充：让 leo 直接把你的需求补全（无需逐项选择）"
+              title={tt("一键补充：让 leo 直接把你的需求补全（无需逐项选择）")}
             >
               {quickBusy ? <span className="v-spinner text-[11px]" /> : <Bolt />}
-              一键补充
+              {tt("一键补充")}
             </button>
           )}
           {inlineSlot}
@@ -403,8 +406,8 @@ export function LeoComposer({
               type="button"
               onClick={() => setMeetingOpen(true)}
               disabled={disabled}
-              aria-label="会议录音纪要"
-              title="会议录音纪要"
+              aria-label={tt("会议录音纪要")}
+              title={tt("会议录音纪要")}
               className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-150 hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
             >
               <MeetingGlyph />
@@ -418,7 +421,7 @@ export function LeoComposer({
               type="button"
               onClick={() => canSend && onSubmit()}
               disabled={!canSend}
-              aria-label="发送"
+              aria-label={tt("发送")}
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${
                 canSend
                   ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
@@ -465,6 +468,7 @@ function AttachMenu({
   recentLoading: boolean;
   extra?: ComposerMenuItem[];
 }) {
+  const tt = useUI();
   const [open, setOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -488,7 +492,7 @@ function AttachMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="添加附件"
+        aria-label={tt("添加附件")}
         aria-expanded={open}
         className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-150 active:scale-95 ${
           open
@@ -504,7 +508,7 @@ function AttachMenu({
           {onAttachFiles && (
             <MenuRow
               icon={<PaperclipGlyph />}
-              label="从本地添加文件"
+              label={tt("从本地添加文件")}
               onClick={() => {
                 setOpen(false);
                 setRecentOpen(false);
@@ -521,16 +525,16 @@ function AttachMenu({
             >
               <MenuRow
                 icon={<DocGlyph />}
-                label="最近文件"
+                label={tt("最近文件")}
                 chevron
                 onClick={() => setRecentOpen((v) => !v)}
               />
               {recentOpen && (
                 <div className="absolute bottom-0 left-full z-50 ml-1 max-h-[260px] min-w-[240px] overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
                   {recentLoading ? (
-                    <p className="px-3 py-2 text-[12px] text-neutral-400">加载中…</p>
+                    <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>
                   ) : (recentFiles || []).length === 0 ? (
-                    <p className="px-3 py-2 text-[12px] text-neutral-400">还没有最近文件</p>
+                    <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有最近文件")}</p>
                   ) : (
                     (recentFiles || []).map((f) => (
                       <button
@@ -613,6 +617,7 @@ function VoiceButton({
   onTranscript: (text: string) => void;
   disabled: boolean;
 }) {
+  const tt = useUI();
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
   const recRef = useRef<any>(null);
@@ -676,9 +681,9 @@ function VoiceButton({
       type="button"
       onClick={toggle}
       disabled={disabled}
-      aria-label={listening ? "停止语音输入" : "语音输入"}
+      aria-label={listening ? tt("停止语音输入") : tt("语音输入")}
       aria-pressed={listening}
-      title="语音输入"
+      title={tt("语音输入")}
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-150 active:scale-95 ${
         listening
           ? "bg-rose-100 text-rose-600"
@@ -748,6 +753,7 @@ function MeetingRecorderCard({
   onClose: () => void;
   onDone: (file: File) => void;
 }) {
+  const tt = useUI();
   const [phase, setPhase] = useState<"idle" | "recording" | "saving">("idle");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -782,14 +788,14 @@ function MeetingRecorderCard({
       typeof navigator.mediaDevices.getUserMedia !== "function" ||
       typeof (window as any).MediaRecorder === "undefined"
     ) {
-      setError("当前浏览器不支持录音，请用最新版 Chrome / Edge / Safari。");
+      setError(tt("当前浏览器不支持录音，请用最新版 Chrome / Edge / Safari。"));
       return;
     }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setError("没拿到麦克风权限。请在浏览器地址栏允许麦克风后重试。");
+      setError(tt("没拿到麦克风权限。请在浏览器地址栏允许麦克风后重试。"));
       return;
     }
     streamRef.current = stream;
@@ -878,7 +884,7 @@ function MeetingRecorderCard({
       <div className="mb-3 flex items-center justify-end">
         <span className="flex items-center gap-1.5 text-[13px] font-medium text-neutral-500">
           <MeetingGlyph />
-          会议录音纪要
+          {tt("会议录音纪要")}
         </span>
       </div>
 
@@ -887,11 +893,11 @@ function MeetingRecorderCard({
           {error ? (
             <span className="text-rose-600">{error}</span>
           ) : recording ? (
-            "正在录音… 结束后将自动转写并生成会议纪要。"
+            tt("正在录音… 结束后将自动转写并生成会议纪要。")
           ) : saving ? (
-            "录音已结束，正在上传并转写…"
+            tt("录音已结束，正在上传并转写…")
           ) : (
-            "录音结束后将自动转写并整理成会议纪要。"
+            tt("录音结束后将自动转写并整理成会议纪要。")
           )}
         </p>
 
@@ -911,7 +917,7 @@ function MeetingRecorderCard({
               className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 active:scale-95 disabled:opacity-50"
             >
               <TrashGlyph />
-              放弃
+              {tt("放弃")}
             </button>
             {recording ? (
               <button
@@ -920,7 +926,7 @@ function MeetingRecorderCard({
                 className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95"
               >
                 <StopGlyph />
-                停止
+                {tt("停止")}
               </button>
             ) : (
               <button
@@ -930,14 +936,14 @@ function MeetingRecorderCard({
                 className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95 disabled:opacity-50"
               >
                 {saving ? <span className="v-spinner text-[12px]" /> : <RecordGlyph />}
-                {saving ? "处理中" : "开始"}
+                {saving ? tt("处理中") : tt("开始")}
               </button>
             )}
           </div>
         </div>
 
         <p className="mt-3 text-[12px] leading-relaxed text-neutral-400">
-          开始录音即代表你已获得在场各方的录音同意。
+          {tt("开始录音即代表你已获得在场各方的录音同意。")}
         </p>
       </div>
     </div>

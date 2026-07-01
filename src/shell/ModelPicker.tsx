@@ -24,16 +24,19 @@ import {
 } from "../lib/auth/account";
 import { getUserId } from "../lib/auth/client";
 import { IconCategory, IconCheck, IconChevronDown } from "./icons";
+import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
 
-const CATEGORY_LABEL: Record<ModelCategory, string> = {
-  text: "文本",
-  image: "图片",
-  video: "视频",
-  threed: "3D",
-  audio: "音频",
-};
+function categoryLabels(tt: UITranslate): Record<ModelCategory, string> {
+  return {
+    text: tt("文本"),
+    image: tt("图片"),
+    video: tt("视频"),
+    threed: "3D",
+    audio: tt("音频"),
+  };
+}
 
 export interface ModelPickerProps {
   /** 本站需要的模态（按顺序展示）。如 image 站传 ["image"]，主站传全部。 */
@@ -93,6 +96,8 @@ export function ModelPicker({
   variant = "bar",
   align = "right",
 }: ModelPickerProps) {
+  const tt = useUI();
+  const CATEGORY_LABEL = categoryLabels(tt);
   // 每个模态的可选模型列表
   const [options, setOptions] = useState<Record<string, PreferredModel[]>>({});
   // 每个模态当前选中的复合 key（未选 = 不在表里）
@@ -220,7 +225,7 @@ export function ModelPicker({
               {sel ? (
                 <span className="max-w-[160px] truncate text-neutral-900">· {sel.label}</span>
               ) : (
-                <span className="text-neutral-400">未选</span>
+                <span className="text-neutral-400">{tt("未选")}</span>
               )}
               <span className={`text-neutral-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}>
                 <IconChevronDown className="h-3.5 w-3.5" />
@@ -231,11 +236,11 @@ export function ModelPicker({
               <div className="v-scale-in absolute left-0 top-full z-30 mt-1 max-h-[360px] w-72 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
                 <div className="flex items-center gap-1.5 px-3.5 pb-1 pt-2 text-[11px] font-medium text-neutral-400">
                   <IconCategory category={cat} className="h-3.5 w-3.5" />
-                  {CATEGORY_LABEL[cat]}模型
+                  {tt("{cat}模型", { cat: CATEGORY_LABEL[cat] })}
                 </div>
                 {list.length === 0 ? (
                   <p className="px-3.5 py-6 text-center text-[12px] text-neutral-400">
-                    暂无可选模型，去 API 页选择
+                    {tt("暂无可选模型，去 API 页选择")}
                   </p>
                 ) : (
                   list.map((m) => (
@@ -261,7 +266,7 @@ export function ModelPicker({
                   href={apiHref}
                   className="mt-1 block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
                 >
-                  + 在「API」页管理模型
+                  {tt("+ 在「API」页管理模型")}
                 </a>
               </div>
             )}
@@ -283,12 +288,12 @@ export function ModelPicker({
               ? "border-neutral-300 bg-neutral-50"
               : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50"
           }`}
-          title="模型选择"
+          title={tt("模型选择")}
         >
           <span className="text-neutral-400">
             <IconCategory category="text" className="h-3.5 w-3.5" />
           </span>
-          <span className="font-medium text-neutral-700">模型选择</span>
+          <span className="font-medium text-neutral-700">{tt("模型选择")}</span>
           {pickedCount > 0 && (
             <span className="rounded-full bg-neutral-900 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
               {pickedCount}
@@ -305,7 +310,7 @@ export function ModelPicker({
               align === "right" ? "right-0" : "left-0"
             }`}
           >
-            <p className="mb-2 px-0.5 text-[12px] font-medium text-neutral-500">模型选择</p>
+            <p className="mb-2 px-0.5 text-[12px] font-medium text-neutral-500">{tt("模型选择")}</p>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{categoryChips}</div>
           </div>
         )}
@@ -316,7 +321,7 @@ export function ModelPicker({
   // ── bar 形态（默认）：左标签 +各模态 chip 平铺 ──
   return (
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`} ref={rootRef}>
-      <span className="text-[13px] font-medium text-neutral-500">模型选择</span>
+      <span className="text-[13px] font-medium text-neutral-500">{tt("模型选择")}</span>
       {categoryChips}
     </div>
   );
