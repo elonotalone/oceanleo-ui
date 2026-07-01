@@ -24,7 +24,7 @@
 // ============================================================================
 
 import { useMemo, type ReactNode } from "react";
-import { SplitWorkspace } from "./SplitWorkspace";
+import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 
 export interface StudioProps {
   /** 左侧操作列内容（通常是若干 <StudioSection> + 底部主按钮）。 */
@@ -52,6 +52,11 @@ export interface StudioProps {
   /** 顶部 header 高度（px），用于算可视高度，默认 56（= AppShell header）。 */
   headerHeight?: number;
   className?: string;
+  /**
+   * 操作员 2026-07-01：内建「库」开关（透传给 SplitWorkspace）。给了它，操作台左栏
+   * 标题右侧出现「库」按钮（默认关）；点击 → 右栏切换为共享文件库，agent/操作台生成
+   * 的作品可在此查看。全 OceanLeo 系列统一。 */
+  library?: SplitLibraryConfig;
 }
 
 const BASELINE_WIDTH = 1280; // 折算 opsWidth→ratio 的基准视口宽度
@@ -67,6 +72,7 @@ export function Studio({
   accent = "#4f46e5",
   headerHeight = 56,
   className = "",
+  library,
 }: StudioProps) {
   // 把旧的 px 固定宽近似成初始比例（夹在 SplitWorkspace 的 18%–82% 内）。
   const initialRatio = useMemo(() => {
@@ -90,6 +96,7 @@ export function Studio({
       accent={accent}
       headerHeight={headerHeight}
       className={className}
+      library={library}
     />
   );
 }

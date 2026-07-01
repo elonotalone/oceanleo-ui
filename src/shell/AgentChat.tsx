@@ -15,7 +15,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SplitWorkspace } from "./SplitWorkspace";
+import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { Markdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import {
@@ -68,6 +68,26 @@ export interface AgentChatProps {
   /** 右栏自定义渲染器：按 artifact.type 返回专用编辑器（map/canvas/ppt…）。
    *  不传或返回 null → 回退到内置 Markdown / 图片渲染。 */
   renderArtifact?: (artifact: ArtifactMeta, content: string) => React.ReactNode;
+  /**
+   * 操作员 2026-07-01：内建「库」开关（透传给 SplitWorkspace）。给了它，agent 界面
+   * 左栏标题右侧出现「库」按钮（默认关）；点开 → 右栏显示共享文件库，agent 生成的
+   * 作品可在「作品」分区查看。不传则默认按 siteId 自动启用（见下方 effectiveLibrary）。
+   *   - 传对象 → 用它。
+   *   - 传 false → 关闭库按钮。 */
+  library?: SplitLibraryConfig | false;
+  /**
+   * 输入框上方的自定义内容（如 agent 站的「skill prompt 开源面板」）。渲染在 composer
+   * 之上、对话流之下。用于把 agent 站的 prompt 面板并入共享 AgentChat（复用同一壳层，
+   * 获得右栏 artifact + 库，无需自写 chat）。 */
+  composerHeader?: React.ReactNode;
+  /**
+   * doctrine v6：本次会话的 skill-prompt 覆盖（用户编辑了 prompt 并选「用这段直接干活」）。
+   * 只对本次会话生效，透传给 createTask，不写回 manifest。 */
+  promptOverride?: string;
+  /** 输入框占位文案（默认「继续追问，或上传文件让 agent 分析…」）。 */
+  placeholder?: string;
+  /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
+  emptyHint?: React.ReactNode;
 }
 
 export function AgentChat({
@@ -84,7 +104,15 @@ export function AgentChat({
   renderArtifact,
   appNames,
   appLabel: appLabelProp,
+  library,
+  composerHeader,
+  promptOverride,
+  placeholder,
+  emptyHint,
 }: AgentChatProps) {
+  // 内建「库」：显式 false 关闭；传对象用它；否则有 siteId 就自动启用（作品跨站共享）。
+  const effectiveLibrary: SplitLibraryConfig | undefined =
+    library === false ? undefined : library ? library : siteId ? { siteId, siteName: siteId } : undefined;
   const [taskId, setTaskId] = useState<string | null>(initialTaskId ?? null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
@@ -151,6 +179,7 @@ export function AgentChat({
     ]);
     const r = await createTask({
       prompt, mode, siteId, agentModel, agentId, teamId, attachments: uploaded,
+      promptOverride: promptOverride || undefined,
     });
     setBusy(false);
     if (!r.ok || !r.data) {
@@ -210,7 +239,9 @@ export function AgentChat({
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !running && (
-          <p className="py-10 text-center text-sm text-stone-400">在下方输入，开始与 agent 对话。</p>
+          <div className="py-10 text-center text-sm text-stone-400">
+            {emptyHint ?? "在下方输入，开始与 agent 对话。"}
+          </div>
         )}
         {messages.map((m) => (
           <MessageBubble key={m.id} m={m} />
@@ -222,14 +253,15 @@ export function AgentChat({
         )}
         {error && <p className="text-[13px] text-rose-500">{error}</p>}
       </div>
-      <div className="shrink-0 border-t border-stone-100 p-3">
+      <div className="shrink-0 space-y-2 border-t border-stone-100 p-3">
+        {composerHeader}
         <LeoComposer
           value={input}
           onChange={setInput}
           onSubmit={send}
           loading={busy}
           leoSuggest
-          placeholder="继续追问，或上传文件让 agent 分析…"
+          placeholder={placeholder ?? "继续追问，或上传文件让 agent 分析…"}
           rows={1}
           onAttachFiles={atts.handleAttachFiles}
           attachments={atts.composerAttachments}
@@ -248,6 +280,7 @@ export function AgentChat({
         leftLabel={leftLabelNode}
         accent={accent}
         headerHeight={headerHeight}
+        library={effectiveLibrary}
       />
     );
   }
@@ -280,6 +313,7 @@ export function AgentChat({
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
       headerHeight={headerHeight}
+      library={effectiveLibrary}
     />
   );
 }

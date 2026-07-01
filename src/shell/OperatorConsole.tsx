@@ -32,6 +32,7 @@ import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
+import { type SplitLibraryConfig } from "./SplitWorkspace";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -131,6 +132,14 @@ export interface OperatorConsoleProps {
    * 切换。此 prop 保留只为向后兼容（各站传不传都无效），不再渲染任何 skill 入口。
    */
   skillTab?: boolean;
+  /**
+   * 操作员 2026-07-01：内建「库」开关（全 OceanLeo 系列统一）。默认——只要有 siteId，
+   * 就自动在操作台左栏标题右侧挂一枚「库」按钮（默认关，点开右栏显示共享文件库）。
+   *   - 传对象 → 用它作为库配置（可指定 siteName / 跨站分区 sites）。
+   *   - 传 false → 显式关闭库按钮（极少数不需要库的功能站）。
+   *   - 不传 → 有 siteId 时自动启用（siteName 用 siteId）。
+   * embed/solo（hideTabs）时不显示库（主站 iframe 内嵌，库入口由主站承担）。 */
+  library?: SplitLibraryConfig | false;
 }
 
 export function OperatorConsole({
@@ -157,8 +166,18 @@ export function OperatorConsole({
   modelSiteId,
   apiHref = "/api",
   skillTab: _skillTab,
+  library,
 }: OperatorConsoleProps) {
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
+  // 内建「库」：solo/embed（hideTabs）不显示；显式 false 关闭；否则有 siteId 就自动启用。
+  const libraryConfig: SplitLibraryConfig | undefined =
+    hideTabs || library === false
+      ? undefined
+      : library
+        ? library
+        : siteId
+          ? { siteId, siteName: siteId }
+          : undefined;
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
@@ -355,6 +374,7 @@ export function OperatorConsole({
           canvasLabel={canvasLabel}
           accent={accent}
           headerHeight={studioHeaderHeight}
+          library={libraryConfig}
         />
       </div>
     </div>

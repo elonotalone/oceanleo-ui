@@ -60,7 +60,7 @@ export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
 // 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
 export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorkspace";
-export type { SplitWorkspaceProps } from "./SplitWorkspace";
+export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
