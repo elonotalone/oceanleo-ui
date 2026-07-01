@@ -29,7 +29,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { FileLibrary, LIBRARY_TABS, type LibraryTab, type SiteOption } from "./FileLibrary";
 import { IconLibrary } from "./icons";
 
 // ----------------------------------------------------------------------------
@@ -85,21 +84,33 @@ export interface SplitWorkspaceProps {
   headerHeight?: number;
   className?: string;
   /**
-   * 操作员 2026-07-01：内建「库」开关（全 OceanLeo 系列统一）。给了它，左栏标题右侧
-   * 会出现一枚「库」按钮（默认关 → 库不显示）；点击 → 右栏切换为共享文件库 FileLibrary
-   * （上传文件 / 作品 / 素材 / 知识库），再点或点右栏 ✕ 关闭。库与右栏「结果/预览」
-   * 互斥、共用右栏：库开着时优先显示库；关掉后回到 `right`（若有）或单栏。
-   * agent 生成的内容会进「作品」分区，用户可在此查看。不传 → 不显示库按钮（旧行为）。 */
+   * 操作员 2026-07-01（v2 纠正）：「库」= 右版面的显隐开关，**不内建任何库内容**。
+   * OceanLeo 系列右边永远只有【一个】版面：平时收起（不显示），点「库」按钮或点对话/
+   * 操作台里的素材 → 展开右版面，显示 `right`（该站【自己的】结果/库内容，如子站的
+   * ResultCanvas「本月概览/交易记录/我的数据库」、主站的 FileLibrary）。绝不是把主站那
+   * 套库硬塞给子站。
+   *
+   * 给了 library：
+   *   - 关（默认）：右版面不渲染 → 单栏（左栏占满）。左栏标题右侧出现「库」按钮（黑/accent）。
+   *   - 开：右版面渲染 `right`，其顶栏 = ✕(左，关闭右版面) / 「库」标题(居中) / 大屏(右)。
+   *     左栏那枚「库」按钮此时【隐藏】（避免出现两个「库」）。
+   * 不传 library：右版面按 `right` 是否为 null 决定单/双栏（旧行为，无「库」按钮）。 */
   library?: SplitLibraryConfig;
 }
 
 export interface SplitLibraryConfig {
-  /** 当前站 id（上传归属 + 库默认分区 + 作品过滤）。 */
-  siteId: string;
-  /** 当前站显示名（库站点选择器里高亮）。 */
-  siteName?: string;
-  /** 跨站分区可选站点（不传则只给「当前站 / 全部站」）。 */
-  sites?: SiteOption[];
+  /** 「库」按钮文案，默认「库」。 */
+  label?: string;
+  /**
+   * 「库」按钮样式（关态）。主站传黑胶囊白字，子站可传自己的显眼样式（默认 accent 胶囊）。
+   * 传了它就整体覆盖按钮的 className（含开/关态由消费端自理则不建议——一般只需关态样式）。 */
+  buttonClassName?: string;
+  /** 受控：右版面是否打开。传了它就用受控模式（消费端持有 open 状态，如点素材要打开库）。 */
+  open?: boolean;
+  /** 受控：切换回调。 */
+  onOpenChange?: (open: boolean) => void;
+  /** 右版面顶部居中标题，默认「库」。 */
+  paneTitle?: ReactNode;
 }
 
 type Maxed = "none" | "left" | "right";
@@ -119,14 +130,21 @@ export function SplitWorkspace({
   className = "",
   library,
 }: SplitWorkspaceProps) {
-  // 内建「库」：默认关（null）→ 库不显示。开则记住当前分区 tab。
-  const [libraryTab, setLibraryTab] = useState<LibraryTab | null>(null);
-  const libraryOpen = library != null && libraryTab != null;
-  const openLibrary = useCallback(() => setLibraryTab((t) => t ?? "files"), []);
-  const closeLibrary = useCallback(() => setLibraryTab(null), []);
-  // 库开着 → 右栏渲染库（与 right「结果/预览」互斥，库优先）；否则回到传入的 right。
-  const effectiveRight = libraryOpen ? undefined : right;
-  const hasRight = libraryOpen || right != null;
+  // 「库」= 右版面显隐开关（不内建内容）。默认关。支持受控（消费端持有 open，如点素材
+  // 要打开库）与非受控（本组件自管）。传了 library 才有「库」行为。
+  const [internalOpen, setInternalOpen] = useState(false);
+  const libraryControlled = library?.open !== undefined;
+  const libraryOpen = library != null && (libraryControlled ? Boolean(library.open) : internalOpen);
+  const setLibraryOpen = useCallback(
+    (v: boolean) => {
+      if (!libraryControlled) setInternalOpen(v);
+      library?.onOpenChange?.(v);
+    },
+    [libraryControlled, library],
+  );
+  // 有 library 时：右版面显隐由 libraryOpen 决定（关→单栏，开→显示 right）。
+  // 无 library 时：沿用旧逻辑（right 是否为 null 决定单/双栏）。
+  const hasRight = library != null ? libraryOpen : right != null;
   const wrapRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(defaultRatio);
   const [maxed, setMaxed] = useState<Maxed>("none");
@@ -139,22 +157,27 @@ export function SplitWorkspace({
     [],
   );
   const baseLeftLabel = leftLabelOverride ?? leftLabel;
-  // 内建「库」开关按钮（放左栏标题右侧）。库开着时高亮。传了 library 才渲染。
-  const libraryToggle = library ? (
-    <button
-      type="button"
-      onClick={() => (libraryOpen ? closeLibrary() : openLibrary())}
-      title={libraryOpen ? "关闭库" : "打开库"}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors active:scale-95 ${
-        libraryOpen ? "text-white" : "text-stone-500 hover:bg-stone-100 hover:text-stone-700"
-      }`}
-      style={libraryOpen ? { background: accent } : undefined}
-    >
-      <IconLibrary className="h-3.5 w-3.5" />
-      库
-    </button>
-  ) : null;
-  // 左栏标题 = 原标题（纯字符串则包成小灰标题）+ 右侧「库」开关。
+  // 「库」开关按钮（放左栏标题右侧）。默认关态；库【打开后此按钮隐藏】——避免出现两个
+  // 「库」（右版面顶栏已有居中「库」标题 + ✕ 关闭）。样式：主站黑胶囊白字，子站默认 accent
+  // 胶囊；消费端可用 library.buttonClassName 覆盖关态样式。
+  const libraryLabel = library?.label ?? "库";
+  const libraryToggle =
+    library && !libraryOpen ? (
+      <button
+        type="button"
+        onClick={() => setLibraryOpen(true)}
+        title="打开库"
+        className={
+          library.buttonClassName ??
+          "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
+        }
+        style={library.buttonClassName ? undefined : { background: accent }}
+      >
+        <IconLibrary className="h-3.5 w-3.5" />
+        {libraryLabel}
+      </button>
+    ) : null;
+  // 左栏标题 = 原标题（纯字符串包成小灰标题）+ 右侧「库」开关。
   const effectiveLeftLabel: ReactNode =
     library && (baseLeftLabel != null || libraryToggle) ? (
       <div className="flex w-full items-center justify-between gap-2">
@@ -176,54 +199,7 @@ export function SplitWorkspace({
     () => ({ setRightLabel: (node) => setRightLabelOverride(node) }),
     [],
   );
-  // 库开着时右栏标题固定为「库」；否则用覆盖值 / 传入值。
-  const effectiveRightLabel = libraryOpen ? "库" : (rightLabelOverride ?? rightLabel);
-
-  // 右栏库面板（库开着时渲染，替代 right）。紧凑分区 tab 条 + ✕ 关闭。
-  const libraryPane =
-    library && libraryOpen ? (
-      <aside className="flex h-full flex-col bg-white">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-100 bg-white px-3 py-2">
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-            {LIBRARY_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setLibraryTab(t.id)}
-                className={`shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors ${
-                  libraryTab === t.id
-                    ? "text-white"
-                    : "text-stone-500 hover:bg-stone-100 hover:text-stone-700"
-                }`}
-                style={libraryTab === t.id ? { background: accent } : undefined}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={closeLibrary}
-            aria-label="关闭库"
-            className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <FileLibrary
-            siteId={library.siteId}
-            siteName={library.siteName}
-            sites={library.sites}
-            accent={accent}
-            fill
-            hideHeader
-            tab={libraryTab ?? "files"}
-            onTabChange={setLibraryTab}
-          />
-        </div>
-      </aside>
-    ) : null;
+  const effectiveRightLabel = rightLabelOverride ?? rightLabel;
 
   // restore remembered ratio
   useEffect(() => {
@@ -386,10 +362,40 @@ export function SplitWorkspace({
             : { flexBasis: `${(1 - defaultRatio) * 100}%`, flexGrow: 1, flexShrink: 1 }
         }
       >
-        <PaneHeader label={effectiveRightLabel}>
-          <MaxButton which="right" />
-        </PaneHeader>
-        <div className={bodyClass}>{libraryPane ?? effectiveRight}</div>
+        {library ? (
+          /* 库模式右版面顶栏：✕(左，关闭整个右版面) / 「库」标题(居中) / 大屏(右)。
+             第二行（若右栏内容 ResultCanvas 经 useRightPaneSlot 注入了自己的标签条，如
+             子站的「本月概览/交易记录/我的数据库」）渲染在标题行下面，作为该站【自己的】
+             库分区标签——不硬塞主站的库分区。 */
+          <>
+            <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => setLibraryOpen(false)}
+                aria-label="关闭"
+                className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+              >
+                ✕
+              </button>
+              <div className="flex min-w-0 flex-1 items-center justify-center">
+                <span className="truncate text-[12px] font-medium text-stone-500">
+                  {library.paneTitle ?? libraryLabel}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <MaxButton which="right" />
+              </div>
+            </div>
+            {rightLabelOverride != null && (
+              <div className="shrink-0 border-b border-stone-100 px-3 py-1.5">{rightLabelOverride}</div>
+            )}
+          </>
+        ) : (
+          <PaneHeader label={effectiveRightLabel}>
+            <MaxButton which="right" />
+          </PaneHeader>
+        )}
+        <div className={bodyClass}>{right}</div>
       </section>
     </div>
     </RightPaneCtx.Provider>

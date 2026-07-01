@@ -110,9 +110,9 @@ export function AgentChat({
   placeholder,
   emptyHint,
 }: AgentChatProps) {
-  // 内建「库」：显式 false 关闭；传对象用它；否则有 siteId 就自动启用（作品跨站共享）。
-  const effectiveLibrary: SplitLibraryConfig | undefined =
-    library === false ? undefined : library ? library : siteId ? { siteId, siteName: siteId } : undefined;
+  // 「库」= 右版面（结果/预览）显隐开关。默认关（对话占满）；生成结果(artifact)到达时
+  // 自动打开右版面显示，用户也可用「库」按钮手动开合。显式 false 关闭库按钮。
+  const [rightOpen, setRightOpen] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(initialTaskId ?? null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
@@ -220,6 +220,28 @@ export function AgentChat({
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
 
+  // 生成结果(artifact)到达 → 自动打开右版面（「点素材查看」路径）。
+  const artSig = art ? `${art.meta.type}:${art.meta.url || ""}:${art.content.slice(0, 32)}` : "";
+  const seenArtRef = useRef("");
+  useEffect(() => {
+    if (art && artSig !== seenArtRef.current) {
+      seenArtRef.current = artSig;
+      setRightOpen(true);
+    }
+  }, [art, artSig]);
+
+  // 「库」= 右版面显隐开关（受控）。显式 false 关按钮。否则默认启用。
+  const effectiveLibrary: SplitLibraryConfig | undefined =
+    library === false
+      ? undefined
+      : {
+          label: "库",
+          open: rightOpen,
+          onOpenChange: setRightOpen,
+          paneTitle: "库",
+          ...(library || {}),
+        };
+
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
   const resolvedApp =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
@@ -272,43 +294,28 @@ export function AgentChat({
     </div>
   );
 
-  // No artifact yet → single pane (just the chat). Artifact present → split.
-  if (!art) {
-    return (
-      <SplitWorkspace
-        left={stream}
-        leftLabel={leftLabelNode}
-        accent={accent}
-        headerHeight={headerHeight}
-        library={effectiveLibrary}
-      />
-    );
-  }
-
-  const right =
-    renderArtifact?.(art.meta, art.content) ?? (
-      <DefaultArtifact artifact={art.meta} content={art.content} />
-    );
-
-  const splitLeftLabel = resolvedApp ? (
-    <span className="flex items-center gap-2">
-      <span className="text-[12px] font-medium text-stone-500">AI 推导</span>
-      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-        所属 app · {resolvedApp}
-      </span>
-    </span>
-  ) : (
-    "AI 推导"
-  );
+  // OceanLeo 系列右边永远只有【一个】版面：默认收起（对话占满）；点「库」按钮或生成结果
+  // (artifact)到达 → 展开右版面显示结果。右版面内容 = 最新 artifact，或空态提示。
+  const right = art
+    ? renderArtifact?.(art.meta, art.content) ?? (
+        <DefaultArtifact artifact={art.meta} content={art.content} />
+      )
+    : (
+        <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-stone-400">
+          <svg className="h-10 w-10 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <p className="text-[13px]">还没有生成结果。让 agent 帮你生成后，结果会显示在这里。</p>
+        </div>
+      );
 
   return (
     <SplitWorkspace
       left={stream}
       right={right}
-      leftLabel={splitLeftLabel}
-      rightLabel={ARTIFACT_LABEL[art.meta.type] || art.meta.title || "结果"}
-      // 推理（AI 推导）合理展开：左栏默认占比从 1/3 提到 0.46——推理过程更宽更可读，
-      // 又不至于完全占满（右栏结果仍有空间）。用户可拖动竖线进一步调整并记忆。
+      leftLabel={leftLabelNode}
+      rightLabel={art ? ARTIFACT_LABEL[art.meta.type] || art.meta.title || "结果" : "结果"}
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}

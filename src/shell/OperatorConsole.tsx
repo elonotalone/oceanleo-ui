@@ -169,15 +169,14 @@ export function OperatorConsole({
   library,
 }: OperatorConsoleProps) {
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
-  // 内建「库」：solo/embed（hideTabs）不显示；显式 false 关闭；否则有 siteId 就自动启用。
+  // 「库」= 右版面显隐开关（右版面内容 = 各功能的 canvas，即该站自己的结果/库）。
+  // solo/embed（hideTabs）不显示；显式 false 关闭；否则默认启用（子站用 accent 胶囊按钮）。
   const libraryConfig: SplitLibraryConfig | undefined =
     hideTabs || library === false
       ? undefined
       : library
         ? library
-        : siteId
-          ? { siteId, siteName: siteId }
-          : undefined;
+        : { label: "库" };
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const activeId = value ?? internal;
