@@ -28,6 +28,11 @@ export interface AccountMenuItem {
 
 const DEFAULT_MENU: AccountMenuItem[] = [
   {
+    label: "通用",
+    href: "/general",
+    desc: "语言与主题（浅色 / 深色 / 自动）等外观设置",
+  },
+  {
     label: "我的数据库",
     href: "/database",
     desc: "你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）",

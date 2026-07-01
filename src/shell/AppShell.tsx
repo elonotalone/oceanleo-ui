@@ -134,10 +134,13 @@ export interface AppShellProps {
   headerRight?: ReactNode;
   /** true 时隐藏顶部 header（业务页自带顶栏时用） */
   hideHeader?: boolean;
-  /** 内建主题切换器（Light/Dark/Auto）。默认 true，全家桶壳内统一提供，各站零接线。 */
+  /** 内建主题切换器（Light/Dark/Auto）。2026-07-01 起默认 **false**——语言/主题
+   *  切换统一收进「通用」页(/general)，不再放侧栏左下角（操作员指定）。仍保留此开关
+   *  供特殊场景显式开启，但全家桶标准接入不再传 true。 */
   showThemeSwitcher?: boolean;
-  /** 内建语言切换器（17 语言）。默认 true。⚠ 站点必须已包 <I18nProvider>（NextIntlClientProvider）
-   *  才能开——未接 i18n 的站传 false，否则 useLocale() 会抛错。 */
+  /** 内建语言切换器（17 语言）。2026-07-01 起默认 **false**（同上，移到「通用」页）。
+   *  ⚠ 若显式开启，站点必须已包 <I18nProvider>（NextIntlClientProvider），否则
+   *  useLocale() 会抛错。 */
   showLanguageSwitcher?: boolean;
   /**
    * 判定「当前是操作台路由」（OperatorConsole 拥有右上角模型选择，header 的那条该
@@ -214,8 +217,8 @@ function AppShellInner({
   onModelSelectionChange,
   headerRight,
   hideHeader = false,
-  showThemeSwitcher = true,
-  showLanguageSwitcher = true,
+  showThemeSwitcher = false,
+  showLanguageSwitcher = false,
 }: AppShellProps) {
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;

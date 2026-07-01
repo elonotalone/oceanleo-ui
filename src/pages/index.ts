@@ -6,6 +6,8 @@ export { AccountPage } from "./AccountPage";
 export type { AccountPageProps, AccountMenuItem } from "./AccountPage";
 export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
+export { GeneralPage } from "./GeneralPage";
+export type { GeneralPageProps } from "./GeneralPage";
 export { MyDatabasePage, MyDatabasePanel } from "./MyDatabasePage";
 export type { MyDatabasePageProps, MyDatabasePanelProps } from "./MyDatabasePage";
 export { PluginsPage } from "./PluginsPage";

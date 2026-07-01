@@ -36,8 +36,39 @@
   color-scheme: light;
 }
 
+/* ============================================================================
+ * 全家桶「深色设计令牌」单一事实源（2026-07-01，对齐 Manus 中性高级灰）
+ * ----------------------------------------------------------------------------
+ * 目标：把旧的「纯黑 + 高饱和绿/紫」廉价深色，换成 Manus 那种克制的近黑中性灰
+ * 分层——层次靠明度微差而非强边框/强色块。各站品牌色（accent）保持色相不变
+ * （品牌识别度），只在深色下统一降饱和/降亮，避免刺眼。
+ *
+ * 层级（由深到浅）：
+ *   --leo-d-bg       页面最底（body）                 #1a1a1a  近黑中性
+ *   --leo-d-sidebar  侧栏 / 顶栏容器（略深于主区）    #171717
+ *   --leo-d-surface  主区内容面（卡片外的次级面）     #1f1f1f
+ *   --leo-d-card     卡片 / 输入框 / 悬浮面（最亮层） #262626
+ *   --leo-d-card-2   卡片内再高一层（hover / 选中）   #2e2e2e
+ *   --leo-d-border   低对比描边                        rgba(255,255,255,.08)
+ *   --leo-d-border-s 更弱的分隔线                      rgba(255,255,255,.055)
+ *   --leo-d-fg       主文字（非纯白，柔和）           #ececec
+ *   --leo-d-fg-2     次要文字                          #b4b4b4
+ *   --leo-d-muted    弱化 / 占位文字                   #7d7d7d
+ *   --leo-d-faint    图标 / 极弱                       #5f5f5f
+ * ========================================================================== */
 html.dark {
   color-scheme: dark;
+  --leo-d-bg: #1a1a1a;
+  --leo-d-sidebar: #171717;
+  --leo-d-surface: #1f1f1f;
+  --leo-d-card: #262626;
+  --leo-d-card-2: #2e2e2e;
+  --leo-d-border: rgba(255, 255, 255, 0.08);
+  --leo-d-border-s: rgba(255, 255, 255, 0.055);
+  --leo-d-fg: #ececec;
+  --leo-d-fg-2: #b4b4b4;
+  --leo-d-muted: #7d7d7d;
+  --leo-d-faint: #5f5f5f;
 }
 
 html,
@@ -58,17 +89,18 @@ body {
 /* ---------------------------------------------------------------------------
  * Dark 主题基础覆盖层（不依赖各站源码里的 `dark:` 工具类）
  * ---------------------------------------------------------------------------
- * 26 个站的组件历来只写 light（几乎无 dark: 类）。为「一处调、全家桶变暗」而不
+ * 29 个站的组件历来只写 light（几乎无 dark: 类）。为「一处调、全家桶变暗」而不
  * 逐站补几千个 dark: 前缀，这里用原生 CSS + html.dark 选择器覆盖【基础层】：
  * body 背景/前景、共享外壳容器（[data-oceanleo-shell]/[data-oceanleo-chrome]）、
- * 以及全家桶高频使用的中性工具类（bg-white / 中性文字 / 中性边框）。各站品牌
- * accent 保持不变（本就应跨明暗一致）。新写的 dark: 工具类仍生效，叠加在此之上。 */
+ * 以及全家桶高频使用的中性工具类。各站品牌 accent 只做降饱和（见文件末「品牌色
+ * dark 适配」段），新写的 dark: 工具类仍生效，叠加在此之上。
+ *
+ * 2026-07-01 重做：去掉带色相的径向渐变（旧的偏蓝/偏紫，显廉价），改为 Manus 式
+ * 纯中性近黑平底。层次全部交给上面的 --leo-d-* 令牌。 */
 html.dark body {
-  background:
-    radial-gradient(120% 120% at 0% 0%, #10151f 0%, rgba(16, 21, 31, 0) 45%),
-    radial-gradient(120% 120% at 100% 100%, #171320 0%, rgba(23, 19, 32, 0) 50%),
-    linear-gradient(135deg, #0d1117 0%, #0b0e14 45%, #100c16 100%);
-  color: #e5e7eb;
+  background: var(--leo-d-bg);
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
 }
 
 /* 共享外壳：侧栏 / 顶栏容器（AppShell 的 aside/header 用了写死的浅灰/白 + 浅边框）。 */
@@ -76,39 +108,122 @@ html.dark [data-oceanleo-shell] {
   background: transparent;
 }
 html.dark [data-oceanleo-chrome] {
-  background-color: rgba(17, 21, 30, 0.85) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  color: #e5e7eb;
+  background-color: var(--leo-d-sidebar) !important;
+  border-color: var(--leo-d-border) !important;
+  color: var(--leo-d-fg);
+  backdrop-filter: none !important;
+}
+/* AppShell 侧栏 / mobile drawer 写死了 bg-[#f7f7f7]（任意值类，不在中性谱里），
+   深色下强制落到侧栏层色。 */
+html.dark [data-oceanleo-shell] .bg-\[\#f7f7f7\],
+html.dark [data-oceanleo-shell] .bg-\[\#f7f7f7\]\/85,
+html.dark [data-oceanleo-chrome].bg-\[\#f7f7f7\] {
+  background-color: var(--leo-d-sidebar) !important;
 }
 
-/* 全家桶高频中性工具类的暗色重映射（作用域限定壳内，避免影响各站自定义区块的
-   非中性用色）。覆盖的是「无语义的中性底/字/边」，品牌色类（bg-emerald-* 等）不动。 */
+/* ---- 中性底面：白 / neutral / stone / gray / zinc / slate 全谱重映射 ----
+   各站写死的浅底（bg-white / bg-*-50 / bg-*-100）在深色下统一落到「卡片层」。
+   作用域限定壳内，避免影响各站自定义区块的非中性用色。 */
 html.dark [data-oceanleo-shell] .bg-white,
 html.dark [data-oceanleo-shell] .bg-neutral-50,
-html.dark [data-oceanleo-shell] .bg-neutral-100 {
-  background-color: #161b24 !important;
+html.dark [data-oceanleo-shell] .bg-neutral-100,
+html.dark [data-oceanleo-shell] .bg-stone-50,
+html.dark [data-oceanleo-shell] .bg-stone-100,
+html.dark [data-oceanleo-shell] .bg-gray-50,
+html.dark [data-oceanleo-shell] .bg-gray-100,
+html.dark [data-oceanleo-shell] .bg-zinc-50,
+html.dark [data-oceanleo-shell] .bg-zinc-100,
+html.dark [data-oceanleo-shell] .bg-slate-50,
+html.dark [data-oceanleo-shell] .bg-slate-100 {
+  background-color: var(--leo-d-card) !important;
 }
+/* 略深的次级面（bg-*-200，多用于分区背景/胶囊底）。 */
+html.dark [data-oceanleo-shell] .bg-neutral-200,
+html.dark [data-oceanleo-shell] .bg-stone-200,
+html.dark [data-oceanleo-shell] .bg-gray-200,
+html.dark [data-oceanleo-shell] .bg-zinc-200,
+html.dark [data-oceanleo-shell] .bg-slate-200 {
+  background-color: var(--leo-d-card-2) !important;
+}
+/* 半透明中性底（hover / 选中态的 bg-*-200/xx）→ 轻微提亮而非纯色块。 */
 html.dark [data-oceanleo-shell] .bg-neutral-200\/80,
+html.dark [data-oceanleo-shell] .bg-neutral-200\/70,
+html.dark [data-oceanleo-shell] .bg-neutral-200\/60,
 html.dark [data-oceanleo-shell] .bg-neutral-200\/50,
-html.dark [data-oceanleo-shell] .bg-neutral-200\/70 {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+html.dark [data-oceanleo-shell] .bg-stone-200\/80,
+html.dark [data-oceanleo-shell] .bg-stone-200\/70,
+html.dark [data-oceanleo-shell] .bg-stone-200\/50,
+html.dark [data-oceanleo-shell] .bg-gray-200\/80,
+html.dark [data-oceanleo-shell] .bg-gray-200\/70,
+html.dark [data-oceanleo-shell] .bg-gray-200\/50,
+html.dark [data-oceanleo-shell] .hover\:bg-neutral-50:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-neutral-100:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-stone-50:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-stone-100:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-gray-50:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-gray-100:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
 }
+/* 文字：三档中性 → 主/次/弱。覆盖 neutral/stone/gray/zinc/slate 全谱。 */
 html.dark [data-oceanleo-shell] .text-neutral-900,
-html.dark [data-oceanleo-shell] .text-neutral-800 {
-  color: #f3f4f6 !important;
+html.dark [data-oceanleo-shell] .text-neutral-800,
+html.dark [data-oceanleo-shell] .text-stone-900,
+html.dark [data-oceanleo-shell] .text-stone-800,
+html.dark [data-oceanleo-shell] .text-gray-900,
+html.dark [data-oceanleo-shell] .text-gray-800,
+html.dark [data-oceanleo-shell] .text-zinc-900,
+html.dark [data-oceanleo-shell] .text-zinc-800,
+html.dark [data-oceanleo-shell] .text-slate-900,
+html.dark [data-oceanleo-shell] .text-slate-800,
+html.dark [data-oceanleo-shell] .text-black {
+  color: var(--leo-d-fg) !important;
 }
 html.dark [data-oceanleo-shell] .text-neutral-700,
-html.dark [data-oceanleo-shell] .text-neutral-600 {
-  color: #c7ccd4 !important;
+html.dark [data-oceanleo-shell] .text-neutral-600,
+html.dark [data-oceanleo-shell] .text-stone-700,
+html.dark [data-oceanleo-shell] .text-stone-600,
+html.dark [data-oceanleo-shell] .text-gray-700,
+html.dark [data-oceanleo-shell] .text-gray-600,
+html.dark [data-oceanleo-shell] .text-zinc-700,
+html.dark [data-oceanleo-shell] .text-zinc-600,
+html.dark [data-oceanleo-shell] .text-slate-700,
+html.dark [data-oceanleo-shell] .text-slate-600 {
+  color: var(--leo-d-fg-2) !important;
 }
 html.dark [data-oceanleo-shell] .text-neutral-500,
-html.dark [data-oceanleo-shell] .text-neutral-400 {
-  color: #8b919c !important;
+html.dark [data-oceanleo-shell] .text-neutral-400,
+html.dark [data-oceanleo-shell] .text-stone-500,
+html.dark [data-oceanleo-shell] .text-stone-400,
+html.dark [data-oceanleo-shell] .text-gray-500,
+html.dark [data-oceanleo-shell] .text-gray-400,
+html.dark [data-oceanleo-shell] .text-zinc-500,
+html.dark [data-oceanleo-shell] .text-zinc-400,
+html.dark [data-oceanleo-shell] .text-slate-500,
+html.dark [data-oceanleo-shell] .text-slate-400 {
+  color: var(--leo-d-muted) !important;
 }
+/* 边框 / 分隔线：全部落到极低对比描边。 */
 html.dark [data-oceanleo-shell] .border-neutral-200,
 html.dark [data-oceanleo-shell] .border-neutral-200\/70,
-html.dark [data-oceanleo-shell] .border-neutral-100 {
-  border-color: rgba(255, 255, 255, 0.1) !important;
+html.dark [data-oceanleo-shell] .border-neutral-100,
+html.dark [data-oceanleo-shell] .border-stone-200,
+html.dark [data-oceanleo-shell] .border-stone-100,
+html.dark [data-oceanleo-shell] .border-gray-200,
+html.dark [data-oceanleo-shell] .border-gray-100,
+html.dark [data-oceanleo-shell] .border-zinc-200,
+html.dark [data-oceanleo-shell] .border-zinc-100,
+html.dark [data-oceanleo-shell] .border-slate-200,
+html.dark [data-oceanleo-shell] .border-slate-100,
+html.dark [data-oceanleo-shell] .border-neutral-300,
+html.dark [data-oceanleo-shell] .border-gray-300 {
+  border-color: var(--leo-d-border) !important;
+}
+html.dark [data-oceanleo-shell] .divide-neutral-100 > * + *,
+html.dark [data-oceanleo-shell] .divide-neutral-200 > * + *,
+html.dark [data-oceanleo-shell] .divide-gray-100 > * + *,
+html.dark [data-oceanleo-shell] .divide-gray-200 > * + *,
+html.dark [data-oceanleo-shell] .divide-stone-100 > * + * {
+  border-color: var(--leo-d-border-s) !important;
 }
 
 html { min-height: 100%; }
@@ -332,4 +447,132 @@ html.dark .v-skeleton {
     rgba(255, 255, 255, 0.05) 63%
   );
   background-size: 400px 100%;
+}
+
+/* ============================================================================
+ * 品牌色 dark 适配 + 深色语义修正（2026-07-01，对齐 Manus 克制中性）
+ * ----------------------------------------------------------------------------
+ * 宗旨：各站保留自己的品牌色相（money 绿 / image 紫 / logo 橙 …），但深色下
+ * 「统一降饱和、降亮、去廉价感」。分三块：
+ *   1. 侧栏当前项 / 头像 / accent 用色——由各站通过 brand.accent 内联注入 hex，
+ *      本就跨明暗一致，深色下用 filter 轻微降饱和让它不刺眼（见 §1）。
+ *   2. tailwind 高饱和实心色块（bg-emerald-500/600 等大按钮）——深色下换成
+ *      低饱和的同相色 + 柔和描边，别在近黑底上糊一大块荧光色（见 §2）。
+ *   3. 深色下的中性按钮 / 输入框 / 弹窗 / 占位符等语义面（见 §3）。
+ *
+ * 只作用于 html.dark，浅色零影响（本轮操作员只改深色）。 */
+
+/* ---- §1 accent（brand.accent 内联色）在深色下的柔化 ----
+   AppShell 用 style={{background: brand.accent}} / {{color: brand.accent}} 注入
+   品牌色到头像、当前项竖条、token 图标。这些是 inline style，无法用类覆盖，改用
+   属性选择器 + 温和 filter：轻微降饱和(0.82)不改色相，保住品牌识别度又不刺眼。 */
+html.dark [data-oceanleo-shell] [style*="background: #"],
+html.dark [data-oceanleo-shell] [style*="background:#"],
+html.dark [data-oceanleo-shell] [style*="background-color: #"] {
+  filter: saturate(0.82) brightness(0.94);
+}
+
+/* ---- §2 tailwind 高饱和实心/描边色块的深色降饱和 ----
+   在近黑底上，-500/-600 的实心荧光色显得廉价。深色下统一：把这些实心背景换成
+   「同相低饱和深色 + 微亮文字」的高级观感。覆盖全家桶最常用的几种品牌色相。
+   仅限壳内、仅限深色。渐变按钮（bg-gradient-to-*）另见 §2b。 */
+html.dark [data-oceanleo-shell] .bg-emerald-500,
+html.dark [data-oceanleo-shell] .bg-emerald-600,
+html.dark [data-oceanleo-shell] .bg-green-500,
+html.dark [data-oceanleo-shell] .bg-green-600,
+html.dark [data-oceanleo-shell] .bg-teal-500,
+html.dark [data-oceanleo-shell] .bg-teal-600 { background-color: #1f6f52 !important; }
+
+html.dark [data-oceanleo-shell] .bg-indigo-500,
+html.dark [data-oceanleo-shell] .bg-indigo-600,
+html.dark [data-oceanleo-shell] .bg-violet-500,
+html.dark [data-oceanleo-shell] .bg-violet-600,
+html.dark [data-oceanleo-shell] .bg-purple-500,
+html.dark [data-oceanleo-shell] .bg-purple-600 { background-color: #4b3fa3 !important; }
+
+html.dark [data-oceanleo-shell] .bg-sky-500,
+html.dark [data-oceanleo-shell] .bg-sky-600,
+html.dark [data-oceanleo-shell] .bg-blue-500,
+html.dark [data-oceanleo-shell] .bg-blue-600,
+html.dark [data-oceanleo-shell] .bg-cyan-500,
+html.dark [data-oceanleo-shell] .bg-cyan-600 { background-color: #2b5f96 !important; }
+
+html.dark [data-oceanleo-shell] .bg-amber-500,
+html.dark [data-oceanleo-shell] .bg-amber-600,
+html.dark [data-oceanleo-shell] .bg-orange-500,
+html.dark [data-oceanleo-shell] .bg-orange-600 { background-color: #97621f !important; }
+
+html.dark [data-oceanleo-shell] .bg-rose-500,
+html.dark [data-oceanleo-shell] .bg-rose-600,
+html.dark [data-oceanleo-shell] .bg-pink-500,
+html.dark [data-oceanleo-shell] .bg-pink-600,
+html.dark [data-oceanleo-shell] .bg-fuchsia-500,
+html.dark [data-oceanleo-shell] .bg-fuchsia-600 { background-color: #9c3564 !important; }
+
+/* 品牌色文字（accent 文字 / 链接）——深色下轻微提亮以保证在近黑底上的可读性。
+   用同相的浅一档色（-300/-400 观感），不刺眼但清晰。 */
+html.dark [data-oceanleo-shell] .text-emerald-600,
+html.dark [data-oceanleo-shell] .text-emerald-700,
+html.dark [data-oceanleo-shell] .text-green-600,
+html.dark [data-oceanleo-shell] .text-green-700,
+html.dark [data-oceanleo-shell] .text-teal-600 { color: #4ade9f !important; }
+html.dark [data-oceanleo-shell] .text-indigo-600,
+html.dark [data-oceanleo-shell] .text-violet-600,
+html.dark [data-oceanleo-shell] .text-purple-600 { color: #a596f5 !important; }
+html.dark [data-oceanleo-shell] .text-sky-600,
+html.dark [data-oceanleo-shell] .text-blue-600,
+html.dark [data-oceanleo-shell] .text-cyan-600 { color: #6fb0f0 !important; }
+html.dark [data-oceanleo-shell] .text-amber-600,
+html.dark [data-oceanleo-shell] .text-orange-600 { color: #e5a862 !important; }
+html.dark [data-oceanleo-shell] .text-rose-600,
+html.dark [data-oceanleo-shell] .text-pink-600,
+html.dark [data-oceanleo-shell] .text-red-600 { color: #f08ab0 !important; }
+
+/* ---- §3 深色语义面：黑色实心按钮 / 输入框 / 弹窗 / 占位符 ----
+   全家桶大量用 bg-neutral-900 做主按钮（如「登录」「保存」），深色下这块会与近黑
+   背景糊在一起。反转为浅色实心按钮（Manus 深色里主按钮就是浅底深字）。 */
+html.dark [data-oceanleo-shell] .bg-neutral-900,
+html.dark [data-oceanleo-shell] .bg-neutral-800,
+html.dark [data-oceanleo-shell] .bg-black {
+  background-color: #ececec !important;
+  color: #1a1a1a !important;
+}
+html.dark [data-oceanleo-shell] .hover\:bg-neutral-800:hover,
+html.dark [data-oceanleo-shell] .hover\:bg-neutral-700:hover {
+  background-color: #ffffff !important;
+}
+/* 上面反转后，这些按钮里的白字要跟着变深，否则浅底白字看不见。 */
+html.dark [data-oceanleo-shell] .bg-neutral-900.text-white,
+html.dark [data-oceanleo-shell] .bg-neutral-800.text-white,
+html.dark [data-oceanleo-shell] .bg-black.text-white { color: #1a1a1a !important; }
+
+/* 输入框 / 文本域 / select：深色下用卡片层底 + 低对比描边 + 柔和占位符。 */
+html.dark [data-oceanleo-shell] input,
+html.dark [data-oceanleo-shell] textarea,
+html.dark [data-oceanleo-shell] select {
+  background-color: var(--leo-d-card) !important;
+  border-color: var(--leo-d-border) !important;
+  color: var(--leo-d-fg) !important;
+}
+html.dark [data-oceanleo-shell] input::placeholder,
+html.dark [data-oceanleo-shell] textarea::placeholder {
+  color: var(--leo-d-faint) !important;
+}
+html.dark [data-oceanleo-shell] .placeholder\:text-neutral-400::placeholder,
+html.dark [data-oceanleo-shell] .placeholder\:text-neutral-500::placeholder {
+  color: var(--leo-d-faint) !important;
+}
+
+/* 弹窗 / 浮层（各站用 bg-white 做 modal/menu）——已被上面「白→card」规则覆盖底色，
+   这里补投影：深色下柔和的暗投影，避免浅色投影在近黑底上发灰糊边。 */
+html.dark [data-oceanleo-shell] .shadow-lg,
+html.dark [data-oceanleo-shell] .shadow-xl,
+html.dark [data-oceanleo-shell] .shadow-2xl {
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--leo-d-border) !important;
+}
+
+/* focus 环：深色下把浅色 ring 换成低调的中性亮环。 */
+html.dark [data-oceanleo-shell] .focus\:border-neutral-400:focus,
+html.dark [data-oceanleo-shell] .focus-within\:border-neutral-400:focus-within {
+  border-color: rgba(255, 255, 255, 0.28) !important;
 }
