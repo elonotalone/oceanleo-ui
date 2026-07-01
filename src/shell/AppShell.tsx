@@ -25,6 +25,8 @@ import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ShellChromeProvider, useShellChrome } from "./ShellChrome";
+import { ThemeSwitcher } from "../theme";
+import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
@@ -132,6 +134,11 @@ export interface AppShellProps {
   headerRight?: ReactNode;
   /** true 时隐藏顶部 header（业务页自带顶栏时用） */
   hideHeader?: boolean;
+  /** 内建主题切换器（Light/Dark/Auto）。默认 true，全家桶壳内统一提供，各站零接线。 */
+  showThemeSwitcher?: boolean;
+  /** 内建语言切换器（17 语言）。默认 true。⚠ 站点必须已包 <I18nProvider>（NextIntlClientProvider）
+   *  才能开——未接 i18n 的站传 false，否则 useLocale() 会抛错。 */
+  showLanguageSwitcher?: boolean;
   /**
    * 判定「当前是操作台路由」（OperatorConsole 拥有右上角模型选择，header 的那条该
    * 隐藏）的同步谓词。接收已去掉 locale 前缀的逻辑路由。默认匹配 `/workspace`
@@ -207,6 +214,8 @@ function AppShellInner({
   onModelSelectionChange,
   headerRight,
   hideHeader = false,
+  showThemeSwitcher = true,
+  showLanguageSwitcher = true,
 }: AppShellProps) {
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
@@ -278,6 +287,17 @@ function AppShellInner({
       <Link href={accountHref} className={accountCls}>
         {accountInner}
       </Link>
+    );
+  }
+
+  // 主题 + 语言切换器（全家桶壳内单一事实源）。sidebar 放账户区上方，topbar 放右上区。
+  function renderSwitchers(): ReactNode {
+    if (!showThemeSwitcher && !showLanguageSwitcher) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {showThemeSwitcher && <ThemeSwitcher variant="compact" />}
+        {showLanguageSwitcher && <LanguageSwitcher variant="compact" />}
+      </div>
     );
   }
 
@@ -506,6 +526,9 @@ function AppShellInner({
       )}
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
+        {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}
+        {renderSwitchers()}
+
         {/* token 余额 —— 只读展示，不可点击（实时余额由各站传入） */}
         <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2">
           <span className="flex items-center gap-2 text-[12px] text-neutral-600">
@@ -551,8 +574,9 @@ function AppShellInner({
               </div>
             ) : null}
           </div>
-          {/* 右：自定义插槽 + token 余额 + 账户（账户在余额右边） */}
+          {/* 右：切换器 + 自定义插槽 + token 余额 + 账户（账户在余额右边） */}
           <div className="flex shrink-0 items-center gap-2">
+            {renderSwitchers()}
             {headerRight}
             {renderCredits()}
             {renderAccountButton()}
