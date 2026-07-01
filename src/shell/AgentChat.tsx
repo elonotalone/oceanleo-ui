@@ -213,7 +213,7 @@ export function AgentChat({
           <p className="py-10 text-center text-sm text-stone-400">在下方输入，开始与 agent 对话。</p>
         )}
         {messages.map((m) => (
-          <MessageBubble key={m.id} m={m} accent={accent} />
+          <MessageBubble key={m.id} m={m} />
         ))}
         {running && (
           <div className="flex items-center gap-2 text-[13px] text-stone-400">
@@ -284,7 +284,7 @@ export function AgentChat({
   );
 }
 
-function MessageBubble({ m, accent }: { m: AgentMessage; accent: string }) {
+function MessageBubble({ m }: { m: AgentMessage }) {
   if (m.role === "user") {
     const atts = m.meta?.attachments || [];
     return (
@@ -297,10 +297,9 @@ function MessageBubble({ m, accent }: { m: AgentMessage; accent: string }) {
           </div>
         )}
         {m.content && (
-          <div
-            className="max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
-            style={{ background: accent }}
-          >
+          // 用户气泡统一黑色（bg-neutral-900）——与主站任务页 /tasks/[id] 一致。
+          // 操作员 2026-07-01：对话/历史回看不能因 accent 变蓝，全程一致黑色。
+          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-neutral-900 px-3.5 py-2 text-[13px] text-white">
             {m.content}
           </div>
         )}

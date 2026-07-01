@@ -61,6 +61,9 @@ export interface FileLibraryProps {
   onTabChange?: (tab: Tab) => void;
   /** doctrine v4：true 时隐藏顶部标题 + tab 条（tab 已上提到侧栏子栏）。 */
   hideHeader?: boolean;
+  /** 操作员 2026-07-01：true 时用 h-full 填满父容器（供 SplitWorkspace 右栏内嵌），
+   *  而非默认的 h-[calc(100dvh-1px)] 视口高度（那会在分栏 body 里撑破）。 */
+  fill?: boolean;
 }
 
 export function FileLibrary({
@@ -73,6 +76,7 @@ export function FileLibrary({
   tab: controlledTab,
   onTabChange,
   hideHeader = false,
+  fill = false,
 }: FileLibraryProps) {
   const [internalTab, setInternalTab] = useState<Tab>(defaultTab);
   const tab = controlledTab ?? internalTab;
@@ -84,7 +88,7 @@ export function FileLibrary({
   const [scopeSite, setScopeSite] = useState<string>(siteId);
 
   return (
-    <div className={`flex h-[calc(100dvh-1px)] flex-col ${hideHeader ? "px-4 py-4" : "px-8 py-6"}`}>
+    <div className={`flex flex-col ${fill ? "h-full" : "h-[calc(100dvh-1px)]"} ${hideHeader ? "px-4 py-4" : "px-8 py-6"}`}>
       {!hideHeader && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
