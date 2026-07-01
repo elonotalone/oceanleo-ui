@@ -259,37 +259,44 @@ export function AgentChat({
 
   const stream = (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && !running && (
-          <div className="py-10 text-center text-sm text-stone-400">
-            {emptyHint ?? "在下方输入，开始与 agent 对话。"}
-          </div>
-        )}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} m={m} />
-        ))}
-        {running && (
-          <div className="flex items-center gap-2 text-[13px] text-stone-400">
-            <span className="v-spinner" /> agent 正在思考…
-          </div>
-        )}
-        {error && <p className="text-[13px] text-rose-500">{error}</p>}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。 */}
+        <div className="mx-auto w-full max-w-2xl space-y-3">
+          {messages.length === 0 && !running && (
+            <div className="py-10 text-center text-[15px] text-stone-400">
+              {emptyHint ?? "在下方输入，开始与 agent 对话。"}
+            </div>
+          )}
+          {messages.map((m) => (
+            <MessageBubble key={m.id} m={m} />
+          ))}
+          {running && (
+            <div className="flex items-center gap-2 text-[14px] text-stone-400">
+              <span className="v-spinner" /> agent 正在思考…
+            </div>
+          )}
+          {error && <p className="text-[14px] text-rose-500">{error}</p>}
+        </div>
       </div>
-      <div className="shrink-0 space-y-2 border-t border-stone-100 p-3">
-        {composerHeader}
-        <LeoComposer
-          value={input}
-          onChange={setInput}
-          onSubmit={send}
-          loading={busy}
-          leoSuggest
-          placeholder={placeholder ?? "继续追问，或上传文件让 agent 分析…"}
-          rows={1}
-          onAttachFiles={atts.handleAttachFiles}
-          attachments={atts.composerAttachments}
-          onRemoveAttachment={atts.removeAttachment}
-          onVoiceTranscript={handleVoiceTranscript}
-        />
+      <div className="shrink-0 border-t border-stone-100 px-3 py-3">
+        {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
+            与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。 */}
+        <div className="mx-auto w-full max-w-2xl space-y-2">
+          {composerHeader}
+          <LeoComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={send}
+            loading={busy}
+            leoSuggest
+            placeholder={placeholder ?? "继续追问，或上传文件让 agent 分析…"}
+            rows={1}
+            onAttachFiles={atts.handleAttachFiles}
+            attachments={atts.composerAttachments}
+            onRemoveAttachment={atts.removeAttachment}
+            onVoiceTranscript={handleVoiceTranscript}
+          />
+        </div>
       </div>
     </div>
   );
@@ -340,7 +347,8 @@ function MessageBubble({ m }: { m: AgentMessage }) {
         {m.content && (
           // 用户气泡统一黑色（bg-neutral-900）——与主站任务页 /tasks/[id] 一致。
           // 操作员 2026-07-01：对话/历史回看不能因 accent 变蓝，全程一致黑色。
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-neutral-900 px-3.5 py-2 text-[13px] text-white">
+          // 字号 2026-07-01 调大 13→15px（历史回看字体太小诉求）。
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-4 py-2.5 text-[15px] leading-relaxed text-white">
             {m.content}
           </div>
         )}
@@ -350,29 +358,29 @@ function MessageBubble({ m }: { m: AgentMessage }) {
   // assistant
   if (m.kind === "plan") {
     return (
-      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-2.5">
-        <Markdown>{m.content}</Markdown>
+      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3">
+        <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
       </div>
     );
   }
   if (m.kind === "step") {
-    return <div className="px-1 text-[12px] font-medium text-stone-500">{m.content}</div>;
+    return <div className="px-1 text-[13px] font-medium text-stone-500">{m.content}</div>;
   }
   if (m.kind === "error") {
-    return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">{m.content}</div>;
+    return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
   }
   // text / artifact (artifact's full content is mirrored to the right pane; in
   // the stream we just show a short note for artifact-final to avoid duplication)
   if (m.meta?.artifact && m.meta?.final) {
     return (
-      <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">
+      <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[14px] text-emerald-700">
         ✅ 已生成结果，见右侧「{ARTIFACT_LABEL[m.meta.artifact.type] || "结果"}」面板。
       </div>
     );
   }
   return (
-    <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white px-3.5 py-2 shadow-sm ring-1 ring-stone-100">
-      <Markdown>{m.content}</Markdown>
+    <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white px-4 py-2.5 shadow-sm ring-1 ring-stone-100">
+      <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
     </div>
   );
 }

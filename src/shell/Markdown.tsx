@@ -166,5 +166,8 @@ export function Markdown({ children, className = "" }: { children: string; class
     );
   }
 
-  return <div className={`text-[13px] ${className}`}>{blocks}</div>;
+  // 默认基准字号 13px；若调用方在 className 里显式给了 text-[..]/text-xx 字号，
+  // 则不再叠加默认（让调用方的字号生效，如 AgentChat 历史回看用 15px）。
+  const hasSize = /(?:^|\s)text-(\[|xs|sm|base|lg|xl)/.test(className);
+  return <div className={`${hasSize ? "" : "text-[13px]"} ${className}`}>{blocks}</div>;
 }

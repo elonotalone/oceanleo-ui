@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent,
   type ReactNode,
   useCallback,
@@ -173,6 +174,10 @@ export function LeoComposer({
   const [meetingOpen, setMeetingOpen] = useState(false);
   // leo 建议·快速版（⚡ 一键补充）请求态。
   const [quickBusy, setQuickBusy] = useState(false);
+  // 拖拽上传：文件被拖到输入框卡片上方（显示虚线落区）。dragDepth 抵消
+  // 子元素间穿梭时反复触发的 enter/leave（只在真正离开卡片时收起）。
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
 
   const autogrow = useCallback(() => {
     const el = ref.current;
@@ -238,6 +243,36 @@ export function LeoComposer({
     if (files.length) onAttachFiles(files);
   }
 
+  // ── 拖拽上传（传了 onAttachFiles 才启用）：把文件拖到整个输入框卡片上，松手即上传。
+  //    与主站首页「整页拖拽」互补——这里落点在输入框本体，各站零改动即获此能力。
+  const dragEnabled = Boolean(onAttachFiles) && !disabled;
+  function hasFiles(e: ReactDragEvent) {
+    return Array.from(e.dataTransfer?.types || []).includes("Files");
+  }
+  function onDragEnter(e: ReactDragEvent) {
+    if (!dragEnabled || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  }
+  function onDragOver(e: ReactDragEvent) {
+    if (!dragEnabled || !hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  }
+  function onDragLeave(e: ReactDragEvent) {
+    if (!dragEnabled) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  }
+  function onDrop(e: ReactDragEvent) {
+    if (!dragEnabled || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    emitFiles(e.dataTransfer?.files || null);
+  }
+
   if (onMeetingRecording && meetingOpen) {
     return (
       <div className={className}>
@@ -255,8 +290,24 @@ export function LeoComposer({
 
   return (
     <div
-      className={`rounded-2xl border border-neutral-200 bg-white shadow-sm transition-all duration-200 focus-within:border-neutral-300 focus-within:shadow-md ${className}`}
+      onDragEnter={dragEnabled ? onDragEnter : undefined}
+      onDragOver={dragEnabled ? onDragOver : undefined}
+      onDragLeave={dragEnabled ? onDragLeave : undefined}
+      onDrop={dragEnabled ? onDrop : undefined}
+      className={`relative rounded-2xl border bg-white shadow-sm transition-all duration-200 focus-within:border-neutral-300 focus-within:shadow-md ${
+        dragOver ? "border-indigo-400 ring-2 ring-indigo-200" : "border-neutral-200"
+      } ${className}`}
     >
+      {/* 拖拽落区提示（覆盖整张卡片）——传了 onAttachFiles 才可能出现。 */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-indigo-400 bg-indigo-50/85 text-indigo-600">
+          <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="M12 16V4m0 0l-4 4m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
+          </svg>
+          <span className="text-[13px] font-medium">松开即可上传文件</span>
+        </div>
+      )}
       <textarea
         ref={ref}
         data-ai-assistant-target={leoSuggest ? "" : undefined}

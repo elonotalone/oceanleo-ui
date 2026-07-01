@@ -19,7 +19,8 @@ export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
 export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
 // doctrine v4：历史记录 master-detail（侧栏列表+删除 / 主区回看）。
-export { HistorySubNav, HistoryDetail, PendingSubNav, PendingDetail } from "./HistoryMasterDetail";
+// 「待处理」（PendingSubNav / PendingDetail）已于 2026-07-01 下线，全部会话进历史记录。
+export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
 // doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
 export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 // doctrine v8：Playground（右侧主区：app/agent/organization/workflow 四分区 + 目录 +
