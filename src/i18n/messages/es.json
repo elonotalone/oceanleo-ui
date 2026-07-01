@@ -25,6 +25,7 @@
     "signupBonus": "Regístrate y consigue créditos gratis. Tras recargar, la facturación es en tiempo real según el consumo de tokens."
   },
   "nav": {
+    "home": "Inicio",
     "newTask": "Nueva tarea",
     "workspace": "Espacio de trabajo",
     "allApps": "Todas las apps",

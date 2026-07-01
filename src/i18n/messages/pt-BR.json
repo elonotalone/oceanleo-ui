@@ -25,6 +25,7 @@
     "signupBonus": "Cadastre-se e ganhe créditos grátis. Após recarregar, a cobrança é em tempo real conforme o uso de tokens."
   },
   "nav": {
+    "home": "Início",
     "newTask": "Nova tarefa",
     "workspace": "Área de trabalho",
     "allApps": "Todos os apps",

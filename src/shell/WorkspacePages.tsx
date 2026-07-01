@@ -17,6 +17,7 @@
 // ============================================================================
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { ShellNavItem, ShellSubNav } from "./AppShell";
 import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles } from "./icons";
 
@@ -58,6 +59,24 @@ const ICON: Record<WorkspacePage, ReactNode> = {
   history: <IconHistory />,
   playground: <IconSparkles />,
 };
+
+/**
+ * 全家桶子站四页 nav 的 i18n 标签（操作员 2026-07-01：一旦语言设置改了全局跟随）。
+ * 各站 SiteShell 里：`const labels = useWorkspaceNavLabels();
+ *   const nav = useMemo(() => workspaceNav({ labels, subNav }), [labels]);`
+ * 从共享 `nav` namespace 读（home/workspace/library/history/playground）——17 语言全覆盖。
+ * ⚠ 必须在 <I18nProvider> 内调用（client 组件）。
+ */
+export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
+  const t = useTranslations("nav");
+  return {
+    home: t("home"),
+    workspace: t("workspace"),
+    library: t("library"),
+    history: t("history"),
+    playground: t("playground"),
+  };
+}
 
 /** 构造 AppShell 的导航。顺序：首页 → 工作台 → 文件库 → 历史记录 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {

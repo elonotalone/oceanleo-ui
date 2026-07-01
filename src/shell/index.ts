@@ -100,6 +100,6 @@ export type { FileLibraryProps, SiteOption, LibraryTab } from "./FileLibrary";
 export { HistoryPage } from "./HistoryPage";
 export type { HistoryPageProps } from "./HistoryPage";
 // 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
-export { workspaceNav, pageFromPath } from "./WorkspacePages";
+export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";

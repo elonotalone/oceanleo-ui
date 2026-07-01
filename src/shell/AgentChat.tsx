@@ -327,6 +327,8 @@ export function AgentChat({
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
       headerHeight={headerHeight}
+      // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
+      soloMaxWidth={null}
       library={effectiveLibrary}
     />
   );

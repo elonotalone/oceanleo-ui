@@ -84,6 +84,12 @@ export interface SplitWorkspaceProps {
   headerHeight?: number;
   className?: string;
   /**
+   * 操作员 2026-07-01：单栏（右版面关闭）时左栏内容的最大宽度并居中，避免操作台
+   * 表单把整页铺满 —— 横向范围与 agent 对话框（max-w-2xl/3xl）基本一致。默认
+   * "48rem"（≈max-w-3xl）。传 null 关闭限宽（铺满，旧行为）。仅影响单栏模式；双栏
+   * （库打开 / agent 结果分屏）不限宽，两栏各自占比。 */
+  soloMaxWidth?: string | null;
+  /**
    * 操作员 2026-07-01（v2 纠正）：「库」= 右版面的显隐开关，**不内建任何库内容**。
    * OceanLeo 系列右边永远只有【一个】版面：平时收起（不显示），点「库」按钮或点对话/
    * 操作台里的素材 → 展开右版面，显示 `right`（该站【自己的】结果/库内容，如子站的
@@ -128,6 +134,7 @@ export function SplitWorkspace({
   accent = "#4f46e5",
   headerHeight = 56,
   className = "",
+  soloMaxWidth = "48rem",
   library,
 }: SplitWorkspaceProps) {
   // 「库」= 右版面显隐开关（不内建内容）。默认关。支持受控（消费端持有 open，如点素材
@@ -298,7 +305,12 @@ export function SplitWorkspace({
           className={`p-1.5 ${className}`}
           style={{ height: `calc(100dvh - ${headerHeight}px)` }}
         >
-          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70">
+          {/* 单栏：内容限宽居中（操作员 2026-07-01「操作台不能铺满整页，横向范围与
+              agent 对话框一致」）。soloMaxWidth=null 时退回铺满（旧行为）。 */}
+          <div
+            className="mx-auto flex h-full w-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70"
+            style={soloMaxWidth ? { maxWidth: soloMaxWidth } : undefined}
+          >
             {(effectiveLeftLabel != null) && (
               <PaneHeader label={effectiveLeftLabel} />
             )}

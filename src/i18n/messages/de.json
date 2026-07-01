@@ -25,6 +25,7 @@
     "signupBonus": "Registrieren Sie sich für kostenloses Guthaben. Nach dem Aufladen erfolgt die Abrechnung in Echtzeit nach Token-Verbrauch."
   },
   "nav": {
+    "home": "Startseite",
     "newTask": "Neue Aufgabe",
     "workspace": "Arbeitsbereich",
     "allApps": "Alle Apps",

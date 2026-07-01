@@ -25,6 +25,7 @@
     "signupBonus": "가입하면 무료 크레딧을 드립니다. 충전 후에는 token 사용량에 따라 실시간으로 청구됩니다."
   },
   "nav": {
+    "home": "홈",
     "newTask": "새 작업",
     "workspace": "워크스페이스",
     "allApps": "모든 앱",

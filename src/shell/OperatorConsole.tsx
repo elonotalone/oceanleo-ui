@@ -140,6 +140,10 @@ export interface OperatorConsoleProps {
    *   - 不传 → 有 siteId 时自动启用（siteName 用 siteId）。
    * embed/solo（hideTabs）时不显示库（主站 iframe 内嵌，库入口由主站承担）。 */
   library?: SplitLibraryConfig | false;
+  /**
+   * 操作员 2026-07-01：单栏（库关闭）时操作台/结果内容最大宽度并居中，防止铺满整页
+   * （横向范围与 agent 对话框一致）。透传给 Studio→SplitWorkspace，默认 48rem。 */
+  soloMaxWidth?: string | null;
 }
 
 export function OperatorConsole({
@@ -167,6 +171,7 @@ export function OperatorConsole({
   apiHref = "/api",
   skillTab: _skillTab,
   library,
+  soloMaxWidth = "48rem",
 }: OperatorConsoleProps) {
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
   // 「库」= 右版面显隐开关（右版面内容 = 各功能的 canvas，即该站自己的结果/库）。
@@ -374,6 +379,7 @@ export function OperatorConsole({
           accent={accent}
           headerHeight={studioHeaderHeight}
           library={libraryConfig}
+          soloMaxWidth={soloMaxWidth}
         />
       </div>
     </div>

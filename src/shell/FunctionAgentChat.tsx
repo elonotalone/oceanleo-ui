@@ -251,81 +251,85 @@ export function FunctionAgentChat({
   }
 
   // ── agent 形态：对话流 + 输入框（独立于操作台，带工具能力）──────────────────
+  // 排版对齐 agent.oceanleo.com 的 AgentChat（操作员 2026-07-01）：字体 15px、对话
+  // 与输入框 max-w-2xl 居中、气泡不铺满整栏，读感与主 agent 站一致（不再是 13px + 拉满）。
   return (
     <div className="flex h-full flex-col">
       {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
-      {appLabel && (
-        <div className="mb-2 flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
-          <span>所属 app</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
-            {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
-            {appLabel}
-          </span>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+        <div className="mx-auto w-full max-w-2xl space-y-3">
+          {appLabel && (
+            <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
+              <span>所属 app</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
+                {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
+                {appLabel}
+              </span>
+            </div>
+          )}
+          {messages.length === 0 && !running && (
+            <p className="py-10 text-center text-[15px] text-stone-400">
+              让「{schema.title}」agent 帮你做事，
+              <br />
+              它会调用工具为你生成结果。
+              {showOps && (
+                <>
+                  <br />
+                  <span className="text-[13px] text-stone-300">
+                    想自己精细操控？切到「{opsLabel}」直接调参生成。
+                  </span>
+                </>
+              )}
+            </p>
+          )}
+          {messages.map((m) => (
+            <Bubble key={m.id} m={m} accent={accent} />
+          ))}
+          {running && (
+            <div className="flex items-center gap-2 text-[14px] text-stone-400">
+              <span className="v-spinner" /> agent 正在处理…
+            </div>
+          )}
+          {error && <p className="text-[14px] text-rose-500">{error}</p>}
         </div>
-      )}
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {messages.length === 0 && !running && (
-          <p className="py-8 text-center text-sm text-stone-400">
-            让「{schema.title}」agent 帮你做事，
-            <br />
-            它会调用工具为你生成结果。
-            {showOps && (
-              <>
-                <br />
-                <span className="text-[12px] text-stone-300">
-                  想自己精细操控？切到「{opsLabel}」直接调参生成。
-                </span>
-              </>
-            )}
-          </p>
-        )}
-        {messages.map((m) => (
-          <Bubble key={m.id} m={m} accent={accent} />
-        ))}
-        {running && (
-          <div className="flex items-center gap-2 text-[13px] text-stone-400">
-            <span className="v-spinner" /> agent 正在处理…
-          </div>
-        )}
-        {error && <p className="text-[13px] text-rose-500">{error}</p>}
       </div>
-      <div className="shrink-0 space-y-2 pt-3">
-        <LeoComposer
-          value={input}
-          onChange={setInput}
-          onSubmit={send}
-          loading={busy}
-          leoSuggest
-          leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
-          placeholder={`让 agent 帮你做「${schema.title}」，可上传文件…`}
-          rows={1}
-          onAttachFiles={atts.handleAttachFiles}
-          attachments={atts.composerAttachments}
-          onRemoveAttachment={atts.removeAttachment}
-          onVoiceTranscript={handleVoiceTranscript}
-        />
+      <div className="shrink-0 pt-3">
+        <div className="mx-auto w-full max-w-2xl space-y-2">
+          <LeoComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={send}
+            loading={busy}
+            leoSuggest
+            leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
+            placeholder={`让 agent 帮你做「${schema.title}」，可上传文件…`}
+            rows={1}
+            onAttachFiles={atts.handleAttachFiles}
+            attachments={atts.composerAttachments}
+            onRemoveAttachment={atts.removeAttachment}
+            onVoiceTranscript={handleVoiceTranscript}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
 function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
+  void accent; // 用户气泡统一黑色（对齐 AgentChat / 主站任务页），不再随 accent 变色。
   if (m.role === "user") {
     const attList = m.meta?.attachments || [];
     return (
       <div className="flex flex-col items-end gap-1.5">
         {attList.length > 0 && (
-          <div className="flex max-w-[88%] flex-wrap justify-end gap-1.5">
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
             {attList.map((a, i) => (
               <FnAttachmentChip key={i} att={a} />
             ))}
           </div>
         )}
         {m.content && (
-          <div
-            className="max-w-[88%] whitespace-pre-wrap rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] text-white"
-            style={{ background: accent }}
-          >
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-4 py-2.5 text-[15px] leading-relaxed text-white">
             {m.content}
           </div>
         )}
@@ -334,21 +338,21 @@ function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
   }
   if (m.kind === "plan") {
     return (
-      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-2.5 text-[13px]">
-        <Markdown>{m.content}</Markdown>
+      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3">
+        <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
       </div>
     );
   }
   if (m.kind === "step") {
-    return <div className="px-1 text-[12px] font-medium text-stone-500">{m.content}</div>;
+    return <div className="px-1 text-[13px] font-medium text-stone-500">{m.content}</div>;
   }
   if (m.kind === "error") {
-    return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">{m.content}</div>;
+    return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
   }
   return (
-    <div className="max-w-[94%] space-y-1.5">
-      <div className="rounded-2xl rounded-bl-md bg-white px-3.5 py-2 text-[13px] shadow-sm ring-1 ring-stone-100">
-        <Markdown>{m.content}</Markdown>
+    <div className="max-w-[92%]">
+      <div className="rounded-2xl rounded-bl-md bg-white px-4 py-2.5 shadow-sm ring-1 ring-stone-100">
+        <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
       </div>
     </div>
   );

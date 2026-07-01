@@ -63,9 +63,17 @@ function readInitialMode(): ThemeMode {
 function writeCookie(mode: ThemeMode) {
   if (typeof document === "undefined") return;
   const host = window.location.hostname;
-  const domainAttr =
-    host.endsWith(".oceanleo.com") || host === "oceanleo.com" ? "; domain=.oceanleo.com" : "";
-  document.cookie = `${THEME_COOKIE}=${mode}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax${domainAttr}`;
+  const onOceanleo = host.endsWith(".oceanleo.com") || host === "oceanleo.com";
+  // https 页面必须带 Secure，否则部分浏览器（尤其配合 domain= 的跨子域 cookie）会
+  // 静默丢弃写入 → 刷新后 SSR 读不到 → 主题回退默认（操作员 2026-07-01「选深色刷新变亮」根因）。
+  const secure = typeof location !== "undefined" && location.protocol === "https:" ? "; secure" : "";
+  // 顶级域 cookie（跨全部 *.oceanleo.com 子站共享）。
+  if (onOceanleo) {
+    document.cookie = `${THEME_COOKIE}=${mode}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax; domain=.oceanleo.com${secure}`;
+    // 兜底：某些环境（预览域 / localhost 端口）domain=.oceanleo.com 不匹配当前 host 会被拒，
+    // 再无 domain 属性写一份同源 cookie，保证至少本站能读到。
+  }
+  document.cookie = `${THEME_COOKIE}=${mode}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax${secure}`;
   try {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch {
@@ -90,11 +98,16 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ThemeMode>(DEFAULT_THEME_MODE);
   const [resolved, setResolved] = useState<"light" | "dark">("light");
 
-  // 挂载：同步 state 到 ThemeScript 已应用的真实状态（读 cookie/ls）。
+  // 挂载：同步 state 到 ThemeScript 已应用的真实状态（读 cookie/ls），并【兜底再
+  // applyClass 一次】。原因（操作员 2026-07-01「选深色刷新变亮」）：ThemeScript 首帧
+  // 会加 .dark，但若首帧因 cookie 写入失败而缺失、或 React 水合/RSC 导航后 <html>
+  // 类被某处重置，这里按用户真实选择（cookie/ls）再确定性地应用一次，杜绝回退亮色。
   useEffect(() => {
     const initial = readInitialMode();
     setModeState(initial);
-    setResolved(resolveThemeClass(initial, systemPrefersDark()));
+    const r = resolveThemeClass(initial, systemPrefersDark());
+    setResolved(r);
+    applyClass(r);
   }, []);
 
   // Auto 模式下跟随系统偏好实时切换。

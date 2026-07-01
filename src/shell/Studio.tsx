@@ -57,6 +57,10 @@ export interface StudioProps {
    * 标题右侧出现「库」按钮（默认关）；点击 → 右栏切换为共享文件库，agent/操作台生成
    * 的作品可在此查看。全 OceanLeo 系列统一。 */
   library?: SplitLibraryConfig;
+  /**
+   * 操作员 2026-07-01：单栏（库关闭）时操作台内容最大宽度并居中，防止表单铺满整页
+   * （横向范围与 agent 对话框一致）。透传给 SplitWorkspace，默认 48rem。 */
+  soloMaxWidth?: string | null;
 }
 
 const BASELINE_WIDTH = 1280; // 折算 opsWidth→ratio 的基准视口宽度
@@ -73,6 +77,7 @@ export function Studio({
   headerHeight = 56,
   className = "",
   library,
+  soloMaxWidth = "48rem",
 }: StudioProps) {
   // 把旧的 px 固定宽近似成初始比例（夹在 SplitWorkspace 的 18%–82% 内）。
   const initialRatio = useMemo(() => {
@@ -97,6 +102,7 @@ export function Studio({
       headerHeight={headerHeight}
       className={className}
       library={library}
+      soloMaxWidth={soloMaxWidth}
     />
   );
 }

@@ -25,6 +25,7 @@
     "signupBonus": "註冊即可獲得體驗金，儲值後依 token 用量即時計費。"
   },
   "nav": {
+    "home": "首頁",
     "newTask": "新增任務",
     "workspace": "工作台",
     "allApps": "全部應用",
