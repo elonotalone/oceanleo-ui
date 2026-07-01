@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "تسجيل الدخول / إنشاء حساب",
+    "logout": "تسجيل الخروج",
+    "loggedOut": "لم تسجّل الدخول",
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "delete": "حذف",
+    "rename": "إعادة تسمية",
+    "save": "حفظ",
+    "search": "بحث",
+    "loading": "جارٍ التحميل…",
+    "back": "رجوع",
+    "more": "المزيد"
+  },
+  "account": {
+    "title": "الحساب",
+    "tokenBalance": "رصيد token",
+    "monthSpend": "إنفاق هذا الشهر",
+    "taskCount": "عدد المهام",
+    "freePlan": "الخطة المجانية",
+    "notLoggedIn": "لم تسجّل الدخول",
+    "loginPrompt": "سجّل الدخول لإنشاء المهام وعرض رصيد token وسجل المهام.",
+    "signupBonus": "سجّل للحصول على رصيد تجريبي مجاني. بعد الشحن، تتم الفوترة في الوقت الفعلي حسب استهلاك token."
+  },
+  "nav": {
+    "newTask": "مهمة جديدة",
+    "workspace": "مساحة العمل",
+    "allApps": "كل التطبيقات",
+    "playground": "Playground",
+    "plugins": "الإضافات",
+    "schedules": "المهام المجدولة",
+    "library": "المكتبة",
+    "history": "السجل",
+    "downloadApp": "تنزيل التطبيق",
+    "projects": "المشاريع"
+  },
+  "theme": {
+    "label": "المظهر",
+    "light": "فاتح",
+    "dark": "داكن",
+    "auto": "حسب النظام"
+  },
+  "language": {
+    "label": "اللغة"
+  }
+}

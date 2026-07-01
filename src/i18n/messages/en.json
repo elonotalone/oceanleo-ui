@@ -35,5 +35,14 @@
     "history": "History",
     "downloadApp": "Download App",
     "projects": "Projects"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "auto": "System"
+  },
+  "language": {
+    "label": "Language"
   }
 }

@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "Iniciar sesión / Registrarse",
+    "logout": "Cerrar sesión",
+    "loggedOut": "No iniciaste sesión",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "rename": "Cambiar nombre",
+    "save": "Guardar",
+    "search": "Buscar",
+    "loading": "Cargando…",
+    "back": "Atrás",
+    "more": "Más"
+  },
+  "account": {
+    "title": "Cuenta",
+    "tokenBalance": "Saldo de tokens",
+    "monthSpend": "Gasto del mes",
+    "taskCount": "Tareas",
+    "freePlan": "Plan gratis",
+    "notLoggedIn": "No iniciaste sesión",
+    "loginPrompt": "Inicia sesión para crear tareas, ver tu saldo de tokens y revisar el historial de tareas.",
+    "signupBonus": "Regístrate y obtén créditos gratis. Después de recargar, el cobro es en tiempo real según el uso de tokens."
+  },
+  "nav": {
+    "newTask": "Nueva tarea",
+    "workspace": "Espacio de trabajo",
+    "allApps": "Todas las apps",
+    "playground": "Playground",
+    "plugins": "Complementos",
+    "schedules": "Tareas programadas",
+    "library": "Biblioteca",
+    "history": "Historial",
+    "downloadApp": "Descargar app",
+    "projects": "Proyectos"
+  },
+  "theme": {
+    "label": "Tema",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "auto": "Sistema"
+  },
+  "language": {
+    "label": "Idioma"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "로그인 / 회원가입",
+    "logout": "로그아웃",
+    "loggedOut": "로그인하지 않음",
+    "cancel": "취소",
+    "confirm": "확인",
+    "delete": "삭제",
+    "rename": "이름 변경",
+    "save": "저장",
+    "search": "검색",
+    "loading": "불러오는 중…",
+    "back": "뒤로",
+    "more": "더 보기"
+  },
+  "account": {
+    "title": "계정",
+    "tokenBalance": "token 잔액",
+    "monthSpend": "이번 달 사용액",
+    "taskCount": "작업 수",
+    "freePlan": "무료 플랜",
+    "notLoggedIn": "로그인하지 않음",
+    "loginPrompt": "로그인하면 작업 생성, token 잔액 및 작업 기록을 확인할 수 있습니다.",
+    "signupBonus": "가입하면 무료 크레딧을 드립니다. 충전 후에는 token 사용량에 따라 실시간으로 청구됩니다."
+  },
+  "nav": {
+    "newTask": "새 작업",
+    "workspace": "워크스페이스",
+    "allApps": "모든 앱",
+    "playground": "Playground",
+    "plugins": "플러그인",
+    "schedules": "예약 작업",
+    "library": "라이브러리",
+    "history": "기록",
+    "downloadApp": "앱 다운로드",
+    "projects": "프로젝트"
+  },
+  "theme": {
+    "label": "테마",
+    "light": "라이트",
+    "dark": "다크",
+    "auto": "시스템 설정"
+  },
+  "language": {
+    "label": "언어"
+  }
+}

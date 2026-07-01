@@ -11,12 +11,42 @@
 import { getRequestConfig } from "next-intl/server";
 import { cookies, headers } from "next/headers";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, normalizeLocale, type Locale } from "./config";
-import sharedZh from "./messages/zh.json";
+import sharedDe from "./messages/de.json";
 import sharedEn from "./messages/en.json";
+import sharedEs from "./messages/es.json";
+import sharedEs419 from "./messages/es-419.json";
+import sharedFr from "./messages/fr.json";
+import sharedIt from "./messages/it.json";
+import sharedPtBR from "./messages/pt-BR.json";
+import sharedPtPT from "./messages/pt-PT.json";
+import sharedVi from "./messages/vi.json";
+import sharedTr from "./messages/tr.json";
+import sharedZh from "./messages/zh.json";
+import sharedZhTW from "./messages/zh-TW.json";
+import sharedJa from "./messages/ja.json";
+import sharedKo from "./messages/ko.json";
+import sharedAr from "./messages/ar.json";
+import sharedTh from "./messages/th.json";
+import sharedHi from "./messages/hi.json";
 
 const SHARED_MESSAGES: Record<Locale, Record<string, unknown>> = {
-  zh: sharedZh as Record<string, unknown>,
+  de: sharedDe as Record<string, unknown>,
   en: sharedEn as Record<string, unknown>,
+  es: sharedEs as Record<string, unknown>,
+  "es-419": sharedEs419 as Record<string, unknown>,
+  fr: sharedFr as Record<string, unknown>,
+  it: sharedIt as Record<string, unknown>,
+  "pt-BR": sharedPtBR as Record<string, unknown>,
+  "pt-PT": sharedPtPT as Record<string, unknown>,
+  vi: sharedVi as Record<string, unknown>,
+  tr: sharedTr as Record<string, unknown>,
+  zh: sharedZh as Record<string, unknown>,
+  "zh-TW": sharedZhTW as Record<string, unknown>,
+  ja: sharedJa as Record<string, unknown>,
+  ko: sharedKo as Record<string, unknown>,
+  ar: sharedAr as Record<string, unknown>,
+  th: sharedTh as Record<string, unknown>,
+  hi: sharedHi as Record<string, unknown>,
 };
 
 export type SiteMessagesLoader = (

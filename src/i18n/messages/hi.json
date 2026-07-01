@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "लॉग इन / साइन अप",
+    "logout": "लॉग आउट",
+    "loggedOut": "लॉग इन नहीं है",
+    "cancel": "रद्द करें",
+    "confirm": "पुष्टि करें",
+    "delete": "हटाएँ",
+    "rename": "नाम बदलें",
+    "save": "सहेजें",
+    "search": "खोजें",
+    "loading": "लोड हो रहा है…",
+    "back": "वापस",
+    "more": "और"
+  },
+  "account": {
+    "title": "खाता",
+    "tokenBalance": "token शेष",
+    "monthSpend": "इस माह का खर्च",
+    "taskCount": "कार्य संख्या",
+    "freePlan": "निःशुल्क योजना",
+    "notLoggedIn": "लॉग इन नहीं है",
+    "loginPrompt": "कार्य बनाने, अपना token शेष और कार्य इतिहास देखने के लिए लॉग इन करें।",
+    "signupBonus": "साइन अप पर निःशुल्क ट्रायल क्रेडिट पाएँ। रिचार्ज के बाद token उपयोग के अनुसार वास्तविक समय में बिलिंग होती है।"
+  },
+  "nav": {
+    "newTask": "नया कार्य",
+    "workspace": "वर्कस्पेस",
+    "allApps": "सभी ऐप्स",
+    "playground": "Playground",
+    "plugins": "प्लगइन",
+    "schedules": "निर्धारित कार्य",
+    "library": "लाइब्रेरी",
+    "history": "इतिहास",
+    "downloadApp": "ऐप डाउनलोड करें",
+    "projects": "प्रोजेक्ट"
+  },
+  "theme": {
+    "label": "थीम",
+    "light": "लाइट",
+    "dark": "डार्क",
+    "auto": "सिस्टम के अनुसार"
+  },
+  "language": {
+    "label": "भाषा"
+  }
+}

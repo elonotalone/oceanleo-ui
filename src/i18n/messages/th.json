@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "เข้าสู่ระบบ / สมัครสมาชิก",
+    "logout": "ออกจากระบบ",
+    "loggedOut": "ยังไม่ได้เข้าสู่ระบบ",
+    "cancel": "ยกเลิก",
+    "confirm": "ยืนยัน",
+    "delete": "ลบ",
+    "rename": "เปลี่ยนชื่อ",
+    "save": "บันทึก",
+    "search": "ค้นหา",
+    "loading": "กำลังโหลด…",
+    "back": "ย้อนกลับ",
+    "more": "เพิ่มเติม"
+  },
+  "account": {
+    "title": "บัญชี",
+    "tokenBalance": "ยอดคงเหลือ token",
+    "monthSpend": "ค่าใช้จ่ายเดือนนี้",
+    "taskCount": "จำนวนงาน",
+    "freePlan": "แพ็กเกจฟรี",
+    "notLoggedIn": "ยังไม่ได้เข้าสู่ระบบ",
+    "loginPrompt": "เข้าสู่ระบบเพื่อสร้างงาน ดูยอดคงเหลือ token และประวัติงาน",
+    "signupBonus": "สมัครสมาชิกรับเครดิตทดลองใช้ฟรี หลังเติมเงินจะคิดค่าบริการแบบเรียลไทม์ตามการใช้งาน token"
+  },
+  "nav": {
+    "newTask": "งานใหม่",
+    "workspace": "พื้นที่ทำงาน",
+    "allApps": "แอปทั้งหมด",
+    "playground": "Playground",
+    "plugins": "ปลั๊กอิน",
+    "schedules": "งานตามกำหนดเวลา",
+    "library": "คลัง",
+    "history": "ประวัติ",
+    "downloadApp": "ดาวน์โหลดแอป",
+    "projects": "โปรเจกต์"
+  },
+  "theme": {
+    "label": "ธีม",
+    "light": "สว่าง",
+    "dark": "มืด",
+    "auto": "ตามระบบ"
+  },
+  "language": {
+    "label": "ภาษา"
+  }
+}

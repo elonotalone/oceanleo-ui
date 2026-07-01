@@ -35,5 +35,14 @@
     "history": "历史记录",
     "downloadApp": "下载 App",
     "projects": "项目"
+  },
+  "theme": {
+    "label": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "auto": "跟随系统"
+  },
+  "language": {
+    "label": "语言"
   }
 }

@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "Đăng nhập / Đăng ký",
+    "logout": "Đăng xuất",
+    "loggedOut": "Chưa đăng nhập",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "delete": "Xóa",
+    "rename": "Đổi tên",
+    "save": "Lưu",
+    "search": "Tìm kiếm",
+    "loading": "Đang tải…",
+    "back": "Quay lại",
+    "more": "Thêm"
+  },
+  "account": {
+    "title": "Tài khoản",
+    "tokenBalance": "Số dư token",
+    "monthSpend": "Chi tiêu trong tháng",
+    "taskCount": "Số tác vụ",
+    "freePlan": "Gói miễn phí",
+    "notLoggedIn": "Chưa đăng nhập",
+    "loginPrompt": "Đăng nhập để tạo tác vụ, xem số dư token và lịch sử tác vụ.",
+    "signupBonus": "Đăng ký để nhận tín dụng dùng thử miễn phí. Sau khi nạp, tính phí theo thời gian thực dựa trên lượng token sử dụng."
+  },
+  "nav": {
+    "newTask": "Tác vụ mới",
+    "workspace": "Không gian làm việc",
+    "allApps": "Tất cả ứng dụng",
+    "playground": "Playground",
+    "plugins": "Tiện ích",
+    "schedules": "Tác vụ định kỳ",
+    "library": "Thư viện",
+    "history": "Lịch sử",
+    "downloadApp": "Tải ứng dụng",
+    "projects": "Dự án"
+  },
+  "theme": {
+    "label": "Giao diện",
+    "light": "Sáng",
+    "dark": "Tối",
+    "auto": "Theo hệ thống"
+  },
+  "language": {
+    "label": "Ngôn ngữ"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "Giriş yap / Kayıt ol",
+    "logout": "Çıkış yap",
+    "loggedOut": "Giriş yapılmadı",
+    "cancel": "İptal",
+    "confirm": "Onayla",
+    "delete": "Sil",
+    "rename": "Yeniden adlandır",
+    "save": "Kaydet",
+    "search": "Ara",
+    "loading": "Yükleniyor…",
+    "back": "Geri",
+    "more": "Daha fazla"
+  },
+  "account": {
+    "title": "Hesap",
+    "tokenBalance": "Token bakiyesi",
+    "monthSpend": "Aylık harcama",
+    "taskCount": "Görev sayısı",
+    "freePlan": "Ücretsiz plan",
+    "notLoggedIn": "Giriş yapılmadı",
+    "loginPrompt": "Görev oluşturmak, token bakiyenizi ve görev geçmişinizi görmek için giriş yapın.",
+    "signupBonus": "Kayıt olarak ücretsiz deneme kredisi kazanın. Yükleme sonrası ücretlendirme, token kullanımına göre gerçek zamanlıdır."
+  },
+  "nav": {
+    "newTask": "Yeni görev",
+    "workspace": "Çalışma alanı",
+    "allApps": "Tüm uygulamalar",
+    "playground": "Playground",
+    "plugins": "Eklentiler",
+    "schedules": "Zamanlanmış görevler",
+    "library": "Kitaplık",
+    "history": "Geçmiş",
+    "downloadApp": "Uygulamayı indir",
+    "projects": "Projeler"
+  },
+  "theme": {
+    "label": "Tema",
+    "light": "Açık",
+    "dark": "Koyu",
+    "auto": "Sistem"
+  },
+  "language": {
+    "label": "Dil"
+  }
+}

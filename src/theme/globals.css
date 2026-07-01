@@ -20,8 +20,24 @@
 
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
 
+/* ============================================================================
+ * 全家桶统一主题：Light / Dark / Auto（class 策略，单一事实源）
+ * ----------------------------------------------------------------------------
+ * 决策见 oceandino repo docs/architecture/oceanleo-theme-and-17-locales.md。
+ * `@custom-variant dark` 把 Tailwind v4 的 `dark:` variant 从「跟随系统
+ * (prefers-color-scheme)」改为「class 策略」——只有 <html class="dark"> 时才暗，
+ * 从而支持用户手动 Light/Dark/Auto（Auto 由 JS 按系统偏好加/去 .dark 类）。
+ * 所有 *.oceanleo.com 站都 @import 本文件，故这一句一处声明、全家桶生效。
+ * ⚠ Tailwind v4 语法：`@custom-variant` 必须在 `@import "tailwindcss"` 之后，
+ *   各站 globals.css 已先 `@import "tailwindcss"` 再 `@import` 本文件，顺序正确。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
 }
 
 html,
@@ -37,6 +53,62 @@ body {
     linear-gradient(135deg, #f3f6fc 0%, #fafaf9 45%, #f9f3f8 100%);
   background-attachment: fixed;
   color: #292524;
+}
+
+/* ---------------------------------------------------------------------------
+ * Dark 主题基础覆盖层（不依赖各站源码里的 `dark:` 工具类）
+ * ---------------------------------------------------------------------------
+ * 26 个站的组件历来只写 light（几乎无 dark: 类）。为「一处调、全家桶变暗」而不
+ * 逐站补几千个 dark: 前缀，这里用原生 CSS + html.dark 选择器覆盖【基础层】：
+ * body 背景/前景、共享外壳容器（[data-oceanleo-shell]/[data-oceanleo-chrome]）、
+ * 以及全家桶高频使用的中性工具类（bg-white / 中性文字 / 中性边框）。各站品牌
+ * accent 保持不变（本就应跨明暗一致）。新写的 dark: 工具类仍生效，叠加在此之上。 */
+html.dark body {
+  background:
+    radial-gradient(120% 120% at 0% 0%, #10151f 0%, rgba(16, 21, 31, 0) 45%),
+    radial-gradient(120% 120% at 100% 100%, #171320 0%, rgba(23, 19, 32, 0) 50%),
+    linear-gradient(135deg, #0d1117 0%, #0b0e14 45%, #100c16 100%);
+  color: #e5e7eb;
+}
+
+/* 共享外壳：侧栏 / 顶栏容器（AppShell 的 aside/header 用了写死的浅灰/白 + 浅边框）。 */
+html.dark [data-oceanleo-shell] {
+  background: transparent;
+}
+html.dark [data-oceanleo-chrome] {
+  background-color: rgba(17, 21, 30, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e5e7eb;
+}
+
+/* 全家桶高频中性工具类的暗色重映射（作用域限定壳内，避免影响各站自定义区块的
+   非中性用色）。覆盖的是「无语义的中性底/字/边」，品牌色类（bg-emerald-* 等）不动。 */
+html.dark [data-oceanleo-shell] .bg-white,
+html.dark [data-oceanleo-shell] .bg-neutral-50,
+html.dark [data-oceanleo-shell] .bg-neutral-100 {
+  background-color: #161b24 !important;
+}
+html.dark [data-oceanleo-shell] .bg-neutral-200\/80,
+html.dark [data-oceanleo-shell] .bg-neutral-200\/50,
+html.dark [data-oceanleo-shell] .bg-neutral-200\/70 {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+html.dark [data-oceanleo-shell] .text-neutral-900,
+html.dark [data-oceanleo-shell] .text-neutral-800 {
+  color: #f3f4f6 !important;
+}
+html.dark [data-oceanleo-shell] .text-neutral-700,
+html.dark [data-oceanleo-shell] .text-neutral-600 {
+  color: #c7ccd4 !important;
+}
+html.dark [data-oceanleo-shell] .text-neutral-500,
+html.dark [data-oceanleo-shell] .text-neutral-400 {
+  color: #8b919c !important;
+}
+html.dark [data-oceanleo-shell] .border-neutral-200,
+html.dark [data-oceanleo-shell] .border-neutral-200\/70,
+html.dark [data-oceanleo-shell] .border-neutral-100 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 html { min-height: 100%; }
@@ -237,4 +309,27 @@ body {
   .v-fade-in, .v-fade-up, .v-scale-in, .v-pop,
   .leo-pop-in, .leo-halo,
   .v-page > * { animation: none; }
+}
+
+/* ---------- dark 主题：滚动条 + skeleton 反色（作用域壳内） ---------- */
+html.dark [data-oceanleo-shell] *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+html.dark [data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+html.dark [data-oceanleo-shell] * {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+html.dark .v-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); }
+html.dark .v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+html.dark .v-scroll { scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+html.dark .v-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.09) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  );
+  background-size: 400px 100%;
 }

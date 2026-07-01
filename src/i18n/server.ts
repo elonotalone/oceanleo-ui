@@ -23,7 +23,10 @@ export {
   DEFAULT_LOCALE,
   LOCALE_COOKIE,
   LOCALE_LABELS,
+  RTL_LOCALES,
   isLocale,
   normalizeLocale,
+  localeDir,
+  htmlLang,
 } from "./config";
 export type { Locale } from "./config";

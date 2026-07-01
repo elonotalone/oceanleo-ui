@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "OceanLeo",
+    "login": "登入 / 註冊",
+    "logout": "登出",
+    "loggedOut": "尚未登入",
+    "cancel": "取消",
+    "confirm": "確認",
+    "delete": "刪除",
+    "rename": "重新命名",
+    "save": "儲存",
+    "search": "搜尋",
+    "loading": "載入中…",
+    "back": "返回",
+    "more": "更多"
+  },
+  "account": {
+    "title": "帳戶",
+    "tokenBalance": "token 餘額",
+    "monthSpend": "本月消耗",
+    "taskCount": "任務數",
+    "freePlan": "免費方案",
+    "notLoggedIn": "尚未登入",
+    "loginPrompt": "登入後即可建立任務、查看 token 餘額與任務記錄。",
+    "signupBonus": "註冊即可獲得體驗金，儲值後依 token 用量即時計費。"
+  },
+  "nav": {
+    "newTask": "新增任務",
+    "workspace": "工作台",
+    "allApps": "全部應用",
+    "playground": "Playground",
+    "plugins": "外掛",
+    "schedules": "排程任務",
+    "library": "檔案庫",
+    "history": "歷史記錄",
+    "downloadApp": "下載 App",
+    "projects": "專案"
+  },
+  "theme": {
+    "label": "主題",
+    "light": "淺色",
+    "dark": "深色",
+    "auto": "跟隨系統"
+  },
+  "language": {
+    "label": "語言"
+  }
+}
