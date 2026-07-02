@@ -14,3 +14,5 @@ export * from "./manifest-fetch";
 export * from "./taxonomy";
 // 在线心跳（admin 网站管理「在线人数」曲线的数据源）。AppShell 已内置。
 export * from "./presence";
+// 宗旨 v13（2026-07-02）：卡片图标品牌色（去蓝紫同底 + 每张卡自己的彩色 logo）。
+export * from "./brand-color";

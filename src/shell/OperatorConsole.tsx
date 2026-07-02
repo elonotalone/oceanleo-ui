@@ -105,10 +105,13 @@ export interface OperatorConsoleProps {
   hideTabs?: boolean;
   className?: string;
   /**
-   * doctrine v7：目录模式。开启后——多功能站先显示一个「功能/app 目录页」（卡片网格），
-   * 点一张卡片才进入该功能区，并在右上角显示「← 返回」回到目录。这样侧栏不必再列
-   * 功能，符合「侧栏不显示具体 app」+「右上角返回」的统一版式。
-   * 默认 false（兼容旧行为）。embed/solo（hideTabs）时强制关闭（主站已是选择器）。
+   * doctrine v7 + 宗旨 v13（2026-07-02）：目录模式。开启后——先显示一个「功能/app
+   * 目录页」（卡片网格），点一张卡片才进入该功能区，并在右上角显示「← 返回」回到目录。
+   *
+   * **宗旨 v13 起默认改为 true**：全家桶 workspace 首屏观感统一为「卡片目录 → 点入功能
+   * 区」（对照操作员截图 image.oceanleo.com/workspace）。旧行为（直接落到唯一功能区，
+   * 跳过目录）在 embed/solo（hideTabs）时仍然自动关闭 —— 主站 iframe 内嵌本来就是选择
+   * 器，不该再套一层目录。少数确需跳过目录的功能站可显式传 `directory={false}`。
    */
   directory?: boolean;
   /** 目录页标题（directory 模式）。 */
@@ -163,7 +166,7 @@ export function OperatorConsole({
   header,
   hideTabs = false,
   className = "",
-  directory = false,
+  directory = true,
   directoryTitle,
   directorySubtitle,
   siteId = "",
@@ -196,9 +199,13 @@ export function OperatorConsole({
   };
 
   // doctrine v7 目录模式：先列功能目录，点开才进入功能区（带返回）。
-  // embed/solo（hideTabs）时不启用。宗旨 v9：目录页不再有 app/skill 切换，单功能站
-  // 直接进入唯一功能区（无目录页）；多功能站才有 app 功能区目录。
-  const directoryMode = directory && !hideTabs && functions.length > 1;
+  // embed/solo（hideTabs）时不启用。**宗旨 v13（操作员 2026-07-02）**：一进 workspace
+  // 【必须】先显示卡片目录 —— 哪怕全站只有 1 个功能区，也要显示一张卡片让用户点进去，
+  // 目的是让全家桶所有站的 workspace 首屏观感一致（对照 image.oceanleo.com/workspace）。
+  // 因此 `functions.length > 1` 的旧门槛（宗旨 v9 遗物）改为 `>= 1`：只要接线站传了
+  // directory 且非 embed/solo，就进目录模式。深链直达（`?fn=xxx`）与「返回」行为保持不变
+  // ——它们仍由 opened 状态承载，与 directoryMode 是否开启解耦。
+  const directoryMode = directory && !hideTabs && functions.length >= 1;
 
   // 「目录页 ↔ 已进入功能区」由本组件**自管**（opened），与受控的 `value` 解耦。
   // 关键修复（操作员 2026-06-24，截图 2552c5a6「返回键形同虚设」）：

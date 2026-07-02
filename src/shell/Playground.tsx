@@ -17,7 +17,7 @@
 //     并入这里，成为第一个 tab。站点清单由消费端经 renderSites 注入，/all-sites 路由删除。
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ModelPicker } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { AiRecommendBox } from "./AiRecommendBox";
@@ -33,6 +33,7 @@ import {
   type PromptCard,
 } from "./home-cards";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
+import { brandColorFor, tintOf } from "../lib/brand-color";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -148,18 +149,32 @@ export function PlaygroundDetail({
   const [promptOf, setPromptOf] = useState<AgentDef | null>(null);
 
   // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
-  const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
-  const skillAgents = useMemo(() => agents.filter((a) => (a.site_id || "") === SKILL_APP_ID), [agents]);
+  // 宗旨 v13（2026-07-02）：用户自建（owner_id 非空）与已收藏（saved）的条目**优先显示**
+  // ——自建在最前，其次已收藏，最后官方市场，各组内保持原序。
+  const mineFirst = useCallback((arr: AgentDef[]) => {
+    const rankOf = (a: AgentDef) => (a.owner_id ? 0 : a.saved ? 1 : 2);
+    return [...arr].sort((x, y) => rankOf(x) - rankOf(y));
+  }, []);
+  const appAgents = useMemo(
+    () => mineFirst(agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID)),
+    [agents, mineFirst],
+  );
+  const skillAgents = useMemo(
+    () => mineFirst(agents.filter((a) => (a.site_id || "") === SKILL_APP_ID)),
+    [agents, mineFirst],
+  );
   const list = tab === "app" ? appAgents : skillAgents;
 
   const items: DirectoryItem[] = useMemo(() => {
+    // 宗旨 v13（2026-07-02）：不再让每张卡强制取分区色，改为按 agent_id 稳定生成
+    // 品牌色，让 playground 上五花八门的图标各有色（去蓝紫同底）。
     const base = list.map<DirectoryItem>((a) => ({
       id: a.agent_id,
       name: a.name,
       tagline: a.tagline,
       capabilities: a.capabilities,
       icon: a.icon,
-      accent,
+      logoColor: brandColorFor(a.agent_id),
       site_id: a.site_id,
       category: a.category,
     }));
@@ -747,7 +762,10 @@ function PromptZone({ accent }: { accent: string }) {
           <span className="text-[13px] font-medium">{tt("创建 prompt")}</span>
         </button>
 
-        {shown.map((c) => (
+        {shown.map((c) => {
+          // 宗旨 v13：每张 prompt 卡自己的稳定色（emoji 走 icon 圆底 + 该色）。
+          const cColor = brandColorFor(c.id || c.title);
+          return (
           <div
             key={c.id}
             role="button"
@@ -759,7 +777,12 @@ function PromptZone({ accent }: { accent: string }) {
             className="group relative flex min-h-[110px] cursor-pointer flex-col rounded-2xl border border-stone-200/80 bg-white/85 px-4 py-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
           >
             <div className="flex items-center gap-2">
-              <span className="text-[16px] leading-none">{c.icon}</span>
+              <span
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[15px]"
+                style={{ background: tintOf(cColor, 0.14), color: cColor }}
+              >
+                {c.icon}
+              </span>
               <span className="truncate text-[14px] font-semibold text-stone-900">{c.title}</span>
               {c.custom && (
                 <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
@@ -787,7 +810,8 @@ function PromptZone({ accent }: { accent: string }) {
               </svg>
             </button>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {shown.length === 0 && (

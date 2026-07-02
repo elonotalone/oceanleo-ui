@@ -123,3 +123,8 @@ export type { HistoryPageProps } from "./HistoryPage";
 export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";
+// 宗旨 v13（2026-07-02）：从 shell 也 re-export brand-color，让消费站不用另导 lib。
+export { brandColorFor, tintOf, BRAND_PALETTE } from "../lib/brand-color";
+// 宗旨 v13：专家团成员管理弹窗（agent 站输入框「专家团」小图标 → 弹本 modal）。
+export { TeamRosterModal } from "./TeamRosterModal";
+export type { TeamRosterModalProps } from "./TeamRosterModal";

@@ -85,6 +85,10 @@ export interface AgentChatProps {
    * 获得右栏 artifact + 库，无需自写 chat）。 */
   composerHeader?: React.ReactNode;
   /**
+   * 宗旨 v13（2026-07-02）：输入框**内部**左下角的额外控件（透传 LeoComposer.inlineSlot，
+   * 与「leo 建议」同一行）。agent 站用它放「专家团」小图标 → 点开成员管理弹窗。 */
+  composerInlineSlot?: React.ReactNode;
+  /**
    * doctrine v6：本次会话的 skill-prompt 覆盖（用户编辑了 prompt 并选「用这段直接干活」）。
    * 只对本次会话生效，透传给 createTask，不写回 manifest。 */
   promptOverride?: string;
@@ -110,6 +114,7 @@ export function AgentChat({
   appLabel: appLabelProp,
   library,
   composerHeader,
+  composerInlineSlot,
   promptOverride,
   placeholder,
   emptyHint,
@@ -354,6 +359,7 @@ export function AgentChat({
             loading={running}
             onStop={() => void stop()}
             leoSuggest
+            inlineSlot={composerInlineSlot}
             placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}
             rows={1}
             onAttachFiles={atts.handleAttachFiles}

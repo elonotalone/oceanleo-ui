@@ -189,6 +189,8 @@ export interface AgentDef {
   enabled: boolean;
   sort_order: number;
   saved?: boolean;
+  /** 用户自建 agent 时 = 创建者 user_id；官方条目为 null。宗旨 v13：用于「我的优先」排序。 */
+  owner_id?: string | null;
 }
 
 /** Public marketplace (works signed-out; `saved` annotated when signed-in).
@@ -274,6 +276,34 @@ export function deleteCustomSkillTeam(teamId: string) {
   );
 }
 
+/**
+ * 宗旨 v13（2026-07-02）：增/删/改团成员。
+ *   - 自有团 → 直接改，返回 { forked:false, team_id: <same> }。
+ *   - 官方 / 他人团 → 自动 fork 到当前用户，返回 { forked:true, team_id: <new> }。
+ * 前端拿到 forked=true 时应把 UI 切到新 team_id。
+ */
+export function updateTeamMembers(
+  teamId: string,
+  memberAgentIds: string[],
+  leaderAgentId?: string,
+) {
+  return authed<{
+    team_id: string;
+    forked: boolean;
+    leader_agent_id: string;
+    from_team_id?: string;
+  }>(
+    `/v1/agent-teams/custom/${encodeURIComponent(teamId)}/members`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        member_agent_ids: memberAgentIds,
+        leader_agent_id: leaderAgentId || "",
+      }),
+    },
+  );
+}
+
 export function saveAgent(agentId: string) {
   return authed<{ agent_id: string; saved: boolean }>("/v1/agents/mine", {
     method: "POST",
@@ -306,6 +336,8 @@ export interface TeamDef {
   member_count?: number;
   members?: AgentDef[];
   saved?: boolean;
+  /** 用户自建团 = 创建者 user_id；官方团为 null。宗旨 v13：用于「我的优先」排序。 */
+  owner_id?: string | null;
 }
 
 export async function listTeams(

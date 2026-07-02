@@ -20,6 +20,7 @@ import {
   optionsFor,
   type TaxonomyMode,
 } from "../lib/taxonomy";
+import { brandColorFor, tintOf } from "../lib/brand-color";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface DirectoryItem {
@@ -31,8 +32,17 @@ export interface DirectoryItem {
   capabilities?: string;
   /** emoji / 单字 / SVG 节点图标。 */
   icon?: React.ReactNode;
-  /** 图标底色（hex / tailwind 渐变都行；传 hex 用作纯色底）。 */
+  /**
+   * @deprecated 宗旨 v13（2026-07-02）：卡片图标不再用「深色纯色底 + 白图标」。
+   * 新版本用 `logoColor`（图标本身颜色）+ 自动浅色 tint 底。旧 `accent` 传入时会
+   * 作为 `logoColor` 的回退值（等价语义），保留字段仅为向后兼容。
+   */
   accent?: string;
+  /**
+   * 宗旨 v13：卡片图标颜色（hex）。传了它 → 图标浅色 tint 底 + 该色 SVG 图标；
+   * 不传 → brandColorFor(id) 稳定选一色。像 OceanLeo 侧边栏 logo 那样的观感。
+   */
+  logoColor?: string;
   /** 分类维度输入：站 id + 旧分区 id。 */
   site_id?: string;
   category?: string;
@@ -302,7 +312,10 @@ function DirectoryCard({
   variant?: "default" | "new";
 }) {
   const tt = useUI();
-  const tileBg = item.accent || accent;
+  // 宗旨 v13：卡片图标 = 浅色 tint 底 + 彩色 SVG 图标（不再深色底 + 白图标）。
+  // 优先级：item.logoColor > item.accent（向后兼容） > brandColorFor(id)（稳定回退）。
+  const iconColor = item.logoColor || item.accent || brandColorFor(item.id || item.name);
+  const iconTintBg = tintOf(iconColor, 0.14);
   const isNew = variant === "new";
   const canDelete = Boolean(onDelete && item.deletable);
   return (
@@ -360,8 +373,8 @@ function DirectoryCard({
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-3">
           <span
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl text-white shadow-sm"
-            style={{ background: tileBg }}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl shadow-sm ring-1"
+            style={{ background: iconTintBg, color: iconColor, boxShadow: `0 1px 0 ${tintOf(iconColor, 0.18)}`, borderColor: tintOf(iconColor, 0.28) }}
           >
             {item.icon || "✦"}
           </span>
