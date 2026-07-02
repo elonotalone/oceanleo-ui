@@ -10,6 +10,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -125,9 +126,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   // 初值只在挂载时读一次；SSR 阶段返回 DEFAULT（不影响首帧，首帧类名由 ThemeScript 定）。
   const [mode, setModeState] = useState<ThemeMode>(DEFAULT_THEME_MODE);
   const [resolved, setResolved] = useState<"light" | "dark">("light");
+  // 真实模式的同步镜像。挂载首个 commit 里 state 还是初始值 auto（setState 下一次
+  // 渲染才生效），任何在该窗口执行的回调都必须读这个 ref 而不是 state，否则会拿
+  // 陈旧的 auto 把用户选的 dark/light 覆盖掉 —— 2026-07-02「深色刷新变亮」的根因
+  // 正是旧版 auto-effect 挂载即按陈旧 mode=auto 主动 applyClass(系统亮色)。
+  const modeRef = useRef<ThemeMode>(DEFAULT_THEME_MODE);
 
   // 挂载：按用户真实选择（cookie/localStorage）确定性地同步 state + 应用类名 +
-  // 【自愈回写 cookie】。这是「选深色刷新变亮」的根因修复闭环（操作员 2026-07-01）：
+  // 【自愈回写 cookie】：
   //   1. readInitialMode 优先 cookie、再 localStorage —— 若上次 cookie 被浏览器丢弃
   //      但 localStorage 留下了，这里仍能恢复用户真实选择。
   //   2. 若 cookie 里的值与真实选择不一致（含 cookie 缺失），立刻 writeCookie 回写，
@@ -135,6 +141,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   //   3. 确定性地再 applyClass 一次，杜绝水合/RSC 导航后类名回退亮色。
   useEffect(() => {
     const initial = readInitialMode();
+    modeRef.current = initial;
     setModeState(initial);
     const r = resolveThemeClass(initial, systemPrefersDark());
     setResolved(r);
@@ -145,9 +152,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, []);
 
-  // Auto 模式下跟随系统偏好实时切换。
+  // Auto 模式下跟随系统偏好实时切换 —— 只【监听变化】，绝不在挂载时主动改类。
+  // 根因修复（操作员 2026-07-02「深色刷新一瞬间暗色随后变亮」）：旧版此 effect 依赖
+  // [mode] 且挂载即调 onChange()。挂载首个 commit 里 mode 闭包值仍是初始 auto（上面
+  // 那个 effect 的 setModeState 尚未生效），守卫 `mode !== "auto"` 失效 → 按系统亮色
+  // 偏好 applyClass("light")，把 SSR/ThemeScript 已正确应用的 dark 覆盖掉；随后
+  // mode 变成 dark 时此 effect 又提前 return，没有代码把 dark 写回 → 页面停在亮色。
+  // 现在：监听器常驻、回调里用 modeRef 读真实模式，非 auto 直接忽略系统变化。
   useEffect(() => {
-    if (mode !== "auto" || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     let mql: MediaQueryList;
     try {
       mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -155,17 +168,18 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       return;
     }
     const onChange = () => {
+      if (modeRef.current !== "auto") return;
       const r = resolveThemeClass("auto", mql.matches);
       setResolved(r);
       applyClass(r);
     };
-    onChange();
     mql.addEventListener?.("change", onChange);
     return () => mql.removeEventListener?.("change", onChange);
-  }, [mode]);
+  }, []);
 
   const setMode = useCallback((next: ThemeMode) => {
     const norm = normalizeThemeMode(next);
+    modeRef.current = norm;
     setModeState(norm);
     writeCookie(norm);
     const r = resolveThemeClass(norm, systemPrefersDark());
