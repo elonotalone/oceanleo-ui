@@ -72,17 +72,19 @@ function readCookieMode(): string | null {
   }
 }
 
-// 写主题 cookie —— 根因修复（操作员 2026-07-01「选深色刷新变亮」）。
+// 写主题 cookie —— 跨站跟随的根因修复（操作员 2026-07-02「一个站改了其他站不跟随」）。
 //
-// 病根不是「没写」，而是「写了但浏览器静默丢弃」：在 https 生产上，
-// `domain=.oceanleo.com; secure; samesite=lax` 的【客户端】cookie 在部分浏览器 /
-// 隐私模式 / 首次跨子域场景会被拒——写完立刻读 document.cookie 却读不到。于是
-// 下次刷新请求头不带 cookie → SSR 回退 light（而 localStorage 同源写成功了 → 出现
-// 「卡片高亮深色但整页纯白」的自相矛盾态）。
+// 历史教训：v0.68 曾在正式站上【无条件多写一份 host-only cookie】当兜底。这正是
+// 跨站不同步的病根——用户在站 A 切过主题后，站 A 留下 host-only「影子」；之后在
+// 站 B 改主题只更新 `.oceanleo.com` 域 cookie，回到站 A 时浏览器把创建更早的影子
+// 排在 Cookie 请求头前面（RFC 6265 同 path 按创建时间序），SSR `cookies().get()`
+// 与客户端正则都取第一个 → 站 A 永远读到旧值、不跟随；站 A 的自愈回写还会把旧值
+// 写回 domain cookie，反向污染全家桶。
 //
-// 修复：写完【读回校验】，跨子域那份没落地就降级为 host-only（无 domain）再写一份，
-// 保证「至少本站刷新能读到」。localStorage 永远写（同源兜底 + <ThemeScript> 首帧读它）。
-// 返回值：cookie 最终是否成功落地（任一形态可读回即算成功）。
+// 现在：*.oceanleo.com 上【只写 domain cookie】（单一跨站事实源），并主动清除
+// host-only 影子（含 v0.67/v0.68 用户浏览器里的存量）；host-only 仅在非 oceanleo
+// 域（localhost / *.vercel.app 预览）使用。localStorage 永远写（同源兜底）。
+// 返回值：cookie 是否成功落地（读回校验）。
 function writeCookie(mode: ThemeMode): boolean {
   if (typeof document === "undefined") return false;
   const host = window.location.hostname;
@@ -98,16 +100,23 @@ function writeCookie(mode: ThemeMode): boolean {
     /* ignore */
   }
 
-  // ① 顶级域 cookie（跨全部 *.oceanleo.com 子站共享）。
   if (onOceanleo) {
+    // 顶级域 cookie = 唯一跨站事实源；同时清掉本站 host-only 影子（若有）。
+    clearHostOnlyThemeCookie();
     document.cookie = `${base}; domain=.oceanleo.com${secure}`;
+  } else {
+    // 本地 / 预览域：domain=.oceanleo.com 不匹配会被拒，写 host-only。
+    document.cookie = `${base}${secure}`;
   }
-  // ② host-only cookie（无 domain）—— 无条件也写一份，作为跨子域那份被拒时的兜底，
-  //    保证本站刷新一定能读到。两份同名 cookie，读时以更具体的为准，值相同不冲突。
-  document.cookie = `${base}${secure}`;
 
   // 读回校验：只要能读回正确值就算成功。
   return readCookieMode() === mode;
+}
+
+// 清除 host-only 主题 cookie（无 domain 属性 = 只匹配 host-only 那份，domain 份不受影响）。
+function clearHostOnlyThemeCookie() {
+  if (typeof document === "undefined") return;
+  document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 function applyClass(resolved: "light" | "dark") {
