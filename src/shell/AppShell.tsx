@@ -347,10 +347,12 @@ function AppShellInner({
 
   function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
     const active = isActive(pathname, item);
+    /* 侧栏文字加深（操作员 2026-07-02：旧 text-neutral-600 太浅、观感廉价；
+       对照 Manus 侧栏近黑文字）。深色下由 globals.css 全局重映射到 --leo-d-fg。 */
     const cls = `group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
       active
         ? "bg-neutral-200/80 font-medium text-neutral-900"
-        : "text-neutral-600 hover:bg-neutral-200/50 hover:text-neutral-900"
+        : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
     }`;
     const style = active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : undefined;
     const inner = (
@@ -426,7 +428,7 @@ function AppShellInner({
             <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
           </Link>
         )}
-        <div className="flex items-center gap-1 text-neutral-500">
+        <div className="flex items-center gap-1 text-neutral-600">
           {onSearch && (
             <button
               type="button"
@@ -513,7 +515,7 @@ function AppShellInner({
               navGroups.map((group, gi) => (
                 <div key={group.heading ?? gi} className="mb-1">
                   {group.heading && (
-                    <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-500">{group.heading}</div>
+                    <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">{group.heading}</div>
                   )}
                   <div className="space-y-0.5">
                     {group.items.map((item, ii) => renderNavItem(item, ii))}

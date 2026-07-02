@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { openLeoAssistant, runLeoQuickSuggest } from "./LeoAssistant";
+import { openLeoAssistant } from "./LeoAssistant";
 import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
@@ -40,11 +40,11 @@ import { useUI } from "../i18n/ui/useUI";
 // 与主站的历史差异：主站左下角原是「对话 / Agent / 设计」三件套；2026-06-26 起主站
 // 改为「自动」（去掉手动 chat/agent 切换，后端按输入自动判断），设计开关并入 quick
 // pill，故主站不再传 leftSlot 的三件套。其余站当输入框「与 AI 生成有关」时，左下角
-// 放一个「leo 建议」按钮。
+// 放一个「leo」按钮（宗旨 v11 起从「leo 建议」改名，打开 leo 内容处理面板）。
 //
 // 因此本组件参数化：
 //   - leftSlot：左下角自定义控制区（保留，向后兼容）。
-//   - leoSuggest：true 时在左下角渲染「leo 建议」按钮。
+//   - leoSuggest：true 时在左下角渲染「leo」按钮。
 //   - 附件 / 语音 / 最近文件：见上。
 // ============================================================================
 
@@ -83,11 +83,11 @@ export interface LeoComposerProps {
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
-  /** 是否显示「leo 建议」按钮（仅与 AI 生成有关的输入框传 true） */
+  /** 是否显示「leo」按钮（仅与 AI 生成有关的输入框传 true） */
   leoSuggest?: boolean;
   /**
-   * 「leo 建议·快速版」（宗旨 v9）：传它才显示「⚡ 一键补充」按钮——点了**不弹浮窗、
-   * 不需用户选方向**，直接调网关把当前输入框内容补全后写回。需要 siteId（计量/分诊）。 */
+   * @deprecated 宗旨 v11（2026-07-02）：「⚡ 一键补充」自动写回输入框违反
+   * 「结果永不自动写回」原则，已下线。传了也不再渲染任何按钮（编译兼容）。 */
   leoQuickSuggest?: { siteId: string; docType?: string };
   /** 左下角自定义控制区（向后兼容；主站 2026-06-26 起不再放三件套） */
   leftSlot?: ReactNode;
@@ -147,7 +147,6 @@ export function LeoComposer({
   placeholder,
   loading = false,
   leoSuggest = false,
-  leoQuickSuggest,
   leftSlot,
   inlineSlot,
   rows = 2,
@@ -175,8 +174,6 @@ export function LeoComposer({
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
   const [meetingOpen, setMeetingOpen] = useState(false);
-  // leo 建议·快速版（⚡ 一键补充）请求态。
-  const [quickBusy, setQuickBusy] = useState(false);
   // 拖拽上传：文件被拖到输入框卡片上方（显示虚线落区）。dragDepth 抵消
   // 子元素间穿梭时反复触发的 enter/leave（只在真正离开卡片时收起）。
   const [dragOver, setDragOver] = useState(false);
@@ -219,25 +216,6 @@ export function LeoComposer({
     ref.current?.setAttribute("data-ai-assistant-target", "");
     ref.current?.focus();
     openLeoAssistant();
-  }
-
-  async function handleQuickSuggest() {
-    if (!leoQuickSuggest || quickBusy) return;
-    setQuickBusy(true);
-    const r = await runLeoQuickSuggest({
-      siteId: leoQuickSuggest.siteId,
-      docType: leoQuickSuggest.docType,
-      basePrompt: value,
-    });
-    setQuickBusy(false);
-    if (r.ok && r.prompt && r.prompt !== value) {
-      onChange(r.prompt);
-      // 自增高 + 焦点回到框，方便用户继续编辑。
-      requestAnimationFrame(() => {
-        ref.current?.focus();
-        autogrow();
-      });
-    }
   }
 
   function emitFiles(list: FileList | null) {
@@ -379,22 +357,10 @@ export function LeoComposer({
               type="button"
               onClick={handleLeoSuggest}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-200 hover:bg-neutral-100 active:scale-95"
-              title={tt("让 leo 帮你补充 / 整理这段内容（可逐项选择）")}
+              title={tt("让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）")}
             >
               <Sparkle />
-              {tt("leo 建议")}
-            </button>
-          )}
-          {leoQuickSuggest && (
-            <button
-              type="button"
-              onClick={handleQuickSuggest}
-              disabled={quickBusy || disabled}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium text-indigo-600 transition-all duration-200 hover:bg-indigo-50 active:scale-95 disabled:opacity-50"
-              title={tt("一键补充：让 leo 直接把你的需求补全（无需逐项选择）")}
-            >
-              {quickBusy ? <span className="v-spinner text-[11px]" /> : <Bolt />}
-              {tt("一键补充")}
+              leo
             </button>
           )}
           {inlineSlot}
@@ -961,11 +927,21 @@ function ArrowUp() {
 function Sparkle() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5">
+      <defs>
+        <linearGradient id="leo-composer-sparkle-g" x1="0" y1="0" x2="24" y2="24">
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="100%" stopColor="#c084fc" />
+        </linearGradient>
+      </defs>
       <path
         d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"
-        fill="currentColor"
+        fill="url(#leo-composer-sparkle-g)"
       />
-      <path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z" fill="currentColor" opacity="0.6" />
+      <path
+        d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"
+        fill="url(#leo-composer-sparkle-g)"
+        opacity="0.65"
+      />
     </svg>
   );
 }
@@ -974,14 +950,6 @@ function PlusGlyph() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function Bolt() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-      <path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13l0-8z" />
     </svg>
   );
 }
