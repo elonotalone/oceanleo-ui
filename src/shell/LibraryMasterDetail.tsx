@@ -3,44 +3,53 @@
 // ============================================================================
 // @oceanleo/ui — 文件库 master-detail（doctrine v4，单一事实源）
 // ----------------------------------------------------------------------------
-// 「文件库」侧栏子栏（master）+ 主区详情（detail）：
-//   子栏 LibrarySubNav：列文件库的四个分区（上传文件 / 作品 / 素材 / 知识库）。
-//   主区 LibraryDetail：渲染受控的 FileLibrary（hideHeader），按选中分区显示其
-//     条目网格 / 上传区 / 预览。
-// 子栏与主区通过 useWorkspaceSelection("library") 共享当前分区。
+// 「文件库」侧栏子栏（master）+ 主区详情（detail）。
 //
-// 文件库本身的「条目列表 + 跨站分区 + 上传 + 预览」逻辑全在 FileLibrary 里（复杂、
-// 自洽），这里只把「分区选择」上提到侧栏，避免重写那套数据逻辑。
+// 2026-07-02 操作员拍板：全系列（主站 + 27 功能子站）文件库**完完全全一样**、
+// 完全打通（同一个 agent_artifacts 表 + 跨站 cookie 登录 → 任何站产出所有站可见）。
+// 侧栏分区对齐主站 oceanleo.com/library：
+//   全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频(新) / 3D(新) / 我的收藏
+// 主区 = 共享 ArtifactLibrary（搜索 + 网格/列表 + 预览 + 收藏）。
+//
+// 旧的「上传文件 / 作品 / 素材 / 知识库」四 tab FileLibrary 保留导出（上传与知识库
+// 能力仍有站在用；LibrarySubNav 不再用它）。
 // ============================================================================
 
-import { FileLibrary, LIBRARY_TABS, type LibraryTab, type SiteOption } from "./FileLibrary";
+import {
+  ArtifactLibrary,
+  ARTIFACT_FILTERS,
+  type ArtifactFilter,
+} from "./ArtifactLibrary";
+import type { SiteOption } from "./FileLibrary";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
+import { useUI } from "../i18n/ui/useUI";
 
-function currentTab(sel: string | null): LibraryTab {
-  return (LIBRARY_TABS.find((t) => t.id === sel)?.id as LibraryTab) || "files";
+function currentFilter(sel: string | null): ArtifactFilter {
+  return (ARTIFACT_FILTERS.find((f) => f.id === sel)?.id as ArtifactFilter) || "all";
 }
 
 // ----------------------------------------------------------------------------
-// 侧栏子栏：文件库四分区
+// 侧栏子栏：文件库分区（对齐主站）
 // ----------------------------------------------------------------------------
 export function LibrarySubNav({ accent = "#0ea5e9" }: { accent?: string }) {
+  const tt = useUI();
   const [sel, setSel] = useWorkspaceSelection("library");
-  const tab = currentTab(sel);
+  const active = currentFilter(sel);
   return (
     <div className="space-y-0.5">
-      {LIBRARY_TABS.map((t) => {
-        const on = t.id === tab;
+      {ARTIFACT_FILTERS.map((f) => {
+        const on = f.id === active;
         return (
           <button
-            key={t.id}
+            key={f.id}
             type="button"
-            onClick={() => setSel(t.id)}
+            onClick={() => setSel(f.id)}
             className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition ${
               on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
             }`}
             style={on ? { background: accent } : undefined}
           >
-            {t.label}
+            {tt(f.label)}
           </button>
         );
       })}
@@ -49,30 +58,28 @@ export function LibrarySubNav({ accent = "#0ea5e9" }: { accent?: string }) {
 }
 
 // ----------------------------------------------------------------------------
-// 主区详情：受控 FileLibrary（按选中分区）
+// 主区详情：受控 ArtifactLibrary（按选中分区）
 // ----------------------------------------------------------------------------
 export function LibraryDetail({
-  siteId,
-  siteName,
-  sites,
   accent = "#0ea5e9",
 }: {
-  siteId: string;
+  /** @deprecated 文件库已全系列打通，不再按站分区；保留形参兼容旧调用方。 */
+  siteId?: string;
+  /** @deprecated 同上。 */
   siteName?: string;
+  /** @deprecated 同上。 */
   sites?: SiteOption[];
   accent?: string;
 }) {
   const [sel, setSel] = useWorkspaceSelection("library");
-  const tab = currentTab(sel);
+  const filter = currentFilter(sel);
   return (
-    <FileLibrary
-      siteId={siteId}
-      siteName={siteName}
-      sites={sites}
-      accent={accent}
-      tab={tab}
-      onTabChange={(t) => setSel(t)}
-      hideHeader
-    />
+    <div className="h-[calc(100dvh-1px)] overflow-y-auto">
+      <ArtifactLibrary
+        accent={accent}
+        filter={filter}
+        onFilterChange={(f) => setSel(f)}
+      />
+    </div>
   );
 }

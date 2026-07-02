@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getMcpCatalog, type McpItem } from "../lib/database";
+import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface PluginsPageProps {
@@ -51,8 +52,8 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("插件与连接器")}</h1>
-      <p className="mt-1 text-[13px] text-neutral-500">{tt("技能、连接器与 MCP 服务器，接入后即可在全 OceanLeo 系列中调用。")}</p>
+      <PageHeader title={typeof title === "string" ? title : tt("插件与连接器")} />
+      <p className="mt-1 text-center text-[13px] text-neutral-500">{tt("技能、连接器与 MCP 服务器，接入后即可在全 OceanLeo 系列中调用。")}</p>
 
       <div className="mx-auto mt-6 max-w-3xl">
         <input

@@ -45,18 +45,20 @@ export function AccountPage({
   onSignedOut,
 }: AccountPageProps) {
   const tt = useUI();
+  // 2026-07-02：「我的数据库」入口删除（左侧侧栏的文件库已覆盖其功能）；
+  // 新增「Cost」页（用量柱状图 + 用量记录，从 settings/api 迁来）。
   const resolvedMenu: AccountMenuItem[] = menuItems ?? [
     {
       label: tt("通用"),
       href: "/general",
       desc: tt("语言与主题（浅色 / 深色 / 自动）等外观设置"),
     },
-    {
-      label: tt("我的数据库"),
-      href: "/database",
-      desc: tt("你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）"),
-    },
     { label: "API", href: "/api", desc: tt("选择模型、查看价格与 token 余额") },
+    {
+      label: "Cost",
+      href: "/cost",
+      desc: tt("用量柱状图与每次调用的真实计费记录"),
+    },
     { label: tt("账户设置"), href: "/settings", desc: tt("个人资料、用量与知识库") },
     {
       label: tt("插件与连接器"),

@@ -62,6 +62,10 @@
  * ========================================================================== */
 html.dark {
   color-scheme: dark;
+  /* 2026-07-02 修「dark 下页顶亮色细线」：下方 `html, body` 给 html 画布也铺了
+     浅色渐变，而暗色覆盖层此前只改 body —— body 没盖到的缝隙（视口顶部像素取整 /
+     滚动回弹）就露出一条浅色线。把 html 画布本身也置暗即根治。 */
+  background: #111111;
   --leo-d-bg: #111111;
   --leo-d-sidebar: #1b1b1b;
   --leo-d-surface: #181818;
@@ -324,17 +328,20 @@ html.dark [class*="border-red-100"], html.dark [class*="border-red-200"], html.d
 html.dark [class*="border-fuchsia-100"], html.dark [class*="border-fuchsia-200"], html.dark [class*="border-fuchsia-300"] {
   border-color: rgba(240, 138, 176, 0.3) !important;
 }
-/* divide 分隔线（子串选择器同样覆盖 /xx 变体）。 */
-html.dark [class*="divide-neutral-100"] > * + *,
-html.dark [class*="divide-neutral-200"] > * + *,
-html.dark [class*="divide-gray-100"] > * + *,
-html.dark [class*="divide-gray-200"] > * + *,
-html.dark [class*="divide-stone-100"] > * + *,
-html.dark [class*="divide-stone-200"] > * + *,
-html.dark [class*="divide-zinc-100"] > * + *,
-html.dark [class*="divide-zinc-200"] > * + *,
-html.dark [class*="divide-slate-100"] > * + *,
-html.dark [class*="divide-slate-200"] > * + * {
+/* divide 分隔线（子串选择器同样覆盖 /xx 变体）。
+   2026-07-02 修：Tailwind v4 的 divide 画在「非最后一个」子元素的 border-bottom
+   （v3 是「非首个」的 border-top），旧选择器 `> * + *` 盖不到首个子元素 → 第一条
+   分隔线在 dark 下保持 #f5f5f5 亮线（操作员截图 acaa596a）。改为 `> *` 全覆盖。 */
+html.dark [class*="divide-neutral-100"] > *,
+html.dark [class*="divide-neutral-200"] > *,
+html.dark [class*="divide-gray-100"] > *,
+html.dark [class*="divide-gray-200"] > *,
+html.dark [class*="divide-stone-100"] > *,
+html.dark [class*="divide-stone-200"] > *,
+html.dark [class*="divide-zinc-100"] > *,
+html.dark [class*="divide-zinc-200"] > *,
+html.dark [class*="divide-slate-100"] > *,
+html.dark [class*="divide-slate-200"] > * {
   border-color: var(--leo-d-border-s) !important;
 }
 /* ring（box-shadow 描边）：浅中性 / 浅彩 ring 深色下同样压暗。

@@ -39,18 +39,26 @@ function eventLabel(ev: CreditEvent, tt: UITranslate): string {
   }
 }
 
-export function UsageHistory() {
+export function UsageHistory({
+  limit = 60,
+  maxHeight,
+}: {
+  /** 拉取条数（Cost 页传大值）。 */
+  limit?: number;
+  /** 列表内部滚动的最大高度（如 "480px"）；传了则表格区内部上下滚动。 */
+  maxHeight?: string;
+} = {}) {
   const tt = useUI();
   const [history, setHistory] = useState<CreditEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [auditId, setAuditId] = useState<string>("");
 
   useEffect(() => {
-    getCreditHistory(60).then((h) => {
+    getCreditHistory(limit).then((h) => {
       if (h.ok && h.data) setHistory(h.data.events || []);
       setLoaded(true);
     });
-  }, []);
+  }, [limit]);
 
   return (
     <section className="v-fade-up" style={{ animationDelay: "60ms" }}>
@@ -63,9 +71,12 @@ export function UsageHistory() {
           <p className="text-[13px] text-neutral-500">{tt("暂无用量记录")}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-neutral-200">
+        <div
+          className="overflow-x-auto overflow-y-auto rounded-xl border border-neutral-200"
+          style={maxHeight ? { maxHeight } : undefined}
+        >
           <table className="w-full min-w-[640px] text-left text-[12px]">
-            <thead className="bg-neutral-50 text-neutral-500">
+            <thead className="sticky top-0 z-10 bg-neutral-50 text-neutral-500">
               <tr>
                 <th className="px-3 py-2 font-medium">{tt("时间")}</th>
                 <th className="px-3 py-2 font-medium">{tt("说明")}</th>
@@ -77,7 +88,7 @@ export function UsageHistory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {history.slice(0, 60).map((ev, i) => {
+              {history.slice(0, limit).map((ev, i) => {
                 const meta = (ev.meta || {}) as Record<string, unknown>;
                 const promptTokens = toNum(meta.prompt_tokens);
                 const completionTokens = toNum(meta.completion_tokens);

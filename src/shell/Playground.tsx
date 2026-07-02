@@ -23,6 +23,15 @@ import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { AiRecommendBox } from "./AiRecommendBox";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
+import { SkillPromptPanel } from "./SkillPromptPanel";
+import { PromptCardModal } from "./HomeCards";
+import {
+  GENERIC_PROMPTS,
+  PROMPT_LIBRARY,
+  loadCustomPromptCards,
+  saveCustomPromptCards,
+  type PromptCard,
+} from "./home-cards";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
@@ -73,7 +82,10 @@ function useAgents(refreshKey = 0): { agents: AgentDef[]; loading: boolean } {
 //   workflow 并列），原右下角「原生骨架预览」浮层升级而来。点进去先选客户端（哪个
 //   网站对应的 app），再看它有哪些 app。客户端清单 + 原生骨架预览是消费端的事，所以
 //   同样由消费端经 renderClientApps 注入（与 renderSites/renderBoard 同一范式）。
-type Tab = "site" | "app" | "skill" | "clientapp" | "organization" | "workflow";
+// 2026-07-02（操作员）：新增「prompt」专区 tab——全家桶 prompt 卡片库（分类 + 搜索 +
+//   「创建 prompt」首卡 + 每张卡片右上角预览/编辑/保存）。用户自建 prompt 持久化
+//   （localStorage，与子站首页「工作内容」卡片同一套 PromptCardModal / 存取助手）。
+type Tab = "site" | "app" | "skill" | "prompt" | "clientapp" | "organization" | "workflow";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
@@ -132,6 +144,8 @@ export function PlaygroundDetail({
   const [detailId, setDetailId] = useState<string>("");
   // doctrine v11：AI 推荐命中的 id 顺序（置顶高亮）；空 = 未推荐，显示全部。
   const [recIds, setRecIds] = useState<string[] | null>(null);
+  // 2026-07-02：卡片右上角「查看/编辑 prompt」→ SkillPromptPanel（modal 形态）。
+  const [promptOf, setPromptOf] = useState<AgentDef | null>(null);
 
   // app 分区 = 各产品站功能区 agent（site_id≠"agent"）；agent 分区 = LeoAgent 套壳。
   const appAgents = useMemo(() => agents.filter((a) => (a.site_id || "") !== SKILL_APP_ID), [agents]);
@@ -315,6 +329,28 @@ export function PlaygroundDetail({
     );
   }
 
+  // ── prompt 专区（2026-07-02）：全家桶 prompt 卡片库 + 「创建 prompt」+ 卡片
+  //   右上角预览/编辑/保存。与其余分区同一套外层版式。
+  if (tab === "prompt") {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
+          <PlaygroundHeader />
+        </div>
+        <div className="mb-6">
+          <PlaygroundTabs
+            tab={tab}
+            setTab={setTab}
+            hasSites={!!renderSites}
+            hasBoard={!!renderBoard}
+            hasClientApps={!!renderClientApps}
+          />
+        </div>
+        <PromptZone accent={accent} />
+      </div>
+    );
+  }
+
   // ── organization / workflow 分区 ──
   //   目录页（boardEditing=false）：与 app/agent **完全同一套外层版式**
   //     （mx-auto max-w-6xl px-6 py-8 + 标题 + tab），切 tab 时位置纹丝不动。
@@ -420,10 +456,35 @@ export function PlaygroundDetail({
           if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
           else setDetailId(it.id); // 先弹详情弹窗，点「召唤」才进入内嵌功能区
         }}
+        // 2026-07-02：app / agent 卡片右上角「查看/编辑/保存 prompt」。
+        onPrompt={(it) => {
+          const a = agents.find((x) => x.agent_id === it.id);
+          if (a) setPromptOf(a);
+        }}
         // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
         nativeLabel={tt("按技能")}
       />
+
+      {/* 卡片右上角「prompt」→ 复用共享 SkillPromptPanel（modal 形态，可预览/编辑/
+          保存为我的 agent）。 */}
+      {promptOf && (
+        <SkillPromptPanel
+          variant="modal"
+          open
+          onClose={() => setPromptOf(null)}
+          agentId={promptOf.agent_id}
+          name={promptOf.name}
+          tagline={promptOf.tagline}
+          icon={promptOf.icon}
+          category={promptOf.category}
+          accent={accent}
+          onSavedAsSkill={() => {
+            setPromptOf(null);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
 
       {/* doctrine v11：卡片详情弹窗（WorkBuddy 式）。点「召唤」→ 进入内嵌功能区。 */}
       {detailAgent && (
@@ -498,6 +559,7 @@ function PlaygroundTabs({
     ...(hasSites ? [{ id: "site" as Tab, label: tt("网站") }] : []),
     { id: "app" as Tab, label: "app" },
     { id: "skill" as Tab, label: "agent" },
+    { id: "prompt" as Tab, label: "prompt" },
     ...(hasClientApps ? [{ id: "clientapp" as Tab, label: tt("客户端app") }] : []),
     ...(hasBoard
       ? [
@@ -521,6 +583,241 @@ function PlaygroundTabs({
         </button>
       ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// prompt 专区（2026-07-02，操作员）：全家桶 prompt 卡片库。
+//   - 内容 = home-cards 的 PROMPT_LIBRARY（全部站的内置卡去重）+ 用户自建
+//     （localStorage key "playground"，跨会话保留）。
+//   - 第一张 = 「创建 prompt」板块；每张卡片右上角预览 / 编辑 / 保存。
+//   - 点卡片 = 打开预览弹窗（复用 PromptCardModal），「复制使用」把 prompt
+//     复制进剪贴板（playground 没有输入框可填）。
+// ---------------------------------------------------------------------------
+const PLAYGROUND_PROMPT_SCOPE = "playground";
+
+function PromptZone({ accent }: { accent: string }) {
+  const tt = useUI();
+  const [custom, setCustom] = useState<PromptCard[]>([]);
+  const [cat, setCat] = useState("__all__");
+  const [filter, setFilter] = useState("");
+  const [modal, setModal] = useState<{ card: PromptCard; isNew: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setCustom(loadCustomPromptCards(PLAYGROUND_PROMPT_SCOPE));
+  }, []);
+
+  // 内置库：全部站的 prompt 卡片（按标题去重，通用集在前）。
+  const builtin = useMemo(() => {
+    const seen = new Set<string>();
+    const out: PromptCard[] = [];
+    for (const c of [...GENERIC_PROMPTS, ...Object.values(PROMPT_LIBRARY).flat()]) {
+      const key = c.title + "|" + c.category;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }, []);
+
+  const all = useMemo(() => [...custom, ...builtin], [custom, builtin]);
+
+  const categories = useMemo(() => {
+    const seen: string[] = [];
+    for (const c of all) if (c.category && !seen.includes(c.category)) seen.push(c.category);
+    return seen;
+  }, [all]);
+
+  const norm = filter.trim().toLowerCase();
+  const shown = useMemo(
+    () =>
+      all.filter((c) => {
+        if (cat !== "__all__" && c.category !== cat) return false;
+        if (!norm) return true;
+        return (
+          c.title.toLowerCase().includes(norm) ||
+          (c.desc || "").toLowerCase().includes(norm) ||
+          c.prompt.toLowerCase().includes(norm)
+        );
+      }),
+    [all, cat, norm],
+  );
+
+  function persist(next: PromptCard[]) {
+    setCustom(next);
+    saveCustomPromptCards(PLAYGROUND_PROMPT_SCOPE, next);
+  }
+
+  function handleSave(card: PromptCard, isNew: boolean) {
+    if (isNew || !card.custom) {
+      const mine: PromptCard = {
+        ...card,
+        id: `custom-${Date.now()}`,
+        custom: true,
+        category: card.category || tt("我的"),
+      };
+      persist([mine, ...custom]);
+    } else {
+      persist(custom.map((c) => (c.id === card.id ? { ...card, custom: true } : c)));
+    }
+    setModal(null);
+  }
+
+  async function copyUse(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  const emptyCard: PromptCard = {
+    id: "",
+    icon: "✨",
+    title: "",
+    desc: "",
+    prompt: "",
+    category: tt("我的"),
+    custom: true,
+  };
+
+  return (
+    <section>
+      {/* 工具条：分类 chips + 关键词筛选 */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {["__all__", ...categories].map((c) => {
+            const on = cat === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCat(c)}
+                className={`rounded-full px-3 py-1.5 text-[13px] transition ${
+                  on ? "font-medium text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+                }`}
+                style={on ? { background: accent } : undefined}
+              >
+                {c === "__all__" ? tt("全部") : c}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-stone-200/90 bg-white/80 px-3 py-1.5 shadow-sm">
+          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-stone-400">
+            <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+            <path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={tt("按名称筛选…")}
+            className="w-40 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400"
+          />
+          {filter && (
+            <button
+              type="button"
+              onClick={() => setFilter("")}
+              className="shrink-0 rounded-full px-1.5 text-[12px] text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {copied && (
+        <p className="mb-3 text-[12px] text-emerald-600">{tt("已复制到剪贴板 ✓")}</p>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {/* 「创建 prompt」板块（第一张）。 */}
+        <button
+          type="button"
+          onClick={() => setModal({ card: emptyCard, isNew: true })}
+          className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed bg-white/70 px-4 py-4 text-stone-400 transition hover:border-solid hover:text-stone-600"
+          style={{ borderColor: `${accent}80` }}
+        >
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+          <span className="text-[13px] font-medium">{tt("创建 prompt")}</span>
+        </button>
+
+        {shown.map((c) => (
+          <div
+            key={c.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setModal({ card: c, isNew: false })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setModal({ card: c, isNew: false });
+            }}
+            className="group relative flex min-h-[110px] cursor-pointer flex-col rounded-2xl border border-stone-200/80 bg-white/85 px-4 py-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[16px] leading-none">{c.icon}</span>
+              <span className="truncate text-[14px] font-semibold text-stone-900">{c.title}</span>
+              {c.custom && (
+                <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
+                  {tt("我的")}
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-stone-500">
+              {c.desc || c.prompt}
+            </p>
+            <span className="mt-auto pt-2 text-[11px] text-stone-400">{c.category}</span>
+            {/* 右上角：预览 / 编辑 / 保存 */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setModal({ card: c, isNew: false });
+              }}
+              title={tt("查看 / 编辑")}
+              aria-label={tt("查看 / 编辑")}
+              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {shown.length === 0 && (
+        <p className="py-12 text-center text-sm text-stone-400">{tt("没有匹配的 prompt。")}</p>
+      )}
+
+      {modal && (
+        <PromptCardModal
+          card={modal.card}
+          isNew={modal.isNew}
+          accent={accent}
+          categories={categories}
+          useLabel={tt("复制使用")}
+          onUse={(text) => {
+            void copyUse(text);
+            setModal(null);
+          }}
+          onSave={(card) => handleSave(card, modal.isNew)}
+          onDelete={
+            modal.card.custom && !modal.isNew
+              ? () => {
+                  persist(custom.filter((c) => c.id !== modal.card.id));
+                  setModal(null);
+                }
+              : undefined
+          }
+          onClose={() => setModal(null)}
+        />
+      )}
+    </section>
   );
 }
 

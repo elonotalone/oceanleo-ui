@@ -33,6 +33,7 @@ import {
   createTask,
   followUp,
   getTask,
+  stopTask,
   latestArtifact,
   type AgentAttachment,
   type AgentMessage,
@@ -242,6 +243,42 @@ export function FunctionAgentChat({
 
   const running = status === "running" || busy;
 
+  // 「中止」：AI 工作中点停止键 → 停任务。
+  const stop = useCallback(async () => {
+    if (!taskId) {
+      setBusy(false);
+      return;
+    }
+    const r = await stopTask(taskId);
+    if (r.ok) {
+      setStatus("stopped");
+      setBusy(false);
+      void refresh(taskId);
+    }
+  }, [taskId, refresh]);
+
+  // 启发式追问（后端 meta.suggestions）——最后一条 assistant 消息上取；点了直接发送。
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const suggestions: string[] =
+    !running && Array.isArray(lastAssistant?.meta?.suggestions)
+      ? (lastAssistant!.meta!.suggestions as string[]).filter(
+          (s) => typeof s === "string" && s.trim(),
+        ).slice(0, 4)
+      : [];
+
+  async function sendSuggestion(text: string) {
+    if (!taskId || busy) return;
+    setBusy(true);
+    setMessages((m) => [
+      ...m,
+      { id: Date.now(), role: "user", kind: "text", content: text },
+    ]);
+    const r = await followUp(taskId, text);
+    setBusy(false);
+    if (r.ok) setStatus("running");
+    else setError(r.error || tt("发送失败"));
+  }
+
   // ── 操作台形态：直接渲染各站表单（含底部「生成」主按钮）──────────────────────
   if (tab === "ops") {
     return (
@@ -293,6 +330,23 @@ export function FunctionAgentChat({
               <span className="v-spinner" /> {tt("agent 正在处理…")}
             </div>
           )}
+          {suggestions.length > 0 && (
+            <div className="flex flex-col items-start gap-1.5 pt-1">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => void sendSuggestion(s)}
+                  className="group flex max-w-full items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-left text-[13px] text-stone-600 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-800"
+                >
+                  <span className="truncate">{s}</span>
+                  <svg className="h-3.5 w-3.5 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
           {error && <p className="text-[14px] text-rose-500">{error}</p>}
         </div>
       </div>
@@ -302,7 +356,8 @@ export function FunctionAgentChat({
             value={input}
             onChange={setInput}
             onSubmit={send}
-            loading={busy}
+            loading={running}
+            onStop={() => void stop()}
             leoSuggest
             leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
             placeholder={tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })}

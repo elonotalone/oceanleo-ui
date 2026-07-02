@@ -104,9 +104,18 @@ export type { WorkspaceShellProps } from "./WorkspaceShell";
 // 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
 export { HomeIntro, BillingNotice } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
+// 首页两大卡片分区（2026-07-02，对照豆包）：工作内容 prompt 卡片 + 选择 agent 卡片。
+export { HomePromptCards, HomeAgentCards } from "./HomeCards";
+export type { HomeAgentPick } from "./HomeCards";
+export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards } from "./home-cards";
+export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
 export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";
 export type { FileLibraryProps, SiteOption, LibraryTab } from "./FileLibrary";
+// 统一文件库（2026-07-02）：主站 + 全部子站同一套「全部/图片/文档/幻灯片/视频/
+// 音频/3D/收藏」分区，agent_artifacts 全系列打通。
+export { ArtifactLibrary, ARTIFACT_FILTERS } from "./ArtifactLibrary";
+export type { ArtifactLibraryProps, ArtifactFilter, ArtifactItem } from "./ArtifactLibrary";
 // 历史记录页。
 export { HistoryPage } from "./HistoryPage";
 export type { HistoryPageProps } from "./HistoryPage";

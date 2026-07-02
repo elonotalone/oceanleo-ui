@@ -58,6 +58,12 @@ export interface AppDirectoryProps {
    * workflow 等「我的项目」目录删除项目用（操作员 2026-06-24）。
    */
   onDelete?: (item: DirectoryItem) => void;
+  /**
+   * 点卡片右上角「查看 / 编辑 prompt」（操作员 2026-07-02：playground 的 agent 卡片
+   * 右上角要有预览 / 编辑 / 保存 prompt 的入口）。提供则每张卡片 hover 时右上角出现
+   * prompt 按钮；消费端据此弹 SkillPromptPanel（modal 形态）。
+   */
+  onPrompt?: (item: DirectoryItem) => void;
   /** 正在处理「加入」的条目 id（按钮转圈）。 */
   addingId?: string | null;
   /** 卡片底部「打开」动作的文字，默认「打开」。 */
@@ -87,6 +93,7 @@ export function AppDirectory({
   onOpen,
   onAdd,
   onDelete,
+  onPrompt,
   addingId,
   openLabel,
   accent = "#4f46e5",
@@ -262,6 +269,7 @@ export function AppDirectory({
               onOpen={onOpen}
               onAdd={onAdd}
               onDelete={onDelete}
+              onPrompt={onPrompt}
               adding={addingId === it.id}
             />
           ))}
@@ -278,6 +286,7 @@ function DirectoryCard({
   onOpen,
   onAdd,
   onDelete,
+  onPrompt,
   adding,
   variant = "default",
 }: {
@@ -287,6 +296,7 @@ function DirectoryCard({
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
   onDelete?: (item: DirectoryItem) => void;
+  onPrompt?: (item: DirectoryItem) => void;
   adding?: boolean;
   /** "new" = 「＋ 新建」首卡（虚线描边 + 强调色），视觉上区别于普通条目。 */
   variant?: "default" | "new";
@@ -313,20 +323,39 @@ function DirectoryCard({
       } ${onOpen ? "cursor-pointer" : ""}`}
       style={isNew ? { borderColor: `${accent}99` } : undefined}
     >
-      {canDelete && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete?.(item);
-          }}
-          className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-          title={tt("删除")}
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+      {(canDelete || (onPrompt && !isNew)) && (
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+          {onPrompt && !isNew && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrompt(item);
+              }}
+              className="grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
+              title={tt("查看 / 编辑 prompt")}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.(item);
+              }}
+              className="grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+              title={tt("删除")}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+        </div>
       )}
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-3">

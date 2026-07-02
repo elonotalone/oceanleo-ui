@@ -1,6 +1,8 @@
 export { ApiPage } from "./ApiPage";
 export { ApiGuidePage } from "./ApiGuidePage";
 export { UsageHistory } from "./UsageHistory";
+export { CostPage } from "./CostPage";
+export { PageHeader } from "./PageHeader";
 export { ByokKeys } from "./ByokKeys";
 export { AccountPage } from "./AccountPage";
 export type { AccountPageProps, AccountMenuItem } from "./AccountPage";

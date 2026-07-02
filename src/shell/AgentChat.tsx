@@ -22,6 +22,7 @@ import {
   createTask,
   followUp,
   getTask,
+  stopTask,
   latestArtifact,
   type AgentAttachment,
   type AgentMessage,
@@ -222,6 +223,46 @@ export function AgentChat({
     else setError(r.error || tt("发送失败"));
   }
 
+  // 「中止」：AI 工作中（任务 running / 请求在途）点停止键 → 停任务。
+  const stop = useCallback(async () => {
+    if (!taskId) {
+      setBusy(false);
+      return;
+    }
+    const r = await stopTask(taskId);
+    if (r.ok) {
+      setStatus("stopped");
+      setBusy(false);
+      void refresh(taskId);
+    }
+  }, [taskId, refresh]);
+
+  // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
+  // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const suggestions: string[] =
+    !busy && status !== "running" && Array.isArray(lastAssistant?.meta?.suggestions)
+      ? (lastAssistant!.meta!.suggestions as string[]).filter(
+          (s) => typeof s === "string" && s.trim(),
+        ).slice(0, 4)
+      : [];
+
+  const sendSuggestion = useCallback(
+    async (text: string) => {
+      if (!taskId || busy) return;
+      setBusy(true);
+      setMessages((m) => [
+        ...m,
+        { id: Date.now(), role: "user", kind: "text", content: text },
+      ]);
+      const r = await followUp(taskId, text);
+      setBusy(false);
+      if (r.ok) setStatus("running");
+      else setError(r.error || tt("发送失败"));
+    },
+    [taskId, busy, tt],
+  );
+
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
 
@@ -280,6 +321,24 @@ export function AgentChat({
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
+          {/* 启发式追问 pill（对照豆包）：回答完成后给 3 个可点的追问，点了直接发送。 */}
+          {suggestions.length > 0 && (
+            <div className="flex flex-col items-start gap-1.5 pt-1">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => void sendSuggestion(s)}
+                  className="group flex max-w-full items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-left text-[13px] text-stone-600 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-800"
+                >
+                  <span className="truncate">{s}</span>
+                  <svg className="h-3.5 w-3.5 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
           {error && <p className="text-[14px] text-rose-500">{error}</p>}
         </div>
       </div>
@@ -292,7 +351,8 @@ export function AgentChat({
             value={input}
             onChange={setInput}
             onSubmit={send}
-            loading={busy}
+            loading={running}
+            onStop={() => void stop()}
             leoSuggest
             placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}
             rows={1}

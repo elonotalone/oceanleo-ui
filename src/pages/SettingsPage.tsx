@@ -13,6 +13,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getUserEmail } from "../lib/auth";
+import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface SettingsPageProps {
@@ -30,7 +31,7 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("设置")}</h1>
+      <PageHeader title={tt("设置")} />
 
       <div className="mx-auto mt-8 max-w-xl space-y-8">
         <section className="v-fade-up">
@@ -49,17 +50,26 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
 
         {extraSections}
 
+        {/* 用量记录 2026-07-02 起独立成「Cost」页（settings / api 均不再内嵌）。 */}
         <section className="v-fade-up" style={{ animationDelay: "120ms" }}>
           <h2 className="mb-1 text-[14px] font-semibold text-neutral-900">{tt("用量记录与计费")}</h2>
           <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
-            {tt("用量记录（每次调用的真实计费 + 可逐字审计的调用内容）、token 余额、\n            自带 API key（BYOK）与模型选择，已统一搬到「API」页。")}
+            {tt("用量柱状图与每次调用的真实计费记录在「Cost」页；token 余额、\n            自带 API key（BYOK）与模型选择在「API」页。")}
           </p>
-          <a
-            href="/api"
-            className="inline-flex items-center rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
-          >
-            {tt("前往 API 页 →")}
-          </a>
+          <div className="flex gap-2">
+            <a
+              href="/cost"
+              className="inline-flex items-center rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+            >
+              {tt("前往 Cost 页 →")}
+            </a>
+            <a
+              href="/api"
+              className="inline-flex items-center rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
+            >
+              {tt("前往 API 页 →")}
+            </a>
+          </div>
         </section>
       </div>
     </div>

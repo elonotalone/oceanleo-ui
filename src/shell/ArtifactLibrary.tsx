@@ -1,0 +1,770 @@
+"use client";
+
+// ============================================================================
+// @oceanleo/ui — 统一文件库 ArtifactLibrary（单一事实源，2026-07-02）
+// ----------------------------------------------------------------------------
+// 操作员拍板：27 个功能子站的「文件库」必须与主站 oceanleo.com/library **完完全全
+// 一样**——同一套侧栏分区（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 / 3D / 我的
+// 收藏，音频与 3D 为本次新增）、同一套主区（搜索 + 网格/列表视图 + 预览弹窗 +
+// 收藏）。数据 = `agent_artifacts` 表（全系列共用一个 Supabase 项目 + 跨站登录
+// cookie + RLS owner-only），天然「全 OceanLeo 打通」：任何站产出的作品在所有站
+// 的文件库可见。
+//
+// 本组件从主站 app/library/page.tsx 移植（去 sonner / react-markdown / 主站专有
+// icon 依赖），主站与全部子站统一改用它。侧栏分区渲染在 LibrarySubNav（doctrine
+// v4 master-detail），主区 = 本组件（受控 filter）。
+// ============================================================================
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { browserClient } from "../lib/auth/client";
+import { Markdown } from "./Markdown";
+import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
+import { useUI } from "../i18n/ui/useUI";
+
+export interface ArtifactItem {
+  id: string;
+  title: string;
+  kind: string;
+  content: string;
+  url?: string;
+  favorite: boolean;
+  created_at: string;
+}
+
+/** 文件库筛选分区（= 主站侧栏内容 + 2026-07-02 新增音频 / 3D）。 */
+export const ARTIFACT_FILTERS: { id: string; label: string }[] = [
+  { id: "all", label: "全部" },
+  { id: "images", label: "图片" },
+  { id: "documents", label: "文档" },
+  { id: "slides", label: "幻灯片" },
+  { id: "videos", label: "视频" },
+  { id: "audio", label: "音频" },
+  { id: "threed", label: "3D" },
+  { id: "favorites", label: "我的收藏" },
+];
+
+export type ArtifactFilter =
+  | "all"
+  | "images"
+  | "documents"
+  | "slides"
+  | "videos"
+  | "audio"
+  | "threed"
+  | "favorites";
+
+const KIND_SETS: Record<string, string[]> = {
+  images: ["image"],
+  documents: ["markdown", "document", "text"],
+  slides: ["slides", "slide", "presentation"],
+  videos: ["video"],
+  audio: ["audio", "music", "voice"],
+  threed: ["3d", "threed", "model", "mesh"],
+};
+
+/** 统一把 artifact 归一到一种可渲染的预览形态，避免出现空白卡片。 */
+type PreviewKind = "image" | "video" | "audio" | "text" | "link" | "file";
+
+function isImage(a: ArtifactItem) {
+  return a.kind === "image" || /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i.test(a.url || "");
+}
+function isVideo(a: ArtifactItem) {
+  return a.kind === "video" || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(a.url || "");
+}
+function isAudio(a: ArtifactItem) {
+  return (
+    KIND_SETS.audio.includes(a.kind) || /\.(mp3|wav|ogg|m4a|flac|aac)(\?|$)/i.test(a.url || "")
+  );
+}
+/** URL 是否指向真正的媒体文件（可直接内嵌预览），而非一个网页/接口链接。 */
+function isMediaUrl(url?: string) {
+  return /\.(jpg|jpeg|png|gif|webp|avif|svg|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|flac|aac)(\?|$)/i.test(
+    url || "",
+  );
+}
+
+function previewKind(a: ArtifactItem): PreviewKind {
+  if (isImage(a)) return "image";
+  if (isVideo(a)) return "video";
+  if (isAudio(a)) return "audio";
+  if ((a.content || "").trim().length > 0) return "text";
+  if ((a.url || "").trim().length > 0) return "link";
+  return "file";
+}
+
+function hostOf(url?: string): string {
+  if (!url) return "";
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.replace(/^https?:\/\//, "").split("/")[0] || url;
+  }
+}
+
+const KIND_LABELS: Record<string, string> = {
+  image: "图片",
+  video: "视频",
+  audio: "音频",
+  music: "音频",
+  voice: "音频",
+  markdown: "文档",
+  document: "文档",
+  text: "文档",
+  slides: "幻灯片",
+  slide: "幻灯片",
+  presentation: "幻灯片",
+  "3d": "3D 模型",
+  threed: "3D 模型",
+  model: "3D 模型",
+  mesh: "3D 模型",
+  search: "搜索结果",
+  file: "文件",
+  link: "链接",
+};
+
+/* image with blur-up placeholder */
+function LazyImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className={`relative overflow-hidden bg-neutral-100 ${className || ""}`}>
+      {!loaded && <div className="v-skeleton absolute inset-0" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        className={`h-full w-full object-cover transition-all duration-500 ${
+          loaded ? "scale-100 opacity-100 blur-0" : "scale-105 opacity-0 blur-md"
+        }`}
+      />
+    </div>
+  );
+}
+
+export interface ArtifactLibraryProps {
+  /** 受控筛选分区（由侧栏 LibrarySubNav 驱动）。不传则内部自管 + 顶部渲染筛选 chips。 */
+  filter?: ArtifactFilter;
+  onFilterChange?: (f: ArtifactFilter) => void;
+  accent?: string;
+  /** true 时用 h-full 填满父容器（内嵌分栏用）。 */
+  fill?: boolean;
+}
+
+export function ArtifactLibrary({
+  filter: controlledFilter,
+  onFilterChange,
+  accent = "#4f46e5",
+  fill = false,
+}: ArtifactLibraryProps) {
+  const tt = useUI();
+  const [internalFilter, setInternalFilter] = useState<ArtifactFilter>("all");
+  const filter = controlledFilter ?? internalFilter;
+  const setFilter = (f: ArtifactFilter) => {
+    if (controlledFilter === undefined) setInternalFilter(f);
+    onFilterChange?.(f);
+  };
+
+  const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    const supabase = browserClient();
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!sess.session) {
+        setAuthMsg(tt("登录后即可查看文件库。"));
+        setLoading(false);
+        return;
+      }
+      setAuthMsg(null);
+      let query = supabase
+        .from("agent_artifacts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (filter === "favorites") query = query.eq("favorite", true);
+      else if (KIND_SETS[filter]) query = query.in("kind", KIND_SETS[filter]);
+      const { data } = await query;
+      if (!cancelled) {
+        setArtifacts((data as ArtifactItem[]) || []);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, tt]);
+
+  async function toggleFavorite(id: string, cur: boolean) {
+    const supabase = browserClient();
+    if (!supabase) return;
+    setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, favorite: !cur } : a)));
+    const { error } = await supabase.from("agent_artifacts").update({ favorite: !cur }).eq("id", id);
+    if (error) {
+      // 失败回滚（静默——不引入 toast 依赖）。
+      setArtifacts((prev) => prev.map((a) => (a.id === id ? { ...a, favorite: cur } : a)));
+    }
+  }
+
+  const filtered = useMemo(
+    () => artifacts.filter((a) => (a.title || "").toLowerCase().includes(debounced.toLowerCase())),
+    [artifacts, debounced],
+  );
+  const selected = selectedIdx !== null ? filtered[selectedIdx] : null;
+
+  const navigate = useCallback(
+    (dir: -1 | 1) => {
+      setSelectedIdx((idx) => {
+        if (idx === null) return idx;
+        const next = idx + dir;
+        if (next < 0 || next >= filtered.length) return idx;
+        return next;
+      });
+    },
+    [filtered.length],
+  );
+
+  useEffect(() => {
+    if (selectedIdx === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") navigate(-1);
+      if (e.key === "ArrowRight") navigate(1);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectedIdx, navigate]);
+
+  async function copyContent(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  function kindLabel(kind: string): string {
+    return tt(KIND_LABELS[kind] || kind || "文件");
+  }
+
+  const filterLabel =
+    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "文件库";
+
+  return (
+    <div className={`${fill ? "h-full overflow-y-auto" : ""} px-8 py-6`}>
+      {selected && (
+        <Modal onClose={() => setSelectedIdx(null)} className="max-w-3xl">
+          <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3.5">
+            <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-neutral-900">
+              {selected.title || tt("内容详情")}
+            </h3>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="mr-2 text-[11px] tabular-nums text-neutral-400">
+                {(selectedIdx ?? 0) + 1} / {filtered.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                disabled={selectedIdx === 0}
+                aria-label={tt("上一项")}
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-30"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(1)}
+                disabled={selectedIdx === filtered.length - 1}
+                aria-label={tt("下一项")}
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-30"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIdx(null)}
+                aria-label={tt("关闭")}
+                className="ml-1 rounded p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div className="v-scroll max-h-[70vh] overflow-y-auto p-5">
+            <ArtifactPreview
+              a={selected}
+              tt={tt}
+              copied={copied}
+              onCopy={copyContent}
+              kindLabel={kindLabel}
+            />
+            <p className="mt-4 text-center text-[11px] text-neutral-300">{tt("← → 切换 · Esc 关闭")}</p>
+          </div>
+        </Modal>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(filterLabel)}</h1>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
+            <svg className="h-3.5 w-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
+            </svg>
+            <input
+              className="w-40 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
+              placeholder={tt("搜索文件")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="text-neutral-400 transition hover:text-neutral-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex items-center rounded-lg bg-neutral-100 p-0.5">
+            <button
+              type="button"
+              onClick={() => setView("grid")}
+              className={`rounded-md p-1.5 transition-all duration-150 ${
+                view === "grid" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+              }`}
+              title={tt("网格视图")}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={`rounded-md p-1.5 transition-all duration-150 ${
+                view === "list" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+              }`}
+              title={tt("列表视图")}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 非受控（无侧栏子栏的整页形态）：顶部渲染分区 chips。 */}
+      {controlledFilter === undefined && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {ARTIFACT_FILTERS.map((f) => {
+            const on = f.id === filter;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id as ArtifactFilter)}
+                className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
+                  on ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+                }`}
+                style={on ? { background: accent } : undefined}
+              >
+                {tt(f.label)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {authMsg ? (
+        <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
+      ) : loading ? (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} className="h-48" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<BoxIcon />}
+          title={
+            debounced
+              ? tt("未找到匹配的内容")
+              : filter === "favorites"
+                ? tt("还没有收藏")
+                : tt("库中还没有内容")
+          }
+          desc={
+            debounced
+              ? tt("换个关键词试试，或清除筛选条件。")
+              : tt("任务产出的图片、文档与交付物会自动收集到这里。")
+          }
+        />
+      ) : view === "list" ? (
+        <div className="v-fade-in mt-5 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+          {filtered.map((a, idx) => (
+            <div key={a.id} className="group flex items-center gap-3 px-4 py-3 transition hover:bg-neutral-50">
+              <button
+                type="button"
+                onClick={() => setSelectedIdx(idx)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                <ListThumb a={a} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-neutral-900">
+                    {a.title || tt("无标题")}
+                  </span>
+                  <span className="block truncate text-[11px] text-neutral-500">
+                    {kindLabel(a.kind)} · {timeAgo(a.created_at)}
+                    {previewKind(a) === "link" && a.url ? ` · ${hostOf(a.url)}` : ""}
+                  </span>
+                </span>
+              </button>
+              <FavButton a={a} onToggle={toggleFavorite} tt={tt} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((a, idx) => (
+            <div
+              key={a.id}
+              className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
+              style={{ animation: `v-fade-up 0.3s ease ${Math.min(idx * 40, 320)}ms both` }}
+            >
+              <button type="button" onClick={() => setSelectedIdx(idx)} className="w-full text-left">
+                <CardThumb a={a} kindLabel={kindLabel} />
+                <div className="p-3">
+                  <p className="truncate text-[13px] font-medium text-neutral-900">
+                    {a.title || tt("无标题")}
+                  </p>
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    {kindLabel(a.kind)} · {timeAgo(a.created_at)}
+                  </p>
+                </div>
+              </button>
+              <FavButton a={a} onToggle={toggleFavorite} tt={tt} floating />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 预览弹窗正文（图片 / 视频 / 音频 / 文本 / 链接 / 文件）
+// ---------------------------------------------------------------------------
+function ArtifactPreview({
+  a,
+  tt,
+  copied,
+  onCopy,
+  kindLabel,
+}: {
+  a: ArtifactItem;
+  tt: (s: string, vars?: Record<string, string | number>) => string;
+  copied: boolean;
+  onCopy: (s: string) => void;
+  kindLabel: (k: string) => string;
+}) {
+  const kind = previewKind(a);
+  const copyBtn = (text: string) => (
+    <button
+      type="button"
+      onClick={() => onCopy(text)}
+      className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
+    >
+      {copied ? tt("已复制 ✓") : tt("复制链接")}
+    </button>
+  );
+
+  if (kind === "image") {
+    return (
+      <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img key={a.id} src={a.url} alt={a.title} className="v-fade-in mx-auto max-h-[58vh] rounded-lg" />
+        <div className="mt-4 flex justify-center gap-2">
+          <a
+            href={a.url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+          >
+            {tt("下载图片")}
+          </a>
+          {copyBtn(a.url || "")}
+        </div>
+      </>
+    );
+  }
+  if (kind === "video" && isMediaUrl(a.url)) {
+    return (
+      <>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video key={a.id} src={a.url} controls className="v-fade-in mx-auto max-h-[58vh] w-full rounded-lg bg-black" />
+        <div className="mt-4 flex justify-center gap-2">
+          <a
+            href={a.url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+          >
+            {tt("下载视频")}
+          </a>
+          {copyBtn(a.url || "")}
+        </div>
+      </>
+    );
+  }
+  if (kind === "audio" && a.url) {
+    return (
+      <div key={a.id} className="v-fade-in flex flex-col items-center py-8">
+        <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-400">
+          <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 18V6l11-2v12" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="6.5" cy="18" r="2.5" />
+            <circle cx="17.5" cy="16" r="2.5" />
+          </svg>
+        </span>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <audio src={a.url} controls className="w-full max-w-md" />
+        <div className="mt-5 flex justify-center gap-2">
+          <a
+            href={a.url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+          >
+            {tt("下载音频")}
+          </a>
+          {copyBtn(a.url)}
+        </div>
+      </div>
+    );
+  }
+  if (kind === "link" || kind === "file") {
+    return (
+      <div key={a.id} className="v-fade-in flex flex-col items-center py-6 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-400">
+          {kind === "link" ? <LinkIcon className="h-7 w-7" /> : <FileIcon className="h-7 w-7" />}
+        </span>
+        <p className="mt-4 text-[14px] font-medium text-neutral-800">{a.title || kindLabel(a.kind)}</p>
+        {a.url && <p className="mt-1 max-w-full break-all px-6 text-[12px] text-neutral-500">{a.url}</p>}
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {a.url && (
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+            >
+              {tt("打开链接")}
+            </a>
+          )}
+          {a.url && copyBtn(a.url)}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div key={a.id} className="v-fade-in">
+        <Markdown className="prose prose-sm max-w-none">{a.content}</Markdown>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => onCopy(a.content)}
+          className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+        >
+          {copied ? tt("已复制 ✓") : tt("复制内容")}
+        </button>
+        {a.url && (
+          <a
+            href={a.url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
+          >
+            {tt("打开链接")}
+          </a>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** 网格卡片缩略图：任何类型都有可视内容，绝不留空白灰块。 */
+function CardThumb({ a, kindLabel }: { a: ArtifactItem; kindLabel: (k: string) => string }) {
+  const kind = previewKind(a);
+  if (kind === "image") {
+    return (
+      <div className="aspect-video w-full overflow-hidden">
+        <div className="h-full w-full transition-transform duration-300 group-hover:scale-[1.04]">
+          <LazyImage src={a.url} alt={a.title} className="h-full w-full" />
+        </div>
+      </div>
+    );
+  }
+  if (kind === "video" && isMediaUrl(a.url)) {
+    return (
+      <div className="aspect-video w-full overflow-hidden bg-black">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video src={a.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+  if (kind === "text") {
+    return (
+      <div className="aspect-video w-full overflow-hidden bg-neutral-50 p-4">
+        <div className="line-clamp-6 text-[12px] leading-relaxed text-neutral-600">{a.content}</div>
+      </div>
+    );
+  }
+  const Icon = kind === "link" ? LinkIcon : kind === "audio" ? AudioIcon : kind === "video" ? VideoIcon : FileIcon;
+  return (
+    <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 px-4 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-neutral-400 shadow-sm ring-1 ring-neutral-200/70">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="max-w-full truncate text-[11px] text-neutral-500">
+        {kind === "link" ? hostOf(a.url) : kindLabel(a.kind)}
+      </span>
+    </div>
+  );
+}
+
+/** 列表视图的小方块缩略图。 */
+function ListThumb({ a }: { a: ArtifactItem }) {
+  const kind = previewKind(a);
+  if (kind === "image") {
+    return <LazyImage src={a.url} alt="" className="h-9 w-9 shrink-0 rounded-lg" />;
+  }
+  const Icon = kind === "link" ? LinkIcon : kind === "audio" ? AudioIcon : kind === "video" ? VideoIcon : FileIcon;
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
+function FavButton({
+  a,
+  onToggle,
+  tt,
+  floating = false,
+}: {
+  a: ArtifactItem;
+  onToggle: (id: string, cur: boolean) => void;
+  tt: (s: string) => string;
+  floating?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(a.id, a.favorite);
+      }}
+      aria-label={a.favorite ? tt("取消收藏") : tt("收藏")}
+      className={
+        floating
+          ? `absolute right-2 top-2 rounded-lg bg-white/80 p-1.5 backdrop-blur transition-all duration-150 hover:text-yellow-500 active:scale-90 ${
+              a.favorite ? "text-yellow-500 opacity-100" : "text-neutral-400 opacity-0 group-hover:opacity-100"
+            }`
+          : `shrink-0 rounded-lg p-1.5 transition-all duration-150 hover:text-yellow-500 active:scale-90 ${
+              a.favorite ? "text-yellow-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"
+            }`
+      }
+    >
+      <svg
+        className={`h-4 w-4 ${a.favorite ? "fill-yellow-500 text-yellow-500" : ""}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path
+          d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
+function LinkIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10 14a5 5 0 007.07 0l2.83-2.83a5 5 0 00-7.07-7.07L11.5 5.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 10a5 5 0 00-7.07 0L4.1 12.83a5 5 0 007.07 7.07l1.32-1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function FileIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function VideoIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="5" width="13" height="14" rx="2" />
+      <path d="M16 10l5-3v10l-5-3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function AudioIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 18V6l11-2v12" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="16" r="2.5" />
+    </svg>
+  );
+}
+function BoxIcon() {
+  return (
+    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 8l-9-5-9 5v8l9 5 9-5V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 8l9 5 9-5M12 13v8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

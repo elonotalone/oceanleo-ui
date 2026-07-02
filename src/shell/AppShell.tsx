@@ -606,17 +606,16 @@ function AppShellInner({
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
        侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
     <div className="flex min-h-screen bg-transparent" data-oceanleo-shell>
-      {/* desktop sidebar。固定宽度 224px——主导航态与覆盖式子栏态共用同一宽度，
-          点「工作台 / 文件库 / 历史记录」等带子栏的项时侧栏不再变宽
-          （操作员 2026-06-23：变宽体验差，统一宽度）。宽度既容得下主导航文字，
-          也容得下子栏列表（文件名 / 历史标题 / agent 名，超长截断）。 */}
+      {/* desktop sidebar。固定宽度 256px（2026-07-02 对齐主站 oceanleo.com 侧栏宽，
+          利于显示历史记录的 AI 概括标题）——主导航态与覆盖式子栏态共用同一宽度，
+          点「工作台 / 文件库 / 历史记录」等带子栏的项时侧栏不再变宽。 */}
       <aside
         data-oceanleo-chrome
         className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
-          collapsed ? "w-0 border-r-0" : "w-[224px]"
+          collapsed ? "w-0 border-r-0" : "w-[256px]"
         }`}
       >
-        <div className="flex h-full w-[224px] flex-col">
+        <div className="flex h-full w-[256px] flex-col">
           {sidebarBody}
         </div>
       </aside>

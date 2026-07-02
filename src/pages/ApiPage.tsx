@@ -38,7 +38,7 @@ import {
   type CatalogGroup,
 } from "../lib/auth";
 import { ByokKeys } from "./ByokKeys";
-import { UsageHistory } from "./UsageHistory";
+import { PageHeader } from "./PageHeader";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 // 「全部供应商」这个虚拟 tab 的 id（与真实厂商 id 不冲突）。
@@ -192,7 +192,7 @@ export function ApiPage() {
   if (!oceanleoConfigured()) {
     return (
       <div className="px-8 py-6">
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">API</h1>
+        <PageHeader title="API" />
         <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
           {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
         </div>
@@ -202,7 +202,7 @@ export function ApiPage() {
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">API</h1>
+      <PageHeader title="API" />
 
       <div className="mx-auto mt-6 max-w-3xl space-y-8">
         {/* 余额 + 计费说明（零服务费宗旨只在这里讲） */}
@@ -240,8 +240,23 @@ export function ApiPage() {
         {/* BYOK：自带 API key 管理 */}
         <ByokKeys loggedIn={!!user} />
 
-        {/* 用量记录 + 审计（迁自 /settings） */}
-        <UsageHistory />
+        {/* 用量记录已迁到独立「Cost」页（2026-07-02），这里只留入口。 */}
+        <section className="v-fade-up">
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200 p-5">
+            <div>
+              <p className="text-[13px] font-semibold text-neutral-900">{tt("用量记录")}</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-500">
+                {tt("用量柱状图与每次调用的真实计费记录，已统一搬到「Cost」页。")}
+              </p>
+            </div>
+            <a
+              href="/cost"
+              className="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+            >
+              {tt("前往 Cost 页 →")}
+            </a>
+          </div>
+        </section>
 
         {/* 我的模型选择总览：5 个类目 → 已选模型 / 供应商 / 价格 */}
         <SelectionSummary catalog={catalog} selection={selection} user={!!user} />

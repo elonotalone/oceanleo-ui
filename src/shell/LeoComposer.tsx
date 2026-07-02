@@ -83,6 +83,11 @@ export interface LeoComposerProps {
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
+  /**
+   * AI 正在工作时的「中止」回调（操作员 2026-07-02）：传了它，loading 期间发送键
+   * 变成可点击的「停止」键（■），点击即中止当前任务。不传则保持旧行为（转圈禁用）。
+   */
+  onStop?: () => void;
   /** 是否显示「leo」按钮（仅与 AI 生成有关的输入框传 true） */
   leoSuggest?: boolean;
   /**
@@ -146,6 +151,7 @@ export function LeoComposer({
   onSubmit,
   placeholder,
   loading = false,
+  onStop,
   leoSuggest = false,
   leftSlot,
   inlineSlot,
@@ -385,19 +391,32 @@ export function LeoComposer({
             <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={disabled} />
           )}
           {onSubmit && (
-            <button
-              type="button"
-              onClick={() => canSend && onSubmit()}
-              disabled={!canSend}
-              aria-label={tt("发送")}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${
-                canSend
-                  ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
-                  : "cursor-not-allowed bg-neutral-300"
-              }`}
-            >
-              {loading ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
-            </button>
+            loading && onStop ? (
+              // AI 工作中 + 支持中止 → 发送键变「停止」键（黑底白■，可点击随时中止）。
+              <button
+                type="button"
+                onClick={onStop}
+                aria-label={tt("停止")}
+                title={tt("停止")}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-200 hover:scale-105 hover:bg-neutral-800 active:scale-95"
+              >
+                <StopGlyph />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => canSend && onSubmit()}
+                disabled={!canSend}
+                aria-label={tt("发送")}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${
+                  canSend
+                    ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
+                    : "cursor-not-allowed bg-neutral-300"
+                }`}
+              >
+                {loading ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
+              </button>
+            )
           )}
         </div>
       </div>

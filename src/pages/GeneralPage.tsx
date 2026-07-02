@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
+import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
 import { THEME_MODES, type ThemeMode } from "../theme/theme-config";
@@ -118,7 +119,7 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
 
   return (
     <div className="px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{pageTitle}</h1>
+      <PageHeader title={pageTitle} />
 
       <div className="mx-auto mt-8 max-w-xl">
         <section className="v-fade-up">

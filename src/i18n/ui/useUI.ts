@@ -20,6 +20,7 @@
 // 服务端首帧就用正确语言渲染，无闪烁。
 // ============================================================================
 
+import { useMemo } from "react";
 import { useLocale } from "next-intl";
 import { UI_MESSAGES } from "./messages";
 import { DEFAULT_LOCALE, normalizeLocale } from "../config";
@@ -37,12 +38,19 @@ function interpolate(s: string, vars?: Record<string, string | number>): string 
  *   <button>{tt("深色")}</button>
  *   <p>{tt("让 agent 帮你做「{title}」", { title })}</p>
  * ⚠ 必须在 <I18nProvider> 内（client 组件）调用。
+ *
+ * ⚠ 返回值必须按 locale memo 固定（2026-07-02 修）：此前每次渲染都返回新函数，
+ * 任何把 tt 放进 useCallback/useEffect 依赖的调用方（如 useHistory 的 reload）
+ * 都会「渲染→effect→fetch→setState→渲染」无限循环——历史记录左栏反复闪
+ * 「加载…」抽动的根因就在这。
  */
 export function useUI(): UITranslate {
   const locale = normalizeLocale(useLocale());
-  const dict = UI_MESSAGES[locale] || UI_MESSAGES[DEFAULT_LOCALE] || {};
-  return (zh: string, vars?: Record<string, string | number>) => {
-    const hit = dict[zh];
-    return interpolate(hit != null && hit !== "" ? hit : zh, vars);
-  };
+  return useMemo(() => {
+    const dict = UI_MESSAGES[locale] || UI_MESSAGES[DEFAULT_LOCALE] || {};
+    return (zh: string, vars?: Record<string, string | number>) => {
+      const hit = dict[zh];
+      return interpolate(hit != null && hit !== "" ? hit : zh, vars);
+    };
+  }, [locale]);
 }
