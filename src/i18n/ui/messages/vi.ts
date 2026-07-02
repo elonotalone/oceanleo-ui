@@ -467,5 +467,16 @@ const vi: Record<string, string> = {
   "已替换": "Đã thay",
   "以此继续": "Tiếp tục với kết quả này",
   "让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）": "Để leo xử lý nội dung này (mở rộng / rút gọn / tóm tắt / giải thích / dịch…)",
+  // —— 宗旨 v12：leo board（问答打磨 + 总开关），2026-07-02 ——
+  "回退": "Hoàn tác",
+  "前进": "Làm lại",
+  "换一个问题": "Đổi câu hỏi khác",
+  "leo 正在把你的回答合并进 leo board…": "leo đang gộp câu trả lời của bạn vào leo board…",
+  "leo 正在想下一个问题…": "leo đang nghĩ câu hỏi tiếp theo…",
+  "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Chọn một phương án hoặc nhập bên dưới — leo sẽ gộp vào leo board",
+  "补充内容，leo 会合并进 leo board": "Bổ sung nội dung, leo sẽ gộp vào leo board",
+  "启用 leo": "Bật leo",
+  "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。": "Hiển thị lối vào leo cạnh ô nhập và khi bôi đen văn bản, giúp bạn mở rộng, rút gọn, tóm tắt và dịch nội dung.",
+  "平台仅按用户在 OceanLeo 平台使用 AI token 的": "Nền tảng chỉ tính phí theo lượng AI token mà bạn dùng trên nền tảng OceanLeo,",
 };
 export default vi;

@@ -36,7 +36,18 @@ export { ModelPicker } from "./ModelPicker";
 export type { ModelPickerProps, ModelCategory } from "./ModelPicker";
 // Stage C：agent 引擎选择器（OceanLeo 原生 / 4 外部引擎 BYOK）。
 // leo 助手（原「助手建议」）+ 标准输入框 + 打开浮窗的助手函数。
-export { LeoAssistant, AiAssistant, openLeoAssistant, runLeoQuickSuggest, OPEN_LEO_EVENT } from "./LeoAssistant";
+export {
+  LeoAssistant,
+  AiAssistant,
+  openLeoAssistant,
+  runLeoQuickSuggest,
+  OPEN_LEO_EVENT,
+  LEO_ENABLED_KEY,
+  LEO_ENABLED_EVENT,
+  isLeoEnabled,
+  setLeoEnabled,
+  useLeoEnabled,
+} from "./LeoAssistant";
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
 export type {
@@ -91,7 +102,7 @@ export type { AgentConsoleProps, RunCapabilityFn } from "./AgentConsole";
 export { WorkspaceShell } from "./WorkspaceShell";
 export type { WorkspaceShellProps } from "./WorkspaceShell";
 // 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
-export { HomeIntro } from "./HomeIntro";
+export { HomeIntro, BillingNotice } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
 export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";

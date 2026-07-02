@@ -18,6 +18,7 @@ import { useLocale } from "next-intl";
 import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
 import { THEME_MODES, type ThemeMode } from "../theme/theme-config";
+import { setLeoEnabled, useLeoEnabled } from "../shell/LeoAssistant";
 import {
   LOCALES,
   LOCALE_COOKIE,
@@ -84,6 +85,7 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const { mode, setMode } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const leoOn = useLeoEnabled();
 
   // 默认文案随当前语言本地化（未显式传 props 时）。
   const TL: Record<ThemeMode, string> = {
@@ -202,6 +204,35 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
                 );
               })}
             </div>
+          </div>
+        </section>
+
+        {/* leo 助手总开关（宗旨 v12，2026-07-02）：默认开启；关闭后输入框旁的
+            「leo」按钮与页面划词气泡都不再出现。localStorage 持久化（按站点域名）。 */}
+        <section className="v-fade-up mt-10">
+          <h2 className="mb-4 text-[15px] font-semibold text-neutral-900">{tt("leo 助手")}</h2>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5">
+            <div className="min-w-0">
+              <p className="text-[14px] font-medium text-neutral-900">{tt("启用 leo")}</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-500">
+                {tt("在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。")}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={leoOn}
+              onClick={() => setLeoEnabled(!leoOn)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                leoOn ? "bg-neutral-900" : "bg-neutral-300"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  leoOn ? "left-[22px]" : "left-0.5"
+                }`}
+              />
+            </button>
           </div>
         </section>
       </div>

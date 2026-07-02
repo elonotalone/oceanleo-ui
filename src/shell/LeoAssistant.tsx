@@ -6,23 +6,36 @@ import { useUI } from "../i18n/ui/useUI";
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v11（操作员 2026-07-02）：docs/architecture/
-// oceanleo-leo-copilot-and-dark-theme.md
-//   推翻 v9「一键补充自动写回输入框」与 2026-06-17「浮窗打开即自动请求建议」。
-//   leo 从「prompt 补全器」升级为「页面内容处理助手」：
+// 宗旨 v12（操作员 2026-07-02，leo board）：docs/architecture/oceanleo-leo-board.md
+// 在 v11（oceanleo-leo-copilot-and-dark-theme.md）基础上重做「扩充」：
 //
 //   ┌─ [可拖动标题栏] leo ───────────────────────────── ✕ ┐
 //   │  [上下文卡] 来自输入框 / 来自页面划词 的一段文本      │
 //   │  对于这些内容，我可以帮你：                            │
 //   │  [扩充] [精简] [总结] [解释] [翻译] [润色]             │
-//   │  （结果区：处理结果 + 复制 / 替换到输入框 / 继续处理）  │
-//   │  [告诉 leo 你想怎么处理这段内容……          ] [发送]   │
+//   │  ┌ leo board ──────────────── [↩ 回退] [↪ 前进] ┐   │
+//   │  │ <可直接编辑的工作文本，常驻显示>                │   │
+//   │  │ [复制] [替换到输入框]                          │   │
+//   │  └───────────────────────────────────────────────┘   │
+//   │  「请问这份内容的目标读者是谁？」  [换一个问题]        │
+//   │  [教师] [职场人士] [学生] …（选项可以很多，用词简洁）  │
+//   │  （transform 结果卡：复制 / 替换到输入框 / 以此继续）  │
+//   │  [补充内容，leo 会合并进 leo board…       ] [发送]   │
 //   └────────────────────────────────────────────────────┘
 //
-// 三条非协商原则（当日 bug 的根因修复）：
+// leo board 五条规则（操作员 2026-07-02 拍板）：
+//   1. 点「扩充」时 board 初始内容 = 用户原文【原样】，零 LLM 改写——leo 绝不
+//      靠猜替用户扩写（"我要做一个PPT" 不许被编成 300 字完整需求）。
+//   2. board 常驻显示、可直接编辑、可回退/前进（快照历史栈）。
+//   3. 每次只问【一个方向】的问题（完全从当前 board 内容推导，允许重复），
+//      选项用词简洁、可以很多；随时可点「换一个问题」。
+//   4. 点选项 → 回答连同问题发给后端【保守合并】进 board（只写用户给的事实）；
+//      用户在底部输入框发自由文本 → 同样合并进 board。
+//   5. 面板关闭再打开，board 留存（面板隐藏而非卸载）。
+//
+// v11 三条非协商原则继续有效：
 //   1. 打开浮窗【不自动】发任何请求——用户点了动词才动。
-//   2. 结果【永不自动写回】宿主输入框——只展示在 leo 面板里，可一键复制；
-//      仅当上下文来自输入框时，额外给一个「替换到输入框」的手动按钮。
+//   2. 结果【永不自动写回】宿主输入框——只手动「替换到输入框」。
 //   3. 内容来源显式化——上下文卡永远告诉用户「leo 现在看到的是哪段文字」。
 //
 // 内容来源两个：
@@ -30,9 +43,11 @@ import { useUI } from "../i18n/ui/useUI";
 //   b. 页面划词：选中页面任意文本 → 选区旁浮出 leo 小气泡 → 点气泡送入面板
 //      （SelectionBubble，选中即缓存、点击才发送，不做被动监视）。
 //
-// 「扩充」走 /v1/assistant/suggest 的可点选项流（选项点击后合并进工作文本并自动
-// 刷新）；精简/总结/解释/翻译/润色/自由指令走 /v1/assistant/transform。
-// 公开 + 操作员买单（无登录 / 无 API-key 墙），posture 与 /v1/recommend 相同。
+// 「扩充」走 /v1/assistant/board（合并 + 出题）；精简/总结/解释/翻译/润色/
+// 自由指令走 /v1/assistant/transform。公开 + 操作员买单，posture 同 /v1/recommend。
+//
+// leo 总开关（宗旨 v12）：/general 页可开关 leo（默认开启），localStorage
+// `oceanleo:leo-enabled`，关闭时输入框按钮 / 划词气泡 / 面板全部不出现。
 // ============================================================================
 
 const GATEWAY_BASE =
@@ -43,6 +58,50 @@ const GATEWAY_BASE =
 
 /** 触发打开 leo 助手浮窗的全局事件名。LeoComposer 的「leo」按钮派发它。 */
 export const OPEN_LEO_EVENT = "oceanleo:open-leo";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// leo 总开关（宗旨 v12）：/general 页可开关，默认开启。localStorage 持久化，
+// 同页内用自定义事件同步（storage 事件只跨标签页触发）。
+// ─────────────────────────────────────────────────────────────────────────────
+export const LEO_ENABLED_KEY = "oceanleo:leo-enabled";
+export const LEO_ENABLED_EVENT = "oceanleo:leo-enabled-change";
+
+export function isLeoEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return localStorage.getItem(LEO_ENABLED_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export function setLeoEnabled(on: boolean): void {
+  try {
+    localStorage.setItem(LEO_ENABLED_KEY, on ? "1" : "0");
+  } catch {
+    /* noop */
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(LEO_ENABLED_EVENT, { detail: { enabled: on } }));
+  }
+}
+
+/** 响应式读取 leo 开关（LeoAssistant / LeoComposer / GeneralPage 共用）。 */
+export function useLeoEnabled(): boolean {
+  // SSR/首帧默认 true（与「默认开启」一致），mount 后同步真实值，避免水合闪烁。
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const sync = () => setOn(isLeoEnabled());
+    sync();
+    window.addEventListener(LEO_ENABLED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(LEO_ENABLED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return on;
+}
 
 export interface OpenLeoDetail {
   /** 直接把一段文本送进 leo（页面划词等）。不传则读取宿主输入框内容。 */
@@ -72,30 +131,31 @@ export async function runLeoQuickSuggest(opts: {
 
 type HostInput = HTMLTextAreaElement | HTMLInputElement;
 
-interface SuggestResult {
-  updatedPrompt: string;
+interface BoardResult {
+  board: string;
   question: string;
   options: string[];
   insufficient?: boolean;
+  fallback?: boolean;
 }
 
-async function suggest(input: {
+/** /v1/assistant/board（宗旨 v12）：保守合并回答 + 基于 board 出下一题。 */
+async function boardCall(input: {
   site_id: string;
   doc_type?: string;
-  base_prompt?: string;
-  user_input?: string;
-  previous_options?: string[];
-  skipped_questions?: string[];
-}): Promise<{ ok: boolean; data?: SuggestResult; error?: string }> {
+  board_text: string;
+  question?: string;
+  user_answer?: string;
+}): Promise<{ ok: boolean; data?: BoardResult; error?: string }> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/suggest`, {
+    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/board`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data?.detail || `HTTP ${res.status}` };
-    return { ok: true, data: data as SuggestResult };
+    return { ok: true, data: data as BoardResult };
   } catch {
     return { ok: false, error: "网络错误，请稍后再试。" };
   }
@@ -265,15 +325,19 @@ export function LeoAssistant({
 }: LeoAssistantProps) {
   const tt = useUI();
   const panelTitle = title ?? "leo";
+  const enabled = useLeoEnabled();
   const [open, setOpen] = useState(false);
   const [context, setContext] = useState<LeoContext | null>(null);
   const { resolve } = useHostInput();
-  // 面板每次带新上下文打开时 +1，让 Panel 重置瞬态（选项流等）。
+  // 面板带【内容变化的】新上下文打开时 +1，让 Panel 重置瞬态（board / 问答流）。
+  // 同一段文本重复打开不 bump——leo board 要留存（宗旨 v12 规则 5）。
   const [ctxEpoch, setCtxEpoch] = useState(0);
+  const ctxTextRef = useRef<string>("");
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
     const onOpen = (e: Event) => {
+      if (!isLeoEnabled()) return;
       const detail = (e as CustomEvent<OpenLeoDetail>).detail;
       let next: LeoContext | null = null;
       if (detail?.text && detail.text.trim()) {
@@ -282,8 +346,15 @@ export function LeoAssistant({
         const v = resolve()?.value?.trim();
         if (v) next = { text: v, source: "input" };
       }
-      setContext(next);
-      setCtxEpoch((n) => n + 1);
+      const nextText = next?.text || "";
+      if (nextText && nextText !== ctxTextRef.current) {
+        ctxTextRef.current = nextText;
+        setContext(next);
+        setCtxEpoch((n) => n + 1);
+      } else if (!ctxTextRef.current && next) {
+        ctxTextRef.current = nextText;
+        setContext(next);
+      }
       setOpen(true);
     };
     window.addEventListener(OPEN_LEO_EVENT, onOpen);
@@ -349,6 +420,16 @@ export function LeoAssistant({
     });
   }, []);
 
+  // Panel 内部改上下文（清除 / 读取输入框 / 以此继续）时同步 ctxTextRef，
+  // 保证下次 OPEN_LEO_EVENT 的「同文本不重置」判断准确。
+  const handleContextChange = useCallback((c: LeoContext | null) => {
+    ctxTextRef.current = c?.text || "";
+    setContext(c);
+  }, []);
+
+  // leo 总开关关闭：入口（按钮/气泡）与面板全部不渲染。
+  if (!enabled) return null;
+
   return (
     <div data-ai-assistant-root>
       {enableSelection && <SelectionBubble />}
@@ -362,52 +443,54 @@ export function LeoAssistant({
           {panelTitle}
         </button>
       )}
-      {open && (
+      {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。 */}
+      <div
+        className={`fixed z-50 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+          open ? "flex" : "hidden"
+        }`}
+        style={{
+          left: pos ? pos.left : undefined,
+          top: pos ? pos.top : undefined,
+          width: PANEL_W,
+          height: PANEL_H,
+          maxWidth: "92vw",
+          maxHeight: "90vh",
+          right: pos ? undefined : 20,
+          bottom: pos ? undefined : 20,
+        }}
+      >
+        {/* 可拖动标题栏 */}
         <div
-          className="fixed z-50 flex max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          style={{
-            left: pos ? pos.left : undefined,
-            top: pos ? pos.top : undefined,
-            width: PANEL_W,
-            height: PANEL_H,
-            maxHeight: "90vh",
-            right: pos ? undefined : 20,
-            bottom: pos ? undefined : 20,
-          }}
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          className="flex cursor-move touch-none items-center justify-between border-b border-slate-100 px-4 py-3"
         >
-          {/* 可拖动标题栏 */}
-          <div
-            onPointerDown={onDragStart}
-            onPointerMove={onDragMove}
-            onPointerUp={onDragEnd}
-            onPointerCancel={onDragEnd}
-            className="flex cursor-move touch-none items-center justify-between border-b border-slate-100 px-4 py-3"
-          >
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <Sparkle />
-              {panelTitle}
-              <DragDots />
-            </div>
-            <button
-              data-leo-no-drag
-              onClick={() => setOpen(false)}
-              aria-label={tt("关闭")}
-              className="text-slate-400 transition hover:text-slate-700"
-            >
-              ✕
-            </button>
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <Sparkle />
+            {panelTitle}
+            <DragDots />
           </div>
-
-          <Panel
-            key={ctxEpoch}
-            siteId={siteId}
-            docType={docType}
-            context={context}
-            onContextChange={setContext}
-            resolveHost={resolve}
-          />
+          <button
+            data-leo-no-drag
+            onClick={() => setOpen(false)}
+            aria-label={tt("关闭")}
+            className="text-slate-400 transition hover:text-slate-700"
+          >
+            ✕
+          </button>
         </div>
-      )}
+
+        <Panel
+          key={ctxEpoch}
+          siteId={siteId}
+          docType={docType}
+          context={context}
+          onContextChange={handleContextChange}
+          resolveHost={resolve}
+        />
+      </div>
     </div>
   );
 }
@@ -519,7 +602,7 @@ function SelectionBubble() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 面板主体：上下文卡 + 动词按键 + 扩充选项流 / 结果区 + 自由指令输入。
+// 面板主体：上下文卡 + 动词按键 + leo board（问答打磨）/ 结果区 + 输入框。
 // ─────────────────────────────────────────────────────────────────────────────
 
 type VerbId = "expand" | "condense" | "summarize" | "explain" | "translate" | "polish";
@@ -539,6 +622,9 @@ interface LeoResult {
   text: string;
 }
 
+// board 历史栈上限（回退/前进）。
+const BOARD_HISTORY_MAX = 60;
+
 function Panel({
   siteId,
   docType,
@@ -553,19 +639,22 @@ function Panel({
   resolveHost: () => HostInput | null;
 }) {
   const tt = useUI();
-  const [busy, setBusy] = useState<string | null>(null); // 正在跑的动词 label
+  const [busy, setBusy] = useState<string | null>(null); // 正在跑的 transform 动词 label
   const [err, setErr] = useState<string | null>(null);
   const [leoSays, setLeoSays] = useState<string | null>(null); // leo 的追问/提示
   const [results, setResults] = useState<LeoResult[]>([]);
   const [input, setInput] = useState("");
   const idRef = useRef(0);
 
-  // 扩充选项流状态。
-  const [expandText, setExpandText] = useState<string | null>(null); // 工作文本
-  const [options, setOptions] = useState<string[]>([]);
-  const [prevOptions, setPrevOptions] = useState<string[]>([]);
+  // ── leo board 状态（宗旨 v12） ──────────────────────────────────────────
+  const [board, setBoard] = useState<string | null>(null); // null = board 未激活
+  const [history, setHistory] = useState<string[]>([]);
+  const [histIdx, setHistIdx] = useState(-1);
   const [question, setQuestion] = useState("");
-  const [skipped, setSkipped] = useState<string[]>([]);
+  const [options, setOptions] = useState<string[]>([]);
+  // boardBusy："question"=出题中，"merge"=合并回答中。
+  const [boardBusy, setBoardBusy] = useState<"question" | "merge" | null>(null);
+  const editTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollTop = () => {
@@ -578,45 +667,123 @@ function Panel({
     scrollTop();
   };
 
-  // ── 扩充（suggest 可点选项流） ────────────────────────────────────────────
-  const runExpand = async (baseText: string, userInput: string, prev: string[]) => {
-    setBusy(tt("扩充"));
-    setErr(null);
+  /** 把新 board 内容提交进历史栈（截断前进分支，封顶 BOARD_HISTORY_MAX）。 */
+  const commitBoard = useCallback(
+    (next: string) => {
+      setBoard(next);
+      setHistory((h) => {
+        const cut = h.slice(0, histIdx + 1);
+        if (cut[cut.length - 1] === next) return cut;
+        const merged = [...cut, next].slice(-BOARD_HISTORY_MAX);
+        setHistIdx(merged.length - 1);
+        return merged;
+      });
+    },
+    [histIdx],
+  );
+
+  /** 出题：基于当前 board 内容取下一个问题（board 不动）。 */
+  const fetchQuestion = useCallback(
+    async (text: string) => {
+      setBoardBusy("question");
+      setErr(null);
+      const res = await boardCall({ site_id: siteId, doc_type: docType, board_text: text });
+      setBoardBusy(null);
+      if (!res.ok || !res.data) {
+        setErr(res.error || tt("请求失败，请稍后再试。"));
+        return;
+      }
+      if (res.data.insufficient) {
+        setLeoSays(res.data.question || tt("我还看不出你想做什么——用一句话告诉我你的目标？"));
+        setQuestion("");
+        setOptions([]);
+        return;
+      }
+      setQuestion(res.data.question || "");
+      setOptions(res.data.options || []);
+    },
+    [siteId, docType, tt],
+  );
+
+  /** 启动 board：初始内容 = 用户原文【原样】（零 LLM 改写），随后取第一题。 */
+  const startBoard = useCallback(() => {
+    const text = context?.text || "";
+    if (!text) return;
     setLeoSays(null);
-    const res = await suggest({
-      site_id: siteId,
-      doc_type: docType,
-      base_prompt: baseText,
-      user_input: userInput,
-      previous_options: prev,
-      skipped_questions: skipped,
-    });
-    setBusy(null);
-    if (!res.ok || !res.data) {
-      setErr(res.error || tt("请求失败，请稍后再试。"));
-      return;
-    }
-    const d = res.data;
-    if (d.insufficient) {
-      setLeoSays(d.question || tt("我还看不出你想做什么——用一句话告诉我你的目标？"));
-      setExpandText(null);
-      setOptions([]);
-      return;
-    }
-    setExpandText((d.updatedPrompt || baseText).trim());
-    setQuestion(d.question || "");
-    setOptions(d.options || []);
-    setPrevOptions((p) => [...p, ...(d.options || [])]);
+    setBoard(text);
+    setHistory([text]);
+    setHistIdx(0);
+    setQuestion("");
+    setOptions([]);
+    void fetchQuestion(text);
+  }, [context, fetchQuestion]);
+
+  /** 合并回答：点选项 / 输入框自由文本 → 后端保守合并进 board + 出下一题。 */
+  const applyAnswer = useCallback(
+    async (answer: string) => {
+      const cur = board ?? "";
+      if (!answer.trim() || boardBusy) return;
+      setBoardBusy("merge");
+      setErr(null);
+      setLeoSays(null);
+      const res = await boardCall({
+        site_id: siteId,
+        doc_type: docType,
+        board_text: cur,
+        question,
+        user_answer: answer.trim(),
+      });
+      setBoardBusy(null);
+      if (!res.ok || !res.data) {
+        setErr(res.error || tt("请求失败，请稍后再试。"));
+        return;
+      }
+      commitBoard(res.data.board || cur);
+      setQuestion(res.data.question || "");
+      setOptions(res.data.options || []);
+    },
+    [board, boardBusy, siteId, docType, question, commitBoard, tt],
+  );
+
+  /** 用户直接在 board 里编辑：立即生效，防抖入历史栈。 */
+  const onBoardEdit = (next: string) => {
+    setBoard(next);
+    if (editTimer.current) clearTimeout(editTimer.current);
+    editTimer.current = setTimeout(() => {
+      setHistory((h) => {
+        const cut = h.slice(0, histIdx + 1);
+        if (cut[cut.length - 1] === next) return cut;
+        const merged = [...cut, next].slice(-BOARD_HISTORY_MAX);
+        setHistIdx(merged.length - 1);
+        return merged;
+      });
+    }, 800);
+  };
+  useEffect(() => () => {
+    if (editTimer.current) clearTimeout(editTimer.current);
+  }, []);
+
+  const canUndo = histIdx > 0;
+  const canRedo = histIdx >= 0 && histIdx < history.length - 1;
+  const undo = () => {
+    if (!canUndo) return;
+    const i = histIdx - 1;
+    setHistIdx(i);
+    setBoard(history[i]);
+  };
+  const redo = () => {
+    if (!canRedo) return;
+    const i = histIdx + 1;
+    setHistIdx(i);
+    setBoard(history[i]);
   };
 
-  const applyOption = (opt: string) => {
-    if (busy) return;
-    const cur = expandText || context?.text || "";
-    const next = cur ? `${cur}\n- ${opt}` : `- ${opt}`;
-    setExpandText(next);
-    setOptions((o) => o.filter((x) => x !== opt));
-    // 点击选择后自动继续工作：基于合并后的文本刷新选项。
-    void runExpand(next, "", prevOptions);
+  const clearBoard = () => {
+    setBoard(null);
+    setHistory([]);
+    setHistIdx(-1);
+    setQuestion("");
+    setOptions([]);
   };
 
   // ── 精简/总结/解释/翻译/润色/自由指令（transform） ────────────────────────
@@ -641,26 +808,29 @@ function Panel({
   };
 
   const onVerb = (v: { id: VerbId; label: string }) => {
-    if (busy || !context?.text) return;
+    if (busy || boardBusy || !context?.text) return;
     if (v.id === "expand") {
-      setResults([]);
-      void runExpand(context.text, "", []);
-      setPrevOptions([]);
-      setSkipped([]);
+      // board 已在工作中 → 不重置用户的成果，只换一个问题；未激活 → 启动。
+      if (board != null) void fetchQuestion(board);
+      else startBoard();
     } else {
-      setExpandText(null);
-      setOptions([]);
+      // 其它动词不清 board（board 常驻，宗旨 v12 规则 2）。
       void runTransform(v.id, tt(v.label));
     }
   };
 
   const send = () => {
     const q = input.trim();
-    if (!q || busy || !context?.text) return;
+    if (!q || busy || boardBusy) return;
     setInput("");
-    setExpandText(null);
-    setOptions([]);
-    void runTransform("custom", q.length > 12 ? `${q.slice(0, 12)}…` : q, q);
+    // board 激活时：输入框内容合并进 board（宗旨 v12 规则 4）；
+    // 未激活时：自由指令 transform。
+    if (board != null) {
+      void applyAnswer(q);
+    } else {
+      if (!context?.text) return;
+      void runTransform("custom", q.length > 12 ? `${q.slice(0, 12)}…` : q, q);
+    }
   };
 
   const readHostInput = () => {
@@ -683,8 +853,7 @@ function Panel({
               <button
                 onClick={() => {
                   onContextChange(null);
-                  setExpandText(null);
-                  setOptions([]);
+                  clearBoard();
                   setLeoSays(null);
                   setErr(null);
                 }}
@@ -745,55 +914,99 @@ function Panel({
           </p>
         )}
 
-        {/* 扩充工作区：工作文本 + 可点选项 */}
-        {expandText != null && (
+        {/* leo board：常驻可编辑工作文本 + 回退/前进 + 单方向问答（宗旨 v12） */}
+        {board != null && (
           <div className="space-y-2">
-            <ResultCard
-              label={tt("扩充")}
-              text={expandText}
-              source={context?.source}
-              onReplaceHost={
-                context?.source === "input"
-                  ? () => {
-                      const target = resolveHost();
-                      if (target) setHostValue(target, expandText);
-                    }
-                  : undefined
-              }
-              onContinue={() => {
-                onContextChange({ text: expandText, source: context?.source || "selection" });
-                setExpandText(null);
-                setOptions([]);
-              }}
-            />
-            {question && !busy && (
-              <div className="space-y-1.5">
-                <div className="inline-block max-w-[92%] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
-                  {question}
-                </div>
-                <button
-                  onClick={() => {
-                    setSkipped((s) => [...s, question]);
-                    setQuestion("");
-                  }}
-                  className="ml-1 rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-slate-50"
-                >
-                  {tt("跳过")}
-                </button>
-              </div>
-            )}
-            {options.length > 0 && !busy && (
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-slate-400">{tt("点一个方向，leo 会自动扩充进上面的文本")}</p>
-                {options.map((opt, i) => (
+            <div className="v-fade-up rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-500">
+                  <Sparkle />
+                  leo board
+                </span>
+                <span className="flex items-center gap-0.5">
                   <button
-                    key={i}
-                    onClick={() => applyOption(opt)}
-                    className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs leading-relaxed text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50/60"
+                    onClick={undo}
+                    disabled={!canUndo || Boolean(boardBusy)}
+                    aria-label={tt("回退")}
+                    title={tt("回退")}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                   >
-                    + {opt}
+                    <UndoGlyph />
                   </button>
-                ))}
+                  <button
+                    onClick={redo}
+                    disabled={!canRedo || Boolean(boardBusy)}
+                    aria-label={tt("前进")}
+                    title={tt("前进")}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <RedoGlyph />
+                  </button>
+                </span>
+              </div>
+              <BoardEditor value={board} onChange={onBoardEdit} disabled={boardBusy === "merge"} />
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <CopyButton text={board} />
+                {context?.source === "input" && (
+                  <ReplaceHostButton
+                    onReplace={() => {
+                      const target = resolveHost();
+                      if (target) setHostValue(target, board);
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* 问答区：每次只问一个方向；选项可以很多；随时「换一个问题」。 */}
+            {boardBusy ? (
+              <p className="flex items-center gap-2 text-xs text-slate-400">
+                <Spinner />
+                {boardBusy === "merge"
+                  ? tt("leo 正在把你的回答合并进 leo board…")
+                  : tt("leo 正在想下一个问题…")}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {question && (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="inline-block rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
+                      {question}
+                    </div>
+                    <button
+                      onClick={() => void fetchQuestion(board)}
+                      className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                    >
+                      {tt("换一个问题")}
+                    </button>
+                  </div>
+                )}
+                {!question && (
+                  <button
+                    onClick={() => void fetchQuestion(board)}
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                  >
+                    {tt("换一个问题")}
+                  </button>
+                )}
+                {question && options.length > 0 && (
+                  <>
+                    <p className="text-[11px] text-slate-400">
+                      {tt("点一个选项，或在下方输入，leo 会把它合并进 leo board")}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {options.map((opt, i) => (
+                        <button
+                          key={`${opt}-${i}`}
+                          onClick={() => void applyAnswer(opt)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -822,7 +1035,7 @@ function Panel({
         ))}
       </div>
 
-      {/* 自由指令输入 */}
+      {/* 底部输入：board 激活时 = 补充内容合并进 board；否则 = 自由指令 transform */}
       <div className="border-t border-slate-100 px-3 py-3">
         <form
           className="flex gap-2"
@@ -835,19 +1048,92 @@ function Panel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={tt("告诉 leo 你想怎么处理这段内容")}
+            placeholder={
+              board != null
+                ? tt("补充内容，leo 会合并进 leo board")
+                : tt("告诉 leo 你想怎么处理这段内容")
+            }
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition focus:border-slate-400"
           />
           <button
             type="submit"
-            disabled={Boolean(busy) || !input.trim() || !hasContext}
+            disabled={
+              Boolean(busy) || Boolean(boardBusy) || !input.trim() || (board == null && !hasContext)
+            }
             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {busy ? "…" : tt("发送")}
+            {busy || boardBusy ? "…" : tt("发送")}
           </button>
         </form>
       </div>
     </div>
+  );
+}
+
+/** leo board 的可编辑文本区：自动增高（封顶后内部滚动）。 */
+function BoardEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      rows={3}
+      spellCheck={false}
+      className="w-full resize-none rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs leading-relaxed text-slate-800 outline-none transition focus:border-indigo-200 focus:bg-white disabled:opacity-60"
+    />
+  );
+}
+
+/** 「复制」小按钮（board 与结果卡共用样式）。 */
+function CopyButton({ text }: { text: string }) {
+  const tt = useUI();
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        if (await copyText(text)) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        }
+      }}
+      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+    >
+      {copied ? tt("已复制") : tt("复制")}
+    </button>
+  );
+}
+
+/** 「替换到输入框」小按钮（仅上下文来自输入框时出现，手动写回）。 */
+function ReplaceHostButton({ onReplace }: { onReplace: () => void }) {
+  const tt = useUI();
+  const [replaced, setReplaced] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        onReplace();
+        setReplaced(true);
+        setTimeout(() => setReplaced(false), 1600);
+      }}
+      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+    >
+      {replaced ? tt("已替换") : tt("替换到输入框")}
+    </button>
   );
 }
 
@@ -943,6 +1229,25 @@ function Sparkle() {
         fill="url(#leo-sparkle-g)"
         opacity="0.65"
       />
+    </svg>
+  );
+}
+
+// leo board 回退 / 前进箭头。
+function UndoGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M9 14L4 9l5-5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 9h9a7 7 0 017 7v1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function RedoGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M15 14l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 9h-9a7 7 0 00-7 7v1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

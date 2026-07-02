@@ -467,5 +467,16 @@ const ptPT: Record<string, string> = {
   "已替换": "Substituído",
   "以此继续": "Continuar com isto",
   "让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）": "Deixe o leo processar este conteúdo (ampliar / condensar / resumir / explicar / traduzir…)",
+  // —— 宗旨 v12：leo board（问答打磨 + 总开关），2026-07-02 ——
+  "回退": "Anular",
+  "前进": "Refazer",
+  "换一个问题": "Outra pergunta",
+  "leo 正在把你的回答合并进 leo board…": "O leo está a integrar a sua resposta no leo board…",
+  "leo 正在想下一个问题…": "O leo está a pensar na próxima pergunta…",
+  "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Escolha uma opção ou escreva abaixo — o leo integra-a no leo board",
+  "补充内容，leo 会合并进 leo board": "Acrescente conteúdo e o leo integra-o no leo board",
+  "启用 leo": "Ativar leo",
+  "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。": "Mostra a entrada do leo junto às caixas de texto e ao selecionar texto, para expandir, condensar, resumir ou traduzir o seu conteúdo.",
+  "平台仅按用户在 OceanLeo 平台使用 AI token 的": "A plataforma cobra apenas com base nos AI token que utiliza na plataforma OceanLeo,",
 };
 export default ptPT;

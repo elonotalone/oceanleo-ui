@@ -467,5 +467,16 @@ const es419: Record<string, string> = {
   "已替换": "Reemplazado",
   "以此继续": "Continuar con esto",
   "让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）": "Deja que leo procese este contenido (ampliar / condensar / resumir / explicar / traducir…)",
+  // —— 宗旨 v12：leo board（问答打磨 + 总开关），2026-07-02 ——
+  "回退": "Deshacer",
+  "前进": "Rehacer",
+  "换一个问题": "Otra pregunta",
+  "leo 正在把你的回答合并进 leo board…": "leo está integrando tu respuesta en el leo board…",
+  "leo 正在想下一个问题…": "leo está pensando la siguiente pregunta…",
+  "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Elige una opción o escribe abajo: leo la integrará en el leo board",
+  "补充内容，leo 会合并进 leo board": "Agrega contenido y leo lo integrará en el leo board",
+  "启用 leo": "Activar leo",
+  "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。": "Muestra la entrada de leo junto a los cuadros de texto y al seleccionar texto, para ampliar, condensar, resumir o traducir tu contenido.",
+  "平台仅按用户在 OceanLeo 平台使用 AI token 的": "La plataforma solo cobra según los AI token que uses en la plataforma OceanLeo,",
 };
 export default es419;

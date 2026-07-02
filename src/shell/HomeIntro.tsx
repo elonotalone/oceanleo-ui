@@ -39,6 +39,43 @@ export interface HomeIntroProps {
 // BYOK 支持的平台（与 oceanleo-byok-audit-zerofee.md §5 指导文档一致）。
 const BYOK_PROVIDERS = "OpenAI / Anthropic Claude / DeepSeek / 阿里云百炼 / 火山方舟 / OpenRouter";
 
+/**
+ * 收费说明卡（单一事实源，2026-07-02 从 HomeIntro 抽出）：
+ * 「{siteName} 属于 OceanLeo 系列。平台仅按 …成本价… 收费；自带 API key 免费。」
+ * 各站 HomeIntro 底部用它；主站 oceanleo.com 首页也用它（siteName="OceanLeo"
+ * 时用主站文案变体——主站不是「属于系列」而是系列本身）。
+ */
+export function BillingNotice({
+  siteName,
+  accent = "#4f46e5",
+  className = "",
+}: {
+  siteName: string;
+  accent?: string;
+  className?: string;
+}) {
+  const tt = useUI();
+  const isMainSite = siteName === "OceanLeo";
+  return (
+    <div
+      className={`max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500 ${className}`}
+    >
+      <span className="font-medium text-stone-600">{siteName}</span>{" "}
+      {isMainSite
+        ? tt("平台仅按用户在 OceanLeo 平台使用 AI token 的")
+        : tt("属于 OceanLeo 系列。平台仅按用户在 OceanLeo 平台使用 AI token 的")}
+      <span className="font-semibold" style={{ color: accent }}>
+        {tt("成本价")}
+      </span>
+      {tt("收费。你也可以自带各平台的 API key（{providers}），", { providers: BYOK_PROVIDERS })}
+      <span className="font-semibold" style={{ color: accent }}>
+        {tt("免费")}
+      </span>
+      {tt("使用 OceanLeo 的功能。")}
+    </div>
+  );
+}
+
 export function HomeIntro({
   siteName,
   intro,
@@ -100,18 +137,7 @@ export function HomeIntro({
         </div>
       )}
 
-      <div className="mt-10 max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500">
-        <span className="font-medium text-stone-600">{siteName}</span>{" "}
-        {tt("属于 OceanLeo 系列。平台仅按用户在 OceanLeo 平台使用 AI token 的")}
-        <span className="font-semibold" style={{ color: accent }}>
-          {tt("成本价")}
-        </span>
-        {tt("收费。你也可以自带各平台的 API key（{providers}），", { providers: BYOK_PROVIDERS })}
-        <span className="font-semibold" style={{ color: accent }}>
-          {tt("免费")}
-        </span>
-        {tt("使用 OceanLeo 的功能。")}
-      </div>
+      <BillingNotice siteName={siteName} accent={accent} className="mt-10" />
     </div>
   );
 }

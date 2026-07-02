@@ -467,5 +467,16 @@ const tr: Record<string, string> = {
   "已替换": "Değiştirildi",
   "以此继续": "Bununla devam et",
   "让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）": "Bu içeriği leo'ya bırak (genişlet / sadeleştir / özetle / açıkla / çevir…)",
+  // —— 宗旨 v12：leo board（问答打磨 + 总开关），2026-07-02 ——
+  "回退": "Geri al",
+  "前进": "Yinele",
+  "换一个问题": "Başka bir soru",
+  "leo 正在把你的回答合并进 leo board…": "leo yanıtını leo board'a işliyor…",
+  "leo 正在想下一个问题…": "leo bir sonraki soruyu düşünüyor…",
+  "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Bir seçenek seç veya aşağıya yaz — leo bunu leo board'a işler",
+  "补充内容，leo 会合并进 leo board": "İçerik ekle, leo bunu leo board'a işler",
+  "启用 leo": "leo'yu etkinleştir",
+  "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。": "Giriş kutularının yanında ve metin seçiminde leo girişini gösterir; içeriğini genişletmene, sadeleştirmene, özetlemene ve çevirmene yardımcı olur.",
+  "平台仅按用户在 OceanLeo 平台使用 AI token 的": "Platform yalnızca OceanLeo platformunda kullandığınız AI token miktarına göre",
 };
 export default tr;

@@ -256,32 +256,129 @@ html.dark .text-slate-500,
 html.dark .text-slate-400 {
   color: var(--leo-d-muted) !important;
 }
-/* 边框 / 分隔线：全部落到极低对比描边（全局）。 */
-html.dark .border-white,
-html.dark .border-neutral-200,
-html.dark .border-neutral-200\/70,
-html.dark .border-neutral-200\/60,
-html.dark .border-neutral-100,
-html.dark .border-stone-200,
-html.dark .border-stone-100,
-html.dark .border-gray-200,
-html.dark .border-gray-100,
-html.dark .border-zinc-200,
-html.dark .border-zinc-100,
-html.dark .border-slate-200,
-html.dark .border-slate-100,
-html.dark .border-neutral-300,
-html.dark .border-stone-300,
-html.dark .border-gray-300 {
+/* ---- 边框 / 分隔线：全部落到极低对比描边（全局，2026-07-02 v3 重做） ----
+   v2 的病根：精确类名枚举漏掉了所有带透明度后缀的变体（border-stone-200/80、
+   border-stone-200/90、border-white/60 …），深色下这些类保持原浅灰 = 近黑底上
+   的「细白线」（截图 03e8ce31 / 14a19a6f / 3c2b476c）。v3 改用【子串属性选择器】
+   `[class*="border-stone-200"]`——同时命中 /70 /80 /90 等全部透明度变体，一劳永逸。
+   ⚠ 子串匹配的已知边界：
+     · "border-stone-50" 也匹配 "border-stone-500"——全家桶盘点（/tmp 级 grep，
+       2026-07-02）确认中性系边框只用到 50–400，无 -500 冲突。
+     · 也命中 hover:/focus: 前缀变体——语义正确（深色下 hover 边框同样要暗）。 */
+html.dark [class*="border-white"],
+html.dark [class*="border-neutral-50"],
+html.dark [class*="border-neutral-100"],
+html.dark [class*="border-neutral-200"],
+html.dark [class*="border-neutral-300"],
+html.dark [class*="border-stone-50"],
+html.dark [class*="border-stone-100"],
+html.dark [class*="border-stone-200"],
+html.dark [class*="border-stone-300"],
+html.dark [class*="border-gray-50"],
+html.dark [class*="border-gray-100"],
+html.dark [class*="border-gray-200"],
+html.dark [class*="border-gray-300"],
+html.dark [class*="border-zinc-50"],
+html.dark [class*="border-zinc-100"],
+html.dark [class*="border-zinc-200"],
+html.dark [class*="border-zinc-300"],
+html.dark [class*="border-slate-50"],
+html.dark [class*="border-slate-100"],
+html.dark [class*="border-slate-200"],
+html.dark [class*="border-slate-300"] {
   border-color: var(--leo-d-border) !important;
 }
-html.dark .divide-neutral-100 > * + *,
-html.dark .divide-neutral-200 > * + *,
-html.dark .divide-gray-100 > * + *,
-html.dark .divide-gray-200 > * + *,
-html.dark .divide-stone-100 > * + *,
-html.dark .divide-stone-200 > * + * {
+/* 中性 -400（light 下的「强调边框」，多用于 hover/focus 态）→ 深色下略强一档。 */
+html.dark [class*="border-neutral-400"],
+html.dark [class*="border-stone-400"],
+html.dark [class*="border-gray-400"],
+html.dark [class*="border-zinc-400"],
+html.dark [class*="border-slate-400"] {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+/* 浅彩边框（-100/-200/-300：徽章 / 提示块 / 虚线按钮）——深色下保留色相语义但
+   压成同相低亮度半透明，不再是近黑底上的荧光浅彩线。分组与 bg-*-50/100 重映射一致。 */
+html.dark [class*="border-emerald-100"], html.dark [class*="border-emerald-200"], html.dark [class*="border-emerald-300"],
+html.dark [class*="border-green-100"], html.dark [class*="border-green-200"], html.dark [class*="border-green-300"],
+html.dark [class*="border-teal-100"], html.dark [class*="border-teal-200"], html.dark [class*="border-teal-300"] {
+  border-color: rgba(74, 222, 159, 0.28) !important;
+}
+html.dark [class*="border-indigo-100"], html.dark [class*="border-indigo-200"], html.dark [class*="border-indigo-300"],
+html.dark [class*="border-violet-100"], html.dark [class*="border-violet-200"], html.dark [class*="border-violet-300"],
+html.dark [class*="border-purple-100"], html.dark [class*="border-purple-200"], html.dark [class*="border-purple-300"] {
+  border-color: rgba(165, 150, 245, 0.28) !important;
+}
+html.dark [class*="border-sky-100"], html.dark [class*="border-sky-200"], html.dark [class*="border-sky-300"],
+html.dark [class*="border-blue-100"], html.dark [class*="border-blue-200"], html.dark [class*="border-blue-300"],
+html.dark [class*="border-cyan-100"], html.dark [class*="border-cyan-200"], html.dark [class*="border-cyan-300"] {
+  border-color: rgba(111, 176, 240, 0.28) !important;
+}
+html.dark [class*="border-amber-100"], html.dark [class*="border-amber-200"], html.dark [class*="border-amber-300"],
+html.dark [class*="border-orange-100"], html.dark [class*="border-orange-200"], html.dark [class*="border-orange-300"],
+html.dark [class*="border-yellow-100"], html.dark [class*="border-yellow-200"], html.dark [class*="border-yellow-300"] {
+  border-color: rgba(229, 168, 98, 0.3) !important;
+}
+html.dark [class*="border-rose-100"], html.dark [class*="border-rose-200"], html.dark [class*="border-rose-300"],
+html.dark [class*="border-pink-100"], html.dark [class*="border-pink-200"], html.dark [class*="border-pink-300"],
+html.dark [class*="border-red-100"], html.dark [class*="border-red-200"], html.dark [class*="border-red-300"],
+html.dark [class*="border-fuchsia-100"], html.dark [class*="border-fuchsia-200"], html.dark [class*="border-fuchsia-300"] {
+  border-color: rgba(240, 138, 176, 0.3) !important;
+}
+/* divide 分隔线（子串选择器同样覆盖 /xx 变体）。 */
+html.dark [class*="divide-neutral-100"] > * + *,
+html.dark [class*="divide-neutral-200"] > * + *,
+html.dark [class*="divide-gray-100"] > * + *,
+html.dark [class*="divide-gray-200"] > * + *,
+html.dark [class*="divide-stone-100"] > * + *,
+html.dark [class*="divide-stone-200"] > * + *,
+html.dark [class*="divide-zinc-100"] > * + *,
+html.dark [class*="divide-zinc-200"] > * + *,
+html.dark [class*="divide-slate-100"] > * + *,
+html.dark [class*="divide-slate-200"] > * + * {
   border-color: var(--leo-d-border-s) !important;
+}
+/* ring（box-shadow 描边）：浅中性 / 浅彩 ring 深色下同样压暗。
+   ⚠ 只列 50–200 浅档；-300 以上的彩色 ring 是选中态强调，保留。 */
+html.dark [class*="ring-white"],
+html.dark [class*="ring-neutral-100"], html.dark [class*="ring-neutral-200"],
+html.dark [class*="ring-stone-100"], html.dark [class*="ring-stone-200"],
+html.dark [class*="ring-gray-100"], html.dark [class*="ring-gray-200"],
+html.dark [class*="ring-zinc-100"], html.dark [class*="ring-zinc-200"],
+html.dark [class*="ring-slate-100"], html.dark [class*="ring-slate-200"] {
+  --tw-ring-color: rgba(255, 255, 255, 0.1) !important;
+}
+html.dark [class*="ring-indigo-100"], html.dark [class*="ring-indigo-200"],
+html.dark [class*="ring-violet-100"], html.dark [class*="ring-violet-200"],
+html.dark [class*="ring-purple-100"], html.dark [class*="ring-purple-200"] {
+  --tw-ring-color: rgba(165, 150, 245, 0.22) !important;
+}
+html.dark [class*="ring-sky-100"], html.dark [class*="ring-sky-200"],
+html.dark [class*="ring-blue-100"], html.dark [class*="ring-blue-200"],
+html.dark [class*="ring-cyan-100"], html.dark [class*="ring-cyan-200"],
+html.dark [class*="ring-teal-100"], html.dark [class*="ring-teal-200"],
+html.dark [class*="ring-emerald-100"], html.dark [class*="ring-emerald-200"] {
+  --tw-ring-color: rgba(111, 176, 240, 0.22) !important;
+}
+html.dark [class*="ring-amber-100"], html.dark [class*="ring-amber-200"],
+html.dark [class*="ring-orange-100"], html.dark [class*="ring-orange-200"] {
+  --tw-ring-color: rgba(229, 168, 98, 0.24) !important;
+}
+html.dark [class*="ring-rose-100"], html.dark [class*="ring-rose-200"],
+html.dark [class*="ring-red-100"], html.dark [class*="ring-red-200"] {
+  --tw-ring-color: rgba(240, 138, 176, 0.24) !important;
+}
+/* 深中性边框（light 下的「选中态」黑描边，如 GeneralPage 主题卡）→ 深色下反转为
+   亮描边，否则黑边框糊进近黑底完全不可见。精确类名（不用子串，避免误伤）。 */
+html.dark .border-neutral-900, html.dark .border-neutral-800, html.dark .border-neutral-700,
+html.dark .border-stone-900, html.dark .border-stone-800, html.dark .border-stone-700,
+html.dark .border-zinc-900, html.dark .border-zinc-800, html.dark .border-zinc-700,
+html.dark .border-slate-900, html.dark .border-slate-800, html.dark .border-slate-700,
+html.dark .border-black {
+  border-color: rgba(255, 255, 255, 0.55) !important;
+}
+html.dark .ring-neutral-900, html.dark .ring-zinc-900, html.dark .ring-stone-900,
+html.dark .ring-slate-900, html.dark .ring-black {
+  --tw-ring-color: rgba(255, 255, 255, 0.45) !important;
 }
 
 /* ---- 彩色浅底（bg-*-50 / bg-*-100）：徽章 / 提示条 / 高亮块 ----
@@ -353,6 +450,35 @@ body {
     "Noto Sans SC",
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+/* ---------------------------------------------------------------------------
+ * 全家桶统一：可点元素 = 手型光标（操作员 2026-07-02 强制）
+ * ---------------------------------------------------------------------------
+ * 根因：Tailwind v4 的 preflight 把 button 默认光标从 pointer 改成了 default
+ * （v3 是 pointer），而全家桶组件几乎不写 cursor-pointer —— 于是所有按键 hover
+ * 时都是箭头。此处一条全局规则修复所有站所有页面的所有可点元素。
+ * `:not(:disabled)` 保住 disabled:cursor-not-allowed 语义（禁用时本规则不命中，
+ * Tailwind 的 disabled: 变体照常生效）；:where() 把特指度归零。
+ * 注：本文件被各站无 layer 引入，层叠上强于 @layer utilities——但全家桶盘点
+ * （2026-07-02）确认没有任何 button/a 挂非 pointer 的 cursor-* 工具类
+ * （cursor-move/grab 等都在 div 拖动柄上，不在本选择器命中范围），无冲突。 */
+:where(
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  select:not(:disabled),
+  summary,
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="range"]:not(:disabled),
+  input[type="file"]:not(:disabled)
+) {
+  cursor: pointer;
 }
 
 /* ---------- account / settings / workbench motion primitives (v-*) ---------- */

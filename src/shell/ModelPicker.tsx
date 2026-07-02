@@ -221,11 +221,13 @@ export function ModelPicker({
               <span className="text-neutral-400">
                 <IconCategory category={cat} className="h-3.5 w-3.5" />
               </span>
-              <span className="font-medium text-neutral-700">{CATEGORY_LABEL[cat]}</span>
+              {/* 操作员 2026-07-02：深色下太暗——标签用 -900（dark 映射主文字
+                  #ececec），「未选」用 -600（dark 映射 #b4b4b4）。 */}
+              <span className="font-medium text-neutral-900">{CATEGORY_LABEL[cat]}</span>
               {sel ? (
                 <span className="max-w-[160px] truncate text-neutral-900">· {sel.label}</span>
               ) : (
-                <span className="text-neutral-400">{tt("未选")}</span>
+                <span className="text-neutral-600">{tt("未选")}</span>
               )}
               <span className={`text-neutral-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}>
                 <IconChevronDown className="h-3.5 w-3.5" />
@@ -293,7 +295,7 @@ export function ModelPicker({
           <span className="text-neutral-400">
             <IconCategory category="text" className="h-3.5 w-3.5" />
           </span>
-          <span className="font-medium text-neutral-700">{tt("模型选择")}</span>
+          <span className="font-medium text-neutral-900">{tt("模型选择")}</span>
           {pickedCount > 0 && (
             <span className="rounded-full bg-neutral-900 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
               {pickedCount}
@@ -310,7 +312,7 @@ export function ModelPicker({
               align === "right" ? "right-0" : "left-0"
             }`}
           >
-            <p className="mb-2 px-0.5 text-[12px] font-medium text-neutral-500">{tt("模型选择")}</p>
+            <p className="mb-2 px-0.5 text-[12px] font-medium text-neutral-700">{tt("模型选择")}</p>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{categoryChips}</div>
           </div>
         )}
@@ -321,7 +323,7 @@ export function ModelPicker({
   // ── bar 形态（默认）：左标签 +各模态 chip 平铺 ──
   return (
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`} ref={rootRef}>
-      <span className="text-[13px] font-medium text-neutral-500">{tt("模型选择")}</span>
+      <span className="text-[13px] font-medium text-neutral-800">{tt("模型选择")}</span>
       {categoryChips}
     </div>
   );

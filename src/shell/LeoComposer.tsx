@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { openLeoAssistant } from "./LeoAssistant";
+import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
 import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
@@ -170,6 +170,8 @@ export function LeoComposer({
 }: LeoComposerProps) {
   const tt = useUI();
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
+  // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
+  const leoEnabled = useLeoEnabled();
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
@@ -352,7 +354,7 @@ export function LeoComposer({
             />
           )}
           {leftSlot}
-          {leoSuggest && (
+          {leoSuggest && leoEnabled && (
             <button
               type="button"
               onClick={handleLeoSuggest}
