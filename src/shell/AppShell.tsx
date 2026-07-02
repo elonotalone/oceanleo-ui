@@ -28,6 +28,7 @@ import { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
+import { usePresenceHeartbeat } from "../lib/presence";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
@@ -224,6 +225,8 @@ function AppShellInner({
   const tt = useUI();
   const rawPathname = usePathname() || "/";
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
+  // 在线心跳：登录用户每 60s ping 网关（admin「在线人数」曲线的数据源）。
+  usePresenceHeartbeat(siteId);
   // 主区（如 OperatorConsole 工作台）自带模型选择时，header 不再重复渲染（消灭两行顶栏）。
   const { suppressHeaderModel } = useShellChrome();
   const [collapsed, setCollapsed] = useState(false);

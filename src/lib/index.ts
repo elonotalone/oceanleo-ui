@@ -12,3 +12,5 @@ export * from "./capabilities";
 export * from "./manifest-fetch";
 // 全家桶二元分类器（行业 / 内容类型）的单一事实源。
 export * from "./taxonomy";
+// 在线心跳（admin 网站管理「在线人数」曲线的数据源）。AppShell 已内置。
+export * from "./presence";
