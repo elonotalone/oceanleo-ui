@@ -6209,5 +6209,16 @@ const vi: Record<string, string> = {
   "需求 / 上传": "Yêu cầu / Tải lên",
   "需求 Prompt": "Prompt yêu cầu",
   "预览": "Xem trước",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "Thư viện tài nguyên | LeoAsset",
+  "授权说明 | LeoAsset": "Hướng dẫn giấy phép | LeoAsset",
+  "开源专区 | LeoAsset": "Khu mã nguồn mở | LeoAsset",
+  "成套素材 | LeoAsset": "Bộ tài nguyên | LeoAsset",
+  "设计模板 | LeoAsset": "Mẫu thiết kế | LeoAsset",
+  "我的素材库 | LeoAsset": "Thư viện tài nguyên của tôi | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "Khu mẫu · Dựng website mà không cần bắt đầu từ con số 0 | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Thư viện tài nguyên mã nguồn mở miễn phí · Ảnh/video/nhạc/hiệu ứng âm thanh/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Duyệt tài nguyên miễn phí theo giấy phép mã nguồn mở từ Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo trong một nơi. Mặc định chỉ hiển thị tài nguyên dùng thương mại được, tải về là dùng ngay cho PPT / thiết kế / video / 3D.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Đối chuẩn thư viện mẫu Yun · Quick Beautiful Site, tích hợp hàng nghìn mẫu website theo ngành, bao phủ 13 ngành lớn và 105 nhóm nhỏ. Lọc theo ngành / hệ màu / độ hot, bấm để xem trước toàn trang và áp dụng bằng một lần nhấp.",
 };
 export default vi;

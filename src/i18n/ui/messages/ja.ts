@@ -6209,5 +6209,16 @@ const ja: Record<string, string> = {
   "需求 / 上传": "要件 / アップロード",
   "需求 Prompt": "要件 Prompt",
   "预览": "プレビュー",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "素材ライブラリ | LeoAsset",
+  "授权说明 | LeoAsset": "ライセンス説明 | LeoAsset",
+  "开源专区 | LeoAsset": "オープンソースゾーン | LeoAsset",
+  "成套素材 | LeoAsset": "素材セット | LeoAsset",
+  "设计模板 | LeoAsset": "デザインテンプレート | LeoAsset",
+  "我的素材库 | LeoAsset": "マイ素材ライブラリ | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "テンプレートゾーン · ゼロから作らずにサイト構築 | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "無料オープンソース素材ライブラリ · 画像/動画/音楽/効果音/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo の無料オープンソースライセンス素材を一か所で閲覧できます。標準では商用利用可能な素材だけを表示し、ダウンロード後すぐ PPT / デザイン / 動画 / 3D 制作に使えます。",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Yun · Quick Beautiful Site のテンプレートライブラリを参考に、13 大業界 105 細分類をカバーする数千件の業界別サイトテンプレートを内蔵。業界 / 色系 / 人気度で自由に絞り込み、クリックで全ページをプレビューし、ワンクリックで適用できます。",
 };
 export default ja;

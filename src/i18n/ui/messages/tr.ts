@@ -6209,5 +6209,16 @@ const tr: Record<string, string> = {
   "需求 / 上传": "Gereksinimler / Yükle",
   "需求 Prompt": "Gereksinim Prompt",
   "预览": "Önizleme",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "Varlık kütüphanesi | LeoAsset",
+  "授权说明 | LeoAsset": "Lisans açıklaması | LeoAsset",
+  "开源专区 | LeoAsset": "Açık kaynak alanı | LeoAsset",
+  "成套素材 | LeoAsset": "Varlık setleri | LeoAsset",
+  "设计模板 | LeoAsset": "Tasarım şablonları | LeoAsset",
+  "我的素材库 | LeoAsset": "Varlık kütüphanem | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "Şablon alanı · Sıfırdan başlamadan site kurun | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Ücretsiz açık kaynak varlık kütüphanesi · Görsel/video/müzik/ses efekti/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo üzerindeki ücretsiz açık kaynak lisanslı varlıkları tek yerde gezin. Varsayılan olarak yalnızca ticari kullanıma uygun varlıklar gösterilir; indirip PPT / tasarım / video / 3D üretimde kullanabilirsiniz.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Yun · Quick Beautiful Site şablon kütüphanesi örnek alınarak hazırlanmış, 13 ana sektör ve 105 alt kategoriyi kapsayan binlerce sektör sitesi şablonu içerir. Sektör / renk sistemi / popülerliğe göre filtreleyin, tam sayfa önizleyin ve tek tıkla uygulayın.",
 };
 export default tr;

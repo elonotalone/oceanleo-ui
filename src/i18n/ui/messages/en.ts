@@ -6209,5 +6209,16 @@ const en: Record<string, string> = {
   "需求 / 上传": "Requirements / Upload",
   "需求 Prompt": "Requirements Prompt",
   "预览": "Preview",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "Asset Library | LeoAsset",
+  "授权说明 | LeoAsset": "License Guide | LeoAsset",
+  "开源专区 | LeoAsset": "Open Source Zone | LeoAsset",
+  "成套素材 | LeoAsset": "Asset Sets | LeoAsset",
+  "设计模板 | LeoAsset": "Design Templates | LeoAsset",
+  "我的素材库 | LeoAsset": "My Asset Library | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "Template Zone · Build Sites Without Starting From Scratch | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Free Open Source Asset Library · Images/Video/Music/SFX/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Browse free open source licensed assets from Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo in one place. Commercial-use assets are shown by default, ready to download for PPT / design / video / 3D creation.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Benchmarked against Yun · Quick Beautiful Site templates, with thousands of industry website templates covering 13 major industries and 105 subcategories. Filter by industry / color system / popularity, preview full pages, and apply with one click.",
 };
 export default en;

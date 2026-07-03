@@ -6209,5 +6209,16 @@ const ko: Record<string, string> = {
   "需求 / 上传": "요구 사항 / 업로드",
   "需求 Prompt": "요구 사항 Prompt",
   "预览": "미리보기",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "소재 라이브러리 | LeoAsset",
+  "授权说明 | LeoAsset": "라이선스 안내 | LeoAsset",
+  "开源专区 | LeoAsset": "오픈소스 존 | LeoAsset",
+  "成套素材 | LeoAsset": "세트 소재 | LeoAsset",
+  "设计模板 | LeoAsset": "디자인 템플릿 | LeoAsset",
+  "我的素材库 | LeoAsset": "내 소재 라이브러리 | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "템플릿 존 · 처음부터 만들지 않고 사이트 구축 | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "무료 오픈소스 소재 라이브러리 · 이미지/영상/음악/효과음/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo의 무료 오픈소스 라이선스 소재를 한곳에서 둘러보세요. 기본적으로 상업적 사용 가능한 소재만 보여 주며, 다운로드 후 PPT / 디자인 / 영상 / 3D 제작에 바로 쓸 수 있습니다.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Yun · Quick Beautiful Site 템플릿 라이브러리를 기준으로, 13개 대분야와 105개 세부 카테고리를 아우르는 수천 개의 업종별 웹사이트 템플릿을 제공합니다. 업종 / 색상 / 인기도로 자유롭게 필터링하고, 전체 페이지 미리보기 후 한 번에 적용하세요.",
 };
 export default ko;

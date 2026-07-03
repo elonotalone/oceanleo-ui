@@ -6209,5 +6209,16 @@ const de: Record<string, string> = {
   "需求 / 上传": "Anforderungen / Hochladen",
   "需求 Prompt": "Anforderungs-Prompt",
   "预览": "Vorschau",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "Asset-Bibliothek | LeoAsset",
+  "授权说明 | LeoAsset": "Lizenzhinweise | LeoAsset",
+  "开源专区 | LeoAsset": "Open-Source-Bereich | LeoAsset",
+  "成套素材 | LeoAsset": "Asset-Sets | LeoAsset",
+  "设计模板 | LeoAsset": "Designvorlagen | LeoAsset",
+  "我的素材库 | LeoAsset": "Meine Asset-Bibliothek | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "Vorlagenbereich · Websites ohne Start bei null bauen | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Kostenlose Open-Source-Asset-Bibliothek · Bilder/Video/Musik/Soundeffekte/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Durchsuche kostenlose Open-Source-lizenzierte Assets von Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo an einem Ort. Standardmäßig werden kommerziell nutzbare Assets angezeigt, die du direkt für PPT / Design / Video / 3D verwenden kannst.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Angelehnt an die Vorlagenbibliothek Yun · Quick Beautiful Site, mit Tausenden Branchen-Website-Vorlagen für 13 große Branchen und 105 Unterkategorien. Nach Branche / Farbsystem / Beliebtheit filtern, ganze Seiten ansehen und mit einem Klick anwenden.",
 };
 export default de;

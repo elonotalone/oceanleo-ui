@@ -6209,5 +6209,16 @@ const fr: Record<string, string> = {
   "需求 / 上传": "Besoins / Import",
   "需求 Prompt": "Prompt de besoins",
   "预览": "Aperçu",
+  // —— 深层 UI 补漏（law/resume/study/novel…人工翻译，2026-07-03 批次33+）——
+  "素材库 | LeoAsset": "Bibliothèque de ressources | LeoAsset",
+  "授权说明 | LeoAsset": "Guide des licences | LeoAsset",
+  "开源专区 | LeoAsset": "Espace open source | LeoAsset",
+  "成套素材 | LeoAsset": "Lots de ressources | LeoAsset",
+  "设计模板 | LeoAsset": "Modèles de design | LeoAsset",
+  "我的素材库 | LeoAsset": "Ma bibliothèque de ressources | LeoAsset",
+  "模板专区 · 建站无需从零开始 | OceanLeo": "Espace modèles · Créez un site sans repartir de zéro | OceanLeo",
+  "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Bibliothèque gratuite de ressources open source · Images/vidéos/musique/effets sonores/3D | asset.oceanleo.com",
+  "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Parcourez au même endroit des ressources gratuites sous licence open source provenant d’Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo. Les ressources utilisables commercialement sont affichées par défaut et peuvent être téléchargées pour vos créations PPT / design / vidéo / 3D.",
+  "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Inspiré de la bibliothèque Yun · Quick Beautiful Site, avec des milliers de modèles de sites sectoriels couvrant 13 grands secteurs et 105 sous-catégories. Filtrez par secteur / palette / popularité, prévisualisez des pages complètes et appliquez en un clic.",
 };
 export default fr;
