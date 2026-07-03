@@ -15,6 +15,12 @@ import {
   type ThemeMode,
 } from "./theme-config";
 
+// cyberpunk 首帧要同时带 `dark cyberpunk`（复用 html.dark 基础规则 + 叠加霓虹）。
+// 其余外观直接就是单个类名。
+function appearanceToHtmlClass(appearance: "light" | "dark" | "cyberpunk"): string {
+  return appearance === "cyberpunk" ? "dark cyberpunk" : appearance;
+}
+
 // 服务端：从 cookie + Client Hint 解析首帧应用的 html 类名。
 //
 // 关键（2026-07-01 修「每次打开先闪一下亮色」）：
@@ -25,7 +31,7 @@ import {
 //   修复：读浏览器带上来的 `Sec-CH-Prefers-Color-Scheme` Client Hint（由共享
 //   middleware 的 Accept-CH / Critical-CH 头触发，首访也会即刻重发带上），auto 时
 //   据此在 SSR 首帧就精确输出 dark/light，从源头消除闪屏。
-export async function getThemeClass(): Promise<{ htmlClass: "dark" | "light" }> {
+export async function getThemeClass(): Promise<{ htmlClass: string }> {
   let mode: ThemeMode = DEFAULT_THEME_MODE;
   try {
     const store = await cookies();
@@ -35,9 +41,9 @@ export async function getThemeClass(): Promise<{ htmlClass: "dark" | "light" }> 
     /* cookies() 仅在请求作用域可用 */
   }
 
-  // 显式 light / dark：直接定，与系统偏好无关。
-  if (mode === "light" || mode === "dark") {
-    return { htmlClass: resolveThemeClass(mode, false) };
+  // 显式 light / dark / cyberpunk：直接定，与系统偏好无关。
+  if (mode === "light" || mode === "dark" || mode === "cyberpunk") {
+    return { htmlClass: appearanceToHtmlClass(resolveThemeClass(mode, false)) };
   }
 
   // auto：读 Client Hint 的系统偏好；拿不到（首访且浏览器尚未支持/未回带）时退回
@@ -49,7 +55,7 @@ export async function getThemeClass(): Promise<{ htmlClass: "dark" | "light" }> 
   } catch {
     /* headers() 仅在请求作用域可用 */
   }
-  return { htmlClass: resolveThemeClass("auto", systemPrefersDark) };
+  return { htmlClass: appearanceToHtmlClass(resolveThemeClass("auto", systemPrefersDark)) };
 }
 
 export {

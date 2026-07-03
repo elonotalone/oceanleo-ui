@@ -15,7 +15,7 @@
 //          消费站据此把当前 team 切到新 id。
 // ============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   listAgents,
   listTeams,
@@ -46,7 +46,7 @@ export interface TeamRosterModalProps {
   siteId?: string;
 }
 
-export function TeamRosterModal({
+function TeamRosterModalInner({
   teamId,
   open,
   onClose,
@@ -72,29 +72,44 @@ export function TeamRosterModal({
 
   // 首次打开时加载 team 详情 + agent 市场。
   useEffect(() => {
+    // teamId 为空时不加载（渲染阶段会显示「空专家团」友好态，见下）；避免带空 id
+    // 去请求 / 报错。
     if (!open || !teamId) return;
     let alive = true;
     setLoading(true);
     setError(null);
     (async () => {
-      const [teamsRes, agentsRes] = await Promise.all([
-        listTeams(siteId),
-        listAgents(siteId),
-      ]);
-      if (!alive) return;
-      if (teamsRes.ok) {
-        const t = (teamsRes.data?.items || []).find((x) => x.team_id === teamId);
-        if (t) {
-          setTeam(t);
-          setMemberIds([...(t.member_ids || [])]);
+      try {
+        const [teamsRes, agentsRes] = await Promise.all([
+          listTeams(siteId),
+          listAgents(siteId),
+        ]);
+        if (!alive) return;
+        if (teamsRes.ok) {
+          // items 可能缺失 / 非数组（后端异常 / 空体）——一律兜成 []，再 find。
+          const items = Array.isArray(teamsRes.data?.items) ? teamsRes.data!.items : [];
+          const t = items.find((x) => x?.team_id === teamId);
+          if (t) {
+            setTeam(t);
+            // member_ids 可能 undefined / 非数组；过滤掉空 id，避免下游 Map/渲染出错。
+            const ids = Array.isArray(t.member_ids) ? t.member_ids : [];
+            setMemberIds(ids.filter((id): id is string => typeof id === "string" && !!id));
+          } else {
+            setError(tt("找不到这个专家团"));
+          }
         } else {
-          setError(tt("找不到这个专家团"));
+          setError(tt("加载失败"));
         }
-      } else {
-        setError(tt("加载失败"));
+        if (agentsRes.ok) {
+          setAllAgents(Array.isArray(agentsRes.data?.items) ? agentsRes.data!.items : []);
+        }
+      } catch {
+        // listTeams/listAgents 内部已吞掉 fetch 错误，这里兜住任何意料外的抛出
+        //（如 accessToken 抛错），保证不会卡在「加载中…」永远转圈，也不冒泡崩页。
+        if (alive) setError(tt("加载失败"));
+      } finally {
+        if (alive) setLoading(false);
       }
-      if (agentsRes.ok) setAllAgents(agentsRes.data?.items || []);
-      setLoading(false);
     })();
     return () => {
       alive = false;
@@ -103,12 +118,19 @@ export function TeamRosterModal({
 
   const agentById = useMemo(() => {
     const m = new Map<string, AgentDef>();
-    for (const a of allAgents) m.set(a.agent_id, a);
+    for (const a of allAgents) {
+      if (a && typeof a.agent_id === "string" && a.agent_id) m.set(a.agent_id, a);
+    }
     return m;
   }, [allAgents]);
 
+  // 已解析出实体的成员（某成员 id 若已从市场下架 / 被删 → agentById.get 返回 undefined，
+  // 这里过滤掉，绝不把 undefined 传进渲染，避免 `.name` 之类崩溃）。
   const members = useMemo(
-    () => memberIds.map((id) => agentById.get(id)).filter(Boolean) as AgentDef[],
+    () =>
+      memberIds
+        .map((id) => agentById.get(id))
+        .filter((a): a is AgentDef => Boolean(a && a.agent_id)),
     [memberIds, agentById],
   );
 
@@ -117,6 +139,10 @@ export function TeamRosterModal({
   };
 
   const addFromMarket = (a: AgentDef) => {
+    if (!a || !a.agent_id) {
+      setShowPicker(false);
+      return;
+    }
     setMemberIds((cur) => (cur.includes(a.agent_id) ? cur : [...cur, a.agent_id]));
     setShowPicker(false);
   };
@@ -133,18 +159,28 @@ export function TeamRosterModal({
     setError(null);
     const r = await updateTeamMembers(teamId, memberIds);
     setSaving(false);
-    if (!r.ok) {
+    if (!r.ok || !r.data) {
+      // r.ok 但 data 为空（200 空体 / 非 JSON）也算失败——绝不 `r.data!.xxx` 硬解引用崩页。
       setError(r.status === 401 ? tt("请先登录") : tt("保存失败"));
       return;
     }
-    onSaved?.(r.data!.team_id, r.data!.forked);
+    // team_id 兜回原 teamId（后端理应回传，缺失时不至于把当前团切成空）。
+    onSaved?.(r.data.team_id || teamId, Boolean(r.data.forked));
     onClose();
   };
 
   if (!open) return null;
 
-  // 候选专家池（尚未在团里 + 与 team.site_id 匹配）。
-  const candidatePool = allAgents.filter((a) => !memberIds.includes(a.agent_id));
+  // teamId 为空却被打开（消费站误传 teamId="" / 团还没选好）：给一个友好的空态弹窗，
+  // 而不是拿空 id 去请求、渲染出半残的头部、或让「保存」走到 404。
+  if (!teamId) {
+    return <EmptyTeamModal onClose={onClose} accent={accent} />;
+  }
+
+  // 候选专家池（尚未在团里 + 与 team.site_id 匹配）。有效 agent_id 才纳入。
+  const candidatePool = allAgents.filter(
+    (a) => a && a.agent_id && !memberIds.includes(a.agent_id),
+  );
 
   return (
     <div
@@ -222,7 +258,7 @@ export function TeamRosterModal({
                       className="min-w-0 flex-1 text-left"
                     >
                       <p className="truncate text-[13.5px] font-medium text-stone-900">
-                        {m.name}
+                        {m.name || tt("未命名 agent")}
                       </p>
                       {m.tagline && (
                         <p className="truncate text-[12px] text-stone-500">{m.tagline}</p>
@@ -288,17 +324,18 @@ export function TeamRosterModal({
         </div>
       </div>
 
-      {/* 编辑单个成员 prompt */}
-      {editMember && (
+      {/* 编辑单个成员 prompt。agent_id 必存在（members 已按 agent_id 过滤）；其余字段
+          用 `|| undefined` 兜底，避免把 null 传进 string|undefined 形参。 */}
+      {editMember && editMember.agent_id && (
         <SkillPromptPanel
           variant="modal"
           open
           onClose={() => setEditMember(null)}
           agentId={editMember.agent_id}
-          name={editMember.name}
-          tagline={editMember.tagline}
-          icon={editMember.icon}
-          category={editMember.category}
+          name={editMember.name || undefined}
+          tagline={editMember.tagline || undefined}
+          icon={editMember.icon || undefined}
+          category={editMember.category || undefined}
           accent={accent}
           onSavedAsSkill={(newId) => {
             // 保存成功后弹「用新 agent 替换原成员」确认。
@@ -361,6 +398,113 @@ export function TeamRosterModal({
   );
 }
 
+// ============================================================================
+// 对外导出：把整个弹窗包在错误边界里。
+// ----------------------------------------------------------------------------
+// 操作员反馈「专家团弹窗一点就退出（整页闪退）」：只要弹窗内任一处渲染抛错（脏数据、
+// 缺字段…），异常会一路冒泡把整棵 React 树打崩 → 白屏。逐点加 null-guard 之外，这里
+// 再兜一层 error boundary：万一还有没料到的抛出，也只是这个弹窗降级成「出错了，请关闭
+// 重试」，而不是整站崩溃。open=false 时不渲染任何东西（含边界），零副作用。
+// ============================================================================
+export function TeamRosterModal(props: TeamRosterModalProps) {
+  if (!props.open) return null;
+  return (
+    <RosterErrorBoundary onClose={props.onClose} accent={props.accent}>
+      <TeamRosterModalInner {...props} />
+    </RosterErrorBoundary>
+  );
+}
+
+class RosterErrorBoundary extends Component<
+  { children: ReactNode; onClose: () => void; accent?: string },
+  { failed: boolean }
+> {
+  constructor(props: { children: ReactNode; onClose: () => void; accent?: string }) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    // 仅记录，便于排障；不再向上冒泡（阻断整页崩溃）。
+    if (typeof console !== "undefined") {
+      console.error("[TeamRosterModal] render crashed, contained by boundary:", error);
+    }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <RosterErrorFallback onClose={this.props.onClose} accent={this.props.accent} />;
+    }
+    return this.props.children;
+  }
+}
+
+function RosterErrorFallback({ onClose, accent = DEFAULT_ACCENT }: { onClose: () => void; accent?: string }) {
+  const tt = useUI();
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="px-6 py-8 text-center">
+        <p className="text-[15px] font-semibold text-stone-900">{tt("专家团加载出错了")}</p>
+        <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-stone-500">
+          {tt("这个专家团的数据有点问题，暂时打不开。你可以关闭后重试，或换一个专家团。")}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition"
+          style={{ background: accent }}
+        >
+          {tt("关闭")}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+// teamId 为空时的友好空态弹窗（消费站误传 teamId="" 时不崩、不发空请求）。
+function EmptyTeamModal({ onClose, accent = DEFAULT_ACCENT }: { onClose: () => void; accent?: string }) {
+  const tt = useUI();
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="px-6 py-8 text-center">
+        <p className="text-[15px] font-semibold text-stone-900">{tt("还没有选专家团")}</p>
+        <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-stone-500">
+          {tt("先在左侧选择或创建一个专家团，再来这里管理它的成员。")}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition"
+          style={{ background: accent }}
+        >
+          {tt("知道了")}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+// 遮罩 + 居中卡片外壳（错误态 / 空态复用，与主弹窗视觉一致）。
+function ModalShell({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function AgentPickerModal({
   agents,
   onClose,
@@ -375,10 +519,13 @@ function AgentPickerModal({
   const tt = useUI();
   const [q, setQ] = useState("");
   const norm = q.trim().toLowerCase();
+  // 只保留有效条目，且所有字段筛选都走 `|| ""` 兜底——某 agent 的 name 若为
+  // null（后端未 COALESCE + 脏数据），`a.name.toLowerCase()` 会抛错、直接崩掉整页。
   const shown = agents.filter((a) => {
+    if (!a || !a.agent_id) return false;
     if (!norm) return true;
     return (
-      a.name.toLowerCase().includes(norm) ||
+      (a.name || "").toLowerCase().includes(norm) ||
       (a.tagline || "").toLowerCase().includes(norm) ||
       (a.capabilities || "").toLowerCase().includes(norm)
     );
@@ -437,7 +584,7 @@ function AgentPickerModal({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium text-stone-900">
-                          {a.name}
+                          {a.name || tt("未命名 agent")}
                         </span>
                         {a.tagline && (
                           <span className="block truncate text-[11.5px] text-stone-500">

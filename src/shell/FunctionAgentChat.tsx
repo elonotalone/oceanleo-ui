@@ -25,7 +25,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Markdown } from "./Markdown";
+import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
 import { useAttachments } from "./useAttachments";
@@ -258,12 +258,20 @@ export function FunctionAgentChat({
   }, [taskId, refresh]);
 
   // 启发式追问（后端 meta.suggestions）——最后一条 assistant 消息上取；点了直接发送。
+  // 同时记录最新 assistant 文本条 index，用于给它流式打字机。
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant" && (messages[i].kind === "text" || !messages[i].kind)) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const suggestions: string[] =
     !running && Array.isArray(lastAssistant?.meta?.suggestions)
       ? (lastAssistant!.meta!.suggestions as string[]).filter(
           (s) => typeof s === "string" && s.trim(),
-        ).slice(0, 4)
+        ).slice(0, 3)
       : [];
 
   async function sendSuggestion(text: string) {
@@ -322,26 +330,32 @@ export function FunctionAgentChat({
               )}
             </p>
           )}
-          {messages.map((m) => (
-            <Bubble key={m.id} m={m} accent={accent} />
+          {messages.map((m, i) => (
+            <Bubble key={m.id} m={m} accent={accent} streaming={running && i === lastAssistantIdx} />
           ))}
           {running && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在处理…")}
             </div>
           )}
+          {/* 灵感（3 个可点追问）：从上到下渐变显示（错峰淡入，非流式）。 */}
           {suggestions.length > 0 && (
-            <div className="flex flex-col items-start gap-1.5 pt-1">
-              {suggestions.map((s) => (
+            <div className="flex flex-col items-stretch gap-0.5 pt-1.5">
+              {suggestions.map((s, i) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => void sendSuggestion(s)}
-                  className="group flex max-w-full items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-left text-[13px] text-stone-600 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-800"
+                  style={{ animationDelay: `${i * 130}ms` }}
+                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition hover:bg-stone-100/70 hover:text-stone-900"
                 >
-                  <span className="truncate">{s}</span>
-                  <svg className="h-3.5 w-3.5 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M8 12h8M12 8v8" strokeLinecap="round" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                  <span className="min-w-0 flex-1 truncate">{s}</span>
+                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
               ))}
@@ -373,8 +387,8 @@ export function FunctionAgentChat({
   );
 }
 
-function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
-  void accent; // 用户气泡统一黑色（对齐 AgentChat / 主站任务页），不再随 accent 变色。
+function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: string; streaming?: boolean }) {
+  void accent;
   if (m.role === "user") {
     const attList = m.meta?.attachments || [];
     return (
@@ -387,7 +401,8 @@ function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
           </div>
         )}
         {m.content && (
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-4 py-2.5 text-[15px] leading-relaxed text-white">
+          // 用户气泡：黑字 + 浅灰气泡（操作员 2026-07-03）。
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
             {m.content}
           </div>
         )}
@@ -407,11 +422,10 @@ function Bubble({ m, accent }: { m: AgentMessage; accent: string }) {
   if (m.kind === "error") {
     return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
   }
+  // agent 回答：不带气泡框，黑字直接显示在背景上（操作员 2026-07-03）；最新条流式打字。
   return (
-    <div className="max-w-[92%]">
-      <div className="rounded-2xl rounded-bl-md bg-white px-4 py-2.5 shadow-sm ring-1 ring-stone-100">
-        <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
-      </div>
+    <div className="max-w-full px-1 text-neutral-900">
+      <TypewriterMarkdown content={m.content} active={streaming} />
     </div>
   );
 }

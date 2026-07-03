@@ -70,6 +70,13 @@ function ThemeIcon({ mode }: { mode: ThemeMode }) {
       </svg>
     );
   }
+  if (mode === "cyberpunk") {
+    return (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    );
+  }
   // auto = 半月/半日「跟随系统」
   return (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -92,6 +99,7 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const TL: Record<ThemeMode, string> = {
     light: themeLabels?.light ?? tt("浅色"),
     dark: themeLabels?.dark ?? tt("深色"),
+    cyberpunk: themeLabels?.cyberpunk ?? tt("赛博朋克"),
     auto: themeLabels?.auto ?? tt("自动"),
   };
   const L = {
@@ -184,7 +192,7 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
           {/* 主题 */}
           <div>
             <label className="mb-2 block text-[13px] text-neutral-700">{L.theme}</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {THEME_MODES.map((m) => {
                 const on = m === mode;
                 return (

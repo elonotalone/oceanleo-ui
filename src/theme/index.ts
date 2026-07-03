@@ -26,7 +26,7 @@ export {
   normalizeThemeMode,
   resolveThemeClass,
 } from "./theme-config";
-export type { ThemeMode } from "./theme-config";
+export type { ThemeMode, ThemeAppearance } from "./theme-config";
 
 export { ThemeScript } from "./ThemeScript";
 export { ThemeProvider, useTheme } from "./ThemeProvider";

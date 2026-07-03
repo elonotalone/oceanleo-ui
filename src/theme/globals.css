@@ -93,6 +93,11 @@ body {
     linear-gradient(135deg, #edf1f8 0%, #f4f3f1 45%, #f3eef3 100%);
   background-attachment: fixed;
   color: #292524;
+  /* 上下滑动到头有「缓冲」而非「硬到底/硬到头」（操作员 2026-07-03）：
+     - overscroll-behavior-y: auto → 保留浏览器原生回弹/缓冲（不用 contain 硬截断）。
+     - scroll-behavior: smooth → 锚点/程序化滚动带平滑过渡。 */
+  overscroll-behavior-y: auto;
+  scroll-behavior: smooth;
 }
 
 /* ---------------------------------------------------------------------------
@@ -619,14 +624,15 @@ body {
 .v-typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .v-typing-dot:nth-child(3) { animation-delay: 0.3s; }
 
-.v-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+/* 滚动条：细一倍（6px → 3px）+ 颜色更浅（操作员 2026-07-03）。 */
+.v-scroll::-webkit-scrollbar { width: 3px; height: 3px; }
 .v-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.08);
   border-radius: 9999px;
 }
-.v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
+.v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.16); }
 .v-scroll::-webkit-scrollbar-track { background: transparent; }
-.v-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.18) transparent; }
+.v-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.10) transparent; }
 
 /* ---------- 全家桶统一：壳内所有滚动区 = 细滚动条 + 稳定滚动槽 ----------
    操作员 2026-06-28（宗旨 v11）：工作台「中＋右」两栏的滚动条统一为细滚动条
@@ -635,14 +641,19 @@ body {
    病根）。作用域限定在 `[data-oceanleo-shell]`（AppShell 的根容器）内，避免影响
    各站自定义的非壳区域。各组件无需逐个挂 `.v-scroll`，落到一处。
    设计：docs/architecture/oceanleo-right-canvas-and-shell-polish.md。 */
-[data-oceanleo-shell] *::-webkit-scrollbar { width: 6px; height: 6px; }
+[data-oceanleo-shell] *::-webkit-scrollbar { width: 3px; height: 3px; }
 [data-oceanleo-shell] *::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.08);
   border-radius: 9999px;
 }
-[data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
+[data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.16); }
 [data-oceanleo-shell] *::-webkit-scrollbar-track { background: transparent; }
-[data-oceanleo-shell] * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.18) transparent; }
+[data-oceanleo-shell] * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.10) transparent; }
+
+/* 主页/长内容区上下滑到头有「缓冲」而非硬到底（overscroll bounce 感）+
+   内部滚动区不把滚动链传导到 body（操作员 2026-07-03「缓冲，不硬到头」）。 */
+[data-oceanleo-shell] { overscroll-behavior-y: auto; }
+[data-oceanleo-shell] *::-webkit-scrollbar-corner { background: transparent; }
 
 /* 稳定滚动槽工具类：给「内容会变长而出现/消失滚动条」的容器加上，避免回流挤压。
    单一事实源——SplitWorkspace / Studio / ResultCanvas 的滚动 body 统一带它。 */
@@ -679,17 +690,17 @@ body {
 
 /* ---------- dark 主题：滚动条 + skeleton 反色（作用域壳内） ---------- */
 html.dark [data-oceanleo-shell] *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.10);
 }
 html.dark [data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.20);
 }
 html.dark [data-oceanleo-shell] * {
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
-html.dark .v-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); }
-html.dark .v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
-html.dark .v-scroll { scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+html.dark .v-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.10); }
+html.dark .v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.20); }
+html.dark .v-scroll { scrollbar-color: rgba(255, 255, 255, 0.12) transparent; }
 html.dark .v-skeleton {
   background: linear-gradient(
     90deg,
@@ -910,4 +921,176 @@ html.dark {
          [style*="linear-gradient"] { filter: saturate(.72) brightness(.82) }
        · tailwind bg-gradient-to-* → 「渐变」段的同款 filter
      这样既降廉价荧光感、又不把全家桶渐变统一抹成灰蓝、丢了品牌识别度。 */
+}
+
+/* ============================================================================
+ * CYBERPUNK 主题（操作员 2026-07-03）—— 霓虹赛博朋克模式
+ * ----------------------------------------------------------------------------
+ * 机制：cyberpunk 生效时 <html> 同时挂 `dark cyberpunk` 两个类（见 ThemeProvider /
+ * ThemeScript / server.ts）。因此上面【全部 html.dark 基础规则先命中】，把 29 站的
+ * 浅色组件统一压成暗底；本段 `html.cyberpunk`（位置更靠后、同特指度 → 胜出）只做两件事：
+ *   ① 重定义 --leo-d-* 与语义变量的【配色】：深蓝黑底 + 洋红/青霓虹前景/描边。
+ *      因为整套 dark 覆盖层都读这些变量，改变量即让全站换成赛博朋克配色，零逐站改动。
+ *   ② 叠加霓虹专属观感：发光描边、霓虹链接/按钮、扫描线氛围、选中态辉光。
+ * 设计基调：#0a0a12 深蓝黑底；主霓虹 = 洋红 #ff2e97、青 #00e5ff、次 = 紫 #a855f7。
+ * ========================================================================== */
+html.cyberpunk {
+  color-scheme: dark;
+  /* 画布底：带一点蓝紫的近黑 + 极淡的双色径向霓虹光晕（固定，不随滚动）。 */
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 46, 151, 0.10) 0%, rgba(255, 46, 151, 0) 42%),
+    radial-gradient(120% 90% at 100% 100%, rgba(0, 229, 255, 0.10) 0%, rgba(0, 229, 255, 0) 46%),
+    #0a0a12;
+
+  /* 分层令牌（复用 dark 的语义，换成蓝黑霓虹配色）。 */
+  --leo-d-bg: #0a0a12;
+  --leo-d-sidebar: #12101f;      /* 侧栏/顶栏：带紫的深蓝黑，比主区浮起一档 */
+  --leo-d-surface: #0f0e1a;
+  --leo-d-card: #15132340;       /* 卡片：半透明，透出底层霓虹光晕（玻璃感） */
+  --leo-d-card-2: #1d1a33;
+  --leo-d-border: rgba(0, 229, 255, 0.18);    /* 描边：青霓虹（低 alpha） */
+  --leo-d-border-s: rgba(168, 85, 247, 0.14); /* 分隔线：紫霓虹 */
+  --leo-d-fg: #e9e6ff;           /* 主文字：带冷调的近白 */
+  --leo-d-fg-2: #b7b0e0;
+  --leo-d-muted: #8b83b8;
+  --leo-d-faint: #6b6494;
+
+  /* 语义变量（各站业务组件读的那些）——同样换成霓虹配色。 */
+  --ring: rgba(255, 46, 151, 0.55);
+  --border-strong: rgba(0, 229, 255, 0.34);
+  --divider: rgba(168, 85, 247, 0.18);
+}
+
+/* 画布本身也置暗（同 html.dark 的做法，防顶部露浅色缝）。 */
+html.cyberpunk body {
+  background: var(--leo-d-bg);
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+
+/* 外壳容器（侧栏/顶栏）：霓虹描边 + 轻微发光，玻璃质感。 */
+html.cyberpunk [data-oceanleo-chrome] {
+  background-color: var(--leo-d-sidebar) !important;
+  border-color: rgba(0, 229, 255, 0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 46, 151, 0.06);
+}
+
+/* 卡片描边发光：给最常见的卡片/圆角面加一层极淡的青色内辉光，霓虹氛围但不刺眼。 */
+html.cyberpunk .rounded-xl,
+html.cyberpunk .rounded-2xl,
+html.cyberpunk .rounded-\[20px\],
+html.cyberpunk .rounded-\[24px\] {
+  border-color: var(--leo-d-border);
+}
+
+/* 霓虹主按钮：dark 下 bg-neutral-900 等被反成浅底深字；cyberpunk 里改成
+   洋红→紫的霓虹渐变 + 发光，才有赛博朋克的「按键会发光」观感。 */
+html.cyberpunk .bg-neutral-900,
+html.cyberpunk .bg-neutral-800,
+html.cyberpunk .bg-stone-900,
+html.cyberpunk .bg-stone-800,
+html.cyberpunk .bg-slate-900,
+html.cyberpunk .bg-slate-800,
+html.cyberpunk .bg-black {
+  background: linear-gradient(135deg, #ff2e97 0%, #a855f7 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px -4px rgba(255, 46, 151, 0.55), 0 0 2px rgba(0, 229, 255, 0.4) !important;
+}
+html.cyberpunk .bg-neutral-900.text-white,
+html.cyberpunk .bg-neutral-800.text-white,
+html.cyberpunk .bg-stone-900.text-white,
+html.cyberpunk .bg-slate-900.text-white,
+html.cyberpunk .bg-black.text-white { color: #ffffff !important; }
+html.cyberpunk .hover\:bg-neutral-800:hover,
+html.cyberpunk .hover\:bg-neutral-700:hover,
+html.cyberpunk .hover\:bg-black:hover {
+  filter: brightness(1.12) saturate(1.1);
+  background: linear-gradient(135deg, #ff2e97 0%, #a855f7 100%) !important;
+}
+
+/* accent 内联色（侧栏当前项竖条 / 头像 / token 图标）：cyberpunk 下不降饱和，
+   反而给一点辉光，让品牌色在霓虹语境里发亮。覆盖 §1 的 dark filter。 */
+html.cyberpunk [style*="background: #"],
+html.cyberpunk [style*="background:#"],
+html.cyberpunk [style*="background-color: #"] {
+  filter: saturate(1.15) brightness(1.06);
+}
+html.cyberpunk [style*="linear-gradient"] { filter: saturate(1.1) brightness(1.02); }
+
+/* 霓虹品牌文字/链接：比 dark 更亮更饱和（青/洋红双主色）。 */
+html.cyberpunk .text-emerald-600,
+html.cyberpunk .text-emerald-700,
+html.cyberpunk .text-green-600,
+html.cyberpunk .text-teal-600 { color: #2dffc7 !important; }
+html.cyberpunk .text-indigo-600,
+html.cyberpunk .text-violet-600,
+html.cyberpunk .text-purple-600 { color: #c98bff !important; }
+html.cyberpunk .text-sky-600,
+html.cyberpunk .text-blue-600,
+html.cyberpunk .text-cyan-600 { color: #4df0ff !important; }
+html.cyberpunk .text-rose-600,
+html.cyberpunk .text-pink-600,
+html.cyberpunk .text-red-600 { color: #ff5bb0 !important; }
+
+/* 高饱和实心色块：cyberpunk 保留霓虹感（比 dark 的低饱和更亮），加轻微辉光。 */
+html.cyberpunk .bg-indigo-500,
+html.cyberpunk .bg-indigo-600,
+html.cyberpunk .bg-violet-500,
+html.cyberpunk .bg-violet-600,
+html.cyberpunk .bg-purple-500,
+html.cyberpunk .bg-purple-600 {
+  background-color: #a855f7 !important;
+  box-shadow: 0 0 14px -4px rgba(168, 85, 247, 0.6) !important;
+}
+html.cyberpunk .bg-sky-500,
+html.cyberpunk .bg-sky-600,
+html.cyberpunk .bg-blue-500,
+html.cyberpunk .bg-blue-600,
+html.cyberpunk .bg-cyan-500,
+html.cyberpunk .bg-cyan-600 {
+  background-color: #0891b2 !important;
+  box-shadow: 0 0 14px -4px rgba(0, 229, 255, 0.55) !important;
+}
+html.cyberpunk .bg-rose-500,
+html.cyberpunk .bg-rose-600,
+html.cyberpunk .bg-pink-500,
+html.cyberpunk .bg-pink-600,
+html.cyberpunk .bg-fuchsia-500,
+html.cyberpunk .bg-fuchsia-600 {
+  background-color: #e11d74 !important;
+  box-shadow: 0 0 14px -4px rgba(255, 46, 151, 0.6) !important;
+}
+
+/* 滚动条：青霓虹拇指。 */
+html.cyberpunk [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
+html.cyberpunk .v-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.22);
+}
+html.cyberpunk [data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover,
+html.cyberpunk .v-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 46, 151, 0.35);
+}
+html.cyberpunk [data-oceanleo-shell] *,
+html.cyberpunk .v-scroll { scrollbar-color: rgba(0, 229, 255, 0.26) transparent; }
+
+/* focus 环：霓虹洋红。 */
+html.cyberpunk .focus\:border-neutral-400:focus,
+html.cyberpunk .focus-within\:border-neutral-400:focus-within,
+html.cyberpunk .focus\:border-neutral-300:focus,
+html.cyberpunk .focus-within\:border-neutral-300:focus-within {
+  border-color: rgba(255, 46, 151, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(255, 46, 151, 0.14) !important;
+}
+
+/* 语义变量的 cyberpunk 兜底（各站业务组件读 --surface / --card / … 时也换霓虹）。
+   继承 html.dark 段的映射（→ --leo-d-*），这里只需补 cyberpunk 专属的强调/描边。 */
+html.cyberpunk {
+  --border: var(--leo-d-border);
+  --border-2: var(--leo-d-border);
+  --card: var(--leo-d-card);
+  --surface: var(--leo-d-card);
+  --sidebar: var(--leo-d-sidebar);
+  --sidebar-bg: var(--leo-d-sidebar);
+  --header-bg: var(--leo-d-sidebar);
+  --accent-glow: rgba(255, 46, 151, 0.5);
 }

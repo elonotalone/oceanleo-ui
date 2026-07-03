@@ -19,6 +19,7 @@
 
 import { useState, type ReactNode } from "react";
 import { createCustomSkill, createCustomSkillTeam, type AgentDef } from "../lib/agent";
+import { Modal as SharedModal } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
 
 const DEFAULT_ACCENT = "#7c3aed";
@@ -236,10 +237,12 @@ export function CreateSkillTeamModal({
 // --------------------------------------------------------------------------- //
 // 共用小件
 // --------------------------------------------------------------------------- //
+// 复用共享 Modal（portal 到 body → 遮罩盖住侧栏、居中；操作员 2026-07-03）。
+// 卡片本体不整体上下滚动——超长表单靠内部 textarea 自身滚动。
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+    <SharedModal onClose={onClose} className="max-w-md">
+      <div className="p-5">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-[16px] font-semibold text-stone-900">{title}</h3>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
@@ -248,7 +251,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </SharedModal>
   );
 }
 

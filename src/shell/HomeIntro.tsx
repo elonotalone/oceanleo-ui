@@ -34,15 +34,21 @@ export interface HomeIntroProps {
   placeholder?: string;
   /** 快捷示例（点了填进输入框）。传了 siteId（卡片分区）时不再渲染，避免重复。 */
   suggestions?: string[];
-  /** 提交回调：进入 agent 工作界面。opts.agentId = 用户在「选择 agent」分区选中的 agent。 */
+  /** 提交回调：进入 agent 工作界面。opts.agentId = 用户在「agent」分区选中的 agent。 */
   onStart: (prompt: string, opts?: { agentId?: string }) => void;
   /** leftSlot：主站放「对话/Agent/设计」；普通站留空。 */
   leftSlot?: ReactNode;
   accent?: string;
   /**
-   * 站点 id（如 "word"）。传了它 → 输入框下方渲染「工作内容 prompt 卡片（分类）+
-   * 选择 agent 卡片」两个分区，且输入框滚动吸顶常显。 */
+   * 站点 id（如 "word"）。传了它 → 输入框下方渲染「agent | prompt」并列切换条 +
+   * 对应卡片网格，且输入框滚动吸顶常显。 */
   siteId?: string;
+  /**
+   * 默认打开的分区（操作员 2026-07-03）：
+   *   - 专业子站：`"prompt"`（默认显示 prompt 卡片）。
+   *   - 主站 oceanleo.com：`"none"`（默认**不**显示任何卡片，需点 agent/prompt 才出）。
+   * 缺省 = `"prompt"`。 */
+  defaultTab?: "prompt" | "agent" | "none";
   /** @deprecated 旧「30% 分成」文案已作废（网关 SERVICE_MARKUP=0）。保留以兼容旧调用方，不再渲染。 */
   markupPct?: number;
 }
@@ -97,6 +103,7 @@ export function HomeIntro({
   leftSlot,
   accent = "#4f46e5",
   siteId,
+  defaultTab = "prompt",
   // markupPct 已作废，仅为兼容旧调用方保留，不再使用。
   markupPct: _markupPct,
 }: HomeIntroProps) {
@@ -105,8 +112,11 @@ export function HomeIntro({
   const heading = headingProp ?? tt("我能为你做什么？");
   const placeholder = placeholderProp ?? tt("给 OceanLeo 布置一个任务...");
   const [value, setValue] = useState("");
-  // 「选择 agent」分区选中的 agent：输入框左下角显示其图标+名称，提交时带 agentId。
+  // 「agent」分区选中的 agent：输入框左下角显示其图标+名称，提交时带 agentId。
   const [agent, setAgent] = useState<HomeAgentPick | null>(null);
+  // 输入框下方并列切换条当前打开的分区：agent | prompt | none（都收起）。
+  // 点已打开的分区 → 收起（回到 none）；专业子站默认展开 prompt，主站默认 none。
+  const [tab, setTab] = useState<"prompt" | "agent" | "none">(defaultTab);
   const submit = () => {
     const p = value.trim();
     if (p) onStart(p, agent ? { agentId: agent.agentId } : undefined);
@@ -133,6 +143,23 @@ export function HomeIntro({
     </span>
   ) : null;
 
+  // 并列切换键（agent 左、prompt 右——操作员 2026-07-03）。点已选的键则收起。
+  const TabButton = ({ id, label }: { id: "agent" | "prompt"; label: string }) => {
+    const on = tab === id;
+    return (
+      <button
+        type="button"
+        onClick={() => setTab(on ? "none" : id)}
+        className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
+          on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
+        }`}
+        style={on ? { background: accent } : undefined}
+      >
+        {label}
+      </button>
+    );
+  };
+
   return (
     <div
       className={`mx-auto flex w-full max-w-3xl flex-col items-center px-6 ${
@@ -147,8 +174,8 @@ export function HomeIntro({
       </p>
 
       {/* 输入框：有卡片分区时吸顶常显——往下滑卡片列表时它一直看得见（操作员
-          2026-07-02：否则点了卡片看不到预设内容进了输入框）。 */}
-      <div className={`mt-8 w-full ${withCards ? "sticky top-2 z-30" : ""}`}>
+          2026-07-02）。2026-07-03：吸顶到【触顶】（top-0，去掉 8px 缝隙）。 */}
+      <div className={`mt-8 w-full ${withCards ? "sticky top-0 z-30 pt-2" : ""}`}>
         <LeoComposer
           value={value}
           onChange={setValue}
@@ -167,6 +194,15 @@ export function HomeIntro({
           rows={2}
           className={withCards ? "shadow-md" : ""}
         />
+
+        {/* 输入框正下方：agent | prompt 并列切换条（操作员 2026-07-03）。
+            点某键 → 下面一行显示对应目录 + 卡片；再点同键收起。 */}
+        {withCards && (
+          <div className="mt-3 flex items-center justify-center gap-1.5">
+            <TabButton id="agent" label={tt("agent")} />
+            <TabButton id="prompt" label={tt("prompt")} />
+          </div>
+        )}
       </div>
 
       {/* 旧快捷示例 pill（未接卡片分区的站保留原样） */}
@@ -187,34 +223,23 @@ export function HomeIntro({
         </div>
       )}
 
-      {/* 两大卡片分区（2026-07-02）：① 工作内容（分类 prompt 卡片，点了填输入框）
-          ② 选择 agent（点了在输入框左下角挂 agent 芯片）。 */}
-      {withCards && (
-        <div className="mt-7 w-full space-y-8 pb-6">
-          <div>
-            <h2 className="mb-2 text-[14px] font-semibold text-stone-800">{tt("工作内容")}</h2>
-            <HomePromptCards
-              siteId={siteId!}
-              accent={accent}
-              onPick={(p) => setValue(p)}
-            />
-          </div>
-          <div>
-            <h2 className="mb-2 text-[14px] font-semibold text-stone-800">{tt("选择 agent")}</h2>
-            <p className="mb-2 text-[12px] text-stone-400">
-              {tt("选一个 agent 来回答（点卡片选中/取消）；不选则由本站默认 agent 处理。")}
-            </p>
-            <HomeAgentCards
-              siteId={siteId!}
-              accent={accent}
-              selected={agent}
-              onSelect={setAgent}
-            />
-          </div>
+      {/* 卡片区（2026-07-03）：由上方切换键决定显示哪个分区——
+          prompt = 分类 prompt 卡片（点了填输入框）；agent = agent 卡片（点了挂芯片）。 */}
+      {withCards && tab === "prompt" && (
+        <div className="mt-6 w-full pb-6">
+          <HomePromptCards siteId={siteId!} accent={accent} onPick={(p) => setValue(p)} />
+        </div>
+      )}
+      {withCards && tab === "agent" && (
+        <div className="mt-6 w-full pb-6">
+          <p className="mb-2 text-[12px] text-stone-400">
+            {tt("选一个 agent 来回答（点卡片选中/取消）；不选则由本站默认 agent 处理。")}
+          </p>
+          <HomeAgentCards siteId={siteId!} accent={accent} selected={agent} onSelect={setAgent} />
         </div>
       )}
 
-      <BillingNotice siteName={siteName} accent={accent} className={withCards ? "mb-8" : "mt-10"} />
+      <BillingNotice siteName={siteName} accent={accent} className={withCards ? "mb-8 mt-4" : "mt-10"} />
     </div>
   );
 }

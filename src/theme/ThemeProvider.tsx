@@ -22,13 +22,14 @@ import {
   normalizeThemeMode,
   resolveThemeClass,
   type ThemeMode,
+  type ThemeAppearance,
 } from "./theme-config";
 
 interface ThemeContextValue {
-  /** 用户选择的模式（light/dark/auto）。 */
+  /** 用户选择的模式（light/dark/cyberpunk/auto）。 */
   mode: ThemeMode;
-  /** 实际生效的外观（auto 已解析成 light/dark）。 */
-  resolved: "light" | "dark";
+  /** 实际生效的外观（auto 已解析成 light/dark；cyberpunk 独立）。 */
+  resolved: ThemeAppearance;
   /** 切换到指定模式（写 cookie + localStorage + 应用类名）。 */
   setMode: (mode: ThemeMode) => void;
 }
@@ -119,12 +120,19 @@ function clearHostOnlyThemeCookie() {
   document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
-function applyClass(resolved: "light" | "dark") {
+function applyClass(resolved: ThemeAppearance) {
   if (typeof document === "undefined") return;
   const el = document.documentElement;
-  el.classList.remove("dark", "light");
-  el.classList.add(resolved);
-  el.style.colorScheme = resolved;
+  el.classList.remove("dark", "light", "cyberpunk");
+  // cyberpunk 本质是暗底霓虹 → 同时挂 `dark`（复用全部 html.dark 基础规则）+
+  // `cyberpunk`（叠加霓虹配色/发光）。这样无需给几千条 html.dark 规则再复制一份。
+  if (resolved === "cyberpunk") {
+    el.classList.add("dark", "cyberpunk");
+  } else {
+    el.classList.add(resolved);
+  }
+  // cyberpunk 本质是暗底 → color-scheme 用 dark（表单控件/滚动条走暗色 UA 样式）。
+  el.style.colorScheme = resolved === "light" ? "light" : "dark";
 }
 
 export interface ThemeProviderProps {
@@ -134,7 +142,7 @@ export interface ThemeProviderProps {
 export function ThemeProvider({ children }: ThemeProviderProps) {
   // 初值只在挂载时读一次；SSR 阶段返回 DEFAULT（不影响首帧，首帧类名由 ThemeScript 定）。
   const [mode, setModeState] = useState<ThemeMode>(DEFAULT_THEME_MODE);
-  const [resolved, setResolved] = useState<"light" | "dark">("light");
+  const [resolved, setResolved] = useState<ThemeAppearance>("light");
   // 真实模式的同步镜像。挂载首个 commit 里 state 还是初始值 auto（setState 下一次
   // 渲染才生效），任何在该窗口执行的回调都必须读这个 ref 而不是 state，否则会拿
   // 陈旧的 auto 把用户选的 dark/light 覆盖掉 —— 2026-07-02「深色刷新变亮」的根因

@@ -9,7 +9,7 @@
 // 需要更强的可编辑富文本时，右栏可由各站替换为专用编辑器（map/canvas/ppt…）。
 // ============================================================================
 
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -170,4 +170,41 @@ export function Markdown({ children, className = "" }: { children: string; class
   // 则不再叠加默认（让调用方的字号生效，如 AgentChat 历史回看用 15px）。
   const hasSize = /(?:^|\s)text-(\[|xs|sm|base|lg|xl)/.test(className);
   return <div className={`${hasSize ? "" : "text-[13px]"} ${className}`}>{blocks}</div>;
+}
+
+// ============================================================================
+// 流式打字机 Markdown（单一事实源）—— agent 回答「每次回复应该流式显示」。
+// active=true 时逐字揭示已到达的整段文本（后端一次性写全，前端假流式，复刻主站
+// /tasks/[id] 的 TypewriterMarkdown）；active=false 时直接全量（历史回看/非最新条）。
+// ============================================================================
+export function TypewriterMarkdown({
+  content,
+  active,
+  className = "text-[15px] leading-relaxed",
+}: {
+  content: string;
+  active: boolean;
+  className?: string;
+}) {
+  const [shown, setShown] = useState(active ? 0 : content.length);
+  useEffect(() => {
+    if (!active) {
+      setShown(content.length);
+      return;
+    }
+    if (shown >= content.length) return;
+    const step = Math.max(2, Math.round(content.length / 240));
+    const t = setTimeout(() => setShown((n) => Math.min(content.length, n + step)), 16);
+    return () => clearTimeout(t);
+  }, [active, content, shown]);
+  useEffect(() => {
+    if (shown > content.length) setShown(content.length);
+  }, [content, shown]);
+  const text = active ? content.slice(0, shown) : content;
+  const typing = active && shown < content.length;
+  return (
+    <span className={typing ? "v-caret" : undefined}>
+      <Markdown className={className}>{text}</Markdown>
+    </span>
+  );
 }

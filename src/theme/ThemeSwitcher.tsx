@@ -18,6 +18,7 @@ export interface ThemeSwitcherProps {
 const DEFAULT_LABELS: Record<ThemeMode, string> = {
   light: "Light",
   dark: "Dark",
+  cyberpunk: "Cyberpunk",
   auto: "Auto",
 };
 
@@ -40,6 +41,14 @@ function ThemeIcon({ mode, className = "h-3.5 w-3.5" }: { mode: ThemeMode; class
       </svg>
     );
   }
+  if (mode === "cyberpunk") {
+    // 赛博朋克 = 闪电/霓虹意象。
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    );
+  }
   // auto = 半月/半日「跟随系统」
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -54,7 +63,7 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
   const L = { ...DEFAULT_LABELS, ...labels };
 
   if (variant === "compact") {
-    const order: ThemeMode[] = ["light", "dark", "auto"];
+    const order: ThemeMode[] = ["light", "dark", "cyberpunk", "auto"];
     const next = order[(order.indexOf(mode) + 1) % order.length];
     return (
       <button

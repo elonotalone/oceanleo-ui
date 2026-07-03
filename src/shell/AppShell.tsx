@@ -571,23 +571,23 @@ function AppShellInner({
           data-oceanleo-chrome
           className="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-sm md:px-6"
         >
-          {/* 左：站名标题（原左上角位置）+ 紧跟其右的模型选择 */}
+          {/* 左：站名标题（原左上角位置） */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
             {renderBrand()}
-            {showModelInHeader ? (
-              <div className="flex min-w-0 items-center gap-2">
-                <ModelPicker
-                  categories={modelCategories!}
-                  siteId={siteId}
-                  onChange={onModelChange}
-                  onSelectionChange={onModelSelectionChange}
-                  apiHref={apiHref}
-                />
-              </div>
-            ) : null}
           </div>
-          {/* 右：切换器 + 自定义插槽 + token 余额 + 账户（账户在余额右边） */}
+          {/* 右：模型选择（右上角，popover）+ 切换器 + 自定义插槽 + token 余额 + 账户 */}
           <div className="flex shrink-0 items-center gap-2">
+            {showModelInHeader && (
+              <ModelPicker
+                categories={modelCategories!}
+                siteId={siteId}
+                onChange={onModelChange}
+                onSelectionChange={onModelSelectionChange}
+                apiHref={apiHref}
+                variant="popover"
+                align="right"
+              />
+            )}
             {renderSwitchers()}
             {headerRight}
             {renderCredits()}
@@ -654,29 +654,33 @@ function AppShellInner({
           <IconPanel />
         </button>
 
-        {/* 右侧主区顶部 header：左 = 模型选择，右 = 自定义插槽。这是「右上模型
-            选择」的唯一落点，与 oceanleo 主站截图一致。 */}
+        {/* 右侧主区顶部 header：模型选择恒定收在**右上角**（popover 形态，与
+            oceanleo.com 主站首页截图一致）。左边留自定义 headerRight 插槽（若有）。
+            2026-07-03 操作员定稿：全家桶子站的「模型选择」不再左上平铺 bar，统一
+            右上角一个「模型选择 ▾」按键，点开下拉——首页 / 历史记录 / 文件库一致。 */}
         {showHeader && (
           <div
             data-oceanleo-chrome
-            className={`flex items-center justify-between border-b border-neutral-100 px-8 py-3 pl-14 ${
+            className={`flex items-center justify-between gap-3 border-b border-neutral-100 px-8 py-3 pl-14 ${
               collapsed ? "md:pl-14" : "md:pl-8"
             }`}
           >
             <div className="flex min-w-0 items-center gap-2">
-              {showModelInHeader ? (
+              {headerRight}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {showModelInHeader && (
                 <ModelPicker
                   categories={modelCategories!}
                   siteId={siteId}
                   onChange={onModelChange}
                   onSelectionChange={onModelSelectionChange}
                   apiHref={apiHref}
+                  variant="popover"
+                  align="right"
                 />
-              ) : (
-                <span />
               )}
             </div>
-            {headerRight && <div className="flex items-center gap-2">{headerRight}</div>}
           </div>
         )}
 

@@ -247,11 +247,11 @@ export function PromptCardModal({
 
   return (
     <Modal onClose={onClose} className="max-w-lg">
-      <div className="flex max-h-[80vh] flex-col">
+      <div className="flex flex-col">
         <div className="flex items-center justify-between border-b border-stone-100 px-5 py-3.5">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-stone-900">
             <span className="text-[17px]">{icon || "✨"}</span>
-            {isNew ? tt("新建工作内容卡片") : title || tt("工作内容卡片")}
+            {isNew ? tt("新建 prompt 卡片") : title || tt("prompt 卡片")}
           </h3>
           <button
             type="button"
@@ -263,7 +263,9 @@ export function PromptCardModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+        {/* 卡片本体不整体上下滚动（操作员 2026-07-03）：内容自适应高度，
+            仅超长 prompt 文本自身给一个受限滚动区，卡片外壳保持不滚。 */}
+        <div className="space-y-3 px-5 py-4">
           {editing ? (
             <>
               <div className="grid grid-cols-[64px_1fr] gap-2">
@@ -315,7 +317,7 @@ export function PromptCardModal({
                   {category}
                 </span>
               )}
-              <pre className="whitespace-pre-wrap rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 font-sans text-[13px] leading-relaxed text-stone-700">
+              <pre className="max-h-[46vh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3 font-sans text-[13px] leading-relaxed text-stone-700">
                 {prompt}
               </pre>
             </>

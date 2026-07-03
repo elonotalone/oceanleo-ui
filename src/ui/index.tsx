@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useUI } from "../i18n/ui/useUI";
 
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
@@ -24,6 +25,13 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = useState(false);
+  // 挂载到 document.body（portal）：让遮罩层脱离 <main> 的 transform 栈上下文，
+  // 从而**盖住整个视口，包括左侧侧边栏**（操作员 2026-07-03：点卡片时侧栏也要
+  // 变灰）。SSR 阶段 document 不存在 → 先不渲染，mount 后再 portal。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const requestClose = useCallback(() => {
     setClosing(true);
@@ -74,9 +82,11 @@ export function Modal({
     };
   }, [requestClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 transition-opacity duration-150 ${
+      className={`fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 transition-opacity duration-150 ${
         closing ? "opacity-0" : "v-fade-in"
       }`}
       onMouseDown={(e) => {
@@ -95,7 +105,8 @@ export function Modal({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -18,6 +18,7 @@ import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton, type PlaygroundBoardCtx } from "./Playground";
+import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -355,16 +356,24 @@ export function WorkspaceDetail({
   }
 
   // ── 目录页：网站 / app / agent 三分区（同 all-sites），选择全在主区 ──
+  // app / 网站 卡片优先用主站移植来的彩色几何站点图标 + 品牌色（按 site_id / s.key），
+  // 替代 emoji/占位符；无对应站点图标的条目走原图标 + DirectoryCard 内置稳定色回退。
+  // agent（skill）分区是 LeoAgent 聊天体，保留各自图标，不套站点图标。
   const appItems: DirectoryItem[] = myApps.map((a) => ({
     id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
-    icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
+    icon: siteIconFor(a.site_id) ?? a.icon,
+    logoColor: siteBrandColorFor(a.site_id) ?? undefined,
+    accent, site_id: a.site_id, category: a.category, added: true,
   }));
   const skillItems: DirectoryItem[] = mySkills.map((a) => ({
     id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
     icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
   }));
   const siteItems: DirectoryItem[] = sites.map((s) => ({
-    id: s.key, name: s.name, tagline: s.tagline, icon: s.icon, accent, site_id: s.key,
+    id: s.key, name: s.name, tagline: s.tagline,
+    icon: siteIconFor(s.key) ?? s.icon,
+    logoColor: siteBrandColorFor(s.key) ?? undefined,
+    accent, site_id: s.key,
   }));
 
   const emptyState = (label: string) => (

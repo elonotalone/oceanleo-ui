@@ -27,13 +27,17 @@ if(h==="oceanleo.com"||h.slice(-13)===".oceanleo.com"){try{document.cookie=C+"=;
 var m=null;
 try{var mt=document.cookie.match(new RegExp("(?:^|; )"+C+"=([^;]*)"));if(mt)m=decodeURIComponent(mt[1]);}catch(e){}
 if(!m){try{m=localStorage.getItem(L);}catch(e){}}
-if(m!=="light"&&m!=="dark"&&m!=="auto")m=D;
-var dark=m==="dark";
-if(m==="auto"){try{dark=window.matchMedia("(prefers-color-scheme: dark)").matches;}catch(e){dark=false;}}
+if(m!=="light"&&m!=="dark"&&m!=="cyberpunk"&&m!=="auto")m=D;
+var cyber=m==="cyberpunk";
+var cls;
+if(cyber)cls="dark cyberpunk";
+else if(m==="dark")cls="dark";
+else if(m==="light")cls="light";
+else{var dk=false;try{dk=window.matchMedia("(prefers-color-scheme: dark)").matches;}catch(e){dk=false;}cls=dk?"dark":"light";}
 var el=document.documentElement;
-el.classList.remove("dark","light");
-el.classList.add(dark?"dark":"light");
-el.style.colorScheme=dark?"dark":"light";
+el.classList.remove("dark","light","cyberpunk");
+cls.split(" ").forEach(function(c){el.classList.add(c);});
+el.style.colorScheme=(cls==="light")?"light":"dark";
 }catch(e){}})();`;
 
 export function ThemeScript() {

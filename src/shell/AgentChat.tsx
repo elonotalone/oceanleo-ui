@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
-import { Markdown } from "./Markdown";
+import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import {
   createTask,
@@ -244,12 +244,20 @@ export function AgentChat({
 
   // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
   // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
+  // 同时记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant" && (messages[i].kind === "text" || !messages[i].kind)) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const suggestions: string[] =
     !busy && status !== "running" && Array.isArray(lastAssistant?.meta?.suggestions)
       ? (lastAssistant!.meta!.suggestions as string[]).filter(
           (s) => typeof s === "string" && s.trim(),
-        ).slice(0, 4)
+        ).slice(0, 3)
       : [];
 
   const sendSuggestion = useCallback(
@@ -318,27 +326,37 @@ export function AgentChat({
               {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
             </div>
           )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} m={m} />
+          {messages.map((m, i) => (
+            <MessageBubble
+              key={m.id}
+              m={m}
+              streaming={running && i === lastAssistantIdx}
+            />
           ))}
           {running && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
-          {/* 启发式追问 pill（对照豆包）：回答完成后给 3 个可点的追问，点了直接发送。 */}
+          {/* 灵感（回答完成后给 3 个可点追问，对照 Manus）：从上到下渐变显示
+              （不是流式，是错峰淡入）；点了直接发送。 */}
           {suggestions.length > 0 && (
-            <div className="flex flex-col items-start gap-1.5 pt-1">
-              {suggestions.map((s) => (
+            <div className="flex flex-col items-stretch gap-0.5 pt-1.5">
+              {suggestions.map((s, i) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => void sendSuggestion(s)}
-                  className="group flex max-w-full items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-left text-[13px] text-stone-600 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-800"
+                  style={{ animationDelay: `${i * 130}ms` }}
+                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition hover:bg-stone-100/70 hover:text-stone-900"
                 >
-                  <span className="truncate">{s}</span>
-                  <svg className="h-3.5 w-3.5 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M8 12h8M12 8v8" strokeLinecap="round" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                  <span className="min-w-0 flex-1 truncate">{s}</span>
+                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
               ))}
@@ -405,7 +423,7 @@ export function AgentChat({
   );
 }
 
-function MessageBubble({ m }: { m: AgentMessage }) {
+function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: boolean }) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
   if (m.role === "user") {
@@ -420,10 +438,8 @@ function MessageBubble({ m }: { m: AgentMessage }) {
           </div>
         )}
         {m.content && (
-          // 用户气泡统一黑色（bg-neutral-900）——与主站任务页 /tasks/[id] 一致。
-          // 操作员 2026-07-01：对话/历史回看不能因 accent 变蓝，全程一致黑色。
-          // 字号 2026-07-01 调大 13→15px（历史回看字体太小诉求）。
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-900 px-4 py-2.5 text-[15px] leading-relaxed text-white">
+          // 用户气泡：黑字 + 浅灰气泡（操作员 2026-07-03，对照 Manus）——不再黑底白字。
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
             {m.content}
           </div>
         )}
@@ -455,9 +471,11 @@ function MessageBubble({ m }: { m: AgentMessage }) {
       </div>
     );
   }
+  // agent 回答：不带气泡框，直接黑字显示在背景上（操作员 2026-07-03，对照 Manus）。
+  // 最新一条回答做流式打字机。
   return (
-    <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white px-4 py-2.5 shadow-sm ring-1 ring-stone-100">
-      <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
+    <div className="max-w-full px-1 text-neutral-900">
+      <TypewriterMarkdown content={m.content} active={streaming} />
     </div>
   );
 }

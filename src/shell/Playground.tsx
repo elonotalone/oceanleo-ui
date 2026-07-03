@@ -34,6 +34,7 @@ import {
 } from "./home-cards";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
 import { brandColorFor, tintOf } from "../lib/brand-color";
+import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -168,13 +169,19 @@ export function PlaygroundDetail({
   const items: DirectoryItem[] = useMemo(() => {
     // 宗旨 v13（2026-07-02）：不再让每张卡强制取分区色，改为按 agent_id 稳定生成
     // 品牌色，让 playground 上五花八门的图标各有色（去蓝紫同底）。
+    // app 分区（功能站 agent，a.site_id 是真实站 id 如 image/ppt/word）：优先用主站
+    // 移植来的彩色几何站点图标 + 站点品牌色，替代 agent 自带 emoji（操作员截图投诉）。
+    // agent 分区（tab==="skill"）保持 agent 自己的图标 / 稳定品牌色，不动。
     const base = list.map<DirectoryItem>((a) => ({
       id: a.agent_id,
       name: a.name,
       tagline: a.tagline,
       capabilities: a.capabilities,
-      icon: a.icon,
-      logoColor: brandColorFor(a.agent_id),
+      icon: tab === "app" ? siteIconFor(a.site_id) ?? a.icon : a.icon,
+      logoColor:
+        tab === "app"
+          ? siteBrandColorFor(a.site_id) ?? brandColorFor(a.agent_id)
+          : brandColorFor(a.agent_id),
       site_id: a.site_id,
       category: a.category,
     }));
@@ -188,7 +195,7 @@ export function PlaygroundDetail({
       });
     }
     return base;
-  }, [list, accent, recIds]);
+  }, [list, tab, accent, recIds]);
 
   // 切 tab 时清掉推荐高亮（不同分区候选集不同）。
   useEffect(() => {

@@ -123,6 +123,9 @@ export type { HistoryPageProps } from "./HistoryPage";
 export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";
+// 2026-07-03：全家桶站点几何图标（单一事实源，从主站 SITES 移植）。playground /
+// app-directory / 工作台目录 卡片按 site_id 取彩色几何图标 + 品牌色，替代 emoji。
+export { SITE_ICONS, SITE_BRAND_COLOR, siteIconFor, siteBrandColorFor } from "./site-icons";
 // 宗旨 v13（2026-07-02）：从 shell 也 re-export brand-color，让消费站不用另导 lib。
 export { brandColorFor, tintOf, BRAND_PALETTE } from "../lib/brand-color";
 // 宗旨 v13：专家团成员管理弹窗（agent 站输入框「专家团」小图标 → 弹本 modal）。
