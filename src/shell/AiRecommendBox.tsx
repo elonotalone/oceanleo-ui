@@ -147,7 +147,7 @@ export function AiRecommendBox({
         </div>
       )}
 
-      {error && <p className="mt-3 text-center text-xs text-rose-500">{error}</p>}
+      {error && <p className="mt-3 text-center text-xs text-rose-500">{tt(error)}</p>}
       {count !== null && count === 0 && !error && (
         <p className="mt-3 text-center text-xs text-stone-400">
           {tt("没有找到完全匹配的{kind}，下面是全部内容，欢迎浏览。", { kind: kindLabel })}

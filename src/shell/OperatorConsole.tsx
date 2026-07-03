@@ -277,10 +277,14 @@ export function OperatorConsole({
           <div className="mb-5 flex items-start justify-between gap-3">
             <div className="min-w-0">
               {directoryTitle && (
-                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{directoryTitle}</h1>
+                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
+                  {typeof directoryTitle === "string" ? tt(directoryTitle) : directoryTitle}
+                </h1>
               )}
               {directorySubtitle && (
-                <p className="mt-1 text-[13px] text-neutral-500">{directorySubtitle}</p>
+                <p className="mt-1 text-[13px] text-neutral-500">
+                  {typeof directorySubtitle === "string" ? tt(directorySubtitle) : directorySubtitle}
+                </p>
               )}
             </div>
             {modelPicker && <div className="shrink-0">{modelPicker}</div>}
@@ -321,7 +325,7 @@ export function OperatorConsole({
               <BackButton onClick={backToDirectory} />
               <span className="truncate text-[13px] font-medium text-stone-600">
                 {active?.icon != null && <span className="mr-1">{active.icon}</span>}
-                {active?.label}
+                {active?.label ? tt(active.label) : null}
                 {active?.agentId && (
                   <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
                     ✦ agent

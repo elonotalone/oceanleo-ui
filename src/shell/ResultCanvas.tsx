@@ -18,6 +18,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useRightPaneSlot } from "./SplitWorkspace";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface CanvasTab {
   id: string;
@@ -49,6 +50,7 @@ function TabBar({
   onChange: (id: string) => void;
   hint?: ReactNode;
 }) {
+  const tt = useUI();
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
@@ -63,7 +65,7 @@ function TabBar({
                 : "text-stone-500 hover:text-stone-700"
             }`}
           >
-            {t.label}
+            {tt(t.label)}
           </button>
         ))}
       </div>
@@ -143,6 +145,7 @@ export function CanvasSubTabs({
   right?: ReactNode;
   className?: string;
 }) {
+  const tt = useUI();
   return (
     <div className={`mb-3 flex flex-wrap items-center gap-2 ${className}`}>
       {tabs.map((t) => {
@@ -157,7 +160,7 @@ export function CanvasSubTabs({
             }`}
             style={on ? { background: accent } : undefined}
           >
-            {t.label}
+            {tt(t.label)}
           </button>
         );
       })}
@@ -178,6 +181,7 @@ export function CanvasEmpty({
   title: string;
   hint?: string;
 }) {
+  const tt = useUI();
   return (
     <div className="flex h-full min-h-[440px] flex-col items-center justify-center gap-3 text-center">
       {icon ?? (
@@ -193,8 +197,8 @@ export function CanvasEmpty({
           <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
-      <p className="text-sm text-stone-400">{title}</p>
-      {hint && <p className="max-w-xs text-xs text-stone-400">{hint}</p>}
+      <p className="text-sm text-stone-400">{tt(title)}</p>
+      {hint && <p className="max-w-xs text-xs text-stone-400">{tt(hint)}</p>}
     </div>
   );
 }

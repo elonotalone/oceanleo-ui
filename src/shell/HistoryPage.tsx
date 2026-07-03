@@ -203,13 +203,14 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 }
 
 function Empty({ text }: { text: string }) {
+  const tt = useUI();
   return (
     <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center text-stone-400">
       <svg className="h-12 w-12 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="12" cy="12" r="9" />
         <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <p className="max-w-xs text-sm">{text}</p>
+      <p className="max-w-xs text-sm">{tt(text)}</p>
     </div>
   );
 }

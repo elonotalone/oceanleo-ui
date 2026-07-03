@@ -46,7 +46,7 @@ export function PageHeader({
           <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title}</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(title)}</h1>
     </div>
   );
 }

@@ -113,7 +113,7 @@ export function HomePromptCards({
                 on ? "font-semibold text-stone-900" : "text-stone-500 hover:text-stone-700"
               }`}
             >
-              {c === "__all__" ? tt("全部") : c}
+              {c === "__all__" ? tt("全部") : tt(c)}
               {on && (
                 <span
                   className="absolute inset-x-2.5 -bottom-px h-[2px] rounded-full"
@@ -151,14 +151,14 @@ export function HomePromptCards({
           >
             <div className="flex items-center gap-1.5">
               <span className="text-[15px] leading-none">{c.icon}</span>
-              <span className="truncate text-[13px] font-semibold text-stone-800">{c.title}</span>
+              <span className="truncate text-[13px] font-semibold text-stone-800">{tt(c.title)}</span>
               {c.custom && (
                 <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
                   {tt("我的")}
                 </span>
               )}
             </div>
-            <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-stone-500">{c.desc || c.prompt}</p>
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-stone-500">{tt(c.desc || c.prompt)}</p>
             {/* 右上角：查看 / 编辑 该卡片 prompt 文本 */}
             <button
               type="button"
@@ -305,7 +305,7 @@ export function PromptCardModal({
                 placeholder={tt("点击卡片时填进输入框的预设内容。可用 [占位] 提示用户替换。")}
                 className="w-full resize-y rounded-lg border border-stone-200 px-3 py-2 font-mono text-[12.5px] leading-relaxed outline-none focus:border-stone-400"
               />
-              {err && <p className="text-[12px] text-rose-500">{err}</p>}
+              {err && <p className="text-[12px] text-rose-500">{tt(err)}</p>}
             </>
           ) : (
             <>

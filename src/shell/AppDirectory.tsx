@@ -195,7 +195,7 @@ export function AppDirectory({
                   : "text-stone-500 hover:text-stone-700"
               }`}
             >
-              {m.label}
+              {tt(m.label)}
             </button>
           ))}
         </div>
@@ -243,7 +243,7 @@ export function AppDirectory({
               style={on ? { background: accent } : undefined}
             >
               <span className="text-[14px] leading-none">{c.icon}</span>
-              <span>{c.label}</span>
+              <span>{tt(c.label)}</span>
               <span className={`text-[11px] ${on ? "text-white/75" : "text-stone-400"}`}>{n}</span>
             </button>
           );
@@ -379,15 +379,17 @@ function DirectoryCard({
             {item.icon || "✦"}
           </span>
           <div className="min-w-0 flex-1 pt-0.5">
-            <p className="truncate text-[14px] font-semibold text-stone-900">{item.name}</p>
+            {/* i18n：站点 functions/agents 配置里的中文 label/tagline 在渲染点过 tt()
+                （中文原文=key，词典无命中回退原文——用户自建内容安全）。 */}
+            <p className="truncate text-[14px] font-semibold text-stone-900">{tt(item.name)}</p>
             {item.tagline && (
-              <p className="mt-0.5 line-clamp-1 text-[12px] text-stone-500">{item.tagline}</p>
+              <p className="mt-0.5 line-clamp-1 text-[12px] text-stone-500">{tt(item.tagline)}</p>
             )}
           </div>
         </div>
         {item.capabilities && (
           <p className="mt-2.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-stone-500">
-            {item.capabilities}
+            {tt(item.capabilities)}
           </p>
         )}
       </div>

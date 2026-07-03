@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useUI } from "../i18n/ui/useUI";
 
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
 
@@ -117,19 +118,20 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const tt = useUI();
   const [busy, setBusy] = useState(false);
   return (
     <Modal onClose={onCancel} className="max-w-sm">
       <div className="p-5">
-        <h3 className="text-[15px] font-semibold text-neutral-900">{title}</h3>
-        {body && <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">{body}</p>}
+        <h3 className="text-[15px] font-semibold text-neutral-900">{tt(title)}</h3>
+        {body && <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">{tt(body)}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
             className="rounded-lg border border-neutral-200 px-3.5 py-1.5 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
           >
-            {cancelLabel}
+            {tt(cancelLabel)}
           </button>
           <button
             type="button"
@@ -143,7 +145,7 @@ export function ConfirmDialog({
             }`}
           >
             {busy && <span className="v-spinner text-[10px]" />}
-            {confirmLabel}
+            {tt(confirmLabel)}
           </button>
         </div>
       </div>
@@ -198,6 +200,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   size?: "sm" | "md";
 }) {
+  const tt = useUI();
   return (
     <div
       className={`inline-flex items-center rounded-lg bg-neutral-100 p-0.5 ${
@@ -218,7 +221,7 @@ export function Segmented<T extends string>({
               : "text-neutral-500 hover:text-neutral-700"
           }`}
         >
-          {opt.label}
+          {tt(opt.label)}
         </button>
       ))}
     </div>
@@ -238,6 +241,7 @@ export function Select<T extends string>({
   onChange: (v: T) => void;
   className?: string;
 }) {
+  const tt = useUI();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -268,7 +272,7 @@ export function Select<T extends string>({
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-[13px] text-neutral-800 transition hover:border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
-        <span className="truncate">{current?.label || "请选择"}</span>
+        <span className="truncate">{current?.label ? tt(current.label) : tt("请选择")}</span>
         <svg
           className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-150 ${
             open ? "rotate-180" : ""
@@ -301,8 +305,8 @@ export function Select<T extends string>({
               }`}
             >
               <span>
-                {opt.label}
-                {opt.desc && <span className="ml-1.5 text-[11px] text-neutral-400">{opt.desc}</span>}
+                {tt(opt.label)}
+                {opt.desc && <span className="ml-1.5 text-[11px] text-neutral-400">{tt(opt.desc)}</span>}
               </span>
               {value === opt.id && (
                 <svg className="h-3.5 w-3.5 text-neutral-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
@@ -340,11 +344,12 @@ export function EmptyState({
   desc?: string;
   action?: ReactNode;
 }) {
+  const tt = useUI();
   return (
     <div className="v-fade-up flex flex-col items-center justify-center px-6 py-16 text-center">
       {icon && <div className="mb-4 text-neutral-300">{icon}</div>}
-      <p className="text-[15px] font-medium text-neutral-700">{title}</p>
-      {desc && <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-neutral-400">{desc}</p>}
+      <p className="text-[15px] font-medium text-neutral-700">{tt(title)}</p>
+      {desc && <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-neutral-400">{tt(desc)}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
@@ -353,28 +358,35 @@ export function EmptyState({
 /* ---------- Spinner button content helper ---------- */
 
 export function ButtonSpinner({ label }: { label: string }) {
+  const tt = useUI();
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="v-spinner text-[10px]" />
-      {label}
+      {tt(label)}
     </span>
   );
 }
 
-/* ---------- relative time in zh-CN ---------- */
+/* ---------- relative time ---------- */
 
-export function timeAgo(iso: string): string {
+/** 相对时间。传 tt（useUI() 的翻译函数）→ 按当前语言输出；不传 → 中文。 */
+export function timeAgo(
+  iso: string,
+  tt?: (zh: string, vars?: Record<string, string | number>) => string,
+): string {
+  const t = tt ?? ((zh: string, vars?: Record<string, string | number>) =>
+    zh.replace(/\{(\w+)\}/g, (mm, k) => (vars && k in vars ? String(vars[k]) : mm)));
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
   const diff = Date.now() - then;
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "刚刚";
-  if (m < 60) return `${m} 分钟前`;
+  if (m < 1) return t("刚刚");
+  if (m < 60) return t("{m} 分钟前", { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} 小时前`;
+  if (h < 24) return t("{h} 小时前", { h });
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d} 天前`;
+  if (d < 30) return t("{d} 天前", { d });
   const mo = Math.floor(d / 30);
-  if (mo < 12) return `${mo} 个月前`;
-  return `${Math.floor(mo / 12)} 年前`;
+  if (mo < 12) return t("{mo} 个月前", { mo });
+  return t("{y} 年前", { y: Math.floor(mo / 12) });
 }

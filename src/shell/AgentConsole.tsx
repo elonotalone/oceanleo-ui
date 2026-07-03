@@ -266,7 +266,7 @@ function ManifestPane({
       })}
 
       {error && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{tt(error)}</div>
       )}
       {hasOpsForm ? (
         <button

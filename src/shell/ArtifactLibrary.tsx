@@ -267,8 +267,9 @@ export function ArtifactLibrary({
     return tt(KIND_LABELS[kind] || kind || "文件");
   }
 
-  const filterLabel =
-    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "文件库";
+  const filterLabel = tt(
+    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "文件库",
+  );
 
   return (
     <div className={`${fill ? "h-full overflow-y-auto" : ""} px-8 py-6`}>
@@ -444,7 +445,7 @@ export function ArtifactLibrary({
                     {a.title || tt("无标题")}
                   </span>
                   <span className="block truncate text-[11px] text-neutral-500">
-                    {kindLabel(a.kind)} · {timeAgo(a.created_at)}
+                    {kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}
                     {previewKind(a) === "link" && a.url ? ` · ${hostOf(a.url)}` : ""}
                   </span>
                 </span>
@@ -468,7 +469,7 @@ export function ArtifactLibrary({
                     {a.title || tt("无标题")}
                   </p>
                   <p className="mt-1 text-[11px] text-neutral-500">
-                    {kindLabel(a.kind)} · {timeAgo(a.created_at)}
+                    {kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}
                   </p>
                 </div>
               </button>

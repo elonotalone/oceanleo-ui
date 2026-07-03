@@ -593,13 +593,14 @@ function MediaGrid({
 }
 
 function PanelMessage({ text }: { text: string }) {
+  const tt = useUI();
   return (
     <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center text-stone-400">
       <svg className="h-12 w-12 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <p className="max-w-xs text-sm">{text}</p>
+      <p className="max-w-xs text-sm">{tt(text)}</p>
     </div>
   );
 }

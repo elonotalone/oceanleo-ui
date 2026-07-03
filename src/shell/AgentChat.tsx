@@ -344,7 +344,7 @@ export function AgentChat({
               ))}
             </div>
           )}
-          {error && <p className="text-[14px] text-rose-500">{error}</p>}
+          {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
       </div>
       <div className="shrink-0 border-t border-stone-100 px-3 py-3">

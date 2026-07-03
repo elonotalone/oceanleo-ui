@@ -111,7 +111,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列历史记录本身。
   return (
     <div className="space-y-0.5">
-      {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{error}</p>}
+      {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
       {!error && !loading && items.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有历史记录。")}</p>
