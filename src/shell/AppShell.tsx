@@ -163,6 +163,18 @@ function defaultConsoleRouteMatch(logicalPathname: string): boolean {
   return logicalPathname === "/workspace" || logicalPathname.startsWith("/workspace/");
 }
 
+/** 文件库 / 历史记录路由：header 不出模型选择（/library 一个都不要；/history 由主区
+ *  HistoryDetail 自带）。与主站 oceanleo.com/library 对齐。独立于站点可覆盖的
+ *  consoleRouteMatch，任何站在这两条路由上都强制隐藏 header 模型选择。 */
+function isLibraryOrHistoryRoute(logicalPathname: string): boolean {
+  return (
+    logicalPathname === "/library" ||
+    logicalPathname.startsWith("/library/") ||
+    logicalPathname === "/history" ||
+    logicalPathname.startsWith("/history/")
+  );
+}
+
 // doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
 // 同时渲染两者，故在此统一包一层 WorkspaceSelectionProvider，各消费站零接线即可用。
 export function AppShell(props: AppShellProps) {
@@ -181,7 +193,15 @@ export function AppShell(props: AppShellProps) {
   const rawPathname = usePathname() || "/";
   const logicalPathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
   const matchConsole = props.consoleRouteMatch ?? defaultConsoleRouteMatch;
-  const routeSuppressHeaderModel = matchConsole(logicalPathname);
+  // 文件库 / 历史记录路由也不该在 header 出模型选择（操作员 2026-07-03）：
+  //   - /library：主区 ArtifactLibrary 只有搜索 + 网格/列表切换，与主站 oceanleo.com/library
+  //     完全一致——一个模型选择键都不该有。
+  //   - /history：主区 HistoryDetail 自带右上角模型选择（回看追问用），header 再出一个
+  //     就变「两个模型选择键」（操作员截图 video.oceanleo.com/history 的病根）。
+  // 这条与站点可覆盖的 consoleRouteMatch 取【或】、且独立于它——即便某站自传了
+  // consoleRouteMatch 也不会在文件库/历史记录页把模型选择键放回来。
+  const routeSuppressHeaderModel =
+    matchConsole(logicalPathname) || isLibraryOrHistoryRoute(logicalPathname);
 
   return (
     <WorkspaceSelectionProvider>

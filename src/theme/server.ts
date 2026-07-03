@@ -12,14 +12,10 @@ import {
   DEFAULT_THEME_MODE,
   normalizeThemeMode,
   resolveThemeClass,
+  appearanceToHtmlClass,
+  isPaletteTheme,
   type ThemeMode,
 } from "./theme-config";
-
-// cyberpunk 首帧要同时带 `dark cyberpunk`（复用 html.dark 基础规则 + 叠加霓虹）。
-// 其余外观直接就是单个类名。
-function appearanceToHtmlClass(appearance: "light" | "dark" | "cyberpunk"): string {
-  return appearance === "cyberpunk" ? "dark cyberpunk" : appearance;
-}
 
 // 服务端：从 cookie + Client Hint 解析首帧应用的 html 类名。
 //
@@ -41,8 +37,8 @@ export async function getThemeClass(): Promise<{ htmlClass: string }> {
     /* cookies() 仅在请求作用域可用 */
   }
 
-  // 显式 light / dark / cyberpunk：直接定，与系统偏好无关。
-  if (mode === "light" || mode === "dark" || mode === "cyberpunk") {
+  // 显式 light / dark / cyberpunk / palette 主题：直接定，与系统偏好无关。
+  if (mode === "light" || mode === "dark" || mode === "cyberpunk" || isPaletteTheme(mode)) {
     return { htmlClass: appearanceToHtmlClass(resolveThemeClass(mode, false)) };
   }
 

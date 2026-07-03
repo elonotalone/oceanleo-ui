@@ -6220,5 +6220,16 @@ const fr: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Bibliothèque gratuite de ressources open source · Images/vidéos/musique/effets sonores/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Parcourez au même endroit des ressources gratuites sous licence open source provenant d’Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo. Les ressources utilisables commercialement sont affichées par défaut et peuvent être téléchargées pour vos créations PPT / design / vidéo / 3D.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Inspiré de la bibliothèque Yun · Quick Beautiful Site, avec des milliers de modèles de sites sectoriels couvrant 13 grands secteurs et 105 sous-catégories. Filtrez par secteur / palette / popularité, prévisualisez des pages complètes et appliquez en un clic.",
+  // —— 主题盘 9 套 + 「主题盘」标题（宗旨：预设主题盘，2026-07-03）——
+  "主题盘": "Palettes",
+  "深海蓝": "Océan",
+  "翡翠绿": "Forêt",
+  "日落橙": "Coucher de soleil",
+  "葡萄紫": "Raisin",
+  "玫瑰粉": "Rose",
+  "摩卡褐": "Moka",
+  "石墨蓝": "Ardoise",
+  "鎏金金": "Or",
+  "薄荷青": "Menthe",
 };
 export default fr;

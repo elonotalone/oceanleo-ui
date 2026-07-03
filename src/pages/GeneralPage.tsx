@@ -18,7 +18,11 @@ import { useLocale } from "next-intl";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
-import { THEME_MODES, type ThemeMode } from "../theme/theme-config";
+import {
+  PALETTE_THEMES,
+  PALETTE_META,
+  type ThemeMode,
+} from "../theme/theme-config";
 import { setLeoEnabled, useLeoEnabled } from "../shell/LeoAssistant";
 import {
   LOCALES,
@@ -95,12 +99,14 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const leoOn = useLeoEnabled();
 
-  // 默认文案随当前语言本地化（未显式传 props 时）。
-  const TL: Record<ThemeMode, string> = {
-    light: themeLabels?.light ?? tt("浅色"),
-    dark: themeLabels?.dark ?? tt("深色"),
-    cyberpunk: themeLabels?.cyberpunk ?? tt("赛博朋克"),
-    auto: themeLabels?.auto ?? tt("自动"),
+  // 基础四模式（浅色 / 深色 / 自动 / 赛博朋克）走带图标的大卡片。
+  const BASE_MODES: ThemeMode[] = ["light", "dark", "auto", "cyberpunk"];
+  const baseLabel = (m: ThemeMode): string => {
+    if (m === "light") return themeLabels?.light ?? tt("浅色");
+    if (m === "dark") return themeLabels?.dark ?? tt("深色");
+    if (m === "auto") return themeLabels?.auto ?? tt("自动");
+    if (m === "cyberpunk") return themeLabels?.cyberpunk ?? tt("赛博朋克");
+    return m;
   };
   const L = {
     appearance: labels?.appearance ?? tt("外观"),
@@ -189,11 +195,11 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
             </div>
           </div>
 
-          {/* 主题 */}
+          {/* 主题：基础四模式（图标大卡片） */}
           <div>
             <label className="mb-2 block text-[13px] text-neutral-700">{L.theme}</label>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {THEME_MODES.map((m) => {
+              {BASE_MODES.map((m) => {
                 const on = m === mode;
                 return (
                   <button
@@ -208,7 +214,42 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
                     }`}
                   >
                     <ThemeIcon mode={m} />
-                    {TL[m]}
+                    {baseLabel(m)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 主题盘（9 套暗底彩色变体，色板圆点预览 + 中文名） */}
+          <div className="mt-5">
+            <label className="mb-2 block text-[13px] text-neutral-700">{tt("主题盘")}</label>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
+              {PALETTE_THEMES.map((p) => {
+                const on = p === mode;
+                const meta = PALETTE_META[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setMode(p)}
+                    aria-pressed={on}
+                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-3 text-left text-[13px] font-medium transition ${
+                      on
+                        ? "border-neutral-900 text-neutral-900 ring-1 ring-neutral-900"
+                        : "border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:text-neutral-800"
+                    }`}
+                  >
+                    <span
+                      className="h-6 w-6 shrink-0 rounded-full ring-1 ring-black/10"
+                      style={{ background: `linear-gradient(135deg, ${meta.swatch} 0%, ${meta.swatch2} 100%)` }}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{tt(meta.label)}</span>
+                    {on && (
+                      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
                   </button>
                 );
               })}

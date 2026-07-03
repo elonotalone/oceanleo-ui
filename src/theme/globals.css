@@ -932,33 +932,36 @@ html.dark {
  *   ① 重定义 --leo-d-* 与语义变量的【配色】：深蓝黑底 + 洋红/青霓虹前景/描边。
  *      因为整套 dark 覆盖层都读这些变量，改变量即让全站换成赛博朋克配色，零逐站改动。
  *   ② 叠加霓虹专属观感：发光描边、霓虹链接/按钮、扫描线氛围、选中态辉光。
- * 设计基调：#0a0a12 深蓝黑底；主霓虹 = 洋红 #ff2e97、青 #00e5ff、次 = 紫 #a855f7。
+ * 设计基调（操作员 2026-07-03 定稿）：**深蓝背景** + **黄/粉发光按键**。
+ *   底色 = 深海军蓝 #050b1f；主霓虹按键 = 粉 #ff3d9a → 黄 #ffd23f 渐变发光；
+ *   描边/链接 = 青蓝 #38bdf8 + 粉 #ff3d9a 双色。
  * ========================================================================== */
 html.cyberpunk {
   color-scheme: dark;
-  /* 画布底：带一点蓝紫的近黑 + 极淡的双色径向霓虹光晕（固定，不随滚动）。 */
+  /* 画布底：深海军蓝 + 极淡的「粉 / 黄 / 青」三色径向霓虹光晕（固定，不随滚动）。 */
   background:
-    radial-gradient(120% 90% at 0% 0%, rgba(255, 46, 151, 0.10) 0%, rgba(255, 46, 151, 0) 42%),
-    radial-gradient(120% 90% at 100% 100%, rgba(0, 229, 255, 0.10) 0%, rgba(0, 229, 255, 0) 46%),
-    #0a0a12;
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 61, 154, 0.12) 0%, rgba(255, 61, 154, 0) 42%),
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 210, 63, 0.09) 0%, rgba(255, 210, 63, 0) 40%),
+    radial-gradient(120% 90% at 100% 100%, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0) 46%),
+    #050b1f;
 
-  /* 分层令牌（复用 dark 的语义，换成蓝黑霓虹配色）。 */
-  --leo-d-bg: #0a0a12;
-  --leo-d-sidebar: #12101f;      /* 侧栏/顶栏：带紫的深蓝黑，比主区浮起一档 */
-  --leo-d-surface: #0f0e1a;
-  --leo-d-card: #15132340;       /* 卡片：半透明，透出底层霓虹光晕（玻璃感） */
-  --leo-d-card-2: #1d1a33;
-  --leo-d-border: rgba(0, 229, 255, 0.18);    /* 描边：青霓虹（低 alpha） */
-  --leo-d-border-s: rgba(168, 85, 247, 0.14); /* 分隔线：紫霓虹 */
-  --leo-d-fg: #e9e6ff;           /* 主文字：带冷调的近白 */
-  --leo-d-fg-2: #b7b0e0;
-  --leo-d-muted: #8b83b8;
-  --leo-d-faint: #6b6494;
+  /* 分层令牌（复用 dark 的语义，换成深蓝霓虹配色）。 */
+  --leo-d-bg: #050b1f;           /* 主区：深海军蓝 */
+  --leo-d-sidebar: #0a1330;      /* 侧栏/顶栏：比主区浮起一档的深蓝 */
+  --leo-d-surface: #081027;
+  --leo-d-card: #0d1838cc;       /* 卡片：半透明深蓝，透出底层霓虹光晕（玻璃感） */
+  --leo-d-card-2: #142250;
+  --leo-d-border: rgba(56, 189, 248, 0.20);   /* 描边：青蓝霓虹 */
+  --leo-d-border-s: rgba(255, 61, 154, 0.14); /* 分隔线：粉霓虹 */
+  --leo-d-fg: #eaf2ff;           /* 主文字：带冷蓝调的近白 */
+  --leo-d-fg-2: #aebfe4;
+  --leo-d-muted: #8194c0;
+  --leo-d-faint: #5f719c;
 
-  /* 语义变量（各站业务组件读的那些）——同样换成霓虹配色。 */
-  --ring: rgba(255, 46, 151, 0.55);
-  --border-strong: rgba(0, 229, 255, 0.34);
-  --divider: rgba(168, 85, 247, 0.18);
+  /* 语义变量（各站业务组件读的那些）——同样换成深蓝霓虹配色。 */
+  --ring: rgba(255, 61, 154, 0.55);
+  --border-strong: rgba(56, 189, 248, 0.38);
+  --divider: rgba(255, 61, 154, 0.18);
 }
 
 /* 画布本身也置暗（同 html.dark 的做法，防顶部露浅色缝）。 */
@@ -968,11 +971,11 @@ html.cyberpunk body {
   color: var(--leo-d-fg);
 }
 
-/* 外壳容器（侧栏/顶栏）：霓虹描边 + 轻微发光，玻璃质感。 */
+/* 外壳容器（侧栏/顶栏）：青蓝霓虹描边 + 轻微粉色内辉光，深蓝玻璃质感。 */
 html.cyberpunk [data-oceanleo-chrome] {
   background-color: var(--leo-d-sidebar) !important;
-  border-color: rgba(0, 229, 255, 0.18) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 46, 151, 0.06);
+  border-color: rgba(56, 189, 248, 0.20) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 61, 154, 0.06);
 }
 
 /* 卡片描边发光：给最常见的卡片/圆角面加一层极淡的青色内辉光，霓虹氛围但不刺眼。 */
@@ -984,7 +987,8 @@ html.cyberpunk .rounded-\[24px\] {
 }
 
 /* 霓虹主按钮：dark 下 bg-neutral-900 等被反成浅底深字；cyberpunk 里改成
-   洋红→紫的霓虹渐变 + 发光，才有赛博朋克的「按键会发光」观感。 */
+   **粉 → 黄的霓虹渐变 + 发光**（操作员指定「黄色，粉色按键」），才有赛博朋克的
+   「按键会发光」观感。深字（近黑）压在亮黄粉上，对比更清楚。 */
 html.cyberpunk .bg-neutral-900,
 html.cyberpunk .bg-neutral-800,
 html.cyberpunk .bg-stone-900,
@@ -992,20 +996,20 @@ html.cyberpunk .bg-stone-800,
 html.cyberpunk .bg-slate-900,
 html.cyberpunk .bg-slate-800,
 html.cyberpunk .bg-black {
-  background: linear-gradient(135deg, #ff2e97 0%, #a855f7 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 18px -4px rgba(255, 46, 151, 0.55), 0 0 2px rgba(0, 229, 255, 0.4) !important;
+  background: linear-gradient(135deg, #ff3d9a 0%, #ffd23f 100%) !important;
+  color: #1a0b18 !important;
+  box-shadow: 0 0 20px -4px rgba(255, 61, 154, 0.60), 0 0 8px -2px rgba(255, 210, 63, 0.45) !important;
 }
 html.cyberpunk .bg-neutral-900.text-white,
 html.cyberpunk .bg-neutral-800.text-white,
 html.cyberpunk .bg-stone-900.text-white,
 html.cyberpunk .bg-slate-900.text-white,
-html.cyberpunk .bg-black.text-white { color: #ffffff !important; }
+html.cyberpunk .bg-black.text-white { color: #1a0b18 !important; }
 html.cyberpunk .hover\:bg-neutral-800:hover,
 html.cyberpunk .hover\:bg-neutral-700:hover,
 html.cyberpunk .hover\:bg-black:hover {
-  filter: brightness(1.12) saturate(1.1);
-  background: linear-gradient(135deg, #ff2e97 0%, #a855f7 100%) !important;
+  filter: brightness(1.08) saturate(1.12);
+  background: linear-gradient(135deg, #ff3d9a 0%, #ffd23f 100%) !important;
 }
 
 /* accent 内联色（侧栏当前项竖条 / 头像 / token 图标）：cyberpunk 下不降饱和，
@@ -1017,30 +1021,34 @@ html.cyberpunk [style*="background-color: #"] {
 }
 html.cyberpunk [style*="linear-gradient"] { filter: saturate(1.1) brightness(1.02); }
 
-/* 霓虹品牌文字/链接：比 dark 更亮更饱和（青/洋红双主色）。 */
+/* 霓虹品牌文字/链接：深蓝底上用「青蓝 / 粉 / 黄」三主色，比 dark 更亮更饱和。 */
 html.cyberpunk .text-emerald-600,
 html.cyberpunk .text-emerald-700,
 html.cyberpunk .text-green-600,
-html.cyberpunk .text-teal-600 { color: #2dffc7 !important; }
+html.cyberpunk .text-teal-600 { color: #34d399 !important; }
 html.cyberpunk .text-indigo-600,
 html.cyberpunk .text-violet-600,
-html.cyberpunk .text-purple-600 { color: #c98bff !important; }
+html.cyberpunk .text-purple-600 { color: #a5b4fc !important; }
 html.cyberpunk .text-sky-600,
 html.cyberpunk .text-blue-600,
 html.cyberpunk .text-cyan-600 { color: #4df0ff !important; }
+html.cyberpunk .text-amber-600,
+html.cyberpunk .text-yellow-600,
+html.cyberpunk .text-orange-600 { color: #ffd23f !important; }
 html.cyberpunk .text-rose-600,
 html.cyberpunk .text-pink-600,
 html.cyberpunk .text-red-600 { color: #ff5bb0 !important; }
 
-/* 高饱和实心色块：cyberpunk 保留霓虹感（比 dark 的低饱和更亮），加轻微辉光。 */
+/* 高饱和实心色块：cyberpunk 保留霓虹感（比 dark 的低饱和更亮），加轻微辉光。
+   蓝→青蓝、粉/红→霓虹粉、黄/橙→霓虹黄。 */
 html.cyberpunk .bg-indigo-500,
 html.cyberpunk .bg-indigo-600,
 html.cyberpunk .bg-violet-500,
 html.cyberpunk .bg-violet-600,
 html.cyberpunk .bg-purple-500,
 html.cyberpunk .bg-purple-600 {
-  background-color: #a855f7 !important;
-  box-shadow: 0 0 14px -4px rgba(168, 85, 247, 0.6) !important;
+  background-color: #6366f1 !important;
+  box-shadow: 0 0 14px -4px rgba(99, 102, 241, 0.6) !important;
 }
 html.cyberpunk .bg-sky-500,
 html.cyberpunk .bg-sky-600,
@@ -1048,8 +1056,18 @@ html.cyberpunk .bg-blue-500,
 html.cyberpunk .bg-blue-600,
 html.cyberpunk .bg-cyan-500,
 html.cyberpunk .bg-cyan-600 {
-  background-color: #0891b2 !important;
-  box-shadow: 0 0 14px -4px rgba(0, 229, 255, 0.55) !important;
+  background-color: #0ea5e9 !important;
+  box-shadow: 0 0 14px -4px rgba(56, 189, 248, 0.6) !important;
+}
+html.cyberpunk .bg-amber-500,
+html.cyberpunk .bg-amber-600,
+html.cyberpunk .bg-yellow-500,
+html.cyberpunk .bg-yellow-600,
+html.cyberpunk .bg-orange-500,
+html.cyberpunk .bg-orange-600 {
+  background-color: #f5c518 !important;
+  color: #1a0b18 !important;
+  box-shadow: 0 0 14px -4px rgba(255, 210, 63, 0.6) !important;
 }
 html.cyberpunk .bg-rose-500,
 html.cyberpunk .bg-rose-600,
@@ -1057,29 +1075,29 @@ html.cyberpunk .bg-pink-500,
 html.cyberpunk .bg-pink-600,
 html.cyberpunk .bg-fuchsia-500,
 html.cyberpunk .bg-fuchsia-600 {
-  background-color: #e11d74 !important;
-  box-shadow: 0 0 14px -4px rgba(255, 46, 151, 0.6) !important;
+  background-color: #ff3d9a !important;
+  box-shadow: 0 0 14px -4px rgba(255, 61, 154, 0.6) !important;
 }
 
-/* 滚动条：青霓虹拇指。 */
+/* 滚动条：青蓝霓虹拇指，hover 转粉。 */
 html.cyberpunk [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
 html.cyberpunk .v-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 229, 255, 0.22);
+  background: rgba(56, 189, 248, 0.24);
 }
 html.cyberpunk [data-oceanleo-shell] *::-webkit-scrollbar-thumb:hover,
 html.cyberpunk .v-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 46, 151, 0.35);
+  background: rgba(255, 61, 154, 0.38);
 }
 html.cyberpunk [data-oceanleo-shell] *,
-html.cyberpunk .v-scroll { scrollbar-color: rgba(0, 229, 255, 0.26) transparent; }
+html.cyberpunk .v-scroll { scrollbar-color: rgba(56, 189, 248, 0.28) transparent; }
 
-/* focus 环：霓虹洋红。 */
+/* focus 环：霓虹粉。 */
 html.cyberpunk .focus\:border-neutral-400:focus,
 html.cyberpunk .focus-within\:border-neutral-400:focus-within,
 html.cyberpunk .focus\:border-neutral-300:focus,
 html.cyberpunk .focus-within\:border-neutral-300:focus-within {
-  border-color: rgba(255, 46, 151, 0.6) !important;
-  box-shadow: 0 0 0 3px rgba(255, 46, 151, 0.14) !important;
+  border-color: rgba(255, 61, 154, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(255, 61, 154, 0.14) !important;
 }
 
 /* 语义变量的 cyberpunk 兜底（各站业务组件读 --surface / --card / … 时也换霓虹）。
@@ -1092,5 +1110,243 @@ html.cyberpunk {
   --sidebar: var(--leo-d-sidebar);
   --sidebar-bg: var(--leo-d-sidebar);
   --header-bg: var(--leo-d-sidebar);
-  --accent-glow: rgba(255, 46, 151, 0.5);
+  --accent-glow: rgba(255, 61, 154, 0.5);
 }
+
+/* ============================================================================
+ * 预设主题盘（9 套，操作员 2026-07-03）—— 暗底彩色变体
+ * ----------------------------------------------------------------------------
+ * 机制：每个主题盘生效时 <html> 挂 `dark theme-<name>` 两个类（见 ThemeProvider /
+ * ThemeScript / server.ts）。html.dark 的【整套暗色覆盖层先命中】，把 29 站浅色
+ * 组件压成暗底；`html.theme-<name>`（位置更靠后 → 胜出）只【重定义 --leo-d-* 配色
+ * 令牌】，让全站换成该主题盘的色调，零逐站改动。可选再叠加一条「主按钮渐变」让
+ * bg-neutral-900 类主按钮带上主题色（否则暗色下主按钮是中性浅底深字）。
+ *
+ * 设计口径（对齐 v2 深色分层原则「层次靠明度微差、边框几乎不可见」）：
+ *   --leo-d-bg      主区最底（该色系最深）
+ *   --leo-d-sidebar 侧栏/顶栏（比主区【浅】一档，Manus 式）
+ *   --leo-d-surface 次级面
+ *   --leo-d-card    卡片/输入框（最亮层）
+ *   --leo-d-card-2  hover/选中
+ *   --leo-d-border / -border-s  低对比描边 / 分隔线（带一点主题色相）
+ *   --leo-d-fg / -fg-2 / -muted / -faint  文字四档（带极轻主题冷/暖调的近白→弱化）
+ * ========================================================================== */
+
+/* ① Ocean 深海蓝 */
+html.theme-ocean {
+  --leo-d-bg: #0a1526;
+  --leo-d-sidebar: #0f1d33;
+  --leo-d-surface: #0d1a2e;
+  --leo-d-card: #13243f;
+  --leo-d-card-2: #1b3054;
+  --leo-d-border: rgba(96, 165, 250, 0.10);
+  --leo-d-border-s: rgba(96, 165, 250, 0.06);
+  --leo-d-fg: #e8eefb;
+  --leo-d-fg-2: #adbfdd;
+  --leo-d-muted: #7d90b3;
+  --leo-d-faint: #5c6d8c;
+}
+html.theme-ocean .bg-neutral-900,
+html.theme-ocean .bg-neutral-800,
+html.theme-ocean .bg-stone-900,
+html.theme-ocean .bg-slate-900,
+html.theme-ocean .bg-black {
+  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%) !important;
+  color: #f0f6ff !important;
+}
+
+/* ② Forest 翡翠绿 */
+html.theme-forest {
+  --leo-d-bg: #0a1a12;
+  --leo-d-sidebar: #0f2419;
+  --leo-d-surface: #0d2016;
+  --leo-d-card: #12301f;
+  --leo-d-card-2: #1a4029;
+  --leo-d-border: rgba(52, 211, 153, 0.10);
+  --leo-d-border-s: rgba(52, 211, 153, 0.06);
+  --leo-d-fg: #e6f5ec;
+  --leo-d-fg-2: #a9d3bd;
+  --leo-d-muted: #7aa892;
+  --leo-d-faint: #59806c;
+}
+html.theme-forest .bg-neutral-900,
+html.theme-forest .bg-neutral-800,
+html.theme-forest .bg-stone-900,
+html.theme-forest .bg-slate-900,
+html.theme-forest .bg-black {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  color: #eefdf4 !important;
+}
+
+/* ③ Sunset 日落橙 */
+html.theme-sunset {
+  --leo-d-bg: #1f0f0a;
+  --leo-d-sidebar: #2b160f;
+  --leo-d-surface: #26130c;
+  --leo-d-card: #351d13;
+  --leo-d-card-2: #46271a;
+  --leo-d-border: rgba(251, 146, 60, 0.12);
+  --leo-d-border-s: rgba(251, 146, 60, 0.07);
+  --leo-d-fg: #fceee6;
+  --leo-d-fg-2: #e0bda9;
+  --leo-d-muted: #b3907d;
+  --leo-d-faint: #8c6b5a;
+}
+html.theme-sunset .bg-neutral-900,
+html.theme-sunset .bg-neutral-800,
+html.theme-sunset .bg-stone-900,
+html.theme-sunset .bg-slate-900,
+html.theme-sunset .bg-black {
+  background: linear-gradient(135deg, #ea580c 0%, #f59e0b 100%) !important;
+  color: #fff6ee !important;
+}
+
+/* ④ Grape 葡萄紫 */
+html.theme-grape {
+  --leo-d-bg: #150a26;
+  --leo-d-sidebar: #1f0f33;
+  --leo-d-surface: #1b0d2e;
+  --leo-d-card: #26133f;
+  --leo-d-card-2: #341b54;
+  --leo-d-border: rgba(192, 132, 252, 0.12);
+  --leo-d-border-s: rgba(192, 132, 252, 0.07);
+  --leo-d-fg: #f1e9fb;
+  --leo-d-fg-2: #c9b3e0;
+  --leo-d-muted: #9d86b8;
+  --leo-d-faint: #77628c;
+}
+html.theme-grape .bg-neutral-900,
+html.theme-grape .bg-neutral-800,
+html.theme-grape .bg-stone-900,
+html.theme-grape .bg-slate-900,
+html.theme-grape .bg-black {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%) !important;
+  color: #f7f0ff !important;
+}
+
+/* ⑤ Rose 玫瑰粉 */
+html.theme-rose {
+  --leo-d-bg: #220a14;
+  --leo-d-sidebar: #2f0f1d;
+  --leo-d-surface: #290c19;
+  --leo-d-card: #391324;
+  --leo-d-card-2: #4c1b32;
+  --leo-d-border: rgba(251, 113, 133, 0.12);
+  --leo-d-border-s: rgba(251, 113, 133, 0.07);
+  --leo-d-fg: #fceaf0;
+  --leo-d-fg-2: #e0adc0;
+  --leo-d-muted: #b37d92;
+  --leo-d-faint: #8c5c70;
+}
+html.theme-rose .bg-neutral-900,
+html.theme-rose .bg-neutral-800,
+html.theme-rose .bg-stone-900,
+html.theme-rose .bg-slate-900,
+html.theme-rose .bg-black {
+  background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%) !important;
+  color: #fff0f4 !important;
+}
+
+/* ⑥ Mocha 摩卡褐 */
+html.theme-mocha {
+  --leo-d-bg: #1a130d;
+  --leo-d-sidebar: #241a12;
+  --leo-d-surface: #201710;
+  --leo-d-card: #2d2017;
+  --leo-d-card-2: #3d2c20;
+  --leo-d-border: rgba(214, 178, 138, 0.11);
+  --leo-d-border-s: rgba(214, 178, 138, 0.06);
+  --leo-d-fg: #f2eae0;
+  --leo-d-fg-2: #cdb9a4;
+  --leo-d-muted: #a08d78;
+  --leo-d-faint: #7c6a58;
+}
+html.theme-mocha .bg-neutral-900,
+html.theme-mocha .bg-neutral-800,
+html.theme-mocha .bg-stone-900,
+html.theme-mocha .bg-slate-900,
+html.theme-mocha .bg-black {
+  background: linear-gradient(135deg, #b45309 0%, #d97706 100%) !important;
+  color: #fdf6ec !important;
+}
+
+/* ⑦ Slate 石墨蓝灰 */
+html.theme-slate {
+  --leo-d-bg: #0d1117;
+  --leo-d-sidebar: #151b24;
+  --leo-d-surface: #11161e;
+  --leo-d-card: #1a222e;
+  --leo-d-card-2: #232e3d;
+  --leo-d-border: rgba(148, 163, 184, 0.11);
+  --leo-d-border-s: rgba(148, 163, 184, 0.06);
+  --leo-d-fg: #e9edf3;
+  --leo-d-fg-2: #b3bdcc;
+  --leo-d-muted: #7f8b9c;
+  --leo-d-faint: #5d6675;
+}
+html.theme-slate .bg-neutral-900,
+html.theme-slate .bg-neutral-800,
+html.theme-slate .bg-stone-900,
+html.theme-slate .bg-slate-900,
+html.theme-slate .bg-black {
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%) !important;
+  color: #f1f5f9 !important;
+}
+
+/* ⑧ Gold 鎏金暗金 */
+html.theme-gold {
+  --leo-d-bg: #16130a;
+  --leo-d-sidebar: #201c0f;
+  --leo-d-surface: #1c180c;
+  --leo-d-card: #292312;
+  --leo-d-card-2: #38301a;
+  --leo-d-border: rgba(234, 200, 92, 0.12);
+  --leo-d-border-s: rgba(234, 200, 92, 0.07);
+  --leo-d-fg: #f6f0dd;
+  --leo-d-fg-2: #d4c69b;
+  --leo-d-muted: #a89a70;
+  --leo-d-faint: #837657;
+}
+html.theme-gold .bg-neutral-900,
+html.theme-gold .bg-neutral-800,
+html.theme-gold .bg-stone-900,
+html.theme-gold .bg-slate-900,
+html.theme-gold .bg-black {
+  background: linear-gradient(135deg, #ca8a04 0%, #eab308 100%) !important;
+  color: #1c1708 !important;
+}
+
+/* ⑨ Mint 薄荷青 */
+html.theme-mint {
+  --leo-d-bg: #071d1c;
+  --leo-d-sidebar: #0c2a28;
+  --leo-d-surface: #0a2523;
+  --leo-d-card: #0f3532;
+  --leo-d-card-2: #164743;
+  --leo-d-border: rgba(45, 212, 191, 0.12);
+  --leo-d-border-s: rgba(45, 212, 191, 0.07);
+  --leo-d-fg: #e4f6f3;
+  --leo-d-fg-2: #a5d4cd;
+  --leo-d-muted: #77a8a1;
+  --leo-d-faint: #57807a;
+}
+html.theme-mint .bg-neutral-900,
+html.theme-mint .bg-neutral-800,
+html.theme-mint .bg-stone-900,
+html.theme-mint .bg-slate-900,
+html.theme-mint .bg-black {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
+  color: #effefb !important;
+}
+
+/* 主按钮上的白字：暗色基础规则会把 .text-white 处理掉；主题盘主按钮多为深字或
+   白字（已在各自 rule 里定 color），此处确保带 .text-white 的也随主题按钮色走。 */
+html.theme-ocean .bg-neutral-900.text-white,
+html.theme-forest .bg-neutral-900.text-white,
+html.theme-sunset .bg-neutral-900.text-white,
+html.theme-grape .bg-neutral-900.text-white,
+html.theme-rose .bg-neutral-900.text-white,
+html.theme-mocha .bg-neutral-900.text-white,
+html.theme-slate .bg-neutral-900.text-white,
+html.theme-mint .bg-neutral-900.text-white { color: #ffffff !important; }
+html.theme-gold .bg-neutral-900.text-white { color: #1c1708 !important; }

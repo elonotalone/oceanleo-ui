@@ -5,24 +5,43 @@
 // cookie，跨 28 站同步（决策见 oceanleo-theme-and-17-locales.md）。
 
 import { useTheme } from "./ThemeProvider";
-import { THEME_MODES, type ThemeMode } from "./theme-config";
+import {
+  THEME_MODES,
+  PALETTE_META,
+  isPaletteTheme,
+  type ThemeMode,
+} from "./theme-config";
 
 export interface ThemeSwitcherProps {
-  // "pill"（默认，三段图标胶囊）| "compact"（单按钮循环 light→dark→auto）。
+  // "pill"（默认，全模式图标胶囊）| "compact"（单按钮循环全部模式）。
   variant?: "pill" | "compact";
   className?: string;
-  // 可选：自定义三模式的可访问标签（i18n 站传入本地化文案）。
+  // 可选：自定义模式的可访问标签（i18n 站传入本地化文案）。
   labels?: Partial<Record<ThemeMode, string>>;
 }
 
-const DEFAULT_LABELS: Record<ThemeMode, string> = {
+const BASE_LABELS: Partial<Record<ThemeMode, string>> = {
   light: "Light",
   dark: "Dark",
   cyberpunk: "Cyberpunk",
   auto: "Auto",
 };
 
+function labelFor(m: ThemeMode, labels?: Partial<Record<ThemeMode, string>>): string {
+  return labels?.[m] ?? BASE_LABELS[m] ?? (isPaletteTheme(m) ? PALETTE_META[m].label : m);
+}
+
 function ThemeIcon({ mode, className = "h-3.5 w-3.5" }: { mode: ThemeMode; className?: string }) {
+  if (isPaletteTheme(mode)) {
+    const meta = PALETTE_META[mode];
+    return (
+      <span
+        className={`${className} inline-block rounded-full ring-1 ring-black/10`}
+        style={{ background: `linear-gradient(135deg, ${meta.swatch} 0%, ${meta.swatch2} 100%)` }}
+        aria-hidden
+      />
+    );
+  }
   if (mode === "light") {
     return (
       <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -60,21 +79,22 @@ function ThemeIcon({ mode, className = "h-3.5 w-3.5" }: { mode: ThemeMode; class
 
 export function ThemeSwitcher({ variant = "pill", className = "", labels }: ThemeSwitcherProps) {
   const { mode, setMode } = useTheme();
-  const L = { ...DEFAULT_LABELS, ...labels };
 
   if (variant === "compact") {
-    const order: ThemeMode[] = ["light", "dark", "cyberpunk", "auto"];
+    // 循环全部模式（基础 4 + 9 主题盘）。
+    const order: ThemeMode[] = [...THEME_MODES];
     const next = order[(order.indexOf(mode) + 1) % order.length];
+    const curLabel = labelFor(mode, labels);
     return (
       <button
         type="button"
         onClick={() => setMode(next)}
-        aria-label={`Theme: ${L[mode]}`}
-        title={`${L[mode]}`}
+        aria-label={`Theme: ${curLabel}`}
+        title={curLabel}
         className={`inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-100 active:scale-95 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${className}`}
       >
         <ThemeIcon mode={mode} />
-        {L[mode]}
+        {curLabel}
       </button>
     );
   }
@@ -83,17 +103,18 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
     <div
       role="group"
       aria-label="Theme"
-      className={`inline-flex items-center rounded-lg border border-neutral-200 bg-white p-0.5 text-[12px] dark:border-neutral-700 dark:bg-neutral-900 ${className}`}
+      className={`inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-neutral-200 bg-white p-0.5 text-[12px] dark:border-neutral-700 dark:bg-neutral-900 ${className}`}
     >
       {THEME_MODES.map((m) => {
         const on = m === mode;
+        const lbl = labelFor(m, labels);
         return (
           <button
             key={m}
             type="button"
             onClick={() => setMode(m)}
             aria-pressed={on}
-            title={L[m]}
+            title={lbl}
             className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition ${
               on
                 ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
@@ -101,7 +122,7 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
             }`}
           >
             <ThemeIcon mode={m} />
-            <span className="hidden sm:inline">{L[m]}</span>
+            <span className="hidden sm:inline">{lbl}</span>
           </button>
         );
       })}

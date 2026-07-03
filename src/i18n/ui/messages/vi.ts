@@ -6220,5 +6220,16 @@ const vi: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Thư viện tài nguyên mã nguồn mở miễn phí · Ảnh/video/nhạc/hiệu ứng âm thanh/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Duyệt tài nguyên miễn phí theo giấy phép mã nguồn mở từ Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo trong một nơi. Mặc định chỉ hiển thị tài nguyên dùng thương mại được, tải về là dùng ngay cho PPT / thiết kế / video / 3D.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Đối chuẩn thư viện mẫu Yun · Quick Beautiful Site, tích hợp hàng nghìn mẫu website theo ngành, bao phủ 13 ngành lớn và 105 nhóm nhỏ. Lọc theo ngành / hệ màu / độ hot, bấm để xem trước toàn trang và áp dụng bằng một lần nhấp.",
+  // —— 主题盘 9 套 + 「主题盘」标题（宗旨：预设主题盘，2026-07-03）——
+  "主题盘": "Bảng màu",
+  "深海蓝": "Xanh đại dương",
+  "翡翠绿": "Ngọc lục bảo",
+  "日落橙": "Hoàng hôn",
+  "葡萄紫": "Tím nho",
+  "玫瑰粉": "Hồng phấn",
+  "摩卡褐": "Nâu mocha",
+  "石墨蓝": "Xám đá",
+  "鎏金金": "Vàng kim",
+  "薄荷青": "Xanh bạc hà",
 };
 export default vi;

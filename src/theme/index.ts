@@ -18,15 +18,20 @@
 
 export {
   THEME_MODES,
+  PALETTE_THEMES,
+  PALETTE_META,
   DEFAULT_THEME_MODE,
   THEME_COOKIE,
   THEME_STORAGE_KEY,
   THEME_COOKIE_MAX_AGE,
   isThemeMode,
+  isPaletteTheme,
   normalizeThemeMode,
   resolveThemeClass,
+  appearanceToHtmlClass,
+  allThemeClassNames,
 } from "./theme-config";
-export type { ThemeMode, ThemeAppearance } from "./theme-config";
+export type { ThemeMode, ThemeAppearance, PaletteTheme } from "./theme-config";
 
 export { ThemeScript } from "./ThemeScript";
 export { ThemeProvider, useTheme } from "./ThemeProvider";

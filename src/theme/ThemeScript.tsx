@@ -9,6 +9,7 @@ import {
   THEME_COOKIE,
   THEME_STORAGE_KEY,
   DEFAULT_THEME_MODE,
+  PALETTE_THEMES,
 } from "./theme-config";
 
 // 客户端内联脚本源码。同步执行（无 async），在 <head> 里先于任何绘制运行：
@@ -22,20 +23,23 @@ import {
 // 之后 <ThemeProvider> 挂载再接管动态切换（含 auto 的系统变化监听）。
 const INLINE = `(function(){try{
 var C=${JSON.stringify(THEME_COOKIE)},L=${JSON.stringify(THEME_STORAGE_KEY)},D=${JSON.stringify(DEFAULT_THEME_MODE)};
+var P=${JSON.stringify(PALETTE_THEMES)};
 var h=location.hostname;
 if(h==="oceanleo.com"||h.slice(-13)===".oceanleo.com"){try{document.cookie=C+"=; path=/; max-age=0; samesite=lax";}catch(e){}}
 var m=null;
 try{var mt=document.cookie.match(new RegExp("(?:^|; )"+C+"=([^;]*)"));if(mt)m=decodeURIComponent(mt[1]);}catch(e){}
 if(!m){try{m=localStorage.getItem(L);}catch(e){}}
-if(m!=="light"&&m!=="dark"&&m!=="cyberpunk"&&m!=="auto")m=D;
-var cyber=m==="cyberpunk";
+var valid=(m==="light"||m==="dark"||m==="cyberpunk"||m==="auto"||P.indexOf(m)>=0);
+if(!valid)m=D;
 var cls;
-if(cyber)cls="dark cyberpunk";
+if(m==="cyberpunk")cls="dark cyberpunk";
+else if(P.indexOf(m)>=0)cls="dark theme-"+m;
 else if(m==="dark")cls="dark";
 else if(m==="light")cls="light";
 else{var dk=false;try{dk=window.matchMedia("(prefers-color-scheme: dark)").matches;}catch(e){dk=false;}cls=dk?"dark":"light";}
 var el=document.documentElement;
-el.classList.remove("dark","light","cyberpunk");
+var rm=["dark","light","cyberpunk"];P.forEach(function(p){rm.push("theme-"+p);});
+el.classList.remove.apply(el.classList,rm);
 cls.split(" ").forEach(function(c){el.classList.add(c);});
 el.style.colorScheme=(cls==="light")?"light":"dark";
 }catch(e){}})();`;

@@ -21,6 +21,8 @@ import {
   DEFAULT_THEME_MODE,
   normalizeThemeMode,
   resolveThemeClass,
+  appearanceToHtmlClass,
+  allThemeClassNames,
   type ThemeMode,
   type ThemeAppearance,
 } from "./theme-config";
@@ -123,15 +125,15 @@ function clearHostOnlyThemeCookie() {
 function applyClass(resolved: ThemeAppearance) {
   if (typeof document === "undefined") return;
   const el = document.documentElement;
-  el.classList.remove("dark", "light", "cyberpunk");
-  // cyberpunk 本质是暗底霓虹 → 同时挂 `dark`（复用全部 html.dark 基础规则）+
-  // `cyberpunk`（叠加霓虹配色/发光）。这样无需给几千条 html.dark 规则再复制一份。
-  if (resolved === "cyberpunk") {
-    el.classList.add("dark", "cyberpunk");
-  } else {
-    el.classList.add(resolved);
-  }
-  // cyberpunk 本质是暗底 → color-scheme 用 dark（表单控件/滚动条走暗色 UA 样式）。
+  // 移除全部已知主题类（light/dark/cyberpunk/theme-* 九盘），杜绝切换残留。
+  el.classList.remove(...allThemeClassNames());
+  // 外观 → 类名字符串（单一事实源）：
+  //   cyberpunk → "dark cyberpunk"；<palette> → "dark theme-<palette>"；其余同名。
+  // 都以 html.dark 为基础复用整套暗色覆盖层，只叠加各自的配色令牌 / 霓虹发光。
+  appearanceToHtmlClass(resolved)
+    .split(" ")
+    .forEach((c) => el.classList.add(c));
+  // 仅 light 用亮色 color-scheme；dark/cyberpunk/palette 全是暗底 → dark UA 样式。
   el.style.colorScheme = resolved === "light" ? "light" : "dark";
 }
 
