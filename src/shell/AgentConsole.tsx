@@ -360,7 +360,7 @@ function FieldControl({
       return (
         <textarea
           className={`${inputCls} min-h-24 resize-y`}
-          placeholder={f.placeholder || f.label}
+          placeholder={tt(f.placeholder || f.label)}
           value={String(v)}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -370,7 +370,7 @@ function FieldControl({
         <input
           type="number"
           className={inputCls}
-          placeholder={f.placeholder || f.label}
+          placeholder={tt(f.placeholder || f.label)}
           value={String(v)}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -379,7 +379,7 @@ function FieldControl({
       return (
         <label className="flex items-center gap-2 text-sm text-stone-700">
           <input type="checkbox" checked={Boolean(v)} onChange={(e) => onChange(e.target.checked)} />
-          {f.label}
+          {tt(f.label)}
         </label>
       );
     case "enum": {
@@ -396,7 +396,7 @@ function FieldControl({
               }`}
               style={v === o.value ? { background: accent } : undefined}
             >
-              {o.label}
+              {tt(o.label)}
             </button>
           ))}
         </div>
@@ -415,7 +415,7 @@ function FieldControl({
       return (
         <input
           className={inputCls}
-          placeholder={f.placeholder || f.label}
+          placeholder={tt(f.placeholder || f.label)}
           value={String(v)}
           onChange={(e) => onChange(e.target.value)}
         />

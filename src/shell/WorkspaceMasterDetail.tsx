@@ -61,10 +61,10 @@ export function ConsoleFnSubNav({
               on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
             }`}
             style={on ? { background: accent } : undefined}
-            title={f.label}
+            title={tt(f.label)}
           >
             {f.icon && <span className="shrink-0 text-base leading-none">{f.icon}</span>}
-            <span className="min-w-0 flex-1 truncate font-medium">{f.label}</span>
+            <span className="min-w-0 flex-1 truncate font-medium">{tt(f.label)}</span>
             {f.agentId && (
               <span className={`shrink-0 text-[11px] ${on ? "text-white/80" : "text-indigo-400"}`} title={tt("该 app 有专属 agent")}>
                 ✦

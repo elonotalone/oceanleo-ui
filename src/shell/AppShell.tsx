@@ -363,7 +363,7 @@ function AppShellInner({
         <span className="transition-colors" style={{ color: active ? brand.accent : undefined }}>
           {item.icon}
         </span>
-        <span className="flex-1 truncate">{item.label}</span>
+        <span className="flex-1 truncate">{typeof item.label === "string" ? tt(item.label) : item.label}</span>
         {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
       </>
     );
@@ -505,7 +505,9 @@ function AppShellInner({
             >
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="truncate">{activeSubItem.subNav.title}</span>
+            <span className="truncate">
+              {typeof activeSubItem.subNav.title === "string" ? tt(activeSubItem.subNav.title) : activeSubItem.subNav.title}
+            </span>
           </button>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {activeSubItem.subNav.render(closeSubNav)}
