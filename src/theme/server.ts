@@ -13,7 +13,7 @@ import {
   normalizeThemeMode,
   resolveThemeClass,
   appearanceToHtmlClass,
-  isPaletteTheme,
+  isVariantTheme,
   type ThemeMode,
 } from "./theme-config";
 
@@ -37,8 +37,8 @@ export async function getThemeClass(): Promise<{ htmlClass: string }> {
     /* cookies() 仅在请求作用域可用 */
   }
 
-  // 显式 light / dark / cyberpunk / palette 主题：直接定，与系统偏好无关。
-  if (mode === "light" || mode === "dark" || mode === "cyberpunk" || isPaletteTheme(mode)) {
+  // 显式 light / dark / 特色主题：直接定，与系统偏好无关。
+  if (mode === "light" || mode === "dark" || isVariantTheme(mode)) {
     return { htmlClass: appearanceToHtmlClass(resolveThemeClass(mode, false)) };
   }
 

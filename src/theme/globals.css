@@ -932,18 +932,27 @@ html.dark {
  *   ① 重定义 --leo-d-* 与语义变量的【配色】：深蓝黑底 + 洋红/青霓虹前景/描边。
  *      因为整套 dark 覆盖层都读这些变量，改变量即让全站换成赛博朋克配色，零逐站改动。
  *   ② 叠加霓虹专属观感：发光描边、霓虹链接/按钮、扫描线氛围、选中态辉光。
- * 设计基调（操作员 2026-07-03 定稿）：**深蓝背景** + **黄/粉发光按键**。
- *   底色 = 深海军蓝 #050b1f；主霓虹按键 = 粉 #ff3d9a → 黄 #ffd23f 渐变发光；
- *   描边/链接 = 青蓝 #38bdf8 + 粉 #ff3d9a 双色。
+ * 设计基调（操作员 2026-07-03 v2 定稿）：**深蓝背景 + 浅红渐变叠加**（思路对齐亮色
+ *   theme 的多层渐变画布）+ **黄/粉发光按键**。
+ *   底色 = 深海军蓝 #050b1f；在其上叠加【浅红/玫红】大尺度径向光晕，左上冷蓝、
+ *   右下暖红，让原本单调的纯深蓝有了大尺度光影层次（旧版单调的根因：不透明纯色
+ *   body 把 html 上的渐变全盖住了，只剩满屏 #050b1f —— v2 把渐变直接铺到 body 上，
+ *   像亮色 theme 那样满屏生效）。
+ *   主霓虹按键 = 粉 #ff3d9a → 黄 #ffd23f 渐变发光；描边/链接 = 青蓝 #38bdf8 + 粉双色。
  * ========================================================================== */
+
+/* 深蓝底 + 浅红渐变画布（单一事实源，html 与 body 共用同一段，防顶/底露缝）。 */
+html.cyberpunk,
+html.cyberpunk body {
+  background:
+    radial-gradient(130% 95% at 12% 0%, rgba(56, 133, 255, 0.14) 0%, rgba(56, 133, 255, 0) 46%),
+    radial-gradient(135% 100% at 100% 8%, rgba(255, 92, 128, 0.16) 0%, rgba(255, 92, 128, 0) 48%),
+    radial-gradient(150% 120% at 88% 100%, rgba(255, 61, 118, 0.18) 0%, rgba(255, 61, 118, 0) 55%),
+    linear-gradient(150deg, #050b1f 0%, #0a1028 46%, #140a1e 100%);
+  background-attachment: fixed;
+}
 html.cyberpunk {
   color-scheme: dark;
-  /* 画布底：深海军蓝 + 极淡的「粉 / 黄 / 青」三色径向霓虹光晕（固定，不随滚动）。 */
-  background:
-    radial-gradient(120% 90% at 0% 0%, rgba(255, 61, 154, 0.12) 0%, rgba(255, 61, 154, 0) 42%),
-    radial-gradient(120% 90% at 100% 0%, rgba(255, 210, 63, 0.09) 0%, rgba(255, 210, 63, 0) 40%),
-    radial-gradient(120% 90% at 100% 100%, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0) 46%),
-    #050b1f;
 
   /* 分层令牌（复用 dark 的语义，换成深蓝霓虹配色）。 */
   --leo-d-bg: #050b1f;           /* 主区：深海军蓝 */
@@ -963,11 +972,7 @@ html.cyberpunk {
   --border-strong: rgba(56, 189, 248, 0.38);
   --divider: rgba(255, 61, 154, 0.18);
 }
-
-/* 画布本身也置暗（同 html.dark 的做法，防顶部露浅色缝）。 */
 html.cyberpunk body {
-  background: var(--leo-d-bg);
-  background-attachment: fixed;
   color: var(--leo-d-fg);
 }
 
@@ -1114,239 +1119,402 @@ html.cyberpunk {
 }
 
 /* ============================================================================
- * 预设主题盘（9 套，操作员 2026-07-03）—— 暗底彩色变体
+ * 特色主题（5 暗 + 1 浅，操作员 2026-07-03 重做）—— 有设计感、非「滤镜」
  * ----------------------------------------------------------------------------
- * 机制：每个主题盘生效时 <html> 挂 `dark theme-<name>` 两个类（见 ThemeProvider /
- * ThemeScript / server.ts）。html.dark 的【整套暗色覆盖层先命中】，把 29 站浅色
- * 组件压成暗底；`html.theme-<name>`（位置更靠后 → 胜出）只【重定义 --leo-d-* 配色
- * 令牌】，让全站换成该主题盘的色调，零逐站改动。可选再叠加一条「主按钮渐变」让
- * bg-neutral-900 类主按钮带上主题色（否则暗色下主按钮是中性浅底深字）。
+ * 前身是 9 个「主题盘」（ocean…mint），只是同一暗底换个色相、观感廉价，已删。
+ * 现在每个主题都基于一套业界公认的成熟配色体系，有自己的性格：
+ *   warm  暖褐（暖陶土低饱和暗色，柔和护眼）
+ *   night 极夜（Nord Polar Night 冷静蓝灰，专业克制）
+ *   lilac 薰紫（Catppuccin Mocha 薰衣草粉彩，柔和潮流）
+ *   teal  墨青（Solarized Dark 深青墨，复古高辨识）
+ *   oled  曜黑（纯黑高对比，OLED 省电 / 极简）
+ *   paper 宣纸（暖米黄纸感【浅色】，长时间阅读友好）——见文件更下方「浅色特色主题」。
  *
- * 设计口径（对齐 v2 深色分层原则「层次靠明度微差、边框几乎不可见」）：
- *   --leo-d-bg      主区最底（该色系最深）
- *   --leo-d-sidebar 侧栏/顶栏（比主区【浅】一档，Manus 式）
- *   --leo-d-surface 次级面
- *   --leo-d-card    卡片/输入框（最亮层）
- *   --leo-d-card-2  hover/选中
- *   --leo-d-border / -border-s  低对比描边 / 分隔线（带一点主题色相）
- *   --leo-d-fg / -fg-2 / -muted / -faint  文字四档（带极轻主题冷/暖调的近白→弱化）
+ * 暗色 5 套的机制：生效时 <html> 挂 `dark <slug>`（见 ThemeProvider / ThemeScript /
+ * server.ts）。html.dark 的整套暗色覆盖层先命中把 29 站浅色组件压成暗底；
+ * `html.<slug>`（更靠后 → 胜出）重定义 --leo-d-* 配色令牌 + 语义变量，全站零逐站改动。
+ *
+ * 「有设计感」而非「滤镜」体现在三件被删版本没做的事：
+ *   ① body 铺【多层径向 + 线性渐变画布】（不是一块死板纯色），有大尺度光影层次；
+ *   ② 分层明度差经过手调，卡片/侧栏/主区拉开真实纵深（Manus 式：侧栏比主区浅一档）；
+ *   ③ 主按钮 = 该主题的品牌渐变 + 贴合的柔和投影/内高光，描边/滚动条/focus 环同色系。
+ *
+ * 分层令牌口径（对齐 v2「层次靠明度微差、边框几乎不可见」）：
+ *   --leo-d-bg 主区最底 · --leo-d-sidebar 侧栏(比主区浅) · --leo-d-surface 次级面 ·
+ *   --leo-d-card 卡片(最亮层) · --leo-d-card-2 hover/选中 ·
+ *   --leo-d-border/-border-s 低对比描边/分隔线 · --leo-d-fg/-fg-2/-muted/-faint 文字四档
  * ========================================================================== */
 
-/* ① Ocean 深海蓝 */
-html.theme-ocean {
-  --leo-d-bg: #0a1526;
-  --leo-d-sidebar: #0f1d33;
-  --leo-d-surface: #0d1a2e;
-  --leo-d-card: #13243f;
-  --leo-d-card-2: #1b3054;
-  --leo-d-border: rgba(96, 165, 250, 0.10);
-  --leo-d-border-s: rgba(96, 165, 250, 0.06);
-  --leo-d-fg: #e8eefb;
-  --leo-d-fg-2: #adbfdd;
-  --leo-d-muted: #7d90b3;
-  --leo-d-faint: #5c6d8c;
+/* ---------------------------------------------------------------------------
+ * ① warm 暖褐 —— 暖陶土低饱和暗色（灵感取自暖调编辑器配色：陶土/橄榄/珊瑚）。
+ *    基调：不是冷黑，而是带暖褐的深棕，长时间看更柔和。主强调 = 暖陶土。
+ * ------------------------------------------------------------------------- */
+html.warm {
+  color-scheme: dark;
+  /* 画布：暖褐深棕底 + 左上暖陶土光晕、右下橄榄暖光，隐约的炉火氛围。 */
+  background:
+    radial-gradient(115% 85% at 0% 0%, rgba(200, 162, 122, 0.08) 0%, rgba(200, 162, 122, 0) 46%),
+    radial-gradient(125% 95% at 100% 100%, rgba(150, 140, 90, 0.07) 0%, rgba(150, 140, 90, 0) 50%),
+    #1c1712;
+  --leo-d-bg: #1c1712;
+  --leo-d-sidebar: #241d16;
+  --leo-d-surface: #201a13;
+  --leo-d-card: #2b231a;
+  --leo-d-card-2: #372c20;
+  --leo-d-border: rgba(200, 162, 122, 0.13);
+  --leo-d-border-s: rgba(200, 162, 122, 0.07);
+  --leo-d-fg: #f0e7db;
+  --leo-d-fg-2: #cdbda8;
+  --leo-d-muted: #9d8c76;
+  --leo-d-faint: #736656;
+  --ring: rgba(200, 162, 122, 0.45);
+  --border-strong: rgba(200, 162, 122, 0.30);
+  --divider: rgba(200, 162, 122, 0.14);
 }
-html.theme-ocean .bg-neutral-900,
-html.theme-ocean .bg-neutral-800,
-html.theme-ocean .bg-stone-900,
-html.theme-ocean .bg-slate-900,
-html.theme-ocean .bg-black {
-  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%) !important;
-  color: #f0f6ff !important;
+html.warm body {
+  background:
+    radial-gradient(115% 85% at 0% 0%, rgba(200, 162, 122, 0.08) 0%, rgba(200, 162, 122, 0) 46%),
+    radial-gradient(125% 95% at 100% 100%, rgba(150, 140, 90, 0.07) 0%, rgba(150, 140, 90, 0) 50%),
+    #1c1712;
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+html.warm .bg-neutral-900,
+html.warm .bg-neutral-800,
+html.warm .bg-stone-900,
+html.warm .bg-stone-800,
+html.warm .bg-slate-900,
+html.warm .bg-black {
+  background: linear-gradient(135deg, #c8a27a 0%, #a8785a 100%) !important;
+  color: #241813 !important;
+  box-shadow: 0 6px 18px -8px rgba(168, 120, 90, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+html.warm .bg-neutral-900.text-white,
+html.warm .bg-neutral-800.text-white,
+html.warm .bg-stone-900.text-white,
+html.warm .bg-slate-900.text-white,
+html.warm .bg-black.text-white { color: #241813 !important; }
+
+/* ---------------------------------------------------------------------------
+ * ② night 极夜 —— Nord「Polar Night」冷静蓝灰暗色（nord0..nord3 分层 + frost 强调）。
+ *    基调：低饱和北欧蓝灰，专业、克制、护眼。主强调 = frost 青蓝。
+ * ------------------------------------------------------------------------- */
+html.night {
+  color-scheme: dark;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(136, 192, 208, 0.08) 0%, rgba(136, 192, 208, 0) 48%),
+    radial-gradient(120% 90% at 0% 100%, rgba(94, 129, 172, 0.08) 0%, rgba(94, 129, 172, 0) 50%),
+    #2e3440;
+  --leo-d-bg: #2e3440;
+  --leo-d-sidebar: #3b4252;
+  --leo-d-surface: #353c4a;
+  --leo-d-card: #434c5e;
+  --leo-d-card-2: #4c566a;
+  --leo-d-border: rgba(136, 192, 208, 0.14);
+  --leo-d-border-s: rgba(136, 192, 208, 0.08);
+  --leo-d-fg: #eceff4;
+  --leo-d-fg-2: #d8dee9;
+  --leo-d-muted: #9aa5b8;
+  --leo-d-faint: #6d7688;
+  --ring: rgba(136, 192, 208, 0.50);
+  --border-strong: rgba(136, 192, 208, 0.34);
+  --divider: rgba(136, 192, 208, 0.16);
+}
+html.night body {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(136, 192, 208, 0.08) 0%, rgba(136, 192, 208, 0) 48%),
+    radial-gradient(120% 90% at 0% 100%, rgba(94, 129, 172, 0.08) 0%, rgba(94, 129, 172, 0) 50%),
+    #2e3440;
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+html.night .bg-neutral-900,
+html.night .bg-neutral-800,
+html.night .bg-stone-900,
+html.night .bg-stone-800,
+html.night .bg-slate-900,
+html.night .bg-black {
+  background: linear-gradient(135deg, #88c0d0 0%, #5e81ac 100%) !important;
+  color: #22272f !important;
+  box-shadow: 0 6px 18px -8px rgba(94, 129, 172, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+html.night .bg-neutral-900.text-white,
+html.night .bg-neutral-800.text-white,
+html.night .bg-stone-900.text-white,
+html.night .bg-slate-900.text-white,
+html.night .bg-black.text-white { color: #22272f !important; }
+
+/* ---------------------------------------------------------------------------
+ * ③ lilac 薰紫 —— Catppuccin「Mocha」薰衣草粉彩暗色（base/mantle/surface + mauve/pink）。
+ *    基调：暖调深紫底 + 马卡龙粉彩强调，柔和、潮流、少女感但不刺眼。主强调 = mauve→pink。
+ * ------------------------------------------------------------------------- */
+html.lilac {
+  color-scheme: dark;
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(203, 166, 247, 0.10) 0%, rgba(203, 166, 247, 0) 46%),
+    radial-gradient(120% 90% at 100% 100%, rgba(245, 194, 231, 0.08) 0%, rgba(245, 194, 231, 0) 50%),
+    #1e1e2e;
+  --leo-d-bg: #1e1e2e;
+  --leo-d-sidebar: #262637;
+  --leo-d-surface: #232333;
+  --leo-d-card: #302f44;
+  --leo-d-card-2: #3c3b55;
+  --leo-d-border: rgba(203, 166, 247, 0.14);
+  --leo-d-border-s: rgba(203, 166, 247, 0.08);
+  --leo-d-fg: #eef0fb;
+  --leo-d-fg-2: #c8c7e6;
+  --leo-d-muted: #9694bb;
+  --leo-d-faint: #6e6c93;
+  --ring: rgba(203, 166, 247, 0.50);
+  --border-strong: rgba(203, 166, 247, 0.34);
+  --divider: rgba(245, 194, 231, 0.16);
+}
+html.lilac body {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(203, 166, 247, 0.10) 0%, rgba(203, 166, 247, 0) 46%),
+    radial-gradient(120% 90% at 100% 100%, rgba(245, 194, 231, 0.08) 0%, rgba(245, 194, 231, 0) 50%),
+    #1e1e2e;
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+html.lilac .bg-neutral-900,
+html.lilac .bg-neutral-800,
+html.lilac .bg-stone-900,
+html.lilac .bg-stone-800,
+html.lilac .bg-slate-900,
+html.lilac .bg-black {
+  background: linear-gradient(135deg, #cba6f7 0%, #f5c2e7 100%) !important;
+  color: #241f33 !important;
+  box-shadow: 0 6px 18px -8px rgba(203, 166, 247, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.20) !important;
+}
+html.lilac .bg-neutral-900.text-white,
+html.lilac .bg-neutral-800.text-white,
+html.lilac .bg-stone-900.text-white,
+html.lilac .bg-slate-900.text-white,
+html.lilac .bg-black.text-white { color: #241f33 !important; }
+
+/* ---------------------------------------------------------------------------
+ * ④ teal 墨青 —— Solarized「Dark」深青墨（base03/base02/base01 + cyan/blue 强调）。
+ *    基调：Ethan Schoonover 精心校准的低饱和青墨底，复古、极具辨识度、久看不累。
+ *    主强调 = cyan→blue。
+ * ------------------------------------------------------------------------- */
+html.teal {
+  color-scheme: dark;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(42, 161, 152, 0.10) 0%, rgba(42, 161, 152, 0) 48%),
+    radial-gradient(120% 90% at 0% 100%, rgba(38, 139, 210, 0.09) 0%, rgba(38, 139, 210, 0) 50%),
+    #002b36;
+  --leo-d-bg: #002b36;
+  --leo-d-sidebar: #073642;
+  --leo-d-surface: #04303b;
+  --leo-d-card: #0a4451;
+  --leo-d-card-2: #0f5461;
+  --leo-d-border: rgba(42, 161, 152, 0.16);
+  --leo-d-border-s: rgba(42, 161, 152, 0.09);
+  --leo-d-fg: #eaf3f2;
+  --leo-d-fg-2: #93a1a1;
+  --leo-d-muted: #6b8286;
+  --leo-d-faint: #4f6469;
+  --ring: rgba(42, 161, 152, 0.52);
+  --border-strong: rgba(42, 161, 152, 0.36);
+  --divider: rgba(42, 161, 152, 0.18);
+}
+html.teal body {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(42, 161, 152, 0.10) 0%, rgba(42, 161, 152, 0) 48%),
+    radial-gradient(120% 90% at 0% 100%, rgba(38, 139, 210, 0.09) 0%, rgba(38, 139, 210, 0) 50%),
+    #002b36;
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+html.teal .bg-neutral-900,
+html.teal .bg-neutral-800,
+html.teal .bg-stone-900,
+html.teal .bg-stone-800,
+html.teal .bg-slate-900,
+html.teal .bg-black {
+  background: linear-gradient(135deg, #2aa198 0%, #268bd2 100%) !important;
+  color: #012b33 !important;
+  box-shadow: 0 6px 18px -8px rgba(42, 161, 152, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+html.teal .bg-neutral-900.text-white,
+html.teal .bg-neutral-800.text-white,
+html.teal .bg-stone-900.text-white,
+html.teal .bg-slate-900.text-white,
+html.teal .bg-black.text-white { color: #012b33 !important; }
+
+/* ---------------------------------------------------------------------------
+ * ⑤ oled 曜黑 —— 纯黑高对比暗色（OLED 省电 / 极简）。
+ *    基调：真正的 #000 底，层级用极克制的近黑灰拉开；强调 = 冷白高光 + 银灰。
+ *    描边比常规 dark 稍亮一点点（纯黑上太弱会完全看不见）。
+ * ------------------------------------------------------------------------- */
+html.oled {
+  color-scheme: dark;
+  /* 纯黑 + 极淡的顶部冷白晕，避免死板全黑，又不破坏 OLED 省电初衷。 */
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 42%),
+    #000000;
+  --leo-d-bg: #000000;
+  --leo-d-sidebar: #0b0b0c;
+  --leo-d-surface: #070708;
+  --leo-d-card: #141416;
+  --leo-d-card-2: #1e1e21;
+  --leo-d-border: rgba(255, 255, 255, 0.10);
+  --leo-d-border-s: rgba(255, 255, 255, 0.055);
+  --leo-d-fg: #f4f4f5;
+  --leo-d-fg-2: #c4c4c8;
+  --leo-d-muted: #8a8a90;
+  --leo-d-faint: #5c5c62;
+  --ring: rgba(255, 255, 255, 0.40);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --divider: rgba(255, 255, 255, 0.10);
+}
+html.oled body {
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 42%),
+    #000000;
+  background-attachment: fixed;
+  color: var(--leo-d-fg);
+}
+html.oled .bg-neutral-900,
+html.oled .bg-neutral-800,
+html.oled .bg-stone-900,
+html.oled .bg-stone-800,
+html.oled .bg-slate-900,
+html.oled .bg-black {
+  background: linear-gradient(135deg, #f4f4f5 0%, #c7c7cc 100%) !important;
+  color: #0a0a0b !important;
+  box-shadow: 0 0 20px -6px rgba(255, 255, 255, 0.25) !important;
+}
+html.oled .bg-neutral-900.text-white,
+html.oled .bg-neutral-800.text-white,
+html.oled .bg-stone-900.text-white,
+html.oled .bg-slate-900.text-white,
+html.oled .bg-black.text-white { color: #0a0a0b !important; }
+
+/* ---------------------------------------------------------------------------
+ * 暗色特色主题共用：描边 / 滚动条 / focus 环 / 语义变量，随各自 --leo-d-* 令牌走，
+ * 一次声明全部命中（选择器把 5 个 slug 并列）。设计感的「细节收口」都在这。
+ * ------------------------------------------------------------------------- */
+html.warm [data-oceanleo-chrome],
+html.night [data-oceanleo-chrome],
+html.lilac [data-oceanleo-chrome],
+html.teal [data-oceanleo-chrome],
+html.oled [data-oceanleo-chrome] {
+  background-color: var(--leo-d-sidebar) !important;
+  border-color: var(--leo-d-border) !important;
+}
+html.warm .rounded-xl, html.warm .rounded-2xl, html.warm .rounded-\[20px\], html.warm .rounded-\[24px\],
+html.night .rounded-xl, html.night .rounded-2xl, html.night .rounded-\[20px\], html.night .rounded-\[24px\],
+html.lilac .rounded-xl, html.lilac .rounded-2xl, html.lilac .rounded-\[20px\], html.lilac .rounded-\[24px\],
+html.teal .rounded-xl, html.teal .rounded-2xl, html.teal .rounded-\[20px\], html.teal .rounded-\[24px\],
+html.oled .rounded-xl, html.oled .rounded-2xl, html.oled .rounded-\[20px\], html.oled .rounded-\[24px\] {
+  border-color: var(--leo-d-border);
+}
+html.warm .hover\:bg-neutral-800:hover, html.warm .hover\:bg-neutral-700:hover, html.warm .hover\:bg-black:hover,
+html.night .hover\:bg-neutral-800:hover, html.night .hover\:bg-neutral-700:hover, html.night .hover\:bg-black:hover,
+html.lilac .hover\:bg-neutral-800:hover, html.lilac .hover\:bg-neutral-700:hover, html.lilac .hover\:bg-black:hover,
+html.teal .hover\:bg-neutral-800:hover, html.teal .hover\:bg-neutral-700:hover, html.teal .hover\:bg-black:hover,
+html.oled .hover\:bg-neutral-800:hover, html.oled .hover\:bg-neutral-700:hover, html.oled .hover\:bg-black:hover {
+  filter: brightness(1.08) saturate(1.04);
+}
+html.warm .focus\:border-neutral-400:focus, html.warm .focus-within\:border-neutral-400:focus-within,
+html.night .focus\:border-neutral-400:focus, html.night .focus-within\:border-neutral-400:focus-within,
+html.lilac .focus\:border-neutral-400:focus, html.lilac .focus-within\:border-neutral-400:focus-within,
+html.teal .focus\:border-neutral-400:focus, html.teal .focus-within\:border-neutral-400:focus-within,
+html.oled .focus\:border-neutral-400:focus, html.oled .focus-within\:border-neutral-400:focus-within {
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 0 0 3px var(--ring) !important;
+}
+html.warm [data-oceanleo-shell] *::-webkit-scrollbar-thumb, html.warm .v-scroll::-webkit-scrollbar-thumb,
+html.night [data-oceanleo-shell] *::-webkit-scrollbar-thumb, html.night .v-scroll::-webkit-scrollbar-thumb,
+html.lilac [data-oceanleo-shell] *::-webkit-scrollbar-thumb, html.lilac .v-scroll::-webkit-scrollbar-thumb,
+html.teal [data-oceanleo-shell] *::-webkit-scrollbar-thumb, html.teal .v-scroll::-webkit-scrollbar-thumb,
+html.oled [data-oceanleo-shell] *::-webkit-scrollbar-thumb, html.oled .v-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+html.warm, html.night, html.lilac, html.teal, html.oled {
+  --border: var(--leo-d-border);
+  --border-2: var(--leo-d-border);
+  --card: var(--leo-d-card);
+  --surface: var(--leo-d-card);
+  --sidebar: var(--leo-d-sidebar);
+  --sidebar-bg: var(--leo-d-sidebar);
+  --header-bg: var(--leo-d-sidebar);
 }
 
-/* ② Forest 翡翠绿 */
-html.theme-forest {
-  --leo-d-bg: #0a1a12;
-  --leo-d-sidebar: #0f2419;
-  --leo-d-surface: #0d2016;
-  --leo-d-card: #12301f;
-  --leo-d-card-2: #1a4029;
-  --leo-d-border: rgba(52, 211, 153, 0.10);
-  --leo-d-border-s: rgba(52, 211, 153, 0.06);
-  --leo-d-fg: #e6f5ec;
-  --leo-d-fg-2: #a9d3bd;
-  --leo-d-muted: #7aa892;
-  --leo-d-faint: #59806c;
+/* ============================================================================
+ * 浅色特色主题：paper 宣纸 —— 暖米黄纸感浅色（护眼阅读向）
+ * ----------------------------------------------------------------------------
+ * 机制：唯一的【浅色】特色主题，生效时 <html> 只挂 `paper`（不带 .dark），走浅色
+ * 基座。因此上面整套 html.dark 覆盖层【不命中】，本段直接覆盖【浅色底渐变 + 浅色
+ * 语义令牌】。设计感：暖米黄纸张质感（非纯白刺眼），左上暖白、右下淡棕的柔和光影，
+ * 主按钮 = 暖褐墨色，描边/强调走同一暖色系。灵感取自 sepia / 护眼纸配色。
+ * ⚠ 各站业务组件的浅色令牌来自各自 :root；这里同名覆盖（同特指度、位置更后 → 胜出）。
+ * ========================================================================== */
+html.paper {
+  color-scheme: light;
 }
-html.theme-forest .bg-neutral-900,
-html.theme-forest .bg-neutral-800,
-html.theme-forest .bg-stone-900,
-html.theme-forest .bg-slate-900,
-html.theme-forest .bg-black {
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
-  color: #eefdf4 !important;
+html.paper body {
+  /* 暖米黄纸底：整体偏暖，左上暖白提亮、右下淡棕加深，模拟宣纸的自然色差。 */
+  background:
+    radial-gradient(120% 120% at 0% 0%, #fbf6ea 0%, rgba(251, 246, 234, 0) 46%),
+    radial-gradient(120% 120% at 100% 100%, #efe3cf 0%, rgba(239, 227, 207, 0) 52%),
+    linear-gradient(135deg, #f7efdf 0%, #f3ead6 48%, #eee2cc 100%);
+  background-attachment: fixed;
+  color: #4a4034;
 }
-
-/* ③ Sunset 日落橙 */
-html.theme-sunset {
-  --leo-d-bg: #1f0f0a;
-  --leo-d-sidebar: #2b160f;
-  --leo-d-surface: #26130c;
-  --leo-d-card: #351d13;
-  --leo-d-card-2: #46271a;
-  --leo-d-border: rgba(251, 146, 60, 0.12);
-  --leo-d-border-s: rgba(251, 146, 60, 0.07);
-  --leo-d-fg: #fceee6;
-  --leo-d-fg-2: #e0bda9;
-  --leo-d-muted: #b3907d;
-  --leo-d-faint: #8c6b5a;
+/* 浅色语义令牌覆盖（各站读 --surface / --card / --border 等时也换成暖纸调）。 */
+html.paper {
+  --bg: #f4ebd8;
+  --surface: #fbf5e8;
+  --card: #fdf9ee;
+  --card-2: #f3e8d2;
+  --sidebar: #f6eeda;
+  --sidebar-bg: #f6eeda;
+  --header-bg: #f6eeda;
+  --border: rgba(120, 96, 60, 0.16);
+  --border-2: rgba(120, 96, 60, 0.10);
+  --border-strong: rgba(120, 96, 60, 0.30);
+  --divider: rgba(120, 96, 60, 0.14);
+  --ring: rgba(168, 120, 60, 0.40);
+  --fg: #4a4034;
+  --fg-2: #6b5f4d;
+  --muted: #8a7c66;
+  --faint: #a89a80;
 }
-html.theme-sunset .bg-neutral-900,
-html.theme-sunset .bg-neutral-800,
-html.theme-sunset .bg-stone-900,
-html.theme-sunset .bg-slate-900,
-html.theme-sunset .bg-black {
-  background: linear-gradient(135deg, #ea580c 0%, #f59e0b 100%) !important;
-  color: #fff6ee !important;
+/* 共享外壳容器（侧栏/顶栏）：暖纸底 + 暖描边，别露白。 */
+html.paper [data-oceanleo-chrome] {
+  background-color: #f6eeda !important;
+  border-color: rgba(120, 96, 60, 0.16) !important;
 }
-
-/* ④ Grape 葡萄紫 */
-html.theme-grape {
-  --leo-d-bg: #150a26;
-  --leo-d-sidebar: #1f0f33;
-  --leo-d-surface: #1b0d2e;
-  --leo-d-card: #26133f;
-  --leo-d-card-2: #341b54;
-  --leo-d-border: rgba(192, 132, 252, 0.12);
-  --leo-d-border-s: rgba(192, 132, 252, 0.07);
-  --leo-d-fg: #f1e9fb;
-  --leo-d-fg-2: #c9b3e0;
-  --leo-d-muted: #9d86b8;
-  --leo-d-faint: #77628c;
+/* 纯白卡片压成暖纸白，避免刺眼的正白破坏纸感。 */
+html.paper .bg-white,
+html.paper .bg-neutral-50,
+html.paper .bg-stone-50,
+html.paper .bg-slate-50,
+html.paper .bg-gray-50 {
+  background-color: #fdf9ee !important;
 }
-html.theme-grape .bg-neutral-900,
-html.theme-grape .bg-neutral-800,
-html.theme-grape .bg-stone-900,
-html.theme-grape .bg-slate-900,
-html.theme-grape .bg-black {
-  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%) !important;
-  color: #f7f0ff !important;
+/* 主按钮：暖褐墨色（浅底上要够深才对比清楚），带极轻暖投影。 */
+html.paper .bg-neutral-900,
+html.paper .bg-neutral-800,
+html.paper .bg-stone-900,
+html.paper .bg-stone-800,
+html.paper .bg-slate-900,
+html.paper .bg-black {
+  background: linear-gradient(135deg, #6b5335 0%, #4a3925 100%) !important;
+  color: #f7efdf !important;
+  box-shadow: 0 6px 16px -8px rgba(74, 57, 37, 0.45) !important;
 }
-
-/* ⑤ Rose 玫瑰粉 */
-html.theme-rose {
-  --leo-d-bg: #220a14;
-  --leo-d-sidebar: #2f0f1d;
-  --leo-d-surface: #290c19;
-  --leo-d-card: #391324;
-  --leo-d-card-2: #4c1b32;
-  --leo-d-border: rgba(251, 113, 133, 0.12);
-  --leo-d-border-s: rgba(251, 113, 133, 0.07);
-  --leo-d-fg: #fceaf0;
-  --leo-d-fg-2: #e0adc0;
-  --leo-d-muted: #b37d92;
-  --leo-d-faint: #8c5c70;
+/* focus 环：暖琥珀。 */
+html.paper .focus\:border-neutral-400:focus,
+html.paper .focus-within\:border-neutral-400:focus-within {
+  border-color: rgba(168, 120, 60, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(168, 120, 60, 0.16) !important;
 }
-html.theme-rose .bg-neutral-900,
-html.theme-rose .bg-neutral-800,
-html.theme-rose .bg-stone-900,
-html.theme-rose .bg-slate-900,
-html.theme-rose .bg-black {
-  background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%) !important;
-  color: #fff0f4 !important;
+/* 滚动条：暖棕拇指。 */
+html.paper [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
+html.paper .v-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 96, 60, 0.24);
 }
-
-/* ⑥ Mocha 摩卡褐 */
-html.theme-mocha {
-  --leo-d-bg: #1a130d;
-  --leo-d-sidebar: #241a12;
-  --leo-d-surface: #201710;
-  --leo-d-card: #2d2017;
-  --leo-d-card-2: #3d2c20;
-  --leo-d-border: rgba(214, 178, 138, 0.11);
-  --leo-d-border-s: rgba(214, 178, 138, 0.06);
-  --leo-d-fg: #f2eae0;
-  --leo-d-fg-2: #cdb9a4;
-  --leo-d-muted: #a08d78;
-  --leo-d-faint: #7c6a58;
-}
-html.theme-mocha .bg-neutral-900,
-html.theme-mocha .bg-neutral-800,
-html.theme-mocha .bg-stone-900,
-html.theme-mocha .bg-slate-900,
-html.theme-mocha .bg-black {
-  background: linear-gradient(135deg, #b45309 0%, #d97706 100%) !important;
-  color: #fdf6ec !important;
-}
-
-/* ⑦ Slate 石墨蓝灰 */
-html.theme-slate {
-  --leo-d-bg: #0d1117;
-  --leo-d-sidebar: #151b24;
-  --leo-d-surface: #11161e;
-  --leo-d-card: #1a222e;
-  --leo-d-card-2: #232e3d;
-  --leo-d-border: rgba(148, 163, 184, 0.11);
-  --leo-d-border-s: rgba(148, 163, 184, 0.06);
-  --leo-d-fg: #e9edf3;
-  --leo-d-fg-2: #b3bdcc;
-  --leo-d-muted: #7f8b9c;
-  --leo-d-faint: #5d6675;
-}
-html.theme-slate .bg-neutral-900,
-html.theme-slate .bg-neutral-800,
-html.theme-slate .bg-stone-900,
-html.theme-slate .bg-slate-900,
-html.theme-slate .bg-black {
-  background: linear-gradient(135deg, #475569 0%, #64748b 100%) !important;
-  color: #f1f5f9 !important;
-}
-
-/* ⑧ Gold 鎏金暗金 */
-html.theme-gold {
-  --leo-d-bg: #16130a;
-  --leo-d-sidebar: #201c0f;
-  --leo-d-surface: #1c180c;
-  --leo-d-card: #292312;
-  --leo-d-card-2: #38301a;
-  --leo-d-border: rgba(234, 200, 92, 0.12);
-  --leo-d-border-s: rgba(234, 200, 92, 0.07);
-  --leo-d-fg: #f6f0dd;
-  --leo-d-fg-2: #d4c69b;
-  --leo-d-muted: #a89a70;
-  --leo-d-faint: #837657;
-}
-html.theme-gold .bg-neutral-900,
-html.theme-gold .bg-neutral-800,
-html.theme-gold .bg-stone-900,
-html.theme-gold .bg-slate-900,
-html.theme-gold .bg-black {
-  background: linear-gradient(135deg, #ca8a04 0%, #eab308 100%) !important;
-  color: #1c1708 !important;
-}
-
-/* ⑨ Mint 薄荷青 */
-html.theme-mint {
-  --leo-d-bg: #071d1c;
-  --leo-d-sidebar: #0c2a28;
-  --leo-d-surface: #0a2523;
-  --leo-d-card: #0f3532;
-  --leo-d-card-2: #164743;
-  --leo-d-border: rgba(45, 212, 191, 0.12);
-  --leo-d-border-s: rgba(45, 212, 191, 0.07);
-  --leo-d-fg: #e4f6f3;
-  --leo-d-fg-2: #a5d4cd;
-  --leo-d-muted: #77a8a1;
-  --leo-d-faint: #57807a;
-}
-html.theme-mint .bg-neutral-900,
-html.theme-mint .bg-neutral-800,
-html.theme-mint .bg-stone-900,
-html.theme-mint .bg-slate-900,
-html.theme-mint .bg-black {
-  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
-  color: #effefb !important;
-}
-
-/* 主按钮上的白字：暗色基础规则会把 .text-white 处理掉；主题盘主按钮多为深字或
-   白字（已在各自 rule 里定 color），此处确保带 .text-white 的也随主题按钮色走。 */
-html.theme-ocean .bg-neutral-900.text-white,
-html.theme-forest .bg-neutral-900.text-white,
-html.theme-sunset .bg-neutral-900.text-white,
-html.theme-grape .bg-neutral-900.text-white,
-html.theme-rose .bg-neutral-900.text-white,
-html.theme-mocha .bg-neutral-900.text-white,
-html.theme-slate .bg-neutral-900.text-white,
-html.theme-mint .bg-neutral-900.text-white { color: #ffffff !important; }
-html.theme-gold .bg-neutral-900.text-white { color: #1c1708 !important; }

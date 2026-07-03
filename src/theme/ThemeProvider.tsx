@@ -23,14 +23,15 @@ import {
   resolveThemeClass,
   appearanceToHtmlClass,
   allThemeClassNames,
+  isLightAppearance,
   type ThemeMode,
   type ThemeAppearance,
 } from "./theme-config";
 
 interface ThemeContextValue {
-  /** 用户选择的模式（light/dark/cyberpunk/auto）。 */
+  /** 用户选择的模式（light/dark/auto + 7 个特色主题）。 */
   mode: ThemeMode;
-  /** 实际生效的外观（auto 已解析成 light/dark；cyberpunk 独立）。 */
+  /** 实际生效的外观（auto 已解析成 light/dark；特色主题保持自身）。 */
   resolved: ThemeAppearance;
   /** 切换到指定模式（写 cookie + localStorage + 应用类名）。 */
   setMode: (mode: ThemeMode) => void;
@@ -125,16 +126,16 @@ function clearHostOnlyThemeCookie() {
 function applyClass(resolved: ThemeAppearance) {
   if (typeof document === "undefined") return;
   const el = document.documentElement;
-  // 移除全部已知主题类（light/dark/cyberpunk/theme-* 九盘），杜绝切换残留。
+  // 移除全部已知主题类（light/dark + 7 个特色主题），杜绝切换残留。
   el.classList.remove(...allThemeClassNames());
   // 外观 → 类名字符串（单一事实源）：
-  //   cyberpunk → "dark cyberpunk"；<palette> → "dark theme-<palette>"；其余同名。
-  // 都以 html.dark 为基础复用整套暗色覆盖层，只叠加各自的配色令牌 / 霓虹发光。
+  //   <暗色特色主题> → "dark <slug>"（复用整套暗色覆盖层，叠加各自配色令牌/发光）；
+  //   <浅色特色主题> → "<slug>"（浅色基座 + 覆盖浅色底/令牌）；light/dark 同名。
   appearanceToHtmlClass(resolved)
     .split(" ")
     .forEach((c) => el.classList.add(c));
-  // 仅 light 用亮色 color-scheme；dark/cyberpunk/palette 全是暗底 → dark UA 样式。
-  el.style.colorScheme = resolved === "light" ? "light" : "dark";
+  // 浅色基座（light + 浅色特色主题）用 light color-scheme；其余暗底 → dark UA 样式。
+  el.style.colorScheme = isLightAppearance(resolved) ? "light" : "dark";
 }
 
 export interface ThemeProviderProps {

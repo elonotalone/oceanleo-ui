@@ -18,20 +18,31 @@
 
 export {
   THEME_MODES,
-  PALETTE_THEMES,
-  PALETTE_META,
+  DARK_VARIANT_THEMES,
+  LIGHT_VARIANT_THEMES,
+  VARIANT_THEMES,
+  VARIANT_META,
   DEFAULT_THEME_MODE,
   THEME_COOKIE,
   THEME_STORAGE_KEY,
   THEME_COOKIE_MAX_AGE,
   isThemeMode,
-  isPaletteTheme,
+  isVariantTheme,
+  isDarkVariant,
+  isLightVariant,
+  isLightAppearance,
   normalizeThemeMode,
   resolveThemeClass,
   appearanceToHtmlClass,
   allThemeClassNames,
 } from "./theme-config";
-export type { ThemeMode, ThemeAppearance, PaletteTheme } from "./theme-config";
+export type {
+  ThemeMode,
+  ThemeAppearance,
+  VariantTheme,
+  DarkVariantTheme,
+  LightVariantTheme,
+} from "./theme-config";
 
 export { ThemeScript } from "./ThemeScript";
 export { ThemeProvider, useTheme } from "./ThemeProvider";

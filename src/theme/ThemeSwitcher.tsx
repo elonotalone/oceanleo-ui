@@ -1,14 +1,15 @@
 "use client";
 
-// <ThemeSwitcher>：Light / Dark / Auto 三段切换器（单一事实源）。
+// <ThemeSwitcher>：主题切换器（单一事实源）——基础 3 模式（Light/Dark/Auto）+
+// 7 个特色主题（cyberpunk/warm/night/lilac/teal/oled/paper），特色主题用渐变圆点图标。
 // 全家桶顶栏 / 账户页 / 设置页统一放它，各站零实现。切换即写 `.oceanleo.com`
-// cookie，跨 28 站同步（决策见 oceanleo-theme-and-17-locales.md）。
+// cookie，跨全家桶同步（决策见 oceanleo-theme-and-17-locales.md）。
 
 import { useTheme } from "./ThemeProvider";
 import {
   THEME_MODES,
-  PALETTE_META,
-  isPaletteTheme,
+  VARIANT_META,
+  isVariantTheme,
   type ThemeMode,
 } from "./theme-config";
 
@@ -23,17 +24,17 @@ export interface ThemeSwitcherProps {
 const BASE_LABELS: Partial<Record<ThemeMode, string>> = {
   light: "Light",
   dark: "Dark",
-  cyberpunk: "Cyberpunk",
   auto: "Auto",
 };
 
 function labelFor(m: ThemeMode, labels?: Partial<Record<ThemeMode, string>>): string {
-  return labels?.[m] ?? BASE_LABELS[m] ?? (isPaletteTheme(m) ? PALETTE_META[m].label : m);
+  return labels?.[m] ?? BASE_LABELS[m] ?? (isVariantTheme(m) ? VARIANT_META[m].label : m);
 }
 
 function ThemeIcon({ mode, className = "h-3.5 w-3.5" }: { mode: ThemeMode; className?: string }) {
-  if (isPaletteTheme(mode)) {
-    const meta = PALETTE_META[mode];
+  // 特色主题统一用「该主题两端强调色的渐变圆点」作图标（cyberpunk 也是特色主题）。
+  if (isVariantTheme(mode)) {
+    const meta = VARIANT_META[mode];
     return (
       <span
         className={`${className} inline-block rounded-full ring-1 ring-black/10`}
@@ -60,14 +61,6 @@ function ThemeIcon({ mode, className = "h-3.5 w-3.5" }: { mode: ThemeMode; class
       </svg>
     );
   }
-  if (mode === "cyberpunk") {
-    // 赛博朋克 = 闪电/霓虹意象。
-    return (
-      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
-    );
-  }
   // auto = 半月/半日「跟随系统」
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -81,7 +74,7 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
   const { mode, setMode } = useTheme();
 
   if (variant === "compact") {
-    // 循环全部模式（基础 4 + 9 主题盘）。
+    // 循环全部模式（基础 3 + 7 特色主题）。
     const order: ThemeMode[] = [...THEME_MODES];
     const next = order[(order.indexOf(mode) + 1) % order.length];
     const curLabel = labelFor(mode, labels);
