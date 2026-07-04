@@ -24,12 +24,13 @@ import { AiRecommendBox } from "./AiRecommendBox";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
-import { PromptCardModal } from "./HomeCards";
+import { PromptCardModal, AddPromptModal } from "./HomeCards";
 import {
   GENERIC_PROMPTS,
   PROMPT_LIBRARY,
   loadCustomPromptCards,
   saveCustomPromptCards,
+  loadAllCustomPromptCards,
   type PromptCard,
 } from "./home-cards";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
@@ -580,7 +581,7 @@ function PlaygroundTabs({
   const tabs = [
     ...(hasSites ? [{ id: "site" as Tab, label: tt("网站") }] : []),
     { id: "app" as Tab, label: "app" },
-    { id: "skill" as Tab, label: "agent" },
+    // 宗旨 v12（2026-07-04）：删除 playground「agent」分区（与首页删 agent 卡片一致）。
     { id: "prompt" as Tab, label: "prompt" },
     ...(hasClientApps ? [{ id: "clientapp" as Tab, label: tt("客户端app") }] : []),
     ...(hasBoard
@@ -620,14 +621,27 @@ const PLAYGROUND_PROMPT_SCOPE = "playground";
 
 function PromptZone({ accent }: { accent: string }) {
   const tt = useUI();
+  // playground 自己 scope 的自建卡（可编辑/删除）。
   const [custom, setCustom] = useState<PromptCard[]>([]);
+  // 宗旨 v12（2026-07-04）：并入【当前 origin 下所有站首页】新建的自建卡（只读展示），
+  // 让「用户在某站新建的 prompt」在 playground 也看得到。
+  const [otherCustom, setOtherCustom] = useState<PromptCard[]>([]);
   const [cat, setCat] = useState("__all__");
   const [filter, setFilter] = useState("");
   const [modal, setModal] = useState<{ card: PromptCard; isNew: boolean } | null>(null);
+  const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  function reloadCustom() {
+    const mine = loadCustomPromptCards(PLAYGROUND_PROMPT_SCOPE);
+    setCustom(mine);
+    // 其它站的自建卡 = 全部自建卡 - playground scope 自己的（按 id 去重）。
+    const mineIds = new Set(mine.map((c) => c.id));
+    setOtherCustom(loadAllCustomPromptCards().filter((c) => !mineIds.has(c.id)));
+  }
+
   useEffect(() => {
-    setCustom(loadCustomPromptCards(PLAYGROUND_PROMPT_SCOPE));
+    reloadCustom();
   }, []);
 
   // 内置库：全部站的 prompt 卡片（按标题去重，通用集在前）。
@@ -643,7 +657,10 @@ function PromptZone({ accent }: { accent: string }) {
     return out;
   }, []);
 
-  const all = useMemo(() => [...custom, ...builtin], [custom, builtin]);
+  const all = useMemo(
+    () => [...custom, ...otherCustom, ...builtin],
+    [custom, otherCustom, builtin],
+  );
 
   const categories = useMemo(() => {
     const seen: string[] = [];
@@ -667,23 +684,24 @@ function PromptZone({ accent }: { accent: string }) {
   );
 
   function persist(next: PromptCard[]) {
-    setCustom(next);
     saveCustomPromptCards(PLAYGROUND_PROMPT_SCOPE, next);
+    reloadCustom();
   }
 
-  function handleSave(card: PromptCard, isNew: boolean) {
-    if (isNew || !card.custom) {
+  // 「添加 prompt」（预制库选择 or 新建）或编辑现有卡 → 存进 playground scope。
+  function saveCard(card: PromptCard) {
+    const mineNow = loadCustomPromptCards(PLAYGROUND_PROMPT_SCOPE);
+    if (!card.custom || !card.id.startsWith("custom-") || !mineNow.some((c) => c.id === card.id)) {
       const mine: PromptCard = {
         ...card,
-        id: `custom-${Date.now()}`,
+        id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         custom: true,
         category: card.category || tt("我的"),
       };
-      persist([mine, ...custom]);
+      persist([mine, ...mineNow]);
     } else {
-      persist(custom.map((c) => (c.id === card.id ? { ...card, custom: true } : c)));
+      persist(mineNow.map((c) => (c.id === card.id ? { ...card, custom: true } : c)));
     }
-    setModal(null);
   }
 
   async function copyUse(text: string) {
@@ -696,15 +714,8 @@ function PromptZone({ accent }: { accent: string }) {
     }
   }
 
-  const emptyCard: PromptCard = {
-    id: "",
-    icon: "✨",
-    title: "",
-    desc: "",
-    prompt: "",
-    category: tt("我的"),
-    custom: true,
-  };
+  // playground scope 自己的自建卡 id 集合（用于判断某卡在此处能否编辑/删除）。
+  const mineIds = useMemo(() => new Set(custom.map((c) => c.id)), [custom]);
 
   return (
     <section>
@@ -756,17 +767,17 @@ function PromptZone({ accent }: { accent: string }) {
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {/* 「创建 prompt」板块（第一张）。 */}
+        {/* 「添加 prompt」板块（第一张）：预制库选择 + 新建 二合一（宗旨 v12）。 */}
         <button
           type="button"
-          onClick={() => setModal({ card: emptyCard, isNew: true })}
+          onClick={() => setAdding(true)}
           className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed bg-white/70 px-4 py-4 text-stone-400 transition hover:border-solid hover:text-stone-600"
           style={{ borderColor: `${accent}80` }}
         >
           <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
-          <span className="text-[13px] font-medium">{tt("创建 prompt")}</span>
+          <span className="text-[13px] font-medium">{tt("添加 prompt")}</span>
         </button>
 
         {shown.map((c) => {
@@ -825,6 +836,20 @@ function PromptZone({ accent }: { accent: string }) {
         <p className="py-12 text-center text-sm text-stone-400">{tt("没有匹配的 prompt。")}</p>
       )}
 
+      {adding && (
+        <AddPromptModal
+          accent={accent}
+          presets={builtin}
+          existing={all}
+          categories={categories}
+          onAdd={(card) => {
+            saveCard(card);
+            setAdding(false);
+          }}
+          onClose={() => setAdding(false)}
+        />
+      )}
+
       {modal && (
         <PromptCardModal
           card={modal.card}
@@ -836,9 +861,12 @@ function PromptZone({ accent }: { accent: string }) {
             void copyUse(text);
             setModal(null);
           }}
-          onSave={(card) => handleSave(card, modal.isNew)}
+          onSave={(card) => {
+            saveCard(card);
+            setModal(null);
+          }}
           onDelete={
-            modal.card.custom && !modal.isNew
+            mineIds.has(modal.card.id) && !modal.isNew
               ? () => {
                   persist(custom.filter((c) => c.id !== modal.card.id));
                   setModal(null);

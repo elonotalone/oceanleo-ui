@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
+import { PromptHighlightArea, type PromptHighlightAreaHandle } from "./PromptHighlightArea";
 import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
@@ -109,6 +110,16 @@ export interface LeoComposerProps {
   autoFocus?: boolean;
   disabled?: boolean;
 
+  // --- 占位符高亮（宗旨 v12，2026-07-04，对照豆包「帮我写作」） ---
+  /**
+   * 非空时：输入框换成「透明 textarea + 镜像高亮层」，把该模板里的 `[字段]` 占位符
+   * 上 accent 色、把用户已填的值高亮。用于「首页点 prompt 卡片起手」这一幕。
+   * 不传 / null → 用回原生 textarea，行为与旧版完全一致（全家桶其它输入框零回归）。
+   */
+  highlightTemplate?: string | null;
+  /** 占位符高亮用色（默认站点 accent；缺省 #4f46e5）。 */
+  accentColor?: string;
+
   // --- 「＋」附件菜单（2026-06-26） ---
   /** 传它才出现「＋」键 +「从本地添加文件」。收到用户选/拖进来的文件。 */
   onAttachFiles?: (files: File[]) => void;
@@ -160,6 +171,8 @@ export function LeoComposer({
   className = "",
   autoFocus = false,
   disabled = false,
+  highlightTemplate = null,
+  accentColor,
   onAttachFiles,
   accept,
   multiple = true,
@@ -179,6 +192,14 @@ export function LeoComposer({
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
   const ref = useRef<HTMLTextAreaElement>(null);
+  // 占位符高亮模式下真正的 textarea 藏在 PromptHighlightArea 内，用这个 handle 取。
+  const highlightRef = useRef<PromptHighlightAreaHandle>(null);
+  const highlightOn = Boolean(highlightTemplate);
+  // 取当前生效的 textarea 元素（普通模式 = ref；高亮模式 = 高亮组件内部的）。
+  const currentTextarea = useCallback(
+    () => (highlightOn ? highlightRef.current?.el() ?? null : ref.current),
+    [highlightOn],
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
   const [meetingOpen, setMeetingOpen] = useState(false);
@@ -187,20 +208,22 @@ export function LeoComposer({
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
 
+  // 普通模式的自增高（高亮模式由 PromptHighlightArea 内部自己 autogrow）。
   const autogrow = useCallback(() => {
+    if (highlightOn) return;
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-  }, [maxHeight]);
+  }, [maxHeight, highlightOn]);
 
   useEffect(() => {
     autogrow();
   }, [value, autogrow]);
 
   useEffect(() => {
-    if (autoFocus) ref.current?.focus();
-  }, [autoFocus]);
+    if (autoFocus) currentTextarea()?.focus();
+  }, [autoFocus, currentTextarea]);
 
   const canSend = Boolean(value.trim()) && !loading && !disabled;
   const hasAttachMenu =
@@ -221,8 +244,9 @@ export function LeoComposer({
   }
 
   function handleLeoSuggest() {
-    ref.current?.setAttribute("data-ai-assistant-target", "");
-    ref.current?.focus();
+    const el = currentTextarea();
+    el?.setAttribute("data-ai-assistant-target", "");
+    el?.focus();
     openLeoAssistant();
   }
 
@@ -297,18 +321,36 @@ export function LeoComposer({
           <span className="text-[13px] font-medium">{tt("松开即可上传文件")}</span>
         </div>
       )}
-      <textarea
-        ref={ref}
-        data-ai-assistant-target={leoSuggest ? "" : undefined}
-        className="w-full resize-none rounded-t-2xl border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-        rows={rows}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        onInput={autogrow}
-        placeholder={placeholderText}
-        onKeyDown={handleKeyDown}
-      />
+      {highlightOn ? (
+        // 占位符高亮模式（宗旨 v12）：透明 textarea + 镜像高亮层。承载文本/光标/提交
+        // 不变，只是把 `[字段]` 上 accent 色、已填值高亮。
+        <PromptHighlightArea
+          ref={highlightRef}
+          value={value}
+          onChange={onChange}
+          template={highlightTemplate}
+          accentColor={accentColor}
+          placeholder={placeholderText}
+          rows={rows}
+          maxHeight={maxHeight}
+          disabled={disabled}
+          onKeyDown={handleKeyDown}
+          className="rounded-t-2xl"
+        />
+      ) : (
+        <textarea
+          ref={ref}
+          data-ai-assistant-target={leoSuggest ? "" : undefined}
+          className="w-full resize-none rounded-t-2xl border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
+          rows={rows}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          onInput={autogrow}
+          placeholder={placeholderText}
+          onKeyDown={handleKeyDown}
+        />
+      )}
 
       {/* 附件缩略条（上传中转圈 / 可删除） */}
       {attachments && attachments.length > 0 && (

@@ -56,6 +56,9 @@ export type {
   ComposerAttachment,
   ComposerMenuItem,
 } from "./LeoComposer";
+// 占位符高亮输入区（宗旨 v12：点 prompt 卡片起手，`[字段]` 上色 + 已填值高亮）。
+export { PromptHighlightArea } from "./PromptHighlightArea";
+export type { PromptHighlightAreaProps, PromptHighlightAreaHandle } from "./PromptHighlightArea";
 // 标准输入卡片（= image 站「① 输入」规范：文字 + 上传/拖拽参考，二合一）。
 export { InputCard } from "./InputCard";
 export type { InputCardProps, InputAttachment } from "./InputCard";
@@ -104,10 +107,11 @@ export type { WorkspaceShellProps } from "./WorkspaceShell";
 // 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
 export { HomeIntro, BillingNotice } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
-// 首页两大卡片分区（2026-07-02，对照豆包）：工作内容 prompt 卡片 + 选择 agent 卡片。
-export { HomePromptCards, HomeAgentCards } from "./HomeCards";
+// 首页 prompt 卡片分区（宗旨 v12，2026-07-04）：只留 prompt 卡片（agent 卡片组件保留
+// 导出但首页不再渲染）。「添加 prompt」= 预制库选择 + 新建（AddPromptModal）。
+export { HomePromptCards, HomeAgentCards, PromptCardModal, AddPromptModal } from "./HomeCards";
 export type { HomeAgentPick } from "./HomeCards";
-export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards } from "./home-cards";
+export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards, loadAllCustomPromptCards } from "./home-cards";
 export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
 export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";
