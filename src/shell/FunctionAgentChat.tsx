@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
+import { useRegisterOpsFiller } from "./guide-context";
 import { useAttachments } from "./useAttachments";
 import {
   createTask,
@@ -80,6 +81,14 @@ export interface FunctionAgentChatProps {
   appLabel?: string;
   /** app 图标（emoji / 单字），与 appLabel 一起展示。 */
   appIcon?: string;
+  /**
+   * 宗旨 v12.1：右栏「使用指南」示例被点击时的处理器。给了它 → 由站点决定怎么把示例
+   * 灌进左栏（如 image 站按 opts.data 里的 sceneId 套用整套场景预设并切到「操作台」）。
+   * 不给 → 默认行为：把 text 填进 agent 输入框并切到「agent」形态。 */
+  onGuideExample?: (
+    text: string,
+    opts?: { imageUrl?: string; data?: unknown },
+  ) => void;
 }
 
 // 左栏双形态：操作台（表单 + 生成）/ agent（有能力、带工具，独立于操作台）。
@@ -101,6 +110,7 @@ export function FunctionAgentChat({
   showOps = true,
   appLabel,
   appIcon,
+  onGuideExample,
 }: FunctionAgentChatProps) {
   void _getOpsState;
   void _onApplyPatch;
@@ -122,6 +132,26 @@ export function FunctionAgentChat({
   const handleVoiceTranscript = useCallback((text: string) => {
     setInput((v) => (v ? v + " " : "") + text);
   }, []);
+
+  // 宗旨 v12.1：注册「使用指南」示例填充器——点右栏指南里的示例时被调用。
+  //   · 站点给了 onGuideExample → 交给站点处理（如 image 按 data.sceneId 套场景预设
+  //     并切到「操作台」）。
+  //   · 没给 → 默认：把 text 填进 agent 输入框并切到「agent」形态（示例是自然语言
+  //     prompt，最适合喂给 agent）。
+  const fillFromGuide = useCallback<
+    (text: string, opts?: { imageUrl?: string; data?: unknown }) => void
+  >(
+    (text, opts) => {
+      if (onGuideExample) {
+        onGuideExample(text, opts);
+        return;
+      }
+      setInput(text);
+      setTab("agent");
+    },
+    [onGuideExample],
+  );
+  useRegisterOpsFiller(fillFromGuide);
 
   // ── 「操作台 | agent」切换键装进左栏标题位（宗旨 v10，复用 v0.41.0 机制）──────
   // SplitWorkspace 的左栏 PaneHeader 标题本身就是这枚开关；不在 SplitWorkspace 内

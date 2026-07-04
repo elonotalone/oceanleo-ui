@@ -33,6 +33,9 @@ import { BackButton } from "./Playground";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
+import { GuideProvider } from "./guide-context";
+import { type FunctionGuide } from "./NavigatorGuide";
+import { promptCardsForSite } from "./home-cards";
 import { useUI } from "../i18n/ui/useUI";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
@@ -68,6 +71,14 @@ export interface ConsoleFunction {
    * 顶层 `canvas`（多个功能共用一个右栏时方便）。
    */
   canvas?: ReactNode;
+  /**
+   * 宗旨 v12.1（2026-07-04）：本功能页的「使用指南（navigator）」。给了它，右栏（库）
+   * 标签条最前面自动多一个「使用指南」标签并默认选中——右版面首屏就是导航页（教学
+   * 文案 + 示例，点示例把内容灌进左栏输入框）。右栏必须是 <ResultCanvas>（它读取
+   * 指南上下文自动加标签）。左栏是 <FunctionAgentChat> 时示例自动填进其输入框；站点
+   * 自定义表单可用 useRegisterOpsFiller 注册自己的填充器。
+   */
+  guide?: FunctionGuide;
 }
 
 export interface OperatorConsoleProps {
@@ -376,25 +387,60 @@ export function OperatorConsole({
   const appShellHeader = appShellRendersHeader ? headerHeight : 0;
   const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
+  // 宗旨 v12.1：每个功能页右栏首屏都要有「使用指南」——功能自带 guide 优先；没给的
+  // 功能，按 siteId 从内置 prompt 库**自动兜底**一份（教学一句话 + 前几张卡片当示例，
+  // 点示例灌进左栏）。这样全家桶所有站零改动即获统一 navigator。embed/solo 不注入。
+  const effectiveGuide: FunctionGuide | null =
+    hideTabs
+      ? null
+      : active?.guide
+        ? active.guide
+        : autoGuideForSite(siteId, active?.label ? tt(active.label) : "");
+
   return (
     <div className={className}>
       {topBar}
       {/* 进功能区「从上到下」阶梯淡入（宗旨 v11）。key 变化重挂 → 重新触发 .v-page。 */}
       <div key={pageKey} className="v-page contents">
-        <Studio
-          ops={ops}
-          canvas={active?.canvas ?? canvas ?? null}
-          opsWidth={opsWidth}
-          defaultRatio={defaultRatio}
-          storageKey={storageKey}
-          opsLabel={opsLabel}
-          canvasLabel={canvasLabel}
-          accent={accent}
-          headerHeight={studioHeaderHeight}
-          library={libraryConfig}
-          soloMaxWidth={soloMaxWidth}
-        />
+        {/* 宗旨 v12.1：GuideProvider 把当前功能的 guide + fill-bus 供给整棵子树
+            （左栏填充器注册 / 右栏 ResultCanvas 读取加「使用指南」标签）。 */}
+        <GuideProvider guide={effectiveGuide} activeKey={active?.id ?? ""}>
+          <Studio
+            ops={ops}
+            canvas={active?.canvas ?? canvas ?? null}
+            opsWidth={opsWidth}
+            defaultRatio={defaultRatio}
+            storageKey={storageKey}
+            opsLabel={opsLabel}
+            canvasLabel={canvasLabel}
+            accent={accent}
+            headerHeight={studioHeaderHeight}
+            library={libraryConfig}
+            soloMaxWidth={soloMaxWidth}
+          />
+        </GuideProvider>
       </div>
     </div>
   );
+}
+
+// 从站点内置 prompt 库自动兜底一份「使用指南」（宗旨 v12.1）。没有 siteId 或库为空
+// 就返回 null（不加指南标签）。示例取前 6 张卡片，点击时把卡片 prompt 灌进左栏。
+function autoGuideForSite(siteId: string, fnLabel: string): FunctionGuide | null {
+  const id = (siteId || "").trim();
+  if (!id) return null;
+  const cards = promptCardsForSite(id);
+  if (!cards.length) return null;
+  const examples = cards.slice(0, 6).map((c) => ({
+    label: c.title,
+    prompt: c.prompt,
+    icon: c.icon,
+  }));
+  return {
+    title: fnLabel ? `${fnLabel} · 使用指南` : "使用指南",
+    intro:
+      "在左侧「操作台」精细调参后点生成，或切到「agent」直接对它说需求。下面是一些常用示例，点一个即可把内容填进左侧输入框，稍作修改就能用。",
+    examples,
+    examplesLabel: "试试这些示例",
+  };
 }

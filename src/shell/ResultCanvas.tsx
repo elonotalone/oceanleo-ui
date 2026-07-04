@@ -16,8 +16,10 @@
 // 单来源不要二级）。详见 docs/architecture/oceanleo-right-canvas-and-shell-polish.md。
 // ============================================================================
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRightPaneSlot } from "./SplitWorkspace";
+import { useFunctionGuide } from "./guide-context";
+import { NavigatorGuide } from "./NavigatorGuide";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface CanvasTab {
@@ -78,25 +80,82 @@ function TabBar({
   );
 }
 
+// 使用指南标签的保留 id（宗旨 v12.1）。site tab id 不会撞它（下划线前缀）。
+const GUIDE_TAB_ID = "__guide";
+
 export function ResultCanvas({
   tabs,
   active,
   onChange,
   hint,
+  accent = "#4f46e5",
   className = "",
 }: ResultCanvasProps) {
-  const current = tabs.find((t) => t.id === active) ?? tabs[0];
   const rightSlot = useRightPaneSlot();
+  const guideCtx = useFunctionGuide();
+  const hasGuide = Boolean(guideCtx?.guide);
+
+  // 「使用指南」标签：guide 存在时插到最前，并**默认选中**（右版面首屏 = 导航页）。
+  // 用内部 state 记录是否停留在指南标签：首挂载在 guide 存在时为 true；用户点了别的
+  // 标签就走站点受控 active。示例点击后（fill）自动跳到站点第一个标签，方便看结果。
+  const [onGuide, setOnGuide] = useState(hasGuide);
+  // guide 从无到有（切到带指南的功能）时回到指南首屏。
+  const prevHasGuide = useRef(hasGuide);
+  useEffect(() => {
+    if (hasGuide && !prevHasGuide.current) setOnGuide(true);
+    if (!hasGuide) setOnGuide(false);
+    prevHasGuide.current = hasGuide;
+  }, [hasGuide]);
+
+  const guideTab: CanvasTab | null = useMemo(
+    () =>
+      guideCtx?.guide
+        ? {
+            id: GUIDE_TAB_ID,
+            label: "使用指南",
+            content: (
+              <NavigatorGuide
+                guide={guideCtx.guide}
+                accent={accent}
+                onUseExample={(ex) => {
+                  guideCtx.useExample(ex);
+                  // 用了示例 → 跳到站点第一个标签（结果区），让用户看到操作台已填。
+                  setOnGuide(false);
+                  const first = tabs[0]?.id;
+                  if (first) onChange(first);
+                }}
+              />
+            ),
+          }
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [guideCtx?.guide, accent, tabs],
+  );
+
+  const allTabs = useMemo(
+    () => (guideTab ? [guideTab, ...tabs] : tabs),
+    [guideTab, tabs],
+  );
+  const effectiveActive = onGuide && guideTab ? GUIDE_TAB_ID : active;
+  const handleChange = (id: string) => {
+    if (id === GUIDE_TAB_ID) {
+      setOnGuide(true);
+      return;
+    }
+    setOnGuide(false);
+    onChange(id);
+  };
+  const current = allTabs.find((t) => t.id === effectiveActive) ?? allTabs[0];
 
   // 在 SplitWorkspace 内：把标签条挂到右栏标题位（去框中框）。卸载时清空。
   const inSplit = rightSlot != null;
   useEffect(() => {
     if (!rightSlot) return;
     rightSlot.setRightLabel(
-      <TabBar tabs={tabs} active={active} onChange={onChange} hint={hint} />,
+      <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} hint={hint} />,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rightSlot, tabs, active, hint]);
+  }, [rightSlot, allTabs, effectiveActive, hint]);
   useEffect(() => {
     return () => rightSlot?.setRightLabel(null);
   }, [rightSlot]);
@@ -118,7 +177,7 @@ export function ResultCanvas({
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-white/70 ${className}`}
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-3">
-        <TabBar tabs={tabs} active={active} onChange={onChange} hint={hint} />
+        <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} hint={hint} />
       </div>
       <div className="v-scroll-stable flex-1 overflow-y-auto p-4">{current?.content}</div>
     </div>

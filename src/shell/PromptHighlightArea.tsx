@@ -1,30 +1,34 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — PromptHighlightArea（占位符高亮输入区，单一事实源）
+// @oceanleo/ui — PromptHighlightArea（幽灵占位输入区，单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v12（操作员 2026-07-04，对照豆包「帮我写作」）：点 prompt 卡片把预设文案填进
-// 输入框后，文案里的占位符 `[职业]` 以站点 accent 色显示（未填=提示色），用户把某个
-// 占位符替换成真实内容后那段内容高亮（accent 半透明底），一眼看清「哪里要填、填了哪些」。
+// 宗旨 v12.1（操作员 2026-07-04 修订，纠正 v12 的实现错误）：
 //
-// 技术选型：成熟的「透明 textarea + 镜像高亮层」模式（highlighted-textarea，
-// react-highlight-within-textarea 同源）。真 textarea 承载文本/光标/选区/IME/提交；
-// 只是文字透明、caret 可见；底下镜像 div（同字体/行高/padding/换行/尺寸）按段着色。
-// textarea 滚动时镜像层同步 scrollTop/scrollLeft，像素级对齐。
+//   点 prompt 卡片后，卡片文案作为「幽灵占位」显示在输入框里——`[职业]` 这类占位
+//   段以站点 accent（蓝）色显示、其余字面段以浅灰提示色显示。它**纯粹是视觉提示**：
+//     · 【选不中】——它在一层 pointer-events:none 的覆盖层里，鼠标拖选/双击都选不到；
+//     · 【不属于内容】——它**永远不进 textarea.value**（value 保持为空）；
+//     · 【点即输入】——用户点输入框任意位置 / 一开始打字，幽灵立即整体消失，从头
+//       输入，不用先删掉 `[职业]`。
+//   （= 浏览器原生 placeholder 的行为，只是原生 placeholder 不支持局部上色，所以
+//    我们用一个自绘的镜像覆盖层来实现「多段着色的 placeholder」。）
 //
-// 分段算法（已用最小脚本验证，见 docs/architecture/
-// oceanleo-prompt-cards-only-and-placeholder-highlight.md §2）：
-//   以 template 的「字面段」为锚点在当前文本里顺序定位，两个锚点之间 = 字段当前值；
-//   值===原 token → placeholder(accent 文字)；值非空且!=token → filled(accent 底)；
-//   锚点找不到（大改模板）→ 优雅降级：只给残留 [token] 上色。绝不吞字/报错。
+// 为什么 v12（镜像高亮层 + 把整段模板塞进 value + 提交时 strip）是错的：
+//   那个方案把 `[职业]` 当成**真实字符写进了 textarea.value**，所以它能被选中、
+//   不能「点即消失」、还要靠 stripPromptPlaceholders 在提交时补救。根因是「占位在
+//   value 里」。本版本回到正确模型：**占位不是 value 的一部分**，value 为空时才显示
+//   幽灵覆盖层，用户一输入就让位——彻底不需要 strip、不可选、点即输入。
 //
-// 本组件是纯展示 + 受控 value 的输入区，被 LeoComposer 在 highlightTemplate 非空时
-// 替换掉原生 textarea 使用。不传 highlightTemplate 时 LeoComposer 用回原生 textarea，
-// 全家桶其它输入框零回归。
+// 技术：真 <textarea> 承载 value/光标/IME/提交（就是普通空 textarea）；上面盖一层
+// aria-hidden + pointer-events-none 的镜像 <div>，仅在 value==="" 且有 ghostTemplate
+// 时渲染分段着色的占位文本。textarea 有值就隐藏覆盖层，露出用户真实输入。
+//
+// 兼容：导出 stripPromptPlaceholders / highlightSegments 保留（旧调用方/测试引用），
+// 但新链路不再依赖它们做提交清洗（幽灵不进 value，提交天然干净）。
 // ============================================================================
 
 import {
-  type ClipboardEvent,
   type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent,
@@ -36,86 +40,37 @@ import {
   useRef,
 } from "react";
 
-// 方括号占位符：`[任意非]非换行字符]`。与算法脚本一致。
+// 方括号占位符：`[任意非]非换行字符]`。
 const TOKEN_RE = /\[[^\]\n]+\]/g;
 
 type Seg =
   | { kind: "lit"; text: string }
-  | { kind: "placeholder"; text: string }
-  | { kind: "filled"; text: string };
+  | { kind: "placeholder"; text: string };
 
-/** 把 template 拆成交替的 literal / field(token)，首尾都是 literal（可为空串）。 */
-function templateParts(template: string): { literals: string[]; tokens: string[] } {
-  const literals: string[] = [];
-  const tokens: string[] = [];
+/** 把幽灵模板拆成交替的「字面段」「占位段」，用于覆盖层分段着色。 */
+function ghostSegments(template: string): Seg[] {
+  const out: Seg[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(template))) {
-    literals.push(template.slice(last, m.index));
-    tokens.push(m[0]);
-    last = m.index + m[0].length;
-  }
-  literals.push(template.slice(last));
-  return { literals, tokens };
-}
-
-/** 只给残留 [token] 上色的降级分段（无模板 / 模板锚点定位失败时用）。 */
-function tokenOnlySegments(text: string): Seg[] {
-  const out: Seg[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  TOKEN_RE.lastIndex = 0;
-  while ((m = TOKEN_RE.exec(text))) {
-    if (m.index > last) out.push({ kind: "lit", text: text.slice(last, m.index) });
+    if (m.index > last) out.push({ kind: "lit", text: template.slice(last, m.index) });
     out.push({ kind: "placeholder", text: m[0] });
     last = m.index + m[0].length;
   }
-  if (last < text.length) out.push({ kind: "lit", text: text.slice(last) });
+  if (last < template.length) out.push({ kind: "lit", text: template.slice(last) });
   return out;
 }
 
-/** 用模板锚点定位当前文本里的字段值，产出着色分段（失败则降级）。 */
-export function highlightSegments(text: string, template: string | null | undefined): Seg[] {
-  // 注意：TOKEN_RE 带 g 标志，.test() 会推进 lastIndex —— 先重置再用，避免状态串扰。
-  TOKEN_RE.lastIndex = 0;
-  if (!template || !TOKEN_RE.test(template)) return tokenOnlySegments(text);
-  const { literals, tokens } = templateParts(template);
-  const out: Seg[] = [];
-  let cursor = 0;
-  for (let i = 0; i < literals.length; i++) {
-    const lit = literals[i];
-    let at: number;
-    if (lit === "") {
-      at = cursor;
-    } else {
-      at = text.indexOf(lit, cursor);
-      if (at < 0) return tokenOnlySegments(text); // 锚点丢失 → 降级
-    }
-    if (i > 0) {
-      const value = text.slice(cursor, at);
-      const token = tokens[i - 1];
-      if (value === token) out.push({ kind: "placeholder", text: value });
-      else if (value.trim() === "") out.push({ kind: "lit", text: value });
-      else out.push({ kind: "filled", text: value });
-    }
-    if (lit) out.push({ kind: "lit", text: lit });
-    cursor = at + lit.length;
-  }
-  if (cursor < text.length) out.push({ kind: "lit", text: text.slice(cursor) });
-  return out;
+// ── 兼容旧导出（v12 时期的 API；新链路不再使用，仅保留避免破坏别处 import/测试）──
+export function highlightSegments(text: string, _template?: string | null): Seg[] {
+  void _template;
+  return ghostSegments(text);
 }
-
-/** 去掉模板里的占位 token。用于提交 / 复制，确保蓝色提示不是实际 prompt 内容。 */
-export function stripPromptPlaceholders(text: string, template: string | null | undefined): string {
-  if (!text) return text;
-  TOKEN_RE.lastIndex = 0;
-  if (!template || !TOKEN_RE.test(template)) return text;
-  const { tokens } = templateParts(template);
-  if (!tokens.length) return text;
-  const tokenSet = new Set(tokens);
-  TOKEN_RE.lastIndex = 0;
-  return text.replace(TOKEN_RE, (token) => (tokenSet.has(token) ? "" : token));
+/** @deprecated 幽灵占位不再进 value，提交天然不含占位；保留 no-op 语义为兼容。 */
+export function stripPromptPlaceholders(text: string, _template?: string | null): string {
+  void _template;
+  return text;
 }
 
 export interface PromptHighlightAreaHandle {
@@ -127,6 +82,7 @@ export interface PromptHighlightAreaHandle {
 export interface PromptHighlightAreaProps {
   value: string;
   onChange: (value: string) => void;
+  /** 幽灵占位模板（点卡片时设入）。value 为空时作为不可选的提示覆盖层显示。 */
   template: string | null;
   accentColor?: string;
   placeholder?: string;
@@ -139,7 +95,7 @@ export interface PromptHighlightAreaProps {
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-// textarea 与镜像 div 必须共享的排版样式（保证像素级对齐）。与 LeoComposer 里原生
+// textarea 与镜像覆盖层必须共享的排版样式（保证像素级对齐）。与 LeoComposer 里原生
 // textarea 的 className（px-5 pb-2 pt-5 text-[15px] leading-relaxed）逐项对应。
 const SHARED_TYPO: CSSProperties = {
   fontSize: "15px",
@@ -171,7 +127,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     ref,
   ) {
     const taRef = useRef<HTMLTextAreaElement>(null);
-    const mirrorRef = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
       focus: () => taRef.current?.focus(),
@@ -183,8 +138,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       if (!el) return;
       el.style.height = "auto";
       el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-      // 镜像层高度跟随（它是绝对定位铺满，容器高度由 textarea 撑开）。
-      if (mirrorRef.current) mirrorRef.current.scrollTop = el.scrollTop;
     }, [maxHeight]);
 
     useLayoutEffect(() => {
@@ -195,111 +148,50 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       if (autoFocus) taRef.current?.focus();
     }, [autoFocus]);
 
-    const syncScroll = useCallback(() => {
-      const el = taRef.current;
-      const mi = mirrorRef.current;
-      if (el && mi) {
-        mi.scrollTop = el.scrollTop;
-        mi.scrollLeft = el.scrollLeft;
-      }
-    }, []);
-
-    const segs = highlightSegments(value, template);
-
-    const handleClipboard = useCallback(
-      (e: ClipboardEvent<HTMLTextAreaElement>, cut: boolean) => {
-        const el = taRef.current;
-        if (!el) return;
-        const start = el.selectionStart ?? 0;
-        const end = el.selectionEnd ?? 0;
-        if (start === end) return;
-        const selected = value.slice(start, end);
-        const cleaned = stripPromptPlaceholders(selected, template);
-        if (cleaned === selected) return;
-        e.preventDefault();
-        e.clipboardData.setData("text/plain", cleaned);
-        if (cut && !disabled) {
-          const next = value.slice(0, start) + value.slice(end);
-          onChange(next);
-          requestAnimationFrame(() => {
-            taRef.current?.setSelectionRange(start, start);
-            autogrow();
-          });
-        }
-      },
-      [autogrow, disabled, onChange, template, value],
-    );
+    // 幽灵覆盖层：仅在「有模板 且 用户还没输入任何字符」时显示。用户一输入就隐藏，
+    // 露出真实文本；此时占位彻底不存在（不在 value 里）——选不中、点即输入。
+    const showGhost = Boolean(template) && value.length === 0;
+    const segs = showGhost ? ghostSegments(template as string) : [];
 
     return (
       <div className={`relative ${className}`}>
-        {/* 镜像高亮层：与 textarea 完全重叠，仅做上色展示，不接收指针事件。 */}
-        <div
-          ref={mirrorRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 overflow-hidden text-neutral-800"
-          style={{ ...SHARED_TYPO, maxHeight }}
-        >
-          {segs.map((s, i) => {
-            if (s.kind === "placeholder") {
-              return (
-                <span
-                  key={i}
-                  style={{ color: accentColor, fontWeight: 500, userSelect: "none" }}
-                >
+        {/* 幽灵提示覆盖层：pointer-events-none → 选不中、点击穿透到下面的 textarea。
+            仅展示，绝不进入 value。value 非空即隐藏。 */}
+        {showGhost && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-hidden"
+            style={{ ...SHARED_TYPO, maxHeight, userSelect: "none" }}
+          >
+            {segs.map((s, i) =>
+              s.kind === "placeholder" ? (
+                <span key={i} style={{ color: accentColor, fontWeight: 500 }}>
                   {s.text}
                 </span>
-              );
-            }
-            if (s.kind === "filled") {
-              return (
-                <span
-                  key={i}
-                  style={{
-                    color: accentColor,
-                    background: hexToRgba(accentColor, 0.13),
-                    borderRadius: "4px",
-                    padding: "0 2px",
-                    fontWeight: 500,
-                  }}
-                >
+              ) : (
+                <span key={i} style={{ color: "#a3a3a3" }}>
                   {s.text}
                 </span>
-              );
-            }
-            return <span key={i}>{s.text}</span>;
-          })}
-          {/* 末尾补一个零宽字符，保证最后一行也有高度、镜像与 textarea 尾行对齐。 */}
-          {"\u200b"}
-        </div>
+              ),
+            )}
+          </div>
+        )}
 
         <textarea
           ref={taRef}
           value={value}
           disabled={disabled}
           rows={rows}
-          placeholder={placeholder}
+          // 无幽灵模板时用原生 placeholder（普通空输入框体验）。
+          placeholder={showGhost ? undefined : placeholder}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
           onInput={autogrow}
-          onScroll={syncScroll}
           onKeyDown={onKeyDown}
-          onCopy={(e) => handleClipboard(e, false)}
-          onCut={(e) => handleClipboard(e, true)}
           spellCheck={false}
-          className="relative w-full resize-none border-0 bg-transparent text-transparent caret-neutral-800 outline-none placeholder:text-neutral-400"
+          className="relative w-full resize-none border-0 bg-transparent text-neutral-800 outline-none placeholder:text-neutral-400"
           style={{ ...SHARED_TYPO, maxHeight }}
         />
       </div>
     );
   },
 );
-
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const n = parseInt(full, 16);
-  if (Number.isNaN(n) || full.length !== 6) return `rgba(79,70,229,${alpha})`;
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}

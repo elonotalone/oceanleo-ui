@@ -139,9 +139,11 @@ export function SplitWorkspace({
   library,
 }: SplitWorkspaceProps) {
   const tt = useUI();
-  // 「库」= 右版面显隐开关（不内建内容）。默认关。支持受控（消费端持有 open，如点素材
-  // 要打开库）与非受控（本组件自管）。传了 library 才有「库」行为。
-  const [internalOpen, setInternalOpen] = useState(false);
+  // 「库」= 右版面显隐开关（不内建内容）。**默认开**（宗旨 v12.1，操作员 2026-07-04）：
+  // 一打开功能页就同时显示「操作台 + 库」，库首屏是「使用指南（navigator）」——让用户
+  // 一眼看到这个 app 怎么用、有哪些示例，而不必自己点「库」才看得见。用户仍可点右版面
+  // 顶栏 ✕ 收起成单栏。支持受控（消费端持有 open）与非受控（本组件自管）。
+  const [internalOpen, setInternalOpen] = useState(true);
   const libraryControlled = library?.open !== undefined;
   const libraryOpen = library != null && (libraryControlled ? Boolean(library.open) : internalOpen);
   const setLibraryOpen = useCallback(

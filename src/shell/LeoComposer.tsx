@@ -12,7 +12,6 @@ import {
 import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
 import {
   PromptHighlightArea,
-  stripPromptPlaceholders,
   type PromptHighlightAreaHandle,
 } from "./PromptHighlightArea";
 import { useUI } from "../i18n/ui/useUI";
@@ -114,14 +113,15 @@ export interface LeoComposerProps {
   autoFocus?: boolean;
   disabled?: boolean;
 
-  // --- 占位符高亮（宗旨 v12，2026-07-04，对照豆包「帮我写作」） ---
+  // --- 幽灵占位（宗旨 v12.1，2026-07-04 修订） ---
   /**
-   * 非空时：输入框换成「透明 textarea + 镜像高亮层」，把该模板里的 `[字段]` 占位符
-   * 上 accent 色、把用户已填的值高亮。用于「首页点 prompt 卡片起手」这一幕。
+   * 非空时：把该模板作为**幽灵占位提示**显示在输入框里——`[字段]` 段 accent（蓝）色、
+   * 其余灰提示色。它**选不中、不进 value、点即消失**（= 带局部上色的 placeholder）。
+   * 用于「首页点 prompt 卡片起手」这一幕（点卡片设入模板，用户一打字幽灵即让位）。
    * 不传 / null → 用回原生 textarea，行为与旧版完全一致（全家桶其它输入框零回归）。
    */
   highlightTemplate?: string | null;
-  /** 占位符高亮用色（默认站点 accent；缺省 #4f46e5）。 */
+  /** 幽灵占位 `[字段]` 用色（默认站点 accent；缺省 #4f46e5）。 */
   accentColor?: string;
 
   // --- 「＋」附件菜单（2026-06-26） ---
@@ -198,8 +198,10 @@ export function LeoComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
   // 占位符高亮模式下真正的 textarea 藏在 PromptHighlightArea 内，用这个 handle 取。
   const highlightRef = useRef<PromptHighlightAreaHandle>(null);
+  // 幽灵占位模式：有模板就渲染 PromptHighlightArea（自带 ghost 覆盖层）。value 在两种
+  // 模式下都是用户真实输入（幽灵不进 value），提交无需再清洗。
   const highlightOn = Boolean(highlightTemplate);
-  // 取当前生效的 textarea 元素（普通模式 = ref；高亮模式 = 高亮组件内部的）。
+  // 取当前生效的 textarea 元素（普通模式 = ref；幽灵模式 = 组件内部的）。
   const currentTextarea = useCallback(
     () => (highlightOn ? highlightRef.current?.el() ?? null : ref.current),
     [highlightOn],
@@ -248,7 +250,8 @@ export function LeoComposer({
   }
 
   function cleanPromptValue(): string {
-    return highlightOn ? stripPromptPlaceholders(value, highlightTemplate).trim() : value.trim();
+    // 幽灵占位不进 value（宗旨 v12.1），提交拿到的就是用户真实输入，无需清洗。
+    return value.trim();
   }
 
   function handleLeoSuggest() {
@@ -330,8 +333,8 @@ export function LeoComposer({
         </div>
       )}
       {highlightOn ? (
-        // 占位符高亮模式（宗旨 v12）：透明 textarea + 镜像高亮层。承载文本/光标/提交
-        // 不变，只是把 `[字段]` 上 accent 色、已填值高亮。
+        // 幽灵占位模式（宗旨 v12.1）：普通 textarea + 一层选不中的幽灵覆盖层。占位
+        // `[字段]` 蓝色提示、其余灰色，value 为空时显示、一输入就让位——不进 value。
         <PromptHighlightArea
           ref={highlightRef}
           value={value}

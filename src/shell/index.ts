@@ -72,6 +72,16 @@ export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
+// 宗旨 v12.1（2026-07-04）：功能页「使用指南（navigator）」——右栏（库）默认展开、
+// 首屏是导航页（教学文案 + 示例，点示例灌进左栏）。ConsoleFunction.guide 配置。
+export { NavigatorGuide } from "./NavigatorGuide";
+export type { NavigatorGuideProps, FunctionGuide, GuideExample } from "./NavigatorGuide";
+export {
+  GuideProvider,
+  useFunctionGuide,
+  useRegisterOpsFiller,
+} from "./guide-context";
+export type { OpsFiller } from "./guide-context";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
 // 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
 export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorkspace";

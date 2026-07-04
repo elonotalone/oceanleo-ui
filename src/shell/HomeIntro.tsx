@@ -126,15 +126,16 @@ export function HomeIntro({
   // 有 siteId 且未显式关掉卡片（defaultTab !== "none"）→ 直接常显 prompt 卡片。
   const withCards = Boolean(siteId) && defaultTab !== "none";
 
-  // 点 prompt 卡片：把文案填进输入框 + 记住模板做占位符高亮。
+  // 点 prompt 卡片（宗旨 v12.1）：把文案设为**幽灵占位**（选不中、不进 value、点即
+  // 消失），value 保持为空，用户一打字幽灵就让位。绝不再把模板塞进 value（那是 v12
+  // 的病根：占位变成可选的真实字符、要先删才能填）。
   const pickPrompt = (p: string) => {
-    setValue(p);
+    setValue("");
     setHighlightTemplate(p);
   };
-  // 输入框改动：清空则撤销高亮模板（回到普通输入框）。
+  // 输入框改动：用户开始输入即固定退出幽灵态；清空后允许幽灵再次显示（模板仍在）。
   const onChangeValue = (v: string) => {
     setValue(v);
-    if (!v.trim()) setHighlightTemplate(null);
   };
 
   return (
