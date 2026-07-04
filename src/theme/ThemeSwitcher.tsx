@@ -1,7 +1,9 @@
 "use client";
 
 // <ThemeSwitcher>：主题切换器（单一事实源）——基础 3 模式（Light/Dark/Auto）+
-// 7 个特色主题（cyberpunk/warm/night/lilac/teal/oled/paper），特色主题用渐变圆点图标。
+// 全部特色主题（深色系 cyberpunk/warm/night/lilac/teal/oled + 浅色系
+// paper/mist/dawn/sakura），特色主题用「该主题两端强调色渐变圆点」作图标。
+// 顶栏用这个紧凑切换器；设置页 GeneralPage 提供按深/浅分组的大预览卡。
 // 全家桶顶栏 / 账户页 / 设置页统一放它，各站零实现。切换即写 `.oceanleo.com`
 // cookie，跨全家桶同步（决策见 oceanleo-theme-and-17-locales.md）。
 

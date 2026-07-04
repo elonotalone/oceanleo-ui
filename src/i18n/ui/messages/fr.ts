@@ -6220,14 +6220,19 @@ const fr: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Bibliothèque gratuite de ressources open source · Images/vidéos/musique/effets sonores/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Parcourez au même endroit des ressources gratuites sous licence open source provenant d’Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo. Les ressources utilisables commercialement sont affichées par défaut et peuvent être téléchargées pour vos créations PPT / design / vidéo / 3D.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Inspiré de la bibliothèque Yun · Quick Beautiful Site, avec des milliers de modèles de sites sectoriels couvrant 13 grands secteurs et 105 sous-catégories. Filtrez par secteur / palette / popularité, prévisualisez des pages complètes et appliquez en un clic.",
-  // —— 特色主题 7 套 + 「特色主题」标题（2026-07-03 重做，替代已删的 9 个主题盘）——
+  // —— 特色主题（深色系 6 + 浅色系 4）+ 分组标题（2026-07-04 v3 数据驱动改版）——
   "特色主题": "Thèmes vedettes",
-  "赛博朋克": "Cyberpunk",
+  "深色系": "Sombres",
+  "浅色系": "Clairs",
+  "霓虹": "Néon",
   "暖褐": "Chaud",
   "极夜": "Nuit polaire",
   "薰紫": "Lilas",
   "墨青": "Sarcelle",
   "曜黑": "Noir pur",
   "宣纸": "Papier",
+  "晨雾": "Brume",
+  "天青": "Azur",
+  "樱粉": "Sakura",
 };
 export default fr;

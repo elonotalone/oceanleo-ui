@@ -191,11 +191,15 @@ function AuditModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+      // 只在真正点到背景层时关闭（避免子元素 / 未来嵌入的 portal 弹窗点击冒泡误关，
+      // 与共享 Modal / TeamRosterModal 同款守卫）。
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3">
           <h3 className="text-[14px] font-semibold text-neutral-900">{tt("本次调用内容审计")}</h3>

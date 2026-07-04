@@ -6220,14 +6220,19 @@ const vi: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Thư viện tài nguyên mã nguồn mở miễn phí · Ảnh/video/nhạc/hiệu ứng âm thanh/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Duyệt tài nguyên miễn phí theo giấy phép mã nguồn mở từ Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo trong một nơi. Mặc định chỉ hiển thị tài nguyên dùng thương mại được, tải về là dùng ngay cho PPT / thiết kế / video / 3D.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Đối chuẩn thư viện mẫu Yun · Quick Beautiful Site, tích hợp hàng nghìn mẫu website theo ngành, bao phủ 13 ngành lớn và 105 nhóm nhỏ. Lọc theo ngành / hệ màu / độ hot, bấm để xem trước toàn trang và áp dụng bằng một lần nhấp.",
-  // —— 特色主题 7 套 + 「特色主题」标题（2026-07-03 重做，替代已删的 9 个主题盘）——
+  // —— 特色主题（深色系 6 + 浅色系 4）+ 分组标题（2026-07-04 v3 数据驱动改版）——
   "特色主题": "Chủ đề đặc biệt",
-  "赛博朋克": "Cyberpunk",
+  "深色系": "Tối",
+  "浅色系": "Sáng",
+  "霓虹": "Neon",
   "暖褐": "Ấm",
   "极夜": "Đêm cực",
   "薰紫": "Tử đinh hương",
   "墨青": "Xanh mực",
   "曜黑": "Đen tuyền",
   "宣纸": "Giấy",
+  "晨雾": "Sương",
+  "天青": "Thanh thiên",
+  "樱粉": "Anh đào",
 };
 export default vi;

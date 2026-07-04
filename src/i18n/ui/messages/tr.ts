@@ -6220,14 +6220,19 @@ const tr: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Ücretsiz açık kaynak varlık kütüphanesi · Görsel/video/müzik/ses efekti/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo üzerindeki ücretsiz açık kaynak lisanslı varlıkları tek yerde gezin. Varsayılan olarak yalnızca ticari kullanıma uygun varlıklar gösterilir; indirip PPT / tasarım / video / 3D üretimde kullanabilirsiniz.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Yun · Quick Beautiful Site şablon kütüphanesi örnek alınarak hazırlanmış, 13 ana sektör ve 105 alt kategoriyi kapsayan binlerce sektör sitesi şablonu içerir. Sektör / renk sistemi / popülerliğe göre filtreleyin, tam sayfa önizleyin ve tek tıkla uygulayın.",
-  // —— 特色主题 7 套 + 「特色主题」标题（2026-07-03 重做，替代已删的 9 个主题盘）——
+  // —— 特色主题（深色系 6 + 浅色系 4）+ 分组标题（2026-07-04 v3 数据驱动改版）——
   "特色主题": "Özel temalar",
-  "赛博朋克": "Cyberpunk",
+  "深色系": "Koyu",
+  "浅色系": "Açık",
+  "霓虹": "Neon",
   "暖褐": "Sıcak",
   "极夜": "Kutup gecesi",
   "薰紫": "Leylak",
   "墨青": "Deniz mavisi",
   "曜黑": "Saf siyah",
   "宣纸": "Kâğıt",
+  "晨雾": "Sis",
+  "天青": "Gök mavisi",
+  "樱粉": "Sakura",
 };
 export default tr;

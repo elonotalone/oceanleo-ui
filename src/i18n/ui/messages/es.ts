@@ -6220,14 +6220,19 @@ const es: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Biblioteca gratuita de recursos de código abierto · Imágenes/video/música/efectos/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Explora en un solo lugar recursos gratuitos con licencia de código abierto de Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo. Por defecto se muestran solo recursos aptos para uso comercial, listos para descargar y usar en PPT / diseño / video / 3D.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Inspirado en la biblioteca Yun · Quick Beautiful Site, con miles de plantillas de sitios por industria que cubren 13 grandes sectores y 105 subcategorías. Filtra por industria / paleta / popularidad, previsualiza páginas completas y aplica con un clic.",
-  // —— 特色主题 7 套 + 「特色主题」标题（2026-07-03 重做，替代已删的 9 个主题盘）——
+  // —— 特色主题（深色系 6 + 浅色系 4）+ 分组标题（2026-07-04 v3 数据驱动改版）——
   "特色主题": "Temas destacados",
-  "赛博朋克": "Ciberpunk",
+  "深色系": "Oscuros",
+  "浅色系": "Claros",
+  "霓虹": "Neón",
   "暖褐": "Cálido",
   "极夜": "Noche polar",
   "薰紫": "Lila",
   "墨青": "Turquesa",
   "曜黑": "Negro puro",
   "宣纸": "Papel",
+  "晨雾": "Niebla",
+  "天青": "Azur",
+  "樱粉": "Sakura",
 };
 export default es;

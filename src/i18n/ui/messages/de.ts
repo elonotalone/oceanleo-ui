@@ -6220,14 +6220,19 @@ const de: Record<string, string> = {
   "免费开源素材库 · 图片/视频/音乐/音效/3D | asset.oceanleo.com": "Kostenlose Open-Source-Asset-Bibliothek · Bilder/Video/Musik/Soundeffekte/3D | asset.oceanleo.com",
   "一站浏览来自 Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo 的免费开源授权素材，默认只展示可商用素材，下载后可直接拿去 PPT / 设计 / 视频 / 3D 创作。": "Durchsuche kostenlose Open-Source-lizenzierte Assets von Openverse / Pexels / Pixabay / Poly Haven / Freesound / Jamendo an einem Ort. Standardmäßig werden kommerziell nutzbare Assets angezeigt, die du direkt für PPT / Design / Video / 3D verwenden kannst.",
   "对标云·速成美站模板库，内置上千套行业网站模板，覆盖 13 大行业 105 个细分类目，按行业 / 色系 / 热度自由筛选，点击即可整页预览、一键套用。": "Angelehnt an die Vorlagenbibliothek Yun · Quick Beautiful Site, mit Tausenden Branchen-Website-Vorlagen für 13 große Branchen und 105 Unterkategorien. Nach Branche / Farbsystem / Beliebtheit filtern, ganze Seiten ansehen und mit einem Klick anwenden.",
-  // —— 特色主题 7 套 + 「特色主题」标题（2026-07-03 重做，替代已删的 9 个主题盘）——
+  // —— 特色主题（深色系 6 + 浅色系 4）+ 分组标题（2026-07-04 v3 数据驱动改版）——
   "特色主题": "Besondere Themes",
-  "赛博朋克": "Cyberpunk",
+  "深色系": "Dunkel",
+  "浅色系": "Hell",
+  "霓虹": "Neon",
   "暖褐": "Warm",
   "极夜": "Polarnacht",
   "薰紫": "Flieder",
   "墨青": "Petrol",
   "曜黑": "Reinschwarz",
   "宣纸": "Papier",
+  "晨雾": "Nebel",
+  "天青": "Azur",
+  "樱粉": "Sakura",
 };
 export default de;

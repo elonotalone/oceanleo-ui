@@ -185,11 +185,20 @@ function TeamRosterModalInner({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      // ⚠ 只在【直接点到背景本身】时关闭。绝不能用 onClick={onClose}：本弹窗里嵌的
+      // SkillPromptPanel / CreateSkillModal 都用 createPortal 挂到 document.body，
+      // 但 React 事件沿【React 树】冒泡（不是 DOM 树）——portal 子树里任意按钮的点击
+      // 都会冒泡到这个背景 div。若这里是 onClick={onClose}，点面板里「编辑 / 保存为
+      // 我的 agent」会连带把整个 roster 关掉、退回空白对话（操作员反馈的「点这个板块
+      // 就闪退」真因，2026-07-04 用 Playwright 复现坐实）。`e.target===e.currentTarget`
+      // 保证只有真正点在背景层（而非任何子元素 / portal 子树）才触发关闭。
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="max-h-[86vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-stone-100 px-6 pb-4 pt-5">
@@ -348,11 +357,13 @@ function TeamRosterModalInner({
       {replaceCandidate && (
         <div
           className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4"
-          onClick={() => setReplaceCandidate(null)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setReplaceCandidate(null);
+          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-semibold text-stone-900">
               {tt("用新 agent 替换该成员？")}
@@ -493,11 +504,13 @@ function ModalShell({ children, onClose }: { children: ReactNode; onClose: () =>
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
       </div>
@@ -533,11 +546,13 @@ function AgentPickerModal({
   return (
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-stone-100 px-5 py-3">
           <h3 className="text-[15px] font-semibold text-stone-900">

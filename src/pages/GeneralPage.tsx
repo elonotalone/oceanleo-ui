@@ -19,7 +19,10 @@ import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
 import {
-  VARIANT_THEMES,
+  DARK_VARIANT_THEMES,
+  LIGHT_VARIANT_THEMES,
+  DARK_THEME_TOKENS,
+  LIGHT_THEME_TOKENS,
   VARIANT_META,
   type ThemeMode,
   type VariantTheme,
@@ -84,38 +87,82 @@ function ThemeIcon({ mode }: { mode: ThemeMode }) {
   );
 }
 
-// 特色主题的「设计感预览卡」：不是一个死板圆点，而是一张迷你主题快照 —— 用该主题的
-// 真实底色渐变铺面，右下角叠一枚主按钮强调色小胶囊，直观预告选中后的观感。
-const VARIANT_PREVIEW: Record<VariantTheme, { bg: string; chip: string }> = {
-  cyberpunk: {
-    bg: "radial-gradient(120% 100% at 100% 100%, rgba(255,61,118,0.55) 0%, rgba(255,61,118,0) 55%), linear-gradient(150deg, #050b1f 0%, #0a1028 50%, #140a1e 100%)",
-    chip: "linear-gradient(135deg, #ff3d9a 0%, #ffd23f 100%)",
-  },
-  warm: {
-    bg: "radial-gradient(120% 100% at 0% 0%, rgba(200,162,122,0.35) 0%, rgba(200,162,122,0) 55%), #1c1712",
-    chip: "linear-gradient(135deg, #c8a27a 0%, #a8785a 100%)",
-  },
-  night: {
-    bg: "radial-gradient(120% 100% at 100% 0%, rgba(136,192,208,0.35) 0%, rgba(136,192,208,0) 55%), #2e3440",
-    chip: "linear-gradient(135deg, #88c0d0 0%, #5e81ac 100%)",
-  },
-  lilac: {
-    bg: "radial-gradient(120% 100% at 0% 0%, rgba(203,166,247,0.4) 0%, rgba(203,166,247,0) 55%), #1e1e2e",
-    chip: "linear-gradient(135deg, #cba6f7 0%, #f5c2e7 100%)",
-  },
-  teal: {
-    bg: "radial-gradient(120% 100% at 100% 0%, rgba(42,161,152,0.4) 0%, rgba(42,161,152,0) 55%), #002b36",
-    chip: "linear-gradient(135deg, #2aa198 0%, #268bd2 100%)",
-  },
-  oled: {
-    bg: "radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 50%), #000000",
-    chip: "linear-gradient(135deg, #f4f4f5 0%, #c7c7cc 100%)",
-  },
-  paper: {
-    bg: "radial-gradient(120% 120% at 0% 0%, #fbf6ea 0%, rgba(251,246,234,0) 50%), linear-gradient(135deg, #f7efdf 0%, #eee2cc 100%)",
-    chip: "linear-gradient(135deg, #6b5335 0%, #4a3925 100%)",
-  },
-};
+// 特色主题的「设计感预览卡」：一张迷你主题快照 —— 用该主题的真实底色渐变铺面（直接
+// 取自 THEME_TOKENS 的 canvas，单一事实源），右下角叠一枚主按钮强调色小胶囊。
+// 从令牌数据派生，避免另建一份会漂移的预览色表（v3 数据驱动，2026-07-04）。
+function previewOf(p: VariantTheme): { bg: string; chip: string } {
+  const meta = VARIANT_META[p];
+  if (meta.base === "dark") {
+    const t = DARK_THEME_TOKENS[p as (typeof DARK_VARIANT_THEMES)[number]];
+    return { bg: t.canvas, chip: `linear-gradient(135deg, ${t.btnFrom} 0%, ${t.btnTo} 100%)` };
+  }
+  const t = LIGHT_THEME_TOKENS[p as (typeof LIGHT_VARIANT_THEMES)[number]];
+  return { bg: t.canvas, chip: `linear-gradient(135deg, ${t.btnFrom} 0%, ${t.btnTo} 100%)` };
+}
+
+// 一组特色主题（深色系 / 浅色系）的预览卡网格。
+function ThemeGroup({
+  heading,
+  items,
+  mode,
+  setMode,
+  tt,
+}: {
+  heading: string;
+  items: readonly VariantTheme[];
+  mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
+  tt: (s: string) => string;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[12px] font-medium text-neutral-500">{heading}</span>
+        <span className="h-px flex-1 bg-neutral-200" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {items.map((p) => {
+          const on = p === mode;
+          const meta = VARIANT_META[p];
+          const preview = previewOf(p);
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setMode(p)}
+              aria-pressed={on}
+              title={tt(meta.label)}
+              className={`group relative overflow-hidden rounded-xl border text-left transition ${
+                on
+                  ? "border-neutral-900 ring-2 ring-neutral-900"
+                  : "border-neutral-200 hover:border-neutral-300 hover:shadow-sm"
+              }`}
+            >
+              <span className="block h-16 w-full" style={{ background: preview.bg }} aria-hidden>
+                <span
+                  className="absolute bottom-8 right-2.5 h-3.5 w-9 rounded-full ring-1 ring-black/10"
+                  style={{ background: preview.chip }}
+                />
+              </span>
+              <span
+                className={`flex items-center justify-between gap-1 px-2.5 py-2 text-[12.5px] font-medium ${
+                  on ? "text-neutral-900" : "text-neutral-600"
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate">{tt(meta.label)}</span>
+                {on && (
+                  <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const router = useRouter();
@@ -126,7 +173,7 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const leoOn = useLeoEnabled();
 
-  // 基础三模式（浅色 / 深色 / 自动）走带图标的大卡片；7 个特色主题走下方预览卡区。
+  // 基础三模式（浅色 / 深色 / 自动）走带图标的大卡片；特色主题按深/浅两组走下方预览卡区。
   const BASE_MODES: ThemeMode[] = ["light", "dark", "auto"];
   const baseLabel = (m: ThemeMode): string => {
     if (m === "light") return themeLabels?.light ?? tt("浅色");
@@ -247,57 +294,24 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
             </div>
           </div>
 
-          {/* 特色主题（7 套：cyberpunk/warm/night/lilac/teal/oled/paper）——迷你主题快照
-              预览卡：真实底色渐变铺面 + 主按钮强调色小胶囊，直观预告观感。 */}
-          <div className="mt-5">
-            <label className="mb-2 block text-[13px] text-neutral-700">{tt("特色主题")}</label>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {VARIANT_THEMES.map((p) => {
-                const on = p === mode;
-                const meta = VARIANT_META[p];
-                const preview = VARIANT_PREVIEW[p];
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setMode(p)}
-                    aria-pressed={on}
-                    title={tt(meta.label)}
-                    className={`group relative overflow-hidden rounded-xl border text-left transition ${
-                      on
-                        ? "border-neutral-900 ring-2 ring-neutral-900"
-                        : "border-neutral-200 hover:border-neutral-300 hover:shadow-sm"
-                    }`}
-                  >
-                    {/* 迷你主题快照：占满卡片的真实底色渐变。 */}
-                    <span
-                      className="block h-16 w-full"
-                      style={{ background: preview.bg }}
-                      aria-hidden
-                    >
-                      {/* 主按钮强调色小胶囊（右下角），预告该主题主按钮观感。 */}
-                      <span
-                        className="absolute bottom-8 right-2.5 h-3.5 w-9 rounded-full ring-1 ring-black/10"
-                        style={{ background: preview.chip }}
-                      />
-                    </span>
-                    {/* 名称条 */}
-                    <span
-                      className={`flex items-center justify-between gap-1 px-2.5 py-2 text-[12.5px] font-medium ${
-                        on ? "text-neutral-900" : "text-neutral-600"
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{tt(meta.label)}</span>
-                      {on && (
-                        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                          <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* 特色主题 —— 按两大基座分组展示（深色系 / 浅色系），呼应主题体系 v3 的
+              「两大基座 + 数据驱动配色包」宗旨。每组一张迷你主题快照预览卡：真实底色
+              渐变铺面（取自 THEME_TOKENS.canvas）+ 主按钮强调色小胶囊，直观预告观感。 */}
+          <div className="mt-6 space-y-5">
+            <ThemeGroup
+              heading={tt("深色系")}
+              items={DARK_VARIANT_THEMES}
+              mode={mode}
+              setMode={setMode}
+              tt={tt}
+            />
+            <ThemeGroup
+              heading={tt("浅色系")}
+              items={LIGHT_VARIANT_THEMES}
+              mode={mode}
+              setMode={setMode}
+              tt={tt}
+            />
           </div>
         </section>
 
