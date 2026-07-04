@@ -118,8 +118,8 @@ export function HomeIntro({
   const [value, setValue] = useState("");
   // 当前生效的「占位符高亮模板」：点 prompt 卡片时设为该卡文案；用户清空输入框时清掉。
   const [highlightTemplate, setHighlightTemplate] = useState<string | null>(null);
-  const submit = () => {
-    const p = value.trim();
+  const submit = (cleanValue?: string) => {
+    const p = (cleanValue ?? value).trim();
     if (p) onStart(p);
   };
 

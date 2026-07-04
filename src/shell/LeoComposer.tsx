@@ -10,7 +10,11 @@ import {
   useState,
 } from "react";
 import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
-import { PromptHighlightArea, type PromptHighlightAreaHandle } from "./PromptHighlightArea";
+import {
+  PromptHighlightArea,
+  stripPromptPlaceholders,
+  type PromptHighlightAreaHandle,
+} from "./PromptHighlightArea";
 import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
@@ -79,8 +83,8 @@ export interface ComposerMenuItem {
 export interface LeoComposerProps {
   value: string;
   onChange: (value: string) => void;
-  /** 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键 */
-  onSubmit?: () => void;
+  /** 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。 */
+  onSubmit?: (cleanValue?: string) => void;
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
@@ -239,8 +243,12 @@ export function LeoComposer({
       !e.nativeEvent.isComposing
     ) {
       e.preventDefault();
-      if (canSend) onSubmit();
+      if (canSend) onSubmit(cleanPromptValue());
     }
+  }
+
+  function cleanPromptValue(): string {
+    return highlightOn ? stripPromptPlaceholders(value, highlightTemplate).trim() : value.trim();
   }
 
   function handleLeoSuggest() {
@@ -447,7 +455,7 @@ export function LeoComposer({
             ) : (
               <button
                 type="button"
-                onClick={() => canSend && onSubmit()}
+                onClick={() => canSend && onSubmit(cleanPromptValue())}
                 disabled={!canSend}
                 aria-label={tt("发送")}
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${

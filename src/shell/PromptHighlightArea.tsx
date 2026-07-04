@@ -24,6 +24,7 @@
 // ============================================================================
 
 import {
+  type ClipboardEvent,
   type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent,
@@ -103,6 +104,18 @@ export function highlightSegments(text: string, template: string | null | undefi
   }
   if (cursor < text.length) out.push({ kind: "lit", text: text.slice(cursor) });
   return out;
+}
+
+/** 去掉模板里的占位 token。用于提交 / 复制，确保蓝色提示不是实际 prompt 内容。 */
+export function stripPromptPlaceholders(text: string, template: string | null | undefined): string {
+  if (!text) return text;
+  TOKEN_RE.lastIndex = 0;
+  if (!template || !TOKEN_RE.test(template)) return text;
+  const { tokens } = templateParts(template);
+  if (!tokens.length) return text;
+  const tokenSet = new Set(tokens);
+  TOKEN_RE.lastIndex = 0;
+  return text.replace(TOKEN_RE, (token) => (tokenSet.has(token) ? "" : token));
 }
 
 export interface PromptHighlightAreaHandle {
@@ -193,6 +206,30 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
 
     const segs = highlightSegments(value, template);
 
+    const handleClipboard = useCallback(
+      (e: ClipboardEvent<HTMLTextAreaElement>, cut: boolean) => {
+        const el = taRef.current;
+        if (!el) return;
+        const start = el.selectionStart ?? 0;
+        const end = el.selectionEnd ?? 0;
+        if (start === end) return;
+        const selected = value.slice(start, end);
+        const cleaned = stripPromptPlaceholders(selected, template);
+        if (cleaned === selected) return;
+        e.preventDefault();
+        e.clipboardData.setData("text/plain", cleaned);
+        if (cut && !disabled) {
+          const next = value.slice(0, start) + value.slice(end);
+          onChange(next);
+          requestAnimationFrame(() => {
+            taRef.current?.setSelectionRange(start, start);
+            autogrow();
+          });
+        }
+      },
+      [autogrow, disabled, onChange, template, value],
+    );
+
     return (
       <div className={`relative ${className}`}>
         {/* 镜像高亮层：与 textarea 完全重叠，仅做上色展示，不接收指针事件。 */}
@@ -205,7 +242,10 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           {segs.map((s, i) => {
             if (s.kind === "placeholder") {
               return (
-                <span key={i} style={{ color: accentColor, fontWeight: 500 }}>
+                <span
+                  key={i}
+                  style={{ color: accentColor, fontWeight: 500, userSelect: "none" }}
+                >
                   {s.text}
                 </span>
               );
@@ -242,6 +282,8 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           onInput={autogrow}
           onScroll={syncScroll}
           onKeyDown={onKeyDown}
+          onCopy={(e) => handleClipboard(e, false)}
+          onCut={(e) => handleClipboard(e, true)}
           spellCheck={false}
           className="relative w-full resize-none border-0 bg-transparent text-transparent caret-neutral-800 outline-none placeholder:text-neutral-400"
           style={{ ...SHARED_TYPO, maxHeight }}

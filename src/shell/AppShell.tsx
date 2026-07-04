@@ -534,7 +534,10 @@ function AppShellInner({
           </div>
         </div>
       ) : (
-        <>
+        /* 主导航态：导航 + 「最近列表」整块占满中部并**可纵向滚动**——导航项很多的站
+           （如 asset 十几项）不会再把底部 token/账户区顶出屏幕外（操作员 2026-07-04
+           截图 asset.oceanleo.com 的病根）。底部账户区固定在下方（mt-auto，滚动区外）。 */
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <nav className="mt-1 px-2">
             {navGroups?.length ? (
               navGroups.map((group, gi) => (
@@ -552,9 +555,8 @@ function AppShellInner({
             )}
           </nav>
 
-          {recentSlot && <div className="mt-3 flex min-h-0 flex-1 flex-col px-2">{recentSlot}</div>}
-          {!recentSlot && <div className="min-h-0 flex-1" />}
-        </>
+          {recentSlot && <div className="mt-3 px-2 pb-1">{recentSlot}</div>}
+        </div>
       )}
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
@@ -646,7 +648,9 @@ function AppShellInner({
       {mobileOpen && (
         <div data-oceanleo-chrome className="fixed inset-0 z-[80] md:hidden">
           <div className="v-fade-in absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-[280px] flex-col overflow-y-auto bg-[#f7f7f7] shadow-xl">
+          {/* 中部滚动交给 sidebarBody 内部的滚动容器（与 desktop 一致），这里不再整体
+              overflow-y-auto，避免底部账户区被推走 / 出现双滚动条。 */}
+          <aside className="absolute left-0 top-0 flex h-full w-[280px] flex-col bg-[#f7f7f7] shadow-xl">
             {sidebarBody}
           </aside>
         </div>
