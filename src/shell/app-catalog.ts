@@ -36,6 +36,13 @@ export interface GoalApp {
   name: string;
   /** 目录卡片图标（emoji / 单字）。 */
   icon?: ReactNode;
+  /**
+   * 目录卡片配图缩略图 URL（宗旨 v15）：图示卡片版式的顶部大图（AI 风格素材，来自
+   * asset.oceanleo.com）。不给则回退 emoji tint 图示。用 assetThumbUrl(key) 拼直链。
+   */
+  thumb?: string;
+  /** 卡片右上角小角标（如「热」「新」）。 */
+  badge?: string;
   /** 卡片图标颜色（hex，可选）；不给按 id 稳定取色。 */
   logoColor?: string;
   /** 一句话简介（卡片副标题）。 */
@@ -48,9 +55,12 @@ export interface GoalApp {
    */
   scenes: string[];
   /**
-   * 进入该成品 app 时，要灌进【共享操作台】的预置：主 prompt 模板（可带 `[占位]`）
-   * + 可选参数补丁。走方案 A 的核心——不同成品复用同一操作台，靠这份预置区分。
-   * 由 `SiteCatalogConsole` 在打开该 app 时调用站点的 applyPreset。
+   * 该成品的「标准起手」预置：主 prompt 模板（可带 `[占位]`）+ 可选参数补丁。
+   *
+   * ⚠️ 宗旨 v15 决策 D 变更：**进入 app 时不再自动灌这份预置**（操作员：一进 app
+   * 左侧操作台必须是空的）。改为：`SiteCatalogConsole` 把它作为「快速起手」板块的
+   * 【第一张卡】注入导航区——用户点它才灌（含参数）。走方案 A 的核心仍是这份预置区分
+   * 不同成品，只是【由用户主动点击触发】而非进入即灌。
    */
   preset?: GoalAppPreset;
   /**

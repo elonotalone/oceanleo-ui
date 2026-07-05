@@ -11,8 +11,8 @@ import {
 } from "react";
 import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
 import {
-  PromptHighlightArea,
-  type PromptHighlightAreaHandle,
+  TemplateFillArea,
+  type TemplateFillAreaHandle,
 } from "./PromptHighlightArea";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -113,15 +113,16 @@ export interface LeoComposerProps {
   autoFocus?: boolean;
   disabled?: boolean;
 
-  // --- 幽灵占位（宗旨 v12.1，2026-07-04 修订） ---
+  // --- 模板实填（宗旨 v15，2026-07-05 改写；旧「幽灵占位」已废弃） ---
   /**
-   * 非空时：把该模板作为**幽灵占位提示**显示在输入框里——`[字段]` 段 accent（蓝）色、
-   * 其余灰提示色。它**选不中、不进 value、点即消失**（= 带局部上色的 placeholder）。
-   * 用于「首页点 prompt 卡片起手」这一幕（点卡片设入模板，用户一打字幽灵即让位）。
+   * 非空时：把该模板灌进一个 contentEditable「模板实填」编辑器（TemplateFillArea）——
+   * **字面文字实打实进 value**（可编辑/可选中/可提交），只有 `[字段]` 占位渲染成 accent
+   * 色的**原子 chip**（选不中内部字符、点/删即整体替换）。用于「点首页卡片 / 点导航模板
+   * 卡起手」：literal 内容用户可直接改，占位提示要填什么。
    * 不传 / null → 用回原生 textarea，行为与旧版完全一致（全家桶其它输入框零回归）。
    */
   highlightTemplate?: string | null;
-  /** 幽灵占位 `[字段]` 用色（默认站点 accent；缺省 #4f46e5）。 */
+  /** 占位 chip `[字段]` 用色（默认站点 accent；缺省 #4f46e5）。 */
   accentColor?: string;
 
   // --- 「＋」附件菜单（2026-06-26） ---
@@ -196,14 +197,15 @@ export function LeoComposer({
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
   const ref = useRef<HTMLTextAreaElement>(null);
-  // 占位符高亮模式下真正的 textarea 藏在 PromptHighlightArea 内，用这个 handle 取。
-  const highlightRef = useRef<PromptHighlightAreaHandle>(null);
-  // 幽灵占位模式：有模板就渲染 PromptHighlightArea（自带 ghost 覆盖层）。value 在两种
-  // 模式下都是用户真实输入（幽灵不进 value），提交无需再清洗。
+  // 模板实填模式下真正的可编辑元素藏在 TemplateFillArea 内（contentEditable div），
+  // 用这个 handle 取。
+  const highlightRef = useRef<TemplateFillAreaHandle>(null);
+  // 模板实填模式（宗旨 v15）：有模板就渲染 TemplateFillArea（字面实填 + 占位 chip）。
+  // value 在两种模式下都是「字面文字 + 未替换占位的 [字段] 字面」，提交无需再清洗。
   const highlightOn = Boolean(highlightTemplate);
-  // 取当前生效的 textarea 元素（普通模式 = ref；幽灵模式 = 组件内部的）。
+  // 取当前生效的输入元素（普通模式 = textarea ref；模板模式 = 组件内部可编辑元素）。
   const currentTextarea = useCallback(
-    () => (highlightOn ? highlightRef.current?.el() ?? null : ref.current),
+    (): HTMLElement | null => (highlightOn ? highlightRef.current?.el() ?? null : ref.current),
     [highlightOn],
   );
   const fileRef = useRef<HTMLInputElement>(null);
@@ -237,7 +239,7 @@ export function LeoComposer({
     Boolean(recentFiles && onPickRecent) ||
     Boolean(attachMenuExtra && attachMenuExtra.length);
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (
       onSubmit &&
       e.key === "Enter" &&
@@ -250,7 +252,7 @@ export function LeoComposer({
   }
 
   function cleanPromptValue(): string {
-    // 幽灵占位不进 value（宗旨 v12.1），提交拿到的就是用户真实输入，无需清洗。
+    // 模板实填模式下 value 已是「字面 + 未替换占位字面」（宗旨 v15），提交即真实输入。
     return value.trim();
   }
 
@@ -333,9 +335,9 @@ export function LeoComposer({
         </div>
       )}
       {highlightOn ? (
-        // 幽灵占位模式（宗旨 v12.1）：普通 textarea + 一层选不中的幽灵覆盖层。占位
-        // `[字段]` 蓝色提示、其余灰色，value 为空时显示、一输入就让位——不进 value。
-        <PromptHighlightArea
+        // 模板实填模式（宗旨 v15）：contentEditable 编辑器，字面文字实填进 value，
+        // 占位 `[字段]` 是 accent 色的原子 chip（选不中内部、可整体删/点即替换）。
+        <TemplateFillArea
           ref={highlightRef}
           value={value}
           onChange={onChange}

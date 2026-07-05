@@ -16,3 +16,5 @@ export * from "./taxonomy";
 export * from "./presence";
 // 宗旨 v13（2026-07-02）：卡片图标品牌色（去蓝紫同底 + 每张卡自己的彩色 logo）。
 export * from "./brand-color";
+// 宗旨 v15（2026-07-05）：asset.oceanleo.com 素材缩略图直链（图示卡片示意图）。
+export * from "./asset-thumb";

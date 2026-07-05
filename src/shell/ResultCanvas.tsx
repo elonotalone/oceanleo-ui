@@ -118,11 +118,10 @@ export function ResultCanvas({
                 guide={guideCtx.guide}
                 accent={accent}
                 onUseExample={(ex) => {
+                  // 宗旨 v15 决策 E：点导航卡片**不跳页**——只把内容灌进左栏操作台，
+                  // 右栏保持在「导航」标签（用户想看结果自己点「结果」）。此前会
+                  // setOnGuide(false)+切到结果 tab，被操作员否掉。
                   guideCtx.useExample(ex);
-                  // 用了示例 → 跳到站点第一个标签（结果区），让用户看到操作台已填。
-                  setOnGuide(false);
-                  const first = tabs[0]?.id;
-                  if (first) onChange(first);
                 }}
               />
             ),

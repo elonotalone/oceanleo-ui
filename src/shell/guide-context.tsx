@@ -28,10 +28,15 @@ import {
 } from "react";
 import { type FunctionGuide, type GuideExample } from "./NavigatorGuide";
 
-/** 左栏填充器：把示例内容灌进当前功能的左栏输入框（+可选图片 / 业务负载）。 */
+/** 左栏填充器：把示例内容灌进当前功能的左栏输入框（+可选图片 / 参数 / 业务负载）。 */
 export type OpsFiller = (
   text: string,
-  opts?: { imageUrl?: string; data?: unknown },
+  opts?: {
+    imageUrl?: string;
+    /** 升级版 prompt（宗旨 v15）：一并 patch 进左栏操作台的其它参数（ratio/style/…）。 */
+    set?: Record<string, unknown>;
+    data?: unknown;
+  },
 ) => void;
 
 interface GuideCtxValue {
@@ -67,7 +72,11 @@ export function GuideProvider({
     () => ({
       guide,
       useExample: (ex) => {
-        fillerRef.current?.(ex.prompt, { imageUrl: ex.imageUrl, data: ex.data });
+        fillerRef.current?.(ex.prompt, {
+          imageUrl: ex.imageUrl,
+          set: ex.set,
+          data: ex.data,
+        });
       },
       registerFiller: (fn) => {
         fillerRef.current = fn;

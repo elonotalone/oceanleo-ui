@@ -123,7 +123,7 @@ export interface FunctionAgentChatProps {
    * 并切到「操作台」；没有操作台表单时才回退填 agent 输入框。 */
   onGuideExample?: (
     text: string,
-    opts?: { imageUrl?: string; data?: unknown },
+    opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown },
   ) => void;
 }
 
@@ -178,7 +178,7 @@ export function FunctionAgentChat({
   //   ③ 纯对话功能区（无操作台表单）→ 回退：填进 agent 输入框并切到「agent」。
   const primaryField = opsPrimaryField || schema.fields[0]?.key || "";
   const fillFromGuide = useCallback<
-    (text: string, opts?: { imageUrl?: string; data?: unknown }) => void
+    (text: string, opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown }) => void
   >(
     (text, opts) => {
       if (onGuideExample) {
@@ -186,7 +186,10 @@ export function FunctionAgentChat({
         return;
       }
       if (showOps && primaryField && onApplyPatch) {
-        onApplyPatch({ set: { [primaryField]: text } });
+        // 宗旨 v15 决策 C：导航卡片 = 升级版 prompt——主字段填文案 + 一并 patch 参数
+        // （ratio/genMode/style/words…，来自示例的 set）。站点 onApplyPatch 早已把
+        // set.<field> 映射进自己的表单 state，故零站点改动即让参数一起填。
+        onApplyPatch({ set: { [primaryField]: text, ...(opts?.set || {}) } });
         setTab("ops");
         return;
       }

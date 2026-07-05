@@ -33,6 +33,13 @@ export interface DirectoryItem {
   /** emoji / 单字 / SVG 节点图标。 */
   icon?: React.ReactNode;
   /**
+   * 宗旨 v15（操作员 2026-07-05）：卡片顶部配图缩略图 URL（AI 风格素材，来自
+   * asset.oceanleo.com）。给了它 → 卡片是「图示卡片」（顶部大图 + 底部标题/简介，
+   * 对照稿定式图示目录）；不给 → 回退 emoji tint 图标版式。 */
+  thumb?: string;
+  /** 卡片右上角小角标（如「热」「新」）。 */
+  badge?: string;
+  /**
    * @deprecated 宗旨 v13（2026-07-02）：卡片图标不再用「深色纯色底 + 白图标」。
    * 新版本用 `logoColor`（图标本身颜色）+ 自动浅色 tint 底。旧 `accent` 传入时会
    * 作为 `logoColor` 的回退值（等价语义），保留字段仅为向后兼容。
@@ -387,6 +394,29 @@ function DirectoryCard({
       } ${onOpen ? "cursor-pointer" : ""}`}
       style={isNew ? { borderColor: `${accent}99` } : undefined}
     >
+      {/* 宗旨 v15：图示卡片顶部大图（16:10，AI 风格素材）。悬浮轻微放大 + 底部渐隐蒙层。 */}
+      {item.thumb && !isNew && (
+        <span
+          className="relative block w-full overflow-hidden border-b border-stone-100"
+          style={{ aspectRatio: "16 / 10", background: iconTintBg }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.thumb}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+          {item.badge && (
+            <span
+              className="absolute left-2 top-2 rounded-md px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm"
+              style={{ background: accent }}
+            >
+              {tt(item.badge)}
+            </span>
+          )}
+        </span>
+      )}
       {(canDelete || (onPrompt && !isNew)) && (
         <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
           {onPrompt && !isNew && (
@@ -421,27 +451,39 @@ function DirectoryCard({
           )}
         </div>
       )}
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex items-start gap-3">
-          <span
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl shadow-sm ring-1"
-            style={{ background: iconTintBg, color: iconColor, boxShadow: `0 1px 0 ${tintOf(iconColor, 0.18)}`, borderColor: tintOf(iconColor, 0.28) }}
-          >
-            {item.icon || "✦"}
-          </span>
-          <div className="min-w-0 flex-1 pt-0.5">
-            {/* i18n：站点 functions/agents 配置里的中文 label/tagline 在渲染点过 tt()
-                （中文原文=key，词典无命中回退原文——用户自建内容安全）。 */}
+      <div className={`flex flex-1 flex-col ${item.thumb && !isNew ? "px-3.5 py-3" : "p-4"}`}>
+        {item.thumb && !isNew ? (
+          // 图示卡片：顶部已有大图，这里只放标题 + 一句简介（无 icon 方块）。
+          <>
             <p className="truncate text-[14px] font-semibold text-stone-900">{tt(item.name)}</p>
             {item.tagline && (
-              <p className="mt-0.5 line-clamp-1 text-[12px] text-stone-500">{tt(item.tagline)}</p>
+              <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-stone-500">{tt(item.tagline)}</p>
             )}
-          </div>
-        </div>
-        {item.capabilities && (
-          <p className="mt-2.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-stone-500">
-            {tt(item.capabilities)}
-          </p>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start gap-3">
+              <span
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl shadow-sm ring-1"
+                style={{ background: iconTintBg, color: iconColor, boxShadow: `0 1px 0 ${tintOf(iconColor, 0.18)}`, borderColor: tintOf(iconColor, 0.28) }}
+              >
+                {item.icon || "✦"}
+              </span>
+              <div className="min-w-0 flex-1 pt-0.5">
+                {/* i18n：站点 functions/agents 配置里的中文 label/tagline 在渲染点过 tt()
+                    （中文原文=key，词典无命中回退原文——用户自建内容安全）。 */}
+                <p className="truncate text-[14px] font-semibold text-stone-900">{tt(item.name)}</p>
+                {item.tagline && (
+                  <p className="mt-0.5 line-clamp-1 text-[12px] text-stone-500">{tt(item.tagline)}</p>
+                )}
+              </div>
+            </div>
+            {item.capabilities && (
+              <p className="mt-2.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-stone-500">
+                {tt(item.capabilities)}
+              </p>
+            )}
+          </>
         )}
       </div>
 

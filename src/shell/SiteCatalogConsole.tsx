@@ -24,7 +24,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
 import { type GoalApp } from "./app-catalog";
-import { type FunctionGuide } from "./NavigatorGuide";
+import { type FunctionGuide, type GuideExample, type GuideSection } from "./NavigatorGuide";
 
 export interface SiteCatalogConsoleProps {
   /** 本站 site_id（计量 / 历史分区 / 深链）。 */
@@ -40,10 +40,21 @@ export interface SiteCatalogConsoleProps {
   /** 共享右栏（结果 / 素材库）。所有成品 app 复用同一个右栏。 */
   renderCanvas: (app: GoalApp) => ReactNode;
   /**
-   * 打开某成品 app 时，把它的预置（prompt 模板 + 参数）应用进共享操作台。站点实现
-   * （它知道自己的 setter）。SiteCatalogConsole 在 app 打开 / 切换时调用。
-   */
+   * @deprecated 宗旨 v15 决策 D：**进入 app 不再自动灌预置**（操作台进入时必须为空）。
+   * 本 prop 不再被自动调用。成品的预置改为「快速起手」板块首卡（用户点才灌，见 §2）。
+   * 保留 prop 仅为向后兼容（站点可继续传，无副作用）。真正的「进入即应用」（如选引擎/
+   * 模式）请用 `onEnterApp`。 */
   applyPreset?: (app: GoalApp) => void;
+  /**
+   * 进入某成品 app 时的**非文本**初始化（宗旨 v15 决策 D）：只用于「选定该成品要用
+   * 哪个引擎 / 模式」这类不往输入框灌文字的开关（如 image 的 cutout 模式、selfie 的
+   * presetId）。**不要**在这里往操作台主输入字段灌 prompt——那违反「进入即空」。
+   * 不传则进入时对操作台不做任何事（保持为空）。按 app.id 触发一次。 */
+  onEnterApp?: (app: GoalApp) => void;
+  /**
+   * 是否把每个成品的 `preset`（标准起手 prompt + 参数）注入其「快速起手」板块首卡
+   * （宗旨 v15 §2）。默认 true。站点若已在 guideSections 里自带该卡可传 false。 */
+  injectPresetCard?: boolean;
   /** 强调色。 */
   accent?: string;
   /** 目录页标题（如「LeoImage 工作台」）。 */
@@ -77,6 +88,8 @@ export function SiteCatalogConsole({
   renderOps,
   renderCanvas,
   applyPreset,
+  onEnterApp,
+  injectPresetCard = true,
   accent = "#4f46e5",
   directoryTitle,
   directorySubtitle,
@@ -91,29 +104,35 @@ export function SiteCatalogConsole({
   const functions: ConsoleFunction[] = useMemo(
     () =>
       apps.map((app) => {
+        const sections = injectPresetCard
+          ? withPresetCard(app.guideSections, app)
+          : app.guideSections;
         const guide: FunctionGuide | undefined =
-          app.guideSections && app.guideSections.length
+          sections && sections.length
             ? {
                 title: `${app.name} · 模板`,
                 intro: app.guideIntro ?? guideIntro ?? GUIDE_INTRO_FALLBACK,
-                sections: app.guideSections,
+                sections,
               }
             : undefined;
         return {
           id: app.id,
           label: app.name,
           icon: app.icon,
+          thumb: app.thumb,
+          badge: app.badge,
           tagline: app.tagline,
           capabilities: app.capabilities,
           scenes: app.scenes,
           agentId: `${siteId}.${app.id}`,
-          ops: <CatalogOps app={app} renderOps={renderOps} applyPreset={applyPreset} />,
+          ops: <CatalogOps app={app} renderOps={renderOps} onEnterApp={onEnterApp} />,
           canvas: renderCanvas(app),
           guide,
         };
       }),
-    [apps, siteId, renderOps, renderCanvas, applyPreset, guideIntro],
+    [apps, siteId, renderOps, renderCanvas, onEnterApp, injectPresetCard, guideIntro],
   );
+  void applyPreset; // 宗旨 v15 决策 D：不再进入即调用（保留 prop 供兼容）。
 
   return (
     <OperatorConsole
@@ -128,25 +147,58 @@ export function SiteCatalogConsole({
       siteId={siteId}
       modelCategories={modelCategories}
       modelSiteId={siteId}
+      // 宗旨 v15 决策 H：进 app 后左「操作台」:右「库/结果」默认 3:4（操作台占 3/7）。
+      defaultRatio={3 / 7}
+      storageKey={`${siteId}_catalog_split`}
     />
   );
 }
 
-// 进入某成品 app 时应用其预置，再渲染站点共享操作台。OperatorConsole 用 key={active.id}
-// 包裹当前功能的 ops，切成品时本组件重挂 → useEffect 再次触发，把新成品的 prompt 模板/
-// 参数灌进同一套操作台（方案 A：同一操作台 UI，靠预置区分成品）。
+// 宗旨 v15 §2：把成品的 preset（标准起手 prompt + 参数）注入其「快速起手」板块的第一
+// 张卡——进入 app 后操作台是空的（决策 D），用户一眼看到「快速起手」，点这张 = 老的
+// 「进入即灌」效果（含参数），但由用户主动触发。约定「快速起手」= 最后一个板块。
+function withPresetCard(
+  sections: GuideSection[] | undefined,
+  app: GoalApp,
+): GuideSection[] | undefined {
+  const preset = app.preset;
+  // 无 preset.prompt（如纯抠图成品，靠 onEnterApp 选模式）→ 不注入，原样返回。
+  if (!preset || preset.prompt == null) return sections;
+  const presetCard: GuideExample = {
+    label: "标准模板（含参数）",
+    hint: "一键套用本成品的标准起手式（含推荐参数）",
+    prompt: preset.prompt,
+    set: preset.set,
+    icon: "⭐",
+    badge: "起手",
+  };
+  if (!sections || sections.length === 0) {
+    return [{ title: "快速起手", examples: [presetCard] }];
+  }
+  // 注入到最后一个板块（约定 = 快速起手）的最前面，避免与其已有「一句话XXX」卡重复
+  // 语义时，标准卡在最上，用户优先看到。
+  const out = sections.map((s) => ({ ...s, examples: [...s.examples] }));
+  const last = out[out.length - 1];
+  last.examples = [presetCard, ...last.examples];
+  return out;
+}
+
+// 进入某成品 app 时只做**非文本**初始化（选引擎/模式，宗旨 v15 决策 D），再渲染站点
+// 共享操作台。OperatorConsole 用 key={active.id} 包裹当前功能的 ops，切成品时本组件重挂
+// → useEffect 再次触发。**不再**往操作台灌 prompt（进入即空；预置改由「快速起手」首卡
+// 按需灌）。
 function CatalogOps({
   app,
   renderOps,
-  applyPreset,
+  onEnterApp,
 }: {
   app: GoalApp;
   renderOps: (app: GoalApp) => ReactNode;
-  applyPreset?: (app: GoalApp) => void;
+  onEnterApp?: (app: GoalApp) => void;
 }) {
   useEffect(() => {
-    applyPreset?.(app);
-    // 仅按 app.id 触发一次（applyPreset 引用变化不重灌，避免覆盖用户已改的输入）。
+    onEnterApp?.(app);
+    // 仅按 app.id 触发一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.id]);
   return <div className="h-full">{renderOps(app)}</div>;

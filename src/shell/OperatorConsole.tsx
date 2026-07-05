@@ -52,6 +52,8 @@ export interface ConsoleFunction {
   icon?: ReactNode;
   /** 可选：「热」「新」之类的小角标。 */
   badge?: string;
+  /** 可选：目录卡片顶部配图缩略图（宗旨 v15，图示卡片版式）。 */
+  thumb?: string;
   /** 目录卡片用的一句话简介。 */
   tagline?: string;
   /** 目录卡片正文（更长的能力说明）。 */
@@ -287,6 +289,8 @@ export function OperatorConsole({
       tagline: f.tagline,
       capabilities: f.capabilities,
       icon: f.icon,
+      thumb: f.thumb,
+      badge: f.badge,
       accent,
       site_id: siteId,
       category: "",

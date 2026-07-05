@@ -126,14 +126,13 @@ export function HomeIntro({
   // 有 siteId 且未显式关掉卡片（defaultTab !== "none"）→ 直接常显 prompt 卡片。
   const withCards = Boolean(siteId) && defaultTab !== "none";
 
-  // 点 prompt 卡片（宗旨 v12.1）：把文案设为**幽灵占位**（选不中、不进 value、点即
-  // 消失），value 保持为空，用户一打字幽灵就让位。绝不再把模板塞进 value（那是 v12
-  // 的病根：占位变成可选的真实字符、要先删才能填）。
+  // 点 prompt 卡片（宗旨 v15）：把该卡文案设为模板 → TemplateFillArea 把字面文字
+  // **实填进 value**（可编辑/可选/可提交），只有 `[字段]` 占位是 accent 色的原子 chip
+  // （选不中内部、点即替换）。先清空 value 触发 TemplateFillArea 重新 seed 该模板。
   const pickPrompt = (p: string) => {
     setValue("");
     setHighlightTemplate(p);
   };
-  // 输入框改动：用户开始输入即固定退出幽灵态；清空后允许幽灵再次显示（模板仍在）。
   const onChangeValue = (v: string) => {
     setValue(v);
   };

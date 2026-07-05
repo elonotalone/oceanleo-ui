@@ -133,7 +133,7 @@ export function HomePromptCards({
         {shown.map((c) => (
           <div
             key={c.id}
-            className="group relative flex min-h-[86px] cursor-pointer flex-col rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
+            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
             onClick={() => onPick(c.prompt)}
             role="button"
             tabIndex={0}
@@ -141,16 +141,30 @@ export function HomePromptCards({
               if (e.key === "Enter") onPick(c.prompt);
             }}
           >
-            <div className="flex items-center gap-1.5">
-              <span className="text-[15px] leading-none">{c.icon}</span>
-              <span className="truncate text-[13px] font-semibold text-stone-800">{tt(c.title)}</span>
-              {c.custom && (
-                <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
-                  {tt("我的")}
-                </span>
-              )}
+            {/* 宗旨 v15：图示卡片顶部大图（AI 风格素材）；无 thumb 回退无图紧凑版。 */}
+            {c.thumb && (
+              <span className="relative block w-full overflow-hidden" style={{ aspectRatio: "16 / 10" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={c.thumb}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              </span>
+            )}
+            <div className={`flex min-h-0 flex-col ${c.thumb ? "px-3 py-2.5" : "min-h-[86px] px-3.5 py-3"}`}>
+              <div className="flex items-center gap-1.5">
+                {!c.thumb && <span className="text-[15px] leading-none">{c.icon}</span>}
+                <span className="truncate text-[13px] font-semibold text-stone-800">{tt(c.title)}</span>
+                {c.custom && (
+                  <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
+                    {tt("我的")}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-stone-500">{tt(c.desc || c.prompt)}</p>
             </div>
-            <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-stone-500">{tt(c.desc || c.prompt)}</p>
             {/* 右上角：查看 / 编辑 该卡片 prompt 文本 */}
             <button
               type="button"
@@ -160,7 +174,7 @@ export function HomePromptCards({
               }}
               title={tt("查看 / 编辑")}
               aria-label={tt("查看 / 编辑")}
-              className="absolute right-1.5 top-1.5 rounded-md p-1 text-stone-300 opacity-0 transition hover:bg-stone-100 hover:text-stone-600 group-hover:opacity-100"
+              className="absolute right-1.5 top-1.5 rounded-md bg-white/80 p-1 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-stone-600 group-hover:opacity-100"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />

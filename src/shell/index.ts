@@ -57,8 +57,13 @@ export type {
   ComposerMenuItem,
 } from "./LeoComposer";
 // 占位符高亮输入区（宗旨 v12：点 prompt 卡片起手，`[字段]` 上色 + 已填值高亮）。
-export { PromptHighlightArea } from "./PromptHighlightArea";
-export type { PromptHighlightAreaProps, PromptHighlightAreaHandle } from "./PromptHighlightArea";
+export { PromptHighlightArea, TemplateFillArea, templateSegments } from "./PromptHighlightArea";
+export type {
+  PromptHighlightAreaProps,
+  PromptHighlightAreaHandle,
+  TemplateFillAreaProps,
+  TemplateFillAreaHandle,
+} from "./PromptHighlightArea";
 // 标准输入卡片（= image 站「① 输入」规范：文字 + 上传/拖拽参考，二合一）。
 export { InputCard } from "./InputCard";
 export type { InputCardProps, InputAttachment } from "./InputCard";

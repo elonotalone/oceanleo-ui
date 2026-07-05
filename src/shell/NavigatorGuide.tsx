@@ -33,12 +33,20 @@ export interface GuideExample {
    * 不给则回退显示 `prompt`（向后兼容）。
    */
   hint?: string;
-  /** 可选：示例配图缩略图 URL（展示用）。 */
+  /** 可选：示例配图缩略图 URL（宗旨 v15：图示卡片顶部大图，AI 风格素材）。 */
   thumb?: string;
+  /** 可选：右上角小角标文案（如「热」「新」），对照稿定式图示目录。 */
+  badge?: string;
   /** 可选：点击时一并放进左栏的图片 URL（如参考图）。左栏支持图片输入的功能用。 */
   imageUrl?: string;
-  /** 可选：卡片左侧 emoji / 图标。 */
+  /** 可选：卡片左侧 emoji / 图标（无 thumb 时的回退图示）。 */
   icon?: ReactNode;
+  /**
+   * 升级版 prompt（宗旨 v15 决策 C）：点这张卡时，除了把 prompt 灌进主输入字段，还把
+   * 这里的参数一并 patch 进左侧操作台（如 image 的 ratio/genMode、word 的 style/words）。
+   * 即「导航卡片不光填文字，还填/选左边各项参数」。
+   */
+  set?: Record<string, unknown>;
   /**
    * 可选：任意业务负载，随填充事件透传给左栏的 onGuideExample（如 image 站把 sceneId
    * 放这里，点示例即套用整套场景预设，而不只是填文本）。
@@ -135,7 +143,11 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
   );
 }
 
-/** 一组模板卡网格（板块内部 / 旧扁平模式共用）。点一张 → 填进左栏操作台。 */
+/**
+ * 一组模板卡网格（板块内部 / 旧扁平模式共用）。点一张 → 填进左栏操作台。
+ * 宗旨 v15：图示卡片版式（对照稿定式图示目录截图）——顶部 AI 风格大图（有 thumb 时）+
+ * 右上角角标 +（悬浮）「填入」蒙层，底部标题 + 一句话。无 thumb 回退 emoji tint 图示。
+ */
 function ExampleGrid({
   examples,
   accent,
@@ -147,41 +159,55 @@ function ExampleGrid({
 }) {
   const tt = useUI();
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
       {examples.map((ex, i) => (
         <button
           key={i}
           type="button"
           onClick={() => onUseExample?.(ex)}
-          className="group flex items-start gap-3 rounded-xl border border-neutral-200 bg-white/80 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm"
+          className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
         >
-          {ex.thumb ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={ex.thumb}
-              alt=""
-              className="h-11 w-11 shrink-0 rounded-lg object-cover ring-1 ring-neutral-200"
-            />
-          ) : (
-            <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg"
-              style={{ background: tintColor(accent), color: accent }}
-            >
-              {ex.icon ?? "✦"}
-            </span>
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-medium text-neutral-800">{tt(ex.label)}</span>
-            {/* 卡片正文只显示一句话概括（hint）；点击后填进左栏的才是完整 prompt。 */}
-            <span className="mt-0.5 line-clamp-2 block text-[12px] leading-relaxed text-neutral-500">
-              {tt(ex.hint ?? ex.prompt)}
+          {/* 图示区（16:10）。有 thumb 用图，无 thumb 用 emoji tint 底。悬浮盖「填入」。 */}
+          <span
+            className="relative block w-full overflow-hidden"
+            style={{ aspectRatio: "16 / 10", background: tintColor(accent) }}
+          >
+            {ex.thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={ex.thumb}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            ) : (
+              <span
+                className="flex h-full w-full items-center justify-center text-3xl"
+                style={{ color: accent }}
+              >
+                {ex.icon ?? "✦"}
+              </span>
+            )}
+            {ex.badge && (
+              <span
+                className="absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                style={{ background: accent }}
+              >
+                {tt(ex.badge)}
+              </span>
+            )}
+            <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition group-hover:opacity-100">
+              <span className="rounded-md bg-white/95 px-2 py-0.5 text-[11px] font-medium" style={{ color: accent }}>
+                {tt("填入 →")}
+              </span>
             </span>
           </span>
-          <span
-            className="mt-0.5 shrink-0 text-[11px] font-medium opacity-0 transition group-hover:opacity-100"
-            style={{ color: accent }}
-          >
-            {tt("填入 →")}
+          {/* 文案区：标题 + 一句话概括（hint）。点击填进左栏的才是完整 prompt。 */}
+          <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
+            <span className="truncate text-[13px] font-medium text-neutral-800">{tt(ex.label)}</span>
+            <span className="line-clamp-1 text-[11px] leading-relaxed text-neutral-500">
+              {tt(ex.hint ?? ex.prompt)}
+            </span>
           </span>
         </button>
       ))}
