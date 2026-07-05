@@ -1617,23 +1617,32 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 /* THEME:GENERATED:END */
 
 /* ============================================================================
- * 模板「真·幽灵占位」输入（TemplateFillArea / PromptHighlightArea，宗旨 v15 定版）
+ * 模板「实填 + 文本流内原地替换占位」输入（TemplateFillArea / PromptHighlightArea，
+ * 宗旨 v15d 定版，对齐豆包「帮我写作」范式）
  * ----------------------------------------------------------------------------
  * 点卡片/示例灌进带 [字段] 的模板时：字面文字是真实可编辑内容；`[字段]` 渲染成一个
- * 空占位槽 <span.oc-ph data-hint="[字段]">，其**幽灵提示**用 ::before(CSS content) 显示：
- *   · 不可选（user-select:none）· 不可删（是 CSS content 不是真实文本）· 不进 value
- *   · 用户往槽里打字 → JS 去掉 data-empty → 提示消失、显示真实内容。
+ * **文本流内的着色填空标记** <span.oc-ph data-hint="[字段]">（内含一个 ZWSP 让空槽能落光标）：
+ *   · 未填（data-empty）：蓝色 [标签] 用 ::before(CSS content) 显示 —— 天生【不可选】
+ *     （拖蓝/双击选不到）、不进 DOM 文本、不进 value；
+ *   · 【在框中输入 = 原地替换】：光标落进空槽后直接在文本流里打字，字符原地替换标签、
+ *     成为**加粗蓝**的真实内容，后文自然顺移（span 是 inline，内容撑开它）——不是往行内
+ *     <input> 小框里打字（那是「在框外输入」，v15c 被否）；
+ *   · 【不可删】：空槽本体删不掉（beforeinput 拦跨越/覆盖/删空槽，见 PromptHighlightArea.tsx）；
+ *   · 【清空回显】：把填的字删空 → 槽回到只含 ZWSP → ::before 标签自动回来；
+ *   · 空槽 value = ""（不吐 [字段]），填了带出真实内容。
  * accent 配色由编辑器 style 里的 --oc-ph-accent 变量下发（各站 accent 不同）。
  * 一处定义、全家桶生效（编译进 theme/ui.css）。
  * ========================================================================== */
 .oc-tmpl-editor .oc-ph {
+  display: inline;
   border-radius: 4px;
-  padding: 0 1px;
   transition: background-color .15s ease;
 }
-/* 空槽：淡 accent 底 + 幽灵提示（::before）。提示纯展示、不可选、不拦鼠标。 */
+/* 未填：淡 accent 底（醒目）+ ::before 蓝色标签。标签不可选，但**不设 pointer-events:none**
+ * —— 否则点不进空槽落光标（要能「在框中输入」）。 */
 .oc-tmpl-editor .oc-ph[data-empty] {
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
+  padding: 0 1px;
 }
 .oc-tmpl-editor .oc-ph[data-empty]::before {
   content: attr(data-hint);
@@ -1642,11 +1651,11 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   opacity: .9;
   -webkit-user-select: none;
   user-select: none;
-  pointer-events: none;
 }
-/* 填了内容的槽：去掉底色，正常黑字（真实内容）。 */
+/* 填了内容的槽：加粗 accent 蓝的真实内容（对齐豆包填入即加粗蓝），去掉底色。 */
 .oc-tmpl-editor .oc-ph:not([data-empty]) {
   background: transparent;
-  color: inherit;
+  color: var(--oc-ph-accent, #4f46e5);
+  font-weight: 600;
   padding: 0;
 }

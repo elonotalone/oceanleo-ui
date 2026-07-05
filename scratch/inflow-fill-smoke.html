@@ -1,0 +1,150 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>v15d 文本流内原地替换 smoke（在框中输入 / 不可删 / 清空回显）</title>
+<style>
+  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 760px; }
+  #ed { border: 1px solid #ddd; border-radius: 10px; padding: 16px 18px; outline: none;
+        white-space: pre-wrap; word-break: break-word; }
+  /* 占位 = 文本流内的行内着色标记（不是 input 框）。
+     未填（data-empty）：用 ::before 显示蓝色 [标签]（::before 天生选不到、不进 DOM 文本）。
+     填了：span 里是真实文字，加粗蓝，原地撑开、后文顺移 —— 这就是「在框中输入」。 */
+  .oc-ph { display: inline; border-radius: 4px; }
+  .oc-ph[data-empty] { background: rgba(79,70,229,.12); padding: 0 1px; }
+  .oc-ph[data-empty]::before {
+    content: attr(data-hint);
+    color: #4f46e5; font-weight: 500; opacity: .9;
+    -webkit-user-select: none; user-select: none; /* 标签不可选 */
+    /* 注意：不能 pointer-events:none，否则点不进这个空槽。点在 span 上即可落光标。 */
+  }
+  /* 填了内容的槽：加粗蓝真实内容（accent），无底色。 */
+  .oc-ph:not([data-empty]) { background: transparent; color: #4f46e5; font-weight: 600; }
+  .hint { color:#888; font-size:13px; margin-top:10px; }
+  pre { background:#f6f6f6; padding:8px; border-radius:6px; white-space:pre-wrap; }
+  .pass { color:#16a34a; } .fail { color:#dc2626; font-weight:700; }
+  b { color:#111; }
+</style>
+<h3>v15d 文本流内原地替换（在框中输入 / 未填不可选·不可删 / 清空回显标签）</h3>
+<p class="hint">
+  手测：① 点 [主题] 那个蓝标签 → 光标落进去，直接打字"新能源汽车" → 标签原地变成加粗蓝的"新能源汽车"，后文右移（<b>在框中输入</b>，不是往小框里打）。
+  ② 把"新能源汽车"删空 → [主题] 标签自动回来（清空回显）。
+  ③ 光标放到 [主题] 左边字面结尾按 Backspace / 或框选覆盖 [主题] 按删 → <b>删不掉</b>这个空槽。
+  ④ 拖蓝整行 → [主题]/[受众]/[字数] 标签选不中。字面文字可正常编辑。value 永不含 [字段] 字面。
+</p>
+<div id="ed" contenteditable="true" spellcheck="false"></div>
+<div class="hint">value =</div>
+<pre id="out"></pre>
+<div class="hint">自动断言：</div>
+<pre id="asserts"></pre>
+<script>
+  const ZWSP = "\u200b";
+  const stripZ = (s) => (s||"").split(ZWSP).join("");
+  const TOKEN_RE = /\[[^\[\]\n]+\]/g;
+  function segs(t){const o=[];let last=0,m;TOKEN_RE.lastIndex=0;while((m=TOKEN_RE.exec(t))){if(m.index>last)o.push({k:'lit',t:t.slice(last,m.index)});o.push({k:'ph',t:m[0]});last=m.index+m[0].length;}if(last<t.length)o.push({k:'lit',t:t.slice(last)});return o;}
+
+  const tmpl = "帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。";
+  const ed = document.getElementById('ed');
+  let slots = [];
+
+  function makeSlot(hint){
+    const sp=document.createElement('span');
+    sp.className='oc-ph'; sp.dataset.ph='1'; sp.dataset.hint=hint; sp.dataset.empty='1';
+    sp.appendChild(document.createTextNode(ZWSP)); // 让空槽能落光标
+    return sp;
+  }
+  function build(t){
+    ed.textContent=''; slots=[];
+    for(const s of segs(t)){
+      if(s.k==='ph'){const sp=makeSlot(s.t); slots.push(sp); ed.appendChild(sp);}
+      else s.t.split('\n').forEach((p,i)=>{if(i>0)ed.appendChild(document.createElement('br'));if(p)ed.appendChild(document.createTextNode(p));});
+    }
+  }
+  // 每次输入：规整每个槽 —— 有真实内容则剔除 ZWSP + 去 data-empty；空则确保有一个 ZWSP + data-empty。
+  function normalizeSlots(){
+    for(const sp of slots){
+      if(!sp.isConnected) continue;
+      const real = stripZ(sp.textContent);
+      if(real===''){
+        // 空：显示标签，保证槽内恰有一个 ZWSP（供光标）
+        if(sp.textContent!==ZWSP){ sp.textContent=ZWSP; }
+        sp.dataset.empty='1';
+      } else {
+        // 有内容：去掉 ZWSP（避免混进 value / 视觉），隐藏标签
+        if(sp.textContent!==real){
+          // 保光标：记录当前位置再重设。简化 smoke：直接设文本、光标置末尾。
+          const sel=getSelection(); const atEnd = sel && sel.anchorNode && sp.contains(sel.anchorNode);
+          sp.textContent=real;
+          if(atEnd){ const r=document.createRange(); r.selectNodeContents(sp); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
+        }
+        delete sp.dataset.empty;
+      }
+    }
+  }
+  function readVal(root){
+    let out='';
+    root.childNodes.forEach(ch=>{
+      if(ch.nodeType===3) out+=stripZ(ch.textContent);
+      else if(ch.nodeType===1){
+        const el=ch;
+        if(el.tagName==='BR') out+='\n';
+        else if(el.dataset&&el.dataset.ph!==undefined) out+=stripZ(el.textContent);
+        else out+=stripZ(el.textContent||'');
+      }
+    });
+    return out;
+  }
+  const out=document.getElementById('out');
+  const show=()=>{ normalizeSlots(); out.textContent=JSON.stringify(readVal(ed)); };
+
+  // 不可删：拦截会删到占位槽的 beforeinput（跨越槽 / 选区覆盖槽）。
+  ed.addEventListener('beforeinput',(e)=>{
+    if(!e.inputType||!e.inputType.startsWith('delete'))return;
+    let ranges=[]; const tr=e.getTargetRanges?e.getTargetRanges():[];
+    if(tr&&tr.length) ranges=tr.map(sr=>{const r=document.createRange();r.setStart(sr.startContainer,sr.startOffset);r.setEnd(sr.endContainer,sr.endOffset);return r;});
+    else { const s=getSelection(); if(s&&s.rangeCount)ranges=[s.getRangeAt(0)]; }
+    for(const r of ranges) for(const sp of slots){
+      if(!sp.isConnected) continue;
+      try{
+        // 若删除区间与某槽相交：
+        if(r.intersectsNode(sp)){
+          // 允许「删除槽内已填的真实字符」（光标/选区完全在槽内部且槽非空）——那是正常填空编辑。
+          const inside = sp.contains(r.startContainer) && sp.contains(r.endContainer);
+          const real = stripZ(sp.textContent);
+          if(inside && real!==''){ continue; } // 槽内删字，放行
+          // 否则（跨越槽 / 覆盖槽 / 想删空槽本体）→ 拦掉，槽删不得。
+          e.preventDefault(); return;
+        }
+      }catch(_){}
+    }
+  });
+  // input 后规整 + 兜底：若某槽被删没了（beforeinput 没拦住的极端情况），重建并回填。
+  ed.addEventListener('input',()=>{
+    const missing = slots.some(s=>!s.isConnected);
+    if(missing){
+      const saved = slots.map(s=> s.isConnected ? stripZ(s.textContent) : '');
+      build(tmpl);
+      slots.forEach((s,i)=>{ if(saved[i]){ s.textContent=saved[i]; delete s.dataset.empty; } });
+    }
+    show();
+  });
+
+  build(tmpl); show();
+
+  // ---- 自动断言（逻辑层，无需人工）----
+  const A=document.getElementById('asserts'); let L=[];
+  const asrt=(n,ok)=>L.push(`<span class="${ok?'pass':'fail'}">${ok?'✓':'✗'} ${n}</span>`);
+  asrt('初始 value 不含 [字段] 字面', !/\[[^\]]+\]/.test(readVal(ed)));
+  asrt('初始 3 个空槽 data-empty', slots.filter(s=>s.dataset.empty!==undefined).length===3);
+  asrt('标签是 ::before（不进 DOM 文本）', stripZ(ed.textContent).indexOf('[主题]')===-1);
+  // 模拟：往 [主题] 槽填字（把 ZWSP 后接真实文字，再 normalize）。
+  slots[0].textContent = ZWSP + "新能源汽车"; normalizeSlots();
+  asrt('填入后槽非空、去 data-empty', slots[0].dataset.empty===undefined);
+  asrt('填入后 value 出现真实内容而非 [主题]', readVal(ed).includes('新能源汽车') && !readVal(ed).includes('[主题]'));
+  asrt('填入后槽内无 ZWSP（干净）', slots[0].textContent==="新能源汽车");
+  // 模拟：清空 → 标签回显。
+  slots[0].textContent=""; normalizeSlots();
+  asrt('清空后 data-empty 回来（标签回显）', slots[0].dataset.empty!==undefined);
+  asrt('清空后槽内恰有 ZWSP（光标可落）', slots[0].textContent===ZWSP);
+  asrt('清空后 value 该段为空', readVal(ed)==="帮我写一篇关于  的文章，面向 ，约  字。");
+  A.innerHTML=L.join('<br>');
+  console.log('inflow smoke asserts rendered');
+</script>

@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>v15c 填空槽 smoke（占位=原生 input：不可选/不可删/填入替换/清空回显）</title>
+<style>
+  body { font: 15px/1.7 system-ui, sans-serif; padding: 24px; max-width: 720px; }
+  #ed { border: 1px solid #ddd; border-radius: 10px; padding: 16px; outline: none;
+        white-space: pre-wrap; word-break: break-word; }
+  /* 占位填空槽：外层 span 原子块（contenteditable=false），内层真实 <input>。 */
+  .oc-ph { display: inline; border-radius: 4px; }
+  .oc-ph[data-empty] { background: rgba(79,70,229,.12); padding: 0 2px; }
+  .oc-ph-input {
+    display: inline; border: 0; outline: 0; background: transparent; padding: 0; margin: 0;
+    font: inherit; letter-spacing: inherit; color: #4f46e5; vertical-align: baseline;
+    min-width: 1ch; box-sizing: content-box;
+  }
+  .oc-ph-input::placeholder { color: #4f46e5; opacity: .85; font-weight: 500; }
+  .hint { color:#888; font-size:13px; margin-top:10px; }
+  pre { background:#f6f6f6; padding:8px; border-radius:6px; }
+  .pass { color: #16a34a; } .fail { color: #dc2626; font-weight: 700; }
+</style>
+<h3>v15c 填空槽（占位 = 原生 &lt;input&gt;：不可选 / 不可删 / 填入替换 / 清空回显）</h3>
+<p class="hint">
+  手测：① 拖选整行 —— 占位提示 [主题]/[受众]/[字数] 选不中（原生 placeholder 选不到）。
+  ② 把光标放到 [主题] 空槽左边的字面结尾，按 <b>Backspace/Delete</b> —— <b>删不掉</b>这个空槽（beforeinput 拦截）。
+  ③ 点进 [主题] 打字"新能源汽车" —— 提示消失显示"新能源汽车"；再全选删空 —— 提示 [主题] <b>自动回来</b>。
+  ④ 字面文字"帮我写一篇关于…"可正常编辑。下方 value 永远不含 [字段] 字面。
+</p>
+<div id="ed" contenteditable="true" spellcheck="false"></div>
+<div class="hint">value =</div>
+<pre id="out"></pre>
+<div class="hint">自动断言：</div>
+<pre id="asserts"></pre>
+<script>
+  const TOKEN_RE = /\[[^\[\]\n]+\]/g;
+  function segs(t){const o=[];let last=0,m;TOKEN_RE.lastIndex=0;while((m=TOKEN_RE.exec(t))){if(m.index>last)o.push({k:'lit',t:t.slice(last,m.index)});o.push({k:'ph',t:m[0]});last=m.index+m[0].length;}if(last<t.length)o.push({k:'lit',t:t.slice(last)});return o;}
+  const tmpl = "帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。";
+  const ed = document.getElementById('ed');
+  let slots = [];
+
+  function autosize(input){
+    const probe=document.createElement('span');
+    probe.style.cssText='position:absolute;left:-9999px;white-space:pre;visibility:hidden';
+    const cs=getComputedStyle(input); probe.style.font=cs.font; probe.style.letterSpacing=cs.letterSpacing;
+    probe.textContent=input.value||input.placeholder||''; document.body.appendChild(probe);
+    input.style.width=(Math.ceil(probe.getBoundingClientRect().width)+4)+'px'; probe.remove();
+  }
+  function makeSlot(hint){
+    const span=document.createElement('span'); span.className='oc-ph'; span.dataset.ph='1';
+    span.dataset.empty='1'; span.contentEditable='false';
+    const input=document.createElement('input'); input.className='oc-ph-input'; input.type='text';
+    input.placeholder=hint; input.value=''; input.autocomplete='off'; input.spellcheck=false;
+    input.addEventListener('input',()=>{ if(input.value==='')span.dataset.empty='1'; else delete span.dataset.empty; autosize(input); show(); });
+    span.appendChild(input); return span;
+  }
+  function build(t){
+    ed.textContent=''; slots=[];
+    for(const s of segs(t)){
+      if(s.k==='ph'){const sp=makeSlot(s.t); slots.push(sp); ed.appendChild(sp);}
+      else s.t.split('\n').forEach((p,i)=>{if(i>0)ed.appendChild(document.createElement('br'));if(p)ed.appendChild(document.createTextNode(p));});
+    }
+    requestAnimationFrame(()=>slots.forEach(sp=>autosize(sp.querySelector('input'))));
+  }
+  function readVal(root){
+    let out='';
+    root.childNodes.forEach(ch=>{
+      if(ch.nodeType===3) out+=ch.textContent||'';
+      else if(ch.nodeType===1){
+        const el=ch;
+        if(el.tagName==='BR') out+='\n';
+        else if(el.dataset&&el.dataset.ph!==undefined){const inp=el.querySelector('input.oc-ph-input'); out+= inp?inp.value:'';}
+        else out+=el.textContent||'';
+      }
+    });
+    return out;
+  }
+  const out=document.getElementById('out');
+  const show=()=>{out.textContent=JSON.stringify(readVal(ed));};
+
+  // 不可删：拦截会删到占位槽的 beforeinput。
+  ed.addEventListener('beforeinput',(e)=>{
+    if(!e.inputType||!e.inputType.startsWith('delete'))return;
+    let ranges=[]; const tr=e.getTargetRanges?e.getTargetRanges():[];
+    if(tr&&tr.length) ranges=tr.map(sr=>{const r=document.createRange();r.setStart(sr.startContainer,sr.startOffset);r.setEnd(sr.endContainer,sr.endOffset);return r;});
+    else { const s=getSelection(); if(s&&s.rangeCount)ranges=[s.getRangeAt(0)]; }
+    for(const r of ranges) for(const sp of slots){ if(sp.isConnected){ try{ if(r.intersectsNode(sp)){e.preventDefault();return;} }catch(_){}}}
+  });
+  ed.addEventListener('input',show);
+  build(tmpl); show();
+
+  // 自动断言。
+  const A=document.getElementById('asserts'); let lines=[];
+  const assert=(name,ok)=>lines.push(`<span class="${ok?'pass':'fail'}">${ok?'✓':'✗'} ${name}</span>`);
+  const v0=readVal(ed);
+  assert('初始 value 不含 [字段] 字面', !/\[[^\]]+\]/.test(v0));
+  assert('初始 3 个空槽 data-empty', slots.filter(s=>s.dataset.empty!==undefined).length===3);
+  assert('提示 = 原生 placeholder（不进 DOM 文本）', ed.textContent.indexOf('[主题]')===-1);
+  // 模拟填入
+  slots[0].querySelector('input').value='新能源汽车';
+  slots[0].querySelector('input').dispatchEvent(new Event('input',{bubbles:true}));
+  assert('填入后 value 出现真实内容而非 [主题]', readVal(ed).includes('新能源汽车') && !readVal(ed).includes('[主题]'));
+  // 模拟清空 → 提示回来
+  slots[0].querySelector('input').value='';
+  slots[0].querySelector('input').dispatchEvent(new Event('input',{bubbles:true}));
+  assert('清空后 data-empty 回来（幽灵提示回显）', slots[0].dataset.empty!==undefined);
+  A.innerHTML=lines.join('<br>');
+  console.log('smoke asserts done');
+</script>
