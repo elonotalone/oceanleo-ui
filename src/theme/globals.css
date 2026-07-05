@@ -1615,3 +1615,38 @@ html.sakura .focus-within\:border-neutral-400:focus-within {
 html.sakura [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
 html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 0.20); }
 /* THEME:GENERATED:END */
+
+/* ============================================================================
+ * 模板「真·幽灵占位」输入（TemplateFillArea / PromptHighlightArea，宗旨 v15 定版）
+ * ----------------------------------------------------------------------------
+ * 点卡片/示例灌进带 [字段] 的模板时：字面文字是真实可编辑内容；`[字段]` 渲染成一个
+ * 空占位槽 <span.oc-ph data-hint="[字段]">，其**幽灵提示**用 ::before(CSS content) 显示：
+ *   · 不可选（user-select:none）· 不可删（是 CSS content 不是真实文本）· 不进 value
+ *   · 用户往槽里打字 → JS 去掉 data-empty → 提示消失、显示真实内容。
+ * accent 配色由编辑器 style 里的 --oc-ph-accent 变量下发（各站 accent 不同）。
+ * 一处定义、全家桶生效（编译进 theme/ui.css）。
+ * ========================================================================== */
+.oc-tmpl-editor .oc-ph {
+  border-radius: 4px;
+  padding: 0 1px;
+  transition: background-color .15s ease;
+}
+/* 空槽：淡 accent 底 + 幽灵提示（::before）。提示纯展示、不可选、不拦鼠标。 */
+.oc-tmpl-editor .oc-ph[data-empty] {
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
+}
+.oc-tmpl-editor .oc-ph[data-empty]::before {
+  content: attr(data-hint);
+  color: var(--oc-ph-accent, #4f46e5);
+  font-weight: 500;
+  opacity: .9;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+/* 填了内容的槽：去掉底色，正常黑字（真实内容）。 */
+.oc-tmpl-editor .oc-ph:not([data-empty]) {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}

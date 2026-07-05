@@ -6,26 +6,31 @@
 // 宗旨 v15（操作员 2026-07-05 下午拍板，推翻 v12.1 的「纯幽灵占位」）：
 //
 //   点 prompt 卡片 / 导航示例后，模板文案要**实打实填进输入框**——字面文字是真实、
-//   可编辑、可选中、可提交的字符；**只有 `[字段]` 这种「需要用户替换的带色占位」**
-//   才是「着色 + 整体不可选的原子块」：
+//   可编辑、可选中、可提交的字符；`[字段]` 则是一个**真·幽灵占位（填空槽）**：
 //     · 【实填】——字面文字直接进 value，可编辑、可选、提交时原样带出；
-//     · 【占位着色】——`[字段]` 以 accent（蓝）色显示；
-//     · 【占位整体不可选】（操作员 2026-07-05 晚更正）——一个 `[字段]` **整段都选不中**：
-//       拖选整行会跳过它、双击也选不到它、光标不进入其内部（user-select:none）。它是
-//       一个纯视觉的「待填标记」；仍可用 Backspace/Delete 作为整体删除（contenteditable
-//       =false 的原子性），用户要填这个空时删掉它再打字即可。
+//     · 【幽灵占位】（操作员 2026-07-05 晚二次更正，定版）——`[字段]` 渲染成一个空的
+//       占位槽 <span.oc-ph data-hint="[字段]">，提示文字用 CSS `::before(content)` 显示：
+//         - **不可选**（user-select:none）：拖选整行 / 双击都选不到它；
+//         - **不可删**：提示是 CSS content、不是真实文本，Backspace 删不掉；
+//         - **不进 value**：空槽序列化为 ""（**不吐 [字段] 字面**）；
+//         - **填入即替换**：用户往槽里打字 → 提示自动消失、显示真实内容、进 value。
+//       （槽内放一个零宽空格 ZWSP 只为让光标能落进空槽；序列化时被剥掉。）
 //
-// 为什么 v12.1（纯幽灵覆盖层，占位不进 value）被推翻：操作员要求「绝大部分字要实打
-// 实填上去」，幽灵方案里连字面文字都不进 value，不满足。为什么 v12（真 textarea +
-// 把整段塞进 value + 提交 strip）也不对：占位在 value 里 → 能选中半个、点不消失、
-// 要 strip 补救。本版是唯一同时满足「字面实填 + 占位原子着色」的模型。
+// 演进史（3 次推翻）：
+//   v12.1 纯幽灵覆盖层（整段都不进 value）→ 操作员：字面文字要实打实填，不满足。
+//   v12 真 textarea + 整段塞进 value + 提交 strip → 占位能选半个、点不消失，靠 strip 补救。
+//   v15a chip=<span contenteditable=false>[字段]</span>（原子块）→ 操作员：占位应「整段
+//        不可选」，我只加了 user-select:none，但它仍**可删**、且 `[字段]` 字面**进了 value**。
+//   v15b（本版，定版）：占位 = 空的「填空槽」，提示走 CSS ::before —— 不可选、不可删、
+//        不进 value、填入即替换。字面文字仍是真实可编辑文本。
 //
-// 技术：单个 contentEditable 的 <div> 作编辑器；占位 chip = 内嵌
-//   <span data-ph contenteditable="false">[字段]</span>。`contenteditable=false`
-// 是浏览器**原生**的「原子内联对象」语义（= 富文本编辑器插 mention/emoji chip 的标准
-// 做法），所以 chip 天然「整体不可分、可整体删、选不中内部」，无需自研选区算法。
-// value 读取 = 遍历子节点：文本节点取 textContent，chip 取其 `[字段]` 文本，拼接。
-// （该序列化算法已在 scratch/tmpl-fill-smoke/smoke.mjs 全场景验证。）
+// 技术：单个 contentEditable 的 <div> 作编辑器。字面段 = 真实文本节点（可编辑，进 value）；
+//   占位段 = <span.oc-ph data-hint="[字段]"> 空槽，提示由 CSS `.oc-ph[data-empty]::before
+//   { content: attr(data-hint) }` 显示（见 theme/globals.css）。CSS ::before 内容天然
+//   「选不中、删不掉、不属于 DOM 文本」，正好满足幽灵语义，无需自研选区/删除拦截。
+//   槽里放一个 ZWSP 让光标可落入空槽；输入时 JS 只切 data-empty 属性（显隐提示）不改文本
+//   （不打断光标）。value 读取 = 遍历子节点：文本节点 / 槽都取 textContent 并剥掉 ZWSP，
+//   空槽→""（不吐 [字段]）。序列化算法已在 scratch/ghost-serialize-smoke.mjs 全场景验证。
 //
 // 回退：无模板（普通输入框）时**不启用** contentEditable——LeoComposer 直接用普通
 // <textarea>（全家桶其它输入框零回归）。本组件只在「点了卡片/示例、带模板」时接管。
@@ -117,23 +122,28 @@ const TYPO: CSSProperties = {
   overflowWrap: "break-word",
 };
 
-// 把编辑器 DOM 序列化成 value：文本节点取 textContent；占位 chip 取其 [字段] 文本；
-// <br>/块级换行还原成 \n。（算法与 smoke.mjs 一致。）
+// 零宽空格：塞进空占位槽里，让光标能落进去（浏览器对完全空的 inline 元素不给光标位）。
+// 序列化 / 判空 / 显示提示时都把它当作「不存在」。
+const ZWSP = "\u200b";
+const stripZwsp = (s: string) => s.split(ZWSP).join("");
+
+// 把编辑器 DOM 序列化成 value：文本节点取 textContent；占位槽(.oc-ph)取其**真实输入**
+// （去掉 ZWSP；没填的槽 = 空串，**不吐 [字段] 字面**）；<br>/块级换行还原成 \n。
+// （算法与 scratch/ghost-serialize-smoke.mjs 一致。）
 function readEditorValue(root: HTMLElement): string {
   let out = "";
   const walk = (node: Node) => {
     node.childNodes.forEach((child) => {
       if (child.nodeType === Node.TEXT_NODE) {
-        out += child.textContent || "";
+        out += stripZwsp(child.textContent || "");
       } else if (child.nodeType === Node.ELEMENT_NODE) {
         const el = child as HTMLElement;
         if (el.dataset && el.dataset.ph !== undefined) {
-          // 占位 chip：原样带出它的 [字段] 文本（用户没替换的占位作字面量提交）。
-          out += el.textContent || "";
+          // 占位槽：只带出用户真实输入（去 ZWSP）。空槽 → ""（幽灵提示不进 value）。
+          out += stripZwsp(el.textContent || "");
         } else if (el.tagName === "BR") {
           out += "\n";
         } else {
-          // 其它元素（浏览器偶尔插的 <div>/<span>）——递归取其文本，块级前补换行。
           if (el.tagName === "DIV" && out && !out.endsWith("\n")) out += "\n";
           walk(el);
         }
@@ -144,32 +154,38 @@ function readEditorValue(root: HTMLElement): string {
   return out;
 }
 
-// 用模板段构造编辑器初始 DOM（字面文字 = 文本节点；占位 = 原子 chip span）。
-function buildEditorDom(root: HTMLElement, template: string, accent: string) {
+// 造一个占位槽 <span.oc-ph data-hint="[字段]">（内含一个 ZWSP 让光标可入）。空槽通过
+// CSS `.oc-ph[data-empty]::before{content:attr(data-hint)}` 显示**幽灵提示**——提示是
+// CSS content：不可选、不可删、不进 value；用户往槽里打字即显示真实内容、提示自动消失。
+function makePlaceholderSlot(hint: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = "oc-ph";
+  span.dataset.ph = "1";
+  span.dataset.hint = hint;
+  span.dataset.empty = "1";
+  span.appendChild(document.createTextNode(ZWSP));
+  return span;
+}
+
+// 每次输入后：只**切换 data-empty 属性**（不改 textContent，避免打断光标）。空槽
+// （去 ZWSP 后为空）→ data-empty=1（CSS ::before 显示幽灵提示）；填了内容 → 去掉
+// data-empty（提示隐藏）。提示走 `.oc-ph[data-empty]::before`，即使槽里只剩空也能显示，
+// 所以不必在输入时回填 ZWSP。ZWSP 只在初始 build 时放（保证空槽一开始有光标位）。
+function syncSlotEmptiness(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(".oc-ph").forEach((slot) => {
+    if (stripZwsp(slot.textContent || "") === "") slot.dataset.empty = "1";
+    else delete slot.dataset.empty;
+  });
+}
+
+// 用模板段构造编辑器初始 DOM（字面文字 = 真实文本节点；占位 = 幽灵槽 .oc-ph）。
+// accent 现由 CSS 变量控制（见下方 accentVar），这里不再内联颜色。
+function buildEditorDom(root: HTMLElement, template: string) {
   root.textContent = "";
   const segs = templateSegments(template);
   for (const s of segs) {
     if (s.kind === "placeholder") {
-      const chip = document.createElement("span");
-      chip.dataset.ph = "1";
-      chip.setAttribute("contenteditable", "false");
-      chip.textContent = s.text;
-      chip.style.color = accent;
-      chip.style.fontWeight = "500";
-      // chip 视觉：淡 accent 底 + 圆角，像可替换的「填空格」。
-      chip.style.background = hexToSoftBg(accent);
-      chip.style.borderRadius = "5px";
-      chip.style.padding = "0 3px";
-      chip.style.margin = "0 1px";
-      // 宗旨 v15 修正（操作员 2026-07-05 晚）：占位 chip **整体都不可选**——不是「选不中
-      // 内部但可整体选/替换」，而是根本选不中（拖选整行会跳过它、双击选不到）。用
-      // user-select:none 做到「整段不可选」；仍保留 contenteditable=false（原子、可整体
-      // Backspace/Delete 删除），这样用户要填这个空时把它删掉再打字即可。
-      chip.style.userSelect = "none";
-      chip.style.setProperty("-webkit-user-select", "none");
-      chip.style.setProperty("-moz-user-select", "none");
-      chip.style.cursor = "default";
-      root.appendChild(chip);
+      root.appendChild(makePlaceholderSlot(s.text));
     } else {
       // 保留换行：把 \n 拆成文本节点 + <br>。
       const parts = s.text.split("\n");
@@ -181,17 +197,6 @@ function buildEditorDom(root: HTMLElement, template: string, accent: string) {
   }
 }
 
-// accent(#rrggbb) → 一个很淡的同色底（rgba 0.1），做 chip 背景。
-function hexToSoftBg(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return "rgba(79,70,229,0.10)";
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r},${g},${b},0.12)`;
-}
-
 /** 把光标放到编辑器末尾。 */
 function caretToEnd(root: HTMLElement) {
   const sel = window.getSelection();
@@ -201,6 +206,29 @@ function caretToEnd(root: HTMLElement) {
   range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/** 把光标落到第一个空占位槽内（ZWSP 之后）；没有空槽则落到编辑器末尾。 */
+function caretToFirstEmptySlot(root: HTMLElement) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const firstEmpty = root.querySelector<HTMLElement>('.oc-ph[data-empty]');
+  if (firstEmpty) {
+    const node = firstEmpty.firstChild ?? firstEmpty;
+    const range = document.createRange();
+    // 落在 ZWSP 之后（offset=1）；若槽内无文本节点则落到槽内起点。
+    if (node.nodeType === Node.TEXT_NODE) {
+      range.setStart(node, (node.textContent || "").length);
+    } else {
+      range.selectNodeContents(firstEmpty);
+      range.collapse(false);
+    }
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return;
+  }
+  caretToEnd(root);
 }
 
 export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptHighlightAreaProps>(
@@ -234,18 +262,20 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       (tmpl: string) => {
         const root = edRef.current;
         if (!root) return;
-        buildEditorDom(root, tmpl, accentColor);
+        buildEditorDom(root, tmpl);
+        syncSlotEmptiness(root);
         seededTemplate.current = tmpl;
         const v = readEditorValue(root);
         if (v !== value) onChange(v);
+        // 光标落到**第一个空占位槽**（用户第一件事就是填第一个空），没有空槽则落末尾。
         requestAnimationFrame(() => {
           root.focus();
-          caretToEnd(root);
+          caretToFirstEmptySlot(root);
         });
       },
-      // value/onChange 读的是最新闭包；只在 accentColor 变时重建 seed 引用即可。
+      // value/onChange 读的是最新闭包；无依赖需重建（accent 走 CSS 变量，不进 seed）。
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [accentColor],
+      [],
     );
 
     // 模板变化（点了新卡片/示例）→ 重建编辑器 DOM，字面进 value、占位成 chip。
@@ -257,12 +287,14 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     }, [template, seed]);
 
     // 「点同一张卡再来一次」：调用方（HomeIntro）点卡片时会先把 value 置空。若此时
-    // DOM 还残留上一次内容且模板未变（seed 不会重跑），这里把 DOM 清掉并**重新 seed**
-    // 当前模板——保证再次点同一张卡也能重灌。用户自己删空（DOM 已空）不进此分支。
+    // 编辑器里仍有**真实内容**（去 ZWSP 后非空）且模板未变（seed 不会重跑），这里重新
+    // seed 当前模板——保证再次点同一张卡也能重灌。
+    // 注意用 readEditorValue（已剥 ZWSP）判空，不用 root.textContent——否则空占位槽里的
+    // ZWSP 会被当成"有内容"，对纯占位模板造成 seed 无限循环。
     useEffect(() => {
       const root = edRef.current;
       if (!root) return;
-      if (value === "" && root.textContent !== "") {
+      if (value === "" && readEditorValue(root) !== "") {
         if (template != null) seed(template);
         else {
           root.textContent = "";
@@ -279,10 +311,14 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     const emit = useCallback(() => {
       const root = edRef.current;
       if (!root) return;
+      // 只切 data-empty 属性（不改 textContent），据此显隐幽灵提示；不打断光标。
+      syncSlotEmptiness(root);
       onChange(readEditorValue(root));
     }, [onChange]);
 
-    const showPlaceholder = value.length === 0;
+    // 通用占位提示（"描述你想要的…"）只在**普通模式**（无模板）且空时显示。模板一旦
+    // 灌入，模板文本 + 幽灵占位本身就是引导，不再叠加通用提示（否则会与占位重叠）。
+    const showPlaceholder = value.length === 0 && template == null;
 
     return (
       <div className={`relative ${className}`}>
@@ -304,8 +340,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           spellCheck={false}
           onInput={emit}
           onKeyDown={(e) => onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLElement>)}
-          className="relative w-full resize-none overflow-y-auto border-0 bg-transparent text-neutral-800 outline-none"
-          style={{ ...TYPO, minHeight: `${rows * 1.625}em`, maxHeight }}
+          className="oc-tmpl-editor relative w-full resize-none overflow-y-auto border-0 bg-transparent text-neutral-800 outline-none"
+          // accent 作为 CSS 变量下发给 .oc-ph 幽灵提示配色（见 theme/globals.css）。
+          style={{ ...TYPO, minHeight: `${rows * 1.625}em`, maxHeight, ["--oc-ph-accent" as string]: accentColor }}
         />
       </div>
     );
