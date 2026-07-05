@@ -7,12 +7,13 @@
 //
 //   点 prompt 卡片 / 导航示例后，模板文案要**实打实填进输入框**——字面文字是真实、
 //   可编辑、可选中、可提交的字符；**只有 `[字段]` 这种「需要用户替换的带色占位」**
-//   才是「着色 + 选不中的原子块」：
+//   才是「着色 + 整体不可选的原子块」：
 //     · 【实填】——字面文字直接进 value，可编辑、可选、提交时原样带出；
 //     · 【占位着色】——`[字段]` 以 accent（蓝）色显示；
-//     · 【占位原子】——一个 `[字段]` 是不可分的整体：可整体删除/替换，但选不中它
-//       内部的半个字，光标不进入其内部；
-//     · 【点即替换】——点占位 / 在占位上打字，即用真实内容替换掉它。
+//     · 【占位整体不可选】（操作员 2026-07-05 晚更正）——一个 `[字段]` **整段都选不中**：
+//       拖选整行会跳过它、双击也选不到它、光标不进入其内部（user-select:none）。它是
+//       一个纯视觉的「待填标记」；仍可用 Backspace/Delete 作为整体删除（contenteditable
+//       =false 的原子性），用户要填这个空时删掉它再打字即可。
 //
 // 为什么 v12.1（纯幽灵覆盖层，占位不进 value）被推翻：操作员要求「绝大部分字要实打
 // 实填上去」，幽灵方案里连字面文字都不进 value，不满足。为什么 v12（真 textarea +
@@ -160,7 +161,14 @@ function buildEditorDom(root: HTMLElement, template: string, accent: string) {
       chip.style.borderRadius = "5px";
       chip.style.padding = "0 3px";
       chip.style.margin = "0 1px";
-      chip.style.cursor = "text";
+      // 宗旨 v15 修正（操作员 2026-07-05 晚）：占位 chip **整体都不可选**——不是「选不中
+      // 内部但可整体选/替换」，而是根本选不中（拖选整行会跳过它、双击选不到）。用
+      // user-select:none 做到「整段不可选」；仍保留 contenteditable=false（原子、可整体
+      // Backspace/Delete 删除），这样用户要填这个空时把它删掉再打字即可。
+      chip.style.userSelect = "none";
+      chip.style.setProperty("-webkit-user-select", "none");
+      chip.style.setProperty("-moz-user-select", "none");
+      chip.style.cursor = "default";
       root.appendChild(chip);
     } else {
       // 保留换行：把 \n 拆成文本节点 + <br>。

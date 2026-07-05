@@ -104,9 +104,14 @@ export function SiteCatalogConsole({
   const functions: ConsoleFunction[] = useMemo(
     () =>
       apps.map((app) => {
+        // 宗旨 v15 修正（操作员 2026-07-05 晚）：点导航卡片 = 把【整套参数】灌进操作台，
+        // 不只是主输入框。为此把「该成品的默认参数」(app.preset.set) 合并进**每一张**
+        // 导航示例：示例自己写了的参数覆盖默认、没写的用成品默认补上。这样点任意卡片
+        // 操作台的文体/字数/比例/画质…全都会对应变化（修「点卡片文体/字数不变」的 bug）。
+        const withDefaults = withGuideDefaults(app.guideSections, app);
         const sections = injectPresetCard
-          ? withPresetCard(app.guideSections, app)
-          : app.guideSections;
+          ? withPresetCard(withDefaults, app)
+          : withDefaults;
         const guide: FunctionGuide | undefined =
           sections && sections.length
             ? {
@@ -152,6 +157,26 @@ export function SiteCatalogConsole({
       storageKey={`${siteId}_catalog_split`}
     />
   );
+}
+
+// 宗旨 v15 修正：把成品默认参数(app.preset.set)合并进每一张导航示例的 set——示例已写
+// 的 key 保留（覆盖），未写的用成品默认补齐。→ 点任意导航卡片都会把【整套参数】灌进
+// 操作台（文体/字数/比例/画质…），而不只是主输入框（修「点卡片参数不变」）。
+function withGuideDefaults(
+  sections: GuideSection[] | undefined,
+  app: GoalApp,
+): GuideSection[] | undefined {
+  const base = app.preset?.set;
+  if (!sections || sections.length === 0) return sections;
+  // 无成品默认参数时也照常返回（示例自带的 set 仍生效）。
+  if (!base || Object.keys(base).length === 0) return sections;
+  return sections.map((s) => ({
+    ...s,
+    examples: s.examples.map((ex) => {
+      const merged = { ...base, ...(ex.set || {}) };
+      return { ...ex, set: merged };
+    }),
+  }));
 }
 
 // 宗旨 v15 §2：把成品的 preset（标准起手 prompt + 参数）注入其「快速起手」板块的第一
