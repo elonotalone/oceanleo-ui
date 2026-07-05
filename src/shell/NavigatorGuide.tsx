@@ -27,6 +27,12 @@ export interface GuideExample {
   label: string;
   /** 点击后灌进左栏输入框的文案（可含 `[占位]` 提示——进输入框后作为幽灵占位）。 */
   prompt: string;
+  /**
+   * 卡片正文（操作员 2026-07-05）：一句话概括这张示例是做什么的（展示用）。
+   * 与 `prompt` 分离——卡片上只显示这句话，点击后填进左栏的是完整的 `prompt`。
+   * 不给则回退显示 `prompt`（向后兼容）。
+   */
+  hint?: string;
   /** 可选：示例配图缩略图 URL（展示用）。 */
   thumb?: string;
   /** 可选：点击时一并放进左栏的图片 URL（如参考图）。左栏支持图片输入的功能用。 */
@@ -121,8 +127,9 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
                   <span className="block text-[13px] font-medium text-neutral-800">
                     {tt(ex.label)}
                   </span>
+                  {/* 卡片正文只显示一句话概括（hint）；点击后填进左栏的才是完整 prompt。 */}
                   <span className="mt-0.5 line-clamp-2 block text-[12px] leading-relaxed text-neutral-500">
-                    {tt(ex.prompt)}
+                    {tt(ex.hint ?? ex.prompt)}
                   </span>
                 </span>
                 <span

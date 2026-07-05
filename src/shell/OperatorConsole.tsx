@@ -191,9 +191,12 @@ export function OperatorConsole({
   const tt = useUI();
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
   // 「库」= 右版面显隐开关（右版面内容 = 各功能的 canvas，即该站自己的结果/库）。
-  // solo/embed（hideTabs）不显示；显式 false 关闭；否则默认启用（子站用 accent 胶囊按钮）。
+  // 宗旨 v12.2（操作员 2026-07-05）：**内嵌（solo/embed）也要显示「库 + 导航」**——
+  // playground/主站工作台内嵌的 app 之前被 hideTabs 砍掉库和导航，看起来比真实站落后
+  // （截图 66716c5f「库对应位置完全没有库」）。现解耦：库只受 `library===false` 显式
+  // 关闭控制，与 hideTabs 无关。显式 false 关闭；否则默认启用（子站用 accent 胶囊按钮）。
   const libraryConfig: SplitLibraryConfig | undefined =
-    hideTabs || library === false
+    library === false
       ? undefined
       : library
         ? library
@@ -387,15 +390,15 @@ export function OperatorConsole({
   const appShellHeader = appShellRendersHeader ? headerHeight : 0;
   const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
-  // 宗旨 v12.1：每个功能页右栏首屏都要有「使用指南」——功能自带 guide 优先；没给的
+  // 宗旨 v12.1/v12.2：每个功能页右栏首屏都要有「导航」——功能自带 guide 优先；没给的
   // 功能，按 siteId 从内置 prompt 库**自动兜底**一份（教学一句话 + 前几张卡片当示例，
-  // 点示例灌进左栏）。这样全家桶所有站零改动即获统一 navigator。embed/solo 不注入。
+  // 点示例灌进左栏操作台）。这样全家桶所有站零改动即获统一 navigator。
+  // v12.2：**内嵌（solo/embed）也注入导航**——与库一致，让内嵌 app 与真实站对齐
+  // （之前 hideTabs 砍掉导航，playground 里 app 落后）。
   const effectiveGuide: FunctionGuide | null =
-    hideTabs
-      ? null
-      : active?.guide
-        ? active.guide
-        : autoGuideForSite(siteId, active?.label ? tt(active.label) : "");
+    active?.guide
+      ? active.guide
+      : autoGuideForSite(siteId, active?.label ? tt(active.label) : "");
 
   return (
     <div className={className}>
@@ -431,13 +434,15 @@ function autoGuideForSite(siteId: string, fnLabel: string): FunctionGuide | null
   if (!id) return null;
   const cards = promptCardsForSite(id);
   if (!cards.length) return null;
+  // 卡片正文只显示一句话（desc）；点击后填进左栏的是完整 prompt（操作员 2026-07-05）。
   const examples = cards.slice(0, 6).map((c) => ({
     label: c.title,
+    hint: c.desc,
     prompt: c.prompt,
     icon: c.icon,
   }));
   return {
-    title: fnLabel ? `${fnLabel} · 使用指南` : "使用指南",
+    title: fnLabel ? `${fnLabel} · 导航` : "导航",
     intro:
       "在左侧「操作台」精细调参后点生成，或切到「agent」直接对它说需求。下面是一些常用示例，点一个即可把内容填进左侧输入框，稍作修改就能用。",
     examples,

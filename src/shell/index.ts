@@ -93,7 +93,7 @@ export { AgentChat } from "./AgentChat";
 export type { AgentChatProps } from "./AgentChat";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
 // agent 独立带工具，结果共用右栏）。
-export { FunctionAgentChat } from "./FunctionAgentChat";
+export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
 // doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
 export { SkillPromptPanel } from "./SkillPromptPanel";

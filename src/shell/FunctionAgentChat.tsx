@@ -24,7 +24,15 @@
 // OperatorConsole / AgentConsole 的 canvas 渲染——两种形态共用同一个右栏。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
@@ -43,6 +51,24 @@ import {
 import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
 import { useUI } from "../i18n/ui/useUI";
 
+// ── 操作台 → agent 桥（宗旨 v12.2，操作员 2026-07-05）────────────────────────
+// 一些功能区的「操作台」不是自成一体的确定性表单，而是一份【结构化需求简报】——
+// 用户在操作台里选类型/风格/要点，点「开始」后把这些拼成一句完整需求【交给本功能区
+// agent 去执行】（典型：AI 建站——操作台填站点类型/页面/风格 → 交给 CodeAct agent 写
+// 真代码）。为此 FunctionAgentChat 通过本 context 暴露一个 submitToAgent(prompt)，让
+// 自定义 opsContent 能把拼好的 prompt push 进 agent 并切到 agent 形态开始跑。
+// 注意：这【不是】v9 的「agent 读操作台 state」——是【用户】在操作台点按钮，主动把
+// 一段文本交给 agent，与在 agent 输入框打字发送等价。
+interface FnAgentBridge {
+  submitToAgent: (prompt: string) => void;
+}
+const FnAgentBridgeCtx = createContext<FnAgentBridge | null>(null);
+
+/** 在自定义 opsContent 里拿到「把简报交给本功能区 agent」的提交器。 */
+export function useFnAgentBridge(): FnAgentBridge | null {
+  return useContext(FnAgentBridgeCtx);
+}
+
 export interface FunctionAgentChatProps {
   /** 本功能区 agent id（"<site_id>.<fn_id>"）。 */
   agentId: string;
@@ -57,8 +83,17 @@ export interface FunctionAgentChatProps {
    * 向后兼容（不再调用），各站可继续传，无副作用。 */
   getOpsState?: () => Record<string, unknown>;
   /**
-   * @deprecated 宗旨 v10：agent 不再回填操作台。保留 prop 仅为向后兼容（不再调用）。 */
+   * 把「补丁」写进操作台 state（key → value）。宗旨 v12.2（操作员 2026-07-05）复活此
+   * prop 的一个正当用途：右栏「导航」示例被点击时，默认行为是把示例完整 prompt 填进
+   * **操作台的主输入字段**（schema.fields[0]，或 opsPrimaryField 指定）并切到「操作台」
+   * 形态——不再灌进 agent。各站早已实现 onApplyPatch 把 patch.set.<field> 映射进自己
+   * 的表单 state，因此复用它即可零改动让「点卡片→填操作台」在全家桶生效。
+   * （agent 仍不读/不写操作台——这里是【用户】点导航示例触发的填充，不是 agent 触发。） */
   onApplyPatch?: (patch: OpsPatch) => void;
+  /**
+   * 操作台「主输入字段」key（导航示例默认填它）。不给则取 schema.fields[0].key。
+   * 用于表单主字段不是第一个、或想显式指定时。 */
+  opsPrimaryField?: string;
   /**
    * agent 产出「分屏产物」(artifact，如生成的图片 / 文档) 时回报给宿主，让右侧结果
    * 画布把它显示出来（操作台与 agent 共用右栏结果区）。 */
@@ -82,9 +117,10 @@ export interface FunctionAgentChatProps {
   /** app 图标（emoji / 单字），与 appLabel 一起展示。 */
   appIcon?: string;
   /**
-   * 宗旨 v12.1：右栏「使用指南」示例被点击时的处理器。给了它 → 由站点决定怎么把示例
+   * 宗旨 v12.1/v12.2：右栏「导航」示例被点击时的处理器。给了它 → 由站点决定怎么把示例
    * 灌进左栏（如 image 站按 opts.data 里的 sceneId 套用整套场景预设并切到「操作台」）。
-   * 不给 → 默认行为：把 text 填进 agent 输入框并切到「agent」形态。 */
+   * 不给 → 默认：把完整 prompt 填进【操作台主输入字段】(onApplyPatch + primaryField)
+   * 并切到「操作台」；没有操作台表单时才回退填 agent 输入框。 */
   onGuideExample?: (
     text: string,
     opts?: { imageUrl?: string; data?: unknown },
@@ -100,7 +136,8 @@ export function FunctionAgentChat({
   schema,
   opsContent,
   getOpsState: _getOpsState,
-  onApplyPatch: _onApplyPatch,
+  onApplyPatch,
+  opsPrimaryField,
   onArtifact,
   onRunAction: _onRunAction,
   agentModel = "",
@@ -113,7 +150,6 @@ export function FunctionAgentChat({
   onGuideExample,
 }: FunctionAgentChatProps) {
   void _getOpsState;
-  void _onApplyPatch;
   void _onRunAction;
   const tt = useUI();
   const opsLabel = opsLabelProp ?? tt("操作台");
@@ -133,11 +169,14 @@ export function FunctionAgentChat({
     setInput((v) => (v ? v + " " : "") + text);
   }, []);
 
-  // 宗旨 v12.1：注册「使用指南」示例填充器——点右栏指南里的示例时被调用。
-  //   · 站点给了 onGuideExample → 交给站点处理（如 image 按 data.sceneId 套场景预设
-  //     并切到「操作台」）。
-  //   · 没给 → 默认：把 text 填进 agent 输入框并切到「agent」形态（示例是自然语言
-  //     prompt，最适合喂给 agent）。
+  // 宗旨 v12.2（操作员 2026-07-05）：注册「导航」示例填充器——点右栏导航里的示例时
+  // 被调用。**默认填「操作台」，不再填 agent**（操作员截图 dde6ce27：点卡片内容应进
+  // 左侧操作台输入框，而不是 agent 输入框）。优先级：
+  //   ① 站点给了 onGuideExample → 交给站点处理（如 image 按 data.sceneId 套场景预设）。
+  //   ② 有操作台表单（showOps）+ 能写回（onApplyPatch）→ 把完整 prompt 填进操作台
+  //      **主输入字段**（opsPrimaryField 或 schema.fields[0].key）并切到「操作台」形态。
+  //   ③ 纯对话功能区（无操作台表单）→ 回退：填进 agent 输入框并切到「agent」。
+  const primaryField = opsPrimaryField || schema.fields[0]?.key || "";
   const fillFromGuide = useCallback<
     (text: string, opts?: { imageUrl?: string; data?: unknown }) => void
   >(
@@ -146,10 +185,16 @@ export function FunctionAgentChat({
         onGuideExample(text, opts);
         return;
       }
+      if (showOps && primaryField && onApplyPatch) {
+        onApplyPatch({ set: { [primaryField]: text } });
+        setTab("ops");
+        return;
+      }
+      // 纯对话功能区（无操作台）：示例填进 agent 输入框。
       setInput(text);
       setTab("agent");
     },
-    [onGuideExample],
+    [onGuideExample, showOps, primaryField, onApplyPatch],
   );
   useRegisterOpsFiller(fillFromGuide);
 
@@ -229,12 +274,15 @@ export function FunctionAgentChat({
     onArtifact(a.meta, a.content);
   }, [messages, onArtifact]);
 
-  async function send() {
-    const prompt = input.trim();
-    const uploaded = atts.ready();
+  async function send(override?: string) {
+    // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
+    const prompt = (override ?? input).trim();
+    const uploaded = override ? [] : atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
-    setInput("");
-    atts.clear();
+    if (!override) {
+      setInput("");
+      atts.clear();
+    }
     setError(null);
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
@@ -317,14 +365,31 @@ export function FunctionAgentChat({
     else setError(r.error || tt("发送失败"));
   }
 
+  // 操作台简报桥：让自定义 opsContent 能把拼好的 prompt 交给本功能区 agent 执行。
+  const bridge = useMemo<FnAgentBridge>(
+    () => ({
+      submitToAgent: (prompt: string) => {
+        const p = (prompt || "").trim();
+        if (!p) return;
+        setTab("agent");
+        void send(p);
+      },
+    }),
+    // send 是稳定闭包（读 taskId/busy 等 state 已在内部处理）；tab 切换用 setter。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [taskId, busy, agentId, siteId, agentModel],
+  );
+
   // ── 操作台形态：直接渲染各站表单（含底部「生成」主按钮）──────────────────────
   if (tab === "ops") {
     return (
-      <div className="flex h-full flex-col">
-        {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
-        {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
-        <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
-      </div>
+      <FnAgentBridgeCtx.Provider value={bridge}>
+        <div className="flex h-full flex-col">
+          {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
+          {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
+          <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
+        </div>
+      </FnAgentBridgeCtx.Provider>
     );
   }
 
