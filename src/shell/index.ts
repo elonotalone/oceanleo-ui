@@ -68,6 +68,11 @@ export type { StudioProps } from "./Studio";
 // 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
 export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
+// 宗旨 v14（2026-07-05）：成品 app 目录数据模型 + 统一模板组件（改一次模板全站同步）。
+export { SiteCatalogConsole } from "./SiteCatalogConsole";
+export type { SiteCatalogConsoleProps } from "./SiteCatalogConsole";
+export { presetToOpsPatch } from "./app-catalog";
+export type { GoalApp, GoalAppPreset } from "./app-catalog";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
@@ -75,7 +80,7 @@ export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // 宗旨 v12.1（2026-07-04）：功能页「使用指南（navigator）」——右栏（库）默认展开、
 // 首屏是导航页（教学文案 + 示例，点示例灌进左栏）。ConsoleFunction.guide 配置。
 export { NavigatorGuide } from "./NavigatorGuide";
-export type { NavigatorGuideProps, FunctionGuide, GuideExample } from "./NavigatorGuide";
+export type { NavigatorGuideProps, FunctionGuide, GuideExample, GuideSection } from "./NavigatorGuide";
 export {
   GuideProvider,
   useFunctionGuide,

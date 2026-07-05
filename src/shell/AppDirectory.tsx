@@ -46,6 +46,12 @@ export interface DirectoryItem {
   /** 分类维度输入：站 id + 旧分区 id。 */
   site_id?: string;
   category?: string;
+  /**
+   * 宗旨 v14（操作员 2026-07-05）：本条目归属的【场景分类】（各站自定义，可多选）。
+   * 给 AppDirectory 传 `scenes` 模式时，用它出横排分类 chips（替代全局二元分类器）。
+   * 一个条目可同时属于多个场景（每个场景 chip 下都会出现它）。
+   */
+  scenes?: string[];
   /** 是否已加入工作台（控制「加入工作台」按钮态）。 */
   added?: boolean;
   /** 是否可删除（控制卡片右上角「删除」按钮是否出现）。需配合 AppDirectory.onDelete。 */
@@ -95,6 +101,15 @@ export interface AppDirectoryProps {
   nativeFirst?: boolean;
   /** 「按分类」维度的标签，默认「按分类」（skill 站可传「按技能」）。 */
   nativeLabel?: string;
+  /**
+   * 宗旨 v14（操作员 2026-07-05）：场景分类模式。开启后**不再显示「按行业/按内容」
+   * 分类方式切换器**，横排 chips 直接是各站自定义的【场景词】（数据驱动，从条目的
+   * `scenes[]` 聚合，按首次出现顺序）。一个条目可属多个场景（每个场景 chip 下都出现）。
+   * 用于成品 app 目录（image/word/…）：顶部横排 = 面向场景的分类。
+   */
+  sceneMode?: boolean;
+  /** 场景模式下「全部」chip 的文字，默认「全部」。 */
+  sceneAllLabel?: string;
 }
 
 export function AppDirectory({
@@ -113,11 +128,14 @@ export function AppDirectory({
   compact = false,
   nativeFirst = false,
   nativeLabel,
+  sceneMode = false,
+  sceneAllLabel,
 }: AppDirectoryProps) {
   const tt = useUI();
   const openLabelText = openLabel ?? tt("打开");
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
+  const sceneAllText = sceneAllLabel ?? tt("全部");
   // 分类方式 + 当前选中分类（"all" = 全部）。nativeFirst 时默认「按分类」（原生 category）。
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
@@ -149,6 +167,26 @@ export function AppDirectory({
     return m;
   }, [items, mode]);
 
+  // ── 场景模式（宗旨 v14）：横排 chips = 各站自定义场景词（数据驱动，多值） ──
+  // 每个场景的条目数（一个条目可属多个场景，故都计入各自场景）。
+  const sceneCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of items) {
+      const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
+      for (const s of list) m.set(s, (m.get(s) || 0) + 1);
+    }
+    return m;
+  }, [items]);
+  // 场景 chips：按首次出现顺序（保序，尊重各站在数据里排的场景顺序），「全部」恒在最前。
+  const sceneChips = useMemo(() => {
+    const seen: string[] = [];
+    for (const it of items) {
+      const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
+      for (const s of list) if (!seen.includes(s)) seen.push(s);
+    }
+    return [{ id: "all", label: sceneAllText, icon: "✦" }, ...seen.map((s) => ({ id: s, label: s, icon: "▪" }))];
+  }, [items, sceneAllText]);
+
   // 当前维度可见的分类 chips（「全部」恒在最前；其余仅显示有条目的）。
   // native 维度的可选分类是数据驱动的（从条目集合现算），其余维度用固定枚举。
   const chips = useMemo(() => {
@@ -160,7 +198,14 @@ export function AppDirectory({
   const visible = useMemo(() => {
     if (compact) return items;
     return items.filter((it) => {
-      if (cat !== "all" && classify(it, mode) !== cat) return false;
+      if (sceneMode) {
+        if (cat !== "all") {
+          const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
+          if (!list.includes(cat)) return false;
+        }
+      } else if (cat !== "all" && classify(it, mode) !== cat) {
+        return false;
+      }
       if (!normFilter) return true;
       return (
         it.name.toLowerCase().includes(normFilter) ||
@@ -168,7 +213,7 @@ export function AppDirectory({
         (it.capabilities || "").toLowerCase().includes(normFilter)
       );
     });
-  }, [items, cat, mode, normFilter, compact]);
+  }, [items, cat, mode, normFilter, compact, sceneMode]);
 
   // 切换分类方式时，把选中分类重置回「全部」（避免残留另一维度的 id）。
   function switchMode(next: TaxonomyMode) {
@@ -181,24 +226,29 @@ export function AppDirectory({
     <div className="space-y-5">
       {!compact && (
       <>
-      {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ── */}
+      {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ──
+          场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl bg-stone-100 p-1">
-          {modeTabs.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => switchMode(m.id)}
-              className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
-                mode === m.id
-                  ? "bg-white text-stone-900 shadow-sm"
-                  : "text-stone-500 hover:text-stone-700"
-              }`}
-            >
-              {tt(m.label)}
-            </button>
-          ))}
-        </div>
+        {sceneMode ? (
+          <div />
+        ) : (
+          <div className="inline-flex rounded-xl bg-stone-100 p-1">
+            {modeTabs.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => switchMode(m.id)}
+                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
+                  mode === m.id
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
+                }`}
+              >
+                {tt(m.label)}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {toolbarExtra}
           <div className="flex items-center gap-2 rounded-xl border border-stone-200/90 bg-white/80 px-3 py-1.5 shadow-sm">
@@ -225,11 +275,12 @@ export function AppDirectory({
         </div>
       </div>
 
-      {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏） ── */}
+      {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏）──
+          场景模式用 sceneChips（各站自定义场景词）；否则用全局二元分类 chips。 */}
       <div className="flex flex-wrap gap-2">
-        {chips.map((c) => {
+        {(sceneMode ? sceneChips : chips).map((c) => {
           const on = c.id === cat;
-          const n = c.id === "all" ? items.length : counts.get(c.id) || 0;
+          const n = c.id === "all" ? items.length : (sceneMode ? sceneCounts.get(c.id) : counts.get(c.id)) || 0;
           return (
             <button
               key={c.id}

@@ -46,6 +46,19 @@ export interface GuideExample {
   data?: unknown;
 }
 
+/**
+ * 导航区「一个板块」= 一组模板示例 + 板块标题（操作员 2026-07-05）。
+ * 每个成品 app 的库→导航区固定放【三个板块】，每板块几张模板卡，点一张即把该模板
+ * 灌进左侧操作台。板块让「专门针对海报的几份 prompt」有清晰的归类（如
+ * 「行业模板 / 风格模板 / 快速起手」）。
+ */
+export interface GuideSection {
+  /** 板块标题（如「行业模板」「风格方向」「快速起手」）。 */
+  title: string;
+  /** 该板块下的模板卡（点一张 → 填进左栏操作台）。 */
+  examples: GuideExample[];
+}
+
 /** 一个功能页的「使用指南」内容配置。 */
 export interface FunctionGuide {
   /** 顶部一句话标题（默认用功能名 + “使用指南”）。 */
@@ -54,9 +67,15 @@ export interface FunctionGuide {
   intro?: ReactNode;
   /** 可选：教学配图 URL（展示在正文上方，如效果对比图）。 */
   heroImage?: string;
-  /** 示例列表（点一个 → 填进左栏）。 */
+  /**
+   * 分板块的模板区（操作员 2026-07-05 强制：每个成品 app 库→导航固定三个板块）。
+   * 给了 sections → 导航区按板块渲染（板块标题 + 该板块模板卡）。与旧 `examples`
+   * 二选一：给 sections 时忽略 examples；两者都不给则无模板区。
+   */
+  sections?: GuideSection[];
+  /** 示例列表（点一个 → 填进左栏）。旧扁平模式；`sections` 存在时忽略它。 */
   examples?: GuideExample[];
-  /** 示例区标题，默认「试试这些示例」。 */
+  /** 扁平示例区标题（仅旧 `examples` 模式用），默认「试试这些示例」。 */
   examplesLabel?: string;
 }
 
@@ -69,7 +88,9 @@ export interface NavigatorGuideProps {
 
 export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: NavigatorGuideProps) {
   const tt = useUI();
-  const examples = guide.examples ?? [];
+  // 板块模式（操作员 2026-07-05）优先：给了 sections 就按板块渲染；否则回退旧扁平 examples。
+  const sections = (guide.sections ?? []).filter((s) => (s.examples?.length ?? 0) > 0);
+  const flatExamples = guide.examples ?? [];
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5">
       {/* 顶部教学区 */}
@@ -94,55 +115,76 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
         )}
       </div>
 
-      {/* 示例区：点一个 → 填进左栏输入框 */}
-      {examples.length > 0 && (
-        <div className="space-y-2.5">
-          <p className="text-[12px] font-medium text-neutral-500">
-            {tt(guide.examplesLabel ?? "试试这些示例")}
-          </p>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {examples.map((ex, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onUseExample?.(ex)}
-                className="group flex items-start gap-3 rounded-xl border border-neutral-200 bg-white/80 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm"
-              >
-                {ex.thumb ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={ex.thumb}
-                    alt=""
-                    className="h-11 w-11 shrink-0 rounded-lg object-cover ring-1 ring-neutral-200"
-                  />
-                ) : (
-                  <span
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg"
-                    style={{ background: tintColor(accent), color: accent }}
-                  >
-                    {ex.icon ?? "✦"}
-                  </span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium text-neutral-800">
-                    {tt(ex.label)}
-                  </span>
-                  {/* 卡片正文只显示一句话概括（hint）；点击后填进左栏的才是完整 prompt。 */}
-                  <span className="mt-0.5 line-clamp-2 block text-[12px] leading-relaxed text-neutral-500">
-                    {tt(ex.hint ?? ex.prompt)}
-                  </span>
-                </span>
-                <span
-                  className="mt-0.5 shrink-0 text-[11px] font-medium opacity-0 transition group-hover:opacity-100"
-                  style={{ color: accent }}
-                >
-                  {tt("填入 →")}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* 板块模式：三个板块各自「标题 + 模板卡网格」，点一张 → 填进左栏操作台 */}
+      {sections.length > 0
+        ? sections.map((sec, si) => (
+            <div key={si} className="space-y-2.5">
+              <p className="text-[12px] font-semibold text-neutral-500">{tt(sec.title)}</p>
+              <ExampleGrid examples={sec.examples} accent={accent} onUseExample={onUseExample} />
+            </div>
+          ))
+        : flatExamples.length > 0 && (
+            <div className="space-y-2.5">
+              <p className="text-[12px] font-medium text-neutral-500">
+                {tt(guide.examplesLabel ?? "试试这些示例")}
+              </p>
+              <ExampleGrid examples={flatExamples} accent={accent} onUseExample={onUseExample} />
+            </div>
+          )}
+    </div>
+  );
+}
+
+/** 一组模板卡网格（板块内部 / 旧扁平模式共用）。点一张 → 填进左栏操作台。 */
+function ExampleGrid({
+  examples,
+  accent,
+  onUseExample,
+}: {
+  examples: GuideExample[];
+  accent: string;
+  onUseExample?: (ex: GuideExample) => void;
+}) {
+  const tt = useUI();
+  return (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      {examples.map((ex, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onUseExample?.(ex)}
+          className="group flex items-start gap-3 rounded-xl border border-neutral-200 bg-white/80 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm"
+        >
+          {ex.thumb ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={ex.thumb}
+              alt=""
+              className="h-11 w-11 shrink-0 rounded-lg object-cover ring-1 ring-neutral-200"
+            />
+          ) : (
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg"
+              style={{ background: tintColor(accent), color: accent }}
+            >
+              {ex.icon ?? "✦"}
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium text-neutral-800">{tt(ex.label)}</span>
+            {/* 卡片正文只显示一句话概括（hint）；点击后填进左栏的才是完整 prompt。 */}
+            <span className="mt-0.5 line-clamp-2 block text-[12px] leading-relaxed text-neutral-500">
+              {tt(ex.hint ?? ex.prompt)}
+            </span>
+          </span>
+          <span
+            className="mt-0.5 shrink-0 text-[11px] font-medium opacity-0 transition group-hover:opacity-100"
+            style={{ color: accent }}
+          >
+            {tt("填入 →")}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

@@ -57,6 +57,12 @@ export interface ConsoleFunction {
   /** 目录卡片正文（更长的能力说明）。 */
   capabilities?: string;
   /**
+   * 宗旨 v14（操作员 2026-07-05）：本成品 app 归属的【场景分类】（各站自定义词，可多选，
+   * 如 ["职场精选","机关单位"]）。目录页顶部横排分类器按它聚合成 chips，点某场景过滤出
+   * 该场景下的成品卡。一个成品可同时属于多个场景。不给则落到「其它」。
+   */
+  scenes?: string[];
+  /**
    * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
    * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
    */
@@ -284,7 +290,11 @@ export function OperatorConsole({
       accent,
       site_id: siteId,
       category: "",
+      scenes: f.scenes,
     }));
+    // 宗旨 v14：任一功能带了自定义场景词 → 目录顶部横排分类器切到「场景模式」
+    // （各站自定义场景 chips），而非全局「按行业/按内容」。
+    const sceneMode = functions.some((f) => (f.scenes?.length ?? 0) > 0);
     return (
       <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
         {(directoryTitle || directorySubtitle || modelPicker) && (
@@ -310,6 +320,7 @@ export function OperatorConsole({
           accent={accent}
           openLabel={tt("打开")}
           onOpen={(it) => openFn(it.id)}
+          sceneMode={sceneMode}
         />
       </div>
     );
