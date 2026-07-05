@@ -1,33 +1,42 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — TemplateFillArea（模板「实填 + 文本流内原地替换占位」输入区，单一事实源）
+// @oceanleo/ui — TemplateFillArea（模板「实填 + 文本流内填空槽」输入区，单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v15（操作员 2026-07-05 多次拍板，本版 = v15d 定版，对齐豆包「帮我写作」范式）：
+// 宗旨 v15（操作员 2026-07-05 多次拍板；本版 = v15e 定版，「嵌套编辑宿主」架构）：
 //
-//   点 prompt 卡片 / 导航示例后，模板文案要**实打实填进输入框**——字面文字是真实、可编辑、
-//   可选中、可提交的字符；`[字段]` 则是一个**文本流内的着色填空标记**：
-//     · 【实填字面】——卡片里的普通文字直接进 value，可编辑、可选、原样提交；
-//     · 【占位=文本流内着色标记】——`[字段]` 渲染成一个行内空 <span.oc-ph>，其蓝色标签用
-//        CSS `::before(content: attr(data-hint))` 显示（标签是 CSS content：天生不可选、
-//        不进 DOM 文本、不进 value）；
-//     · 【在框中输入 = 原地替换】——光标落进这个空槽后**直接在文本流里打字**，字符原地
-//        替换掉 [字段] 标签，成为**加粗蓝**的真实内容，并把后文自然顺移（span 是 inline，
-//        内容撑开它）。这**不是**往一个行内 <input> 小框里打字（那是「在框外输入」，v15c 被
-//        操作员否掉）；
-//     · 【不可选】——标签是 ::before content，拖蓝/双击都选不到；
-//     · 【不可删】——空槽本体删不掉：beforeinput 拦掉「跨越槽 / 覆盖槽 / 删空槽」的删除；
-//        槽内删自己填的字照常放行（那是正常填空编辑）。极端漏网情况由 MutationObserver 兜底
-//        重建并按序回填；
-//     · 【清空即回显】——把槽里填的字删空 → 槽回到「只含一个 ZWSP」→ ::before 标签自动回来；
-//     · 【不进 value 的是标签、进 value 的是输入】——空槽序列化为 ""（**不吐 [字段]**）。
+//   点 prompt 卡片 / 导航示例后，模板文案**实打实填进输入框**——字面文字是真实、可编辑、
+//   可选中、可提交的字符；`[字段]` 是一个**文本流内的着色填空槽**：
+//     · 【在框中输入】——光标点进槽里，打字/中文输入法都发生在**槽内部**，字在句子里
+//        原地出现、标签消失、后文顺移（豆包「帮我写作」范式）；
+//     · 【不可选】——蓝色 [标签] 是 CSS ::before content，拖蓝/双击选不到、不进 value；
+//     · 【不可删】——槽本体删不掉：外层删除动作碰到槽一律拦截；槽内删自己填的字照常；
+//        删到最后一个字也只清空槽、槽本身还在（标签回显）；
+//     · 【清空即回显】——槽里的字删空 → 蓝色 [标签] 自动回来；
+//     · 【空槽不进 value】——空槽序列化为 ""（**绝不吐 [字段] 字面**）。
 //
-// 为什么是「文本流内 ZWSP 空槽 + ::before 标签」而不是「行内 <input> 框」（推翻 v15c）：
-//   v15c 把占位做成行内 <input>，打字是在一个独立小框里 → 操作员截图指出这是「在框外输入」，
-//   要的是「在框中输入」= 字直接进句子、原地替换标签、后文顺移（豆包范式）。所以回到
-//   contentEditable 文本流方案，但补齐 v15b 缺的「不可删」（beforeinput 拦截 + 兜底）。
-//   标签用 ::before 天然满足不可选/不进 value；ZWSP 让空 inline 槽能落光标；input 后规整把
-//   真实内容里的 ZWSP 剔掉（保光标）、空槽补回 ZWSP。规范依据见文件末尾链接。
+// v15e 架构 = 嵌套编辑宿主（为什么推翻 v15d 的「ZWSP + 输入后规整」）：
+//   v15d 在单一 contentEditable 里用 ZWSP 撑空槽、每次 input 后 normalize（剔/补 ZWSP、
+//   重设 textContent、重摆光标）。实测三个致命 bug（操作员截图 36bba60f/bfaef0b1）：
+//     ① 中文 IME 合成期间改 DOM 文本 → 合成被打断，拼音串整段跳到编辑器最前面；
+//     ② 光标其实落在槽外，打的字排在荧光区后面，不是「在框中」；
+//     ③ 删槽内最后一个字时 Chromium 的删除目标区间会跨过槽边界 → 被「不可删」拦截误杀。
+//   根因：在 IME 敏感的 contentEditable 里靠「输入后改文本」维持不变量，方向就错了。
+//   v15e 结构性解决，全程**零文本改动**：
+//     外层 <div contenteditable=true>            ← 字面文字，可编辑
+//       字面文本节点 …
+//       <span.oc-ph contenteditable=false>       ← 原子外壳：外层删除/选区跨不进、删不掉
+//         <span.oc-ph-inner contenteditable=true>← 内芯编辑宿主：打字/IME 都在这里面
+//       </span>
+//       字面文本节点 …
+//     · 内芯是独立编辑宿主：光标能落进空元素，选区/删除天然被宿主边界圈住——删到最后
+//       一个字也不会把宿主删掉（浏览器保证），标签靠 [data-empty] 属性切换回显；
+//     · 属性切换不动文本节点 → IME 合成零干扰（①②③ 全部结构性消除）；
+//     · 外层 beforeinput 只做一件事：删除区间碰到 .oc-ph → preventDefault（+ 若是紧邻
+//       退格/删除则把光标送进槽内，方便继续编辑）。内芯的删除事件 target 是内芯宿主，
+//       天然区分，无需猜区间；
+//     · MutationObserver 兜底：极端情况（IME 覆盖选区合成等不可取消输入）把槽整掉时，
+//       按模板重建并按序回填已填内容（合成期间侦测到则推迟到 compositionend 再修）。
 //
 // 回退：无模板（普通输入框）时**不启用** contentEditable——LeoComposer 直接用普通
 //   <textarea>（全家桶其它输入框零回归）。本组件只在「点了卡片/示例、带模板」时接管。
@@ -90,8 +99,8 @@ export interface PromptHighlightAreaProps {
   value: string;
   onChange: (value: string) => void;
   /**
-   * 模板（点卡片 / 示例时设入）。设入即把「字面文字 + 文本流内占位标记」渲染进编辑器；
-   * 字面文字真实进 value、占位为可原地替换的着色槽。null → 由 LeoComposer 走普通 textarea。
+   * 模板（点卡片 / 示例时设入）。设入即把「字面文字 + 文本流内填空槽」渲染进编辑器；
+   * 字面文字真实进 value、占位为槽内可输入的着色槽。null → 由 LeoComposer 走普通 textarea。
    */
   template: string | null;
   accentColor?: string;
@@ -119,14 +128,54 @@ const TYPO: CSSProperties = {
   overflowWrap: "break-word",
 };
 
-// 零宽空格：塞进空占位槽里，让光标能落进去（浏览器对完全空的 inline 元素不给光标位）。
-// 序列化 / 判空 / 显示标签时都把它当作「不存在」；有真实内容时规整掉它。
+// 历史遗留的零宽空格清理（v15e 不再往 DOM 放 ZWSP，但序列化时仍剥一遍，防呆）。
 const ZWSP = "\u200b";
 const stripZwsp = (s: string) => s.split(ZWSP).join("");
 
-// 把编辑器 DOM 序列化成 value：文本节点 & 占位槽都取 textContent 并剥掉 ZWSP；空槽 → ""
-// （**不吐 [字段] 字面**，标签是 ::before 不在 textContent 里）；<br>/块级换行还原成 \n。
-// （算法与 scratch/ghost-serialize-smoke.mjs 一致。）
+// ── DOM 构建 ───────────────────────────────────────────────────────────────
+
+/** 槽 = 原子外壳（CE=false，删不掉/选不进）+ 内芯编辑宿主（CE=true，打字/IME 在里面）。 */
+function makePlaceholderSlot(hint: string): HTMLSpanElement {
+  const wrap = document.createElement("span");
+  wrap.className = "oc-ph";
+  wrap.dataset.ph = "1";
+  wrap.dataset.hint = hint;
+  wrap.dataset.empty = "1";
+  wrap.contentEditable = "false";
+
+  const inner = document.createElement("span");
+  inner.className = "oc-ph-inner";
+  inner.contentEditable = "true";
+  inner.spellcheck = false;
+
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+/** 用模板段构造编辑器 DOM（字面 = 文本节点 + <br>；占位 = 嵌套槽）。返回槽节点数组。 */
+function buildEditorDom(root: HTMLElement, template: string): HTMLSpanElement[] {
+  root.textContent = "";
+  const slots: HTMLSpanElement[] = [];
+  for (const s of templateSegments(template)) {
+    if (s.kind === "placeholder") {
+      const slot = makePlaceholderSlot(s.text);
+      slots.push(slot);
+      root.appendChild(slot);
+    } else {
+      const parts = s.text.split("\n");
+      parts.forEach((p, i) => {
+        if (i > 0) root.appendChild(document.createElement("br"));
+        if (p) root.appendChild(document.createTextNode(p));
+      });
+    }
+  }
+  return slots;
+}
+
+// ── 序列化 / 槽状态 ─────────────────────────────────────────────────────────
+
+// 把编辑器 DOM 序列化成 value：文本节点取 textContent；槽(.oc-ph)取其真实内容（= 内芯
+// 文本；标签是 ::before，不在 textContent 里）；空槽 → ""（**不吐 [字段]**）；<br>→\n。
 function readEditorValue(root: HTMLElement): string {
   let out = "";
   const walk = (node: Node) => {
@@ -150,100 +199,38 @@ function readEditorValue(root: HTMLElement): string {
   return out;
 }
 
-// 造占位槽 <span.oc-ph data-hint="[字段]">（内含一个 ZWSP 让空槽能落光标）。空槽通过 CSS
-// `.oc-ph[data-empty]::before{content:attr(data-hint)}` 显示蓝色标签；用户往里打字即原地替换。
-function makePlaceholderSlot(hint: string): HTMLSpanElement {
-  const span = document.createElement("span");
-  span.className = "oc-ph";
-  span.dataset.ph = "1";
-  span.dataset.hint = hint;
-  span.dataset.empty = "1";
-  span.appendChild(document.createTextNode(ZWSP));
-  return span;
-}
-
-// 用模板段构造编辑器初始 DOM（字面文字 = 真实文本节点；占位 = 文本流内着色槽 .oc-ph）。
-// 返回槽节点数组（供删除拦截 / 兜底复原）。accent 由 CSS 变量控制（见下方 style）。
-function buildEditorDom(root: HTMLElement, template: string): HTMLSpanElement[] {
-  root.textContent = "";
-  const slots: HTMLSpanElement[] = [];
-  const segs = templateSegments(template);
-  for (const s of segs) {
-    if (s.kind === "placeholder") {
-      const slot = makePlaceholderSlot(s.text);
-      slots.push(slot);
-      root.appendChild(slot);
-    } else {
-      const parts = s.text.split("\n");
-      parts.forEach((p, i) => {
-        if (i > 0) root.appendChild(document.createElement("br"));
-        if (p) root.appendChild(document.createTextNode(p));
-      });
-    }
+/** 只切换 data-empty 属性（决定 ::before 标签显隐）。不碰任何文本节点 → IME 零干扰。 */
+function syncSlotEmptiness(slots: HTMLElement[]): void {
+  for (const slot of slots) {
+    if (!slot.isConnected) continue;
+    const empty = stripZwsp(slot.textContent || "") === "";
+    const marked = slot.dataset.empty !== undefined;
+    if (empty && !marked) slot.dataset.empty = "1";
+    else if (!empty && marked) delete slot.dataset.empty;
   }
-  return slots;
 }
 
-// 每次 input 后规整每个槽（保光标）：
-//   · 槽有真实内容（去 ZWSP 非空）→ 把 ZWSP 剔掉、去 data-empty（标签隐藏、显示真实内容）；
-//   · 槽为空 → 保证恰有一个 ZWSP、加 data-empty（::before 标签回显、光标可落）。
-// 保光标：改某槽文本前记录光标相对「该槽去 ZWSP 文本」的偏移，改完把光标恢复到相同偏移。
-function normalizeSlots(root: HTMLElement): void {
-  const sel = window.getSelection();
-  root.querySelectorAll<HTMLElement>(".oc-ph").forEach((slot) => {
-    const raw = slot.textContent || "";
-    const real = stripZwsp(raw);
+// ── 光标工具 ────────────────────────────────────────────────────────────────
 
-    // 光标是否在本槽内？记录其相对「去 ZWSP 文本」的字符偏移。
-    let caretOffset = -1;
-    if (sel && sel.rangeCount) {
-      const r = sel.getRangeAt(0);
-      if (r.collapsed && slot.contains(r.startContainer)) {
-        // 计算 startContainer 起点在槽内的绝对偏移，再换算成去 ZWSP 偏移。
-        const node = r.startContainer;
-        if (node.nodeType === Node.TEXT_NODE && node.parentNode === slot) {
-          const before = (node.textContent || "").slice(0, r.startOffset);
-          caretOffset = stripZwsp(before).length;
-        } else {
-          caretOffset = real.length; // 兜底：落末尾
-        }
-      }
-    }
-
-    if (real === "") {
-      if (raw !== ZWSP) slot.textContent = ZWSP;
-      slot.dataset.empty = "1";
-      if (caretOffset >= 0) placeCaretInSlot(slot, /*afterZwsp*/ true);
-    } else {
-      if (raw !== real) {
-        slot.textContent = real; // 去掉混入的 ZWSP
-        if (caretOffset >= 0) placeCaretInSlot(slot, false, Math.min(caretOffset, real.length));
-      }
-      delete slot.dataset.empty;
-    }
-  });
+function innerOf(slot: HTMLElement): HTMLElement | null {
+  return slot.querySelector<HTMLElement>(".oc-ph-inner");
 }
 
-// 把光标放进某个槽：afterZwsp=true → 落在 ZWSP 之后（空槽情形）；否则落在给定字符偏移。
-function placeCaretInSlot(slot: HTMLElement, afterZwsp: boolean, offset = 0): void {
+/** 聚焦某槽的内芯并把光标放到 start / end。 */
+function focusInner(inner: HTMLElement, at: "start" | "end"): void {
+  inner.focus();
   const sel = window.getSelection();
   if (!sel) return;
-  const node = slot.firstChild;
   const range = document.createRange();
-  if (node && node.nodeType === Node.TEXT_NODE) {
-    const len = (node.textContent || "").length;
-    range.setStart(node, afterZwsp ? Math.min(1, len) : Math.min(offset, len));
-  } else {
-    range.selectNodeContents(slot);
-    range.collapse(false);
-  }
-  range.collapse(true);
+  range.selectNodeContents(inner);
+  range.collapse(at === "start");
   sel.removeAllRanges();
   sel.addRange(range);
 }
 
 /** 把光标放到编辑器末尾。 */
 function caretToEnd(root: HTMLElement) {
+  root.focus();
   const sel = window.getSelection();
   if (!sel) return;
   const range = document.createRange();
@@ -253,19 +240,28 @@ function caretToEnd(root: HTMLElement) {
   sel.addRange(range);
 }
 
-/** 把光标落到第一个空占位槽内（ZWSP 之后）；没有空槽则落到编辑器末尾。 */
+/** 光标落到第一个空槽的内芯；没有空槽则落到编辑器末尾。 */
 function caretToFirstEmptySlot(root: HTMLElement) {
   const firstEmpty = root.querySelector<HTMLElement>(".oc-ph[data-empty]");
-  if (firstEmpty) {
-    placeCaretInSlot(firstEmpty, true);
-    return;
-  }
-  caretToEnd(root);
+  const inner = firstEmpty ? innerOf(firstEmpty) : null;
+  if (inner) focusInner(inner, "end");
+  else caretToEnd(root);
 }
 
-/** 删除类 inputType。 */
-function isDeleteInput(inputType: string): boolean {
-  return inputType.startsWith("delete");
+/** beforeinput 的目标区间（规范 API，退化到当前 selection）。 */
+function targetRangesOf(e: InputEvent): Range[] {
+  const tr = typeof e.getTargetRanges === "function" ? e.getTargetRanges() : [];
+  if (tr && tr.length) {
+    return tr.map((sr) => {
+      const r = document.createRange();
+      r.setStart(sr.startContainer, sr.startOffset);
+      r.setEnd(sr.endContainer, sr.endOffset);
+      return r;
+    });
+  }
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount) return [sel.getRangeAt(0)];
+  return [];
 }
 
 export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptHighlightAreaProps>(
@@ -288,46 +284,69 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     const edRef = useRef<HTMLDivElement>(null);
     // 记录「已按哪个模板 seed 过」，模板变化时才重建 DOM（避免打字时被 React 重渲染冲掉光标）。
     const seededTemplate = useRef<string | null>(null);
-    // 当前模板的占位槽节点（按序），供删除拦截 / 兜底复原用。
+    // 当前模板的槽节点（按序，= 模板里 [字段] 的顺序），供删除拦截 / 兜底复原用。
     const slotsRef = useRef<HTMLSpanElement[]>([]);
+    // IME 合成中标志：合成期间绝不动 DOM（兜底修复推迟到 compositionend）。
+    const composingRef = useRef(false);
+    const pendingRestoreRef = useRef(false);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
 
     useImperativeHandle(ref, () => ({
       focus: () => edRef.current?.focus(),
       el: () => edRef.current,
     }));
 
-    const seed = useCallback(
-      (tmpl: string) => {
-        const root = edRef.current;
-        if (!root) return;
-        slotsRef.current = buildEditorDom(root, tmpl);
-        normalizeSlots(root);
-        seededTemplate.current = tmpl;
-        const v = readEditorValue(root);
-        if (v !== value) onChange(v);
-        // 光标落到**第一个空占位槽**（用户第一件事就是填第一个空），没有空槽则落末尾。
-        requestAnimationFrame(() => {
-          root.focus();
-          caretToFirstEmptySlot(root);
-        });
-      },
-      // value/onChange 读的是最新闭包；无依赖需重建（accent 走 CSS 变量，不进 seed）。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [],
-    );
+    // 读 DOM → 切换标签显隐（纯属性）→ 上抛 value。
+    const emit = useCallback(() => {
+      const root = edRef.current;
+      if (!root) return;
+      syncSlotEmptiness(slotsRef.current);
+      onChangeRef.current(readEditorValue(root));
+    }, []);
 
-    // 模板变化（点了新卡片/示例）→ 重建编辑器 DOM，字面进 value、占位成着色槽。
+    // 兜底修复：某槽被整体删掉（beforeinput 拦不到的不可取消输入）→ 按模板重建 + 回填。
+    const restoreSlots = useCallback(() => {
+      const root = edRef.current;
+      const tmpl = seededTemplate.current;
+      if (!root || tmpl == null) return;
+      const old = slotsRef.current;
+      const saved = old.map((s) => (s.isConnected ? stripZwsp(s.textContent || "") : ""));
+      const fresh = buildEditorDom(root, tmpl);
+      fresh.forEach((s, i) => {
+        if (saved[i]) {
+          const inner = innerOf(s);
+          if (inner) inner.textContent = saved[i];
+        }
+      });
+      slotsRef.current = fresh;
+      syncSlotEmptiness(fresh);
+      onChangeRef.current(readEditorValue(root));
+    }, []);
+
+    const seed = useCallback((tmpl: string) => {
+      const root = edRef.current;
+      if (!root) return;
+      slotsRef.current = buildEditorDom(root, tmpl);
+      syncSlotEmptiness(slotsRef.current);
+      seededTemplate.current = tmpl;
+      const v = readEditorValue(root);
+      onChangeRef.current(v);
+      // 光标落到**第一个空槽的内芯**（用户第一件事就是填第一个空）。
+      requestAnimationFrame(() => {
+        if (edRef.current) caretToFirstEmptySlot(edRef.current);
+      });
+    }, []);
+
+    // 模板变化（点了新卡片/示例）→ 重建编辑器 DOM。
     useEffect(() => {
       if (template == null) return;
       if (seededTemplate.current === template) return;
       seed(template);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [template, seed]);
 
-    // 「点同一张卡再来一次」：调用方点卡片时会先把 value 置空。若此时编辑器里仍有**真实内容**
-    // （去 ZWSP 后非空）且模板未变（seed 不会重跑），这里重新 seed 当前模板。
-    // 用 readEditorValue（已剥 ZWSP）判空，不用 root.textContent——否则空槽里的 ZWSP 会被当成
-    // "有内容"，对纯占位模板造成 seed 无限循环。
+    // 「点同一张卡再来一次」：调用方点卡片时会先把 value 置空。若此时编辑器里仍有真实内容
+    // 且模板未变（上面的 effect 不会重跑），这里重新 seed 当前模板。
     useEffect(() => {
       const root = edRef.current;
       if (!root) return;
@@ -339,37 +358,62 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           seededTemplate.current = null;
         }
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, template, seed]);
 
     useEffect(() => {
       if (autoFocus) edRef.current?.focus();
     }, [autoFocus]);
 
-    // ── 不可删：拦截「会删到占位槽本体」的 beforeinput；槽内删自己填的字 / 纯字面删除放行。 ──
+    // ── 事件绑定（原生，一次挂在外层 root 上；内芯事件冒泡上来，靠 e.target 区分）──
     useEffect(() => {
       const root = edRef.current;
       if (!root) return;
+
+      // IME 合成跟踪：合成期间不做任何 DOM 修复；结束后补跑。
+      const onCompStart = () => {
+        composingRef.current = true;
+      };
+      const onCompEnd = () => {
+        composingRef.current = false;
+        if (pendingRestoreRef.current) {
+          pendingRestoreRef.current = false;
+          restoreSlots();
+        } else {
+          emit();
+        }
+      };
+
+      // 点标签区域（::before 命中的是外壳）→ 把光标送进内芯（空槽也能一点即入）。
+      const onMouseDown = (ev: MouseEvent) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest(".oc-ph-inner")) return; // 点到内芯文字：浏览器原生落光标
+        const wrap = t.closest<HTMLElement>(".oc-ph");
+        if (!wrap) return;
+        const inner = innerOf(wrap);
+        if (!inner) return;
+        ev.preventDefault();
+        focusInner(inner, "end");
+      };
+
+      // 删除守卫（只管外层编辑；内芯的编辑事件 target 是内芯宿主，天然被宿主边界圈住）：
+      //   · 内芯里：只拦「换行」（填空是单行语义），删除/输入全放行——删到最后一个字
+      //     也只是清空内芯，宿主元素浏览器保证不删；
+      //   · 外层里：删除区间碰到任何槽 → preventDefault；若是紧邻槽的收缩退格/删除，把
+      //     光标送进槽内芯（方便用户接着改填的内容）。
       const onBeforeInput = (ev: Event) => {
         const e = ev as InputEvent;
-        if (!isDeleteInput(e.inputType)) return;
-        const slots = slotsRef.current;
-        if (slots.length === 0) return;
-        // 优先用 getTargetRanges（规范给出的将被删除区间）；退化到当前 selection。
-        let ranges: Range[] = [];
-        const tr = typeof e.getTargetRanges === "function" ? e.getTargetRanges() : [];
-        if (tr && tr.length) {
-          ranges = tr.map((sr) => {
-            const r = document.createRange();
-            r.setStart(sr.startContainer, sr.startOffset);
-            r.setEnd(sr.endContainer, sr.endOffset);
-            return r;
-          });
-        } else {
-          const sel = window.getSelection();
-          if (sel && sel.rangeCount) ranges = [sel.getRangeAt(0)];
+        const t = e.inputType || "";
+        const targetEl = e.target as HTMLElement | null;
+        const inInner = !!targetEl?.closest?.(".oc-ph-inner");
+        if (inInner) {
+          if (t === "insertParagraph" || t === "insertLineBreak") e.preventDefault();
+          return;
         }
-        for (const r of ranges) {
+        if (!t.startsWith("delete") || t === "deleteCompositionText") return;
+        const slots = slotsRef.current;
+        if (!slots.length) return;
+        for (const r of targetRangesOf(e)) {
           for (const slot of slots) {
             if (!slot.isConnected) continue;
             let hit = false;
@@ -379,56 +423,57 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
               hit = false;
             }
             if (!hit) continue;
-            // 删除区间完全在某槽内部、且该槽已填真实内容 → 是正常「删自己填的字」，放行。
-            const inside = slot.contains(r.startContainer) && slot.contains(r.endContainer);
-            const real = stripZwsp(slot.textContent || "");
-            if (inside && real !== "") break; // 放行本次删除
-            // 否则（跨越槽 / 选区覆盖槽 / 想把空槽本体删掉）→ 拦截，槽删不得。
             e.preventDefault();
+            // 紧邻收缩删除 → 光标进槽（退格=槽尾，Delete=槽头），第二次按键即编辑填内容。
+            const sel = window.getSelection();
+            if (sel && sel.isCollapsed) {
+              const inner = innerOf(slot);
+              if (inner && stripZwsp(slot.textContent || "") !== "") {
+                focusInner(inner, t === "deleteContentBackward" ? "end" : "start");
+              }
+            }
             return;
           }
         }
       };
+
+      const onInput = () => {
+        emit();
+      };
+
+      root.addEventListener("compositionstart", onCompStart);
+      root.addEventListener("compositionend", onCompEnd);
+      root.addEventListener("mousedown", onMouseDown);
       root.addEventListener("beforeinput", onBeforeInput);
-      return () => root.removeEventListener("beforeinput", onBeforeInput);
-    }, []);
+      root.addEventListener("input", onInput);
+      return () => {
+        root.removeEventListener("compositionstart", onCompStart);
+        root.removeEventListener("compositionend", onCompEnd);
+        root.removeEventListener("mousedown", onMouseDown);
+        root.removeEventListener("beforeinput", onBeforeInput);
+        root.removeEventListener("input", onInput);
+      };
+    }, [emit, restoreSlots]);
 
-    // 读 DOM → 规整（保光标）→ 上抛 value。
-    const emit = useCallback(() => {
-      const root = edRef.current;
-      if (!root) return;
-      normalizeSlots(root);
-      onChange(readEditorValue(root));
-    }, [onChange]);
-
-    // ── 兜底：万一某槽仍被删掉（IME/自动填充等 beforeinput 不触发/不可取消），MutationObserver
-    //    侦测到追踪槽脱离 DOM → 按模板重建并按序回填各槽已输入值。 ──
+    // 兜底：槽被整体删掉（不可取消输入等极端路径）→ 重建回填；合成期间侦测到则推迟。
     useEffect(() => {
       const root = edRef.current;
       if (!root) return;
       const obs = new MutationObserver(() => {
         const slots = slotsRef.current;
-        if (slots.length === 0) return;
+        if (!slots.length) return;
         if (!slots.some((s) => !s.isConnected)) return;
-        const tmpl = seededTemplate.current;
-        if (tmpl == null) return;
-        const saved = slots.map((s) => stripZwsp(s.textContent || ""));
+        if (composingRef.current) {
+          pendingRestoreRef.current = true;
+          return;
+        }
         obs.disconnect();
-        const fresh = buildEditorDom(root, tmpl);
-        fresh.forEach((s, i) => {
-          if (saved[i]) {
-            s.textContent = saved[i];
-            delete s.dataset.empty;
-          }
-        });
-        slotsRef.current = fresh;
-        normalizeSlots(root);
-        onChange(readEditorValue(root));
+        restoreSlots();
         obs.observe(root, { childList: true, subtree: true });
       });
       obs.observe(root, { childList: true, subtree: true });
       return () => obs.disconnect();
-    }, [onChange]);
+    }, [restoreSlots]);
 
     // 通用占位提示（"描述你想要的…"）只在**普通模式**（无模板）且空时显示。模板一旦灌入，
     // 模板文本 + 着色槽本身就是引导，不再叠加通用提示。
@@ -452,10 +497,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           contentEditable={!disabled}
           suppressContentEditableWarning
           spellCheck={false}
-          onInput={emit}
           onKeyDown={(e) => onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLElement>)}
           className="oc-tmpl-editor relative w-full resize-none overflow-y-auto border-0 bg-transparent text-neutral-800 outline-none"
-          // accent 作为 CSS 变量下发给 .oc-ph 着色槽 / ::before 标签配色（见 theme/globals.css）。
+          // accent 作为 CSS 变量下发给 .oc-ph 槽 / ::before 标签配色（见 theme/globals.css）。
           style={{ ...TYPO, minHeight: `${rows * 1.625}em`, maxHeight, ["--oc-ph-accent" as string]: accentColor }}
         />
       </div>
@@ -463,11 +507,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
   },
 );
 
-/** 别名（宗旨 v15 新名字；语义即「模板实填 + 文本流内原地替换占位」）。 */
+/** 别名（宗旨 v15 新名字；语义即「模板实填 + 文本流内填空槽」）。 */
 export const TemplateFillArea = PromptHighlightArea;
 
-// 参考规范（不可删 / 空 inline 落光标 / 幽灵标签的实现依据）：
-//   W3C Input Events Level 2 — https://www.w3.org/TR/input-events/
-//   MDN beforeinput — https://developer.mozilla.org/en-US/docs/Web/API/Element/beforeinput_event
-//   MDN getTargetRanges — https://developer.mozilla.org/en-US/docs/Web/API/InputEvent/getTargetRanges
-//   contenteditable placeholder via ::before — https://stackoverflow.com/questions/20726174
+// 参考规范（嵌套编辑宿主 / beforeinput / 幽灵标签的实现依据）：
+//   W3C Input Events L2 — https://www.w3.org/TR/input-events/（editing host / target 定义）
+//   MDN beforeinput / getTargetRanges — developer.mozilla.org
+//   HTML spec editing host（嵌套 contenteditable 宿主边界）— html.spec.whatwg.org/#editing-host
+//   contenteditable placeholder via ::before — stackoverflow.com/questions/20726174
