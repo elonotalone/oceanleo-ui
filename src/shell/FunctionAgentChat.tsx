@@ -36,7 +36,8 @@ import {
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
-import { useRegisterOpsFiller } from "./guide-context";
+import { useRegisterOpsFiller, useGuideWorkflows } from "./guide-context";
+import { type WorkflowDraft } from "../lib/workflows";
 import { useAttachments } from "./useAttachments";
 import {
   createTask,
@@ -125,6 +126,12 @@ export interface FunctionAgentChatProps {
     text: string,
     opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown },
   ) => void;
+  /**
+   * 「保存工作流」（宗旨 v16 补充，操作员 2026-07-06）：给了它 → 左栏标题「操作台 |
+   * agent」开关右侧出现「保存工作流」按钮。点击时调用它拿到当前操作台输入的快照
+   * （{ label?, prompt, params? }），存进「我的工作流」（右栏导航「我的」类别可一键复用）。
+   * 返回 null / prompt 为空 → 提示用户先填写。站点从自己的操作台 state 拼这份草稿。 */
+  getWorkflowDraft?: () => WorkflowDraft | null;
 }
 
 // 左栏双形态：操作台（表单 + 生成）/ agent（有能力、带工具，独立于操作台）。
@@ -148,6 +155,7 @@ export function FunctionAgentChat({
   appLabel,
   appIcon,
   onGuideExample,
+  getWorkflowDraft,
 }: FunctionAgentChatProps) {
   void _getOpsState;
   void _onRunAction;
@@ -201,39 +209,93 @@ export function FunctionAgentChat({
   );
   useRegisterOpsFiller(fillFromGuide);
 
+  // ── 「保存工作流」（宗旨 v16 补充）：把当前操作台输入存成可复用工作流 ──────────
+  const guideWf = useGuideWorkflows();
+  const [wfSaving, setWfSaving] = useState(false);
+  const [wfSaved, setWfSaved] = useState(false);
+  const canSaveWorkflow = showOps && Boolean(getWorkflowDraft) && Boolean(guideWf);
+  const saveWorkflow = useCallback(async () => {
+    if (!getWorkflowDraft || !guideWf) return;
+    const draft = getWorkflowDraft();
+    if (!draft || !(draft.prompt || "").trim()) {
+      setError(tt("请先在操作台填写内容，再保存工作流。"));
+      return;
+    }
+    setError(null);
+    setWfSaving(true);
+    const w = await guideWf.saveWorkflow(draft);
+    setWfSaving(false);
+    if (w) {
+      setWfSaved(true);
+      setTimeout(() => setWfSaved(false), 1800);
+    } else {
+      setError(tt("保存失败，请重试。"));
+    }
+  }, [getWorkflowDraft, guideWf, tt]);
+
   // ── 「操作台 | agent」切换键装进左栏标题位（宗旨 v10，复用 v0.41.0 机制）──────
   // SplitWorkspace 的左栏 PaneHeader 标题本身就是这枚开关；不在 SplitWorkspace 内
   // （slot 为 null）时回退到栏体内嵌。纯对话功能区（!showOps）不装开关。
+  // 宗旨 v16：开关右侧再挂一枚「保存工作流」按钮（getWorkflowDraft 存在时）。
   const slot = useLeftPaneSlot();
   const toggle = showOps ? (
-    <div className="inline-flex rounded-lg bg-stone-100 p-0.5 text-[13px]">
-      {(["ops", "agent"] as const).map((t) => (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="inline-flex shrink-0 rounded-lg bg-stone-100 p-0.5 text-[13px]">
+        {(["ops", "agent"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            title={
+              t === "ops"
+                ? tt("操作台：直接精细操控、直接生成")
+                : tt("agent：跟它说话，它带工具帮你生成（不会动操作台）")
+            }
+            className={`rounded-md px-3 py-1 font-medium transition-colors ${
+              tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
+            }`}
+            style={tab === t ? { background: accent } : undefined}
+          >
+            {t === "ops" ? opsLabel : "agent"}
+          </button>
+        ))}
+      </div>
+      {canSaveWorkflow && (
         <button
-          key={t}
           type="button"
-          onClick={() => setTab(t)}
-          title={
-            t === "ops"
-              ? tt("操作台：直接精细操控、直接生成")
-              : tt("agent：跟它说话，它带工具帮你生成（不会动操作台）")
-          }
-          className={`rounded-md px-3 py-1 font-medium transition-colors ${
-            tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
+          onClick={() => void saveWorkflow()}
+          disabled={wfSaving}
+          title={tt("把当前操作台的输入保存为工作流，稍后可在右侧「导航 · 我的」里一键复用")}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition active:scale-95 disabled:opacity-50 ${
+            wfSaved
+              ? "border-transparent text-white"
+              : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
           }`}
-          style={tab === t ? { background: accent } : undefined}
+          style={wfSaved ? { background: accent } : undefined}
         >
-          {t === "ops" ? opsLabel : "agent"}
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+            {wfSaved ? (
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path
+                d="M5 5a2 2 0 012-2h9l3 3v13a2 2 0 01-2 2H7a2 2 0 01-2-2V5z M8 3v5h7 M8 21v-6h8v6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
+          {wfSaved ? tt("已保存") : tt("保存工作流")}
         </button>
-      ))}
+      )}
     </div>
   ) : null;
 
-  // 安装/更新左栏标题开关（toggle 节点选中态随 tab 变化）。卸载时清空，避免离开
+  // 安装/更新左栏标题开关（toggle 节点选中态随 tab / 保存态变化）。卸载时清空，避免离开
   // 该功能区后残留旧开关。
   useEffect(() => {
     slot?.setLeftLabel(toggle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, tab, accent, opsLabel, showOps]);
+  }, [slot, tab, accent, opsLabel, showOps, canSaveWorkflow, wfSaving, wfSaved]);
   useEffect(() => {
     return () => slot?.setLeftLabel(null);
   }, [slot]);

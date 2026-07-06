@@ -20,13 +20,22 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { type FunctionGuide, type GuideExample } from "./NavigatorGuide";
+import {
+  listWorkflows,
+  saveWorkflow as persistWorkflow,
+  deleteWorkflow as removeWorkflow,
+  type SavedWorkflow,
+  type WorkflowDraft,
+} from "../lib/workflows";
 
 /** 左栏填充器：把示例内容灌进当前功能的左栏输入框（+可选图片 / 参数 / 业务负载）。 */
 export type OpsFiller = (
@@ -45,6 +54,13 @@ interface GuideCtxValue {
   useExample: (ex: GuideExample) => void;
   /** 供左栏（FunctionAgentChat / 站点表单）注册自己的填充器。 */
   registerFiller: (fn: OpsFiller | null) => void;
+  // ── 「我的工作流」（宗旨 v16 补充）────────────────────────────────────────
+  /** 当前成品 app 下已保存的工作流（新→旧）。右栏导航「我的」类别读它。 */
+  workflows: SavedWorkflow[];
+  /** 保存一条工作流（左栏「保存工作流」按钮调用）；成功后自动并入 workflows。 */
+  saveWorkflow: (draft: WorkflowDraft) => Promise<SavedWorkflow | null>;
+  /** 删除一条工作流（导航「我的」卡片的 ✕ 调用）。 */
+  deleteWorkflow: (id: string) => Promise<void>;
 }
 
 const GuideCtx = createContext<GuideCtxValue | null>(null);
@@ -55,10 +71,13 @@ const GuideCtx = createContext<GuideCtxValue | null>(null);
  */
 export function GuideProvider({
   guide,
+  siteId = "",
   activeKey,
   children,
 }: {
   guide: FunctionGuide | null;
+  /** 本站 site_id（工作流按 site + app 分区存取）。宗旨 v16 补充。 */
+  siteId?: string;
   activeKey: string;
   children: ReactNode;
 }) {
@@ -67,6 +86,43 @@ export function GuideProvider({
   useEffect(() => {
     fillerRef.current = null;
   }, [activeKey]);
+
+  // 「我的工作流」：按 site + 当前成品 app 拉取。切成品自动重载。
+  const [workflows, setWorkflows] = useState<SavedWorkflow[]>([]);
+  useEffect(() => {
+    if (!siteId) {
+      setWorkflows([]);
+      return;
+    }
+    let cancelled = false;
+    void listWorkflows(siteId, activeKey).then((ws) => {
+      if (!cancelled) setWorkflows(ws);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [siteId, activeKey]);
+
+  const saveWorkflow = useCallback(
+    async (draft: WorkflowDraft) => {
+      if (!siteId || !(draft.prompt || "").trim()) return null;
+      const w = await persistWorkflow({
+        site_id: siteId,
+        app_id: activeKey,
+        label: draft.label,
+        prompt: draft.prompt,
+        params: draft.params,
+      });
+      if (w) setWorkflows((cur) => [w, ...cur]);
+      return w;
+    },
+    [siteId, activeKey],
+  );
+
+  const deleteWorkflow = useCallback(async (id: string) => {
+    await removeWorkflow(id);
+    setWorkflows((cur) => cur.filter((w) => w.id !== id));
+  }, []);
 
   const value = useMemo<GuideCtxValue>(
     () => ({
@@ -81,8 +137,11 @@ export function GuideProvider({
       registerFiller: (fn) => {
         fillerRef.current = fn;
       },
+      workflows,
+      saveWorkflow,
+      deleteWorkflow,
     }),
-    [guide],
+    [guide, workflows, saveWorkflow, deleteWorkflow],
   );
 
   return <GuideCtx.Provider value={value}>{children}</GuideCtx.Provider>;
@@ -92,6 +151,22 @@ export function GuideProvider({
 export function useFunctionGuide(): GuideCtxValue | null {
   return useContext(GuideCtx);
 }
+
+/**
+ * 「我的工作流」读写（左栏「保存工作流」按钮 + 右栏导航「我的」类别共用）。
+ * 返回 null 表示不在 GuideProvider 内（不支持工作流）。
+ */
+export function useGuideWorkflows(): Pick<
+  GuideCtxValue,
+  "workflows" | "saveWorkflow" | "deleteWorkflow" | "useExample"
+> | null {
+  const ctx = useContext(GuideCtx);
+  if (!ctx) return null;
+  const { workflows, saveWorkflow, deleteWorkflow, useExample } = ctx;
+  return { workflows, saveWorkflow, deleteWorkflow, useExample };
+}
+
+export type { SavedWorkflow, WorkflowDraft } from "../lib/workflows";
 
 /**
  * 左栏（FunctionAgentChat / 站点操作台表单）注册填充器：示例点击时，把 text(+image)

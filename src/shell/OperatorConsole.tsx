@@ -422,7 +422,7 @@ export function OperatorConsole({
       <div key={pageKey} className="v-page contents">
         {/* 宗旨 v12.1：GuideProvider 把当前功能的 guide + fill-bus 供给整棵子树
             （左栏填充器注册 / 右栏 ResultCanvas 读取加「使用指南」标签）。 */}
-        <GuideProvider guide={effectiveGuide} activeKey={active?.id ?? ""}>
+        <GuideProvider guide={effectiveGuide} siteId={siteId} activeKey={active?.id ?? ""}>
           <Studio
             ops={ops}
             canvas={active?.canvas ?? canvas ?? null}

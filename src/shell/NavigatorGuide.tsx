@@ -18,8 +18,10 @@
 // 得统一的 navigator 体验。示例点击 → OperatorConsole 把内容灌进当前功能的左栏。
 // ============================================================================
 
-import { type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { useGuideWorkflows } from "./guide-context";
+import { timeAgo } from "../ui";
 
 /** 一个示例「prompt」（可带图片，对应左栏图片输入）。 */
 export interface GuideExample {
@@ -94,123 +96,312 @@ export interface NavigatorGuideProps {
   onUseExample?: (ex: GuideExample) => void;
 }
 
+// 一个可渲染的导航条目（模板示例 / 我的工作流 统一成它）。
+interface NavItem {
+  key: string;
+  label: string;
+  hint?: string;
+  /** 右侧副信息（如工作流的相对时间）。 */
+  meta?: string;
+  thumb?: string;
+  icon?: ReactNode;
+  badge?: string;
+  /** 用于搜索匹配的原文（小写）。 */
+  searchText: string;
+  onClick: () => void;
+  /** 我的工作流才有：删除。 */
+  onDelete?: () => void;
+}
+
+/**
+ * 功能页右栏「导航」= 库风格的模板/工作流浏览器（宗旨 v16 版式，操作员 2026-07-06）。
+ * 对照文件库版式：顶部搜索框 + 卡片/列表切换；下面横排类别 chips（第一个恒为「我的」=
+ * 用户保存的工作流，其后是本成品的模板板块）；再下面是卡片网格 / 列表。点一张卡片 →
+ * 把该模板/工作流灌进左侧操作台（prompt + 参数），不跳页。
+ */
 export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: NavigatorGuideProps) {
   const tt = useUI();
-  // 板块模式（操作员 2026-07-05）优先：给了 sections 就按板块渲染；否则回退旧扁平 examples。
-  const sections = (guide.sections ?? []).filter((s) => (s.examples?.length ?? 0) > 0);
-  const flatExamples = guide.examples ?? [];
+  const wf = useGuideWorkflows();
+  const workflows = wf?.workflows ?? [];
+
+  // 模板板块（sections 优先；否则把扁平 examples 收成一个板块）。
+  const sections = useMemo<GuideSection[]>(() => {
+    const secs = (guide.sections ?? []).filter((s) => (s.examples?.length ?? 0) > 0);
+    if (secs.length) return secs;
+    const flat = guide.examples ?? [];
+    return flat.length ? [{ title: guide.examplesLabel ?? "模板", examples: flat }] : [];
+  }, [guide]);
+
+  // 类别 chips：第一个恒为「我的」（保存的工作流），其后每个模板板块一枚。
+  const categories = useMemo(
+    () => [
+      { id: "__mine", label: "我的" },
+      ...sections.map((s, i) => ({ id: `s${i}`, label: s.title })),
+    ],
+    [sections],
+  );
+
+  const [cat, setCat] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+
+  // 默认落在第一个模板板块（一进来就看到模板）；无模板板块时落「我的」。
+  // 用派生值兜底，避免切成品后旧 cat 失效。
+  const defaultCat = sections.length ? "s0" : "__mine";
+  const activeCat = categories.some((c) => c.id === cat) ? cat : defaultCat;
+
+  const items = useMemo<NavItem[]>(() => {
+    if (activeCat === "__mine") {
+      return workflows.map((w) => ({
+        key: w.id,
+        label: w.label || tt("我的工作流"),
+        hint: paramSummary(w.params, tt),
+        meta: timeAgo(w.created_at, tt),
+        icon: "📌",
+        searchText: `${w.label} ${w.prompt}`.toLowerCase(),
+        onClick: () => onUseExample?.({ label: w.label, prompt: w.prompt, set: w.params }),
+        onDelete: () => void wf?.deleteWorkflow(w.id),
+      }));
+    }
+    const idx = Number(activeCat.slice(1)) || 0;
+    const exs = sections[idx]?.examples ?? [];
+    return exs.map((ex, i) => ({
+      key: `${idx}-${i}`,
+      label: ex.label,
+      hint: ex.hint ?? ex.prompt,
+      thumb: ex.thumb,
+      icon: ex.icon ?? "✦",
+      badge: ex.badge,
+      searchText: `${ex.label} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),
+      onClick: () => onUseExample?.(ex),
+    }));
+  }, [activeCat, workflows, sections, onUseExample, wf, tt]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q ? items.filter((it) => it.searchText.includes(q)) : items;
+  const mine = activeCat === "__mine";
+
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
-      {/* 顶部教学区 */}
-      <div className="space-y-3">
-        {guide.title && (
-          <h2 className="text-[17px] font-semibold tracking-tight text-neutral-900">
-            {tt(guide.title)}
-          </h2>
-        )}
-        {guide.heroImage && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={guide.heroImage}
-            alt=""
-            className="w-full rounded-xl border border-neutral-200 object-cover"
+    <div className="mx-auto w-full max-w-3xl">
+      {guide.intro != null && (
+        <p className="mb-3 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
+          {typeof guide.intro === "string" ? tt(guide.intro) : guide.intro}
+        </p>
+      )}
+
+      {/* 搜索框 + 卡片/列表切换（对照文件库版式） */}
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
+          <svg className="h-3.5 w-3.5 shrink-0 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
+          </svg>
+          <input
+            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
+            placeholder={tt("搜索模板 / 工作流")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-        )}
-        {guide.intro != null && (
-          <div className="text-[14px] leading-relaxed text-neutral-600">
-            {typeof guide.intro === "string" ? tt(guide.intro) : guide.intro}
-          </div>
-        )}
+          {search && (
+            <button type="button" onClick={() => setSearch("")} className="shrink-0 text-neutral-400 transition hover:text-neutral-600">
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center rounded-lg bg-neutral-100 p-0.5">
+          <button
+            type="button"
+            onClick={() => setView("grid")}
+            className={`rounded-md p-1.5 transition-all duration-150 ${
+              view === "grid" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+            }`}
+            title={tt("网格视图")}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            className={`rounded-md p-1.5 transition-all duration-150 ${
+              view === "list" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+            }`}
+            title={tt("列表视图")}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* 板块模式：三个板块各自「标题 + 模板卡网格」，点一张 → 填进左栏操作台 */}
-      {sections.length > 0
-        ? sections.map((sec, si) => (
-            <div key={si} className="space-y-2.5">
-              <p className="text-[12px] font-semibold text-neutral-500">{tt(sec.title)}</p>
-              <ExampleGrid examples={sec.examples} accent={accent} onUseExample={onUseExample} />
-            </div>
-          ))
-        : flatExamples.length > 0 && (
-            <div className="space-y-2.5">
-              <p className="text-[12px] font-medium text-neutral-500">
-                {tt(guide.examplesLabel ?? "试试这些示例")}
-              </p>
-              <ExampleGrid examples={flatExamples} accent={accent} onUseExample={onUseExample} />
-            </div>
+      {/* 类别 chips（第一个恒为「我的」） */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {categories.map((c) => {
+          const on = activeCat === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCat(c.id)}
+              className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
+                on ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+              }`}
+              style={on ? { background: accent } : undefined}
+            >
+              {tt(c.label)}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 内容：卡片网格 / 列表 */}
+      {filtered.length === 0 ? (
+        <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 text-center">
+          <svg className="h-10 w-10 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 9h18M8 4v5" strokeLinecap="round" />
+          </svg>
+          <p className="text-[13px] text-neutral-400">
+            {mine
+              ? q
+                ? tt("未找到匹配的工作流")
+                : tt("还没有保存的工作流")
+              : q
+                ? tt("未找到匹配的模板")
+                : tt("这个类别下暂无模板")}
+          </p>
+          {mine && !q && (
+            <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
+              {tt("在左侧「操作台」填好输入后，点标题栏的「保存工作流」，就会收藏到这里，随时一键复用。")}
+            </p>
           )}
+        </div>
+      ) : view === "list" ? (
+        <div className="mt-3 divide-y divide-neutral-100 overflow-hidden rounded-xl border border-neutral-200">
+          {filtered.map((it) => (
+            <NavRow key={it.key} it={it} accent={accent} tt={tt} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+          {filtered.map((it) => (
+            <NavCard key={it.key} it={it} accent={accent} tt={tt} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * 一组模板卡网格（板块内部 / 旧扁平模式共用）。点一张 → 填进左栏操作台。
- * 宗旨 v15：图示卡片版式（对照稿定式图示目录截图）——顶部 AI 风格大图（有 thumb 时）+
- * 右上角角标 +（悬浮）「填入」蒙层，底部标题 + 一句话。无 thumb 回退 emoji tint 图示。
- */
-function ExampleGrid({
-  examples,
-  accent,
-  onUseExample,
-}: {
-  examples: GuideExample[];
-  accent: string;
-  onUseExample?: (ex: GuideExample) => void;
-}) {
-  const tt = useUI();
+type TT = (s: string, vars?: Record<string, string | number>) => string;
+
+/** 把工作流参数（style/words/ratio…）拼成一句概览（跳过对象/空值）。 */
+function paramSummary(params: Record<string, unknown>, tt: TT): string {
+  const parts = Object.values(params || {})
+    .filter((v) => typeof v === "string" || typeof v === "number")
+    .map((v) => (typeof v === "number" ? String(v) : tt(String(v))));
+  return parts.join(" · ");
+}
+
+/** 卡片缩略图（有 thumb 用图；否则 emoji tint 图示）。 */
+function NavThumb({ it, accent, size }: { it: NavItem; accent: string; size: "grid" | "list" }) {
+  if (it.thumb) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={it.thumb}
+        alt=""
+        loading="lazy"
+        className={
+          size === "grid"
+            ? "h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            : "h-full w-full rounded-lg object-cover"
+        }
+      />
+    );
+  }
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-      {examples.map((ex, i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => onUseExample?.(ex)}
-          className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
+    <span
+      className={`flex h-full w-full items-center justify-center ${size === "grid" ? "text-3xl" : "text-lg"}`}
+      style={{ color: accent }}
+    >
+      {it.icon ?? "✦"}
+    </span>
+  );
+}
+
+function DeleteButton({ onDelete, tt, floating }: { onDelete: () => void; tt: TT; floating?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete();
+      }}
+      aria-label={tt("删除")}
+      className={
+        floating
+          ? "absolute right-2 top-2 rounded-lg bg-white/85 p-1.5 text-neutral-400 opacity-0 backdrop-blur transition-all duration-150 hover:text-rose-500 active:scale-90 group-hover:opacity-100"
+          : "shrink-0 rounded-lg p-1.5 text-neutral-300 opacity-0 transition-all duration-150 hover:text-rose-500 active:scale-90 group-hover:opacity-100"
+      }
+    >
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+function NavCard({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
+  const second = [it.hint ? tt(it.hint) : "", it.meta].filter(Boolean).join(" · ");
+  return (
+    <div className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md">
+      <button type="button" onClick={it.onClick} className="w-full text-left">
+        <span className="relative block w-full overflow-hidden" style={{ aspectRatio: "16 / 10", background: tintColor(accent) }}>
+          <NavThumb it={it} accent={accent} size="grid" />
+          {it.badge && (
+            <span className="absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm" style={{ background: accent }}>
+              {tt(it.badge)}
+            </span>
+          )}
+          <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition group-hover:opacity-100">
+            <span className="rounded-md bg-white/95 px-2 py-0.5 text-[11px] font-medium" style={{ color: accent }}>
+              {tt("填入 →")}
+            </span>
+          </span>
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
+          <span className="truncate text-[13px] font-medium text-neutral-800">{tt(it.label)}</span>
+          {second && <span className="line-clamp-1 text-[11px] leading-relaxed text-neutral-500">{second}</span>}
+        </span>
+      </button>
+      {it.onDelete && <DeleteButton onDelete={it.onDelete} tt={tt} floating />}
+    </div>
+  );
+}
+
+function NavRow({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
+  const second = [it.hint ? tt(it.hint) : "", it.meta].filter(Boolean).join(" · ");
+  return (
+    <div className="group flex items-center gap-3 px-3 py-2.5 transition hover:bg-neutral-50">
+      <button type="button" onClick={it.onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+          style={{ background: tintColor(accent) }}
         >
-          {/* 图示区（16:10）。有 thumb 用图，无 thumb 用 emoji tint 底。悬浮盖「填入」。 */}
-          <span
-            className="relative block w-full overflow-hidden"
-            style={{ aspectRatio: "16 / 10", background: tintColor(accent) }}
-          >
-            {ex.thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={ex.thumb}
-                alt=""
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-            ) : (
-              <span
-                className="flex h-full w-full items-center justify-center text-3xl"
-                style={{ color: accent }}
-              >
-                {ex.icon ?? "✦"}
-              </span>
-            )}
-            {ex.badge && (
-              <span
-                className="absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
-                style={{ background: accent }}
-              >
-                {tt(ex.badge)}
-              </span>
-            )}
-            <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition group-hover:opacity-100">
-              <span className="rounded-md bg-white/95 px-2 py-0.5 text-[11px] font-medium" style={{ color: accent }}>
-                {tt("填入 →")}
-              </span>
-            </span>
-          </span>
-          {/* 文案区：标题 + 一句话概括（hint）。点击填进左栏的才是完整 prompt。 */}
-          <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
-            <span className="truncate text-[13px] font-medium text-neutral-800">{tt(ex.label)}</span>
-            <span className="line-clamp-1 text-[11px] leading-relaxed text-neutral-500">
-              {tt(ex.hint ?? ex.prompt)}
-            </span>
-          </span>
-        </button>
-      ))}
+          <NavThumb it={it} accent={accent} size="list" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-neutral-800">{tt(it.label)}</span>
+          {second && <span className="block truncate text-[11px] text-neutral-500">{second}</span>}
+        </span>
+      </button>
+      {it.onDelete && <DeleteButton onDelete={it.onDelete} tt={tt} />}
     </div>
   );
 }

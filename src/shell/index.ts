@@ -89,9 +89,10 @@ export type { NavigatorGuideProps, FunctionGuide, GuideExample, GuideSection } f
 export {
   GuideProvider,
   useFunctionGuide,
+  useGuideWorkflows,
   useRegisterOpsFiller,
 } from "./guide-context";
-export type { OpsFiller } from "./guide-context";
+export type { OpsFiller, SavedWorkflow, WorkflowDraft } from "./guide-context";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
 // 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
 export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorkspace";

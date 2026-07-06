@@ -33,7 +33,10 @@ export interface ResultCanvasProps {
   tabs: CanvasTab[];
   active: string;
   onChange: (id: string) => void;
-  /** 标签条右侧提示（如「点击放大预览 · 拖拽到左侧才算选用」）。 */
+  /**
+   * @deprecated 宗旨 v16（操作员 2026-07-06）：右栏标签条右侧的提示胶囊（如「点击放大
+   * 预览 · 拖拽到左侧才算选用」）已全站删除——标签条上移到右栏标题行、与提示挤在一起
+   * 不合适，且该提示信息量低。保留 prop 仅为向后兼容（传了也不再渲染）。 */
   hint?: ReactNode;
   /** 选中标签的强调色，默认中性（白底+灰字）。 */
   accent?: string;
@@ -46,17 +49,16 @@ export interface ResultCanvasProps {
   focusNonce?: number;
 }
 
-/** 标签条本体（一排 pill + 可选右侧 hint）。挂右栏标题位与回退自带头部共用。 */
+/** 标签条本体（一排 pill）。挂右栏标题位与回退自带头部共用。宗旨 v16：不再渲染右侧
+ * 提示胶囊（「点击放大预览 · 拖拽到左侧才算选用」全站删除）。 */
 function TabBar({
   tabs,
   active,
   onChange,
-  hint,
 }: {
   tabs: CanvasTab[];
   active: string;
   onChange: (id: string) => void;
-  hint?: ReactNode;
 }) {
   const tt = useUI();
   return (
@@ -77,11 +79,6 @@ function TabBar({
           </button>
         ))}
       </div>
-      {hint && (
-        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-          {hint}
-        </span>
-      )}
     </div>
   );
 }
@@ -93,11 +90,12 @@ export function ResultCanvas({
   tabs,
   active,
   onChange,
-  hint,
+  hint: _hint,
   accent = "#4f46e5",
   className = "",
   focusNonce,
 }: ResultCanvasProps) {
+  void _hint; // 宗旨 v16：提示胶囊已删除（保留 prop 兼容）。
   const rightSlot = useRightPaneSlot();
   const guideCtx = useFunctionGuide();
   const hasGuide = Boolean(guideCtx?.guide);
@@ -181,10 +179,10 @@ export function ResultCanvas({
   useEffect(() => {
     if (!rightSlot) return;
     rightSlot.setRightLabel(
-      <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} hint={hint} />,
+      <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} />,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rightSlot, allTabs, effectiveActive, hint]);
+  }, [rightSlot, allTabs, effectiveActive]);
   useEffect(() => {
     return () => rightSlot?.setRightLabel(null);
   }, [rightSlot]);
@@ -206,7 +204,7 @@ export function ResultCanvas({
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-white/70 ${className}`}
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-3">
-        <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} hint={hint} />
+        <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} />
       </div>
       <div className="v-scroll-stable flex-1 overflow-y-auto p-4">{current?.content}</div>
     </div>

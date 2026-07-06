@@ -18,3 +18,5 @@ export * from "./presence";
 export * from "./brand-color";
 // 宗旨 v15（2026-07-05）：asset.oceanleo.com 素材缩略图直链（图示卡片示意图）。
 export * from "./asset-thumb";
+// 宗旨 v16 补充（2026-07-06）：「我的工作流」存取（操作台输入快照 → 右栏导航「我的」复用）。
+export * from "./workflows";

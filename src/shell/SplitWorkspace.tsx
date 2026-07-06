@@ -386,34 +386,33 @@ export function SplitWorkspace({
         }
       >
         {library ? (
-          /* 库模式右版面顶栏：✕(左，关闭整个右版面) / 「库」标题(居中) / 大屏(右)。
-             第二行（若右栏内容 ResultCanvas 经 useRightPaneSlot 注入了自己的标签条，如
-             子站的「本月概览/交易记录/我的数据库」）渲染在标题行下面，作为该站【自己的】
-             库分区标签——不硬塞主站的库分区。 */
-          <>
-            {/* 三格布局：左(✕)/中(标题，真居中)/右(大屏)——两侧等宽保证标题严格居中。 */}
-            <div className="grid min-h-[2.5rem] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-stone-100 px-3 py-1.5">
-              <div className="flex justify-start">
-                <button
-                  type="button"
-                  onClick={() => setLibraryOpen(false)}
-                  aria-label={tt("关闭")}
-                  className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-                >
-                  ✕
-                </button>
-              </div>
-              <span className="truncate text-center text-[12px] font-medium text-stone-500">
-                {library.paneTitle ?? libraryLabel}
-              </span>
-              <div className="flex justify-end">
-                <MaxButton which="right" />
-              </div>
+          /* 库模式右版面顶栏（宗旨 v16，操作员 2026-07-06）：一行搞定 =
+               ✕(左，关闭右版面) / 标签条(中，取代原居中「库」标题) / 大屏(右)。
+             标签条（导航 / 生成结果 / 素材库 / 文件库…）由右栏内容 ResultCanvas 经
+             useRightPaneSlot 注入进 rightLabelOverride —— 它直接坐到原「库」标题的位置，
+             不再单占第二行。右栏内容不是 ResultCanvas（无注入）时回退显示「库」标题。 */
+          <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => setLibraryOpen(false)}
+              aria-label={tt("关闭")}
+              className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            >
+              ✕
+            </button>
+            <div className="min-w-0 flex-1">
+              {rightLabelOverride != null ? (
+                rightLabelOverride
+              ) : (
+                <span className="truncate text-[12px] font-medium text-stone-500">
+                  {library.paneTitle ?? libraryLabel}
+                </span>
+              )}
             </div>
-            {rightLabelOverride != null && (
-              <div className="shrink-0 border-b border-stone-100 px-3 py-1.5">{rightLabelOverride}</div>
-            )}
-          </>
+            <div className="shrink-0">
+              <MaxButton which="right" />
+            </div>
+          </div>
         ) : (
           <PaneHeader label={effectiveRightLabel}>
             <MaxButton which="right" />
