@@ -52,6 +52,10 @@ export interface InputCardProps {
   placeholder?: string;
   /** 提交中：发送键 + 主按钮转圈禁用。 */
   loading?: boolean;
+  /** 模板实填高亮（宗旨 v15）：传带 [占位] 的模板串 → 内部 LeoComposer 字面实填 +
+   *  占位 accent 着色；用户手输普通内容时传 null（退化为普通输入框）。各站操作台点
+   *  导航/快速起手卡填模板时用它，让 [占位] 变荧光块而非灰普通字。 */
+  highlightTemplate?: string | null;
 
   // --- 序号 / 标题 / 折叠（透传给 StudioSection；不传 open 时卡片常展开） ---
   index?: number;
@@ -91,6 +95,7 @@ export function InputCard({
   onSubmit,
   placeholder: placeholderProp,
   loading = false,
+  highlightTemplate = null,
   index,
   title: titleProp,
   accent = "#4f46e5",
@@ -153,6 +158,8 @@ export function InputCard({
         onSubmit={onSubmit}
         leoSuggest
         loading={loading}
+        highlightTemplate={highlightTemplate}
+        accentColor={accent}
         placeholder={placeholder}
         className={dragging ? "border-dashed" : ""}
       />
