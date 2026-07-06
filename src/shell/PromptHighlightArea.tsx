@@ -199,6 +199,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     onKeyDownRef.current = onKeyDown;
     const seededTemplate = useRef<string | null>(null);
     const applyingRef = useRef(false);
+    // 记录「本编辑器最后一次通过 onUpdate 吐给外部的 value」。受控回环里，父组件把这个值又当
+    // value prop 传回来——那是我们【自己刚发出的回声】，绝不能据此 setContent（会在打字/IME
+    // 合成途中把 DOM 整个重建，导致正文瞬移到第二行，操作员 2026-07-06 复现）。只有当 value
+    // ≠ 最后吐出的值时，才是「外部程序化改了 value」，那才需要同步进编辑器。
+    const lastEmittedRef = useRef<string>("");
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -243,7 +248,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       },
       onUpdate: ({ editor }) => {
         if (applyingRef.current) return;
-        onChangeRef.current(docToPlain(editor));
+        const plain = docToPlain(editor);
+        lastEmittedRef.current = plain; // 记下自己吐出的值 → value-sync effect 据此识别「回声」不重建
+        onChangeRef.current(plain);
       },
     });
 
@@ -269,7 +276,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           .focus("end")
           .run();
         seededTemplate.current = null;
-        onChangeRef.current(docToPlain(editor));
+        const plain = docToPlain(editor);
+        lastEmittedRef.current = plain;
+        onChangeRef.current(plain);
       },
       getSelectedText: () => {
         if (!editor) return "";
@@ -305,7 +314,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           .focus("end")
           .run();
         seededTemplate.current = null;
-        onChangeRef.current(docToPlain(editor));
+        const plain = docToPlain(editor);
+        lastEmittedRef.current = plain;
+        onChangeRef.current(plain);
       };
       // min-height 交给 CSS（.oc-slot-editor）统一预留 2 行，避免挂载前后跳变/闪矮框。
     }, [editor, accentColor, maxHeight]);
@@ -337,7 +348,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           .run();
         seededTemplate.current = tmpl;
         applyingRef.current = false;
-        onChangeRef.current(docToPlain(editor));
+        const plain = docToPlain(editor);
+        lastEmittedRef.current = plain;
+        onChangeRef.current(plain);
       },
       [editor],
     );
@@ -356,11 +369,22 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       seed(template);
     }, [editor, template, seed]);
 
-    // 外部 value 被改（无模板的纯文本场景，调用方程序化改 value）→ 同步进编辑器。**只在无模板时**
-    // 生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark + 破坏 undo）。
+    // 外部 value 被改（无模板的纯文本场景，调用方【程序化】改 value）→ 同步进编辑器。
+    // **只在无模板时**生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark
+    // + 破坏 undo）。
+    //
+    // 致命坑（操作员 2026-07-06「打字瞬移到第二行」）：受控回环里，用户打字 → onUpdate 吐值 →
+    // 父组件 setState → value prop 变 → 本 effect 触发。若此时 setContent，会在打字/中文 IME
+    // 合成【途中】把 DOM 整个重建，浏览器待提交的合成文本被错位到新行 = 正文瞬移到第二行。
+    // 防线三条：
+    //   1. value === 我们自己最后吐出的值（lastEmittedRef）→ 这是【自己的回声】，什么都不做。
+    //   2. IME 合成进行中（editor.view.composing）→ 绝不 setContent（会打断合成、错位光标）。
+    //   3. 只有上面都不满足、且 value 确实 ≠ 编辑器当前内容 → 才是真·外部改动，setContent 同步。
     useEffect(() => {
       if (!editor || applyingRef.current) return;
       if (template != null) return;
+      if (value === lastEmittedRef.current) return; // 自己的回声，忽略
+      if (editor.view.composing) return; // IME 合成途中，绝不重建 DOM
       const current = docToPlain(editor);
       if (value !== current) {
         applyingRef.current = true;
@@ -371,6 +395,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           { emitUpdate: false },
         );
         applyingRef.current = false;
+        lastEmittedRef.current = value; // 记下已同步的外部值，避免紧接着又被当外部改动
       }
     }, [editor, value, template]);
 
