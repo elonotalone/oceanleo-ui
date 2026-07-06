@@ -38,6 +38,12 @@ export interface ResultCanvasProps {
   /** 选中标签的强调色，默认中性（白底+灰字）。 */
   accent?: string;
   className?: string;
+  /**
+   * 「聚焦请求」计数器（宗旨 v16）：宿主每次自增它 → ResultCanvas 离开「导航」首屏、
+   * 显示当前受控 `active` 标签。用于「点操作台里的主按钮/引导卡后要把右栏拉到某个生成
+   * 资源标签」的场景，即使 `active` 值本身没变（如目标标签恰好等于当前受控值）也强制切走
+   * 导航。不传则只有用户点标签或 `active` 值变化才离开导航（既有行为）。 */
+  focusNonce?: number;
 }
 
 /** 标签条本体（一排 pill + 可选右侧 hint）。挂右栏标题位与回退自带头部共用。 */
@@ -90,6 +96,7 @@ export function ResultCanvas({
   hint,
   accent = "#4f46e5",
   className = "",
+  focusNonce,
 }: ResultCanvasProps) {
   const rightSlot = useRightPaneSlot();
   const guideCtx = useFunctionGuide();
@@ -106,6 +113,29 @@ export function ResultCanvas({
     if (!hasGuide) setOnGuide(false);
     prevHasGuide.current = hasGuide;
   }, [hasGuide]);
+
+  // 宿主【主动】把受控 active 切到某个真实标签（非首挂载、非指南 id）→ 离开指南首屏，
+  // 显示该标签。用于「点了操作台里的主按钮/引导卡后，右栏要跳到对应生成资源标签」
+  // （宗旨 v16，word：点『生成大纲』/大纲引导卡 → 右栏库跳到『大纲』标签）。首帧不触发
+  // （prevActive 初始 = active），故不破坏「进功能默认停在导航首屏」的既有行为。
+  const prevActive = useRef(active);
+  useEffect(() => {
+    if (active !== prevActive.current) {
+      prevActive.current = active;
+      if (active !== GUIDE_TAB_ID) setOnGuide(false);
+    }
+  }, [active]);
+
+  // 「聚焦请求」（focusNonce 自增）→ 强制离开导航首屏、显示当前受控 active（即便 active
+  // 值没变，如目标标签恰等于当前受控值）。首帧不触发（prevNonce 初始 = focusNonce）。
+  const prevNonce = useRef(focusNonce);
+  useEffect(() => {
+    if (focusNonce !== prevNonce.current) {
+      prevNonce.current = focusNonce;
+      if (active !== GUIDE_TAB_ID) setOnGuide(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
 
   const guideTab: CanvasTab | null = useMemo(
     () =>
