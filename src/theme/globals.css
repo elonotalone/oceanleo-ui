@@ -1643,18 +1643,27 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   overflow-wrap: break-word;
   -webkit-font-smoothing: inherit;
   tab-size: 4;
-  /* 光标用系统默认色（不再染成 accent 荧光色）——操作员要求光标任何情况下都正常色。 */
+  caret-color: auto; /* 光标系统默认色 + 正常粗细（不染 accent、不出粗竖条） */
 }
 .oc-slot-editor > p {
   margin: 0;
+  position: relative; /* 供空态 placeholder 绝对定位（不用 float，避免空段落里光标变粗变高） */
 }
-/* Tiptap Placeholder 扩展：空编辑器时的灰色提示（等价 textarea placeholder）。 */
+/* Tiptap Placeholder 扩展：空编辑器时的灰色提示（等价 textarea placeholder）。
+ * 用**绝对定位**而非 `float:left;height:0`——后者在空 <p> 里会让 contentEditable 的光标渲染成
+ * 一条又粗又高的竖条（操作员截图 41643744：Ctrl+A 删空后左侧粗光标）。绝对定位不参与行盒布局，
+ * 光标就是正常细光标。 */
 .oc-slot-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  float: left;
-  height: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
   pointer-events: none;
   color: #a3a3a3; /* neutral-400 */
+}
+/* 显式压掉可能出现的 ProseMirror gap cursor（空文档间隙光标，渲染成粗竖条）。 */
+.oc-slot-editor .ProseMirror-gapcursor {
+  display: none;
 }
 /* 荧光块（promptSlot mark）：默认 = **已填·深蓝荧光**（深 accent 字 + 较实 accent 底 + 加粗）。 */
 .oc-slot {
