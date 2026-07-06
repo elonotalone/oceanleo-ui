@@ -38,13 +38,42 @@ import {
 } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { Extension } from "@tiptap/core";
+import { TextSelection, Plugin } from "@tiptap/pm/state";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Placeholder from "@tiptap/extension-placeholder";
 import History from "@tiptap/extension-history";
 import { PromptSlot, PROMPT_SLOT_NAME } from "./promptSlotNode";
+
+// ── 空态选区回正（操作员 2026-07-06 报的「粗光标」bug）──────────────────────────
+// 复现：输入框里打字 → Ctrl+A 全选 → 删除。删完文档已空，但 ProseMirror 把那个覆盖全文的
+// AllSelection 映射成「覆盖空文档的非折叠选区」，原生 DOM 选区锚在编辑器根 <div> 上——浏览器
+// 据此渲染出一条「粗光标 / 整行反白块」（≠ 正常细竖线）。同一个非折叠空选区还会让页面划词
+// 气泡（LeoAssistant SelectionBubble）误判「有选中」而滞留在上方（气泡本该只在选中实质内容时
+// 出现）。无头已确定性复现：删空后 isCollapsed=false、selText=""、anchor=DIV、bubbleVisible=true。
+// 修法（ProseMirror 惯用 appendTransaction）：任何改动了文档的事务之后，若文档已无可见文本而
+// 选区仍非折叠，就把选区折叠成段首的普通光标。这一步会触发 selectionchange → 划词气泡的
+// update() 看到 isCollapsed 后一并 setBubble(null)，所以**一处修复同时治好粗光标 + 气泡滞留**。
+const CollapseEmptySelection = Extension.create({
+  name: "collapseEmptySelection",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        appendTransaction: (trs, _oldState, newState) => {
+          if (!trs.some((tr) => tr.docChanged)) return null; // 只在文档变化后管
+          const sel = newState.selection;
+          if (sel.empty) return null; // 已是折叠光标 → 不动
+          if (newState.doc.textContent.length > 0) return null; // 还有内容（如 Ctrl+A 待替换）→ 不动
+          // 文档已空但选区非折叠 = 那个会渲染成粗光标的退化选区 → 折叠到段首。
+          const pos = Math.min(1, newState.doc.content.size);
+          return newState.tr.setSelection(TextSelection.create(newState.doc, pos));
+        },
+      }),
+    ];
+  },
+});
 
 // 方括号占位符：`[任意非中括号、非换行字符]`。
 const TOKEN_RE = /\[[^\[\]\n]+\]/g;
@@ -218,6 +247,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
         Text,
         History, // undo/redo（此前漏装 = Ctrl+Z 完全无效的真正根因，2026-07-06 修）
         PromptSlot,
+        CollapseEmptySelection, // Ctrl+A 删空后粗光标 + 划词气泡滞留（2026-07-06）
         Placeholder.configure({
           placeholder: placeholder || "",
           showOnlyWhenEditable: true,
