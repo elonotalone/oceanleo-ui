@@ -241,8 +241,8 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       const dom = editor.view.dom as HTMLElement;
       dom.style.setProperty("--oc-ph-accent", accentColor);
       dom.style.maxHeight = `${maxHeight}px`;
-      dom.style.minHeight = `${rows * 1.625}em`;
-    }, [editor, accentColor, maxHeight, rows]);
+      // min-height 交给 CSS（.oc-slot-editor）统一预留 2 行，避免挂载前后跳变/闪矮框。
+    }, [editor, accentColor, maxHeight]);
 
     // 灌模板：全选 → 用模板内容替换整个文档（一个自然的可 undo 事务，弃 setContent 以保 undo 栈）。
     // **不自动选中任何荧光块**（操作员要求：点卡片后不能默认勾选第一个块）。灌完把光标收拢到末尾

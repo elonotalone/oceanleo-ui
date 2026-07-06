@@ -1631,10 +1631,17 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
  *   · 点未填块→整段提示文字被选中→一打字/一拼音原生替换选区（光标真在文本里，无假竖线）。
  * accent 配色由 --oc-ph-accent 变量下发（各站不同）。一处定义全家桶生效（编译进 ui.css）。
  * ========================================================================== */
+/* 外层 wrap：**先占住 2 行高度**。编辑器 immediatelyRender:false（SSR 安全），Tiptap 挂载前
+ * EditorContent 是空的——不占高会导致「进页面闪一下很矮的输入框」（操作员截图 de5176e1）。
+ * 这里 CSS 预留高度（20+8 padding + 2×1.625em 行高 ≈ 76px），挂载前后高度一致、不闪。 */
+.oc-slot-wrap {
+  min-height: 76px;
+}
 /* 编辑器根：承载 LeoComposer 卡片内的输入排版（等价旧 textarea 的 px-5 pt-5 pb-2）。 */
 .oc-slot-editor {
   box-sizing: border-box;
   padding: 20px 20px 8px 20px;
+  min-height: 76px; /* 同上，挂载后仍保 2 行起步高度 */
   outline: none;
   overflow-y: auto;
   color: #262626; /* neutral-800，与旧 textarea 一致 */
@@ -1643,25 +1650,28 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   overflow-wrap: break-word;
   -webkit-font-smoothing: inherit;
   tab-size: 4;
-  caret-color: auto; /* 光标系统默认色 + 正常粗细（不染 accent、不出粗竖条） */
+  caret-color: auto; /* 光标系统默认色 + 正常粗细（不染 accent） */
 }
 .oc-slot-editor > p {
   margin: 0;
-  position: relative; /* 供空态 placeholder 绝对定位（不用 float，避免空段落里光标变粗变高） */
 }
 /* Tiptap Placeholder 扩展：空编辑器时的灰色提示（等价 textarea placeholder）。
- * 用**绝对定位**而非 `float:left;height:0`——后者在空 <p> 里会让 contentEditable 的光标渲染成
- * 一条又粗又高的竖条（操作员截图 41643744：Ctrl+A 删空后左侧粗光标）。绝对定位不参与行盒布局，
- * 光标就是正常细光标。 */
+ * **必须 `float:left; height:0`**——这是让光标停在**行首**（而非 placeholder 文字末尾）的官方配方。 */
 .oc-slot-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  position: absolute;
-  left: 0;
-  top: 0;
+  float: left;
+  height: 0;
   pointer-events: none;
   color: #a3a3a3; /* neutral-400 */
 }
-/* 显式压掉可能出现的 ProseMirror gap cursor（空文档间隙光标，渲染成粗竖条）。 */
+/* **粗光标真正的修法**（操作员截图 41643744/900b7d61）：空 <p> 里 ProseMirror 会塞一个
+ * `<br class="ProseMirror-trailingBreak">` 防止行塌陷——但它会把 contentEditable 的光标撑成一条
+ * 又粗又高的竖条。空态时**隐藏这个 trailingBreak**（有真实内容时它不出现，不影响正常编辑）。
+ * 来源：ueberdosis/tiptap discussion #2138、prosemirror trailingBreak 讨论帖。 */
+.oc-slot-editor p.is-editor-empty:first-child .ProseMirror-trailingBreak {
+  display: none;
+}
+/* 双保险：压掉可能出现的 ProseMirror gap cursor（也是粗竖条）。 */
 .oc-slot-editor .ProseMirror-gapcursor {
   display: none;
 }
