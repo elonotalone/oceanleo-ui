@@ -1,33 +1,32 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>v15e 嵌套编辑宿主 smoke（槽内输入 / IME / 不可删 / 清空回显）</title>
+<title>v15f 单一编辑宿主 smoke（槽内输入 / IME / 末字可删 / 不可整删 / 清空回显）</title>
 <style>
-  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 780px; }
+  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 800px; }
   #ed { border: 1px solid #ddd; border-radius: 10px; padding: 16px 18px; outline: none;
-        white-space: pre-wrap; word-break: break-word; }
+        white-space: pre-wrap; word-break: break-word; --oc-ph-accent:#4f46e5; }
+  /* 单一 host：槽是普通可编区间（不设 contenteditable，继承外层=true）。标签是槽自身 ::before。 */
   .oc-ph { display: inline; border-radius: 4px; cursor: text; }
-  .oc-ph-inner { display: inline; outline: none; min-width: 1px; }
-  .oc-ph[data-empty] { background: rgba(79,70,229,.12); padding: 0 1px; }
-  /* 标签画在内芯 ::before —— caret 落内芯起点即压在标签上（视觉在框中）。 */
-  .oc-ph-inner[data-empty]::before {
+  .oc-ph[data-empty] { background: color-mix(in srgb, var(--oc-ph-accent) 12%, transparent); padding: 0 1px; }
+  .oc-ph[data-empty]::before {
     content: attr(data-hint);
-    color: #4f46e5; font-weight: 500; opacity: .9;
+    color: var(--oc-ph-accent); font-weight: 500; opacity: .9;
     -webkit-user-select: none; user-select: none;
   }
-  .oc-ph:not([data-empty]) { background: transparent; color: #4f46e5; font-weight: 600; }
+  .oc-ph:not([data-empty]) { background: transparent; color: var(--oc-ph-accent); font-weight: 600; }
   .hint { color:#888; font-size:13px; margin-top:10px; }
   pre { background:#f6f6f6; padding:8px; border-radius:6px; white-space:pre-wrap; }
   .pass { color:#16a34a; } .fail { color:#dc2626; font-weight:700; }
   b { color:#111; }
 </style>
-<h3>v15e 嵌套编辑宿主（外壳 CE=false + 内芯 CE=true）</h3>
+<h3>v15f 单一编辑宿主（外层唯一 CE=true；槽=普通可编区间 + ZWSP caret 落点；标签=槽 ::before）</h3>
 <p class="hint">
-  手测清单：<br>
-  ① 点 [主题] 蓝标签 → 光标进槽，<b>直接打英文</b>：字出现在<b>槽内</b>（荧光区里），标签消失，后文顺移。<br>
-  ② <b>中文输入法</b>在槽内打「xinnengyuan」选词：合成串全程停在槽内，<b>不会跳到最前面</b>。<br>
-  ③ 填完后把字<b>逐个删光</b>：最后一个字<b>能删掉</b>，删空后 [主题] 标签自动回来，槽还在。<br>
-  ④ 光标放槽左边字面末尾按 Backspace / 框选覆盖槽按删 → 槽<b>删不掉</b>（紧邻退格会把光标送进槽尾）。<br>
-  ⑤ 拖蓝整行 → 标签选不中。字面文字可正常编辑。value 永不含 [字段] 字面、不含零宽字符。
+  真机手测清单（这四条正是操作员反馈的 bug，重点验）：<br>
+  ① 点 [主题] 蓝标签 → 光标应<b>落在荧光区里/压在标签上</b>（不是标签右侧外面）。直接打英文：字在<b>槽内</b>原地出现、标签消失、后文顺移。<br>
+  ② <b>中文输入法</b>在槽内打「xinnengyuan」选词：合成串全程停在<b>槽内原地</b>，<b>绝不跳到页面最前面</b>。<br>
+  ③ 填完把字<b>逐个删光</b>：<b>最后一个字必须能删掉</b>；删空后 [主题] 标签自动回来、槽还在。<br>
+  ④ 光标放槽左边字面末尾按 Backspace / 框选覆盖槽再删 → 槽<b>删不掉</b>（紧邻退格会把光标送进槽尾）。<br>
+  ⑤ 拖蓝整行 → 蓝标签选不中。字面文字可正常编辑。value 永不含 [字段] 字面、不含零宽字符。
 </p>
 <div id="ed" contenteditable="true" spellcheck="false"></div>
 <div class="hint">value =</div>
@@ -45,14 +44,11 @@
   let slots = [];
   let composing = false, pendingRestore = false;
 
+  // 槽 = 普通可编 span（不设 contenteditable）+ 唯一子节点 ZWSP 文本节点（caret 落点）。
   function makeSlot(hint){
     const wrap=document.createElement('span');
-    wrap.className='oc-ph'; wrap.dataset.ph='1'; wrap.dataset.empty='1';
-    wrap.contentEditable='false';
-    const inner=document.createElement('span');
-    inner.className='oc-ph-inner'; inner.contentEditable='true'; inner.spellcheck=false;
-    inner.dataset.hint=hint; inner.dataset.empty='1'; // 标签画在内芯 ::before
-    wrap.appendChild(inner);
+    wrap.className='oc-ph'; wrap.dataset.ph='1'; wrap.dataset.hint=hint; wrap.dataset.empty='1';
+    wrap.appendChild(document.createTextNode(ZWSP));
     return wrap;
   }
   function build(t){
@@ -62,19 +58,15 @@
       else s.t.split('\n').forEach((p,i)=>{if(i>0)ed.appendChild(document.createElement('br'));if(p)ed.appendChild(document.createTextNode(p));});
     }
   }
-  function innerOf(sp){ return sp.querySelector('.oc-ph-inner'); }
   function syncEmpty(){
     for(const sp of slots){
       if(!sp.isConnected) continue;
-      const inner = sp.querySelector('.oc-ph-inner');
-      const empty = stripZ((inner||sp).textContent)==='';
-      [sp, inner].forEach(el=>{
-        if(!el) return;
-        if(empty && el.dataset.empty===undefined) el.dataset.empty='1';
-        else if(!empty && el.dataset.empty!==undefined) delete el.dataset.empty;
-      });
+      const empty = stripZ(sp.textContent)==='';
+      if(empty && sp.dataset.empty===undefined) sp.dataset.empty='1';
+      else if(!empty && sp.dataset.empty!==undefined) delete sp.dataset.empty;
     }
   }
+  function ensureSpot(sp){ if(sp.isConnected && sp.textContent==='') sp.appendChild(document.createTextNode(ZWSP)); }
   function readVal(root){
     let out='';
     root.childNodes.forEach(ch=>{
@@ -90,16 +82,27 @@
   }
   const out=document.getElementById('out');
   const show=()=>{ syncEmpty(); out.textContent=JSON.stringify(readVal(ed)); };
-  function focusInner(inner, at){
-    inner.focus();
+
+  // 光标 collapse 进槽（同一 host，不 focus 别的元素）。
+  function caretIntoSlot(sp, at){
+    ed.focus();
     const sel=getSelection(); if(!sel) return;
-    const r=document.createRange(); r.selectNodeContents(inner); r.collapse(at==='start');
+    const r=document.createRange(); r.selectNodeContents(sp); r.collapse(at==='start');
     sel.removeAllRanges(); sel.addRange(r);
+  }
+  // 区间是否「只删本槽真实文本」（越过 offset0 的 ZWSP）→ 放行。
+  function deletionRealOnly(r, sp){
+    const first=sp.firstChild;
+    if(!first || first.nodeType!==3) return false;
+    const within=(n)=> !!n && (n===first || (sp.contains(n) && n.nodeType===3));
+    if(!within(r.startContainer) || !within(r.endContainer)) return false;
+    if(r.startContainer===first && r.startOffset<1) return false;
+    return true;
   }
   function restore(){
     const saved = slots.map(s=> s.isConnected ? stripZ(s.textContent) : '');
     build(tmpl);
-    slots.forEach((s,i)=>{ if(saved[i]) innerOf(s).textContent=saved[i]; });
+    slots.forEach((s,i)=>{ if(saved[i]) s.appendChild(document.createTextNode(saved[i])); });
     syncEmpty(); show();
   }
 
@@ -107,15 +110,14 @@
   ed.addEventListener('compositionend',()=>{ composing=false; if(pendingRestore){ pendingRestore=false; restore(); } else show(); });
   ed.addEventListener('mousedown',(ev)=>{
     const t=ev.target;
-    if(t.closest && t.closest('.oc-ph-inner')) return;
-    const wrap = t.closest ? t.closest('.oc-ph') : null;
-    if(!wrap) return;
-    ev.preventDefault(); focusInner(innerOf(wrap),'end');
+    const sp = t.closest ? t.closest('.oc-ph') : null;
+    if(!sp) return;
+    if(stripZ(sp.textContent)!=='' && t!==sp) return; // 点在已填文字上：原生落点
+    ev.preventDefault(); caretIntoSlot(sp,'end');
   });
   ed.addEventListener('beforeinput',(e)=>{
     const t=e.inputType||'';
-    const inInner = e.target && e.target.closest && e.target.closest('.oc-ph-inner');
-    if(inInner){ if(t==='insertParagraph'||t==='insertLineBreak') e.preventDefault(); return; }
+    if(t==='insertParagraph'||t==='insertLineBreak'){ e.preventDefault(); return; }
     if(!t.startsWith('delete')||t==='deleteCompositionText') return;
     let ranges=[]; const tr=e.getTargetRanges?e.getTargetRanges():[];
     if(tr&&tr.length) ranges=tr.map(sr=>{const r=document.createRange();r.setStart(sr.startContainer,sr.startOffset);r.setEnd(sr.endContainer,sr.endOffset);return r;});
@@ -124,16 +126,14 @@
       if(!sp.isConnected) continue;
       let hit=false; try{ hit=r.intersectsNode(sp); }catch(_){}
       if(!hit) continue;
-      e.preventDefault();
+      if(deletionRealOnly(r, sp)) return; // 放行：删自己填的字（含末字）
+      e.preventDefault();                 // 拦：删不掉槽 / 不删 ZWSP / 不跨壳
       const sel=getSelection();
-      if(sel && sel.isCollapsed){
-        const inner=innerOf(sp);
-        if(inner && stripZ(sp.textContent)!==''){ focusInner(inner, t==='deleteContentBackward'?'end':'start'); }
-      }
+      if(sel && sel.isCollapsed && stripZ(sp.textContent)!==''){ caretIntoSlot(sp, t==='deleteContentBackward'?'end':'start'); }
       return;
     }
   });
-  ed.addEventListener('input',show);
+  ed.addEventListener('input',()=>{ for(const s of slots) ensureSpot(s); show(); });
   new MutationObserver(()=>{
     if(!slots.length) return;
     if(!slots.some(s=>!s.isConnected)) return;
@@ -143,22 +143,32 @@
 
   build(tmpl); show();
 
-  // ---- 自动断言（逻辑层）----
+  // ---- 自动断言（逻辑层；真实光标/IME/删除仍需人工按上面清单在浏览器里点）----
   const A=document.getElementById('asserts'); let L=[];
   const asrt=(n,ok)=>L.push(`<span class="${ok?'pass':'fail'}">${ok?'✓':'✗'} ${n}</span>`);
   asrt('初始 value 不含 [字段] 字面', !/\[[^\]]+\]/.test(readVal(ed)));
+  asrt('初始 value 不含零宽字符', readVal(ed).indexOf(ZWSP)===-1);
   asrt('初始 3 个空槽 data-empty', slots.filter(s=>s.dataset.empty!==undefined).length===3);
   asrt('标签是 ::before（不进 DOM 文本）', ed.textContent.indexOf('[主题]')===-1);
-  asrt('槽外壳 CE=false、内芯 CE=true', slots.every(s=>s.contentEditable==='false' && innerOf(s).contentEditable==='true'));
-  // 模拟槽内输入（写内芯，纯属性切换，不动其它文本）。
-  innerOf(slots[0]).textContent='新能源汽车'; syncEmpty();
+  asrt('单一 host：槽不设自己的 contenteditable', slots.every(s=>!s.hasAttribute('contenteditable')));
+  asrt('每个空槽含且仅含 1 个 ZWSP caret 落点', slots.every(s=>s.textContent===ZWSP));
+  // 模拟槽内输入（追加真实字符到槽的文本节点，纯属性切换）。
+  slots[0].firstChild.textContent = ZWSP+'新能源汽车'; syncEmpty();
   asrt('填入后 data-empty 去除、value 出真实内容', slots[0].dataset.empty===undefined && readVal(ed).includes('新能源汽车'));
-  // 模拟删到空（内芯清空，宿主仍在）。
-  innerOf(slots[0]).textContent=''; syncEmpty();
+  // 模拟删到空（删回只剩 ZWSP，槽仍在，标签回显）。
+  slots[0].firstChild.textContent = ZWSP; syncEmpty();
   asrt('删空后标签回显、槽仍在', slots[0].dataset.empty!==undefined && slots[0].isConnected);
   asrt('删空后 value 该段为空', readVal(ed)==="帮我写一篇关于  的文章，面向 ，约  字。");
+  // deletionRealOnly 判定：删末字（区间在真实文本里）应放行；删 ZWSP（offset0）应拦。
+  slots[0].firstChild.textContent = ZWSP+'京'; // 只剩一个真实字
+  const tn=slots[0].firstChild;
+  const rReal=document.createRange(); rReal.setStart(tn,1); rReal.setEnd(tn,2); // 删「京」
+  asrt('删末字：区间判为放行（末字可删）', deletionRealOnly(rReal, slots[0])===true);
+  const rZwsp=document.createRange(); rZwsp.setStart(tn,0); rZwsp.setEnd(tn,1); // 删 ZWSP
+  asrt('删 ZWSP：区间判为拦截（保 caret 落点）', deletionRealOnly(rZwsp, slots[0])===false);
+  slots[0].firstChild.textContent = ZWSP; syncEmpty();
   // 模拟槽被整删 → observer 兜底重建。
-  innerOf(slots[1]).textContent='大学生'; syncEmpty();
+  slots[1].firstChild.textContent = ZWSP+'大学生'; syncEmpty();
   slots[0].remove();
   setTimeout(()=>{
     asrt('槽被整删后自动重建（兜底）', slots.length===3 && slots.every(s=>s.isConnected));

@@ -1618,15 +1618,17 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 
 /* ============================================================================
  * 模板「实填 + 文本流内填空槽」输入（TemplateFillArea / PromptHighlightArea，
- * 宗旨 v15e 定版·嵌套编辑宿主，对齐豆包「帮我写作」范式）
+ * 宗旨 v15f 定版·单一编辑宿主，对齐豆包「帮我写作」范式）
  * ----------------------------------------------------------------------------
  * 点卡片/示例灌进带 [字段] 的模板时：字面文字是真实可编辑内容；`[字段]` 渲染成
- *   <span.oc-ph contenteditable=false data-hint>      ← 原子外壳：删不掉、选区跨不进
- *     <span.oc-ph-inner contenteditable=true>          ← 内芯：打字/IME 都发生在这里面
- *   · 未填（data-empty）：蓝色 [标签] 用 ::before(CSS content) 显示 —— 不可选、不进 value；
- *   · 【在框中输入】：点标签即聚焦内芯，中英文都在槽内原地输入、后文顺移；
- *   · 【不可删】：外壳 CE=false + 外层 beforeinput 拦截；槽内删字只清空内芯、宿主必在；
- *   · 【清空回显】：内芯删空 → data-empty 回来 → 标签回显（纯属性切换，IME 零干扰）；
+ *   外层 <div contenteditable=true>           ← **唯一** editing host（绝不嵌套第二个 host）
+ *     <span.oc-ph data-hint data-empty>        ← 占位槽：**不设** contenteditable（继承 =true）
+ *         "\u200b"                              ← 空槽放一个 ZWSP 当 caret 落点
+ *   · 未填（data-empty）：蓝色 [标签] 用槽自身的 ::before(CSS content) 显示 —— 光标落
+ *     ZWSP 处即压在标签上（视觉「在框中」）；标签不可选、不进 value；
+ *   · 【在框中输入】：点槽即把光标 collapse 进槽，中英文/IME 都在槽内原地输入、后文顺移；
+ *   · 【不可删】：外层 beforeinput 拦「删 ZWSP / 把整壳带走」；删自己填的字（含末字）放行；
+ *   · 【清空回显】：删空 → data-empty 回来 → 标签回显（纯属性切换，IME 零干扰）；
  *   · 空槽 value = ""（不吐 [字段]），填了带出真实内容（加粗 accent 蓝）。
  * accent 配色由编辑器 style 里的 --oc-ph-accent 变量下发（各站 accent 不同）。
  * 一处定义、全家桶生效（编译进 theme/ui.css）。
@@ -1637,20 +1639,13 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   transition: background-color .15s ease;
   cursor: text;
 }
-/* 内芯编辑宿主：行内、无外观，继承字体；焦点样式交给外壳底色表达。 */
-.oc-tmpl-editor .oc-ph-inner {
-  display: inline;
-  outline: none;
-  min-width: 1px;
-}
-/* 未填：外壳给淡 accent 底（醒目框）。 */
+/* 未填：淡 accent 底（醒目框）+ 槽自身 ::before 蓝色标签。标签与 caret 同属本槽，光标落
+ * ZWSP 处即压在标签上（视觉「在框中」）。 */
 .oc-tmpl-editor .oc-ph[data-empty] {
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
   padding: 0 1px;
 }
-/* 幽灵标签 [字段] 画在**内芯**的 ::before（不是外壳）——这样它和 caret 同属内芯，光标落
- * 内芯起点即压在标签上（视觉「在框中」）。标签不可选；点击由 JS 转发进内芯。 */
-.oc-tmpl-editor .oc-ph-inner[data-empty]::before {
+.oc-tmpl-editor .oc-ph[data-empty]::before {
   content: attr(data-hint);
   color: var(--oc-ph-accent, #4f46e5);
   font-weight: 500;

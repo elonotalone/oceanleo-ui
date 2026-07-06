@@ -3,40 +3,40 @@
 // ============================================================================
 // @oceanleo/ui — TemplateFillArea（模板「实填 + 文本流内填空槽」输入区，单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v15（操作员 2026-07-05 多次拍板；本版 = v15e 定版，「嵌套编辑宿主」架构）：
+// 宗旨 v15（操作员 2026-07-05 多次拍板；本版 = v15f 定版，「单一编辑宿主」架构）：
 //
 //   点 prompt 卡片 / 导航示例后，模板文案**实打实填进输入框**——字面文字是真实、可编辑、
 //   可选中、可提交的字符；`[字段]` 是一个**文本流内的着色填空槽**：
 //     · 【在框中输入】——光标点进槽里，打字/中文输入法都发生在**槽内部**，字在句子里
 //        原地出现、标签消失、后文顺移（豆包「帮我写作」范式）；
 //     · 【不可选】——蓝色 [标签] 是 CSS ::before content，拖蓝/双击选不到、不进 value；
-//     · 【不可删】——槽本体删不掉：外层删除动作碰到槽一律拦截；槽内删自己填的字照常；
-//        删到最后一个字也只清空槽、槽本身还在（标签回显）；
+//     · 【不可删】——槽本体删不掉：删除动作要把整壳带走 / 删 ZWSP 一律拦截；槽内删自己
+//        填的字照常（含最后一个字）；删到空也只清空、槽本身还在（标签回显）；
 //     · 【清空即回显】——槽里的字删空 → 蓝色 [标签] 自动回来；
 //     · 【空槽不进 value】——空槽序列化为 ""（**绝不吐 [字段] 字面**）。
 //
-// v15e 架构 = 嵌套编辑宿主（为什么推翻 v15d 的「ZWSP + 输入后规整」）：
-//   v15d 在单一 contentEditable 里用 ZWSP 撑空槽、每次 input 后 normalize（剔/补 ZWSP、
-//   重设 textContent、重摆光标）。实测三个致命 bug（操作员截图 36bba60f/bfaef0b1）：
-//     ① 中文 IME 合成期间改 DOM 文本 → 合成被打断，拼音串整段跳到编辑器最前面；
-//     ② 光标其实落在槽外，打的字排在荧光区后面，不是「在框中」；
-//     ③ 删槽内最后一个字时 Chromium 的删除目标区间会跨过槽边界 → 被「不可删」拦截误杀。
-//   根因：在 IME 敏感的 contentEditable 里靠「输入后改文本」维持不变量，方向就错了。
-//   v15e 结构性解决，全程**零文本改动**：
-//     外层 <div contenteditable=true>            ← 字面文字，可编辑
+// v15f 架构 = 单一 editing host（为什么推翻 v15e 的「嵌套编辑宿主」）：
+//   v15e 用「外壳 CE=false 套内芯 CE=true」，让每个槽成为独立 editing host。实测 v0.92.1
+//   后 IME 跳页首 + 末字删不掉仍在。查实（W3C editing #528、AWS Cloudscape prompt-input
+//   生产源码、CKEditor #15682 + Chromium #1522876、contenteditable scenarios）：
+//     ① 多 editing host 触发 Chromium「中文 IME 快速输入 compositionstart 落 host A、
+//        compositionend 落 host B」→ 拼音跳到别处（= IME 跳页首）；
+//     ② 嵌套时 getTargetRanges() 会指向**外层**宿主 → 删除守卫误判 → 末字删不掉。
+//   业界一致做法（Slate/Lexical/ProseMirror/Cloudscape）= **单一 editing host**：
+//     外层 <div contenteditable=true>        ← **唯一** editing host（字面 + 槽都在这里）
 //       字面文本节点 …
-//       <span.oc-ph contenteditable=false>       ← 原子外壳：外层删除/选区跨不进、删不掉
-//         <span.oc-ph-inner contenteditable=true>← 内芯编辑宿主：打字/IME 都在这里面
+//       <span.oc-ph data-empty>              ← 占位槽：**不设** contenteditable（继承 =true）
+//           "\u200b"                          ← 空槽放一个 ZWSP 当 caret 落点；标签是 ::before
 //       </span>
 //       字面文本节点 …
-//     · 内芯是独立编辑宿主：光标能落进空元素，选区/删除天然被宿主边界圈住——删到最后
-//       一个字也不会把宿主删掉（浏览器保证），标签靠 [data-empty] 属性切换回显；
-//     · 属性切换不动文本节点 → IME 合成零干扰（①②③ 全部结构性消除）；
-//     · 外层 beforeinput 只做一件事：删除区间碰到 .oc-ph → preventDefault（+ 若是紧邻
-//       退格/删除则把光标送进槽内，方便继续编辑）。内芯的删除事件 target 是内芯宿主，
-//       天然区分，无需猜区间；
-//     · MutationObserver 兜底：极端情况（IME 覆盖选区合成等不可取消输入）把槽整掉时，
-//       按模板重建并按序回填已填内容（合成期间侦测到则推迟到 compositionend 再修）。
+//     · 只有一个 host → 无跨 host IME 跳页、getTargetRanges 恒指向本 host、删除天然在内；
+//     · 标签 = .oc-ph[data-empty]::before（伪元素，不可选/不进 value）；打字/删除**零文本
+//        改动**（ZWSP 常驻不删不补），只由 syncSlotEmptiness 切 data-empty → 标签显隐，
+//        属性变化不打断 IME 合成（这是与 v15d「输入后 normalize 改文本」的根本区别）；
+//     · beforeinput 删除守卫：仅当区间「完全落在槽真实文本里、越过 offset0 的 ZWSP」才放行
+//        （删自己填的字，含末字）；其余碰到槽（删 ZWSP / 空槽退格 / 从外把整壳带走）→
+//        preventDefault。单 host 下 getTargetRanges 可靠，无需猜跨界；
+//     · MutationObserver 仅兜极端「不可取消输入把整槽删掉」，合成期间推迟到 compositionend。
 //
 // 回退：无模板（普通输入框）时**不启用** contentEditable——LeoComposer 直接用普通
 //   <textarea>（全家桶其它输入框零回归）。本组件只在「点了卡片/示例、带模板」时接管。
@@ -128,31 +128,27 @@ const TYPO: CSSProperties = {
   overflowWrap: "break-word",
 };
 
-// 历史遗留的零宽空格清理（v15e 不再往 DOM 放 ZWSP，但序列化时仍剥一遍，防呆）。
+// 零宽空格：空槽里放一个当 caret 落点（Cloudscape「caret spot」同款）。运行期常驻不动，
+// 只在序列化时剥掉 → 不进 value、视觉无感。
 const ZWSP = "\u200b";
 const stripZwsp = (s: string) => s.split(ZWSP).join("");
 
 // ── DOM 构建 ───────────────────────────────────────────────────────────────
 
-/** 槽 = 原子外壳（CE=false，删不掉/选不进）+ 内芯编辑宿主（CE=true，打字/IME 在里面）。
- * 幽灵标签 [字段] 画在**内芯**的 ::before（data-hint + data-empty 都挂内芯）——这样标签和
- * caret 同属内芯，光标落内芯起点即压在标签上（视觉「在框中」），而不是排在外壳标签右侧。
- * 外壳只保留 data-empty 做淡底背景框。 */
+/** 槽 = 单一编辑宿主（外层 div）内的一段**普通可编辑区间**——**不设 contenteditable**
+ * （继承外层 =true），**绝不嵌套第二个 editing host**（那会触发 Chromium 的多-host IME
+ * 跳位 + getTargetRanges 错乱，见文档 §8 v15f）。
+ *   · 空槽：唯一子节点是一个 ZWSP 文本节点（给 caret 落点）；幽灵标签 [字段] 靠
+ *     `.oc-ph[data-empty]::before` 画（伪元素：不可选、不进 value）。
+ *   · 打字：真实字符追加进本 span（与 ZWSP 同域）；`syncSlotEmptiness` 据「去 ZWSP 后非空」
+ *     切掉 data-empty → 标签消失。全程零文本改动（ZWSP 不删不补）。 */
 function makePlaceholderSlot(hint: string): HTMLSpanElement {
   const wrap = document.createElement("span");
   wrap.className = "oc-ph";
   wrap.dataset.ph = "1";
+  wrap.dataset.hint = hint; // 标签文字（::before 用）
   wrap.dataset.empty = "1";
-  wrap.contentEditable = "false";
-
-  const inner = document.createElement("span");
-  inner.className = "oc-ph-inner";
-  inner.contentEditable = "true";
-  inner.spellcheck = false;
-  inner.dataset.hint = hint; // 标签文字（内芯 ::before 用）
-  inner.dataset.empty = "1"; // 空态：内芯 ::before 显示标签
-
-  wrap.appendChild(inner);
+  wrap.appendChild(document.createTextNode(ZWSP));
   return wrap;
 }
 
@@ -203,37 +199,34 @@ function readEditorValue(root: HTMLElement): string {
   return out;
 }
 
-/** 只切换 data-empty 属性（外壳=淡底框、内芯=::before 标签显隐）。不碰任何文本节点 → IME
- * 零干扰。空 → 外壳+内芯都标 data-empty；有内容 → 都去掉。 */
+/** 只切换 data-empty 属性（决定 ::before 标签显隐）。据「去 ZWSP 后是否为空」判定。
+ * 不碰任何文本节点（ZWSP 常驻）→ IME 零干扰。 */
 function syncSlotEmptiness(slots: HTMLElement[]): void {
   for (const slot of slots) {
     if (!slot.isConnected) continue;
-    const inner = slot.querySelector<HTMLElement>(".oc-ph-inner");
-    const empty = stripZwsp((inner ?? slot).textContent || "") === "";
-    const setEmpty = (el: HTMLElement | null, on: boolean) => {
-      if (!el) return;
-      const marked = el.dataset.empty !== undefined;
-      if (on && !marked) el.dataset.empty = "1";
-      else if (!on && marked) delete el.dataset.empty;
-    };
-    setEmpty(slot, empty);
-    setEmpty(inner, empty);
+    const empty = stripZwsp(slot.textContent || "") === "";
+    const marked = slot.dataset.empty !== undefined;
+    if (empty && !marked) slot.dataset.empty = "1";
+    else if (!empty && marked) delete slot.dataset.empty;
   }
+}
+
+/** 确保槽里至少有那个 ZWSP caret 落点（极端删除后兜底补回；正常路径不会触发）。 */
+function ensureCaretSpot(slot: HTMLElement): void {
+  if (!slot.isConnected) return;
+  if ((slot.textContent || "") === "") slot.appendChild(document.createTextNode(ZWSP));
 }
 
 // ── 光标工具 ────────────────────────────────────────────────────────────────
 
-function innerOf(slot: HTMLElement): HTMLElement | null {
-  return slot.querySelector<HTMLElement>(".oc-ph-inner");
-}
-
-/** 聚焦某槽的内芯并把光标放到 start / end。 */
-function focusInner(inner: HTMLElement, at: "start" | "end"): void {
-  inner.focus();
+/** 把光标放进槽内（同一个 editing host，不 focus 别的元素）。空槽=ZWSP 之后（at=end）
+ * 或之前（at=start）；有内容槽=内容尾/头。 */
+function caretIntoSlot(root: HTMLElement, slot: HTMLElement, at: "start" | "end"): void {
+  root.focus();
   const sel = window.getSelection();
   if (!sel) return;
   const range = document.createRange();
-  range.selectNodeContents(inner);
+  range.selectNodeContents(slot);
   range.collapse(at === "start");
   sel.removeAllRanges();
   sel.addRange(range);
@@ -251,11 +244,10 @@ function caretToEnd(root: HTMLElement) {
   sel.addRange(range);
 }
 
-/** 光标落到第一个空槽的内芯；没有空槽则落到编辑器末尾。 */
+/** 光标落到第一个空槽（ZWSP 之后）；没有空槽则落到编辑器末尾。 */
 function caretToFirstEmptySlot(root: HTMLElement) {
   const firstEmpty = root.querySelector<HTMLElement>(".oc-ph[data-empty]");
-  const inner = firstEmpty ? innerOf(firstEmpty) : null;
-  if (inner) focusInner(inner, "end");
+  if (firstEmpty) caretIntoSlot(root, firstEmpty, "end");
   else caretToEnd(root);
 }
 
@@ -273,6 +265,21 @@ function targetRangesOf(e: InputEvent): Range[] {
   const sel = window.getSelection();
   if (sel && sel.rangeCount) return [sel.getRangeAt(0)];
   return [];
+}
+
+/** 判断一个删除目标区间是否「只删本槽的真实文本」（→ 应放行）：
+ *   两端都落在**本槽内部**，且不触及那个 ZWSP caret 落点（槽首文本节点 offset 0）。
+ * 槽结构恒为「单一文本节点 = ZWSP(offset0) + 真实字符(1..n)」（运行期不改结构），故：
+ *   - 起容器 = 槽首文本节点且 startOffset ≥ 1 → 删的是真实字符（含最后一个），放行；
+ *   - 起容器不是槽内文本 / startOffset = 0（要删 ZWSP）/ 终点越出槽 → 不放行（拦）。 */
+function deletionHitsOnlyRealText(r: Range, slot: HTMLElement): boolean {
+  const first = slot.firstChild; // ZWSP-bearing 文本节点
+  if (!first || first.nodeType !== Node.TEXT_NODE) return false;
+  const within = (n: Node | null) => !!n && (n === first || (slot.contains(n) && n.nodeType === Node.TEXT_NODE));
+  if (!within(r.startContainer) || !within(r.endContainer)) return false;
+  // 起点必须越过 offset 0 的 ZWSP（否则会把 caret 落点删掉 → 拦）。
+  if (r.startContainer === first && r.startOffset < 1) return false;
+  return true;
 }
 
 export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptHighlightAreaProps>(
@@ -325,10 +332,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       const saved = old.map((s) => (s.isConnected ? stripZwsp(s.textContent || "") : ""));
       const fresh = buildEditorDom(root, tmpl);
       fresh.forEach((s, i) => {
-        if (saved[i]) {
-          const inner = innerOf(s);
-          if (inner) inner.textContent = saved[i];
-        }
+        if (saved[i]) s.appendChild(document.createTextNode(saved[i])); // ZWSP 在前 + 回填文本
       });
       slotsRef.current = fresh;
       syncSlotEmptiness(fresh);
@@ -343,7 +347,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       seededTemplate.current = tmpl;
       const v = readEditorValue(root);
       onChangeRef.current(v);
-      // 光标落到**第一个空槽的内芯**（用户第一件事就是填第一个空）。
+      // 光标落到**第一个空槽**（ZWSP 之后；用户第一件事就是填第一个空）。
       requestAnimationFrame(() => {
         if (edRef.current) caretToFirstEmptySlot(edRef.current);
       });
@@ -375,7 +379,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       if (autoFocus) edRef.current?.focus();
     }, [autoFocus]);
 
-    // ── 事件绑定（原生，一次挂在外层 root 上；内芯事件冒泡上来，靠 e.target 区分）──
+    // ── 事件绑定（原生，一次挂在**唯一** editing host = 外层 root 上）──────────────
     useEffect(() => {
       const root = edRef.current;
       if (!root) return;
@@ -394,31 +398,30 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
         }
       };
 
-      // 点标签区域（::before 命中的是外壳）→ 把光标送进内芯（空槽也能一点即入）。
+      // 点槽（::before 标签 / ZWSP 区域）→ 光标 collapse 进槽（同一个 host，不 focus 别的
+      // 元素）。空槽也能一点即入；点到槽里已填的真实文字则交给浏览器原生落点。
       const onMouseDown = (ev: MouseEvent) => {
         const t = ev.target as HTMLElement | null;
         if (!t) return;
-        if (t.closest(".oc-ph-inner")) return; // 点到内芯文字：浏览器原生落光标
-        const wrap = t.closest<HTMLElement>(".oc-ph");
-        if (!wrap) return;
-        const inner = innerOf(wrap);
-        if (!inner) return;
+        const slot = t.closest<HTMLElement>(".oc-ph");
+        if (!slot) return;
+        // 只有空槽（点在 ::before 标签上，命中的是槽元素本身）才需要手动入槽；有内容槽
+        // 点在文本上，浏览器已能精确落点，放行。
+        if (stripZwsp(slot.textContent || "") !== "" && t !== slot) return;
         ev.preventDefault();
-        focusInner(inner, "end");
+        caretIntoSlot(root, slot, "end");
       };
 
-      // 删除守卫（只管外层编辑；内芯的编辑事件 target 是内芯宿主，天然被宿主边界圈住）：
-      //   · 内芯里：只拦「换行」（填空是单行语义），删除/输入全放行——删到最后一个字
-      //     也只是清空内芯，宿主元素浏览器保证不删；
-      //   · 外层里：删除区间碰到任何槽 → preventDefault；若是紧邻槽的收缩退格/删除，把
-      //     光标送进槽内芯（方便用户接着改填的内容）。
+      // 删除守卫（单一 host → getTargetRanges 恒可靠）：
+      //   · 只拦换行（填空是单行语义）；
+      //   · 删除时逐槽看目标区间——**仅当区间完全落在某槽的真实文本里（越过 ZWSP）**才放行
+      //     （删自己填的字）；其余但凡碰到槽（要删 ZWSP / 空槽退格 / 从槽外把整壳带走）
+      //     一律 preventDefault → 槽删不掉、标签回显、末字可删（区间在槽内即放行）。
       const onBeforeInput = (ev: Event) => {
         const e = ev as InputEvent;
         const t = e.inputType || "";
-        const targetEl = e.target as HTMLElement | null;
-        const inInner = !!targetEl?.closest?.(".oc-ph-inner");
-        if (inInner) {
-          if (t === "insertParagraph" || t === "insertLineBreak") e.preventDefault();
+        if (t === "insertParagraph" || t === "insertLineBreak") {
+          e.preventDefault();
           return;
         }
         if (!t.startsWith("delete") || t === "deleteCompositionText") return;
@@ -434,14 +437,14 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
               hit = false;
             }
             if (!hit) continue;
-            e.preventDefault();
-            // 紧邻收缩删除 → 光标进槽（退格=槽尾，Delete=槽头），第二次按键即编辑填内容。
+            // 区间是否 = 「只删本槽真实文本里的字符」：两端都在本槽内，且不触及 offset 0
+            // 那个 ZWSP（槽的单一文本节点里 ZWSP 在 offset 0，真实字符在 1..n）。
+            if (deletionHitsOnlyRealText(r, slot)) return; // 放行：删自己填的字（含末字）
+            e.preventDefault(); // 拦：删不掉槽本身 / 不删 ZWSP / 不跨壳
+            // 紧邻收缩删除且槽里有真实内容 → 光标送进槽（退格=尾、Delete=头），第二下就改内容。
             const sel = window.getSelection();
-            if (sel && sel.isCollapsed) {
-              const inner = innerOf(slot);
-              if (inner && stripZwsp(slot.textContent || "") !== "") {
-                focusInner(inner, t === "deleteContentBackward" ? "end" : "start");
-              }
+            if (sel && sel.isCollapsed && stripZwsp(slot.textContent || "") !== "") {
+              caretIntoSlot(root, slot, t === "deleteContentBackward" ? "end" : "start");
             }
             return;
           }
@@ -449,6 +452,8 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       };
 
       const onInput = () => {
+        // 极端兜底：某槽被删空（ZWSP 都没了）→ 补回 caret spot，保住标签回显与落点。
+        for (const s of slotsRef.current) ensureCaretSpot(s);
         emit();
       };
 
@@ -521,8 +526,10 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
 /** 别名（宗旨 v15 新名字；语义即「模板实填 + 文本流内填空槽」）。 */
 export const TemplateFillArea = PromptHighlightArea;
 
-// 参考规范（嵌套编辑宿主 / beforeinput / 幽灵标签的实现依据）：
-//   W3C Input Events L2 — https://www.w3.org/TR/input-events/（editing host / target 定义）
-//   MDN beforeinput / getTargetRanges — developer.mozilla.org
-//   HTML spec editing host（嵌套 contenteditable 宿主边界）— html.spec.whatwg.org/#editing-host
-//   contenteditable placeholder via ::before — stackoverflow.com/questions/20726174
+// 参考规范/生产实现（单一编辑宿主 + ZWSP caret spot + ::before 幽灵标签的依据）：
+//   W3C editing #528 — 空占位 + ::before + 单 caret 位（github.com/w3c/editing/issues/528）
+//   AWS Cloudscape prompt-input token-renderer — 单 host + CE=false 原子 + ZWSP caret spot
+//     （github.com/cloudscape-design/components，生产级实现）
+//   W3C Input Events L2 — beforeinput / getTargetRanges（www.w3.org/TR/input-events/）
+//   多 host IME 跳位实锤 — CKEditor #15682 + Chromium #1522876
+//   嵌套 host 的 getTargetRanges 陷阱 — contenteditable scenarios（realerror.com）

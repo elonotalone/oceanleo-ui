@@ -1,9 +1,9 @@
-// Headless 验证 v15e「嵌套编辑宿主」填空槽的分段 + 序列化 + 槽状态逻辑（真实光标/IME/
+// Headless 验证 v15f「单一编辑宿主」填空槽的分段 + 序列化 + 槽状态逻辑（真实光标/IME/
 // 删除拦截需浏览器，见 scratch/inflow-fill-smoke.html；这里只验纯逻辑）。
-// 模型：单个外层 contentEditable。字面段 = 文本节点；占位段 = 外壳 <span.oc-ph CE=false>
-// 包内芯 <span.oc-ph-inner CE=true>。打字/IME 都发生在内芯里；标签显隐 = data-empty 属性
-// 切换（不动文本）。value 序列化：槽取 textContent（=内芯文本，防呆剥 ZWSP），空槽→""。
-// 跑：node scratch/ghost-serialize-smoke.mjs
+// 模型：**唯一**外层 contentEditable。字面段 = 文本节点；占位段 = <span.oc-ph>（不设
+// contenteditable，继承外层=true，不嵌套第二个 host），槽内 = ZWSP + 真实字符。打字/IME
+// 都在这一个 host 内；标签显隐 = data-empty 属性切换（不动文本，ZWSP 常驻）。value 序列化：
+// 槽取 textContent（剥 ZWSP），空槽→""。跑：node scratch/ghost-serialize-smoke.mjs
 
 const ZWSP = "\u200b";
 const stripZ = (s) => (s || "").split(ZWSP).join("");
@@ -20,7 +20,8 @@ function templateSegments(t) {
   return out;
 }
 
-// 假 DOM：lit=文本节点；ph=槽（inner = 内芯文本，empty = data-empty 有无）。
+// 假 DOM：lit=文本节点；ph=槽（inner = 槽内真实文本[ZWSP 已抽象掉]，empty = data-empty 有无）。
+// 真实 DOM 里槽内是「ZWSP + 真实字符」的单一文本节点，这里用 inner 抽象「去 ZWSP 后的真实内容」。
 function buildNodes(t) {
   return templateSegments(t).map((s) =>
     s.kind === "placeholder"
