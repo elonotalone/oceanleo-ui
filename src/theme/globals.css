@@ -1617,46 +1617,40 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 /* THEME:GENERATED:END */
 
 /* ============================================================================
- * 模板「实填 + 文本流内填空槽」输入（TemplateFillArea / PromptHighlightArea，
- * 宗旨 v15f 定版·单一编辑宿主，对齐豆包「帮我写作」范式）
+ * 模板「实填 + [占位] 蓝色高亮」输入（TemplateFillArea / PromptHighlightArea，
+ * 宗旨 v15g 定版·透明 textarea + 镜像高亮层，对齐豆包「帮我写作」范式）
  * ----------------------------------------------------------------------------
- * 点卡片/示例灌进带 [字段] 的模板时：字面文字是真实可编辑内容；`[字段]` 渲染成
- *   外层 <div contenteditable=true>           ← **唯一** editing host（绝不嵌套第二个 host）
- *     <span.oc-ph data-hint data-empty>        ← 占位槽：**不设** contenteditable（继承 =true）
- *         "\u200b"                              ← 空槽放一个 ZWSP 当 caret 落点
- *   · 未填（data-empty）：蓝色 [标签] 用槽自身的 ::before(CSS content) 显示 —— 光标落
- *     ZWSP 处即压在标签上（视觉「在框中」）；标签不可选、不进 value；
- *   · 【在框中输入】：点槽即把光标 collapse 进槽，中英文/IME 都在槽内原地输入、后文顺移；
- *   · 【不可删】：外层 beforeinput 拦「删 ZWSP / 把整壳带走」；删自己填的字（含末字）放行；
- *   · 【清空回显】：删空 → data-empty 回来 → 标签回显（纯属性切换，IME 零干扰）；
- *   · 空槽 value = ""（不吐 [字段]），填了带出真实内容（加粗 accent 蓝）。
- * accent 配色由编辑器 style 里的 --oc-ph-accent 变量下发（各站 accent 不同）。
- * 一处定义、全家桶生效（编译进 theme/ui.css）。
+ * 点卡片/示例灌进带 [字段] 的模板时：模板原文**整段作为普通文本进 value**（可全选删、
+ * 可反悔、光标可进方括号内部）。渲染 = 透明 textarea 叠在镜像高亮层上：
+ *   <div 相对定位>
+ *     <div.oc-tmpl-mirror aria-hidden pointer-events:none>  ← 镜像层：只读渲染 + [..] 高亮
+ *       …文本… <span.oc-ph>[字段]</span> …文本…
+ *     <textarea.oc-tmpl-input color:transparent caret-color:accent>  ← 真输入，叠上层
+ *   · textarea 承载全部编辑（IME/全选/删除/反悔/光标进括号都是原生行为）；文字透明只留
+ *     光标；镜像层在正下方逐像素对齐渲染文本 + 蓝色高亮，颜色透上来。
+ *   · [占位] 连同方括号是**真实文本**：可选、可删、进 value。高亮纯视觉、不影响可编辑性。
+ *   · 镜像层与 textarea 排版必须逐项一致（font/size/line-height/padding/white-space/
+ *     word-break/letter-spacing），否则高亮对不齐 → 都由组件的 TYPO 常量统一下发。
+ * accent 配色由 --oc-ph-accent 变量下发（各站不同）。一处定义全家桶生效（编译进 ui.css）。
  * ========================================================================== */
-.oc-tmpl-editor .oc-ph {
-  display: inline;
-  border-radius: 4px;
-  transition: background-color .15s ease;
-  cursor: text;
+/* 镜像层与输入层共享盒模型：同宽、同排版、盒尺寸一致（padding 已在内联 TYPO 里给）。 */
+.oc-tmpl-mirror,
+.oc-tmpl-input {
+  box-sizing: border-box;
+  -webkit-font-smoothing: inherit;
+  tab-size: 4;
 }
-/* 未填：淡 accent 底（醒目框）+ 槽自身 ::before 蓝色标签。标签与 caret 同属本槽，光标落
- * ZWSP 处即压在标签上（视觉「在框中」）。 */
-.oc-tmpl-editor .oc-ph[data-empty] {
+/* 镜像层文本换行策略与 textarea 完全一致（textarea 默认 white-space:pre-wrap）。 */
+.oc-tmpl-mirror {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+/* [占位] 高亮：淡 accent 底 + accent 蓝字（对齐豆包）。纯视觉——底下是镜像层，真正可编辑的
+ * 是上层透明 textarea 里的同一段真实文本，所以它照样可选、可删、可全选删。 */
+.oc-tmpl-mirror .oc-ph {
+  color: var(--oc-ph-accent, #4f46e5);
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
-  padding: 0 1px;
-}
-.oc-tmpl-editor .oc-ph[data-empty]::before {
-  content: attr(data-hint);
-  color: var(--oc-ph-accent, #4f46e5);
-  font-weight: 500;
-  opacity: .9;
-  -webkit-user-select: none;
-  user-select: none;
-}
-/* 填了内容的槽：加粗 accent 蓝的真实内容（对齐豆包填入即加粗蓝），去掉底色。 */
-.oc-tmpl-editor .oc-ph:not([data-empty]) {
-  background: transparent;
-  color: var(--oc-ph-accent, #4f46e5);
+  border-radius: 4px;
   font-weight: 600;
-  padding: 0;
 }

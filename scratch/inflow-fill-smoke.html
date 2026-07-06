@@ -1,178 +1,103 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>v15f 单一编辑宿主 smoke（槽内输入 / IME / 末字可删 / 不可整删 / 清空回显）</title>
+<title>v15g 透明 textarea + 镜像高亮层 smoke（普通可编文本 + [占位] 蓝色高亮）</title>
 <style>
-  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 800px; }
-  #ed { border: 1px solid #ddd; border-radius: 10px; padding: 16px 18px; outline: none;
-        white-space: pre-wrap; word-break: break-word; --oc-ph-accent:#4f46e5; }
-  /* 单一 host：槽是普通可编区间（不设 contenteditable，继承外层=true）。标签是槽自身 ::before。 */
-  .oc-ph { display: inline; border-radius: 4px; cursor: text; }
-  .oc-ph[data-empty] { background: color-mix(in srgb, var(--oc-ph-accent) 12%, transparent); padding: 0 1px; }
-  .oc-ph[data-empty]::before {
-    content: attr(data-hint);
-    color: var(--oc-ph-accent); font-weight: 500; opacity: .9;
-    -webkit-user-select: none; user-select: none;
+  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 820px; }
+  /* 输入区排版常量：镜像层与 textarea 必须逐项一致，否则高亮对不齐。 */
+  .box { position: relative; border: 1px solid #ddd; border-radius: 10px; --oc-ph-accent:#4f46e5; }
+  .mirror, .input {
+    box-sizing: border-box;
+    font: 15px/1.625 system-ui, sans-serif; letter-spacing: normal;
+    padding: 16px 18px; margin: 0; border: 0;
+    white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
+    tab-size: 4;
   }
-  .oc-ph:not([data-empty]) { background: transparent; color: var(--oc-ph-accent); font-weight: 600; }
+  .mirror { position: absolute; inset: 0; overflow: hidden; color:#1f2937; pointer-events: none; }
+  .input {
+    position: relative; width: 100%; resize: none; background: transparent; outline: none;
+    color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--oc-ph-accent);
+    min-height: 3.25em; max-height: 280px; overflow-y: auto;
+  }
+  /* [占位] 高亮：淡蓝底 + 蓝字。纯视觉——真正可编辑的是上层透明 textarea 里的同一段真实文本。 */
+  .mirror .oc-ph {
+    color: var(--oc-ph-accent);
+    background: color-mix(in srgb, var(--oc-ph-accent) 12%, transparent);
+    border-radius: 4px; font-weight: 600;
+  }
   .hint { color:#888; font-size:13px; margin-top:10px; }
   pre { background:#f6f6f6; padding:8px; border-radius:6px; white-space:pre-wrap; }
   .pass { color:#16a34a; } .fail { color:#dc2626; font-weight:700; }
   b { color:#111; }
+  button { margin: 8px 6px 0 0; }
 </style>
-<h3>v15f 单一编辑宿主（外层唯一 CE=true；槽=普通可编区间 + ZWSP caret 落点；标签=槽 ::before）</h3>
+<h3>v15g 透明 textarea + 镜像高亮层（模板 = 普通可编文本，[占位] 纯视觉蓝色高亮）</h3>
 <p class="hint">
-  真机手测清单（这四条正是操作员反馈的 bug，重点验）：<br>
-  ① 点 [主题] 蓝标签 → 光标应<b>落在荧光区里/压在标签上</b>（不是标签右侧外面）。直接打英文：字在<b>槽内</b>原地出现、标签消失、后文顺移。<br>
-  ② <b>中文输入法</b>在槽内打「xinnengyuan」选词：合成串全程停在<b>槽内原地</b>，<b>绝不跳到页面最前面</b>。<br>
-  ③ 填完把字<b>逐个删光</b>：<b>最后一个字必须能删掉</b>；删空后 [主题] 标签自动回来、槽还在。<br>
-  ④ 光标放槽左边字面末尾按 Backspace / 框选覆盖槽再删 → 槽<b>删不掉</b>（紧邻退格会把光标送进槽尾）。<br>
-  ⑤ 拖蓝整行 → 蓝标签选不中。字面文字可正常编辑。value 永不含 [字段] 字面、不含零宽字符。
+  真机手测清单（这几条正是操作员反馈的诉求，重点验）：<br>
+  ① 点下面「灌入模板」→ 整段文本填进框，`[主题]` 等是<b>淡蓝底蓝字</b>。光标应落在 <b>[│主题]</b>（方括号<b>里面</b>，'[' 之后）。<br>
+  ② 光标可移到 `[主题]` 里<b>任意位置</b>（把光标点进 `主` 和 `题` 之间也行）——因为它就是普通文本。<br>
+  ③ <b>中文输入法</b>在任意位置打字：原生 textarea 行为，<b>不跳、不吃字</b>，高亮实时跟随。<br>
+  ④ <b>Ctrl/Cmd+A 全选 → Delete</b>：整段<b>能删光</b>（可反悔！不再锁死）。<br>
+  ⑤ 把 `[主题]` <b>整体选中删掉</b> / 删掉一个 `]`：荧光<b>能删</b>，删后不成 `[..]` 的就不再高亮。<br>
+  ⑥ 高亮块和文字<b>逐像素对齐</b>（蓝底正好罩在 `[主题]` 上，不偏移）。
 </p>
-<div id="ed" contenteditable="true" spellcheck="false"></div>
+<div class="box">
+  <div class="mirror" id="mirror" aria-hidden="true"></div>
+  <textarea class="input" id="ta" spellcheck="false" rows="3"></textarea>
+</div>
+<button id="seed">灌入模板</button>
+<button id="clear">清空</button>
 <div class="hint">value =</div>
 <pre id="out"></pre>
-<div class="hint">自动断言（逻辑层）：</div>
+<div class="hint">自动断言（逻辑层；真实光标/IME/全选删除仍需人工按上面清单在浏览器里点）：</div>
 <pre id="asserts"></pre>
 <script>
-  const ZWSP = "\u200b";
-  const stripZ = (s) => (s||"").split(ZWSP).join("");
   const TOKEN_RE = /\[[^\[\]\n]+\]/g;
+  const tmpl = "帮我写一篇关于 [主题] 的深度长文。先给出层次清晰的大纲，我确认后再逐节展开成正文，全文约 [字数] 字。";
+  const ta = document.getElementById('ta');
+  const mirror = document.getElementById('mirror');
+  const out = document.getElementById('out');
+  const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
   function segs(t){const o=[];let last=0,m;TOKEN_RE.lastIndex=0;while((m=TOKEN_RE.exec(t))){if(m.index>last)o.push({k:'lit',t:t.slice(last,m.index)});o.push({k:'ph',t:m[0]});last=m.index+m[0].length;}if(last<t.length)o.push({k:'lit',t:t.slice(last)});return o;}
+  function renderMirror(v){
+    let html='';
+    for(const s of segs(v)) html += s.k==='ph' ? `<span class="oc-ph">${esc(s.t)}</span>` : `<span>${esc(s.t)}</span>`;
+    if(v.endsWith('\n')) html += '\u200b';
+    mirror.innerHTML = html;
+  }
+  function autogrow(){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,280)+'px'; }
+  function sync(){ renderMirror(ta.value); autogrow(); out.textContent=JSON.stringify(ta.value); }
 
-  const tmpl = "帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。";
-  const ed = document.getElementById('ed');
-  let slots = [];
-  let composing = false, pendingRestore = false;
-
-  // 槽 = 普通可编 span（不设 contenteditable）+ 唯一子节点 ZWSP 文本节点（caret 落点）。
-  function makeSlot(hint){
-    const wrap=document.createElement('span');
-    wrap.className='oc-ph'; wrap.dataset.ph='1'; wrap.dataset.hint=hint; wrap.dataset.empty='1';
-    wrap.appendChild(document.createTextNode(ZWSP));
-    return wrap;
-  }
-  function build(t){
-    ed.textContent=''; slots=[];
-    for(const s of segs(t)){
-      if(s.k==='ph'){const sp=makeSlot(s.t); slots.push(sp); ed.appendChild(sp);}
-      else s.t.split('\n').forEach((p,i)=>{if(i>0)ed.appendChild(document.createElement('br'));if(p)ed.appendChild(document.createTextNode(p));});
-    }
-  }
-  function syncEmpty(){
-    for(const sp of slots){
-      if(!sp.isConnected) continue;
-      const empty = stripZ(sp.textContent)==='';
-      if(empty && sp.dataset.empty===undefined) sp.dataset.empty='1';
-      else if(!empty && sp.dataset.empty!==undefined) delete sp.dataset.empty;
-    }
-  }
-  function ensureSpot(sp){ if(sp.isConnected && sp.textContent==='') sp.appendChild(document.createTextNode(ZWSP)); }
-  function readVal(root){
-    let out='';
-    root.childNodes.forEach(ch=>{
-      if(ch.nodeType===3) out+=stripZ(ch.textContent);
-      else if(ch.nodeType===1){
-        const el=ch;
-        if(el.tagName==='BR') out+='\n';
-        else if(el.dataset&&el.dataset.ph!==undefined) out+=stripZ(el.textContent);
-        else out+=stripZ(el.textContent||'');
-      }
-    });
-    return out;
-  }
-  const out=document.getElementById('out');
-  const show=()=>{ syncEmpty(); out.textContent=JSON.stringify(readVal(ed)); };
-
-  // 光标 collapse 进槽（同一 host，不 focus 别的元素）。
-  function caretIntoSlot(sp, at){
-    ed.focus();
-    const sel=getSelection(); if(!sel) return;
-    const r=document.createRange(); r.selectNodeContents(sp); r.collapse(at==='start');
-    sel.removeAllRanges(); sel.addRange(r);
-  }
-  // 区间是否「只删本槽真实文本」（越过 offset0 的 ZWSP）→ 放行。
-  function deletionRealOnly(r, sp){
-    const first=sp.firstChild;
-    if(!first || first.nodeType!==3) return false;
-    const within=(n)=> !!n && (n===first || (sp.contains(n) && n.nodeType===3));
-    if(!within(r.startContainer) || !within(r.endContainer)) return false;
-    if(r.startContainer===first && r.startOffset<1) return false;
-    return true;
-  }
-  function restore(){
-    const saved = slots.map(s=> s.isConnected ? stripZ(s.textContent) : '');
-    build(tmpl);
-    slots.forEach((s,i)=>{ if(saved[i]) s.appendChild(document.createTextNode(saved[i])); });
-    syncEmpty(); show();
-  }
-
-  ed.addEventListener('compositionstart',()=>{ composing=true; });
-  ed.addEventListener('compositionend',()=>{ composing=false; if(pendingRestore){ pendingRestore=false; restore(); } else show(); });
-  ed.addEventListener('mousedown',(ev)=>{
-    const t=ev.target;
-    const sp = t.closest ? t.closest('.oc-ph') : null;
-    if(!sp) return;
-    if(stripZ(sp.textContent)!=='' && t!==sp) return; // 点在已填文字上：原生落点
-    ev.preventDefault(); caretIntoSlot(sp,'end');
+  ta.addEventListener('input', sync);
+  ta.addEventListener('scroll', ()=>{ mirror.scrollTop = ta.scrollTop; });
+  document.getElementById('seed').addEventListener('click', ()=>{
+    ta.value = tmpl; sync(); ta.focus();
+    const i = tmpl.search(TOKEN_RE); const pos = i>=0 ? i+1 : tmpl.length; // '[' 之后 = 括号内部
+    try{ ta.setSelectionRange(pos,pos); }catch(_){}
   });
-  ed.addEventListener('beforeinput',(e)=>{
-    const t=e.inputType||'';
-    if(t==='insertParagraph'||t==='insertLineBreak'){ e.preventDefault(); return; }
-    if(!t.startsWith('delete')||t==='deleteCompositionText') return;
-    let ranges=[]; const tr=e.getTargetRanges?e.getTargetRanges():[];
-    if(tr&&tr.length) ranges=tr.map(sr=>{const r=document.createRange();r.setStart(sr.startContainer,sr.startOffset);r.setEnd(sr.endContainer,sr.endOffset);return r;});
-    else { const s=getSelection(); if(s&&s.rangeCount)ranges=[s.getRangeAt(0)]; }
-    for(const r of ranges) for(const sp of slots){
-      if(!sp.isConnected) continue;
-      let hit=false; try{ hit=r.intersectsNode(sp); }catch(_){}
-      if(!hit) continue;
-      if(deletionRealOnly(r, sp)) return; // 放行：删自己填的字（含末字）
-      e.preventDefault();                 // 拦：删不掉槽 / 不删 ZWSP / 不跨壳
-      const sel=getSelection();
-      if(sel && sel.isCollapsed && stripZ(sp.textContent)!==''){ caretIntoSlot(sp, t==='deleteContentBackward'?'end':'start'); }
-      return;
-    }
-  });
-  ed.addEventListener('input',()=>{ for(const s of slots) ensureSpot(s); show(); });
-  new MutationObserver(()=>{
-    if(!slots.length) return;
-    if(!slots.some(s=>!s.isConnected)) return;
-    if(composing){ pendingRestore=true; return; }
-    restore();
-  }).observe(ed,{childList:true,subtree:true});
+  document.getElementById('clear').addEventListener('click', ()=>{ ta.value=''; sync(); ta.focus(); });
 
-  build(tmpl); show();
+  ta.value = tmpl; sync();
 
-  // ---- 自动断言（逻辑层；真实光标/IME/删除仍需人工按上面清单在浏览器里点）----
+  // ---- 自动断言（逻辑层）----
   const A=document.getElementById('asserts'); let L=[];
   const asrt=(n,ok)=>L.push(`<span class="${ok?'pass':'fail'}">${ok?'✓':'✗'} ${n}</span>`);
-  asrt('初始 value 不含 [字段] 字面', !/\[[^\]]+\]/.test(readVal(ed)));
-  asrt('初始 value 不含零宽字符', readVal(ed).indexOf(ZWSP)===-1);
-  asrt('初始 3 个空槽 data-empty', slots.filter(s=>s.dataset.empty!==undefined).length===3);
-  asrt('标签是 ::before（不进 DOM 文本）', ed.textContent.indexOf('[主题]')===-1);
-  asrt('单一 host：槽不设自己的 contenteditable', slots.every(s=>!s.hasAttribute('contenteditable')));
-  asrt('每个空槽含且仅含 1 个 ZWSP caret 落点', slots.every(s=>s.textContent===ZWSP));
-  // 模拟槽内输入（追加真实字符到槽的文本节点，纯属性切换）。
-  slots[0].firstChild.textContent = ZWSP+'新能源汽车'; syncEmpty();
-  asrt('填入后 data-empty 去除、value 出真实内容', slots[0].dataset.empty===undefined && readVal(ed).includes('新能源汽车'));
-  // 模拟删到空（删回只剩 ZWSP，槽仍在，标签回显）。
-  slots[0].firstChild.textContent = ZWSP; syncEmpty();
-  asrt('删空后标签回显、槽仍在', slots[0].dataset.empty!==undefined && slots[0].isConnected);
-  asrt('删空后 value 该段为空', readVal(ed)==="帮我写一篇关于  的文章，面向 ，约  字。");
-  // deletionRealOnly 判定：删末字（区间在真实文本里）应放行；删 ZWSP（offset0）应拦。
-  slots[0].firstChild.textContent = ZWSP+'京'; // 只剩一个真实字
-  const tn=slots[0].firstChild;
-  const rReal=document.createRange(); rReal.setStart(tn,1); rReal.setEnd(tn,2); // 删「京」
-  asrt('删末字：区间判为放行（末字可删）', deletionRealOnly(rReal, slots[0])===true);
-  const rZwsp=document.createRange(); rZwsp.setStart(tn,0); rZwsp.setEnd(tn,1); // 删 ZWSP
-  asrt('删 ZWSP：区间判为拦截（保 caret 落点）', deletionRealOnly(rZwsp, slots[0])===false);
-  slots[0].firstChild.textContent = ZWSP; syncEmpty();
-  // 模拟槽被整删 → observer 兜底重建。
-  slots[1].firstChild.textContent = ZWSP+'大学生'; syncEmpty();
-  slots[0].remove();
-  setTimeout(()=>{
-    asrt('槽被整删后自动重建（兜底）', slots.length===3 && slots.every(s=>s.isConnected));
-    asrt('重建后按序回填已填内容', stripZ(slots[1].textContent)==='大学生');
-    A.innerHTML=L.join('<br>');
-  }, 50);
+  const renderText = (v)=> segs(v).map(s=>s.t).join('');
+  asrt('value = 模板原文逐字符（含方括号）', ta.value===tmpl);
+  asrt('分段拼回 === 原文（高亮不改字符，无损）', renderText(ta.value)===ta.value);
+  asrt('占位段是完整 [..]（含方括号）', JSON.stringify(segs(ta.value).filter(s=>s.k==='ph').map(s=>s.t))===JSON.stringify(['[主题]','[字数]']));
+  asrt('镜像层渲出的可见文本 === value（不含标签字符外的东西）', mirror.textContent.replace('\u200b','')===ta.value);
+  asrt('镜像层有 2 个 .oc-ph 高亮块', mirror.querySelectorAll('.oc-ph').length===2);
+  asrt('textarea 文字透明（靠镜像层显色）', getComputedStyle(ta).webkitTextFillColor==='rgba(0, 0, 0, 0)' || getComputedStyle(ta).color==='rgba(0, 0, 0, 0)');
+  // 改文本：把 [主题] 改成真实内容 → 该处不再是占位段。
+  const edited = tmpl.replace('[主题]','新能源汽车');
+  asrt('改后占位段少一个（该处不再高亮）', segs(edited).filter(s=>s.k==='ph').length===1);
+  // 残缺 token 不高亮。
+  asrt('残缺 [主题（删了右括号）不成占位段', segs('关于 [主题 的').filter(s=>s.k==='ph').length===0);
+  // 全选删除 → 空。
+  asrt('空 value 无占位段（全选删除可行）', segs('').filter(s=>s.k==='ph').length===0);
+  // 光标进括号内部定位。
+  const i = tmpl.search(TOKEN_RE);
+  asrt('首个占位定位到 [ 之后（光标进括号内部）', tmpl.slice(i,i+2)==='[主');
+  A.innerHTML=L.join('<br>');
 </script>
