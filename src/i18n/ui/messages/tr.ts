@@ -472,6 +472,7 @@ const tr: Record<string, string> = {
   "前进": "Yinele",
   "换一个问题": "Başka bir soru",
   "让 leo 提问": "leo'nun soru sormasına izin ver",
+  "正在总结本次对话…": "Bu konuşma özetleniyor…",
   "leo 正在把你的回答合并进 leo board…": "leo yanıtını leo board'a işliyor…",
   "leo 正在想下一个问题…": "leo bir sonraki soruyu düşünüyor…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Bir seçenek seç veya aşağıya yaz — leo bunu leo board'a işler",

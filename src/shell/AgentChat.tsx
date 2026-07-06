@@ -97,10 +97,11 @@ export interface AgentChatProps {
   /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
   emptyHint?: React.ReactNode;
   /**
-   * 左栏标题左侧「返回」按钮回调（操作员 2026-07-06）。给了它 → agent 界面左上角出现
-   * 「← 返回」按钮，点击【只调用本回调】（不动任务、不 stopTask），让宿主在**不中止对话**
-   * 的前提下退回上一层（如首页）。宿主自行决定是卸载还是隐藏本组件——想保留对话可隐藏
-   * 而非卸载（见 word app/page.tsx）。 */
+   * 顶栏「返回」按钮回调（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole 顶栏）。
+   * 给了它 → agent 界面【顶部】出现一条横栏：左「‹ 返回」pill + 右侧【本次对话总结】
+   * （= 后端自动生成的 task.title）。点击「返回」【只调用本回调】（不动任务、不 stopTask），
+   * 让宿主在**不中止对话**的前提下退回上一层（如首页）。宿主自行决定卸载还是隐藏本组件
+   * ——想保留对话请隐藏而非卸载（见 word app/page.tsx）。 */
   onBack?: () => void;
   /** 返回按钮文案，默认「返回」。 */
   backLabel?: string;
@@ -139,6 +140,8 @@ export function AgentChat({
   const [status, setStatus] = useState<string>("");
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
+  // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
+  const [taskTitle, setTaskTitle] = useState<string>("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +173,8 @@ export function AgentChat({
       setMessages(r.data.messages || []);
       setStatus(r.data.task?.status || "");
       if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
+      // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
+      if (r.data.task?.title) setTaskTitle(r.data.task.title);
       return r.data.task?.status || "";
     }
     return "";
@@ -314,36 +319,54 @@ export function AgentChat({
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
   const resolvedApp =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
-  // 「← 返回」按钮（操作员 2026-07-06）：给了 onBack 才出现，点击只回调、不动任务
-  // （不 stopTask）——宿主据此在不中止对话下退回上层。
-  const backButton = onBack ? (
-    <button
-      type="button"
-      onClick={onBack}
-      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-      title={backLabel ?? tt("返回")}
-    >
-      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      {backLabel ?? tt("返回")}
-    </button>
-  ) : null;
-  // 左栏标题：（可选「返回」）+「agent」+（有 app 时）所属 app 小标签。
-  const leftLabelNode =
-    backButton || resolvedApp ? (
-      <span className="flex items-center gap-2">
-        {backButton}
-        <span className="text-[12px] font-medium text-stone-500">agent</span>
-        {resolvedApp && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-            {tt("所属 app · {app}", { app: resolvedApp })}
-          </span>
-        )}
+  // 左栏标题：「agent」+（有 app 时）所属 app 小标签。（「返回」+ 本次对话总结改到
+  // 顶栏，见下方 topBar，对齐 OperatorConsole 顶栏 / 操作员 2026-07-06 参考图。）
+  const leftLabelNode = resolvedApp ? (
+    <span className="flex items-center gap-2">
+      <span className="text-[12px] font-medium text-stone-500">agent</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+        {tt("所属 app · {app}", { app: resolvedApp })}
       </span>
-    ) : (
-      "agent"
-    );
+    </span>
+  ) : (
+    "agent"
+  );
+
+  // 本次对话「总结」= 后端自动生成的 task.title（agent_engine._finalize_extras：首轮
+  // 收尾时 AI 概括≤14 字会话标题，存 agent_tasks.title；getTask 已带回）。全 OceanLeo
+  // 系列 agent 都走同一后端，故任何站的对话都有这个总结——这里在顶栏「返回」右侧显示它。
+  const convoSummary = (taskTitle || "").trim();
+
+  // 顶栏（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole.topBar 样式）：
+  // 左「‹ 返回」pill（给了 onBack 才有）+ 右侧本次对话总结。给了 onBack 才渲染整条顶栏。
+  const TOPBAR_H = 52;
+  const topBar = onBack ? (
+    <div className="flex shrink-0 items-center gap-3 px-4 py-2.5" style={{ minHeight: TOPBAR_H }}>
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50 active:scale-95"
+        title={backLabel ?? tt("返回")}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {backLabel ?? tt("返回")}
+      </button>
+      {/* 本次对话总结（task.title）。生成前先留空白/占位，避免抖动。 */}
+      {convoSummary ? (
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-stone-700" title={convoSummary}>
+          {convoSummary}
+        </span>
+      ) : messages.length > 0 ? (
+        <span className="min-w-0 flex-1 truncate text-[13px] text-stone-400">
+          {tt("正在总结本次对话…")}
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1" />
+      )}
+    </div>
+  ) : null;
 
   const stream = (
     <div className="flex h-full flex-col">
@@ -435,7 +458,7 @@ export function AgentChat({
         </div>
       );
 
-  return (
+  const split = (
     <SplitWorkspace
       left={stream}
       right={right}
@@ -444,11 +467,27 @@ export function AgentChat({
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
-      headerHeight={headerHeight}
+      // 有顶栏时，把顶栏高度算进 SplitWorkspace 的 height 计算（它内部用 100dvh-headerHeight）。
+      headerHeight={topBar ? headerHeight + TOPBAR_H : headerHeight}
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
       library={effectiveLibrary}
     />
+  );
+
+  // 无顶栏（未给 onBack）：保持原样，直接返回分栏骨架。
+  if (!topBar) return split;
+
+  // 有顶栏：外层 flex 列 = 顶栏（返回 + 本次对话总结）+ 分栏骨架。整列高度 = 100dvh-headerHeight，
+  // 顶栏占 TOPBAR_H，分栏占剩余（其自身 height 计算已含 TOPBAR_H，故两者对齐不溢出）。
+  return (
+    <div
+      className="flex min-h-0 flex-col"
+      style={{ height: `calc(100dvh - ${headerHeight}px)` }}
+    >
+      {topBar}
+      <div className="min-h-0 flex-1">{split}</div>
+    </div>
   );
 }
 

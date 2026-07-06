@@ -472,6 +472,7 @@ const zhTW: Record<string, string> = {
   "前进": "重做",
   "换一个问题": "換一個問題",
   "让 leo 提问": "讓 leo 提問",
+  "正在总结本次对话…": "正在總結本次對話…",
   "leo 正在把你的回答合并进 leo board…": "leo 正在把你的回答合併進 leo board…",
   "leo 正在想下一个问题…": "leo 正在想下一個問題…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "點一個選項，或在下方輸入，leo 會把它合併進 leo board",

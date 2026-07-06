@@ -472,6 +472,7 @@ const en: Record<string, string> = {
   "前进": "Redo",
   "换一个问题": "Try another question",
   "让 leo 提问": "Let leo ask a question",
+  "正在总结本次对话…": "Summarizing this conversation…",
   "leo 正在把你的回答合并进 leo board…": "leo is merging your answer into the leo board…",
   "leo 正在想下一个问题…": "leo is thinking of the next question…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Pick an option, or type below — leo will merge it into the leo board",

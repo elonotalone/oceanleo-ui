@@ -472,6 +472,7 @@ const de: Record<string, string> = {
   "前进": "Wiederholen",
   "换一个问题": "Andere Frage",
   "让 leo 提问": "leo fragen lassen",
+  "正在总结本次对话…": "Dieses Gespräch wird zusammengefasst…",
   "leo 正在把你的回答合并进 leo board…": "leo arbeitet deine Antwort ins leo board ein…",
   "leo 正在想下一个问题…": "leo überlegt sich die nächste Frage…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Wähle eine Option oder tippe unten — leo arbeitet sie ins leo board ein",

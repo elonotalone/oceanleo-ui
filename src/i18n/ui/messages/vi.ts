@@ -472,6 +472,7 @@ const vi: Record<string, string> = {
   "前进": "Làm lại",
   "换一个问题": "Đổi câu hỏi khác",
   "让 leo 提问": "Để leo đặt câu hỏi",
+  "正在总结本次对话…": "Đang tóm tắt cuộc trò chuyện này…",
   "leo 正在把你的回答合并进 leo board…": "leo đang gộp câu trả lời của bạn vào leo board…",
   "leo 正在想下一个问题…": "leo đang nghĩ câu hỏi tiếp theo…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Chọn một phương án hoặc nhập bên dưới — leo sẽ gộp vào leo board",

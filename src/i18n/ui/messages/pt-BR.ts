@@ -472,6 +472,7 @@ const ptBR: Record<string, string> = {
   "前进": "Refazer",
   "换一个问题": "Outra pergunta",
   "让 leo 提问": "Deixe o leo perguntar",
+  "正在总结本次对话…": "Resumindo esta conversa…",
   "leo 正在把你的回答合并进 leo board…": "leo está integrando sua resposta ao leo board…",
   "leo 正在想下一个问题…": "leo está pensando na próxima pergunta…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Escolha uma opção ou digite abaixo — leo vai integrá-la ao leo board",
