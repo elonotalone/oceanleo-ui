@@ -471,6 +471,7 @@ const fr: Record<string, string> = {
   "回退": "Annuler",
   "前进": "Rétablir",
   "换一个问题": "Autre question",
+  "让 leo 提问": "Laisser leo poser une question",
   "leo 正在把你的回答合并进 leo board…": "leo intègre votre réponse dans le leo board…",
   "leo 正在想下一个问题…": "leo réfléchit à la prochaine question…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Choisissez une option ou écrivez ci-dessous — leo l'intégrera dans le leo board",

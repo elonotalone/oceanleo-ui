@@ -471,6 +471,7 @@ const ptPT: Record<string, string> = {
   "回退": "Anular",
   "前进": "Refazer",
   "换一个问题": "Outra pergunta",
+  "让 leo 提问": "Deixe o leo perguntar",
   "leo 正在把你的回答合并进 leo board…": "O leo está a integrar a sua resposta no leo board…",
   "leo 正在想下一个问题…": "O leo está a pensar na próxima pergunta…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "Escolha uma opção ou escreva abaixo — o leo integra-a no leo board",

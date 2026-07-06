@@ -17,6 +17,7 @@ import { useUI } from "../i18n/ui/useUI";
 //   │  │ <可直接编辑的工作文本，一有上下文即常驻显示>    │   │
 //   │  │ [复制] [导入到输入框]                          │   │
 //   │  └───────────────────────────────────────────────┘   │
+//   │  （还没提问时：[让 leo 提问]）                         │
 //   │  「请问这份内容的目标读者是谁？」  [换一个问题]        │
 //   │  [教师] [职场人士] [学生] …（选项可以很多，用词简洁）  │
 //   │  （transform 结果卡：复制 / 替换到输入框 / 以此继续）  │
@@ -30,7 +31,7 @@ import { useUI } from "../i18n/ui/useUI";
 //      靠猜替用户扩写（"我要做一个PPT" 不许被编成 300 字完整需求）。
 //   2. board 常驻显示、可直接编辑、可回退/前进（快照历史栈）。
 //   3. 每次只问【一个方向】的问题（完全从当前 board 内容推导，允许重复），
-//      选项用词简洁、可以很多；随时可点「换一个问题」。
+//      选项用词简洁、可以很多；提问前 CTA=「让 leo 提问」，提问后旁边=「换一个问题」。
 //   4. 点选项 → 回答连同问题发给后端【保守合并】进 board（只写用户给的事实）；
 //      用户在底部输入框发自由文本 → 同样合并进 board。
 //   5. 面板关闭再打开，board 留存（面板隐藏而非卸载）。
@@ -837,9 +838,10 @@ function Panel({
     setOptions([]);
   };
 
-  // ── 动词（扩充/精简/总结/解释/翻译/润色）+ 自由指令：一律在**当前 leo board 内容**上
-  //    执行，结果**直接写回 board**（替换原内容、进 undo 历史）。操作员 2026-07-06：
-  //    不再进独立结果卡、不再走扩充的问答流——点了动词就地改 board。
+  // ── 动词 transform：精简/总结/解释/翻译/润色 + 自由指令在**当前 leo board 内容**上
+  //    执行，结果**直接写回 board**（替换原内容、进 undo 历史）。
+  //    「扩充」不走这里——它走 leo board 问答流（onVerb 里分流到 startBoard），
+  //    因为扩充的产品意图是【一问一答打磨 prompt】，而非直接生成成稿（宗旨 v12）。
   const runTransform = async (action: string, label: string, instruction?: string) => {
     const text = (board ?? context?.text ?? "").trim();
     if (!text) return;
@@ -862,6 +864,13 @@ function Panel({
 
   const onVerb = (v: { id: VerbId; label: string }) => {
     if (busy || boardBusy || !(board ?? context?.text)) return;
+    // 「扩充」= leo board 问答流（宗旨 v12）：leo 只【提问打磨这段 prompt】，绝不
+    //   直接凭空给成稿/答案（操作员 2026-07-06 截图：点扩充直接蹦出一整篇回答=错）。
+    // 精简/总结/解释/翻译/润色 = transform：就地改写 board 内容。
+    if (v.id === "expand") {
+      startBoard();
+      return;
+    }
     void runTransform(v.id, tt(v.label));
   };
 
@@ -1016,12 +1025,14 @@ function Panel({
                     </button>
                   </div>
                 )}
+                {/* 初始阶段（还没提出任何问题）：CTA 文案是「让 leo 提问」；
+                    一旦提出了问题，上方问题卡旁才显示「换一个问题」（操作员 2026-07-06）。 */}
                 {!question && (
                   <button
                     onClick={() => void fetchQuestion(board)}
                     className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                   >
-                    {tt("换一个问题")}
+                    {tt("让 leo 提问")}
                   </button>
                 )}
                 {question && options.length > 0 && (

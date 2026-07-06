@@ -471,6 +471,7 @@ const ko: Record<string, string> = {
   "回退": "실행 취소",
   "前进": "다시 실행",
   "换一个问题": "다른 질문으로",
+  "让 leo 提问": "leo가 질문하게 하기",
   "leo 正在把你的回答合并进 leo board…": "leo가 답변을 leo board에 반영하는 중…",
   "leo 正在想下一个问题…": "leo가 다음 질문을 생각하는 중…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "옵션을 선택하거나 아래에 입력하면 leo가 leo board에 반영합니다",

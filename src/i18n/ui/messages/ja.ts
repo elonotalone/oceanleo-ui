@@ -471,6 +471,7 @@ const ja: Record<string, string> = {
   "回退": "元に戻す",
   "前进": "やり直す",
   "换一个问题": "別の質問にする",
+  "让 leo 提问": "leo に質問してもらう",
   "leo 正在把你的回答合并进 leo board…": "leo が回答を leo board に統合しています…",
   "leo 正在想下一个问题…": "leo が次の質問を考えています…",
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "選択肢を選ぶか下に入力すると、leo が leo board に統合します",
