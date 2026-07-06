@@ -1662,8 +1662,8 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
  * **用绝对定位**，不用 `float:left;height:0`（操作员 2026-07-06：首页输入「有时打字瞬移到第二行」
  * 截图 eeda2e59/8bc1bc58）。float 会参与首行行盒布局：placeholder 消失（一打字）的那一帧
  * float 尚未清除，新字符被挤到第二个行盒 → 反流不干净就停在第二行。绝对定位【完全脱离文档流】，
- * 既不占行盒、也永远无法把正文推到第二行；配合下方 trailingBreak 隐藏（修空态粗光标），
- * 光标依旧停在行首、正常细光标。来源：Tiptap Placeholder 官方样式即用绝对定位。 */
+ * 既不占行盒、也永远无法把正文推到第二行，光标依旧停在行首、正常细光标。
+ * 来源：Tiptap Placeholder 官方样式即用绝对定位。 */
 .oc-slot-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   position: absolute;
@@ -1671,14 +1671,14 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   pointer-events: none;
   color: #a3a3a3; /* neutral-400 */
 }
-/* **粗光标真正的修法**（操作员截图 41643744/900b7d61）：空 <p> 里 ProseMirror 会塞一个
- * `<br class="ProseMirror-trailingBreak">` 防止行塌陷——但它会把 contentEditable 的光标撑成一条
- * 又粗又高的竖条。空态时**隐藏这个 trailingBreak**（有真实内容时它不出现，不影响正常编辑）。
- * 来源：ueberdosis/tiptap discussion #2138、prosemirror trailingBreak 讨论帖。 */
-.oc-slot-editor p.is-editor-empty:first-child .ProseMirror-trailingBreak {
-  display: none;
-}
-/* 双保险：压掉可能出现的 ProseMirror gap cursor（也是粗竖条）。 */
+/* ⚠️ 千万不要 display:none 掉空段落里的 `<br class="ProseMirror-trailingBreak">`！
+ * 旧版这么干过（想修「空态粗光标」），后果是**打字瞬移到第二行**（操作员 2026-07-06，无头
+ * 浏览器已确定性复现）：这个 BR 是空 <p> 唯一的行盒内容，把它藏掉后浏览器在空段落里找不到
+ * 合法光标锚点，点击/聚焦时把光标锚到编辑器根 DIV 上——接着打字，字符被原生插进根节点，
+ * ProseMirror DOM observer 重解析成一个**独立段落**（落在原空段落前或后，取决于点击位置），
+ * 落在后面 = 首行空白、正文在第二行。粗光标的真凶是旧 float:left placeholder（上面已改
+ * 绝对定位），BR 必须保持可见。 */
+/* 压掉可能出现的 ProseMirror gap cursor（粗竖条）。 */
 .oc-slot-editor .ProseMirror-gapcursor {
   display: none;
 }
