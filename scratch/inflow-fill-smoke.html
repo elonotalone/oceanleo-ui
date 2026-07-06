@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>v15h 原子占位（Tiptap/ProseMirror）浏览器手测</title>
+<title>v15i 荧光占位 Mark（Tiptap/ProseMirror）浏览器手测</title>
 <style>
   :root { --oc-ph-accent: #4f46e5; }
   * { box-sizing: border-box; }
@@ -12,19 +12,20 @@
   h1 { font-size: 18px; margin: 0 0 4px; }
   p.sub { color: #737373; font-size: 13px; margin: 0 0 20px; }
   .card { border: 1px solid #e5e5e5; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-  /* —— 与 globals.css 的 v15h 块保持一致（这里内联，便于独立打开）—— */
+  /* —— 与 globals.css v15i 块保持一致（内联，便于独立打开）—— */
   .oc-slot-editor { box-sizing: border-box; padding: 20px 20px 8px 20px; outline: none; overflow-y: auto;
     color: #262626; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
     font-size: 15px; line-height: 1.625; min-height: 3.2em; max-height: 280px; caret-color: var(--oc-ph-accent); }
   .oc-slot-editor > p { margin: 0; }
   .oc-slot-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: #a3a3a3; }
-  .oc-slot { display: inline; border-radius: 4px; padding: 0 1px; font-weight: 600;
-    color: color-mix(in srgb, var(--oc-ph-accent) 60%, #94a3b8);
-    background: color-mix(in srgb, var(--oc-ph-accent) 9%, transparent);
-    cursor: text; -webkit-user-select: all; user-select: all; }
-  .oc-slot.ProseMirror-selectednode, .ProseMirror-selectednode.oc-slot {
-    background: color-mix(in srgb, var(--oc-ph-accent) 16%, transparent);
-    box-shadow: inset 2px 0 0 0 var(--oc-ph-accent); outline: none; }
+  /* 荧光块：默认=已填·深蓝荧光 */
+  .oc-slot { border-radius: 4px; padding: 0.5px 3px; margin: 0 .5px; font-weight: 600;
+    color: color-mix(in srgb, var(--oc-ph-accent) 88%, #000);
+    background: color-mix(in srgb, var(--oc-ph-accent) 18%, transparent);
+    box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  /* 未填·浅蓝荧光 */
+  .oc-slot[data-empty="1"] { color: color-mix(in srgb, var(--oc-ph-accent) 52%, #94a3b8);
+    background: color-mix(in srgb, var(--oc-ph-accent) 9%, transparent); font-weight: 500; }
   .toolbar { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid #f0f0f0; flex-wrap: wrap; }
   .toolbar button { font-size: 12px; padding: 6px 12px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fafafa; cursor: pointer; }
   .out { margin-top: 16px; font-size: 12px; }
@@ -35,8 +36,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>v15h · Tiptap 原子占位块 手测</h1>
-  <p class="sub">点卡片灌模板 → 逐条对照下方清单。用的是真实 <code>@tiptap</code>（esm.sh CDN），验的是库原生原子节点行为。</p>
+  <h1>v15i · Tiptap 荧光占位 Mark 手测</h1>
+  <p class="sub">点卡片灌模板 → 逐条对照。用真实 <code>@tiptap</code>（esm.sh CDN），验的是 Mark 染色文本的原生行为。</p>
 
   <div class="card">
     <div id="editor"></div>
@@ -48,73 +49,124 @@
     </div>
   </div>
 
-  <div class="out">当前 value（提交给后端的字符串，未替换占位吐 <code>[hint]</code>）：<code id="val"></code></div>
+  <div class="out">当前 value（提交给后端；未填吐 <code>[hint]</code>、已填吐真实内容）：<code id="val"></code></div>
 
   <ol>
-    <li><b>点占位</b> <code>[主题]</code> → 整块高亮、左侧一条蓝竖线（像光标落在左括号右边）。</li>
-    <li><b>一打字</b>（点中占位后直接敲字）→ 整个 <code>[主题]</code>（连方括号）瞬间被你输入的字替换，变正常蓝色可编辑文字。</li>
-    <li><b>中文 IME</b>：点占位后用拼音打「作家」→ 不跳页首、原地替换成「作家」。</li>
-    <li><b>整体删</b>：把光标放到某占位右边，按一次退格 → 整块选中；再按一次 → 整块消失。<b>绝不</b>会删出 <code>[主题</code> 半截。</li>
-    <li><b>光标跳过</b>：用左右方向键经过占位 → 光标从它左边直接跳到右边，进不去内部。</li>
-    <li><b>全选删</b>：Ctrl/Cmd+A 全选 → 退格 → 全没（含占位），value 变空。</li>
-    <li><b>可反悔</b>：Ctrl/Cmd+Z 撤销刚才的替换/删除。</li>
-    <li><b>浅色对比</b>：未替换占位是<b>浅</b>蓝；替换后的内容是<b>正常</b>蓝加粗。</li>
+    <li><b>荧光同框</b>：未填占位是<b>浅蓝</b>荧光；填完的内容是<b>深蓝</b>荧光（都带底色，不是普通黑字）。</li>
+    <li><b>点占位</b> → 整段提示文字被选中（光标真在文本里）。<b>一打字</b> → 提示被替换，内容变<b>深蓝荧光</b>。</li>
+    <li><b>中文 IME</b>：点占位后打拼音「季度总结」→ 不跳页首、原地替换、结果是深蓝荧光。</li>
+    <li><b>整块删</b>：选中某荧光块（或退格）删掉 → 整段没了；不会残留半截。</li>
+    <li><b>全选删</b>：Ctrl/Cmd+A → 退格 → 全没（字面+所有荧光块），value 空。</li>
+    <li><b>删了能回退</b>：删掉一个荧光块后 Ctrl/Cmd+Z → 它<b>回来</b>（含荧光）。再 Z 继续回退。</li>
+    <li><b>可继续编辑</b>：填完的深蓝荧光块能再点进去改字，仍是荧光。</li>
+    <li><b>value 正确</b>：没填的占位在 value 里是 <code>[hint]</code>，填了的是你打的字。</li>
   </ol>
 </div>
 
 <script type="module">
 import { Editor } from "https://esm.sh/@tiptap/core@3.27.1";
+import { Mark, mergeAttributes } from "https://esm.sh/@tiptap/core@3.27.1";
+import { Plugin, PluginKey, TextSelection } from "https://esm.sh/@tiptap/pm@3.27.1/state";
 import Document from "https://esm.sh/@tiptap/extension-document@3.27.1";
 import Paragraph from "https://esm.sh/@tiptap/extension-paragraph@3.27.1";
 import Text from "https://esm.sh/@tiptap/extension-text@3.27.1";
 import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@3.27.1";
-import { Node, mergeAttributes } from "https://esm.sh/@tiptap/core@3.27.1";
 
-const PromptSlot = Node.create({
-  name: "promptSlot", group: "inline", inline: true, atom: true, selectable: true, draggable: false,
-  addAttributes() { return { hint: { default: "",
-    parseHTML: (el) => el.getAttribute("data-hint") || "",
-    renderHTML: (a) => ({ "data-hint": a.hint || "" }) } }; },
+const SLOT = "promptSlot";
+const PromptSlot = Mark.create({
+  name: SLOT, inclusive: true, spanning: true,
+  addAttributes() { return {
+    hint: { default: "", parseHTML: (el) => el.getAttribute("data-hint") || "", renderHTML: (a) => ({ "data-hint": a.hint || "" }) },
+    empty: { default: false, parseHTML: (el) => el.getAttribute("data-empty") === "1", renderHTML: (a) => (a.empty ? { "data-empty": "1" } : {}) },
+  }; },
   parseHTML() { return [{ tag: "span[data-oc-slot]" }]; },
-  renderHTML({ HTMLAttributes }) {
-    const hint = HTMLAttributes["data-hint"] || "";
-    return ["span", mergeAttributes(HTMLAttributes, { "data-oc-slot": "", class: "oc-slot" }), `[${hint}]`]; },
-  renderText({ node }) { return `[${node.attrs.hint}]`; },
+  renderHTML({ HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { "data-oc-slot": "", class: "oc-slot" }), 0]; },
+  addProseMirrorPlugins() {
+    const markType = this.type;
+    return [ new Plugin({ key: new PluginKey("slotEmptySync"),
+      appendTransaction: (_t, _o, ns) => {
+        const runs = [];
+        ns.doc.descendants((node, pos) => {
+          if (!node.isText) return;
+          const m = node.marks.find((mk) => mk.type === markType); if (!m) return;
+          const from = pos, to = pos + node.nodeSize, hint = m.attrs.hint || "", empty = !!m.attrs.empty;
+          const prev = runs[runs.length - 1];
+          if (prev && prev.to === from && prev.hint === hint && prev.empty === empty) { prev.to = to; prev.text += node.text || ""; }
+          else runs.push({ from, to, hint, empty, text: node.text || "" });
+        });
+        let tr = ns.tr, changed = false;
+        for (const r of runs) { const should = r.text === r.hint && r.hint.length > 0;
+          if (should !== r.empty) { tr = tr.removeMark(r.from, r.to, markType).addMark(r.from, r.to, markType.create({ hint: r.hint, empty: should })); changed = true; } }
+        return changed ? tr : null;
+      } }) ];
+  },
 });
 
 const TOKEN_RE = /\[[^\[\]\n]+\]/g;
-function templateToDoc(tmpl) {
-  const inline = []; let last = 0, m; TOKEN_RE.lastIndex = 0;
+function templatePieces(tmpl) {
+  const pieces = []; let last = 0, m; TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(tmpl))) {
-    if (m.index > last) inline.push({ type: "text", text: tmpl.slice(last, m.index).replace(/\n/g, " ") });
-    inline.push({ type: "promptSlot", attrs: { hint: m[0].slice(1, -1) } });
-    last = m.index + m[0].length;
+    if (m.index > last) pieces.push({ kind: "text", text: tmpl.slice(last, m.index).replace(/\n/g, " ") });
+    pieces.push({ kind: "slot", hint: m[0].slice(1, -1) }); last = m.index + m[0].length;
   }
-  if (last < tmpl.length) { const t = tmpl.slice(last).replace(/\n/g, " "); if (t) inline.push({ type: "text", text: t }); }
-  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+  if (last < tmpl.length) { const t = tmpl.slice(last).replace(/\n/g, " "); if (t) pieces.push({ kind: "text", text: t }); }
+  return pieces;
 }
 function docToPlain(ed) {
   let out = ""; ed.state.doc.forEach((block, _o, i) => {
-    if (i > 0) out += "\n";
-    block.forEach((c) => { out += c.type.name === "promptSlot" ? `[${c.attrs.hint}]` : (c.isText ? c.text : ""); });
+    if (i > 0) out += "\n"; let pend = null;
+    block.forEach((c) => {
+      if (!c.isText) { if (pend != null) { out += `[${pend}]`; pend = null; } return; }
+      const slot = c.marks.find((mk) => mk.type.name === SLOT);
+      if (slot && slot.attrs.empty) { const h = slot.attrs.hint || ""; if (pend != null && pend !== h) out += `[${pend}]`; pend = h; }
+      else { if (pend != null) { out += `[${pend}]`; pend = null; } out += c.text || ""; }
+    });
+    if (pend != null) out += `[${pend}]`;
   }); return out;
+}
+function firstEmptyRun(ed) {
+  let res = null; ed.state.doc.descendants((node, pos) => {
+    if (res || !node.isText) return; const m = node.marks.find((mk) => mk.type.name === SLOT && mk.attrs.empty);
+    if (m) res = { from: pos, to: pos + node.nodeSize }; return !res;
+  }); return res;
 }
 
 const valEl = document.getElementById("val");
 const editor = new Editor({
   element: document.getElementById("editor"),
   extensions: [Document, Paragraph, Text, PromptSlot, Placeholder.configure({ placeholder: "点上面的卡片灌模板…" })],
-  editorProps: { attributes: { class: "oc-slot-editor", spellcheck: "false" } },
+  editorProps: {
+    attributes: { class: "oc-slot-editor", spellcheck: "false" },
+    handleClickOn: (view, _pos, _n, _np, event) => {
+      const span = event.target.closest && event.target.closest("span.oc-slot[data-empty='1']");
+      if (!span) return false;
+      let pos; try { pos = view.posAtDOM(span, 0); } catch { return false; }
+      const $p = view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size));
+      let run = null;
+      $p.parent.forEach((child, offset) => {
+        if (run || !child.isText) return;
+        const m = child.marks.find((mk) => mk.type.name === SLOT && mk.attrs.empty); if (!m) return;
+        const s = $p.start() + offset, e = s + child.nodeSize;
+        if (pos >= s - 1 && pos <= e) run = { from: s, to: e };
+      });
+      if (run) { view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, run.from, run.to))); return true; }
+      return false;
+    },
+  },
   onUpdate: ({ editor }) => { valEl.textContent = JSON.stringify(docToPlain(editor)); },
 });
 
 function seed(tmpl) {
-  editor.commands.setContent(templateToDoc(tmpl));
+  const content = templatePieces(tmpl).map((p) =>
+    p.kind === "slot"
+      ? { type: "text", text: p.hint, marks: [{ type: SLOT, attrs: { hint: p.hint, empty: true } }] }
+      : { type: "text", text: p.text });
+  editor.chain().clearContent(false).insertContent({ type: "paragraph", content: content.length ? content : undefined }, { updateSelection: true }).run();
   valEl.textContent = JSON.stringify(docToPlain(editor));
   requestAnimationFrame(() => {
-    let pos = -1;
-    editor.state.doc.descendants((n, p) => { if (pos === -1 && n.type.name === "promptSlot") pos = p; return pos === -1; });
-    if (pos >= 0) editor.chain().setNodeSelection(pos).focus().run(); else editor.commands.focus("end");
+    const run = firstEmptyRun(editor);
+    if (run) editor.chain().command(({ tr, dispatch }) => { if (dispatch) tr.setSelection(TextSelection.create(tr.doc, run.from, run.to)); return true; }).focus().run();
+    else editor.commands.focus("end");
   });
 }
 document.querySelectorAll("button[data-tmpl]").forEach((b) => b.addEventListener("click", () => seed(b.dataset.tmpl)));

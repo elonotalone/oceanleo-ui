@@ -1617,19 +1617,18 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 /* THEME:GENERATED:END */
 
 /* ============================================================================
- * 模板「实填 + [占位] 原子块」输入（TemplateFillArea / PromptHighlightArea，
- * 宗旨 v15h 定版·Tiptap/ProseMirror 原子内联节点，替代 v15a–g 一切自研方案）
+ * 模板「实填 + [占位] 荧光块」输入（TemplateFillArea / PromptHighlightArea，
+ * 宗旨 v15i 定版·Tiptap/ProseMirror 高亮 Mark，推翻 v15h atom 节点 + v15a–g 自研）
  * ----------------------------------------------------------------------------
- * 渲染 = 一个 Tiptap 富文本编辑器（单段落）：
+ * 渲染 = 一个 Tiptap 富文本编辑器（单段落），`[字段]` 之间的文字打 promptSlot 高亮 Mark：
  *   <div.oc-slot-editor contenteditable>          ← ProseMirror 可编辑根（.el() 返回它）
  *     …字面文字（普通可编辑 text）…
- *     <span.oc-slot data-oc-slot data-hint="输入主题">[输入主题]</span>  ← 原子占位节点
- *     …字面文字…
- *   · 字面文字 = 普通文本：可全选删、可反悔、随意改。
- *   · `[字段]` = 原子节点（inline+atom）：**不可分割**——光标跳过、不能进内部、删就整块删
- *     （PM 原生保证，绝不出 `[主题` 半截）。未替换时**浅蓝**、点它整块 NodeSelection 选中
- *     （视觉 = 左侧一条 accent 竖线像 caret）；一打字 NodeSelection 下原生整块替换成普通
- *     蓝色可编辑文本（方括号一起消失）。
+ *     <span.oc-slot data-empty="1" data-hint="周报或月报">周报或月报</span>  ← 未填·浅蓝荧光
+ *     <span.oc-slot data-hint="周报或月报">季度总结</span>                    ← 已填·深蓝荧光
+ *   · 荧光块 = **被 mark 染色的普通可编辑文本**：光标能进、能打字、能全选删、IME/undo 全原生。
+ *   · 未填(data-empty=1)=浅蓝荧光（内容==hint 的占位提示）；已填=深蓝荧光（用户输入）。翻转由
+ *     Mark 的幂等 appendTransaction 自动完成（文本 != hint → 转深蓝），不拦截输入。
+ *   · 点未填块→整段提示文字被选中→一打字/一拼音原生替换选区（光标真在文本里，无假竖线）。
  * accent 配色由 --oc-ph-accent 变量下发（各站不同）。一处定义全家桶生效（编译进 ui.css）。
  * ========================================================================== */
 /* 编辑器根：承载 LeoComposer 卡片内的输入排版（等价旧 textarea 的 px-5 pt-5 pb-2）。 */
@@ -1657,28 +1656,35 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   pointer-events: none;
   color: #a3a3a3; /* neutral-400 */
 }
-/* 原子占位节点：未替换态 = **浅** accent 色（比正文/已填内容浅），淡 accent 底、圆角。 */
+/* 荧光块（promptSlot mark）：默认 = **已填·深蓝荧光**（深 accent 字 + 较实 accent 底 + 加粗）。 */
 .oc-slot {
-  display: inline;
   border-radius: 4px;
-  padding: 0 1px;
+  padding: 0.5px 3px;
+  margin: 0 0.5px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 60%, #94a3b8);
+  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 88%, #000);
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 18%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* 未填态（占位提示，内容==hint）：**浅蓝荧光**——比已填浅（字浅、底更淡）。 */
+.oc-slot[data-empty="1"] {
+  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 52%, #94a3b8);
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 9%, transparent);
-  cursor: text;
-  -webkit-user-select: all;
-  user-select: all;
+  font-weight: 500;
 }
-/* 被 NodeSelection 选中（点了它、或退格第一下）：左侧一条 accent 竖线当「caret 落在左括号
- * 右边」的视觉（符合操作员「光标只为美观」），底色略加深提示「整块已选、一打字即替换」。 */
-.oc-slot-editor .ProseMirror-selectednode.oc-slot,
-.oc-slot.ProseMirror-selectednode {
-  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 16%, transparent);
-  box-shadow: inset 2px 0 0 0 var(--oc-ph-accent, #4f46e5);
-  outline: none;
-}
-/* 深色主题：正文用浅色、占位浅 accent 保持可读。 */
+/* 深色主题：正文浅色；荧光块字调亮以在深底可读。 */
 [data-oceanleo-shell].dark .oc-slot-editor,
 .dark .oc-slot-editor {
   color: var(--leo-d-text, #ececec);
+}
+[data-oceanleo-shell].dark .oc-slot,
+.dark .oc-slot {
+  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 40%, #fff);
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 26%, transparent);
+}
+[data-oceanleo-shell].dark .oc-slot[data-empty="1"],
+.dark .oc-slot[data-empty="1"] {
+  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 30%, #cbd5e1);
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 14%, transparent);
 }

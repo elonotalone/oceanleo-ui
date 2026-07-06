@@ -1,37 +1,30 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — TemplateFillArea（模板「实填 + [占位] 原子块」输入区，单一事实源）
+// @oceanleo/ui — TemplateFillArea（模板「实填 + [占位] 荧光块」输入区，单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v15h 定版（2026-07-06；用 Tiptap/ProseMirror 原子节点，彻底替代自研 contentEditable
-// / textarea 镜像 的 v15a–g）：
+// 宗旨 v15i 定版（2026-07-06；Tiptap/ProseMirror 高亮 Mark，推翻 v15h atom 节点与 v15a–g 自研）：
 //
 //   点 prompt 卡片 / 导航示例后，模板文案填进一个 Tiptap 富文本编辑器：
-//     · 字面文字 = 普通可编辑文本（可全选删、可反悔、可随意改）；
-//     · `[字段]` = **原子占位节点 promptSlot**（inline+atom）：浅蓝色、**不可分割**——
-//        光标跳过、不能进内部、删就整块删（绝不删出 `[主题` 半截，修 5ef085cf）；
-//     · 点占位 → NodeSelection 整块选中（视觉：左侧一条蓝 caret，「像可直接输入」，只为
-//        美观，符合操作员「光标只为美观」）；
-//     · 一打字 → NodeSelection 下 insertText **原生整块替换**为普通文本（方括号连节点一起
-//        消失，变正常蓝色可编辑字，修 de0a2106「输入即去括号」）。
+//     · 字面文字 = 普通可编辑文本；
+//     · `[字段]` 之间的文字打上 **promptSlot 高亮 Mark**（非原子）→ 荧光块。染色的是**普通可
+//        编辑文本**：光标能进、能打字、能全选删、IME 原生、undo 原生（零守卫）。
+//     · **未填**（empty）= 浅蓝荧光 + 内容 == hint（占位提示，如「周报或月报」，不显方括号）；
+//       **已填** = 深蓝荧光 + 内容 = 用户输入。翻转由 Mark 的幂等 appendTransaction 自动完成
+//       （文本 != hint 即转深蓝），不拦截输入。
+//     · 点未填荧光块 → 选中整段提示文字（TextSelection 覆盖）→ 用户一打字/一拼音 = 原生替换
+//        选区（光标真正在文本里，非画的假竖线）→ 内容变、自动转深蓝荧光。
 //
-//   为什么用 Tiptap 而非继续自研（操作员要求「用成熟库、别在小问题反复」）：
-//     「插入变量作为不可分割整体」= 业界 mention/token/atom 节点标准问题。Lexical/Tiptap/
-//     ProseMirror 均以 `inline:true+atom:true` 原生提供「整体删/光标跳过/不可进内部/复制带
-//     数据」。中文 IME + 原子节点的历史坑（Tiptap #6982 等）这些库已在**库层**打了补丁，
-//     用库 = 白嫖它们几年的踩坑。自研 contentEditable（v15a–f）必然重复这些坑。Tiptap =
-//     ProseMirror 之上的成熟封装、React 官方绑定、MIT、生态最大、文档最好。
+//   为什么 Mark 而非 atom（v15h 被操作员打回）/ 自研 contentEditable（v15a–g 全踩坑）：见
+//     promptSlotNode.ts 顶部注释。核心：Mark = 染色普通文本 → 光标/删除/全选/IME/undo 全原生。
 //
-//   非受控（业界铁律）：富文本编辑器**不能当受控 React 组件**（value+onChange 每次 re-render
-//     会毁光标/选区/IME）。这里用 Tiptap useEditor 自持状态，仅在 onUpdate 时把序列化值上抛
-//     onChange；外部 value 变空（点卡片重来）时才命令式重建 doc。
+//   非受控 + 保 undo：Tiptap useEditor 自持状态，仅 onUpdate 上抛序列化值。灌模板用
+//     insertContent（进 undo 历史，删荧光块后 Ctrl+Z 可回退，修操作员 2026-07-06 诉求）；
+//     **不再用 setContent 命令式重建 doc**（那会清空 undo 栈）。外部 value 变空才 clearContent。
 //
-// value 契约：编辑器序列化 = 字面文本 + 未替换占位吐 `[hint]` 字面（AI 侧理解占位）；已替换
-//   的占位就是普通文本。提交无需再清洗。
-//
-// 回退：无模板（普通输入框）时 LeoComposer 用它自己的原生 textarea（不渲染本组件）。
-// 兼容：保留导出名 PromptHighlightArea（+ 别名 TemplateFillArea）、Handle（focus/el，el()
-//   返回编辑器根 DOM）、templateSegments / highlightSegments / stripPromptPlaceholders。
+// value 契约：未填 slot run 吐 `[hint]` 字面（AI 侧理解占位）；已填吐真实文本；无 mark 照吐。
+// 兼容：导出名 PromptHighlightArea（+ 别名 TemplateFillArea）、Handle（focus/el，el() 返回编辑器
+//   根 DOM）、templateSegments / highlightSegments / stripPromptPlaceholders。
 // ============================================================================
 
 import {
@@ -44,7 +37,8 @@ import {
   useRef,
 } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import type { Editor, JSONContent } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
@@ -78,7 +72,7 @@ export function highlightSegments(text: string, _template?: string | null): Seg[
   void _template;
   return templateSegments(text);
 }
-/** @deprecated value 天然由 getPlainValue 产出；保留 no-op 语义为兼容。 */
+/** @deprecated value 天然由 docToPlain 产出；保留 no-op 语义为兼容。 */
 export function stripPromptPlaceholders(text: string, _template?: string | null): string {
   void _template;
   return text;
@@ -94,7 +88,7 @@ export type TemplateFillAreaHandle = PromptHighlightAreaHandle;
 export interface PromptHighlightAreaProps {
   value: string;
   onChange: (value: string) => void;
-  /** 模板（点卡片 / 示例时设入）。设入即把模板解析成「字面文本 + [占位]原子节点」灌进编辑器。
+  /** 模板（点卡片 / 示例时设入）。设入即把模板解析成「字面文本 + [占位]荧光 mark」灌进编辑器。
    * null → 由 LeoComposer 走它自己的普通 textarea。 */
   template: string | null;
   accentColor?: string;
@@ -108,33 +102,55 @@ export interface PromptHighlightAreaProps {
 }
 export type TemplateFillAreaProps = PromptHighlightAreaProps;
 
-// ── 模板 ⇄ ProseMirror doc / value 转换 ─────────────────────────────────────
+// ── 模板 → 编辑器内容 / doc → value 转换 ─────────────────────────────────────
 
-/** 模板字符串 → 单段落 doc 的 inline 内容（字面 = text 节点；[占位] = promptSlot 原子节点）。
- * 多行按 hardBreak 处理不了（我们没引 hardBreak 扩展），故换行折成空格——模板本就是单段引导语。 */
-function templateToDoc(template: string): JSONContent {
-  const inline: JSONContent[] = [];
+type SlotPiece =
+  | { kind: "text"; text: string }
+  | { kind: "slot"; hint: string };
+
+/** 模板字符串 → 有序片段（字面文本 / 占位）。换行折成空格（模板本是单段引导语）。 */
+function templatePieces(template: string): SlotPiece[] {
+  const pieces: SlotPiece[] = [];
   for (const s of templateSegments(template)) {
     if (s.kind === "placeholder") {
-      const hint = s.text.slice(1, -1); // 去掉外层方括号
-      inline.push({ type: PROMPT_SLOT_NAME, attrs: { hint } });
+      pieces.push({ kind: "slot", hint: s.text.slice(1, -1) });
     } else {
       const txt = s.text.replace(/\n/g, " ");
-      if (txt) inline.push({ type: "text", text: txt });
+      if (txt) pieces.push({ kind: "text", text: txt });
     }
   }
-  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+  return pieces;
 }
 
-/** 编辑器 doc → 提交用纯文本：文本节点取字符；未替换的 promptSlot 吐 `[hint]` 字面；段落间换行。 */
+/** 编辑器 doc → 提交用纯文本：文本节点取字符；带 promptSlot mark 且 empty 的 run 吐 `[hint]`；段落间换行。 */
 function docToPlain(editor: Editor): string {
   let out = "";
   editor.state.doc.forEach((block, _off, index) => {
     if (index > 0) out += "\n";
+    let pendingEmptyHint: string | null = null;
     block.forEach((child) => {
-      if (child.type.name === PROMPT_SLOT_NAME) out += `[${child.attrs.hint as string}]`;
-      else if (child.isText) out += child.text || "";
+      if (!child.isText) {
+        if (pendingEmptyHint != null) {
+          out += `[${pendingEmptyHint}]`;
+          pendingEmptyHint = null;
+        }
+        return;
+      }
+      const slot = child.marks.find((mk) => mk.type.name === PROMPT_SLOT_NAME);
+      if (slot && slot.attrs.empty) {
+        // 未填占位：整段 run 折成 `[hint]`（相邻同 hint 的 text 节点合并只吐一次）。
+        const hint = (slot.attrs.hint as string) || "";
+        if (pendingEmptyHint != null && pendingEmptyHint !== hint) out += `[${pendingEmptyHint}]`;
+        pendingEmptyHint = hint;
+      } else {
+        if (pendingEmptyHint != null) {
+          out += `[${pendingEmptyHint}]`;
+          pendingEmptyHint = null;
+        }
+        out += child.text || "";
+      }
     });
+    if (pendingEmptyHint != null) out += `[${pendingEmptyHint}]`;
   });
   return out;
 }
@@ -168,13 +184,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     onChangeRef.current = onChange;
     const onKeyDownRef = useRef(onKeyDown);
     onKeyDownRef.current = onKeyDown;
-    // 记录已按哪个模板灌过，避免重复重建。
     const seededTemplate = useRef<string | null>(null);
-    // 防止「命令式改 doc → onUpdate → onChange → 外部 value 变 → effect 再改 doc」的回环。
     const applyingRef = useRef(false);
 
     const editor = useEditor({
-      immediatelyRender: false, // Next SSR 安全
+      immediatelyRender: false,
       editable: !disabled,
       extensions: [
         Document,
@@ -183,7 +197,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
         PromptSlot,
         Placeholder.configure({
           placeholder: placeholder || "",
-          // 仅在完全空时显示通用占位（模板一旦灌入就不显示）。
           showOnlyWhenEditable: true,
         }),
       ],
@@ -194,8 +207,21 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           "aria-multiline": "true",
           spellcheck: "false",
         },
-        // 点原子占位 → 变 NodeSelection 整块选中（Tiptap/PM 默认已如此；这里显式确保）。
-        // 一打字时 NodeSelection 下 insertText 原生整块替换（无需自定义 handleTextInput）。
+        // 点未填荧光块 → 选中整段提示文字（TextSelection 覆盖该 run）。一打字/一拼音 = 原生替换。
+        handleClickOn: (view, _pos, _node, _nodePos, event) => {
+          const target = (event.target as HTMLElement).closest?.("span.oc-slot[data-empty='1']");
+          if (!target) return false;
+          // 找到点中的 empty slot run 的 from/to，选中它。
+          const found = findSlotRunAtDom(view, target as HTMLElement);
+          if (found) {
+            const tr = view.state.tr.setSelection(
+              TextSelection.create(view.state.doc, found.from, found.to),
+            );
+            view.dispatch(tr);
+            return true;
+          }
+          return false;
+        },
       },
       onUpdate: ({ editor }) => {
         if (applyingRef.current) return;
@@ -208,7 +234,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       el: () => (editor ? (editor.view.dom as HTMLElement) : null),
     }));
 
-    // 把编辑器根 DOM 的 accent 变量 + 最大高度设上（供 CSS 用）。
     useEffect(() => {
       if (!editor) return;
       const dom = editor.view.dom as HTMLElement;
@@ -217,26 +242,45 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       dom.style.minHeight = `${rows * 1.625}em`;
     }, [editor, accentColor, maxHeight, rows]);
 
-    // 灌模板：把光标定位到第一个占位（NodeSelection），用户第一件事就是替换它。
+    // 灌模板：用 insertContent 进 undo 历史；灌完选中第一个未填荧光块（→ 一打字即替换）。
     const seed = useCallback(
       (tmpl: string) => {
         if (!editor) return;
         applyingRef.current = true;
-        editor.commands.setContent(templateToDoc(tmpl), { emitUpdate: false });
+        const content = templatePieces(tmpl).map((p) =>
+          p.kind === "slot"
+            ? {
+                type: "text" as const,
+                text: p.hint,
+                marks: [{ type: PROMPT_SLOT_NAME, attrs: { hint: p.hint, empty: true } }],
+              }
+            : { type: "text" as const, text: p.text },
+        );
+        // clearContent + insertContent：两步都可 undo；避免 setContent 清历史。
+        editor
+          .chain()
+          .clearContent(false)
+          .insertContent(
+            { type: "paragraph", content: content.length ? content : undefined },
+            { updateSelection: true },
+          )
+          .run();
         seededTemplate.current = tmpl;
         applyingRef.current = false;
-        // 上抛初始 value（含未替换占位字面）。
         onChangeRef.current(docToPlain(editor));
-        // 选中第一个占位原子节点（→ 一打字即整块替换）。
+        // 选中第一个未填荧光块的整段提示文字。
         requestAnimationFrame(() => {
           if (!editor) return;
-          let firstSlotPos = -1;
-          editor.state.doc.descendants((node, pos) => {
-            if (firstSlotPos === -1 && node.type.name === PROMPT_SLOT_NAME) firstSlotPos = pos;
-            return firstSlotPos === -1;
-          });
-          if (firstSlotPos >= 0) {
-            editor.chain().setNodeSelection(firstSlotPos).focus().run();
+          const run = findFirstEmptySlotRun(editor);
+          if (run) {
+            editor
+              .chain()
+              .command(({ tr, dispatch }) => {
+                if (dispatch) tr.setSelection(TextSelection.create(tr.doc, run.from, run.to));
+                return true;
+              })
+              .focus()
+              .run();
           } else {
             editor.commands.focus("end");
           }
@@ -245,7 +289,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       [editor],
     );
 
-    // 模板变化（点了新卡片/示例）→ 重建 doc。
     useEffect(() => {
       if (!editor || template == null) return;
       if (seededTemplate.current === template) return;
@@ -261,16 +304,17 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       }
     }, [editor, value, template, seed]);
 
-    // 外部 value 被改（非本编辑器产出，且不在灌模板过程中）→ 同步进编辑器。仅当确实不一致时，
-    // 避免打字回环。普通字符编辑不会走这里（onChange 上抛的值与 docToPlain 一致）。
+    // 外部 value 被改（非本编辑器产出，无模板的纯文本场景）→ 同步进编辑器。
     useEffect(() => {
       if (!editor || applyingRef.current) return;
-      if (template != null) return; // 有模板时以 seed 为准，不按纯文本覆盖（否则会毁占位节点）
+      if (template != null) return; // 有模板时以 seed 为准，别按纯文本覆盖（会毁 slot mark）
       const current = docToPlain(editor);
       if (value !== current) {
         applyingRef.current = true;
         editor.commands.setContent(
-          { type: "doc", content: value ? [{ type: "paragraph", content: [{ type: "text", text: value }] }] : [{ type: "paragraph" }] },
+          value
+            ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: value }] }] }
+            : { type: "doc", content: [{ type: "paragraph" }] },
           { emitUpdate: false },
         );
         applyingRef.current = false;
@@ -281,8 +325,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       if (editor && autoFocus) editor.commands.focus();
     }, [editor, autoFocus]);
 
-    // 回车提交透传（LeoComposer 的 handleKeyDown）。IME 合成中不触发（Tiptap/PM 自己会处理，
-    // 这里再判一层 isComposing 保险）。
     const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
       onKeyDownRef.current?.(e as unknown as ReactKeyboardEvent<HTMLElement>);
     };
@@ -299,10 +341,50 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
   },
 );
 
-/** 别名（宗旨 v15 新名字；语义即「模板实填 + [占位] 原子块」）。 */
+// ── helpers：定位 slot mark run 的文档区间 ─────────────────────────────────────
+
+function findFirstEmptySlotRun(editor: Editor): { from: number; to: number } | null {
+  let res: { from: number; to: number } | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (res) return false;
+    if (!node.isText) return;
+    const m = node.marks.find((mk) => mk.type.name === PROMPT_SLOT_NAME && mk.attrs.empty);
+    if (m) res = { from: pos, to: pos + node.nodeSize };
+    return !res;
+  });
+  return res;
+}
+
+/** 根据点中的 DOM span，反查它对应的 slot mark run 在文档里的 from/to。 */
+function findSlotRunAtDom(
+  view: { posAtDOM: (dom: Node, offset: number) => number; state: Editor["state"] },
+  dom: HTMLElement,
+): { from: number; to: number } | null {
+  let pos: number;
+  try {
+    pos = view.posAtDOM(dom, 0);
+  } catch {
+    return null;
+  }
+  const $pos = view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size));
+  const node = $pos.parent;
+  // 在该文本块里找覆盖 pos 的 empty slot run。
+  let result: { from: number; to: number } | null = null;
+  node.forEach((child, offset) => {
+    if (result || !child.isText) return;
+    const m = child.marks.find((mk) => mk.type.name === PROMPT_SLOT_NAME && mk.attrs.empty);
+    if (!m) return;
+    const start = $pos.start() + offset;
+    const end = start + child.nodeSize;
+    if (pos >= start - 1 && pos <= end) result = { from: start, to: end };
+  });
+  return result;
+}
+
+/** 别名（宗旨 v15 新名字；语义即「模板实填 + [占位] 荧光块」）。 */
 export const TemplateFillArea = PromptHighlightArea;
 
-// 参考实现（原子内联节点 = 业界 mention/variable/token 标准做法）：
-//   Tiptap Mention / 自定义 atom 节点（ueberdosis/tiptap 文档 + issue #6982 中文 IME 修复）
-//   ProseMirror NodeSelection + atom（prosemirror.net/docs：atom / handleTextInput / NodeSelection）
-//   Lexical token 节点（facebook/lexical #5026 IME workaround）— 同类问题的另一实现参考
+// 参考实现（变量高亮 = Mark 染普通可编辑文本，业界通行）：
+//   Tiptap Mark API（addAttributes/inclusive/renderHTML）+ appendTransaction 改 mark 属性
+//   ProseMirror：removeMark+addMark 改 mark attrs（discuss.prosemirror #776）；TextSelection 选 run
+//   Notion / 飞书 / 豆包「变量填空」交互：占位=可被选中替换的提示文本，填后仍高亮
