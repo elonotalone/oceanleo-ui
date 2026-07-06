@@ -1617,40 +1617,68 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 /* THEME:GENERATED:END */
 
 /* ============================================================================
- * 模板「实填 + [占位] 蓝色高亮」输入（TemplateFillArea / PromptHighlightArea，
- * 宗旨 v15g 定版·透明 textarea + 镜像高亮层，对齐豆包「帮我写作」范式）
+ * 模板「实填 + [占位] 原子块」输入（TemplateFillArea / PromptHighlightArea，
+ * 宗旨 v15h 定版·Tiptap/ProseMirror 原子内联节点，替代 v15a–g 一切自研方案）
  * ----------------------------------------------------------------------------
- * 点卡片/示例灌进带 [字段] 的模板时：模板原文**整段作为普通文本进 value**（可全选删、
- * 可反悔、光标可进方括号内部）。渲染 = 透明 textarea 叠在镜像高亮层上：
- *   <div 相对定位>
- *     <div.oc-tmpl-mirror aria-hidden pointer-events:none>  ← 镜像层：只读渲染 + [..] 高亮
- *       …文本… <span.oc-ph>[字段]</span> …文本…
- *     <textarea.oc-tmpl-input color:transparent caret-color:accent>  ← 真输入，叠上层
- *   · textarea 承载全部编辑（IME/全选/删除/反悔/光标进括号都是原生行为）；文字透明只留
- *     光标；镜像层在正下方逐像素对齐渲染文本 + 蓝色高亮，颜色透上来。
- *   · [占位] 连同方括号是**真实文本**：可选、可删、进 value。高亮纯视觉、不影响可编辑性。
- *   · 镜像层与 textarea 排版必须逐项一致（font/size/line-height/padding/white-space/
- *     word-break/letter-spacing），否则高亮对不齐 → 都由组件的 TYPO 常量统一下发。
+ * 渲染 = 一个 Tiptap 富文本编辑器（单段落）：
+ *   <div.oc-slot-editor contenteditable>          ← ProseMirror 可编辑根（.el() 返回它）
+ *     …字面文字（普通可编辑 text）…
+ *     <span.oc-slot data-oc-slot data-hint="输入主题">[输入主题]</span>  ← 原子占位节点
+ *     …字面文字…
+ *   · 字面文字 = 普通文本：可全选删、可反悔、随意改。
+ *   · `[字段]` = 原子节点（inline+atom）：**不可分割**——光标跳过、不能进内部、删就整块删
+ *     （PM 原生保证，绝不出 `[主题` 半截）。未替换时**浅蓝**、点它整块 NodeSelection 选中
+ *     （视觉 = 左侧一条 accent 竖线像 caret）；一打字 NodeSelection 下原生整块替换成普通
+ *     蓝色可编辑文本（方括号一起消失）。
  * accent 配色由 --oc-ph-accent 变量下发（各站不同）。一处定义全家桶生效（编译进 ui.css）。
  * ========================================================================== */
-/* 镜像层与输入层共享盒模型：同宽、同排版、盒尺寸一致（padding 已在内联 TYPO 里给）。 */
-.oc-tmpl-mirror,
-.oc-tmpl-input {
+/* 编辑器根：承载 LeoComposer 卡片内的输入排版（等价旧 textarea 的 px-5 pt-5 pb-2）。 */
+.oc-slot-editor {
   box-sizing: border-box;
-  -webkit-font-smoothing: inherit;
-  tab-size: 4;
-}
-/* 镜像层文本换行策略与 textarea 完全一致（textarea 默认 white-space:pre-wrap）。 */
-.oc-tmpl-mirror {
+  padding: 20px 20px 8px 20px;
+  outline: none;
+  overflow-y: auto;
+  color: #262626; /* neutral-800，与旧 textarea 一致 */
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
+  -webkit-font-smoothing: inherit;
+  tab-size: 4;
+  caret-color: var(--oc-ph-accent, #4f46e5);
 }
-/* [占位] 高亮：淡 accent 底 + accent 蓝字（对齐豆包）。纯视觉——底下是镜像层，真正可编辑的
- * 是上层透明 textarea 里的同一段真实文本，所以它照样可选、可删、可全选删。 */
-.oc-tmpl-mirror .oc-ph {
-  color: var(--oc-ph-accent, #4f46e5);
-  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
+.oc-slot-editor > p {
+  margin: 0;
+}
+/* Tiptap Placeholder 扩展：空编辑器时的灰色提示（等价 textarea placeholder）。 */
+.oc-slot-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #a3a3a3; /* neutral-400 */
+}
+/* 原子占位节点：未替换态 = **浅** accent 色（比正文/已填内容浅），淡 accent 底、圆角。 */
+.oc-slot {
+  display: inline;
   border-radius: 4px;
+  padding: 0 1px;
   font-weight: 600;
+  color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 60%, #94a3b8);
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 9%, transparent);
+  cursor: text;
+  -webkit-user-select: all;
+  user-select: all;
+}
+/* 被 NodeSelection 选中（点了它、或退格第一下）：左侧一条 accent 竖线当「caret 落在左括号
+ * 右边」的视觉（符合操作员「光标只为美观」），底色略加深提示「整块已选、一打字即替换」。 */
+.oc-slot-editor .ProseMirror-selectednode.oc-slot,
+.oc-slot.ProseMirror-selectednode {
+  background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 16%, transparent);
+  box-shadow: inset 2px 0 0 0 var(--oc-ph-accent, #4f46e5);
+  outline: none;
+}
+/* 深色主题：正文用浅色、占位浅 accent 保持可读。 */
+[data-oceanleo-shell].dark .oc-slot-editor,
+.dark .oc-slot-editor {
+  color: var(--leo-d-text, #ececec);
 }

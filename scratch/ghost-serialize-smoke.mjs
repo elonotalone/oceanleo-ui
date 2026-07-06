@@ -1,14 +1,15 @@
-// Headless 验证 v15g「透明 textarea + 镜像高亮层」模型的分段 + value 契约（真实光标/IME/
-// 全选删除需浏览器，见 scratch/inflow-fill-smoke.html；这里只验纯逻辑）。
-// 新契约（推翻此前 contentEditable 系列）：
-//   · value = textarea.value = 模板原文**逐字符**（含 [占位] 的方括号）——[占位] 是普通
-//     可编辑文本，不做任何剥离/替换；
-//   · templateSegments(value) 把文本切成 lit / placeholder 段，镜像层据此给 placeholder
-//     段套 .oc-ph 高亮（纯视觉），拼回来必须 === 原文（无损）。
+// Headless 验证 v15h「Tiptap/ProseMirror 原子内联节点」的 template⇄doc⇄plain 契约。
+// 原子节点的**交互**（点击整块选中/一打字整块替换/整体删/中文 IME/光标跳过）是 ProseMirror
+// 库层原生行为，必须在**真实浏览器**（word.oceanleo.com 或 scratch/inflow-fill-smoke.html）
+// 里验；这里只验组件里那两个纯函数的**序列化契约**（数据完整性 = 提交拿到的字符串对不对）：
+//   · templateToDoc(tmpl)：字面→text 节点；`[占位]`→promptSlot 原子节点（attrs.hint 去方括号）。
+//   · docToPlain(doc)   ：文本节点吐字符；**未替换**的 promptSlot 吐 `[hint]` 字面；段落间 \n。
+// 关键性质：未替换占位在 value 里仍是 `[hint]`（AI 侧理解占位）；用户替换后就是普通文本。
 // 跑：node scratch/ghost-serialize-smoke.mjs
 
 const TOKEN_RE = /\[[^\[\]\n]+\]/g;
 
+// —— 复刻组件里的 templateSegments / templateToDoc / docToPlain（保持逻辑同源）——
 function templateSegments(t) {
   const out = []; let last = 0, m; TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(t))) {
@@ -19,8 +20,24 @@ function templateSegments(t) {
   if (last < t.length) out.push({ kind: "lit", text: t.slice(last) });
   return out;
 }
-// 镜像层把分段拼回的文本（高亮不改变字符，占位段原样含方括号）。
-const renderText = (segs) => segs.map((s) => s.text).join("");
+const SLOT = "promptSlot";
+function templateToDoc(tmpl) {
+  const inline = [];
+  for (const s of templateSegments(tmpl)) {
+    if (s.kind === "placeholder") inline.push({ type: SLOT, attrs: { hint: s.text.slice(1, -1) } });
+    else { const txt = s.text.replace(/\n/g, " "); if (txt) inline.push({ type: "text", text: txt }); }
+  }
+  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+}
+// docToPlain 的纯数据版：吃 doc JSON（模拟 PM doc.forEach），吐提交字符串。
+function docToPlain(doc) {
+  const blocks = doc.content || [];
+  return blocks.map((block) =>
+    (block.content || []).map((child) =>
+      child.type === SLOT ? `[${child.attrs.hint}]` : (child.type === "text" ? child.text : "")
+    ).join("")
+  ).join("\n");
+}
 
 let fail = 0;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -28,38 +45,43 @@ const check = (name, got, want) => { if (!eq(got, want)) { console.log(`✗ ${na
 
 const tmpl = "帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。";
 
-// (1) value 契约：模板原文逐字符进 value（含方括号），无损。
-check("value = 模板原文逐字符（含 [占位]）", tmpl, "帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。");
+// (1) 模板→doc：占位变原子 promptSlot 节点，hint 去掉方括号。
+const doc = templateToDoc(tmpl);
+const inline = doc.content[0].content;
+check("字面段 = text 节点，占位段 = promptSlot 原子节点",
+  inline.map((n) => n.type),
+  ["text", SLOT, "text", SLOT, "text", SLOT, "text"]);
+check("promptSlot.hint 去方括号（[主题]→主题）",
+  inline.filter((n) => n.type === SLOT).map((n) => n.attrs.hint),
+  ["主题", "受众", "字数"]);
 
-// (2) 分段：交替 lit / placeholder，占位段 = 完整 [..]（含方括号）。
-const segs = templateSegments(tmpl);
-check("占位段是完整 [..]（含方括号）", segs.filter((s) => s.kind === "placeholder").map((s) => s.text), ["[主题]", "[受众]", "[字数]"]);
-check("分段拼回 === 原文（无损，高亮不改字符）", renderText(segs), tmpl);
+// (2) 未替换 → docToPlain 仍吐 [占位] 字面（提交给 AI 时保留占位语义）。
+check("未替换：docToPlain === 模板原文（含 [占位]）", docToPlain(doc), tmpl);
 
-// (3) 用户把 [主题] 改成真实内容 → 就是普通文本编辑，value 随之变，该处不再是占位段。
-const edited = tmpl.replace("[主题]", "新能源汽车");
-const segs2 = templateSegments(edited);
-check("改后 value 出真实内容", edited, "帮我写一篇关于 新能源汽车 的文章，面向 [受众]，约 [字数] 字。");
-check("改后该处不再高亮（占位段少一个）", segs2.filter((s) => s.kind === "placeholder").map((s) => s.text), ["[受众]", "[字数]"]);
-check("改后分段拼回仍 === 当前 value", renderText(segs2), edited);
+// (3) 用户点第一个占位、打字 → 该 promptSlot 整块被替换成普通 text 节点（去括号）。
+const doc2 = JSON.parse(JSON.stringify(doc));
+doc2.content[0].content[1] = { type: "text", text: "新能源汽车" }; // [主题] → 文本
+// 相邻文本节点合并不影响 docToPlain（拼接结果一致）
+check("替换首个占位后 docToPlain 出真实内容、无该占位方括号",
+  docToPlain(doc2),
+  "帮我写一篇关于 新能源汽车 的文章，面向 [受众]，约 [字数] 字。");
 
-// (4) 全选删除 → value = ""（普通文本行为，无守卫拦截）。
-check("全选删除后 value 为空", "", "");
-check("空 value 无占位段", templateSegments("").filter((s) => s.kind === "placeholder").length, 0);
+// (4) 全删 → 空 doc → 空串。
+check("空 doc → 空串", docToPlain({ type: "doc", content: [{ type: "paragraph", content: [] }] }), "");
 
-// (5) 用户删了 [主题] 的右括号 `]` → `[主题` 不再是完整 token，不高亮（就是普通文本）。
-const broken = "帮我写一篇关于 [主题 的文章";
-check("残缺 [主题（无右括号）不成占位段", templateSegments(broken).filter((s) => s.kind === "placeholder").length, 0);
-check("残缺场景分段拼回仍无损", renderText(templateSegments(broken)), broken);
+// (5) 纯占位模板。
+check("纯占位模板：doc 只含 1 个 promptSlot",
+  templateToDoc("[主题]").content[0].content.map((n) => n.type), [SLOT]);
+check("纯占位模板 docToPlain === [主题]", docToPlain(templateToDoc("[主题]")), "[主题]");
 
-// (6) 光标进方括号内部（逻辑侧只验位置计算：第一个 [ 之后）。
-const idx = tmpl.search(TOKEN_RE);
-check("首个占位定位到 '[' 之后（光标进括号内部）", tmpl.slice(idx, idx + 2), "[主");
+// (6) 多行：换行折成空格（单段落引导语契约）。
+check("多行模板折成单段落（\\n→空格）",
+  docToPlain(templateToDoc("第一行 [A]\n第二行 [B]")),
+  "第一行 [A] 第二行 [B]");
 
-// (7) 纯占位模板 & 多行。
-check("纯占位模板 value 就是 [主题]", templateSegments("[主题]").map((s) => s.text).join(""), "[主题]");
-const multi = "第一行 [A]\n第二行 [B]";
-check("多行含占位分段无损", renderText(templateSegments(multi)), multi);
+// (7) 残缺 `[主题`（无右括号）不成占位 → 整段并进字面文本，不产原子节点。
+check("残缺 [主题（无右括号）无 promptSlot",
+  templateToDoc("帮我写关于 [主题 的文章").content[0].content.filter((n) => n.type === SLOT).length, 0);
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

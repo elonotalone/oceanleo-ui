@@ -1,103 +1,124 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>v15g 透明 textarea + 镜像高亮层 smoke（普通可编文本 + [占位] 蓝色高亮）</title>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>v15h 原子占位（Tiptap/ProseMirror）浏览器手测</title>
 <style>
-  body { font: 15px/1.75 system-ui, sans-serif; padding: 24px; max-width: 820px; }
-  /* 输入区排版常量：镜像层与 textarea 必须逐项一致，否则高亮对不齐。 */
-  .box { position: relative; border: 1px solid #ddd; border-radius: 10px; --oc-ph-accent:#4f46e5; }
-  .mirror, .input {
-    box-sizing: border-box;
-    font: 15px/1.625 system-ui, sans-serif; letter-spacing: normal;
-    padding: 16px 18px; margin: 0; border: 0;
-    white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
-    tab-size: 4;
-  }
-  .mirror { position: absolute; inset: 0; overflow: hidden; color:#1f2937; pointer-events: none; }
-  .input {
-    position: relative; width: 100%; resize: none; background: transparent; outline: none;
-    color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--oc-ph-accent);
-    min-height: 3.25em; max-height: 280px; overflow-y: auto;
-  }
-  /* [占位] 高亮：淡蓝底 + 蓝字。纯视觉——真正可编辑的是上层透明 textarea 里的同一段真实文本。 */
-  .mirror .oc-ph {
-    color: var(--oc-ph-accent);
-    background: color-mix(in srgb, var(--oc-ph-accent) 12%, transparent);
-    border-radius: 4px; font-weight: 600;
-  }
-  .hint { color:#888; font-size:13px; margin-top:10px; }
-  pre { background:#f6f6f6; padding:8px; border-radius:6px; white-space:pre-wrap; }
-  .pass { color:#16a34a; } .fail { color:#dc2626; font-weight:700; }
-  b { color:#111; }
-  button { margin: 8px 6px 0 0; }
+  :root { --oc-ph-accent: #4f46e5; }
+  * { box-sizing: border-box; }
+  body { font-family: "Noto Sans SC", system-ui, sans-serif; margin: 0; padding: 32px; background: #f5f5f7; color: #262626; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { color: #737373; font-size: 13px; margin: 0 0 20px; }
+  .card { border: 1px solid #e5e5e5; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  /* —— 与 globals.css 的 v15h 块保持一致（这里内联，便于独立打开）—— */
+  .oc-slot-editor { box-sizing: border-box; padding: 20px 20px 8px 20px; outline: none; overflow-y: auto;
+    color: #262626; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
+    font-size: 15px; line-height: 1.625; min-height: 3.2em; max-height: 280px; caret-color: var(--oc-ph-accent); }
+  .oc-slot-editor > p { margin: 0; }
+  .oc-slot-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: #a3a3a3; }
+  .oc-slot { display: inline; border-radius: 4px; padding: 0 1px; font-weight: 600;
+    color: color-mix(in srgb, var(--oc-ph-accent) 60%, #94a3b8);
+    background: color-mix(in srgb, var(--oc-ph-accent) 9%, transparent);
+    cursor: text; -webkit-user-select: all; user-select: all; }
+  .oc-slot.ProseMirror-selectednode, .ProseMirror-selectednode.oc-slot {
+    background: color-mix(in srgb, var(--oc-ph-accent) 16%, transparent);
+    box-shadow: inset 2px 0 0 0 var(--oc-ph-accent); outline: none; }
+  .toolbar { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid #f0f0f0; flex-wrap: wrap; }
+  .toolbar button { font-size: 12px; padding: 6px 12px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fafafa; cursor: pointer; }
+  .out { margin-top: 16px; font-size: 12px; }
+  .out code { display: block; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 10px; min-height: 40px; }
+  ol { font-size: 13px; color: #404040; line-height: 1.9; }
+  ol code { background: #eef; padding: 1px 5px; border-radius: 4px; }
 </style>
-<h3>v15g 透明 textarea + 镜像高亮层（模板 = 普通可编文本，[占位] 纯视觉蓝色高亮）</h3>
-<p class="hint">
-  真机手测清单（这几条正是操作员反馈的诉求，重点验）：<br>
-  ① 点下面「灌入模板」→ 整段文本填进框，`[主题]` 等是<b>淡蓝底蓝字</b>。光标应落在 <b>[│主题]</b>（方括号<b>里面</b>，'[' 之后）。<br>
-  ② 光标可移到 `[主题]` 里<b>任意位置</b>（把光标点进 `主` 和 `题` 之间也行）——因为它就是普通文本。<br>
-  ③ <b>中文输入法</b>在任意位置打字：原生 textarea 行为，<b>不跳、不吃字</b>，高亮实时跟随。<br>
-  ④ <b>Ctrl/Cmd+A 全选 → Delete</b>：整段<b>能删光</b>（可反悔！不再锁死）。<br>
-  ⑤ 把 `[主题]` <b>整体选中删掉</b> / 删掉一个 `]`：荧光<b>能删</b>，删后不成 `[..]` 的就不再高亮。<br>
-  ⑥ 高亮块和文字<b>逐像素对齐</b>（蓝底正好罩在 `[主题]` 上，不偏移）。
-</p>
-<div class="box">
-  <div class="mirror" id="mirror" aria-hidden="true"></div>
-  <textarea class="input" id="ta" spellcheck="false" rows="3"></textarea>
+</head>
+<body>
+<div class="wrap">
+  <h1>v15h · Tiptap 原子占位块 手测</h1>
+  <p class="sub">点卡片灌模板 → 逐条对照下方清单。用的是真实 <code>@tiptap</code>（esm.sh CDN），验的是库原生原子节点行为。</p>
+
+  <div class="card">
+    <div id="editor"></div>
+    <div class="toolbar">
+      <button data-tmpl="帮我写一篇关于 [主题] 的文章，面向 [受众]，约 [字数] 字。">卡片A：写作</button>
+      <button data-tmpl="把这段话翻译成 [目标语言]，风格 [正式/口语]：[原文]">卡片B：翻译</button>
+      <button data-tmpl="[主题]">卡片C：纯占位</button>
+      <button id="clear">清空</button>
+    </div>
+  </div>
+
+  <div class="out">当前 value（提交给后端的字符串，未替换占位吐 <code>[hint]</code>）：<code id="val"></code></div>
+
+  <ol>
+    <li><b>点占位</b> <code>[主题]</code> → 整块高亮、左侧一条蓝竖线（像光标落在左括号右边）。</li>
+    <li><b>一打字</b>（点中占位后直接敲字）→ 整个 <code>[主题]</code>（连方括号）瞬间被你输入的字替换，变正常蓝色可编辑文字。</li>
+    <li><b>中文 IME</b>：点占位后用拼音打「作家」→ 不跳页首、原地替换成「作家」。</li>
+    <li><b>整体删</b>：把光标放到某占位右边，按一次退格 → 整块选中；再按一次 → 整块消失。<b>绝不</b>会删出 <code>[主题</code> 半截。</li>
+    <li><b>光标跳过</b>：用左右方向键经过占位 → 光标从它左边直接跳到右边，进不去内部。</li>
+    <li><b>全选删</b>：Ctrl/Cmd+A 全选 → 退格 → 全没（含占位），value 变空。</li>
+    <li><b>可反悔</b>：Ctrl/Cmd+Z 撤销刚才的替换/删除。</li>
+    <li><b>浅色对比</b>：未替换占位是<b>浅</b>蓝；替换后的内容是<b>正常</b>蓝加粗。</li>
+  </ol>
 </div>
-<button id="seed">灌入模板</button>
-<button id="clear">清空</button>
-<div class="hint">value =</div>
-<pre id="out"></pre>
-<div class="hint">自动断言（逻辑层；真实光标/IME/全选删除仍需人工按上面清单在浏览器里点）：</div>
-<pre id="asserts"></pre>
-<script>
-  const TOKEN_RE = /\[[^\[\]\n]+\]/g;
-  const tmpl = "帮我写一篇关于 [主题] 的深度长文。先给出层次清晰的大纲，我确认后再逐节展开成正文，全文约 [字数] 字。";
-  const ta = document.getElementById('ta');
-  const mirror = document.getElementById('mirror');
-  const out = document.getElementById('out');
-  const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  function segs(t){const o=[];let last=0,m;TOKEN_RE.lastIndex=0;while((m=TOKEN_RE.exec(t))){if(m.index>last)o.push({k:'lit',t:t.slice(last,m.index)});o.push({k:'ph',t:m[0]});last=m.index+m[0].length;}if(last<t.length)o.push({k:'lit',t:t.slice(last)});return o;}
-  function renderMirror(v){
-    let html='';
-    for(const s of segs(v)) html += s.k==='ph' ? `<span class="oc-ph">${esc(s.t)}</span>` : `<span>${esc(s.t)}</span>`;
-    if(v.endsWith('\n')) html += '\u200b';
-    mirror.innerHTML = html;
+<script type="module">
+import { Editor } from "https://esm.sh/@tiptap/core@3.27.1";
+import Document from "https://esm.sh/@tiptap/extension-document@3.27.1";
+import Paragraph from "https://esm.sh/@tiptap/extension-paragraph@3.27.1";
+import Text from "https://esm.sh/@tiptap/extension-text@3.27.1";
+import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@3.27.1";
+import { Node, mergeAttributes } from "https://esm.sh/@tiptap/core@3.27.1";
+
+const PromptSlot = Node.create({
+  name: "promptSlot", group: "inline", inline: true, atom: true, selectable: true, draggable: false,
+  addAttributes() { return { hint: { default: "",
+    parseHTML: (el) => el.getAttribute("data-hint") || "",
+    renderHTML: (a) => ({ "data-hint": a.hint || "" }) } }; },
+  parseHTML() { return [{ tag: "span[data-oc-slot]" }]; },
+  renderHTML({ HTMLAttributes }) {
+    const hint = HTMLAttributes["data-hint"] || "";
+    return ["span", mergeAttributes(HTMLAttributes, { "data-oc-slot": "", class: "oc-slot" }), `[${hint}]`]; },
+  renderText({ node }) { return `[${node.attrs.hint}]`; },
+});
+
+const TOKEN_RE = /\[[^\[\]\n]+\]/g;
+function templateToDoc(tmpl) {
+  const inline = []; let last = 0, m; TOKEN_RE.lastIndex = 0;
+  while ((m = TOKEN_RE.exec(tmpl))) {
+    if (m.index > last) inline.push({ type: "text", text: tmpl.slice(last, m.index).replace(/\n/g, " ") });
+    inline.push({ type: "promptSlot", attrs: { hint: m[0].slice(1, -1) } });
+    last = m.index + m[0].length;
   }
-  function autogrow(){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,280)+'px'; }
-  function sync(){ renderMirror(ta.value); autogrow(); out.textContent=JSON.stringify(ta.value); }
+  if (last < tmpl.length) { const t = tmpl.slice(last).replace(/\n/g, " "); if (t) inline.push({ type: "text", text: t }); }
+  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+}
+function docToPlain(ed) {
+  let out = ""; ed.state.doc.forEach((block, _o, i) => {
+    if (i > 0) out += "\n";
+    block.forEach((c) => { out += c.type.name === "promptSlot" ? `[${c.attrs.hint}]` : (c.isText ? c.text : ""); });
+  }); return out;
+}
 
-  ta.addEventListener('input', sync);
-  ta.addEventListener('scroll', ()=>{ mirror.scrollTop = ta.scrollTop; });
-  document.getElementById('seed').addEventListener('click', ()=>{
-    ta.value = tmpl; sync(); ta.focus();
-    const i = tmpl.search(TOKEN_RE); const pos = i>=0 ? i+1 : tmpl.length; // '[' 之后 = 括号内部
-    try{ ta.setSelectionRange(pos,pos); }catch(_){}
+const valEl = document.getElementById("val");
+const editor = new Editor({
+  element: document.getElementById("editor"),
+  extensions: [Document, Paragraph, Text, PromptSlot, Placeholder.configure({ placeholder: "点上面的卡片灌模板…" })],
+  editorProps: { attributes: { class: "oc-slot-editor", spellcheck: "false" } },
+  onUpdate: ({ editor }) => { valEl.textContent = JSON.stringify(docToPlain(editor)); },
+});
+
+function seed(tmpl) {
+  editor.commands.setContent(templateToDoc(tmpl));
+  valEl.textContent = JSON.stringify(docToPlain(editor));
+  requestAnimationFrame(() => {
+    let pos = -1;
+    editor.state.doc.descendants((n, p) => { if (pos === -1 && n.type.name === "promptSlot") pos = p; return pos === -1; });
+    if (pos >= 0) editor.chain().setNodeSelection(pos).focus().run(); else editor.commands.focus("end");
   });
-  document.getElementById('clear').addEventListener('click', ()=>{ ta.value=''; sync(); ta.focus(); });
-
-  ta.value = tmpl; sync();
-
-  // ---- 自动断言（逻辑层）----
-  const A=document.getElementById('asserts'); let L=[];
-  const asrt=(n,ok)=>L.push(`<span class="${ok?'pass':'fail'}">${ok?'✓':'✗'} ${n}</span>`);
-  const renderText = (v)=> segs(v).map(s=>s.t).join('');
-  asrt('value = 模板原文逐字符（含方括号）', ta.value===tmpl);
-  asrt('分段拼回 === 原文（高亮不改字符，无损）', renderText(ta.value)===ta.value);
-  asrt('占位段是完整 [..]（含方括号）', JSON.stringify(segs(ta.value).filter(s=>s.k==='ph').map(s=>s.t))===JSON.stringify(['[主题]','[字数]']));
-  asrt('镜像层渲出的可见文本 === value（不含标签字符外的东西）', mirror.textContent.replace('\u200b','')===ta.value);
-  asrt('镜像层有 2 个 .oc-ph 高亮块', mirror.querySelectorAll('.oc-ph').length===2);
-  asrt('textarea 文字透明（靠镜像层显色）', getComputedStyle(ta).webkitTextFillColor==='rgba(0, 0, 0, 0)' || getComputedStyle(ta).color==='rgba(0, 0, 0, 0)');
-  // 改文本：把 [主题] 改成真实内容 → 该处不再是占位段。
-  const edited = tmpl.replace('[主题]','新能源汽车');
-  asrt('改后占位段少一个（该处不再高亮）', segs(edited).filter(s=>s.k==='ph').length===1);
-  // 残缺 token 不高亮。
-  asrt('残缺 [主题（删了右括号）不成占位段', segs('关于 [主题 的').filter(s=>s.k==='ph').length===0);
-  // 全选删除 → 空。
-  asrt('空 value 无占位段（全选删除可行）', segs('').filter(s=>s.k==='ph').length===0);
-  // 光标进括号内部定位。
-  const i = tmpl.search(TOKEN_RE);
-  asrt('首个占位定位到 [ 之后（光标进括号内部）', tmpl.slice(i,i+2)==='[主');
-  A.innerHTML=L.join('<br>');
+}
+document.querySelectorAll("button[data-tmpl]").forEach((b) => b.addEventListener("click", () => seed(b.dataset.tmpl)));
+document.getElementById("clear").addEventListener("click", () => { editor.commands.clearContent(); editor.commands.focus(); valEl.textContent = '""'; });
 </script>
+</body>
+</html>

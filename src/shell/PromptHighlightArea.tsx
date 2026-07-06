@@ -1,63 +1,55 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — TemplateFillArea（模板「实填 + [占位] 蓝色高亮」输入区，单一事实源）
+// @oceanleo/ui — TemplateFillArea（模板「实填 + [占位] 原子块」输入区，单一事实源）
 // ----------------------------------------------------------------------------
-// 宗旨 v15（操作员 2026-07-05→07-06 多次拍板；本版 = v15g 定版，「透明 textarea +
-// 镜像高亮层」架构，彻底推翻此前 contentEditable 系列 v15a–f）：
+// 宗旨 v15h 定版（2026-07-06；用 Tiptap/ProseMirror 原子节点，彻底替代自研 contentEditable
+// / textarea 镜像 的 v15a–g）：
 //
-//   点 prompt 卡片 / 导航示例后，模板文案**实打实、整段可编辑地**填进输入框——它就是
-//   一段**普通文本**（原生 textarea 的 value）：可全选删除、可逐字删、可反悔、可随意改；
-//   光标可落在任意字符间（包括 `[主题]` 的方括号内部）。`[字段]` 只是这段文本里**着了
-//   蓝色的普通字符**（淡蓝底 + 蓝字，提示此处待替换），**它连同方括号都是真实文本**，
-//   可选中、可删除、进 value——没有任何「原子块 / 伪元素 / 不可删守卫」。
+//   点 prompt 卡片 / 导航示例后，模板文案填进一个 Tiptap 富文本编辑器：
+//     · 字面文字 = 普通可编辑文本（可全选删、可反悔、可随意改）；
+//     · `[字段]` = **原子占位节点 promptSlot**（inline+atom）：浅蓝色、**不可分割**——
+//        光标跳过、不能进内部、删就整块删（绝不删出 `[主题` 半截，修 5ef085cf）；
+//     · 点占位 → NodeSelection 整块选中（视觉：左侧一条蓝 caret，「像可直接输入」，只为
+//        美观，符合操作员「光标只为美观」）；
+//     · 一打字 → NodeSelection 下 insertText **原生整块替换**为普通文本（方括号连节点一起
+//        消失，变正常蓝色可编辑字，修 de0a2106「输入即去括号」）。
 //
-//   为什么推翻此前所有 contentEditable 方案（v15a chip / v15d ZWSP / v15e 嵌套宿主 /
-//   v15f 单宿主+::before）：操作员核心诉求其实是「**填进来的就是普通可编辑文本**」——
-//     · 光标要能进方括号里面（截图 bd08ee9e 豆包：`[主│要工作回顾]`）；
-//     · 要能全选删除 / 反悔（点了卡片不该锁死）；
-//     · 荧光区本身也要能删。
-//   而 contentEditable + 伪元素标签**天生做不到**（伪元素不占文本位置 → 光标永远在标签
-//   旁边而非里面；为「不可删」加的守卫又挡了全选删/反悔）。这三条恰恰要求「标签是真实
-//   文本、纯视觉高亮」。业界高亮输入框（CodeMirror 早期、highlight-within-textarea、各类
-//   @提及底层）的标准做法就是本方案：
+//   为什么用 Tiptap 而非继续自研（操作员要求「用成熟库、别在小问题反复」）：
+//     「插入变量作为不可分割整体」= 业界 mention/token/atom 节点标准问题。Lexical/Tiptap/
+//     ProseMirror 均以 `inline:true+atom:true` 原生提供「整体删/光标跳过/不可进内部/复制带
+//     数据」。中文 IME + 原子节点的历史坑（Tiptap #6982 等）这些库已在**库层**打了补丁，
+//     用库 = 白嫖它们几年的踩坑。自研 contentEditable（v15a–f）必然重复这些坑。Tiptap =
+//     ProseMirror 之上的成熟封装、React 官方绑定、MIT、生态最大、文档最好。
 //
-//     <div 相对定位>
-//       <div.oc-hl-mirror aria-hidden pointer-events:none>   ← 镜像层：只读渲染，套 [..] 高亮
-//         我的职业是 <span.oc-ph>[输入职业]</span> ，帮我写 …
-//       </div>
-//       <textarea.oc-hl-input>                                ← 真输入：原生 textarea 叠在上层
-//     </div>
+//   非受控（业界铁律）：富文本编辑器**不能当受控 React 组件**（value+onChange 每次 re-render
+//     会毁光标/选区/IME）。这里用 Tiptap useEditor 自持状态，仅在 onUpdate 时把序列化值上抛
+//     onChange；外部 value 变空（点卡片重来）时才命令式重建 doc。
 //
-//   · **输入完全是原生 textarea** → IME 合成、全选、删除、光标、反悔全是浏览器原生行为，
-//     零自研、零 bug（此前 IME 跳页首 / 末字删不掉 / 光标在框外全部消失，因为根本回归了
-//     textarea）；
-//   · textarea 文字 color:transparent（只留 caret-color 显示光标）、背景透明；镜像层在其
-//     正下方用**逐像素对齐**的同款排版渲染文本 + 高亮，颜色从下面透上来；
-//   · 镜像层 **aria-hidden + pointer-events:none**，永不接收输入、永不改 textarea DOM →
-//     无任何 IME / 删除交互面；
-//   · value 天然 = textarea.value = 模板原文（含 `[]`），提交无需清洗（AI 侧本就理解 `[占位]`）。
+// value 契约：编辑器序列化 = 字面文本 + 未替换占位吐 `[hint]` 字面（AI 侧理解占位）；已替换
+//   的占位就是普通文本。提交无需再清洗。
 //
-// 回退：无模板（普通输入框）时 LeoComposer 直接用它自己的原生 textarea（不渲染本组件）。
-//   本组件只在「点了卡片/示例、带模板」时接管，且**它本身也只是一个 textarea**，观感/
-//   行为与普通模式逐项一致。
-//
-// 兼容：保留导出名 PromptHighlightArea（+ 别名 TemplateFillArea）、Handle 形状（focus/el，
-//   el() 返回 textarea）、highlightSegments / stripPromptPlaceholders（旧引用/测试）。
+// 回退：无模板（普通输入框）时 LeoComposer 用它自己的原生 textarea（不渲染本组件）。
+// 兼容：保留导出名 PromptHighlightArea（+ 别名 TemplateFillArea）、Handle（focus/el，el()
+//   返回编辑器根 DOM）、templateSegments / highlightSegments / stripPromptPlaceholders。
 // ============================================================================
 
 import {
-  type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type UIEvent as ReactUIEvent,
   forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
 } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/core";
+import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
+import Text from "@tiptap/extension-text";
+import Placeholder from "@tiptap/extension-placeholder";
+import { PromptSlot, PROMPT_SLOT_NAME } from "./promptSlotNode";
 
 // 方括号占位符：`[任意非中括号、非换行字符]`。
 const TOKEN_RE = /\[[^\[\]\n]+\]/g;
@@ -66,7 +58,7 @@ type Seg =
   | { kind: "lit"; text: string }
   | { kind: "placeholder"; text: string };
 
-/** 把文本拆成交替的「字面段」「占位段」（占位 = `[..]`，含方括号，是真实文本的一部分）。 */
+/** 把文本拆成交替的「字面段」「占位段」（占位 = `[..]`，含方括号）。 */
 export function templateSegments(template: string): Seg[] {
   const out: Seg[] = [];
   let last = 0;
@@ -86,7 +78,7 @@ export function highlightSegments(text: string, _template?: string | null): Seg[
   void _template;
   return templateSegments(text);
 }
-/** @deprecated value 天然 = 模板原文（含 [占位]），无需清洗；保留 no-op 语义为兼容。 */
+/** @deprecated value 天然由 getPlainValue 产出；保留 no-op 语义为兼容。 */
 export function stripPromptPlaceholders(text: string, _template?: string | null): string {
   void _template;
   return text;
@@ -94,7 +86,7 @@ export function stripPromptPlaceholders(text: string, _template?: string | null)
 
 export interface PromptHighlightAreaHandle {
   focus: () => void;
-  /** 暴露底层输入元素（= textarea），供 LeoComposer 挂 data-attr（leo 助手锚点）。 */
+  /** 暴露编辑器根 DOM（供 LeoComposer 挂 data-attr / leo 助手锚点）。 */
   el: () => HTMLElement | null;
 }
 export type TemplateFillAreaHandle = PromptHighlightAreaHandle;
@@ -102,10 +94,8 @@ export type TemplateFillAreaHandle = PromptHighlightAreaHandle;
 export interface PromptHighlightAreaProps {
   value: string;
   onChange: (value: string) => void;
-  /**
-   * 模板（点卡片 / 示例时设入）。设入即把模板原文**整段写进 value**（普通可编辑文本，
-   * `[字段]` 是其中着蓝色的真实字符）。null → 由 LeoComposer 走它自己的普通 textarea。
-   */
+  /** 模板（点卡片 / 示例时设入）。设入即把模板解析成「字面文本 + [占位]原子节点」灌进编辑器。
+   * null → 由 LeoComposer 走它自己的普通 textarea。 */
   template: string | null;
   accentColor?: string;
   placeholder?: string;
@@ -114,25 +104,47 @@ export interface PromptHighlightAreaProps {
   disabled?: boolean;
   autoFocus?: boolean;
   className?: string;
-  /** 透传 keydown（LeoComposer 的回车提交逻辑）。 */
   onKeyDown?: (e: ReactKeyboardEvent<HTMLElement>) => void;
 }
 export type TemplateFillAreaProps = PromptHighlightAreaProps;
 
-// 输入区排版（与 LeoComposer 普通 textarea 的 px-5 pt-5 pb-2 text-[15px] leading-relaxed
-// 逐项对应）。**镜像层与 textarea 必须逐项一致**，否则高亮对不齐。
+// ── 模板 ⇄ ProseMirror doc / value 转换 ─────────────────────────────────────
+
+/** 模板字符串 → 单段落 doc 的 inline 内容（字面 = text 节点；[占位] = promptSlot 原子节点）。
+ * 多行按 hardBreak 处理不了（我们没引 hardBreak 扩展），故换行折成空格——模板本就是单段引导语。 */
+function templateToDoc(template: string): JSONContent {
+  const inline: JSONContent[] = [];
+  for (const s of templateSegments(template)) {
+    if (s.kind === "placeholder") {
+      const hint = s.text.slice(1, -1); // 去掉外层方括号
+      inline.push({ type: PROMPT_SLOT_NAME, attrs: { hint } });
+    } else {
+      const txt = s.text.replace(/\n/g, " ");
+      if (txt) inline.push({ type: "text", text: txt });
+    }
+  }
+  return { type: "doc", content: [{ type: "paragraph", content: inline }] };
+}
+
+/** 编辑器 doc → 提交用纯文本：文本节点取字符；未替换的 promptSlot 吐 `[hint]` 字面；段落间换行。 */
+function docToPlain(editor: Editor): string {
+  let out = "";
+  editor.state.doc.forEach((block, _off, index) => {
+    if (index > 0) out += "\n";
+    block.forEach((child) => {
+      if (child.type.name === PROMPT_SLOT_NAME) out += `[${child.attrs.hint as string}]`;
+      else if (child.isText) out += child.text || "";
+    });
+  });
+  return out;
+}
+
+// 编辑器排版（与 LeoComposer 普通 textarea 的 px-5 pt-5 pb-2 text-[15px] leading-relaxed 对齐）。
 const TYPO: CSSProperties = {
   fontSize: "15px",
   lineHeight: "1.625",
-  padding: "20px 20px 8px 20px",
   fontFamily: "inherit",
   fontWeight: 400,
-  letterSpacing: "normal",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-  overflowWrap: "break-word",
-  margin: 0,
-  border: 0,
 };
 
 export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptHighlightAreaProps>(
@@ -152,146 +164,145 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     },
     ref,
   ) {
-    const taRef = useRef<HTMLTextAreaElement>(null);
-    const mirrorRef = useRef<HTMLDivElement>(null);
-    // 记录「已按哪个模板灌过」，模板变化时才重灌 value（避免打字时反复覆盖用户输入）。
-    const seededTemplate = useRef<string | null>(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const onKeyDownRef = useRef(onKeyDown);
+    onKeyDownRef.current = onKeyDown;
+    // 记录已按哪个模板灌过，避免重复重建。
+    const seededTemplate = useRef<string | null>(null);
+    // 防止「命令式改 doc → onUpdate → onChange → 外部 value 变 → effect 再改 doc」的回环。
+    const applyingRef = useRef(false);
+
+    const editor = useEditor({
+      immediatelyRender: false, // Next SSR 安全
+      editable: !disabled,
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        PromptSlot,
+        Placeholder.configure({
+          placeholder: placeholder || "",
+          // 仅在完全空时显示通用占位（模板一旦灌入就不显示）。
+          showOnlyWhenEditable: true,
+        }),
+      ],
+      editorProps: {
+        attributes: {
+          class: "oc-slot-editor",
+          role: "textbox",
+          "aria-multiline": "true",
+          spellcheck: "false",
+        },
+        // 点原子占位 → 变 NodeSelection 整块选中（Tiptap/PM 默认已如此；这里显式确保）。
+        // 一打字时 NodeSelection 下 insertText 原生整块替换（无需自定义 handleTextInput）。
+      },
+      onUpdate: ({ editor }) => {
+        if (applyingRef.current) return;
+        onChangeRef.current(docToPlain(editor));
+      },
+    });
 
     useImperativeHandle(ref, () => ({
-      focus: () => taRef.current?.focus(),
-      el: () => taRef.current,
+      focus: () => editor?.commands.focus(),
+      el: () => (editor ? (editor.view.dom as HTMLElement) : null),
     }));
 
-    // 自增高：textarea 高度跟内容走；镜像层高度跟随（两者叠在一起，同高才不错位）。
-    const autogrow = useCallback(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.style.height = "auto";
-      const h = Math.min(ta.scrollHeight, maxHeight);
-      ta.style.height = h + "px";
-    }, [maxHeight]);
-
-    // 模板变化（点了新卡片/示例）→ 把模板原文整段灌进 value。
+    // 把编辑器根 DOM 的 accent 变量 + 最大高度设上（供 CSS 用）。
     useEffect(() => {
-      if (template == null) return;
+      if (!editor) return;
+      const dom = editor.view.dom as HTMLElement;
+      dom.style.setProperty("--oc-ph-accent", accentColor);
+      dom.style.maxHeight = `${maxHeight}px`;
+      dom.style.minHeight = `${rows * 1.625}em`;
+    }, [editor, accentColor, maxHeight, rows]);
+
+    // 灌模板：把光标定位到第一个占位（NodeSelection），用户第一件事就是替换它。
+    const seed = useCallback(
+      (tmpl: string) => {
+        if (!editor) return;
+        applyingRef.current = true;
+        editor.commands.setContent(templateToDoc(tmpl), { emitUpdate: false });
+        seededTemplate.current = tmpl;
+        applyingRef.current = false;
+        // 上抛初始 value（含未替换占位字面）。
+        onChangeRef.current(docToPlain(editor));
+        // 选中第一个占位原子节点（→ 一打字即整块替换）。
+        requestAnimationFrame(() => {
+          if (!editor) return;
+          let firstSlotPos = -1;
+          editor.state.doc.descendants((node, pos) => {
+            if (firstSlotPos === -1 && node.type.name === PROMPT_SLOT_NAME) firstSlotPos = pos;
+            return firstSlotPos === -1;
+          });
+          if (firstSlotPos >= 0) {
+            editor.chain().setNodeSelection(firstSlotPos).focus().run();
+          } else {
+            editor.commands.focus("end");
+          }
+        });
+      },
+      [editor],
+    );
+
+    // 模板变化（点了新卡片/示例）→ 重建 doc。
+    useEffect(() => {
+      if (!editor || template == null) return;
       if (seededTemplate.current === template) return;
-      seededTemplate.current = template;
-      onChangeRef.current(template);
-      requestAnimationFrame(() => {
-        const ta = taRef.current;
-        if (!ta) return;
-        ta.focus();
-        // 光标落到第一个 [占位] 的**括号内部**（`[│主题]`，即 '[' 之后），用户第一件事就是改它。
-        const idx = template.search(TOKEN_RE);
-        const pos = idx >= 0 ? idx + 1 : template.length;
-        try {
-          ta.setSelectionRange(pos, pos);
-        } catch {
-          /* noop */
-        }
-        autogrow();
-      });
-    }, [template, autogrow]);
+      seed(template);
+    }, [editor, template, seed]);
 
-    // 「点同一张卡再来一次」：调用方点卡片时会先把 value 置空；若模板未变（上面 effect 不
-    // 重跑），这里在 value 变空时重灌当前模板。
+    // 「点同一张卡再来一次」：调用方点卡片时先把 value 置空；若模板未变，这里重灌。
     useEffect(() => {
+      if (!editor) return;
       if (template != null && value === "" && seededTemplate.current === template) {
-        // 强制重灌：先清 seed 标记再触发。
         seededTemplate.current = null;
-        onChangeRef.current(template);
-        seededTemplate.current = template;
-        requestAnimationFrame(() => taRef.current?.focus());
+        seed(template);
       }
-    }, [value, template]);
+    }, [editor, value, template, seed]);
+
+    // 外部 value 被改（非本编辑器产出，且不在灌模板过程中）→ 同步进编辑器。仅当确实不一致时，
+    // 避免打字回环。普通字符编辑不会走这里（onChange 上抛的值与 docToPlain 一致）。
+    useEffect(() => {
+      if (!editor || applyingRef.current) return;
+      if (template != null) return; // 有模板时以 seed 为准，不按纯文本覆盖（否则会毁占位节点）
+      const current = docToPlain(editor);
+      if (value !== current) {
+        applyingRef.current = true;
+        editor.commands.setContent(
+          { type: "doc", content: value ? [{ type: "paragraph", content: [{ type: "text", text: value }] }] : [{ type: "paragraph" }] },
+          { emitUpdate: false },
+        );
+        applyingRef.current = false;
+      }
+    }, [editor, value, template]);
 
     useEffect(() => {
-      if (autoFocus) taRef.current?.focus();
-    }, [autoFocus]);
+      if (editor && autoFocus) editor.commands.focus();
+    }, [editor, autoFocus]);
 
-    // value 变（打字/灌模板/外部改）→ 重排高亮层高度。用 layout effect 保证与绘制同步、无闪。
-    useLayoutEffect(() => {
-      autogrow();
-    }, [value, autogrow]);
-
-    const handleInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
-      onChange(e.target.value);
+    // 回车提交透传（LeoComposer 的 handleKeyDown）。IME 合成中不触发（Tiptap/PM 自己会处理，
+    // 这里再判一层 isComposing 保险）。
+    const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      onKeyDownRef.current?.(e as unknown as ReactKeyboardEvent<HTMLElement>);
     };
-
-    // 内容超过 maxHeight 时 textarea 会滚动；镜像层跟着滚，保持高亮对齐。
-    const handleScroll = (e: ReactUIEvent<HTMLTextAreaElement>) => {
-      const m = mirrorRef.current;
-      if (m) m.scrollTop = e.currentTarget.scrollTop;
-    };
-
-    // 镜像层内容：按 [..] 分段，占位段套 .oc-ph 高亮，其余原样。末尾补一个换行占位，避免
-    // textarea 末尾空行时高亮层比 textarea 矮一行（浏览器 textarea 会给末尾换行留一行）。
-    const segs = templateSegments(value);
-    const showGhost = value.length === 0 && Boolean(placeholder);
 
     return (
-      <div className={`relative ${className}`} style={{ minHeight: `${rows * 1.625}em` }}>
-        {/* 镜像高亮层：只读、不吃事件，渲染文本 + [占位] 蓝色高亮。文字颜色正常，textarea
-            文字透明叠其上、只显光标 → 用户看到的是这里透出的彩色文本 + 原生光标。 */}
-        <div
-          ref={mirrorRef}
-          aria-hidden="true"
-          className="oc-tmpl-mirror pointer-events-none absolute inset-0 overflow-hidden text-neutral-800"
-          style={{ ...TYPO, ["--oc-ph-accent" as string]: accentColor }}
-        >
-          {showGhost ? (
-            <span className="text-neutral-400">{placeholder}</span>
-          ) : (
-            <>
-              {segs.map((s, i) =>
-                s.kind === "placeholder" ? (
-                  <span key={i} className="oc-ph">
-                    {s.text}
-                  </span>
-                ) : (
-                  <span key={i}>{s.text}</span>
-                ),
-              )}
-              {/* 末尾换行补白：textarea 末字符是 \n 时会多显示一行，这里对齐。 */}
-              {value.endsWith("\n") ? "\u200b" : null}
-            </>
-          )}
-        </div>
-
-        {/* 真输入：原生 textarea，文字透明（只留光标），背景透明，叠在镜像层上。所有编辑
-            （IME / 全选 / 删除 / 反悔 / 光标进括号）都是它的原生行为。 */}
-        <textarea
-          ref={taRef}
-          value={value}
-          onChange={handleInput}
-          onScroll={handleScroll}
-          onKeyDown={(e) => onKeyDown?.(e as unknown as ReactKeyboardEvent<HTMLElement>)}
-          disabled={disabled}
-          spellCheck={false}
-          rows={rows}
-          className="oc-tmpl-input relative w-full resize-none border-0 bg-transparent outline-none"
-          style={{
-            ...TYPO,
-            color: "transparent",
-            caretColor: accentColor,
-            WebkitTextFillColor: "transparent",
-            maxHeight,
-            overflowY: "auto",
-            // 让 textarea 与镜像层等宽等排版；高度由 autogrow 设。
-            minHeight: `${rows * 1.625}em`,
-          }}
-        />
+      <div
+        className={`oc-slot-wrap relative ${className}`}
+        style={{ ...TYPO }}
+        onKeyDown={handleKeyDown}
+      >
+        <EditorContent editor={editor} />
       </div>
     );
   },
 );
 
-/** 别名（宗旨 v15 新名字；语义即「模板实填 + [占位] 蓝色高亮」）。 */
+/** 别名（宗旨 v15 新名字；语义即「模板实填 + [占位] 原子块」）。 */
 export const TemplateFillArea = PromptHighlightArea;
 
-// 参考实现（透明 textarea + 镜像高亮层是高亮输入框的标准做法）：
-//   highlight-within-textarea（bonsaiden/… 及同类库）— 镜像 div 叠 textarea 逐像素对齐
-//   CodeMirror 早期 / 各类 @提及输入底层 — 同款「背后高亮层 + 前置透明可编辑」
-//   textarea 文字透明只留 caret-color — 标准「高亮不吃输入」技巧
+// 参考实现（原子内联节点 = 业界 mention/variable/token 标准做法）：
+//   Tiptap Mention / 自定义 atom 节点（ueberdosis/tiptap 文档 + issue #6982 中文 IME 修复）
+//   ProseMirror NodeSelection + atom（prosemirror.net/docs：atom / handleTextInput / NodeSelection）
+//   Lexical token 节点（facebook/lexical #5026 IME workaround）— 同类问题的另一实现参考

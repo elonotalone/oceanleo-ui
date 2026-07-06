@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  smoke test: pure-hint ghost placeholder (宗旨 v12.1)
+  核心断言（用真实浏览器点一点验证，不是单测）:
+    1. 占位提示 [职业] 只是"幽灵"覆盖层，NOT part of textarea.value（value 初始为空）。
+    2. 占位提示【选不中】（它在 pointer-events:none 的覆盖层里，鼠标拖选选不到）。
+    3. 一点击输入框 / 一开始打字，ghost 立即消失，从头输入（不用先删 [职业]）。
+    4. 蓝色 accent 色。
+    5. 提交拿到的就是用户真实输入（value），不含任何占位 token。
+  这验证了正确的交互模型：ghost 永远不进 value。旧实现把整段模板塞进 value 是根因。
+-->
+<meta charset="utf-8" />
+<style>
+  body { font: 15px/1.6 system-ui; padding: 40px; max-width: 640px; margin: auto; }
+  .wrap { position: relative; border: 1px solid #d4d4d4; border-radius: 12px; background: #fff; }
+  textarea {
+    width: 100%; box-sizing: border-box; resize: none; border: 0; outline: 0;
+    background: transparent; padding: 20px; font: inherit; color: #171717; min-height: 96px;
+  }
+  /* ghost 覆盖层：与 textarea 同排版，但 pointer-events:none → 选不中、点透到 textarea */
+  .ghost {
+    position: absolute; inset: 0; padding: 20px; font: inherit; color: #a3a3a3;
+    pointer-events: none; white-space: pre-wrap; word-break: break-word; user-select: none;
+  }
+  .ghost b { color: #4f46e5; font-weight: 500; } /* 蓝色占位 accent */
+  #out { margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 8px; white-space: pre-wrap; }
+  button { margin-top: 12px; padding: 8px 16px; border-radius: 8px; border: 0; background: #171717; color: #fff; }
+</style>
+<h3>ghost placeholder smoke (pure-hint, blue)</h3>
+<p>点卡片模拟 →「填充」占位提示，但它不进 value。点输入框任意处直接打字，占位应立即消失。</p>
+<button onclick="pick()">模拟点 prompt 卡片</button>
+<div class="wrap">
+  <div class="ghost" id="ghost"></div>
+  <textarea id="ta" placeholder="给 OceanLeo 布置一个任务..."></textarea>
+</div>
+<button onclick="submit()">提交（应只拿到真实输入）</button>
+<div id="out">value = ""  (empty)</div>
+
+<script>
+  const ta = document.getElementById("ta");
+  const ghost = document.getElementById("ghost");
+  const out = document.getElementById("out");
+  // 模板：字面段 + [占位]。ghost 覆盖层展示它；textarea.value 保持为空。
+  let template = null; // string | null
+
+  function renderGhost() {
+    // ghost 只在 value 为空且有 template 时显示（一旦用户开始输入就让位）。
+    if (!template || ta.value.length > 0) { ghost.style.display = "none"; return; }
+    ghost.style.display = "block";
+    // 把 [xxx] 上蓝色，其余灰色。纯展示。
+    ghost.innerHTML = template.replace(/[<>&]/g, s => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[s]))
+      .replace(/\[[^\]\n]+\]/g, m => "<b>" + m + "</b>");
+  }
+
+  function pick() {
+    // 关键：点卡片【不写 value】，只设 template（ghost 覆盖层）。
+    template = "帮我写一篇关于 [主题] 的文章，面向 [读者]，约 [字数] 字。";
+    ta.value = "";
+    renderGhost();
+    ta.focus();
+    out.textContent = 'picked. textarea.value = "' + ta.value + '"  ← 仍为空，占位只是 ghost';
+  }
+  ta.addEventListener("input", () => { renderGhost(); out.textContent = 'value = "' + ta.value + '"'; });
+  ta.addEventListener("focus", renderGhost);
+  function submit() {
+    out.textContent = "提交内容（= 用户真实输入，无占位 token）:\n" + JSON.stringify(ta.value);
+  }
+</script>
