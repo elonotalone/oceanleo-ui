@@ -96,6 +96,14 @@ export interface AgentChatProps {
   placeholder?: string;
   /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
   emptyHint?: React.ReactNode;
+  /**
+   * 左栏标题左侧「返回」按钮回调（操作员 2026-07-06）。给了它 → agent 界面左上角出现
+   * 「← 返回」按钮，点击【只调用本回调】（不动任务、不 stopTask），让宿主在**不中止对话**
+   * 的前提下退回上一层（如首页）。宿主自行决定是卸载还是隐藏本组件——想保留对话可隐藏
+   * 而非卸载（见 word app/page.tsx）。 */
+  onBack?: () => void;
+  /** 返回按钮文案，默认「返回」。 */
+  backLabel?: string;
 }
 
 export function AgentChat({
@@ -118,6 +126,8 @@ export function AgentChat({
   promptOverride,
   placeholder,
   emptyHint,
+  onBack,
+  backLabel,
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
@@ -304,17 +314,36 @@ export function AgentChat({
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
   const resolvedApp =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
-  // 左栏标题：「agent」+（有 app 时）所属 app 小标签。
-  const leftLabelNode = resolvedApp ? (
-    <span className="flex items-center gap-2">
-      <span className="text-[12px] font-medium text-stone-500">agent</span>
-      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-        {tt("所属 app · {app}", { app: resolvedApp })}
+  // 「← 返回」按钮（操作员 2026-07-06）：给了 onBack 才出现，点击只回调、不动任务
+  // （不 stopTask）——宿主据此在不中止对话下退回上层。
+  const backButton = onBack ? (
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+      title={backLabel ?? tt("返回")}
+    >
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {backLabel ?? tt("返回")}
+    </button>
+  ) : null;
+  // 左栏标题：（可选「返回」）+「agent」+（有 app 时）所属 app 小标签。
+  const leftLabelNode =
+    backButton || resolvedApp ? (
+      <span className="flex items-center gap-2">
+        {backButton}
+        <span className="text-[12px] font-medium text-stone-500">agent</span>
+        {resolvedApp && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+            {tt("所属 app · {app}", { app: resolvedApp })}
+          </span>
+        )}
       </span>
-    </span>
-  ) : (
-    "agent"
-  );
+    ) : (
+      "agent"
+    );
 
   const stream = (
     <div className="flex h-full flex-col">
