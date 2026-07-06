@@ -203,6 +203,10 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     const editor = useEditor({
       immediatelyRender: false,
       editable: !disabled,
+      // 确定性初始文档 = 单个空段落。避免 immediatelyRender:false 异步挂载 + autoFocus + 快速
+      // 输入的竞态下，contentEditable 先于 schema 归一化插字符而生出「空首段 + 内容段」两段
+      // （表现为正文瞬移到第二行，操作员截图 eeda2e59/8bc1bc58）。
+      content: "<p></p>",
       extensions: [
         Document,
         Paragraph,

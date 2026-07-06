@@ -1654,13 +1654,20 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 }
 .oc-slot-editor > p {
   margin: 0;
+  /* 作为空态 placeholder 绝对定位（::before）的定位上下文 —— 让提示与正文起点对齐
+     （在编辑器 padding 之内），而不是相对更外层的 .oc-slot-wrap.relative 跑到卡片左上角。 */
+  position: relative;
 }
 /* Tiptap Placeholder 扩展：空编辑器时的灰色提示（等价 textarea placeholder）。
- * **必须 `float:left; height:0`**——这是让光标停在**行首**（而非 placeholder 文字末尾）的官方配方。 */
+ * **用绝对定位**，不用 `float:left;height:0`（操作员 2026-07-06：首页输入「有时打字瞬移到第二行」
+ * 截图 eeda2e59/8bc1bc58）。float 会参与首行行盒布局：placeholder 消失（一打字）的那一帧
+ * float 尚未清除，新字符被挤到第二个行盒 → 反流不干净就停在第二行。绝对定位【完全脱离文档流】，
+ * 既不占行盒、也永远无法把正文推到第二行；配合下方 trailingBreak 隐藏（修空态粗光标），
+ * 光标依旧停在行首、正常细光标。来源：Tiptap Placeholder 官方样式即用绝对定位。 */
 .oc-slot-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  float: left;
-  height: 0;
+  position: absolute;
+  left: 0;
   pointer-events: none;
   color: #a3a3a3; /* neutral-400 */
 }
