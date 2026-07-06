@@ -837,9 +837,11 @@ function Panel({
     setOptions([]);
   };
 
-  // ── 精简/总结/解释/翻译/润色/自由指令（transform） ────────────────────────
+  // ── 动词（扩充/精简/总结/解释/翻译/润色）+ 自由指令：一律在**当前 leo board 内容**上
+  //    执行，结果**直接写回 board**（替换原内容、进 undo 历史）。操作员 2026-07-06：
+  //    不再进独立结果卡、不再走扩充的问答流——点了动词就地改 board。
   const runTransform = async (action: string, label: string, instruction?: string) => {
-    const text = context?.text || "";
+    const text = (board ?? context?.text ?? "").trim();
     if (!text) return;
     setBusy(label);
     setErr(null);
@@ -855,27 +857,20 @@ function Panel({
       setErr(res.error || tt("请求失败，请稍后再试。"));
       return;
     }
-    pushResult(label, res.result);
+    commitBoard(res.result); // 替换 board 内容（可回退）
   };
 
   const onVerb = (v: { id: VerbId; label: string }) => {
-    if (busy || boardBusy || !context?.text) return;
-    if (v.id === "expand") {
-      // board 已在工作中 → 不重置用户的成果，只换一个问题；未激活 → 启动。
-      if (board != null) void fetchQuestion(board);
-      else startBoard();
-    } else {
-      // 其它动词不清 board（board 常驻，宗旨 v12 规则 2）。
-      void runTransform(v.id, tt(v.label));
-    }
+    if (busy || boardBusy || !(board ?? context?.text)) return;
+    void runTransform(v.id, tt(v.label));
   };
 
   const send = () => {
     const q = input.trim();
     if (!q || busy || boardBusy) return;
     setInput("");
-    // board 激活时：输入框内容合并进 board（宗旨 v12 规则 4）；
-    // 未激活时：自由指令 transform。
+    // board 激活时：输入框内容合并进 board（宗旨 v12 规则 4，保守合并 + 出下一题）；
+    // 未激活时：自由指令 transform，结果写回 board。
     if (board != null) {
       void applyAnswer(q);
     } else {
@@ -907,25 +902,6 @@ function Panel({
             >
               {tt("读取输入框内容")}
             </button>
-          </div>
-        )}
-
-        {/* 动词按键 */}
-        {hasContext && (
-          <div>
-            <p className="mb-1.5 text-[11px] text-slate-400">{tt("对于这些内容，我可以帮你：")}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {VERBS.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => onVerb(v)}
-                  disabled={Boolean(busy)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {tt(v.label)}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -996,6 +972,24 @@ function Panel({
                     if (target) setHostValue(target, board);
                   }}
                 />
+              </div>
+            </div>
+
+            {/* 动词按键（在 leo board 下方，操作员 2026-07-06）：点击即在当前 board 内容上
+                执行，结果直接替换回 board。 */}
+            <div>
+              <p className="mb-1.5 text-[11px] text-slate-400">{tt("对于这些内容，我可以帮你：")}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {VERBS.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => onVerb(v)}
+                    disabled={Boolean(busy) || Boolean(boardBusy)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {tt(v.label)}
+                  </button>
+                ))}
               </div>
             </div>
 
