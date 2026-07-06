@@ -10,17 +10,19 @@ import { useUI } from "../i18n/ui/useUI";
 // 在 v11（oceanleo-leo-copilot-and-dark-theme.md）基础上重做「扩充」：
 //
 //   ┌─ [可拖动标题栏] leo ───────────────────────────── ✕ ┐
-//   │  [上下文卡] 来自输入框 / 来自页面划词 的一段文本      │
+//   │  （无内容时：空态引导 + [读取输入框内容]）             │
 //   │  对于这些内容，我可以帮你：                            │
 //   │  [扩充] [精简] [总结] [解释] [翻译] [润色]             │
-//   │  ┌ leo board ──────────────── [↩ 回退] [↪ 前进] ┐   │
-//   │  │ <可直接编辑的工作文本，常驻显示>                │   │
-//   │  │ [复制] [替换到输入框]                          │   │
+//   │  ┌ leo board ──────────── [↩ 回退] [↪ 前进] [清除] ┐ │
+//   │  │ <可直接编辑的工作文本，一有上下文即常驻显示>    │   │
+//   │  │ [复制] [导入到输入框]                          │   │
 //   │  └───────────────────────────────────────────────┘   │
 //   │  「请问这份内容的目标读者是谁？」  [换一个问题]        │
 //   │  [教师] [职场人士] [学生] …（选项可以很多，用词简洁）  │
 //   │  （transform 结果卡：复制 / 替换到输入框 / 以此继续）  │
 //   │  [补充内容，leo 会合并进 leo board…       ] [发送]   │
+//   │  · 不再单列「来自输入框/来自页面划词」只读卡——内容    │
+//   │    统一进上面这块常驻可编辑的 leo board（2026-07-06）。│
 //   └────────────────────────────────────────────────────┘
 //
 // leo board 五条规则（操作员 2026-07-02 拍板）：
@@ -576,13 +578,11 @@ function SelectionBubble() {
         setBubble(null);
         return;
       }
-      // 主输入框（Tiptap 编辑器）内部的选区**不弹页面划词气泡**：它有自己的「leo」按钮，
-      // 且 contentEditable 全选删空后浏览器常残留非折叠选区——这正是「删空后 leo 仍识别到选中
-      // 内容」的根因（操作员截图 16a3efea/686dd32e）。在这里直接忽略编辑器内选区即可根治。
-      if (anchorEl && anchorEl.closest("[data-oc-slot-editor]")) {
-        setBubble(null);
-        return;
-      }
+      // 主输入框（Tiptap 编辑器）内部选区：**要弹气泡**（用户划中编辑器里的真实文字要能送 leo，
+      // 操作员截图 9249211b）。但要防「Ctrl+A 全选后再删空」残留的非折叠空选区被误判为「有选中」
+      // ——所以下面统一用 `text = sel.toString().trim()` 且要求 ≥2 可见字符；空/纯空白选区
+      // （删空后的情况）自然 text=""→ 不弹（截图 16a3efea 根因）。故编辑器内选区**不再**特殊
+      // 忽略，交给下面的可见文本长度判定即可。
       const text = sel.toString().trim();
       if (text.length < 2) {
         setBubble(null);
@@ -894,30 +894,9 @@ function Panel({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={bodyRef} className="v-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {/* 上下文卡：leo 当前看到的内容（显式化，可清除）。 */}
-        {hasContext ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-400">
-                {context!.source === "input" ? tt("来自输入框") : tt("来自页面划词")}
-              </span>
-              <button
-                onClick={() => {
-                  onContextChange(null);
-                  clearBoard();
-                  setLeoSays(null);
-                  setErr(null);
-                }}
-                className="text-[11px] text-slate-400 transition hover:text-slate-700"
-              >
-                {tt("清除")}
-              </button>
-            </div>
-            <p className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-              {context!.text}
-            </p>
-          </div>
-        ) : (
+        {/* 无上下文时的空态引导；有上下文时**不再**单列只读「来自输入框/来自页面划词」卡——
+            内容统一进下方常驻可编辑的「leo board」（操作员 2026-07-06）。 */}
+        {!hasContext && (
           <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center">
             <p className="text-xs leading-relaxed text-slate-500">
               {tt("先选中页面上的文字，或在输入框写点内容，再来找 leo。")}
@@ -992,6 +971,18 @@ function Panel({
                     className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <RedoGlyph />
+                  </button>
+                  <button
+                    onClick={() => {
+                      onContextChange(null);
+                      clearBoard();
+                      setLeoSays(null);
+                      setErr(null);
+                    }}
+                    disabled={Boolean(boardBusy)}
+                    className="ml-0.5 rounded-md px-1.5 text-[11px] text-slate-400 transition hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    {tt("清除")}
                   </button>
                 </span>
               </div>
