@@ -80,8 +80,10 @@ export interface FunctionAgentChatProps {
   /** 操作台页内容（各站现成的 StudioSection 表单 + **底部生成主按钮**）。 */
   opsContent: React.ReactNode;
   /**
-   * @deprecated 宗旨 v10：agent 与操作台独立，agent 不读操作台 state。保留 prop 仅为
-   * 向后兼容（不再调用），各站可继续传，无副作用。 */
+   * 返回当前操作台 state 的快照（key → value）。宗旨 v16.1（2026-07-06）复活用途：
+   * 「保存工作流」按钮据此**自动派生**要保存的 { prompt, params }（站点没显式传
+   * getWorkflowDraft 时）——多数站早已传 getOpsState，故无需再改一行即获得保存工作流。
+   * agent 仍不读它（agent 与操作台独立，宗旨 v10）——仅用户点「保存工作流」时读一次。 */
   getOpsState?: () => Record<string, unknown>;
   /**
    * 把「补丁」写进操作台 state（key → value）。宗旨 v12.2（操作员 2026-07-05）复活此
@@ -142,7 +144,7 @@ export function FunctionAgentChat({
   siteId = "",
   schema,
   opsContent,
-  getOpsState: _getOpsState,
+  getOpsState,
   onApplyPatch,
   opsPrimaryField,
   onArtifact,
@@ -157,7 +159,6 @@ export function FunctionAgentChat({
   onGuideExample,
   getWorkflowDraft,
 }: FunctionAgentChatProps) {
-  void _getOpsState;
   void _onRunAction;
   const tt = useUI();
   const opsLabel = opsLabelProp ?? tt("操作台");
@@ -213,10 +214,31 @@ export function FunctionAgentChat({
   const guideWf = useGuideWorkflows();
   const [wfSaving, setWfSaving] = useState(false);
   const [wfSaved, setWfSaved] = useState(false);
-  const canSaveWorkflow = showOps && Boolean(getWorkflowDraft) && Boolean(guideWf);
+  // 「当前操作台输入」快照来源（宗旨 v16.1，2026-07-06，全家桶统一）：
+  //   ① 站点显式传 getWorkflowDraft → 用它（如 word 精确控制 prompt/params）。
+  //   ② 否则若站点传了 getOpsState（多数站早已传）→ 自动派生：prompt = 主输入字段
+  //      （opsPrimaryField / schema.fields[0]）的值；params = 其余基本类型字段
+  //      （string/number/boolean，跳过文件/数组/对象）。→ 站点【零改动】即获得保存工作流。
+  //   ③ 两者都没有 → 不显示「保存工作流」按钮。
+  const effectiveGetDraft = useCallback((): WorkflowDraft | null => {
+    if (getWorkflowDraft) return getWorkflowDraft();
+    if (!getOpsState) return null;
+    const st = (getOpsState() || {}) as Record<string, unknown>;
+    const raw = st[primaryField];
+    const prompt = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+    if (!prompt.trim()) return null;
+    const params: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(st)) {
+      if (k === primaryField) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") params[k] = v;
+    }
+    return { prompt, params };
+  }, [getWorkflowDraft, getOpsState, primaryField]);
+  const canSaveWorkflow =
+    showOps && Boolean(getWorkflowDraft || getOpsState) && Boolean(guideWf);
   const saveWorkflow = useCallback(async () => {
-    if (!getWorkflowDraft || !guideWf) return;
-    const draft = getWorkflowDraft();
+    if (!guideWf) return;
+    const draft = effectiveGetDraft();
     if (!draft || !(draft.prompt || "").trim()) {
       setError(tt("请先在操作台填写内容，再保存工作流。"));
       setTimeout(() => setError(null), 2600);
@@ -232,7 +254,7 @@ export function FunctionAgentChat({
     } else {
       setError(tt("保存失败，请重试。"));
     }
-  }, [getWorkflowDraft, guideWf, tt]);
+  }, [effectiveGetDraft, guideWf, tt]);
   // 关键修（2026-07-06）：下面的「保存工作流」按钮节点被 setLeftLabel 塞进左栏标题槽后
   // 会被【冻结】在当时那一版闭包里（安装 effect 的依赖不含 saveWorkflow / getWorkflowDraft，
   // 否则每帧重装会导致 setState 循环）。而各站的 getWorkflowDraft 是每次渲染新建、闭包
