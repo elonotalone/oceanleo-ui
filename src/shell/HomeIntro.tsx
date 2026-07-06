@@ -126,12 +126,20 @@ export function HomeIntro({
   // 有 siteId 且未显式关掉卡片（defaultTab !== "none"）→ 直接常显 prompt 卡片。
   const withCards = Boolean(siteId) && defaultTab !== "none";
 
-  // 点 prompt 卡片（宗旨 v15）：把该卡文案设为模板 → TemplateFillArea 把字面文字
-  // **实填进 value**（可编辑/可选/可提交），只有 `[字段]` 占位是 accent 色的原子 chip
-  // （选不中内部、点即替换）。先清空 value 触发 TemplateFillArea 重新 seed 该模板。
+  // 点 prompt 卡片（宗旨 v15）：把该卡文案设为模板 → TemplateFillArea 把字面文字灌进编辑器
+  // （字面可编辑、`[字段]` 是荧光块）。TemplateFillArea **只在 template 值变化时重灌一次**（这样
+  // 用户之后删/改/undo 都不会被回灌打断——修 2026-07-06 的删不掉/undo 失效 bug）。因此「点同一
+  // 张卡再来」时若模板字符串相同、值不变，编辑器不会重灌 → 用 null 弹跳强制产生一次值变化。
   const pickPrompt = (p: string) => {
     setValue("");
-    setHighlightTemplate(p);
+    setHighlightTemplate((prev) => {
+      if (prev === p) {
+        // 同模板：先置 null，下一帧再设回 p，制造一次 null→p 变化触发重灌。
+        requestAnimationFrame(() => setHighlightTemplate(p));
+        return null;
+      }
+      return p;
+    });
   };
   const onChangeValue = (v: string) => {
     setValue(v);

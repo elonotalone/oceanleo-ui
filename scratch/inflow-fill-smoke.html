@@ -161,7 +161,7 @@ function seed(tmpl) {
     p.kind === "slot"
       ? { type: "text", text: p.hint, marks: [{ type: SLOT, attrs: { hint: p.hint, empty: true } }] }
       : { type: "text", text: p.text });
-  editor.chain().clearContent(false).insertContent({ type: "paragraph", content: content.length ? content : undefined }, { updateSelection: true }).run();
+  editor.chain().selectAll().insertContent({ type: "paragraph", content: content.length ? content : undefined }, { updateSelection: true }).run();
   valEl.textContent = JSON.stringify(docToPlain(editor));
   requestAnimationFrame(() => {
     const run = firstEmptyRun(editor);

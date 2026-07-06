@@ -256,10 +256,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
               }
             : { type: "text" as const, text: p.text },
         );
-        // clearContent + insertContent：两步都可 undo；避免 setContent 清历史。
+        // 全选 → 用模板内容替换整个文档。这是**一个自然的可 undo 事务**（不用 setContent，那会
+        // 清历史）。灌完后用户的编辑都能 undo 回到「刚灌好的模板」这一态。
         editor
           .chain()
-          .clearContent(false)
+          .selectAll()
           .insertContent(
             { type: "paragraph", content: content.length ? content : undefined },
             { updateSelection: true },
@@ -289,25 +290,25 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       [editor],
     );
 
+    // 灌模板：**只在 template 值真正变化时灌一次**。灌完之后编辑器完全自持——用户的删除/
+    // 输入/undo 全不再触发回灌（修操作员 2026-07-06 两个致命 bug：删第一个字整段复活、Ctrl+Z
+    // 回不去。根因正是旧版「监听 value 变空就重灌模板」的 effect 在和用户编辑打架，现已删除）。
+    // template 变 null（调用方想「重来/切回空」）→ 复位 seededTemplate，使下次同模板也能重新灌。
     useEffect(() => {
-      if (!editor || template == null) return;
+      if (!editor) return;
+      if (template == null) {
+        seededTemplate.current = null;
+        return;
+      }
       if (seededTemplate.current === template) return;
       seed(template);
     }, [editor, template, seed]);
 
-    // 「点同一张卡再来一次」：调用方点卡片时先把 value 置空；若模板未变，这里重灌。
-    useEffect(() => {
-      if (!editor) return;
-      if (template != null && value === "" && seededTemplate.current === template) {
-        seededTemplate.current = null;
-        seed(template);
-      }
-    }, [editor, value, template, seed]);
-
-    // 外部 value 被改（非本编辑器产出，无模板的纯文本场景）→ 同步进编辑器。
+    // 外部 value 被改（无模板的纯文本场景，调用方程序化改 value）→ 同步进编辑器。**只在无模板时**
+    // 生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark + 破坏 undo）。
     useEffect(() => {
       if (!editor || applyingRef.current) return;
-      if (template != null) return; // 有模板时以 seed 为准，别按纯文本覆盖（会毁 slot mark）
+      if (template != null) return;
       const current = docToPlain(editor);
       if (value !== current) {
         applyingRef.current = true;
