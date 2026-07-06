@@ -1643,12 +1643,14 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   outline: none;
   min-width: 1px;
 }
-/* 未填：淡 accent 底（醒目）+ ::before 蓝色标签。标签不可选；点击由 JS 转发进内芯。 */
+/* 未填：外壳给淡 accent 底（醒目框）。 */
 .oc-tmpl-editor .oc-ph[data-empty] {
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 12%, transparent);
   padding: 0 1px;
 }
-.oc-tmpl-editor .oc-ph[data-empty]::before {
+/* 幽灵标签 [字段] 画在**内芯**的 ::before（不是外壳）——这样它和 caret 同属内芯，光标落
+ * 内芯起点即压在标签上（视觉「在框中」）。标签不可选；点击由 JS 转发进内芯。 */
+.oc-tmpl-editor .oc-ph-inner[data-empty]::before {
   content: attr(data-hint);
   color: var(--oc-ph-accent, #4f46e5);
   font-weight: 500;

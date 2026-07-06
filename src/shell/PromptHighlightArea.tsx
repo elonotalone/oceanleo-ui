@@ -134,12 +134,14 @@ const stripZwsp = (s: string) => s.split(ZWSP).join("");
 
 // ── DOM 构建 ───────────────────────────────────────────────────────────────
 
-/** 槽 = 原子外壳（CE=false，删不掉/选不进）+ 内芯编辑宿主（CE=true，打字/IME 在里面）。 */
+/** 槽 = 原子外壳（CE=false，删不掉/选不进）+ 内芯编辑宿主（CE=true，打字/IME 在里面）。
+ * 幽灵标签 [字段] 画在**内芯**的 ::before（data-hint + data-empty 都挂内芯）——这样标签和
+ * caret 同属内芯，光标落内芯起点即压在标签上（视觉「在框中」），而不是排在外壳标签右侧。
+ * 外壳只保留 data-empty 做淡底背景框。 */
 function makePlaceholderSlot(hint: string): HTMLSpanElement {
   const wrap = document.createElement("span");
   wrap.className = "oc-ph";
   wrap.dataset.ph = "1";
-  wrap.dataset.hint = hint;
   wrap.dataset.empty = "1";
   wrap.contentEditable = "false";
 
@@ -147,6 +149,8 @@ function makePlaceholderSlot(hint: string): HTMLSpanElement {
   inner.className = "oc-ph-inner";
   inner.contentEditable = "true";
   inner.spellcheck = false;
+  inner.dataset.hint = hint; // 标签文字（内芯 ::before 用）
+  inner.dataset.empty = "1"; // 空态：内芯 ::before 显示标签
 
   wrap.appendChild(inner);
   return wrap;
@@ -199,14 +203,21 @@ function readEditorValue(root: HTMLElement): string {
   return out;
 }
 
-/** 只切换 data-empty 属性（决定 ::before 标签显隐）。不碰任何文本节点 → IME 零干扰。 */
+/** 只切换 data-empty 属性（外壳=淡底框、内芯=::before 标签显隐）。不碰任何文本节点 → IME
+ * 零干扰。空 → 外壳+内芯都标 data-empty；有内容 → 都去掉。 */
 function syncSlotEmptiness(slots: HTMLElement[]): void {
   for (const slot of slots) {
     if (!slot.isConnected) continue;
-    const empty = stripZwsp(slot.textContent || "") === "";
-    const marked = slot.dataset.empty !== undefined;
-    if (empty && !marked) slot.dataset.empty = "1";
-    else if (!empty && marked) delete slot.dataset.empty;
+    const inner = slot.querySelector<HTMLElement>(".oc-ph-inner");
+    const empty = stripZwsp((inner ?? slot).textContent || "") === "";
+    const setEmpty = (el: HTMLElement | null, on: boolean) => {
+      if (!el) return;
+      const marked = el.dataset.empty !== undefined;
+      if (on && !marked) el.dataset.empty = "1";
+      else if (!on && marked) delete el.dataset.empty;
+    };
+    setEmpty(slot, empty);
+    setEmpty(inner, empty);
   }
 }
 

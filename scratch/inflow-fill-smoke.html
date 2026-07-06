@@ -8,7 +8,8 @@
   .oc-ph { display: inline; border-radius: 4px; cursor: text; }
   .oc-ph-inner { display: inline; outline: none; min-width: 1px; }
   .oc-ph[data-empty] { background: rgba(79,70,229,.12); padding: 0 1px; }
-  .oc-ph[data-empty]::before {
+  /* 标签画在内芯 ::before —— caret 落内芯起点即压在标签上（视觉在框中）。 */
+  .oc-ph-inner[data-empty]::before {
     content: attr(data-hint);
     color: #4f46e5; font-weight: 500; opacity: .9;
     -webkit-user-select: none; user-select: none;
@@ -46,10 +47,11 @@
 
   function makeSlot(hint){
     const wrap=document.createElement('span');
-    wrap.className='oc-ph'; wrap.dataset.ph='1'; wrap.dataset.hint=hint; wrap.dataset.empty='1';
+    wrap.className='oc-ph'; wrap.dataset.ph='1'; wrap.dataset.empty='1';
     wrap.contentEditable='false';
     const inner=document.createElement('span');
     inner.className='oc-ph-inner'; inner.contentEditable='true'; inner.spellcheck=false;
+    inner.dataset.hint=hint; inner.dataset.empty='1'; // 标签画在内芯 ::before
     wrap.appendChild(inner);
     return wrap;
   }
@@ -64,9 +66,13 @@
   function syncEmpty(){
     for(const sp of slots){
       if(!sp.isConnected) continue;
-      const empty = stripZ(sp.textContent)==='';
-      if(empty && sp.dataset.empty===undefined) sp.dataset.empty='1';
-      else if(!empty && sp.dataset.empty!==undefined) delete sp.dataset.empty;
+      const inner = sp.querySelector('.oc-ph-inner');
+      const empty = stripZ((inner||sp).textContent)==='';
+      [sp, inner].forEach(el=>{
+        if(!el) return;
+        if(empty && el.dataset.empty===undefined) el.dataset.empty='1';
+        else if(!empty && el.dataset.empty!==undefined) delete el.dataset.empty;
+      });
     }
   }
   function readVal(root){
