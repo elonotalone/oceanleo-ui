@@ -219,6 +219,7 @@ export function FunctionAgentChat({
     const draft = getWorkflowDraft();
     if (!draft || !(draft.prompt || "").trim()) {
       setError(tt("请先在操作台填写内容，再保存工作流。"));
+      setTimeout(() => setError(null), 2600);
       return;
     }
     setError(null);
@@ -232,6 +233,16 @@ export function FunctionAgentChat({
       setError(tt("保存失败，请重试。"));
     }
   }, [getWorkflowDraft, guideWf, tt]);
+  // 关键修（2026-07-06）：下面的「保存工作流」按钮节点被 setLeftLabel 塞进左栏标题槽后
+  // 会被【冻结】在当时那一版闭包里（安装 effect 的依赖不含 saveWorkflow / getWorkflowDraft，
+  // 否则每帧重装会导致 setState 循环）。而各站的 getWorkflowDraft 是每次渲染新建、闭包
+  // 读【最新】操作台 state 的。若按钮 onClick 直接调 saveWorkflow，点的永远是初始那版 →
+  // 读到空操作台 → getWorkflowDraft() 返回 null → 看似「点了没反应」。用 latest-ref 让被
+  // 冻结的 onClick 每次点击都转发到最新的 saveWorkflow。
+  const saveActionRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    saveActionRef.current = () => void saveWorkflow();
+  });
 
   // ── 「操作台 | agent」切换键装进左栏标题位（宗旨 v10，复用 v0.41.0 机制）──────
   // SplitWorkspace 的左栏 PaneHeader 标题本身就是这枚开关；不在 SplitWorkspace 内
@@ -263,7 +274,7 @@ export function FunctionAgentChat({
       {canSaveWorkflow && (
         <button
           type="button"
-          onClick={() => void saveWorkflow()}
+          onClick={() => saveActionRef.current()}
           disabled={wfSaving}
           title={tt("把当前操作台的输入保存为工作流，稍后可在右侧「导航 · 我的」里一键复用")}
           className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition active:scale-95 disabled:opacity-50 ${
@@ -452,6 +463,12 @@ export function FunctionAgentChat({
         <div className="flex h-full flex-col">
           {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
           {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
+          {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
+          {error && (
+            <p className="mb-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">
+              {tt(error)}
+            </p>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
         </div>
       </FnAgentBridgeCtx.Provider>
