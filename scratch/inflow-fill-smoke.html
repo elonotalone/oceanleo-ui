@@ -15,7 +15,7 @@
   /* —— 与 globals.css v15i 块保持一致（内联，便于独立打开）—— */
   .oc-slot-editor { box-sizing: border-box; padding: 20px 20px 8px 20px; outline: none; overflow-y: auto;
     color: #262626; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
-    font-size: 15px; line-height: 1.625; min-height: 3.2em; max-height: 280px; caret-color: var(--oc-ph-accent); }
+    font-size: 15px; line-height: 1.625; min-height: 3.2em; max-height: 280px; }
   .oc-slot-editor > p { margin: 0; }
   .oc-slot-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: #a3a3a3; }
   /* 荧光块：默认=已填·深蓝荧光 */
@@ -71,6 +71,7 @@ import Document from "https://esm.sh/@tiptap/extension-document@3.27.1";
 import Paragraph from "https://esm.sh/@tiptap/extension-paragraph@3.27.1";
 import Text from "https://esm.sh/@tiptap/extension-text@3.27.1";
 import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@3.27.1";
+import History from "https://esm.sh/@tiptap/extension-history@3.27.1";
 
 const SLOT = "promptSlot";
 const PromptSlot = Mark.create({
@@ -134,7 +135,7 @@ function firstEmptyRun(ed) {
 const valEl = document.getElementById("val");
 const editor = new Editor({
   element: document.getElementById("editor"),
-  extensions: [Document, Paragraph, Text, PromptSlot, Placeholder.configure({ placeholder: "点上面的卡片灌模板…" })],
+  extensions: [Document, Paragraph, Text, History, PromptSlot, Placeholder.configure({ placeholder: "点上面的卡片灌模板…" })],
   editorProps: {
     attributes: { class: "oc-slot-editor", spellcheck: "false" },
     handleClickOn: (view, _pos, _n, _np, event) => {
@@ -161,13 +162,9 @@ function seed(tmpl) {
     p.kind === "slot"
       ? { type: "text", text: p.hint, marks: [{ type: SLOT, attrs: { hint: p.hint, empty: true } }] }
       : { type: "text", text: p.text });
-  editor.chain().selectAll().insertContent({ type: "paragraph", content: content.length ? content : undefined }, { updateSelection: true }).run();
+  // 不自动选中任何荧光块：灌完把光标收拢到末尾并聚焦（普通折叠光标）。
+  editor.chain().selectAll().insertContent({ type: "paragraph", content: content.length ? content : undefined }, { updateSelection: true }).focus("end").run();
   valEl.textContent = JSON.stringify(docToPlain(editor));
-  requestAnimationFrame(() => {
-    const run = firstEmptyRun(editor);
-    if (run) editor.chain().command(({ tr, dispatch }) => { if (dispatch) tr.setSelection(TextSelection.create(tr.doc, run.from, run.to)); return true; }).focus().run();
-    else editor.commands.focus("end");
-  });
 }
 document.querySelectorAll("button[data-tmpl]").forEach((b) => b.addEventListener("click", () => seed(b.dataset.tmpl)));
 document.getElementById("clear").addEventListener("click", () => { editor.commands.clearContent(); editor.commands.focus(); valEl.textContent = '""'; });

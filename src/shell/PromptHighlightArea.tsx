@@ -43,6 +43,7 @@ import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Placeholder from "@tiptap/extension-placeholder";
+import History from "@tiptap/extension-history";
 import { PromptSlot, PROMPT_SLOT_NAME } from "./promptSlotNode";
 
 // 方括号占位符：`[任意非中括号、非换行字符]`。
@@ -194,6 +195,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
         Document,
         Paragraph,
         Text,
+        History, // undo/redo（此前漏装 = Ctrl+Z 完全无效的真正根因，2026-07-06 修）
         PromptSlot,
         Placeholder.configure({
           placeholder: placeholder || "",
@@ -242,7 +244,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       dom.style.minHeight = `${rows * 1.625}em`;
     }, [editor, accentColor, maxHeight, rows]);
 
-    // 灌模板：用 insertContent 进 undo 历史；灌完选中第一个未填荧光块（→ 一打字即替换）。
+    // 灌模板：全选 → 用模板内容替换整个文档（一个自然的可 undo 事务，弃 setContent 以保 undo 栈）。
+    // **不自动选中任何荧光块**（操作员要求：点卡片后不能默认勾选第一个块）。灌完把光标收拢到末尾
+    // 并聚焦（普通折叠光标、正常颜色），你想改哪个荧光块自己去点。
     const seed = useCallback(
       (tmpl: string) => {
         if (!editor) return;
@@ -256,8 +260,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
               }
             : { type: "text" as const, text: p.text },
         );
-        // 全选 → 用模板内容替换整个文档。这是**一个自然的可 undo 事务**（不用 setContent，那会
-        // 清历史）。灌完后用户的编辑都能 undo 回到「刚灌好的模板」这一态。
         editor
           .chain()
           .selectAll()
@@ -265,27 +267,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
             { type: "paragraph", content: content.length ? content : undefined },
             { updateSelection: true },
           )
+          .setTextSelection(editor.state.doc.content.size) // 折叠光标到末尾，不选中任何块
           .run();
         seededTemplate.current = tmpl;
         applyingRef.current = false;
         onChangeRef.current(docToPlain(editor));
-        // 选中第一个未填荧光块的整段提示文字。
-        requestAnimationFrame(() => {
-          if (!editor) return;
-          const run = findFirstEmptySlotRun(editor);
-          if (run) {
-            editor
-              .chain()
-              .command(({ tr, dispatch }) => {
-                if (dispatch) tr.setSelection(TextSelection.create(tr.doc, run.from, run.to));
-                return true;
-              })
-              .focus()
-              .run();
-          } else {
-            editor.commands.focus("end");
-          }
-        });
       },
       [editor],
     );
@@ -343,18 +329,6 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
 );
 
 // ── helpers：定位 slot mark run 的文档区间 ─────────────────────────────────────
-
-function findFirstEmptySlotRun(editor: Editor): { from: number; to: number } | null {
-  let res: { from: number; to: number } | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (res) return false;
-    if (!node.isText) return;
-    const m = node.marks.find((mk) => mk.type.name === PROMPT_SLOT_NAME && mk.attrs.empty);
-    if (m) res = { from: pos, to: pos + node.nodeSize };
-    return !res;
-  });
-  return res;
-}
 
 /** 根据点中的 DOM span，反查它对应的 slot mark run 在文档里的 from/to。 */
 function findSlotRunAtDom(

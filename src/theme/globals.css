@@ -1643,7 +1643,7 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   overflow-wrap: break-word;
   -webkit-font-smoothing: inherit;
   tab-size: 4;
-  caret-color: var(--oc-ph-accent, #4f46e5);
+  /* 光标用系统默认色（不再染成 accent 荧光色）——操作员要求光标任何情况下都正常色。 */
 }
 .oc-slot-editor > p {
   margin: 0;

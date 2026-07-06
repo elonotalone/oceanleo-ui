@@ -20,6 +20,9 @@ importers:
       '@tiptap/extension-document':
         specifier: ^3.27.1
         version: 3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))
+      '@tiptap/extension-history':
+        specifier: ^3.27.1
+        version: 3.27.1(@tiptap/extensions@3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))(@tiptap/pm@3.27.1))
       '@tiptap/extension-paragraph':
         specifier: ^3.27.1
         version: 3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))
@@ -651,6 +654,11 @@ packages:
       '@floating-ui/dom': ^1.0.0
       '@tiptap/core': 3.27.1
       '@tiptap/pm': 3.27.1
+
+  '@tiptap/extension-history@3.27.1':
+    resolution: {integrity: sha512-JKfAT56se4O00Xu7vxGHhQ3YBOkSBiOos1PvRb9/p3lDBILC8AildgntUTXIDknbFhmrLvMLiNhyBmlyLI2IJg==}
+    peerDependencies:
+      '@tiptap/extensions': 3.27.1
 
   '@tiptap/extension-paragraph@3.27.1':
     resolution: {integrity: sha512-7K7eo1gruOgAsnbK+GCV23AUVUI0cL1bTig8HaPneoFMVbig7vddk8jNLKBWO8TXVbG7TuHdnDN4F98vdtwh5Q==}
@@ -1465,6 +1473,10 @@ snapshots:
       '@tiptap/core': 3.27.1(@tiptap/pm@3.27.1)
       '@tiptap/pm': 3.27.1
     optional: true
+
+  '@tiptap/extension-history@3.27.1(@tiptap/extensions@3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))(@tiptap/pm@3.27.1))':
+    dependencies:
+      '@tiptap/extensions': 3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))(@tiptap/pm@3.27.1)
 
   '@tiptap/extension-paragraph@3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))':
     dependencies:

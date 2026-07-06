@@ -196,17 +196,13 @@ export function LeoComposer({
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
-  const ref = useRef<HTMLTextAreaElement>(null);
-  // 模板实填模式下真正的可编辑元素藏在 TemplateFillArea 内（contentEditable div），
-  // 用这个 handle 取。
+  // 唯一输入框（宗旨 v15j）：全程用 TemplateFillArea（Tiptap 编辑器），普通/模板同一个实例。
+  // 真正的可编辑 DOM 藏在组件内，用这个 handle 取（供聚焦 / leo 助手锚点 / 上传落焦等）。
   const highlightRef = useRef<TemplateFillAreaHandle>(null);
-  // 模板实填模式（宗旨 v15）：有模板就渲染 TemplateFillArea（字面实填 + 占位 chip）。
-  // value 在两种模式下都是「字面文字 + 未替换占位的 [字段] 字面」，提交无需再清洗。
-  const highlightOn = Boolean(highlightTemplate);
-  // 取当前生效的输入元素（普通模式 = textarea ref；模板模式 = 组件内部可编辑元素）。
+  // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
-    (): HTMLElement | null => (highlightOn ? highlightRef.current?.el() ?? null : ref.current),
-    [highlightOn],
+    (): HTMLElement | null => highlightRef.current?.el() ?? null,
+    [],
   );
   const fileRef = useRef<HTMLInputElement>(null);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
@@ -216,19 +212,7 @@ export function LeoComposer({
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
 
-  // 普通模式的自增高（高亮模式由 PromptHighlightArea 内部自己 autogrow）。
-  const autogrow = useCallback(() => {
-    if (highlightOn) return;
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-  }, [maxHeight, highlightOn]);
-
-  useEffect(() => {
-    autogrow();
-  }, [value, autogrow]);
-
+  // 自增高由编辑器自身 CSS 处理（min-height + max-height + overflow-y:auto），LeoComposer 不再管。
   useEffect(() => {
     if (autoFocus) currentTextarea()?.focus();
   }, [autoFocus, currentTextarea]);
@@ -334,36 +318,23 @@ export function LeoComposer({
           <span className="text-[13px] font-medium">{tt("松开即可上传文件")}</span>
         </div>
       )}
-      {highlightOn ? (
-        // 模板实填模式（宗旨 v15）：contentEditable 编辑器，字面文字实填进 value，
-        // 占位 `[字段]` 是 accent 色的原子 chip（选不中内部、可整体删/点即替换）。
-        <TemplateFillArea
-          ref={highlightRef}
-          value={value}
-          onChange={onChange}
-          template={highlightTemplate}
-          accentColor={accentColor}
-          placeholder={placeholderText}
-          rows={rows}
-          maxHeight={maxHeight}
-          disabled={disabled}
-          onKeyDown={handleKeyDown}
-          className="rounded-t-2xl"
-        />
-      ) : (
-        <textarea
-          ref={ref}
-          data-ai-assistant-target={leoSuggest ? "" : undefined}
-          className="w-full resize-none rounded-t-2xl border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-          rows={rows}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          onInput={autogrow}
-          placeholder={placeholderText}
-          onKeyDown={handleKeyDown}
-        />
-      )}
+      {/* 宗旨 v15j（2026-07-06）：**全程只用这一个编辑器**（一种输入框），有没有 prompt 卡片
+          模板都用它——彻底解决「普通 textarea / 模板编辑器两套切换」导致的光标颜色不一致、切换
+          时编辑器实例重建 undo 栈丢失。template=null 时它就是个普通输入框（空、正常光标、正常
+          打字/分行/全选/undo），template 有值时把模板灌进去（字面可编辑、`[字段]` 荧光块）。 */}
+      <TemplateFillArea
+        ref={highlightRef}
+        value={value}
+        onChange={onChange}
+        template={highlightTemplate}
+        accentColor={accentColor}
+        placeholder={placeholderText}
+        rows={rows}
+        maxHeight={maxHeight}
+        disabled={disabled}
+        onKeyDown={handleKeyDown}
+        className="rounded-t-2xl"
+      />
 
       {/* 附件缩略条（上传中转圈 / 可删除） */}
       {attachments && attachments.length > 0 && (
