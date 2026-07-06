@@ -79,10 +79,22 @@ export function stripPromptPlaceholders(text: string, _template?: string | null)
   return text;
 }
 
+/** 挂在编辑器根 DOM 上的读写桥（leo 助手只能拿到 DOM，借此读/写主输入框内容）。 */
+export interface OcEditorBridge {
+  __ocGetText?: () => string;
+  __ocSetText?: (v: string) => void;
+}
+
 export interface PromptHighlightAreaHandle {
   focus: () => void;
   /** 暴露编辑器根 DOM（供 LeoComposer 挂 data-attr / leo 助手锚点）。 */
   el: () => HTMLElement | null;
+  /** 取当前纯文本值（= 提交值：字面 + 未填占位吐 [hint]）。供 leo 读输入框内容。 */
+  getText: () => string;
+  /** 命令式写入纯文本（作为普通可编辑文本，进 undo 历史）。供 leo「导入/替换到输入框」。 */
+  setText: (v: string) => void;
+  /** 取编辑器内当前选中的纯文本（供 leo 划词读编辑器选区）。 */
+  getSelectedText: () => string;
 }
 export type TemplateFillAreaHandle = PromptHighlightAreaHandle;
 
@@ -234,6 +246,34 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     useImperativeHandle(ref, () => ({
       focus: () => editor?.commands.focus(),
       el: () => (editor ? (editor.view.dom as HTMLElement) : null),
+      getText: () => (editor ? docToPlain(editor) : ""),
+      setText: (v: string) => {
+        if (!editor) return;
+        // 作为普通可编辑文本整体替换（可 undo）；换行拆多段落。灌完把已 seed 的模板记录清掉，
+        // 使之后模板 effect 不冲突（leo 导入=用户内容，不再是模板态）。
+        const paras = (v || "").split("\n");
+        editor
+          .chain()
+          .selectAll()
+          .insertContent({
+            type: "doc",
+            content: paras.map((line) => ({
+              type: "paragraph",
+              content: line ? [{ type: "text", text: line }] : undefined,
+            })),
+          })
+          .focus("end")
+          .run();
+        seededTemplate.current = null;
+        onChangeRef.current(docToPlain(editor));
+      },
+      getSelectedText: () => {
+        if (!editor) return "";
+        const { from, to, empty } = editor.state.selection;
+        if (empty) return "";
+        // promptSlot 是 mark（染色的普通文本），textBetween 直接返回可见文字。
+        return editor.state.doc.textBetween(from, to, "\n");
+      },
     }));
 
     useEffect(() => {
@@ -241,6 +281,28 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       const dom = editor.view.dom as HTMLElement;
       dom.style.setProperty("--oc-ph-accent", accentColor);
       dom.style.maxHeight = `${maxHeight}px`;
+      dom.setAttribute("data-oc-slot-editor", ""); // 供 leo 识别「这是主输入框」（非 textarea）
+      // 把读/写桥接函数挂到 DOM 上：leo 助手只拿得到 DOM 元素（拿不到 React handle），
+      // 通过这两个属性读输入框内容 / 写回（作为普通文本，走编辑器事务）。
+      const bridged = dom as HTMLElement & OcEditorBridge;
+      bridged.__ocGetText = () => docToPlain(editor);
+      bridged.__ocSetText = (v: string) => {
+        const paras = (v || "").split("\n");
+        editor
+          .chain()
+          .selectAll()
+          .insertContent({
+            type: "doc",
+            content: paras.map((line) => ({
+              type: "paragraph",
+              content: line ? [{ type: "text", text: line }] : undefined,
+            })),
+          })
+          .focus("end")
+          .run();
+        seededTemplate.current = null;
+        onChangeRef.current(docToPlain(editor));
+      };
       // min-height 交给 CSS（.oc-slot-editor）统一预留 2 行，避免挂载前后跳变/闪矮框。
     }, [editor, accentColor, maxHeight]);
 

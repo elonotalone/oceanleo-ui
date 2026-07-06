@@ -131,6 +131,26 @@ export async function runLeoQuickSuggest(opts: {
 
 type HostInput = HTMLTextAreaElement | HTMLInputElement;
 
+// 主输入框现在是 Tiptap 编辑器（contentEditable div，带 data-oc-slot-editor + 读写桥），
+// 不再是 textarea/input。leo 要能同时处理「编辑器 div」和旧式「textarea/input」。
+interface OcEditorBridge {
+  __ocGetText?: () => string;
+  __ocSetText?: (v: string) => void;
+}
+type HostTarget = HostInput | HTMLElement;
+
+/** 是否是我们的 Tiptap 主编辑器（带桥）。 */
+function isSlotEditor(el: Element | null): el is HTMLElement & OcEditorBridge {
+  return !!el && el instanceof HTMLElement && el.hasAttribute("data-oc-slot-editor");
+}
+
+/** 读宿主输入内容：编辑器走桥的 __ocGetText，textarea/input 走 .value。 */
+function getHostText(el: HostTarget | null): string {
+  if (!el) return "";
+  if (isSlotEditor(el)) return (el.__ocGetText?.() || "").trim();
+  return ((el as HostInput).value || "").trim();
+}
+
 interface BoardResult {
   board: string;
   question: string;
@@ -182,9 +202,10 @@ async function transform(input: {
   }
 }
 
-function isEditableInput(el: Element | null): el is HostInput {
+function isEditableInput(el: Element | null): el is HostTarget {
   if (!el) return false;
   if (el.closest("[data-ai-assistant-root]")) return false; // ignore our own UI
+  if (isSlotEditor(el)) return true; // Tiptap 主编辑器
   if (el.tagName === "TEXTAREA") return true;
   if (el.tagName === "INPUT") {
     const t = (el as HTMLInputElement).type;
@@ -193,19 +214,22 @@ function isEditableInput(el: Element | null): el is HostInput {
   return false;
 }
 
-// React tracks an internal value on controlled inputs; setting `.value`
-// directly bypasses it and the onChange never fires. Use the prototype's native
-// setter, then dispatch a bubbling input event so React's delegated listener
-// picks the change up.
-function setHostValue(el: HostInput, value: string) {
+// 写回宿主输入。编辑器走桥的 __ocSetText（作为普通文本、进 undo）；textarea/input 用原生
+// setter 绕过 React 内部 value 追踪 + 派发 input 事件让受控组件 onChange 收到变化。
+function setHostValue(el: HostTarget, value: string) {
+  if (isSlotEditor(el)) {
+    el.__ocSetText?.(value);
+    return;
+  }
+  const input = el as HostInput;
   const proto =
-    el.tagName === "TEXTAREA"
+    input.tagName === "TEXTAREA"
       ? window.HTMLTextAreaElement.prototype
       : window.HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-  if (setter) setter.call(el, value);
-  else el.value = value;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  if (setter) setter.call(input, value);
+  else input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -229,22 +253,25 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Track the textarea / text input the user is (or was last) working in. */
+/** Track the editor / textarea / text input the user is (or was last) working in. */
 function useHostInput() {
-  const ref = useRef<HostInput | null>(null);
+  const ref = useRef<HostTarget | null>(null);
 
-  const resolve = useCallback((): HostInput | null => {
-    // 1. Currently-focused editable input.
+  const resolve = useCallback((): HostTarget | null => {
+    // 1. Currently-focused editable input（含 Tiptap 主编辑器）。
     const active = document.activeElement;
     if (isEditableInput(active)) return active;
     // 2. Last one the user focused (if still in the DOM).
     if (ref.current && ref.current.isConnected) return ref.current;
-    // 3. Explicitly-tagged primary input.
+    // 3. Tiptap 主编辑器（本站主输入框）。
+    const editor = document.querySelector<HTMLElement>("[data-oc-slot-editor]");
+    if (editor && editor.offsetParent !== null) return editor;
+    // 4. Explicitly-tagged primary input.
     const tagged = document.querySelector<HostInput>(
       "textarea[data-ai-assistant-target], input[data-ai-assistant-target]",
     );
     if (tagged) return tagged;
-    // 4. First visible textarea on the page.
+    // 5. First visible textarea on the page.
     const areas = Array.from(document.querySelectorAll<HTMLTextAreaElement>("textarea"));
     for (const a of areas) {
       if (a.closest("[data-ai-assistant-root]")) continue;
@@ -343,7 +370,7 @@ export function LeoAssistant({
       if (detail?.text && detail.text.trim()) {
         next = { text: detail.text.trim(), source: detail.source || "selection" };
       } else {
-        const v = resolve()?.value?.trim();
+        const v = getHostText(resolve());
         if (v) next = { text: v, source: "input" };
       }
       const nextText = next?.text || "";
@@ -549,6 +576,13 @@ function SelectionBubble() {
         setBubble(null);
         return;
       }
+      // 主输入框（Tiptap 编辑器）内部的选区**不弹页面划词气泡**：它有自己的「leo」按钮，
+      // 且 contentEditable 全选删空后浏览器常残留非折叠选区——这正是「删空后 leo 仍识别到选中
+      // 内容」的根因（操作员截图 16a3efea/686dd32e）。在这里直接忽略编辑器内选区即可根治。
+      if (anchorEl && anchorEl.closest("[data-oc-slot-editor]")) {
+        setBubble(null);
+        return;
+      }
       const text = sel.toString().trim();
       if (text.length < 2) {
         setBubble(null);
@@ -636,7 +670,7 @@ function Panel({
   docType: string;
   context: LeoContext | null;
   onContextChange: (c: LeoContext | null) => void;
-  resolveHost: () => HostInput | null;
+  resolveHost: () => HostTarget | null;
 }) {
   const tt = useUI();
   const [busy, setBusy] = useState<string | null>(null); // 正在跑的 transform 动词 label
@@ -655,6 +689,20 @@ function Panel({
   // boardBusy："question"=出题中，"merge"=合并回答中。
   const [boardBusy, setBoardBusy] = useState<"question" | "merge" | null>(null);
   const editTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // leo board 常驻可编辑（操作员 2026-07-06）：一有上下文就把 board 初始化为**原文原样**
+  // （零 LLM 改写，符合 v12 规则1），用户可直接编辑/一键导入输入框——**不**自动出题/请求
+  // （出题=LLM 调用，仍只在点「扩充」时发，守住 v11 规则1「打开不自动请求」）。Panel 按
+  // ctxEpoch 重挂，故这里每次新上下文只跑一次。
+  useEffect(() => {
+    const text = context?.text || "";
+    if (text && board == null) {
+      setBoard(text);
+      setHistory([text]);
+      setHistIdx(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context?.text]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollTop = () => {
@@ -705,18 +753,21 @@ function Panel({
     [siteId, docType, tt],
   );
 
-  /** 启动 board：初始内容 = 用户原文【原样】（零 LLM 改写），随后取第一题。 */
+  /** 「扩充」：在当前 board 内容（用户可能已手改）上取第一题。board 现在一有上下文就已
+   * 常驻（见上方 seed effect），故这里**不**重置 board/历史，只发出题请求。 */
   const startBoard = useCallback(() => {
-    const text = context?.text || "";
+    const text = board ?? context?.text ?? "";
     if (!text) return;
     setLeoSays(null);
-    setBoard(text);
-    setHistory([text]);
-    setHistIdx(0);
+    if (board == null) {
+      setBoard(text);
+      setHistory([text]);
+      setHistIdx(0);
+    }
     setQuestion("");
     setOptions([]);
     void fetchQuestion(text);
-  }, [context, fetchQuestion]);
+  }, [board, context, fetchQuestion]);
 
   /** 合并回答：点选项 / 输入框自由文本 → 后端保守合并进 board + 出下一题。 */
   const applyAnswer = useCallback(
@@ -834,7 +885,7 @@ function Panel({
   };
 
   const readHostInput = () => {
-    const v = resolveHost()?.value?.trim();
+    const v = getHostText(resolveHost());
     if (v) onContextChange({ text: v, source: "input" });
   };
 
@@ -947,14 +998,13 @@ function Panel({
               <BoardEditor value={board} onChange={onBoardEdit} disabled={boardBusy === "merge"} />
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <CopyButton text={board} />
-                {context?.source === "input" && (
-                  <ReplaceHostButton
-                    onReplace={() => {
-                      const target = resolveHost();
-                      if (target) setHostValue(target, board);
-                    }}
-                  />
-                )}
+                {/* 一键把 leo board 内容导入主输入框（任意来源，操作员 2026-07-06）。 */}
+                <ImportToInputButton
+                  onImport={() => {
+                    const target = resolveHost();
+                    if (target) setHostValue(target, board);
+                  }}
+                />
               </div>
             </div>
 
@@ -1134,6 +1184,39 @@ function ReplaceHostButton({ onReplace }: { onReplace: () => void }) {
     >
       {replaced ? tt("已替换") : tt("替换到输入框")}
     </button>
+  );
+}
+
+/** 「导入到输入框」小按钮（任意来源常驻，手动把 leo board 内容写进主输入框）。 */
+function ImportToInputButton({ onImport }: { onImport: () => void }) {
+  const tt = useUI();
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        onImport();
+        setDone(true);
+        setTimeout(() => setDone(false), 1600);
+      }}
+      className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-500/20"
+    >
+      <ImportGlyph />
+      {done ? tt("已导入") : tt("导入到输入框")}
+    </button>
+  );
+}
+
+function ImportGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
