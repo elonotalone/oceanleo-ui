@@ -272,7 +272,9 @@ export function ArtifactLibrary({
   );
 
   return (
-    <div className={`${fill ? "h-full overflow-y-auto" : ""} px-8 py-6`}>
+    // fill（内嵌右栏「库·文件库」）：顶部 padding 收小（pt-3），让搜索框上移贴近标签栏
+    //（操作员 2026-07-06）；整页形态保持 py-6。
+    <div className={`${fill ? "h-full overflow-y-auto px-8 pb-6 pt-3" : "px-8 py-6"}`}>
       {selected && (
         <Modal onClose={() => setSelectedIdx(null)} className="max-w-3xl">
           <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3.5">
@@ -329,7 +331,15 @@ export function ArtifactLibrary({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(filterLabel)}</h1>
+        {/* 大标题只在「受控（有侧栏子栏、无 chips）」的整页形态出现——那才需要页面标题。
+            非受控形态（下方自带分区 chips，如右栏「库·文件库」内嵌）里再放一个大「全部」
+            与 chips 重复、且把搜索框顶得很低（操作员 2026-07-06 截图），故隐藏，让搜索框上移。 */}
+        {controlledFilter !== undefined ? (
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(filterLabel)}</h1>
+        ) : (
+          // 占位空 span：撑起 flex 两端对齐，让搜索框保持在行右侧。
+          <span aria-hidden className="sr-only" />
+        )}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
             <svg className="h-3.5 w-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

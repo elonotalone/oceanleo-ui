@@ -29,6 +29,8 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { useAttachments } from "./useAttachments";
+import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import { useShellChrome } from "./ShellChrome";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 function artifactLabels(tt: UITranslate): Record<string, string> {
@@ -98,10 +100,11 @@ export interface AgentChatProps {
   emptyHint?: React.ReactNode;
   /**
    * 顶栏「返回」按钮回调（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole 顶栏）。
-   * 给了它 → agent 界面【顶部】出现一条横栏：左「‹ 返回」pill + 右侧【本次对话总结】
-   * （= 后端自动生成的 task.title）。点击「返回」【只调用本回调】（不动任务、不 stopTask），
-   * 让宿主在**不中止对话**的前提下退回上一层（如首页）。宿主自行决定卸载还是隐藏本组件
-   * ——想保留对话请隐藏而非卸载（见 word app/page.tsx）。 */
+   * 给了它 → agent 界面【最上面那一行】变成一条横栏：左「‹ 返回」pill + 本次对话总结
+   * （= 后端自动生成的 task.title），右「模型选择 ▾」。此时会通知 AppShell 隐藏它 header
+   * 里的模型选择（否则模型选择在上、返回在下 = 两行浪费空间）。点击「返回」【只调用本回调】
+   * （不动任务、不 stopTask），让宿主在**不中止对话**的前提下退回上一层（如首页）。宿主自行
+   * 决定卸载还是隐藏本组件——想保留对话请隐藏而非卸载（见 word app/page.tsx）。 */
   onBack?: () => void;
   /** 返回按钮文案，默认「返回」。 */
   backLabel?: string;
@@ -337,10 +340,32 @@ export function AgentChat({
   // 系列 agent 都走同一后端，故任何站的对话都有这个总结——这里在顶栏「返回」右侧显示它。
   const convoSummary = (taskTitle || "").trim();
 
+  // 顶栏右上角「模型选择」：与 OperatorConsole 同款——从 AppShell 透传的 modelConfig
+  // 取模态（各站零接线），渲染到本组件顶栏那一行的右侧，并通知 AppShell 隐藏它 header
+  // 里那条模型选择（否则「模型选择」在上、返回在下 = 两行浪费空间，正是操作员截图的病）。
+  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
+  const topBarActive = Boolean(onBack);
+  const showModelPicker = topBarActive && Boolean(modelConfig?.categories?.length);
+  useEffect(() => {
+    if (!showModelPicker) return;
+    setSuppressHeaderModel(true);
+    return () => setSuppressHeaderModel(false);
+  }, [showModelPicker, setSuppressHeaderModel]);
+  const topBarModelPicker = showModelPicker ? (
+    <ModelPicker
+      categories={modelConfig!.categories as ModelCategory[]}
+      siteId={modelConfig!.siteId}
+      apiHref={modelConfig!.apiHref}
+      variant="popover"
+      align="right"
+    />
+  ) : null;
+
   // 顶栏（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole.topBar 样式）：
-  // 左「‹ 返回」pill（给了 onBack 才有）+ 右侧本次对话总结。给了 onBack 才渲染整条顶栏。
+  // 一行搞定 —— 左「‹ 返回」pill + 本次对话总结，右「模型选择 ▾」。给了 onBack 才渲染。
+  // 顶栏就是页面最上面那一行（AppShell header 已被 suppress 隐藏），不再多占一行。
   const TOPBAR_H = 52;
-  const topBar = onBack ? (
+  const topBar = topBarActive ? (
     <div className="flex shrink-0 items-center gap-3 px-4 py-2.5" style={{ minHeight: TOPBAR_H }}>
       <button
         type="button"
@@ -365,6 +390,7 @@ export function AgentChat({
       ) : (
         <span className="min-w-0 flex-1" />
       )}
+      {topBarModelPicker && <div className="shrink-0">{topBarModelPicker}</div>}
     </div>
   ) : null;
 
@@ -458,6 +484,12 @@ export function AgentChat({
         </div>
       );
 
+  // 高度账（关键）：本组件顶栏出现时会 suppress 掉 AppShell 那条 header。
+  //  - 顶栏出现且 suppress 了 header（showModelPicker=true）：本组件占满全高 → 可用高度 = 100dvh。
+  //  - 顶栏出现但没 suppress（无模型模态，罕见）：AppShell header 仍在 → 可用高度 = 100dvh-headerHeight。
+  //  - 无顶栏（旧行为）：AppShell header 在 → SplitWorkspace 自算 100dvh-headerHeight。
+  // SplitWorkspace body 高 = 100dvh - 其 headerHeight 参数；令其 body = 可用高 - TOPBAR_H。
+  const availOffset = topBar ? (showModelPicker ? 0 : headerHeight) : headerHeight;
   const split = (
     <SplitWorkspace
       left={stream}
@@ -467,8 +499,7 @@ export function AgentChat({
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
-      // 有顶栏时，把顶栏高度算进 SplitWorkspace 的 height 计算（它内部用 100dvh-headerHeight）。
-      headerHeight={topBar ? headerHeight + TOPBAR_H : headerHeight}
+      headerHeight={topBar ? availOffset + TOPBAR_H : headerHeight}
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
       library={effectiveLibrary}
@@ -478,12 +509,12 @@ export function AgentChat({
   // 无顶栏（未给 onBack）：保持原样，直接返回分栏骨架。
   if (!topBar) return split;
 
-  // 有顶栏：外层 flex 列 = 顶栏（返回 + 本次对话总结）+ 分栏骨架。整列高度 = 100dvh-headerHeight，
-  // 顶栏占 TOPBAR_H，分栏占剩余（其自身 height 计算已含 TOPBAR_H，故两者对齐不溢出）。
+  // 有顶栏：外层 flex 列 = 顶栏（返回 + 总结 + 模型选择）+ 分栏骨架。整列高 = 可用高，顶栏占
+  // TOPBAR_H，分栏占剩余（其 body 自算 = 100dvh-(availOffset+TOPBAR_H) = 可用高-TOPBAR_H，对齐不溢出）。
   return (
     <div
       className="flex min-h-0 flex-col"
-      style={{ height: `calc(100dvh - ${headerHeight}px)` }}
+      style={{ height: `calc(100dvh - ${availOffset}px)` }}
     >
       {topBar}
       <div className="min-h-0 flex-1">{split}</div>
