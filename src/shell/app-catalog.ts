@@ -23,6 +23,7 @@
 
 import { type ReactNode } from "react";
 import { type GuideSection } from "./NavigatorGuide";
+import { type MaterialItem } from "./MaterialLibrary";
 import { type OpsPatch } from "../lib/fn-agent";
 
 /**
@@ -70,6 +71,14 @@ export interface GoalApp {
   guideSections?: GuideSection[];
   /** 导航区顶部教学一句话（不给则用站点通用文案）。 */
   guideIntro?: ReactNode;
+  /**
+   * 宗旨 v17（操作员 2026-07-07）：该成品 app 右栏「素材库」展示的【启发/参考素材】——
+   * 面向目的的成品示例图（如海报生成 app 放一批海报、网站相关 app 放一批网站板块）。
+   * 与「导航」（点了填操作台的模板）、「文件库」（用户自己产出的文件）都不同：素材只
+   * 供启发，点击是【放大铺满库查看】，不写回操作台。渲染交给共享 <MaterialLibrary>。
+   * 不给则该成品素材库为空态。
+   */
+  materials?: MaterialItem[];
 }
 
 /** 进入成品 app 时灌进操作台的预置（主 prompt 模板 + 参数补丁）。 */

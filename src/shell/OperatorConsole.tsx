@@ -456,10 +456,9 @@ function autoGuideForSite(siteId: string, fnLabel: string): FunctionGuide | null
     prompt: c.prompt,
     icon: c.icon,
   }));
+  // 宗旨 v17（操作员 2026-07-07）：导航区不再显示教学文案（NavigatorGuide 已不渲染 intro）。
   return {
     title: fnLabel ? `${fnLabel} · 导航` : "导航",
-    intro:
-      "在左侧「操作台」精细调参后点生成，或切到「agent」直接对它说需求。下面是一些常用示例，点一个即可把内容填进左侧输入框，稍作修改就能用。",
     examples,
     examplesLabel: "试试这些示例",
   };

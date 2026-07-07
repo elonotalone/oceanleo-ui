@@ -75,10 +75,6 @@ export interface SiteCatalogConsoleProps {
   guideIntro?: ReactNode;
 }
 
-// 每个成品 app 的库→导航「三个板块」的默认板块标题（成品自带 guideSections 时用其自身）。
-const GUIDE_INTRO_FALLBACK =
-  "在左侧「操作台」精调后点生成，或切到「agent」直接说需求。下面是几组现成模板，点一张即可把它填进左侧操作台，改几个字就能用。";
-
 /**
  * 把一批成品 app 渲染成完整 workspace（目录 + 场景分类器 + 共享操作台 + 三板块导航）。
  */
@@ -112,11 +108,14 @@ export function SiteCatalogConsole({
         const sections = injectPresetCard
           ? withPresetCard(withDefaults, app)
           : withDefaults;
+        // 宗旨 v17（操作员 2026-07-07）：导航区不再显示「在左侧操作台精调…」教学文案
+        // （NavigatorGuide 已不渲染 intro）。这里不再灌 GUIDE_INTRO_FALLBACK；仅当站点/成品
+        // 显式给了 guideIntro 才透传（NavigatorGuide 当前忽略它，留作向后兼容）。
         const guide: FunctionGuide | undefined =
           sections && sections.length
             ? {
                 title: `${app.name} · 模板`,
-                intro: app.guideIntro ?? guideIntro ?? GUIDE_INTRO_FALLBACK,
+                intro: app.guideIntro ?? guideIntro,
                 sections,
               }
             : undefined;

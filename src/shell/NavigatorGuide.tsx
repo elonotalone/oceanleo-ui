@@ -18,10 +18,11 @@
 // 得统一的 navigator 体验。示例点击 → OperatorConsole 把内容灌进当前功能的左栏。
 // ============================================================================
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { useGuideWorkflows } from "./guide-context";
 import { timeAgo } from "../ui";
+import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 
 /** 一个示例「prompt」（可带图片，对应左栏图片输入）。 */
 export interface GuideExample {
@@ -114,10 +115,12 @@ interface NavItem {
 }
 
 /**
- * 功能页右栏「导航」= 库风格的模板/工作流浏览器（宗旨 v16 版式，操作员 2026-07-06）。
- * 对照文件库版式：顶部搜索框 + 卡片/列表切换；下面横排类别 chips（第一个恒为「我的」=
- * 用户保存的工作流，其后是本成品的模板板块）；再下面是卡片网格 / 列表。点一张卡片 →
- * 把该模板/工作流灌进左侧操作台（prompt + 参数），不跳页。
+ * 功能页右栏「导航」= 库风格的模板/工作流浏览器（宗旨 v17 版式，操作员 2026-07-07）。
+ * 与「素材库 / 文件库」三分区版式**几乎完全一致**（从上到下：搜索框 → 分类 chips →
+ * 卡片网格/列表）。类别 chips：第一枚恒为「全部」（合并所有板块的模板），其后为
+ * 「我的」（用户保存的工作流），再后是本成品的各模板板块。点一张卡片 → 把该模板/工作流
+ * 灌进左侧操作台（prompt + 参数），不跳页。**不再显示 guide.intro 教学文案**（操作员
+ * 2026-07-07：那段「在左侧操作台精调…」的文案删除）。
  */
 export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: NavigatorGuideProps) {
   const tt = useUI();
@@ -132,9 +135,11 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
     return flat.length ? [{ title: guide.examplesLabel ?? "模板", examples: flat }] : [];
   }, [guide]);
 
-  // 类别 chips：第一个恒为「我的」（保存的工作流），其后每个模板板块一枚。
+  // 类别 chips（操作员 2026-07-07）：第一枚恒为「全部」（直接显示所有板块的模板卡），
+  // 其后「我的」（保存的工作流），再后每个模板板块一枚。
   const categories = useMemo(
     () => [
+      { id: "__all", label: "全部" },
       { id: "__mine", label: "我的" },
       ...sections.map((s, i) => ({ id: `s${i}`, label: s.title })),
     ],
@@ -145,10 +150,24 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
 
-  // 默认落在第一个模板板块（一进来就看到模板）；无模板板块时落「我的」。
-  // 用派生值兜底，避免切成品后旧 cat 失效。
-  const defaultCat = sections.length ? "s0" : "__mine";
-  const activeCat = categories.some((c) => c.id === cat) ? cat : defaultCat;
+  // 默认落在「全部」（一进来即看到所有模板，与素材库/文件库首屏一致）。
+  const activeCat = categories.some((c) => c.id === cat) ? cat : "__all";
+
+  // 把某板块的示例映射成可渲染条目（带稳定 key）。
+  const exampleItems = useCallback(
+    (exs: GuideExample[], idx: number): NavItem[] =>
+      exs.map((ex, i) => ({
+        key: `${idx}-${i}`,
+        label: ex.label,
+        hint: ex.hint ?? ex.prompt,
+        thumb: ex.thumb,
+        icon: ex.icon ?? "✦",
+        badge: ex.badge,
+        searchText: `${ex.label} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),
+        onClick: () => onUseExample?.(ex),
+      })),
+    [onUseExample],
+  );
 
   const items = useMemo<NavItem[]>(() => {
     if (activeCat === "__mine") {
@@ -163,19 +182,13 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
         onDelete: () => void wf?.deleteWorkflow(w.id),
       }));
     }
+    // 「全部」：把每个板块的示例平铺合并（保序）。
+    if (activeCat === "__all") {
+      return sections.flatMap((s, idx) => exampleItems(s.examples ?? [], idx));
+    }
     const idx = Number(activeCat.slice(1)) || 0;
-    const exs = sections[idx]?.examples ?? [];
-    return exs.map((ex, i) => ({
-      key: `${idx}-${i}`,
-      label: ex.label,
-      hint: ex.hint ?? ex.prompt,
-      thumb: ex.thumb,
-      icon: ex.icon ?? "✦",
-      badge: ex.badge,
-      searchText: `${ex.label} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),
-      onClick: () => onUseExample?.(ex),
-    }));
-  }, [activeCat, workflows, sections, onUseExample, wf, tt]);
+    return exampleItems(sections[idx]?.examples ?? [], idx);
+  }, [activeCat, workflows, sections, onUseExample, wf, tt, exampleItems]);
 
   const q = search.trim().toLowerCase();
   const filtered = q ? items.filter((it) => it.searchText.includes(q)) : items;
@@ -183,81 +196,24 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      {guide.intro != null && (
-        <p className="mb-3 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
-          {typeof guide.intro === "string" ? tt(guide.intro) : guide.intro}
-        </p>
-      )}
+      {/* 搜索框（右对齐、窄，与素材库/文件库同尺寸）+ 卡片/列表切换 */}
+      <LibraryToolbar
+        search={search}
+        setSearch={setSearch}
+        view={view}
+        setView={setView}
+        placeholder={tt("搜索模板 / 工作流")}
+        tt={tt}
+      />
 
-      {/* 搜索框 + 卡片/列表切换（对照文件库版式） */}
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
-          <svg className="h-3.5 w-3.5 shrink-0 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
-          </svg>
-          <input
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
-            placeholder={tt("搜索模板 / 工作流")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button type="button" onClick={() => setSearch("")} className="shrink-0 text-neutral-400 transition hover:text-neutral-600">
-              ✕
-            </button>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center rounded-lg bg-neutral-100 p-0.5">
-          <button
-            type="button"
-            onClick={() => setView("grid")}
-            className={`rounded-md p-1.5 transition-all duration-150 ${
-              view === "grid" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-            }`}
-            title={tt("网格视图")}
-          >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className={`rounded-md p-1.5 transition-all duration-150 ${
-              view === "list" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-            }`}
-            title={tt("列表视图")}
-          >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* 类别 chips（第一个恒为「我的」） */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {categories.map((c) => {
-          const on = activeCat === c.id;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCat(c.id)}
-              className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
-                on ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
-              }`}
-              style={on ? { background: accent } : undefined}
-            >
-              {tt(c.label)}
-            </button>
-          );
-        })}
-      </div>
+      {/* 类别 chips（第一枚恒为「全部」；与素材库/文件库共用 LibraryChips 版式） */}
+      <LibraryChips
+        chips={categories}
+        active={activeCat}
+        onChange={setCat}
+        accent={accent}
+        tt={tt}
+      />
 
       {/* 内容：卡片网格 / 列表 */}
       {filtered.length === 0 ? (

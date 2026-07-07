@@ -20,6 +20,7 @@ import { browserClient } from "../lib/auth/client";
 import { Markdown } from "./Markdown";
 import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
+import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 
 export interface ArtifactItem {
   id: string;
@@ -272,9 +273,17 @@ export function ArtifactLibrary({
   );
 
   return (
-    // fill（内嵌右栏「库·文件库」）：顶部 padding 收小（pt-3），让搜索框上移贴近标签栏
-    //（操作员 2026-07-06）；整页形态保持 py-6。
-    <div className={`${fill ? "h-full overflow-y-auto px-8 pb-6 pt-3" : "px-8 py-6"}`}>
+    // fill（内嵌右栏「库·文件库」，宗旨 v17，操作员 2026-07-07）：左右留白收窄到与「导航 /
+    // 素材库」一致——那两个分区直接坐在右栏 body 的 p-4 里、内容 mx-auto max-w-3xl 居中。
+    // 所以这里 fill 态去掉多余的横向 px-8（改 px-0，仅靠外层 p-4），并同样用 max-w-3xl 居中，
+    // 三分区左右留白天然一致。整页（受控）形态保持 px-8 py-6 页面版式不变。
+    <div
+      className={
+        fill
+          ? "mx-auto h-full w-full max-w-3xl overflow-y-auto px-0 pb-6 pt-0"
+          : "px-8 py-6"
+      }
+    >
       {selected && (
         <Modal onClose={() => setSelectedIdx(null)} className="max-w-3xl">
           <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3.5">
@@ -330,90 +339,41 @@ export function ArtifactLibrary({
         </Modal>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* 大标题只在「受控（有侧栏子栏、无 chips）」的整页形态出现——那才需要页面标题。
-            非受控形态（下方自带分区 chips，如右栏「库·文件库」内嵌）里再放一个大「全部」
-            与 chips 重复、且把搜索框顶得很低（操作员 2026-07-06 截图），故隐藏，让搜索框上移。 */}
-        {controlledFilter !== undefined ? (
+      {/* 受控整页形态才有大标题（页面标题）；非受控（右栏内嵌 fill）无标题，搜索行上移，
+          与「导航 / 素材库」一致（宗旨 v17）。搜索行统一走 LibraryToolbar（右对齐窄框 +
+          网格/列表切换），三分区搜索框尺寸/位置一致。 */}
+      {controlledFilter !== undefined ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(filterLabel)}</h1>
-        ) : (
-          // 占位空 span：撑起 flex 两端对齐，让搜索框保持在行右侧。
-          <span aria-hidden className="sr-only" />
-        )}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
-            <svg className="h-3.5 w-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
-            </svg>
-            <input
-              className="w-40 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
-              placeholder={tt("搜索文件")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="text-neutral-400 transition hover:text-neutral-600"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <div className="flex items-center rounded-lg bg-neutral-100 p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("grid")}
-              className={`rounded-md p-1.5 transition-all duration-150 ${
-                view === "grid" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-              }`}
-              title={tt("网格视图")}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("list")}
-              className={`rounded-md p-1.5 transition-all duration-150 ${
-                view === "list" ? "bg-white text-neutral-700 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-              }`}
-              title={tt("列表视图")}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
+          <LibraryToolbar
+            search={search}
+            setSearch={setSearch}
+            view={view}
+            setView={setView}
+            placeholder={tt("搜索文件")}
+            tt={tt}
+          />
         </div>
-      </div>
+      ) : (
+        <LibraryToolbar
+          search={search}
+          setSearch={setSearch}
+          view={view}
+          setView={setView}
+          placeholder={tt("搜索文件")}
+          tt={tt}
+        />
+      )}
 
-      {/* 非受控（无侧栏子栏的整页形态）：顶部渲染分区 chips。 */}
+      {/* 非受控（无侧栏子栏的整页/内嵌 fill 形态）：顶部渲染分区 chips（与导航/素材库共用）。 */}
       {controlledFilter === undefined && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {ARTIFACT_FILTERS.map((f) => {
-            const on = f.id === filter;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setFilter(f.id as ArtifactFilter)}
-                className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
-                  on ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
-                }`}
-                style={on ? { background: accent } : undefined}
-              >
-                {tt(f.label)}
-              </button>
-            );
-          })}
-        </div>
+        <LibraryChips
+          chips={ARTIFACT_FILTERS}
+          active={filter}
+          onChange={(id) => setFilter(id as ArtifactFilter)}
+          accent={accent}
+          tt={tt}
+        />
       )}
 
       {authMsg ? (

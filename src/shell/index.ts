@@ -82,6 +82,14 @@ export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
+// 宗旨 v17（2026-07-07）：右栏三分区「库」统一版式积木（搜索行 + 分类 chips），
+// 供 导航 / 素材库 / 文件库 共用，保证三分区 UI 几乎完全一致。
+export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
+export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
+// 宗旨 v17（2026-07-07）：素材库 = 启发/参考的成品示例（各 app 自带 materials），点卡片
+// 放大铺满库查看，不写回操作台。与导航/文件库同一套版式。
+export { MaterialLibrary } from "./MaterialLibrary";
+export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 // 宗旨 v12.1（2026-07-04）：功能页「使用指南（navigator）」——右栏（库）默认展开、
 // 首屏是导航页（教学文案 + 示例，点示例灌进左栏）。ConsoleFunction.guide 配置。
 export { NavigatorGuide } from "./NavigatorGuide";
