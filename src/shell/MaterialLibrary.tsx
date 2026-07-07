@@ -256,28 +256,18 @@ export function MaterialLibrary({
             </span>
           </div>
           <div className="v-scroll relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-2">
-            {/* 可打开模板（word 文档 / ppt / 网页设计）→ 放大态**内嵌 iframe 真成品**，用户直接
-                看到真实的 word/ppt/网页文档而非一张图（宗旨 v21，操作员 2026-07-07「点开要能预览
-                真 word/ppt」）。纯图片素材（无 openUrl）走 <img object-contain>。iframe 与图片都
-                在这个 flex-1 min-h-0 居中容器里，尺寸贴合可用区。 */}
-            {zoom.openUrl && zoom.kind && zoom.kind !== "image" ? (
-              <iframe
-                key={zoom.id}
-                src={zoom.openUrl}
-                title={tt(zoom.title)}
-                className="v-fade-in h-full w-full rounded-lg border border-neutral-200 bg-white"
-                loading="lazy"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-              />
-            ) : (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                key={zoom.id}
-                src={zoom.preview || zoom.thumb}
-                alt={tt(zoom.title)}
-                className="v-fade-in block max-h-full max-w-full object-contain"
-              />
-            )}
+            {/* 放大态**主视图 = 真实成品的高清预览图**（preview 就是该模板/成品渲染出来的样子，
+                所见即所得，且必定加载成功——宗旨 v21，操作员 2026-07-07「点开要能预览真成品」）。
+                可打开模板另配「套用此模板」按钮（上方 + 下方），点它在新标签打开真实可编辑成品
+                （design 编辑器载入该文档）。此前用 iframe 内嵌 design 编辑器：跨源 + 需登录 →
+                常显空白/登录页，反而更差，已弃用。 */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={zoom.id}
+              src={zoom.preview || zoom.thumb}
+              alt={tt(zoom.title)}
+              className="v-fade-in block max-h-full max-w-full rounded-lg object-contain shadow-sm"
+            />
             {zoomIdx !== null && zoomIdx > 0 && (
               <button
                 type="button"
@@ -303,10 +293,26 @@ export function MaterialLibrary({
               </button>
             )}
           </div>
-          {zoom.desc && (
-            <p className="shrink-0 border-t border-neutral-100 px-3 py-2 text-[12px] leading-relaxed text-neutral-500">
-              {tt(zoom.desc)}
-            </p>
+          {/* 底部：说明 + 可打开模板的「套用/打开真实成品」主按钮（宗旨 v21）。 */}
+          {(zoom.desc || zoom.openUrl) && (
+            <div className="flex shrink-0 items-center gap-3 border-t border-neutral-100 px-3 py-2">
+              {zoom.desc && (
+                <p className="min-w-0 flex-1 truncate text-[12px] leading-relaxed text-neutral-500">
+                  {tt(zoom.desc)}
+                </p>
+              )}
+              {zoom.openUrl && (
+                <a
+                  href={zoom.openUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition hover:opacity-90"
+                  style={{ background: accent }}
+                >
+                  {tt(zoom.openLabel || "打开模板")}
+                </a>
+              )}
+            </div>
           )}
         </div>
       )}
