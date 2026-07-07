@@ -191,10 +191,14 @@ export function MaterialLibrary({
         </div>
       )}
 
-      {/* 放大态：铺满整个库（absolute inset-0）。点空白 / ✕ / Esc 关闭；← → 翻看。 */}
+      {/* 放大态：铺满整个库（absolute inset-0）。点「返回」/ ✕ / Esc 关闭；← → 翻看。 */}
       {zoom && (
-        <div className="absolute inset-0 z-20 flex flex-col rounded-xl bg-white">
-          <div className="flex items-center gap-2 border-b border-neutral-100 px-1 pb-2">
+        // 宗旨 v18.1（操作员 2026-07-07 二次校正「图片下方大片空白」）：整个放大态 = 单个可上下
+        // 滚动的容器；标题条 sticky 顶部。图片 `w-full h-auto` 按自然比例铺满宽度、高度顺其自然，
+        // **不再**放在一个 flex-1 撑满高度的框里 → 宽图/矮图下方不再露出大片 bg 空白（容器只按
+        // 内容高，图片下面紧跟说明或直接到底）。
+        <div className="v-scroll absolute inset-0 z-20 overflow-y-auto rounded-xl bg-white">
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-neutral-100 bg-white/95 px-1 py-2 backdrop-blur-sm">
             <button
               type="button"
               onClick={() => setZoomIdx(null)}
@@ -210,12 +214,7 @@ export function MaterialLibrary({
               {(zoomIdx ?? 0) + 1} / {filtered.length}
             </span>
           </div>
-          {/* 大图区（宗旨 v18，操作员 2026-07-07：放大后上下留白几乎为零）：
-              旧版用 `flex-1 + object-contain` 把图在一个撑满高度的框里垂直居中——宽图/矮图
-              会在上下留大片空白（截图 da4e6cf1）。改为：容器可上下滚动，图片 `w-full h-auto`
-              **顶对齐**按自然比例铺满宽度，高度顺其自然 → 顶部无留白；图比库矮时底部也只留
-              一点点（由 items-start 顶对齐 + 容器仅按内容高）。 */}
-          <div className="relative min-h-0 flex-1 overflow-y-auto bg-neutral-50">
+          <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={zoom.id}

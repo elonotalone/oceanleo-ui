@@ -248,7 +248,8 @@ export function ArtifactLibrary({
     if (selectedIdx === null) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowLeft") navigate(-1);
-      if (e.key === "ArrowRight") navigate(1);
+      else if (e.key === "ArrowRight") navigate(1);
+      else if (e.key === "Escape") setSelectedIdx(null);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -273,18 +274,77 @@ export function ArtifactLibrary({
   );
 
   return (
-    // fill（内嵌右栏「库·文件库」，宗旨 v17，操作员 2026-07-07）：左右留白收窄到与「导航 /
-    // 素材库」一致——那两个分区直接坐在右栏 body 的 p-4 里、内容 mx-auto max-w-3xl 居中。
-    // 所以这里 fill 态去掉多余的横向 px-8（改 px-0，仅靠外层 p-4），并同样用 max-w-3xl 居中，
-    // 三分区左右留白天然一致。整页（受控）形态保持 px-8 py-6 页面版式不变。
+    // fill（内嵌右栏「库·文件库」，宗旨 v18，操作员 2026-07-07 二次校正）：**满宽、不 max-w
+    // 居中**——与「素材库」(MaterialLibrary min-h-full 满宽) 对齐，消除操作员截图里文件库右侧那
+    // 一列空白。三分区（导航/素材库/文件库）都由右栏 body 的 p-4 提供左右留白，内容各自铺满。
+    // relative：让「文件点开」的预览浮层用 absolute inset-0 恰好占满库区域（内联显示，不弹新页）。
+    // 整页（受控）形态保持 px-8 py-6 页面版式不变。
     <div
       className={
         fill
-          ? "mx-auto h-full w-full max-w-3xl overflow-y-auto px-0 pb-6 pt-0"
+          ? "relative h-full w-full overflow-y-auto px-0 pb-6 pt-0"
           : "px-8 py-6"
       }
     >
-      {selected && (
+      {/* 文件点开（宗旨 v18，操作员 2026-07-07）：**内联在右栏库里显示**，不再弹出 Modal 新页面。
+          fill 态用 absolute inset-0 铺满库区域的浮层（同 MaterialLibrary 放大态）；受控整页态回退
+          用 Modal（整页 /library 没有可铺满的相对容器）。返回/✕/Esc 关闭；← → 翻看。 */}
+      {selected && fill && (
+        <div className="absolute inset-0 z-20 flex flex-col rounded-xl bg-white">
+          <div className="flex items-center gap-2 border-b border-neutral-100 px-1 pb-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIdx(null)}
+              className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {tt("返回")}
+            </button>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-800">
+              {selected.title || tt("内容详情")}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-neutral-400">
+              {(selectedIdx ?? 0) + 1} / {filtered.length}
+            </span>
+          </div>
+          <div className="v-scroll relative min-h-0 flex-1 overflow-y-auto p-3">
+            <ArtifactPreview
+              a={selected}
+              tt={tt}
+              copied={copied}
+              onCopy={copyContent}
+              kindLabel={kindLabel}
+            />
+            {selectedIdx !== null && selectedIdx > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                aria-label={tt("上一项")}
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition hover:bg-white"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+            {selectedIdx !== null && selectedIdx < filtered.length - 1 && (
+              <button
+                type="button"
+                onClick={() => navigate(1)}
+                aria-label={tt("下一项")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition hover:bg-white"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {selected && !fill && (
         <Modal onClose={() => setSelectedIdx(null)} className="max-w-3xl">
           <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3.5">
             <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-neutral-900">

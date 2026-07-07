@@ -399,6 +399,30 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       seed(template);
     }, [editor, template, seed]);
 
+    // 「同一张导航卡片重复点击」重灌（宗旨 v18，操作员 2026-07-07，全家桶中心化修）：
+    //   现象：用户点某导航卡 → 模板灌进来；改/删了左栏内容后【再点同一张卡】→ 无反应
+    //   （操作员：image 站点第二次点卡片失效，要求以 word 为准全站修好）。
+    //   根因：站点点卡片时通常 `setValue("")` + `setTemplate(同一字符串)`。template 值没变 →
+    //   上面那个 seed effect 因 `seededTemplate.current === template` 跳过 → 但 value 又被清空
+    //   → 输入框空着。（word 站是在自己的 onApplyPatch 里手写 null→raf→set 的 dance 才绕过。）
+    //   中心化修法（零站点改动，替代 word 的手写 dance）：识别「站点【程序化】把 value 清成空、
+    //   且当前模板已 seed」这一精确信号 → 重新 seed 同一模板。如何区分「站点清空」vs「用户自己
+    //   Ctrl+A 删空」？——用户删空是编辑器自己 onUpdate 吐 "" → lastEmittedRef 也 = ""，故
+    //   `value === lastEmittedRef.current`；站点外部 setValue("") 时 lastEmittedRef 还停在旧的
+    //   非空值，故 `value !== lastEmittedRef.current`。只在后者才重灌 → 不会与用户编辑打架
+    //   （不会「删第一个字整段复活」，那属于前者）。
+    useEffect(() => {
+      if (!editor || applyingRef.current) return;
+      if (template == null) return; // 无模板：走下面的纯文本同步 effect
+      if (seededTemplate.current !== template) return; // 尚未 seed 过：上一个 effect 会灌
+      if (value !== "") return; // 只处理「被清空」这一信号
+      if (value === lastEmittedRef.current) return; // 用户自己删空的回声 → 不重灌
+      if (editor.view.composing) return; // IME 合成途中不动
+      if (docToPlain(editor).length === 0) return; // 编辑器本就空，无需重灌
+      // 站点程序化清空 + 同模板已 seed → 视作「再次点同一张卡」，重新灌模板。
+      seed(template);
+    }, [editor, template, value, seed]);
+
     // 外部 value 被改（无模板的纯文本场景，调用方【程序化】改 value）→ 同步进编辑器。
     // **只在无模板时**生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark
     // + 破坏 undo）。

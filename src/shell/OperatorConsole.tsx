@@ -30,7 +30,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
-import { type ModelCategory } from "./ModelPicker";
+import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
 import { GuideProvider } from "./guide-context";
@@ -256,25 +256,36 @@ export function OperatorConsole({
     onChange?.("");
   };
 
-  // 宗旨 v18（操作员 2026-07-07）：**操作台顶栏不再渲染「模型选择」**。操作员明确
-  // 「操控台中有模型选择功能，这样子不对」（截图 image/website workspace 右上角那枚
-  // 「模型选择 ▾」）。功能站的工作台不该让用户在这里选模型——模型由后端/站点默认决定。
-  // 因此这里恒不渲染 modelPicker，也不再 setSuppressHeaderModel（顶栏不占那一格）。
-  // `modelCategories`/`modelSiteId`/`apiHref` 三个 prop 保留仅为向后兼容（不再使用）。
-  void modelCategories;
-  void modelSiteId;
-  void apiHref;
-  // 顶栏不渲染模型选择；同时把 AppShell header 里那条模型选择也隐藏——功能站工作台页
-  // 整页都不该出现「模型选择」（截图右上角那枚）。suppress 后 AppShell header 不渲染，
-  // 高度按 0 计（见下 studioHeaderHeight）。
-  const { setSuppressHeaderModel } = useShellChrome();
+  // 顶栏右上角「模型选择」（操作员 2026-07-07 二次校正，撤销 v18 误删）：v18 曾把顶栏的
+  // 「模型选择」整个删掉——但操作员本意是删【左侧操控台表单内】的模型选择项，**不是**右上角
+  // 顶栏那枚。右上角顶栏「模型选择 ▾」在各 app 里必须【恢复】。做法同 v10：本组件在自己那条
+  // 顶栏右上角渲染收起态 ModelPicker（点开才弹面板），并通知 AppShell 隐藏它 header 里那条
+  // 模型选择，避免顶栏出现两行。模态来源——优先本组件 props（modelCategories），否则回退到外层
+  // AppShell 透传的 modelConfig（各站工作台页不必再手动传一遍）。
+  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
+  const effectiveModelCategories =
+    (modelCategories as string[] | undefined) ?? modelConfig?.categories;
+  const effectiveModelSiteId =
+    modelSiteId || siteId || modelConfig?.siteId || "default";
+  const effectiveApiHref = apiHref || modelConfig?.apiHref || "/api";
+  const showModelPicker = Boolean(effectiveModelCategories?.length) && !hideTabs;
   useEffect(() => {
     if (hideTabs) return; // solo/embed 由主站承载顶栏，不干预
+    // 恒隐藏 AppShell header 里的模型选择：有顶栏模型选择时避免两处重复；没有时该 header
+    // 也无内容（工作台页不传 headerRight），整体不渲染 → 高度按 0 计（见 studioHeaderHeight）。
     setSuppressHeaderModel(true);
     return () => setSuppressHeaderModel(false);
   }, [hideTabs, setSuppressHeaderModel]);
-  const showModelPicker = false;
-  const modelPicker: ReactNode = null;
+
+  const modelPicker: ReactNode = showModelPicker ? (
+    <ModelPicker
+      categories={effectiveModelCategories as ModelCategory[]}
+      siteId={effectiveModelSiteId}
+      apiHref={effectiveApiHref}
+      variant="popover"
+      align="right"
+    />
+  ) : null;
 
   if (directoryMode && !isOpened) {
     const items: DirectoryItem[] = functions.map((f) => ({
