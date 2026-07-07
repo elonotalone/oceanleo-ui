@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 
-/** 一条素材（启发/参考用的成品示例，如一张海报、一个网站板块）。 */
+/** 一条素材（启发/参考用的成品示例：一张海报、一份文档模板、一套幻灯模板…）。 */
 export interface MaterialItem {
   /** 稳定 id（去重 / key）。 */
   id: string;
@@ -42,6 +42,23 @@ export interface MaterialItem {
   desc?: string;
   /** 搜索附加关键词（可选）。 */
   tags?: string[];
+  /**
+   * 「打开 / 套用」深链（宗旨 v21，操作员 2026-07-07）：素材若是**可打开的成品模板**
+   * （word 文档模板 / ppt 模板 / 设计模板…），给它一个可在新标签打开、或在放大态内嵌
+   * iframe 预览的 URL。有 openUrl 时：
+   *   · 卡片角标显示「可打开」；
+   *   · 放大态默认用 iframe **内嵌真实成品**（真 word/ppt/网页文档，不再是一张图）；
+   *   · 放大态提供「新标签打开 / 套用此模板」按钮 → window.open(openUrl)。
+   * 不给则退回旧的「纯图片放大」行为（向后兼容图片素材）。 */
+  openUrl?: string;
+  /** 「打开」按钮文案（不给用「打开模板」）。如「套用此模板」「在编辑器中打开」。 */
+  openLabel?: string;
+  /**
+   * 素材形态（影响放大态渲染 + 角标）：
+   *   · "image"（默认）——纯图片素材，放大 = <img object-contain>；
+   *   · "doc" / "slides" / "web" / "template" —— 可打开的成品模板，放大优先 iframe(openUrl)，
+   *     iframe 不可用（无 openUrl）时回退大图 preview。 */
+  kind?: "image" | "doc" | "slides" | "web" | "template";
 }
 
 export interface MaterialLibraryProps {
@@ -222,18 +239,45 @@ export function MaterialLibrary({
               {tt("返回")}
             </button>
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-800">{tt(zoom.title)}</span>
+            {/* 可打开模板：放大态右上角「新标签打开 / 套用」按钮（宗旨 v21）。 */}
+            {zoom.openUrl && (
+              <a
+                href={zoom.openUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium text-white transition hover:opacity-90"
+                style={{ background: accent }}
+              >
+                {tt(zoom.openLabel || "打开模板")}
+              </a>
+            )}
             <span className="shrink-0 text-[11px] tabular-nums text-neutral-400">
               {(zoomIdx ?? 0) + 1} / {filtered.length}
             </span>
           </div>
           <div className="v-scroll relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              key={zoom.id}
-              src={zoom.preview || zoom.thumb}
-              alt={tt(zoom.title)}
-              className="v-fade-in block max-h-full max-w-full object-contain"
-            />
+            {/* 可打开模板（word 文档 / ppt / 网页设计）→ 放大态**内嵌 iframe 真成品**，用户直接
+                看到真实的 word/ppt/网页文档而非一张图（宗旨 v21，操作员 2026-07-07「点开要能预览
+                真 word/ppt」）。纯图片素材（无 openUrl）走 <img object-contain>。iframe 与图片都
+                在这个 flex-1 min-h-0 居中容器里，尺寸贴合可用区。 */}
+            {zoom.openUrl && zoom.kind && zoom.kind !== "image" ? (
+              <iframe
+                key={zoom.id}
+                src={zoom.openUrl}
+                title={tt(zoom.title)}
+                className="v-fade-in h-full w-full rounded-lg border border-neutral-200 bg-white"
+                loading="lazy"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                key={zoom.id}
+                src={zoom.preview || zoom.thumb}
+                alt={tt(zoom.title)}
+                className="v-fade-in block max-h-full max-w-full object-contain"
+              />
+            )}
             {zoomIdx !== null && zoomIdx > 0 && (
               <button
                 type="button"
@@ -295,9 +339,16 @@ function MaterialCard({
         />
         <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition group-hover:opacity-100">
           <span className="rounded-md bg-white/95 px-2 py-0.5 text-[11px] font-medium text-neutral-700">
-            {tt("放大查看")}
+            {m.openUrl ? tt("打开预览") : tt("放大查看")}
           </span>
         </span>
+        {/* 可打开模板角标（宗旨 v21）：一眼区分「成品模板（点开是真 word/ppt/网页）」与
+            「纯参考图片」。 */}
+        {m.openUrl && (
+          <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+            {tt("模板")}
+          </span>
+        )}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
         <span className="truncate text-[13px] font-medium text-neutral-800">{tt(m.title)}</span>

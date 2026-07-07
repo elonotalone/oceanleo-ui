@@ -274,18 +274,17 @@ export function ArtifactLibrary({
   );
 
   return (
-    // fill（内嵌右栏「库·文件库」，宗旨 v18，操作员 2026-07-07 二次校正）：**满宽、不 max-w
-    // 居中**——与「素材库」(MaterialLibrary min-h-full 满宽) 对齐，消除操作员截图里文件库右侧那
-    // 一列空白。三分区（导航/素材库/文件库）都由右栏 body 的 p-4 提供左右留白，内容各自铺满。
-    // relative：让「文件点开」的预览浮层用 absolute inset-0 恰好占满库区域（内联显示，不弹新页）。
+    // fill（内嵌右栏「库·文件库」，宗旨 v18，操作员 2026-07-07 三次校正）：**与「素材库」
+    // (MaterialLibrary `relative min-h-full`) 逐字对齐**——`relative min-h-full w-full`，**绝不
+    // 自带 overflow-y-auto**。病根（操作员截图 74959e6b 指的「滚动条右边还有一条空白」）：外层
+    // ResultCanvas body 已经是 `v-scroll-stable overflow-y-auto p-4`（scrollbar-gutter:stable 在
+    // 右缘预留了滚动槽），本组件再套一层自己的 `overflow-y-auto` → 出现【内层滚动条】，内层滚动
+    // 条右侧再叠外层预留的 stable 槽 = 那条死空白。去掉本层 overflow → 只剩外层一条滚动条，右侧
+    // 无空白，且滚动条右边就是面板边（素材库正因为没自带 overflow 才没这毛病）。
+    // relative + min-h-full：让「文件点开」预览浮层 `absolute inset-0` 恰好占满库可见区（配合
+    // 下面 selected 时隐藏网格 → flow 高塌缩到可见高，同 MaterialLibrary 放大态处理）。
     // 整页（受控）形态保持 px-8 py-6 页面版式不变。
-    <div
-      className={
-        fill
-          ? "relative h-full w-full overflow-y-auto px-0 pb-6 pt-0"
-          : "px-8 py-6"
-      }
-    >
+    <div className={fill ? "relative min-h-full w-full" : "px-8 py-6"}>
       {/* 文件点开（宗旨 v18，操作员 2026-07-07）：**内联在右栏库里显示**，不再弹出 Modal 新页面。
           fill 态用 absolute inset-0 铺满库区域的浮层（同 MaterialLibrary 放大态）；受控整页态回退
           用 Modal（整页 /library 没有可铺满的相对容器）。返回/✕/Esc 关闭；← → 翻看。 */}
@@ -399,6 +398,11 @@ export function ArtifactLibrary({
         </Modal>
       )}
 
+      {/* fill 态「文件点开」时（selected&&fill）**整段工具条/分区/网格不渲染**（同
+          MaterialLibrary 放大态 `!zoom`）：否则文件多时本 min-h-full 容器被网格撑高，
+          `absolute inset-0` 预览浮层随之撑高、下方大片空白。隐藏后 flow 高塌缩到可见高。 */}
+      {!(selected && fill) && (
+        <>
       {/* 受控整页形态才有大标题（页面标题）；非受控（右栏内嵌 fill）无标题，搜索行上移，
           与「导航 / 素材库」一致（宗旨 v17）。搜索行统一走 LibraryToolbar（右对齐窄框 +
           网格/列表切换），三分区搜索框尺寸/位置一致。 */}
@@ -439,12 +443,12 @@ export function ArtifactLibrary({
       {authMsg ? (
         <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
       ) : loading ? (
-        <div
-          className="mt-5 grid gap-4"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
-        >
+        // 卡片保持原来的小尺寸（固定列，随容器宽自然多列）——操作员 2026-07-07 明确：**不许
+        // 靠放大卡片填满右侧空白**。右侧空白的真因是双滚动条（已在根容器去掉本层 overflow 修
+        // 掉），与卡片尺寸无关。故这里回到原来的 2/3 列小卡片版式。
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonCard key={i} className="h-48" />
+            <SkeletonCard key={i} className="h-40" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -488,10 +492,7 @@ export function ArtifactLibrary({
           ))}
         </div>
       ) : (
-        <div
-          className="mt-5 grid gap-4"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
-        >
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
           {filtered.map((a, idx) => (
             <div
               key={a.id}
@@ -513,6 +514,8 @@ export function ArtifactLibrary({
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );
