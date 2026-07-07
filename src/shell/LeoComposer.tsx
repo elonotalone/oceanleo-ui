@@ -14,6 +14,7 @@ import {
   TemplateFillArea,
   type TemplateFillAreaHandle,
 } from "./PromptHighlightArea";
+import { useFillNonce } from "./guide-context";
 import { useUI } from "../i18n/ui/useUI";
 
 // ============================================================================
@@ -122,6 +123,11 @@ export interface LeoComposerProps {
    * 不传 / null → 用回原生 textarea，行为与旧版完全一致（全家桶其它输入框零回归）。
    */
   highlightTemplate?: string | null;
+  /**
+   * 命令式「重新灌模板」信号（v20）：宿主每次点导航/起手卡片都自增它 → 即便
+   * `highlightTemplate`/`value` 都没变（用户先删空、再点同一张卡）也强制把模板重新灌进
+   * 输入框。修「操作台内容删空后再点同卡恢复不了」。透传给 TemplateFillArea。 */
+  fillNonce?: number;
   /** 占位 chip `[字段]` 用色（默认站点 accent；缺省 #4f46e5）。 */
   accentColor?: string;
 
@@ -177,6 +183,7 @@ export function LeoComposer({
   autoFocus = false,
   disabled = false,
   highlightTemplate = null,
+  fillNonce,
   accentColor,
   onAttachFiles,
   accept,
@@ -194,6 +201,11 @@ export function LeoComposer({
 }: LeoComposerProps) {
   const tt = useUI();
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
+  // 命令式重灌 nonce（v20）：优先用 context（FunctionAgentChat 每次点导航/起手卡自增，站点
+  // 零改动即生效）；站点也可显式传 fillNonce 叠加。两源相加 → 任一自增都触发 TemplateFillArea
+  // 无条件重灌，根治「删空后再点同卡恢复不了」。
+  const ctxFillNonce = useFillNonce();
+  const effectiveFillNonce = (fillNonce ?? 0) + ctxFillNonce;
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
   // 唯一输入框（宗旨 v15j）：全程用 TemplateFillArea（Tiptap 编辑器），普通/模板同一个实例。
@@ -327,6 +339,7 @@ export function LeoComposer({
         value={value}
         onChange={onChange}
         template={highlightTemplate}
+        fillNonce={effectiveFillNonce}
         accentColor={accentColor}
         placeholder={placeholderText}
         rows={rows}

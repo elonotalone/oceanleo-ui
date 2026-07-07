@@ -36,7 +36,7 @@ import {
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
-import { useRegisterOpsFiller, useGuideWorkflows } from "./guide-context";
+import { useRegisterOpsFiller, useGuideWorkflows, FillNonceProvider } from "./guide-context";
 import { type WorkflowDraft } from "../lib/workflows";
 import { useAttachments } from "./useAttachments";
 import {
@@ -194,6 +194,10 @@ export function FunctionAgentChat({
   //   ② 有操作台表单（showOps）+ 能写回（onApplyPatch）→ 把完整 prompt 填进操作台
   //      **主输入字段**（opsPrimaryField 或 schema.fields[0].key）并切到「操作台」形态。
   //   ③ 纯对话功能区（无操作台表单）→ 回退：填进 agent 输入框并切到「agent」。
+  // 命令式填充 nonce（v20）：每次点导航/起手卡填充操作台就自增 → 经 FillNonceProvider 供
+  // 给 opsContent 子树的所有 LeoComposer → TemplateFillArea 无条件重灌当前模板。修「删空后
+  // 再点同卡恢复不了」（不依赖 value/template prop diff，站点零改动）。
+  const [fillNonce, setFillNonce] = useState(0);
   const primaryField = opsPrimaryField || schema.fields[0]?.key || "";
   const fillFromGuide = useCallback<
     (text: string, opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown }) => void
@@ -201,6 +205,7 @@ export function FunctionAgentChat({
     (text, opts) => {
       if (onGuideExample) {
         onGuideExample(text, opts);
+        setFillNonce((n) => n + 1); // v20：站点自定义处理也算一次填充 → 令内部 LeoComposer 重灌
         return;
       }
       if (showOps && primaryField && onApplyPatch) {
@@ -208,6 +213,7 @@ export function FunctionAgentChat({
         // （ratio/genMode/style/words…，来自示例的 set）。站点 onApplyPatch 早已把
         // set.<field> 映射进自己的表单 state，故零站点改动即让参数一起填。
         onApplyPatch({ set: { [primaryField]: text, ...(opts?.set || {}) } });
+        setFillNonce((n) => n + 1); // v20：强制重灌（含删空后重点同卡）
         setTab("ops");
         return;
       }
@@ -503,7 +509,9 @@ export function FunctionAgentChat({
               {tt(error)}
             </p>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <FillNonceProvider nonce={fillNonce}>{opsContent}</FillNonceProvider>
+          </div>
           {stickyAction != null && (
             <div className="relative shrink-0">
               {/* 半透明渐隐遮罩：从透明 → 白，盖住滚动内容与按钮之间的缝隙（不露输入框）。 */}

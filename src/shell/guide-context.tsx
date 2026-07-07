@@ -48,6 +48,21 @@ export type OpsFiller = (
   },
 ) => void;
 
+// ── 命令式填充 nonce（v20，2026-07-07）──────────────────────────────────────
+// 「删空后再点同一张导航卡恢复不了」的中心化根治：每次触发一次导航/起手填充（useExample
+// → filler 被调用），本 context 的 nonce 自增。LeoComposer 内嵌于操作台时自动消费它，透传给
+// TemplateFillArea 的 fillNonce → 无条件重灌当前模板。**站点零改动**即获「重点同卡必重灌」。
+// 与 agent 输入框无关（agent 的 LeoComposer 不在操作台 filler 语境里、不消费此 nonce）。
+const FillNonceCtx = createContext<number>(0);
+/** 供 LeoComposer 消费：当前操作台填充计数（每次点导航/起手卡自增）。 */
+export function useFillNonce(): number {
+  return useContext(FillNonceCtx);
+}
+/** FunctionAgentChat 用它把 fillNonce 供给其 opsContent 子树里的所有 LeoComposer。 */
+export function FillNonceProvider({ nonce, children }: { nonce: number; children: ReactNode }) {
+  return <FillNonceCtx.Provider value={nonce}>{children}</FillNonceCtx.Provider>;
+}
+
 interface GuideCtxValue {
   guide: FunctionGuide | null;
   /** 点示例 → 灌进左栏（内部经 fill-bus 转发给已注册的填充器）。 */

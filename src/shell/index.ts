@@ -103,6 +103,8 @@ export {
   useFunctionGuide,
   useGuideWorkflows,
   useRegisterOpsFiller,
+  useFillNonce,
+  FillNonceProvider,
 } from "./guide-context";
 export type { OpsFiller, SavedWorkflow, WorkflowDraft } from "./guide-context";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。

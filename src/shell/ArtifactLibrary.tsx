@@ -439,7 +439,10 @@ export function ArtifactLibrary({
       {authMsg ? (
         <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
       ) : loading ? (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className="mt-5 grid gap-4"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} className="h-48" />
           ))}
@@ -485,7 +488,10 @@ export function ArtifactLibrary({
           ))}
         </div>
       ) : (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className="mt-5 grid gap-4"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+        >
           {filtered.map((a, idx) => (
             <div
               key={a.id}

@@ -133,6 +133,13 @@ export interface PromptHighlightAreaProps {
   /** 模板（点卡片 / 示例时设入）。设入即把模板解析成「字面文本 + [占位]荧光 mark」灌进编辑器。
    * null → 由 LeoComposer 走它自己的普通 textarea。 */
   template: string | null;
+  /**
+   * 命令式「重新灌模板」信号（v20，2026-07-07，修「删空后再点同一张卡恢复不了」）：
+   * 宿主每次点导航/起手卡片都自增它。本组件 `useEffect([fillNonce])` 里**无条件**用当前
+   * `template` 重新 seed —— 即便 `template`/`value` 都没变（用户先删空、value 已是 ""、
+   * 再点同一张卡时，靠 prop diff 的老机制永远不触发；nonce 每次点击都变则永远触发）。
+   * 不传（undefined / 保持不变）则退回旧的「value 被清空才重灌」启发式（向后兼容）。 */
+  fillNonce?: number;
   accentColor?: string;
   placeholder?: string;
   rows?: number;
@@ -211,6 +218,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       value,
       onChange,
       template,
+      fillNonce,
       accentColor = "#4f46e5",
       placeholder,
       rows = 2,
@@ -422,6 +430,21 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       // 站点程序化清空 + 同模板已 seed → 视作「再次点同一张卡」，重新灌模板。
       seed(template);
     }, [editor, template, value, seed]);
+
+    // 命令式重灌（v20，2026-07-07）：宿主每次点导航/起手卡都 bump fillNonce → 无条件用当前
+    // template 重新 seed。这是「删空后再点同一张卡恢复原状」的**强保证**：不依赖 value/template
+    // 的 prop diff（用户先删空 value 已 "" 时，setValue("")+setTemplate(同串) 两者皆不变、老
+    // 启发式永不触发）。nonce 每次点击都变 → 每次都重灌。首帧不触发（prevFillNonce 初始 = fillNonce）。
+    const prevFillNonce = useRef(fillNonce);
+    useEffect(() => {
+      if (!editor) return;
+      if (fillNonce === prevFillNonce.current) return; // 首帧或未变化
+      prevFillNonce.current = fillNonce;
+      if (template == null) return; // 无模板无从灌（普通输入框走纯文本同步）
+      if (editor.view.composing) return; // IME 合成途中不动
+      seed(template); // 无条件重灌当前模板（含「删空后重点同卡」）
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor, fillNonce]);
 
     // 外部 value 被改（无模板的纯文本场景，调用方【程序化】改 value）→ 同步进编辑器。
     // **只在无模板时**生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark

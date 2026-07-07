@@ -152,8 +152,12 @@ export function SiteCatalogConsole({
       modelCategories={modelCategories}
       modelSiteId={siteId}
       // 宗旨 v15 决策 H：进 app 后左「操作台」:右「库/结果」默认 3:4（操作台占 3/7）。
+      // 宗旨 v20（操作员 2026-07-07「为什么 3:4 各站不一样」）：storageKey **全站共用一个**
+      // `oceanleo_console_split`——各站进 app 都从同一个 3/7 起步、拖一次全家桶统一，杜绝
+      // 「word 与 image 比例不同」的观感。旧的按站 key（`${siteId}_catalog_split`）弃用，
+      // 老 localStorage 值自然被忽略 = 干净地回到一致的 3:4。
       defaultRatio={3 / 7}
-      storageKey={`${siteId}_catalog_split`}
+      storageKey="oceanleo_console_split"
     />
   );
 }

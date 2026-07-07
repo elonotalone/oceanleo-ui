@@ -184,7 +184,10 @@ export function MaterialLibrary({
           ))}
         </div>
       ) : (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+        <div
+          className="mt-3 grid gap-2.5"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+        >
           {filtered.map((m, i) => (
             <MaterialCard key={m.id} m={m} onClick={() => setZoomIdx(i)} tt={tt} />
           ))}
@@ -193,12 +196,12 @@ export function MaterialLibrary({
 
       {/* 放大态：铺满整个库（absolute inset-0）。点「返回」/ ✕ / Esc 关闭；← → 翻看。 */}
       {zoom && (
-        // 宗旨 v18.1（操作员 2026-07-07 二次校正「图片下方大片空白」）：整个放大态 = 单个可上下
-        // 滚动的容器；标题条 sticky 顶部。图片 `w-full h-auto` 按自然比例铺满宽度、高度顺其自然，
-        // **不再**放在一个 flex-1 撑满高度的框里 → 宽图/矮图下方不再露出大片 bg 空白（容器只按
-        // 内容高，图片下面紧跟说明或直接到底）。
-        <div className="v-scroll absolute inset-0 z-20 overflow-y-auto rounded-xl bg-white">
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-neutral-100 bg-white/95 px-1 py-2 backdrop-blur-sm">
+        // 宗旨 v20（操作员 2026-07-07 三次校正「图片下方大片空白」）：放大态 = flex 列（标题条
+        // shrink-0 + 图片区 flex-1 min-h-0 居中 + 说明 shrink-0）。图片 `max-h-full max-w-full
+        // object-contain` **等比缩放贴合可用区**、垂直水平居中——宽图/矮图不再把剩余空间全甩到
+        // 下方成大片纯背景（居中后上下留白均分且很小），也绝不裁剪。图片区自身可滚动兜底超大图。
+        <div className="absolute inset-0 z-20 flex flex-col rounded-xl bg-white">
+          <div className="flex shrink-0 items-center gap-2 border-b border-neutral-100 bg-white/95 px-1 py-2 backdrop-blur-sm">
             <button
               type="button"
               onClick={() => setZoomIdx(null)}
@@ -214,13 +217,13 @@ export function MaterialLibrary({
               {(zoomIdx ?? 0) + 1} / {filtered.length}
             </span>
           </div>
-          <div className="relative">
+          <div className="v-scroll relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={zoom.id}
               src={zoom.preview || zoom.thumb}
               alt={tt(zoom.title)}
-              className="v-fade-in block w-full h-auto"
+              className="v-fade-in block max-h-full max-w-full object-contain"
             />
             {zoomIdx !== null && zoomIdx > 0 && (
               <button
@@ -248,7 +251,7 @@ export function MaterialLibrary({
             )}
           </div>
           {zoom.desc && (
-            <p className="border-t border-neutral-100 px-3 py-2 text-[12px] leading-relaxed text-neutral-500">
+            <p className="shrink-0 border-t border-neutral-100 px-3 py-2 text-[12px] leading-relaxed text-neutral-500">
               {tt(zoom.desc)}
             </p>
           )}
