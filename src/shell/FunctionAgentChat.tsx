@@ -134,6 +134,14 @@ export interface FunctionAgentChatProps {
    * （{ label?, prompt, params? }），存进「我的工作流」（右栏导航「我的」类别可一键复用）。
    * 返回 null / prompt 为空 → 提示用户先填写。站点从自己的操作台 state 拼这份草稿。 */
   getWorkflowDraft?: () => WorkflowDraft | null;
+  /**
+   * 操作台「恒定主按钮」（宗旨 v18，操作员 2026-07-07）：给了它 → 操作台形态下，此节点
+   * （通常是「生成图片 / 生成视频 / 开始搭建」主按钮）**固定在操作台最底部**，其余输入/
+   * 选择框在其上方的可滚动区里随意展开折叠都不影响它显示。按钮条顶部叠一层从透明到底色
+   * 的**半透明渐隐遮罩**，让滚动内容在按钮上方渐隐、不露出输入框边框缝隙（修截图
+   * 43873e9b）。不给则操作台无恒定按钮（主按钮仍可内联写在 opsContent 里，旧行为）。
+   */
+  stickyAction?: React.ReactNode;
 }
 
 // 左栏双形态：操作台（表单 + 生成）/ agent（有能力、带工具，独立于操作台）。
@@ -158,6 +166,7 @@ export function FunctionAgentChat({
   appIcon,
   onGuideExample,
   getWorkflowDraft,
+  stickyAction,
 }: FunctionAgentChatProps) {
   void _onRunAction;
   const tt = useUI();
@@ -478,7 +487,10 @@ export function FunctionAgentChat({
     [taskId, busy, agentId, siteId, agentModel],
   );
 
-  // ── 操作台形态：直接渲染各站表单（含底部「生成」主按钮）──────────────────────
+  // ── 操作台形态：直接渲染各站表单 ──────────────────────────────────────────
+  // 宗旨 v18：opsContent 在可滚动区（flex-1）；stickyAction（主按钮）固定在操作台
+  // 最底部（shrink-0）。滚动区与按钮条之间叠一层从透明到白的半透明渐隐遮罩，让内容
+  // 在按钮上方渐隐、不露出输入框缝隙（操作员截图 43873e9b）。
   if (tab === "ops") {
     return (
       <FnAgentBridgeCtx.Provider value={bridge}>
@@ -492,6 +504,16 @@ export function FunctionAgentChat({
             </p>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">{opsContent}</div>
+          {stickyAction != null && (
+            <div className="relative shrink-0">
+              {/* 半透明渐隐遮罩：从透明 → 白，盖住滚动内容与按钮之间的缝隙（不露输入框）。 */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-white/95 to-transparent"
+              />
+              <div className="bg-white/95 pt-1 backdrop-blur-sm">{stickyAction}</div>
+            </div>
+          )}
         </div>
       </FnAgentBridgeCtx.Provider>
     );

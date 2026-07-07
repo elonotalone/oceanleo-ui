@@ -30,7 +30,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
-import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import { type ModelCategory } from "./ModelPicker";
 import { useShellChrome } from "./ShellChrome";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
 import { GuideProvider } from "./guide-context";
@@ -256,31 +256,25 @@ export function OperatorConsole({
     onChange?.("");
   };
 
-  // 顶栏右上角模型选择：非 solo/embed 时渲染。模态来源——优先本组件 props
-  // （modelCategories），否则 fallback 到外层 AppShell 透传的 modelConfig（这样各站
-  // 工作台页不必再手动传一遍）。渲染时通知 AppShell 隐藏它 header 里那条（避免两行顶栏）。
-  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
-  const effectiveModelCategories =
-    (modelCategories as string[] | undefined) ?? modelConfig?.categories;
-  const effectiveModelSiteId =
-    modelSiteId || siteId || modelConfig?.siteId || "default";
-  const effectiveApiHref = apiHref || modelConfig?.apiHref || "/api";
-  const showModelPicker = Boolean(effectiveModelCategories?.length) && !hideTabs;
+  // 宗旨 v18（操作员 2026-07-07）：**操作台顶栏不再渲染「模型选择」**。操作员明确
+  // 「操控台中有模型选择功能，这样子不对」（截图 image/website workspace 右上角那枚
+  // 「模型选择 ▾」）。功能站的工作台不该让用户在这里选模型——模型由后端/站点默认决定。
+  // 因此这里恒不渲染 modelPicker，也不再 setSuppressHeaderModel（顶栏不占那一格）。
+  // `modelCategories`/`modelSiteId`/`apiHref` 三个 prop 保留仅为向后兼容（不再使用）。
+  void modelCategories;
+  void modelSiteId;
+  void apiHref;
+  // 顶栏不渲染模型选择；同时把 AppShell header 里那条模型选择也隐藏——功能站工作台页
+  // 整页都不该出现「模型选择」（截图右上角那枚）。suppress 后 AppShell header 不渲染，
+  // 高度按 0 计（见下 studioHeaderHeight）。
+  const { setSuppressHeaderModel } = useShellChrome();
   useEffect(() => {
-    if (!showModelPicker) return;
+    if (hideTabs) return; // solo/embed 由主站承载顶栏，不干预
     setSuppressHeaderModel(true);
     return () => setSuppressHeaderModel(false);
-  }, [showModelPicker, setSuppressHeaderModel]);
-
-  const modelPicker = showModelPicker ? (
-    <ModelPicker
-      categories={effectiveModelCategories as ModelCategory[]}
-      siteId={effectiveModelSiteId}
-      apiHref={effectiveApiHref}
-      variant="popover"
-      align="right"
-    />
-  ) : null;
+  }, [hideTabs, setSuppressHeaderModel]);
+  const showModelPicker = false;
+  const modelPicker: ReactNode = null;
 
   if (directoryMode && !isOpened) {
     const items: DirectoryItem[] = functions.map((f) => ({
@@ -388,21 +382,11 @@ export function OperatorConsole({
   // 模型选择时会 setSuppressHeaderModel(true)，AppShell 那条 56px header **被隐藏**。
   // 此时还按 headerHeight(默认 56) 去扣，Studio 就比视口矮了 56px → 下方一大块空白。
   //
-  // 宗旨 v11 再修（操作员 2026-06-28，截图 8e767da8 design「上面空白很大」）：上面那次
-  // 只覆盖了「本组件自带模型选择」分支。还有一类站——**既没给 OperatorConsole 传
-  // modelCategories（showModelPicker=false），也没给 AppShell 传 modelCategories /
-  // headerRight**（如 design）。这种站 AppShell 的 header 根本不渲染（showHeader=false），
-  // 高度本应按 0 算，旧逻辑却仍按 headerHeight(56) 扣 → 顶部一大截空白。
-  //
-  // 统一口径：AppShell header 实际占的竖向高度 =
-  //   - 本组件自带模型选择（showModelPicker）→ 它 setSuppressHeaderModel(true)，AppShell
-  //     header 被隐藏 → 0；
-  //   - 否则看 AppShell 是否还有 header 内容：modelConfig（站给 AppShell 传了 modelCategories）
-  //     存在 → AppShell 会渲染 header → headerHeight；都没有 → header 不渲染 → 0。
-  // 这样三类站（自带模型选择 / 用 AppShell header 模型选择 / 完全无 header）都精确扣高，
-  // 顶部不再留空白。
-  const appShellRendersHeader = !showModelPicker && Boolean(modelConfig?.categories?.length);
-  const appShellHeader = appShellRendersHeader ? headerHeight : 0;
+  // 宗旨 v18（操作员 2026-07-07）：本组件（非 solo/embed）恒 setSuppressHeaderModel(true)
+  // → AppShell header 里唯一的内容「模型选择」被隐藏。工作台页也不给 AppShell 传
+  // headerRight，故 AppShell 的 header 整体不渲染（showHeader=false）→ header 占高 = 0。
+  // 因此不再需要按 modelConfig 判断（旧逻辑靠它决定是否扣 headerHeight，现统一按 0）。
+  const appShellHeader = 0;
   const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 
   // 宗旨 v12.1/v12.2：每个功能页右栏首屏都要有「导航」——功能自带 guide 优先；没给的

@@ -210,14 +210,18 @@ export function MaterialLibrary({
               {(zoomIdx ?? 0) + 1} / {filtered.length}
             </span>
           </div>
-          {/* 大图区：铺满剩余空间，图片按比例 contain 居中。左右热区翻看。 */}
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-neutral-50">
+          {/* 大图区（宗旨 v18，操作员 2026-07-07：放大后上下留白几乎为零）：
+              旧版用 `flex-1 + object-contain` 把图在一个撑满高度的框里垂直居中——宽图/矮图
+              会在上下留大片空白（截图 da4e6cf1）。改为：容器可上下滚动，图片 `w-full h-auto`
+              **顶对齐**按自然比例铺满宽度，高度顺其自然 → 顶部无留白；图比库矮时底部也只留
+              一点点（由 items-start 顶对齐 + 容器仅按内容高）。 */}
+          <div className="relative min-h-0 flex-1 overflow-y-auto bg-neutral-50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={zoom.id}
               src={zoom.preview || zoom.thumb}
               alt={tt(zoom.title)}
-              className="v-fade-in absolute inset-0 h-full w-full object-contain p-3"
+              className="v-fade-in block w-full h-auto"
             />
             {zoomIdx !== null && zoomIdx > 0 && (
               <button

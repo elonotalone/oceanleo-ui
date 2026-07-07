@@ -80,6 +80,10 @@ export { presetToOpsPatch } from "./app-catalog";
 export type { GoalApp, GoalAppPreset } from "./app-catalog";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
+// 宗旨 v18（2026-07-07）：操作台「选项按键组」（单选点已选=取消；多选切换）。全家桶
+// 操作台的比例/画质/风格/数量档等选项统一用它，自动获得「再点一次取消选择」。
+export { OptionRow } from "./OptionRow";
+export type { OptionRowProps, OptionItem } from "./OptionRow";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // 宗旨 v17（2026-07-07）：右栏三分区「库」统一版式积木（搜索行 + 分类 chips），
