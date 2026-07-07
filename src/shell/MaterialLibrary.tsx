@@ -130,24 +130,31 @@ export function MaterialLibrary({
 
   return (
     // relative：让「放大铺满库」的浮层用 absolute inset-0 恰好占满本区域。
+    // 宗旨 v20（操作员 2026-07-07「放大图下方大片空白」根治）：**放大态时把工具条/分类/网格
+    // 整段不渲染**（下面 `!zoom && …`）——否则素材网格很长时，本 relative 容器（min-h-full 可
+    // 长于视口）被撑到网格高（实测 2600px+），`absolute inset-0` 浮层随之撑那么高，居中的图片
+    // 上下各留 1000px+ 空白。放大时隐藏网格 → flow 高塌缩到 0 → min-h-full 容器 = 右栏可见高
+    // → inset-0 浮层恰好铺满可见区，object-contain 居中的图片上下留白极小。
     <div className={`relative min-h-full ${className}`}>
-      {/* 搜索框（右对齐窄框，与导航/文件库同尺寸）+ 网格/列表切换 */}
-      <LibraryToolbar
-        search={search}
-        setSearch={setSearch}
-        view={view}
-        setView={setView}
-        placeholder={tt("搜索素材")}
-        tt={tt}
-      />
+      {!zoom && (
+        <>
+          {/* 搜索框（右对齐窄框，与导航/文件库同尺寸）+ 网格/列表切换 */}
+          <LibraryToolbar
+            search={search}
+            setSearch={setSearch}
+            view={view}
+            setView={setView}
+            placeholder={tt("搜索素材")}
+            tt={tt}
+          />
 
-      {/* 分类 chips（首枚「全部」；与导航/文件库共用版式） */}
-      {categories.length > 1 && (
-        <LibraryChips chips={categories} active={activeCat} onChange={setCat} accent={accent} tt={tt} />
-      )}
+          {/* 分类 chips（首枚「全部」；与导航/文件库共用版式） */}
+          {categories.length > 1 && (
+            <LibraryChips chips={categories} active={activeCat} onChange={setCat} accent={accent} tt={tt} />
+          )}
 
-      {/* 卡片网格 / 列表 */}
-      {filtered.length === 0 ? (
+          {/* 卡片网格 / 列表 */}
+          {filtered.length === 0 ? (
         <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 text-center">
           <svg className="h-10 w-10 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -184,14 +191,16 @@ export function MaterialLibrary({
           ))}
         </div>
       ) : (
-        <div
-          className="mt-3 grid gap-2.5"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
-        >
-          {filtered.map((m, i) => (
-            <MaterialCard key={m.id} m={m} onClick={() => setZoomIdx(i)} tt={tt} />
-          ))}
-        </div>
+            <div
+              className="mt-3 grid gap-2.5"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+            >
+              {filtered.map((m, i) => (
+                <MaterialCard key={m.id} m={m} onClick={() => setZoomIdx(i)} tt={tt} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* 放大态：铺满整个库（absolute inset-0）。点「返回」/ ✕ / Esc 关闭；← → 翻看。 */}
