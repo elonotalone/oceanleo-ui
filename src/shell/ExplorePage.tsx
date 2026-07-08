@@ -32,6 +32,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 
@@ -154,6 +155,12 @@ export function ExplorePage({ config, accent = "#4f46e5", className = "" }: Expl
   const [zoomIdx, setZoomIdx] = useState<number | null>(null);
   // 运行时兜底拉取的分类（config.categories 未提供时用）。
   const [autoCats, setAutoCats] = useState<ExploreCategory[]>([]);
+  // 放大浮层用 portal 挂到 <body>：本页根节点是 `.v-page > *`，带 v-fade-up 动画的
+  // `transform`（fill-mode both → translateY(0) 常驻）会成为 `position:fixed` 的包含块，
+  // 令 `fixed inset-0` 相对本页（内容可高达数千 px）定位 → 居中大图上下巨量留白。
+  // 挂到 body 即彻底摆脱该 transform 祖先，浮层真正相对视口铺满（操作员 2026-07-09）。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // 搜索防抖（避免每键一次请求）。
   useEffect(() => {
@@ -364,8 +371,9 @@ export function ExplorePage({ config, accent = "#4f46e5", className = "" }: Expl
         )}
       </div>
 
-      {/* 放大态：铺满视口浮层，Esc / ← → / ✕ */}
-      {zoom && (
+      {/* 放大态：铺满【视口】浮层（portal → body，绕开 .v-page 的 transform 包含块），
+          Esc / ← → / ✕。 */}
+      {zoom && mounted && createPortal(
         <div className="fixed inset-0 z-[90] flex flex-col bg-black/80 backdrop-blur-sm">
           <div className="flex shrink-0 items-center gap-2 px-4 py-3 text-white">
             <button
@@ -447,7 +455,8 @@ export function ExplorePage({ config, accent = "#4f46e5", className = "" }: Expl
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

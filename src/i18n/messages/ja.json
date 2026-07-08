@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "ホーム",
+    "explore": "探索",
     "newTask": "新しいタスク",
     "workspace": "ワークスペース",
     "allApps": "すべてのアプリ",

@@ -28,6 +28,11 @@ export interface UseAttachments {
   /** 传给 LeoComposer 的 attachments（缩略条）。 */
   composerAttachments: ComposerAttachment[];
   handleAttachFiles: (files: File[]) => void;
+  /**
+   * 直接加入一个**已上传好**的附件（如用户从「最近文件」里选已在文件库的文件）——
+   * 不走 uploadFile，直接进 ready 态。按 id 去重（重复选同一个不叠加）。
+   */
+  addReady: (att: { id: string; name: string; previewUrl?: string; attachment: AgentAttachment }) => void;
   removeAttachment: (id: string) => void;
   /** 已上传成功、可随消息发送的附件。 */
   ready: () => AgentAttachment[];
@@ -84,6 +89,26 @@ export function useAttachments(
     [siteId, onError],
   );
 
+  const addReady = useCallback(
+    (att: { id: string; name: string; previewUrl?: string; attachment: AgentAttachment }) => {
+      setAttachments((prev) =>
+        prev.some((a) => a.id === att.id)
+          ? prev
+          : [
+              ...prev,
+              {
+                id: att.id,
+                name: att.name,
+                previewUrl: att.previewUrl,
+                uploading: false,
+                attachment: att.attachment,
+              },
+            ],
+      );
+    },
+    [],
+  );
+
   const removeAttachment = useCallback((id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
@@ -109,6 +134,7 @@ export function useAttachments(
       }),
     ),
     handleAttachFiles,
+    addReady,
     removeAttachment,
     ready,
     uploading: attachments.some((a) => a.uploading),

@@ -122,6 +122,9 @@ export { Markdown } from "./Markdown";
 // 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
 export { AgentChat } from "./AgentChat";
 export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
+// 首页输入框「＋」上传 / 拖入的附件类型（各站首页把 HomeIntro.onStart 的
+// opts.attachments 透传给 AgentChat.initialAttachments 时用它给 state 标注类型）。
+export type { AgentAttachment } from "../lib/agent";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";

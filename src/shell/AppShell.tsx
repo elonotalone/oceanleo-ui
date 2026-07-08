@@ -656,7 +656,7 @@ function AppShellInner({
         </div>
       )}
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
         {collapsed && (
           <button
             type="button"
@@ -678,22 +678,24 @@ function AppShellInner({
           <IconPanel />
         </button>
 
-        {/* 右侧主区顶部 header：模型选择恒定收在**右上角**（popover 形态，与
-            oceanleo.com 主站首页截图一致）。左边留自定义 headerRight 插槽（若有）。
-            2026-07-03 操作员定稿：全家桶子站的「模型选择」不再左上平铺 bar，统一
-            右上角一个「模型选择 ▾」按键，点开下拉——首页 / 历史记录 / 文件库一致。 */}
+        {/* 右侧主区顶部工具（模型选择 + headerRight 插槽）：
+            2026-07-09 操作员定稿——**删除整条顶部 bar**（原先是一条 border-b 的满宽
+            横条，里面只挂了个「模型选择 ▾」，视觉上多余）。改为把这些控件**浮在主区
+            背景右上角**（absolute，无边框、无底色），直接坐在渐变背景上，与主站
+            oceanleo.com 首页一致。main 因此不再为 header 让出一整行高度。 */}
         {showHeader && (
           <div
             data-oceanleo-chrome
-            className={`flex items-center justify-between gap-3 border-b border-neutral-100 px-8 py-3 pl-14 ${
-              collapsed ? "md:pl-14" : "md:pl-8"
-            }`}
+            className="pointer-events-none absolute right-4 top-3 z-30 flex items-center gap-2 md:right-6"
           >
-            <div className="flex min-w-0 items-center gap-2">
-              {headerRight}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {showModelInHeader && (
+            {/* headerRight 各站自定义操作按钮（放模型选择左边，同一行浮层） */}
+            {headerRight && (
+              <div className="pointer-events-auto flex min-w-0 items-center gap-2">
+                {headerRight}
+              </div>
+            )}
+            {showModelInHeader && (
+              <div className="pointer-events-auto">
                 <ModelPicker
                   categories={modelCategories!}
                   siteId={siteId}
@@ -703,8 +705,8 @@ function AppShellInner({
                   variant="popover"
                   align="right"
                 />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -712,16 +714,10 @@ function AppShellInner({
           为浮出的「展开/汉堡」按钮预留左侧空间，避免它盖住页面左上角标题。
           - 移动端：汉堡键常驻浮出 → 始终留 pl-14
           - 桌面端：仅在侧栏收起时展开键浮出 → 收起留 md:pl-14，展开 md:pl-0
-          有顶部 header 时，让位已由 header 承担，main 不再额外缩进。
+          顶部工具已改为右上角浮层（不占行高），main 一律按「无 header」方式让位。
           这是按钮让位的「唯一事实源」。页面/组件内部不要再各自加让位内边距。
         */}
-        <main
-          className={
-            showHeader
-              ? "flex-1"
-              : `flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`
-          }
-        >
+        <main className={`flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}>
           {/* 统一页面入场动画（复刻 oceanleo.com/tasks/new 的从上而下阶梯淡入）。
               key={pathname} 让每次切页都重新挂载 → 重新触发 .v-page 的错峰淡入。
               这是全站「打开/切换页面」动画的唯一事实源，各站无需逐页手写。 */}

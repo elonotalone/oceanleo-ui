@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "Home",
+    "explore": "Explore",
     "newTask": "New Task",
     "workspace": "Workspace",
     "allApps": "All Apps",

@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "Inicio",
+    "explore": "Explorar",
     "newTask": "Nueva tarea",
     "workspace": "Espacio de trabajo",
     "allApps": "Todas las apps",

@@ -16,7 +16,19 @@ export interface I18nProviderProps {
 
 export function I18nProvider({ children, locale, messages }: I18nProviderProps) {
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={messages}
+      // client 侧兜底：与 server 端 createI18nRequest 同款——缺 key / 格式错误时静默
+      // （已有中文底座兜底），且缺失文案回退成 key 的【最后一段】而非完整 "ns.key"。
+      // 杜绝界面出现 raw key（如侧栏「nav.explore」）；有真实翻译时不受影响。
+      onError={() => {
+        /* 吞掉 MISSING_MESSAGE 等噪音；中文底座已保证有意义文案 */
+      }}
+      getMessageFallback={({ key }: { key: string; namespace?: string }) =>
+        key.split(".").pop() || key
+      }
+    >
       {children}
     </NextIntlClientProvider>
   );

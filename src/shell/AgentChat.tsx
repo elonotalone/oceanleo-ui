@@ -54,6 +54,12 @@ export interface AgentChatProps {
   siteId?: string;
   /** 初次提交的内容（从首页输入框带进来）；传了会自动创建任务。 */
   initialPrompt?: string;
+  /**
+   * 初次提交随附的附件（用户在**首页输入框**「＋」上传 / 拖入的文件，已上传到文件库、
+   * 拿到公网 url）。与 initialPrompt 一起自动创建首个任务——让 agent 从首页就带上来的
+   * 文件（音频自动转写、其它文件按 url 分析）。宿主从 HomeIntro.onStart 的
+   * opts.attachments 透传进来即可。 */
+  initialAttachments?: AgentAttachment[];
   /** 已有会话 id（从历史记录点进来回看）；与 initialPrompt 二选一。 */
   taskId?: string;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
@@ -136,6 +142,7 @@ export interface AgentLibraryTabs {
 export function AgentChat({
   siteId = "",
   initialPrompt,
+  initialAttachments,
   taskId: initialTaskId,
   mode = "agent",
   agentId = "",
@@ -190,8 +197,11 @@ export function AgentChat({
       void refresh(initialTaskId);
       return;
     }
-    if (initialPrompt && initialPrompt.trim()) {
-      void start(initialPrompt.trim());
+    if (
+      (initialPrompt && initialPrompt.trim()) ||
+      (initialAttachments && initialAttachments.length)
+    ) {
+      void start((initialPrompt || "").trim(), initialAttachments);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

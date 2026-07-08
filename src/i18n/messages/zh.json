@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "首页",
+    "explore": "探索",
     "newTask": "新建任务",
     "workspace": "工作台",
     "allApps": "全部应用",

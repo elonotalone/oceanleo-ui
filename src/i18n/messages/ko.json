@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "홈",
+    "explore": "탐색",
     "newTask": "새 작업",
     "workspace": "워크스페이스",
     "allApps": "모든 앱",

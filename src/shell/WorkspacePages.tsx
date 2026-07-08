@@ -74,22 +74,28 @@ const ICON: Record<WorkspacePage, ReactNode> = {
  */
 export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   const t = useTranslations("nav");
-  // 「探索」的 i18n key 可能在旧翻译包里缺失（新加页）——用 try/兜底避免 next-intl 抛
-  // MISSING_MESSAGE。缺失时回退中文「探索」（DEFAULT_LABELS 也是它）。
-  let explore = "探索";
-  try {
-    const v = t("explore");
-    if (v && v !== "explore") explore = v;
-  } catch {
-    /* 旧翻译包无 nav.explore，用中文兜底 */
-  }
+  // 某个 nav key 在旧翻译包里可能缺失（新加页）。next-intl 缺 key 时的返回值不确定：
+  //   - server（走共享 createI18nRequest.getMessageFallback）→ 最后一段，如 "explore"；
+  //   - client（NextIntlClientProvider 未接同款 fallback）→ 完整 key，如 "nav.explore"。
+  // 两种都不是给用户看的文案。用 safe() 统一判定：若返回值 == key / == "nav.<key>"
+  // （即没命中真正翻译）就回退到 DEFAULT_LABELS 的中文（绝不显示 raw key）。
+  const safe = (key: WorkspacePage): string => {
+    let v: string;
+    try {
+      v = t(key);
+    } catch {
+      return DEFAULT_LABELS[key];
+    }
+    if (!v || v === key || v === `nav.${key}`) return DEFAULT_LABELS[key];
+    return v;
+  };
   return {
-    home: t("home"),
-    explore,
-    workspace: t("workspace"),
-    library: t("library"),
-    history: t("history"),
-    playground: t("playground"),
+    home: safe("home"),
+    explore: safe("explore"),
+    workspace: safe("workspace"),
+    library: safe("library"),
+    history: safe("history"),
+    playground: safe("playground"),
   };
 }
 

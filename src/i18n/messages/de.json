@@ -26,6 +26,7 @@
   },
   "nav": {
     "home": "Startseite",
+    "explore": "Entdecken",
     "newTask": "Neue Aufgabe",
     "workspace": "Arbeitsbereich",
     "allApps": "Alle Apps",
