@@ -35,7 +35,7 @@ export interface OptionItem {
   icon?: ReactNode;
   /** 可选：按钮下方一行小字说明（如画质档「速度快，日常首选」）。 */
   hint?: string;
-  /** 可选：右上角小角标（如「VIP」「热」）。 */
+  /** 可选：右上角小角标（如「热」「新」）。注意：前端严禁展示「VIP」字样。 */
   badge?: string;
   /** 禁用该项。 */
   disabled?: boolean;

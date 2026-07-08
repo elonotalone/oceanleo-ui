@@ -74,8 +74,9 @@ export type { StudioProps } from "./Studio";
 export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
 // 宗旨 v14（2026-07-05）：成品 app 目录数据模型 + 统一模板组件（改一次模板全站同步）。
+// 宗旨 v19（2026-07-08）：SiteCatalogConsole 目录首张自动插「agent」卡片（AgentCardConfig）。
 export { SiteCatalogConsole } from "./SiteCatalogConsole";
-export type { SiteCatalogConsoleProps } from "./SiteCatalogConsole";
+export type { SiteCatalogConsoleProps, AgentCardConfig } from "./SiteCatalogConsole";
 export { presetToOpsPatch } from "./app-catalog";
 export type { GoalApp, GoalAppPreset } from "./app-catalog";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
@@ -94,6 +95,10 @@ export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./Libr
 // 放大铺满库查看，不写回操作台。与导航/文件库同一套版式。
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
+// 宗旨 v19（2026-07-08）：侧栏「探索」页——整站级素材浏览（asset.oceanleo.com 自囤 OSS
+// 正式库，masonry 瀑布流 + 分类 chips）。各站 /explore 路由传本站 ExploreConfig 即可。
+export { ExplorePage, exploreCategoryLabel } from "./ExplorePage";
+export type { ExplorePageProps, ExploreConfig, ExploreCategory, ExploreAssetType } from "./ExplorePage";
 // 宗旨 v12.1（2026-07-04）：功能页「使用指南（navigator）」——右栏（库）默认展开、
 // 首屏是导航页（教学文案 + 示例，点示例灌进左栏）。ConsoleFunction.guide 配置。
 export { NavigatorGuide } from "./NavigatorGuide";
@@ -114,8 +119,9 @@ export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
+// 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
 export { AgentChat } from "./AgentChat";
-export type { AgentChatProps } from "./AgentChat";
+export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";

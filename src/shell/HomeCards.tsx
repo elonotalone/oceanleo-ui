@@ -127,7 +127,7 @@ export function HomePromptCards({
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
-          <span className="text-[12px] font-medium">{tt("添加 prompt")}</span>
+          <span className="text-[13px] font-medium">{tt("添加 prompt")}</span>
         </button>
 
         {shown.map((c) => (
@@ -153,17 +153,19 @@ export function HomePromptCards({
                 />
               </span>
             )}
+            {/* 宗旨 v19（操作员 2026-07-08，截图 5d5c0957）：首页 prompt 卡片文字偏小 → 标题
+                text-[15px]、描述 text-[13px]（卡片尺寸不变：仍 min-h-[86px]、同 padding）。 */}
             <div className={`flex min-h-0 flex-col ${c.thumb ? "px-3 py-2.5" : "min-h-[86px] px-3.5 py-3"}`}>
               <div className="flex items-center gap-1.5">
-                {!c.thumb && <span className="text-[15px] leading-none">{c.icon}</span>}
-                <span className="truncate text-[13px] font-semibold text-stone-800">{tt(c.title)}</span>
+                {!c.thumb && <span className="text-[17px] leading-none">{c.icon}</span>}
+                <span className="truncate text-[15px] font-semibold text-stone-800">{tt(c.title)}</span>
                 {c.custom && (
                   <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
                     {tt("我的")}
                   </span>
                 )}
               </div>
-              <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-stone-500">{tt(c.desc || c.prompt)}</p>
+              <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-stone-500">{tt(c.desc || c.prompt)}</p>
             </div>
             {/* 右上角：查看 / 编辑 该卡片 prompt 文本 */}
             <button

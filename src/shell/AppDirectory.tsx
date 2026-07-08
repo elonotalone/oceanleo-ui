@@ -139,7 +139,9 @@ export function AppDirectory({
   sceneAllLabel,
 }: AppDirectoryProps) {
   const tt = useUI();
-  const openLabelText = openLabel ?? tt("打开");
+  // openLabel 仍保留在 props 里（向后兼容旧调用方），但卡片底部已不再渲染「打开」文字
+  // 按钮（宗旨 v19，2026-07-08）——整卡可点开即是「打开」。
+  void openLabel;
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
   const sceneAllText = sceneAllLabel ?? tt("全部");
@@ -322,7 +324,6 @@ export function AppDirectory({
               key={it.id}
               item={it}
               accent={accent}
-              openLabel={openLabelText}
               onOpen={onOpen}
               adding={addingId === it.id}
               variant="new"
@@ -333,7 +334,6 @@ export function AppDirectory({
               key={it.id}
               item={it}
               accent={accent}
-              openLabel={openLabelText}
               onOpen={onOpen}
               onAdd={onAdd}
               onDelete={onDelete}
@@ -350,7 +350,6 @@ export function AppDirectory({
 function DirectoryCard({
   item,
   accent,
-  openLabel,
   onOpen,
   onAdd,
   onDelete,
@@ -360,7 +359,6 @@ function DirectoryCard({
 }: {
   item: DirectoryItem;
   accent: string;
-  openLabel: string;
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
   onDelete?: (item: DirectoryItem) => void;
@@ -487,18 +485,12 @@ function DirectoryCard({
         )}
       </div>
 
-      {/* 底部一行：「打开 →」+「加入工作台」（onAdd 提供时） */}
-      <div className="flex items-center justify-between border-t border-stone-100 px-4 py-2.5">
-        <span
-          className="inline-flex items-center gap-1 text-[12px] font-medium transition-colors"
-          style={{ color: accent }}
-        >
-          {openLabel}
-          <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5">
-            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-        {onAdd && (
+      {/* 底部一行（宗旨 v19，操作员 2026-07-08）：删除「打开 →」文字按钮——整张卡片本就
+          可点开（onOpen），底部再放「打开」冗余且占一行（截图 331d7102）。仅当有
+          「加入工作台」(onAdd) 时才渲染底部行（playground / all-sites 用）；成品 app 目录
+          不传 onAdd → 不出现底部行，卡片更紧凑。openLabel 保留 prop 兼容但不再单独渲染。 */}
+      {onAdd && (
+        <div className="flex items-center justify-end border-t border-stone-100 px-4 py-2.5">
           <button
             type="button"
             onClick={(e) => {
@@ -515,8 +507,8 @@ function DirectoryCard({
           >
             {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

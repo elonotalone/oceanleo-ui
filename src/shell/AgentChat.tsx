@@ -14,8 +14,11 @@
 // 两者共用 SplitWorkspace 分栏骨架（可拖 + 大屏）。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
+import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
+import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
+import { ArtifactLibrary } from "./ArtifactLibrary";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { LeoComposer } from "./LeoComposer";
 import {
@@ -108,6 +111,26 @@ export interface AgentChatProps {
   onBack?: () => void;
   /** 返回按钮文案，默认「返回」。 */
   backLabel?: string;
+  /**
+   * 宗旨 v19（操作员 2026-07-08）：把右栏（库）升级为全家桶统一的【多标签库】——
+   * 导航 / 生成结果 / 素材库 / 文件库，与其它站的 app 右栏 UI 完全一致。给了它 →
+   * 右版面渲染一个 <ResultCanvas>，标签 = [生成结果(内置 artifact)] + 本 prop 提供的
+   * 额外标签（素材库/文件库…）。不给 → 保持旧的「单 artifact」右版面（向后兼容）。
+   *
+   * 约定：站点通常传 `libraryTabs={{ materials, showFiles: true }}`（agent.oceanleo.com）
+   * 即得到「生成结果 / 素材库 / 文件库」三标签（「导航」在 agent 站无 guide，故不出现；
+   * 若宿主套了 GuideProvider 则 ResultCanvas 会自动前插「导航」）。 */
+  libraryTabs?: AgentLibraryTabs;
+}
+
+/** agent 右栏多标签库配置（宗旨 v19）。 */
+export interface AgentLibraryTabs {
+  /** 「素材库」的启发素材（同各 app materials）。不给则不出素材库标签。 */
+  materials?: MaterialItem[];
+  /** 是否出「文件库」标签（ArtifactLibrary，跨站）。默认 true。 */
+  showFiles?: boolean;
+  /** 「生成结果」标签名，默认「生成结果」。 */
+  resultLabel?: string;
 }
 
 export function AgentChat({
@@ -132,9 +155,12 @@ export function AgentChat({
   emptyHint,
   onBack,
   backLabel,
+  libraryTabs,
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
+  // 宗旨 v19：右栏多标签库当前标签（生成结果 / 素材库 / 文件库）。默认「生成结果」。
+  const [libTab, setLibTab] = useState("result");
   // 「库」= 右版面（结果/预览）显隐开关。默认关（对话占满）；生成结果(artifact)到达时
   // 自动打开右版面显示，用户也可用「库」按钮手动开合。显式 false 关闭库按钮。
   const [rightOpen, setRightOpen] = useState(false);
@@ -470,7 +496,7 @@ export function AgentChat({
 
   // OceanLeo 系列右边永远只有【一个】版面：默认收起（对话占满）；点「库」按钮或生成结果
   // (artifact)到达 → 展开右版面显示结果。右版面内容 = 最新 artifact，或空态提示。
-  const right = art
+  const resultPane = art
     ? renderArtifact?.(art.meta, art.content) ?? (
         <DefaultArtifact artifact={art.meta} content={art.content} />
       )
@@ -483,6 +509,35 @@ export function AgentChat({
           <p className="text-[13px]">{tt("还没有生成结果。让 agent 帮你生成后，结果会显示在这里。")}</p>
         </div>
       );
+
+  // 宗旨 v19：给了 libraryTabs → 右栏是全家桶统一的多标签库（生成结果 / 素材库 / 文件库，
+  // 与其它站 app 右栏一致；「导航」由 ResultCanvas 依 guide 自动前插，agent 站无 guide 故
+  // 不出现）。不给 → 旧的单 artifact 右版面（向后兼容）。
+  const right: ReactNode = libraryTabs
+    ? (() => {
+        const tabs: CanvasTab[] = [
+          { id: "result", label: libraryTabs.resultLabel || "生成结果", content: resultPane },
+        ];
+        if (libraryTabs.materials && libraryTabs.materials.length) {
+          tabs.push({
+            id: "material",
+            label: "素材库",
+            content: <MaterialLibrary materials={libraryTabs.materials} accent={accent} />,
+          });
+        } else {
+          // 素材库标签恒在（与其它 app 一致），无素材时走空态。
+          tabs.push({
+            id: "material",
+            label: "素材库",
+            content: <MaterialLibrary materials={[]} accent={accent} />,
+          });
+        }
+        if (libraryTabs.showFiles !== false) {
+          tabs.push({ id: "files", label: "文件库", content: <ArtifactLibrary accent={accent} fill /> });
+        }
+        return <ResultCanvas tabs={tabs} active={libTab} onChange={setLibTab} accent={accent} />;
+      })()
+    : resultPane;
 
   // 高度账（关键）：本组件顶栏出现时会 suppress 掉 AppShell 那条 header。
   //  - 顶栏出现且 suppress 了 header（showModelPicker=true）：本组件占满全高 → 可用高度 = 100dvh。

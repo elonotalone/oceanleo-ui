@@ -19,9 +19,9 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { ShellNavItem, ShellSubNav } from "./AppShell";
-import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles } from "./icons";
+import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles, IconExplore } from "./icons";
 
-export type WorkspacePage = "home" | "workspace" | "library" | "history" | "playground";
+export type WorkspacePage = "home" | "explore" | "workspace" | "library" | "history" | "playground";
 
 export interface WorkspaceNavOptions {
   /** 路由前缀（i18n 站传 "/zh" 之类）。默认 ""。 */
@@ -30,6 +30,8 @@ export interface WorkspaceNavOptions {
   labels?: Partial<Record<WorkspacePage, string>>;
   /** 工作台是否启用（少数站没有「固定模板工作台」，只有 agent 首页）。默认 true。 */
   withWorkspace?: boolean;
+  /** 「探索」页是否启用（宗旨 v19：全家桶默认有本站相关素材浏览页）。默认 true。 */
+  withExplore?: boolean;
   /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
   withPlayground?: boolean;
   /** doctrine v4：为某些页提供覆盖式左栏子栏（master-detail）。 */
@@ -38,6 +40,7 @@ export interface WorkspaceNavOptions {
 
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "首页",
+  explore: "探索",
   workspace: "工作台",
   library: "文件库",
   history: "历史记录",
@@ -46,6 +49,7 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
 
 const HREF: Record<WorkspacePage, string> = {
   home: "/",
+  explore: "/explore",
   workspace: "/workspace",
   library: "/library",
   history: "/history",
@@ -54,6 +58,7 @@ const HREF: Record<WorkspacePage, string> = {
 
 const ICON: Record<WorkspacePage, ReactNode> = {
   home: <IconHome />,
+  explore: <IconExplore />,
   workspace: <IconWorkspace />,
   library: <IconLibrary />,
   history: <IconHistory />,
@@ -69,8 +74,18 @@ const ICON: Record<WorkspacePage, ReactNode> = {
  */
 export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   const t = useTranslations("nav");
+  // 「探索」的 i18n key 可能在旧翻译包里缺失（新加页）——用 try/兜底避免 next-intl 抛
+  // MISSING_MESSAGE。缺失时回退中文「探索」（DEFAULT_LABELS 也是它）。
+  let explore = "探索";
+  try {
+    const v = t("explore");
+    if (v && v !== "explore") explore = v;
+  } catch {
+    /* 旧翻译包无 nav.explore，用中文兜底 */
+  }
   return {
     home: t("home"),
+    explore,
     workspace: t("workspace"),
     library: t("library"),
     history: t("history"),
@@ -78,12 +93,15 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   };
 }
 
-/** 构造 AppShell 的导航。顺序：首页 → 工作台 → 文件库 → 历史记录 (→ playground)。 */
+/** 构造 AppShell 的导航。顺序：首页 → 探索 → 工作台 → 文件库 → 历史记录 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
   const pages: WorkspacePage[] = [
     "home",
+    // 宗旨 v19（操作员 2026-07-08）：「探索」恒在首页与工作台之间。默认开启（全家桶
+    // 每站都有本站相关素材浏览页）；个别站可传 withExplore:false 关闭。
+    ...(opts.withExplore === false ? [] : (["explore"] as WorkspacePage[])),
     ...(opts.withWorkspace === false ? [] : (["workspace"] as WorkspacePage[])),
     "library",
     "history",
@@ -101,6 +119,7 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
 /** 从路径解析当前是哪一页（消费端可用来在单页模式下切换内容）。 */
 export function pageFromPath(pathname: string, basePath = ""): WorkspacePage {
   const p = (pathname || "/").slice(basePath.length) || "/";
+  if (p.startsWith("/explore")) return "explore";
   if (p.startsWith("/workspace")) return "workspace";
   if (p.startsWith("/library")) return "library";
   if (p.startsWith("/history")) return "history";

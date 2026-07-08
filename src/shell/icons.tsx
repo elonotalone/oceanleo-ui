@@ -165,6 +165,19 @@ export function IconSparkles({ className = "h-4 w-4" }: IconProps): ReactNode {
   );
 }
 
+// 「探索」侧栏图标（罗盘）——本站相关素材浏览页（asset.oceanleo.com 素材）。
+export function IconExplore({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <Grad id="lgi-explore" from="#34d399" to="#38bdf8" />
+      <circle cx="12" cy="12" r="9" fill="url(#lgi-explore)" fillOpacity="0.16" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" fill="url(#lgi-explore)" fillOpacity="0.5" stroke="none" />
+      <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" />
+    </svg>
+  );
+}
+
 // 模型类目图标（ModelPicker 分组标题用）
 export function IconCategory({ category, className = "h-4 w-4" }: { category: string; className?: string }): ReactNode {
   switch (category) {
