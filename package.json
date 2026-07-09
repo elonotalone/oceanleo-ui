@@ -1,6 +1,6 @@
 {
   "name": "@oceanleo/ui",
-  "version": "0.129.0",
+  "version": "0.130.0",
   "description": "OceanLeo 全家桶统一前端外壳 — 单一事实源（侧边栏/模型选择/账户/设置/API/主题/SSO/网关）。所有 *.oceanleo.com 站（除 crm）共享此包。",
   "private": false,
   "license": "UNLICENSED",
@@ -16,6 +16,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./shell": "./src/shell/index.ts",
+    "./org-canvas": "./src/shell/OrgCanvas.tsx",
     "./pages": "./src/pages/index.ts",
     "./ui": "./src/ui/index.tsx",
     "./lib": "./src/lib/index.ts",
@@ -41,6 +42,7 @@
   "peerDependencies": {
     "@supabase/ssr": ">=0.5.0",
     "@supabase/supabase-js": ">=2.45.0",
+    "@xyflow/react": ">=12",
     "next": ">=14",
     "next-intl": ">=3.22.0",
     "react": ">=18",
@@ -49,6 +51,9 @@
   "peerDependenciesMeta": {
     "sonner": {
       "optional": true
+    },
+    "@xyflow/react": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -56,6 +61,7 @@
     "@types/node": "20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@xyflow/react": "^12.11.1",
     "next-intl": "^4.13.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^5"

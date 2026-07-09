@@ -120,8 +120,11 @@ export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
 export { Markdown } from "./Markdown";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
 // 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
-export { AgentChat } from "./AgentChat";
+export { AgentChat, orgStatusFromMessages } from "./AgentChat";
 export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
+// doctrine 2026-07-09：组织节点图画布（团队≡组织）的本体 + 类型都在独立子路径
+// `@oceanleo/ui/org-canvas`（peer dep @xyflow/react，只主站/agent 站装，其余 29 站不受累）。
+// 这里【不】re-export，避免把 xyflow 模块图拉进不用画布的站。
 // 首页输入框「＋」上传 / 拖入的附件类型（各站首页把 HomeIntro.onStart 的
 // opts.attachments 透传给 AgentChat.initialAttachments 时用它给 state 标注类型）。
 export type { AgentAttachment } from "../lib/agent";
@@ -134,6 +137,14 @@ export { useConsoleDraft } from "./useConsoleDraft";
 export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";
 export { RestartDraftButton } from "./RestartDraftButton";
 export type { RestartDraftButtonProps } from "./RestartDraftButton";
+// doctrine 2026-07-09：把「一次操作台生成」落成历史记录（mode="console" 的 agent_task）。
+export { useConsoleRun } from "./useConsoleRun";
+export type {
+  UseConsoleRunArgs,
+  UseConsoleRunReturn,
+  ConsoleRunBeginArgs,
+  ConsoleRunFinishArgs,
+} from "./useConsoleRun";
 // doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
 export { SkillPromptPanel } from "./SkillPromptPanel";
 export type { SkillPromptPanelProps } from "./SkillPromptPanel";

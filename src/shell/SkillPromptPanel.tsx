@@ -67,6 +67,10 @@ export interface SkillPromptPanelProps {
   onDelete?: () => void;
   /** 删除按钮文字，默认「删除」。 */
   deleteLabel?: string;
+  /**
+   * 弹窗正文下方的额外内容（doctrine 2026-07-09）。organization 画布点节点看成员时用它
+   * 展示「该成员正在做/做过的工作」片段；不给则不渲染。 */
+  footerSlot?: import("react").ReactNode;
 }
 
 // manifest.prompt 为空时，由身份信息合成一段「人设说明」，作为开源 prompt 的兜底。
@@ -100,6 +104,7 @@ export function SkillPromptPanel({
   onClose,
   onDelete,
   deleteLabel,
+  footerSlot,
 }: SkillPromptPanelProps) {
   const tt = useUI();
   const [openSelf, setOpenSelf] = useState(false);
@@ -228,6 +233,11 @@ export function SkillPromptPanel({
             {tt("保存为我的 agent")}
           </PanelBtn>
         </div>
+      )}
+
+      {/* 额外内容（doctrine 2026-07-09）：organization 画布点节点时展示该成员的工作片段。 */}
+      {footerSlot && (
+        <div className="mt-1 border-t border-stone-100 pt-3">{footerSlot}</div>
       )}
 
       {/* 底部删除区（onDelete 提供时）：与上面的操作按钮分隔，醒目的危险色。

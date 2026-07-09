@@ -49,6 +49,30 @@ function artifactLabels(tt: UITranslate): Record<string, string> {
   };
 }
 
+/**
+ * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
+ * 判据（按 meta.worker=agent_id 聚合）：出过 kind="report" → done（已回复）；否则若整体
+ * running 且该成员出现过（step/artifact/report 的 meta.worker）→ running（工作中）；否则
+ * pending（待命）。返回 { [agent_id]: "pending"|"running"|"done" }。 */
+export function orgStatusFromMessages(
+  messages: AgentMessage[],
+  running: boolean,
+): Record<string, "pending" | "running" | "done"> {
+  const reported = new Set<string>();
+  const touched = new Set<string>();
+  for (const m of messages) {
+    const w = (m.meta?.worker as string) || "";
+    if (!w) continue;
+    touched.add(w);
+    if (m.kind === "report") reported.add(w);
+  }
+  const out: Record<string, "pending" | "running" | "done"> = {};
+  for (const id of touched) {
+    out[id] = reported.has(id) ? "done" : running ? "running" : "pending";
+  }
+  return out;
+}
+
 export interface AgentChatProps {
   /** 站点 id（驱动 per-site 工具 md + 计量）。 */
   siteId?: string;
@@ -105,13 +129,14 @@ export interface AgentChatProps {
    * 成员，只跟他们说话（后端只把活派给被 @ 的成员）。不给 → 无 @ 选择器（单 agent）。 */
   mentionMembers?: { agent_id: string; name: string; icon?: string }[];
   /**
-   * 团队/组织成员（doctrine 2026-07-09）。给了它（且非空）→ 右栏库最前面多一个「组织」
-   * 板块：把这支团队当作一个 organization 展示，列出每个成员卡片 + 依对话流实时推断的
-   * 状态（待命 / 工作中 / 已回复），点成员卡可 @ TA（onMention）。用户「看到团队里每个
-   * agent 在做什么」的诉求由它满足。不给 → 无「组织」板块（单 agent 场景）。 */
-  teamMembers?: { agent_id: string; name: string; icon?: string; role?: string }[];
-  /** 团队名（「组织」板块标题）。 */
-  teamName?: string;
+   * 「组织」板块渲染器（doctrine 2026-07-09，修：改用真【节点图画布】而非成员卡列表）。
+   * 给了它 → 右栏库【最前面】多一个「组织」标签，内容 = 本函数返回的节点图（宿主用
+   * `@oceanleo/ui/org-canvas` 的 <OrgCanvas> 渲染：团队≡组织，节点=成员、可加成员、点节点
+   * 看 prompt/正在做的工作、有实时状态、带 minimap/缩放，与主站 organization 画布一模一样）。
+   * 之所以用 render-prop 而不在此静态 import OrgCanvas：ReactFlow 只该进真正用画布的站
+   * （agent/主站），不拖累其余 29 站。宿主可用 `orgStatusFromMessages(messages)` 把对话流
+   * 转成节点状态喂给 OrgCanvas。不给 → 无「组织」板块（单 agent 场景）。 */
+  renderOrgPanel?: (ctx: { messages: AgentMessage[]; running: boolean }) => React.ReactNode;
   /**
    * doctrine v6：本次会话的 skill-prompt 覆盖（用户编辑了 prompt 并选「用这段直接干活」）。
    * 只对本次会话生效，透传给 createTask，不写回 manifest。 */
@@ -177,8 +202,7 @@ export function AgentChat({
   backLabel,
   libraryTabs,
   mentionMembers,
-  teamMembers,
-  teamName,
+  renderOrgPanel,
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
@@ -557,27 +581,15 @@ export function AgentChat({
   // 宗旨 v19：给了 libraryTabs → 右栏是全家桶统一的多标签库（生成结果 / 素材库 / 文件库，
   // 与其它站 app 右栏一致；「导航」由 ResultCanvas 依 guide 自动前插，agent 站无 guide 故
   // 不出现）。不给 → 旧的单 artifact 右版面（向后兼容）。
-  // 「组织」板块（doctrine 2026-07-09）：把当前团队当 organization 展示，成员卡 + 实时
-  // 状态（依对话流里 step/report 的 meta.worker 推断）。点成员 → 把「@名字 」插进输入框。
-  const orgTab: CanvasTab | null =
-    teamMembers && teamMembers.length
-      ? {
-          id: "org",
-          label: tt("组织"),
-          content: (
-            <OrgPanel
-              members={teamMembers}
-              teamName={teamName}
-              messages={messages}
-              running={running}
-              accent={accent}
-              onMention={(name) =>
-                setInput((v) => `${v}${v && !v.endsWith(" ") ? " " : ""}@${name} `)
-              }
-            />
-          ),
-        }
-      : null;
+  // 「组织」板块（doctrine 2026-07-09，修：真节点图画布）：宿主用 <OrgCanvas> 渲染，把团队
+  // 当 organization 展示（节点=成员、加成员、点节点看 prompt/工作、实时状态、minimap/缩放）。
+  const orgTab: CanvasTab | null = renderOrgPanel
+    ? {
+        id: "org",
+        label: tt("组织"),
+        content: <div className="h-full">{renderOrgPanel({ messages, running })}</div>,
+      }
+    : null;
 
   const right: ReactNode = libraryTabs
     ? (() => {
@@ -702,92 +714,6 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
   return (
     <div className="max-w-full px-1 text-neutral-900">
       <TypewriterMarkdown content={m.content} active={streaming} />
-    </div>
-  );
-}
-
-// 「组织」板块（doctrine 2026-07-09）：把当前 agent 团队当作一个 organization 呈现——
-// 顶部一句话概述 + 成员卡网格，每张卡有依对话流实时推断的状态徽标（待命/工作中/已回复）。
-// 点成员卡 = 把「@名字 」插进输入框（只跟 TA 说）。这满足「右侧库加『组织』板块，点某个
-// agent 看它在做什么」的诉求，且复用 organization 的心智模型（团队≡组织）。
-type MemberLite = { agent_id: string; name: string; icon?: string; role?: string };
-function OrgPanel({
-  members,
-  teamName,
-  messages,
-  running,
-  accent = "#7c3aed",
-  onMention,
-}: {
-  members: MemberLite[];
-  teamName?: string;
-  messages: AgentMessage[];
-  running: boolean;
-  accent?: string;
-  onMention: (name: string) => void;
-}) {
-  const tt = useUI();
-  // 依对话流推断每个成员状态：
-  //   有 kind="report" 且 meta.worker=该成员 → 已回复；
-  //   否则若整体 running 且出现过该成员的 step（meta.worker）→ 工作中；
-  //   否则 待命。
-  const reported = new Set<string>();
-  const touched = new Set<string>();
-  for (const m of messages) {
-    const w = (m.meta?.worker as string) || "";
-    if (!w) continue;
-    touched.add(w);
-    if (m.kind === "report") reported.add(w);
-  }
-  const statusOf = (id: string): "done" | "working" | "idle" => {
-    if (reported.has(id)) return "done";
-    if (running && touched.has(id)) return "working";
-    return "idle";
-  };
-  const BADGE: Record<string, { label: string; cls: string }> = {
-    done: { label: tt("已回复"), cls: "bg-emerald-50 text-emerald-600" },
-    working: { label: tt("工作中"), cls: "bg-amber-50 text-amber-600" },
-    idle: { label: tt("待命"), cls: "bg-stone-100 text-stone-400" },
-  };
-  return (
-    <div className="h-full overflow-y-auto p-4">
-      <div className="mb-3">
-        <p className="text-[13px] font-semibold text-stone-700">{teamName || tt("agent 团队")}</p>
-        <p className="mt-0.5 text-[12px] text-stone-400">
-          {tt("这支团队就是一个 organization。点成员 = 只 @ TA；@ 主管则由主管统筹分派。")}
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {members.map((mem) => {
-          const st = statusOf(mem.agent_id);
-          const b = BADGE[st];
-          return (
-            <button
-              key={mem.agent_id}
-              type="button"
-              onClick={() => onMention(mem.name)}
-              title={tt("@ {name}", { name: mem.name })}
-              className="group flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-left transition hover:border-stone-300 hover:shadow-sm"
-            >
-              <span
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[15px]"
-                style={{ background: `${accent}14` }}
-              >
-                {mem.icon || "✦"}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-stone-700">{mem.name}</span>
-                {mem.role && (
-                  <span className="block truncate text-[11px] text-stone-400">{mem.role}</span>
-                )}
-              </span>
-              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${b.cls}`}>
-                {b.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

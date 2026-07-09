@@ -185,6 +185,68 @@ export function createTask(body: {
 }
 
 // --------------------------------------------------------------------------- //
+// 操作台运行历史（doctrine 2026-07-09）——把一次成品站「操作台生成」持久化成一条
+// mode="console" 的 agent_task，使其进历史记录、可回看产物、可据 ops_state 恢复操作台。
+// 后端：POST/PUT /v1/agent/console-runs（见 agent_router.py）。前端各站用 useConsoleRun。
+// --------------------------------------------------------------------------- //
+export interface ConsoleArtifactInput {
+  /** 产物类型（markdown | doc | canvas | ppt | sheet | image …）。 */
+  type?: string;
+  title?: string;
+  format?: string;
+  content?: string;
+  url?: string;
+}
+
+/** 新建一条操作台运行历史，返回 task_id。 */
+export function createConsoleRun(body: {
+  prompt: string;
+  siteId?: string;
+  agentId?: string;
+  appId?: string;
+  opsState?: Record<string, unknown>;
+  artifact?: ConsoleArtifactInput;
+  status?: "running" | "done" | "failed";
+}) {
+  return authed<{ task_id: string; status: string }>("/v1/agent/console-runs", {
+    method: "POST",
+    body: JSON.stringify({
+      prompt: body.prompt,
+      site_id: body.siteId || "",
+      agent_id: body.agentId || "",
+      app_id: body.appId || "",
+      ops_state: body.opsState || null,
+      artifact: body.artifact || null,
+      status: body.status || "done",
+    }),
+  });
+}
+
+/** 更新一条操作台运行：改状态 / 更新 ops_state 快照 / 追加或替换产物。 */
+export function updateConsoleRun(
+  taskId: string,
+  body: {
+    status?: "running" | "done" | "failed";
+    opsState?: Record<string, unknown>;
+    artifact?: ConsoleArtifactInput;
+    replaceArtifacts?: boolean;
+  },
+) {
+  return authed<{ task_id: string; ok: boolean }>(
+    `/v1/agent/console-runs/${encodeURIComponent(taskId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        status: body.status || null,
+        ops_state: body.opsState ?? null,
+        artifact: body.artifact || null,
+        replace_artifacts: Boolean(body.replaceArtifacts),
+      }),
+    },
+  );
+}
+
+// --------------------------------------------------------------------------- //
 // OceanLeo Agents marketplace + 我的 agents (doctrine v3)
 // --------------------------------------------------------------------------- //
 export interface AgentDef {
