@@ -206,11 +206,15 @@ export function AgentChat({
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
-  // 宗旨 v19：右栏多标签库当前标签（生成结果 / 素材库 / 文件库）。默认「生成结果」。
-  const [libTab, setLibTab] = useState("result");
-  // 「库」= 右版面（结果/预览）显隐开关。默认关（对话占满）；生成结果(artifact)到达时
-  // 自动打开右版面显示，用户也可用「库」按钮手动开合。显式 false 关闭库按钮。
-  const [rightOpen, setRightOpen] = useState(false);
+  // 团队/组织对话（宿主给了 renderOrgPanel）→ 右栏库多一个「组织」板块，且操作员
+  // 2026-07-09 要求：进团队 app 一打开就【库展开 + 默认停在「组织」】。单 agent 场景
+  // （无 renderOrgPanel）仍是「默认生成结果标签 + 库收起（有产物才自动开）」。
+  const hasOrgPanel = Boolean(renderOrgPanel);
+  // 宗旨 v19：右栏多标签库当前标签（生成结果 / 素材库 / 文件库）。团队默认「组织」，否则「生成结果」。
+  const [libTab, setLibTab] = useState(hasOrgPanel ? "org" : "result");
+  // 「库」= 右版面（结果/预览）显隐开关。团队默认【开】（一进来就看到组织画布）；单 agent
+  // 默认关（对话占满，生成结果 artifact 到达时自动打开）。用户可用「库」按钮手动开合。
+  const [rightOpen, setRightOpen] = useState(hasOrgPanel);
   const [taskId, setTaskId] = useState<string | null>(initialTaskId ?? null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
