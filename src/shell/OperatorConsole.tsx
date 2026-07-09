@@ -65,6 +65,12 @@ export interface ConsoleFunction {
    */
   scenes?: string[];
   /**
+   * 宗旨 v21（操作员 2026-07-09）：本成品 app 归属的【能力大板块】（第一层分类，单值）。
+   * 与 `scenes`（第二层情境维度）正交。目录页收到 `directoryGroups` 时顶部出第一层大板块
+   * tab，选中某板块后第二层场景 chips + 卡片都收窄到该板块。不给则归入「全部」板块。
+   */
+  group?: string;
+  /**
    * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
    * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
    */
@@ -137,6 +143,11 @@ export interface OperatorConsoleProps {
   directoryTitle?: ReactNode;
   /** 目录页副标题。 */
   directorySubtitle?: ReactNode;
+  /**
+   * 宗旨 v21（操作员 2026-07-09）：目录页两层分类器【第一层：能力大板块】。给了它 →
+   * 目录顶部先出一排大板块 tab，第二层再是场景 chips（只统计当前板块的成品）。数据驱动，
+   * 顺序即 tab 顺序（「全部」自动置最前）。与 ConsoleFunction.group 搭配使用。 */
+  directoryGroups?: { id: string; label: string; icon?: ReactNode }[];
   /** 目录卡片的分类输入（用于二元分类器）：每个功能区的 site_id / category。 */
   siteId?: string;
   /**
@@ -188,6 +199,7 @@ export function OperatorConsole({
   directory = true,
   directoryTitle,
   directorySubtitle,
+  directoryGroups,
   siteId = "",
   modelCategories,
   modelSiteId,
@@ -300,6 +312,7 @@ export function OperatorConsole({
       site_id: siteId,
       category: "",
       scenes: f.scenes,
+      group: f.group,
     }));
     // 宗旨 v14：任一功能带了自定义场景词 → 目录顶部横排分类器切到「场景模式」
     // （各站自定义场景 chips），而非全局「按行业/按内容」。
@@ -330,6 +343,7 @@ export function OperatorConsole({
           openLabel={tt("打开")}
           onOpen={(it) => openFn(it.id)}
           sceneMode={sceneMode}
+          groups={directoryGroups}
         />
       </div>
     );

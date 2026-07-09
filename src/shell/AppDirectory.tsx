@@ -59,6 +59,14 @@ export interface DirectoryItem {
    * 一个条目可同时属于多个场景（每个场景 chip 下都会出现它）。
    */
   scenes?: string[];
+  /**
+   * 宗旨 v21（操作员 2026-07-09）：本条目归属的【能力大板块】（第一层分类，单值）。
+   * 与 `scenes`（第二层、情境维度、可多值）正交：`group` 是能力/领域维度（如 image 站的
+   * 「图像生成 / 图像处理 / AI 写真 / 矢量图形」）。给 AppDirectory 传 `groups` 时，
+   * 顶部渲染第一层大板块 tab，选中某板块后，第二层场景 chips 只统计该板块下的条目。
+   * 不给 `group` 的条目归入「全部」板块（在任何板块 tab 下都可见——除非选了具体板块）。
+   */
+  group?: string;
   /** 是否已加入工作台（控制「加入工作台」按钮态）。 */
   added?: boolean;
   /** 是否可删除（控制卡片右上角「删除」按钮是否出现）。需配合 AppDirectory.onDelete。 */
@@ -117,6 +125,18 @@ export interface AppDirectoryProps {
   sceneMode?: boolean;
   /** 场景模式下「全部」chip 的文字，默认「全部」。 */
   sceneAllLabel?: string;
+  /**
+   * 宗旨 v21（操作员 2026-07-09）：两层分类器的【第一层：能力大板块】。给了它 →
+   * 顶部先渲染一排大板块 tab（横排 pill，比场景 chips 更醒目），选中某板块后：
+   *   · 卡片只显示该板块下的条目（item.group === 板块 id）；
+   *   · 第二层场景 chips 只统计该板块下条目的 scenes（动态收窄）。
+   * 「全部」板块 tab 恒在最前，显示所有条目。**必须与 sceneMode 搭配**（第二层用场景）。
+   * 不给 groups → 行为与旧版完全一致（仅单层 sceneMode / 二元分类器）。
+   * 数据驱动：站点在 app-catalog 里声明 GROUPS 数组，顺序即 tab 顺序。
+   */
+  groups?: { id: string; label: string; icon?: React.ReactNode }[];
+  /** 大板块「全部」tab 的文字，默认「全部」。 */
+  groupAllLabel?: string;
 }
 
 export function AppDirectory({
@@ -137,6 +157,8 @@ export function AppDirectory({
   nativeLabel,
   sceneMode = false,
   sceneAllLabel,
+  groups,
+  groupAllLabel,
 }: AppDirectoryProps) {
   const tt = useUI();
   // openLabel 仍保留在 props 里（向后兼容旧调用方），但卡片底部已不再渲染「打开」文字
@@ -145,10 +167,37 @@ export function AppDirectory({
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
   const sceneAllText = sceneAllLabel ?? tt("全部");
+  const groupAllText = groupAllLabel ?? tt("全部");
   // 分类方式 + 当前选中分类（"all" = 全部）。nativeFirst 时默认「按分类」（原生 category）。
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
   const [filter, setFilter] = useState("");
+  // ── 第一层：能力大板块（宗旨 v21）。groups 存在才启用；"all" = 全部板块 ──
+  const groupMode = Boolean(groups && groups.length > 0);
+  const [grp, setGrp] = useState<string>("all");
+
+  // 每个大板块的条目数（用于 tab 上的计数）。
+  const groupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!groupMode) return m;
+    for (const it of items) {
+      if (it.group) m.set(it.group, (m.get(it.group) || 0) + 1);
+    }
+    return m;
+  }, [items, groupMode]);
+
+  // 大板块 tab（「全部」恒在最前；其余按 groups 声明顺序，仅显示有条目的板块）。
+  const groupTabs = useMemo(() => {
+    if (!groupMode || !groups) return [];
+    const withItems = groups.filter((g) => (groupCounts.get(g.id) || 0) > 0);
+    return [{ id: "all", label: groupAllText, icon: "✦" }, ...withItems];
+  }, [groupMode, groups, groupCounts, groupAllText]);
+
+  // 选了某板块后，卡片与第二层场景 chips 都只在【该板块条目】上计算。
+  const groupItems = useMemo(() => {
+    if (!groupMode || grp === "all") return items;
+    return items.filter((it) => it.group === grp);
+  }, [items, groupMode, grp]);
 
   // 分类方式切换器的选项（nativeFirst 时把「按分类」排首位并默认）。
   const modeTabs = useMemo(
@@ -177,24 +226,25 @@ export function AppDirectory({
   }, [items, mode]);
 
   // ── 场景模式（宗旨 v14）：横排 chips = 各站自定义场景词（数据驱动，多值） ──
+  // 宗旨 v21：第二层场景只在【当前大板块条目 groupItems】上统计（选了板块即动态收窄）。
   // 每个场景的条目数（一个条目可属多个场景，故都计入各自场景）。
   const sceneCounts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const it of items) {
+    for (const it of groupItems) {
       const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
       for (const s of list) m.set(s, (m.get(s) || 0) + 1);
     }
     return m;
-  }, [items]);
+  }, [groupItems]);
   // 场景 chips：按首次出现顺序（保序，尊重各站在数据里排的场景顺序），「全部」恒在最前。
   const sceneChips = useMemo(() => {
     const seen: string[] = [];
-    for (const it of items) {
+    for (const it of groupItems) {
       const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
       for (const s of list) if (!seen.includes(s)) seen.push(s);
     }
     return [{ id: "all", label: sceneAllText, icon: "✦" }, ...seen.map((s) => ({ id: s, label: s, icon: "▪" }))];
-  }, [items, sceneAllText]);
+  }, [groupItems, sceneAllText]);
 
   // 当前维度可见的分类 chips（「全部」恒在最前；其余仅显示有条目的）。
   // native 维度的可选分类是数据驱动的（从条目集合现算），其余维度用固定枚举。
@@ -206,7 +256,8 @@ export function AppDirectory({
   const normFilter = filter.trim().toLowerCase();
   const visible = useMemo(() => {
     if (compact) return items;
-    return items.filter((it) => {
+    // 宗旨 v21：先按大板块收窄（groupItems），再叠加第二层（场景 / 二元分类）+ 关键词。
+    return groupItems.filter((it) => {
       if (sceneMode) {
         if (cat !== "all") {
           const list = it.scenes && it.scenes.length ? it.scenes : ["其它"];
@@ -222,7 +273,7 @@ export function AppDirectory({
         (it.capabilities || "").toLowerCase().includes(normFilter)
       );
     });
-  }, [items, cat, mode, normFilter, compact, sceneMode]);
+  }, [groupItems, items, cat, mode, normFilter, compact, sceneMode]);
 
   // 切换分类方式时，把选中分类重置回「全部」（避免残留另一维度的 id）。
   function switchMode(next: TaxonomyMode) {
@@ -231,10 +282,45 @@ export function AppDirectory({
     setCat("all");
   }
 
+  // 切换大板块时，第二层场景重置回「全部」（避免残留上个板块专属场景 id）。
+  function switchGroup(next: string) {
+    if (next === grp) return;
+    setGrp(next);
+    setCat("all");
+  }
+
   return (
     <div className="space-y-5">
       {!compact && (
       <>
+      {/* ── 第一层：能力大板块 tab（宗旨 v21）。groups 存在才渲染，横排大 pill，最醒目。
+          选中某板块 → 卡片 + 第二层场景 chips 都收窄到该板块。 ── */}
+      {groupMode && groupTabs.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/70 pb-3">
+          {groupTabs.map((g) => {
+            const on = g.id === grp;
+            const n = g.id === "all" ? items.length : groupCounts.get(g.id) || 0;
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => switchGroup(g.id)}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[14px] font-semibold transition ${
+                  on
+                    ? "text-white shadow-sm"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200/70 hover:text-stone-800"
+                }`}
+                style={on ? { background: accent } : undefined}
+              >
+                {g.icon && <span className="text-[16px] leading-none">{g.icon}</span>}
+                <span>{tt(g.label)}</span>
+                <span className={`text-[11px] font-normal ${on ? "text-white/75" : "text-stone-400"}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ──
           场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
       <div className="flex flex-wrap items-center justify-between gap-3">

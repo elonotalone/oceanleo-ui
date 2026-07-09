@@ -56,6 +56,14 @@ export interface GoalApp {
    */
   scenes: string[];
   /**
+   * 宗旨 v21（操作员 2026-07-09）：归属的【能力大板块】（第一层分类，单值，可选）。
+   * 与 `scenes`（第二层情境维度、多值）正交——`group` 是能力/领域维度：如 image 站的
+   * 「图像生成 / 图像处理 / AI 写真 / 矢量图形」。站点在 app-catalog 里声明 `GROUPS`
+   * 数组并给每个成品打 `group`；`SiteCatalogConsole` 收到 `groups` 时顶部出第一层
+   * 大板块 tab。不给 `group` → 归入「全部」板块（选具体板块时不显示）。
+   */
+  group?: string;
+  /**
    * 该成品的「标准起手」预置：主 prompt 模板（可带 `[占位]`）+ 可选参数补丁。
    *
    * ⚠️ 宗旨 v15 决策 D 变更：**进入 app 时不再自动灌这份预置**（操作员：一进 app

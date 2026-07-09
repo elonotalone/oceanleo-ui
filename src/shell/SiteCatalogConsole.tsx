@@ -89,6 +89,12 @@ export interface SiteCatalogConsoleProps {
    * 右栏「生成结果」的内容由站点通过 `agentApp.renderResult` 提供（不给则用通用空态，
    * 靠 ArtifactLibrary 兜底展示 agent 产出的文件）。 */
   agentApp?: AgentCardConfig | boolean;
+  /**
+   * 宗旨 v21（操作员 2026-07-09）：两层分类器【第一层：能力大板块】。给了它 → 目录顶部
+   * 先出一排大板块 tab（横排大 pill），选中某板块后第二层场景 chips + 卡片都收窄到该板块。
+   * 数据驱动：站点在 app-catalog 里声明 GROUPS 数组，并给每个 GoalApp 打 `group`。
+   * 不给 → 行为与旧版一致（仅场景单层）。顺序即 tab 顺序（「全部」自动置最前）。 */
+  groups?: { id: string; label: string; icon?: ReactNode }[];
 }
 
 /** 「agent」卡片（目录首张）配置。 */
@@ -132,6 +138,7 @@ export function SiteCatalogConsole({
   solo = false,
   guideIntro,
   agentApp = true,
+  groups,
 }: SiteCatalogConsoleProps) {
   // 宗旨 v19：目录首张「agent」卡片（左纯对话 / 右四分区库）。合成一个 GoalApp 前插。
   const agentCard: GoalApp | null = useMemo(() => {
@@ -218,6 +225,7 @@ export function SiteCatalogConsole({
           tagline: app.tagline,
           capabilities: app.capabilities,
           scenes: app.scenes,
+          group: app.group,
           agentId: `${siteId}.${app.id}`,
           ops: <CatalogOps app={app} renderOps={renderOps} onEnterApp={onEnterApp} />,
           canvas: renderCanvas(app),
@@ -237,6 +245,7 @@ export function SiteCatalogConsole({
       accent={accent}
       hideTabs={solo || embed}
       directory={!embed}
+      directoryGroups={groups}
       directoryTitle={directoryTitle}
       directorySubtitle={directorySubtitle}
       siteId={siteId}
