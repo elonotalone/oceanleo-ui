@@ -509,15 +509,19 @@ export function FunctionAgentChat({
               {tt(error)}
             </p>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* 操作员 2026-07-09（截图 63ad18f3）：底部渐隐遮罩会盖住最后一张卡（如「可编辑
+              大纲」引导卡）。给滚动区补一段底部内边距（有 stickyAction 时 pb-8），让内容能
+              滚到遮罩上方、卡片本体不进入半透明渐变区。 */}
+          <div className={`min-h-0 flex-1 overflow-y-auto ${stickyAction != null ? "pb-8" : ""}`}>
             <FillNonceProvider nonce={fillNonce}>{opsContent}</FillNonceProvider>
           </div>
           {stickyAction != null && (
             <div className="relative shrink-0">
-              {/* 半透明渐隐遮罩：从透明 → 白，盖住滚动内容与按钮之间的缝隙（不露输入框）。 */}
+              {/* 半透明渐隐遮罩：从透明 → 白，盖住滚动内容与按钮之间的缝隙（不露输入框）。
+                  高度收窄到 4（16px）并压在补出的 pb-8 空白上，卡片本体不会被吃掉。 */}
               <div
                 aria-hidden
-                className="pointer-events-none absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-white/95 to-transparent"
+                className="pointer-events-none absolute -top-4 left-0 right-0 h-4 bg-gradient-to-t from-white/95 to-transparent"
               />
               <div className="bg-white/95 pt-1 backdrop-blur-sm">{stickyAction}</div>
             </div>

@@ -387,6 +387,20 @@ export function AgentChat({
     }
   }, [art, artSig]);
 
+  // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
+  // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
+  // 之后 renderOrgPanel 才从 undefined 变有值）。仅靠 useState 初始值 = hasOrgPanel 覆盖不到
+  // 这个「挂载后才变 true」的情形 → 库仍是初始的关。这里用一次性 ref：hasOrgPanel 第一次
+  // 变 true 时，强制【开库 + 切到「组织」】。只做一次，之后用户手动开合/切标签不再被打断。
+  const orgAutoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (hasOrgPanel && !orgAutoOpenedRef.current) {
+      orgAutoOpenedRef.current = true;
+      setRightOpen(true);
+      setLibTab("org");
+    }
+  }, [hasOrgPanel]);
+
   // 「库」= 右版面显隐开关（受控）。显式 false 关按钮。否则默认启用。
   const effectiveLibrary: SplitLibraryConfig | undefined =
     library === false
