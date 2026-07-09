@@ -75,6 +75,16 @@ export interface AgentMessage {
     ops_patch?: OpsPatch;
     /** 用户随这条消息上传的附件（回看历史时渲染在用户气泡上）。 */
     attachments?: AgentAttachment[];
+    /** 团队/组织多智能体（doctrine 2026-07-09）：产出这条消息的成员 agent_id / 名字 /
+     *  图标。kind="report" 的消息 = 该成员【自己的回答】，前端据此分组成署名气泡；
+     *  step/plan 里的 worker 也标注是谁。 */
+    worker?: string;
+    worker_name?: string;
+    worker_icon?: string;
+    /** 主管最终汇总消息上标注参与的成员 id 列表。 */
+    workers?: string[];
+    /** 被用户 @ 点名的成员 id 列表（主管把活只派给他们）。 */
+    mentions?: string[];
     [k: string]: unknown;
   };
   created_at?: string;

@@ -12,11 +12,11 @@
 // master-detail 形态供 doctrine v4 覆盖式子栏使用。
 // ============================================================================
 
-import { useCallback, useEffect, useState } from "react";
-import { AgentChat } from "./AgentChat";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { ModelPicker } from "./ModelPicker";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
-import { listTasks, deleteTask, taskCostYuan, type AgentTask } from "../lib/agent";
+import { listTasks, deleteTask, taskCostYuan, type AgentTask, type ArtifactMeta } from "../lib/agent";
 import { ConfirmDialog } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -184,14 +184,32 @@ export function HistoryDetail({
   siteId = "",
   accent = "#0ea5e9",
   appNames,
+  libraryTabs,
+  renderArtifact,
 }: {
   siteId?: string;
   accent?: string;
   /** site_id → app 展示名（回看时在 agent 界面显示「所属 app」）。 */
   appNames?: Record<string, string>;
+  /**
+   * 关键修（doctrine 2026-07-09，操作员截图 f4d54ac9）：从历史记录回看某 app 的会话时，
+   * 右栏必须是【该 app 完整的库】（生成结果 / 素材库 / 文件库），而不是一个空泛的「库」。
+   * 站点把自己 live 操作台用的同一份 libraryTabs 传进来 → 回看即复用同一套库板块。
+   * 不传 → 退化为通用单 artifact 右版面（向后兼容，如主站 hub 混合历史）。 */
+  libraryTabs?: AgentLibraryTabs;
+  /** 站点自定义「生成结果」渲染器（同 live 操作台的 renderArtifact）——让回看的成稿/
+   *  图片/PPT 用与生成时一致的富样式，而不是纯 markdown 兜底。 */
+  renderArtifact?: (artifact: ArtifactMeta, content: string) => ReactNode;
 }) {
   const tt = useUI();
   const [sel] = useWorkspaceSelection("history");
+  // 关键修（doctrine 2026-07-09）：**默认**让 app 站的回看右栏 = 全家桶统一多标签库
+  // （生成结果 / 素材库 / 文件库）。判据：siteId 非空 = 在某个具体 app 站里（主站 hub
+  // 传空 siteId → 保持通用单版面）。站点想要更丰富的素材/富渲染就显式传 libraryTabs
+  // 覆盖这个默认。这样一处改动就修好【所有】app 站的「回看右栏只剩空泛『库』」的 bug，
+  // 不用逐站改 29 个 history/page.tsx。
+  const effectiveLibraryTabs: AgentLibraryTabs | undefined =
+    libraryTabs ?? (siteId ? { showFiles: true } : undefined);
   // 主区右上角模型选择（5 模态，popover）——回看时若用户追问，用所选「文本」模型。
   // 这是模型选择的唯一落点（与各 app 顶栏一致），不再放在左侧子栏里。
   const [agentModel, setAgentModel] = useState("");
@@ -230,6 +248,8 @@ export function HistoryDetail({
           accent={accent}
           headerHeight={49}
           appNames={appNames}
+          libraryTabs={effectiveLibraryTabs}
+          renderArtifact={renderArtifact}
         />
       </div>
     </div>

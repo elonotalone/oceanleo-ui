@@ -20,3 +20,4 @@ export * from "./brand-color";
 export * from "./asset-thumb";
 // 宗旨 v16 补充（2026-07-06）：「我的工作流」存取（操作台输入快照 → 右栏导航「我的」复用）。
 export * from "./workflows";
+export * from "./console-draft";

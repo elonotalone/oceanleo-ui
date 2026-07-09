@@ -129,6 +129,11 @@ export type { AgentAttachment } from "../lib/agent";
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
+// doctrine 2026-07-09：操作台草稿「自动恢复 + 自动保存」Hook（每 app 覆盖式一份）。
+export { useConsoleDraft } from "./useConsoleDraft";
+export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";
+export { RestartDraftButton } from "./RestartDraftButton";
+export type { RestartDraftButtonProps } from "./RestartDraftButton";
 // doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
 export { SkillPromptPanel } from "./SkillPromptPanel";
 export type { SkillPromptPanelProps } from "./SkillPromptPanel";

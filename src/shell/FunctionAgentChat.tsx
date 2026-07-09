@@ -645,6 +645,20 @@ function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: str
       </div>
     );
   }
+  // 团队/组织成员署名回答（doctrine 2026-07-09）。
+  if (m.kind === "report") {
+    const name = (m.meta?.worker_name as string) || (m.meta?.worker as string) || "成员";
+    const icon = (m.meta?.worker_icon as string) || "✦";
+    return (
+      <div className="rounded-2xl border border-stone-200 bg-white/70 px-3.5 py-3">
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-[13px]">{icon}</span>
+          <span className="truncate text-[12px] font-semibold text-stone-700">{name}</span>
+        </div>
+        <Markdown className="text-[14px] leading-relaxed text-neutral-800">{m.content}</Markdown>
+      </div>
+    );
+  }
   if (m.kind === "step") {
     return <div className="px-1 text-[13px] font-medium text-stone-500">{m.content}</div>;
   }

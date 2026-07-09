@@ -100,6 +100,19 @@ export interface AgentChatProps {
    * 与「leo 建议」同一行）。agent 站用它放「专家团」小图标 → 点开成员管理弹窗。 */
   composerInlineSlot?: React.ReactNode;
   /**
+   * 团队/组织成员名录（doctrine 2026-07-09）。给了它（且非空）→ 输入框内部左下角出现
+   * 一个「@」按钮，点开成员列表，选某成员就把「@名字 」插进输入框——用户可只 @ 某几个
+   * 成员，只跟他们说话（后端只把活派给被 @ 的成员）。不给 → 无 @ 选择器（单 agent）。 */
+  mentionMembers?: { agent_id: string; name: string; icon?: string }[];
+  /**
+   * 团队/组织成员（doctrine 2026-07-09）。给了它（且非空）→ 右栏库最前面多一个「组织」
+   * 板块：把这支团队当作一个 organization 展示，列出每个成员卡片 + 依对话流实时推断的
+   * 状态（待命 / 工作中 / 已回复），点成员卡可 @ TA（onMention）。用户「看到团队里每个
+   * agent 在做什么」的诉求由它满足。不给 → 无「组织」板块（单 agent 场景）。 */
+  teamMembers?: { agent_id: string; name: string; icon?: string; role?: string }[];
+  /** 团队名（「组织」板块标题）。 */
+  teamName?: string;
+  /**
    * doctrine v6：本次会话的 skill-prompt 覆盖（用户编辑了 prompt 并选「用这段直接干活」）。
    * 只对本次会话生效，透传给 createTask，不写回 manifest。 */
   promptOverride?: string;
@@ -163,6 +176,9 @@ export function AgentChat({
   onBack,
   backLabel,
   libraryTabs,
+  mentionMembers,
+  teamMembers,
+  teamName,
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
@@ -430,6 +446,24 @@ export function AgentChat({
     </div>
   ) : null;
 
+  // @成员选择器（doctrine 2026-07-09）：把「@名字 」插进输入框。与站点原有的
+  // composerInlineSlot（如专家团 roster 按钮）拼在同一行。
+  const appendMention = useCallback((name: string) => {
+    setInput((v) => {
+      const sep = v && !v.endsWith(" ") ? " " : "";
+      return `${v}${sep}@${name} `;
+    });
+  }, []);
+  const inlineSlot =
+    mentionMembers && mentionMembers.length ? (
+      <span className="inline-flex items-center gap-1">
+        <MentionPicker members={mentionMembers} onPick={appendMention} accent={accent} />
+        {composerInlineSlot}
+      </span>
+    ) : (
+      composerInlineSlot
+    );
+
   const stream = (
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -491,7 +525,7 @@ export function AgentChat({
             loading={running}
             onStop={() => void stop()}
             leoSuggest
-            inlineSlot={composerInlineSlot}
+            inlineSlot={inlineSlot}
             placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}
             rows={1}
             onAttachFiles={atts.handleAttachFiles}
@@ -523,9 +557,32 @@ export function AgentChat({
   // 宗旨 v19：给了 libraryTabs → 右栏是全家桶统一的多标签库（生成结果 / 素材库 / 文件库，
   // 与其它站 app 右栏一致；「导航」由 ResultCanvas 依 guide 自动前插，agent 站无 guide 故
   // 不出现）。不给 → 旧的单 artifact 右版面（向后兼容）。
+  // 「组织」板块（doctrine 2026-07-09）：把当前团队当 organization 展示，成员卡 + 实时
+  // 状态（依对话流里 step/report 的 meta.worker 推断）。点成员 → 把「@名字 」插进输入框。
+  const orgTab: CanvasTab | null =
+    teamMembers && teamMembers.length
+      ? {
+          id: "org",
+          label: tt("组织"),
+          content: (
+            <OrgPanel
+              members={teamMembers}
+              teamName={teamName}
+              messages={messages}
+              running={running}
+              accent={accent}
+              onMention={(name) =>
+                setInput((v) => `${v}${v && !v.endsWith(" ") ? " " : ""}@${name} `)
+              }
+            />
+          ),
+        }
+      : null;
+
   const right: ReactNode = libraryTabs
     ? (() => {
         const tabs: CanvasTab[] = [
+          ...(orgTab ? [orgTab] : []),
           { id: "result", label: libraryTabs.resultLabel || "生成结果", content: resultPane },
         ];
         if (libraryTabs.materials && libraryTabs.materials.length) {
@@ -618,6 +675,11 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
       </div>
     );
   }
+  // 团队/组织成员的【自己回答】：署名气泡（doctrine 2026-07-09）——@所有人时用户能看到
+  // 每个成员各自的思考/回答，而不是只有主管汇总。
+  if (m.kind === "report") {
+    return <WorkerReportBubble m={m} />;
+  }
   if (m.kind === "step") {
     return <div className="px-1 text-[13px] font-medium text-stone-500">{m.content}</div>;
   }
@@ -640,6 +702,169 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
   return (
     <div className="max-w-full px-1 text-neutral-900">
       <TypewriterMarkdown content={m.content} active={streaming} />
+    </div>
+  );
+}
+
+// 「组织」板块（doctrine 2026-07-09）：把当前 agent 团队当作一个 organization 呈现——
+// 顶部一句话概述 + 成员卡网格，每张卡有依对话流实时推断的状态徽标（待命/工作中/已回复）。
+// 点成员卡 = 把「@名字 」插进输入框（只跟 TA 说）。这满足「右侧库加『组织』板块，点某个
+// agent 看它在做什么」的诉求，且复用 organization 的心智模型（团队≡组织）。
+type MemberLite = { agent_id: string; name: string; icon?: string; role?: string };
+function OrgPanel({
+  members,
+  teamName,
+  messages,
+  running,
+  accent = "#7c3aed",
+  onMention,
+}: {
+  members: MemberLite[];
+  teamName?: string;
+  messages: AgentMessage[];
+  running: boolean;
+  accent?: string;
+  onMention: (name: string) => void;
+}) {
+  const tt = useUI();
+  // 依对话流推断每个成员状态：
+  //   有 kind="report" 且 meta.worker=该成员 → 已回复；
+  //   否则若整体 running 且出现过该成员的 step（meta.worker）→ 工作中；
+  //   否则 待命。
+  const reported = new Set<string>();
+  const touched = new Set<string>();
+  for (const m of messages) {
+    const w = (m.meta?.worker as string) || "";
+    if (!w) continue;
+    touched.add(w);
+    if (m.kind === "report") reported.add(w);
+  }
+  const statusOf = (id: string): "done" | "working" | "idle" => {
+    if (reported.has(id)) return "done";
+    if (running && touched.has(id)) return "working";
+    return "idle";
+  };
+  const BADGE: Record<string, { label: string; cls: string }> = {
+    done: { label: tt("已回复"), cls: "bg-emerald-50 text-emerald-600" },
+    working: { label: tt("工作中"), cls: "bg-amber-50 text-amber-600" },
+    idle: { label: tt("待命"), cls: "bg-stone-100 text-stone-400" },
+  };
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="mb-3">
+        <p className="text-[13px] font-semibold text-stone-700">{teamName || tt("agent 团队")}</p>
+        <p className="mt-0.5 text-[12px] text-stone-400">
+          {tt("这支团队就是一个 organization。点成员 = 只 @ TA；@ 主管则由主管统筹分派。")}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {members.map((mem) => {
+          const st = statusOf(mem.agent_id);
+          const b = BADGE[st];
+          return (
+            <button
+              key={mem.agent_id}
+              type="button"
+              onClick={() => onMention(mem.name)}
+              title={tt("@ {name}", { name: mem.name })}
+              className="group flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-left transition hover:border-stone-300 hover:shadow-sm"
+            >
+              <span
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[15px]"
+                style={{ background: `${accent}14` }}
+              >
+                {mem.icon || "✦"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-stone-700">{mem.name}</span>
+                {mem.role && (
+                  <span className="block truncate text-[11px] text-stone-400">{mem.role}</span>
+                )}
+              </span>
+              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${b.cls}`}>
+                {b.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 团队/组织「@成员」选择器：输入框内部左下角一个「@」按钮，点开成员浮层，选谁就把
+// 「@名字 」插进输入框。用户只 @ 某几个成员 → 后端只让 TA 们处理（doctrine 2026-07-09）。
+function MentionPicker({
+  members,
+  onPick,
+  accent = "#7c3aed",
+}: {
+  members: { agent_id: string; name: string; icon?: string }[];
+  onPick: (name: string) => void;
+  accent?: string;
+}) {
+  const tt = useUI();
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={tt("@ 某个成员：只让 TA 处理")}
+        className="inline-flex h-7 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[12px] font-medium text-stone-500 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700"
+        style={{ color: accent }}
+      >
+        @
+      </button>
+      {open && (
+        <>
+          <span className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute bottom-9 left-0 z-20 max-h-64 w-56 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
+            <p className="px-2 py-1 text-[11px] text-stone-400">{tt("@ 谁（可多选）")}</p>
+            {members.map((m) => (
+              <button
+                key={m.agent_id}
+                type="button"
+                onClick={() => {
+                  onPick(m.name);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-stone-700 hover:bg-stone-50"
+              >
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-violet-50 text-[12px]">
+                  {m.icon || "✦"}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+              </button>
+            ))}
+            {members.length === 0 && (
+              <p className="px-2 py-3 text-center text-[12px] text-stone-400">{tt("暂无成员")}</p>
+            )}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
+// 团队/组织成员的署名回答气泡：左侧一个成员头像/名字条 + 该成员自己的回答正文。
+// 用一个稳定的浅色边框把它和主管的最终汇总（emerald）、普通 step（灰字）区分开。
+function WorkerReportBubble({ m }: { m: AgentMessage }) {
+  const tt = useUI();
+  const name = (m.meta?.worker_name as string) || (m.meta?.worker as string) || tt("成员");
+  const icon = (m.meta?.worker_icon as string) || "✦";
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white/70 px-3.5 py-3">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-[13px]">
+          {icon}
+        </span>
+        <span className="truncate text-[12px] font-semibold text-stone-700">{name}</span>
+        <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-400">
+          {tt("成员回答")}
+        </span>
+      </div>
+      <Markdown className="text-[14px] leading-relaxed text-neutral-800">{m.content}</Markdown>
     </div>
   );
 }

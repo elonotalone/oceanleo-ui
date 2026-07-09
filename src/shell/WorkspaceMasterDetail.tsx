@@ -340,15 +340,31 @@ export function WorkspaceDetail({
   //   编辑器由消费端 EditorInner 以 `fixed inset-0` 全屏覆盖在上层；board 始终挂在
   //   同一树位置（不 remount）。
   if (renderBoard && (tab === "organization" || tab === "workflow")) {
+    // 关键修（2026-07-09）：进入 board **编辑器**（boardEditing）时，编辑器以
+    // absolute inset-0 铺满内容区，此时这段「工作台 / 你加入的…」标题 + 顶部 tab 条
+    // 若仍渲染就会残留在编辑器上方（操作员截图 2b38a316 的 bug）。boardEditing 之前
+    // 被 set 了却从不读——现在读它：编辑器打开就隐藏标题+tabs，只留全屏编辑器；回到
+    // 目录（boardEditing=false）再显示。
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
-          </p>
-        </div>
-        <div className="mb-6">{tabsBar}</div>
+      <div
+        className={
+          boardEditing
+            ? "relative w-full"
+            : "mx-auto w-full max-w-6xl px-6 py-8"
+        }
+        style={boardEditing ? { height: "calc(100dvh - 1px)" } : undefined}
+      >
+        {!boardEditing && (
+          <>
+            <div className="mb-5">
+              <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
+              <p className="mt-1 text-[13px] text-neutral-500">
+                {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
+              </p>
+            </div>
+            <div className="mb-6">{tabsBar}</div>
+          </>
+        )}
         {/* doctrine v10：工作台只列「我的」organization/workflow（隐藏预设模板）。 */}
         {renderBoard({ kind: tab, onEditingChange: setBoardEditing, mineOnly: true })}
       </div>
