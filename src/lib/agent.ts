@@ -151,6 +151,8 @@ export function createTask(body: {
   mode?: "agent" | "chat" | "skill";
   siteId?: string;
   agentModel?: string;
+  /** Per-category model keys chosen in ModelPicker, e.g. {text,image,video,threed,audio}. */
+  modelSelection?: Record<string, string>;
   projectId?: string;
   /** doctrine v3: bind this conversation to a function-area agent. */
   agentId?: string;
@@ -173,6 +175,7 @@ export function createTask(body: {
         mode: body.mode || "agent",
         site_id: body.siteId || "",
         agent_model: body.agentModel || "",
+        model_selection: body.modelSelection || {},
         project_id: body.projectId || null,
         agent_id: body.agentId || "",
         ops_state: body.opsState || null,

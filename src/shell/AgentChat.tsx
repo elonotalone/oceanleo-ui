@@ -33,6 +33,7 @@ import {
 } from "../lib/agent";
 import { useAttachments } from "./useAttachments";
 import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import type { PreferredModel } from "../lib/auth/account";
 import { useShellChrome } from "./ShellChrome";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
@@ -94,6 +95,8 @@ export interface AgentChatProps {
   teamId?: string;
   /** 选中的文本模型复合 key（来自 ModelPicker），透传给引擎。 */
   agentModel?: string;
+  /** 全类别模型选择：text 驱动主 agent，image/video/threed/audio 驱动对应生成工具。 */
+  modelSelection?: Partial<Record<ModelCategory, PreferredModel>>;
   accent?: string;
   headerHeight?: number;
   /** 任务创建后回调（如把 id 写进 URL / 历史高亮）。 */
@@ -186,6 +189,7 @@ export function AgentChat({
   agentId = "",
   teamId = "",
   agentModel = "",
+  modelSelection: modelSelectionProp,
   accent = "#4f46e5",
   headerHeight = 56,
   onTaskCreated,
@@ -225,6 +229,7 @@ export function AgentChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localModelSelection, setLocalModelSelection] = useState<Partial<Record<ModelCategory, PreferredModel>>>({});
   const startedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
@@ -286,8 +291,16 @@ export function AgentChat({
       { id: -1, role: "user", kind: "text", content: prompt,
         meta: uploaded && uploaded.length ? { attachments: uploaded } : undefined },
     ]);
+    const effectiveModelSelection = modelSelectionProp || localModelSelection;
+    const modelSelectionKeys = Object.fromEntries(
+      Object.entries(effectiveModelSelection)
+        .filter(([, m]) => m?.key)
+        .map(([cat, m]) => [cat, m!.key]),
+    );
+    const selectedAgentModel = agentModel || effectiveModelSelection.text?.key || "";
     const r = await createTask({
-      prompt, mode, siteId, agentModel, agentId, teamId, attachments: uploaded,
+      prompt, mode, siteId, agentModel: selectedAgentModel, modelSelection: modelSelectionKeys,
+      agentId, teamId, attachments: uploaded,
       promptOverride: promptOverride || undefined,
     });
     setBusy(false);
@@ -450,6 +463,7 @@ export function AgentChat({
       categories={modelConfig!.categories as ModelCategory[]}
       siteId={modelConfig!.siteId}
       apiHref={modelConfig!.apiHref}
+      onSelectionChange={setLocalModelSelection}
       variant="popover"
       align="right"
     />
