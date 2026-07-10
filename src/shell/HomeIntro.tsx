@@ -142,6 +142,7 @@ export function HomeIntro({
   const [value, setValue] = useState("");
   // 当前生效的「占位符高亮模板」：点 prompt 卡片时设为该卡文案；用户清空输入框时清掉。
   const [highlightTemplate, setHighlightTemplate] = useState<string | null>(null);
+  const [fillNonce, setFillNonce] = useState(0);
 
   // ── 输入框工具（与主站首页一致）：上传/拖拽/「＋」菜单/语音 ──────────────
   // 传了 siteId 且未显式关闭 → 开启。上传走共享 useAttachments（复用文件库 upload +
@@ -225,19 +226,12 @@ export function HomeIntro({
   const withCards = Boolean(siteId) && defaultTab !== "none";
 
   // 点 prompt 卡片（宗旨 v15）：把该卡文案设为模板 → TemplateFillArea 把字面文字灌进编辑器
-  // （字面可编辑、`[字段]` 是荧光块）。TemplateFillArea **只在 template 值变化时重灌一次**（这样
-  // 用户之后删/改/undo 都不会被回灌打断——修 2026-07-06 的删不掉/undo 失效 bug）。因此「点同一
-  // 张卡再来」时若模板字符串相同、值不变，编辑器不会重灌 → 用 null 弹跳强制产生一次值变化。
+  // （字面可编辑、`[字段]` 是荧光块）。每次点击显式自增 fillNonce；同卡重复点击也能重灌，
+  // 不再用 null → requestAnimationFrame 的时序弹跳。
   const pickPrompt = (p: string) => {
     setValue("");
-    setHighlightTemplate((prev) => {
-      if (prev === p) {
-        // 同模板：先置 null，下一帧再设回 p，制造一次 null→p 变化触发重灌。
-        requestAnimationFrame(() => setHighlightTemplate(p));
-        return null;
-      }
-      return p;
-    });
+    setHighlightTemplate(p);
+    setFillNonce((nonce) => nonce + 1);
   };
   const onChangeValue = (v: string) => {
     setValue(v);
@@ -271,6 +265,7 @@ export function HomeIntro({
           autoFocus
           rows={2}
           highlightTemplate={highlightTemplate}
+          fillNonce={fillNonce}
           accentColor={accent}
           className={withCards ? "shadow-md" : ""}
           onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}

@@ -96,6 +96,8 @@ export interface WorkspaceSessionContextValue {
   availability: WorkspaceSessionAvailability;
   error: string | null;
   conflict: WorkspaceSessionConflict | null;
+  /** Persists across the keyed runtime remount triggered by Restart. */
+  restartFeedback: "saved" | "reset" | null;
   /** 首次有意义动作时取得/创建真实 session；失败返回 null，不伪造本地记录。 */
   ensureActive: (
     options?: EnsureWorkspaceSessionOptions,
@@ -116,9 +118,9 @@ export interface WorkspaceSessionContextValue {
     ) => Promise<unknown> | unknown,
     title?: string,
   ) => Promise<boolean>;
-  archive: () => Promise<boolean>;
+  archive: () => Promise<false | "empty" | "archived">;
   /** 归档当前会话并回到“尚未创建新会话”的干净状态。 */
-  restart: () => Promise<boolean>;
+  restart: () => Promise<false | "empty" | "archived">;
   clearConflict: () => void;
   reload: () => Promise<AppSession | null>;
 }

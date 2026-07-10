@@ -21,6 +21,21 @@ test("从历史会话重新开始后离开旧 session URL", () => {
   );
 });
 
+test("重新开始单击归档且成功反馈不再暗示清空", () => {
+  assert.doesNotMatch(source, /arming|tt\("确认清空？"\)/);
+  assert.match(source, /if \(inFlightRef\.current\) return/);
+  assert.match(source, /inFlightRef\.current = true/);
+  assert.match(source, /workspace\?\.restartFeedback \?\? localFeedback/);
+  assert.match(
+    providerSource,
+    /setRestartFeedback\(result === "archived" \? "saved" : "reset"\)/,
+  );
+  assert.match(providerSource, /return "empty"/);
+  assert.match(providerSource, /return "archived"/);
+  assert.match(source, /tt\("已保存至历史记录"\)/);
+  assert.match(source, /tt\("保存当前工作至历史记录并重新开始"\)/);
+});
+
 test("从旧历史重启时也归档同 app 的另一条活跃会话", () => {
   assert.match(
     providerSource,

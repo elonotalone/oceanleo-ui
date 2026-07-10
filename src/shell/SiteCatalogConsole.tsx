@@ -514,7 +514,7 @@ export function SiteCatalogConsole({
   ) {
     return (
       <div className="grid h-full min-h-[420px] place-items-center bg-stone-50/60 text-[13px] text-stone-400">
-        正在恢复完整工作会话…
+        加载中…
       </div>
     );
   }

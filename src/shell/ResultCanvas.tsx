@@ -21,6 +21,7 @@ import { useRightPaneSlot } from "./SplitWorkspace";
 import { useFunctionGuide } from "./guide-context";
 import { NavigatorGuide } from "./NavigatorGuide";
 import { useUI } from "../i18n/ui/useUI";
+import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
 export interface CanvasTab {
   id: string;
@@ -99,30 +100,115 @@ export function ResultCanvas({
   const rightSlot = useRightPaneSlot();
   const guideCtx = useFunctionGuide();
   const hasGuide = Boolean(guideCtx?.guide);
+  const runtimeHydration = useWorkspaceRuntimeHydration();
+  const tabIds = tabs.map((tab) => tab.id).join("\u0000");
 
-  // 「使用指南」标签：guide 存在时插到最前，并**默认选中**（右版面首屏 = 导航页）。
-  // 用内部 state 记录是否停留在指南标签：首挂载在 guide 存在时为 true；用户点了别的
-  // 标签就走站点受控 active。示例点击后（fill）自动跳到站点第一个标签，方便看结果。
-  const [onGuide, setOnGuide] = useState(hasGuide);
-  // guide 从无到有（切到带指南的功能）时回到指南首屏。
+  // Shared session metadata owns the actual visible tab (including 导航).
+  // Fresh apps still default to 导航; restored sessions prefer the persisted
+  // shared tab, then fall back to the site's restored `active` for old snapshots.
+  const [selectedTab, setSelectedTab] = useState(
+    hasGuide ? GUIDE_TAB_ID : active,
+  );
+  const prevRuntimeIdentity = useRef(runtimeHydration?.identity);
+  useEffect(() => {
+    if (runtimeHydration?.identity === prevRuntimeIdentity.current) return;
+    prevRuntimeIdentity.current = runtimeHydration?.identity;
+    setSelectedTab(hasGuide ? GUIDE_TAB_ID : active);
+  }, [runtimeHydration?.identity, hasGuide, active]);
+
   const prevHasGuide = useRef(hasGuide);
   useEffect(() => {
-    if (hasGuide && !prevHasGuide.current) setOnGuide(true);
-    if (!hasGuide) setOnGuide(false);
+    if (
+      hasGuide &&
+      !prevHasGuide.current &&
+      !runtimeHydration?.restoredSnapshot &&
+      !runtimeHydration?.rightTab
+    ) {
+      setSelectedTab(GUIDE_TAB_ID);
+    }
+    if (!hasGuide) {
+      setSelectedTab((current) =>
+        current === GUIDE_TAB_ID ? active : current,
+      );
+    }
     prevHasGuide.current = hasGuide;
-  }, [hasGuide]);
+  }, [
+    hasGuide,
+    active,
+    runtimeHydration?.restoredSnapshot,
+    runtimeHydration?.rightTab,
+  ]);
+
+  const prevActive = useRef(active);
+  const skipRestoredActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!runtimeHydration?.restoredSnapshot) return;
+    const restored = runtimeHydration.rightTab;
+    if (restored === GUIDE_TAB_ID && hasGuide) {
+      if (restored !== active && active !== prevActive.current) {
+        skipRestoredActiveRef.current = active;
+      }
+      setSelectedTab(GUIDE_TAB_ID);
+      return;
+    }
+    if (restored && tabs.some((tab) => tab.id === restored)) {
+      if (restored !== active && active !== prevActive.current) {
+        skipRestoredActiveRef.current = active;
+      }
+      setSelectedTab(restored);
+      return;
+    }
+    if (restored) {
+      // The stored id no longer exists in this app version. Repair it to the
+      // visible real tab instead of writing the stale id back forever.
+      runtimeHydration.setRightTab(active);
+    } else {
+      runtimeHydration.setDefaultRightTab(active);
+    }
+    setSelectedTab(active);
+  }, [
+    runtimeHydration?.restoredSnapshot,
+    runtimeHydration?.rightTab,
+    runtimeHydration?.setDefaultRightTab,
+    runtimeHydration?.setRightTab,
+    hasGuide,
+    active,
+    tabIds,
+  ]);
+
+  // Record the initially visible tab without mutating session state. The save
+  // path reads this default only when a real runtime change already warrants a
+  // snapshot, so merely opening an app cannot create an empty history item.
+  useEffect(() => {
+    if (!runtimeHydration || runtimeHydration.restoredSnapshot) return;
+    runtimeHydration.setDefaultRightTab(
+      hasGuide ? GUIDE_TAB_ID : active,
+    );
+  }, [
+    runtimeHydration?.identity,
+    runtimeHydration?.restoredSnapshot,
+    runtimeHydration?.setDefaultRightTab,
+    hasGuide,
+    active,
+  ]);
 
   // 宿主【主动】把受控 active 切到某个真实标签（非首挂载、非指南 id）→ 离开指南首屏，
   // 显示该标签。用于「点了操作台里的主按钮/引导卡后，右栏要跳到对应生成资源标签」
   // （宗旨 v16，word：点『生成大纲』/大纲引导卡 → 右栏库跳到『大纲』标签）。首帧不触发
   // （prevActive 初始 = active），故不破坏「进功能默认停在导航首屏」的既有行为。
-  const prevActive = useRef(active);
   useEffect(() => {
     if (active !== prevActive.current) {
       prevActive.current = active;
-      if (active !== GUIDE_TAB_ID) setOnGuide(false);
+      if (skipRestoredActiveRef.current === active) {
+        skipRestoredActiveRef.current = null;
+        return;
+      }
+      if (active !== GUIDE_TAB_ID) {
+        setSelectedTab(active);
+        runtimeHydration?.setRightTab(active);
+      }
     }
-  }, [active]);
+  }, [active, runtimeHydration]);
 
   // 「聚焦请求」（focusNonce 自增）→ 强制离开导航首屏、显示当前受控 active（即便 active
   // 值没变，如目标标签恰等于当前受控值）。首帧不触发（prevNonce 初始 = focusNonce）。
@@ -130,7 +216,10 @@ export function ResultCanvas({
   useEffect(() => {
     if (focusNonce !== prevNonce.current) {
       prevNonce.current = focusNonce;
-      if (active !== GUIDE_TAB_ID) setOnGuide(false);
+      if (active !== GUIDE_TAB_ID) {
+        setSelectedTab(active);
+        runtimeHydration?.setRightTab(active);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
@@ -163,13 +252,15 @@ export function ResultCanvas({
     () => (guideTab ? [guideTab, ...tabs] : tabs),
     [guideTab, tabs],
   );
-  const effectiveActive = onGuide && guideTab ? GUIDE_TAB_ID : active;
+  const effectiveActive = allTabs.some((tab) => tab.id === selectedTab)
+    ? selectedTab
+    : active;
   const handleChange = (id: string) => {
+    setSelectedTab(id);
+    runtimeHydration?.setRightTab(id);
     if (id === GUIDE_TAB_ID) {
-      setOnGuide(true);
       return;
     }
-    setOnGuide(false);
     onChange(id);
   };
   const current = allTabs.find((t) => t.id === effectiveActive) ?? allTabs[0];

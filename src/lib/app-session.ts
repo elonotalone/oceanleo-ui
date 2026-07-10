@@ -28,8 +28,9 @@ export interface AppSession {
   site_id: string;
   app_id: string;
   title?: string | null;
-  /** 从 snapshot 提取的列表级备注，避免历史列表下载整份快照。 */
-  note?: string | null;
+  /** AI history-title lifecycle: pending | generated | fallback. */
+  title_status?: string | null;
+  title_generated_at?: string | null;
   status: AppSessionStatus;
   snapshot?: unknown;
   schema_version: number;

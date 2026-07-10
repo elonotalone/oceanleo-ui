@@ -85,7 +85,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.session.revision !== y.session.revision ||
         x.session.status !== y.session.status ||
         x.session.title !== y.session.title ||
-        x.session.note !== y.session.note ||
+        x.session.title_status !== y.session.title_status ||
         x.session.last_activity_at !== y.session.last_activity_at
       ) {
         return false;
@@ -160,6 +160,20 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     const t = setInterval(() => reload(true), 8000);
     return () => clearInterval(t);
   }, [pending, reload]);
+  const hasPendingSessionTitle = items.some(
+    (item) =>
+      item.kind === "session" &&
+      item.session.status === "archived" &&
+      item.session.title_status === "pending",
+  );
+  // AI history naming happens after archival. Poll only while a durable
+  // pending marker exists, then stop as soon as the generated/fallback title
+  // arrives; ordinary history remains completely idle.
+  useEffect(() => {
+    if (!hasPendingSessionTitle) return;
+    const timer = setInterval(() => reload(true), 2000);
+    return () => clearInterval(timer);
+  }, [hasPendingSessionTitle, reload]);
   const remove = useCallback(async (entry: HistoryListEntry) => {
     if (!canDeleteHistoryEntry(entry)) return false;
     const prev = items;
@@ -240,7 +254,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           : entry.task.created_at;
         const recordSite = record.site_id;
         const cost = isSession ? "" : fmtCost(entry.task);
-        const note = isSession ? (entry.session.note || "").trim() : "";
         return (
           <div
             key={`${entry.kind}:${entry.id}`}
@@ -277,15 +290,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                   {isSession && entry.session.app_id ? ` · ${entry.session.app_id}` : ""}
                   {cost ? ` · ${cost}` : ""}
                 </span>
-                {note && (
-                  <span
-                    className={`block truncate text-[11px] ${
-                      on ? "text-white/80" : "text-neutral-500"
-                    }`}
-                  >
-                    {tt("备注")} · {note}
-                  </span>
-                )}
               </span>
             </button>
             {canDeleteHistoryEntry(entry) && (

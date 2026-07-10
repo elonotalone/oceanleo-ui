@@ -4,9 +4,8 @@
 // @oceanleo/ui — RestartDraftButton：操作台「重新开始」小按钮（单一事实源）
 // ----------------------------------------------------------------------------
 // doctrine 2026-07-09。操作台默认自动恢复上次草稿；当用户想丢弃续编、从头开始时点它。
-// 二段式确认（先变成「确认清空？」再点一次才真清），避免误触把辛苦填的内容清掉。
-// FunctionAgentChat 统一挂载本按钮：先冲刷最新 snapshot，再归档整份 AppSession，最后
-// remount 干净 runtime。站点无需各自实现 restart，避免只清表单却丢失 agent thread。
+// 单击即执行：先冲刷最新 snapshot，再归档整份 AppSession，最后 remount 干净 runtime。
+// 归档成功后明确显示「已保存至历史记录」，不再用「确认清空？」制造数据会丢失的错觉。
 // ============================================================================
 
 import { useEffect, useRef, useState } from "react";
@@ -38,8 +37,14 @@ export function RestartDraftButton({
   const router = useRouter();
   const searchParams = useSearchParams();
   const workspace = useOptionalWorkspaceSession();
-  const [arming, setArming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [localFeedback, setLocalFeedback] = useState<
+    "saved" | "reset" | null
+  >(
+    null,
+  );
+  const feedback = workspace?.restartFeedback ?? localFeedback;
+  const inFlightRef = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
@@ -47,53 +52,62 @@ export function RestartDraftButton({
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={busy || feedback !== null}
       onClick={() => {
-        if (arming) {
-          if (timer.current) clearTimeout(timer.current);
-          setArming(false);
-          setBusy(true);
-          void (async () => {
-            try {
-              const flushed = await onBeforeRestart?.();
-              if (flushed === false) return;
-              // 先归档聚合会话，成功后才清宿主 state/旧草稿；这样“重新开始”一定会
-              // 建立新 session，而不是把旧历史的 snapshot 覆盖成空白。
-              if (workspace) {
-                const archived = await workspace.restart();
-                if (!archived) return;
-              }
-              await onRestart?.();
-              // 历史页的 URL 指向刚归档的旧会话。重置完成后回到同一 app 的 live
-              // canonical URL，否则用户继续输入虽会建立新 session，刷新却又会打开旧历史。
-              if (workspace?.mode === "history") {
-                const query = searchParams.get("embed") === "1" ? "?embed=1" : "";
-                router.replace(`${workspaceAppHref(workspace.appId)}${query}`);
-              }
-            } finally {
-              setBusy(false);
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
+        if (timer.current) clearTimeout(timer.current);
+        setBusy(true);
+        void (async () => {
+          try {
+            const flushed = await onBeforeRestart?.();
+            if (flushed === false) return;
+            // 先归档聚合会话，成功后才清宿主 state/旧草稿；这样“重新开始”一定会
+            // 建立新 session，而不是把旧历史的 snapshot 覆盖成空白。
+            const restartResult = workspace
+              ? await workspace.restart()
+              : "empty";
+            if (!restartResult) return;
+            await onRestart?.();
+            // 历史页的 URL 指向刚归档的旧会话。重置完成后回到同一 app 的 live
+            // canonical URL，否则用户继续输入虽会建立新 session，刷新却又会打开旧历史。
+            if (workspace?.mode === "history") {
+              const query = searchParams.get("embed") === "1" ? "?embed=1" : "";
+              router.replace(`${workspaceAppHref(workspace.appId)}${query}`);
             }
-          })();
-        } else {
-          setArming(true);
-          timer.current = setTimeout(() => setArming(false), 2600);
-        }
+            // Workspace feedback lives in the provider so it survives the
+            // keyed runtime remount. Standalone consumers keep a local reset
+            // notice because they have no aggregate session to archive.
+            if (!workspace) {
+              setLocalFeedback("reset");
+              timer.current = setTimeout(
+                () => setLocalFeedback(null),
+                2600,
+              );
+            }
+          } finally {
+            inFlightRef.current = false;
+            setBusy(false);
+          }
+        })();
       }}
-      title={tt("清空当前草稿，从头开始")}
+      title={tt("保存当前工作至历史记录并重新开始")}
       className={
         className ??
         `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium transition ${
-          arming
-            ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+          feedback
+            ? "bg-emerald-50 text-emerald-700"
             : "text-stone-400 hover:bg-stone-100 hover:text-stone-600"
         } disabled:opacity-50`
       }
     >
       {busy
-        ? tt("正在重置…")
-        : arming
-          ? tt("确认清空？")
-          : label ?? tt("重新开始")}
+        ? tt("正在保存…")
+        : feedback === "saved"
+          ? tt("已保存至历史记录")
+          : feedback === "reset"
+            ? tt("已重新开始")
+            : label ?? tt("重新开始")}
     </button>
   );
 }

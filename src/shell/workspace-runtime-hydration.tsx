@@ -5,15 +5,32 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useWorkspaceSession } from "./workspace-session-context";
+import {
+  normalizeWorkspaceUiSnapshot,
+  type WorkspaceUiSnapshot,
+} from "./workspace-session-snapshot";
 
-interface RuntimeHydrationValue {
+export interface RuntimeHydrationValue {
+  identity: string;
   appInitialized: boolean;
+  /** True when this runtime was opened from any persisted session snapshot. */
+  restoredSnapshot: boolean;
+  /** Shared right-pane selection restored from __oceanleo_ui, when present. */
+  rightTab: string | null;
+  /** Increments once for every persisted snapshot injected into the runtime. */
+  snapshotRestoreEpoch: number;
+  /** Read shared metadata at save time, including a non-mutating default tab. */
+  snapshotSharedUi: () => WorkspaceUiSnapshot;
   markAppInitialized: () => void;
   markRuntimeReady: () => void;
+  restoreSharedUi: (ui: WorkspaceUiSnapshot) => void;
+  setRightTab: (tabId: string | null) => void;
+  setDefaultRightTab: (tabId: string | null) => void;
   registerBeforeLeave: (
     callback: (() => Promise<boolean>) | null,
   ) => void;
@@ -52,25 +69,128 @@ export function WorkspaceRuntimeBoundary({
     identity,
     appInitialized: false,
     runtimeReady: false,
+    restoredSnapshot: false,
+    rightTab: null as string | null,
+    snapshotRestoreEpoch: 0,
   });
+  const defaultRightTabRef = useRef<{
+    identity: string;
+    tabId: string | null;
+  }>({ identity, tabId: null });
+  const rightTabRef = useRef<{
+    identity: string;
+    tabId: string | null;
+  }>({ identity, tabId: null });
   const current =
     state.identity === identity
       ? state
-      : { identity, appInitialized: false, runtimeReady: false };
+      : {
+          identity,
+          appInitialized: false,
+          runtimeReady: false,
+          restoredSnapshot: false,
+          rightTab: null,
+          snapshotRestoreEpoch: 0,
+        };
 
   const markAppInitialized = useCallback(() => {
     setState((previous) =>
       previous.identity === identity
         ? { ...previous, appInitialized: true }
-        : { identity, appInitialized: true, runtimeReady: false },
+        : {
+            identity,
+            appInitialized: true,
+            runtimeReady: false,
+            restoredSnapshot: false,
+            rightTab: null,
+            snapshotRestoreEpoch: 0,
+          },
     );
   }, [identity]);
   const markRuntimeReady = useCallback(() => {
     setState((previous) =>
       previous.identity === identity
         ? { ...previous, runtimeReady: true }
-        : { identity, appInitialized: false, runtimeReady: true },
+        : {
+            identity,
+            appInitialized: false,
+            runtimeReady: true,
+            restoredSnapshot: false,
+            rightTab: null,
+            snapshotRestoreEpoch: 0,
+          },
     );
+  }, [identity]);
+  const restoreSharedUi = useCallback(
+    (ui: WorkspaceUiSnapshot) => {
+      const rightTab =
+        normalizeWorkspaceUiSnapshot(ui).right_tab ?? null;
+      rightTabRef.current = { identity, tabId: rightTab };
+      setState((previous) =>
+        previous.identity === identity
+          ? {
+              ...previous,
+              restoredSnapshot: true,
+              rightTab,
+              snapshotRestoreEpoch: previous.snapshotRestoreEpoch + 1,
+            }
+          : {
+              identity,
+              appInitialized: false,
+              runtimeReady: false,
+              restoredSnapshot: true,
+              rightTab,
+              snapshotRestoreEpoch: 1,
+            },
+      );
+    },
+    [identity],
+  );
+  const setRightTab = useCallback(
+    (tabId: string | null) => {
+      const rightTab =
+        typeof tabId === "string" && tabId.length <= 160 ? tabId : null;
+      // Update synchronously so pagehide/Restart in the same browser task reads
+      // the tab the user just selected even before React commits its state.
+      rightTabRef.current = { identity, tabId: rightTab };
+      setState((previous) =>
+        previous.identity === identity
+          ? { ...previous, rightTab }
+          : {
+              identity,
+              appInitialized: false,
+              runtimeReady: false,
+              restoredSnapshot: false,
+              rightTab,
+              snapshotRestoreEpoch: 0,
+            },
+      );
+    },
+    [identity],
+  );
+  const setDefaultRightTab = useCallback(
+    (tabId: string | null) => {
+      defaultRightTabRef.current = {
+        identity,
+        tabId:
+          typeof tabId === "string" && tabId.length <= 160
+            ? tabId
+            : null,
+      };
+    },
+    [identity],
+  );
+  const snapshotSharedUi = useCallback((): WorkspaceUiSnapshot => {
+    const explicitTab =
+      rightTabRef.current.identity === identity
+        ? rightTabRef.current.tabId
+        : null;
+    const defaultTab =
+      defaultRightTabRef.current.identity === identity
+        ? defaultRightTabRef.current.tabId
+        : null;
+    const rightTab = explicitTab || defaultTab;
+    return rightTab ? { right_tab: rightTab } : {};
   }, [identity]);
   const registerBeforeLeave = useCallback(
     (callback: (() => Promise<boolean>) | null) => {
@@ -80,15 +200,31 @@ export function WorkspaceRuntimeBoundary({
   );
   const value = useMemo<RuntimeHydrationValue>(
     () => ({
+      identity: current.identity,
       appInitialized: current.appInitialized,
+      restoredSnapshot: current.restoredSnapshot,
+      rightTab: current.rightTab,
+      snapshotRestoreEpoch: current.snapshotRestoreEpoch,
+      snapshotSharedUi,
       markAppInitialized,
       markRuntimeReady,
+      restoreSharedUi,
+      setRightTab,
+      setDefaultRightTab,
       registerBeforeLeave,
     }),
     [
+      current.identity,
       current.appInitialized,
+      current.restoredSnapshot,
+      current.rightTab,
+      current.snapshotRestoreEpoch,
+      snapshotSharedUi,
       markAppInitialized,
       markRuntimeReady,
+      restoreSharedUi,
+      setRightTab,
+      setDefaultRightTab,
       registerBeforeLeave,
     ],
   );
@@ -109,7 +245,7 @@ export function WorkspaceRuntimeBoundary({
         </div>
         {!ready && (
           <div className="absolute inset-0 grid place-items-center bg-stone-50/60 text-[13px] text-stone-400">
-            正在恢复上次工作…
+            加载中…
           </div>
         )}
       </div>

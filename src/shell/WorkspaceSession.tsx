@@ -93,6 +93,20 @@ export function WorkspaceSessionProvider({
     initialSession?.task_id ?? null,
   );
   const [runtimeEpoch, setRuntimeEpoch] = useState(0);
+  const [restartFeedback, setRestartFeedback] = useState<
+    "saved" | "reset" | null
+  >(null);
+  const restartFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  useEffect(
+    () => () => {
+      if (restartFeedbackTimerRef.current) {
+        clearTimeout(restartFeedbackTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const sessionRef = useRef<AppSession | null>(session);
   sessionRef.current = session;
@@ -631,12 +645,12 @@ export function WorkspaceSessionProvider({
   );
 
   const archive = useCallback(
-    async (): Promise<boolean> =>
+    async (): Promise<false | "empty" | "archived"> =>
       enqueueMutation(async () => {
         const active = sessionRef.current;
         if (!active) {
           clearCurrent();
-          return true;
+          return "empty";
         }
         if (!isArchivedAppSession(active)) {
           const result = await archiveAppSession(active.id);
@@ -675,7 +689,7 @@ export function WorkspaceSessionProvider({
           }
         }
         clearCurrent();
-        return true;
+        return "archived";
       }),
     [enqueueMutation, mode, site, app, clearCurrent, reload, reportFailure],
   );
@@ -687,15 +701,25 @@ export function WorkspaceSessionProvider({
     setError(null);
   }, []);
 
-  const restart = useCallback(async (): Promise<boolean> => {
-    const archived = await archive();
-    if (archived) {
+  const restart = useCallback(async (): Promise<
+    false | "empty" | "archived"
+  > => {
+    const result = await archive();
+    if (result) {
+      setRestartFeedback(result === "archived" ? "saved" : "reset");
+      if (restartFeedbackTimerRef.current) {
+        clearTimeout(restartFeedbackTimerRef.current);
+      }
+      restartFeedbackTimerRef.current = setTimeout(
+        () => setRestartFeedback(null),
+        2600,
+      );
       // Remount the real site runtime only after the aggregate was safely
       // archived. CatalogOps then establishes that app's clean initial state;
       // the next meaningful action creates a new active cache.
       setRuntimeEpoch((value) => value + 1);
     }
-    return archived;
+    return result;
   }, [archive]);
 
   const value = useMemo<WorkspaceSessionContextValue>(
@@ -711,6 +735,7 @@ export function WorkspaceSessionProvider({
       availability,
       error,
       conflict,
+      restartFeedback,
       ensureActive,
       saveSnapshot,
       touch,
@@ -733,6 +758,7 @@ export function WorkspaceSessionProvider({
       availability,
       error,
       conflict,
+      restartFeedback,
       ensureActive,
       saveSnapshot,
       touch,

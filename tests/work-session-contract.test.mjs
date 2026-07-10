@@ -80,7 +80,7 @@ test("降级路径没有生成本地 session UUID", () => {
 test("重新开始只在归档成功后 remount 干净 runtime", () => {
   assert.match(
     providerSource,
-    /const archived = await archive\(\);[\s\S]*?setRuntimeEpoch/,
+    /const result = await archive\(\);[\s\S]*?if \(result\)[\s\S]*?setRuntimeEpoch/,
   );
   assert.match(
     providerSource,
@@ -151,9 +151,10 @@ test("真实操作台自动恢复、debounce 保存，并在卸载前 flush", ()
   );
   assert.match(chatSource, /window\.addEventListener\("pagehide", flushPending\)/);
   assert.match(chatSource, /document\.visibilityState === "hidden"/);
-  assert.match(chatSource, /sessionSnapshotWithNote\(/);
+  assert.match(chatSource, /mergeWorkspaceSessionSnapshot\(/);
+  assert.match(chatSource, /runtimeHydration\?\.restoreSharedUi\(split\.ui\)/);
   assert.match(chatSource, /onBeforeRestart=\{\(\) => restartFlushRef\.current\(\)\}/);
-  assert.match(chatSource, /placeholder=\{tt\("记录这份工作的目的、版本或待办…"\)\}/);
+  assert.doesNotMatch(chatSource, /__oceanleo_note|sessionNoteField|记录这份工作的目的、版本或待办/);
   assert.match(apiSource, /keepalive: appSessionBodySupportsKeepalive\(body\)/);
   assert.match(
     agentSource,

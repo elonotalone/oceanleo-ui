@@ -140,6 +140,12 @@ export interface PromptHighlightAreaProps {
    * 再点同一张卡时，靠 prop diff 的老机制永远不触发；nonce 每次点击都变则永远触发）。
    * 不传（undefined / 保持不变）则退回旧的「value 被清空才重灌」启发式（向后兼容）。 */
   fillNonce?: number;
+  /**
+   * Increments when a persisted workspace snapshot is injected. A template
+   * change in that same render is hydration metadata, not a user fill command,
+   * so the restored value (including an empty string) wins.
+   */
+  restoreEpoch?: number;
   accentColor?: string;
   placeholder?: string;
   rows?: number;
@@ -219,6 +225,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       onChange,
       template,
       fillNonce,
+      restoreEpoch = 0,
       accentColor = "#4f46e5",
       placeholder,
       rows = 2,
@@ -236,6 +243,8 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     onKeyDownRef.current = onKeyDown;
     const seededTemplate = useRef<string | null>(null);
     const applyingRef = useRef(false);
+    const fillAppliedRef = useRef(false);
+    const prevRestoreEpoch = useRef<number | null>(null);
     // 记录「本编辑器最后一次通过 onUpdate 吐给外部的 value」。受控回环里，父组件把这个值又当
     // value prop 传回来——那是我们【自己刚发出的回声】，绝不能据此 setContent（会在打字/IME
     // 合成途中把 DOM 整个重建，导致正文瞬移到第二行，操作员 2026-07-06 复现）。只有当 value
@@ -393,19 +402,87 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       [editor],
     );
 
+    const replaceFromExternalValue = useCallback(
+      (nextValue: string, highlightSlots: boolean) => {
+        if (!editor) return;
+        const paragraphs = (nextValue || "").split("\n").map((line) => {
+          const content = highlightSlots
+            ? templatePieces(line).map((piece) =>
+                piece.kind === "slot"
+                  ? {
+                      type: "text" as const,
+                      text: piece.hint,
+                      marks: [
+                        {
+                          type: PROMPT_SLOT_NAME,
+                          attrs: { hint: piece.hint, empty: true },
+                        },
+                      ],
+                    }
+                  : { type: "text" as const, text: piece.text },
+              )
+            : line
+              ? [{ type: "text" as const, text: line }]
+              : [];
+          return {
+            type: "paragraph" as const,
+            content: content.length ? content : undefined,
+          };
+        });
+        applyingRef.current = true;
+        editor.commands.setContent(
+          { type: "doc", content: paragraphs },
+          { emitUpdate: false },
+        );
+        applyingRef.current = false;
+        lastEmittedRef.current = nextValue;
+      },
+      [editor],
+    );
+
+    // Ordinary template changes remain fill commands for standalone/local
+    // prompt cards. A changed restoreEpoch is the unambiguous hydration signal:
+    // in that render `value` is authoritative, including a deliberately saved
+    // empty string. This preserves local cards that do not use the shared guide
+    // bus while preventing session restore from replaying a default template.
+    //
     // 灌模板：**只在 template 值真正变化时灌一次**。灌完之后编辑器完全自持——用户的删除/
     // 输入/undo 全不再触发回灌（修操作员 2026-07-06 两个致命 bug：删第一个字整段复活、Ctrl+Z
     // 回不去。根因正是旧版「监听 value 变空就重灌模板」的 effect 在和用户编辑打架，现已删除）。
     // template 变 null（调用方想「重来/切回空」）→ 复位 seededTemplate，使下次同模板也能重新灌。
     useEffect(() => {
       if (!editor) return;
+      const restoring =
+        prevRestoreEpoch.current === null
+          ? restoreEpoch > 0
+          : restoreEpoch !== prevRestoreEpoch.current;
+      prevRestoreEpoch.current = restoreEpoch;
       if (template == null) {
         seededTemplate.current = null;
+        if (restoring && value !== docToPlain(editor)) {
+          replaceFromExternalValue(value, false);
+        }
+        return;
+      }
+      if (restoring) {
+        seededTemplate.current = template;
+        if (value !== docToPlain(editor)) {
+          replaceFromExternalValue(value, true);
+        } else {
+          lastEmittedRef.current = value;
+        }
         return;
       }
       if (seededTemplate.current === template) return;
       seed(template);
-    }, [editor, template, seed]);
+    }, [
+      editor,
+      template,
+      value,
+      restoreEpoch,
+      seed,
+      replaceFromExternalValue,
+    ]);
 
     // 「同一张导航卡片重复点击」重灌（宗旨 v18，操作员 2026-07-07，全家桶中心化修）：
     //   现象：用户点某导航卡 → 模板灌进来；改/删了左栏内容后【再点同一张卡】→ 无反应
@@ -442,13 +519,13 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       prevFillNonce.current = fillNonce;
       if (template == null) return; // 无模板无从灌（普通输入框走纯文本同步）
       if (editor.view.composing) return; // IME 合成途中不动
+      fillAppliedRef.current = true;
       seed(template); // 无条件重灌当前模板（含「删空后重点同卡」）
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor, fillNonce]);
 
-    // 外部 value 被改（无模板的纯文本场景，调用方【程序化】改 value）→ 同步进编辑器。
-    // **只在无模板时**生效（有模板时一切以编辑器自持为准，绝不按纯文本覆盖，否则毁 slot mark
-    // + 破坏 undo）。
+    // 外部 value 被改（恢复 session / 调用方程序化改值）→ 同步进编辑器。legacy standalone
+    // 模板仍自持；session-managed 模板则把 value 当恢复事实源，并重建尚未填写的占位高亮。
     //
     // 致命坑（操作员 2026-07-06「打字瞬移到第二行」）：受控回环里，用户打字 → onUpdate 吐值 →
     // 父组件 setState → value prop 变 → 本 effect 触发。若此时 setContent，会在打字/中文 IME
@@ -459,22 +536,25 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     //   3. 只有上面都不满足、且 value 确实 ≠ 编辑器当前内容 → 才是真·外部改动，setContent 同步。
     useEffect(() => {
       if (!editor || applyingRef.current) return;
+      if (fillAppliedRef.current) {
+        // fillNonce effect 刚在同一轮 effect 中 seed；当前 render 的旧 value
+        // 不能紧接着把新模板覆盖回去。下一次父层接到 onChange 后再正常对齐。
+        fillAppliedRef.current = false;
+        return;
+      }
       if (template != null) return;
       if (value === lastEmittedRef.current) return; // 自己的回声，忽略
       if (editor.view.composing) return; // IME 合成途中，绝不重建 DOM
       const current = docToPlain(editor);
       if (value !== current) {
-        applyingRef.current = true;
-        editor.commands.setContent(
-          value
-            ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: value }] }] }
-            : { type: "doc", content: [{ type: "paragraph" }] },
-          { emitUpdate: false },
-        );
-        applyingRef.current = false;
-        lastEmittedRef.current = value; // 记下已同步的外部值，避免紧接着又被当外部改动
+        replaceFromExternalValue(value, template != null);
       }
-    }, [editor, value, template]);
+    }, [
+      editor,
+      value,
+      template,
+      replaceFromExternalValue,
+    ]);
 
     useEffect(() => {
       if (editor && autoFocus) editor.commands.focus();

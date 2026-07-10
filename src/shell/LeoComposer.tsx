@@ -16,6 +16,7 @@ import {
 } from "./PromptHighlightArea";
 import { useFillNonce } from "./guide-context";
 import { useUI } from "../i18n/ui/useUI";
+import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -206,6 +207,7 @@ export function LeoComposer({
   // 无条件重灌，根治「删空后再点同卡恢复不了」。
   const ctxFillNonce = useFillNonce();
   const effectiveFillNonce = (fillNonce ?? 0) + ctxFillNonce;
+  const runtimeHydration = useWorkspaceRuntimeHydration();
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
   // 唯一输入框（宗旨 v15j）：全程用 TemplateFillArea（Tiptap 编辑器），普通/模板同一个实例。
@@ -340,6 +342,7 @@ export function LeoComposer({
         onChange={onChange}
         template={highlightTemplate}
         fillNonce={effectiveFillNonce}
+        restoreEpoch={runtimeHydration?.snapshotRestoreEpoch}
         accentColor={accentColor}
         placeholder={placeholderText}
         rows={rows}
