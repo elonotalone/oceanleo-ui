@@ -42,9 +42,12 @@ export function WorkspaceRuntimeBoundary({
   ) => void;
 }) {
   const workspace = useWorkspaceSession();
-  const identity = `${workspace.mode}:${workspace.siteId}:${workspace.appId}:${
-    workspace.sessionId || "new"
-  }:${scope}`;
+  // A live session resolving from the temporary "new" state to its persisted
+  // server id is data hydration, not a new app runtime. Including sessionId
+  // here cleared appInitialized after CatalogOps' one-shot effect had run,
+  // leaving FunctionAgentChat permanently blocked behind the restore screen.
+  // History/session switches already remount their keyed provider subtree.
+  const identity = `${workspace.mode}:${workspace.siteId}:${workspace.appId}:${scope}`;
   const [state, setState] = useState({
     identity,
     appInitialized: false,
@@ -90,7 +93,9 @@ export function WorkspaceRuntimeBoundary({
     ],
   );
   const ready =
-    workspace.availability !== "loading" && current.runtimeReady;
+    workspace.availability !== "loading" &&
+    current.appInitialized &&
+    current.runtimeReady;
 
   return (
     <RuntimeHydrationContext.Provider value={value}>
