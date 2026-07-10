@@ -12,6 +12,23 @@ export type {
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
 export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
 export type { SelectionNamespace } from "./WorkspaceSelection";
+// 完整 App 工作会话：服务端 session + versioned snapshot + revision 冲突显式处理。
+export {
+  WorkspaceSessionProvider,
+  useWorkspaceSession,
+  useOptionalWorkspaceSession,
+} from "./WorkspaceSession";
+export type {
+  WorkspaceSessionProviderProps,
+  WorkspaceSessionContextValue,
+  WorkspaceSessionMode,
+  WorkspaceSessionAvailability,
+  WorkspaceSessionConflict,
+  WorkspaceSnapshotSaveResult,
+  EnsureWorkspaceSessionOptions,
+  WorkspaceSessionRecordContext,
+  WorkspaceRuntime,
+} from "./WorkspaceSession";
 // 操作员 2026-06-24：外壳「顶栏控制」上下文——主区自带模型选择时，让 AppShell 隐藏
 // 它 header 里的模型选择条（消灭子站工作台「两行顶栏」）。
 export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
@@ -21,6 +38,11 @@ export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
 // doctrine v4：历史记录 master-detail（侧栏列表+删除 / 主区回看）。
 // 「待处理」（PendingSubNav / PendingDetail）已于 2026-07-01 下线，全部会话进历史记录。
 export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
+export type {
+  HistoryDetailProps,
+  HistoryWorkspaceRenderer,
+  RestorableAppSession,
+} from "./HistoryMasterDetail";
 // doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
 export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 // doctrine v8：Playground（右侧主区：app/agent/organization/workflow 四分区 + 目录 +
@@ -132,12 +154,12 @@ export type { AgentAttachment } from "../lib/agent";
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
-// doctrine 2026-07-09：操作台草稿「自动恢复 + 自动保存」Hook（每 app 覆盖式一份）。
+// session-first 操作台自动恢复/保存；旧后端与未登录状态兼容本地草稿。
 export { useConsoleDraft } from "./useConsoleDraft";
 export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";
 export { RestartDraftButton } from "./RestartDraftButton";
 export type { RestartDraftButtonProps } from "./RestartDraftButton";
-// doctrine 2026-07-09：把「一次操作台生成」落成历史记录（mode="console" 的 agent_task）。
+// 操作台 run 持久化为 task，并聚合到同一个 AppSession 历史。
 export { useConsoleRun } from "./useConsoleRun";
 export type {
   UseConsoleRunArgs,

@@ -1,6 +1,8 @@
 export * from "./auth";
 export * from "./database";
 export * from "./agent";
+// 完整 app 工作会话（版本化 snapshot + 乐观并发）。
+export * from "./app-session";
 export * from "./organization";
 // doctrine v11：通用 AI 智能推荐（app/agent/org/workflow 四分区共用）。
 export * from "./recommend";

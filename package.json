@@ -1,6 +1,6 @@
 {
   "name": "@oceanleo/ui",
-  "version": "0.133.0",
+  "version": "0.134.0",
   "description": "OceanLeo 全家桶统一前端外壳 — 单一事实源（侧边栏/模型选择/账户/设置/API/主题/SSO/网关）。所有 *.oceanleo.com 站（除 crm）共享此包。",
   "private": false,
   "license": "UNLICENSED",
@@ -11,7 +11,9 @@
   "scripts": {
     "build:themes": "node scripts/gen-theme-css.mjs",
     "build:css": "node scripts/gen-theme-css.mjs && tailwindcss -i ./src/theme/_ui-input.css -o ./src/theme/ui.css --minify",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "build": "npm run build:css && npm run typecheck"
   },
   "exports": {
     ".": "./src/index.ts",

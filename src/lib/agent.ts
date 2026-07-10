@@ -13,14 +13,27 @@
 // 与现有 owner-scoped 网关一致）。
 // ============================================================================
 
-import { accessToken } from "./auth/client";
+import { accessToken, cachedAccessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 
-type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
+/** OceanLeo 网关统一返回形状。导出供同一 client 层的其它资源 API 复用。 */
+export type AgentApiResult<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  status?: number;
+};
 
-export async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
-  const token = await accessToken();
+export async function authed<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<AgentApiResult<T>> {
+  // keepalive（尤其 pagehide flush）若已有内存 token，必须在当前事件回调内同步发起
+  // fetch；先 await Supabase getSession 会让浏览器在请求创建前就销毁页面。
+  const token =
+    (init?.keepalive ? cachedAccessToken() : null) ||
+    (await accessToken());
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
@@ -43,9 +56,16 @@ export async function authed<T>(path: string, init?: RequestInit): Promise<Resul
     /* non-JSON */
   }
   if (!res.ok) {
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    const error =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && "message" in detail
+          ? String((detail as { message?: unknown }).message || `HTTP ${res.status}`)
+          : `HTTP ${res.status}`;
     return {
       ok: false,
-      error: (data as { detail?: string } | null)?.detail || `HTTP ${res.status}`,
+      error,
       status: res.status,
     };
   }
@@ -115,6 +135,10 @@ export interface AgentTask {
   seen?: boolean;
   /** 任务所属站点（驱动每站「历史记录」过滤）。空 = 主站 oceanleo.com。 */
   site_id?: string;
+  /** 工作会话聚合根；旧 task / 旧后端没有此字段。 */
+  session_id?: string | null;
+  /** 成品 app 身份；旧 task 可能缺失。 */
+  app_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -156,6 +180,8 @@ export function createTask(body: {
   projectId?: string;
   /** doctrine v3: bind this conversation to a function-area agent. */
   agentId?: string;
+  /** 把 task 绑定到完整 app 工作会话；旧后端会忽略这个新增字段。 */
+  sessionId?: string;
   /** doctrine v3: compact snapshot of the operator-console state for the agent. */
   opsState?: Record<string, unknown>;
   /** agent.oceanleo.com: bind this conversation to a「专家团」(multi-agent). */
@@ -166,7 +192,12 @@ export function createTask(body: {
   /** 用户上传的附件（文件/图片/语音的公网 url）。 */
   attachments?: AgentAttachment[];
 }) {
-  return authed<{ task_id: string; status: string; mode: string }>(
+  return authed<{
+    task_id: string;
+    status: string;
+    mode: string;
+    session_id?: string | null;
+  }>(
     "/v1/agent/tasks",
     {
       method: "POST",
@@ -178,6 +209,7 @@ export function createTask(body: {
         model_selection: body.modelSelection || {},
         project_id: body.projectId || null,
         agent_id: body.agentId || "",
+        session_id: body.sessionId || null,
         ops_state: body.opsState || null,
         team_id: body.teamId || "",
         prompt_override: body.promptOverride || "",
@@ -207,17 +239,22 @@ export function createConsoleRun(body: {
   siteId?: string;
   agentId?: string;
   appId?: string;
+  /** 同一 app 工作会话内可有多次 console run。 */
+  sessionId?: string;
+  schemaVersion?: number;
   opsState?: Record<string, unknown>;
   artifact?: ConsoleArtifactInput;
   status?: "running" | "done" | "failed";
 }) {
-  return authed<{ task_id: string; status: string }>("/v1/agent/console-runs", {
+  return authed<{ task_id: string; status: string; session_id?: string | null }>("/v1/agent/console-runs", {
     method: "POST",
     body: JSON.stringify({
       prompt: body.prompt,
       site_id: body.siteId || "",
       agent_id: body.agentId || "",
       app_id: body.appId || "",
+      session_id: body.sessionId || null,
+      schema_version: body.schemaVersion ?? 1,
       ops_state: body.opsState || null,
       artifact: body.artifact || null,
       status: body.status || "done",
@@ -274,7 +311,7 @@ export interface AgentDef {
  * `siteId` 省略 / 空 → 列全站 marketplace（主站 /all-sites?tab=app 用）。 */
 export async function listAgents(
   siteId?: string,
-): Promise<Result<{ items: AgentDef[] }>> {
+): Promise<AgentApiResult<{ items: AgentDef[] }>> {
   const token = await accessToken();
   const site = (siteId || "").trim();
   const url = site
@@ -417,7 +454,7 @@ export interface TeamDef {
 
 export async function listTeams(
   siteId?: string,
-): Promise<Result<{ items: TeamDef[] }>> {
+): Promise<AgentApiResult<{ items: TeamDef[] }>> {
   const token = await accessToken();
   const site = (siteId || "").trim();
   const url = site
@@ -442,7 +479,7 @@ export async function listTeams(
   return { ok: true, data: data as { items: TeamDef[] } };
 }
 
-export async function getTeam(teamId: string): Promise<Result<{ team: TeamDef }>> {
+export async function getTeam(teamId: string): Promise<AgentApiResult<{ team: TeamDef }>> {
   const token = await accessToken();
   let res: Response;
   try {

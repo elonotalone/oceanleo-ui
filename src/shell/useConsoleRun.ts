@@ -34,6 +34,7 @@ import {
   updateConsoleRun,
   type ConsoleArtifactInput,
 } from "../lib/agent";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export interface UseConsoleRunArgs {
   siteId: string;
@@ -41,6 +42,10 @@ export interface UseConsoleRunArgs {
   agentId?: string;
   /** 关闭持久化（默认开启）。 */
   enabled?: boolean;
+  /** 无 Provider 时也可显式把运行绑定到已知 session。 */
+  sessionId?: string | null;
+  /** versioned session snapshot 版本。默认 1。 */
+  schemaVersion?: number;
 }
 
 export interface ConsoleRunBeginArgs {
@@ -50,12 +55,15 @@ export interface ConsoleRunBeginArgs {
   appId?: string;
   /** 操作台完整 state 快照（回看据此恢复操作台）。 */
   opsState?: Record<string, unknown>;
+  /** 本次快照版本；省略则用 hook 的 schemaVersion。 */
+  schemaVersion?: number;
   /** 若已有产物可一并带上（否则 finish 时再给）。 */
   artifact?: ConsoleArtifactInput;
 }
 
 export interface ConsoleRunFinishArgs {
   opsState?: Record<string, unknown>;
+  schemaVersion?: number;
   artifact?: ConsoleArtifactInput;
   /** 追加而非替换产物（默认替换：一条运行只留最新一份）。 */
   append?: boolean;
@@ -67,7 +75,12 @@ export interface UseConsoleRunReturn {
   /** 生成过程中更新产物/快照（可多次，用于分步产出）。 */
   update: (
     taskId: string,
-    args: { opsState?: Record<string, unknown>; artifact?: ConsoleArtifactInput; append?: boolean },
+    args: {
+      opsState?: Record<string, unknown>;
+      schemaVersion?: number;
+      artifact?: ConsoleArtifactInput;
+      append?: boolean;
+    },
   ) => Promise<void>;
   /** 生成成功：写最终产物 + 快照，status="done"。 */
   finish: (taskId: string, args: ConsoleRunFinishArgs) => Promise<void>;
@@ -79,63 +92,167 @@ export function useConsoleRun({
   siteId,
   agentId,
   enabled = true,
+  sessionId: explicitSessionId,
+  schemaVersion = 1,
 }: UseConsoleRunArgs): UseConsoleRunReturn {
+  const workspaceValue = useOptionalWorkspaceSession();
   // 记住已知失效的 taskId（begin 失败过就别再打 update/finish）。
   const deadRef = useRef<Set<string>>(new Set());
+  const runContextRef = useRef<
+    Map<string, { appId?: string; schemaVersion: number }>
+  >(new Map());
+
+  const matchingWorkspace = useCallback(
+    (appId?: string) => {
+      if (!workspaceValue || workspaceValue.siteId !== siteId) return null;
+      if (appId && workspaceValue.appId !== appId) return null;
+      return workspaceValue;
+    },
+    [workspaceValue, siteId],
+  );
+
+  const saveSessionSnapshot = useCallback(
+    async (
+      opsState: Record<string, unknown> | undefined,
+      appId?: string,
+      version = schemaVersion,
+      title?: string,
+    ): Promise<string | null> => {
+      const workspace = matchingWorkspace(appId);
+      if (!workspace) return explicitSessionId || "";
+      if (workspace.readOnly) return null;
+      if (opsState) {
+        const saved = await workspace.saveSnapshot(opsState, version, {
+          title,
+          expectedSessionId: workspace.session?.id,
+        });
+        if (!saved.ok) {
+          return saved.unavailable ? explicitSessionId || "" : null;
+        }
+        return (
+          saved.session?.id ||
+          workspace.session?.id ||
+          workspace.sessionId ||
+          explicitSessionId ||
+          ""
+        );
+      }
+      const context = await workspace.artifactContext(title);
+      if (context) return context.sessionId;
+      return workspace.availability === "unsupported"
+        ? explicitSessionId || ""
+        : null;
+    },
+    [matchingWorkspace, explicitSessionId, schemaVersion],
+  );
 
   const begin = useCallback(
     async (args: ConsoleRunBeginArgs): Promise<string> => {
       if (!enabled || !siteId) return "";
+      const workspace = matchingWorkspace(args.appId);
+      if (workspace?.readOnly) return "";
+      // begin 本身就是有意义动作：先 ensure session，并尽可能原子写入首份 snapshot。
+      const sessionId = await saveSessionSnapshot(
+        args.opsState,
+        args.appId,
+        args.schemaVersion ?? schemaVersion,
+        args.prompt,
+      );
+      if (sessionId === null) return "";
+      const runSchemaVersion = args.schemaVersion ?? schemaVersion;
+      const runAppId = args.appId || matchingWorkspace()?.appId;
       const r = await createConsoleRun({
         prompt: args.prompt,
         siteId,
         agentId,
-        appId: args.appId,
+        appId: runAppId,
+        sessionId: sessionId || undefined,
+        schemaVersion: runSchemaVersion,
         opsState: args.opsState,
         artifact: args.artifact,
         status: "running",
       });
-      if (r.ok && r.data?.task_id) return r.data.task_id;
+      if (r.ok && r.data?.task_id) {
+        runContextRef.current.set(r.data.task_id, {
+          appId: runAppId,
+          schemaVersion: runSchemaVersion,
+        });
+        return r.data.task_id;
+      }
       return "";
     },
-    [enabled, siteId, agentId],
+    [
+      enabled,
+      siteId,
+      agentId,
+      schemaVersion,
+      saveSessionSnapshot,
+      matchingWorkspace,
+    ],
   );
 
   const update = useCallback(
     async (
       taskId: string,
-      args: { opsState?: Record<string, unknown>; artifact?: ConsoleArtifactInput; append?: boolean },
+      args: {
+        opsState?: Record<string, unknown>;
+        schemaVersion?: number;
+        artifact?: ConsoleArtifactInput;
+        append?: boolean;
+      },
     ): Promise<void> => {
       if (!enabled || !taskId || deadRef.current.has(taskId)) return;
+      const context = runContextRef.current.get(taskId);
+      if (matchingWorkspace(context?.appId)?.readOnly) return;
       const r = await updateConsoleRun(taskId, {
         opsState: args.opsState,
         artifact: args.artifact,
         replaceArtifacts: args.artifact ? !args.append : false,
       });
       if (!r.ok) deadRef.current.add(taskId);
+      if (r.ok && args.opsState) {
+        await saveSessionSnapshot(
+          args.opsState,
+          context?.appId,
+          args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+        );
+      }
     },
-    [enabled],
+    [enabled, matchingWorkspace, saveSessionSnapshot, schemaVersion],
   );
 
   const finish = useCallback(
     async (taskId: string, args: ConsoleRunFinishArgs): Promise<void> => {
       if (!enabled || !taskId || deadRef.current.has(taskId)) return;
-      await updateConsoleRun(taskId, {
+      const context = runContextRef.current.get(taskId);
+      if (matchingWorkspace(context?.appId)?.readOnly) return;
+      const r = await updateConsoleRun(taskId, {
         status: "done",
         opsState: args.opsState,
         artifact: args.artifact,
         replaceArtifacts: args.artifact ? !args.append : false,
       });
+      if (r.ok && args.opsState) {
+        await saveSessionSnapshot(
+          args.opsState,
+          context?.appId,
+          args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+        );
+      }
+      if (r.ok) runContextRef.current.delete(taskId);
     },
-    [enabled],
+    [enabled, matchingWorkspace, saveSessionSnapshot, schemaVersion],
   );
 
   const fail = useCallback(
     async (taskId: string): Promise<void> => {
       if (!enabled || !taskId || deadRef.current.has(taskId)) return;
+      const context = runContextRef.current.get(taskId);
+      if (matchingWorkspace(context?.appId)?.readOnly) return;
       await updateConsoleRun(taskId, { status: "failed" });
+      runContextRef.current.delete(taskId);
     },
-    [enabled],
+    [enabled, matchingWorkspace],
   );
 
   return { begin, update, finish, fail };

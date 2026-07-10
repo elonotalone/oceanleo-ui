@@ -20,16 +20,34 @@
 // 版本，全家桶所有成品 app 一起同步。站点的成品清单是纯数据，不含 UI。
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
 import { type GoalApp } from "./app-catalog";
 import { FunctionAgentChat } from "./FunctionAgentChat";
+import { AgentChat } from "./AgentChat";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { type OpsSchema } from "../lib/fn-agent";
 import { type FunctionGuide, type GuideExample, type GuideSection } from "./NavigatorGuide";
+import {
+  getAppSession,
+  isAppSessionApiUnavailableStatus,
+  type AppSession,
+} from "../lib/app-session";
+import { getTask } from "../lib/agent";
+import {
+  WorkspaceSessionProvider,
+  useOptionalWorkspaceSession,
+} from "./WorkspaceSession";
+import { findLinkedAgentTaskId } from "./workspace-session-task";
+import {
+  historySessionIdFromPath,
+  workspaceAppHref,
+  workspaceAppIdFromPath,
+} from "./workspace-route";
 
 export interface SiteCatalogConsoleProps {
   /** 本站 site_id（计量 / 历史分区 / 深链）。 */
@@ -72,6 +90,10 @@ export interface SiteCatalogConsoleProps {
   value?: string;
   /** 切换/返回回调（同步 URL ?fn=）。 */
   onChange?: (id: string) => void;
+  /**
+   * 旧 capability/engine 深链 → 当前 GoalApp id 的显式映射。只用于迁移旧书签与侧栏；
+   * 未声明的未知 id 会显示错误，绝不猜测或静默落第一张卡。 */
+  legacyAppAliases?: Record<string, string>;
   /** 内嵌（主站 iframe）：隐藏目录 + 顶栏，只渲染受控的单一成品 app。 */
   embed?: boolean;
   /** solo：主站 iframe 内嵌单功能。 */
@@ -117,6 +139,12 @@ export interface AgentCardConfig {
   materials?: import("./MaterialLibrary").MaterialItem[];
 }
 
+interface LegacyHistoryTaskRef {
+  taskId: string;
+  siteId: string;
+  appLabel: string;
+}
+
 /**
  * 把一批成品 app 渲染成完整 workspace（目录 + 场景分类器 + 共享操作台 + 三板块导航）。
  */
@@ -134,12 +162,144 @@ export function SiteCatalogConsole({
   modelCategories,
   value,
   onChange,
+  legacyAppAliases,
   embed = false,
   solo = false,
   guideIntro,
   agentApp = true,
   groups,
 }: SiteCatalogConsoleProps) {
+  const pathname = usePathname() || "";
+  const router = useRouter();
+  const pathAppId = workspaceAppIdFromPath(pathname);
+  const historySessionId = historySessionIdFromPath(pathname);
+  const [legacyRouteAppId, setLegacyRouteAppId] = useState("");
+  const [historySession, setHistorySession] = useState<AppSession | null>(null);
+  const [legacyHistoryTask, setLegacyHistoryTask] =
+    useState<LegacyHistoryTaskRef | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const inheritedWorkspace = useOptionalWorkspaceSession();
+  const inheritedHistorySession =
+    historySessionId &&
+    inheritedWorkspace?.mode === "history" &&
+    inheritedWorkspace.session?.id === historySessionId &&
+    inheritedWorkspace.session.site_id === siteId
+      ? inheritedWorkspace.session
+      : null;
+  const effectiveHistorySession =
+    inheritedHistorySession || historySession;
+
+  // `/history/<sessionId>` 不另造一套回放页：只解析聚合会话身份，下面仍挂本站
+  // `SiteCatalogConsole` 的原始 runtime。session 快照由同一 FunctionAgentChat/操作台恢复。
+  useEffect(() => {
+    let alive = true;
+    if (!historySessionId) {
+      setHistorySession(null);
+      setLegacyHistoryTask(null);
+      setHistoryLoading(false);
+      setHistoryError(null);
+      return () => {
+        alive = false;
+      };
+    }
+    // HistoryDetail 已注入完整 session 时直接复用外层 Provider；避免同一路由二次请求、
+    // 二次 Provider，并保留迁移期由真实关联补齐的 task_id。
+    if (inheritedHistorySession) {
+      setHistorySession(null);
+      setLegacyHistoryTask(null);
+      setHistoryLoading(false);
+      setHistoryError(null);
+      return () => {
+        alive = false;
+      };
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setLegacyHistoryTask(null);
+    void (async () => {
+      const result = await getAppSession(historySessionId);
+      if (!alive) return;
+      if (!result.ok || !result.data) {
+        // 兼容历史体系上线前被复制出去的 `/history/<taskId>`：同一个动态链接先尝试
+        // session，确认 404 后再按 owner-scoped legacy task 回放，仍明确标注无法恢复操作台。
+        if (isAppSessionApiUnavailableStatus(result.status)) {
+          const taskResult = await getTask(historySessionId);
+          if (!alive) return;
+          if (
+            taskResult.ok &&
+            taskResult.data &&
+            (!taskResult.data.task.site_id ||
+              taskResult.data.task.site_id === siteId)
+          ) {
+            const firstUser = taskResult.data.messages.find(
+              (message) => message.role === "user",
+            );
+            const metaApp =
+              typeof firstUser?.meta?.app_id === "string"
+                ? firstUser.meta.app_id
+                : "";
+            setHistorySession(null);
+            setLegacyHistoryTask({
+              taskId: historySessionId,
+              siteId: taskResult.data.task.site_id || siteId,
+              appLabel: taskResult.data.task.app_id || metaApp || "旧工作",
+            });
+            setHistoryLoading(false);
+            return;
+          }
+        }
+        setHistorySession(null);
+        setLegacyHistoryTask(null);
+        setHistoryLoading(false);
+        setHistoryError(
+          result.status === 401
+            ? "登录后才能查看这条工作会话。"
+            : result.error || "这条工作会话不存在或已无权访问。",
+        );
+        return;
+      }
+      if (result.data.site_id !== siteId) {
+        setHistorySession(null);
+        setLegacyHistoryTask(null);
+        setHistoryLoading(false);
+        setHistoryError("这条工作会话不属于当前网站。");
+        return;
+      }
+      setHistorySession(result.data);
+      setLegacyHistoryTask(null);
+      setHistoryLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [
+    historySessionId,
+    siteId,
+    inheritedHistorySession?.id,
+    inheritedHistorySession?.revision,
+    inheritedHistorySession?.task_id,
+  ]);
+
+  // 兼容旧书签/旧业务 redirect：`?fn=` 与 `?mode=` 只作为一次性迁移输入，解析成功后
+  // 会被下方 replace 到 `/workspace/<appId>`。未知 alias 不猜测、不落第一张卡。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      if (workspaceAppIdFromPath(window.location.pathname)) {
+        setLegacyRouteAppId("");
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      setLegacyRouteAppId(
+        (params.get("fn") || params.get("mode") || "").trim(),
+      );
+    };
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, [pathname]);
+
   // 宗旨 v19：目录首张「agent」卡片（左纯对话 / 右四分区库）。合成一个 GoalApp 前插。
   const agentCard: GoalApp | null = useMemo(() => {
     if (agentApp === false) return null;
@@ -160,6 +320,80 @@ export function SiteCatalogConsole({
   const allApps = useMemo(
     () => (agentCard ? [agentCard, ...apps] : apps),
     [agentCard, apps],
+  );
+  const knownAppIds = useMemo(
+    () => new Set(allApps.map((app) => app.id)),
+    [allApps],
+  );
+  const rawRequestedAppId = (
+    effectiveHistorySession?.app_id ||
+    pathAppId ||
+    legacyRouteAppId ||
+    ((embed || solo) ? value : "") ||
+    ""
+  ).trim();
+  const requestedAppId =
+    (!effectiveHistorySession && legacyAppAliases?.[rawRequestedAppId]) ||
+    rawRequestedAppId;
+  const invalidAppId =
+    Boolean(requestedAppId) && !knownAppIds.has(requestedAppId);
+  const activeAppId = invalidAppId ? "" : requestedAppId;
+  const activeApp = allApps.find((app) => app.id === activeAppId);
+  const activeAppTitle =
+    typeof activeApp?.name === "string" ? activeApp.name : activeAppId;
+  const canonicalAppHref = useCallback(
+    (id: string, preserveQuery = false) => {
+      const base = workspaceAppHref(id);
+      if (!preserveQuery || typeof window === "undefined") return base;
+      const params = new URLSearchParams(window.location.search);
+      params.delete("fn");
+      params.delete("mode");
+      const query = params.toString();
+      return query ? `${base}?${query}` : base;
+    },
+    [],
+  );
+
+  // 普通页面只认 URL（保证浏览器后退真的回目录）；旧 query 是一次性迁移输入。
+  // 只有没有独立地址栏的 embed/solo 才继续使用宿主受控 value。
+  useEffect(() => {
+    if (
+      embed ||
+      historySessionId ||
+      (pathAppId && pathAppId === activeAppId) ||
+      !activeAppId ||
+      (!pathAppId && !/\/workspace\/?$/.test(pathname))
+    ) {
+      return;
+    }
+    router.replace(canonicalAppHref(activeAppId, true));
+  }, [
+    embed,
+    historySessionId,
+    pathAppId,
+    activeAppId,
+    pathname,
+    router,
+    canonicalAppHref,
+  ]);
+
+  const changeApp = useCallback(
+    (id: string) => {
+      if (embed) {
+        onChange?.(id);
+        return;
+      }
+      // URL 是 app 身份真源，但消费站的本地选择/草稿作用域仍需同步；尤其返回目录时必须
+      // 先清空旧 value，否则 `/workspace` 会立刻被旧受控值 replace 回刚才的 app。
+      onChange?.(id);
+      // 历史回看按下「返回」应回历史列表；live app 返回工作台目录。
+      if (historySessionId && !id) {
+        router.push("/history");
+        return;
+      }
+      router.push(canonicalAppHref(id));
+    },
+    [embed, onChange, historySessionId, router, canonicalAppHref],
   );
 
   // 每个成品 app → 一个 ConsoleFunction（全部复用 renderOps/renderCanvas；带场景 + 三板块导航）。
@@ -237,11 +471,99 @@ export function SiteCatalogConsole({
   );
   void applyPreset; // 宗旨 v15 决策 D：不再进入即调用（保留 prop 供兼容）。
 
-  return (
+  if (
+    historySessionId &&
+    (historyLoading ||
+      (!effectiveHistorySession && !legacyHistoryTask && !historyError))
+  ) {
+    return (
+      <div className="grid h-full min-h-[420px] place-items-center bg-stone-50/60 text-[13px] text-stone-400">
+        正在恢复完整工作会话…
+      </div>
+    );
+  }
+  if (historySessionId && historyError) {
+    return (
+      <div className="grid h-full min-h-[420px] place-items-center bg-stone-50/60 p-8 text-center">
+        <div className="max-w-md rounded-2xl border border-rose-100 bg-white p-6 shadow-sm">
+          <p className="text-[14px] font-semibold text-stone-900">
+            无法打开这条工作会话
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-stone-500">
+            {historyError}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/history")}
+            className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
+            style={{ background: accent }}
+          >
+            返回历史记录
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (legacyHistoryTask) {
+    return (
+      <LegacyHistoryPlayback
+        taskId={legacyHistoryTask.taskId}
+        siteId={legacyHistoryTask.siteId}
+        appLabel={legacyHistoryTask.appLabel}
+        accent={accent}
+        onBack={() => router.push("/history")}
+      />
+    );
+  }
+  if (invalidAppId) {
+    return (
+      <div className="grid h-full min-h-[420px] place-items-center bg-stone-50/60 p-8 text-center">
+        <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+          <p className="text-[14px] font-semibold text-stone-900">
+            这个 App 不存在或已下线
+          </p>
+          <p className="mt-2 break-all font-mono text-[12px] text-stone-500">
+            {requestedAppId}
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              router.push(historySessionId ? "/history" : "/workspace")
+            }
+            className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
+            style={{ background: accent }}
+          >
+            {historySessionId ? "返回历史记录" : "返回 App 目录"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  const hasHistoricalSnapshot =
+    !historySessionId ||
+    (activeAppId === "agent" &&
+      Boolean(effectiveHistorySession?.task_id)) ||
+    (effectiveHistorySession?.snapshot !== null &&
+      effectiveHistorySession?.snapshot !== undefined &&
+      typeof effectiveHistorySession.snapshot === "object" &&
+      !Array.isArray(effectiveHistorySession.snapshot));
+  if (effectiveHistorySession && !hasHistoricalSnapshot) {
+    return (
+      <IncompleteHistorySession
+        session={effectiveHistorySession}
+        accent={accent}
+        onBack={() => router.push("/history")}
+      />
+    );
+  }
+
+  const consoleNode = (
     <OperatorConsole
       functions={functions}
-      value={embed ? value : undefined}
-      onChange={onChange}
+      // value 是 URL / 历史 runtime 的受控 app 单一事实源；普通模式也必须尊重它。
+      // embed 仍走同一契约，hideTabs/directory 只控制外观，不再篡改选中态。
+      value={activeAppId}
+      onChange={changeApp}
       accent={accent}
       hideTabs={solo || embed}
       directory={!embed}
@@ -259,6 +581,120 @@ export function SiteCatalogConsole({
       defaultRatio={3 / 7}
       storageKey="oceanleo_console_split"
     />
+  );
+
+  if (!activeAppId) return consoleNode;
+
+  const reusingHistoryProvider =
+    Boolean(historySessionId) &&
+    inheritedWorkspace?.mode === "history" &&
+    inheritedWorkspace.sessionId === historySessionId &&
+    inheritedWorkspace.siteId === siteId &&
+    inheritedWorkspace.appId === activeAppId;
+  if (reusingHistoryProvider) return consoleNode;
+
+  return (
+    <WorkspaceSessionProvider
+      key={`${historySessionId ? "history" : embed ? "embed" : "workspace"}:${activeAppId}:${historySessionId}`}
+      siteId={siteId}
+      appId={activeAppId}
+      title={activeAppTitle}
+      sessionId={historySessionId || undefined}
+      initialSession={effectiveHistorySession}
+      mode={historySessionId ? "history" : embed ? "embed" : "workspace"}
+      resumeLatest={!historySessionId}
+    >
+      {consoleNode}
+    </WorkspaceSessionProvider>
+  );
+}
+
+function IncompleteHistorySession({
+  session,
+  accent,
+  onBack,
+}: {
+  session: AppSession;
+  accent: string;
+  onBack: () => void;
+}) {
+  const [taskId, setTaskId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    void findLinkedAgentTaskId(session).then((id) => {
+      if (alive) setTaskId(id ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session.id]);
+
+  return (
+    <LegacyHistoryPlayback
+      taskId={taskId}
+      siteId={session.site_id}
+      appLabel={session.app_id}
+      accent={accent}
+      onBack={onBack}
+    />
+  );
+}
+
+function LegacyHistoryPlayback({
+  taskId,
+  siteId,
+  appLabel,
+  accent,
+  onBack,
+}: {
+  taskId: string | null | undefined;
+  siteId: string;
+  appLabel: string;
+  accent: string;
+  onBack: () => void;
+}) {
+  return (
+    <div className="flex h-full min-h-[420px] flex-col bg-white">
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800">
+        <p>
+          <span className="font-semibold">
+            旧记录信息不完整，无法恢复当时操作台。
+          </span>
+          <span className="ml-1 text-amber-700">
+            以下只回放原 Agent 对话与产出，不会用当前草稿或默认值伪装历史。
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="shrink-0 rounded-lg border border-amber-300 px-2.5 py-1 font-medium hover:bg-amber-100"
+        >
+          返回历史
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {taskId === undefined ? (
+          <div className="grid h-full place-items-center text-[13px] text-stone-400">
+            正在读取旧对话…
+          </div>
+        ) : taskId ? (
+          <AgentChat
+            key={taskId}
+            siteId={siteId}
+            taskId={taskId}
+            readOnly
+            appLabel={appLabel}
+            accent={accent}
+            headerHeight={93}
+            libraryTabs={{ showFiles: true }}
+          />
+        ) : (
+          <div className="grid h-full place-items-center p-8 text-center text-[13px] text-stone-400">
+            该旧记录没有可回放的 Agent 对话。
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

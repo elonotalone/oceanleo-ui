@@ -36,6 +36,7 @@ import { ModelPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { useShellChrome } from "./ShellChrome";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 function artifactLabels(tt: UITranslate): Record<string, string> {
   return {
@@ -85,8 +86,12 @@ export interface AgentChatProps {
    * 文件（音频自动转写、其它文件按 url 分析）。宿主从 HomeIntro.onStart 的
    * opts.attachments 透传进来即可。 */
   initialAttachments?: AgentAttachment[];
-  /** 已有会话 id（从历史记录点进来回看）；与 initialPrompt 二选一。 */
-  taskId?: string;
+  /**
+   * 已有 agent task id（从历史记录点进来回看）；与 initialPrompt 二选一。
+   * 省略时会复用最近的 WorkspaceSessionProvider.taskId；不在 Provider 内时保持旧行为。 */
+  taskId?: string | null;
+  /** 历史回放使用；保留轮询/渲染，但禁止追问、中止或创建新 task。 */
+  readOnly?: boolean;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
   mode?: "agent" | "chat";
   /** 绑定单个 agent（专家）。format "<site_id>.<fn_id>"，如 "agent.senior-engineer"。 */
@@ -184,7 +189,8 @@ export function AgentChat({
   siteId = "",
   initialPrompt,
   initialAttachments,
-  taskId: initialTaskId,
+  taskId: explicitTaskId,
+  readOnly: readOnlyProp = false,
   mode = "agent",
   agentId = "",
   teamId = "",
@@ -210,6 +216,12 @@ export function AgentChat({
 }: AgentChatProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
+  const workspaceValue = useOptionalWorkspaceSession();
+  const workspace =
+    workspaceValue && (!siteId || workspaceValue.siteId === siteId)
+      ? workspaceValue
+      : null;
+  const readOnly = readOnlyProp || Boolean(workspace?.readOnly);
   // 团队/组织对话（宿主给了 renderOrgPanel）→ 右栏库多一个「组织」板块，且操作员
   // 2026-07-09 要求：进团队 app 一打开就【库展开 + 默认停在「组织」】。单 agent 场景
   // （无 renderOrgPanel）仍是「默认生成结果标签 + 库收起（有产物才自动开）」。
@@ -219,7 +231,13 @@ export function AgentChat({
   // 「库」= 右版面（结果/预览）显隐开关。团队默认【开】（一进来就看到组织画布）；单 agent
   // 默认关（对话占满，生成结果 artifact 到达时自动打开）。用户可用「库」按钮手动开合。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
-  const [taskId, setTaskId] = useState<string | null>(initialTaskId ?? null);
+  const [localTaskId, setLocalTaskId] = useState<string | null>(
+    explicitTaskId ?? null,
+  );
+  const taskId =
+    explicitTaskId !== undefined
+      ? explicitTaskId
+      : workspace?.taskId || localTaskId;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
@@ -231,6 +249,7 @@ export function AgentChat({
   const [error, setError] = useState<string | null>(null);
   const [localModelSelection, setLocalModelSelection] = useState<Partial<Record<ModelCategory, PreferredModel>>>({});
   const startedRef = useRef(false);
+  const loadedTaskRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
 
@@ -238,25 +257,9 @@ export function AgentChat({
     setInput((v) => (v ? v + " " : "") + text);
   }, []);
 
-  // auto-create the task on first mount when an initialPrompt is given.
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    if (initialTaskId) {
-      void refresh(initialTaskId);
-      return;
-    }
-    if (
-      (initialPrompt && initialPrompt.trim()) ||
-      (initialAttachments && initialAttachments.length)
-    ) {
-      void start((initialPrompt || "").trim(), initialAttachments);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
+    if (loadedTaskRef.current !== id) return "";
     if (r.ok && r.data) {
       setMessages(r.data.messages || []);
       setStatus(r.data.task?.status || "");
@@ -267,6 +270,36 @@ export function AgentChat({
     }
     return "";
   }, []);
+
+  // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
+  // 不要求宿主重新挂载 AgentChat；切到无 task 的新 session 时也不能残留上一段消息。
+  useEffect(() => {
+    if (!taskId) {
+      loadedTaskRef.current = "";
+      setMessages([]);
+      setStatus("");
+      setTaskSiteId("");
+      setTaskTitle("");
+      return;
+    }
+    if (loadedTaskRef.current === taskId) return;
+    loadedTaskRef.current = taskId;
+    setMessages([]);
+    setStatus("");
+    setTaskSiteId("");
+    setTaskTitle("");
+    void refresh(taskId);
+  }, [taskId, refresh]);
+
+  useEffect(() => {
+    if (explicitTaskId !== undefined || !workspace) return;
+    setLocalTaskId(workspace.taskId);
+  }, [
+    explicitTaskId,
+    workspace,
+    workspace?.sessionId,
+    workspace?.taskId,
+  ]);
 
   // poll while running
   useEffect(() => {
@@ -284,35 +317,168 @@ export function AgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function start(prompt: string, uploaded?: AgentAttachment[]) {
-    setBusy(true);
-    setError(null);
-    setMessages([
-      { id: -1, role: "user", kind: "text", content: prompt,
-        meta: uploaded && uploaded.length ? { attachments: uploaded } : undefined },
-    ]);
-    const effectiveModelSelection = modelSelectionProp || localModelSelection;
-    const modelSelectionKeys = Object.fromEntries(
-      Object.entries(effectiveModelSelection)
-        .filter(([, m]) => m?.key)
-        .map(([cat, m]) => [cat, m!.key]),
-    );
-    const selectedAgentModel = agentModel || effectiveModelSelection.text?.key || "";
-    const r = await createTask({
-      prompt, mode, siteId, agentModel: selectedAgentModel, modelSelection: modelSelectionKeys,
-      agentId, teamId, attachments: uploaded,
-      promptOverride: promptOverride || undefined,
-    });
-    setBusy(false);
-    if (!r.ok || !r.data) {
-      setError(r.status === 401 ? tt("登录后即可使用 app。") : r.error || tt("创建任务失败"));
+  const start = useCallback(
+    async (prompt: string, uploaded?: AgentAttachment[]) => {
+      if (readOnly) {
+        setError(tt("历史记录为只读；请重新开始后再继续。"));
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      setMessages([
+        {
+          id: -1,
+          role: "user",
+          kind: "text",
+          content: prompt,
+          meta:
+            uploaded && uploaded.length
+              ? { attachments: uploaded }
+              : undefined,
+        },
+      ]);
+
+      let linkedSessionId = "";
+      if (workspace) {
+        const active =
+          workspace.session ||
+          (await workspace.ensureActive({ title: prompt }));
+        linkedSessionId = active?.id || workspace.sessionId || "";
+        if (!linkedSessionId) {
+          setBusy(false);
+          setError(workspace.error || tt("无法创建工作会话，请稍后重试。"));
+          return;
+        }
+      }
+
+      const effectiveModelSelection =
+        modelSelectionProp || localModelSelection;
+      const modelSelectionKeys = Object.fromEntries(
+        Object.entries(effectiveModelSelection)
+          .filter(([, model]) => model?.key)
+          .map(([category, model]) => [category, model!.key]),
+      );
+      const selectedAgentModel =
+        agentModel || effectiveModelSelection.text?.key || "";
+      const result = await createTask({
+        prompt,
+        mode,
+        siteId,
+        agentModel: selectedAgentModel,
+        modelSelection: modelSelectionKeys,
+        agentId,
+        teamId,
+        attachments: uploaded,
+        promptOverride: promptOverride || undefined,
+        sessionId: linkedSessionId || undefined,
+      });
+      setBusy(false);
+      if (!result.ok || !result.data) {
+        setError(
+          result.status === 401
+            ? tt("登录后即可使用 app。")
+            : result.error || tt("创建任务失败"),
+        );
+        return;
+      }
+
+      const createdTaskId = result.data.task_id;
+      loadedTaskRef.current = createdTaskId;
+      setLocalTaskId(createdTaskId);
+      setStatus("running");
+      if (workspace) {
+        await workspace.bindTask(createdTaskId, prompt);
+      }
+      onTaskCreated?.(createdTaskId);
+      void refresh(createdTaskId);
+    },
+    [
+      agentId,
+      agentModel,
+      localModelSelection,
+      mode,
+      modelSelectionProp,
+      onTaskCreated,
+      promptOverride,
+      readOnly,
+      refresh,
+      siteId,
+      teamId,
+      tt,
+      workspace,
+    ],
+  );
+
+  const continueInitialTask = useCallback(
+    async (
+      id: string,
+      prompt: string,
+      uploaded?: AgentAttachment[],
+    ) => {
+      if (readOnly) {
+        setError(tt("历史记录为只读；请重新开始后再继续。"));
+        return;
+      }
+      const effectivePrompt = prompt || tt("请分析我上传的文件。");
+      setBusy(true);
+      setError(null);
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now(),
+          role: "user",
+          kind: "text",
+          content: effectivePrompt,
+          meta:
+            uploaded && uploaded.length
+              ? { attachments: uploaded }
+              : undefined,
+        },
+      ]);
+      const result = await followUp(id, effectivePrompt, uploaded);
+      setBusy(false);
+      if (!result.ok) {
+        setError(result.error || tt("发送失败"));
+        return;
+      }
+      setStatus("running");
+      // 对 ?q= 来说，已有 active free session 时 task 已经存在；成功接续后同样通知
+      // 宿主清理一次性 query，避免既丢 prompt 又让 URL 永久残留 q。
+      onTaskCreated?.(id);
+      void refresh(id);
+    },
+    [onTaskCreated, readOnly, refresh, tt],
+  );
+
+  // initialPrompt 只能在 Provider 查完最近 session/task 后触发，避免加载中的空 task
+  // 提前制造第二条 thread。历史模式不传 initialPrompt，因此只 refresh，不自动重跑。
+  useEffect(() => {
+    if (startedRef.current) return;
+    if (workspace?.availability === "loading") return;
+    startedRef.current = true;
+    const hasInitial =
+      Boolean(initialPrompt?.trim()) ||
+      Boolean(initialAttachments && initialAttachments.length);
+    if (!hasInitial) return;
+    const prompt = (initialPrompt || "").trim();
+    if (taskId) {
+      // 只在 WorkspaceSessionProvider 场景接续已有 thread；旧的显式 taskId 调用仍保持
+      // “只回看 task、忽略 initialPrompt”的兼容行为。
+      if (workspace) {
+        void continueInitialTask(taskId, prompt, initialAttachments);
+      }
       return;
     }
-    setTaskId(r.data.task_id);
-    setStatus("running");
-    onTaskCreated?.(r.data.task_id);
-    void refresh(r.data.task_id);
-  }
+    void start(prompt, initialAttachments);
+  }, [
+    continueInitialTask,
+    initialAttachments,
+    initialPrompt,
+    start,
+    taskId,
+    workspace,
+    workspace?.availability,
+  ]);
 
   async function send() {
     const prompt = input.trim();
@@ -320,6 +486,10 @@ export function AgentChat({
     // while any attachment is still uploading.
     const uploaded = atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
+    if (readOnly) {
+      setError(tt("历史记录为只读；请重新开始后再继续。"));
+      return;
+    }
     setInput("");
     atts.clear();
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
@@ -341,6 +511,7 @@ export function AgentChat({
 
   // 「中止」：AI 工作中（任务 running / 请求在途）点停止键 → 停任务。
   const stop = useCallback(async () => {
+    if (readOnly) return;
     if (!taskId) {
       setBusy(false);
       return;
@@ -351,7 +522,7 @@ export function AgentChat({
       setBusy(false);
       void refresh(taskId);
     }
-  }, [taskId, refresh]);
+  }, [readOnly, taskId, refresh]);
 
   // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
   // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
@@ -373,7 +544,7 @@ export function AgentChat({
 
   const sendSuggestion = useCallback(
     async (text: string) => {
-      if (!taskId || busy) return;
+      if (!taskId || busy || readOnly) return;
       setBusy(true);
       setMessages((m) => [
         ...m,
@@ -384,7 +555,7 @@ export function AgentChat({
       if (r.ok) setStatus("running");
       else setError(r.error || tt("发送失败"));
     },
-    [taskId, busy, tt],
+    [taskId, busy, readOnly, tt],
   );
 
   const art = latestArtifact(messages);
@@ -580,6 +751,7 @@ export function AgentChat({
             onSubmit={send}
             loading={running}
             onStop={() => void stop()}
+            disabled={readOnly}
             leoSuggest
             inlineSlot={inlineSlot}
             placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}

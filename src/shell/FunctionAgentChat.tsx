@@ -51,6 +51,7 @@ import {
 } from "../lib/agent";
 import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
 import { useUI } from "../i18n/ui/useUI";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 // ── 操作台 → agent 桥（宗旨 v12.2，操作员 2026-07-05）────────────────────────
 // 一些功能区的「操作台」不是自成一体的确定性表单，而是一份【结构化需求简报】——
@@ -75,6 +76,14 @@ export interface FunctionAgentChatProps {
   agentId: string;
   /** 本站 site_id（计量 + 历史分区）。 */
   siteId?: string;
+  /**
+   * 受控 agent task。省略时优先复用 WorkspaceSessionProvider 的 task_id，再回退组件自管。
+   * 传 null 可明确要求从空 thread 开始。 */
+  taskId?: string | null;
+  /** 新建 task 后回报给宿主；Provider 存在时也会同步 bindTask。 */
+  onTaskIdChange?: (taskId: string | null) => void;
+  /** 无 Provider 时可显式把新 task 绑定到已知工作会话。 */
+  sessionId?: string | null;
   /** 操作台 schema（功能区名/字段说明；agent 不读 state，仅用 schema.title 等展示）。 */
   schema: OpsSchema;
   /** 操作台页内容（各站现成的 StudioSection 表单 + **底部生成主按钮**）。 */
@@ -93,6 +102,19 @@ export interface FunctionAgentChatProps {
    * 的表单 state，因此复用它即可零改动让「点卡片→填操作台」在全家桶生效。
    * （agent 仍不读/不写操作台——这里是【用户】点导航示例触发的填充，不是 agent 触发。） */
   onApplyPatch?: (patch: OpsPatch) => void;
+  /**
+   * 完整工作会话快照。与 getOpsState（只服务「保存工作流」的可复用输入）分离，允许站点
+   * 一并保存右栏结果、大纲、画布、上传资源等运行态。省略时兼容回退到 getOpsState。 */
+  getSessionSnapshot?: () => Record<string, unknown>;
+  /**
+   * 恢复完整工作会话快照。省略时把 snapshot 作为 patch.set 交给 onApplyPatch。 */
+  onRestoreSessionSnapshot?: (snapshot: Record<string, unknown>) => void;
+  /**
+   * 把完整 runtime state 接成版本化 AppSession 快照。默认开启；少数自行调用
+   * useConsoleDraft 管理同一 session 的 runtime 可关闭，避免双写。 */
+  manageSessionSnapshot?: boolean;
+  /** 当前操作台快照 schema 版本；默认 1。 */
+  sessionSchemaVersion?: number;
   /**
    * 操作台「主输入字段」key（导航示例默认填它）。不给则取 schema.fields[0].key。
    * 用于表单主字段不是第一个、或想显式指定时。 */
@@ -150,10 +172,17 @@ type FnTab = "ops" | "agent";
 export function FunctionAgentChat({
   agentId,
   siteId = "",
+  taskId: controlledTaskId,
+  onTaskIdChange,
+  sessionId: explicitSessionId,
   schema,
   opsContent,
   getOpsState,
   onApplyPatch,
+  getSessionSnapshot,
+  onRestoreSessionSnapshot,
+  manageSessionSnapshot = true,
+  sessionSchemaVersion = 1,
   opsPrimaryField,
   onArtifact,
   onRunAction: _onRunAction,
@@ -170,10 +199,35 @@ export function FunctionAgentChat({
 }: FunctionAgentChatProps) {
   void _onRunAction;
   const tt = useUI();
+  const workspaceValue = useOptionalWorkspaceSession();
+  const workspace =
+    workspaceValue && (!siteId || workspaceValue.siteId === siteId)
+      ? workspaceValue
+      : null;
+  const sessionReadOnly = workspace?.readOnly ?? false;
+  const readSessionSnapshot = getSessionSnapshot || getOpsState;
+  const restoreSessionSnapshot = onRestoreSessionSnapshot
+    ? onRestoreSessionSnapshot
+    : onApplyPatch
+      ? (snapshot: Record<string, unknown>) =>
+          onApplyPatch({ set: snapshot })
+      : undefined;
+  const readSessionSnapshotRef = useRef(readSessionSnapshot);
+  const restoreSessionSnapshotRef = useRef(restoreSessionSnapshot);
+  const hasSessionSnapshotReader = Boolean(readSessionSnapshot);
+  const hasSessionSnapshotRestorer = Boolean(restoreSessionSnapshot);
+  useEffect(() => {
+    readSessionSnapshotRef.current = readSessionSnapshot;
+    restoreSessionSnapshotRef.current = restoreSessionSnapshot;
+  });
   const opsLabel = opsLabelProp ?? tt("操作台");
   // 无操作台表单的纯对话功能区：强制 agent 形态、不显示切换键。
   const [tab, setTab] = useState<FnTab>(showOps ? defaultTab : "agent");
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [localTaskId, setLocalTaskId] = useState<string | null>(null);
+  const taskId =
+    controlledTaskId !== undefined
+      ? controlledTaskId
+      : workspace?.taskId || localTaskId;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
@@ -181,7 +235,178 @@ export function FunctionAgentChat({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const reportedArtifactRef = useRef<string>("");
+  const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
+  const sessionSnapshotScopeRef = useRef("");
+  const sessionSnapshotReadyRef = useRef(false);
+  const sessionSnapshotBaselineRef = useRef("");
+  const sessionSnapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const sessionSnapshotFlushRef = useRef<(() => Promise<void>) | null>(null);
+
+  // 同一个真实 runtime 同时服务 live `/workspace/<appId>` 与
+  // `/history/<sessionId>`：Provider 给身份，这里把各站已经存在的
+  // 完整 runtime adapter 接成统一版本化快照；没单独接线的站兼容回退到 ops adapter。
+  useEffect(() => {
+    if (
+      !manageSessionSnapshot ||
+      !workspace ||
+      !showOps ||
+      !hasSessionSnapshotReader ||
+      !hasSessionSnapshotRestorer ||
+      workspace.availability === "loading"
+    ) {
+      sessionSnapshotScopeRef.current = "";
+      sessionSnapshotReadyRef.current = false;
+      return;
+    }
+    const scope = `${workspace.mode}:${workspace.siteId}:${workspace.appId}:${
+      workspace.session?.id || "new"
+    }:v${sessionSchemaVersion}`;
+    if (sessionSnapshotScopeRef.current === scope) return;
+    sessionSnapshotScopeRef.current = scope;
+    sessionSnapshotReadyRef.current = false;
+    sessionSnapshotBaselineRef.current = "";
+    sessionSnapshotFlushRef.current = null;
+    if (sessionSnapshotTimerRef.current) {
+      clearTimeout(sessionSnapshotTimerRef.current);
+    }
+
+    const active = workspace.session;
+    const raw = active?.snapshot;
+    if (
+      raw !== undefined &&
+      raw !== null &&
+      typeof raw === "object" &&
+      !Array.isArray(raw)
+    ) {
+      if ((active?.schema_version || 1) !== sessionSchemaVersion) {
+        setError(
+          tt(
+            `工作会话快照版本 ${active?.schema_version || 1} 与当前版本 ${sessionSchemaVersion} 不兼容，未自动覆盖操作台。`,
+          ),
+        );
+        return;
+      }
+      let serialized = "";
+      try {
+        serialized = JSON.stringify(raw);
+      } catch {
+        setError(tt("工作会话快照格式无效，未自动覆盖操作台。"));
+        return;
+      }
+      // CatalogOps 的 app 初始化与各站旧草稿恢复也在 mount effect 中；推迟一拍，
+      // 让服务端 session（历史单一事实源）最后写入，避免被默认值反向覆盖。
+      const timer = setTimeout(() => {
+        sessionSnapshotBaselineRef.current = serialized;
+        sessionSnapshotReadyRef.current = true;
+        restoreSessionSnapshotRef.current?.(
+          raw as Record<string, unknown>,
+        );
+      }, 0);
+      sessionSnapshotTimerRef.current = timer;
+      return () => clearTimeout(timer);
+    }
+
+    try {
+      sessionSnapshotBaselineRef.current = JSON.stringify(
+        readSessionSnapshotRef.current?.() || {},
+      );
+      sessionSnapshotReadyRef.current = true;
+    } catch {
+      setError(tt("当前操作台状态无法保存为工作会话。"));
+    }
+  }, [
+    manageSessionSnapshot,
+    workspace?.mode,
+    workspace?.siteId,
+    workspace?.appId,
+    workspace?.availability,
+    workspace?.session?.id,
+    workspace?.session?.schema_version,
+    hasSessionSnapshotReader,
+    hasSessionSnapshotRestorer,
+    showOps,
+    sessionSchemaVersion,
+  ]);
+
+  // 任何站点操作台 state 变化都会令 opsContent/getOpsState 随宿主重渲染。这里用完整 JSON
+  // 比较 + debounce，只在真实变化后保存；初值不会创建空 session。
+  useEffect(() => {
+    if (
+      !manageSessionSnapshot ||
+      !workspace ||
+      !showOps ||
+      !readSessionSnapshot ||
+      !restoreSessionSnapshot ||
+      !sessionSnapshotReadyRef.current ||
+      workspace.readOnly ||
+      workspace.availability === "loading"
+    ) {
+      return;
+    }
+    let serialized = "";
+    let snapshot: Record<string, unknown>;
+    try {
+      serialized = JSON.stringify(readSessionSnapshot() || {});
+      snapshot = JSON.parse(serialized) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    if (serialized === sessionSnapshotBaselineRef.current) {
+      sessionSnapshotFlushRef.current = null;
+      return;
+    }
+    if (sessionSnapshotTimerRef.current) {
+      clearTimeout(sessionSnapshotTimerRef.current);
+    }
+    const flushSnapshot = async () => {
+      if (sessionSnapshotFlushRef.current === flushSnapshot) {
+        sessionSnapshotFlushRef.current = null;
+      }
+      sessionSnapshotTimerRef.current = null;
+      const result = await workspace.saveSnapshot(
+        snapshot,
+        sessionSchemaVersion,
+        {
+          title: appLabel || workspace.appTitle || schema.title,
+          expectedSessionId: workspace.session?.id,
+        },
+      );
+      if (result.ok) {
+        sessionSnapshotBaselineRef.current = serialized;
+      } else if (result.conflict) {
+        setError(
+          tt("这份工作已在另一个页面更新。当前页面不会静默覆盖，请刷新后再继续。"),
+        );
+      }
+    };
+    sessionSnapshotFlushRef.current = flushSnapshot;
+    const timer = setTimeout(() => void flushSnapshot(), 700);
+    sessionSnapshotTimerRef.current = timer;
+    return () => clearTimeout(timer);
+  });
+  useEffect(() => {
+    const flushPending = () => {
+      if (sessionSnapshotTimerRef.current) {
+        clearTimeout(sessionSnapshotTimerRef.current);
+      }
+      const flush = sessionSnapshotFlushRef.current;
+      sessionSnapshotFlushRef.current = null;
+      if (flush) void flush();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushPending();
+    };
+    window.addEventListener("pagehide", flushPending);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushPending);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      flushPending();
+    };
+  }, [workspace?.siteId, workspace?.appId, workspace?.mode]);
 
   const handleVoiceTranscript = useCallback((text: string) => {
     setInput((v) => (v ? v + " " : "") + text);
@@ -203,6 +428,10 @@ export function FunctionAgentChat({
     (text: string, opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown }) => void
   >(
     (text, opts) => {
+      if (sessionReadOnly) {
+        setError(tt("历史工作会话为只读；请先点「重新开始」再修改。"));
+        return;
+      }
       if (onGuideExample) {
         onGuideExample(text, opts);
         setFillNonce((n) => n + 1); // v20：站点自定义处理也算一次填充 → 令内部 LeoComposer 重灌
@@ -221,7 +450,14 @@ export function FunctionAgentChat({
       setInput(text);
       setTab("agent");
     },
-    [onGuideExample, showOps, primaryField, onApplyPatch],
+    [
+      sessionReadOnly,
+      tt,
+      onGuideExample,
+      showOps,
+      primaryField,
+      onApplyPatch,
+    ],
   );
   useRegisterOpsFiller(fillFromGuide);
 
@@ -350,6 +586,7 @@ export function FunctionAgentChat({
 
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
+    if (loadedTaskRef.current !== id) return "";
     if (r.ok && r.data) {
       setMessages(r.data.messages || []);
       setStatus(r.data.task?.status || "");
@@ -357,6 +594,30 @@ export function FunctionAgentChat({
     }
     return "";
   }, []);
+
+  // session / 受控 task 变化时复用既有 thread；切到无 task 的新 session 时清空旧本地 id。
+  useEffect(() => {
+    if (!workspace) return;
+    setLocalTaskId(workspace.taskId);
+  }, [workspace?.sessionId, workspace?.taskId]);
+
+  useEffect(() => {
+    if (!taskId) {
+      if (loadedTaskRef.current) {
+        loadedTaskRef.current = "";
+        reportedArtifactRef.current = "";
+        setMessages([]);
+        setStatus("");
+      }
+      return;
+    }
+    if (loadedTaskRef.current === taskId) return;
+    loadedTaskRef.current = taskId;
+    reportedArtifactRef.current = "";
+    setMessages([]);
+    setStatus("");
+    void refresh(taskId);
+  }, [taskId, refresh]);
 
   // poll agent thread while running
   useEffect(() => {
@@ -378,20 +639,25 @@ export function FunctionAgentChat({
   // 宗旨 v10：这是操作台与 agent 共用右栏结果区的机制（agent 不写操作台，但产物进
   // 共用结果区是合理的）。
   useEffect(() => {
-    if (!onArtifact) return;
     const a = latestArtifact(messages);
     if (!a) return;
     const sig = `${a.meta.type}:${a.meta.url || ""}:${a.content.slice(0, 64)}`;
     if (reportedArtifactRef.current === sig) return;
     reportedArtifactRef.current = sig;
-    onArtifact(a.meta, a.content);
-  }, [messages, onArtifact]);
+    onArtifact?.(a.meta, a.content);
+    // 新后端写 artifact 时通常已更新活动时间；显式 touch 是旧写入路径的尽力兜底。
+    if (workspace?.taskId === taskId) void workspace.touch();
+  }, [messages, onArtifact, taskId, workspace]);
 
   async function send(override?: string) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
     const prompt = (override ?? input).trim();
     const uploaded = override ? [] : atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
+    if (sessionReadOnly) {
+      setError(tt("历史工作会话为只读；请先点「重新开始」再继续。"));
+      return;
+    }
     if (!override) {
       setInput("");
       atts.clear();
@@ -406,11 +672,18 @@ export function FunctionAgentChat({
 
     if (!taskId) {
       setBusy(true);
+      let linkedSessionId =
+        explicitSessionId || workspace?.sessionId || "";
+      if (!linkedSessionId && workspace) {
+        const context = await workspace.artifactContext(effectivePrompt);
+        linkedSessionId = context?.sessionId || "";
+      }
       const r = await createTask({
         prompt: effectivePrompt,
         mode: "agent",
         siteId,
         agentId,
+        sessionId: linkedSessionId || undefined,
         agentModel,
         attachments: uploaded,
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
@@ -420,7 +693,12 @@ export function FunctionAgentChat({
         setError(r.status === 401 ? tt("登录后即可使用 agent。") : r.error || tt("创建失败"));
         return;
       }
-      setTaskId(r.data.task_id);
+      setLocalTaskId(r.data.task_id);
+      onTaskIdChange?.(r.data.task_id);
+      if (workspace) {
+        // task 创建接口也会绑定；这里同步 Provider 内存态并兼容尚未自动绑定的后端。
+        void workspace.bindTask(r.data.task_id, effectivePrompt);
+      }
       setStatus("running");
       void refresh(r.data.task_id);
       return;
@@ -436,6 +714,7 @@ export function FunctionAgentChat({
 
   // 「中止」：AI 工作中点停止键 → 停任务。
   const stop = useCallback(async () => {
+    if (sessionReadOnly) return;
     if (!taskId) {
       setBusy(false);
       return;
@@ -446,7 +725,7 @@ export function FunctionAgentChat({
       setBusy(false);
       void refresh(taskId);
     }
-  }, [taskId, refresh]);
+  }, [sessionReadOnly, taskId, refresh]);
 
   // 启发式追问（后端 meta.suggestions）——最后一条 assistant 消息上取；点了直接发送。
   // 同时记录最新 assistant 文本条 index，用于给它流式打字机。
@@ -466,7 +745,7 @@ export function FunctionAgentChat({
       : [];
 
   async function sendSuggestion(text: string) {
-    if (!taskId || busy) return;
+    if (!taskId || busy || sessionReadOnly) return;
     setBusy(true);
     setMessages((m) => [
       ...m,
@@ -503,6 +782,11 @@ export function FunctionAgentChat({
         <div className="flex h-full flex-col">
           {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
           {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
+          {sessionReadOnly && (
+            <p className="mb-2 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+              {tt("历史工作会话为只读；查看不会覆盖归档快照。点「重新开始」后可在新会话继续。")}
+            </p>
+          )}
           {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
           {error && (
             <p className="mb-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">
@@ -605,6 +889,7 @@ export function FunctionAgentChat({
             onSubmit={send}
             loading={running}
             onStop={() => void stop()}
+            disabled={sessionReadOnly}
             leoSuggest
             leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
             placeholder={tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })}

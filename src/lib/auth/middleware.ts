@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, cookieOptions, configured } from "./config";
+import { isPrivateWorkspaceRuntime } from "./workspace-privacy";
 
 type CookieToSet = {
   name: string;
@@ -28,7 +29,12 @@ type CookieToSet = {
 // by removing the per-request `getUser()` refresh here.
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
-  if (!configured()) return applyColorSchemeHints(response);
+  if (!configured()) {
+    return applyWorkspacePrivacyHeaders(
+      applyColorSchemeHints(response),
+      request,
+    );
+  }
 
   const host = request.headers.get("host");
   const opts = cookieOptions(host);
@@ -57,7 +63,37 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     /* ignore — visitor may be signed out */
   }
 
-  applyColorSchemeHints(response);
+  return applyWorkspacePrivacyHeaders(applyColorSchemeHints(response), request);
+}
+
+/**
+ * 工作台会自动恢复 owner-scoped session，历史页更直接携带私有 session id；两者都
+ * 不能被 CDN 缓存或搜索引擎收录。统一放在所有 OceanLeo 站都复用的 middleware，
+ * 避免几十个动态 page 各自漏配 metadata。embed 视图同样属于私有运行时。
+ */
+export function applyWorkspacePrivacyHeaders(
+  response: NextResponse,
+  request: NextRequest,
+): NextResponse {
+  const pathname = request.nextUrl.pathname;
+  const privateRuntime = isPrivateWorkspaceRuntime(
+    pathname,
+    request.nextUrl.searchParams.get("embed") === "1",
+  );
+  if (privateRuntime) {
+    response.headers.set(
+      "Cache-Control",
+      "private, no-store, no-cache, max-age=0, must-revalidate",
+    );
+    response.headers.set("CDN-Cache-Control", "private, no-store");
+    response.headers.set("Vercel-CDN-Cache-Control", "private, no-store");
+    response.headers.set("Surrogate-Control", "no-store");
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    // `/history/<sessionId>` 携带 owner-scoped 标识，不能通过外链 Referer 泄漏。
+    response.headers.set("Referrer-Policy", "no-referrer");
+  }
   return response;
 }
 

@@ -15,6 +15,7 @@ import {
 // ANY *.oceanleo.com subdomain is instantly recognized on every other one.
 
 let _client: SupabaseClient | null = null;
+let _accessToken: string | null = null;
 
 export function browserClient(): SupabaseClient | null {
   if (!configured()) return null;
@@ -22,6 +23,9 @@ export function browserClient(): SupabaseClient | null {
   const host = typeof window !== "undefined" ? window.location.host : "";
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: cookieOptions(host),
+  });
+  _client.auth.onAuthStateChange((_event, session) => {
+    _accessToken = session?.access_token ?? null;
   });
   return _client;
 }
@@ -32,7 +36,13 @@ export async function accessToken(): Promise<string | null> {
   const c = browserClient();
   if (!c) return null;
   const { data } = await c.auth.getSession();
-  return data.session?.access_token ?? null;
+  _accessToken = data.session?.access_token ?? null;
+  return _accessToken;
+}
+
+/** pagehide keepalive 必须尽量在事件回调内同步发起 fetch；仅返回内存中的最近有效 token。 */
+export function cachedAccessToken(): string | null {
+  return _accessToken;
 }
 
 export async function isSignedIn(): Promise<boolean> {
@@ -57,6 +67,7 @@ export async function signIn(email: string, password: string) {
   const c = browserClient();
   if (!c) return { error: "Supabase not configured" };
   const { data, error } = await c.auth.signInWithPassword({ email, password });
+  _accessToken = data.session?.access_token ?? null;
   return { data, error: error?.message };
 }
 
@@ -96,6 +107,7 @@ export async function verifyPhoneOtp(phone: string, token: string) {
     token: (token || "").trim(),
     type: "sms",
   });
+  _accessToken = data.session?.access_token ?? null;
   return { data, error: error?.message };
 }
 
@@ -127,4 +139,5 @@ export async function signOutEverywhere(): Promise<void> {
   // cleared with the same cookieOptions used to set it, so all *.oceanleo.com
   // sites see the logout.
   await c?.auth.signOut({ scope: "global" });
+  _accessToken = null;
 }
