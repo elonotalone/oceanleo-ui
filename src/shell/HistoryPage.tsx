@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 历史记录 HistoryPage（单一事实源）
+// @oceanleo/ui —「我的任务」HistoryPage（内部兼容名）
 // ----------------------------------------------------------------------------
-// 操作员 2026-06-19 定稿：每个 OceanLeo 站「历史记录」页统一长这样：
+// 每个 OceanLeo 站「我的任务」页统一使用这一列表视图。
 //   列出每次对话 / 工作（= 一条 agent_task），按时间倒序；点开 → onOpen(taskId)
 //   回到 agent 工作界面复现该次的推导 + 结果。
 // 真实后端：GET /v1/agent/tasks（列表）。详情由 AgentChat(taskId=...) 回看。
@@ -76,7 +76,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
       if (!alive) return;
       setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? tt("登录后即可查看历史记录。") : r.error || tt("加载失败"));
+        setError(r.status === 401 ? tt("登录后即可查看我的任务。") : r.error || tt("加载失败"));
         return;
       }
       setItems(r.data.items || []);
@@ -103,7 +103,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
   return (
     <div className="flex h-[calc(100dvh-1px)] flex-col px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("历史记录")}</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("我的任务")}</h1>
       <p className="mt-1 text-[13px] text-neutral-500">
         {siteId
           ? tt("本站每次对话 / 工作都会记录在这里，点开可回看推导过程与结果。")
@@ -120,7 +120,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
             ))}
           </div>
         ) : items.length === 0 ? (
-          <Empty text={tt("还没有历史记录。去首页布置第一个任务吧。")} />
+          <Empty text={tt("还没有任务。去工作台完成第一份工作吧。")} />
         ) : (
           <div className="space-y-2">
             {items.map((t) => {
@@ -159,7 +159,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                     type="button"
                     onClick={() => setPendingDelete(t)}
                     disabled={removing}
-                    title={tt("删除这条历史记录")}
+                    title={tt("删除这个任务")}
                     aria-label={tt("删除")}
                     className="shrink-0 rounded-lg p-1.5 text-stone-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
                   >
@@ -190,7 +190,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
       {pendingDelete && (
         <ConfirmDialog
-          title={tt("删除历史记录")}
+          title={tt("删除任务")}
           body={tt("确定删除「{title}」？该会话的消息与产出将一并删除，不可恢复。", { title: pendingDelete.title || tt("未命名任务") })}
           confirmLabel={tt("删除")}
           danger

@@ -7,7 +7,7 @@
 //   - 普通对话：单栏聊天流（不分屏）。
 //   - 高级任务（产出地图/画布/小说/PPT/表格/文档等「格式化可编辑结果」）：
 //     一分为二 —— 左栏 = AI 推导（消息流）、右栏 = 结果（可编辑）。
-//   - 该次工作 = 一条 agent_task，自动进历史记录。
+//   - 该次工作归属于 AppSession；live 用「保存并刷新」进入「我的任务」。
 // 真实后端：createTask → 轮询 getTask → 渲染 messages + 取最新 artifact。
 //
 // 与「工作台」的区别：AgentChat 左栏以对话为主；工作台左栏以固定模板操控为主。
@@ -37,6 +37,7 @@ import type { PreferredModel } from "../lib/auth/account";
 import { useShellChrome } from "./ShellChrome";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import { RestartDraftButton } from "./RestartDraftButton";
 
 function artifactLabels(tt: UITranslate): Record<string, string> {
   return {
@@ -90,7 +91,7 @@ export interface AgentChatProps {
    * 已有 agent task id（从历史记录点进来回看）；与 initialPrompt 二选一。
    * 省略时会复用最近的 WorkspaceSessionProvider.taskId；不在 Provider 内时保持旧行为。 */
   taskId?: string | null;
-  /** 历史回放使用；保留轮询/渲染，但禁止追问、中止或创建新 task。 */
+  /** 缺少完整 session snapshot 的旧任务回放；禁止追问、中止或创建新 task。 */
   readOnly?: boolean;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
   mode?: "agent" | "chat";
@@ -320,7 +321,7 @@ export function AgentChat({
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
       if (readOnly) {
-        setError(tt("历史记录为只读；请重新开始后再继续。"));
+        setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
         return;
       }
       setBusy(true);
@@ -416,7 +417,7 @@ export function AgentChat({
       uploaded?: AgentAttachment[],
     ) => {
       if (readOnly) {
-        setError(tt("历史记录为只读；请重新开始后再继续。"));
+        setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
         return;
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
@@ -487,7 +488,7 @@ export function AgentChat({
     const uploaded = atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     if (readOnly) {
-      setError(tt("历史记录为只读；请重新开始后再继续。"));
+      setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
       return;
     }
     setInput("");
@@ -602,7 +603,7 @@ export function AgentChat({
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
   // 左栏标题：「agent」+（有 app 时）所属 app 小标签。（「返回」+ 本次对话总结改到
   // 顶栏，见下方 topBar，对齐 OperatorConsole 顶栏 / 操作员 2026-07-06 参考图。）
-  const leftLabelNode = resolvedApp ? (
+  const agentIdentityLabel = resolvedApp ? (
     <span className="flex items-center gap-2">
       <span className="text-[12px] font-medium text-stone-500">agent</span>
       <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
@@ -611,6 +612,19 @@ export function AgentChat({
     </span>
   ) : (
     "agent"
+  );
+  const leftLabelNode = workspace ? (
+    <span className="flex min-w-0 items-center gap-2">
+      {agentIdentityLabel}
+      {workspace.mode !== "history" && (
+        <RestartDraftButton
+          label={tt("保存并刷新")}
+          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
+        />
+      )}
+    </span>
+  ) : (
+    agentIdentityLabel
   );
 
   // 本次对话「总结」= 后端自动生成的 task.title（agent_engine._finalize_extras：首轮

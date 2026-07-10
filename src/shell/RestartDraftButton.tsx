@@ -1,18 +1,17 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — RestartDraftButton：操作台「重新开始」小按钮（单一事实源）
+// @oceanleo/ui — RestartDraftButton：操作台「保存并刷新」按钮（单一事实源）
 // ----------------------------------------------------------------------------
 // doctrine 2026-07-09。操作台默认自动恢复上次草稿；当用户想丢弃续编、从头开始时点它。
 // 单击即执行：先冲刷最新 snapshot，再归档整份 AppSession，最后 remount 干净 runtime。
-// 归档成功后明确显示「已保存至历史记录」，不再用「确认清空？」制造数据会丢失的错觉。
+// 2026-07-11：用户名改为「保存并刷新」；成功后进入「我的任务」。任务详情原地续编，
+// 不显示本按钮，也绝不再次归档/分叉。
 // ============================================================================
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
-import { workspaceAppHref } from "./workspace-route";
 
 export interface RestartDraftButtonProps {
   /**
@@ -22,7 +21,7 @@ export interface RestartDraftButtonProps {
   onBeforeRestart?: () => boolean | Promise<boolean>;
   /** Host cleanup after the aggregate was archived. */
   onRestart?: () => void | Promise<void>;
-  /** 自定义文案（默认「重新开始」）。 */
+  /** 自定义文案（默认「保存并刷新」）。 */
   label?: string;
   className?: string;
 }
@@ -34,8 +33,6 @@ export function RestartDraftButton({
   className,
 }: RestartDraftButtonProps) {
   const tt = useUI();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const workspace = useOptionalWorkspaceSession();
   const [busy, setBusy] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<
@@ -49,6 +46,9 @@ export function RestartDraftButton({
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
+  // My Tasks is edited in place. Hiding here as well as at the caller prevents
+  // a future standalone use from accidentally forking/archiving a saved task.
+  if (workspace?.mode === "history") return null;
   return (
     <button
       type="button"
@@ -62,19 +62,13 @@ export function RestartDraftButton({
           try {
             const flushed = await onBeforeRestart?.();
             if (flushed === false) return;
-            // 先归档聚合会话，成功后才清宿主 state/旧草稿；这样“重新开始”一定会
-            // 建立新 session，而不是把旧历史的 snapshot 覆盖成空白。
+            // 先保存聚合会话，成功后才清宿主 state/旧草稿；这样刷新一定会
+            // 建立新 live cache，而刚保存的任务保留在「我的任务」中。
             const restartResult = workspace
               ? await workspace.restart()
               : "empty";
             if (!restartResult) return;
             await onRestart?.();
-            // 历史页的 URL 指向刚归档的旧会话。重置完成后回到同一 app 的 live
-            // canonical URL，否则用户继续输入虽会建立新 session，刷新却又会打开旧历史。
-            if (workspace?.mode === "history") {
-              const query = searchParams.get("embed") === "1" ? "?embed=1" : "";
-              router.replace(`${workspaceAppHref(workspace.appId)}${query}`);
-            }
             // Workspace feedback lives in the provider so it survives the
             // keyed runtime remount. Standalone consumers keep a local reset
             // notice because they have no aggregate session to archive.
@@ -91,7 +85,7 @@ export function RestartDraftButton({
           }
         })();
       }}
-      title={tt("保存当前工作至历史记录并重新开始")}
+      title={tt("将当前工作保存到我的任务并刷新工作台")}
       className={
         className ??
         `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium transition ${
@@ -104,10 +98,10 @@ export function RestartDraftButton({
       {busy
         ? tt("正在保存…")
         : feedback === "saved"
-          ? tt("已保存至历史记录")
+          ? tt("已保存到我的任务")
           : feedback === "reset"
-            ? tt("已重新开始")
-            : label ?? tt("重新开始")}
+            ? tt("已刷新")
+            : label ?? tt("保存并刷新")}
     </button>
   );
 }

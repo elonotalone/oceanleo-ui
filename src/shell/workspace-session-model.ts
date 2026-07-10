@@ -38,7 +38,7 @@ export interface WorkspaceSnapshotSaveResult {
   session?: AppSession;
   conflict?: WorkspaceSessionConflict;
   unavailable?: boolean;
-  /** 已归档会话是只读的，调用方不得回退成其它写入。 */
+  /** 当前路由无权写该会话；调用方不得回退成其它本地写入。 */
   readOnly?: boolean;
   /** 保存属于已经离开的 session；常见于 restart/切换时到达的卸载 flush。 */
   stale?: boolean;
@@ -91,7 +91,7 @@ export interface WorkspaceSessionContextValue {
   mode: WorkspaceSessionMode;
   session: AppSession | null;
   taskId: string | null;
-  /** 仅 archived session 只读；active session 从 history 打开后仍可续编。 */
+  /** 完整「我的任务」session 可续编；旧/错误路由仍可被标为只读。 */
   readOnly: boolean;
   availability: WorkspaceSessionAvailability;
   error: string | null;
@@ -119,7 +119,7 @@ export interface WorkspaceSessionContextValue {
     title?: string,
   ) => Promise<boolean>;
   archive: () => Promise<false | "empty" | "archived">;
-  /** 归档当前会话并回到“尚未创建新会话”的干净状态。 */
+  /** live 工作台保存当前会话并回到“尚未创建新会话”的干净状态。 */
   restart: () => Promise<false | "empty" | "archived">;
   clearConflict: () => void;
   reload: () => Promise<AppSession | null>;

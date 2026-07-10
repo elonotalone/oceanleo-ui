@@ -77,7 +77,7 @@ test("降级路径没有生成本地 session UUID", () => {
   assert.doesNotMatch(providerSource, /randomUUID|crypto\.randomUUID|uuidv4/);
 });
 
-test("重新开始只在归档成功后 remount 干净 runtime", () => {
+test("保存并刷新只在任务保存成功后 remount 干净 runtime", () => {
   assert.match(
     providerSource,
     /const result = await archive\(\);[\s\S]*?if \(result\)[\s\S]*?setRuntimeEpoch/,
@@ -123,6 +123,10 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /if \(loadedTaskRef\.current === taskId\) return;[\s\S]*?void refresh\(taskId\)/,
   );
+  assert.match(
+    agentChatSource,
+    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("保存并刷新"\)\}/,
+  );
   assert.doesNotMatch(agentChatSource, /saveSnapshot\([\s\S]*?messages/);
 });
 
@@ -164,14 +168,14 @@ test("真实操作台自动恢复、debounce 保存，并在卸载前 flush", ()
   assert.match(draftSource, /document\.visibilityState === "hidden"/);
 });
 
-test("归档只读，active 历史可续编，旧 session flush 带身份守卫", () => {
+test("已保存任务在 history 原地续编，live 误写与旧 flush 受守卫", () => {
   assert.match(
     providerSource,
-    /isWorkspaceSessionReadOnly\(mode, current\)[\s\S]*?readOnly: true/,
+    /current &&[\s\S]*?\(!isArchivedAppSession\(current\) \|\| mode === "history"\)[\s\S]*?return current;[\s\S]*?if \(mode === "history"\) return null/,
   );
   assert.match(
     providerSource,
-    /current &&[\s\S]*?!isArchivedAppSession\(current\)[\s\S]*?return current;[\s\S]*?if \(mode === "history"\) return null/,
+    /isArchivedAppSession\(active\) && mode !== "history"/,
   );
   assert.match(
     providerSource,
@@ -182,8 +186,16 @@ test("归档只读，active 历史可续编，旧 session flush 带身份守卫"
     /const archivedForLive =[\s\S]*?mode !== "history"[\s\S]*?clearCurrent\(\)/,
   );
   assert.match(
+    providerSource,
+    /if \(mode === "history"\) return false;[\s\S]*?const active = sessionRef\.current/,
+  );
+  assert.match(
     chatSource,
     /workspace\.readOnly[\s\S]*?expectedSessionId: workspace\.session\?\.id/,
+  );
+  assert.match(
+    chatSource,
+    /workspace && workspace\.mode !== "history"[\s\S]*?<RestartDraftButton/,
   );
   assert.match(
     draftSource,

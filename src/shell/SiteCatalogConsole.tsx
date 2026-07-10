@@ -534,7 +534,7 @@ export function SiteCatalogConsole({
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
             style={{ background: accent }}
           >
-            返回历史记录
+            返回我的任务
           </button>
         </div>
       </div>
@@ -569,7 +569,7 @@ export function SiteCatalogConsole({
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
             style={{ background: accent }}
           >
-            {historySessionId ? "返回历史记录" : "返回 App 目录"}
+            {historySessionId ? "返回我的任务" : "返回 App 目录"}
           </button>
         </div>
       </div>
@@ -713,7 +713,7 @@ function LegacyHistoryPlayback({
           onClick={onBack}
           className="shrink-0 rounded-lg border border-amber-300 px-2.5 py-1 font-medium hover:bg-amber-100"
         >
-          返回历史
+          返回我的任务
         </button>
       </div>
       <div className="min-h-0 flex-1">

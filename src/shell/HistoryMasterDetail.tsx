@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 历史记录 master-detail（doctrine v4，单一事实源）
+// @oceanleo/ui —「我的任务」master-detail（内部路由兼容名 history）
 // ----------------------------------------------------------------------------
-// 「历史记录」侧栏子栏（master）+ 主区详情（detail）：
+// 「我的任务」侧栏子栏（master）+ 主区详情（detail）：
 //   子栏优先列完整 app_session；未归属 session 的旧 agent_task 继续保留。
 //   主区完整 session 挂站点真实 workspace runtime；旧 task 才明确降级 AgentChat。
 // 子栏与主区通过 useWorkspaceSelection("history") 共享选中 id。
@@ -73,7 +73,7 @@ function fmt(ts?: string): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-/** 两个历史列表是否「实质相同」——避免静默刷新时整列抽动。 */
+/** 两个任务列表是否「实质相同」——避免静默刷新时整列抽动。 */
 function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -106,7 +106,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
 
 function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const tt = useUI();
-  const authMessage = authMsg ?? tt("登录后即可查看历史记录。");
+  const authMessage = authMsg ?? tt("登录后即可查看我的任务。");
   const [items, setItems] = useState<HistoryListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,7 +193,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
 }
 
 // ----------------------------------------------------------------------------
-// 侧栏子栏：历史列表（可删除）
+// 侧栏子栏：我的任务列表（可删除）
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
@@ -203,7 +203,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const router = useRouter();
   const [pending, setPending] = useState<HistoryListEntry | null>(null);
 
-  // URL 是历史选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
+  // URL 是任务选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
   // 保留，因为它没有足够 app/snapshot 身份，不能伪装成完整 workspace。
   useEffect(() => {
     const pathSession = historySessionIdFromPath(pathname);
@@ -233,13 +233,13 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     return () => window.removeEventListener("popstate", syncLegacySelection);
   }, [setSel]);
 
-  // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列历史记录本身。
+  // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列任务本身。
   return (
     <div className="space-y-0.5">
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
       {!error && !loading && items.length === 0 && (
-        <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有历史记录。")}</p>
+        <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有任务。")}</p>
       )}
       {items.map((entry) => {
         const isSession = entry.kind === "session";
@@ -296,7 +296,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
               <button
                 type="button"
                 onClick={() => setPending(entry)}
-                title={tt("永久删除这条历史记录")}
+                title={tt("永久删除这个任务")}
                 aria-label={tt("删除")}
                 className={`shrink-0 rounded p-0.5 transition ${
                   on
@@ -316,7 +316,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
 
       {pending && (
         <ConfirmDialog
-          title={tt("删除历史记录")}
+          title={tt("删除任务")}
           body={tt("确定删除「{title}」？该会话的消息与产出将一并删除，不可恢复。", {
             title:
               pending.kind === "task"
@@ -457,7 +457,7 @@ export function HistoryDetail({
         setDetailLoading(false);
         setDetailError(
           sessionResult.status === 401
-            ? tt("登录后即可查看历史记录。")
+            ? tt("登录后即可查看我的任务。")
             : sessionResult.error || tt("加载失败"),
         );
         return;
@@ -481,7 +481,7 @@ export function HistoryDetail({
         sessionResult.status === 401 || taskResult.status === 401;
       setDetailError(
         signedOut
-          ? tt("登录后即可查看历史记录。")
+          ? tt("登录后即可查看我的任务。")
           : taskResult.error || sessionResult.error || tt("加载失败"),
       );
     })();
@@ -513,7 +513,7 @@ export function HistoryDetail({
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         {modelBar}
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-neutral-400">
-          {tt("在左侧选择一条历史记录，即可在此回看该次对话与产出。")}
+          {tt("在左侧选择一个任务，即可继续操作或查看对话与产出。")}
         </div>
       </div>
     );
@@ -535,7 +535,7 @@ export function HistoryDetail({
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         {modelBar}
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-rose-500">
-          {detailError || tt("这条历史记录不存在或已无权访问。")}
+          {detailError || tt("这个任务不存在或已无权访问。")}
         </div>
       </div>
     );
@@ -611,7 +611,7 @@ export function HistoryDetail({
         </span>
         <span className="ml-1 text-amber-700">
           {fallbackTaskId
-            ? tt("以下仅回放原 Agent 对话与产出，不会拿当前草稿或默认 app 伪装历史。")
+            ? tt("这是缺少完整工作台快照的旧任务，仅回放原 Agent 对话与产出。")
             : tt("该记录也没有可回放的 Agent task。")}
         </span>
       </div>
@@ -642,7 +642,7 @@ export function HistoryDetail({
 // ============================================================================
 // 「待处理」master-detail —— 已下线（操作员 2026-07-01）
 // ----------------------------------------------------------------------------
-// 主站不再有独立的「待处理」页面 / 功能：所有会话（进行中 / 已完成）统一进「历史
-// 记录」（HistorySubNav 默认不带 pending，列全部会话；进行中的会话在左栏用状态点
+// 主站不再有独立的「待处理」页面 / 功能：所有会话（进行中 / 已完成）统一进「我的
+// 任务」（HistorySubNav 默认不带 pending，列全部会话；进行中的会话在左栏用状态点
 // 体现，主区回看时轮询刷新）。PendingSubNav / PendingDetail 已删除，导出同步移除。
 // ============================================================================

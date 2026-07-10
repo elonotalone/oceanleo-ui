@@ -359,12 +359,12 @@ export function WorkspaceSessionProvider({
         current &&
         current.site_id === site &&
         current.app_id === app &&
-        !isArchivedAppSession(current)
+        (!isArchivedAppSession(current) || mode === "history")
       ) {
         return current;
       }
-      // 历史路由只能继续它明确加载的那一条 active session，绝不能在记录缺失、
-      // 已归档或身份不匹配时悄悄 ensure 出另一条会话来伪装历史。
+      // 「我的任务」只能继续它明确加载的同一 session（含 archived 兼容状态），
+      // 绝不能在记录缺失或身份不匹配时 ensure 出另一条会话来伪装原任务。
       if (mode === "history") return null;
       if (!site || !app) return null;
       if (ensurePromiseRef.current) return ensurePromiseRef.current;
@@ -384,7 +384,7 @@ export function WorkspaceSessionProvider({
         if (isArchivedAppSession(result.data)) {
           reportFailure(
             409,
-            "服务端返回了已归档会话，已拒绝继续写入。",
+            "服务端返回了已保存任务，live 工作台已拒绝误写。",
           );
           return null;
         }
@@ -426,7 +426,7 @@ export function WorkspaceSessionProvider({
           ok: false,
           session: current || undefined,
           readOnly: true,
-          error: "已归档工作会话为只读。",
+          error: "当前路由不能编辑这份已保存任务。",
         };
       }
       if (
@@ -451,7 +451,7 @@ export function WorkspaceSessionProvider({
             ok: false,
             session: queuedCurrent || undefined,
             readOnly: true,
-            error: "已归档工作会话为只读。",
+            error: "当前路由不能编辑这份已保存任务。",
           };
         }
         if (
@@ -484,12 +484,12 @@ export function WorkspaceSessionProvider({
             error: errorRef.current || "工作会话暂不可用",
           };
         }
-        if (isArchivedAppSession(active)) {
+        if (isArchivedAppSession(active) && mode !== "history") {
           return {
             ok: false,
             session: active,
             readOnly: true,
-            error: "已归档工作会话不可保存。",
+            error: "当前路由不能保存已列入我的任务的会话。",
           };
         }
 
@@ -510,13 +510,13 @@ export function WorkspaceSessionProvider({
           title: options.title,
         });
         if (result.ok && result.data) {
-          if (isArchivedAppSession(result.data)) {
+          if (isArchivedAppSession(result.data) && mode !== "history") {
             applySession(result.data);
             return {
               ok: false,
               session: result.data,
               readOnly: true,
-              error: "工作会话已归档，本次保存未继续。",
+              error: "工作会话已列入我的任务，当前路由未继续保存。",
             };
           }
           applySession(result.data);
@@ -587,7 +587,7 @@ export function WorkspaceSessionProvider({
         if (isArchivedAppSession(result.data)) {
           reportFailure(
             409,
-            "服务端返回了已归档会话，已拒绝继续写入。",
+            "服务端返回了已保存任务，live 工作台已拒绝误写。",
           );
           return null;
         }
@@ -647,6 +647,9 @@ export function WorkspaceSessionProvider({
   const archive = useCallback(
     async (): Promise<false | "empty" | "archived"> =>
       enqueueMutation(async () => {
+        // 已保存任务必须原地续编，不能再次“保存并刷新”或顺带归档该 app
+        // 的 live cache。UI 同样隐藏按钮；这里是命令层的最后一道防线。
+        if (mode === "history") return false;
         const active = sessionRef.current;
         if (!active) {
           clearCurrent();
@@ -664,34 +667,10 @@ export function WorkspaceSessionProvider({
             }
           }
         }
-        // 从一条旧的归档历史点「重新开始」时，同一 app 可能另有 live 活跃会话。
-        // 若只处理当前历史行，跳回 /workspace 后会立刻恢复那条 live 会话，看起来像
-        // “清空失败”。历史重启必须同时归档这个 app 当前唯一的 active session。
-        if (mode === "history") {
-          const activeResult = await listAppSessions({
-            siteId: site,
-            appId: app,
-            status: "active",
-            includeArchived: false,
-            limit: 1,
-          });
-          if (!activeResult.ok) {
-            reportFailure(activeResult.status, activeResult.error);
-            return false;
-          }
-          const live = activeResult.data?.items[0];
-          if (live && live.id !== active.id) {
-            const liveArchive = await archiveAppSession(live.id);
-            if (!liveArchive.ok) {
-              reportFailure(liveArchive.status, liveArchive.error);
-              return false;
-            }
-          }
-        }
         clearCurrent();
         return "archived";
       }),
-    [enqueueMutation, mode, site, app, clearCurrent, reload, reportFailure],
+    [enqueueMutation, mode, clearCurrent, reload, reportFailure],
   );
 
   const clearConflict = useCallback(() => {
@@ -714,9 +693,8 @@ export function WorkspaceSessionProvider({
         () => setRestartFeedback(null),
         2600,
       );
-      // Remount the real site runtime only after the aggregate was safely
-      // archived. CatalogOps then establishes that app's clean initial state;
-      // the next meaningful action creates a new active cache.
+      // Remount the live site runtime only after the aggregate was safely
+      // saved into My Tasks. The next meaningful action creates a new cache.
       setRuntimeEpoch((value) => value + 1);
     }
     return result;

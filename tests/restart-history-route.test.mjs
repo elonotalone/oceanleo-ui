@@ -11,17 +11,13 @@ const providerSource = await readFile(
   "utf8",
 );
 
-test("从历史会话重新开始后离开旧 session URL", () => {
-  assert.match(source, /await onBeforeRestart\?\.\(\)/);
-  assert.match(source, /await workspace\.restart\(\)/);
-  assert.match(source, /await onRestart\?\.\(\)/);
-  assert.match(
-    source,
-    /workspace\?\.mode === "history"[\s\S]*?router\.replace\(`\$\{workspaceAppHref\(workspace\.appId\)\}\$\{query\}`\)/,
-  );
+test("我的任务详情不渲染保存并刷新，也不做历史路由跳转", () => {
+  assert.match(source, /if \(workspace\?\.mode === "history"\) return null/);
+  assert.doesNotMatch(source, /useRouter|useSearchParams|workspaceAppHref/);
+  assert.doesNotMatch(source, /router\.replace/);
 });
 
-test("重新开始单击归档且成功反馈不再暗示清空", () => {
+test("保存并刷新单击保存且反馈进入我的任务", () => {
   assert.doesNotMatch(source, /arming|tt\("确认清空？"\)/);
   assert.match(source, /if \(inFlightRef\.current\) return/);
   assert.match(source, /inFlightRef\.current = true/);
@@ -32,13 +28,15 @@ test("重新开始单击归档且成功反馈不再暗示清空", () => {
   );
   assert.match(providerSource, /return "empty"/);
   assert.match(providerSource, /return "archived"/);
-  assert.match(source, /tt\("已保存至历史记录"\)/);
-  assert.match(source, /tt\("保存当前工作至历史记录并重新开始"\)/);
+  assert.match(source, /tt\("已保存到我的任务"\)/);
+  assert.match(source, /tt\("将当前工作保存到我的任务并刷新工作台"\)/);
+  assert.match(source, /label \?\? tt\("保存并刷新"\)/);
 });
 
-test("从旧历史重启时也归档同 app 的另一条活跃会话", () => {
+test("我的任务命令层拒绝再次归档或影响 live cache", () => {
   assert.match(
     providerSource,
-    /mode === "history"[\s\S]*?listAppSessions\(\{[\s\S]*?status: "active"[\s\S]*?archiveAppSession\(live\.id\)/,
+    /if \(mode === "history"\) return false;[\s\S]*?const active = sessionRef\.current/,
   );
+  assert.doesNotMatch(providerSource, /archiveAppSession\(live\.id\)/);
 });

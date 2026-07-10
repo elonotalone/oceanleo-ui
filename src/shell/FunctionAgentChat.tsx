@@ -404,7 +404,7 @@ export function FunctionAgentChat({
     setError(
       result.conflict
         ? tt("这份工作已在另一个页面更新。当前页面不会静默覆盖，请刷新后再继续。")
-        : result.error || tt("当前工作保存失败，未执行重新开始。"),
+        : result.error || tt("当前工作保存失败，未执行保存并刷新。"),
     );
     return false;
   }, [
@@ -529,7 +529,7 @@ export function FunctionAgentChat({
   >(
     (text, opts) => {
       if (sessionReadOnly) {
-        setError(tt("历史工作会话为只读；请先点「重新开始」再修改。"));
+        setError(tt("当前工作会话不可编辑。"));
         return;
       }
       if (onGuideExample) {
@@ -671,10 +671,10 @@ export function FunctionAgentChat({
           {wfSaved ? tt("已保存") : tt("保存工作流")}
         </button>
       )}
-      {workspace && (
+      {workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           onBeforeRestart={() => restartFlushRef.current()}
-          label={tt("重新开始")}
+          label={tt("保存并刷新")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}
@@ -773,7 +773,7 @@ export function FunctionAgentChat({
     const uploaded = override ? [] : atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     if (sessionReadOnly) {
-      setError(tt("历史工作会话为只读；请先点「重新开始」再继续。"));
+      setError(tt("当前工作会话不可编辑。"));
       return;
     }
     if (!override) {
@@ -899,11 +899,6 @@ export function FunctionAgentChat({
         <div className="flex h-full flex-col">
           {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
           {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
-          {sessionReadOnly && (
-            <p className="mb-2 shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-              {tt("历史工作会话为只读；查看不会覆盖归档快照。点「重新开始」后可在新会话继续。")}
-            </p>
-          )}
           {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
           {error && (
             <p className="mb-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">

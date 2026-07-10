@@ -48,7 +48,7 @@ export interface ListAppSessionsOptions {
   siteId?: string;
   appId?: string;
   status?: AppSessionStatus;
-  /** 历史页默认需要包含归档会话；live workspace 查活跃会话时传 false。 */
+  /** 「我的任务」需要包含 archived（已保存）会话；live 查活跃缓存时传 false。 */
   includeArchived?: boolean;
 }
 
@@ -199,7 +199,7 @@ export async function updateAppSession(
   return unwrapSession(result);
 }
 
-/** 软归档一条会话；历史仍可读取，下一次有效动作会建立新会话。 */
+/** 把 live 会话保存进「我的任务」；该行仍可原地续编，live 下一次动作建新缓存。 */
 export async function archiveAppSession(
   sessionId: string,
 ): Promise<AgentApiResult<ArchiveAppSessionResult>> {
@@ -237,7 +237,7 @@ export async function archiveAppSession(
   };
 }
 
-/** 永久删除归档聚合：snapshot、agent thread、产物与草稿引用一并级联删除。 */
+/** 永久删除已保存任务聚合：snapshot、agent thread、产物与草稿引用一并级联删除。 */
 export async function deleteAppSession(
   sessionId: string,
 ): Promise<AgentApiResult<{ deleted: boolean; session_id: string }>> {

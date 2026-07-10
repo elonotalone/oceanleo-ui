@@ -17,13 +17,14 @@ export function isArchivedAppSession(
 }
 
 export function isWorkspaceSessionReadOnly(
-  _mode: WorkspaceSessionSafetyMode,
+  mode: WorkspaceSessionSafetyMode,
   session: WorkspaceSessionSafetyRecord | null | undefined,
 ): boolean {
-  // History is a route/view mode, not a mutation state. An active session
-  // opened from /history/<id> remains the same resumable work session; only
-  // sessions that were explicitly archived are immutable.
-  return isArchivedAppSession(session);
+  // `archived` is the deployed compatibility marker for a task saved/listed
+  // in My Tasks; it no longer means immutable. The owner-scoped history
+  // runtime edits that same row in place. Live/embed must never mutate an
+  // archived row accidentally (they normally reject it during hydration).
+  return isArchivedAppSession(session) && mode !== "history";
 }
 
 /** restart/路由切换后到达的旧 flush 必须失效，不能隐式 ensure 一条新 session。 */

@@ -19,7 +19,7 @@ const active = {
   last_activity_at: "2026-07-10T02:00:00Z",
 };
 
-test("history 中的 active session 可续编，只有 archived session 只读", () => {
+test("我的任务中的 archived session 可续编，live/embed 防止误写", () => {
   assert.equal(isWorkspaceSessionReadOnly("history", active), false);
   assert.equal(
     isWorkspaceSessionReadOnly("workspace", {
@@ -31,6 +31,14 @@ test("history 中的 active session 可续编，只有 archived session 只读",
   );
   assert.equal(
     isWorkspaceSessionReadOnly("history", {
+      ...active,
+      status: "archived",
+      archived_at: "2026-07-10T03:00:00Z",
+    }),
+    false,
+  );
+  assert.equal(
+    isWorkspaceSessionReadOnly("embed", {
       ...active,
       status: "archived",
       archived_at: "2026-07-10T03:00:00Z",
