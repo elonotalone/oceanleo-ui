@@ -28,6 +28,8 @@ export interface AppSession {
   site_id: string;
   app_id: string;
   title?: string | null;
+  /** 从 snapshot 提取的列表级备注，避免历史列表下载整份快照。 */
+  note?: string | null;
   status: AppSessionStatus;
   snapshot?: unknown;
   schema_version: number;
@@ -232,4 +234,16 @@ export async function archiveAppSession(
     ...result,
     data: { session_id: id, archived: true, session },
   };
+}
+
+/** 永久删除归档聚合：snapshot、agent thread、产物与草稿引用一并级联删除。 */
+export async function deleteAppSession(
+  sessionId: string,
+): Promise<AgentApiResult<{ deleted: boolean; session_id: string }>> {
+  const id = (sessionId || "").trim();
+  if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
+  return sessionRequest<{ deleted: boolean; session_id: string }>(
+    `/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
 }

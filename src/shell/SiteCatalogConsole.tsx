@@ -20,7 +20,14 @@
 // 版本，全家桶所有成品 app 一起同步。站点的成品清单是纯数据，不含 UI。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
@@ -48,6 +55,10 @@ import {
   workspaceAppHref,
   workspaceAppIdFromPath,
 } from "./workspace-route";
+import {
+  WorkspaceRuntimeBoundary,
+  useWorkspaceRuntimeHydration,
+} from "./workspace-runtime-hydration";
 
 export interface SiteCatalogConsoleProps {
   /** 本站 site_id（计量 / 历史分区 / 深链）。 */
@@ -179,6 +190,15 @@ export function SiteCatalogConsole({
     useState<LegacyHistoryTaskRef | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const beforeLeaveRef = useRef<() => Promise<boolean>>(
+    async () => true,
+  );
+  const registerBeforeLeave = useCallback(
+    (callback: (() => Promise<boolean>) | null) => {
+      beforeLeaveRef.current = callback || (async () => true);
+    },
+    [],
+  );
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const inheritedHistorySession =
     historySessionId &&
@@ -378,7 +398,11 @@ export function SiteCatalogConsole({
   ]);
 
   const changeApp = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      if (activeAppId && id !== activeAppId) {
+        const saved = await beforeLeaveRef.current();
+        if (!saved) return;
+      }
       if (embed) {
         onChange?.(id);
         return;
@@ -393,7 +417,14 @@ export function SiteCatalogConsole({
       }
       router.push(canonicalAppHref(id));
     },
-    [embed, onChange, historySessionId, router, canonicalAppHref],
+    [
+      activeAppId,
+      embed,
+      onChange,
+      historySessionId,
+      router,
+      canonicalAppHref,
+    ],
   );
 
   // 每个成品 app → 一个 ConsoleFunction（全部复用 renderOps/renderCanvas；带场景 + 三板块导航）。
@@ -411,12 +442,17 @@ export function SiteCatalogConsole({
             scenes: app.scenes,
             agentId: cfg.agentId || `${siteId}.agent`,
             ops: (
-              <AgentOnlyOps
-                siteId={siteId}
-                agentId={cfg.agentId || `${siteId}.agent`}
-                accent={accent}
-                appName={app.name as string}
-                placeholder={cfg.placeholder}
+              <CatalogOps
+                app={app}
+                renderOps={() => (
+                  <AgentOnlyOps
+                    siteId={siteId}
+                    agentId={cfg.agentId || `${siteId}.agent`}
+                    accent={accent}
+                    appName={app.name as string}
+                    placeholder={cfg.placeholder}
+                  />
+                )}
               />
             ),
             canvas: (
@@ -585,13 +621,21 @@ export function SiteCatalogConsole({
 
   if (!activeAppId) return consoleNode;
 
+  const hydratedConsoleNode = (
+    <WorkspaceRuntimeBoundary
+      scope={activeAppId}
+      onRegisterBeforeLeave={registerBeforeLeave}
+    >
+      {consoleNode}
+    </WorkspaceRuntimeBoundary>
+  );
   const reusingHistoryProvider =
     Boolean(historySessionId) &&
     inheritedWorkspace?.mode === "history" &&
     inheritedWorkspace.sessionId === historySessionId &&
     inheritedWorkspace.siteId === siteId &&
     inheritedWorkspace.appId === activeAppId;
-  if (reusingHistoryProvider) return consoleNode;
+  if (reusingHistoryProvider) return hydratedConsoleNode;
 
   return (
     <WorkspaceSessionProvider
@@ -604,7 +648,7 @@ export function SiteCatalogConsole({
       mode={historySessionId ? "history" : embed ? "embed" : "workspace"}
       resumeLatest={!historySessionId}
     >
-      {consoleNode}
+      {hydratedConsoleNode}
     </WorkspaceSessionProvider>
   );
 }
@@ -760,8 +804,10 @@ function CatalogOps({
   renderOps: (app: GoalApp) => ReactNode;
   onEnterApp?: (app: GoalApp) => void;
 }) {
+  const hydration = useWorkspaceRuntimeHydration();
   useEffect(() => {
     onEnterApp?.(app);
+    hydration?.markAppInitialized();
     // 仅按 app.id 触发一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.id]);

@@ -96,7 +96,7 @@ test("session API 可用时绝不把已绑定 task 误装成可删除旧记录",
   assert.equal(canDeleteHistoryEntry(entries[0]), true);
 });
 
-test("旧后端可回放 session-bound task，但删除守卫仍拒绝 task/session 混用", () => {
+test("旧后端可回放 session-bound task；聚合 session 使用独立永久删除", () => {
   const entries = mergeHistoryEntries(
     [],
     [
@@ -114,7 +114,7 @@ test("旧后端可回放 session-bound task，但删除守卫仍拒绝 task/sess
   assert.equal(canDeleteHistoryEntry(entries[0]), false);
   assert.equal(
     canDeleteHistoryEntry({ kind: "session", id: baseSession.id, session: baseSession }),
-    false,
+    true,
   );
 });
 

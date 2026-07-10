@@ -223,6 +223,7 @@ export function OperatorConsole({
         : { label: tt("库") };
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
+  const controlled = value !== undefined;
   const activeId = value ?? internal;
   const active =
     functions.find((f) => f.id === activeId) ?? functions[0];
@@ -251,20 +252,20 @@ export function OperatorConsole({
   //   fn）→ 传 undefined/空（显示目录）。所以 opened **以受控 value 初始化**：进站
   //   带 ?fn= 直接进功能区；返回时父站把 value 清空、本组件回目录。value 为空时
   //   opened 也为空（目录）。这样深链能直达、返回键也真实可用。
-  const [opened, setOpened] = useState<string | null>(value || null);
-  // value 受控变化（父站改 ?fn=）时同步 opened：清空→回目录；置值→进该功能区。
-  useEffect(() => {
-    if (value === undefined) return; // 非受控站不跟随
-    setOpened(value || null);
-  }, [value]);
-  const isOpened = opened !== null;
+  const [opened, setOpened] = useState<string | null>(
+    controlled ? null : defaultValue || null,
+  );
+  // 受控模式只认父级 value（SiteCatalogConsole 中即 canonical pathname）。以前点击卡片时
+  // 先 setOpened(id)、再等待 URL value 更新；这期间 activeId 仍是空串并回退 functions[0]，
+  // 会把目录第一张 app 错画一帧。现在受控切换保持旧页面，直到 URL 与 app 身份一起提交。
+  const isOpened = controlled ? Boolean(value) : opened !== null;
 
   const openFn = (id: string) => {
-    setOpened(id);
+    if (!controlled) setOpened(id);
     select(id);
   };
   const backToDirectory = () => {
-    setOpened(null);
+    if (!controlled) setOpened(null);
     onChange?.("");
   };
 

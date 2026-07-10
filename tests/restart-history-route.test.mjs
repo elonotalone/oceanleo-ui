@@ -12,8 +12,9 @@ const providerSource = await readFile(
 );
 
 test("从历史会话重新开始后离开旧 session URL", () => {
+  assert.match(source, /await onBeforeRestart\?\.\(\)/);
   assert.match(source, /await workspace\.restart\(\)/);
-  assert.match(source, /await onRestart\(\)/);
+  assert.match(source, /await onRestart\?\.\(\)/);
   assert.match(
     source,
     /workspace\?\.mode === "history"[\s\S]*?router\.replace\(`\$\{workspaceAppHref\(workspace\.appId\)\}\$\{query\}`\)/,

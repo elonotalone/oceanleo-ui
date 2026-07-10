@@ -52,6 +52,37 @@ import {
 import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import { RestartDraftButton } from "./RestartDraftButton";
+import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+
+const WORKSPACE_NOTE_KEY = "__oceanleo_note";
+const WORKSPACE_NOTE_MAX_LENGTH = 1000;
+
+function sessionSnapshotWithNote(
+  snapshot: Record<string, unknown>,
+  note: string,
+): Record<string, unknown> {
+  return {
+    ...snapshot,
+    [WORKSPACE_NOTE_KEY]: note.slice(0, WORKSPACE_NOTE_MAX_LENGTH),
+  };
+}
+
+function splitSessionSnapshot(snapshot: Record<string, unknown>): {
+  runtime: Record<string, unknown>;
+  note: string;
+} {
+  const runtime = { ...snapshot };
+  const rawNote = runtime[WORKSPACE_NOTE_KEY];
+  delete runtime[WORKSPACE_NOTE_KEY];
+  return {
+    runtime,
+    note:
+      typeof rawNote === "string"
+        ? rawNote.slice(0, WORKSPACE_NOTE_MAX_LENGTH)
+        : "",
+  };
+}
 
 // ── 操作台 → agent 桥（宗旨 v12.2，操作员 2026-07-05）────────────────────────
 // 一些功能区的「操作台」不是自成一体的确定性表单，而是一份【结构化需求简报】——
@@ -204,6 +235,7 @@ export function FunctionAgentChat({
     workspaceValue && (!siteId || workspaceValue.siteId === siteId)
       ? workspaceValue
       : null;
+  const runtimeHydration = useWorkspaceRuntimeHydration();
   const sessionReadOnly = workspace?.readOnly ?? false;
   const readSessionSnapshot = getSessionSnapshot || getOpsState;
   const restoreSessionSnapshot = onRestoreSessionSnapshot
@@ -244,21 +276,35 @@ export function FunctionAgentChat({
     null,
   );
   const sessionSnapshotFlushRef = useRef<(() => Promise<void>) | null>(null);
+  const [sessionNote, setSessionNote] = useState("");
+  const sessionNoteRef = useRef("");
+  const restartFlushRef = useRef<() => Promise<boolean>>(
+    async () => true,
+  );
+  useEffect(() => {
+    sessionNoteRef.current = sessionNote;
+  }, [sessionNote]);
 
   // 同一个真实 runtime 同时服务 live `/workspace/<appId>` 与
   // `/history/<sessionId>`：Provider 给身份，这里把各站已经存在的
   // 完整 runtime adapter 接成统一版本化快照；没单独接线的站兼容回退到 ops adapter。
   useEffect(() => {
+    if (workspace?.availability === "loading") {
+      sessionSnapshotScopeRef.current = "";
+      sessionSnapshotReadyRef.current = false;
+      return;
+    }
+    if (runtimeHydration && !runtimeHydration.appInitialized) return;
     if (
       !manageSessionSnapshot ||
       !workspace ||
       !showOps ||
       !hasSessionSnapshotReader ||
-      !hasSessionSnapshotRestorer ||
-      workspace.availability === "loading"
+      !hasSessionSnapshotRestorer
     ) {
       sessionSnapshotScopeRef.current = "";
       sessionSnapshotReadyRef.current = false;
+      runtimeHydration?.markRuntimeReady();
       return;
     }
     const scope = `${workspace.mode}:${workspace.siteId}:${workspace.appId}:${
@@ -272,6 +318,7 @@ export function FunctionAgentChat({
     if (sessionSnapshotTimerRef.current) {
       clearTimeout(sessionSnapshotTimerRef.current);
     }
+    setSessionNote("");
 
     const active = workspace.session;
     const raw = active?.snapshot;
@@ -287,35 +334,40 @@ export function FunctionAgentChat({
             `工作会话快照版本 ${active?.schema_version || 1} 与当前版本 ${sessionSchemaVersion} 不兼容，未自动覆盖操作台。`,
           ),
         );
+        runtimeHydration?.markRuntimeReady();
         return;
       }
       let serialized = "";
+      const split = splitSessionSnapshot(raw as Record<string, unknown>);
       try {
-        serialized = JSON.stringify(raw);
+        serialized = JSON.stringify(
+          sessionSnapshotWithNote(split.runtime, split.note),
+        );
       } catch {
         setError(tt("工作会话快照格式无效，未自动覆盖操作台。"));
+        runtimeHydration?.markRuntimeReady();
         return;
       }
-      // CatalogOps 的 app 初始化与各站旧草稿恢复也在 mount effect 中；推迟一拍，
-      // 让服务端 session（历史单一事实源）最后写入，避免被默认值反向覆盖。
-      const timer = setTimeout(() => {
-        sessionSnapshotBaselineRef.current = serialized;
-        sessionSnapshotReadyRef.current = true;
-        restoreSessionSnapshotRef.current?.(
-          raw as Record<string, unknown>,
-        );
-      }, 0);
-      sessionSnapshotTimerRef.current = timer;
-      return () => clearTimeout(timer);
+      sessionSnapshotBaselineRef.current = serialized;
+      sessionSnapshotReadyRef.current = true;
+      setSessionNote(split.note);
+      restoreSessionSnapshotRef.current?.(split.runtime);
+      runtimeHydration?.markRuntimeReady();
+      return;
     }
 
     try {
       sessionSnapshotBaselineRef.current = JSON.stringify(
-        readSessionSnapshotRef.current?.() || {},
+        sessionSnapshotWithNote(
+          readSessionSnapshotRef.current?.() || {},
+          "",
+        ),
       );
       sessionSnapshotReadyRef.current = true;
+      runtimeHydration?.markRuntimeReady();
     } catch {
       setError(tt("当前操作台状态无法保存为工作会话。"));
+      runtimeHydration?.markRuntimeReady();
     }
   }, [
     manageSessionSnapshot,
@@ -329,7 +381,78 @@ export function FunctionAgentChat({
     hasSessionSnapshotRestorer,
     showOps,
     sessionSchemaVersion,
+    runtimeHydration,
   ]);
+
+  const flushCurrentSnapshotForRestart = useCallback(async (): Promise<boolean> => {
+    if (
+      !manageSessionSnapshot ||
+      !workspace ||
+      !showOps ||
+      !readSessionSnapshotRef.current ||
+      !sessionSnapshotReadyRef.current ||
+      workspace.readOnly ||
+      workspace.availability === "loading"
+    ) {
+      return true;
+    }
+    if (sessionSnapshotTimerRef.current) {
+      clearTimeout(sessionSnapshotTimerRef.current);
+      sessionSnapshotTimerRef.current = null;
+    }
+    // A scheduled debounce captured an older render. Discard it and serialize
+    // the current runtime synchronously so Restart can never archive stale data.
+    sessionSnapshotFlushRef.current = null;
+    let serialized = "";
+    let snapshot: Record<string, unknown>;
+    try {
+      serialized = JSON.stringify(
+        sessionSnapshotWithNote(
+          readSessionSnapshotRef.current() || {},
+          sessionNoteRef.current,
+        ),
+      );
+      snapshot = JSON.parse(serialized) as Record<string, unknown>;
+    } catch {
+      setError(tt("当前操作台状态无法保存为工作会话。"));
+      return false;
+    }
+    if (serialized === sessionSnapshotBaselineRef.current) return true;
+    const result = await workspace.saveSnapshot(
+      snapshot,
+      sessionSchemaVersion,
+      {
+        title: appLabel || workspace.appTitle || schema.title,
+        expectedSessionId: workspace.session?.id,
+      },
+    );
+    if (result.ok) {
+      sessionSnapshotBaselineRef.current = serialized;
+      return true;
+    }
+    setError(
+      result.conflict
+        ? tt("这份工作已在另一个页面更新。当前页面不会静默覆盖，请刷新后再继续。")
+        : result.error || tt("当前工作保存失败，未执行重新开始。"),
+    );
+    return false;
+  }, [
+    manageSessionSnapshot,
+    workspace,
+    showOps,
+    sessionSchemaVersion,
+    appLabel,
+    schema.title,
+    tt,
+  ]);
+  restartFlushRef.current = flushCurrentSnapshotForRestart;
+  useEffect(() => {
+    if (!runtimeHydration) return;
+    runtimeHydration.registerBeforeLeave(
+      () => restartFlushRef.current(),
+    );
+    return () => runtimeHydration.registerBeforeLeave(null);
+  }, [runtimeHydration]);
 
   // 任何站点操作台 state 变化都会令 opsContent/getOpsState 随宿主重渲染。这里用完整 JSON
   // 比较 + debounce，只在真实变化后保存；初值不会创建空 session。
@@ -349,7 +472,12 @@ export function FunctionAgentChat({
     let serialized = "";
     let snapshot: Record<string, unknown>;
     try {
-      serialized = JSON.stringify(readSessionSnapshot() || {});
+      serialized = JSON.stringify(
+        sessionSnapshotWithNote(
+          readSessionSnapshot() || {},
+          sessionNoteRef.current,
+        ),
+      );
       snapshot = JSON.parse(serialized) as Record<string, unknown>;
     } catch {
       return;
@@ -571,6 +699,13 @@ export function FunctionAgentChat({
           {wfSaved ? tt("已保存") : tt("保存工作流")}
         </button>
       )}
+      {workspace && (
+        <RestartDraftButton
+          onBeforeRestart={() => restartFlushRef.current()}
+          label={tt("重新开始")}
+          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
+        />
+      )}
     </div>
   ) : null;
 
@@ -579,7 +714,18 @@ export function FunctionAgentChat({
   useEffect(() => {
     slot?.setLeftLabel(toggle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, tab, accent, opsLabel, showOps, canSaveWorkflow, wfSaving, wfSaved]);
+  }, [
+    slot,
+    tab,
+    accent,
+    opsLabel,
+    showOps,
+    canSaveWorkflow,
+    wfSaving,
+    wfSaved,
+    workspace?.siteId,
+    workspace?.appId,
+  ]);
   useEffect(() => {
     return () => slot?.setLeftLabel(null);
   }, [slot]);
@@ -771,6 +917,25 @@ export function FunctionAgentChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [taskId, busy, agentId, siteId, agentModel],
   );
+  const sessionNoteField = workspace ? (
+    <label className="mb-3 flex shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2">
+      <span className="shrink-0 text-[12px] font-medium text-stone-500">
+        {tt("备注")}
+      </span>
+      <input
+        value={sessionNote}
+        onChange={(event) =>
+          setSessionNote(
+            event.target.value.slice(0, WORKSPACE_NOTE_MAX_LENGTH),
+          )
+        }
+        maxLength={WORKSPACE_NOTE_MAX_LENGTH}
+        disabled={sessionReadOnly}
+        placeholder={tt("记录这份工作的目的、版本或待办…")}
+        className="min-w-0 flex-1 bg-transparent text-[13px] text-stone-700 outline-none placeholder:text-stone-300 disabled:cursor-default"
+      />
+    </label>
+  ) : null;
 
   // ── 操作台形态：直接渲染各站表单 ──────────────────────────────────────────
   // 宗旨 v18：opsContent 在可滚动区（flex-1）；stickyAction（主按钮）固定在操作台
@@ -793,6 +958,7 @@ export function FunctionAgentChat({
               {tt(error)}
             </p>
           )}
+          {sessionNoteField}
           {/* 操作员 2026-07-09（截图 63ad18f3）：底部渐隐遮罩会盖住最后一张卡（如「可编辑
               大纲」引导卡）。给滚动区补一段底部内边距（有 stickyAction 时 pb-8），让内容能
               滚到遮罩上方、卡片本体不进入半透明渐变区。 */}
@@ -821,6 +987,7 @@ export function FunctionAgentChat({
   return (
     <div className="flex h-full flex-col">
       {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
+      {sessionNoteField}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
         <div className="mx-auto w-full max-w-2xl space-y-3">
           {appLabel && (

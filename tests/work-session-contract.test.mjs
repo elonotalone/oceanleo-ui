@@ -45,6 +45,10 @@ test("AppSession client 使用现有 agent REST 资源", () => {
     apiSource,
     /`\$\{suffix\}\/archive`, jsonMutation\("POST"\)/,
   );
+  assert.match(
+    apiSource,
+    /deleteAppSession[\s\S]*?method: "DELETE"/,
+  );
 });
 
 test("snapshot revision 冲突只重读最新版，不自动覆盖重试", () => {
@@ -71,6 +75,17 @@ test("snapshot revision 冲突只重读最新版，不自动覆盖重试", () =>
 
 test("降级路径没有生成本地 session UUID", () => {
   assert.doesNotMatch(providerSource, /randomUUID|crypto\.randomUUID|uuidv4/);
+});
+
+test("重新开始只在归档成功后 remount 干净 runtime", () => {
+  assert.match(
+    providerSource,
+    /const archived = await archive\(\);[\s\S]*?setRuntimeEpoch/,
+  );
+  assert.match(
+    providerSource,
+    /<Fragment key=\{runtimeEpoch\}>\{children\}<\/Fragment>/,
+  );
 });
 
 test("console run 与 FunctionAgentChat 都把真实 session_id 传给后端", () => {
@@ -118,7 +133,7 @@ test("真实操作台自动恢复、debounce 保存，并在卸载前 flush", ()
   );
   assert.match(
     chatSource,
-    /restoreSessionSnapshotRef\.current\?\.\(\s*raw as Record<string, unknown>/,
+    /restoreSessionSnapshotRef\.current\?\.\(split\.runtime\)/,
   );
   assert.match(
     chatSource,
@@ -136,6 +151,9 @@ test("真实操作台自动恢复、debounce 保存，并在卸载前 flush", ()
   );
   assert.match(chatSource, /window\.addEventListener\("pagehide", flushPending\)/);
   assert.match(chatSource, /document\.visibilityState === "hidden"/);
+  assert.match(chatSource, /sessionSnapshotWithNote\(/);
+  assert.match(chatSource, /onBeforeRestart=\{\(\) => restartFlushRef\.current\(\)\}/);
+  assert.match(chatSource, /placeholder=\{tt\("记录这份工作的目的、版本或待办…"\)\}/);
   assert.match(apiSource, /keepalive: appSessionBodySupportsKeepalive\(body\)/);
   assert.match(
     agentSource,

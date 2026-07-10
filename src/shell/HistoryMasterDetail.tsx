@@ -27,6 +27,7 @@ import {
   type TaskDetail,
 } from "../lib/agent";
 import {
+  deleteAppSession,
   getAppSession,
   isAppSessionApiUnavailableStatus,
   listAppSessions,
@@ -84,6 +85,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.session.revision !== y.session.revision ||
         x.session.status !== y.session.status ||
         x.session.title !== y.session.title ||
+        x.session.note !== y.session.note ||
         x.session.last_activity_at !== y.session.last_activity_at
       ) {
         return false;
@@ -116,6 +118,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       listAppSessions({
         limit: 100,
         siteId,
+        status: "archived",
         includeArchived: true,
       }),
       listTasks(100, siteId, pending),
@@ -158,8 +161,6 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     return () => clearInterval(t);
   }, [pending, reload]);
   const remove = useCallback(async (entry: HistoryListEntry) => {
-    // AppSession 与 AgentTask 是不同资源；本 UI 没有 session 永久删除 API。绝不能把
-    // session id（或带 session_id 的 run）误送到 DELETE /tasks/{id}。
     if (!canDeleteHistoryEntry(entry)) return false;
     const prev = items;
     setItems((list) =>
@@ -167,7 +168,10 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         (item) => item.kind !== entry.kind || item.id !== entry.id,
       ),
     );
-    const r = await deleteTask(entry.task.id);
+    const r =
+      entry.kind === "session"
+        ? await deleteAppSession(entry.session.id)
+        : await deleteTask(entry.task.id);
     if (!r.ok) setItems(prev);
     return r.ok;
   }, [items]);
@@ -236,6 +240,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           : entry.task.created_at;
         const recordSite = record.site_id;
         const cost = isSession ? "" : fmtCost(entry.task);
+        const note = isSession ? (entry.session.note || "").trim() : "";
         return (
           <div
             key={`${entry.kind}:${entry.id}`}
@@ -272,16 +277,27 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                   {isSession && entry.session.app_id ? ` · ${entry.session.app_id}` : ""}
                   {cost ? ` · ${cost}` : ""}
                 </span>
+                {note && (
+                  <span
+                    className={`block truncate text-[11px] ${
+                      on ? "text-white/80" : "text-neutral-500"
+                    }`}
+                  >
+                    {tt("备注")} · {note}
+                  </span>
+                )}
               </span>
             </button>
             {canDeleteHistoryEntry(entry) && (
               <button
                 type="button"
                 onClick={() => setPending(entry)}
-                title={tt("删除这条旧历史记录")}
+                title={tt("永久删除这条历史记录")}
                 aria-label={tt("删除")}
                 className={`shrink-0 rounded p-0.5 transition ${
-                  on ? "text-white/70 hover:bg-white/20 hover:text-white" : "text-neutral-300 opacity-0 hover:text-rose-500 group-hover:opacity-100"
+                  on
+                    ? "text-white/70 hover:bg-white/20 hover:text-white"
+                    : "text-neutral-300 hover:bg-rose-50 hover:text-rose-500"
                 }`}
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

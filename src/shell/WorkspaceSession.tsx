@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -91,6 +92,7 @@ export function WorkspaceSessionProvider({
   const [linkedTaskId, setLinkedTaskId] = useState<string | null>(
     initialSession?.task_id ?? null,
   );
+  const [runtimeEpoch, setRuntimeEpoch] = useState(0);
 
   const sessionRef = useRef<AppSession | null>(session);
   sessionRef.current = session;
@@ -685,6 +687,17 @@ export function WorkspaceSessionProvider({
     setError(null);
   }, []);
 
+  const restart = useCallback(async (): Promise<boolean> => {
+    const archived = await archive();
+    if (archived) {
+      // Remount the real site runtime only after the aggregate was safely
+      // archived. CatalogOps then establishes that app's clean initial state;
+      // the next meaningful action creates a new active cache.
+      setRuntimeEpoch((value) => value + 1);
+    }
+    return archived;
+  }, [archive]);
+
   const value = useMemo<WorkspaceSessionContextValue>(
     () => ({
       sessionId: session?.id ?? effectiveSessionId,
@@ -705,7 +718,7 @@ export function WorkspaceSessionProvider({
       artifactContext,
       recordArtifact,
       archive,
-      restart: archive,
+      restart,
       clearConflict,
       reload,
     }),
@@ -727,6 +740,7 @@ export function WorkspaceSessionProvider({
       artifactContext,
       recordArtifact,
       archive,
+      restart,
       clearConflict,
       reload,
     ],
@@ -734,7 +748,7 @@ export function WorkspaceSessionProvider({
 
   return (
     <WorkspaceSessionContext.Provider value={value}>
-      {children}
+      <Fragment key={runtimeEpoch}>{children}</Fragment>
     </WorkspaceSessionContext.Provider>
   );
 }

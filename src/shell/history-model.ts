@@ -75,11 +75,9 @@ export function mergeHistoryEntries(
   });
 }
 
-/** 只有从未归属 AppSession 的真正旧 task 才能调用 DELETE /tasks/{id}。 */
-export function canDeleteHistoryEntry(
-  entry: HistoryListEntry,
-): entry is Extract<HistoryListEntry, { kind: "task" }> {
-  return entry.kind === "task" && !entry.task.session_id;
+/** session 走聚合删除；只有无 session 的 legacy task 走旧 task 删除。 */
+export function canDeleteHistoryEntry(entry: HistoryListEntry): boolean {
+  return entry.kind === "session" || !entry.task.session_id;
 }
 
 /**
