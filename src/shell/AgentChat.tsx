@@ -20,6 +20,7 @@ import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
 import {
   createTask,
@@ -37,6 +38,10 @@ import type { PreferredModel } from "../lib/auth/account";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
+import {
+  activeAgentProgressKey,
+  buildAgentRenderItems,
+} from "../lib/agent-progress";
 
 function artifactLabels(tt: UITranslate): Record<string, string> {
   return {
@@ -512,7 +517,11 @@ export function AgentChat({
   // 同时记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
   let lastAssistantIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant" && (messages[i].kind === "text" || !messages[i].kind)) {
+    if (
+      messages[i].role === "assistant" &&
+      (messages[i].kind === "text" || !messages[i].kind) &&
+      messages[i].meta?.interim !== true
+    ) {
       lastAssistantIdx = i;
       break;
     }
@@ -543,6 +552,8 @@ export function AgentChat({
 
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
+  const renderItems = buildAgentRenderItems(messages);
+  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
 
   // 生成结果(artifact)到达 → 自动打开右版面（「点素材查看」路径）。
   const artSig = art ? `${art.meta.type}:${art.meta.url || ""}:${art.content.slice(0, 32)}` : "";
@@ -675,14 +686,23 @@ export function AgentChat({
               {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
             </div>
           )}
-          {messages.map((m, i) => (
-            <MessageBubble
-              key={m.id}
-              m={m}
-              streaming={running && i === lastAssistantIdx}
-            />
-          ))}
-          {running && (
+          {renderItems.map((item) =>
+            item.type === "progress" ? (
+              <AgentProgress
+                key={item.key}
+                messages={item.messages}
+                running={running && item.key === activeProgressKey}
+                accent={accent}
+              />
+            ) : (
+              <MessageBubble
+                key={item.key}
+                m={item.message}
+                streaming={running && item.index === lastAssistantIdx}
+              />
+            ),
+          )}
+          {running && !activeProgressKey && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
@@ -872,6 +892,22 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
   }
   if (m.kind === "error") {
     return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
+  }
+  if (m.meta?.artifact?.type === "preview" && m.meta.artifact.url) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-[13px] text-emerald-700">
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100">✓</span>
+        <span className="min-w-0 flex-1">{tt("实时预览已就绪，已显示在右侧。")}</span>
+        <a
+          href={m.meta.artifact.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 font-medium underline decoration-emerald-300 underline-offset-2"
+        >
+          {tt("新窗口打开")}
+        </a>
+      </div>
+    );
   }
   // text / artifact (artifact's full content is mirrored to the right pane; in
   // the stream we just show a short note for artifact-final to avoid duplication)

@@ -156,6 +156,8 @@ export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorksp
 export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";
+// 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
+export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
 // 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
 export { AgentChat, orgStatusFromMessages } from "./AgentChat";

@@ -34,6 +34,7 @@ import {
   useState,
 } from "react";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
 import { useRegisterOpsFiller, useGuideWorkflows, FillNonceProvider } from "./guide-context";
@@ -44,7 +45,6 @@ import {
   followUp,
   getTask,
   stopTask,
-  latestArtifact,
   type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
@@ -63,6 +63,11 @@ import {
   useOperatorRemark,
 } from "./OperatorRemark";
 import { appendOperatorRemark } from "../lib/operator-remark";
+import {
+  activeAgentProgressKey,
+  buildAgentRenderItems,
+  takeUnreportedAgentArtifacts,
+} from "../lib/agent-progress";
 
 // ── 操作台 → agent 桥（宗旨 v12.2，操作员 2026-07-05）────────────────────────
 // 一些功能区的「操作台」不是自成一体的确定性表单，而是一份【结构化需求简报】——
@@ -249,12 +254,13 @@ export function FunctionAgentChat({
       ? controlledTaskId
       : workspace?.taskId || localTaskId;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [messagesTaskId, setMessagesTaskId] = useState("");
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const reportedArtifactRef = useRef<string>("");
+  const reportedArtifactIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
   const sessionSnapshotScopeRef = useRef("");
@@ -743,6 +749,7 @@ export function FunctionAgentChat({
     const r = await getTask(id);
     if (loadedTaskRef.current !== id) return "";
     if (r.ok && r.data) {
+      setMessagesTaskId(id);
       setMessages(r.data.messages || []);
       setStatus(r.data.task?.status || "");
       return r.data.task?.status || "";
@@ -758,9 +765,10 @@ export function FunctionAgentChat({
 
   useEffect(() => {
     if (!taskId) {
+      setMessagesTaskId("");
       if (loadedTaskRef.current) {
         loadedTaskRef.current = "";
-        reportedArtifactRef.current = "";
+        reportedArtifactIdsRef.current.clear();
         setMessages([]);
         setStatus("");
       }
@@ -768,7 +776,8 @@ export function FunctionAgentChat({
     }
     if (loadedTaskRef.current === taskId) return;
     loadedTaskRef.current = taskId;
-    reportedArtifactRef.current = "";
+    reportedArtifactIdsRef.current.clear();
+    setMessagesTaskId("");
     setMessages([]);
     setStatus("");
     void refresh(taskId);
@@ -790,19 +799,25 @@ export function FunctionAgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, tab]);
 
-  // 把 agent 线程里最新的 artifact（图片/文档）回报给宿主 → 右侧结果画布显示。
+  // 把 agent 线程里每个新 artifact（预览/图片/文档）按顺序回报给宿主 → 右侧结果画布显示。
+  // 同一次轮询可能同时拿到 preview 和最终 markdown；不能只取 latest，否则预览会永久丢失。
   // 宗旨 v10：这是操作台与 agent 共用右栏结果区的机制（agent 不写操作台，但产物进
   // 共用结果区是合理的）。
   useEffect(() => {
-    const a = latestArtifact(messages);
-    if (!a) return;
-    const sig = `${a.meta.type}:${a.meta.url || ""}:${a.content.slice(0, 64)}`;
-    if (reportedArtifactRef.current === sig) return;
-    reportedArtifactRef.current = sig;
-    onArtifact?.(a.meta, a.content);
+    if (!onArtifact || !taskId || messagesTaskId !== taskId) return;
+    const fresh = takeUnreportedAgentArtifacts(
+      messages,
+      reportedArtifactIdsRef.current,
+      messagesTaskId,
+      taskId,
+    );
+    if (!fresh.length) return;
+    for (const message of fresh) {
+      onArtifact(message.meta!.artifact!, message.content);
+    }
     // 新后端写 artifact 时通常已更新活动时间；显式 touch 是旧写入路径的尽力兜底。
     if (workspace?.taskId === taskId) void workspace.touch();
-  }, [messages, onArtifact, taskId, workspace]);
+  }, [messages, messagesTaskId, onArtifact, taskId, workspace]);
 
   async function send(override?: string) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
@@ -868,6 +883,8 @@ export function FunctionAgentChat({
   }
 
   const running = status === "running" || busy;
+  const renderItems = buildAgentRenderItems(messages);
+  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
 
   // 「中止」：AI 工作中点停止键 → 停任务。
   const stop = useCallback(async () => {
@@ -888,7 +905,11 @@ export function FunctionAgentChat({
   // 同时记录最新 assistant 文本条 index，用于给它流式打字机。
   let lastAssistantIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant" && (messages[i].kind === "text" || !messages[i].kind)) {
+    if (
+      messages[i].role === "assistant" &&
+      (messages[i].kind === "text" || !messages[i].kind) &&
+      messages[i].meta?.interim !== true
+    ) {
       lastAssistantIdx = i;
       break;
     }
@@ -1002,10 +1023,24 @@ export function FunctionAgentChat({
               )}
             </p>
           )}
-          {messages.map((m, i) => (
-            <Bubble key={m.id} m={m} accent={accent} streaming={running && i === lastAssistantIdx} />
-          ))}
-          {running && (
+          {renderItems.map((item) =>
+            item.type === "progress" ? (
+              <AgentProgress
+                key={item.key}
+                messages={item.messages}
+                running={running && item.key === activeProgressKey}
+                accent={accent}
+              />
+            ) : (
+              <Bubble
+                key={item.key}
+                m={item.message}
+                accent={accent}
+                streaming={running && item.index === lastAssistantIdx}
+              />
+            ),
+          )}
+          {running && !activeProgressKey && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在处理…")}
             </div>
@@ -1062,6 +1097,7 @@ export function FunctionAgentChat({
 
 function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: string; streaming?: boolean }) {
   void accent;
+  const tt = useUI();
   if (m.role === "user") {
     const attList = m.meta?.attachments || [];
     return (
@@ -1108,6 +1144,22 @@ function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: str
   }
   if (m.kind === "error") {
     return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
+  }
+  if (m.meta?.artifact?.type === "preview" && m.meta.artifact.url) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-[13px] text-emerald-700">
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100">✓</span>
+        <span className="min-w-0 flex-1">{tt("实时预览已就绪，已显示在右侧。")}</span>
+        <a
+          href={m.meta.artifact.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 font-medium underline decoration-emerald-300 underline-offset-2"
+        >
+          {tt("新窗口打开")}
+        </a>
+      </div>
+    );
   }
   // agent 回答：不带气泡框，黑字直接显示在背景上（操作员 2026-07-03）；最新条流式打字。
   return (

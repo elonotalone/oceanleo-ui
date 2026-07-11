@@ -21,23 +21,40 @@ import ar from "./ar";
 import th from "./th";
 import hi from "./hi";
 import { RECENT_MODEL_AND_TASK_MESSAGES } from "./recent-model-and-task-copy";
+import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
-  zh: { ...zh, ...RECENT_MODEL_AND_TASK_MESSAGES.zh },
-  en: { ...en, ...RECENT_MODEL_AND_TASK_MESSAGES.en },
-  ja: { ...ja, ...RECENT_MODEL_AND_TASK_MESSAGES.ja },
-  ko: { ...ko, ...RECENT_MODEL_AND_TASK_MESSAGES.ko },
-  fr: { ...fr, ...RECENT_MODEL_AND_TASK_MESSAGES.fr },
-  de: { ...de, ...RECENT_MODEL_AND_TASK_MESSAGES.de },
-  it: { ...it, ...RECENT_MODEL_AND_TASK_MESSAGES.it },
-  es: { ...es, ...RECENT_MODEL_AND_TASK_MESSAGES.es },
-  "es-419": { ...es419, ...RECENT_MODEL_AND_TASK_MESSAGES["es-419"] },
-  "pt-BR": { ...ptBR, ...RECENT_MODEL_AND_TASK_MESSAGES["pt-BR"] },
-  "pt-PT": { ...ptPT, ...RECENT_MODEL_AND_TASK_MESSAGES["pt-PT"] },
-  vi: { ...vi, ...RECENT_MODEL_AND_TASK_MESSAGES.vi },
-  tr: { ...tr, ...RECENT_MODEL_AND_TASK_MESSAGES.tr },
-  "zh-TW": { ...zhTW, ...RECENT_MODEL_AND_TASK_MESSAGES["zh-TW"] },
-  ar: { ...ar, ...RECENT_MODEL_AND_TASK_MESSAGES.ar },
-  th: { ...th, ...RECENT_MODEL_AND_TASK_MESSAGES.th },
-  hi: { ...hi, ...RECENT_MODEL_AND_TASK_MESSAGES.hi },
+  zh: { ...zh, ...RECENT_MODEL_AND_TASK_MESSAGES.zh, ...AGENT_PROGRESS_MESSAGES.zh },
+  en: { ...en, ...RECENT_MODEL_AND_TASK_MESSAGES.en, ...AGENT_PROGRESS_MESSAGES.en },
+  ja: { ...ja, ...RECENT_MODEL_AND_TASK_MESSAGES.ja, ...AGENT_PROGRESS_MESSAGES.ja },
+  ko: { ...ko, ...RECENT_MODEL_AND_TASK_MESSAGES.ko, ...AGENT_PROGRESS_MESSAGES.ko },
+  fr: { ...fr, ...RECENT_MODEL_AND_TASK_MESSAGES.fr, ...AGENT_PROGRESS_MESSAGES.fr },
+  de: { ...de, ...RECENT_MODEL_AND_TASK_MESSAGES.de, ...AGENT_PROGRESS_MESSAGES.de },
+  it: { ...it, ...RECENT_MODEL_AND_TASK_MESSAGES.it, ...AGENT_PROGRESS_MESSAGES.it },
+  es: { ...es, ...RECENT_MODEL_AND_TASK_MESSAGES.es, ...AGENT_PROGRESS_MESSAGES.es },
+  "es-419": {
+    ...es419,
+    ...RECENT_MODEL_AND_TASK_MESSAGES["es-419"],
+    ...AGENT_PROGRESS_MESSAGES["es-419"],
+  },
+  "pt-BR": {
+    ...ptBR,
+    ...RECENT_MODEL_AND_TASK_MESSAGES["pt-BR"],
+    ...AGENT_PROGRESS_MESSAGES["pt-BR"],
+  },
+  "pt-PT": {
+    ...ptPT,
+    ...RECENT_MODEL_AND_TASK_MESSAGES["pt-PT"],
+    ...AGENT_PROGRESS_MESSAGES["pt-PT"],
+  },
+  vi: { ...vi, ...RECENT_MODEL_AND_TASK_MESSAGES.vi, ...AGENT_PROGRESS_MESSAGES.vi },
+  tr: { ...tr, ...RECENT_MODEL_AND_TASK_MESSAGES.tr, ...AGENT_PROGRESS_MESSAGES.tr },
+  "zh-TW": {
+    ...zhTW,
+    ...RECENT_MODEL_AND_TASK_MESSAGES["zh-TW"],
+    ...AGENT_PROGRESS_MESSAGES["zh-TW"],
+  },
+  ar: { ...ar, ...RECENT_MODEL_AND_TASK_MESSAGES.ar, ...AGENT_PROGRESS_MESSAGES.ar },
+  th: { ...th, ...RECENT_MODEL_AND_TASK_MESSAGES.th, ...AGENT_PROGRESS_MESSAGES.th },
+  hi: { ...hi, ...RECENT_MODEL_AND_TASK_MESSAGES.hi, ...AGENT_PROGRESS_MESSAGES.hi },
 };
