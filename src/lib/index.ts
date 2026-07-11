@@ -7,6 +7,8 @@ export * from "./organization";
 // doctrine v11：通用 AI 智能推荐（app/agent/org/workflow 四分区共用）。
 export * from "./recommend";
 export * from "./fn-agent";
+export * from "./operator-remark";
+export * from "./model-tier";
 export * from "./embed";
 // 宗旨 v4：Agent Manifest（可迁移操作台）+ 能力 SDK + manifest 拉取/上架。
 export * from "./manifest";

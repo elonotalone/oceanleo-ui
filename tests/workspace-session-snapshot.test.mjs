@@ -13,12 +13,19 @@ test("共享右栏标签与站点 runtime 原子往返且互不泄漏", () => {
   };
   const merged = mergeWorkspaceSessionSnapshot(runtime, {
     right_tab: "outline",
+    operator_remark: "只面向董事会，避免技术术语",
   });
 
-  assert.deepEqual(merged.__oceanleo_ui, { right_tab: "outline" });
+  assert.deepEqual(merged.__oceanleo_ui, {
+    right_tab: "outline",
+    operator_remark: "只面向董事会，避免技术术语",
+  });
   const split = splitWorkspaceSessionSnapshot(merged);
   assert.deepEqual(split.runtime, runtime);
-  assert.deepEqual(split.ui, { right_tab: "outline" });
+  assert.deepEqual(split.ui, {
+    right_tab: "outline",
+    operator_remark: "只面向董事会，避免技术术语",
+  });
 });
 
 test("旧手填备注只读迁移后被清理且不再写回", () => {
@@ -43,6 +50,23 @@ test("非法或过长的共享标签不会污染 snapshot", () => {
     splitWorkspaceSessionSnapshot({
       topic: "提案",
       __oceanleo_ui: { right_tab: 42 },
+    }).ui,
+    {},
+  );
+});
+
+test("空备注不写入快照，超长备注会被拒绝", () => {
+  assert.deepEqual(
+    mergeWorkspaceSessionSnapshot(
+      { topic: "提案" },
+      { operator_remark: "   " },
+    ),
+    { topic: "提案" },
+  );
+  assert.deepEqual(
+    splitWorkspaceSessionSnapshot({
+      topic: "提案",
+      __oceanleo_ui: { operator_remark: "x".repeat(4001) },
     }).ui,
     {},
   );

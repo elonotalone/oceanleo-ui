@@ -95,6 +95,18 @@ export type { StudioProps } from "./Studio";
 // 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
 export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
+// 所有成品 app 共用的补充备注：OperatorConsole 提供 app 级状态，
+// FunctionAgentChat 统一渲染；直接生成引擎在最终 prompt 边界读取并追加。
+export {
+  OperatorRemarkField,
+  OperatorRemarkProvider,
+  useOperatorRemark,
+} from "./OperatorRemark";
+export type { OperatorRemarkValue } from "./OperatorRemark";
+export {
+  appendOperatorRemark,
+  OPERATOR_REMARK_MAX_LENGTH,
+} from "../lib/operator-remark";
 // 宗旨 v14（2026-07-05）：成品 app 目录数据模型 + 统一模板组件（改一次模板全站同步）。
 // 宗旨 v19（2026-07-08）：SiteCatalogConsole 目录首张自动插「agent」卡片（AgentCardConfig）。
 export { SiteCatalogConsole } from "./SiteCatalogConsole";

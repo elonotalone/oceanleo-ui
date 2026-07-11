@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { modelTierForSelection } from "../src/lib/model-tier.ts";
 
 const account = await readFile(
   new URL("../src/lib/auth/account.ts", import.meta.url),
@@ -61,4 +62,35 @@ test("我的模型选择复用模型市场的大类、能力与模型行布局",
   assert.match(market, /group\.capabilities\.map\(\(item\)/);
   assert.match(market, /selectedModels\.map\(\(model, index\)/);
   assert.doesNotMatch(market, /<table/);
+});
+
+test("Lite/Pro/Max 精确匹配，任意手改进入自定义", () => {
+  const tiers = {
+    lite: { text: { general: ["a"] } },
+    pro: { text: { general: ["b", "c"] } },
+    max: { text: { general: ["d"] } },
+  };
+  assert.equal(
+    modelTierForSelection({ text: { general: ["c", "b"] } }, tiers),
+    "pro",
+  );
+  assert.equal(
+    modelTierForSelection({ text: { general: ["b"] } }, tiers),
+    "custom",
+  );
+  assert.equal(
+    modelTierForSelection(
+      { text: { general: ["b", "c"], reasoning: [] } },
+      tiers,
+    ),
+    "custom",
+  );
+});
+
+test("模型页提供三档一键应用，并在手动选择后显示自定义", () => {
+  assert.match(account, /setModelTier/);
+  assert.match(account, /\/v1\/models\/selection\/tier/);
+  assert.match(page, /onApplyTier/);
+  assert.match(market, /\["lite", "pro", "max", "custom"\]/);
+  assert.match(market, /modelTierForSelection/);
 });

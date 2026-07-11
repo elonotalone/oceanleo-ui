@@ -2,6 +2,16 @@
 
 import { accessToken } from "./client";
 import { GATEWAY_BASE } from "./config";
+import type {
+  CapabilitySelection,
+  ModelTierId,
+  ModelTierSelection,
+} from "../model-tier";
+export type {
+  CapabilitySelection,
+  ModelTierId,
+  ModelTierSelection,
+} from "../model-tier";
 
 // Account-center API client (shared across all *.oceanleo.com sites).
 //   - wallet balance (CNY) + per-call charge history
@@ -241,6 +251,8 @@ export interface ModelCatalog {
   groups: CatalogGroup[];
   default_selection: Record<string, string[]>;
   capability_default_selection: Record<string, Record<string, string[]>>;
+  tier_selection: ModelTierSelection;
+  default_tier: ModelTierId;
   capability_schema_version: string;
   pricing: PricingMeta;
   updated_at: string;
@@ -333,6 +345,14 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
       r.capability_default_selection && typeof r.capability_default_selection === "object"
         ? r.capability_default_selection
         : {},
+    tier_selection:
+      r.tier_selection && typeof r.tier_selection === "object"
+        ? r.tier_selection
+        : ({ lite: {}, pro: {}, max: {} } as ModelTierSelection),
+    default_tier:
+      r.default_tier === "lite" || r.default_tier === "max"
+        ? r.default_tier
+        : "pro",
     capability_schema_version: r.capability_schema_version || "0",
     pricing: {
       markup_pct: num(r.pricing?.markup_pct, 0),
@@ -352,7 +372,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
 // sessionStorage key for the catalog snapshot (instant render on repeat loads
 // within a tab session). The HTTP layer already caches the network response;
 // this avoids even the re-parse/normalize on quick back-and-forth navigation.
-const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v2";
+const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v3";
 
 function readCachedCatalog(): ModelCatalog | null {
   if (typeof window === "undefined") return null;
@@ -387,8 +407,6 @@ export async function getModelCatalog() {
   return { ok: true as const, data: normalizeCatalog(r.data) };
 }
 
-export type CapabilitySelection = Record<string, Record<string, string[]>>;
-
 export interface ModelSelectionPayload {
   selection: Record<string, string[]>;
   capability_selection: CapabilitySelection;
@@ -407,6 +425,17 @@ export async function setModelSelection(
     "/v1/models/selection",
     { method: "PUT", body: JSON.stringify({ category, capability, model_ids }) },
   );
+  if (result.ok) invalidateSelectedModelsCache();
+  return result;
+}
+
+export async function setModelTier(tier: ModelTierId) {
+  const result = await authed<
+    { ok: boolean; tier: ModelTierId } & ModelSelectionPayload
+  >("/v1/models/selection/tier", {
+    method: "PUT",
+    body: JSON.stringify({ tier }),
+  });
   if (result.ok) invalidateSelectedModelsCache();
   return result;
 }
@@ -477,7 +506,7 @@ export interface PreferredModel {
 // 首项保持一致（用户目录里 5 个类目：text/image/video/threed/audio；没有 music
 // 类目——音乐站走独立 provider，不在用户可选目录内）。
 const CATEGORY_FALLBACK: Record<string, PreferredModel> = {
-  text: { key: "bailian:qwen3.7-max", id: "qwen3.7-max", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen 3.7 Max", category: "text", capabilities: ["general"], capability_labels: ["通用对话"] },
+  text: { key: "bailian:qwen3.5-plus", id: "qwen3.5-plus", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen 3.5 Plus", category: "text", capabilities: ["general"], capability_labels: ["通用对话"] },
   image: { key: "bailian:qwen-image-2.0-pro", id: "qwen-image-2.0-pro", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen Image 2.0 Pro", category: "image", capabilities: ["text_to_image"], capability_labels: ["文生图"] },
   video: { key: "bailian:wan2.7-t2v", id: "wan2.7-t2v", provider: "bailian", provider_label: "阿里云百炼", label: "万相 2.7 文生视频", category: "video", capabilities: ["text_to_video"], capability_labels: ["文生视频"] },
   threed: { key: "bailian:Tripo/Tripo-H3.1", id: "Tripo/Tripo-H3.1", provider: "bailian", provider_label: "阿里云百炼", label: "Tripo H3.1", category: "threed", capabilities: ["general_3d"], capability_labels: ["通用 3D 生成"] },
@@ -511,12 +540,12 @@ function capabilityFallback(
 
 const CAPABILITY_FALLBACK: Record<string, PreferredModel> = {
   "text:general": CATEGORY_FALLBACK.text,
-  "text:reasoning": capabilityFallback("text", "reasoning", "深度推理", "openrouter:openai/o3-pro", "OpenAI o3 Pro"),
+  "text:reasoning": capabilityFallback("text", "reasoning", "深度推理", "bailian:qwen3-next-80b-a3b-thinking", "Qwen3 Next 80B Thinking"),
   "text:coding": capabilityFallback("text", "coding", "代码编程", "bailian:qwen3-coder-plus", "Qwen3 Coder Plus"),
   "text:vision": capabilityFallback("text", "vision", "视觉理解", "bailian:qwen3-vl-plus", "Qwen3 VL Plus"),
   "text:audio_understanding": capabilityFallback("text", "audio_understanding", "音频理解", "bailian:qwen3.5-omni-plus", "Qwen 3.5 Omni Plus"),
   "text:translation": capabilityFallback("text", "translation", "翻译", "bailian:qwen-mt-plus", "Qwen MT Plus"),
-  "text:document_research": capabilityFallback("text", "document_research", "文档与研究", "bailian:qwen-deep-research", "Qwen Deep Research"),
+  "text:document_research": capabilityFallback("text", "document_research", "文档与研究", "bailian:qwen-long", "Qwen Long"),
   "image:text_to_image": CATEGORY_FALLBACK.image,
   "image:image_to_image": capabilityFallback("image", "image_to_image", "图生图", "bailian:qwen-image-edit-max", "Qwen Image Edit Max"),
   "image:local_editing": capabilityFallback("image", "local_editing", "局部编辑与扩图", "bailian:wanx-x-painting", "万相局部重绘"),
@@ -531,7 +560,7 @@ const CAPABILITY_FALLBACK: Record<string, PreferredModel> = {
   "video:reference_to_video": capabilityFallback("video", "reference_to_video", "参考生视频", "bailian:wan2.7-r2v", "万相 2.7 参考生视频"),
   "video:video_editing": capabilityFallback("video", "video_editing", "视频编辑", "bailian:wan2.7-videoedit", "万相 2.7 视频编辑"),
   "video:avatar_motion": capabilityFallback("video", "avatar_motion", "人物与动作", "bailian:wan2.2-animate-move", "万相图生动作"),
-  "video:general_video": capabilityFallback("video", "general_video", "通用视频生成", "volcano:doubao-seedance-2.0", "Doubao Seedance 2.0"),
+  "video:general_video": capabilityFallback("video", "general_video", "通用视频生成", "bailian:kling/kling-v3-omni-video-generation", "Kling V3 Omni"),
   "threed:general_3d": CATEGORY_FALLBACK.threed,
   "audio:text_to_speech": CATEGORY_FALLBACK.audio,
   "audio:speech_to_text": capabilityFallback("audio", "speech_to_text", "语音识别", "bailian:paraformer-v2", "Paraformer V2"),

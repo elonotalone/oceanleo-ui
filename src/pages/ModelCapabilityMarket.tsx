@@ -7,7 +7,9 @@ import type {
   CatalogGroup,
   CatalogModel,
   ModelCatalog,
+  ModelTierId,
 } from "../lib/auth";
+import { modelTierForSelection } from "../lib/model-tier";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 const ALL_PROVIDERS = "__all__";
@@ -69,10 +71,14 @@ export function ModelSelectionSummary({
   catalog,
   selection,
   user,
+  applyingTier,
+  onApplyTier,
 }: {
   catalog: ModelCatalog | null;
   selection: CapabilitySelection;
   user: boolean;
+  applyingTier: ModelTierId | "";
+  onApplyTier: (tier: ModelTierId) => void;
 }) {
   const tt = useUI();
   const groups = catalog?.groups || [];
@@ -87,6 +93,16 @@ export function ModelSelectionSummary({
     }
     return index;
   }, [catalog]);
+  const currentTier = useMemo(
+    () =>
+      user
+        ? modelTierForSelection(
+            selection,
+            catalog?.tier_selection || { lite: {}, pro: {}, max: {} },
+          )
+        : catalog?.default_tier || "pro",
+    [catalog, selection, user],
+  );
 
   if (!groups.length) return null;
   const total = Object.values(selection).reduce(
@@ -117,6 +133,46 @@ export function ModelSelectionSummary({
         </h2>
         <span className="text-[11px] text-neutral-400">
           {tt("各 OceanLeo 应用会按能力使用你在这里选好的模型")}
+        </span>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50/70 p-2">
+        <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
+          {(["lite", "pro", "max", "custom"] as const).map((tier) => {
+            const active = currentTier === tier;
+            const applying = applyingTier === tier;
+            const label =
+              tier === "custom" ? tt("自定义") : tier[0].toUpperCase() + tier.slice(1);
+            return (
+              <button
+                key={tier}
+                type="button"
+                disabled={!user || tier === "custom" || !!applyingTier}
+                onClick={() => {
+                  if (tier !== "custom") onApplyTier(tier);
+                }}
+                className={[
+                  "min-w-[62px] rounded-md px-3 py-1.5 text-[12px] font-medium transition",
+                  active
+                    ? "bg-neutral-900 text-white shadow-sm"
+                    : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800",
+                  !user || tier === "custom" || applyingTier
+                    ? "disabled:cursor-default"
+                    : "",
+                ].join(" ")}
+              >
+                {applying ? tt("应用中…") : label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-[11px] text-neutral-400">
+          {currentTier === "lite"
+            ? tt("Lite：每项能力 1 个免费或低价模型")
+            : currentTier === "max"
+              ? tt("Max：旗舰质量优先")
+              : currentTier === "custom"
+                ? tt("自定义：保留你手动编辑的完整选择")
+                : tt("Pro：质量与成本平衡（新用户默认）")}
         </span>
       </div>
       <div className="overflow-hidden rounded-2xl border border-neutral-200">

@@ -9,9 +9,11 @@ import {
   getModelCatalog,
   getModelSelection,
   setModelSelection,
+  setModelTier,
   pricingDocUrl,
   type CapabilitySelection,
   type ModelCatalog,
+  type ModelTierId,
   type WalletInfo,
 } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
@@ -54,6 +56,8 @@ export function ApiPage({
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [selection, setSelection] = useState<CapabilitySelection>({});
   const [savingSelection, setSavingSelection] = useState("");
+  const [applyingTier, setApplyingTier] = useState<ModelTierId | "">("");
+  const [tierError, setTierError] = useState("");
 
   useEffect(() => {
     const client = browserClient();
@@ -90,7 +94,7 @@ export function ApiPage({
   }, [user]);
 
   async function toggle(category: string, capability: string, key: string) {
-    if (!user) return;
+    if (!user || applyingTier) return;
     const current = selection[category]?.[capability] || [];
     const next = current.includes(key)
       ? current.filter((item) => item !== key)
@@ -108,6 +112,19 @@ export function ApiPage({
     if (result.ok && result.data) {
       setSelection(result.data.capability_selection || {});
     }
+  }
+
+  async function applyTier(tier: ModelTierId) {
+    if (!user || applyingTier) return;
+    setTierError("");
+    setApplyingTier(tier);
+    const result = await setModelTier(tier);
+    setApplyingTier("");
+    if (result.ok && result.data) {
+      setSelection(result.data.capability_selection || {});
+      return;
+    }
+    setTierError(result.error || tt("应用模型组合失败，请重试。"));
   }
 
   const isSelected = useMemo(
@@ -214,7 +231,14 @@ export function ApiPage({
           catalog={catalog}
           selection={selection}
           user={!!user}
+          applyingTier={applyingTier}
+          onApplyTier={(tier) => void applyTier(tier)}
         />
+        {tierError && (
+          <p className="-mt-6 rounded-lg bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+            {tierError}
+          </p>
+        )}
 
         <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
           <div className="rounded-2xl border border-neutral-200 p-5">

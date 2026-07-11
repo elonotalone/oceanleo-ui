@@ -58,6 +58,11 @@ import {
   mergeWorkspaceSessionSnapshot,
   splitWorkspaceSessionSnapshot,
 } from "./workspace-session-snapshot";
+import {
+  OperatorRemarkField,
+  useOperatorRemark,
+} from "./OperatorRemark";
+import { appendOperatorRemark } from "../lib/operator-remark";
 
 // ── 操作台 → agent 桥（宗旨 v12.2，操作员 2026-07-05）────────────────────────
 // 一些功能区的「操作台」不是自成一体的确定性表单，而是一份【结构化需求简报】——
@@ -210,6 +215,7 @@ export function FunctionAgentChat({
       ? workspaceValue
       : null;
   const runtimeHydration = useWorkspaceRuntimeHydration();
+  const { remark: operatorRemark } = useOperatorRemark();
   const sessionReadOnly = workspace?.readOnly ?? false;
   const readSessionSnapshot = getSessionSnapshot || getOpsState;
   const restoreSessionSnapshot = onRestoreSessionSnapshot
@@ -571,7 +577,15 @@ export function FunctionAgentChat({
   //      （string/number/boolean，跳过文件/数组/对象）。→ 站点【零改动】即获得保存工作流。
   //   ③ 两者都没有 → 不显示「保存工作流」按钮。
   const effectiveGetDraft = useCallback((): WorkflowDraft | null => {
-    if (getWorkflowDraft) return getWorkflowDraft();
+    if (getWorkflowDraft) {
+      const draft = getWorkflowDraft();
+      return draft
+        ? {
+            ...draft,
+            prompt: appendOperatorRemark(draft.prompt, operatorRemark),
+          }
+        : null;
+    }
     if (!getOpsState) return null;
     const st = (getOpsState() || {}) as Record<string, unknown>;
     const raw = st[primaryField];
@@ -582,8 +596,11 @@ export function FunctionAgentChat({
       if (k === primaryField) continue;
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") params[k] = v;
     }
-    return { prompt, params };
-  }, [getWorkflowDraft, getOpsState, primaryField]);
+    return {
+      prompt: appendOperatorRemark(prompt, operatorRemark),
+      params,
+    };
+  }, [getWorkflowDraft, getOpsState, primaryField, operatorRemark]);
   const canSaveWorkflow =
     showOps && Boolean(getWorkflowDraft || getOpsState) && Boolean(guideWf);
   const saveWorkflow = useCallback(async () => {
@@ -780,7 +797,10 @@ export function FunctionAgentChat({
       atts.clear();
     }
     setError(null);
-    const effectivePrompt = prompt || tt("请分析我上传的文件。");
+    const effectivePrompt = appendOperatorRemark(
+      prompt || tt("请分析我上传的文件。"),
+      operatorRemark,
+    );
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
     setMessages((m) => [
       ...m,
@@ -862,12 +882,13 @@ export function FunctionAgentChat({
 
   async function sendSuggestion(text: string) {
     if (!taskId || busy || sessionReadOnly) return;
+    const effectiveText = appendOperatorRemark(text, operatorRemark);
     setBusy(true);
     setMessages((m) => [
       ...m,
-      { id: Date.now(), role: "user", kind: "text", content: text },
+      { id: Date.now(), role: "user", kind: "text", content: effectiveText },
     ]);
-    const r = await followUp(taskId, text);
+    const r = await followUp(taskId, effectiveText);
     setBusy(false);
     if (r.ok) setStatus("running");
     else setError(r.error || tt("发送失败"));
@@ -907,7 +928,10 @@ export function FunctionAgentChat({
               大纲」引导卡）。给滚动区补一段底部内边距（有 stickyAction 时 pb-8），让内容能
               滚到遮罩上方、卡片本体不进入半透明渐变区。 */}
           <div className={`min-h-0 flex-1 overflow-y-auto ${stickyAction != null ? "pb-8" : ""}`}>
-            <FillNonceProvider nonce={fillNonce}>{opsContent}</FillNonceProvider>
+            <FillNonceProvider nonce={fillNonce}>
+              {opsContent}
+              <OperatorRemarkField disabled={sessionReadOnly} />
+            </FillNonceProvider>
           </div>
           {stickyAction != null && (
             <div className="relative shrink-0">

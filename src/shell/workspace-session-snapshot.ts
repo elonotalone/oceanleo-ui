@@ -10,16 +10,27 @@ export const LEGACY_WORKSPACE_NOTE_KEY = "__oceanleo_note";
 
 export interface WorkspaceUiSnapshot {
   right_tab?: string;
+  operator_remark?: string;
 }
 
 export function normalizeWorkspaceUiSnapshot(
   raw: unknown,
 ): WorkspaceUiSnapshot {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const rightTab = (raw as Record<string, unknown>).right_tab;
-  return typeof rightTab === "string" && rightTab.length <= 160
-    ? { right_tab: rightTab }
-    : {};
+  const record = raw as Record<string, unknown>;
+  const rightTab = record.right_tab;
+  const operatorRemark = record.operator_remark;
+  const normalized: WorkspaceUiSnapshot = {};
+  if (typeof rightTab === "string" && rightTab.length <= 160) {
+    normalized.right_tab = rightTab;
+  }
+  if (
+    typeof operatorRemark === "string" &&
+    operatorRemark.length <= 4000
+  ) {
+    normalized.operator_remark = operatorRemark;
+  }
+  return normalized;
 }
 
 export function mergeWorkspaceSessionSnapshot(
@@ -30,7 +41,7 @@ export function mergeWorkspaceSessionSnapshot(
   delete snapshot[LEGACY_WORKSPACE_NOTE_KEY];
   delete snapshot[WORKSPACE_UI_SNAPSHOT_KEY];
   const normalized = normalizeWorkspaceUiSnapshot(ui);
-  if (normalized.right_tab) {
+  if (normalized.right_tab || normalized.operator_remark?.trim()) {
     snapshot[WORKSPACE_UI_SNAPSHOT_KEY] = normalized;
   }
   return snapshot;

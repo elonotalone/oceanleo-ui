@@ -22,6 +22,8 @@ export interface RuntimeHydrationValue {
   restoredSnapshot: boolean;
   /** Shared right-pane selection restored from __oceanleo_ui, when present. */
   rightTab: string | null;
+  /** App-scoped optional operator note restored from __oceanleo_ui. */
+  operatorRemark: string;
   /** Increments once for every persisted snapshot injected into the runtime. */
   snapshotRestoreEpoch: number;
   /** Read shared metadata at save time, including a non-mutating default tab. */
@@ -31,6 +33,7 @@ export interface RuntimeHydrationValue {
   restoreSharedUi: (ui: WorkspaceUiSnapshot) => void;
   setRightTab: (tabId: string | null) => void;
   setDefaultRightTab: (tabId: string | null) => void;
+  setOperatorRemark: (remark: string) => void;
   registerBeforeLeave: (
     callback: (() => Promise<boolean>) | null,
   ) => void;
@@ -71,6 +74,7 @@ export function WorkspaceRuntimeBoundary({
     runtimeReady: false,
     restoredSnapshot: false,
     rightTab: null as string | null,
+    operatorRemark: "",
     snapshotRestoreEpoch: 0,
   });
   const defaultRightTabRef = useRef<{
@@ -81,6 +85,10 @@ export function WorkspaceRuntimeBoundary({
     identity: string;
     tabId: string | null;
   }>({ identity, tabId: null });
+  const operatorRemarkRef = useRef<{
+    identity: string;
+    value: string;
+  }>({ identity, value: "" });
   const current =
     state.identity === identity
       ? state
@@ -90,6 +98,7 @@ export function WorkspaceRuntimeBoundary({
           runtimeReady: false,
           restoredSnapshot: false,
           rightTab: null,
+          operatorRemark: "",
           snapshotRestoreEpoch: 0,
         };
 
@@ -103,6 +112,7 @@ export function WorkspaceRuntimeBoundary({
             runtimeReady: false,
             restoredSnapshot: false,
             rightTab: null,
+            operatorRemark: "",
             snapshotRestoreEpoch: 0,
           },
     );
@@ -117,21 +127,25 @@ export function WorkspaceRuntimeBoundary({
             runtimeReady: true,
             restoredSnapshot: false,
             rightTab: null,
+            operatorRemark: "",
             snapshotRestoreEpoch: 0,
           },
     );
   }, [identity]);
   const restoreSharedUi = useCallback(
     (ui: WorkspaceUiSnapshot) => {
-      const rightTab =
-        normalizeWorkspaceUiSnapshot(ui).right_tab ?? null;
+      const normalized = normalizeWorkspaceUiSnapshot(ui);
+      const rightTab = normalized.right_tab ?? null;
+      const operatorRemark = normalized.operator_remark ?? "";
       rightTabRef.current = { identity, tabId: rightTab };
+      operatorRemarkRef.current = { identity, value: operatorRemark };
       setState((previous) =>
         previous.identity === identity
           ? {
               ...previous,
               restoredSnapshot: true,
               rightTab,
+              operatorRemark,
               snapshotRestoreEpoch: previous.snapshotRestoreEpoch + 1,
             }
           : {
@@ -140,6 +154,7 @@ export function WorkspaceRuntimeBoundary({
               runtimeReady: false,
               restoredSnapshot: true,
               rightTab,
+              operatorRemark,
               snapshotRestoreEpoch: 1,
             },
       );
@@ -162,6 +177,7 @@ export function WorkspaceRuntimeBoundary({
               runtimeReady: false,
               restoredSnapshot: false,
               rightTab,
+              operatorRemark: "",
               snapshotRestoreEpoch: 0,
             },
       );
@@ -180,6 +196,27 @@ export function WorkspaceRuntimeBoundary({
     },
     [identity],
   );
+  const setOperatorRemark = useCallback(
+    (raw: string) => {
+      const operatorRemark =
+        typeof raw === "string" ? raw.slice(0, 4000) : "";
+      operatorRemarkRef.current = { identity, value: operatorRemark };
+      setState((previous) =>
+        previous.identity === identity
+          ? { ...previous, operatorRemark }
+          : {
+              identity,
+              appInitialized: false,
+              runtimeReady: false,
+              restoredSnapshot: false,
+              rightTab: null,
+              operatorRemark,
+              snapshotRestoreEpoch: 0,
+            },
+      );
+    },
+    [identity],
+  );
   const snapshotSharedUi = useCallback((): WorkspaceUiSnapshot => {
     const explicitTab =
       rightTabRef.current.identity === identity
@@ -190,7 +227,14 @@ export function WorkspaceRuntimeBoundary({
         ? defaultRightTabRef.current.tabId
         : null;
     const rightTab = explicitTab || defaultTab;
-    return rightTab ? { right_tab: rightTab } : {};
+    const operatorRemark =
+      operatorRemarkRef.current.identity === identity
+        ? operatorRemarkRef.current.value
+        : "";
+    return {
+      ...(rightTab ? { right_tab: rightTab } : {}),
+      ...(operatorRemark.trim() ? { operator_remark: operatorRemark } : {}),
+    };
   }, [identity]);
   const registerBeforeLeave = useCallback(
     (callback: (() => Promise<boolean>) | null) => {
@@ -204,6 +248,7 @@ export function WorkspaceRuntimeBoundary({
       appInitialized: current.appInitialized,
       restoredSnapshot: current.restoredSnapshot,
       rightTab: current.rightTab,
+      operatorRemark: current.operatorRemark,
       snapshotRestoreEpoch: current.snapshotRestoreEpoch,
       snapshotSharedUi,
       markAppInitialized,
@@ -211,6 +256,7 @@ export function WorkspaceRuntimeBoundary({
       restoreSharedUi,
       setRightTab,
       setDefaultRightTab,
+      setOperatorRemark,
       registerBeforeLeave,
     }),
     [
@@ -218,6 +264,7 @@ export function WorkspaceRuntimeBoundary({
       current.appInitialized,
       current.restoredSnapshot,
       current.rightTab,
+      current.operatorRemark,
       current.snapshotRestoreEpoch,
       snapshotSharedUi,
       markAppInitialized,
@@ -225,6 +272,7 @@ export function WorkspaceRuntimeBoundary({
       restoreSharedUi,
       setRightTab,
       setDefaultRightTab,
+      setOperatorRemark,
       registerBeforeLeave,
     ],
   );

@@ -26,7 +26,7 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
@@ -36,6 +36,8 @@ import { GuideProvider } from "./guide-context";
 import { type FunctionGuide } from "./NavigatorGuide";
 import { promptCardsForSite } from "./home-cards";
 import { useUI } from "../i18n/ui/useUI";
+import { OperatorRemarkProvider } from "./OperatorRemark";
+import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
 // 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
 // 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
@@ -218,6 +220,19 @@ export function OperatorConsole({
   const activeId = value ?? internal;
   const active =
     functions.find((f) => f.id === activeId) ?? functions[0];
+  const runtimeHydration = useWorkspaceRuntimeHydration();
+  const [localRemark, setLocalRemark] = useState("");
+  useEffect(() => {
+    if (!runtimeHydration) setLocalRemark("");
+  }, [active?.id, runtimeHydration?.identity]);
+  const operatorRemark =
+    runtimeHydration?.operatorRemark ?? localRemark;
+  const setOperatorRemark =
+    runtimeHydration?.setOperatorRemark ?? setLocalRemark;
+  const operatorRemarkValue = useMemo(
+    () => ({ remark: operatorRemark, setRemark: setOperatorRemark }),
+    [operatorRemark, setOperatorRemark],
+  );
 
   const select = (id: string) => {
     if (value === undefined) setInternal(id);
@@ -381,21 +396,23 @@ export function OperatorConsole({
       <div key={pageKey} className="v-page contents">
         {/* 宗旨 v12.1：GuideProvider 把当前功能的 guide + fill-bus 供给整棵子树
             （左栏填充器注册 / 右栏 ResultCanvas 读取加「使用指南」标签）。 */}
-        <GuideProvider guide={effectiveGuide} siteId={siteId} activeKey={active?.id ?? ""}>
-          <Studio
-            ops={ops}
-            canvas={active?.canvas ?? canvas ?? null}
-            opsWidth={opsWidth}
-            defaultRatio={defaultRatio}
-            storageKey={storageKey}
-            opsLabel={opsLabel}
-            canvasLabel={canvasLabel}
-            accent={accent}
-            headerHeight={studioHeaderHeight}
-            library={libraryConfig}
-            soloMaxWidth={soloMaxWidth}
-          />
-        </GuideProvider>
+        <OperatorRemarkProvider value={operatorRemarkValue}>
+          <GuideProvider guide={effectiveGuide} siteId={siteId} activeKey={active?.id ?? ""}>
+            <Studio
+              ops={ops}
+              canvas={active?.canvas ?? canvas ?? null}
+              opsWidth={opsWidth}
+              defaultRatio={defaultRatio}
+              storageKey={storageKey}
+              opsLabel={opsLabel}
+              canvasLabel={canvasLabel}
+              accent={accent}
+              headerHeight={studioHeaderHeight}
+              library={libraryConfig}
+              soloMaxWidth={soloMaxWidth}
+            />
+          </GuideProvider>
+        </OperatorRemarkProvider>
       </div>
     </div>
   );
