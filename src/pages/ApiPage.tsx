@@ -1,27 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   browserClient,
   oceanleoConfigured,
   getCredits,
   getModelCatalog,
-  getModelSelection,
-  setModelSelection,
-  setModelTier,
   pricingDocUrl,
-  type CapabilitySelection,
   type ModelCatalog,
-  type ModelTierId,
   type WalletInfo,
 } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
 import { ByokKeys } from "./ByokKeys";
-import {
-  ModelCapabilityMarket,
-  ModelSelectionSummary,
-} from "./ModelCapabilityMarket";
+import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
 
 const num = (value: unknown) => {
@@ -54,10 +46,6 @@ export function ApiPage({
   const [checked, setChecked] = useState(false);
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
-  const [selection, setSelection] = useState<CapabilitySelection>({});
-  const [savingSelection, setSavingSelection] = useState("");
-  const [applyingTier, setApplyingTier] = useState<ModelTierId | "">("");
-  const [tierError, setTierError] = useState("");
 
   useEffect(() => {
     const client = browserClient();
@@ -86,65 +74,7 @@ export function ApiPage({
     void getCredits().then((result) => {
       if (result.ok && result.data) setWallet(result.data);
     });
-    void getModelSelection().then((result) => {
-      if (result.ok && result.data) {
-        setSelection(result.data.capability_selection || {});
-      }
-    });
   }, [user]);
-
-  async function toggle(category: string, capability: string, key: string) {
-    if (!user || applyingTier) return;
-    const current = selection[category]?.[capability] || [];
-    const next = current.includes(key)
-      ? current.filter((item) => item !== key)
-      : [...current, key];
-    setSelection((state) => ({
-      ...state,
-      [category]: {
-        ...(state[category] || {}),
-        [capability]: next,
-      },
-    }));
-    setSavingSelection(`${category}:${capability}`);
-    const result = await setModelSelection(category, capability, next);
-    setSavingSelection("");
-    if (result.ok && result.data) {
-      setSelection(result.data.capability_selection || {});
-    }
-  }
-
-  async function applyTier(tier: ModelTierId) {
-    if (!user || applyingTier) return;
-    setTierError("");
-    setApplyingTier(tier);
-    const result = await setModelTier(tier);
-    setApplyingTier("");
-    if (result.ok && result.data) {
-      setSelection(result.data.capability_selection || {});
-      return;
-    }
-    setTierError(result.error || tt("应用模型组合失败，请重试。"));
-  }
-
-  const isSelected = useMemo(
-    () => (category: string, capability: string, key: string) =>
-      (selection[category]?.[capability] || []).includes(key),
-    [selection],
-  );
-  const totalSelected = useMemo(
-    () =>
-      Object.values(selection).reduce(
-        (sum, capabilities) =>
-          sum
-          + Object.values(capabilities || {}).reduce(
-            (count, models) => count + (models?.length || 0),
-            0,
-          ),
-        0,
-      ),
-    [selection],
-  );
 
   if (!oceanleoConfigured()) {
     return (
@@ -210,36 +140,9 @@ export function ApiPage({
 
         <ByokKeys loggedIn={!!user} />
 
-        <section className="v-fade-up">
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200 p-5">
-            <div>
-              <p className="text-[13px] font-semibold text-neutral-900">{tt("用量记录")}</p>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-500">
-                {tt("用量柱状图与每次调用的真实计费记录，已统一搬到「Cost」页。")}
-              </p>
-            </div>
-            <a
-              href="/cost"
-              className="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
-            >
-              {tt("前往 Cost 页 →")}
-            </a>
-          </div>
-        </section>
+        <ModelGroupManager catalog={catalog} user={!!user} />
 
-        <ModelSelectionSummary
-          catalog={catalog}
-          selection={selection}
-          user={!!user}
-          applyingTier={applyingTier}
-          onApplyTier={(tier) => void applyTier(tier)}
-        />
-        {tierError && (
-          <p className="-mt-6 rounded-lg bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
-            {tierError}
-          </p>
-        )}
-
+        {/* 审计来源放全页最底：先完成余额/key/组合管理，再按需查看价格证据。 */}
         <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
           <div className="rounded-2xl border border-neutral-200 p-5">
             <p className="text-[13px] font-semibold text-neutral-900">{tt("价格数据来源")}</p>
@@ -289,26 +192,9 @@ export function ApiPage({
           </div>
         </section>
 
-        {catalog?.groups?.length ? (
-          <ModelCapabilityMarket
-            groups={catalog.groups}
-            globalProviders={providers}
-            user={!!user}
-            savingSelection={savingSelection}
-            totalSelected={totalSelected}
-            selection={selection}
-            isSelected={isSelected}
-            onToggle={toggle}
-          />
-        ) : (
-          <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-[13px] text-neutral-500">
-            {tt("正在加载模型列表…")}
-          </div>
-        )}
-
         {checked && !user && (
           <p className="pb-4 text-center text-[12px] text-neutral-400">
-            {tt("登录后即可按能力选择厂商 + 模型并保存（全家桶通用）。")}
+            {tt("登录后即可创建具名组合，并在全家桶按同一兜底顺序使用。")}
           </p>
         )}
       </div>

@@ -1,14 +1,14 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 「我的工作流」存取（单一事实源，宗旨 v16 补充，操作员 2026-07-06）
+// @oceanleo/ui — 「我的模板」存取（内部沿用 workflow 标识兼容既有数据表）
 // ----------------------------------------------------------------------------
-// 用户在功能页左栏「操作台」填好一套输入后，可点「保存工作流」把这套输入存起来；
-// 存下来的工作流出现在右栏「导航」页的第一个类别「我的」里，点一下即可一键复用
-// （把 prompt + 参数灌回操作台）。
+// 用户在功能页左栏「操作台」填好一套输入后，可点「保存模板」把这套输入存起来；
+// 存下来的模板出现在右栏「模板」页的「我的」类别里，点一下即可一键复用
+// （把 prompt + 参数 + 备注灌回操作台）。
 //
-// 一条「工作流」= 该成品 app 操作台的一次输入快照：
-//   { site_id, app_id, label(展示名), prompt(主输入), params(其余参数：文体/字数/比例…) }
+// 一条「模板」= 该成品 app 操作台的一次输入快照：
+//   { site_id, app_id, label, prompt, params, remark }
 //
 // 存储：登录用户 → Supabase `agent_workflows`（owner-only RLS，跨 *.oceanleo.com 打通，
 // 与 agent_artifacts 同库同项目）；未登录 → localStorage 降级（本机可用，登录后自动
@@ -27,6 +27,8 @@ export interface SavedWorkflow {
   prompt: string;
   /** 其余参数补丁（灌回操作台的 style/words/ratio… = OpsPatch.set 的形状）。 */
   params: Record<string, unknown>;
+  /** 备注板块的独立内容；复用模板时原样回填。 */
+  remark?: string;
   created_at: string;
 }
 
@@ -38,6 +40,8 @@ export interface WorkflowDraft {
   prompt: string;
   /** 其余参数（文体/字数/比例…）。 */
   params?: Record<string, unknown>;
+  /** 备注板块的独立内容。 */
+  remark?: string;
 }
 
 const LS_KEY = "oceanleo_workflows_v1";
@@ -74,7 +78,7 @@ function deriveLabel(label: string | undefined, prompt: string): string {
   if (fromLabel) return fromLabel.slice(0, 24);
   // 去掉 `[占位]` 后截取主输入前 18 字作为默认名。
   const clean = prompt.replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
-  return clean.slice(0, 18) || "我的工作流";
+  return clean.slice(0, 18) || "我的模板";
 }
 
 /** 列出当前用户在某站（可选某成品）下保存的工作流，新→旧。 */
@@ -103,6 +107,7 @@ export async function saveWorkflow(input: {
   label?: string;
   prompt: string;
   params?: Record<string, unknown>;
+  remark?: string;
 }): Promise<SavedWorkflow | null> {
   const prompt = (input.prompt || "").trim();
   if (!prompt) return null;
@@ -112,6 +117,7 @@ export async function saveWorkflow(input: {
     label: deriveLabel(input.label, prompt),
     prompt,
     params: input.params || {},
+    remark: (input.remark || "").slice(0, 4000),
   };
   const c = browserClient();
   const uid = c ? await sessionUserId() : null;

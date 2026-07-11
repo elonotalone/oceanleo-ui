@@ -101,9 +101,9 @@ export interface FunctionAgentChatProps {
   opsContent: React.ReactNode;
   /**
    * 返回当前操作台 state 的快照（key → value）。宗旨 v16.1（2026-07-06）复活用途：
-   * 「保存工作流」按钮据此**自动派生**要保存的 { prompt, params }（站点没显式传
-   * getWorkflowDraft 时）——多数站早已传 getOpsState，故无需再改一行即获得保存工作流。
-   * agent 仍不读它（agent 与操作台独立，宗旨 v10）——仅用户点「保存工作流」时读一次。 */
+   * 「保存模板」按钮据此**自动派生**要保存的 { prompt, params, remark }（站点没显式传
+   * getWorkflowDraft 时）——多数站早已传 getOpsState，故无需再改一行即获得保存模板。
+   * agent 仍不读它（agent 与操作台独立，宗旨 v10）——仅用户点「保存模板」时读一次。 */
   getOpsState?: () => Record<string, unknown>;
   /**
    * 把「补丁」写进操作台 state（key → value）。宗旨 v12.2（操作员 2026-07-05）复活此
@@ -114,7 +114,7 @@ export interface FunctionAgentChatProps {
    * （agent 仍不读/不写操作台——这里是【用户】点导航示例触发的填充，不是 agent 触发。） */
   onApplyPatch?: (patch: OpsPatch) => void;
   /**
-   * 完整工作会话快照。与 getOpsState（只服务「保存工作流」的可复用输入）分离，允许站点
+   * 完整工作会话快照。与 getOpsState（只服务「保存模板」的可复用输入）分离，允许站点
    * 一并保存右栏结果、大纲、画布、上传资源等运行态。省略时兼容回退到 getOpsState。 */
   getSessionSnapshot?: () => Record<string, unknown>;
   /**
@@ -159,12 +159,17 @@ export interface FunctionAgentChatProps {
    * 并切到「操作台」；没有操作台表单时才回退填 agent 输入框。 */
   onGuideExample?: (
     text: string,
-    opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown },
+    opts?: {
+      imageUrl?: string;
+      set?: Record<string, unknown>;
+      remark?: string;
+      data?: unknown;
+    },
   ) => void;
   /**
-   * 「保存工作流」（宗旨 v16 补充，操作员 2026-07-06）：给了它 → 左栏标题「操作台 |
-   * agent」开关右侧出现「保存工作流」按钮。点击时调用它拿到当前操作台输入的快照
-   * （{ label?, prompt, params? }），存进「我的工作流」（右栏导航「我的」类别可一键复用）。
+   * 「保存模板」：给了它 → 左栏标题「操作台 | agent」开关右侧出现「保存模板」按钮。
+   * 点击时调用它拿到当前操作台输入的快照（{ label?, prompt, params?, remark? }），
+   * 存进右栏「模板 · 我的」类别供一键复用。
    * 返回 null / prompt 为空 → 提示用户先填写。站点从自己的操作台 state 拼这份草稿。 */
   getWorkflowDraft?: () => WorkflowDraft | null;
   /**
@@ -215,7 +220,10 @@ export function FunctionAgentChat({
       ? workspaceValue
       : null;
   const runtimeHydration = useWorkspaceRuntimeHydration();
-  const { remark: operatorRemark } = useOperatorRemark();
+  const {
+    remark: operatorRemark,
+    setRemark: setOperatorRemark,
+  } = useOperatorRemark();
   const sessionReadOnly = workspace?.readOnly ?? false;
   const readSessionSnapshot = getSessionSnapshot || getOpsState;
   const restoreSessionSnapshot = onRestoreSessionSnapshot
@@ -409,7 +417,7 @@ export function FunctionAgentChat({
     setError(
       result.conflict
         ? tt("这份工作已在另一个页面更新。当前页面不会静默覆盖，请刷新后再继续。")
-        : result.error || tt("当前工作保存失败，未执行保存并刷新。"),
+        : result.error || tt("当前工作保存失败，未保存至我的任务。"),
     );
     return false;
   }, [
@@ -530,12 +538,23 @@ export function FunctionAgentChat({
   const [fillNonce, setFillNonce] = useState(0);
   const primaryField = opsPrimaryField || schema.fields[0]?.key || "";
   const fillFromGuide = useCallback<
-    (text: string, opts?: { imageUrl?: string; set?: Record<string, unknown>; data?: unknown }) => void
+    (
+      text: string,
+      opts?: {
+        imageUrl?: string;
+        set?: Record<string, unknown>;
+        remark?: string;
+        data?: unknown;
+      },
+    ) => void
   >(
     (text, opts) => {
       if (sessionReadOnly) {
         setError(tt("当前工作会话不可编辑。"));
         return;
+      }
+      if (opts && Object.prototype.hasOwnProperty.call(opts, "remark")) {
+        setOperatorRemark(opts.remark || "");
       }
       if (onGuideExample) {
         onGuideExample(text, opts);
@@ -559,6 +578,7 @@ export function FunctionAgentChat({
       sessionReadOnly,
       tt,
       onGuideExample,
+      setOperatorRemark,
       showOps,
       primaryField,
       onApplyPatch,
@@ -566,7 +586,7 @@ export function FunctionAgentChat({
   );
   useRegisterOpsFiller(fillFromGuide);
 
-  // ── 「保存工作流」（宗旨 v16 补充）：把当前操作台输入存成可复用工作流 ──────────
+  // ── 「保存模板」：把当前操作台输入与备注存成可复用模板 ───────────────────
   const guideWf = useGuideWorkflows();
   const [wfSaving, setWfSaving] = useState(false);
   const [wfSaved, setWfSaved] = useState(false);
@@ -574,15 +594,15 @@ export function FunctionAgentChat({
   //   ① 站点显式传 getWorkflowDraft → 用它（如 word 精确控制 prompt/params）。
   //   ② 否则若站点传了 getOpsState（多数站早已传）→ 自动派生：prompt = 主输入字段
   //      （opsPrimaryField / schema.fields[0]）的值；params = 其余基本类型字段
-  //      （string/number/boolean，跳过文件/数组/对象）。→ 站点【零改动】即获得保存工作流。
-  //   ③ 两者都没有 → 不显示「保存工作流」按钮。
+  //      （string/number/boolean，跳过文件/数组/对象）。→ 站点【零改动】即获得保存模板。
+  //   ③ 两者都没有 → 不显示「保存模板」按钮。
   const effectiveGetDraft = useCallback((): WorkflowDraft | null => {
     if (getWorkflowDraft) {
       const draft = getWorkflowDraft();
       return draft
         ? {
             ...draft,
-            prompt: appendOperatorRemark(draft.prompt, operatorRemark),
+            remark: operatorRemark,
           }
         : null;
     }
@@ -597,8 +617,9 @@ export function FunctionAgentChat({
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") params[k] = v;
     }
     return {
-      prompt: appendOperatorRemark(prompt, operatorRemark),
+      prompt,
       params,
+      remark: operatorRemark,
     };
   }, [getWorkflowDraft, getOpsState, primaryField, operatorRemark]);
   const canSaveWorkflow =
@@ -607,7 +628,7 @@ export function FunctionAgentChat({
     if (!guideWf) return;
     const draft = effectiveGetDraft();
     if (!draft || !(draft.prompt || "").trim()) {
-      setError(tt("请先在操作台填写内容，再保存工作流。"));
+      setError(tt("请先在操作台填写内容，再保存模板。"));
       setTimeout(() => setError(null), 2600);
       return;
     }
@@ -665,7 +686,7 @@ export function FunctionAgentChat({
           type="button"
           onClick={() => saveActionRef.current()}
           disabled={wfSaving}
-          title={tt("把当前操作台的输入保存为工作流，稍后可在右侧「导航 · 我的」里一键复用")}
+          title={tt("把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用")}
           className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition active:scale-95 disabled:opacity-50 ${
             wfSaved
               ? "border-transparent text-white"
@@ -684,13 +705,13 @@ export function FunctionAgentChat({
               />
             )}
           </svg>
-          {wfSaved ? tt("已保存") : tt("保存工作流")}
+          {wfSaved ? tt("已保存") : tt("保存模板")}
         </button>
       )}
       {workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           onBeforeRestart={() => restartFlushRef.current()}
-          label={tt("保存并刷新")}
+          label={tt("保存至我的任务")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}

@@ -410,6 +410,7 @@ export async function getModelCatalog() {
 export interface ModelSelectionPayload {
   selection: Record<string, string[]>;
   capability_selection: CapabilitySelection;
+  active_group_key?: string;
 }
 
 export function getModelSelection() {
@@ -437,6 +438,88 @@ export async function setModelTier(tier: ModelTierId) {
     body: JSON.stringify({ tier }),
   });
   if (result.ok) invalidateSelectedModelsCache();
+  return result;
+}
+
+export type ModelGroupKind = "preset" | "custom";
+
+export interface ModelGroup {
+  key: string;
+  id: string;
+  kind: ModelGroupKind;
+  name: string;
+  editable: boolean;
+  selection: CapabilitySelection;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ModelGroupsPayload extends ModelSelectionPayload {
+  groups: ModelGroup[];
+  active_group_key: string;
+  default_group_key: string;
+}
+
+export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";
+
+function announceModelGroupChange(data: ModelGroupsPayload) {
+  invalidateSelectedModelsCache();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent<ModelGroupsPayload>(MODEL_GROUP_CHANGED_EVENT, {
+        detail: data,
+      }),
+    );
+  }
+}
+
+export function getModelGroups() {
+  return authed<ModelGroupsPayload>("/v1/models/groups");
+}
+
+export async function createModelGroup(name: string, cloneFrom = "") {
+  const result = await authed<
+    { ok: boolean; group: ModelGroup } & ModelGroupsPayload
+  >("/v1/models/groups", {
+    method: "POST",
+    body: JSON.stringify({ name, clone_from: cloneFrom }),
+  });
+  if (result.ok && result.data) announceModelGroupChange(result.data);
+  return result;
+}
+
+export async function updateModelGroup(
+  groupId: string,
+  patch: { name?: string; selection?: CapabilitySelection },
+) {
+  const result = await authed<
+    { ok: boolean; group: ModelGroup } & ModelGroupsPayload
+  >(`/v1/models/groups/${encodeURIComponent(groupId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  if (result.ok && result.data) announceModelGroupChange(result.data);
+  return result;
+}
+
+export async function deleteModelGroup(groupId: string) {
+  const result = await authed<{ ok: boolean } & ModelGroupsPayload>(
+    `/v1/models/groups/${encodeURIComponent(groupId)}`,
+    { method: "DELETE" },
+  );
+  if (result.ok && result.data) announceModelGroupChange(result.data);
+  return result;
+}
+
+export async function setActiveModelGroup(groupKey: string) {
+  const result = await authed<{ ok: boolean } & ModelGroupsPayload>(
+    "/v1/models/groups/active",
+    {
+      method: "PUT",
+      body: JSON.stringify({ group_key: groupKey }),
+    },
+  );
+  if (result.ok && result.data) announceModelGroupChange(result.data);
   return result;
 }
 

@@ -37,13 +37,15 @@ import {
   type WorkflowDraft,
 } from "../lib/workflows";
 
-/** 左栏填充器：把示例内容灌进当前功能的左栏输入框（+可选图片 / 参数 / 业务负载）。 */
+/** 左栏填充器：把模板内容灌进当前功能的左栏输入框与备注板块。 */
 export type OpsFiller = (
   text: string,
   opts?: {
     imageUrl?: string;
     /** 升级版 prompt（宗旨 v15）：一并 patch 进左栏操作台的其它参数（ratio/style/…）。 */
     set?: Record<string, unknown>;
+    /** 保存模板时独立持久化的操作员备注。 */
+    remark?: string;
     data?: unknown;
   },
 ) => void;
@@ -127,6 +129,7 @@ export function GuideProvider({
         label: draft.label,
         prompt: draft.prompt,
         params: draft.params,
+        remark: draft.remark,
       });
       if (w) setWorkflows((cur) => [w, ...cur]);
       return w;
@@ -146,6 +149,7 @@ export function GuideProvider({
         fillerRef.current?.(ex.prompt, {
           imageUrl: ex.imageUrl,
           set: ex.set,
+          remark: ex.remark,
           data: ex.data,
         });
       },

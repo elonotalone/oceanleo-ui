@@ -229,7 +229,7 @@ export function ResultCanvas({
       guideCtx?.guide
         ? {
             id: GUIDE_TAB_ID,
-            label: "导航",
+            label: "模板",
             content: (
               <NavigatorGuide
                 guide={guideCtx.guide}

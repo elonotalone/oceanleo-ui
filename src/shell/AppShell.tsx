@@ -13,13 +13,13 @@
 // 与目录项随站变化。改这里 = 改所有站的外壳，一处生效，永不漂移。
 // ----------------------------------------------------------------------------
 // 集成契约：各站把目录(nav)、品牌(brand)、当前用户(userEmail)、余额(credits)
-// 与退出(onSignOut)传进来即可。模型统一在「AI 模型」页管理。
+// 与退出(onSignOut)传进来即可。右上角统一切换全局模型组合，AI 模型页负责组合管理。
 // ============================================================================
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
-import type { ModelCategory } from "./ModelPicker";
+import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
@@ -172,6 +172,7 @@ function AppShellInner({
   onSignOut,
   accountHref = "/account",
   onAccountClick,
+  apiHref = "/api",
   siteId = "default",
   headerRight,
   hideHeader = false,
@@ -356,7 +357,7 @@ function AppShellInner({
     );
   }
 
-  const showHeader = !hideHeader && Boolean(headerRight);
+  const showHeader = !hideHeader;
 
   const sidebarBody = (
     <>
@@ -532,6 +533,7 @@ function AppShellInner({
           {/* 右：切换器 + 自定义插槽 + token 余额 + 账户 */}
           <div className="flex shrink-0 items-center gap-2">
             {renderSwitchers()}
+            <ModelGroupPicker apiHref={apiHref} />
             {headerRight}
             {renderCredits()}
             {renderAccountButton()}
@@ -599,13 +601,16 @@ function AppShellInner({
           <IconPanel />
         </button>
 
-        {/* 右侧主区可选 headerRight 工具浮在背景右上角，不占整行高度。 */}
+        {/* 右侧主区全局模型组合 + 可选 headerRight 浮在右上角，不占整行高度。 */}
         {showHeader && (
           <div
             data-oceanleo-chrome
             className="pointer-events-none absolute right-4 top-3 z-30 flex items-center gap-2 md:right-6"
           >
-            {/* headerRight 各站自定义操作按钮（放模型选择左边，同一行浮层） */}
+            <div className="pointer-events-auto">
+              <ModelGroupPicker apiHref={apiHref} />
+            </div>
+            {/* headerRight 各站自定义操作按钮（与模型组合同一行浮层） */}
             {headerRight && (
               <div className="pointer-events-auto flex min-w-0 items-center gap-2">
                 {headerRight}

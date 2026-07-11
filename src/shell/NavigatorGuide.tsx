@@ -50,6 +50,8 @@ export interface GuideExample {
    * 即「导航卡片不光填文字，还填/选左边各项参数」。
    */
   set?: Record<string, unknown>;
+  /** 用户保存的模板可独立回填操作员备注。 */
+  remark?: string;
   /**
    * 可选：任意业务负载，随填充事件透传给左栏的 onGuideExample（如 image 站把 sceneId
    * 放这里，点示例即套用整套场景预设，而不只是填文本）。
@@ -97,7 +99,7 @@ export interface NavigatorGuideProps {
   onUseExample?: (ex: GuideExample) => void;
 }
 
-// 一个可渲染的导航条目（模板示例 / 我的工作流 统一成它）。
+// 一个可渲染的模板条目（平台模板 / 我的模板统一成它）。
 interface NavItem {
   key: string;
   label: string;
@@ -115,7 +117,7 @@ interface NavItem {
 }
 
 /**
- * 功能页右栏「导航」= 库风格的模板/工作流浏览器（宗旨 v17 版式，操作员 2026-07-07）。
+ * 功能页右栏「模板」= 库风格的平台模板/我的模板浏览器。
  * 与「素材库 / 文件库」三分区版式**几乎完全一致**（从上到下：搜索框 → 分类 chips →
  * 卡片网格/列表）。类别 chips：第一枚恒为「全部」（合并所有板块的模板），其后为
  * 「我的」（用户保存的工作流），再后是本成品的各模板板块。点一张卡片 → 把该模板/工作流
@@ -173,12 +175,17 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
     if (activeCat === "__mine") {
       return workflows.map((w) => ({
         key: w.id,
-        label: w.label || tt("我的工作流"),
+        label: w.label || tt("我的模板"),
         hint: paramSummary(w.params, tt),
         meta: timeAgo(w.created_at, tt),
         icon: "📌",
         searchText: `${w.label} ${w.prompt}`.toLowerCase(),
-        onClick: () => onUseExample?.({ label: w.label, prompt: w.prompt, set: w.params }),
+        onClick: () => onUseExample?.({
+          label: w.label,
+          prompt: w.prompt,
+          set: w.params,
+          remark: w.remark || "",
+        }),
         onDelete: () => void wf?.deleteWorkflow(w.id),
       }));
     }
@@ -205,7 +212,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
         setSearch={setSearch}
         view={view}
         setView={setView}
-        placeholder={tt("搜索模板 / 工作流")}
+        placeholder={tt("搜索模板")}
         tt={tt}
       />
 
@@ -228,15 +235,15 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
           <p className="text-[13px] text-neutral-400">
             {mine
               ? q
-                ? tt("未找到匹配的工作流")
-                : tt("还没有保存的工作流")
+                ? tt("未找到匹配的模板")
+                : tt("还没有保存的模板")
               : q
                 ? tt("未找到匹配的模板")
                 : tt("这个类别下暂无模板")}
           </p>
           {mine && !q && (
             <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
-              {tt("在左侧「操作台」填好输入后，点标题栏的「保存工作流」，就会收藏到这里，随时一键复用。")}
+              {tt("在左侧「操作台」填好输入后，点标题栏的「保存模板」，就会收藏到这里，随时一键复用。")}
             </p>
           )}
         </div>

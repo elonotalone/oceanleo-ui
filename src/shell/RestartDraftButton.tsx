@@ -1,11 +1,11 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — RestartDraftButton：操作台「保存并刷新」按钮（单一事实源）
+// @oceanleo/ui — RestartDraftButton：操作台「保存至我的任务」按钮
 // ----------------------------------------------------------------------------
 // doctrine 2026-07-09。操作台默认自动恢复上次草稿；当用户想丢弃续编、从头开始时点它。
 // 单击即执行：先冲刷最新 snapshot，再归档整份 AppSession，最后 remount 干净 runtime。
-// 2026-07-11：用户名改为「保存并刷新」；成功后进入「我的任务」。任务详情原地续编，
+// 2026-07-11：用户名改为「保存至我的任务」；保存后刷新成干净工作台。任务详情原地续编，
 // 不显示本按钮，也绝不再次归档/分叉。
 // ============================================================================
 
@@ -21,7 +21,7 @@ export interface RestartDraftButtonProps {
   onBeforeRestart?: () => boolean | Promise<boolean>;
   /** Host cleanup after the aggregate was archived. */
   onRestart?: () => void | Promise<void>;
-  /** 自定义文案（默认「保存并刷新」）。 */
+  /** 自定义文案（默认「保存至我的任务」）。 */
   label?: string;
   className?: string;
 }
@@ -85,7 +85,7 @@ export function RestartDraftButton({
           }
         })();
       }}
-      title={tt("将当前工作保存到我的任务并刷新工作台")}
+      title={tt("将当前工作保存到我的任务，并打开一个干净工作台")}
       className={
         className ??
         `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium transition ${
@@ -101,7 +101,7 @@ export function RestartDraftButton({
           ? tt("已保存到我的任务")
           : feedback === "reset"
             ? tt("已刷新")
-            : label ?? tt("保存并刷新")}
+            : label ?? tt("保存至我的任务")}
     </button>
   );
 }
