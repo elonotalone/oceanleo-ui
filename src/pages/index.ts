@@ -1,4 +1,5 @@
 export { ApiPage } from "./ApiPage";
+export type { ApiPageProps } from "./ApiPage";
 export { ApiGuidePage } from "./ApiGuidePage";
 export { UsageHistory } from "./UsageHistory";
 export { CostPage } from "./CostPage";

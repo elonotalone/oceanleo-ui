@@ -256,7 +256,12 @@ export function ModelPicker({
                     >
                       <span className="min-w-0">
                         <p className="truncate text-[13px] font-medium text-neutral-900">{m.label}</p>
-                        <p className="mt-0.5 text-[11px] text-neutral-500">{m.provider_label}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-neutral-500">
+                          {m.capability_labels.length > 0
+                            ? `${m.capability_labels.join(" · ")} · `
+                            : ""}
+                          {m.provider_label}
+                        </p>
                       </span>
                       {m.key === picked[cat] && (
                         <IconCheck className="h-4 w-4 shrink-0 text-neutral-900" />

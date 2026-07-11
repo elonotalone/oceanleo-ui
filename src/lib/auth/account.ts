@@ -191,6 +191,8 @@ export interface CatalogModel {
   note: string;
   family: string;
   category: string;
+  capabilities: string[];
+  capability_labels: string[];
   unpriced: boolean;
   price: ModelPrice;
 }
@@ -206,10 +208,20 @@ export interface CatalogProviderBlock {
   models: CatalogModel[];
 }
 
+export interface CatalogCapability {
+  id: string;
+  label: string;
+  description: string;
+  providers: CatalogProviderBlock[];
+  model_count: number;
+  default_selection: string[];
+}
+
 export interface CatalogGroup {
   id: string;
   label: string;
   providers: CatalogProviderBlock[];
+  capabilities: CatalogCapability[];
   model_count: number;
   default_selection: string[];
 }
@@ -228,6 +240,8 @@ export interface ModelCatalog {
   providers: ProviderMeta[];
   groups: CatalogGroup[];
   default_selection: Record<string, string[]>;
+  capability_default_selection: Record<string, Record<string, string[]>>;
+  capability_schema_version: string;
   pricing: PricingMeta;
   updated_at: string;
   model_count: number;
@@ -260,6 +274,8 @@ function normalizeModel(m: Partial<CatalogModel> | null | undefined, fallbackCat
     note: x.note || "",
     family: x.family || x.note || "",
     category: x.category || fallbackCat,
+    capabilities: Array.isArray(x.capabilities) ? x.capabilities : [],
+    capability_labels: Array.isArray(x.capability_labels) ? x.capability_labels : [],
     unpriced: Boolean(x.unpriced),
     price: normalizePrice(x.price),
   };
@@ -290,6 +306,22 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
           normalizeModel(m, g?.id || ""),
         ),
       })),
+      capabilities: (Array.isArray(g?.capabilities) ? g.capabilities : []).map((cap) => ({
+        id: cap?.id || "",
+        label: cap?.label || cap?.id || "",
+        description: cap?.description || "",
+        providers: (Array.isArray(cap?.providers) ? cap.providers : []).map((pb) => ({
+          id: pb?.id || "",
+          label: pb?.label || pb?.id || "",
+          updated_at: pb?.updated_at || "",
+          source_url: pb?.source_url || "",
+          models: (Array.isArray(pb?.models) ? pb.models : []).map((m) =>
+            normalizeModel(m, g?.id || ""),
+          ),
+        })),
+        model_count: num(cap?.model_count),
+        default_selection: Array.isArray(cap?.default_selection) ? cap.default_selection : [],
+      })),
       model_count: num(g?.model_count),
       default_selection: Array.isArray(g?.default_selection) ? g.default_selection : [],
     })),
@@ -297,6 +329,11 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
       r.default_selection && typeof r.default_selection === "object"
         ? r.default_selection
         : {},
+    capability_default_selection:
+      r.capability_default_selection && typeof r.capability_default_selection === "object"
+        ? r.capability_default_selection
+        : {},
+    capability_schema_version: r.capability_schema_version || "0",
     pricing: {
       markup_pct: num(r.pricing?.markup_pct, 0),
       source: r.pricing?.source || "",
@@ -315,7 +352,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
 // sessionStorage key for the catalog snapshot (instant render on repeat loads
 // within a tab session). The HTTP layer already caches the network response;
 // this avoids even the re-parse/normalize on quick back-and-forth navigation.
-const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v1";
+const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v2";
 
 function readCachedCatalog(): ModelCatalog | null {
   if (typeof window === "undefined") return null;
@@ -350,20 +387,45 @@ export async function getModelCatalog() {
   return { ok: true as const, data: normalizeCatalog(r.data) };
 }
 
+export type CapabilitySelection = Record<string, Record<string, string[]>>;
+
+export interface ModelSelectionPayload {
+  selection: Record<string, string[]>;
+  capability_selection: CapabilitySelection;
+}
+
 export function getModelSelection() {
-  return authed<{ selection: Record<string, string[]> }>("/v1/models/selection");
+  return authed<ModelSelectionPayload>("/v1/models/selection");
 }
 
-export function setModelSelection(category: string, model_ids: string[]) {
-  return authed<{ ok: boolean; selection: Record<string, string[]> }>(
+export async function setModelSelection(
+  category: string,
+  capability: string,
+  model_ids: string[],
+) {
+  const result = await authed<{ ok: boolean } & ModelSelectionPayload>(
     "/v1/models/selection",
-    { method: "PUT", body: JSON.stringify({ category, model_ids }) },
+    { method: "PUT", body: JSON.stringify({ category, capability, model_ids }) },
   );
+  if (result.ok) invalidateSelectedModelsCache();
+  return result;
 }
 
-interface SelectedModels {
+export interface SelectedCapability {
+  id: string;
+  label: string;
+  description: string;
+  models: CatalogModel[];
+}
+
+export interface SelectedModels {
   platform: string;
-  groups: { id: string; label: string; models: CatalogModel[] }[];
+  groups: {
+    id: string;
+    label: string;
+    models: CatalogModel[];
+    capabilities: SelectedCapability[];
+  }[];
 }
 
 export async function getSelectedModels() {
@@ -378,6 +440,14 @@ export async function getSelectedModels() {
       models: (Array.isArray(g?.models) ? g.models : []).map((m) =>
         normalizeModel(m, g?.id || ""),
       ),
+      capabilities: (Array.isArray(g?.capabilities) ? g.capabilities : []).map((cap) => ({
+        id: cap?.id || "",
+        label: cap?.label || cap?.id || "",
+        description: cap?.description || "",
+        models: (Array.isArray(cap?.models) ? cap.models : []).map((m) =>
+          normalizeModel(m, g?.id || ""),
+        ),
+      })),
     })),
   };
   return { ok: true as const, data };
@@ -399,17 +469,75 @@ export interface PreferredModel {
   provider_label: string;
   label: string;
   category: string;
+  capabilities: string[];
+  capability_labels: string[];
 }
 
 // 各类目的兜底（未登录 / 无选择 / 拉取失败）。值与后端 _PREFERRED_DEFAULTS 各类目
 // 首项保持一致（用户目录里 5 个类目：text/image/video/threed/audio；没有 music
 // 类目——音乐站走独立 provider，不在用户可选目录内）。
 const CATEGORY_FALLBACK: Record<string, PreferredModel> = {
-  text: { key: "bailian:qwen-plus", id: "qwen-plus", provider: "bailian", provider_label: "阿里云百炼", label: "通义千问 Plus", category: "text" },
-  image: { key: "bailian:qwen-image", id: "qwen-image", provider: "bailian", provider_label: "阿里云百炼", label: "通义万相 文生图", category: "image" },
-  video: { key: "bailian:wan2.6-t2v", id: "wan2.6-t2v", provider: "bailian", provider_label: "阿里云百炼", label: "万相 2.6 文生视频", category: "video" },
-  threed: { key: "bailian:Tripo/Tripo-H3.1", id: "Tripo/Tripo-H3.1", provider: "bailian", provider_label: "阿里云百炼", label: "Tripo H3.1", category: "threed" },
-  audio: { key: "bailian:qwen-tts-flash", id: "qwen-tts-flash", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen TTS Flash", category: "audio" },
+  text: { key: "bailian:qwen3.7-max", id: "qwen3.7-max", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen 3.7 Max", category: "text", capabilities: ["general"], capability_labels: ["通用对话"] },
+  image: { key: "bailian:qwen-image-2.0-pro", id: "qwen-image-2.0-pro", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen Image 2.0 Pro", category: "image", capabilities: ["text_to_image"], capability_labels: ["文生图"] },
+  video: { key: "bailian:wan2.7-t2v", id: "wan2.7-t2v", provider: "bailian", provider_label: "阿里云百炼", label: "万相 2.7 文生视频", category: "video", capabilities: ["text_to_video"], capability_labels: ["文生视频"] },
+  threed: { key: "bailian:Tripo/Tripo-H3.1", id: "Tripo/Tripo-H3.1", provider: "bailian", provider_label: "阿里云百炼", label: "Tripo H3.1", category: "threed", capabilities: ["general_3d"], capability_labels: ["通用 3D 生成"] },
+  audio: { key: "bailian:qwen3-tts-flash", id: "qwen3-tts-flash", provider: "bailian", provider_label: "阿里云百炼", label: "Qwen3 TTS Flash", category: "audio", capabilities: ["text_to_speech"], capability_labels: ["文本转语音"] },
+};
+
+function capabilityFallback(
+  category: string,
+  capability: string,
+  label: string,
+  key: string,
+  modelLabel: string,
+): PreferredModel {
+  const [provider, ...idParts] = key.split(":");
+  return {
+    key,
+    id: idParts.join(":"),
+    provider,
+    provider_label:
+      provider === "bailian"
+        ? "阿里云百炼"
+        : provider === "volcano"
+          ? "火山方舟"
+          : "OpenRouter",
+    label: modelLabel,
+    category,
+    capabilities: [capability],
+    capability_labels: [label],
+  };
+}
+
+const CAPABILITY_FALLBACK: Record<string, PreferredModel> = {
+  "text:general": CATEGORY_FALLBACK.text,
+  "text:reasoning": capabilityFallback("text", "reasoning", "深度推理", "openrouter:openai/o3-pro", "OpenAI o3 Pro"),
+  "text:coding": capabilityFallback("text", "coding", "代码编程", "bailian:qwen3-coder-plus", "Qwen3 Coder Plus"),
+  "text:vision": capabilityFallback("text", "vision", "视觉理解", "bailian:qwen3-vl-plus", "Qwen3 VL Plus"),
+  "text:audio_understanding": capabilityFallback("text", "audio_understanding", "音频理解", "bailian:qwen3.5-omni-plus", "Qwen 3.5 Omni Plus"),
+  "text:translation": capabilityFallback("text", "translation", "翻译", "bailian:qwen-mt-plus", "Qwen MT Plus"),
+  "text:document_research": capabilityFallback("text", "document_research", "文档与研究", "bailian:qwen-deep-research", "Qwen Deep Research"),
+  "image:text_to_image": CATEGORY_FALLBACK.image,
+  "image:image_to_image": capabilityFallback("image", "image_to_image", "图生图", "bailian:qwen-image-edit-max", "Qwen Image Edit Max"),
+  "image:local_editing": capabilityFallback("image", "local_editing", "局部编辑与扩图", "bailian:wanx-x-painting", "万相局部重绘"),
+  "image:background_segmentation": capabilityFallback("image", "background_segmentation", "背景与抠图", "bailian:wanx-background-generation-v2", "万相背景生成"),
+  "image:portrait_product": capabilityFallback("image", "portrait_product", "人像与商品图", "bailian:wanx-style-repaint-v1", "万相人像风格重绘"),
+  "image:design": capabilityFallback("image", "design", "海报与创意设计", "bailian:wanx-poster-generation-v1", "万相创意海报"),
+  "image:image_translation": capabilityFallback("image", "image_translation", "图片翻译", "bailian:qwen-mt-image", "Qwen 图片翻译"),
+  "image:general_image": capabilityFallback("image", "general_image", "通用图片生成", "volcano:doubao-seedream-4.5", "Doubao Seedream 4.5"),
+  "video:text_to_video": CATEGORY_FALLBACK.video,
+  "video:image_to_video": capabilityFallback("video", "image_to_video", "图生视频", "bailian:wan2.7-i2v", "万相 2.7 图生视频"),
+  "video:keyframe_to_video": capabilityFallback("video", "keyframe_to_video", "首尾帧生视频", "bailian:wan2.2-kf2v-flash", "万相 2.2 首尾帧"),
+  "video:reference_to_video": capabilityFallback("video", "reference_to_video", "参考生视频", "bailian:wan2.7-r2v", "万相 2.7 参考生视频"),
+  "video:video_editing": capabilityFallback("video", "video_editing", "视频编辑", "bailian:wan2.7-videoedit", "万相 2.7 视频编辑"),
+  "video:avatar_motion": capabilityFallback("video", "avatar_motion", "人物与动作", "bailian:wan2.2-animate-move", "万相图生动作"),
+  "video:general_video": capabilityFallback("video", "general_video", "通用视频生成", "volcano:doubao-seedance-2.0", "Doubao Seedance 2.0"),
+  "threed:general_3d": CATEGORY_FALLBACK.threed,
+  "audio:text_to_speech": CATEGORY_FALLBACK.audio,
+  "audio:speech_to_text": capabilityFallback("audio", "speech_to_text", "语音识别", "bailian:paraformer-v2", "Paraformer V2"),
+  "audio:speech_translation": capabilityFallback("audio", "speech_translation", "语音翻译", "bailian:qwen3.5-livetranslate-flash-realtime", "Qwen 3.5 LiveTranslate"),
+  "audio:music_generation": capabilityFallback("audio", "music_generation", "音乐生成", "bailian:fun-music-v1", "Fun Music V1"),
+  "audio:audio_dialogue": capabilityFallback("audio", "audio_dialogue", "语音对话", "openrouter:openai/gpt-audio", "OpenAI GPT Audio"),
 };
 
 let _selectedCache: { at: number; data: SelectedModels } | null = null;
@@ -444,18 +572,51 @@ export async function getSelectedModelsByCategory(
     provider_label: m.provider_label,
     label: m.label,
     category,
+    capabilities: m.capabilities,
+    capability_labels: m.capability_labels,
   }));
   if (models.length > 0) return models;
   const fb = CATEGORY_FALLBACK[category];
   return fb ? [fb] : [];
 }
 
-/** 某类目的首选模型（已选列表第一项），用于直接驱动一次生成调用。 */
+/** 某能力小类下用户已选的模型；空时回落到大类的安全默认。 */
+export async function getSelectedModelsByCapability(
+  category: string,
+  capability: string,
+): Promise<PreferredModel[]> {
+  const data = await _loadSelected();
+  const group = data?.groups.find((g) => g.id === category);
+  const capabilityGroup = group?.capabilities.find((item) => item.id === capability);
+  const models = (capabilityGroup?.models || []).map((m) => ({
+    key: m.key,
+    id: m.id,
+    provider: m.provider,
+    provider_label: m.provider_label,
+    label: m.label,
+    category,
+    capabilities: m.capabilities,
+    capability_labels: m.capability_labels,
+  }));
+  if (models.length > 0) return models;
+  const fallback = CAPABILITY_FALLBACK[`${category}:${capability}`];
+  return fallback ? [fallback] : [];
+}
+
+/** 某大类或能力小类的首选模型，用于直接驱动一次生成调用。 */
 export async function getPreferredModel(
   category: string,
+  capability = "",
 ): Promise<PreferredModel> {
-  const list = await getSelectedModelsByCategory(category);
-  return list[0] || CATEGORY_FALLBACK[category] || CATEGORY_FALLBACK.text;
+  const list = capability
+    ? await getSelectedModelsByCapability(category, capability)
+    : await getSelectedModelsByCategory(category);
+  return (
+    list[0]
+    || (capability ? CAPABILITY_FALLBACK[`${category}:${capability}`] : undefined)
+    || CATEGORY_FALLBACK[category]
+    || CATEGORY_FALLBACK.text
+  );
 }
 
 // ---------------------------------------------------------------------------
