@@ -132,7 +132,7 @@ export interface FunctionAgentChatProps {
   /**
    * @deprecated 宗旨 v10：agent 不触发操作台动作。保留 prop 仅为向后兼容（不再调用）。 */
   onRunAction?: (actionId: string) => void;
-  /** 文本模型复合 key（来自 ModelPicker）。 */
+  /** @deprecated 模型统一读取「AI 模型」页偏好；该覆盖值不再发送。 */
   agentModel?: string;
   accent?: string;
   /** 操作台页标签，默认「操作台」。 */
@@ -192,7 +192,6 @@ export function FunctionAgentChat({
   opsPrimaryField,
   onArtifact,
   onRunAction: _onRunAction,
-  agentModel = "",
   accent = "#4f46e5",
   opsLabel: opsLabelProp,
   defaultTab = "ops",
@@ -802,7 +801,6 @@ export function FunctionAgentChat({
         siteId,
         agentId,
         sessionId: linkedSessionId || undefined,
-        agentModel,
         attachments: uploaded,
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
       });
@@ -887,7 +885,7 @@ export function FunctionAgentChat({
     }),
     // send 是稳定闭包（读 taskId/busy 等 state 已在内部处理）；tab 切换用 setter。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [taskId, busy, agentId, siteId, agentModel],
+    [taskId, busy, agentId, siteId],
   );
   // ── 操作台形态：直接渲染各站表单 ──────────────────────────────────────────
   // 宗旨 v18：opsContent 在可滚动区（flex-1）；stickyAction（主按钮）固定在操作台

@@ -42,7 +42,7 @@ export interface ApiPageProps {
   billingHref?: string;
 }
 
-/** Shared API/model-market page used by the main site and every subsite. */
+/** Shared AI-model market page used by the main site and every subsite. */
 export function ApiPage({
   onLogin,
   billingHref = "https://oceanleo.com/billing",
@@ -132,7 +132,7 @@ export function ApiPage({
   if (!oceanleoConfigured()) {
     return (
       <div className="px-8 py-6">
-        <PageHeader title="API" />
+        <PageHeader title={tt("AI 模型")} />
         <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
           {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
         </div>
@@ -143,7 +143,7 @@ export function ApiPage({
   const providers = catalog?.providers || [];
   return (
     <div className="px-8 py-6">
-      <PageHeader title="API" />
+      <PageHeader title={tt("AI 模型")} />
       <div className="mx-auto mt-6 max-w-3xl space-y-8">
         <section className="v-fade-up">
           <div className="rounded-2xl border border-neutral-200 p-5">

@@ -32,9 +32,8 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { useAttachments } from "./useAttachments";
-import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import type { ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
-import { useShellChrome } from "./ShellChrome";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -99,9 +98,9 @@ export interface AgentChatProps {
   agentId?: string;
   /** 绑定一个「专家团」(agent.oceanleo.com)。format "team.<slug>"。 */
   teamId?: string;
-  /** 选中的文本模型复合 key（来自 ModelPicker），透传给引擎。 */
+  /** @deprecated 模型统一读取「AI 模型」页偏好；该覆盖值不再发送。 */
   agentModel?: string;
-  /** 全类别模型选择：text 驱动主 agent，image/video/threed/audio 驱动对应生成工具。 */
+  /** @deprecated 模型统一读取「AI 模型」页偏好；该覆盖值不再发送。 */
   modelSelection?: Partial<Record<ModelCategory, PreferredModel>>;
   accent?: string;
   headerHeight?: number;
@@ -195,8 +194,6 @@ export function AgentChat({
   mode = "agent",
   agentId = "",
   teamId = "",
-  agentModel = "",
-  modelSelection: modelSelectionProp,
   accent = "#4f46e5",
   headerHeight = 56,
   onTaskCreated,
@@ -248,7 +245,6 @@ export function AgentChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [localModelSelection, setLocalModelSelection] = useState<Partial<Record<ModelCategory, PreferredModel>>>({});
   const startedRef = useRef(false);
   const loadedTaskRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -352,21 +348,10 @@ export function AgentChat({
         }
       }
 
-      const effectiveModelSelection =
-        modelSelectionProp || localModelSelection;
-      const modelSelectionKeys = Object.fromEntries(
-        Object.entries(effectiveModelSelection)
-          .filter(([, model]) => model?.key)
-          .map(([category, model]) => [category, model!.key]),
-      );
-      const selectedAgentModel =
-        agentModel || effectiveModelSelection.text?.key || "";
       const result = await createTask({
         prompt,
         mode,
         siteId,
-        agentModel: selectedAgentModel,
-        modelSelection: modelSelectionKeys,
         agentId,
         teamId,
         attachments: uploaded,
@@ -395,10 +380,7 @@ export function AgentChat({
     },
     [
       agentId,
-      agentModel,
-      localModelSelection,
       mode,
-      modelSelectionProp,
       onTaskCreated,
       promptOverride,
       readOnly,
@@ -632,31 +614,10 @@ export function AgentChat({
   // 系列 agent 都走同一后端，故任何站的对话都有这个总结——这里在顶栏「返回」右侧显示它。
   const convoSummary = (taskTitle || "").trim();
 
-  // 顶栏右上角「模型选择」：与 OperatorConsole 同款——从 AppShell 透传的 modelConfig
-  // 取模态（各站零接线），渲染到本组件顶栏那一行的右侧，并通知 AppShell 隐藏它 header
-  // 里那条模型选择（否则「模型选择」在上、返回在下 = 两行浪费空间，正是操作员截图的病）。
-  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
   const topBarActive = Boolean(onBack);
-  const showModelPicker = topBarActive && Boolean(modelConfig?.categories?.length);
-  useEffect(() => {
-    if (!showModelPicker) return;
-    setSuppressHeaderModel(true);
-    return () => setSuppressHeaderModel(false);
-  }, [showModelPicker, setSuppressHeaderModel]);
-  const topBarModelPicker = showModelPicker ? (
-    <ModelPicker
-      categories={modelConfig!.categories as ModelCategory[]}
-      siteId={modelConfig!.siteId}
-      apiHref={modelConfig!.apiHref}
-      onSelectionChange={setLocalModelSelection}
-      variant="popover"
-      align="right"
-    />
-  ) : null;
 
   // 顶栏（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole.topBar 样式）：
-  // 一行搞定 —— 左「‹ 返回」pill + 本次对话总结，右「模型选择 ▾」。给了 onBack 才渲染。
-  // 顶栏就是页面最上面那一行（AppShell header 已被 suppress 隐藏），不再多占一行。
+  // 一行搞定 —— 左「‹ 返回」pill + 本次对话总结。给了 onBack 才渲染。
   const TOPBAR_H = 52;
   const topBar = topBarActive ? (
     <div className="flex shrink-0 items-center gap-3 px-4 py-2.5" style={{ minHeight: TOPBAR_H }}>
@@ -683,7 +644,6 @@ export function AgentChat({
       ) : (
         <span className="min-w-0 flex-1" />
       )}
-      {topBarModelPicker && <div className="shrink-0">{topBarModelPicker}</div>}
     </div>
   ) : null;
 
@@ -836,12 +796,9 @@ export function AgentChat({
       })()
     : resultPane;
 
-  // 高度账（关键）：本组件顶栏出现时会 suppress 掉 AppShell 那条 header。
-  //  - 顶栏出现且 suppress 了 header（showModelPicker=true）：本组件占满全高 → 可用高度 = 100dvh。
-  //  - 顶栏出现但没 suppress（无模型模态，罕见）：AppShell header 仍在 → 可用高度 = 100dvh-headerHeight。
-  //  - 无顶栏（旧行为）：AppShell header 在 → SplitWorkspace 自算 100dvh-headerHeight。
+  // 高度账：有返回顶栏时它是页面最上面一行；无顶栏时沿用调用方传入的外层占高。
   // SplitWorkspace body 高 = 100dvh - 其 headerHeight 参数；令其 body = 可用高 - TOPBAR_H。
-  const availOffset = topBar ? (showModelPicker ? 0 : headerHeight) : headerHeight;
+  const availOffset = topBar ? 0 : headerHeight;
   const split = (
     <SplitWorkspace
       left={stream}
@@ -861,7 +818,7 @@ export function AgentChat({
   // 无顶栏（未给 onBack）：保持原样，直接返回分栏骨架。
   if (!topBar) return split;
 
-  // 有顶栏：外层 flex 列 = 顶栏（返回 + 总结 + 模型选择）+ 分栏骨架。整列高 = 可用高，顶栏占
+  // 有顶栏：外层 flex 列 = 顶栏（返回 + 总结）+ 分栏骨架。整列高 = 可用高，顶栏占
   // TOPBAR_H，分栏占剩余（其 body 自算 = 100dvh-(availOffset+TOPBAR_H) = 可用高-TOPBAR_H，对齐不溢出）。
   return (
     <div

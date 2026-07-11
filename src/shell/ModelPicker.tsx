@@ -242,7 +242,7 @@ export function ModelPicker({
                 </div>
                 {list.length === 0 ? (
                   <p className="px-3.5 py-6 text-center text-[12px] text-neutral-400">
-                    {tt("暂无可选模型，去 API 页选择")}
+                    {tt("暂无可选模型，去 AI 模型页选择")}
                   </p>
                 ) : (
                   list.map((m) => (
@@ -273,7 +273,7 @@ export function ModelPicker({
                   href={apiHref}
                   className="mt-1 block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
                 >
-                  {tt("+ 在「API」页管理模型")}
+                  {tt("+ 在「AI 模型」页管理模型")}
                 </a>
               </div>
             )}

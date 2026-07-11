@@ -36,7 +36,7 @@ const PLATFORMS: Platform[] = [
       "点击右上角头像旁的「API-KEY」入口（或左侧菜单「API-KEY 管理」）。",
       "点击「创建我的 API-KEY」，选择业务空间（默认即可），确认创建。",
       "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。",
-      "回到 OceanLeo 的 API 页，厂商选「阿里云百炼」，粘贴该 key 即可。",
+      "回到 OceanLeo 的 AI 模型页，厂商选「阿里云百炼」，粘贴该 key 即可。",
     ],
     note: "国内可直连，支持支付宝/微信/银行卡，新用户通常有免费额度，对大陆用户最友好。这也是唯一支持 BYOK 文/图/视频/语音全能力的厂商。",
   },
@@ -53,7 +53,7 @@ const PLATFORMS: Platform[] = [
       "在「充值 / 余额」处充值（支持人民币，按量计费）。",
       "点击左侧「API keys」→「创建 API key」。",
       "填写名称后创建，立即复制以 sk- 开头的密钥（仅显示一次）。",
-      "在 OceanLeo 的 API 页厂商选「DeepSeek」，粘贴 key。",
+      "在 OceanLeo 的 AI 模型页厂商选「DeepSeek」，粘贴 key。",
     ],
     note: "国内可直连，人民币支付，对大陆用户友好。",
   },
@@ -71,7 +71,7 @@ const PLATFORMS: Platform[] = [
       "在「开通管理」开通所需模型（如豆包系列）。",
       "进入左侧「API Key 管理」→「创建 API Key」，复制保存。",
       "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。",
-      "在 OceanLeo 的 API 页厂商选「火山方舟」，粘贴 key；调用时模型名用该 ep- 接入点 ID。",
+      "在 OceanLeo 的 AI 模型页厂商选「火山方舟」，粘贴 key；调用时模型名用该 ep- 接入点 ID。",
     ],
     note: "国内可直连，人民币支付。注意它与其它平台不同：需先建「接入点」并用 ep- 作为模型名调用。",
   },
@@ -88,7 +88,7 @@ const PLATFORMS: Platform[] = [
       "进入「Credits」页面充值（支持境外信用卡，也支持加密货币）。",
       "打开 openrouter.ai/keys，点击「Create Key」。",
       "填写名称（可设额度上限），创建并复制以 sk-or- 开头的密钥。",
-      "在 OceanLeo 的 API 页厂商选「OpenRouter」，粘贴 key。",
+      "在 OceanLeo 的 AI 模型页厂商选「OpenRouter」，粘贴 key。",
     ],
     note: "控制台需海外网络访问，充值需境外信用卡或加密货币，大陆用户需自备网络与境外支付方式。",
   },
@@ -105,7 +105,7 @@ const PLATFORMS: Platform[] = [
       "进入「Settings → Billing」充值，绑定境外信用卡并预付费（无免费额度）。",
       "打开 platform.openai.com/api-keys，点击「Create new secret key」。",
       "填写名称、选择 Project，创建并立即复制以 sk- 开头的密钥（仅显示一次）。",
-      "在 OceanLeo 的 API 页厂商选「OpenAI」，粘贴 key。",
+      "在 OceanLeo 的 AI 模型页厂商选「OpenAI」，粘贴 key。",
     ],
     note: "大陆较难直接使用：需海外网络访问控制台，充值需境外信用卡（不支持国内卡）。",
   },
@@ -122,7 +122,7 @@ const PLATFORMS: Platform[] = [
       "进入「Settings → Billing」充值，绑定境外信用卡并预付费。",
       "打开「Settings → API Keys」，点击「Create Key」。",
       "填写名称、选择 Workspace，创建并立即复制以 sk-ant- 开头的密钥（仅显示一次）。",
-      "在 OceanLeo 的 API 页厂商选「Anthropic (Claude)」，粘贴 key。",
+      "在 OceanLeo 的 AI 模型页厂商选「Anthropic (Claude)」，粘贴 key。",
     ],
     note: "大陆较难使用：控制台需海外网络访问，注册/充值需境外手机号与信用卡。",
   },
@@ -146,7 +146,7 @@ export function ApiGuidePage() {
 
       <div className="mx-auto mt-6 max-w-3xl space-y-6">
         <div className="rounded-2xl border border-neutral-200 bg-neutral-50/60 p-5 text-[13px] leading-relaxed text-neutral-600">
-          {tt("OceanLeo 全家桶支持")} <span className="font-semibold text-neutral-900">{tt("BYOK（自带 API key）")}</span>{tt("：\n          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「API」页，即可用自己的 key\n          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。\n          下面是 6 家主流平台的购买与取 token 步骤。")}
+          {tt("OceanLeo 全家桶支持")} <span className="font-semibold text-neutral-900">{tt("BYOK（自带 API key）")}</span>{tt("：\n          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「AI 模型」页，即可用自己的 key\n          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。\n          下面是 6 家主流平台的购买与取 token 步骤。")}
         </div>
 
         {PLATFORMS.map((p) => (

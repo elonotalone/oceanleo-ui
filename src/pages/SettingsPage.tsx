@@ -54,7 +54,7 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
         <section className="v-fade-up" style={{ animationDelay: "120ms" }}>
           <h2 className="mb-1 text-[14px] font-semibold text-neutral-900">{tt("用量记录与计费")}</h2>
           <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
-            {tt("用量柱状图与每次调用的真实计费记录在「Cost」页；token 余额、\n            自带 API key（BYOK）与模型选择在「API」页。")}
+            {tt("用量柱状图与每次调用的真实计费记录在「Cost」页；token 余额、\n            自带 API key（BYOK）与模型选择在「AI 模型」页。")}
           </p>
           <div className="flex gap-2">
             <a
@@ -67,7 +67,7 @@ export function SettingsPage({ extraSections }: SettingsPageProps) {
               href="/api"
               className="inline-flex items-center rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
             >
-              {tt("前往 API 页 →")}
+              {tt("前往 AI 模型页 →")}
             </a>
           </div>
         </section>

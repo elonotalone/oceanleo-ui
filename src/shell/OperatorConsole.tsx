@@ -26,12 +26,11 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton } from "./Playground";
-import { ModelPicker, type ModelCategory } from "./ModelPicker";
-import { useShellChrome } from "./ShellChrome";
+import type { ModelCategory } from "./ModelPicker";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
 import { GuideProvider } from "./guide-context";
 import { type FunctionGuide } from "./NavigatorGuide";
@@ -150,16 +149,11 @@ export interface OperatorConsoleProps {
   directoryGroups?: { id: string; label: string; icon?: ReactNode }[];
   /** 目录卡片的分类输入（用于二元分类器）：每个功能区的 site_id / category。 */
   siteId?: string;
-  /**
-   * 顶栏右上角「模型选择」（操作员 2026-06-24）：给了模态，本组件会在自己那条顶栏的
-   * **右上角**渲染一个收起态「模型选择」按键（点开才弹出各模态 chip 面板），并通知外层
-   * AppShell 隐藏它 header 里的模型选择条——这样子站工作台「最上方只有一行」。
-   * solo/embed（hideTabs）时不渲染（主站 iframe 内嵌，模型选择由主站那一行承担）。
-   */
+  /** @deprecated 模型统一在「AI 模型」页管理；保留字段仅兼容旧消费端。 */
   modelCategories?: ModelCategory[];
-  /** 模型选择「站点 × 用户」持久化标识（一般 = siteId）。 */
+  /** @deprecated 顶部模型选择已下线。 */
   modelSiteId?: string;
-  /** 模型选择下拉底部「管理模型」跳转，默认 /api。 */
+  /** @deprecated 顶部模型选择已下线。 */
   apiHref?: string;
   /**
    * @deprecated 宗旨 v9（2026-06-27）：skill 形态整套删除，目录页不再有「app / skill」
@@ -201,9 +195,6 @@ export function OperatorConsole({
   directorySubtitle,
   directoryGroups,
   siteId = "",
-  modelCategories,
-  modelSiteId,
-  apiHref = "/api",
   skillTab: _skillTab,
   library,
   soloMaxWidth = "48rem",
@@ -269,37 +260,6 @@ export function OperatorConsole({
     onChange?.("");
   };
 
-  // 顶栏右上角「模型选择」（操作员 2026-07-07 二次校正，撤销 v18 误删）：v18 曾把顶栏的
-  // 「模型选择」整个删掉——但操作员本意是删【左侧操控台表单内】的模型选择项，**不是**右上角
-  // 顶栏那枚。右上角顶栏「模型选择 ▾」在各 app 里必须【恢复】。做法同 v10：本组件在自己那条
-  // 顶栏右上角渲染收起态 ModelPicker（点开才弹面板），并通知 AppShell 隐藏它 header 里那条
-  // 模型选择，避免顶栏出现两行。模态来源——优先本组件 props（modelCategories），否则回退到外层
-  // AppShell 透传的 modelConfig（各站工作台页不必再手动传一遍）。
-  const { setSuppressHeaderModel, modelConfig } = useShellChrome();
-  const effectiveModelCategories =
-    (modelCategories as string[] | undefined) ?? modelConfig?.categories;
-  const effectiveModelSiteId =
-    modelSiteId || siteId || modelConfig?.siteId || "default";
-  const effectiveApiHref = apiHref || modelConfig?.apiHref || "/api";
-  const showModelPicker = Boolean(effectiveModelCategories?.length) && !hideTabs;
-  useEffect(() => {
-    if (hideTabs) return; // solo/embed 由主站承载顶栏，不干预
-    // 恒隐藏 AppShell header 里的模型选择：有顶栏模型选择时避免两处重复；没有时该 header
-    // 也无内容（工作台页不传 headerRight），整体不渲染 → 高度按 0 计（见 studioHeaderHeight）。
-    setSuppressHeaderModel(true);
-    return () => setSuppressHeaderModel(false);
-  }, [hideTabs, setSuppressHeaderModel]);
-
-  const modelPicker: ReactNode = showModelPicker ? (
-    <ModelPicker
-      categories={effectiveModelCategories as ModelCategory[]}
-      siteId={effectiveModelSiteId}
-      apiHref={effectiveApiHref}
-      variant="popover"
-      align="right"
-    />
-  ) : null;
-
   if (directoryMode && !isOpened) {
     const items: DirectoryItem[] = functions.map((f) => ({
       id: f.id,
@@ -320,8 +280,8 @@ export function OperatorConsole({
     const sceneMode = functions.some((f) => (f.scenes?.length ?? 0) > 0);
     return (
       <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
-        {(directoryTitle || directorySubtitle || modelPicker) && (
-          <div className="mb-5 flex items-start justify-between gap-3">
+        {(directoryTitle || directorySubtitle) && (
+          <div className="mb-5">
             <div className="min-w-0">
               {directoryTitle && (
                 <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
@@ -334,7 +294,6 @@ export function OperatorConsole({
                 </p>
               )}
             </div>
-            {modelPicker && <div className="shrink-0">{modelPicker}</div>}
           </div>
         )}
 
@@ -360,10 +319,8 @@ export function OperatorConsole({
   // 它在「操作台 / 结果」两栏标题之上，整条横跨中+右两栏（即 Studio 之上）。
   // hideTabs（solo 模式）：彻底不渲染顶栏（主站 iframe 内嵌，模型选择由主站那行承担）。
   // directory 模式且已进入：顶栏左侧是「← 返回」（回目录）+ 当前功能名。
-  // 非目录站：顶栏只承载可选 header + 右上角模型选择（无功能切换）。
-  // 顶栏右上角放收起态模型选择（modelPicker），与左侧返回/功能名同一行 → 最上方一行。
-  const showTopBar =
-    (header != null || directoryMode || modelPicker != null) && !hideTabs;
+  // 非目录站：顶栏只承载可选 header。
+  const showTopBar = (header != null || directoryMode) && !hideTabs;
   const topBar = showTopBar ? (
     <div className="shrink-0 space-y-3 px-4 pt-4">
       {header}
@@ -384,7 +341,6 @@ export function OperatorConsole({
             </div>
           )}
         </div>
-        {modelPicker && <div className="shrink-0">{modelPicker}</div>}
       </div>
     </div>
   ) : null;
@@ -404,14 +360,7 @@ export function OperatorConsole({
   // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏
   // 整体仍恰好一屏、不溢出。无需依赖 h-full 的高度链路。
   //
-  // 关键修正（操作员 2026-06-24，截图 9e80ed94「下方空白太大」）：本组件渲染右上角
-  // 模型选择时会 setSuppressHeaderModel(true)，AppShell 那条 56px header **被隐藏**。
-  // 此时还按 headerHeight(默认 56) 去扣，Studio 就比视口矮了 56px → 下方一大块空白。
-  //
-  // 宗旨 v18（操作员 2026-07-07）：本组件（非 solo/embed）恒 setSuppressHeaderModel(true)
-  // → AppShell header 里唯一的内容「模型选择」被隐藏。工作台页也不给 AppShell 传
-  // headerRight，故 AppShell 的 header 整体不渲染（showHeader=false）→ header 占高 = 0。
-  // 因此不再需要按 modelConfig 判断（旧逻辑靠它决定是否扣 headerHeight，现统一按 0）。
+  // AppShell 不再渲染模型选择 header；标准工作台页也没有 headerRight，因此外壳占高为 0。
   const appShellHeader = 0;
   const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
 

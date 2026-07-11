@@ -15,7 +15,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
-import { ModelPicker } from "./ModelPicker";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import {
   listTasks,
@@ -494,24 +493,9 @@ export function HistoryDetail({
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。
   const effectiveLibraryTabs: AgentLibraryTabs | undefined =
     libraryTabs ?? (siteId ? { showFiles: true } : undefined);
-  const [agentModel, setAgentModel] = useState("");
-  const modelBar = (
-    <div className="flex shrink-0 items-center justify-end border-b border-neutral-100 px-3 py-2">
-      <ModelPicker
-        categories={["text", "image", "video", "threed", "audio"]}
-        siteId={siteId || "history"}
-        variant="popover"
-        align="right"
-        onChange={(cat, m) => {
-          if (cat === "text") setAgentModel(m.key);
-        }}
-      />
-    </div>
-  );
   if (!sel) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        {modelBar}
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-neutral-400">
           {tt("在左侧选择一个任务，即可继续操作或查看对话与产出。")}
         </div>
@@ -522,7 +506,6 @@ export function HistoryDetail({
   if (detailLoading) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        {modelBar}
         <div className="grid flex-1 place-items-center text-[13px] text-neutral-400">
           {tt("加载工作会话…")}
         </div>
@@ -533,7 +516,6 @@ export function HistoryDetail({
   if (detailError || !loaded) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
-        {modelBar}
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-rose-500">
           {detailError || tt("这个任务不存在或已无权访问。")}
         </div>
@@ -602,7 +584,6 @@ export function HistoryDetail({
 
   return (
     <div className="flex h-[calc(100dvh-1px)] flex-col">
-      {modelBar}
       <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800">
         <span className="font-semibold">
           {exactLegacyWarning
@@ -622,9 +603,8 @@ export function HistoryDetail({
             siteId={fallbackSiteId}
             taskId={fallbackTaskId}
             readOnly
-            agentModel={agentModel}
             accent={accent}
-            headerHeight={93}
+            headerHeight={41}
             appNames={appNames}
             libraryTabs={effectiveLibraryTabs}
             renderArtifact={renderArtifact}

@@ -12,13 +12,12 @@
 //   - doctrine v8（2026-06-24）：原「skill」分区正名为「agent」（Tab 内部值仍叫 skill，
 //     技术标识层不改；只改面向用户的标签 / 文案）。
 //   - 点一个条目 → 右侧整页换成它的内嵌功能区（iframe），右上角出现「← 返回」回到
-//     目录页；顶部一条全模态 ModelPicker（作用域仅 playground）+「放入工作台」。
+//     目录页；模型偏好统一在「AI 模型」页管理。
 //   - doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（站卡片 + AI 智能推荐）
 //     并入这里，成为第一个 tab。站点清单由消费端经 renderSites 注入，/all-sites 路由删除。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ModelPicker } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { AiRecommendBox } from "./AiRecommendBox";
 import { ItemDetailModal } from "./ItemDetailModal";
@@ -41,7 +40,6 @@ import { useUI } from "../i18n/ui/useUI";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
-const PLAYGROUND_MODEL_SITE = "__playground__";
 // 「＋ 新建」首卡的哨兵 id（agent / organization / workflow 三个可创建分区共用）。
 const NEW_CARD_ID = "__new__";
 
@@ -278,14 +276,6 @@ export function PlaygroundDetail({
                 {active.name}
               </span>
             )}
-          </div>
-          <div className="shrink-0">
-            <ModelPicker
-              categories={["text", "image", "video", "threed", "audio"]}
-              siteId={PLAYGROUND_MODEL_SITE}
-              variant="popover"
-              align="right"
-            />
           </div>
         </div>
         <div className="min-h-0 flex-1 p-1.5">

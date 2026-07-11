@@ -75,6 +75,11 @@ export function ModelSelectionSummary({
   user: boolean;
 }) {
   const tt = useUI();
+  const groups = catalog?.groups || [];
+  const [activeCategory, setActiveCategory] = useState(groups[0]?.id || "");
+  const [activeCapability, setActiveCapability] = useState(
+    groups[0]?.capabilities[0]?.id || "",
+  );
   const byKey = useMemo(() => {
     const index = new Map<string, CatalogModel>();
     for (const group of catalog?.groups || []) {
@@ -83,7 +88,7 @@ export function ModelSelectionSummary({
     return index;
   }, [catalog]);
 
-  if (!catalog?.groups?.length) return null;
+  if (!groups.length) return null;
   const total = Object.values(selection).reduce(
     (sum, capabilities) =>
       sum
@@ -93,75 +98,115 @@ export function ModelSelectionSummary({
       ),
     0,
   );
+  const group = groups.find((item) => item.id === activeCategory) || groups[0];
+  const capability =
+    group.capabilities.find((item) => item.id === activeCapability)
+    || group.capabilities[0];
+  const selectedModels = (selection[group.id]?.[capability?.id || ""] || [])
+    .map((key) => byKey.get(key))
+    .filter((model): model is CatalogModel => Boolean(model));
 
   return (
     <section className="v-fade-up" style={{ animationDelay: "20ms" }}>
-      <h2 className="mb-3 text-[14px] font-semibold text-neutral-900">
-        {tt("我的模型选择")}
-        <span className="ml-2 text-[11px] font-normal text-neutral-400">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-[14px] font-semibold text-neutral-900">
+          {tt("我的模型选择")}
+          <span className="ml-2 text-[11px] font-normal text-neutral-400">
+            {tt("已选 {n} 个能力模型", { n: total })}
+          </span>
+        </h2>
+        <span className="text-[11px] text-neutral-400">
           {tt("各 OceanLeo 应用会按能力使用你在这里选好的模型")}
         </span>
-      </h2>
-      <div className="overflow-x-auto rounded-2xl border border-neutral-200">
-        <table className="w-full min-w-[680px] text-left text-[12px]">
-          <thead className="bg-neutral-50 text-neutral-500">
-            <tr>
-              <th className="w-[72px] px-3 py-2 font-medium">{tt("大类")}</th>
-              <th className="w-[112px] px-3 py-2 font-medium">{tt("能力小类")}</th>
-              <th className="px-3 py-2 font-medium">{tt("模型")}</th>
-              <th className="w-[112px] px-3 py-2 font-medium">{tt("供应商")}</th>
-              <th className="px-3 py-2 text-right font-medium">{tt("价格")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {catalog.groups.map((group) =>
-              group.capabilities.map((capability, capabilityIndex) => {
-                const models = (selection[group.id]?.[capability.id] || [])
-                  .map((key) => byKey.get(key))
-                  .filter((model): model is CatalogModel => Boolean(model));
-                if (models.length === 0) {
-                  return (
-                    <tr key={`${group.id}:${capability.id}`}>
-                      <td className="px-3 py-2.5 font-medium text-neutral-700">
-                        {capabilityIndex === 0 ? group.label : ""}
-                      </td>
-                      <td className="px-3 py-2.5 text-neutral-600">{capability.label}</td>
-                      <td className="px-3 py-2.5 text-neutral-400" colSpan={3}>
-                        {user ? tt("未选择（在下方模型市场选择）") : tt("登录后查看你的选择")}
-                      </td>
-                    </tr>
-                  );
-                }
-                return models.map((model, modelIndex) => (
-                  <tr
-                    key={`${group.id}:${capability.id}:${model.key}`}
-                    className="transition hover:bg-neutral-50/60"
-                  >
-                    <td className="px-3 py-2.5 font-medium text-neutral-700">
-                      {capabilityIndex === 0 && modelIndex === 0 ? group.label : ""}
-                    </td>
-                    <td className="px-3 py-2.5 text-neutral-600">
-                      {modelIndex === 0 ? capability.label : ""}
-                    </td>
-                    <td className="px-3 py-2.5 font-medium text-neutral-900">{model.label}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
-                        {model.provider_label}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-neutral-600">
-                      {priceText(model, tt)}
-                    </td>
-                  </tr>
-                ));
-              }),
-            )}
-          </tbody>
-        </table>
       </div>
-      <p className="mt-1.5 text-[11px] text-neutral-400">
-        {tt("共已选 {n} 个能力模型。价格即 token 市场价，OceanLeo 不加价。", { n: total })}
-      </p>
+      <div className="overflow-hidden rounded-2xl border border-neutral-200">
+        <div className="flex flex-col sm:flex-row">
+          <div className="shrink-0 border-b border-neutral-100 bg-neutral-50/60 p-2 sm:w-[148px] sm:border-b-0 sm:border-r">
+            <div className="flex gap-1.5 overflow-x-auto sm:flex-col sm:gap-1 sm:overflow-visible">
+              {groups.map((item) => {
+                const selectedCount = Object.values(selection[item.id] || {})
+                  .reduce((count, models) => count + (models?.length || 0), 0);
+                const active = item.id === group.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveCategory(item.id);
+                      setActiveCapability(item.capabilities[0]?.id || "");
+                    }}
+                    className={[
+                      "flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition sm:w-full",
+                      active
+                        ? "bg-neutral-900 text-white"
+                        : "text-neutral-600 hover:bg-neutral-200/60",
+                    ].join(" ")}
+                  >
+                    <span>{tt(item.label)}</span>
+                    <span className={active ? "text-[11px] text-white/65" : "text-[11px] text-neutral-400"}>
+                      ✓{selectedCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 p-3">
+            <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
+              {group.capabilities.map((item) => {
+                const active = item.id === capability?.id;
+                const selectedCount = (selection[group.id]?.[item.id] || []).length;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveCapability(item.id)}
+                    title={item.description}
+                    className={[
+                      "shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition",
+                      active
+                        ? "border-neutral-900 bg-neutral-900 text-white"
+                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300",
+                    ].join(" ")}
+                  >
+                    {tt(item.label)}
+                    <span className={active ? "ml-1 text-emerald-200" : "ml-1 text-emerald-600"}>
+                      ✓{selectedCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {capability?.description && (
+              <p className="mb-2 text-[11px] text-neutral-400">{tt(capability.description)}</p>
+            )}
+            <div className="max-h-[300px] overflow-y-auto rounded-xl border border-neutral-200">
+              {selectedModels.length === 0 ? (
+                <p className="px-3.5 py-10 text-center text-[12px] text-neutral-400">
+                  {user ? tt("未选择（在下方模型市场选择）") : tt("登录后查看你的选择")}
+                </p>
+              ) : (
+                selectedModels.map((model, index) => (
+                  <ModelRow
+                    key={model.key}
+                    model={model}
+                    first={index === 0}
+                    showProvider
+                    user={false}
+                    selected
+                    onToggle={() => undefined}
+                  />
+                ))
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] text-neutral-400">
+              {tt("已选 {n} 个能力模型", { n: selectedModels.length })}
+              {" · "}
+              {tt("OceanLeo 不加价、不抽成")}
+            </p>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

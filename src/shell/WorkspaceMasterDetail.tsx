@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
-import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import type { ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { BackButton, type PlaygroundBoardCtx } from "./Playground";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
@@ -204,9 +204,6 @@ export function WorkspaceDetail({
   accent = "#0ea5e9",
   homeSiteId = "",
   addAgentHref = "/playground",
-  modelCategories = ["text", "image", "video", "threed", "audio"],
-  modelSiteId = "oceanleo",
-  apiHref = "/api",
   sites = [],
   renderBoard,
   renderSites,
@@ -215,11 +212,11 @@ export function WorkspaceDetail({
   accent?: string;
   homeSiteId?: string;
   addAgentHref?: string;
-  /** 顶部模型选择器要展示的模态。主站给全部 5 个。传 [] 则不显示模型选择条。 */
+  /** @deprecated 模型统一在「AI 模型」页管理。 */
   modelCategories?: ModelCategory[];
-  /** 模型选择「站点 × 用户」持久化标识。 */
+  /** @deprecated 顶部模型选择已下线。 */
   modelSiteId?: string;
-  /** 模型选择下拉底部「管理模型」跳转。 */
+  /** @deprecated 顶部模型选择已下线。 */
   apiHref?: string;
   /**
    * 「网站」分区要列的站点（已废弃，doctrine v10 改用 renderSites 注入「已加入」站）。
@@ -256,8 +253,6 @@ export function WorkspaceDetail({
     const fn = active.fn_id ? `&fn=${encodeURIComponent(active.fn_id)}` : "";
     return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(active.agent_id)}`;
   }, [active, siteOrigin]);
-
-  const showModelBar = modelCategories.length > 0;
 
   // 顶部 tab 条（目录页 + organization/workflow 早返回共用）。「skill」标签正名为「agent」。
   const TABS: { id: WorkspaceTab; label: string }[] = [
@@ -304,17 +299,6 @@ export function WorkspaceDetail({
               {active.name}
             </span>
           </div>
-          {showModelBar && (
-            <div className="shrink-0">
-              <ModelPicker
-                categories={modelCategories}
-                siteId={modelSiteId}
-                apiHref={apiHref}
-                variant="popover"
-                align="right"
-              />
-            </div>
-          )}
         </div>
         <div className="min-h-0 flex-1 p-1.5">
           {embedSrc ? (

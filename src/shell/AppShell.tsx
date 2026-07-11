@@ -6,34 +6,32 @@
 // 布局（= 操作员指定的 oceanleo 主站截图）：
 //   左侧 248px 侧边栏：站点 Logo + 站名 / 搜索 / 收放键 / 主功能目录（高亮当前页）
 //                      / 可选「最近列表」插槽 / 底部 token 余额 / 账户按钮
-//   右侧主区：顶部 header（左=可选 ModelPicker 模型选择，右=可选 headerRight 插槽）
-//             + main（各站业务内容 children）
+//   右侧主区：可选 headerRight 浮层 + main（各站业务内容 children）
 //   收起：w-[248px] → w-0 平滑动画 + 浮出展开键；移动端抽屉 + 汉堡键；状态存 localStorage
 //
 // 「各站保留品牌色」：传 brand.accent。布局/交互/中性底色全站统一，只有 accent
 // 与目录项随站变化。改这里 = 改所有站的外壳，一处生效，永不漂移。
 // ----------------------------------------------------------------------------
-// 集成契约：各站把目录(nav)、品牌(brand)、当前用户(userEmail)、余额(credits)、
-// 退出(onSignOut)、以及要哪些模型类目(modelCategories)传进来即可。
+// 集成契约：各站把目录(nav)、品牌(brand)、当前用户(userEmail)、余额(credits)
+// 与退出(onSignOut)传进来即可。模型统一在「AI 模型」页管理。
 // ============================================================================
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
-import { ModelPicker, type ModelCategory } from "./ModelPicker";
+import type { ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
-import { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
 import { usePresenceHeartbeat } from "../lib/presence";
 
 /** 外壳布局：
- *  - "sidebar"（默认）：经典左侧边栏 + 右上 header（兼容所有未迁移站）。
- *  - "topbar"：删除左侧边栏，改为顶部一条 bar——左=站名标题（原左上角位置）+
- *    右侧紧跟模型选择，右=token 余额 + 账户按钮（账户在 token 右边）。
+ *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
+ *  - "topbar"：删除左侧边栏，改为顶部一条 bar——左=站名标题，
+ *    右=token 余额 + 账户按钮（账户在 token 右边）。
  *    用于「单页操作台」站（侧栏只有一个功能按键，没有真正的站级导航需要）。 */
 export type AppShellLayout = "sidebar" | "topbar";
 
@@ -89,8 +87,8 @@ function isActive(pathname: string, item: ShellNavItem): boolean {
 export interface AppShellProps {
   brand: AppShellBrand;
   /**
-   * 外壳布局，默认 "sidebar"。单页操作台站传 "topbar"：删左侧边栏，站名留左上、
-   * 模型选择紧跟站名右侧、token 余额 + 账户按钮移到右上角（账户在余额右边）。
+   * 外壳布局，默认 "sidebar"。单页操作台站传 "topbar"：删左侧边栏，站名留左上，
+   * token 余额 + 账户按钮移到右上角（账户在余额右边）。
    */
   layout?: AppShellLayout;
   /** 扁平导航。与 navGroups 二选一（传 navGroups 时本字段忽略）。 */
@@ -119,16 +117,15 @@ export interface AppShellProps {
   accountHref?: string;
   /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
   onAccountClick?: () => void;
-  /** API 管理页路由（默认 /api），ModelPicker 底部「管理模型」跳这里 */
+  /** @deprecated 模型统一在「AI 模型」页管理；保留字段仅兼容旧消费端。 */
   apiHref?: string;
-  // --- 右侧主区顶部 header ---
-  /** 顶部模型选择需要的模态；不传则不渲染 ModelPicker（如纯展示页） */
+  /** @deprecated 顶部模型选择已下线；保留字段仅兼容旧消费端。 */
   modelCategories?: ModelCategory[];
-  /** 站点标识（用于模型选择「站点 × 用户」持久化）。建议传，默认 "default"。 */
+  /** 站点标识（在线心跳等用途）。 */
   siteId?: string;
-  /** 某模态选中变化回调：(模态, 模型)。各站拿去驱动对应生成调用。 */
+  /** @deprecated 顶部模型选择已下线。 */
   onModelChange?: (category: ModelCategory, model: PreferredModel) => void;
-  /** 整体已选模态映射变化回调：{模态: 模型}。 */
+  /** @deprecated 顶部模型选择已下线。 */
   onModelSelectionChange?: (
     selection: Partial<Record<ModelCategory, PreferredModel>>,
   ) => void;
@@ -144,73 +141,16 @@ export interface AppShellProps {
    *  ⚠ 若显式开启，站点必须已包 <I18nProvider>（NextIntlClientProvider），否则
    *  useLocale() 会抛错。 */
   showLanguageSwitcher?: boolean;
-  /**
-   * 判定「当前是操作台路由」（OperatorConsole 拥有右上角模型选择，header 的那条该
-   * 隐藏）的同步谓词。接收已去掉 locale 前缀的逻辑路由。默认匹配 `/workspace`
-   * （全家桶单页操作台站的统一路由）。返回 true → 首帧（含 SSR）就不渲染 header
-   * 模型选择，杜绝「左上闪一下跳右上」。控制台路由非 `/workspace` 的站可自传谓词。
-   * 传 `() => false` 可彻底关闭本机制（恢复纯 effect 行为）。
-   */
+  /** @deprecated 顶部模型选择已下线；保留字段仅兼容旧消费端。 */
   consoleRouteMatch?: (logicalPathname: string) => boolean;
-  /** Stage C：true 时在模型选择旁渲染 agent 引擎选择器（OceanLeo 原生 / 4 外部
-   *  引擎 BYOK）。主站首页传 true。 */
-}
-
-/** 默认「操作台路由」判定：匹配 `/workspace`（含其子路由）。全家桶单页操作台站
- *  （interior/image/law/resume/… 经 (main)/(app) route group 后 URL 仍是 /workspace）
- *  统一走这条；控制台路由不同的站可在 AppShell 传 `consoleRouteMatch` 覆盖。 */
-function defaultConsoleRouteMatch(logicalPathname: string): boolean {
-  return logicalPathname === "/workspace" || logicalPathname.startsWith("/workspace/");
-}
-
-/** 文件库 / 历史记录路由：header 不出模型选择（/library 一个都不要；/history 由主区
- *  HistoryDetail 自带）。与主站 oceanleo.com/library 对齐。独立于站点可覆盖的
- *  consoleRouteMatch，任何站在这两条路由上都强制隐藏 header 模型选择。 */
-function isLibraryOrHistoryRoute(logicalPathname: string): boolean {
-  return (
-    logicalPathname === "/library" ||
-    logicalPathname.startsWith("/library/") ||
-    logicalPathname === "/history" ||
-    logicalPathname.startsWith("/history/")
-  );
 }
 
 // doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
 // 同时渲染两者，故在此统一包一层 WorkspaceSelectionProvider，各消费站零接线即可用。
 export function AppShell(props: AppShellProps) {
-  // 把本站的模型选择配置透传进 ShellChrome——主区组件（OperatorConsole 等）可零接线
-  // fallback 取用，免得每个站的工作台页再各自把 modelCategories 传一遍。
-  const modelConfig = props.modelCategories?.length
-    ? {
-        categories: props.modelCategories as string[],
-        siteId: props.siteId || "default",
-        apiHref: props.apiHref || "/api",
-      }
-    : null;
-
-  // 同步（render 阶段，SSR 也生效）判定「当前是操作台路由」，据此让 header 模型选择
-  // 从首帧起就不渲染——杀掉「模型选择左上闪一下跳右上」（操作员 2026-06-29）。
-  const rawPathname = usePathname() || "/";
-  const logicalPathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
-  const matchConsole = props.consoleRouteMatch ?? defaultConsoleRouteMatch;
-  // 文件库 / 历史记录路由也不该在 header 出模型选择（操作员 2026-07-03）：
-  //   - /library：主区 ArtifactLibrary 只有搜索 + 网格/列表切换，与主站 oceanleo.com/library
-  //     完全一致——一个模型选择键都不该有。
-  //   - /history：主区 HistoryDetail 自带右上角模型选择（回看追问用），header 再出一个
-  //     就变「两个模型选择键」（操作员截图 video.oceanleo.com/history 的病根）。
-  // 这条与站点可覆盖的 consoleRouteMatch 取【或】、且独立于它——即便某站自传了
-  // consoleRouteMatch 也不会在文件库/历史记录页把模型选择键放回来。
-  const routeSuppressHeaderModel =
-    matchConsole(logicalPathname) || isLibraryOrHistoryRoute(logicalPathname);
-
   return (
     <WorkspaceSelectionProvider>
-      <ShellChromeProvider
-        modelConfig={modelConfig}
-        routeSuppressHeaderModel={routeSuppressHeaderModel}
-      >
-        <AppShellInner {...props} />
-      </ShellChromeProvider>
+      <AppShellInner {...props} />
     </WorkspaceSelectionProvider>
   );
 }
@@ -232,11 +172,7 @@ function AppShellInner({
   onSignOut,
   accountHref = "/account",
   onAccountClick,
-  apiHref = "/api",
-  modelCategories,
   siteId = "default",
-  onModelChange,
-  onModelSelectionChange,
   headerRight,
   hideHeader = false,
   showThemeSwitcher = false,
@@ -247,8 +183,6 @@ function AppShellInner({
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
   // 在线心跳：登录用户每 60s ping 网关（admin「在线人数」曲线的数据源）。
   usePresenceHeartbeat(siteId);
-  // 主区（如 OperatorConsole 工作台）自带模型选择时，header 不再重复渲染（消灭两行顶栏）。
-  const { suppressHeaderModel } = useShellChrome();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -422,9 +356,7 @@ function AppShellInner({
     );
   }
 
-  // header 里的模型选择：主区已自带（suppressHeaderModel）时不再渲染，避免两行顶栏。
-  const showModelInHeader = Boolean(modelCategories?.length) && !suppressHeaderModel;
-  const showHeader = !hideHeader && (showModelInHeader || Boolean(headerRight));
+  const showHeader = !hideHeader && Boolean(headerRight);
 
   const sidebarBody = (
     <>
@@ -597,19 +529,8 @@ function AppShellInner({
           <div className="flex min-w-0 flex-1 items-center gap-4">
             {renderBrand()}
           </div>
-          {/* 右：模型选择（右上角，popover）+ 切换器 + 自定义插槽 + token 余额 + 账户 */}
+          {/* 右：切换器 + 自定义插槽 + token 余额 + 账户 */}
           <div className="flex shrink-0 items-center gap-2">
-            {showModelInHeader && (
-              <ModelPicker
-                categories={modelCategories!}
-                siteId={siteId}
-                onChange={onModelChange}
-                onSelectionChange={onModelSelectionChange}
-                apiHref={apiHref}
-                variant="popover"
-                align="right"
-              />
-            )}
             {renderSwitchers()}
             {headerRight}
             {renderCredits()}
@@ -678,11 +599,7 @@ function AppShellInner({
           <IconPanel />
         </button>
 
-        {/* 右侧主区顶部工具（模型选择 + headerRight 插槽）：
-            2026-07-09 操作员定稿——**删除整条顶部 bar**（原先是一条 border-b 的满宽
-            横条，里面只挂了个「模型选择 ▾」，视觉上多余）。改为把这些控件**浮在主区
-            背景右上角**（absolute，无边框、无底色），直接坐在渐变背景上，与主站
-            oceanleo.com 首页一致。main 因此不再为 header 让出一整行高度。 */}
+        {/* 右侧主区可选 headerRight 工具浮在背景右上角，不占整行高度。 */}
         {showHeader && (
           <div
             data-oceanleo-chrome
@@ -692,19 +609,6 @@ function AppShellInner({
             {headerRight && (
               <div className="pointer-events-auto flex min-w-0 items-center gap-2">
                 {headerRight}
-              </div>
-            )}
-            {showModelInHeader && (
-              <div className="pointer-events-auto">
-                <ModelPicker
-                  categories={modelCategories!}
-                  siteId={siteId}
-                  onChange={onModelChange}
-                  onSelectionChange={onModelSelectionChange}
-                  apiHref={apiHref}
-                  variant="popover"
-                  align="right"
-                />
               </div>
             )}
           </div>
