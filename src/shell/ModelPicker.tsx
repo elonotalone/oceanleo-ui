@@ -3,7 +3,7 @@
 // ============================================================================
 // @oceanleo/ui — 全家桶全局模型组合切换器
 // ----------------------------------------------------------------------------
-// Lite / Pro / Max 是平台只读组合；用户可在「AI 模型」页创建多个具名自定义组合。
+// Lite / Pro / Max 是平台维护的预设组合；用户可在「AI 模型」页创建多个具名自定义组合。
 // 每个用户只有一个全局活跃组合，任一站右上角切换后，所有 OceanLeo 站都按同一组合
 // 运行。组合内每项能力的模型从上到下依次兜底。
 // ============================================================================
@@ -214,11 +214,11 @@ export function ModelGroupPicker({
                     <span className="block truncate text-[13px] font-medium text-neutral-900">
                       {busy ? tt("切换中…") : group.name}
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-neutral-400">
-                      {group.kind === "preset"
-                        ? tt("平台只读组合")
-                        : tt("我的自定义组合")}
-                    </span>
+                    {group.kind === "custom" && (
+                      <span className="mt-0.5 block text-[11px] text-neutral-400">
+                        {tt("我的自定义组合")}
+                      </span>
+                    )}
                   </span>
                   {selected && (
                     <IconCheck className="h-4 w-4 shrink-0 text-emerald-600" />
