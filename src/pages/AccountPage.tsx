@@ -53,7 +53,7 @@ export function AccountPage({
       href: "/general",
       desc: tt("语言与主题（浅色 / 深色 / 自动）等外观设置"),
     },
-    { label: "API", href: "/api", desc: tt("选择模型、查看价格与 token 余额") },
+    { label: tt("AI 模型"), href: "/api", desc: tt("选择模型、查看价格与 token 余额") },
     {
       label: "Cost",
       href: "/cost",
