@@ -33,7 +33,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
@@ -46,7 +46,6 @@ import {
   followUp,
   getTask,
   stopTask,
-  type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
@@ -67,6 +66,7 @@ import { appendOperatorRemark } from "../lib/operator-remark";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
+  sameAgentMessages,
   takeUnreportedAgentArtifacts,
 } from "../lib/agent-progress";
 
@@ -250,10 +250,12 @@ export function FunctionAgentChat({
   // 无操作台表单的纯对话功能区：强制 agent 形态、不显示切换键。
   const [tab, setTab] = useState<FnTab>(showOps ? defaultTab : "agent");
   const [localTaskId, setLocalTaskId] = useState<string | null>(null);
+  const [branchTaskId, setBranchTaskId] = useState<string | null>(null);
   const taskId =
-    controlledTaskId !== undefined
+    branchTaskId ||
+    (controlledTaskId !== undefined
       ? controlledTaskId
-      : workspace?.taskId || localTaskId;
+      : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [messagesTaskId, setMessagesTaskId] = useState("");
   const [status, setStatus] = useState("");
@@ -277,6 +279,7 @@ export function FunctionAgentChat({
   const restartFlushRef = useRef<() => Promise<boolean>>(
     async () => true,
   );
+  const sendRef = useRef<(override?: string) => Promise<void>>(async () => {});
 
   // 同一个真实 runtime 同时服务 live `/workspace/<appId>` 与
   // `/history/<sessionId>`：Provider 给身份，这里把各站已经存在的
@@ -754,7 +757,10 @@ export function FunctionAgentChat({
     if (loadedTaskRef.current !== id) return "";
     if (r.ok && r.data) {
       setMessagesTaskId(id);
-      setMessages(r.data.messages || []);
+      const incoming = r.data.messages || [];
+      setMessages((current) =>
+        sameAgentMessages(current, incoming) ? current : incoming,
+      );
       setStatus(r.data.task?.status || "");
       return r.data.task?.status || "";
     }
@@ -766,6 +772,9 @@ export function FunctionAgentChat({
     if (!workspace) return;
     setLocalTaskId(workspace.taskId);
   }, [workspace?.sessionId, workspace?.taskId]);
+  useEffect(() => {
+    setBranchTaskId(null);
+  }, [controlledTaskId, workspace?.sessionId]);
 
   useEffect(() => {
     if (!taskId) {
@@ -832,6 +841,13 @@ export function FunctionAgentChat({
       setError(tt("当前工作会话不可编辑。"));
       return;
     }
+    const submittedInput = override ? "" : input;
+    const submittedAttachments = override ? [] : atts.attachments;
+    const restoreSubmission = () => {
+      if (override) return;
+      setInput((current) => (current ? current : submittedInput));
+      atts.restoreReady(submittedAttachments);
+    };
     if (!override) {
       setInput("");
       atts.clear();
@@ -852,12 +868,21 @@ export function FunctionAgentChat({
       );
       setBusy(false);
       if (!result.ok || !result.data) {
+        restoreSubmission();
         setError(result.error || tt("创建分支失败"));
         return;
       }
       setBranchFromMessageId(null);
       const nextTaskId = result.data.task_id;
+      const nextSessionId = String(result.data.session_id || "");
       setLocalTaskId(nextTaskId);
+      setBranchTaskId(nextTaskId);
+      if (workspace && nextSessionId) {
+        const adopted = await workspace.adoptSession(nextSessionId);
+        if (!adopted) {
+          setError(tt("分支已创建，但工作会话暂未同步；本次任务仍会继续运行。"));
+        }
+      }
       onTaskIdChange?.(nextTaskId);
       setMessages([
         {
@@ -869,18 +894,24 @@ export function FunctionAgentChat({
         },
       ]);
       setStatus("running");
-      if (result.data.session_id && typeof window !== "undefined") {
-        window.location.assign(
-          `/history/${encodeURIComponent(result.data.session_id)}`,
+      if (
+        nextSessionId &&
+        typeof window !== "undefined" &&
+        window.location.pathname.includes("/history/")
+      ) {
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `/history/${encodeURIComponent(nextSessionId)}`,
         );
-        return;
       }
       void refresh(nextTaskId);
       return;
     }
+    const optimisticMessageId = Date.now();
     setMessages((m) => [
       ...m,
-      { id: Date.now(), role: "user", kind: "text", content: effectivePrompt, meta },
+      { id: optimisticMessageId, role: "user", kind: "text", content: effectivePrompt, meta },
     ]);
 
     if (!taskId) {
@@ -890,6 +921,15 @@ export function FunctionAgentChat({
       if (!linkedSessionId && workspace) {
         const context = await workspace.artifactContext(effectivePrompt);
         linkedSessionId = context?.sessionId || "";
+      }
+      if (workspace && !linkedSessionId) {
+        setBusy(false);
+        setMessages((current) =>
+          current.filter((message) => message.id !== optimisticMessageId),
+        );
+        restoreSubmission();
+        setError(workspace.error || tt("无法创建工作会话，请稍后重试。"));
+        return;
       }
       const r = await createTask({
         prompt: effectivePrompt,
@@ -902,6 +942,10 @@ export function FunctionAgentChat({
       });
       setBusy(false);
       if (!r.ok || !r.data) {
+        setMessages((current) =>
+          current.filter((message) => message.id !== optimisticMessageId),
+        );
+        restoreSubmission();
         setError(r.status === 401 ? tt("登录后即可使用 agent。") : r.error || tt("创建失败"));
         return;
       }
@@ -919,8 +963,17 @@ export function FunctionAgentChat({
     const r = await followUp(taskId, effectivePrompt, uploaded);
     setBusy(false);
     if (r.ok) setStatus("running");
-    else setError(r.error || tt("发送失败"));
+    else {
+      setMessages((current) =>
+        current.filter((message) => message.id !== optimisticMessageId),
+      );
+      restoreSubmission();
+      setError(r.error || tt("发送失败"));
+    }
   }
+  useEffect(() => {
+    sendRef.current = send;
+  });
 
   const running = status === "running" || busy;
   const renderItems = buildAgentRenderItems(messages);
@@ -983,12 +1036,10 @@ export function FunctionAgentChat({
         const p = (prompt || "").trim();
         if (!p) return;
         setTab("agent");
-        void send(p);
+        void sendRef.current(p);
       },
     }),
-    // send 是稳定闭包（读 taskId/busy 等 state 已在内部处理）；tab 切换用 setter。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [taskId, busy, agentId, siteId],
+    [],
   );
   // ── 操作台形态：直接渲染各站表单 ──────────────────────────────────────────
   // 宗旨 v18：opsContent 在可滚动区（flex-1）；stickyAction（主按钮）固定在操作台
@@ -1072,10 +1123,9 @@ export function FunctionAgentChat({
                 accent={accent}
               />
             ) : (
-              <Bubble
+              <AgentTranscriptBubble
                 key={item.key}
-                m={item.message}
-                accent={accent}
+                message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
                 onBranch={
                   !running &&
@@ -1155,132 +1205,5 @@ export function FunctionAgentChat({
         </div>
       </div>
     </div>
-  );
-}
-
-function Bubble({
-  m,
-  accent,
-  streaming = false,
-  onBranch,
-}: {
-  m: AgentMessage;
-  accent: string;
-  streaming?: boolean;
-  onBranch?: () => void;
-}) {
-  void accent;
-  const tt = useUI();
-  if (m.role === "user") {
-    const attList = m.meta?.attachments || [];
-    return (
-      <div className="group flex flex-col items-end gap-1.5">
-        {attList.length > 0 && (
-          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
-            {attList.map((a, i) => (
-              <FnAttachmentChip key={i} att={a} />
-            ))}
-          </div>
-        )}
-        {m.content && (
-          // 用户气泡：黑字 + 浅灰气泡（操作员 2026-07-03）。
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
-            {m.content}
-          </div>
-        )}
-        {onBranch && (
-          <button
-            type="button"
-            onClick={onBranch}
-            className="px-1 text-[11px] text-stone-300 opacity-0 transition hover:text-stone-600 group-hover:opacity-100 focus:opacity-100"
-          >
-            {tt("从这里重新开始")}
-          </button>
-        )}
-      </div>
-    );
-  }
-  if (m.kind === "plan") {
-    return (
-      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3">
-        <Markdown className="text-[15px] leading-relaxed">{m.content}</Markdown>
-      </div>
-    );
-  }
-  // 团队/组织成员署名回答（doctrine 2026-07-09）。
-  if (m.kind === "report") {
-    const name = (m.meta?.worker_name as string) || (m.meta?.worker as string) || "成员";
-    const icon = (m.meta?.worker_icon as string) || "✦";
-    return (
-      <div className="rounded-2xl border border-stone-200 bg-white/70 px-3.5 py-3">
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-[13px]">{icon}</span>
-          <span className="truncate text-[12px] font-semibold text-stone-700">{name}</span>
-        </div>
-        <Markdown className="text-[14px] leading-relaxed text-neutral-800">{m.content}</Markdown>
-      </div>
-    );
-  }
-  if (m.kind === "step") {
-    return <div className="px-1 text-[13px] font-medium text-stone-500">{m.content}</div>;
-  }
-  if (m.kind === "error") {
-    return <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">{m.content}</div>;
-  }
-  if (m.meta?.artifact?.type === "preview" && m.meta.artifact.url) {
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-[13px] text-emerald-700">
-        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100">✓</span>
-        <span className="min-w-0 flex-1">{tt("实时预览已就绪，已显示在右侧。")}</span>
-        <a
-          href={m.meta.artifact.url}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 font-medium underline decoration-emerald-300 underline-offset-2"
-        >
-          {tt("新窗口打开")}
-        </a>
-      </div>
-    );
-  }
-  // agent 回答：不带气泡框，黑字直接显示在背景上（操作员 2026-07-03）；最新条流式打字。
-  return (
-    <div className="max-w-full px-1 text-neutral-900">
-      <TypewriterMarkdown content={m.content} active={streaming} />
-    </div>
-  );
-}
-
-function FnAttachmentChip({ att }: { att: AgentAttachment }) {
-  const tt = useUI();
-  const isImage =
-    (att.mime || "").startsWith("image/") ||
-    att.media_type === "image" ||
-    /\.(png|jpe?g|webp|gif)$/i.test((att.url || "").split("?")[0]);
-  if (isImage && att.url) {
-    return (
-      <a href={att.url} target="_blank" rel="noreferrer" className="block">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={att.url}
-          alt={att.name || ""}
-          className="h-16 w-16 rounded-lg border border-stone-200 object-cover"
-        />
-      </a>
-    );
-  }
-  return (
-    <a
-      href={att.url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50"
-    >
-      <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-        <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <span className="max-w-[140px] truncate">{att.name || tt("附件")}</span>
-    </a>
   );
 }

@@ -6,6 +6,7 @@ import {
   buildAgentProgressActions,
   buildAgentRenderItems,
   isAgentProgressMessage,
+  sameAgentMessages,
   takeUnreportedAgentArtifacts,
 } from "../src/lib/agent-progress.ts";
 
@@ -53,6 +54,18 @@ const final = {
   content: "网站已经完成。",
   meta: { done: true },
 };
+
+test("轮询到相同消息时保持 transcript 引用，内容更新时才重绘", () => {
+  const current = [user, analysis];
+  assert.equal(sameAgentMessages(current, structuredClone(current)), true);
+  assert.equal(
+    sameAgentMessages(current, [
+      user,
+      { ...analysis, content: "更新后的详细分析" },
+    ]),
+    false,
+  );
+});
 
 
 test("新旧过程消息都识别为 agent 进度，最终回答不混入", () => {

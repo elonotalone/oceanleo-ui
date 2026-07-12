@@ -611,6 +611,30 @@ export function WorkspaceSessionProvider({
     [mode, touch],
   );
 
+  const adoptSession = useCallback(
+    async (sessionId: string): Promise<AppSession | null> => {
+      const id = sessionId.trim();
+      if (!id) return null;
+      const result = await getAppSession(id);
+      if (
+        !result.ok ||
+        !result.data ||
+        workspaceSessionMismatch(result.data, site, app) ||
+        (mode !== "history" && isArchivedAppSession(result.data))
+      ) {
+        reportFailure(
+          result.status,
+          result.error || "新分支工作会话无法恢复",
+        );
+        return null;
+      }
+      applySession(result.data);
+      setLinkedTaskId(result.data.task_id ?? null);
+      return result.data;
+    },
+    [app, applySession, mode, reportFailure, site],
+  );
+
   const artifactContext = useCallback(
     async (title?: string): Promise<WorkspaceSessionRecordContext | null> => {
       if (isWorkspaceSessionReadOnly(mode, sessionRef.current)) return null;
@@ -718,6 +742,7 @@ export function WorkspaceSessionProvider({
       saveSnapshot,
       touch,
       bindTask,
+      adoptSession,
       artifactContext,
       recordArtifact,
       archive,
@@ -741,6 +766,7 @@ export function WorkspaceSessionProvider({
       saveSnapshot,
       touch,
       bindTask,
+      adoptSession,
       artifactContext,
       recordArtifact,
       archive,

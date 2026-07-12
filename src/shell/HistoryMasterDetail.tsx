@@ -12,7 +12,7 @@
 // master-detail 形态供 doctrine v4 覆盖式子栏使用。
 // ============================================================================
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
@@ -47,6 +47,7 @@ import {
   historySessionHref,
   historySessionIdFromPath,
 } from "./workspace-route";
+import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -109,9 +110,12 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const [items, setItems] = useState<HistoryListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const reloadGenerationRef = useRef(0);
+  const deletingRef = useRef(new Set<string>());
   // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
   // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）才显示首次加载骨架。
   const reload = useCallback((silent = false) => {
+    const generation = ++reloadGenerationRef.current;
     if (!silent) setLoading(true);
     void Promise.all([
       listAppSessions({
@@ -121,6 +125,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }),
       listTasks(100, siteId, pending),
     ]).then(([sessionsResult, tasksResult]) => {
+      if (generation !== reloadGenerationRef.current) return;
       if (!silent) setLoading(false);
       const sessions = sessionsResult.ok
         ? sessionsResult.data?.items || []
@@ -146,18 +151,24 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         sessionApiUnavailable:
           !sessionsResult.ok &&
           isAppSessionApiUnavailableStatus(sessionsResult.status),
-      });
+      }).filter(
+        (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
+      );
       setItems((prev) => (sameHistory(prev, next) ? prev : next));
     });
   }, [siteId, pending, authMessage, tt]);
   useEffect(() => reload(false), [reload]);
-  // 「待处理」需要随任务进展刷新（running → done/未读 / 工作流流到人工）。轻量轮询，
-  // 静默进行——不再每 8s 把列表替成「加载…」再跳回来。
   useEffect(() => {
-    if (!pending) return;
+    const refresh = () => reload(true);
+    window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
+  }, [reload]);
+  // 全部任务静默刷新：active 会话也必须在创建后进入「我的任务」，不能因为当前列表
+  // 还没有 active 项就永远不再请求。sameHistory 保证无变化时不替换数组、不闪烁。
+  useEffect(() => {
     const t = setInterval(() => reload(true), 8000);
     return () => clearInterval(t);
-  }, [pending, reload]);
+  }, [reload]);
   const hasPendingSessionTitle = items.some(
     (item) =>
       item.kind === "session" &&
@@ -174,6 +185,10 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   }, [hasPendingSessionTitle, reload]);
   const remove = useCallback(async (entry: HistoryListEntry) => {
     if (!canDeleteHistoryEntry(entry)) return false;
+    // Invalidate any older list request before applying the optimistic delete.
+    ++reloadGenerationRef.current;
+    const deletionKey = `${entry.kind}:${entry.id}`;
+    deletingRef.current.add(deletionKey);
     const prev = items;
     setItems((list) =>
       list.filter(
@@ -184,9 +199,16 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       entry.kind === "session"
         ? await deleteAppSession(entry.session.id)
         : await deleteTask(entry.task.id);
-    if (!r.ok) setItems(prev);
+    deletingRef.current.delete(deletionKey);
+    if (!r.ok) {
+      setItems(prev);
+      setError(r.error || tt("删除失败，请稍后重试。"));
+      reload(true);
+    } else {
+      setError(null);
+    }
     return r.ok;
-  }, [items]);
+  }, [items, reload, tt]);
   return { items, loading, error, remove, reload };
 }
 
@@ -209,7 +231,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
       setSel(pathSession);
       return;
     }
-    if (!pathname.split("/").filter(Boolean).includes("history")) return;
+    if (!pathname.split("/").filter(Boolean).includes("history")) {
+      setSel(null);
+      return;
+    }
     const taskId =
       typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("task")
@@ -385,7 +410,8 @@ export function HistoryDetail({
   renderWorkspace,
 }: HistoryDetailProps) {
   const tt = useUI();
-  const [selected] = useWorkspaceSelection("history");
+  const [selected, setSelected] = useWorkspaceSelection("history");
+  const router = useRouter();
   const detailPathname = usePathname() || "";
   // 动态路由本身必须足以恢复详情：刷新 `/history/<sessionId>` 时不能依赖侧栏 effect
   // 先把 id 抄进跨树 selection context。
@@ -569,6 +595,15 @@ export function HistoryDetail({
             appNames={appNames}
             libraryTabs={effectiveLibraryTabs}
             renderArtifact={renderArtifact}
+            onTaskCreated={(nextTaskId, nextSessionId) => {
+              const nextSelection = nextSessionId || nextTaskId;
+              setSelected(nextSelection);
+              router.replace(
+                nextSessionId
+                  ? historySessionHref(nextSessionId)
+                  : `/history?task=${encodeURIComponent(nextTaskId)}`,
+              );
+            }}
           />
         ) : (
           <div className="grid h-full place-items-center p-8 text-center text-[13px] text-neutral-400">

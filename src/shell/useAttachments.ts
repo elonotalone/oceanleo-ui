@@ -33,6 +33,8 @@ export interface UseAttachments {
    * 不走 uploadFile，直接进 ready 态。按 id 去重（重复选同一个不叠加）。
    */
   addReady: (att: { id: string; name: string; previewUrl?: string; attachment: AgentAttachment }) => void;
+  /** 请求失败时仅在用户尚未选择新附件的情况下恢复刚提交的附件。 */
+  restoreReady: (items: PendingAttachment[]) => void;
   removeAttachment: (id: string) => void;
   /** 已上传成功、可随消息发送的附件。 */
   ready: () => AgentAttachment[];
@@ -113,6 +115,14 @@ export function useAttachments(
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  const restoreReady = useCallback((items: PendingAttachment[]) => {
+    const readyItems = items.filter(
+      (item) => !item.uploading && Boolean(item.attachment),
+    );
+    if (!readyItems.length) return;
+    setAttachments((current) => (current.length ? current : readyItems));
+  }, []);
+
   const ready = useCallback(
     () =>
       attachments
@@ -135,6 +145,7 @@ export function useAttachments(
     ),
     handleAttachFiles,
     addReady,
+    restoreReady,
     removeAttachment,
     ready,
     uploading: attachments.some((a) => a.uploading),

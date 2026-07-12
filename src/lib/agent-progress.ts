@@ -27,6 +27,28 @@ export interface AgentProgressAction {
   analysis: AgentMessage | null;
 }
 
+/** Keep polling idempotent so an unchanged transcript does not re-render or
+ * retrigger smooth scrolling every 1.5 seconds. Messages may be updated in
+ * place while streaming, so IDs and length alone are not sufficient. */
+export function sameAgentMessages(
+  current: AgentMessage[],
+  incoming: AgentMessage[],
+): boolean {
+  if (current === incoming) return true;
+  if (current.length !== incoming.length) return false;
+  return current.every((message, index) => {
+    const next = incoming[index];
+    return (
+      message.id === next.id &&
+      message.role === next.role &&
+      message.kind === next.kind &&
+      message.content === next.content &&
+      message.created_at === next.created_at &&
+      JSON.stringify(message.meta || null) === JSON.stringify(next.meta || null)
+    );
+  });
+}
+
 
 function progressMetaNumber(message: AgentMessage, key: string): number {
   const value = Number(message.meta?.[key] || 0);

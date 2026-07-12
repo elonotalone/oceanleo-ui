@@ -32,9 +32,11 @@ export interface CloudBrowserEvent {
 
 const base = "/v1/browser";
 
-export function listCloudBrowsers(limit = 50) {
+export function listCloudBrowsers(limit = 50, taskId?: string) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (taskId) query.set("task_id", taskId);
   return authed<{ items: CloudBrowserSession[] }>(
-    `${base}/sessions?limit=${limit}`,
+    `${base}/sessions?${query.toString()}`,
   );
 }
 

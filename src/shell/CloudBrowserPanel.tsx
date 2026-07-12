@@ -20,6 +20,7 @@ import {
   type CloudBrowserSession,
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export function CloudBrowserPanel({
   taskId,
@@ -29,6 +30,8 @@ export function CloudBrowserPanel({
   accent?: string;
 }) {
   const tt = useUI();
+  const workspace = useOptionalWorkspaceSession();
+  const effectiveTaskId = taskId || workspace?.taskId || "";
   const [sessions, setSessions] = useState<CloudBrowserSession[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [events, setEvents] = useState<CloudBrowserEvent[]>([]);
@@ -44,32 +47,65 @@ export function CloudBrowserPanel({
   const [typing, setTyping] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const socketGenerationRef = useRef(0);
+  const selectedIdRef = useRef("");
+  const taskScopeRef = useRef<string | null>(null);
+  const reloadGenerationRef = useRef(0);
 
   const selected = sessions.find((item) => item.id === selectedId) || null;
 
   const reload = useCallback(async () => {
-    const result = await listCloudBrowsers();
-    if (!result.ok) {
-      setError(result.error || tt("云端浏览器加载失败"));
+    const generation = ++reloadGenerationRef.current;
+    const [recentResult, taskResult] = await Promise.all([
+      listCloudBrowsers(),
+      effectiveTaskId
+        ? listCloudBrowsers(1, effectiveTaskId)
+        : Promise.resolve(null),
+    ]);
+    if (generation !== reloadGenerationRef.current) return;
+    if (!recentResult.ok) {
+      setError(recentResult.error || tt("云端浏览器加载失败"));
       return;
     }
-    const items = result.data?.items || [];
+    if (effectiveTaskId && taskResult && !taskResult.ok) {
+      setError(taskResult.error || tt("当前任务的云端浏览器加载失败"));
+    } else {
+      setError("");
+    }
+    const recent = recentResult.data?.items || [];
+    const scoped = taskResult?.ok ? taskResult.data?.items || [] : [];
+    const items = [
+      ...scoped,
+      ...recent.filter(
+        (item) => !scoped.some((scopedItem) => scopedItem.id === item.id),
+      ),
+    ];
+    const scopeChanged = taskScopeRef.current !== effectiveTaskId;
+    taskScopeRef.current = effectiveTaskId;
     setSessions(items);
     setSelectedId((current) => {
-      if (current && items.some((item) => item.id === current)) return current;
-      return (
-        items.find((item) => taskId && item.task_id === taskId)?.id ||
-        items[0]?.id ||
-        ""
+      const taskSession = items.find(
+        (item) => effectiveTaskId && item.task_id === effectiveTaskId,
       );
+      if (scopeChanged && effectiveTaskId) return taskSession?.id || "";
+      if (current && items.some((item) => item.id === current)) return current;
+      if (taskSession) return taskSession.id;
+      return items[0]?.id || "";
     });
-  }, [taskId, tt]);
+  }, [effectiveTaskId, tt]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
     void reload();
+    const timer = window.setInterval(() => void reload(), 5_000);
+    return () => window.clearInterval(timer);
   }, [reload]);
 
   useEffect(() => {
+    ++socketGenerationRef.current;
     setDeleteArmed(false);
     setFrame("");
     setLive(false);
@@ -93,6 +129,32 @@ export function CloudBrowserPanel({
       alive = false;
     };
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || live) return;
+    let alive = true;
+    const refreshEvents = () => {
+      void listCloudBrowserEvents(selectedId).then((result) => {
+        if (!alive || !result.ok) return;
+        const items = result.data?.items || [];
+        setEvents(items);
+        setEventId((current) => {
+          if (
+            current &&
+            items.some((item) => item.id === current && item.has_screenshot)
+          ) {
+            return current;
+          }
+          return [...items].reverse().find((item) => item.has_screenshot)?.id || null;
+        });
+      });
+    };
+    const timer = window.setInterval(refreshEvents, 5_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [selectedId, live]);
 
   useEffect(() => {
     if (!eventId || live) {
@@ -121,22 +183,37 @@ export function CloudBrowserPanel({
 
   async function openLive() {
     if (!selectedId || busy) return;
+    const requestedSessionId = selectedId;
+    const generation = ++socketGenerationRef.current;
     setBusy(true);
     setError("");
-    const ticket = await createCloudBrowserTicket(selectedId);
+    const ticket = await createCloudBrowserTicket(requestedSessionId);
     setBusy(false);
+    if (
+      generation !== socketGenerationRef.current ||
+      selectedIdRef.current !== requestedSessionId
+    ) {
+      return;
+    }
     if (!ticket.ok || !ticket.data) {
       setError(ticket.error || tt("云端浏览器恢复失败"));
       return;
     }
     socketRef.current?.close();
-    const socket = new WebSocket(cloudBrowserLiveUrl(selectedId));
+    const socket = new WebSocket(cloudBrowserLiveUrl(requestedSessionId));
     socketRef.current = socket;
     socket.onopen = () => {
+      if (socketRef.current !== socket || generation !== socketGenerationRef.current) {
+        socket.close();
+        return;
+      }
       socket.send(JSON.stringify({ t: "auth", ticket: ticket.data!.ticket }));
       setLive(true);
     };
     socket.onmessage = (event) => {
+      if (socketRef.current !== socket || generation !== socketGenerationRef.current) {
+        return;
+      }
       try {
         const message = JSON.parse(String(event.data));
         if (message.t === "frame" && message.data) setFrame(message.data);
@@ -150,8 +227,13 @@ export function CloudBrowserPanel({
         /* ignore malformed frames */
       }
     };
-    socket.onerror = () => setError(tt("实时浏览器连接失败"));
+    socket.onerror = () => {
+      if (socketRef.current === socket) setError(tt("实时浏览器连接失败"));
+    };
     socket.onclose = () => {
+      if (socketRef.current !== socket || generation !== socketGenerationRef.current) {
+        return;
+      }
       setLive(false);
       setDriving(false);
       socketRef.current = null;

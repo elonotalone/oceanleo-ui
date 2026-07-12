@@ -16,6 +16,7 @@
 import { accessToken, cachedAccessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
+import { notifyHistoryChanged } from "./history-events";
 
 /** OceanLeo 网关统一返回形状。导出供同一 client 层的其它资源 API 复用。 */
 export type AgentApiResult<T> = {
@@ -220,7 +221,10 @@ export function createTask(body: {
         attachments: body.attachments || [],
       }),
     },
-  );
+  ).then((result) => {
+    if (result.ok) notifyHistoryChanged();
+    return result;
+  });
 }
 
 // --------------------------------------------------------------------------- //
@@ -533,7 +537,10 @@ export function followUp(
       method: "POST",
       body: JSON.stringify({ prompt, attachments: attachments || [] }),
     },
-  );
+  ).then((result) => {
+    if (result.ok) notifyHistoryChanged();
+    return result;
+  });
 }
 
 export function branchTask(
@@ -555,6 +562,9 @@ export function branchTask(
       prompt,
       attachments: attachments || [],
     }),
+  }).then((result) => {
+    if (result.ok) notifyHistoryChanged();
+    return result;
   });
 }
 
@@ -562,7 +572,10 @@ export function stopTask(taskId: string) {
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/stop`,
     { method: "POST" },
-  );
+  ).then((result) => {
+    if (result.ok) notifyHistoryChanged();
+    return result;
+  });
 }
 
 export function getTask(taskId: string) {
@@ -587,7 +600,10 @@ export function deleteTask(taskId: string) {
   return authed<{ task_id: string; deleted: boolean }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}`,
     { method: "DELETE" },
-  );
+  ).then((result) => {
+    if (result.ok) notifyHistoryChanged();
+    return result;
+  });
 }
 
 /** 找出某次会话里最新的「分屏产物」（有 artifact 标记的消息）。 */

@@ -174,3 +174,17 @@ test("HistoryMasterDetail 删除按资源类型守卫，且成功后清理深链
   assert.doesNotMatch(historySource, /deleteTask\(entry\.id\)/);
   assert.match(historySource, /removed && target\.id === sel[\s\S]*?router\.replace\("\/history"\)/);
 });
+
+test("我的任务包含 active 会话并实时接收新任务，离开历史页不保留旧高亮", () => {
+  assert.match(historySource, /includeArchived:\s*true/);
+  assert.match(historySource, /HISTORY_CHANGED_EVENT/);
+  assert.match(historySource, /setInterval\(\(\) => reload\(true\), 8000\)/);
+  assert.doesNotMatch(
+    historySource,
+    /if \(!pending\) return;\s*const t = setInterval/,
+  );
+  assert.match(
+    historySource,
+    /includes\("history"\)\) \{\s*setSel\(null\);\s*return;/,
+  );
+});

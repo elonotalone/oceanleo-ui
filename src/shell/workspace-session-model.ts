@@ -109,6 +109,8 @@ export interface WorkspaceSessionContextValue {
   ) => Promise<WorkspaceSnapshotSaveResult>;
   touch: (title?: string) => Promise<AppSession | null>;
   bindTask: (taskId: string | null, title?: string) => Promise<AppSession | null>;
+  /** 接管后端刚创建的分支 aggregate，并原子切换 task/session 身份。 */
+  adoptSession: (sessionId: string) => Promise<AppSession | null>;
   artifactContext: (
     title?: string,
   ) => Promise<WorkspaceSessionRecordContext | null>;

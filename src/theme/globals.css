@@ -32,11 +32,9 @@
  * `@import "@oceanleo/ui/theme/globals.css"` 后位于其 node_modules 里，故下面的
  * `../**` 精确指向 `node_modules/@oceanleo/ui/src/**`——把本包全部组件源纳入扫描。
  * 显式 `@source` 不受「忽略 node_modules」限制。一处声明、全家桶 30 站同时修复。
- * 注意：`@source` 必须放在所有 `@import`（含下面的字体 @import）之后，否则 CSS
- * 优化器会警告「@import 必须在所有规则之前」。
+ * 注意：共享包不在嵌套 CSS 内远程加载字体；嵌套 `@import` 会被浏览器/优化器忽略，
+ * 也会造成首屏字体切换。统一字体栈在下方 body 规则声明。
  * ========================================================================== */
-
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
 
 @source "../**/*.{ts,tsx,js,jsx,mdx}";
 

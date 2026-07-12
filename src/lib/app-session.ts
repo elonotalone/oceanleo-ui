@@ -10,6 +10,7 @@
 
 import { authed, type AgentApiResult } from "./agent";
 import { appSessionBodySupportsKeepalive } from "./app-session-transport";
+import { notifyHistoryChanged } from "./history-events";
 
 export {
   APP_SESSION_KEEPALIVE_MAX_BYTES,
@@ -176,7 +177,9 @@ export async function ensureAppSession(
     "",
     jsonMutation("POST", payload),
   );
-  return unwrapSession(result);
+  const unwrapped = unwrapSession(result);
+  if (unwrapped.ok) notifyHistoryChanged();
+  return unwrapped;
 }
 
 /** 以 revision 做 compare-and-swap；409 由上层重新读取并显式报告冲突。 */
@@ -220,7 +223,7 @@ export async function archiveAppSession(
     const archived = raw as ArchiveAppSessionResult & {
       session?: AppSession;
     };
-    return {
+    const normalized = {
       ...result,
       data: {
         session_id: id,
@@ -228,15 +231,19 @@ export async function archiveAppSession(
         session: archived.session,
       },
     };
+    notifyHistoryChanged();
+    return normalized;
   }
   const session =
     "session" in raw && raw.session
       ? raw.session
       : (raw as AppSession);
-  return {
+  const normalized = {
     ...result,
     data: { session_id: id, archived: true, session },
   };
+  notifyHistoryChanged();
+  return normalized;
 }
 
 /** 永久删除已保存任务聚合：snapshot、agent thread、产物与草稿引用一并级联删除。 */
@@ -245,8 +252,10 @@ export async function deleteAppSession(
 ): Promise<AgentApiResult<{ deleted: boolean; session_id: string }>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
-  return sessionRequest<{ deleted: boolean; session_id: string }>(
+  const result = await sessionRequest<{ deleted: boolean; session_id: string }>(
     `/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
+  if (result.ok) notifyHistoryChanged();
+  return result;
 }
