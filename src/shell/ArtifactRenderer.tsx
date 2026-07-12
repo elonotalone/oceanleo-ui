@@ -22,7 +22,7 @@
 // 完全接管（如 word 站用自己的编辑器）——本组件只是「没有专用编辑器时的高质量兜底」。
 // ============================================================================
 
-import { useMemo, useState, type ReactNode } from "react";
+import { createElement, useMemo, useState, type ReactNode } from "react";
 import type { ArtifactMeta } from "../lib/agent";
 import { Markdown } from "./Markdown";
 import { useUI } from "../i18n/ui/useUI";
@@ -282,11 +282,18 @@ function ThreeDPane({ url, title, accent }: { url: string; title?: string; accen
   const hasViewer =
     typeof window !== "undefined" && Boolean((window as unknown as { customElements?: CustomElementRegistry }).customElements?.get?.("model-viewer"));
   if (hasViewer) {
-    // model-viewer 已注册（宿主自行引入）→ 用它渲染。
+    // model-viewer 已注册（宿主自行引入）→ 用它渲染。用 createElement 引用这个自定义元素，
+    // 避免 JSX 内联 @ts-expect-error 在「宿主 TS 配置本来就允许未知 intrinsic」时变成
+    // 「unused directive」编译错（threed 站 2026-07-12 build 就栽在这），createElement 对任意
+    // 标签名都合法、无需任何抑制指令。
     return (
       <div className="h-full w-full">
-        {/* @ts-expect-error custom element */}
-        <model-viewer src={url} camera-controls auto-rotate style={{ width: "100%", height: "100%" }} />
+        {createElement("model-viewer", {
+          src: url,
+          "camera-controls": true,
+          "auto-rotate": true,
+          style: { width: "100%", height: "100%" },
+        })}
       </div>
     );
   }
