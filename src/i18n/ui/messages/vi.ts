@@ -6280,5 +6280,7 @@ const vi: Record<string, string> = {
   "正在处理、等待你确认、或已完成待查看的任务会在这里。点开任务即从这里移入「我的任务」。": "Các nhiệm vụ đang chạy, chờ bạn xác nhận hoặc đã xong chờ xem sẽ xuất hiện tại đây. Mở một nhiệm vụ để chuyển vào «Nhiệm vụ của tôi».",
   "全家桶各站保存的工作集中在这里。点开可继续操作，也可删除整项任务。": "Công việc đã lưu từ mọi trang OceanLeo được tập hợp tại đây. Mở nhiệm vụ để tiếp tục hoặc xóa toàn bộ nhiệm vụ.",
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "Xóa dự án «{name}»? Các nhiệm vụ vẫn ở trong «Nhiệm vụ của tôi», nhưng không thể khôi phục cấu hình dự án.",
+  "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Bản xem trước tạm thời: chỉ người có liên kết này mới truy cập được. Liên kết hết hạn khi phiên kết thúc. Sau khi xuất bản, bạn có thể nhận tên miền .oceanleo.app chính thức.",
+  "临时私有预览 · 会话结束后失效": "Bản xem trước riêng tư tạm thời · Hết hạn khi phiên kết thúc",
 };
 export default vi;

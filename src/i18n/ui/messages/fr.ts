@@ -6280,5 +6280,7 @@ const fr: Record<string, string> = {
   "正在处理、等待你确认、或已完成待查看的任务会在这里。点开任务即从这里移入「我的任务」。": "Les tâches en cours, en attente de confirmation ou terminées à consulter apparaissent ici. Ouvrez-en une pour la déplacer dans « Mes tâches ».",
   "全家桶各站保存的工作集中在这里。点开可继续操作，也可删除整项任务。": "Les travaux enregistrés sur tous les sites OceanLeo sont regroupés ici. Ouvrez une tâche pour continuer ou supprimez-la entièrement.",
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "Supprimer le projet « {name} » ? Ses tâches resteront dans « Mes tâches », mais la configuration du projet sera irrécupérable.",
+  "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Aperçu temporaire : seules les personnes disposant de ce lien peuvent y accéder. Il expire à la fin de la session. Après publication, vous pourrez obtenir votre domaine officiel .oceanleo.app.",
+  "临时私有预览 · 会话结束后失效": "Aperçu privé temporaire · Expire à la fin de la session",
 };
 export default fr;

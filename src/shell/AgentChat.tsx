@@ -7,7 +7,7 @@
 //   - 普通对话：单栏聊天流（不分屏）。
 //   - 高级任务（产出地图/画布/小说/PPT/表格/文档等「格式化可编辑结果」）：
 //     一分为二 —— 左栏 = AI 推导（消息流）、右栏 = 结果（可编辑）。
-//   - 该次工作归属于 AppSession；live 用「保存至我的任务」收存后刷新。
+//   - 该次工作归属于 AppSession；live 用「新建任务」收存当前工作后刷新。
 // 真实后端：createTask → 轮询 getTask → 渲染 messages + 取最新 artifact。
 //
 // 与「工作台」的区别：AgentChat 左栏以对话为主；工作台左栏以固定模板操控为主。
@@ -611,7 +611,7 @@ export function AgentChat({
       {agentIdentityLabel}
       {workspace.mode !== "history" && (
         <RestartDraftButton
-          label={tt("保存至我的任务")}
+          label={tt("新建任务")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}

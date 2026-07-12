@@ -60,7 +60,7 @@ export interface FileLibraryProps {
   /** doctrine v4：受控 tab（由侧栏 LibrarySubNav 驱动）。不传则内部自管 + 顶部渲染 tab 条。 */
   tab?: Tab;
   onTabChange?: (tab: Tab) => void;
-  /** doctrine v4：true 时隐藏顶部标题 + tab 条（tab 已上提到侧栏子栏）。 */
+  /** true 时只隐藏大标题；v5 起 tab 条仍必须留在主区顶部。 */
   hideHeader?: boolean;
   /** 操作员 2026-07-01：true 时用 h-full 填满父容器（供 SplitWorkspace 右栏内嵌），
    *  而非默认的 h-[calc(100dvh-1px)] 视口高度（那会在分栏 body 里撑破）。 */
@@ -103,22 +103,20 @@ export function FileLibrary({
       )}
 
       <div className={`flex flex-wrap items-center gap-3 ${hideHeader ? "" : "mt-5"}`}>
-        {!hideHeader && (
-          <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
-                  tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
-                }`}
-              >
-                {tt(t.label)}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              {tt(t.label)}
+            </button>
+          ))}
+        </div>
 
         {/* 站点分区选择器（仅「上传文件 / 作品」可跨站分区） */}
         {(tab === "files" || tab === "works") && (

@@ -18,7 +18,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
+import {
+  ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { IconGift, IconPanel, IconSearch } from "./icons";
@@ -35,14 +41,19 @@ import { usePresenceHeartbeat } from "../lib/presence";
  *    用于「单页操作台」站（侧栏只有一个功能按键，没有真正的站级导航需要）。 */
 export type AppShellLayout = "sidebar" | "topbar";
 
-/** doctrine v4：覆盖式左栏子栏（master-detail）。带 subNav 的 nav item 被点击后，
- *  AppShell 进入「子栏态」——隐藏主导航，渲染「← 返回」+ title + body。主区由路由
- *  页负责（深链不变）。直接深链进入该 item 的路由时也自动进入子栏态。 */
+/** @deprecated v5 不再允许覆盖式子栏；仅为旧消费端类型兼容保留。 */
 export interface ShellSubNav {
   /** 子栏顶部标题（返回键右侧）。 */
   title: ReactNode;
   /** 子栏列表 body。`close` 调用回到主导航态（不改路由）。 */
   render: (close: () => void) => ReactNode;
+}
+
+/** v5：导航项下方原地展开的内容（目前用于「我的任务」列表）。 */
+export interface ShellNavDisclosure {
+  render: () => ReactNode;
+  /** 默认展开；「我的任务」应为 true。 */
+  defaultOpen?: boolean;
 }
 
 export interface ShellNavItem {
@@ -58,8 +69,10 @@ export interface ShellNavItem {
   shortcut?: string;
   /** 自定义高亮判断（覆盖默认 href 匹配）；接收已去掉 locale 前缀的逻辑路由 */
   match?: (pathname: string) => boolean;
-  /** doctrine v4：覆盖式左栏子栏。点击该项 → 侧栏切到该子栏列表（master-detail）。 */
+  /** @deprecated v5 起忽略；请改用 disclosure。 */
   subNav?: ShellSubNav;
+  /** v5：点击导航标题只展开/折叠，内容留在同一主侧栏。 */
+  disclosure?: ShellNavDisclosure;
 }
 
 /** 分组导航（带可选小标题）。传 navGroups 时优先于扁平 nav。 */
@@ -111,6 +124,8 @@ export interface AppShellProps {
   searchPlaceholder?: string;
   /** 侧栏中部「最近列表」插槽（聊天历史 / 最近生成等，各站自填；无则不渲染） */
   recentSlot?: ReactNode;
+  /** 永远固定在滚动区上方的导航项数量。全家桶标准为 3。 */
+  pinnedNavCount?: number;
   /** 账户区点击退出 */
   onSignOut?: () => void;
   /** 左下角账户按钮跳转路由（默认 /account） */
@@ -145,13 +160,19 @@ export interface AppShellProps {
   consoleRouteMatch?: (logicalPathname: string) => boolean;
 }
 
-// doctrine v4：覆盖式子栏的「选中态」需要在侧栏列表与主区详情之间共享。AppShell
-// 同时渲染两者，故在此统一包一层 WorkspaceSelectionProvider，各消费站零接线即可用。
+const AppShellPresence = createContext(false);
+
+// shared layout 可先挂一个持久 AppShell，而旧 page 里的 SiteShell 暂时仍可保留。
+// 内层 AppShell 自动退化为 children，避免双侧栏；外层在路由切换时保持挂载。
 export function AppShell(props: AppShellProps) {
+  const nested = useContext(AppShellPresence);
+  if (nested) return <>{props.children}</>;
   return (
-    <WorkspaceSelectionProvider>
-      <AppShellInner {...props} />
-    </WorkspaceSelectionProvider>
+    <AppShellPresence.Provider value>
+      <WorkspaceSelectionProvider>
+        <AppShellInner {...props} />
+      </WorkspaceSelectionProvider>
+    </AppShellPresence.Provider>
   );
 }
 
@@ -169,6 +190,7 @@ function AppShellInner({
   onSearch,
   searchPlaceholder,
   recentSlot,
+  pinnedNavCount = 3,
   onSignOut,
   accountHref = "/account",
   onAccountClick,
@@ -189,25 +211,40 @@ function AppShellInner({
   const [searchOpen, setSearchOpen] = useState(false);
   const [term, setTerm] = useState("");
 
-  // doctrine v4：覆盖式左栏子栏（master-detail）。把所有带 subNav 的项摊平，按
-  // pathname 找出当前应展开哪个子栏（深链直达也进子栏态）。手动「返回」可临时收回。
-  const flatNav: ShellNavItem[] = navGroups?.length
-    ? navGroups.flatMap((g) => g.items)
-    : nav ?? [];
-  const routeSubNavItem = flatNav.find((it) => it.subNav && isActive(pathname, it));
-  // null = 跟随路由（默认）；false = 用户手动返回主导航；item = 用户手动展开某项。
-  const [subNavOverride, setSubNavOverride] = useState<ShellNavItem | false | null>(null);
-  // 路由变了就重置手动覆盖，回到「跟随路由」。
-  useEffect(() => {
-    setSubNavOverride(null);
-  }, [pathname]);
-  const activeSubItem: ShellNavItem | null =
-    subNavOverride === false
-      ? null
-      : subNavOverride
-        ? subNavOverride
-        : routeSubNavItem || null;
-  const closeSubNav = () => setSubNavOverride(false);
+  const sourceNavGroups: ShellNavGroup[] = navGroups?.length
+    ? navGroups
+    : [{ items: nav ?? [] }];
+  const flatNav = sourceNavGroups.flatMap((group) => group.items);
+  const pinCount = Math.max(0, Math.min(pinnedNavCount, flatNav.length));
+  const pinnedNav = flatNav.slice(0, pinCount);
+  let remainingPinned = pinCount;
+  const scrollNavGroups = sourceNavGroups
+    .map((group) => {
+      const skipped = Math.min(remainingPinned, group.items.length);
+      remainingPinned -= skipped;
+      return { ...group, items: group.items.slice(skipped) };
+    })
+    .filter((group) => group.items.length > 0);
+  // v5：展开状态属于持久 AppShell，本身不跟 pathname 重置。layout 路由切换时
+  // 侧栏 DOM 不卸载，所以任务展开状态与滚动位置都原样保留。
+  const [openDisclosures, setOpenDisclosures] = useState<Record<string, boolean>>({});
+
+  function disclosureKey(item: ShellNavItem, idx: number): string {
+    return item.href || `${item.label}:${idx}`;
+  }
+
+  function disclosureIsOpen(item: ShellNavItem, idx: number): boolean {
+    const key = disclosureKey(item, idx);
+    return openDisclosures[key] ?? item.disclosure?.defaultOpen ?? false;
+  }
+
+  function toggleDisclosure(item: ShellNavItem, idx: number): void {
+    const key = disclosureKey(item, idx);
+    setOpenDisclosures((current) => ({
+      ...current,
+      [key]: !(current[key] ?? item.disclosure?.defaultOpen ?? false),
+    }));
+  }
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(collapseKey) === "1");
@@ -305,6 +342,10 @@ function AppShellInner({
 
   function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
     const active = isActive(pathname, item);
+    const key = disclosureKey(item, idx);
+    const disclosureOpen = item.disclosure
+      ? disclosureIsOpen(item, idx)
+      : false;
     /* 侧栏文字加深（操作员 2026-07-02：旧 text-neutral-600 太浅、观感廉价；
        对照 Manus 侧栏近黑文字）。深色下由 globals.css 全局重映射到 --leo-d-fg。 */
     const cls = `group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
@@ -320,21 +361,43 @@ function AppShellInner({
         </span>
         <span className="flex-1 truncate">{typeof item.label === "string" ? tt(item.label) : item.label}</span>
         {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
+        {item.disclosure && (
+          <svg
+            className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-150 ${
+              disclosureOpen ? "rotate-90" : ""
+            }`}
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden
+          >
+            <path d="m7 4 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </>
     );
-    // doctrine v4：带 subNav 的项点击后，让侧栏进入该子栏态（即便已在同路由）。
-    const onActivate = () => {
-      setMobileOpen(false);
-      if (item.subNav) setSubNavOverride(item);
-    };
-    // 纯动作项（无 href）渲染为 button；有 href 渲染为 Link。
-    if (!item.href || item.onClick) {
-      return (
+    let control: ReactNode;
+    if (item.disclosure) {
+      // 「我的任务」标题只负责原地展开/折叠；具体任务条目负责跳历史详情。
+      control = (
         <button
-          key={item.href ?? item.label ?? idx}
+          type="button"
+          onClick={() => toggleDisclosure(item, idx)}
+          aria-expanded={disclosureOpen}
+          className={cls}
+          style={style}
+        >
+          {inner}
+        </button>
+      );
+    } else if (!item.href || item.onClick) {
+      // 纯动作项（无 href）渲染为 button；有 href 渲染为 Link。
+      control = (
+        <button
           type="button"
           onClick={() => {
-            onActivate();
+            setMobileOpen(false);
             item.onClick?.();
           }}
           className={cls}
@@ -343,17 +406,37 @@ function AppShellInner({
           {inner}
         </button>
       );
+    } else {
+      control = (
+        <Link
+          href={item.href}
+          onClick={() => setMobileOpen(false)}
+          className={cls}
+          style={style}
+        >
+          {inner}
+        </Link>
+      );
     }
     return (
-      <Link
-        key={item.href}
-        href={item.href}
-        onClick={onActivate}
-        className={cls}
-        style={style}
-      >
-        {inner}
-      </Link>
+      <div key={key}>
+        {control}
+        {item.disclosure && (
+          <div
+            className={`grid transition-[grid-template-rows,opacity] duration-150 ${
+              disclosureOpen
+                ? "grid-rows-[1fr] opacity-100"
+                : "pointer-events-none grid-rows-[0fr] opacity-0"
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="ml-3 border-l border-neutral-200 py-1 pl-1">
+                {item.disclosure.render()}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -441,56 +524,36 @@ function AppShellInner({
         </div>
       )}
 
-      {activeSubItem?.subNav ? (
-        /* doctrine v4 覆盖式子栏态：「← 返回」+ 标题 + 该项子栏 body（占满中部，可滚动） */
-        <div className="mt-1 flex min-h-0 flex-1 flex-col px-2">
-          <button
-            type="button"
-            onClick={closeSubNav}
-            className="group/back mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-200/60"
-          >
-            <svg
-              className="h-4 w-4 shrink-0 text-neutral-400 transition-colors group-hover/back:text-neutral-700"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="truncate">
-              {typeof activeSubItem.subNav.title === "string" ? tt(activeSubItem.subNav.title) : activeSubItem.subNav.title}
-            </span>
-          </button>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {activeSubItem.subNav.render(closeSubNav)}
+      {/* v5：只有前三项固定。品牌/搜索在上方、账户区在下方也固定；其余导航与
+          「我的任务」展开列表共用中间唯一滚动区。 */}
+      {pinnedNav.length > 0 && (
+        <nav className="mt-1 shrink-0 px-2" data-oceanleo-pinned-nav>
+          <div className="space-y-0.5">
+            {pinnedNav.map((item, ii) => renderNavItem(item, ii))}
           </div>
-        </div>
-      ) : (
-        /* 主导航态：导航 + 「最近列表」整块占满中部并**可纵向滚动**——导航项很多的站
-           （如 asset 十几项）不会再把底部 token/账户区顶出屏幕外（操作员 2026-07-04
-           截图 asset.oceanleo.com 的病根）。底部账户区固定在下方（mt-auto，滚动区外）。 */
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <nav className="mt-1 px-2">
-            {navGroups?.length ? (
-              navGroups.map((group, gi) => (
-                <div key={group.heading ?? gi} className="mb-1">
-                  {group.heading && (
-                    <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">{group.heading}</div>
-                  )}
-                  <div className="space-y-0.5">
-                    {group.items.map((item, ii) => renderNavItem(item, ii))}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="space-y-0.5">{(nav ?? []).map((item, ii) => renderNavItem(item, ii))}</div>
-            )}
-          </nav>
-
-          {recentSlot && <div className="mt-3 px-2 pb-1">{recentSlot}</div>}
-        </div>
+        </nav>
       )}
+
+      <div className="min-h-0 flex-1 overflow-y-auto" data-oceanleo-scroll-nav>
+        <nav className="px-2 pb-1 pt-1">
+          {scrollNavGroups.map((group, gi) => (
+            <div key={group.heading ?? gi} className="mb-1">
+              {group.heading && (
+                <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
+                  {group.heading}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item, ii) =>
+                  renderNavItem(item, pinCount + gi * 1000 + ii),
+                )}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {recentSlot && <div className="mt-3 px-2 pb-1">{recentSlot}</div>}
+      </div>
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}

@@ -6280,5 +6280,7 @@ const tr: Record<string, string> = {
   "正在处理、等待你确认、或已完成待查看的任务会在这里。点开任务即从这里移入「我的任务」。": "Çalışan, onayını bekleyen veya tamamlanıp incelenmeyi bekleyen görevler burada görünür. Bir görevi açarak «Görevlerim» bölümüne taşı.",
   "全家桶各站保存的工作集中在这里。点开可继续操作，也可删除整项任务。": "Tüm OceanLeo sitelerinde kaydedilen çalışmalar burada toplanır. Devam etmek için görevi açabilir veya görevin tamamını silebilirsin.",
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "«{name}» projesi silinsin mi? Görevleri «Görevlerim» bölümünde kalır, ancak proje yapılandırması geri getirilemez.",
+  "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Geçici önizleme: yalnızca bu bağlantıya sahip kişiler erişebilir. Oturum sona erdiğinde geçerliliğini yitirir. Yayından sonra resmi .oceanleo.app alan adınızı alabilirsiniz.",
+  "临时私有预览 · 会话结束后失效": "Geçici özel önizleme · Oturum bitince geçersiz olur",
 };
 export default tr;

@@ -1,11 +1,12 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — RestartDraftButton：操作台「保存至我的任务」按钮
+// @oceanleo/ui — RestartDraftButton：操作台「新建任务」按钮
 // ----------------------------------------------------------------------------
 // doctrine 2026-07-09。操作台默认自动恢复上次草稿；当用户想丢弃续编、从头开始时点它。
 // 单击即执行：先冲刷最新 snapshot，再归档整份 AppSession，最后 remount 干净 runtime。
-// 2026-07-11：用户名改为「保存至我的任务」；保存后刷新成干净工作台。任务详情原地续编，
+// 2026-07-12：用户可见名改为「新建任务」；hover 仍明确说明会先保存当前工作。
+// 保存后刷新成干净工作台。任务详情原地续编，
 // 不显示本按钮，也绝不再次归档/分叉。
 // ============================================================================
 
@@ -21,7 +22,7 @@ export interface RestartDraftButtonProps {
   onBeforeRestart?: () => boolean | Promise<boolean>;
   /** Host cleanup after the aggregate was archived. */
   onRestart?: () => void | Promise<void>;
-  /** 自定义文案（默认「保存至我的任务」）。 */
+  /** 自定义文案（默认「新建任务」）。 */
   label?: string;
   className?: string;
 }
@@ -101,7 +102,7 @@ export function RestartDraftButton({
           ? tt("已保存到我的任务")
           : feedback === "reset"
             ? tt("已刷新")
-            : label ?? tt("保存至我的任务")}
+            : label ?? tt("新建任务")}
     </button>
   );
 }

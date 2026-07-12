@@ -30,7 +30,7 @@ const sourceKeys = {
   saveInputsAsTemplateHint:
     "把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用",
   saveTemplate: "保存模板",
-  saveToMyTasks: "保存至我的任务",
+  saveToMyTasks: "新建任务",
   switchGroupFailed: "切换模型组合失败",
   chooseSiteWideGroup: "选择全站通用的模型组合",
   modelGroup: "模型组合",
@@ -86,7 +86,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Speichere die aktuellen Eingaben und die Notiz des Bedienfelds als Vorlage, um sie später rechts unter „Vorlagen · Meine“ mit einem Klick wiederzuverwenden",
     saveTemplate: "Vorlage speichern",
-    saveToMyTasks: "Unter „Meine Aufgaben“ speichern",
+    saveToMyTasks: "Neue Aufgabe",
     switchGroupFailed: "Modellgruppe konnte nicht gewechselt werden",
     chooseSiteWideGroup: "Wähle die Modellgruppe aus, die auf allen Websites verwendet wird",
     modelGroup: "Modellgruppe",
@@ -138,7 +138,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Save the current console inputs and note as a template, then reuse it anytime from “Templates · Mine” on the right",
     saveTemplate: "Save template",
-    saveToMyTasks: "Save to My Tasks",
+    saveToMyTasks: "New task",
     switchGroupFailed: "Failed to switch model group",
     chooseSiteWideGroup: "Choose the model group used across all sites",
     modelGroup: "Model group",
@@ -189,7 +189,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Guarda las entradas y la nota actuales del panel de control como plantilla para reutilizarlas más adelante desde «Plantillas · Míos», a la derecha",
     saveTemplate: "Guardar plantilla",
-    saveToMyTasks: "Guardar en Mis tareas",
+    saveToMyTasks: "Nueva tarea",
     switchGroupFailed: "No se ha podido cambiar el grupo de modelos",
     chooseSiteWideGroup: "Elige el grupo de modelos que se usará en todos los sitios",
     modelGroup: "Grupo de modelos",
@@ -242,7 +242,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Guarda las entradas y la nota actuales del panel de control como plantilla para reutilizarlas después desde «Plantillas · Míos», a la derecha, con un solo clic",
     saveTemplate: "Guardar plantilla",
-    saveToMyTasks: "Guardar en Mis tareas",
+    saveToMyTasks: "Nueva tarea",
     switchGroupFailed: "No se pudo cambiar el grupo de modelos",
     chooseSiteWideGroup: "Elige el grupo de modelos que se usará en todos los sitios",
     modelGroup: "Grupo de modelos",
@@ -296,7 +296,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Enregistrez les saisies et la note actuelles de la console comme modèle, puis réutilisez-les en un clic depuis « Modèles · Les miens » à droite",
     saveTemplate: "Enregistrer le modèle",
-    saveToMyTasks: "Enregistrer dans Mes tâches",
+    saveToMyTasks: "Nouvelle tâche",
     switchGroupFailed: "Impossible de changer de groupe de modèles",
     chooseSiteWideGroup: "Choisissez le groupe de modèles utilisé sur tous les sites",
     modelGroup: "Groupe de modèles",
@@ -350,7 +350,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Salva gli input e la nota correnti del pannello di controllo come modello, per riutilizzarli con un clic da «Modelli · Miei» sulla destra",
     saveTemplate: "Salva modello",
-    saveToMyTasks: "Salva nelle mie attività",
+    saveToMyTasks: "Nuova attività",
     switchGroupFailed: "Impossibile cambiare il gruppo di modelli",
     chooseSiteWideGroup: "Scegli il gruppo di modelli da usare su tutti i siti",
     modelGroup: "Gruppo di modelli",
@@ -404,7 +404,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Salve as entradas e a observação atuais do console como modelo para reutilizá-las depois, com um clique, em “Modelos · Meus”, à direita",
     saveTemplate: "Salvar modelo",
-    saveToMyTasks: "Salvar em Minhas tarefas",
+    saveToMyTasks: "Nova tarefa",
     switchGroupFailed: "Não foi possível trocar o grupo de modelos",
     chooseSiteWideGroup: "Escolha o grupo de modelos usado em todos os sites",
     modelGroup: "Grupo de modelos",
@@ -458,7 +458,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Guarde as entradas e a nota atuais da consola como modelo para as reutilizar mais tarde, com um clique, em «Modelos · Meus», à direita",
     saveTemplate: "Guardar modelo",
-    saveToMyTasks: "Guardar nas minhas tarefas",
+    saveToMyTasks: "Nova tarefa",
     switchGroupFailed: "Não foi possível mudar o grupo de modelos",
     chooseSiteWideGroup: "Escolha o grupo de modelos utilizado em todos os sites",
     modelGroup: "Grupo de modelos",
@@ -512,7 +512,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Lưu dữ liệu nhập và ghi chú hiện tại trên bảng điều khiển thành mẫu để sau này dùng lại bằng một lần nhấp trong “Mẫu · Của tôi” ở bên phải",
     saveTemplate: "Lưu mẫu",
-    saveToMyTasks: "Lưu vào Nhiệm vụ của tôi",
+    saveToMyTasks: "Nhiệm vụ mới",
     switchGroupFailed: "Không thể chuyển nhóm mô hình",
     chooseSiteWideGroup: "Chọn nhóm mô hình dùng chung cho tất cả trang web",
     modelGroup: "Nhóm mô hình",
@@ -565,7 +565,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "Konsoldaki mevcut girdileri ve notu şablon olarak kaydedin; daha sonra sağdaki “Şablonlar · Benim” bölümünden tek tıkla yeniden kullanın",
     saveTemplate: "Şablonu kaydet",
-    saveToMyTasks: "Görevlerim’e kaydet",
+    saveToMyTasks: "Yeni görev",
     switchGroupFailed: "Model grubu değiştirilemedi",
     chooseSiteWideGroup: "Tüm sitelerde kullanılacak model grubunu seçin",
     modelGroup: "Model grubu",
@@ -614,7 +614,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用",
     saveTemplate: "保存模板",
-    saveToMyTasks: "保存至我的任务",
+    saveToMyTasks: "新建任务",
     switchGroupFailed: "切换模型组合失败",
     chooseSiteWideGroup: "选择全站通用的模型组合",
     modelGroup: "模型组合",
@@ -664,7 +664,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "將目前操作台的輸入與備註儲存為範本，稍後可在右側「範本 · 我的」一鍵重複使用",
     saveTemplate: "儲存範本",
-    saveToMyTasks: "儲存至我的任務",
+    saveToMyTasks: "新建任務",
     switchGroupFailed: "切換模型組合失敗",
     chooseSiteWideGroup: "選擇全站共用的模型組合",
     modelGroup: "模型組合",
@@ -718,7 +718,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "現在の操作台の入力内容とメモをテンプレートとして保存し、後で右側の「テンプレート · マイ」からワンクリックで再利用できます",
     saveTemplate: "テンプレートを保存",
-    saveToMyTasks: "マイタスクに保存",
+    saveToMyTasks: "新しいタスク",
     switchGroupFailed: "モデルグループを切り替えられませんでした",
     chooseSiteWideGroup: "全サイトで共通して使用するモデルグループを選択",
     modelGroup: "モデルグループ",
@@ -771,7 +771,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "현재 조작대의 입력 내용과 메모를 템플릿으로 저장하고 나중에 오른쪽의 ‘템플릿 · 내 항목’에서 클릭 한 번으로 다시 사용하세요",
     saveTemplate: "템플릿 저장",
-    saveToMyTasks: "내 작업에 저장",
+    saveToMyTasks: "새 작업",
     switchGroupFailed: "모델 그룹을 전환하지 못했습니다",
     chooseSiteWideGroup: "전체 사이트에서 공통으로 사용할 모델 그룹 선택",
     modelGroup: "모델 그룹",
@@ -823,7 +823,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "احفظ مدخلات لوحة التحكم الحالية والملاحظة كقالب لإعادة استخدامها لاحقًا بنقرة واحدة من «القوالب · الخاصة بي» على اليمين",
     saveTemplate: "حفظ القالب",
-    saveToMyTasks: "حفظ في مهامي",
+    saveToMyTasks: "مهمة جديدة",
     switchGroupFailed: "تعذّر تبديل مجموعة النماذج",
     chooseSiteWideGroup: "اختر مجموعة النماذج المستخدمة في جميع المواقع",
     modelGroup: "مجموعة النماذج",
@@ -876,7 +876,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "บันทึกข้อมูลที่กรอกและหมายเหตุปัจจุบันในคอนโซลควบคุมเป็นเทมเพลต เพื่อใช้ซ้ำภายหลังได้ในคลิกเดียวจาก “เทมเพลต · ของฉัน” ทางด้านขวา",
     saveTemplate: "บันทึกเทมเพลต",
-    saveToMyTasks: "บันทึกไปยังงานของฉัน",
+    saveToMyTasks: "งานใหม่",
     switchGroupFailed: "สลับกลุ่มโมเดลไม่สำเร็จ",
     chooseSiteWideGroup: "เลือกกลุ่มโมเดลที่ใช้ร่วมกันทุกเว็บไซต์",
     modelGroup: "กลุ่มโมเดล",
@@ -930,7 +930,7 @@ const translations = {
     saveInputsAsTemplateHint:
       "कंसोल के मौजूदा इनपुट और टिप्पणी को टेम्पलेट के रूप में सहेजें, फिर दाईं ओर “टेम्पलेट · मेरे” से उसे एक क्लिक में दोबारा इस्तेमाल करें",
     saveTemplate: "टेम्पलेट सहेजें",
-    saveToMyTasks: "मेरे कार्य में सहेजें",
+    saveToMyTasks: "नया कार्य",
     switchGroupFailed: "मॉडल समूह बदला नहीं जा सका",
     chooseSiteWideGroup: "सभी साइटों पर इस्तेमाल होने वाला मॉडल समूह चुनें",
     modelGroup: "मॉडल समूह",

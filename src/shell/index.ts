@@ -7,6 +7,7 @@ export type {
   AppShellLayout,
   ShellNavItem,
   ShellNavGroup,
+  ShellNavDisclosure,
   ShellSubNav,
 } from "./AppShell";
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
@@ -35,15 +36,19 @@ export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 // doctrine v7：工作台 master-detail（主区自带 网站/app/skill 目录 + 内嵌 + 返回）。
 export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
 export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
-// doctrine v4：历史记录 master-detail（侧栏列表+删除 / 主区回看）。
+// v5：历史记录列表在主侧栏内联展开（可删除），主区负责回看。
 // 「待处理」（PendingSubNav / PendingDetail）已于 2026-07-01 下线，全部会话进历史记录。
-export { HistorySubNav, HistoryDetail } from "./HistoryMasterDetail";
+export {
+  HistoryInlineList,
+  HistorySubNav,
+  HistoryDetail,
+} from "./HistoryMasterDetail";
 export type {
   HistoryDetailProps,
   HistoryWorkspaceRenderer,
   RestorableAppSession,
 } from "./HistoryMasterDetail";
-// doctrine v4：文件库 master-detail（侧栏四分区 / 主区受控 FileLibrary）。
+// LibrarySubNav 仅兼容旧调用；v5 分类统一在右侧页面顶部。
 export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 // doctrine v8：Playground（右侧主区：app/agent/organization/workflow 四分区 + 目录 +
 // 内嵌 + 返回）。organization/workflow 画布由消费端经 renderBoard 注入。

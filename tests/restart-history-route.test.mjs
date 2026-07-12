@@ -11,13 +11,13 @@ const providerSource = await readFile(
   "utf8",
 );
 
-test("我的任务详情不渲染保存至我的任务，也不做历史路由跳转", () => {
+test("我的任务详情不渲染新建任务，也不做历史路由跳转", () => {
   assert.match(source, /if \(workspace\?\.mode === "history"\) return null/);
   assert.doesNotMatch(source, /useRouter|useSearchParams|workspaceAppHref/);
   assert.doesNotMatch(source, /router\.replace/);
 });
 
-test("保存至我的任务单击保存且反馈进入我的任务", () => {
+test("新建任务单击保存且反馈进入我的任务", () => {
   assert.doesNotMatch(source, /arming|tt\("确认清空？"\)/);
   assert.match(source, /if \(inFlightRef\.current\) return/);
   assert.match(source, /inFlightRef\.current = true/);
@@ -30,7 +30,7 @@ test("保存至我的任务单击保存且反馈进入我的任务", () => {
   assert.match(providerSource, /return "archived"/);
   assert.match(source, /tt\("已保存到我的任务"\)/);
   assert.match(source, /tt\("将当前工作保存到我的任务，并打开一个干净工作台"\)/);
-  assert.match(source, /label \?\? tt\("保存至我的任务"\)/);
+  assert.match(source, /label \?\? tt\("新建任务"\)/);
 });
 
 test("我的任务命令层拒绝再次归档或影响 live cache", () => {

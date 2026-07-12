@@ -77,7 +77,7 @@ test("降级路径没有生成本地 session UUID", () => {
   assert.doesNotMatch(providerSource, /randomUUID|crypto\.randomUUID|uuidv4/);
 });
 
-test("保存至我的任务只在任务保存成功后 remount 干净 runtime", () => {
+test("新建任务只在任务保存成功后 remount 干净 runtime", () => {
   assert.match(
     providerSource,
     /const result = await archive\(\);[\s\S]*?if \(result\)[\s\S]*?setRuntimeEpoch/,
@@ -125,7 +125,7 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
   );
   assert.match(
     agentChatSource,
-    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("保存至我的任务"\)\}/,
+    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建任务"\)\}/,
   );
   assert.doesNotMatch(agentChatSource, /saveSnapshot\([\s\S]*?messages/);
 });

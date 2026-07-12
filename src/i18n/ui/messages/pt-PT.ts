@@ -6280,5 +6280,7 @@ const ptPT: Record<string, string> = {
   "正在处理、等待你确认、或已完成待查看的任务会在这里。点开任务即从这里移入「我的任务」。": "As tarefas em curso, à espera da tua confirmação ou concluídas para revisão aparecem aqui. Abre uma para a mover para «As minhas tarefas».",
   "全家桶各站保存的工作集中在这里。点开可继续操作，也可删除整项任务。": "O trabalho guardado em todos os sites OceanLeo fica reunido aqui. Abre uma tarefa para continuar ou elimina-a por completo.",
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "Eliminar o projeto «{name}»? As tarefas permanecerão em «As minhas tarefas», mas a configuração do projeto não poderá ser recuperada.",
+  "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Pré-visualização temporária: apenas quem tiver esta ligação pode aceder. Expira no fim da sessão. Após publicar, poderá obter o seu domínio oficial .oceanleo.app.",
+  "临时私有预览 · 会话结束后失效": "Pré-visualização privada temporária · Expira no fim da sessão",
 };
 export default ptPT;

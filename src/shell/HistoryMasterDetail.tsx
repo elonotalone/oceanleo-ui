@@ -192,7 +192,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
 }
 
 // ----------------------------------------------------------------------------
-// 侧栏子栏：我的任务列表（可删除）
+// 主侧栏内联区：我的任务列表（可删除）。v5 起不再覆盖主导航。
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
@@ -340,6 +340,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     </div>
   );
 }
+
+/** v5 语义名；HistorySubNav 保留为向后兼容别名。 */
+export const HistoryInlineList = HistorySubNav;
 
 // ----------------------------------------------------------------------------
 // 主区详情：完整 session → 站点真实 workspace runtime；旧 task → 明确降级 AgentChat

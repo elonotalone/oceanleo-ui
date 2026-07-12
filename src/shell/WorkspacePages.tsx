@@ -18,7 +18,11 @@
 
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import type { ShellNavItem, ShellSubNav } from "./AppShell";
+import type {
+  ShellNavDisclosure,
+  ShellNavItem,
+  ShellSubNav,
+} from "./AppShell";
 import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles, IconExplore } from "./icons";
 
 export type WorkspacePage = "home" | "explore" | "workspace" | "library" | "history" | "playground";
@@ -34,12 +38,17 @@ export interface WorkspaceNavOptions {
   withExplore?: boolean;
   /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
   withPlayground?: boolean;
-  /** doctrine v4：为某些页提供覆盖式左栏子栏（master-detail）。 */
+  /** v5：导航项下方原地展开的内容；标准用法是 history → 任务列表。 */
+  disclosures?: Partial<Record<WorkspacePage, ShellNavDisclosure>>;
+  /**
+   * @deprecated v5 删除覆盖式子栏。仅把旧 `history` 配置兼容转换为内联展开；
+   * `library` 等其他配置会被忽略。
+   */
   subNav?: Partial<Record<WorkspacePage, ShellSubNav>>;
 }
 
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
-  home: "首页",
+  home: "新建任务",
   explore: "探索",
   workspace: "工作台",
   library: "文件库",
@@ -113,13 +122,25 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
     "history",
     ...(opts.withPlayground ? (["playground"] as WorkspacePage[]) : []),
   ];
-  return pages.map((p) => ({
-    label: labels[p],
-    href: `${base}${HREF[p]}`,
-    icon: ICON[p],
-    exact: p === "home",
-    subNav: opts.subNav?.[p],
-  }));
+  return pages.map((p) => {
+    const legacyHistory =
+      p === "history" ? opts.subNav?.history : undefined;
+    const disclosure =
+      opts.disclosures?.[p] ??
+      (legacyHistory
+        ? {
+            defaultOpen: true,
+            render: () => legacyHistory.render(() => undefined),
+          }
+        : undefined);
+    return {
+      label: labels[p],
+      href: `${base}${HREF[p]}`,
+      icon: ICON[p],
+      exact: p === "home",
+      disclosure,
+    };
+  });
 }
 
 /** 从路径解析当前是哪一页（消费端可用来在单页模式下切换内容）。 */

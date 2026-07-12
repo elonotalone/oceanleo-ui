@@ -4,15 +4,15 @@
 // @oceanleo/ui — 统一文件库 ArtifactLibrary（单一事实源，2026-07-02）
 // ----------------------------------------------------------------------------
 // 操作员拍板：27 个功能子站的「文件库」必须与主站 oceanleo.com/library **完完全全
-// 一样**——同一套侧栏分区（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 / 3D / 我的
-// 收藏，音频与 3D 为本次新增）、同一套主区（搜索 + 网格/列表视图 + 预览弹窗 +
+// 一样**——同一套页面顶部横排分区（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 /
+// 3D / 我的收藏）、同一套主区（搜索 + 网格/列表视图 + 预览弹窗 +
 // 收藏）。数据 = `agent_artifacts` 表（全系列共用一个 Supabase 项目 + 跨站登录
 // cookie + RLS owner-only），天然「全 OceanLeo 打通」：任何站产出的作品在所有站
 // 的文件库可见。
 //
 // 本组件从主站 app/library/page.tsx 移植（去 sonner / react-markdown / 主站专有
-// icon 依赖），主站与全部子站统一改用它。侧栏分区渲染在 LibrarySubNav（doctrine
-// v4 master-detail），主区 = 本组件（受控 filter）。
+// icon 依赖），主站与全部子站统一改用它。v5 起分类始终由本组件在主区顶部渲染，
+// 不再上提到侧栏。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -144,7 +144,7 @@ function LazyImage({ src, alt, className }: { src?: string; alt: string; classNa
 }
 
 export interface ArtifactLibraryProps {
-  /** 受控筛选分区（由侧栏 LibrarySubNav 驱动）。不传则内部自管 + 顶部渲染筛选 chips。 */
+  /** 可选受控筛选分区；无论是否受控，顶部都会渲染筛选 chips。 */
   filter?: ArtifactFilter;
   onFilterChange?: (f: ArtifactFilter) => void;
   accent?: string;
@@ -429,16 +429,14 @@ export function ArtifactLibrary({
         />
       )}
 
-      {/* 非受控（无侧栏子栏的整页/内嵌 fill 形态）：顶部渲染分区 chips（与导航/素材库共用）。 */}
-      {controlledFilter === undefined && (
-        <LibraryChips
-          chips={ARTIFACT_FILTERS}
-          active={filter}
-          onChange={(id) => setFilter(id as ArtifactFilter)}
-          accent={accent}
-          tt={tt}
-        />
-      )}
+      {/* v5：文件类型永远在右侧页面顶部横排；不得再移到任何侧栏。 */}
+      <LibraryChips
+        chips={ARTIFACT_FILTERS}
+        active={filter}
+        onChange={(id) => setFilter(id as ArtifactFilter)}
+        accent={accent}
+        tt={tt}
+      />
 
       {authMsg ? (
         <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
