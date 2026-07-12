@@ -19,11 +19,13 @@ import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
 import { ArtifactLibrary } from "./ArtifactLibrary";
+import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
 import {
   createTask,
+  branchTask,
   followUp,
   getTask,
   stopTask,
@@ -168,6 +170,11 @@ export interface AgentChatProps {
   onBack?: () => void;
   /** 返回按钮文案，默认「返回」。 */
   backLabel?: string;
+  /** 工作流人工确认门；主站任务页传入 resumeWorkflow。 */
+  onGate?: (
+    decision: "approve" | "reject",
+    feedback: string,
+  ) => Promise<void> | void;
   /**
    * 宗旨 v19（操作员 2026-07-08）：把右栏（库）升级为全家桶统一的【多标签库】——
    * 导航 / 生成结果 / 素材库 / 文件库，与其它站的 app 右栏 UI 完全一致。给了它 →
@@ -186,6 +193,8 @@ export interface AgentLibraryTabs {
   materials?: MaterialItem[];
   /** 是否出「文件库」标签（ArtifactLibrary，跨站）。默认 true。 */
   showFiles?: boolean;
+  /** 是否出持久化「云端浏览器」标签。 */
+  showBrowser?: boolean;
   /** 「生成结果」标签名，默认「生成结果」。 */
   resultLabel?: string;
 }
@@ -213,6 +222,7 @@ export function AgentChat({
   emptyHint,
   onBack,
   backLabel,
+  onGate,
   libraryTabs,
   mentionMembers,
   renderOrgPanel,
@@ -237,10 +247,12 @@ export function AgentChat({
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
   );
+  const [branchedTaskId, setBranchedTaskId] = useState<string | null>(null);
   const taskId =
-    explicitTaskId !== undefined
+    branchedTaskId ||
+    (explicitTaskId !== undefined
       ? explicitTaskId
-      : workspace?.taskId || localTaskId;
+      : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<string>("");
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
@@ -248,12 +260,20 @@ export function AgentChat({
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
   const [taskTitle, setTaskTitle] = useState<string>("");
   const [input, setInput] = useState("");
+  const [gateBusy, setGateBusy] = useState(false);
+  const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const loadedTaskRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
+
+  useEffect(() => {
+    setBranchedTaskId(null);
+  }, [explicitTaskId]);
 
   const handleVoiceTranscript = useCallback((text: string) => {
     setInput((v) => (v ? v + " " : "") + text);
@@ -322,7 +342,7 @@ export function AgentChat({
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
       if (readOnly) {
-        setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
+        setError(tt("当前会话为只读状态。"));
         return;
       }
       setBusy(true);
@@ -376,6 +396,7 @@ export function AgentChat({
       const createdTaskId = result.data.task_id;
       loadedTaskRef.current = createdTaskId;
       setLocalTaskId(createdTaskId);
+      setBranchedTaskId(createdTaskId);
       setStatus("running");
       if (workspace) {
         await workspace.bindTask(createdTaskId, prompt);
@@ -404,7 +425,7 @@ export function AgentChat({
       uploaded?: AgentAttachment[],
     ) => {
       if (readOnly) {
-        setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
+        setError(tt("当前会话为只读状态。"));
         return;
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
@@ -475,7 +496,7 @@ export function AgentChat({
     const uploaded = atts.ready();
     if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
     if (readOnly) {
-      setError(tt("这条旧任务缺少完整工作台快照，仅供查看。"));
+      setError(tt("当前会话为只读状态。"));
       return;
     }
     setInput("");
@@ -486,6 +507,37 @@ export function AgentChat({
       return;
     }
     setBusy(true);
+    if (branchFromMessageId) {
+      const result = await branchTask(
+        taskId,
+        branchFromMessageId,
+        effectivePrompt,
+        uploaded,
+      );
+      setBusy(false);
+      if (!result.ok || !result.data) {
+        setError(result.error || tt("创建分支失败"));
+        return;
+      }
+      const createdTaskId = result.data.task_id;
+      setBranchFromMessageId(null);
+      loadedTaskRef.current = createdTaskId;
+      setLocalTaskId(createdTaskId);
+      setBranchedTaskId(createdTaskId);
+      setMessages([
+        {
+          id: Date.now(),
+          role: "user",
+          kind: "text",
+          content: effectivePrompt,
+          meta: uploaded.length ? { attachments: uploaded } : undefined,
+        },
+      ]);
+      setStatus("running");
+      onTaskCreated?.(createdTaskId);
+      void refresh(createdTaskId);
+      return;
+    }
     setMessages((m) => [
       ...m,
       { id: Date.now(), role: "user", kind: "text", content: effectivePrompt,
@@ -554,6 +606,29 @@ export function AgentChat({
   const running = status === "running" || busy;
   const renderItems = buildAgentRenderItems(messages);
   const activeProgressKey = activeAgentProgressKey(renderItems, messages);
+  const activeGateId =
+    status === "waiting_user"
+      ? [...messages].reverse().find((message) => message.kind === "gate")?.id
+      : undefined;
+
+  const handleGate = useCallback(
+    async (decision: "approve" | "reject", feedback: string) => {
+      if (!onGate || gateBusy) return;
+      setGateBusy(true);
+      setError(null);
+      try {
+        await onGate(decision, feedback);
+        if (taskId) await refresh(taskId);
+      } catch (gateError) {
+        setError(
+          gateError instanceof Error ? gateError.message : tt("操作失败"),
+        );
+      } finally {
+        setGateBusy(false);
+      }
+    },
+    [gateBusy, onGate, refresh, taskId, tt],
+  );
 
   // 生成结果(artifact)到达 → 自动打开右版面（「点素材查看」路径）。
   const artSig = art ? `${art.meta.type}:${art.meta.url || ""}:${art.content.slice(0, 32)}` : "";
@@ -564,6 +639,22 @@ export function AgentChat({
       setRightOpen(true);
     }
   }, [art, artSig]);
+
+  useEffect(() => {
+    if (!libraryTabs?.showBrowser) return;
+    const takeover = [...messages].reverse().find(
+      (message) =>
+        message.role !== "user" &&
+        message.content.includes("接管") &&
+        (message.content.includes("浏览器") ||
+          message.content.includes("登录") ||
+          message.content.includes("验证码") ||
+          message.content.includes("支付")),
+    );
+    if (!takeover) return;
+    setRightOpen(true);
+    setLibTab("browser");
+  }, [libraryTabs?.showBrowser, messages]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
@@ -699,6 +790,20 @@ export function AgentChat({
                 key={item.key}
                 m={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                onBranch={
+                  !running &&
+                  !readOnly &&
+                  item.message.role === "user" &&
+                  item.message.id > 0
+                    ? () => {
+                        setBranchFromMessageId(item.message.id);
+                        setInput(item.message.content);
+                      }
+                    : undefined
+                }
+                gateActive={item.message.id === activeGateId}
+                gateBusy={gateBusy}
+                onGate={onGate ? handleGate : undefined}
               />
             ),
           )}
@@ -739,10 +844,22 @@ export function AgentChat({
             与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。 */}
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {composerHeader}
+          {branchFromMessageId && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
+              <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
+              <button
+                type="button"
+                onClick={() => setBranchFromMessageId(null)}
+                className="shrink-0 font-medium underline underline-offset-2"
+              >
+                {tt("取消")}
+              </button>
+            </div>
+          )}
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={send}
+            onSubmit={() => void send()}
             loading={running}
             onStop={() => void stop()}
             disabled={readOnly}
@@ -812,6 +929,13 @@ export function AgentChat({
         if (libraryTabs.showFiles !== false) {
           tabs.push({ id: "files", label: "文件库", content: <ArtifactLibrary accent={accent} fill /> });
         }
+        if (libraryTabs.showBrowser) {
+          tabs.push({
+            id: "browser",
+            label: "云端浏览器",
+            content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
+          });
+        }
         return <ResultCanvas tabs={tabs} active={libTab} onChange={setLibTab} accent={accent} />;
       })()
     : resultPane;
@@ -851,13 +975,27 @@ export function AgentChat({
   );
 }
 
-function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: boolean }) {
+function MessageBubble({
+  m,
+  streaming = false,
+  onBranch,
+  gateActive = false,
+  gateBusy = false,
+  onGate,
+}: {
+  m: AgentMessage;
+  streaming?: boolean;
+  onBranch?: () => void;
+  gateActive?: boolean;
+  gateBusy?: boolean;
+  onGate?: (decision: "approve" | "reject", feedback: string) => void;
+}) {
   const tt = useUI();
   const ARTIFACT_LABEL = artifactLabels(tt);
   if (m.role === "user") {
     const atts = m.meta?.attachments || [];
     return (
-      <div className="flex flex-col items-end gap-1.5">
+      <div className="group flex flex-col items-end gap-1.5">
         {atts.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
             {atts.map((a, i) => (
@@ -871,10 +1009,29 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
             {m.content}
           </div>
         )}
+        {onBranch && (
+          <button
+            type="button"
+            onClick={onBranch}
+            className="px-1 text-[11px] text-stone-300 opacity-0 transition hover:text-stone-600 group-hover:opacity-100 focus:opacity-100"
+          >
+            {tt("从这里重新开始")}
+          </button>
+        )}
       </div>
     );
   }
   // assistant
+  if (m.kind === "gate") {
+    return (
+      <GateBubble
+        message={m}
+        active={gateActive}
+        busy={gateBusy}
+        onGate={onGate}
+      />
+    );
+  }
   if (m.kind === "plan") {
     return (
       <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3">
@@ -925,6 +1082,64 @@ function MessageBubble({ m, streaming = false }: { m: AgentMessage; streaming?: 
   return (
     <div className="max-w-full px-1 text-neutral-900">
       <TypewriterMarkdown content={m.content} active={streaming} />
+    </div>
+  );
+}
+
+function GateBubble({
+  message,
+  active,
+  busy,
+  onGate,
+}: {
+  message: AgentMessage;
+  active: boolean;
+  busy: boolean;
+  onGate?: (decision: "approve" | "reject", feedback: string) => void;
+}) {
+  const tt = useUI();
+  const [feedback, setFeedback] = useState("");
+  const prompt =
+    (message.meta?.gate_prompt as string) ||
+    message.content ||
+    tt("请确认后继续。");
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3">
+      <p className="text-[12px] font-semibold text-amber-800">
+        {active ? tt("需要你确认") : tt("已处理的确认")}
+      </p>
+      <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
+        {prompt}
+      </p>
+      {active && onGate && (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+            rows={2}
+            placeholder={tt("如需调整，可在确认前补充说明")}
+            className="w-full resize-y rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-amber-400"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onGate("approve", feedback.trim())}
+              className="rounded-lg bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? tt("处理中…") : tt("确认继续")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onGate("reject", feedback.trim())}
+              className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-medium text-amber-700 disabled:opacity-50"
+            >
+              {tt("到此停止")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

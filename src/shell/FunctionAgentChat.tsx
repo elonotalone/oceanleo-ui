@@ -42,6 +42,7 @@ import { type WorkflowDraft } from "../lib/workflows";
 import { useAttachments } from "./useAttachments";
 import {
   createTask,
+  branchTask,
   followUp,
   getTask,
   stopTask,
@@ -257,6 +258,9 @@ export function FunctionAgentChat({
   const [messagesTaskId, setMessagesTaskId] = useState("");
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
+  const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -838,6 +842,42 @@ export function FunctionAgentChat({
       operatorRemark,
     );
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
+    if (taskId && branchFromMessageId) {
+      setBusy(true);
+      const result = await branchTask(
+        taskId,
+        branchFromMessageId,
+        effectivePrompt,
+        uploaded,
+      );
+      setBusy(false);
+      if (!result.ok || !result.data) {
+        setError(result.error || tt("创建分支失败"));
+        return;
+      }
+      setBranchFromMessageId(null);
+      const nextTaskId = result.data.task_id;
+      setLocalTaskId(nextTaskId);
+      onTaskIdChange?.(nextTaskId);
+      setMessages([
+        {
+          id: Date.now(),
+          role: "user",
+          kind: "text",
+          content: effectivePrompt,
+          meta,
+        },
+      ]);
+      setStatus("running");
+      if (result.data.session_id && typeof window !== "undefined") {
+        window.location.assign(
+          `/history/${encodeURIComponent(result.data.session_id)}`,
+        );
+        return;
+      }
+      void refresh(nextTaskId);
+      return;
+    }
     setMessages((m) => [
       ...m,
       { id: Date.now(), role: "user", kind: "text", content: effectivePrompt, meta },
@@ -1037,6 +1077,17 @@ export function FunctionAgentChat({
                 m={item.message}
                 accent={accent}
                 streaming={running && item.index === lastAssistantIdx}
+                onBranch={
+                  !running &&
+                  !sessionReadOnly &&
+                  item.message.role === "user" &&
+                  item.message.id > 0
+                    ? () => {
+                        setBranchFromMessageId(item.message.id);
+                        setInput(item.message.content);
+                      }
+                    : undefined
+                }
               />
             ),
           )}
@@ -1073,10 +1124,22 @@ export function FunctionAgentChat({
       </div>
       <div className="shrink-0 pt-3">
         <div className="mx-auto w-full max-w-2xl space-y-2">
+          {branchFromMessageId && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
+              <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
+              <button
+                type="button"
+                onClick={() => setBranchFromMessageId(null)}
+                className="shrink-0 font-medium underline underline-offset-2"
+              >
+                {tt("取消")}
+              </button>
+            </div>
+          )}
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={send}
+            onSubmit={() => void send()}
             loading={running}
             onStop={() => void stop()}
             disabled={sessionReadOnly}
@@ -1095,13 +1158,23 @@ export function FunctionAgentChat({
   );
 }
 
-function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: string; streaming?: boolean }) {
+function Bubble({
+  m,
+  accent,
+  streaming = false,
+  onBranch,
+}: {
+  m: AgentMessage;
+  accent: string;
+  streaming?: boolean;
+  onBranch?: () => void;
+}) {
   void accent;
   const tt = useUI();
   if (m.role === "user") {
     const attList = m.meta?.attachments || [];
     return (
-      <div className="flex flex-col items-end gap-1.5">
+      <div className="group flex flex-col items-end gap-1.5">
         {attList.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
             {attList.map((a, i) => (
@@ -1114,6 +1187,15 @@ function Bubble({ m, accent, streaming = false }: { m: AgentMessage; accent: str
           <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
             {m.content}
           </div>
+        )}
+        {onBranch && (
+          <button
+            type="button"
+            onClick={onBranch}
+            className="px-1 text-[11px] text-stone-300 opacity-0 transition hover:text-stone-600 group-hover:opacity-100 focus:opacity-100"
+          >
+            {tt("从这里重新开始")}
+          </button>
         )}
       </div>
     );

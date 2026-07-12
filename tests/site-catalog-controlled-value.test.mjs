@@ -100,12 +100,12 @@ test("退出或切换 app 前先冲刷当前 snapshot，失败时留在原页", 
   );
 });
 
-test("旧 task 深链明确降级回放，不伪造成当前操作台", () => {
+test("旧 task 深链直接回到原对话并允许分支续聊", () => {
   assert.match(
     source,
     /isAppSessionApiUnavailableStatus\(result\.status\)[\s\S]*?getTask\(historySessionId\)/,
   );
-  assert.match(source, /旧记录信息不完整，无法恢复当时操作台/);
-  assert.match(source, /不会用当前草稿或默认值伪装历史/);
-  assert.match(source, /taskId=\{taskId\}[\s\S]*?\breadOnly\b/);
+  assert.doesNotMatch(source, /旧记录信息不完整/);
+  assert.match(source, /taskId=\{taskId\}/);
+  assert.doesNotMatch(source, /taskId=\{taskId\}[\s\S]{0,100}\breadOnly\b/);
 });

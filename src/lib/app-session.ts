@@ -41,6 +41,8 @@ export interface AppSession {
   updated_at?: string;
   last_activity_at: string;
   archived_at?: string | null;
+  parent_session_id?: string | null;
+  branch_from_message_id?: number | null;
 }
 
 export interface ListAppSessionsOptions {

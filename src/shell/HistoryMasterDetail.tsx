@@ -117,7 +117,6 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       listAppSessions({
         limit: 100,
         siteId,
-        status: "archived",
         includeArchived: true,
       }),
       listTasks(100, siteId, pending),
@@ -377,25 +376,6 @@ type LoadedHistoryDetail =
   | { kind: "session"; session: AppSession; fallbackTask?: TaskDetail }
   | { kind: "task"; detail: TaskDetail };
 
-function legacyTaskCompleteness(detail: TaskDetail): {
-  hasAppId: boolean;
-  hasSnapshot: boolean;
-} {
-  const firstUser = detail.messages.find((message) => message.role === "user");
-  const meta = firstUser?.meta;
-  const hasAppId = Boolean(
-    detail.task.app_id ||
-      (typeof meta?.app_id === "string" && meta.app_id),
-  );
-  const snapshot = meta?.snapshot ?? meta?.ops_state;
-  const hasSnapshot =
-    snapshot !== undefined &&
-    snapshot !== null &&
-    typeof snapshot === "object" &&
-    !Array.isArray(snapshot);
-  return { hasAppId, hasSnapshot };
-}
-
 export function HistoryDetail({
   siteId = "",
   accent = "#0ea5e9",
@@ -495,7 +475,8 @@ export function HistoryDetail({
   // 仅用于 legacy task / 不完整 session 的明确降级。完整 session 的右栏完全由站点 runtime
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。
   const effectiveLibraryTabs: AgentLibraryTabs | undefined =
-    libraryTabs ?? (siteId ? { showFiles: true } : undefined);
+    libraryTabs ??
+    (siteId ? { showFiles: true, showBrowser: true } : undefined);
   if (!sel) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
@@ -575,37 +556,14 @@ export function HistoryDetail({
     loaded.kind === "task"
       ? loaded.detail.task.site_id || siteId
       : loaded.session.site_id || siteId;
-  const incomplete =
-    loaded.kind === "task"
-      ? legacyTaskCompleteness(loaded.detail)
-      : {
-          hasAppId: Boolean(loaded.session.app_id),
-          hasSnapshot: Boolean(loaded.session.snapshot),
-        };
-  const exactLegacyWarning =
-    !incomplete.hasAppId || !incomplete.hasSnapshot;
-
   return (
     <div className="flex h-[calc(100dvh-1px)] flex-col">
-      <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800">
-        <span className="font-semibold">
-          {exactLegacyWarning
-            ? tt("旧记录信息不完整，无法恢复当时操作台")
-            : tt("旧记录尚未迁移为完整工作会话")}
-        </span>
-        <span className="ml-1 text-amber-700">
-          {fallbackTaskId
-            ? tt("这是缺少完整工作台快照的旧任务，仅回放原 Agent 对话与产出。")
-            : tt("该记录也没有可回放的 Agent task。")}
-        </span>
-      </div>
       <div className="min-h-0 flex-1">
         {fallbackTaskId ? (
           <AgentChat
             key={fallbackTaskId}
             siteId={fallbackSiteId}
             taskId={fallbackTaskId}
-            readOnly
             accent={accent}
             headerHeight={41}
             appNames={appNames}
@@ -614,7 +572,7 @@ export function HistoryDetail({
           />
         ) : (
           <div className="grid h-full place-items-center p-8 text-center text-[13px] text-neutral-400">
-            {tt("无法恢复或回放这条旧记录。")}
+            {tt("这条记录没有可继续的对话。")}
           </div>
         )}
       </div>

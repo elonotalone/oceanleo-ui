@@ -167,6 +167,7 @@ export { AgentProgress } from "./AgentProgress";
 // 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
 export { AgentChat, orgStatusFromMessages } from "./AgentChat";
 export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
+export { CloudBrowserPanel } from "./CloudBrowserPanel";
 // doctrine 2026-07-09：组织节点图画布（团队≡组织）的本体 + 类型都在独立子路径
 // `@oceanleo/ui/org-canvas`（peer dep @xyflow/react，只主站/agent 站装，其余 29 站不受累）。
 // 这里【不】re-export，避免把 xyflow 模块图拉进不用画布的站。

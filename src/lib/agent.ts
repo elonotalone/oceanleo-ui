@@ -139,6 +139,10 @@ export interface AgentTask {
   session_id?: string | null;
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
+  parent_task_id?: string | null;
+  root_task_id?: string | null;
+  branch_from_message_id?: number | null;
+  branch_depth?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -530,6 +534,28 @@ export function followUp(
       body: JSON.stringify({ prompt, attachments: attachments || [] }),
     },
   );
+}
+
+export function branchTask(
+  taskId: string,
+  fromMessageId: number,
+  prompt: string,
+  attachments?: AgentAttachment[],
+) {
+  return authed<{
+    task_id: string;
+    status: string;
+    session_id?: string | null;
+    parent_task_id: string;
+    branch_from_message_id: number;
+  }>(`/v1/agent/tasks/${encodeURIComponent(taskId)}/branches`, {
+    method: "POST",
+    body: JSON.stringify({
+      from_message_id: fromMessageId,
+      prompt,
+      attachments: attachments || [],
+    }),
+  });
 }
 
 export function stopTask(taskId: string) {

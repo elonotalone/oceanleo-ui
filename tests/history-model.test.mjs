@@ -158,11 +158,11 @@ test("操作台需真实 snapshot；标准 agent 可用真实 task thread 恢复
   assert.equal(isRestorableAppSession(linkedAgent), true);
 });
 
-test("完整 session 交给站点 runtime，旧记录保留明确降级提示", () => {
+test("完整 session 交给站点 runtime，旧任务直接回到可续聊对话", () => {
   assert.match(historySource, /withLinkedAgentTask\(/);
   assert.match(historySource, /renderWorkspace\(currentSession\)/);
   assert.match(historySource, /<WorkspaceSessionProvider/);
-  assert.match(historySource, /旧记录信息不完整，无法恢复当时操作台/);
+  assert.doesNotMatch(historySource, /旧记录信息不完整/);
   assert.match(historySource, /<AgentChat/);
 });
 

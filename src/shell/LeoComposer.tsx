@@ -231,7 +231,11 @@ export function LeoComposer({
     if (autoFocus) currentTextarea()?.focus();
   }, [autoFocus, currentTextarea]);
 
-  const canSend = Boolean(value.trim()) && !loading && !disabled;
+  const canSend =
+    Boolean(value.trim() || attachments?.length) &&
+    !attachments?.some((attachment) => attachment.uploading) &&
+    !loading &&
+    !disabled;
   const hasAttachMenu =
     Boolean(onAttachFiles) ||
     Boolean(recentFiles && onPickRecent) ||

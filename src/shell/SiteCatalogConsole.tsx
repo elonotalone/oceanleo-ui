@@ -37,6 +37,7 @@ import { AgentChat } from "./AgentChat";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import { type OpsSchema } from "../lib/fn-agent";
 import { type FunctionGuide, type GuideExample, type GuideSection } from "./NavigatorGuide";
 import {
@@ -699,19 +700,11 @@ function LegacyHistoryPlayback({
 }) {
   return (
     <div className="flex h-full min-h-[420px] flex-col bg-white">
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800">
-        <p>
-          <span className="font-semibold">
-            旧记录信息不完整，无法恢复当时操作台。
-          </span>
-          <span className="ml-1 text-amber-700">
-            以下只回放原 Agent 对话与产出，不会用当前草稿或默认值伪装历史。
-          </span>
-        </p>
+      <div className="flex shrink-0 justify-end border-b border-stone-100 px-4 py-2">
         <button
           type="button"
           onClick={onBack}
-          className="shrink-0 rounded-lg border border-amber-300 px-2.5 py-1 font-medium hover:bg-amber-100"
+          className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
         >
           返回我的任务
         </button>
@@ -726,11 +719,10 @@ function LegacyHistoryPlayback({
             key={taskId}
             siteId={siteId}
             taskId={taskId}
-            readOnly
             appLabel={appLabel}
             accent={accent}
-            headerHeight={93}
-            libraryTabs={{ showFiles: true }}
+            headerHeight={49}
+            libraryTabs={{ showFiles: true, showBrowser: true }}
           />
         ) : (
           <div className="grid h-full place-items-center p-8 text-center text-[13px] text-stone-400">
@@ -890,6 +882,11 @@ function AgentCardCanvas({
       content: <MaterialLibrary materials={materials ?? []} accent={accent} />,
     },
     { id: "files", label: "文件库", content: <ArtifactLibrary accent={accent} fill /> },
+    {
+      id: "browser",
+      label: "云端浏览器",
+      content: <CloudBrowserPanel accent={accent} />,
+    },
   ];
   return <ResultCanvas tabs={tabs} active={view} onChange={setView} accent={accent} />;
 }
