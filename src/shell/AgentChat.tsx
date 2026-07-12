@@ -19,8 +19,9 @@ import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
 import { ArtifactLibrary } from "./ArtifactLibrary";
+import { crossSiteLibraryTabs } from "./library-registry";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
-import { Markdown } from "./Markdown";
+import { ArtifactRenderer } from "./ArtifactRenderer";
 import {
   AgentTranscriptBubble,
   agentArtifactLabels,
@@ -189,6 +190,16 @@ export interface AgentLibraryTabs {
   showBrowser?: boolean;
   /** 「生成结果」标签名，默认「生成结果」。 */
   resultLabel?: string;
+  /**
+   * 宗旨 v22（操作员 2026-07-12）：右栏 TabBar 末尾独立圆形「+」展开的**跨站只读库**。
+   *   · `true`（默认推荐）——展开全量跨站只读库（图片/PPT/文档/表格/视频/音频/3D/全部/收藏/
+   *     素材库），并自动去掉本站默认已亮的（result/material/files/browser/org 对应项）。
+   *   · `string[]` —— 只展开这几个库 id（`lib_*` 或语义键 images/slides/documents/… 都行）。
+   *   · `false` / 不传 —— 不出「+」（旧行为）。
+   * 全是查看类库，无输入、不生成——生成只在页面左栏操作台。 */
+  moreLibraries?: boolean | string[];
+  /** 「+」展开的素材库点「看全部」时的回调（跳完整素材总栏目父页面）。 */
+  onSeeAllMaterials?: () => void;
 }
 
 export function AgentChat({
@@ -978,7 +989,35 @@ export function AgentChat({
             content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
           });
         }
-        return <ResultCanvas tabs={tabs} active={libTab} onChange={setLibTab} accent={accent} />;
+        // 宗旨 v22：TabBar 末尾独立圆形「+」展开的跨站只读库。默认全量、去掉本站已亮的
+        // 素材库/文件库（避免「+」里重复出现同名标签）。
+        let moreTabs: CanvasTab[] | undefined;
+        if (libraryTabs.moreLibraries) {
+          const ctx = {
+            accent,
+            materials: libraryTabs.materials,
+            onSeeAllMaterials: libraryTabs.onSeeAllMaterials,
+          };
+          moreTabs = Array.isArray(libraryTabs.moreLibraries)
+            ? crossSiteLibraryTabs({ ...ctx, only: libraryTabs.moreLibraries })
+            : crossSiteLibraryTabs({
+                ...ctx,
+                // 默认展开的跨站库里，去掉本站主标签已经覆盖的（素材库 material、文件库 all）。
+                exclude: [
+                  "material",
+                  ...(libraryTabs.showFiles !== false ? ["all"] : []),
+                ],
+              });
+        }
+        return (
+          <ResultCanvas
+            tabs={tabs}
+            moreTabs={moreTabs}
+            active={libTab}
+            onChange={setLibTab}
+            accent={accent}
+          />
+        );
       })()
     : resultPane;
 
@@ -995,13 +1034,18 @@ export function AgentChat({
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
       headerHeight={topBar ? availOffset + TOPBAR_H : headerHeight}
+      // 有顶栏时：外层 flex 列自己算高（下方 return），SplitWorkspace 用 fillParent 填满剩余。
+      // 无顶栏时（宿主如主站 tasks 页已用 <header>+<main flex-1> 约束高度）：也用 fillParent
+      // 填满父容器，杜绝「相对 100dvh 记账 → 比父容器高一截 → 从历史重开输入框上移、上面
+      // 内容被挤出」（操作员 2026-07-12）。
+      fillParent
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
       library={effectiveLibrary}
     />
   );
 
-  // 无顶栏（未给 onBack）：保持原样，直接返回分栏骨架。
+  // 无顶栏（未给 onBack）：宿主已约束高度，直接返回分栏骨架（fillParent 填满宿主容器）。
   if (!topBar) return split;
 
   // 有顶栏：外层 flex 列 = 顶栏（返回 + 总结）+ 分栏骨架。整列高 = 可用高，顶栏占
@@ -1073,20 +1117,8 @@ function MentionPicker({
 }
 
 function DefaultArtifact({ artifact, content }: { artifact: ArtifactMeta; content: string }) {
-  if (artifact.type === "image" && artifact.url) {
-    return (
-      <div className="flex h-full items-center justify-center p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={artifact.url} alt={artifact.title || ""} className="max-h-full max-w-full rounded-lg object-contain" />
-      </div>
-    );
-  }
-  // map / canvas / novel / ppt / sheet / doc / markdown → render markdown.
-  // Each site may override via renderArtifact for a richer editor.
-  // overflow-y-auto so long deliverables scroll inside the (flex-filled) pane.
-  return (
-    <div className="h-full overflow-y-auto p-5">
-      <Markdown>{content}</Markdown>
-    </div>
-  );
+  // 宗旨 v22（操作员 2026-07-12）：不再「非图片就一坨 Markdown」。统一走可复用成品渲染器
+  // ArtifactRenderer——它按 type/URL 后缀分发到 图片/视频/音频/幻灯(Office 预览)/表格/文档/
+  // 小红书图文/网页实时预览/3D 的富形态，兜底才 Markdown。宿主仍可用 renderArtifact 完全接管。
+  return <ArtifactRenderer artifact={artifact} content={content} />;
 }

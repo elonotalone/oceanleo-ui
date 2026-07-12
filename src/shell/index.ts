@@ -138,6 +138,18 @@ export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./Libr
 // 放大铺满库查看，不写回操作台。与导航/文件库同一套版式。
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
+// 宗旨 v22（2026-07-12）：可复用「成品渲染器」——右栏按 artifact.type/URL 分发到 图片/视频/
+// 音频/幻灯(Office 预览)/表格/文档/小红书图文/网页实时预览/3D 的富形态，兜底 Markdown。
+export { ArtifactRenderer } from "./ArtifactRenderer";
+export type { ArtifactRendererProps } from "./ArtifactRenderer";
+// 宗旨 v22（2026-07-12）：跨站【只读】库注册表——右栏 TabBar「+」展开的查看类库（图片/PPT/
+// 文档/表格/视频/音频/3D/全部/收藏/素材库）。库只读，生成只在左栏操作台。
+export { CROSS_SITE_LIBRARIES, crossSiteLibraryTabs, libraryDefById } from "./library-registry";
+export type { ReadonlyLibraryDef, LibraryTabCtx, CrossSiteLibraryTabsOptions } from "./library-registry";
+// 宗旨 v22（2026-07-12）：素材总栏目（分板块：网站/PPT/图片/文档/幻灯/视频…）——各站右栏
+// 素材库 = 本栏目的子页面切片；完整栏目在 asset 站/`/materials`。
+export { MaterialCatalog, MATERIAL_BOARDS, materialsForBoards } from "./material-catalog";
+export type { MaterialBoard, MaterialBoardId, MaterialCatalogProps } from "./material-catalog";
 // 宗旨 v19（2026-07-08）：侧栏「探索」页——整站级素材浏览（asset.oceanleo.com 自囤 OSS
 // 正式库，masonry 瀑布流 + 分类 chips）。各站 /explore 路由传本站 ExploreConfig 即可。
 export { ExplorePage, exploreCategoryLabel } from "./ExplorePage";

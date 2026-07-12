@@ -81,9 +81,11 @@ export function AgentTranscriptBubble({
     );
   }
   if (message.kind === "plan") {
+    // 克制版（操作员 2026-07-12：agent 正文不许被色块包裹）：计划用极细左边线 + 中性小字，
+    // 不再是一整块灰底圆角卡片。
     return (
-      <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-3">
-        <Markdown className="text-[15px] leading-relaxed">
+      <div className="border-l-2 border-stone-200 pl-3">
+        <Markdown className="text-[14px] leading-relaxed text-stone-500">
           {message.content}
         </Markdown>
       </div>
@@ -110,11 +112,10 @@ export function AgentTranscriptBubble({
     message.meta?.artifact?.type === "preview" &&
     message.meta.artifact.url
   ) {
+    // 克制版（操作员 2026-07-12：不许色块 + 不许 ✓/✅ 图标）：预览就绪 = 一行中性小字 +
+    // 文字链接，无 emerald 底色、无对钩图标。
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-[13px] text-emerald-700">
-        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100">
-          ✓
-        </span>
+      <div className="flex items-center gap-2 px-1 text-[13px] text-stone-500">
         <span className="min-w-0 flex-1">
           {tt("实时预览已就绪，已显示在右侧。")}
         </span>
@@ -122,7 +123,7 @@ export function AgentTranscriptBubble({
           href={message.meta.artifact.url}
           target="_blank"
           rel="noreferrer"
-          className="shrink-0 font-medium underline decoration-emerald-300 underline-offset-2"
+          className="shrink-0 font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-800"
         >
           {tt("新窗口打开")}
         </a>
@@ -130,9 +131,10 @@ export function AgentTranscriptBubble({
     );
   }
   if (message.meta?.artifact && message.meta.final) {
+    // 克制版（操作员 2026-07-12）：已生成结果 = 中性小字提示，无 emerald 底色、无 ✅。
     return (
-      <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[14px] text-emerald-700">
-        {tt("✅ 已生成结果，见右侧「{label}」面板。", {
+      <div className="px-1 text-[13px] text-stone-500">
+        {tt("已生成结果，见右侧「{label}」面板。", {
           label:
             artifactLabels[message.meta.artifact.type] || tt("结果"),
         })}

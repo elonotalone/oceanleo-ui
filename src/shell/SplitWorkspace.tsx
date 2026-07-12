@@ -83,6 +83,14 @@ export interface SplitWorkspaceProps {
   accent?: string;
   /** 顶部 header 高度（px），用于算可视高度，默认 56。 */
   headerHeight?: number;
+  /**
+   * 操作员 2026-07-12（修「主站任务页从历史重开后输入框上移、上面内容不见」）：
+   * 给了 `true` → 本组件高度取 `100%`（**相对已受限的父容器**）而非
+   * `calc(100dvh - headerHeight)`（相对整个视口）。当宿主已经用 flex/grid 把可用高度
+   * 约束好（如主站 tasks 页 `<header h-[49px]> + <main flex-1>`），继续用 `100dvh` 记账
+   * 会让工作区比父容器高出/错位一截 → 对话流被顶上去、输入框上移、首屏内容被挤出可视区。
+   * 此时传 `fillParent` 让工作区严格填满父容器即可。默认 false（保持旧的 100dvh 行为）。 */
+  fillParent?: boolean;
   className?: string;
   /**
    * 操作员 2026-07-01：单栏（右版面关闭）时左栏内容的最大宽度并居中，避免操作台
@@ -134,10 +142,13 @@ export function SplitWorkspace({
   rightLabel,
   accent = "#4f46e5",
   headerHeight = 56,
+  fillParent = false,
   className = "",
   soloMaxWidth = "48rem",
   library,
 }: SplitWorkspaceProps) {
+  // 高度：fillParent → 填满已受限的父容器（100%）；否则相对视口 100dvh 减 header（旧行为）。
+  const rootHeight = fillParent ? "100%" : `calc(100dvh - ${headerHeight}px)`;
   const tt = useUI();
   // 「库」= 右版面显隐开关（不内建内容）。**默认开**（宗旨 v12.1，操作员 2026-07-04）：
   // 一打开功能页就同时显示「操作台 + 库」，库首屏是「使用指南（navigator）」——让用户
@@ -307,7 +318,7 @@ export function SplitWorkspace({
       <LeftPaneCtx.Provider value={slot}>
         <div
           className={`p-1.5 ${className}`}
-          style={{ height: `calc(100dvh - ${headerHeight}px)` }}
+          style={{ height: rootHeight }}
         >
           {/* 单栏：外框卡片【铺满】整个可用宽度（边框不再被压窄——操作员 2026-07-01
               「我不想让边框显得太窄」）。限宽 soloMaxWidth 只作用在【内容】上、居中，
@@ -338,7 +349,7 @@ export function SplitWorkspace({
     <div
       ref={wrapRef}
       className={`gap-0 p-1.5 ${className} md:flex`}
-      style={{ height: `calc(100dvh - ${headerHeight}px)` }}
+      style={{ height: rootHeight }}
     >
       {/* 左栏 */}
       <section

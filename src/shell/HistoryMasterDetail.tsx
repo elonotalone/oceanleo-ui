@@ -12,7 +12,7 @@
 // master-detail 形态供 doctrine v4 覆盖式子栏使用。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
@@ -33,6 +33,7 @@ import {
   type AppSession,
 } from "../lib/app-session";
 import { ConfirmDialog } from "../ui";
+import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import {
@@ -86,7 +87,9 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.session.status !== y.session.status ||
         x.session.title !== y.session.title ||
         x.session.title_status !== y.session.title_status ||
-        x.session.last_activity_at !== y.session.last_activity_at
+        x.session.last_activity_at !== y.session.last_activity_at ||
+        Boolean(x.session.pinned) !== Boolean(y.session.pinned) ||
+        Boolean(x.session.favorite) !== Boolean(y.session.favorite)
       ) {
         return false;
       }
@@ -94,6 +97,8 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
       if (
         x.task.status !== y.task.status ||
         x.task.title !== y.task.title ||
+        Boolean(x.task.pinned) !== Boolean(y.task.pinned) ||
+        Boolean(x.task.favorite) !== Boolean(y.task.favorite) ||
         (x.task.nano_spent ?? null) !== (y.task.nano_spent ?? null) ||
         (x.task.credits_spent ?? null) !== (y.task.credits_spent ?? null)
       ) {
@@ -209,7 +214,41 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     }
     return r.ok;
   }, [items, reload, tt]);
-  return { items, loading, error, remove, reload };
+  // 轻量字段更新（宗旨 v22：Manus 式任务菜单）：重命名 / Pin 置顶 / 收藏。直接走 browser
+  // Supabase 客户端更新对应表（agent_tasks 或 app_sessions，都有 RLS owner-only），乐观
+  // 回填 + 失败回滚。避免动 conflict-checked 的 session snapshot API（那是给快照用的）。
+  const mutate = useCallback(
+    async (
+      entry: HistoryListEntry,
+      patch: { title?: string; pinned?: boolean; favorite?: boolean },
+    ): Promise<boolean> => {
+      const supabase = browserClient();
+      if (!supabase) return false;
+      const table = entry.kind === "session" ? "app_sessions" : "agent_tasks";
+      const id = entry.id;
+      const prev = items;
+      // 乐观：就地改标题/pinned/favorite（record 是 session 或 task）。
+      setItems((list) =>
+        list.map((it) => {
+          if (it.kind !== entry.kind || it.id !== id) return it;
+          if (it.kind === "session") {
+            return { ...it, session: { ...it.session, ...patch } };
+          }
+          return { ...it, task: { ...it.task, ...patch } };
+        }),
+      );
+      const { error: err } = await supabase.from(table).update(patch).eq("id", id);
+      if (err) {
+        setItems(prev);
+        setError(tt("操作失败，请稍后重试。"));
+        return false;
+      }
+      setError(null);
+      return true;
+    },
+    [items, tt],
+  );
+  return { items, loading, error, remove, mutate, reload };
 }
 
 // ----------------------------------------------------------------------------
@@ -217,11 +256,27 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
-  const { items, loading, error, remove } = useHistory(siteId);
+  const { items, loading, error, remove, mutate } = useHistory(siteId);
   const [sel, setSel] = useWorkspaceSelection("history");
   const pathname = usePathname() || "";
   const router = useRouter();
   const [pending, setPending] = useState<HistoryListEntry | null>(null);
+  // 宗旨 v22：Manus 式任务菜单 —— 打开菜单的条目 id、正在重命名的条目 id + 草稿标题。
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renameFor, setRenameFor] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  // 置顶的排在前面（稳定：仅把 pinned 提到前，保持原有时间序）。
+  const orderedItems = useMemo(() => {
+    const pinnedOf = (e: HistoryListEntry) =>
+      e.kind === "session" ? Boolean(e.session.pinned) : Boolean(e.task.pinned);
+    return [...items].sort((a, b) => Number(pinnedOf(b)) - Number(pinnedOf(a)));
+  }, [items]);
+
+  const hrefFor = (entry: HistoryListEntry) =>
+    entry.kind === "session"
+      ? historySessionHref(entry.id)
+      : `/history?task=${encodeURIComponent(entry.id)}`;
 
   // URL 是任务选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
   // 保留，因为它没有足够 app/snapshot 身份，不能伪装成完整 workspace。
@@ -264,7 +319,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
       {!error && !loading && items.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有任务。")}</p>
       )}
-      {items.map((entry) => {
+      {orderedItems.map((entry) => {
         const isSession = entry.kind === "session";
         const record = isSession ? entry.session : entry.task;
         const on = entry.id === sel;
@@ -277,61 +332,113 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           : entry.task.created_at;
         const recordSite = record.site_id;
         const cost = isSession ? "" : fmtCost(entry.task);
+        const pinned = isSession
+          ? Boolean(entry.session.pinned)
+          : Boolean(entry.task.pinned);
+        const favorite = isSession
+          ? Boolean(entry.session.favorite)
+          : Boolean(entry.task.favorite);
+        const renaming = renameFor === entry.id;
         return (
           <div
             key={`${entry.kind}:${entry.id}`}
-            className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
+            className={`group relative flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
               on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
             }`}
             style={on ? { background: accent } : undefined}
           >
-            <button
-              type="button"
-              onClick={() => {
-                setSel(entry.id);
-                if (entry.kind === "session") {
-                  router.push(historySessionHref(entry.id));
-                } else {
-                  router.push(`/history?task=${encodeURIComponent(entry.id)}`);
-                }
-              }}
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-            >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[record.status] || "bg-stone-400"}`} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1">
-                  <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-                  {!isSession && (
-                    <span className={`shrink-0 rounded px-1 py-px text-[9px] ${on ? "bg-white/15 text-white/70" : "bg-stone-100 text-stone-400"}`}>
-                      {tt("旧")}
-                    </span>
-                  )}
-                </span>
-                <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
-                  {fmt(timestamp)}
-                  {!siteId && recordSite ? ` · ${recordSite}` : ""}
-                  {isSession && entry.session.app_id ? ` · ${entry.session.app_id}` : ""}
-                  {cost ? ` · ${cost}` : ""}
-                </span>
-              </span>
-            </button>
-            {canDeleteHistoryEntry(entry) && (
+            {renaming ? (
+              <form
+                className="flex min-w-0 flex-1 items-center gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const next = renameDraft.trim();
+                  setRenameFor(null);
+                  if (next && next !== title) void mutate(entry, { title: next });
+                }}
+              >
+                <input
+                  autoFocus
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onBlur={() => {
+                    const next = renameDraft.trim();
+                    setRenameFor(null);
+                    if (next && next !== title) void mutate(entry, { title: next });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setRenameFor(null);
+                  }}
+                  className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[13px] text-neutral-800 outline-none focus:border-neutral-500"
+                />
+              </form>
+            ) : (
               <button
                 type="button"
-                onClick={() => setPending(entry)}
-                title={tt("永久删除这个任务")}
-                aria-label={tt("删除")}
-                className={`shrink-0 rounded p-0.5 transition ${
-                  on
-                    ? "text-white/70 hover:bg-white/20 hover:text-white"
-                    : "text-neutral-300 hover:bg-rose-50 hover:text-rose-500"
-                }`}
+                onClick={() => {
+                  setSel(entry.id);
+                  router.push(hrefFor(entry));
+                }}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m1 0v12a2 2 0 01-2 2H8a2 2 0 01-2-2V7" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[record.status] || "bg-stone-400"}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1">
+                    {pinned && (
+                      <svg className={`h-3 w-3 shrink-0 ${on ? "text-white/80" : "text-amber-500"}`} viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
+                        <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
+                      </svg>
+                    )}
+                    <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
+                    {favorite && (
+                      <svg className={`h-3 w-3 shrink-0 ${on ? "fill-white/80 text-white/80" : "fill-yellow-500 text-yellow-500"}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
+                        <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                    {!isSession && (
+                      <span className={`shrink-0 rounded px-1 py-px text-[9px] ${on ? "bg-white/15 text-white/70" : "bg-stone-100 text-stone-400"}`}>
+                        {tt("旧")}
+                      </span>
+                    )}
+                  </span>
+                  <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
+                    {fmt(timestamp)}
+                    {!siteId && recordSite ? ` · ${recordSite}` : ""}
+                    {isSession && entry.session.app_id ? ` · ${entry.session.app_id}` : ""}
+                    {cost ? ` · ${cost}` : ""}
+                  </span>
+                </span>
               </button>
+            )}
+            {/* 宗旨 v22：Manus 式「⋯」菜单（新标签打开 / 重命名 / 置顶 / 收藏 / 删除）。 */}
+            {!renaming && (
+              <HistoryRowMenu
+                open={menuFor === entry.id}
+                onOpenChange={(v) => setMenuFor(v ? entry.id : null)}
+                on={on}
+                pinned={pinned}
+                favorite={favorite}
+                canDelete={canDeleteHistoryEntry(entry)}
+                href={hrefFor(entry)}
+                onRename={() => {
+                  setRenameDraft(title);
+                  setRenameFor(entry.id);
+                  setMenuFor(null);
+                }}
+                onTogglePin={() => {
+                  void mutate(entry, { pinned: !pinned });
+                  setMenuFor(null);
+                }}
+                onToggleFav={() => {
+                  void mutate(entry, { favorite: !favorite });
+                  setMenuFor(null);
+                }}
+                onDelete={() => {
+                  setPending(entry);
+                  setMenuFor(null);
+                }}
+                tt={tt}
+              />
             )}
           </div>
         );
@@ -360,6 +467,100 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           }}
           onCancel={() => setPending(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/** 任务行「⋯」菜单（宗旨 v22，Manus 式）：新标签打开 / 重命名 / 置顶 / 收藏 / 删除。 */
+function HistoryRowMenu({
+  open,
+  onOpenChange,
+  on,
+  pinned,
+  favorite,
+  canDelete,
+  href,
+  onRename,
+  onTogglePin,
+  onToggleFav,
+  onDelete,
+  tt,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  on: boolean;
+  pinned: boolean;
+  favorite: boolean;
+  canDelete: boolean;
+  href: string;
+  onRename: () => void;
+  onTogglePin: () => void;
+  onToggleFav: () => void;
+  onDelete: () => void;
+  tt: (s: string) => string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open, onOpenChange]);
+
+  const item = (label: string, handler: () => void, danger = false) => (
+    <button
+      type="button"
+      onClick={handler}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition ${
+        danger ? "text-rose-600 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-100"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-label={tt("更多操作")}
+        className={`rounded p-0.5 transition ${
+          on
+            ? "text-white/70 hover:bg-white/20 hover:text-white"
+            : "text-neutral-300 opacity-0 hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100"
+        } ${open ? "opacity-100" : ""}`}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="19" cy="12" r="1.6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => onOpenChange(false)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-neutral-700 transition hover:bg-neutral-100"
+          >
+            {tt("在新标签打开")}
+          </a>
+          {item(tt("重命名"), onRename)}
+          {item(pinned ? tt("取消置顶") : tt("置顶"), onTogglePin)}
+          {item(favorite ? tt("取消收藏") : tt("收藏"), onToggleFav)}
+          {canDelete && (
+            <>
+              <div className="my-1 h-px bg-neutral-100" />
+              {item(tt("删除"), onDelete, true)}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

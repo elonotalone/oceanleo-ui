@@ -32,6 +32,12 @@ export interface CanvasTab {
 
 export interface ResultCanvasProps {
   tabs: CanvasTab[];
+  /**
+   * 宗旨 v22（操作员 2026-07-12）：跨站【只读】库标签。给了它（非空）→ TabBar 末尾长出
+   * 独立圆形「+」，点击展开这些标签。它们与 `tabs` 一样能被选中并渲染 content（切到某个
+   * 跨站库就在右栏显示那个库），只是默认折叠、需点「+」才出现在标签条里。全是查看类库，
+   * 无输入、不生成。 */
+  moreTabs?: CanvasTab[];
   active: string;
   onChange: (id: string) => void;
   /**
@@ -51,35 +57,75 @@ export interface ResultCanvasProps {
 }
 
 /** 标签条本体（一排 pill）。挂右栏标题位与回退自带头部共用。宗旨 v16：不再渲染右侧
- * 提示胶囊（「点击放大预览 · 拖拽到左侧才算选用」全站删除）。 */
+ * 提示胶囊（「点击放大预览 · 拖拽到左侧才算选用」全站删除）。
+ *
+ * 宗旨 v22（操作员 2026-07-12）：`moreTabs`（跨站只读库）非空时，在这排 pill 的**末尾**
+ * 渲染一个**与前面 pill 组不相连**的独立圆形「+」按钮。点击 → 变「−」，右侧行内滑出
+ * moreTabs 的 pill（同款）。这些 moreTabs 全是「查看类」库（PPT库/Excel库/画布库/图片库
+ * /视频库…），无输入、不生成——生成只在页面左栏操作台。展开态由本组件自管。 */
 function TabBar({
   tabs,
+  moreTabs,
   active,
   onChange,
 }: {
   tabs: CanvasTab[];
+  moreTabs?: CanvasTab[];
   active: string;
   onChange: (id: string) => void;
 }) {
   const tt = useUI();
+  const [expanded, setExpanded] = useState(false);
+  const hasMore = Array.isArray(moreTabs) && moreTabs.length > 0;
+  // 若当前选中的正是某个 moreTab（如从历史恢复到跨站库标签），自动展开好让它可见。
+  useEffect(() => {
+    if (hasMore && moreTabs!.some((t) => t.id === active)) setExpanded(true);
+  }, [hasMore, moreTabs, active]);
+
+  const pill = (t: CanvasTab) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => onChange(t.id)}
+      className={`rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
+        active === t.id
+          ? "bg-white text-stone-800 shadow-sm"
+          : "text-stone-500 hover:text-stone-700"
+      }`}
+    >
+      {tt(t.label)}
+    </button>
+  );
+
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
-        {tabs.map((t) => (
+        {tabs.map(pill)}
+      </div>
+      {hasMore && (
+        <>
+          {/* 独立圆形「+」/「−」——与前面 pill 组不相连（gap 拉开 + 圆形描边），一看就特殊。 */}
           <button
-            key={t.id}
             type="button"
-            onClick={() => onChange(t.id)}
-            className={`rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
-              active === t.id
-                ? "bg-white text-stone-800 shadow-sm"
-                : "text-stone-500 hover:text-stone-700"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            title={expanded ? tt("收起更多库") : tt("更多库（跨站查看）")}
+            className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[15px] leading-none transition-colors ${
+              expanded
+                ? "border-stone-300 bg-stone-200 text-stone-700"
+                : "border-stone-300 bg-white text-stone-500 hover:bg-stone-100 hover:text-stone-700"
             }`}
           >
-            {tt(t.label)}
+            {expanded ? "−" : "+"}
           </button>
-        ))}
-      </div>
+          {/* 展开：滑出其余只读库标签（同款 pill 分组）。 */}
+          {expanded && (
+            <div className="flex flex-wrap gap-1 rounded-xl bg-stone-100 p-1">
+              {moreTabs!.map(pill)}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -89,6 +135,7 @@ const GUIDE_TAB_ID = "__guide";
 
 export function ResultCanvas({
   tabs,
+  moreTabs,
   active,
   onChange,
   hint: _hint,
@@ -248,9 +295,21 @@ export function ResultCanvas({
     [guideCtx?.guide, accent, tabs],
   );
 
-  const allTabs = useMemo(
+  // 可见主标签（guide + 主标签）——始终显示在标签条。
+  const primaryTabs = useMemo(
     () => (guideTab ? [guideTab, ...tabs] : tabs),
     [guideTab, tabs],
+  );
+  // 跨站只读库（默认折叠，点「+」展开）。
+  const moreTabsSafe = useMemo(
+    () => (Array.isArray(moreTabs) ? moreTabs : []),
+    [moreTabs],
+  );
+  // 内容查找集合：主标签 + 跨站只读库。moreTabs 也要在这里，否则从历史恢复到某个跨站库
+  // 标签时找不到 content。
+  const allTabs = useMemo(
+    () => [...primaryTabs, ...moreTabsSafe],
+    [primaryTabs, moreTabsSafe],
   );
   const effectiveActive = allTabs.some((tab) => tab.id === selectedTab)
     ? selectedTab
@@ -270,10 +329,15 @@ export function ResultCanvas({
   useEffect(() => {
     if (!rightSlot) return;
     rightSlot.setRightLabel(
-      <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} />,
+      <TabBar
+        tabs={primaryTabs}
+        moreTabs={moreTabsSafe}
+        active={effectiveActive}
+        onChange={handleChange}
+      />,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rightSlot, allTabs, effectiveActive]);
+  }, [rightSlot, primaryTabs, moreTabsSafe, effectiveActive]);
   useEffect(() => {
     return () => rightSlot?.setRightLabel(null);
   }, [rightSlot]);
@@ -295,7 +359,12 @@ export function ResultCanvas({
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-white/70 ${className}`}
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-3">
-        <TabBar tabs={allTabs} active={effectiveActive} onChange={handleChange} />
+        <TabBar
+          tabs={primaryTabs}
+          moreTabs={moreTabsSafe}
+          active={effectiveActive}
+          onChange={handleChange}
+        />
       </div>
       <div className="v-scroll-stable flex-1 overflow-y-auto p-4">{current?.content}</div>
     </div>

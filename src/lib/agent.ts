@@ -128,6 +128,10 @@ export interface AgentTask {
   mode: "agent" | "chat" | "skill" | string;
   plan?: unknown;
   favorite?: boolean;
+  /** 宗旨 v22（2026-07-12）：Manus 式任务菜单——置顶。 */
+  pinned?: boolean | null;
+  /** 宗旨 v22：结果评分（1-5 星；null=未评）。 */
+  rating?: number | null;
   /** 旧口径：整分累加（每次调用 ceil 到 ≥1 分，会虚高）。展示请优先用 nano_spent。 */
   credits_spent?: number;
   /** 精确花费（nano-yuan, 1e-9 CNY）== 钱包真实扣款口径。展示口径的单一事实源。 */

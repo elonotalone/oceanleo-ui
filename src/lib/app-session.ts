@@ -44,6 +44,9 @@ export interface AppSession {
   archived_at?: string | null;
   parent_session_id?: string | null;
   branch_from_message_id?: number | null;
+  /** 宗旨 v22（2026-07-12）：Manus 式任务菜单——置顶 / 收藏。 */
+  pinned?: boolean | null;
+  favorite?: boolean | null;
 }
 
 export interface ListAppSessionsOptions {

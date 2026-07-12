@@ -35,6 +35,7 @@ import { type GoalApp } from "./app-catalog";
 import { FunctionAgentChat } from "./FunctionAgentChat";
 import { AgentChat } from "./AgentChat";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
+import { crossSiteLibraryTabs } from "./library-registry";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -722,7 +723,7 @@ function LegacyHistoryPlayback({
             appLabel={appLabel}
             accent={accent}
             headerHeight={49}
-            libraryTabs={{ showFiles: true, showBrowser: true }}
+            libraryTabs={{ showFiles: true, showBrowser: true, moreLibraries: true }}
           />
         ) : (
           <div className="grid h-full place-items-center p-8 text-center text-[13px] text-stone-400">
@@ -888,5 +889,19 @@ function AgentCardCanvas({
       content: <CloudBrowserPanel accent={accent} />,
     },
   ];
-  return <ResultCanvas tabs={tabs} active={view} onChange={setView} accent={accent} />;
+  // 宗旨 v22：右栏「+」展开跨站只读库（去掉本站已亮的素材库/文件库）。
+  const moreTabs = crossSiteLibraryTabs({
+    accent,
+    materials: materials ?? [],
+    exclude: ["material", "all"],
+  });
+  return (
+    <ResultCanvas
+      tabs={tabs}
+      moreTabs={moreTabs}
+      active={view}
+      onChange={setView}
+      accent={accent}
+    />
+  );
 }

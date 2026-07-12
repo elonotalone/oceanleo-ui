@@ -144,12 +144,18 @@ function LazyImage({ src, alt, className }: { src?: string; alt: string; classNa
 }
 
 export interface ArtifactLibraryProps {
-  /** 可选受控筛选分区；无论是否受控，顶部都会渲染筛选 chips。 */
+  /** 可选受控筛选分区；无论是否受控，顶部都会渲染筛选 chips（除非 hideChips）。 */
   filter?: ArtifactFilter;
   onFilterChange?: (f: ArtifactFilter) => void;
   accent?: string;
   /** true 时用 h-full 填满父容器（内嵌分栏用）。 */
   fill?: boolean;
+  /**
+   * 宗旨 v22（操作员 2026-07-12）：跨站只读库标签用——把筛选**锁死**到 `filter`（受控）
+   * 且**隐藏顶部分区 chips**。因为标签本身（如「PPT库」「图片库」）已经代表了类型，右栏里
+   * 再出现一整排「全部/图片/文档…」chips 是多余的。传 true 时：不渲染 chips，搜索占位反映
+   * 该固定类型。默认 false（保持既有：受控/非受控都渲染 chips）。 */
+  hideChips?: boolean;
 }
 
 export function ArtifactLibrary({
@@ -157,6 +163,7 @@ export function ArtifactLibrary({
   onFilterChange,
   accent = "#4f46e5",
   fill = false,
+  hideChips = false,
 }: ArtifactLibraryProps) {
   const tt = useUI();
   const [internalFilter, setInternalFilter] = useState<ArtifactFilter>("all");
@@ -429,14 +436,17 @@ export function ArtifactLibrary({
         />
       )}
 
-      {/* v5：文件类型永远在右侧页面顶部横排；不得再移到任何侧栏。 */}
-      <LibraryChips
-        chips={ARTIFACT_FILTERS}
-        active={filter}
-        onChange={(id) => setFilter(id as ArtifactFilter)}
-        accent={accent}
-        tt={tt}
-      />
+      {/* v5：文件类型永远在右侧页面顶部横排；不得再移到任何侧栏。
+          宗旨 v22：hideChips（跨站只读库标签）时不渲染——标签本身即类型。 */}
+      {!hideChips && (
+        <LibraryChips
+          chips={ARTIFACT_FILTERS}
+          active={filter}
+          onChange={(id) => setFilter(id as ArtifactFilter)}
+          accent={accent}
+          tt={tt}
+        />
+      )}
 
       {authMsg ? (
         <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
