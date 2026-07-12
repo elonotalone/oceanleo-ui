@@ -47,6 +47,7 @@ export interface AppSession {
   /** 宗旨 v22（2026-07-12）：Manus 式任务菜单——置顶 / 收藏。 */
   pinned?: boolean | null;
   favorite?: boolean | null;
+  project_id?: string | null;
 }
 
 export interface ListAppSessionsOptions {
@@ -205,6 +206,31 @@ export async function updateAppSession(
     jsonMutation("PUT", payload),
   );
   return unwrapSession(result);
+}
+
+/** Menu-only metadata update; works for both active and archived sessions. */
+export async function updateAppSessionMetadata(
+  sessionId: string,
+  patch: {
+    title?: string;
+    pinned?: boolean;
+    favorite?: boolean;
+    project_id?: string | null;
+  },
+): Promise<AgentApiResult<AppSession>> {
+  const id = (sessionId || "").trim();
+  if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
+  const result = await sessionRequest<SessionEnvelope>(
+    `/${encodeURIComponent(id)}/metadata`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  const unwrapped = unwrapSession(result);
+  if (unwrapped.ok) notifyHistoryChanged();
+  return unwrapped;
 }
 
 /** 把 live 会话保存进「我的任务」；该行仍可原地续编，live 下一次动作建新缓存。 */

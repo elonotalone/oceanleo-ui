@@ -28,12 +28,16 @@ export type MaterialBoardId =
   | "ppt"
   | "image"
   | "doc"
+  | "sheet"
+  | "canvas"
   | "slides"
   | "video"
+  | "video_canvas"
   | "poster"
   | "xhs"
   | "design"
-  | "audio";
+  | "audio"
+  | "threed";
 
 export interface MaterialBoard {
   id: MaterialBoardId;
@@ -50,10 +54,14 @@ export const MATERIAL_BOARDS: { id: MaterialBoardId; label: string }[] = [
   { id: "poster", label: "海报" },
   { id: "design", label: "设计" },
   { id: "doc", label: "文档" },
+  { id: "sheet", label: "Excel" },
+  { id: "canvas", label: "画布" },
   { id: "slides", label: "幻灯" },
   { id: "video", label: "视频" },
+  { id: "video_canvas", label: "视频画布" },
   { id: "xhs", label: "小红书" },
   { id: "audio", label: "音频" },
+  { id: "threed", label: "3D" },
 ];
 
 /**
@@ -127,6 +135,7 @@ export function MaterialCatalog({
         <MaterialLibrary
           materials={items}
           accent={accent}
+          hideSeeAll
           emptyHint={tt("这个板块的素材正在充实中，稍后再来看看。")}
         />
       </div>

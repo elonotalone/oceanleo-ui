@@ -79,6 +79,10 @@ export interface ArtifactMeta {
   title?: string;
   format?: string; // markdown | image | ...
   url?: string;
+  /** Optional normalized viewer payload (slides / rows / nodes / preview_url…). */
+  meta?: Record<string, unknown>;
+  media_type?: string;
+  site_id?: string;
 }
 
 export interface AgentMessage {
@@ -130,6 +134,7 @@ export interface AgentTask {
   favorite?: boolean;
   /** 宗旨 v22（2026-07-12）：Manus 式任务菜单——置顶。 */
   pinned?: boolean | null;
+  project_id?: string | null;
   /** 宗旨 v22：结果评分（1-5 星；null=未评）。 */
   rating?: number | null;
   /** 旧口径：整分累加（每次调用 ceil 到 ≥1 分，会虚高）。展示请优先用 nano_spent。 */

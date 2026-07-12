@@ -70,12 +70,27 @@ export interface MaterialLibraryProps {
   className?: string;
   /**
    * 宗旨 v22（操作员 2026-07-12）：各站右栏「素材库」= 素材总栏目的【子页面】（只显示本
-   * app 该让用户看到的那部分素材）。给了 `onSeeAll` → 顶部出现「看全部素材 →」入口，点击
-   * 跳到完整素材总栏目（父页面，按板块分：网站/PPT/图片/文档/幻灯/视频…）。不给则无此入口
-   * （如完整栏目自身）。 */
+   * app 该让用户看到的那部分素材）。子页面默认显示「看全部素材 →」，跳完整素材父栏目；
+   * `onSeeAll` 可覆盖跳转行为。完整父栏目自身传 `hideSeeAll` 防止递归入口。 */
   onSeeAll?: () => void;
+  seeAllHref?: string;
+  hideSeeAll?: boolean;
   /** 「看全部」入口文案（不给用「看全部素材」）。 */
   seeAllLabel?: string;
+}
+
+function boardForHostname(hostname: string): string {
+  const site = hostname.split(".")[0]?.toLowerCase() || "";
+  if (site === "website") return "website";
+  if (site === "slide" || site === "ppt") return "ppt";
+  if (site === "excel" || site === "money") return "sheet";
+  if (["word", "resume", "paper", "law", "study", "edu", "novel", "meeting"].includes(site)) return "doc";
+  if (["video", "aihuman", "script"].includes(site)) return "video";
+  if (site === "music") return "audio";
+  if (["threed", "interior"].includes(site)) return "threed";
+  if (["make", "game"].includes(site)) return "canvas";
+  if (["image", "design", "logo", "ecommerce"].includes(site)) return "image";
+  return "";
 }
 
 /**
@@ -88,14 +103,31 @@ export function MaterialLibrary({
   emptyHint,
   className = "",
   onSeeAll,
+  seeAllHref = "https://asset.oceanleo.com/materials",
+  hideSeeAll = false,
   seeAllLabel,
 }: MaterialLibraryProps) {
   const tt = useUI();
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [cat, setCat] = useState("");
+  const [effectiveSeeAllHref, setEffectiveSeeAllHref] = useState(seeAllHref);
   // 放大查看的素材在 filtered 中的下标（null = 网格态）。
   const [zoomIdx, setZoomIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (
+      seeAllHref !== "https://asset.oceanleo.com/materials" ||
+      typeof window === "undefined"
+    ) {
+      setEffectiveSeeAllHref(seeAllHref);
+      return;
+    }
+    const board = boardForHostname(window.location.hostname);
+    setEffectiveSeeAllHref(
+      board ? `${seeAllHref}?board=${encodeURIComponent(board)}` : seeAllHref,
+    );
+  }, [seeAllHref]);
 
   // 分类 chips：首枚恒为「全部」，其后是素材声明过的分类（保序去重）。
   const categories = useMemo(() => {
@@ -176,22 +208,30 @@ export function MaterialLibrary({
           />
 
           {/* 分类 chips（首枚「全部」；与导航/文件库共用版式）+「看全部素材」入口（宗旨 v22）。 */}
-          {(categories.length > 1 || onSeeAll) && (
+          {(categories.length > 1 || !hideSeeAll) && (
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 {categories.length > 1 && (
                   <LibraryChips chips={categories} active={activeCat} onChange={setCat} accent={accent} tt={tt} />
                 )}
               </div>
-              {onSeeAll && (
-                <button
-                  type="button"
-                  onClick={onSeeAll}
-                  className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-800"
-                >
-                  {tt(seeAllLabel || "看全部素材")} →
-                </button>
-              )}
+              {!hideSeeAll &&
+                (onSeeAll ? (
+                  <button
+                    type="button"
+                    onClick={onSeeAll}
+                    className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-800"
+                  >
+                    {tt(seeAllLabel || "看全部素材")} →
+                  </button>
+                ) : (
+                  <a
+                    href={effectiveSeeAllHref}
+                    className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-800"
+                  >
+                    {tt(seeAllLabel || "看全部素材")} →
+                  </a>
+                ))}
             </div>
           )}
 

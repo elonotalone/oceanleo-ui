@@ -24,7 +24,12 @@ export type MediaType =
   | "audio"
   | "logo"
   | "ppt"
+  | "sheet"
   | "doc"
+  | "website"
+  | "canvas"
+  | "video_canvas"
+  | "xhs"
   | "other";
 
 export interface WorkItem {
@@ -39,6 +44,7 @@ export interface WorkItem {
   ratio?: string;
   site_id?: string;
   meta?: Record<string, unknown>;
+  favorite?: boolean;
   created_at?: string;
 }
 
@@ -156,6 +162,7 @@ export function saveWorks(
     prompt?: string;
     model?: string;
     ratio?: string;
+    meta?: Record<string, unknown>;
   }>,
 ) {
   return authed<{ ok: boolean; saved: number }>(`/v1/creations`, {
@@ -322,6 +329,11 @@ export const MEDIA_TYPE_LABEL: Record<MediaType, string> = {
   audio: "音频",
   logo: "Logo",
   ppt: "演示文稿",
+  sheet: "表格",
   doc: "文档",
+  website: "网站",
+  canvas: "画布",
+  video_canvas: "视频画布",
+  xhs: "小红书",
   other: "其他",
 };

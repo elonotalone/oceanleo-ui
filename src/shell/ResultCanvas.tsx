@@ -113,7 +113,7 @@ function TabBar({
       key={t.id}
       type="button"
       onClick={() => onChange(t.id)}
-      className={`rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
+      className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1 text-[13px] font-medium transition-colors ${
         active === t.id
           ? "bg-white text-stone-800 shadow-sm"
           : "text-stone-500 hover:text-stone-700"
@@ -124,8 +124,15 @@ function TabBar({
   );
 
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
+    // Main tabs own a scrollable lane; the +/- control is outside that lane and
+    // `shrink-0`, so it can never be pushed below/clipped by a long site-specific
+    // tab set. Expanded libraries get a second scrollable lane to its right.
+    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+      <div
+        className={`flex min-w-0 gap-1 overflow-x-auto rounded-xl bg-stone-100 p-1 ${
+          expanded ? "max-w-[42%] shrink" : "flex-1"
+        }`}
+      >
         {tabs.map(pill)}
       </div>
       {hasMore && (
@@ -133,7 +140,16 @@ function TabBar({
           {/* 独立圆形「+」/「−」——与前面 pill 组不相连（gap 拉开 + 圆形描边），一看就特殊。 */}
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              if (
+                expanded &&
+                moreTabs?.some((tab) => tab.id === active) &&
+                tabs[0]
+              ) {
+                onChange(tabs[0].id);
+              }
+              setExpanded((value) => !value);
+            }}
             aria-expanded={expanded}
             title={expanded ? tt("收起更多库") : tt("更多库（跨站查看）")}
             className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[15px] leading-none transition-colors ${
@@ -146,7 +162,7 @@ function TabBar({
           </button>
           {/* 展开：滑出其余只读库标签（同款 pill 分组）。 */}
           {expanded && (
-            <div className="flex flex-wrap gap-1 rounded-xl bg-stone-100 p-1">
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-stone-100 p-1">
               {moreTabs!.map(pill)}
             </div>
           )}
@@ -341,7 +357,7 @@ export function ResultCanvas({
     // 本站已亮的库 → 从「+」里排除（按主标签 id 的语义键 + 常见别名）。
     // crossSiteLibraryTabs 的 exclude 同时认 `lib_x` 与语义键 `x`，故直接把主标签 id 丢进去，
     // 并补几个常见别名（files→all、result 非库不影响）。
-    const autoExclude = new Set<string>(["material", "all"]);
+    const autoExclude = new Set<string>();
     for (const id of hostTabIds) {
       autoExclude.add(id);
       if (id === "files") autoExclude.add("all");

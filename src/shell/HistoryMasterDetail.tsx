@@ -30,6 +30,7 @@ import {
   getAppSession,
   isAppSessionApiUnavailableStatus,
   listAppSessions,
+  updateAppSessionMetadata,
   type AppSession,
 } from "../lib/app-session";
 import { ConfirmDialog } from "../ui";
@@ -49,6 +50,10 @@ import {
   historySessionIdFromPath,
 } from "./workspace-route";
 import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
+import {
+  HistoryRowMenu,
+  MoveTaskProjectDialog,
+} from "./HistoryRowActions";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -89,7 +94,8 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.session.title_status !== y.session.title_status ||
         x.session.last_activity_at !== y.session.last_activity_at ||
         Boolean(x.session.pinned) !== Boolean(y.session.pinned) ||
-        Boolean(x.session.favorite) !== Boolean(y.session.favorite)
+        Boolean(x.session.favorite) !== Boolean(y.session.favorite) ||
+        (x.session.project_id ?? null) !== (y.session.project_id ?? null)
       ) {
         return false;
       }
@@ -99,6 +105,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.task.title !== y.task.title ||
         Boolean(x.task.pinned) !== Boolean(y.task.pinned) ||
         Boolean(x.task.favorite) !== Boolean(y.task.favorite) ||
+        (x.task.project_id ?? null) !== (y.task.project_id ?? null) ||
         (x.task.nano_spent ?? null) !== (y.task.nano_spent ?? null) ||
         (x.task.credits_spent ?? null) !== (y.task.credits_spent ?? null)
       ) {
@@ -214,16 +221,19 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     }
     return r.ok;
   }, [items, reload, tt]);
-  // 轻量字段更新（宗旨 v22：Manus 式任务菜单）：重命名 / Pin 置顶 / 收藏。直接走 browser
-  // Supabase 客户端更新对应表（agent_tasks 或 app_sessions，都有 RLS owner-only），乐观
-  // 回填 + 失败回滚。避免动 conflict-checked 的 session snapshot API（那是给快照用的）。
+  // 轻量字段更新（宗旨 v22：Manus 式任务菜单）：重命名 / 置顶 / 收藏 / 移动项目。
+  // task 走 owner RLS；session 走窄 metadata API（ archived snapshot 的 RLS 仍保持不可改）。
+  // 两条路径都乐观回填 + 失败回滚，不触碰 conflict-checked 的 snapshot API。
   const mutate = useCallback(
     async (
       entry: HistoryListEntry,
-      patch: { title?: string; pinned?: boolean; favorite?: boolean },
+      patch: {
+        title?: string;
+        pinned?: boolean;
+        favorite?: boolean;
+        project_id?: string | null;
+      },
     ): Promise<boolean> => {
-      const supabase = browserClient();
-      if (!supabase) return false;
       const table = entry.kind === "session" ? "app_sessions" : "agent_tasks";
       const id = entry.id;
       const prev = items;
@@ -237,8 +247,22 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
           return { ...it, task: { ...it.task, ...patch } };
         }),
       );
-      const { error: err } = await supabase.from(table).update(patch).eq("id", id);
-      if (err) {
+      let mutationError = "";
+      if (entry.kind === "session") {
+        const result = await updateAppSessionMetadata(id, patch);
+        if (!result.ok) mutationError = result.error || "session update failed";
+      } else {
+        const supabase = browserClient();
+        if (!supabase) mutationError = "supabase unavailable";
+        else {
+          const { error: err } = await supabase
+            .from(table)
+            .update(patch)
+            .eq("id", id);
+          if (err) mutationError = err.message;
+        }
+      }
+      if (mutationError) {
         setItems(prev);
         setError(tt("操作失败，请稍后重试。"));
         return false;
@@ -265,6 +289,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [moveTarget, setMoveTarget] = useState<HistoryListEntry | null>(null);
 
   // 置顶的排在前面（稳定：仅把 pinned 提到前，保持原有时间序）。
   const orderedItems = useMemo(() => {
@@ -377,7 +402,11 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 type="button"
                 onClick={() => {
                   setSel(entry.id);
-                  router.push(hrefFor(entry));
+                  if (entry.kind === "session") {
+                    router.push(historySessionHref(entry.id));
+                  } else {
+                    router.push(`/history?task=${encodeURIComponent(entry.id)}`);
+                  }
                 }}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
@@ -415,7 +444,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
               <HistoryRowMenu
                 open={menuFor === entry.id}
                 onOpenChange={(v) => setMenuFor(v ? entry.id : null)}
-                on={on}
+                active={on}
                 pinned={pinned}
                 favorite={favorite}
                 canDelete={canDeleteHistoryEntry(entry)}
@@ -429,15 +458,18 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                   void mutate(entry, { pinned: !pinned });
                   setMenuFor(null);
                 }}
-                onToggleFav={() => {
+                onToggleFavorite={() => {
                   void mutate(entry, { favorite: !favorite });
+                  setMenuFor(null);
+                }}
+                onMove={() => {
+                  setMoveTarget(entry);
                   setMenuFor(null);
                 }}
                 onDelete={() => {
                   setPending(entry);
                   setMenuFor(null);
                 }}
-                tt={tt}
               />
             )}
           </div>
@@ -468,99 +500,25 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           onCancel={() => setPending(null)}
         />
       )}
-    </div>
-  );
-}
-
-/** 任务行「⋯」菜单（宗旨 v22，Manus 式）：新标签打开 / 重命名 / 置顶 / 收藏 / 删除。 */
-function HistoryRowMenu({
-  open,
-  onOpenChange,
-  on,
-  pinned,
-  favorite,
-  canDelete,
-  href,
-  onRename,
-  onTogglePin,
-  onToggleFav,
-  onDelete,
-  tt,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  on: boolean;
-  pinned: boolean;
-  favorite: boolean;
-  canDelete: boolean;
-  href: string;
-  onRename: () => void;
-  onTogglePin: () => void;
-  onToggleFav: () => void;
-  onDelete: () => void;
-  tt: (s: string) => string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open, onOpenChange]);
-
-  const item = (label: string, handler: () => void, danger = false) => (
-    <button
-      type="button"
-      onClick={handler}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition ${
-        danger ? "text-rose-600 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-100"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => onOpenChange(!open)}
-        aria-label={tt("更多操作")}
-        className={`rounded p-0.5 transition ${
-          on
-            ? "text-white/70 hover:bg-white/20 hover:text-white"
-            : "text-neutral-300 opacity-0 hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100"
-        } ${open ? "opacity-100" : ""}`}
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-          <circle cx="5" cy="12" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="19" cy="12" r="1.6" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => onOpenChange(false)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-neutral-700 transition hover:bg-neutral-100"
-          >
-            {tt("在新标签打开")}
-          </a>
-          {item(tt("重命名"), onRename)}
-          {item(pinned ? tt("取消置顶") : tt("置顶"), onTogglePin)}
-          {item(favorite ? tt("取消收藏") : tt("收藏"), onToggleFav)}
-          {canDelete && (
-            <>
-              <div className="my-1 h-px bg-neutral-100" />
-              {item(tt("删除"), onDelete, true)}
-            </>
-          )}
-        </div>
+      {moveTarget && (
+        <MoveTaskProjectDialog
+          title={
+            moveTarget.kind === "session"
+              ? moveTarget.session.title || moveTarget.session.app_id
+              : moveTarget.task.title || tt("未命名任务")
+          }
+          currentProjectId={
+            moveTarget.kind === "session"
+              ? moveTarget.session.project_id
+              : moveTarget.task.project_id
+          }
+          onSelect={(projectId) => {
+            const target = moveTarget;
+            setMoveTarget(null);
+            void mutate(target, { project_id: projectId });
+          }}
+          onClose={() => setMoveTarget(null)}
+        />
       )}
     </div>
   );

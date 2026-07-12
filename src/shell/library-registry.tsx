@@ -6,11 +6,11 @@
 // 操作员 2026-07-12 铁律：库只读，生成只在页面左栏操作台。
 //
 // 本注册表把「全量可在右栏展示的只读库」枚举成一张表，每条 = 一个 CanvasTab 工厂
-// （id / label / makeContent）。右栏 TabBar 的独立圆形「+」展开的，就是这些【查看类】库：
-//   · 图片库 / 幻灯库(PPT) / 文档库(Word) / 表格库(Excel) / 视频库 / 音频库 / 3D 库 /
-//     文件库(全部) / 收藏  —— 复用 ArtifactLibrary（数据 = agent_artifacts，跨站登录 +
-//     RLS owner-only，天然「一个站看全系列产物」）；
-//   · 素材库 —— 复用 MaterialLibrary（各站右栏是素材总栏目的子页面）。
+// （id / label / makeContent）。右栏 TabBar 的独立圆形「+」展开的，是【真正的内容查看模块】：
+// 网站 / 画布 / PPT / Excel / 文档 / 图片 / 视频 / 视频画布 / 音频 / 小红书 / 3D /
+// 全部作品 / 收藏。它们复用 CrossSiteLibrary 的统一作品索引（user_creations +
+// agent_artifacts 去重），但由各自的 viewer 查看内容，绝不是换标签名的文件列表。
+// 素材库另用 MaterialLibrary；素材是参考内容，不与用户作品混表。
 //
 // 用法（宿主）：
 //   const more = crossSiteLibraryTabs({ accent, exclude: ["files"] });
@@ -19,7 +19,8 @@
 // ============================================================================
 
 import type { ReactNode } from "react";
-import { ArtifactLibrary, type ArtifactFilter } from "./ArtifactLibrary";
+import { CrossSiteLibrary } from "./CrossSiteLibrary";
+import type { LibraryKind } from "./library-data";
 import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
 
 export interface LibraryTabCtx {
@@ -35,17 +36,27 @@ export interface ReadonlyLibraryDef {
   id: string;
   /** 标签名。 */
   label: string;
-  /** 该库主体内容工厂（复用 ArtifactLibrary / MaterialLibrary）。 */
+  /** 该库主体内容工厂（复用 CrossSiteLibrary / MaterialLibrary）。 */
   makeContent: (ctx: LibraryTabCtx) => ReactNode;
 }
 
-// 复用 ArtifactLibrary 的一个「锁定到某分区、隐藏 chips」的只读库工厂。
-function artifactLib(id: string, label: string, filter: ArtifactFilter): ReadonlyLibraryDef {
+// 一种内容形态一个只读 viewer；数据源统一，但展示不是通用文件网格。
+function contentLibrary(
+  id: string,
+  label: string,
+  kinds: LibraryKind[],
+  opts: { favoritesOnly?: boolean; emptyTitle?: string } = {},
+): ReadonlyLibraryDef {
   return {
     id,
     label,
     makeContent: (ctx) => (
-      <ArtifactLibrary accent={ctx.accent} fill filter={filter} hideChips />
+      <CrossSiteLibrary
+        accent={ctx.accent}
+        kinds={kinds}
+        favoritesOnly={opts.favoritesOnly}
+        emptyTitle={opts.emptyTitle}
+      />
     ),
   };
 }
@@ -55,17 +66,22 @@ function artifactLib(id: string, label: string, filter: ArtifactFilter): Readonl
  * （result/material/files/browser/org…）。素材库单列（复用 MaterialLibrary）。
  */
 export const CROSS_SITE_LIBRARIES: ReadonlyLibraryDef[] = [
-  artifactLib("lib_images", "图片库", "images"),
-  artifactLib("lib_slides", "PPT库", "slides"),
-  artifactLib("lib_documents", "文档库", "documents"),
-  artifactLib("lib_videos", "视频库", "videos"),
-  artifactLib("lib_audio", "音频库", "audio"),
-  artifactLib("lib_threed", "3D库", "threed"),
-  artifactLib("lib_all", "全部文件", "all"),
-  artifactLib("lib_favorites", "收藏", "favorites"),
+  contentLibrary("lib_websites", "网站", ["website"]),
+  contentLibrary("lib_canvas", "画布", ["canvas"]),
+  contentLibrary("lib_slides", "PPT", ["ppt"]),
+  contentLibrary("lib_sheets", "Excel", ["sheet"]),
+  contentLibrary("lib_documents", "Word", ["document"]),
+  contentLibrary("lib_images", "图片", ["image"]),
+  contentLibrary("lib_videos", "视频", ["video"]),
+  contentLibrary("lib_video_canvas", "视频画布", ["video_canvas"]),
+  contentLibrary("lib_audio", "音频", ["audio"]),
+  contentLibrary("lib_xhs", "小红书", ["xhs"]),
+  contentLibrary("lib_threed", "3D", ["threed"]),
+  contentLibrary("lib_all", "全部作品", []),
+  contentLibrary("lib_favorites", "收藏", [], { favoritesOnly: true }),
   {
     id: "lib_material",
-    label: "素材库",
+    label: "素材",
     makeContent: (ctx) => (
       <MaterialLibrary
         materials={ctx.materials ?? []}
@@ -84,16 +100,52 @@ export function libraryDefById(id: string): ReadonlyLibraryDef | undefined {
 export interface CrossSiteLibraryTabsOptions extends LibraryTabCtx {
   /**
    * 要**排除**的库 id（本站默认已亮的那几个不要在「+」里重复出现）。既可传 CROSS_SITE
-   * 的 `lib_*` id，也可传对应的语义键（images/slides/documents/videos/audio/threed/all/
-   * favorites/material），两种都能匹配。 */
+   * 的 `lib_*` id，也可传对应的语义键（website/canvas/ppt/excel/documents/images/
+   * videos/video_canvas/audio/xhs/threed/all/favorites/material），两种都能匹配。 */
   exclude?: string[];
   /**
    * 只包含这些库 id（给了它就忽略全量顺序、只按此列表出）。同样支持 `lib_*` 或语义键。 */
   only?: string[];
 }
 
+const SEMANTIC_IDS: Record<string, string> = {
+  website: "lib_websites",
+  websites: "lib_websites",
+  web: "lib_websites",
+  canvas: "lib_canvas",
+  ppt: "lib_slides",
+  slide: "lib_slides",
+  slides: "lib_slides",
+  presentation: "lib_slides",
+  excel: "lib_sheets",
+  sheet: "lib_sheets",
+  sheets: "lib_sheets",
+  word: "lib_documents",
+  doc: "lib_documents",
+  document: "lib_documents",
+  documents: "lib_documents",
+  image: "lib_images",
+  images: "lib_images",
+  video: "lib_videos",
+  videos: "lib_videos",
+  video_canvas: "lib_video_canvas",
+  videocanvas: "lib_video_canvas",
+  audio: "lib_audio",
+  xhs: "lib_xhs",
+  xiaohongshu: "lib_xhs",
+  threed: "lib_threed",
+  "3d": "lib_threed",
+  all: "lib_all",
+  files: "lib_all",
+  favorites: "lib_favorites",
+  favorite: "lib_favorites",
+  material: "lib_material",
+  materials: "lib_material",
+};
+
 function normId(id: string): string {
-  return id.startsWith("lib_") ? id : `lib_${id}`;
+  const value = id.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return SEMANTIC_IDS[value] || (value.startsWith("lib_") ? value : `lib_${value}`);
 }
 
 /**

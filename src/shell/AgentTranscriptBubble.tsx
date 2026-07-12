@@ -213,17 +213,13 @@ function WorkerReportBubble({ message }: { message: AgentMessage }) {
     (message.meta?.worker_name as string) ||
     (message.meta?.worker as string) ||
     tt("成员");
-  const icon = (message.meta?.worker_icon as string) || "✦";
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white/70 px-3.5 py-3">
+    <div className="px-1">
       <div className="mb-1.5 flex items-center gap-2">
-        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-[13px]">
-          {icon}
-        </span>
-        <span className="truncate text-[12px] font-semibold text-stone-700">
+        <span className="truncate text-[12px] font-medium text-stone-500">
           {name}
         </span>
-        <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-400">
+        <span className="text-[10px] text-stone-400">
           {tt("成员回答")}
         </span>
       </div>
