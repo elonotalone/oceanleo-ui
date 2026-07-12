@@ -989,30 +989,24 @@ export function AgentChat({
             content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
           });
         }
-        // 宗旨 v22：TabBar 末尾独立圆形「+」展开的跨站只读库。默认全量、去掉本站已亮的
-        // 素材库/文件库（避免「+」里重复出现同名标签）。
-        let moreTabs: CanvasTab[] | undefined;
-        if (libraryTabs.moreLibraries) {
-          const ctx = {
-            accent,
-            materials: libraryTabs.materials,
-            onSeeAllMaterials: libraryTabs.onSeeAllMaterials,
-          };
-          moreTabs = Array.isArray(libraryTabs.moreLibraries)
-            ? crossSiteLibraryTabs({ ...ctx, only: libraryTabs.moreLibraries })
-            : crossSiteLibraryTabs({
-                ...ctx,
-                // 默认展开的跨站库里，去掉本站主标签已经覆盖的（素材库 material、文件库 all）。
-                exclude: [
-                  "material",
-                  ...(libraryTabs.showFiles !== false ? ["all"] : []),
-                ],
-              });
-        }
+        // 宗旨 v22：TabBar 末尾独立圆形「+」展开的跨站只读库。现在 ResultCanvas【默认自动
+        // 注入】跨站只读库并自动排除本站已亮的同类库，所以这里一般不用手拼——只在
+        // `moreLibraries` 给了显式白名单(string[]) 时才覆盖，给了 false 时关掉。
+        const explicitMore = Array.isArray(libraryTabs.moreLibraries)
+          ? crossSiteLibraryTabs({
+              accent,
+              materials: libraryTabs.materials,
+              onSeeAllMaterials: libraryTabs.onSeeAllMaterials,
+              only: libraryTabs.moreLibraries,
+            })
+          : undefined;
         return (
           <ResultCanvas
             tabs={tabs}
-            moreTabs={moreTabs}
+            moreTabs={explicitMore}
+            crossSiteLibraries={libraryTabs.moreLibraries !== false}
+            materials={libraryTabs.materials}
+            onSeeAllMaterials={libraryTabs.onSeeAllMaterials}
             active={libTab}
             onChange={setLibTab}
             accent={accent}

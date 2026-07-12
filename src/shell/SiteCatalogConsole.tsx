@@ -35,7 +35,6 @@ import { type GoalApp } from "./app-catalog";
 import { FunctionAgentChat } from "./FunctionAgentChat";
 import { AgentChat } from "./AgentChat";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
-import { crossSiteLibraryTabs } from "./library-registry";
 import { ArtifactLibrary } from "./ArtifactLibrary";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -889,16 +888,12 @@ function AgentCardCanvas({
       content: <CloudBrowserPanel accent={accent} />,
     },
   ];
-  // 宗旨 v22：右栏「+」展开跨站只读库（去掉本站已亮的素材库/文件库）。
-  const moreTabs = crossSiteLibraryTabs({
-    accent,
-    materials: materials ?? [],
-    exclude: ["material", "all"],
-  });
+  // 宗旨 v22：右栏「+」展开跨站只读库。ResultCanvas 现在默认自动注入并按本站主标签去重，
+  // 这里只需把素材切片传下去（供「+」里的素材库子页面）。
   return (
     <ResultCanvas
       tabs={tabs}
-      moreTabs={moreTabs}
+      materials={materials ?? []}
       active={view}
       onChange={setView}
       accent={accent}

@@ -1,6 +1,6 @@
 {
   "name": "@oceanleo/ui",
-  "version": "0.147.1",
+  "version": "0.147.2",
   "description": "OceanLeo 全家桶统一前端外壳 — 单一事实源（侧边栏/AI 模型市场/账户/设置/主题/SSO/网关）。所有 *.oceanleo.com 站（除 crm）共享此包。",
   "private": false,
   "license": "UNLICENSED",

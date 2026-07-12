@@ -22,6 +22,11 @@ import { useFunctionGuide } from "./guide-context";
 import { NavigatorGuide } from "./NavigatorGuide";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+import {
+  crossSiteLibraryTabs,
+  type CrossSiteLibraryTabsOptions,
+} from "./library-registry";
+import type { MaterialItem } from "./MaterialLibrary";
 
 export interface CanvasTab {
   id: string;
@@ -36,8 +41,29 @@ export interface ResultCanvasProps {
    * 宗旨 v22（操作员 2026-07-12）：跨站【只读】库标签。给了它（非空）→ TabBar 末尾长出
    * 独立圆形「+」，点击展开这些标签。它们与 `tabs` 一样能被选中并渲染 content（切到某个
    * 跨站库就在右栏显示那个库），只是默认折叠、需点「+」才出现在标签条里。全是查看类库，
-   * 无输入、不生成。 */
+   * 无输入、不生成。
+   *
+   * ⚠️ 一般【不需要】自己传这个：ResultCanvas 现在**默认自动注入**跨站只读库（见
+   * `crossSiteLibraries`）。只有当你要完全自定义「+」里的标签集时才显式传 `moreTabs`
+   * ——传了它就【覆盖】默认注入。 */
   moreTabs?: CanvasTab[];
+  /**
+   * 宗旨 v22（操作员 2026-07-12「右栏库里没有加号」事故修复，2026-07-13）：**默认开**。
+   * ResultCanvas 不再要求每个站点 console 手动传 `moreTabs`——它自己调 crossSiteLibraryTabs
+   * 生成默认跨站只读库（图片/PPT/文档/表格/视频/音频/3D/全部文件/收藏/素材），自动排除
+   * 本站 `tabs` 里已亮的同类库（按 id / 语义键去重），并接上 `materials` / `onSeeAllMaterials`
+   * 给素材库子页面用。于是全家桶 40+ 个自建 <ResultCanvas> 的站【零改动】右栏就有「+」。
+   *
+   * - `false`  → 关掉「+」（该站不需要跨站只读库）。
+   * - `CanvasTab[]` / 显式 `moreTabs` → 覆盖默认，自己指定「+」里的标签。
+   * - 省略 / `true` → 默认全量（去重后）。 */
+  crossSiteLibraries?: boolean;
+  /** 素材库（跨站「+」里的「素材库」子页面）要展示的素材切片。默认空态。 */
+  materials?: MaterialItem[];
+  /** 素材库「看全部素材 →」跳完整素材总栏目。 */
+  onSeeAllMaterials?: () => void;
+  /** 传给默认跨站库注入的额外 exclude/only（一般不用；本站已亮库已自动排除）。 */
+  crossSiteLibraryOptions?: Pick<CrossSiteLibraryTabsOptions, "exclude" | "only">;
   active: string;
   onChange: (id: string) => void;
   /**
@@ -136,6 +162,10 @@ const GUIDE_TAB_ID = "__guide";
 export function ResultCanvas({
   tabs,
   moreTabs,
+  crossSiteLibraries = true,
+  materials,
+  onSeeAllMaterials,
+  crossSiteLibraryOptions,
   active,
   onChange,
   hint: _hint,
@@ -300,11 +330,39 @@ export function ResultCanvas({
     () => (guideTab ? [guideTab, ...tabs] : tabs),
     [guideTab, tabs],
   );
-  // 跨站只读库（默认折叠，点「+」展开）。
-  const moreTabsSafe = useMemo(
-    () => (Array.isArray(moreTabs) ? moreTabs : []),
-    [moreTabs],
-  );
+  // 跨站只读库（默认折叠，点「+」展开）。宗旨 v22（2026-07-13 修「自建 console 没加号」）：
+  // 优先用宿主显式传的 moreTabs；否则——除非 crossSiteLibraries===false——**默认自动注入**
+  // crossSiteLibraryTabs，并自动排除本站主标签（tabs + guide）里已经覆盖的同类库，避免重复。
+  // 于是所有自建 <ResultCanvas> 的站零改动右栏就有「+」。
+  const hostTabIds = useMemo(() => tabs.map((t) => t.id), [tabIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const moreTabsSafe = useMemo(() => {
+    if (Array.isArray(moreTabs)) return moreTabs;
+    if (crossSiteLibraries === false) return [];
+    // 本站已亮的库 → 从「+」里排除（按主标签 id 的语义键 + 常见别名）。
+    // crossSiteLibraryTabs 的 exclude 同时认 `lib_x` 与语义键 `x`，故直接把主标签 id 丢进去，
+    // 并补几个常见别名（files→all、result 非库不影响）。
+    const autoExclude = new Set<string>(["material", "all"]);
+    for (const id of hostTabIds) {
+      autoExclude.add(id);
+      if (id === "files") autoExclude.add("all");
+      if (id === "material" || id === "materials") autoExclude.add("material");
+    }
+    return crossSiteLibraryTabs({
+      accent,
+      materials: materials ?? [],
+      onSeeAllMaterials,
+      exclude: [...autoExclude, ...(crossSiteLibraryOptions?.exclude ?? [])],
+      only: crossSiteLibraryOptions?.only,
+    });
+  }, [
+    moreTabs,
+    crossSiteLibraries,
+    hostTabIds,
+    accent,
+    materials,
+    onSeeAllMaterials,
+    crossSiteLibraryOptions,
+  ]);
   // 内容查找集合：主标签 + 跨站只读库。moreTabs 也要在这里，否则从历史恢复到某个跨站库
   // 标签时找不到 content。
   const allTabs = useMemo(
