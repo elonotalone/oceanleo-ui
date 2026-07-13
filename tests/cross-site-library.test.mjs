@@ -98,13 +98,25 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.match(source, /useRightPaneSlot/);
   assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
   assert.match(source, /hint\?: string/);
-  assert.match(source, /grouped\[id\]\[0\]\?\.id \|\| id/);
+  assert.match(source, /tab\.id !== "__guide"/);
   assert.match(source, /const selected = internal/);
   assert.match(source, /setInternal\(id\)/);
   assert.match(source, /setRightTab\(id\)/);
   assert.doesNotMatch(source, /expanded \? "−" : "\+"/);
   assert.doesNotMatch(source, /crossSiteLibraryTabs/);
   assert.doesNotMatch(source, /\bmoreTabs\b/);
+});
+
+test("template slot preserves both quick-start guide and legacy template pages", () => {
+  const source = readFileSync(
+    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /templatePageId/);
+  assert.match(source, /grouped\.template\.find/);
+  assert.match(source, /grouped\.template\.length > 1/);
+  assert.match(source, /tab\.id === "__guide" \? "快速起手" : tab\.label/);
+  assert.match(source, /if \(id !== "__guide"\) onChange\?\.\(id\)/);
 });
 
 test("workspace actions are versioned, bounded and reject unsafe URLs", () => {

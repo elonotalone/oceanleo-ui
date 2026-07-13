@@ -299,12 +299,26 @@ export function ResultCanvas({
         ? workspaceSlotForLegacyId(active)
         : "template",
   );
+  const [templatePageId, setTemplatePageId] = useState(() => {
+    const restoredTemplate = runtimeHydration?.rightTab || "";
+    if (
+      restoredTemplate &&
+      workspaceSlotForLegacyId(restoredTemplate) === "template"
+    ) {
+      return restoredTemplate;
+    }
+    return active && workspaceSlotForLegacyId(active) === "template"
+      ? active
+      : "";
+  });
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
   const selected = internal;
   const previousActive = useRef(active);
   const callerIdForSlot = useCallback(
-    (id: WorkspaceSlotId) => grouped[id][0]?.id || id,
+    (id: WorkspaceSlotId) =>
+      grouped[id].find((tab) => tab.id !== "__guide")?.id ||
+      (id === "template" ? null : id),
     [grouped],
   );
 
@@ -314,7 +328,8 @@ export function ResultCanvas({
       // Existing sites persist their local `result/material/mine` ids in app
       // snapshots. Keep that callback contract while the shared runtime stores
       // the canonical fixed-slot id below.
-      onChange?.(callerIdForSlot(id));
+      const callerId = callerIdForSlot(id);
+      if (callerId) onChange?.(callerId);
       runtimeHydration?.setRightTab(id);
     },
     [callerIdForSlot, onChange, runtimeHydration],
@@ -327,7 +342,9 @@ export function ResultCanvas({
     }
     if (active === previousActive.current) return;
     previousActive.current = active;
-    setInternal(workspaceSlotForLegacyId(active));
+    const slot = workspaceSlotForLegacyId(active);
+    setInternal(slot);
+    if (slot === "template") setTemplatePageId(active);
   }, [active]);
 
   useEffect(() => {
@@ -336,14 +353,18 @@ export function ResultCanvas({
 
   useEffect(() => {
     if (!runtimeHydration?.restoredSnapshot) return;
-    const slot = workspaceSlotForLegacyId(runtimeHydration.rightTab || "");
+    const restoredRightTab = runtimeHydration.rightTab || "";
+    const slot = workspaceSlotForLegacyId(restoredRightTab);
     setInternal(
-      runtimeHydration.rightTab
+      restoredRightTab
         ? slot
         : active
           ? workspaceSlotForLegacyId(active)
           : "template",
     );
+    if (restoredRightTab && slot === "template") {
+      setTemplatePageId(restoredRightTab);
+    }
   }, [
     runtimeHydration?.snapshotRestoreEpoch,
     runtimeHydration?.identity,
@@ -380,8 +401,12 @@ export function ResultCanvas({
     select(action.tab);
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectedTemplateTab =
+    grouped.template.find((tab) => tab.id === templatePageId) ||
+    grouped.template[0] ||
+    null;
   const templateContent =
-    grouped.template[0]?.content || (
+    selectedTemplateTab?.content || (
       <CanvasEmpty
         title="选择一个模板开始"
         description="当前应用还没有起手模板；你仍可以直接在左侧描述要完成的目标。"
@@ -394,8 +419,24 @@ export function ResultCanvas({
 
   const content: Record<WorkspaceSlotId, ReactNode> = {
     template: (
-      <div className="h-full overflow-y-auto p-3">
-        {templateContent}
+      <div className="flex h-full min-h-0 flex-col overflow-hidden p-3">
+        {grouped.template.length > 1 && selectedTemplateTab && (
+          <CanvasSubTabs
+            tabs={grouped.template.map((tab) => ({
+              id: tab.id,
+              label: tab.id === "__guide" ? "快速起手" : tab.label,
+            }))}
+            active={selectedTemplateTab.id}
+            onChange={(id) => {
+              setTemplatePageId(id);
+              if (id !== "__guide") onChange?.(id);
+            }}
+            accent={accent}
+          />
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {templateContent}
+        </div>
       </div>
     ),
     preview: (
