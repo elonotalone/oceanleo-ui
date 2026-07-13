@@ -200,51 +200,66 @@ export function useImageWorkbench(
     if (!canvas) return;
     setSaving(true);
     setError("");
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, settings.format, settings.quality / 100),
-    );
-    if (!blob) {
-      setError("当前图片无法导出，请检查图片来源权限。");
-      setSaving(false);
-      return;
-    }
-    const title = `${item.title || "图片"}-编辑版`;
-    const uploaded = await uploadFile(
-      new File([blob], `${title}.${extension}`, { type: settings.format }),
-      { siteId: siteId || "oceanleo", title },
-    );
-    const url = uploaded.data?.file?.url || "";
-    if (!uploaded.ok || !url) {
-      setError(uploaded.error || "保存到我的库失败");
-      setSaving(false);
-      return;
-    }
-    await saveWorks(siteId || "oceanleo", [
-      {
-        url,
-        thumb_url: url,
-        media_type: "image",
-        title,
-        kind: "image",
-        meta: {
-          parent_asset_id: item.id,
-          source_site: item.siteId || siteId || "",
-          editor: "oceanleo-advanced-image-v1",
-          settings,
+    try {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, settings.format, settings.quality / 100),
+      );
+      if (!blob) {
+        setError("当前图片无法导出，请检查图片来源权限。");
+        return;
+      }
+      const title = `${item.title || "图片"}-编辑版`;
+      const uploaded = await uploadFile(
+        new File([blob], `${title}.${extension}`, { type: settings.format }),
+        { siteId: siteId || "oceanleo", title },
+      );
+      const url = uploaded.data?.file?.url || "";
+      if (!uploaded.ok || !url) {
+        setError(uploaded.error || "保存到我的库失败");
+        return;
+      }
+      const saved = await saveWorks(siteId || "oceanleo", [
+        {
+          url,
+          thumb_url: url,
+          media_type: "image",
+          title,
+          kind: "image",
+          meta: {
+            parent_asset_id: item.id,
+            source_site: item.siteId || siteId || "",
+            editor: "oceanleo-advanced-image-v1",
+            settings,
+          },
         },
-      },
-    ]);
-    setSavedUrl(url);
-    setSaving(false);
+      ]);
+      if (!saved.ok) {
+        setError(saved.error || "图片已上传，但登记到我的库失败");
+        return;
+      }
+      setSavedUrl(url);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "当前图片无法导出，请检查图片来源权限。",
+      );
+    } finally {
+      setSaving(false);
+    }
   }, [extension, item, settings, siteId]);
 
   const download = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const anchor = document.createElement("a");
-    anchor.download = `${item.title || "oceanleo-image"}.${extension}`;
-    anchor.href = canvas.toDataURL(settings.format, settings.quality / 100);
-    anchor.click();
+    try {
+      const anchor = document.createElement("a");
+      anchor.download = `${item.title || "oceanleo-image"}.${extension}`;
+      anchor.href = canvas.toDataURL(settings.format, settings.quality / 100);
+      anchor.click();
+    } catch {
+      setError("当前图片来源不允许导出，请改用专业编辑器。");
+    }
   }, [extension, item.title, settings.format, settings.quality]);
 
   return {

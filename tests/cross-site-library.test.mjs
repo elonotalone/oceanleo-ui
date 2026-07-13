@@ -81,6 +81,8 @@ test("legacy pages normalize into exactly five fixed workspace slots", () => {
   assert.equal(workspaceSlotForLegacyId("result"), "preview");
   assert.equal(workspaceSlotForLegacyId("material"), "materials");
   assert.equal(workspaceSlotForLegacyId("files"), "mine");
+  assert.equal(workspaceSlotForLegacyId("mylib"), "mine");
+  assert.equal(workspaceSlotForLegacyId("favorites"), "mine");
   assert.equal(workspaceSlotForLegacyId("browser"), "browser");
   assert.equal(workspaceSlotForLegacyId("video-workflow"), "preview");
   assert.equal(workspaceSlotForLegacyId("draft"), "preview");
@@ -118,6 +120,9 @@ test("template slot preserves both quick-start guide and legacy template pages",
   assert.match(source, /grouped\.template\.length > 1/);
   assert.match(source, /tab\.id === "__guide" \? "快速起手" : tab\.label/);
   assert.match(source, /if \(id !== "__guide"\) onChange\?\.\(id\)/);
+  assert.match(source, /slotForCanvasTab/);
+  assert.match(source, /模板\|範本\|template/);
+  assert.match(source, /!isGenericMineTab\(tab\)/);
 });
 
 test("workspace actions are versioned, bounded and reject unsafe URLs", () => {

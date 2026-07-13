@@ -25,6 +25,8 @@ test("advanced workbench keeps Agent first and supports native rich editors", ()
   assert.match(workbench, /ImageWorkbenchCanvas/);
   assert.match(workbench, /TextWorkbenchCanvas/);
   assert.match(workbench, /SheetWorkbenchCanvas/);
+  assert.match(workbench, /item\.siteId === "asset"/);
+  assert.match(workbench, /sheetEditor\.saveRevision/);
   assert.match(structured, /保存新版本到我的库/);
   assert.match(structured, /下载 Markdown/);
   assert.match(structured, /下载 CSV/);
@@ -40,6 +42,7 @@ test("cloud browser can be opened directly and still supports takeover", () => {
   const panel = source("../src/shell/CloudBrowserPanel.tsx");
   const client = source("../src/lib/browser.ts");
   assert.match(panel, /createCloudBrowser\(url, effectiveTaskId \|\| undefined\)/);
+  assert.match(panel, /reload\(session\.id\)/);
   assert.match(panel, /driving \? "release" : "takeover"/);
   assert.match(client, /export function createCloudBrowser/);
 });

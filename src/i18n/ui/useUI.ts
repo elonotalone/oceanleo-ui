@@ -49,8 +49,14 @@ export function useUI(): UITranslate {
   return useMemo(() => {
     const dict = UI_MESSAGES[locale] || UI_MESSAGES[DEFAULT_LOCALE] || {};
     return (zh: string, vars?: Record<string, string | number>) => {
-      const hit = dict[zh];
-      return interpolate(hit != null && hit !== "" ? hit : zh, vars);
+      // “文件库”已并入异构“我的库”。存量 31 站仍有兼容 key，统一在翻译边界
+      // 收敛，避免任何语言短暂露出旧产品概念。
+      const canonical = zh === "文件库" ? "我的库" : zh;
+      const hit = dict[canonical];
+      return interpolate(
+        hit != null && hit !== "" ? hit : canonical,
+        vars,
+      );
     };
   }, [locale]);
 }

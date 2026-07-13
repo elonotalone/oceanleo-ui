@@ -57,6 +57,10 @@ const SLOT_ALIASES: Record<string, WorkspaceSlotId> = {
   database: "mine",
   works: "mine",
   mine: "mine",
+  mylib: "mine",
+  my_library: "mine",
+  favorites: "mine",
+  favourites: "mine",
   browser: "browser",
   cloud_browser: "browser",
 };

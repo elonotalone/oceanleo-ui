@@ -193,12 +193,19 @@ export function AdvancedContentWorkbench({
   const itemUrl = item.url || item.previewUrl || "";
   const isPdf =
     item.meta.mime === "application/pdf" || /\.pdf(?:[?#]|$)/i.test(itemUrl);
+  const hasInlineText =
+    Boolean(item.content?.trim()) ||
+    ["content", "text", "markdown", "source"].some(
+      (key) => typeof item.meta[key] === "string" && String(item.meta[key]).trim(),
+    );
   const textNative =
     !isPdf &&
-    (item.kind === "document" ||
-      (item.kind === "file" &&
-        /\.(?:txt|md|markdown|json|html?|css|js|ts)(?:[?#]|$)/i.test(itemUrl)));
-  const sheetNative = item.kind === "sheet";
+    (hasInlineText ||
+      (!itemUrl && (item.kind === "document" || item.kind === "file")) ||
+      /\.(?:txt|md|markdown|json|html?|css|js|ts)(?:[?#]|$)/i.test(itemUrl));
+  const sheetNative =
+    item.kind === "sheet" &&
+    (hasInlineText || !itemUrl || /\.csv(?:[?#]|$)/i.test(itemUrl));
   const nativeEditor = item.kind === "image" || textNative || sheetNative;
   const [activeTool, setActiveTool] = useState<WorkbenchTool>("agent");
   const [stage, setStage] = useState<"preview" | "edit">(
@@ -208,6 +215,7 @@ export function AdvancedContentWorkbench({
   const [embedState, setEmbedState] = useState("");
   const [copyState, setCopyState] = useState("");
   const [versions, setVersions] = useState<WorkItem[]>([]);
+  const [versionRevision, setVersionRevision] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const instanceId = useRef(
     `wb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
@@ -239,7 +247,13 @@ export function AdvancedContentWorkbench({
     return () => {
       alive = false;
     };
-  }, [item.id]);
+  }, [
+    editor.savedUrl,
+    item.id,
+    sheetEditor.saveRevision,
+    textEditor.saveRevision,
+    versionRevision,
+  ]);
 
   useEffect(() => {
     if (!specialist) return;
@@ -265,7 +279,20 @@ export function AdvancedContentWorkbench({
           title: typeof data.title === "string" ? data.title : `${item.title}-编辑版`,
           kind: item.kind,
           meta: { parent_asset_id: item.id, editor_instance: instanceId.current },
-        }]).then(() => setEmbedState(tt("新版本已保存到我的库")));
+        }])
+          .then((result) => {
+            setEmbedState(
+              result.ok
+                ? tt("新版本已保存到我的库")
+                : result.error || tt("新版本登记失败"),
+            );
+            if (result.ok) setVersionRevision((value) => value + 1);
+          })
+          .catch((caught) =>
+            setEmbedState(
+              caught instanceof Error ? caught.message : tt("新版本登记失败"),
+            ),
+          );
       }
     };
     window.addEventListener("message", receive);
@@ -287,7 +314,12 @@ export function AdvancedContentWorkbench({
           url: item.url,
           previewUrl: item.previewUrl,
           meta: item.meta,
-          writable: !item.meta.platform_asset_id,
+          writable: !(
+            item.siteId === "asset" ||
+            item.key.startsWith("asset:") ||
+            item.meta.asset_id ||
+            item.meta.platform_asset_id
+          ),
         },
       },
       origin,
@@ -319,24 +351,39 @@ export function AdvancedContentWorkbench({
     const url = item.url || item.previewUrl;
     if (!url) return;
     setCopyState(tt("保存中…"));
-    const result = await saveWorks(siteId || "oceanleo", [{
-      url,
-      thumb_url: item.previewUrl || url,
-      media_type: mediaType(item.kind),
-      title: `${item.title}-副本`,
-      kind: item.kind,
-      meta: {
-        parent_asset_id: item.id,
-        source_site: item.siteId || "",
-        copied_from: item.source || "library",
-      },
-    }]);
-    setCopyState(result.ok ? tt("已保存到我的库") : result.error || tt("保存失败"));
+    try {
+      const result = await saveWorks(siteId || "oceanleo", [{
+        url,
+        thumb_url: item.previewUrl || url,
+        media_type: mediaType(item.kind),
+        title: `${item.title}-副本`,
+        kind: item.kind,
+        meta: {
+          parent_asset_id: item.id,
+          source_site: item.siteId || "",
+          copied_from: item.source || "library",
+        },
+      }]);
+      setCopyState(result.ok ? tt("已保存到我的库") : result.error || tt("保存失败"));
+      if (result.ok) setVersionRevision((value) => value + 1);
+    } catch (caught) {
+      setCopyState(caught instanceof Error ? caught.message : tt("保存失败"));
+    }
   }
 
   const tools: { id: WorkbenchTool; label: string }[] = [
     { id: "agent", label: tt("Agent") },
-    { id: "edit", label: item.kind === "image" ? tt("图片调整") : tt("编辑") },
+    {
+      id: "edit",
+      label:
+        item.kind === "image"
+          ? tt("图片调整")
+          : nativeEditor
+            ? tt("编辑")
+            : specialist
+              ? tt("专业工具")
+              : tt("处理"),
+    },
     ...(nativeEditor && specialist
       ? [{ id: "specialist" as const, label: tt("专业画布") }]
       : []),

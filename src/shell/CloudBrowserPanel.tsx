@@ -44,7 +44,7 @@ export function CloudBrowserPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [address, setAddress] = useState("");
-  const [targetUrl, setTargetUrl] = useState("https://");
+  const [targetUrl, setTargetUrl] = useState("https://www.google.com/");
   const [title, setTitle] = useState("");
   const [typing, setTyping] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -56,7 +56,7 @@ export function CloudBrowserPanel({
 
   const selected = sessions.find((item) => item.id === selectedId) || null;
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (preferredId = "") => {
     const generation = ++reloadGenerationRef.current;
     const [recentResult, taskResult] = await Promise.all([
       listCloudBrowsers(),
@@ -86,6 +86,9 @@ export function CloudBrowserPanel({
     taskScopeRef.current = effectiveTaskId;
     setSessions(items);
     setSelectedId((current) => {
+      if (preferredId && items.some((item) => item.id === preferredId)) {
+        return preferredId;
+      }
       const taskSession = items.find(
         (item) => effectiveTaskId && item.task_id === effectiveTaskId,
       );
@@ -265,7 +268,7 @@ export function CloudBrowserPanel({
     }
     selectedIdRef.current = session.id;
     setSelectedId(session.id);
-    await reload();
+    await reload(session.id);
     await openLive(session.id);
   }
 

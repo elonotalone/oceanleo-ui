@@ -131,6 +131,18 @@ function kindForTab(tab: CanvasTab): LibraryKind {
   return PREVIEW_KIND_HINTS.find(([pattern]) => pattern.test(text))?.[1] || "file";
 }
 
+function slotForCanvasTab(tab: CanvasTab): WorkspaceSlotId {
+  const label = tab.label.trim().toLowerCase();
+  if (/模板|範本|template/.test(label)) return "template";
+  if (/素材库|素材庫|materials?/.test(label)) return "materials";
+  if (/我的库|我的庫|文件库|檔案庫|my library/.test(label)) return "mine";
+  if (/我的.*(?:库|庫|记录|記錄)|作品库|作品庫|项目|項目|历史记录|歷史記錄|会议库|會議庫|闪卡库|閃卡庫/.test(label)) {
+    return "mine";
+  }
+  if (/云端浏览器|雲端瀏覽器|cloud browser/.test(label)) return "browser";
+  return workspaceSlotForLegacyId(tab.id);
+}
+
 function previewEntry(
   tab: CanvasTab,
   options: { material?: boolean } = {},
@@ -179,6 +191,22 @@ function isComponentNamed(node: ReactNode, names: string[]): boolean {
   if (typeof type === "string") return false;
   const name = type.displayName || type.name || "";
   return names.includes(name);
+}
+
+function isGenericMineTab(tab: CanvasTab): boolean {
+  const label = tab.label.trim();
+  if (
+    /^(?:file|files|file\s*library|library|database|mine|mylib|my\s*library)$/i.test(
+      label,
+    ) ||
+    /^(?:文件库|檔案庫|我的库|我的庫)$/.test(label)
+  ) {
+    return true;
+  }
+  if (label) return false;
+  return /^(?:file|files|filelibrary|library|database|mine|mylib|my_library)$/i.test(
+    tab.id.trim(),
+  );
 }
 
 function extractedMaterialItems(tab: CanvasTab): MaterialItem[] {
@@ -241,10 +269,17 @@ export function ResultCanvas({
       browser: [],
     };
     for (const tab of sourceTabs) {
-      map[workspaceSlotForLegacyId(tab.id)].push(tab);
+      map[slotForCanvasTab(tab)].push(tab);
     }
     return map;
   }, [sourceTabs]);
+  const slotForId = useCallback(
+    (id: string) => {
+      const tab = sourceTabs.find((entry) => entry.id === id);
+      return tab ? slotForCanvasTab(tab) : workspaceSlotForLegacyId(id);
+    },
+    [sourceTabs],
+  );
 
   const previewEntries = useMemo(
     () => grouped.preview.map((tab) => previewEntry(tab)),
@@ -285,6 +320,7 @@ export function ResultCanvas({
       grouped.mine
         .filter(
           (tab) =>
+            !isGenericMineTab(tab) &&
             !isComponentNamed(tab.content, [
               "ArtifactLibrary",
               "FileLibrary",
@@ -299,9 +335,7 @@ export function ResultCanvas({
     [grouped.mine],
   );
 
-  const restoredSlot = workspaceSlotForLegacyId(
-    runtimeHydration?.rightTab || "",
-  );
+  const restoredSlot = slotForId(runtimeHydration?.rightTab || "");
   const visibleSlots = useMemo(
     () =>
       FIXED_WORKSPACE_SLOTS.filter(
@@ -313,7 +347,7 @@ export function ResultCanvas({
     const requested = runtimeHydration?.rightTab
       ? restoredSlot
       : active
-        ? workspaceSlotForLegacyId(active)
+        ? slotForId(active)
         : showTemplate
           ? "template"
           : "preview";
@@ -323,11 +357,11 @@ export function ResultCanvas({
     const restoredTemplate = runtimeHydration?.rightTab || "";
     if (
       restoredTemplate &&
-      workspaceSlotForLegacyId(restoredTemplate) === "template"
+      slotForId(restoredTemplate) === "template"
     ) {
       return restoredTemplate;
     }
-    return active && workspaceSlotForLegacyId(active) === "template"
+    return active && slotForId(active) === "template"
       ? active
       : "";
   });
@@ -364,12 +398,12 @@ export function ResultCanvas({
     }
     if (active === previousActive.current) return;
     previousActive.current = active;
-    const requested = workspaceSlotForLegacyId(active);
+    const requested = slotForId(active);
     const slot =
       !showTemplate && requested === "template" ? "preview" : requested;
     setInternal(slot);
     if (slot === "template") setTemplatePageId(active);
-  }, [active, showTemplate]);
+  }, [active, showTemplate, slotForId]);
 
   useEffect(() => {
     runtimeHydration?.setDefaultRightTab(showTemplate ? "template" : "preview");
@@ -378,7 +412,7 @@ export function ResultCanvas({
   useEffect(() => {
     if (!runtimeHydration?.restoredSnapshot) return;
     const restoredRightTab = runtimeHydration.rightTab || "";
-    const requested = workspaceSlotForLegacyId(restoredRightTab);
+    const requested = slotForId(restoredRightTab);
     const slot =
       !showTemplate && requested === "template" ? "preview" : requested;
     setInternal(
@@ -386,9 +420,9 @@ export function ResultCanvas({
         ? slot
         : active
           ? (!showTemplate &&
-            workspaceSlotForLegacyId(active) === "template"
+            slotForId(active) === "template"
               ? "preview"
-              : workspaceSlotForLegacyId(active))
+              : slotForId(active))
           : showTemplate
             ? "template"
             : "preview",
@@ -400,6 +434,7 @@ export function ResultCanvas({
     runtimeHydration?.snapshotRestoreEpoch,
     runtimeHydration?.identity,
     showTemplate,
+    slotForId,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const previousFocusNonce = useRef(focusNonce);

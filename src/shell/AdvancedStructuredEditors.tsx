@@ -27,31 +27,38 @@ async function saveTextVersion(
   mime: string,
   kind: "document" | "sheet",
 ) {
-  const uploaded = await uploadFile(new File([text], fileName, { type: mime }), {
-    siteId: siteId || "oceanleo",
-    title: `${item.title}-编辑版`,
-  });
-  const file = uploaded.data?.file;
-  if (!uploaded.ok || !file?.url) {
-    return { ok: false, error: uploaded.error || "上传失败" };
-  }
-  const saved = await saveWorks(siteId || "oceanleo", [
-    {
-      url: file.url,
-      thumb_url: file.thumb_url || file.url,
-      media_type: kind === "sheet" ? "sheet" : "doc",
+  try {
+    const uploaded = await uploadFile(new File([text], fileName, { type: mime }), {
+      siteId: siteId || "oceanleo",
       title: `${item.title}-编辑版`,
-      kind,
-      meta: {
-        parent_asset_id: item.id,
-        mime,
-        editor: kind === "sheet" ? "table" : "text",
+    });
+    const file = uploaded.data?.file;
+    if (!uploaded.ok || !file?.url) {
+      return { ok: false, error: uploaded.error || "上传失败" };
+    }
+    const saved = await saveWorks(siteId || "oceanleo", [
+      {
+        url: file.url,
+        thumb_url: file.thumb_url || file.url,
+        media_type: kind === "sheet" ? "sheet" : "doc",
+        title: `${item.title}-编辑版`,
+        kind,
+        meta: {
+          parent_asset_id: item.id,
+          mime,
+          editor: kind === "sheet" ? "table" : "text",
+        },
       },
-    },
-  ]);
-  return saved.ok
-    ? { ok: true, error: "" }
-    : { ok: false, error: saved.error || "保存失败" };
+    ]);
+    return saved.ok
+      ? { ok: true, error: "" }
+      : { ok: false, error: saved.error || "保存失败" };
+  } catch (caught) {
+    return {
+      ok: false,
+      error: caught instanceof Error ? caught.message : "保存失败",
+    };
+  }
 }
 
 function textFromItem(item: LibraryItem): string {
@@ -75,6 +82,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [saveRevision, setSaveRevision] = useState(0);
 
   useEffect(() => {
     const local = textFromItem(item);
@@ -123,6 +131,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
       "document",
     );
     setStatus(result.ok ? "已保存新版本到我的库" : result.error);
+    if (result.ok) setSaveRevision((value) => value + 1);
   }
 
   return {
@@ -138,6 +147,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
     setReplace,
     selection,
     setSelection,
+    saveRevision,
     wrap,
     replaceAll,
     save,
@@ -339,6 +349,7 @@ export function useSheetWorkbench(item: LibraryItem, siteId: string) {
   const initial = textFromItem(item);
   const [rows, setRows] = useState<string[][]>(() => parseCsv(initial));
   const [status, setStatus] = useState("");
+  const [saveRevision, setSaveRevision] = useState(0);
 
   useEffect(() => {
     const local = textFromItem(item);
@@ -395,6 +406,7 @@ export function useSheetWorkbench(item: LibraryItem, siteId: string) {
       "sheet",
     );
     setStatus(result.ok ? "已保存新版本到我的库" : result.error);
+    if (result.ok) setSaveRevision((value) => value + 1);
   }
   return {
     rows,
@@ -404,6 +416,7 @@ export function useSheetWorkbench(item: LibraryItem, siteId: string) {
     removeRow,
     removeColumn,
     save,
+    saveRevision,
     status,
     download: () =>
       download(`${item.title || "spreadsheet"}.csv`, csvValue(rows), "text/csv;charset=utf-8"),
