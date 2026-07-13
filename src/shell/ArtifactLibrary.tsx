@@ -21,6 +21,7 @@ import { Markdown } from "./Markdown";
 import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
+import { MyLibrary } from "./MyLibrary";
 
 export interface ArtifactItem {
   id: string;
@@ -158,7 +159,59 @@ export interface ArtifactLibraryProps {
   hideChips?: boolean;
 }
 
-export function ArtifactLibrary({
+const FILTER_CATEGORY: Record<ArtifactFilter, string> = {
+  all: "all",
+  images: "图片",
+  documents: "文档",
+  slides: "PPT",
+  videos: "视频",
+  audio: "音频",
+  threed: "3D",
+  favorites: "all",
+};
+
+const CATEGORY_FILTER: Record<string, ArtifactFilter> = {
+  all: "all",
+  图片: "images",
+  文档: "documents",
+  PPT: "slides",
+  视频: "videos",
+  音频: "audio",
+  "3D": "threed",
+};
+
+/**
+ * Full-page /library is now the same heterogeneous My Library used by the
+ * five-slot workspace. `fill` remains the compatibility renderer for legacy
+ * tab content; ResultCanvas replaces those tabs with MyLibrary centrally.
+ */
+export function ArtifactLibrary(props: ArtifactLibraryProps) {
+  const tt = useUI();
+  if (props.fill) return <ArtifactLibraryLegacy {...props} />;
+  const filter = props.filter || "all";
+  return (
+    <div className="flex h-[100dvh] min-h-0 flex-col px-8 pb-6 pt-16">
+      <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-neutral-900">
+        {tt("我的库")}
+      </h1>
+      <p className="mt-1 shrink-0 text-[13px] text-neutral-500">
+        {tt("作品、网站、任务交付物和上传文件统一保存在这里。")}
+      </p>
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+        <MyLibrary
+          accent={props.accent}
+          category={FILTER_CATEGORY[filter]}
+          onlyFavorites={filter === "favorites"}
+          onCategoryChange={(category) =>
+            props.onFilterChange?.(CATEGORY_FILTER[category] || "all")
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function ArtifactLibraryLegacy({
   filter: controlledFilter,
   onFilterChange,
   accent = "#4f46e5",

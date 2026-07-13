@@ -43,3 +43,12 @@ test("cloud browser can be opened directly and still supports takeover", () => {
   assert.match(panel, /driving \? "release" : "takeover"/);
   assert.match(client, /export function createCloudBrowser/);
 });
+
+test("full-page library and right workspace share the heterogeneous My Library", () => {
+  const artifacts = source("../src/shell/ArtifactLibrary.tsx");
+  const mine = source("../src/shell/MyLibrary.tsx");
+  assert.match(artifacts, /<MyLibrary/);
+  assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
+  assert.match(mine, /getDatabaseOverview/);
+  assert.match(mine, /onlyFavorites/);
+});

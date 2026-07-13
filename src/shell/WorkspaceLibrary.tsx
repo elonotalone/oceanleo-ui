@@ -41,6 +41,8 @@ export interface WorkspaceLibraryProps {
   action?: WorkspaceActionEnvelope | null;
   query?: string;
   onQueryChange?: (query: string) => void;
+  category?: string;
+  onCategoryChange?: (category: string) => void;
   toolbarActions?: ReactNode;
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
@@ -102,6 +104,8 @@ export function WorkspaceLibrary({
   action,
   query,
   onQueryChange,
+  category: controlledCategory,
+  onCategoryChange,
   toolbarActions,
   taskId,
   siteId = "",
@@ -118,7 +122,12 @@ export function WorkspaceLibrary({
     if (query === undefined) setInternalSearch(next);
     onQueryChange?.(next);
   };
-  const [category, setCategory] = useState("all");
+  const [internalCategory, setInternalCategory] = useState("all");
+  const category = controlledCategory ?? internalCategory;
+  const setCategory = (next: string) => {
+    if (controlledCategory === undefined) setInternalCategory(next);
+    onCategoryChange?.(next);
+  };
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);

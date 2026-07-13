@@ -79,6 +79,9 @@ export interface MyLibraryProps {
   featuredEntries?: WorkspaceLibraryEntry[];
   taskId?: string | null;
   siteId?: string;
+  category?: string;
+  onCategoryChange?: (category: string) => void;
+  onlyFavorites?: boolean;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -89,6 +92,9 @@ export function MyLibrary({
   featuredEntries = [],
   taskId,
   siteId = "",
+  category,
+  onCategoryChange,
+  onlyFavorites = false,
 }: MyLibraryProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -135,8 +141,11 @@ export function MyLibrary({
   }, [load, refreshNonce]);
 
   const entries = useMemo(
-    () => [...featuredEntries, ...items.map(toEntry)],
-    [featuredEntries, items],
+    () => [
+      ...(onlyFavorites ? [] : featuredEntries),
+      ...items.filter((item) => !onlyFavorites || item.favorite).map(toEntry),
+    ],
+    [featuredEntries, items, onlyFavorites],
   );
   const refresh = (
     <button
@@ -154,6 +163,8 @@ export function MyLibrary({
       entries={entries}
       accent={accent}
       action={action}
+      category={category}
+      onCategoryChange={onCategoryChange}
       taskId={taskId}
       siteId={siteId}
       toolbarActions={refresh}
