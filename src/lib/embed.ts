@@ -12,8 +12,8 @@
 //   const [embed, setEmbed] = useState(false);
 //   useEffect(() => { if (...search...) setEmbed(true); }, []);  // ← 第一帧 false
 //
-// 正确：用本 helper 同步读 URL。SSR 阶段 window 不存在 → 返回 false（SSR 不渲染
-// 真实侧栏数据，hydration 后第一帧立刻拿到正确值，无可见闪屏）。客户端首帧即正确。
+// 正确：SSR/hydration 都先返回 false，确保 React 树一致；EmbedChrome 已在首帧绘制前
+// 用 CSS 隐藏 SSR 外壳。hydration 完成后 useSyncExternalStore 读取真实 URL 并摘掉外壳。
 // ============================================================================
 
 function readFlag(name: string): boolean {
@@ -35,22 +35,30 @@ export function isSolo(): boolean {
   return readFlag("solo");
 }
 
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
+
+function subscribeUrlFlags(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener("popstate", onStoreChange);
+  return () => window.removeEventListener("popstate", onStoreChange);
+}
+
+function serverFlag(): boolean {
+  return false;
+}
 
 /**
- * React hook：首帧同步返回 embed 状态（用 lazy initializer，避免「先 false 再 true」
- * 的闪屏）。SiteShell 用它替换 `useState(false)+useEffect` 反模式：
+ * React hook：SSR 与 hydration 使用同一快照；pre-paint CSS 负责隐藏 SSR 外壳，
+ * hydration 后再读取真实 URL，既不闪整壳，也不制造 React #418。
  *
  *   const embed = useIsEmbed();
  *   if (embed) return <div className="min-h-dvh bg-stone-50">{children}</div>;
  */
 export function useIsEmbed(): boolean {
-  const [embed] = useState<boolean>(() => isEmbed());
-  return embed;
+  return useSyncExternalStore(subscribeUrlFlags, isEmbed, serverFlag);
 }
 
-/** React hook：首帧同步返回 solo 状态。 */
+/** React hook：同样以 hydration-safe 快照返回 solo 状态。 */
 export function useIsSolo(): boolean {
-  const [solo] = useState<boolean>(() => isSolo());
-  return solo;
+  return useSyncExternalStore(subscribeUrlFlags, isSolo, serverFlag);
 }

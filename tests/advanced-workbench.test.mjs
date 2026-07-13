@@ -58,3 +58,11 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(mine, /getDatabaseOverview/);
   assert.match(mine, /onlyFavorites/);
 });
+
+test("embedded workspaces keep SSR and hydration snapshots identical", () => {
+  const embed = source("../src/lib/embed.ts");
+  assert.match(embed, /useSyncExternalStore\(subscribeUrlFlags, isEmbed, serverFlag\)/);
+  assert.match(embed, /useSyncExternalStore\(subscribeUrlFlags, isSolo, serverFlag\)/);
+  assert.match(embed, /function serverFlag\(\): boolean \{\s*return false;/);
+  assert.doesNotMatch(embed, /useState<boolean>\(\(\) => isEmbed\(\)\)/);
+});
