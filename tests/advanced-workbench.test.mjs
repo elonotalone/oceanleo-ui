@@ -53,10 +53,13 @@ test("cloud browser can be opened directly and still supports takeover", () => {
 test("full-page library and right workspace share the heterogeneous My Library", () => {
   const artifacts = source("../src/shell/ArtifactLibrary.tsx");
   const mine = source("../src/shell/MyLibrary.tsx");
+  const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
   assert.match(mine, /getDatabaseOverview/);
   assert.match(mine, /onlyFavorites/);
+  assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);
+  assert.match(i18n, /\.replaceAll\("檔案庫", "我的库"\)/);
 });
 
 test("embedded workspaces keep SSR and hydration snapshots identical", () => {

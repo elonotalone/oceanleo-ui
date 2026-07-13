@@ -49,9 +49,12 @@ export function useUI(): UITranslate {
   return useMemo(() => {
     const dict = UI_MESSAGES[locale] || UI_MESSAGES[DEFAULT_LOCALE] || {};
     return (zh: string, vars?: Record<string, string | number>) => {
-      // “文件库”已并入异构“我的库”。存量 31 站仍有兼容 key，统一在翻译边界
-      // 收敛，避免任何语言短暂露出旧产品概念。
-      const canonical = zh === "文件库" ? "我的库" : zh;
+      // “文件库”已并入异构“我的库”。不仅收敛单独标签，也收敛提示、toast 等
+      // 复合句，避免任何语言短暂露出旧产品概念。
+      const canonical = zh
+        .replaceAll("文件库", "我的库")
+        .replaceAll("檔案庫", "我的库")
+        .replaceAll("檔案库", "我的库");
       const hit = dict[canonical];
       return interpolate(
         hit != null && hit !== "" ? hit : canonical,
