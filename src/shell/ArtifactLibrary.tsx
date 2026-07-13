@@ -199,7 +199,7 @@ export function ArtifactLibrary({
       const { data: sess } = await supabase.auth.getSession();
       if (cancelled) return;
       if (!sess.session) {
-        setAuthMsg(tt("登录后即可查看文件库。"));
+        setAuthMsg(tt("登录后即可查看我的库。"));
         setLoading(false);
         return;
       }
@@ -277,7 +277,7 @@ export function ArtifactLibrary({
   }
 
   const filterLabel = tt(
-    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "文件库",
+    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "我的库",
   );
 
   return (
@@ -291,7 +291,7 @@ export function ArtifactLibrary({
     // relative + min-h-full：让「文件点开」预览浮层 `absolute inset-0` 恰好占满库可见区（配合
     // 下面 selected 时隐藏网格 → flow 高塌缩到可见高，同 MaterialLibrary 放大态处理）。
     // 整页（受控）形态保持 px-8 py-6 页面版式不变。
-    <div className={fill ? "relative min-h-full w-full" : "px-8 py-6"}>
+    <div className={fill ? "relative min-h-full w-full" : "px-8 pb-6 pt-16"}>
       {/* 文件点开（宗旨 v18，操作员 2026-07-07）：**内联在右栏库里显示**，不再弹出 Modal 新页面。
           fill 态用 absolute inset-0 铺满库区域的浮层（同 MaterialLibrary 放大态）；受控整页态回退
           用 Modal（整页 /library 没有可铺满的相对容器）。返回/✕/Esc 关闭；← → 翻看。 */}

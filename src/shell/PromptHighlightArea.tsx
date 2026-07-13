@@ -292,6 +292,32 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           }
           return false;
         },
+        // ProseMirror's Enter keymap runs before React's bubbling handler and
+        // would split the paragraph first. Give the host first refusal here so
+        // homepage Enter submits without ever creating a transient second line.
+        handleKeyDown: (_view, event) => {
+          if (event.key !== "Enter" || event.isComposing) return false;
+          const handler = onKeyDownRef.current;
+          if (!handler) return false;
+          const compat = {
+            key: event.key,
+            code: event.code,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            repeat: event.repeat,
+            nativeEvent: event,
+            currentTarget: event.currentTarget,
+            target: event.target,
+            preventDefault: () => event.preventDefault(),
+            stopPropagation: () => event.stopPropagation(),
+            isDefaultPrevented: () => event.defaultPrevented,
+            isPropagationStopped: () => false,
+          } as unknown as ReactKeyboardEvent<HTMLElement>;
+          handler(compat);
+          return event.defaultPrevented;
+        },
       },
       onUpdate: ({ editor }) => {
         if (applyingRef.current) return;
@@ -561,6 +587,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     }, [editor, autoFocus]);
 
     const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (e.defaultPrevented) return;
       onKeyDownRef.current?.(e as unknown as ReactKeyboardEvent<HTMLElement>);
     };
 

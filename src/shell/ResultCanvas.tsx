@@ -57,6 +57,11 @@ export interface ResultCanvasProps {
   onSeeAllMaterials?: () => void;
   /** Direct, instance-scoped action from this conversation's signed receipt. */
   action?: WorkspaceActionEnvelope | null;
+  /** OceanLeo 主站是通用 Agent，不显示模板；专业站默认保留。 */
+  showTemplate?: boolean;
+  /** Advanced content workbench reuses this exact Agent thread. */
+  taskId?: string | null;
+  siteId?: string;
 }
 
 const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
@@ -68,10 +73,12 @@ const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
 };
 
 function FixedWorkspaceTabs({
+  slots,
   selected,
   onSelect,
   accent,
 }: {
+  slots: WorkspaceSlotId[];
   selected: WorkspaceSlotId;
   onSelect: (slot: WorkspaceSlotId) => void;
   accent: string;
@@ -82,14 +89,14 @@ function FixedWorkspaceTabs({
       className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-xl bg-stone-100 p-1"
       aria-label={tt("工作区")}
     >
-      {FIXED_WORKSPACE_SLOTS.map((slot) => {
+      {slots.map((slot) => {
         const active = selected === slot;
         return (
           <button
             key={slot}
             type="button"
             onClick={() => onSelect(slot)}
-            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1 text-[12px] font-medium transition-colors ${
+            className={`min-w-fit flex-1 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] font-medium transition-colors ${
               active
                 ? "bg-white shadow-sm"
                 : "text-stone-500 hover:text-stone-700"
@@ -196,6 +203,9 @@ export function ResultCanvas({
   materials = [],
   onSeeAllMaterials,
   action: externalAction,
+  showTemplate = true,
+  taskId,
+  siteId = "",
 }: ResultCanvasProps) {
   const tt = useUI();
   const guideContext = useFunctionGuide();
@@ -292,13 +302,23 @@ export function ResultCanvas({
   const restoredSlot = workspaceSlotForLegacyId(
     runtimeHydration?.rightTab || "",
   );
-  const [internal, setInternal] = useState<WorkspaceSlotId>(
-    runtimeHydration?.rightTab
+  const visibleSlots = useMemo(
+    () =>
+      FIXED_WORKSPACE_SLOTS.filter(
+        (slot) => showTemplate || slot !== "template",
+      ),
+    [showTemplate],
+  );
+  const [internal, setInternal] = useState<WorkspaceSlotId>(() => {
+    const requested = runtimeHydration?.rightTab
       ? restoredSlot
       : active
         ? workspaceSlotForLegacyId(active)
-        : "template",
-  );
+        : showTemplate
+          ? "template"
+          : "preview";
+    return !showTemplate && requested === "template" ? "preview" : requested;
+  });
   const [templatePageId, setTemplatePageId] = useState(() => {
     const restoredTemplate = runtimeHydration?.rightTab || "";
     if (
@@ -313,7 +333,8 @@ export function ResultCanvas({
   });
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
-  const selected = internal;
+  const selected =
+    !showTemplate && internal === "template" ? "preview" : internal;
   const previousActive = useRef(active);
   const callerIdForSlot = useCallback(
     (id: WorkspaceSlotId) =>
@@ -324,6 +345,7 @@ export function ResultCanvas({
 
   const select = useCallback(
     (id: WorkspaceSlotId) => {
+      if (!showTemplate && id === "template") return;
       setInternal(id);
       // Existing sites persist their local `result/material/mine` ids in app
       // snapshots. Keep that callback contract while the shared runtime stores
@@ -332,7 +354,7 @@ export function ResultCanvas({
       if (callerId) onChange?.(callerId);
       runtimeHydration?.setRightTab(id);
     },
-    [callerIdForSlot, onChange, runtimeHydration],
+    [callerIdForSlot, onChange, runtimeHydration, showTemplate],
   );
 
   useEffect(() => {
@@ -342,25 +364,34 @@ export function ResultCanvas({
     }
     if (active === previousActive.current) return;
     previousActive.current = active;
-    const slot = workspaceSlotForLegacyId(active);
+    const requested = workspaceSlotForLegacyId(active);
+    const slot =
+      !showTemplate && requested === "template" ? "preview" : requested;
     setInternal(slot);
     if (slot === "template") setTemplatePageId(active);
-  }, [active]);
+  }, [active, showTemplate]);
 
   useEffect(() => {
-    runtimeHydration?.setDefaultRightTab("template");
-  }, [runtimeHydration?.identity]); // eslint-disable-line react-hooks/exhaustive-deps
+    runtimeHydration?.setDefaultRightTab(showTemplate ? "template" : "preview");
+  }, [runtimeHydration?.identity, showTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!runtimeHydration?.restoredSnapshot) return;
     const restoredRightTab = runtimeHydration.rightTab || "";
-    const slot = workspaceSlotForLegacyId(restoredRightTab);
+    const requested = workspaceSlotForLegacyId(restoredRightTab);
+    const slot =
+      !showTemplate && requested === "template" ? "preview" : requested;
     setInternal(
       restoredRightTab
         ? slot
         : active
-          ? workspaceSlotForLegacyId(active)
-          : "template",
+          ? (!showTemplate &&
+            workspaceSlotForLegacyId(active) === "template"
+              ? "preview"
+              : workspaceSlotForLegacyId(active))
+          : showTemplate
+            ? "template"
+            : "preview",
     );
     if (restoredRightTab && slot === "template") {
       setTemplatePageId(restoredRightTab);
@@ -368,6 +399,7 @@ export function ResultCanvas({
   }, [
     runtimeHydration?.snapshotRestoreEpoch,
     runtimeHydration?.identity,
+    showTemplate,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const previousFocusNonce = useRef(focusNonce);
@@ -444,6 +476,8 @@ export function ResultCanvas({
         entries={previewEntries}
         accent={accent}
         action={actionFor("preview")}
+        taskId={taskId}
+        siteId={siteId}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有预览"
         emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里。"
@@ -455,6 +489,8 @@ export function ResultCanvas({
         featuredEntries={materialPageEntries}
         accent={accent}
         action={actionFor("materials")}
+        taskId={taskId}
+        siteId={siteId}
         onSeeAll={onSeeAllMaterials}
       />
     ),
@@ -463,6 +499,8 @@ export function ResultCanvas({
         <MyLibrary
           accent={accent}
           action={actionFor("mine")}
+          taskId={taskId}
+          siteId={siteId}
           featuredEntries={minePageEntries}
         />
       </div>
@@ -474,13 +512,14 @@ export function ResultCanvas({
     if (!rightSlot) return;
     rightSlot.setRightLabel(
       <FixedWorkspaceTabs
+        slots={visibleSlots}
         selected={selected}
         onSelect={select}
         accent={accent}
       />,
     );
     return () => rightSlot.setRightLabel(null);
-  }, [rightSlot, selected, select, accent]);
+  }, [rightSlot, selected, select, accent, visibleSlots]);
 
   if (rightSlot) {
     return (
@@ -502,7 +541,7 @@ export function ResultCanvas({
         aria-label={tt("工作区")}
       >
         <div className="flex min-w-max items-center">
-          {FIXED_WORKSPACE_SLOTS.map((slot) => {
+          {visibleSlots.map((slot) => {
             const isActive = selected === slot;
             return (
               <button

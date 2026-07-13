@@ -135,6 +135,8 @@ export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
+export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 export { MyLibrary } from "./MyLibrary";

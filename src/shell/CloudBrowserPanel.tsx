@@ -10,6 +10,7 @@ import {
 import {
   cloudBrowserLiveUrl,
   cloudBrowserScreenshot,
+  createCloudBrowser,
   createCloudBrowserTicket,
   deleteCloudBrowser,
   hibernateCloudBrowser,
@@ -43,6 +44,7 @@ export function CloudBrowserPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [address, setAddress] = useState("");
+  const [targetUrl, setTargetUrl] = useState("https://");
   const [title, setTitle] = useState("");
   const [typing, setTyping] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -181,9 +183,9 @@ export function CloudBrowserPanel({
     [],
   );
 
-  async function openLive() {
-    if (!selectedId || busy) return;
-    const requestedSessionId = selectedId;
+  async function openLive(sessionId?: string) {
+    const requestedSessionId = sessionId || selectedId;
+    if (!requestedSessionId || busy) return;
     const generation = ++socketGenerationRef.current;
     setBusy(true);
     setError("");
@@ -248,6 +250,34 @@ export function CloudBrowserPanel({
     }
   }
 
+  async function startBrowser() {
+    if (busy) return;
+    let url = targetUrl.trim();
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    setBusy(true);
+    setError("");
+    const result = await createCloudBrowser(url, effectiveTaskId || undefined);
+    setBusy(false);
+    const session = result.data?.session;
+    if (!result.ok || !session) {
+      setError(result.error || tt("云端浏览器启动失败"));
+      return;
+    }
+    selectedIdRef.current = session.id;
+    setSelectedId(session.id);
+    await reload();
+    await openLive(session.id);
+  }
+
+  function navigateLive() {
+    const value = targetUrl.trim();
+    if (!driving || !value) return;
+    const url = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    send({ t: "key", event: "press", key: "Control+L" });
+    send({ t: "key", event: "char", text: url });
+    send({ t: "key", event: "press", key: "Enter" });
+  }
+
   function clickFrame(event: MouseEvent<HTMLImageElement>) {
     if (!driving) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -303,11 +333,31 @@ export function CloudBrowserPanel({
   if (!sessions.length) {
     return (
       <div className="grid h-full place-items-center p-8 text-center">
-        <div>
+        <div className="w-full max-w-md">
           <BrowserGlyph className="mx-auto h-10 w-10 text-stone-300" />
           <p className="mt-3 text-[13px] text-stone-500">
-            {tt("Agent 使用浏览器后，页面与历史会保存在这里。")}
+            {tt("直接打开云端浏览器；Agent 使用时也会复用并保存到这里。")}
           </p>
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              value={targetUrl}
+              onChange={(event) => setTargetUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void startBrowser();
+              }}
+              placeholder="https://example.com"
+              className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-stone-400"
+            />
+            <button
+              type="button"
+              onClick={() => void startBrowser()}
+              disabled={busy || !targetUrl.trim()}
+              className="rounded-xl px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
+              style={{ background: accent }}
+            >
+              {busy ? tt("打开中…") : tt("打开")}
+            </button>
+          </div>
           {error && <p className="mt-2 text-[12px] text-rose-500">{error}</p>}
         </div>
       </div>
@@ -330,6 +380,15 @@ export function CloudBrowserPanel({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => void startBrowser()}
+            disabled={busy || !targetUrl.trim()}
+            title={tt("打开新网址")}
+            className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[12px] text-stone-600 disabled:opacity-40"
+          >
+            ＋
+          </button>
           <button
             type="button"
             onClick={() => void (selected?.status === "hibernated" ? resume() : openLive())}
@@ -370,6 +429,26 @@ export function CloudBrowserPanel({
           <span className="min-w-0 flex-1 truncate text-right">
             {address || selected?.last_url || ""}
           </span>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={targetUrl}
+            onChange={(event) => setTargetUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") navigateLive();
+            }}
+            disabled={!driving}
+            placeholder={driving ? tt("输入网址并回车") : tt("接管后可输入网址")}
+            className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] outline-none disabled:bg-stone-50"
+          />
+          <button
+            type="button"
+            onClick={navigateLive}
+            disabled={!driving || !targetUrl.trim()}
+            className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-40"
+          >
+            {tt("前往")}
+          </button>
         </div>
       </div>
 

@@ -45,6 +45,8 @@ export interface MaterialLibraryProps {
   featuredEntries?: WorkspaceLibraryEntry[];
   /** Trusted agent action currently targeting this library. */
   action?: WorkspaceActionEnvelope | null;
+  taskId?: string | null;
+  siteId?: string;
   /** Disable the central catalog only on isolated/offline surfaces. */
   fetchCurated?: boolean;
 }
@@ -119,7 +121,12 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
         normalizedItem.thumbUrl ||
         material.libraryItem.previewUrl,
       externalUrl:
+        normalizedItem.url || material.libraryItem.previewUrl,
+      linkUrl:
         material.openUrl ||
+        (typeof normalizedItem.meta.asset_page_url === "string"
+          ? normalizedItem.meta.asset_page_url
+          : "") ||
         normalizedItem.url ||
         material.libraryItem.previewUrl,
     });
@@ -134,15 +141,16 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
           ? "ppt"
           : "image";
   const preview = material.preview || material.thumb;
-  // Deep links to an editor are useful as an external action, but the in-panel
-  // detail remains the stable rendered preview.  Actual .pptx/.xlsx/platform
-  // assets below are parsed by their rich viewers.
-  const viewerUrl =
-    kind === "website" && material.openUrl ? material.openUrl : preview;
-  const viewerKind =
-    kind === "ppt" && !/\.pptx?(?:[?#]|$)/i.test(material.openUrl || "")
-      ? "image"
-      : kind;
+  // An editor/project deep link is an action, not the material itself. Static
+  // cards (for example video-cover WebP cards whose openUrl points at Design)
+  // always open their preview first. Real Office/media files still use the
+  // matching rich viewer.
+  const richFile =
+    (kind === "ppt" && /\.pptx?(?:[?#]|$)/i.test(material.openUrl || "")) ||
+    (kind === "document" &&
+      /\.(docx?|pdf|md|txt)(?:[?#]|$)/i.test(material.openUrl || ""));
+  const viewerKind: LibraryKind = richFile ? kind : preview ? "image" : kind;
+  const viewerUrl = richFile ? material.openUrl : preview || material.openUrl;
   const item: LibraryItem = {
     key: `site:${material.id}`,
     source: "artifact",
@@ -168,7 +176,8 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
     category:
       material.categories?.[0] || KIND_CATEGORY[viewerKind] || "本站精选",
     keywords: material.tags,
-    externalUrl: material.openUrl || preview,
+    externalUrl: viewerUrl,
+    linkUrl: material.openUrl || preview,
   });
 }
 
@@ -200,6 +209,7 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       tags: asset.tags || [],
       scene_tags: asset.scene_tags || [],
       format: asset.format || "",
+      asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
     },
   };
   return workspaceEntryFromLibraryItem(item, {
@@ -213,6 +223,7 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       ...(asset.tags || []),
       ...(asset.scene_tags || []),
     ],
+    linkUrl: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
   });
 }
 
@@ -249,6 +260,8 @@ export function MaterialLibrary({
   seeAllLabel,
   featuredEntries = [],
   action,
+  taskId,
+  siteId = "",
   fetchCurated = true,
 }: MaterialLibraryProps) {
   const tt = useUI();
@@ -348,6 +361,8 @@ export function MaterialLibrary({
       entries={entries}
       accent={accent}
       action={action}
+      taskId={taskId}
+      siteId={siteId}
       query={query}
       onQueryChange={setQuery}
       toolbarActions={seeAll}

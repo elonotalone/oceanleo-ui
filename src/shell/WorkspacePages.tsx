@@ -4,14 +4,14 @@
 // @oceanleo/ui — 站级四页范式帮助器（单一事实源）
 // ----------------------------------------------------------------------------
 // 操作员 2026-06-19 宗旨：每个 OceanLeo 产品站 = 侧边栏 + 四个业务页：
-//   首页(home) / 工作台(workspace) / 文件库(library) / 我的任务(history)。
+//   首页(home) / 工作台(workspace) / 我的库(library) / 我的任务(history)。
 // 本模块把「四页 nav 配置」收敛成一处，各站只需：
 //   const nav = workspaceNav({ basePath: "" });           // 给 AppShell
 // 高亮、顺序、图标、标签全统一；各站不再各写一套。
 // 路由约定（默认）：
 //   /            首页
 //   /workspace   工作台
-//   /library     文件库
+//   /library     我的库
 //   /history     我的任务（路径保留 history 兼容旧链接）
 // 也支持用查询参数单页切换（page=home|workspace|library|history），见 §1。
 // ============================================================================
@@ -51,7 +51,7 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "新建任务",
   explore: "探索",
   workspace: "工作台",
-  library: "文件库",
+  library: "我的库",
   history: "我的任务",
   playground: "Playground",
 };
@@ -108,7 +108,7 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   };
 }
 
-/** 构造 AppShell 的导航。顺序：首页 → 探索 → 工作台 → 文件库 → 我的任务 (→ playground)。 */
+/** 构造 AppShell 的导航。顺序：首页 → 探索 → 工作台 → 我的库 → 我的任务 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };

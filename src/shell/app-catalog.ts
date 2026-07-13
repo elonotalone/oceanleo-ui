@@ -63,6 +63,8 @@ export interface GoalApp {
    * 大板块 tab。不给 `group` → 归入「全部」板块（选具体板块时不显示）。
    */
   group?: string;
+  /** Keep a runtime available for embeds/deep links without showing a catalog card. */
+  hiddenFromDirectory?: boolean;
   /**
    * 该成品的「标准起手」预置：主 prompt 模板（可带 `[占位]`）+ 可选参数补丁。
    *

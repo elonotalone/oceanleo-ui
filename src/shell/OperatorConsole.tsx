@@ -71,6 +71,8 @@ export interface ConsoleFunction {
    * tab，选中某板块后第二层场景 chips + 卡片都收窄到该板块。不给则归入「全部」板块。
    */
   group?: string;
+  /** Runtime-only function: available to embeds/deep links, omitted from catalog. */
+  hiddenFromDirectory?: boolean;
   /**
    * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
    * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
@@ -276,7 +278,8 @@ export function OperatorConsole({
   };
 
   if (directoryMode && !isOpened) {
-    const items: DirectoryItem[] = functions.map((f) => ({
+    const directoryFunctions = functions.filter((f) => !f.hiddenFromDirectory);
+    const items: DirectoryItem[] = directoryFunctions.map((f) => ({
       id: f.id,
       name: f.label,
       tagline: f.tagline,
@@ -292,7 +295,9 @@ export function OperatorConsole({
     }));
     // 宗旨 v14：任一功能带了自定义场景词 → 目录顶部横排分类器切到「场景模式」
     // （各站自定义场景 chips），而非全局「按行业/按内容」。
-    const sceneMode = functions.some((f) => (f.scenes?.length ?? 0) > 0);
+    const sceneMode = directoryFunctions.some(
+      (f) => (f.scenes?.length ?? 0) > 0,
+    );
     return (
       <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
         {(directoryTitle || directorySubtitle) && (

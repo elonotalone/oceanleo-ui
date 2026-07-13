@@ -40,6 +40,16 @@ export function listCloudBrowsers(limit = 50, taskId?: string) {
   );
 }
 
+export function createCloudBrowser(url: string, taskId?: string) {
+  return authed<{ session: CloudBrowserSession }>(`${base}/sessions`, {
+    method: "POST",
+    body: JSON.stringify({
+      url,
+      task_id: taskId || null,
+    }),
+  });
+}
+
 export function listCloudBrowserEvents(sessionId: string, limit = 200) {
   return authed<{ items: CloudBrowserEvent[] }>(
     `${base}/sessions/${encodeURIComponent(sessionId)}/events?limit=${limit}`,

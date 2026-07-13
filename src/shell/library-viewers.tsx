@@ -94,33 +94,9 @@ function SandboxedWebViewer({
   title: string;
   trustedInteractive?: boolean;
 }) {
-  const tt = useUI();
-  const [nonce, setNonce] = useState(0);
   return (
     <div className="flex h-full min-h-[520px] flex-col bg-stone-100">
-      <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-3 py-2">
-        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="min-w-0 flex-1 truncate text-[12px] text-stone-500">
-          {url}
-        </span>
-        <button
-          type="button"
-          onClick={() => setNonce((value) => value + 1)}
-          className="rounded-md border border-stone-200 px-2 py-1 text-[11px] text-stone-500 hover:bg-stone-50"
-        >
-          {tt("刷新")}
-        </button>
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-md border border-stone-200 px-2 py-1 text-[11px] text-stone-500 hover:bg-stone-50"
-        >
-          {tt("新窗口")}
-        </a>
-      </div>
       <iframe
-        key={nonce}
         src={url}
         title={title}
         className="min-h-0 flex-1 border-0 bg-white"

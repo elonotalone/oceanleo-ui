@@ -656,6 +656,15 @@ export function AgentChat({
     artifactMessages[artifactMessages.length - 1] || null;
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
+  const lastMessage = messages[messages.length - 1];
+  const responseComplete =
+    !busy &&
+    lastMessage?.role === "assistant" &&
+    Boolean(lastMessage.meta?.done || lastMessage.meta?.final);
+  // Title/suggestion post-processing may keep the task row "running" briefly
+  // after the answer is already durable. Never describe that background work
+  // as the Agent still thinking.
+  const showThinking = running && !responseComplete;
   const renderItems = buildAgentRenderItems(messages);
   const activeProgressKey = activeAgentProgressKey(renderItems, messages);
   const activeGateId =
@@ -885,7 +894,7 @@ export function AgentChat({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={running && item.key === activeProgressKey}
+                running={showThinking && item.key === activeProgressKey}
                 accent={accent}
               />
             ) : (
@@ -910,7 +919,7 @@ export function AgentChat({
               />
             ),
           )}
-          {running && !activeProgressKey && (
+          {showThinking && !activeProgressKey && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
@@ -1027,6 +1036,9 @@ export function AgentChat({
       onChange={setLibTab}
       accent={accent}
       action={workspaceAction}
+      showTemplate={siteId !== "oceanleo"}
+      taskId={taskId}
+      siteId={siteId}
     />
   );
 

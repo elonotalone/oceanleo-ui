@@ -497,6 +497,7 @@ export function SiteCatalogConsole({
           capabilities: app.capabilities,
           scenes: app.scenes,
           group: app.group,
+          hiddenFromDirectory: app.hiddenFromDirectory,
           agentId: `${siteId}.${app.id}`,
           ops: <CatalogOps app={app} renderOps={renderOps} onEnterApp={onEnterApp} />,
           canvas: renderCanvas(app),

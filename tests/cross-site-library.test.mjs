@@ -91,7 +91,8 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /FIXED_WORKSPACE_SLOTS\.map/);
+  assert.match(source, /FIXED_WORKSPACE_SLOTS\.filter/);
+  assert.match(source, /showTemplate \|\| slot !== "template"/);
   assert.match(source, /template: "模板"/);
   assert.match(source, /preview: "预览"/);
   assert.match(source, /mine: "我的库"/);
@@ -99,7 +100,7 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
   assert.match(source, /hint\?: string/);
   assert.match(source, /tab\.id !== "__guide"/);
-  assert.match(source, /const selected = internal/);
+  assert.match(source, /const selected =[\s\S]*internal/);
   assert.match(source, /setInternal\(id\)/);
   assert.match(source, /setRightTab\(id\)/);
   assert.doesNotMatch(source, /expanded \? "−" : "\+"/);

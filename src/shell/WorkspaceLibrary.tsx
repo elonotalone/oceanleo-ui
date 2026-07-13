@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -13,6 +14,7 @@ import type { LibraryItem, LibraryKind } from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -24,7 +26,10 @@ export interface WorkspaceLibraryEntry {
   kind?: LibraryKind;
   libraryItem?: LibraryItem;
   content?: ReactNode;
+  /** Viewer resource URL; never use this as the card-click navigation target. */
   externalUrl?: string;
+  /** User-facing destination, usually the matching asset/project page. */
+  linkUrl?: string;
   badge?: string;
   /** The current query was already applied by the authoritative remote index. */
   trustedSearchMatch?: boolean;
@@ -37,6 +42,9 @@ export interface WorkspaceLibraryProps {
   query?: string;
   onQueryChange?: (query: string) => void;
   toolbarActions?: ReactNode;
+  /** Current Agent task is reused by the advanced workbench. */
+  taskId?: string | null;
+  siteId?: string;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -72,6 +80,13 @@ export function workspaceEntryFromLibraryItem(
     kind: item.kind,
     libraryItem: item,
     externalUrl: item.url || item.previewUrl,
+    linkUrl:
+      (typeof item.meta.asset_page_url === "string"
+        ? item.meta.asset_page_url
+        : "") ||
+      (typeof item.meta.open_url === "string" ? item.meta.open_url : "") ||
+      item.url ||
+      item.previewUrl,
     ...extra,
   };
 }
@@ -88,6 +103,8 @@ export function WorkspaceLibrary({
   query,
   onQueryChange,
   toolbarActions,
+  taskId,
+  siteId = "",
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -104,6 +121,9 @@ export function WorkspaceLibrary({
   const [category, setCategory] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedId, setSelectedId] = useState("");
+  const [viewerNonce, setViewerNonce] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const categories = useMemo(() => {
     const seen = new Set<string>();
@@ -180,8 +200,42 @@ export function WorkspaceLibrary({
       selected.libraryItem?.url ||
       selected.libraryItem?.previewUrl ||
       "";
+    const linkUrl =
+      selected.linkUrl ||
+      (typeof selected.libraryItem?.meta.asset_page_url === "string"
+        ? selected.libraryItem.meta.asset_page_url
+        : "") ||
+      (typeof selected.libraryItem?.meta.open_url === "string"
+        ? selected.libraryItem.meta.open_url
+        : "") ||
+      externalUrl;
+    const refreshable =
+      Boolean(externalUrl) &&
+      (kind === "website" || kind === "canvas" || kind === "video_canvas");
+    const workbenchItem: LibraryItem =
+      selected.libraryItem || {
+        key: selected.id,
+        source: "creation",
+        id: selected.id,
+        title: selected.title,
+        kind: kind || "file",
+        siteId,
+        url: externalUrl || undefined,
+        previewUrl: externalUrl || undefined,
+        thumbUrl: selected.thumbUrl,
+        favorite: false,
+        meta: {
+          library_source: "workspace",
+          category: selected.category || "",
+          description: selected.description || "",
+        },
+      };
     return (
-      <div className={`flex h-full min-h-0 flex-col bg-white ${className}`}>
+      <>
+      <div
+        ref={detailRef}
+        className={`flex h-full min-h-0 flex-col bg-white ${className}`}
+      >
         <header className="flex shrink-0 items-center gap-3 border-b border-stone-200 px-3 py-2.5">
           <button
             type="button"
@@ -211,22 +265,60 @@ export function WorkspaceLibrary({
               </p>
             )}
           </div>
-          {externalUrl && (
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(true)}
+            className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
+            style={{ background: accent }}
+          >
+            {tt("高级功能")}
+          </button>
+          {refreshable && (
+            <button
+              type="button"
+              onClick={() => setViewerNonce((value) => value + 1)}
+              className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+            >
+              {tt("刷新")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const node = detailRef.current;
+              if (!node) return;
+              if (document.fullscreenElement) {
+                void document.exitFullscreen();
+              } else {
+                void node.requestFullscreen();
+              }
+            }}
+            className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+          >
+            {tt("全屏")}
+          </button>
+          {linkUrl && (
             <a
-              href={externalUrl}
+              href={linkUrl}
               target="_blank"
               rel="noreferrer"
               className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
             >
-              {tt("新窗口")}
+              {tt("链接")}
             </a>
           )}
         </header>
         <div className="min-h-0 flex-1 overflow-auto bg-stone-50">
           {selected.libraryItem ? (
-            <LibraryItemViewer item={selected.libraryItem} accent={accent} />
+            <LibraryItemViewer
+              key={`${selected.id}:${viewerNonce}`}
+              item={selected.libraryItem}
+              accent={accent}
+            />
           ) : selected.content ? (
-            <div className="h-full min-h-[520px]">{selected.content}</div>
+            <div key={viewerNonce} className="h-full min-h-[520px]">
+              {selected.content}
+            </div>
           ) : (
             <WorkspaceLibraryEmpty
               title={tt("暂时无法预览")}
@@ -235,11 +327,25 @@ export function WorkspaceLibrary({
           )}
         </div>
       </div>
+      {advancedOpen && (
+        <AdvancedContentWorkbench
+          item={workbenchItem}
+          previewContent={selected.content}
+          linkUrl={linkUrl}
+          taskId={taskId}
+          siteId={siteId || workbenchItem.siteId || ""}
+          accent={accent}
+          onClose={() => setAdvancedOpen(false)}
+        />
+      )}
+      </>
     );
   }
 
   return (
-    <div className={`flex h-full min-h-0 flex-col bg-white p-3 ${className}`}>
+    <div
+      className={`flex h-full min-h-0 flex-col bg-white px-3 pb-3 pt-5 ${className}`}
+    >
       <LibraryToolbar
         search={search}
         setSearch={setSearch}
@@ -249,16 +355,17 @@ export function WorkspaceLibrary({
         placeholder={tt(searchPlaceholder)}
         tt={tt}
       />
-      {categories.length > 1 && (
-        <LibraryChips
-          chips={categories}
-          active={category}
-          onChange={setCategory}
-          accent={accent}
-          tt={tt}
-        />
-      )}
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
+        {categories.length > 1 && (
+          <LibraryChips
+            chips={categories}
+            active={category}
+            onChange={setCategory}
+            accent={accent}
+            tt={tt}
+            className="mb-3"
+          />
+        )}
         {filtered.length === 0 ? (
           <WorkspaceLibraryEmpty
             title={tt(search ? "没有匹配内容" : emptyTitle)}

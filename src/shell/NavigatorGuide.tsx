@@ -205,16 +205,18 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
     // 宗旨 v18（操作员 2026-07-07 二次校正）：**满宽、不 max-w 居中**——与素材库(MaterialLibrary)
     // / 文件库(ArtifactLibrary fill) 对齐，三分区都靠右栏 body 的 p-4 提供左右留白、内容各自铺满，
     // 消除右侧空白列（操作员截图）。
-    <div className="w-full">
+    <div className="relative w-full">
       {/* 搜索框（右对齐、窄，与素材库/文件库同尺寸）+ 卡片/列表切换 */}
-      <LibraryToolbar
-        search={search}
-        setSearch={setSearch}
-        view={view}
-        setView={setView}
-        placeholder={tt("搜索模板")}
-        tt={tt}
-      />
+      <div className="sticky top-0 z-10 bg-white pb-3">
+        <LibraryToolbar
+          search={search}
+          setSearch={setSearch}
+          view={view}
+          setView={setView}
+          placeholder={tt("搜索模板")}
+          tt={tt}
+        />
+      </div>
 
       {/* 类别 chips（第一枚恒为「全部」；与素材库/文件库共用 LibraryChips 版式） */}
       <LibraryChips
@@ -223,6 +225,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
         onChange={setCat}
         accent={accent}
         tt={tt}
+        className="mb-3"
       />
 
       {/* 内容：卡片网格 / 列表 */}

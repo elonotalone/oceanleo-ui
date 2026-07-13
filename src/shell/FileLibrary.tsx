@@ -90,7 +90,7 @@ export function FileLibrary({
   const [scopeSite, setScopeSite] = useState<string>(siteId);
 
   return (
-    <div className={`flex flex-col ${fill ? "h-full" : "h-[calc(100dvh-1px)]"} ${hideHeader ? "px-4 py-4" : "px-8 py-6"}`}>
+    <div className={`flex flex-col ${fill ? "h-full" : "h-[calc(100dvh-1px)]"} ${hideHeader ? "px-4 py-4" : "px-8 pb-6 pt-16"}`}>
       {!hideHeader && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

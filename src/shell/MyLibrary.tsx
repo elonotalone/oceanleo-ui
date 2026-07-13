@@ -77,6 +77,8 @@ export interface MyLibraryProps {
   action?: WorkspaceActionEnvelope | null;
   className?: string;
   featuredEntries?: WorkspaceLibraryEntry[];
+  taskId?: string | null;
+  siteId?: string;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -85,6 +87,8 @@ export function MyLibrary({
   action,
   className = "",
   featuredEntries = [],
+  taskId,
+  siteId = "",
 }: MyLibraryProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -150,6 +154,8 @@ export function MyLibrary({
       entries={entries}
       accent={accent}
       action={action}
+      taskId={taskId}
+      siteId={siteId}
       toolbarActions={refresh}
       searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
       emptyTitle={
