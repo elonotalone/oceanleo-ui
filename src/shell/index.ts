@@ -30,6 +30,10 @@ export type {
   WorkspaceSessionRecordContext,
   WorkspaceRuntime,
 } from "./WorkspaceSession";
+// Specialist runtimes without FunctionAgentChat use this to end snapshot
+// hydration only after their own state is ready.
+export { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+export type { RuntimeHydrationValue } from "./workspace-runtime-hydration";
 // 操作员 2026-06-24：外壳「顶栏控制」上下文——主区自带模型选择时，让 AppShell 隐藏
 // 它 header 里的模型选择条（消灭子站工作台「两行顶栏」）。
 export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
