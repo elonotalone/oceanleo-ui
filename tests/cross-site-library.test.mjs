@@ -97,6 +97,11 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.match(source, /mine: "我的库"/);
   assert.match(source, /useRightPaneSlot/);
   assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
+  assert.match(source, /hint\?: string/);
+  assert.match(source, /grouped\[id\]\[0\]\?\.id \|\| id/);
+  assert.match(source, /const selected = internal/);
+  assert.match(source, /setInternal\(id\)/);
+  assert.match(source, /setRightTab\(id\)/);
   assert.doesNotMatch(source, /expanded \? "−" : "\+"/);
   assert.doesNotMatch(source, /crossSiteLibraryTabs/);
   assert.doesNotMatch(source, /\bmoreTabs\b/);
@@ -140,4 +145,14 @@ test("function agents forward only verified persisted UI actions", () => {
   assert.match(source, /message\.kind !== "ui_action"/);
   assert.match(source, /message\.meta\?\.verified !== true/);
   assert.match(source, /dispatchWorkspaceAction\(\{/);
+});
+
+test("only first-party curated video workflows keep an interactive iframe origin", () => {
+  const source = readFileSync(
+    new URL("../src/shell/library-viewers.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /item\.meta\.asset_type === "video_workflow"/);
+  assert.ok(source.includes('hostname.endsWith(".oceanleo.com")'));
+  assert.match(source, /trustedInteractive \? " allow-same-origin" : ""/);
 });

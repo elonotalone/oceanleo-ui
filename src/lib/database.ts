@@ -333,7 +333,7 @@ export const MEDIA_TYPE_LABEL: Record<MediaType, string> = {
   doc: "文档",
   website: "网站",
   canvas: "画布",
-  video_canvas: "视频画布",
+  video_canvas: "视频工作流",
   xhs: "小红书",
   other: "其他",
 };

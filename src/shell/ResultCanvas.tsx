@@ -48,6 +48,8 @@ export interface ResultCanvasProps {
   active?: string;
   onChange?: (id: string) => void;
   accent?: string;
+  /** @deprecated Kept for source compatibility; fixed slots own their empty copy. */
+  hint?: string;
   empty?: ReactNode;
   focusNonce?: number;
   className?: string;
@@ -291,33 +293,58 @@ export function ResultCanvas({
     runtimeHydration?.rightTab || "",
   );
   const [internal, setInternal] = useState<WorkspaceSlotId>(
-    runtimeHydration?.rightTab ? restoredSlot : "template",
+    runtimeHydration?.rightTab
+      ? restoredSlot
+      : active
+        ? workspaceSlotForLegacyId(active)
+        : "template",
   );
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
-  const selected = active
-    ? workspaceSlotForLegacyId(active)
-    : internal;
+  const selected = internal;
+  const previousActive = useRef(active);
+  const callerIdForSlot = useCallback(
+    (id: WorkspaceSlotId) => grouped[id][0]?.id || id,
+    [grouped],
+  );
 
   const select = useCallback(
     (id: WorkspaceSlotId) => {
-      if (active === undefined) setInternal(id);
-      onChange?.(id);
+      setInternal(id);
+      // Existing sites persist their local `result/material/mine` ids in app
+      // snapshots. Keep that callback contract while the shared runtime stores
+      // the canonical fixed-slot id below.
+      onChange?.(callerIdForSlot(id));
       runtimeHydration?.setRightTab(id);
     },
-    [active, onChange, runtimeHydration],
+    [callerIdForSlot, onChange, runtimeHydration],
   );
+
+  useEffect(() => {
+    if (active === undefined) {
+      previousActive.current = undefined;
+      return;
+    }
+    if (active === previousActive.current) return;
+    previousActive.current = active;
+    setInternal(workspaceSlotForLegacyId(active));
+  }, [active]);
 
   useEffect(() => {
     runtimeHydration?.setDefaultRightTab("template");
   }, [runtimeHydration?.identity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!runtimeHydration?.restoredSnapshot || active !== undefined) return;
+    if (!runtimeHydration?.restoredSnapshot) return;
     const slot = workspaceSlotForLegacyId(runtimeHydration.rightTab || "");
-    setInternal(runtimeHydration.rightTab ? slot : "template");
+    setInternal(
+      runtimeHydration.rightTab
+        ? slot
+        : active
+          ? workspaceSlotForLegacyId(active)
+          : "template",
+    );
   }, [
-    active,
     runtimeHydration?.snapshotRestoreEpoch,
     runtimeHydration?.identity,
   ]); // eslint-disable-line react-hooks/exhaustive-deps

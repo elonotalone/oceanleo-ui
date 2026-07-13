@@ -88,9 +88,11 @@ function ErrorView({
 function SandboxedWebViewer({
   url,
   title,
+  trustedInteractive = false,
 }: {
   url: string;
   title: string;
+  trustedInteractive?: boolean;
 }) {
   const tt = useUI();
   const [nonce, setNonce] = useState(0);
@@ -122,7 +124,9 @@ function SandboxedWebViewer({
         src={url}
         title={title}
         className="min-h-0 flex-1 border-0 bg-white"
-        sandbox="allow-scripts allow-forms allow-popups allow-downloads"
+        sandbox={`allow-scripts allow-forms allow-popups allow-downloads${
+          trustedInteractive ? " allow-same-origin" : ""
+        }`}
         referrerPolicy="no-referrer"
       />
     </div>
@@ -572,7 +576,23 @@ function VideoCanvasViewer({ item }: { item: LibraryItem }) {
     /^https?:\/\//i.test(item.url) &&
     !["mp4", "webm", "mov", "m4v", "mkv"].includes(extension(item.url))
   ) {
-    return <SandboxedWebViewer url={item.url} title={item.title} />;
+    let trustedInteractive = false;
+    try {
+      const hostname = new URL(item.url).hostname.toLowerCase();
+      trustedInteractive =
+        item.siteId === "asset" &&
+        item.meta.asset_type === "video_workflow" &&
+        (hostname === "oceanleo.com" || hostname.endsWith(".oceanleo.com"));
+    } catch {
+      trustedInteractive = false;
+    }
+    return (
+      <SandboxedWebViewer
+        url={item.url}
+        title={item.title}
+        trustedInteractive={trustedInteractive}
+      />
+    );
   }
   return (
     <div className="flex min-h-[520px] flex-col bg-[#151515] text-white">
