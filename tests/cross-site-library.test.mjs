@@ -6,6 +6,11 @@ import {
   buildLibraryItems,
   inferLibraryKind,
 } from "../src/shell/library-data.ts";
+import {
+  FIXED_WORKSPACE_SLOTS,
+  normalizeWorkspaceAction,
+  workspaceSlotForLegacyId,
+} from "../src/shell/workspace-actions.ts";
 
 test("viewer kind prefers explicit metadata and recognizes real Office files", () => {
   assert.equal(
@@ -64,35 +69,75 @@ test("works and task artifacts with the same URL merge into one rich item", () =
   assert.deepEqual(items[0].meta.slides, [{ title: "封面" }]);
 });
 
-test("registry exposes every requested content module including Excel and canvases", () => {
-  const source = readFileSync(
-    new URL("../src/shell/library-registry.tsx", import.meta.url),
-    "utf8",
-  );
-  for (const id of [
-    "lib_websites",
-    "lib_canvas",
-    "lib_slides",
-    "lib_sheets",
-    "lib_documents",
-    "lib_images",
-    "lib_videos",
-    "lib_video_canvas",
-    "lib_audio",
-    "lib_xhs",
-    "lib_threed",
-  ]) {
-    assert.match(source, new RegExp(`\"${id}\"`));
-  }
-  assert.doesNotMatch(source, /ArtifactLibrary/);
+test("legacy pages normalize into exactly five fixed workspace slots", () => {
+  assert.deepEqual(FIXED_WORKSPACE_SLOTS, [
+    "template",
+    "preview",
+    "materials",
+    "mine",
+    "browser",
+  ]);
+  assert.equal(workspaceSlotForLegacyId("__guide"), "template");
+  assert.equal(workspaceSlotForLegacyId("result"), "preview");
+  assert.equal(workspaceSlotForLegacyId("material"), "materials");
+  assert.equal(workspaceSlotForLegacyId("files"), "mine");
+  assert.equal(workspaceSlotForLegacyId("browser"), "browser");
+  assert.equal(workspaceSlotForLegacyId("video-workflow"), "preview");
+  assert.equal(workspaceSlotForLegacyId("draft"), "preview");
 });
 
-test("plus/minus control stays outside the scrollable site-tab lane", () => {
+test("dynamic plus/minus libraries are removed from the right workspace", () => {
   const source = readFileSync(
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /overflow-x-auto rounded-xl bg-stone-100/);
-  assert.match(source, /grid h-7 w-7 shrink-0/);
-  assert.match(source, /expanded \? "−" : "\+"/);
+  assert.match(source, /FIXED_WORKSPACE_SLOTS\.map/);
+  assert.match(source, /template: "模板"/);
+  assert.match(source, /preview: "预览"/);
+  assert.match(source, /mine: "我的库"/);
+  assert.match(source, /useRightPaneSlot/);
+  assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
+  assert.doesNotMatch(source, /expanded \? "−" : "\+"/);
+  assert.doesNotMatch(source, /crossSiteLibraryTabs/);
+  assert.doesNotMatch(source, /\bmoreTabs\b/);
+});
+
+test("workspace actions are versioned, bounded and reject unsafe URLs", () => {
+  assert.deepEqual(
+    normalizeWorkspaceAction({
+      version: 1,
+      tab: "materials",
+      query: " 小红书模板 ",
+      itemId: "asset:library:123",
+      url: "https://asset.oceanleo.com/materials",
+    }),
+    {
+      version: 1,
+      tab: "materials",
+      query: "小红书模板",
+      category: undefined,
+      itemId: "asset:library:123",
+      url: "https://asset.oceanleo.com/materials",
+      browserSessionId: undefined,
+    },
+  );
+  assert.equal(
+    normalizeWorkspaceAction({
+      version: 1,
+      tab: "browser",
+      url: "javascript:alert(1)",
+    })?.url,
+    undefined,
+  );
+  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "preview" }), null);
+});
+
+test("function agents forward only verified persisted UI actions", () => {
+  const source = readFileSync(
+    new URL("../src/shell/FunctionAgentChat.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /message\.kind !== "ui_action"/);
+  assert.match(source, /message\.meta\?\.verified !== true/);
+  assert.match(source, /dispatchWorkspaceAction\(\{/);
 });

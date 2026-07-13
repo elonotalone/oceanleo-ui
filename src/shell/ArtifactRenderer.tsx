@@ -1,8 +1,8 @@
 "use client";
 
-// A single artifact uses the exact same viewer contract as a cross-site library
-// item. Keeping this adapter tiny prevents the agent result pane and the "+"
-// libraries from drifting into two different PPT/Excel/Word implementations.
+// A generated artifact uses the exact same viewer contract as Materials/My
+// Library. Keeping this adapter tiny prevents result and library viewers from
+// drifting into separate PPT/Excel/Word/website implementations.
 
 import type { ArtifactMeta } from "../lib/agent";
 import { inferLibraryKind, type LibraryItem } from "./library-data";
@@ -14,17 +14,17 @@ export interface ArtifactRendererProps {
   accent?: string;
 }
 
-export function ArtifactRenderer({
-  artifact,
-  content,
-  accent = "#4f46e5",
-}: ArtifactRendererProps) {
+export function artifactToLibraryItem(
+  artifact: ArtifactMeta,
+  content: string,
+  key = "active-artifact",
+): LibraryItem {
   const meta = artifact.meta ?? {};
-  const item: LibraryItem = {
-    key: "active-artifact",
+  return {
+    key,
     source: "artifact",
-    id: "active-artifact",
-    title: artifact.title || "生成结果",
+    id: key,
+    title: artifact.title || "预览",
     kind: inferLibraryKind({
       meta,
       mediaType: artifact.media_type,
@@ -42,5 +42,13 @@ export function ArtifactRenderer({
     favorite: false,
     meta,
   };
+}
+
+export function ArtifactRenderer({
+  artifact,
+  content,
+  accent = "#4f46e5",
+}: ArtifactRendererProps) {
+  const item = artifactToLibraryItem(artifact, content);
   return <LibraryItemViewer item={item} accent={accent} />;
 }

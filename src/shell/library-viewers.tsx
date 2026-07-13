@@ -566,6 +566,14 @@ function VideoCanvasViewer({ item }: { item: LibraryItem }) {
     (["mp4", "webm", "mov", "m4v"].includes(extension(item.url))
       ? item.url
       : "");
+  if (
+    clips.length === 0 &&
+    item.url &&
+    /^https?:\/\//i.test(item.url) &&
+    !["mp4", "webm", "mov", "m4v", "mkv"].includes(extension(item.url))
+  ) {
+    return <SandboxedWebViewer url={item.url} title={item.title} />;
+  }
   return (
     <div className="flex min-h-[520px] flex-col bg-[#151515] text-white">
       <div className="min-h-0 flex-1 p-4">
@@ -696,7 +704,7 @@ export function libraryKindLabel(kind: LibraryItem["kind"]): string {
     document: "文档",
     image: "图片",
     video: "视频",
-    video_canvas: "视频画布",
+    video_canvas: "视频工作流",
     audio: "音频",
     xhs: "小红书",
     threed: "3D",

@@ -58,7 +58,7 @@ export const MATERIAL_BOARDS: { id: MaterialBoardId; label: string }[] = [
   { id: "canvas", label: "画布" },
   { id: "slides", label: "幻灯" },
   { id: "video", label: "视频" },
-  { id: "video_canvas", label: "视频画布" },
+  { id: "video_canvas", label: "视频工作流" },
   { id: "xhs", label: "小红书" },
   { id: "audio", label: "音频" },
   { id: "threed", label: "3D" },

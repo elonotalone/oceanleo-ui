@@ -55,6 +55,10 @@ import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import {
+  dispatchWorkspaceAction,
+  normalizeWorkspaceAction,
+} from "./workspace-actions";
+import {
   mergeWorkspaceSessionSnapshot,
   splitWorkspaceSessionSnapshot,
 } from "./workspace-session-snapshot";
@@ -267,6 +271,7 @@ export function FunctionAgentChat({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const reportedArtifactIdsRef = useRef<Set<number>>(new Set());
+  const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
   const sessionSnapshotScopeRef = useRef("");
@@ -782,6 +787,7 @@ export function FunctionAgentChat({
       if (loadedTaskRef.current) {
         loadedTaskRef.current = "";
         reportedArtifactIdsRef.current.clear();
+        seenWorkspaceActionIdsRef.current.clear();
         setMessages([]);
         setStatus("");
       }
@@ -790,6 +796,7 @@ export function FunctionAgentChat({
     if (loadedTaskRef.current === taskId) return;
     loadedTaskRef.current = taskId;
     reportedArtifactIdsRef.current.clear();
+    seenWorkspaceActionIdsRef.current.clear();
     setMessagesTaskId("");
     setMessages([]);
     setStatus("");
@@ -831,6 +838,30 @@ export function FunctionAgentChat({
     // 新后端写 artifact 时通常已更新活动时间；显式 touch 是旧写入路径的尽力兜底。
     if (workspace?.taskId === taskId) void workspace.touch();
   }, [messages, messagesTaskId, onArtifact, taskId, workspace]);
+
+  // FunctionAgentChat lives in the left pane while ResultCanvas is its sibling.
+  // Forward only persisted, backend-validated ui_action messages through the
+  // instance page event; assistant prose never enters this path.
+  useEffect(() => {
+    if (!taskId || messagesTaskId !== taskId) return;
+    for (const message of messages) {
+      if (
+        message.kind !== "ui_action" ||
+        message.meta?.verified !== true ||
+        seenWorkspaceActionIdsRef.current.has(message.id)
+      )
+        continue;
+      const action = normalizeWorkspaceAction(
+        message.meta?.workspace_action || message.meta?.ui_action,
+      );
+      if (!action) continue;
+      seenWorkspaceActionIdsRef.current.add(message.id);
+      dispatchWorkspaceAction({
+        nonce: `${taskId}:${message.id}`,
+        action,
+      });
+    }
+  }, [messages, messagesTaskId, taskId]);
 
   async function send(override?: string) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。

@@ -70,6 +70,7 @@ export function AgentTranscriptBubble({
     );
   }
 
+  if (message.kind === "ui_action") return null;
   if (message.kind === "gate") {
     return (
       <GateBubble

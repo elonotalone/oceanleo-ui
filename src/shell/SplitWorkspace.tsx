@@ -399,7 +399,7 @@ export function SplitWorkspace({
         {library ? (
           /* 库模式右版面顶栏（宗旨 v16，操作员 2026-07-06）：一行搞定 =
                ✕(左，关闭右版面) / 标签条(中，取代原居中「库」标题) / 大屏(右)。
-             标签条（导航 / 生成结果 / 素材库 / 文件库…）由右栏内容 ResultCanvas 经
+             固定标签条（模板 / 预览 / 素材库 / 我的库 / 云端浏览器）由 ResultCanvas 经
              useRightPaneSlot 注入进 rightLabelOverride —— 它直接坐到原「库」标题的位置，
              不再单占第二行。右栏内容不是 ResultCanvas（无注入）时回退显示「库」标题。 */
           <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">

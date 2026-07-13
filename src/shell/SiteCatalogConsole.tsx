@@ -722,7 +722,7 @@ function LegacyHistoryPlayback({
             appLabel={appLabel}
             accent={accent}
             headerHeight={49}
-            libraryTabs={{ showFiles: true, showBrowser: true, moreLibraries: true }}
+            libraryTabs={{ showFiles: true, showBrowser: true }}
           />
         ) : (
           <div className="grid h-full place-items-center p-8 text-center text-[13px] text-stone-400">
@@ -844,10 +844,8 @@ function AgentOnlyOps({
   );
 }
 
-// 宗旨 v19：agent 卡片右栏库 = 生成结果 / 素材库 / 文件库（+「导航」由 ResultCanvas 依
-// guide 自动前插；agent 卡片无 guide，故右栏首屏就是「生成结果」）。与其它 app 的右栏
-// 四分区 UI 完全一致。生成结果内容由站点 renderResult 提供，不给则通用空态（agent 产出
-// 也会进「文件库」ArtifactLibrary，跨站）。
+// agent 卡片与所有 app 共用固定五槽位；这里仍传旧业务内容，ResultCanvas 会把它们
+// 归入「预览 / 素材库 / 我的库 / 云端浏览器」并补齐「模板」。
 function AgentCardCanvas({
   accent,
   materials,
@@ -857,11 +855,11 @@ function AgentCardCanvas({
   materials?: import("./MaterialLibrary").MaterialItem[];
   renderResult?: () => ReactNode;
 }) {
-  const [view, setView] = useState("result");
+  const [view, setView] = useState("template");
   const tabs: CanvasTab[] = [
     {
       id: "result",
-      label: "生成结果",
+      label: "预览",
       content: renderResult ? (
         renderResult()
       ) : (
@@ -871,7 +869,7 @@ function AgentCardCanvas({
           </svg>
           <p className="text-[13px] text-neutral-400">跟左侧 agent 说要做什么</p>
           <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
-            它会调用工具帮你生成，产出的图片 / 文档会显示在这里，并归档进「文件库」。
+            它会调用工具帮你生成，产出的图片 / 文档会显示在这里，并归档进「我的库」。
           </p>
         </div>
       ),
@@ -881,15 +879,13 @@ function AgentCardCanvas({
       label: "素材库",
       content: <MaterialLibrary materials={materials ?? []} accent={accent} />,
     },
-    { id: "files", label: "文件库", content: <ArtifactLibrary accent={accent} fill /> },
+    { id: "files", label: "我的库", content: <ArtifactLibrary accent={accent} fill /> },
     {
       id: "browser",
       label: "云端浏览器",
       content: <CloudBrowserPanel accent={accent} />,
     },
   ];
-  // 宗旨 v22：右栏「+」展开跨站只读库。ResultCanvas 现在默认自动注入并按本站主标签去重，
-  // 这里只需把素材切片传下去（供「+」里的素材库子页面）。
   return (
     <ResultCanvas
       tabs={tabs}

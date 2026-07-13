@@ -130,20 +130,31 @@ export { OptionRow } from "./OptionRow";
 export type { OptionRowProps, OptionItem } from "./OptionRow";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
-// 宗旨 v17（2026-07-07）：右栏三分区「库」统一版式积木（搜索行 + 分类 chips），
-// 供 导航 / 素材库 / 文件库 共用，保证三分区 UI 几乎完全一致。
+// 固定五槽位中「预览 / 素材库 / 我的库」共用的搜索、分类和 master/detail 原语。
 export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
-// 宗旨 v17（2026-07-07）：素材库 = 启发/参考的成品示例（各 app 自带 materials），点卡片
-// 放大铺满库查看，不写回操作台。与导航/文件库同一套版式。
+export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
+export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
+export { MyLibrary } from "./MyLibrary";
+export type { MyLibraryProps } from "./MyLibrary";
+export {
+  FIXED_WORKSPACE_SLOTS,
+  WORKSPACE_ACTION_EVENT,
+  dispatchWorkspaceAction,
+  normalizeWorkspaceAction,
+  workspaceSlotForLegacyId,
+} from "./workspace-actions";
+export type {
+  WorkspaceActionEnvelope,
+  WorkspaceActionV1,
+  WorkspaceSlotId,
+} from "./workspace-actions";
 // 宗旨 v22.1（2026-07-13）：可复用成品渲染器 + 真内容 viewer。Office 文件在浏览器本地
 // 解析（PPT/Excel/Word），不再依赖已废弃的 Office 公共 iframe。
 export { ArtifactRenderer } from "./ArtifactRenderer";
 export type { ArtifactRendererProps } from "./ArtifactRenderer";
-export { CrossSiteLibrary } from "./CrossSiteLibrary";
-export type { CrossSiteLibraryProps } from "./CrossSiteLibrary";
 export {
   buildLibraryItems,
   inferLibraryKind,
@@ -161,10 +172,6 @@ export {
   LibraryKindIcon,
   libraryKindLabel,
 } from "./library-viewers";
-// 宗旨 v22.1：跨站【只读】内容库注册表——网站/画布/PPT/Excel/Word/图片/视频/
-// 视频画布/音频/小红书/3D/全部/收藏/素材。库只读，生成只在左栏操作台。
-export { CROSS_SITE_LIBRARIES, crossSiteLibraryTabs, libraryDefById } from "./library-registry";
-export type { ReadonlyLibraryDef, LibraryTabCtx, CrossSiteLibraryTabsOptions } from "./library-registry";
 // 宗旨 v22（2026-07-12）：素材总栏目（分板块：网站/PPT/图片/文档/幻灯/视频…）——各站右栏
 // 素材库 = 本栏目的子页面切片；完整栏目在 asset 站/`/materials`。
 export { MaterialCatalog, MATERIAL_BOARDS, materialsForBoards } from "./material-catalog";
@@ -194,8 +201,7 @@ export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
 export { Markdown } from "./Markdown";
 // 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
 export { AgentProgress } from "./AgentProgress";
-// agent 工作界面（左推导 / 右 artifact 结果，真实调 /v1/agent/tasks）。
-// 宗旨 v19（2026-07-08）：AgentChat 右栏可升级为多标签库（生成结果/素材库/文件库）。
+// agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
 export { AgentChat, orgStatusFromMessages } from "./AgentChat";
 export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
 export { CloudBrowserPanel } from "./CloudBrowserPanel";

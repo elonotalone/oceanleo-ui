@@ -146,6 +146,9 @@ export function buildAgentRenderItems(
 
     for (let index = segmentStart; index < segmentEnd; index += 1) {
       const message = messages[index];
+      // Trusted workspace actions are machine-to-UI transport. They must never
+      // appear as an empty or JSON-shaped chat bubble.
+      if (message.kind === "ui_action") continue;
       if (index === firstProgress) {
         const progressMessages = progressIndexes.map(
           (progressIndex) => messages[progressIndex],

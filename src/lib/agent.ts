@@ -88,7 +88,7 @@ export interface ArtifactMeta {
 export interface AgentMessage {
   id: number;
   role: "user" | "assistant";
-  kind: string; // text | plan | step | artifact | error
+  kind: string; // text | plan | step | artifact | ui_action | error
   content: string;
   meta?: {
     artifact?: ArtifactMeta;
@@ -98,6 +98,8 @@ export interface AgentMessage {
     /** doctrine v3: structured patch the function agent wants applied to the
      *  operator console (left pane). Frontend applies it to the real ops state. */
     ops_patch?: OpsPatch;
+    /** Signed-receipt-derived command for the fixed right-hand workspace. */
+    workspace_action?: import("../shell/workspace-actions").WorkspaceActionV1;
     /** 用户随这条消息上传的附件（回看历史时渲染在用户气泡上）。 */
     attachments?: AgentAttachment[];
     /** 团队/组织多智能体（doctrine 2026-07-09）：产出这条消息的成员 agent_id / 名字 /

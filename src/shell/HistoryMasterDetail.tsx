@@ -541,11 +541,11 @@ export interface HistoryDetailProps {
   appNames?: Record<string, string>;
   /**
    * 关键修（doctrine 2026-07-09，操作员截图 f4d54ac9）：从历史记录回看某 app 的会话时，
-   * 右栏必须是【该 app 完整的库】（生成结果 / 素材库 / 文件库），而不是一个空泛的「库」。
+   * 右栏必须是该 app 的完整固定五槽位，而不是一个空泛的「库」。
    * 站点把自己 live 操作台用的同一份 libraryTabs 传进来 → 回看即复用同一套库板块。
    * 不传 → 退化为通用单 artifact 右版面（向后兼容，如主站 hub 混合历史）。 */
   libraryTabs?: AgentLibraryTabs;
-  /** 站点自定义「生成结果」渲染器（同 live 操作台的 renderArtifact）——让回看的成稿/
+  /** 站点自定义「预览」渲染器（同 live 操作台的 renderArtifact）——让回看的成稿/
    *  图片/PPT 用与生成时一致的富样式，而不是纯 markdown 兜底。 */
   renderArtifact?: (artifact: ArtifactMeta, content: string) => ReactNode;
   /**

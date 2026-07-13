@@ -14,14 +14,26 @@
 // 两者共用 SplitWorkspace 分栏骨架（可拖 + 大屏）。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
-import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
-import { ArtifactLibrary } from "./ArtifactLibrary";
-import { crossSiteLibraryTabs } from "./library-registry";
+import { type MaterialItem } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
-import { ArtifactRenderer } from "./ArtifactRenderer";
+import {
+  ArtifactRenderer,
+  artifactToLibraryItem,
+} from "./ArtifactRenderer";
+import {
+  normalizeWorkspaceAction,
+  type WorkspaceActionEnvelope,
+} from "./workspace-actions";
 import {
   AgentTranscriptBubble,
   agentArtifactLabels,
@@ -169,36 +181,23 @@ export interface AgentChatProps {
     feedback: string,
   ) => Promise<void> | void;
   /**
-   * 宗旨 v19（操作员 2026-07-08）：把右栏（库）升级为全家桶统一的【多标签库】——
-   * 导航 / 生成结果 / 素材库 / 文件库，与其它站的 app 右栏 UI 完全一致。给了它 →
-   * 右版面渲染一个 <ResultCanvas>，标签 = [生成结果(内置 artifact)] + 本 prop 提供的
-   * 额外标签（素材库/文件库…）。不给 → 保持旧的「单 artifact」右版面（向后兼容）。
-   *
-   * 约定：站点通常传 `libraryTabs={{ materials, showFiles: true }}`（agent.oceanleo.com）
-   * 即得到「生成结果 / 素材库 / 文件库」三标签（「导航」在 agent 站无 guide，故不出现；
-   * 若宿主套了 GuideProvider 则 ResultCanvas 会自动前插「导航」）。 */
+   * 固定五槽位的兼容配置。宿主只需提供当前 app 精选素材；模板、预览、我的库和
+   * 云端浏览器均由共享 ResultCanvas 统一装配。
+   */
   libraryTabs?: AgentLibraryTabs;
 }
 
 /** agent 右栏多标签库配置（宗旨 v19）。 */
 export interface AgentLibraryTabs {
-  /** 「素材库」的启发素材（同各 app materials）。不给则不出素材库标签。 */
+  /** 当前 app 的精选素材；素材库槽位始终存在。 */
   materials?: MaterialItem[];
-  /** 是否出「文件库」标签（ArtifactLibrary，跨站）。默认 true。 */
+  /** @deprecated 「我的库」槽位始终存在。 */
   showFiles?: boolean;
-  /** 是否出持久化「云端浏览器」标签。 */
+  /** @deprecated 「云端浏览器」槽位始终存在。 */
   showBrowser?: boolean;
-  /** 「生成结果」标签名，默认「生成结果」。 */
+  /** 旧产物缺少标题时的预览卡片名。 */
   resultLabel?: string;
-  /**
-   * 宗旨 v22（操作员 2026-07-12）：右栏 TabBar 末尾独立圆形「+」展开的**跨站只读库**。
-   *   · `true`（默认推荐）——展开全量跨站只读库（图片/PPT/文档/表格/视频/音频/3D/全部/收藏/
-   *     素材库），并自动去掉本站默认已亮的（result/material/files/browser/org 对应项）。
-   *   · `string[]` —— 只展开这几个库 id（`lib_*` 或语义键 images/slides/documents/… 都行）。
-   *   · `false` / 不传 —— 不出「+」（旧行为）。
-   * 全是查看类库，无输入、不生成——生成只在页面左栏操作台。 */
-  moreLibraries?: boolean | string[];
-  /** 「+」展开的素材库点「看全部」时的回调（跳完整素材总栏目父页面）。 */
+  /** 素材库工具栏「完整素材库」回调。 */
   onSeeAllMaterials?: () => void;
 }
 
@@ -238,14 +237,12 @@ export function AgentChat({
       ? workspaceValue
       : null;
   const readOnly = readOnlyProp || Boolean(workspace?.readOnly);
-  // 团队/组织对话（宿主给了 renderOrgPanel）→ 右栏库多一个「组织」板块，且操作员
-  // 2026-07-09 要求：进团队 app 一打开就【库展开 + 默认停在「组织」】。单 agent 场景
-  // （无 renderOrgPanel）仍是「默认生成结果标签 + 库收起（有产物才自动开）」。
+  // 团队/组织页与所有生成结果都归入固定「预览」槽的卡片，不再占一级标签。
   const hasOrgPanel = Boolean(renderOrgPanel);
-  // 宗旨 v19：右栏多标签库当前标签（生成结果 / 素材库 / 文件库）。团队默认「组织」，否则「生成结果」。
-  const [libTab, setLibTab] = useState(hasOrgPanel ? "org" : "result");
-  // 「库」= 右版面（结果/预览）显隐开关。团队默认【开】（一进来就看到组织画布）；单 agent
-  // 默认关（对话占满，生成结果 artifact 到达时自动打开）。用户可用「库」按钮手动开合。
+  const [libTab, setLibTab] = useState(hasOrgPanel ? "preview" : "template");
+  const [workspaceAction, setWorkspaceAction] =
+    useState<WorkspaceActionEnvelope | null>(null);
+  // 团队默认开库；普通 agent 默认收起，首个 artifact / workspace action 到达后打开。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
@@ -651,6 +648,12 @@ export function AgentChat({
     [taskId, busy, readOnly, tt],
   );
 
+  const artifactMessages = useMemo(
+    () => messages.filter((message) => Boolean(message.meta?.artifact)),
+    [messages],
+  );
+  const latestArtifactMessage =
+    artifactMessages[artifactMessages.length - 1] || null;
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
   const renderItems = buildAgentRenderItems(messages);
@@ -679,18 +682,57 @@ export function AgentChat({
     [gateBusy, onGate, refresh, taskId, tt],
   );
 
-  // 生成结果(artifact)到达 → 自动打开右版面（「点素材查看」路径）。
-  const artSig = art ? `${art.meta.type}:${art.meta.url || ""}:${art.content.slice(0, 32)}` : "";
-  const seenArtRef = useRef("");
+  // 每一个 artifact 都是「预览」中的独立卡片；新产物到达时只消费一次并打开该卡。
+  const seenArtRef = useRef<number | null>(null);
   useEffect(() => {
-    if (art && artSig !== seenArtRef.current) {
-      seenArtRef.current = artSig;
-      setRightOpen(true);
-    }
-  }, [art, artSig]);
+    if (!latestArtifactMessage || latestArtifactMessage.id === seenArtRef.current)
+      return;
+    seenArtRef.current = latestArtifactMessage.id;
+    setRightOpen(true);
+    setLibTab("preview");
+    setWorkspaceAction({
+      nonce: `artifact:${latestArtifactMessage.id}`,
+      action: {
+        version: 1,
+        tab: "preview",
+        itemId: `preview:artifact-${latestArtifactMessage.id}`,
+      },
+    });
+  }, [latestArtifactMessage]);
 
+  // Only signed tool receipts are persisted by the gateway as ui_action.
+  // Assistant prose is deliberately never parsed for UI commands.
+  const latestActionMessage = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.kind === "ui_action" && message.meta?.verified === true,
+    );
+  const seenActionRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!libraryTabs?.showBrowser) return;
+    if (
+      !latestActionMessage ||
+      latestActionMessage.id === seenActionRef.current
+    )
+      return;
+    const action = normalizeWorkspaceAction(
+      latestActionMessage.meta?.workspace_action ||
+        latestActionMessage.meta?.ui_action,
+    );
+    if (!action) return;
+    seenActionRef.current = latestActionMessage.id;
+    setRightOpen(true);
+    setLibTab(action.tab);
+    setWorkspaceAction({
+      nonce: `message:${latestActionMessage.id}`,
+      action,
+    });
+  }, [latestActionMessage]);
+
+  // Rolling-deploy fallback for old backend browse receipts that predate
+  // ui_action. Once a signed ui_action exists, it is the sole authority.
+  useEffect(() => {
+    if (latestActionMessage) return;
     const browserActivity = [...messages].reverse().find((message) => {
       const tool = String(message.meta?.tool || "");
       return tool === "browse" || tool.startsWith("browser_");
@@ -707,19 +749,27 @@ export function AgentChat({
     if ((!browserActivity && !takeover) || art) return;
     setRightOpen(true);
     setLibTab("browser");
-  }, [art, libraryTabs?.showBrowser, messages]);
+    setWorkspaceAction({
+      nonce: `legacy-browser:${browserActivity?.id || takeover?.id || "open"}`,
+      action: { version: 1, tab: "browser" },
+    });
+  }, [art, latestActionMessage, messages]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
   // 之后 renderOrgPanel 才从 undefined 变有值）。仅靠 useState 初始值 = hasOrgPanel 覆盖不到
   // 这个「挂载后才变 true」的情形 → 库仍是初始的关。这里用一次性 ref：hasOrgPanel 第一次
-  // 变 true 时，强制【开库 + 切到「组织」】。只做一次，之后用户手动开合/切标签不再被打断。
+  // 变 true 时，强制【开库 + 打开预览里的组织卡】。只做一次，之后不再抢焦点。
   const orgAutoOpenedRef = useRef(false);
   useEffect(() => {
     if (hasOrgPanel && !orgAutoOpenedRef.current) {
       orgAutoOpenedRef.current = true;
       setRightOpen(true);
-      setLibTab("org");
+      setLibTab("preview");
+      setWorkspaceAction({
+        nonce: "organization:first-open",
+        action: { version: 1, tab: "preview", itemId: "preview:org" },
+      });
     }
   }, [hasOrgPanel]);
 
@@ -930,27 +980,8 @@ export function AgentChat({
     </div>
   );
 
-  // OceanLeo 系列右边永远只有【一个】版面：默认收起（对话占满）；点「库」按钮或生成结果
-  // (artifact)到达 → 展开右版面显示结果。右版面内容 = 最新 artifact，或空态提示。
-  const resultPane = art
-    ? renderArtifact?.(art.meta, art.content) ?? (
-        <DefaultArtifact artifact={art.meta} content={art.content} />
-      )
-    : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-stone-400">
-          <svg className="h-10 w-10 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <p className="text-[13px]">{tt("还没有生成结果。让 agent 帮你生成后，结果会显示在这里。")}</p>
-        </div>
-      );
-
-  // 宗旨 v19：给了 libraryTabs → 右栏是全家桶统一的多标签库（生成结果 / 素材库 / 文件库，
-  // 与其它站 app 右栏一致；「导航」由 ResultCanvas 依 guide 自动前插，agent 站无 guide 故
-  // 不出现）。不给 → 旧的单 artifact 右版面（向后兼容）。
-  // 「组织」板块（doctrine 2026-07-09，修：真节点图画布）：宿主用 <OrgCanvas> 渲染，把团队
-  // 当 organization 展示（节点=成员、加成员、点节点看 prompt/工作、实时状态、minimap/缩放）。
+  // Every generated item becomes a Preview card. Existing organization and
+  // browser surfaces are also legacy tabs consumed by the fixed five-slot shell.
   const orgTab: CanvasTab | null = renderOrgPanel
     ? {
         id: "org",
@@ -958,62 +989,46 @@ export function AgentChat({
         content: <div className="h-full">{renderOrgPanel({ messages, running })}</div>,
       }
     : null;
-
-  const right: ReactNode = libraryTabs
-    ? (() => {
-        const tabs: CanvasTab[] = [
-          ...(orgTab ? [orgTab] : []),
-          { id: "result", label: libraryTabs.resultLabel || "生成结果", content: resultPane },
-        ];
-        if (libraryTabs.materials && libraryTabs.materials.length) {
-          tabs.push({
-            id: "material",
-            label: "素材库",
-            content: <MaterialLibrary materials={libraryTabs.materials} accent={accent} />,
-          });
-        } else {
-          // 素材库标签恒在（与其它 app 一致），无素材时走空态。
-          tabs.push({
-            id: "material",
-            label: "素材库",
-            content: <MaterialLibrary materials={[]} accent={accent} />,
-          });
-        }
-        if (libraryTabs.showFiles !== false) {
-          tabs.push({ id: "files", label: "文件库", content: <ArtifactLibrary accent={accent} fill /> });
-        }
-        if (libraryTabs.showBrowser) {
-          tabs.push({
-            id: "browser",
-            label: "云端浏览器",
-            content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
-          });
-        }
-        // 宗旨 v22：TabBar 末尾独立圆形「+」展开的跨站只读库。现在 ResultCanvas【默认自动
-        // 注入】跨站只读库并自动排除本站已亮的同类库，所以这里一般不用手拼——只在
-        // `moreLibraries` 给了显式白名单(string[]) 时才覆盖，给了 false 时关掉。
-        const explicitMore = Array.isArray(libraryTabs.moreLibraries)
-          ? crossSiteLibraryTabs({
-              accent,
-              materials: libraryTabs.materials,
-              onSeeAllMaterials: libraryTabs.onSeeAllMaterials,
-              only: libraryTabs.moreLibraries,
-            })
-          : undefined;
-        return (
-          <ResultCanvas
-            tabs={tabs}
-            moreTabs={explicitMore}
-            crossSiteLibraries={libraryTabs.moreLibraries !== false}
-            materials={libraryTabs.materials}
-            onSeeAllMaterials={libraryTabs.onSeeAllMaterials}
-            active={libTab}
-            onChange={setLibTab}
-            accent={accent}
-          />
-        );
-      })()
-    : resultPane;
+  const artifactTabs: CanvasTab[] = artifactMessages.map((message, index) => {
+    const meta = message.meta!.artifact!;
+    const libraryItem = artifactToLibraryItem(
+      meta,
+      message.content,
+      `artifact-${message.id}`,
+    );
+    return {
+      id: `artifact-${message.id}`,
+      label:
+        meta.title ||
+        ARTIFACT_LABEL[meta.type] ||
+        `${libraryTabs?.resultLabel || tt("预览")} ${index + 1}`,
+      content:
+        renderArtifact?.(meta, message.content) ?? (
+          <DefaultArtifact artifact={meta} content={message.content} />
+        ),
+      libraryItem: renderArtifact ? undefined : libraryItem,
+    };
+  });
+  const rightTabs: CanvasTab[] = [
+    ...(orgTab ? [orgTab] : []),
+    ...artifactTabs,
+    {
+      id: "browser",
+      label: tt("云端浏览器"),
+      content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
+    },
+  ];
+  const right: ReactNode = (
+    <ResultCanvas
+      tabs={rightTabs}
+      materials={libraryTabs?.materials || []}
+      onSeeAllMaterials={libraryTabs?.onSeeAllMaterials}
+      active={libTab}
+      onChange={setLibTab}
+      accent={accent}
+      action={workspaceAction}
+    />
+  );
 
   // 高度账：有返回顶栏时它是页面最上面一行；无顶栏时沿用调用方传入的外层占高。
   // SplitWorkspace body 高 = 100dvh - 其 headerHeight 参数；令其 body = 可用高 - TOPBAR_H。
@@ -1023,7 +1038,7 @@ export function AgentChat({
       left={stream}
       right={right}
       leftLabel={leftLabelNode}
-      rightLabel={art ? ARTIFACT_LABEL[art.meta.type] || art.meta.title || tt("结果") : tt("结果")}
+      rightLabel={tt("预览")}
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
