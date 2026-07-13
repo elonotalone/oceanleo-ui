@@ -29,6 +29,7 @@ import {
   type WorkspaceSlotId,
 } from "./workspace-actions";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import type { LibraryItem, LibraryKind } from "./library-data";
 
 export interface CanvasTab {
@@ -236,6 +237,9 @@ export function ResultCanvas({
   siteId = "",
 }: ResultCanvasProps) {
   const tt = useUI();
+  const workspaceSession = useOptionalWorkspaceSession();
+  const effectiveTaskId = taskId || workspaceSession?.taskId || null;
+  const effectiveSiteId = siteId || workspaceSession?.siteId || "";
   const guideContext = useFunctionGuide();
   const guide = guideContext?.guide || null;
   const runtimeHydration = useWorkspaceRuntimeHydration();
@@ -479,8 +483,9 @@ export function ResultCanvas({
         description="当前应用还没有起手模板；你仍可以直接在左侧描述要完成的目标。"
       />
     );
-  const browserContent =
-    grouped.browser[0]?.content || <CloudBrowserPanel accent={accent} />;
+  const browserContent = (
+    <CloudBrowserPanel taskId={effectiveTaskId} accent={accent} />
+  );
   const actionFor = (slot: WorkspaceSlotId) =>
     workspaceAction?.action.tab === slot ? workspaceAction : null;
 
@@ -511,8 +516,8 @@ export function ResultCanvas({
         entries={previewEntries}
         accent={accent}
         action={actionFor("preview")}
-        taskId={taskId}
-        siteId={siteId}
+        taskId={effectiveTaskId}
+        siteId={effectiveSiteId}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有预览"
         emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里。"
@@ -524,8 +529,8 @@ export function ResultCanvas({
         featuredEntries={materialPageEntries}
         accent={accent}
         action={actionFor("materials")}
-        taskId={taskId}
-        siteId={siteId}
+        taskId={effectiveTaskId}
+        siteId={effectiveSiteId}
         onSeeAll={onSeeAllMaterials}
       />
     ),
@@ -534,8 +539,8 @@ export function ResultCanvas({
         <MyLibrary
           accent={accent}
           action={actionFor("mine")}
-          taskId={taskId}
-          siteId={siteId}
+          taskId={effectiveTaskId}
+          siteId={effectiveSiteId}
           featuredEntries={minePageEntries}
         />
       </div>

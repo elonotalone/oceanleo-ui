@@ -34,8 +34,11 @@ test("advanced workbench keeps Agent first and supports native rich editors", ()
 
 test("advanced Agent follows the current task instead of forking history", () => {
   const panel = source("../src/shell/AdvancedAgentPanel.tsx");
+  const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(panel, /setActiveTaskId\(taskId \|\| ""\)/);
   assert.match(panel, /followUp\(activeTaskId, context\)/);
+  assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
+  assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
 
 test("cloud browser can be opened directly and still supports takeover", () => {
