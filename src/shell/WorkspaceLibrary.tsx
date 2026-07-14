@@ -33,6 +33,8 @@ export interface WorkspaceLibraryEntry {
   badge?: string;
   /** The current query was already applied by the authoritative remote index. */
   trustedSearchMatch?: boolean;
+  /** Present only for user-owned rows. Curated/platform entries stay read-only. */
+  onDelete?: () => Promise<void> | void;
 }
 
 export interface WorkspaceLibraryProps {
@@ -139,7 +141,28 @@ export function WorkspaceLibrary({
   const [viewerNonce, setViewerNonce] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
+
+  const removeEntry = async (entry: WorkspaceLibraryEntry) => {
+    if (!entry.onDelete || deletingId) return;
+    if (!window.confirm(tt("确定删除「{title}」吗？", { title: entry.title }))) {
+      return;
+    }
+    setDeleteError("");
+    setDeletingId(entry.id);
+    try {
+      await entry.onDelete();
+      if (selectedId === entry.id) setSelectedId("");
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : tt("删除失败，请重试。"),
+      );
+    } finally {
+      setDeletingId("");
+    }
+  };
 
   const categories = useMemo(() => {
     const seen = new Set<string>();
@@ -321,6 +344,16 @@ export function WorkspaceLibrary({
               {tt("刷新")}
             </button>
           )}
+          {selected.onDelete && (
+            <button
+              type="button"
+              onClick={() => void removeEntry(selected)}
+              disabled={deletingId === selected.id}
+              className="shrink-0 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+            >
+              {tt(deletingId === selected.id ? "删除中…" : "删除")}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -396,6 +429,11 @@ export function WorkspaceLibrary({
         placeholder={tt(searchPlaceholder)}
         tt={tt}
       />
+      {deleteError && (
+        <p className="mt-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
+          {deleteError}
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
         {categories.length > 1 && (
           <LibraryChips
@@ -436,6 +474,10 @@ export function WorkspaceLibrary({
                 key={entry.id}
                 entry={entry}
                 onOpen={() => setSelectedId(entry.id)}
+                onDelete={
+                  entry.onDelete ? () => void removeEntry(entry) : undefined
+                }
+                deleting={deletingId === entry.id}
               />
             ))}
           </div>
@@ -446,6 +488,10 @@ export function WorkspaceLibrary({
                 key={entry.id}
                 entry={entry}
                 onOpen={() => setSelectedId(entry.id)}
+                onDelete={
+                  entry.onDelete ? () => void removeEntry(entry) : undefined
+                }
+                deleting={deletingId === entry.id}
                 accent={accent}
               />
             ))}
@@ -459,85 +505,135 @@ export function WorkspaceLibrary({
 function WorkspaceCard({
   entry,
   onOpen,
+  onDelete,
+  deleting,
   accent,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   accent: string;
 }) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm"
-    >
-      <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-        <WorkspaceThumbnail
-          url={entry.thumbUrl}
-          alt={entry.title}
-          kind={kind}
-          accent={accent}
-          imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-        />
-        <span className="absolute bottom-2 left-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 shadow-sm backdrop-blur">
-          {tt(KIND_LABELS[kind] || entry.category || "内容")}
-        </span>
-      </div>
-      <div className="p-2.5">
-        <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-stone-800">
-          {entry.title}
-        </p>
-        {entry.description && (
-          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-stone-400">
-            {tt(entry.description)}
+    <div className="group relative overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm">
+      <button type="button" onClick={onOpen} className="block w-full text-left">
+        <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
+          <WorkspaceThumbnail
+            url={entry.thumbUrl}
+            alt={entry.title}
+            kind={kind}
+            accent={accent}
+            imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
+          <span className="absolute bottom-2 left-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 shadow-sm backdrop-blur">
+            {tt(KIND_LABELS[kind] || entry.category || "内容")}
+          </span>
+        </div>
+        <div className="p-2.5">
+          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-stone-800">
+            {entry.title}
           </p>
-        )}
-      </div>
-    </button>
+          {entry.description && (
+            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-stone-400">
+              {tt(entry.description)}
+            </p>
+          )}
+        </div>
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label={tt("删除「{title}」", { title: entry.title })}
+          title={tt("删除")}
+          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/95 text-stone-400 opacity-0 shadow-sm backdrop-blur transition hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
+        >
+          {deleting ? (
+            <span className="v-spinner h-3 w-3" />
+          ) : (
+            <TrashIcon />
+          )}
+        </button>
+      )}
+    </div>
   );
 }
 
 function WorkspaceListRow({
   entry,
   onOpen,
+  onDelete,
+  deleting,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-xl border border-stone-200 bg-white p-2 text-left transition hover:border-stone-300 hover:bg-stone-50"
+    <div className="flex w-full items-center rounded-xl border border-stone-200 bg-white transition hover:border-stone-300 hover:bg-stone-50">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
+      >
+        <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
+          <WorkspaceThumbnail
+            url={entry.thumbUrl}
+            alt={entry.title}
+            kind={kind}
+            accent="#78716c"
+            imageClassName="h-full w-full object-cover"
+            compact
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12px] font-semibold text-stone-800">
+            {entry.title}
+          </p>
+          <p className="mt-0.5 truncate text-[10px] text-stone-400">
+            {entry.description
+              ? tt(entry.description)
+              : tt(KIND_LABELS[kind] || entry.category || "内容")}
+          </p>
+        </div>
+        <svg className="h-4 w-4 shrink-0 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label={tt("删除「{title}」", { title: entry.title })}
+          title={tt("删除")}
+          className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        >
+          {deleting ? <span className="v-spinner h-3 w-3" /> : <TrashIcon />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
     >
-      <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
-        <WorkspaceThumbnail
-          url={entry.thumbUrl}
-          alt={entry.title}
-          kind={kind}
-          accent="#78716c"
-          imageClassName="h-full w-full object-cover"
-          compact
-        />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] font-semibold text-stone-800">
-          {entry.title}
-        </p>
-        <p className="mt-0.5 truncate text-[10px] text-stone-400">
-          {entry.description
-            ? tt(entry.description)
-            : tt(KIND_LABELS[kind] || entry.category || "内容")}
-        </p>
-      </div>
-      <svg className="h-4 w-4 shrink-0 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

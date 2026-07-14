@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  deleteArtifact,
+  deleteAsset,
+  deleteWork,
   getDatabaseOverview,
+  uploadFile,
   type AssetItem,
-  type FileItem,
   type WorkItem,
 } from "../lib/database";
 import {
@@ -21,6 +24,11 @@ import {
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+
+const libraryCache = new Map<
+  string,
+  { items: LibraryItem[]; cachedAt: number }
+>();
 
 const KIND_CATEGORY: Record<LibraryKind, string> = {
   website: "网站",
@@ -37,9 +45,10 @@ const KIND_CATEGORY: Record<LibraryKind, string> = {
   file: "文件",
 };
 
-function assetAsWork(item: AssetItem | FileItem): WorkItem {
+function assetAsWork(item: AssetItem): WorkItem {
+  const uploaded = item.meta?.is_upload === true;
   return {
-    id: `asset-${item.id}`,
+    id: item.id,
     url: item.url,
     thumb_url: item.thumb_url,
     title: item.title,
@@ -50,25 +59,34 @@ function assetAsWork(item: AssetItem | FileItem): WorkItem {
       ...(item.meta || {}),
       mime: item.mime || "",
       bytes: item.bytes || 0,
-      library_source: "upload",
+      library_source: uploaded ? "upload" : "asset",
+      library_table: "asset",
     },
     created_at: item.created_at,
   };
 }
 
-function toEntry(item: LibraryItem) {
+function toEntry(item: LibraryItem, onDelete: () => Promise<void>) {
   const uploaded = item.meta.library_source === "upload";
+  const userAsset = item.meta.library_source === "asset";
   return workspaceEntryFromLibraryItem(item, {
-    category: uploaded ? "上传文件" : KIND_CATEGORY[item.kind],
+    category: uploaded ? "上传文件" : userAsset ? "我的素材" : KIND_CATEGORY[item.kind],
     description:
-      (uploaded ? "用户上传" : item.source === "artifact" ? "任务交付物" : "我的作品") +
+      (uploaded
+        ? "用户上传"
+        : userAsset
+          ? "我的素材"
+          : item.source === "artifact"
+            ? "任务交付物"
+            : "我的作品") +
       (item.siteId ? ` · ${item.siteId}` : ""),
     keywords: [
       item.kind,
       item.siteId,
-      uploaded ? "上传 文件" : "作品 生成",
+      uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
       item.favorite ? "收藏" : "",
     ].filter(Boolean),
+    onDelete,
   });
 }
 
@@ -103,14 +121,48 @@ export function MyLibrary({
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const cacheUserIdRef = useRef("");
 
   const load = useCallback(async () => {
-    setLoading(true);
     setFailed(false);
-    const overview = await getDatabaseOverview({ limit: 200 });
-    if (!overview.ok) {
+    const supabase = browserClient();
+    const sessionResult = supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+    const userId = sessionResult.data.session?.user.id || "";
+    cacheUserIdRef.current = userId;
+    if (!userId || !supabase) {
       setItems([]);
+      setAuthRequired(true);
+      setLoading(false);
+      return;
+    }
+
+    const cached = libraryCache.get(userId);
+    if (cached) {
+      setItems(cached.items);
+      setAuthRequired(false);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // The gateway overview and artifact table are independent. Fetching the
+    // second only after all four overview queries finished doubled perceived
+    // load time; run both branches together.
+    const [overview, artifactResponse] = await Promise.all([
+      getDatabaseOverview({ limit: 200 }),
+      supabase
+        .from("agent_artifacts")
+        .select("id,title,kind,content,url,favorite,created_at,task_id,session_id")
+        .order("created_at", { ascending: false })
+        .limit(500),
+    ]);
+    if (!overview.ok) {
+      if (!cached) setItems([]);
       setAuthRequired(overview.status === 401);
       setFailed(overview.status !== 401);
       setLoading(false);
@@ -119,76 +171,167 @@ export function MyLibrary({
     setAuthRequired(false);
     const data = overview.data;
     const works: WorkItem[] = [
-      ...(data?.works || []),
+      ...(data?.works || []).map((item) => ({
+        ...item,
+        meta: { ...(item.meta || {}), library_table: "work" },
+      })),
       ...(data?.assets || []).map(assetAsWork),
-      ...(data?.files || []).map(assetAsWork),
     ];
-
-    let artifacts: LibraryArtifactRow[] = [];
-    const supabase = browserClient();
-    if (supabase) {
-      const response = await supabase
-        .from("agent_artifacts")
-        .select("id,title,kind,content,url,favorite,created_at,task_id,session_id")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      artifacts = (response.data as LibraryArtifactRow[] | null) || [];
-    }
-    setItems(buildLibraryItems(works, artifacts));
+    const artifacts =
+      (artifactResponse.data as LibraryArtifactRow[] | null) || [];
+    const nextItems = buildLibraryItems(works, artifacts);
+    setItems(nextItems);
+    libraryCache.set(userId, {
+      items: nextItems,
+      cachedAt: Date.now(),
+    });
     setLoading(false);
   }, []);
 
   useEffect(() => {
     void load();
-  }, [load, refreshNonce]);
+  }, [load]);
+
+  const lastActionNonceRef = useRef("");
+  useEffect(() => {
+    if (!action?.nonce || lastActionNonceRef.current === action.nonce) return;
+    lastActionNonceRef.current = action.nonce;
+    // A result card can be clicked immediately after its durable artifact row
+    // is inserted. Revalidate the per-user cache; WorkspaceLibrary retries the
+    // same itemId/URL action when the fresh entry list arrives, then opens it.
+    void load();
+  }, [action?.nonce, load]);
+
+  const removeItem = useCallback(async (item: LibraryItem) => {
+    const table = String(item.meta.library_table || "");
+    const artifactId =
+      typeof item.meta.artifact_id === "string"
+        ? item.meta.artifact_id
+        : item.source === "artifact"
+          ? item.id
+          : "";
+    const requests: Array<Promise<{ ok: boolean; error?: string }>> = [];
+    if (item.source === "creation") {
+      requests.push(
+        table === "asset" ? deleteAsset(item.id) : deleteWork(item.id),
+      );
+    }
+    if (artifactId) requests.push(deleteArtifact(artifactId));
+    const results = await Promise.all(requests);
+    const rejected = results.find((result) => !result.ok);
+    if (rejected) {
+      throw new Error(rejected.error || "删除失败，请重试。");
+    }
+    setItems((current) => {
+      const next = current.filter((entry) => entry.key !== item.key);
+      const userId = cacheUserIdRef.current;
+      if (userId) {
+        libraryCache.set(userId, {
+          items: next,
+          cachedAt: Date.now(),
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const handleUpload = useCallback(
+    async (files: FileList | null) => {
+      const queue = Array.from(files || []);
+      if (!queue.length || uploading) return;
+      setUploading(true);
+      setUploadError("");
+      let failedCount = 0;
+      for (let index = 0; index < queue.length; index += 1) {
+        const file = queue[index];
+        setUploadProgress(`${index + 1}/${queue.length} · ${file.name}`);
+        const result = await uploadFile(file, {
+          siteId: siteId || "home",
+          title: file.name,
+        });
+        if (!result.ok) {
+          failedCount += 1;
+          setUploadError(result.error || "文件上传失败，请重试。");
+        }
+      }
+      setUploading(false);
+      setUploadProgress("");
+      if (failedCount < queue.length) await load();
+    },
+    [load, siteId, uploading],
+  );
 
   const entries = useMemo(
     () => [
       ...(onlyFavorites ? [] : featuredEntries),
-      ...items.filter((item) => !onlyFavorites || item.favorite).map(toEntry),
+      ...items
+        .filter((item) => !onlyFavorites || item.favorite)
+        .map((item) => toEntry(item, () => removeItem(item))),
     ],
-    [featuredEntries, items, onlyFavorites],
+    [featuredEntries, items, onlyFavorites, removeItem],
   );
-  const refresh = (
-    <button
-      type="button"
-      onClick={() => setRefreshNonce((value) => value + 1)}
-      disabled={loading}
-      className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
-    >
-      {tt(loading ? "加载中…" : "刷新")}
-    </button>
+  const toolbar = (
+    <div className="flex items-center gap-2">
+      <label className="cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50">
+        <input
+          type="file"
+          multiple
+          className="sr-only"
+          disabled={uploading}
+          onChange={(event) => {
+            void handleUpload(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
+        />
+        {tt(uploading ? "上传中…" : "上传文件")}
+      </label>
+      <button
+        type="button"
+        onClick={() => void load()}
+        disabled={loading || uploading}
+        className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+      >
+        {tt(loading ? "加载中…" : "刷新")}
+      </button>
+    </div>
   );
 
   return (
-    <WorkspaceLibrary
-      entries={entries}
-      accent={accent}
-      action={action}
-      category={category}
-      onCategoryChange={onCategoryChange}
-      taskId={taskId}
-      siteId={siteId}
-      toolbarActions={refresh}
-      searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
-      emptyTitle={
-        authRequired
-          ? "登录后查看我的库"
-          : loading
-            ? "正在加载我的库…"
+    <div className="relative h-full min-h-0">
+      <WorkspaceLibrary
+        entries={entries}
+        accent={accent}
+        action={action}
+        category={category}
+        onCategoryChange={onCategoryChange}
+        taskId={taskId}
+        siteId={siteId}
+        toolbarActions={toolbar}
+        searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
+        emptyTitle={
+          authRequired
+            ? "登录后查看我的库"
+            : loading
+              ? "正在加载我的库…"
+              : failed
+                ? "我的库暂时无法加载"
+                : "我的库还是空的"
+        }
+        emptyDescription={
+          authRequired
+            ? "登录任意 OceanLeo 站点后，跨站作品会在这里汇总。"
             : failed
-              ? "我的库暂时无法加载"
-              : "我的库还是空的"
-      }
-      emptyDescription={
-        authRequired
-          ? "登录任意 OceanLeo 站点后，跨站作品会在这里汇总。"
-          : failed
-            ? "请稍后刷新重试。"
-            : "生成作品、网站或上传文件后，它们会自动出现在这里。"
-      }
-      className={className}
-      plain={plain}
-    />
+              ? "请稍后刷新重试。"
+              : "生成作品、网站或上传文件后，它们会自动出现在这里。"
+        }
+        className={className}
+        plain={plain}
+      />
+      {(uploadProgress || uploadError) && (
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-stone-900 px-3 py-2 text-[11px] text-white shadow-lg">
+          {uploadError || uploadProgress}
+        </div>
+      )}
+    </div>
   );
 }

@@ -116,6 +116,13 @@ interface NavItem {
   onDelete?: () => void;
 }
 
+function inspirationLabel(value: string): string {
+  return value
+    .replaceAll("模板", "灵感")
+    .replaceAll("範本", "灵感")
+    .replace(/\btemplates?\b/gi, "灵感");
+}
+
 /**
  * 功能页右栏「模板」= 库风格的平台模板/我的模板浏览器。
  * 与「素材库 / 文件库」三分区版式**几乎完全一致**（从上到下：搜索框 → 分类 chips →
@@ -132,9 +139,21 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
   // 模板板块（sections 优先；否则把扁平 examples 收成一个板块）。
   const sections = useMemo<GuideSection[]>(() => {
     const secs = (guide.sections ?? []).filter((s) => (s.examples?.length ?? 0) > 0);
-    if (secs.length) return secs;
+    if (secs.length) {
+      return secs.map((section) => ({
+        ...section,
+        title: inspirationLabel(section.title),
+      }));
+    }
     const flat = guide.examples ?? [];
-    return flat.length ? [{ title: guide.examplesLabel ?? "模板", examples: flat }] : [];
+    return flat.length
+      ? [
+          {
+            title: inspirationLabel(guide.examplesLabel ?? "灵感"),
+            examples: flat,
+          },
+        ]
+      : [];
   }, [guide]);
 
   // 类别 chips（操作员 2026-07-07）：第一枚恒为「全部」（直接显示所有板块的模板卡），
@@ -160,12 +179,12 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
     (exs: GuideExample[], idx: number): NavItem[] =>
       exs.map((ex, i) => ({
         key: `${idx}-${i}`,
-        label: ex.label,
+        label: inspirationLabel(ex.label),
         hint: ex.hint ?? ex.prompt,
         thumb: ex.thumb,
         icon: ex.icon ?? "✦",
         badge: ex.badge,
-        searchText: `${ex.label} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),
+        searchText: `${inspirationLabel(ex.label)} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),
         onClick: () => onUseExample?.(ex),
       })),
     [onUseExample],
@@ -175,7 +194,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
     if (activeCat === "__mine") {
       return workflows.map((w) => ({
         key: w.id,
-        label: w.label || tt("我的模板"),
+        label: w.label || tt("我的灵感"),
         hint: paramSummary(w.params, tt),
         meta: timeAgo(w.created_at, tt),
         icon: "📌",
@@ -213,7 +232,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
           setSearch={setSearch}
           view={view}
           setView={setView}
-          placeholder={tt("搜索模板")}
+          placeholder={tt("搜索灵感")}
           tt={tt}
         />
       </div>
@@ -238,15 +257,15 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
           <p className="text-[13px] text-neutral-400">
             {mine
               ? q
-                ? tt("未找到匹配的模板")
-                : tt("还没有保存的模板")
+                ? tt("未找到匹配的灵感")
+                : tt("还没有保存的灵感")
               : q
-                ? tt("未找到匹配的模板")
-                : tt("这个类别下暂无模板")}
+                ? tt("未找到匹配的灵感")
+                : tt("这个类别下暂无灵感")}
           </p>
           {mine && !q && (
             <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
-              {tt("在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。")}
+              {tt("在左侧「操作台」填好输入后，点标题栏的「保存此灵感」，就会收藏到这里，随时一键复用。")}
             </p>
           )}
         </div>

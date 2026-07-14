@@ -4,6 +4,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -66,7 +67,7 @@ export interface ResultCanvasProps {
 }
 
 const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
-  template: "模板",
+  template: "灵感",
   preview: "预览",
   materials: "素材库",
   mine: "我的库",
@@ -134,7 +135,7 @@ function kindForTab(tab: CanvasTab): LibraryKind {
 
 function slotForCanvasTab(tab: CanvasTab): WorkspaceSlotId {
   const label = tab.label.trim().toLowerCase();
-  if (/模板|範本|template/.test(label)) return "template";
+  if (/灵感|靈感|模板|範本|template|inspiration/.test(label)) return "template";
   if (/素材库|素材庫|materials?/.test(label)) return "materials";
   if (/我的库|我的庫|文件库|檔案庫|my library/.test(label)) return "mine";
   if (/我的.*(?:库|庫|记录|記錄)|作品库|作品庫|项目|項目|历史记录|歷史記錄|会议库|會議庫|闪卡库|閃卡庫/.test(label)) {
@@ -210,6 +211,25 @@ function isGenericMineTab(tab: CanvasTab): boolean {
   );
 }
 
+function isGenericMaterialsTab(tab: CanvasTab): boolean {
+  const label = tab.label.trim();
+  if (
+    /^(?:material|materials|material\s*library)$/i.test(label) ||
+    /^(?:素材|素材库|素材庫)$/.test(label)
+  ) {
+    return true;
+  }
+  if (label) return false;
+  return /^(?:material|materials|material_library)$/i.test(tab.id.trim());
+}
+
+function inspirationLabel(value: string): string {
+  return value
+    .replaceAll("模板", "灵感")
+    .replaceAll("範本", "灵感")
+    .replace(/\btemplates?\b/gi, "灵感");
+}
+
 function extractedMaterialItems(tab: CanvasTab): MaterialItem[] {
   if (!isValidElement(tab.content)) return [];
   if (tab.content.type !== MaterialLibrary) return [];
@@ -248,7 +268,7 @@ export function ResultCanvas({
   const guideTab: CanvasTab | null = guide
     ? {
         id: "__guide",
-        label: "模板",
+        label: "灵感",
         content: (
           <NavigatorGuide
             guide={guide}
@@ -310,7 +330,15 @@ export function ResultCanvas({
     () => [
       ...workflowEntries,
       ...grouped.materials
-        .filter((tab) => extractedMaterialItems(tab).length === 0)
+        // The fixed slot already *is* Material Library. Turning a legacy
+        // “素材库” tab into an entry produced the reported library-inside-
+        // library card. Its actual materials are extracted above; the
+        // container tab itself must never become a card.
+        .filter(
+          (tab) =>
+            !isGenericMaterialsTab(tab) &&
+            extractedMaterialItems(tab).length === 0,
+        )
         .map((tab) => ({
           ...previewEntry(tab, { material: true }),
           id: `material-page:${tab.id}`,
@@ -479,8 +507,8 @@ export function ResultCanvas({
   const templateContent =
     selectedTemplateTab?.content || (
       <CanvasEmpty
-        title="选择一个模板开始"
-        description="当前应用还没有起手模板；你仍可以直接在左侧描述要完成的目标。"
+        title="选择一个灵感开始"
+        description="当前应用还没有起手灵感；你仍可以直接在左侧描述要完成的目标。"
       />
     );
   const browserContent = (
@@ -496,7 +524,10 @@ export function ResultCanvas({
           <CanvasSubTabs
             tabs={grouped.template.map((tab) => ({
               id: tab.id,
-              label: tab.id === "__guide" ? "快速起手" : tab.label,
+              label:
+                tab.id === "__guide"
+                  ? "快速起手"
+                  : inspirationLabel(tab.label),
             }))}
             active={selectedTemplateTab.id}
             onChange={(id) => {
@@ -548,7 +579,10 @@ export function ResultCanvas({
     browser: <div className="h-full min-h-0">{browserContent}</div>,
   };
 
-  useEffect(() => {
+  // The fixed tabs live in SplitWorkspace's header slot. A passive-effect
+  // cleanup briefly restored the fallback “库” label on every tab click,
+  // causing a visible flash. Commit header replacement before paint.
+  useLayoutEffect(() => {
     if (!rightSlot) return;
     rightSlot.setRightLabel(
       <FixedWorkspaceTabs

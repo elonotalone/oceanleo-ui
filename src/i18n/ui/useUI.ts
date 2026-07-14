@@ -23,13 +23,70 @@
 import { useMemo } from "react";
 import { useLocale } from "next-intl";
 import { UI_MESSAGES } from "./messages";
-import { DEFAULT_LOCALE, normalizeLocale } from "../config";
+import { DEFAULT_LOCALE, normalizeLocale, type Locale } from "../config";
 
 export type UITranslate = (zh: string, vars?: Record<string, string | number>) => string;
 
 function interpolate(s: string, vars?: Record<string, string | number>): string {
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+}
+
+/**
+ * “灵感” is the product name for prompt-filling cards; it is not a generic
+ * design-file template. Reuse the mature translations for the former template
+ * copy, then replace only that translated term so all 17 locales switch
+ * together without globally renaming real document/design templates.
+ */
+function renamePromptTemplateTerm(value: string, locale: Locale): string {
+  switch (locale) {
+    case "zh":
+      return value.replaceAll("模板", "灵感");
+    case "zh-TW":
+      return value.replaceAll("範本", "靈感").replaceAll("模板", "靈感");
+    case "en":
+      return value.replace(/templates?/gi, (word) =>
+        word.toLowerCase().endsWith("s") ? "Inspirations" : "Inspiration",
+      );
+    case "de":
+      return value.replace(/Vorlagen?/gi, (word) =>
+        word.toLowerCase().endsWith("n") ? "Inspirationen" : "Inspiration",
+      );
+    case "es":
+    case "es-419":
+      return value.replace(/plantillas?/gi, (word) =>
+        word.toLowerCase().endsWith("s") ? "inspiraciones" : "inspiración",
+      );
+    case "fr":
+      return value.replace(/modèles?/gi, (word) =>
+        word.toLowerCase().endsWith("s") ? "inspirations" : "inspiration",
+      );
+    case "it":
+      return value
+        .replace(/modelli/gi, "ispirazioni")
+        .replace(/modello/gi, "ispirazione");
+    case "pt-BR":
+    case "pt-PT":
+      return value
+        .replace(/modelos/gi, "inspirações")
+        .replace(/modelo/gi, "inspiração");
+    case "vi":
+      return value.replace(/mẫu/gi, "Cảm hứng");
+    case "tr":
+      return value
+        .replace(/şablonlar/gi, "İlhamlar")
+        .replace(/şablon/gi, "İlham");
+    case "ja":
+      return value.replaceAll("テンプレート", "インスピレーション");
+    case "ko":
+      return value.replaceAll("템플릿", "영감");
+    case "ar":
+      return value.replace(/قوالب|قالب/g, "إلهام");
+    case "th":
+      return value.replaceAll("เทมเพลต", "แรงบันดาลใจ");
+    case "hi":
+      return value.replaceAll("टेम्पलेट", "प्रेरणा");
+  }
 }
 
 /**
@@ -55,9 +112,17 @@ export function useUI(): UITranslate {
         .replaceAll("文件库", "我的库")
         .replaceAll("檔案庫", "我的库")
         .replaceAll("檔案库", "我的库");
-      const hit = dict[canonical];
+      const isInspirationCopy = /灵感|靈感/.test(canonical);
+      const lookupKey = isInspirationCopy
+        ? canonical.replaceAll("灵感", "模板").replaceAll("靈感", "模板")
+        : canonical;
+      const hit = dict[lookupKey];
+      const translated =
+        hit != null && hit !== "" ? hit : canonical;
       return interpolate(
-        hit != null && hit !== "" ? hit : canonical,
+        isInspirationCopy
+          ? renamePromptTemplateTerm(translated, locale)
+          : translated,
         vars,
       );
     };

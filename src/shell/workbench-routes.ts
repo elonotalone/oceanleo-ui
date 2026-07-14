@@ -118,6 +118,18 @@ export function editorRouteFor(item: LibraryItem): EditorRoute {
   ) {
     return { type: pinnedRoute };
   }
+  const templateDocumentUrl = String(item.meta.template_doc_url || "");
+  if (
+    /^https:\/\/asset\.oceanleo\.com\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(
+      templateDocumentUrl,
+    )
+  ) {
+    return {
+      type: "embed",
+      base: "https://design.oceanleo.com/embed/editor",
+      mediaType: "canvas",
+    };
+  }
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);
   const officeExt = url ? officeExtensionOf(url) : "";

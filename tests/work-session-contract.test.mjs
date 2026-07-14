@@ -127,8 +127,22 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建"\)\}/,
   );
-  assert.match(agentChatSource, /appId="agent"/);
+  assert.match(agentChatSource, /appId="home-agent"/);
   assert.match(agentChatSource, /router\.replace\(historySessionHref\(sessionId\)\)/);
+  assert.match(agentChatSource, /const \[rightOpen, setRightOpen\] = useState\(hasOrgPanel\)/);
+  assert.match(agentChatSource, /open: rightOpen/);
+  const artifactAutoStart = agentChatSource.indexOf(
+    "const seenArtRef = useRef",
+  );
+  const organizationAutoStart = agentChatSource.indexOf(
+    "const orgAutoOpenedRef = useRef",
+    artifactAutoStart,
+  );
+  assert.ok(artifactAutoStart >= 0 && organizationAutoStart > artifactAutoStart);
+  assert.doesNotMatch(
+    agentChatSource.slice(artifactAutoStart, organizationAutoStart),
+    /setRightOpen\(true\)/,
+  );
   assert.doesNotMatch(agentChatSource, /saveSnapshot\([\s\S]*?messages/);
 });
 
@@ -168,6 +182,16 @@ test("真实操作台自动恢复、debounce 保存，并在卸载前 flush", ()
   );
   assert.match(draftSource, /window\.addEventListener\("pagehide", flushPending\)/);
   assert.match(draftSource, /document\.visibilityState === "hidden"/);
+});
+
+test("灵感卡把原 prompt 和 nonce 一起交给操作台或纯 agent 输入框高亮", () => {
+  assert.match(chatSource, /setFillTemplate\(text\)/);
+  assert.match(
+    chatSource,
+    /<FillNonceProvider nonce=\{fillNonce\} template=\{fillTemplate\}>/,
+  );
+  assert.match(chatSource, /highlightTemplate=\{fillTemplate \|\| undefined\}/);
+  assert.match(chatSource, /fillNonce=\{fillNonce\}/);
 });
 
 test("已保存任务在 history 原地续编，live 误写与旧 flush 受守卫", () => {

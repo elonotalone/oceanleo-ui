@@ -231,7 +231,10 @@ export function AgentChat(props: AgentChatProps) {
   return (
     <WorkspaceSessionProvider
       siteId={props.siteId || ""}
-      appId="agent"
+      // Homepage-created conversations are a separate product surface from the
+      // workspace's explicit “AI 助手” app. Sharing appId="agent" made the
+      // workspace card resume homepage history and vice versa.
+      appId="home-agent"
       title={props.initialPrompt?.trim().slice(0, 120) || "AI 助手"}
       resumeLatest={false}
     >
@@ -281,7 +284,8 @@ function AgentChatInner({
   const [libTab, setLibTab] = useState(hasOrgPanel ? "preview" : "template");
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
-  // 团队默认开库；普通 agent 默认收起，首个 artifact / workspace action 到达后打开。
+  // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
+  // 用户点结果卡或「库」按钮时才展开，避免主页 Enter 后页面自行改布局。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
@@ -369,11 +373,19 @@ function AgentChatInner({
   useEffect(() => {
     if (!taskId) return;
     if (status && status !== "running") return;
-    const t = setInterval(async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
       const s = await refresh(taskId);
-      if (s && s !== "running") clearInterval(t);
-    }, 1500);
-    return () => clearInterval(t);
+      if (!cancelled && (!s || s === "running")) {
+        timer = setTimeout(poll, 450);
+      }
+    };
+    timer = setTimeout(poll, 120);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [taskId, status, refresh]);
 
   // keep the reasoning stream scrolled to bottom
@@ -738,7 +750,6 @@ function AgentChatInner({
     if (!latestArtifactMessage || latestArtifactMessage.id === seenArtRef.current)
       return;
     seenArtRef.current = latestArtifactMessage.id;
-    setRightOpen(true);
     setLibTab("preview");
     setWorkspaceAction({
       nonce: `artifact:${latestArtifactMessage.id}`,
@@ -771,7 +782,6 @@ function AgentChatInner({
     );
     if (!action) return;
     seenActionRef.current = latestActionMessage.id;
-    setRightOpen(true);
     setLibTab(action.tab);
     setWorkspaceAction({
       nonce: `message:${latestActionMessage.id}`,
@@ -797,7 +807,6 @@ function AgentChatInner({
           message.content.includes("支付")),
     );
     if ((!browserActivity && !takeover) || art) return;
-    setRightOpen(true);
     setLibTab("browser");
     setWorkspaceAction({
       nonce: `legacy-browser:${browserActivity?.id || takeover?.id || "open"}`,

@@ -95,7 +95,7 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   );
   assert.match(source, /FIXED_WORKSPACE_SLOTS\.filter/);
   assert.match(source, /showTemplate \|\| slot !== "template"/);
-  assert.match(source, /template: "模板"/);
+  assert.match(source, /template: "灵感"/);
   assert.match(source, /preview: "预览"/);
   assert.match(source, /mine: "我的库"/);
   assert.match(source, /useRightPaneSlot/);
@@ -108,9 +108,55 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.doesNotMatch(source, /expanded \? "−" : "\+"/);
   assert.doesNotMatch(source, /crossSiteLibraryTabs/);
   assert.doesNotMatch(source, /\bmoreTabs\b/);
+  assert.match(source, /!isGenericMaterialsTab\(tab\)/);
 });
 
-test("template slot preserves both quick-start guide and legacy template pages", () => {
+test("chart materials open their rendered image in a real editor", () => {
+  const source = readFileSync(
+    new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /chart: "image"/);
+  assert.match(
+    source,
+    /asset\.type === "chart"[\s\S]*?asset\.preview_url \|\| asset\.thumb_url/,
+  );
+  assert.match(source, /source_asset_url: asset\.full_url/);
+});
+
+test("Design template series keeps its layered document for Advanced editing", () => {
+  const source = readFileSync(
+    new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  const routesSource = readFileSync(
+    new URL("../src/shell/workbench-routes.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /function designTemplateDocumentUrl/);
+  assert.match(source, /asset\.series_id === "design-materials"/);
+  assert.match(source, /design-templates\\\/doc/);
+  assert.match(source, /template_doc_url: designTemplateDoc/);
+  assert.match(source, /siteId: designTemplateDoc \? "design" : "asset"/);
+  assert.match(source, /siteId: templateDocUrl \? "design" : ""/);
+  assert.match(routesSource, /item\.meta\.template_doc_url/);
+  assert.match(
+    routesSource,
+    /design\.oceanleo\.com\/embed\/editor[\s\S]*?mediaType: "canvas"/,
+  );
+});
+
+test("closing a configured library keeps the app runtime mounted", () => {
+  const source = readFileSync(
+    new URL("../src/shell/SplitWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /if \(!hasRight && !library\)/);
+  assert.match(source, /!hasRight \|\| maxed === "left" \? "hidden" : "flex"/);
+  assert.match(source, /WORKSPACE_ACTION_EVENT/);
+});
+
+test("inspiration slot preserves both quick-start guide and legacy prompt pages", () => {
   const source = readFileSync(
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
@@ -118,10 +164,10 @@ test("template slot preserves both quick-start guide and legacy template pages",
   assert.match(source, /templatePageId/);
   assert.match(source, /grouped\.template\.find/);
   assert.match(source, /grouped\.template\.length > 1/);
-  assert.match(source, /tab\.id === "__guide" \? "快速起手" : tab\.label/);
+  assert.match(source, /tab\.id === "__guide"[\s\S]*?"快速起手"[\s\S]*?inspirationLabel\(tab\.label\)/);
   assert.match(source, /if \(id !== "__guide"\) onChange\?\.\(id\)/);
   assert.match(source, /slotForCanvasTab/);
-  assert.match(source, /模板\|範本\|template/);
+  assert.match(source, /灵感\|靈感\|模板\|範本\|template\|inspiration/);
   assert.match(source, /!isGenericMineTab\(tab\)/);
 });
 

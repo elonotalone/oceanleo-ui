@@ -61,6 +61,11 @@ import {
   WorkspaceRuntimeBoundary,
   useWorkspaceRuntimeHydration,
 } from "./workspace-runtime-hydration";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import {
+  advancedItemFromSession,
+  advancedSnapshotFromSession,
+} from "./advanced-session";
 
 export interface SiteCatalogConsoleProps {
   /** 本站 site_id（计量 / 历史分区 / 深链）。 */
@@ -396,8 +401,10 @@ export function SiteCatalogConsole({
     ""
   ).trim();
   const requestedAppId =
-    (!effectiveHistorySession && legacyAppAliases?.[rawRequestedAppId]) ||
-    rawRequestedAppId;
+    effectiveHistorySession?.app_id === "home-agent"
+      ? "agent"
+      : (!effectiveHistorySession && legacyAppAliases?.[rawRequestedAppId]) ||
+        rawRequestedAppId;
   const invalidAppId =
     Boolean(requestedAppId) && !knownAppIds.has(requestedAppId);
   const activeAppId = invalidAppId ? "" : requestedAppId;
@@ -523,7 +530,7 @@ export function SiteCatalogConsole({
         const guide: FunctionGuide | undefined =
           sections && sections.length
             ? {
-                title: `${app.name} · 模板`,
+                title: `${app.name} · 灵感`,
                 intro: app.guideIntro ?? guideIntro,
                 sections,
               }
@@ -592,6 +599,46 @@ export function SiteCatalogConsole({
         accent={accent}
         onBack={() => router.push("/history")}
       />
+    );
+  }
+  // Most consumer sites route `/history/[sessionId]` through their live
+  // workspace runtime. Advanced sessions use a generated app id rather than a
+  // catalog app id, so treating them as a normal app made refresh fall through
+  // to “app not found” (or the directory). Restore the durable advanced
+  // snapshot before catalog-id validation, matching HistoryDetail's contract.
+  const advancedHistoryItem = advancedItemFromSession(effectiveHistorySession);
+  const advancedHistorySnapshot = advancedSnapshotFromSession(
+    effectiveHistorySession,
+  );
+  if (
+    historySessionId &&
+    effectiveHistorySession &&
+    advancedHistoryItem &&
+    advancedHistorySnapshot
+  ) {
+    const currentSession = effectiveHistorySession;
+    return (
+      <WorkspaceSessionProvider
+        key={currentSession.id}
+        siteId={currentSession.site_id}
+        appId={currentSession.app_id}
+        sessionId={currentSession.id}
+        initialSession={currentSession}
+        mode="history"
+        resumeLatest={false}
+      >
+        <AdvancedContentWorkbench
+          item={advancedHistoryItem}
+          previewContent={advancedHistoryItem.content}
+          linkUrl={advancedHistoryItem.url}
+          taskId={
+            currentSession.task_id || advancedHistorySnapshot.task_id || null
+          }
+          siteId={currentSession.site_id}
+          accent={accent}
+          onClose={() => router.push("/history")}
+        />
+      </WorkspaceSessionProvider>
     );
   }
   if (invalidAppId) {
@@ -672,19 +719,25 @@ export function SiteCatalogConsole({
       {consoleNode}
     </WorkspaceRuntimeBoundary>
   );
+  // Homepage conversations intentionally live in the separate `home-agent`
+  // session namespace, but reuse the catalog's visual AI-assistant runtime
+  // when reopened from /history/<id>. Keep the provider identity unchanged so
+  // this playback can never become the workspace `agent` app's latest session.
+  const runtimeSessionAppId =
+    effectiveHistorySession?.app_id || activeAppId;
   const reusingHistoryProvider =
     Boolean(historySessionId) &&
     inheritedWorkspace?.mode === "history" &&
     inheritedWorkspace.sessionId === historySessionId &&
     inheritedWorkspace.siteId === siteId &&
-    inheritedWorkspace.appId === activeAppId;
+    inheritedWorkspace.appId === runtimeSessionAppId;
   if (reusingHistoryProvider) return hydratedConsoleNode;
 
   return (
     <WorkspaceSessionProvider
       key={`${historySessionId ? "history" : embed ? "embed" : "workspace"}:${activeAppId}:${historySessionId}`}
       siteId={siteId}
-      appId={activeAppId}
+      appId={runtimeSessionAppId}
       title={activeAppTitle}
       onTaskBound={handleTaskBound}
       sessionId={historySessionId || undefined}
@@ -808,7 +861,7 @@ function withPresetCard(
   // 无 preset.prompt（如纯抠图成品，靠 onEnterApp 选模式）→ 不注入，原样返回。
   if (!preset || preset.prompt == null) return sections;
   const presetCard: GuideExample = {
-    label: "标准模板（含参数）",
+    label: "标准灵感（含参数）",
     hint: "一键套用本成品的标准起手式（含推荐参数）",
     prompt: preset.prompt,
     set: preset.set,

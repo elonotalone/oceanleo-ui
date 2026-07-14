@@ -31,6 +31,7 @@ import {
 } from "react";
 import { IconLibrary } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
+import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
 
 // ----------------------------------------------------------------------------
 // 左栏标题（PaneHeader）插槽。doctrine v3（2026-06-21 操作员）：功能区的
@@ -159,6 +160,7 @@ export function SplitWorkspace({
   const libraryOpen = library != null && (libraryControlled ? Boolean(library.open) : internalOpen);
   const setLibraryOpen = useCallback(
     (v: boolean) => {
+      if (!v) setMaxed("none");
       if (!libraryControlled) setInternalOpen(v);
       library?.onOpenChange?.(v);
     },
@@ -232,6 +234,20 @@ export function SplitWorkspace({
     if (Number.isFinite(v) && v >= MIN_RATIO && v <= MAX_RATIO) setRatio(v);
   }, [storageKey]);
 
+  // Agent result cards and trusted workspace actions may target content while
+  // the library pane is closed. Open the existing pane in place so the card
+  // navigates to its real library location instead of becoming a plain link.
+  useEffect(() => {
+    if (!library) return;
+    const openForWorkspaceAction = () => setLibraryOpen(true);
+    window.addEventListener(WORKSPACE_ACTION_EVENT, openForWorkspaceAction);
+    return () =>
+      window.removeEventListener(
+        WORKSPACE_ACTION_EVENT,
+        openForWorkspaceAction,
+      );
+  }, [library, setLibraryOpen]);
+
   const persist = useCallback(
     (v: number) => {
       if (storageKey) localStorage.setItem(storageKey, String(v));
@@ -279,10 +295,20 @@ export function SplitWorkspace({
     setMaxed((m) => (m === which ? "none" : which));
 
   // computed flex-basis per pane (desktop)
-  const leftBasis =
-    maxed === "left" ? "100%" : maxed === "right" ? "0%" : `${ratio * 100}%`;
-  const rightBasis =
-    maxed === "right" ? "100%" : maxed === "left" ? "0%" : `${(1 - ratio) * 100}%`;
+  const leftBasis = !hasRight
+    ? "100%"
+    : maxed === "left"
+      ? "100%"
+      : maxed === "right"
+        ? "0%"
+        : `${ratio * 100}%`;
+  const rightBasis = !hasRight
+    ? "0%"
+    : maxed === "right"
+      ? "100%"
+      : maxed === "left"
+        ? "0%"
+        : `${(1 - ratio) * 100}%`;
 
   function MaxButton({ which }: { which: "left" | "right" }) {
     const on = maxed === which;
@@ -313,7 +339,11 @@ export function SplitWorkspace({
   // Single-pane mode (no right content): just render left full-width.
   // doctrine v4（2026-06-22）：紧凑内边距——四周（尤其上下）几乎不留白，两栏几乎
   // 占满可视高度。原 px-4 py-4 → p-1.5。
-  if (!hasRight) {
+  // A configured library keeps one stable DOM tree while closed. The previous
+  // single-pane/dual-pane branch swap unmounted the complete app whenever the
+  // user reopened the library, producing a full-page flash and resetting
+  // editor/browser state.
+  if (!hasRight && !library) {
     return (
       <LeftPaneCtx.Provider value={slot}>
         <div
@@ -357,7 +387,7 @@ export function SplitWorkspace({
           maxed === "right" ? "hidden md:flex" : "flex"
         } ${maxed === "left" ? "" : ""}`}
         style={
-          hydrated
+          hydrated || !hasRight
             ? { flexBasis: leftBasis, flexGrow: 0, flexShrink: 0 }
             : { flexBasis: `${defaultRatio * 100}%`, flexGrow: 0, flexShrink: 0 }
         }
@@ -370,7 +400,7 @@ export function SplitWorkspace({
       </section>
 
       {/* 竖线（拖动条）—— 仅桌面、未大屏时可见 */}
-      {maxed === "none" && (
+      {hasRight && maxed === "none" && (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -387,11 +417,11 @@ export function SplitWorkspace({
 
       {/* 右栏 */}
       <section
-        className={`mt-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
-          maxed === "left" ? "hidden md:flex" : "flex"
+        className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
+          !hasRight || maxed === "left" ? "hidden" : "flex"
         }`}
         style={
-          hydrated
+          hydrated || !hasRight
             ? { flexBasis: rightBasis, flexGrow: 1, flexShrink: 1 }
             : { flexBasis: `${(1 - defaultRatio) * 100}%`, flexGrow: 1, flexShrink: 1 }
         }

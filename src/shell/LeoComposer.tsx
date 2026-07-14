@@ -14,7 +14,7 @@ import {
   TemplateFillArea,
   type TemplateFillAreaHandle,
 } from "./PromptHighlightArea";
-import { useFillNonce } from "./guide-context";
+import { useFillNonce, useFillTemplate } from "./guide-context";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
@@ -206,7 +206,9 @@ export function LeoComposer({
   // 零改动即生效）；站点也可显式传 fillNonce 叠加。两源相加 → 任一自增都触发 TemplateFillArea
   // 无条件重灌，根治「删空后再点同卡恢复不了」。
   const ctxFillNonce = useFillNonce();
+  const ctxFillTemplate = useFillTemplate();
   const effectiveFillNonce = (fillNonce ?? 0) + ctxFillNonce;
+  const effectiveHighlightTemplate = highlightTemplate ?? ctxFillTemplate;
   const runtimeHydration = useWorkspaceRuntimeHydration();
   // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
   const leoEnabled = useLeoEnabled();
@@ -344,7 +346,7 @@ export function LeoComposer({
         ref={highlightRef}
         value={value}
         onChange={onChange}
-        template={highlightTemplate}
+        template={effectiveHighlightTemplate}
         fillNonce={effectiveFillNonce}
         restoreEpoch={runtimeHydration?.snapshotRestoreEpoch}
         accentColor={accentColor}

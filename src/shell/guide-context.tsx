@@ -55,14 +55,34 @@ export type OpsFiller = (
 // → filler 被调用），本 context 的 nonce 自增。LeoComposer 内嵌于操作台时自动消费它，透传给
 // TemplateFillArea 的 fillNonce → 无条件重灌当前模板。**站点零改动**即获「重点同卡必重灌」。
 // 与 agent 输入框无关（agent 的 LeoComposer 不在操作台 filler 语境里、不消费此 nonce）。
-const FillNonceCtx = createContext<number>(0);
+interface FillSignal {
+  nonce: number;
+  template: string | null;
+}
+const FillNonceCtx = createContext<FillSignal>({ nonce: 0, template: null });
 /** 供 LeoComposer 消费：当前操作台填充计数（每次点导航/起手卡自增）。 */
 export function useFillNonce(): number {
-  return useContext(FillNonceCtx);
+  return useContext(FillNonceCtx).nonce;
 }
-/** FunctionAgentChat 用它把 fillNonce 供给其 opsContent 子树里的所有 LeoComposer。 */
-export function FillNonceProvider({ nonce, children }: { nonce: number; children: ReactNode }) {
-  return <FillNonceCtx.Provider value={nonce}>{children}</FillNonceCtx.Provider>;
+/** 供 LeoComposer 消费：最近一次灵感卡灌入的 prompt，用于统一渲染占位荧光。 */
+export function useFillTemplate(): string | null {
+  return useContext(FillNonceCtx).template;
+}
+/** FunctionAgentChat 把填充信号供给 opsContent 子树里的所有 LeoComposer。 */
+export function FillNonceProvider({
+  nonce,
+  template,
+  children,
+}: {
+  nonce: number;
+  template?: string | null;
+  children: ReactNode;
+}) {
+  const value = useMemo(
+    () => ({ nonce, template: template ?? null }),
+    [nonce, template],
+  );
+  return <FillNonceCtx.Provider value={value}>{children}</FillNonceCtx.Provider>;
 }
 
 interface GuideCtxValue {

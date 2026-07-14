@@ -554,6 +554,7 @@ export function FunctionAgentChat({
   // 给 opsContent 子树的所有 LeoComposer → TemplateFillArea 无条件重灌当前模板。修「删空后
   // 再点同卡恢复不了」（不依赖 value/template prop diff，站点零改动）。
   const [fillNonce, setFillNonce] = useState(0);
+  const [fillTemplate, setFillTemplate] = useState<string | null>(null);
   const primaryField = opsPrimaryField || schema.fields[0]?.key || "";
   const fillFromGuide = useCallback<
     (
@@ -571,6 +572,12 @@ export function FunctionAgentChat({
         setError(tt("当前工作会话不可编辑。"));
         return;
       }
+      // Keep the actual card prompt alongside the nonce. Many consumer
+      // consoles patch only a plain string into their LeoComposer and never
+      // supplied highlightTemplate, so the shared nonce had nothing to seed.
+      // Providing both here makes every shared composer render [占位] as
+      // fluorescent editable marks without per-site wiring.
+      setFillTemplate(text);
       if (opts && Object.prototype.hasOwnProperty.call(opts, "remark")) {
         setOperatorRemark(opts.remark || "");
       }
@@ -646,7 +653,7 @@ export function FunctionAgentChat({
     if (!guideWf) return;
     const draft = effectiveGetDraft();
     if (!draft || !(draft.prompt || "").trim()) {
-      setError(tt("请先在操作台填写内容，再保存此模板。"));
+      setError(tt("请先在操作台填写内容，再保存此灵感。"));
       setTimeout(() => setError(null), 2600);
       return;
     }
@@ -704,7 +711,7 @@ export function FunctionAgentChat({
           type="button"
           onClick={() => saveActionRef.current()}
           disabled={wfSaving}
-          title={tt("把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用")}
+          title={tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")}
           className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition active:scale-95 disabled:opacity-50 ${
             wfSaved
               ? "border-transparent text-white"
@@ -723,7 +730,7 @@ export function FunctionAgentChat({
               />
             )}
           </svg>
-          {wfSaved ? tt("已保存") : tt("保存此模板")}
+          {wfSaved ? tt("已保存") : tt("保存此灵感")}
         </button>
       )}
       {workspace && workspace.mode !== "history" && (
@@ -807,11 +814,19 @@ export function FunctionAgentChat({
   useEffect(() => {
     if (!taskId) return;
     if (status && status !== "running") return;
-    const t = setInterval(async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
       const s = await refresh(taskId);
-      if (s && s !== "running") clearInterval(t);
-    }, 1500);
-    return () => clearInterval(t);
+      if (!cancelled && (!s || s === "running")) {
+        timer = setTimeout(poll, 450);
+      }
+    };
+    timer = setTimeout(poll, 120);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [taskId, status, refresh]);
 
   useEffect(() => {
@@ -1092,7 +1107,7 @@ export function FunctionAgentChat({
               大纲」引导卡）。给滚动区补一段底部内边距（有 stickyAction 时 pb-8），让内容能
               滚到遮罩上方、卡片本体不进入半透明渐变区。 */}
           <div className={`min-h-0 flex-1 overflow-y-auto ${stickyAction != null ? "pb-8" : ""}`}>
-            <FillNonceProvider nonce={fillNonce}>
+            <FillNonceProvider nonce={fillNonce} template={fillTemplate}>
               {opsContent}
               <OperatorRemarkField disabled={sessionReadOnly} />
             </FillNonceProvider>
@@ -1158,6 +1173,31 @@ export function FunctionAgentChat({
                 key={item.key}
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                onArtifactOpen={
+                  item.message.meta?.artifact
+                    ? () => {
+                        const artifact = item.message.meta?.artifact;
+                        dispatchWorkspaceAction({
+                          nonce: `${taskId || "local"}:artifact:${item.message.id}`,
+                          action: {
+                            version: 1,
+                            tab:
+                              artifact?.type === "preview"
+                                ? "preview"
+                                : "mine",
+                            itemId: artifact?.id
+                              ? `artifact:${artifact.id}`
+                              : undefined,
+                            url: artifact?.url,
+                            query:
+                              !artifact?.id && !artifact?.url
+                                ? artifact?.title
+                                : undefined,
+                          },
+                        });
+                      }
+                    : undefined
+                }
                 onBranch={
                   !running &&
                   !sessionReadOnly &&
@@ -1228,6 +1268,8 @@ export function FunctionAgentChat({
             leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
             placeholder={tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })}
             rows={1}
+            highlightTemplate={fillTemplate || undefined}
+            fillNonce={fillNonce}
             onAttachFiles={atts.handleAttachFiles}
             attachments={atts.composerAttachments}
             onRemoveAttachment={atts.removeAttachment}

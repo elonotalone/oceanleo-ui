@@ -49,10 +49,20 @@ export function CloudBrowserPanel({
   const [typing, setTyping] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const frameUrlRef = useRef("");
   const socketGenerationRef = useRef(0);
   const selectedIdRef = useRef("");
   const taskScopeRef = useRef<string | null>(null);
   const reloadGenerationRef = useRef(0);
+  const replaceFrame = useCallback((next: string) => {
+    setFrame((current) => {
+      if (current.startsWith("blob:") && current !== next) {
+        URL.revokeObjectURL(current);
+      }
+      frameUrlRef.current = next;
+      return next;
+    });
+  }, []);
 
   const selected = sessions.find((item) => item.id === selectedId) || null;
 
@@ -112,7 +122,7 @@ export function CloudBrowserPanel({
   useEffect(() => {
     ++socketGenerationRef.current;
     setDeleteArmed(false);
-    setFrame("");
+    replaceFrame("");
     setLive(false);
     setDriving(false);
     socketRef.current?.close();
@@ -133,7 +143,7 @@ export function CloudBrowserPanel({
     return () => {
       alive = false;
     };
-  }, [selectedId]);
+  }, [replaceFrame, selectedId]);
 
   useEffect(() => {
     if (!selectedId || live) return;
@@ -182,6 +192,10 @@ export function CloudBrowserPanel({
   useEffect(
     () => () => {
       socketRef.current?.close();
+      if (frameUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(frameUrlRef.current);
+      }
+      frameUrlRef.current = "";
     },
     [],
   );
@@ -206,22 +220,42 @@ export function CloudBrowserPanel({
     }
     socketRef.current?.close();
     const socket = new WebSocket(cloudBrowserLiveUrl(requestedSessionId));
+    socket.binaryType = "blob";
     socketRef.current = socket;
     socket.onopen = () => {
       if (socketRef.current !== socket || generation !== socketGenerationRef.current) {
         socket.close();
         return;
       }
-      socket.send(JSON.stringify({ t: "auth", ticket: ticket.data!.ticket }));
+      socket.send(
+        JSON.stringify({
+          t: "auth",
+          ticket: ticket.data!.ticket,
+          binary_frames: true,
+        }),
+      );
       setLive(true);
     };
     socket.onmessage = (event) => {
       if (socketRef.current !== socket || generation !== socketGenerationRef.current) {
         return;
       }
+      if (event.data instanceof Blob) {
+        const next = URL.createObjectURL(
+          event.data.type === "image/jpeg"
+            ? event.data
+            : new Blob([event.data], { type: "image/jpeg" }),
+        );
+        replaceFrame(next);
+        return;
+      }
       try {
         const message = JSON.parse(String(event.data));
-        if (message.t === "frame" && message.data) setFrame(message.data);
+        // Text-frame compatibility keeps a rolling frontend/backend deployment
+        // usable while executors move to binary JPEG.
+        if (message.t === "frame" && message.data) {
+          replaceFrame(`data:image/jpeg;base64,${message.data}`);
+        }
         if (message.t === "meta") {
           setAddress(String(message.url || ""));
           setTitle(String(message.title || ""));
@@ -459,7 +493,7 @@ export function CloudBrowserPanel({
         {live && frame ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`data:image/jpeg;base64,${frame}`}
+            src={frame}
             alt={title}
             onClick={clickFrame}
             className={`h-full w-full object-contain ${driving ? "cursor-crosshair" : ""}`}

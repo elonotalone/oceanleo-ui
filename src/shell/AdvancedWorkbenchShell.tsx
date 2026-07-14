@@ -24,10 +24,12 @@ import {
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
+import { MaterialLibrary } from "./MaterialLibrary";
 
 type WorkbenchTool =
   | "agent"
   | "edit"
+  | "materials"
   | "preview"
   | "info"
   | "versions"
@@ -76,6 +78,23 @@ function mediaTypeFor(item: LibraryItem): MediaType {
   return map[item.kind] || "other";
 }
 
+function curatedTypeFor(item: LibraryItem): string {
+  const map: Partial<Record<LibraryItem["kind"], string>> = {
+    website: "website",
+    canvas: "image",
+    ppt: "ppt",
+    sheet: "sheet",
+    document: "document",
+    image: "image",
+    video: "video",
+    video_canvas: "video_workflow",
+    audio: "audio",
+    xhs: "image",
+    threed: "3d",
+  };
+  return map[item.kind] || "all";
+}
+
 function ToolIcon({ tool }: { tool: WorkbenchTool }) {
   const paths: Record<WorkbenchTool, ReactNode> = {
     agent: (
@@ -89,6 +108,12 @@ function ToolIcon({ tool }: { tool: WorkbenchTool }) {
       <>
         <path d="M4 20l4.2-1 10.4-10.4a2 2 0 00-2.8-2.8L5.4 16.2 4 20z" />
         <path d="M14.5 7.1l2.8 2.8" />
+      </>
+    ),
+    materials: (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M7 8h10M7 12h6M7 16h8" />
       </>
     ),
     preview: (
@@ -345,6 +370,7 @@ export function AdvancedWorkbenchShell({
       [
         { id: "agent" as const, label: tt("Agent") },
         { id: "edit" as const, label: tt(editorLabel) },
+        { id: "materials" as const, label: tt("素材") },
         { id: "preview" as const, label: tt("预览") },
         { id: "info" as const, label: tt("信息") },
         { id: "versions" as const, label: tt("版本") },
@@ -470,6 +496,20 @@ export function AdvancedWorkbenchShell({
     ) : (
       <div className="p-4 text-[12px] leading-relaxed text-amber-700">
         {tt("此内容目前可以预览、交给 Agent 处理或保存副本，但没有可安全回写的结构化编辑器。")}
+      </div>
+    );
+  } else if (activeTool === "materials") {
+    panel = (
+      <div className="h-full min-h-0">
+        <MaterialLibrary
+          materials={[]}
+          curatedType={curatedTypeFor(item)}
+          curatedSeriesId={siteId === "design" ? "design-materials" : ""}
+          accent={accent}
+          taskId={taskId}
+          siteId={siteId}
+          hideSeeAll
+        />
       </div>
     );
   } else if (activeTool === "preview") {

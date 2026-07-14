@@ -132,6 +132,14 @@ export function getDatabaseOverview(opts: { mediaType?: MediaType; limit?: numbe
   );
 }
 
+/** 删除单个 Agent 交付物，但保留它所属的对话/任务。 */
+export function deleteArtifact(id: string) {
+  return authed<{ ok: boolean }>(
+    `/v1/database/artifacts/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
 // ---------- works (= user_creations) ----------
 export function listWorks(
   opts: { siteId?: string; mediaType?: MediaType; limit?: number } = {},

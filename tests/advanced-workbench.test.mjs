@@ -53,6 +53,12 @@ test("advanced workbench routes real content into the portal editor shell", () =
   assert.match(shell, /element\.inert = true/);
   assert.match(shell, /event\.key !== "Tab"/);
   assert.match(shell, /id: "agent" as const, label: tt\("Agent"\)/);
+  assert.match(shell, /id: "materials" as const, label: tt\("素材"\)/);
+  assert.match(shell, /curatedType=\{curatedTypeFor\(item\)\}/);
+  assert.match(
+    shell,
+    /curatedSeriesId=\{siteId === "design" \? "design-materials" : ""\}/,
+  );
   for (const type of [
     "video-timeline",
     "audio",
@@ -235,6 +241,9 @@ test("cloud browser can be opened directly and still supports takeover", () => {
   assert.match(panel, /createCloudBrowser\(url, effectiveTaskId \|\| undefined\)/);
   assert.match(panel, /reload\(session\.id\)/);
   assert.match(panel, /driving \? "release" : "takeover"/);
+  assert.match(panel, /socket\.binaryType = "blob"/);
+  assert.match(panel, /event\.data instanceof Blob/);
+  assert.match(panel, /URL\.revokeObjectURL/);
   assert.match(client, /export function createCloudBrowser/);
 });
 
@@ -246,6 +255,10 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
   assert.match(mine, /getDatabaseOverview/);
   assert.match(mine, /onlyFavorites/);
+  assert.match(mine, /Promise\.all\(\[/);
+  assert.match(mine, /deleteArtifact/);
+  assert.match(mine, /uploadFile/);
+  assert.match(mine, /libraryCache/);
   assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);
   assert.match(i18n, /\.replaceAll\("檔案庫", "我的库"\)/);
 });

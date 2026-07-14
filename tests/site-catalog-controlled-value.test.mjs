@@ -112,3 +112,15 @@ test("旧 task 深链直接回到原对话并允许分支续聊", () => {
   assert.match(source, /taskId=\{taskId\}/);
   assert.doesNotMatch(source, /taskId=\{taskId\}[\s\S]{0,100}\breadOnly\b/);
 });
+
+test("主页 agent 历史复用 AI 助手界面但保留独立 session 命名空间", () => {
+  assert.match(
+    source,
+    /effectiveHistorySession\?\.app_id === "home-agent"[\s\S]*?\? "agent"/,
+  );
+  assert.match(
+    source,
+    /const runtimeSessionAppId =\s*effectiveHistorySession\?\.app_id \|\| activeAppId/,
+  );
+  assert.match(source, /appId=\{runtimeSessionAppId\}/);
+});

@@ -49,6 +49,10 @@ export interface MaterialLibraryProps {
   siteId?: string;
   /** Disable the central catalog only on isolated/offline surfaces. */
   fetchCurated?: boolean;
+  /** Restrict the central catalog to the editor's current media family. */
+  curatedType?: string;
+  /** Restrict the central catalog to one curated collection/series. */
+  curatedSeriesId?: string;
 }
 
 interface PlatformAsset {
@@ -63,6 +67,8 @@ interface PlatformAsset {
   scene_tags?: string[];
   format?: string;
   source?: string;
+  source_url?: string;
+  series_id?: string;
   oss_key?: string;
 }
 
@@ -71,13 +77,23 @@ interface PlatformSearchResponse {
   total?: number;
 }
 
+const MATERIAL_CACHE_TTL_MS = 5 * 60 * 1000;
+const materialSearchCache = new Map<
+  string,
+  { assets: PlatformAsset[]; cachedAt: number }
+>();
+
 const TYPE_TO_KIND: Record<string, LibraryKind> = {
   image: "image",
   vector: "image",
   sticker: "image",
   ppt: "ppt",
   sheet: "sheet",
-  chart: "website",
+  // Charts/infographics (for example the thermometer card) are visual assets,
+  // not deployable website projects. Routing them as websites produced an
+  // advanced page with no editor because they have no website project/starter
+  // id. The image workbench gives them real crop/text/draw/filter editing.
+  chart: "image",
   website: "website",
   video_workflow: "video_canvas",
   video: "video",
@@ -102,12 +118,37 @@ const KIND_CATEGORY: Partial<Record<LibraryKind, string>> = {
   file: "文件",
 };
 
+function designTemplateDocumentUrl(value = ""): string {
+  try {
+    const actionUrl = new URL(value);
+    if (actionUrl.hostname !== "design.oceanleo.com") return "";
+    const documentUrl = new URL(actionUrl.searchParams.get("tplDoc") || "");
+    return documentUrl.hostname === "asset.oceanleo.com" &&
+      /^\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(documentUrl.pathname)
+      ? documentUrl.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
+  const templateDocUrl = designTemplateDocumentUrl(material.openUrl);
   if (material.libraryItem) {
-    const normalizedItem =
+    const baseItem =
       material.libraryItem.kind === "website"
         ? { ...material.libraryItem, previewUrl: undefined }
         : material.libraryItem;
+    const normalizedItem = templateDocUrl
+      ? {
+          ...baseItem,
+          siteId: "design",
+          meta: {
+            ...baseItem.meta,
+            template_doc_url: templateDocUrl,
+          },
+        }
+      : baseItem;
     return workspaceEntryFromLibraryItem(normalizedItem, {
       id: `site:${material.id}`,
       title: material.title || material.libraryItem.title,
@@ -124,7 +165,7 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
       externalUrl:
         normalizedItem.url || material.libraryItem.previewUrl,
       linkUrl:
-        material.openUrl ||
+        (!templateDocUrl && material.openUrl) ||
         (typeof normalizedItem.meta.asset_page_url === "string"
           ? normalizedItem.meta.asset_page_url
           : "") ||
@@ -158,7 +199,7 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
     id: `site:${material.id}`,
     kind: viewerKind,
     title: material.title,
-    siteId: "",
+    siteId: templateDocUrl ? "design" : "",
     url:
       viewerKind === "ppt"
         ? material.openUrl
@@ -170,6 +211,7 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
       categories: material.categories || [],
       open_label: material.openLabel || "",
       open_url: material.openUrl || "",
+      template_doc_url: templateDocUrl,
     },
   };
   return workspaceEntryFromLibraryItem(item, {
@@ -178,12 +220,27 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
       material.categories?.[0] || KIND_CATEGORY[viewerKind] || "本站精选",
     keywords: material.tags,
     externalUrl: viewerUrl,
-    linkUrl: material.openUrl || preview,
+    linkUrl: templateDocUrl ? undefined : material.openUrl || preview,
   });
 }
 
 function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
-  const kind = TYPE_TO_KIND[asset.type] || "file";
+  const designTemplateDoc =
+    asset.series_id === "design-materials" &&
+    /^https:\/\/asset\.oceanleo\.com\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(
+      asset.source_url || "",
+    )
+      ? asset.source_url || ""
+      : "";
+  const kind: LibraryKind = TYPE_TO_KIND[asset.type] || "file";
+  // Curated charts are interactive HTML demos, while the current advanced
+  // editor is the image workbench. Open their rendered cover so crop/text/
+  // draw/filter tools receive an actual image instead of trying to decode
+  // chart.html as a bitmap.
+  const editableChartUrl =
+    asset.type === "chart"
+      ? asset.preview_url || asset.thumb_url || asset.full_url || ""
+      : "";
   const rawId = asset.id.replace(/^library:/, "");
   const starterMatch =
     kind === "website"
@@ -204,8 +261,13 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
     id: `asset:${asset.id}`,
     kind,
     title: asset.title || "未命名素材",
-    siteId: "asset",
-    url: htmlViewer || asset.full_url || asset.preview_url || "",
+    siteId: designTemplateDoc ? "design" : "asset",
+    url:
+      editableChartUrl ||
+      htmlViewer ||
+      asset.full_url ||
+      asset.preview_url ||
+      "",
     previewUrl:
       kind === "website"
         ? undefined
@@ -219,6 +281,8 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       tags: asset.tags || [],
       scene_tags: asset.scene_tags || [],
       format: asset.format || "",
+      source_asset_url: asset.full_url || "",
+      template_doc_url: designTemplateDoc,
       starter_id: starterId,
       asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
     },
@@ -274,6 +338,8 @@ export function MaterialLibrary({
   taskId,
   siteId = "",
   fetchCurated = true,
+  curatedType = "all",
+  curatedSeriesId = "",
 }: MaterialLibraryProps) {
   const tt = useUI();
   const [query, setQuery] = useState(action?.action.query || "");
@@ -300,26 +366,51 @@ export function MaterialLibrary({
       return;
     }
     const controller = new AbortController();
+    const cacheKey = `${curatedType || "all"}:${curatedSeriesId}:${debounced.toLocaleLowerCase()}`;
+    const cached = materialSearchCache.get(cacheKey);
+    if (
+      cached &&
+      Date.now() - cached.cachedAt < MATERIAL_CACHE_TTL_MS
+    ) {
+      setRemote(
+        cached.assets.map((asset) => ({
+          ...platformToEntry(asset),
+          trustedSearchMatch: Boolean(debounced),
+        })),
+      );
+      setLoading(false);
+      setFailed(false);
+      return () => controller.abort();
+    }
     const params = new URLSearchParams({
-      type: "all",
+      type: curatedType || "all",
       q: debounced,
       page: "1",
       page_size: "60",
       license: "commercial",
     });
+    if (curatedSeriesId) params.set("series_id", curatedSeriesId);
     setLoading(true);
     setFailed(false);
     void fetch(
       `${GATEWAY}/v1/assets/library/search?${params.toString()}`,
-      { cache: "no-store", signal: controller.signal },
+      {
+        cache: debounced ? "no-store" : "force-cache",
+        signal: controller.signal,
+      },
     )
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return (await response.json()) as PlatformSearchResponse;
       })
       .then((payload) => {
+        const assets = Array.isArray(payload.items) ? payload.items : [];
+        materialSearchCache.set(cacheKey, {
+          assets,
+          cachedAt: Date.now(),
+        });
         setRemote(
-          (Array.isArray(payload.items) ? payload.items : []).map((asset) => ({
+          assets.map((asset) => ({
             ...platformToEntry(asset),
             trustedSearchMatch: Boolean(debounced),
           })),
@@ -334,7 +425,7 @@ export function MaterialLibrary({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [debounced, fetchCurated]);
+  }, [curatedSeriesId, curatedType, debounced, fetchCurated]);
 
   const localEntries = useMemo(
     () => materials.map(materialToEntry),

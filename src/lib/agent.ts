@@ -75,6 +75,8 @@ export async function authed<T>(
 
 /** 产物标记：引擎在产出「格式化可编辑结果」时写在 message.meta.artifact。 */
 export interface ArtifactMeta {
+  /** Durable agent_artifacts row id, when this result is library-backed. */
+  id?: string;
   type: string; // map | canvas | novel | ppt | sheet | doc | markdown | image
   title?: string;
   format?: string; // markdown | image | ...
