@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -19,6 +20,12 @@ export function OfficeRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useOfficeWorkbench(item, siteId, onClose);
+  const saveBeforeNewConversation = useCallback(async () => {
+    const savedItem = await editor.waitForSave();
+    return savedItem
+      ? { ok: true as const, item: savedItem }
+      : { ok: false as const };
+  }, [editor.waitForSave]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -34,7 +41,8 @@ export function OfficeRoute({
       editorStatus={editor.error || editor.state}
       editorDirty={editor.dirty}
       editorOwnsCloseGuard
-      onBeforeNewConversation={editor.waitForSave}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={editor.savedItem}
       versionRevision={editor.saveCount}
       onClose={editor.requestClose}
     />

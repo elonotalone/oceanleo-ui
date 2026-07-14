@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { FabricImageControls } from "../image-editor/FabricImageControls";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
@@ -17,6 +19,19 @@ export function ImageRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useFabricImageEditor(item, siteId);
+  const savedItem = useMemo(
+    () =>
+      editor.savedUrl
+        ? advancedSavedItem(item, { url: editor.savedUrl })
+        : null,
+    [editor.savedUrl, item],
+  );
+  const saveBeforeNewConversation = useCallback(async () => {
+    const url = await editor.save();
+    return url
+      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+      : { ok: false as const };
+  }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -34,7 +49,8 @@ export function ImageRoute({
         (editor.loading ? "正在载入图片编辑器" : "")
       }
       editorDirty={editor.dirty}
-      onBeforeNewConversation={editor.save}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

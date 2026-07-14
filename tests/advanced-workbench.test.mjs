@@ -71,10 +71,12 @@ test("advanced workbench routes real content into the portal editor shell", () =
 test("advanced Agent follows the current task instead of forking history", () => {
   const panel = source("../src/shell/AdvancedAgentPanel.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
-  assert.match(panel, /setActiveTaskId\(taskId \|\| ""\)/);
+  assert.match(panel, /setActiveTaskId\(sessionTaskId\)/);
+  assert.match(panel, /advancedSession\.taskId/);
   assert.match(panel, /followUp\(activeTaskId, context, attachments\)/);
   assert.match(panel, /item\.url \|\| item\.previewUrl/);
   assert.match(panel, /attachments,/);
+  assert.doesNotMatch(panel, /advancedSession\?\.navigate/);
   assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
@@ -91,6 +93,22 @@ test("advanced work is session-backed, deep-linkable and starts a fresh saved co
   assert.match(history, /advancedItemFromSession/);
   assert.match(history, /<AdvancedContentWorkbench/);
   assert.match(session, /const startNew = useCallback/);
+  assert.doesNotMatch(workbench, /resumeLatest=\{false\}/);
+  assert.match(workbench, /taskId === undefined \? workspace\.taskId : taskId/);
+  assert.match(workbench, /workspace\.mode === "history"/);
+});
+
+test("first advanced edit only ensures history and every mutable route can flush", () => {
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const pdf = source("../src/shell/advanced-routes/PdfRoute.tsx");
+  const model = source("../src/shell/advanced-routes/Model3DRoute.tsx");
+  const dirtyEffect = shell.match(
+    /if \(!advancedSession \|\| dirtyRecordedRef\.current\) return;[\s\S]*?\}, \[advancedSession, editorDirty\]\);/,
+  )?.[0] || "";
+  assert.match(dirtyEffect, /advancedSession\.ensure\(\)/);
+  assert.doesNotMatch(dirtyEffect, /onBeforeNewConversation|navigate/);
+  assert.match(pdf, /onBeforeNewConversation=\{saveBeforeNewConversation\}/);
+  assert.match(model, /onBeforeNewConversation=\{saveBeforeNewConversation\}/);
 });
 
 test("advanced split drag captures the pointer and embedded editors stay two-column", () => {
@@ -103,6 +121,7 @@ test("advanced split drag captures the pointer and embedded editors stay two-col
   assert.match(shell, /editorUsesOwnControls/);
   assert.match(protocol, /set-host-layout/);
   assert.match(embed, /sidePanelVisible/);
+  assert.match(embed, /saveId: saveRequestId/);
 });
 
 test("code-backed website starters reach the visual editor without a fake project id", () => {
@@ -144,9 +163,13 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
 
-test("editor protocol rejects malformed or oversized artifact messages", async () => {
-  const { EDITOR_PROTOCOL, asEditorToHostMessage, isTrustedEditorOrigin } =
-    await import("../src/shell/editor-protocol.ts");
+test("editor protocol rejects malformed artifacts and uncorrelated saves", async () => {
+  const {
+    EDITOR_PROTOCOL,
+    asEditorToHostMessage,
+    asHostToEditorMessage,
+    isTrustedEditorOrigin,
+  } = await import("../src/shell/editor-protocol.ts");
   const base = {
     protocol: EDITOR_PROTOCOL,
     instanceId: "instance-1",
@@ -177,6 +200,28 @@ test("editor protocol rejects malformed or oversized artifact messages", async (
   assert.ok(
     asEditorToHostMessage(
       { ...base, url: "https://cdn.example.test/a.png", saveId: "save-1" },
+      "instance-1",
+    ),
+  );
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "save-request",
+      },
+      "instance-1",
+    ),
+    null,
+  );
+  assert.ok(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "save-request",
+        saveId: "host-save-1",
+      },
       "instance-1",
     ),
   );

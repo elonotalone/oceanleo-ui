@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
@@ -17,6 +19,19 @@ export function RichDocRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useRichDocEditor(item, siteId);
+  const savedItem = useMemo(
+    () =>
+      editor.savedUrl
+        ? advancedSavedItem(item, { url: editor.savedUrl })
+        : null,
+    [editor.savedUrl, item],
+  );
+  const saveBeforeNewConversation = useCallback(async () => {
+    const url = await editor.save();
+    return url
+      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+      : { ok: false as const };
+  }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -39,7 +54,8 @@ export function RichDocRoute({
             : "")
       }
       editorDirty={editor.dirty}
-      onBeforeNewConversation={editor.save}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

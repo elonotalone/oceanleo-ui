@@ -390,6 +390,7 @@ export function WorkspaceSessionProvider({
           return null;
         }
         applySession(result.data);
+        void hydrateLinkedTask(result.data);
         return result.data;
       })();
       ensurePromiseRef.current = pending;
@@ -401,7 +402,15 @@ export function WorkspaceSessionProvider({
         }
       }
     },
-    [site, app, appTitle, mode, applySession, reportFailure],
+    [
+      site,
+      app,
+      appTitle,
+      mode,
+      applySession,
+      reportFailure,
+      hydrateLinkedTask,
+    ],
   );
 
   const saveSnapshot = useCallback(
@@ -764,6 +773,8 @@ export function WorkspaceSessionProvider({
           return null;
         }
         setLinkedTaskId(null);
+        conflictRef.current = null;
+        setConflict(null);
         applySession(result.data);
         setRuntimeEpoch((value) => value + 1);
         return result.data;

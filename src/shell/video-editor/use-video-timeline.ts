@@ -122,7 +122,7 @@ export interface VideoTimelineState {
 
   // persistence
   captureCover: () => Promise<void>;
-  saveDraft: () => Promise<boolean>;
+  saveDraft: () => Promise<string | null>;
   exportVideo: () => Promise<void>;
   cancelExport: () => void;
 }
@@ -664,8 +664,8 @@ export function useVideoTimeline(
     }
   }, [item.title, previewReady, siteId, tt]);
 
-  const saveDraft = useCallback(async (): Promise<boolean> => {
-    if (savingDraftRef.current) return false;
+  const saveDraft = useCallback(async (): Promise<string | null> => {
+    if (savingDraftRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = structuredClone(docRef.current);
     savingDraftRef.current = true;
@@ -682,7 +682,7 @@ export function useVideoTimeline(
       );
       if (!result.url) {
         setError(result.error || tt("草稿上传失败"));
-        return false;
+        return null;
       }
       setDraftSavedUrl(result.url);
       if (revisionRef.current === savingRevision) {
@@ -691,10 +691,10 @@ export function useVideoTimeline(
       } else {
         setNotice(tt("已保存一个草稿版本；之后的修改仍未保存"));
       }
-      return true;
+      return result.url;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("草稿保存失败"));
-      return false;
+      return null;
     } finally {
       savingDraftRef.current = false;
       setSavingDraft(false);

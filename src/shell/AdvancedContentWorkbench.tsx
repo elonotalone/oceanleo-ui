@@ -22,10 +22,15 @@ import {
 } from "./WorkspaceSession";
 import {
   ADVANCED_SESSION_SCHEMA_VERSION,
+  advancedItemFromSession,
   advancedSessionAppId,
   advancedSessionSnapshot,
 } from "./advanced-session";
-import { AdvancedSessionContext } from "./advanced-session-context";
+import {
+  AdvancedSessionContext,
+  type AdvancedFlushResult,
+} from "./advanced-session-context";
+import type { LibraryItem } from "./library-data";
 import { historySessionHref } from "./workspace-route";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
@@ -123,7 +128,6 @@ export function AdvancedContentWorkbench(
       siteId={siteId}
       appId={appId}
       title={props.item.title}
-      resumeLatest={false}
     >
       <AdvancedContentWorkbenchRuntime {...props} />
     </WorkspaceSessionProvider>
@@ -135,16 +139,38 @@ function AdvancedContentWorkbenchRuntime(
 ) {
   const router = useRouter();
   const workspace = useWorkspaceSession();
-  const flushRef = useRef<(() => Promise<boolean> | boolean) | null>(null);
-  const route = editorRouteFor(props.item);
+  const restoredItem = advancedItemFromSession(workspace.session);
+  const [item, setItem] = useState<LibraryItem>(
+    () => restoredItem || props.item,
+  );
+  const loadedSessionIdRef = useRef(workspace.session?.id || "");
+  useEffect(() => {
+    const sessionId = workspace.session?.id || "";
+    if (!sessionId || loadedSessionIdRef.current === sessionId) return;
+    loadedSessionIdRef.current = sessionId;
+    const restored = advancedItemFromSession(workspace.session);
+    if (restored) setItem(restored);
+  }, [workspace.session]);
+  const materialRef = useRef<LibraryItem>(item);
+  if (
+    materialRef.current.id !== item.id ||
+    materialRef.current.url !== item.url ||
+    materialRef.current.previewUrl !== item.previewUrl
+  ) {
+    materialRef.current = item;
+  }
+  const flushRef = useRef<
+    (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null
+  >(null);
+  const route = editorRouteFor(item);
   const makeSnapshot = useCallback(
     (taskId?: string | null) =>
       advancedSessionSnapshot(
-        props.item,
+        materialRef.current,
         route.type,
-        taskId || workspace.taskId,
+        taskId === undefined ? workspace.taskId : taskId,
       ),
-    [props.item, route.type, workspace.taskId],
+    [route.type, workspace.taskId],
   );
   const navigate = useCallback(
     (sessionId: string) => {
@@ -156,94 +182,141 @@ function AdvancedContentWorkbenchRuntime(
     async (taskId?: string | null) => {
       const snapshot = makeSnapshot(taskId);
       const session = await workspace.ensureActive({
-        title: props.item.title,
+        title: materialRef.current.title,
         snapshot,
         schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
       });
       if (!session) return null;
-      if (taskId) await workspace.bindTask(taskId, props.item.title);
+      if (taskId) {
+        const bound = await workspace.bindTask(
+          taskId,
+          materialRef.current.title,
+        );
+        if (!bound) return null;
+      }
       const saved = await workspace.saveSnapshot(
         snapshot,
         ADVANCED_SESSION_SCHEMA_VERSION,
-        { expectedSessionId: session.id, title: props.item.title },
+        { expectedSessionId: session.id, title: materialRef.current.title },
       );
-      return saved.session || session;
+      return saved.ok ? saved.session || session : null;
     },
-    [makeSnapshot, props.item.title, workspace],
+    [makeSnapshot, workspace],
+  );
+  const recordSavedItem = useCallback(
+    async (savedItem: LibraryItem) => {
+      materialRef.current = savedItem;
+      const snapshot = makeSnapshot(workspace.taskId);
+      const session = await workspace.ensureActive({
+        title: savedItem.title,
+        snapshot,
+        schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+      });
+      if (!session) return false;
+      const saved = await workspace.saveSnapshot(
+        snapshot,
+        ADVANCED_SESSION_SCHEMA_VERSION,
+        { expectedSessionId: session.id, title: savedItem.title },
+      );
+      return saved.ok;
+    },
+    [makeSnapshot, workspace],
   );
   const startNew = useCallback(async () => {
-    const flushed = await flushRef.current?.();
-    if (flushed === false) return null;
+    const flushed = (await flushRef.current?.()) || { ok: true as const };
+    if (!flushed.ok) return null;
+    if (flushed.item) materialRef.current = flushed.item;
     const current = workspace.session;
     if (current) {
       const saved = await workspace.saveSnapshot(
         makeSnapshot(workspace.taskId),
         ADVANCED_SESSION_SCHEMA_VERSION,
-        { expectedSessionId: current.id, title: props.item.title },
+        { expectedSessionId: current.id, title: materialRef.current.title },
       );
       if (!saved.ok) return null;
     }
     const next = await workspace.startNew({
-      title: props.item.title,
+      title: materialRef.current.title,
       snapshot: makeSnapshot(null),
       schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
     });
-    if (next) navigate(next.id);
+    if (next && workspace.mode === "history") navigate(next.id);
     return next;
-  }, [makeSnapshot, navigate, props.item.title, workspace]);
+  }, [makeSnapshot, navigate, workspace]);
   const registerFlush = useCallback(
-    (flush: (() => Promise<boolean> | boolean) | null) => {
+    (
+      flush:
+        | (() => Promise<AdvancedFlushResult> | AdvancedFlushResult)
+        | null,
+    ) => {
       flushRef.current = flush;
     },
     [],
   );
   const sessionActions = useMemo(
     () => ({
+      taskId: workspace.taskId,
       snapshot: makeSnapshot,
       ensure,
       navigate,
       startNew,
+      recordSavedItem,
       registerFlush,
     }),
-    [ensure, makeSnapshot, navigate, registerFlush, startNew],
+    [
+      ensure,
+      makeSnapshot,
+      navigate,
+      recordSavedItem,
+      registerFlush,
+      startNew,
+      workspace.taskId,
+    ],
   );
 
-  const routeKey = `${props.item.kind}:${props.item.id}:${props.item.url || props.item.previewUrl || ""}`;
+  const activeProps: AdvancedContentWorkbenchProps = {
+    ...props,
+    item,
+    previewContent: item.content ?? props.previewContent,
+    linkUrl: item.url || item.previewUrl || props.linkUrl,
+    taskId: workspace.taskId,
+  };
+  const routeKey = `${item.kind}:${item.id}:${item.url || item.previewUrl || ""}`;
   let editor: ReactNode;
   switch (route.type) {
     case "video-timeline":
-      editor = <VideoTimelineRoute {...props} />;
+      editor = <VideoTimelineRoute {...activeProps} />;
       break;
     case "audio":
-      editor = <AudioRoute {...props} />;
+      editor = <AudioRoute {...activeProps} />;
       break;
     case "image":
-      editor = <ImageRoute {...props} />;
+      editor = <ImageRoute {...activeProps} />;
       break;
     case "office":
-      editor = <OfficeRoute {...props} />;
+      editor = <OfficeRoute {...activeProps} />;
       break;
     case "pdf":
-      editor = <PdfRoute {...props} />;
+      editor = <PdfRoute {...activeProps} />;
       break;
     case "threed":
-      editor = <Model3DRoute {...props} />;
+      editor = <Model3DRoute {...activeProps} />;
       break;
     case "richdoc":
-      editor = <RichDocRoute {...props} />;
+      editor = <RichDocRoute {...activeProps} />;
       break;
     case "grid":
-      editor = <GridRoute {...props} />;
+      editor = <GridRoute {...activeProps} />;
       break;
     case "deck":
-      editor = <DeckRoute {...props} />;
+      editor = <DeckRoute {...activeProps} />;
       break;
     case "embed":
-      editor = <EmbeddedRoute {...props} />;
+      editor = <EmbeddedRoute {...activeProps} />;
       break;
     case "none":
     default:
-      editor = <UnsupportedRoute {...props} />;
+      editor = <UnsupportedRoute {...activeProps} />;
       break;
   }
 

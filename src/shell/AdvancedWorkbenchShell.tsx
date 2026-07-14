@@ -17,7 +17,10 @@ import {
 } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
 import { AdvancedAgentPanel } from "./AdvancedAgentPanel";
-import { useAdvancedSession } from "./advanced-session-context";
+import {
+  useAdvancedSession,
+  type AdvancedFlushResult,
+} from "./advanced-session-context";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
@@ -47,7 +50,10 @@ export interface AdvancedWorkbenchShellProps {
   /** Embedded editors render their own properties column when the Edit tool is active. */
   editorUsesOwnControls?: boolean;
   /** Persist pending editor changes before Advanced Agent starts a new session. */
-  onBeforeNewConversation?: () => Promise<boolean | void> | boolean | void;
+  onBeforeNewConversation?:
+    | (() => Promise<AdvancedFlushResult> | AdvancedFlushResult);
+  /** Latest durable material version produced by an explicit editor save. */
+  savedItem?: LibraryItem | null;
   exportPanel?: ReactNode;
   versionRevision?: string | number;
   onClose: () => void;
@@ -155,6 +161,7 @@ export function AdvancedWorkbenchShell({
   editorOwnsCloseGuard = false,
   editorUsesOwnControls = false,
   onBeforeNewConversation,
+  savedItem = null,
   exportPanel,
   versionRevision = 0,
   onClose,
@@ -219,23 +226,28 @@ export function AdvancedWorkbenchShell({
     dirtyRecordedRef.current = true;
     void (async () => {
       const session = await advancedSession.ensure();
-      if (!session) return;
-      if (!onBeforeNewConversation) return;
-      const saved = await onBeforeNewConversation();
-      if (saved !== false) advancedSession.navigate(session.id);
+      if (!session) dirtyRecordedRef.current = false;
     })();
-  }, [advancedSession, editorDirty, onBeforeNewConversation]);
+  }, [advancedSession, editorDirty]);
+
+  useEffect(() => {
+    if (!advancedSession || !savedItem) return;
+    void advancedSession.recordSavedItem(savedItem);
+  }, [advancedSession, savedItem]);
 
   useEffect(() => {
     if (!advancedSession) return;
     advancedSession.registerFlush(async () => {
-      if (!editorDirty) return true;
-      if (!onBeforeNewConversation) return false;
-      const result = await onBeforeNewConversation();
-      return result !== false;
+      if (!editorDirty) {
+        return savedItem ? { ok: true, item: savedItem } : { ok: true };
+      }
+      if (!onBeforeNewConversation) {
+        return { ok: false, error: "当前编辑器无法保存未提交修改" };
+      }
+      return onBeforeNewConversation();
     });
     return () => advancedSession.registerFlush(null);
-  }, [advancedSession, editorDirty, onBeforeNewConversation]);
+  }, [advancedSession, editorDirty, onBeforeNewConversation, savedItem]);
 
   useEffect(() => {
     if (!portalReady) return;

@@ -75,7 +75,7 @@ export interface PdfWorkbenchState {
   undo: () => void;
   redo: () => void;
   download: () => void;
-  saveCopy: () => Promise<void>;
+  saveCopy: () => Promise<string | null>;
 }
 export function usePdfWorkbench(
   item: LibraryItem,
@@ -497,10 +497,9 @@ export function usePdfWorkbench(
       downloadPdfBytes(bytesRef.current, `${pdfFileStem(item.title)}-edited.pdf`);
     }
   }, [item.title]);
-
-  const saveCopy = useCallback(async () => {
+  const saveCopy = useCallback(async (): Promise<string | null> => {
     const bytes = bytesRef.current;
-    if (!bytes || savingRef.current) return;
+    if (!bytes || savingRef.current) return null;
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
     const savingToken = ++savingTokenRef.current;
@@ -535,7 +534,7 @@ export function usePdfWorkbench(
       if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
         throw new Error(saved.error || tt("PDF 已上传，但登记到我的库失败"));
       }
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) return;
+      if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
       setSavedUrl(url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
@@ -544,10 +543,12 @@ export function usePdfWorkbench(
         setNotice(tt("已保存一个版本；之后的修改仍未保存"));
       }
       onSaved?.(url);
+      return url;
     } catch (caught) {
       if (aliveRef.current && generation === sourceGenerationRef.current) {
         setError(pdfErrorMessage(caught, tt("保存 PDF 副本失败")));
       }
+      return null;
     } finally {
       if (savingToken === savingTokenRef.current) {
         savingRef.current = false;

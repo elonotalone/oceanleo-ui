@@ -48,7 +48,7 @@ export interface RichDocEditorState {
   source: RichDocSource;
   words: number;
   chars: number;
-  save: () => Promise<boolean>;
+  save: () => Promise<string | null>;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
   exportDoc: () => Promise<void>;
@@ -202,8 +202,8 @@ export function useRichDocEditor(
     [tt],
   );
 
-  const save = useCallback(async (): Promise<boolean> => {
-    if (!editor || savingRef.current) return false;
+  const save = useCallback(async (): Promise<string | null> => {
+    if (!editor || savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
     const html = editor.getHTML();
@@ -231,16 +231,16 @@ export function useRichDocEditor(
       });
       if (!result.ok) {
         setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
-        return false;
+        return null;
       }
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
-      return true;
+      return result.url;
     } catch (caught) {
       setError(
         caught instanceof Error ? tt(caught.message) : tt("保存到我的库失败"),
       );
-      return false;
+      return null;
     } finally {
       savingRef.current = false;
       setSaving(false);

@@ -17,12 +17,10 @@ import {
 } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import { normalizeSavedModelView } from "./model3d-view";
-
 const MAX_MODEL_BYTES = 512 * 1024 * 1024;
 const DEFAULT_AZIMUTH = 0;
 const DEFAULT_ELEVATION = 75;
 const DEFAULT_DISTANCE = 105;
-
 interface ModelProgressEvent extends Event {
   detail?: { totalProgress?: number };
 }
@@ -73,7 +71,7 @@ export interface Model3DWorkbenchState {
   downloadScreenshot: () => Promise<void>;
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;
-  saveCopy: () => Promise<void>;
+  saveCopy: () => Promise<string | null>;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -440,8 +438,8 @@ export function useModel3DWorkbench(
     }
   }, [downloading, item.title, sourceUrl, tt]);
 
-  const saveCopy = useCallback(async () => {
-    if (!sourceUrl || saveBusyRef.current || !modelLoaded) return;
+  const saveCopy = useCallback(async (): Promise<string | null> => {
+    if (!sourceUrl || saveBusyRef.current || !modelLoaded) return null;
     saveBusyRef.current = true;
     setSaving(true);
     setError("");
@@ -489,7 +487,7 @@ export function useModel3DWorkbench(
       if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
         throw new Error(saved.error || tt("3D 副本登记到我的库失败"));
       }
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) return;
+      if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
       setSavedUrl(sourceUrl);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
@@ -498,8 +496,10 @@ export function useModel3DWorkbench(
         setNotice(tt("已保存一个视图副本；之后的调整仍未保存"));
       }
       onSaved?.(sourceUrl);
+      return sourceUrl;
     } catch (caught) {
       if (aliveRef.current) setError(errorMessage(caught, tt("保存 3D 副本失败")));
+      return null;
     } finally {
       saveBusyRef.current = false;
       if (aliveRef.current) setSaving(false);

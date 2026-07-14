@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckControls } from "../doc-editors/DeckControls";
 import { DeckStage } from "../doc-editors/DeckStage";
@@ -17,6 +19,19 @@ export function DeckRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useDeckEditor(item, siteId, previewContent);
+  const savedItem = useMemo(
+    () =>
+      editor.savedUrl
+        ? advancedSavedItem(item, { url: editor.savedUrl })
+        : null,
+    [editor.savedUrl, item],
+  );
+  const saveBeforeNewConversation = useCallback(async () => {
+    const url = await editor.save();
+    return url
+      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+      : { ok: false as const };
+  }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -34,7 +49,8 @@ export function DeckRoute({
         (editor.loading ? "正在载入演示文稿" : "")
       }
       editorDirty={editor.dirty}
-      onBeforeNewConversation={editor.save}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

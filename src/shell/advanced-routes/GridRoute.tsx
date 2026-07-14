@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { GridControls } from "../doc-editors/GridControls";
 import { GridStage } from "../doc-editors/GridStage";
@@ -17,6 +19,19 @@ export function GridRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useGridEditor(item, siteId);
+  const savedItem = useMemo(
+    () =>
+      editor.savedUrl
+        ? advancedSavedItem(item, { url: editor.savedUrl })
+        : null,
+    [editor.savedUrl, item],
+  );
+  const saveBeforeNewConversation = useCallback(async () => {
+    const url = await editor.save();
+    return url
+      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+      : { ok: false as const };
+  }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -39,7 +54,8 @@ export function GridRoute({
             : "")
       }
       editorDirty={editor.dirty}
-      onBeforeNewConversation={editor.save}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

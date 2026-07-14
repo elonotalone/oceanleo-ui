@@ -12,8 +12,15 @@ import {
   officeExtensionOf,
   officeKindForExtension,
 } from "../../lib/office-client";
+import { listWorks, type MediaType, type WorkItem } from "../../lib/database";
 import { importMediaUrl } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+
+function officeMediaType(kind: "document" | "sheet" | "ppt"): MediaType {
+  if (kind === "ppt") return "ppt";
+  if (kind === "sheet") return "sheet";
+  return "doc";
+}
 
 interface DocsApiEditor {
   destroyEditor: () => void;
@@ -44,6 +51,7 @@ export function useOfficeWorkbench(
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [saveCount, setSaveCount] = useState(0);
+  const [savedItem, setSavedItem] = useState<LibraryItem | null>(null);
   const [dirty, setDirty] = useState(false);
   const editorRef = useRef<DocsApiEditor | null>(null);
   const onCloseApprovedRef = useRef(onCloseApproved);
@@ -57,6 +65,46 @@ export function useOfficeWorkbench(
   const url = item.url || "";
   const extension = officeExtensionOf(url);
   const officeKind = officeKindForExtension(extension);
+  const resolveSavedItem = useCallback(
+    async (notBefore = 0): Promise<LibraryItem | null> => {
+      const result = await listWorks({
+        siteId: siteId || "oceanleo",
+        mediaType: officeMediaType(officeKind),
+        limit: 50,
+      });
+      if (!result.ok || !result.data) return null;
+      const rootId = String(
+        item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
+      );
+      const match = result.data.items.find((work: WorkItem) => {
+        const meta = work.meta || {};
+        const created = Date.parse(work.created_at || "");
+        return (
+          meta.editor === "onlyoffice" &&
+          String(meta.parent_asset_id || "") === rootId &&
+          (!notBefore || (Number.isFinite(created) && created >= notBefore))
+        );
+      });
+      if (!match?.url) return null;
+      return {
+        ...item,
+        key: `creation:${match.id}`,
+        source: "creation",
+        id: match.id,
+        title: match.title || item.title,
+        url: match.url,
+        previewUrl: match.thumb_url || match.url,
+        thumbUrl: match.thumb_url || item.thumbUrl,
+        createdAt: match.created_at,
+        meta: {
+          ...item.meta,
+          ...(match.meta || {}),
+          parent_asset_id: rootId,
+        },
+      };
+    },
+    [item, officeKind, siteId],
+  );
 
   useEffect(() => {
     onCloseApprovedRef.current = onCloseApproved;
@@ -191,12 +239,20 @@ export function useOfficeWorkbench(
     };
   }, [mount]);
 
+  useEffect(() => {
+    if (saveCount <= 0) return;
+    void resolveSavedItem(Date.now() - 60_000).then((next) => {
+      if (next) setSavedItem(next);
+    });
+  }, [resolveSavedItem, saveCount]);
+
   return {
     state,
     error,
     extension,
     hostId: hostIdRef.current,
     saveCount,
+    savedItem,
     dirty,
     requestClose: () => {
       // OnlyOffice's requestClose callback never arrives while the document
@@ -212,12 +268,23 @@ export function useOfficeWorkbench(
     },
     retry: mount,
     noteSaved: () => setSaveCount((value) => value + 1),
-    waitForSave: async () => {
+    waitForSave: async (): Promise<LibraryItem | null> => {
+      const startedAt = Date.now();
       const deadline = Date.now() + 20_000;
       while (dirtySinceSaveRef.current && Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 200));
       }
-      return !dirtySinceSaveRef.current;
+      if (dirtySinceSaveRef.current) return null;
+      const callbackDeadline = Date.now() + 15_000;
+      while (Date.now() < callbackDeadline) {
+        const next = await resolveSavedItem(startedAt - 15_000);
+        if (next) {
+          setSavedItem(next);
+          return next;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
+      return null;
     },
   };
 }

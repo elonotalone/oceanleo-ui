@@ -45,7 +45,12 @@ export type HostToEditorMessage =
       instanceId: string;
       asset: EditorAssetPayload;
     }
-  | { protocol: typeof EDITOR_PROTOCOL; type: "save-request"; instanceId: string }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "save-request";
+      instanceId: string;
+      saveId: string;
+    }
   | {
       protocol: typeof EDITOR_PROTOCOL;
       type: "set-host-layout";
@@ -164,10 +169,19 @@ export function asHostToEditorMessage(
   if (record.protocol !== EDITOR_PROTOCOL) return null;
   if (record.instanceId !== instanceId) return null;
   const type = record.type;
+  if (type === "save-request") {
+    if (
+      typeof record.saveId !== "string" ||
+      !record.saveId ||
+      record.saveId.length > 128
+    ) {
+      return null;
+    }
+    return record as unknown as HostToEditorMessage;
+  }
   if (
     type === "init" ||
     type === "open-asset" ||
-    type === "save-request" ||
     (type === "set-host-layout" &&
       typeof record.sidePanelVisible === "boolean") ||
     type === "save-result" ||

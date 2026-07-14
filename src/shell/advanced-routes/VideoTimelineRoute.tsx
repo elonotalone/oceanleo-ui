@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
   VideoTimelineControls,
@@ -19,6 +21,19 @@ export function VideoTimelineRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useVideoTimeline(item, siteId);
+  const savedItem = useMemo(
+    () =>
+      editor.draftSavedUrl
+        ? advancedSavedItem(item, { url: editor.draftSavedUrl })
+        : null,
+    [editor.draftSavedUrl, item],
+  );
+  const saveBeforeNewConversation = useCallback(async () => {
+    const url = await editor.saveDraft();
+    return url
+      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+      : { ok: false as const };
+  }, [editor.saveDraft, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -34,7 +49,8 @@ export function VideoTimelineRoute({
       editorStage={<VideoTimelineStage state={editor} accent={accent} />}
       editorStatus={editor.error || editor.notice}
       editorDirty={editor.dirty}
-      onBeforeNewConversation={editor.saveDraft}
+      onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       versionRevision={`${editor.draftSavedUrl}|${editor.exportedUrl}`}
       onClose={onClose}
     />

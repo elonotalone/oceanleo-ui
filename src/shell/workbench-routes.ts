@@ -107,6 +107,17 @@ function hasStructuredSlides(item: LibraryItem): boolean {
 
 /** 素材 → 编辑器路由。 */
 export function editorRouteFor(item: LibraryItem): EditorRoute {
+  // Structured editors persist to Office-compatible files. A restored advanced
+  // session must keep its original editor instead of being re-routed solely by
+  // the new file extension.
+  const pinnedRoute = item.meta.advanced_editor_route;
+  if (
+    pinnedRoute === "richdoc" ||
+    pinnedRoute === "grid" ||
+    pinnedRoute === "deck"
+  ) {
+    return { type: pinnedRoute };
+  }
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);
   const officeExt = url ? officeExtensionOf(url) : "";

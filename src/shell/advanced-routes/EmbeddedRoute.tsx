@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
+import type { LibraryItem } from "../library-data";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 
 export function EmbeddedRoute({
@@ -20,34 +22,69 @@ export function EmbeddedRoute({
 }: AdvancedContentWorkbenchProps) {
   const tt = useUI();
   const route = editorRouteFor(item);
-  const [saveRequestNonce, setSaveRequestNonce] = useState(0);
+  const [saveRequestId, setSaveRequestId] = useState("");
   const [versionRevision, setVersionRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const saveResolverRef = useRef<((ok: boolean) => void) | null>(null);
+  const [savedItem, setSavedItem] = useState<LibraryItem | null>(null);
+  const pendingSaveIdRef = useRef("");
+  const saveResolverRef = useRef<
+    ((result: AdvancedFlushResult) => void) | null
+  >(null);
   const saveTimerRef = useRef<number | null>(null);
-  const settleSave = useCallback((ok: boolean) => {
+  const settleSave = useCallback((result: AdvancedFlushResult) => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
     const resolve = saveResolverRef.current;
     saveResolverRef.current = null;
-    resolve?.(ok);
+    pendingSaveIdRef.current = "";
+    resolve?.(result);
   }, []);
   useEffect(
     () => () => {
-      settleSave(false);
+      settleSave({ ok: false });
     },
     [settleSave],
   );
   const saveBeforeNewConversation = useCallback(
     () =>
-      new Promise<boolean>((resolve) => {
-        settleSave(false);
+      new Promise<AdvancedFlushResult>((resolve) => {
+        settleSave({ ok: false });
+        const requestId = `host-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        pendingSaveIdRef.current = requestId;
         saveResolverRef.current = resolve;
-        setSaveRequestNonce((value) => value + 1);
-        saveTimerRef.current = window.setTimeout(() => settleSave(false), 25_000);
+        setSaveRequestId(requestId);
+        saveTimerRef.current = window.setTimeout(
+          () => settleSave({ ok: false, error: "编辑器保存超时" }),
+          25_000,
+        );
       }),
+    [settleSave],
+  );
+  const requestManualSave = useCallback(() => {
+    setSaveRequestId(
+      `host-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    );
+  }, []);
+  const handleSaveResult = useCallback(
+    (result: { ok: boolean; saveId?: string; item?: LibraryItem }) => {
+      if (result.item) setSavedItem(result.item);
+      if (
+        saveResolverRef.current &&
+        result.saveId === pendingSaveIdRef.current
+      ) {
+        settleSave(
+          result.ok
+            ? { ok: true, item: result.item }
+            : { ok: false, error: "编辑器保存失败" },
+        );
+      }
+    },
     [settleSave],
   );
   const requestEditorClose = useCallback(() => {
@@ -122,7 +159,7 @@ export function EmbeddedRoute({
           </p>
           <button
             type="button"
-            onClick={() => setSaveRequestNonce((value) => value + 1)}
+            onClick={requestManualSave}
             className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
             style={{ background: accent }}
           >
@@ -140,15 +177,19 @@ export function EmbeddedRoute({
           extraParams={extraParams}
           onCloseRequest={requestEditorClose}
           onDirtyChange={setDirty}
-          onSaveResult={settleSave}
-          saveRequestNonce={saveRequestNonce}
-          onVersionSaved={() => setVersionRevision((value) => value + 1)}
+          onSaveResult={handleSaveResult}
+          saveRequestId={saveRequestId}
+          onVersionSaved={(next) => {
+            setSavedItem(next);
+            setVersionRevision((value) => value + 1);
+          }}
         />
       }
       versionRevision={versionRevision}
       editorDirty={dirty}
       editorUsesOwnControls
       onBeforeNewConversation={saveBeforeNewConversation}
+      savedItem={savedItem}
       onClose={onClose}
     />
   );

@@ -46,14 +46,17 @@ export function AdvancedAgentPanel({
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const advancedSession = useAdvancedSession();
+  const sessionTaskId = advancedSession
+    ? advancedSession.taskId || ""
+    : taskId || "";
 
   useEffect(() => {
-    setActiveTaskId(taskId || "");
-    if (!taskId) {
+    setActiveTaskId(sessionTaskId);
+    if (!sessionTaskId) {
       setMessages([]);
       setStatus("");
     }
-  }, [taskId]);
+  }, [sessionTaskId]);
 
   const refresh = useCallback(async (id: string) => {
     const result = await getTask(id);
@@ -126,7 +129,6 @@ export function AdvancedAgentPanel({
       if (result.ok) {
         setStatus("running");
         void refresh(activeTaskId);
-        if (session) advancedSession?.navigate(session.id);
       } else {
         setMessages((current) =>
           current.filter((message) => message.id !== optimistic.id),
@@ -144,17 +146,24 @@ export function AdvancedAgentPanel({
       attachments,
       sessionId: session?.id,
     });
-    if (result.ok && result.data?.task_id) {
+    if (
+      result.ok &&
+      result.data?.task_id &&
+      (!session || result.data.session_id === session.id)
+    ) {
       const nextTaskId = result.data.task_id;
       setActiveTaskId(nextTaskId);
       setStatus("running");
       setMessages([
         { id: Date.now(), role: "user", kind: "text", content: prompt },
       ]);
-      const linked = await advancedSession?.ensure(nextTaskId);
-      if (linked) advancedSession?.navigate(linked.id);
+      await advancedSession?.ensure(nextTaskId);
     } else {
-      setError(result.error || tt("创建任务失败"));
+      setError(
+        result.ok && session
+          ? tt("任务未绑定到当前工作会话，请重试。")
+          : result.error || tt("创建任务失败"),
+      );
       setInput(prompt);
     }
     setBusy(false);

@@ -18,6 +18,7 @@ import {
 } from "./editor-protocol";
 import type { LibraryItem } from "./library-data";
 import { useAdvancedLayout } from "./advanced-layout-context";
+import { advancedSavedItem } from "./advanced-session";
 
 export interface EmbedEditorPaneProps {
   item: LibraryItem;
@@ -26,11 +27,15 @@ export interface EmbedEditorPaneProps {
   siteId?: string;
   accent?: string;
   extraParams?: Record<string, string>;
-  onVersionSaved?: () => void;
+  onVersionSaved?: (item: LibraryItem) => void;
   onCloseRequest?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
-  onSaveResult?: (saved: boolean) => void;
-  saveRequestNonce?: number;
+  onSaveResult?: (result: {
+    ok: boolean;
+    saveId?: string;
+    item?: LibraryItem;
+  }) => void;
+  saveRequestId?: string;
 }
 
 function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
@@ -75,7 +80,7 @@ export function EmbedEditorPane({
   onCloseRequest,
   onDirtyChange,
   onSaveResult,
-  saveRequestNonce = 0,
+  saveRequestId = "",
 }: EmbedEditorPaneProps) {
   const tt = useUI();
   const layout = useAdvancedLayout();
@@ -214,7 +219,19 @@ export function EmbedEditorPane({
                 : tt("保存失败");
           }
           setStatus(detail);
-          onSaveResult?.(saved);
+          const savedItem = saved
+            ? advancedSavedItem(item, {
+                url: durableUrl,
+                previewUrl: message.previewUrl,
+                title: message.title,
+                meta: message.meta,
+              })
+            : undefined;
+          onSaveResult?.({
+            ok: saved,
+            saveId: message.saveId,
+            item: savedItem,
+          });
           sendToEditor({
             type: "save-result",
             ok: saved,
@@ -224,7 +241,7 @@ export function EmbedEditorPane({
           });
           if (saved) {
             onDirtyChange?.(false);
-            onVersionSaved?.();
+            if (savedItem) onVersionSaved?.(savedItem);
           }
         })();
       }
@@ -234,9 +251,7 @@ export function EmbedEditorPane({
   }, [
     editorOrigin,
     instanceId,
-    item.id,
-    item.kind,
-    item.title,
+    item,
     mediaType,
     onCloseRequest,
     onDirtyChange,
@@ -272,7 +287,7 @@ export function EmbedEditorPane({
   }, [editorOrigin, instanceId]);
 
   useEffect(() => {
-    if (!saveRequestNonce || phase !== "ready") return;
+    if (!saveRequestId || phase !== "ready") return;
     const frame = iframeRef.current?.contentWindow;
     if (!frame || !editorOrigin) return;
     setStatus(tt("正在请求编辑器保存…"));
@@ -281,10 +296,11 @@ export function EmbedEditorPane({
         protocol: EDITOR_PROTOCOL,
         type: "save-request",
         instanceId,
+        saveId: saveRequestId,
       },
       editorOrigin,
     );
-  }, [editorOrigin, instanceId, phase, saveRequestNonce, tt]);
+  }, [editorOrigin, instanceId, phase, saveRequestId, tt]);
 
   useEffect(() => {
     if (phase !== "ready") return;
