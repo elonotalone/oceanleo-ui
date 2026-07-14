@@ -226,11 +226,85 @@ export function listFiles(
   );
 }
 
-/** 上传一个文件到文件库（multipart）。归当前 siteId 分区，跨站可见。 */
+/** 上传到文件库：小文件 multipart，大文件 signed direct upload。跨站可见。 */
 export async function uploadFile(
   file: File,
   opts: { siteId?: string; title?: string } = {},
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
+  // FastAPI's small multipart path intentionally caps at 20 MB and buffers
+  // bytes in the gateway. Large editor media goes browser → signed Supabase
+  // URL directly, then the gateway verifies size/ownership and registers it.
+  if (file.size > 8 * 1024 * 1024) {
+    const extension = (file.name.split(".").pop() || "").toLowerCase();
+    const inferredType: Record<string, string> = {
+      mp4: "video/mp4",
+      webm: "video/webm",
+      mov: "video/quicktime",
+      mkv: "video/x-matroska",
+      m4v: "video/x-m4v",
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      m4a: "audio/mp4",
+      flac: "audio/flac",
+      ogg: "audio/ogg",
+      opus: "audio/opus",
+      glb: "model/gltf-binary",
+      gltf: "model/gltf+json",
+      pdf: "application/pdf",
+      docx:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      pptx:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    };
+    const contentType =
+      file.type || inferredType[extension] || "application/octet-stream";
+    const common = {
+      filename: file.name || "file",
+      content_type: contentType,
+      bytes: file.size,
+      site_id: opts.siteId || "home",
+      title: opts.title || file.name || "file",
+    };
+    const initialized = await authed<{
+      ok: boolean;
+      path: string;
+      signed_url: string;
+    }>("/v1/media/upload/init", {
+      method: "POST",
+      body: JSON.stringify(common),
+    });
+    if (!initialized.ok || !initialized.data?.signed_url || !initialized.data.path) {
+      return {
+        ok: false,
+        error: initialized.error || "创建大文件上传通道失败",
+        status: initialized.status,
+      };
+    }
+    let uploaded: Response;
+    try {
+      uploaded = await fetch(initialized.data.signed_url, {
+        method: "PUT",
+        headers: { "Content-Type": common.content_type },
+        body: file,
+      });
+    } catch {
+      return { ok: false, error: "大文件直传失败：无法连接对象存储", status: 0 };
+    }
+    if (!uploaded.ok) {
+      return {
+        ok: false,
+        error: `大文件直传失败 HTTP ${uploaded.status}`,
+        status: uploaded.status,
+      };
+    }
+    return authed<{ ok: boolean; file: FileItem }>("/v1/media/upload/finalize", {
+      method: "POST",
+      body: JSON.stringify({ ...common, path: initialized.data.path }),
+    });
+  }
+
   const token = await accessToken();
   if (!token) return { ok: false, error: "未登录", status: 401 };
   const fd = new FormData();

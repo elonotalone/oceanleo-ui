@@ -86,7 +86,24 @@ export function AdvancedAgentPanel({
     setInput("");
     setBusy(true);
     setError("");
-    const context = `当前正在高级工作台处理「${item.title}」（${item.kind}）。\n${prompt}`;
+    const assetUrl = item.url || item.previewUrl || "";
+    const context = [
+      `当前正在高级工作台处理「${item.title}」（${item.kind}，素材 ID：${item.id}）。`,
+      assetUrl ? "当前素材已作为附件发送，请直接读取附件内容后处理。" : "",
+      prompt,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const attachments = assetUrl
+      ? [
+          {
+            url: assetUrl,
+            mime: String(item.meta.mime || ""),
+            name: item.title,
+            media_type: item.kind,
+          },
+        ]
+      : undefined;
     if (activeTaskId) {
       const optimistic: AgentMessage = {
         id: Date.now(),
@@ -95,7 +112,7 @@ export function AdvancedAgentPanel({
         content: prompt,
       };
       setMessages((current) => [...current, optimistic]);
-      const result = await followUp(activeTaskId, context);
+      const result = await followUp(activeTaskId, context, attachments);
       if (result.ok) {
         setStatus("running");
         void refresh(activeTaskId);
@@ -113,6 +130,7 @@ export function AdvancedAgentPanel({
       prompt: context,
       mode: "agent",
       siteId,
+      attachments,
     });
     if (result.ok && result.data?.task_id) {
       setActiveTaskId(result.data.task_id);

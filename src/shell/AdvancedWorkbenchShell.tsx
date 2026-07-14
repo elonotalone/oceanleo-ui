@@ -1,0 +1,594 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  getDatabaseOverview,
+  saveWorks,
+  type MediaType,
+  type WorkItem,
+} from "../lib/database";
+import { useUI } from "../i18n/ui/useUI";
+import { AdvancedAgentPanel } from "./AdvancedAgentPanel";
+import type { LibraryItem } from "./library-data";
+import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
+
+type WorkbenchTool =
+  | "agent"
+  | "edit"
+  | "preview"
+  | "info"
+  | "versions"
+  | "export";
+
+export interface AdvancedWorkbenchShellProps {
+  item: LibraryItem;
+  previewContent?: ReactNode;
+  linkUrl?: string;
+  taskId?: string | null;
+  siteId?: string;
+  accent?: string;
+  editorLabel: string;
+  editorControls: ReactNode;
+  editorStage: ReactNode;
+  editorAvailable?: boolean;
+  editorStatus?: string;
+  editorDirty?: boolean;
+  editorOwnsCloseGuard?: boolean;
+  exportPanel?: ReactNode;
+  versionRevision?: string | number;
+  onClose: () => void;
+}
+
+function mediaTypeFor(item: LibraryItem): MediaType {
+  const map: Partial<Record<LibraryItem["kind"], MediaType>> = {
+    website: "website",
+    canvas: "canvas",
+    ppt: "ppt",
+    sheet: "sheet",
+    document: "doc",
+    image: "image",
+    video: "video",
+    video_canvas: "video_canvas",
+    audio: "audio",
+    xhs: "xhs",
+    threed: "model3d",
+  };
+  return map[item.kind] || "other";
+}
+
+function ToolIcon({ tool }: { tool: WorkbenchTool }) {
+  const paths: Record<WorkbenchTool, ReactNode> = {
+    agent: (
+      <>
+        <path d="M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1" />
+        <rect x="6" y="7" width="12" height="12" rx="4" />
+        <path d="M9.5 13h.01M14.5 13h.01M9.5 16h5" />
+      </>
+    ),
+    edit: (
+      <>
+        <path d="M4 20l4.2-1 10.4-10.4a2 2 0 00-2.8-2.8L5.4 16.2 4 20z" />
+        <path d="M14.5 7.1l2.8 2.8" />
+      </>
+    ),
+    preview: (
+      <>
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </>
+    ),
+    info: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v6M12 7h.01" />
+      </>
+    ),
+    versions: (
+      <>
+        <path d="M4 7h11a5 5 0 010 10H8" />
+        <path d="M8 13l-4 4 4 4M8 3v8" />
+      </>
+    ),
+    export: (
+      <>
+        <path d="M12 3v12M8 7l4-4 4 4" />
+        <path d="M5 13v7h14v-7" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      className="h-5 w-5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths[tool]}
+    </svg>
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="border-b border-stone-100 py-2">
+      <dt className="text-[10px] uppercase tracking-wide text-stone-400">{label}</dt>
+      <dd className="mt-0.5 break-words text-[12px] text-stone-700">{value || "—"}</dd>
+    </div>
+  );
+}
+
+/**
+ * The route-agnostic full-screen shell. Route adapters own the actual editor
+ * hook and provide Controls + Stage as slots, so only the selected editor is
+ * mounted (no hidden image/video/audio decoders doing work for another kind).
+ */
+export function AdvancedWorkbenchShell({
+  item,
+  previewContent,
+  linkUrl,
+  taskId,
+  siteId = "",
+  accent = "#4f46e5",
+  editorLabel,
+  editorControls,
+  editorStage,
+  editorAvailable = true,
+  editorStatus = "",
+  editorDirty = false,
+  editorOwnsCloseGuard = false,
+  exportPanel,
+  versionRevision = 0,
+  onClose,
+}: AdvancedWorkbenchShellProps) {
+  const tt = useUI();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const portalReady = typeof document !== "undefined";
+  const [activeTool, setActiveTool] = useState<WorkbenchTool>(
+    editorAvailable ? "edit" : "preview",
+  );
+  const [stageMode, setStageMode] = useState<"edit" | "preview">(
+    editorAvailable ? "edit" : "preview",
+  );
+  const [panelWidth, setPanelWidth] = useState(340);
+  const [panelVisible, setPanelVisible] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 768,
+  );
+  const [copyState, setCopyState] = useState("");
+  const [versions, setVersions] = useState<WorkItem[]>([]);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const requestClose = useCallback(() => {
+    if (
+      editorDirty &&
+      !editorOwnsCloseGuard &&
+      !window.confirm(tt("当前有未保存的修改，确定要离开高级工作台吗？"))
+    ) {
+      return;
+    }
+    onClose();
+  }, [editorDirty, editorOwnsCloseGuard, onClose, tt]);
+
+  useEffect(() => {
+    if (!editorDirty) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [editorDirty]);
+
+  useEffect(() => {
+    if (!portalReady) return;
+    const bodyOverflow = document.body.style.overflow;
+    const htmlOverflow = document.documentElement.style.overflow;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    const root = rootRef.current;
+    const siblings = Array.from(document.body.children)
+      .filter((element): element is HTMLElement => {
+        return element instanceof HTMLElement && element !== root;
+      })
+      .map((element) => ({
+        element,
+        inert: element.inert,
+        ariaHidden: element.getAttribute("aria-hidden"),
+      }));
+    siblings.forEach(({ element }) => {
+      element.inert = true;
+      element.setAttribute("aria-hidden", "true");
+    });
+    root?.focus();
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !document.fullscreenElement) requestClose();
+      if (event.key !== "Tab" || !root) return;
+      const focusable = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hidden && element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        root.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const full = () => setFullscreen(Boolean(document.fullscreenElement));
+    window.addEventListener("keydown", close);
+    document.addEventListener("fullscreenchange", full);
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.documentElement.style.overflow = htmlOverflow;
+      siblings.forEach(({ element, inert, ariaHidden }) => {
+        element.inert = inert;
+        if (ariaHidden == null) element.removeAttribute("aria-hidden");
+        else element.setAttribute("aria-hidden", ariaHidden);
+      });
+      window.removeEventListener("keydown", close);
+      document.removeEventListener("fullscreenchange", full);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [portalReady, requestClose]);
+
+  useEffect(
+    () => () => {
+      resizeCleanupRef.current?.();
+      resizeCleanupRef.current = null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (activeTool !== "versions") return;
+    let alive = true;
+    void getDatabaseOverview({ limit: 300 }).then((result) => {
+      if (!alive || !result.ok) return;
+      const related = (result.data?.works || []).filter((work) => {
+        const parent = String(work.meta?.parent_asset_id || "");
+        return String(work.id) === item.id || parent === item.id;
+      });
+      setVersions(related);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [activeTool, item.id, versionRevision]);
+
+  const tools = useMemo(
+    () =>
+      [
+        { id: "agent" as const, label: tt("Agent") },
+        { id: "edit" as const, label: tt(editorLabel) },
+        { id: "preview" as const, label: tt("预览") },
+        { id: "info" as const, label: tt("信息") },
+        { id: "versions" as const, label: tt("版本") },
+        {
+          id: "export" as const,
+          label: tt(exportPanel ? "导出" : "原文件"),
+        },
+      ] satisfies { id: WorkbenchTool; label: string }[],
+    [editorLabel, exportPanel, tt],
+  );
+
+  const chooseTool = useCallback(
+    (tool: WorkbenchTool) => {
+      setActiveTool(tool);
+      setPanelVisible(true);
+      if (tool === "edit" && editorAvailable) setStageMode("edit");
+      if (tool === "preview") setStageMode("preview");
+    },
+    [editorAvailable],
+  );
+
+  function beginResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    resizeCleanupRef.current?.();
+    const startX = event.clientX;
+    const startWidth = panelWidth;
+    const move = (next: PointerEvent) =>
+      setPanelWidth(Math.min(620, Math.max(270, startWidth + next.clientX - startX)));
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      resizeCleanupRef.current = null;
+    };
+    resizeCleanupRef.current = stop;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  async function saveCopy() {
+    const url = item.url || item.previewUrl;
+    if (!url) return;
+    setCopyState(tt("保存中…"));
+    try {
+      const result = await saveWorks(siteId || "oceanleo", [
+        {
+          url,
+          thumb_url: item.previewUrl || url,
+          media_type: mediaTypeFor(item),
+          title: `${item.title}-副本`,
+          kind: item.kind,
+          meta: {
+            parent_asset_id: item.id,
+            source_site: item.siteId || "",
+            copied_from: item.source || "library",
+          },
+        },
+      ]);
+      setCopyState(
+        result.ok && Number(result.data?.saved || 0) === 1
+          ? tt("已保存到我的库")
+          : result.error || tt("保存失败"),
+      );
+    } catch (caught) {
+      setCopyState(caught instanceof Error ? caught.message : tt("保存失败"));
+    }
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await rootRef.current?.requestFullscreen();
+      }
+    } catch {
+      // The portal already covers the viewport. Fullscreen API denial should
+      // not make the workbench unusable.
+    }
+  }
+
+  let panel: ReactNode;
+  if (activeTool === "agent") {
+    panel = (
+      <AdvancedAgentPanel item={item} taskId={taskId} siteId={siteId} accent={accent} />
+    );
+  } else if (activeTool === "edit") {
+    panel = editorAvailable ? (
+      editorControls
+    ) : (
+      <div className="p-4 text-[12px] leading-relaxed text-amber-700">
+        {tt("此内容目前可以预览、交给 Agent 处理或保存副本，但没有可安全回写的结构化编辑器。")}
+      </div>
+    );
+  } else if (activeTool === "preview") {
+    panel = (
+      <div className="p-4 text-[12px] leading-relaxed text-stone-600">
+        {tt("右侧正在显示与素材库一致的只读预览；点击编辑工具可回到可操作的素材本体。")}
+      </div>
+    );
+  } else if (activeTool === "info") {
+    panel = (
+      <dl className="px-3 py-1">
+        <MetaRow label={tt("类型")} value={tt(libraryKindLabel(item.kind))} />
+        <MetaRow
+          label={tt("来源")}
+          value={String(item.meta.library_source || item.source || item.siteId || "")}
+        />
+        <MetaRow
+          label={tt("格式")}
+          value={String(item.meta.mime || item.meta.format || "")}
+        />
+        <MetaRow
+          label={tt("创建时间")}
+          value={item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
+        />
+        <MetaRow label={tt("标识")} value={item.id} />
+      </dl>
+    );
+  } else if (activeTool === "versions") {
+    panel = (
+      <div className="space-y-3 p-3 text-[12px] leading-relaxed text-stone-600">
+        <div className="rounded-xl border border-stone-200 bg-white p-3">
+          <p className="font-medium text-stone-800">{tt("原始版本")}</p>
+          <p className="mt-1 text-[11px] text-stone-400">
+            {item.createdAt
+              ? new Date(item.createdAt).toLocaleString()
+              : tt("当前素材")}
+          </p>
+        </div>
+        {versions.map((version, index) => (
+          <a
+            key={version.id}
+            href={version.url}
+            target="_blank"
+            rel="noreferrer"
+            className="block rounded-xl border border-stone-200 bg-white p-3 transition hover:border-stone-300"
+          >
+            <p className="font-medium text-stone-800">
+              {version.title || `${tt("编辑版本")} ${index + 1}`}
+            </p>
+            <p className="mt-1 text-[11px] text-stone-400">
+              {version.created_at
+                ? new Date(version.created_at).toLocaleString()
+                : tt("已保存到我的库")}
+            </p>
+          </a>
+        ))}
+        <p>
+          {tt("平台素材保持只读；首次保存创建个人副本，后续保存继续形成可回看的版本链。")}
+        </p>
+      </div>
+    );
+  } else {
+    panel = exportPanel || (
+      <div className="space-y-2 p-3">
+        <button
+          type="button"
+          onClick={() => void saveCopy()}
+          className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
+          style={{ background: accent }}
+        >
+          {tt("保存原文件副本到我的库")}
+        </button>
+        {(linkUrl || item.url || item.previewUrl) && (
+          <a
+            href={linkUrl || item.url || item.previewUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full rounded-xl border border-stone-200 px-3 py-2 text-center text-[12px] text-stone-600 hover:bg-stone-50"
+          >
+            {tt("打开内容链接")}
+          </a>
+        )}
+        {copyState && (
+          <p className="text-center text-[11px] text-stone-500">{copyState}</p>
+        )}
+        <p className="pt-2 text-[11px] leading-relaxed text-stone-400">
+          {tt("格式、质量和专业导出选项在编辑工具中；这里保留原始内容副本与下载入口。")}
+        </p>
+      </div>
+    );
+  }
+
+  if (!portalReady) return null;
+
+  return createPortal(
+    <div
+      ref={rootRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${item.title} · ${tt("高级功能")}`}
+      tabIndex={-1}
+      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-white text-stone-800"
+    >
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-stone-200 px-3">
+        <button
+          type="button"
+          onClick={requestClose}
+          className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50"
+        >
+          ← {tt("返回")}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold">{item.title}</p>
+          <p className="truncate text-[10px] text-stone-400">
+            {tt("高级功能")} · {tt(libraryKindLabel(item.kind))}
+          </p>
+        </div>
+        {(editorStatus || copyState) && (
+          <span className="hidden max-w-[28rem] truncate text-[11px] text-stone-400 md:block">
+            {editorStatus || copyState}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => void toggleFullscreen()}
+          className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50"
+        >
+          {fullscreen ? tt("退出全屏") : tt("浏览器全屏")}
+        </button>
+        <button
+          type="button"
+          onClick={requestClose}
+          aria-label={tt("关闭")}
+          className="grid h-8 w-8 place-items-center rounded-lg text-lg text-stone-400 hover:bg-stone-100"
+        >
+          ×
+        </button>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-stone-200 bg-stone-50 py-2">
+          {tools.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              onClick={() => chooseTool(tool.id)}
+              className={`group relative grid h-10 w-10 place-items-center rounded-xl transition ${
+                activeTool === tool.id
+                  ? "bg-white shadow-sm"
+                  : "text-stone-400 hover:bg-white hover:text-stone-700"
+              }`}
+              style={activeTool === tool.id ? { color: accent } : undefined}
+              aria-label={tool.label}
+            >
+              <ToolIcon tool={tool.id} />
+              <span className="pointer-events-none absolute left-full z-20 ml-2 hidden whitespace-nowrap rounded-md bg-stone-900 px-2 py-1 text-[10px] text-white shadow-lg group-hover:block">
+                {tool.label}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        {panelVisible && (
+          <>
+            <aside
+              className="min-h-0 max-w-[calc(100vw-3.5rem)] shrink-0 overflow-hidden border-r border-stone-200 bg-white"
+              style={{ width: panelWidth }}
+            >
+              <div className="flex h-10 items-center border-b border-stone-100 px-3 text-[12px] font-semibold">
+                <span className="min-w-0 flex-1 truncate">
+                  {tools.find((tool) => tool.id === activeTool)?.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPanelVisible(false)}
+                  aria-label={tt("收起工具区")}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="h-[calc(100%-2.5rem)] min-h-0 overflow-y-auto">
+                {panel}
+              </div>
+            </aside>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={beginResize}
+              className="-ml-1 hidden w-2 shrink-0 cursor-col-resize touch-none bg-transparent transition hover:bg-stone-200/70 md:block"
+              title={tt("拖动调整工具区宽度")}
+            />
+          </>
+        )}
+
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-stone-100">
+          {editorAvailable && (
+            <div className={stageMode === "edit" ? "h-full" : "hidden h-full"}>
+              {editorStage}
+            </div>
+          )}
+          {stageMode === "preview" &&
+            (previewContent ? (
+              <div className="h-full min-h-0 overflow-auto bg-white">{previewContent}</div>
+            ) : (
+              <div className="h-full overflow-auto bg-white">
+                <LibraryItemViewer item={item} accent={accent} />
+              </div>
+            ))}
+        </main>
+      </div>
+    </div>,
+    document.body,
+  );
+}

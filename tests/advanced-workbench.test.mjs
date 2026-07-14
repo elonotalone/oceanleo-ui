@@ -17,28 +17,120 @@ test("every workspace detail exposes the full-screen advanced workbench", () => 
   );
 });
 
-test("advanced workbench keeps Agent first and supports native rich editors", () => {
+test("advanced workbench routes real content into the portal editor shell", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
-  const structured = source("../src/shell/AdvancedStructuredEditors.tsx");
-  assert.match(workbench, /\{ id: "agent", label: tt\("Agent"\) \}/);
-  assert.match(workbench, /onPointerDown=\{beginResize\}/);
-  assert.match(workbench, /ImageWorkbenchCanvas/);
-  assert.match(workbench, /TextWorkbenchCanvas/);
-  assert.match(workbench, /SheetWorkbenchCanvas/);
-  assert.match(workbench, /item\.siteId === "asset"/);
-  assert.match(workbench, /sheetEditor\.saveRevision/);
-  assert.match(structured, /保存新版本到我的库/);
-  assert.match(structured, /下载 Markdown/);
-  assert.match(structured, /下载 CSV/);
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const routeAdapters = [
+    source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
+    source("../src/shell/advanced-routes/OfficeRoute.tsx"),
+    source("../src/shell/advanced-routes/EmbeddedRoute.tsx"),
+    source("../src/shell/advanced-routes/ImageRoute.tsx"),
+    source("../src/shell/advanced-routes/GridRoute.tsx"),
+    source("../src/shell/advanced-routes/DeckRoute.tsx"),
+    source("../src/shell/advanced-routes/PdfRoute.tsx"),
+    source("../src/shell/advanced-routes/Model3DRoute.tsx"),
+  ].join("\n");
+  const routes = source("../src/shell/workbench-routes.ts");
+  assert.match(workbench, /editorRouteFor\(props\.item\)/);
+  assert.match(workbench, /dynamic\(/);
+  assert.match(workbench, /WorkbenchRouteLoading/);
+  assert.match(workbench, /VideoTimelineRoute/);
+  assert.match(workbench, /OfficeRoute/);
+  assert.match(workbench, /EmbeddedRoute/);
+  assert.match(workbench, /AudioRoute/);
+  assert.match(workbench, /RichDocRoute/);
+  assert.match(workbench, /ImageRoute/);
+  assert.match(workbench, /GridRoute/);
+  assert.match(workbench, /DeckRoute/);
+  assert.match(workbench, /PdfRoute/);
+  assert.match(workbench, /Model3DRoute/);
+  assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
+  assert.match(routeAdapters, /AdvancedWorkbenchShell/);
+  assert.match(shell, /createPortal\(/);
+  assert.match(shell, /fixed inset-0/);
+  assert.match(shell, /requestFullscreen\(\)/);
+  assert.match(shell, /aria-modal="true"/);
+  assert.match(shell, /element\.inert = true/);
+  assert.match(shell, /event\.key !== "Tab"/);
+  assert.match(shell, /id: "agent" as const, label: tt\("Agent"\)/);
+  for (const type of [
+    "video-timeline",
+    "audio",
+    "image",
+    "pdf",
+    "richdoc",
+    "grid",
+    "deck",
+    "threed",
+    "embed",
+  ]) {
+    assert.match(routes, new RegExp(`type: "${type}"`));
+  }
 });
 
 test("advanced Agent follows the current task instead of forking history", () => {
   const panel = source("../src/shell/AdvancedAgentPanel.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(panel, /setActiveTaskId\(taskId \|\| ""\)/);
-  assert.match(panel, /followUp\(activeTaskId, context\)/);
+  assert.match(panel, /followUp\(activeTaskId, context, attachments\)/);
+  assert.match(panel, /item\.url \|\| item\.previewUrl/);
+  assert.match(panel, /attachments,/);
   assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
+});
+
+test("specialist embeds require a trusted origin, frame and instance handshake", () => {
+  const protocol = source("../src/shell/editor-protocol.ts");
+  const embed = source("../src/shell/workbench-embed.tsx");
+  assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
+  assert.match(protocol, /record\.instanceId !== instanceId/);
+  assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
+  assert.match(embed, /event\.source !== iframeRef\.current\?\.contentWindow/);
+  assert.match(embed, /event\.origin !== editorOrigin/);
+  assert.match(embed, /type: "open-asset"/);
+  assert.match(embed, /type: "save-request"/);
+  assert.match(embed, /type: "save-result"/);
+  assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
+});
+
+test("editor protocol rejects malformed or oversized artifact messages", async () => {
+  const { EDITOR_PROTOCOL, asEditorToHostMessage, isTrustedEditorOrigin } =
+    await import("../src/shell/editor-protocol.ts");
+  const base = {
+    protocol: EDITOR_PROTOCOL,
+    instanceId: "instance-1",
+    type: "artifact-created",
+  };
+  assert.equal(
+    asEditorToHostMessage({ ...base, url: "javascript:alert(1)" }, "instance-1"),
+    null,
+  );
+  assert.equal(
+    asEditorToHostMessage(
+      { ...base, url: "https://cdn.example.test/a.png", meta: { ok: true } },
+      "wrong-instance",
+    ),
+    null,
+  );
+  assert.equal(
+    asEditorToHostMessage(
+      {
+        ...base,
+        url: "https://cdn.example.test/a.png",
+        meta: { oversized: "x".repeat(20_001) },
+      },
+      "instance-1",
+    ),
+    null,
+  );
+  assert.ok(
+    asEditorToHostMessage(
+      { ...base, url: "https://cdn.example.test/a.png", saveId: "save-1" },
+      "instance-1",
+    ),
+  );
+  assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com"), true);
+  assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com.evil.test"), false);
 });
 
 test("cloud browser can be opened directly and still supports takeover", () => {

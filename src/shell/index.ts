@@ -141,6 +141,7 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+export * from "./editor-protocol";
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 export { MyLibrary } from "./MyLibrary";

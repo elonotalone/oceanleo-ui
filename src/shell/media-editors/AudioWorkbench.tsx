@@ -1,0 +1,734 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
+import type WaveSurfer from "wavesurfer.js";
+import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
+import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
+import { useUI } from "../../i18n/ui/useUI";
+import { saveWorks, uploadFile } from "../../lib/database";
+import {
+  fetchMediaBlob,
+  importMediaUrl,
+  isFirstPartyMediaUrl,
+} from "../../lib/media-proxy";
+import type { LibraryItem } from "../library-data";
+
+export interface AudioSelection {
+  start: number;
+  end: number;
+}
+
+export interface AudioWorkbenchState {
+  containerRef: MutableRefObject<HTMLDivElement | null>;
+  loading: boolean;
+  saving: boolean;
+  playing: boolean;
+  error: string;
+  savedUrl: string;
+  duration: number;
+  currentTime: number;
+  selection: AudioSelection | null;
+  fadeDuration: number;
+  setFadeDuration: Dispatch<SetStateAction<number>>;
+  gain: number;
+  setGain: Dispatch<SetStateAction<number>>;
+  speed: number;
+  zoom: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  dirty: boolean;
+  playPause: () => void;
+  stop: () => void;
+  setPlaybackSpeed: (value: number) => void;
+  setWaveformZoom: (value: number) => void;
+  cropSelection: () => void;
+  deleteSelection: () => void;
+  applyFade: (edge: "in" | "out") => void;
+  applyGain: () => void;
+  undo: () => void;
+  redo: () => void;
+  download: () => void;
+  save: () => Promise<void>;
+}
+
+const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_COMPRESSED_AUDIO_BYTES = 48 * 1024 * 1024;
+const MAX_DECODED_AUDIO_BYTES = 384 * 1024 * 1024;
+const MAX_UNDO_AUDIO_BYTES = 256 * 1024 * 1024;
+
+function audioBufferBytes(source: AudioBuffer): number {
+  return source.length * source.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
+}
+
+function cloneAudioBuffer(source: AudioBuffer): AudioBuffer {
+  const copy = new AudioBuffer({
+    length: source.length,
+    numberOfChannels: source.numberOfChannels,
+    sampleRate: source.sampleRate,
+  });
+  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
+    copy.copyToChannel(source.getChannelData(channel), channel);
+  }
+  return copy;
+}
+
+function appendAudioHistory(
+  stack: AudioBuffer[],
+  source: AudioBuffer,
+  other: AudioBuffer[] = [],
+): AudioBuffer[] {
+  if (audioBufferBytes(source) > MAX_UNDO_AUDIO_BYTES) return [];
+  const next = [...stack, cloneAudioBuffer(source)].slice(-10);
+  while (
+    next.length > 0 &&
+    [...next, ...other].reduce(
+      (sum, value) => sum + audioBufferBytes(value),
+      0,
+    ) > MAX_UNDO_AUDIO_BYTES
+  ) {
+    next.shift();
+  }
+  return next;
+}
+
+function copyAudioRange(source: AudioBuffer, start: number, end: number): AudioBuffer {
+  const first = Math.max(0, Math.min(source.length, Math.floor(start * source.sampleRate)));
+  const last = Math.max(first + 1, Math.min(source.length, Math.ceil(end * source.sampleRate)));
+  const result = new AudioBuffer({
+    length: last - first,
+    numberOfChannels: source.numberOfChannels,
+    sampleRate: source.sampleRate,
+  });
+  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
+    result.copyToChannel(source.getChannelData(channel).subarray(first, last), channel);
+  }
+  return result;
+}
+
+function deleteAudioRange(source: AudioBuffer, start: number, end: number): AudioBuffer {
+  const first = Math.max(0, Math.min(source.length, Math.floor(start * source.sampleRate)));
+  const last = Math.max(first, Math.min(source.length, Math.ceil(end * source.sampleRate)));
+  const result = new AudioBuffer({
+    length: Math.max(1, source.length - (last - first)),
+    numberOfChannels: source.numberOfChannels,
+    sampleRate: source.sampleRate,
+  });
+  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
+    const input = source.getChannelData(channel);
+    const output = result.getChannelData(channel);
+    output.set(input.subarray(0, first), 0);
+    output.set(input.subarray(last), first);
+  }
+  return result;
+}
+
+function encodeWav(source: AudioBuffer): Blob {
+  const channels = source.numberOfChannels;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = source.length * blockAlign;
+  const storage = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(storage);
+  const write = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, source.sampleRate, true);
+  view.setUint32(28, source.sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let frame = 0; frame < source.length; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, source.getChannelData(channel)[frame] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+  return new Blob([storage], { type: "audio/wav" });
+}
+
+function formatTime(value: number): string {
+  if (!Number.isFinite(value)) return "0:00";
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.floor(value % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+export function useAudioWorkbench(
+  item: LibraryItem,
+  siteId = "",
+): AudioWorkbenchState {
+  const tt = useUI();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const waveRef = useRef<WaveSurfer | null>(null);
+  const regionsRef = useRef<RegionsPlugin | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+  const objectUrlRef = useRef("");
+  const undoRef = useRef<AudioBuffer[]>([]);
+  const redoRef = useRef<AudioBuffer[]>([]);
+  const revisionRef = useRef(0);
+  const savingRef = useRef(false);
+  const speedRef = useRef(1);
+  const zoomRef = useRef(30);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [error, setError] = useState("");
+  const [savedUrl, setSavedUrl] = useState("");
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [selection, setSelection] = useState<AudioSelection | null>(null);
+  const [fadeDuration, setFadeDuration] = useState(1);
+  const [gain, setGain] = useState(100);
+  const [speed, setSpeed] = useState(1);
+  const [zoom, setZoom] = useState(30);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const syncSelection = useCallback((region: Region) => {
+    setSelection({ start: region.start, end: region.end });
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const sourceUrl = item.url || item.previewUrl || "";
+    if (!container || !sourceUrl) {
+      setLoading(false);
+      setError(tt("没有可加载的音频地址"));
+      return;
+    }
+    let disposed = false;
+    const controller = new AbortController();
+    let disableDrag: (() => void) | undefined;
+    setLoading(true);
+    setError("");
+    void (async () => {
+      try {
+        const durableUrl = isFirstPartyMediaUrl(sourceUrl)
+          ? sourceUrl
+          : await importMediaUrl(sourceUrl, {
+              kind: "audio",
+              siteId: siteId || "audio",
+              title: item.title,
+              registerAsset: true,
+            });
+        const [{ default: WaveSurferClass }, { default: RegionsPluginClass }, blob] =
+          await Promise.all([
+            import("wavesurfer.js"),
+            import("wavesurfer.js/dist/plugins/regions.js"),
+            fetchMediaBlob(durableUrl, {
+              maxBytes: MAX_AUDIO_FILE_BYTES,
+              signal: controller.signal,
+            }),
+          ]);
+        if (disposed) return;
+        const sourceHint = `${blob.type} ${durableUrl}`.toLowerCase();
+        const isHighlyCompressed = /\.(mp3|m4a|aac|ogg|oga|opus|wma)(?:$|[?#])/.test(
+          sourceHint,
+        ) || /audio\/(mpeg|mp4|aac|ogg|opus)/.test(sourceHint);
+        if (isHighlyCompressed && blob.size > MAX_COMPRESSED_AUDIO_BYTES) {
+          throw new Error(
+            tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"),
+          );
+        }
+        const context = new AudioContext();
+        const decoded = await context.decodeAudioData((await blob.arrayBuffer()).slice(0));
+        await context.close();
+        if (disposed) return;
+        if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
+          throw new Error(
+            tt("音频解码后过大，请改用视频时间线处理长音频"),
+          );
+        }
+        bufferRef.current = decoded;
+        undoRef.current = [];
+        redoRef.current = [];
+        revisionRef.current = 0;
+        setCanUndo(false);
+        setCanRedo(false);
+        setDirty(false);
+        setSavedUrl("");
+        setDuration(decoded.duration);
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrlRef.current = objectUrl;
+        const regions = RegionsPluginClass.create();
+        const wave = WaveSurferClass.create({
+          container,
+          url: objectUrl,
+          plugins: [regions],
+          height: 180,
+          waveColor: "#a8a29e",
+          progressColor: "#4f46e5",
+          cursorColor: "#292524",
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 2,
+          normalize: true,
+          minPxPerSec: zoomRef.current,
+        });
+        waveRef.current = wave;
+        regionsRef.current = regions;
+        disableDrag = regions.enableDragSelection({
+          color: "rgba(79,70,229,.20)",
+          drag: true,
+          resize: true,
+        });
+        regions.on("region-created", (region) => {
+          for (const existing of regions.getRegions()) {
+            if (existing !== region) existing.remove();
+          }
+          syncSelection(region);
+        });
+        regions.on("region-updated", syncSelection);
+        regions.on("region-removed", () => setSelection(null));
+        wave.on("ready", () => setLoading(false));
+        wave.on("timeupdate", setCurrentTime);
+        wave.on("play", () => setPlaying(true));
+        wave.on("pause", () => setPlaying(false));
+        wave.on("finish", () => setPlaying(false));
+      } catch (caught) {
+        if (!disposed) {
+          setLoading(false);
+          setError(caught instanceof Error ? caught.message : tt("音频加载失败"));
+        }
+      }
+    })();
+    return () => {
+      disposed = true;
+      controller.abort();
+      disableDrag?.();
+      waveRef.current?.destroy();
+      waveRef.current = null;
+      regionsRef.current = null;
+      bufferRef.current = null;
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = "";
+    };
+  }, [item.previewUrl, item.title, item.url, siteId, syncSelection, tt]);
+
+  const reloadWaveform = useCallback(async (next: AudioBuffer) => {
+    const wave = waveRef.current;
+    if (!wave) return;
+    const nextUrl = URL.createObjectURL(encodeWav(next));
+    const previousUrl = objectUrlRef.current;
+    try {
+      await wave.load(nextUrl);
+      objectUrlRef.current = nextUrl;
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      wave.setPlaybackRate(speedRef.current);
+      wave.zoom(zoomRef.current);
+      regionsRef.current?.clearRegions();
+      setSelection(null);
+      setDuration(next.duration);
+      setCurrentTime(0);
+    } catch (caught) {
+      URL.revokeObjectURL(nextUrl);
+      throw caught;
+    }
+  }, []);
+
+  const commit = useCallback(
+    async (next: AudioBuffer, pushUndo = true) => {
+      const current = bufferRef.current;
+      if (!current) return;
+      if (pushUndo) {
+        undoRef.current = appendAudioHistory(undoRef.current, current);
+        redoRef.current = [];
+      }
+      bufferRef.current = next;
+      revisionRef.current += 1;
+      setCanUndo(undoRef.current.length > 0);
+      setCanRedo(false);
+      setDirty(true);
+      setSavedUrl("");
+      setLoading(true);
+      setError("");
+      try {
+        await reloadWaveform(next);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : tt("波形重建失败"));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [reloadWaveform, tt],
+  );
+
+  const editSelection = useCallback(
+    (mode: "crop" | "delete") => {
+      const source = bufferRef.current;
+      if (!source || !selection) {
+        setError(tt("请先在波形上拖选一个区间"));
+        return;
+      }
+      const next =
+        mode === "crop"
+          ? copyAudioRange(source, selection.start, selection.end)
+          : deleteAudioRange(source, selection.start, selection.end);
+      void commit(next);
+    },
+    [commit, selection, tt],
+  );
+
+  const applyFade = useCallback(
+    (edge: "in" | "out") => {
+      const source = bufferRef.current;
+      if (!source) return;
+      const next = cloneAudioBuffer(source);
+      const frames = Math.max(
+        1,
+        Math.min(next.length, Math.round(fadeDuration * next.sampleRate)),
+      );
+      for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
+        const samples = next.getChannelData(channel);
+        for (let index = 0; index < frames; index += 1) {
+          const envelope = frames === 1 ? 1 : index / (frames - 1);
+          const target = edge === "in" ? index : next.length - 1 - index;
+          samples[target] *= envelope;
+        }
+      }
+      void commit(next);
+    },
+    [commit, fadeDuration],
+  );
+
+  const applyGain = useCallback(() => {
+    const source = bufferRef.current;
+    if (!source) return;
+    const next = cloneAudioBuffer(source);
+    const multiplier = gain / 100;
+    for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
+      const samples = next.getChannelData(channel);
+      for (let index = 0; index < samples.length; index += 1) {
+        samples[index] *= multiplier;
+      }
+    }
+    void commit(next);
+  }, [commit, gain]);
+
+  const undo = useCallback(() => {
+    const current = bufferRef.current;
+    const previous = undoRef.current.pop();
+    if (!previous || !current) return;
+    redoRef.current = appendAudioHistory(
+      redoRef.current,
+      current,
+      undoRef.current,
+    );
+    revisionRef.current += 1;
+    setCanUndo(undoRef.current.length > 0);
+    setCanRedo(redoRef.current.length > 0);
+    setDirty(true);
+    setSavedUrl("");
+    bufferRef.current = previous;
+    setLoading(true);
+    void reloadWaveform(previous)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : tt("撤销失败")),
+      )
+      .finally(() => setLoading(false));
+  }, [reloadWaveform, tt]);
+
+  const redo = useCallback(() => {
+    const current = bufferRef.current;
+    const next = redoRef.current.pop();
+    if (!next || !current) return;
+    undoRef.current = appendAudioHistory(
+      undoRef.current,
+      current,
+      redoRef.current,
+    );
+    revisionRef.current += 1;
+    setCanUndo(undoRef.current.length > 0);
+    setCanRedo(redoRef.current.length > 0);
+    setDirty(true);
+    setSavedUrl("");
+    bufferRef.current = next;
+    setLoading(true);
+    void reloadWaveform(next)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : tt("重做失败")),
+      )
+      .finally(() => setLoading(false));
+  }, [reloadWaveform, tt]);
+
+  const download = useCallback(() => {
+    const source = bufferRef.current;
+    if (!source) return;
+    const url = URL.createObjectURL(encodeWav(source));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${item.title || "oceanleo-audio"}-edited.wav`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, [item.title]);
+
+  const save = useCallback(async () => {
+    const source = bufferRef.current;
+    if (!source || savingRef.current) return;
+    const savingRevision = revisionRef.current;
+    savingRef.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const title = `${item.title || tt("音频")}-${tt("编辑版")}`;
+      const file = new File([encodeWav(source)], `${title}.wav`, {
+        type: "audio/wav",
+      });
+      const uploaded = await uploadFile(file, { siteId: siteId || "audio", title });
+      const url = uploaded.data?.file?.url || "";
+      if (!uploaded.ok || !url) throw new Error(uploaded.error || tt("上传音频失败"));
+      const saved = await saveWorks(siteId || "audio", [
+        {
+          url,
+          media_type: "audio",
+          title,
+          kind: "audio",
+          meta: { parent_asset_id: item.id, editor: "audio-v2" },
+        },
+      ]);
+      if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
+        throw new Error(saved.error || tt("登记到我的库失败"));
+      }
+      setSavedUrl(url);
+      if (revisionRef.current === savingRevision) setDirty(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : tt("保存到我的库失败"));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }, [item.id, item.title, siteId, tt]);
+
+  return {
+    containerRef,
+    loading,
+    saving,
+    playing,
+    error,
+    savedUrl,
+    duration,
+    currentTime,
+    selection,
+    fadeDuration,
+    setFadeDuration,
+    gain,
+    setGain,
+    speed,
+    zoom,
+    canUndo,
+    canRedo,
+    dirty,
+    playPause: () => {
+      void waveRef.current?.playPause().catch(() => setError(tt("播放失败")));
+    },
+    stop: () => {
+      waveRef.current?.pause();
+      waveRef.current?.setTime(0);
+    },
+    setPlaybackSpeed: (value) => {
+      speedRef.current = value;
+      setSpeed(value);
+      waveRef.current?.setPlaybackRate(value);
+    },
+    setWaveformZoom: (value) => {
+      zoomRef.current = value;
+      setZoom(value);
+      waveRef.current?.zoom(value);
+    },
+    cropSelection: () => editSelection("crop"),
+    deleteSelection: () => editSelection("delete"),
+    applyFade,
+    applyGain,
+    undo,
+    redo,
+    download,
+    save,
+  };
+}
+
+function AudioSlider({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix = "",
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex justify-between text-[11px] text-stone-600">
+        <span>{label}</span>
+        <span className="tabular-nums text-stone-400">{value}{suffix}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-stone-800"
+      />
+    </label>
+  );
+}
+
+export function AudioControls({
+  editor,
+  accent = "#4f46e5",
+}: {
+  editor: AudioWorkbenchState;
+  accent?: string;
+}) {
+  const tt = useUI();
+  const button = "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40";
+  return (
+    <div className="space-y-4 overflow-y-auto p-3">
+      <section>
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("播放")}</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} onClick={editor.playPause}>
+            {editor.playing ? tt("暂停") : tt("播放")}
+          </button>
+          <button type="button" className={button} onClick={editor.stop}>{tt("停止")}</button>
+        </div>
+        <div className="mt-3">
+          <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" onChange={editor.setPlaybackSpeed} />
+        </div>
+      </section>
+      <section className="space-y-2 border-t border-stone-100 pt-3">
+        <p className="text-[11px] font-semibold text-stone-800">{tt("选区编辑")}</p>
+        <p className="text-[10px] text-stone-400">{tt("在波形上拖动以选择一个区间")}</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} disabled={!editor.selection || editor.loading} onClick={editor.cropSelection}>{tt("裁剪保留选区")}</button>
+          <button type="button" className={button} disabled={!editor.selection || editor.loading} onClick={editor.deleteSelection}>{tt("删除选区拼接")}</button>
+        </div>
+      </section>
+      <section className="space-y-2.5 border-t border-stone-100 pt-3">
+        <p className="text-[11px] font-semibold text-stone-800">{tt("声音处理")}</p>
+        <AudioSlider label={tt("淡变时长")} value={editor.fadeDuration} min={0.1} max={5} step={0.1} suffix={tt("秒")} onChange={editor.setFadeDuration} />
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} disabled={editor.loading} onClick={() => editor.applyFade("in")}>{tt("淡入")}</button>
+          <button type="button" className={button} disabled={editor.loading} onClick={() => editor.applyFade("out")}>{tt("淡出")}</button>
+        </div>
+        <AudioSlider label={tt("整体音量增益")} value={editor.gain} min={0} max={200} suffix="%" onChange={editor.setGain} />
+        <button type="button" className={`${button} w-full`} disabled={editor.loading} onClick={editor.applyGain}>{tt("应用增益")}</button>
+      </section>
+      <section className="space-y-2.5 border-t border-stone-100 pt-3">
+        <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" onChange={editor.setWaveformZoom} />
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} disabled={!editor.canUndo || editor.loading} onClick={editor.undo} style={editor.canUndo ? { borderColor: accent, color: accent } : undefined}>{tt("撤销")}</button>
+          <button type="button" className={button} disabled={!editor.canRedo || editor.loading} onClick={editor.redo} style={editor.canRedo ? { borderColor: accent, color: accent } : undefined}>{tt("重做")}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function AudioStage({
+  editor,
+  accent = "#4f46e5",
+}: {
+  editor: AudioWorkbenchState;
+  accent?: string;
+}) {
+  const tt = useUI();
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-stone-50 p-6">
+        <div className="mb-3 flex items-center justify-between text-[11px] text-stone-500">
+          <span className="tabular-nums">{formatTime(editor.currentTime)} / {formatTime(editor.duration)}</span>
+          <span>
+            {editor.selection
+              ? tt("选区：{start} – {end}", {
+                  start: formatTime(editor.selection.start),
+                  end: formatTime(editor.selection.end),
+                })
+              : tt("未选择区间")}
+          </span>
+        </div>
+        <div className="relative rounded-xl border border-stone-200 bg-white px-3 py-6 shadow-sm">
+          {editor.loading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 text-[12px] text-stone-400">{tt("正在处理音频…")}</div>}
+          <div ref={editor.containerRef} className="min-h-44 w-full" />
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
+        <button type="button" onClick={editor.download} disabled={editor.loading} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 disabled:opacity-40">{tt("下载 WAV")}</button>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-stone-400">
+          {editor.error ||
+            (editor.dirty
+              ? tt("有未保存的修改")
+              : editor.savedUrl
+                ? tt("已保存到我的库")
+                : tt("编辑不会覆盖原素材"))}
+        </span>
+        <button type="button" disabled={editor.saving || editor.loading} onClick={() => void editor.save()} className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: accent }}>
+          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export interface AudioWorkbenchProps {
+  item: LibraryItem;
+  siteId?: string;
+  accent?: string;
+  onSaved?: (url: string) => void;
+}
+
+export function AudioWorkbench({
+  item,
+  siteId = "",
+  accent = "#4f46e5",
+  onSaved,
+}: AudioWorkbenchProps) {
+  const editor = useAudioWorkbench(item, siteId);
+  const notifiedRef = useRef("");
+  useEffect(() => {
+    if (editor.savedUrl && editor.savedUrl !== notifiedRef.current) {
+      notifiedRef.current = editor.savedUrl;
+      onSaved?.(editor.savedUrl);
+    }
+  }, [editor.savedUrl, onSaved]);
+  return (
+    <div className="flex h-full min-h-0 bg-white">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-stone-200">
+        <AudioControls editor={editor} accent={accent} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <AudioStage editor={editor} accent={accent} />
+      </div>
+    </div>
+  );
+}

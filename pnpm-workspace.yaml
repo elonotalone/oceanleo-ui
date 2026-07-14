@@ -1,0 +1,3 @@
+allowBuilds:
+  # Browser-only PDF rendering does not need node-canvas native install scripts.
+  canvas: false
