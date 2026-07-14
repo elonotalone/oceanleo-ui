@@ -89,12 +89,13 @@ test("live session 从 new 解析为服务端 id 时不重置 app runtime 身份
   assert.doesNotMatch(identityBlock, /sessionId/);
 });
 
-test("退出或切换 app 前先冲刷 snapshot，但持久化挂起不能锁死返回按钮", () => {
+test("退出或切换 app 前尽力冲刷 snapshot，但失败或挂起都不能锁死返回按钮", () => {
   assert.match(
     source,
-    /const saved = await beforeLeaveWithDeadline\(beforeLeaveRef\.current\);[\s\S]*?if \(!saved\) return/,
+    /await beforeLeaveWithDeadline\(beforeLeaveRef\.current\)/,
   );
-  assert.match(source, /Promise\.race\([\s\S]*?setTimeout\(\(\) => resolve\(true\), timeoutMs\)/);
+  assert.doesNotMatch(source, /if \(!saved\) return/);
+  assert.match(source, /Promise\.race\([\s\S]*?setTimeout\(\(\) => resolve\(false\), timeoutMs\)/);
   assert.match(source, /\.catch\(\(\) => false\)/);
   assert.match(
     source,

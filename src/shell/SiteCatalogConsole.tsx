@@ -157,19 +157,23 @@ interface LegacyHistoryTaskRef {
   appLabel: string;
 }
 
-/** Session persistence must never turn the visible Back control into a dead button. */
+/**
+ * Session persistence is best-effort during navigation. A failed or hanging
+ * autosave may surface its own error, but it must never trap the user inside
+ * an app after they explicitly pressed Back.
+ */
 export async function beforeLeaveWithDeadline(
   callback: () => Promise<boolean>,
   timeoutMs = 1_200,
-): Promise<boolean> {
+): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([
+    await Promise.race([
       Promise.resolve()
         .then(callback)
         .catch(() => false),
       new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(true), timeoutMs);
+        timer = setTimeout(() => resolve(false), timeoutMs);
       }),
     ]);
   } finally {
@@ -421,8 +425,7 @@ export function SiteCatalogConsole({
   const changeApp = useCallback(
     async (id: string) => {
       if (activeAppId && id !== activeAppId) {
-        const saved = await beforeLeaveWithDeadline(beforeLeaveRef.current);
-        if (!saved) return;
+        await beforeLeaveWithDeadline(beforeLeaveRef.current);
       }
       if (embed) {
         onChange?.(id);
