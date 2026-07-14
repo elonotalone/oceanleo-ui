@@ -26,11 +26,11 @@ const sourceKeys = {
   searchModels: "搜索全部可用模型…",
   loggedOutCreateEditGroups: "登录后即可创建、命名和编辑多个自定义模型组合。",
   saveWorkToTasksFailed: "当前工作保存失败，未保存至我的任务。",
-  fillBeforeSaveTemplate: "请先在操作台填写内容，再保存模板。",
+  fillBeforeSaveTemplate: "请先在操作台填写内容，再保存此模板。",
   saveInputsAsTemplateHint:
     "把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用",
-  saveTemplate: "保存模板",
-  saveToMyTasks: "新建任务",
+  saveTemplate: "保存此模板",
+  saveToMyTasks: "新建",
   switchGroupFailed: "切换模型组合失败",
   chooseSiteWideGroup: "选择全站通用的模型组合",
   modelGroup: "模型组合",
@@ -43,7 +43,7 @@ const sourceKeys = {
   noMatchingTemplates: "未找到匹配的模板",
   noSavedTemplates: "还没有保存的模板",
   saveTemplateEmptyState:
-    "在左侧「操作台」填好输入后，点标题栏的「保存模板」，就会收藏到这里，随时一键复用。",
+    "在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。",
   saveAndOpenCleanConsole: "将当前工作保存到我的任务，并打开一个干净工作台",
 } as const;
 
@@ -610,11 +610,11 @@ const translations = {
     searchModels: "搜索全部可用模型…",
     loggedOutCreateEditGroups: "登录后即可创建、命名和编辑多个自定义模型组合。",
     saveWorkToTasksFailed: "当前工作保存失败，未保存至我的任务。",
-    fillBeforeSaveTemplate: "请先在操作台填写内容，再保存模板。",
+    fillBeforeSaveTemplate: "请先在操作台填写内容，再保存此模板。",
     saveInputsAsTemplateHint:
       "把当前操作台的输入与备注保存为模板，稍后可在右侧「模板 · 我的」里一键复用",
-    saveTemplate: "保存模板",
-    saveToMyTasks: "新建任务",
+    saveTemplate: "保存此模板",
+    saveToMyTasks: "新建",
     switchGroupFailed: "切换模型组合失败",
     chooseSiteWideGroup: "选择全站通用的模型组合",
     modelGroup: "模型组合",
@@ -627,7 +627,7 @@ const translations = {
     noMatchingTemplates: "未找到匹配的模板",
     noSavedTemplates: "还没有保存的模板",
     saveTemplateEmptyState:
-      "在左侧「操作台」填好输入后，点标题栏的「保存模板」，就会收藏到这里，随时一键复用。",
+      "在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。",
     saveAndOpenCleanConsole: "将当前工作保存到我的任务，并打开一个干净工作台",
   },
   "zh-TW": {
@@ -663,8 +663,8 @@ const translations = {
     fillBeforeSaveTemplate: "請先在操作台填寫內容，再儲存範本。",
     saveInputsAsTemplateHint:
       "將目前操作台的輸入與備註儲存為範本，稍後可在右側「範本 · 我的」一鍵重複使用",
-    saveTemplate: "儲存範本",
-    saveToMyTasks: "新建任務",
+    saveTemplate: "儲存此範本",
+    saveToMyTasks: "新建",
     switchGroupFailed: "切換模型組合失敗",
     chooseSiteWideGroup: "選擇全站共用的模型組合",
     modelGroup: "模型組合",

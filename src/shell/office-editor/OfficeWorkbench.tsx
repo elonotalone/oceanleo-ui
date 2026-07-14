@@ -212,6 +212,13 @@ export function useOfficeWorkbench(
     },
     retry: mount,
     noteSaved: () => setSaveCount((value) => value + 1),
+    waitForSave: async () => {
+      const deadline = Date.now() + 20_000;
+      while (dirtySinceSaveRef.current && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 200));
+      }
+      return !dirtySinceSaveRef.current;
+    },
   };
 }
 

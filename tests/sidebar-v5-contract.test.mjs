@@ -31,8 +31,8 @@ test("nested page shells unwrap under one persistent layout shell", () => {
   assert.match(appShell, /if \(nested\) return <>\{props\.children\}<\/>/);
 });
 
-test("My Tasks is an inline disclosure and subsite home means New Task", () => {
-  assert.match(workspacePages, /home: "新建任务"/);
+test("My Tasks is an inline disclosure and subsite home means New", () => {
+  assert.match(workspacePages, /home: "新建"/);
   assert.match(workspacePages, /p === "history" \? opts\.subNav\?\.history/);
   assert.match(workspacePages, /defaultOpen: true/);
   assert.doesNotMatch(workspacePages, /subNav: opts\.subNav\?\.\[p\]/);

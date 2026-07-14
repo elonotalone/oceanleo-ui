@@ -53,6 +53,8 @@ export interface WorkspaceLibraryProps {
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
+  /** Full-page libraries render directly on the page instead of inside a white panel. */
+  plain?: boolean;
 }
 
 const KIND_LABELS: Partial<Record<LibraryKind, string>> = {
@@ -116,6 +118,7 @@ export function WorkspaceLibrary({
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
   className = "",
+  plain = false,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
   const [internalSearch, setInternalSearch] = useState("");
@@ -270,7 +273,7 @@ export function WorkspaceLibrary({
       <>
       <div
         ref={detailRef}
-        className={`flex h-full min-h-0 flex-col bg-white ${className}`}
+        className={`flex h-full min-h-0 flex-col ${plain ? "bg-transparent" : "bg-white"} ${className}`}
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-stone-200 px-3 py-2.5">
           <button
@@ -380,7 +383,9 @@ export function WorkspaceLibrary({
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col bg-white px-3 pb-3 pt-5 ${className}`}
+      className={`flex h-full min-h-0 flex-col ${
+        plain ? "bg-transparent" : "bg-white px-3 pb-3 pt-5"
+      } ${className}`}
     >
       <LibraryToolbar
         search={search}

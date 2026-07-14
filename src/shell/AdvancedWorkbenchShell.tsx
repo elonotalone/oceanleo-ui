@@ -17,6 +17,8 @@ import {
 } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
 import { AdvancedAgentPanel } from "./AdvancedAgentPanel";
+import { useAdvancedSession } from "./advanced-session-context";
+import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
 
@@ -42,6 +44,10 @@ export interface AdvancedWorkbenchShellProps {
   editorStatus?: string;
   editorDirty?: boolean;
   editorOwnsCloseGuard?: boolean;
+  /** Embedded editors render their own properties column when the Edit tool is active. */
+  editorUsesOwnControls?: boolean;
+  /** Persist pending editor changes before Advanced Agent starts a new session. */
+  onBeforeNewConversation?: () => Promise<boolean | void> | boolean | void;
   exportPanel?: ReactNode;
   versionRevision?: string | number;
   onClose: () => void;
@@ -147,6 +153,8 @@ export function AdvancedWorkbenchShell({
   editorStatus = "",
   editorDirty = false,
   editorOwnsCloseGuard = false,
+  editorUsesOwnControls = false,
+  onBeforeNewConversation,
   exportPanel,
   versionRevision = 0,
   onClose,
@@ -154,7 +162,9 @@ export function AdvancedWorkbenchShell({
   const tt = useUI();
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const dirtyRecordedRef = useRef(false);
   const portalReady = typeof document !== "undefined";
+  const advancedSession = useAdvancedSession();
   const [activeTool, setActiveTool] = useState<WorkbenchTool>(
     editorAvailable ? "edit" : "preview",
   );
@@ -163,11 +173,21 @@ export function AdvancedWorkbenchShell({
   );
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelVisible, setPanelVisible] = useState(
-    () => typeof window === "undefined" || window.innerWidth >= 768,
+    () =>
+      !editorUsesOwnControls &&
+      (typeof window === "undefined" || window.innerWidth >= 768),
   );
   const [copyState, setCopyState] = useState("");
   const [versions, setVersions] = useState<WorkItem[]>([]);
   const [fullscreen, setFullscreen] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const layoutState = useMemo(
+    () => ({
+      hostPanelVisible: panelVisible,
+      editorToolActive: activeTool === "edit",
+    }),
+    [activeTool, panelVisible],
+  );
 
   const requestClose = useCallback(() => {
     if (
@@ -189,6 +209,33 @@ export function AdvancedWorkbenchShell({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [editorDirty]);
+
+  useEffect(() => {
+    if (!editorDirty) {
+      dirtyRecordedRef.current = false;
+      return;
+    }
+    if (!advancedSession || dirtyRecordedRef.current) return;
+    dirtyRecordedRef.current = true;
+    void (async () => {
+      const session = await advancedSession.ensure();
+      if (!session) return;
+      if (!onBeforeNewConversation) return;
+      const saved = await onBeforeNewConversation();
+      if (saved !== false) advancedSession.navigate(session.id);
+    })();
+  }, [advancedSession, editorDirty, onBeforeNewConversation]);
+
+  useEffect(() => {
+    if (!advancedSession) return;
+    advancedSession.registerFlush(async () => {
+      if (!editorDirty) return true;
+      if (!onBeforeNewConversation) return false;
+      const result = await onBeforeNewConversation();
+      return result !== false;
+    });
+    return () => advancedSession.registerFlush(null);
+  }, [advancedSession, editorDirty, onBeforeNewConversation]);
 
   useEffect(() => {
     if (!portalReady) return;
@@ -300,21 +347,52 @@ export function AdvancedWorkbenchShell({
   const chooseTool = useCallback(
     (tool: WorkbenchTool) => {
       setActiveTool(tool);
-      setPanelVisible(true);
+      setPanelVisible(!(tool === "edit" && editorUsesOwnControls));
       if (tool === "edit" && editorAvailable) setStageMode("edit");
       if (tool === "preview") setStageMode("preview");
     },
-    [editorAvailable],
+    [editorAvailable, editorUsesOwnControls],
   );
 
   function beginResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
     event.preventDefault();
     resizeCleanupRef.current?.();
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    handle.setPointerCapture?.(pointerId);
     const startX = event.clientX;
     const startWidth = panelWidth;
-    const move = (next: PointerEvent) =>
-      setPanelWidth(Math.min(620, Math.max(270, startWidth + next.clientX - startX)));
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    let frame = 0;
+    let nextX = startX;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    setResizing(true);
+    const render = () => {
+      frame = 0;
+      setPanelWidth(
+        Math.min(
+          Math.min(620, Math.max(270, window.innerWidth * 0.48)),
+          Math.max(270, startWidth + nextX - startX),
+        ),
+      );
+    };
+    const move = (next: PointerEvent) => {
+      if (next.pointerId !== pointerId) return;
+      nextX = next.clientX;
+      if (!frame) frame = window.requestAnimationFrame(render);
+    };
     const stop = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      handle.removeEventListener("lostpointercapture", stop);
+      if (handle.hasPointerCapture?.(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      setResizing(false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
@@ -324,6 +402,7 @@ export function AdvancedWorkbenchShell({
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
+    handle.addEventListener("lostpointercapture", stop);
   }
 
   async function saveCopy() {
@@ -491,6 +570,12 @@ export function AdvancedWorkbenchShell({
       tabIndex={-1}
       className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-white text-stone-800"
     >
+      {resizing && (
+        <div
+          className="fixed inset-0 z-[2147483600] cursor-col-resize bg-transparent"
+          aria-hidden="true"
+        />
+      )}
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-stone-200 px-3">
         <button
           type="button"
@@ -527,6 +612,7 @@ export function AdvancedWorkbenchShell({
         </button>
       </header>
 
+      <AdvancedLayoutContext.Provider value={layoutState}>
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-stone-200 bg-stone-50 py-2">
           {tools.map((tool) => (
@@ -553,7 +639,7 @@ export function AdvancedWorkbenchShell({
         {panelVisible && (
           <>
             <aside
-              className="min-h-0 max-w-[calc(100vw-3.5rem)] shrink-0 overflow-hidden border-r border-stone-200 bg-white"
+              className="min-h-0 max-w-[48vw] shrink-0 overflow-hidden border-r border-stone-200 bg-white"
               style={{ width: panelWidth }}
             >
               <div className="flex h-10 items-center border-b border-stone-100 px-3 text-[12px] font-semibold">
@@ -599,6 +685,7 @@ export function AdvancedWorkbenchShell({
             ))}
         </main>
       </div>
+      </AdvancedLayoutContext.Provider>
     </div>,
     document.body,
   );

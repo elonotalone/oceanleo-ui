@@ -1,12 +1,32 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import { UnsupportedRoute } from "./advanced-routes/UnsupportedRoute";
 import { WorkbenchRouteLoading } from "./advanced-routes/WorkbenchRouteLoading";
 import { editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
+import {
+  WorkspaceSessionProvider,
+  useOptionalWorkspaceSession,
+  useWorkspaceSession,
+} from "./WorkspaceSession";
+import {
+  ADVANCED_SESSION_SCHEMA_VERSION,
+  advancedSessionAppId,
+  advancedSessionSnapshot,
+} from "./advanced-session";
+import { AdvancedSessionContext } from "./advanced-session-context";
+import { historySessionHref } from "./workspace-route";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 
@@ -85,10 +105,109 @@ export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
 ) {
   const [mounted, setMounted] = useState(false);
+  const inherited = useOptionalWorkspaceSession();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   const route = editorRouteFor(props.item);
+  const siteId = props.siteId || props.item.siteId || "oceanleo";
+  const appId = advancedSessionAppId(props.item, route.type);
+  const canReuseInherited =
+    inherited?.siteId === siteId && inherited.appId === appId;
+  if (canReuseInherited) {
+    return <AdvancedContentWorkbenchRuntime {...props} />;
+  }
+  return (
+    <WorkspaceSessionProvider
+      key={appId}
+      siteId={siteId}
+      appId={appId}
+      title={props.item.title}
+      resumeLatest={false}
+    >
+      <AdvancedContentWorkbenchRuntime {...props} />
+    </WorkspaceSessionProvider>
+  );
+}
+
+function AdvancedContentWorkbenchRuntime(
+  props: AdvancedContentWorkbenchProps,
+) {
+  const router = useRouter();
+  const workspace = useWorkspaceSession();
+  const flushRef = useRef<(() => Promise<boolean> | boolean) | null>(null);
+  const route = editorRouteFor(props.item);
+  const makeSnapshot = useCallback(
+    (taskId?: string | null) =>
+      advancedSessionSnapshot(
+        props.item,
+        route.type,
+        taskId || workspace.taskId,
+      ),
+    [props.item, route.type, workspace.taskId],
+  );
+  const navigate = useCallback(
+    (sessionId: string) => {
+      router.replace(historySessionHref(sessionId));
+    },
+    [router],
+  );
+  const ensure = useCallback(
+    async (taskId?: string | null) => {
+      const snapshot = makeSnapshot(taskId);
+      const session = await workspace.ensureActive({
+        title: props.item.title,
+        snapshot,
+        schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+      });
+      if (!session) return null;
+      if (taskId) await workspace.bindTask(taskId, props.item.title);
+      const saved = await workspace.saveSnapshot(
+        snapshot,
+        ADVANCED_SESSION_SCHEMA_VERSION,
+        { expectedSessionId: session.id, title: props.item.title },
+      );
+      return saved.session || session;
+    },
+    [makeSnapshot, props.item.title, workspace],
+  );
+  const startNew = useCallback(async () => {
+    const flushed = await flushRef.current?.();
+    if (flushed === false) return null;
+    const current = workspace.session;
+    if (current) {
+      const saved = await workspace.saveSnapshot(
+        makeSnapshot(workspace.taskId),
+        ADVANCED_SESSION_SCHEMA_VERSION,
+        { expectedSessionId: current.id, title: props.item.title },
+      );
+      if (!saved.ok) return null;
+    }
+    const next = await workspace.startNew({
+      title: props.item.title,
+      snapshot: makeSnapshot(null),
+      schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+    });
+    if (next) navigate(next.id);
+    return next;
+  }, [makeSnapshot, navigate, props.item.title, workspace]);
+  const registerFlush = useCallback(
+    (flush: (() => Promise<boolean> | boolean) | null) => {
+      flushRef.current = flush;
+    },
+    [],
+  );
+  const sessionActions = useMemo(
+    () => ({
+      snapshot: makeSnapshot,
+      ensure,
+      navigate,
+      startNew,
+      registerFlush,
+    }),
+    [ensure, makeSnapshot, navigate, registerFlush, startNew],
+  );
+
   const routeKey = `${props.item.kind}:${props.item.id}:${props.item.url || props.item.previewUrl || ""}`;
   let editor: ReactNode;
   switch (route.type) {
@@ -129,12 +248,14 @@ export function AdvancedContentWorkbench(
   }
 
   return (
-    <WorkbenchErrorBoundary
-      key={routeKey}
-      item={props.item}
-      onClose={props.onClose}
-    >
-      {editor}
-    </WorkbenchErrorBoundary>
+    <AdvancedSessionContext.Provider value={sessionActions}>
+      <WorkbenchErrorBoundary
+        key={routeKey}
+        item={props.item}
+        onClose={props.onClose}
+      >
+        {editor}
+      </WorkbenchErrorBoundary>
+    </AdvancedSessionContext.Provider>
   );
 }

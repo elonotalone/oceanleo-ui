@@ -17,6 +17,7 @@ import {
   isTrustedEditorOrigin,
 } from "./editor-protocol";
 import type { LibraryItem } from "./library-data";
+import { useAdvancedLayout } from "./advanced-layout-context";
 
 export interface EmbedEditorPaneProps {
   item: LibraryItem;
@@ -28,6 +29,7 @@ export interface EmbedEditorPaneProps {
   onVersionSaved?: () => void;
   onCloseRequest?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaveResult?: (saved: boolean) => void;
   saveRequestNonce?: number;
 }
 
@@ -72,9 +74,11 @@ export function EmbedEditorPane({
   onVersionSaved,
   onCloseRequest,
   onDirtyChange,
+  onSaveResult,
   saveRequestNonce = 0,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
+  const layout = useAdvancedLayout();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [status, setStatus] = useState("");
@@ -210,6 +214,7 @@ export function EmbedEditorPane({
                 : tt("保存失败");
           }
           setStatus(detail);
+          onSaveResult?.(saved);
           sendToEditor({
             type: "save-result",
             ok: saved,
@@ -235,6 +240,7 @@ export function EmbedEditorPane({
     mediaType,
     onCloseRequest,
     onDirtyChange,
+    onSaveResult,
     onVersionSaved,
     sendToEditor,
     sendOpenAsset,
@@ -279,6 +285,14 @@ export function EmbedEditorPane({
       editorOrigin,
     );
   }, [editorOrigin, instanceId, phase, saveRequestNonce, tt]);
+
+  useEffect(() => {
+    if (phase !== "ready") return;
+    sendToEditor({
+      type: "set-host-layout",
+      sidePanelVisible: Boolean(layout?.hostPanelVisible),
+    });
+  }, [layout?.hostPanelVisible, phase, sendToEditor]);
 
   return (
     <div className="relative h-full w-full bg-white">

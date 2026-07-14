@@ -123,6 +123,13 @@ export interface WorkspaceSessionContextValue {
   archive: () => Promise<false | "empty" | "archived">;
   /** live 工作台保存当前会话并回到“尚未创建新会话”的干净状态。 */
   restart: () => Promise<false | "empty" | "archived">;
+  /**
+   * 显式结束当前聚合并建立下一条会话。高级功能的「新建对话」使用它：
+   * 当前 active 会先归档，已归档历史保持不变；新会话沿用同一 site/app 身份。
+   */
+  startNew: (
+    options?: EnsureWorkspaceSessionOptions,
+  ) => Promise<AppSession | null>;
   clearConflict: () => void;
   reload: () => Promise<AppSession | null>;
 }
@@ -139,6 +146,11 @@ export interface WorkspaceSessionProviderProps {
    */
   sessionId?: string | null;
   onSessionIdChange?: (sessionId: string | null) => void;
+  /** Agent task 已绑定聚合后通知宿主；可先 flush runtime 再切 canonical history URL。 */
+  onTaskBound?: (
+    sessionId: string,
+    taskId: string,
+  ) => void | Promise<void>;
   mode?: WorkspaceSessionMode;
   /** 历史详情已拿到完整 session 时注入，避免重复请求。 */
   initialSession?: AppSession | null;

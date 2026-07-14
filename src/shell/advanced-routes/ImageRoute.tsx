@@ -34,6 +34,7 @@ export function ImageRoute({
         (editor.loading ? "正在载入图片编辑器" : "")
       }
       editorDirty={editor.dirty}
+      onBeforeNewConversation={editor.save}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

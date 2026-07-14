@@ -34,6 +34,7 @@ export function OfficeRoute({
       editorStatus={editor.error || editor.state}
       editorDirty={editor.dirty}
       editorOwnsCloseGuard
+      onBeforeNewConversation={editor.waitForSave}
       versionRevision={editor.saveCount}
       onClose={editor.requestClose}
     />

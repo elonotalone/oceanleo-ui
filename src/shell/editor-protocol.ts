@@ -48,6 +48,12 @@ export type HostToEditorMessage =
   | { protocol: typeof EDITOR_PROTOCOL; type: "save-request"; instanceId: string }
   | {
       protocol: typeof EDITOR_PROTOCOL;
+      type: "set-host-layout";
+      instanceId: string;
+      sidePanelVisible: boolean;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
       type: "save-result";
       instanceId: string;
       ok: boolean;
@@ -162,6 +168,8 @@ export function asHostToEditorMessage(
     type === "init" ||
     type === "open-asset" ||
     type === "save-request" ||
+    (type === "set-host-layout" &&
+      typeof record.sidePanelVisible === "boolean") ||
     type === "save-result" ||
     type === "dispose"
   ) {

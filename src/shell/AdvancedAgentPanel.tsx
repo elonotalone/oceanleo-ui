@@ -10,6 +10,7 @@ import {
 import { useUI } from "../i18n/ui/useUI";
 import { Markdown } from "./Markdown";
 import type { LibraryItem } from "./library-data";
+import { useAdvancedSession } from "./advanced-session-context";
 
 export interface AdvancedAgentPanelProps {
   item: LibraryItem;
@@ -41,8 +42,10 @@ export function AdvancedAgentPanel({
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [startingNew, setStartingNew] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const advancedSession = useAdvancedSession();
 
   useEffect(() => {
     setActiveTaskId(taskId || "");
@@ -104,6 +107,13 @@ export function AdvancedAgentPanel({
           },
         ]
       : undefined;
+    const session = await advancedSession?.ensure(activeTaskId || null);
+    if (advancedSession && !session) {
+      setError(tt("无法创建工作会话，请稍后重试。"));
+      setInput(prompt);
+      setBusy(false);
+      return;
+    }
     if (activeTaskId) {
       const optimistic: AgentMessage = {
         id: Date.now(),
@@ -116,6 +126,7 @@ export function AdvancedAgentPanel({
       if (result.ok) {
         setStatus("running");
         void refresh(activeTaskId);
+        if (session) advancedSession?.navigate(session.id);
       } else {
         setMessages((current) =>
           current.filter((message) => message.id !== optimistic.id),
@@ -131,13 +142,17 @@ export function AdvancedAgentPanel({
       mode: "agent",
       siteId,
       attachments,
+      sessionId: session?.id,
     });
     if (result.ok && result.data?.task_id) {
-      setActiveTaskId(result.data.task_id);
+      const nextTaskId = result.data.task_id;
+      setActiveTaskId(nextTaskId);
       setStatus("running");
       setMessages([
         { id: Date.now(), role: "user", kind: "text", content: prompt },
       ]);
+      const linked = await advancedSession?.ensure(nextTaskId);
+      if (linked) advancedSession?.navigate(linked.id);
     } else {
       setError(result.error || tt("创建任务失败"));
       setInput(prompt);
@@ -145,9 +160,36 @@ export function AdvancedAgentPanel({
     setBusy(false);
   }
 
+  async function newConversation() {
+    if (busy || startingNew || !advancedSession) return;
+    setStartingNew(true);
+    setError("");
+    const next = await advancedSession.startNew();
+    if (next) {
+      setActiveTaskId("");
+      setMessages([]);
+      setStatus("");
+      setInput("");
+    } else {
+      setError(tt("新建对话失败，当前内容仍已保留。"));
+    }
+    setStartingNew(false);
+  }
+
   const rendered = visibleMessages(messages);
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-3 py-2">
+        <span className="text-[11px] text-stone-400">{tt("当前素材对话")}</span>
+        <button
+          type="button"
+          disabled={busy || startingNew || !advancedSession}
+          onClick={() => void newConversation()}
+          className="rounded-lg border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
+        >
+          {startingNew ? tt("保存中…") : tt("新建对话")}
+        </button>
+      </div>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {rendered.length === 0 && (
           <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50 p-3 text-[12px] leading-relaxed text-stone-500">

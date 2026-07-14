@@ -84,7 +84,7 @@ export interface GridEditorState {
   importSource: (file: File) => Promise<void>;
   exportCsv: () => void;
   exportXlsx: () => Promise<void>;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
 }
 
 interface GridSnapshot {
@@ -579,8 +579,8 @@ export function useGridEditor(
     }
   }, [baseTitle, tt]);
 
-  const save = useCallback(async () => {
-    if (savingRef.current) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return false;
     const savingRevision = revisionRef.current;
     const snapshot = cloneGridSheets(sheetsRef.current);
     savingRef.current = true;
@@ -603,19 +603,21 @@ export function useGridEditor(
           sheet_names: snapshot.map((sheet) => sheet.name),
         },
       });
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       if (!result.ok) {
         setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
-        return;
+        return false;
       }
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
+      return true;
     } catch (caught) {
       if (mountedRef.current) {
         setError(
           caught instanceof Error ? tt(caught.message) : tt("保存到我的库失败"),
         );
       }
+      return false;
     } finally {
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);

@@ -646,7 +646,7 @@ export function FunctionAgentChat({
     if (!guideWf) return;
     const draft = effectiveGetDraft();
     if (!draft || !(draft.prompt || "").trim()) {
-      setError(tt("请先在操作台填写内容，再保存模板。"));
+      setError(tt("请先在操作台填写内容，再保存此模板。"));
       setTimeout(() => setError(null), 2600);
       return;
     }
@@ -723,13 +723,13 @@ export function FunctionAgentChat({
               />
             )}
           </svg>
-          {wfSaved ? tt("已保存") : tt("保存模板")}
+          {wfSaved ? tt("已保存") : tt("保存此模板")}
         </button>
       )}
       {workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           onBeforeRestart={() => restartFlushRef.current()}
-          label={tt("新建任务")}
+          label={tt("新建")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}

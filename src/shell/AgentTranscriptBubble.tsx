@@ -24,6 +24,7 @@ export function AgentTranscriptBubble({
   message,
   streaming = false,
   onBranch,
+  onArtifactOpen,
   gateActive = false,
   gateBusy = false,
   onGate,
@@ -31,6 +32,7 @@ export function AgentTranscriptBubble({
   message: AgentMessage;
   streaming?: boolean;
   onBranch?: () => void;
+  onArtifactOpen?: () => void;
   gateActive?: boolean;
   gateBusy?: boolean;
   onGate?: (decision: "approve" | "reject", feedback: string) => void;
@@ -113,33 +115,37 @@ export function AgentTranscriptBubble({
     message.meta?.artifact?.type === "preview" &&
     message.meta.artifact.url
   ) {
-    // 克制版（操作员 2026-07-12：不许色块 + 不许 ✓/✅ 图标）：预览就绪 = 一行中性小字 +
-    // 文字链接，无 emerald 底色、无对钩图标。
     return (
-      <div className="flex items-center gap-2 px-1 text-[13px] text-stone-500">
-        <span className="min-w-0 flex-1">
-          {tt("实时预览已就绪，已显示在右侧。")}
+      <button
+        type="button"
+        onClick={onArtifactOpen}
+        disabled={!onArtifactOpen}
+        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
+      >
+        <span className="min-w-0 truncate">{tt("实时预览已就绪")}</span>
+        <span className="shrink-0 text-[11px] text-stone-400">
+          {tt("在右侧打开")}
         </span>
-        <a
-          href={message.meta.artifact.url}
-          target="_blank"
-          rel="noreferrer"
-          className="shrink-0 font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-800"
-        >
-          {tt("新窗口打开")}
-        </a>
-      </div>
+      </button>
     );
   }
   if (message.meta?.artifact && message.meta.final) {
-    // 克制版（操作员 2026-07-12）：已生成结果 = 中性小字提示，无 emerald 底色、无 ✅。
+    const label =
+      artifactLabels[message.meta.artifact.type] || tt("结果");
     return (
-      <div className="px-1 text-[13px] text-stone-500">
-        {tt("已生成结果，见右侧「{label}」面板。", {
-          label:
-            artifactLabels[message.meta.artifact.type] || tt("结果"),
-        })}
-      </div>
+      <button
+        type="button"
+        onClick={onArtifactOpen}
+        disabled={!onArtifactOpen}
+        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
+      >
+        <span className="min-w-0 truncate">
+          {tt("已生成「{label}」", { label })}
+        </span>
+        <span className="shrink-0 text-[11px] text-stone-400">
+          {tt("在右侧打开")}
+        </span>
+      </button>
     );
   }
 

@@ -53,7 +53,7 @@ export interface DeckEditorState {
   redo: () => void;
   downloadJson: () => void;
   exportPptx: () => Promise<void>;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
 }
 
 const HISTORY_LIMIT = 60;
@@ -363,8 +363,8 @@ export function useDeckEditor(
     }
   }, [exporting, tt]);
 
-  const save = useCallback(async () => {
-    if (savingRef.current) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return false;
     const savingRevision = revisionRef.current;
     const snapshot = cloneDeckDocument(deckRef.current);
     savingRef.current = true;
@@ -403,10 +403,12 @@ export function useDeckEditor(
           setNotice(tt("已保存一个 PPTX 版本；之后的修改仍未保存"));
         }
       }
+      return mountedRef.current;
     } catch (caught) {
       if (mountedRef.current) {
         setError(caught instanceof Error ? caught.message : tt("保存失败"));
       }
+      return false;
     } finally {
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);

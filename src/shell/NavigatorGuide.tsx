@@ -246,7 +246,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
           </p>
           {mine && !q && (
             <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
-              {tt("在左侧「操作台」填好输入后，点标题栏的「保存模板」，就会收藏到这里，随时一键复用。")}
+              {tt("在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。")}
             </p>
           )}
         </div>

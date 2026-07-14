@@ -48,7 +48,7 @@ export interface WorkspaceNavOptions {
 }
 
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
-  home: "新建任务",
+  home: "新建",
   explore: "探索",
   workspace: "工作台",
   library: "我的库",

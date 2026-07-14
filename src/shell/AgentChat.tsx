@@ -22,6 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { type MaterialItem } from "./MaterialLibrary";
@@ -55,13 +56,17 @@ import { useAttachments } from "./useAttachments";
 import type { ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
 import { useUI } from "../i18n/ui/useUI";
-import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import {
+  WorkspaceSessionProvider,
+  useOptionalWorkspaceSession,
+} from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
   sameAgentMessages,
 } from "../lib/agent-progress";
+import { historySessionHref } from "./workspace-route";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -201,7 +206,41 @@ export interface AgentLibraryTabs {
   onSeeAllMaterials?: () => void;
 }
 
-export function AgentChat({
+export function AgentChat(props: AgentChatProps) {
+  const inheritedWorkspace = useOptionalWorkspaceSession();
+  const router = useRouter();
+  const startsFromHome =
+    !inheritedWorkspace &&
+    !props.taskId &&
+    Boolean(
+      props.siteId &&
+        (props.initialPrompt?.trim() || props.initialAttachments?.length),
+    );
+  const onTaskCreated = useCallback(
+    (taskId: string, sessionId?: string) => {
+      props.onTaskCreated?.(taskId, sessionId);
+      if (startsFromHome && sessionId) {
+        router.replace(historySessionHref(sessionId));
+      }
+    },
+    [props.onTaskCreated, router, startsFromHome],
+  );
+  if (!startsFromHome) {
+    return <AgentChatInner {...props} />;
+  }
+  return (
+    <WorkspaceSessionProvider
+      siteId={props.siteId || ""}
+      appId="agent"
+      title={props.initialPrompt?.trim().slice(0, 120) || "AI 助手"}
+      resumeLatest={false}
+    >
+      <AgentChatInner {...props} onTaskCreated={onTaskCreated} />
+    </WorkspaceSessionProvider>
+  );
+}
+
+function AgentChatInner({
   siteId = "",
   initialPrompt,
   initialAttachments,
@@ -406,10 +445,12 @@ export function AgentChat({
       loadedTaskRef.current = createdTaskId;
       setLocalTaskId(createdTaskId);
       setStatus("running");
+      let createdSessionId = linkedSessionId;
       if (workspace) {
-        await workspace.bindTask(createdTaskId, prompt);
+        const bound = await workspace.bindTask(createdTaskId, prompt);
+        createdSessionId = bound?.id || linkedSessionId;
       }
-      onTaskCreated?.(createdTaskId);
+      onTaskCreated?.(createdTaskId, createdSessionId || undefined);
       void refresh(createdTaskId);
       return true;
     },
@@ -814,7 +855,7 @@ export function AgentChat({
       {agentIdentityLabel}
       {workspace.mode !== "history" && (
         <RestartDraftButton
-          label={tt("新建任务")}
+          label={tt("新建")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}
@@ -879,6 +920,20 @@ export function AgentChat({
       composerInlineSlot
     );
 
+  const openArtifactMessage = useCallback((message: AgentMessage) => {
+    setRightOpen(true);
+    setLibTab("preview");
+    setWorkspaceAction({
+      nonce: `artifact-click:${message.id}:${Date.now()}`,
+      action: {
+        version: 1,
+        tab: "preview",
+        itemId: `preview:artifact-${message.id}`,
+        url: message.meta?.artifact?.url,
+      },
+    });
+  }, []);
+
   const stream = (
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -902,6 +957,11 @@ export function AgentChat({
                 key={item.key}
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                onArtifactOpen={
+                  item.message.meta?.artifact
+                    ? () => openArtifactMessage(item.message)
+                    : undefined
+                }
                 onBranch={
                   !running &&
                   !readOnly &&

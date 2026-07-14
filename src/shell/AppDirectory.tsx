@@ -22,6 +22,7 @@ import {
 } from "../lib/taxonomy";
 import { brandColorFor, tintOf } from "../lib/brand-color";
 import { useUI } from "../i18n/ui/useUI";
+import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 
 export interface DirectoryItem {
   /** 唯一 id（agent_id / site key）。 */
@@ -172,6 +173,7 @@ export function AppDirectory({
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
   const [filter, setFilter] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
   // ── 第一层：能力大板块（宗旨 v21）。groups 存在才启用；"all" = 全部板块 ──
   const groupMode = Boolean(groups && groups.length > 0);
   const [grp, setGrp] = useState<string>("all");
@@ -323,10 +325,16 @@ export function AppDirectory({
 
       {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ──
           场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {sceneMode ? (
-          <div />
-        ) : (
+      <LibraryToolbar
+        search={filter}
+        setSearch={setFilter}
+        view={view}
+        setView={setView}
+        placeholder={tt("按名称筛选…")}
+        tt={tt}
+        actions={
+          <>
+          {!sceneMode && (
           <div className="inline-flex rounded-xl bg-stone-100 p-1">
             {modeTabs.map((m) => (
               <button
@@ -343,58 +351,25 @@ export function AppDirectory({
               </button>
             ))}
           </div>
-        )}
-        <div className="flex items-center gap-2">
+          )}
           {toolbarExtra}
-          <div className="flex items-center gap-2 rounded-xl border border-stone-200/90 bg-white/80 px-3 py-1.5 shadow-sm">
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-stone-400">
-              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
-              <path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder={tt("按名称筛选…")}
-              className="w-40 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400"
-            />
-            {filter && (
-              <button
-                type="button"
-                onClick={() => setFilter("")}
-                className="shrink-0 rounded-full px-1.5 text-[12px] text-stone-400 hover:bg-stone-100 hover:text-stone-600"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏）──
           场景模式用 sceneChips（各站自定义场景词）；否则用全局二元分类 chips。 */}
-      <div className="flex flex-wrap gap-2">
-        {(sceneMode ? sceneChips : chips).map((c) => {
-          const on = c.id === cat;
-          const n = c.id === "all" ? items.length : (sceneMode ? sceneCounts.get(c.id) : counts.get(c.id)) || 0;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCat(c.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition ${
-                on
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-stone-200 bg-white/70 text-stone-600 hover:border-stone-300 hover:bg-white"
-              }`}
-              style={on ? { background: accent } : undefined}
-            >
-              <span className="text-[14px] leading-none">{c.icon}</span>
-              <span>{tt(c.label)}</span>
-              <span className={`text-[11px] ${on ? "text-white/75" : "text-stone-400"}`}>{n}</span>
-            </button>
-          );
-        })}
-      </div>
+      <LibraryChips
+        chips={(sceneMode ? sceneChips : chips).map((chip) => ({
+          id: chip.id,
+          label: chip.label,
+        }))}
+        active={cat}
+        onChange={setCat}
+        accent={accent}
+        tt={tt}
+        className=""
+      />
       </>
       )}
 
@@ -404,29 +379,39 @@ export function AppDirectory({
       ) : visible.length === 0 && leadingCards.length === 0 ? (
         <p className="py-12 text-center text-sm text-stone-400">{emptyTextText}</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {leadingCards.map((it) => (
-            <DirectoryCard
-              key={it.id}
-              item={it}
-              accent={accent}
-              onOpen={onOpen}
-              adding={addingId === it.id}
-              variant="new"
-            />
-          ))}
-          {visible.map((it) => (
-            <DirectoryCard
-              key={it.id}
-              item={it}
-              accent={accent}
-              onOpen={onOpen}
-              onAdd={onAdd}
-              onDelete={onDelete}
-              onPrompt={onPrompt}
-              adding={addingId === it.id}
-            />
-          ))}
+        <div
+          className={
+            view === "grid"
+              ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              : "space-y-2"
+          }
+        >
+          {[...leadingCards, ...visible].map((it, index) =>
+            view === "grid" ? (
+              <DirectoryCard
+                key={it.id}
+                item={it}
+                accent={accent}
+                onOpen={onOpen}
+                onAdd={index < leadingCards.length ? undefined : onAdd}
+                onDelete={index < leadingCards.length ? undefined : onDelete}
+                onPrompt={index < leadingCards.length ? undefined : onPrompt}
+                adding={addingId === it.id}
+                variant={index < leadingCards.length ? "new" : "default"}
+              />
+            ) : (
+              <DirectoryListRow
+                key={it.id}
+                item={it}
+                accent={accent}
+                onOpen={onOpen}
+                onAdd={index < leadingCards.length ? undefined : onAdd}
+                onDelete={index < leadingCards.length ? undefined : onDelete}
+                onPrompt={index < leadingCards.length ? undefined : onPrompt}
+                adding={addingId === it.id}
+              />
+            ),
+          )}
         </div>
       )}
     </div>
@@ -595,6 +580,122 @@ function DirectoryCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function DirectoryListRow({
+  item,
+  accent,
+  onOpen,
+  onAdd,
+  onDelete,
+  onPrompt,
+  adding,
+}: {
+  item: DirectoryItem;
+  accent: string;
+  onOpen?: (item: DirectoryItem) => void;
+  onAdd?: (item: DirectoryItem) => void;
+  onDelete?: (item: DirectoryItem) => void;
+  onPrompt?: (item: DirectoryItem) => void;
+  adding?: boolean;
+}) {
+  const tt = useUI();
+  const iconColor =
+    item.logoColor || item.accent || brandColorFor(item.id || item.name);
+  const stop =
+    (action: (entry: DirectoryItem) => void) =>
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      action(item);
+    };
+  return (
+    <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={() => onOpen?.(item)}
+      onKeyDown={(event) => {
+        if (onOpen && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onOpen(item);
+        }
+      }}
+      className={`group flex min-h-20 items-center gap-3 rounded-xl border border-stone-200/80 bg-white/80 p-3 transition hover:border-stone-300 hover:bg-white ${
+        onOpen ? "cursor-pointer" : ""
+      }`}
+    >
+      {item.thumb ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.thumb}
+          alt=""
+          className="h-16 w-24 shrink-0 rounded-lg object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <span
+          className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl"
+          style={{ background: tintOf(iconColor, 0.14), color: iconColor }}
+        >
+          {item.icon || "✦"}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-[14px] font-semibold text-stone-900">
+            {tt(item.name)}
+          </p>
+          {item.badge && (
+            <span
+              className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+              style={{ background: accent }}
+            >
+              {tt(item.badge)}
+            </span>
+          )}
+        </div>
+        {(item.tagline || item.capabilities) && (
+          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-stone-500">
+            {tt(item.tagline || item.capabilities || "")}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {onPrompt && (
+          <button
+            type="button"
+            onClick={stop(onPrompt)}
+            className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500 hover:bg-stone-50"
+          >
+            {tt("编辑 prompt")}
+          </button>
+        )}
+        {onAdd && (
+          <button
+            type="button"
+            disabled={adding}
+            onClick={stop(onAdd)}
+            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${
+              item.added
+                ? "border border-stone-200 text-stone-500"
+                : "text-white"
+            }`}
+            style={item.added ? undefined : { background: accent }}
+          >
+            {adding ? "…" : item.added ? tt("已加入") : tt("加入工作台")}
+          </button>
+        )}
+        {onDelete && item.deletable && (
+          <button
+            type="button"
+            onClick={stop(onDelete)}
+            className="rounded-lg px-2 py-1.5 text-[11px] text-stone-400 hover:bg-rose-50 hover:text-rose-600"
+          >
+            {tt("删除")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

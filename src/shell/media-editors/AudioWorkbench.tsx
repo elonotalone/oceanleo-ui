@@ -56,7 +56,7 @@ export interface AudioWorkbenchState {
   undo: () => void;
   redo: () => void;
   download: () => void;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
 }
 
 const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
@@ -483,9 +483,9 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<boolean> => {
     const source = bufferRef.current;
-    if (!source || savingRef.current) return;
+    if (!source || savingRef.current) return false;
     const savingRevision = revisionRef.current;
     savingRef.current = true;
     setSaving(true);
@@ -512,8 +512,10 @@ export function useAudioWorkbench(
       }
       setSavedUrl(url);
       if (revisionRef.current === savingRevision) setDirty(false);
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("保存到我的库失败"));
+      return false;
     } finally {
       savingRef.current = false;
       setSaving(false);

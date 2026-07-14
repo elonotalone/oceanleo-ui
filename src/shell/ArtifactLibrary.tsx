@@ -190,16 +190,17 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
   return (
-    <div className="flex h-[100dvh] min-h-0 flex-col px-8 pb-6 pt-16">
+    <div className="mx-auto flex h-[100dvh] min-h-0 w-full max-w-6xl flex-col px-6 py-8">
       <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-neutral-900">
         {tt("我的库")}
       </h1>
       <p className="mt-1 shrink-0 text-[13px] text-neutral-500">
         {tt("作品、网站、任务交付物和上传文件统一保存在这里。")}
       </p>
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden">
         <MyLibrary
           accent={props.accent}
+          plain
           category={FILTER_CATEGORY[filter]}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={(category) =>

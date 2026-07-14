@@ -31,7 +31,7 @@ export async function fetchOfficeConfig(input: {
   if (!token) return { ok: false, error: "未登录" };
   let response: Response;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(() => controller.abort(), 30_000);
   try {
     response = await fetch(`${GATEWAY_BASE}/v1/office/config`, {
       method: "POST",
@@ -81,32 +81,47 @@ export async function fetchOfficeConfig(input: {
 
 let scriptPromise: Promise<void> | null = null;
 
-/** 加载 Document Server 的 api.js（幂等）。 */
-export function loadOfficeScript(documentServerUrl: string): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("SSR"));
-  const w = window as unknown as { DocsAPI?: unknown };
-  if (w.DocsAPI) return Promise.resolve();
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = new Promise((resolve, reject) => {
+function loadOfficeScriptOnce(documentServerUrl: string): Promise<void> {
+  return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = `${documentServerUrl.replace(/\/$/, "")}/web-apps/apps/api/documents/api.js`;
     script.async = true;
     const timeout = window.setTimeout(() => {
-      scriptPromise = null;
       script.remove();
       reject(new Error("OnlyOffice 脚本加载超时"));
-    }, 15_000);
+    }, 30_000);
     script.onload = () => {
       window.clearTimeout(timeout);
       resolve();
     };
     script.onerror = () => {
       window.clearTimeout(timeout);
-      scriptPromise = null;
       script.remove();
       reject(new Error("OnlyOffice 脚本加载失败"));
     };
     document.head.appendChild(script);
+  });
+}
+
+/** 加载 Document Server 的 api.js（幂等）。 */
+export function loadOfficeScript(documentServerUrl: string): Promise<void> {
+  if (typeof window === "undefined") return Promise.reject(new Error("SSR"));
+  const w = window as unknown as { DocsAPI?: unknown };
+  if (w.DocsAPI) return Promise.resolve();
+  if (scriptPromise) return scriptPromise;
+  scriptPromise = (async () => {
+    try {
+      await loadOfficeScriptOnce(documentServerUrl);
+    } catch {
+      // A mobile/CN route can stall while the browser is opening the first
+      // cross-origin connection. One clean retry avoids leaving every later
+      // editor mount pinned to a rejected global promise.
+      await new Promise((resolve) => window.setTimeout(resolve, 400));
+      await loadOfficeScriptOnce(documentServerUrl);
+    }
+  })().catch((error) => {
+    scriptPromise = null;
+    throw error;
   });
   return scriptPromise;
 }

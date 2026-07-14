@@ -312,8 +312,8 @@ export function useFabricImageEditor(
       );
   }, [exportFormat, item.title, makeExportBlob]);
 
-  const save = useCallback(async () => {
-    if (savingRef.current) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return false;
     const savingRevision = revisionRef.current;
     savingRef.current = true;
     setSaving(true);
@@ -330,7 +330,7 @@ export function useFabricImageEditor(
           registerFailed: "图片已上传，但登记到我的库失败",
         },
       );
-      if (!aliveRef.current) return;
+      if (!aliveRef.current) return false;
       setSavedUrl(url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
@@ -339,10 +339,12 @@ export function useFabricImageEditor(
         setNotice("已保存一个版本；之后的修改仍未保存");
       }
       optionsRef.current.onSaved?.(url);
+      return true;
     } catch (caught) {
       if (aliveRef.current && !isAbortError(caught)) {
         setError(caught instanceof Error ? caught.message : "图片保存失败");
       }
+      return false;
     } finally {
       savingRef.current = false;
       if (aliveRef.current) setSaving(false);

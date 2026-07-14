@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -23,6 +23,33 @@ export function EmbeddedRoute({
   const [saveRequestNonce, setSaveRequestNonce] = useState(0);
   const [versionRevision, setVersionRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const saveResolverRef = useRef<((ok: boolean) => void) | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const settleSave = useCallback((ok: boolean) => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const resolve = saveResolverRef.current;
+    saveResolverRef.current = null;
+    resolve?.(ok);
+  }, []);
+  useEffect(
+    () => () => {
+      settleSave(false);
+    },
+    [settleSave],
+  );
+  const saveBeforeNewConversation = useCallback(
+    () =>
+      new Promise<boolean>((resolve) => {
+        settleSave(false);
+        saveResolverRef.current = resolve;
+        setSaveRequestNonce((value) => value + 1);
+        saveTimerRef.current = window.setTimeout(() => settleSave(false), 25_000);
+      }),
+    [settleSave],
+  );
   const requestEditorClose = useCallback(() => {
     if (
       dirty &&
@@ -113,12 +140,15 @@ export function EmbeddedRoute({
           extraParams={extraParams}
           onCloseRequest={requestEditorClose}
           onDirtyChange={setDirty}
+          onSaveResult={settleSave}
           saveRequestNonce={saveRequestNonce}
           onVersionSaved={() => setVersionRevision((value) => value + 1)}
         />
       }
       versionRevision={versionRevision}
       editorDirty={dirty}
+      editorUsesOwnControls
+      onBeforeNewConversation={saveBeforeNewConversation}
       onClose={onClose}
     />
   );

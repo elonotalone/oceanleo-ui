@@ -82,6 +82,7 @@ export interface MyLibraryProps {
   category?: string;
   onCategoryChange?: (category: string) => void;
   onlyFavorites?: boolean;
+  plain?: boolean;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -95,6 +96,7 @@ export function MyLibrary({
   category,
   onCategoryChange,
   onlyFavorites = false,
+  plain = false,
 }: MyLibraryProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -186,6 +188,7 @@ export function MyLibrary({
             : "生成作品、网站或上传文件后，它们会自动出现在这里。"
       }
       className={className}
+      plain={plain}
     />
   );
 }

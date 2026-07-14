@@ -1,18 +1,19 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — RestartDraftButton：操作台「新建任务」按钮
+// @oceanleo/ui — RestartDraftButton：操作台「新建」按钮
 // ----------------------------------------------------------------------------
 // doctrine 2026-07-09。操作台默认自动恢复上次草稿；当用户想丢弃续编、从头开始时点它。
 // 单击即执行：先冲刷最新 snapshot，再归档整份 AppSession，最后 remount 干净 runtime。
-// 2026-07-12：用户可见名改为「新建任务」；hover 仍明确说明会先保存当前工作。
-// 保存后刷新成干净工作台。任务详情原地续编，
-// 不显示本按钮，也绝不再次归档/分叉。
+// 保存后刷新成干净工作台。工作台已切到 `/history/<sessionId>` 时仍可显式「新建」：
+// 旧 session 原地保存，新 session 获得新的唯一 URL。
 // ============================================================================
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import { historySessionHref } from "./workspace-route";
 
 export interface RestartDraftButtonProps {
   /**
@@ -22,7 +23,7 @@ export interface RestartDraftButtonProps {
   onBeforeRestart?: () => boolean | Promise<boolean>;
   /** Host cleanup after the aggregate was archived. */
   onRestart?: () => void | Promise<void>;
-  /** 自定义文案（默认「新建任务」）。 */
+  /** 自定义文案（默认「新建」）。 */
   label?: string;
   className?: string;
 }
@@ -34,6 +35,7 @@ export function RestartDraftButton({
   className,
 }: RestartDraftButtonProps) {
   const tt = useUI();
+  const router = useRouter();
   const workspace = useOptionalWorkspaceSession();
   const [busy, setBusy] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<
@@ -47,9 +49,6 @@ export function RestartDraftButton({
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
-  // My Tasks is edited in place. Hiding here as well as at the caller prevents
-  // a future standalone use from accidentally forking/archiving a saved task.
-  if (workspace?.mode === "history") return null;
   return (
     <button
       type="button"
@@ -65,6 +64,22 @@ export function RestartDraftButton({
             if (flushed === false) return;
             // 先保存聚合会话，成功后才清宿主 state/旧草稿；这样刷新一定会
             // 建立新 live cache，而刚保存的任务保留在「我的任务」中。
+            if (workspace?.mode === "history") {
+              const next = await workspace.startNew({
+                title: workspace.appTitle,
+                snapshot: {},
+                schemaVersion: 1,
+              });
+              if (!next) return;
+              await onRestart?.();
+              router.replace(historySessionHref(next.id));
+              setLocalFeedback("reset");
+              timer.current = setTimeout(
+                () => setLocalFeedback(null),
+                2600,
+              );
+              return;
+            }
             const restartResult = workspace
               ? await workspace.restart()
               : "empty";
@@ -102,7 +117,7 @@ export function RestartDraftButton({
           ? tt("已保存到我的任务")
           : feedback === "reset"
             ? tt("已刷新")
-            : label ?? tt("新建任务")}
+            : label ?? tt("新建")}
     </button>
   );
 }

@@ -63,6 +63,7 @@ export function WorkspaceSessionProvider({
   title: sessionTitle = "",
   sessionId: controlledSessionId,
   onSessionIdChange,
+  onTaskBound,
   mode = "workspace",
   initialSession = null,
   resumeLatest,
@@ -605,10 +606,13 @@ export function WorkspaceSessionProvider({
       const current = sessionRef.current;
       if (isWorkspaceSessionReadOnly(mode, current)) return current;
       const active = await touch(title);
-      if (active) setLinkedTaskId(taskId);
+      if (active) {
+        setLinkedTaskId(taskId);
+        if (taskId) await onTaskBound?.(active.id, taskId);
+      }
       return active;
     },
-    [mode, touch],
+    [mode, onTaskBound, touch],
   );
 
   const adoptSession = useCallback(
@@ -724,6 +728,49 @@ export function WorkspaceSessionProvider({
     return result;
   }, [archive]);
 
+  const startNew = useCallback(
+    async (
+      options: EnsureWorkspaceSessionOptions = {},
+    ): Promise<AppSession | null> =>
+      enqueueMutation(async () => {
+        if (!site || !app) return null;
+        const current = sessionRef.current;
+        if (current && !isArchivedAppSession(current)) {
+          const archived = await archiveAppSession(current.id);
+          if (!archived.ok) {
+            if (archived.status !== 409) {
+              reportFailure(archived.status, archived.error);
+              return null;
+            }
+            const latest = await getAppSession(current.id);
+            if (!latest.ok || !isArchivedAppSession(latest.data)) {
+              reportFailure(latest.status, latest.error || archived.error);
+              return null;
+            }
+          }
+        }
+        const result = await ensureAppSession({
+          siteId: site,
+          appId: app,
+          title: options.title || appTitle,
+          snapshot: options.snapshot,
+          schemaVersion: options.schemaVersion,
+        });
+        if (!result.ok || !result.data || isArchivedAppSession(result.data)) {
+          reportFailure(
+            result.status,
+            result.error || "无法创建新的工作会话",
+          );
+          return null;
+        }
+        setLinkedTaskId(null);
+        applySession(result.data);
+        setRuntimeEpoch((value) => value + 1);
+        return result.data;
+      }),
+    [app, appTitle, applySession, enqueueMutation, reportFailure, site],
+  );
+
   const value = useMemo<WorkspaceSessionContextValue>(
     () => ({
       sessionId: session?.id ?? effectiveSessionId,
@@ -747,6 +794,7 @@ export function WorkspaceSessionProvider({
       recordArtifact,
       archive,
       restart,
+      startNew,
       clearConflict,
       reload,
     }),
@@ -771,6 +819,7 @@ export function WorkspaceSessionProvider({
       recordArtifact,
       archive,
       restart,
+      startNew,
       clearConflict,
       reload,
     ],

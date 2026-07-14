@@ -79,6 +79,32 @@ test("advanced Agent follows the current task instead of forking history", () =>
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
 
+test("advanced work is session-backed, deep-linkable and starts a fresh saved conversation", () => {
+  const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
+  const panel = source("../src/shell/AdvancedAgentPanel.tsx");
+  const history = source("../src/shell/HistoryMasterDetail.tsx");
+  const session = source("../src/shell/WorkspaceSession.tsx");
+  assert.match(workbench, /advancedSessionAppId/);
+  assert.match(workbench, /historySessionHref\(sessionId\)/);
+  assert.match(panel, /tt\("新建对话"\)/);
+  assert.match(panel, /advancedSession\.startNew\(\)/);
+  assert.match(history, /advancedItemFromSession/);
+  assert.match(history, /<AdvancedContentWorkbench/);
+  assert.match(session, /const startNew = useCallback/);
+});
+
+test("advanced split drag captures the pointer and embedded editors stay two-column", () => {
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const protocol = source("../src/shell/editor-protocol.ts");
+  const embed = source("../src/shell/workbench-embed.tsx");
+  assert.match(shell, /setPointerCapture/);
+  assert.match(shell, /requestAnimationFrame/);
+  assert.match(shell, /cursor-col-resize bg-transparent/);
+  assert.match(shell, /editorUsesOwnControls/);
+  assert.match(protocol, /set-host-layout/);
+  assert.match(embed, /sidePanelVisible/);
+});
+
 test("code-backed website starters reach the visual editor without a fake project id", () => {
   const routes = source("../src/shell/workbench-routes.ts");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
@@ -97,7 +123,8 @@ test("late catalog categories stay behind More and editor loads have hard deadli
   assert.match(library, /primaryCategoryIds/);
   assert.match(library, /setCategoriesExpanded\(\(value\) => !value\)/);
   assert.match(library, /tt\(categoriesExpanded \? "收起" : "更多"\)/);
-  assert.match(officeClient, /controller\.abort\(\), 15_000/);
+  assert.match(officeClient, /controller\.abort\(\), 30_000/);
+  assert.match(officeClient, /loadOfficeScriptOnce/);
   assert.match(officeClient, /OnlyOffice 脚本加载超时/);
   assert.match(officeWorkbench, /Office 编辑器加载超时，请重试或打开原文件/);
   assert.match(officeWorkbench, /dirtySinceSaveRef\.current/);

@@ -230,7 +230,7 @@ export interface FabricImageEditorState {
   exportScale: number;
   setExportScale: (scale: number) => void;
   download: () => void;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
   // ---- AI 编辑 ----
   aiAvailable: boolean;
   aiPrompt: string;

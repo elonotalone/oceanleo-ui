@@ -34,6 +34,7 @@ export function VideoTimelineRoute({
       editorStage={<VideoTimelineStage state={editor} accent={accent} />}
       editorStatus={editor.error || editor.notice}
       editorDirty={editor.dirty}
+      onBeforeNewConversation={editor.saveDraft}
       versionRevision={`${editor.draftSavedUrl}|${editor.exportedUrl}`}
       onClose={onClose}
     />

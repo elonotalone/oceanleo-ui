@@ -39,6 +39,7 @@ export function RichDocRoute({
             : "")
       }
       editorDirty={editor.dirty}
+      onBeforeNewConversation={editor.save}
       versionRevision={editor.savedUrl}
       onClose={onClose}
     />

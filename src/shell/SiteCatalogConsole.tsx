@@ -52,6 +52,7 @@ import {
 } from "./WorkspaceSession";
 import { findLinkedAgentTaskId } from "./workspace-session-task";
 import {
+  historySessionHref,
   historySessionIdFromPath,
   workspaceAppHref,
   workspaceAppIdFromPath,
@@ -223,6 +224,23 @@ export function SiteCatalogConsole({
       beforeLeaveRef.current = callback || (async () => true);
     },
     [],
+  );
+  const taskRouteInFlightRef = useRef("");
+  const handleTaskBound = useCallback(
+    async (sessionId: string) => {
+      if (
+        historySessionId ||
+        !sessionId ||
+        taskRouteInFlightRef.current === sessionId
+      ) {
+        return;
+      }
+      taskRouteInFlightRef.current = sessionId;
+      const flushed = await beforeLeaveRef.current();
+      if (flushed) router.replace(historySessionHref(sessionId));
+      else taskRouteInFlightRef.current = "";
+    },
+    [historySessionId, router],
   );
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const inheritedHistorySession =
@@ -668,6 +686,7 @@ export function SiteCatalogConsole({
       siteId={siteId}
       appId={activeAppId}
       title={activeAppTitle}
+      onTaskBound={handleTaskBound}
       sessionId={historySessionId || undefined}
       initialSession={effectiveHistorySession}
       mode={historySessionId ? "history" : embed ? "embed" : "workspace"}

@@ -50,6 +50,11 @@ import {
   historySessionIdFromPath,
 } from "./workspace-route";
 import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import {
+  advancedItemFromSession,
+  advancedSnapshotFromSession,
+} from "./advanced-session";
 import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
@@ -699,6 +704,34 @@ export function HistoryDetail({
           loaded.fallbackTask?.task.id,
         )
       : null;
+  const advancedItem = advancedItemFromSession(runtimeSession);
+  const advancedSnapshot = advancedSnapshotFromSession(runtimeSession);
+  if (runtimeSession && advancedItem && advancedSnapshot) {
+    const currentSession = runtimeSession;
+    return (
+      <WorkspaceSessionProvider
+        key={currentSession.id}
+        siteId={currentSession.site_id}
+        appId={currentSession.app_id}
+        sessionId={currentSession.id}
+        initialSession={currentSession}
+        mode="history"
+        resumeLatest={false}
+      >
+        <AdvancedContentWorkbench
+          item={advancedItem}
+          previewContent={advancedItem.content}
+          linkUrl={advancedItem.url}
+          taskId={
+            currentSession.task_id || advancedSnapshot.task_id || null
+          }
+          siteId={currentSession.site_id}
+          accent={accent}
+          onClose={() => router.push("/history")}
+        />
+      </WorkspaceSessionProvider>
+    );
+  }
   if (runtimeSession && isRestorableAppSession(runtimeSession)) {
     const currentSession = runtimeSession;
     if (!renderWorkspace) {

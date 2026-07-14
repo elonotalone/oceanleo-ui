@@ -125,8 +125,10 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
   );
   assert.match(
     agentChatSource,
-    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建任务"\)\}/,
+    /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建"\)\}/,
   );
+  assert.match(agentChatSource, /appId="agent"/);
+  assert.match(agentChatSource, /router\.replace\(historySessionHref\(sessionId\)\)/);
   assert.doesNotMatch(agentChatSource, /saveSnapshot\([\s\S]*?messages/);
 });
 
