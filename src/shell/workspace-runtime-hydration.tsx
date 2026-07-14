@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -242,6 +243,24 @@ export function WorkspaceRuntimeBoundary({
     },
     [onRegisterBeforeLeave],
   );
+  useEffect(() => {
+    if (workspace.availability === "loading") return;
+    // App-owned hydration is best-effort. A broken child effect used to keep
+    // the whole workspace invisible forever even though its controls had
+    // already mounted. Reveal the runtime after a bounded grace period.
+    const timer = window.setTimeout(() => {
+      setState((previous) =>
+        previous.identity === identity
+          ? {
+              ...previous,
+              appInitialized: true,
+              runtimeReady: true,
+            }
+          : previous,
+      );
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [identity, workspace.availability]);
   const value = useMemo<RuntimeHydrationValue>(
     () => ({
       identity: current.identity,

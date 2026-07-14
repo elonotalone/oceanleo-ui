@@ -266,7 +266,9 @@ export function AdvancedWorkbenchShell({
   useEffect(() => {
     if (activeTool !== "versions") return;
     let alive = true;
-    void getDatabaseOverview({ limit: 300 }).then((result) => {
+    // The gateway contract caps overview pages at 200. Asking for 300 returned
+    // 422 and made the Versions tool look broken on every editor.
+    void getDatabaseOverview({ limit: 200 }).then((result) => {
       if (!alive || !result.ok) return;
       const related = (result.data?.works || []).filter((work) => {
         const parent = String(work.meta?.parent_asset_id || "");
@@ -471,6 +473,15 @@ export function AdvancedWorkbenchShell({
 
   if (!portalReady) return null;
 
+  // Route adapters already render an in-canvas loading state. Raw machine
+  // states from third-party editors ("loading" / "ready") are not useful in
+  // the title bar and previously remained there after usable content painted.
+  const visibleEditorStatus = ["loading", "ready"].includes(
+    editorStatus.trim().toLowerCase(),
+  )
+    ? ""
+    : editorStatus;
+
   return createPortal(
     <div
       ref={rootRef}
@@ -494,9 +505,9 @@ export function AdvancedWorkbenchShell({
             {tt("高级功能")} · {tt(libraryKindLabel(item.kind))}
           </p>
         </div>
-        {(editorStatus || copyState) && (
+        {(visibleEditorStatus || copyState) && (
           <span className="hidden max-w-[28rem] truncate text-[11px] text-stone-400 md:block">
-            {editorStatus || copyState}
+            {visibleEditorStatus || copyState}
           </span>
         )}
         <button

@@ -63,6 +63,7 @@ interface PlatformAsset {
   scene_tags?: string[];
   format?: string;
   source?: string;
+  oss_key?: string;
 }
 
 interface PlatformSearchResponse {
@@ -184,9 +185,18 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
 function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
   const kind = TYPE_TO_KIND[asset.type] || "file";
   const rawId = asset.id.replace(/^library:/, "");
+  const starterMatch =
+    kind === "website"
+      ? /^assets\/workspace-starters\/website\/([a-z0-9-]+)\.html$/i.exec(
+          asset.oss_key || "",
+        )
+      : null;
+  const starterId = starterMatch?.[1] || "";
   const htmlViewer =
-    kind === "website" && rawId
-      ? `${GATEWAY}/v1/assets/library/${encodeURIComponent(rawId)}/view`
+    starterId
+      ? `${GATEWAY}/v1/assets/library/starters/${encodeURIComponent(starterId)}/view`
+      : kind === "website" && rawId
+        ? `${GATEWAY}/v1/assets/library/${encodeURIComponent(rawId)}/view`
       : "";
   const item: LibraryItem = {
     key: `asset:${asset.id}`,
@@ -209,6 +219,7 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       tags: asset.tags || [],
       scene_tags: asset.scene_tags || [],
       format: asset.format || "",
+      starter_id: starterId,
       asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
     },
   };
@@ -325,14 +336,24 @@ export function MaterialLibrary({
     return () => controller.abort();
   }, [debounced, fetchCurated]);
 
-  const entries = useMemo(
+  const localEntries = useMemo(
+    () => materials.map(materialToEntry),
+    [materials],
+  );
+  const primaryCategoryIds = useMemo(
     () =>
-      mergeEntries([
-        featuredEntries,
-        materials.map(materialToEntry),
-        remote,
-      ]),
-    [featuredEntries, materials, remote],
+      [
+        ...new Set(
+          [...featuredEntries, ...localEntries]
+            .map((entry) => String(entry.category || "").trim())
+            .filter(Boolean),
+        ),
+      ],
+    [featuredEntries, localEntries],
+  );
+  const entries = useMemo(
+    () => mergeEntries([featuredEntries, localEntries, remote]),
+    [featuredEntries, localEntries, remote],
   );
 
   const seeAll = hideSeeAll ? null : (
@@ -365,6 +386,7 @@ export function MaterialLibrary({
       siteId={siteId}
       query={query}
       onQueryChange={setQuery}
+      primaryCategoryIds={primaryCategoryIds}
       toolbarActions={seeAll}
       searchPlaceholder="搜索 PPT、网站、图片、表格、视频或工作流"
       emptyTitle={loading ? "正在加载精选素材…" : "暂无匹配素材"}

@@ -49,6 +49,7 @@ export function useOfficeWorkbench(
   const onCloseApprovedRef = useRef(onCloseApproved);
   const mountGenerationRef = useRef(0);
   const dirtySinceSaveRef = useRef(false);
+  const readyTimerRef = useRef<number | null>(null);
   const hostIdRef = useRef(
     `oo-host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   );
@@ -63,6 +64,10 @@ export function useOfficeWorkbench(
 
   const mount = useCallback(async () => {
     const generation = ++mountGenerationRef.current;
+    if (readyTimerRef.current !== null) {
+      window.clearTimeout(readyTimerRef.current);
+      readyTimerRef.current = null;
+    }
     editorRef.current?.destroyEditor();
     editorRef.current = null;
     dirtySinceSaveRef.current = false;
@@ -110,7 +115,12 @@ export function useOfficeWorkbench(
         height: "100%",
         events: {
           onDocumentReady: () => {
-            if (generation === mountGenerationRef.current) setState("ready");
+            if (generation !== mountGenerationRef.current) return;
+            if (readyTimerRef.current !== null) {
+              window.clearTimeout(readyTimerRef.current);
+              readyTimerRef.current = null;
+            }
+            setState("ready");
           },
           onDocumentStateChange: (event: { data?: boolean }) => {
             if (generation !== mountGenerationRef.current) return;
@@ -130,6 +140,10 @@ export function useOfficeWorkbench(
           },
           onError: (event: { data?: { errorDescription?: string } }) => {
             if (generation !== mountGenerationRef.current) return;
+            if (readyTimerRef.current !== null) {
+              window.clearTimeout(readyTimerRef.current);
+              readyTimerRef.current = null;
+            }
             setError(String(event?.data?.errorDescription || tt("编辑器发生错误")));
             setState("error");
           },
@@ -140,8 +154,17 @@ export function useOfficeWorkbench(
         },
       };
       editorRef.current = new docsApi.DocEditor(hostIdRef.current, config);
+      readyTimerRef.current = window.setTimeout(() => {
+        if (generation !== mountGenerationRef.current) return;
+        setError(tt("Office 编辑器加载超时，请重试或打开原文件"));
+        setState("error");
+      }, 30_000);
     } catch (caught) {
       if (generation !== mountGenerationRef.current) return;
+      if (readyTimerRef.current !== null) {
+        window.clearTimeout(readyTimerRef.current);
+        readyTimerRef.current = null;
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
       setState("error");
     }
@@ -159,6 +182,10 @@ export function useOfficeWorkbench(
     void mount();
     return () => {
       mountGenerationRef.current += 1;
+      if (readyTimerRef.current !== null) {
+        window.clearTimeout(readyTimerRef.current);
+        readyTimerRef.current = null;
+      }
       editorRef.current?.destroyEditor();
       editorRef.current = null;
     };
@@ -172,9 +199,11 @@ export function useOfficeWorkbench(
     saveCount,
     dirty,
     requestClose: () => {
-      if (editorRef.current?.requestClose) {
-        editorRef.current.requestClose();
-      } else if (
+      // OnlyOffice's requestClose callback never arrives while the document
+      // itself is stuck downloading. The shell's Back button must still work;
+      // use our tracked dirty state as the close guard and destroy the editor
+      // during unmount.
+      if (
         !dirtySinceSaveRef.current ||
         window.confirm(tt("文档还有未同步修改，确定关闭编辑器吗？"))
       ) {

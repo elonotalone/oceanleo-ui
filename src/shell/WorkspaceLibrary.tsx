@@ -43,6 +43,8 @@ export interface WorkspaceLibraryProps {
   onQueryChange?: (query: string) => void;
   category?: string;
   onCategoryChange?: (category: string) => void;
+  /** Categories kept visible before the user expands the remote catalog. */
+  primaryCategoryIds?: string[];
   toolbarActions?: ReactNode;
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
@@ -106,6 +108,7 @@ export function WorkspaceLibrary({
   onQueryChange,
   category: controlledCategory,
   onCategoryChange,
+  primaryCategoryIds,
   toolbarActions,
   taskId,
   siteId = "",
@@ -132,6 +135,7 @@ export function WorkspaceLibrary({
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
   const categories = useMemo(() => {
@@ -145,6 +149,29 @@ export function WorkspaceLibrary({
       ...[...seen].map((value) => ({ id: value, label: value })),
     ];
   }, [entries]);
+  const { visibleCategories, overflowCategoryCount } = useMemo(() => {
+    if (!primaryCategoryIds) {
+      return { visibleCategories: categories, overflowCategoryCount: 0 };
+    }
+    const primary = new Set(primaryCategoryIds);
+    const head = categories.filter(
+      (item) => item.id === "all" || primary.has(item.id),
+    );
+    const overflow = categories.filter(
+      (item) => item.id !== "all" && !primary.has(item.id),
+    );
+    if (categoriesExpanded) {
+      return {
+        visibleCategories: [...head, ...overflow],
+        overflowCategoryCount: overflow.length,
+      };
+    }
+    const selectedOverflow = overflow.find((item) => item.id === category);
+    return {
+      visibleCategories: selectedOverflow ? [...head, selectedOverflow] : head,
+      overflowCategoryCount: overflow.length,
+    };
+  }, [categories, categoriesExpanded, category, primaryCategoryIds]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
@@ -367,12 +394,25 @@ export function WorkspaceLibrary({
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
         {categories.length > 1 && (
           <LibraryChips
-            chips={categories}
+            chips={visibleCategories}
             active={category}
             onChange={setCategory}
             accent={accent}
             tt={tt}
             className="mb-3"
+            trailing={
+              overflowCategoryCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setCategoriesExpanded((value) => !value)}
+                  className="rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-[13px] text-stone-600 transition hover:bg-stone-50"
+                  aria-expanded={categoriesExpanded}
+                >
+                  {tt(categoriesExpanded ? "收起" : "更多")}
+                  {!categoriesExpanded ? ` +${overflowCategoryCount}` : ""}
+                </button>
+              ) : undefined
+            }
           />
         )}
         {filtered.length === 0 ? (
@@ -429,18 +469,13 @@ function WorkspaceCard({
       className="group overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-        {entry.thumbUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={entry.thumbUrl}
-            alt=""
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <div className="grid h-full place-items-center">
-            <WorkspaceKindIcon kind={kind} accent={accent} />
-          </div>
-        )}
+        <WorkspaceThumbnail
+          url={entry.thumbUrl}
+          alt={entry.title}
+          kind={kind}
+          accent={accent}
+          imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+        />
         <span className="absolute bottom-2 left-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 shadow-sm backdrop-blur">
           {tt(KIND_LABELS[kind] || entry.category || "内容")}
         </span>
@@ -475,14 +510,14 @@ function WorkspaceListRow({
       className="flex w-full items-center gap-3 rounded-xl border border-stone-200 bg-white p-2 text-left transition hover:border-stone-300 hover:bg-stone-50"
     >
       <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
-        {entry.thumbUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.thumbUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <div className="grid h-full place-items-center text-[11px] font-medium text-stone-400">
-            {tt(KIND_LABELS[kind] || "内容")}
-          </div>
-        )}
+        <WorkspaceThumbnail
+          url={entry.thumbUrl}
+          alt={entry.title}
+          kind={kind}
+          accent="#78716c"
+          imageClassName="h-full w-full object-cover"
+          compact
+        />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12px] font-semibold text-stone-800">
@@ -516,6 +551,51 @@ function WorkspaceKindIcon({
     >
       {tt(KIND_LABELS[kind] || "内容")}
     </div>
+  );
+}
+
+function WorkspaceThumbnail({
+  url,
+  alt,
+  kind,
+  accent,
+  imageClassName,
+  compact = false,
+}: {
+  url?: string;
+  alt: string;
+  kind: LibraryKind;
+  accent: string;
+  imageClassName: string;
+  compact?: boolean;
+}) {
+  const tt = useUI();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  if (!url || failed) {
+    return (
+      <div className="grid h-full place-items-center">
+        {compact ? (
+          <span className="text-[10px] font-medium text-stone-400">
+            {tt(KIND_LABELS[kind] || "内容")}
+          </span>
+        ) : (
+          <WorkspaceKindIcon kind={kind} accent={accent} />
+        )}
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className={imageClassName}
+    />
   );
 }
 

@@ -119,6 +119,7 @@ export interface LibraryChipsProps {
   accent?: string;
   tt: TT;
   className?: string;
+  trailing?: ReactNode;
 }
 
 /** 统一「分类 chips 行」：选中态用站点 accent 填充。三分区共用 → 分类样式一致。 */
@@ -129,6 +130,7 @@ export function LibraryChips({
   accent = "#4f46e5",
   tt,
   className = "mt-4",
+  trailing,
 }: LibraryChipsProps) {
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
@@ -148,6 +150,7 @@ export function LibraryChips({
           </button>
         );
       })}
+      {trailing}
     </div>
   );
 }

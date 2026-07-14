@@ -157,6 +157,26 @@ interface LegacyHistoryTaskRef {
   appLabel: string;
 }
 
+/** Session persistence must never turn the visible Back control into a dead button. */
+export async function beforeLeaveWithDeadline(
+  callback: () => Promise<boolean>,
+  timeoutMs = 1_200,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(callback)
+        .catch(() => false),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * 把一批成品 app 渲染成完整 workspace（目录 + 场景分类器 + 共享操作台 + 三板块导航）。
  */
@@ -401,7 +421,7 @@ export function SiteCatalogConsole({
   const changeApp = useCallback(
     async (id: string) => {
       if (activeAppId && id !== activeAppId) {
-        const saved = await beforeLeaveRef.current();
+        const saved = await beforeLeaveWithDeadline(beforeLeaveRef.current);
         if (!saved) return;
       }
       if (embed) {

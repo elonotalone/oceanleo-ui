@@ -95,7 +95,19 @@ async function sessionRequest<T>(
   suffix: string,
   init?: RequestInit,
 ): Promise<AgentApiResult<T>> {
-  return authed<T>(`${APP_SESSION_API_BASE}${suffix}`, init);
+  if (init?.signal) {
+    return authed<T>(`${APP_SESSION_API_BASE}${suffix}`, init);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    return await authed<T>(`${APP_SESSION_API_BASE}${suffix}`, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function jsonMutation(

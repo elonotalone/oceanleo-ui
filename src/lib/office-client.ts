@@ -30,6 +30,8 @@ export async function fetchOfficeConfig(input: {
   const token = await accessToken();
   if (!token) return { ok: false, error: "未登录" };
   let response: Response;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
   try {
     response = await fetch(`${GATEWAY_BASE}/v1/office/config`, {
       method: "POST",
@@ -45,9 +47,18 @@ export async function fetchOfficeConfig(input: {
         item_id: input.itemId || "",
       }),
       cache: "no-store",
+      signal: controller.signal,
     });
-  } catch {
-    return { ok: false, error: "网络错误：无法连接网关" };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof DOMException && error.name === "AbortError"
+          ? "获取 Office 配置超时，请重试"
+          : "网络错误：无法连接网关",
+    };
+  } finally {
+    window.clearTimeout(timeout);
   }
   let data: Record<string, unknown> | null = null;
   try {
@@ -80,9 +91,19 @@ export function loadOfficeScript(documentServerUrl: string): Promise<void> {
     const script = document.createElement("script");
     script.src = `${documentServerUrl.replace(/\/$/, "")}/web-apps/apps/api/documents/api.js`;
     script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
+    const timeout = window.setTimeout(() => {
       scriptPromise = null;
+      script.remove();
+      reject(new Error("OnlyOffice 脚本加载超时"));
+    }, 15_000);
+    script.onload = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      scriptPromise = null;
+      script.remove();
       reject(new Error("OnlyOffice 脚本加载失败"));
     };
     document.head.appendChild(script);

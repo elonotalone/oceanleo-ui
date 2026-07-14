@@ -79,6 +79,30 @@ test("advanced Agent follows the current task instead of forking history", () =>
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
 
+test("code-backed website starters reach the visual editor without a fake project id", () => {
+  const routes = source("../src/shell/workbench-routes.ts");
+  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const materials = source("../src/shell/MaterialLibrary.tsx");
+  assert.match(routes, /if \(!projectId && !starterId\) return \{ type: "none" \}/);
+  assert.match(embedded, /starterId \? \{ starterId \} : undefined/);
+  assert.match(materials, /workspace-starters/);
+  assert.match(materials, /starter_id: starterId/);
+  assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
+});
+
+test("late catalog categories stay behind More and editor loads have hard deadlines", () => {
+  const library = source("../src/shell/WorkspaceLibrary.tsx");
+  const officeClient = source("../src/lib/office-client.ts");
+  const officeWorkbench = source("../src/shell/office-editor/OfficeWorkbench.tsx");
+  assert.match(library, /primaryCategoryIds/);
+  assert.match(library, /setCategoriesExpanded\(\(value\) => !value\)/);
+  assert.match(library, /tt\(categoriesExpanded \? "收起" : "更多"\)/);
+  assert.match(officeClient, /controller\.abort\(\), 15_000/);
+  assert.match(officeClient, /OnlyOffice 脚本加载超时/);
+  assert.match(officeWorkbench, /Office 编辑器加载超时，请重试或打开原文件/);
+  assert.match(officeWorkbench, /dirtySinceSaveRef\.current/);
+});
+
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");

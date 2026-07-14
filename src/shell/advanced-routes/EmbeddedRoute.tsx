@@ -43,12 +43,23 @@ export function EmbeddedRoute({
       ),
     [item.meta],
   );
+  const starterId = useMemo(
+    () => String(item.meta.starter_id || "").trim(),
+    [item.meta],
+  );
   const extraParams = useMemo(
-    () =>
-      item.kind === "website" && websiteId
-        ? { siteId: websiteId, projectId: websiteId }
-        : undefined,
-    [item.kind, websiteId],
+    () => {
+      if (item.kind !== "website") return undefined;
+      if (websiteId) {
+        return {
+          siteId: websiteId,
+          projectId: websiteId,
+          ...(starterId ? { starterId } : {}),
+        };
+      }
+      return starterId ? { starterId } : undefined;
+    },
+    [item.kind, starterId, websiteId],
   );
 
   if (route.type !== "embed") {

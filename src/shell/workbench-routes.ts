@@ -139,7 +139,8 @@ export function editorRouteFor(item: LibraryItem): EditorRoute {
         item.meta.project_id ||
         item.meta.slug ||
         item.meta.site_id;
-      if (!projectId) return { type: "none" };
+      const starterId = item.meta.starter_id;
+      if (!projectId && !starterId) return { type: "none" };
       return {
         type: "embed",
         base: "https://website.oceanleo.com/embed/site-editor",

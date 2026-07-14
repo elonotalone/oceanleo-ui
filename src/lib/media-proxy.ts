@@ -18,6 +18,16 @@ const ASSET_OSS_HOSTS = new Set([
   "oceanleo-assets.oss-cn-guangzhou.aliyuncs.com",
 ]);
 
+/** Turn browser-relative material paths into the absolute URL the gateway sees. */
+export function absoluteMediaUrl(url: string): string {
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return url;
+  try {
+    return new URL(url, window.location.href).href;
+  } catch {
+    return url;
+  }
+}
+
 /** 与网关 allowlist 对齐的轻量客户端预判（安全边界仍由服务端执行）。 */
 export function isFirstPartyMediaUrl(url: string): boolean {
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
@@ -25,6 +35,7 @@ export function isFirstPartyMediaUrl(url: string): boolean {
     const parsed = new URL(url, window.location.href);
     const gateway = new URL(GATEWAY_BASE);
     const supabase = SUPABASE_URL ? new URL(SUPABASE_URL) : null;
+    if (parsed.origin === window.location.origin) return true;
     if (parsed.origin === gateway.origin) return true;
     if (
       supabase &&
@@ -116,6 +127,7 @@ export async function importMediaAsset(
 ): Promise<ImportedMedia> {
   const token = await accessToken();
   if (!token) throw new Error("未登录");
+  const sourceUrl = absoluteMediaUrl(url);
   const response = await fetch(`${GATEWAY_BASE}/v1/media/import`, {
     method: "POST",
     headers: {
@@ -123,7 +135,7 @@ export async function importMediaAsset(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      url,
+      url: sourceUrl,
       kind: opts.kind || "video",
       site_id: opts.siteId || "oceanleo",
       title: opts.title || "",
