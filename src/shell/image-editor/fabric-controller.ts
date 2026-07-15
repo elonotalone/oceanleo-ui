@@ -232,6 +232,7 @@ export class FabricEditorController extends FabricEditorCore {
       if (!(object instanceof this.fabric.IText)) return;
       const text = object as IText;
       const props: Record<string, unknown> = {};
+      if (patch.value != null) props.text = patch.value.slice(0, 2_000);
       if (patch.fontSize != null) props.fontSize = Math.max(6, patch.fontSize);
       if (patch.fill != null) props.fill = patch.fill;
       if (patch.backgroundColor != null) {

@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { useRichDocEditor } from "../doc-editors/use-rich-doc-editor";
@@ -41,7 +42,10 @@ export function RichDocRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "richdoc" })}
-      editorControls={<RichDocControls editor={editor} accent={accent} />}
+      editorToolbox={<RichDocControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <RichDocContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<RichDocStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

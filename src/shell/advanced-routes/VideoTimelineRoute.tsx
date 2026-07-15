@@ -7,6 +7,7 @@ import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
   VideoTimelineControls,
+  VideoTimelineContextToolbar,
   VideoTimelineStage,
   useVideoTimeline,
 } from "../video-editor";
@@ -43,8 +44,11 @@ export function VideoTimelineRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(editorRouteFor(item))}
-      editorControls={
+      editorToolbox={
         <VideoTimelineControls state={editor} accent={accent} />
+      }
+      editorContextualToolbar={
+        <VideoTimelineContextToolbar state={editor} accent={accent} />
       }
       editorStage={<VideoTimelineStage state={editor} accent={accent} />}
       editorStatus={editor.error || editor.notice}

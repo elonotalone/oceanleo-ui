@@ -10,7 +10,6 @@
 
 import { useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { ClipInspector } from "./ClipInspector";
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TrackKind } from "./types";
 
@@ -136,17 +135,6 @@ export function VideoTimelineControls({
             onClick={state.splitAtPlayhead}
           />
           <ToolButton
-            label={tt("删除")}
-            title={tt("删除选中片段（Delete）")}
-            disabled={!state.selectedClipId}
-            onClick={state.deleteSelectedClip}
-          />
-          <ToolButton
-            label={tt("复制")}
-            disabled={!state.selectedClipId}
-            onClick={state.duplicateSelectedClip}
-          />
-          <ToolButton
             label={tt("撤销")}
             title="Ctrl+Z"
             disabled={!state.canUndo}
@@ -219,11 +207,6 @@ export function VideoTimelineControls({
           ))}
         </div>
       </section>
-
-      {/* 选中 clip 属性 */}
-      {state.selected && (
-        <ClipInspector state={state} located={state.selected} accent={accent} />
-      )}
 
       {/* 输出 */}
       <section className="space-y-1.5 border-t border-stone-100 pt-3">

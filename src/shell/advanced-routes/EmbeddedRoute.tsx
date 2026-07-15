@@ -165,7 +165,7 @@ export function EmbeddedRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(route)}
-      editorControls={
+      editorToolbox={
         <div className="space-y-2 p-3 text-[12px] leading-relaxed text-stone-600">
           <p>{tt("右侧是当前内容本身的专业编辑画布，不是一次性生成应用。")}</p>
           <p>

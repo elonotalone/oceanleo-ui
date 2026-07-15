@@ -141,6 +141,24 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+export { SelectionToolbar } from "./SelectionToolbar";
+export type { SelectionToolbarProps } from "./SelectionToolbar";
+export {
+  SELECTION_CONTEXT_VERSION,
+  SELECTION_PROTOCOL,
+  normalizeSelectionCommand,
+  normalizeSelectionContext,
+  selectionRequestId,
+} from "./selection-context";
+export type {
+  SelectionAnchorRect,
+  SelectionCommand,
+  SelectionContext,
+  SelectionControl,
+  SelectionControlKind,
+  SelectionControlOption,
+  SelectionControlValue,
+} from "./selection-context";
 export {
   AdvancedFeatureCatalog,
   AdvancedFeatureRoute,

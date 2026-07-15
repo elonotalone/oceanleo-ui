@@ -50,39 +50,7 @@ export function PdfControls({
 
   return (
     <div className="space-y-4 overflow-y-auto p-3">
-      <section>
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("页面")}</p>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-          <ControlButton
-            disabled={busy || editor.pageNumber <= 1}
-            onClick={editor.previousPage}
-            title={tt("上一页")}
-          >
-            ← {tt("上一页")}
-          </ControlButton>
-          <label className="flex items-center gap-1 text-[10px] text-stone-400">
-            <input
-              type="number"
-              min={1}
-              max={Math.max(1, editor.pageCount)}
-              value={editor.pageNumber}
-              disabled={busy}
-              onChange={(event) => editor.goToPage(Number(event.target.value))}
-              className="w-12 rounded-lg border border-stone-200 px-1 py-2 text-center text-[11px] tabular-nums text-stone-700 outline-none"
-            />
-            / {editor.pageCount || "—"}
-          </label>
-          <ControlButton
-            disabled={busy || editor.pageNumber >= editor.pageCount}
-            onClick={editor.nextPage}
-            title={tt("下一页")}
-          >
-            {tt("下一页")} →
-          </ControlButton>
-        </div>
-      </section>
-
-      <section className="space-y-2 border-t border-stone-100 pt-3">
+      <section className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-semibold text-stone-800">{tt("视图")}</p>
           <span className="text-[10px] tabular-nums text-stone-400">
@@ -106,44 +74,14 @@ export function PdfControls({
           <ControlButton disabled={editor.loading} onClick={() => editor.zoomBy(25)}>
             + {tt("放大")}
           </ControlButton>
-          <ControlButton
-            disabled={busy}
-            onClick={() => void editor.rotateCurrentPage(-1)}
-          >
-            ↶ {tt("向左旋转")}
-          </ControlButton>
-          <ControlButton
-            disabled={busy}
-            onClick={() => void editor.rotateCurrentPage(1)}
-          >
-            ↷ {tt("向右旋转")}
-          </ControlButton>
         </div>
       </section>
 
       <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("页面整理")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ControlButton
-            disabled={busy || editor.pageNumber <= 1}
-            onClick={() => void editor.moveCurrentPage(-1)}
-          >
-            {tt("前移一页")}
-          </ControlButton>
-          <ControlButton
-            disabled={busy || editor.pageNumber >= editor.pageCount}
-            onClick={() => void editor.moveCurrentPage(1)}
-          >
-            {tt("后移一页")}
-          </ControlButton>
+        <p className="text-[11px] font-semibold text-stone-800">{tt("添加页面")}</p>
+        <div className="grid grid-cols-1 gap-1.5">
           <ControlButton disabled={busy} onClick={() => void editor.addBlankPage()}>
             + {tt("添加空白页")}
-          </ControlButton>
-          <ControlButton
-            disabled={busy || editor.pageCount <= 1}
-            onClick={() => void editor.deleteCurrentPage()}
-          >
-            {tt("删除当前页")}
           </ControlButton>
         </div>
         <input
@@ -164,7 +102,7 @@ export function PdfControls({
           {editor.processing ? tt("处理中…") : tt("合并另一个 PDF 到末尾")}
         </ControlButton>
         <p className="text-[10px] leading-relaxed text-stone-400">
-          {tt("旋转、排序、删除、空白页和合并均创建编辑副本，不覆盖原文件。")}
+          {tt("选择当前页后，旋转、排序、提取和删除会出现在页面上方。")}
         </p>
       </section>
 
@@ -182,12 +120,6 @@ export function PdfControls({
 
       <section className="space-y-1.5 border-t border-stone-100 pt-3">
         <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("导出")}</p>
-        <ControlButton
-          disabled={busy}
-          onClick={() => void editor.extractPages()}
-        >
-          {tt("提取当前页为 PDF")}
-        </ControlButton>
         <ControlButton disabled={busy} onClick={editor.download}>
           {tt("下载编辑版 PDF")}
         </ControlButton>

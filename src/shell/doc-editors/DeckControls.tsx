@@ -1,39 +1,13 @@
 "use client";
 
 import { useUI } from "../../i18n/ui/useUI";
-import {
-  DECK_THEMES,
-  type DeckLayout,
-} from "./deck-schema";
+import { DECK_THEMES } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
-
-const LAYOUTS: Array<{ id: DeckLayout; label: string }> = [
-  { id: "title", label: "封面标题" },
-  { id: "title-body", label: "标题正文" },
-  { id: "section", label: "章节页" },
-  { id: "bullets", label: "要点列表" },
-  { id: "image-left", label: "左图右文" },
-  { id: "image-right", label: "左文右图" },
-  { id: "blank", label: "空白页" },
-];
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] font-medium text-stone-500">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 const inputClass =
   "w-full rounded-lg border border-stone-200 bg-white px-2.5 py-2 text-[11px] text-stone-700 outline-none focus:border-stone-400";
+const buttonClass =
+  "rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600 hover:bg-stone-50 disabled:opacity-35";
 
 export function DeckControls({
   editor,
@@ -44,7 +18,6 @@ export function DeckControls({
 }) {
   const tt = useUI();
   const slide = editor.activeSlide;
-  const element = editor.selectedElement;
   return (
     <div className="h-full overflow-y-auto bg-white">
       <details open className="border-b border-stone-100">
@@ -52,143 +25,85 @@ export function DeckControls({
           {tt("演示文稿")}
         </summary>
         <div className="space-y-2.5 px-3 pb-3">
-          <Field label={tt("标题")}>
-            <input value={editor.deck.title} onChange={(event) => editor.setTitle(event.target.value)} className={inputClass} />
-          </Field>
-          <Field label={tt("页面比例")}>
-            <div className="grid grid-cols-2 gap-1">
-              {(["16:9", "4:3"] as const).map((aspect) => (
-                <button
-                  key={aspect}
-                  type="button"
-                  onClick={() => editor.setAspect(aspect)}
-                  className="rounded-lg border px-2 py-1.5 text-[10px]"
-                  style={
-                    editor.deck.aspect === aspect
-                      ? { borderColor: accent, color: accent, background: `${accent}0d` }
-                      : { borderColor: "#e7e5e4", color: "#78716c" }
-                  }
-                >
-                  {aspect}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label={tt("主题")}>
-            <div className="grid grid-cols-2 gap-1.5">
-              {DECK_THEMES.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => editor.setTheme(theme.id)}
-                  className="flex items-center gap-2 rounded-lg border px-2 py-2 text-left text-[10px]"
-                  style={
-                    editor.deck.theme === theme.id
-                      ? { borderColor: theme.accent, color: theme.text, background: theme.background }
-                      : { borderColor: "#e7e5e4", color: "#78716c" }
-                  }
-                >
-                  <span className="h-4 w-4 rounded-full" style={{ background: theme.accent }} />
-                  {tt(theme.label)}
-                </button>
-              ))}
-            </div>
-          </Field>
+          <label className="block text-[10px] font-medium text-stone-500">
+            {tt("标题")}
+            <input
+              value={editor.deck.title}
+              onChange={(event) => editor.setTitle(event.target.value)}
+              className={`${inputClass} mt-1`}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-1">
+            {(["16:9", "4:3"] as const).map((aspect) => (
+              <button
+                key={aspect}
+                type="button"
+                onClick={() => editor.setAspect(aspect)}
+                className="rounded-lg border px-2 py-1.5 text-[10px]"
+                style={
+                  editor.deck.aspect === aspect
+                    ? { borderColor: accent, color: accent, background: `${accent}0d` }
+                    : { borderColor: "#e7e5e4", color: "#78716c" }
+                }
+              >
+                {aspect}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {DECK_THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => editor.setTheme(theme.id)}
+                className="flex items-center gap-2 rounded-lg border px-2 py-2 text-left text-[10px]"
+                style={
+                  editor.deck.theme === theme.id
+                    ? {
+                        borderColor: theme.accent,
+                        color: theme.text,
+                        background: theme.background,
+                      }
+                    : { borderColor: "#e7e5e4", color: "#78716c" }
+                }
+              >
+                <span
+                  className="h-4 w-4 rounded-full"
+                  style={{ background: theme.accent }}
+                />
+                {tt(theme.label)}
+              </button>
+            ))}
+          </div>
         </div>
       </details>
 
       <details open className="border-b border-stone-100">
         <summary className="cursor-pointer px-3 py-2.5 text-[11px] font-semibold text-stone-700">
-          {tt("当前幻灯片")}
-        </summary>
-        <div className="space-y-2.5 px-3 pb-3">
-          {slide.elements.length === 0 && (
-            <>
-              <Field label={tt("版式")}>
-                <div className="grid grid-cols-2 gap-1">
-                  {LAYOUTS.map((layout) => (
-                    <button
-                      key={layout.id}
-                      type="button"
-                      onClick={() => editor.patchSlide({ layout: layout.id })}
-                      className="rounded-lg border px-2 py-1.5 text-[10px]"
-                      style={
-                        slide.layout === layout.id
-                          ? { borderColor: accent, color: accent, background: `${accent}0d` }
-                          : { borderColor: "#e7e5e4", color: "#78716c" }
-                      }
-                    >
-                      {tt(layout.label)}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <Field label={tt("标题")}>
-                <input value={slide.title} onChange={(event) => editor.patchSlide({ title: event.target.value })} className={inputClass} />
-              </Field>
-              <Field label={tt("正文")}>
-                <textarea value={slide.body} rows={5} onChange={(event) => editor.patchSlide({ body: event.target.value })} className={`${inputClass} resize-y`} />
-              </Field>
-              <Field label={tt("要点（每行一条）")}>
-                <textarea
-                  value={slide.bullets.join("\n")}
-                  rows={5}
-                  onChange={(event) =>
-                    editor.patchSlide({
-                      bullets: event.target.value.split(/\r?\n/).slice(0, 100),
-                    })
-                  }
-                  className={`${inputClass} resize-y`}
-                />
-              </Field>
-            </>
-          )}
-          <Field label={tt("演讲者备注")}>
-            <textarea value={slide.notes} rows={4} onChange={(event) => editor.patchSlide({ notes: event.target.value })} className={`${inputClass} resize-y`} />
-          </Field>
-          <Field label={tt("单页背景色")}>
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={slide.background || "#ffffff"}
-                onChange={(event) => editor.patchSlide({ background: event.target.value })}
-                className="h-9 w-12 rounded border border-stone-200"
-              />
-              <button
-                type="button"
-                onClick={() => editor.patchSlide({ background: "" })}
-                className="flex-1 rounded-lg border border-stone-200 text-[10px] text-stone-500"
-              >
-                {tt("跟随主题")}
-              </button>
-            </div>
-          </Field>
-        </div>
-      </details>
-
-      <details open={slide.elements.length > 0} className="border-b border-stone-100">
-        <summary className="cursor-pointer px-3 py-2.5 text-[11px] font-semibold text-stone-700">
-          {tt("页面元素")}
+          {tt("添加与图层")}
         </summary>
         <div className="space-y-2.5 px-3 pb-3">
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={editor.addTextElement}
-              className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600"
+              className={buttonClass}
             >
               {tt("添加文字")}
             </button>
             <button
               type="button"
               onClick={() => editor.insertImageElement("", tt("新图片"))}
-              className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600"
+              className={buttonClass}
             >
               {tt("添加图片")}
             </button>
           </div>
+          <p className="text-[10px] leading-relaxed text-stone-400">
+            {tt("点击页面元素后，文字、位置和样式会直接出现在幻灯片上方。")}
+          </p>
           {slide.elements.length > 0 && (
-            <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-stone-100 p-1">
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-stone-100 p-1">
               {[...slide.elements]
                 .sort((left, right) => right.order - left.order)
                 .map((item) => (
@@ -213,220 +128,56 @@ export function DeckControls({
                 ))}
             </div>
           )}
-          {element && (
-            <div className="space-y-2.5 rounded-xl bg-stone-50 p-2.5">
-              {(element.type === "text" || element.type === "shape") && (
-                <Field label={tt("文字")}>
-                  <textarea
-                    value={element.text || ""}
-                    rows={4}
-                    onChange={(event) =>
-                      editor.patchElement(element.id, { text: event.target.value })
-                    }
-                    className={`${inputClass} resize-y`}
-                  />
-                </Field>
-              )}
-              {element.type === "image" && (
-                <>
-                  <Field label={tt("图片 URL")}>
-                    <input
-                      value={element.src || ""}
-                      onChange={(event) =>
-                        editor.patchElement(element.id, { src: event.target.value })
-                      }
-                      placeholder="https://…"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label={tt("替代文字")}>
-                    <input
-                      value={element.alt || ""}
-                      onChange={(event) =>
-                        editor.patchElement(element.id, { alt: event.target.value })
-                      }
-                      className={inputClass}
-                    />
-                  </Field>
-                </>
-              )}
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  ["X", "x"],
-                  ["Y", "y"],
-                  [tt("宽"), "width"],
-                  [tt("高度"), "height"],
-                ] as const).map(([label, key]) => (
-                  <Field key={key} label={`${label} (%)`}>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={Math.round(element[key] * 10) / 10}
-                      onChange={(event) =>
-                        editor.patchElement(element.id, {
-                          [key]: Number(event.target.value),
-                        })
-                      }
-                      className={inputClass}
-                    />
-                  </Field>
-                ))}
-              </div>
-              {(element.type === "text" || element.type === "shape") && (
-                <>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <Field label={tt("字号")}>
-                      <input
-                        type="number"
-                        min={4}
-                        max={300}
-                        value={element.fontSize || 18}
-                        onChange={(event) =>
-                          editor.patchElement(element.id, {
-                            fontSize: Number(event.target.value),
-                          })
-                        }
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field label={tt("文字颜色")}>
-                      <input
-                        type="color"
-                        value={element.color || "#111827"}
-                        onChange={(event) =>
-                          editor.patchElement(element.id, { color: event.target.value })
-                        }
-                        className="h-9 w-full rounded border border-stone-200 bg-white"
-                      />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editor.patchElement(element.id, { bold: !element.bold })
-                      }
-                      className={`rounded-lg border px-2 py-1.5 text-[10px] ${element.bold ? "border-current" : "border-stone-200"}`}
-                    >
-                      {tt("粗体")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editor.patchElement(element.id, { italic: !element.italic })
-                      }
-                      className={`rounded-lg border px-2 py-1.5 text-[10px] ${element.italic ? "border-current" : "border-stone-200"}`}
-                    >
-                      {tt("斜体")}
-                    </button>
-                    <select
-                      value={element.align || "left"}
-                      onChange={(event) =>
-                        editor.patchElement(element.id, {
-                          align: event.target.value as "left" | "center" | "right",
-                        })
-                      }
-                      className={inputClass}
-                    >
-                      <option value="left">{tt("左对齐")}</option>
-                      <option value="center">{tt("居中")}</option>
-                      <option value="right">{tt("右对齐")}</option>
-                    </select>
-                  </div>
-                </>
-              )}
-              {element.type === "shape" && (
-                <Field label={tt("填充色")}>
-                  <input
-                    type="color"
-                    value={element.fill || "#ffffff"}
-                    onChange={(event) =>
-                      editor.patchElement(element.id, { fill: event.target.value })
-                    }
-                    className="h-9 w-full rounded border border-stone-200 bg-white"
-                  />
-                </Field>
-              )}
-              <div className="grid grid-cols-2 gap-1">
-                <button type="button" onClick={editor.duplicateElement} className="rounded-lg border border-stone-200 px-2 py-1.5 text-[10px] text-stone-600">
-                  {tt("复制元素")}
-                </button>
-                <button type="button" onClick={editor.deleteElement} className="rounded-lg border border-red-100 px-2 py-1.5 text-[10px] text-red-600">
-                  {tt("删除元素")}
-                </button>
-                <button type="button" onClick={() => editor.moveElementLayer(1)} className="rounded-lg border border-stone-200 px-2 py-1.5 text-[10px] text-stone-600">
-                  {tt("上移一层")}
-                </button>
-                <button type="button" onClick={() => editor.moveElementLayer(-1)} className="rounded-lg border border-stone-200 px-2 py-1.5 text-[10px] text-stone-600">
-                  {tt("下移一层")}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </details>
-
-      {slide.elements.length === 0 && (
-      <details open={slide.layout === "image-left" || slide.layout === "image-right"} className="border-b border-stone-100">
-        <summary className="cursor-pointer px-3 py-2.5 text-[11px] font-semibold text-stone-700">
-          {tt("配图")}
-        </summary>
-        <div className="space-y-2.5 px-3 pb-3">
-          <Field label={tt("图片 URL")}>
-            <input
-              value={slide.image?.url || ""}
-              onChange={(event) =>
-                editor.patchSlide({
-                  image: event.target.value
-                    ? { url: event.target.value, alt: slide.image?.alt || "" }
-                    : undefined,
-                })
-              }
-              placeholder="https://…"
-              className={inputClass}
-            />
-          </Field>
-          <Field label={tt("替代文字")}>
-            <input
-              value={slide.image?.alt || ""}
-              onChange={(event) =>
-                editor.patchSlide({
-                  image: {
-                    url: slide.image?.url || "",
-                    alt: event.target.value,
-                  },
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-        </div>
-      </details>
-      )}
 
       <div className="space-y-2 p-3">
         <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" onClick={editor.addSlide} className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600">
+          <button type="button" onClick={editor.addSlide} className={buttonClass}>
             {tt("新增幻灯片")}
           </button>
-          <button type="button" onClick={editor.duplicateSlide} className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600">
+          <button
+            type="button"
+            onClick={editor.duplicateSlide}
+            className={buttonClass}
+          >
             {tt("复制幻灯片")}
           </button>
-          <button type="button" disabled={editor.activeIndex === 0} onClick={() => editor.moveSlide(-1)} className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600 disabled:opacity-35">
+          <button
+            type="button"
+            disabled={editor.activeIndex === 0}
+            onClick={() => editor.moveSlide(-1)}
+            className={buttonClass}
+          >
             {tt("向前移动")}
           </button>
-          <button type="button" disabled={editor.activeIndex === editor.deck.slides.length - 1} onClick={() => editor.moveSlide(1)} className="rounded-lg border border-stone-200 px-2 py-2 text-[10px] text-stone-600 disabled:opacity-35">
+          <button
+            type="button"
+            disabled={editor.activeIndex === editor.deck.slides.length - 1}
+            onClick={() => editor.moveSlide(1)}
+            className={buttonClass}
+          >
             {tt("向后移动")}
           </button>
         </div>
-        <button
-          type="button"
-          disabled={editor.deck.slides.length <= 1}
-          onClick={editor.deleteSlide}
-          className="w-full rounded-lg border border-red-100 px-2 py-2 text-[10px] text-red-600 disabled:opacity-35"
-        >
-          {tt("删除当前幻灯片")}
-        </button>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            disabled={!editor.canUndo}
+            onClick={editor.undo}
+            className={buttonClass}
+          >
+            {tt("撤销")}
+          </button>
+          <button
+            type="button"
+            disabled={!editor.canRedo}
+            onClick={editor.redo}
+            className={buttonClass}
+          >
+            {tt("重做")}
+          </button>
+        </div>
       </div>
     </div>
   );

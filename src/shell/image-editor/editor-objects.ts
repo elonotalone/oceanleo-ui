@@ -274,6 +274,7 @@ export function buildSelectedSnapshot(
     const weight = obj.fontWeight;
     const align = obj.textAlign;
     text = {
+      value: String(obj.text || "").slice(0, 2_000),
       fontSize: Math.round(obj.fontSize),
       fill: typeof obj.fill === "string" ? obj.fill : "#1c1917",
       backgroundColor: obj.backgroundColor || "",

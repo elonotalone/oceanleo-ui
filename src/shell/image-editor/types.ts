@@ -72,6 +72,7 @@ export interface ShadowSettings {
 }
 
 export interface TextSettings {
+  value: string;
   fontSize: number;
   fill: string;
   backgroundColor: string;

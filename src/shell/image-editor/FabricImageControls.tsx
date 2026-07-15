@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   CANVAS_PRESETS,
-  CROP_RATIOS,
   type FabricImageEditorState,
   type ShapeKind,
 } from "./types";
@@ -103,8 +102,6 @@ export function FabricImageControls({
   const [imageUrl, setImageUrl] = useState("");
   const [customWidth, setCustomWidth] = useState(editor.doc.width);
   const [customHeight, setCustomHeight] = useState(editor.doc.height);
-  const selected = editor.selected;
-  const filters = editor.filterInfo?.settings;
 
   const addUrl = async () => {
     if (!imageUrl.trim()) return;
@@ -177,128 +174,6 @@ export function FabricImageControls({
           <ToolButton disabled={!imageUrl.trim()} onClick={() => void addUrl()}>{tt("添加")}</ToolButton>
         </div>
       </Section>
-
-      <Section title={tt("裁剪与变换")}>
-        <div className="grid grid-cols-5 gap-1">
-          {CROP_RATIOS.map((ratio) => (
-            <ToolButton
-              key={ratio}
-              active={editor.cropRatio === ratio}
-              onClick={() => {
-                editor.setCropRatio(ratio);
-                if (!editor.cropping) editor.startCrop();
-              }}
-            >
-              {ratio === "free" ? tt("自由") : ratio}
-            </ToolButton>
-          ))}
-        </div>
-        {editor.cropping ? (
-          <div className="grid grid-cols-2 gap-1.5">
-            <ToolButton onClick={() => void editor.confirmCrop()}>{tt("应用裁剪")}</ToolButton>
-            <ToolButton onClick={editor.cancelCrop}>{tt("取消")}</ToolButton>
-          </div>
-        ) : (
-          <ToolButton onClick={editor.startCrop}>{tt("开始裁剪")}</ToolButton>
-        )}
-        <div className="grid grid-cols-4 gap-1">
-          <ToolButton onClick={() => editor.rotateTarget(-90)}>↶ 90°</ToolButton>
-          <ToolButton onClick={() => editor.rotateTarget(90)}>↷ 90°</ToolButton>
-          <ToolButton onClick={() => editor.flipTarget("x")}>{tt("水平翻转")}</ToolButton>
-          <ToolButton onClick={() => editor.flipTarget("y")}>{tt("垂直翻转")}</ToolButton>
-        </div>
-        {editor.transformInfo && (
-          <Range label={tt("旋转角度")} value={editor.transformInfo.angle} min={0} max={359} onChange={editor.setTargetAngle} suffix="°" />
-        )}
-      </Section>
-
-      {selected && (
-        <Section title={tt("对象属性")}>
-          <div className="flex items-center justify-between text-[10px] text-stone-500">
-            <span>{tt("当前图层")}</span>
-            <span className="rounded bg-stone-100 px-1.5 py-0.5">{selected.kind}</span>
-          </div>
-          <Range
-            label={tt("不透明度")}
-            value={selected.opacity}
-            min={0}
-            max={100}
-            onChange={editor.setSelectedOpacity}
-            suffix="%"
-          />
-          {selected.kind !== "image" && selected.kind !== "background" && (
-            <label className="flex items-center justify-between text-[10px] text-stone-500">
-              {tt("填充颜色")}
-              <input type="color" value={selected.fill || "#000000"} onChange={(event) => editor.setSelectedFill(event.target.value)} />
-            </label>
-          )}
-          <div className="grid grid-cols-[1fr_2fr] items-end gap-2">
-            <label className="text-[10px] text-stone-500">
-              {tt("描边")}
-              <input type="color" value={selected.stroke || "#000000"} onChange={(event) => editor.setSelectedStroke({ color: event.target.value })} className="mt-1 block h-7 w-full" />
-            </label>
-            <Range label={tt("描边宽度")} value={selected.strokeWidth} min={0} max={30} onChange={(width) => editor.setSelectedStroke({ width })} suffix="px" />
-          </div>
-          {selected.radius !== null && (
-            <Range label={tt("图片圆角")} value={selected.radius} min={0} max={300} onChange={editor.setSelectedRadius} suffix="px" />
-          )}
-          <label className="flex items-center gap-2 text-[10px] text-stone-600">
-            <input type="checkbox" checked={selected.shadow.enabled} onChange={(event) => editor.setSelectedShadow({ enabled: event.target.checked })} />
-            {tt("投影")}
-          </label>
-          {selected.shadow.enabled && (
-            <>
-              <label className="flex items-center justify-between text-[10px] text-stone-500">
-                {tt("投影颜色")}
-                <input type="color" value={selected.shadow.color || "#000000"} onChange={(event) => editor.setSelectedShadow({ color: event.target.value })} />
-              </label>
-              <Range label={tt("模糊")} value={selected.shadow.blur} min={0} max={100} onChange={(blur) => editor.setSelectedShadow({ blur })} />
-              <Range label={tt("水平偏移")} value={selected.shadow.offsetX} min={-100} max={100} onChange={(offsetX) => editor.setSelectedShadow({ offsetX })} />
-              <Range label={tt("垂直偏移")} value={selected.shadow.offsetY} min={-100} max={100} onChange={(offsetY) => editor.setSelectedShadow({ offsetY })} />
-            </>
-          )}
-          {selected.text && (
-            <>
-              <Range label={tt("字号")} value={selected.text.fontSize} min={8} max={240} onChange={(fontSize) => editor.setSelectedText({ fontSize })} suffix="px" />
-              <label className="flex items-center justify-between text-[10px] text-stone-500">
-                {tt("文字颜色")}
-                <input type="color" value={selected.text.fill || "#000000"} onChange={(event) => editor.setSelectedText({ fill: event.target.value })} />
-              </label>
-              <div className="grid grid-cols-5 gap-1">
-                <ToolButton active={selected.text.bold} onClick={() => editor.setSelectedText({ bold: !selected.text?.bold })}>B</ToolButton>
-                <ToolButton active={selected.text.italic} onClick={() => editor.setSelectedText({ italic: !selected.text?.italic })}>I</ToolButton>
-                {(["left", "center", "right"] as const).map((align) => (
-                  <ToolButton key={align} active={selected.text?.align === align} onClick={() => editor.setSelectedText({ align })}>
-                    {align === "left" ? "≡" : align === "center" ? "≣" : "≡"}
-                  </ToolButton>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="grid grid-cols-2 gap-1.5">
-            <ToolButton onClick={() => void editor.duplicateSelected()}>{tt("复制对象")}</ToolButton>
-            <ToolButton onClick={editor.deleteSelected}>{tt("删除对象")}</ToolButton>
-          </div>
-        </Section>
-      )}
-
-      {filters && (
-        <Section title={tt("滤镜与调色")}>
-          <Range label={tt("亮度")} value={filters.brightness} min={-100} max={100} onChange={(value) => editor.setFilter("brightness", value)} />
-          <Range label={tt("对比度")} value={filters.contrast} min={-100} max={100} onChange={(value) => editor.setFilter("contrast", value)} />
-          <Range label={tt("饱和度")} value={filters.saturation} min={-100} max={100} onChange={(value) => editor.setFilter("saturation", value)} />
-          <Range label={tt("模糊")} value={filters.blur} min={0} max={100} onChange={(value) => editor.setFilter("blur", value)} />
-          <Range label={tt("像素化")} value={filters.pixelate} min={0} max={100} onChange={(value) => editor.setFilter("pixelate", value)} />
-          <div className="grid grid-cols-3 gap-1">
-            {(["grayscale", "sepia", "invert"] as const).map((key) => (
-              <ToolButton key={key} active={filters[key]} onClick={() => editor.setFilter(key, !filters[key])}>
-                {tt({ grayscale: "黑白", sepia: "复古", invert: "反相" }[key])}
-              </ToolButton>
-            ))}
-          </div>
-          <ToolButton onClick={editor.resetFilters}>{tt("重置调色")}</ToolButton>
-        </Section>
-      )}
 
       <Section title={tt("图层")}>
         <div className="max-h-56 space-y-1 overflow-y-auto">

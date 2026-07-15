@@ -5,6 +5,7 @@
 export { VideoTimelineEditor } from "./VideoTimelineEditor";
 export type { VideoTimelineEditorProps } from "./VideoTimelineEditor";
 export { VideoTimelineControls } from "./VideoTimelineControls";
+export { VideoTimelineContextToolbar } from "./VideoTimelineContextToolbar";
 export { VideoTimelineStage } from "./VideoTimelineStage";
 export { useVideoTimeline } from "./use-video-timeline";
 export type { VideoTimelineState } from "./use-video-timeline";

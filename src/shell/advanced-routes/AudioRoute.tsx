@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
 import {
   AudioControls,
   AudioStage,
@@ -43,7 +44,10 @@ export function AudioRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "audio" })}
-      editorControls={<AudioControls editor={editor} accent={accent} />}
+      editorToolbox={<AudioControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <AudioContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<AudioStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

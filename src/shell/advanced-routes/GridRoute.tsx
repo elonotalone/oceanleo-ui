@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { GridContextToolbar } from "../doc-editors/GridContextToolbar";
 import { GridControls } from "../doc-editors/GridControls";
 import { GridStage } from "../doc-editors/GridStage";
 import { useGridEditor } from "../doc-editors/use-grid-editor";
@@ -41,7 +42,10 @@ export function GridRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "grid" })}
-      editorControls={<GridControls editor={editor} accent={accent} />}
+      editorToolbox={<GridControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <GridContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<GridStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

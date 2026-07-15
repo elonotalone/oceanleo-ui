@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { ChartContextToolbar } from "../chart-editor/ChartContextToolbar";
 import { ChartControls } from "../chart-editor/ChartControls";
 import { ChartStage } from "../chart-editor/ChartStage";
 import {
@@ -77,7 +78,10 @@ export function ChartRoute({
         type: "grid",
         adapter: "chart-editor@1",
       })}
-      editorControls={<ChartControls editor={editor} accent={accent} />}
+      editorToolbox={<ChartControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <ChartContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<ChartStage editor={editor} />}
       editorStatus={
         editor.error ||

@@ -9,6 +9,7 @@ function source(path) {
 test("Fabric image editor exposes object, layer, filter, crop and durable-save tools", () => {
   const types = source("../src/shell/image-editor/types.ts");
   const controls = source("../src/shell/image-editor/FabricImageControls.tsx");
+  const toolbar = source("../src/shell/image-editor/FabricImageContextToolbar.tsx");
   const stage = source("../src/shell/image-editor/FabricImageStage.tsx");
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
   for (const capability of [
@@ -24,7 +25,9 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
     assert.match(types, new RegExp(capability));
   }
   assert.match(controls, /图层/);
-  assert.match(controls, /滤镜与调色/);
+  assert.match(toolbar, /startCrop/);
+  assert.match(toolbar, /setFilter/);
+  assert.match(toolbar, /duplicateSelected/);
   assert.match(controls, /AI 局部创作/);
   assert.match(stage, /图片编辑画布/);
   assert.match(hook, /persistImageBlob/);
@@ -37,6 +40,7 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
   const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
+  const deckToolbar = source("../src/shell/doc-editors/DeckContextToolbar.tsx");
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /saveFileToLibrary/);
   assert.match(grid, /buildGridWorkbookBlob/);
@@ -49,7 +53,7 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(deckStage, /PositionedSlideCanvas/);
   assert.match(deckStage, /startDrag/);
   assert.match(deckControls, /添加文字/);
-  assert.match(deckControls, /上移一层/);
+  assert.match(deckToolbar, /上移一层/);
   assert.match(deckStage, /导出 PPTX/);
 });
 
@@ -63,7 +67,7 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
-  assert.match(shell, /editorAvailable \? "edit" : "agent"/);
+  assert.match(shell, /editorAvailable \? "tools" : "agent"/);
   assert.match(shell, /beforeunload/);
   assert.match(shell, /当前有未保存的修改/);
   for (const editor of [rich, grid, deck, image, audio, pdf, timeline]) {

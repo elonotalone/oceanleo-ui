@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
+import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfStage } from "../media-editors/PdfStage";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
@@ -50,7 +51,10 @@ export function PdfRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "pdf" })}
-      editorControls={<PdfControls editor={editor} accent={accent} />}
+      editorToolbox={<PdfControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <PdfContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<PdfStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

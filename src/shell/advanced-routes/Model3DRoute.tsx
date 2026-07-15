@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
+import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
   Model3DControls,
   Model3DStage,
@@ -72,7 +73,10 @@ export function Model3DRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "threed" })}
-      editorControls={<Model3DControls editor={editor} accent={accent} />}
+      editorToolbox={<Model3DControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <Model3DContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<Model3DStage editor={editor} />}
       editorStatus={
         editor.error ||

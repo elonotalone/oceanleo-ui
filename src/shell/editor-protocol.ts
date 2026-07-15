@@ -1,6 +1,13 @@
 "use client";
 
 // ============================================================================
+
+import {
+  normalizeSelectionCommand,
+  normalizeSelectionContext,
+  type SelectionCommand,
+  type SelectionContext,
+} from "@oceanleo/ui/shell/selection-context";
 // @oceanleo/ui — oceanleo.editor.v1 嵌入编辑协议（单一事实源）
 // ----------------------------------------------------------------------------
 // 高级内容工作台（宿主）与专业子站编辑器（design 画布 / video 节点画布 /
@@ -66,6 +73,12 @@ export type HostToEditorMessage =
       url?: string;
       saveId?: string;
     }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "selection-command";
+      instanceId: string;
+      command: SelectionCommand;
+    }
   | { protocol: typeof EDITOR_PROTOCOL; type: "dispose"; instanceId: string };
 
 export type EditorToHostMessage =
@@ -80,6 +93,20 @@ export type EditorToHostMessage =
       title?: string;
       meta?: Record<string, unknown>;
       saveId?: string;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "selection-changed";
+      instanceId: string;
+      selection: SelectionContext | null;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "selection-result";
+      instanceId: string;
+      requestId: string;
+      ok: boolean;
+      message?: string;
     }
   | { protocol: typeof EDITOR_PROTOCOL; type: "error"; instanceId: string; message: string }
   | { protocol: typeof EDITOR_PROTOCOL; type: "close-request"; instanceId: string };
@@ -146,6 +173,27 @@ export function asEditorToHostMessage(
     }
     return record as unknown as EditorToHostMessage;
   }
+  if (type === "selection-changed") {
+    if (record.selection === null) {
+      return record as unknown as EditorToHostMessage;
+    }
+    const selection = normalizeSelectionContext(record.selection);
+    if (!selection) return null;
+    return { ...record, selection } as unknown as EditorToHostMessage;
+  }
+  if (type === "selection-result") {
+    if (
+      typeof record.requestId !== "string" ||
+      !record.requestId ||
+      record.requestId.length > 128 ||
+      typeof record.ok !== "boolean" ||
+      (record.message !== undefined &&
+        (typeof record.message !== "string" || record.message.length > 500))
+    ) {
+      return null;
+    }
+    return record as unknown as EditorToHostMessage;
+  }
   if (
     type === "dirty" &&
     record.dirty !== undefined &&
@@ -178,6 +226,11 @@ export function asHostToEditorMessage(
       return null;
     }
     return record as unknown as HostToEditorMessage;
+  }
+  if (type === "selection-command") {
+    const command = normalizeSelectionCommand(record.command);
+    if (!command) return null;
+    return { ...record, command } as unknown as HostToEditorMessage;
   }
   if (
     type === "init" ||

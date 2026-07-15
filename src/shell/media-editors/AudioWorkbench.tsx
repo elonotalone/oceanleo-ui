@@ -689,24 +689,6 @@ export function AudioControls({
           <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" onChange={editor.setPlaybackSpeed} />
         </div>
       </section>
-      <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("选区编辑")}</p>
-        <p className="text-[10px] text-stone-400">{tt("在波形上拖动以选择一个区间")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className={button} disabled={!editor.selection || editor.loading} onClick={editor.cropSelection}>{tt("裁剪保留选区")}</button>
-          <button type="button" className={button} disabled={!editor.selection || editor.loading} onClick={editor.deleteSelection}>{tt("删除选区拼接")}</button>
-        </div>
-      </section>
-      <section className="space-y-2.5 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("声音处理")}</p>
-        <AudioSlider label={tt("淡变时长")} value={editor.fadeDuration} min={0.1} max={5} step={0.1} suffix={tt("秒")} onChange={editor.setFadeDuration} />
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className={button} disabled={editor.loading} onClick={() => editor.applyFade("in")}>{tt("淡入")}</button>
-          <button type="button" className={button} disabled={editor.loading} onClick={() => editor.applyFade("out")}>{tt("淡出")}</button>
-        </div>
-        <AudioSlider label={tt("整体音量增益")} value={editor.gain} min={0} max={200} suffix="%" onChange={editor.setGain} />
-        <button type="button" className={`${button} w-full`} disabled={editor.loading} onClick={editor.applyGain}>{tt("应用增益")}</button>
-      </section>
       <section className="space-y-2.5 border-t border-stone-100 pt-3">
         <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" onChange={editor.setWaveformZoom} />
         <div className="grid grid-cols-2 gap-1.5">

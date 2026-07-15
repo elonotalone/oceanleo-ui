@@ -30,7 +30,7 @@ import { useWorkbenchMaterials } from "./workbench-material-provider";
 
 type WorkbenchTool =
   | "agent"
-  | "edit"
+  | "tools"
   | "materials"
   | "tasks"
   | "library";
@@ -43,13 +43,16 @@ export interface AdvancedWorkbenchShellProps {
   siteId?: string;
   accent?: string;
   editorLabel: string;
-  editorControls: ReactNode;
+  /** Creation/global tools only. Selection-specific properties belong in editorContextualToolbar. */
+  editorToolbox: ReactNode;
+  /** Object-aware horizontal controls rendered over the stage, never in the left panel. */
+  editorContextualToolbar?: ReactNode;
   editorStage: ReactNode;
   editorAvailable?: boolean;
   editorStatus?: string;
   editorDirty?: boolean;
   editorOwnsCloseGuard?: boolean;
-  /** Embedded editors render their own properties column when the Edit tool is active. */
+  /** Embedded editors render their own creation toolbox when the Tools entry is active. */
   editorUsesOwnControls?: boolean;
   /** Persist pending editor changes before Advanced Agent starts a new session. */
   onBeforeNewConversation?:
@@ -91,10 +94,10 @@ function ToolIcon({ tool }: { tool: WorkbenchTool }) {
         <path d="M9.5 13h.01M14.5 13h.01M9.5 16h5" />
       </>
     ),
-    edit: (
+    tools: (
       <>
         <path d="M4 20l4.2-1 10.4-10.4a2 2 0 00-2.8-2.8L5.4 16.2 4 20z" />
-        <path d="M14.5 7.1l2.8 2.8" />
+        <path d="M14.5 7.1l2.8 2.8M5 5h5M7.5 2.5v5" />
       </>
     ),
     materials: (
@@ -122,7 +125,7 @@ function ToolIcon({ tool }: { tool: WorkbenchTool }) {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.7"
-      className="h-5 w-5"
+      className="h-6 w-6"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -142,7 +145,8 @@ export function AdvancedWorkbenchShell({
   siteId = "",
   accent = "#4f46e5",
   editorLabel,
-  editorControls,
+  editorToolbox,
+  editorContextualToolbar,
   editorStage,
   editorAvailable = true,
   editorStatus = "",
@@ -163,7 +167,7 @@ export function AdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const [activeTool, setActiveTool] = useState<WorkbenchTool>(
-    editorAvailable ? "edit" : "agent",
+    editorAvailable ? "tools" : "agent",
   );
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelVisible, setPanelVisible] = useState(
@@ -176,7 +180,7 @@ export function AdvancedWorkbenchShell({
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
-      editorToolActive: activeTool === "edit",
+      editorToolActive: activeTool === "tools",
     }),
     [activeTool, panelVisible],
   );
@@ -312,7 +316,7 @@ export function AdvancedWorkbenchShell({
       [
         { id: "agent" as const, label: tt("Agent") },
         ...(editorAvailable
-          ? [{ id: "edit" as const, label: tt(editorLabel) }]
+          ? [{ id: "tools" as const, label: tt(editorLabel) }]
           : []),
         { id: "materials" as const, label: tt("素材") },
         { id: "tasks" as const, label: tt("我的任务") },
@@ -324,7 +328,7 @@ export function AdvancedWorkbenchShell({
   const chooseTool = useCallback(
     (tool: WorkbenchTool) => {
       setActiveTool(tool);
-      setPanelVisible(!(tool === "edit" && editorUsesOwnControls));
+      setPanelVisible(!(tool === "tools" && editorUsesOwnControls));
     },
     [editorUsesOwnControls],
   );
@@ -398,9 +402,9 @@ export function AdvancedWorkbenchShell({
     panel = (
       <AdvancedAgentPanel item={item} taskId={taskId} siteId={siteId} accent={accent} />
     );
-  } else if (activeTool === "edit") {
+  } else if (activeTool === "tools") {
     panel = editorAvailable ? (
-      editorControls
+      editorToolbox
     ) : (
       <div className="p-4 text-[12px] leading-relaxed text-amber-700">
         {tt("此内容目前可以预览、交给 Agent 处理或保存副本，但没有可安全回写的结构化编辑器。")}
@@ -517,13 +521,13 @@ export function AdvancedWorkbenchShell({
 
       <AdvancedLayoutContext.Provider value={layoutState}>
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-stone-200 bg-stone-50 py-2">
+        <nav className="flex w-20 shrink-0 flex-col items-center gap-1.5 border-r border-stone-200 bg-stone-50 py-2">
           {tools.map((tool) => (
             <button
               key={tool.id}
               type="button"
               onClick={() => chooseTool(tool.id)}
-              className={`group relative grid h-10 w-10 place-items-center rounded-xl transition ${
+              className={`group relative flex h-14 w-16 flex-col items-center justify-center gap-0.5 rounded-2xl transition ${
                 activeTool === tool.id
                   ? "bg-white shadow-sm"
                   : "text-stone-400 hover:bg-white hover:text-stone-700"
@@ -532,7 +536,7 @@ export function AdvancedWorkbenchShell({
               aria-label={tool.label}
             >
               <ToolIcon tool={tool.id} />
-              <span className="pointer-events-none absolute left-full z-20 ml-2 hidden whitespace-nowrap rounded-md bg-stone-900 px-2 py-1 text-[10px] text-white shadow-lg group-hover:block">
+              <span className="max-w-14 truncate text-[10px] font-medium">
                 {tool.label}
               </span>
             </button>
@@ -572,7 +576,12 @@ export function AdvancedWorkbenchShell({
           </>
         )}
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-stone-100">
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-stone-100">
+          {editorAvailable && editorContextualToolbar && (
+            <div className="pointer-events-none absolute left-1/2 top-12 z-40 max-w-[calc(100%-1.5rem)] -translate-x-1/2">
+              {editorContextualToolbar}
+            </div>
+          )}
           {editorAvailable ? (
             <div className="h-full">{editorStage}</div>
           ) : (

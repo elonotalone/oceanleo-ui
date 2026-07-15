@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
 import { DeckControls } from "../doc-editors/DeckControls";
 import { DeckStage } from "../doc-editors/DeckStage";
 import { useDeckEditor } from "../doc-editors/use-deck-editor";
@@ -67,7 +68,10 @@ export function DeckRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "deck" })}
-      editorControls={<DeckControls editor={editor} accent={accent} />}
+      editorToolbox={<DeckControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <DeckContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<DeckStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

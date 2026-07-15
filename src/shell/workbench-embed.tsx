@@ -16,6 +16,7 @@ import {
   buildEditorEmbedUrl,
   isTrustedEditorOrigin,
 } from "./editor-protocol";
+import type { SelectionCommand, SelectionContext } from "./selection-context";
 import type { LibraryItem } from "./library-data";
 import { useAdvancedLayout } from "./advanced-layout-context";
 import { advancedSavedItem } from "./advanced-session";
@@ -30,12 +31,14 @@ export interface EmbedEditorPaneProps {
   onVersionSaved?: (item: LibraryItem) => void;
   onCloseRequest?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSelectionChange?: (selection: SelectionContext | null) => void;
   onSaveResult?: (result: {
     ok: boolean;
     saveId?: string;
     item?: LibraryItem;
   }) => void;
   saveRequestId?: string;
+  selectionCommand?: SelectionCommand | null;
 }
 
 function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
@@ -79,8 +82,10 @@ export function EmbedEditorPane({
   onVersionSaved,
   onCloseRequest,
   onDirtyChange,
+  onSelectionChange,
   onSaveResult,
   saveRequestId = "",
+  selectionCommand = null,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
   const layout = useAdvancedLayout();
@@ -164,6 +169,8 @@ export function EmbedEditorPane({
         );
       } else if (message.type === "error") {
         setStatus(message.message || tt("编辑器发生错误"));
+      } else if (message.type === "selection-changed") {
+        onSelectionChange?.(message.selection);
       } else if (message.type === "close-request") {
         onCloseRequest?.();
       } else if (message.type === "artifact-created" || message.type === "artifact-updated") {
@@ -256,6 +263,7 @@ export function EmbedEditorPane({
     mediaType,
     onCloseRequest,
     onDirtyChange,
+    onSelectionChange,
     onSaveResult,
     onVersionSaved,
     sendToEditor,
@@ -310,6 +318,11 @@ export function EmbedEditorPane({
       sidePanelVisible: Boolean(layout?.hostPanelVisible),
     });
   }, [layout?.hostPanelVisible, phase, sendToEditor]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !selectionCommand) return;
+    sendToEditor({ type: "selection-command", command: selectionCommand });
+  }, [phase, selectionCommand, sendToEditor]);
 
   return (
     <div className="relative h-full w-full bg-white">

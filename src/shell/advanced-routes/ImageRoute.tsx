@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
 import { FabricImageControls } from "../image-editor/FabricImageControls";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
 import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
@@ -41,7 +42,10 @@ export function ImageRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "image" })}
-      editorControls={<FabricImageControls editor={editor} accent={accent} />}
+      editorToolbox={<FabricImageControls editor={editor} accent={accent} />}
+      editorContextualToolbar={
+        <FabricImageContextToolbar editor={editor} accent={accent} />
+      }
       editorStage={<FabricImageStage editor={editor} accent={accent} />}
       editorStatus={
         editor.error ||

@@ -22,7 +22,7 @@ export function UnsupportedRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "none" })}
-      editorControls={null}
+      editorToolbox={null}
       editorStage={null}
       editorAvailable={false}
       onClose={onClose}
