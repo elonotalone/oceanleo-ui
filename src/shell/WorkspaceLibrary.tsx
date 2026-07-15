@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,15 +10,19 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useRouter } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
+import { ensureDatabaseThumbnail } from "../lib/database";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { editorCapabilityFor } from "./workbench-routes";
-import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
+import {
+  advancedFeatureHrefForItem,
+  advancedLibraryReferenceFor,
+} from "./advanced-features";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -65,6 +70,10 @@ export interface WorkspaceLibraryProps {
     item: LibraryItem,
   ) => boolean;
   allowAdvanced?: boolean;
+  /** File cards leave the App workspace and enter their canonical advanced URL. */
+  openAdvancedOnSelect?: boolean;
+  /** Route hosts can intercept selection while preserving the shared card UI. */
+  onOpenItem?: (item: LibraryItem) => void;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -87,6 +96,9 @@ const KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   threed: "3D",
   file: "文件",
 };
+
+const generatedThumbnailCache = new Map<string, string>();
+const generatedThumbnailPending = new Map<string, Promise<string>>();
 
 export function workspaceEntryFromLibraryItem(
   item: LibraryItem,
@@ -128,13 +140,13 @@ export function WorkspaceLibrary({
   onCategoryChange,
   primaryCategoryIds,
   toolbarActions,
-  taskId,
   siteId = "",
-  appId = "",
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
   allowAdvanced = true,
+  openAdvancedOnSelect = true,
+  onOpenItem,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -142,8 +154,7 @@ export function WorkspaceLibrary({
   plain = false,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
-  const workspaceSession = useOptionalWorkspaceSession();
-  const runtimeAppId = appId || workspaceSession?.appId || "default";
+  const router = useRouter();
   const [internalSearch, setInternalSearch] = useState("");
   const search = query ?? internalSearch;
   const setSearch: Dispatch<SetStateAction<string>> = (value) => {
@@ -160,12 +171,41 @@ export function WorkspaceLibrary({
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [materialActionState, setMaterialActionState] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
+
+  const openEntry = useCallback(
+    (entry: WorkspaceLibraryEntry) => {
+      const item = entry.libraryItem;
+      if (
+        item &&
+        allowAdvanced &&
+        openAdvancedOnSelect &&
+        materialActions.length === 0
+      ) {
+        if (onOpenItem) {
+          onOpenItem(item);
+          return;
+        }
+        const href = advancedFeatureHrefForItem(item);
+        if (href) {
+          router.push(href);
+          return;
+        }
+      }
+      setSelectedId(entry.id);
+    },
+    [
+      allowAdvanced,
+      materialActions.length,
+      onOpenItem,
+      openAdvancedOnSelect,
+      router,
+    ],
+  );
 
   const removeEntry = async (entry: WorkspaceLibraryEntry) => {
     if (!entry.onDelete || deletingId) return;
@@ -399,7 +439,14 @@ export function WorkspaceLibrary({
           {allowAdvanced && editorCapability.available && (
             <button
               type="button"
-              onClick={() => setAdvancedOpen(true)}
+              onClick={() => {
+                if (onOpenItem) {
+                  onOpenItem(workbenchItem);
+                  return;
+                }
+                const href = advancedFeatureHrefForItem(workbenchItem);
+                if (href) router.push(href);
+              }}
               className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
               style={{ background: accent }}
             >
@@ -481,18 +528,6 @@ export function WorkspaceLibrary({
           )}
         </div>
       </div>
-      {advancedOpen && (
-        <AdvancedContentWorkbench
-          item={workbenchItem}
-          previewContent={selected.content}
-          linkUrl={linkUrl}
-          taskId={taskId}
-          siteId={siteId || workbenchItem.siteId || ""}
-          appId={runtimeAppId}
-          accent={accent}
-          onClose={() => setAdvancedOpen(false)}
-        />
-      )}
       </>
     );
   }
@@ -556,7 +591,7 @@ export function WorkspaceLibrary({
               <WorkspaceListRow
                 key={entry.id}
                 entry={entry}
-                onOpen={() => setSelectedId(entry.id)}
+                onOpen={() => openEntry(entry)}
                 onDelete={
                   entry.onDelete ? () => void removeEntry(entry) : undefined
                 }
@@ -570,7 +605,7 @@ export function WorkspaceLibrary({
               <WorkspaceCard
                 key={entry.id}
                 entry={entry}
-                onOpen={() => setSelectedId(entry.id)}
+                onOpen={() => openEntry(entry)}
                 onDelete={
                   entry.onDelete ? () => void removeEntry(entry) : undefined
                 }
@@ -606,6 +641,7 @@ function WorkspaceCard({
         <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
           <WorkspaceThumbnail
             url={entry.thumbUrl}
+            item={entry.libraryItem}
             alt={entry.title}
             kind={kind}
             accent={accent}
@@ -669,6 +705,7 @@ function WorkspaceListRow({
         <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
           <WorkspaceThumbnail
             url={entry.thumbUrl}
+            item={entry.libraryItem}
             alt={entry.title}
             kind={kind}
             accent="#78716c"
@@ -740,6 +777,7 @@ function WorkspaceKindIcon({
 
 function WorkspaceThumbnail({
   url,
+  item,
   alt,
   kind,
   accent,
@@ -747,6 +785,7 @@ function WorkspaceThumbnail({
   compact = false,
 }: {
   url?: string;
+  item?: LibraryItem;
   alt: string;
   kind: LibraryKind;
   accent: string;
@@ -755,10 +794,95 @@ function WorkspaceThumbnail({
 }) {
   const tt = useUI();
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
-  if (!url || failed) {
+  const [visible, setVisible] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = hostRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const reference = item ? advancedLibraryReferenceFor(item) : null;
+  const referenceKey =
+    reference &&
+    (reference.source === "work" ||
+      reference.source === "asset" ||
+      reference.source === "artifact")
+      ? `${reference.source}:${reference.id}`
+      : "";
+  const requiresGeneratedThumbnail = Boolean(
+    item &&
+      ["ppt", "sheet", "document", "video", "file"].includes(kind) &&
+      (!url || url === item.url),
+  );
+  const [generatedUrl, setGeneratedUrl] = useState(
+    referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
+  );
+  useEffect(() => {
+    setFailed(false);
+    setGeneratedUrl(
+      referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
+    );
+  }, [referenceKey, url]);
+  useEffect(() => {
+    if (
+      !referenceKey ||
+      !visible ||
+      generatedUrl ||
+      (url && !failed && !requiresGeneratedThumbnail) ||
+      !reference
+    ) {
+      return;
+    }
+    let alive = true;
+    let pending = generatedThumbnailPending.get(referenceKey);
+    if (!pending) {
+      pending = ensureDatabaseThumbnail(
+        reference.source as "work" | "asset" | "artifact",
+        reference.id,
+      )
+        .then((result) => (result.ok ? result.data?.thumb_url || "" : ""))
+        .catch(() => "");
+      generatedThumbnailPending.set(referenceKey, pending);
+    }
+    void pending.then((nextUrl) => {
+      generatedThumbnailPending.delete(referenceKey);
+      if (!nextUrl) return;
+      generatedThumbnailCache.set(referenceKey, nextUrl);
+      if (alive) {
+        setGeneratedUrl(nextUrl);
+        setFailed(false);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [
+    failed,
+    generatedUrl,
+    reference,
+    referenceKey,
+    requiresGeneratedThumbnail,
+    url,
+    visible,
+  ]);
+  const displayUrl =
+    generatedUrl || (requiresGeneratedThumbnail ? "" : url);
+  if (!displayUrl || failed) {
     return (
-      <div className="grid h-full place-items-center">
+      <div ref={hostRef} className="grid h-full place-items-center">
         {compact ? (
           <span className="text-[10px] font-medium text-stone-400">
             {tt(KIND_LABELS[kind] || "内容")}
@@ -770,16 +894,18 @@ function WorkspaceThumbnail({
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className={imageClassName}
-    />
+    <div ref={hostRef} className="h-full w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={displayUrl}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className={imageClassName}
+      />
+    </div>
   );
 }
 

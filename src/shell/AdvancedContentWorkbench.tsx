@@ -17,7 +17,6 @@ import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
 import {
   WorkspaceSessionProvider,
-  useOptionalWorkspaceSession,
   useWorkspaceSession,
 } from "./WorkspaceSession";
 import {
@@ -27,11 +26,14 @@ import {
   advancedSessionSnapshot,
 } from "./advanced-session";
 import {
+  advancedFeatureForItem,
+  advancedFeatureHref,
+} from "./advanced-features";
+import {
   AdvancedSessionContext,
   type AdvancedFlushResult,
 } from "./advanced-session-context";
 import type { LibraryItem } from "./library-data";
-import { historySessionHref } from "./workspace-route";
 import { WorkbenchMaterialProvider } from "./workbench-material-provider";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
@@ -118,29 +120,31 @@ export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
 ) {
   const [mounted, setMounted] = useState(false);
-  const inherited = useOptionalWorkspaceSession();
+  const router = useRouter();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   const route = editorRouteFor(props.item);
   const siteId = props.siteId || props.item.siteId || "oceanleo";
   const appId = advancedSessionAppId(props.item, route.type);
-  const materialAppId = props.appId || inherited?.appId || appId;
-  const canReuseInherited =
-    inherited?.siteId === siteId && inherited.appId === appId;
-  if (canReuseInherited) {
-    return (
-      <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
-        <AdvancedContentWorkbenchRuntime {...props} />
-      </WorkbenchMaterialProvider>
-    );
-  }
+  const feature = advancedFeatureForItem(props.item);
+  const materialAppId = feature ? `advanced:${feature.id}` : appId;
   return (
     <WorkspaceSessionProvider
-      key={appId}
+      key={`${appId}:${props.sessionId || "live"}`}
       siteId={siteId}
       appId={appId}
+      surface="advanced"
       title={props.item.title}
+      sessionId={props.sessionId}
+      initialSession={props.initialSession}
+      mode={props.mode || (props.sessionId ? "history" : "workspace")}
+      resumeLatest={!props.sessionId}
+      onSessionIdChange={(sessionId) => {
+        if (sessionId && feature) {
+          router.replace(advancedFeatureHref(feature, { sessionId }));
+        }
+      }}
     >
       <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
         <AdvancedContentWorkbenchRuntime {...props} />
@@ -190,7 +194,10 @@ function AdvancedContentWorkbenchRuntime(
   );
   const navigate = useCallback(
     (sessionId: string) => {
-      router.replace(historySessionHref(sessionId));
+      const feature = advancedFeatureForItem(materialRef.current);
+      if (feature) {
+        router.replace(advancedFeatureHref(feature, { sessionId }));
+      }
     },
     [router],
   );
@@ -271,6 +278,7 @@ function AdvancedContentWorkbenchRuntime(
   );
   const sessionActions = useMemo(
     () => ({
+      sessionId: workspace.sessionId,
       taskId: workspace.taskId,
       snapshot: makeSnapshot,
       ensure,
@@ -286,6 +294,7 @@ function AdvancedContentWorkbenchRuntime(
       recordSavedItem,
       registerFlush,
       startNew,
+      workspace.sessionId,
       workspace.taskId,
     ],
   );

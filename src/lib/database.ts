@@ -81,6 +81,13 @@ export interface DatabaseOverview {
   counts: { works: number; assets: number; knowledge: number; files?: number };
 }
 
+export type DatabaseItemSource = "work" | "asset" | "artifact" | "platform";
+
+export interface ResolvedDatabaseItem {
+  source: DatabaseItemSource;
+  item: Record<string, unknown>;
+}
+
 type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
 
 async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
@@ -129,6 +136,27 @@ function qs(params: Record<string, string | number | undefined>): string {
 export function getDatabaseOverview(opts: { mediaType?: MediaType; limit?: number } = {}) {
   return authed<DatabaseOverview>(
     `/v1/database/overview${qs({ media_type: opts.mediaType, limit: opts.limit })}`,
+  );
+}
+
+/** Resolve a stable advanced-feature deep link without depending on workspace state. */
+export function resolveDatabaseItem(source: DatabaseItemSource, id: string) {
+  return authed<ResolvedDatabaseItem>(
+    `/v1/database/item${qs({ source, id })}`,
+  );
+}
+
+/** Generate and persist a real first-page/frame thumbnail when a row has none. */
+export function ensureDatabaseThumbnail(
+  source: Exclude<DatabaseItemSource, "platform">,
+  id: string,
+) {
+  return authed<{ thumb_url: string; generated: boolean }>(
+    `/v1/database/thumbnail`,
+    {
+      method: "POST",
+      body: JSON.stringify({ source, id }),
+    },
   );
 }
 

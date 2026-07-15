@@ -1,5 +1,10 @@
 import type { AppSession } from "../lib/app-session";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import {
+  advancedFeatureById,
+  advancedFeatureForItem,
+  type AdvancedFeatureId,
+} from "./advanced-features";
 import { editorRouteFor, type EditorRoute } from "./workbench-routes";
 
 export const ADVANCED_SESSION_SCHEMA_VERSION = 2;
@@ -87,6 +92,7 @@ export interface AdvancedSessionSnapshot extends Record<string, unknown> {
   kind: typeof ADVANCED_SESSION_KIND;
   version: typeof ADVANCED_SESSION_SCHEMA_VERSION;
   editor_route: EditorRoute["type"];
+  feature_id: AdvancedFeatureId;
   item: {
     key: string;
     source: LibraryItem["source"];
@@ -204,10 +210,15 @@ export function advancedSessionSnapshot(
   taskId?: string | null,
 ): AdvancedSessionSnapshot {
   const rootId = advancedRootItemId(item);
+  const feature = advancedFeatureForItem(item);
+  if (!feature) {
+    throw new Error("当前素材没有可恢复的高级功能。");
+  }
   return {
     kind: ADVANCED_SESSION_KIND,
     version: ADVANCED_SESSION_SCHEMA_VERSION,
     editor_route: route,
+    feature_id: feature.id,
     item: {
       key: item.key,
       source: item.source,
@@ -334,7 +345,14 @@ export function advancedSnapshotFromSession(
     id: versionId,
     meta: { ...meta, parent_asset_id: rootId },
   };
+  const feature = advancedFeatureForItem(restored);
+  const declaredFeature =
+    typeof record.feature_id === "string"
+      ? advancedFeatureById(record.feature_id)
+      : null;
   if (
+    !feature ||
+    (record.feature_id !== undefined && declaredFeature?.id !== feature.id) ||
     session?.site_id !== siteId ||
     session.app_id !== advancedSessionAppId(restored, route) ||
     editorRouteFor(restored).type !== route
@@ -345,6 +363,7 @@ export function advancedSnapshotFromSession(
     kind: ADVANCED_SESSION_KIND,
     version: ADVANCED_SESSION_SCHEMA_VERSION,
     editor_route: route,
+    feature_id: feature.id,
     item,
     task_id: taskId,
   };

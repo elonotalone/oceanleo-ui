@@ -54,7 +54,7 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
-  assert.match(shell, /editorAvailable \? "edit" : "preview"/);
+  assert.match(shell, /editorAvailable \? "edit" : "agent"/);
   assert.match(shell, /beforeunload/);
   assert.match(shell, /当前有未保存的修改/);
   for (const editor of [rich, grid, deck, image, audio, pdf, timeline]) {

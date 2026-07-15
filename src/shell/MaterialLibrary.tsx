@@ -79,7 +79,7 @@ export interface MaterialLibraryProps {
   ) => boolean;
 }
 
-interface PlatformAsset {
+export interface PlatformAsset {
   id: string;
   type: string;
   title: string;
@@ -251,7 +251,7 @@ function materialToEntry(material: MaterialItem): WorkspaceLibraryEntry {
   });
 }
 
-function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
+export function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
   const designTemplateDoc =
     asset.series_id === "design-materials" &&
     /^https:\/\/asset\.oceanleo\.com\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(

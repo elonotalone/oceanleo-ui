@@ -45,7 +45,7 @@ const KIND_CATEGORY: Record<LibraryKind, string> = {
   file: "文件",
 };
 
-function assetAsWork(item: AssetItem): WorkItem {
+export function assetAsWork(item: AssetItem): WorkItem {
   const uploaded = item.meta?.is_upload === true;
   return {
     id: item.id,
@@ -103,6 +103,9 @@ export interface MyLibraryProps {
   onCategoryChange?: (category: string) => void;
   onlyFavorites?: boolean;
   plain?: boolean;
+  itemFilter?: (item: LibraryItem) => boolean;
+  onOpenItem?: (item: LibraryItem) => void;
+  openAdvancedOnSelect?: boolean;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -118,6 +121,9 @@ export function MyLibrary({
   onCategoryChange,
   onlyFavorites = false,
   plain = false,
+  itemFilter,
+  onOpenItem,
+  openAdvancedOnSelect = true,
 }: MyLibraryProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -268,10 +274,14 @@ export function MyLibrary({
     () => [
       ...(onlyFavorites ? [] : featuredEntries),
       ...items
-        .filter((item) => !onlyFavorites || item.favorite)
+        .filter(
+          (item) =>
+            (!onlyFavorites || item.favorite) &&
+            (!itemFilter || itemFilter(item)),
+        )
         .map((item) => toEntry(item, () => removeItem(item))),
     ],
-    [featuredEntries, items, onlyFavorites, removeItem],
+    [featuredEntries, itemFilter, items, onlyFavorites, removeItem],
   );
   const toolbar = (
     <div className="flex items-center gap-2">
@@ -309,6 +319,8 @@ export function MyLibrary({
         onCategoryChange={onCategoryChange}
         taskId={taskId}
         siteId={siteId}
+        onOpenItem={onOpenItem}
+        openAdvancedOnSelect={openAdvancedOnSelect}
         toolbarActions={toolbar}
         searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
         emptyTitle={

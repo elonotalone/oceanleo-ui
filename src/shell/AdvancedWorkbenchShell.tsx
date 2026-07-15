@@ -9,14 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import {
-  getDatabaseOverview,
-  saveWorks,
-  type MediaType,
-  type WorkItem,
-} from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
 import { AdvancedAgentPanel } from "./AdvancedAgentPanel";
+import { AdvancedTasks } from "./AdvancedTasks";
 import {
   useAdvancedSession,
   type AdvancedFlushResult,
@@ -25,16 +20,15 @@ import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { MyLibrary } from "./MyLibrary";
 import { useWorkbenchMaterials } from "./workbench-material-provider";
 
 type WorkbenchTool =
   | "agent"
   | "edit"
   | "materials"
-  | "preview"
-  | "info"
-  | "versions"
-  | "export";
+  | "tasks"
+  | "library";
 
 export interface AdvancedWorkbenchShellProps {
   item: LibraryItem;
@@ -60,23 +54,6 @@ export interface AdvancedWorkbenchShellProps {
   exportPanel?: ReactNode;
   versionRevision?: string | number;
   onClose: () => void;
-}
-
-function mediaTypeFor(item: LibraryItem): MediaType {
-  const map: Partial<Record<LibraryItem["kind"], MediaType>> = {
-    website: "website",
-    canvas: "canvas",
-    ppt: "ppt",
-    sheet: "sheet",
-    document: "doc",
-    image: "image",
-    video: "video",
-    video_canvas: "video_canvas",
-    audio: "audio",
-    xhs: "xhs",
-    threed: "model3d",
-  };
-  return map[item.kind] || "other";
 }
 
 function curatedTypeFor(item: LibraryItem): string {
@@ -121,28 +98,16 @@ function ToolIcon({ tool }: { tool: WorkbenchTool }) {
         <path d="M7 8h10M7 12h6M7 16h8" />
       </>
     ),
-    preview: (
+    tasks: (
       <>
-        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
-        <circle cx="12" cy="12" r="2.5" />
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
       </>
     ),
-    info: (
+    library: (
       <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 11v6M12 7h.01" />
-      </>
-    ),
-    versions: (
-      <>
-        <path d="M4 7h11a5 5 0 010 10H8" />
-        <path d="M8 13l-4 4 4 4M8 3v8" />
-      </>
-    ),
-    export: (
-      <>
-        <path d="M12 3v12M8 7l4-4 4 4" />
-        <path d="M5 13v7h14v-7" />
+        <path d="M4 5.5A2.5 2.5 0 016.5 3H20v16H6.5A2.5 2.5 0 004 21.5v-16z" />
+        <path d="M4 18.5A2.5 2.5 0 016.5 16H20" />
       </>
     ),
   };
@@ -161,15 +126,6 @@ function ToolIcon({ tool }: { tool: WorkbenchTool }) {
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="border-b border-stone-100 py-2">
-      <dt className="text-[10px] uppercase tracking-wide text-stone-400">{label}</dt>
-      <dd className="mt-0.5 break-words text-[12px] text-stone-700">{value || "—"}</dd>
-    </div>
-  );
-}
-
 /**
  * The route-agnostic full-screen shell. Route adapters own the actual editor
  * hook and provide Controls + Stage as slots, so only the selected editor is
@@ -177,8 +133,6 @@ function MetaRow({ label, value }: { label: string; value: ReactNode }) {
  */
 export function AdvancedWorkbenchShell({
   item,
-  previewContent,
-  linkUrl,
   taskId,
   siteId = "",
   accent = "#4f46e5",
@@ -192,8 +146,6 @@ export function AdvancedWorkbenchShell({
   editorUsesOwnControls = false,
   onBeforeNewConversation,
   savedItem = null,
-  exportPanel,
-  versionRevision = 0,
   onClose,
 }: AdvancedWorkbenchShellProps) {
   const tt = useUI();
@@ -204,10 +156,7 @@ export function AdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const [activeTool, setActiveTool] = useState<WorkbenchTool>(
-    editorAvailable ? "edit" : "preview",
-  );
-  const [stageMode, setStageMode] = useState<"edit" | "preview">(
-    editorAvailable ? "edit" : "preview",
+    editorAvailable ? "edit" : "agent",
   );
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelVisible, setPanelVisible] = useState(
@@ -215,8 +164,6 @@ export function AdvancedWorkbenchShell({
       !editorUsesOwnControls &&
       (typeof window === "undefined" || window.innerWidth >= 768),
   );
-  const [copyState, setCopyState] = useState("");
-  const [versions, setVersions] = useState<WorkItem[]>([]);
   const [fullscreen, setFullscreen] = useState(false);
   const [resizing, setResizing] = useState(false);
   const layoutState = useMemo(
@@ -353,24 +300,6 @@ export function AdvancedWorkbenchShell({
     [],
   );
 
-  useEffect(() => {
-    if (activeTool !== "versions") return;
-    let alive = true;
-    // The gateway contract caps overview pages at 200. Asking for 300 returned
-    // 422 and made the Versions tool look broken on every editor.
-    void getDatabaseOverview({ limit: 200 }).then((result) => {
-      if (!alive || !result.ok) return;
-      const related = (result.data?.works || []).filter((work) => {
-        const parent = String(work.meta?.parent_asset_id || "");
-        return String(work.id) === item.id || parent === item.id;
-      });
-      setVersions(related);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [activeTool, item.id, versionRevision]);
-
   const tools = useMemo(
     () =>
       [
@@ -379,25 +308,18 @@ export function AdvancedWorkbenchShell({
           ? [{ id: "edit" as const, label: tt(editorLabel) }]
           : []),
         { id: "materials" as const, label: tt("素材") },
-        { id: "preview" as const, label: tt("预览") },
-        { id: "info" as const, label: tt("信息") },
-        { id: "versions" as const, label: tt("版本") },
-        {
-          id: "export" as const,
-          label: tt(exportPanel ? "导出" : "原文件"),
-        },
+        { id: "tasks" as const, label: tt("我的任务") },
+        { id: "library" as const, label: tt("我的库") },
       ] satisfies { id: WorkbenchTool; label: string }[],
-    [editorAvailable, editorLabel, exportPanel, tt],
+    [editorAvailable, editorLabel, tt],
   );
 
   const chooseTool = useCallback(
     (tool: WorkbenchTool) => {
       setActiveTool(tool);
       setPanelVisible(!(tool === "edit" && editorUsesOwnControls));
-      if (tool === "edit" && editorAvailable) setStageMode("edit");
-      if (tool === "preview") setStageMode("preview");
     },
-    [editorAvailable, editorUsesOwnControls],
+    [editorUsesOwnControls],
   );
 
   function beginResize(event: React.PointerEvent<HTMLDivElement>) {
@@ -451,35 +373,6 @@ export function AdvancedWorkbenchShell({
     handle.addEventListener("lostpointercapture", stop);
   }
 
-  async function saveCopy() {
-    const url = item.url || item.previewUrl;
-    if (!url) return;
-    setCopyState(tt("保存中…"));
-    try {
-      const result = await saveWorks(siteId || "oceanleo", [
-        {
-          url,
-          thumb_url: item.previewUrl || url,
-          media_type: mediaTypeFor(item),
-          title: `${item.title}-副本`,
-          kind: item.kind,
-          meta: {
-            parent_asset_id: item.id,
-            source_site: item.siteId || "",
-            copied_from: item.source || "library",
-          },
-        },
-      ]);
-      setCopyState(
-        result.ok && Number(result.data?.saved || 0) === 1
-          ? tt("已保存到我的库")
-          : result.error || tt("保存失败"),
-      );
-    } catch (caught) {
-      setCopyState(caught instanceof Error ? caught.message : tt("保存失败"));
-    }
-  }
-
   async function toggleFullscreen() {
     try {
       if (document.fullscreenElement) {
@@ -526,93 +419,22 @@ export function AdvancedWorkbenchShell({
         />
       </div>
     );
-  } else if (activeTool === "preview") {
+  } else if (activeTool === "tasks") {
     panel = (
-      <div className="p-4 text-[12px] leading-relaxed text-stone-600">
-        {tt("右侧正在显示与素材库一致的只读预览；点击编辑工具可回到可操作的素材本体。")}
-      </div>
-    );
-  } else if (activeTool === "info") {
-    panel = (
-      <dl className="px-3 py-1">
-        <MetaRow label={tt("类型")} value={tt(libraryKindLabel(item.kind))} />
-        <MetaRow
-          label={tt("来源")}
-          value={String(item.meta.library_source || item.source || item.siteId || "")}
-        />
-        <MetaRow
-          label={tt("格式")}
-          value={String(item.meta.mime || item.meta.format || "")}
-        />
-        <MetaRow
-          label={tt("创建时间")}
-          value={item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
-        />
-        <MetaRow label={tt("标识")} value={item.id} />
-      </dl>
-    );
-  } else if (activeTool === "versions") {
-    panel = (
-      <div className="space-y-3 p-3 text-[12px] leading-relaxed text-stone-600">
-        <div className="rounded-xl border border-stone-200 bg-white p-3">
-          <p className="font-medium text-stone-800">{tt("原始版本")}</p>
-          <p className="mt-1 text-[11px] text-stone-400">
-            {item.createdAt
-              ? new Date(item.createdAt).toLocaleString()
-              : tt("当前素材")}
-          </p>
-        </div>
-        {versions.map((version, index) => (
-          <a
-            key={version.id}
-            href={version.url}
-            target="_blank"
-            rel="noreferrer"
-            className="block rounded-xl border border-stone-200 bg-white p-3 transition hover:border-stone-300"
-          >
-            <p className="font-medium text-stone-800">
-              {version.title || `${tt("编辑版本")} ${index + 1}`}
-            </p>
-            <p className="mt-1 text-[11px] text-stone-400">
-              {version.created_at
-                ? new Date(version.created_at).toLocaleString()
-                : tt("已保存到我的库")}
-            </p>
-          </a>
-        ))}
-        <p>
-          {tt("平台素材保持只读；首次保存创建个人副本，后续保存继续形成可回看的版本链。")}
-        </p>
-      </div>
+      <AdvancedTasks
+        siteId={siteId}
+        accent={accent}
+        currentSessionId={advancedSession?.sessionId}
+      />
     );
   } else {
-    panel = exportPanel || (
-      <div className="space-y-2 p-3">
-        <button
-          type="button"
-          onClick={() => void saveCopy()}
-          className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
-          style={{ background: accent }}
-        >
-          {tt("保存原文件副本到我的库")}
-        </button>
-        {(linkUrl || item.url || item.previewUrl) && (
-          <a
-            href={linkUrl || item.url || item.previewUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-full rounded-xl border border-stone-200 px-3 py-2 text-center text-[12px] text-stone-600 hover:bg-stone-50"
-          >
-            {tt("打开内容链接")}
-          </a>
-        )}
-        {copyState && (
-          <p className="text-center text-[11px] text-stone-500">{copyState}</p>
-        )}
-        <p className="pt-2 text-[11px] leading-relaxed text-stone-400">
-          {tt("格式、质量和专业导出选项在编辑工具中；这里保留原始内容副本与下载入口。")}
-        </p>
-      </div>
+    panel = (
+      <MyLibrary
+        siteId={siteId}
+        accent={accent}
+        taskId={taskId}
+        plain
+      />
     );
   }
 
@@ -656,9 +478,9 @@ export function AdvancedWorkbenchShell({
             {tt("高级功能")} · {tt(libraryKindLabel(item.kind))}
           </p>
         </div>
-        {(visibleEditorStatus || copyState) && (
+        {visibleEditorStatus && (
           <span className="hidden max-w-[28rem] truncate text-[11px] text-stone-400 md:block">
-            {visibleEditorStatus || copyState}
+            {visibleEditorStatus}
           </span>
         )}
         <button
@@ -736,19 +558,13 @@ export function AdvancedWorkbenchShell({
         )}
 
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-stone-100">
-          {editorAvailable && (
-            <div className={stageMode === "edit" ? "h-full" : "hidden h-full"}>
-              {editorStage}
+          {editorAvailable ? (
+            <div className="h-full">{editorStage}</div>
+          ) : (
+            <div className="h-full overflow-auto bg-white">
+              <LibraryItemViewer item={item} accent={accent} />
             </div>
           )}
-          {stageMode === "preview" &&
-            (previewContent ? (
-              <div className="h-full min-h-0 overflow-auto bg-white">{previewContent}</div>
-            ) : (
-              <div className="h-full overflow-auto bg-white">
-                <LibraryItemViewer item={item} accent={accent} />
-              </div>
-            ))}
         </main>
       </div>
       </AdvancedLayoutContext.Provider>

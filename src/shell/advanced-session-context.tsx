@@ -10,6 +10,7 @@ export type AdvancedFlushResult =
   | { ok: false; error?: string };
 
 export interface AdvancedSessionActions {
+  sessionId: string | null;
   taskId: string | null;
   snapshot: (taskId?: string | null) => AdvancedSessionSnapshot;
   ensure: (taskId?: string | null) => Promise<AppSession | null>;

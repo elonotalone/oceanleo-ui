@@ -21,6 +21,7 @@ export {
 export const APP_SESSION_API_BASE = "/v1/agent/sessions";
 
 export type AppSessionStatus = "active" | "archived" | string;
+export type AppSessionSurface = "app" | "advanced";
 
 /** 一次完整 app 工作会话。snapshot 对共享包保持不透明，由各站 runtime 解释。 */
 export interface AppSession {
@@ -28,6 +29,8 @@ export interface AppSession {
   user_id?: string;
   site_id: string;
   app_id: string;
+  /** Server-enforced product partition. Ordinary App history never sees advanced rows. */
+  surface?: AppSessionSurface;
   title?: string | null;
   /** AI history-title lifecycle: pending | generated | fallback. */
   title_status?: string | null;
@@ -55,6 +58,7 @@ export interface ListAppSessionsOptions {
   siteId?: string;
   appId?: string;
   status?: AppSessionStatus;
+  surface?: AppSessionSurface;
   /** 「我的任务」需要包含 archived（已保存）会话；live 查活跃缓存时传 false。 */
   includeArchived?: boolean;
 }
@@ -62,6 +66,7 @@ export interface ListAppSessionsOptions {
 export interface EnsureAppSessionInput {
   siteId: string;
   appId: string;
+  surface?: AppSessionSurface;
   title?: string;
   snapshot?: Record<string, unknown>;
   schemaVersion?: number;
@@ -94,14 +99,16 @@ export function isAppSessionApiUnavailableStatus(status?: number): boolean {
 async function sessionRequest<T>(
   suffix: string,
   init?: RequestInit,
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<T>> {
+  const scopedSuffix = `${suffix}${suffix.includes("?") ? "&" : "?"}surface=${encodeURIComponent(surface)}`;
   if (init?.signal) {
-    return authed<T>(`${APP_SESSION_API_BASE}${suffix}`, init);
+    return authed<T>(`${APP_SESSION_API_BASE}${scopedSuffix}`, init);
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   try {
-    return await authed<T>(`${APP_SESSION_API_BASE}${suffix}`, {
+    return await authed<T>(`${APP_SESSION_API_BASE}${scopedSuffix}`, {
       ...init,
       signal: controller.signal,
     });
@@ -149,6 +156,8 @@ export async function listAppSessions(
   else if (options.includeArchived === false) params.set("status", "active");
   const result = await sessionRequest<SessionListEnvelope>(
     `?${params.toString()}`,
+    undefined,
+    options.surface || "app",
   );
   if (!result.ok || !result.data) {
     return result as AgentApiResult<{ items: AppSession[] }>;
@@ -162,11 +171,16 @@ export async function listAppSessions(
 /** 读取一条 owner-scoped 工作会话。 */
 export async function getAppSession(
   sessionId: string,
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<AppSession>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
   return unwrapSession(
-    await sessionRequest<SessionEnvelope>(`/${encodeURIComponent(id)}`),
+    await sessionRequest<SessionEnvelope>(
+      `/${encodeURIComponent(id)}`,
+      undefined,
+      surface,
+    ),
   );
 }
 
@@ -180,6 +194,7 @@ export async function ensureAppSession(
   const payload: Record<string, unknown> = {
     site_id: (input.siteId || "").trim(),
     app_id: (input.appId || "").trim(),
+    surface: input.surface || "app",
   };
   if (!payload.site_id || !payload.app_id) {
     return { ok: false, error: "site_id 与 app_id 不能为空", status: 400 };
@@ -192,6 +207,7 @@ export async function ensureAppSession(
   const result = await sessionRequest<SessionEnvelope>(
     "",
     jsonMutation("POST", payload),
+    input.surface || "app",
   );
   const unwrapped = unwrapSession(result);
   if (unwrapped.ok) notifyHistoryChanged();
@@ -202,6 +218,7 @@ export async function ensureAppSession(
 export async function updateAppSession(
   sessionId: string,
   input: UpdateAppSessionInput,
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<AppSession>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
@@ -216,6 +233,7 @@ export async function updateAppSession(
   const result = await sessionRequest<SessionEnvelope>(
     suffix,
     jsonMutation("PUT", payload),
+    surface,
   );
   return unwrapSession(result);
 }
@@ -229,6 +247,7 @@ export async function updateAppSessionMetadata(
     favorite?: boolean;
     project_id?: string | null;
   },
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<AppSession>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
@@ -239,6 +258,7 @@ export async function updateAppSessionMetadata(
       body: JSON.stringify(patch),
       headers: { "Content-Type": "application/json" },
     },
+    surface,
   );
   const unwrapped = unwrapSession(result);
   if (unwrapped.ok) notifyHistoryChanged();
@@ -248,6 +268,7 @@ export async function updateAppSessionMetadata(
 /** 把 live 会话保存进「我的任务」；该行仍可原地续编，live 下一次动作建新缓存。 */
 export async function archiveAppSession(
   sessionId: string,
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<ArchiveAppSessionResult>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
@@ -255,7 +276,7 @@ export async function archiveAppSession(
 
   const result = await sessionRequest<
     ArchiveAppSessionResult | SessionEnvelope
-  >(`${suffix}/archive`, jsonMutation("POST"));
+  >(`${suffix}/archive`, jsonMutation("POST"), surface);
   if (!result.ok || !result.data) {
     return result as AgentApiResult<ArchiveAppSessionResult>;
   }
@@ -290,12 +311,14 @@ export async function archiveAppSession(
 /** 永久删除已保存任务聚合：snapshot、agent thread、产物与草稿引用一并级联删除。 */
 export async function deleteAppSession(
   sessionId: string,
+  surface: AppSessionSurface = "app",
 ): Promise<AgentApiResult<{ deleted: boolean; session_id: string }>> {
   const id = (sessionId || "").trim();
   if (!id) return { ok: false, error: "缺少 session_id", status: 400 };
   const result = await sessionRequest<{ deleted: boolean; session_id: string }>(
     `/${encodeURIComponent(id)}`,
     { method: "DELETE" },
+    surface,
   );
   if (result.ok) notifyHistoryChanged();
   return result;

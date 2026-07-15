@@ -60,6 +60,7 @@ export function WorkspaceSessionProvider({
   children,
   siteId,
   appId,
+  surface = "app",
   title: sessionTitle = "",
   sessionId: controlledSessionId,
   onSessionIdChange,
@@ -70,6 +71,7 @@ export function WorkspaceSessionProvider({
 }: WorkspaceSessionProviderProps) {
   const site = (siteId || "").trim();
   const app = (appId || "").trim();
+  const sessionSurface = surface === "advanced" ? "advanced" : "app";
   const appTitle = (sessionTitle || "").trim();
   const controlled = controlledSessionId !== undefined;
   const [internalSessionId, setInternalSessionId] = useState<string | null>(
@@ -117,7 +119,7 @@ export function WorkspaceSessionProvider({
   errorRef.current = error;
   const conflictRef = useRef<WorkspaceSessionConflict | null>(conflict);
   conflictRef.current = conflict;
-  const identityRef = useRef(`${site}:${app}`);
+  const identityRef = useRef(`${sessionSurface}:${site}:${app}`);
   const ensurePromiseRef = useRef<Promise<AppSession | null> | null>(null);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -193,7 +195,7 @@ export function WorkspaceSessionProvider({
   }, []);
 
   useEffect(() => {
-    const identity = `${site}:${app}`;
+    const identity = `${sessionSurface}:${site}:${app}`;
     if (identityRef.current === identity) return;
     identityRef.current = identity;
     ensurePromiseRef.current = null;
@@ -205,7 +207,7 @@ export function WorkspaceSessionProvider({
     setConflict(null);
     setError(null);
     if (!controlled) setInternalSessionId(null);
-  }, [site, app, controlled]);
+  }, [site, app, sessionSurface, controlled]);
 
   useEffect(() => {
     let alive = true;
@@ -214,6 +216,7 @@ export function WorkspaceSessionProvider({
       effectiveSessionId,
       site,
       app,
+      sessionSurface,
     );
     if (
       injected &&
@@ -244,9 +247,14 @@ export function WorkspaceSessionProvider({
     const sessionAtLoadStart = sessionRef.current;
     void (async () => {
       if (effectiveSessionId) {
-        const result = await getAppSession(effectiveSessionId);
+        const result = await getAppSession(effectiveSessionId, sessionSurface);
         if (!alive) return;
-        const mismatch = workspaceSessionMismatch(result.data, site, app);
+        const mismatch = workspaceSessionMismatch(
+          result.data,
+          site,
+          app,
+          sessionSurface,
+        );
         const archivedForLive =
           mode !== "history" && isArchivedAppSession(result.data);
         if (
@@ -275,6 +283,7 @@ export function WorkspaceSessionProvider({
       const result = await listAppSessions({
         siteId: site,
         appId: app,
+        surface: sessionSurface,
         status: "active",
         includeArchived: false,
         limit: 1,
@@ -283,9 +292,14 @@ export function WorkspaceSessionProvider({
       if (result.ok && result.data) {
         const latest = result.data.items[0] ?? null;
         if (latest) {
-          const fullResult = await getAppSession(latest.id);
+          const fullResult = await getAppSession(latest.id, sessionSurface);
           if (!alive) return;
-          const mismatch = workspaceSessionMismatch(fullResult.data, site, app);
+          const mismatch = workspaceSessionMismatch(
+            fullResult.data,
+            site,
+            app,
+            sessionSurface,
+          );
           const archivedForLive =
             mode !== "history" &&
             isArchivedAppSession(fullResult.data);
@@ -333,6 +347,7 @@ export function WorkspaceSessionProvider({
     initialSession?.revision,
     mode,
     shouldResumeLatest,
+    sessionSurface,
     applySession,
     clearCurrent,
     reportFailure,
@@ -342,14 +357,14 @@ export function WorkspaceSessionProvider({
   const reload = useCallback(async (): Promise<AppSession | null> => {
     const id = sessionRef.current?.id || effectiveSessionId;
     if (!id) return null;
-    const result = await getAppSession(id);
+    const result = await getAppSession(id, sessionSurface);
     if (result.ok && result.data) {
       applySession(result.data);
       return result.data;
     }
     reportFailure(result.status, result.error);
     return null;
-  }, [effectiveSessionId, applySession, reportFailure]);
+  }, [effectiveSessionId, applySession, reportFailure, sessionSurface]);
 
   const ensureActive = useCallback(
     async (
@@ -374,6 +389,7 @@ export function WorkspaceSessionProvider({
         const result = await ensureAppSession({
           siteId: site,
           appId: app,
+          surface: sessionSurface,
           title: options.title || appTitle,
           snapshot: options.snapshot,
           schemaVersion: options.schemaVersion,
@@ -407,6 +423,7 @@ export function WorkspaceSessionProvider({
       app,
       appTitle,
       mode,
+      sessionSurface,
       applySession,
       reportFailure,
       hydrateLinkedTask,
@@ -513,12 +530,16 @@ export function WorkspaceSessionProvider({
           return { ok: true, session: active };
         }
 
-        const result = await updateAppSession(active.id, {
-          revision: active.revision,
-          snapshot: recordSnapshot,
-          schemaVersion,
-          title: options.title,
-        });
+        const result = await updateAppSession(
+          active.id,
+          {
+            revision: active.revision,
+            snapshot: recordSnapshot,
+            schemaVersion,
+            title: options.title,
+          },
+          sessionSurface,
+        );
         if (result.ok && result.data) {
           if (isArchivedAppSession(result.data) && mode !== "history") {
             applySession(result.data);
@@ -537,7 +558,7 @@ export function WorkspaceSessionProvider({
 
         if (result.status === 409) {
           // 冲突后只重新读取，不拿新 revision 偷偷覆盖。站点可据 conflict 显式合并/重试。
-          const latestResult = await getAppSession(active.id);
+          const latestResult = await getAppSession(active.id, sessionSurface);
           if (latestResult.ok && latestResult.data) {
             applySession(latestResult.data);
             const nextConflict: WorkspaceSessionConflict = {
@@ -576,6 +597,7 @@ export function WorkspaceSessionProvider({
       applySession,
       reportFailure,
       mode,
+      sessionSurface,
     ],
   );
 
@@ -588,6 +610,7 @@ export function WorkspaceSessionProvider({
         const result = await ensureAppSession({
           siteId: site,
           appId: app,
+          surface: sessionSurface,
           title: title || appTitle,
         });
         if (!result.ok || !result.data) {
@@ -604,7 +627,16 @@ export function WorkspaceSessionProvider({
         applySession(result.data);
         return result.data;
       }),
-    [enqueueMutation, mode, site, app, appTitle, applySession, reportFailure],
+    [
+      enqueueMutation,
+      mode,
+      site,
+      app,
+      appTitle,
+      sessionSurface,
+      applySession,
+      reportFailure,
+    ],
   );
 
   const bindTask = useCallback(
@@ -628,11 +660,11 @@ export function WorkspaceSessionProvider({
     async (sessionId: string): Promise<AppSession | null> => {
       const id = sessionId.trim();
       if (!id) return null;
-      const result = await getAppSession(id);
+      const result = await getAppSession(id, sessionSurface);
       if (
         !result.ok ||
         !result.data ||
-        workspaceSessionMismatch(result.data, site, app) ||
+        workspaceSessionMismatch(result.data, site, app, sessionSurface) ||
         (mode !== "history" && isArchivedAppSession(result.data))
       ) {
         reportFailure(
@@ -645,7 +677,7 @@ export function WorkspaceSessionProvider({
       setLinkedTaskId(result.data.task_id ?? null);
       return result.data;
     },
-    [app, applySession, mode, reportFailure, site],
+    [app, applySession, mode, reportFailure, sessionSurface, site],
   );
 
   const artifactContext = useCallback(
@@ -693,7 +725,7 @@ export function WorkspaceSessionProvider({
           return "empty";
         }
         if (!isArchivedAppSession(active)) {
-          const result = await archiveAppSession(active.id);
+          const result = await archiveAppSession(active.id, sessionSurface);
           if (!result.ok) {
             if (result.status === 409) {
               const latest = await reload();
@@ -707,7 +739,7 @@ export function WorkspaceSessionProvider({
         clearCurrent();
         return "archived";
       }),
-    [enqueueMutation, mode, clearCurrent, reload, reportFailure],
+    [enqueueMutation, mode, clearCurrent, reload, reportFailure, sessionSurface],
   );
 
   const clearConflict = useCallback(() => {
@@ -755,6 +787,7 @@ export function WorkspaceSessionProvider({
           const existing = await listAppSessions({
             siteId: site,
             appId: app,
+            surface: sessionSurface,
             status: "active",
             includeArchived: false,
             limit: 1,
@@ -766,13 +799,19 @@ export function WorkspaceSessionProvider({
           activeSessionId = existing.data.items[0]?.id || "";
         }
         if (activeSessionId) {
-          const archived = await archiveAppSession(activeSessionId);
+          const archived = await archiveAppSession(
+            activeSessionId,
+            sessionSurface,
+          );
           if (!archived.ok) {
             if (archived.status !== 409) {
               reportFailure(archived.status, archived.error);
               return null;
             }
-            const latest = await getAppSession(activeSessionId);
+            const latest = await getAppSession(
+              activeSessionId,
+              sessionSurface,
+            );
             if (!latest.ok || !isArchivedAppSession(latest.data)) {
               reportFailure(latest.status, latest.error || archived.error);
               return null;
@@ -782,6 +821,7 @@ export function WorkspaceSessionProvider({
         const result = await ensureAppSession({
           siteId: site,
           appId: app,
+          surface: sessionSurface,
           title: options.title || appTitle,
           snapshot: options.snapshot,
           schemaVersion: options.schemaVersion,
@@ -802,7 +842,15 @@ export function WorkspaceSessionProvider({
         }
         return result.data;
       }),
-    [app, appTitle, applySession, enqueueMutation, reportFailure, site],
+    [
+      app,
+      appTitle,
+      applySession,
+      enqueueMutation,
+      reportFailure,
+      sessionSurface,
+      site,
+    ],
   );
 
   const value = useMemo<WorkspaceSessionContextValue>(
@@ -811,6 +859,7 @@ export function WorkspaceSessionProvider({
       siteId: site,
       appId: app,
       appTitle,
+      surface: sessionSurface,
       mode,
       session,
       taskId: linkedTaskId ?? session?.task_id ?? null,
@@ -839,6 +888,7 @@ export function WorkspaceSessionProvider({
       site,
       app,
       appTitle,
+      sessionSurface,
       mode,
       availability,
       error,

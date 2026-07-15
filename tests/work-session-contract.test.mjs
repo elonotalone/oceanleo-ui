@@ -69,7 +69,10 @@ test("snapshot revision 冲突只重读最新版，不自动覆盖重试", () =>
   assert.notEqual(conflictStart, -1);
   assert.notEqual(conflictEnd, -1);
   const conflictBranch = providerSource.slice(conflictStart, conflictEnd);
-  assert.match(conflictBranch, /getAppSession\(active\.id\)/);
+  assert.match(
+    conflictBranch,
+    /getAppSession\(active\.id, sessionSurface\)/,
+  );
   assert.doesNotMatch(conflictBranch, /updateAppSession\(/);
 });
 
@@ -135,7 +138,7 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
   );
   assert.match(
     providerSource,
-    /listAppSessions\(\{[\s\S]*?appId: app,[\s\S]*?status: "active"[\s\S]*?archiveAppSession\(activeSessionId\)/,
+    /listAppSessions\(\{[\s\S]*?appId: app,[\s\S]*?surface: sessionSurface,[\s\S]*?status: "active"[\s\S]*?archiveAppSession\(\s*activeSessionId,\s*sessionSurface/,
   );
   assert.match(agentChatSource, /router\.replace\(historySessionHref\(sessionId\)\)/);
   assert.match(agentChatSource, /const \[rightOpen, setRightOpen\] = useState\(hasOrgPanel\)/);

@@ -6,18 +6,16 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("workspace details expose Advanced only for a round-trip capability", () => {
+test("workspace files leave App state through a canonical advanced URL", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
-  assert.match(library, /setAdvancedOpen\(true\)/);
+  assert.match(library, /advancedFeatureHrefForItem\(item\)/);
+  assert.match(library, /router\.push\(href\)/);
   assert.match(library, /editorCapabilityFor\(workbenchItem\)/);
   assert.match(library, /allowAdvanced && editorCapability\.available/);
   assert.match(library, /editorCapability\.unavailableReason/);
-  assert.match(library, /previewContent=\{selected\.content\}/);
-  assert.doesNotMatch(
-    library,
-    /\{selected\.libraryItem && \(\s*<button[\s\S]*?高级功能/,
-  );
+  assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
+  assert.doesNotMatch(library, /setAdvancedOpen/);
 });
 
 test("advanced workbench routes real content into the portal editor shell", () => {
@@ -59,6 +57,12 @@ test("advanced workbench routes real content into the portal editor shell", () =
   assert.match(shell, /event\.key !== "Tab"/);
   assert.match(shell, /id: "agent" as const, label: tt\("Agent"\)/);
   assert.match(shell, /id: "materials" as const, label: tt\("素材"\)/);
+  assert.match(shell, /id: "tasks" as const, label: tt\("我的任务"\)/);
+  assert.match(shell, /id: "library" as const, label: tt\("我的库"\)/);
+  assert.doesNotMatch(shell, /id: "preview" as const/);
+  assert.doesNotMatch(shell, /id: "info" as const/);
+  assert.doesNotMatch(shell, /id: "versions" as const/);
+  assert.doesNotMatch(shell, /id: "export" as const/);
   assert.match(shell, /curatedType=\{curatedTypeFor\(item\)\}/);
   assert.match(
     shell,
@@ -96,13 +100,17 @@ test("advanced work is session-backed, deep-linkable and starts a fresh saved co
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   const panel = source("../src/shell/AdvancedAgentPanel.tsx");
   const history = source("../src/shell/HistoryMasterDetail.tsx");
+  const pages = source("../src/shell/AdvancedFeaturePages.tsx");
   const session = source("../src/shell/WorkspaceSession.tsx");
   assert.match(workbench, /advancedSessionAppId/);
-  assert.match(workbench, /historySessionHref\(sessionId\)/);
+  assert.match(workbench, /surface="advanced"/);
+  assert.match(workbench, /advancedFeatureHref\(feature, \{ sessionId \}\)/);
   assert.match(panel, /tt\("新建对话"\)/);
   assert.match(panel, /advancedSession\.startNew\(\)/);
-  assert.match(history, /advancedItemFromSession/);
-  assert.match(history, /<AdvancedContentWorkbench/);
+  assert.match(pages, /getAppSession\(requestedSessionId, "advanced"\)/);
+  assert.match(pages, /\/advanced/);
+  assert.doesNotMatch(history, /advancedItemFromSession/);
+  assert.doesNotMatch(history, /<AdvancedContentWorkbench/);
   assert.match(session, /const startNew = useCallback/);
   assert.doesNotMatch(workbench, /resumeLatest=\{false\}/);
   assert.match(workbench, /taskId === undefined \? workspace\.taskId : taskId/);

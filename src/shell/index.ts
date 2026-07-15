@@ -141,6 +141,21 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+export {
+  AdvancedFeatureCatalog,
+  AdvancedFeatureRoute,
+} from "./AdvancedFeaturePages";
+export {
+  ADVANCED_FEATURES,
+  advancedFeatureById,
+  advancedFeatureForItem,
+  advancedFeatureHref,
+  advancedFeatureHrefForItem,
+} from "./advanced-features";
+export type {
+  AdvancedFeatureDefinition,
+  AdvancedFeatureId,
+} from "./advanced-features";
 export * from "./editor-protocol";
 export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";

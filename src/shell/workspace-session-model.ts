@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   isAppSessionApiUnavailableStatus,
   type AppSession,
+  type AppSessionSurface,
 } from "../lib/app-session";
 export {
   isArchivedAppSession,
@@ -90,6 +91,7 @@ export interface WorkspaceSessionContextValue {
   appId: string;
   /** 当前 GoalApp 展示名，用于历史标题；身份仍以 appId 为准。 */
   appTitle: string;
+  surface: AppSessionSurface;
   mode: WorkspaceSessionMode;
   session: AppSession | null;
   taskId: string | null;
@@ -140,6 +142,8 @@ export interface WorkspaceSessionProviderProps {
   children: ReactNode;
   siteId: string;
   appId: string;
+  /** Product data partition. Advanced work never inherits or appears in App history. */
+  surface?: AppSessionSurface;
   /** 当前 GoalApp 展示名；首次创建 session 时作为默认标题。 */
   title?: string;
   /**
@@ -184,16 +188,24 @@ export function workspaceSessionMatches(
   session: AppSession,
   siteId: string,
   appId: string,
+  surface: AppSessionSurface = "app",
 ): boolean {
-  return session.site_id === siteId && session.app_id === appId;
+  return (
+    session.site_id === siteId &&
+    session.app_id === appId &&
+    (session.surface || "app") === surface
+  );
 }
 
 export function workspaceSessionMismatch(
   session: AppSession | undefined,
   siteId: string,
   appId: string,
+  surface: AppSessionSurface = "app",
 ): boolean {
-  return Boolean(session && !workspaceSessionMatches(session, siteId, appId));
+  return Boolean(
+    session && !workspaceSessionMatches(session, siteId, appId, surface),
+  );
 }
 
 export function matchingInitialSession(
@@ -201,9 +213,10 @@ export function matchingInitialSession(
   sessionId: string | null,
   siteId: string,
   appId: string,
+  surface: AppSessionSurface = "app",
 ): AppSession | null {
   return initial &&
-    workspaceSessionMatches(initial, siteId, appId) &&
+    workspaceSessionMatches(initial, siteId, appId, surface) &&
     (!sessionId || initial.id === sessionId)
     ? initial
     : null;
