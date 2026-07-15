@@ -222,6 +222,7 @@ export function EmbeddedRoute({
           accent={accent}
         />
       }
+      editorContextualToolbarAnchor={selection?.anchor}
       versionRevision={versionRevision}
       editorDirty={dirty}
       editorUsesOwnControls

@@ -170,7 +170,21 @@ export function EmbedEditorPane({
       } else if (message.type === "error") {
         setStatus(message.message || tt("编辑器发生错误"));
       } else if (message.type === "selection-changed") {
-        onSelectionChange?.(message.selection);
+        const frameRect = iframeRef.current?.getBoundingClientRect();
+        const anchor = message.selection?.anchor;
+        onSelectionChange?.(
+          message.selection && anchor && frameRect
+            ? {
+                ...message.selection,
+                anchor: {
+                  x: frameRect.left + anchor.x,
+                  y: frameRect.top + anchor.y,
+                  width: anchor.width,
+                  height: anchor.height,
+                },
+              }
+            : message.selection,
+        );
       } else if (message.type === "close-request") {
         onCloseRequest?.();
       } else if (message.type === "artifact-created" || message.type === "artifact-updated") {

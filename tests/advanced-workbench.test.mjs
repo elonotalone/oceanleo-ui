@@ -215,6 +215,7 @@ test("late catalog categories stay behind More and editor loads have hard deadli
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
   assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
   assert.match(protocol, /record\.instanceId !== instanceId/);
   assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
@@ -229,6 +230,9 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /type: "save-result"/);
   assert.match(embed, /type: "selection-command"/);
   assert.match(embed, /message\.type === "selection-changed"/);
+  assert.match(embed, /getBoundingClientRect/);
+  assert.match(shell, /editorContextualToolbarAnchor/);
+  assert.match(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
 

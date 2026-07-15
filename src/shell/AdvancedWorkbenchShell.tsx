@@ -47,6 +47,13 @@ export interface AdvancedWorkbenchShellProps {
   editorToolbox: ReactNode;
   /** Object-aware horizontal controls rendered over the stage, never in the left panel. */
   editorContextualToolbar?: ReactNode;
+  /** Viewport-space bounds of the selected object, when the editor can report them. */
+  editorContextualToolbarAnchor?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   editorStage: ReactNode;
   editorAvailable?: boolean;
   editorStatus?: string;
@@ -147,6 +154,7 @@ export function AdvancedWorkbenchShell({
   editorLabel,
   editorToolbox,
   editorContextualToolbar,
+  editorContextualToolbarAnchor,
   editorStage,
   editorAvailable = true,
   editorStatus = "",
@@ -459,6 +467,24 @@ export function AdvancedWorkbenchShell({
 
   if (!portalReady) return null;
 
+  const contextualAnchor =
+    editorContextualToolbarAnchor &&
+    Object.values(editorContextualToolbarAnchor).every(Number.isFinite)
+      ? editorContextualToolbarAnchor
+      : null;
+  const contextualLeft = contextualAnchor
+    ? Math.max(
+        16,
+        Math.min(
+          window.innerWidth - 16,
+          contextualAnchor.x + contextualAnchor.width / 2,
+        ),
+      )
+    : 0;
+  const contextualTop = contextualAnchor
+    ? Math.max(72, contextualAnchor.y - 10)
+    : 0;
+
   // Route adapters already render an in-canvas loading state. Raw machine
   // states from third-party editors ("loading" / "ready") are not useful in
   // the title bar and previously remained there after usable content painted.
@@ -578,7 +604,18 @@ export function AdvancedWorkbenchShell({
 
         <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-stone-100">
           {editorAvailable && editorContextualToolbar && (
-            <div className="pointer-events-none absolute left-1/2 top-12 z-40 max-w-[calc(100%-1.5rem)] -translate-x-1/2">
+            <div
+              className={
+                contextualAnchor
+                  ? "pointer-events-none fixed z-40 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-full"
+                  : "pointer-events-none absolute left-1/2 top-12 z-40 max-w-[calc(100%-1.5rem)] -translate-x-1/2"
+              }
+              style={
+                contextualAnchor
+                  ? { left: contextualLeft, top: contextualTop }
+                  : undefined
+              }
+            >
               {editorContextualToolbar}
             </div>
           )}
