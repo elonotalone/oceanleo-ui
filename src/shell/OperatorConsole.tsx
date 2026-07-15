@@ -365,15 +365,16 @@ export function OperatorConsole({
     </div>
   ) : null;
 
-  // 中列 = 当前功能的操作流（功能按键条已上移到顶栏）。
-  // key 用 active.id：切功能时重置该功能操作流内部状态。
+  // 中列 = 当前功能的操作流（功能按键条已上移到顶栏）。The outer
+  // app-level entrance boundary below already owns the active-id key; a second
+  // key here only caused a redundant nested remount.
   // h-full：让 agent/chat 形态（FunctionAgentChat 的 `flex h-full flex-col`）能撑满
   // 左栏整高、把输入框压到最底（操作员 2026-06-24：输入框原来浮在半空）。
-  const ops = <div key={active?.id} className="h-full">{active?.ops}</div>;
+  const ops = <div className="h-full">{active?.ops}</div>;
 
-  // 宗旨 v11（2026-06-28）：进入某功能区时整块「从上到下」阶梯淡入（与 AppShell 切页
-  // 同款 .v-page 动画）。目录→功能区是同路由状态切换，AppShell 的 key={pathname} 不会
-  // 重新触发，所以这里用 key={active.id} 的 .v-page 包裹自行触发。
+  // 宗旨 v11（2026-06-28）：进入某功能区时整块「从上到下」阶梯淡入。
+  // AppShell keeps its route surface mounted, so this is the only entrance
+  // owner. Canonicalizing the same app URL keeps pageKey unchanged.
   const pageKey = active?.id ?? "ops";
 
   // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏

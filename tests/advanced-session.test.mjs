@@ -30,3 +30,20 @@ test("advanced session parser rejects mismatched identity and unsafe snapshots",
   );
   assert.match(source, /editorRouteFor\(restored\)\.type !== route/);
 });
+
+test("advanced Design sessions preserve and recover their layered editor route", () => {
+  const routes = readFileSync(
+    new URL("../src/shell/workbench-routes.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /"template_doc_url"/);
+  assert.match(source, /\^site:tpl-\(\[a-z0-9-\]\+\)\$/);
+  assert.match(
+    source,
+    /asset\.oceanleo\.com\/design-templates\/doc\/\$\{legacyTemplate\[1\]\}\.json/,
+  );
+  assert.match(
+    routes,
+    /pinnedRoute === "embed"[\s\S]*?pinnedSite === "design"[\s\S]*?design\.oceanleo\.com\/embed\/editor/,
+  );
+});

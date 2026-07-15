@@ -33,6 +33,9 @@ test("advanced editor routing covers every durable material family", () => {
   assert.match(routes, /mime\.startsWith\("video\/"\)/);
   assert.match(routes, /mime\.startsWith\("audio\/"\)/);
   assert.match(routes, /mime\.startsWith\("image\/"\)/);
+  assert.match(routes, /TRUSTED_EDITOR_REGISTRY/);
+  assert.match(routes, /chart-editor@1/);
+  assert.match(routes, /load", "mutate", "save", "reopen"/);
   assert.match(workbench, /editorRouteFor\(props\.item\)/);
 });
 

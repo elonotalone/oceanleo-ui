@@ -22,7 +22,7 @@ import {
   ReactNode,
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
@@ -246,8 +246,12 @@ function AppShellInner({
     }));
   }
 
-  useEffect(() => {
-    setCollapsed(localStorage.getItem(collapseKey) === "1");
+  useLayoutEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(collapseKey) === "1");
+    } catch {
+      setCollapsed(false);
+    }
   }, [collapseKey]);
 
   function toggleCollapsed(next: boolean) {
@@ -604,7 +608,7 @@ function AppShellInner({
         </header>
 
         <main className="min-w-0 flex-1">
-          <div key={pathname} className="v-page contents">
+          <div data-oceanleo-route-surface className="contents">
             {children}
           </div>
         </main>
@@ -690,10 +694,11 @@ function AppShellInner({
           这是按钮让位的「唯一事实源」。页面/组件内部不要再各自加让位内边距。
         */}
         <main className={`flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}>
-          {/* 统一页面入场动画（复刻 oceanleo.com/tasks/new 的从上而下阶梯淡入）。
-              key={pathname} 让每次切页都重新挂载 → 重新触发 .v-page 的错峰淡入。
-              这是全站「打开/切换页面」动画的唯一事实源，各站无需逐页手写。 */}
-          <div key={pathname} className="v-page contents">
+          {/* Route changes update this stable surface in place. In particular,
+              /workspace → /workspace/<app> must not remount a live app merely
+              to replay a page animation; the app-level console owns its one
+              intentional entrance animation. */}
+          <div data-oceanleo-route-surface className="contents">
             {children}
           </div>
         </main>

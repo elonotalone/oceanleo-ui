@@ -32,13 +32,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
 import { type GoalApp } from "./app-catalog";
-import { FunctionAgentChat } from "./FunctionAgentChat";
 import { AgentChat } from "./AgentChat";
-import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
-import { ArtifactLibrary } from "./ArtifactLibrary";
-import { MaterialLibrary } from "./MaterialLibrary";
-import { CloudBrowserPanel } from "./CloudBrowserPanel";
-import { type OpsSchema } from "../lib/fn-agent";
 import { type FunctionGuide, type GuideExample, type GuideSection } from "./NavigatorGuide";
 import {
   getAppSession,
@@ -126,8 +120,8 @@ export interface SiteCatalogConsoleProps {
    *   - 传 true（默认）：用站点级 agent（agentId=`<siteId>.agent`）+ 通用文案。
    *   - 传对象：自定义 agentId / 名称 / 图标 / 简介 / 生成结果标签 / 素材。
    *   - 传 false：不插入 agent 卡片（极少数站）。
-   * 右栏「生成结果」的内容由站点通过 `agentApp.renderResult` 提供（不给则用通用空态，
-   * 靠 ArtifactLibrary 兜底展示 agent 产出的文件）。 */
+   * 目录卡只提供入口元数据；进入后直接挂共享 AgentChat，预览和我的库由真实 task
+   * artifact 驱动，不再渲染静态“预览”占位页。 */
   agentApp?: AgentCardConfig | boolean;
   /**
    * 宗旨 v21（操作员 2026-07-09）：两层分类器【第一层：能力大板块】。给了它 → 目录顶部
@@ -490,29 +484,10 @@ export function SiteCatalogConsole({
             tagline: app.tagline,
             scenes: app.scenes,
             agentId: cfg.agentId || `${siteId}.agent`,
-            ops: (
-              <CatalogOps
-                app={app}
-                renderOps={() => (
-                  <AgentOnlyOps
-                    siteId={siteId}
-                    agentId={cfg.agentId || `${siteId}.agent`}
-                    accent={accent}
-                    appName={app.name as string}
-                    placeholder={cfg.placeholder}
-                  />
-                )}
-              />
-            ),
-            canvas: (
-              <AgentCardCanvas
-                accent={accent}
-                materials={cfg.materials}
-                renderResult={cfg.renderResult}
-              />
-            ),
-            // agent 卡片右栏首屏也走「导航」（ResultCanvas 依 guide 自动前插）——但它无
-            // 成品三板块，给一个极简 guide（一句话 + 无示例）让「导航」标签存在且一致。
+            // The directory needs ConsoleFunction metadata, but the active agent
+            // bypasses OperatorConsole below and mounts the canonical AgentChat.
+            ops: null,
+            canvas: null,
             guide: undefined,
           };
         }
@@ -683,31 +658,47 @@ export function SiteCatalogConsole({
     );
   }
 
-  const consoleNode = (
-    <OperatorConsole
-      functions={functions}
-      // value 是 URL / 历史 runtime 的受控 app 单一事实源；普通模式也必须尊重它。
-      // embed 仍走同一契约，hideTabs/directory 只控制外观，不再篡改选中态。
-      value={activeAppId}
-      onChange={changeApp}
-      accent={accent}
-      hideTabs={solo || embed}
-      directory={!embed}
-      directoryGroups={groups}
-      directoryTitle={directoryTitle}
-      directorySubtitle={directorySubtitle}
-      siteId={siteId}
-      modelCategories={modelCategories}
-      modelSiteId={siteId}
-      // 宗旨 v15 决策 H：进 app 后左「操作台」:右「库/结果」默认 3:4（操作台占 3/7）。
-      // 宗旨 v20（操作员 2026-07-07「为什么 3:4 各站不一样」）：storageKey **全站共用一个**
-      // `oceanleo_console_split`——各站进 app 都从同一个 3/7 起步、拖一次全家桶统一，杜绝
-      // 「word 与 image 比例不同」的观感。旧的按站 key（`${siteId}_catalog_split`）弃用，
-      // 老 localStorage 值自然被忽略 = 干净地回到一致的 3:4。
-      defaultRatio={3 / 7}
-      storageKey="oceanleo_console_split"
-    />
-  );
+  const activeAgentConfig: AgentCardConfig =
+    agentApp === true || agentApp === false ? {} : agentApp;
+  const consoleNode =
+    activeAppId === "agent" && agentCard ? (
+      <AgentChat
+        siteId={siteId}
+        agentId={activeAgentConfig.agentId || `${siteId}.agent`}
+        mode="agent"
+        accent={accent}
+        headerHeight={0}
+        placeholder={activeAgentConfig.placeholder}
+        libraryTabs={{
+          materials: activeAgentConfig.materials || [],
+          resultLabel: "预览",
+        }}
+      />
+    ) : (
+      <OperatorConsole
+        functions={functions}
+        // value 是 URL / 历史 runtime 的受控 app 单一事实源；普通模式也必须尊重它。
+        // embed 仍走同一契约，hideTabs/directory 只控制外观，不再篡改选中态。
+        value={activeAppId}
+        onChange={changeApp}
+        accent={accent}
+        hideTabs={solo || embed}
+        directory={!embed}
+        directoryGroups={groups}
+        directoryTitle={directoryTitle}
+        directorySubtitle={directorySubtitle}
+        siteId={siteId}
+        modelCategories={modelCategories}
+        modelSiteId={siteId}
+        // 宗旨 v15 决策 H：进 app 后左「操作台」:右「库/结果」默认 3:4（操作台占 3/7）。
+        // 宗旨 v20（操作员 2026-07-07「为什么 3:4 各站不一样」）：storageKey **全站共用一个**
+        // `oceanleo_console_split`——各站进 app 都从同一个 3/7 起步、拖一次全家桶统一，杜绝
+        // 「word 与 image 比例不同」的观感。旧的按站 key（`${siteId}_catalog_split`）弃用，
+        // 老 localStorage 值自然被忽略 = 干净地回到一致的 3:4。
+        defaultRatio={3 / 7}
+        storageKey="oceanleo_console_split"
+      />
+    );
 
   if (!activeAppId) return consoleNode;
 
@@ -900,95 +891,4 @@ function CatalogOps({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.id]);
   return <div className="h-full">{renderOps(app)}</div>;
-}
-
-// ---------------------------------------------------------------------------
-// 宗旨 v19：目录首张「agent」卡片的左栏 = 纯 agent 对话（无操作台）。复用共享
-// FunctionAgentChat 的 showOps={false} 形态——左栏只出对话流 + 输入框，不出「操作台 |
-// agent」切换键（与其它 app 的「agent」形态完全同源，UI 一致）。
-// ---------------------------------------------------------------------------
-function AgentOnlyOps({
-  siteId,
-  agentId,
-  accent,
-  appName,
-  placeholder,
-}: {
-  siteId: string;
-  agentId: string;
-  accent: string;
-  appName: string;
-  placeholder?: string;
-}) {
-  const schema: OpsSchema = {
-    agentId,
-    title: appName,
-    fields: [{ key: "prompt", label: "需求", type: "longtext", hint: placeholder || "" }],
-    actions: [],
-  };
-  return (
-    <div className="h-full">
-      <FunctionAgentChat
-        agentId={agentId}
-        siteId={siteId}
-        schema={schema}
-        accent={accent}
-        showOps={false}
-        opsContent={null}
-      />
-    </div>
-  );
-}
-
-// agent 卡片与所有 app 共用固定五槽位；这里仍传旧业务内容，ResultCanvas 会把它们
-// 归入「预览 / 素材库 / 我的库 / 云端浏览器」并补齐「模板」。
-function AgentCardCanvas({
-  accent,
-  materials,
-  renderResult,
-}: {
-  accent: string;
-  materials?: import("./MaterialLibrary").MaterialItem[];
-  renderResult?: () => ReactNode;
-}) {
-  const [view, setView] = useState("template");
-  const tabs: CanvasTab[] = [
-    {
-      id: "result",
-      label: "预览",
-      content: renderResult ? (
-        renderResult()
-      ) : (
-        <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-2 text-center">
-          <svg className="h-11 w-11 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" strokeLinejoin="round" />
-          </svg>
-          <p className="text-[13px] text-neutral-400">跟左侧 agent 说要做什么</p>
-          <p className="max-w-xs text-[12px] leading-relaxed text-neutral-400">
-            它会调用工具帮你生成，产出的图片 / 文档会显示在这里，并归档进「我的库」。
-          </p>
-        </div>
-      ),
-    },
-    {
-      id: "material",
-      label: "素材库",
-      content: <MaterialLibrary materials={materials ?? []} accent={accent} />,
-    },
-    { id: "files", label: "我的库", content: <ArtifactLibrary accent={accent} fill /> },
-    {
-      id: "browser",
-      label: "云端浏览器",
-      content: <CloudBrowserPanel accent={accent} />,
-    },
-  ];
-  return (
-    <ResultCanvas
-      tabs={tabs}
-      materials={materials ?? []}
-      active={view}
-      onChange={setView}
-      accent={accent}
-    />
-  );
 }

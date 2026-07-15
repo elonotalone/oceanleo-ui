@@ -57,5 +57,9 @@ test("主站与专业站复用同一个对话消息渲染器", () => {
   assert.match(agentChat, /<AgentTranscriptBubble/);
   assert.match(functionChat, /<AgentTranscriptBubble/);
   assert.match(transcriptBubble, /message\.kind === "gate"/);
-  assert.match(transcriptBubble, /message\.meta\?\.artifact && message\.meta\.final/);
+  assert.match(transcriptBubble, /if \(message\.meta\?\.artifact\)/);
+  assert.doesNotMatch(
+    transcriptBubble,
+    /message\.meta\?\.artifact && message\.meta\.final/,
+  );
 });

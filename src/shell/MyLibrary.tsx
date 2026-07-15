@@ -97,6 +97,8 @@ export interface MyLibraryProps {
   featuredEntries?: WorkspaceLibraryEntry[];
   taskId?: string | null;
   siteId?: string;
+  /** Reload when the current task gains or removes a structured artifact receipt. */
+  refreshNonce?: string | number;
   category?: string;
   onCategoryChange?: (category: string) => void;
   onlyFavorites?: boolean;
@@ -111,6 +113,7 @@ export function MyLibrary({
   featuredEntries = [],
   taskId,
   siteId = "",
+  refreshNonce,
   category,
   onCategoryChange,
   onlyFavorites = false,
@@ -190,7 +193,7 @@ export function MyLibrary({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshNonce]);
 
   const lastActionNonceRef = useRef("");
   useEffect(() => {

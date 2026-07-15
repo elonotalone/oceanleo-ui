@@ -46,6 +46,11 @@ const META_KEYS = new Set([
   "asset_id",
   "platform_asset_id",
   "editor",
+  "editor_manifest",
+  "content_type",
+  "representation",
+  "subtype",
+  "source_app_id",
   "parent_asset_id",
   "root_asset_id",
   "content",
@@ -73,6 +78,8 @@ const META_KEYS = new Set([
   "video_url",
   "preview_url",
   "asset_type",
+  "template_doc_url",
+  "open_url",
   "advanced_editor_route",
 ]);
 
@@ -293,7 +300,19 @@ export function advancedSnapshotFromSession(
   ) {
     return null;
   }
+  const route = record.editor_route as EditorRoute["type"];
   const meta = jsonSafeMeta(raw.meta as Record<string, unknown>);
+  if (
+    route === "embed" &&
+    siteId === "design" &&
+    typeof meta.template_doc_url !== "string"
+  ) {
+    const legacyTemplate = /^site:tpl-([a-z0-9-]+)$/i.exec(rootId);
+    if (legacyTemplate) {
+      meta.template_doc_url =
+        `https://asset.oceanleo.com/design-templates/doc/${legacyTemplate[1]}.json`;
+    }
+  }
   const item: AdvancedSessionSnapshot["item"] = {
     key,
     source,
@@ -310,7 +329,6 @@ export function advancedSnapshotFromSession(
     createdAt,
     meta,
   };
-  const route = record.editor_route as EditorRoute["type"];
   const restored: LibraryItem = {
     ...item,
     id: versionId,

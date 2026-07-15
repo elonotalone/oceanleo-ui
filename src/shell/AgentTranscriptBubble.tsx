@@ -129,9 +129,11 @@ export function AgentTranscriptBubble({
       </button>
     );
   }
-  if (message.meta?.artifact && message.meta.final) {
+  if (message.meta?.artifact) {
     const label =
-      artifactLabels[message.meta.artifact.type] || tt("结果");
+      message.meta.artifact.title ||
+      artifactLabels[message.meta.artifact.type] ||
+      tt("结果");
     return (
       <button
         type="button"

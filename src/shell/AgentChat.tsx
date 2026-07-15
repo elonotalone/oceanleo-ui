@@ -52,6 +52,7 @@ import {
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
+import { deleteArtifact } from "../lib/database";
 import { useAttachments } from "./useAttachments";
 import type { ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
@@ -297,6 +298,12 @@ function AgentChatInner({
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [activeArtifactIds, setActiveArtifactIds] = useState<Set<string> | null>(
+    null,
+  );
+  const [hiddenArtifactMessageIds, setHiddenArtifactMessageIds] = useState<
+    Set<number>
+  >(new Set());
   const [status, setStatus] = useState<string>("");
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
@@ -311,6 +318,8 @@ function AgentChatInner({
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const loadedTaskRef = useRef("");
+  const seenArtRef = useRef<number | null>(null);
+  const seenActionRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
 
@@ -330,6 +339,9 @@ function AgentChatInner({
       setMessages((current) =>
         sameAgentMessages(current, incoming) ? current : incoming,
       );
+      setActiveArtifactIds(
+        new Set((r.data.artifacts || []).map((artifact) => String(artifact.id))),
+      );
       setStatus(r.data.task?.status || "");
       if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
       // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
@@ -345,6 +357,13 @@ function AgentChatInner({
     if (!taskId) {
       loadedTaskRef.current = "";
       setMessages([]);
+      setActiveArtifactIds(null);
+      setHiddenArtifactMessageIds(new Set());
+      seenArtRef.current = null;
+      seenActionRef.current = null;
+      setLibTab(hasOrgPanel ? "preview" : "template");
+      setWorkspaceAction(null);
+      setRightOpen(hasOrgPanel);
       setStatus("");
       setTaskSiteId("");
       setTaskTitle("");
@@ -353,11 +372,18 @@ function AgentChatInner({
     if (loadedTaskRef.current === taskId) return;
     loadedTaskRef.current = taskId;
     setMessages([]);
+    setActiveArtifactIds(null);
+    setHiddenArtifactMessageIds(new Set());
+    seenArtRef.current = null;
+    seenActionRef.current = null;
+    setLibTab(hasOrgPanel ? "preview" : "template");
+    setWorkspaceAction(null);
+    setRightOpen(hasOrgPanel);
     setStatus("");
     setTaskSiteId("");
     setTaskTitle("");
     void refresh(taskId);
-  }, [taskId, refresh]);
+  }, [hasOrgPanel, taskId, refresh]);
 
   useEffect(() => {
     if (explicitTaskId !== undefined || !workspace) return;
@@ -702,8 +728,21 @@ function AgentChatInner({
   );
 
   const artifactMessages = useMemo(
-    () => messages.filter((message) => Boolean(message.meta?.artifact)),
-    [messages],
+    () =>
+      messages.filter((message) => {
+        const artifact = message.meta?.artifact;
+        if (!artifact || hiddenArtifactMessageIds.has(message.id)) return false;
+        return (
+          !artifact.id ||
+          activeArtifactIds === null ||
+          activeArtifactIds.has(artifact.id)
+        );
+      }),
+    [activeArtifactIds, hiddenArtifactMessageIds, messages],
+  );
+  const visibleArtifactMessageIds = useMemo(
+    () => new Set(artifactMessages.map((message) => message.id)),
+    [artifactMessages],
   );
   const latestArtifactMessage =
     artifactMessages[artifactMessages.length - 1] || null;
@@ -745,7 +784,6 @@ function AgentChatInner({
   );
 
   // 每一个 artifact 都是「预览」中的独立卡片；新产物到达时只消费一次并打开该卡。
-  const seenArtRef = useRef<number | null>(null);
   useEffect(() => {
     if (!latestArtifactMessage || latestArtifactMessage.id === seenArtRef.current)
       return;
@@ -769,7 +807,6 @@ function AgentChatInner({
       (message) =>
         message.kind === "ui_action" && message.meta?.verified === true,
     );
-  const seenActionRef = useRef<number | null>(null);
   useEffect(() => {
     if (
       !latestActionMessage ||
@@ -846,7 +883,7 @@ function AgentChatInner({
 
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
   const resolvedApp =
-    appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || taskSiteId : "");
+    appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "");
   // 左栏标题：「agent」+（有 app 时）所属 app 小标签。（「返回」+ 本次对话总结改到
   // 顶栏，见下方 topBar，对齐 OperatorConsole 顶栏 / 操作员 2026-07-06 参考图。）
   const agentIdentityLabel = resolvedApp ? (
@@ -943,6 +980,30 @@ function AgentChatInner({
     });
   }, []);
 
+  const removePreviewArtifact = useCallback(
+    async (message: AgentMessage) => {
+      const artifactId = message.meta?.artifact?.id;
+      if (artifactId) {
+        const result = await deleteArtifact(artifactId);
+        if (!result.ok) {
+          throw new Error(result.error || tt("删除失败，请重试。"));
+        }
+        setActiveArtifactIds((current) => {
+          if (current === null) return new Set<string>();
+          const next = new Set(current);
+          next.delete(artifactId);
+          return next;
+        });
+      }
+      setHiddenArtifactMessageIds((current) => {
+        const next = new Set(current);
+        next.add(message.id);
+        return next;
+      });
+    },
+    [tt],
+  );
+
   const stream = (
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -967,7 +1028,8 @@ function AgentChatInner({
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
                 onArtifactOpen={
-                  item.message.meta?.artifact
+                  item.message.meta?.artifact &&
+                  visibleArtifactMessageIds.has(item.message.id)
                     ? () => openArtifactMessage(item.message)
                     : undefined
                 }
@@ -1085,6 +1147,7 @@ function AgentChatInner({
           <DefaultArtifact artifact={meta} content={message.content} />
         ),
       libraryItem: renderArtifact ? undefined : libraryItem,
+      onDelete: () => removePreviewArtifact(message),
     };
   });
   const rightTabs: CanvasTab[] = [

@@ -143,6 +143,13 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource.slice(artifactAutoStart, organizationAutoStart),
     /setRightOpen\(true\)/,
   );
+  assert.match(agentChatSource, /setActiveArtifactIds\([\s\S]*?r\.data\.artifacts/);
+  assert.match(agentChatSource, /activeArtifactIds\.has\(artifact\.id\)/);
+  assert.match(agentChatSource, /await deleteArtifact\(artifactId\)/);
+  assert.match(
+    agentChatSource,
+    /if \(!taskId\)[\s\S]*?setWorkspaceAction\(null\)[\s\S]*?setRightOpen\(hasOrgPanel\)/,
+  );
   assert.doesNotMatch(agentChatSource, /saveSnapshot\([\s\S]*?messages/);
 });
 

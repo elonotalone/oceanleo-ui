@@ -8,6 +8,8 @@ export interface AdvancedContentWorkbenchProps {
   linkUrl?: string;
   taskId?: string | null;
   siteId?: string;
+  /** Originating GoalApp identity used to resolve live site materials. */
+  appId?: string;
   accent?: string;
   onClose: () => void;
 }

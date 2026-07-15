@@ -39,6 +39,8 @@ export interface CanvasTab {
   content: ReactNode;
   /** Normalized payload shared with Materials/My Library rich viewers. */
   libraryItem?: LibraryItem;
+  /** Task Preview can remove its receipt without deleting the durable My Library copy. */
+  onDelete?: () => Promise<void> | void;
 }
 
 export interface ResultCanvasProps {
@@ -184,6 +186,7 @@ function previewEntry(
     libraryItem: tab.libraryItem,
     content: tab.libraryItem ? undefined : tab.content,
     externalUrl: tab.libraryItem?.url || tab.libraryItem?.previewUrl,
+    onDelete: tab.onDelete,
   };
 }
 
@@ -308,6 +311,10 @@ export function ResultCanvas({
   const previewEntries = useMemo(
     () => grouped.preview.map((tab) => previewEntry(tab)),
     [grouped.preview],
+  );
+  const libraryRefreshNonce = useMemo(
+    () => previewEntries.map((entry) => entry.id).join("|"),
+    [previewEntries],
   );
   const workflowEntries = useMemo(
     () =>
@@ -573,6 +580,7 @@ export function ResultCanvas({
           taskId={effectiveTaskId}
           siteId={effectiveSiteId}
           featuredEntries={minePageEntries}
+          refreshNonce={libraryRefreshNonce}
         />
       </div>
     ),

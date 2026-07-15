@@ -15,6 +15,9 @@ import { LibraryItemViewer } from "./library-viewers";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import { editorCapabilityFor } from "./workbench-routes";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -51,6 +54,17 @@ export interface WorkspaceLibraryProps {
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
   siteId?: string;
+  appId?: string;
+  materialActions?: readonly WorkbenchMaterialAction[];
+  onMaterialAction?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
+  materialActionAvailable?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => boolean;
+  allowAdvanced?: boolean;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -116,6 +130,11 @@ export function WorkspaceLibrary({
   toolbarActions,
   taskId,
   siteId = "",
+  appId = "",
+  materialActions = [],
+  onMaterialAction,
+  materialActionAvailable,
+  allowAdvanced = true,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -123,6 +142,8 @@ export function WorkspaceLibrary({
   plain = false,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
+  const workspaceSession = useOptionalWorkspaceSession();
+  const runtimeAppId = appId || workspaceSession?.appId || "default";
   const [internalSearch, setInternalSearch] = useState("");
   const search = query ?? internalSearch;
   const setSearch: Dispatch<SetStateAction<string>> = (value) => {
@@ -143,6 +164,7 @@ export function WorkspaceLibrary({
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [materialActionState, setMaterialActionState] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
 
   const removeEntry = async (entry: WorkspaceLibraryEntry) => {
@@ -161,6 +183,24 @@ export function WorkspaceLibrary({
       );
     } finally {
       setDeletingId("");
+    }
+  };
+
+  const applyMaterialAction = async (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => {
+    if (!onMaterialAction || materialActionState) return;
+    setMaterialActionState(tt("应用中…"));
+    try {
+      const result = await onMaterialAction(action, item);
+      setMaterialActionState(
+        result.ok ? tt("已应用素材副本") : result.error || tt("素材应用失败"),
+      );
+    } catch (caught) {
+      setMaterialActionState(
+        caught instanceof Error ? caught.message : tt("素材应用失败"),
+      );
     }
   };
 
@@ -229,6 +269,10 @@ export function WorkspaceLibrary({
   }, [entries, selectedId]);
 
   useEffect(() => {
+    setMaterialActionState("");
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!action) return;
     const next = action.action;
     if (next.query !== undefined) setSearch(next.query);
@@ -292,6 +336,13 @@ export function WorkspaceLibrary({
           description: selected.description || "",
         },
       };
+    const editorCapability = editorCapabilityFor(workbenchItem);
+    const actionLabels: Record<WorkbenchMaterialAction, string> = {
+      insert: "插入",
+      replace: "替换",
+      apply: "应用",
+      merge: "合并",
+    };
     return (
       <>
       <div
@@ -327,14 +378,34 @@ export function WorkspaceLibrary({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen(true)}
-            className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
-            style={{ background: accent }}
-          >
-            {tt("高级功能")}
-          </button>
+          {materialActions
+            .filter(
+              (action) =>
+                !materialActionAvailable ||
+                materialActionAvailable(action, workbenchItem),
+            )
+            .map((action) => (
+            <button
+              key={action}
+              type="button"
+              disabled={!onMaterialAction || Boolean(materialActionState === tt("应用中…"))}
+              onClick={() => void applyMaterialAction(action, workbenchItem)}
+              className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:opacity-50"
+              style={{ borderColor: accent, color: accent }}
+            >
+              {tt(actionLabels[action])}
+            </button>
+          ))}
+          {allowAdvanced && editorCapability.available && (
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(true)}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
+              style={{ background: accent }}
+            >
+              {tt("高级功能")}
+            </button>
+          )}
           {refreshable && (
             <button
               type="button"
@@ -380,6 +451,17 @@ export function WorkspaceLibrary({
             </a>
           )}
         </header>
+        {(materialActionState ||
+          (allowAdvanced &&
+            !editorCapability.available &&
+            editorCapability.unavailableReason)) && (
+          <div
+            role="status"
+            className="shrink-0 border-b border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-700"
+          >
+            {materialActionState || tt(editorCapability.unavailableReason)}
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-auto bg-stone-50">
           {selected.libraryItem ? (
             <LibraryItemViewer
@@ -406,6 +488,7 @@ export function WorkspaceLibrary({
           linkUrl={linkUrl}
           taskId={taskId}
           siteId={siteId || workbenchItem.siteId || ""}
+          appId={runtimeAppId}
           accent={accent}
           onClose={() => setAdvancedOpen(false)}
         />

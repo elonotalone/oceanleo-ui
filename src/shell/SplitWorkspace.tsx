@@ -24,6 +24,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -225,14 +226,31 @@ export function SplitWorkspace({
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
 
-  // restore remembered ratio
-  useEffect(() => {
+  // Restore the remembered ratio during hydration's layout phase. A passive
+  // effect painted defaultRatio first and then visibly jumped to the stored
+  // value. The server and hydration render still share the same default markup;
+  // this update is committed before the browser's first paint.
+  useLayoutEffect(() => {
+    let nextRatio = defaultRatio;
+    if (storageKey) {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        const remembered = raw ? Number(raw) : NaN;
+        if (
+          Number.isFinite(remembered) &&
+          remembered >= MIN_RATIO &&
+          remembered <= MAX_RATIO
+        ) {
+          nextRatio = remembered;
+        }
+      } catch {
+        // Storage can be unavailable in privacy-restricted embeds. The
+        // deterministic default remains safe and matches the server snapshot.
+      }
+    }
+    setRatio(nextRatio);
     setHydrated(true);
-    if (!storageKey) return;
-    const raw = localStorage.getItem(storageKey);
-    const v = raw ? Number(raw) : NaN;
-    if (Number.isFinite(v) && v >= MIN_RATIO && v <= MAX_RATIO) setRatio(v);
-  }, [storageKey]);
+  }, [defaultRatio, storageKey]);
 
   // Agent result cards and trusted workspace actions may target content while
   // the library pane is closed. Open the existing pane in place so the card

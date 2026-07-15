@@ -16,18 +16,16 @@ test("history-reopened chat fills its constrained parent instead of recounting 1
   assert.match(agentChat, /if \(!topBar\) return split/);
 });
 
-test("assistant final text and artifact notices are plain, not success cards", () => {
+test("assistant prose stays plain while every structured artifact is a card", () => {
   assert.match(
     transcript,
     /className="max-w-full px-1 text-neutral-900"[\s\S]*?<TypewriterMarkdown/,
   );
-
-  const previewBranch = transcript.match(
-    /message\.meta\?\.artifact\?\.type === "preview"([\s\S]*?)if \(message\.meta\?\.artifact/,
-  )?.[1];
-  assert.ok(previewBranch);
-  assert.doesNotMatch(previewBranch, /bg-(?:emerald|green)/);
-  assert.doesNotMatch(previewBranch, />\s*[✓✅]/);
+  assert.match(
+    transcript,
+    /if \(message\.meta\?\.artifact\) \{[\s\S]*?<button[\s\S]*?onClick=\{onArtifactOpen\}/,
+  );
+  assert.doesNotMatch(transcript, /message\.meta\?\.artifact && message\.meta\.final/);
 });
 
 test("task menu exposes complete management actions", () => {

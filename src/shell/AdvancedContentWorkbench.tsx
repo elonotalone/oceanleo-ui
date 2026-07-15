@@ -13,7 +13,7 @@ import {
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import { UnsupportedRoute } from "./advanced-routes/UnsupportedRoute";
 import { WorkbenchRouteLoading } from "./advanced-routes/WorkbenchRouteLoading";
-import { editorRouteFor } from "./workbench-routes";
+import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
 import {
   WorkspaceSessionProvider,
@@ -32,6 +32,7 @@ import {
 } from "./advanced-session-context";
 import type { LibraryItem } from "./library-data";
 import { historySessionHref } from "./workspace-route";
+import { WorkbenchMaterialProvider } from "./workbench-material-provider";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 
@@ -105,6 +106,13 @@ const EmbeddedRoute = dynamic(
     ),
   { ssr: false, loading: WorkbenchRouteLoading },
 );
+const ChartRoute = dynamic(
+  () =>
+    import("./advanced-routes/ChartRoute").then(
+      (module) => module.ChartRoute,
+    ),
+  { ssr: false, loading: WorkbenchRouteLoading },
+);
 
 export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
@@ -117,10 +125,15 @@ export function AdvancedContentWorkbench(
   const route = editorRouteFor(props.item);
   const siteId = props.siteId || props.item.siteId || "oceanleo";
   const appId = advancedSessionAppId(props.item, route.type);
+  const materialAppId = props.appId || inherited?.appId || appId;
   const canReuseInherited =
     inherited?.siteId === siteId && inherited.appId === appId;
   if (canReuseInherited) {
-    return <AdvancedContentWorkbenchRuntime {...props} />;
+    return (
+      <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
+        <AdvancedContentWorkbenchRuntime {...props} />
+      </WorkbenchMaterialProvider>
+    );
   }
   return (
     <WorkspaceSessionProvider
@@ -129,7 +142,9 @@ export function AdvancedContentWorkbench(
       appId={appId}
       title={props.item.title}
     >
-      <AdvancedContentWorkbenchRuntime {...props} />
+      <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
+        <AdvancedContentWorkbenchRuntime {...props} />
+      </WorkbenchMaterialProvider>
     </WorkspaceSessionProvider>
   );
 }
@@ -162,7 +177,8 @@ function AdvancedContentWorkbenchRuntime(
   const flushRef = useRef<
     (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null
   >(null);
-  const route = editorRouteFor(item);
+  const capability = editorCapabilityFor(item);
+  const route = capability.route;
   const makeSnapshot = useCallback(
     (taskId?: string | null) =>
       advancedSessionSnapshot(
@@ -281,9 +297,11 @@ function AdvancedContentWorkbenchRuntime(
     linkUrl: item.url || item.previewUrl || props.linkUrl,
     taskId: workspace.taskId,
   };
-  const routeKey = `${item.kind}:${item.id}:${item.url || item.previewUrl || ""}`;
+  const routeKey = `${capability.adapter}:${item.kind}:${item.id}:${item.url || item.previewUrl || ""}`;
   let editor: ReactNode;
-  switch (route.type) {
+  if (capability.adapter === "chart-editor@1") {
+    editor = <ChartRoute {...activeProps} />;
+  } else switch (route.type) {
     case "video-timeline":
       editor = <VideoTimelineRoute {...activeProps} />;
       break;

@@ -11,7 +11,7 @@ import {
 import DOMPurify from "dompurify";
 import { Markdown } from "./Markdown";
 import { useUI } from "../i18n/ui/useUI";
-import type { LibraryItem } from "./library-data";
+import { threeDSubtypeFor, type LibraryItem } from "./library-data";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -454,14 +454,25 @@ function DocumentViewer({ item }: { item: LibraryItem }) {
 
 function ThreeDViewer({ item }: { item: LibraryItem }) {
   const tt = useUI();
+  const subtype = threeDSubtypeFor(item);
+  const modelUrl = item.url || "";
+  const previewUrl = item.previewUrl || item.thumbUrl || "";
+  const modelFormat =
+    ["glb", "gltf"].includes(extension(modelUrl)) ||
+    ["model/gltf-binary", "model/gltf+json"].includes(
+      String(item.meta.mime || "").toLowerCase(),
+    );
   const [ready, setReady] = useState(
     () =>
       typeof window !== "undefined" &&
       Boolean(window.customElements?.get("model-viewer")),
   );
   const [loadError, setLoadError] = useState("");
+  const viewerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (ready || typeof window === "undefined") return;
+    if (subtype !== "model" || !modelFormat || ready || typeof window === "undefined") {
+      return;
+    }
     let alive = true;
     void import("@google/model-viewer")
       .then(() => {
@@ -474,20 +485,89 @@ function ThreeDViewer({ item }: { item: LibraryItem }) {
     return () => {
       alive = false;
     };
-  }, [ready]);
-  if (!item.url) return <ErrorView message={tt("没有 3D 模型文件。")} />;
+  }, [modelFormat, ready, subtype]);
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || subtype !== "model") return;
+    setLoadError("");
+    const failed = (event: Event) => {
+      const detail = (event as Event & {
+        detail?: { message?: string; type?: string };
+      }).detail;
+      setLoadError(
+        detail?.message || detail?.type || tt("模型文件或其依赖资源加载失败"),
+      );
+    };
+    const loaded = () => setLoadError("");
+    viewer.addEventListener("error", failed);
+    viewer.addEventListener("load", loaded);
+    return () => {
+      viewer.removeEventListener("error", failed);
+      viewer.removeEventListener("load", loaded);
+    };
+  }, [modelUrl, subtype, tt, ready]);
+  if (subtype === "hdri" || subtype === "texture") {
+    const label =
+      subtype === "hdri"
+        ? tt("HDRI 环境光照素材")
+        : tt("3D 纹理贴图素材");
+    return (
+      <Center>
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewUrl}
+            alt={item.title}
+            className="max-h-[64vh] max-w-full rounded-xl object-contain shadow-sm"
+          />
+        ) : (
+          <div className="rounded-xl border border-stone-200 bg-stone-50 px-6 py-10 text-sm text-stone-400">
+            {tt("没有可显示的预览图。")}
+          </div>
+        )}
+        <p className="text-sm font-medium text-stone-700">{label}</p>
+        <p className="max-w-lg text-center text-xs leading-relaxed text-stone-400">
+          {subtype === "hdri"
+            ? tt("它用于场景环境与照明，不是 mesh 模型，因此不会发送给 model-viewer。")
+            : tt("它用于贴到模型表面，不是 mesh 模型，因此不会发送给 model-viewer。")}
+        </p>
+        {item.url && (
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-stone-200 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50"
+          >
+            {tt("打开原素材")}
+          </a>
+        )}
+      </Center>
+    );
+  }
+  if (subtype !== "model" || !modelFormat) {
+    return (
+      <ErrorView
+        message={tt("这个 3D 条目不是可加载的 GLB/已整包托管 glTF 模型。")}
+        url={item.url}
+      />
+    );
+  }
+  if (!modelUrl) return <ErrorView message={tt("没有 3D 模型文件。")} />;
   if (loadError)
     return (
       <ErrorView
         message={`${tt("3D 查看器加载失败。")}（${loadError}）`}
-        url={item.url}
+        url={modelUrl}
       />
     );
   if (!ready) return <LoadingView label={tt("正在加载 3D 查看器…")} />;
   return (
     <div className="h-full min-h-[520px] bg-[radial-gradient(circle_at_50%_0%,#e0f2fe,transparent_60%)]">
       {createElement("model-viewer", {
-        src: item.url,
+        ref: (node: HTMLElement | null) => {
+          viewerRef.current = node;
+        },
+        src: modelUrl,
         poster: item.thumbUrl,
         "camera-controls": true,
         "auto-rotate": true,

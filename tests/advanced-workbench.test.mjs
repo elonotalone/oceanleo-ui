@@ -6,10 +6,13 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("every workspace detail exposes the full-screen advanced workbench", () => {
+test("workspace details expose Advanced only for a round-trip capability", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
   assert.match(library, /setAdvancedOpen\(true\)/);
+  assert.match(library, /editorCapabilityFor\(workbenchItem\)/);
+  assert.match(library, /allowAdvanced && editorCapability\.available/);
+  assert.match(library, /editorCapability\.unavailableReason/);
   assert.match(library, /previewContent=\{selected\.content\}/);
   assert.doesNotMatch(
     library,
@@ -29,6 +32,7 @@ test("advanced workbench routes real content into the portal editor shell", () =
     source("../src/shell/advanced-routes/DeckRoute.tsx"),
     source("../src/shell/advanced-routes/PdfRoute.tsx"),
     source("../src/shell/advanced-routes/Model3DRoute.tsx"),
+    source("../src/shell/advanced-routes/ChartRoute.tsx"),
   ].join("\n");
   const routes = source("../src/shell/workbench-routes.ts");
   assert.match(workbench, /editorRouteFor\(props\.item\)/);
@@ -44,6 +48,7 @@ test("advanced workbench routes real content into the portal editor shell", () =
   assert.match(workbench, /DeckRoute/);
   assert.match(workbench, /PdfRoute/);
   assert.match(workbench, /Model3DRoute/);
+  assert.match(workbench, /ChartRoute/);
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
   assert.match(shell, /createPortal\(/);
@@ -134,7 +139,10 @@ test("code-backed website starters reach the visual editor without a fake projec
   const routes = source("../src/shell/workbench-routes.ts");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const materials = source("../src/shell/MaterialLibrary.tsx");
-  assert.match(routes, /if \(!projectId && !starterId\) return \{ type: "none" \}/);
+  assert.match(
+    routes,
+    /if \(!projectId && !starterId\) \{[\s\S]*?return unavailable\(/,
+  );
   assert.match(embedded, /starterId \? \{ starterId \} : undefined/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
@@ -236,7 +244,9 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
 });
 
 test("cloud browser can be opened directly and still supports takeover", () => {
-  const panel = source("../src/shell/CloudBrowserPanel.tsx");
+  const panel =
+    source("../src/shell/CloudBrowserPanel.tsx") +
+    source("../src/shell/cloud-browser-controls.tsx");
   const client = source("../src/lib/browser.ts");
   assert.match(panel, /createCloudBrowser\(url, effectiveTaskId \|\| undefined\)/);
   assert.match(panel, /reload\(session\.id\)/);

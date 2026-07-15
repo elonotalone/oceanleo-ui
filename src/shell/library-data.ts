@@ -19,6 +19,36 @@ export type LibraryKind =
   | "threed"
   | "file";
 
+export type EditorCapabilityName = "load" | "mutate" | "save" | "reopen";
+
+export interface EditorSourceDescriptor {
+  kind: "inline" | "url";
+  format: string;
+  url?: string;
+}
+
+/**
+ * Versioned, data-only editor declaration. Callers still have to resolve the
+ * id through the trusted workbench registry; arbitrary manifest ids never
+ * become executable code.
+ */
+export interface EditorManifestV1 {
+  schema: "oceanleo.editor-manifest.v1";
+  id: string;
+  version: 1;
+  capabilities: EditorCapabilityName[];
+  source: EditorSourceDescriptor;
+}
+
+export interface LibraryContentDescriptor {
+  contentType: string;
+  representation: string;
+  subtype: string;
+  editor: EditorManifestV1 | null;
+  capabilities: EditorCapabilityName[];
+  unavailableReason: string;
+}
+
 export interface LibraryItem {
   key: string;
   source: "creation" | "artifact";
@@ -33,6 +63,8 @@ export interface LibraryItem {
   favorite: boolean;
   createdAt?: string;
   meta: Record<string, unknown>;
+  /** Viewer semantics stay in `kind`; editability lives in this descriptor. */
+  descriptor?: LibraryContentDescriptor;
 }
 
 export interface LibraryArtifactRow {
@@ -74,6 +106,7 @@ const KIND_ALIASES: Record<string, LibraryKind> = {
   text: "document",
   pdf: "document",
   image: "image",
+  chart: "image",
   logo: "image",
   poster: "image",
   video: "video",
@@ -111,6 +144,135 @@ function cleanToken(value: unknown): string {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
+}
+
+const EDITOR_CAPABILITIES = new Set<EditorCapabilityName>([
+  "load",
+  "mutate",
+  "save",
+  "reopen",
+]);
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function normalizeEditorManifest(value: unknown): EditorManifestV1 | null {
+  const record = recordValue(value);
+  if (
+    !record ||
+    record.schema !== "oceanleo.editor-manifest.v1" ||
+    record.version !== 1 ||
+    typeof record.id !== "string" ||
+    !/^[a-z][a-z0-9-]{1,63}$/.test(record.id)
+  ) {
+    return null;
+  }
+  const source = recordValue(record.source);
+  if (
+    !source ||
+    (source.kind !== "inline" && source.kind !== "url") ||
+    typeof source.format !== "string" ||
+    !source.format.trim() ||
+    source.format.length > 80
+  ) {
+    return null;
+  }
+  const sourceUrl =
+    typeof source.url === "string" && source.url.length <= 2_000
+      ? source.url.trim()
+      : "";
+  if (source.kind === "url" && !sourceUrl) return null;
+  const capabilities = Array.isArray(record.capabilities)
+    ? [
+        ...new Set(
+          record.capabilities.filter(
+            (capability): capability is EditorCapabilityName =>
+              typeof capability === "string" &&
+              EDITOR_CAPABILITIES.has(capability as EditorCapabilityName),
+          ),
+        ),
+      ]
+    : [];
+  return {
+    schema: "oceanleo.editor-manifest.v1",
+    id: record.id,
+    version: 1,
+    capabilities,
+    source: {
+      kind: source.kind,
+      format: source.format.trim(),
+      ...(sourceUrl ? { url: sourceUrl } : {}),
+    },
+  };
+}
+
+export function libraryContentDescriptor(input: {
+  kind: LibraryKind;
+  meta?: Record<string, unknown>;
+  descriptor?: unknown;
+}): LibraryContentDescriptor {
+  const meta = input.meta ?? {};
+  const provided = recordValue(input.descriptor);
+  const contentType = cleanToken(
+    provided?.contentType ||
+      provided?.content_type ||
+      meta.content_type ||
+      meta.asset_type ||
+      input.kind,
+  );
+  const representation = cleanToken(
+    provided?.representation || meta.representation || meta.format,
+  );
+  const subtype = cleanToken(
+    provided?.subtype || meta.subtype || meta.category,
+  );
+  const editor = normalizeEditorManifest(
+    provided?.editor ?? meta.editor_manifest ?? meta.editor,
+  );
+  const unavailableReason = String(
+    provided?.unavailableReason ||
+      provided?.unavailable_reason ||
+      meta.unavailable_reason ||
+      "",
+  ).slice(0, 500);
+  return {
+    contentType: contentType || input.kind,
+    representation,
+    subtype,
+    editor,
+    capabilities: editor?.capabilities || [],
+    unavailableReason,
+  };
+}
+
+export type ThreeDSubtype = "model" | "hdri" | "texture" | "unknown";
+
+export function threeDSubtypeFor(item: LibraryItem): ThreeDSubtype {
+  const descriptor = item.descriptor || libraryContentDescriptor(item);
+  const explicit = [
+    descriptor.subtype,
+    item.meta.subtype,
+    item.meta.category,
+  ].map(cleanToken);
+  for (const value of explicit) {
+    if (value === "hdri" || value === "environment_map") return "hdri";
+    if (value === "texture" || value === "texture_image") return "texture";
+    if (value === "model" || value === "mesh") return "model";
+  }
+  const values = [
+    ...(Array.isArray(item.meta.scene_tags) ? item.meta.scene_tags : []),
+    ...(Array.isArray(item.meta.tags) ? item.meta.tags : []),
+  ].map(cleanToken);
+  if (values.includes("hdri") || values.includes("environment_map")) return "hdri";
+  if (values.includes("texture")) return "texture";
+  if (values.includes("model") || values.includes("mesh")) return "model";
+  const hint = `${item.url || ""} ${item.meta.format || ""}`.toLowerCase();
+  if (/\.(?:hdr|exr)(?:$|[?#\s])/.test(hint)) return "hdri";
+  if (/\.(?:glb|gltf)(?:$|[?#\s])/.test(hint)) return "model";
+  return "unknown";
 }
 
 function metaString(meta: Record<string, unknown>, ...keys: string[]): string {
@@ -198,18 +360,19 @@ function normalizeUrlKey(url?: string): string {
 export function normalizeWork(work: WorkItem): LibraryItem {
   const meta = work.meta ?? {};
   const url = (work.url || "").trim();
+  const kind = inferLibraryKind({
+    meta,
+    mediaType: work.media_type,
+    kind: work.kind,
+    url,
+    siteId: work.site_id,
+  });
   return {
     key: `creation:${work.id}`,
     source: "creation",
     id: work.id,
     title: (work.title || titleFromUrl(url) || "未命名作品").trim(),
-    kind: inferLibraryKind({
-      meta,
-      mediaType: work.media_type,
-      kind: work.kind,
-      url,
-      siteId: work.site_id,
-    }),
+    kind,
     siteId: work.site_id || "",
     url: url || undefined,
     previewUrl: previewFromMeta(meta) || work.thumb_url || undefined,
@@ -218,6 +381,7 @@ export function normalizeWork(work: WorkItem): LibraryItem {
     favorite: Boolean((work as WorkItem & { favorite?: boolean }).favorite),
     createdAt: work.created_at,
     meta,
+    descriptor: libraryContentDescriptor({ kind, meta }),
   };
 }
 
@@ -228,18 +392,20 @@ export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
     task_id: row.task_id || undefined,
     session_id: row.session_id || undefined,
   };
+  const kind = inferLibraryKind({ kind: row.kind, url, meta });
   return {
     key: `artifact:${row.id}`,
     source: "artifact",
     id: row.id,
     title: (row.title || titleFromUrl(url) || "未命名交付物").trim(),
-    kind: inferLibraryKind({ kind: row.kind, url, meta }),
+    kind,
     siteId: "",
     url: url || undefined,
     content: content || undefined,
     favorite: Boolean(row.favorite),
     createdAt: row.created_at || undefined,
     meta,
+    descriptor: libraryContentDescriptor({ kind, meta }),
   };
 }
 
@@ -267,6 +433,7 @@ function mergeItem(preferred: LibraryItem, other: LibraryItem): LibraryItem {
     favorite: creation.favorite || artifact.favorite,
     createdAt: creation.createdAt || artifact.createdAt,
     meta: { ...artifact.meta, ...creation.meta, artifact_id: artifact.id },
+    descriptor: creation.descriptor || artifact.descriptor,
   };
 }
 

@@ -111,7 +111,7 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.match(source, /!isGenericMaterialsTab\(tab\)/);
 });
 
-test("chart materials open their rendered image in a real editor", () => {
+test("chart viewer cover stays separate from typed chart edit capability", () => {
   const source = readFileSync(
     new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
     "utf8",
@@ -119,9 +119,12 @@ test("chart materials open their rendered image in a real editor", () => {
   assert.match(source, /chart: "image"/);
   assert.match(
     source,
-    /asset\.type === "chart"[\s\S]*?asset\.preview_url \|\| asset\.thumb_url/,
+    /const chartViewerUrl =[\s\S]*?asset\.preview_url \|\| asset\.thumb_url/,
   );
   assert.match(source, /source_asset_url: asset\.full_url/);
+  assert.match(source, /editor: asset\.editor \|\| undefined/);
+  assert.match(source, /unavailable_reason: asset\.unavailable_reason/);
+  assert.doesNotMatch(source, /image workbench gives them real/);
 });
 
 test("Design template series keeps its layered document for Advanced editing", () => {
@@ -154,6 +157,22 @@ test("closing a configured library keeps the app runtime mounted", () => {
   assert.match(source, /if \(!hasRight && !library\)/);
   assert.match(source, /!hasRight \|\| maxed === "left" \? "hidden" : "flex"/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
+});
+
+test("task Preview cards are removable while My Library refreshes from the durable copy", () => {
+  const canvas = readFileSync(
+    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
+    "utf8",
+  );
+  const mine = readFileSync(
+    new URL("../src/shell/MyLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(canvas, /onDelete: tab\.onDelete/);
+  assert.match(canvas, /libraryRefreshNonce/);
+  assert.match(canvas, /refreshNonce=\{libraryRefreshNonce\}/);
+  assert.match(mine, /refreshNonce\?: string \| number/);
+  assert.match(mine, /\[load, refreshNonce\]/);
 });
 
 test("inspiration slot preserves both quick-start guide and legacy prompt pages", () => {

@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import type { LibraryItem, LibraryKind } from "./library-data";
+import {
+  libraryContentDescriptor,
+  type EditorCapabilityName,
+  type EditorManifestV1,
+  type LibraryItem,
+  type LibraryKind,
+} from "./library-data";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import type { WorkbenchMaterialAction } from "./workbench-material-provider";
+import {
+  materialScopeKey,
+  registerWorkbenchMaterialSource,
+} from "./workbench-material-registry";
 
 const GATEWAY =
   (typeof process !== "undefined" &&
@@ -47,12 +59,24 @@ export interface MaterialLibraryProps {
   action?: WorkspaceActionEnvelope | null;
   taskId?: string | null;
   siteId?: string;
+  appId?: string;
   /** Disable the central catalog only on isolated/offline surfaces. */
   fetchCurated?: boolean;
   /** Restrict the central catalog to the editor's current media family. */
   curatedType?: string;
   /** Restrict the central catalog to one curated collection/series. */
   curatedSeriesId?: string;
+  /** Register GoalApp/local/platform entries for the advanced workbench scope. */
+  registerRuntimeSource?: boolean;
+  materialActions?: readonly WorkbenchMaterialAction[];
+  onMaterialAction?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
+  materialActionAvailable?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => boolean;
 }
 
 interface PlatformAsset {
@@ -66,10 +90,16 @@ interface PlatformAsset {
   tags?: string[];
   scene_tags?: string[];
   format?: string;
+  content_type?: string;
+  representation?: string;
+  subtype?: string;
   source?: string;
   source_url?: string;
   series_id?: string;
   oss_key?: string;
+  editor?: EditorManifestV1 | null;
+  capabilities?: EditorCapabilityName[];
+  unavailable_reason?: string;
 }
 
 interface PlatformSearchResponse {
@@ -89,10 +119,7 @@ const TYPE_TO_KIND: Record<string, LibraryKind> = {
   sticker: "image",
   ppt: "ppt",
   sheet: "sheet",
-  // Charts/infographics (for example the thermometer card) are visual assets,
-  // not deployable website projects. Routing them as websites produced an
-  // advanced page with no editor because they have no website project/starter
-  // id. The image workbench gives them real crop/text/draw/filter editing.
+  // Viewer only: chart editability is declared separately by chart-editor@1.
   chart: "image",
   website: "website",
   video_workflow: "video_canvas",
@@ -233,11 +260,9 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       ? asset.source_url || ""
       : "";
   const kind: LibraryKind = TYPE_TO_KIND[asset.type] || "file";
-  // Curated charts are interactive HTML demos, while the current advanced
-  // editor is the image workbench. Open their rendered cover so crop/text/
-  // draw/filter tools receive an actual image instead of trying to decode
-  // chart.html as a bitmap.
-  const editableChartUrl =
+  // Viewer and editor source are intentionally separate. A chart card opens
+  // its cover; chart-editor@1 loads only the manifest's trusted JSON source.
+  const chartViewerUrl =
     asset.type === "chart"
       ? asset.preview_url || asset.thumb_url || asset.full_url || ""
       : "";
@@ -263,7 +288,7 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
     title: asset.title || "未命名素材",
     siteId: designTemplateDoc ? "design" : "asset",
     url:
-      editableChartUrl ||
+      chartViewerUrl ||
       htmlViewer ||
       asset.full_url ||
       asset.preview_url ||
@@ -281,12 +306,32 @@ function platformToEntry(asset: PlatformAsset): WorkspaceLibraryEntry {
       tags: asset.tags || [],
       scene_tags: asset.scene_tags || [],
       format: asset.format || "",
+      oss_key: asset.oss_key || "",
+      content_type: asset.content_type || asset.type,
+      representation: asset.representation || "",
+      subtype: asset.subtype || "",
+      editor: asset.editor || undefined,
+      capabilities: asset.capabilities || [],
+      unavailable_reason: asset.unavailable_reason || "",
       source_asset_url: asset.full_url || "",
+      source_url: asset.source_url || "",
       template_doc_url: designTemplateDoc,
       starter_id: starterId,
       asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
     },
   };
+  item.descriptor = libraryContentDescriptor({
+    kind,
+    meta: item.meta,
+    descriptor: {
+      content_type: asset.content_type || asset.type,
+      representation: asset.representation || "",
+      subtype: asset.subtype || "",
+      editor: asset.editor || null,
+      capabilities: asset.capabilities || [],
+      unavailable_reason: asset.unavailable_reason || "",
+    },
+  });
   return workspaceEntryFromLibraryItem(item, {
     category: KIND_CATEGORY[kind] || asset.category || "精选素材",
     description: asset.category
@@ -337,11 +382,19 @@ export function MaterialLibrary({
   action,
   taskId,
   siteId = "",
+  appId = "",
   fetchCurated = true,
   curatedType = "all",
   curatedSeriesId = "",
+  registerRuntimeSource = true,
+  materialActions = [],
+  onMaterialAction,
+  materialActionAvailable,
 }: MaterialLibraryProps) {
   const tt = useUI();
+  const workspaceSession = useOptionalWorkspaceSession();
+  const runtimeAppId = appId || workspaceSession?.appId || "default";
+  const runtimeSourceRef = useRef(Symbol("material-library"));
   const [query, setQuery] = useState(action?.action.query || "");
   const [debounced, setDebounced] = useState(query);
   const [remote, setRemote] = useState<WorkspaceLibraryEntry[]>([]);
@@ -446,6 +499,14 @@ export function MaterialLibrary({
     () => mergeEntries([featuredEntries, localEntries, remote]),
     [featuredEntries, localEntries, remote],
   );
+  useEffect(() => {
+    if (!registerRuntimeSource) return;
+    return registerWorkbenchMaterialSource(
+      materialScopeKey(siteId, runtimeAppId),
+      runtimeSourceRef.current,
+      entries,
+    );
+  }, [entries, registerRuntimeSource, runtimeAppId, siteId]);
 
   const seeAll = hideSeeAll ? null : (
     onSeeAll ? (
@@ -475,6 +536,7 @@ export function MaterialLibrary({
       action={action}
       taskId={taskId}
       siteId={siteId}
+      appId={runtimeAppId}
       query={query}
       onQueryChange={setQuery}
       primaryCategoryIds={primaryCategoryIds}
@@ -486,6 +548,10 @@ export function MaterialLibrary({
           ? "中央素材暂时不可用；本站精选仍可继续查看。"
           : emptyHint || "换一个关键词，或打开完整素材库继续浏览。"
       }
+      materialActions={materialActions}
+      onMaterialAction={onMaterialAction}
+      materialActionAvailable={materialActionAvailable}
+      allowAdvanced={materialActions.length === 0}
       className={className}
     />
   );

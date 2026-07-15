@@ -25,6 +25,7 @@ import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer, libraryKindLabel } from "./library-viewers";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { useWorkbenchMaterials } from "./workbench-material-provider";
 
 type WorkbenchTool =
   | "agent"
@@ -79,6 +80,10 @@ function mediaTypeFor(item: LibraryItem): MediaType {
 }
 
 function curatedTypeFor(item: LibraryItem): string {
+  const explicit = String(
+    item.descriptor?.contentType || item.meta.content_type || item.meta.asset_type || "",
+  ).toLowerCase();
+  if (explicit === "chart") return "chart";
   const map: Partial<Record<LibraryItem["kind"], string>> = {
     website: "website",
     canvas: "image",
@@ -197,6 +202,7 @@ export function AdvancedWorkbenchShell({
   const dirtyRecordedRef = useRef(false);
   const portalReady = typeof document !== "undefined";
   const advancedSession = useAdvancedSession();
+  const workbenchMaterials = useWorkbenchMaterials();
   const [activeTool, setActiveTool] = useState<WorkbenchTool>(
     editorAvailable ? "edit" : "preview",
   );
@@ -369,7 +375,9 @@ export function AdvancedWorkbenchShell({
     () =>
       [
         { id: "agent" as const, label: tt("Agent") },
-        { id: "edit" as const, label: tt(editorLabel) },
+        ...(editorAvailable
+          ? [{ id: "edit" as const, label: tt(editorLabel) }]
+          : []),
         { id: "materials" as const, label: tt("素材") },
         { id: "preview" as const, label: tt("预览") },
         { id: "info" as const, label: tt("信息") },
@@ -379,7 +387,7 @@ export function AdvancedWorkbenchShell({
           label: tt(exportPanel ? "导出" : "原文件"),
         },
       ] satisfies { id: WorkbenchTool; label: string }[],
-    [editorLabel, exportPanel, tt],
+    [editorAvailable, editorLabel, exportPanel, tt],
   );
 
   const chooseTool = useCallback(
@@ -503,11 +511,17 @@ export function AdvancedWorkbenchShell({
       <div className="h-full min-h-0">
         <MaterialLibrary
           materials={[]}
+          featuredEntries={[...(workbenchMaterials?.entries || [])]}
           curatedType={curatedTypeFor(item)}
           curatedSeriesId={siteId === "design" ? "design-materials" : ""}
           accent={accent}
           taskId={taskId}
           siteId={siteId}
+          appId={workbenchMaterials?.appId}
+          registerRuntimeSource={false}
+          materialActions={workbenchMaterials?.actions || []}
+          onMaterialAction={workbenchMaterials?.perform}
+          materialActionAvailable={workbenchMaterials?.canPerform}
           hideSeeAll
         />
       </div>
