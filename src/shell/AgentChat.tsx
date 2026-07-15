@@ -207,6 +207,11 @@ export interface AgentLibraryTabs {
   onSeeAllMaterials?: () => void;
 }
 
+type AgentChatInnerProps = AgentChatProps & {
+  /** Homepage launches archive any previous rolling home-agent session first. */
+  startFreshSession?: boolean;
+};
+
 export function AgentChat(props: AgentChatProps) {
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const router = useRouter();
@@ -239,7 +244,11 @@ export function AgentChat(props: AgentChatProps) {
       title={props.initialPrompt?.trim().slice(0, 120) || "AI 助手"}
       resumeLatest={false}
     >
-      <AgentChatInner {...props} onTaskCreated={onTaskCreated} />
+      <AgentChatInner
+        {...props}
+        onTaskCreated={onTaskCreated}
+        startFreshSession
+      />
     </WorkspaceSessionProvider>
   );
 }
@@ -271,7 +280,8 @@ function AgentChatInner({
   libraryTabs,
   mentionMembers,
   renderOrgPanel,
-}: AgentChatProps) {
+  startFreshSession = false,
+}: AgentChatInnerProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = agentArtifactLabels(tt);
   const workspaceValue = useOptionalWorkspaceSession();
@@ -317,6 +327,7 @@ function AgentChatInner({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
+  const freshSessionStartedRef = useRef(false);
   const loadedTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
@@ -442,9 +453,16 @@ function AgentChatInner({
 
       let linkedSessionId = "";
       if (workspace) {
-        const active =
-          workspace.session ||
-          (await workspace.ensureActive({ title: prompt }));
+        let active = workspace.session;
+        if (startFreshSession && !freshSessionStartedRef.current) {
+          active = await workspace.startNew({
+            title: prompt,
+            remountRuntime: false,
+          });
+          if (active) freshSessionStartedRef.current = true;
+        } else if (!active) {
+          active = await workspace.ensureActive({ title: prompt });
+        }
         linkedSessionId = active?.id || workspace.sessionId || "";
         if (!linkedSessionId) {
           setBusy(false);
@@ -500,6 +518,7 @@ function AgentChatInner({
       readOnly,
       refresh,
       siteId,
+      startFreshSession,
       teamId,
       tt,
       workspace,

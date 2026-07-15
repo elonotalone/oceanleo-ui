@@ -13,7 +13,7 @@ type SnapshotRestorableAppSession = AppSession & {
 
 type TaskBackedAgentSession = AppSession & {
   site_id: string;
-  app_id: "agent";
+  app_id: "agent" | "home-agent";
   task_id: string;
 };
 
@@ -81,8 +81,9 @@ export function canDeleteHistoryEntry(entry: HistoryListEntry): boolean {
 }
 
 /**
- * 带真实 snapshot 的 app 可恢复完整操作台；标准 `agent` app 的完整 runtime 就是持续
- * task thread，因此允许 task_id 代替 snapshot。其它 app 绝不拿当前默认值冒充历史。
+ * 带真实 snapshot 的 app 可恢复完整操作台；workspace `agent` 与独立首页
+ * `home-agent` 的完整 runtime 都是持续 task thread，因此允许 task_id 代替
+ * snapshot。其它 app 绝不拿当前默认值冒充历史。
  */
 export function isRestorableAppSession(
   session: AppSession | null | undefined,
@@ -96,7 +97,7 @@ export function isRestorableAppSession(
     !Array.isArray(snapshot);
   return (
     hasSnapshot ||
-    (session.app_id === "agent" &&
+    ((session.app_id === "agent" || session.app_id === "home-agent") &&
       typeof session.task_id === "string" &&
       Boolean(session.task_id))
   );
@@ -107,7 +108,9 @@ export function withLinkedAgentTask(
   session: AppSession,
   linkedTaskId?: string | null,
 ): AppSession {
-  return session.app_id === "agent" && !session.task_id && linkedTaskId
+  return (session.app_id === "agent" || session.app_id === "home-agent") &&
+    !session.task_id &&
+    linkedTaskId
     ? { ...session, task_id: linkedTaskId }
     : session;
 }

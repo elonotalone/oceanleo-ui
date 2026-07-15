@@ -71,6 +71,8 @@ export interface EnsureWorkspaceSessionOptions {
   title?: string;
   snapshot?: Record<string, unknown>;
   schemaVersion?: number;
+  /** Keep the mounted runtime when the caller is already orchestrating its first run. */
+  remountRuntime?: boolean;
 }
 
 export interface SaveWorkspaceSnapshotOptions {

@@ -744,14 +744,35 @@ export function WorkspaceSessionProvider({
       enqueueMutation(async () => {
         if (!site || !app) return null;
         const current = sessionRef.current;
-        if (current && !isArchivedAppSession(current)) {
-          const archived = await archiveAppSession(current.id);
+        let activeSessionId =
+          current && !isArchivedAppSession(current) ? current.id : "";
+        // `resumeLatest={false}` deliberately leaves the client empty, but the
+        // server may still hold the previous active row for this app. A real
+        // "new conversation" must archive that row before ensure_active, or
+        // ensure_active simply returns it and multiple homepage tasks collapse
+        // into one history entry.
+        if (!activeSessionId) {
+          const existing = await listAppSessions({
+            siteId: site,
+            appId: app,
+            status: "active",
+            includeArchived: false,
+            limit: 1,
+          });
+          if (!existing.ok || !existing.data) {
+            reportFailure(existing.status, existing.error);
+            return null;
+          }
+          activeSessionId = existing.data.items[0]?.id || "";
+        }
+        if (activeSessionId) {
+          const archived = await archiveAppSession(activeSessionId);
           if (!archived.ok) {
             if (archived.status !== 409) {
               reportFailure(archived.status, archived.error);
               return null;
             }
-            const latest = await getAppSession(current.id);
+            const latest = await getAppSession(activeSessionId);
             if (!latest.ok || !isArchivedAppSession(latest.data)) {
               reportFailure(latest.status, latest.error || archived.error);
               return null;
@@ -776,7 +797,9 @@ export function WorkspaceSessionProvider({
         conflictRef.current = null;
         setConflict(null);
         applySession(result.data);
-        setRuntimeEpoch((value) => value + 1);
+        if (options.remountRuntime !== false) {
+          setRuntimeEpoch((value) => value + 1);
+        }
         return result.data;
       }),
     [app, appTitle, applySession, enqueueMutation, reportFailure, site],

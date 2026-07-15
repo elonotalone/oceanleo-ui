@@ -128,6 +128,15 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     /workspace\.mode !== "history"[\s\S]*?<RestartDraftButton[\s\S]*?label=\{tt\("新建"\)\}/,
   );
   assert.match(agentChatSource, /appId="home-agent"/);
+  assert.match(agentChatSource, /startFreshSession/);
+  assert.match(
+    agentChatSource,
+    /await workspace\.startNew\(\{[\s\S]*?remountRuntime: false/,
+  );
+  assert.match(
+    providerSource,
+    /listAppSessions\(\{[\s\S]*?appId: app,[\s\S]*?status: "active"[\s\S]*?archiveAppSession\(activeSessionId\)/,
+  );
   assert.match(agentChatSource, /router\.replace\(historySessionHref\(sessionId\)\)/);
   assert.match(agentChatSource, /const \[rightOpen, setRightOpen\] = useState\(hasOrgPanel\)/);
   assert.match(agentChatSource, /open: rightOpen/);

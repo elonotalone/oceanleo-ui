@@ -144,6 +144,15 @@ test("操作台需真实 snapshot；标准 agent 可用真实 task thread 恢复
   assert.equal(
     isRestorableAppSession({
       ...baseSession,
+      app_id: "home-agent",
+      snapshot: null,
+      task_id: "home-task-1",
+    }),
+    true,
+  );
+  assert.equal(
+    isRestorableAppSession({
+      ...baseSession,
       app_id: "proposal",
       snapshot: null,
       task_id: "task-1",
@@ -156,6 +165,12 @@ test("操作台需真实 snapshot；标准 agent 可用真实 task thread 恢复
   );
   assert.equal(linkedAgent.task_id, "linked-task");
   assert.equal(isRestorableAppSession(linkedAgent), true);
+  const linkedHomeAgent = withLinkedAgentTask(
+    { ...baseSession, app_id: "home-agent", snapshot: null },
+    "linked-home-task",
+  );
+  assert.equal(linkedHomeAgent.task_id, "linked-home-task");
+  assert.equal(isRestorableAppSession(linkedHomeAgent), true);
 });
 
 test("完整 session 交给站点 runtime，旧任务直接回到可续聊对话", () => {
