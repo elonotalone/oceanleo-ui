@@ -11,6 +11,8 @@
 import { getRequestConfig } from "next-intl/server";
 import { cookies, headers } from "next/headers";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, normalizeLocale, type Locale } from "./config";
+import { loadUiMessages } from "./ui/messages/load";
+import { UI_MESSAGES_NAMESPACE } from "./ui/messages/runtime";
 import sharedDe from "./messages/de.json";
 import sharedEn from "./messages/en.json";
 import sharedEs from "./messages/es.json";
@@ -97,6 +99,14 @@ function deepMerge(
 export function createI18nRequest(loadSiteMessages: SiteMessagesLoader) {
   return getRequestConfig(async () => {
     const locale = await resolveLocale();
+    let uiMessages: Record<string, string> = {};
+    try {
+      uiMessages = await loadUiMessages(locale);
+    } catch {
+      // The Chinese source string remains a readable fallback if a locale
+      // chunk is unavailable; never take the whole request down with it.
+      uiMessages = {};
+    }
     let siteMessages: Record<string, unknown> = {};
     try {
       siteMessages = (await loadSiteMessages(locale)) || {};
@@ -119,6 +129,10 @@ export function createI18nRequest(loadSiteMessages: SiteMessagesLoader) {
     const localeLayer = deepMerge(SHARED_MESSAGES[locale] || {}, siteMessages);
     // 最终：中文底座 ← 目标语言覆盖。
     const messages = deepMerge(zhBase, localeLayer);
+    // useUI() consumes this request-local namespace through I18nProvider.
+    // Keeping it out of the client module graph prevents all 17 large
+    // dictionaries from becoming render-blocking JavaScript chunks.
+    messages[UI_MESSAGES_NAMESPACE] = uiMessages;
 
     return {
       locale,

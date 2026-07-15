@@ -5,7 +5,10 @@
 // next.config 已用 createNextIntlPlugin 包裹），因此这里无需手动传 props——
 // next-intl 会从 server 端 getRequestConfig 的结果填充 client 上下文。
 import { NextIntlClientProvider } from "next-intl";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+
+import { UIMessageProvider } from "./ui/messages/context";
+import { uiMessageDictionaryFrom } from "./ui/messages/runtime";
 
 export interface I18nProviderProps {
   children: ReactNode;
@@ -15,6 +18,10 @@ export interface I18nProviderProps {
 }
 
 export function I18nProvider({ children, locale, messages }: I18nProviderProps) {
+  const uiMessages = useMemo(
+    () => uiMessageDictionaryFrom(messages),
+    [messages],
+  );
   return (
     <NextIntlClientProvider
       locale={locale}
@@ -29,7 +36,9 @@ export function I18nProvider({ children, locale, messages }: I18nProviderProps) 
         key.split(".").pop() || key
       }
     >
-      {children}
+      <UIMessageProvider messages={uiMessages}>
+        {children}
+      </UIMessageProvider>
     </NextIntlClientProvider>
   );
 }

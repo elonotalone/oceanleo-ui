@@ -12,18 +12,18 @@
 //
 // 机制：
 //   - 词典在 ./messages/<locale>.ts，形如 { "深色": "Dark", ... }。
-//   - useUI() 用 next-intl 的 useLocale() 取当前语言，选对应词典。
+//   - request.ts 只加载当前 locale，I18nProvider 通过轻量 context 下发给 useUI()。
 //   - tt(zh) 命中就返回译文；未命中回退【中文原文本身】（绝不显示空/undefined）。
 //   - 带插值：tt("让 agent 帮你做「{x}」", { x: name })  —— 用 {name} 占位，运行时替换。
 //
-// SSR/CSR 一致：useLocale() 在两端都由 <I18nProvider>(NextIntlClientProvider) 提供，
-// 服务端首帧就用正确语言渲染，无闪烁。
+// SSR/CSR 一致：locale + 当前词典都由 <I18nProvider> 提供，服务端首帧就用正确
+// 语言渲染；不能在 client graph 静态 import 17 份词典，否则 dev 首屏会下载数 MB。
 // ============================================================================
 
 import { useMemo } from "react";
 import { useLocale } from "next-intl";
-import { UI_MESSAGES } from "./messages";
-import { DEFAULT_LOCALE, normalizeLocale, type Locale } from "../config";
+import { normalizeLocale, type Locale } from "../config";
+import { useUiMessages } from "./messages/context";
 
 export type UITranslate = (zh: string, vars?: Record<string, string | number>) => string;
 
@@ -103,8 +103,8 @@ function renamePromptTemplateTerm(value: string, locale: Locale): string {
  */
 export function useUI(): UITranslate {
   const locale = normalizeLocale(useLocale());
+  const dict = useUiMessages();
   return useMemo(() => {
-    const dict = UI_MESSAGES[locale] || UI_MESSAGES[DEFAULT_LOCALE] || {};
     return (zh: string, vars?: Record<string, string | number>) => {
       // “文件库”已并入异构“我的库”。不仅收敛单独标签，也收敛提示、toast 等
       // 复合句，避免任何语言短暂露出旧产品概念。
@@ -126,5 +126,5 @@ export function useUI(): UITranslate {
         vars,
       );
     };
-  }, [locale]);
+  }, [dict, locale]);
 }

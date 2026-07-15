@@ -20,17 +20,22 @@ export { getTranslations as getT, getLocale, getMessages } from "next-intl/serve
 // ---------------------------------------------------------------------------
 // ttServer — useUI() 的【服务端镜像】。RSC / server layout / loading.tsx 里
 // 无法调用 client-only 的 useUI() hook，但仍需按当前 locale 本地化「中文原文即
-// key」的存量文案。此 helper 复用同一份 UI_MESSAGES 词典（单一事实源），用
-// next-intl/server 的 getLocale() 取语言，返回一个同签名的 tt(zh, vars)。
+// key」的存量文案。词典已由 request.ts 按当前 locale 注入请求消息，不再把 17
+// 份大词典静态引入同一个 server/client module graph。
 //
 //   import { ttServer } from "@oceanleo/ui/i18n/server";
 //   const tt = await ttServer();
 //   <div>{tt("加载中...")}</div>
 //
-// 纯 .ts 模块（无 React、无请求上下文）用 ttFor(locale) 显式传 locale。
-import { UI_MESSAGES } from "./ui/messages";
-import { DEFAULT_LOCALE, normalizeLocale } from "./config";
-import { getLocale as _getLocale } from "next-intl/server";
+// 纯 .ts 模块（无 React、无请求上下文）用 ttFor(locale, dict) 显式传词典。
+import {
+  uiMessageDictionaryFrom,
+  type UIMessageDictionary,
+} from "./ui/messages/runtime";
+import {
+  getLocale as _getLocale,
+  getMessages as _getMessages,
+} from "next-intl/server";
 
 function _interpolate(s: string, vars?: Record<string, string | number>): string {
   if (!vars) return s;
@@ -39,10 +44,9 @@ function _interpolate(s: string, vars?: Record<string, string | number>): string
 
 /** 显式 locale 版：纯 .ts / 无请求上下文时用。 */
 export function ttFor(
-  locale: string,
+  _locale: string,
+  dict: UIMessageDictionary = {},
 ): (zh: string, vars?: Record<string, string | number>) => string {
-  const loc = normalizeLocale(locale);
-  const dict = UI_MESSAGES[loc] || UI_MESSAGES[DEFAULT_LOCALE] || {};
   return (zh: string, vars?: Record<string, string | number>) => {
     const hit = dict[zh];
     return _interpolate(hit != null && hit !== "" ? hit : zh, vars);
@@ -53,8 +57,14 @@ export function ttFor(
 export async function ttServer(): Promise<
   (zh: string, vars?: Record<string, string | number>) => string
 > {
-  const locale = await _getLocale();
-  return ttFor(locale);
+  const [locale, messages] = await Promise.all([
+    _getLocale(),
+    _getMessages(),
+  ]);
+  const dict = uiMessageDictionaryFrom(
+    messages as unknown as Record<string, unknown>,
+  );
+  return ttFor(locale, dict);
 }
 
 // 配置常量在两端通用，server 侧也转出一份方便单引。
