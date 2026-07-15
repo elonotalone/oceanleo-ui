@@ -141,7 +141,7 @@ export function FabricImageStage({
             editor.notice ||
             (editor.selected
               ? tt("已选中 {kind} 图层", { kind: editor.selected.kind })
-              : tt("选择对象后可在左侧调整属性；Alt/中键拖动画布"))}
+              : tt("选择对象后可在对象上方调整属性；Alt/中键拖动画布"))}
         </span>
         <button
           type="button"
