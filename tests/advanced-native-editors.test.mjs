@@ -79,3 +79,21 @@ test("timeline preview uses the same transition semantics as export", () => {
   assert.match(preview, /clip\.transition_in\?\.type === "black"/);
   assert.match(preview, /type === "fade" \|\| type === "crossfade"/);
 });
+
+test("media editors expose usable first-draft surfaces without a source URL", () => {
+  const audio = source("../src/shell/media-editors/AudioWorkbench.tsx");
+  const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
+  const pdfOperations = source("../src/shell/media-editors/pdf-operations.ts");
+  const pdfSource = source("../src/shell/media-editors/pdf-source.ts");
+  const model = source("../src/shell/media-editors/use-model3d-workbench.ts");
+  const modelControls = source("../src/shell/media-editors/Model3DControls.tsx");
+  const modelStage = source("../src/shell/media-editors/Model3DStage.tsx");
+  assert.match(audio, /new AudioBuffer\(\{/);
+  assert.match(audio, /importSource: \(file: File\)/);
+  assert.match(pdfOperations, /export async function createBlankPdf/);
+  assert.match(pdfSource, /await createBlankPdf\(\)/);
+  assert.match(pdf, /loadInitialPdfSource/);
+  assert.match(model, /importModel: \(file: File\)/);
+  assert.match(modelControls, /导入 GLB \/ glTF/);
+  assert.match(modelStage, /空白 3D 场景/);
+});

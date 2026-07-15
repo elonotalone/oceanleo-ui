@@ -28,6 +28,7 @@ import {
   recalledAdvancedLibraryItem,
   type AdvancedFeatureDefinition,
 } from "./advanced-features";
+import { blankAdvancedFeatureItem } from "./advanced-drafts";
 import {
   normalizeArtifact,
   normalizeWork,
@@ -38,7 +39,7 @@ import {
   platformToEntry,
   type PlatformAsset,
 } from "./MaterialLibrary";
-import { assetAsWork, MyLibrary } from "./MyLibrary";
+import { assetAsWork } from "./MyLibrary";
 
 function inferredSiteId(explicit?: string): string {
   if (explicit) return explicit;
@@ -162,7 +163,14 @@ export function AdvancedFeatureRoute({
   const assetReference = searchParams.get("asset") || "";
   const requestedSessionId = searchParams.get("session") || "";
   const runtimeSiteId = inferredSiteId(siteId);
-  const [item, setItem] = useState<LibraryItem | null>(null);
+  const blankItem = useMemo(
+    () =>
+      feature ? blankAdvancedFeatureItem(feature, runtimeSiteId) : null,
+    [feature, runtimeSiteId],
+  );
+  const [item, setItem] = useState<LibraryItem | null>(() =>
+    !assetReference && !requestedSessionId ? blankItem : null,
+  );
   const [session, setSession] = useState<AppSession | null>(null);
   const [loading, setLoading] = useState(
     Boolean(assetReference || requestedSessionId),
@@ -173,7 +181,7 @@ export function AdvancedFeatureRoute({
     let alive = true;
     setLoading(Boolean(assetReference || requestedSessionId));
     setError("");
-    setItem(null);
+    setItem(!assetReference && !requestedSessionId ? blankItem : null);
     setSession(null);
     if (!feature || (!assetReference && !requestedSessionId)) {
       setLoading(false);
@@ -266,17 +274,12 @@ export function AdvancedFeatureRoute({
     };
   }, [
     assetReference,
+    blankItem,
     feature,
     requestedSessionId,
     router,
     tt,
   ]);
-
-  const itemFilter = useMemo(
-    () => (candidate: LibraryItem) =>
-      advancedFeatureForItem(candidate)?.id === feature?.id,
-    [feature?.id],
-  );
 
   if (!feature) {
     return (
@@ -348,16 +351,19 @@ export function AdvancedFeatureRoute({
           {tt("正在打开高级功能…")}
         </div>
       ) : (
-        <div className="mx-auto flex min-h-[620px] w-full max-w-6xl flex-1 p-4 sm:p-6">
-          <div className="min-h-0 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-            <MyLibrary
-              siteId={runtimeSiteId}
-              accent={accent || feature.accent}
-              itemFilter={itemFilter}
-              onOpenItem={(nextItem) =>
-                router.push(advancedFeatureHref(feature, { item: nextItem }))
-              }
-            />
+        <div className="grid min-h-[55vh] flex-1 place-items-center p-8 text-center">
+          <div className="max-w-md">
+            <p className="text-sm text-stone-500">
+              {error || tt("无法打开高级功能，请返回后重试。")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setItem(blankItem)}
+              className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white"
+              style={{ background: accent || feature.accent }}
+            >
+              {tt("打开空白工作台")}
+            </button>
           </div>
         </div>
       )}

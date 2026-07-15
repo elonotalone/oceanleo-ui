@@ -113,17 +113,33 @@ export function EmbeddedRoute({
   );
   const extraParams = useMemo(
     () => {
-      if (item.kind !== "website") return undefined;
+      const blank: Record<string, string> =
+        item.meta.draft === true && !item.url && !item.previewUrl
+          ? { blank: "1" }
+          : {};
+      if (item.kind !== "website") {
+        return Object.keys(blank).length ? blank : undefined;
+      }
       if (websiteId) {
         return {
+          ...blank,
           siteId: websiteId,
           projectId: websiteId,
           ...(starterId ? { starterId } : {}),
         };
       }
-      return starterId ? { starterId } : undefined;
+      return Object.keys(blank).length || starterId
+        ? { ...blank, ...(starterId ? { starterId } : {}) }
+        : undefined;
     },
-    [item.kind, starterId, websiteId],
+    [
+      item.kind,
+      item.meta.draft,
+      item.previewUrl,
+      item.url,
+      starterId,
+      websiteId,
+    ],
   );
 
   if (route.type !== "embed") {

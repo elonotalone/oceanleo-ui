@@ -19,7 +19,9 @@ export function Model3DStage({
       ? editor.notice
       : editor.loading
         ? tt("正在加载 3D 模型…")
-        : tt("拖动环绕 · 滚轮缩放 · 双指平移");
+        : !editor.sourceUrl
+          ? tt("空白 3D 场景 · 从左侧导入模型")
+          : tt("拖动环绕 · 滚轮缩放 · 双指平移");
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-stone-100">
@@ -56,6 +58,34 @@ export function Model3DStage({
               },
             })
           : null}
+
+        {!editor.loading && !editor.sourceUrl && !editor.error && (
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="relative h-full w-full max-w-4xl overflow-hidden rounded-2xl border border-stone-300/80 bg-white/35 shadow-inner">
+              <div
+                className="absolute inset-0 opacity-70"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(rgba(120,113,108,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(120,113,108,.18) 1px, transparent 1px)",
+                  backgroundSize: "32px 32px",
+                  transform: "perspective(640px) rotateX(58deg) scale(1.4)",
+                  transformOrigin: "center 70%",
+                }}
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-stone-300 bg-white/90 text-2xl text-stone-500 shadow-sm">
+                  3D
+                </div>
+                <p className="mt-4 text-[13px] font-semibold text-stone-700">
+                  {tt("空白 3D 场景")}
+                </p>
+                <p className="mt-1 text-[11px] text-stone-500">
+                  {tt("从左侧导入 GLB 或自包含 glTF 后开始编辑")}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {editor.loading && (
           <div

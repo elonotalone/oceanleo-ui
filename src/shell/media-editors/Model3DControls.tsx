@@ -89,6 +89,28 @@ export function Model3DControls({
 
   return (
     <div className="space-y-4 overflow-y-auto p-3">
+      <section className="space-y-2">
+        <p className="text-[11px] font-semibold text-stone-800">
+          {tt("3D 模型")}
+        </p>
+        <label className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50">
+          {editor.sourceUrl ? tt("替换模型") : tt("导入 GLB / glTF")}
+          <input
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            className="hidden"
+            disabled={busy}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void editor.importModel(file);
+              event.target.value = "";
+            }}
+          />
+        </label>
+        <p className="text-[10px] leading-relaxed text-stone-400">
+          {tt("多文件 glTF 请先打包成单文件 GLB，避免纹理或 .bin 依赖丢失。")}
+        </p>
+      </section>
       <section className="space-y-2.5">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-semibold text-stone-800">{tt("相机")}</p>
@@ -180,9 +202,10 @@ export function Model3DControls({
               <button
                 key={color}
                 type="button"
+                disabled={!editor.modelLoaded}
                 aria-label={`${tt("背景")} ${color}`}
                 onClick={() => editor.setBackground(color)}
-                className="h-7 w-7 rounded-full border-2 shadow-sm"
+                className="h-7 w-7 rounded-full border-2 shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
                   background: color,
                   borderColor: editor.background === color ? accent : "#e7e5e4",
@@ -192,9 +215,10 @@ export function Model3DControls({
             <input
               type="color"
               value={editor.background}
+              disabled={!editor.modelLoaded}
               onChange={(event) => editor.setBackground(event.target.value)}
               aria-label={tt("自定义背景颜色")}
-              className="h-7 w-8 cursor-pointer rounded border border-stone-200 bg-white p-0.5"
+              className="h-7 w-8 cursor-pointer rounded border border-stone-200 bg-white p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
             />
           </div>
         </div>

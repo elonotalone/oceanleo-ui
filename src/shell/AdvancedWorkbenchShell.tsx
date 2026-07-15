@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  advancedFeatureForItem,
+  advancedFeatureHrefForItem,
+} from "./advanced-features";
 import { AdvancedAgentPanel } from "./AdvancedAgentPanel";
 import { AdvancedTasks } from "./AdvancedTasks";
 import {
@@ -149,6 +154,8 @@ export function AdvancedWorkbenchShell({
   onClose,
 }: AdvancedWorkbenchShellProps) {
   const tt = useUI();
+  const router = useRouter();
+  const currentFeatureId = advancedFeatureForItem(item)?.id;
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const dirtyRecordedRef = useRef(false);
@@ -434,6 +441,13 @@ export function AdvancedWorkbenchShell({
         accent={accent}
         taskId={taskId}
         plain
+        itemFilter={(candidate) =>
+          advancedFeatureForItem(candidate)?.id === currentFeatureId
+        }
+        onOpenItem={(nextItem) => {
+          const href = advancedFeatureHrefForItem(nextItem);
+          if (href) router.push(href);
+        }}
       />
     );
   }

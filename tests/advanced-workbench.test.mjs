@@ -88,9 +88,14 @@ test("advanced Agent follows the current task instead of forking history", () =>
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(panel, /setActiveTaskId\(sessionTaskId\)/);
   assert.match(panel, /advancedSession\.taskId/);
-  assert.match(panel, /followUp\(activeTaskId, context, attachments\)/);
+  assert.match(panel, /followUp\([\s\S]*?activeTaskId,[\s\S]*?attachments\.length/);
   assert.match(panel, /item\.url \|\| item\.previewUrl/);
-  assert.match(panel, /attachments,/);
+  assert.match(panel, /attachments\.length \? attachments : undefined/);
+  assert.match(panel, /<LeoComposer/);
+  assert.match(panel, /leoSuggest/);
+  assert.match(panel, /onAttachFiles=\{atts\.handleAttachFiles\}/);
+  assert.match(panel, /onVoiceTranscript=/);
+  assert.doesNotMatch(panel, /<textarea/);
   assert.doesNotMatch(panel, /advancedSession\?\.navigate/);
   assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
@@ -115,6 +120,23 @@ test("advanced work is session-backed, deep-linkable and starts a fresh saved co
   assert.doesNotMatch(workbench, /resumeLatest=\{false\}/);
   assert.match(workbench, /taskId === undefined \? workspace\.taskId : taskId/);
   assert.match(workbench, /workspace\.mode === "history"/);
+});
+
+test("direct advanced routes mount blank editors instead of a library gate", () => {
+  const pages = source("../src/shell/AdvancedFeaturePages.tsx");
+  const features = source("../src/shell/advanced-drafts.ts");
+  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  assert.match(pages, /blankAdvancedFeatureItem\(feature, runtimeSiteId\)/);
+  assert.match(
+    pages,
+    /!assetReference && !requestedSessionId \? blankItem : null/,
+  );
+  assert.doesNotMatch(pages, /<MyLibrary/);
+  assert.match(features, /case "video_editing":/);
+  assert.match(features, /case "website_finetuning":/);
+  assert.match(features, /case "model_3d":/);
+  assert.match(features, /draft:advanced:\$\{feature\.id\}/);
+  assert.match(embedded, /\? \{ blank: "1" \}/);
 });
 
 test("first advanced edit only ensures history and every mutable route can flush", () => {
@@ -151,7 +173,7 @@ test("code-backed website starters reach the visual editor without a fake projec
     routes,
     /if \(!projectId && !starterId\) \{[\s\S]*?return unavailable\(/,
   );
-  assert.match(embedded, /starterId \? \{ starterId \} : undefined/);
+  assert.match(embedded, /\.\.\.\(starterId \? \{ starterId \} : \{\}\)/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
@@ -179,6 +201,10 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
   assert.match(embed, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(embed, /event\.origin !== editorOrigin/);
+  assert.match(
+    embed,
+    /item\.meta\.draft === true && !item\.url && !item\.previewUrl/,
+  );
   assert.match(embed, /type: "open-asset"/);
   assert.match(embed, /type: "save-request"/);
   assert.match(embed, /type: "save-result"/);
@@ -268,6 +294,7 @@ test("cloud browser can be opened directly and still supports takeover", () => {
 test("full-page library and right workspace share the heterogeneous My Library", () => {
   const artifacts = source("../src/shell/ArtifactLibrary.tsx");
   const mine = source("../src/shell/MyLibrary.tsx");
+  const advancedShell = source("../src/shell/AdvancedWorkbenchShell.tsx");
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
@@ -277,6 +304,8 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(mine, /deleteArtifact/);
   assert.match(mine, /uploadFile/);
   assert.match(mine, /libraryCache/);
+  assert.match(advancedShell, /itemFilter=\{\(candidate\) =>/);
+  assert.match(advancedShell, /=== currentFeatureId/);
   assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);
   assert.match(i18n, /\.replaceAll\("檔案庫", "我的库"\)/);
 });

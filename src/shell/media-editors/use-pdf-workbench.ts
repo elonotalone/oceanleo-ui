@@ -14,11 +14,6 @@ import type {
 } from "pdfjs-dist";
 import { useUI } from "../../i18n/ui/useUI";
 import { saveWorks, uploadFile } from "../../lib/database";
-import {
-  fetchMediaBlob,
-  importMediaUrl,
-  isFirstPartyMediaUrl,
-} from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import {
   addBlankPdfPage,
@@ -29,6 +24,7 @@ import {
   movePdfPage,
   rotatePdfPage,
 } from "./pdf-operations";
+import { loadInitialPdfSource } from "./pdf-source";
 import {
   appendPdfHistory,
   clamp,
@@ -154,33 +150,20 @@ export function usePdfWorkbench(
     setSavedUrl("");
     setNotice("");
     setError("");
-    if (!source) {
-      setSourceLoading(false);
-      setError(tt("没有可加载的 PDF 地址"));
-      return () => controller.abort();
-    }
     void (async () => {
       try {
-        const durableUrl = isFirstPartyMediaUrl(source)
-          ? source
-          : await importMediaUrl(source, {
-              kind: "file",
-              siteId: siteId || "oceanleo",
-              title: item.title,
-              registerAsset: true,
-            });
-        if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
-        const blob = await fetchMediaBlob(durableUrl, {
-          maxBytes: MAX_PDF_BYTES,
+        const loaded = await loadInitialPdfSource({
+          source,
+          siteId,
+          title: item.title,
           signal: controller.signal,
         });
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        const count = await inspectPdf(bytes);
-        if (count < 1) throw new Error(tt("PDF 没有可显示的页面"));
+        if (loaded.pageCount < 1) throw new Error(tt("PDF 没有可显示的页面"));
         if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
-        bytesRef.current = bytes;
-        setSourceUrl(durableUrl);
-        setPageCount(count);
+        bytesRef.current = loaded.bytes;
+        setSourceUrl(loaded.durableUrl);
+        setPageCount(loaded.pageCount);
+        if (loaded.blank) setNotice(tt("已创建一页空白 PDF"));
         setDocumentRevision((value) => value + 1);
       } catch (caught) {
         if (!controller.signal.aborted && generation === sourceGenerationRef.current) {

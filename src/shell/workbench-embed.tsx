@@ -124,6 +124,7 @@ export function EmbedEditorPane({
   );
 
   const sendOpenAsset = useCallback(() => {
+    if (item.meta.draft === true && !item.url && !item.previewUrl) return;
     sendToEditor({
       type: "open-asset",
       asset: {

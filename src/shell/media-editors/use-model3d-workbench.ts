@@ -16,11 +16,9 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+import { MAX_MODEL_BYTES, modelExtension, safeModelStem, triggerModelDownload, uploadImportedModel } from "./model3d-files";
 import { normalizeSavedModelView } from "./model3d-view";
-const MAX_MODEL_BYTES = 512 * 1024 * 1024;
-const DEFAULT_AZIMUTH = 0;
-const DEFAULT_ELEVATION = 75;
-const DEFAULT_DISTANCE = 105;
+const DEFAULT_AZIMUTH = 0, DEFAULT_ELEVATION = 75, DEFAULT_DISTANCE = 105;
 interface ModelProgressEvent extends Event {
   detail?: { totalProgress?: number };
 }
@@ -68,6 +66,7 @@ export interface Model3DWorkbenchState {
   selectAnimation: (name: string) => void;
   toggleAnimation: () => void;
   setAnimationSpeed: (value: number) => void;
+  importModel: (file: File) => Promise<void>;
   downloadScreenshot: () => Promise<void>;
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;
@@ -81,29 +80,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
 function errorMessage(caught: unknown, fallback: string): string {
   if (caught instanceof DOMException && caught.name === "AbortError") return "";
   return caught instanceof Error ? caught.message : fallback;
-}
-
-function safeStem(title: string): string {
-  const stem = title
-    .replace(/\.(?:glb|gltf)$/i, "")
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .trim();
-  return stem || "oceanleo-model";
-}
-
-function modelExtension(url: string, title: string): "glb" | "gltf" {
-  const hint = `${url} ${title}`.toLowerCase();
-  return /\.gltf(?:$|[?#\s])/.test(hint) ? "gltf" : "glb";
-}
-
-function triggerDownload(blob: Blob, filename: string): void {
-  if (typeof document === "undefined") return;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function useModel3DWorkbench(
@@ -206,7 +182,7 @@ export function useModel3DWorkbench(
     setError("");
     if (!source) {
       setSourceLoading(false);
-      setError(tt("没有可加载的 GLB/GLTF 模型地址"));
+      setNotice(tt("空白 3D 场景已就绪，请导入 GLB 或自包含 glTF 模型"));
       return;
     }
     let disposed = false;
@@ -248,6 +224,27 @@ export function useModel3DWorkbench(
     setDirty(true);
     setSavedUrl("");
   }, []);
+
+  const importModel = useCallback(
+    async (file: File) => {
+      setSourceLoading(true);
+      setError("");
+      setNotice(tt("正在上传 3D 模型…"));
+      try {
+        const url = await uploadImportedModel(file, siteId, tt);
+        setSourceUrl(url);
+        setModelLoaded(false);
+        setProgress(0);
+        markDirty();
+        setNotice(tt("模型已导入，可以调整场景和视图"));
+      } catch (caught) {
+        setError(errorMessage(caught, tt("3D 模型导入失败")));
+      } finally {
+        setSourceLoading(false);
+      }
+    },
+    [markDirty, siteId, tt],
+  );
 
   useEffect(() => {
     const viewer = viewerNode;
@@ -362,7 +359,7 @@ export function useModel3DWorkbench(
     try {
       const blob = await captureBlob();
       if (!aliveRef.current) return;
-      triggerDownload(blob, `${safeStem(item.title)}-view.png`);
+      triggerModelDownload(blob, `${safeModelStem(item.title)}-view.png`);
       setNotice(tt("3D 视图截图已下载"));
     } catch (caught) {
       if (aliveRef.current) setError(errorMessage(caught, tt("3D 截图失败")));
@@ -379,7 +376,7 @@ export function useModel3DWorkbench(
     setError("");
     const generation = sourceGenerationRef.current;
     try {
-      const title = `${safeStem(item.title)}-${tt("3D 视图截图")}`;
+      const title = `${safeModelStem(item.title)}-${tt("3D 视图截图")}`;
       const blob = await captureBlob();
       const uploaded = await uploadFile(
         new File([blob], `${title}.png`, { type: "image/png" }),
@@ -426,7 +423,7 @@ export function useModel3DWorkbench(
       });
       if (controller.signal.aborted || !aliveRef.current) return;
       const extension = modelExtension(sourceUrl, item.title);
-      triggerDownload(blob, `${safeStem(item.title)}.${extension}`);
+      triggerModelDownload(blob, `${safeModelStem(item.title)}.${extension}`);
       setNotice(tt("3D 模型文件已下载"));
     } catch (caught) {
       if (!controller.signal.aborted && aliveRef.current) {
@@ -446,7 +443,7 @@ export function useModel3DWorkbench(
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
     try {
-      const title = `${safeStem(item.title)}-${tt("视图副本")}`;
+      const title = `${safeModelStem(item.title)}-${tt("视图副本")}`;
       let thumbUrl = posterUrl;
       try {
         const screenshot = await captureBlob();
@@ -590,6 +587,7 @@ export function useModel3DWorkbench(
       setAnimationSpeedState(clamp(value, 0.1, 3));
       markDirty();
     },
+    importModel,
     downloadScreenshot,
     saveScreenshot,
     downloadModel,

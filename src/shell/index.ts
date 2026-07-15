@@ -152,6 +152,7 @@ export {
   advancedFeatureHref,
   advancedFeatureHrefForItem,
 } from "./advanced-features";
+export { blankAdvancedFeatureItem } from "./advanced-drafts";
 export type {
   AdvancedFeatureDefinition,
   AdvancedFeatureId,

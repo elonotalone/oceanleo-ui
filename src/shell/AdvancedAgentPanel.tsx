@@ -5,12 +5,15 @@ import {
   createTask,
   followUp,
   getTask,
+  stopTask,
   type AgentMessage,
 } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
+import { LeoComposer } from "./LeoComposer";
 import { Markdown } from "./Markdown";
 import type { LibraryItem } from "./library-data";
 import { useAdvancedSession } from "./advanced-session-context";
+import { useAttachments } from "./useAttachments";
 
 export interface AdvancedAgentPanelProps {
   item: LibraryItem;
@@ -46,6 +49,7 @@ export function AdvancedAgentPanel({
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const advancedSession = useAdvancedSession();
+  const atts = useAttachments(siteId || item.siteId || "oceanleo", setError);
   const sessionTaskId = advancedSession
     ? advancedSession.taskId || ""
     : taskId || "";
@@ -86,34 +90,51 @@ export function AdvancedAgentPanel({
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, status]);
 
-  async function send() {
-    const prompt = input.trim();
-    if (!prompt || busy) return;
+  async function send(cleanValue?: string) {
+    const prompt = (cleanValue ?? input).trim();
+    const uploaded = atts.ready();
+    if (
+      (!prompt && uploaded.length === 0) ||
+      busy ||
+      status === "running" ||
+      atts.uploading
+    ) {
+      return;
+    }
+    const submittedAttachments = atts.attachments;
     setInput("");
+    atts.clear();
     setBusy(true);
     setError("");
     const assetUrl = item.url || item.previewUrl || "";
     const context = [
       `当前正在高级工作台处理「${item.title}」（${item.kind}，素材 ID：${item.id}）。`,
       assetUrl ? "当前素材已作为附件发送，请直接读取附件内容后处理。" : "",
-      prompt,
+      prompt || "请读取并处理我上传的文件。",
     ]
       .filter(Boolean)
       .join("\n");
-    const attachments = assetUrl
-      ? [
-          {
-            url: assetUrl,
-            mime: String(item.meta.mime || ""),
-            name: item.title,
-            media_type: item.kind,
-          },
-        ]
-      : undefined;
+    const attachments = [
+      ...(assetUrl
+        ? [
+            {
+              url: assetUrl,
+              mime: String(item.meta.mime || ""),
+              name: item.title,
+              media_type: item.kind,
+            },
+          ]
+        : []),
+      ...uploaded,
+    ];
+    const restoreSubmission = () => {
+      setInput((current) => (current ? current : prompt));
+      atts.restoreReady(submittedAttachments);
+    };
     const session = await advancedSession?.ensure(activeTaskId || null);
     if (advancedSession && !session) {
       setError(tt("无法创建工作会话，请稍后重试。"));
-      setInput(prompt);
+      restoreSubmission();
       setBusy(false);
       return;
     }
@@ -122,10 +143,14 @@ export function AdvancedAgentPanel({
         id: Date.now(),
         role: "user",
         kind: "text",
-        content: prompt,
+        content: prompt || tt("已上传 {count} 个文件", { count: uploaded.length }),
       };
       setMessages((current) => [...current, optimistic]);
-      const result = await followUp(activeTaskId, context, attachments);
+      const result = await followUp(
+        activeTaskId,
+        context,
+        attachments.length ? attachments : undefined,
+      );
       if (result.ok) {
         setStatus("running");
         void refresh(activeTaskId);
@@ -134,6 +159,7 @@ export function AdvancedAgentPanel({
           current.filter((message) => message.id !== optimistic.id),
         );
         setError(result.error || tt("发送失败"));
+        restoreSubmission();
       }
       setBusy(false);
       return;
@@ -143,7 +169,7 @@ export function AdvancedAgentPanel({
       prompt: context,
       mode: "agent",
       siteId,
-      attachments,
+      attachments: attachments.length ? attachments : undefined,
       sessionId: session?.id,
     });
     if (
@@ -155,7 +181,13 @@ export function AdvancedAgentPanel({
       setActiveTaskId(nextTaskId);
       setStatus("running");
       setMessages([
-        { id: Date.now(), role: "user", kind: "text", content: prompt },
+        {
+          id: Date.now(),
+          role: "user",
+          kind: "text",
+          content:
+            prompt || tt("已上传 {count} 个文件", { count: uploaded.length }),
+        },
       ]);
       await advancedSession?.ensure(nextTaskId);
     } else {
@@ -164,7 +196,21 @@ export function AdvancedAgentPanel({
           ? tt("任务未绑定到当前工作会话，请重试。")
           : result.error || tt("创建任务失败"),
       );
-      setInput(prompt);
+      restoreSubmission();
+    }
+    setBusy(false);
+  }
+
+  async function stop() {
+    if (!activeTaskId || busy || status !== "running") return;
+    setBusy(true);
+    setError("");
+    const result = await stopTask(activeTaskId);
+    if (result.ok) {
+      setStatus(result.data?.status || "cancelled");
+      await refresh(activeTaskId);
+    } else {
+      setError(result.error || tt("停止失败"));
     }
     setBusy(false);
   }
@@ -179,6 +225,7 @@ export function AdvancedAgentPanel({
       setMessages([]);
       setStatus("");
       setInput("");
+      atts.clear();
     } else {
       setError(tt("新建对话失败，当前内容仍已保留。"));
     }
@@ -231,28 +278,27 @@ export function AdvancedAgentPanel({
         {error && <p className="text-[11px] text-rose-600">{error}</p>}
       </div>
       <div className="shrink-0 border-t border-stone-200 p-3">
-        <textarea
+        <LeoComposer
           value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              void send();
-            }
-          }}
-          rows={3}
+          onChange={setInput}
+          onSubmit={(cleanValue) => void send(cleanValue)}
+          loading={busy || status === "running"}
+          onStop={status === "running" ? () => void stop() : undefined}
+          disabled={startingNew}
+          leoSuggest
+          rows={2}
+          maxHeight={180}
+          accentColor={accent}
           placeholder={tt("告诉 Agent 要怎样处理当前内容…")}
-          className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3 py-2 text-[12px] outline-none transition focus:border-stone-400"
+          onAttachFiles={atts.handleAttachFiles}
+          attachments={atts.composerAttachments}
+          onRemoveAttachment={atts.removeAttachment}
+          onVoiceTranscript={(text) =>
+            setInput((current) =>
+              `${current}${current && !/\s$/.test(current) ? " " : ""}${text}`,
+            )
+          }
         />
-        <button
-          type="button"
-          disabled={!input.trim() || busy}
-          onClick={() => void send()}
-          className="mt-2 w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white transition disabled:opacity-40"
-          style={{ background: accent }}
-        >
-          {tt("发送")}
-        </button>
       </div>
     </div>
   );

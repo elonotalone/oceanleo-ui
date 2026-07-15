@@ -55,6 +55,7 @@ export interface AudioWorkbenchState {
   applyGain: () => void;
   undo: () => void;
   redo: () => void;
+  importSource: (file: File) => Promise<void>;
   download: () => void;
   save: () => Promise<string | null>;
 }
@@ -212,11 +213,7 @@ export function useAudioWorkbench(
   useEffect(() => {
     const container = containerRef.current;
     const sourceUrl = item.url || item.previewUrl || "";
-    if (!container || !sourceUrl) {
-      setLoading(false);
-      setError(tt("没有可加载的音频地址"));
-      return;
-    }
+    if (!container) return;
     let disposed = false;
     const controller = new AbortController();
     let disableDrag: (() => void) | undefined;
@@ -224,25 +221,35 @@ export function useAudioWorkbench(
     setError("");
     void (async () => {
       try {
-        const durableUrl = isFirstPartyMediaUrl(sourceUrl)
-          ? sourceUrl
-          : await importMediaUrl(sourceUrl, {
-              kind: "audio",
-              siteId: siteId || "audio",
-              title: item.title,
-              registerAsset: true,
-            });
-        const [{ default: WaveSurferClass }, { default: RegionsPluginClass }, blob] =
+        const durableUrl = sourceUrl
+          ? isFirstPartyMediaUrl(sourceUrl)
+            ? sourceUrl
+            : await importMediaUrl(sourceUrl, {
+                kind: "audio",
+                siteId: siteId || "audio",
+                title: item.title,
+                registerAsset: true,
+              })
+          : "";
+        const [{ default: WaveSurferClass }, { default: RegionsPluginClass }] =
           await Promise.all([
             import("wavesurfer.js"),
             import("wavesurfer.js/dist/plugins/regions.js"),
-            fetchMediaBlob(durableUrl, {
+          ]);
+        const blob = durableUrl
+          ? await fetchMediaBlob(durableUrl, {
               maxBytes: MAX_AUDIO_FILE_BYTES,
               signal: controller.signal,
-            }),
-          ]);
+            })
+          : encodeWav(
+              new AudioBuffer({
+                length: 44_100,
+                numberOfChannels: 1,
+                sampleRate: 44_100,
+              }),
+            );
         if (disposed) return;
-        const sourceHint = `${blob.type} ${durableUrl}`.toLowerCase();
+        const sourceHint = `${blob.type} ${durableUrl || "blank.wav"}`.toLowerCase();
         const isHighlyCompressed = /\.(mp3|m4a|aac|ogg|oga|opus|wma)(?:$|[?#])/.test(
           sourceHint,
         ) || /audio\/(mpeg|mp4|aac|ogg|opus)/.test(sourceHint);
@@ -372,6 +379,41 @@ export function useAudioWorkbench(
       }
     },
     [reloadWaveform, tt],
+  );
+
+  const importSource = useCallback(
+    async (file: File) => {
+      if (file.size > MAX_AUDIO_FILE_BYTES) {
+        setError(tt("音频文件超过 128MB 安全上限"));
+        return;
+      }
+      if (
+        file.size > MAX_COMPRESSED_AUDIO_BYTES &&
+        (/\.(mp3|m4a|aac|ogg|oga|opus|wma)$/i.test(file.name) ||
+          /audio\/(mpeg|mp4|aac|ogg|opus)/i.test(file.type))
+      ) {
+        setError(tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"));
+        return;
+      }
+      setLoading(true);
+      setError("");
+      const context = new AudioContext();
+      try {
+        const decoded = await context.decodeAudioData(
+          (await file.arrayBuffer()).slice(0),
+        );
+        if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
+          throw new Error(tt("音频解码后过大，请改用视频时间线处理长音频"));
+        }
+        await commit(decoded);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : tt("音频导入失败"));
+      } finally {
+        await context.close().catch(() => undefined);
+        setLoading(false);
+      }
+    },
+    [commit, tt],
   );
 
   const editSelection = useCallback(
@@ -564,6 +606,7 @@ export function useAudioWorkbench(
     applyGain,
     undo,
     redo,
+    importSource,
     download,
     save,
   };
@@ -616,6 +659,24 @@ export function AudioControls({
   const button = "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40";
   return (
     <div className="space-y-4 overflow-y-auto p-3">
+      <section>
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">
+          {tt("音频源")}
+        </p>
+        <label className={`${button} flex w-full cursor-pointer items-center justify-center`}>
+          {tt("导入或替换音频")}
+          <input
+            type="file"
+            accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.aac"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void editor.importSource(file);
+              event.target.value = "";
+            }}
+          />
+        </label>
+      </section>
       <section>
         <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("播放")}</p>
         <div className="grid grid-cols-2 gap-1.5">

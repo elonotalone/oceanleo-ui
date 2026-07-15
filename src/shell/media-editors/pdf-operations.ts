@@ -30,6 +30,14 @@ export async function inspectPdf(bytes: Uint8Array): Promise<number> {
   return document.getPageCount();
 }
 
+export async function createBlankPdf(): Promise<Uint8Array> {
+  const document = await PDFDocument.create();
+  document.addPage([595.28, 841.89]);
+  document.setTitle("OceanLeo 空白 PDF");
+  document.setCreator("OceanLeo");
+  return savePdf(document);
+}
+
 export async function rotatePdfPage(
   bytes: Uint8Array,
   pageIndex: number,
