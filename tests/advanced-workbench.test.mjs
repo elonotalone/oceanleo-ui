@@ -227,6 +227,8 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /type: "open-asset"/);
   assert.match(embed, /type: "save-request"/);
   assert.match(embed, /type: "save-result"/);
+  assert.match(embed, /type: "selection-command"/);
+  assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
 

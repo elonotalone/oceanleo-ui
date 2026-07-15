@@ -6,9 +6,14 @@ import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import type { LibraryItem } from "../library-data";
+import type {
+  SelectionCommand,
+  SelectionContext,
+} from "../selection-context";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 
 export function EmbeddedRoute({
@@ -26,11 +31,18 @@ export function EmbeddedRoute({
   const [versionRevision, setVersionRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [savedItem, setSavedItem] = useState<LibraryItem | null>(null);
+  const [selection, setSelection] = useState<SelectionContext | null>(null);
+  const [selectionCommand, setSelectionCommand] =
+    useState<SelectionCommand | null>(null);
   const pendingSaveIdRef = useRef("");
   const saveResolverRef = useRef<
     ((result: AdvancedFlushResult) => void) | null
   >(null);
   const saveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    setSelection(null);
+    setSelectionCommand(null);
+  }, [item.key]);
   const settleSave = useCallback((result: AdvancedFlushResult) => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
@@ -59,10 +71,10 @@ export function EmbeddedRoute({
         setSaveRequestId(requestId);
         saveTimerRef.current = window.setTimeout(
           () => settleSave({ ok: false, error: "编辑器保存超时" }),
-          25_000,
+          item.kind === "website" ? 5 * 60_000 : 25_000,
         );
       }),
-    [settleSave],
+    [item.kind, settleSave],
   );
   const requestManualSave = useCallback(() => {
     setSaveRequestId(
@@ -170,7 +182,7 @@ export function EmbeddedRoute({
           <p>{tt("右侧是当前内容本身的专业编辑画布，不是一次性生成应用。")}</p>
           <p>
             {tt(
-              "画布内的选择、属性和节点工具会直接修改当前项目；保存时创建新版本并回到我的库。",
+              "点击画布里的对象后，在对象上方直接修改属性；左侧只保留全局工具，保存时创建新版本并回到我的库。",
             )}
           </p>
           <button
@@ -193,12 +205,21 @@ export function EmbeddedRoute({
           extraParams={extraParams}
           onCloseRequest={requestEditorClose}
           onDirtyChange={setDirty}
+          onSelectionChange={setSelection}
+          selectionCommand={selectionCommand}
           onSaveResult={handleSaveResult}
           saveRequestId={saveRequestId}
           onVersionSaved={(next) => {
             setSavedItem(next);
             setVersionRevision((value) => value + 1);
           }}
+        />
+      }
+      editorContextualToolbar={
+        <SelectionToolbar
+          context={selection}
+          onCommand={setSelectionCommand}
+          accent={accent}
         />
       }
       versionRevision={versionRevision}
