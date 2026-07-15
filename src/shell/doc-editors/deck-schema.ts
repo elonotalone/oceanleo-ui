@@ -10,6 +10,43 @@ export type DeckLayout =
   | "blank";
 
 export type DeckThemeId = "ocean" | "paper" | "ink" | "sunset" | "forest";
+export type DeckElementType =
+  | "text"
+  | "image"
+  | "shape"
+  | "table"
+  | "unsupported";
+export type DeckTextAlign = "left" | "center" | "right";
+
+/**
+ * Positioned native slide element. Coordinates and dimensions are percentages
+ * of the slide so imported PPTX pages remain responsive in the browser.
+ */
+export interface DeckElement {
+  id: string;
+  type: DeckElementType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  order: number;
+  text?: string;
+  src?: string;
+  alt?: string;
+  shape?: string;
+  fill?: string;
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  bold?: boolean;
+  italic?: boolean;
+  align?: DeckTextAlign;
+  borderColor?: string;
+  borderWidth?: number;
+  rows?: string[][];
+  label?: string;
+}
 
 export interface DeckImage {
   url: string;
@@ -25,14 +62,16 @@ export interface DeckSlide {
   layout: DeckLayout;
   background: string;
   image?: DeckImage;
+  elements: DeckElement[];
 }
 
 export interface DeckDocument {
-  version: 1;
+  version: 2;
   title: string;
   aspect: DeckAspect;
   theme: DeckThemeId;
   slides: DeckSlide[];
+  importWarnings?: string[];
 }
 
 export interface DeckTheme {
@@ -154,6 +193,71 @@ function normalizeBullets(value: unknown): string[] {
     .slice(0, 100);
 }
 
+function finite(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed)
+    ? Math.min(maximum, Math.max(minimum, parsed))
+    : fallback;
+}
+
+function normalizeElement(value: unknown, index: number): DeckElement | null {
+  const source = record(value);
+  const rawType = text(source.type).trim() as DeckElementType;
+  if (
+    rawType !== "text" &&
+    rawType !== "image" &&
+    rawType !== "shape" &&
+    rawType !== "table" &&
+    rawType !== "unsupported"
+  ) {
+    return null;
+  }
+  const rows = Array.isArray(source.rows)
+    ? source.rows
+        .slice(0, 100)
+        .map((row) =>
+          Array.isArray(row)
+            ? row.slice(0, 50).map((cell) => text(cell).slice(0, 2_000))
+            : [],
+        )
+    : undefined;
+  const align = text(source.align) as DeckTextAlign;
+  const src = text(source.src || source.url).trim();
+  return {
+    id: text(source.id).trim() || deckId("element"),
+    type: rawType,
+    x: finite(source.x, 10, -100, 200),
+    y: finite(source.y, 10, -100, 200),
+    width: finite(source.width, 30, 0.5, 300),
+    height: finite(source.height, 15, 0.5, 300),
+    rotation: finite(source.rotation, 0, -360, 360),
+    order: finite(source.order, index, -100_000, 100_000),
+    text: text(source.text).slice(0, 100_000) || undefined,
+    src: /^(?:https?:|data:image\/|blob:)/i.test(src) ? src : undefined,
+    alt: text(source.alt).slice(0, 1_000) || undefined,
+    shape: text(source.shape).slice(0, 80) || undefined,
+    fill: color(source.fill) || undefined,
+    color: color(source.color) || undefined,
+    fontSize: finite(source.fontSize, 18, 4, 300),
+    fontFamily: text(source.fontFamily).slice(0, 200) || undefined,
+    bold: Boolean(source.bold),
+    italic: Boolean(source.italic),
+    align:
+      align === "center" || align === "right" || align === "left"
+        ? align
+        : undefined,
+    borderColor: color(source.borderColor) || undefined,
+    borderWidth: finite(source.borderWidth, 0, 0, 40),
+    rows,
+    label: text(source.label).slice(0, 500) || undefined,
+  };
+}
+
 export function emptyDeckSlide(title = "新幻灯片"): DeckSlide {
   return {
     id: deckId(),
@@ -163,6 +267,7 @@ export function emptyDeckSlide(title = "新幻灯片"): DeckSlide {
     notes: "",
     layout: "title-body",
     background: "",
+    elements: [],
   };
 }
 
@@ -190,10 +295,15 @@ function normalizeSlide(value: unknown, index: number): DeckSlide {
         : "title-body",
     background: color(source.background || source.bg || source.backgroundColor),
     image: normalizeImage(source.image, source),
+    elements: Array.isArray(source.elements)
+      ? source.elements
+          .map(normalizeElement)
+          .filter((element): element is DeckElement => Boolean(element))
+      : [],
   };
 }
 
-/** Normalize agent JSON, library metadata, or a raw slide array into v1. */
+/** Normalize agent JSON, library metadata, or a raw slide array into v2. */
 export function normalizeDeckDocument(
   value: unknown,
   fallbackTitle = "演示文稿",
@@ -208,12 +318,20 @@ export function normalizeDeckDocument(
       : [];
   const rawTheme = text(source.theme || outer.theme) as DeckThemeId;
   const slides = rawSlides.map(normalizeSlide);
+  const importWarnings = Array.isArray(source.importWarnings)
+    ? source.importWarnings
+        .map(text)
+        .map((warning) => warning.trim())
+        .filter(Boolean)
+        .slice(0, 50)
+    : [];
   return {
-    version: 1,
+    version: 2,
     title: text(source.title || outer.title).trim() || fallbackTitle,
     aspect: text(source.aspect || outer.aspect) === "4:3" ? "4:3" : "16:9",
     theme: THEMES.has(rawTheme) ? rawTheme : "ocean",
     slides: slides.length ? slides : [emptyDeckSlide()],
+    ...(importWarnings.length ? { importWarnings } : {}),
   };
 }
 
@@ -224,7 +342,12 @@ export function cloneDeckDocument(deck: DeckDocument): DeckDocument {
       ...slide,
       bullets: [...slide.bullets],
       image: slide.image ? { ...slide.image } : undefined,
+      elements: slide.elements.map((element) => ({
+        ...element,
+        rows: element.rows?.map((row) => [...row]),
+      })),
     })),
+    importWarnings: deck.importWarnings ? [...deck.importWarnings] : undefined,
   };
 }
 

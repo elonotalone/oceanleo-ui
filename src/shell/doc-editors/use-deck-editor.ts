@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+import { officeExtensionForItem } from "../workbench-routes";
 import {
   cloneDeckDocument,
   deckId,
@@ -12,6 +13,7 @@ import {
   normalizeDeckDocument,
   type DeckAspect,
   type DeckDocument,
+  type DeckElement,
   type DeckSlide,
   type DeckThemeId,
 } from "./deck-schema";
@@ -20,17 +22,22 @@ import {
   downloadBlob,
   downloadText,
   saveFileToLibrary,
+  urlExtension,
 } from "./doc-io";
+import { importPptxDeck } from "./pptx-deck-import";
 
 interface Snapshot {
   deck: DeckDocument;
   activeId: string;
+  selectedElementId: string;
 }
 
 export interface DeckEditorState {
   deck: DeckDocument;
   activeSlide: DeckSlide;
   activeIndex: number;
+  selectedElement: DeckElement | null;
+  selectedElementId: string;
   loading: boolean;
   saving: boolean;
   exporting: boolean;
@@ -45,6 +52,13 @@ export interface DeckEditorState {
   setAspect: (aspect: DeckAspect) => void;
   setTheme: (theme: DeckThemeId) => void;
   patchSlide: (patch: Partial<DeckSlide>) => void;
+  selectElement: (id: string) => void;
+  patchElement: (id: string, patch: Partial<DeckElement>) => void;
+  addTextElement: () => void;
+  insertImageElement: (src: string, alt?: string, replace?: boolean) => void;
+  duplicateElement: () => void;
+  deleteElement: () => void;
+  moveElementLayer: (direction: -1 | 1) => void;
   addSlide: () => void;
   duplicateSlide: () => void;
   deleteSlide: () => void;
@@ -89,17 +103,38 @@ async function loadDeck(
     initialSource(item, previewContent),
     item.title || "演示文稿",
   );
-  if (!item.url || item.url.startsWith("blob:")) return fallback;
+  if (!item.url) return fallback;
+  const extension = (
+    officeExtensionForItem(item) ||
+    urlExtension(item.url) ||
+    String(item.meta.format || "")
+  ).toLowerCase();
   try {
     const blob = await fetchMediaBlob(item.url, {
-      maxBytes: 32 * 1024 * 1024,
+      maxBytes: 64 * 1024 * 1024,
       signal,
     });
+    if (["pptx", "pptm", "potx", "potm"].includes(extension)) {
+      const bytes = await blob.arrayBuffer();
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      return await importPptxDeck(
+        bytes,
+        item.title || "演示文稿",
+        extension,
+      );
+    }
     const text = await blob.text();
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     return normalizeDeckDocument(JSON.parse(text), item.title || "演示文稿");
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (["pptx", "pptm", "potx", "potm"].includes(extension)) {
+      throw new Error(
+        error instanceof Error
+          ? `PPTX 导入失败：${error.message}`
+          : "PPTX 导入失败",
+      );
+    }
     return fallback;
   }
 }
@@ -124,6 +159,141 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
     const slide = pptx.addSlide();
     const background = cleanHex(source.background, theme.background);
     slide.background = { color: background };
+    if (source.elements.length > 0) {
+      const x = (value: number) => (value / 100) * width;
+      const y = (value: number) => (value / 100) * height;
+      for (const element of [...source.elements].sort(
+        (left, right) => left.order - right.order,
+      )) {
+        const box = {
+          x: x(element.x),
+          y: y(element.y),
+          w: x(element.width),
+          h: y(element.height),
+        };
+        if (element.type === "text") {
+          slide.addText(element.text || "", {
+            ...box,
+            rotate: element.rotation,
+            fontFace: element.fontFamily || theme.fontFamily.split(",")[0],
+            fontSize: element.fontSize || 18,
+            color: cleanHex(element.color || theme.text, theme.text),
+            bold: element.bold,
+            italic: element.italic,
+            align: element.align || "left",
+            valign: "middle",
+            margin: 0,
+            fill: element.fill
+              ? { color: cleanHex(element.fill, "FFFFFF") }
+              : { color: "FFFFFF", transparency: 100 },
+            line: element.borderWidth
+              ? {
+                  color: cleanHex(element.borderColor || "#000000", "000000"),
+                  width: element.borderWidth,
+                }
+              : { color: "FFFFFF", transparency: 100 },
+          });
+          continue;
+        }
+        if (element.type === "image" && element.src) {
+          try {
+            const data = element.src.startsWith("data:")
+              ? element.src
+              : await blobToDataUrl(
+                  await fetchMediaBlob(element.src, {
+                    maxBytes: 24 * 1024 * 1024,
+                  }),
+                );
+            slide.addImage({
+              data,
+              ...box,
+              rotate: element.rotation,
+              sizing: { type: "contain", ...box },
+            });
+          } catch {
+            slide.addText(element.alt || "图片无法导出", {
+              ...box,
+              align: "center",
+              valign: "middle",
+              color: cleanHex(theme.muted, "64748B"),
+              fontSize: 10,
+            });
+          }
+          continue;
+        }
+        if (element.type === "shape") {
+          const shapeName = (element.shape || "").toLowerCase();
+          const shapeType =
+            shapeName.includes("ellipse") || shapeName.includes("oval")
+              ? pptx.ShapeType.ellipse
+              : shapeName.includes("round")
+                ? pptx.ShapeType.roundRect
+                : shapeName.includes("line")
+                  ? pptx.ShapeType.line
+                  : pptx.ShapeType.rect;
+          slide.addShape(shapeType, {
+            ...box,
+            rotate: element.rotation,
+            fill: element.fill
+              ? { color: cleanHex(element.fill, "FFFFFF") }
+              : { color: "FFFFFF", transparency: 100 },
+            line: {
+              color: cleanHex(element.borderColor || "#000000", "000000"),
+              width: element.borderWidth || 0,
+              transparency: element.borderWidth ? 0 : 100,
+            },
+          });
+          if (element.text) {
+            slide.addText(element.text, {
+              ...box,
+              rotate: element.rotation,
+              fontFace: element.fontFamily || theme.fontFamily.split(",")[0],
+              fontSize: element.fontSize || 16,
+              color: cleanHex(element.color || theme.text, theme.text),
+              bold: element.bold,
+              italic: element.italic,
+              align: element.align || "center",
+              valign: "middle",
+              margin: 0.05,
+              fill: { color: "FFFFFF", transparency: 100 },
+              line: { color: "FFFFFF", transparency: 100 },
+            });
+          }
+          continue;
+        }
+        if (element.type === "table" && element.rows?.length) {
+          slide.addTable(
+            element.rows.map((row) =>
+              row.map((text) => ({ text })),
+            ),
+            {
+            ...box,
+            border: { type: "solid", color: "D1D5DB", pt: 1 },
+            color: cleanHex(theme.text, "111827"),
+            fill: {
+              color: cleanHex(element.fill || theme.surface, "FFFFFF"),
+            },
+            fontFace: theme.fontFamily.split(",")[0],
+            fontSize: Math.max(8, element.fontSize || 12),
+            margin: 0.05,
+            },
+          );
+          continue;
+        }
+        slide.addText(element.label || "此元素保留在原始 PPTX 中", {
+          ...box,
+          align: "center",
+          valign: "middle",
+          color: cleanHex(theme.muted, "64748B"),
+          fill: { color: "F8FAFC" },
+          line: { color: "CBD5E1", dashType: "dash" },
+          fontSize: 9,
+          margin: 0.04,
+        });
+      }
+      if (source.notes) slide.addNotes(source.notes);
+      continue;
+    }
     const hasImage =
       (source.layout === "image-left" || source.layout === "image-right") &&
       source.image?.url;
@@ -226,6 +396,7 @@ export function useDeckEditor(
   );
   const [deck, setDeckState] = useState(initial);
   const [activeId, setActiveId] = useState(initial.slides[0].id);
+  const [selectedElementId, setSelectedElementId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -236,6 +407,7 @@ export function useDeckEditor(
   const [historyRevision, setHistoryRevision] = useState(0);
   const deckRef = useRef(deck);
   const activeRef = useRef(activeId);
+  const selectedElementRef = useRef(selectedElementId);
   const undoRef = useRef<Snapshot[]>([]);
   const redoRef = useRef<Snapshot[]>([]);
   const mountedRef = useRef(true);
@@ -248,16 +420,23 @@ export function useDeckEditor(
     setLoading(true);
     setDirty(false);
     setSavedUrl("");
+    setError("");
+    setNotice("");
     revisionRef.current = 0;
     void loadDeck(item, previewContent, abort.signal)
       .then((next) => {
         if (abort.signal.aborted) return;
         deckRef.current = next;
         activeRef.current = next.slides[0].id;
+        selectedElementRef.current = "";
         setDeckState(next);
         setActiveId(next.slides[0].id);
+        setSelectedElementId("");
         undoRef.current = [];
         redoRef.current = [];
+        if (next.importWarnings?.length) {
+          setNotice(next.importWarnings.join("；"));
+        }
         setHistoryRevision((value) => value + 1);
       })
       .catch((caught) => {
@@ -278,6 +457,7 @@ export function useDeckEditor(
     (): Snapshot => ({
       deck: cloneDeckDocument(deckRef.current),
       activeId: activeRef.current,
+      selectedElementId: selectedElementRef.current,
     }),
     [],
   );
@@ -286,8 +466,10 @@ export function useDeckEditor(
     const next = cloneDeckDocument(value.deck);
     deckRef.current = next;
     activeRef.current = value.activeId;
+    selectedElementRef.current = value.selectedElementId;
     setDeckState(next);
     setActiveId(value.activeId);
+    setSelectedElementId(value.selectedElementId);
     setHistoryRevision((revision) => revision + 1);
   }, []);
 
@@ -316,6 +498,10 @@ export function useDeckEditor(
     deck.slides.findIndex((slide) => slide.id === activeId),
   );
   const activeSlide = deck.slides[activeIndex] || deck.slides[0];
+  const selectedElement =
+    activeSlide.elements.find(
+      (element) => element.id === selectedElementId,
+    ) || null;
 
   const patchSlide = useCallback(
     (patch: Partial<DeckSlide>) =>
@@ -326,6 +512,159 @@ export function useDeckEditor(
         ),
       })),
     [commit],
+  );
+
+  const selectElement = useCallback((id: string) => {
+    selectedElementRef.current = id;
+    setSelectedElementId(id);
+  }, []);
+
+  const patchElement = useCallback(
+    (id: string, patch: Partial<DeckElement>) => {
+      commit((current) => ({
+        ...current,
+        slides: current.slides.map((slide) =>
+          slide.id === activeRef.current
+            ? {
+                ...slide,
+                elements: slide.elements.map((element) =>
+                  element.id === id ? { ...element, ...patch, id } : element,
+                ),
+              }
+            : slide,
+        ),
+      }));
+    },
+    [commit],
+  );
+
+  const addElement = useCallback(
+    (element: DeckElement) => {
+      commit((current) => ({
+        ...current,
+        slides: current.slides.map((slide) =>
+          slide.id === activeRef.current
+            ? { ...slide, elements: [...slide.elements, element] }
+            : slide,
+        ),
+      }));
+      selectedElementRef.current = element.id;
+      setSelectedElementId(element.id);
+    },
+    [commit],
+  );
+
+  const addTextElement = useCallback(() => {
+    const current = deckRef.current.slides.find(
+      (slide) => slide.id === activeRef.current,
+    );
+    addElement({
+      id: deckId("element"),
+      type: "text",
+      x: 15,
+      y: 20,
+      width: 70,
+      height: 15,
+      rotation: 0,
+      order:
+        Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
+        1,
+      text: tt("双击左侧文字字段开始编辑"),
+      fontSize: 28,
+      fontFamily: deckTheme(deckRef.current.theme).fontFamily.split(",")[0],
+      color: deckTheme(deckRef.current.theme).text,
+      align: "left",
+    });
+  }, [addElement, tt]);
+
+  const insertImageElement = useCallback(
+    (src: string, alt = "", replace = false) => {
+      const selected = deckRef.current.slides
+        .find((slide) => slide.id === activeRef.current)
+        ?.elements.find(
+          (element) => element.id === selectedElementRef.current,
+        );
+      if (replace && selected?.type === "image") {
+        patchElement(selected.id, { src, alt });
+        return;
+      }
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      addElement({
+        id: deckId("element"),
+        type: "image",
+        x: 25,
+        y: 20,
+        width: 50,
+        height: 60,
+        rotation: 0,
+        order:
+          Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
+          1,
+        src,
+        alt,
+      });
+    },
+    [addElement, patchElement],
+  );
+
+  const deleteElement = useCallback(() => {
+    const id = selectedElementRef.current;
+    if (!id) return;
+    commit((current) => ({
+      ...current,
+      slides: current.slides.map((slide) =>
+        slide.id === activeRef.current
+          ? {
+              ...slide,
+              elements: slide.elements.filter((element) => element.id !== id),
+            }
+          : slide,
+      ),
+    }));
+    selectedElementRef.current = "";
+    setSelectedElementId("");
+  }, [commit]);
+
+  const duplicateElement = useCallback(() => {
+    const current = deckRef.current.slides.find(
+      (slide) => slide.id === activeRef.current,
+    );
+    const selected = current?.elements.find(
+      (element) => element.id === selectedElementRef.current,
+    );
+    if (!selected) return;
+    addElement({
+      ...selected,
+      id: deckId("element"),
+      x: Math.min(95, selected.x + 2),
+      y: Math.min(95, selected.y + 2),
+      order:
+        Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
+        1,
+      rows: selected.rows?.map((row) => [...row]),
+    });
+  }, [addElement]);
+
+  const moveElementLayer = useCallback(
+    (direction: -1 | 1) => {
+      const id = selectedElementRef.current;
+      if (!id) return;
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      const selected = current?.elements.find((element) => element.id === id);
+      if (!selected || !current) return;
+      const orders = current.elements.map((element) => element.order);
+      patchElement(id, {
+        order:
+          direction > 0
+            ? Math.max(...orders, selected.order) + 1
+            : Math.min(...orders, selected.order) - 1,
+      });
+    },
+    [patchElement],
   );
 
   const undo = useCallback(() => {
@@ -355,7 +694,7 @@ export function useDeckEditor(
     try {
       const blob = await buildDeckPptxBlob(deckRef.current);
       downloadBlob(`${deckRef.current.title || "演示文稿"}.pptx`, blob);
-      setNotice(tt("PPTX 已导出，可继续用 OnlyOffice 深度编辑"));
+      setNotice(tt("PPTX 已导出，可在 PowerPoint 或兼容软件中继续使用"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("PPTX 导出失败"));
     } finally {
@@ -386,11 +725,10 @@ export function useDeckEditor(
         kind: "deck",
         meta: {
           editor: "deck",
-          schema: "oceanleo.deck.v1",
+          schema: "oceanleo.deck.v2",
           slides: snapshot.slides.length,
           aspect: snapshot.aspect,
           theme: snapshot.theme,
-          source_deck: snapshot,
         },
       });
       if (!result.ok) throw new Error(result.error || tt("保存到我的库失败"));
@@ -419,6 +757,8 @@ export function useDeckEditor(
     deck,
     activeSlide,
     activeIndex,
+    selectedElement,
+    selectedElementId,
     loading,
     saving,
     exporting,
@@ -431,11 +771,20 @@ export function useDeckEditor(
     selectSlide: (id) => {
       activeRef.current = id;
       setActiveId(id);
+      selectedElementRef.current = "";
+      setSelectedElementId("");
     },
     setTitle: (title) => commit((current) => ({ ...current, title })),
     setAspect: (aspect) => commit((current) => ({ ...current, aspect })),
     setTheme: (theme) => commit((current) => ({ ...current, theme })),
     patchSlide,
+    selectElement,
+    patchElement,
+    addTextElement,
+    insertImageElement,
+    duplicateElement,
+    deleteElement,
+    moveElementLayer,
     addSlide: () => {
       const slide = emptyDeckSlide();
       commit((current) => {
@@ -443,6 +792,8 @@ export function useDeckEditor(
         slides.splice(activeIndex + 1, 0, slide);
         return { ...current, slides };
       }, slide.id);
+      selectedElementRef.current = "";
+      setSelectedElementId("");
     },
     duplicateSlide: () => {
       const copy: DeckSlide = {
@@ -451,12 +802,19 @@ export function useDeckEditor(
         title: `${activeSlide.title} ${tt("副本")}`,
         bullets: [...activeSlide.bullets],
         image: activeSlide.image ? { ...activeSlide.image } : undefined,
+        elements: activeSlide.elements.map((element) => ({
+          ...element,
+          id: deckId("element"),
+          rows: element.rows?.map((row) => [...row]),
+        })),
       };
       commit((current) => {
         const slides = [...current.slides];
         slides.splice(activeIndex + 1, 0, copy);
         return { ...current, slides };
       }, copy.id);
+      selectedElementRef.current = "";
+      setSelectedElementId("");
     },
     deleteSlide: () => {
       if (deckRef.current.slides.length <= 1) return;
@@ -470,6 +828,8 @@ export function useDeckEditor(
         }),
         nextId,
       );
+      selectedElementRef.current = "";
+      setSelectedElementId("");
     },
     moveSlide: (direction) => {
       const target = activeIndex + direction;

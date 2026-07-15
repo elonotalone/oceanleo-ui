@@ -8,6 +8,10 @@ import { DeckControls } from "../doc-editors/DeckControls";
 import { DeckStage } from "../doc-editors/DeckStage";
 import { useDeckEditor } from "../doc-editors/use-deck-editor";
 import { editorToolLabel } from "../workbench-routes";
+import {
+  useWorkbenchMaterialAdapter,
+  type WorkbenchMaterialAdapter,
+} from "../workbench-material-provider";
 
 export function DeckRoute({
   item,
@@ -19,6 +23,28 @@ export function DeckRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useDeckEditor(item, siteId, previewContent);
+  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
+    () => ({
+      id: "deck-elements@2",
+      actions: ["insert", "replace"],
+      accepts: (material) => {
+        const url = material.url || material.previewUrl || material.thumbUrl || "";
+        const mime = String(material.meta.mime || "").toLowerCase();
+        return (
+          material.kind === "image" ||
+          mime.startsWith("image/") ||
+          /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(url)
+        );
+      },
+      mutate: (action, material) => {
+        const url = material.url || material.previewUrl || material.thumbUrl || "";
+        if (!url) throw new Error("这个图片素材没有可用地址。");
+        editor.insertImageElement(url, material.title, action === "replace");
+      },
+    }),
+    [editor.insertImageElement],
+  );
+  useWorkbenchMaterialAdapter(materialAdapter);
   const savedItem = useMemo(
     () =>
       editor.savedUrl

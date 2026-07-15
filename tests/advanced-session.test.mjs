@@ -19,14 +19,14 @@ test("advanced session keeps a stable bounded root identity across saved version
   assert.match(source, /task_id: taskId\?\.trim\(\) \|\| null/);
 });
 
-test("advanced session parser rejects mismatched identity and unsafe snapshots", () => {
+test("advanced session parser separates workspace site from material provenance", () => {
   assert.match(source, /parsed\.protocol === "https:" \|\| parsed\.protocol === "http:"/);
   assert.match(source, /META_KEYS\.has\(key\)/);
   assert.match(source, /encoded\.length > MAX_META_JSON/);
-  assert.match(source, /session\?\.site_id !== siteId/);
+  assert.doesNotMatch(source, /session\?\.site_id !== siteId/);
   assert.match(
     source,
-    /session\.app_id !== advancedSessionAppId\(restored, route\)/,
+    /const expectedAppId = advancedSessionAppId\(restored, route\)/,
   );
   assert.match(source, /editorRouteFor\(restored\)\.type !== route/);
 });
@@ -45,5 +45,17 @@ test("advanced Design sessions preserve and recover their layered editor route",
   assert.match(
     routes,
     /pinnedRoute === "embed"[\s\S]*?pinnedSite === "design"[\s\S]*?design\.oceanleo\.com\/embed\/editor/,
+  );
+});
+
+test("legacy Office PPTX sessions upgrade in place to the native deck route", () => {
+  assert.match(
+    source,
+    /if \(route === "office" && isNativeDeckFile\(url, meta\)\) \{\s*route = "deck";\s*meta\.advanced_editor_route = "deck";/,
+  );
+  assert.match(source, /const legacyOfficeAppId =/);
+  assert.match(
+    source,
+    /session\.app_id !== expectedAppId && session\.app_id !== legacyOfficeAppId/,
   );
 });

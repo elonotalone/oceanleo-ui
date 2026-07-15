@@ -54,6 +54,11 @@ import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
+import { advancedSnapshotFromSession } from "./advanced-session";
+import {
+  advancedFeatureById,
+  advancedFeatureHref,
+} from "./advanced-features";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -61,6 +66,26 @@ export type { RestorableAppSession } from "./history-model";
 function fmtCost(t: AgentTask): string {
   const y = taskCostYuan(t);
   return y > 0 ? `¥${y.toFixed(2)}` : "";
+}
+
+function isAdvancedHistoryEntry(entry: HistoryListEntry): boolean {
+  return (
+    (entry.kind === "session" ? entry.session.surface : entry.task.surface) ===
+    "advanced"
+  );
+}
+
+function historyHrefFor(entry: HistoryListEntry): string {
+  if (entry.kind === "session" && isAdvancedHistoryEntry(entry)) {
+    const snapshot = advancedSnapshotFromSession(entry.session);
+    const feature = advancedFeatureById(snapshot?.feature_id);
+    if (feature) {
+      return advancedFeatureHref(feature, { sessionId: entry.session.id });
+    }
+  }
+  return entry.kind === "session"
+    ? historySessionHref(entry.id)
+    : `/history?task=${encodeURIComponent(entry.id)}`;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -134,8 +159,9 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         limit: 100,
         siteId,
         includeArchived: true,
+        surface: "all",
       }),
-      listTasks(100, siteId, pending),
+      listTasks(100, siteId, pending, "all"),
     ]).then(([sessionsResult, tasksResult]) => {
       if (generation !== reloadGenerationRef.current) return;
       if (!silent) setLoading(false);
@@ -209,7 +235,10 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     );
     const r =
       entry.kind === "session"
-        ? await deleteAppSession(entry.session.id)
+        ? await deleteAppSession(
+            entry.session.id,
+            entry.session.surface === "advanced" ? "advanced" : "app",
+          )
         : await deleteTask(entry.task.id);
     deletingRef.current.delete(deletionKey);
     if (!r.ok) {
@@ -249,7 +278,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       );
       let mutationError = "";
       if (entry.kind === "session") {
-        const result = await updateAppSessionMetadata(id, patch);
+        const result = await updateAppSessionMetadata(
+          id,
+          patch,
+          entry.session.surface === "advanced" ? "advanced" : "app",
+        );
         if (!result.ok) mutationError = result.error || "session update failed";
       } else {
         const supabase = browserClient();
@@ -297,11 +330,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
       e.kind === "session" ? Boolean(e.session.pinned) : Boolean(e.task.pinned);
     return [...items].sort((a, b) => Number(pinnedOf(b)) - Number(pinnedOf(a)));
   }, [items]);
-
-  const hrefFor = (entry: HistoryListEntry) =>
-    entry.kind === "session"
-      ? historySessionHref(entry.id)
-      : `/history?task=${encodeURIComponent(entry.id)}`;
 
   // URL 是任务选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
   // 保留，因为它没有足够 app/snapshot 身份，不能伪装成完整 workspace。
@@ -363,6 +391,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const favorite = isSession
           ? Boolean(entry.session.favorite)
           : Boolean(entry.task.favorite);
+        const advanced = isAdvancedHistoryEntry(entry);
         const renaming = renameFor === entry.id;
         return (
           <div
@@ -402,11 +431,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 type="button"
                 onClick={() => {
                   setSel(entry.id);
-                  if (entry.kind === "session") {
-                    router.push(historySessionHref(entry.id));
-                  } else {
-                    router.push(`/history?task=${encodeURIComponent(entry.id)}`);
-                  }
+                  router.push(historyHrefFor(entry));
                 }}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
@@ -429,6 +454,17 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                         {tt("旧")}
                       </span>
                     )}
+                    {advanced && (
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-px text-[9px] ${
+                          on
+                            ? "bg-white/15 text-white/80"
+                            : "bg-orange-50 text-orange-600"
+                        }`}
+                      >
+                        {tt("高级任务")}
+                      </span>
+                    )}
                   </span>
                   <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
                     {fmt(timestamp)}
@@ -448,7 +484,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 pinned={pinned}
                 favorite={favorite}
                 canDelete={canDeleteHistoryEntry(entry)}
-                href={hrefFor(entry)}
+                href={historyHrefFor(entry)}
                 onRename={() => {
                   setRenameDraft(title);
                   setRenameFor(entry.id);
@@ -593,7 +629,23 @@ export function HistoryDetail({
     }
     setDetailLoading(true);
     void (async () => {
-      const sessionResult = await getAppSession(sel);
+      let sessionResult = await getAppSession(sel);
+      if (!sessionResult.ok && sessionResult.status === 404) {
+        const advancedResult = await getAppSession(sel, "advanced");
+        if (advancedResult.ok && advancedResult.data) {
+          const snapshot = advancedSnapshotFromSession(advancedResult.data);
+          const feature = advancedFeatureById(snapshot?.feature_id);
+          if (feature) {
+            router.replace(
+              advancedFeatureHref(feature, {
+                sessionId: advancedResult.data.id,
+              }),
+            );
+            return;
+          }
+        }
+        sessionResult = advancedResult;
+      }
       if (!alive) return;
       if (sessionResult.ok && sessionResult.data) {
         const session = sessionResult.data;
@@ -606,7 +658,12 @@ export function HistoryDetail({
         if (!isRestorableAppSession(session)) {
           // 迁移期可能已有 session 聚合行但 snapshot 不完整；找它关联的旧 task 继续回放，
           // 不因侧栏去重而把原对话藏掉。
-          const tasksResult = await listTasks(100, session.site_id);
+          const tasksResult = await listTasks(
+            100,
+            session.site_id,
+            false,
+            session.surface === "advanced" ? "advanced" : "app",
+          );
           const linked = tasksResult.data?.items.find(
             (task) => task.session_id === session.id,
           );
@@ -655,7 +712,7 @@ export function HistoryDetail({
     return () => {
       alive = false;
     };
-  }, [sel, siteId, tt]);
+  }, [router, sel, siteId, tt]);
 
   // 仅用于 legacy task / 不完整 session 的明确降级。完整 session 的右栏完全由站点 runtime
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。

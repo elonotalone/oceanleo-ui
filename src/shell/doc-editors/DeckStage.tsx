@@ -1,9 +1,245 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { deckTheme, type DeckSlide } from "./deck-schema";
+import { deckTheme, type DeckElement, type DeckSlide } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
+
+function ElementContent({
+  element,
+  miniature = false,
+}: {
+  element: DeckElement;
+  miniature?: boolean;
+}) {
+  if (element.type === "image" && element.src) {
+    return (
+      <img
+        src={element.src}
+        alt={element.alt || ""}
+        className="h-full w-full select-none object-contain"
+        draggable={false}
+      />
+    );
+  }
+  if (element.type === "table") {
+    return (
+      <table className="h-full w-full table-fixed border-collapse bg-white text-[0.7em]">
+        <tbody>
+          {(element.rows || []).slice(0, miniature ? 4 : 100).map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.slice(0, miniature ? 4 : 50).map((cell, cellIndex) => (
+                <td key={cellIndex} className="overflow-hidden border border-stone-300 px-[0.2em]">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+  if (element.type === "unsupported") {
+    return (
+      <span className="grid h-full place-items-center overflow-hidden border border-dashed border-stone-300 bg-stone-50 p-1 text-center text-[0.65em] text-stone-500">
+        {element.label || "原始元素"}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="flex h-full w-full overflow-hidden whitespace-pre-wrap leading-tight"
+      style={{
+        alignItems: "center",
+        justifyContent:
+          element.align === "center"
+            ? "center"
+            : element.align === "right"
+              ? "flex-end"
+              : "flex-start",
+        textAlign: element.align || "left",
+        color: element.color,
+        fontFamily: element.fontFamily,
+        fontSize: miniature
+          ? undefined
+          : `${Math.max(0.55, (element.fontSize || 18) / 7.2)}cqi`,
+        fontWeight: element.bold ? 700 : 400,
+        fontStyle: element.italic ? "italic" : "normal",
+      }}
+    >
+      {element.text || ""}
+    </span>
+  );
+}
+
+function MiniElementLayer({ slide }: { slide: DeckSlide }) {
+  return (
+    <>
+      {slide.elements.map((element) => (
+        <span
+          key={element.id}
+          className="absolute overflow-hidden text-[3px] leading-none"
+          style={{
+            left: `${element.x}%`,
+            top: `${element.y}%`,
+            width: `${element.width}%`,
+            height: `${element.height}%`,
+            transform: `rotate(${element.rotation}deg)`,
+            zIndex: Math.round(element.order),
+            background: element.type === "shape" ? element.fill : undefined,
+            border:
+              element.type === "shape" && element.borderWidth
+                ? `${Math.max(0.25, element.borderWidth / 4)}px solid ${element.borderColor || "#000"}`
+                : undefined,
+          }}
+        >
+          <ElementContent element={element} miniature />
+        </span>
+      ))}
+    </>
+  );
+}
+
+interface ElementDragState {
+  id: string;
+  mode: "move" | "resize";
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  originWidth: number;
+  originHeight: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<ElementDragState | null>(null);
+  const slide = editor.activeSlide;
+  const theme = deckTheme(editor.deck.theme);
+
+  const startDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+    element: DeckElement,
+    mode: "move" | "resize",
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    editor.selectElement(element.id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({
+      id: element.id,
+      mode,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: element.x,
+      originY: element.y,
+      originWidth: element.width,
+      originHeight: element.height,
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+    });
+  };
+
+  const updateDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!drag || !rect?.width || !rect.height) return;
+    const dx = ((event.clientX - drag.startX) / rect.width) * 100;
+    const dy = ((event.clientY - drag.startY) / rect.height) * 100;
+    setDrag((current) =>
+      !current
+        ? current
+        : current.mode === "move"
+          ? {
+              ...current,
+              x: Math.min(99, Math.max(-99, current.originX + dx)),
+              y: Math.min(99, Math.max(-99, current.originY + dy)),
+            }
+          : {
+              ...current,
+              width: Math.max(1, current.originWidth + dx),
+              height: Math.max(1, current.originHeight + dy),
+            },
+    );
+  };
+
+  const finishDrag = () => {
+    if (!drag) return;
+    editor.patchElement(drag.id, {
+      x: drag.x,
+      y: drag.y,
+      width: drag.width,
+      height: drag.height,
+    });
+    setDrag(null);
+  };
+
+  return (
+    <div
+      ref={canvasRef}
+      className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
+      style={{
+        background: slide.background || theme.background,
+        color: theme.text,
+        fontFamily: theme.fontFamily,
+        containerType: "inline-size",
+      }}
+      onPointerDown={() => editor.selectElement("")}
+    >
+      {[...slide.elements]
+        .sort((left, right) => left.order - right.order)
+        .map((element) => {
+          const preview = drag?.id === element.id ? drag : null;
+          const selected = editor.selectedElementId === element.id;
+          return (
+            <button
+              key={element.id}
+              type="button"
+              onPointerDown={(event) => startDrag(event, element, "move")}
+              onPointerMove={updateDrag}
+              onPointerUp={finishDrag}
+              onPointerCancel={() => setDrag(null)}
+              className={`absolute overflow-visible text-left ${
+                selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
+              }`}
+              style={{
+                left: `${preview?.x ?? element.x}%`,
+                top: `${preview?.y ?? element.y}%`,
+                width: `${preview?.width ?? element.width}%`,
+                height: `${preview?.height ?? element.height}%`,
+                transform: `rotate(${element.rotation}deg)`,
+                zIndex: Math.round(element.order),
+                background:
+                  element.type === "shape" ? element.fill || "transparent" : undefined,
+                border:
+                  element.type === "shape" && element.borderWidth
+                    ? `${element.borderWidth}px solid ${element.borderColor || "#000"}`
+                    : undefined,
+              }}
+            >
+              <ElementContent element={element} />
+              {selected && (
+                <span
+                  role="presentation"
+                  onPointerDown={(event) => startDrag(event, element, "resize")}
+                  className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-se-resize rounded-sm border border-white bg-blue-500 shadow"
+                />
+              )}
+            </button>
+          );
+        })}
+      <span className="pointer-events-none absolute bottom-3 right-4 text-[10px] opacity-40">
+        {editor.activeIndex + 1} / {editor.deck.slides.length}
+      </span>
+    </div>
+  );
+}
 
 function MiniSlide({
   slide,
@@ -31,11 +267,17 @@ function MiniSlide({
           fontFamily: theme.fontFamily,
         }}
       >
-        {slide.image?.url && (
-          <img src={slide.image.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+        {slide.elements.length ? (
+          <MiniElementLayer slide={slide} />
+        ) : (
+          <>
+            {slide.image?.url && (
+              <img src={slide.image.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+            )}
+            <span className="relative block truncate text-[6px] font-bold">{slide.title || " "}</span>
+            <span className="relative mt-1 block line-clamp-3 text-[4px] opacity-65">{slide.body || slide.bullets.join(" · ")}</span>
+          </>
         )}
-        <span className="relative block truncate text-[6px] font-bold">{slide.title || " "}</span>
-        <span className="relative mt-1 block line-clamp-3 text-[4px] opacity-65">{slide.body || slide.bullets.join(" · ")}</span>
       </span>
     </button>
   );
@@ -52,6 +294,10 @@ function SlideCanvas({
   const isCenter = slide.layout === "title" || slide.layout === "section";
   const hasImage = slide.layout === "image-left" || slide.layout === "image-right";
   const imageLeft = slide.layout === "image-left";
+
+  if (slide.elements.length > 0) {
+    return <PositionedSlideCanvas editor={editor} />;
+  }
 
   const textPanel = (
     <div className={`flex min-w-0 flex-1 flex-col ${isCenter ? "items-center justify-center text-center" : "justify-start"}`}>

@@ -36,11 +36,20 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
+  const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
+  const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /saveFileToLibrary/);
   assert.match(grid, /buildGridWorkbookBlob/);
   assert.match(grid, /gridSelectionRange/);
   assert.match(deck, /pptxgenjs/);
   assert.match(deck, /saveFileToLibrary/);
+  assert.match(deck, /importPptxDeck/);
+  assert.match(pptxImport, /pptxtojson\/dist\/index\.js/);
+  assert.match(pptxImport, /imageMode: "base64"/);
+  assert.match(deckStage, /PositionedSlideCanvas/);
+  assert.match(deckStage, /startDrag/);
+  assert.match(deckControls, /添加文字/);
+  assert.match(deckControls, /上移一层/);
   assert.match(deckStage, /导出 PPTX/);
 });
 

@@ -77,6 +77,8 @@ export interface MaterialLibraryProps {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  /** Standalone libraries may open an editor; embedded workbenches stay in place. */
+  allowAdvancedOnSelect?: boolean;
 }
 
 export interface PlatformAsset {
@@ -390,6 +392,7 @@ export function MaterialLibrary({
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
+  allowAdvancedOnSelect = true,
 }: MaterialLibraryProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -551,7 +554,7 @@ export function MaterialLibrary({
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
       materialActionAvailable={materialActionAvailable}
-      allowAdvanced={materialActions.length === 0}
+      allowAdvanced={allowAdvancedOnSelect && materialActions.length === 0}
       className={className}
     />
   );

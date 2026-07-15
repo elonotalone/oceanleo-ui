@@ -22,6 +22,7 @@ export const APP_SESSION_API_BASE = "/v1/agent/sessions";
 
 export type AppSessionStatus = "active" | "archived" | string;
 export type AppSessionSurface = "app" | "advanced";
+export type AppSessionListSurface = AppSessionSurface | "all";
 
 /** 一次完整 app 工作会话。snapshot 对共享包保持不透明，由各站 runtime 解释。 */
 export interface AppSession {
@@ -58,7 +59,7 @@ export interface ListAppSessionsOptions {
   siteId?: string;
   appId?: string;
   status?: AppSessionStatus;
-  surface?: AppSessionSurface;
+  surface?: AppSessionListSurface;
   /** 「我的任务」需要包含 archived（已保存）会话；live 查活跃缓存时传 false。 */
   includeArchived?: boolean;
 }
@@ -99,7 +100,7 @@ export function isAppSessionApiUnavailableStatus(status?: number): boolean {
 async function sessionRequest<T>(
   suffix: string,
   init?: RequestInit,
-  surface: AppSessionSurface = "app",
+  surface: AppSessionListSurface = "app",
 ): Promise<AgentApiResult<T>> {
   const scopedSuffix = `${suffix}${suffix.includes("?") ? "&" : "?"}surface=${encodeURIComponent(surface)}`;
   if (init?.signal) {

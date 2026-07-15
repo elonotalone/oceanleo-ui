@@ -151,6 +151,8 @@ export interface AgentTask {
   site_id?: string;
   /** 工作会话聚合根；旧 task / 旧后端没有此字段。 */
   session_id?: string | null;
+  /** Ordinary app task or advanced-workbench task. */
+  surface?: "app" | "advanced" | string;
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
   parent_task_id?: string | null;
@@ -188,6 +190,8 @@ export interface AgentAttachment {
 
 export function createTask(body: {
   prompt: string;
+  /** Model-only workspace/material context. Never persisted as visible user text. */
+  hiddenContext?: string;
   // agent = task loop (controls console) | chat = quick reply (may patch
   // console) | skill = pure-persona chat for an app's skill (no console control)
   mode?: "agent" | "chat" | "skill";
@@ -221,6 +225,7 @@ export function createTask(body: {
       method: "POST",
       body: JSON.stringify({
         prompt: body.prompt,
+        hidden_context: body.hiddenContext || "",
         mode: body.mode || "agent",
         site_id: body.siteId || "",
         agent_model: body.agentModel || "",
@@ -543,12 +548,17 @@ export function followUp(
   taskId: string,
   prompt: string,
   attachments?: AgentAttachment[],
+  hiddenContext = "",
 ) {
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
     {
       method: "POST",
-      body: JSON.stringify({ prompt, attachments: attachments || [] }),
+      body: JSON.stringify({
+        prompt,
+        hidden_context: hiddenContext,
+        attachments: attachments || [],
+      }),
     },
   ).then((result) => {
     if (result.ok) notifyHistoryChanged();
@@ -600,11 +610,17 @@ export function getTask(taskId: string) {
  * - `siteId` 给了 → 只列该站的会话（每站「历史记录」用）。
  * - `siteId` 省略 / 空 → 列全部站的会话（主站 oceanleo.com hub 用）。
  */
-export function listTasks(limit = 50, siteId?: string, pending = false) {
+export function listTasks(
+  limit = 50,
+  siteId?: string,
+  pending = false,
+  surface: "app" | "advanced" | "all" = "app",
+) {
   const params = new URLSearchParams({ limit: String(limit) });
   const site = (siteId || "").trim();
   if (site) params.set("site_id", site);
   if (pending) params.set("pending", "true");
+  params.set("surface", surface);
   return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`);
 }
 

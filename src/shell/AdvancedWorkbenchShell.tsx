@@ -422,6 +422,7 @@ export function AdvancedWorkbenchShell({
           materialActions={workbenchMaterials?.actions || []}
           onMaterialAction={workbenchMaterials?.perform}
           materialActionAvailable={workbenchMaterials?.canPerform}
+          allowAdvancedOnSelect={false}
           hideSeeAll
         />
       </div>

@@ -107,10 +107,12 @@ export function AdvancedAgentPanel({
     setBusy(true);
     setError("");
     const assetUrl = item.url || item.previewUrl || "";
-    const context = [
+    const visiblePrompt =
+      prompt || tt("已上传 {count} 个文件", { count: uploaded.length });
+    const hiddenContext = [
       `当前正在高级工作台处理「${item.title}」（${item.kind}，素材 ID：${item.id}）。`,
       assetUrl ? "当前素材已作为附件发送，请直接读取附件内容后处理。" : "",
-      prompt || "请读取并处理我上传的文件。",
+      prompt ? "" : "用户本轮只上传了文件，请读取并处理附件。",
     ]
       .filter(Boolean)
       .join("\n");
@@ -143,13 +145,14 @@ export function AdvancedAgentPanel({
         id: Date.now(),
         role: "user",
         kind: "text",
-        content: prompt || tt("已上传 {count} 个文件", { count: uploaded.length }),
+        content: visiblePrompt,
       };
       setMessages((current) => [...current, optimistic]);
       const result = await followUp(
         activeTaskId,
-        context,
+        visiblePrompt,
         attachments.length ? attachments : undefined,
+        hiddenContext,
       );
       if (result.ok) {
         setStatus("running");
@@ -166,7 +169,8 @@ export function AdvancedAgentPanel({
     }
 
     const result = await createTask({
-      prompt: context,
+      prompt: visiblePrompt,
+      hiddenContext,
       mode: "agent",
       siteId,
       attachments: attachments.length ? attachments : undefined,
@@ -185,8 +189,7 @@ export function AdvancedAgentPanel({
           id: Date.now(),
           role: "user",
           kind: "text",
-          content:
-            prompt || tt("已上传 {count} 个文件", { count: uploaded.length }),
+          content: visiblePrompt,
         },
       ]);
       await advancedSession?.ensure(nextTaskId);

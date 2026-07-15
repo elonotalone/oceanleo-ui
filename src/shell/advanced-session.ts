@@ -149,6 +149,14 @@ function durableUrl(value: unknown): string | undefined {
   }
 }
 
+function isNativeDeckFile(url: string | undefined, meta: Record<string, unknown>): boolean {
+  const format = String(meta.format || "").trim().toLowerCase();
+  return (
+    ["pptx", "pptm", "potx", "potm"].includes(format) ||
+    /\.(?:pptx|pptm|potx|potm)(?:$|[?#])/i.test(url || "")
+  );
+}
+
 export function advancedRootItemId(item: LibraryItem): string {
   return boundedString(
     item.meta.root_asset_id || item.meta.parent_asset_id || item.id || item.key,
@@ -311,8 +319,14 @@ export function advancedSnapshotFromSession(
   ) {
     return null;
   }
-  const route = record.editor_route as EditorRoute["type"];
+  let route = record.editor_route as EditorRoute["type"];
   const meta = jsonSafeMeta(raw.meta as Record<string, unknown>);
+  // Sessions created before the native importer used the Office iframe for
+  // PPTX. Upgrade those snapshots in place while retaining their durable id.
+  if (route === "office" && isNativeDeckFile(url, meta)) {
+    route = "deck";
+    meta.advanced_editor_route = "deck";
+  }
   if (
     route === "embed" &&
     siteId === "design" &&
@@ -350,11 +364,15 @@ export function advancedSnapshotFromSession(
     typeof record.feature_id === "string"
       ? advancedFeatureById(record.feature_id)
       : null;
+  const expectedAppId = advancedSessionAppId(restored, route);
+  const legacyOfficeAppId =
+    route === "deck" && isNativeDeckFile(url, meta)
+      ? advancedSessionAppId(restored, "office")
+      : "";
   if (
     !feature ||
     (record.feature_id !== undefined && declaredFeature?.id !== feature.id) ||
-    session?.site_id !== siteId ||
-    session.app_id !== advancedSessionAppId(restored, route) ||
+    (session.app_id !== expectedAppId && session.app_id !== legacyOfficeAppId) ||
     editorRouteFor(restored).type !== route
   ) {
     return null;

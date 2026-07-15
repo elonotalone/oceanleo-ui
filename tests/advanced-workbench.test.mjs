@@ -85,12 +85,19 @@ test("advanced workbench routes real content into the portal editor shell", () =
 
 test("advanced Agent follows the current task instead of forking history", () => {
   const panel = source("../src/shell/AdvancedAgentPanel.tsx");
+  const client = source("../src/lib/agent.ts");
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(panel, /setActiveTaskId\(sessionTaskId\)/);
   assert.match(panel, /advancedSession\.taskId/);
   assert.match(panel, /followUp\([\s\S]*?activeTaskId,[\s\S]*?attachments\.length/);
   assert.match(panel, /item\.url \|\| item\.previewUrl/);
   assert.match(panel, /attachments\.length \? attachments : undefined/);
+  assert.match(panel, /const visiblePrompt =/);
+  assert.match(panel, /const hiddenContext =/);
+  assert.match(panel, /prompt: visiblePrompt/);
+  assert.match(panel, /hiddenContext/);
+  assert.match(client, /hidden_context: body\.hiddenContext \|\| ""/);
+  assert.match(client, /hidden_context: hiddenContext/);
   assert.match(panel, /<LeoComposer/);
   assert.match(panel, /leoSuggest/);
   assert.match(panel, /onAttachFiles=\{atts\.handleAttachFiles\}/);
@@ -120,6 +127,8 @@ test("advanced work is session-backed, deep-linkable and starts a fresh saved co
   assert.doesNotMatch(workbench, /resumeLatest=\{false\}/);
   assert.match(workbench, /taskId === undefined \? workspace\.taskId : taskId/);
   assert.match(workbench, /workspace\.mode === "history"/);
+  assert.match(workbench, /sessionId=\{props\.sessionId \|\| undefined\}/);
+  assert.doesNotMatch(workbench, /onSessionIdChange=/);
 });
 
 test("direct advanced routes mount blank editors instead of a library gate", () => {
@@ -177,6 +186,16 @@ test("code-backed website starters reach the visual editor without a fake projec
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
+});
+
+test("advanced material browsing never navigates out of the current workbench", () => {
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const materials = source("../src/shell/MaterialLibrary.tsx");
+  assert.match(shell, /allowAdvancedOnSelect=\{false\}/);
+  assert.match(
+    materials,
+    /allowAdvanced=\{allowAdvancedOnSelect && materialActions\.length === 0\}/,
+  );
 });
 
 test("late catalog categories stay behind More and editor loads have hard deadlines", () => {

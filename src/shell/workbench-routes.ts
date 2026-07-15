@@ -93,6 +93,7 @@ const SLIDE_EXT = new Set([
   "potx",
   "potm",
 ]);
+const NATIVE_DECK_EXT = new Set(["pptx", "pptm", "potx", "potm"]);
 const VIDEO_EXT = new Set([
   "mp4",
   "webm",
@@ -126,10 +127,33 @@ const IMAGE_EXT = new Set([
   "avif",
 ]);
 const MODEL_EXT = new Set(["glb", "gltf"]);
+const OFFICE_MIME_EXT = new Map<string, string>([
+  [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "docx",
+  ],
+  ["application/msword", "doc"],
+  [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xlsx",
+  ],
+  ["application/vnd.ms-excel", "xls"],
+  [
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "pptx",
+  ],
+  ["application/vnd.ms-powerpoint.presentation.macroenabled.12", "pptm"],
+  [
+    "application/vnd.openxmlformats-officedocument.presentationml.template",
+    "potx",
+  ],
+  ["application/vnd.ms-powerpoint.template.macroenabled.12", "potm"],
+  ["application/vnd.ms-powerpoint", "ppt"],
+]);
 
 function extOf(url: string): string {
   try {
-    const path = new URL(url).pathname.toLowerCase();
+    const path = new URL(url, "https://local.invalid").pathname.toLowerCase();
     if (!path.includes(".")) return "";
     return path.split(".").pop() || "";
   } catch {
@@ -137,13 +161,39 @@ function extOf(url: string): string {
   }
 }
 
-function officeExtensionOf(url: string): string {
-  const extension = extOf(url);
+function officeExtensionOf(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^\./, "");
+  const extension =
+    WORD_EXT.has(normalized) ||
+    CELL_EXT.has(normalized) ||
+    SLIDE_EXT.has(normalized)
+      ? normalized
+      : extOf(value);
   return WORD_EXT.has(extension) ||
     CELL_EXT.has(extension) ||
     SLIDE_EXT.has(extension)
     ? extension
     : "";
+}
+
+export function officeExtensionForItem(item: LibraryItem): string {
+  const meta = item.meta || {};
+  const candidates = [
+    item.url,
+    item.previewUrl,
+    meta.file_name,
+    meta.filename,
+    meta.name,
+    meta.format,
+    meta.extension,
+    meta.ext,
+    item.title,
+  ];
+  for (const candidate of candidates) {
+    const extension = officeExtensionOf(String(candidate || ""));
+    if (extension) return extension;
+  }
+  return OFFICE_MIME_EXT.get(String(meta.mime || "").toLowerCase()) || "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -327,8 +377,8 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   const templateDocumentUrl = String(item.meta.template_doc_url || "");
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);
-  const officeExt = url ? officeExtensionOf(url) : "";
   const mime = String(item.meta.mime || "").toLowerCase();
+  const officeExt = officeExtensionForItem(item);
   const isPdf = mime === "application/pdf" || ext === "pdf";
   const contentType = contentTypeFor(item);
   const chartManifest = editorManifestFor(item);
@@ -462,6 +512,9 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     });
   }
 
+  if (NATIVE_DECK_EXT.has(officeExt)) {
+    return available("deck", { type: "deck" });
+  }
   if (
     officeExt &&
     (WORD_EXT.has(officeExt) ||

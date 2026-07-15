@@ -120,13 +120,14 @@ export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
 ) {
   const [mounted, setMounted] = useState(false);
-  const router = useRouter();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   const route = editorRouteFor(props.item);
   const siteId = props.siteId || props.item.siteId || "oceanleo";
-  const appId = advancedSessionAppId(props.item, route.type);
+  const appId =
+    props.initialSession?.app_id ||
+    advancedSessionAppId(props.item, route.type);
   const feature = advancedFeatureForItem(props.item);
   const materialAppId = feature ? `advanced:${feature.id}` : appId;
   return (
@@ -136,15 +137,10 @@ export function AdvancedContentWorkbench(
       appId={appId}
       surface="advanced"
       title={props.item.title}
-      sessionId={props.sessionId}
+      sessionId={props.sessionId || undefined}
       initialSession={props.initialSession}
       mode={props.mode || (props.sessionId ? "history" : "workspace")}
       resumeLatest={!props.sessionId}
-      onSessionIdChange={(sessionId) => {
-        if (sessionId && feature) {
-          router.replace(advancedFeatureHref(feature, { sessionId }));
-        }
-      }}
     >
       <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
         <AdvancedContentWorkbenchRuntime {...props} />
