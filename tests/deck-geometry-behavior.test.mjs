@@ -4,10 +4,12 @@ import test from "node:test";
 import {
   centeredDeckPlacement,
   clientPointToDeckPercent,
+  deckPageViewport,
   moveDeckElement,
   resizeDeckElement,
   rotateDeckElement,
 } from "../src/shell/doc-editors/deck-geometry.ts";
+import { buildDeckInkAsset } from "../src/shell/doc-editors/deck-ink.ts";
 
 const rect = { left: 100, top: 80, width: 1_000, height: 600 };
 const element = {
@@ -64,4 +66,44 @@ test("deck move, eight-way resize and rotation preserve geometric invariants", (
     ),
     { rotation: 90 },
   );
+});
+
+test("zoom changes the complete page frame instead of responsive child controls", () => {
+  assert.deepEqual(deckPageViewport("16:9", 10), {
+    logicalWidth: 960,
+    logicalHeight: 540,
+    scale: 0.1,
+    width: 96,
+    height: 54,
+  });
+  assert.deepEqual(deckPageViewport("16:9", 180), {
+    logicalWidth: 960,
+    logicalHeight: 540,
+    scale: 1.8,
+    width: 1728,
+    height: 972,
+  });
+  assert.equal(
+    deckPageViewport("16:9", 180).width /
+      deckPageViewport("16:9", 50).width,
+    3.6,
+  );
+});
+
+test("freehand strokes become movable transparent slide assets", () => {
+  const asset = buildDeckInkAsset(
+    [
+      [
+        { x: 20, y: 30 },
+        { x: 35, y: 45 },
+        { x: 50, y: 32 },
+      ],
+    ],
+    { color: "#ef4444", width: 4, opacity: 1 },
+  );
+  assert.ok(asset);
+  assert.match(asset.src, /^data:image\/svg\+xml/);
+  assert.ok(asset.x < 20);
+  assert.ok(asset.width > 30);
+  assert.ok(asset.height > 13);
 });

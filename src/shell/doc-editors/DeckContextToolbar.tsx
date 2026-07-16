@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
+import { useAdvancedLayout } from "../advanced-layout-context";
 import type {
   SelectionCommand,
   SelectionContext,
@@ -11,21 +12,27 @@ import { applyDeckToolbarCommand } from "./deck-toolbar-command";
 import {
   applyDeckQuickTool,
   deckQuickTools,
+  type DeckCreationTool,
 } from "./deck-quick-tools";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckContextToolbar({
   editor,
   accent = "#4f46e5",
+  activeTool = "select",
+  onActiveToolChange,
 }: {
   editor: DeckEditorState;
   accent?: string;
+  activeTool?: DeckCreationTool;
+  onActiveToolChange?: (tool: DeckCreationTool) => void;
 }) {
   const tt = useUI();
+  const layout = useAdvancedLayout();
   const element = editor.selectedElement;
   const slide = editor.activeSlide;
   const context = useMemo<SelectionContext>(() => {
-    const tools = deckQuickTools(tt);
+    const tools = deckQuickTools(tt, activeTool);
     if (!element) {
       return {
         version: 1,
@@ -266,14 +273,80 @@ export function DeckContextToolbar({
           : []),
         ...(element.type === "shape"
           ? [
-              {
-                id: "fill",
-                kind: "color" as const,
-                label: tt("填充"),
-                icon: "background" as const,
-                group: "shape",
-                value: element.fill || "#ffffff",
-              },
+              ...(element.shape === "line"
+                ? [
+                    {
+                      id: "border-color",
+                      kind: "color" as const,
+                      label: tt("线条颜色"),
+                      icon: "border" as const,
+                      group: "line",
+                      value:
+                        element.borderColor &&
+                        element.borderColor !== "transparent"
+                          ? element.borderColor
+                          : element.fill || "#111827",
+                    },
+                    {
+                      id: "border-width",
+                      kind: "number" as const,
+                      label: tt("粗细"),
+                      group: "line",
+                      value: element.borderWidth || 3,
+                      min: 1,
+                      max: 24,
+                      step: 1,
+                    },
+                    {
+                      id: "line-dash",
+                      kind: "select" as const,
+                      label: tt("线型"),
+                      icon: "line" as const,
+                      group: "line",
+                      value: element.lineDash || "solid",
+                      options: [
+                        { value: "solid", label: tt("实线") },
+                        { value: "dash", label: tt("虚线") },
+                        { value: "dot", label: tt("点线") },
+                      ],
+                    },
+                    {
+                      id: "line-start",
+                      kind: "select" as const,
+                      label: tt("起点"),
+                      group: "line-marker",
+                      value: element.lineStart || "none",
+                      options: [
+                        { value: "none", label: tt("无") },
+                        { value: "arrow", label: tt("箭头") },
+                        { value: "circle", label: tt("圆点") },
+                        { value: "diamond", label: tt("菱形") },
+                      ],
+                    },
+                    {
+                      id: "line-end",
+                      kind: "select" as const,
+                      label: tt("终点"),
+                      group: "line-marker",
+                      value: element.lineEnd || "none",
+                      options: [
+                        { value: "none", label: tt("无") },
+                        { value: "arrow", label: tt("箭头") },
+                        { value: "circle", label: tt("圆点") },
+                        { value: "diamond", label: tt("菱形") },
+                      ],
+                    },
+                  ]
+                : [
+                    {
+                      id: "fill",
+                      kind: "color" as const,
+                      label: tt("填充"),
+                      icon: "background" as const,
+                      group: "shape",
+                      value: element.fill || "#ffffff",
+                    },
+                  ]),
               {
                 id: "shape",
                 kind: "select" as const,
@@ -286,38 +359,46 @@ export function DeckContextToolbar({
                   { value: "rounded", label: tt("圆角矩形") },
                   { value: "circle", label: tt("圆形") },
                   { value: "triangle", label: tt("三角形") },
+                  { value: "diamond", label: tt("菱形") },
+                  { value: "star", label: tt("星形") },
+                  { value: "arrow", label: tt("箭头") },
+                  { value: "hexagon", label: tt("六边形") },
                   { value: "line", label: tt("线条") },
                 ],
               },
-              {
-                id: "border-color",
-                kind: "color" as const,
-                label: tt("描边"),
-                icon: "border" as const,
-                iconOnly: true,
-                group: "border",
-                value: element.borderColor || "#000000",
-              },
-              {
-                id: "border-width",
-                kind: "number" as const,
-                label: tt("描边"),
-                group: "border",
-                value: element.borderWidth || 0,
-                min: 0,
-                max: 40,
-                step: 1,
-              },
-              {
-                id: "border-radius",
-                kind: "number" as const,
-                label: tt("圆角"),
-                group: "border",
-                value: element.borderRadius || 0,
-                min: 0,
-                max: 999,
-                step: 1,
-              },
+              ...(element.shape === "line"
+                ? []
+                : [
+                    {
+                      id: "border-color",
+                      kind: "color" as const,
+                      label: tt("描边"),
+                      icon: "border" as const,
+                      iconOnly: true,
+                      group: "border",
+                      value: element.borderColor || "#000000",
+                    },
+                    {
+                      id: "border-width",
+                      kind: "number" as const,
+                      label: tt("描边"),
+                      group: "border",
+                      value: element.borderWidth || 0,
+                      min: 0,
+                      max: 40,
+                      step: 1,
+                    },
+                    {
+                      id: "border-radius",
+                      kind: "number" as const,
+                      label: tt("圆角"),
+                      group: "border",
+                      value: element.borderRadius || 0,
+                      min: 0,
+                      max: 999,
+                      step: 1,
+                    },
+                  ]),
               {
                 id: "shadow",
                 kind: "toggle" as const,
@@ -458,6 +539,7 @@ export function DeckContextToolbar({
     editor.canRedo,
     editor.canUndo,
     editor.deck.slides.length,
+    activeTool,
     element,
     slide,
     tt,
@@ -465,7 +547,14 @@ export function DeckContextToolbar({
 
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
-    if (applyDeckQuickTool(editor, message, tt)) return;
+    if (
+      applyDeckQuickTool(editor, message, {
+        setActiveTool: (tool) => onActiveToolChange?.(tool),
+        openDrawer: (drawerId) => layout?.openDrawer(drawerId),
+      })
+    ) {
+      return;
+    }
     applyDeckToolbarCommand(editor, element, message);
   };
   return (

@@ -34,6 +34,7 @@ import {
   useWorkbenchMaterials,
   type WorkbenchMaterialAction,
 } from "./workbench-material-provider";
+import { useAdvancedAutoSave } from "./use-advanced-autosave";
 
 export interface AdvancedWorkbenchDrawer {
   id: string;
@@ -60,6 +61,8 @@ export interface AdvancedWorkbenchShellProps {
   editorDrawers?: readonly AdvancedWorkbenchDrawer[];
   /** Object-aware controls rendered in the single shared property bar. */
   editorContextualToolbar?: ReactNode;
+  /** Keep the shared bar clear of an editor-owned page or track rail. */
+  editorContextualToolbarInsetLeft?: number;
   /** Persistent document-level actions shown in the colored product header. */
   editorHeaderActions?: ReactNode;
   /** Undo/redo lives in the product header rather than the object property bar. */
@@ -106,6 +109,7 @@ export function AdvancedWorkbenchShell({
   editorDrawerIcon = "settings",
   editorDrawers = [],
   editorContextualToolbar,
+  editorContextualToolbarInsetLeft = 0,
   editorHeaderActions,
   editorHistory,
   editorViewport,
@@ -125,6 +129,11 @@ export function AdvancedWorkbenchShell({
   const dirtyRecordedRef = useRef(false);
   const portalReady = typeof document !== "undefined";
   const advancedSession = useAdvancedSession();
+  const autoSave = useAdvancedAutoSave({
+    dirty: editorDirty,
+    flush: onBeforeNewConversation,
+    session: advancedSession,
+  });
   const workbenchMaterials = useWorkbenchMaterials();
   const fallbackDrawer = useMemo<AdvancedWorkbenchDrawer[]>(() => {
     if (editorDrawers.length) return [...editorDrawers];
@@ -504,11 +513,13 @@ export function AdvancedWorkbenchShell({
         accent={accent}
         history={editorHistory}
         startingNew={startingNew}
+        autoSaveState={autoSave.state}
         mobileActionsOpen={mobileActionsOpen}
         onToggleMobileActions={() =>
           setMobileActionsOpen((value) => !value)
         }
         onStartNew={() => void startNewTask()}
+        onAutoSave={() => void autoSave.run()}
         onRenameTitle={renameTitle}
         onClose={requestClose}
       />
@@ -546,7 +557,14 @@ export function AdvancedWorkbenchShell({
             dropMessage={dropMessage}
             onMaterialDrop={(event) => void handleMaterialDrop(event)}
           />
-          <div className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex justify-center">
+          <div
+            className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex justify-center"
+            style={
+              editorContextualToolbarInsetLeft
+                ? { paddingLeft: editorContextualToolbarInsetLeft }
+                : undefined
+            }
+          >
             {editorAvailable && editorContextualToolbar ? (
               editorContextualToolbar
             ) : (

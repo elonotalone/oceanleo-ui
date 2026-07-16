@@ -6,7 +6,20 @@ import type { DeckEditorState } from "./use-deck-editor";
 
 type Translate = (value: string) => string;
 
-export function deckQuickTools(tt: Translate): SelectionControl[] {
+export type DeckCreationTool =
+  | "select"
+  | "draw"
+  | "shape"
+  | "line"
+  | "note"
+  | "text"
+  | "signature"
+  | "table";
+
+export function deckQuickTools(
+  tt: Translate,
+  activeTool: DeckCreationTool,
+): SelectionControl[] {
   return [
     ["tool-select", "选择", "select"],
     ["tool-draw", "画笔", "draw"],
@@ -21,6 +34,7 @@ export function deckQuickTools(tt: Translate): SelectionControl[] {
     kind: "action" as const,
     label: tt(label),
     icon: icon as SelectionControl["icon"],
+    value: activeTool === id.replace("tool-", ""),
     placement: "tools" as const,
   }));
 }
@@ -28,43 +42,28 @@ export function deckQuickTools(tt: Translate): SelectionControl[] {
 export function applyDeckQuickTool(
   editor: DeckEditorState,
   command: SelectionCommand,
-  tt: Translate,
+  actions: {
+    setActiveTool: (tool: DeckCreationTool) => void;
+    openDrawer: (drawerId: string) => void;
+  },
 ): boolean {
-  switch (command.controlId) {
-    case "tool-select":
-      editor.selectElement("");
-      return true;
-    case "tool-draw":
-    case "tool-line":
-      editor.addShapeElement("line");
-      return true;
-    case "tool-shape":
-      editor.addShapeElement("rectangle");
-      return true;
-    case "tool-note":
-      editor.addShapeElement("rounded");
-      editor.addTextElement({
-        text: tt("便签"),
-        fontSize: 24,
-        bold: true,
-        color: "#3f3420",
-      });
-      return true;
-    case "tool-text":
-      editor.addTextElement();
-      return true;
-    case "tool-signature":
-      editor.addTextElement({
-        text: tt("签名"),
-        fontFamily: "Segoe Script, Brush Script MT, cursive",
-        fontSize: 44,
-        italic: true,
-      });
-      return true;
-    case "tool-table":
-      editor.addTableElement(3, 3);
-      return true;
-    default:
-      return false;
-  }
+  const tools: Record<
+    string,
+    { tool: DeckCreationTool; drawer?: string }
+  > = {
+    "tool-select": { tool: "select" },
+    "tool-draw": { tool: "draw", drawer: "deck-draw" },
+    "tool-shape": { tool: "shape", drawer: "deck-elements" },
+    "tool-line": { tool: "line", drawer: "deck-lines" },
+    "tool-note": { tool: "note", drawer: "deck-notes" },
+    "tool-text": { tool: "text", drawer: "deck-text" },
+    "tool-signature": { tool: "signature", drawer: "deck-signature" },
+    "tool-table": { tool: "table", drawer: "deck-tables" },
+  };
+  const target = tools[command.controlId];
+  if (!target) return false;
+  actions.setActiveTool(target.tool);
+  if (target.tool === "select") editor.selectElement("");
+  if (target.drawer) actions.openDrawer(target.drawer);
+  return true;
 }

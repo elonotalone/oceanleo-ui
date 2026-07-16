@@ -9,8 +9,6 @@ import {
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
-  PDFPageProxy,
-  RenderTask,
 } from "pdfjs-dist";
 import { useUI } from "../../i18n/ui/useUI";
 import { saveWorks, uploadFile } from "../../lib/database";
@@ -33,6 +31,7 @@ import {
   pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
+import { usePdfPreviewRender } from "./use-pdf-preview-render";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
 const MIN_ZOOM = 25;
 const MAX_ZOOM = 300;
@@ -46,6 +45,9 @@ export interface PdfWorkbenchState {
   pageCount: number;
   rotation: number;
   zoom: number;
+  renderedZoom: number;
+  pageWidth: number;
+  pageHeight: number;
   loading: boolean;
   rendering: boolean;
   processing: boolean;
@@ -88,17 +90,17 @@ export function usePdfWorkbench(
   const aliveRef = useRef(true);
   const sourceGenerationRef = useRef(0);
   const revisionRef = useRef(0);
+  const zoomTimerRef = useRef<number | null>(null);
   const undoRef = useRef<PdfSnapshot[]>([]);
   const redoRef = useRef<PdfSnapshot[]>([]);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [sourceUrl, setSourceUrl] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(0);
-  const [rotation, setRotation] = useState(0);
   const [zoom, setZoomState] = useState(100);
+  const [rasterZoom, setRasterZoom] = useState(100);
   const [sourceLoading, setSourceLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [rendering, setRendering] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -109,6 +111,17 @@ export function usePdfWorkbench(
   const [savedUrl, setSavedUrl] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
   const [previewRevision, setPreviewRevision] = useState(0);
+  const { rotation, rendering, renderedZoom, pageWidth, pageHeight } =
+    usePdfPreviewRender({
+      canvas,
+      documentProxy: pdfDocumentRef.current,
+      pageCount,
+      pageNumber,
+      revision: previewRevision,
+      rasterZoom,
+      translate: tt,
+      setError,
+    });
 
   useEffect(() => {
     aliveRef.current = true;
@@ -117,6 +130,9 @@ export function usePdfWorkbench(
       sourceGenerationRef.current += 1;
       processingTokenRef.current += 1;
       savingTokenRef.current += 1;
+      if (zoomTimerRef.current !== null) {
+        window.clearTimeout(zoomTimerRef.current);
+      }
     };
   }, []);
 
@@ -137,11 +153,12 @@ export function usePdfWorkbench(
     undoRef.current = [];
     redoRef.current = [];
     setDocumentRevision((value) => value + 1);
+    setZoomState(100);
+    setRasterZoom(100);
     setSourceUrl("");
     setSourceLoading(true);
     setPageNumber(1);
     setPageCount(0);
-    setRotation(0);
     setProcessing(false);
     setSaving(false);
     setDirty(false);
@@ -233,51 +250,20 @@ export function usePdfWorkbench(
   }, [documentRevision, tt]);
 
   useEffect(() => {
-    const documentProxy = pdfDocumentRef.current;
-    if (!canvas || !documentProxy || pageCount < 1) {
-      setRendering(false);
-      return;
+    if (zoomTimerRef.current !== null) {
+      window.clearTimeout(zoomTimerRef.current);
     }
-    let disposed = false;
-    let page: PDFPageProxy | null = null;
-    let renderTask: RenderTask | null = null;
-    setRendering(true);
-    setError("");
-    void (async () => {
-      try {
-        page = await documentProxy.getPage(clamp(pageNumber, 1, documentProxy.numPages));
-        if (disposed) return;
-        const viewport = page.getViewport({ scale: zoom / 100 });
-        const pixelRatio = clamp(window.devicePixelRatio || 1, 1, 2);
-        const context = canvas.getContext("2d", { alpha: false });
-        if (!context) throw new Error(tt("浏览器无法创建 PDF 画布"));
-        canvas.width = Math.max(1, Math.floor(viewport.width * pixelRatio));
-        canvas.height = Math.max(1, Math.floor(viewport.height * pixelRatio));
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-        renderTask = page.render({
-          canvasContext: context,
-          viewport,
-          transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
-          background: "#ffffff",
-        });
-        await renderTask.promise;
-        if (!disposed) setRotation(((page.rotate % 360) + 360) % 360);
-      } catch (caught) {
-        const name = caught instanceof Error ? caught.name : "";
-        if (!disposed && name !== "RenderingCancelledException") {
-          setError(pdfErrorMessage(caught, tt("PDF 页面渲染失败")));
-        }
-      } finally {
-        if (!disposed) setRendering(false);
-      }
-    })();
+    zoomTimerRef.current = window.setTimeout(() => {
+      zoomTimerRef.current = null;
+      setRasterZoom(zoom);
+    }, 180);
     return () => {
-      disposed = true;
-      renderTask?.cancel();
-      page?.cleanup();
+      if (zoomTimerRef.current !== null) {
+        window.clearTimeout(zoomTimerRef.current);
+        zoomTimerRef.current = null;
+      }
     };
-  }, [canvas, pageCount, pageNumber, previewRevision, tt, zoom]);
+  }, [zoom]);
 
   const runMutation = useCallback(
     async (mutation: PdfMutation) => {
@@ -547,6 +533,9 @@ export function usePdfWorkbench(
     pageCount,
     rotation,
     zoom,
+    renderedZoom,
+    pageWidth,
+    pageHeight,
     loading: sourceLoading || previewLoading,
     rendering,
     processing,

@@ -3,6 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { deckShapeClipPath } from "./DeckElementContent";
 import { DECK_THEMES, type DeckLayout } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 
@@ -212,7 +213,10 @@ export function DeckElementsPanel({
     ["rounded", "圆角矩形"],
     ["circle", "圆形"],
     ["triangle", "三角形"],
-    ["line", "线条"],
+    ["diamond", "菱形"],
+    ["star", "星形"],
+    ["arrow", "箭头"],
+    ["hexagon", "六边形"],
   ] as const;
   return (
     <div className="min-h-full bg-[var(--card,#fff)]">
@@ -226,17 +230,16 @@ export function DeckElementsPanel({
               className={`${buttonClass} flex min-h-20 flex-col items-center justify-center gap-2`}
             >
               <span
-                className={`block bg-[var(--accent,#7c3aed)] ${
-                  shape === "circle"
-                    ? "h-9 w-9 rounded-full"
-                    : shape === "triangle"
-                      ? "h-10 w-11 [clip-path:polygon(50%_0,100%_100%,0_100%)]"
-                      : shape === "line"
-                        ? "h-1 w-12"
-                        : shape === "rounded"
-                          ? "h-8 w-12 rounded-xl"
-                          : "h-8 w-12 rounded-sm"
-                }`}
+                className="block h-9 w-12 bg-[var(--accent,#7c3aed)]"
+                style={{
+                  borderRadius:
+                    shape === "circle"
+                      ? "999px"
+                      : shape === "rounded"
+                        ? "12px"
+                        : "3px",
+                  clipPath: deckShapeClipPath(shape),
+                }}
               />
               {tt(label)}
             </button>

@@ -10,6 +10,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { useAdvancedLayout } from "../advanced-layout-context";
 import {
+  deckPageViewport,
   moveDeckElement,
   resizeDeckElement,
   rotateDeckElement,
@@ -18,8 +19,13 @@ import {
 import { deckTheme, type DeckElement, type DeckSlide } from "./deck-schema";
 import {
   DeckElementContent,
+  deckShapeClipPath,
 } from "./DeckElementContent";
-import { DeckMiniSlide } from "./DeckMiniSlide";
+import {
+  type DeckInkStyle,
+} from "./deck-ink";
+import { DeckInkOverlay } from "./DeckInkOverlay";
+import { DeckSlideRail } from "./DeckSlideRail";
 import type { DeckEditorState } from "./use-deck-editor";
 
 interface ElementInteraction {
@@ -47,7 +53,15 @@ const RESIZE_HANDLES: {
   { id: "w", className: "-left-1.5 top-1/2 -translate-y-1/2", cursor: "ew-resize" },
 ];
 
-function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
+function PositionedSlideCanvas({
+  editor,
+  activeTool,
+  inkStyle,
+}: {
+  editor: DeckEditorState;
+  activeTool: string;
+  inkStyle: DeckInkStyle;
+}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const layout = useAdvancedLayout();
   const [interaction, setInteraction] = useState<ElementInteraction | null>(
@@ -150,8 +164,10 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
           const rendered = preview ? { ...element, ...preview } : element;
           const selected = editor.selectedElementId === element.id;
           const editing = editingId === element.id;
-          const isTriangle =
-            element.type === "shape" && element.shape === "triangle";
+          const shapeClip =
+            element.type === "shape"
+              ? deckShapeClipPath(element.shape)
+              : undefined;
           return (
             <div
               key={element.id}
@@ -205,7 +221,7 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
                 zIndex: Math.round(rendered.order),
                 opacity: rendered.opacity ?? 1,
                 background:
-                  rendered.type === "shape"
+                  rendered.type === "shape" && rendered.shape !== "line"
                     ? rendered.fill || "transparent"
                     : undefined,
                 border:
@@ -221,15 +237,11 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
                 boxShadow: rendered.shadow
                   ? "0 14px 32px rgba(15,23,42,.24)"
                   : undefined,
+                clipPath: shapeClip,
               }}
             >
               <div
                 className="h-full w-full overflow-hidden rounded-[inherit]"
-                style={{
-                  clipPath: isTriangle
-                    ? "polygon(50% 0, 100% 100%, 0 100%)"
-                    : undefined,
-                }}
               >
                 <DeckElementContent
                   element={rendered}
@@ -329,6 +341,14 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
             </div>
           );
         })}
+      {activeTool === "draw" && (
+        <DeckInkOverlay
+          style={inkStyle}
+          onCommit={(stroke) =>
+            editor.addInkElement([stroke], inkStyle, "canvas")
+          }
+        />
+      )}
       <span className="pointer-events-none absolute bottom-3 right-4 text-[10px] opacity-40">
         {editor.activeIndex + 1} / {editor.deck.slides.length}
       </span>
@@ -338,8 +358,12 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
 
 function SlideCanvas({
   editor,
+  activeTool,
+  inkStyle,
 }: {
   editor: DeckEditorState;
+  activeTool: string;
+  inkStyle: DeckInkStyle;
 }) {
   const tt = useUI();
   const slide = editor.activeSlide;
@@ -348,8 +372,14 @@ function SlideCanvas({
   const hasImage = slide.layout === "image-left" || slide.layout === "image-right";
   const imageLeft = slide.layout === "image-left";
 
-  if (slide.elements.length > 0) {
-    return <PositionedSlideCanvas editor={editor} />;
+  if (slide.elements.length > 0 || activeTool === "draw") {
+    return (
+      <PositionedSlideCanvas
+        editor={editor}
+        activeTool={activeTool}
+        inkStyle={inkStyle}
+      />
+    );
   }
 
   const textPanel = (
@@ -439,13 +469,21 @@ export function DeckStage({
   editor,
   accent = "#4f46e5",
   zoom = 100,
+  activeTool = "select",
+  inkStyle = {
+    color: "#111827",
+    width: 4,
+    opacity: 1,
+  },
 }: {
   editor: DeckEditorState;
   accent?: string;
   zoom?: number;
+  activeTool?: string;
+  inkStyle?: DeckInkStyle;
 }) {
   const tt = useUI();
-  const theme = deckTheme(editor.deck.theme);
+  const page = deckPageViewport(editor.deck.aspect, zoom);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -511,42 +549,38 @@ export function DeckStage({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
       <div className="flex min-h-0 flex-1">
-        <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--muted,#78716c)]">
-              {tt("页面")}
-            </span>
-            <button
-              type="button"
-              onClick={editor.addSlide}
-              className="grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-              title={tt("新建一页")}
-            >
-              <AdvancedEditorIcon name="add" className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="space-y-2.5">
-            {editor.deck.slides.map((slide, index) => (
-              <DeckMiniSlide
-                key={slide.id}
-                slide={slide}
-                number={index + 1}
-                active={slide.id === editor.activeSlide.id}
-                theme={theme}
-                onClick={() => editor.selectSlide(slide.id)}
-              />
-            ))}
-          </div>
-        </aside>
-        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)] p-8 lg:p-12">
+        <DeckSlideRail editor={editor} />
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)]">
           <div
-            className="w-full max-w-5xl transition-[width] duration-200"
+            className="flex items-center justify-center p-8 lg:p-12"
             style={{
-              aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9",
-              zoom: Math.min(1.8, Math.max(0.5, zoom / 100)),
+              minWidth: `${page.width + 96}px`,
+              minHeight: `${page.height + 96}px`,
             }}
           >
-            <SlideCanvas editor={editor} />
+            <div
+              data-deck-page-frame
+              className="relative shrink-0 transition-[width,height] duration-150"
+              style={{
+                width: `${page.width}px`,
+                height: `${page.height}px`,
+              }}
+            >
+              <div
+                className="absolute left-0 top-0 origin-top-left"
+                style={{
+                  width: `${page.logicalWidth}px`,
+                  height: `${page.logicalHeight}px`,
+                  transform: `scale(${page.scale})`,
+                }}
+              >
+                <SlideCanvas
+                  editor={editor}
+                  activeTool={activeTool}
+                  inkStyle={inkStyle}
+                />
+              </div>
+            </div>
           </div>
           {editor.loading && (
             <div className="absolute inset-0 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]">

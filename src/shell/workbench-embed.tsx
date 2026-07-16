@@ -99,6 +99,7 @@ export function EmbedEditorPane({
   const tt = useUI();
   const layout = useAdvancedLayout();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const readyHandledRef = useRef(false);
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [status, setStatus] = useState("");
   const instanceId = useRef(
@@ -167,8 +168,11 @@ export function EmbedEditorPane({
       if (message.type === "ready") {
         setPhase("ready");
         setStatus(tt("编辑器已连接"));
-        onDirtyChange?.(false);
-        sendOpenAsset();
+        if (!readyHandledRef.current) {
+          readyHandledRef.current = true;
+          onDirtyChange?.(false);
+          sendOpenAsset();
+        }
       } else if (message.type === "dirty") {
         onDirtyChange?.(message.dirty !== false);
         setStatus(
@@ -303,10 +307,18 @@ export function EmbedEditorPane({
   ]);
 
   useEffect(() => {
+    if (phase !== "connecting") return;
+    const init = () => sendToEditor({ type: "init" });
+    init();
+    const interval = window.setInterval(init, 900);
+    return () => window.clearInterval(interval);
+  }, [phase, sendToEditor]);
+
+  useEffect(() => {
     // 子站长时间没 ready：给出诚实的失败态，而不是假装打开了。
     const timer = window.setTimeout(() => {
       setPhase((current) => (current === "connecting" ? "error" : current));
-    }, 25000);
+    }, 15000);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -414,6 +426,7 @@ export function EmbedEditorPane({
         <iframe
           ref={iframeRef}
           src={src}
+          onLoad={() => sendToEditor({ type: "init" })}
           title={item.title}
           className="h-full w-full border-0"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"

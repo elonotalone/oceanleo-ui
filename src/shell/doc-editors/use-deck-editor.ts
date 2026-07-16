@@ -30,6 +30,11 @@ import {
   saveFileToLibrary,
   urlExtension,
 } from "./doc-io";
+import {
+  buildDeckInkAsset,
+  type DeckInkStroke,
+  type DeckInkStyle,
+} from "./deck-ink";
 import { importPptxDeck } from "./pptx-deck-import";
 
 interface Snapshot {
@@ -68,8 +73,14 @@ export interface DeckEditorState {
   addShapeElement: (
     shape?: string,
     placement?: WorkbenchMaterialPlacement,
+    preset?: Partial<DeckElement>,
   ) => void;
   addTableElement: (rows?: number, columns?: number) => void;
+  addInkElement: (
+    strokes: DeckInkStroke[],
+    style: DeckInkStyle,
+    placement?: "canvas" | "signature",
+  ) => void;
   insertImageElement: (
     src: string,
     alt?: string,
@@ -250,9 +261,21 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
               ? pptx.ShapeType.ellipse
               : shapeName.includes("round")
                 ? pptx.ShapeType.roundRect
+                : shapeName.includes("triangle")
+                  ? pptx.ShapeType.triangle
+                  : shapeName.includes("diamond")
+                    ? pptx.ShapeType.diamond
+                    : shapeName.includes("star")
+                      ? pptx.ShapeType.star5
+                      : shapeName.includes("arrow")
+                        ? pptx.ShapeType.rightArrow
+                        : shapeName.includes("hexagon")
+                          ? pptx.ShapeType.hexagon
                 : shapeName.includes("line")
                   ? pptx.ShapeType.line
                   : pptx.ShapeType.rect;
+          const marker = (value: DeckElement["lineStart"]) =>
+            value === "circle" ? "oval" : value || "none";
           slide.addShape(shapeType, {
             ...box,
             rotate: element.rotation,
@@ -261,8 +284,20 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
               : { color: "FFFFFF", transparency: 100 },
             line: {
               color: cleanHex(element.borderColor || "#000000", "000000"),
-              width: element.borderWidth || 0,
-              transparency: element.borderWidth ? 0 : 100,
+              width:
+                shapeName.includes("line")
+                  ? element.borderWidth || 2
+                  : element.borderWidth || 0,
+              transparency:
+                shapeName.includes("line") || element.borderWidth ? 0 : 100,
+              dashType:
+                element.lineDash === "dot"
+                  ? "sysDot"
+                  : element.lineDash === "dash"
+                    ? "dash"
+                    : "solid",
+              beginArrowType: marker(element.lineStart),
+              endArrowType: marker(element.lineEnd),
             },
           });
           if (element.text) {
@@ -703,7 +738,11 @@ export function useDeckEditor(
   );
 
   const addShapeElement = useCallback(
-    (shape = "rectangle", placement?: WorkbenchMaterialPlacement) => {
+    (
+      shape = "rectangle",
+      placement?: WorkbenchMaterialPlacement,
+      preset: Partial<DeckElement> = {},
+    ) => {
       const current = deckRef.current.slides.find(
         (slide) => slide.id === activeRef.current,
       );
@@ -714,8 +753,6 @@ export function useDeckEditor(
             ? { width: 24, height: 24 }
             : { width: 30, height: 22 };
       addElement({
-        id: deckId("element"),
-        type: "shape",
         ...insertionPlacement(size.width, size.height, placement),
         rotation: 0,
         order:
@@ -723,16 +760,52 @@ export function useDeckEditor(
             0,
             ...(current?.elements.map((element) => element.order) || []),
           ) + 1,
-        shape,
         fill: deckTheme(deckRef.current.theme).accent,
         borderColor: "transparent",
         borderWidth: 0,
         borderRadius:
           shape === "circle" ? 999 : shape === "rounded" ? 18 : 0,
         opacity: 1,
+        ...preset,
+        shape,
+        id: deckId("element"),
+        type: "shape",
       });
     },
     [addElement, insertionPlacement],
+  );
+
+  const addInkElement = useCallback(
+    (
+      strokes: DeckInkStroke[],
+      style: DeckInkStyle,
+      placement: "canvas" | "signature" = "canvas",
+    ) => {
+      const asset = buildDeckInkAsset(strokes, style, placement);
+      if (!asset) return;
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      addElement({
+        id: deckId("element"),
+        type: "image",
+        x: asset.x,
+        y: asset.y,
+        width: asset.width,
+        height: asset.height,
+        rotation: 0,
+        order:
+          Math.max(
+            0,
+            ...(current?.elements.map((element) => element.order) || []),
+          ) + 1,
+        src: asset.src,
+        alt: placement === "signature" ? tt("签名") : tt("画笔"),
+        imageFit: "fill",
+        opacity: 1,
+      });
+    },
+    [addElement, tt],
   );
 
   const addTableElement = useCallback(
@@ -990,6 +1063,7 @@ export function useDeckEditor(
     addTextElement,
     addShapeElement,
     addTableElement,
+    addInkElement,
     insertImageElement,
     duplicateElement,
     deleteElement,

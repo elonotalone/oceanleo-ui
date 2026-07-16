@@ -74,6 +74,9 @@ test("PDF operations merge and extract selected pages in requested order", async
 test("media editor public API and lifecycle hardening remain wired", () => {
   const index = source("../src/shell/media-editors/index.ts");
   const pdfHook = source("../src/shell/media-editors/use-pdf-workbench.ts");
+  const pdfPreviewHook = source(
+    "../src/shell/media-editors/use-pdf-preview-render.ts",
+  );
   const modelHook = source("../src/shell/media-editors/use-model3d-workbench.ts");
 
   for (const api of [
@@ -92,7 +95,8 @@ test("media editor public API and lifecycle hardening remain wired", () => {
     assert.match(index, new RegExp(`\\b${api}\\b`));
   }
   assert.match(pdfHook, /new AbortController\(\)/);
-  assert.match(pdfHook, /renderTask\?\.cancel\(\)/);
+  assert.match(pdfPreviewHook, /renderTask\?\.cancel\(\)/);
+  assert.match(pdfPreviewHook, /document\.createElement\("canvas"\)/);
   assert.match(pdfHook, /Number\(saved\.data\?\.saved \|\| 0\) !== 1/);
   assert.match(modelHook, /import\("@google\/model-viewer"\)/);
   assert.match(modelHook, /downloadAbortRef\.current\?\.abort\(\)/);
@@ -114,6 +118,7 @@ test("each media editor source file stays below the 600-line component limit", (
     "index.ts",
     "pdf-operations.ts",
     "use-model3d-workbench.ts",
+    "use-pdf-preview-render.ts",
     "use-pdf-workbench.ts",
   ]);
   for (const filename of readdirSync(directory)) {

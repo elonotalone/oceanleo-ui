@@ -91,6 +91,15 @@ export function applyDeckToolbarCommand(
     case "border-width":
       patch.borderWidth = numeric(message.value);
       break;
+    case "line-dash":
+      patch.lineDash = String(message.value) as DeckElement["lineDash"];
+      break;
+    case "line-start":
+      patch.lineStart = String(message.value) as DeckElement["lineStart"];
+      break;
+    case "line-end":
+      patch.lineEnd = String(message.value) as DeckElement["lineEnd"];
+      break;
     case "border-radius":
       patch.borderRadius = numeric(message.value);
       break;

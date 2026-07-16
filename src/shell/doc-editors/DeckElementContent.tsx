@@ -2,6 +2,23 @@
 
 import type { DeckElement, DeckSlide } from "./deck-schema";
 
+export function deckShapeClipPath(shape?: string): string | undefined {
+  switch (shape) {
+    case "triangle":
+      return "polygon(50% 0, 100% 100%, 0 100%)";
+    case "diamond":
+      return "polygon(50% 0, 100% 50%, 50% 100%, 0 50%)";
+    case "star":
+      return "polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 94%, 50% 72%, 21% 94%, 32% 57%, 2% 35%, 39% 35%)";
+    case "arrow":
+      return "polygon(0 30%, 62% 30%, 62% 5%, 100% 50%, 62% 95%, 62% 70%, 0 70%)";
+    case "hexagon":
+      return "polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)";
+    default:
+      return undefined;
+  }
+}
+
 export function DeckElementContent({
   element,
   miniature = false,
@@ -95,6 +112,77 @@ export function DeckElementContent({
       </table>
     );
   }
+  if (element.type === "shape" && element.shape === "line") {
+    const markerId = element.id.replace(/[^a-z0-9_-]/gi, "");
+    const startMarker =
+      element.lineStart && element.lineStart !== "none"
+        ? `url(#${markerId}-start-${element.lineStart})`
+        : undefined;
+    const endMarker =
+      element.lineEnd && element.lineEnd !== "none"
+        ? `url(#${markerId}-end-${element.lineEnd})`
+        : undefined;
+    const dash =
+      element.lineDash === "dot"
+        ? "1 8"
+        : element.lineDash === "dash"
+          ? "12 9"
+          : undefined;
+    const marker = (position: "start" | "end", kind: string) => (
+      <marker
+        id={`${markerId}-${position}-${kind}`}
+        viewBox="0 0 10 10"
+        refX={position === "start" ? 3 : 7}
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        {kind === "circle" ? (
+          <circle cx="5" cy="5" r="3.3" fill="currentColor" />
+        ) : kind === "diamond" ? (
+          <path d="M5 1 9 5 5 9 1 5Z" fill="currentColor" />
+        ) : (
+          <path d="M1 1 9 5 1 9Z" fill="currentColor" />
+        )}
+      </marker>
+    );
+    const color =
+      element.borderColor && element.borderColor !== "transparent"
+        ? element.borderColor
+        : element.fill || "#111827";
+    return (
+      <svg
+        viewBox="0 0 100 20"
+        preserveAspectRatio="none"
+        className="h-full w-full overflow-visible"
+        style={{ color }}
+        aria-hidden="true"
+      >
+        <defs>
+          {element.lineStart &&
+            element.lineStart !== "none" &&
+            marker("start", element.lineStart)}
+          {element.lineEnd &&
+            element.lineEnd !== "none" &&
+            marker("end", element.lineEnd)}
+        </defs>
+        <line
+          x1="4"
+          y1="10"
+          x2="96"
+          y2="10"
+          stroke="currentColor"
+          strokeWidth={Math.max(1.5, element.borderWidth || 3)}
+          strokeLinecap="round"
+          strokeDasharray={dash}
+          markerStart={startMarker}
+          markerEnd={endMarker}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
   if (element.type === "unsupported") {
     return (
       <span className="grid h-full place-items-center overflow-hidden border border-dashed border-[var(--border,#d6d3d1)] bg-[var(--surface,#fafaf9)] p-1 text-center text-[0.65em] text-[var(--muted,#78716c)]">
@@ -173,10 +261,17 @@ export function MiniDeckElementLayer({ slide }: { slide: DeckSlide }) {
             height: `${element.height}%`,
             transform: `rotate(${element.rotation}deg)`,
             zIndex: Math.round(element.order),
-            background: element.type === "shape" ? element.fill : undefined,
+            background:
+              element.type === "shape" && element.shape !== "line"
+                ? element.fill
+                : undefined,
             border:
               element.type === "shape" && element.borderWidth
                 ? `${Math.max(0.25, element.borderWidth / 4)}px solid ${element.borderColor || "#000"}`
+                : undefined,
+            clipPath:
+              element.type === "shape"
+                ? deckShapeClipPath(element.shape)
                 : undefined,
           }}
         >

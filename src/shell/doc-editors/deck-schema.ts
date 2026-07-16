@@ -18,6 +18,8 @@ export type DeckElementType =
   | "unsupported";
 export type DeckTextAlign = "left" | "center" | "right";
 export type DeckImageFit = "contain" | "cover" | "fill";
+export type DeckLineDash = "solid" | "dash" | "dot";
+export type DeckLineMarker = "none" | "arrow" | "circle" | "diamond";
 
 /**
  * Positioned native slide element. Coordinates and dimensions are percentages
@@ -48,6 +50,9 @@ export interface DeckElement {
   letterSpacing?: number;
   borderColor?: string;
   borderWidth?: number;
+  lineDash?: DeckLineDash;
+  lineStart?: DeckLineMarker;
+  lineEnd?: DeckLineMarker;
   borderRadius?: number;
   opacity?: number;
   shadow?: boolean;
@@ -242,6 +247,9 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
         )
     : undefined;
   const align = text(source.align) as DeckTextAlign;
+  const lineDash = text(source.lineDash) as DeckLineDash;
+  const lineStart = text(source.lineStart) as DeckLineMarker;
+  const lineEnd = text(source.lineEnd) as DeckLineMarker;
   const src = text(source.src || source.url).trim();
   return {
     id: text(source.id).trim() || deckId("element"),
@@ -271,6 +279,20 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
     letterSpacing: finite(source.letterSpacing, 0, -10, 40),
     borderColor: color(source.borderColor) || undefined,
     borderWidth: finite(source.borderWidth, 0, 0, 40),
+    lineDash:
+      lineDash === "dash" || lineDash === "dot" ? lineDash : "solid",
+    lineStart:
+      lineStart === "arrow" ||
+      lineStart === "circle" ||
+      lineStart === "diamond"
+        ? lineStart
+        : "none",
+    lineEnd:
+      lineEnd === "arrow" ||
+      lineEnd === "circle" ||
+      lineEnd === "diamond"
+        ? lineEnd
+        : "none",
     borderRadius: finite(source.borderRadius, 0, 0, 999),
     opacity: finite(source.opacity, 1, 0, 1),
     shadow: Boolean(source.shadow),

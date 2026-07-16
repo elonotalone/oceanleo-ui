@@ -1,4 +1,4 @@
-import type { DeckElement } from "./deck-schema";
+import type { DeckAspect, DeckElement } from "./deck-schema";
 
 export type DeckResizeHandle =
   | "n"
@@ -20,6 +20,19 @@ export interface DeckCanvasRect {
 export interface DeckPointer {
   x: number;
   y: number;
+}
+
+export function deckPageViewport(aspect: DeckAspect, zoom: number) {
+  const logicalWidth = 960;
+  const logicalHeight = aspect === "4:3" ? 720 : 540;
+  const scale = clamp(zoom / 100, 0.1, 3);
+  return {
+    logicalWidth,
+    logicalHeight,
+    scale,
+    width: logicalWidth * scale,
+    height: logicalHeight * scale,
+  };
 }
 
 export function clientPointToDeckPercent(

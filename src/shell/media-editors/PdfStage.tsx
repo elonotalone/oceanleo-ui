@@ -48,6 +48,9 @@ export function PdfStage({
       : editor.rendering
         ? tt("正在渲染页面…")
         : "";
+  const visualScale = editor.zoom / Math.max(1, editor.renderedZoom);
+  const visualWidth = editor.pageWidth * visualScale;
+  const visualHeight = editor.pageHeight * visualScale;
 
   return (
     <div
@@ -57,11 +60,23 @@ export function PdfStage({
       className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)] outline-none"
     >
       <div className="flex min-h-0 flex-1 overflow-auto p-5">
-        <div className="relative m-auto min-h-32 min-w-32">
+        <div
+          data-pdf-page-frame
+          className="relative m-auto min-h-32 min-w-32"
+          style={
+            editor.pageWidth && editor.pageHeight
+              ? {
+                  width: `${visualWidth}px`,
+                  height: `${visualHeight}px`,
+                }
+              : undefined
+          }
+        >
           <canvas
             ref={editor.canvasRef}
             aria-label={tt("PDF 第 {page} 页", { page: editor.pageNumber })}
-            className="block max-w-none bg-white shadow-[0_8px_32px_rgba(28,25,23,.18)]"
+            className="block max-w-none origin-top-left bg-white shadow-[0_8px_32px_rgba(28,25,23,.18)] transition-transform duration-75"
+            style={{ transform: `scale(${visualScale})` }}
           />
           {busyLabel && (
             <div className="absolute inset-0 flex min-h-32 items-center justify-center bg-[var(--card,#fff)]/85 px-5 text-center text-[12px] text-[var(--muted,#78716c)] backdrop-blur-[1px]">

@@ -14,9 +14,11 @@ export function AdvancedWorkbenchHeader({
   accent,
   history,
   startingNew,
+  autoSaveState,
   mobileActionsOpen,
   onToggleMobileActions,
   onStartNew,
+  onAutoSave,
   onRenameTitle,
   onClose,
 }: {
@@ -27,9 +29,11 @@ export function AdvancedWorkbenchHeader({
   accent: string;
   history?: AdvancedHistoryActions;
   startingNew: boolean;
+  autoSaveState: "saved" | "saving" | "error";
   mobileActionsOpen: boolean;
   onToggleMobileActions: () => void;
   onStartNew: () => void;
+  onAutoSave: () => void;
   onRenameTitle: (title: string) => Promise<void> | void;
   onClose: () => void;
 }) {
@@ -42,6 +46,12 @@ export function AdvancedWorkbenchHeader({
     setTitle(next);
     if (next !== item.title) void onRenameTitle(next);
   };
+  const autoSaveLabel =
+    autoSaveState === "saving"
+      ? tt("正在自动保存…")
+      : autoSaveState === "error"
+        ? tt("自动保存失败，点击重试")
+        : tt("已自动保存");
 
   return (
     <header
@@ -74,6 +84,48 @@ export function AdvancedWorkbenchHeader({
           {startingNew ? tt("保存中…") : tt("新建任务")}
         </span>
       </button>
+      <div className="group relative shrink-0">
+        <button
+          type="button"
+          onClick={onAutoSave}
+          className={`grid h-10 w-12 place-items-center rounded-2xl transition ${
+            autoSaveState === "error"
+              ? "bg-rose-500/25 text-rose-100 hover:bg-rose-500/35"
+              : "bg-white/10 text-white hover:bg-white/18"
+          }`}
+          aria-label={autoSaveLabel}
+          title={autoSaveLabel}
+        >
+          <svg
+            viewBox="0 0 32 24"
+            className={`h-6 w-8 ${
+              autoSaveState === "saving" ? "animate-pulse" : ""
+            }`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9.2 20H25a5 5 0 0 0 .8-9.93A8 8 0 0 0 10.4 7.4 6.1 6.1 0 0 0 9.2 20Z" />
+            {autoSaveState === "saved" ? (
+              <path d="m12.2 13.2 3 3 6.3-6.4" />
+            ) : autoSaveState === "error" ? (
+              <>
+                <path d="M16 10v5" />
+                <path d="M16 18h.01" />
+              </>
+            ) : (
+              <path d="M13 15a4.5 4.5 0 0 1 6.8-5.2M20 8v3h-3" />
+            )}
+          </svg>
+        </button>
+        <span className="pointer-events-none absolute left-1/2 top-[calc(100%+9px)] z-[2147483800] hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#202124] px-3 py-2 text-[11px] font-semibold text-white shadow-xl group-hover:block group-focus-within:block">
+          {autoSaveLabel}
+          <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[#202124]" />
+        </span>
+      </div>
       <button
         type="button"
         onClick={history?.undo}

@@ -7,6 +7,13 @@ import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
 import {
+  DeckDrawPanel,
+  DeckLinePanel,
+  DeckNotesPanel,
+  DeckSignaturePanel,
+  DeckTablePanel,
+} from "../doc-editors/DeckCreationPanels";
+import {
   DeckDesignPanel,
   DeckEffectsPanel,
   DeckElementsPanel,
@@ -15,6 +22,8 @@ import {
   DeckUploadPanel,
 } from "../doc-editors/DeckControls";
 import { DeckFontPanel } from "../doc-editors/DeckFontPanel";
+import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
+import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
 import { useDeckEditor } from "../doc-editors/use-deck-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -34,6 +43,13 @@ export function DeckRoute({
 }: AdvancedContentWorkbenchProps) {
   const editor = useDeckEditor(item, siteId, previewContent);
   const [zoom, setZoom] = useState(100);
+  const [activeTool, setActiveTool] =
+    useState<DeckCreationTool>("select");
+  const [inkStyle, setInkStyle] = useState<DeckInkStyle>({
+    color: "#111827",
+    width: 2.5,
+    opacity: 1,
+  });
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "deck-elements@2",
@@ -112,10 +128,51 @@ export function DeckRoute({
           content: <DeckElementsPanel editor={editor} />,
         },
         {
+          id: "deck-draw",
+          label: "画笔",
+          icon: "draw",
+          hiddenFromRail: true,
+          content: (
+            <DeckDrawPanel
+              style={inkStyle}
+              onStyleChange={setInkStyle}
+              onToolChange={setActiveTool}
+            />
+          ),
+        },
+        {
+          id: "deck-lines",
+          label: "线条",
+          icon: "line",
+          hiddenFromRail: true,
+          content: <DeckLinePanel editor={editor} />,
+        },
+        {
+          id: "deck-notes",
+          label: "便签",
+          icon: "note",
+          hiddenFromRail: true,
+          content: <DeckNotesPanel editor={editor} />,
+        },
+        {
           id: "deck-text",
           label: "文字",
           icon: "text",
           content: <DeckTextPanel editor={editor} />,
+        },
+        {
+          id: "deck-signature",
+          label: "签名",
+          icon: "signature",
+          hiddenFromRail: true,
+          content: <DeckSignaturePanel editor={editor} />,
+        },
+        {
+          id: "deck-tables",
+          label: "表格",
+          icon: "table",
+          hiddenFromRail: true,
+          content: <DeckTablePanel editor={editor} />,
         },
         {
           id: "deck-uploads",
@@ -145,8 +202,14 @@ export function DeckRoute({
         },
       ]}
       editorContextualToolbar={
-        <DeckContextToolbar editor={editor} accent={accent} />
+        <DeckContextToolbar
+          editor={editor}
+          accent={accent}
+          activeTool={activeTool}
+          onActiveToolChange={setActiveTool}
+        />
       }
+      editorContextualToolbarInsetLeft={160}
       editorHistory={{
         canUndo: editor.canUndo,
         canRedo: editor.canRedo,
@@ -155,8 +218,8 @@ export function DeckRoute({
       }}
       editorViewport={{
         value: zoom,
-        min: 50,
-        max: 180,
+        min: 10,
+        max: 300,
         step: 1,
         setValue: setZoom,
         fit: () => setZoom(100),
@@ -192,7 +255,15 @@ export function DeckRoute({
           </button>
         </>
       }
-      editorStage={<DeckStage editor={editor} accent={accent} zoom={zoom} />}
+      editorStage={
+        <DeckStage
+          editor={editor}
+          accent={accent}
+          zoom={zoom}
+          activeTool={activeTool}
+          inkStyle={inkStyle}
+        />
+      }
       editorStatus={
         editor.error ||
         editor.notice ||

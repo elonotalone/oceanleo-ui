@@ -6,7 +6,6 @@ import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import type { EditorMaterialInsertion } from "../editor-protocol";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
@@ -105,13 +104,6 @@ export function EmbeddedRoute({
       }),
     [item.kind, settleSave],
   );
-  const requestManualSave = useCallback(() => {
-    setSaveRequestId(
-      `host-${Date.now().toString(36)}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
-    );
-  }, []);
   const handleSaveResult = useCallback(
     (result: { ok: boolean; saveId?: string; item?: LibraryItem }) => {
       if (result.item) setSavedItem(result.item);
@@ -340,18 +332,6 @@ export function EmbeddedRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(route)}
-      editorHeaderActions={
-        <button
-          type="button"
-          onClick={requestManualSave}
-          className="inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-105"
-        >
-          <AdvancedEditorIcon name="save" className="h-4 w-4" />
-          {dirty
-            ? tt("advanced.saveNewVersion")
-            : tt("advanced.saveToMyLibrary")}
-        </button>
-      }
       editorStage={
         <EmbedEditorPane
           key={`${item.key}:${item.url || ""}:${item.previewUrl || ""}:${item.title}`}

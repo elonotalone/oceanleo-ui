@@ -29,12 +29,31 @@ export function AdvancedWorkbenchStage({
   return (
     <main className="relative h-full min-h-0 min-w-0 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]">
       {editorAvailable ? (
-        <div
-          className="h-full origin-center transition-[zoom] duration-150"
-          style={stageScale === 1 ? undefined : { zoom: stageScale }}
-        >
-          {editorStage}
-        </div>
+        stageScale === 1 ? (
+          <div className="h-full">{editorStage}</div>
+        ) : (
+          <div className="h-full overflow-auto">
+            <div
+              data-advanced-scaled-panel
+              className="relative m-auto transition-[width,height] duration-150"
+              style={{
+                width: `${stageScale * 100}%`,
+                height: `${stageScale * 100}%`,
+              }}
+            >
+              <div
+                className="absolute left-0 top-0 origin-top-left"
+                style={{
+                  width: `${100 / stageScale}%`,
+                  height: `${100 / stageScale}%`,
+                  transform: `scale(${stageScale})`,
+                }}
+              >
+                {editorStage}
+              </div>
+            </div>
+          </div>
+        )
       ) : (
         <div className="h-full overflow-auto bg-[var(--card,#fff)]">
           <LibraryItemViewer item={item} accent={accent} />
