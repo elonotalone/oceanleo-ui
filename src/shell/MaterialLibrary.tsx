@@ -124,6 +124,8 @@ const TYPE_TO_KIND: Record<string, LibraryKind> = {
   vector: "image",
   sticker: "image",
   ppt: "ppt",
+  pdf: "document",
+  document: "document",
   sheet: "sheet",
   // Viewer only: chart editability is declared separately by chart-editor@1.
   chart: "image",

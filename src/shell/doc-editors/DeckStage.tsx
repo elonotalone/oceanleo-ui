@@ -438,9 +438,11 @@ function SlideCanvas({
 export function DeckStage({
   editor,
   accent = "#4f46e5",
+  zoom = 100,
 }: {
   editor: DeckEditorState;
   accent?: string;
+  zoom?: number;
 }) {
   const tt = useUI();
   const theme = deckTheme(editor.deck.theme);
@@ -507,7 +509,7 @@ export function DeckStage({
   }, [editor]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
       <div className="flex min-h-0 flex-1">
         <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5">
           <div className="mb-2 flex items-center justify-between px-1">
@@ -536,10 +538,13 @@ export function DeckStage({
             ))}
           </div>
         </aside>
-        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-[radial-gradient(circle_at_center,rgba(255,255,255,.9),transparent_68%)] p-8 lg:p-12">
+        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)] p-8 lg:p-12">
           <div
             className="w-full max-w-5xl transition-[width] duration-200"
-            style={{ aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9" }}
+            style={{
+              aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9",
+              zoom: Math.min(1.8, Math.max(0.5, zoom / 100)),
+            }}
           >
             <SlideCanvas editor={editor} />
           </div>
@@ -551,19 +556,6 @@ export function DeckStage({
         </main>
       </div>
 
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4">
-        <span role="status" className={`min-w-0 flex-1 truncate text-[10px] ${editor.error ? "text-red-600" : "text-[var(--muted,#78716c)]"}`}>
-          {editor.error ||
-            editor.notice ||
-            tt("第 {page} 页，共 {total} 页", {
-              page: editor.activeIndex + 1,
-              total: editor.deck.slides.length,
-            })}
-        </span>
-        <span className="text-[10px] text-[var(--muted,#78716c)]">
-          {editor.deck.aspect}
-        </span>
-      </div>
     </div>
   );
 }

@@ -479,9 +479,10 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       item.meta.slug ||
       item.meta.site_id;
     const starterId = item.meta.starter_id;
-    if (!projectId && !starterId) {
+    const githubRepo = item.meta.github_repo;
+    if (!projectId && !starterId && !githubRepo) {
       return unavailable(
-        "这个网站条目只有预览，没有可恢复的 project_id 或 starter_id。",
+        "这个网站条目只有预览，没有可恢复的项目、模板或 GitHub 源码。",
       );
     }
     return available("website", {

@@ -17,6 +17,18 @@ import type {
 } from "./workbench-material-provider";
 
 function curatedTypeFor(item: LibraryItem): string {
+  const format = String(item.meta.format || item.meta.file_ext || "")
+    .trim()
+    .toLowerCase();
+  const mime = String(item.meta.mime || "").toLowerCase();
+  const sourceUrl = item.url || item.previewUrl || "";
+  if (
+    format === "pdf" ||
+    mime === "application/pdf" ||
+    /\.pdf(?:$|[?#])/i.test(sourceUrl)
+  ) {
+    return "pdf";
+  }
   const explicit = String(
     item.descriptor?.contentType ||
       item.meta.content_type ||
@@ -27,7 +39,7 @@ function curatedTypeFor(item: LibraryItem): string {
   const map: Partial<Record<LibraryItem["kind"], string>> = {
     website: "website",
     canvas: "image",
-    ppt: "image",
+    ppt: "ppt",
     sheet: "sheet",
     document: "document",
     image: "image",
@@ -76,11 +88,19 @@ export function AdvancedWorkbenchPanel({
     );
   }
   if (activeTool === "materials") {
+    const websiteTemplates =
+      advancedFeatureForItem(item)?.id === "website_finetuning";
     return (
       <div className="h-full min-h-0">
         <MaterialLibrary
           materials={[]}
-          featuredEntries={[...(materials?.entries || [])]}
+          featuredEntries={[
+            ...(websiteTemplates
+              ? (materials?.entries || []).filter(
+                  (entry) => entry.libraryItem?.kind === "website",
+                )
+              : materials?.entries || []),
+          ]}
           curatedType={curatedTypeFor(item)}
           curatedSeriesId={siteId === "design" ? "design-materials" : ""}
           accent={accent}
@@ -88,16 +108,36 @@ export function AdvancedWorkbenchPanel({
           siteId={siteId}
           appId={materials?.appId}
           registerRuntimeSource={false}
-          materialActions={materials?.actions || []}
-          onMaterialAction={
-            materials
-              ? (action, material) =>
-                  materials.perform(action, material, { source: "click" })
-              : undefined
+          materialActions={
+            websiteTemplates ? ["apply"] : materials?.actions || []
           }
-          materialActionAvailable={materials?.canPerform}
-          primaryMaterialAction={primaryMaterialAction}
-          draggableMaterials={Boolean(primaryMaterialAction)}
+          onMaterialAction={
+            websiteTemplates
+              ? (_action, material) => {
+                  const href = advancedFeatureHrefForItem(material);
+                  if (!href) {
+                    return { ok: false, error: "这个网站模板暂时无法打开。" };
+                  }
+                  router.push(href);
+                  return { ok: true };
+                }
+              : materials
+                ? (action, material) =>
+                    materials.perform(action, material, { source: "click" })
+                : undefined
+          }
+          materialActionAvailable={
+            websiteTemplates
+              ? (_action, material) =>
+                  advancedFeatureForItem(material)?.id === "website_finetuning"
+              : materials?.canPerform
+          }
+          primaryMaterialAction={
+            websiteTemplates ? "apply" : primaryMaterialAction
+          }
+          draggableMaterials={
+            !websiteTemplates && Boolean(primaryMaterialAction)
+          }
           onMaterialDragStart={materials?.beginMaterialDrag}
           onMaterialDragEnd={materials?.endMaterialDrag}
           allowAdvancedOnSelect={false}
@@ -115,16 +155,13 @@ export function AdvancedWorkbenchPanel({
       />
     );
   }
-  const currentFeatureId = advancedFeatureForItem(item)?.id;
   return (
     <MyLibrary
       siteId={siteId}
       accent={accent}
       taskId={taskId}
       plain
-      itemFilter={(candidate) =>
-        advancedFeatureForItem(candidate)?.id === currentFeatureId
-      }
+      category={activeTool === "uploads" ? "上传文件" : undefined}
       onOpenItem={(nextItem) => {
         const href = advancedFeatureHrefForItem(nextItem);
         if (href) router.push(href);

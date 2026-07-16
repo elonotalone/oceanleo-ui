@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AdvancedFontPicker } from "../AdvancedFontPicker";
 import {
   CANVAS_PRESETS,
   type FabricImageEditorState,
@@ -363,45 +364,12 @@ export function FabricImageFontPanel({
 }: {
   editor: FabricImageEditorState;
 }) {
-  const tt = useUI();
-  const fonts = [
-    ["sans-serif", "现代无衬线"],
-    ["Arial", "Arial"],
-    ["Georgia", "Georgia"],
-    ["Noto Sans SC", "思源黑体"],
-    ["Noto Serif SC", "思源宋体"],
-    ["Microsoft YaHei", "微软雅黑"],
-    ["PingFang SC", "苹方"],
-  ] as const;
   const selected = editor.selected?.text;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)] p-4">
-      <p className="text-[12px] font-semibold text-[var(--fg,#292524)]">
-        {tt("字体")}
-      </p>
-      <p className="mb-4 mt-1 text-[10px] leading-4 text-[var(--muted,#78716c)]">
-        {tt("选择后立即应用到当前文字对象。")}
-      </p>
-      <div className="space-y-2">
-        {fonts.map(([family, label]) => (
-          <button
-            key={family}
-            type="button"
-            disabled={!selected}
-            onClick={() => editor.setSelectedText({ fontFamily: family })}
-            className="flex w-full items-center rounded-xl border px-3 py-3 text-left text-[17px] text-[var(--fg,#292524)] transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-35"
-            style={{
-              fontFamily: family,
-              borderColor:
-                selected?.fontFamily === family
-                  ? "var(--accent,#7c3aed)"
-                  : "var(--border,#e7e5e4)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <AdvancedFontPicker
+      selectedFamily={selected?.fontFamily}
+      disabled={!selected}
+      onSelect={(fontFamily) => editor.setSelectedText({ fontFamily })}
+    />
   );
 }

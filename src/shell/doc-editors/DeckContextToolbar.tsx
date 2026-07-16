@@ -8,6 +8,10 @@ import type {
   SelectionContext,
 } from "../selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
+import {
+  applyDeckQuickTool,
+  deckQuickTools,
+} from "./deck-quick-tools";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckContextToolbar({
@@ -21,6 +25,7 @@ export function DeckContextToolbar({
   const element = editor.selectedElement;
   const slide = editor.activeSlide;
   const context = useMemo<SelectionContext>(() => {
+    const tools = deckQuickTools(tt);
     if (!element) {
       return {
         version: 1,
@@ -28,24 +33,7 @@ export function DeckContextToolbar({
         id: slide.id,
         label: tt("当前幻灯片"),
         controls: [
-          {
-            id: "undo",
-            kind: "action",
-            label: tt("撤销"),
-            icon: "undo",
-            iconOnly: true,
-            group: "history",
-            disabled: !editor.canUndo,
-          },
-          {
-            id: "redo",
-            kind: "action",
-            label: tt("重做"),
-            icon: "redo",
-            iconOnly: true,
-            group: "history",
-            disabled: !editor.canRedo,
-          },
+          ...tools,
           {
             id: "add-slide",
             kind: "action",
@@ -112,24 +100,6 @@ export function DeckContextToolbar({
     }
     const common = [
       {
-        id: "undo",
-        kind: "action" as const,
-        label: tt("撤销"),
-        icon: "undo" as const,
-        iconOnly: true,
-        group: "history",
-        disabled: !editor.canUndo,
-      },
-      {
-        id: "redo",
-        kind: "action" as const,
-        label: tt("重做"),
-        icon: "redo" as const,
-        iconOnly: true,
-        group: "history",
-        disabled: !editor.canRedo,
-      },
-      {
         id: "opacity",
         kind: "range" as const,
         label: tt("透明度"),
@@ -191,6 +161,7 @@ export function DeckContextToolbar({
                 : "对象",
         ),
       controls: [
+        ...tools,
         ...(element.type === "text"
           ? [
               {
@@ -494,6 +465,7 @@ export function DeckContextToolbar({
 
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
+    if (applyDeckQuickTool(editor, message, tt)) return;
     applyDeckToolbarCommand(editor, element, message);
   };
   return (

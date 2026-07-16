@@ -106,6 +106,7 @@ const KIND_LABELS: Partial<Record<LibraryKind, string>> = {
 
 const generatedThumbnailCache = new Map<string, string>();
 const generatedThumbnailPending = new Map<string, Promise<string>>();
+const generatedThumbnailFailed = new Set<string>();
 
 export function workspaceEntryFromLibraryItem(
   item: LibraryItem,
@@ -905,8 +906,22 @@ function WorkspaceThumbnail({
       reference.source === "artifact")
       ? `${reference.source}:${reference.id}`
       : "";
+  const thumbnailFilename = String(
+    item?.meta.filename ||
+      item?.meta.format ||
+      item?.url ||
+      "",
+  ).toLowerCase();
+  const canGenerateThumbnail =
+    /\.(?:pdf|docx?|odt|rtf|pptx?|odp|xlsx?|ods|csv|mp4|mov|webm)(?:$|[?#])/i.test(
+      thumbnailFilename,
+    ) ||
+    /^(?:pdf|docx?|odt|rtf|pptx?|odp|xlsx?|ods|csv|mp4|mov|webm)$/.test(
+      String(item?.meta.format || "").toLowerCase(),
+    );
   const requiresGeneratedThumbnail = Boolean(
     item &&
+      canGenerateThumbnail &&
       ["ppt", "sheet", "document", "video", "file"].includes(kind) &&
       (!url || url === item.url),
   );
@@ -922,6 +937,7 @@ function WorkspaceThumbnail({
   useEffect(() => {
     if (
       !referenceKey ||
+      generatedThumbnailFailed.has(referenceKey) ||
       !visible ||
       generatedUrl ||
       (url && !failed && !requiresGeneratedThumbnail) ||
@@ -942,7 +958,10 @@ function WorkspaceThumbnail({
     }
     void pending.then((nextUrl) => {
       generatedThumbnailPending.delete(referenceKey);
-      if (!nextUrl) return;
+      if (!nextUrl) {
+        generatedThumbnailFailed.add(referenceKey);
+        return;
+      }
       generatedThumbnailCache.set(referenceKey, nextUrl);
       if (alive) {
         setGeneratedUrl(nextUrl);

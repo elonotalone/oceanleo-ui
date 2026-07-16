@@ -15,6 +15,7 @@ import {
   type SelectionCommand,
   type SelectionContext,
   type SelectionControl,
+  type SelectionControlIcon,
   type SelectionControlValue,
 } from "./selection-context";
 
@@ -34,6 +35,26 @@ export interface SelectionToolbarProps {
 
 function asNumber(value: SelectionControlValue | undefined, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function iconForSelection(kind: string): SelectionControlIcon {
+  const value = kind.toLowerCase();
+  if (value.includes("canvas") || value.includes("background")) return "templates";
+  if (value.includes("text")) return "text";
+  if (value.includes("image") || value.includes("photo")) return "image";
+  if (value.includes("table") || value.includes("grid")) return "table";
+  if (
+    value.includes("shape") ||
+    value.includes("rect") ||
+    value.includes("circle") ||
+    value.includes("ellipse")
+  ) return "shape";
+  if (value.includes("line") || value.includes("arrow")) return "line";
+  if (value.includes("path") || value.includes("draw")) return "draw";
+  if (value.includes("note")) return "note";
+  if (value.includes("signature")) return "signature";
+  if (value.includes("slide") || value.includes("page")) return "pages";
+  return "select";
 }
 
 function Control({
@@ -353,19 +374,29 @@ export function SelectionToolbar({
 }: SelectionToolbarProps) {
   const layout = useAdvancedLayout();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const identity = context ? `${context.kind}:${context.id}` : "";
   useEffect(() => {
     setMoreOpen(false);
+    setToolsOpen(false);
   }, [identity]);
-  const [primary, more] = useMemo(() => {
+  const [tools, primary, more] = useMemo(() => {
     const controls = context?.controls || [];
+    const creation: SelectionControl[] = [];
     const visible: SelectionControl[] = [];
     const overflow: SelectionControl[] = [];
-    controls.forEach((control, index) => {
-      if (control.placement === "more" || index >= 11) overflow.push(control);
+    controls.forEach((control) => {
+      if (control.placement === "tools") {
+        creation.push(control);
+        return;
+      }
+      // History lives in the colored product header, never twice in the
+      // contextual object bar.
+      if (control.id === "undo" || control.id === "redo") return;
+      if (control.placement === "more" || visible.length >= 10) overflow.push(control);
       else visible.push(control);
     });
-    return [visible, overflow];
+    return [creation, visible, overflow];
   }, [context]);
 
   if (!context && !leading && !trailing) return null;
@@ -376,8 +407,8 @@ export function SelectionToolbar({
       data-selection-id={context?.id || ""}
       className={`pointer-events-auto flex min-w-0 items-center gap-1 ${
         variant === "floating"
-          ? "max-w-[min(92vw,76rem)] rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 p-1.5 shadow-xl backdrop-blur"
-          : "h-12 w-full bg-[var(--card,#fff)] px-2"
+          ? "max-w-[min(92vw,76rem)] rounded-2xl border border-black/10 bg-white/96 p-1.5 text-slate-900 shadow-[0_10px_36px_rgba(15,23,42,.16)] backdrop-blur-xl"
+          : "max-w-[min(92vw,76rem)] rounded-2xl border border-black/10 bg-white/96 p-1.5 text-slate-900 shadow-[0_10px_36px_rgba(15,23,42,.16)] backdrop-blur-xl"
       } ${className}`}
       role="toolbar"
       aria-label={context?.label || "编辑器工具栏"}
@@ -388,14 +419,74 @@ export function SelectionToolbar({
           <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
         </>
       )}
-      {context?.label && (
-        <span
-          className="hidden max-w-32 shrink-0 truncate rounded-md bg-[var(--surface,#fafaf9)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted,#78716c)] xl:block"
-          title={context.label}
-        >
-          {context.label}
-        </span>
+      {context && (
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => tools.length && setToolsOpen((value) => !value)}
+            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-xl px-2 transition brightness-100 hover:brightness-95"
+            aria-label={context.label || "当前工具"}
+            title={context.label || "当前工具"}
+            aria-expanded={tools.length ? toolsOpen : undefined}
+            style={{
+              color: accent,
+              background: `color-mix(in srgb, ${accent} 13%, white)`,
+            }}
+          >
+            <AdvancedEditorIcon
+              name={iconForSelection(context.kind)}
+              className="h-[18px] w-[18px]"
+            />
+            {tools.length > 0 && <span className="text-[9px] opacity-60">⌄</span>}
+          </button>
+          {toolsOpen && tools.length > 0 && (
+            <div className="absolute left-0 top-full z-[85] mt-2 grid w-56 grid-cols-2 gap-1 rounded-2xl border border-black/10 bg-white p-2 text-slate-900 shadow-[0_18px_50px_rgba(15,23,42,.22)]">
+              {tools.map((control) => {
+                const active = control.value === true;
+                return (
+                  <button
+                    key={`${identity}:${control.id}`}
+                    type="button"
+                    disabled={control.disabled}
+                    onClick={() => {
+                      onCommand({
+                        requestId: selectionRequestId(),
+                        selectionId: context.id,
+                        controlId: control.id,
+                        ...(control.kind === "toggle"
+                          ? { value: !active }
+                          : {}),
+                      });
+                      setToolsOpen(false);
+                    }}
+                    className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[11px] font-medium transition disabled:opacity-35 ${
+                      active
+                        ? ""
+                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                    }`}
+                    style={
+                      active
+                        ? {
+                            color: accent,
+                            background: `color-mix(in srgb, ${accent} 13%, white)`,
+                          }
+                        : undefined
+                    }
+                    title={control.label}
+                  >
+                    <AdvancedEditorIcon
+                      name={control.icon || iconForSelection(control.id)}
+                      className="h-6 w-6"
+                    />
+                    <span>{control.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
+      {context && <span className="mx-1 h-6 w-px shrink-0 bg-slate-200" />}
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {primary.map((control) => {
           const divider =

@@ -11,6 +11,7 @@ export function AdvancedWorkbenchStage({
   editorStage,
   item,
   accent,
+  stageScale = 1,
   draggedTitle,
   dropMessage,
   onMaterialDrop,
@@ -19,15 +20,21 @@ export function AdvancedWorkbenchStage({
   editorStage?: ReactNode;
   item: LibraryItem;
   accent: string;
+  stageScale?: number;
   draggedTitle?: string;
   dropMessage: string;
   onMaterialDrop: (event: DragEvent<HTMLDivElement>) => void;
 }) {
   const tt = useUI();
   return (
-    <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--surface,#f5f5f4)]">
+    <main className="relative h-full min-h-0 min-w-0 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]">
       {editorAvailable ? (
-        <div className="h-full">{editorStage}</div>
+        <div
+          className="h-full origin-center transition-[zoom] duration-150"
+          style={stageScale === 1 ? undefined : { zoom: stageScale }}
+        >
+          {editorStage}
+        </div>
       ) : (
         <div className="h-full overflow-auto bg-[var(--card,#fff)]">
           <LibraryItemViewer item={item} accent={accent} />

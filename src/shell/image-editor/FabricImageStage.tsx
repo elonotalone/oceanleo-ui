@@ -49,21 +49,15 @@ export function FabricImageStage({
   }, [editor]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
       <div
         ref={editor.stageContainerRef}
         className="relative min-h-0 flex-1 overflow-hidden"
-        style={{
-          backgroundColor: "var(--surface,#e7e5e4)",
-          backgroundImage:
-            "linear-gradient(45deg,#d6d3d1 25%,transparent 25%),linear-gradient(-45deg,#d6d3d1 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d6d3d1 75%),linear-gradient(-45deg,transparent 75%,#d6d3d1 75%)",
-          backgroundPosition: "0 0,0 8px,8px -8px,-8px 0",
-          backgroundSize: "16px 16px",
-        }}
+        style={{ backgroundColor: "var(--advanced-stage-bg,#f4f1e8)" }}
       >
         <canvas ref={editor.stageCanvasRef} aria-label={tt("图片编辑画布")} />
         {editor.loading && (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-[var(--card,#fff)]/85">
+            <div className="absolute inset-0 z-20 grid place-items-center bg-[var(--advanced-stage-bg,#f4f1e8)]/90">
             <div className="text-center">
               <div
                 className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
@@ -75,27 +69,9 @@ export function FabricImageStage({
         )}
         {editor.cropping && (
           <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-[var(--fg,#1c1917)]/85 px-3 py-1 text-[10px] text-[var(--card,#fff)]">
-            {tt("拖动裁剪框，完成后点击左栏“应用裁剪”")}
+            {tt("拖动裁剪框，完成后点击上方属性栏“应用裁剪”")}
           </div>
         )}
-      </div>
-
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4">
-        <span
-          role="status"
-          className={`min-w-0 flex-1 truncate text-[11px] ${
-            editor.error ? "text-red-600" : "text-[var(--muted,#78716c)]"
-          }`}
-        >
-          {editor.error ||
-            editor.notice ||
-            (editor.selected
-              ? tt("已选中 {kind} 图层", { kind: editor.selected.kind })
-              : tt("选择对象后可在对象上方调整属性；Alt/中键拖动画布"))}
-        </span>
-        <span className="text-[10px] tabular-nums text-[var(--muted,#78716c)]">
-          {editor.doc.width} × {editor.doc.height} · {Math.round(editor.zoom * 100)}%
-        </span>
       </div>
     </div>
   );

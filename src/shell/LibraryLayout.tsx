@@ -41,9 +41,9 @@ export function LibraryToolbar({
   actions,
 }: LibraryToolbarProps) {
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {actions}
-      <div className="flex items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm">
+      <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm sm:max-w-64">
         <svg
           className="h-3.5 w-3.5 shrink-0 text-[var(--muted,#a3a3a3)]"
           viewBox="0 0 24 24"
@@ -55,7 +55,7 @@ export function LibraryToolbar({
           <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
         </svg>
         <input
-          className="w-40 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)]"
+          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)]"
           placeholder={placeholder}
           value={search}
           onChange={(e) => setSearch(e.target.value)}

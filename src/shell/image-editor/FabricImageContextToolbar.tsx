@@ -27,22 +27,94 @@ export function FabricImageContextToolbar({
   const context = useMemo<SelectionContext>(() => {
     const controls: SelectionControl[] = [
       {
-        id: "undo",
-        kind: "action",
-        label: tt("撤销"),
-        icon: "undo",
-        iconOnly: true,
-        group: "history",
-        disabled: !editor.canUndo,
+        id: "tool-select",
+        kind: "toggle",
+        label: tt("选择"),
+        icon: "select",
+        value: editor.activeTool === "select",
+        placement: "tools",
       },
       {
-        id: "redo",
+        id: "tool-draw",
+        kind: "toggle",
+        label: tt("画笔"),
+        icon: "draw",
+        value: editor.activeTool === "draw",
+        placement: "tools",
+      },
+      {
+        id: "tool-shape",
         kind: "action",
-        label: tt("重做"),
-        icon: "redo",
-        iconOnly: true,
-        group: "history",
-        disabled: !editor.canRedo,
+        label: tt("形状"),
+        icon: "shape",
+        placement: "tools",
+      },
+      {
+        id: "tool-line",
+        kind: "action",
+        label: tt("线条"),
+        icon: "line",
+        placement: "tools",
+      },
+      {
+        id: "tool-note",
+        kind: "action",
+        label: tt("便签"),
+        icon: "note",
+        placement: "tools",
+      },
+      {
+        id: "tool-text",
+        kind: "action",
+        label: tt("文字"),
+        icon: "text",
+        placement: "tools",
+      },
+      {
+        id: "tool-signature",
+        kind: "action",
+        label: tt("签名"),
+        icon: "signature",
+        placement: "tools",
+      },
+      {
+        id: "tool-table",
+        kind: "action",
+        label: tt("表格"),
+        icon: "table",
+        placement: "tools",
+      },
+      {
+        id: "elements-panel",
+        kind: "panel",
+        label: tt("元素"),
+        icon: "elements",
+        group: "workspace",
+        panelId: "image-create",
+      },
+      {
+        id: "layers-panel",
+        kind: "panel",
+        label: tt("图层"),
+        icon: "layers",
+        group: "workspace",
+        panelId: "image-layers",
+      },
+      {
+        id: "canvas-panel",
+        kind: "panel",
+        label: tt("画布"),
+        icon: "templates",
+        group: "workspace",
+        panelId: "image-canvas",
+      },
+      {
+        id: "export-panel",
+        kind: "panel",
+        label: tt("导出"),
+        icon: "download",
+        group: "workspace",
+        panelId: "image-export",
       },
     ];
     if (selected?.text) {
@@ -218,58 +290,14 @@ export function FabricImageContextToolbar({
         },
       );
     } else {
-      controls.push(
-        {
-          id: "tool-select",
-          kind: "toggle",
-          label: tt("选择"),
-          icon: "position",
-          group: "tools",
-          value: editor.activeTool === "select",
-        },
-        {
-          id: "tool-draw",
-          kind: "toggle",
-          label: tt("画笔"),
-          icon: "effects",
-          group: "tools",
-          value: editor.activeTool === "draw",
-        },
-        {
-          id: "tool-erase",
-          kind: "toggle",
-          label: tt("橡皮"),
-          icon: "delete",
-          group: "tools",
-          value: editor.activeTool === "erase",
-        },
-        {
-          id: "zoom-out",
-          kind: "action",
-          label: tt("缩小"),
-          group: "zoom",
-        },
-        {
-          id: "zoom-fit",
-          kind: "action",
-          label: `${Math.round(editor.zoom * 100)}%`,
-          group: "zoom",
-        },
-        {
-          id: "zoom-in",
-          kind: "action",
-          label: tt("放大"),
-          group: "zoom",
-        },
-        {
-          id: "canvas-background",
-          kind: "color",
-          label: tt("画布背景"),
-          icon: "background",
-          group: "canvas",
-          value: editor.canvasBackground,
-        },
-      );
+      controls.push({
+        id: "canvas-background",
+        kind: "color",
+        label: tt("画布背景"),
+        icon: "background",
+        group: "canvas",
+        value: editor.canvasBackground,
+      });
     }
     if (selected?.kind === "image") {
       controls.push(
@@ -431,6 +459,24 @@ export function FabricImageContextToolbar({
       case "tool-draw":
         editor.setActiveTool("draw");
         break;
+      case "tool-shape":
+        editor.addShape("rect");
+        break;
+      case "tool-line":
+        editor.addShape("line");
+        break;
+      case "tool-note":
+        editor.addStickyNote();
+        break;
+      case "tool-text":
+        editor.addText();
+        break;
+      case "tool-signature":
+        editor.addSignature();
+        break;
+      case "tool-table":
+        editor.addTable(3, 3);
+        break;
       case "tool-erase":
         editor.setActiveTool("erase");
         break;
@@ -494,7 +540,7 @@ export function FabricImageContextToolbar({
         editor.setSelectedShadow({ enabled: message.value === true });
         break;
       case "canvas-background":
-        editor.setCanvasBackground(String(message.value || "#ffffff"));
+        editor.setCanvasBackground(String(message.value || "#f4f1e8"));
         break;
       case "crop-start":
         editor.startCrop();

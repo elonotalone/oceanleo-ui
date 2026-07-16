@@ -16,7 +16,10 @@ import {
   applyShadow,
   buildSelectedSnapshot,
   centerOrigin,
+  createSignatureText,
   createShape,
+  createStickyNote,
+  createTable,
   createTextbox,
   findById,
   findByRole,
@@ -70,6 +73,44 @@ export class FabricEditorController extends FabricEditorCore {
       kind,
       this.doc,
       this.canvas.getObjects().length,
+    );
+    this.styleObject(object);
+    this.canvas.add(object);
+    this.canvas.setActiveObject(object);
+    this.commit();
+  }
+
+  addStickyNote(): void {
+    const object = createStickyNote(
+      this.fabric,
+      this.doc,
+      this.canvas.getObjects().length,
+    );
+    this.styleObject(object);
+    this.canvas.add(object);
+    this.canvas.setActiveObject(object);
+    this.commit();
+  }
+
+  addSignature(): void {
+    const object = createSignatureText(
+      this.fabric,
+      this.doc,
+      this.canvas.getObjects().length,
+    );
+    this.styleObject(object);
+    this.canvas.add(object);
+    this.canvas.setActiveObject(object);
+    this.commit();
+  }
+
+  addTable(rows = 3, columns = 3): void {
+    const object = createTable(
+      this.fabric,
+      this.doc,
+      this.canvas.getObjects().length,
+      rows,
+      columns,
     );
     this.styleObject(object);
     this.canvas.add(object);
@@ -491,7 +532,7 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   setCanvasBackground(color: string): void {
-    this.canvasBackground = color || "#ffffff";
+    this.canvasBackground = color || "#f4f1e8";
     updateDocBackground(this.canvas, this.doc, this.canvasBackground);
     this.commit();
   }
@@ -509,6 +550,16 @@ export class FabricEditorController extends FabricEditorCore {
       this.canvas,
       this.doc,
       this.zoom * factor,
+    );
+    this.emit();
+  }
+
+  setZoom(value: number): void {
+    this.zoom = zoomViewport(
+      this.fabric,
+      this.canvas,
+      this.doc,
+      value,
     );
     this.emit();
   }

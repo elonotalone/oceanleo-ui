@@ -83,7 +83,7 @@ function normalizeAngle(angle: number): number {
 export class FabricEditorCore {
   readonly canvas: Canvas;
   protected doc: DocSize = { ...DEFAULT_DOC };
-  protected canvasBackground = "#ffffff";
+  protected canvasBackground = "#f4f1e8";
   protected zoom = 1;
   protected activeTool: ToolId = "select";
   protected brush: BrushSettings = { ...DEFAULT_BRUSH };

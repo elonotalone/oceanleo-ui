@@ -31,7 +31,7 @@ import {
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
-  canvasBackground: "#ffffff",
+  canvasBackground: "#f4f1e8",
   zoom: 1,
   activeTool: "select",
   brush: { color: "#1c1917", width: 12 },
@@ -448,6 +448,7 @@ export function useFabricImageEditor(
     setCanvasBackground: (color) => controller()?.setCanvasBackground(color),
     resizeDoc: (width, height) => controller()?.resizeDoc(width, height),
     zoom: view.zoom,
+    setZoom: (zoom) => controller()?.setZoom(zoom),
     zoomIn: () => controller()?.zoomBy(1.2),
     zoomOut: () => controller()?.zoomBy(1 / 1.2),
     zoomFit: () => controller()?.zoomFit(),
@@ -458,6 +459,9 @@ export function useFabricImageEditor(
     setBrush: (patch) => controller()?.setBrush(patch),
     addText: () => controller()?.addText(),
     addShape: (kind) => controller()?.addShape(kind),
+    addStickyNote: () => controller()?.addStickyNote(),
+    addSignature: () => controller()?.addSignature(),
+    addTable: (rows, columns) => controller()?.addTable(rows, columns),
     addImageFromUrl,
     replaceSelectedImageFromUrl,
     addImageFromFile,

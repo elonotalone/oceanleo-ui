@@ -159,18 +159,36 @@ export function MyLibrary({
       setLoading(true);
     }
 
-    // The gateway overview and artifact table are independent. Fetching the
-    // second only after all four overview queries finished doubled perceived
-    // load time; run both branches together.
-    const [overview, artifactResponse] = await Promise.all([
+    // The gateway and direct owner-scoped RLS reads are intentionally
+    // independent. SSO cookies can briefly lag behind the Supabase session
+    // after cross-site navigation; direct reads prevent that transient from
+    // turning a populated library into an empty panel.
+    const [
+      overview,
+      creationResponse,
+      assetResponse,
+      artifactResponse,
+    ] = await Promise.all([
       getDatabaseOverview({ limit: 200 }),
+      supabase
+        .from("user_creations")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("user_assets")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500),
       supabase
         .from("agent_artifacts")
         .select("id,title,kind,content,url,favorite,created_at,task_id,session_id")
         .order("created_at", { ascending: false })
         .limit(500),
     ]);
-    if (!overview.ok) {
+    const directLibraryAvailable =
+      !creationResponse.error || !assetResponse.error || !artifactResponse.error;
+    if (!overview.ok && !directLibraryAvailable) {
       if (!cached) setItems([]);
       setAuthRequired(overview.status === 401);
       setFailed(overview.status !== 401);
@@ -179,15 +197,32 @@ export function MyLibrary({
     }
     setAuthRequired(false);
     const data = overview.data;
-    const works: WorkItem[] = [
+    const worksById = new Map<string, WorkItem>();
+    const rawWorks: WorkItem[] = [
+      ...(((creationResponse.data as WorkItem[] | null) || []).map((item) => ({
+        ...item,
+        meta: { ...(item.meta || {}), library_table: "work" },
+      }))),
+      ...(((assetResponse.data as AssetItem[] | null) || []).map(assetAsWork)),
       ...(data?.works || []).map((item) => ({
         ...item,
         meta: { ...(item.meta || {}), library_table: "work" },
       })),
       ...(data?.assets || []).map(assetAsWork),
     ];
-    const artifacts =
-      (artifactResponse.data as LibraryArtifactRow[] | null) || [];
+    rawWorks.forEach((work) => {
+      const table = String(work.meta?.library_table || "work");
+      worksById.set(`${table}:${work.id}`, work);
+    });
+    const works = [...worksById.values()];
+    const artifactsById = new Map<string, LibraryArtifactRow>();
+    for (const artifact of [
+      ...((data?.artifacts || []) as LibraryArtifactRow[]),
+      ...((artifactResponse.data as LibraryArtifactRow[] | null) || []),
+    ]) {
+      if (artifact?.id) artifactsById.set(artifact.id, artifact);
+    }
+    const artifacts = [...artifactsById.values()];
     const nextItems = buildLibraryItems(works, artifacts);
     setItems(nextItems);
     libraryCache.set(userId, {
@@ -284,8 +319,8 @@ export function MyLibrary({
     [featuredEntries, itemFilter, items, onlyFavorites, removeItem],
   );
   const toolbar = (
-    <div className="flex items-center gap-2">
-      <label className="cursor-pointer rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]">
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <label className="inline-flex h-8 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]">
         <input
           type="file"
           multiple
@@ -302,7 +337,7 @@ export function MyLibrary({
         type="button"
         onClick={() => void load()}
         disabled={loading || uploading}
-        className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
+        className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
       >
         {tt(loading ? "加载中…" : "刷新")}
       </button>

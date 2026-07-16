@@ -85,6 +85,12 @@ export function GridRoute({
       editorContextualToolbar={
         <GridContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
       editorHeaderActions={
         <>
           <button

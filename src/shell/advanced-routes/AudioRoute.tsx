@@ -86,6 +86,20 @@ export function AudioRoute({
       editorContextualToolbar={
         <AudioContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
+      editorViewport={{
+        value: Math.round((editor.zoom / 30) * 100),
+        min: 33,
+        max: 667,
+        step: 5,
+        setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
+        fit: () => editor.setWaveformZoom(30),
+      }}
       editorHeaderActions={
         <>
           <button

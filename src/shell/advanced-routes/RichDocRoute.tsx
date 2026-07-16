@@ -99,6 +99,16 @@ export function RichDocRoute({
       editorContextualToolbar={
         <RichDocContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.editor?.can().undo() ?? false,
+        canRedo: editor.editor?.can().redo() ?? false,
+        undo: () => {
+          editor.editor?.chain().focus().undo().run();
+        },
+        redo: () => {
+          editor.editor?.chain().focus().redo().run();
+        },
+      }}
       editorHeaderActions={
         <>
           <button

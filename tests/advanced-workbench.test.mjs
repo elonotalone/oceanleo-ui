@@ -23,6 +23,7 @@ test("advanced workbench routes real content into the portal editor shell", () =
   const shell = [
     source("../src/shell/AdvancedWorkbenchShell.tsx"),
     source("../src/shell/AdvancedWorkbenchPanel.tsx"),
+    source("../src/shell/AdvancedStageControls.tsx"),
   ].join("\n");
   const routeAdapters = [
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
@@ -113,15 +114,17 @@ test("advanced Agent follows the current task instead of forking history", () =>
 
 test("advanced work is session-backed, deep-linkable and starts a fresh saved conversation", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
-  const panel = source("../src/shell/AdvancedAgentPanel.tsx");
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const header = source("../src/shell/AdvancedWorkbenchHeader.tsx");
   const history = source("../src/shell/HistoryMasterDetail.tsx");
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
   const session = source("../src/shell/WorkspaceSession.tsx");
   assert.match(workbench, /advancedSessionAppId/);
   assert.match(workbench, /surface="advanced"/);
   assert.match(workbench, /advancedFeatureHref\(feature, \{ sessionId \}\)/);
-  assert.match(panel, /tt\("新建对话"\)/);
-  assert.match(panel, /advancedSession\.startNew\(\)/);
+  assert.match(header, /tt\("新建任务"\)/);
+  assert.match(header, /onStartNew/);
+  assert.match(shell, /advancedSession\.startNew\(\)/);
   assert.match(pages, /getAppSession\(requestedSessionId, "advanced"\)/);
   assert.match(pages, /\/advanced/);
   assert.doesNotMatch(history, /advancedItemFromSession/);
@@ -186,9 +189,10 @@ test("code-backed website starters reach the visual editor without a fake projec
   const materials = source("../src/shell/MaterialLibrary.tsx");
   assert.match(
     routes,
-    /if \(!projectId && !starterId\) \{[\s\S]*?return unavailable\(/,
+    /if \(!projectId && !starterId && !githubRepo\) \{[\s\S]*?return unavailable\(/,
   );
   assert.match(embedded, /\.\.\.\(starterId \? \{ starterId \} : \{\}\)/);
+  assert.match(embedded, /\.\.\.\(githubRepo \? \{ githubRepo \} : \{\}\)/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
@@ -438,8 +442,10 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(mine, /deleteArtifact/);
   assert.match(mine, /uploadFile/);
   assert.match(mine, /libraryCache/);
-  assert.match(advancedShell, /itemFilter=\{\(candidate\) =>/);
-  assert.match(advancedShell, /=== currentFeatureId/);
+  assert.doesNotMatch(advancedShell, /itemFilter=\{\(candidate\) =>/);
+  assert.match(advancedShell, /advancedFeatureHrefForItem\(nextItem\)/);
+  assert.match(mine, /data\?\.artifacts/);
+  assert.match(mine, /artifactsById/);
   assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);
   assert.match(i18n, /\.replaceAll\("檔案庫", "我的库"\)/);
 });

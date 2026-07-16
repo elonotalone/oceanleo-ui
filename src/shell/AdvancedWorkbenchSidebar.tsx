@@ -16,6 +16,7 @@ export interface WorkbenchNavItem {
 export function AdvancedWorkbenchSidebar({
   tools,
   activeTool,
+  activeLabel,
   panelVisible,
   panelWidth,
   panel,
@@ -26,6 +27,7 @@ export function AdvancedWorkbenchSidebar({
 }: {
   tools: readonly WorkbenchNavItem[];
   activeTool: string;
+  activeLabel?: string;
   panelVisible: boolean;
   panelWidth: number;
   panel: ReactNode;
@@ -37,7 +39,7 @@ export function AdvancedWorkbenchSidebar({
   const tt = useUI();
   return (
     <>
-      <nav className="flex w-[72px] shrink-0 flex-col items-center gap-1 border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] py-2">
+      <nav className="flex w-[76px] shrink-0 flex-col items-center gap-1 border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] py-2.5">
         {tools.map((tool) => {
           const active = activeTool === tool.id && panelVisible;
           return (
@@ -45,7 +47,7 @@ export function AdvancedWorkbenchSidebar({
               key={tool.id}
               type="button"
               onClick={() => onChooseTool(tool.id)}
-              className={`group relative flex h-[54px] w-[62px] flex-col items-center justify-center gap-1 rounded-xl transition ${
+              className={`group relative flex h-[56px] w-[64px] flex-col items-center justify-center gap-1 rounded-2xl transition ${
                 active
                   ? "bg-[var(--surface-hover,rgba(0,0,0,.06))] text-[var(--fg,#292524)]"
                   : "text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)]"
@@ -70,7 +72,7 @@ export function AdvancedWorkbenchSidebar({
           >
             <div className="flex h-11 items-center border-b border-[var(--divider,#e7e5e4)] px-3 text-[12px] font-semibold">
               <span className="min-w-0 flex-1 truncate">
-                {tools.find((tool) => tool.id === activeTool)?.label}
+                {activeLabel || tools.find((tool) => tool.id === activeTool)?.label}
               </span>
               <button
                 type="button"

@@ -71,6 +71,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M4 20h16" />
     </>
   ),
+  draw: (
+    <>
+      <path d="M4 19c3-5 5-8 8-11l4-4 4 4-4 4c-3 3-6 5-11 8z" />
+      <path d="M13 7l4 4M4 20h7" />
+    </>
+  ),
   duplicate: (
     <>
       <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -117,6 +123,13 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M3 12l9 5 9-5M3 16l9 5 9-5" />
     </>
   ),
+  line: (
+    <>
+      <path d="M5 18L19 6" />
+      <circle cx="5" cy="18" r="2" />
+      <circle cx="19" cy="6" r="2" />
+    </>
+  ),
   link: (
     <>
       <path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1" />
@@ -134,6 +147,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
       <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  note: (
+    <>
+      <path d="M5 3h14a2 2 0 012 2v10l-6 6H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      <path d="M15 21v-6h6" />
     </>
   ),
   opacity: (
@@ -161,6 +180,11 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M8 3v6h8V3M8 21v-7h8v7" />
     </>
   ),
+  select: (
+    <>
+      <path d="M5 3l13 9-6 2-3 6z" />
+    </>
+  ),
   "send-backward": (
     <>
       <rect x="4" y="8" width="12" height="12" rx="2" />
@@ -173,7 +197,19 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <circle cx="16" cy="9" r="5" />
     </>
   ),
+  signature: (
+    <>
+      <path d="M4 17c2-5 3-9 5-9 3 0-1 9 2 9 2 0 3-5 5-5 2 0 0 5 4 5" />
+      <path d="M3 21h18" />
+    </>
+  ),
   spacing: <path d="M4 7h16M4 17h16M8 10l4 4 4-4M12 14v-4" />,
+  table: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
+    </>
+  ),
   text: <path d="M4 5h16M12 5v14M8 19h8" />,
   underline: <path d="M7 4v7a5 5 0 0010 0V4M5 21h14" />,
   undo: <path d="M6 8l-3 3 3 3M3 11h8a7 7 0 017 7M18 5v4h4" />,

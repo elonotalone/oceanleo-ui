@@ -31,6 +31,9 @@ export type LayerKind =
   | "line"
   | "arrow"
   | "path"
+  | "note"
+  | "signature"
+  | "table"
   | "shape";
 
 export type TransformScope = "selected" | "background";
@@ -177,6 +180,7 @@ export interface FabricImageEditorState {
   resizeDoc: (width: number, height: number) => void;
   // ---- 视图 ----
   zoom: number;
+  setZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   zoomFit: () => void;
@@ -189,6 +193,9 @@ export interface FabricImageEditorState {
   // ---- 添加对象 ----
   addText: () => void;
   addShape: (kind: ShapeKind) => void;
+  addStickyNote: () => void;
+  addSignature: () => void;
+  addTable: (rows?: number, columns?: number) => void;
   addImageFromUrl: (url: string, point?: CanvasClientPoint) => Promise<void>;
   replaceSelectedImageFromUrl: (url: string) => Promise<void>;
   addImageFromFile: (file: File) => Promise<void>;

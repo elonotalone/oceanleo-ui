@@ -12,6 +12,11 @@ import {
 import { createPortal } from "react-dom";
 import { useUI } from "../i18n/ui/useUI";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
+import type {
+  AdvancedHistoryActions,
+  AdvancedViewportActions,
+} from "./advanced-workbench-chrome";
+import { AdvancedStageControls } from "./AdvancedStageControls";
 import { AdvancedWorkbenchHeader } from "./AdvancedWorkbenchHeader";
 import { AdvancedWorkbenchPanel } from "./AdvancedWorkbenchPanel";
 import {
@@ -57,6 +62,10 @@ export interface AdvancedWorkbenchShellProps {
   editorContextualToolbar?: ReactNode;
   /** Persistent document-level actions shown in the colored product header. */
   editorHeaderActions?: ReactNode;
+  /** Undo/redo lives in the product header rather than the object property bar. */
+  editorHistory?: AdvancedHistoryActions;
+  /** Native editor zoom adapter. Other routes receive a bounded shell zoom. */
+  editorViewport?: AdvancedViewportActions;
   /** @deprecated The property bar is fixed at the top; kept for route compatibility. */
   editorContextualToolbarAnchor?: {
     x: number;
@@ -98,18 +107,20 @@ export function AdvancedWorkbenchShell({
   editorDrawers = [],
   editorContextualToolbar,
   editorHeaderActions,
+  editorHistory,
+  editorViewport,
   editorStage,
   editorAvailable = true,
   editorStatus = "",
   editorDirty = false,
   editorOwnsCloseGuard = false,
-  editorUsesOwnControls = false,
   onBeforeNewConversation,
   savedItem = null,
   onClose,
 }: AdvancedWorkbenchShellProps) {
   const tt = useUI();
   const rootRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const dirtyRecordedRef = useRef(false);
   const portalReady = typeof document !== "undefined";
@@ -133,20 +144,15 @@ export function AdvancedWorkbenchShell({
     editorLabel,
     editorToolbox,
   ]);
-  const [activeTool, setActiveTool] = useState<string>(
-    () =>
-      (!editorUsesOwnControls && editorAvailable && fallbackDrawer[0]?.id) ||
-      "agent",
-  );
+  const [activeTool, setActiveTool] = useState<string>("agent");
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelVisible, setPanelVisible] = useState(
-    () =>
-      !editorUsesOwnControls &&
-      (typeof window === "undefined" || window.innerWidth >= 768),
+    () => typeof window === "undefined" || window.innerWidth >= 768,
   );
-  const [fullscreen, setFullscreen] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const [startingNew, setStartingNew] = useState(false);
+  const [fallbackZoom, setFallbackZoom] = useState(100);
   const [dropMessage, setDropMessage] = useState("");
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
@@ -275,9 +281,7 @@ export function AdvancedWorkbenchShell({
         first.focus();
       }
     };
-    const full = () => setFullscreen(Boolean(document.fullscreenElement));
     window.addEventListener("keydown", close);
-    document.addEventListener("fullscreenchange", full);
     return () => {
       document.body.style.overflow = bodyOverflow;
       document.documentElement.style.overflow = htmlOverflow;
@@ -287,7 +291,6 @@ export function AdvancedWorkbenchShell({
         else element.setAttribute("aria-hidden", ariaHidden);
       });
       window.removeEventListener("keydown", close);
-      document.removeEventListener("fullscreenchange", full);
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [portalReady, requestClose]);
@@ -301,24 +304,19 @@ export function AdvancedWorkbenchShell({
   );
 
   const tools = useMemo(
-    () => {
-      const custom: WorkbenchNavItem[] = editorAvailable
-        ? fallbackDrawer
-          .filter((drawer) => !drawer.hiddenFromRail)
-          .map((drawer) => ({
-            id: drawer.id,
-            label: tt(drawer.label),
-            icon: drawer.icon,
-          }))
-        : [];
-      return [
-        ...custom,
+    () =>
+      [
+        { id: "agent", label: tt("Agent"), icon: "agent" },
         {
           id: "materials",
           label: tt("素材"),
           icon: "materials",
         },
-        { id: "agent", label: tt("Agent"), icon: "agent" },
+        {
+          id: "uploads",
+          label: tt("上传"),
+          icon: "uploads",
+        },
         {
           id: "tasks",
           label: tt("我的任务"),
@@ -329,9 +327,8 @@ export function AdvancedWorkbenchShell({
           label: tt("我的库"),
           icon: "library",
         },
-      ] satisfies WorkbenchNavItem[];
-    },
-    [editorAvailable, fallbackDrawer, tt],
+      ] satisfies WorkbenchNavItem[],
+    [tt],
   );
 
   const chooseTool = useCallback((tool: string) => {
@@ -395,18 +392,35 @@ export function AdvancedWorkbenchShell({
     handle.addEventListener("lostpointercapture", stop);
   }
 
-  async function toggleFullscreen() {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await rootRef.current?.requestFullscreen();
-      }
-    } catch {
-      // The portal already covers the viewport. Fullscreen API denial should
-      // not make the workbench unusable.
-    }
-  }
+  const startNewTask = useCallback(async () => {
+    if (!advancedSession || startingNew) return;
+    setStartingNew(true);
+    const next = await advancedSession.startNew();
+    if (!next) setDropMessage(tt("新建任务失败，当前内容仍已保留。"));
+    setStartingNew(false);
+  }, [advancedSession, startingNew, tt]);
+
+  const renameTitle = useCallback(
+    async (title: string) => {
+      if (!advancedSession) return;
+      const renamed = await advancedSession.renameTitle(title);
+      if (!renamed) setDropMessage(tt("项目名称保存失败，请稍后重试。"));
+    },
+    [advancedSession, tt],
+  );
+
+  const viewport = useMemo<AdvancedViewportActions>(
+    () =>
+      editorViewport || {
+        value: fallbackZoom,
+        min: 50,
+        max: 150,
+        step: 1,
+        setValue: setFallbackZoom,
+        fit: () => setFallbackZoom(100),
+      },
+    [editorViewport, fallbackZoom],
+  );
 
   const customDrawer = fallbackDrawer.find(
     (drawer) => drawer.id === activeTool,
@@ -474,7 +488,7 @@ export function AdvancedWorkbenchShell({
       aria-modal="true"
       aria-label={`${item.title} · ${tt("高级功能")}`}
       tabIndex={-1}
-      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--surface,#f5f5f4)] text-[var(--fg,#292524)]"
+      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--surface,#f5f5f4)] font-[var(--font-sans,Inter,'Noto_Sans_SC','PingFang_SC','Microsoft_YaHei',sans-serif)] text-[var(--fg,#292524)]"
     >
       {resizing && (
         <div
@@ -488,29 +502,23 @@ export function AdvancedWorkbenchShell({
         status={visibleEditorStatus}
         actions={editorHeaderActions}
         accent={accent}
-        fullscreen={fullscreen}
+        history={editorHistory}
+        startingNew={startingNew}
         mobileActionsOpen={mobileActionsOpen}
         onToggleMobileActions={() =>
           setMobileActionsOpen((value) => !value)
         }
-        onToggleFullscreen={() => void toggleFullscreen()}
+        onStartNew={() => void startNewTask()}
+        onRenameTitle={renameTitle}
         onClose={requestClose}
       />
 
       <AdvancedLayoutContext.Provider value={layoutState}>
-      <div className="flex h-12 shrink-0 items-center border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-[0_1px_0_rgba(0,0,0,.02)]">
-        {editorAvailable && editorContextualToolbar ? (
-          editorContextualToolbar
-        ) : (
-          <span className="px-4 text-[12px] font-medium text-[var(--muted,#78716c)]">
-            {tt(editorLabel)}
-          </span>
-        )}
-      </div>
       <div className="flex min-h-0 flex-1">
         <AdvancedWorkbenchSidebar
           tools={tools}
           activeTool={activeTool}
+          activeLabel={customDrawer ? tt(customDrawer.label) : undefined}
           panelVisible={panelVisible}
           panelWidth={panelWidth}
           panel={panel}
@@ -520,19 +528,39 @@ export function AdvancedWorkbenchShell({
           onBeginResize={beginResize}
         />
 
-        <AdvancedWorkbenchStage
-          editorAvailable={editorAvailable}
-          editorStage={editorStage}
-          item={item}
-          accent={accent}
-          draggedTitle={
-            activeMaterialAction
-              ? workbenchMaterials?.draggedItem?.title
-              : undefined
-          }
-          dropMessage={dropMessage}
-          onMaterialDrop={(event) => void handleMaterialDrop(event)}
-        />
+        <div
+          ref={stageRef}
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]"
+        >
+          <AdvancedWorkbenchStage
+            editorAvailable={editorAvailable}
+            editorStage={editorStage}
+            item={item}
+            accent={accent}
+            stageScale={editorViewport ? 1 : fallbackZoom / 100}
+            draggedTitle={
+              activeMaterialAction
+                ? workbenchMaterials?.draggedItem?.title
+                : undefined
+            }
+            dropMessage={dropMessage}
+            onMaterialDrop={(event) => void handleMaterialDrop(event)}
+          />
+          <div className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex justify-center">
+            {editorAvailable && editorContextualToolbar ? (
+              editorContextualToolbar
+            ) : (
+              <span className="pointer-events-auto rounded-2xl border border-black/10 bg-white/95 px-4 py-2 text-[12px] font-semibold text-slate-600 shadow-lg backdrop-blur">
+                {tt(editorLabel)}
+              </span>
+            )}
+          </div>
+          <AdvancedStageControls
+            stageRef={stageRef}
+            viewport={viewport}
+            accent={accent}
+          />
+        </div>
       </div>
       </AdvancedLayoutContext.Provider>
     </div>,

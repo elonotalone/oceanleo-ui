@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { LibraryItem } from "./library-data";
-import { libraryKindLabel } from "./library-viewers";
+import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import type { AdvancedHistoryActions } from "./advanced-workbench-chrome";
 
 export function AdvancedWorkbenchHeader({
   item,
@@ -11,10 +12,12 @@ export function AdvancedWorkbenchHeader({
   status,
   actions,
   accent,
-  fullscreen,
+  history,
+  startingNew,
   mobileActionsOpen,
   onToggleMobileActions,
-  onToggleFullscreen,
+  onStartNew,
+  onRenameTitle,
   onClose,
 }: {
   item: LibraryItem;
@@ -22,16 +25,27 @@ export function AdvancedWorkbenchHeader({
   status: string;
   actions?: ReactNode;
   accent: string;
-  fullscreen: boolean;
+  history?: AdvancedHistoryActions;
+  startingNew: boolean;
   mobileActionsOpen: boolean;
   onToggleMobileActions: () => void;
-  onToggleFullscreen: () => void;
+  onStartNew: () => void;
+  onRenameTitle: (title: string) => Promise<void> | void;
   onClose: () => void;
 }) {
   const tt = useUI();
+  const [title, setTitle] = useState(item.title);
+  useEffect(() => setTitle(item.title), [item.title]);
+
+  const commitTitle = () => {
+    const next = title.trim() || tt("未命名项目");
+    setTitle(next);
+    if (next !== item.title) void onRenameTitle(next);
+  };
+
   return (
     <header
-      className="relative flex h-14 shrink-0 items-center gap-2 px-3 text-white shadow-sm md:gap-3"
+      className="relative flex h-[60px] shrink-0 items-center gap-1.5 px-2.5 text-white shadow-sm md:gap-2 md:px-3"
       style={{
         background: `linear-gradient(100deg, color-mix(in srgb, ${accent} 82%, #06b6d4), color-mix(in srgb, ${accent} 78%, #7c3aed))`,
       }}
@@ -39,25 +53,70 @@ export function AdvancedWorkbenchHeader({
       <button
         type="button"
         onClick={onClose}
-        className="inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-[12px] font-medium text-white/90 transition hover:bg-white/15 hover:text-white"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 hover:text-white"
+        aria-label={tt("返回高级功能")}
+        title={tt("返回高级功能")}
       >
-        <span aria-hidden="true">←</span> {tt("返回")}
+        <span className="text-lg" aria-hidden="true">←</span>
       </button>
-      <div className="min-w-0">
-        <p className="max-w-72 truncate text-[13px] font-semibold">
-          {item.title}
-        </p>
-        <p className="truncate text-[10px] text-white/65">
-          {tt("高级功能")} · {tt(libraryKindLabel(item.kind))}
-        </p>
+      <div className="hidden min-w-0 max-w-44 px-1 md:block">
+        <p className="truncate text-[13px] font-semibold">{tt(editorLabel)}</p>
       </div>
       <span className="hidden h-6 w-px bg-white/20 md:block" />
-      <span className="hidden max-w-48 truncate text-[11px] font-medium text-white/75 md:block">
-        {tt(editorLabel)}
-      </span>
+      <button
+        type="button"
+        onClick={onStartNew}
+        disabled={startingNew}
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-white/12 px-2.5 text-[11px] font-semibold text-white transition hover:bg-white/20 disabled:opacity-45"
+      >
+        <AdvancedEditorIcon name="add" className="h-4 w-4" />
+        <span className="hidden sm:inline">
+          {startingNew ? tt("保存中…") : tt("新建任务")}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={history?.undo}
+        disabled={!history?.canUndo}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 disabled:opacity-30"
+        aria-label={tt("撤销")}
+        title={tt("撤销")}
+      >
+        <AdvancedEditorIcon name="undo" className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={history?.redo}
+        disabled={!history?.canRedo}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 disabled:opacity-30"
+        aria-label={tt("重做")}
+        title={tt("重做")}
+      >
+        <AdvancedEditorIcon name="redo" className="h-4 w-4" />
+      </button>
+
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 hidden w-[min(30vw,28rem)] -translate-x-1/2 items-center justify-center lg:flex">
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              setTitle(item.title);
+              event.currentTarget.blur();
+            }
+          }}
+          maxLength={160}
+          className="pointer-events-auto h-9 w-full rounded-xl border border-transparent bg-white/10 px-3 text-center text-[12px] font-semibold text-white outline-none transition placeholder:text-white/50 hover:bg-white/15 focus:border-white/25 focus:bg-white/18"
+          aria-label={tt("项目名称")}
+          title={tt("点击编辑项目名称")}
+        />
+      </div>
+
       <div className="min-w-0 flex-1" />
       {status && (
-        <span className="hidden max-w-[28rem] truncate rounded-full bg-black/10 px-3 py-1.5 text-[11px] text-white/80 md:block">
+        <span className="hidden max-w-56 truncate rounded-full bg-black/10 px-3 py-1.5 text-[10px] text-white/80 xl:block">
           {status}
         </span>
       )}
@@ -85,25 +144,6 @@ export function AdvancedWorkbenchHeader({
           {actions}
         </div>
       )}
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10 px-0 text-[16px] font-medium text-white transition hover:bg-white/20 md:w-auto md:px-3 md:text-[11px]"
-        aria-label={fullscreen ? tt("退出全屏") : tt("浏览器全屏")}
-      >
-        <span className="md:hidden">⛶</span>
-        <span className="hidden md:inline">
-          {fullscreen ? tt("退出全屏") : tt("浏览器全屏")}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label={tt("关闭")}
-        className="grid h-9 w-9 place-items-center rounded-lg text-xl text-white/75 transition hover:bg-white/15 hover:text-white"
-      >
-        ×
-      </button>
     </header>
   );
 }

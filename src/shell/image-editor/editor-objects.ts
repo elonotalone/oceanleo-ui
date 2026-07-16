@@ -70,6 +70,7 @@ export function roleOf(obj: FabricObject): EditorRole | undefined {
 
 export function kindOf(fabric: FabricNS, obj: FabricObject): LayerKind {
   if (roleOf(obj) === "background") return "background";
+  if ((obj as EditorObject).oceanleoKind === "signature") return "signature";
   if (obj instanceof fabric.FabricImage) return "image";
   if (obj instanceof fabric.IText) return "text";
   if (obj instanceof fabric.Rect) return "rect";
@@ -77,7 +78,9 @@ export function kindOf(fabric: FabricNS, obj: FabricObject): LayerKind {
   if (obj instanceof fabric.Ellipse) return "ellipse";
   if (obj instanceof fabric.Line) return "line";
   if (obj instanceof fabric.Group) {
-    return (obj as EditorObject).oceanleoKind === "arrow" ? "arrow" : "shape";
+    const kind = (obj as EditorObject).oceanleoKind;
+    if (kind === "arrow" || kind === "note" || kind === "table") return kind;
+    return "shape";
   }
   if (obj instanceof fabric.Path) return "path";
   return "shape";
@@ -334,6 +337,113 @@ export function createTextbox(
     top: doc.height / 2 + nudge,
   });
   return tagObject(box);
+}
+
+export function createStickyNote(
+  fabric: FabricNS,
+  doc: DocSize,
+  offsetIndex: number,
+): EditorObject {
+  const width = Math.max(180, doc.width * 0.28);
+  const height = Math.max(150, doc.height * 0.24);
+  const background = new fabric.Rect({
+    width,
+    height,
+    originX: "center",
+    originY: "center",
+    fill: "#ffe36e",
+    rx: Math.max(14, width * 0.06),
+    ry: Math.max(14, width * 0.06),
+    shadow: new fabric.Shadow({
+      color: "rgba(15,23,42,.16)",
+      blur: 18,
+      offsetX: 0,
+      offsetY: 8,
+    }),
+  });
+  const text = new fabric.Textbox("双击编辑便签", {
+    width: width * 0.74,
+    originX: "center",
+    originY: "center",
+    fontFamily: "Noto Sans SC, sans-serif",
+    fontSize: Math.max(18, Math.round(width * 0.09)),
+    fill: "#3f3420",
+    textAlign: "center",
+  });
+  const nudge = (offsetIndex % 5) * 16;
+  return tagObject(
+    new fabric.Group([background, text], {
+      left: doc.width / 2 + nudge,
+      top: doc.height / 2 + nudge,
+      originX: "center",
+      originY: "center",
+    }),
+    "note",
+  );
+}
+
+export function createSignatureText(
+  fabric: FabricNS,
+  doc: DocSize,
+  offsetIndex: number,
+): EditorObject {
+  const nudge = (offsetIndex % 5) * 16;
+  return tagObject(
+    new fabric.IText("签名", {
+      left: doc.width / 2 + nudge,
+      top: doc.height / 2 + nudge,
+      originX: "center",
+      originY: "center",
+      fontFamily: "Segoe Script, Brush Script MT, cursive",
+      fontStyle: "italic",
+      fontSize: Math.round(Math.min(120, Math.max(42, doc.width * 0.08))),
+      fill: "#18212f",
+    }),
+    "signature",
+  );
+}
+
+export function createTable(
+  fabric: FabricNS,
+  doc: DocSize,
+  offsetIndex: number,
+  rows = 3,
+  columns = 3,
+): EditorObject {
+  const safeRows = Math.min(8, Math.max(1, Math.round(rows)));
+  const safeColumns = Math.min(8, Math.max(1, Math.round(columns)));
+  const width = Math.max(240, doc.width * 0.5);
+  const height = Math.max(150, doc.height * 0.3);
+  const cellWidth = width / safeColumns;
+  const cellHeight = height / safeRows;
+  const cells: FabricObject[] = [];
+  for (let row = 0; row < safeRows; row += 1) {
+    for (let column = 0; column < safeColumns; column += 1) {
+      cells.push(
+        new fabric.Rect({
+          left: column * cellWidth - width / 2,
+          top: row * cellHeight - height / 2,
+          width: cellWidth,
+          height: cellHeight,
+          originX: "left",
+          originY: "top",
+          fill: row === 0 ? "#eef2ff" : "#ffffff",
+          stroke: "#64748b",
+          strokeWidth: Math.max(1, Math.round(Math.min(doc.width, doc.height) * 0.002)),
+        }),
+      );
+    }
+  }
+  const nudge = (offsetIndex % 5) * 16;
+  return tagObject(
+    new fabric.Group(cells, {
+      left: doc.width / 2 + nudge,
+      top: doc.height / 2 + nudge,
+      originX: "center",
+      originY: "center",
+    }),
+    "table",
+  );
 }
 
 export function createShape(

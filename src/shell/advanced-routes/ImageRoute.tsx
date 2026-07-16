@@ -132,18 +132,6 @@ export function ImageRoute({
           ),
         },
         {
-          id: "image-ai",
-          label: "AI 创作",
-          icon: "agent",
-          content: (
-            <FabricImageControls
-              editor={editor}
-              accent={accent}
-              sections={["ai"]}
-            />
-          ),
-        },
-        {
           id: "image-export",
           label: "导出",
           icon: "download",
@@ -169,6 +157,20 @@ export function ImageRoute({
       editorContextualToolbar={
         <FabricImageContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
+      editorViewport={{
+        value: Math.round(editor.zoom * 100),
+        min: 10,
+        max: 400,
+        step: 1,
+        setValue: (value) => editor.setZoom(value / 100),
+        fit: editor.zoomFit,
+      }}
       editorHeaderActions={
         <>
           <button

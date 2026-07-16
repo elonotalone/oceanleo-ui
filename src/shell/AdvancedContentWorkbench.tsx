@@ -241,6 +241,29 @@ function AdvancedContentWorkbenchRuntime(
     },
     [makeSnapshot, workspace],
   );
+  const renameTitle = useCallback(
+    async (title: string) => {
+      const nextTitle = title.trim();
+      if (!nextTitle) return false;
+      const nextItem = { ...materialRef.current, title: nextTitle };
+      materialRef.current = nextItem;
+      setItem(nextItem);
+      const snapshot = makeSnapshot(workspace.taskId);
+      const session = await workspace.ensureActive({
+        title: nextTitle,
+        snapshot,
+        schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+      });
+      if (!session) return false;
+      const saved = await workspace.saveSnapshot(
+        snapshot,
+        ADVANCED_SESSION_SCHEMA_VERSION,
+        { expectedSessionId: session.id, title: nextTitle },
+      );
+      return saved.ok;
+    },
+    [makeSnapshot, workspace],
+  );
   const startNew = useCallback(async () => {
     const flushed = (await flushRef.current?.()) || { ok: true as const };
     if (!flushed.ok) return null;
@@ -272,6 +295,24 @@ function AdvancedContentWorkbenchRuntime(
     },
     [],
   );
+  const firstUseEnsuredRef = useRef(false);
+  useEffect(() => {
+    if (
+      workspace.availability !== "ready" ||
+      firstUseEnsuredRef.current ||
+      workspace.session ||
+      props.sessionId
+    ) {
+      return;
+    }
+    firstUseEnsuredRef.current = true;
+    void ensure(null);
+  }, [
+    ensure,
+    props.sessionId,
+    workspace.availability,
+    workspace.session,
+  ]);
   const sessionActions = useMemo(
     () => ({
       sessionId: workspace.sessionId,
@@ -280,6 +321,7 @@ function AdvancedContentWorkbenchRuntime(
       ensure,
       navigate,
       startNew,
+      renameTitle,
       recordSavedItem,
       registerFlush,
     }),
@@ -287,6 +329,7 @@ function AdvancedContentWorkbenchRuntime(
       ensure,
       makeSnapshot,
       navigate,
+      renameTitle,
       recordSavedItem,
       registerFlush,
       startNew,

@@ -269,6 +269,14 @@ export function EmbeddedRoute({
     () => String(item.meta.starter_id || "").trim(),
     [item.meta],
   );
+  const githubRepo = useMemo(
+    () => String(item.meta.github_repo || "").trim(),
+    [item.meta],
+  );
+  const commitSha = useMemo(
+    () => String(item.meta.commit_sha || "").trim(),
+    [item.meta],
+  );
   const extraParams = useMemo(
     () => {
       const blank: Record<string, string> =
@@ -284,10 +292,17 @@ export function EmbeddedRoute({
           siteId: websiteId,
           projectId: websiteId,
           ...(starterId ? { starterId } : {}),
+          ...(githubRepo ? { githubRepo } : {}),
+          ...(commitSha ? { commitSha } : {}),
         };
       }
-      return Object.keys(blank).length || starterId
-        ? { ...blank, ...(starterId ? { starterId } : {}) }
+      return Object.keys(blank).length || starterId || githubRepo
+        ? {
+            ...blank,
+            ...(starterId ? { starterId } : {}),
+            ...(githubRepo ? { githubRepo } : {}),
+            ...(commitSha ? { commitSha } : {}),
+          }
         : undefined;
     },
     [
@@ -297,6 +312,8 @@ export function EmbeddedRoute({
       item.url,
       starterId,
       websiteId,
+      githubRepo,
+      commitSha,
     ],
   );
 
@@ -364,6 +381,34 @@ export function EmbeddedRoute({
           accent={accent}
         />
       }
+      editorHistory={{
+        canUndo: Boolean(
+          selection?.controls.some(
+            (control) => control.id === "undo" && !control.disabled,
+          ),
+        ),
+        canRedo: Boolean(
+          selection?.controls.some(
+            (control) => control.id === "redo" && !control.disabled,
+          ),
+        ),
+        undo: () => {
+          if (!selection) return;
+          setSelectionCommand({
+            requestId: `header-undo-${Date.now()}`,
+            selectionId: selection.id,
+            controlId: "undo",
+          });
+        },
+        redo: () => {
+          if (!selection) return;
+          setSelectionCommand({
+            requestId: `header-redo-${Date.now()}`,
+            selectionId: selection.id,
+            controlId: "redo",
+          });
+        },
+      }}
       versionRevision={versionRevision}
       editorDirty={dirty}
       editorUsesOwnControls

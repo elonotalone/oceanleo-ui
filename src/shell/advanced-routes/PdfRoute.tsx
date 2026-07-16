@@ -92,6 +92,20 @@ export function PdfRoute({
       editorContextualToolbar={
         <PdfContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
+      editorViewport={{
+        value: editor.zoom,
+        min: 25,
+        max: 300,
+        step: 5,
+        setValue: editor.setZoom,
+        fit: () => editor.setZoom(100),
+      }}
       editorHeaderActions={
         <>
           <button

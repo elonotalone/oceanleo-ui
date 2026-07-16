@@ -118,6 +118,14 @@ export function Model3DRoute({
       editorContextualToolbar={
         <Model3DContextToolbar editor={editor} accent={accent} />
       }
+      editorViewport={{
+        value: editor.zoom,
+        min: 50,
+        max: 300,
+        step: 1,
+        setValue: editor.setZoom,
+        fit: editor.resetCamera,
+      }}
       editorHeaderActions={
         <>
           <button

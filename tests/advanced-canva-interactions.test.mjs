@@ -36,6 +36,7 @@ test("large Canva workbench components stay split below the frontend limit", () 
     "../src/shell/doc-editors/DeckStage.tsx",
     "../src/shell/doc-editors/DeckControls.tsx",
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
+    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
   ]) {
     const lines = source(path).split("\n").length;
     assert.ok(lines < 600, `${path} has ${lines} lines`);
@@ -51,10 +52,25 @@ test("context-only drawers remain reachable from the object property bar", () =>
   const imageToolbar = source(
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
   );
+  const richToolbar = source(
+    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
+  );
   assert.match(deck, /id: "deck-effects"[\s\S]*?hiddenFromRail: true/);
   assert.match(deck, /id: "deck-fonts"[\s\S]*?hiddenFromRail: true/);
   assert.match(image, /id: "image-filters"[\s\S]*?hiddenFromRail: true/);
   assert.match(image, /id: "image-fonts"[\s\S]*?hiddenFromRail: true/);
   assert.match(deckToolbar, /panelId: "deck-fonts"/);
   assert.match(imageToolbar, /panelId: "image-filters"/);
+  for (const drawer of [
+    "image-create",
+    "image-layers",
+    "image-canvas",
+    "image-export",
+  ]) {
+    assert.match(imageToolbar, new RegExp(`panelId: "${drawer}"`));
+  }
+  for (const toolbar of [deckToolbar, imageToolbar, richToolbar]) {
+    assert.doesNotMatch(toolbar, /id: "undo"/);
+    assert.doesNotMatch(toolbar, /id: "redo"/);
+  }
 });

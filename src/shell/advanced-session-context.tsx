@@ -16,6 +16,7 @@ export interface AdvancedSessionActions {
   ensure: (taskId?: string | null) => Promise<AppSession | null>;
   navigate: (sessionId: string) => void;
   startNew: () => Promise<AppSession | null>;
+  renameTitle: (title: string) => Promise<boolean>;
   recordSavedItem: (item: LibraryItem) => Promise<boolean>;
   registerFlush: (
     flush: (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null,

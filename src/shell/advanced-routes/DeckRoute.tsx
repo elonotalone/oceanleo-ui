@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
@@ -33,6 +33,7 @@ export function DeckRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useDeckEditor(item, siteId, previewContent);
+  const [zoom, setZoom] = useState(100);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "deck-elements@2",
@@ -146,6 +147,20 @@ export function DeckRoute({
       editorContextualToolbar={
         <DeckContextToolbar editor={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
+      editorViewport={{
+        value: zoom,
+        min: 50,
+        max: 180,
+        step: 1,
+        setValue: setZoom,
+        fit: () => setZoom(100),
+      }}
       editorHeaderActions={
         <>
           <button
@@ -177,7 +192,7 @@ export function DeckRoute({
           </button>
         </>
       }
-      editorStage={<DeckStage editor={editor} accent={accent} />}
+      editorStage={<DeckStage editor={editor} accent={accent} zoom={zoom} />}
       editorStatus={
         editor.error ||
         editor.notice ||

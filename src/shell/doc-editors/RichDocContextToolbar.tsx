@@ -54,24 +54,6 @@ export function RichDocContextToolbar({
       text: from === to ? "" : editor.state.doc.textBetween(from, to, " "),
       controls: [
         {
-          id: "undo",
-          kind: "action",
-          label: tt("撤销"),
-          icon: "undo",
-          iconOnly: true,
-          group: "history",
-          disabled: !editor.can().undo(),
-        },
-        {
-          id: "redo",
-          kind: "action",
-          label: tt("重做"),
-          icon: "redo",
-          iconOnly: true,
-          group: "history",
-          disabled: !editor.can().redo(),
-        },
-        {
           id: "format",
           kind: "select",
           label: tt("样式"),

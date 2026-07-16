@@ -12,6 +12,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { LeoComposer } from "./LeoComposer";
 import { Markdown } from "./Markdown";
 import type { LibraryItem } from "./library-data";
+import { useAdvancedLayout } from "./advanced-layout-context";
 import { useAdvancedSession } from "./advanced-session-context";
 import { useAttachments } from "./useAttachments";
 
@@ -45,10 +46,10 @@ export function AdvancedAgentPanel({
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [startingNew, setStartingNew] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const advancedSession = useAdvancedSession();
+  const layout = useAdvancedLayout();
   const atts = useAttachments(siteId || item.siteId || "oceanleo", setError);
   const sessionTaskId = advancedSession
     ? advancedSession.taskId || ""
@@ -218,42 +219,46 @@ export function AdvancedAgentPanel({
     setBusy(false);
   }
 
-  async function newConversation() {
-    if (busy || startingNew || !advancedSession) return;
-    setStartingNew(true);
-    setError("");
-    const next = await advancedSession.startNew();
-    if (next) {
-      setActiveTaskId("");
-      setMessages([]);
-      setStatus("");
-      setInput("");
-      atts.clear();
-    } else {
-      setError(tt("新建对话失败，当前内容仍已保留。"));
-    }
-    setStartingNew(false);
-  }
-
   const rendered = visibleMessages(messages);
+  const blankWebsite =
+    item.kind === "website" &&
+    !String(item.meta.project_id || "") &&
+    !String(item.meta.starter_id || "") &&
+    (item.meta.draft === true || item.meta.blank === true);
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--divider,#e7e5e4)] px-3 py-2">
-        <span className="text-[11px] text-[var(--muted,#a8a29e)]">{tt("当前素材对话")}</span>
-        <button
-          type="button"
-          disabled={busy || startingNew || !advancedSession}
-          onClick={() => void newConversation()}
-          className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-40"
-        >
-          {startingNew ? tt("保存中…") : tt("新建对话")}
-        </button>
-      </div>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {rendered.length === 0 && (
-          <div className="rounded-xl border border-dashed border-[var(--border,#e7e5e4)] bg-[var(--surface,#fafaf9)] p-3 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-            {tt("让 Agent 分析、改写或继续处理当前内容。这里复用操控台的同一条聊天历史。")}
-          </div>
+          blankWebsite ? (
+            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/7 p-4 text-[12px] leading-relaxed text-[var(--fg-2,#475569)]">
+              <p className="font-semibold text-[var(--fg,#1e293b)]">
+                {tt("先打开一个真正可编辑的网站")}
+              </p>
+              <p className="mt-1.5 text-[11px] leading-5 text-[var(--muted,#64748b)]">
+                {tt("从“我的库”继续你在 OceanLeo 保存的网站，或从“素材”选择预制动态网站。打开后，Agent 才能针对真实页面继续修改。")}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => layout?.openDrawer("library")}
+                  className="rounded-xl bg-sky-600 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-sky-700"
+                >
+                  {tt("打开我的网站")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => layout?.openDrawer("materials")}
+                  className="rounded-xl border border-sky-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50"
+                >
+                  {tt("选择网站模板")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-[var(--border,#e7e5e4)] bg-[var(--surface,#fafaf9)] p-3 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+              {tt("让 Agent 分析、改写或继续处理当前内容。这里复用操控台的同一条聊天历史。")}
+            </div>
+          )
         )}
         {rendered.map((message) => (
           <div
@@ -287,7 +292,6 @@ export function AdvancedAgentPanel({
           onSubmit={(cleanValue) => void send(cleanValue)}
           loading={busy || status === "running"}
           onStop={status === "running" ? () => void stop() : undefined}
-          disabled={startingNew}
           leoSuggest
           rows={2}
           maxHeight={180}

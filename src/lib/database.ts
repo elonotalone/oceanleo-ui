@@ -78,7 +78,24 @@ export interface DatabaseOverview {
   assets: AssetItem[];
   knowledge: KnowledgeItem[];
   files?: FileItem[];
-  counts: { works: number; assets: number; knowledge: number; files?: number };
+  artifacts?: Array<{
+    id: string;
+    title?: string;
+    kind?: string;
+    content?: unknown;
+    url?: string;
+    favorite?: boolean;
+    created_at?: string;
+    task_id?: string;
+    session_id?: string;
+  }>;
+  counts: {
+    works: number;
+    assets: number;
+    knowledge: number;
+    files?: number;
+    artifacts?: number;
+  };
 }
 
 export type DatabaseItemSource = "work" | "asset" | "artifact" | "platform";

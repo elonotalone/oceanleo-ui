@@ -119,6 +119,20 @@ export function VideoTimelineRoute({
       editorContextualToolbar={
         <VideoTimelineContextToolbar state={editor} accent={accent} />
       }
+      editorHistory={{
+        canUndo: editor.canUndo,
+        canRedo: editor.canRedo,
+        undo: editor.undo,
+        redo: editor.redo,
+      }}
+      editorViewport={{
+        value: Math.round((editor.pxPerSecond / 80) * 100),
+        min: 10,
+        max: 600,
+        step: 5,
+        setValue: (value) => editor.setPxPerSecond((value / 100) * 80),
+        fit: () => editor.setPxPerSecond(80),
+      }}
       editorHeaderActions={
         <>
           <button

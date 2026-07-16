@@ -25,8 +25,10 @@ export type SelectionControlIcon =
   | "crop"
   | "delete"
   | "download"
+  | "draw"
   | "duplicate"
   | "effects"
+  | "elements"
   | "filter"
   | "flip-horizontal"
   | "flip-vertical"
@@ -34,19 +36,24 @@ export type SelectionControlIcon =
   | "image"
   | "italic"
   | "layers"
+  | "line"
   | "link"
   | "lock"
   | "more"
   | "materials"
+  | "note"
   | "opacity"
   | "pages"
   | "position"
   | "redo"
   | "rotate"
   | "save"
+  | "select"
   | "send-backward"
   | "shape"
+  | "signature"
   | "spacing"
+  | "table"
   | "text"
   | "templates"
   | "underline"
@@ -83,7 +90,7 @@ export interface SelectionControl {
   step?: number;
   disabled?: boolean;
   danger?: boolean;
-  placement?: "primary" | "more";
+  placement?: "primary" | "more" | "tools";
 }
 
 export interface SelectionAnchorRect {
@@ -137,8 +144,10 @@ const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "crop",
   "delete",
   "download",
+  "draw",
   "duplicate",
   "effects",
+  "elements",
   "filter",
   "flip-horizontal",
   "flip-vertical",
@@ -146,19 +155,24 @@ const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "image",
   "italic",
   "layers",
+  "line",
   "link",
   "lock",
   "more",
   "materials",
+  "note",
   "opacity",
   "pages",
   "position",
   "redo",
   "rotate",
   "save",
+  "select",
   "send-backward",
   "shape",
+  "signature",
   "spacing",
+  "table",
   "text",
   "templates",
   "underline",
@@ -271,7 +285,9 @@ export function normalizeSelectionContext(
       ...(finite(raw.step) !== undefined ? { step: finite(raw.step) } : {}),
       ...(raw.disabled === true ? { disabled: true } : {}),
       ...(raw.danger === true ? { danger: true } : {}),
-      ...(raw.placement === "more" ? { placement: "more" as const } : {}),
+      ...(raw.placement === "more" || raw.placement === "tools"
+        ? { placement: raw.placement as "more" | "tools" }
+        : {}),
     });
   }
 
