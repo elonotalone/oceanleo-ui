@@ -20,7 +20,10 @@ test("workspace files leave App state through a canonical advanced URL", () => {
 
 test("advanced workbench routes real content into the portal editor shell", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = [
+    source("../src/shell/AdvancedWorkbenchShell.tsx"),
+    source("../src/shell/AdvancedWorkbenchPanel.tsx"),
+  ].join("\n");
   const routeAdapters = [
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
     source("../src/shell/advanced-routes/OfficeRoute.tsx"),
@@ -55,10 +58,10 @@ test("advanced workbench routes real content into the portal editor shell", () =
   assert.match(shell, /aria-modal="true"/);
   assert.match(shell, /element\.inert = true/);
   assert.match(shell, /event\.key !== "Tab"/);
-  assert.match(shell, /id: "agent" as const, label: tt\("Agent"\)/);
-  assert.match(shell, /id: "materials" as const, label: tt\("素材"\)/);
-  assert.match(shell, /id: "tasks" as const, label: tt\("我的任务"\)/);
-  assert.match(shell, /id: "library" as const, label: tt\("我的库"\)/);
+  assert.match(shell, /id: "agent", label: tt\("Agent"\)/);
+  assert.match(shell, /id: "materials"[\s\S]*?label: tt\("素材"\)/);
+  assert.match(shell, /id: "tasks"[\s\S]*?label: tt\("我的任务"\)/);
+  assert.match(shell, /id: "library"[\s\S]*?label: tt\("我的库"\)/);
   assert.doesNotMatch(shell, /id: "preview" as const/);
   assert.doesNotMatch(shell, /id: "info" as const/);
   assert.doesNotMatch(shell, /id: "versions" as const/);
@@ -162,7 +165,10 @@ test("first advanced edit only ensures history and every mutable route can flush
 });
 
 test("advanced split drag captures the pointer and embedded editors stay two-column", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = [
+    source("../src/shell/AdvancedWorkbenchShell.tsx"),
+    source("../src/shell/AdvancedWorkbenchSidebar.tsx"),
+  ].join("\n");
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
   assert.match(shell, /setPointerCapture/);
@@ -189,13 +195,69 @@ test("code-backed website starters reach the visual editor without a fake projec
 });
 
 test("advanced material browsing never navigates out of the current workbench", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = [
+    source("../src/shell/AdvancedWorkbenchShell.tsx"),
+    source("../src/shell/AdvancedWorkbenchPanel.tsx"),
+  ].join("\n");
   const materials = source("../src/shell/MaterialLibrary.tsx");
   assert.match(shell, /allowAdvancedOnSelect=\{false\}/);
   assert.match(
     materials,
     /allowAdvanced=\{allowAdvancedOnSelect && materialActions\.length === 0\}/,
   );
+});
+
+test("advanced materials click to center and drag to the exact canvas point", () => {
+  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const library = source("../src/shell/WorkspaceLibrary.tsx");
+  const provider = source("../src/shell/workbench-material-provider.tsx");
+  const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
+  const timeline = source(
+    "../src/shell/advanced-routes/VideoTimelineRoute.tsx",
+  );
+  const timelineArea = source("../src/shell/video-editor/TimelineArea.tsx");
+  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  assert.match(library, /primaryMaterialAction/);
+  assert.match(library, /activateEntry/);
+  assert.match(library, /materialActionPendingRef/);
+  assert.match(library, /materialActionPendingRef\.current = false/);
+  assert.doesNotMatch(
+    library,
+    /if \(!onMaterialAction \|\| materialActionState\) return/,
+  );
+  assert.match(library, /draggable: enabled/);
+  assert.match(library, /dataTransfer\.setData/);
+  assert.match(provider, /source: "click" \| "drop"/);
+  assert.match(shell, /source: "drop"/);
+  assert.match(shell, /clientX: event\.clientX/);
+  assert.match(shell, /clientY: event\.clientY/);
+  assert.match(shell, /requestedMaterialAction/);
+  assert.match(shell, /activeMaterialAction/);
+  assert.match(deck, /editor\.insertImageElement/);
+  assert.match(timeline, /timelineInsertionMs\(placement, editor\.playheadMs\)/);
+  assert.match(timelineArea, /data-video-timeline-content/);
+  assert.match(embedded, /setMaterialInsertion/);
+  assert.match(
+    embedded,
+    /materialResolversRef\.current\.delete\(commandId\);[\s\S]*?current\?\.commandId === commandId \? null/,
+  );
+  assert.match(embedded, /onMaterialResult/);
+  assert.doesNotMatch(embedded, /editorToolbox=/);
+});
+
+test("the shared property bar dispatches direct, dropdown and drawer controls", () => {
+  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const context = source("../src/shell/selection-context.ts");
+  assert.match(toolbar, /control\.kind === "action" \|\| control\.kind === "panel"/);
+  assert.match(toolbar, /control\.panelAction/);
+  assert.match(toolbar, /aria-haspopup="listbox"/);
+  assert.match(toolbar, /role="option"/);
+  assert.match(toolbar, /control\.kind === "toggle"/);
+  assert.match(toolbar, /type="color"/);
+  assert.match(toolbar, /type="range"/);
+  assert.match(context, /"panel"/);
+  assert.match(context, /panelId\?: string/);
+  assert.match(context, /panelAction\?: SelectionPanelAction/);
 });
 
 test("late catalog categories stay behind More and editor loads have hard deadlines", () => {
@@ -229,10 +291,13 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /type: "save-request"/);
   assert.match(embed, /type: "save-result"/);
   assert.match(embed, /type: "selection-command"/);
+  assert.match(embed, /type: "material-insert"/);
+  assert.match(embed, /message\.type === "material-result"/);
   assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /getBoundingClientRect/);
   assert.match(shell, /editorContextualToolbarAnchor/);
-  assert.match(shell, /-translate-y-full/);
+  assert.match(shell, /editorContextualToolbar \?/);
+  assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
 
@@ -273,6 +338,50 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
   assert.ok(
     asEditorToHostMessage(
       { ...base, url: "https://cdn.example.test/a.png", saveId: "save-1" },
+      "instance-1",
+    ),
+  );
+  const materialInsert = {
+    protocol: EDITOR_PROTOCOL,
+    instanceId: "instance-1",
+    type: "material-insert",
+    insertion: {
+      commandId: "material-1",
+      action: "insert",
+      material: {
+        id: "asset-1",
+        kind: "image",
+        title: "海报人物",
+        url: "https://cdn.example.test/a.png",
+        meta: {},
+        writable: false,
+      },
+      point: { x: 480, y: 320 },
+    },
+  };
+  assert.ok(asHostToEditorMessage(materialInsert, "instance-1"));
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        ...materialInsert,
+        insertion: {
+          ...materialInsert.insertion,
+          point: { x: Number.POSITIVE_INFINITY, y: 0 },
+        },
+      },
+      "instance-1",
+    ),
+    null,
+  );
+  assert.ok(
+    asEditorToHostMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "material-result",
+        commandId: "material-1",
+        ok: true,
+      },
       "instance-1",
     ),
   );
@@ -319,7 +428,7 @@ test("cloud browser can be opened directly and still supports takeover", () => {
 test("full-page library and right workspace share the heterogeneous My Library", () => {
   const artifacts = source("../src/shell/ArtifactLibrary.tsx");
   const mine = source("../src/shell/MyLibrary.tsx");
-  const advancedShell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const advancedShell = source("../src/shell/AdvancedWorkbenchPanel.tsx");
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);

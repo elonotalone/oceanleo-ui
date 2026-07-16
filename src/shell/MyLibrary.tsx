@@ -285,7 +285,7 @@ export function MyLibrary({
   );
   const toolbar = (
     <div className="flex items-center gap-2">
-      <label className="cursor-pointer rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50">
+      <label className="cursor-pointer rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]">
         <input
           type="file"
           multiple
@@ -302,7 +302,7 @@ export function MyLibrary({
         type="button"
         onClick={() => void load()}
         disabled={loading || uploading}
-        className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+        className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
       >
         {tt(loading ? "加载中…" : "刷新")}
       </button>
@@ -343,7 +343,7 @@ export function MyLibrary({
         plain={plain}
       />
       {(uploadProgress || uploadError) && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-stone-900 px-3 py-2 text-[11px] text-white shadow-lg">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg">
           {uploadError || uploadProgress}
         </div>
       )}

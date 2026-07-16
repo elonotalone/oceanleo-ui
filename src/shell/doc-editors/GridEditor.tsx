@@ -23,8 +23,8 @@ export function GridEditor({
   const editor = useGridEditor(item, siteId);
   useOnSaved(editor.savedUrl, onSaved);
   return (
-    <div className="flex h-full min-h-0 bg-white">
-      <aside className="w-72 shrink-0 overflow-y-auto border-r border-stone-200">
+    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
+      <aside className="w-72 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)]">
         <GridControls editor={editor} accent={accent} />
       </aside>
       <main className="min-w-0 flex-1">

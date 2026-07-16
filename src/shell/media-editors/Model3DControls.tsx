@@ -24,7 +24,7 @@ function ActionButton({
       className={
         primary
           ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+          : "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
       }
       style={primary ? { background: accent || "#4f46e5" } : undefined}
     >
@@ -44,12 +44,12 @@ export function Model3DControls({
   const busy =
     editor.loading || editor.capturing || editor.saving || editor.downloading;
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <section className="space-y-2">
-        <p className="text-[11px] font-semibold text-stone-800">
+        <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("3D 模型")}
         </p>
-        <label className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50">
+        <label className="flex w-full cursor-pointer items-center justify-center rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]">
           {editor.sourceUrl ? tt("替换模型") : tt("导入 GLB / glTF")}
           <input
             type="file"
@@ -63,13 +63,13 @@ export function Model3DControls({
             }}
           />
         </label>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("点击模型后，相机、灯光、背景和动画会出现在画布上方。")}
         </p>
       </section>
 
-      <section className="space-y-1.5 border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">
+      <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("截图与保存")}
         </p>
         <div className="grid grid-cols-2 gap-1.5">

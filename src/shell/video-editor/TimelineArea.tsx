@@ -301,11 +301,11 @@ export function TimelineArea({
   const playheadX = msToPx(playheadMs);
 
   return (
-    <div className="flex min-h-0 flex-1 select-none overflow-y-auto bg-white">
+    <div className="flex min-h-0 flex-1 select-none overflow-y-auto bg-[var(--card,#fff)]">
       {/* 轨道标签列 */}
-      <div className="w-24 shrink-0 border-r border-stone-200 bg-stone-50">
+      <div className="w-24 shrink-0 border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]">
         <div
-          className="flex items-center px-2 text-[10px] text-stone-400"
+          className="flex items-center px-2 text-[10px] text-[var(--muted,#78716c)]"
           style={{ height: RULER_HEIGHT }}
         >
           {tt("轨道")}
@@ -320,7 +320,7 @@ export function TimelineArea({
               className="flex items-center justify-between gap-1 px-2"
               style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
             >
-              <span className="truncate text-[11px] text-stone-600">
+              <span className="truncate text-[11px] text-[var(--fg-2,#57534e)]">
                 {tt(KIND_LABEL[track.kind])}
                 {isBaseVideo ? ` · ${tt("基底")}` : ""}
               </span>
@@ -328,7 +328,7 @@ export function TimelineArea({
                 <button
                   type="button"
                   onClick={() => state.removeTrack(track.id)}
-                  className="rounded px-1 text-[12px] leading-none text-stone-400 hover:bg-stone-200 hover:text-stone-700"
+                  className="rounded px-1 text-[12px] leading-none text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] hover:text-[var(--fg,#292524)]"
                   title={tt("删除轨道")}
                 >
                   ×
@@ -343,6 +343,8 @@ export function TimelineArea({
       <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
         <div
           ref={contentRef}
+          data-video-timeline-content
+          data-px-per-second={pxPerSecond}
           className="relative"
           style={{ width: contentWidth }}
         >
@@ -354,16 +356,16 @@ export function TimelineArea({
             onPointerUp={onRulerPointerUp}
             onPointerCancel={onRulerPointerCancel}
             onLostPointerCapture={onRulerPointerCancel}
-            className="relative cursor-col-resize border-b border-stone-200 bg-stone-50"
+            className="relative cursor-col-resize border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]"
             style={{ height: RULER_HEIGHT }}
           >
             {ticks.map((tick) => (
               <div
                 key={tick.ms}
-                className="absolute top-0 h-full border-l border-stone-300"
+                className="absolute top-0 h-full border-l border-[var(--divider,#d6d3d1)]"
                 style={{ left: msToPx(tick.ms) }}
               >
-                <span className="ml-1 text-[9px] tabular-nums text-stone-400">
+                <span className="ml-1 text-[9px] tabular-nums text-[var(--muted,#78716c)]">
                   {tick.label}
                 </span>
               </div>
@@ -378,7 +380,7 @@ export function TimelineArea({
                 if (node) rowRefs.current.set(track.id, node);
                 else rowRefs.current.delete(track.id);
               }}
-              className="relative rounded-sm bg-stone-100/70"
+              className="relative rounded-sm bg-[var(--surface-hover,rgba(0,0,0,.05))]"
               style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
               onPointerDown={() => state.selectClip("")}
             >

@@ -54,9 +54,29 @@ export function RichDocContextToolbar({
       text: from === to ? "" : editor.state.doc.textBetween(from, to, " "),
       controls: [
         {
+          id: "undo",
+          kind: "action",
+          label: tt("撤销"),
+          icon: "undo",
+          iconOnly: true,
+          group: "history",
+          disabled: !editor.can().undo(),
+        },
+        {
+          id: "redo",
+          kind: "action",
+          label: tt("重做"),
+          icon: "redo",
+          iconOnly: true,
+          group: "history",
+          disabled: !editor.can().redo(),
+        },
+        {
           id: "format",
           kind: "select",
           label: tt("样式"),
+          icon: "font",
+          group: "type",
           value: format,
           options: [
             { value: "p", label: tt("段落") },
@@ -66,12 +86,15 @@ export function RichDocContextToolbar({
             { value: "h4", label: tt("四级标题") },
           ],
         },
-        { id: "bold", kind: "toggle", label: "B", value: editor.isActive("bold") },
-        { id: "italic", kind: "toggle", label: "I", value: editor.isActive("italic") },
+        { id: "bold", kind: "toggle", label: tt("粗体"), icon: "bold", iconOnly: true, group: "style", value: editor.isActive("bold") },
+        { id: "italic", kind: "toggle", label: tt("斜体"), icon: "italic", iconOnly: true, group: "style", value: editor.isActive("italic") },
         {
           id: "underline",
           kind: "toggle",
-          label: "U",
+          label: tt("下划线"),
+          icon: "underline",
+          iconOnly: true,
+          group: "style",
           value: editor.isActive("underline"),
         },
         {
@@ -84,6 +107,9 @@ export function RichDocContextToolbar({
           id: "color",
           kind: "color",
           label: tt("文字色"),
+          icon: "font",
+          iconOnly: true,
+          group: "style",
           value: String(textStyle.color || "#1c1917"),
         },
         {
@@ -97,6 +123,8 @@ export function RichDocContextToolbar({
           id: "align",
           kind: "select",
           label: tt("对齐"),
+          icon: "align-left",
+          group: "paragraph",
           value: align,
           options: [
             { value: "left", label: tt("左") },
@@ -171,6 +199,12 @@ export function RichDocContextToolbar({
     if (message.selectionId !== context.id) return;
     const chain = editor.chain().focus();
     switch (message.controlId) {
+      case "undo":
+        chain.undo().run();
+        break;
+      case "redo":
+        chain.redo().run();
+        break;
       case "format": {
         const value = String(message.value || "p");
         if (value === "p") chain.setParagraph().run();

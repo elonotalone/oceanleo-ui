@@ -17,6 +17,7 @@ export type DeckElementType =
   | "table"
   | "unsupported";
 export type DeckTextAlign = "left" | "center" | "right";
+export type DeckImageFit = "contain" | "cover" | "fill";
 
 /**
  * Positioned native slide element. Coordinates and dimensions are percentages
@@ -41,9 +42,23 @@ export interface DeckElement {
   fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
   align?: DeckTextAlign;
+  lineHeight?: number;
+  letterSpacing?: number;
   borderColor?: string;
   borderWidth?: number;
+  borderRadius?: number;
+  opacity?: number;
+  shadow?: boolean;
+  locked?: boolean;
+  flipX?: boolean;
+  flipY?: boolean;
+  imageFit?: DeckImageFit;
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  blur?: number;
   rows?: string[][];
   label?: string;
 }
@@ -247,15 +262,115 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
     fontFamily: text(source.fontFamily).slice(0, 200) || undefined,
     bold: Boolean(source.bold),
     italic: Boolean(source.italic),
+    underline: Boolean(source.underline),
     align:
       align === "center" || align === "right" || align === "left"
         ? align
         : undefined,
+    lineHeight: finite(source.lineHeight, 1.15, 0.7, 4),
+    letterSpacing: finite(source.letterSpacing, 0, -10, 40),
     borderColor: color(source.borderColor) || undefined,
     borderWidth: finite(source.borderWidth, 0, 0, 40),
+    borderRadius: finite(source.borderRadius, 0, 0, 999),
+    opacity: finite(source.opacity, 1, 0, 1),
+    shadow: Boolean(source.shadow),
+    locked: Boolean(source.locked),
+    flipX: Boolean(source.flipX),
+    flipY: Boolean(source.flipY),
+    imageFit:
+      source.imageFit === "cover" || source.imageFit === "fill"
+        ? source.imageFit
+        : "contain",
+    brightness: finite(source.brightness, 1, 0, 3),
+    contrast: finite(source.contrast, 1, 0, 3),
+    saturation: finite(source.saturation, 1, 0, 3),
+    blur: finite(source.blur, 0, 0, 30),
     rows,
     label: text(source.label).slice(0, 500) || undefined,
   };
+}
+
+function legacySlideElements({
+  title,
+  body,
+  bullets,
+  layout,
+  image,
+}: {
+  title: string;
+  body: string;
+  bullets: string[];
+  layout: DeckLayout;
+  image?: DeckImage;
+}): DeckElement[] {
+  if (layout === "blank" && !title && !body && !bullets.length && !image?.url) {
+    return [];
+  }
+  const centered = layout === "title" || layout === "section";
+  const hasImage = Boolean(image?.url);
+  const imageLeft = layout === "image-left";
+  const textX = hasImage ? (imageLeft ? 52 : 7) : 8;
+  const textWidth = hasImage ? 41 : 84;
+  const elements: DeckElement[] = [];
+  if (title) {
+    elements.push({
+      id: deckId("element"),
+      type: "text",
+      x: textX,
+      y: centered ? 28 : 13,
+      width: textWidth,
+      height: centered ? 20 : 14,
+      rotation: 0,
+      order: 1,
+      text: title,
+      fontSize: centered ? 42 : 32,
+      bold: true,
+      align: centered ? "center" : "left",
+      lineHeight: 1.08,
+      opacity: 1,
+      locked: false,
+    });
+  }
+  const content = [body, bullets.length ? bullets.map((item) => `• ${item}`).join("\n") : ""]
+    .filter(Boolean)
+    .join("\n\n");
+  if (content && layout !== "title") {
+    elements.push({
+      id: deckId("element"),
+      type: "text",
+      x: textX,
+      y: centered ? 52 : 33,
+      width: textWidth,
+      height: centered ? 23 : 48,
+      rotation: 0,
+      order: 2,
+      text: content,
+      fontSize: 19,
+      align: centered ? "center" : "left",
+      lineHeight: 1.35,
+      opacity: 1,
+      locked: false,
+    });
+  }
+  if (image?.url) {
+    elements.push({
+      id: deckId("element"),
+      type: "image",
+      x: imageLeft ? 7 : 52,
+      y: 14,
+      width: 41,
+      height: 72,
+      rotation: 0,
+      order: 3,
+      src: image.url,
+      alt: image.alt,
+      imageFit: "cover",
+      borderRadius: 18,
+      opacity: 1,
+      locked: false,
+    });
+  }
+  return elements;
 }
 
 export function emptyDeckSlide(title = "新幻灯片"): DeckSlide {
@@ -267,7 +382,12 @@ export function emptyDeckSlide(title = "新幻灯片"): DeckSlide {
     notes: "",
     layout: "title-body",
     background: "",
-    elements: [],
+    elements: legacySlideElements({
+      title,
+      body: "",
+      bullets: [],
+      layout: "title-body",
+    }),
   };
 }
 
@@ -280,26 +400,33 @@ function normalizeSlide(value: unknown, index: number): DeckSlide {
   const body = text(
     source.body || source.content || source.description || source.text,
   );
+  const title =
+    text(source.title || source.heading || source.name).trim() ||
+    `第 ${index + 1} 页`;
+  const layout = LAYOUTS.has(rawLayout)
+    ? rawLayout
+    : bullets.length > 0
+      ? "bullets"
+      : "title-body";
+  const image = normalizeImage(source.image, source);
+  const normalizedElements = Array.isArray(source.elements)
+    ? source.elements
+        .map(normalizeElement)
+        .filter((element): element is DeckElement => Boolean(element))
+    : [];
   return {
     id: text(source.id).trim() || deckId(),
-    title:
-      text(source.title || source.heading || source.name).trim() ||
-      `第 ${index + 1} 页`,
+    title,
     body,
     bullets,
     notes: text(source.notes || source.speakerNotes || source.speaker_notes),
-    layout: LAYOUTS.has(rawLayout)
-      ? rawLayout
-      : bullets.length > 0
-        ? "bullets"
-        : "title-body",
+    layout,
     background: color(source.background || source.bg || source.backgroundColor),
-    image: normalizeImage(source.image, source),
-    elements: Array.isArray(source.elements)
-      ? source.elements
-          .map(normalizeElement)
-          .filter((element): element is DeckElement => Boolean(element))
-      : [],
+    image,
+    elements:
+      normalizedElements.length > 0
+        ? normalizedElements
+        : legacySlideElements({ title, body, bullets, layout, image }),
   };
 }
 

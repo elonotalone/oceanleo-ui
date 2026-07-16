@@ -3,7 +3,9 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
 import {
   AudioControls,
@@ -11,6 +13,10 @@ import {
   useAudioWorkbench,
 } from "../media-editors/AudioWorkbench";
 import { editorToolLabel } from "../workbench-routes";
+import {
+  useWorkbenchMaterialAdapter,
+  type WorkbenchMaterialAdapter,
+} from "../workbench-material-provider";
 
 export function AudioRoute({
   item,
@@ -22,6 +28,36 @@ export function AudioRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useAudioWorkbench(item, siteId);
+  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
+    () => ({
+      id: "audio-materials@2",
+      actions: ["replace"],
+      accepts: (material) => {
+        const url = material.url || material.previewUrl || "";
+        return (
+          material.kind === "audio" ||
+          String(material.meta.mime || "").startsWith("audio/") ||
+          /\.(?:mp3|wav|m4a|aac|ogg|flac)(?:$|[?#])/i.test(url)
+        );
+      },
+      mutate: async (_action, material) => {
+        const url = material.url || material.previewUrl || "";
+        if (!url) throw new Error("这个音频素材没有可用地址。");
+        const blob = await fetchMediaBlob(url, {
+          maxBytes: 128 * 1024 * 1024,
+        });
+        const extension =
+          url.split(/[?#]/)[0].split(".").pop() || "audio";
+        await editor.importSource(
+          new File([blob], `${material.title || "audio"}.${extension}`, {
+            type: blob.type || "audio/mpeg",
+          }),
+        );
+      },
+    }),
+    [editor.importSource],
+  );
+  useWorkbenchMaterialAdapter(materialAdapter);
   const savedItem = useMemo(
     () =>
       editor.savedUrl
@@ -44,9 +80,34 @@ export function AudioRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "audio" })}
+      editorDrawerLabel="音轨工具"
+      editorDrawerIcon="timeline"
       editorToolbox={<AudioControls editor={editor} accent={accent} />}
       editorContextualToolbar={
         <AudioContextToolbar editor={editor} accent={accent} />
+      }
+      editorHeaderActions={
+        <>
+          <button
+            type="button"
+            onClick={editor.download}
+            disabled={editor.loading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+          >
+            <AdvancedEditorIcon name="download" className="h-4 w-4" />
+            WAV
+          </button>
+          <button
+            type="button"
+            disabled={editor.saving || editor.loading}
+            onClick={() => void editor.save()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
+            style={{ color: accent }}
+          >
+            <AdvancedEditorIcon name="save" className="h-4 w-4" />
+            {editor.saving ? "保存中…" : "保存"}
+          </button>
+        </>
       }
       editorStage={<AudioStage editor={editor} accent={accent} />}
       editorStatus={

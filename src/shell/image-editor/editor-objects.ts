@@ -275,11 +275,16 @@ export function buildSelectedSnapshot(
     const align = obj.textAlign;
     text = {
       value: String(obj.text || "").slice(0, 2_000),
+      fontFamily: obj.fontFamily || "sans-serif",
       fontSize: Math.round(obj.fontSize),
       fill: typeof obj.fill === "string" ? obj.fill : "#1c1917",
       backgroundColor: obj.backgroundColor || "",
       bold: weight === "bold" || Number(weight) >= 600,
       italic: obj.fontStyle === "italic",
+      underline: obj.underline === true,
+      linethrough: obj.linethrough === true,
+      lineHeight: obj.lineHeight || 1.16,
+      charSpacing: obj.charSpacing || 0,
       align: align === "center" || align === "right" ? align : "left",
       stroke: typeof obj.stroke === "string" ? obj.stroke : "",
       strokeWidth: obj.strokeWidth ?? 0,

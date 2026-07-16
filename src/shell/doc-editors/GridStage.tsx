@@ -84,22 +84,22 @@ export function GridStage({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-stone-50 px-3 py-2">
-        <span className="w-16 shrink-0 rounded-md border border-stone-200 bg-white px-2 py-1.5 text-center text-[11px] font-medium text-stone-500">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-2">
+        <span className="w-16 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
           {selectedAddress}
         </span>
-        <span className="text-[13px] font-semibold text-stone-400">fx</span>
+        <span className="text-[13px] font-semibold text-[var(--muted,#78716c)]">fx</span>
         <input
           value={editor.selectedValue}
           onChange={(event) => editor.setSelectedValue(event.target.value)}
           aria-label={tt("公式栏")}
           placeholder={tt("输入内容或以 = 开头的公式")}
-          className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-[11px] text-stone-700 outline-none focus:border-stone-400"
+          className="min-w-0 flex-1 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
         />
         {editor.selectedValue.startsWith("=") && (
           <span
-            className="max-w-48 truncate text-[10px] text-stone-400"
+            className="max-w-48 truncate text-[10px] text-[var(--muted,#78716c)]"
             title={editor.selectedDisplayValue}
           >
             {tt("结果")}：{editor.selectedDisplayValue}
@@ -108,22 +108,22 @@ export function GridStage({
       </div>
 
       <div
-        className="relative min-h-0 flex-1 overflow-auto bg-white"
+        className="relative min-h-0 flex-1 overflow-auto bg-[var(--card,#fff)]"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {editor.loading && (
-          <div className="absolute inset-0 z-40 grid place-items-center bg-white/90 text-[12px] text-stone-400">
+          <div className="absolute inset-0 z-40 grid place-items-center bg-[var(--card,#fff)]/90 text-[12px] text-[var(--muted,#78716c)]">
             {tt("正在读取工作簿…")}
           </div>
         )}
         <table className="border-separate border-spacing-0 text-[11px]">
           <thead className="sticky top-0 z-30">
             <tr>
-              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-stone-200 bg-stone-100" />
+              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]" />
               {Array.from({ length: columnCount }, (_, col) => (
                 <th
                   key={col}
-                  className="h-8 min-w-28 border-b border-r border-stone-200 bg-stone-100 px-2 font-medium text-stone-500"
+                  className="h-8 min-w-28 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 font-medium text-[var(--muted,#78716c)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     editor.selectCell({ row: editor.selection.focus.row, col });
@@ -146,7 +146,7 @@ export function GridStage({
             {windowRows.map((row) => (
               <tr key={row} style={{ height: ROW_HEIGHT }}>
                 <th
-                  className="sticky left-0 z-20 w-12 min-w-12 border-b border-r border-stone-200 bg-stone-100 px-2 text-right font-medium text-stone-400"
+                  className="sticky left-0 z-20 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 text-right font-medium text-[var(--muted,#78716c)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     editor.selectCell({ row, col: editor.selection.focus.col });
@@ -167,7 +167,7 @@ export function GridStage({
                   return (
                     <td
                       key={col}
-                      className="relative h-[34px] min-w-28 border-b border-r border-stone-200 p-0"
+                      className="relative h-[34px] min-w-28 border-b border-r border-[var(--border,#e7e5e4)] p-0"
                       style={
                         selected
                           ? { background: `${accent}0d` }
@@ -222,13 +222,13 @@ export function GridStage({
           </tbody>
         </table>
         {rows.length === 0 && (
-          <div className="grid h-full place-items-center text-[12px] text-stone-400">
+          <div className="grid h-full place-items-center text-[12px] text-[var(--muted,#78716c)]">
             {tt("没有符合筛选条件的行")}
           </div>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-stone-200 bg-stone-50 px-3 py-1.5">
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-1.5">
         {editor.sheets.map((sheet) => (
           <button
             key={sheet.id}
@@ -256,48 +256,9 @@ export function GridStage({
           type="button"
           onClick={editor.addSheet}
           aria-label={tt("新增工作表")}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-stone-500 hover:bg-stone-200"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
         >
           +
-        </button>
-      </div>
-
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
-        <span className="min-w-0 flex-1 truncate text-[11px] text-stone-400">
-          {editor.error
-            ? editor.error
-            : editor.savedUrl
-              ? tt("已保存到我的库")
-              : tt("{rows} 行 · {cols} 列 · {sheets} 个工作表", {
-                  rows: editor.activeSheet.rows.length,
-                  cols: columnCount,
-                  sheets: editor.sheets.length,
-                })}
-        </span>
-        <button
-          type="button"
-          onClick={editor.exportCsv}
-          disabled={editor.loading}
-          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
-        >
-          {tt("导出当前 CSV")}
-        </button>
-        <button
-          type="button"
-          onClick={() => void editor.exportXlsx()}
-          disabled={editor.loading || editor.exporting}
-          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
-        >
-          {editor.exporting ? tt("导出中…") : tt("导出 XLSX")}
-        </button>
-        <button
-          type="button"
-          disabled={editor.loading || editor.saving}
-          onClick={() => void editor.save()}
-          className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-          style={{ background: accent }}
-        >
-          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
         </button>
       </div>
     </div>

@@ -24,6 +24,7 @@ import { FabricEditorController } from "./fabric-controller";
 import type { FabricControllerView } from "./fabric-controller-core";
 import {
   INITIAL_FILTERS,
+  type CanvasClientPoint,
   type FabricImageEditorOptions,
   type FabricImageEditorState,
 } from "./types";
@@ -218,7 +219,7 @@ export function useFabricImageEditor(
   ]);
 
   const addImageFromUrl = useCallback(
-    async (url: string) => {
+    async (url: string, point?: CanvasClientPoint) => {
       const source = url.trim();
       const controller = controllerRef.current;
       const fabric = fabricRef.current;
@@ -234,11 +235,45 @@ export function useFabricImageEditor(
           image.dispose();
           return;
         }
-        controller.addImage(image);
+        controller.addImage(image, point);
         setNotice("图片已添加为独立图层");
       } catch (caught) {
         if (!isAbortError(caught)) {
           setError(caught instanceof Error ? caught.message : "图片导入失败");
+        }
+      } finally {
+        finishAbort(abort);
+      }
+    },
+    [finishAbort, item.title, makeAbort, siteId],
+  );
+  const replaceSelectedImageFromUrl = useCallback(
+    async (url: string) => {
+      const source = url.trim();
+      const controller = controllerRef.current;
+      const fabric = fabricRef.current;
+      if (!controller || !fabric || !source) return;
+      const abort = makeAbort();
+      setError("");
+      setNotice("正在替换图片…");
+      try {
+        const safeUrl = await canvasImageUrl(source, siteId, item.title);
+        if (abort.signal.aborted || controllerRef.current !== controller) return;
+        const image = await loadImageObject(fabric, safeUrl, abort.signal);
+        if (abort.signal.aborted || controllerRef.current !== controller) {
+          image.dispose();
+          return;
+        }
+        if (!controller.replaceActiveImage(image)) {
+          throw new Error("请先选择要替换的图片。");
+        }
+        setNotice("图片已替换，位置和尺寸保持不变");
+      } catch (caught) {
+        if (!isAbortError(caught)) {
+          const error =
+            caught instanceof Error ? caught : new Error("图片替换失败");
+          setError(error.message);
+          throw error;
         }
       } finally {
         finishAbort(abort);
@@ -424,6 +459,7 @@ export function useFabricImageEditor(
     addText: () => controller()?.addText(),
     addShape: (kind) => controller()?.addShape(kind),
     addImageFromUrl,
+    replaceSelectedImageFromUrl,
     addImageFromFile,
     layers: view.layers,
     selectLayer: (id) => controller()?.selectLayer(id),

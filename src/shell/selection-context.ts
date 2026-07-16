@@ -8,9 +8,53 @@ export type SelectionControlKind =
   | "number"
   | "range"
   | "color"
-  | "text";
+  | "text"
+  | "panel";
+
+export type SelectionControlIcon =
+  | "add"
+  | "ai"
+  | "align-center"
+  | "align-left"
+  | "align-right"
+  | "animate"
+  | "background"
+  | "bold"
+  | "border"
+  | "bring-forward"
+  | "crop"
+  | "delete"
+  | "download"
+  | "duplicate"
+  | "effects"
+  | "filter"
+  | "flip-horizontal"
+  | "flip-vertical"
+  | "font"
+  | "image"
+  | "italic"
+  | "layers"
+  | "link"
+  | "lock"
+  | "more"
+  | "materials"
+  | "opacity"
+  | "pages"
+  | "position"
+  | "redo"
+  | "rotate"
+  | "save"
+  | "send-backward"
+  | "shape"
+  | "spacing"
+  | "text"
+  | "templates"
+  | "underline"
+  | "undo"
+  | "unlock";
 
 export type SelectionControlValue = string | number | boolean | null;
+export type SelectionPanelAction = "insert" | "replace" | "apply" | "merge";
 
 export interface SelectionControlOption {
   value: string;
@@ -21,6 +65,17 @@ export interface SelectionControl {
   id: string;
   kind: SelectionControlKind;
   label: string;
+  icon?: SelectionControlIcon;
+  /** Visual grouping in the shared top property bar. */
+  group?: string;
+  /** Hide the label visually while keeping it as tooltip/aria-label. */
+  iconOnly?: boolean;
+  /** `panel` controls open a host drawer with this id. */
+  panelId?: string;
+  /** Optional material action used when a panel opens the shared library. */
+  panelAction?: SelectionPanelAction;
+  /** Optional compact suffix rendered beside number/range values. */
+  suffix?: string;
   value?: SelectionControlValue;
   options?: SelectionControlOption[];
   min?: number;
@@ -65,6 +120,50 @@ const CONTROL_KINDS = new Set<SelectionControlKind>([
   "range",
   "color",
   "text",
+  "panel",
+]);
+
+const CONTROL_ICONS = new Set<SelectionControlIcon>([
+  "add",
+  "ai",
+  "align-center",
+  "align-left",
+  "align-right",
+  "animate",
+  "background",
+  "bold",
+  "border",
+  "bring-forward",
+  "crop",
+  "delete",
+  "download",
+  "duplicate",
+  "effects",
+  "filter",
+  "flip-horizontal",
+  "flip-vertical",
+  "font",
+  "image",
+  "italic",
+  "layers",
+  "link",
+  "lock",
+  "more",
+  "materials",
+  "opacity",
+  "pages",
+  "position",
+  "redo",
+  "rotate",
+  "save",
+  "send-backward",
+  "shape",
+  "spacing",
+  "text",
+  "templates",
+  "underline",
+  "undo",
+  "unlock",
 ]);
 
 function finite(value: unknown, fallback?: number): number | undefined {
@@ -147,6 +246,24 @@ export function normalizeSelectionContext(
       id: controlId,
       kind: controlKind,
       label,
+      ...(CONTROL_ICONS.has(raw.icon as SelectionControlIcon)
+        ? { icon: raw.icon as SelectionControlIcon }
+        : {}),
+      ...(shortString(raw.group, 40)
+        ? { group: shortString(raw.group, 40) }
+        : {}),
+      ...(raw.iconOnly === true ? { iconOnly: true } : {}),
+      ...(ID_RE.test(shortString(raw.panelId, 80))
+        ? { panelId: shortString(raw.panelId, 80) }
+        : {}),
+      ...(["insert", "replace", "apply", "merge"].includes(
+        String(raw.panelAction || ""),
+      )
+        ? { panelAction: raw.panelAction as SelectionPanelAction }
+        : {}),
+      ...(shortString(raw.suffix, 12)
+        ? { suffix: shortString(raw.suffix, 12) }
+        : {}),
       ...(normalizedValue !== undefined ? { value: normalizedValue } : {}),
       ...(options?.length ? { options } : {}),
       ...(finite(raw.min) !== undefined ? { min: finite(raw.min) } : {}),

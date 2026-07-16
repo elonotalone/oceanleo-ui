@@ -30,8 +30,8 @@ export function VideoTimelineEditor({
 }: VideoTimelineEditorProps) {
   const state = useVideoTimeline(item, siteId, onSaved);
   return (
-    <div className="flex h-full min-h-0 bg-white">
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-stone-200">
+    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]">
         <VideoTimelineControls state={state} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

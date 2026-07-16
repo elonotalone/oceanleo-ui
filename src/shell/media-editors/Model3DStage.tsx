@@ -24,7 +24,7 @@ export function Model3DStage({
           : tt("拖动环绕 · 滚轮缩放 · 双指平移");
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-stone-100">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
       <div
         className="relative min-h-0 flex-1 overflow-hidden transition-colors"
         style={{ background: editor.background }}
@@ -61,7 +61,7 @@ export function Model3DStage({
 
         {!editor.loading && !editor.sourceUrl && !editor.error && (
           <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="relative h-full w-full max-w-4xl overflow-hidden rounded-2xl border border-stone-300/80 bg-white/35 shadow-inner">
+            <div className="relative h-full w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--divider,#d6d3d1)] bg-[var(--card,#fff)]/35 shadow-inner">
               <div
                 className="absolute inset-0 opacity-70"
                 style={{
@@ -73,13 +73,13 @@ export function Model3DStage({
                 }}
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-stone-300 bg-white/90 text-2xl text-stone-500 shadow-sm">
+                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-[var(--divider,#d6d3d1)] bg-[var(--card,#fff)]/90 text-2xl text-[var(--muted,#78716c)] shadow-sm">
                   3D
                 </div>
-                <p className="mt-4 text-[13px] font-semibold text-stone-700">
+                <p className="mt-4 text-[13px] font-semibold text-[var(--fg,#292524)]">
                   {tt("空白 3D 场景")}
                 </p>
-                <p className="mt-1 text-[11px] text-stone-500">
+                <p className="mt-1 text-[11px] text-[var(--muted,#78716c)]">
                   {tt("从左侧导入 GLB 或自包含 glTF 后开始编辑")}
                 </p>
               </div>
@@ -91,9 +91,9 @@ export function Model3DStage({
           <div
             role="status"
             aria-live="polite"
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/75 px-6 text-center backdrop-blur-sm"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--card,#fff)]/75 px-6 text-center backdrop-blur-sm"
           >
-            <div className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-[var(--surface-hover,rgba(0,0,0,.08))]">
               <div
                 className="h-full rounded-full transition-[width]"
                 style={{
@@ -102,7 +102,7 @@ export function Model3DStage({
                 }}
               />
             </div>
-            <p className="text-[12px] text-stone-500">
+            <p className="text-[12px] text-[var(--muted,#78716c)]">
               {tt("正在加载 3D 模型…")}
               {progress > 0 ? ` ${progress}%` : ""}
             </p>
@@ -114,7 +114,7 @@ export function Model3DStage({
             role="alert"
             className="absolute inset-0 flex items-center justify-center p-6"
           >
-            <div className="max-w-md rounded-xl border border-red-200 bg-white/95 p-5 text-center shadow-sm">
+            <div className="max-w-md rounded-xl border border-red-200 bg-[var(--card,#fff)]/95 p-5 text-center shadow-sm">
               <p className="text-[13px] font-semibold text-red-700">
                 {tt("无法显示 3D 模型")}
               </p>
@@ -136,12 +136,12 @@ export function Model3DStage({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-3 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5">
         <button
           type="button"
           disabled={!editor.modelLoaded}
           onClick={editor.resetCamera}
-          className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+          className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
         >
           {tt("重置视角")}
         </button>
@@ -163,7 +163,7 @@ export function Model3DStage({
             type="button"
             disabled={!editor.animationName}
             onClick={editor.toggleAnimation}
-            className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+            className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
           >
             {editor.animationPlaying ? tt("暂停动画") : tt("播放动画")}
           </button>
@@ -175,7 +175,7 @@ export function Model3DStage({
               ? "text-red-600"
               : editor.notice
                 ? "text-emerald-600"
-                : "text-stone-400"
+                : "text-[var(--muted,#78716c)]"
           }`}
         >
           {status}

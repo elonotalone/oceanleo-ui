@@ -5,12 +5,12 @@ import { useUI } from "../../i18n/ui/useUI";
 import type { GridEditorState } from "./use-grid-editor";
 
 const BUTTON =
-  "rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[11px] text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-35";
+  "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:cursor-not-allowed disabled:opacity-35";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-2 border-b border-stone-100 pb-3 last:border-0">
-      <p className="text-[11px] font-semibold text-stone-800">{title}</p>
+    <section className="space-y-2.5 border-b border-[var(--border,#e7e5e4)] pb-4 last:border-0">
+      <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">{title}</p>
       {children}
     </section>
   );
@@ -26,7 +26,7 @@ export function GridControls({
   const tt = useUI();
   const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="space-y-3 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <Section title={tt("工作簿来源")}>
         <input
           ref={fileRef}
@@ -47,13 +47,13 @@ export function GridControls({
         >
           {editor.importing ? tt("导入中…") : tt("导入 CSV / XLSX")}
         </button>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("选中单元格后，格式、排序和行列操作会出现在表格上方。")}
         </p>
       </Section>
 
       <Section title={tt("工作表")}>
-        <label className="block text-[10px] text-stone-400">
+        <label className="block text-[10px] text-[var(--muted,#78716c)]">
           {tt("工作表名称")}
           <input
             key={editor.activeSheetId}
@@ -62,7 +62,7 @@ export function GridControls({
             onKeyDown={(event) => {
               if (event.key === "Enter") event.currentTarget.blur();
             }}
-            className="mt-1 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-700 outline-none"
+            className="mt-1 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
           />
         </label>
         <div className="grid grid-cols-2 gap-1.5">
@@ -86,9 +86,9 @@ export function GridControls({
           onChange={(event) => editor.setFilterQuery(event.target.value)}
           placeholder={tt("筛选当前列")}
           aria-label={tt("筛选当前列")}
-          className="w-full rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] outline-none"
+          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
         />
-        <label className="flex items-center gap-2 text-[10px] text-stone-500">
+        <label className="flex items-center gap-2 text-[10px] text-[var(--muted,#78716c)]">
           <input
             type="checkbox"
             checked={editor.headerRow}
@@ -99,26 +99,8 @@ export function GridControls({
         </label>
       </Section>
 
-      <Section title={tt("历史")}>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            className={BUTTON}
-            disabled={!editor.canUndo}
-            onClick={editor.undo}
-          >
-            {tt("撤销")}
-          </button>
-          <button
-            type="button"
-            className={BUTTON}
-            disabled={!editor.canRedo}
-            onClick={editor.redo}
-          >
-            {tt("重做")}
-          </button>
-        </div>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+      <Section title={tt("公式")}>
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("公式支持单元格引用，以及 SUM / AVERAGE / MIN / MAX / COUNT。")}
         </p>
       </Section>

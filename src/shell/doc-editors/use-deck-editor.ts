@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+import type { WorkbenchMaterialPlacement } from "../workbench-material-provider";
 import { officeExtensionForItem } from "../workbench-routes";
+import {
+  centeredDeckPlacement,
+  clientPointToDeckPercent,
+} from "./deck-geometry";
 import {
   cloneDeckDocument,
   deckId,
@@ -14,6 +19,7 @@ import {
   type DeckAspect,
   type DeckDocument,
   type DeckElement,
+  type DeckLayout,
   type DeckSlide,
   type DeckThemeId,
 } from "./deck-schema";
@@ -52,13 +58,29 @@ export interface DeckEditorState {
   setAspect: (aspect: DeckAspect) => void;
   setTheme: (theme: DeckThemeId) => void;
   patchSlide: (patch: Partial<DeckSlide>) => void;
+  applySlideLayout: (layout: DeckLayout) => void;
   selectElement: (id: string) => void;
   patchElement: (id: string, patch: Partial<DeckElement>) => void;
-  addTextElement: () => void;
-  insertImageElement: (src: string, alt?: string, replace?: boolean) => void;
+  addTextElement: (
+    preset?: Partial<DeckElement>,
+    placement?: WorkbenchMaterialPlacement,
+  ) => void;
+  addShapeElement: (
+    shape?: string,
+    placement?: WorkbenchMaterialPlacement,
+  ) => void;
+  addTableElement: (rows?: number, columns?: number) => void;
+  insertImageElement: (
+    src: string,
+    alt?: string,
+    replace?: boolean,
+    placement?: WorkbenchMaterialPlacement,
+  ) => void;
   duplicateElement: () => void;
   deleteElement: () => void;
   moveElementLayer: (direction: -1 | 1) => void;
+  toggleElementLock: () => void;
+  setCanvasElement: (element: HTMLElement | null) => void;
   addSlide: () => void;
   duplicateSlide: () => void;
   deleteSlide: () => void;
@@ -413,6 +435,7 @@ export function useDeckEditor(
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const canvasElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -502,6 +525,34 @@ export function useDeckEditor(
     activeSlide.elements.find(
       (element) => element.id === selectedElementId,
     ) || null;
+  const insertionPlacement = useCallback(
+    (
+      width: number,
+      height: number,
+      placement?: WorkbenchMaterialPlacement,
+    ) => {
+      const rect = canvasElementRef.current?.getBoundingClientRect();
+      const point =
+        placement?.source === "drop" &&
+        Number.isFinite(placement.clientX) &&
+        Number.isFinite(placement.clientY) &&
+        rect?.width &&
+        rect.height
+          ? clientPointToDeckPercent(
+              {
+                x: placement.clientX as number,
+                y: placement.clientY as number,
+              },
+              rect,
+            )
+          : undefined;
+      return centeredDeckPlacement(width, height, point);
+    },
+    [],
+  );
+  const setCanvasElement = useCallback((element: HTMLElement | null) => {
+    canvasElementRef.current = element;
+  }, []);
 
   const patchSlide = useCallback(
     (patch: Partial<DeckSlide>) =>
@@ -511,6 +562,66 @@ export function useDeckEditor(
           slide.id === activeRef.current ? { ...slide, ...patch } : slide,
         ),
       })),
+    [commit],
+  );
+  const applySlideLayout = useCallback(
+    (layout: DeckLayout) => {
+      commit((current) => ({
+        ...current,
+        slides: current.slides.map((slide) => {
+          if (slide.id !== activeRef.current) return slide;
+          if (layout === "blank") return { ...slide, layout };
+          const orderedText = slide.elements
+            .filter((element) => element.type === "text")
+            .sort((left, right) => left.order - right.order);
+          const titleId = orderedText[0]?.id;
+          const contentIds = new Set(orderedText.slice(1).map((element) => element.id));
+          const centered = layout === "title" || layout === "section";
+          const imageSide =
+            layout === "image-left"
+              ? "left"
+              : layout === "image-right"
+                ? "right"
+                : "";
+          return {
+            ...slide,
+            layout,
+            elements: slide.elements.map((element) => {
+              if (element.type === "image" && imageSide) {
+                return {
+                  ...element,
+                  x: imageSide === "left" ? 7 : 52,
+                  y: 14,
+                  width: 41,
+                  height: 72,
+                };
+              }
+              if (element.id === titleId) {
+                return {
+                  ...element,
+                  x: imageSide ? (imageSide === "left" ? 52 : 7) : centered ? 10 : 8,
+                  y: centered ? 28 : 13,
+                  width: imageSide ? 41 : centered ? 80 : 84,
+                  height: centered ? 20 : 14,
+                  align: centered ? ("center" as const) : ("left" as const),
+                };
+              }
+              if (contentIds.has(element.id)) {
+                return {
+                  ...element,
+                  x: imageSide ? (imageSide === "left" ? 52 : 7) : centered ? 15 : 8,
+                  y: centered ? 53 : 33,
+                  width: imageSide ? 41 : centered ? 70 : 84,
+                  height: centered ? 22 : 50,
+                  align: centered ? ("center" as const) : ("left" as const),
+                };
+              }
+              return element;
+            }),
+          };
+        }),
+      }));
+    },
     [commit],
   );
 
@@ -554,31 +665,113 @@ export function useDeckEditor(
     [commit],
   );
 
-  const addTextElement = useCallback(() => {
-    const current = deckRef.current.slides.find(
-      (slide) => slide.id === activeRef.current,
-    );
-    addElement({
-      id: deckId("element"),
-      type: "text",
-      x: 15,
-      y: 20,
-      width: 70,
-      height: 15,
-      rotation: 0,
-      order:
-        Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
-        1,
-      text: tt("双击左侧文字字段开始编辑"),
-      fontSize: 28,
-      fontFamily: deckTheme(deckRef.current.theme).fontFamily.split(",")[0],
-      color: deckTheme(deckRef.current.theme).text,
-      align: "left",
-    });
-  }, [addElement, tt]);
+  const addTextElement = useCallback(
+    (
+      preset: Partial<DeckElement> = {},
+      placement?: WorkbenchMaterialPlacement,
+    ) => {
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      const box = insertionPlacement(
+        preset.width || 54,
+        preset.height || 14,
+        placement,
+      );
+      addElement({
+        ...box,
+        rotation: 0,
+        order:
+          Math.max(
+            0,
+            ...(current?.elements.map((element) => element.order) || []),
+          ) + 1,
+        text: tt("输入文字"),
+        fontSize: 32,
+        fontFamily: deckTheme(deckRef.current.theme).fontFamily.split(",")[0],
+        color: deckTheme(deckRef.current.theme).text,
+        align: "left",
+        lineHeight: 1.15,
+        letterSpacing: 0,
+        opacity: 1,
+        ...preset,
+        id: deckId("element"),
+        type: "text",
+      });
+    },
+    [addElement, insertionPlacement, tt],
+  );
+
+  const addShapeElement = useCallback(
+    (shape = "rectangle", placement?: WorkbenchMaterialPlacement) => {
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      const size =
+        shape === "line"
+          ? { width: 36, height: 3 }
+          : shape === "circle"
+            ? { width: 24, height: 24 }
+            : { width: 30, height: 22 };
+      addElement({
+        id: deckId("element"),
+        type: "shape",
+        ...insertionPlacement(size.width, size.height, placement),
+        rotation: 0,
+        order:
+          Math.max(
+            0,
+            ...(current?.elements.map((element) => element.order) || []),
+          ) + 1,
+        shape,
+        fill: deckTheme(deckRef.current.theme).accent,
+        borderColor: "transparent",
+        borderWidth: 0,
+        borderRadius:
+          shape === "circle" ? 999 : shape === "rounded" ? 18 : 0,
+        opacity: 1,
+      });
+    },
+    [addElement, insertionPlacement],
+  );
+
+  const addTableElement = useCallback(
+    (rowCount = 3, columnCount = 3) => {
+      const rows = Array.from({ length: Math.max(1, rowCount) }, () =>
+        Array.from({ length: Math.max(1, columnCount) }, () => ""),
+      );
+      const current = deckRef.current.slides.find(
+        (slide) => slide.id === activeRef.current,
+      );
+      addElement({
+        id: deckId("element"),
+        type: "table",
+        ...centeredDeckPlacement(58, 32),
+        rotation: 0,
+        order:
+          Math.max(
+            0,
+            ...(current?.elements.map((element) => element.order) || []),
+          ) + 1,
+        rows,
+        fill: "#ffffff",
+        borderColor: "#d6d3d1",
+        borderWidth: 1,
+        color: "#292524",
+        fontSize: 16,
+        opacity: 1,
+      });
+    },
+    [addElement],
+  );
 
   const insertImageElement = useCallback(
-    (src: string, alt = "", replace = false) => {
+    (
+      src: string,
+      alt = "",
+      replace = false,
+      placement?: WorkbenchMaterialPlacement,
+    ) => {
       const selected = deckRef.current.slides
         .find((slide) => slide.id === activeRef.current)
         ?.elements.find(
@@ -594,19 +787,22 @@ export function useDeckEditor(
       addElement({
         id: deckId("element"),
         type: "image",
-        x: 25,
-        y: 20,
-        width: 50,
-        height: 60,
+        ...insertionPlacement(42, 42, placement),
         rotation: 0,
         order:
           Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
           1,
         src,
         alt,
+        imageFit: "contain",
+        opacity: 1,
+        brightness: 1,
+        contrast: 1,
+        saturation: 1,
+        blur: 0,
       });
     },
-    [addElement, patchElement],
+    [addElement, insertionPlacement, patchElement],
   );
 
   const deleteElement = useCallback(() => {
@@ -666,6 +862,16 @@ export function useDeckEditor(
     },
     [patchElement],
   );
+
+  const toggleElementLock = useCallback(() => {
+    const current = deckRef.current.slides
+      .find((slide) => slide.id === activeRef.current)
+      ?.elements.find(
+        (element) => element.id === selectedElementRef.current,
+      );
+    if (!current) return;
+    patchElement(current.id, { locked: !current.locked });
+  }, [patchElement]);
 
   const undo = useCallback(() => {
     const previous = undoRef.current.pop();
@@ -778,13 +984,18 @@ export function useDeckEditor(
     setAspect: (aspect) => commit((current) => ({ ...current, aspect })),
     setTheme: (theme) => commit((current) => ({ ...current, theme })),
     patchSlide,
+    applySlideLayout,
     selectElement,
     patchElement,
     addTextElement,
+    addShapeElement,
+    addTableElement,
     insertImageElement,
     duplicateElement,
     deleteElement,
     moveElementLayer,
+    toggleElementLock,
+    setCanvasElement,
     addSlide: () => {
       const slide = emptyDeckSlide();
       commit((current) => {

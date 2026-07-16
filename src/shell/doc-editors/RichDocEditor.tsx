@@ -23,8 +23,8 @@ export function RichDocEditor({
   const editor = useRichDocEditor(item, siteId);
   useOnSaved(editor.savedUrl, onSaved);
   return (
-    <div className="flex h-full min-h-0 bg-white">
-      <div className="w-72 shrink-0 overflow-y-auto border-r border-stone-200">
+    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
+      <div className="w-72 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)]">
         <RichDocControls editor={editor} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

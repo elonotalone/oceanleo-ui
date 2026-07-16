@@ -6,6 +6,8 @@ import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import type { EditorMaterialInsertion } from "../editor-protocol";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -14,6 +16,10 @@ import type {
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
+import {
+  useWorkbenchMaterialAdapter,
+  type WorkbenchMaterialAdapter,
+} from "../workbench-material-provider";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 
 export function EmbeddedRoute({
@@ -34,6 +40,18 @@ export function EmbeddedRoute({
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const [selectionCommand, setSelectionCommand] =
     useState<SelectionCommand | null>(null);
+  const [materialInsertion, setMaterialInsertion] =
+    useState<EditorMaterialInsertion | null>(null);
+  const materialResolversRef = useRef(
+    new Map<
+      string,
+      {
+        resolve: () => void;
+        reject: (error: Error) => void;
+        timer: number;
+      }
+    >(),
+  );
   const pendingSaveIdRef = useRef("");
   const saveResolverRef = useRef<
     ((result: AdvancedFlushResult) => void) | null
@@ -42,7 +60,18 @@ export function EmbeddedRoute({
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
+    setMaterialInsertion(null);
   }, [item.key]);
+  useEffect(
+    () => () => {
+      materialResolversRef.current.forEach((pending) => {
+        window.clearTimeout(pending.timer);
+        pending.reject(new Error("嵌入编辑器已关闭。"));
+      });
+      materialResolversRef.current.clear();
+    },
+    [],
+  );
   const settleSave = useCallback((result: AdvancedFlushResult) => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
@@ -108,6 +137,123 @@ export function EmbeddedRoute({
     }
     onClose();
   }, [dirty, onClose, tt]);
+  const materialAdapter = useMemo<WorkbenchMaterialAdapter | null>(() => {
+    if (route.type !== "embed") return null;
+    return {
+      id: `embed-materials:${route.mediaType}@2`,
+      actions: ["insert"],
+      accepts: (material) => {
+        const urls = [
+          material.url,
+          material.previewUrl,
+          material.thumbUrl,
+        ].filter(Boolean);
+        const mime = String(material.meta.mime || "").toLowerCase();
+        if (route.mediaType === "website" || route.mediaType === "image") {
+          return (
+            Boolean(material.previewUrl || material.thumbUrl) ||
+            material.kind === "image" ||
+            mime.startsWith("image/") ||
+            urls.some((url) =>
+              /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(url || ""),
+            )
+          );
+        }
+        return (
+          ["image", "video", "audio"].includes(material.kind) ||
+          /^(?:image|video|audio)\//.test(mime) ||
+          urls.some((url) =>
+            /\.(?:png|jpe?g|webp|gif|svg|mp4|webm|mov|mp3|wav|m4a|ogg)(?:$|[?#])/i.test(
+              url || "",
+            ),
+          )
+        );
+      },
+      mutate: (_action, material, placement) => {
+        const candidates = (
+          route.mediaType === "video"
+            ? [material.url, material.previewUrl, material.thumbUrl]
+            : [material.previewUrl, material.thumbUrl, material.url]
+        ).filter(Boolean) as string[];
+        const supportedUrl =
+          route.mediaType === "video"
+            ? /\.(?:png|jpe?g|webp|gif|svg|mp4|webm|mov|mp3|wav|m4a|ogg)(?:$|[?#])/i
+            : /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i;
+        const url =
+          candidates.find((candidate) => supportedUrl.test(candidate)) ||
+          candidates[0] ||
+          "";
+        if (!url) throw new Error("这个素材没有可用地址。");
+        const resolvedKind = /\.(?:mp4|webm|mov)(?:$|[?#])/i.test(url)
+          ? "video"
+          : /\.(?:mp3|wav|m4a|ogg)(?:$|[?#])/i.test(url)
+            ? "audio"
+            : /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(url)
+              ? "image"
+              : material.kind;
+        const commandId = `material-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 9)}`;
+        return new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            materialResolversRef.current.delete(commandId);
+            setMaterialInsertion((current) =>
+              current?.commandId === commandId ? null : current,
+            );
+            reject(new Error("嵌入编辑器添加素材超时。"));
+          }, 20_000);
+          materialResolversRef.current.set(commandId, {
+            resolve,
+            reject,
+            timer,
+          });
+          setMaterialInsertion({
+            commandId,
+            action: "insert",
+            material: {
+              id: material.key || material.id,
+              kind: resolvedKind,
+              title: material.title,
+              url,
+              previewUrl: material.previewUrl || material.thumbUrl,
+              meta: {
+                format: material.meta.format,
+                mime: material.meta.mime,
+                content_type: material.meta.content_type,
+                subtype: material.meta.subtype,
+              },
+              writable: false,
+            },
+            ...(placement?.source === "drop" &&
+            Number.isFinite(placement.clientX) &&
+            Number.isFinite(placement.clientY)
+              ? {
+                  point: {
+                    x: placement.clientX as number,
+                    y: placement.clientY as number,
+                  },
+                }
+              : {}),
+          });
+        });
+      },
+    };
+  }, [route]);
+  useWorkbenchMaterialAdapter(materialAdapter);
+  const handleMaterialResult = useCallback(
+    (result: { commandId: string; ok: boolean; message?: string }) => {
+      const pending = materialResolversRef.current.get(result.commandId);
+      if (!pending) return;
+      window.clearTimeout(pending.timer);
+      materialResolversRef.current.delete(result.commandId);
+      setMaterialInsertion((current) =>
+        current?.commandId === result.commandId ? null : current,
+      );
+      if (result.ok) pending.resolve();
+      else pending.reject(new Error(result.message || "素材添加失败。"));
+    },
+    [],
+  );
   const websiteId = useMemo(
     () =>
       String(
@@ -177,23 +323,17 @@ export function EmbeddedRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(route)}
-      editorToolbox={
-        <div className="space-y-2 p-3 text-[12px] leading-relaxed text-stone-600">
-          <p>{tt("右侧是当前内容本身的专业编辑画布，不是一次性生成应用。")}</p>
-          <p>
-            {tt(
-              "点击画布里的对象后，在对象上方直接修改属性；左侧只保留全局工具，保存时创建新版本并回到我的库。",
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={requestManualSave}
-            className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
-            style={{ background: accent }}
-          >
-            {tt("保存当前版本到我的库")}
-          </button>
-        </div>
+      editorHeaderActions={
+        <button
+          type="button"
+          onClick={requestManualSave}
+          className="inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-105"
+        >
+          <AdvancedEditorIcon name="save" className="h-4 w-4" />
+          {dirty
+            ? tt("advanced.saveNewVersion")
+            : tt("advanced.saveToMyLibrary")}
+        </button>
       }
       editorStage={
         <EmbedEditorPane
@@ -207,6 +347,8 @@ export function EmbeddedRoute({
           onDirtyChange={setDirty}
           onSelectionChange={setSelection}
           selectionCommand={selectionCommand}
+          materialInsertion={materialInsertion}
+          onMaterialResult={handleMaterialResult}
           onSaveResult={handleSaveResult}
           saveRequestId={saveRequestId}
           onVersionSaved={(next) => {
@@ -222,7 +364,6 @@ export function EmbeddedRoute({
           accent={accent}
         />
       }
-      editorContextualToolbarAnchor={selection?.anchor}
       versionRevision={versionRevision}
       editorDirty={dirty}
       editorUsesOwnControls

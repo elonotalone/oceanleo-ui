@@ -28,7 +28,7 @@ function ControlButton({
       className={
         primary
           ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+          : "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
       }
       style={primary ? { background: accent || "#4f46e5" } : undefined}
     >
@@ -49,11 +49,11 @@ export function PdfControls({
   const busy = editor.loading || editor.processing || editor.saving;
 
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold text-stone-800">{tt("视图")}</p>
-          <span className="text-[10px] tabular-nums text-stone-400">
+          <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("视图")}</p>
+          <span className="text-[10px] tabular-nums text-[var(--muted,#78716c)]">
             {editor.zoom}% · {editor.rotation}°
           </span>
         </div>
@@ -65,7 +65,7 @@ export function PdfControls({
           value={editor.zoom}
           disabled={editor.loading}
           onChange={(event) => editor.setZoom(Number(event.target.value))}
-          className="w-full accent-stone-800"
+          className="w-full accent-[var(--accent,#7c3aed)]"
         />
         <div className="grid grid-cols-2 gap-1.5">
           <ControlButton disabled={editor.loading} onClick={() => editor.zoomBy(-25)}>
@@ -77,8 +77,8 @@ export function PdfControls({
         </div>
       </section>
 
-      <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("添加页面")}</p>
+      <section className="space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("添加页面")}</p>
         <div className="grid grid-cols-1 gap-1.5">
           <ControlButton disabled={busy} onClick={() => void editor.addBlankPage()}>
             + {tt("添加空白页")}
@@ -101,25 +101,13 @@ export function PdfControls({
         >
           {editor.processing ? tt("处理中…") : tt("合并另一个 PDF 到末尾")}
         </ControlButton>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("选择当前页后，旋转、排序、提取和删除会出现在页面上方。")}
         </p>
       </section>
 
-      <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("历史")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ControlButton disabled={busy || !editor.canUndo} onClick={editor.undo}>
-            {tt("撤销")}
-          </ControlButton>
-          <ControlButton disabled={busy || !editor.canRedo} onClick={editor.redo}>
-            {tt("重做")}
-          </ControlButton>
-        </div>
-      </section>
-
-      <section className="space-y-1.5 border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("导出")}</p>
+      <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("导出")}</p>
         <ControlButton disabled={busy} onClick={editor.download}>
           {tt("下载编辑版 PDF")}
         </ControlButton>

@@ -12,6 +12,7 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   const toolbar = source("../src/shell/image-editor/FabricImageContextToolbar.tsx");
   const stage = source("../src/shell/image-editor/FabricImageStage.tsx");
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
+  const controller = source("../src/shell/image-editor/fabric-controller.ts");
   for (const capability of [
     "addText",
     "addShape",
@@ -25,12 +26,23 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
     assert.match(types, new RegExp(capability));
   }
   assert.match(controls, /图层/);
+  assert.match(controls, /FabricImageFilterPanel/);
+  assert.match(controls, /FabricImageFontPanel/);
   assert.match(toolbar, /startCrop/);
   assert.match(toolbar, /setFilter/);
   assert.match(toolbar, /duplicateSelected/);
+  assert.match(toolbar, /panelId: "image-filters"/);
+  assert.match(toolbar, /panelAction: "replace"/);
+  assert.match(toolbar, /selected\.kind === "image"/);
   assert.match(controls, /AI 局部创作/);
   assert.match(stage, /图片编辑画布/);
   assert.match(hook, /persistImageBlob/);
+  assert.match(hook, /replaceSelectedImageFromUrl/);
+  assert.match(controller, /replaceActiveImage/);
+  assert.match(
+    controller,
+    /applyFilterSettings\([\s\S]*?readFilterSettings\(current\)/,
+  );
   assert.match(hook, /onSaved/);
 });
 
@@ -39,8 +51,17 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
+  const deckElementContent = source(
+    "../src/shell/doc-editors/DeckElementContent.tsx",
+  );
   const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
+  const deckFonts = source("../src/shell/doc-editors/DeckFontPanel.tsx");
   const deckToolbar = source("../src/shell/doc-editors/DeckContextToolbar.tsx");
+  const deckToolbarCommand = source(
+    "../src/shell/doc-editors/deck-toolbar-command.ts",
+  );
+  const deckGeometry = source("../src/shell/doc-editors/deck-geometry.ts");
+  const deckSchema = source("../src/shell/doc-editors/deck-schema.ts");
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /saveFileToLibrary/);
   assert.match(grid, /buildGridWorkbookBlob/);
@@ -51,10 +72,24 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(pptxImport, /pptxtojson\/dist\/index\.js/);
   assert.match(pptxImport, /imageMode: "base64"/);
   assert.match(deckStage, /PositionedSlideCanvas/);
-  assert.match(deckStage, /startDrag/);
-  assert.match(deckControls, /添加文字/);
+  assert.match(deckStage, /startInteraction/);
+  assert.match(deckElementContent, /contentEditable/);
+  assert.match(deckElementContent, /onCommitCell/);
+  assert.match(deckStage, /RESIZE_HANDLES/);
+  assert.match(deckStage, /data-deck-canvas/);
+  assert.match(deckStage, /rotateDeckElement/);
+  assert.match(deckControls, /DeckTextPanel/);
+  assert.match(deckControls, /DeckElementsPanel/);
+  assert.match(deckFonts, /DeckFontPanel/);
   assert.match(deckToolbar, /上移一层/);
-  assert.match(deckStage, /导出 PPTX/);
+  assert.match(deckToolbar, /panelId: "deck-effects"/);
+  assert.match(deckToolbar, /panelId: "deck-fonts"/);
+  assert.match(deckToolbarCommand, /applySlideLayout/);
+  assert.match(deckGeometry, /moveDeckElement/);
+  assert.match(deckGeometry, /resizeDeckElement/);
+  assert.match(deckGeometry, /rotateDeckElement/);
+  assert.match(deckSchema, /legacySlideElements/);
+  assert.match(deckSchema, /normalizedElements\.length > 0/);
 });
 
 test("native editors preserve history and never clear newer unsaved revisions", () => {
@@ -67,8 +102,11 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
-  assert.match(shell, /editorAvailable \? "tools" : "agent"/);
+  assert.match(shell, /fallbackDrawer\[0\]\?\.id/);
+  assert.match(shell, /activeDrawerId: activeTool/);
   assert.match(shell, /beforeunload/);
+  assert.match(shell, /handleMaterialDrop/);
+  assert.match(shell, /source: "drop"/);
   assert.match(shell, /当前有未保存的修改/);
   for (const editor of [rich, grid, deck, image, audio, pdf, timeline]) {
     assert.match(editor, /revisionRef/);

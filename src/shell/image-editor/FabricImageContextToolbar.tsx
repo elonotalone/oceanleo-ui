@@ -25,9 +25,36 @@ export function FabricImageContextToolbar({
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
   const context = useMemo<SelectionContext>(() => {
-    const controls: SelectionControl[] = [];
+    const controls: SelectionControl[] = [
+      {
+        id: "undo",
+        kind: "action",
+        label: tt("撤销"),
+        icon: "undo",
+        iconOnly: true,
+        group: "history",
+        disabled: !editor.canUndo,
+      },
+      {
+        id: "redo",
+        kind: "action",
+        label: tt("重做"),
+        icon: "redo",
+        iconOnly: true,
+        group: "history",
+        disabled: !editor.canRedo,
+      },
+    ];
     if (selected?.text) {
       controls.push(
+        {
+          id: "font-panel",
+          kind: "panel",
+          label: selected.text.fontFamily || tt("字体"),
+          icon: "font",
+          group: "type",
+          panelId: "image-fonts",
+        },
         {
           id: "text",
           kind: "text",
@@ -38,6 +65,7 @@ export function FabricImageContextToolbar({
           id: "font-size",
           kind: "number",
           label: tt("字号"),
+          group: "type",
           value: selected.text.fontSize,
           min: 6,
           max: 320,
@@ -47,30 +75,79 @@ export function FabricImageContextToolbar({
           id: "text-color",
           kind: "color",
           label: tt("文字色"),
+          icon: "font",
+          iconOnly: true,
+          group: "type",
           value: selected.text.fill || "#000000",
         },
         {
           id: "bold",
           kind: "toggle",
-          label: "B",
+          label: tt("粗体"),
+          icon: "bold",
+          iconOnly: true,
+          group: "style",
           value: selected.text.bold,
         },
         {
           id: "italic",
           kind: "toggle",
-          label: "I",
+          label: tt("斜体"),
+          icon: "italic",
+          iconOnly: true,
+          group: "style",
           value: selected.text.italic,
+        },
+        {
+          id: "underline",
+          kind: "toggle",
+          label: tt("下划线"),
+          icon: "underline",
+          iconOnly: true,
+          group: "style",
+          value: selected.text.underline,
+        },
+        {
+          id: "linethrough",
+          kind: "toggle",
+          label: tt("删除线"),
+          group: "style",
+          value: selected.text.linethrough,
+          placement: "more",
         },
         {
           id: "align",
           kind: "select",
           label: tt("对齐"),
+          icon: "align-left",
+          group: "paragraph",
           value: selected.text.align,
           options: [
             { value: "left", label: tt("左") },
             { value: "center", label: tt("中") },
             { value: "right", label: tt("右") },
           ],
+        },
+        {
+          id: "line-height",
+          kind: "number",
+          label: tt("行距"),
+          icon: "spacing",
+          value: selected.text.lineHeight,
+          min: 0.5,
+          max: 4,
+          step: 0.05,
+          placement: "more",
+        },
+        {
+          id: "char-spacing",
+          kind: "number",
+          label: tt("字距"),
+          value: selected.text.charSpacing,
+          min: -200,
+          max: 1_000,
+          step: 10,
+          placement: "more",
         },
       );
     } else if (
@@ -82,6 +159,8 @@ export function FabricImageContextToolbar({
         id: "fill",
         kind: "color",
         label: tt("填充"),
+        icon: "background",
+        group: "appearance",
         value: selected.fill || "#000000",
       });
     }
@@ -91,6 +170,8 @@ export function FabricImageContextToolbar({
           id: "opacity",
           kind: "range",
           label: tt("透明度"),
+          icon: "opacity",
+          group: "appearance",
           value: selected.opacity,
           min: 0,
           max: 100,
@@ -131,52 +212,132 @@ export function FabricImageContextToolbar({
           id: "shadow",
           kind: "toggle",
           label: tt("投影"),
+          icon: "effects",
           value: selected.shadow.enabled,
           placement: "more",
         },
       );
     } else {
-      controls.push({
-        id: "canvas-background",
-        kind: "color",
-        label: tt("画布背景"),
-        value: editor.canvasBackground,
-      });
+      controls.push(
+        {
+          id: "tool-select",
+          kind: "toggle",
+          label: tt("选择"),
+          icon: "position",
+          group: "tools",
+          value: editor.activeTool === "select",
+        },
+        {
+          id: "tool-draw",
+          kind: "toggle",
+          label: tt("画笔"),
+          icon: "effects",
+          group: "tools",
+          value: editor.activeTool === "draw",
+        },
+        {
+          id: "tool-erase",
+          kind: "toggle",
+          label: tt("橡皮"),
+          icon: "delete",
+          group: "tools",
+          value: editor.activeTool === "erase",
+        },
+        {
+          id: "zoom-out",
+          kind: "action",
+          label: tt("缩小"),
+          group: "zoom",
+        },
+        {
+          id: "zoom-fit",
+          kind: "action",
+          label: `${Math.round(editor.zoom * 100)}%`,
+          group: "zoom",
+        },
+        {
+          id: "zoom-in",
+          kind: "action",
+          label: tt("放大"),
+          group: "zoom",
+        },
+        {
+          id: "canvas-background",
+          kind: "color",
+          label: tt("画布背景"),
+          icon: "background",
+          group: "canvas",
+          value: editor.canvasBackground,
+        },
+      );
     }
-    controls.push(
-      {
-        id: editor.cropping ? "crop-apply" : "crop-start",
-        kind: "action",
-        label: editor.cropping ? tt("应用裁剪") : tt("裁剪"),
-      },
-      ...(editor.cropping
-        ? [
-            {
-              id: "crop-cancel",
-              kind: "action" as const,
-              label: tt("取消"),
-            },
-          ]
-        : []),
-      {
-        id: "crop-ratio",
-        kind: "select",
-        label: tt("比例"),
-        value: editor.cropRatio,
-        options: [
-          { value: "free", label: tt("自由") },
-          { value: "1:1", label: "1:1" },
-          { value: "4:3", label: "4:3" },
-          { value: "16:9", label: "16:9" },
-          { value: "9:16", label: "9:16" },
-        ],
-        placement: "more",
-      },
-      { id: "rotate-left", kind: "action", label: "↶ 90°", placement: "more" },
-      { id: "rotate-right", kind: "action", label: "↷ 90°", placement: "more" },
-      { id: "flip-x", kind: "action", label: tt("水平翻转"), placement: "more" },
-      { id: "flip-y", kind: "action", label: tt("垂直翻转"), placement: "more" },
-    );
+    if (selected?.kind === "image") {
+      controls.push(
+        {
+          id: "replace-panel",
+          kind: "panel",
+          label: tt("替换"),
+          icon: "image",
+          group: "image",
+          panelId: "materials",
+          panelAction: "replace",
+        },
+        {
+          id: "filter-panel",
+          kind: "panel",
+          label: tt("滤镜"),
+          icon: "filter",
+          group: "image",
+          panelId: "image-filters",
+        },
+      );
+    }
+    if (
+      !selected ||
+      selected.kind === "image" ||
+      selected.kind === "background"
+    ) {
+      controls.push(
+        {
+          id: editor.cropping ? "crop-apply" : "crop-start",
+          kind: "action",
+          label: editor.cropping ? tt("应用裁剪") : tt("裁剪"),
+          icon: "crop",
+          group: "transform",
+        },
+        ...(editor.cropping
+          ? [
+              {
+                id: "crop-cancel",
+                kind: "action" as const,
+                label: tt("取消"),
+              },
+            ]
+          : []),
+        {
+          id: "crop-ratio",
+          kind: "select",
+          label: tt("比例"),
+          value: editor.cropRatio,
+          options: [
+            { value: "free", label: tt("自由") },
+            { value: "1:1", label: "1:1" },
+            { value: "4:3", label: "4:3" },
+            { value: "16:9", label: "16:9" },
+            { value: "9:16", label: "9:16" },
+          ],
+          placement: "more",
+        },
+      );
+    }
+    if (selected || editor.transformInfo) {
+      controls.push(
+        { id: "rotate-left", kind: "action", label: "↶ 90°", icon: "rotate", placement: "more" },
+        { id: "rotate-right", kind: "action", label: "↷ 90°", icon: "rotate", placement: "more" },
+        { id: "flip-x", kind: "action", label: tt("水平翻转"), icon: "flip-horizontal", placement: "more" },
+        { id: "flip-y", kind: "action", label: tt("垂直翻转"), icon: "flip-vertical", placement: "more" },
+      );
+    }
     if (filters) {
       controls.push(
         {
@@ -221,12 +382,14 @@ export function FabricImageContextToolbar({
           id: "duplicate",
           kind: "action",
           label: tt("复制"),
+          icon: "duplicate",
           placement: "more",
         },
         {
           id: "delete",
           kind: "action",
           label: tt("删除"),
+          icon: "delete",
           danger: true,
           placement: "more",
         },
@@ -241,8 +404,13 @@ export function FabricImageContextToolbar({
     };
   }, [
     editor.canvasBackground,
+    editor.activeTool,
+    editor.canRedo,
+    editor.canUndo,
     editor.cropRatio,
     editor.cropping,
+    editor.transformInfo,
+    editor.zoom,
     filters,
     selected,
     tt,
@@ -251,6 +419,30 @@ export function FabricImageContextToolbar({
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
     switch (message.controlId) {
+      case "undo":
+        editor.undo();
+        break;
+      case "redo":
+        editor.redo();
+        break;
+      case "tool-select":
+        editor.setActiveTool("select");
+        break;
+      case "tool-draw":
+        editor.setActiveTool("draw");
+        break;
+      case "tool-erase":
+        editor.setActiveTool("erase");
+        break;
+      case "zoom-out":
+        editor.zoomOut();
+        break;
+      case "zoom-fit":
+        editor.zoomFit();
+        break;
+      case "zoom-in":
+        editor.zoomIn();
+        break;
       case "text":
         editor.setSelectedText({ value: String(message.value ?? "") });
         break;
@@ -265,6 +457,18 @@ export function FabricImageContextToolbar({
         break;
       case "italic":
         editor.setSelectedText({ italic: message.value === true });
+        break;
+      case "underline":
+        editor.setSelectedText({ underline: message.value === true });
+        break;
+      case "linethrough":
+        editor.setSelectedText({ linethrough: message.value === true });
+        break;
+      case "line-height":
+        editor.setSelectedText({ lineHeight: numeric(message.value, 1.16) });
+        break;
+      case "char-spacing":
+        editor.setSelectedText({ charSpacing: numeric(message.value, 0) });
         break;
       case "align":
         if (message.value === "left" || message.value === "center" || message.value === "right") {

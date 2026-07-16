@@ -8,6 +8,14 @@ import {
   type ShapeKind,
 } from "./types";
 
+export type FabricImageControlSection =
+  | "tools"
+  | "objects"
+  | "layers"
+  | "canvas"
+  | "ai"
+  | "export";
+
 function Section({
   title,
   children,
@@ -18,11 +26,11 @@ function Section({
   open?: boolean;
 }) {
   return (
-    <details open={open} className="border-b border-stone-100">
-      <summary className="cursor-pointer select-none px-3 py-2.5 text-[11px] font-semibold text-stone-700">
+    <details open={open} className="border-b border-[var(--border,#e7e5e4)]">
+      <summary className="cursor-pointer select-none px-4 py-3 text-[11px] font-semibold text-[var(--fg,#292524)]">
         {title}
       </summary>
-      <div className="space-y-2 px-3 pb-3">{children}</div>
+      <div className="space-y-3 px-4 pb-4">{children}</div>
     </details>
   );
 }
@@ -46,7 +54,7 @@ function Range({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex justify-between text-[10px] text-stone-500">
+      <span className="mb-1.5 flex justify-between text-[10px] text-[var(--muted,#78716c)]">
         <span>{label}</span>
         <span>{Math.round(value * 100) / 100}{suffix}</span>
       </span>
@@ -57,7 +65,7 @@ function Range({
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-stone-700"
+        className="w-full accent-[var(--accent,#7c3aed)]"
       />
     </label>
   );
@@ -79,10 +87,10 @@ function ToolButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-lg border px-2 py-1.5 text-[10px] transition disabled:opacity-40 ${
+      className={`rounded-xl border px-2.5 py-2 text-[10px] font-medium transition hover:-translate-y-0.5 disabled:opacity-40 ${
         active
-          ? "border-stone-800 bg-stone-800 text-white"
-          : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+          ? "border-[var(--accent,#7c3aed)] bg-[var(--accent,#7c3aed)] text-white shadow-sm"
+          : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm"
       }`}
     >
       {children}
@@ -93,15 +101,19 @@ function ToolButton({
 export function FabricImageControls({
   editor,
   accent = "#4f46e5",
+  sections = ["tools", "objects", "layers", "canvas", "ai", "export"],
 }: {
   editor: FabricImageEditorState;
   accent?: string;
+  sections?: FabricImageControlSection[];
 }) {
   const tt = useUI();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [customWidth, setCustomWidth] = useState(editor.doc.width);
   const [customHeight, setCustomHeight] = useState(editor.doc.height);
+  const has = (section: FabricImageControlSection) =>
+    sections.includes(section);
 
   const addUrl = async () => {
     if (!imageUrl.trim()) return;
@@ -110,8 +122,8 @@ export function FabricImageControls({
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-white">
-      <Section title={tt("工具")}>
+    <div className="h-full overflow-y-auto bg-[var(--card,#fff)]">
+      {has("tools") && <Section title={tt("工具")}>
         <div className="grid grid-cols-3 gap-1.5">
           <ToolButton active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>
             {tt("选择")}
@@ -125,7 +137,7 @@ export function FabricImageControls({
         </div>
         {(editor.activeTool === "draw" || editor.activeTool === "erase") && (
           <>
-            <label className="flex items-center justify-between text-[10px] text-stone-500">
+            <label className="flex items-center justify-between text-[10px] text-[var(--muted,#78716c)]">
               {tt("笔刷颜色")}
               <input
                 type="color"
@@ -138,9 +150,9 @@ export function FabricImageControls({
             <Range label={tt("笔刷大小")} value={editor.brush.width} min={1} max={120} onChange={(width) => editor.setBrush({ width })} suffix="px" />
           </>
         )}
-      </Section>
+      </Section>}
 
-      <Section title={tt("添加对象")}>
+      {has("objects") && <Section title={tt("添加对象")}>
         <div className="grid grid-cols-3 gap-1.5">
           <ToolButton onClick={editor.addText}>{tt("文字")}</ToolButton>
           {(["rect", "circle", "ellipse", "line", "arrow"] as ShapeKind[]).map((shape) => (
@@ -169,13 +181,13 @@ export function FabricImageControls({
               if (event.key === "Enter") void addUrl();
             }}
             placeholder={tt("粘贴图片 URL")}
-            className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[10px] outline-none focus:border-stone-400"
+            className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[10px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
           />
           <ToolButton disabled={!imageUrl.trim()} onClick={() => void addUrl()}>{tt("添加")}</ToolButton>
         </div>
-      </Section>
+      </Section>}
 
-      <Section title={tt("图层")}>
+      {has("layers") && <Section title={tt("图层")}>
         <div className="max-h-56 space-y-1 overflow-y-auto">
           {[...editor.layers].reverse().map((layer) => (
             <button
@@ -183,7 +195,9 @@ export function FabricImageControls({
               type="button"
               onClick={() => editor.selectLayer(layer.id)}
               className={`flex w-full items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-[10px] ${
-                layer.selected ? "border-stone-700 bg-stone-50" : "border-stone-100"
+                layer.selected
+                  ? "border-[var(--accent,#7c3aed)] bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+                  : "border-[var(--border,#e7e5e4)]"
               }`}
             >
               <span className="min-w-0 flex-1 truncate">{layer.kind}</span>
@@ -198,9 +212,9 @@ export function FabricImageControls({
             </button>
           ))}
         </div>
-      </Section>
+      </Section>}
 
-      <Section title={tt("画布")}>
+      {has("canvas") && <Section title={tt("画布")}>
         <div className="grid grid-cols-2 gap-1">
           {CANVAS_PRESETS.map((preset) => (
             <ToolButton
@@ -217,24 +231,24 @@ export function FabricImageControls({
           ))}
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-1">
-          <input type="number" value={customWidth} min={16} max={8192} onChange={(event) => setCustomWidth(Number(event.target.value))} className="min-w-0 rounded border border-stone-200 px-2 py-1 text-[10px]" />
-          <span className="text-stone-400">×</span>
-          <input type="number" value={customHeight} min={16} max={8192} onChange={(event) => setCustomHeight(Number(event.target.value))} className="min-w-0 rounded border border-stone-200 px-2 py-1 text-[10px]" />
+          <input type="number" value={customWidth} min={16} max={8192} onChange={(event) => setCustomWidth(Number(event.target.value))} className="min-w-0 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-[10px] text-[var(--fg,#292524)]" />
+          <span className="text-[var(--muted,#78716c)]">×</span>
+          <input type="number" value={customHeight} min={16} max={8192} onChange={(event) => setCustomHeight(Number(event.target.value))} className="min-w-0 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-[10px] text-[var(--fg,#292524)]" />
           <ToolButton onClick={() => editor.resizeDoc(customWidth, customHeight)}>{tt("应用")}</ToolButton>
         </div>
-        <label className="flex items-center justify-between text-[10px] text-stone-500">
+        <label className="flex items-center justify-between text-[10px] text-[var(--muted,#78716c)]">
           {tt("画布背景")}
           <input type="color" value={editor.canvasBackground} onChange={(event) => editor.setCanvasBackground(event.target.value)} />
         </label>
-      </Section>
+      </Section>}
 
-      <Section title={tt("AI 局部创作")} open={false}>
+      {has("ai") && <Section title={tt("AI 局部创作")} open>
         <textarea
           value={editor.aiPrompt}
           onChange={(event) => editor.setAiPrompt(event.target.value)}
           rows={4}
           placeholder={tt("描述希望 AI 如何修改当前画面")}
-          className="w-full resize-y rounded-lg border border-stone-200 p-2 text-[10px] outline-none focus:border-stone-400"
+          className="w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5 text-[10px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
         />
         <button
           type="button"
@@ -245,9 +259,9 @@ export function FabricImageControls({
         >
           {editor.aiBusy ? tt("AI 处理中…") : tt("应用 AI 修改")}
         </button>
-      </Section>
+      </Section>}
 
-      <Section title={tt("导出设置")}>
+      {has("export") && <Section title={tt("导出设置")}>
         <div className="grid grid-cols-3 gap-1">
           {(["png", "jpeg", "webp"] as const).map((format) => (
             <ToolButton key={format} active={editor.exportFormat === format} onClick={() => editor.setExportFormat(format)}>
@@ -259,7 +273,135 @@ export function FabricImageControls({
           <Range label={tt("输出质量")} value={editor.exportQuality} min={10} max={100} onChange={editor.setExportQuality} suffix="%" />
         )}
         <Range label={tt("输出倍率")} value={editor.exportScale} min={0.5} max={4} step={0.25} onChange={editor.setExportScale} suffix="×" />
-      </Section>
+      </Section>}
+    </div>
+  );
+}
+
+export function FabricImageFilterPanel({
+  editor,
+}: {
+  editor: FabricImageEditorState;
+}) {
+  const tt = useUI();
+  const settings = editor.filterInfo?.settings;
+  if (!settings) {
+    return (
+      <div className="grid h-full place-items-center bg-[var(--card,#fff)] px-6 text-center text-[11px] leading-5 text-[var(--muted,#78716c)]">
+        {tt("请先选择一张图片，再调整滤镜。")}
+      </div>
+    );
+  }
+  const ranges: {
+    key: "brightness" | "contrast" | "saturation" | "blur" | "pixelate";
+    label: string;
+    min: number;
+    max: number;
+  }[] = [
+    { key: "brightness", label: "亮度", min: -100, max: 100 },
+    { key: "contrast", label: "对比度", min: -100, max: 100 },
+    { key: "saturation", label: "饱和度", min: -100, max: 100 },
+    { key: "blur", label: "模糊", min: 0, max: 100 },
+    { key: "pixelate", label: "像素化", min: 0, max: 100 },
+  ];
+  const toggles: {
+    key: "grayscale" | "sepia" | "invert";
+    label: string;
+  }[] = [
+    { key: "grayscale", label: "黑白" },
+    { key: "sepia", label: "复古" },
+    { key: "invert", label: "反相" },
+  ];
+  return (
+    <div className="min-h-full bg-[var(--card,#fff)] p-4">
+      <div className="mb-4">
+        <p className="text-[12px] font-semibold text-[var(--fg,#292524)]">
+          {tt("图片调整")}
+        </p>
+        <p className="mt-1 text-[10px] leading-4 text-[var(--muted,#78716c)]">
+          {tt("精细调整当前图片，所有改动都可撤销。")}
+        </p>
+      </div>
+      <div className="space-y-4">
+        {ranges.map((range) => (
+          <Range
+            key={range.key}
+            label={tt(range.label)}
+            value={settings[range.key]}
+            min={range.min}
+            max={range.max}
+            onChange={(value) => editor.setFilter(range.key, value)}
+          />
+        ))}
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        {toggles.map((toggle) => (
+          <ToolButton
+            key={toggle.key}
+            active={settings[toggle.key]}
+            onClick={() =>
+              editor.setFilter(toggle.key, !settings[toggle.key])
+            }
+          >
+            {tt(toggle.label)}
+          </ToolButton>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={editor.resetFilters}
+        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+      >
+        {tt("重置调整")}
+      </button>
+    </div>
+  );
+}
+
+export function FabricImageFontPanel({
+  editor,
+}: {
+  editor: FabricImageEditorState;
+}) {
+  const tt = useUI();
+  const fonts = [
+    ["sans-serif", "现代无衬线"],
+    ["Arial", "Arial"],
+    ["Georgia", "Georgia"],
+    ["Noto Sans SC", "思源黑体"],
+    ["Noto Serif SC", "思源宋体"],
+    ["Microsoft YaHei", "微软雅黑"],
+    ["PingFang SC", "苹方"],
+  ] as const;
+  const selected = editor.selected?.text;
+  return (
+    <div className="min-h-full bg-[var(--card,#fff)] p-4">
+      <p className="text-[12px] font-semibold text-[var(--fg,#292524)]">
+        {tt("字体")}
+      </p>
+      <p className="mb-4 mt-1 text-[10px] leading-4 text-[var(--muted,#78716c)]">
+        {tt("选择后立即应用到当前文字对象。")}
+      </p>
+      <div className="space-y-2">
+        {fonts.map(([family, label]) => (
+          <button
+            key={family}
+            type="button"
+            disabled={!selected}
+            onClick={() => editor.setSelectedText({ fontFamily: family })}
+            className="flex w-full items-center rounded-xl border px-3 py-3 text-left text-[17px] text-[var(--fg,#292524)] transition hover:-translate-y-0.5 hover:shadow-sm disabled:opacity-35"
+            style={{
+              fontFamily: family,
+              borderColor:
+                selected?.fontFamily === family
+                  ? "var(--accent,#7c3aed)"
+                  : "var(--border,#e7e5e4)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

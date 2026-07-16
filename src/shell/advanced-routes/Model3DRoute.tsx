@@ -3,7 +3,9 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { advancedSavedItem } from "../advanced-session";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
   Model3DControls,
@@ -11,6 +13,10 @@ import {
   useModel3DWorkbench,
 } from "../media-editors";
 import { editorToolLabel } from "../workbench-routes";
+import {
+  useWorkbenchMaterialAdapter,
+  type WorkbenchMaterialAdapter,
+} from "../workbench-material-provider";
 
 export function Model3DRoute({
   item,
@@ -22,6 +28,39 @@ export function Model3DRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useModel3DWorkbench(item, siteId);
+  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
+    () => ({
+      id: "model3d-materials@2",
+      actions: ["replace"],
+      accepts: (material) => {
+        const url = material.url || material.previewUrl || "";
+        const format = String(material.meta.format || "").toLowerCase();
+        return (
+          material.kind === "threed" ||
+          ["glb", "gltf"].includes(format) ||
+          /\.(?:glb|gltf)(?:$|[?#])/i.test(url)
+        );
+      },
+      mutate: async (_action, material) => {
+        const url = material.url || material.previewUrl || "";
+        if (!url) throw new Error("这个 3D 素材没有可用地址。");
+        const blob = await fetchMediaBlob(url, {
+          maxBytes: 256 * 1024 * 1024,
+        });
+        const extension =
+          String(material.meta.format || "").toLowerCase() ||
+          url.split(/[?#]/)[0].split(".").pop() ||
+          "glb";
+        await editor.importModel(
+          new File([blob], `${material.title || "model"}.${extension}`, {
+            type: blob.type || "model/gltf-binary",
+          }),
+        );
+      },
+    }),
+    [editor.importModel],
+  );
+  useWorkbenchMaterialAdapter(materialAdapter);
   const buildSavedItem = useCallback(
     (url: string) =>
       advancedSavedItem(item, {
@@ -73,9 +112,33 @@ export function Model3DRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel({ type: "threed" })}
+      editorDrawerLabel="场景"
+      editorDrawerIcon="shape"
       editorToolbox={<Model3DControls editor={editor} accent={accent} />}
       editorContextualToolbar={
         <Model3DContextToolbar editor={editor} accent={accent} />
+      }
+      editorHeaderActions={
+        <>
+          <button
+            type="button"
+            disabled={!editor.modelLoaded || editor.capturing}
+            onClick={() => void editor.downloadScreenshot()}
+            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+          >
+            截图
+          </button>
+          <button
+            type="button"
+            disabled={!editor.modelLoaded || editor.saving}
+            onClick={() => void editor.saveCopy()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
+            style={{ color: accent }}
+          >
+            <AdvancedEditorIcon name="save" className="h-4 w-4" />
+            {editor.saving ? "保存中…" : "保存"}
+          </button>
+        </>
       }
       editorStage={<Model3DStage editor={editor} />}
       editorStatus={

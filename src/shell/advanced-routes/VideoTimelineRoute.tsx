@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
@@ -11,6 +12,43 @@ import {
   VideoTimelineStage,
   useVideoTimeline,
 } from "../video-editor";
+import {
+  useWorkbenchMaterialAdapter,
+  type WorkbenchMaterialAdapter,
+  type WorkbenchMaterialPlacement,
+} from "../workbench-material-provider";
+
+function timelineInsertionMs(
+  placement: WorkbenchMaterialPlacement | undefined,
+  fallback: number,
+): number {
+  if (
+    placement?.source !== "drop" ||
+    typeof placement.clientX !== "number" ||
+    typeof placement.clientY !== "number" ||
+    typeof document === "undefined"
+  ) {
+    return fallback;
+  }
+  const timeline = document.querySelector<HTMLElement>(
+    "[data-video-timeline-content]",
+  );
+  const rect = timeline?.getBoundingClientRect();
+  const pxPerSecond = Number(timeline?.dataset.pxPerSecond);
+  if (
+    !rect ||
+    placement.clientY < rect.top ||
+    placement.clientY > rect.bottom ||
+    !Number.isFinite(pxPerSecond) ||
+    pxPerSecond <= 0
+  ) {
+    return fallback;
+  }
+  return Math.max(
+    0,
+    Math.round(((placement.clientX - rect.left) / pxPerSecond) * 1_000),
+  );
+}
 
 export function VideoTimelineRoute({
   item,
@@ -22,6 +60,35 @@ export function VideoTimelineRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useVideoTimeline(item, siteId);
+  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
+    () => ({
+      id: "video-timeline-materials@2",
+      actions: ["insert"],
+      accepts: (material) => {
+        const url =
+          material.url || material.previewUrl || material.thumbUrl || "";
+        const mime = String(material.meta.mime || "").toLowerCase();
+        return (
+          ["video", "audio", "image"].includes(material.kind) ||
+          /^(?:video|audio|image)\//.test(mime) ||
+          /\.(?:mp4|webm|mov|m4v|mp3|wav|m4a|ogg|png|jpe?g|webp|gif)(?:$|[?#])/i.test(
+            url,
+          )
+        );
+      },
+      mutate: async (_action, material, placement) => {
+        const url =
+          material.url || material.previewUrl || material.thumbUrl || "";
+        if (!url) throw new Error("这个媒体素材没有可用地址。");
+        await editor.addMediaUrl(
+          url,
+          timelineInsertionMs(placement, editor.playheadMs),
+        );
+      },
+    }),
+    [editor.addMediaUrl, editor.playheadMs],
+  );
+  useWorkbenchMaterialAdapter(materialAdapter);
   const savedItem = useMemo(
     () =>
       editor.draftSavedUrl
@@ -44,11 +111,35 @@ export function VideoTimelineRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(editorRouteFor(item))}
+      editorDrawerLabel="媒体与轨道"
+      editorDrawerIcon="timeline"
       editorToolbox={
         <VideoTimelineControls state={editor} accent={accent} />
       }
       editorContextualToolbar={
         <VideoTimelineContextToolbar state={editor} accent={accent} />
+      }
+      editorHeaderActions={
+        <>
+          <button
+            type="button"
+            disabled={editor.savingDraft}
+            onClick={() => void editor.saveDraft()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+          >
+            <AdvancedEditorIcon name="save" className="h-4 w-4" />
+            {editor.savingDraft ? "保存中…" : "保存工程"}
+          </button>
+          <button
+            type="button"
+            disabled={editor.exporting}
+            onClick={() => void editor.exportVideo()}
+            className="rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
+            style={{ color: accent }}
+          >
+            {editor.exporting ? "渲染中…" : "导出视频"}
+          </button>
+        </>
       }
       editorStage={<VideoTimelineStage state={editor} accent={accent} />}
       editorStatus={editor.error || editor.notice}

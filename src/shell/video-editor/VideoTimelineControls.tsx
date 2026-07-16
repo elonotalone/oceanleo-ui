@@ -44,7 +44,7 @@ function ToolButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+      className="rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
     >
       {label}
     </button>
@@ -71,10 +71,10 @@ export function VideoTimelineControls({
     : tt("导出成片");
 
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       {/* 素材 */}
       <section>
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("素材")}</p>
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("素材")}</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -107,7 +107,7 @@ export function VideoTimelineControls({
               value={urlDraft}
               onChange={(event) => setUrlDraft(event.target.value)}
               placeholder="https://…"
-              className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] focus:outline-none"
+              className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] focus:border-[var(--accent,#7c3aed)] focus:outline-none"
             />
             <ToolButton
               label={tt("添加")}
@@ -126,8 +126,8 @@ export function VideoTimelineControls({
       </section>
 
       {/* 剪辑动作 */}
-      <section className="border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("剪辑")}</p>
+      <section className="border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("剪辑")}</p>
         <div className="grid grid-cols-2 gap-1.5">
           <ToolButton
             label={tt("分割")}
@@ -150,8 +150,8 @@ export function VideoTimelineControls({
       </section>
 
       {/* 轨道 */}
-      <section className="border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("添加轨道")}</p>
+      <section className="border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("添加轨道")}</p>
         <div className="grid grid-cols-2 gap-1.5">
           {TRACK_ADDS.map((entry) => (
             <ToolButton
@@ -164,8 +164,8 @@ export function VideoTimelineControls({
       </section>
 
       {/* 画布格式 */}
-      <section className="border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("画布")}</p>
+      <section className="border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("画布")}</p>
         <div className="grid grid-cols-4 gap-1">
           {FORMATS.map((format) => {
             const active =
@@ -209,15 +209,15 @@ export function VideoTimelineControls({
       </section>
 
       {/* 输出 */}
-      <section className="space-y-1.5 border-t border-stone-100 pt-3">
-        <p className="mb-0.5 text-[11px] font-semibold text-stone-800">{tt("输出")}</p>
+      <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">
+        <p className="mb-0.5 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("输出")}</p>
         <button
           type="button"
           disabled={
             state.capturingCover || state.loadingSource || !state.previewReady
           }
           onClick={() => void state.captureCover()}
-          className="w-full rounded-lg border border-stone-200 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-50"
+          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] py-2.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-50"
         >
           {state.capturingCover
             ? tt("生成封面中…")
@@ -229,7 +229,7 @@ export function VideoTimelineControls({
           type="button"
           disabled={state.savingDraft}
           onClick={() => void state.saveDraft()}
-          className="w-full rounded-lg border border-stone-200 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-50"
+          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] py-2.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-50"
         >
           {state.savingDraft ? tt("保存中…") : tt("保存草稿")}
         </button>
@@ -244,7 +244,7 @@ export function VideoTimelineControls({
         </button>
         {exportBusy && (
           <>
-            <p className="text-center text-[10px] text-stone-400">
+            <p className="text-center text-[10px] text-[var(--muted,#78716c)]">
               {tt("服务端渲染中，每 2 秒查询一次状态")}
             </p>
             <button
@@ -262,7 +262,7 @@ export function VideoTimelineControls({
           </p>
         )}
         {state.draftSavedUrl && !state.exportedUrl && (
-          <p className="text-[10px] text-stone-400">{tt("草稿已保存到我的库")}</p>
+          <p className="text-[10px] text-[var(--muted,#78716c)]">{tt("草稿已保存到我的库")}</p>
         )}
       </section>
     </div>

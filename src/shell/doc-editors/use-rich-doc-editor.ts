@@ -57,7 +57,10 @@ export interface RichDocEditorState {
   importSource: (file: File) => Promise<void>;
   /** 本地图片 → uploadFile → 光标处插入 img。 */
   uploadImage: (file: File) => Promise<void>;
-  insertImageUrl: (url: string) => void;
+  insertImageUrl: (
+    url: string,
+    point?: { clientX: number; clientY: number },
+  ) => void;
   setLinkHref: (href: string) => void;
   unsetLink: () => void;
   clearFormat: () => void;
@@ -272,10 +275,18 @@ export function useRichDocEditor(
   );
 
   const insertImageUrl = useCallback(
-    (url: string) => {
+    (url: string, point?: { clientX: number; clientY: number }) => {
       const trimmed = url.trim();
       if (!editor || !trimmed) return;
-      editor.chain().focus().setImage({ src: trimmed }).run();
+      const position = point
+        ? editor.view.posAtCoords({
+            left: point.clientX,
+            top: point.clientY,
+          })?.pos
+        : undefined;
+      const chain = editor.chain().focus();
+      if (typeof position === "number") chain.setTextSelection(position);
+      chain.setImage({ src: trimmed }).run();
     },
     [editor],
   );

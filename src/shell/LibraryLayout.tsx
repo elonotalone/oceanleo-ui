@@ -43,9 +43,9 @@ export function LibraryToolbar({
   return (
     <div className="flex items-center justify-end gap-2">
       {actions}
-      <div className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 transition focus-within:border-neutral-400 focus-within:shadow-sm">
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm">
         <svg
-          className="h-3.5 w-3.5 shrink-0 text-neutral-400"
+          className="h-3.5 w-3.5 shrink-0 text-[var(--muted,#a3a3a3)]"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -55,7 +55,7 @@ export function LibraryToolbar({
           <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
         </svg>
         <input
-          className="w-40 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
+          className="w-40 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)]"
           placeholder={placeholder}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -64,20 +64,20 @@ export function LibraryToolbar({
           <button
             type="button"
             onClick={() => setSearch("")}
-            className="shrink-0 text-neutral-400 transition hover:text-neutral-600"
+            className="shrink-0 text-[var(--muted,#a3a3a3)] transition hover:text-[var(--fg-2,#525252)]"
           >
             ✕
           </button>
         )}
       </div>
-      <div className="flex shrink-0 items-center rounded-lg bg-neutral-100 p-0.5">
+      <div className="flex shrink-0 items-center rounded-lg bg-[var(--surface,#f5f5f5)] p-0.5">
         <button
           type="button"
           onClick={() => setView("grid")}
           className={`rounded-md p-1.5 transition-all duration-150 ${
             view === "grid"
-              ? "bg-white text-neutral-700 shadow-sm"
-              : "text-neutral-400 hover:text-neutral-600"
+              ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
+              : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
           }`}
           title={tt("网格视图")}
         >
@@ -93,8 +93,8 @@ export function LibraryToolbar({
           onClick={() => setView("list")}
           className={`rounded-md p-1.5 transition-all duration-150 ${
             view === "list"
-              ? "bg-white text-neutral-700 shadow-sm"
-              : "text-neutral-400 hover:text-neutral-600"
+              ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
+              : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
           }`}
           title={tt("列表视图")}
         >
@@ -142,7 +142,9 @@ export function LibraryChips({
             type="button"
             onClick={() => onChange(c.id)}
             className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
-              on ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+              on
+                ? "font-medium text-white"
+                : "bg-[var(--surface,#f5f5f4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#e7e5e4)]"
             }`}
             style={on ? { background: accent } : undefined}
           >

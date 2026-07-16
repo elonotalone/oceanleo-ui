@@ -4,6 +4,7 @@ import type { FabricImage, Group, IText } from "fabric";
 import {
   INITIAL_FILTERS,
   type CropRatio,
+  type CanvasClientPoint,
   type FilterSettings,
   type ShadowSettings,
   type ShapeKind,
@@ -27,6 +28,7 @@ import {
   setArrowStrokeWidth,
   setLocked,
   type EditorObject,
+  type EditorObjectProps,
 } from "./editor-objects";
 import {
   cropBounds,
@@ -75,16 +77,96 @@ export class FabricEditorController extends FabricEditorCore {
     this.commit();
   }
 
-  addImage(image: FabricImage): void {
+  addImage(image: FabricImage, point?: CanvasClientPoint): void {
     const object = preparePlacedImage(
       image,
       this.doc,
       this.canvas.getObjects().length,
     );
+    if (point) {
+      const rect = this.canvas.upperCanvasEl.getBoundingClientRect();
+      const viewport = this.canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+      const viewportX =
+        ((point.clientX - rect.left) / Math.max(1, rect.width)) *
+        this.canvas.getWidth();
+      const viewportY =
+        ((point.clientY - rect.top) / Math.max(1, rect.height)) *
+        this.canvas.getHeight();
+      const halfWidth = object.getScaledWidth() / 2;
+      const halfHeight = object.getScaledHeight() / 2;
+      const canvasX = (viewportX - viewport[4]) / viewport[0];
+      const canvasY = (viewportY - viewport[5]) / viewport[3];
+      object.set({
+        left: Math.max(
+          halfWidth,
+          Math.min(this.doc.width - halfWidth, canvasX),
+        ),
+        top: Math.max(
+          halfHeight,
+          Math.min(this.doc.height - halfHeight, canvasY),
+        ),
+      });
+      object.setCoords();
+    }
     this.styleObject(object);
     this.canvas.add(object);
     this.canvas.setActiveObject(object);
     this.commit();
+  }
+
+  replaceActiveImage(image: FabricImage): boolean {
+    const active = this.canvas.getActiveObject();
+    if (
+      !active ||
+      !(active instanceof this.fabric.FabricImage) ||
+      roleOf(active) === "background"
+    ) {
+      image.dispose();
+      return false;
+    }
+    const current = active as FabricImage & EditorObjectProps;
+    const index = this.canvas.getObjects().indexOf(current);
+    const replacement = image as FabricImage & EditorObjectProps;
+    replacement.oceanleoId = current.oceanleoId || makeId();
+    replacement.oceanleoKind = "image";
+    replacement.oceanleoRole = undefined;
+    replacement.oceanleoLocked = false;
+    replacement.set({
+      left: current.left,
+      top: current.top,
+      originX: current.originX,
+      originY: current.originY,
+      scaleX:
+        current.getScaledWidth() / Math.max(1, replacement.width || 1),
+      scaleY:
+        current.getScaledHeight() / Math.max(1, replacement.height || 1),
+      angle: current.angle,
+      flipX: current.flipX,
+      flipY: current.flipY,
+      opacity: current.opacity,
+      shadow: current.shadow,
+      selectable: true,
+      evented: true,
+    });
+    applyImageRadius(
+      this.fabric,
+      replacement,
+      current.oceanleoRadius || 0,
+    );
+    applyFilterSettings(
+      this.fabric,
+      replacement,
+      readFilterSettings(current),
+    );
+    this.styleObject(replacement);
+    this.canvas.remove(current);
+    this.canvas.add(replacement);
+    this.canvas.moveObjectTo(replacement, Math.max(0, index));
+    replacement.setCoords();
+    this.canvas.setActiveObject(replacement);
+    current.dispose();
+    this.commit();
+    return true;
   }
 
   selectLayer(id: string): void {
@@ -233,6 +315,7 @@ export class FabricEditorController extends FabricEditorCore {
       const text = object as IText;
       const props: Record<string, unknown> = {};
       if (patch.value != null) props.text = patch.value.slice(0, 2_000);
+      if (patch.fontFamily != null) props.fontFamily = patch.fontFamily;
       if (patch.fontSize != null) props.fontSize = Math.max(6, patch.fontSize);
       if (patch.fill != null) props.fill = patch.fill;
       if (patch.backgroundColor != null) {
@@ -242,6 +325,12 @@ export class FabricEditorController extends FabricEditorCore {
       if (patch.italic != null) {
         props.fontStyle = patch.italic ? "italic" : "normal";
       }
+      if (patch.underline != null) props.underline = patch.underline;
+      if (patch.linethrough != null) props.linethrough = patch.linethrough;
+      if (patch.lineHeight != null) {
+        props.lineHeight = Math.max(0.5, patch.lineHeight);
+      }
+      if (patch.charSpacing != null) props.charSpacing = patch.charSpacing;
       if (patch.align != null) props.textAlign = patch.align;
       if (patch.stroke != null) props.stroke = patch.stroke || undefined;
       if (patch.strokeWidth != null) {

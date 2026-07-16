@@ -300,8 +300,8 @@ export function OfficeControls({
 }) {
   const tt = useUI();
   return (
-    <div className="space-y-3 p-3 text-[12px] leading-relaxed text-stone-600">
-      <p className="font-medium text-stone-800">
+    <div className="min-h-full space-y-3 bg-[var(--card,#fff)] p-4 text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">
+      <p className="font-medium text-[var(--fg,#292524)]">
         {tt("Office 专业编辑")}
         {editor.extension ? ` · .${editor.extension}` : ""}
       </p>
@@ -311,7 +311,7 @@ export function OfficeControls({
         )}
       </p>
       {editor.state === "loading" && (
-        <p className="rounded-lg bg-stone-100 px-3 py-2 text-stone-500">
+        <p className="rounded-xl bg-[var(--surface,#f5f5f4)] px-3 py-2 text-[var(--muted,#78716c)]">
           {tt("正在加载编辑器…")}
         </p>
       )}
@@ -328,7 +328,7 @@ export function OfficeControls({
           </button>
         </div>
       )}
-      <p className="text-[11px] text-stone-400">
+      <p className="text-[11px] text-[var(--muted,#78716c)]">
         {editor.dirty
           ? tt("有修改正在同步；关闭时会先由 Office 编辑器确认。")
           : tt("编辑内容由 OceanLeo 自托管的文档服务处理，自动保存开启。")}
@@ -340,14 +340,14 @@ export function OfficeControls({
 export function OfficeStage({ editor }: { editor: OfficeWorkbenchEditor }) {
   const tt = useUI();
   return (
-    <div className="relative h-full w-full bg-stone-100">
+    <div className="relative h-full w-full bg-[var(--surface,#f5f5f4)]">
       {editor.state === "loading" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-[13px] text-stone-500">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]/80 text-[13px] text-[var(--muted,#78716c)]">
           {tt("正在加载 Office 编辑器…")}
         </div>
       )}
       {editor.state === "error" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-white text-[13px] text-red-600">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)] text-[13px] text-red-600">
           {editor.error}
         </div>
       )}
@@ -364,7 +364,7 @@ export function OfficeWorkbench({ item, siteId, accent, onSaveQueued }: OfficeWo
   }, [editor.saveCount, onSaveQueued]);
   return (
     <div className="flex h-full">
-      <div className="w-72 shrink-0 border-r border-stone-200 bg-white">
+      <div className="w-72 shrink-0 border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]">
         <OfficeControls editor={editor} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

@@ -73,17 +73,17 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
 
   if (editor.loading) {
     return (
-      <div className="grid h-full min-h-[420px] place-items-center bg-stone-50 text-sm text-stone-400">
+      <div className="grid h-full min-h-[420px] place-items-center bg-[var(--surface,#f5f5f4)] text-sm text-[var(--muted,#78716c)]">
         {tt("正在载入结构化图表…")}
       </div>
     );
   }
   if (editor.error && !editor.dirty) {
     return (
-      <div className="grid h-full min-h-[420px] place-items-center bg-stone-50 p-6">
+      <div className="grid h-full min-h-[420px] place-items-center bg-[var(--surface,#f5f5f4)] p-6">
         <div
           role="alert"
-          className="max-w-lg rounded-xl border border-amber-200 bg-white p-5 text-center"
+          className="max-w-lg rounded-xl border border-amber-200 bg-[var(--card,#fff)] p-5 text-center"
         >
           <p className="font-semibold text-amber-800">{tt("图表编辑不可用")}</p>
           <p className="mt-2 text-xs leading-relaxed text-amber-700">
@@ -96,8 +96,8 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
 
   const title = editor.document.option.title.text || tt("图表预览");
   return (
-    <div className="flex h-full min-h-0 flex-col bg-stone-100 p-4">
-      <div className="mx-auto flex h-full min-h-[420px] w-full max-w-6xl overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)] p-4">
+      <div className="mx-auto flex h-full min-h-[420px] w-full max-w-6xl overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-sm">
         <div
           ref={hostRef}
           role="img"

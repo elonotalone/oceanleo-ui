@@ -6,8 +6,8 @@ import type { RichDocEditorState } from "./use-rich-doc-editor";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-2 border-b border-stone-100 pb-3 last:border-0">
-      <p className="text-[11px] font-semibold text-stone-800">{title}</p>
+    <section className="space-y-2.5 border-b border-[var(--border,#e7e5e4)] pb-4 last:border-0">
+      <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">{title}</p>
       {children}
     </section>
   );
@@ -27,7 +27,7 @@ function ToolButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="min-h-8 rounded-lg border border-stone-200 px-2 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-35"
+      className="min-h-9 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:-translate-y-0.5 hover:border-[var(--accent,#7c3aed)]/40 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm disabled:opacity-35"
     >
       {label}
     </button>
@@ -57,7 +57,7 @@ export function RichDocControls({
   };
 
   return (
-    <div className="space-y-3 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <Section title={tt("文档来源")}>
         <input
           ref={sourceFileRef}
@@ -75,7 +75,7 @@ export function RichDocControls({
           disabled={state.importing}
           onClick={() => sourceFileRef.current?.click()}
         />
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("选中文字后，排版与颜色会直接出现在内容上方。")}
         </p>
       </Section>
@@ -132,27 +132,12 @@ export function RichDocControls({
             }}
             placeholder={tt("粘贴图片 URL")}
             aria-label={tt("图片 URL")}
-            className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
           />
           <ToolButton
             label={tt("插入")}
             disabled={!imageInput.trim()}
             onClick={insertImage}
-          />
-        </div>
-      </Section>
-
-      <Section title={tt("历史")}>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ToolButton
-            label={tt("撤销")}
-            disabled={!editor?.can().chain().focus().undo().run()}
-            onClick={() => editor?.chain().focus().undo().run()}
-          />
-          <ToolButton
-            label={tt("重做")}
-            disabled={!editor?.can().chain().focus().redo().run()}
-            onClick={() => editor?.chain().focus().redo().run()}
           />
         </div>
       </Section>

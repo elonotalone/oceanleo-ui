@@ -77,6 +77,10 @@ export interface MaterialLibraryProps {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  primaryMaterialAction?: WorkbenchMaterialAction;
+  draggableMaterials?: boolean;
+  onMaterialDragStart?: (item: LibraryItem) => void;
+  onMaterialDragEnd?: () => void;
   /** Standalone libraries may open an editor; embedded workbenches stay in place. */
   allowAdvancedOnSelect?: boolean;
 }
@@ -392,6 +396,10 @@ export function MaterialLibrary({
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
+  primaryMaterialAction,
+  draggableMaterials,
+  onMaterialDragStart,
+  onMaterialDragEnd,
   allowAdvancedOnSelect = true,
 }: MaterialLibraryProps) {
   const tt = useUI();
@@ -516,7 +524,7 @@ export function MaterialLibrary({
       <button
         type="button"
         onClick={onSeeAll}
-        className="whitespace-nowrap rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+        className="whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
       >
         {tt(seeAllLabel || "完整素材库")} →
       </button>
@@ -525,7 +533,7 @@ export function MaterialLibrary({
         href={seeAllHref}
         target="_blank"
         rel="noreferrer"
-        className="whitespace-nowrap rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+        className="whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
       >
         {tt(seeAllLabel || "完整素材库")} →
       </a>
@@ -554,6 +562,10 @@ export function MaterialLibrary({
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
       materialActionAvailable={materialActionAvailable}
+      primaryMaterialAction={primaryMaterialAction}
+      draggableMaterials={draggableMaterials}
+      onMaterialDragStart={onMaterialDragStart}
+      onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect && materialActions.length === 0}
       className={className}
     />

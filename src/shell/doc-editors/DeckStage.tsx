@@ -1,188 +1,130 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { useAdvancedLayout } from "../advanced-layout-context";
+import {
+  moveDeckElement,
+  resizeDeckElement,
+  rotateDeckElement,
+  type DeckResizeHandle,
+} from "./deck-geometry";
 import { deckTheme, type DeckElement, type DeckSlide } from "./deck-schema";
+import {
+  DeckElementContent,
+} from "./DeckElementContent";
+import { DeckMiniSlide } from "./DeckMiniSlide";
 import type { DeckEditorState } from "./use-deck-editor";
 
-function ElementContent({
-  element,
-  miniature = false,
-}: {
-  element: DeckElement;
-  miniature?: boolean;
-}) {
-  if (element.type === "image" && element.src) {
-    return (
-      <img
-        src={element.src}
-        alt={element.alt || ""}
-        className="h-full w-full select-none object-contain"
-        draggable={false}
-      />
-    );
-  }
-  if (element.type === "table") {
-    return (
-      <table className="h-full w-full table-fixed border-collapse bg-white text-[0.7em]">
-        <tbody>
-          {(element.rows || []).slice(0, miniature ? 4 : 100).map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.slice(0, miniature ? 4 : 50).map((cell, cellIndex) => (
-                <td key={cellIndex} className="overflow-hidden border border-stone-300 px-[0.2em]">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  }
-  if (element.type === "unsupported") {
-    return (
-      <span className="grid h-full place-items-center overflow-hidden border border-dashed border-stone-300 bg-stone-50 p-1 text-center text-[0.65em] text-stone-500">
-        {element.label || "原始元素"}
-      </span>
-    );
-  }
-  return (
-    <span
-      className="flex h-full w-full overflow-hidden whitespace-pre-wrap leading-tight"
-      style={{
-        alignItems: "center",
-        justifyContent:
-          element.align === "center"
-            ? "center"
-            : element.align === "right"
-              ? "flex-end"
-              : "flex-start",
-        textAlign: element.align || "left",
-        color: element.color,
-        fontFamily: element.fontFamily,
-        fontSize: miniature
-          ? undefined
-          : `${Math.max(0.55, (element.fontSize || 18) / 7.2)}cqi`,
-        fontWeight: element.bold ? 700 : 400,
-        fontStyle: element.italic ? "italic" : "normal",
-      }}
-    >
-      {element.text || ""}
-    </span>
-  );
-}
-
-function MiniElementLayer({ slide }: { slide: DeckSlide }) {
-  return (
-    <>
-      {slide.elements.map((element) => (
-        <span
-          key={element.id}
-          className="absolute overflow-hidden text-[3px] leading-none"
-          style={{
-            left: `${element.x}%`,
-            top: `${element.y}%`,
-            width: `${element.width}%`,
-            height: `${element.height}%`,
-            transform: `rotate(${element.rotation}deg)`,
-            zIndex: Math.round(element.order),
-            background: element.type === "shape" ? element.fill : undefined,
-            border:
-              element.type === "shape" && element.borderWidth
-                ? `${Math.max(0.25, element.borderWidth / 4)}px solid ${element.borderColor || "#000"}`
-                : undefined,
-          }}
-        >
-          <ElementContent element={element} miniature />
-        </span>
-      ))}
-    </>
-  );
-}
-
-interface ElementDragState {
+interface ElementInteraction {
   id: string;
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "rotate";
+  handle?: DeckResizeHandle;
   startX: number;
   startY: number;
-  originX: number;
-  originY: number;
-  originWidth: number;
-  originHeight: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  origin: DeckElement;
+  preview: Partial<DeckElement>;
 }
+
+const RESIZE_HANDLES: {
+  id: DeckResizeHandle;
+  className: string;
+  cursor: string;
+}[] = [
+  { id: "nw", className: "-left-1.5 -top-1.5", cursor: "nwse-resize" },
+  { id: "n", className: "left-1/2 -top-1.5 -translate-x-1/2", cursor: "ns-resize" },
+  { id: "ne", className: "-right-1.5 -top-1.5", cursor: "nesw-resize" },
+  { id: "e", className: "-right-1.5 top-1/2 -translate-y-1/2", cursor: "ew-resize" },
+  { id: "se", className: "-bottom-1.5 -right-1.5", cursor: "nwse-resize" },
+  { id: "s", className: "-bottom-1.5 left-1/2 -translate-x-1/2", cursor: "ns-resize" },
+  { id: "sw", className: "-bottom-1.5 -left-1.5", cursor: "nesw-resize" },
+  { id: "w", className: "-left-1.5 top-1/2 -translate-y-1/2", cursor: "ew-resize" },
+];
 
 function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<ElementDragState | null>(null);
+  const layout = useAdvancedLayout();
+  const [interaction, setInteraction] = useState<ElementInteraction | null>(
+    null,
+  );
+  const [editingId, setEditingId] = useState("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
 
-  const startDrag = (
+  useEffect(() => {
+    editor.setCanvasElement(canvasRef.current);
+    return () => editor.setCanvasElement(null);
+  }, [editor.setCanvasElement]);
+
+  const startInteraction = (
     event: ReactPointerEvent<HTMLElement>,
     element: DeckElement,
-    mode: "move" | "resize",
+    mode: ElementInteraction["mode"],
+    handle?: DeckResizeHandle,
   ) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || element.locked || editingId === element.id) return;
     event.preventDefault();
     event.stopPropagation();
     editor.selectElement(element.id);
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({
+    canvasRef.current?.setPointerCapture(event.pointerId);
+    setInteraction({
       id: element.id,
       mode,
+      handle,
       startX: event.clientX,
       startY: event.clientY,
-      originX: element.x,
-      originY: element.y,
-      originWidth: element.width,
-      originHeight: element.height,
-      x: element.x,
-      y: element.y,
-      width: element.width,
-      height: element.height,
+      origin: { ...element, rows: element.rows?.map((row) => [...row]) },
+      preview: {},
     });
   };
 
-  const updateDrag = (event: ReactPointerEvent<HTMLElement>) => {
+  const updateInteraction = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!drag || !rect?.width || !rect.height) return;
-    const dx = ((event.clientX - drag.startX) / rect.width) * 100;
-    const dy = ((event.clientY - drag.startY) / rect.height) * 100;
-    setDrag((current) =>
-      !current
-        ? current
-        : current.mode === "move"
-          ? {
-              ...current,
-              x: Math.min(99, Math.max(-99, current.originX + dx)),
-              y: Math.min(99, Math.max(-99, current.originY + dy)),
-            }
-          : {
-              ...current,
-              width: Math.max(1, current.originWidth + dx),
-              height: Math.max(1, current.originHeight + dy),
-            },
-    );
+    if (!interaction || !rect?.width || !rect.height) return;
+    const start = { x: interaction.startX, y: interaction.startY };
+    const current = { x: event.clientX, y: event.clientY };
+    let preview: Partial<DeckElement>;
+    if (interaction.mode === "move") {
+      preview = moveDeckElement(interaction.origin, start, current, rect);
+    } else if (interaction.mode === "resize" && interaction.handle) {
+      preview = resizeDeckElement(
+        interaction.origin,
+        interaction.handle,
+        start,
+        current,
+        rect,
+        event.shiftKey || interaction.origin.type === "image",
+      );
+    } else {
+      preview = rotateDeckElement(
+        interaction.origin,
+        start,
+        current,
+        rect,
+        event.shiftKey,
+      );
+    }
+    setInteraction((state) => (state ? { ...state, preview } : state));
   };
 
-  const finishDrag = () => {
-    if (!drag) return;
-    editor.patchElement(drag.id, {
-      x: drag.x,
-      y: drag.y,
-      width: drag.width,
-      height: drag.height,
-    });
-    setDrag(null);
+  const finishInteraction = () => {
+    if (!interaction) return;
+    if (Object.keys(interaction.preview).length) {
+      editor.patchElement(interaction.id, interaction.preview);
+    }
+    setInteraction(null);
   };
 
   return (
     <div
       ref={canvasRef}
+      data-deck-canvas
       className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
       style={{
         background: slide.background || theme.background,
@@ -190,96 +132,207 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
         fontFamily: theme.fontFamily,
         containerType: "inline-size",
       }}
-      onPointerDown={() => editor.selectElement("")}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          setEditingId("");
+          editor.selectElement("");
+        }
+      }}
+      onPointerMove={updateInteraction}
+      onPointerUp={finishInteraction}
+      onPointerCancel={() => setInteraction(null)}
     >
       {[...slide.elements]
         .sort((left, right) => left.order - right.order)
         .map((element) => {
-          const preview = drag?.id === element.id ? drag : null;
+          const preview =
+            interaction?.id === element.id ? interaction.preview : null;
+          const rendered = preview ? { ...element, ...preview } : element;
           const selected = editor.selectedElementId === element.id;
+          const editing = editingId === element.id;
+          const isTriangle =
+            element.type === "shape" && element.shape === "triangle";
           return (
-            <button
+            <div
               key={element.id}
-              type="button"
-              onPointerDown={(event) => startDrag(event, element, "move")}
-              onPointerMove={updateDrag}
-              onPointerUp={finishDrag}
-              onPointerCancel={() => setDrag(null)}
-              className={`absolute overflow-visible text-left ${
-                selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
-              }`}
+              role="button"
+              tabIndex={selected ? 0 : -1}
+              aria-label={element.alt || element.label || element.type}
+              aria-pressed={selected}
+              onPointerDown={(event) => {
+                editor.selectElement(element.id);
+                if (
+                  event.detail >= 2 &&
+                  !element.locked &&
+                  (element.type === "text" ||
+                    element.type === "table" ||
+                    (element.type === "shape" && Boolean(element.text)))
+                ) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setEditingId(element.id);
+                  return;
+                }
+                if (!editing) startInteraction(event, element, "move");
+              }}
+              onDoubleClick={(event) => {
+                if (
+                  !element.locked &&
+                  (element.type === "text" ||
+                    element.type === "table" ||
+                    (element.type === "shape" && element.text))
+                ) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  editor.selectElement(element.id);
+                  setEditingId(element.id);
+                }
+              }}
+              className={`absolute overflow-visible text-left outline-none ${
+                selected
+                  ? "after:pointer-events-none after:absolute after:-inset-[2px] after:rounded-[inherit] after:border-2 after:border-[#8b5cf6]"
+                  : ""
+              } ${element.locked ? "cursor-default" : editing ? "cursor-text" : "cursor-move"}`}
+              data-deck-element={element.id}
+              data-element-type={element.type}
+              data-locked={element.locked ? "true" : "false"}
               style={{
-                left: `${preview?.x ?? element.x}%`,
-                top: `${preview?.y ?? element.y}%`,
-                width: `${preview?.width ?? element.width}%`,
-                height: `${preview?.height ?? element.height}%`,
-                transform: `rotate(${element.rotation}deg)`,
-                zIndex: Math.round(element.order),
+                left: `${rendered.x}%`,
+                top: `${rendered.y}%`,
+                width: `${rendered.width}%`,
+                height: `${rendered.height}%`,
+                transform: `rotate(${rendered.rotation}deg)`,
+                zIndex: Math.round(rendered.order),
+                opacity: rendered.opacity ?? 1,
                 background:
-                  element.type === "shape" ? element.fill || "transparent" : undefined,
-                border:
-                  element.type === "shape" && element.borderWidth
-                    ? `${element.borderWidth}px solid ${element.borderColor || "#000"}`
+                  rendered.type === "shape"
+                    ? rendered.fill || "transparent"
                     : undefined,
+                border:
+                  (rendered.type === "shape" ||
+                    rendered.type === "image") &&
+                  rendered.borderWidth
+                    ? `${rendered.borderWidth}px solid ${rendered.borderColor || "#000"}`
+                    : undefined,
+                borderRadius:
+                  rendered.type === "shape" && rendered.shape === "circle"
+                    ? "50%"
+                    : `${rendered.borderRadius || 0}px`,
+                boxShadow: rendered.shadow
+                  ? "0 14px 32px rgba(15,23,42,.24)"
+                  : undefined,
               }}
             >
-              <ElementContent element={element} />
-              {selected && (
-                <span
-                  role="presentation"
-                  onPointerDown={(event) => startDrag(event, element, "resize")}
-                  className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-se-resize rounded-sm border border-white bg-blue-500 shadow"
+              <div
+                className="h-full w-full overflow-hidden rounded-[inherit]"
+                style={{
+                  clipPath: isTriangle
+                    ? "polygon(50% 0, 100% 100%, 0 100%)"
+                    : undefined,
+                }}
+              >
+                <DeckElementContent
+                  element={rendered}
+                  editing={editing}
+                  onCancelEditing={() => setEditingId("")}
+                  onCommitText={(text) => {
+                    setEditingId("");
+                    if (text !== element.text) {
+                      editor.patchElement(element.id, { text });
+                    }
+                  }}
+                  onCommitCell={(rowIndex, columnIndex, text) => {
+                    const rows = (element.rows || []).map((row) => [...row]);
+                    if (!rows[rowIndex] || rows[rowIndex][columnIndex] === text) {
+                      return;
+                    }
+                    rows[rowIndex][columnIndex] = text;
+                    editor.patchElement(element.id, { rows });
+                  }}
                 />
+              </div>
+              {selected && (
+                <>
+                  <div
+                    className="absolute left-1/2 top-[-44px] z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1 text-[var(--fg,#292524)] shadow-xl"
+                    style={{
+                      transform: `translateX(-50%) rotate(${-rendered.rotation}deg)`,
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => layout?.openDrawer("agent")}
+                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+                      title="让 AI 改"
+                      aria-label="让 AI 改"
+                    >
+                      <AdvancedEditorIcon name="ai" className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={editor.duplicateElement}
+                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+                      title="复制"
+                      aria-label="复制"
+                    >
+                      <AdvancedEditorIcon name="duplicate" className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={editor.toggleElementLock}
+                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+                      title={element.locked ? "解锁" : "锁定"}
+                      aria-label={element.locked ? "解锁" : "锁定"}
+                    >
+                      <AdvancedEditorIcon
+                        name={element.locked ? "unlock" : "lock"}
+                        className="h-4 w-4"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={editor.deleteElement}
+                      className="grid h-7 w-7 place-items-center rounded-lg text-rose-600 hover:bg-rose-500/10"
+                      title="删除"
+                      aria-label="删除"
+                    >
+                      <AdvancedEditorIcon name="delete" className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {!element.locked &&
+                    RESIZE_HANDLES.map((handle) => (
+                      <span
+                        key={handle.id}
+                        role="presentation"
+                        onPointerDown={(event) =>
+                          startInteraction(event, element, "resize", handle.id)
+                        }
+                        className={`absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[#8b5cf6] shadow ${handle.className}`}
+                        style={{ cursor: handle.cursor }}
+                      />
+                    ))}
+                  {!element.locked && (
+                    <>
+                      <span className="pointer-events-none absolute -bottom-7 left-1/2 h-7 w-px -translate-x-1/2 bg-[#8b5cf6]" />
+                      <span
+                        role="presentation"
+                        onPointerDown={(event) =>
+                          startInteraction(event, element, "rotate")
+                        }
+                        className="absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[#8b5cf6] shadow active:cursor-grabbing"
+                      />
+                    </>
+                  )}
+                </>
               )}
-            </button>
+            </div>
           );
         })}
       <span className="pointer-events-none absolute bottom-3 right-4 text-[10px] opacity-40">
         {editor.activeIndex + 1} / {editor.deck.slides.length}
       </span>
     </div>
-  );
-}
-
-function MiniSlide({
-  slide,
-  number,
-  active,
-  theme,
-  onClick,
-}: {
-  slide: DeckSlide;
-  number: number;
-  active: boolean;
-  theme: ReturnType<typeof deckTheme>;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} className="group flex w-full items-start gap-2 text-left">
-      <span className="w-5 shrink-0 pt-5 text-right text-[9px] text-stone-400">{number}</span>
-      <span
-        className="relative aspect-video min-w-0 flex-1 overflow-hidden rounded border p-2 shadow-sm"
-        style={{
-          borderColor: active ? theme.accent : "#d6d3d1",
-          boxShadow: active ? `0 0 0 2px ${theme.accent}22` : undefined,
-          background: slide.background || theme.background,
-          color: theme.text,
-          fontFamily: theme.fontFamily,
-        }}
-      >
-        {slide.elements.length ? (
-          <MiniElementLayer slide={slide} />
-        ) : (
-          <>
-            {slide.image?.url && (
-              <img src={slide.image.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />
-            )}
-            <span className="relative block truncate text-[6px] font-bold">{slide.title || " "}</span>
-            <span className="relative mt-1 block line-clamp-3 text-[4px] opacity-65">{slide.body || slide.bullets.join(" · ")}</span>
-          </>
-        )}
-      </span>
-    </button>
   );
 }
 
@@ -400,11 +453,50 @@ export function DeckStage({
         event.preventDefault();
         if (event.shiftKey) editor.redo();
         else editor.undo();
-      } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "d" &&
+        editor.selectedElement
+      ) {
+        event.preventDefault();
+        editor.duplicateElement();
+      } else if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        editor.selectedElement &&
+        !editor.selectedElement.locked
+      ) {
+        event.preventDefault();
+        editor.deleteElement();
+      } else if (
+        editor.selectedElement &&
+        !editor.selectedElement.locked &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+          event.key,
+        )
+      ) {
+        event.preventDefault();
+        const step = event.shiftKey ? 1 : 0.2;
+        editor.patchElement(editor.selectedElement.id, {
+          x:
+            editor.selectedElement.x +
+            (event.key === "ArrowLeft"
+              ? -step
+              : event.key === "ArrowRight"
+                ? step
+                : 0),
+          y:
+            editor.selectedElement.y +
+            (event.key === "ArrowUp"
+              ? -step
+              : event.key === "ArrowDown"
+                ? step
+                : 0),
+        });
+      } else if (event.key === "PageUp") {
         event.preventDefault();
         const previous = editor.deck.slides[editor.activeIndex - 1];
         if (previous) editor.selectSlide(previous.id);
-      } else if (event.key === "ArrowDown" || event.key === "PageDown") {
+      } else if (event.key === "PageDown") {
         event.preventDefault();
         const next = editor.deck.slides[editor.activeIndex + 1];
         if (next) editor.selectSlide(next.id);
@@ -415,22 +507,25 @@ export function DeckStage({
   }, [editor]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-stone-100">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-stone-200 bg-white px-3 py-2">
-        <button type="button" onClick={editor.undo} disabled={!editor.canUndo} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-35">↶</button>
-        <button type="button" onClick={editor.redo} disabled={!editor.canRedo} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-35">↷</button>
-        <span className="mx-1 h-5 w-px bg-stone-200" />
-        <button type="button" onClick={editor.addSlide} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("新建一页")}</button>
-        <button type="button" onClick={editor.duplicateSlide} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("复制当前页")}</button>
-        <span className="min-w-0 flex-1 truncate px-3 text-center text-[11px] font-medium text-stone-500">{editor.deck.title}</span>
-        <span className="text-[10px] text-stone-400">{editor.deck.aspect}</span>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
       <div className="flex min-h-0 flex-1">
-        <aside className="w-44 shrink-0 overflow-y-auto border-r border-stone-200 bg-stone-50 p-2.5">
+        <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--muted,#78716c)]">
+              {tt("页面")}
+            </span>
+            <button
+              type="button"
+              onClick={editor.addSlide}
+              className="grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+              title={tt("新建一页")}
+            >
+              <AdvancedEditorIcon name="add" className="h-4 w-4" />
+            </button>
+          </div>
           <div className="space-y-2.5">
             {editor.deck.slides.map((slide, index) => (
-              <MiniSlide
+              <DeckMiniSlide
                 key={slide.id}
                 slide={slide}
                 number={index + 1}
@@ -441,23 +536,23 @@ export function DeckStage({
             ))}
           </div>
         </aside>
-        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto p-6 lg:p-10">
+        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-[radial-gradient(circle_at_center,rgba(255,255,255,.9),transparent_68%)] p-8 lg:p-12">
           <div
-            className="w-full max-w-5xl"
+            className="w-full max-w-5xl transition-[width] duration-200"
             style={{ aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9" }}
           >
             <SlideCanvas editor={editor} />
           </div>
           {editor.loading && (
-            <div className="absolute inset-0 grid place-items-center bg-white/85 text-[12px] text-stone-500">
+            <div className="absolute inset-0 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]">
               {tt("正在载入演示文稿…")}
             </div>
           )}
         </main>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
-        <span role="status" className={`min-w-0 flex-1 truncate text-[11px] ${editor.error ? "text-red-600" : "text-stone-500"}`}>
+      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4">
+        <span role="status" className={`min-w-0 flex-1 truncate text-[10px] ${editor.error ? "text-red-600" : "text-[var(--muted,#78716c)]"}`}>
           {editor.error ||
             editor.notice ||
             tt("第 {page} 页，共 {total} 页", {
@@ -465,13 +560,9 @@ export function DeckStage({
               total: editor.deck.slides.length,
             })}
         </span>
-        <button type="button" onClick={editor.downloadJson} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("下载工程")}</button>
-        <button type="button" disabled={editor.exporting} onClick={() => void editor.exportPptx()} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 disabled:opacity-40">
-          {editor.exporting ? tt("导出中…") : tt("导出 PPTX")}
-        </button>
-        <button type="button" disabled={editor.saving} onClick={() => void editor.save()} className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40" style={{ background: accent }}>
-          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
-        </button>
+        <span className="text-[10px] text-[var(--muted,#78716c)]">
+          {editor.deck.aspect}
+        </span>
       </div>
     </div>
   );

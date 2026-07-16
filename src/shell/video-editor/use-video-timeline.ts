@@ -117,7 +117,7 @@ export interface VideoTimelineState {
 
   // asset intake
   addMediaFile: (file: File) => Promise<void>;
-  addMediaUrl: (url: string) => Promise<void>;
+  addMediaUrl: (url: string, startAtMs?: number) => Promise<void>;
   addTextClip: () => void;
 
   // persistence
@@ -503,7 +503,12 @@ export function useVideoTimeline(
   // --------------------------------------------------------- asset intake
 
   const appendSourceClip = useCallback(
-    async (url: string, media: "video" | "audio" | "image", title: string) => {
+    async (
+      url: string,
+      media: "video" | "audio" | "image",
+      title: string,
+      startAtMs?: number,
+    ) => {
       const kind = trackKindForMedia(media);
       let duration = DEFAULT_IMAGE_CLIP_MS;
       if (media !== "image") {
@@ -517,10 +522,14 @@ export function useVideoTimeline(
           next = addTrackTo(next, kind);
           track = next.tracks[next.tracks.length - 1];
         }
-        const appendAt = Math.max(
-          0,
-          ...track.clips.map((clip) => clip.start_ms + clip.duration_ms),
-        );
+        const appendAt = Number.isFinite(startAtMs)
+          ? Math.max(0, Math.round(startAtMs as number))
+          : Math.max(
+              0,
+              ...track.clips.map(
+                (clip) => clip.start_ms + clip.duration_ms,
+              ),
+            );
         const clip: TimelineClip = {
           id: makeId("clip"),
           start_ms: appendAt,
@@ -566,7 +575,7 @@ export function useVideoTimeline(
   );
 
   const addMediaUrl = useCallback(
-    async (url: string) => {
+    async (url: string, startAtMs?: number) => {
       setError("");
       const trimmed = url.trim();
       if (!/^https?:\/\//i.test(trimmed)) {
@@ -600,6 +609,7 @@ export function useVideoTimeline(
           imported.url,
           media,
           title,
+          startAtMs,
         );
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : tt("素材导入失败"));

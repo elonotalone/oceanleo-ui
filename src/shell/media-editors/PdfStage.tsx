@@ -54,7 +54,7 @@ export function PdfStage({
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.currentTarget.focus()}
-      className="flex h-full min-h-0 flex-col bg-stone-100 outline-none"
+      className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)] outline-none"
     >
       <div className="flex min-h-0 flex-1 overflow-auto p-5">
         <div className="relative m-auto min-h-32 min-w-32">
@@ -64,29 +64,29 @@ export function PdfStage({
             className="block max-w-none bg-white shadow-[0_8px_32px_rgba(28,25,23,.18)]"
           />
           {busyLabel && (
-            <div className="absolute inset-0 flex min-h-32 items-center justify-center bg-white/85 px-5 text-center text-[12px] text-stone-500 backdrop-blur-[1px]">
+            <div className="absolute inset-0 flex min-h-32 items-center justify-center bg-[var(--card,#fff)]/85 px-5 text-center text-[12px] text-[var(--muted,#78716c)] backdrop-blur-[1px]">
               {busyLabel}
             </div>
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4 py-2.5">
         <button
           type="button"
           disabled={editor.loading || editor.pageNumber <= 1}
           onClick={editor.previousPage}
-          className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-40"
+          className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-40"
         >
           ←
         </button>
-        <span className="min-w-20 text-center text-[11px] tabular-nums text-stone-600">
+        <span className="min-w-20 text-center text-[11px] tabular-nums text-[var(--fg-2,#57534e)]">
           {editor.pageNumber} / {editor.pageCount || "—"}
         </span>
         <button
           type="button"
           disabled={editor.loading || editor.pageNumber >= editor.pageCount}
           onClick={editor.nextPage}
-          className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-40"
+          className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-40"
         >
           →
         </button>
@@ -96,7 +96,7 @@ export function PdfStage({
           ) : editor.notice ? (
             <span className="text-emerald-600">{editor.notice}</span>
           ) : (
-            <span className="text-stone-400">
+            <span className="text-[var(--muted,#78716c)]">
               {editor.dirty
                 ? tt("有未保存的 PDF 修改")
                 : tt("方向键翻页 · Ctrl + / − 缩放")}

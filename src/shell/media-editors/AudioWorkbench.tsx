@@ -631,9 +631,9 @@ function AudioSlider({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex justify-between text-[11px] text-stone-600">
+      <span className="mb-1 flex justify-between text-[11px] text-[var(--fg-2,#57534e)]">
         <span>{label}</span>
-        <span className="tabular-nums text-stone-400">{value}{suffix}</span>
+        <span className="tabular-nums text-[var(--muted,#78716c)]">{value}{suffix}</span>
       </span>
       <input
         type="range"
@@ -642,7 +642,7 @@ function AudioSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-stone-800"
+        className="w-full accent-[var(--accent,#7c3aed)]"
       />
     </label>
   );
@@ -650,17 +650,16 @@ function AudioSlider({
 
 export function AudioControls({
   editor,
-  accent = "#4f46e5",
 }: {
   editor: AudioWorkbenchState;
   accent?: string;
 }) {
   const tt = useUI();
-  const button = "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40";
+  const button = "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40";
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
+    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <section>
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("音频源")}
         </p>
         <label className={`${button} flex w-full cursor-pointer items-center justify-center`}>
@@ -678,7 +677,7 @@ export function AudioControls({
         </label>
       </section>
       <section>
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("播放")}</p>
+        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("播放")}</p>
         <div className="grid grid-cols-2 gap-1.5">
           <button type="button" className={button} onClick={editor.playPause}>
             {editor.playing ? tt("暂停") : tt("播放")}
@@ -689,12 +688,8 @@ export function AudioControls({
           <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" onChange={editor.setPlaybackSpeed} />
         </div>
       </section>
-      <section className="space-y-2.5 border-t border-stone-100 pt-3">
+      <section className="space-y-2.5 border-t border-[var(--border,#e7e5e4)] pt-3">
         <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" onChange={editor.setWaveformZoom} />
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className={button} disabled={!editor.canUndo || editor.loading} onClick={editor.undo} style={editor.canUndo ? { borderColor: accent, color: accent } : undefined}>{tt("撤销")}</button>
-          <button type="button" className={button} disabled={!editor.canRedo || editor.loading} onClick={editor.redo} style={editor.canRedo ? { borderColor: accent, color: accent } : undefined}>{tt("重做")}</button>
-        </div>
       </section>
     </div>
   );
@@ -702,7 +697,6 @@ export function AudioControls({
 
 export function AudioStage({
   editor,
-  accent = "#4f46e5",
 }: {
   editor: AudioWorkbenchState;
   accent?: string;
@@ -710,8 +704,8 @@ export function AudioStage({
   const tt = useUI();
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-stone-50 p-6">
-        <div className="mb-3 flex items-center justify-between text-[11px] text-stone-500">
+      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-[var(--surface,#f5f5f4)] p-6">
+        <div className="mb-3 flex items-center justify-between text-[11px] text-[var(--muted,#78716c)]">
           <span className="tabular-nums">{formatTime(editor.currentTime)} / {formatTime(editor.duration)}</span>
           <span>
             {editor.selection
@@ -722,24 +716,10 @@ export function AudioStage({
               : tt("未选择区间")}
           </span>
         </div>
-        <div className="relative rounded-xl border border-stone-200 bg-white px-3 py-6 shadow-sm">
-          {editor.loading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 text-[12px] text-stone-400">{tt("正在处理音频…")}</div>}
+        <div className="relative rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-6 shadow-sm">
+          {editor.loading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/80 text-[12px] text-[var(--muted,#78716c)]">{tt("正在处理音频…")}</div>}
           <div ref={editor.containerRef} className="min-h-44 w-full" />
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
-        <button type="button" onClick={editor.download} disabled={editor.loading} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 disabled:opacity-40">{tt("下载 WAV")}</button>
-        <span className="min-w-0 flex-1 truncate text-[11px] text-stone-400">
-          {editor.error ||
-            (editor.dirty
-              ? tt("有未保存的修改")
-              : editor.savedUrl
-                ? tt("已保存到我的库")
-                : tt("编辑不会覆盖原素材"))}
-        </span>
-        <button type="button" disabled={editor.saving || editor.loading} onClick={() => void editor.save()} className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: accent }}>
-          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
-        </button>
       </div>
     </div>
   );
@@ -767,8 +747,8 @@ export function AudioWorkbench({
     }
   }, [editor.savedUrl, onSaved]);
   return (
-    <div className="flex h-full min-h-0 bg-white">
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-stone-200">
+    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)]">
         <AudioControls editor={editor} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

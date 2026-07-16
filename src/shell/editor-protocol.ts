@@ -44,6 +44,16 @@ export interface EditorAssetPayload {
   writable: boolean;
 }
 
+export type EditorMaterialAction = "insert" | "replace" | "apply" | "merge";
+
+export interface EditorMaterialInsertion {
+  commandId: string;
+  action: EditorMaterialAction;
+  material: EditorAssetPayload;
+  /** Coordinates in the embedded editor's viewport, omitted for centered/default insertion. */
+  point?: { x: number; y: number };
+}
+
 export type HostToEditorMessage =
   | { protocol: typeof EDITOR_PROTOCOL; type: "init"; instanceId: string }
   | {
@@ -79,6 +89,12 @@ export type HostToEditorMessage =
       instanceId: string;
       command: SelectionCommand;
     }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "material-insert";
+      instanceId: string;
+      insertion: EditorMaterialInsertion;
+    }
   | { protocol: typeof EDITOR_PROTOCOL; type: "dispose"; instanceId: string };
 
 export type EditorToHostMessage =
@@ -108,6 +124,14 @@ export type EditorToHostMessage =
       ok: boolean;
       message?: string;
     }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "material-result";
+      instanceId: string;
+      commandId: string;
+      ok: boolean;
+      message?: string;
+    }
   | { protocol: typeof EDITOR_PROTOCOL; type: "error"; instanceId: string; message: string }
   | { protocol: typeof EDITOR_PROTOCOL; type: "close-request"; instanceId: string };
 
@@ -123,6 +147,17 @@ export function isTrustedEditorOrigin(origin: string): boolean {
       hostname === "oceanleo.com" ||
       hostname.endsWith(".oceanleo.com")
     );
+  } catch {
+    return false;
+  }
+}
+
+function validAssetUrl(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== "string" || !value || value.length > 4_096) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
   } catch {
     return false;
   }
@@ -194,6 +229,19 @@ export function asEditorToHostMessage(
     }
     return record as unknown as EditorToHostMessage;
   }
+  if (type === "material-result") {
+    if (
+      typeof record.commandId !== "string" ||
+      !record.commandId ||
+      record.commandId.length > 128 ||
+      typeof record.ok !== "boolean" ||
+      (record.message !== undefined &&
+        (typeof record.message !== "string" || record.message.length > 500))
+    ) {
+      return null;
+    }
+    return record as unknown as EditorToHostMessage;
+  }
   if (
     type === "dirty" &&
     record.dirty !== undefined &&
@@ -231,6 +279,63 @@ export function asHostToEditorMessage(
     const command = normalizeSelectionCommand(record.command);
     if (!command) return null;
     return { ...record, command } as unknown as HostToEditorMessage;
+  }
+  if (type === "material-insert") {
+    const insertion =
+      record.insertion &&
+      typeof record.insertion === "object" &&
+      !Array.isArray(record.insertion)
+        ? (record.insertion as Record<string, unknown>)
+        : null;
+    const material =
+      insertion?.material &&
+      typeof insertion.material === "object" &&
+      !Array.isArray(insertion.material)
+        ? (insertion.material as Record<string, unknown>)
+        : null;
+    const point =
+      insertion?.point &&
+      typeof insertion.point === "object" &&
+      !Array.isArray(insertion.point)
+        ? (insertion.point as Record<string, unknown>)
+        : null;
+    if (
+      !insertion ||
+      typeof insertion.commandId !== "string" ||
+      !insertion.commandId ||
+      insertion.commandId.length > 128 ||
+      !["insert", "replace", "apply", "merge"].includes(
+        String(insertion.action),
+      ) ||
+      !material ||
+      typeof material.id !== "string" ||
+      !material.id ||
+      material.id.length > 256 ||
+      typeof material.kind !== "string" ||
+      !material.kind ||
+      material.kind.length > 80 ||
+      typeof material.title !== "string" ||
+      material.title.length > 300 ||
+      typeof material.meta !== "object" ||
+      material.meta === null ||
+      Array.isArray(material.meta) ||
+      typeof material.writable !== "boolean" ||
+      !validAssetUrl(material.url) ||
+      !validAssetUrl(material.previewUrl) ||
+      (point !== null &&
+        (!Number.isFinite(point.x as number) ||
+          !Number.isFinite(point.y as number) ||
+          Math.abs(point.x as number) > 100_000 ||
+          Math.abs(point.y as number) > 100_000))
+    ) {
+      return null;
+    }
+    try {
+      if (JSON.stringify(insertion).length > 24_000) return null;
+    } catch {
+      return null;
+    }
+    return record as unknown as HostToEditorMessage;
   }
   if (
     type === "init" ||

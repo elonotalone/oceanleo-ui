@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { ChartContextToolbar } from "../chart-editor/ChartContextToolbar";
 import { ChartControls } from "../chart-editor/ChartControls";
@@ -78,9 +79,23 @@ export function ChartRoute({
         type: "grid",
         adapter: "chart-editor@1",
       })}
+      editorDrawerLabel="数据与系列"
+      editorDrawerIcon="timeline"
       editorToolbox={<ChartControls editor={editor} accent={accent} />}
       editorContextualToolbar={
         <ChartContextToolbar editor={editor} accent={accent} />
+      }
+      editorHeaderActions={
+        <button
+          type="button"
+          disabled={editor.saving}
+          onClick={() => void editor.save()}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
+          style={{ color: accent }}
+        >
+          <AdvancedEditorIcon name="save" className="h-4 w-4" />
+          {editor.saving ? "保存中…" : "保存"}
+        </button>
       }
       editorStage={<ChartStage editor={editor} />}
       editorStatus={

@@ -21,6 +21,14 @@ import {
 } from "./workbench-material-registry";
 
 export type WorkbenchMaterialAction = "insert" | "replace" | "apply" | "merge";
+export const WORKBENCH_MATERIAL_MIME =
+  "application/x-oceanleo-material+json" as const;
+
+export interface WorkbenchMaterialPlacement {
+  source: "click" | "drop";
+  clientX?: number;
+  clientY?: number;
+}
 
 export interface WorkbenchMaterialAdapter {
   id: string;
@@ -29,6 +37,7 @@ export interface WorkbenchMaterialAdapter {
   mutate: (
     action: WorkbenchMaterialAction,
     detachedItem: LibraryItem,
+    placement?: WorkbenchMaterialPlacement,
   ) => Promise<void> | void;
 }
 
@@ -46,7 +55,11 @@ interface WorkbenchMaterialContextValue {
   perform: (
     action: WorkbenchMaterialAction,
     item: LibraryItem,
+    placement?: WorkbenchMaterialPlacement,
   ) => Promise<{ ok: boolean; error?: string }>;
+  draggedItem: LibraryItem | null;
+  beginMaterialDrag: (item: LibraryItem) => void;
+  endMaterialDrag: () => void;
 }
 
 const WorkbenchMaterialContext =
@@ -64,6 +77,7 @@ export function WorkbenchMaterialProvider({
   const scope = materialScopeKey(siteId, appId);
   const adapterRef = useRef<WorkbenchMaterialAdapter | null>(null);
   const [adapterRevision, setAdapterRevision] = useState(0);
+  const [draggedItem, setDraggedItem] = useState<LibraryItem | null>(null);
   const entries = useSyncExternalStore(
     useCallback(
       (listener) => subscribeWorkbenchMaterials(scope, listener),
@@ -83,7 +97,11 @@ export function WorkbenchMaterialProvider({
     };
   }, []);
   const perform = useCallback(
-    async (action: WorkbenchMaterialAction, item: LibraryItem) => {
+    async (
+      action: WorkbenchMaterialAction,
+      item: LibraryItem,
+      placement?: WorkbenchMaterialPlacement,
+    ) => {
       const adapter = adapterRef.current;
       if (
         !adapter ||
@@ -93,7 +111,11 @@ export function WorkbenchMaterialProvider({
         return { ok: false, error: "当前编辑器不支持这个素材动作。" };
       }
       try {
-        await adapter.mutate(action, cloneMaterialForWorkbench(item));
+        await adapter.mutate(
+          action,
+          cloneMaterialForWorkbench(item),
+          placement,
+        );
         return { ok: true };
       } catch (caught) {
         return {
@@ -104,6 +126,12 @@ export function WorkbenchMaterialProvider({
     },
     [],
   );
+  const beginMaterialDrag = useCallback((item: LibraryItem) => {
+    setDraggedItem(cloneMaterialForWorkbench(item));
+  }, []);
+  const endMaterialDrag = useCallback(() => {
+    setDraggedItem(null);
+  }, []);
   const canPerform = useCallback(
     (action: WorkbenchMaterialAction, item: LibraryItem) => {
       const adapter = adapterRef.current;
@@ -125,11 +153,17 @@ export function WorkbenchMaterialProvider({
       registerAdapter,
       canPerform,
       perform,
+      draggedItem,
+      beginMaterialDrag,
+      endMaterialDrag,
     }),
     [
       adapterRevision,
       appId,
       canPerform,
+      beginMaterialDrag,
+      draggedItem,
+      endMaterialDrag,
       entries,
       perform,
       registerAdapter,

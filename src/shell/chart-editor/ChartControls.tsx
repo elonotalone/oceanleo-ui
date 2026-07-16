@@ -30,18 +30,18 @@ export function ChartControls({
   return (
     <fieldset
       disabled={editor.loading || editor.saving}
-      className="space-y-4 overflow-y-auto p-3 text-[11px] text-stone-600 disabled:opacity-60"
+      className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-60"
     >
       <section className="space-y-2">
-        <p className="font-semibold text-stone-800">{tt("图表数据")}</p>
+        <p className="font-semibold text-[var(--fg,#292524)]">{tt("图表数据")}</p>
         <textarea
           value={csv}
           onChange={(event) => setCsv(event.target.value)}
           aria-label={tt("图表 CSV 数据")}
-          className="h-56 w-full resize-y rounded-lg border border-stone-200 p-2 font-mono text-[10px] leading-relaxed outline-none focus:border-stone-400"
+          className="h-56 w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5 font-mono text-[10px] leading-relaxed text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
         />
         <div className="grid grid-cols-2 gap-2">
-          <label className="cursor-pointer rounded-lg border border-stone-200 px-2 py-2 text-center hover:bg-stone-50">
+          <label className="cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-center hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]">
             {tt("导入 CSV")}
             <input
               type="file"
@@ -61,12 +61,12 @@ export function ChartControls({
           <button
             type="button"
             onClick={() => editor.importCsv(csv)}
-            className="rounded-lg border border-stone-200 px-2 py-2 hover:bg-stone-50"
+            className="rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
           >
             {tt("应用数据")}
           </button>
         </div>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("点击图表后，标题、坐标轴、系列类型和颜色会出现在图表上方。")}
         </p>
       </section>

@@ -15,6 +15,7 @@ import {
   asEditorToHostMessage,
   buildEditorEmbedUrl,
   isTrustedEditorOrigin,
+  type EditorMaterialInsertion,
 } from "./editor-protocol";
 import type { SelectionCommand, SelectionContext } from "./selection-context";
 import type { LibraryItem } from "./library-data";
@@ -39,6 +40,12 @@ export interface EmbedEditorPaneProps {
   }) => void;
   saveRequestId?: string;
   selectionCommand?: SelectionCommand | null;
+  materialInsertion?: EditorMaterialInsertion | null;
+  onMaterialResult?: (result: {
+    commandId: string;
+    ok: boolean;
+    message?: string;
+  }) => void;
 }
 
 function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
@@ -86,6 +93,8 @@ export function EmbedEditorPane({
   onSaveResult,
   saveRequestId = "",
   selectionCommand = null,
+  materialInsertion = null,
+  onMaterialResult,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
   const layout = useAdvancedLayout();
@@ -185,6 +194,12 @@ export function EmbedEditorPane({
               }
             : message.selection,
         );
+      } else if (message.type === "material-result") {
+        onMaterialResult?.({
+          commandId: message.commandId,
+          ok: message.ok,
+          message: message.message,
+        });
       } else if (message.type === "close-request") {
         onCloseRequest?.();
       } else if (message.type === "artifact-created" || message.type === "artifact-updated") {
@@ -277,6 +292,7 @@ export function EmbedEditorPane({
     mediaType,
     onCloseRequest,
     onDirtyChange,
+    onMaterialResult,
     onSelectionChange,
     onSaveResult,
     onVersionSaved,
@@ -338,24 +354,43 @@ export function EmbedEditorPane({
     sendToEditor({ type: "selection-command", command: selectionCommand });
   }, [phase, selectionCommand, sendToEditor]);
 
+  useEffect(() => {
+    if (phase !== "ready" || !materialInsertion) return;
+    const frameRect = iframeRef.current?.getBoundingClientRect();
+    const point =
+      materialInsertion.point && frameRect
+        ? {
+            x: materialInsertion.point.x - frameRect.left,
+            y: materialInsertion.point.y - frameRect.top,
+          }
+        : undefined;
+    sendToEditor({
+      type: "material-insert",
+      insertion: {
+        ...materialInsertion,
+        ...(point ? { point } : { point: undefined }),
+      },
+    });
+  }, [materialInsertion, phase, sendToEditor]);
+
   return (
-    <div className="relative h-full w-full bg-white">
+    <div className="relative h-full w-full bg-[var(--surface,#f5f5f4)]">
       {phase === "connecting" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-white/90">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]/90">
           <div className="text-center">
             <div
-              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200"
+              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
               style={{ borderTopColor: accent }}
             />
-            <p className="mt-3 text-[13px] text-stone-500">{tt("正在连接编辑器…")}</p>
+            <p className="mt-3 text-[13px] text-[var(--muted,#78716c)]">{tt("正在连接编辑器…")}</p>
           </div>
         </div>
       )}
       {phase === "error" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-white">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]">
           <div className="max-w-sm text-center">
-            <p className="text-[13px] font-medium text-stone-800">{tt("编辑器连接超时")}</p>
-            <p className="mt-2 text-[12px] leading-relaxed text-stone-500">
+            <p className="text-[13px] font-medium text-[var(--fg,#292524)]">{tt("编辑器连接超时")}</p>
+            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
               {tt("专业编辑器没有在预期时间内就绪。你可以直接在新窗口打开它继续编辑。")}
             </p>
             <a
@@ -371,7 +406,7 @@ export function EmbedEditorPane({
         </div>
       )}
       {status && phase === "ready" && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-stone-900/80 px-3 py-1 text-[11px] text-white">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[var(--fg,#292524)]/80 px-3 py-1 text-[11px] text-[var(--card,#fff)]">
           {status}
         </div>
       )}

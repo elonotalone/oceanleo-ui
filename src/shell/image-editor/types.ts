@@ -40,6 +40,11 @@ export interface DocSize {
   height: number;
 }
 
+export interface CanvasClientPoint {
+  clientX: number;
+  clientY: number;
+}
+
 /** 滤镜滑杆值全部用 UI 尺度（-100..100 / 0..100），换算到 fabric 尺度在 helpers。 */
 export interface FilterSettings {
   brightness: number;
@@ -73,11 +78,16 @@ export interface ShadowSettings {
 
 export interface TextSettings {
   value: string;
+  fontFamily: string;
   fontSize: number;
   fill: string;
   backgroundColor: string;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
+  linethrough: boolean;
+  lineHeight: number;
+  charSpacing: number;
   align: "left" | "center" | "right";
   stroke: string;
   strokeWidth: number;
@@ -179,7 +189,8 @@ export interface FabricImageEditorState {
   // ---- 添加对象 ----
   addText: () => void;
   addShape: (kind: ShapeKind) => void;
-  addImageFromUrl: (url: string) => Promise<void>;
+  addImageFromUrl: (url: string, point?: CanvasClientPoint) => Promise<void>;
+  replaceSelectedImageFromUrl: (url: string) => Promise<void>;
   addImageFromFile: (file: File) => Promise<void>;
   // ---- 图层 ----
   layers: LayerEntry[];

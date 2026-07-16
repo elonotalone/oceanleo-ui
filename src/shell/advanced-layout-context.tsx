@@ -1,10 +1,13 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { SelectionPanelAction } from "./selection-context";
 
 export interface AdvancedLayoutState {
   hostPanelVisible: boolean;
   editorToolActive: boolean;
+  activeDrawerId: string;
+  openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
 }
 
 export const AdvancedLayoutContext =

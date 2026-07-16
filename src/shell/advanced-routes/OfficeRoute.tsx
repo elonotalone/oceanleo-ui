@@ -35,6 +35,8 @@ export function OfficeRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(editorRouteFor(item))}
+      editorDrawerLabel="文件"
+      editorDrawerIcon="file"
       editorToolbox={<OfficeControls editor={editor} accent={accent} />}
       editorStage={<OfficeStage editor={editor} />}
       editorAvailable={Boolean(editor.extension)}

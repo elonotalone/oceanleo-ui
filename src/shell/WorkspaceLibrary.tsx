@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type DragEvent as ReactDragEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -69,6 +70,12 @@ export interface WorkspaceLibraryProps {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  /** Advanced-editor drawers use one click as an immediate editor action. */
+  primaryMaterialAction?: WorkbenchMaterialAction;
+  /** Enables dragging a material card into the current editor canvas. */
+  draggableMaterials?: boolean;
+  onMaterialDragStart?: (item: LibraryItem) => void;
+  onMaterialDragEnd?: () => void;
   allowAdvanced?: boolean;
   /** File cards leave the App workspace and enter their canonical advanced URL. */
   openAdvancedOnSelect?: boolean;
@@ -144,6 +151,10 @@ export function WorkspaceLibrary({
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
+  primaryMaterialAction,
+  draggableMaterials = false,
+  onMaterialDragStart,
+  onMaterialDragEnd,
   allowAdvanced = true,
   openAdvancedOnSelect = true,
   onOpenItem,
@@ -176,6 +187,7 @@ export function WorkspaceLibrary({
   const [deleteError, setDeleteError] = useState("");
   const [materialActionState, setMaterialActionState] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
+  const materialActionPendingRef = useRef(false);
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
@@ -230,7 +242,8 @@ export function WorkspaceLibrary({
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => {
-    if (!onMaterialAction || materialActionState) return;
+    if (!onMaterialAction || materialActionPendingRef.current) return;
+    materialActionPendingRef.current = true;
     setMaterialActionState(tt("应用中…"));
     try {
       const result = await onMaterialAction(action, item);
@@ -241,7 +254,53 @@ export function WorkspaceLibrary({
       setMaterialActionState(
         caught instanceof Error ? caught.message : tt("素材应用失败"),
       );
+    } finally {
+      materialActionPendingRef.current = false;
     }
+  };
+
+  const activateEntry = (entry: WorkspaceLibraryEntry) => {
+    const item = entry.libraryItem;
+    if (
+      item &&
+      primaryMaterialAction &&
+      onMaterialAction &&
+      (!materialActionAvailable ||
+        materialActionAvailable(primaryMaterialAction, item))
+    ) {
+      void applyMaterialAction(primaryMaterialAction, item);
+      return;
+    }
+    openEntry(entry);
+  };
+
+  const dragPropsFor = (entry: WorkspaceLibraryEntry) => {
+    const item = entry.libraryItem;
+    const enabled = Boolean(
+      draggableMaterials &&
+        item &&
+        onMaterialDragStart &&
+        (!materialActionAvailable ||
+          materialActionAvailable(primaryMaterialAction || "insert", item)),
+    );
+    return {
+      draggable: enabled,
+      onDragStart: enabled
+        ? (event: ReactDragEvent<HTMLElement>) => {
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData(
+              "application/x-oceanleo-material+json",
+              JSON.stringify({
+                id: item?.key || entry.id,
+                title: item?.title || entry.title,
+                kind: item?.kind || entry.kind || "file",
+              }),
+            );
+            if (item) onMaterialDragStart?.(item);
+          }
+        : undefined,
+      onDragEnd: enabled ? () => onMaterialDragEnd?.() : undefined,
+    };
   };
 
   const categories = useMemo(() => {
@@ -387,13 +446,13 @@ export function WorkspaceLibrary({
       <>
       <div
         ref={detailRef}
-        className={`flex h-full min-h-0 flex-col ${plain ? "bg-transparent" : "bg-white"} ${className}`}
+        className={`flex h-full min-h-0 flex-col ${plain ? "bg-transparent" : "bg-[var(--card,#fff)]"} ${className}`}
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-stone-200 px-3 py-2.5">
+        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border,#e7e5e4)] px-3 py-2.5">
           <button
             type="button"
             onClick={() => setSelectedId("")}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-stone-200 text-stone-500 transition hover:bg-stone-50 hover:text-stone-800"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
             aria-label={tt("返回列表")}
             title={tt("返回列表")}
           >
@@ -403,17 +462,17 @@ export function WorkspaceLibrary({
           </button>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-[13px] font-semibold text-stone-900">
+              <h3 className="truncate text-[13px] font-semibold text-[var(--fg,#1c1917)]">
                 {selected.title}
               </h3>
               {kind && (
-                <span className="shrink-0 rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">
+                <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
                   {tt(KIND_LABELS[kind] || "内容")}
                 </span>
               )}
             </div>
             {selected.description && (
-              <p className="mt-0.5 truncate text-[11px] text-stone-400">
+              <p className="mt-0.5 truncate text-[11px] text-[var(--muted,#a8a29e)]">
                 {tt(selected.description)}
               </p>
             )}
@@ -457,7 +516,7 @@ export function WorkspaceLibrary({
             <button
               type="button"
               onClick={() => setViewerNonce((value) => value + 1)}
-              className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+              className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
             >
               {tt("刷新")}
             </button>
@@ -467,7 +526,7 @@ export function WorkspaceLibrary({
               type="button"
               onClick={() => void removeEntry(selected)}
               disabled={deletingId === selected.id}
-              className="shrink-0 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+              className="shrink-0 rounded-lg border border-rose-500/25 px-2.5 py-1.5 text-[11px] font-medium text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
             >
               {tt(deletingId === selected.id ? "删除中…" : "删除")}
             </button>
@@ -483,7 +542,7 @@ export function WorkspaceLibrary({
                 void node.requestFullscreen();
               }
             }}
-            className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+            className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
           >
             {tt("全屏")}
           </button>
@@ -492,7 +551,7 @@ export function WorkspaceLibrary({
               href={linkUrl}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50"
+              className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
             >
               {tt("链接")}
             </a>
@@ -504,12 +563,12 @@ export function WorkspaceLibrary({
             editorCapability.unavailableReason)) && (
           <div
             role="status"
-            className="shrink-0 border-b border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-700"
+            className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-600"
           >
             {materialActionState || tt(editorCapability.unavailableReason)}
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-auto bg-stone-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
           {selected.libraryItem ? (
             <LibraryItemViewer
               key={`${selected.id}:${viewerNonce}`}
@@ -535,7 +594,7 @@ export function WorkspaceLibrary({
   return (
     <div
       className={`flex h-full min-h-0 flex-col ${
-        plain ? "bg-transparent" : "bg-white px-3 pb-3 pt-5"
+        plain ? "bg-transparent" : "bg-[var(--card,#fff)] px-3 pb-3 pt-5"
       } ${className}`}
     >
       <LibraryToolbar
@@ -548,7 +607,7 @@ export function WorkspaceLibrary({
         tt={tt}
       />
       {deleteError && (
-        <p className="mt-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
+        <p className="mt-2 shrink-0 rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-500">
           {deleteError}
         </p>
       )}
@@ -566,7 +625,7 @@ export function WorkspaceLibrary({
                 <button
                   type="button"
                   onClick={() => setCategoriesExpanded((value) => !value)}
-                  className="rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-[13px] text-stone-600 transition hover:bg-stone-50"
+                  className="rounded-full border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3.5 py-1.5 text-[13px] text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
                   aria-expanded={categoriesExpanded}
                 >
                   {tt(categoriesExpanded ? "收起" : "更多")}
@@ -591,7 +650,8 @@ export function WorkspaceLibrary({
               <WorkspaceListRow
                 key={entry.id}
                 entry={entry}
-                onOpen={() => openEntry(entry)}
+                onOpen={() => activateEntry(entry)}
+                dragProps={dragPropsFor(entry)}
                 onDelete={
                   entry.onDelete ? () => void removeEntry(entry) : undefined
                 }
@@ -605,7 +665,8 @@ export function WorkspaceLibrary({
               <WorkspaceCard
                 key={entry.id}
                 entry={entry}
-                onOpen={() => openEntry(entry)}
+                onOpen={() => activateEntry(entry)}
+                dragProps={dragPropsFor(entry)}
                 onDelete={
                   entry.onDelete ? () => void removeEntry(entry) : undefined
                 }
@@ -626,19 +687,30 @@ function WorkspaceCard({
   onDelete,
   deleting,
   accent,
+  dragProps,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
   onDelete?: () => void;
   deleting?: boolean;
   accent: string;
+  dragProps?: {
+    draggable?: boolean;
+    onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
+    onDragEnd?: () => void;
+  };
 }) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm">
+    <div
+      {...dragProps}
+      className={`group relative overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm ${
+        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
+    >
       <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
+        <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail
             url={entry.thumbUrl}
             item={entry.libraryItem}
@@ -647,16 +719,16 @@ function WorkspaceCard({
             accent={accent}
             imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
           />
-          <span className="absolute bottom-2 left-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 shadow-sm backdrop-blur">
+          <span className="absolute bottom-2 left-2 rounded-md bg-[var(--card,#fff)]/90 px-1.5 py-0.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] shadow-sm backdrop-blur">
             {tt(KIND_LABELS[kind] || entry.category || "内容")}
           </span>
         </div>
         <div className="p-2.5">
-          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-stone-800">
+          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
             {entry.title}
           </p>
           {entry.description && (
-            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-stone-400">
+            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-[var(--muted,#a8a29e)]">
               {tt(entry.description)}
             </p>
           )}
@@ -669,7 +741,7 @@ function WorkspaceCard({
           disabled={deleting}
           aria-label={tt("删除「{title}」", { title: entry.title })}
           title={tt("删除")}
-          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/95 text-stone-400 opacity-0 shadow-sm backdrop-blur transition hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
+          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--card,#fff)]/95 text-[var(--muted,#a8a29e)] opacity-0 shadow-sm backdrop-blur transition hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
         >
           {deleting ? (
             <span className="v-spinner h-3 w-3" />
@@ -687,22 +759,33 @@ function WorkspaceListRow({
   onOpen,
   onDelete,
   deleting,
+  dragProps,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
   onDelete?: () => void;
   deleting?: boolean;
+  dragProps?: {
+    draggable?: boolean;
+    onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
+    onDragEnd?: () => void;
+  };
 }) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   return (
-    <div className="flex w-full items-center rounded-xl border border-stone-200 bg-white transition hover:border-stone-300 hover:bg-stone-50">
+    <div
+      {...dragProps}
+      className={`flex w-full items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
+        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
+    >
       <button
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
       >
-        <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
+        <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail
             url={entry.thumbUrl}
             item={entry.libraryItem}
@@ -714,16 +797,16 @@ function WorkspaceListRow({
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-stone-800">
+          <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
             {entry.title}
           </p>
-          <p className="mt-0.5 truncate text-[10px] text-stone-400">
+          <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
             {entry.description
               ? tt(entry.description)
               : tt(KIND_LABELS[kind] || entry.category || "内容")}
           </p>
         </div>
-        <svg className="h-4 w-4 shrink-0 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <svg className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
@@ -734,7 +817,7 @@ function WorkspaceListRow({
           disabled={deleting}
           aria-label={tt("删除「{title}」", { title: entry.title })}
           title={tt("删除")}
-          className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--muted,#a8a29e)] transition hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50"
         >
           {deleting ? <span className="v-spinner h-3 w-3" /> : <TrashIcon />}
         </button>
@@ -884,7 +967,7 @@ function WorkspaceThumbnail({
     return (
       <div ref={hostRef} className="grid h-full place-items-center">
         {compact ? (
-          <span className="text-[10px] font-medium text-stone-400">
+          <span className="text-[10px] font-medium text-[var(--muted,#a8a29e)]">
             {tt(KIND_LABELS[kind] || "内容")}
           </span>
         ) : (
@@ -918,12 +1001,12 @@ function WorkspaceLibraryEmpty({
 }) {
   return (
     <div className="flex h-full min-h-[260px] flex-col items-center justify-center px-6 text-center">
-      <svg className="h-10 w-10 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <svg className="h-10 w-10 text-[var(--border-strong,#d6d3d1)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M7 9h10M7 13h7M7 17h5" strokeLinecap="round" />
       </svg>
-      <p className="mt-3 text-[13px] font-medium text-stone-600">{title}</p>
-      <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-stone-400">
+      <p className="mt-3 text-[13px] font-medium text-[var(--fg-2,#57534e)]">{title}</p>
+      <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-[var(--muted,#a8a29e)]">
         {description}
       </p>
     </div>
