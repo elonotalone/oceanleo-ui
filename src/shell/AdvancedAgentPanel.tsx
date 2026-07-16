@@ -238,20 +238,20 @@ export function AdvancedAgentPanel({
   const rendered = visibleMessages(messages);
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-3 py-2">
-        <span className="text-[11px] text-stone-400">{tt("当前素材对话")}</span>
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--divider,#e7e5e4)] px-3 py-2">
+        <span className="text-[11px] text-[var(--muted,#78716c)]">{tt("当前素材对话")}</span>
         <button
           type="button"
           disabled={busy || startingNew || !advancedSession}
           onClick={() => void newConversation()}
-          className="rounded-lg border border-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
+          className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,0.05))] disabled:opacity-40"
         >
           {startingNew ? tt("保存中…") : tt("新建对话")}
         </button>
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {rendered.length === 0 && (
-          <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50 p-3 text-[12px] leading-relaxed text-stone-500">
+          <div className="rounded-xl border border-dashed border-[var(--border,#e7e5e4)] bg-[var(--surface,#fafaf9)] p-3 text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">
             {tt("让 Agent 分析、改写或继续处理当前内容。这里复用操控台的同一条聊天历史。")}
           </div>
         )}
@@ -261,7 +261,7 @@ export function AdvancedAgentPanel({
             className={`rounded-xl px-3 py-2.5 text-[12px] leading-relaxed ${
               message.role === "user"
                 ? "ml-5 text-white"
-                : "mr-2 border border-stone-200 bg-white text-stone-700"
+                : "mr-2 border border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] text-[var(--fg,#292524)]"
             }`}
             style={message.role === "user" ? { background: accent } : undefined}
           >
@@ -273,14 +273,14 @@ export function AdvancedAgentPanel({
           </div>
         ))}
         {(busy || status === "running") && (
-          <div className="flex items-center gap-2 px-1 text-[11px] text-stone-400">
+          <div className="flex items-center gap-2 px-1 text-[11px] text-[var(--muted,#78716c)]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: accent }} />
             {tt("Agent 正在处理当前内容…")}
           </div>
         )}
         {error && <p className="text-[11px] text-rose-600">{error}</p>}
       </div>
-      <div className="shrink-0 border-t border-stone-200 p-3">
+      <div className="shrink-0 border-t border-[var(--border,#e7e5e4)] p-3">
         <LeoComposer
           value={input}
           onChange={setInput}

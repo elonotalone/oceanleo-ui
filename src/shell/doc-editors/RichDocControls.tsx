@@ -1,38 +1,13 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { CHROME, PanelSection, ToolButton } from "../editor-chrome";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-2 border-b border-stone-100 pb-3 last:border-0">
-      <p className="text-[11px] font-semibold text-stone-800">{title}</p>
-      {children}
-    </section>
-  );
-}
-
-function ToolButton({
-  label,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="min-h-8 rounded-lg border border-stone-200 px-2 text-[11px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-35"
-    >
-      {label}
-    </button>
-  );
-}
+// 富文本「插入 / 内容」overlay 侧栏内容：文档来源 / 插入块 / 图片。撤销重做与
+// 逐字符排版（粗斜体/对齐/颜色）已上移到统一顶栏 + 选中浮动 bar，这里只放需要
+// 面板承载的来源导入与插入型操作。全部走 CHROME/var 令牌，跟随深/浅主题。
 
 export function RichDocControls({
   editor: state,
@@ -57,8 +32,8 @@ export function RichDocControls({
   };
 
   return (
-    <div className="space-y-3 overflow-y-auto p-3">
-      <Section title={tt("文档来源")}>
+    <div className="space-y-1">
+      <PanelSection title={tt("文档来源")}>
         <input
           ref={sourceFileRef}
           type="file"
@@ -72,18 +47,20 @@ export function RichDocControls({
         />
         <ToolButton
           label={state.importing ? tt("导入中…") : tt("导入文档")}
+          icon="download"
           disabled={state.importing}
           onClick={() => sourceFileRef.current?.click()}
         />
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className={`px-1 text-[10px] leading-relaxed ${CHROME.muted}`}>
           {tt("选中文字后，排版与颜色会直接出现在内容上方。")}
         </p>
-      </Section>
+      </PanelSection>
 
-      <Section title={tt("插入内容")}>
+      <PanelSection title={tt("插入内容")}>
         <div className="grid grid-cols-2 gap-1.5">
           <ToolButton
             label={tt("3×3 表格")}
+            icon="add-table"
             disabled={!editor}
             onClick={() =>
               editor
@@ -95,23 +72,26 @@ export function RichDocControls({
           />
           <ToolButton
             label={tt("分割线")}
+            icon="adjust"
             disabled={!editor}
             onClick={() => editor?.chain().focus().setHorizontalRule().run()}
           />
           <ToolButton
             label={tt("代码块")}
+            icon="type"
             disabled={!editor}
             onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
           />
           <ToolButton
             label={tt("引用块")}
+            icon="quote"
             disabled={!editor}
             onClick={() => editor?.chain().focus().toggleBlockquote().run()}
           />
         </div>
-      </Section>
+      </PanelSection>
 
-      <Section title={tt("图片")}>
+      <PanelSection title={tt("图片")}>
         <input
           ref={imageFileRef}
           type="file"
@@ -121,9 +101,10 @@ export function RichDocControls({
         />
         <ToolButton
           label={tt("上传本地图片")}
+          icon="add-image"
           onClick={() => imageFileRef.current?.click()}
         />
-        <div className="flex gap-1.5">
+        <div className="mt-1.5 flex gap-1.5">
           <input
             value={imageInput}
             onChange={(event) => setImageInput(event.target.value)}
@@ -132,30 +113,17 @@ export function RichDocControls({
             }}
             placeholder={tt("粘贴图片 URL")}
             aria-label={tt("图片 URL")}
-            className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] outline-none"
+            className={`min-w-0 flex-1 rounded-lg border ${CHROME.border} ${CHROME.subtle} px-2 py-1.5 text-[11px] ${CHROME.fg} outline-none placeholder:text-[var(--faint,#a8a29e)]`}
           />
           <ToolButton
             label={tt("插入")}
+            icon="plus"
+            iconOnly
             disabled={!imageInput.trim()}
             onClick={insertImage}
           />
         </div>
-      </Section>
-
-      <Section title={tt("历史")}>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ToolButton
-            label={tt("撤销")}
-            disabled={!editor?.can().chain().focus().undo().run()}
-            onClick={() => editor?.chain().focus().undo().run()}
-          />
-          <ToolButton
-            label={tt("重做")}
-            disabled={!editor?.can().chain().focus().redo().run()}
-            onClick={() => editor?.chain().focus().redo().run()}
-          />
-        </div>
-      </Section>
+      </PanelSection>
     </div>
   );
 }

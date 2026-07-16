@@ -1,37 +1,12 @@
 "use client";
 
 import { useUI } from "../../i18n/ui/useUI";
+import { CHROME, PanelSection } from "../editor-chrome";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
 
-function ActionButton({
-  children,
-  onClick,
-  disabled,
-  primary,
-  accent,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-  accent?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={
-        primary
-          ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
-      }
-      style={primary ? { background: accent || "#4f46e5" } : undefined}
-    >
-      {children}
-    </button>
-  );
-}
+// 3D「模型与材质」overlay 侧栏内容：模型导入/替换。截图、下载、保存副本已上移到
+// 统一顶栏（AdvancedTopBar）；相机 / 灯光 / 背景 / 动画在选中模型浮动 bar
+// （Model3DContextToolbar）。全部走 CHROME/CSS 变量令牌跟随双主题。
 
 export function Model3DControls({
   editor,
@@ -43,13 +18,13 @@ export function Model3DControls({
   const tt = useUI();
   const busy =
     editor.loading || editor.capturing || editor.saving || editor.downloading;
+  void accent;
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
-      <section className="space-y-2">
-        <p className="text-[11px] font-semibold text-stone-800">
-          {tt("3D 模型")}
-        </p>
-        <label className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50">
+    <div className="space-y-1">
+      <PanelSection title={tt("3D 模型")}>
+        <label
+          className={`flex w-full cursor-pointer items-center justify-center rounded-lg border ${CHROME.border} px-2 py-2 text-[11px] ${CHROME.fg2} ${CHROME.hover}`}
+        >
           {editor.sourceUrl ? tt("替换模型") : tt("导入 GLB / glTF")}
           <input
             type="file"
@@ -63,49 +38,10 @@ export function Model3DControls({
             }}
           />
         </label>
-        <p className="text-[10px] leading-relaxed text-stone-400">
+        <p className={`mt-1.5 text-[10px] leading-relaxed ${CHROME.muted}`}>
           {tt("点击模型后，相机、灯光、背景和动画会出现在画布上方。")}
         </p>
-      </section>
-
-      <section className="space-y-1.5 border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">
-          {tt("截图与保存")}
-        </p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ActionButton
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.downloadScreenshot()}
-          >
-            {editor.capturing ? tt("截图中…") : tt("下载截图")}
-          </ActionButton>
-          <ActionButton
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.saveScreenshot()}
-          >
-            {tt("保存截图")}
-          </ActionButton>
-          <ActionButton
-            disabled={busy || !editor.sourceUrl}
-            onClick={() => void editor.downloadModel()}
-          >
-            {editor.downloading ? tt("下载中…") : tt("下载模型")}
-          </ActionButton>
-          <ActionButton
-            primary
-            accent={accent}
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.saveCopy()}
-          >
-            {editor.saving ? tt("保存中…") : tt("保存视图副本")}
-          </ActionButton>
-        </div>
-        {editor.savedUrl && (
-          <p className="text-[10px] text-emerald-600">
-            {tt("3D 视图副本已保存到我的库")}
-          </p>
-        )}
-      </section>
+      </PanelSection>
     </div>
   );
 }

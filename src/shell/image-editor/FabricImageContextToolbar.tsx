@@ -33,44 +33,56 @@ export function FabricImageContextToolbar({
           kind: "text",
           label: tt("文字"),
           value: selected.text.value,
+          group: "text",
         },
         {
           id: "font-size",
           kind: "number",
           label: tt("字号"),
+          icon: "font-size",
           value: selected.text.fontSize,
           min: 6,
           max: 320,
           step: 1,
+          group: "text",
         },
         {
           id: "text-color",
           kind: "color",
           label: tt("文字色"),
           value: selected.text.fill || "#000000",
+          group: "color",
         },
         {
           id: "bold",
           kind: "toggle",
-          label: "B",
+          label: tt("加粗"),
+          icon: "bold",
+          iconOnly: true,
           value: selected.text.bold,
+          group: "style",
         },
         {
           id: "italic",
           kind: "toggle",
-          label: "I",
+          label: tt("斜体"),
+          icon: "italic",
+          iconOnly: true,
           value: selected.text.italic,
+          group: "style",
         },
         {
           id: "align",
           kind: "select",
           label: tt("对齐"),
+          icon: "align-left",
           value: selected.text.align,
           options: [
             { value: "left", label: tt("左") },
             { value: "center", label: tt("中") },
             { value: "right", label: tt("右") },
           ],
+          group: "align",
         },
       );
     } else if (
@@ -82,7 +94,9 @@ export function FabricImageContextToolbar({
         id: "fill",
         kind: "color",
         label: tt("填充"),
+        icon: "fill",
         value: selected.fill || "#000000",
+        group: "color",
       });
     }
     if (selected) {
@@ -91,26 +105,32 @@ export function FabricImageContextToolbar({
           id: "opacity",
           kind: "range",
           label: tt("透明度"),
+          icon: "opacity",
           value: selected.opacity,
           min: 0,
           max: 100,
           step: 1,
+          group: "adjust",
         },
         {
           id: "stroke",
           kind: "color",
           label: tt("描边"),
+          icon: "stroke",
           value: selected.stroke || "#000000",
+          group: "stroke",
           placement: "more",
         },
         {
           id: "stroke-width",
           kind: "range",
           label: tt("描边宽度"),
+          icon: "stroke-width",
           value: selected.strokeWidth,
           min: 0,
           max: 30,
           step: 1,
+          group: "stroke",
           placement: "more",
         },
         ...(selected.radius !== null
@@ -123,6 +143,7 @@ export function FabricImageContextToolbar({
                 min: 0,
                 max: 300,
                 step: 1,
+                group: "stroke" as const,
                 placement: "more" as const,
               },
             ]
@@ -131,7 +152,9 @@ export function FabricImageContextToolbar({
           id: "shadow",
           kind: "toggle",
           label: tt("投影"),
+          icon: "shadow",
           value: selected.shadow.enabled,
+          group: "stroke",
           placement: "more",
         },
       );
@@ -140,7 +163,9 @@ export function FabricImageContextToolbar({
         id: "canvas-background",
         kind: "color",
         label: tt("画布背景"),
+        icon: "background",
         value: editor.canvasBackground,
+        group: "canvas",
       });
     }
     controls.push(
@@ -148,6 +173,8 @@ export function FabricImageContextToolbar({
         id: editor.cropping ? "crop-apply" : "crop-start",
         kind: "action",
         label: editor.cropping ? tt("应用裁剪") : tt("裁剪"),
+        icon: "crop",
+        group: "transform",
       },
       ...(editor.cropping
         ? [
@@ -155,6 +182,7 @@ export function FabricImageContextToolbar({
               id: "crop-cancel",
               kind: "action" as const,
               label: tt("取消"),
+              group: "transform" as const,
             },
           ]
         : []),
@@ -162,6 +190,7 @@ export function FabricImageContextToolbar({
         id: "crop-ratio",
         kind: "select",
         label: tt("比例"),
+        icon: "ratio",
         value: editor.cropRatio,
         options: [
           { value: "free", label: tt("自由") },
@@ -170,12 +199,13 @@ export function FabricImageContextToolbar({
           { value: "16:9", label: "16:9" },
           { value: "9:16", label: "9:16" },
         ],
+        group: "transform",
         placement: "more",
       },
-      { id: "rotate-left", kind: "action", label: "↶ 90°", placement: "more" },
-      { id: "rotate-right", kind: "action", label: "↷ 90°", placement: "more" },
-      { id: "flip-x", kind: "action", label: tt("水平翻转"), placement: "more" },
-      { id: "flip-y", kind: "action", label: tt("垂直翻转"), placement: "more" },
+      { id: "rotate-left", kind: "action", label: tt("左转 90°"), icon: "rotate-left", iconOnly: true, group: "transform", placement: "more" },
+      { id: "rotate-right", kind: "action", label: tt("右转 90°"), icon: "rotate-right", iconOnly: true, group: "transform", placement: "more" },
+      { id: "flip-x", kind: "action", label: tt("水平翻转"), icon: "flip-h", iconOnly: true, group: "transform", placement: "more" },
+      { id: "flip-y", kind: "action", label: tt("垂直翻转"), icon: "flip-v", iconOnly: true, group: "transform", placement: "more" },
     );
     if (filters) {
       controls.push(
@@ -186,6 +216,7 @@ export function FabricImageContextToolbar({
           value: filters.brightness,
           min: -100,
           max: 100,
+          group: "filter",
           placement: "more",
         },
         {
@@ -195,6 +226,7 @@ export function FabricImageContextToolbar({
           value: filters.contrast,
           min: -100,
           max: 100,
+          group: "filter",
           placement: "more",
         },
         {
@@ -204,13 +236,16 @@ export function FabricImageContextToolbar({
           value: filters.saturation,
           min: -100,
           max: 100,
+          group: "filter",
           placement: "more",
         },
         {
           id: "grayscale",
           kind: "toggle",
           label: tt("黑白"),
+          icon: "grayscale",
           value: filters.grayscale,
+          group: "filter",
           placement: "more",
         },
       );
@@ -221,13 +256,19 @@ export function FabricImageContextToolbar({
           id: "duplicate",
           kind: "action",
           label: tt("复制"),
+          icon: "duplicate",
+          iconOnly: true,
+          group: "object",
           placement: "more",
         },
         {
           id: "delete",
           kind: "action",
           label: tt("删除"),
+          icon: "delete",
+          iconOnly: true,
           danger: true,
+          group: "object",
           placement: "more",
         },
       );

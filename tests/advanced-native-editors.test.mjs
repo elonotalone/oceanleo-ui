@@ -39,8 +39,8 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
-  const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
   const deckToolbar = source("../src/shell/doc-editors/DeckContextToolbar.tsx");
+  const deckRoute = source("../src/shell/advanced-routes/DeckRoute.tsx");
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /saveFileToLibrary/);
   assert.match(grid, /buildGridWorkbookBlob/);
@@ -52,9 +52,13 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(pptxImport, /imageMode: "base64"/);
   assert.match(deckStage, /PositionedSlideCanvas/);
   assert.match(deckStage, /startDrag/);
-  assert.match(deckControls, /添加文字/);
   assert.match(deckToolbar, /上移一层/);
-  assert.match(deckStage, /导出 PPTX/);
+  // v2 (2026-07-16): creation + export moved from stage/controls to the unified
+  // top bar. The deck route now wires add-text/add-shape and PPTX export there.
+  assert.match(deckRoute, /addTextElement/);
+  assert.match(deckRoute, /addShapeElement/);
+  assert.match(deckRoute, /exportPptx/);
+  assert.match(deck, /addShapeElement/);
 });
 
 test("native editors preserve history and never clear newer unsaved revisions", () => {
@@ -67,7 +71,11 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
-  assert.match(shell, /editorAvailable \? "tools" : "agent"/);
+  // v2 (2026-07-16): the standalone "编辑" nav column is gone; creation/global
+  // operations moved to the unified AdvancedTopBar, and the left rail no longer
+  // auto-expands (defaults to null). The unsaved-work guards must remain.
+  assert.match(shell, /AdvancedTopBar/);
+  assert.match(shell, /useState<WorkbenchTool \| null>\(null\)/);
   assert.match(shell, /beforeunload/);
   assert.match(shell, /当前有未保存的修改/);
   for (const editor of [rich, grid, deck, image, audio, pdf, timeline]) {

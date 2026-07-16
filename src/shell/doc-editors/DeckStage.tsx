@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { CHROME } from "../editor-chrome";
 import { deckTheme, type DeckElement, type DeckSlide } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 
@@ -118,6 +124,8 @@ interface ElementDragState {
 function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<ElementDragState | null>(null);
+  // 双击进入原地编辑（Canva 式所见即所得）：直接在画布上敲字，浮动 bar 只管样式。
+  const [editingId, setEditingId] = useState("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
 
@@ -127,6 +135,7 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
     mode: "move" | "resize",
   ) => {
     if (event.button !== 0) return;
+    if (editingId === element.id && mode === "move") return; // 编辑中不拖动
     event.preventDefault();
     event.stopPropagation();
     editor.selectElement(element.id);
@@ -183,30 +192,42 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
   return (
     <div
       ref={canvasRef}
-      className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
+      className="relative h-full w-full overflow-hidden rounded-xl shadow-2xl"
       style={{
         background: slide.background || theme.background,
         color: theme.text,
         fontFamily: theme.fontFamily,
         containerType: "inline-size",
       }}
-      onPointerDown={() => editor.selectElement("")}
+      onPointerDown={() => {
+        editor.selectElement("");
+        setEditingId("");
+      }}
     >
       {[...slide.elements]
         .sort((left, right) => left.order - right.order)
         .map((element) => {
           const preview = drag?.id === element.id ? drag : null;
           const selected = editor.selectedElementId === element.id;
+          const editing = editingId === element.id;
+          const editable = element.type === "text" || element.type === "shape";
           return (
-            <button
+            <div
               key={element.id}
-              type="button"
-              onPointerDown={(event) => startDrag(event, element, "move")}
+              role="button"
+              tabIndex={0}
+              onPointerDown={(event) => !editing && startDrag(event, element, "move")}
               onPointerMove={updateDrag}
               onPointerUp={finishDrag}
               onPointerCancel={() => setDrag(null)}
-              className={`absolute overflow-visible text-left ${
-                selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
+              onDoubleClick={(event) => {
+                if (!editable) return;
+                event.stopPropagation();
+                editor.selectElement(element.id);
+                setEditingId(element.id);
+              }}
+              className={`absolute overflow-visible text-left outline-none ${
+                selected ? "ring-2 ring-offset-1" : ""
               }`}
               style={{
                 left: `${preview?.x ?? element.x}%`,
@@ -215,6 +236,8 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
                 height: `${preview?.height ?? element.height}%`,
                 transform: `rotate(${element.rotation}deg)`,
                 zIndex: Math.round(element.order),
+                cursor: editing ? "text" : "move",
+                ["--tw-ring-color" as string]: theme.accent,
                 background:
                   element.type === "shape" ? element.fill || "transparent" : undefined,
                 border:
@@ -223,15 +246,42 @@ function PositionedSlideCanvas({ editor }: { editor: DeckEditorState }) {
                     : undefined,
               }}
             >
-              <ElementContent element={element} />
-              {selected && (
+              {editing && editable ? (
+                <textarea
+                  autoFocus
+                  value={element.text || ""}
+                  onChange={(event) =>
+                    editor.patchElement(element.id, { text: event.target.value })
+                  }
+                  onBlur={() => setEditingId("")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setEditingId("");
+                    }
+                  }}
+                  className="h-full w-full resize-none border-0 bg-transparent p-0 leading-tight outline-none"
+                  style={{
+                    color: element.color,
+                    fontFamily: element.fontFamily,
+                    fontSize: `${Math.max(0.55, (element.fontSize || 18) / 7.2)}cqi`,
+                    fontWeight: element.bold ? 700 : 400,
+                    fontStyle: element.italic ? "italic" : "normal",
+                    textAlign: element.align || "left",
+                  }}
+                />
+              ) : (
+                <ElementContent element={element} />
+              )}
+              {selected && !editing && (
                 <span
                   role="presentation"
                   onPointerDown={(event) => startDrag(event, element, "resize")}
-                  className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-se-resize rounded-sm border border-white bg-blue-500 shadow"
+                  className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-se-resize rounded-sm border border-white shadow"
+                  style={{ background: theme.accent }}
                 />
               )}
-            </button>
+            </div>
           );
         })}
       <span className="pointer-events-none absolute bottom-3 right-4 text-[10px] opacity-40">
@@ -256,12 +306,12 @@ function MiniSlide({
 }) {
   return (
     <button type="button" onClick={onClick} className="group flex w-full items-start gap-2 text-left">
-      <span className="w-5 shrink-0 pt-5 text-right text-[9px] text-stone-400">{number}</span>
+      <span className="w-5 shrink-0 pt-5 text-right text-[9px] text-[var(--muted,#a8a29e)]">{number}</span>
       <span
-        className="relative aspect-video min-w-0 flex-1 overflow-hidden rounded border p-2 shadow-sm"
+        className="relative aspect-video min-w-0 flex-1 overflow-hidden rounded-md border p-2 shadow-sm transition"
         style={{
-          borderColor: active ? theme.accent : "#d6d3d1",
-          boxShadow: active ? `0 0 0 2px ${theme.accent}22` : undefined,
+          borderColor: active ? theme.accent : "var(--border,#d6d3d1)",
+          boxShadow: active ? `0 0 0 2px ${theme.accent}33` : undefined,
           background: slide.background || theme.background,
           color: theme.text,
           fontFamily: theme.fontFamily,
@@ -283,11 +333,7 @@ function MiniSlide({
   );
 }
 
-function SlideCanvas({
-  editor,
-}: {
-  editor: DeckEditorState;
-}) {
+function SlideCanvas({ editor }: { editor: DeckEditorState }) {
   const tt = useUI();
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
@@ -359,7 +405,7 @@ function SlideCanvas({
 
   return (
     <div
-      className="relative flex h-full w-full overflow-hidden rounded-lg p-[clamp(28px,5vw,72px)] shadow-2xl"
+      className="relative flex h-full w-full overflow-hidden rounded-xl p-[clamp(28px,5vw,72px)] shadow-2xl"
       style={{
         background: slide.background || theme.background,
         color: theme.text,
@@ -415,64 +461,35 @@ export function DeckStage({
   }, [editor]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-stone-100">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-stone-200 bg-white px-3 py-2">
-        <button type="button" onClick={editor.undo} disabled={!editor.canUndo} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-35">↶</button>
-        <button type="button" onClick={editor.redo} disabled={!editor.canRedo} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-600 disabled:opacity-35">↷</button>
-        <span className="mx-1 h-5 w-px bg-stone-200" />
-        <button type="button" onClick={editor.addSlide} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("新建一页")}</button>
-        <button type="button" onClick={editor.duplicateSlide} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("复制当前页")}</button>
-        <span className="min-w-0 flex-1 truncate px-3 text-center text-[11px] font-medium text-stone-500">{editor.deck.title}</span>
-        <span className="text-[10px] text-stone-400">{editor.deck.aspect}</span>
-      </div>
-
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-44 shrink-0 overflow-y-auto border-r border-stone-200 bg-stone-50 p-2.5">
-          <div className="space-y-2.5">
-            {editor.deck.slides.map((slide, index) => (
-              <MiniSlide
-                key={slide.id}
-                slide={slide}
-                number={index + 1}
-                active={slide.id === editor.activeSlide.id}
-                theme={theme}
-                onClick={() => editor.selectSlide(slide.id)}
-              />
-            ))}
+    <div className="flex h-full min-h-0 bg-[var(--bg,#f5f5f4)]">
+      {/* 幻灯片缩略图导航（页列表）。 */}
+      <aside className={`w-40 shrink-0 overflow-y-auto border-r ${CHROME.border} ${CHROME.subtle} p-2.5`}>
+        <div className="space-y-2.5">
+          {editor.deck.slides.map((slide, index) => (
+            <MiniSlide
+              key={slide.id}
+              slide={slide}
+              number={index + 1}
+              active={slide.id === editor.activeSlide.id}
+              theme={theme}
+              onClick={() => editor.selectSlide(slide.id)}
+            />
+          ))}
+        </div>
+      </aside>
+      <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto p-6 lg:p-10">
+        <div
+          className="w-full max-w-5xl"
+          style={{ aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9" }}
+        >
+          <SlideCanvas editor={editor} />
+        </div>
+        {editor.loading && (
+          <div className="absolute inset-0 grid place-items-center bg-[var(--card,#ffffff)]/85 text-[12px] text-[var(--muted,#78716c)]">
+            {tt("正在载入演示文稿…")}
           </div>
-        </aside>
-        <main className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto p-6 lg:p-10">
-          <div
-            className="w-full max-w-5xl"
-            style={{ aspectRatio: editor.deck.aspect === "4:3" ? "4 / 3" : "16 / 9" }}
-          >
-            <SlideCanvas editor={editor} />
-          </div>
-          {editor.loading && (
-            <div className="absolute inset-0 grid place-items-center bg-white/85 text-[12px] text-stone-500">
-              {tt("正在载入演示文稿…")}
-            </div>
-          )}
-        </main>
-      </div>
-
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
-        <span role="status" className={`min-w-0 flex-1 truncate text-[11px] ${editor.error ? "text-red-600" : "text-stone-500"}`}>
-          {editor.error ||
-            editor.notice ||
-            tt("第 {page} 页，共 {total} 页", {
-              page: editor.activeIndex + 1,
-              total: editor.deck.slides.length,
-            })}
-        </span>
-        <button type="button" onClick={editor.downloadJson} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600">{tt("下载工程")}</button>
-        <button type="button" disabled={editor.exporting} onClick={() => void editor.exportPptx()} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 disabled:opacity-40">
-          {editor.exporting ? tt("导出中…") : tt("导出 PPTX")}
-        </button>
-        <button type="button" disabled={editor.saving} onClick={() => void editor.save()} className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40" style={{ background: accent }}>
-          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
-        </button>
-      </div>
+        )}
+      </main>
     </div>
   );
 }

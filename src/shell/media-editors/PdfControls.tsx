@@ -2,7 +2,12 @@
 
 import { useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { CHROME, PanelSection } from "../editor-chrome";
 import type { PdfWorkbenchState } from "./use-pdf-workbench";
+
+// PDF「页面工具」overlay 侧栏内容：视图缩放、加页/合并。撤销/重做、下载、保存
+// 副本已上移到统一顶栏（AdvancedTopBar）；单页操作（旋转/排序/提取/删除）仍在
+// 选中页浮动 bar（PdfContextToolbar）。全部走 CHROME/CSS 变量令牌跟随双主题。
 
 function ControlButton({
   children,
@@ -28,7 +33,7 @@ function ControlButton({
       className={
         primary
           ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+          : `rounded-lg border ${CHROME.border} px-2 py-2 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`
       }
       style={primary ? { background: accent || "#4f46e5" } : undefined}
     >
@@ -47,13 +52,13 @@ export function PdfControls({
   const tt = useUI();
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
   const busy = editor.loading || editor.processing || editor.saving;
+  void accent;
 
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold text-stone-800">{tt("视图")}</p>
-          <span className="text-[10px] tabular-nums text-stone-400">
+    <div className="space-y-1">
+      <PanelSection title={tt("视图")}>
+        <div className="mb-2 flex items-center justify-end">
+          <span className={`text-[10px] tabular-nums ${CHROME.muted}`}>
             {editor.zoom}% · {editor.rotation}°
           </span>
         </div>
@@ -65,9 +70,10 @@ export function PdfControls({
           value={editor.zoom}
           disabled={editor.loading}
           onChange={(event) => editor.setZoom(Number(event.target.value))}
-          className="w-full accent-stone-800"
+          className="w-full"
+          style={{ accentColor: accent }}
         />
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
           <ControlButton disabled={editor.loading} onClick={() => editor.zoomBy(-25)}>
             − {tt("缩小")}
           </ControlButton>
@@ -75,10 +81,9 @@ export function PdfControls({
             + {tt("放大")}
           </ControlButton>
         </div>
-      </section>
+      </PanelSection>
 
-      <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("添加页面")}</p>
+      <PanelSection title={tt("添加页面")}>
         <div className="grid grid-cols-1 gap-1.5">
           <ControlButton disabled={busy} onClick={() => void editor.addBlankPage()}>
             + {tt("添加空白页")}
@@ -95,48 +100,18 @@ export function PdfControls({
             if (file) void editor.mergePdf(file, "append");
           }}
         />
-        <ControlButton
-          disabled={busy}
-          onClick={() => mergeInputRef.current?.click()}
-        >
-          {editor.processing ? tt("处理中…") : tt("合并另一个 PDF 到末尾")}
-        </ControlButton>
-        <p className="text-[10px] leading-relaxed text-stone-400">
-          {tt("选择当前页后，旋转、排序、提取和删除会出现在页面上方。")}
-        </p>
-      </section>
-
-      <section className="space-y-2 border-t border-stone-100 pt-3">
-        <p className="text-[11px] font-semibold text-stone-800">{tt("历史")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ControlButton disabled={busy || !editor.canUndo} onClick={editor.undo}>
-            {tt("撤销")}
-          </ControlButton>
-          <ControlButton disabled={busy || !editor.canRedo} onClick={editor.redo}>
-            {tt("重做")}
+        <div className="mt-1.5">
+          <ControlButton
+            disabled={busy}
+            onClick={() => mergeInputRef.current?.click()}
+          >
+            {editor.processing ? tt("处理中…") : tt("合并另一个 PDF 到末尾")}
           </ControlButton>
         </div>
-      </section>
-
-      <section className="space-y-1.5 border-t border-stone-100 pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("导出")}</p>
-        <ControlButton disabled={busy} onClick={editor.download}>
-          {tt("下载编辑版 PDF")}
-        </ControlButton>
-        <ControlButton
-          disabled={busy}
-          primary
-          accent={accent}
-          onClick={() => void editor.saveCopy()}
-        >
-          {editor.saving ? tt("保存中…") : tt("保存副本到我的库")}
-        </ControlButton>
-        {editor.savedUrl && (
-          <p className="break-all text-[10px] text-emerald-600">
-            {tt("PDF 副本已保存到我的库")}
-          </p>
-        )}
-      </section>
+        <p className={`mt-1.5 text-[10px] leading-relaxed ${CHROME.muted}`}>
+          {tt("选择当前页后，旋转、排序、提取和删除会出现在页面上方。")}
+        </p>
+      </PanelSection>
     </div>
   );
 }

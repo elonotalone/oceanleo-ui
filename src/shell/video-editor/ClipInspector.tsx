@@ -31,9 +31,9 @@ function Row({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-center justify-between text-[11px] text-stone-600">
+      <span className="mb-1 flex items-center justify-between text-[11px] text-[var(--fg-2,#57534e)]">
         <span>{label}</span>
-        <span className="tabular-nums text-stone-400">{format(value)}</span>
+        <span className="tabular-nums text-[var(--muted,#78716c)]">{format(value)}</span>
       </span>
       <input
         type="range"
@@ -45,7 +45,8 @@ function Row({
         onPointerUp={onGestureEnd}
         onBlur={onGestureEnd}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-stone-800"
+        className="w-full"
+        style={{ accentColor: "var(--fg,#292524)" }}
       />
     </label>
   );
@@ -90,8 +91,8 @@ export function ClipInspector({
     state.patchClip(clip.id, { transition_in: value ?? undefined });
 
   return (
-    <section className="space-y-2.5 border-t border-stone-100 pt-3">
-      <p className="text-[11px] font-semibold text-stone-800">
+    <section className="space-y-2.5 border-t border-[var(--divider,#e7e5e4)] pt-3">
+      <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
         {tt("片段属性")}
       </p>
 
@@ -122,9 +123,9 @@ export function ClipInspector({
             </button>
           </div>
           <div>
-            <span className="mb-1 flex items-center justify-between text-[11px] text-stone-600">
+            <span className="mb-1 flex items-center justify-between text-[11px] text-[var(--fg-2,#57534e)]">
               <span>{tt("变速")}</span>
-              <span className="tabular-nums text-stone-400">{clip.speed ?? 1}x</span>
+              <span className="tabular-nums text-[var(--muted,#78716c)]">{clip.speed ?? 1}x</span>
             </span>
             <div className="grid grid-cols-4 gap-1">
               {SPEED_STOPS.map((speed) => (
@@ -150,12 +151,12 @@ export function ClipInspector({
       {track.kind === "text" && (
         <>
           <label className="block">
-            <span className="mb-1 block text-[11px] text-stone-600">{tt("文字内容")}</span>
+            <span className="mb-1 block text-[11px] text-[var(--fg-2,#57534e)]">{tt("文字内容")}</span>
             <textarea
               value={clip.text ?? ""}
               onChange={(event) => patch({ text: event.target.value })}
               rows={2}
-              className="w-full rounded-lg border border-stone-200 px-2 py-1.5 text-[12px] focus:outline-none"
+              className="w-full rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 py-1.5 text-[12px] text-[var(--fg,#292524)] focus:outline-none"
             />
           </label>
           <Row
@@ -169,7 +170,7 @@ export function ClipInspector({
             {...gesture}
           />
           <div className="grid grid-cols-2 gap-1.5">
-            <label className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-600">
+            <label className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-[var(--fg-2,#57534e)]">
               {tt("颜色")}
               <input
                 type="color"
@@ -178,7 +179,7 @@ export function ClipInspector({
                 className="h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
               />
             </label>
-            <label className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-600">
+            <label className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-[var(--fg-2,#57534e)]">
               {tt("底色")}
               <input
                 type="color"
@@ -220,7 +221,7 @@ export function ClipInspector({
               <button
                 type="button"
                 onClick={() => patchStyle({ background: undefined })}
-                className="rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-500"
+                className="rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 py-1.5 text-[11px] text-[var(--fg-2,#57534e)]"
               >
                 {tt("去底色")}
               </button>
@@ -251,7 +252,7 @@ export function ClipInspector({
 
       {(track.kind === "video" || track.kind === "image") && (
         <>
-          <p className="border-t border-stone-100 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+          <p className="border-t border-[var(--divider,#e7e5e4)] pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted,#78716c)]">
             {tt("画面变换")}
           </p>
           {track.kind === "video" && (
@@ -363,8 +364,8 @@ export function ClipInspector({
       )}
 
       {/* 转场（与前一 clip 之间） */}
-      <div className="border-t border-stone-100 pt-2.5">
-        <span className="mb-1 block text-[11px] text-stone-600">{tt("转场（与前一片段）")}</span>
+      <div className="border-t border-[var(--divider,#e7e5e4)] pt-2.5">
+        <span className="mb-1 block text-[11px] text-[var(--fg-2,#57534e)]">{tt("转场（与前一片段）")}</span>
         <div className="grid grid-cols-4 gap-1">
           {TRANSITIONS.map((option) => (
             <button
