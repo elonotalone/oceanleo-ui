@@ -43,6 +43,8 @@ const META_KEYS = new Set([
   "mime",
   "format",
   "library_source",
+  "draft",
+  "blank",
   "website_id",
   "project_id",
   "slug",
@@ -341,6 +343,20 @@ export function advancedSnapshotFromSession(
       meta.template_doc_url =
         `https://asset.oceanleo.com/design-templates/doc/${legacyTemplate[1]}.json`;
     }
+  }
+  // v2 snapshots written before blank/draft became allowlisted lost the
+  // website onboarding marker. Recover only source-less website drafts; real
+  // projects, starters and GitHub-backed saves all carry their own identity.
+  if (
+    kind === "website" &&
+    !url &&
+    !meta.project_id &&
+    !meta.website_id &&
+    !meta.starter_id &&
+    !meta.github_repo
+  ) {
+    meta.draft = true;
+    meta.blank = true;
   }
   const item: AdvancedSessionSnapshot["item"] = {
     key,

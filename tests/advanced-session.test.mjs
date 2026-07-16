@@ -31,6 +31,14 @@ test("advanced session parser separates workspace site from material provenance"
   assert.match(source, /editorRouteFor\(restored\)\.type !== route/);
 });
 
+test("blank advanced drafts retain their onboarding identity after resume", () => {
+  assert.match(source, /"draft",\s*"blank",\s*"website_id"/);
+  assert.match(
+    source,
+    /kind === "website"[\s\S]*?!meta\.github_repo[\s\S]*?meta\.draft = true;[\s\S]*?meta\.blank = true;/,
+  );
+});
+
 test("advanced Design sessions preserve and recover their layered editor route", () => {
   const routes = readFileSync(
     new URL("../src/shell/workbench-routes.ts", import.meta.url),
