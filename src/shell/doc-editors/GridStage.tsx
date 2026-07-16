@@ -2,7 +2,6 @@
 
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME } from "../editor-chrome";
 import {
   columnLabel,
   gridCellFormat,
@@ -85,22 +84,22 @@ export function GridStage({
   };
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${CHROME.surface}`}>
-      <div className={`flex shrink-0 items-center gap-2 border-b ${CHROME.border} ${CHROME.subtle} px-3 py-2`}>
-        <span className={`w-16 shrink-0 rounded-md border ${CHROME.border} ${CHROME.surface} px-2 py-1.5 text-center text-[11px] font-medium ${CHROME.fg2}`}>
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-stone-50 px-3 py-2">
+        <span className="w-16 shrink-0 rounded-md border border-stone-200 bg-white px-2 py-1.5 text-center text-[11px] font-medium text-stone-500">
           {selectedAddress}
         </span>
-        <span className={`text-[13px] font-semibold ${CHROME.muted}`}>fx</span>
+        <span className="text-[13px] font-semibold text-stone-400">fx</span>
         <input
           value={editor.selectedValue}
           onChange={(event) => editor.setSelectedValue(event.target.value)}
           aria-label={tt("公式栏")}
           placeholder={tt("输入内容或以 = 开头的公式")}
-          className={`min-w-0 flex-1 rounded-md border ${CHROME.border} ${CHROME.surface} px-2.5 py-1.5 font-mono text-[11px] ${CHROME.fg} outline-none focus:border-[var(--fg-2,#57534e)]`}
+          className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-[11px] text-stone-700 outline-none focus:border-stone-400"
         />
         {editor.selectedValue.startsWith("=") && (
           <span
-            className={`max-w-48 truncate text-[10px] ${CHROME.muted}`}
+            className="max-w-48 truncate text-[10px] text-stone-400"
             title={editor.selectedDisplayValue}
           >
             {tt("结果")}：{editor.selectedDisplayValue}
@@ -109,22 +108,22 @@ export function GridStage({
       </div>
 
       <div
-        className={`relative min-h-0 flex-1 overflow-auto ${CHROME.surface}`}
+        className="relative min-h-0 flex-1 overflow-auto bg-white"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {editor.loading && (
-          <div className={`absolute inset-0 z-40 grid place-items-center bg-[var(--card,#ffffff)]/90 text-[12px] ${CHROME.muted}`}>
+          <div className="absolute inset-0 z-40 grid place-items-center bg-white/90 text-[12px] text-stone-400">
             {tt("正在读取工作簿…")}
           </div>
         )}
         <table className="border-separate border-spacing-0 text-[11px]">
           <thead className="sticky top-0 z-30">
             <tr>
-              <th className={`sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r ${CHROME.border} ${CHROME.subtle}`} />
+              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-stone-200 bg-stone-100" />
               {Array.from({ length: columnCount }, (_, col) => (
                 <th
                   key={col}
-                  className={`h-8 min-w-28 border-b border-r ${CHROME.border} ${CHROME.subtle} px-2 font-medium ${CHROME.fg2}`}
+                  className="h-8 min-w-28 border-b border-r border-stone-200 bg-stone-100 px-2 font-medium text-stone-500"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     editor.selectCell({ row: editor.selection.focus.row, col });
@@ -147,7 +146,7 @@ export function GridStage({
             {windowRows.map((row) => (
               <tr key={row} style={{ height: ROW_HEIGHT }}>
                 <th
-                  className={`sticky left-0 z-20 w-12 min-w-12 border-b border-r ${CHROME.border} ${CHROME.subtle} px-2 text-right font-medium ${CHROME.muted}`}
+                  className="sticky left-0 z-20 w-12 min-w-12 border-b border-r border-stone-200 bg-stone-100 px-2 text-right font-medium text-stone-400"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     editor.selectCell({ row, col: editor.selection.focus.col });
@@ -168,11 +167,11 @@ export function GridStage({
                   return (
                     <td
                       key={col}
-                      className={`relative h-[34px] min-w-28 border-b border-r ${CHROME.border} p-0`}
+                      className="relative h-[34px] min-w-28 border-b border-r border-stone-200 p-0"
                       style={
                         selected
                           ? { background: `${accent}0d` }
-                          : { background: format.background || "var(--card,#ffffff)" }
+                          : { background: format.background || "#ffffff" }
                       }
                       onMouseEnter={(event) => {
                         if (event.buttons === 1) {
@@ -199,7 +198,7 @@ export function GridStage({
                           color:
                             value.startsWith("#") && raw.startsWith("=")
                               ? "#dc2626"
-                              : format.color || "var(--fg,#44403c)",
+                              : format.color || "#44403c",
                           fontWeight: format.bold ? 650 : 400,
                           textAlign: format.align || "left",
                           boxShadow: focused
@@ -223,13 +222,13 @@ export function GridStage({
           </tbody>
         </table>
         {rows.length === 0 && (
-          <div className={`grid h-full place-items-center text-[12px] ${CHROME.muted}`}>
+          <div className="grid h-full place-items-center text-[12px] text-stone-400">
             {tt("没有符合筛选条件的行")}
           </div>
         )}
       </div>
 
-      <div className={`flex shrink-0 items-center gap-1 overflow-x-auto border-t ${CHROME.border} ${CHROME.subtle} px-3 py-1.5`}>
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-stone-200 bg-stone-50 px-3 py-1.5">
         {editor.sheets.map((sheet) => (
           <button
             key={sheet.id}
@@ -241,12 +240,12 @@ export function GridStage({
                 ? {
                     borderColor: accent,
                     color: accent,
-                    background: "var(--card,#ffffff)",
+                    background: "#ffffff",
                   }
                 : {
-                    borderColor: "var(--border,#e7e5e4)",
-                    color: "var(--muted,#78716c)",
-                    background: "var(--surface,#f5f5f4)",
+                    borderColor: "#e7e5e4",
+                    color: "#78716c",
+                    background: "#f5f5f4",
                   }
             }
           >
@@ -257,14 +256,14 @@ export function GridStage({
           type="button"
           onClick={editor.addSheet}
           aria-label={tt("新增工作表")}
-          className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${CHROME.fg2} ${CHROME.hover}`}
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-stone-500 hover:bg-stone-200"
         >
           +
         </button>
       </div>
 
-      <div className={`flex shrink-0 flex-wrap items-center gap-2 border-t ${CHROME.border} ${CHROME.surface} px-4 py-2.5`}>
-        <span className={`min-w-0 flex-1 truncate text-[11px] ${CHROME.muted}`}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
+        <span className="min-w-0 flex-1 truncate text-[11px] text-stone-400">
           {editor.error
             ? editor.error
             : editor.savedUrl
@@ -279,7 +278,7 @@ export function GridStage({
           type="button"
           onClick={editor.exportCsv}
           disabled={editor.loading}
-          className={`rounded-lg border ${CHROME.border} px-3 py-1.5 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`}
+          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
         >
           {tt("导出当前 CSV")}
         </button>
@@ -287,7 +286,7 @@ export function GridStage({
           type="button"
           onClick={() => void editor.exportXlsx()}
           disabled={editor.loading || editor.exporting}
-          className={`rounded-lg border ${CHROME.border} px-3 py-1.5 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`}
+          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
         >
           {editor.exporting ? tt("导出中…") : tt("导出 XLSX")}
         </button>

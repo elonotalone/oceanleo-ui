@@ -96,20 +96,20 @@ export function AdvancedTasks({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#fafaf9)]">
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col bg-stone-50/70">
+      <header className="flex shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4 py-3">
         <div>
-          <p className="text-[13px] font-semibold text-[var(--fg,#292524)]">
+          <p className="text-[13px] font-semibold text-stone-900">
             {tt("高级功能任务")}
           </p>
-          <p className="mt-0.5 text-[10px] text-[var(--muted,#78716c)]">
+          <p className="mt-0.5 text-[10px] text-stone-400">
             {tt("这里只显示高级功能记录，不包含普通 App 任务。")}
           </p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
-          className="rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,0.05))]"
+          className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] text-stone-600 transition hover:bg-stone-50"
         >
           {tt("刷新")}
         </button>
@@ -120,16 +120,16 @@ export function AdvancedTasks({
             {error}
           </div>
         ) : loading ? (
-          <div className="grid min-h-48 place-items-center text-[12px] text-[var(--muted,#78716c)]">
+          <div className="grid min-h-48 place-items-center text-[12px] text-stone-400">
             {tt("加载高级功能任务…")}
           </div>
         ) : entries.length === 0 ? (
-          <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] text-center">
+          <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-stone-200 bg-white text-center">
             <div>
-              <p className="text-[13px] font-medium text-[var(--fg-2,#57534e)]">
+              <p className="text-[13px] font-medium text-stone-600">
                 {tt("还没有高级功能任务")}
               </p>
-              <p className="mt-1 text-[11px] text-[var(--muted,#78716c)]">
+              <p className="mt-1 text-[11px] text-stone-400">
                 {tt("打开文件并进行编辑后，任务会独立保存在这里。")}
               </p>
             </div>
@@ -141,8 +141,8 @@ export function AdvancedTasks({
               return (
                 <div
                   key={session.id}
-                  className={`group relative rounded-xl border bg-[var(--card,#ffffff)] transition hover:-translate-y-0.5 hover:shadow-sm ${
-                    active ? "border-current" : "border-[var(--border,#e7e5e4)]"
+                  className={`group relative rounded-xl border bg-white transition hover:-translate-y-0.5 hover:shadow-sm ${
+                    active ? "border-current" : "border-stone-200"
                   }`}
                   style={active ? { color: accent } : undefined}
                 >
@@ -162,14 +162,14 @@ export function AdvancedTasks({
                         className="h-2 w-2 rounded-full"
                         style={{ background: feature.accent }}
                       />
-                      <span className="text-[10px] font-medium text-[var(--muted,#78716c)]">
+                      <span className="text-[10px] font-medium text-stone-400">
                         {tt(feature.title)}
                       </span>
                     </div>
-                    <p className="mt-2 line-clamp-2 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
+                    <p className="mt-2 line-clamp-2 text-[12px] font-semibold leading-snug text-stone-800">
                       {snapshot.item.title || session.title}
                     </p>
-                    <p className="mt-2 text-[10px] text-[var(--muted,#78716c)]">
+                    <p className="mt-2 text-[10px] text-stone-400">
                       {new Date(
                         session.last_activity_at ||
                           session.updated_at ||
@@ -183,7 +183,7 @@ export function AdvancedTasks({
                     disabled={deleting === session.id}
                     onClick={() => void remove(session)}
                     aria-label={tt("删除")}
-                    className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
+                    className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg text-stone-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
                   >
                     {deleting === session.id ? "…" : "×"}
                   </button>

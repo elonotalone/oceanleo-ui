@@ -11,7 +11,6 @@
 
 import { useCallback, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME } from "../editor-chrome";
 import { TimelineArea } from "./TimelineArea";
 import { formatMs } from "./timeline-model";
 import type { VideoTimelineState } from "./use-video-timeline";
@@ -80,7 +79,7 @@ export function VideoTimelineStage({
       onPointerDown={(event) => event.currentTarget.focus()}
       className="flex h-full min-h-0 flex-col outline-none"
     >
-      {/* 预览窗（视频画布固定黑底，与主题无关） */}
+      {/* 预览窗 */}
       <div className="flex min-h-0 flex-[3] items-center justify-center bg-stone-950 p-3">
         {state.loadingSource ? (
           <p className="text-[12px] text-stone-400">{tt("正在载入素材…")}</p>
@@ -93,11 +92,11 @@ export function VideoTimelineStage({
       </div>
 
       {/* 播放控制条 */}
-      <div className={`flex shrink-0 flex-wrap items-center gap-2 border-y ${CHROME.border} ${CHROME.surface} px-3 py-2`}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-y border-stone-200 bg-white px-3 py-2">
         <button
           type="button"
           onClick={() => state.stepFrame(-1)}
-          className={`rounded-lg border ${CHROME.border} px-2 py-1.5 text-[12px] ${CHROME.fg2} ${CHROME.hover}`}
+          className="rounded-lg border border-stone-200 px-2 py-1.5 text-[12px] text-stone-600 hover:bg-stone-50"
           title={tt("上一帧")}
         >
           ⏮
@@ -113,16 +112,16 @@ export function VideoTimelineStage({
         <button
           type="button"
           onClick={() => state.stepFrame(1)}
-          className={`rounded-lg border ${CHROME.border} px-2 py-1.5 text-[12px] ${CHROME.fg2} ${CHROME.hover}`}
+          className="rounded-lg border border-stone-200 px-2 py-1.5 text-[12px] text-stone-600 hover:bg-stone-50"
           title={tt("下一帧")}
         >
           ⏭
         </button>
-        <span className={`tabular-nums text-[12px] ${CHROME.fg}`}>
+        <span className="tabular-nums text-[12px] text-stone-700">
           {formatMs(state.playheadMs, true)}
-          <span className={CHROME.muted}> / {formatMs(state.durationMs, true)}</span>
+          <span className="text-stone-400"> / {formatMs(state.durationMs, true)}</span>
         </span>
-        <span className={`min-w-0 flex-1 truncate text-right text-[11px] ${CHROME.muted}`}>
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-stone-400">
           {state.error ? (
             <span className="text-red-500">{state.error}</span>
           ) : (
@@ -134,18 +133,18 @@ export function VideoTimelineStage({
           <button
             type="button"
             onClick={() => state.zoomBy(1 / 1.4)}
-            className={`rounded-lg border ${CHROME.border} px-2 py-1 text-[12px] ${CHROME.fg2} ${CHROME.hover}`}
+            className="rounded-lg border border-stone-200 px-2 py-1 text-[12px] text-stone-600 hover:bg-stone-50"
             title={tt("缩小时间线")}
           >
             −
           </button>
-          <span className={`w-14 text-center text-[10px] tabular-nums ${CHROME.muted}`}>
+          <span className="w-14 text-center text-[10px] tabular-nums text-stone-400">
             {state.pxPerSecond}px/s
           </span>
           <button
             type="button"
             onClick={() => state.zoomBy(1.4)}
-            className={`rounded-lg border ${CHROME.border} px-2 py-1 text-[12px] ${CHROME.fg2} ${CHROME.hover}`}
+            className="rounded-lg border border-stone-200 px-2 py-1 text-[12px] text-stone-600 hover:bg-stone-50"
             title={tt("放大时间线")}
           >
             +
@@ -157,7 +156,7 @@ export function VideoTimelineStage({
             style={
               state.snapEnabled
                 ? { borderColor: accent, color: accent, background: `${accent}12` }
-                : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
+                : { borderColor: "#e7e5e4", color: "#57534e" }
             }
           >
             {tt("吸附")}

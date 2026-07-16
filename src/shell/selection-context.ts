@@ -17,20 +17,6 @@ export interface SelectionControlOption {
   label: string;
 }
 
-/**
- * Optional icon name for a control. The toolbar resolves it through the editor
- * icon registry and falls back to the text label when a name is unknown or
- * absent, so this is purely additive — older controls without an icon keep
- * rendering their label.
- */
-export type SelectionControlIcon = string;
-
-/**
- * Grouping hint. Controls sharing a group render together with a thin divider
- * between groups, mirroring Canva's toolbar clusters (format / color / align).
- */
-export type SelectionControlGroup = string;
-
 export interface SelectionControl {
   id: string;
   kind: SelectionControlKind;
@@ -43,16 +29,6 @@ export interface SelectionControl {
   disabled?: boolean;
   danger?: boolean;
   placement?: "primary" | "more";
-  /** Icon name; when set the toolbar shows the icon with the label as tooltip. */
-  icon?: SelectionControlIcon;
-  /** Cluster id used to insert dividers between logical groups. */
-  group?: SelectionControlGroup;
-  /**
-   * Force a compact icon-only rendering even if no icon is set is NOT allowed —
-   * `iconOnly` only takes effect when an icon resolves. Low-frequency or
-   * ambiguous controls should leave this false so the text label stays visible.
-   */
-  iconOnly?: boolean;
 }
 
 export interface SelectionAnchorRect {
@@ -81,7 +57,6 @@ export interface SelectionCommand {
 
 const ID_RE = /^[a-z0-9][a-z0-9_.:-]{0,79}$/i;
 const KIND_RE = /^[a-z][a-z0-9_-]{0,47}$/i;
-const TOKEN_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/i;
 const CONTROL_KINDS = new Set<SelectionControlKind>([
   "action",
   "toggle",
@@ -168,10 +143,6 @@ export function normalizeSelectionContext(
     }
     const normalizedValue = controlValue(raw.value);
     if (raw.value !== undefined && normalizedValue === undefined) return null;
-    const icon = shortString(raw.icon, 48);
-    const group = shortString(raw.group, 48);
-    if (raw.icon !== undefined && icon && !TOKEN_RE.test(icon)) return null;
-    if (raw.group !== undefined && group && !TOKEN_RE.test(group)) return null;
     controls.push({
       id: controlId,
       kind: controlKind,
@@ -184,9 +155,6 @@ export function normalizeSelectionContext(
       ...(raw.disabled === true ? { disabled: true } : {}),
       ...(raw.danger === true ? { danger: true } : {}),
       ...(raw.placement === "more" ? { placement: "more" as const } : {}),
-      ...(icon && TOKEN_RE.test(icon) ? { icon } : {}),
-      ...(group && TOKEN_RE.test(group) ? { group } : {}),
-      ...(raw.iconOnly === true ? { iconOnly: true } : {}),
     });
   }
 

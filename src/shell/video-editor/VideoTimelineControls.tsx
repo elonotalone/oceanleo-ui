@@ -1,17 +1,15 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — VideoTimelineControls：剪辑「设置」overlay 侧栏内容
+// @oceanleo/ui — VideoTimelineControls：剪辑工具面板（窄栏）
 // ----------------------------------------------------------------------------
-// v2（2026-07-16，Canva 骨架）：撤销/重做、分割、加轨、保存草稿、导出成片已上移
-// 到统一顶栏（AdvancedTopBar），本组件只承载需要面板展开的复杂选择：素材导入、
-// 画布画幅/帧率、封面帧。仍与 VideoTimelineStage 共享同一个 useVideoTimeline。
-// 所有视觉走 CHROME/CSS 变量令牌，天然跟随深/浅双主题。
+// 素材添加（上传/URL）、剪辑动作（分割/删除/复制/撤销重做）、加轨、画布格式、
+// 选中 clip 属性（ClipInspector）、封面帧、草稿、导出。与 VideoTimelineStage
+// 共享同一个 useVideoTimeline 返回值。
 // ============================================================================
 
 import { useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME, PanelSection } from "../editor-chrome";
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TrackKind } from "./types";
 
@@ -29,7 +27,7 @@ const TRACK_ADDS: Array<{ kind: TrackKind; label: string }> = [
   { kind: "image", label: "贴图轨" },
 ];
 
-function PanelButton({
+function ToolButton({
   label,
   onClick,
   disabled,
@@ -46,7 +44,7 @@ function PanelButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded-lg border ${CHROME.border} px-2 py-1.5 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`}
+      className="rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
     >
       {label}
     </button>
@@ -64,10 +62,19 @@ export function VideoTimelineControls({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [urlDraft, setUrlDraft] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const exportBusy = state.exporting;
+
+  const exportLabel = exportBusy
+    ? state.exportStatus === "running"
+      ? tt("渲染中…")
+      : tt("排队中…")
+    : tt("导出成片");
 
   return (
-    <div className="space-y-1">
-      <PanelSection title={tt("素材")}>
+    <div className="space-y-4 overflow-y-auto p-3">
+      {/* 素材 */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("素材")}</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -89,7 +96,7 @@ export function VideoTimelineControls({
           >
             {state.addingMedia ? tt("添加中…") : tt("添加媒体")}
           </button>
-          <PanelButton
+          <ToolButton
             label={tt("粘贴 URL")}
             onClick={() => setShowUrlInput((value) => !value)}
           />
@@ -100,9 +107,9 @@ export function VideoTimelineControls({
               value={urlDraft}
               onChange={(event) => setUrlDraft(event.target.value)}
               placeholder="https://…"
-              className={`min-w-0 flex-1 rounded-lg border ${CHROME.border} ${CHROME.surface} px-2 py-1.5 text-[11px] ${CHROME.fg} focus:outline-none`}
+              className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[11px] focus:outline-none"
             />
-            <PanelButton
+            <ToolButton
               label={tt("添加")}
               disabled={state.addingMedia || !urlDraft.trim()}
               onClick={() => {
@@ -114,23 +121,51 @@ export function VideoTimelineControls({
           </div>
         )}
         <div className="mt-1.5">
-          <PanelButton label={tt("添加文字")} onClick={state.addTextClip} />
+          <ToolButton label={tt("添加文字")} onClick={state.addTextClip} />
         </div>
-      </PanelSection>
+      </section>
 
-      <PanelSection title={tt("添加轨道")}>
+      {/* 剪辑动作 */}
+      <section className="border-t border-stone-100 pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("剪辑")}</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <ToolButton
+            label={tt("分割")}
+            title={tt("在播放头处分割（S）")}
+            onClick={state.splitAtPlayhead}
+          />
+          <ToolButton
+            label={tt("撤销")}
+            title="Ctrl+Z"
+            disabled={!state.canUndo}
+            onClick={state.undo}
+          />
+          <ToolButton
+            label={tt("重做")}
+            title="Ctrl+Shift+Z"
+            disabled={!state.canRedo}
+            onClick={state.redo}
+          />
+        </div>
+      </section>
+
+      {/* 轨道 */}
+      <section className="border-t border-stone-100 pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("添加轨道")}</p>
         <div className="grid grid-cols-2 gap-1.5">
           {TRACK_ADDS.map((entry) => (
-            <PanelButton
+            <ToolButton
               key={entry.kind}
               label={`+ ${tt(entry.label)}`}
               onClick={() => state.addTrack(entry.kind)}
             />
           ))}
         </div>
-      </PanelSection>
+      </section>
 
-      <PanelSection title={tt("画布")}>
+      {/* 画布格式 */}
+      <section className="border-t border-stone-100 pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("画布")}</p>
         <div className="grid grid-cols-4 gap-1">
           {FORMATS.map((format) => {
             const active =
@@ -142,11 +177,11 @@ export function VideoTimelineControls({
                 onClick={() =>
                   state.setCanvasFormat(format.width, format.height, state.doc.fps)
                 }
-                className={`rounded-lg border px-1 py-1.5 text-[10px] transition ${CHROME.hover}`}
+                className="rounded-lg border px-1 py-1.5 text-[10px]"
                 style={
                   active
                     ? { borderColor: accent, color: accent, background: `${accent}12` }
-                    : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
+                    : { borderColor: "#e7e5e4", color: "#57534e" }
                 }
               >
                 {format.label}
@@ -160,27 +195,29 @@ export function VideoTimelineControls({
               key={fps}
               type="button"
               onClick={() => state.setCanvasFormat(state.doc.width, state.doc.height, fps)}
-              className={`rounded-lg border px-1 py-1.5 text-[10px] tabular-nums transition ${CHROME.hover}`}
+              className="rounded-lg border px-1 py-1.5 text-[10px] tabular-nums"
               style={
                 state.doc.fps === fps
                   ? { borderColor: accent, color: accent, background: `${accent}12` }
-                  : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
+                  : { borderColor: "#e7e5e4", color: "#57534e" }
               }
             >
               {fps} fps
             </button>
           ))}
         </div>
-      </PanelSection>
+      </section>
 
-      <PanelSection title={tt("封面")}>
+      {/* 输出 */}
+      <section className="space-y-1.5 border-t border-stone-100 pt-3">
+        <p className="mb-0.5 text-[11px] font-semibold text-stone-800">{tt("输出")}</p>
         <button
           type="button"
           disabled={
             state.capturingCover || state.loadingSource || !state.previewReady
           }
           onClick={() => void state.captureCover()}
-          className={`w-full rounded-lg border ${CHROME.border} py-2 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-50`}
+          className="w-full rounded-lg border border-stone-200 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-50"
         >
           {state.capturingCover
             ? tt("生成封面中…")
@@ -188,7 +225,46 @@ export function VideoTimelineControls({
               ? tt("重设封面帧（已设置）")
               : tt("当前帧设为封面")}
         </button>
-      </PanelSection>
+        <button
+          type="button"
+          disabled={state.savingDraft}
+          onClick={() => void state.saveDraft()}
+          className="w-full rounded-lg border border-stone-200 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-50"
+        >
+          {state.savingDraft ? tt("保存中…") : tt("保存草稿")}
+        </button>
+        <button
+          type="button"
+          disabled={exportBusy}
+          onClick={() => void state.exportVideo()}
+          className="w-full rounded-lg py-2 text-[11px] font-semibold text-white disabled:opacity-60"
+          style={{ background: accent }}
+        >
+          {exportLabel}
+        </button>
+        {exportBusy && (
+          <>
+            <p className="text-center text-[10px] text-stone-400">
+              {tt("服务端渲染中，每 2 秒查询一次状态")}
+            </p>
+            <button
+              type="button"
+              onClick={state.cancelExport}
+              className="w-full rounded-lg border border-red-200 py-2 text-[11px] text-red-600 hover:bg-red-50"
+            >
+              {tt("取消导出")}
+            </button>
+          </>
+        )}
+        {state.exportedUrl && (
+          <p className="break-all text-[10px] text-emerald-600">
+            {tt("导出完成，已保存到我的库")}
+          </p>
+        )}
+        {state.draftSavedUrl && !state.exportedUrl && (
+          <p className="text-[10px] text-stone-400">{tt("草稿已保存到我的库")}</p>
+        )}
+      </section>
     </div>
   );
 }

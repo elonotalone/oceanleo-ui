@@ -37,22 +37,17 @@ export function ChartContextToolbar({
         kind: "text",
         label: tt("标题"),
         value: option.title.text,
-        group: "title",
       },
       {
         id: "legend-show",
         kind: "toggle",
         label: tt("图例"),
-        icon: "eye",
-        iconOnly: true,
         value: option.legend.show,
-        group: "legend",
       },
       {
         id: "legend-position",
         kind: "select",
         label: tt("图例位置"),
-        icon: "layout",
         value: option.legend.position,
         options: [
           { value: "top", label: tt("上") },
@@ -60,7 +55,6 @@ export function ChartContextToolbar({
           { value: "left", label: tt("左") },
           { value: "right", label: tt("右") },
         ],
-        group: "legend",
       },
       {
         id: "x-name",
@@ -79,8 +73,7 @@ export function ChartContextToolbar({
       {
         id: "add-series",
         kind: "action",
-        label: tt("系列"),
-        icon: "plus",
+        label: "+ " + tt("系列"),
         placement: "more",
       },
     ];
@@ -106,7 +99,6 @@ export function ChartContextToolbar({
           id: `series:${series.id}:type`,
           kind: "select",
           label: series.name || tt("系列类型"),
-          icon: "grid",
           value: series.type,
           options: SERIES_OPTIONS.map((entry) => ({
             value: entry.value,
@@ -125,8 +117,6 @@ export function ChartContextToolbar({
           id: `series:${series.id}:label`,
           kind: "toggle",
           label: tt("数据标签"),
-          icon: "note",
-          iconOnly: true,
           value: series.label.show,
           placement: "more",
         },
@@ -134,7 +124,6 @@ export function ChartContextToolbar({
           id: `series:${series.id}:delete`,
           kind: "action",
           label: tt("删除系列"),
-          icon: "delete",
           danger: true,
           disabled: option.series.length <= 1,
           placement: "more",

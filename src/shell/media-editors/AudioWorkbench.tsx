@@ -13,7 +13,6 @@ import type WaveSurfer from "wavesurfer.js";
 import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME, PanelSection } from "../editor-chrome";
 import { saveWorks, uploadFile } from "../../lib/database";
 import {
   fetchMediaBlob,
@@ -620,7 +619,6 @@ function AudioSlider({
   max,
   step = 1,
   suffix = "",
-  accent = "#4f46e5",
   onChange,
 }: {
   label: string;
@@ -629,14 +627,13 @@ function AudioSlider({
   max: number;
   step?: number;
   suffix?: string;
-  accent?: string;
   onChange: (value: number) => void;
 }) {
   return (
     <label className="block">
-      <span className={`mb-1 flex justify-between text-[11px] ${CHROME.fg2}`}>
+      <span className="mb-1 flex justify-between text-[11px] text-stone-600">
         <span>{label}</span>
-        <span className={`tabular-nums ${CHROME.muted}`}>{value}{suffix}</span>
+        <span className="tabular-nums text-stone-400">{value}{suffix}</span>
       </span>
       <input
         type="range"
@@ -645,15 +642,12 @@ function AudioSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full"
-        style={{ accentColor: accent }}
+        className="w-full accent-stone-800"
       />
     </label>
   );
 }
 
-// 音频「设置」overlay 侧栏内容：音频源导入、试听速度、波形缩放。撤销/重做、
-// 播放/停止、保存/下载已上移到统一顶栏（AdvancedTopBar）。
 export function AudioControls({
   editor,
   accent = "#4f46e5",
@@ -662,10 +656,13 @@ export function AudioControls({
   accent?: string;
 }) {
   const tt = useUI();
-  const button = `rounded-lg border ${CHROME.border} px-2 py-2 text-[11px] ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`;
+  const button = "rounded-lg border border-stone-200 px-2 py-2 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40";
   return (
-    <div className="space-y-1">
-      <PanelSection title={tt("音频源")}>
+    <div className="space-y-4 overflow-y-auto p-3">
+      <section>
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">
+          {tt("音频源")}
+        </p>
         <label className={`${button} flex w-full cursor-pointer items-center justify-center`}>
           {tt("导入或替换音频")}
           <input
@@ -679,13 +676,26 @@ export function AudioControls({
             }}
           />
         </label>
-      </PanelSection>
-      <PanelSection title={tt("试听")}>
-        <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" accent={accent} onChange={editor.setPlaybackSpeed} />
-        <div className="mt-2.5">
-          <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" accent={accent} onChange={editor.setWaveformZoom} />
+      </section>
+      <section>
+        <p className="mb-2 text-[11px] font-semibold text-stone-800">{tt("播放")}</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} onClick={editor.playPause}>
+            {editor.playing ? tt("暂停") : tt("播放")}
+          </button>
+          <button type="button" className={button} onClick={editor.stop}>{tt("停止")}</button>
         </div>
-      </PanelSection>
+        <div className="mt-3">
+          <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" onChange={editor.setPlaybackSpeed} />
+        </div>
+      </section>
+      <section className="space-y-2.5 border-t border-stone-100 pt-3">
+        <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" onChange={editor.setWaveformZoom} />
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className={button} disabled={!editor.canUndo || editor.loading} onClick={editor.undo} style={editor.canUndo ? { borderColor: accent, color: accent } : undefined}>{tt("撤销")}</button>
+          <button type="button" className={button} disabled={!editor.canRedo || editor.loading} onClick={editor.redo} style={editor.canRedo ? { borderColor: accent, color: accent } : undefined}>{tt("重做")}</button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -698,11 +708,10 @@ export function AudioStage({
   accent?: string;
 }) {
   const tt = useUI();
-  void accent;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className={`flex min-h-0 flex-1 flex-col justify-center overflow-auto ${CHROME.subtle} p-6`}>
-        <div className={`mb-3 flex items-center justify-between text-[11px] ${CHROME.muted}`}>
+      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-stone-50 p-6">
+        <div className="mb-3 flex items-center justify-between text-[11px] text-stone-500">
           <span className="tabular-nums">{formatTime(editor.currentTime)} / {formatTime(editor.duration)}</span>
           <span>
             {editor.selection
@@ -713,13 +722,14 @@ export function AudioStage({
               : tt("未选择区间")}
           </span>
         </div>
-        <div className={`relative rounded-xl border ${CHROME.border} ${CHROME.surface} px-3 py-6 shadow-sm`}>
-          {editor.loading && <div className={`absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#ffffff)]/80 text-[12px] ${CHROME.muted}`}>{tt("正在处理音频…")}</div>}
+        <div className="relative rounded-xl border border-stone-200 bg-white px-3 py-6 shadow-sm">
+          {editor.loading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 text-[12px] text-stone-400">{tt("正在处理音频…")}</div>}
           <div ref={editor.containerRef} className="min-h-44 w-full" />
         </div>
       </div>
-      <div className={`flex shrink-0 items-center gap-2 border-t ${CHROME.border} ${CHROME.surface} px-4 py-2.5`}>
-        <span className={`min-w-0 flex-1 truncate text-[11px] ${CHROME.muted}`}>
+      <div className="flex shrink-0 items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
+        <button type="button" onClick={editor.download} disabled={editor.loading} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 disabled:opacity-40">{tt("下载 WAV")}</button>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-stone-400">
           {editor.error ||
             (editor.dirty
               ? tt("有未保存的修改")
@@ -727,6 +737,9 @@ export function AudioStage({
                 ? tt("已保存到我的库")
                 : tt("编辑不会覆盖原素材"))}
         </span>
+        <button type="button" disabled={editor.saving || editor.loading} onClick={() => void editor.save()} className="rounded-lg px-4 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: accent }}>
+          {editor.saving ? tt("保存中…") : tt("保存到我的库")}
+        </button>
       </div>
     </div>
   );
@@ -754,8 +767,8 @@ export function AudioWorkbench({
     }
   }, [editor.savedUrl, onSaved]);
   return (
-    <div className={`flex h-full min-h-0 ${CHROME.surface}`}>
-      <div className={`w-64 shrink-0 overflow-y-auto border-r ${CHROME.border} p-3`}>
+    <div className="flex h-full min-h-0 bg-white">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-stone-200">
         <AudioControls editor={editor} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

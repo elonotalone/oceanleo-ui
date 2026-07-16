@@ -5,12 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedFlushResult } from "../advanced-session-context";
-import {
-  AdvancedWorkbenchShell,
-  type EditorPanelDescriptor,
-} from "../AdvancedWorkbenchShell";
-import type { TopBarModel } from "../advanced-topbar";
-import { PanelSection } from "../editor-chrome";
+import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -159,63 +154,6 @@ export function EmbeddedRoute({
     ],
   );
 
-  // 统一顶栏：嵌入编辑器的「创建/属性」按钮由子站 iframe 自己承载（协议尚未接
-  // 通），宿主这里只暴露真实存在的宿主级操作——保存新版本到我的库。左侧「说明」
-  // 面板承接原 editorToolbox 里的引导文案。
-  const topBarModel = useMemo<TopBarModel>(
-    () => ({
-      groups: [
-        {
-          id: "help",
-          actions: [
-            {
-              kind: "panel",
-              id: "guide",
-              label: tt("说明"),
-              icon: "note",
-              panelId: "guide",
-            },
-          ],
-        },
-      ],
-      trailing: [
-        {
-          kind: "action",
-          id: "save",
-          label: tt("保存版本"),
-          icon: "save",
-          onRun: requestManualSave,
-        },
-      ],
-    }),
-    [requestManualSave, tt],
-  );
-
-  const editorPanels = useMemo<EditorPanelDescriptor[]>(
-    () => [
-      {
-        id: "guide",
-        title: tt("说明"),
-        width: 300,
-        content: (
-          <div className="space-y-1">
-            <PanelSection title={tt("专业画布")}>
-              <p className="px-1 text-[11px] leading-relaxed text-[var(--fg-2,#57534e)]">
-                {tt("右侧是当前内容本身的专业编辑画布，不是一次性生成应用。")}
-              </p>
-              <p className="px-1 text-[11px] leading-relaxed text-[var(--fg-2,#57534e)]">
-                {tt(
-                  "点击画布里的对象后，在对象上方直接修改属性；顶栏只保留全局操作，保存时创建新版本并回到我的库。",
-                )}
-              </p>
-            </PanelSection>
-          </div>
-        ),
-      },
-    ],
-    [tt],
-  );
-
   if (route.type !== "embed") {
     return (
       <UnsupportedRoute
@@ -239,8 +177,24 @@ export function EmbeddedRoute({
       siteId={siteId}
       accent={accent}
       editorLabel={editorToolLabel(route)}
-      topBarModel={topBarModel}
-      editorPanels={editorPanels}
+      editorToolbox={
+        <div className="space-y-2 p-3 text-[12px] leading-relaxed text-stone-600">
+          <p>{tt("右侧是当前内容本身的专业编辑画布，不是一次性生成应用。")}</p>
+          <p>
+            {tt(
+              "点击画布里的对象后，在对象上方直接修改属性；左侧只保留全局工具，保存时创建新版本并回到我的库。",
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={requestManualSave}
+            className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
+            style={{ background: accent }}
+          >
+            {tt("保存当前版本到我的库")}
+          </button>
+        </div>
+      }
       editorStage={
         <EmbedEditorPane
           key={`${item.key}:${item.url || ""}:${item.previewUrl || ""}:${item.title}`}

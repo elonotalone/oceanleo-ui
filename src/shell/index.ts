@@ -143,35 +143,6 @@ export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 export { SelectionToolbar } from "./SelectionToolbar";
 export type { SelectionToolbarProps } from "./SelectionToolbar";
-// 高级工作台 chrome 原子组件（Canva 骨架 v2，2026-07-16）：工具栏/侧栏/按钮统一
-// 视觉 + 深浅双主题。所有 12 个高级功能编辑器共用，改一处全站同步。
-export {
-  CHROME,
-  Tip,
-  ToolButton,
-  ToolGroup,
-  ToolDivider,
-  ToolbarShell,
-  ToolSelect,
-  ToolColor,
-  ToolNumber,
-  ToolRange,
-  ToolText,
-  ToolOverflow,
-  EditorPanel,
-  PanelSection,
-} from "./editor-chrome";
-export type { ToolButtonProps } from "./editor-chrome";
-export { AdvancedTopBar } from "./advanced-topbar";
-export type {
-  TopBarModel,
-  TopBarGroup,
-  TopBarAction,
-  TopBarOption,
-} from "./advanced-topbar";
-export { editorIcon, hasEditorIcon, EditorIcon } from "./editor-icons";
-export type { EditorIconProps } from "./editor-icons";
-export type { EditorPanelDescriptor } from "./AdvancedWorkbenchShell";
 export {
   SELECTION_CONTEXT_VERSION,
   SELECTION_PROTOCOL,
@@ -184,8 +155,6 @@ export type {
   SelectionCommand,
   SelectionContext,
   SelectionControl,
-  SelectionControlGroup,
-  SelectionControlIcon,
   SelectionControlKind,
   SelectionControlOption,
   SelectionControlValue,

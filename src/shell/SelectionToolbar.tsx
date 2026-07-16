@@ -1,24 +1,6 @@
 "use client";
 
-// 选中对象浮动工具栏（Canva 骨架 v2，2026-07-16）。
-// ---------------------------------------------------------------------------
-// 呈现层统一走 editor-chrome 原子组件：图标化 + tooltip + 分组竖线 + overflow，
-// 自动跟随深/浅双主题。协议（selection-context）不变，所有 *ContextToolbar 无需
-// 改动即获得新外观；控件可选带 icon / group / iconOnly 进一步贴近 Canva。
-
-import { useMemo, type ReactNode } from "react";
-import {
-  ToolButton,
-  ToolColor,
-  ToolDivider,
-  ToolNumber,
-  ToolOverflow,
-  ToolRange,
-  ToolSelect,
-  ToolText,
-  ToolbarShell,
-} from "./editor-chrome";
-import { EditorIcon, hasEditorIcon } from "./editor-icons";
+import { useMemo, useState } from "react";
 import {
   selectionRequestId,
   type SelectionCommand,
@@ -32,21 +14,13 @@ export interface SelectionToolbarProps {
   onCommand: (command: SelectionCommand) => void;
   className?: string;
   accent?: string;
-  /**
-   * Optional object-level AI entry (宗旨: 浮动 bar 上「让 AI 改这个对象」).
-   * When provided the toolbar renders a highlighted AI button after the
-   * controls; clicking it hands the current selection to the host's AI flow.
-   */
-  onAskAi?: (context: SelectionContext) => void;
-  aiLabel?: string;
-  aiBusy?: boolean;
 }
 
 function asNumber(value: SelectionControlValue | undefined, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function ControlView({
+function Control({
   control,
   selectionId,
   onCommand,
@@ -56,7 +30,7 @@ function ControlView({
   selectionId: string;
   onCommand: (command: SelectionCommand) => void;
   accent: string;
-}): ReactNode {
+}) {
   const emit = (value?: SelectionControlValue) =>
     onCommand({
       requestId: selectionRequestId(),
@@ -64,91 +38,127 @@ function ControlView({
       controlId: control.id,
       ...(value !== undefined ? { value } : {}),
     });
-  const iconOnly = Boolean(control.iconOnly && hasEditorIcon(control.icon));
+  const base =
+    "h-8 shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 text-[11px] font-medium text-stone-700 outline-none transition hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-35";
 
   if (control.kind === "action") {
     return (
-      <ToolButton
-        label={control.label}
-        icon={control.icon}
-        iconOnly={iconOnly}
+      <button
+        type="button"
         disabled={control.disabled}
-        danger={control.danger}
-        accent={accent}
         onClick={() => emit()}
-      />
+        className={`${base} ${control.danger ? "text-rose-600" : ""}`}
+        title={control.label}
+      >
+        {control.label}
+      </button>
     );
   }
   if (control.kind === "toggle") {
+    const active = control.value === true;
     return (
-      <ToolButton
-        label={control.label}
-        icon={control.icon}
-        iconOnly={iconOnly}
-        active={control.value === true}
+      <button
+        type="button"
+        aria-pressed={active}
         disabled={control.disabled}
-        accent={accent}
-        onClick={() => emit(control.value !== true)}
-      />
+        onClick={() => emit(!active)}
+        className={`${base} ${active ? "text-white" : ""}`}
+        style={active ? { background: accent, borderColor: accent } : undefined}
+        title={control.label}
+      >
+        {control.label}
+      </button>
     );
   }
   if (control.kind === "color") {
     return (
-      <ToolColor
-        label={control.label}
-        value={typeof control.value === "string" ? control.value : "#000000"}
-        disabled={control.disabled}
-        onChange={(value) => emit(value)}
-      />
+      <label
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 text-[10px] text-stone-500"
+        title={control.label}
+      >
+        <span>{control.label}</span>
+        <input
+          type="color"
+          value={
+            typeof control.value === "string" && /^#[0-9a-f]{6}$/i.test(control.value)
+              ? control.value
+              : "#000000"
+          }
+          disabled={control.disabled}
+          onChange={(event) => emit(event.target.value)}
+          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
+        />
+      </label>
     );
   }
   if (control.kind === "select") {
     return (
-      <ToolSelect
-        label={control.label}
-        icon={control.icon}
-        value={String(control.value ?? "")}
-        options={control.options || []}
-        disabled={control.disabled}
-        onChange={(value) => emit(value)}
-      />
+      <label className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white pl-2 text-[10px] text-stone-500">
+        <span>{control.label}</span>
+        <select
+          value={String(control.value ?? "")}
+          disabled={control.disabled}
+          onChange={(event) => emit(event.target.value)}
+          className="h-full max-w-32 rounded-r-lg border-0 bg-transparent px-1.5 text-[11px] font-medium text-stone-700 outline-none"
+        >
+          {(control.options || []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
     );
   }
   if (control.kind === "number") {
     return (
-      <ToolNumber
-        label={control.label}
-        icon={control.icon}
-        value={asNumber(control.value)}
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        disabled={control.disabled}
-        onChange={(value) => emit(value)}
-      />
+      <label className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white pl-2 text-[10px] text-stone-500">
+        <span>{control.label}</span>
+        <input
+          type="number"
+          value={asNumber(control.value)}
+          min={control.min}
+          max={control.max}
+          step={control.step}
+          disabled={control.disabled}
+          onChange={(event) => emit(Number(event.target.value))}
+          className="h-full w-16 rounded-r-lg border-0 bg-transparent px-1.5 text-[11px] font-medium text-stone-700 outline-none"
+        />
+      </label>
     );
   }
   if (control.kind === "range") {
     return (
-      <ToolRange
-        label={control.label}
-        value={asNumber(control.value)}
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        disabled={control.disabled}
-        accent={accent}
-        onChange={(value) => emit(value)}
-      />
+      <label className="flex h-8 min-w-36 shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 text-[10px] text-stone-500">
+        <span>{control.label}</span>
+        <input
+          type="range"
+          value={asNumber(control.value)}
+          min={control.min}
+          max={control.max}
+          step={control.step}
+          disabled={control.disabled}
+          onChange={(event) => emit(Number(event.target.value))}
+          className="w-20"
+          style={{ accentColor: accent }}
+        />
+        <span className="min-w-7 text-right tabular-nums text-stone-700">
+          {Math.round(asNumber(control.value) * 100) / 100}
+        </span>
+      </label>
     );
   }
   return (
-    <ToolText
-      label={control.label}
-      value={typeof control.value === "string" ? control.value : ""}
-      disabled={control.disabled}
-      onChange={(value) => emit(value)}
-    />
+    <label className="flex h-8 min-w-44 shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white pl-2 text-[10px] text-stone-500">
+      <span>{control.label}</span>
+      <input
+        value={typeof control.value === "string" ? control.value : ""}
+        disabled={control.disabled}
+        maxLength={2_000}
+        onChange={(event) => emit(event.target.value)}
+        className="h-full min-w-0 flex-1 rounded-r-lg border-0 bg-transparent px-1.5 text-[11px] font-medium text-stone-700 outline-none"
+      />
+    </label>
   );
 }
 
@@ -157,84 +167,78 @@ export function SelectionToolbar({
   onCommand,
   className = "",
   accent = "#4f46e5",
-  onAskAi,
-  aiLabel = "让 AI 改",
-  aiBusy = false,
 }: SelectionToolbarProps) {
-  const [primary, overflow] = useMemo(() => {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [lastIdentity, setLastIdentity] = useState("");
+  const identity = context ? `${context.kind}:${context.id}` : "";
+  if (lastIdentity !== identity) {
+    setLastIdentity(identity);
+    setMoreOpen(false);
+  }
+  const [primary, more] = useMemo(() => {
     const controls = context?.controls || [];
     const visible: SelectionControl[] = [];
-    const more: SelectionControl[] = [];
+    const overflow: SelectionControl[] = [];
     controls.forEach((control, index) => {
-      if (control.placement === "more" || index >= 10) more.push(control);
+      if (control.placement === "more" || index >= 8) overflow.push(control);
       else visible.push(control);
     });
-    return [visible, more];
+    return [visible, overflow];
   }, [context]);
 
   if (!context || context.controls.length === 0) return null;
-
-  // 相邻控件若 group 不同则插入分隔线，形成 Canva 式功能簇。
-  const rendered: ReactNode[] = [];
-  let lastGroup: string | undefined;
-  primary.forEach((control, index) => {
-    if (index > 0 && control.group && control.group !== lastGroup) {
-      rendered.push(<ToolDivider key={`div-${control.id}`} />);
-    }
-    lastGroup = control.group;
-    rendered.push(
-      <ControlView
-        key={control.id}
-        control={control}
-        selectionId={context.id}
-        onCommand={onCommand}
-        accent={accent}
-      />,
-    );
-  });
-
   return (
-    <ToolbarShell variant="floating" label={context.label || "选中对象工具"} className={className}>
+    <div
+      data-selection-kind={context.kind}
+      data-selection-id={context.id}
+      className={`pointer-events-auto flex max-w-[min(92vw,76rem)] items-center gap-1.5 rounded-2xl border border-stone-200 bg-white/95 p-1.5 shadow-xl backdrop-blur ${className}`}
+      role="toolbar"
+      aria-label={context.label || "选中对象工具"}
+    >
       {context.label && (
         <>
-          <span className="max-w-28 truncate px-1.5 text-[10px] font-semibold text-[var(--muted,#78716c)]">
+          <span className="max-w-28 truncate px-1.5 text-[10px] font-semibold text-stone-500">
             {context.label}
           </span>
-          <ToolDivider />
+          <span className="h-5 w-px shrink-0 bg-stone-200" />
         </>
       )}
-      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">{rendered}</div>
-      {overflow.length > 0 && (
-        <>
-          <ToolDivider />
-          <ToolOverflow>
-            {overflow.map((control) => (
-              <ControlView
-                key={control.id}
-                control={control}
-                selectionId={context.id}
-                onCommand={onCommand}
-                accent={accent}
-              />
-            ))}
-          </ToolOverflow>
-        </>
-      )}
-      {onAskAi && (
-        <>
-          <ToolDivider />
+      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+        {primary.map((control) => (
+          <Control
+            key={control.id}
+            control={control}
+            selectionId={context.id}
+            onCommand={onCommand}
+            accent={accent}
+          />
+        ))}
+      </div>
+      {more.length > 0 && (
+        <div className="relative shrink-0">
           <button
             type="button"
-            disabled={aiBusy}
-            onClick={() => onAskAi(context)}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((value) => !value)}
+            className="h-8 rounded-lg border border-stone-200 bg-white px-2.5 text-[11px] font-medium text-stone-700 hover:bg-stone-50"
           >
-            <EditorIcon name="ai" className="h-4 w-4" />
-            <span className="max-w-[7rem] truncate">{aiBusy ? "…" : aiLabel}</span>
+            更多 ···
           </button>
-        </>
+          {moreOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 flex max-h-[min(60vh,32rem)] w-[min(24rem,85vw)] flex-wrap gap-1.5 overflow-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-2xl">
+              {more.map((control) => (
+                <Control
+                  key={control.id}
+                  control={control}
+                  selectionId={context.id}
+                  onCommand={onCommand}
+                  accent={accent}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
-    </ToolbarShell>
+    </div>
   );
 }

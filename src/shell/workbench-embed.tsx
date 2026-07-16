@@ -339,23 +339,23 @@ export function EmbedEditorPane({
   }, [phase, selectionCommand, sendToEditor]);
 
   return (
-    <div className="relative h-full w-full bg-[var(--card,#ffffff)]">
+    <div className="relative h-full w-full bg-white">
       {phase === "connecting" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#ffffff)]/90">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-white/90">
           <div className="text-center">
             <div
-              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
+              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200"
               style={{ borderTopColor: accent }}
             />
-            <p className="mt-3 text-[13px] text-[var(--muted,#78716c)]">{tt("正在连接编辑器…")}</p>
+            <p className="mt-3 text-[13px] text-stone-500">{tt("正在连接编辑器…")}</p>
           </div>
         </div>
       )}
       {phase === "error" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#ffffff)]">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-white">
           <div className="max-w-sm text-center">
-            <p className="text-[13px] font-medium text-[var(--fg,#292524)]">{tt("编辑器连接超时")}</p>
-            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+            <p className="text-[13px] font-medium text-stone-800">{tt("编辑器连接超时")}</p>
+            <p className="mt-2 text-[12px] leading-relaxed text-stone-500">
               {tt("专业编辑器没有在预期时间内就绪。你可以直接在新窗口打开它继续编辑。")}
             </p>
             <a
@@ -371,7 +371,7 @@ export function EmbedEditorPane({
         </div>
       )}
       {status && phase === "ready" && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[var(--fg,#1c1917)]/85 px-3 py-1 text-[11px] text-[var(--card,#ffffff)]">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-stone-900/80 px-3 py-1 text-[11px] text-white">
           {status}
         </div>
       )}

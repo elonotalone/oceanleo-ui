@@ -2,48 +2,28 @@
 
 import { useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME, PanelSection, ToolButton } from "../editor-chrome";
 import {
   CANVAS_PRESETS,
   type FabricImageEditorState,
   type ShapeKind,
 } from "./types";
 
-// 图片编辑器 overlay 侧栏内容（Canva 骨架 v2，2026-07-16）。
-// ---------------------------------------------------------------------------
-// 撤销/重做、加文字/形状/图片、下载/保存已上移到统一顶栏（AdvancedTopBar），
-// 选中对象的样式（字体/颜色/滤镜/裁剪…）在对象上方浮动 bar。这里只承载需要
-// 面板铺开的复杂选择项：工具/画笔 · 图层 · 调整（滤镜）· 画布背景 · AI 局部创作
-// · 导出设置。全部走语义 CSS 变量令牌（CHROME / var(--token)），天然跟随深浅主题。
-
-// 面板内的方块选择按钮（激活态用站点 accent），复用 CHROME hover/token。
-function ChipButton({
-  active,
+function Section({
+  title,
   children,
-  onClick,
-  disabled,
-  accent,
+  open = true,
 }: {
-  active?: boolean;
+  title: string;
   children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  accent: string;
+  open?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-lg border px-2 py-1.5 text-[11px] transition disabled:opacity-40 ${CHROME.hover}`}
-      style={
-        active
-          ? { borderColor: accent, color: accent, background: `${accent}12` }
-          : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
-      }
-    >
-      {children}
-    </button>
+    <details open={open} className="border-b border-stone-100">
+      <summary className="cursor-pointer select-none px-3 py-2.5 text-[11px] font-semibold text-stone-700">
+        {title}
+      </summary>
+      <div className="space-y-2 px-3 pb-3">{children}</div>
+    </details>
   );
 }
 
@@ -54,7 +34,6 @@ function Range({
   max,
   step = 1,
   suffix = "",
-  accent,
   onChange,
 }: {
   label: string;
@@ -63,17 +42,13 @@ function Range({
   max: number;
   step?: number;
   suffix?: string;
-  accent: string;
   onChange: (value: number) => void;
 }) {
   return (
     <label className="block">
-      <span className={`mb-1 flex justify-between text-[10px] ${CHROME.muted}`}>
+      <span className="mb-1 flex justify-between text-[10px] text-stone-500">
         <span>{label}</span>
-        <span className="tabular-nums text-[var(--fg,#1c1917)]">
-          {Math.round(value * 100) / 100}
-          {suffix}
-        </span>
+        <span>{Math.round(value * 100) / 100}{suffix}</span>
       </span>
       <input
         type="range"
@@ -82,10 +57,36 @@ function Range({
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full"
-        style={{ accentColor: accent }}
+        className="w-full accent-stone-700"
       />
     </label>
+  );
+}
+
+function ToolButton({
+  active,
+  children,
+  onClick,
+  disabled,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-lg border px-2 py-1.5 text-[10px] transition disabled:opacity-40 ${
+        active
+          ? "border-stone-800 bg-stone-800 text-white"
+          : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -101,7 +102,6 @@ export function FabricImageControls({
   const [imageUrl, setImageUrl] = useState("");
   const [customWidth, setCustomWidth] = useState(editor.doc.width);
   const [customHeight, setCustomHeight] = useState(editor.doc.height);
-  const filters = editor.filterInfo?.settings;
 
   const addUrl = async () => {
     if (!imageUrl.trim()) return;
@@ -110,22 +110,22 @@ export function FabricImageControls({
   };
 
   return (
-    <div className="space-y-1">
-      <PanelSection title={tt("工具")}>
+    <div className="h-full overflow-y-auto bg-white">
+      <Section title={tt("工具")}>
         <div className="grid grid-cols-3 gap-1.5">
-          <ChipButton accent={accent} active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>
+          <ToolButton active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>
             {tt("选择")}
-          </ChipButton>
-          <ChipButton accent={accent} active={editor.activeTool === "draw"} onClick={() => editor.setActiveTool("draw")}>
+          </ToolButton>
+          <ToolButton active={editor.activeTool === "draw"} onClick={() => editor.setActiveTool("draw")}>
             {tt("画笔")}
-          </ChipButton>
-          <ChipButton accent={accent} active={editor.activeTool === "erase"} onClick={() => editor.setActiveTool("erase")}>
+          </ToolButton>
+          <ToolButton active={editor.activeTool === "erase"} onClick={() => editor.setActiveTool("erase")}>
             {tt("橡皮")}
-          </ChipButton>
+          </ToolButton>
         </div>
         {(editor.activeTool === "draw" || editor.activeTool === "erase") && (
           <>
-            <label className={`flex items-center justify-between text-[10px] ${CHROME.muted}`}>
+            <label className="flex items-center justify-between text-[10px] text-stone-500">
               {tt("笔刷颜色")}
               <input
                 type="color"
@@ -135,18 +135,18 @@ export function FabricImageControls({
                 className="h-7 w-12 rounded border-0 bg-transparent"
               />
             </label>
-            <Range accent={accent} label={tt("笔刷大小")} value={editor.brush.width} min={1} max={120} onChange={(width) => editor.setBrush({ width })} suffix="px" />
+            <Range label={tt("笔刷大小")} value={editor.brush.width} min={1} max={120} onChange={(width) => editor.setBrush({ width })} suffix="px" />
           </>
         )}
-      </PanelSection>
+      </Section>
 
-      <PanelSection title={tt("添加对象")}>
+      <Section title={tt("添加对象")}>
         <div className="grid grid-cols-3 gap-1.5">
-          <ChipButton accent={accent} onClick={editor.addText}>{tt("文字")}</ChipButton>
+          <ToolButton onClick={editor.addText}>{tt("文字")}</ToolButton>
           {(["rect", "circle", "ellipse", "line", "arrow"] as ShapeKind[]).map((shape) => (
-            <ChipButton accent={accent} key={shape} onClick={() => editor.addShape(shape)}>
+            <ToolButton key={shape} onClick={() => editor.addShape(shape)}>
               {tt({ rect: "矩形", circle: "圆形", ellipse: "椭圆", line: "线条", arrow: "箭头" }[shape])}
-            </ChipButton>
+            </ToolButton>
           ))}
         </div>
         <input
@@ -160,7 +160,7 @@ export function FabricImageControls({
             event.currentTarget.value = "";
           }}
         />
-        <ChipButton accent={accent} onClick={() => fileRef.current?.click()}>{tt("添加本地图片图层")}</ChipButton>
+        <ToolButton onClick={() => fileRef.current?.click()}>{tt("添加本地图片图层")}</ToolButton>
         <div className="flex gap-1">
           <input
             value={imageUrl}
@@ -169,25 +169,22 @@ export function FabricImageControls({
               if (event.key === "Enter") void addUrl();
             }}
             placeholder={tt("粘贴图片 URL")}
-            className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[10px] outline-none ${CHROME.border} ${CHROME.subtle} text-[var(--fg,#1c1917)] placeholder:text-[var(--faint,#a8a29e)] focus:border-[var(--border-strong,#a8a29e)]`}
+            className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-1.5 text-[10px] outline-none focus:border-stone-400"
           />
-          <ChipButton accent={accent} disabled={!imageUrl.trim()} onClick={() => void addUrl()}>{tt("添加")}</ChipButton>
+          <ToolButton disabled={!imageUrl.trim()} onClick={() => void addUrl()}>{tt("添加")}</ToolButton>
         </div>
-      </PanelSection>
+      </Section>
 
-      <PanelSection title={tt("图层")}>
+      <Section title={tt("图层")}>
         <div className="max-h-56 space-y-1 overflow-y-auto">
           {[...editor.layers].reverse().map((layer) => (
             <button
               key={layer.id}
               type="button"
               onClick={() => editor.selectLayer(layer.id)}
-              className={`flex w-full items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-[10px] transition ${CHROME.hover}`}
-              style={
-                layer.selected
-                  ? { borderColor: accent, color: accent, background: `${accent}12` }
-                  : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
-              }
+              className={`flex w-full items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-[10px] ${
+                layer.selected ? "border-stone-700 bg-stone-50" : "border-stone-100"
+              }`}
             >
               <span className="min-w-0 flex-1 truncate">{layer.kind}</span>
               <span onClick={(event) => { event.stopPropagation(); editor.toggleLayerVisible(layer.id); }}>{layer.visible ? "◉" : "○"}</span>
@@ -200,47 +197,13 @@ export function FabricImageControls({
               )}
             </button>
           ))}
-          {editor.layers.length === 0 && (
-            <p className={`px-1 text-[11px] leading-relaxed ${CHROME.muted}`}>
-              {tt("用顶栏“加文字/形状/图片”创建图层，或从素材库拖入图片。")}
-            </p>
-          )}
         </div>
-      </PanelSection>
+      </Section>
 
-      <PanelSection title={tt("调整")} defaultOpen={Boolean(filters)}>
-        {filters ? (
-          <>
-            <Range accent={accent} label={tt("亮度")} value={filters.brightness} min={-100} max={100} onChange={(value) => editor.setFilter("brightness", value)} />
-            <Range accent={accent} label={tt("对比度")} value={filters.contrast} min={-100} max={100} onChange={(value) => editor.setFilter("contrast", value)} />
-            <Range accent={accent} label={tt("饱和度")} value={filters.saturation} min={-100} max={100} onChange={(value) => editor.setFilter("saturation", value)} />
-            <Range accent={accent} label={tt("模糊")} value={filters.blur} min={0} max={100} onChange={(value) => editor.setFilter("blur", value)} />
-            <Range accent={accent} label={tt("像素化")} value={filters.pixelate} min={0} max={100} onChange={(value) => editor.setFilter("pixelate", value)} />
-            <div className="grid grid-cols-3 gap-1.5">
-              <ChipButton accent={accent} active={filters.grayscale} onClick={() => editor.setFilter("grayscale", !filters.grayscale)}>{tt("黑白")}</ChipButton>
-              <ChipButton accent={accent} active={filters.sepia} onClick={() => editor.setFilter("sepia", !filters.sepia)}>{tt("怀旧")}</ChipButton>
-              <ChipButton accent={accent} active={filters.invert} onClick={() => editor.setFilter("invert", !filters.invert)}>{tt("反相")}</ChipButton>
-            </div>
-            <button
-              type="button"
-              onClick={editor.resetFilters}
-              className={`w-full rounded-lg border px-2 py-1.5 text-[10px] transition ${CHROME.border} ${CHROME.fg2} ${CHROME.hover}`}
-            >
-              {tt("重置滤镜")}
-            </button>
-          </>
-        ) : (
-          <p className={`px-1 text-[11px] leading-relaxed ${CHROME.muted}`}>
-            {tt("选中一张图片图层后可在这里调整亮度、对比度与滤镜。")}
-          </p>
-        )}
-      </PanelSection>
-
-      <PanelSection title={tt("画布背景")}>
+      <Section title={tt("画布")}>
         <div className="grid grid-cols-2 gap-1">
           {CANVAS_PRESETS.map((preset) => (
-            <ChipButton
-              accent={accent}
+            <ToolButton
               key={preset.id}
               active={editor.doc.width === preset.width && editor.doc.height === preset.height}
               onClick={() => {
@@ -250,28 +213,28 @@ export function FabricImageControls({
               }}
             >
               {tt(preset.label)}
-            </ChipButton>
+            </ToolButton>
           ))}
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-1">
-          <input type="number" value={customWidth} min={16} max={8192} onChange={(event) => setCustomWidth(Number(event.target.value))} className={`min-w-0 rounded border px-2 py-1 text-[10px] ${CHROME.border} ${CHROME.subtle} text-[var(--fg,#1c1917)]`} />
-          <span className={CHROME.muted}>×</span>
-          <input type="number" value={customHeight} min={16} max={8192} onChange={(event) => setCustomHeight(Number(event.target.value))} className={`min-w-0 rounded border px-2 py-1 text-[10px] ${CHROME.border} ${CHROME.subtle} text-[var(--fg,#1c1917)]`} />
-          <ChipButton accent={accent} onClick={() => editor.resizeDoc(customWidth, customHeight)}>{tt("应用")}</ChipButton>
+          <input type="number" value={customWidth} min={16} max={8192} onChange={(event) => setCustomWidth(Number(event.target.value))} className="min-w-0 rounded border border-stone-200 px-2 py-1 text-[10px]" />
+          <span className="text-stone-400">×</span>
+          <input type="number" value={customHeight} min={16} max={8192} onChange={(event) => setCustomHeight(Number(event.target.value))} className="min-w-0 rounded border border-stone-200 px-2 py-1 text-[10px]" />
+          <ToolButton onClick={() => editor.resizeDoc(customWidth, customHeight)}>{tt("应用")}</ToolButton>
         </div>
-        <label className={`flex items-center justify-between text-[10px] ${CHROME.muted}`}>
+        <label className="flex items-center justify-between text-[10px] text-stone-500">
           {tt("画布背景")}
           <input type="color" value={editor.canvasBackground} onChange={(event) => editor.setCanvasBackground(event.target.value)} />
         </label>
-      </PanelSection>
+      </Section>
 
-      <PanelSection title={tt("AI 局部创作")} defaultOpen={false}>
+      <Section title={tt("AI 局部创作")} open={false}>
         <textarea
           value={editor.aiPrompt}
           onChange={(event) => editor.setAiPrompt(event.target.value)}
           rows={4}
           placeholder={tt("描述希望 AI 如何修改当前画面")}
-          className={`w-full resize-y rounded-lg border p-2 text-[10px] outline-none ${CHROME.border} ${CHROME.subtle} text-[var(--fg,#1c1917)] placeholder:text-[var(--faint,#a8a29e)] focus:border-[var(--border-strong,#a8a29e)]`}
+          className="w-full resize-y rounded-lg border border-stone-200 p-2 text-[10px] outline-none focus:border-stone-400"
         />
         <button
           type="button"
@@ -282,25 +245,21 @@ export function FabricImageControls({
         >
           {editor.aiBusy ? tt("AI 处理中…") : tt("应用 AI 修改")}
         </button>
-      </PanelSection>
+      </Section>
 
-      <PanelSection title={tt("导出设置")} defaultOpen={false}>
+      <Section title={tt("导出设置")}>
         <div className="grid grid-cols-3 gap-1">
           {(["png", "jpeg", "webp"] as const).map((format) => (
-            <ChipButton accent={accent} key={format} active={editor.exportFormat === format} onClick={() => editor.setExportFormat(format)}>
+            <ToolButton key={format} active={editor.exportFormat === format} onClick={() => editor.setExportFormat(format)}>
               {format.toUpperCase()}
-            </ChipButton>
+            </ToolButton>
           ))}
         </div>
         {editor.exportFormat !== "png" && (
-          <Range accent={accent} label={tt("输出质量")} value={editor.exportQuality} min={10} max={100} onChange={editor.setExportQuality} suffix="%" />
+          <Range label={tt("输出质量")} value={editor.exportQuality} min={10} max={100} onChange={editor.setExportQuality} suffix="%" />
         )}
-        <Range accent={accent} label={tt("输出倍率")} value={editor.exportScale} min={0.5} max={4} step={0.25} onChange={editor.setExportScale} suffix="×" />
-        <div className="grid grid-cols-2 gap-1.5">
-          <ToolButton label={tt("下载")} icon="download" accent={accent} disabled={editor.loading} onClick={editor.download} />
-          <ToolButton label={editor.saving ? tt("保存中…") : tt("保存")} icon="save" accent={accent} disabled={editor.loading || editor.saving} onClick={() => void editor.save()} />
-        </div>
-      </PanelSection>
+        <Range label={tt("输出倍率")} value={editor.exportScale} min={0.5} max={4} step={0.25} onChange={editor.setExportScale} suffix="×" />
+      </Section>
     </div>
   );
 }

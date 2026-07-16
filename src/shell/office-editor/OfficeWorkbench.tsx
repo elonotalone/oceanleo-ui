@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME, PanelSection } from "../editor-chrome";
 import {
   fetchOfficeConfig,
   loadOfficeScript,
@@ -301,43 +300,39 @@ export function OfficeControls({
 }) {
   const tt = useUI();
   return (
-    <div className="space-y-1">
-      <PanelSection title={tt("Office 专业编辑")}>
-        <p className="px-1 text-[11px] font-medium text-[var(--fg,#292524)]">
-          {tt("Office 专业编辑")}
-          {editor.extension ? ` · .${editor.extension}` : ""}
-        </p>
-        <p className="px-1 text-[11px] leading-relaxed text-[var(--fg-2,#57534e)]">
-          {tt(
-            "右侧是完整的 Office 编辑器：排版、样式、表格、图形、批注等全部可用。保存后的新版本会进入我的库，不覆盖原文件。",
-          )}
-        </p>
-        {editor.state === "loading" && (
-          <p className={`rounded-lg px-3 py-2 text-[11px] ${CHROME.subtle} ${CHROME.muted}`}>
-            {tt("正在加载编辑器…")}
-          </p>
+    <div className="space-y-3 p-3 text-[12px] leading-relaxed text-stone-600">
+      <p className="font-medium text-stone-800">
+        {tt("Office 专业编辑")}
+        {editor.extension ? ` · .${editor.extension}` : ""}
+      </p>
+      <p>
+        {tt(
+          "右侧是完整的 Office 编辑器：排版、样式、表格、图形、批注等全部可用。保存后的新版本会进入我的库，不覆盖原文件。",
         )}
-        {editor.state === "error" && (
-          <div className="space-y-2">
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-600">
-              {editor.error}
-            </p>
-            <button
-              type="button"
-              onClick={() => void editor.retry()}
-              className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
-              style={{ background: accent }}
-            >
-              {tt("重试")}
-            </button>
-          </div>
-        )}
-        <p className="px-1 text-[11px] text-[var(--muted,#78716c)]">
-          {editor.dirty
-            ? tt("有修改正在同步；关闭时会先由 Office 编辑器确认。")
-            : tt("编辑内容由 OceanLeo 自托管的文档服务处理，自动保存开启。")}
+      </p>
+      {editor.state === "loading" && (
+        <p className="rounded-lg bg-stone-100 px-3 py-2 text-stone-500">
+          {tt("正在加载编辑器…")}
         </p>
-      </PanelSection>
+      )}
+      {editor.state === "error" && (
+        <div className="space-y-2">
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-red-700">{editor.error}</p>
+          <button
+            type="button"
+            onClick={() => void editor.retry()}
+            className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
+            style={{ background: accent }}
+          >
+            {tt("重试")}
+          </button>
+        </div>
+      )}
+      <p className="text-[11px] text-stone-400">
+        {editor.dirty
+          ? tt("有修改正在同步；关闭时会先由 Office 编辑器确认。")
+          : tt("编辑内容由 OceanLeo 自托管的文档服务处理，自动保存开启。")}
+      </p>
     </div>
   );
 }
@@ -345,14 +340,14 @@ export function OfficeControls({
 export function OfficeStage({ editor }: { editor: OfficeWorkbenchEditor }) {
   const tt = useUI();
   return (
-    <div className="relative h-full w-full bg-[var(--bg,#f5f5f4)]">
+    <div className="relative h-full w-full bg-stone-100">
       {editor.state === "loading" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#ffffff)]/80 text-[13px] text-[var(--muted,#78716c)]">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-[13px] text-stone-500">
           {tt("正在加载 Office 编辑器…")}
         </div>
       )}
       {editor.state === "error" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#ffffff)] text-[13px] text-rose-600">
+        <div className="absolute inset-0 z-10 grid place-items-center bg-white text-[13px] text-red-600">
           {editor.error}
         </div>
       )}
@@ -369,7 +364,7 @@ export function OfficeWorkbench({ item, siteId, accent, onSaveQueued }: OfficeWo
   }, [editor.saveCount, onSaveQueued]);
   return (
     <div className="flex h-full">
-      <div className={`w-72 shrink-0 border-r ${CHROME.border} ${CHROME.surface}`}>
+      <div className="w-72 shrink-0 border-r border-stone-200 bg-white">
         <OfficeControls editor={editor} accent={accent} />
       </div>
       <div className="min-w-0 flex-1">

@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { CHROME } from "../editor-chrome";
 import type { FabricImageEditorState } from "./types";
 
 function Action({
@@ -10,14 +9,12 @@ function Action({
   onClick,
   disabled,
   active,
-  accent,
   label,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  accent?: string;
   label?: string;
 }) {
   return (
@@ -27,12 +24,11 @@ function Action({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition disabled:opacity-35 ${CHROME.hover}`}
-      style={
+      className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition disabled:opacity-35 ${
         active
-          ? { borderColor: accent, color: accent, background: `${accent}12` }
-          : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
-      }
+          ? "border-stone-800 bg-stone-800 text-white"
+          : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+      }`}
     >
       {children}
     </button>
@@ -84,22 +80,22 @@ export function FabricImageStage({
   }, [editor]);
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${CHROME.subtle}`}>
-      <div className={`flex shrink-0 flex-wrap items-center gap-1.5 border-b ${CHROME.border} ${CHROME.surface} px-3 py-2`}>
+    <div className="flex h-full min-h-0 flex-col bg-stone-100">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-stone-200 bg-white px-3 py-2">
         <Action label={tt("撤销")} disabled={!editor.canUndo} onClick={editor.undo}>↶</Action>
         <Action label={tt("重做")} disabled={!editor.canRedo} onClick={editor.redo}>↷</Action>
-        <span className={`mx-1 h-5 w-px ${CHROME.divider}`} />
-        <Action accent={accent} active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>{tt("选择 V")}</Action>
-        <Action accent={accent} active={editor.activeTool === "draw"} onClick={() => editor.setActiveTool("draw")}>{tt("画笔 B")}</Action>
-        <Action accent={accent} active={editor.activeTool === "erase"} onClick={() => editor.setActiveTool("erase")}>{tt("橡皮 E")}</Action>
-        <span className={`mx-1 h-5 w-px ${CHROME.divider}`} />
+        <span className="mx-1 h-5 w-px bg-stone-200" />
+        <Action active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>{tt("选择 V")}</Action>
+        <Action active={editor.activeTool === "draw"} onClick={() => editor.setActiveTool("draw")}>{tt("画笔 B")}</Action>
+        <Action active={editor.activeTool === "erase"} onClick={() => editor.setActiveTool("erase")}>{tt("橡皮 E")}</Action>
+        <span className="mx-1 h-5 w-px bg-stone-200" />
         <Action onClick={editor.zoomOut}>−</Action>
-        <span className={`w-12 text-center text-[10px] tabular-nums ${CHROME.muted}`}>{Math.round(editor.zoom * 100)}%</span>
+        <span className="w-12 text-center text-[10px] tabular-nums text-stone-500">{Math.round(editor.zoom * 100)}%</span>
         <Action onClick={editor.zoomIn}>＋</Action>
         <Action onClick={editor.zoomFit}>{tt("适应")}</Action>
         <Action onClick={editor.zoomTo100}>100%</Action>
         <span className="min-w-0 flex-1" />
-        <span className={`text-[10px] tabular-nums ${CHROME.muted}`}>
+        <span className="text-[10px] tabular-nums text-stone-400">
           {editor.doc.width} × {editor.doc.height}
         </span>
       </div>
@@ -117,28 +113,28 @@ export function FabricImageStage({
       >
         <canvas ref={editor.stageCanvasRef} aria-label={tt("图片编辑画布")} />
         {editor.loading && (
-          <div className="absolute inset-0 z-20 grid place-items-center bg-[var(--card,#ffffff)]/85">
+          <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">
             <div className="text-center">
               <div
-                className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
+                className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200"
                 style={{ borderTopColor: accent }}
               />
-              <p className={`mt-3 text-[11px] ${CHROME.muted}`}>{tt("正在载入对象化图片画布…")}</p>
+              <p className="mt-3 text-[11px] text-stone-500">{tt("正在载入对象化图片画布…")}</p>
             </div>
           </div>
         )}
         {editor.cropping && (
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-[var(--fg,#0c0a09)]/80 px-3 py-1 text-[10px] text-[var(--card,#ffffff)]">
-            {tt("拖动裁剪框，完成后在对象上方点击“应用裁剪”")}
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-stone-950/80 px-3 py-1 text-[10px] text-white">
+            {tt("拖动裁剪框，完成后点击左栏“应用裁剪”")}
           </div>
         )}
       </div>
 
-      <div className={`flex shrink-0 flex-wrap items-center gap-2 border-t ${CHROME.border} ${CHROME.surface} px-4 py-2.5`}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-4 py-2.5">
         <span
           role="status"
           className={`min-w-0 flex-1 truncate text-[11px] ${
-            editor.error ? "text-rose-500" : CHROME.muted
+            editor.error ? "text-red-600" : "text-stone-500"
           }`}
         >
           {editor.error ||
@@ -151,7 +147,7 @@ export function FabricImageStage({
           type="button"
           onClick={editor.download}
           disabled={editor.loading}
-          className={`rounded-lg border px-3 py-1.5 text-[11px] transition ${CHROME.border} ${CHROME.fg2} ${CHROME.hover} disabled:opacity-40`}
+          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[11px] text-stone-600 hover:bg-stone-50 disabled:opacity-40"
         >
           {tt("下载")}
         </button>

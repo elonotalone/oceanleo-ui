@@ -55,7 +55,6 @@ export interface DeckEditorState {
   selectElement: (id: string) => void;
   patchElement: (id: string, patch: Partial<DeckElement>) => void;
   addTextElement: () => void;
-  addShapeElement: (shape?: string) => void;
   insertImageElement: (src: string, alt?: string, replace?: boolean) => void;
   duplicateElement: () => void;
   deleteElement: () => void;
@@ -578,31 +577,6 @@ export function useDeckEditor(
     });
   }, [addElement, tt]);
 
-  const addShapeElement = useCallback(
-    (shape = "rect") => {
-      const current = deckRef.current.slides.find(
-        (slide) => slide.id === activeRef.current,
-      );
-      addElement({
-        id: deckId("element"),
-        type: "shape",
-        x: 30,
-        y: 30,
-        width: 40,
-        height: 30,
-        rotation: 0,
-        order:
-          Math.max(0, ...(current?.elements.map((element) => element.order) || [])) +
-          1,
-        shape,
-        fill: deckTheme(deckRef.current.theme).accent,
-        borderColor: "#00000000",
-        borderWidth: 0,
-      });
-    },
-    [addElement],
-  );
-
   const insertImageElement = useCallback(
     (src: string, alt = "", replace = false) => {
       const selected = deckRef.current.slides
@@ -807,7 +781,6 @@ export function useDeckEditor(
     selectElement,
     patchElement,
     addTextElement,
-    addShapeElement,
     insertImageElement,
     duplicateElement,
     deleteElement,

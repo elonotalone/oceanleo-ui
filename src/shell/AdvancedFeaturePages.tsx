@@ -83,7 +83,7 @@ function FeatureCard({
   return (
     <Link
       href={advancedFeatureHref(feature)}
-      className="group relative overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] p-5 transition hover:-translate-y-1 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-lg"
+      className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-white p-5 transition hover:-translate-y-1 hover:border-stone-300 hover:shadow-lg"
     >
       <div
         className="absolute inset-x-0 top-0 h-1"
@@ -98,17 +98,17 @@ function FeatureCard({
       >
         {feature.title.slice(0, 1)}
       </div>
-      <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted,#78716c)]">
+      <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">
         {feature.eyebrow}
       </p>
-      <h2 className="mt-1 text-[17px] font-semibold text-[var(--fg,#292524)]">
+      <h2 className="mt-1 text-[17px] font-semibold text-stone-900">
         {tt(feature.title)}
       </h2>
-      <p className="mt-2 min-h-10 text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">
+      <p className="mt-2 min-h-10 text-[12px] leading-relaxed text-stone-500">
         {tt(feature.description)}
       </p>
-      <div className="mt-5 flex items-center justify-between border-t border-[var(--divider,#e7e5e4)] pt-3">
-        <span className="text-[10px] text-[var(--muted,#78716c)]">{feature.examples}</span>
+      <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-3">
+        <span className="text-[10px] text-stone-400">{feature.examples}</span>
         <span
           className="text-[12px] font-semibold transition group-hover:translate-x-1"
           style={{ color: feature.accent }}
@@ -123,15 +123,15 @@ function FeatureCard({
 export function AdvancedFeatureCatalog() {
   const tt = useUI();
   return (
-    <main className="min-h-screen bg-[var(--bg,#f5f5f4)] px-5 py-8 sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-stone-50/70 px-5 py-8 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-600">
           Advanced features
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--fg,#1c1917)]">
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-950">
           {tt("高级功能")}
         </h1>
-        <p className="mt-3 max-w-2xl text-[14px] leading-7 text-[var(--fg-2,#57534e)]">
+        <p className="mt-3 max-w-2xl text-[14px] leading-7 text-stone-500">
           {tt("独立于普通 App 的专业编辑空间。选择功能后可上传文件，或从跨站我的库继续已有内容。")}
         </p>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -283,9 +283,9 @@ export function AdvancedFeatureRoute({
 
   if (!feature) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[var(--bg,#f5f5f4)] p-8 text-center">
+      <main className="grid min-h-screen place-items-center bg-stone-50 p-8 text-center">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--fg,#292524)]">
+          <h1 className="text-xl font-semibold text-stone-900">
             {tt("高级功能不存在")}
           </h1>
           <Link
@@ -314,12 +314,12 @@ export function AdvancedFeatureRoute({
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-[var(--bg,#f5f5f4)]">
-      <header className="shrink-0 border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#ffffff)] px-5 py-5 sm:px-8">
+    <main className="flex min-h-screen flex-col bg-stone-50/70">
+      <header className="shrink-0 border-b border-stone-200 bg-white px-5 py-5 sm:px-8">
         <div className="mx-auto flex max-w-6xl items-center gap-4">
           <Link
             href="/advanced"
-            className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,0.05))]"
+            className="grid h-9 w-9 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-50"
             aria-label={tt("返回高级功能")}
           >
             ←
@@ -329,14 +329,14 @@ export function AdvancedFeatureRoute({
             style={{ background: feature.accent }}
           />
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted,#78716c)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">
               {feature.eyebrow}
             </p>
-            <h1 className="truncate text-xl font-semibold text-[var(--fg,#292524)]">
+            <h1 className="truncate text-xl font-semibold text-stone-900">
               {tt(feature.title)}
             </h1>
           </div>
-          <span className="hidden text-[11px] text-[var(--muted,#78716c)] sm:block">
+          <span className="hidden text-[11px] text-stone-400 sm:block">
             {feature.examples}
           </span>
         </div>
@@ -347,13 +347,13 @@ export function AdvancedFeatureRoute({
         </div>
       )}
       {loading ? (
-        <div className="grid min-h-[55vh] flex-1 place-items-center text-[13px] text-[var(--muted,#78716c)]">
+        <div className="grid min-h-[55vh] flex-1 place-items-center text-[13px] text-stone-400">
           {tt("正在打开高级功能…")}
         </div>
       ) : (
         <div className="grid min-h-[55vh] flex-1 place-items-center p-8 text-center">
           <div className="max-w-md">
-            <p className="text-sm text-[var(--fg-2,#57534e)]">
+            <p className="text-sm text-stone-500">
               {error || tt("无法打开高级功能，请返回后重试。")}
             </p>
             <button
