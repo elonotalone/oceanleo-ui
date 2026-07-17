@@ -85,7 +85,65 @@ export function GridStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-2">
+      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-2">
+        <select
+          value={editor.activeSheetId}
+          onChange={(event) => editor.setActiveSheet(event.target.value)}
+          aria-label={tt("工作表")}
+          className="h-8 w-32 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] font-medium text-[var(--fg,#292524)] outline-none"
+        >
+          {editor.sheets.map((sheet) => (
+            <option key={sheet.id} value={sheet.id}>
+              {sheet.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={editor.addSheet}
+          aria-label={tt("新增工作表")}
+          title={tt("新增工作表")}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-sm text-[var(--fg-2,#57534e)]"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={editor.deleteSheet}
+          disabled={editor.sheets.length <= 1}
+          aria-label={tt("删除工作表")}
+          title={tt("删除工作表")}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-sm text-[var(--fg-2,#57534e)] disabled:opacity-30"
+        >
+          ×
+        </button>
+        <input
+          key={editor.activeSheetId}
+          defaultValue={editor.activeSheet.name}
+          onBlur={(event) => editor.renameSheet(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          aria-label={tt("工作表名称")}
+          className="h-8 w-28 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] text-[var(--fg,#292524)] outline-none"
+        />
+        <label className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[10px] text-[var(--muted,#78716c)]">
+          <input
+            type="checkbox"
+            checked={editor.headerRow}
+            onChange={(event) => editor.setHeaderRow(event.target.checked)}
+            style={{ accentColor: accent }}
+          />
+          {tt("表头")}
+        </label>
+        <input
+          value={editor.filterQuery}
+          onChange={(event) => editor.setFilterQuery(event.target.value)}
+          placeholder={tt("筛选当前列")}
+          aria-label={tt("筛选当前列")}
+          className="h-8 w-32 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] text-[var(--fg,#292524)] outline-none"
+        />
+        <span className="mx-1 h-5 w-px shrink-0 bg-[var(--border,#e7e5e4)]" />
         <span className="w-16 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
           {selectedAddress}
         </span>
@@ -226,40 +284,6 @@ export function GridStage({
             {tt("没有符合筛选条件的行")}
           </div>
         )}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-1.5">
-        {editor.sheets.map((sheet) => (
-          <button
-            key={sheet.id}
-            type="button"
-            onClick={() => editor.setActiveSheet(sheet.id)}
-            className="max-w-44 shrink-0 truncate rounded-md border px-3 py-1 text-[10px] transition"
-            style={
-              editor.activeSheetId === sheet.id
-                ? {
-                    borderColor: accent,
-                    color: accent,
-                    background: "#ffffff",
-                  }
-                : {
-                    borderColor: "#e7e5e4",
-                    color: "#78716c",
-                    background: "#f5f5f4",
-                  }
-            }
-          >
-            {sheet.name}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={editor.addSheet}
-          aria-label={tt("新增工作表")}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-        >
-          +
-        </button>
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ export function useAdvancedAutoSave({
           const activeSession = sessionRef.current;
           return activeSession
             ? activeSession.recordSavedItem(item)
-            : false;
+            : true;
         },
         onStateChange: (next) => {
           if (mountedRef.current) setState(next);

@@ -2,7 +2,6 @@
 
 import type { LibraryItem } from "../library-data";
 import { useOnSaved } from "./doc-io";
-import { GridControls } from "./GridControls";
 import { GridStage } from "./GridStage";
 import { useGridEditor } from "./use-grid-editor";
 
@@ -23,13 +22,8 @@ export function GridEditor({
   const editor = useGridEditor(item, siteId);
   useOnSaved(editor.savedUrl, onSaved);
   return (
-    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
-      <aside className="w-72 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)]">
-        <GridControls editor={editor} accent={accent} />
-      </aside>
-      <main className="min-w-0 flex-1">
-        <GridStage editor={editor} accent={accent} />
-      </main>
+    <div className="h-full min-h-0 bg-[var(--card,#fff)]">
+      <GridStage editor={editor} accent={accent} />
     </div>
   );
 }

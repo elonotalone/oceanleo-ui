@@ -95,7 +95,8 @@ test("advanced editors autosave projects and reserve header actions for delivery
   );
   assert.match(header, /正在自动保存/);
   assert.match(header, /CloudAutoSaveIcon/);
-  assert.match(header, /已自动保存/);
+  assert.match(header, /tt\("已保存"\)/);
+  assert.doesNotMatch(header, /已自动保存/);
   assert.match(header, /保存遇到问题/);
   assert.match(autosave, /AdvancedPersistenceController/);
   assert.match(autosave, /controllerRef\.current\?\.observe/);

@@ -7,7 +7,6 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { GridContextToolbar } from "../doc-editors/GridContextToolbar";
-import { GridControls } from "../doc-editors/GridControls";
 import { GridStage } from "../doc-editors/GridStage";
 import { useGridEditor } from "../doc-editors/use-grid-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -89,11 +88,6 @@ export function GridRoute({
       adapter={{
         id: "grid",
         label: editorToolLabel({ type: "grid" }),
-        toolbox: {
-          label: "数据与工作表",
-          icon: "pages",
-          content: <GridControls editor={editor} accent={accent} />,
-        },
         contextToolbar: (
           <GridContextToolbar editor={editor} accent={accent} />
         ),

@@ -28,6 +28,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
   type ReactNode,
 } from "react";
 import { IconLibrary } from "./icons";
@@ -80,6 +81,8 @@ export interface WorkspacePaneDetail {
 }
 
 export interface WorkspacePaneController {
+  /** Fullscreen keeps the semantic left pane and the right editor together. */
+  fullscreenRef: RefObject<HTMLDivElement | null>;
   libraryDock: WorkspaceLibraryDock;
   setLibraryDock: (dock: WorkspaceLibraryDock) => void;
   libraryOpen: boolean;
@@ -318,6 +321,7 @@ export function SplitWorkspace({
   }, []);
   const paneController = useMemo<WorkspacePaneController>(
     () => ({
+      fullscreenRef: wrapRef,
       libraryDock,
       setLibraryDock,
       libraryOpen,
@@ -710,7 +714,9 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
-          <div className="shrink-0">{libraryDockHandle}</div>
+          {dockedLibrary && (
+            <div className="shrink-0">{libraryDockHandle}</div>
+          )}
           <div className="shrink-0">
             <MaxButton which="library" />
           </div>

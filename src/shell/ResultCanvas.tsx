@@ -729,18 +729,14 @@ export function ResultCanvas({
   };
 
   const libraryContent = content[selected] || empty || content.template;
+  const dockableLibrarySlot: WorkspaceSlotId | null =
+    selected === "materials" || selected === "mine" ? selected : null;
   const libraryDockedLeft =
-    workspacePane?.libraryOpen === true && workspacePane.libraryDock === "left";
+    Boolean(dockableLibrarySlot) &&
+    workspacePane?.libraryOpen === true &&
+    workspacePane.libraryDock === "left";
   const dockedLibraryNode = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-stone-100 p-2">
-        <FixedWorkspaceTabs
-          slots={visibleSlots}
-          selected={selected}
-          onSelect={select}
-          accent={accent}
-        />
-      </div>
       <div className="min-h-0 flex-1 overflow-hidden">{libraryContent}</div>
     </div>
   );
@@ -755,20 +751,20 @@ export function ResultCanvas({
   const clearDockedLibrary = workspacePane?.clearDockedLibrary;
   useLayoutEffect(() => {
     const ownerId = dockedLibraryOwnerRef.current;
-    if (!libraryDockedLeft || !showDockedLibrary || !clearDockedLibrary) {
+    if (!dockableLibrarySlot || !showDockedLibrary || !clearDockedLibrary) {
       clearDockedLibrary?.(ownerId);
       return;
     }
     showDockedLibrary({
       ownerId,
-      id: "workspace-library",
-      label: tt("库"),
+      id: `workspace-library:${dockableLibrarySlot}`,
+      label: tt(SLOT_LABELS[dockableLibrarySlot]),
       content: <LiveWorkspaceNode store={dockedLibraryStoreRef.current} />,
     });
     return () => clearDockedLibrary(ownerId);
   }, [
     clearDockedLibrary,
-    libraryDockedLeft,
+    dockableLibrarySlot,
     showDockedLibrary,
     tt,
   ]);
@@ -814,11 +810,12 @@ export function ResultCanvas({
       libraryContent
     ));
 
-  // Library tabs belong to the library. When the library is docked left, or an
-  // editor owns the main canvas, remove the right-side library header entirely.
+  // Only Materials/My Library may move left. The fixed tabs remain on the
+  // right so selecting Inspiration/Generated/Browser restores the normal pane
+  // instead of dragging the complete five-slot library as one block.
   useLayoutEffect(() => {
     if (!rightSlot) return;
-    const frameless = Boolean(activeCanvasEntry) || libraryDockedLeft;
+    const frameless = Boolean(activeCanvasEntry);
     rightSlot.setRightFrameless(frameless);
     rightSlot.setRightLabel(
       frameless ? null : (

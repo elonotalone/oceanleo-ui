@@ -1,33 +1,44 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedViewportActions } from "./advanced-workbench-chrome";
 
 export function AdvancedStageControls({
-  stageRef,
+  fullscreenRef,
   viewport,
   accent,
 }: {
-  stageRef: RefObject<HTMLDivElement | null>;
+  fullscreenRef: RefObject<HTMLDivElement | null>;
   viewport?: AdvancedViewportActions;
   accent: string;
 }) {
   const tt = useUI();
   const [fullscreen, setFullscreen] = useState(false);
+  const zoomFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const update = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    const update = () =>
+      setFullscreen(document.fullscreenElement === fullscreenRef.current);
     document.addEventListener("fullscreenchange", update);
     return () => document.removeEventListener("fullscreenchange", update);
-  }, [stageRef]);
+  }, [fullscreenRef]);
+
+  useEffect(
+    () => () => {
+      if (zoomFrameRef.current !== null) {
+        window.cancelAnimationFrame(zoomFrameRef.current);
+      }
+    },
+    [],
+  );
 
   const toggleFullscreen = async () => {
     try {
-      if (document.fullscreenElement === stageRef.current) {
+      if (document.fullscreenElement === fullscreenRef.current) {
         await document.exitFullscreen();
       } else {
-        await stageRef.current?.requestFullscreen();
+        await fullscreenRef.current?.requestFullscreen();
       }
     } catch {
       // The editor remains fully usable if the browser denies fullscreen.
@@ -41,6 +52,26 @@ export function AdvancedStageControls({
     max,
     Math.max(min, Math.round(viewport?.value ?? 100)),
   );
+  const animateZoom = (target: number) => {
+    if (!viewport) return;
+    if (zoomFrameRef.current !== null) {
+      window.cancelAnimationFrame(zoomFrameRef.current);
+    }
+    const start = value;
+    const bounded = Math.max(min, Math.min(max, target));
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 140);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      viewport.setValue(start + (bounded - start) * eased);
+      if (progress < 1) {
+        zoomFrameRef.current = window.requestAnimationFrame(tick);
+      } else {
+        zoomFrameRef.current = null;
+      }
+    };
+    zoomFrameRef.current = window.requestAnimationFrame(tick);
+  };
 
   return (
     <div
@@ -51,7 +82,7 @@ export function AdvancedStageControls({
         <>
           <button
             type="button"
-            onClick={() => viewport.setValue(Math.max(min, value - Math.max(step, 5)))}
+            onClick={() => animateZoom(value - Math.max(step, 5))}
             className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
             aria-label={tt("缩小")}
             title={tt("缩小")}
@@ -65,7 +96,7 @@ export function AdvancedStageControls({
               max={max}
               step={step}
               value={value}
-              onChange={(event) => viewport.setValue(Number(event.target.value))}
+              onChange={(event) => animateZoom(Number(event.target.value))}
               aria-label={tt("缩放")}
               className="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)] sm:w-32"
               style={{ accentColor: accent }}
@@ -82,7 +113,7 @@ export function AdvancedStageControls({
           </label>
           <button
             type="button"
-            onClick={() => viewport.setValue(Math.min(max, value + Math.max(step, 5)))}
+            onClick={() => animateZoom(value + Math.max(step, 5))}
             className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
             aria-label={tt("放大")}
             title={tt("放大")}

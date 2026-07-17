@@ -69,7 +69,9 @@ test("inline context row consumes semantic actions instead of arbitrary JSX slot
   const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
-  assert.match(header, /adapter\.actions\?\.map\(\(action\)/);
+  assert.match(header, /const actions = adapter\.actions \|\| \[\]/);
+  assert.match(header, /actions\.map\(\(action\)/);
+  assert.match(header, /actions\.length > 1 && actionsOpen/);
   assert.match(header, /data-advanced-context-row/);
   assert.match(header, /action\.panelId/);
 });

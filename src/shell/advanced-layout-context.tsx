@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import type { SelectionPanelAction } from "./selection-context";
 
 export interface AdvancedLayoutState {
@@ -8,6 +8,11 @@ export interface AdvancedLayoutState {
   editorToolActive: boolean;
   activeDrawerId: string;
   openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
+  openTransientPanel: (
+    panelId: string,
+    label: ReactNode,
+    content: ReactNode,
+  ) => void;
   closeDrawer: () => void;
 }
 

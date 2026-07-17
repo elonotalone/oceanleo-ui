@@ -31,6 +31,10 @@ import {
 import { useWorkspacePane } from "./SplitWorkspace";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { useAdvancedRecovery } from "./use-advanced-recovery";
+import {
+  clampFloatingToolbar,
+  type FloatingToolbarPoint,
+} from "./floating-toolbar-geometry";
 
 interface LiveDetailStore {
   node: ReactNode;
@@ -84,6 +88,7 @@ export function InlineAdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
@@ -97,9 +102,24 @@ export function InlineAdvancedWorkbenchShell({
     content: ReactNode;
   } | null>(null);
   const [activeDrawerId, setActiveDrawerId] = useState("");
+  const [transientPanel, setTransientPanel] = useState<{
+    id: string;
+    label: ReactNode;
+    content: ReactNode;
+  } | null>(null);
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
   const [dropMessage, setDropMessage] = useState("");
+  const [toolbarPosition, setToolbarPosition] =
+    useState<FloatingToolbarPoint>({ x: 0, y: 0 });
+  const [toolbarDragging, setToolbarDragging] = useState(false);
+  const toolbarDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origin: FloatingToolbarPoint;
+  } | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const drawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
     if (adapter.drawers?.length) return [...adapter.drawers];
@@ -180,9 +200,12 @@ export function InlineAdvancedWorkbenchShell({
       workbenchMaterials,
     ],
   );
-  const liveDetail = activeDrawerId
-    ? panelFor(activeDrawerId, requestedMaterialAction)
-    : null;
+  const liveDetail =
+    transientPanel && activeDrawerId === transientPanel.id
+      ? transientPanel
+      : activeDrawerId
+        ? panelFor(activeDrawerId, requestedMaterialAction)
+        : null;
   liveDetailStoreRef.current.node = liveDetail?.content || null;
   useLayoutEffect(() => {
     const store = liveDetailStoreRef.current;
@@ -192,6 +215,7 @@ export function InlineAdvancedWorkbenchShell({
 
   const openDrawer = useCallback(
     (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
+      setTransientPanel(null);
       setActiveDrawerId(drawerId);
       setRequestedMaterialAction(
         drawerId === "materials" ? materialAction : undefined,
@@ -214,10 +238,34 @@ export function InlineAdvancedWorkbenchShell({
     [panelFor, showWorkspaceDetail],
   );
 
+  const openTransientPanel = useCallback(
+    (panelId: string, label: ReactNode, content: ReactNode) => {
+      setTransientPanel({ id: panelId, label, content });
+      setActiveDrawerId(panelId);
+      setRequestedMaterialAction(undefined);
+      liveDetailStoreRef.current.node = content;
+      if (showWorkspaceDetail) {
+        showWorkspaceDetail({
+          ownerId: ownerIdRef.current,
+          id: panelId,
+          label,
+          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+        });
+      } else {
+        setFallbackDetail({
+          label,
+          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+        });
+      }
+    },
+    [showWorkspaceDetail],
+  );
+
   const closeDetail = useCallback(() => {
     clearWorkspaceDetail?.(ownerIdRef.current);
     setFallbackDetail(null);
     setActiveDrawerId("");
+    setTransientPanel(null);
     setRequestedMaterialAction(undefined);
   }, [clearWorkspaceDetail]);
 
@@ -231,6 +279,7 @@ export function InlineAdvancedWorkbenchShell({
           ? activeDrawerId
           : "",
       openDrawer,
+      openTransientPanel,
       closeDrawer: closeDetail,
     }),
     [
@@ -238,6 +287,7 @@ export function InlineAdvancedWorkbenchShell({
       fallbackDetail,
       closeDetail,
       openDrawer,
+      openTransientPanel,
       ownedDetail?.id,
       panelVisible,
       showWorkspaceDetail,
@@ -247,12 +297,59 @@ export function InlineAdvancedWorkbenchShell({
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
 
+  const clampToolbar = useCallback(
+    (point: FloatingToolbarPoint) => {
+      const container = stageRef.current?.getBoundingClientRect();
+      const toolbar = toolbarRef.current?.getBoundingClientRect();
+      if (!container || !toolbar) return { x: 0, y: 0 };
+      return clampFloatingToolbar(
+        point,
+        { width: container.width, height: container.height },
+        { width: toolbar.width, height: toolbar.height },
+      );
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const update = () =>
+      setToolbarPosition((current) => clampToolbar(current));
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    if (stageRef.current) observer.observe(stageRef.current);
+    if (toolbarRef.current) observer.observe(toolbarRef.current);
+    return () => observer.disconnect();
+  }, [adapter.id, clampToolbar]);
+
+  useEffect(() => {
+    setToolbarPosition({ x: 0, y: 0 });
+    toolbarDragRef.current = null;
+    setToolbarDragging(false);
+    setActionsOpen(false);
+  }, [adapter.id, item.key]);
+
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
     void (async () => {
       if (editorDirty || autoSave.state !== "saved") {
-        const flushed = await autoSave.flushLatest();
+        const flushed =
+          autoSave.state === "error"
+            ? { ok: false as const, error: "自动保存仍未同步" }
+            : await Promise.race([
+                autoSave.flushLatest(),
+                new Promise<{ ok: false; error: string }>((resolve) =>
+                  window.setTimeout(
+                    () =>
+                      resolve({
+                        ok: false,
+                        error: "离开前保存等待超时",
+                      }),
+                    3_000,
+                  ),
+                ),
+              ]);
         if (
           !flushed.ok &&
           !window.confirm(
@@ -370,26 +467,12 @@ export function InlineAdvancedWorkbenchShell({
     ],
   );
 
-  const actionButtons = adapter.actions?.map((action) => (
-    <button
-      key={action.id}
-      type="button"
-      disabled={action.disabled || action.busy}
-      onClick={() => {
-        if (action.panelId) openDrawer(action.panelId);
-        else void action.onTrigger?.();
-      }}
-      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-2.5 text-[11px] font-semibold text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-      title={tt(action.label)}
-      aria-label={tt(action.label)}
-    >
-      {action.icon && (
-        <AdvancedEditorIcon name={action.icon} className="h-4 w-4" />
-      )}
-      {action.variant !== "icon" &&
-        tt(action.busy && action.busyLabel ? action.busyLabel : action.label)}
-    </button>
-  ));
+  const actions = adapter.actions || [];
+  const triggerAction = (action: (typeof actions)[number]) => {
+    setActionsOpen(false);
+    if (action.panelId) openDrawer(action.panelId);
+    else void action.onTrigger?.();
+  };
 
   const editorViewport = adapter.nativeChrome?.viewport
     ? undefined
@@ -425,12 +508,59 @@ export function InlineAdvancedWorkbenchShell({
         )}
         <div
           ref={stageRef}
-          className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
         >
           <div
             data-advanced-context-row
-            className="z-[70] flex min-h-14 min-w-0 flex-wrap items-center gap-1.5 border-b border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-2 py-2"
+            ref={toolbarRef}
+            className="absolute left-2 top-2 z-[70] flex h-12 max-w-[calc(100%-1rem)] min-w-0 flex-nowrap items-center gap-1 rounded-2xl border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]/96 p-1.5 shadow-[var(--awb-shadow-floating)] backdrop-blur-xl will-change-transform"
+            style={{
+              transform: `translate3d(${toolbarPosition.x}px, ${toolbarPosition.y}px, 0)`,
+            }}
           >
+            <button
+              type="button"
+              onPointerDown={(event) => {
+                if (event.pointerType === "mouse" && event.button !== 0) return;
+                event.preventDefault();
+                toolbarDragRef.current = {
+                  pointerId: event.pointerId,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  origin: toolbarPosition,
+                };
+                setToolbarDragging(true);
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                const drag = toolbarDragRef.current;
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                setToolbarPosition(
+                  clampToolbar({
+                    x: drag.origin.x + event.clientX - drag.startX,
+                    y: drag.origin.y + event.clientY - drag.startY,
+                  }),
+                );
+              }}
+              onPointerUp={(event) => {
+                if (toolbarDragRef.current?.pointerId !== event.pointerId) return;
+                toolbarDragRef.current = null;
+                setToolbarDragging(false);
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+              }}
+              onPointerCancel={() => {
+                toolbarDragRef.current = null;
+                setToolbarDragging(false);
+              }}
+              onDoubleClick={() => setToolbarPosition({ x: 0, y: 0 })}
+              className={`grid h-9 w-6 shrink-0 touch-none select-none place-items-center rounded-lg text-[13px] text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] ${
+                toolbarDragging ? "cursor-grabbing" : "cursor-grab"
+              }`}
+              aria-label={tt("拖动编辑栏")}
+              title={tt("拖动编辑栏；双击复位")}
+            >
+              ⠿
+            </button>
             <button
               type="button"
               onClick={requestClose}
@@ -464,12 +594,22 @@ export function InlineAdvancedWorkbenchShell({
                 </button>
               </>
             )}
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden">
               {contextToolbar}
             </div>
-            <span
-              className="inline-flex shrink-0 items-center gap-1 text-[10px] text-[var(--awb-muted)]"
+            <button
+              type="button"
+              onClick={() => {
+                if (autoSave.state === "error") void autoSave.retry();
+              }}
+              disabled={autoSave.state !== "error"}
+              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[10px] text-[var(--awb-muted)] transition enabled:hover:bg-[var(--awb-hover)]"
               aria-live="polite"
+              title={
+                autoSave.state === "error"
+                  ? tt("点击重试自动保存")
+                  : undefined
+              }
             >
               <CloudAutoSaveIcon
                 className={`h-3.5 w-3.5 ${
@@ -480,37 +620,73 @@ export function InlineAdvancedWorkbenchShell({
                 ? tt("正在自动保存")
                 : autoSave.state === "error"
                   ? tt("保存遇到问题")
-                  : Number(editRevision) > 0
-                    ? tt("已自动保存")
-                    : tt("自动保存")}
-            </span>
-            {actionButtons}
-          </div>
-          <div
-            data-advanced-viewport-row
-            className="relative min-h-0 min-w-0 overflow-hidden"
-          >
-            <AdvancedWorkbenchStage
-              editorAvailable={editorAvailable}
-              editorStage={adapter.stage}
-              item={item}
-              accent={accent}
-              draggedTitle={draggedTitle}
-              acceptLocalFiles={Boolean(adapter.upload)}
-              dropMessage={dropMessage}
-              onMaterialDrop={(event) => void handleDrop(event)}
-            />
+                  : tt("已保存")}
+            </button>
+            {actions.length > 0 && (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  disabled={
+                    actions.length === 1 &&
+                    (actions[0].disabled || actions[0].busy)
+                  }
+                  onClick={() => {
+                    if (actions.length === 1) triggerAction(actions[0]);
+                    else setActionsOpen((value) => !value);
+                  }}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
+                  aria-label={tt(
+                    actions.length === 1 ? actions[0].label : "交付与导出",
+                  )}
+                  title={tt(
+                    actions.length === 1 ? actions[0].label : "交付与导出",
+                  )}
+                  aria-expanded={actions.length > 1 ? actionsOpen : undefined}
+                >
+                  <AdvancedEditorIcon
+                    name={
+                      actions.length > 1
+                        ? "more"
+                        : actions[0].icon || "download"
+                    }
+                    className="h-4 w-4"
+                  />
+                </button>
+                {actions.length > 1 && actionsOpen && (
+                  <div className="absolute right-0 top-full z-[90] mt-2 min-w-44 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 shadow-2xl">
+                    {actions.map((action) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        disabled={action.disabled || action.busy}
+                        onClick={() => triggerAction(action)}
+                        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
+                      >
+                        <AdvancedEditorIcon
+                          name={action.icon || "download"}
+                          className="h-4 w-4"
+                        />
+                        {tt(
+                          action.busy && action.busyLabel
+                            ? action.busyLabel
+                            : action.label,
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {adapter.upload && (
               <>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute right-3 top-3 z-[75] inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)]/95 px-3 text-[11px] font-semibold text-[var(--awb-text)] shadow-lg backdrop-blur transition hover:bg-[var(--awb-hover)]"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)]"
                   aria-label={tt("从本地添加到画布")}
                   title={tt("从本地添加到画布，也可以直接拖放文件")}
                 >
                   <AdvancedEditorIcon name="uploads" className="h-4 w-4" />
-                  {tt("添加文件")}
                 </button>
                 <input
                   ref={fileInputRef}
@@ -525,9 +701,24 @@ export function InlineAdvancedWorkbenchShell({
                 />
               </>
             )}
+          </div>
+          <div
+            data-advanced-viewport-row
+            className="relative h-full min-h-0 min-w-0 overflow-hidden pt-14"
+          >
+            <AdvancedWorkbenchStage
+              editorAvailable={editorAvailable}
+              editorStage={adapter.stage}
+              item={item}
+              accent={accent}
+              draggedTitle={draggedTitle}
+              acceptLocalFiles={Boolean(adapter.upload)}
+              dropMessage={dropMessage}
+              onMaterialDrop={(event) => void handleDrop(event)}
+            />
             <div className="absolute bottom-3 right-3 z-[75]">
               <AdvancedStageControls
-                stageRef={stageRef}
+                fullscreenRef={workspacePane?.fullscreenRef || stageRef}
                 viewport={editorViewport}
                 accent={accent}
               />

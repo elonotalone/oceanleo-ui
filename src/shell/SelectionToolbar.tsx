@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,6 +32,17 @@ export interface SelectionToolbarProps {
   leading?: ReactNode;
   trailing?: ReactNode;
   variant?: "bar" | "floating";
+}
+
+function controlUnits(control: SelectionControl): number {
+  if (control.kind === "range" || control.kind === "text") return 3;
+  if (control.kind === "number" || control.kind === "select") return 2;
+  return 1;
+}
+
+export function selectionToolbarBudget(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) return 4;
+  return Math.max(1, Math.min(7, Math.floor((width - 168) / 72)));
 }
 
 function asNumber(value: SelectionControlValue | undefined, fallback = 0): number {
@@ -373,16 +385,38 @@ export function SelectionToolbar({
   variant = "bar",
 }: SelectionToolbarProps) {
   const layout = useAdvancedLayout();
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
   const [moreOpen, setMoreOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [toolbarWidth, setToolbarWidth] = useState(720);
   const identity = context ? `${context.kind}:${context.id}` : "";
   useEffect(() => {
     setMoreOpen(false);
+    setToolsOpen(false);
+    const currentLayout = layoutRef.current;
+    if (currentLayout?.activeDrawerId.startsWith("selection-")) {
+      currentLayout.closeDrawer();
+    }
   }, [identity]);
+  useLayoutEffect(() => {
+    const node = toolbarRef.current;
+    if (!node) return;
+    const update = () => setToolbarWidth(node.getBoundingClientRect().width);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const [tools, primary, more] = useMemo(() => {
     const controls = context?.controls || [];
     const creation: SelectionControl[] = [];
     const visible: SelectionControl[] = [];
     const overflow: SelectionControl[] = [];
+    const budget = selectionToolbarBudget(toolbarWidth);
+    let used = 0;
     controls.forEach((control) => {
       if (control.placement === "tools") {
         creation.push(control);
@@ -391,22 +425,61 @@ export function SelectionToolbar({
       // History lives in the colored product header, never twice in the
       // contextual object bar.
       if (control.id === "undo" || control.id === "redo") return;
-      if (control.placement === "more" || visible.length >= 10) overflow.push(control);
-      else visible.push(control);
+      const units = controlUnits(control);
+      if (control.placement === "more" || used + units > budget) {
+        overflow.push(control);
+      } else {
+        visible.push(control);
+        used += units;
+      }
     });
     return [creation, visible, overflow];
-  }, [context]);
+  }, [context, toolbarWidth]);
 
   if (!context && !leading && !trailing) return null;
+  const panelControl = (control: SelectionControl) => (
+    <Control
+      key={`${identity}:${control.id}`}
+      control={control}
+      selectionId={context?.id || ""}
+      onCommand={onCommand}
+      onOpenPanel={onOpenPanel || layout?.openDrawer}
+      accent={accent}
+      activePanel={Boolean(
+        control.kind === "panel" &&
+          layout?.hostPanelVisible &&
+          layout.activeDrawerId === (control.panelId || control.id),
+      )}
+    />
+  );
+  const toolsPanelId = `selection-tools:${identity}`;
+  const morePanelId = `selection-more:${identity}`;
+  const toolsPanel = (
+    <div className="h-full overflow-y-auto p-3">
+      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
+        编辑工具
+      </p>
+      <div className="grid grid-cols-2 gap-2">{tools.map(panelControl)}</div>
+    </div>
+  );
+  const morePanel = (
+    <div className="h-full overflow-y-auto p-3">
+      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
+        更多属性
+      </p>
+      <div className="flex flex-wrap gap-2">{more.map(panelControl)}</div>
+    </div>
+  );
   let previousGroup = "";
   return (
     <div
+      ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
       data-selection-id={context?.id || ""}
-      className={`pointer-events-auto flex min-w-0 flex-wrap items-center gap-1 ${
+      className={`pointer-events-auto flex min-w-0 flex-1 flex-nowrap items-center gap-1 ${
         variant === "floating"
           ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
-          : "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
+          : "max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
       role="toolbar"
       aria-label={context?.label || "编辑器工具栏"}
@@ -417,7 +490,7 @@ export function SelectionToolbar({
           <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
         </>
       )}
-      {context && (
+      {context && tools.length === 0 && (
         <div
           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
           aria-label={context.label || "当前对象"}
@@ -435,62 +508,32 @@ export function SelectionToolbar({
       )}
       {tools.length > 0 && context && (
         <>
-          <div className="flex min-w-0 flex-wrap items-center gap-0.5">
-            {tools.map((control) => {
-              const active = control.value === true;
-              const panelId = control.panelId || control.id;
-              const panelActive =
-                control.kind === "panel" &&
-                layout?.hostPanelVisible &&
-                layout.activeDrawerId === panelId;
-              const highlighted = active || panelActive;
-              return (
-                <button
-                  key={`${identity}:${control.id}`}
-                  type="button"
-                  disabled={control.disabled}
-                  data-control-id={control.id}
-                  data-control-kind={control.kind}
-                  data-panel-id={control.kind === "panel" ? panelId : undefined}
-                  onClick={() => {
-                    if (control.kind === "panel") {
-                      (onOpenPanel || layout?.openDrawer)?.(
-                        panelId,
-                        control.panelAction,
-                      );
-                      return;
-                    }
-                    layout?.closeDrawer();
-                    onCommand({
-                      requestId: selectionRequestId(),
-                      selectionId: context.id,
-                      controlId: control.id,
-                      ...(control.kind === "toggle"
-                        ? { value: !active }
-                        : {}),
-                    });
-                  }}
-                  className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)] disabled:opacity-35"
-                  style={
-                    highlighted
-                      ? {
-                          color: accent,
-                          background: `color-mix(in srgb, ${accent} 9%, var(--card,#fff))`,
-                        }
-                      : undefined
-                  }
-                  title={control.label}
-                  aria-label={control.label}
-                  aria-pressed={control.kind === "toggle" ? active : undefined}
-                >
-                  <AdvancedEditorIcon
-                    name={control.icon || iconForSelection(control.id)}
-                    className="h-[17px] w-[17px]"
-                  />
-                  <span className="whitespace-nowrap">{control.label}</span>
-                </button>
-              );
-            })}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (layout) {
+                  layout.openTransientPanel(toolsPanelId, "编辑工具", toolsPanel);
+                } else {
+                  setToolsOpen((value) => !value);
+                }
+              }}
+              className="grid h-9 w-9 place-items-center rounded-xl border border-emerald-500/15 bg-white text-emerald-600 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              aria-label="展开编辑工具"
+              title="编辑工具"
+              aria-expanded={
+                layout
+                  ? layout.activeDrawerId === toolsPanelId
+                  : toolsOpen
+              }
+            >
+              <EditorToolsIcon />
+            </button>
+            {!layout && toolsOpen && (
+              <div className="absolute left-0 top-full z-[70] mt-2 w-64 rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl">
+                <div className="grid grid-cols-2 gap-1">{tools.map(panelControl)}</div>
+              </div>
+            )}
           </div>
           <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
         </>
@@ -498,7 +541,7 @@ export function SelectionToolbar({
       {context && tools.length === 0 && (
         <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
       )}
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden">
         {primary.map((control) => {
           const divider =
             previousGroup &&
@@ -533,15 +576,23 @@ export function SelectionToolbar({
         <div className="relative shrink-0">
           <button
             type="button"
-            aria-expanded={moreOpen}
-            onClick={() => setMoreOpen((value) => !value)}
+            aria-expanded={
+              layout ? layout.activeDrawerId === morePanelId : moreOpen
+            }
+            onClick={() => {
+              if (layout) {
+                layout.openTransientPanel(morePanelId, "更多属性", morePanel);
+              } else {
+                setMoreOpen((value) => !value);
+              }
+            }}
             className="grid h-9 w-9 place-items-center rounded-lg text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
             aria-label="更多属性"
             title="更多属性"
           >
             <AdvancedEditorIcon name="more" />
           </button>
-          {moreOpen && (
+          {!layout && moreOpen && (
             <div className="absolute right-0 top-full z-[70] mt-2 flex max-h-[min(60vh,32rem)] w-[min(27rem,90vw)] flex-wrap gap-1 overflow-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl">
               {more.map((control) => (
                 <Control
@@ -549,14 +600,9 @@ export function SelectionToolbar({
                   control={control}
                   selectionId={context?.id || ""}
                   onCommand={onCommand}
-                  onOpenPanel={onOpenPanel || layout?.openDrawer}
+                  onOpenPanel={onOpenPanel}
                   accent={accent}
-                  activePanel={Boolean(
-                    control.kind === "panel" &&
-                      layout?.hostPanelVisible &&
-                      layout.activeDrawerId ===
-                        (control.panelId || control.id),
-                  )}
+                  activePanel={false}
                 />
               ))}
             </div>
@@ -570,5 +616,24 @@ export function SelectionToolbar({
         </>
       )}
     </div>
+  );
+}
+
+function EditorToolsIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15.8 3.5 4.7 4.7-9.8 9.8-5.7 1 1-5.7 9.8-9.8Z" />
+      <path d="m13.8 5.5 4.7 4.7" />
+      <path d="M4 22h13" />
+    </svg>
   );
 }

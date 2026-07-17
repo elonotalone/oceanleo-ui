@@ -58,14 +58,16 @@ test("generated and material slots never wrap legacy container tabs as fake card
   assert.doesNotMatch(canvas, /workflowEntries/);
 });
 
-test("tool bars wait for a real object selection and wrap instead of clipping", () => {
+test("tool bars stay single-line and move overflow into semantic panels", () => {
   const toolbar = source("../src/shell/SelectionToolbar.tsx");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const image = source(
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
   );
   assert.match(toolbar, /if \(!context && !leading && !trailing\) return null/);
-  assert.match(toolbar, /flex-wrap items-center/);
+  assert.match(toolbar, /flex-nowrap items-center/);
+  assert.match(toolbar, /selectionToolbarBudget\(toolbarWidth\)/);
+  assert.match(toolbar, /layout\.openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
   assert.doesNotMatch(toolbar, /overflow-x-auto/);
   assert.match(
