@@ -581,10 +581,11 @@ export function EmbeddedRoute({
             saveRequestId={saveRequestId}
           />
         ),
-        contextToolbar: (
+        renderContextToolbar: ({ openDrawer }) => (
           <SelectionToolbar
             context={hostedSelection}
             onCommand={setSelectionCommand}
+            onOpenPanel={openDrawer}
             accent={accent}
           />
         ),

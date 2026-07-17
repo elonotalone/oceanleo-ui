@@ -78,6 +78,9 @@ export function InlineAdvancedWorkbenchShell({
 }: InlineAdvancedWorkbenchShellProps) {
   const tt = useUI();
   const workspacePane = useWorkspacePane();
+  const workspaceDetail = workspacePane?.detail;
+  const showWorkspaceDetail = workspacePane?.showDetail;
+  const clearWorkspaceDetail = workspacePane?.clearDetail;
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -139,8 +142,8 @@ export function InlineAdvancedWorkbenchShell({
   });
 
   const ownedDetail =
-    workspacePane?.detail?.ownerId === ownerIdRef.current
-      ? workspacePane.detail
+    workspaceDetail?.ownerId === ownerIdRef.current
+      ? workspaceDetail
       : null;
   const panelVisible = Boolean(ownedDetail || fallbackDetail);
 
@@ -194,8 +197,8 @@ export function InlineAdvancedWorkbenchShell({
         drawerId === "materials" ? materialAction : undefined,
       );
       const next = panelFor(drawerId, materialAction);
-      if (workspacePane) {
-        workspacePane.showDetail({
+      if (showWorkspaceDetail) {
+        showWorkspaceDetail({
           ownerId: ownerIdRef.current,
           id: drawerId,
           label: next.label,
@@ -208,21 +211,21 @@ export function InlineAdvancedWorkbenchShell({
         });
       }
     },
-    [panelFor, workspacePane],
+    [panelFor, showWorkspaceDetail],
   );
 
   const closeDetail = useCallback(() => {
-    workspacePane?.clearDetail(ownerIdRef.current);
+    clearWorkspaceDetail?.(ownerIdRef.current);
     setFallbackDetail(null);
     setActiveDrawerId("");
     setRequestedMaterialAction(undefined);
-  }, [workspacePane]);
+  }, [clearWorkspaceDetail]);
 
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
       editorToolActive: panelVisible,
-      activeDrawerId: workspacePane
+      activeDrawerId: showWorkspaceDetail
         ? ownedDetail?.id || ""
         : fallbackDetail
           ? activeDrawerId
@@ -237,9 +240,12 @@ export function InlineAdvancedWorkbenchShell({
       openDrawer,
       ownedDetail?.id,
       panelVisible,
-      workspacePane,
+      showWorkspaceDetail,
     ],
   );
+  const contextToolbar = adapter.renderContextToolbar
+    ? adapter.renderContextToolbar(layoutState)
+    : adapter.contextToolbar;
 
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
@@ -278,8 +284,8 @@ export function InlineAdvancedWorkbenchShell({
   }, [adapter.closeRequestRevision, requestClose]);
 
   useEffect(
-    () => () => workspacePane?.clearDetail(ownerIdRef.current),
-    [workspacePane],
+    () => () => clearWorkspaceDetail?.(ownerIdRef.current),
+    [clearWorkspaceDetail],
   );
 
   useEffect(() => {
@@ -459,7 +465,7 @@ export function InlineAdvancedWorkbenchShell({
               </>
             )}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              {adapter.contextToolbar}
+              {contextToolbar}
             </div>
             <span
               className="inline-flex shrink-0 items-center gap-1 text-[10px] text-[var(--awb-muted)]"

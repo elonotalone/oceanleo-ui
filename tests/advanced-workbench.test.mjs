@@ -58,7 +58,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
   assert.match(shell, /data-inline-editor/);
-  assert.match(shell, /workspacePane\.showDetail/);
+  assert.match(shell, /const showWorkspaceDetail = workspacePane\?\.showDetail/);
   assert.match(shell, /<AdvancedWorkbenchStage/);
   assert.match(shell, /requestFullscreen\(\)/);
   assert.doesNotMatch(shell, /createPortal\(/);
@@ -86,7 +86,7 @@ test("inline editors reuse the current App Agent instead of mounting another cha
   assert.doesNotMatch(panel, /AdvancedAgentPanel/);
   assert.doesNotMatch(panel, /LeoComposer/);
   assert.doesNotMatch(panel, /followUp\(/);
-  assert.match(panel, /workspacePane\.showDetail/);
+  assert.match(panel, /showWorkspaceDetail\(\{/);
   assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
@@ -253,6 +253,9 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const embeddedRoute = source(
+    "../src/shell/advanced-routes/EmbeddedRoute.tsx",
+  );
   assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
   assert.match(protocol, /record\.instanceId !== instanceId/);
   assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
@@ -276,7 +279,22 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.doesNotMatch(embed, /在新窗口打开编辑器/);
   assert.doesNotMatch(embed, /target="_blank"/);
   assert.match(shell, /data-advanced-context-row/);
-  assert.match(shell, /\{adapter\.contextToolbar\}/);
+  assert.match(shell, /adapter\.renderContextToolbar\(layoutState\)/);
+  assert.match(shell, /\{contextToolbar\}/);
+  assert.match(
+    shell,
+    /const clearWorkspaceDetail = workspacePane\?\.clearDetail/,
+  );
+  assert.match(
+    shell,
+    /\(\) => \(\) => clearWorkspaceDetail\?\.\(ownerIdRef\.current\)/,
+  );
+  assert.doesNotMatch(
+    shell,
+    /\(\) => \(\) => workspacePane\?\.clearDetail\(ownerIdRef\.current\)/,
+  );
+  assert.match(embeddedRoute, /renderContextToolbar: \(\{ openDrawer \}\)/);
+  assert.match(embeddedRoute, /onOpenPanel=\{openDrawer\}/);
   assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });

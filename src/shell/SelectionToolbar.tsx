@@ -449,6 +449,9 @@ export function SelectionToolbar({
                   key={`${identity}:${control.id}`}
                   type="button"
                   disabled={control.disabled}
+                  data-control-id={control.id}
+                  data-control-kind={control.kind}
+                  data-panel-id={control.kind === "panel" ? panelId : undefined}
                   onClick={() => {
                     if (control.kind === "panel") {
                       (onOpenPanel || layout?.openDrawer)?.(

@@ -58,7 +58,7 @@ test("shell geometry never scales editor chrome and every legacy toolbox gets a 
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /data-advanced-viewport-row/);
   assert.match(shell, /drawerById/);
-  assert.match(shell, /workspacePane\.showDetail/);
+  assert.match(shell, /const showWorkspaceDetail = workspacePane\?\.showDetail/);
   assert.match(shell, /adapter\.nativeChrome\?\.viewport/);
   assert.doesNotMatch(stage, /stageScale|data-advanced-scaled-panel/);
   assert.doesNotMatch(shell, /editorContextualToolbarAnchor/);

@@ -7,6 +7,7 @@ import type {
   AdvancedWorkbenchAction,
 } from "./advanced-workbench-chrome";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
+import type { SelectionPanelAction } from "./selection-context";
 import type { EditorAdapterId } from "./workbench-routes";
 
 export interface AdvancedWorkbenchDrawer {
@@ -55,6 +56,14 @@ export interface AdvancedEditorUploadAdapter {
   onFiles: (files: File[]) => void | Promise<void>;
 }
 
+export interface AdvancedContextToolbarHost {
+  openDrawer: (
+    drawerId: string,
+    panelAction?: SelectionPanelAction,
+  ) => void;
+  closeDrawer: () => void;
+}
+
 /**
  * Exhaustive route-to-shell contract. Editors own model semantics; the shell
  * owns product chrome, reachability, geometry and the persistence queue.
@@ -69,6 +78,8 @@ export interface AdvancedEditorAdapter {
   drawers?: readonly AdvancedWorkbenchDrawer[];
   /** Properties/actions for a real selected object; null when nothing is selected. */
   contextToolbar?: ReactNode;
+  /** Use when toolbar panel actions must explicitly target the host left pane. */
+  renderContextToolbar?: (host: AdvancedContextToolbarHost) => ReactNode;
   actions?: readonly AdvancedWorkbenchAction[];
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;
