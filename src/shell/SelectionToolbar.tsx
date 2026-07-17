@@ -403,7 +403,7 @@ export function SelectionToolbar({
     <div
       data-selection-kind={context?.kind || "none"}
       data-selection-id={context?.id || ""}
-      className={`pointer-events-auto flex min-w-0 items-center gap-1 ${
+      className={`pointer-events-auto flex min-w-0 flex-wrap items-center gap-1 ${
         variant === "floating"
           ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
           : "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
@@ -435,7 +435,7 @@ export function SelectionToolbar({
       )}
       {tools.length > 0 && context && (
         <>
-          <div className="flex max-w-[min(52vw,38rem)] shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-0 flex-wrap items-center gap-0.5">
             {tools.map((control) => {
               const active = control.value === true;
               const panelId = control.panelId || control.id;
@@ -495,7 +495,7 @@ export function SelectionToolbar({
       {context && tools.length === 0 && (
         <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
       )}
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {primary.map((control) => {
           const divider =
             previousGroup &&

@@ -21,7 +21,10 @@ export function FabricImageContextToolbar({
   const tt = useUI();
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
-  const context = useMemo<SelectionContext>(() => {
+  const context = useMemo<SelectionContext | null>(() => {
+    // Loading/opening an image never creates a contextual selection. The bar
+    // appears only after the user clicks an editable Fabric object.
+    if (!selected) return null;
     const selectedIsLineLike = Boolean(
       selected &&
         [
@@ -526,6 +529,7 @@ export function FabricImageContextToolbar({
   ]);
 
   const command = (message: SelectionCommand) => {
+    if (!context) return;
     if (message.selectionId !== context.id) return;
     dispatchFabricImageCommand(editor, message);
   };

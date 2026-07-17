@@ -423,7 +423,7 @@ export function InlineAdvancedWorkbenchShell({
         >
           <div
             data-advanced-context-row
-            className="z-[70] flex min-h-14 min-w-0 items-center gap-1.5 border-b border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-2 py-2"
+            className="z-[70] flex min-h-14 min-w-0 flex-wrap items-center gap-1.5 border-b border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-2 py-2"
           >
             <button
               type="button"
@@ -458,7 +458,7 @@ export function InlineAdvancedWorkbenchShell({
                 </button>
               </>
             )}
-            <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
               {adapter.contextToolbar}
             </div>
             <span

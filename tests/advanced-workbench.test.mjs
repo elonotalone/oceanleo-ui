@@ -211,6 +211,13 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   );
   assert.match(embedded, /onMaterialResult/);
   assert.doesNotMatch(embedded, /editorToolbox=/);
+  assert.match(embedded, /\}, \[hostedMediaType\]\);/);
+  assert.doesNotMatch(
+    embedded,
+    /\}, \[route\]\);\s*useWorkbenchMaterialAdapter/,
+  );
+  assert.match(provider, /const adapterRef = useRef\(adapter\)/);
+  assert.match(provider, /Register a stable proxy/);
 });
 
 test("the shared property bar dispatches direct, dropdown and drawer controls", () => {
@@ -263,6 +270,11 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /message\.type === "material-result"/);
   assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /getBoundingClientRect/);
+  assert.match(embed, /frameLoaded/);
+  assert.match(embed, /setAttempt\(\(value\) => value \+ 1\)/);
+  assert.match(embed, /重新加载编辑器/);
+  assert.doesNotMatch(embed, /在新窗口打开编辑器/);
+  assert.doesNotMatch(embed, /target="_blank"/);
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /\{adapter\.contextToolbar\}/);
   assert.doesNotMatch(shell, /-translate-y-full/);

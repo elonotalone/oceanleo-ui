@@ -71,6 +71,8 @@ export interface CanvasTab {
   content: ReactNode;
   /** Normalized payload shared with Materials/My Library rich viewers. */
   libraryItem?: LibraryItem;
+  /** Real flat entries for a result tab that produced multiple artifacts. */
+  entries?: WorkspaceLibraryEntry[];
   /** Task Preview can remove its receipt without deleting the durable My Library copy. */
   onDelete?: () => Promise<void> | void;
 }
@@ -273,8 +275,8 @@ function extractedMaterialItems(tab: CanvasTab): MaterialItem[] {
 }
 
 /**
- * Five fixed product slots. Legacy site tabs become Preview cards and existing
- * workflow pages are additionally exposed as curated Material entries.
+ * Five fixed product slots. Legacy container tabs render directly; only
+ * normalized LibraryItems/entries become cards.
  */
 export function ResultCanvas({
   tabs,
@@ -406,7 +408,18 @@ export function ResultCanvas({
   );
   const previewEntries = useMemo(
     () => [
-      ...grouped.preview.map((tab) => previewEntry(tab)),
+      // A legacy result tab is a container, not a generated item. Only tabs
+      // carrying a real normalized LibraryItem become cards; React content is
+      // rendered directly below so “生成” never contains another fake “生成”
+      // folder card.
+      ...grouped.preview
+        .flatMap((tab) =>
+          tab.entries?.length
+            ? tab.entries
+            : tab.libraryItem
+              ? [previewEntry(tab)]
+              : [],
+        ),
       ...inlineHistoryItems.map((item) =>
         workspaceEntryFromLibraryItem(item, {
           id: `edited:${advancedRootItemId(item)}`,
@@ -421,16 +434,6 @@ export function ResultCanvas({
     () => previewEntries.map((entry) => entry.id).join("|"),
     [previewEntries],
   );
-  const workflowEntries = useMemo(
-    () =>
-      grouped.preview
-        .filter(
-          (tab) =>
-            !/^(result|results|preview|artifact)(?:$|[-_:])/i.test(tab.id),
-        )
-        .map((tab) => previewEntry(tab, { material: true })),
-    [grouped.preview],
-  );
   const localMaterials = useMemo(
     () => [
       ...materials,
@@ -440,7 +443,6 @@ export function ResultCanvas({
   );
   const materialPageEntries = useMemo(
     () => [
-      ...workflowEntries,
       ...grouped.materials
         // The fixed slot already *is* Material Library. Turning a legacy
         // “素材库” tab into an entry produced the reported library-inside-
@@ -449,7 +451,8 @@ export function ResultCanvas({
         .filter(
           (tab) =>
             !isGenericMaterialsTab(tab) &&
-            extractedMaterialItems(tab).length === 0,
+            extractedMaterialItems(tab).length === 0 &&
+            Boolean(tab.libraryItem),
         )
         .map((tab) => ({
           ...previewEntry(tab, { material: true }),
@@ -457,7 +460,7 @@ export function ResultCanvas({
           category: "本站精选",
         })),
     ],
-    [workflowEntries, grouped.materials],
+    [grouped.materials],
   );
   const minePageEntries = useMemo(
     () =>
@@ -623,6 +626,16 @@ export function ResultCanvas({
         description="当前应用还没有起手灵感；你仍可以直接在左侧描述要完成的目标。"
       />
     );
+  const previewPanelTabs = grouped.preview.filter(
+    (tab) => !tab.libraryItem && !tab.entries?.length,
+  );
+  const selectedPreviewTab =
+    previewPanelTabs.find((tab) => tab.id === active) ||
+    previewPanelTabs.find((tab) =>
+      /^(?:result|results|preview|artifact)$/i.test(tab.id),
+    ) ||
+    previewPanelTabs[0] ||
+    null;
   const browserContent = (
     <CloudBrowserPanel taskId={effectiveTaskId} accent={accent} />
   );
@@ -654,7 +667,27 @@ export function ResultCanvas({
         </div>
       </div>
     ),
-    preview: (
+    preview: selectedPreviewTab ? (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden p-3">
+        {previewPanelTabs.length > 1 && (
+          <CanvasSubTabs
+            tabs={previewPanelTabs.map((tab) => ({
+              id: tab.id,
+              label: tab.label,
+            }))}
+            active={selectedPreviewTab.id}
+            onChange={(id) => {
+              onChange?.(id);
+              runtimeHydration?.setRightTab(id);
+            }}
+            accent={accent}
+          />
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {selectedPreviewTab.content}
+        </div>
+      </div>
+    ) : (
       <WorkspaceLibrary
         entries={previewEntries}
         accent={accent}
@@ -766,11 +799,6 @@ export function ResultCanvas({
         onClose={() => setActiveCanvasEntry(null)}
       />
     ) : null;
-  const selectedPreviewTab =
-    grouped.preview.find((tab) => tab.id === active) ||
-    grouped.preview.find((tab) => /^(?:result|results|preview|artifact)$/i.test(tab.id)) ||
-    grouped.preview[0] ||
-    null;
   const rightMainContent =
     editorContent ||
     viewerContent ||

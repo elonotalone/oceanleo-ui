@@ -82,8 +82,8 @@ function RemoteChoicePanel({
 }
 
 const DESIGN_HOST_TOOLS: SelectionControl[] = [
-  { id: "undo", kind: "action", label: "撤销" },
-  { id: "redo", kind: "action", label: "重做" },
+  { id: "undo", kind: "action", label: "撤销", icon: "undo", placement: "tools" },
+  { id: "redo", kind: "action", label: "重做", icon: "redo", placement: "tools" },
   { id: "design-templates", kind: "panel", label: "模板", icon: "templates", placement: "tools", panelId: "materials", panelAction: "replace" },
   { id: "design-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
   { id: "design-shapes", kind: "panel", label: "形状", icon: "shape", placement: "tools", panelId: "design-shapes" },
@@ -92,8 +92,8 @@ const DESIGN_HOST_TOOLS: SelectionControl[] = [
 ];
 
 const VIDEO_HOST_TOOLS: SelectionControl[] = [
-  { id: "undo", kind: "action", label: "撤销" },
-  { id: "redo", kind: "action", label: "重做" },
+  { id: "undo", kind: "action", label: "撤销", icon: "undo", placement: "tools" },
+  { id: "redo", kind: "action", label: "重做", icon: "redo", placement: "tools" },
   { id: "video-nodes", kind: "panel", label: "节点", icon: "add", placement: "tools", panelId: "video-nodes" },
   { id: "video-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
   { id: "run-all", kind: "action", label: "运行全部", icon: "animate", placement: "tools" },
@@ -135,15 +135,17 @@ const DESIGN_BACKGROUND: RemoteChoice[] = [
 ];
 
 const VIDEO_NODES: RemoteChoice[] = [
-  ["input", "输入"],
-  ["text", "文本"],
+  ["text", "剧本 / 文本"],
   ["script", "脚本"],
   ["model", "模型"],
-  ["image", "图片"],
-  ["video", "视频"],
-  ["audio", "音频"],
+  ["image", "图片生成"],
+  ["video", "视频生成"],
+  ["imageInput", "图片素材"],
+  ["videoInput", "视频素材"],
+  ["audioInput", "音频素材"],
   ["subtitle", "字幕"],
-  ["concat", "合并"],
+  ["bgm", "背景音乐"],
+  ["compose", "视频合成"],
   ["output", "输出"],
 ].map(([value, label]) => ({ value, label }));
 
@@ -184,9 +186,9 @@ export function EmbeddedRoute({
   const remoteRevisionRef = useRef(0);
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
   const hostToolControls =
-    hostedMediaType === "image"
+    hostedMediaType === "canvas"
       ? DESIGN_HOST_TOOLS
-      : hostedMediaType === "video"
+      : hostedMediaType === "video_canvas"
         ? VIDEO_HOST_TOOLS
         : hostedMediaType === "website"
           ? WEBSITE_HOST_TOOLS
@@ -194,6 +196,13 @@ export function EmbeddedRoute({
   const hostedSelection = useMemo<SelectionContext | null>(() => {
     if (!hostedMediaType || !selection) return selection;
     const hostIds = new Set(hostToolControls.map((control) => control.id));
+    if (
+      selection.id === "design-canvas" ||
+      selection.id === "video-canvas" ||
+      selection.id === "website-canvas"
+    ) {
+      return null;
+    }
     return {
       version: 1,
       kind: selection.kind,
@@ -203,9 +212,7 @@ export function EmbeddedRoute({
       ...(selection.anchor ? { anchor: selection.anchor } : {}),
       controls: [
         ...hostToolControls,
-        ...selection.controls.filter(
-          (control) => !hostIds.has(control.id),
-        ),
+        ...selection.controls.filter((control) => !hostIds.has(control.id)),
       ].slice(0, 32),
     };
   }, [hostToolControls, hostedMediaType, route, selection]);
@@ -237,7 +244,7 @@ export function EmbeddedRoute({
         />
       ),
     });
-    if (hostedMediaType === "image") {
+    if (hostedMediaType === "canvas") {
       return [
         panel("design-shapes", "形状", "insert-shape", DESIGN_SHAPES),
         panel("design-text", "文字", "insert-text", DESIGN_TEXT),
@@ -249,7 +256,7 @@ export function EmbeddedRoute({
         ),
       ];
     }
-    if (hostedMediaType === "video") {
+    if (hostedMediaType === "video_canvas") {
       return [panel("video-nodes", "添加节点", "add-node", VIDEO_NODES)];
     }
     if (hostedMediaType === "website") {
@@ -345,11 +352,11 @@ export function EmbeddedRoute({
     setCloseRequestRevision((value) => value + 1);
   }, []);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter | null>(() => {
-    if (route.type !== "embed") return null;
+    if (!hostedMediaType) return null;
     return {
-      id: `embed-materials:${route.mediaType}@2`,
+      id: `embed-materials:${hostedMediaType}@2`,
       actions:
-        route.mediaType === "image"
+        hostedMediaType === "canvas"
           ? ["insert", "replace", "apply"]
           : ["insert"],
       accepts: (material) => {
@@ -359,7 +366,7 @@ export function EmbeddedRoute({
           material.thumbUrl,
         ].filter(Boolean);
         const mime = String(material.meta.mime || "").toLowerCase();
-        if (route.mediaType === "website" || route.mediaType === "image") {
+        if (hostedMediaType === "website" || hostedMediaType === "canvas") {
           return (
             Boolean(material.previewUrl || material.thumbUrl) ||
             material.kind === "image" ||
@@ -381,12 +388,12 @@ export function EmbeddedRoute({
       },
       mutate: (action, material, placement) => {
         const candidates = (
-          route.mediaType === "video"
+          hostedMediaType === "video_canvas"
             ? [material.url, material.previewUrl, material.thumbUrl]
             : [material.previewUrl, material.thumbUrl, material.url]
         ).filter(Boolean) as string[];
         const supportedUrl =
-          route.mediaType === "video"
+          hostedMediaType === "video_canvas"
             ? /\.(?:png|jpe?g|webp|gif|svg|mp4|webm|mov|mp3|wav|m4a|ogg)(?:$|[?#])/i
             : /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i;
         const url =
@@ -449,7 +456,7 @@ export function EmbeddedRoute({
         });
       },
     };
-  }, [route]);
+  }, [hostedMediaType]);
   useWorkbenchMaterialAdapter(materialAdapter);
   const handleMaterialResult = useCallback(
     (result: { commandId: string; ok: boolean; message?: string }) => {
@@ -552,7 +559,7 @@ export function EmbeddedRoute({
         id:
           route.mediaType === "website"
             ? "website"
-            : route.mediaType === "video"
+            : route.mediaType === "video_canvas"
               ? "video-canvas"
               : "design-canvas",
         label: editorToolLabel(route),
@@ -582,34 +589,6 @@ export function EmbeddedRoute({
           />
         ),
         drawers: remoteDrawers,
-        history: {
-          canUndo: Boolean(
-            hostedSelection?.controls.some(
-              (control) => control.id === "undo" && !control.disabled,
-            ),
-          ),
-          canRedo: Boolean(
-            hostedSelection?.controls.some(
-              (control) => control.id === "redo" && !control.disabled,
-            ),
-          ),
-          undo: () => {
-            if (!hostedSelection) return;
-            setSelectionCommand({
-              requestId: `header-undo-${Date.now()}`,
-              selectionId: hostedSelection.id,
-              controlId: "undo",
-            });
-          },
-          redo: () => {
-            if (!hostedSelection) return;
-            setSelectionCommand({
-              requestId: `header-redo-${Date.now()}`,
-              selectionId: hostedSelection.id,
-              controlId: "redo",
-            });
-          },
-        },
         nativeChrome: { toolbar: true, viewport: true },
         persistence: {
           dirty,
@@ -619,7 +598,7 @@ export function EmbeddedRoute({
         upload: materialAdapter
           ? {
               accept:
-                route.mediaType === "video"
+                route.mediaType === "video_canvas"
                   ? "image/*,video/*,audio/*"
                   : "image/*",
               multiple: true,

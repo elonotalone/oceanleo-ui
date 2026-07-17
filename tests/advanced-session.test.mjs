@@ -52,7 +52,7 @@ test("advanced Design sessions preserve and recover their layered editor route",
   );
   assert.match(
     routes,
-    /pinnedRoute === "embed"[\s\S]*?pinnedSite === "design"[\s\S]*?design\.oceanleo\.com\/embed\/editor/,
+    /pinnedRoute === "embed"[\s\S]*?const pinnedEditor[\s\S]*?item\.kind === "canvas"[\s\S]*?pinnedEditor === "design-canvas"[\s\S]*?design\.oceanleo\.com\/embed\/editor/,
   );
 });
 

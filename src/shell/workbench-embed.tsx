@@ -99,6 +99,8 @@ export function EmbedEditorPane({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyHandledRef = useRef(false);
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
+  const [frameLoaded, setFrameLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState("");
   const instanceId = useRef(
     `wb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -112,9 +114,21 @@ export function EmbedEditorPane({
       assetUrl: item.url || item.previewUrl || "",
       assetTitle: item.title,
       assetKind: item.kind,
-      extra: extraParams,
+      extra: {
+        ...extraParams,
+        __attempt: String(attempt),
+      },
     });
-  }, [editorBase, extraParams, instanceId, item.kind, item.previewUrl, item.title, item.url]);
+  }, [
+    attempt,
+    editorBase,
+    extraParams,
+    instanceId,
+    item.kind,
+    item.previewUrl,
+    item.title,
+    item.url,
+  ]);
 
   const editorOrigin = useMemo(() => {
     try {
@@ -305,20 +319,23 @@ export function EmbedEditorPane({
   ]);
 
   useEffect(() => {
-    if (phase !== "connecting") return;
+    if (phase !== "connecting" || !frameLoaded) return;
     const init = () => sendToEditor({ type: "init" });
     init();
-    const interval = window.setInterval(init, 900);
+    const interval = window.setInterval(init, 1_500);
     return () => window.clearInterval(interval);
-  }, [phase, sendToEditor]);
+  }, [frameLoaded, phase, sendToEditor]);
 
   useEffect(() => {
-    // 子站长时间没 ready：给出诚实的失败态，而不是假装打开了。
+    if (!frameLoaded || phase !== "connecting") return;
+    // Start the handshake budget after iframe navigation completes. Starting
+    // it at host mount timed out slow/cold embeds while they were still
+    // about:blank and spammed target-origin errors.
     const timer = window.setTimeout(() => {
       setPhase((current) => (current === "connecting" ? "error" : current));
     }, 15000);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [attempt, frameLoaded, phase]);
 
   useEffect(() => {
     const frame = iframeRef.current?.contentWindow;
@@ -405,17 +422,22 @@ export function EmbedEditorPane({
           <div className="max-w-sm text-center">
             <p className="text-[13px] font-medium text-[var(--fg,#292524)]">{tt("编辑器连接超时")}</p>
             <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-              {tt("专业编辑器没有在预期时间内就绪。你可以直接在新窗口打开它继续编辑。")}
+              {tt("专业编辑器没有在预期时间内就绪。请在当前画布重试。")}
             </p>
-            <a
-              href={src}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => {
+                readyHandledRef.current = false;
+                setStatus("");
+                setFrameLoaded(false);
+                setPhase("connecting");
+                setAttempt((value) => value + 1);
+              }}
               className="mt-4 inline-block rounded-xl px-4 py-2 text-[12px] font-semibold text-white"
               style={{ background: accent }}
             >
-              {tt("在新窗口打开编辑器")}
-            </a>
+              {tt("重新加载编辑器")}
+            </button>
           </div>
         </div>
       )}
@@ -426,9 +448,10 @@ export function EmbedEditorPane({
       )}
       {src && (
         <iframe
+          key={`${instanceId}:${attempt}`}
           ref={iframeRef}
           src={src}
-          onLoad={() => sendToEditor({ type: "init" })}
+          onLoad={() => setFrameLoaded(true)}
           title={item.title}
           className="h-full w-full border-0"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"

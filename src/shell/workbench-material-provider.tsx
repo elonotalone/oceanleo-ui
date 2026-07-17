@@ -187,8 +187,27 @@ export function useWorkbenchMaterialAdapter(
 ): void {
   const context = useWorkbenchMaterials();
   const register = context?.registerAdapter;
+  const adapterRef = useRef(adapter);
+  adapterRef.current = adapter;
+  const adapterId = adapter?.id || "";
+  const actionsKey = adapter?.actions.join("|") || "";
   useEffect(() => {
-    if (!register || !adapter) return;
-    return register(adapter);
-  }, [adapter, register]);
+    if (!register || !adapterId) return;
+    const current = adapterRef.current;
+    if (!current) return;
+    // Register a stable proxy. Route calculation may return a fresh adapter
+    // object on every host render; registering that identity directly made the
+    // provider update itself forever and left the embedded editor blank.
+    return register({
+      id: adapterId,
+      actions: current.actions,
+      accepts: (item, action) =>
+        adapterRef.current?.accepts(item, action) || false,
+      mutate: (action, item, placement) => {
+        const active = adapterRef.current;
+        if (!active) throw new Error("当前编辑器已经关闭。");
+        return active.mutate(action, item, placement);
+      },
+    });
+  }, [actionsKey, adapterId, register]);
 }

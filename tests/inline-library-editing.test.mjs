@@ -25,6 +25,12 @@ test("library docking changes semantic content without swapping physical panes",
   assert.match(split, /clearDetail/);
   assert.match(split, /\{\[appPane, divider, libraryPane\]\}/);
   assert.match(split, /Keep every left-panel runtime mounted/);
+  assert.match(split, /onPointerMove/);
+  assert.match(split, /libraryDockMovedRef/);
+  assert.match(split, /放到左栏/);
+  assert.match(split, /放回右栏/);
+  assert.match(split, /event\.detail !== 0/);
+  assert.doesNotMatch(split, /onClick=\{\(\) => setLibraryDock\("left"\)\}/);
 });
 
 test("editor tools exist only inside an opened item and delegate details to the app pane", () => {
@@ -35,6 +41,40 @@ test("editor tools exist only inside an opened item and delegate details to the 
   assert.match(inline, /showDetail/);
   assert.match(inline, /clearDetail/);
   assert.match(inline, /data-inline-editor/);
+});
+
+test("generated and material slots never wrap legacy container tabs as fake cards", () => {
+  const canvas = source("../src/shell/ResultCanvas.tsx");
+  assert.match(canvas, /previewPanelTabs/);
+  assert.match(canvas, /\{selectedPreviewTab\.content\}/);
+  assert.match(
+    canvas,
+    /grouped\.preview[\s\S]*?flatMap\(\(tab\)[\s\S]*?tab\.entries\?\.length[\s\S]*?tab\.libraryItem/,
+  );
+  assert.match(
+    canvas,
+    /extractedMaterialItems\(tab\)\.length === 0 &&[\s\S]*?Boolean\(tab\.libraryItem\)/,
+  );
+  assert.doesNotMatch(canvas, /workflowEntries/);
+});
+
+test("tool bars wait for a real object selection and wrap instead of clipping", () => {
+  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const image = source(
+    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+  );
+  assert.match(toolbar, /if \(!context && !leading && !trailing\) return null/);
+  assert.match(toolbar, /flex-wrap items-center/);
+  assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
+  assert.doesNotMatch(toolbar, /overflow-x-auto/);
+  assert.match(
+    image,
+    /if \(!selected\) return null/,
+  );
+  assert.match(embedded, /hostedMediaType === "canvas"/);
+  assert.match(embedded, /hostedMediaType === "video_canvas"/);
+  assert.match(embedded, /selection\.id === "design-canvas"/);
 });
 
 test("normal apps call the result area generation and no advanced task surface remains", () => {

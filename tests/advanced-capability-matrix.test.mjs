@@ -145,3 +145,49 @@ test("Design template and advanced-session route pinning survive capability rout
   });
 });
 
+test("editor routing follows material capability and never the hosting site", () => {
+  for (const siteId of ["word", "image", "design", "website"]) {
+    assert.equal(
+      editorRouteFor(
+        item({
+          siteId,
+          kind: "image",
+          url: "https://asset.oceanleo.com/generated/example.png",
+        }),
+      ).type,
+      "image",
+      `${siteId} can edit an image`,
+    );
+    assert.deepEqual(
+      editorRouteFor(
+        item({
+          siteId,
+          kind: "canvas",
+          meta: { draft: true, advanced_editor_route: "embed" },
+        }),
+      ),
+      {
+        type: "embed",
+        base: "https://design.oceanleo.com/embed/editor",
+        mediaType: "canvas",
+      },
+      `${siteId} can edit a Design canvas`,
+    );
+    assert.deepEqual(
+      editorRouteFor(
+        item({
+          siteId,
+          kind: "website",
+          meta: { starter_id: "agency-landing" },
+        }),
+      ),
+      {
+        type: "embed",
+        base: "https://website.oceanleo.com/embed/site-editor",
+        mediaType: "website",
+      },
+      `${siteId} can edit a website`,
+    );
+  }
+});
+

@@ -532,26 +532,33 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     return available("office", { type: "office", ext: officeExt });
   }
   if (pinnedRoute === "embed") {
-    const pinnedSite = String(item.siteId || item.meta.site_id || "").toLowerCase();
-    if (templateDocumentUrl || pinnedSite === "design") {
-      return available("design-canvas", {
-          type: "embed",
-          base: "https://design.oceanleo.com/embed/editor",
-          mediaType: "canvas",
-        });
-    }
-    if (item.kind === "website" || pinnedSite === "website") {
+    const pinnedEditor = String(item.meta.editor || "").toLowerCase();
+    if (item.kind === "website" || pinnedEditor === "website") {
       return available("website", {
         type: "embed",
         base: "https://website.oceanleo.com/embed/site-editor",
         mediaType: "website",
       });
     }
-    if (item.kind === "video_canvas" || pinnedSite === "video") {
+    if (
+      item.kind === "video_canvas" ||
+      pinnedEditor === "video-canvas"
+    ) {
       return available("video-canvas", {
         type: "embed",
         base: "https://video.oceanleo.com/canvas-board",
         mediaType: "video_canvas",
+      });
+    }
+    if (
+      templateDocumentUrl ||
+      item.kind === "canvas" ||
+      pinnedEditor === "design-canvas"
+    ) {
+      return available("design-canvas", {
+        type: "embed",
+        base: "https://design.oceanleo.com/embed/editor",
+        mediaType: "canvas",
       });
     }
   }
@@ -589,10 +596,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
 
   if (
     item.kind === "video_canvas" ||
-    (item.kind === "canvas" &&
-      (item.siteId === "video" ||
-        item.siteId === "video.oceanleo.com" ||
-        item.meta.editor === "video-canvas"))
+    (item.kind === "canvas" && item.meta.editor === "video-canvas")
   ) {
     return available("video-canvas", {
         type: "embed",
@@ -600,7 +604,9 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
         mediaType: "video_canvas",
       });
   }
-  if (item.kind === "canvas" && (url || Array.isArray(item.meta.nodes))) {
+  // A canvas is an editable project capability in its own right. Blank drafts
+  // intentionally have no URL/nodes yet and must work from every hosting site.
+  if (item.kind === "canvas") {
     return available("design-canvas", {
       type: "embed",
       base: "https://design.oceanleo.com/embed/editor",

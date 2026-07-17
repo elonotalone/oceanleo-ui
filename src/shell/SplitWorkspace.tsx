@@ -210,6 +210,12 @@ export function SplitWorkspace({
   const [ratio, setRatio] = useState(defaultRatio);
   const [maxed, setMaxed] = useState<Maxed>("none");
   const [dragging, setDragging] = useState(false);
+  const [libraryDockDragging, setLibraryDockDragging] = useState(false);
+  const [libraryDockTarget, setLibraryDockTarget] =
+    useState<WorkspaceLibraryDock>("right");
+  const libraryDockStartXRef = useRef(0);
+  const libraryDockMovedRef = useRef(false);
+  const libraryDockTargetRef = useRef<WorkspaceLibraryDock>("right");
   const [hydrated, setHydrated] = useState(false);
   // 左栏标题覆盖（FunctionAgentChat 通过 context 装入「操作台|agent」开关）。
   const [leftLabelOverride, setLeftLabelOverride] = useState<ReactNode | null>(null);
@@ -429,6 +435,81 @@ export function SplitWorkspace({
     };
   }, [dragging, persist]);
 
+  const finishLibraryDockDrag = useCallback(
+    (element?: HTMLElement, pointerId?: number) => {
+      if (
+        libraryDockMovedRef.current &&
+        libraryDockTargetRef.current !== libraryDock
+      ) {
+        setLibraryDock(libraryDockTargetRef.current);
+      }
+      if (element && pointerId !== undefined) {
+        element.releasePointerCapture?.(pointerId);
+      }
+      libraryDockMovedRef.current = false;
+      setLibraryDockDragging(false);
+    },
+    [libraryDock, setLibraryDock],
+  );
+
+  const libraryDockHandle = (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        event.preventDefault();
+        libraryDockStartXRef.current = event.clientX;
+        libraryDockMovedRef.current = false;
+        libraryDockTargetRef.current = libraryDock;
+        setLibraryDockTarget(libraryDock);
+        setLibraryDockDragging(true);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!libraryDockDragging) return;
+        const rect = wrapRef.current?.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+        if (Math.abs(event.clientX - libraryDockStartXRef.current) >= 10) {
+          libraryDockMovedRef.current = true;
+        }
+        const target: WorkspaceLibraryDock =
+          event.clientX < rect.left + rect.width / 2 ? "left" : "right";
+        libraryDockTargetRef.current = target;
+        setLibraryDockTarget(target);
+      }}
+      onPointerUp={(event) =>
+        finishLibraryDockDrag(event.currentTarget, event.pointerId)
+      }
+      onPointerCancel={(event) => {
+        libraryDockMovedRef.current = false;
+        finishLibraryDockDrag(event.currentTarget, event.pointerId);
+      }}
+      onClick={(event) => {
+        // Pointer users dock by dragging. Enter/Space keeps the interaction
+        // reachable without turning the visible product affordance back into
+        // the rejected click-only “移到左侧” button.
+        if (event.detail !== 0) return;
+        setLibraryDock(libraryDock === "right" ? "left" : "right");
+      }}
+      className="inline-flex touch-none select-none items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 active:cursor-grabbing"
+      title={tt(
+        libraryDock === "right"
+          ? "拖拽库到左侧；按回车也可停靠"
+          : "拖拽库到右侧；按回车也可停靠",
+      )}
+      aria-label={tt(
+        libraryDock === "right"
+          ? "拖拽库到左侧"
+          : "拖拽库到右侧",
+      )}
+    >
+      <span aria-hidden="true" className="cursor-grab text-sm leading-none">
+        ⠿
+      </span>
+      {tt("拖拽库")}
+    </button>
+  );
+
   const toggleMax = (which: "app" | "library") =>
     setMaxed((m) => (m === which ? "none" : which));
 
@@ -568,14 +649,7 @@ export function SplitWorkspace({
               >
                 ✕
               </button>
-              <button
-                type="button"
-                onClick={() => setLibraryDock("right")}
-                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-                title={tt("把库移到右侧")}
-              >
-                → {tt("移到右侧")}
-              </button>
+              {libraryDockHandle}
             </>
           )}
           <MaxButton which="app" />
@@ -636,22 +710,7 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              setLibraryDock(libraryDock === "right" ? "left" : "right")
-            }
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-            title={tt(
-              libraryDock === "right" ? "把库移到左侧" : "把库移到右侧",
-            )}
-            aria-label={tt(
-              libraryDock === "right" ? "把库移到左侧" : "把库移到右侧",
-            )}
-          >
-            {libraryDock === "right" ? "←" : "→"}
-            {tt(libraryDock === "right" ? "移到左侧" : "移到右侧")}
-          </button>
+          <div className="shrink-0">{libraryDockHandle}</div>
           <div className="shrink-0">
             <MaxButton which="library" />
           </div>
@@ -687,9 +746,37 @@ export function SplitWorkspace({
     <RightPaneCtx.Provider value={rightSlot}>
     <div
       ref={wrapRef}
-      className={`gap-0 p-1.5 ${className} md:flex`}
+      className={`relative gap-0 p-1.5 ${className} md:flex`}
       style={{ height: rootHeight }}
     >
+      {libraryDockDragging && (
+        <div className="pointer-events-none absolute inset-1.5 z-[90] grid grid-cols-2 gap-3">
+          <div
+            className={`grid place-items-center rounded-2xl border-2 border-dashed text-sm font-semibold backdrop-blur-sm transition ${
+              libraryDockTarget === "left"
+                ? "border-current bg-white/90 shadow-xl"
+                : "border-stone-300 bg-white/55 text-stone-400"
+            }`}
+            style={
+              libraryDockTarget === "left" ? { color: accent } : undefined
+            }
+          >
+            {tt("放到左栏")}
+          </div>
+          <div
+            className={`grid place-items-center rounded-2xl border-2 border-dashed text-sm font-semibold backdrop-blur-sm transition ${
+              libraryDockTarget === "right"
+                ? "border-current bg-white/90 shadow-xl"
+                : "border-stone-300 bg-white/55 text-stone-400"
+            }`}
+            style={
+              libraryDockTarget === "right" ? { color: accent } : undefined
+            }
+          >
+            {tt("放回右栏")}
+          </div>
+        </div>
+      )}
       {[appPane, divider, libraryPane]}
     </div>
     </RightPaneCtx.Provider>

@@ -67,6 +67,7 @@ export interface AdvancedEditorAdapter {
   status?: string;
   toolbox?: AdvancedEditorToolbox;
   drawers?: readonly AdvancedWorkbenchDrawer[];
+  /** Properties/actions for a real selected object; null when nothing is selected. */
   contextToolbar?: ReactNode;
   actions?: readonly AdvancedWorkbenchAction[];
   history?: AdvancedHistoryActions;
