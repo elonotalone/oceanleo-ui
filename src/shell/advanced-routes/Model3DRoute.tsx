@@ -44,13 +44,19 @@ export function Model3DRoute({
       mutate: async (_action, material) => {
         const url = material.url || material.previewUrl || "";
         if (!url) throw new Error("这个 3D 素材没有可用地址。");
-        const blob = await fetchMediaBlob(url, {
-          maxBytes: 256 * 1024 * 1024,
-        });
         const extension =
           String(material.meta.format || "").toLowerCase() ||
           url.split(/[?#]/)[0].split(".").pop() ||
           "glb";
+        if (extension === "gltf") {
+          // Keep the remote directory as one dependency closure. Turning only
+          // the JSON entrypoint into a local File severs its .bin/textures.
+          editor.openModelUrl(url);
+          return;
+        }
+        const blob = await fetchMediaBlob(url, {
+          maxBytes: 256 * 1024 * 1024,
+        });
         await editor.importModel(
           new File([blob], `${material.title || "model"}.${extension}`, {
             type: blob.type || "model/gltf-binary",
@@ -58,7 +64,7 @@ export function Model3DRoute({
         );
       },
     }),
-    [editor.importModel],
+    [editor.importModel, editor.openModelUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const buildSavedItem = useCallback(

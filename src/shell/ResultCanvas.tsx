@@ -4,14 +4,16 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { useRightPaneSlot } from "./SplitWorkspace";
+import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { useFunctionGuide } from "./guide-context";
 import { NavigatorGuide } from "./NavigatorGuide";
 import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
@@ -20,6 +22,7 @@ import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
+  workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import {
   FIXED_WORKSPACE_SLOTS,
@@ -32,6 +35,35 @@ import {
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import { WorkspaceEntryCanvas } from "./WorkspaceEntryCanvas";
+import { editorCapabilityFor } from "./workbench-routes";
+import {
+  advancedRootItemId,
+  inlineEditorItemsFromSession,
+} from "./advanced-session";
+
+interface LiveWorkspaceNodeStore {
+  node: ReactNode;
+  version: number;
+  listeners: Set<() => void>;
+}
+
+function createLiveWorkspaceNodeStore(): LiveWorkspaceNodeStore {
+  return { node: null, version: 0, listeners: new Set() };
+}
+
+function LiveWorkspaceNode({ store }: { store: LiveWorkspaceNodeStore }) {
+  useSyncExternalStore(
+    (listener) => {
+      store.listeners.add(listener);
+      return () => store.listeners.delete(listener);
+    },
+    () => store.version,
+    () => store.version,
+  );
+  return <>{store.node}</>;
+}
 
 export interface CanvasTab {
   id: string;
@@ -267,6 +299,62 @@ export function ResultCanvas({
   const guide = guideContext?.guide || null;
   const runtimeHydration = useWorkspaceRuntimeHydration();
   const rightSlot = useRightPaneSlot();
+  const workspacePane = useWorkspacePane();
+  const dockedLibraryInstanceId = useId();
+  const dockedLibraryOwnerRef = useRef(
+    `result-canvas-library:${dockedLibraryInstanceId}`,
+  );
+  const dockedLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
+    createLiveWorkspaceNodeStore(),
+  );
+  const [activeCanvasEntry, setActiveCanvasEntry] =
+    useState<WorkspaceLibraryEntry | null>(null);
+  const [savedEditorItems, setSavedEditorItems] = useState<
+    Record<string, LibraryItem>
+  >({});
+  const openCanvasEntry = useCallback(
+    (entry: WorkspaceLibraryEntry) => {
+      const item = entry.libraryItem;
+      if (!item) {
+        setActiveCanvasEntry(entry);
+        return;
+      }
+      const saved = savedEditorItems[advancedRootItemId(item)];
+      setActiveCanvasEntry(
+        saved
+          ? {
+              ...entry,
+              title: saved.title,
+              thumbUrl: saved.thumbUrl || saved.previewUrl,
+              externalUrl: saved.url || saved.previewUrl,
+              libraryItem: saved,
+            }
+          : entry,
+      );
+    },
+    [savedEditorItems],
+  );
+  const openCanvasItem = useCallback(
+    (item: LibraryItem) =>
+      openCanvasEntry(workspaceEntryFromLibraryItem(item)),
+    [openCanvasEntry],
+  );
+  const recordSavedEditorItem = useCallback((item: LibraryItem) => {
+    const rootId = advancedRootItemId(item);
+    setSavedEditorItems((current) => ({ ...current, [rootId]: item }));
+    setActiveCanvasEntry((current) =>
+      current?.libraryItem &&
+      advancedRootItemId(current.libraryItem) === rootId
+        ? {
+            ...current,
+            title: item.title,
+            thumbUrl: item.thumbUrl || item.previewUrl,
+            externalUrl: item.url || item.previewUrl,
+            libraryItem: item,
+          }
+        : current,
+    );
+  }, []);
 
   const guideTab: CanvasTab | null = guide
     ? {
@@ -308,9 +396,26 @@ export function ResultCanvas({
     [sourceTabs],
   );
 
+  const inlineHistoryItems = useMemo(
+    () => inlineEditorItemsFromSession(workspaceSession?.session),
+    [
+      workspaceSession?.session?.id,
+      workspaceSession?.session?.revision,
+      workspaceSession?.session?.snapshot,
+    ],
+  );
   const previewEntries = useMemo(
-    () => grouped.preview.map((tab) => previewEntry(tab)),
-    [grouped.preview],
+    () => [
+      ...grouped.preview.map((tab) => previewEntry(tab)),
+      ...inlineHistoryItems.map((item) =>
+        workspaceEntryFromLibraryItem(item, {
+          id: `edited:${advancedRootItemId(item)}`,
+          category: "已编辑",
+          description: "本 App 自动保存的可编辑版本",
+        }),
+      ),
+    ],
+    [grouped.preview, inlineHistoryItems],
   );
   const libraryRefreshNonce = useMemo(
     () => previewEntries.map((entry) => entry.id).join("|"),
@@ -556,6 +661,7 @@ export function ResultCanvas({
         action={actionFor("preview")}
         taskId={effectiveTaskId}
         siteId={effectiveSiteId}
+        onOpenEntry={openCanvasEntry}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有生成内容"
         emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
@@ -570,6 +676,7 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={effectiveSiteId}
         onSeeAll={onSeeAllMaterials}
+        onOpenItem={openCanvasItem}
       />
     ),
     mine: (
@@ -581,33 +688,139 @@ export function ResultCanvas({
           siteId={effectiveSiteId}
           featuredEntries={minePageEntries}
           refreshNonce={libraryRefreshNonce}
+          onOpenItem={openCanvasItem}
         />
       </div>
     ),
     browser: <div className="h-full min-h-0">{browserContent}</div>,
   };
 
-  // The fixed tabs live in SplitWorkspace's header slot. A passive-effect
-  // cleanup briefly restored the fallback “库” label on every tab click,
-  // causing a visible flash. Commit header replacement before paint.
+  const libraryContent = content[selected] || empty || content.template;
+  const libraryDockedLeft =
+    workspacePane?.libraryOpen === true && workspacePane.libraryDock === "left";
+  const dockedLibraryNode = (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-stone-100 p-2">
+        <FixedWorkspaceTabs
+          slots={visibleSlots}
+          selected={selected}
+          onSelect={select}
+          accent={accent}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">{libraryContent}</div>
+    </div>
+  );
+  dockedLibraryStoreRef.current.node = dockedLibraryNode;
+  useLayoutEffect(() => {
+    const store = dockedLibraryStoreRef.current;
+    store.version += 1;
+    store.listeners.forEach((listener) => listener());
+  }, [dockedLibraryNode]);
+
+  const showDockedLibrary = workspacePane?.showDockedLibrary;
+  const clearDockedLibrary = workspacePane?.clearDockedLibrary;
+  useLayoutEffect(() => {
+    const ownerId = dockedLibraryOwnerRef.current;
+    if (!libraryDockedLeft || !showDockedLibrary || !clearDockedLibrary) {
+      clearDockedLibrary?.(ownerId);
+      return;
+    }
+    showDockedLibrary({
+      ownerId,
+      id: "workspace-library",
+      label: tt("库"),
+      content: <LiveWorkspaceNode store={dockedLibraryStoreRef.current} />,
+    });
+    return () => clearDockedLibrary(ownerId);
+  }, [
+    clearDockedLibrary,
+    libraryDockedLeft,
+    showDockedLibrary,
+    tt,
+  ]);
+
+  const activeEditorItem =
+    activeCanvasEntry?.libraryItem &&
+    editorCapabilityFor(activeCanvasEntry.libraryItem).available
+      ? activeCanvasEntry.libraryItem
+      : null;
+  const editorContent = activeEditorItem ? (
+    <AdvancedContentWorkbench
+      key={advancedRootItemId(activeEditorItem)}
+      item={activeEditorItem}
+      taskId={effectiveTaskId}
+      siteId={effectiveSiteId || activeEditorItem.siteId}
+      appId={workspaceSession?.appId}
+      accent={accent}
+      embedded
+      onSavedItem={recordSavedEditorItem}
+      onClose={() => setActiveCanvasEntry(null)}
+    />
+  ) : null;
+  const viewerContent =
+    activeCanvasEntry && !activeEditorItem ? (
+      <WorkspaceEntryCanvas
+        entry={activeCanvasEntry}
+        accent={accent}
+        onClose={() => setActiveCanvasEntry(null)}
+      />
+    ) : null;
+  const selectedPreviewTab =
+    grouped.preview.find((tab) => tab.id === active) ||
+    grouped.preview.find((tab) => /^(?:result|results|preview|artifact)$/i.test(tab.id)) ||
+    grouped.preview[0] ||
+    null;
+  const rightMainContent =
+    editorContent ||
+    viewerContent ||
+    (libraryDockedLeft ? (
+      selectedPreviewTab?.content ||
+      empty || (
+        <CanvasEmpty
+          title="从左侧库选择素材"
+          description="素材预览与完整编辑画布会显示在这里。"
+        />
+      )
+    ) : (
+      libraryContent
+    ));
+
+  // Library tabs belong to the library. When the library is docked left, or an
+  // editor owns the main canvas, remove the right-side library header entirely.
   useLayoutEffect(() => {
     if (!rightSlot) return;
+    const frameless = Boolean(activeCanvasEntry) || libraryDockedLeft;
+    rightSlot.setRightFrameless(frameless);
     rightSlot.setRightLabel(
-      <FixedWorkspaceTabs
-        slots={visibleSlots}
-        selected={selected}
-        onSelect={select}
-        accent={accent}
-      />,
+      frameless ? null : (
+        <FixedWorkspaceTabs
+          slots={visibleSlots}
+          selected={selected}
+          onSelect={select}
+          accent={accent}
+        />
+      ),
     );
-    return () => rightSlot.setRightLabel(null);
-  }, [rightSlot, selected, select, accent, visibleSlots]);
+    return () => {
+      rightSlot.setRightLabel(null);
+      rightSlot.setRightFrameless(false);
+    };
+  }, [
+    accent,
+    activeCanvasEntry,
+    libraryDockedLeft,
+    rightSlot,
+    select,
+    selected,
+    visibleSlots,
+  ]);
 
   if (rightSlot) {
     return (
       <div className={`flex h-full min-h-0 flex-col overflow-hidden ${className}`}>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {content[selected] || empty || content.template}
+          {rightMainContent}
         </div>
       </div>
     );
@@ -649,7 +862,7 @@ export function ResultCanvas({
         </div>
       </nav>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {content[selected] || empty || content.template}
+        {rightMainContent}
       </div>
     </section>
   );

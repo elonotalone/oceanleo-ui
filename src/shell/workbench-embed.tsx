@@ -19,7 +19,6 @@ import {
 } from "./editor-protocol";
 import type { SelectionCommand, SelectionContext } from "./selection-context";
 import type { LibraryItem } from "./library-data";
-import { useAdvancedLayout } from "./advanced-layout-context";
 import { advancedSavedItem } from "./advanced-session";
 
 export interface EmbedEditorPaneProps {
@@ -97,7 +96,6 @@ export function EmbedEditorPane({
   onMaterialResult,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
-  const layout = useAdvancedLayout();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyHandledRef = useRef(false);
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
@@ -357,9 +355,13 @@ export function EmbedEditorPane({
     if (phase !== "ready") return;
     sendToEditor({
       type: "set-host-layout",
-      sidePanelVisible: Boolean(layout?.hostPanelVisible),
+      // The App's physical left pane exists even when it currently shows the
+      // Agent/library rather than a tool drawer. Embedded editors must never
+      // add a second internal sidebar inside the right canvas.
+      sidePanelVisible: true,
+      hostOwnsChrome: true,
     });
-  }, [layout?.hostPanelVisible, phase, sendToEditor]);
+  }, [phase, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready" || !selectionCommand) return;

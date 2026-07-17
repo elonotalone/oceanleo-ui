@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import type { AdvancedWorkbenchDrawer } from "../advanced-editor-adapter";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import type { EditorMaterialInsertion } from "../editor-protocol";
+import { uploadFile } from "../../lib/database";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -13,12 +15,137 @@ import type { LibraryItem } from "../library-data";
 import type {
   SelectionCommand,
   SelectionContext,
+  SelectionControl,
 } from "../selection-context";
+import { selectionRequestId } from "../selection-context";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { UnsupportedRoute } from "./UnsupportedRoute";
+
+interface RemoteChoice {
+  value: string;
+  label: string;
+  swatch?: string;
+}
+
+function RemoteChoicePanel({
+  title,
+  controlId,
+  choices,
+  selectionId,
+  onCommand,
+}: {
+  title: string;
+  controlId: string;
+  choices: RemoteChoice[];
+  selectionId: string;
+  onCommand: (command: SelectionCommand) => void;
+}) {
+  return (
+    <div className="h-full overflow-y-auto p-3">
+      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
+        {title}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {choices.map((choice) => (
+          <button
+            key={choice.value}
+            type="button"
+            onClick={() =>
+              onCommand({
+                requestId: selectionRequestId(),
+                selectionId,
+                controlId,
+                value: choice.value,
+              })
+            }
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)]"
+          >
+            {choice.swatch && (
+              <span
+                className="h-6 w-6 shrink-0 rounded-md border border-black/10"
+                style={
+                  choice.swatch.startsWith("#")
+                    ? { backgroundColor: choice.swatch }
+                    : { backgroundImage: choice.swatch }
+                }
+              />
+            )}
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const DESIGN_HOST_TOOLS: SelectionControl[] = [
+  { id: "undo", kind: "action", label: "撤销" },
+  { id: "redo", kind: "action", label: "重做" },
+  { id: "design-templates", kind: "panel", label: "模板", icon: "templates", placement: "tools", panelId: "materials", panelAction: "replace" },
+  { id: "design-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
+  { id: "design-shapes", kind: "panel", label: "形状", icon: "shape", placement: "tools", panelId: "design-shapes" },
+  { id: "design-text", kind: "panel", label: "文字", icon: "text", placement: "tools", panelId: "design-text" },
+  { id: "design-background", kind: "panel", label: "背景", icon: "background", placement: "tools", panelId: "design-background" },
+];
+
+const VIDEO_HOST_TOOLS: SelectionControl[] = [
+  { id: "undo", kind: "action", label: "撤销" },
+  { id: "redo", kind: "action", label: "重做" },
+  { id: "video-nodes", kind: "panel", label: "节点", icon: "add", placement: "tools", panelId: "video-nodes" },
+  { id: "video-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
+  { id: "run-all", kind: "action", label: "运行全部", icon: "animate", placement: "tools" },
+];
+
+const WEBSITE_HOST_TOOLS: SelectionControl[] = [
+  { id: "site-device", kind: "panel", label: "设备", icon: "pages", placement: "tools", panelId: "site-device" },
+  { id: "site-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
+  { id: "refresh-preview", kind: "action", label: "刷新", icon: "redo", placement: "tools" },
+];
+
+const DESIGN_SHAPES: RemoteChoice[] = [
+  ["rect", "矩形"],
+  ["circle", "圆形"],
+  ["triangle", "三角形"],
+  ["line", "线条"],
+  ["arrow", "箭头"],
+  ["star", "星形"],
+  ["polygon", "多边形"],
+  ["bubble", "对话泡泡"],
+  ["ribbon", "丝带横幅"],
+].map(([value, label]) => ({ value, label }));
+
+const DESIGN_TEXT: RemoteChoice[] = [
+  ["h1", "H1 标题"],
+  ["h2", "H2 副标题"],
+  ["body", "正文"],
+  ["emphasis", "强调文本"],
+  ["warp", "变形文字"],
+].map(([value, label]) => ({ value, label }));
+
+const DESIGN_BACKGROUND: RemoteChoice[] = [
+  { value: "#ffffff", label: "纯白", swatch: "#ffffff" },
+  { value: "#f8fafc", label: "浅灰", swatch: "#f8fafc" },
+  { value: "#fef3c7", label: "暖黄", swatch: "#fef3c7" },
+  { value: "#dbeafe", label: "浅蓝", swatch: "#dbeafe" },
+  { value: "#fce7f3", label: "浅粉", swatch: "#fce7f3" },
+  { value: "#111827", label: "深色", swatch: "#111827" },
+];
+
+const VIDEO_NODES: RemoteChoice[] = [
+  ["input", "输入"],
+  ["text", "文本"],
+  ["script", "脚本"],
+  ["model", "模型"],
+  ["image", "图片"],
+  ["video", "视频"],
+  ["audio", "音频"],
+  ["subtitle", "字幕"],
+  ["concat", "合并"],
+  ["output", "输出"],
+].map(([value, label]) => ({ value, label }));
 
 export function EmbeddedRoute({
   item,
@@ -55,6 +182,86 @@ export function EmbeddedRoute({
   >(null);
   const saveTimerRef = useRef<number | null>(null);
   const remoteRevisionRef = useRef(0);
+  const hostedMediaType = route.type === "embed" ? route.mediaType : null;
+  const hostToolControls =
+    hostedMediaType === "image"
+      ? DESIGN_HOST_TOOLS
+      : hostedMediaType === "video"
+        ? VIDEO_HOST_TOOLS
+        : hostedMediaType === "website"
+          ? WEBSITE_HOST_TOOLS
+          : [];
+  const hostedSelection = useMemo<SelectionContext | null>(() => {
+    if (!hostedMediaType || !selection) return selection;
+    const hostIds = new Set(hostToolControls.map((control) => control.id));
+    return {
+      version: 1,
+      kind: selection.kind,
+      id: selection.id,
+      label: selection.label,
+      ...(selection.text ? { text: selection.text } : {}),
+      ...(selection.anchor ? { anchor: selection.anchor } : {}),
+      controls: [
+        ...hostToolControls,
+        ...selection.controls.filter(
+          (control) => !hostIds.has(control.id),
+        ),
+      ].slice(0, 32),
+    };
+  }, [hostToolControls, hostedMediaType, route, selection]);
+  const remoteDrawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
+    const selectionId = hostedSelection?.id || `host:${hostedMediaType || "editor"}`;
+    const panel = (
+      id: string,
+      label: string,
+      controlId: string,
+      choices: RemoteChoice[],
+    ): AdvancedWorkbenchDrawer => ({
+      id,
+      label,
+      icon:
+        id === "design-text"
+          ? "text"
+          : id === "design-background"
+            ? "background"
+            : id === "video-nodes"
+              ? "add"
+              : "elements",
+      content: (
+        <RemoteChoicePanel
+          title={label}
+          controlId={controlId}
+          choices={choices}
+          selectionId={selectionId}
+          onCommand={setSelectionCommand}
+        />
+      ),
+    });
+    if (hostedMediaType === "image") {
+      return [
+        panel("design-shapes", "形状", "insert-shape", DESIGN_SHAPES),
+        panel("design-text", "文字", "insert-text", DESIGN_TEXT),
+        panel(
+          "design-background",
+          "背景",
+          "background-color",
+          DESIGN_BACKGROUND,
+        ),
+      ];
+    }
+    if (hostedMediaType === "video") {
+      return [panel("video-nodes", "添加节点", "add-node", VIDEO_NODES)];
+    }
+    if (hostedMediaType === "website") {
+      return [
+        panel("site-device", "预览设备", "set-device", [
+          { value: "desktop", label: "桌面" },
+          { value: "mobile", label: "手机" },
+        ]),
+      ];
+    }
+    return [];
+  }, [hostedMediaType, hostedSelection?.id]);
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
@@ -141,7 +348,10 @@ export function EmbeddedRoute({
     if (route.type !== "embed") return null;
     return {
       id: `embed-materials:${route.mediaType}@2`,
-      actions: ["insert"],
+      actions:
+        route.mediaType === "image"
+          ? ["insert", "replace", "apply"]
+          : ["insert"],
       accepts: (material) => {
         const urls = [
           material.url,
@@ -169,7 +379,7 @@ export function EmbeddedRoute({
           )
         );
       },
-      mutate: (_action, material, placement) => {
+      mutate: (action, material, placement) => {
         const candidates = (
           route.mediaType === "video"
             ? [material.url, material.previewUrl, material.thumbUrl]
@@ -209,7 +419,7 @@ export function EmbeddedRoute({
           });
           setMaterialInsertion({
             commandId,
-            action: "insert",
+            action,
             material: {
               id: material.key || material.id,
               kind: resolvedKind,
@@ -221,6 +431,7 @@ export function EmbeddedRoute({
                 mime: material.meta.mime,
                 content_type: material.meta.content_type,
                 subtype: material.meta.subtype,
+                template_doc_url: material.meta.template_doc_url,
               },
               writable: false,
             },
@@ -365,35 +576,36 @@ export function EmbeddedRoute({
         ),
         contextToolbar: (
           <SelectionToolbar
-            context={selection}
+            context={hostedSelection}
             onCommand={setSelectionCommand}
             accent={accent}
           />
         ),
+        drawers: remoteDrawers,
         history: {
           canUndo: Boolean(
-            selection?.controls.some(
+            hostedSelection?.controls.some(
               (control) => control.id === "undo" && !control.disabled,
             ),
           ),
           canRedo: Boolean(
-            selection?.controls.some(
+            hostedSelection?.controls.some(
               (control) => control.id === "redo" && !control.disabled,
             ),
           ),
           undo: () => {
-            if (!selection) return;
+            if (!hostedSelection) return;
             setSelectionCommand({
               requestId: `header-undo-${Date.now()}`,
-              selectionId: selection.id,
+              selectionId: hostedSelection.id,
               controlId: "undo",
             });
           },
           redo: () => {
-            if (!selection) return;
+            if (!hostedSelection) return;
             setSelectionCommand({
               requestId: `header-redo-${Date.now()}`,
-              selectionId: selection.id,
+              selectionId: hostedSelection.id,
               controlId: "redo",
             });
           },
@@ -404,6 +616,51 @@ export function EmbeddedRoute({
           editRevision,
           flush: saveBeforeNewConversation,
         },
+        upload: materialAdapter
+          ? {
+              accept:
+                route.mediaType === "video"
+                  ? "image/*,video/*,audio/*"
+                  : "image/*",
+              multiple: true,
+              onFiles: async (files) => {
+                for (const file of files) {
+                  const uploaded = await uploadFile(file, {
+                    siteId: siteId || route.mediaType,
+                    title: file.name,
+                  });
+                  const row = uploaded.data?.file;
+                  if (!uploaded.ok || !row?.url) {
+                    throw new Error(uploaded.error || "文件上传失败");
+                  }
+                  await materialAdapter.mutate(
+                    "insert",
+                    {
+                      key: `upload:${row.id || row.url}`,
+                      source: "creation",
+                      id: row.id || row.url,
+                      title: row.title || file.name,
+                      kind: file.type.startsWith("video/")
+                        ? "video"
+                        : file.type.startsWith("audio/")
+                          ? "audio"
+                          : "image",
+                      siteId: siteId || route.mediaType,
+                      url: row.url,
+                      previewUrl: row.thumb_url || row.url,
+                      thumbUrl: row.thumb_url || row.url,
+                      favorite: false,
+                      meta: {
+                        mime: file.type,
+                        format: file.name.split(".").pop()?.toLowerCase() || "",
+                      },
+                    },
+                    { source: "click" },
+                  );
+                }
+              },
+            }
+          : undefined,
         closeRequestRevision,
       }}
       onClose={onClose}

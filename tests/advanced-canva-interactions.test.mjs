@@ -93,7 +93,9 @@ test("advanced editors autosave projects and reserve header actions for delivery
   const imagePersistence = source(
     "../src/shell/image-editor/editor-persistence.ts",
   );
-  assert.match(header, /正在保存/);
+  assert.match(header, /正在自动保存/);
+  assert.match(header, /CloudAutoSaveIcon/);
+  assert.match(header, /已自动保存/);
   assert.match(header, /保存遇到问题/);
   assert.match(autosave, /AdvancedPersistenceController/);
   assert.match(autosave, /controllerRef\.current\?\.observe/);

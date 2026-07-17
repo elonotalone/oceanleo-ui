@@ -9,6 +9,8 @@ import { editorRouteFor, type EditorRoute } from "./workbench-routes";
 
 export const ADVANCED_SESSION_SCHEMA_VERSION = 2;
 export const ADVANCED_SESSION_KIND = "advanced_content";
+export const INLINE_EDITOR_HISTORY_KEY = "oceanleo_inline_editor";
+const INLINE_EDITOR_HISTORY_VERSION = 1;
 const MAX_APP_ID = 160;
 const MAX_META_JSON = 20_000;
 
@@ -64,6 +66,8 @@ const META_KEYS = new Set([
   "editor_project_url",
   "editor_project_schema",
   "editor_saved_at",
+  "model_source_url",
+  "model_dependency_mode",
   "content_type",
   "representation",
   "subtype",
@@ -96,6 +100,7 @@ const META_KEYS = new Set([
   "preview_url",
   "asset_type",
   "template_doc_url",
+  "source_asset_url",
   "open_url",
   "advanced_editor_route",
 ]);
@@ -260,6 +265,172 @@ export function advancedSessionSnapshot(
     },
     task_id: taskId?.trim() || null,
   };
+}
+
+interface InlineEditorHistoryEntry {
+  updatedAt: string;
+  head: {
+    version: 1;
+    route: EditorRoute["type"];
+    task_id: string | null;
+    item: AdvancedSessionSnapshot["item"];
+  };
+}
+
+interface InlineEditorHistoryState {
+  version: typeof INLINE_EDITOR_HISTORY_VERSION;
+  latestRootId: string;
+  heads: Record<string, InlineEditorHistoryEntry>;
+}
+
+/** Add one reopenable editor head without replacing the App's native snapshot. */
+export function withInlineEditorHistoryHead(
+  currentSnapshot: unknown,
+  item: LibraryItem,
+  route: EditorRoute["type"],
+  taskId?: string | null,
+): Record<string, unknown> {
+  const base =
+    currentSnapshot &&
+    typeof currentSnapshot === "object" &&
+    !Array.isArray(currentSnapshot)
+      ? (currentSnapshot as Record<string, unknown>)
+      : {};
+  const rawState =
+    base[INLINE_EDITOR_HISTORY_KEY] &&
+    typeof base[INLINE_EDITOR_HISTORY_KEY] === "object" &&
+    !Array.isArray(base[INLINE_EDITOR_HISTORY_KEY])
+      ? (base[INLINE_EDITOR_HISTORY_KEY] as Record<string, unknown>)
+      : null;
+  const rawHeads =
+    rawState?.version === INLINE_EDITOR_HISTORY_VERSION &&
+    rawState.heads &&
+    typeof rawState.heads === "object" &&
+    !Array.isArray(rawState.heads)
+      ? (rawState.heads as Record<string, InlineEditorHistoryEntry>)
+      : {};
+  const rootId = advancedRootItemId(item);
+  const key = stableDigest(rootId);
+  const serialized = advancedSessionSnapshot(item, route, taskId);
+  const heads = {
+    ...rawHeads,
+    [key]: {
+      updatedAt: new Date().toISOString(),
+      head: {
+        version: 1 as const,
+        route,
+        task_id: taskId?.trim() || null,
+        item: serialized.item,
+      },
+    },
+  };
+  const trimmed = Object.fromEntries(
+    Object.entries(heads)
+      .sort(([, left], [, right]) =>
+        String(right.updatedAt).localeCompare(String(left.updatedAt)),
+      )
+      .slice(0, 24),
+  );
+  const state: InlineEditorHistoryState = {
+    version: INLINE_EDITOR_HISTORY_VERSION,
+    latestRootId: rootId,
+    heads: trimmed,
+  };
+  return { ...base, [INLINE_EDITOR_HISTORY_KEY]: state };
+}
+
+/** Read saved editor heads embedded in a normal App session. */
+export function inlineEditorItemsFromSession(
+  session: AppSession | null | undefined,
+): LibraryItem[] {
+  const snapshot = session?.snapshot;
+  if (!session || !snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return [];
+  }
+  const rawState = (snapshot as Record<string, unknown>)[INLINE_EDITOR_HISTORY_KEY];
+  if (!rawState || typeof rawState !== "object" || Array.isArray(rawState)) return [];
+  const state = rawState as Record<string, unknown>;
+  if (
+    state.version !== INLINE_EDITOR_HISTORY_VERSION ||
+    !state.heads ||
+    typeof state.heads !== "object" ||
+    Array.isArray(state.heads)
+  ) {
+    return [];
+  }
+  const ordered = Object.values(
+    state.heads as Record<string, InlineEditorHistoryEntry>,
+  ).sort((left, right) =>
+    String(right?.updatedAt || "").localeCompare(String(left?.updatedAt || "")),
+  );
+  const items: LibraryItem[] = [];
+  for (const entry of ordered.slice(0, 24)) {
+    const head = entry?.head;
+    const raw = head?.item;
+    if (
+      !head ||
+      head.version !== INLINE_EDITOR_HISTORY_VERSION ||
+      !ROUTE_TYPES.has(head.route) ||
+      !raw ||
+      typeof raw !== "object"
+    ) {
+      continue;
+    }
+    const candidate: LibraryItem = {
+      key: boundedString(raw.key, 512),
+      source:
+        raw.source === "artifact" || raw.source === "creation"
+          ? raw.source
+          : "creation",
+      id: boundedString(raw.versionId, 512),
+      title: boundedString(raw.title, 500),
+      kind: ITEM_KINDS.has(raw.kind) ? raw.kind : "file",
+      siteId: boundedString(raw.siteId, 120),
+      url: durableUrl(raw.url),
+      previewUrl: durableUrl(raw.previewUrl),
+      thumbUrl: durableUrl(raw.thumbUrl),
+      content:
+        typeof raw.content === "string" && raw.content.length <= 100_000
+          ? raw.content
+          : undefined,
+      favorite: raw.favorite === true,
+      createdAt: boundedString(raw.createdAt, 100) || undefined,
+      meta:
+        raw.meta && typeof raw.meta === "object" && !Array.isArray(raw.meta)
+          ? jsonSafeMeta(raw.meta)
+          : {},
+    };
+    if (
+      !candidate.key ||
+      !candidate.id ||
+      !candidate.title ||
+      !candidate.siteId ||
+      candidate.kind === "file" && raw.kind !== "file"
+    ) {
+      continue;
+    }
+    candidate.meta.parent_asset_id = boundedString(raw.id, 512);
+    const feature = advancedFeatureForItem(candidate);
+    if (!feature) continue;
+    const expectedAppId = advancedSessionAppId(candidate, head.route);
+    // Reuse the hardened legacy decoder in memory; the normal App snapshot
+    // stores an inline head, never an advanced session or advanced surface.
+    const decoderSnapshot: AdvancedSessionSnapshot = {
+      kind: ADVANCED_SESSION_KIND,
+      version: ADVANCED_SESSION_SCHEMA_VERSION,
+      editor_route: head.route,
+      feature_id: feature.id,
+      task_id: head.task_id,
+      item: raw,
+    };
+    const restored = advancedItemFromSession({
+      ...session,
+      app_id: expectedAppId,
+      snapshot: decoderSnapshot,
+    });
+    if (restored) items.push(restored);
+  }
+  return items;
 }
 
 export function advancedSnapshotFromSession(

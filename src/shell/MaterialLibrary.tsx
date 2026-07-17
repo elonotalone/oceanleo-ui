@@ -83,6 +83,8 @@ export interface MaterialLibraryProps {
   onMaterialDragEnd?: () => void;
   /** Standalone libraries may open an editor; embedded workbenches stay in place. */
   allowAdvancedOnSelect?: boolean;
+  /** Workspace-level editor host; keeps the editor out of the library detail. */
+  onOpenItem?: (item: LibraryItem) => void;
 }
 
 export interface PlatformAsset {
@@ -403,6 +405,7 @@ export function MaterialLibrary({
   onMaterialDragStart,
   onMaterialDragEnd,
   allowAdvancedOnSelect = true,
+  onOpenItem,
 }: MaterialLibraryProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -569,6 +572,7 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect && materialActions.length === 0}
+      onOpenItem={onOpenItem}
       className={className}
     />
   );

@@ -26,6 +26,7 @@ import {
   advancedRootItemId,
   advancedSessionAppId,
   advancedSessionSnapshot,
+  withInlineEditorHistoryHead,
 } from "./advanced-session";
 import {
   advancedFeatureForItem,
@@ -285,9 +286,34 @@ function AdvancedContentWorkbenchRuntime(
   const recordSavedItem = useCallback(
     async (savedItem: LibraryItem) => {
       materialRef.current = savedItem;
+      if (editorHost.embedded) {
+        const active =
+          workspace.session ||
+          (await workspace.ensureActive({ title: savedItem.title }));
+        if (!active) return false;
+        const mergedSnapshot = withInlineEditorHistoryHead(
+          active.snapshot,
+          savedItem,
+          route.type,
+          workspace.taskId,
+        );
+        const stored = await workspace.saveSnapshot(
+          mergedSnapshot,
+          active.schema_version || 1,
+          {
+            expectedSessionId: active.id,
+            title: active.title || savedItem.title,
+          },
+        );
+        if (!stored.ok) return false;
+        // Keep the mounted editor runtime on its in-memory document. Replacing
+        // its input URL here remounts the route and can discard edits made
+        // while the save request was in flight.
+        editorHost.onSavedItem?.(savedItem);
+        return true;
+      }
       setItem(savedItem);
       editorHost.onSavedItem?.(savedItem);
-      if (editorHost.embedded) return true;
       const snapshot = makeSnapshot(workspace.taskId);
       const session = await workspace.ensureActive({
         title: savedItem.title,
@@ -302,7 +328,7 @@ function AdvancedContentWorkbenchRuntime(
       );
       return saved.ok;
     },
-    [editorHost, makeSnapshot, workspace],
+    [editorHost, makeSnapshot, route.type, workspace],
   );
   const renameTitle = useCallback(
     async (title: string) => {

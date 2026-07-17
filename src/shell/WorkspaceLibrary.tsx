@@ -20,7 +20,6 @@ import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { editorCapabilityFor } from "./workbench-routes";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import { advancedLibraryReferenceFor } from "./advanced-features";
-import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -78,8 +77,8 @@ export interface WorkspaceLibraryProps {
   openAdvancedOnSelect?: boolean;
   /** Route hosts can intercept selection while preserving the shared card UI. */
   onOpenItem?: (item: LibraryItem) => void;
-  /** Receives the concrete version produced by an inline editor autosave. */
-  onSavedItem?: (item: LibraryItem) => void;
+  /** Workspace hosts can move every preview/editor into the fixed main canvas. */
+  onOpenEntry?: (entry: WorkspaceLibraryEntry) => void;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -132,10 +131,46 @@ export function workspaceEntryFromLibraryItem(
   };
 }
 
+export function WorkspaceLibraryEntryViewer({
+  entry,
+  accent = "#4f46e5",
+  viewerNonce = 0,
+}: {
+  entry: WorkspaceLibraryEntry;
+  accent?: string;
+  viewerNonce?: number;
+}) {
+  const tt = useUI();
+  if (entry.libraryItem) {
+    return (
+      <LibraryItemViewer
+        key={`${entry.id}:${viewerNonce}`}
+        item={entry.libraryItem}
+        accent={accent}
+      />
+    );
+  }
+  if (entry.content) {
+    return (
+      <div key={viewerNonce} className="h-full min-h-[520px]">
+        {entry.content}
+      </div>
+    );
+  }
+  return (
+    <WorkspaceLibraryEmpty
+      title={tt("暂时无法预览")}
+      description={tt("这个条目还没有可显示的内容。")}
+    />
+  );
+}
+
 /**
- * Shared master/detail shell for Preview, Materials and My Library.
+ * Shared list/detail shell for Preview, Materials and My Library.
  * Those three areas intentionally share the exact same search, categories,
- * card density, detail header and viewer dispatch.
+ * card density, detail header and viewer dispatch. Editable items are handed
+ * to the workspace-level host through onOpenItem; this component never nests a
+ * full editor inside a library detail.
  */
 export function WorkspaceLibrary({
   entries,
@@ -147,9 +182,7 @@ export function WorkspaceLibrary({
   onCategoryChange,
   primaryCategoryIds,
   toolbarActions,
-  taskId,
   siteId = "",
-  appId,
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
@@ -160,7 +193,7 @@ export function WorkspaceLibrary({
   allowAdvanced = true,
   openAdvancedOnSelect = true,
   onOpenItem,
-  onSavedItem,
+  onOpenEntry,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -188,12 +221,15 @@ export function WorkspaceLibrary({
   const [deletingId, setDeletingId] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [materialActionState, setMaterialActionState] = useState("");
-  const [savedItems, setSavedItems] = useState<Record<string, LibraryItem>>({});
   const detailRef = useRef<HTMLDivElement>(null);
   const materialActionPendingRef = useRef(false);
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
+      if (materialActions.length === 0 && onOpenEntry) {
+        onOpenEntry(entry);
+        return;
+      }
       const item = entry.libraryItem;
       if (
         item &&
@@ -212,6 +248,7 @@ export function WorkspaceLibrary({
     [
       allowAdvanced,
       materialActions.length,
+      onOpenEntry,
       onOpenItem,
       openAdvancedOnSelect,
     ],
@@ -391,7 +428,7 @@ export function WorkspaceLibrary({
             entry.libraryItem?.previewUrl === next.url,
         )
       : null;
-    if (byId || byUrl) setSelectedId((byId || byUrl)!.id);
+    if (byId || byUrl) openEntry((byId || byUrl)!);
   // Remote material/file rows may arrive after the action. Re-run against the
   // new entry set so `itemId` opens once its card exists.
   }, [action?.nonce, entries, categories]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -416,7 +453,6 @@ export function WorkspaceLibrary({
       Boolean(externalUrl) &&
       (kind === "website" || kind === "canvas" || kind === "video_canvas");
     const workbenchItem: LibraryItem =
-      savedItems[selected.id] ||
       selected.libraryItem || {
         key: selected.id,
         source: "creation",
@@ -435,33 +471,6 @@ export function WorkspaceLibrary({
         },
       };
     const editorCapability = editorCapabilityFor(workbenchItem);
-    if (
-      allowAdvanced &&
-      openAdvancedOnSelect &&
-      materialActions.length === 0 &&
-      editorCapability.available
-    ) {
-      return (
-        <div className={`h-full min-h-0 ${className}`}>
-          <AdvancedContentWorkbench
-            item={workbenchItem}
-            taskId={taskId}
-            siteId={siteId || workbenchItem.siteId}
-            appId={appId}
-            accent={accent}
-            embedded
-            onSavedItem={(savedItem) => {
-              setSavedItems((current) => ({
-                ...current,
-                [selected.id]: savedItem,
-              }));
-              onSavedItem?.(savedItem);
-            }}
-            onClose={() => setSelectedId("")}
-          />
-        </div>
-      );
-    }
     const actionLabels: Record<WorkbenchMaterialAction, string> = {
       insert: "插入",
       replace: "替换",
@@ -578,22 +587,11 @@ export function WorkspaceLibrary({
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
-          {selected.libraryItem ? (
-            <LibraryItemViewer
-              key={`${selected.id}:${viewerNonce}`}
-              item={selected.libraryItem}
-              accent={accent}
-            />
-          ) : selected.content ? (
-            <div key={viewerNonce} className="h-full min-h-[520px]">
-              {selected.content}
-            </div>
-          ) : (
-            <WorkspaceLibraryEmpty
-              title={tt("暂时无法预览")}
-              description={tt("这个条目还没有可显示的内容。")}
-            />
-          )}
+          <WorkspaceLibraryEntryViewer
+            entry={selected}
+            accent={accent}
+            viewerNonce={viewerNonce}
+          />
         </div>
       </div>
       </>

@@ -16,10 +16,11 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
-import type { PersistedEditorVersion } from "../doc-editors/doc-io";
 import { MAX_MODEL_BYTES, modelExtension, safeModelStem, triggerModelDownload, uploadImportedModel } from "./model3d-files";
 import { normalizeModel3DRecovery } from "./model3d-project";
 import { normalizeSavedModelView } from "./model3d-view";
+import type { Model3DWorkbenchState } from "./model3d-workbench-state";
+export type { Model3DWorkbenchState } from "./model3d-workbench-state";
 import { useModel3DSave } from "./use-model3d-save";
 const DEFAULT_AZIMUTH = 0, DEFAULT_ELEVATION = 75, DEFAULT_DISTANCE = 105;
 interface ModelProgressEvent extends Event {
@@ -28,54 +29,6 @@ interface ModelProgressEvent extends Event {
 
 interface ModelErrorEvent extends Event {
   detail?: { message?: string; type?: string };
-}
-
-export interface Model3DWorkbenchState {
-  viewerRef: RefCallback<HTMLElement>;
-  title: string;
-  sourceUrl: string;
-  posterUrl: string;
-  viewerReady: boolean;
-  modelLoaded: boolean;
-  loading: boolean;
-  progress: number;
-  error: string;
-  notice: string;
-  savedUrl: string;
-  capturing: boolean;
-  saving: boolean;
-  downloading: boolean;
-  dirty: boolean;
-  editRevision: number;
-  azimuth: number;
-  elevation: number;
-  zoom: number;
-  autoRotate: boolean;
-  exposure: number;
-  shadowIntensity: number;
-  shadowSoftness: number;
-  background: string;
-  animations: string[];
-  animationName: string;
-  animationPlaying: boolean;
-  animationSpeed: number;
-  setOrbit: (azimuth: number, elevation: number) => void;
-  setZoom: (distancePercent: number) => void;
-  resetCamera: () => void;
-  setAutoRotate: (enabled: boolean) => void;
-  setExposure: (value: number) => void;
-  setShadowIntensity: (value: number) => void;
-  setShadowSoftness: (value: number) => void;
-  setBackground: (value: string) => void;
-  selectAnimation: (name: string) => void;
-  toggleAnimation: () => void;
-  setAnimationSpeed: (value: number) => void;
-  importModel: (file: File) => Promise<void>;
-  downloadScreenshot: () => Promise<void>;
-  saveScreenshot: () => Promise<void>;
-  downloadModel: () => Promise<void>;
-  saveCopy: () => Promise<PersistedEditorVersion | null>;
-  restoreRecovery: (payload: unknown) => boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -161,7 +114,16 @@ export function useModel3DWorkbench(
   }, [tt]);
 
   useEffect(() => {
-    const source = item.url || item.previewUrl || "";
+    const source =
+      (typeof item.meta.model_source_url === "string"
+        ? item.meta.model_source_url
+        : "") ||
+      (typeof item.meta.source_asset_url === "string"
+        ? item.meta.source_asset_url
+        : "") ||
+      item.url ||
+      item.previewUrl ||
+      "";
     const view = normalizeSavedModelView(item.meta.view);
     const generation = ++sourceGenerationRef.current;
     setSourceLoading(true);
@@ -193,7 +155,10 @@ export function useModel3DWorkbench(
     let disposed = false;
     void (async () => {
       try {
-        const durableUrl = isFirstPartyMediaUrl(source)
+        const preserveGltfClosure =
+          modelExtension(source, item.title) === "gltf";
+        const durableUrl =
+          isFirstPartyMediaUrl(source) || preserveGltfClosure
           ? source
           : await importMediaUrl(source, {
               kind: "model3d",
@@ -216,7 +181,16 @@ export function useModel3DWorkbench(
     return () => {
       disposed = true;
     };
-  }, [item.meta.view, item.previewUrl, item.title, item.url, siteId, tt]);
+  }, [
+    item.meta.model_source_url,
+    item.meta.source_asset_url,
+    item.meta.view,
+    item.previewUrl,
+    item.title,
+    item.url,
+    siteId,
+    tt,
+  ]);
 
   const viewerRef = useCallback<RefCallback<HTMLElement>>((node) => {
     const viewer = node as ModelViewerElement | null;
@@ -249,6 +223,21 @@ export function useModel3DWorkbench(
       }
     },
     [markDirty, siteId, tt],
+  );
+  const openModelUrl = useCallback(
+    (url: string) => {
+      if (!/^https?:\/\//i.test(url)) {
+        setError(tt("3D 模型地址无效"));
+        return;
+      }
+      setError("");
+      setNotice(tt("正在载入完整 3D 模型…"));
+      setSourceUrl(url);
+      setModelLoaded(false);
+      setProgress(0);
+      markDirty();
+    },
+    [markDirty, tt],
   );
 
   useEffect(() => {
@@ -584,6 +573,7 @@ export function useModel3DWorkbench(
       markDirty();
     },
     importModel,
+    openModelUrl,
     downloadScreenshot,
     saveScreenshot,
     downloadModel,

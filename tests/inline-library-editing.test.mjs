@@ -5,21 +5,26 @@ import test from "node:test";
 const source = (path) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("library items open typed editors in place without advanced navigation", () => {
+test("library items open in the fixed main canvas without advanced navigation", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
-  assert.match(library, /<AdvancedContentWorkbench/);
-  assert.match(library, /embedded/);
+  const canvas = source("../src/shell/ResultCanvas.tsx");
+  assert.match(library, /onOpenEntry\(entry\)/);
+  assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
+  assert.match(canvas, /<AdvancedContentWorkbench/);
+  assert.match(canvas, /embedded/);
+  assert.match(canvas, /<WorkspaceEntryCanvas/);
   assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });
 
-test("the library can dock on either side while preserving the app pane", () => {
+test("library docking changes semantic content without swapping physical panes", () => {
   const split = source("../src/shell/SplitWorkspace.tsx");
   assert.match(split, /libraryDock/);
   assert.match(split, /onDockChange/);
   assert.match(split, /showDetail/);
   assert.match(split, /clearDetail/);
-  assert.match(split, /hidden[\s\S]*left/);
+  assert.match(split, /\{\[appPane, divider, libraryPane\]\}/);
+  assert.match(split, /Keep every left-panel runtime mounted/);
 });
 
 test("editor tools exist only inside an opened item and delegate details to the app pane", () => {

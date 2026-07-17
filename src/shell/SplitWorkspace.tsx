@@ -61,6 +61,8 @@ export function useLeftPaneSlot(): LeftPaneSlot | null {
 interface RightPaneSlot {
   /** 用一个节点替换右栏标题（「结果」文字）。传 null 恢复默认。 */
   setRightLabel: (node: ReactNode | null) => void;
+  /** 编辑器接管右侧主画布时隐藏库标题栏，避免库 chrome 再包一层编辑器。 */
+  setRightFrameless: (frameless: boolean) => void;
 }
 const RightPaneCtx = createContext<RightPaneSlot | null>(null);
 /** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
@@ -77,9 +79,13 @@ export interface WorkspacePaneDetail {
   content: ReactNode;
 }
 
-interface WorkspacePaneController {
+export interface WorkspacePaneController {
   libraryDock: WorkspaceLibraryDock;
   setLibraryDock: (dock: WorkspaceLibraryDock) => void;
+  libraryOpen: boolean;
+  dockedLibrary: WorkspacePaneDetail | null;
+  showDockedLibrary: (panel: WorkspacePaneDetail) => void;
+  clearDockedLibrary: (ownerId?: string) => void;
   detail: WorkspacePaneDetail | null;
   showDetail: (detail: WorkspacePaneDetail) => void;
   clearDetail: (ownerId?: string) => void;
@@ -250,8 +256,12 @@ export function SplitWorkspace({
     );
   // 右栏标题覆盖（ResultCanvas 通过 context 装入标签条 → 去框中框）。
   const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
+  const [rightFrameless, setRightFrameless] = useState(false);
   const rightSlot = useMemo<RightPaneSlot>(
-    () => ({ setRightLabel: (node) => setRightLabelOverride(node) }),
+    () => ({
+      setRightLabel: (node) => setRightLabelOverride(node),
+      setRightFrameless: (frameless) => setRightFrameless(frameless),
+    }),
     [],
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
@@ -264,6 +274,8 @@ export function SplitWorkspace({
   const dockStorageKey =
     library?.dockStorageKey || "oceanleo_library_dock";
   const [detail, setDetail] = useState<WorkspacePaneDetail | null>(null);
+  const [dockedLibrary, setDockedLibrary] =
+    useState<WorkspacePaneDetail | null>(null);
   const activeDetail = hasRight ? detail : null;
   useEffect(() => {
     if (!hasRight) setDetail(null);
@@ -277,6 +289,7 @@ export function SplitWorkspace({
       } catch {
         // A privacy-restricted embed can keep the in-memory preference.
       }
+      setDetail(null);
       setMaxed("none");
     },
     [dockStorageKey, library, libraryDockControlled],
@@ -289,15 +302,37 @@ export function SplitWorkspace({
       !current || (ownerId && current.ownerId !== ownerId) ? current : null,
     );
   }, []);
+  const showDockedLibrary = useCallback((panel: WorkspacePaneDetail) => {
+    setDockedLibrary(panel);
+  }, []);
+  const clearDockedLibrary = useCallback((ownerId?: string) => {
+    setDockedLibrary((current) =>
+      !current || (ownerId && current.ownerId !== ownerId) ? current : null,
+    );
+  }, []);
   const paneController = useMemo<WorkspacePaneController>(
     () => ({
       libraryDock,
       setLibraryDock,
+      libraryOpen,
+      dockedLibrary,
+      showDockedLibrary,
+      clearDockedLibrary,
       detail: activeDetail,
       showDetail,
       clearDetail,
     }),
-    [activeDetail, clearDetail, libraryDock, setLibraryDock, showDetail],
+    [
+      activeDetail,
+      clearDetail,
+      clearDockedLibrary,
+      dockedLibrary,
+      libraryDock,
+      libraryOpen,
+      setLibraryDock,
+      showDetail,
+      showDockedLibrary,
+    ],
   );
 
   // Restore the remembered ratio during hydration's layout phase. A passive
@@ -377,9 +412,7 @@ export function SplitWorkspace({
       if (!wrap) return;
       const rect = wrap.getBoundingClientRect();
       const physicalLeft = (e.clientX - rect.left) / rect.width;
-      const nextAppRatio =
-        libraryDock === "left" ? 1 - physicalLeft : physicalLeft;
-      setRatio(Math.max(MIN_RATIO, Math.min(MAX_RATIO, nextAppRatio)));
+      setRatio(Math.max(MIN_RATIO, Math.min(MAX_RATIO, physicalLeft)));
     }
     function up() {
       setDragging(false);
@@ -394,12 +427,13 @@ export function SplitWorkspace({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [dragging, libraryDock, persist]);
+  }, [dragging, persist]);
 
   const toggleMax = (which: "app" | "library") =>
     setMaxed((m) => (m === which ? "none" : which));
 
-  // Ratio always means the App/operation pane, even after the library moves.
+  // Ratio always means the physical left semantic pane. Library docking changes
+  // its content, never the left/right order.
   const appBasis = !hasRight
     ? "100%"
     : maxed === "app"
@@ -480,14 +514,18 @@ export function SplitWorkspace({
     );
   }
 
+  const activeDockedLibrary =
+    libraryOpen && libraryDock === "left" ? dockedLibrary : null;
+  const activeLeftPanel = activeDetail || activeDockedLibrary;
+  const returnLabel = activeDockedLibrary ? tt("返回库") : tt("返回操作台");
   const detailLabel = activeDetail ? (
     <div className="flex min-w-0 items-center gap-2">
       <button
         type="button"
         onClick={() => clearDetail(activeDetail.ownerId)}
         className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-        aria-label={tt("返回操作台")}
-        title={tt("返回操作台")}
+        aria-label={returnLabel}
+        title={returnLabel}
       >
         ←
       </button>
@@ -495,12 +533,15 @@ export function SplitWorkspace({
         {activeDetail.label}
       </span>
     </div>
-  ) : effectiveLeftLabel;
+  ) : activeDockedLibrary?.label ?? effectiveLeftLabel;
 
   const appPane = (
     <section
       key="app-pane"
-      data-workspace-pane="app"
+      data-workspace-pane="left"
+      data-left-panel={
+        activeDetail ? "tool-detail" : activeDockedLibrary ? "library" : "app"
+      }
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${
         maxed === "library" ? "hidden" : "flex"
       }`}
@@ -514,14 +555,42 @@ export function SplitWorkspace({
             }
       }
     >
-      {detailLabel != null && <PaneHeader label={detailLabel} />}
+      {detailLabel != null && (
+        <PaneHeader label={detailLabel}>
+          {activeDockedLibrary && !activeDetail && (
+            <>
+              <button
+                type="button"
+                onClick={() => setLibraryOpen(false)}
+                aria-label={tt("关闭库")}
+                title={tt("关闭库")}
+                className="rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+              >
+                ✕
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibraryDock("right")}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+                title={tt("把库移到右侧")}
+              >
+                → {tt("移到右侧")}
+              </button>
+            </>
+          )}
+          <MaxButton which="app" />
+        </PaneHeader>
+      )}
       <div className={bodyClass}>
-        {/* Keep the App mounted while an editor detail temporarily takes its place. */}
-        <div className={`${activeDetail ? "hidden" : "flex"} h-full min-h-0 flex-col`}>
+        {/* Keep every left-panel runtime mounted while another semantic layer is visible. */}
+        <div className={`${activeLeftPanel ? "hidden" : "flex"} h-full min-h-0 flex-col`}>
           {left}
         </div>
         <div className={`${activeDetail ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
           {activeDetail?.content}
+        </div>
+        <div className={`${!activeDetail && activeDockedLibrary ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
+          {activeDockedLibrary?.content}
         </div>
       </div>
     </section>
@@ -530,7 +599,7 @@ export function SplitWorkspace({
   const libraryPane = (
     <section
       key="library-pane"
-      data-workspace-pane="library"
+      data-workspace-pane="main"
       data-library-dock={libraryDock}
       className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
         !hasRight || maxed === "app" ? "hidden" : "flex"
@@ -545,7 +614,7 @@ export function SplitWorkspace({
             }
       }
     >
-      {library ? (
+      {!rightFrameless && (library ? (
         <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
           <button
             type="button"
@@ -591,7 +660,7 @@ export function SplitWorkspace({
         <PaneHeader label={effectiveRightLabel}>
           <MaxButton which="library" />
         </PaneHeader>
-      )}
+      ))}
       <div className={bodyClass}>{right}</div>
     </section>
   );
@@ -621,9 +690,7 @@ export function SplitWorkspace({
       className={`gap-0 p-1.5 ${className} md:flex`}
       style={{ height: rootHeight }}
     >
-      {libraryDock === "left"
-        ? [libraryPane, divider, appPane]
-        : [appPane, divider, libraryPane]}
+      {[appPane, divider, libraryPane]}
     </div>
     </RightPaneCtx.Provider>
     </LeftPaneCtx.Provider>

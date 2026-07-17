@@ -37,7 +37,7 @@ test("configured library visibility never swaps out the left runtime tree", () =
     splitWorkspace,
     /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/,
   );
-  assert.match(splitWorkspace, /Keep the App mounted while an editor detail/);
+  assert.match(splitWorkspace, /Keep every left-panel runtime mounted/);
   assert.match(splitWorkspace, /\{left\}/);
 });
 

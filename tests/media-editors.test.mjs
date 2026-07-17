@@ -79,6 +79,8 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   );
   const modelHook = source("../src/shell/media-editors/use-model3d-workbench.ts");
   const modelSave = source("../src/shell/media-editors/use-model3d-save.ts");
+  const modelProject = source("../src/shell/media-editors/model3d-project.ts");
+  const modelFiles = source("../src/shell/media-editors/model3d-files.ts");
 
   for (const api of [
     "usePdfWorkbench",
@@ -104,6 +106,10 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   assert.match(modelHook, /downloadAbortRef\.current\?\.abort\(\)/);
   assert.match(modelHook, /useModel3DSave/);
   assert.match(modelSave, /persistModel3DProject/);
+  assert.match(modelProject, /preserveDependencyClosure/);
+  assert.match(modelProject, /deliveryUrl: sourceUrl/);
+  assert.match(modelProject, /preserved-gltf-closure/);
+  assert.match(modelFiles, /依赖本地纹理或 \.bin 文件/);
   assert.equal(
     (modelHook.match(/Number\(saved\.data\?\.saved \|\| 0\) !== 1/g) || []).length,
     1,

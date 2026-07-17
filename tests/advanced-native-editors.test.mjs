@@ -148,7 +148,9 @@ test("media editors expose usable first-draft surfaces without a source URL", ()
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const pdfOperations = source("../src/shell/media-editors/pdf-operations.ts");
   const pdfSource = source("../src/shell/media-editors/pdf-source.ts");
-  const model = source("../src/shell/media-editors/use-model3d-workbench.ts");
+  const model =
+    source("../src/shell/media-editors/use-model3d-workbench.ts") +
+    source("../src/shell/media-editors/model3d-workbench-state.ts");
   const modelControls = source("../src/shell/media-editors/Model3DControls.tsx");
   const modelStage = source("../src/shell/media-editors/Model3DStage.tsx");
   assert.match(audio, /new AudioBuffer\(\{/);

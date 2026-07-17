@@ -6,14 +6,18 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("workspace files enter their typed editor inside the current App library", () => {
+test("workspace files leave the library list and take over the fixed main canvas", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
+  const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
   assert.match(library, /editorCapabilityFor\(workbenchItem\)/);
   assert.match(library, /allowAdvanced[\s\S]*editorCapability\.available/);
   assert.match(library, /editorCapability\.unavailableReason/);
-  assert.match(library, /<AdvancedContentWorkbench/);
-  assert.match(library, /embedded/);
+  assert.match(library, /onOpenEntry\(entry\)/);
+  assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
+  assert.match(canvas, /<AdvancedContentWorkbench/);
+  assert.match(canvas, /activeCanvasEntry/);
+  assert.match(canvas, /<WorkspaceEntryCanvas/);
   assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });
@@ -94,7 +98,8 @@ test("inline editing reuses App history while retired URLs only redirect", () =>
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
   assert.match(workbench, /if \(props\.embedded\)/);
   assert.match(workbench, /inheritedWorkspace/);
-  assert.match(workbench, /if \(editorHost\.embedded\) return true/);
+  assert.match(workbench, /withInlineEditorHistoryHead/);
+  assert.match(workbench, /workspace\.saveSnapshot/);
   assert.match(workbench, /onSavedItem/);
   assert.doesNotMatch(shell, /startNew/);
   assert.doesNotMatch(shell, /新建任务/);
@@ -138,6 +143,7 @@ test("library docking captures the pointer and embedded editors stay isolated", 
   assert.match(shell, /clearDetail/);
   assert.match(protocol, /set-host-layout/);
   assert.match(embed, /sidePanelVisible/);
+  assert.match(embed, /hostOwnsChrome: true/);
   assert.match(embed, /saveId: saveRequestId/);
 });
 

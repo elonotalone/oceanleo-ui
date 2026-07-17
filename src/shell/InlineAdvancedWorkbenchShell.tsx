@@ -419,7 +419,7 @@ export function InlineAdvancedWorkbenchShell({
         )}
         <div
           ref={stageRef}
-          className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+          className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
         >
           <div
             data-advanced-context-row
@@ -458,15 +458,53 @@ export function InlineAdvancedWorkbenchShell({
                 </button>
               </>
             )}
+            <div className="min-w-0 flex-1 overflow-x-auto">
+              {adapter.contextToolbar}
+            </div>
+            <span
+              className="inline-flex shrink-0 items-center gap-1 text-[10px] text-[var(--awb-muted)]"
+              aria-live="polite"
+            >
+              <CloudAutoSaveIcon
+                className={`h-3.5 w-3.5 ${
+                  autoSave.state === "saving" ? "animate-pulse" : ""
+                }`}
+              />
+              {autoSave.state === "saving"
+                ? tt("正在自动保存")
+                : autoSave.state === "error"
+                  ? tt("保存遇到问题")
+                  : Number(editRevision) > 0
+                    ? tt("已自动保存")
+                    : tt("自动保存")}
+            </span>
+            {actionButtons}
+          </div>
+          <div
+            data-advanced-viewport-row
+            className="relative min-h-0 min-w-0 overflow-hidden"
+          >
+            <AdvancedWorkbenchStage
+              editorAvailable={editorAvailable}
+              editorStage={adapter.stage}
+              item={item}
+              accent={accent}
+              draggedTitle={draggedTitle}
+              acceptLocalFiles={Boolean(adapter.upload)}
+              dropMessage={dropMessage}
+              onMaterialDrop={(event) => void handleDrop(event)}
+            />
             {adapter.upload && (
               <>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition hover:bg-[var(--awb-hover)]"
+                  className="absolute right-3 top-3 z-[75] inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)]/95 px-3 text-[11px] font-semibold text-[var(--awb-text)] shadow-lg backdrop-blur transition hover:bg-[var(--awb-hover)]"
+                  aria-label={tt("从本地添加到画布")}
+                  title={tt("从本地添加到画布，也可以直接拖放文件")}
                 >
                   <AdvancedEditorIcon name="uploads" className="h-4 w-4" />
-                  {tt("上传")}
+                  {tt("添加文件")}
                 </button>
                 <input
                   ref={fileInputRef}
@@ -481,45 +519,36 @@ export function InlineAdvancedWorkbenchShell({
                 />
               </>
             )}
-            <div className="min-w-0 flex-1 overflow-x-auto">
-              {adapter.contextToolbar}
+            <div className="absolute bottom-3 right-3 z-[75]">
+              <AdvancedStageControls
+                stageRef={stageRef}
+                viewport={editorViewport}
+                accent={accent}
+              />
             </div>
-            <span
-              className="hidden shrink-0 text-[10px] text-[var(--awb-muted)] lg:inline"
-              aria-live="polite"
-            >
-              {autoSave.state === "saving"
-                ? tt("正在保存")
-                : autoSave.state === "error"
-                  ? tt("保存遇到问题")
-                  : tt("已保存")}
-            </span>
-            {actionButtons}
-          </div>
-          <div className="relative min-h-0 min-w-0 overflow-hidden">
-            <AdvancedWorkbenchStage
-              editorAvailable={editorAvailable}
-              editorStage={adapter.stage}
-              item={item}
-              accent={accent}
-              draggedTitle={draggedTitle}
-              acceptLocalFiles={Boolean(adapter.upload)}
-              dropMessage={dropMessage}
-              onMaterialDrop={(event) => void handleDrop(event)}
-            />
-          </div>
-          <div
-            data-advanced-viewport-row
-            className="flex min-h-14 shrink-0 items-center justify-end border-t border-[var(--awb-border)] bg-[var(--awb-stage-bg)] px-3 py-2"
-          >
-            <AdvancedStageControls
-              stageRef={stageRef}
-              viewport={editorViewport}
-              accent={accent}
-            />
           </div>
         </div>
       </div>
     </AdvancedLayoutContext.Provider>
+  );
+}
+
+function CloudAutoSaveIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path
+        d="M7.2 18.5h9.5a4.3 4.3 0 0 0 .8-8.5A6.2 6.2 0 0 0 5.7 8.4a5 5 0 0 0 1.5 10.1Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m9.4 13.2 1.8 1.8 3.6-3.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

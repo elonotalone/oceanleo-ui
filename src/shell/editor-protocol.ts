@@ -72,7 +72,10 @@ export type HostToEditorMessage =
       protocol: typeof EDITOR_PROTOCOL;
       type: "set-host-layout";
       instanceId: string;
+      /** The App owns the only visible semantic side panel. */
       sidePanelVisible: boolean;
+      /** The App owns back/history/autosave chrome; iframe must not duplicate it. */
+      hostOwnsChrome?: boolean;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
@@ -350,7 +353,9 @@ export function asHostToEditorMessage(
     type === "init" ||
     type === "open-asset" ||
     (type === "set-host-layout" &&
-      typeof record.sidePanelVisible === "boolean") ||
+      typeof record.sidePanelVisible === "boolean" &&
+      (record.hostOwnsChrome === undefined ||
+        typeof record.hostOwnsChrome === "boolean")) ||
     type === "save-result" ||
     type === "dispose"
   ) {

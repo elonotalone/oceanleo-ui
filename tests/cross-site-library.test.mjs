@@ -156,7 +156,7 @@ test("closing a configured library keeps the app runtime mounted", () => {
   );
   assert.match(source, /if \(!hasRight && !library\)/);
   assert.match(source, /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/);
-  assert.match(source, /Keep the App mounted while an editor detail/);
+  assert.match(source, /Keep every left-panel runtime mounted/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });
 

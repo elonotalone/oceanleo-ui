@@ -73,7 +73,10 @@ export interface SaveToLibraryInput {
   siteId: string;
   /** siteId 为空时登记到的产品站（word / excel / ppt）。 */
   fallbackSite: string;
-  file: File;
+  /** New delivery bytes. Omit only when deliveryUrl preserves an existing dependency-complete file set. */
+  file?: File;
+  /** Durable delivery already proven loadable (for example a multi-file glTF dependency closure). */
+  deliveryUrl?: string;
   title: string;
   mediaType: MediaType;
   kind: string;
@@ -151,22 +154,51 @@ export async function saveFileToLibrary(
       };
     }
   }
-  const uploaded = await uploadFile(input.file, {
-    siteId: site,
-    title: input.title,
-    registerAsset: false,
-    idempotencyKey: `${input.idempotencyKey}:delivery`,
-  });
-  const url = uploaded.data?.file?.url || "";
-  if (!uploaded.ok || !url) {
-    return {
-      ok: false,
-      url: "",
-      versionId: "",
-      projectUrl,
-      projectSchema,
-      error: uploaded.error || "",
-    };
+  let url = (input.deliveryUrl || "").trim();
+  if (!url) {
+    if (!input.file) {
+      return {
+        ok: false,
+        url: "",
+        versionId: "",
+        projectUrl,
+        projectSchema,
+        error: "缺少可保存的交付文件",
+      };
+    }
+    const uploaded = await uploadFile(input.file, {
+      siteId: site,
+      title: input.title,
+      registerAsset: false,
+      idempotencyKey: `${input.idempotencyKey}:delivery`,
+    });
+    url = uploaded.data?.file?.url || "";
+    if (!uploaded.ok || !url) {
+      return {
+        ok: false,
+        url: "",
+        versionId: "",
+        projectUrl,
+        projectSchema,
+        error: uploaded.error || "",
+      };
+    }
+  } else {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("unsupported protocol");
+      }
+    } catch {
+      return {
+        ok: false,
+        url: "",
+        versionId: "",
+        projectUrl,
+        projectSchema,
+        error: "现有交付地址无效",
+      };
+    }
   }
   if (!projectUrl && projectSchema) projectUrl = url;
   const saved = await saveWorks(site, [
