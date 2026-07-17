@@ -22,6 +22,7 @@ import {
 import {
   ADVANCED_SESSION_SCHEMA_VERSION,
   advancedItemFromSession,
+  advancedRootItemId,
   advancedSessionAppId,
   advancedSessionSnapshot,
 } from "./advanced-session";
@@ -159,25 +160,36 @@ function AdvancedContentWorkbenchRuntime(
     () => restoredItem || props.item,
   );
   const loadedSessionIdRef = useRef(workspace.session?.id || "");
+  const restoredSessionId = workspace.session?.id || "";
+  const activeItem =
+    restoredItem &&
+    restoredSessionId &&
+    loadedSessionIdRef.current !== restoredSessionId
+      ? restoredItem
+      : item;
   useEffect(() => {
-    const sessionId = workspace.session?.id || "";
+    const sessionId = restoredSessionId;
     if (!sessionId || loadedSessionIdRef.current === sessionId) return;
     loadedSessionIdRef.current = sessionId;
     const restored = advancedItemFromSession(workspace.session);
     if (restored) setItem(restored);
-  }, [workspace.session]);
-  const materialRef = useRef<LibraryItem>(item);
+  }, [restoredSessionId, workspace.session]);
+  const materialRef = useRef<LibraryItem>(activeItem);
+  const materialSessionIdRef = useRef(restoredSessionId);
   if (
-    materialRef.current.id !== item.id ||
-    materialRef.current.url !== item.url ||
-    materialRef.current.previewUrl !== item.previewUrl
+    (restoredSessionId &&
+      materialSessionIdRef.current !== restoredSessionId) ||
+    advancedRootItemId(materialRef.current) !== advancedRootItemId(activeItem) ||
+    materialRef.current.kind !== activeItem.kind ||
+    materialRef.current.siteId !== activeItem.siteId
   ) {
-    materialRef.current = item;
+    materialRef.current = activeItem;
+    materialSessionIdRef.current = restoredSessionId;
   }
   const flushRef = useRef<
     (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null
   >(null);
-  const capability = editorCapabilityFor(item);
+  const capability = editorCapabilityFor(activeItem);
   const route = capability.route;
   const makeSnapshot = useCallback(
     (taskId?: string | null) =>
@@ -268,15 +280,6 @@ function AdvancedContentWorkbenchRuntime(
     const flushed = (await flushRef.current?.()) || { ok: true as const };
     if (!flushed.ok) return null;
     if (flushed.item) materialRef.current = flushed.item;
-    const current = workspace.session;
-    if (current) {
-      const saved = await workspace.saveSnapshot(
-        makeSnapshot(workspace.taskId),
-        ADVANCED_SESSION_SCHEMA_VERSION,
-        { expectedSessionId: current.id, title: materialRef.current.title },
-      );
-      if (!saved.ok) return null;
-    }
     const next = await workspace.startNew({
       title: materialRef.current.title,
       snapshot: makeSnapshot(null),
@@ -340,12 +343,12 @@ function AdvancedContentWorkbenchRuntime(
 
   const activeProps: AdvancedContentWorkbenchProps = {
     ...props,
-    item,
-    previewContent: item.content ?? props.previewContent,
-    linkUrl: item.url || item.previewUrl || props.linkUrl,
+    item: activeItem,
+    previewContent: activeItem.content ?? props.previewContent,
+    linkUrl: activeItem.url || activeItem.previewUrl || props.linkUrl,
     taskId: workspace.taskId,
   };
-  const routeKey = `${capability.adapter}:${item.kind}:${item.id}:${item.url || item.previewUrl || ""}`;
+  const routeKey = `${capability.adapter}:${activeItem.kind}:${activeItem.id}:${activeItem.url || activeItem.previewUrl || ""}`;
   let editor: ReactNode;
   if (capability.adapter === "chart-editor@1") {
     editor = <ChartRoute {...activeProps} />;
@@ -384,6 +387,10 @@ function AdvancedContentWorkbenchRuntime(
     default:
       editor = <UnsupportedRoute {...activeProps} />;
       break;
+  }
+
+  if (workspace.availability === "loading") {
+    return <WorkbenchRouteLoading />;
   }
 
   return (

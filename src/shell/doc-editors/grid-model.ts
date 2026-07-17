@@ -124,12 +124,8 @@ function normalizeFormats(value: unknown): Record<string, GridCellFormat> {
   return result;
 }
 
-function structuredSheets(item: LibraryItem): GridSheet[] {
-  const rawSheets = Array.isArray(item.meta.sheets)
-    ? item.meta.sheets
-    : Array.isArray(item.meta.rows)
-      ? [{ name: "Sheet1", rows: item.meta.rows }]
-      : [];
+export function normalizeGridProjectSheets(value: unknown): GridSheet[] {
+  const rawSheets = Array.isArray(value) ? value : [];
   const used = new Set<string>();
   return rawSheets.flatMap((raw, index) => {
     if (!raw || typeof raw !== "object") return [];
@@ -145,6 +141,15 @@ function structuredSheets(item: LibraryItem): GridSheet[] {
       },
     ];
   });
+}
+
+function structuredSheets(item: LibraryItem): GridSheet[] {
+  const rawSheets = Array.isArray(item.meta.sheets)
+    ? item.meta.sheets
+    : Array.isArray(item.meta.rows)
+      ? [{ name: "Sheet1", rows: item.meta.rows }]
+      : [];
+  return normalizeGridProjectSheets(rawSheets);
 }
 
 async function readWorkbook(

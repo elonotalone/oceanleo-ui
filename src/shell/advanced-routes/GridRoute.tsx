@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { GridContextToolbar } from "../doc-editors/GridContextToolbar";
@@ -57,74 +57,85 @@ export function GridRoute({
     [editor.importSource],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const savedItem = useMemo(
-    () =>
-      editor.savedUrl
-        ? advancedSavedItem(item, { url: editor.savedUrl })
-        : null,
-    [editor.savedUrl, item],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.save();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.save();
+    return saved
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            versionId: saved.versionId,
+            meta: {
+              editor_project_url: saved.projectUrl,
+              editor_project_schema: saved.projectSchema,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "grid" })}
-      editorDrawerLabel="数据与工作表"
-      editorDrawerIcon="pages"
-      editorToolbox={<GridControls editor={editor} accent={accent} />}
-      editorContextualToolbar={
-        <GridContextToolbar editor={editor} accent={accent} />
-      }
-      editorHistory={{
-        canUndo: editor.canUndo,
-        canRedo: editor.canRedo,
-        undo: editor.undo,
-        redo: editor.redo,
+      adapter={{
+        id: "grid",
+        label: editorToolLabel({ type: "grid" }),
+        toolbox: {
+          label: "数据与工作表",
+          icon: "pages",
+          content: <GridControls editor={editor} accent={accent} />,
+        },
+        contextToolbar: (
+          <GridContextToolbar editor={editor} accent={accent} />
+        ),
+        history: {
+          canUndo: editor.canUndo,
+          canRedo: editor.canRedo,
+          undo: editor.undo,
+          redo: editor.redo,
+        },
+        actions: [
+          {
+            id: "grid-export-csv",
+            label: "导出 CSV",
+            onTrigger: editor.exportCsv,
+          },
+          {
+            id: "grid-export-xlsx",
+            label: "导出 XLSX",
+            busyLabel: "导出中…",
+            busy: editor.exporting,
+            onTrigger: editor.exportXlsx,
+          },
+        ],
+        stage: <GridStage editor={editor} accent={accent} />,
+        status:
+          editor.error ||
+          (editor.dirty
+            ? "有未保存的修改"
+            : editor.savedUrl
+              ? "已保存到我的库"
+              : editor.loading
+                ? "正在载入表格"
+                : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("grid", item),
+            ready: !editor.loading,
+            capture: () => ({
+              sheets: structuredClone(editor.sheets),
+              activeSheetId: editor.activeSheetId,
+              headerRow: editor.headerRow,
+            }),
+            restore: editor.restoreRecovery,
+          },
+        },
       }}
-      editorHeaderActions={
-        <>
-          <button
-            type="button"
-            onClick={editor.exportCsv}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            CSV
-          </button>
-          <button
-            type="button"
-            disabled={editor.exporting}
-            onClick={() => void editor.exportXlsx()}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            XLSX
-          </button>
-        </>
-      }
-      editorStage={<GridStage editor={editor} accent={accent} />}
-      editorStatus={
-        editor.error ||
-        (editor.dirty
-          ? "有未保存的修改"
-          : editor.savedUrl
-          ? "已保存到我的库"
-          : editor.loading
-            ? "正在载入表格"
-            : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.savedUrl}
       onClose={onClose}
     />
   );

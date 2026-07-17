@@ -34,6 +34,40 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+export async function loadEditorProject<T>(
+  url: string,
+  expectedSchema: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(url, {
+    signal,
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`可编辑工程读取失败（HTTP ${response.status}）`);
+  }
+  const text = await response.text();
+  if (!text || new TextEncoder().encode(text).byteLength > 20_000_000) {
+    throw new Error("可编辑工程为空或超过 20MB 安全上限");
+  }
+  const parsed = JSON.parse(text) as {
+    schema?: unknown;
+    version?: unknown;
+    data?: unknown;
+  };
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    parsed.schema !== expectedSchema ||
+    parsed.version !== 1 ||
+    parsed.data === undefined
+  ) {
+    throw new Error("可编辑工程格式或版本不受支持");
+  }
+  return parsed.data as T;
+}
+
 export interface SaveToLibraryInput {
   item: LibraryItem;
   siteId: string;
@@ -43,29 +77,98 @@ export interface SaveToLibraryInput {
   title: string;
   mediaType: MediaType;
   kind: string;
+  idempotencyKey: string;
   meta: Record<string, unknown>;
   thumbUrl?: string;
+  project?: {
+    schema: string;
+    data: unknown;
+  };
+  /** The exported delivery file is itself the exact editable project. */
+  deliveryProjectSchema?: string;
 }
 
 export interface SaveToLibraryResult {
   ok: boolean;
   url: string;
+  versionId: string;
+  projectUrl: string;
+  projectSchema: string;
   error: string;
 }
+
+export type PersistedEditorVersion = Pick<
+  SaveToLibraryResult,
+  "url" | "versionId" | "projectUrl" | "projectSchema"
+>;
 
 /** 上传成品文件并登记到我的库；error 为空串时由调用方兜底文案。 */
 export async function saveFileToLibrary(
   input: SaveToLibraryInput,
 ): Promise<SaveToLibraryResult> {
   const site = input.siteId || input.fallbackSite;
+  const savedAt = new Date().toISOString();
+  let projectUrl = "";
+  let projectSchema = (input.deliveryProjectSchema || "").trim().slice(0, 120);
+  if (input.project) {
+    projectSchema = input.project.schema.trim().slice(0, 120);
+    const projectJson = JSON.stringify({
+      schema: projectSchema,
+      version: 1,
+      updatedAt: savedAt,
+      data: input.project.data,
+    });
+    if (new TextEncoder().encode(projectJson).byteLength > 20_000_000) {
+      return {
+        ok: false,
+        url: "",
+        versionId: "",
+        projectUrl: "",
+        projectSchema,
+        error: "可编辑工程超过 20MB 安全上限",
+      };
+    }
+    const projectUpload = await uploadFile(
+      new File([projectJson], `${input.title}.oceanleo-project.json`, {
+        type: "application/json",
+      }),
+      {
+        siteId: site,
+        title: `${input.title}工程`,
+        registerAsset: false,
+        idempotencyKey: `${input.idempotencyKey}:project`,
+      },
+    );
+    projectUrl = projectUpload.data?.file?.url || "";
+    if (!projectUpload.ok || !projectUrl) {
+      return {
+        ok: false,
+        url: "",
+        versionId: "",
+        projectUrl: "",
+        projectSchema,
+        error: projectUpload.error || "",
+      };
+    }
+  }
   const uploaded = await uploadFile(input.file, {
     siteId: site,
     title: input.title,
+    registerAsset: false,
+    idempotencyKey: `${input.idempotencyKey}:delivery`,
   });
   const url = uploaded.data?.file?.url || "";
   if (!uploaded.ok || !url) {
-    return { ok: false, url: "", error: uploaded.error || "" };
+    return {
+      ok: false,
+      url: "",
+      versionId: "",
+      projectUrl,
+      projectSchema,
+      error: uploaded.error || "",
+    };
   }
+  if (!projectUrl && projectSchema) projectUrl = url;
   const saved = await saveWorks(site, [
     {
       url,
@@ -76,14 +179,35 @@ export async function saveFileToLibrary(
       meta: {
         parent_asset_id: input.item.id,
         source_site: input.item.siteId || site,
+        ...(projectUrl
+          ? {
+              editor_project_url: projectUrl,
+              editor_project_schema: projectSchema,
+              editor_saved_at: savedAt,
+            }
+          : {}),
         ...input.meta,
       },
     },
   ]);
   if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
-    return { ok: false, url, error: saved.error || "" };
+    return {
+      ok: false,
+      url,
+      versionId: "",
+      projectUrl,
+      projectSchema,
+      error: saved.error || "",
+    };
   }
-  return { ok: true, url, error: "" };
+  return {
+    ok: true,
+    url,
+    versionId: saved.data?.items?.[0]?.id || "",
+    projectUrl,
+    projectSchema,
+    error: "",
+  };
 }
 
 /** savedUrl 变化时回调 onSaved（幂等：同一 URL 只回调一次）。 */

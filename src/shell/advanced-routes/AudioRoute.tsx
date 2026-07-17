@@ -3,9 +3,8 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
-import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
 import {
@@ -59,76 +58,84 @@ export function AudioRoute({
     [editor.importSource],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const savedItem = useMemo(
-    () =>
-      editor.savedUrl
-        ? advancedSavedItem(item, { url: editor.savedUrl })
-        : null,
-    [editor.savedUrl, item],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.save();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.save();
+    return saved
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            versionId: saved.versionId,
+            meta: {
+              editor_project_url: saved.projectUrl,
+              editor_project_schema: saved.projectSchema,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "audio" })}
-      editorDrawerLabel="音轨工具"
-      editorDrawerIcon="timeline"
-      editorToolbox={<AudioControls editor={editor} accent={accent} />}
-      editorContextualToolbar={
-        <AudioContextToolbar editor={editor} accent={accent} />
-      }
-      editorHistory={{
-        canUndo: editor.canUndo,
-        canRedo: editor.canRedo,
-        undo: editor.undo,
-        redo: editor.redo,
+      adapter={{
+        id: "audio",
+        label: editorToolLabel({ type: "audio" }),
+        toolbox: {
+          label: "音轨工具",
+          icon: "timeline",
+          content: <AudioControls editor={editor} accent={accent} />,
+        },
+        contextToolbar: (
+          <AudioContextToolbar editor={editor} accent={accent} />
+        ),
+        history: {
+          canUndo: editor.canUndo,
+          canRedo: editor.canRedo,
+          undo: editor.undo,
+          redo: editor.redo,
+        },
+        viewport: {
+          value: Math.round((editor.zoom / 30) * 100),
+          min: 33,
+          max: 667,
+          step: 5,
+          setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
+          fit: () => editor.setWaveformZoom(30),
+        },
+        actions: [
+          {
+            id: "audio-download-wav",
+            label: "下载 WAV",
+            icon: "download",
+            disabled: editor.loading,
+            onTrigger: editor.download,
+          },
+        ],
+        stage: <AudioStage editor={editor} accent={accent} />,
+        status:
+          editor.error ||
+          (editor.dirty
+            ? "有未保存的修改"
+            : editor.savedUrl
+              ? "已保存到我的库"
+              : editor.loading
+                ? "正在载入音频"
+                : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("audio", item),
+            ready: !editor.loading,
+            capture: editor.captureRecovery,
+            restore: editor.restoreRecovery,
+          },
+        },
       }}
-      editorViewport={{
-        value: Math.round((editor.zoom / 30) * 100),
-        min: 33,
-        max: 667,
-        step: 5,
-        setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
-        fit: () => editor.setWaveformZoom(30),
-      }}
-      editorHeaderActions={
-        <>
-          <button
-            type="button"
-            onClick={editor.download}
-            disabled={editor.loading}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            <AdvancedEditorIcon name="download" className="h-4 w-4" />
-            WAV
-          </button>
-        </>
-      }
-      editorStage={<AudioStage editor={editor} accent={accent} />}
-      editorStatus={
-        editor.error ||
-        (editor.dirty
-          ? "有未保存的修改"
-          : editor.savedUrl
-          ? "已保存到我的库"
-          : editor.loading
-            ? "正在载入音频"
-            : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.savedUrl}
       onClose={onClose}
     />
   );

@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { LibraryItem } from "./library-data";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import type { AdvancedHistoryActions } from "./advanced-workbench-chrome";
+import {
+  ADVANCED_HEADER_ACTION_CLASS,
+  ADVANCED_HEADER_ICON_ACTION_CLASS,
+  ADVANCED_HEADER_PRIMARY_ACTION_CLASS,
+  type AdvancedHistoryActions,
+  type AdvancedWorkbenchAction,
+} from "./advanced-workbench-chrome";
 
 export function AdvancedWorkbenchHeader({
   item,
@@ -17,6 +23,7 @@ export function AdvancedWorkbenchHeader({
   autoSaveState,
   mobileActionsOpen,
   onToggleMobileActions,
+  onOpenPanel,
   onStartNew,
   onAutoSave,
   onRenameTitle,
@@ -25,13 +32,14 @@ export function AdvancedWorkbenchHeader({
   item: LibraryItem;
   editorLabel: string;
   status: string;
-  actions?: ReactNode;
+  actions?: readonly AdvancedWorkbenchAction[];
   accent: string;
   history?: AdvancedHistoryActions;
   startingNew: boolean;
   autoSaveState: "saved" | "saving" | "error";
   mobileActionsOpen: boolean;
   onToggleMobileActions: () => void;
+  onOpenPanel: (panelId: string) => void;
   onStartNew: () => void;
   onAutoSave: () => void;
   onRenameTitle: (title: string) => Promise<void> | void;
@@ -50,15 +58,56 @@ export function AdvancedWorkbenchHeader({
     autoSaveState === "saving"
       ? tt("正在自动保存…")
       : autoSaveState === "error"
-        ? tt("自动保存失败，点击重试")
+        ? tt("同步失败，点击重试")
         : tt("已自动保存");
   const autoSaveTone =
     autoSaveState === "error"
       ? "border-amber-300/70 bg-amber-50 text-amber-800"
       : "border-transparent bg-transparent text-[var(--muted,#78716c)]";
+  const renderActions = () =>
+    actions?.map((action) => {
+      const label = tt(action.busy && action.busyLabel ? action.busyLabel : action.label);
+      const variant = action.variant || "default";
+      const className =
+        variant === "icon"
+          ? ADVANCED_HEADER_ICON_ACTION_CLASS
+          : variant === "primary" || variant === "danger"
+            ? ADVANCED_HEADER_PRIMARY_ACTION_CLASS
+            : ADVANCED_HEADER_ACTION_CLASS;
+      return (
+        <button
+          key={action.id}
+          type="button"
+          disabled={action.disabled || action.busy}
+          onClick={() => {
+            if (action.panelId) onOpenPanel(action.panelId);
+            else void action.onTrigger?.();
+          }}
+          className={className}
+          style={
+            variant === "primary"
+              ? { background: "var(--awb-accent,#6d5dfc)" }
+              : variant === "danger"
+                ? { background: "var(--awb-danger,#dc2626)" }
+                : undefined
+          }
+          aria-label={tt(action.label)}
+          title={tt(action.label)}
+        >
+          {action.icon && (
+            <AdvancedEditorIcon name={action.icon} className="h-4 w-4" />
+          )}
+          {variant !== "icon" && label}
+        </button>
+      );
+    });
 
   return (
-    <header className="relative flex h-14 shrink-0 items-center gap-1.5 border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[var(--fg,#292524)] md:gap-2 md:px-3">
+    <header className="relative grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_minmax(6rem,16rem)_minmax(0,1fr)] items-center gap-2 border-b border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-chrome-bg,var(--card,#fff))] px-2.5 text-[var(--awb-text,var(--fg,#292524))] md:px-3 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,28rem)_minmax(0,1fr)]">
+      <div
+        data-advanced-topbar-left
+        className="flex min-w-0 items-center gap-1.5 overflow-hidden md:gap-2"
+      >
       <button
         type="button"
         onClick={onClose}
@@ -110,8 +159,12 @@ export function AdvancedWorkbenchHeader({
       >
         <AdvancedEditorIcon name="redo" className="h-4 w-4" />
       </button>
+      </div>
 
-      <div className="pointer-events-none absolute inset-y-0 left-1/2 hidden w-[min(30vw,28rem)] -translate-x-1/2 items-center justify-center lg:flex">
+      <div
+        data-advanced-topbar-title
+        className="pointer-events-none flex min-w-0 items-center justify-center"
+      >
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -130,7 +183,10 @@ export function AdvancedWorkbenchHeader({
         />
       </div>
 
-      <div className="min-w-0 flex-1" />
+      <div
+        data-advanced-topbar-right
+        className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden"
+      >
       {status && (
         <span className="hidden max-w-56 truncate rounded-full bg-[var(--surface,#fafaf9)] px-3 py-1.5 text-[10px] text-[var(--muted,#78716c)] xl:block">
           {status}
@@ -147,7 +203,7 @@ export function AdvancedWorkbenchHeader({
           <span className="grid h-4 w-4 place-items-center rounded-full border border-current text-[9px] font-bold" aria-hidden="true">
             !
           </span>
-          <span className="hidden lg:inline">{tt("保存遇到问题 · 重试")}</span>
+          <span className="hidden lg:inline">{tt("同步失败 · 重试")}</span>
         </button>
       ) : (
         <div
@@ -174,8 +230,8 @@ export function AdvancedWorkbenchHeader({
         </div>
       )}
       {actions && (
-        <div className="hidden shrink-0 items-center gap-1 md:flex">
-          {actions}
+        <div className="hidden min-w-0 shrink items-center gap-1 overflow-hidden md:flex">
+          {renderActions()}
         </div>
       )}
       {actions && (
@@ -194,9 +250,10 @@ export function AdvancedWorkbenchHeader({
           className="absolute right-3 top-[calc(100%+8px)] z-[2147483700] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-1 rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 p-2 shadow-2xl backdrop-blur md:hidden"
           onClick={onToggleMobileActions}
         >
-          {actions}
+          {renderActions()}
         </div>
       )}
+      </div>
     </header>
   );
 }

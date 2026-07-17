@@ -16,15 +16,15 @@ export function UnsupportedRoute({
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "none" })}
-      editorToolbox={null}
-      editorStage={null}
-      editorAvailable={false}
+      adapter={{
+        id: "none",
+        label: editorToolLabel({ type: "none" }),
+        stage: null,
+        available: false,
+      }}
       onClose={onClose}
     />
   );

@@ -16,8 +16,11 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+import type { PersistedEditorVersion } from "../doc-editors/doc-io";
 import { MAX_MODEL_BYTES, modelExtension, safeModelStem, triggerModelDownload, uploadImportedModel } from "./model3d-files";
+import { normalizeModel3DRecovery } from "./model3d-project";
 import { normalizeSavedModelView } from "./model3d-view";
+import { useModel3DSave } from "./use-model3d-save";
 const DEFAULT_AZIMUTH = 0, DEFAULT_ELEVATION = 75, DEFAULT_DISTANCE = 105;
 interface ModelProgressEvent extends Event {
   detail?: { totalProgress?: number };
@@ -43,6 +46,7 @@ export interface Model3DWorkbenchState {
   saving: boolean;
   downloading: boolean;
   dirty: boolean;
+  editRevision: number;
   azimuth: number;
   elevation: number;
   zoom: number;
@@ -70,7 +74,8 @@ export interface Model3DWorkbenchState {
   downloadScreenshot: () => Promise<void>;
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;
-  saveCopy: () => Promise<string | null>;
+  saveCopy: () => Promise<PersistedEditorVersion | null>;
+  restoreRecovery: (payload: unknown) => boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -107,7 +112,7 @@ export function useModel3DWorkbench(
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
   const [capturing, setCapturing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [azimuth, setAzimuth] = useState(DEFAULT_AZIMUTH);
   const [elevation, setElevation] = useState(DEFAULT_ELEVATION);
@@ -372,7 +377,7 @@ export function useModel3DWorkbench(
   const saveScreenshot = useCallback(async () => {
     if (saveBusyRef.current) return;
     saveBusyRef.current = true;
-    setSaving(true);
+    setSavingScreenshot(true);
     setError("");
     const generation = sourceGenerationRef.current;
     try {
@@ -405,7 +410,7 @@ export function useModel3DWorkbench(
       if (aliveRef.current) setError(errorMessage(caught, tt("保存 3D 截图失败")));
     } finally {
       saveBusyRef.current = false;
-      if (aliveRef.current) setSaving(false);
+      if (aliveRef.current) setSavingScreenshot(false);
     }
   }, [captureBlob, item.id, item.title, onSaved, siteId, tt]);
 
@@ -435,93 +440,83 @@ export function useModel3DWorkbench(
     }
   }, [downloading, item.title, sourceUrl, tt]);
 
-  const saveCopy = useCallback(async (): Promise<string | null> => {
-    if (!sourceUrl || saveBusyRef.current || !modelLoaded) return null;
-    saveBusyRef.current = true;
-    setSaving(true);
-    setError("");
-    const generation = sourceGenerationRef.current;
-    const savingRevision = revisionRef.current;
-    try {
-      const title = `${safeModelStem(item.title)}-${tt("视图副本")}`;
-      let thumbUrl = posterUrl;
-      try {
-        const screenshot = await captureBlob();
-        const uploaded = await uploadFile(
-          new File([screenshot], `${title}.png`, { type: "image/png" }),
-          { siteId: siteId || "threed", title: `${title}-${tt("预览")}` },
-        );
-        if (uploaded.ok && uploaded.data?.file?.url) {
-          thumbUrl = uploaded.data.file.url;
-        }
-      } catch {
-        // A cross-origin texture can block canvas export; the model copy itself
-        // remains valid and can still use the existing poster.
-      }
-      const saved = await saveWorks(siteId || "threed", [
-        {
-          url: sourceUrl,
-          thumb_url: thumbUrl || undefined,
-          media_type: "model3d",
-          title,
-          kind: "model3d",
-          meta: {
-            parent_asset_id: item.id,
-            editor: "model-viewer-native-v1",
-            view: {
-              camera_orbit: `${azimuth}deg ${elevation}deg ${zoom}%`,
-              auto_rotate: autoRotate,
-              exposure,
-              shadow_intensity: shadowIntensity,
-              shadow_softness: shadowSoftness,
-              background,
-              animation: animationName,
-              animation_speed: animationSpeed,
-            },
-          },
-        },
-      ]);
-      if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
-        throw new Error(saved.error || tt("3D 副本登记到我的库失败"));
-      }
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
-      setSavedUrl(sourceUrl);
-      if (revisionRef.current === savingRevision) {
-        setDirty(false);
-        setNotice(tt("3D 视图副本已保存到我的库"));
-      } else {
-        setNotice(tt("已保存一个视图副本；之后的调整仍未保存"));
-      }
-      onSaved?.(sourceUrl);
-      return sourceUrl;
-    } catch (caught) {
-      if (aliveRef.current) setError(errorMessage(caught, tt("保存 3D 副本失败")));
-      return null;
-    } finally {
-      saveBusyRef.current = false;
-      if (aliveRef.current) setSaving(false);
-    }
-  }, [
-    animationName,
-    animationSpeed,
-    autoRotate,
-    azimuth,
-    background,
-    captureBlob,
-    elevation,
-    exposure,
-    item.id,
-    item.title,
-    modelLoaded,
-    onSaved,
-    posterUrl,
-    shadowIntensity,
-    shadowSoftness,
+  const { saving: savingCopy, saveCopy } = useModel3DSave({
+    item,
     siteId,
     sourceUrl,
+    modelLoaded,
+    posterUrl,
+    view: {
+      azimuth,
+      elevation,
+      zoom,
+      autoRotate,
+      exposure,
+      shadowIntensity,
+      shadowSoftness,
+      background,
+      animationName,
+      animationSpeed,
+    },
+    captureBlob,
+    revisionRef,
+    sourceGenerationRef,
+    aliveRef,
+    setError,
+    setNotice,
+    setSavedUrl,
+    setDirty,
+    onSaved,
     tt,
-    zoom,
-  ]);
+  });
+
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      const recovered = normalizeModel3DRecovery(payload, {
+        sourceUrl,
+        azimuth,
+        elevation,
+        zoom,
+        autoRotate,
+        exposure,
+        shadowIntensity,
+        shadowSoftness,
+        background,
+        animationName,
+        animationSpeed,
+      });
+      if (!recovered) return false;
+      if (recovered.sourceUrl) setSourceUrl(recovered.sourceUrl);
+      setAzimuth(recovered.azimuth);
+      setElevation(recovered.elevation);
+      setZoomState(recovered.zoom);
+      setAutoRotate(recovered.autoRotate);
+      setExposureState(recovered.exposure);
+      setShadowIntensityState(recovered.shadowIntensity);
+      setShadowSoftnessState(recovered.shadowSoftness);
+      setBackground(recovered.background);
+      setAnimationName(recovered.animationName);
+      setAnimationSpeedState(recovered.animationSpeed);
+      markDirty();
+      setNotice(tt("已恢复上次未同步的本地草稿"));
+      return true;
+    },
+    [
+      animationSpeed,
+      animationName,
+      autoRotate,
+      azimuth,
+      background,
+      elevation,
+      exposure,
+      markDirty,
+      shadowIntensity,
+      shadowSoftness,
+      sourceUrl,
+      tt,
+      zoom,
+    ],
+  );
 
   return {
     viewerRef,
@@ -536,9 +531,10 @@ export function useModel3DWorkbench(
     notice,
     savedUrl,
     capturing,
-    saving,
+    saving: savingScreenshot || savingCopy,
     downloading,
     dirty,
+    editRevision: revisionRef.current,
     azimuth,
     elevation,
     zoom,
@@ -592,5 +588,6 @@ export function useModel3DWorkbench(
     saveScreenshot,
     downloadModel,
     saveCopy,
+    restoreRecovery,
   };
 }

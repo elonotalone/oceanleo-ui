@@ -10,10 +10,12 @@
 // ============================================================================
 
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import type { JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
 
 export type RichDocSource =
+  | "project"
   | "inline"
   | "url-markdown"
   | "url-text"
@@ -28,6 +30,7 @@ export type RichDocSource =
 
 export interface RichDocLoadResult {
   html: string;
+  json?: JSONContent;
   source: RichDocSource;
   error: string;
 }

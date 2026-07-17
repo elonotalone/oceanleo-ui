@@ -9,7 +9,13 @@ import {
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import { downloadBlob, downloadText, saveFileToLibrary } from "./doc-io";
+import {
+  downloadBlob,
+  downloadText,
+  loadEditorProject,
+  saveFileToLibrary,
+  type PersistedEditorVersion,
+} from "./doc-io";
 import {
   buildGridWorkbookBlob,
   cloneGridSheets,
@@ -22,6 +28,7 @@ import {
   gridSheetToCsv,
   loadGridFile,
   loadGridSheets,
+  normalizeGridProjectSheets,
   sanitizeSheetName,
   setGridCell,
   type GridCell,
@@ -60,6 +67,7 @@ export interface GridEditorState {
   exporting: boolean;
   saving: boolean;
   dirty: boolean;
+  editRevision: number;
   error: string;
   savedUrl: string;
   canUndo: boolean;
@@ -84,7 +92,8 @@ export interface GridEditorState {
   importSource: (file: File) => Promise<void>;
   exportCsv: () => void;
   exportXlsx: () => Promise<void>;
-  save: () => Promise<string | null>;
+  save: () => Promise<PersistedEditorVersion | null>;
+  restoreRecovery: (payload: unknown) => boolean;
 }
 
 interface GridSnapshot {
@@ -93,6 +102,13 @@ interface GridSnapshot {
 }
 
 const HISTORY_LIMIT = 60;
+const GRID_PROJECT_SCHEMA = "oceanleo.grid.v1";
+
+interface GridProject {
+  sheets: unknown;
+  activeSheetId?: string;
+  headerRow?: boolean;
+}
 
 export function gridSelectionRange(
   selection: GridSelection,
@@ -217,7 +233,23 @@ export function useGridEditor(
     setSavedUrl("");
     setDirty(false);
     revisionRef.current = 0;
-    void loadGridSheets(item, controller.signal)
+    const projectUrl = String(item.meta.editor_project_url || "").trim();
+    void (projectUrl
+      ? loadEditorProject<GridProject>(
+          projectUrl,
+          GRID_PROJECT_SCHEMA,
+          controller.signal,
+        ).then((project) => ({
+          sheets: normalizeGridProjectSheets(project.sheets),
+          activeSheetId: String(project.activeSheetId || ""),
+          headerRow: project.headerRow !== false,
+        }))
+      : loadGridSheets(item, controller.signal).then((loaded) => ({
+          sheets: loaded,
+          activeSheetId: "",
+          headerRow: true,
+        }))
+    )
       .then((loaded) => {
         if (
           !mountedRef.current ||
@@ -226,15 +258,23 @@ export function useGridEditor(
         ) {
           return;
         }
-        const next = loaded.length ? loaded : [emptyGridSheet()];
+        const next = loaded.sheets.length
+          ? loaded.sheets
+          : [emptyGridSheet()];
+        const nextActive = next.some(
+          (sheet) => sheet.id === loaded.activeSheetId,
+        )
+          ? loaded.activeSheetId
+          : next[0].id;
         undoRef.current = [];
         redoRef.current = [];
-        applySnapshot({ sheets: next, activeSheetId: next[0].id });
+        applySnapshot({ sheets: next, activeSheetId: nextActive });
         setSelection({
           anchor: { row: 0, col: 0 },
           focus: { row: 0, col: 0 },
         });
         setFilterQuery("");
+        setHeaderRow(loaded.headerRow);
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted || !mountedRef.current) return;
@@ -579,7 +619,7 @@ export function useGridEditor(
     }
   }, [baseTitle, tt]);
 
-  const save = useCallback(async (): Promise<string | null> => {
+  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneGridSheets(sheetsRef.current);
@@ -597,10 +637,19 @@ export function useGridEditor(
         title,
         mediaType: "sheet",
         kind: "sheet",
+        idempotencyKey: `grid:${item.id}:${savingRevision}`,
         meta: {
           editor: "grid-v2",
           sheet_count: snapshot.length,
           sheet_names: snapshot.map((sheet) => sheet.name),
+        },
+        project: {
+          schema: GRID_PROJECT_SCHEMA,
+          data: {
+            sheets: snapshot,
+            activeSheetId: activeRef.current,
+            headerRow,
+          },
         },
       });
       if (!mountedRef.current) return null;
@@ -610,7 +659,12 @@ export function useGridEditor(
       }
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
-      return result.url;
+      return {
+        url: result.url,
+        versionId: result.versionId,
+        projectUrl: result.projectUrl,
+        projectSchema: result.projectSchema,
+      };
     } catch (caught) {
       if (mountedRef.current) {
         setError(
@@ -622,7 +676,30 @@ export function useGridEditor(
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
     }
-  }, [baseTitle, item, siteId, tt]);
+  }, [baseTitle, headerRow, item, siteId, tt]);
+
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      if (!payload || typeof payload !== "object") return false;
+      const project = payload as GridProject;
+      const next = normalizeGridProjectSheets(project.sheets);
+      if (!next.length) return false;
+      const nextActive = next.some(
+        (sheet) => sheet.id === project.activeSheetId,
+      )
+        ? String(project.activeSheetId)
+        : next[0].id;
+      undoRef.current = [];
+      redoRef.current = [];
+      applySnapshot({ sheets: next, activeSheetId: nextActive });
+      setHeaderRow(project.headerRow !== false);
+      revisionRef.current += 1;
+      setDirty(true);
+      setSavedUrl("");
+      return true;
+    },
+    [applySnapshot],
+  );
 
   void historyRevision;
   return {
@@ -644,6 +721,7 @@ export function useGridEditor(
     exporting,
     saving,
     dirty,
+    editRevision: revisionRef.current,
     error,
     savedUrl,
     canUndo: undoRef.current.length > 0,
@@ -670,5 +748,6 @@ export function useGridEditor(
     exportCsv,
     exportXlsx,
     save,
+    restoreRecovery,
   };
 }

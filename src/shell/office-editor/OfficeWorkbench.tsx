@@ -51,6 +51,7 @@ export function useOfficeWorkbench(
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [saveCount, setSaveCount] = useState(0);
+  const [editRevision, setEditRevision] = useState(0);
   const [savedItem, setSavedItem] = useState<LibraryItem | null>(null);
   const [dirty, setDirty] = useState(false);
   const editorRef = useRef<DocsApiEditor | null>(null);
@@ -175,6 +176,7 @@ export function useOfficeWorkbench(
             if (event.data === true) {
               dirtySinceSaveRef.current = true;
               setDirty(true);
+              setEditRevision((value) => value + 1);
             } else if (dirtySinceSaveRef.current) {
               dirtySinceSaveRef.current = false;
               setDirty(false);
@@ -252,6 +254,7 @@ export function useOfficeWorkbench(
     extension,
     hostId: hostIdRef.current,
     saveCount,
+    editRevision,
     savedItem,
     dirty,
     requestClose: () => {

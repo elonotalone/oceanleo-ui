@@ -43,7 +43,10 @@ export function AdvancedStageControls({
   );
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 right-4 z-[75] flex h-10 items-center gap-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-1.5 text-[var(--fg-2,#57534e)] shadow-[0_8px_28px_rgba(15,23,42,.12)] backdrop-blur-xl">
+    <div
+      data-advanced-viewport-controls
+      className="pointer-events-auto flex h-10 items-center gap-1 rounded-xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-1.5 text-[var(--awb-muted,var(--fg-2,#57534e))] shadow-[var(--awb-shadow-floating,0_8px_28px_rgba(15,23,42,.12))]"
+    >
       {viewport && (
         <>
           <button

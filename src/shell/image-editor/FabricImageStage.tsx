@@ -49,7 +49,12 @@ export function FabricImageStage({
   }, [editor]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
+    <div
+      className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]"
+      data-editor-loading={editor.loading ? "true" : "false"}
+      data-editor-layer-count={editor.layers.length}
+      data-editor-selected-kind={editor.selected?.kind || ""}
+    >
       <div
         ref={editor.stageContainerRef}
         className="relative min-h-0 flex-1 overflow-hidden"

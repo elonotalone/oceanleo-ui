@@ -7,15 +7,16 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
-  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../i18n/ui/useUI";
-import type { WorkbenchIconName } from "./AdvancedEditorIcon";
+import {
+  AdvancedEditorIcon,
+} from "./AdvancedEditorIcon";
 import type {
-  AdvancedHistoryActions,
-  AdvancedViewportActions,
-} from "./advanced-workbench-chrome";
+  AdvancedEditorAdapter,
+  AdvancedWorkbenchDrawer,
+} from "./advanced-editor-adapter";
 import { AdvancedStageControls } from "./AdvancedStageControls";
 import { AdvancedWorkbenchHeader } from "./AdvancedWorkbenchHeader";
 import { AdvancedWorkbenchPanel } from "./AdvancedWorkbenchPanel";
@@ -24,10 +25,7 @@ import {
   type WorkbenchNavItem,
 } from "./AdvancedWorkbenchSidebar";
 import { AdvancedWorkbenchStage } from "./AdvancedWorkbenchStage";
-import {
-  useAdvancedSession,
-  type AdvancedFlushResult,
-} from "./advanced-session-context";
+import { useAdvancedSession } from "./advanced-session-context";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import {
@@ -35,61 +33,15 @@ import {
   type WorkbenchMaterialAction,
 } from "./workbench-material-provider";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
-
-export interface AdvancedWorkbenchDrawer {
-  id: string;
-  label: string;
-  icon: WorkbenchIconName;
-  content: ReactNode;
-  hiddenFromRail?: boolean;
-}
+import { useAdvancedRecovery } from "./use-advanced-recovery";
+import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 
 export interface AdvancedWorkbenchShellProps {
   item: LibraryItem;
-  previewContent?: ReactNode;
-  linkUrl?: string;
   taskId?: string | null;
   siteId?: string;
   accent?: string;
-  editorLabel: string;
-  /** Creation/global tools only. Selection-specific properties belong in editorContextualToolbar. */
-  editorToolbox?: ReactNode;
-  /** Optional route-specific label/icon for the legacy global toolbox fallback. */
-  editorDrawerLabel?: string;
-  editorDrawerIcon?: WorkbenchIconName;
-  /** Canva-style content drawers supplied by the current editor route. */
-  editorDrawers?: readonly AdvancedWorkbenchDrawer[];
-  /** Object-aware controls rendered in the single shared property bar. */
-  editorContextualToolbar?: ReactNode;
-  /** Keep the shared bar clear of an editor-owned page or track rail. */
-  editorContextualToolbarInsetLeft?: number;
-  /** Persistent document-level actions shown in the colored product header. */
-  editorHeaderActions?: ReactNode;
-  /** Undo/redo lives in the product header rather than the object property bar. */
-  editorHistory?: AdvancedHistoryActions;
-  /** Native editor zoom adapter. Other routes receive a bounded shell zoom. */
-  editorViewport?: AdvancedViewportActions;
-  /** @deprecated The property bar is fixed at the top; kept for route compatibility. */
-  editorContextualToolbarAnchor?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  editorStage: ReactNode;
-  editorAvailable?: boolean;
-  editorStatus?: string;
-  editorDirty?: boolean;
-  editorOwnsCloseGuard?: boolean;
-  /** Embedded editors render their own creation toolbox when the Tools entry is active. */
-  editorUsesOwnControls?: boolean;
-  /** Persist pending editor changes before Advanced Agent starts a new session. */
-  onBeforeNewConversation?:
-    | (() => Promise<AdvancedFlushResult> | AdvancedFlushResult);
-  /** Latest durable material version produced by an explicit editor save. */
-  savedItem?: LibraryItem | null;
-  exportPanel?: ReactNode;
-  versionRevision?: string | number;
+  adapter: AdvancedEditorAdapter;
   onClose: () => void;
 }
 
@@ -103,36 +55,48 @@ export function AdvancedWorkbenchShell({
   taskId,
   siteId = "",
   accent = "#6d5dfc",
-  editorLabel,
-  editorToolbox,
-  editorDrawerLabel,
-  editorDrawerIcon = "settings",
-  editorDrawers = [],
-  editorContextualToolbar,
-  editorContextualToolbarInsetLeft = 0,
-  editorHeaderActions,
-  editorHistory,
-  editorViewport,
-  editorStage,
-  editorAvailable = true,
-  editorStatus = "",
-  editorDirty = false,
-  editorOwnsCloseGuard = false,
-  onBeforeNewConversation,
-  savedItem = null,
+  adapter,
   onClose,
 }: AdvancedWorkbenchShellProps) {
   const tt = useUI();
+  const editorLabel = adapter.label;
+  const editorToolbox = adapter.toolbox?.content;
+  const editorDrawerLabel = adapter.toolbox?.label;
+  const editorDrawerIcon = adapter.toolbox?.icon || "settings";
+  const editorDrawers = adapter.drawers || [];
+  const editorContextualToolbar = adapter.contextToolbar;
+  const editorHeaderActions = adapter.actions;
+  const editorHistory = adapter.history;
+  const editorViewport = adapter.nativeChrome?.viewport
+    ? undefined
+    : adapter.viewport;
+  const editorStage = adapter.stage;
+  const editorAvailable = adapter.available !== false;
+  const editorStatus = adapter.status || "";
+  const editorDirty = adapter.persistence?.dirty || false;
+  const onBeforeNewConversation = adapter.persistence?.flush;
+  const versionRevision = adapter.persistence?.editRevision || 0;
+  const editorCloseRequestRevision = adapter.closeRequestRevision || 0;
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const dirtyRecordedRef = useRef(false);
+  const closingRef = useRef(false);
+  const handledCloseRequestRef = useRef(editorCloseRequestRevision);
   const portalReady = typeof document !== "undefined";
   const advancedSession = useAdvancedSession();
   const autoSave = useAdvancedAutoSave({
     dirty: editorDirty,
+    revision: versionRevision,
     flush: onBeforeNewConversation,
     session: advancedSession,
+  });
+  useAdvancedRecovery({
+    editorId: adapter.id,
+    revision: versionRevision,
+    dirty: editorDirty,
+    persistenceState: autoSave.state,
+    recovery: adapter.persistence?.recovery,
   });
   const workbenchMaterials = useWorkbenchMaterials();
   const fallbackDrawer = useMemo<AdvancedWorkbenchDrawer[]>(() => {
@@ -157,6 +121,9 @@ export function AdvancedWorkbenchShell({
   const [panelWidth, setPanelWidth] = useState(380);
   const [panelVisible, setPanelVisible] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768,
+  );
+  const [compactLayout, setCompactLayout] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
   );
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [resizing, setResizing] = useState(false);
@@ -189,15 +156,31 @@ export function AdvancedWorkbenchShell({
   );
 
   const requestClose = useCallback(() => {
-    if (
-      editorDirty &&
-      !editorOwnsCloseGuard &&
-      !window.confirm(tt("当前有未保存的修改，确定要离开高级工作台吗？"))
-    ) {
-      return;
-    }
-    onClose();
-  }, [editorDirty, editorOwnsCloseGuard, onClose, tt]);
+    if (closingRef.current) return;
+    closingRef.current = true;
+    void (async () => {
+      if (editorDirty || autoSave.state !== "saved") {
+        const flushed = await autoSave.flushLatest();
+        if (
+          !flushed.ok &&
+          !window.confirm(
+            tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？"),
+          )
+        ) {
+          closingRef.current = false;
+          return;
+        }
+      }
+      onClose();
+      closingRef.current = false;
+    })();
+  }, [autoSave.flushLatest, autoSave.state, editorDirty, onClose, tt]);
+
+  useEffect(() => {
+    if (editorCloseRequestRevision <= handledCloseRequestRef.current) return;
+    handledCloseRequestRef.current = editorCloseRequestRevision;
+    requestClose();
+  }, [editorCloseRequestRevision, requestClose]);
 
   useEffect(() => {
     if (!editorDirty) return;
@@ -223,23 +206,10 @@ export function AdvancedWorkbenchShell({
   }, [advancedSession, editorDirty]);
 
   useEffect(() => {
-    if (!advancedSession || !savedItem) return;
-    void advancedSession.recordSavedItem(savedItem);
-  }, [advancedSession, savedItem]);
-
-  useEffect(() => {
     if (!advancedSession) return;
-    advancedSession.registerFlush(async () => {
-      if (!editorDirty) {
-        return savedItem ? { ok: true, item: savedItem } : { ok: true };
-      }
-      if (!onBeforeNewConversation) {
-        return { ok: false, error: "当前编辑器无法保存未提交修改" };
-      }
-      return onBeforeNewConversation();
-    });
+    advancedSession.registerFlush(autoSave.flushLatest);
     return () => advancedSession.registerFlush(null);
-  }, [advancedSession, editorDirty, onBeforeNewConversation, savedItem]);
+  }, [advancedSession, autoSave.flushLatest]);
 
   useEffect(() => {
     if (!portalReady) return;
@@ -310,6 +280,24 @@ export function AdvancedWorkbenchShell({
     },
     [],
   );
+
+  useEffect(() => {
+    const reflow = () => {
+      const compact = window.innerWidth < 768;
+      setCompactLayout(compact);
+      if (!compact) {
+        setPanelWidth((current) =>
+          Math.min(
+            current,
+            Math.min(620, Math.max(320, window.innerWidth * 0.48)),
+          ),
+        );
+      }
+    };
+    reflow();
+    window.addEventListener("resize", reflow);
+    return () => window.removeEventListener("resize", reflow);
+  }, []);
 
   const tools = useMemo(
     () =>
@@ -403,11 +391,10 @@ export function AdvancedWorkbenchShell({
   const startNewTask = useCallback(async () => {
     if (!advancedSession || startingNew) return;
     setStartingNew(true);
-    if (editorDirty) await autoSave.run();
     const next = await advancedSession.startNew();
     if (!next) setDropMessage(tt("新建任务失败，当前内容仍已保留。"));
     setStartingNew(false);
-  }, [advancedSession, autoSave, editorDirty, startingNew, tt]);
+  }, [advancedSession, startingNew, tt]);
 
   const renameTitle = useCallback(
     async (title: string) => {
@@ -421,6 +408,7 @@ export function AdvancedWorkbenchShell({
   const customDrawer = fallbackDrawer.find(
     (drawer) => drawer.id === activeTool,
   );
+  const primaryEditorDrawer = editorToolbox ? fallbackDrawer[0] : undefined;
   const preferredMaterialAction = (
     ["insert", "apply", "replace", "merge"] as const
   ).find((action) => workbenchMaterials?.actions.includes(action));
@@ -484,7 +472,8 @@ export function AdvancedWorkbenchShell({
       aria-modal="true"
       aria-label={`${item.title} · ${tt("高级功能")}`}
       tabIndex={-1}
-      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--bg,#f7f7f5)] font-[var(--font-sans,Inter,'Noto_Sans_SC','PingFang_SC','Microsoft_YaHei',sans-serif)] text-[var(--fg,#292524)]"
+      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--awb-shell-bg)] font-[var(--font-sans,Inter,'Noto_Sans_SC','PingFang_SC','Microsoft_YaHei',sans-serif)] text-[var(--awb-text)]"
+      style={advancedWorkbenchStyle(accent)}
     >
       {resizing && (
         <div
@@ -506,8 +495,9 @@ export function AdvancedWorkbenchShell({
         onToggleMobileActions={() =>
           setMobileActionsOpen((value) => !value)
         }
+        onOpenPanel={openDrawer}
         onStartNew={() => void startNewTask()}
-        onAutoSave={() => void autoSave.run()}
+        onAutoSave={() => void autoSave.retry()}
         onRenameTitle={renameTitle}
         onClose={requestClose}
       />
@@ -518,6 +508,7 @@ export function AdvancedWorkbenchShell({
           activeLabel={customDrawer ? tt(customDrawer.label) : undefined}
           panelVisible={panelVisible}
           panelWidth={panelWidth}
+          compact={compactLayout}
           panel={panel}
           accent={accent}
           onChooseTool={chooseTool}
@@ -527,33 +518,75 @@ export function AdvancedWorkbenchShell({
 
         <div
           ref={stageRef}
-          className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--advanced-stage-bg,#f2f3f5)]"
+          className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[var(--awb-stage-bg)]"
         >
-          <AdvancedWorkbenchStage
-            editorAvailable={editorAvailable}
-            editorStage={editorStage}
-            item={item}
-            accent={accent}
-            stageScale={1}
-            draggedTitle={
-              activeMaterialAction
-                ? workbenchMaterials?.draggedItem?.title
-                : undefined
-            }
-            dropMessage={dropMessage}
-            onMaterialDrop={(event) => void handleMaterialDrop(event)}
-          />
-          <div
-            className="pointer-events-none absolute right-3 top-3 z-[70] flex justify-center"
-            style={{ left: editorContextualToolbarInsetLeft + 12 }}
-          >
-            {editorAvailable ? editorContextualToolbar : null}
+          {editorAvailable &&
+            (primaryEditorDrawer ||
+              editorContextualToolbar ||
+              adapter.nativeChrome?.toolbar) && (
+              <div
+                data-advanced-context-row
+                className="z-[70] flex min-h-14 min-w-0 items-center gap-2 border-b border-[var(--awb-border)] bg-[var(--awb-stage-bg)] px-3 py-2"
+              >
+                {primaryEditorDrawer && (
+                  <button
+                    type="button"
+                    onClick={() => openDrawer(primaryEditorDrawer.id)}
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-3 text-[12px] font-semibold text-[var(--awb-text)] shadow-sm transition hover:bg-[var(--awb-hover)]"
+                    aria-label={tt(primaryEditorDrawer.label)}
+                    aria-expanded={
+                      panelVisible && activeTool === primaryEditorDrawer.id
+                    }
+                  >
+                    <AdvancedEditorIcon
+                      name={primaryEditorDrawer.icon}
+                      className="h-4 w-4"
+                    />
+                    {tt(primaryEditorDrawer.label)}
+                  </button>
+                )}
+                {adapter.nativeChrome?.toolbar && (
+                  <button
+                    type="button"
+                    onClick={() => setPanelVisible(false)}
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-3 text-[12px] font-semibold text-[var(--awb-text)] shadow-sm transition hover:bg-[var(--awb-hover)]"
+                    aria-pressed={!panelVisible}
+                    aria-label={tt("编辑器工具")}
+                  >
+                    <AdvancedEditorIcon name="settings" className="h-4 w-4" />
+                    {tt("编辑器工具")}
+                  </button>
+                )}
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  {editorContextualToolbar}
+                </div>
+              </div>
+            )}
+          <div className="relative min-h-0 min-w-0 overflow-hidden">
+            <AdvancedWorkbenchStage
+              editorAvailable={editorAvailable}
+              editorStage={editorStage}
+              item={item}
+              accent={accent}
+              draggedTitle={
+                activeMaterialAction
+                  ? workbenchMaterials?.draggedItem?.title
+                  : undefined
+              }
+              dropMessage={dropMessage}
+              onMaterialDrop={(event) => void handleMaterialDrop(event)}
+            />
           </div>
-          <AdvancedStageControls
-            stageRef={stageRef}
-            viewport={editorViewport}
-            accent={accent}
-          />
+          <div
+            data-advanced-viewport-row
+            className="flex min-h-14 shrink-0 items-center justify-end border-t border-[var(--awb-border)] bg-[var(--awb-stage-bg)] px-3 py-2"
+          >
+            <AdvancedStageControls
+              stageRef={stageRef}
+              viewport={editorViewport}
+              accent={accent}
+            />
+          </div>
         </div>
       </div>
       </AdvancedLayoutContext.Provider>

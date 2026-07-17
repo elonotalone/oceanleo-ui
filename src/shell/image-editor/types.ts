@@ -204,6 +204,7 @@ export interface FabricImageSaveResult {
   url: string;
   projectUrl: string;
   savedAt: string;
+  versionId: string;
 }
 
 export interface FabricImageEditorState {
@@ -217,6 +218,8 @@ export interface FabricImageEditorState {
   savedProjectUrl: string;
   savedAt: string;
   dirty: boolean;
+  /** Monotonic document mutation revision used by the shared save queue. */
+  editRevision: number;
   // ---- 画布挂载 ----
   stageCanvasRef: (element: HTMLCanvasElement | null) => void;
   stageContainerRef: MutableRefObject<HTMLDivElement | null>;

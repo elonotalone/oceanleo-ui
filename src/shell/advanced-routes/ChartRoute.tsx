@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { ChartContextToolbar } from "../chart-editor/ChartContextToolbar";
 import { ChartControls } from "../chart-editor/ChartControls";
@@ -29,6 +30,7 @@ export function ChartRoute({
     (saved: ChartSaveResult): LibraryItem => {
       const next = advancedSavedItem(item, {
         url: saved.url,
+        versionId: saved.versionId,
         previewUrl: item.previewUrl || item.thumbUrl || saved.url,
         thumbUrl: item.thumbUrl || item.previewUrl,
         meta: {
@@ -36,6 +38,8 @@ export function ChartRoute({
           content_type: "chart",
           representation: "echarts-option",
           subtype: String(item.meta.subtype || item.meta.category || ""),
+          editor_project_url: saved.projectUrl,
+          editor_project_schema: saved.projectSchema,
         },
       });
       const {
@@ -55,10 +59,6 @@ export function ChartRoute({
     },
     [item],
   );
-  const savedItem = useMemo(
-    () => (editor.saved ? buildSavedItem(editor.saved) : null),
-    [buildSavedItem, editor.saved],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
     return saved
@@ -69,31 +69,40 @@ export function ChartRoute({
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({
-        type: "grid",
-        adapter: "chart-editor@1",
-      })}
-      editorDrawerLabel="数据与系列"
-      editorDrawerIcon="timeline"
-      editorToolbox={<ChartControls editor={editor} />}
-      editorContextualToolbar={
-        <ChartContextToolbar editor={editor} accent={accent} />
-      }
-      editorStage={<ChartStage editor={editor} />}
-      editorStatus={
-        editor.error ||
-        editor.notice ||
-        (editor.loading ? "正在载入结构化图表…" : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.saved?.url || ""}
+      adapter={{
+        id: "chart-editor@1",
+        label: editorToolLabel({
+          type: "grid",
+          adapter: "chart-editor@1",
+        }),
+        toolbox: {
+          label: "数据与系列",
+          icon: "timeline",
+          content: <ChartControls editor={editor} />,
+        },
+        contextToolbar: (
+          <ChartContextToolbar editor={editor} accent={accent} />
+        ),
+        stage: <ChartStage editor={editor} />,
+        status:
+          editor.error ||
+          editor.notice ||
+          (editor.loading ? "正在载入结构化图表…" : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("chart-editor@1", item),
+            ready: !editor.loading,
+            capture: () => structuredClone(editor.document),
+            restore: editor.restoreRecovery,
+          },
+        },
+      }}
       onClose={onClose}
     />
   );

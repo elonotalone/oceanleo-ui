@@ -5,7 +5,6 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
-  OfficeControls,
   OfficeStage,
   useOfficeWorkbench,
 } from "../office-editor";
@@ -29,24 +28,37 @@ export function OfficeRoute({
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel(editorRouteFor(item))}
-      editorDrawerLabel="文件"
-      editorDrawerIcon="file"
-      editorToolbox={<OfficeControls editor={editor} accent={accent} />}
-      editorStage={<OfficeStage editor={editor} />}
-      editorAvailable={Boolean(editor.extension)}
-      editorStatus={editor.error || editor.state}
-      editorDirty={editor.dirty}
-      editorOwnsCloseGuard
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={editor.savedItem}
-      versionRevision={editor.saveCount}
-      onClose={editor.requestClose}
+      adapter={{
+        id: "office",
+        label: editorToolLabel(editorRouteFor(item)),
+        stage: <OfficeStage editor={editor} />,
+        available: Boolean(editor.extension),
+        status: editor.error || editor.state,
+        nativeChrome: {
+          toolbar: true,
+          viewport: true,
+          closeGuard: true,
+        },
+        actions:
+          editor.state === "error"
+            ? [
+                {
+                  id: "office-retry",
+                  label: "重试加载",
+                  onTrigger: editor.retry,
+                },
+              ]
+            : [],
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+        },
+      }}
+      onClose={onClose}
     />
   );
 }

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -30,12 +29,11 @@ export function EmbeddedRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const tt = useUI();
   const route = editorRouteFor(item);
   const [saveRequestId, setSaveRequestId] = useState("");
-  const [versionRevision, setVersionRevision] = useState(0);
+  const [editRevision, setEditRevision] = useState(0);
+  const [closeRequestRevision, setCloseRequestRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const [savedItem, setSavedItem] = useState<LibraryItem | null>(null);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const [selectionCommand, setSelectionCommand] =
     useState<SelectionCommand | null>(null);
@@ -56,11 +54,28 @@ export function EmbeddedRoute({
     ((result: AdvancedFlushResult) => void) | null
   >(null);
   const saveTimerRef = useRef<number | null>(null);
+  const remoteRevisionRef = useRef(0);
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
     setMaterialInsertion(null);
+    setDirty(false);
+    setEditRevision(0);
+    remoteRevisionRef.current = 0;
   }, [item.key]);
+  const handleDirtyChange = useCallback(
+    (nextDirty: boolean, remoteRevision?: number) => {
+      setDirty(nextDirty);
+      if (!nextDirty) return;
+      if (Number.isSafeInteger(remoteRevision) && Number(remoteRevision) >= 0) {
+        const nextRemote = Number(remoteRevision);
+        if (nextRemote === remoteRevisionRef.current) return;
+        remoteRevisionRef.current = nextRemote;
+      }
+      setEditRevision((value) => value + 1);
+    },
+    [],
+  );
   useEffect(
     () => () => {
       materialResolversRef.current.forEach((pending) => {
@@ -106,7 +121,6 @@ export function EmbeddedRoute({
   );
   const handleSaveResult = useCallback(
     (result: { ok: boolean; saveId?: string; item?: LibraryItem }) => {
-      if (result.item) setSavedItem(result.item);
       if (
         saveResolverRef.current &&
         result.saveId === pendingSaveIdRef.current
@@ -121,14 +135,8 @@ export function EmbeddedRoute({
     [settleSave],
   );
   const requestEditorClose = useCallback(() => {
-    if (
-      dirty &&
-      !window.confirm(tt("当前有未保存的修改，确定要离开高级工作台吗？"))
-    ) {
-      return;
-    }
-    onClose();
-  }, [dirty, onClose, tt]);
+    setCloseRequestRevision((value) => value + 1);
+  }, []);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter | null>(() => {
     if (route.type !== "embed") return null;
     return {
@@ -326,74 +334,78 @@ export function EmbeddedRoute({
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel(route)}
-      editorStage={
-        <EmbedEditorPane
-          key={`${item.key}:${item.url || ""}:${item.previewUrl || ""}:${item.title}`}
-          item={item}
-          editorBase={route.base}
-          mediaType={route.mediaType}
-          siteId={siteId}
-          extraParams={extraParams}
-          onCloseRequest={requestEditorClose}
-          onDirtyChange={setDirty}
-          onSelectionChange={setSelection}
-          selectionCommand={selectionCommand}
-          materialInsertion={materialInsertion}
-          onMaterialResult={handleMaterialResult}
-          onSaveResult={handleSaveResult}
-          saveRequestId={saveRequestId}
-          onVersionSaved={(next) => {
-            setSavedItem(next);
-            setVersionRevision((value) => value + 1);
-          }}
-        />
-      }
-      editorContextualToolbar={
-        <SelectionToolbar
-          context={selection}
-          onCommand={setSelectionCommand}
-          accent={accent}
-        />
-      }
-      editorHistory={{
-        canUndo: Boolean(
-          selection?.controls.some(
-            (control) => control.id === "undo" && !control.disabled,
-          ),
+      adapter={{
+        id:
+          route.mediaType === "website"
+            ? "website"
+            : route.mediaType === "video"
+              ? "video-canvas"
+              : "design-canvas",
+        label: editorToolLabel(route),
+        stage: (
+          <EmbedEditorPane
+            key={`${item.key}:${item.url || ""}:${item.previewUrl || ""}:${item.title}`}
+            item={item}
+            editorBase={route.base}
+            mediaType={route.mediaType}
+            siteId={siteId}
+            extraParams={extraParams}
+            onCloseRequest={requestEditorClose}
+            onDirtyChange={handleDirtyChange}
+            onSelectionChange={setSelection}
+            selectionCommand={selectionCommand}
+            materialInsertion={materialInsertion}
+            onMaterialResult={handleMaterialResult}
+            onSaveResult={handleSaveResult}
+            saveRequestId={saveRequestId}
+          />
         ),
-        canRedo: Boolean(
-          selection?.controls.some(
-            (control) => control.id === "redo" && !control.disabled,
-          ),
+        contextToolbar: (
+          <SelectionToolbar
+            context={selection}
+            onCommand={setSelectionCommand}
+            accent={accent}
+          />
         ),
-        undo: () => {
-          if (!selection) return;
-          setSelectionCommand({
-            requestId: `header-undo-${Date.now()}`,
-            selectionId: selection.id,
-            controlId: "undo",
-          });
+        history: {
+          canUndo: Boolean(
+            selection?.controls.some(
+              (control) => control.id === "undo" && !control.disabled,
+            ),
+          ),
+          canRedo: Boolean(
+            selection?.controls.some(
+              (control) => control.id === "redo" && !control.disabled,
+            ),
+          ),
+          undo: () => {
+            if (!selection) return;
+            setSelectionCommand({
+              requestId: `header-undo-${Date.now()}`,
+              selectionId: selection.id,
+              controlId: "undo",
+            });
+          },
+          redo: () => {
+            if (!selection) return;
+            setSelectionCommand({
+              requestId: `header-redo-${Date.now()}`,
+              selectionId: selection.id,
+              controlId: "redo",
+            });
+          },
         },
-        redo: () => {
-          if (!selection) return;
-          setSelectionCommand({
-            requestId: `header-redo-${Date.now()}`,
-            selectionId: selection.id,
-            controlId: "redo",
-          });
+        nativeChrome: { toolbar: true, viewport: true },
+        persistence: {
+          dirty,
+          editRevision,
+          flush: saveBeforeNewConversation,
         },
+        closeRequestRevision,
       }}
-      versionRevision={versionRevision}
-      editorDirty={dirty}
-      editorUsesOwnControls
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
       onClose={onClose}
     />
   );

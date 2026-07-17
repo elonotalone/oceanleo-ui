@@ -56,6 +56,21 @@ function normalizeAngle(angle: number): number {
 }
 
 export class FabricEditorController extends FabricEditorCore {
+  private commitAndSelect(object: EditorObject): void {
+    this.commit();
+    this.canvas.setActiveObject(object);
+    this.canvas.requestRenderAll();
+    this.emit();
+  }
+
+  private addAndSelect(object: EditorObject): void {
+    this.activeTool = "select";
+    this.applyTool();
+    this.styleObject(object);
+    this.canvas.add(object);
+    this.commitAndSelect(object);
+  }
+
   addText(preset: TextPreset = "body"): void {
     const labels: Record<TextPreset, string> = {
       heading: "添加标题",
@@ -69,10 +84,7 @@ export class FabricEditorController extends FabricEditorCore {
       this.canvas.getObjects().length,
       preset,
     );
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   addShape(kind: ShapeKind): void {
@@ -82,10 +94,7 @@ export class FabricEditorController extends FabricEditorCore {
       this.doc,
       this.canvas.getObjects().length,
     );
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   addStickyNote(color = "#ffe36e"): void {
@@ -95,10 +104,7 @@ export class FabricEditorController extends FabricEditorCore {
       this.canvas.getObjects().length,
       color,
     );
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   addSignature(text = "签名", color = "#18212f"): void {
@@ -109,10 +115,7 @@ export class FabricEditorController extends FabricEditorCore {
       text,
       color,
     );
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   addTable(rows = 3, columns = 3): void {
@@ -123,10 +126,7 @@ export class FabricEditorController extends FabricEditorCore {
       rows,
       columns,
     );
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   addSignatureImage(image: FabricImage): void {
@@ -136,10 +136,7 @@ export class FabricEditorController extends FabricEditorCore {
       this.canvas.getObjects().length,
     );
     object.oceanleoKind = "signature";
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   resizeSelectedTable(rows: number, columns: number): void {
@@ -200,9 +197,8 @@ export class FabricEditorController extends FabricEditorCore {
     this.canvas.add(replacement);
     this.canvas.moveObjectTo(replacement, Math.max(0, index));
     replacement.setCoords();
-    this.canvas.setActiveObject(replacement);
     table.dispose();
-    this.commit();
+    this.commitAndSelect(replacement);
   }
 
   setSelectedTableStyle(patch: Partial<TableSettings>): void {
@@ -266,10 +262,7 @@ export class FabricEditorController extends FabricEditorCore {
       });
       object.setCoords();
     }
-    this.styleObject(object);
-    this.canvas.add(object);
-    this.canvas.setActiveObject(object);
-    this.commit();
+    this.addAndSelect(object);
   }
 
   replaceActiveImage(image: FabricImage): boolean {
@@ -321,9 +314,8 @@ export class FabricEditorController extends FabricEditorCore {
     this.canvas.add(replacement);
     this.canvas.moveObjectTo(replacement, Math.max(0, index));
     replacement.setCoords();
-    this.canvas.setActiveObject(replacement);
     current.dispose();
-    this.commit();
+    this.commitAndSelect(replacement);
     return true;
   }
 
@@ -405,8 +397,7 @@ export class FabricEditorController extends FabricEditorCore {
     setLocked(clone, false);
     this.styleObject(clone);
     this.canvas.add(clone);
-    this.canvas.setActiveObject(clone);
-    this.commit();
+    this.commitAndSelect(clone);
   }
 
   private mutateSelected(run: (object: EditorObject) => void): void {

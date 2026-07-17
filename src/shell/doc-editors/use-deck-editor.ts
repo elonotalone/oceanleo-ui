@@ -27,8 +27,10 @@ import {
   blobToDataUrl,
   downloadBlob,
   downloadText,
+  loadEditorProject,
   saveFileToLibrary,
   urlExtension,
+  type PersistedEditorVersion,
 } from "./doc-io";
 import {
   buildDeckInkAsset,
@@ -53,6 +55,7 @@ export interface DeckEditorState {
   saving: boolean;
   exporting: boolean;
   dirty: boolean;
+  editRevision: number;
   error: string;
   notice: string;
   savedUrl: string;
@@ -100,10 +103,12 @@ export interface DeckEditorState {
   redo: () => void;
   downloadJson: () => void;
   exportPptx: () => Promise<void>;
-  save: () => Promise<string | null>;
+  save: () => Promise<PersistedEditorVersion | null>;
+  restoreRecovery: (payload: unknown) => boolean;
 }
 
 const HISTORY_LIMIT = 60;
+const DECK_PROJECT_SCHEMA = "oceanleo.deck.v1";
 
 function initialSource(
   item: LibraryItem,
@@ -132,6 +137,15 @@ async function loadDeck(
   previewContent?: unknown,
   signal?: AbortSignal,
 ): Promise<DeckDocument> {
+  const projectUrl = String(item.meta.editor_project_url || "").trim();
+  if (projectUrl) {
+    const project = await loadEditorProject<unknown>(
+      projectUrl,
+      DECK_PROJECT_SCHEMA,
+      signal,
+    );
+    return normalizeDeckDocument(project, item.title || "演示文稿");
+  }
   const fallback = normalizeDeckDocument(
     initialSource(item, previewContent),
     item.title || "演示文稿",
@@ -981,7 +995,7 @@ export function useDeckEditor(
     }
   }, [exporting, tt]);
 
-  const save = useCallback(async (): Promise<string | null> => {
+  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneDeckDocument(deckRef.current);
@@ -1002,12 +1016,17 @@ export function useDeckEditor(
         title,
         mediaType: "ppt",
         kind: "deck",
+        idempotencyKey: `deck:${item.id}:${savingRevision}`,
         meta: {
           editor: "deck",
-          schema: "oceanleo.deck.v2",
+          schema: DECK_PROJECT_SCHEMA,
           slides: snapshot.slides.length,
           aspect: snapshot.aspect,
           theme: snapshot.theme,
+        },
+        project: {
+          schema: DECK_PROJECT_SCHEMA,
+          data: snapshot,
         },
       });
       if (!result.ok) throw new Error(result.error || tt("保存到我的库失败"));
@@ -1020,7 +1039,14 @@ export function useDeckEditor(
           setNotice(tt("已保存一个 PPTX 版本；之后的修改仍未保存"));
         }
       }
-      return mountedRef.current ? result.url : null;
+      return mountedRef.current
+        ? {
+            url: result.url,
+            versionId: result.versionId,
+            projectUrl: result.projectUrl,
+            projectSchema: result.projectSchema,
+          }
+        : null;
     } catch (caught) {
       if (mountedRef.current) {
         setError(caught instanceof Error ? caught.message : tt("保存失败"));
@@ -1032,6 +1058,23 @@ export function useDeckEditor(
     }
   }, [item, siteId, tt]);
 
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        !Array.isArray((payload as { slides?: unknown }).slides)
+      ) {
+        return false;
+      }
+      const next = normalizeDeckDocument(payload, item.title || "演示文稿");
+      commit(() => next, next.slides[0].id);
+      setNotice(tt("已恢复上次未同步的本地草稿"));
+      return true;
+    },
+    [commit, item.title, tt],
+  );
+
   return {
     deck,
     activeSlide,
@@ -1042,6 +1085,7 @@ export function useDeckEditor(
     saving,
     exporting,
     dirty,
+    editRevision: revisionRef.current,
     error,
     notice,
     savedUrl,
@@ -1136,5 +1180,6 @@ export function useDeckEditor(
       ),
     exportPptx,
     save,
+    restoreRecovery,
   };
 }

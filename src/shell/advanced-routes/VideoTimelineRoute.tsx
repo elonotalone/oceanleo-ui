@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { ADVANCED_HEADER_PRIMARY_ACTION_CLASS } from "../advanced-workbench-chrome";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
@@ -89,72 +89,78 @@ export function VideoTimelineRoute({
     [editor.addMediaUrl, editor.playheadMs],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const savedItem = useMemo(
-    () =>
-      editor.draftSavedUrl
-        ? advancedSavedItem(item, { url: editor.draftSavedUrl })
-        : null,
-    [editor.draftSavedUrl, item],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.saveDraft();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.saveDraft();
+    return saved?.url
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            versionId: saved.versionId,
+            meta: {
+              editor_project_url: saved.projectUrl,
+              editor_project_schema: saved.projectSchema,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.saveDraft, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel(editorRouteFor(item))}
-      editorDrawerLabel="媒体与轨道"
-      editorDrawerIcon="timeline"
-      editorToolbox={
-        <VideoTimelineControls state={editor} accent={accent} />
-      }
-      editorContextualToolbar={
-        <VideoTimelineContextToolbar state={editor} accent={accent} />
-      }
-      editorHistory={{
-        canUndo: editor.canUndo,
-        canRedo: editor.canRedo,
-        undo: editor.undo,
-        redo: editor.redo,
+      adapter={{
+        id: "video-timeline",
+        label: editorToolLabel(editorRouteFor(item)),
+        toolbox: {
+          label: "媒体与轨道",
+          icon: "timeline",
+          content: <VideoTimelineControls state={editor} accent={accent} />,
+        },
+        contextToolbar: (
+          <VideoTimelineContextToolbar state={editor} accent={accent} />
+        ),
+        history: {
+          canUndo: editor.canUndo,
+          canRedo: editor.canRedo,
+          undo: editor.undo,
+          redo: editor.redo,
+        },
+        viewport: {
+          value: Math.round((editor.pxPerSecond / 80) * 100),
+          min: 10,
+          max: 600,
+          step: 5,
+          setValue: (value) => editor.setPxPerSecond((value / 100) * 80),
+          fit: () => editor.setPxPerSecond(80),
+        },
+        actions: [
+          {
+            id: "video-export",
+            label: editor.exporting ? "取消渲染" : "导出视频",
+            variant: editor.exporting ? "danger" : "primary",
+            onTrigger: () =>
+              editor.exporting
+                ? editor.cancelExport()
+                : editor.exportVideo(),
+          },
+        ],
+        stage: <VideoTimelineStage state={editor} accent={accent} />,
+        status: editor.error || editor.notice,
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("video-timeline", item),
+            ready: !editor.loadingSource,
+            capture: () => structuredClone(editor.doc),
+            restore: editor.restoreRecovery,
+          },
+        },
       }}
-      editorViewport={{
-        value: Math.round((editor.pxPerSecond / 80) * 100),
-        min: 10,
-        max: 600,
-        step: 5,
-        setValue: (value) => editor.setPxPerSecond((value / 100) * 80),
-        fit: () => editor.setPxPerSecond(80),
-      }}
-      editorHeaderActions={
-        <button
-          type="button"
-          onClick={() =>
-            editor.exporting
-              ? editor.cancelExport()
-              : void editor.exportVideo()
-          }
-          className={ADVANCED_HEADER_PRIMARY_ACTION_CLASS}
-          style={{
-            background: editor.exporting ? "#b42318" : accent,
-          }}
-        >
-          {editor.exporting ? "取消渲染" : "导出视频"}
-        </button>
-      }
-      editorStage={<VideoTimelineStage state={editor} accent={accent} />}
-      editorStatus={editor.error || editor.notice}
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={`${editor.draftSavedUrl}|${editor.exportedUrl}`}
       onClose={onClose}
     />
   );

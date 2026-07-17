@@ -99,7 +99,14 @@ export type HostToEditorMessage =
 
 export type EditorToHostMessage =
   | { protocol: typeof EDITOR_PROTOCOL; type: "ready"; instanceId: string }
-  | { protocol: typeof EDITOR_PROTOCOL; type: "dirty"; instanceId: string; dirty?: boolean }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "dirty";
+      instanceId: string;
+      dirty?: boolean;
+      /** Monotonic editor mutation revision; required for lossless save queuing. */
+      revision?: number;
+    }
   | {
       protocol: typeof EDITOR_PROTOCOL;
       type: "artifact-created" | "artifact-updated";
@@ -244,8 +251,10 @@ export function asEditorToHostMessage(
   }
   if (
     type === "dirty" &&
-    record.dirty !== undefined &&
-    typeof record.dirty !== "boolean"
+    ((record.dirty !== undefined && typeof record.dirty !== "boolean") ||
+      (record.revision !== undefined &&
+        (!Number.isSafeInteger(record.revision) ||
+          Number(record.revision) < 0)))
   ) {
     return null;
   }

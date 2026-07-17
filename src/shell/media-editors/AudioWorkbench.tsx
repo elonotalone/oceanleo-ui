@@ -13,13 +13,16 @@ import type WaveSurfer from "wavesurfer.js";
 import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { useUI } from "../../i18n/ui/useUI";
-import { saveWorks, uploadFile } from "../../lib/database";
 import {
   fetchMediaBlob,
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
+import {
+  saveFileToLibrary,
+  type PersistedEditorVersion,
+} from "../doc-editors/doc-io";
 
 export interface AudioSelection {
   start: number;
@@ -45,6 +48,7 @@ export interface AudioWorkbenchState {
   canUndo: boolean;
   canRedo: boolean;
   dirty: boolean;
+  editRevision: number;
   playPause: () => void;
   stop: () => void;
   setPlaybackSpeed: (value: number) => void;
@@ -57,7 +61,9 @@ export interface AudioWorkbenchState {
   redo: () => void;
   importSource: (file: File) => Promise<void>;
   download: () => void;
-  save: () => Promise<string | null>;
+  save: () => Promise<PersistedEditorVersion | null>;
+  captureRecovery: () => Blob | null;
+  restoreRecovery: (payload: unknown) => Promise<boolean>;
 }
 
 const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
@@ -525,7 +531,7 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const save = useCallback(async (): Promise<string | null> => {
+  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const source = bufferRef.current;
     if (!source || savingRef.current) return null;
     const savingRevision = revisionRef.current;
@@ -537,24 +543,29 @@ export function useAudioWorkbench(
       const file = new File([encodeWav(source)], `${title}.wav`, {
         type: "audio/wav",
       });
-      const uploaded = await uploadFile(file, { siteId: siteId || "audio", title });
-      const url = uploaded.data?.file?.url || "";
-      if (!uploaded.ok || !url) throw new Error(uploaded.error || tt("上传音频失败"));
-      const saved = await saveWorks(siteId || "audio", [
-        {
-          url,
-          media_type: "audio",
-          title,
-          kind: "audio",
-          meta: { parent_asset_id: item.id, editor: "audio-v2" },
-        },
-      ]);
-      if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
+      const saved = await saveFileToLibrary({
+        item,
+        siteId,
+        fallbackSite: "audio",
+        file,
+        title,
+        mediaType: "audio",
+        kind: "audio",
+        idempotencyKey: `audio:${item.id}:${savingRevision}`,
+        meta: { editor: "audio-v2" },
+        deliveryProjectSchema: "audio-wav@1",
+      });
+      if (!saved.ok) {
         throw new Error(saved.error || tt("登记到我的库失败"));
       }
-      setSavedUrl(url);
+      setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) setDirty(false);
-      return url;
+      return {
+        url: saved.url,
+        versionId: saved.versionId,
+        projectUrl: saved.projectUrl,
+        projectSchema: saved.projectSchema,
+      };
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("保存到我的库失败"));
       return null;
@@ -562,7 +573,31 @@ export function useAudioWorkbench(
       savingRef.current = false;
       setSaving(false);
     }
-  }, [item.id, item.title, siteId, tt]);
+  }, [item, siteId, tt]);
+
+  const captureRecovery = useCallback(
+    () => (bufferRef.current ? encodeWav(bufferRef.current) : null),
+    [],
+  );
+  const restoreRecovery = useCallback(
+    async (payload: unknown): Promise<boolean> => {
+      if (!(payload instanceof Blob) || payload.size > MAX_AUDIO_FILE_BYTES) {
+        return false;
+      }
+      const context = new AudioContext();
+      try {
+        const decoded = await context.decodeAudioData(
+          (await payload.arrayBuffer()).slice(0),
+        );
+        if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) return false;
+        await commit(decoded, false);
+        return true;
+      } finally {
+        await context.close();
+      }
+    },
+    [commit],
+  );
 
   return {
     containerRef,
@@ -583,6 +618,7 @@ export function useAudioWorkbench(
     canUndo,
     canRedo,
     dirty,
+    editRevision: revisionRef.current,
     playPause: () => {
       void waveRef.current?.playPause().catch(() => setError(tt("播放失败")));
     },
@@ -609,6 +645,8 @@ export function useAudioWorkbench(
     importSource,
     download,
     save,
+    captureRecovery,
+    restoreRecovery,
   };
 }
 

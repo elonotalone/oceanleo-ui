@@ -11,7 +11,6 @@ export function AdvancedWorkbenchStage({
   editorStage,
   item,
   accent,
-  stageScale = 1,
   draggedTitle,
   dropMessage,
   onMaterialDrop,
@@ -20,7 +19,6 @@ export function AdvancedWorkbenchStage({
   editorStage?: ReactNode;
   item: LibraryItem;
   accent: string;
-  stageScale?: number;
   draggedTitle?: string;
   dropMessage: string;
   onMaterialDrop: (event: DragEvent<HTMLDivElement>) => void;
@@ -29,31 +27,7 @@ export function AdvancedWorkbenchStage({
   return (
     <main className="relative h-full min-h-0 min-w-0 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]">
       {editorAvailable ? (
-        stageScale === 1 ? (
-          <div className="h-full">{editorStage}</div>
-        ) : (
-          <div className="h-full overflow-auto">
-            <div
-              data-advanced-scaled-panel
-              className="relative m-auto transition-[width,height] duration-150"
-              style={{
-                width: `${stageScale * 100}%`,
-                height: `${stageScale * 100}%`,
-              }}
-            >
-              <div
-                className="absolute left-0 top-0 origin-top-left"
-                style={{
-                  width: `${100 / stageScale}%`,
-                  height: `${100 / stageScale}%`,
-                  transform: `scale(${stageScale})`,
-                }}
-              >
-                {editorStage}
-              </div>
-            </div>
-          </div>
-        )
+        <div className="h-full">{editorStage}</div>
       ) : (
         <div className="h-full overflow-auto bg-[var(--card,#fff)]">
           <LibraryItemViewer item={item} accent={accent} />

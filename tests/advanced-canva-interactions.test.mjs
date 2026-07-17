@@ -74,7 +74,10 @@ test("context-only drawers remain reachable from the object property bar", () =>
   ]) {
     assert.match(imageToolbar, new RegExp(`panelId: "${drawer}"`));
   }
-  assert.match(image, /aria-label="导出图片"/);
+  assert.match(
+    image,
+    /id: "image-export"[\s\S]*?panelId: "image-export"/,
+  );
   for (const toolbar of [deckToolbar, imageToolbar, richToolbar]) {
     assert.doesNotMatch(toolbar, /id: "undo"/);
     assert.doesNotMatch(toolbar, /id: "redo"/);
@@ -91,19 +94,11 @@ test("advanced editors autosave projects and reserve header actions for delivery
     "../src/shell/image-editor/editor-persistence.ts",
   );
   assert.match(header, /正在自动保存/);
-  assert.match(header, /保存遇到问题 · 重试/);
-  assert.match(autosave, /pendingItemRef/);
-  assert.match(autosave, /\[1_500, 4_000, 9_000\]/);
-  assert.match(
-    autosave,
-    /!dirtyRef\.current && !pendingItemRef\.current/,
-    "a stale timer must not start another upload after the editor is clean",
-  );
-  assert.match(
-    autosave,
-    /if \(runningRef\.current\) \{\s*setState\("saving"\)/,
-    "the header must not claim saved while session persistence is still running",
-  );
+  assert.match(header, /同步失败 · 重试/);
+  assert.match(autosave, /AdvancedPersistenceController/);
+  assert.match(autosave, /controllerRef\.current\?\.observe/);
+  assert.match(autosave, /controllerRef\.current\?\.flushLatest/);
+  assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
   assert.match(imagePersistence, /persistImageProject/);
   assert.match(imagePersistence, /fabric_document_url/);
   assert.match(imageHook, /uploadFile\(file/);

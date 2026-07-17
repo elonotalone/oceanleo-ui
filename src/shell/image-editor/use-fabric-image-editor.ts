@@ -151,7 +151,9 @@ export function useFabricImageEditor(
   const projectUrl =
     typeof item.meta.fabric_document_url === "string"
       ? item.meta.fabric_document_url
-      : "";
+      : typeof item.meta.editor_project_url === "string"
+        ? item.meta.editor_project_url
+        : "";
   const projectSavedAt =
     typeof item.meta.fabric_saved_at === "string"
       ? item.meta.fabric_saved_at
@@ -460,6 +462,7 @@ export function useFabricImageEditor(
         item,
         siteId,
         exportFormat,
+        `image:${item.id}:${savingRevision}`,
         {
           uploadFailed: "保存到我的库失败",
           registerFailed: "图片已上传，但登记到我的库失败",
@@ -481,6 +484,7 @@ export function useFabricImageEditor(
         url: saved.previewUrl,
         projectUrl: saved.projectUrl,
         savedAt: saved.savedAt,
+        versionId: saved.versionId,
       };
     } catch (caught) {
       if (aliveRef.current && !isAbortError(caught)) {
@@ -550,6 +554,7 @@ export function useFabricImageEditor(
     savedProjectUrl,
     savedAt,
     dirty,
+    editRevision: revisionRef.current,
     stageCanvasRef,
     stageContainerRef,
     doc: view.doc,

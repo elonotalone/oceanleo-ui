@@ -3,8 +3,8 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { advancedSavedItem } from "../advanced-session";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
@@ -62,11 +62,19 @@ export function Model3DRoute({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const buildSavedItem = useCallback(
-    (url: string) =>
+    (saved: {
+      url: string;
+      versionId: string;
+      projectUrl: string;
+      projectSchema: string;
+    }) =>
       advancedSavedItem(item, {
-        url,
+        url: saved.url,
+        versionId: saved.versionId,
         meta: {
           editor: "model-viewer-native-v1",
+          editor_project_url: saved.projectUrl,
+          editor_project_schema: saved.projectSchema,
           view: {
             camera_orbit: `${editor.azimuth}deg ${editor.elevation}deg ${editor.zoom}%`,
             auto_rotate: editor.autoRotate,
@@ -93,63 +101,77 @@ export function Model3DRoute({
       item,
     ],
   );
-  const savedItem = useMemo(
-    () => (editor.savedUrl ? buildSavedItem(editor.savedUrl) : null),
-    [buildSavedItem, editor.savedUrl],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.saveCopy();
-    return url
-      ? { ok: true as const, item: buildSavedItem(url) }
+    const saved = await editor.saveCopy();
+    return saved
+      ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
   }, [buildSavedItem, editor.saveCopy]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "threed" })}
-      editorDrawerLabel="场景"
-      editorDrawerIcon="shape"
-      editorToolbox={<Model3DControls editor={editor} />}
-      editorContextualToolbar={
-        <Model3DContextToolbar editor={editor} accent={accent} />
-      }
-      editorViewport={{
-        value: editor.zoom,
-        min: 50,
-        max: 300,
-        step: 1,
-        setValue: editor.setZoom,
-        fit: editor.resetCamera,
+      adapter={{
+        id: "threed",
+        label: editorToolLabel({ type: "threed" }),
+        toolbox: {
+          label: "场景",
+          icon: "shape",
+          content: <Model3DControls editor={editor} />,
+        },
+        contextToolbar: (
+          <Model3DContextToolbar editor={editor} accent={accent} />
+        ),
+        viewport: {
+          value: editor.zoom,
+          min: 50,
+          max: 300,
+          step: 1,
+          setValue: editor.setZoom,
+          fit: editor.resetCamera,
+        },
+        actions: [
+          {
+            id: "model3d-screenshot",
+            label: "下载截图",
+            icon: "download",
+            disabled: !editor.modelLoaded || editor.capturing,
+            onTrigger: editor.downloadScreenshot,
+          },
+        ],
+        stage: <Model3DStage editor={editor} />,
+        status:
+          editor.error ||
+          editor.notice ||
+          (editor.loading
+            ? `正在载入 3D 模型${editor.progress > 0 ? ` ${Math.round(editor.progress * 100)}%` : ""}`
+            : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("threed", item),
+            ready: !editor.loading,
+            capture: () => ({
+              sourceUrl: editor.sourceUrl,
+              azimuth: editor.azimuth,
+              elevation: editor.elevation,
+              zoom: editor.zoom,
+              autoRotate: editor.autoRotate,
+              exposure: editor.exposure,
+              shadowIntensity: editor.shadowIntensity,
+              shadowSoftness: editor.shadowSoftness,
+              background: editor.background,
+              animationName: editor.animationName,
+              animationSpeed: editor.animationSpeed,
+            }),
+            restore: editor.restoreRecovery,
+          },
+        },
       }}
-      editorHeaderActions={
-        <>
-          <button
-            type="button"
-            disabled={!editor.modelLoaded || editor.capturing}
-            onClick={() => void editor.downloadScreenshot()}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            截图
-          </button>
-        </>
-      }
-      editorStage={<Model3DStage editor={editor} />}
-      editorStatus={
-        editor.error ||
-        editor.notice ||
-        (editor.loading
-          ? `正在载入 3D 模型${editor.progress > 0 ? ` ${Math.round(editor.progress * 100)}%` : ""}`
-          : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.savedUrl}
       onClose={onClose}
     />
   );

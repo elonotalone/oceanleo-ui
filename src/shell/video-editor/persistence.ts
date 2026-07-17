@@ -12,6 +12,9 @@ import type { TimelineDoc } from "./types";
 
 export interface PersistResult {
   url?: string;
+  versionId?: string;
+  projectUrl?: string;
+  projectSchema?: string;
   error?: string;
 }
 
@@ -20,6 +23,7 @@ export async function uploadCoverPng(
   canvas: HTMLCanvasElement,
   title: string,
   siteId: string,
+  idempotencyKey: string,
   tt: UITranslate,
 ): Promise<PersistResult> {
   const blob = await new Promise<Blob | null>((resolve) =>
@@ -28,7 +32,7 @@ export async function uploadCoverPng(
   if (!blob) return { error: tt("封面导出失败：画布不可读取") };
   const uploaded = await uploadFile(
     new File([blob], `${title}.png`, { type: "image/png" }),
-    { siteId, title },
+    { siteId, title, idempotencyKey },
   );
   const url = uploaded.data?.file?.url || "";
   if (!uploaded.ok || !url) {
@@ -43,12 +47,18 @@ export async function uploadDraft(
   item: LibraryItem,
   title: string,
   siteId: string,
+  idempotencyKey: string,
   tt: UITranslate,
 ): Promise<PersistResult> {
   const file = new File([JSON.stringify(doc)], `${title}.json`, {
     type: "application/json",
   });
-  const uploaded = await uploadFile(file, { siteId, title });
+  const uploaded = await uploadFile(file, {
+    siteId,
+    title,
+    registerAsset: false,
+    idempotencyKey,
+  });
   const url = uploaded.data?.file?.url || "";
   if (!uploaded.ok || !url) {
     return { error: uploaded.error || tt("草稿上传失败") };
@@ -63,11 +73,19 @@ export async function uploadDraft(
         timeline_doc: doc,
         is_draft: true,
         parent_asset_id: item.id,
+        editor_project_url: url,
+        editor_project_schema: "oceanleo.timeline.v1",
+        editor_saved_at: new Date().toISOString(),
       },
     },
   ]);
   if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
     return { error: saved.error || tt("草稿已上传，但登记到我的库失败") };
   }
-  return { url };
+  return {
+    url,
+    versionId: saved.data?.items?.[0]?.id || "",
+    projectUrl: url,
+    projectSchema: "oceanleo.timeline.v1",
+  };
 }

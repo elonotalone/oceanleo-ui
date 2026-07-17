@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, type Editor } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { Image } from "@tiptap/extension-image";
@@ -21,7 +22,13 @@ import { Highlight } from "@tiptap/extension-highlight";
 import type { LibraryItem } from "../library-data";
 import { uploadFile } from "../../lib/database";
 import { useUI } from "../../i18n/ui/useUI";
-import { downloadBlob, downloadText, saveFileToLibrary } from "./doc-io";
+import {
+  downloadBlob,
+  downloadText,
+  loadEditorProject,
+  saveFileToLibrary,
+  type PersistedEditorVersion,
+} from "./doc-io";
 import { tiptapJsonToDocxBlob } from "./docx-export";
 import {
   countText,
@@ -42,13 +49,14 @@ export interface RichDocEditorState {
   importing: boolean;
   saving: boolean;
   dirty: boolean;
+  editRevision: number;
   error: string;
   savedUrl: string;
   /** 内容来自哪条加载链路（inline / url-markdown / url-docx / …）。 */
   source: RichDocSource;
   words: number;
   chars: number;
-  save: () => Promise<string | null>;
+  save: () => Promise<PersistedEditorVersion | null>;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
   exportDoc: () => Promise<void>;
@@ -64,7 +72,10 @@ export interface RichDocEditorState {
   setLinkHref: (href: string) => void;
   unsetLink: () => void;
   clearFormat: () => void;
+  restoreRecovery: (payload: unknown) => boolean;
 }
+
+const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
 
 export function useRichDocEditor(
   item: LibraryItem,
@@ -120,11 +131,32 @@ export function useRichDocEditor(
     setDirty(false);
     revisionRef.current = 0;
     setLoaded(null);
-    void loadRichDocHtml(item).then((result) => {
-      if (cancelled) return;
-      setLoaded(result);
-      if (result.error) setError(tt(result.error));
-    });
+    const projectUrl = String(item.meta.editor_project_url || "").trim();
+    void (projectUrl
+      ? loadEditorProject<JSONContent>(projectUrl, RICHDOC_PROJECT_SCHEMA).then(
+          (json) => ({
+            html: "",
+            json,
+            source: "project" as const,
+            error: "",
+          }),
+        )
+      : loadRichDocHtml(item)
+    )
+      .then((result) => {
+        if (cancelled) return;
+        setLoaded(result);
+        if (result.error) setError(tt(result.error));
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setError(
+          caught instanceof Error
+            ? tt(caught.message)
+            : tt("可编辑工程读取失败"),
+        );
+        setLoaded({ html: "<p></p>", source: "empty", error: "" });
+      });
     return () => {
       cancelled = true;
     };
@@ -132,7 +164,9 @@ export function useRichDocEditor(
 
   useEffect(() => {
     if (!editor || !loaded) return;
-    editor.commands.setContent(loaded.html, { emitUpdate: false });
+    editor.commands.setContent(loaded.json || loaded.html, {
+      emitUpdate: false,
+    });
     setCounts(countText(editor.getText()));
     setLoading(false);
   }, [editor, loaded]);
@@ -205,7 +239,7 @@ export function useRichDocEditor(
     [tt],
   );
 
-  const save = useCallback(async (): Promise<string | null> => {
+  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (!editor || savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
@@ -227,9 +261,14 @@ export function useRichDocEditor(
         title,
         mediaType: "doc",
         kind: "document",
+        idempotencyKey: `richdoc:${item.id}:${savingRevision}`,
         meta: {
           editor: "richdoc-v2",
           html: html.slice(0, 10_000),
+        },
+        project: {
+          schema: RICHDOC_PROJECT_SCHEMA,
+          data: json,
         },
       });
       if (!result.ok) {
@@ -238,7 +277,12 @@ export function useRichDocEditor(
       }
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
-      return result.url;
+      return {
+        url: result.url,
+        versionId: result.versionId,
+        projectUrl: result.projectUrl,
+        projectSchema: result.projectSchema,
+      };
     } catch (caught) {
       setError(
         caught instanceof Error ? tt(caught.message) : tt("保存到我的库失败"),
@@ -315,6 +359,22 @@ export function useRichDocEditor(
     editor.chain().focus().clearNodes().unsetAllMarks().run();
   }, [editor]);
 
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      if (!editor || !payload || typeof payload !== "object") return false;
+      const json = payload as JSONContent;
+      if (json.type !== "doc" || !Array.isArray(json.content)) return false;
+      editor.commands.setContent(json, { emitUpdate: false });
+      setCounts(countText(editor.getText()));
+      revisionRef.current += 1;
+      setDirty(true);
+      setSavedUrl("");
+      setError("");
+      return true;
+    },
+    [editor],
+  );
+
   return {
     editor,
     item,
@@ -323,6 +383,7 @@ export function useRichDocEditor(
     importing,
     saving,
     dirty,
+    editRevision: revisionRef.current,
     error,
     savedUrl,
     source: loaded?.source ?? "empty",
@@ -339,5 +400,6 @@ export function useRichDocEditor(
     setLinkHref,
     unsetLink,
     clearFormat,
+    restoreRecovery,
   };
 }

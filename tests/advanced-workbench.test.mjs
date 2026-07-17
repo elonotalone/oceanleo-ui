@@ -163,8 +163,8 @@ test("first advanced edit only ensures history and every mutable route can flush
   )?.[0] || "";
   assert.match(dirtyEffect, /advancedSession\.ensure\(\)/);
   assert.doesNotMatch(dirtyEffect, /onBeforeNewConversation|navigate/);
-  assert.match(pdf, /onBeforeNewConversation=\{saveBeforeNewConversation\}/);
-  assert.match(model, /onBeforeNewConversation=\{saveBeforeNewConversation\}/);
+  assert.match(pdf, /flush: saveBeforeNewConversation/);
+  assert.match(model, /flush: saveBeforeNewConversation/);
 });
 
 test("advanced split drag captures the pointer and embedded editors stay two-column", () => {
@@ -177,7 +177,8 @@ test("advanced split drag captures the pointer and embedded editors stay two-col
   assert.match(shell, /setPointerCapture/);
   assert.match(shell, /requestAnimationFrame/);
   assert.match(shell, /cursor-col-resize bg-transparent/);
-  assert.match(shell, /editorUsesOwnControls/);
+  assert.match(shell, /adapter\.nativeChrome\?\.toolbar/);
+  assert.match(shell, /setPanelVisible\(false\)/);
   assert.match(protocol, /set-host-layout/);
   assert.match(embed, /sidePanelVisible/);
   assert.match(embed, /saveId: saveRequestId/);
@@ -299,8 +300,8 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /message\.type === "material-result"/);
   assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /getBoundingClientRect/);
-  assert.match(shell, /editorContextualToolbarAnchor/);
-  assert.match(shell, /editorAvailable \? editorContextualToolbar : null/);
+  assert.match(shell, /data-advanced-context-row/);
+  assert.match(shell, /\{editorContextualToolbar\}/);
   assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });

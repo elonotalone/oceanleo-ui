@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
@@ -71,77 +71,83 @@ export function RichDocRoute({
     [editor.insertImageUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const savedItem = useMemo(
-    () =>
-      editor.savedUrl
-        ? advancedSavedItem(item, { url: editor.savedUrl })
-        : null,
-    [editor.savedUrl, item],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.save();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.save();
+    return saved
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            versionId: saved.versionId,
+            meta: {
+              editor_project_url: saved.projectUrl,
+              editor_project_schema: saved.projectSchema,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "richdoc" })}
-      editorDrawerLabel="插入"
-      editorDrawerIcon="add"
-      editorToolbox={<RichDocControls editor={editor} accent={accent} />}
-      editorContextualToolbar={
-        <RichDocContextToolbar editor={editor} accent={accent} />
-      }
-      editorHistory={{
-        canUndo: editor.editor?.can().undo() ?? false,
-        canRedo: editor.editor?.can().redo() ?? false,
-        undo: () => {
-          editor.editor?.chain().focus().undo().run();
+      adapter={{
+        id: "richdoc",
+        label: editorToolLabel({ type: "richdoc" }),
+        toolbox: {
+          label: "插入",
+          icon: "add",
+          content: <RichDocControls editor={editor} accent={accent} />,
         },
-        redo: () => {
-          editor.editor?.chain().focus().redo().run();
+        contextToolbar: (
+          <RichDocContextToolbar editor={editor} accent={accent} />
+        ),
+        history: {
+          canUndo: editor.editor?.can().undo() ?? false,
+          canRedo: editor.editor?.can().redo() ?? false,
+          undo: () => {
+            editor.editor?.chain().focus().undo().run();
+          },
+          redo: () => {
+            editor.editor?.chain().focus().redo().run();
+          },
+        },
+        actions: [
+          {
+            id: "richdoc-export-markdown",
+            label: "导出 Markdown",
+            onTrigger: editor.exportMarkdown,
+          },
+          {
+            id: "richdoc-export-docx",
+            label: "导出 DOCX",
+            onTrigger: editor.exportDoc,
+          },
+        ],
+        stage: <RichDocStage editor={editor} accent={accent} />,
+        status:
+          editor.error ||
+          (editor.dirty
+            ? "有未保存的修改"
+            : editor.savedUrl
+              ? "已保存到我的库"
+              : editor.loading
+                ? "正在载入文档"
+                : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("richdoc", item),
+            ready: Boolean(editor.editor) && !editor.loading,
+            capture: () => editor.editor?.getJSON() || null,
+            restore: editor.restoreRecovery,
+          },
         },
       }}
-      editorHeaderActions={
-        <>
-          <button
-            type="button"
-            onClick={() => void editor.exportMarkdown()}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            Markdown
-          </button>
-          <button
-            type="button"
-            onClick={() => void editor.exportDoc()}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            DOCX
-          </button>
-        </>
-      }
-      editorStage={<RichDocStage editor={editor} accent={accent} />}
-      editorStatus={
-        editor.error ||
-        (editor.dirty
-          ? "有未保存的修改"
-          : editor.savedUrl
-          ? "已保存到我的库"
-          : editor.loading
-            ? "正在载入文档"
-            : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.savedUrl}
       onClose={onClose}
     />
   );

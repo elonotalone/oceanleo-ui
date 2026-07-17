@@ -218,7 +218,7 @@ export function saveWorks(
     meta?: Record<string, unknown>;
   }>,
 ) {
-  return authed<{ ok: boolean; saved: number }>(`/v1/creations`, {
+  return authed<{ ok: boolean; saved: number; items?: WorkItem[] }>(`/v1/creations`, {
     method: "POST",
     body: JSON.stringify({ site_id: siteId, items }),
   });
@@ -282,7 +282,12 @@ export function listFiles(
 /** 上传到文件库：小文件 multipart，大文件 signed direct upload。跨站可见。 */
 export async function uploadFile(
   file: File,
-  opts: { siteId?: string; title?: string; registerAsset?: boolean } = {},
+  opts: {
+    siteId?: string;
+    title?: string;
+    registerAsset?: boolean;
+    idempotencyKey?: string;
+  } = {},
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
   // FastAPI's small multipart path intentionally caps at 20 MB and buffers
   // bytes in the gateway. Large editor media goes browser → signed Supabase
@@ -320,38 +325,62 @@ export async function uploadFile(
       site_id: opts.siteId || "home",
       title: opts.title || file.name || "file",
       register_asset: opts.registerAsset !== false,
+      idempotency_key: opts.idempotencyKey || "",
     };
     const initialized = await authed<{
       ok: boolean;
       path: string;
-      signed_url: string;
+      signed_url?: string;
+      already_finalized?: boolean;
+      upload_complete?: boolean;
+      file?: FileItem;
     }>("/v1/media/upload/init", {
       method: "POST",
       body: JSON.stringify(common),
     });
-    if (!initialized.ok || !initialized.data?.signed_url || !initialized.data.path) {
+    if (
+      initialized.ok &&
+      initialized.data?.already_finalized &&
+      initialized.data.file
+    ) {
+      return {
+        ok: true,
+        data: { ok: true, file: initialized.data.file },
+      };
+    }
+    if (
+      !initialized.ok ||
+      (!initialized.data?.signed_url && !initialized.data?.upload_complete) ||
+      !initialized.data.path
+    ) {
       return {
         ok: false,
         error: initialized.error || "创建大文件上传通道失败",
         status: initialized.status,
       };
     }
-    let uploaded: Response;
-    try {
-      uploaded = await fetch(initialized.data.signed_url, {
-        method: "PUT",
-        headers: { "Content-Type": common.content_type },
-        body: file,
-      });
-    } catch {
-      return { ok: false, error: "大文件直传失败：无法连接对象存储", status: 0 };
-    }
-    if (!uploaded.ok) {
-      return {
-        ok: false,
-        error: `大文件直传失败 HTTP ${uploaded.status}`,
-        status: uploaded.status,
-      };
+    if (!initialized.data.upload_complete) {
+      let uploaded: Response;
+      try {
+        uploaded = await fetch(initialized.data.signed_url!, {
+          method: "PUT",
+          headers: { "Content-Type": common.content_type },
+          body: file,
+        });
+      } catch {
+        return {
+          ok: false,
+          error: "大文件直传失败：无法连接对象存储",
+          status: 0,
+        };
+      }
+      if (!uploaded.ok) {
+        return {
+          ok: false,
+          error: `大文件直传失败 HTTP ${uploaded.status}`,
+          status: uploaded.status,
+        };
+      }
     }
     return authed<{ ok: boolean; file: FileItem }>("/v1/media/upload/finalize", {
       method: "POST",
@@ -366,6 +395,7 @@ export async function uploadFile(
   if (opts.siteId) fd.append("site_id", opts.siteId);
   if (opts.title) fd.append("title", opts.title);
   if (opts.registerAsset === false) fd.append("register_asset", "false");
+  if (opts.idempotencyKey) fd.append("idempotency_key", opts.idempotencyKey);
   let res: Response;
   try {
     res = await fetch(`${GATEWAY_BASE}/v1/database/upload`, {

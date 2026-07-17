@@ -31,7 +31,7 @@ export interface EmbedEditorPaneProps {
   extraParams?: Record<string, string>;
   onVersionSaved?: (item: LibraryItem) => void;
   onCloseRequest?: () => void;
-  onDirtyChange?: (dirty: boolean) => void;
+  onDirtyChange?: (dirty: boolean, revision?: number) => void;
   onSelectionChange?: (selection: SelectionContext | null) => void;
   onSaveResult?: (result: {
     ok: boolean;
@@ -174,7 +174,7 @@ export function EmbedEditorPane({
           sendOpenAsset();
         }
       } else if (message.type === "dirty") {
-        onDirtyChange?.(message.dirty !== false);
+        onDirtyChange?.(message.dirty !== false, message.revision);
         setStatus(
           message.dirty === false
             ? tt("修改已保存")

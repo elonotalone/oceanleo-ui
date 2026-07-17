@@ -78,6 +78,7 @@ test("media editor public API and lifecycle hardening remain wired", () => {
     "../src/shell/media-editors/use-pdf-preview-render.ts",
   );
   const modelHook = source("../src/shell/media-editors/use-model3d-workbench.ts");
+  const modelSave = source("../src/shell/media-editors/use-model3d-save.ts");
 
   for (const api of [
     "usePdfWorkbench",
@@ -97,12 +98,15 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   assert.match(pdfHook, /new AbortController\(\)/);
   assert.match(pdfPreviewHook, /renderTask\?\.cancel\(\)/);
   assert.match(pdfPreviewHook, /document\.createElement\("canvas"\)/);
-  assert.match(pdfHook, /Number\(saved\.data\?\.saved \|\| 0\) !== 1/);
+  assert.match(pdfHook, /saveFileToLibrary/);
+  assert.match(pdfHook, /deliveryProjectSchema: "pdf-binary@1"/);
   assert.match(modelHook, /import\("@google\/model-viewer"\)/);
   assert.match(modelHook, /downloadAbortRef\.current\?\.abort\(\)/);
+  assert.match(modelHook, /useModel3DSave/);
+  assert.match(modelSave, /persistModel3DProject/);
   assert.equal(
     (modelHook.match(/Number\(saved\.data\?\.saved \|\| 0\) !== 1/g) || []).length,
-    2,
+    1,
   );
 });
 

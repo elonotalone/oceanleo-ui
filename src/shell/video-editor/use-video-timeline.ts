@@ -19,6 +19,7 @@ import {
 } from "react";
 import { uploadFile } from "../../lib/database";
 import {
+  fetchMediaBlob,
   importMediaAsset,
   importMediaUrl,
   isFirstPartyMediaUrl,
@@ -26,7 +27,11 @@ import {
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import { guessFileKind, guessMediaKind, probeMediaDuration } from "./media-probe";
-import { uploadCoverPng, uploadDraft } from "./persistence";
+import {
+  uploadCoverPng,
+  uploadDraft,
+  type PersistResult,
+} from "./persistence";
 import { TimelinePreviewEngine } from "./preview-engine";
 import { renderTimeline, type RenderJobStatus } from "./render-client";
 import {
@@ -79,6 +84,7 @@ export interface VideoTimelineState {
   error: string;
   notice: string;
   dirty: boolean;
+  editRevision: number;
   canvasRef: (canvas: HTMLCanvasElement | null) => void;
   previewCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
 
@@ -122,9 +128,10 @@ export interface VideoTimelineState {
 
   // persistence
   captureCover: () => Promise<void>;
-  saveDraft: () => Promise<string | null>;
+  saveDraft: () => Promise<PersistResult | null>;
   exportVideo: () => Promise<void>;
   cancelExport: () => void;
+  restoreRecovery: (payload: unknown) => boolean;
 }
 
 function trackKindForMedia(kind: "video" | "audio" | "image"): TrackKind {
@@ -142,6 +149,9 @@ function buildInitialDoc(item: LibraryItem): {
     return { doc: draft, seededClipId: "", seededKind: null };
   }
   const doc = createEmptyDoc();
+  if (meta.editor_project_schema === "oceanleo.timeline.v1") {
+    return { doc, seededClipId: "", seededKind: null };
+  }
   const url = item.url || item.previewUrl || "";
   if (!url) return { doc, seededClipId: "", seededKind: null };
   const media: "video" | "audio" =
@@ -234,6 +244,58 @@ export function useVideoTimeline(
   useEffect(() => {
     engineRef.current?.setDoc(doc);
   }, [doc]);
+
+  useEffect(() => {
+    const projectUrl = String(
+      item.meta.editor_project_url ||
+        (item.meta.editor_project_schema === "oceanleo.timeline.v1"
+          ? item.url
+          : "") ||
+        "",
+    ).trim();
+    if (
+      !projectUrl ||
+      item.meta.editor_project_schema !== "oceanleo.timeline.v1" ||
+      isTimelineDoc(item.meta.timeline_doc)
+    ) {
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingSource(true);
+    void fetchMediaBlob(projectUrl, {
+      maxBytes: 20 * 1024 * 1024,
+      signal: controller.signal,
+    })
+      .then((blob) => blob.text())
+      .then((text) => {
+        if (controller.signal.aborted) return;
+        const parsed: unknown = JSON.parse(text);
+        if (!isTimelineDoc(parsed)) throw new Error("时间线工程格式无效");
+        docRef.current = parsed;
+        setDocState(parsed);
+        setSelectedClipId("");
+        setPlayheadMs(0);
+        setDirty(false);
+        revisionRef.current = 0;
+      })
+      .catch((caught) => {
+        if (!controller.signal.aborted) {
+          setError(
+            caught instanceof Error ? caught.message : "时间线工程读取失败",
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingSource(false);
+      });
+    return () => controller.abort();
+  }, [
+    item.id,
+    item.meta.editor_project_schema,
+    item.meta.editor_project_url,
+    item.meta.timeline_doc,
+    item.url,
+  ]);
 
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
     previewCanvasRef.current = canvas;
@@ -660,7 +722,13 @@ export function useVideoTimeline(
     setError("");
     try {
       const title = `${item.title || tt("视频")}-${tt("封面")}`;
-      const result = await uploadCoverPng(canvas, title, siteId || "oceanleo", tt);
+      const result = await uploadCoverPng(
+        canvas,
+        title,
+        siteId || "oceanleo",
+        `video-cover:${item.id}:${revisionRef.current}`,
+        tt,
+      );
       if (!result.url) {
         setError(result.error || tt("封面上传失败"));
         return;
@@ -672,9 +740,9 @@ export function useVideoTimeline(
     } finally {
       setCapturingCover(false);
     }
-  }, [item.title, previewReady, siteId, tt]);
+  }, [item.id, item.title, previewReady, siteId, tt]);
 
-  const saveDraft = useCallback(async (): Promise<string | null> => {
+  const saveDraft = useCallback(async (): Promise<PersistResult | null> => {
     if (savingDraftRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = structuredClone(docRef.current);
@@ -688,6 +756,7 @@ export function useVideoTimeline(
         item,
         title,
         siteId || "oceanleo",
+        `video-timeline:${item.id}:${savingRevision}`,
         tt,
       );
       if (!result.url) {
@@ -701,7 +770,7 @@ export function useVideoTimeline(
       } else {
         setNotice(tt("已保存一个草稿版本；之后的修改仍未保存"));
       }
-      return result.url;
+      return result;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("草稿保存失败"));
       return null;
@@ -808,6 +877,25 @@ export function useVideoTimeline(
     setNotice(tt("正在取消导出…"));
   }, [tt]);
 
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      if (!isTimelineDoc(payload)) return false;
+      const next = structuredClone(payload);
+      docRef.current = next;
+      setDocState(next);
+      undoStack.current = [];
+      redoStack.current = [];
+      setSelectedClipId("");
+      setPlayheadMs(0);
+      revisionRef.current += 1;
+      setDirty(true);
+      setDraftSavedUrl("");
+      setNotice(tt("已恢复上次未同步的本地草稿"));
+      return true;
+    },
+    [tt],
+  );
+
   // -------------------------------------------------------------- derived
 
   const durationMs = useMemo(() => docDurationMs(doc), [doc]);
@@ -843,6 +931,7 @@ export function useVideoTimeline(
     error,
     notice,
     dirty,
+    editRevision: revisionRef.current,
     canvasRef,
     previewCanvasRef,
     togglePlay,
@@ -874,5 +963,6 @@ export function useVideoTimeline(
     saveDraft,
     exportVideo,
     cancelExport,
+    restoreRecovery,
   };
 }

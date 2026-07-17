@@ -24,6 +24,7 @@ export interface PersistedImageProject {
   previewUrl: string;
   projectUrl: string;
   savedAt: string;
+  versionId: string;
 }
 
 export function mimeFor(format: ExportFormat): string {
@@ -145,6 +146,7 @@ export async function persistImageProject(
   item: LibraryItem,
   siteId: string,
   format: ExportFormat,
+  idempotencyKey: string,
   messages: { uploadFailed: string; registerFailed: string },
 ): Promise<PersistedImageProject> {
   const targetSite = siteId || "design";
@@ -165,6 +167,7 @@ export async function persistImageProject(
       siteId: targetSite,
       title: `${title}工程`,
       registerAsset: false,
+      idempotencyKey: `${idempotencyKey}:project`,
     },
   );
   const projectUrl = projectUpload.data?.file?.url || "";
@@ -175,7 +178,12 @@ export async function persistImageProject(
     new File([blob], `${title}.${extensionFor(format)}`, {
       type: mimeFor(format),
     }),
-    { siteId: targetSite, title, registerAsset: false },
+    {
+      siteId: targetSite,
+      title,
+      registerAsset: false,
+      idempotencyKey: `${idempotencyKey}:preview`,
+    },
   );
   const previewUrl = previewUpload.data?.file?.url || "";
   if (!previewUpload.ok || !previewUrl) {
@@ -194,11 +202,19 @@ export async function persistImageProject(
         fabric_document_url: projectUrl,
         fabric_preview_url: previewUrl,
         fabric_saved_at: savedAt,
+        editor_project_url: projectUrl,
+        editor_project_schema: PROJECT_SCHEMA,
+        editor_saved_at: savedAt,
       },
     },
   ]);
   if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
     throw new Error(saved.error || messages.registerFailed);
   }
-  return { previewUrl, projectUrl, savedAt };
+  return {
+    previewUrl,
+    projectUrl,
+    savedAt,
+    versionId: saved.data?.items?.[0]?.id || "",
+  };
 }

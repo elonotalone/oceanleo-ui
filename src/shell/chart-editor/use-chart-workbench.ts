@@ -51,6 +51,9 @@ export interface ChartSaveResult {
   url: string;
   json: string;
   document: ChartDocumentV1;
+  versionId: string;
+  projectUrl: string;
+  projectSchema: string;
 }
 
 export interface ChartWorkbenchState {
@@ -59,6 +62,7 @@ export interface ChartWorkbenchState {
   loading: boolean;
   saving: boolean;
   dirty: boolean;
+  editRevision: number;
   error: string;
   notice: string;
   saved: ChartSaveResult | null;
@@ -72,6 +76,7 @@ export interface ChartWorkbenchState {
   replaceData: (table: ChartDataTable) => void;
   importCsv: (csv: string) => void;
   save: () => Promise<ChartSaveResult | null>;
+  restoreRecovery: (payload: unknown) => boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -270,6 +275,7 @@ export function useChartWorkbench(
         title,
         mediaType: "other" as MediaType,
         kind: "chart",
+        idempotencyKey: `chart:${item.id}:${savingRevision}`,
         thumbUrl: item.thumbUrl || item.previewUrl,
         meta: {
           editor: chartEditorManifest(),
@@ -278,11 +284,19 @@ export function useChartWorkbench(
           subtype: String(item.meta.subtype || item.meta.category || ""),
           chart_document: snapshot,
         },
+        deliveryProjectSchema: "oceanleo.chart.v1",
       });
       if (!result.ok || !result.url) {
         throw new Error(result.error || tt("图表保存到我的库失败"));
       }
-      const next = { url: result.url, json, document: snapshot };
+      const next = {
+        url: result.url,
+        json,
+        document: snapshot,
+        versionId: result.versionId,
+        projectUrl: result.projectUrl,
+        projectSchema: result.projectSchema,
+      };
       if (aliveRef.current) {
         setSaved(next);
         if (revisionRef.current === savingRevision) {
@@ -304,6 +318,21 @@ export function useChartWorkbench(
     }
   }, [document, item, loading, siteId, tt]);
   const table = useMemo(() => chartDataTable(document), [document]);
+  const restoreRecovery = useCallback(
+    (payload: unknown): boolean => {
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        (payload as { schema?: unknown }).schema !== "oceanleo.chart.v1"
+      ) {
+        return false;
+      }
+      mutate(() => normalizeChartDocument(payload));
+      setNotice(tt("已恢复上次未同步的本地草稿"));
+      return true;
+    },
+    [mutate, tt],
+  );
 
   return {
     document,
@@ -311,6 +340,7 @@ export function useChartWorkbench(
     loading,
     saving,
     dirty,
+    editRevision: revisionRef.current,
     error,
     notice,
     saved,
@@ -370,5 +400,6 @@ export function useChartWorkbench(
     importCsv: (csv) =>
       mutate((current) => replaceChartData(current, chartDocumentFromCsv(csv))),
     save,
+    restoreRecovery,
   };
 }

@@ -1,18 +1,12 @@
 "use client";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type RefCallback,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type RefCallback } from "react";
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
 } from "pdfjs-dist";
 import { useUI } from "../../i18n/ui/useUI";
-import { saveWorks, uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
+import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
 import {
   addBlankPdfPage,
   deletePdfPage,
@@ -23,6 +17,7 @@ import {
   rotatePdfPage,
 } from "./pdf-operations";
 import { loadInitialPdfSource } from "./pdf-source";
+import { capturePdfRecovery, decodePdfRecovery } from "./pdf-recovery";
 import {
   appendPdfHistory,
   clamp,
@@ -53,6 +48,7 @@ export interface PdfWorkbenchState {
   processing: boolean;
   saving: boolean;
   dirty: boolean;
+  editRevision: number;
   canUndo: boolean;
   canRedo: boolean;
   error: string;
@@ -73,7 +69,9 @@ export interface PdfWorkbenchState {
   undo: () => void;
   redo: () => void;
   download: () => void;
-  saveCopy: () => Promise<string | null>;
+  saveCopy: () => Promise<PersistedEditorVersion | null>;
+  captureRecovery: () => Blob | null;
+  restoreRecovery: (payload: unknown) => Promise<boolean>;
 }
 export function usePdfWorkbench(
   item: LibraryItem,
@@ -466,7 +464,7 @@ export function usePdfWorkbench(
       downloadPdfBytes(bytesRef.current, `${pdfFileStem(item.title)}-edited.pdf`);
     }
   }, [item.title]);
-  const saveCopy = useCallback(async (): Promise<string | null> => {
+  const saveCopy = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const bytes = bytesRef.current;
     if (!bytes || savingRef.current) return null;
     const generation = sourceGenerationRef.current;
@@ -481,38 +479,39 @@ export function usePdfWorkbench(
       const file = new File([Uint8Array.from(bytes)], `${title}.pdf`, {
         type: "application/pdf",
       });
-      const uploaded = await uploadFile(file, {
-        siteId: siteId || "oceanleo",
+      const saved = await saveFileToLibrary({
+        item,
+        siteId,
+        fallbackSite: "oceanleo",
+        file,
         title,
-      });
-      const url = uploaded.data?.file?.url || "";
-      if (!uploaded.ok || !url) throw new Error(uploaded.error || tt("PDF 上传失败"));
-      const saved = await saveWorks(siteId || "oceanleo", [
-        {
-          url,
-          media_type: "doc",
-          title,
-          kind: "pdf",
-          meta: {
-            parent_asset_id: item.id,
-            editor: "pdf-native-v1",
-            page_count: pageCount,
-          },
+        mediaType: "doc",
+        kind: "pdf",
+        idempotencyKey: `pdf:${item.id}:${savingRevision}`,
+        meta: {
+          editor: "pdf-native-v1",
+          page_count: pageCount,
         },
-      ]);
-      if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
+        deliveryProjectSchema: "pdf-binary@1",
+      });
+      if (!saved.ok) {
         throw new Error(saved.error || tt("PDF 已上传，但登记到我的库失败"));
       }
       if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
-      setSavedUrl(url);
+      setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
         setNotice(tt("已保存到我的库"));
       } else {
         setNotice(tt("已保存一个版本；之后的修改仍未保存"));
       }
-      onSaved?.(url);
-      return url;
+      onSaved?.(saved.url);
+      return {
+        url: saved.url,
+        versionId: saved.versionId,
+        projectUrl: saved.projectUrl,
+        projectSchema: saved.projectSchema,
+      };
     } catch (caught) {
       if (aliveRef.current && generation === sourceGenerationRef.current) {
         setError(pdfErrorMessage(caught, tt("保存 PDF 副本失败")));
@@ -524,7 +523,32 @@ export function usePdfWorkbench(
         if (aliveRef.current) setSaving(false);
       }
     }
-  }, [item.id, item.title, onSaved, pageCount, siteId, tt]);
+  }, [item, onSaved, pageCount, siteId, tt]);
+
+  const captureRecovery = useCallback(
+    () => capturePdfRecovery(bytesRef.current),
+    [],
+  );
+  const restoreRecovery = useCallback(
+    async (payload: unknown): Promise<boolean> => {
+      const recovered = await decodePdfRecovery(payload, MAX_PDF_BYTES);
+      if (!recovered) return false;
+      bytesRef.current = recovered.bytes;
+      undoRef.current = [];
+      redoRef.current = [];
+      revisionRef.current += 1;
+      setPageCount(recovered.pageCount);
+      setPageNumber(1);
+      setCanUndo(false);
+      setCanRedo(false);
+      setDirty(true);
+      setSavedUrl("");
+      setDocumentRevision((value) => value + 1);
+      setNotice(tt("已恢复上次未同步的本地草稿"));
+      return true;
+    },
+    [tt],
+  );
 
   return {
     canvasRef,
@@ -541,6 +565,7 @@ export function usePdfWorkbench(
     processing,
     saving,
     dirty,
+    editRevision: revisionRef.current,
     canUndo,
     canRedo,
     error,
@@ -566,5 +591,7 @@ export function usePdfWorkbench(
     redo,
     download,
     saveCopy,
+    captureRecovery,
+    restoreRecovery,
   };
 }

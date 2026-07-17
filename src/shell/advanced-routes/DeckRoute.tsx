@@ -3,11 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
-import {
-  ADVANCED_HEADER_ACTION_CLASS,
-  ADVANCED_HEADER_ICON_ACTION_CLASS,
-} from "../advanced-workbench-chrome";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
 import {
@@ -96,177 +92,181 @@ export function DeckRoute({
     [editor.insertImageElement],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const savedItem = useMemo(
-    () =>
-      editor.savedUrl
-        ? advancedSavedItem(item, { url: editor.savedUrl })
-        : null,
-    [editor.savedUrl, item],
-  );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.save();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.save();
+    return saved
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            versionId: saved.versionId,
+            meta: {
+              editor_project_url: saved.projectUrl,
+              editor_project_schema: saved.projectSchema,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.save, item]);
   return (
     <AdvancedWorkbenchShell
       item={item}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
-      editorLabel={editorToolLabel({ type: "deck" })}
-      editorDrawers={[
-        {
-          id: "deck-design",
-          label: "模板",
-          icon: "templates",
-          content: <DeckDesignPanel editor={editor} accent={accent} />,
+      adapter={{
+        id: "deck",
+        label: editorToolLabel({ type: "deck" }),
+        drawers: [
+          {
+            id: "deck-design",
+            label: "模板",
+            icon: "templates",
+            content: <DeckDesignPanel editor={editor} accent={accent} />,
+          },
+          {
+            id: "deck-elements",
+            label: "元素",
+            icon: "elements",
+            content: <DeckElementsPanel editor={editor} />,
+          },
+          {
+            id: "deck-draw",
+            label: "画笔",
+            icon: "draw",
+            hiddenFromRail: true,
+            content: (
+              <DeckDrawPanel
+                style={inkStyle}
+                onStyleChange={setInkStyle}
+                onToolChange={setActiveTool}
+              />
+            ),
+          },
+          {
+            id: "deck-lines",
+            label: "线条",
+            icon: "line",
+            hiddenFromRail: true,
+            content: <DeckLinePanel editor={editor} />,
+          },
+          {
+            id: "deck-notes",
+            label: "便签",
+            icon: "note",
+            hiddenFromRail: true,
+            content: <DeckNotesPanel editor={editor} />,
+          },
+          {
+            id: "deck-text",
+            label: "文字",
+            icon: "text",
+            content: <DeckTextPanel editor={editor} />,
+          },
+          {
+            id: "deck-signature",
+            label: "签名",
+            icon: "signature",
+            hiddenFromRail: true,
+            content: <DeckSignaturePanel editor={editor} />,
+          },
+          {
+            id: "deck-tables",
+            label: "表格",
+            icon: "table",
+            hiddenFromRail: true,
+            content: <DeckTablePanel editor={editor} />,
+          },
+          {
+            id: "deck-uploads",
+            label: "上传",
+            icon: "uploads",
+            content: <DeckUploadPanel editor={editor} />,
+          },
+          {
+            id: "deck-layers",
+            label: "图层",
+            icon: "layers",
+            content: <DeckLayersPanel editor={editor} accent={accent} />,
+          },
+          {
+            id: "deck-effects",
+            label: "效果",
+            icon: "effects",
+            hiddenFromRail: true,
+            content: <DeckEffectsPanel editor={editor} />,
+          },
+          {
+            id: "deck-fonts",
+            label: "字体",
+            icon: "font",
+            hiddenFromRail: true,
+            content: <DeckFontPanel editor={editor} />,
+          },
+        ],
+        contextToolbar: (
+          <DeckContextToolbar
+            editor={editor}
+            accent={accent}
+            activeTool={activeTool}
+            onActiveToolChange={setActiveTool}
+          />
+        ),
+        history: {
+          canUndo: editor.canUndo,
+          canRedo: editor.canRedo,
+          undo: editor.undo,
+          redo: editor.redo,
         },
-        {
-          id: "deck-elements",
-          label: "元素",
-          icon: "elements",
-          content: <DeckElementsPanel editor={editor} />,
+        viewport: {
+          value: zoom,
+          min: 10,
+          max: 300,
+          step: 1,
+          setValue: setZoom,
+          fit: () => setZoom(100),
         },
-        {
-          id: "deck-draw",
-          label: "画笔",
-          icon: "draw",
-          hiddenFromRail: true,
-          content: (
-            <DeckDrawPanel
-              style={inkStyle}
-              onStyleChange={setInkStyle}
-              onToolChange={setActiveTool}
-            />
-          ),
+        actions: [
+          {
+            id: "deck-download-project",
+            label: "下载工程",
+            icon: "download",
+            variant: "icon",
+            onTrigger: editor.downloadJson,
+          },
+          {
+            id: "deck-export-pptx",
+            label: "导出 PPTX",
+            busyLabel: "导出中…",
+            busy: editor.exporting,
+            onTrigger: editor.exportPptx,
+          },
+        ],
+        stage: (
+          <DeckStage
+            editor={editor}
+            accent={accent}
+            zoom={zoom}
+            activeTool={activeTool}
+            inkStyle={inkStyle}
+          />
+        ),
+        status:
+          editor.error ||
+          editor.notice ||
+          (editor.loading ? "正在载入演示文稿" : ""),
+        persistence: {
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+          flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey("deck", item),
+            ready: !editor.loading,
+            capture: () => structuredClone(editor.deck),
+            restore: editor.restoreRecovery,
+          },
         },
-        {
-          id: "deck-lines",
-          label: "线条",
-          icon: "line",
-          hiddenFromRail: true,
-          content: <DeckLinePanel editor={editor} />,
-        },
-        {
-          id: "deck-notes",
-          label: "便签",
-          icon: "note",
-          hiddenFromRail: true,
-          content: <DeckNotesPanel editor={editor} />,
-        },
-        {
-          id: "deck-text",
-          label: "文字",
-          icon: "text",
-          content: <DeckTextPanel editor={editor} />,
-        },
-        {
-          id: "deck-signature",
-          label: "签名",
-          icon: "signature",
-          hiddenFromRail: true,
-          content: <DeckSignaturePanel editor={editor} />,
-        },
-        {
-          id: "deck-tables",
-          label: "表格",
-          icon: "table",
-          hiddenFromRail: true,
-          content: <DeckTablePanel editor={editor} />,
-        },
-        {
-          id: "deck-uploads",
-          label: "上传",
-          icon: "uploads",
-          content: <DeckUploadPanel editor={editor} />,
-        },
-        {
-          id: "deck-layers",
-          label: "图层",
-          icon: "layers",
-          content: <DeckLayersPanel editor={editor} accent={accent} />,
-        },
-        {
-          id: "deck-effects",
-          label: "效果",
-          icon: "effects",
-          hiddenFromRail: true,
-          content: <DeckEffectsPanel editor={editor} />,
-        },
-        {
-          id: "deck-fonts",
-          label: "字体",
-          icon: "font",
-          hiddenFromRail: true,
-          content: <DeckFontPanel editor={editor} />,
-        },
-      ]}
-      editorContextualToolbar={
-        <DeckContextToolbar
-          editor={editor}
-          accent={accent}
-          activeTool={activeTool}
-          onActiveToolChange={setActiveTool}
-        />
-      }
-      editorContextualToolbarInsetLeft={160}
-      editorHistory={{
-        canUndo: editor.canUndo,
-        canRedo: editor.canRedo,
-        undo: editor.undo,
-        redo: editor.redo,
       }}
-      editorViewport={{
-        value: zoom,
-        min: 10,
-        max: 300,
-        step: 1,
-        setValue: setZoom,
-        fit: () => setZoom(100),
-      }}
-      editorHeaderActions={
-        <>
-          <button
-            type="button"
-            onClick={editor.downloadJson}
-            className={ADVANCED_HEADER_ICON_ACTION_CLASS}
-            title="下载工程"
-            aria-label="下载工程"
-          >
-            <AdvancedEditorIcon name="download" className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            disabled={editor.exporting}
-            onClick={() => void editor.exportPptx()}
-            className={ADVANCED_HEADER_ACTION_CLASS}
-          >
-            {editor.exporting ? "导出中…" : "导出 PPTX"}
-          </button>
-        </>
-      }
-      editorStage={
-        <DeckStage
-          editor={editor}
-          accent={accent}
-          zoom={zoom}
-          activeTool={activeTool}
-          inkStyle={inkStyle}
-        />
-      }
-      editorStatus={
-        editor.error ||
-        editor.notice ||
-        (editor.loading ? "正在载入演示文稿" : "")
-      }
-      editorDirty={editor.dirty}
-      onBeforeNewConversation={saveBeforeNewConversation}
-      savedItem={savedItem}
-      versionRevision={editor.savedUrl}
       onClose={onClose}
     />
   );

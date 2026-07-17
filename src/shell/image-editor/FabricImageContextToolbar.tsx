@@ -496,6 +496,11 @@ export function FabricImageContextToolbar({
         },
       );
     }
+    if (editor.loading) {
+      controls.forEach((control) => {
+        control.disabled = true;
+      });
+    }
     return {
       version: 1,
       kind: selected?.kind || "canvas",
@@ -512,6 +517,7 @@ export function FabricImageContextToolbar({
     editor.canUndo,
     editor.cropRatio,
     editor.cropping,
+    editor.loading,
     editor.transformInfo,
     editor.zoom,
     filters,

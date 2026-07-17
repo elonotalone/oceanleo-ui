@@ -47,9 +47,13 @@ export interface EditorCapability {
   unavailableReason: string;
 }
 
-interface RegistryEntry {
+export interface RegistryEntry {
   routeType: EditorRoute["type"];
   roundTrip: readonly EditorCapabilityName[];
+  projectSchema: string;
+  viewportOwnership: "content" | "native";
+  toolbarOwnership: "shared" | "native";
+  persistence: "project" | "native-callback";
 }
 
 const ROUND_TRIP = ["load", "mutate", "save", "reopen"] as const;
@@ -58,19 +62,110 @@ const ROUND_TRIP = ["load", "mutate", "save", "reopen"] as const;
 export const TRUSTED_EDITOR_REGISTRY: Readonly<
   Record<Exclude<EditorAdapterId, "none">, RegistryEntry>
 > = {
-  office: { routeType: "office", roundTrip: ROUND_TRIP },
-  "video-timeline": { routeType: "video-timeline", roundTrip: ROUND_TRIP },
-  audio: { routeType: "audio", roundTrip: ROUND_TRIP },
-  image: { routeType: "image", roundTrip: ROUND_TRIP },
-  pdf: { routeType: "pdf", roundTrip: ROUND_TRIP },
-  richdoc: { routeType: "richdoc", roundTrip: ROUND_TRIP },
-  grid: { routeType: "grid", roundTrip: ROUND_TRIP },
-  "chart-editor@1": { routeType: "grid", roundTrip: ROUND_TRIP },
-  deck: { routeType: "deck", roundTrip: ROUND_TRIP },
-  threed: { routeType: "threed", roundTrip: ROUND_TRIP },
-  website: { routeType: "embed", roundTrip: ROUND_TRIP },
-  "design-canvas": { routeType: "embed", roundTrip: ROUND_TRIP },
-  "video-canvas": { routeType: "embed", roundTrip: ROUND_TRIP },
+  office: {
+    routeType: "office",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "office-file@1",
+    viewportOwnership: "native",
+    toolbarOwnership: "native",
+    persistence: "native-callback",
+  },
+  "video-timeline": {
+    routeType: "video-timeline",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.timeline.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  audio: {
+    routeType: "audio",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.audio-project.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  image: {
+    routeType: "image",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.fabric-image.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  pdf: {
+    routeType: "pdf",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "pdf-binary@1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  richdoc: {
+    routeType: "richdoc",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "tiptap-json@1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  grid: {
+    routeType: "grid",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.grid.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  "chart-editor@1": {
+    routeType: "grid",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.chart.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  deck: {
+    routeType: "deck",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.deck.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  threed: {
+    routeType: "threed",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.model-view@1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  website: {
+    routeType: "embed",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "website-source@1",
+    viewportOwnership: "native",
+    toolbarOwnership: "native",
+    persistence: "project",
+  },
+  "design-canvas": {
+    routeType: "embed",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.design-document.v1",
+    viewportOwnership: "native",
+    toolbarOwnership: "native",
+    persistence: "project",
+  },
+  "video-canvas": {
+    routeType: "embed",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.video-canvas.v1",
+    viewportOwnership: "native",
+    toolbarOwnership: "native",
+    persistence: "project",
+  },
 };
 
 const WORD_EXT = new Set([

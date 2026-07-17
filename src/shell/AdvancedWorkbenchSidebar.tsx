@@ -19,6 +19,7 @@ export function AdvancedWorkbenchSidebar({
   activeLabel,
   panelVisible,
   panelWidth,
+  compact,
   panel,
   accent,
   onChooseTool,
@@ -30,6 +31,7 @@ export function AdvancedWorkbenchSidebar({
   activeLabel?: string;
   panelVisible: boolean;
   panelWidth: number;
+  compact: boolean;
   panel: ReactNode;
   accent: string;
   onChooseTool: (id: string) => void;
@@ -39,7 +41,7 @@ export function AdvancedWorkbenchSidebar({
   const tt = useUI();
   return (
     <>
-      <nav className="flex w-[76px] shrink-0 flex-col items-center gap-1 border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] py-2.5">
+      <nav className="flex w-[76px] shrink-0 flex-col items-center gap-1 border-r border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-chrome-bg,var(--card,#fff))] py-2.5">
         {tools.map((tool) => {
           const active = activeTool === tool.id && panelVisible;
           return (
@@ -67,8 +69,12 @@ export function AdvancedWorkbenchSidebar({
       {panelVisible && (
         <>
           <aside
-            className="min-h-0 max-w-[calc(100vw-72px)] shrink-0 overflow-hidden border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-[4px_0_18px_rgba(0,0,0,.035)] md:max-w-[48vw]"
-            style={{ width: panelWidth }}
+            className={`min-h-0 shrink-0 overflow-hidden border-r border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-chrome-bg,var(--card,#fff))] shadow-[4px_0_18px_rgba(0,0,0,.035)] ${
+              compact
+                ? "fixed bottom-0 left-[76px] top-14 z-[2147483400]"
+                : "relative max-w-[48vw]"
+            }`}
+            style={{ width: compact ? "calc(100vw - 76px)" : panelWidth }}
           >
             <div className="flex h-11 items-center border-b border-[var(--divider,#e7e5e4)] px-3 text-[12px] font-semibold">
               <span className="min-w-0 flex-1 truncate">
@@ -87,13 +93,15 @@ export function AdvancedWorkbenchSidebar({
               {panel}
             </div>
           </aside>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            onPointerDown={onBeginResize}
-            className="-ml-1 hidden w-2 shrink-0 cursor-col-resize touch-none bg-transparent transition hover:bg-[var(--border,#e7e5e4)] md:block"
-            title={tt("拖动调整工具区宽度")}
-          />
+          {!compact && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={onBeginResize}
+              className="-ml-1 w-2 shrink-0 cursor-col-resize touch-none bg-transparent transition hover:bg-[var(--awb-border,var(--border,#e7e5e4))]"
+              title={tt("拖动调整工具区宽度")}
+            />
+          )}
         </>
       )}
     </>
