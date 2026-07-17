@@ -70,10 +70,9 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   assert.match(toolbar, /layout\.openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
   assert.doesNotMatch(toolbar, /overflow-x-auto/);
-  assert.match(
-    image,
-    /if \(!selected\) return null/,
-  );
+  assert.doesNotMatch(image, /if \(!selected\) return null/);
+  assert.match(image, /kind: selected\?\.kind \|\| "canvas"/);
+  assert.match(image, /label: selected[\s\S]*?: tt\("创建与编辑"\)/);
   assert.match(embedded, /hostedMediaType === "canvas"/);
   assert.match(embedded, /hostedMediaType === "video_canvas"/);
   assert.match(embedded, /selection\.id === "design-canvas"/);

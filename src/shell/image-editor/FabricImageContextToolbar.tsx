@@ -21,10 +21,9 @@ export function FabricImageContextToolbar({
   const tt = useUI();
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
-  const context = useMemo<SelectionContext | null>(() => {
-    // Loading/opening an image never creates a contextual selection. The bar
-    // appears only after the user clicks an editable Fabric object.
-    if (!selected) return null;
+  const context = useMemo<SelectionContext>(() => {
+    // Creation tools must remain reachable on a newly opened flat image, whose
+    // locked background cannot produce an editable Fabric selection.
     const selectedIsLineLike = Boolean(
       selected &&
         [
