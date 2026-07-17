@@ -55,7 +55,7 @@ function Model3DWorkbenchRuntime({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)] md:flex-row">
       <aside className="max-h-[42%] w-full shrink-0 overflow-y-auto border-b border-[var(--border,#e7e5e4)] md:max-h-none md:w-64 md:border-b-0 md:border-r">
-        <Model3DControls editor={editor} accent={accent} />
+        <Model3DControls editor={editor} />
       </aside>
       <main className="min-h-0 min-w-0 flex-1">
         <Model3DStage editor={editor} accent={accent} />

@@ -285,7 +285,7 @@ export function useAudioWorkbench(
           plugins: [regions],
           height: 180,
           waveColor: "#a8a29e",
-          progressColor: "#4f46e5",
+          progressColor: "#6d5dfc",
           cursorColor: "#292524",
           barWidth: 2,
           barGap: 1,

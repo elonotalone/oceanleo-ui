@@ -15,7 +15,24 @@ export type ExportFormat = "png" | "jpeg" | "webp";
 
 export type ToolId = "select" | "draw" | "erase";
 
-export type ShapeKind = "rect" | "circle" | "ellipse" | "line" | "arrow";
+export type ShapeKind =
+  | "rect"
+  | "rounded-rect"
+  | "circle"
+  | "ellipse"
+  | "triangle"
+  | "diamond"
+  | "hexagon"
+  | "star"
+  | "heart"
+  | "line"
+  | "dashed-line"
+  | "curve"
+  | "arrow"
+  | "elbow-arrow"
+  | "double-arrow";
+
+export type TextPreset = "heading" | "subheading" | "body";
 
 export type CropRatio = "free" | "1:1" | "4:3" | "16:9" | "9:16";
 
@@ -26,10 +43,20 @@ export type LayerKind =
   | "image"
   | "text"
   | "rect"
+  | "rounded-rect"
   | "circle"
   | "ellipse"
+  | "triangle"
+  | "diamond"
+  | "hexagon"
+  | "star"
+  | "heart"
   | "line"
+  | "dashed-line"
+  | "curve"
   | "arrow"
+  | "elbow-arrow"
+  | "double-arrow"
   | "path"
   | "note"
   | "signature"
@@ -96,6 +123,14 @@ export interface TextSettings {
   strokeWidth: number;
 }
 
+export interface TableSettings {
+  headerFill: string;
+  bodyFill: string;
+  textColor: string;
+  borderColor: string;
+  borderWidth: number;
+}
+
 export interface SelectedSnapshot {
   id: string;
   kind: LayerKind;
@@ -112,6 +147,10 @@ export interface SelectedSnapshot {
   radius: number | null;
   /** 仅文字对象有值。 */
   text: TextSettings | null;
+  /** 仅语义表格对象有值。 */
+  table:
+    | { rows: number; columns: number; style: TableSettings }
+    | null;
 }
 
 export interface TransformInfo {
@@ -161,6 +200,12 @@ export interface FabricImageEditorOptions {
   onSaved?: (url: string) => void;
 }
 
+export interface FabricImageSaveResult {
+  url: string;
+  projectUrl: string;
+  savedAt: string;
+}
+
 export interface FabricImageEditorState {
   // ---- 状态 ----
   loading: boolean;
@@ -169,6 +214,8 @@ export interface FabricImageEditorState {
   error: string;
   notice: string;
   savedUrl: string;
+  savedProjectUrl: string;
+  savedAt: string;
   dirty: boolean;
   // ---- 画布挂载 ----
   stageCanvasRef: (element: HTMLCanvasElement | null) => void;
@@ -191,10 +238,11 @@ export interface FabricImageEditorState {
   brush: BrushSettings;
   setBrush: (patch: Partial<BrushSettings>) => void;
   // ---- 添加对象 ----
-  addText: () => void;
+  addText: (preset?: TextPreset) => void;
   addShape: (kind: ShapeKind) => void;
-  addStickyNote: () => void;
-  addSignature: () => void;
+  addStickyNote: (color?: string) => void;
+  addSignature: (text?: string, color?: string) => void;
+  addSignatureFromSvg: (svg: string) => Promise<void>;
   addTable: (rows?: number, columns?: number) => void;
   addImageFromUrl: (url: string, point?: CanvasClientPoint) => Promise<void>;
   replaceSelectedImageFromUrl: (url: string) => Promise<void>;
@@ -215,6 +263,8 @@ export interface FabricImageEditorState {
   setSelectedFill: (color: string) => void;
   setSelectedRadius: (px: number) => void;
   setSelectedText: (patch: Partial<TextSettings>) => void;
+  setSelectedTableStyle: (patch: Partial<TableSettings>) => void;
+  resizeSelectedTable: (rows: number, columns: number) => void;
   deleteSelected: () => void;
   duplicateSelected: () => Promise<void>;
   // ---- 变换（选中对象，否则背景图） ----
@@ -249,7 +299,7 @@ export interface FabricImageEditorState {
   exportScale: number;
   setExportScale: (scale: number) => void;
   download: () => void;
-  save: () => Promise<string | null>;
+  save: () => Promise<FabricImageSaveResult | null>;
   // ---- AI 编辑 ----
   aiAvailable: boolean;
   aiPrompt: string;

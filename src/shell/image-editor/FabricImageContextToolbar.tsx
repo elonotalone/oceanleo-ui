@@ -8,11 +8,8 @@ import type {
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
-import type { CropRatio, FabricImageEditorState } from "./types";
-
-function numeric(value: SelectionCommand["value"], fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
+import { dispatchFabricImageCommand } from "./fabric-image-commands";
+import type { FabricImageEditorState } from "./types";
 
 export function FabricImageContextToolbar({
   editor,
@@ -25,6 +22,17 @@ export function FabricImageContextToolbar({
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
   const context = useMemo<SelectionContext>(() => {
+    const selectedIsLineLike = Boolean(
+      selected &&
+        [
+          "line",
+          "dashed-line",
+          "curve",
+          "arrow",
+          "elbow-arrow",
+          "double-arrow",
+        ].includes(selected.kind),
+    );
     const controls: SelectionControl[] = [
       {
         id: "tool-select",
@@ -36,61 +44,59 @@ export function FabricImageContextToolbar({
       },
       {
         id: "tool-draw",
-        kind: "toggle",
+        kind: "panel",
         label: tt("画笔"),
         icon: "draw",
-        value: editor.activeTool === "draw",
+        panelId: "image-brush",
         placement: "tools",
       },
       {
         id: "tool-shape",
-        kind: "action",
+        kind: "panel",
         label: tt("形状"),
         icon: "shape",
+        panelId: "image-shapes",
         placement: "tools",
       },
       {
         id: "tool-line",
-        kind: "action",
+        kind: "panel",
         label: tt("线条"),
         icon: "line",
+        panelId: "image-lines",
         placement: "tools",
       },
       {
         id: "tool-note",
-        kind: "action",
+        kind: "panel",
         label: tt("便签"),
         icon: "note",
+        panelId: "image-notes",
         placement: "tools",
       },
       {
         id: "tool-text",
-        kind: "action",
+        kind: "panel",
         label: tt("文字"),
         icon: "text",
+        panelId: "image-text",
         placement: "tools",
       },
       {
         id: "tool-signature",
-        kind: "action",
+        kind: "panel",
         label: tt("签名"),
         icon: "signature",
+        panelId: "image-signature",
         placement: "tools",
       },
       {
         id: "tool-table",
-        kind: "action",
+        kind: "panel",
         label: tt("表格"),
         icon: "table",
+        panelId: "image-tables",
         placement: "tools",
-      },
-      {
-        id: "elements-panel",
-        kind: "panel",
-        label: tt("元素"),
-        icon: "elements",
-        group: "workspace",
-        panelId: "image-create",
       },
       {
         id: "layers-panel",
@@ -99,22 +105,6 @@ export function FabricImageContextToolbar({
         icon: "layers",
         group: "workspace",
         panelId: "image-layers",
-      },
-      {
-        id: "canvas-panel",
-        kind: "panel",
-        label: tt("画布"),
-        icon: "templates",
-        group: "workspace",
-        panelId: "image-canvas",
-      },
-      {
-        id: "export-panel",
-        kind: "panel",
-        label: tt("导出"),
-        icon: "download",
-        group: "workspace",
-        panelId: "image-export",
       },
     ];
     if (selected?.text) {
@@ -222,6 +212,71 @@ export function FabricImageContextToolbar({
           placement: "more",
         },
       );
+    } else if (selected?.table) {
+      controls.push(
+        {
+          id: "table-rows",
+          kind: "number",
+          label: tt("行"),
+          icon: "table",
+          group: "table",
+          value: selected.table.rows,
+          min: 1,
+          max: 20,
+          step: 1,
+        },
+        {
+          id: "table-columns",
+          kind: "number",
+          label: tt("列"),
+          group: "table",
+          value: selected.table.columns,
+          min: 1,
+          max: 20,
+          step: 1,
+        },
+        {
+          id: "table-header-fill",
+          kind: "color",
+          label: tt("表头"),
+          icon: "background",
+          group: "table-style",
+          value: selected.table.style.headerFill,
+        },
+        {
+          id: "table-body-fill",
+          kind: "color",
+          label: tt("单元格"),
+          group: "table-style",
+          value: selected.table.style.bodyFill,
+        },
+        {
+          id: "table-text-color",
+          kind: "color",
+          label: tt("文字色"),
+          icon: "font",
+          group: "table-style",
+          value: selected.table.style.textColor,
+        },
+        {
+          id: "table-border-color",
+          kind: "color",
+          label: tt("边框"),
+          group: "table-style",
+          value: selected.table.style.borderColor,
+          placement: "more",
+        },
+        {
+          id: "table-border-width",
+          kind: "range",
+          label: tt("边框宽度"),
+          value: selected.table.style.borderWidth,
+          min: 0,
+          max: 20,
+          step: 1,
+          placement: "more",
+        },
+      );
     } else if (
       selected &&
       selected.kind !== "image" &&
@@ -230,8 +285,8 @@ export function FabricImageContextToolbar({
       controls.push({
         id: "fill",
         kind: "color",
-        label: tt("填充"),
-        icon: "background",
+        label: selectedIsLineLike ? tt("线条色") : tt("填充"),
+        icon: selectedIsLineLike ? "line" : "background",
         group: "appearance",
         value: selected.fill || "#000000",
       });
@@ -249,23 +304,31 @@ export function FabricImageContextToolbar({
           max: 100,
           step: 1,
         },
-        {
-          id: "stroke",
-          kind: "color",
-          label: tt("描边"),
-          value: selected.stroke || "#000000",
-          placement: "more",
-        },
-        {
-          id: "stroke-width",
-          kind: "range",
-          label: tt("描边宽度"),
-          value: selected.strokeWidth,
-          min: 0,
-          max: 30,
-          step: 1,
-          placement: "more",
-        },
+        ...(!selected.table && !selectedIsLineLike
+          ? [
+              {
+                id: "stroke",
+                kind: "color" as const,
+                label: tt("描边"),
+                value: selected.stroke || "#000000",
+                placement: "more" as const,
+              },
+            ]
+          : []),
+        ...(!selected.table
+          ? [
+              {
+                id: "stroke-width",
+                kind: "range" as const,
+                label: selectedIsLineLike ? tt("线条宽度") : tt("描边宽度"),
+                value: selected.strokeWidth,
+                min: 0,
+                max: 30,
+                step: 1,
+                placement: "more" as const,
+              },
+            ]
+          : []),
         ...(selected.radius !== null
           ? [
               {
@@ -290,14 +353,24 @@ export function FabricImageContextToolbar({
         },
       );
     } else {
-      controls.push({
-        id: "canvas-background",
-        kind: "color",
-        label: tt("画布背景"),
-        icon: "background",
-        group: "canvas",
-        value: editor.canvasBackground,
-      });
+      controls.push(
+        {
+          id: "canvas-size-panel",
+          kind: "panel",
+          label: tt("尺寸"),
+          icon: "templates",
+          group: "canvas",
+          panelId: "image-canvas",
+        },
+        {
+          id: "canvas-background",
+          kind: "color",
+          label: tt("背景"),
+          icon: "background",
+          group: "canvas",
+          value: editor.canvasBackground,
+        },
+      );
     }
     if (selected?.kind === "image") {
       controls.push(
@@ -427,7 +500,9 @@ export function FabricImageContextToolbar({
       version: 1,
       kind: selected?.kind || "canvas",
       id: selected?.id || "canvas",
-      label: selected ? tt("已选 {kind}", { kind: selected.kind }) : tt("画布"),
+      label: selected
+        ? tt("已选 {kind}", { kind: selected.kind })
+        : tt("创建与编辑"),
       controls,
     };
   }, [
@@ -446,144 +521,7 @@ export function FabricImageContextToolbar({
 
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
-    switch (message.controlId) {
-      case "undo":
-        editor.undo();
-        break;
-      case "redo":
-        editor.redo();
-        break;
-      case "tool-select":
-        editor.setActiveTool("select");
-        break;
-      case "tool-draw":
-        editor.setActiveTool("draw");
-        break;
-      case "tool-shape":
-        editor.addShape("rect");
-        break;
-      case "tool-line":
-        editor.addShape("line");
-        break;
-      case "tool-note":
-        editor.addStickyNote();
-        break;
-      case "tool-text":
-        editor.addText();
-        break;
-      case "tool-signature":
-        editor.addSignature();
-        break;
-      case "tool-table":
-        editor.addTable(3, 3);
-        break;
-      case "tool-erase":
-        editor.setActiveTool("erase");
-        break;
-      case "zoom-out":
-        editor.zoomOut();
-        break;
-      case "zoom-fit":
-        editor.zoomFit();
-        break;
-      case "zoom-in":
-        editor.zoomIn();
-        break;
-      case "text":
-        editor.setSelectedText({ value: String(message.value ?? "") });
-        break;
-      case "font-size":
-        editor.setSelectedText({ fontSize: numeric(message.value, 16) });
-        break;
-      case "text-color":
-        editor.setSelectedText({ fill: String(message.value || "#000000") });
-        break;
-      case "bold":
-        editor.setSelectedText({ bold: message.value === true });
-        break;
-      case "italic":
-        editor.setSelectedText({ italic: message.value === true });
-        break;
-      case "underline":
-        editor.setSelectedText({ underline: message.value === true });
-        break;
-      case "linethrough":
-        editor.setSelectedText({ linethrough: message.value === true });
-        break;
-      case "line-height":
-        editor.setSelectedText({ lineHeight: numeric(message.value, 1.16) });
-        break;
-      case "char-spacing":
-        editor.setSelectedText({ charSpacing: numeric(message.value, 0) });
-        break;
-      case "align":
-        if (message.value === "left" || message.value === "center" || message.value === "right") {
-          editor.setSelectedText({ align: message.value });
-        }
-        break;
-      case "fill":
-        editor.setSelectedFill(String(message.value || "#000000"));
-        break;
-      case "opacity":
-        editor.setSelectedOpacity(numeric(message.value, 100));
-        break;
-      case "stroke":
-        editor.setSelectedStroke({ color: String(message.value || "#000000") });
-        break;
-      case "stroke-width":
-        editor.setSelectedStroke({ width: numeric(message.value) });
-        break;
-      case "radius":
-        editor.setSelectedRadius(numeric(message.value));
-        break;
-      case "shadow":
-        editor.setSelectedShadow({ enabled: message.value === true });
-        break;
-      case "canvas-background":
-        editor.setCanvasBackground(String(message.value || "#f4f1e8"));
-        break;
-      case "crop-start":
-        editor.startCrop();
-        break;
-      case "crop-apply":
-        void editor.confirmCrop();
-        break;
-      case "crop-cancel":
-        editor.cancelCrop();
-        break;
-      case "crop-ratio":
-        if (["free", "1:1", "4:3", "16:9", "9:16"].includes(String(message.value))) {
-          editor.setCropRatio(message.value as CropRatio);
-          if (!editor.cropping) editor.startCrop();
-        }
-        break;
-      case "rotate-left":
-        editor.rotateTarget(-90);
-        break;
-      case "rotate-right":
-        editor.rotateTarget(90);
-        break;
-      case "flip-x":
-        editor.flipTarget("x");
-        break;
-      case "flip-y":
-        editor.flipTarget("y");
-        break;
-      case "brightness":
-      case "contrast":
-      case "saturation":
-        editor.setFilter(message.controlId, numeric(message.value));
-        break;
-      case "grayscale":
-        editor.setFilter("grayscale", message.value === true);
-        break;
-      case "duplicate":
-        void editor.duplicateSelected();
-        break;
-      case "delete":
-        editor.deleteSelected();
-        break;
-    }
+    dispatchFabricImageCommand(editor, message);
   };
 
   return (

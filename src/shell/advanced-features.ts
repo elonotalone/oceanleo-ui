@@ -26,13 +26,16 @@ export interface AdvancedFeatureDefinition {
   examples: string;
 }
 
+/** Advanced tools share one calm product identity; content type is not a theme. */
+export const ADVANCED_PRODUCT_ACCENT = "#6d5dfc";
+
 export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
   {
     id: "video_editing",
     title: "视频编辑",
     eyebrow: "Video editing",
     description: "剪辑、分轨、字幕、转场与画面精修。",
-    accent: "#f97316",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "MP4 · MOV · WebM",
   },
   {
@@ -40,7 +43,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "网站精调",
     eyebrow: "Website finetuning",
     description: "在真实页面预览中修改布局、内容与交互。",
-    accent: "#0ea5e9",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Website · HTML",
   },
   {
@@ -48,7 +51,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "设计画布",
     eyebrow: "Design canvas",
     description: "自由排版图文、品牌素材与社交媒体成品。",
-    accent: "#8b5cf6",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Canvas · Poster",
   },
   {
@@ -56,7 +59,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "演示文稿编辑",
     eyebrow: "Presentation editing",
     description: "逐页编辑 PPT，保留版式并生成新版本。",
-    accent: "#ea580c",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "PPTX · PPT · ODP",
   },
   {
@@ -64,7 +67,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "文档编辑",
     eyebrow: "Document editing",
     description: "编辑长文档、合同、报告与富文本内容。",
-    accent: "#2563eb",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "DOCX · DOC · RTF",
   },
   {
@@ -72,7 +75,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "表格编辑",
     eyebrow: "Spreadsheet editing",
     description: "处理工作表、公式、数据与结构化表格。",
-    accent: "#16a34a",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "XLSX · XLS · CSV",
   },
   {
@@ -80,7 +83,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "图片编辑",
     eyebrow: "Image editing",
     description: "裁剪、抠图、调色、标注与图层合成。",
-    accent: "#db2777",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "PNG · JPG · WebP",
   },
   {
@@ -88,7 +91,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "PDF 编辑",
     eyebrow: "PDF editing",
     description: "批注、页面整理、签署与格式转换。",
-    accent: "#dc2626",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "PDF",
   },
   {
@@ -96,7 +99,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "音频编辑",
     eyebrow: "Audio editing",
     description: "裁剪、淡入淡出、音量与多轨混音。",
-    accent: "#0891b2",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "MP3 · WAV · M4A",
   },
   {
@@ -104,7 +107,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "图表编辑",
     eyebrow: "Chart editing",
     description: "调整数据、图形编码、标注与导出样式。",
-    accent: "#4f46e5",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Chart · JSON",
   },
   {
@@ -112,7 +115,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "视频画布",
     eyebrow: "Video canvas",
     description: "用无限画布编排镜头、素材与生成流程。",
-    accent: "#7c3aed",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Storyboard · Canvas",
   },
   {
@@ -120,7 +123,7 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
     title: "3D 模型",
     eyebrow: "3D workspace",
     description: "查看模型、环境贴图并保存场景版本。",
-    accent: "#0d9488",
+    accent: ADVANCED_PRODUCT_ACCENT,
     examples: "GLB · GLTF · HDR",
   },
 ] as const;

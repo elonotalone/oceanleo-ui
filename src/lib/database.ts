@@ -282,7 +282,7 @@ export function listFiles(
 /** 上传到文件库：小文件 multipart，大文件 signed direct upload。跨站可见。 */
 export async function uploadFile(
   file: File,
-  opts: { siteId?: string; title?: string } = {},
+  opts: { siteId?: string; title?: string; registerAsset?: boolean } = {},
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
   // FastAPI's small multipart path intentionally caps at 20 MB and buffers
   // bytes in the gateway. Large editor media goes browser → signed Supabase
@@ -319,6 +319,7 @@ export async function uploadFile(
       bytes: file.size,
       site_id: opts.siteId || "home",
       title: opts.title || file.name || "file",
+      register_asset: opts.registerAsset !== false,
     };
     const initialized = await authed<{
       ok: boolean;
@@ -364,6 +365,7 @@ export async function uploadFile(
   fd.append("file", file);
   if (opts.siteId) fd.append("site_id", opts.siteId);
   if (opts.title) fd.append("title", opts.title);
+  if (opts.registerAsset === false) fd.append("register_asset", "false");
   let res: Response;
   try {
     res = await fetch(`${GATEWAY_BASE}/v1/database/upload`, {

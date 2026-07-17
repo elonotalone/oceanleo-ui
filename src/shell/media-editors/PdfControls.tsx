@@ -8,15 +8,11 @@ function ControlButton({
   children,
   onClick,
   disabled,
-  accent,
-  primary = false,
   title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  accent?: string;
-  primary?: boolean;
   title?: string;
 }) {
   return (
@@ -25,12 +21,7 @@ function ControlButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={
-        primary
-          ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
-      }
-      style={primary ? { background: accent || "#4f46e5" } : undefined}
+      className="rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
     >
       {children}
     </button>
@@ -39,10 +30,8 @@ function ControlButton({
 
 export function PdfControls({
   editor,
-  accent = "#4f46e5",
 }: {
   editor: PdfWorkbenchState;
-  accent?: string;
 }) {
   const tt = useUI();
   const mergeInputRef = useRef<HTMLInputElement | null>(null);
@@ -111,19 +100,6 @@ export function PdfControls({
         <ControlButton disabled={busy} onClick={editor.download}>
           {tt("下载编辑版 PDF")}
         </ControlButton>
-        <ControlButton
-          disabled={busy}
-          primary
-          accent={accent}
-          onClick={() => void editor.saveCopy()}
-        >
-          {editor.saving ? tt("保存中…") : tt("保存副本到我的库")}
-        </ControlButton>
-        {editor.savedUrl && (
-          <p className="break-all text-[10px] text-emerald-600">
-            {tt("PDF 副本已保存到我的库")}
-          </p>
-        )}
       </section>
     </div>
   );

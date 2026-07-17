@@ -45,9 +45,7 @@ export function PdfStage({
     ? tt("正在处理 PDF…")
     : editor.loading
       ? tt("正在加载 PDF…")
-      : editor.rendering
-        ? tt("正在渲染页面…")
-        : "";
+      : "";
   const visualScale = editor.zoom / Math.max(1, editor.renderedZoom);
   const visualWidth = editor.pageWidth * visualScale;
   const visualHeight = editor.pageHeight * visualScale;

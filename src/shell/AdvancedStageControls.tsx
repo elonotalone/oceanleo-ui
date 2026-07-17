@@ -10,7 +10,7 @@ export function AdvancedStageControls({
   accent,
 }: {
   stageRef: RefObject<HTMLDivElement | null>;
-  viewport: AdvancedViewportActions;
+  viewport?: AdvancedViewportActions;
   accent: string;
 }) {
   const tt = useUI();
@@ -34,40 +34,65 @@ export function AdvancedStageControls({
     }
   };
 
-  const min = viewport.min ?? 25;
-  const max = viewport.max ?? 200;
-  const step = viewport.step ?? 1;
-  const value = Math.min(max, Math.max(min, Math.round(viewport.value)));
+  const min = viewport?.min ?? 25;
+  const max = viewport?.max ?? 200;
+  const step = viewport?.step ?? 1;
+  const value = Math.min(
+    max,
+    Math.max(min, Math.round(viewport?.value ?? 100)),
+  );
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 right-4 z-[75] flex h-10 items-center gap-2 rounded-xl border border-black/10 bg-white/95 px-2 shadow-[0_8px_28px_rgba(15,23,42,.16)] backdrop-blur-xl">
-      <label className="flex items-center gap-2" title={tt("缩放")}>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(event) => viewport.setValue(Number(event.target.value))}
-          aria-label={tt("缩放")}
-          className="h-1.5 w-28 cursor-pointer appearance-none rounded-full bg-slate-200 accent-[var(--accent,#7c3aed)] sm:w-36"
-          style={{ accentColor: accent }}
-        />
-        <button
-          type="button"
-          onClick={viewport.fit}
-          disabled={!viewport.fit}
-          className="min-w-10 rounded-md px-1 py-1 text-[11px] font-semibold tabular-nums text-slate-600 transition hover:bg-slate-100 disabled:cursor-default disabled:hover:bg-transparent"
-          title={viewport.fit ? tt("适合画布") : tt("当前缩放")}
-        >
-          {value}%
-        </button>
-      </label>
-      <span className="h-5 w-px bg-slate-200" />
+    <div className="pointer-events-auto absolute bottom-4 right-4 z-[75] flex h-10 items-center gap-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-1.5 text-[var(--fg-2,#57534e)] shadow-[0_8px_28px_rgba(15,23,42,.12)] backdrop-blur-xl">
+      {viewport && (
+        <>
+          <button
+            type="button"
+            onClick={() => viewport.setValue(Math.max(min, value - Math.max(step, 5)))}
+            className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+            aria-label={tt("缩小")}
+            title={tt("缩小")}
+          >
+            −
+          </button>
+          <label className="flex items-center gap-2" title={tt("缩放")}>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              onChange={(event) => viewport.setValue(Number(event.target.value))}
+              aria-label={tt("缩放")}
+              className="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)] sm:w-32"
+              style={{ accentColor: accent }}
+            />
+            <button
+              type="button"
+              onClick={viewport.fit}
+              disabled={!viewport.fit}
+              className="min-w-11 rounded-md px-1 py-1 text-[11px] font-semibold tabular-nums transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] disabled:cursor-default disabled:hover:bg-transparent"
+              title={viewport.fit ? tt("适合画布") : tt("当前缩放")}
+            >
+              {value}%
+            </button>
+          </label>
+          <button
+            type="button"
+            onClick={() => viewport.setValue(Math.min(max, value + Math.max(step, 5)))}
+            className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+            aria-label={tt("放大")}
+            title={tt("放大")}
+          >
+            +
+          </button>
+          <span className="mx-0.5 h-5 w-px bg-[var(--divider,#e7e5e4)]" />
+        </>
+      )}
       <button
         type="button"
         onClick={() => void toggleFullscreen()}
-        className="grid h-8 w-8 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+        className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)]"
         aria-label={fullscreen ? tt("退出全屏") : tt("编辑区域全屏")}
         title={fullscreen ? tt("退出全屏") : tt("编辑区域全屏")}
       >

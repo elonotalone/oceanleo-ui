@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_PRIMARY_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import {
@@ -134,26 +134,20 @@ export function VideoTimelineRoute({
         fit: () => editor.setPxPerSecond(80),
       }}
       editorHeaderActions={
-        <>
-          <button
-            type="button"
-            disabled={editor.savingDraft}
-            onClick={() => void editor.saveDraft()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.savingDraft ? "保存中…" : "保存工程"}
-          </button>
-          <button
-            type="button"
-            disabled={editor.exporting}
-            onClick={() => void editor.exportVideo()}
-            className="rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            {editor.exporting ? "渲染中…" : "导出视频"}
-          </button>
-        </>
+        <button
+          type="button"
+          onClick={() =>
+            editor.exporting
+              ? editor.cancelExport()
+              : void editor.exportVideo()
+          }
+          className={ADVANCED_HEADER_PRIMARY_ACTION_CLASS}
+          style={{
+            background: editor.exporting ? "#b42318" : accent,
+          }}
+        >
+          {editor.exporting ? "取消渲染" : "导出视频"}
+        </button>
       }
       editorStage={<VideoTimelineStage state={editor} accent={accent} />}
       editorStatus={editor.error || editor.notice}

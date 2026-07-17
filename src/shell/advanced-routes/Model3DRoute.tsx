@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
@@ -114,7 +114,7 @@ export function Model3DRoute({
       editorLabel={editorToolLabel({ type: "threed" })}
       editorDrawerLabel="场景"
       editorDrawerIcon="shape"
-      editorToolbox={<Model3DControls editor={editor} accent={accent} />}
+      editorToolbox={<Model3DControls editor={editor} />}
       editorContextualToolbar={
         <Model3DContextToolbar editor={editor} accent={accent} />
       }
@@ -132,19 +132,9 @@ export function Model3DRoute({
             type="button"
             disabled={!editor.modelLoaded || editor.capturing}
             onClick={() => void editor.downloadScreenshot()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             截图
-          </button>
-          <button
-            type="button"
-            disabled={!editor.modelLoaded || editor.saving}
-            onClick={() => void editor.saveCopy()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
           </button>
         </>
       }

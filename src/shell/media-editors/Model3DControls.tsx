@@ -7,26 +7,17 @@ function ActionButton({
   children,
   onClick,
   disabled,
-  primary,
-  accent,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  primary?: boolean;
-  accent?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={
-        primary
-          ? "rounded-lg px-2 py-2 text-[11px] font-semibold text-white disabled:opacity-45"
-          : "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
-      }
-      style={primary ? { background: accent || "#4f46e5" } : undefined}
+      className="rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
     >
       {children}
     </button>
@@ -35,10 +26,8 @@ function ActionButton({
 
 export function Model3DControls({
   editor,
-  accent = "#4f46e5",
 }: {
   editor: Model3DWorkbenchState;
-  accent?: string;
 }) {
   const tt = useUI();
   const busy =
@@ -83,7 +72,7 @@ export function Model3DControls({
             disabled={busy || !editor.modelLoaded}
             onClick={() => void editor.saveScreenshot()}
           >
-            {tt("保存截图")}
+            {tt("截图到文件库")}
           </ActionButton>
           <ActionButton
             disabled={busy || !editor.sourceUrl}
@@ -91,20 +80,7 @@ export function Model3DControls({
           >
             {editor.downloading ? tt("下载中…") : tt("下载模型")}
           </ActionButton>
-          <ActionButton
-            primary
-            accent={accent}
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.saveCopy()}
-          >
-            {editor.saving ? tt("保存中…") : tt("保存视图副本")}
-          </ActionButton>
         </div>
-        {editor.savedUrl && (
-          <p className="text-[10px] text-emerald-600">
-            {tt("3D 视图副本已保存到我的库")}
-          </p>
-        )}
       </section>
     </div>
   );

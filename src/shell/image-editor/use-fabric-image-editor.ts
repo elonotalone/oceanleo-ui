@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { FabricImage } from "fabric";
 import { aiEditImage } from "../../lib/image-ai-edit";
+import { uploadFile } from "../../lib/database";
 import {
   canvasSafeUrl,
   importMediaUrl,
@@ -17,8 +18,12 @@ import type { LibraryItem } from "../library-data";
 import { loadImageObject, type FabricNS } from "./editor-objects";
 import { exportDocBlob } from "./editor-objects";
 import {
+  clearLocalImageDraft,
   downloadImageBlob,
-  persistImageBlob,
+  loadImageProject,
+  loadLocalImageDraft,
+  persistImageProject,
+  saveLocalImageDraft,
 } from "./editor-persistence";
 import { FabricEditorController } from "./fabric-controller";
 import type { FabricControllerView } from "./fabric-controller-core";
@@ -26,12 +31,13 @@ import {
   INITIAL_FILTERS,
   type CanvasClientPoint,
   type FabricImageEditorOptions,
+  type FabricImageSaveResult,
   type FabricImageEditorState,
 } from "./types";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
-  canvasBackground: "#f4f1e8",
+  canvasBackground: "#ffffff",
   zoom: 1,
   activeTool: "select",
   brush: { color: "#1c1917", width: 12 },
@@ -93,6 +99,8 @@ export function useFabricImageEditor(
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
+  const [savedProjectUrl, setSavedProjectUrl] = useState("");
+  const [savedAt, setSavedAt] = useState("");
   const [dirty, setDirty] = useState(false);
   const [exportFormat, setExportFormat] =
     useState<FabricImageEditorState["exportFormat"]>("png");
@@ -110,7 +118,6 @@ export function useFabricImageEditor(
   const revisionRef = useRef(0);
   const aiBusyRef = useRef(false);
   const pendingAborts = useRef(new Set<AbortController>());
-  const objectUrls = useRef(new Set<string>());
   optionsRef.current = options;
   viewRef.current = view;
 
@@ -134,14 +141,20 @@ export function useFabricImageEditor(
       aliveRef.current = false;
       pendingAborts.current.forEach((abort) => abort.abort());
       pendingAborts.current.clear();
-      objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
-      objectUrls.current.clear();
     };
   }, []);
 
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
       ? item.url || item.previewUrl || ""
+      : "";
+  const projectUrl =
+    typeof item.meta.fabric_document_url === "string"
+      ? item.meta.fabric_document_url
+      : "";
+  const projectSavedAt =
+    typeof item.meta.fabric_saved_at === "string"
+      ? item.meta.fabric_saved_at
       : "";
 
   useEffect(() => {
@@ -152,6 +165,8 @@ export function useFabricImageEditor(
     setError("");
     setNotice("");
     setSavedUrl("");
+    setSavedProjectUrl("");
+    setSavedAt("");
     setDirty(false);
     revisionRef.current = 0;
     let controller: FabricEditorController | null = null;
@@ -171,8 +186,13 @@ export function useFabricImageEditor(
             onDocumentChange: () => {
               if (cancelled) return;
               revisionRef.current += 1;
+              if (controller) {
+                saveLocalImageDraft(item, controller.getSnapshot());
+              }
               setDirty(true);
               setSavedUrl("");
+              setSavedProjectUrl("");
+              setSavedAt("");
             },
             onError: (message) => {
               if (!cancelled) setError(message);
@@ -180,7 +200,26 @@ export function useFabricImageEditor(
           },
         );
         controllerRef.current = controller;
-        if (sourceUrl) {
+        let cloudProjectUpdatedAt = "";
+        let projectLoaded = false;
+        if (projectUrl) {
+          try {
+            const project = await loadImageProject(projectUrl, abort.signal);
+            if (cancelled || abort.signal.aborted) return;
+            projectLoaded = await controller.loadSnapshot(project.snapshot);
+            cloudProjectUpdatedAt = project.updatedAt;
+            if (projectLoaded) {
+              setSavedUrl(sourceUrl);
+              setSavedProjectUrl(projectUrl);
+              setSavedAt(project.updatedAt);
+            }
+          } catch (caught) {
+            if (!isAbortError(caught)) {
+              setNotice("可编辑工程暂时无法读取，已改用预览图恢复");
+            }
+          }
+        }
+        if (!projectLoaded && sourceUrl) {
           const safeUrl = await canvasImageUrl(sourceUrl, siteId, item.title);
           if (cancelled || abort.signal.aborted) return;
           const image = await loadImageObject(fabric, safeUrl, abort.signal);
@@ -189,6 +228,22 @@ export function useFabricImageEditor(
             return;
           }
           controller.setInitialBackground(image, imageDocumentSize(image));
+        }
+        const localDraft = loadLocalImageDraft(item);
+        const cloudTime = Date.parse(cloudProjectUpdatedAt || projectSavedAt) || 0;
+        const localTime = Date.parse(localDraft?.updatedAt || "") || 0;
+        if (
+          localDraft &&
+          localTime > cloudTime &&
+          !cancelled &&
+          !abort.signal.aborted
+        ) {
+          const restored = await controller.loadSnapshot(localDraft.snapshot);
+          if (restored && !cancelled) {
+            revisionRef.current += 1;
+            setDirty(true);
+            setNotice("已恢复这台设备上尚未同步的修改，正在继续自动保存");
+          }
         }
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
@@ -214,6 +269,8 @@ export function useFabricImageEditor(
     finishAbort,
     item.title,
     makeAbort,
+    projectSavedAt,
+    projectUrl,
     siteId,
     sourceUrl,
   ]);
@@ -292,25 +349,64 @@ export function useFabricImageEditor(
         return;
       }
       const abort = makeAbort();
-      const objectUrl = URL.createObjectURL(file);
-      objectUrls.current.add(objectUrl);
       setError("");
+      setNotice("正在上传图片；完成后会同时加入画布和文件库…");
       try {
-        const image = await loadImageObject(fabric, objectUrl, abort.signal);
+        const uploaded = await uploadFile(file, {
+          siteId: siteId || "image",
+          title: file.name || `${item.title}-图片`,
+        });
+        const durableUrl = uploaded.data?.file?.url || "";
+        if (!uploaded.ok || !durableUrl) {
+          throw new Error(uploaded.error || "图片上传失败");
+        }
+        if (abort.signal.aborted || controllerRef.current !== controller) return;
+        const safeUrl = await canvasImageUrl(
+          durableUrl,
+          siteId,
+          file.name || item.title,
+        );
+        if (abort.signal.aborted || controllerRef.current !== controller) return;
+        const image = await loadImageObject(fabric, safeUrl, abort.signal);
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
         }
         controller.addImage(image);
-        setNotice("本地图片已添加为独立图层");
+        setNotice("图片已加入画布和文件库，并会随工程继续保存");
       } catch (caught) {
         if (!isAbortError(caught)) {
-          setError(caught instanceof Error ? caught.message : "图片读取失败");
+          setError(caught instanceof Error ? caught.message : "图片上传失败");
         }
       } finally {
         finishAbort(abort);
-        objectUrls.current.delete(objectUrl);
-        URL.revokeObjectURL(objectUrl);
+      }
+    },
+    [finishAbort, item.title, makeAbort, siteId],
+  );
+
+  const addSignatureFromSvg = useCallback(
+    async (svg: string) => {
+      const controller = controllerRef.current;
+      const fabric = fabricRef.current;
+      if (!controller || !fabric || !svg.trim() || svg.length > 500_000) return;
+      const abort = makeAbort();
+      const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      setError("");
+      try {
+        const image = await loadImageObject(fabric, dataUrl, abort.signal);
+        if (abort.signal.aborted || controllerRef.current !== controller) {
+          image.dispose();
+          return;
+        }
+        controller.addSignatureImage(image);
+        setNotice("手写签名已作为独立图层插入");
+      } catch (caught) {
+        if (!isAbortError(caught)) {
+          setError(caught instanceof Error ? caught.message : "签名插入失败");
+        }
+      } finally {
+        finishAbort(abort);
       }
     },
     [finishAbort, makeAbort],
@@ -347,16 +443,20 @@ export function useFabricImageEditor(
       );
   }, [exportFormat, item.title, makeExportBlob]);
 
-  const save = useCallback(async (): Promise<string | null> => {
+  const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
+      const controller = controllerRef.current;
+      if (!controller) throw new Error("图片画布尚未就绪");
+      const snapshot = controller.getSnapshot();
       const blob = await makeExportBlob();
-      const url = await persistImageBlob(
+      const saved = await persistImageProject(
         blob,
+        snapshot,
         item,
         siteId,
         exportFormat,
@@ -366,15 +466,22 @@ export function useFabricImageEditor(
         },
       );
       if (!aliveRef.current) return null;
-      setSavedUrl(url);
+      setSavedUrl(saved.previewUrl);
+      setSavedProjectUrl(saved.projectUrl);
+      setSavedAt(saved.savedAt);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
-        setNotice("新版本已保存到我的库，原素材未被覆盖");
+        clearLocalImageDraft(item);
+        setNotice("可编辑工程与预览已自动保存，原素材未被覆盖");
       } else {
         setNotice("已保存一个版本；之后的修改仍未保存");
       }
-      optionsRef.current.onSaved?.(url);
-      return url;
+      optionsRef.current.onSaved?.(saved.previewUrl);
+      return {
+        url: saved.previewUrl,
+        projectUrl: saved.projectUrl,
+        savedAt: saved.savedAt,
+      };
     } catch (caught) {
       if (aliveRef.current && !isAbortError(caught)) {
         setError(caught instanceof Error ? caught.message : "图片保存失败");
@@ -440,6 +547,8 @@ export function useFabricImageEditor(
     error,
     notice,
     savedUrl,
+    savedProjectUrl,
+    savedAt,
     dirty,
     stageCanvasRef,
     stageContainerRef,
@@ -457,10 +566,11 @@ export function useFabricImageEditor(
     setActiveTool: (tool) => controller()?.setTool(tool),
     brush: view.brush,
     setBrush: (patch) => controller()?.setBrush(patch),
-    addText: () => controller()?.addText(),
+    addText: (preset) => controller()?.addText(preset),
     addShape: (kind) => controller()?.addShape(kind),
-    addStickyNote: () => controller()?.addStickyNote(),
-    addSignature: () => controller()?.addSignature(),
+    addStickyNote: (color) => controller()?.addStickyNote(color),
+    addSignature: (text, color) => controller()?.addSignature(text, color),
+    addSignatureFromSvg,
     addTable: (rows, columns) => controller()?.addTable(rows, columns),
     addImageFromUrl,
     replaceSelectedImageFromUrl,
@@ -479,6 +589,10 @@ export function useFabricImageEditor(
     setSelectedFill: (color) => controller()?.setSelectedFill(color),
     setSelectedRadius: (px) => controller()?.setSelectedRadius(px),
     setSelectedText: (patch) => controller()?.setSelectedText(patch),
+    setSelectedTableStyle: (patch) =>
+      controller()?.setSelectedTableStyle(patch),
+    resizeSelectedTable: (rows, columns) =>
+      controller()?.resizeSelectedTable(rows, columns),
     deleteSelected: () => controller()?.deleteSelected(),
     duplicateSelected: async () => controller()?.duplicateSelected(),
     transformInfo: view.transformInfo,

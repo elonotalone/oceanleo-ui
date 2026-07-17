@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
@@ -114,26 +114,16 @@ export function RichDocRoute({
           <button
             type="button"
             onClick={() => void editor.exportMarkdown()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white transition hover:bg-white/20"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             Markdown
           </button>
           <button
             type="button"
             onClick={() => void editor.exportDoc()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white transition hover:bg-white/20"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             DOCX
-          </button>
-          <button
-            type="button"
-            disabled={editor.saving}
-            onClick={() => void editor.save()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
           </button>
         </>
       }

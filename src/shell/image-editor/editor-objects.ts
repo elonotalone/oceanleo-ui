@@ -25,6 +25,8 @@ import {
   type SelectedSnapshot,
   type ShadowSettings,
   type ShapeKind,
+  type TableSettings,
+  type TextPreset,
   type TextSettings,
 } from "./types";
 
@@ -39,6 +41,11 @@ export interface EditorObjectProps {
   oceanleoLocked?: boolean;
   oceanleoRadius?: number;
   oceanleoFilters?: FilterSettings;
+  oceanleoTableRows?: number;
+  oceanleoTableColumns?: number;
+  oceanleoTableRow?: number;
+  oceanleoTableColumn?: number;
+  oceanleoTablePart?: "cell" | "text";
 }
 
 export type EditorObject = FabricObject & EditorObjectProps;
@@ -52,6 +59,11 @@ export const SNAPSHOT_PROPS = [
   "oceanleoLocked",
   "oceanleoRadius",
   "oceanleoFilters",
+  "oceanleoTableRows",
+  "oceanleoTableColumns",
+  "oceanleoTableRow",
+  "oceanleoTableColumn",
+  "oceanleoTablePart",
   "selectable",
   "evented",
   "lockMovementX",
@@ -70,7 +82,22 @@ export function roleOf(obj: FabricObject): EditorRole | undefined {
 
 export function kindOf(fabric: FabricNS, obj: FabricObject): LayerKind {
   if (roleOf(obj) === "background") return "background";
-  if ((obj as EditorObject).oceanleoKind === "signature") return "signature";
+  const declared = (obj as EditorObject).oceanleoKind;
+  if (
+    declared === "signature" ||
+    declared === "rounded-rect" ||
+    declared === "triangle" ||
+    declared === "diamond" ||
+    declared === "hexagon" ||
+    declared === "star" ||
+    declared === "heart" ||
+    declared === "dashed-line" ||
+    declared === "curve" ||
+    declared === "elbow-arrow" ||
+    declared === "double-arrow"
+  ) {
+    return declared;
+  }
   if (obj instanceof fabric.FabricImage) return "image";
   if (obj instanceof fabric.IText) return "text";
   if (obj instanceof fabric.Rect) return "rect";
@@ -78,8 +105,9 @@ export function kindOf(fabric: FabricNS, obj: FabricObject): LayerKind {
   if (obj instanceof fabric.Ellipse) return "ellipse";
   if (obj instanceof fabric.Line) return "line";
   if (obj instanceof fabric.Group) {
-    const kind = (obj as EditorObject).oceanleoKind;
-    if (kind === "arrow" || kind === "note" || kind === "table") return kind;
+    if (declared === "arrow" || declared === "note" || declared === "table") {
+      return declared;
+    }
     return "shape";
   }
   if (obj instanceof fabric.Path) return "path";
@@ -260,16 +288,28 @@ export function buildSelectedSnapshot(
   let fill = typeof obj.fill === "string" ? obj.fill : "";
   let stroke = typeof obj.stroke === "string" ? obj.stroke : "";
   let strokeWidth = obj.strokeWidth ?? 0;
-  if (kind === "arrow" && obj instanceof fabric.Group) {
+  if (
+    (kind === "arrow" ||
+      kind === "elbow-arrow" ||
+      kind === "double-arrow") &&
+    obj instanceof fabric.Group
+  ) {
     const line = obj
       .getObjects()
-      .find((child) => child instanceof fabric.Line);
+      .find(
+        (child) =>
+          child instanceof fabric.Line || child instanceof fabric.Path,
+      );
     if (line) {
       stroke = typeof line.stroke === "string" ? line.stroke : "";
       fill = stroke;
       strokeWidth = line.strokeWidth ?? 0;
     }
-  } else if (kind === "line") {
+  } else if (
+    kind === "line" ||
+    kind === "dashed-line" ||
+    kind === "curve"
+  ) {
     fill = stroke;
   }
   let text: TextSettings | null = null;
@@ -294,6 +334,33 @@ export function buildSelectedSnapshot(
     };
   }
   const isImage = obj instanceof fabric.FabricImage;
+  const tableStyle: TableSettings = {
+    headerFill: "#f1f3f9",
+    bodyFill: "#ffffff",
+    textColor: "#20242c",
+    borderColor: "#8b93a7",
+    borderWidth: 1,
+  };
+  if (kind === "table" && obj instanceof fabric.Group) {
+    for (const child of obj.getObjects()) {
+      const tagged = child as EditorObject;
+      if (tagged.oceanleoTablePart === "cell") {
+        const childFill =
+          typeof child.fill === "string" ? child.fill : tableStyle.bodyFill;
+        if (tagged.oceanleoTableRow === 0) tableStyle.headerFill = childFill;
+        else tableStyle.bodyFill = childFill;
+        if (typeof child.stroke === "string") {
+          tableStyle.borderColor = child.stroke;
+        }
+        tableStyle.borderWidth = child.strokeWidth ?? tableStyle.borderWidth;
+      } else if (
+        tagged.oceanleoTablePart === "text" &&
+        typeof child.fill === "string"
+      ) {
+        tableStyle.textColor = child.fill;
+      }
+    }
+  }
   return {
     id: target.oceanleoId ?? "",
     kind,
@@ -308,6 +375,14 @@ export function buildSelectedSnapshot(
     shadow: readShadow(obj),
     radius: isImage ? (target.oceanleoRadius ?? 0) : null,
     text,
+    table:
+      kind === "table"
+        ? {
+            rows: Math.max(1, target.oceanleoTableRows || 1),
+            columns: Math.max(1, target.oceanleoTableColumns || 1),
+            style: tableStyle,
+          }
+        : null,
   };
 }
 
@@ -315,7 +390,7 @@ export function buildSelectedSnapshot(
 // 对象工厂
 // ---------------------------------------------------------------------------
 
-const SHAPE_FILL = "#4f46e5";
+const SHAPE_FILL = "#6d5dfc";
 const INK = "#1c1917";
 
 export function createTextbox(
@@ -323,14 +398,22 @@ export function createTextbox(
   doc: DocSize,
   text: string,
   offsetIndex: number,
+  preset: TextPreset = "body",
 ): EditorObject {
   const nudge = (offsetIndex % 5) * 16;
+  const fontSize =
+    preset === "heading"
+      ? Math.round(Math.min(128, Math.max(34, doc.width * 0.075)))
+      : preset === "subheading"
+        ? Math.round(Math.min(86, Math.max(26, doc.width * 0.052)))
+        : Math.round(Math.min(56, Math.max(18, doc.width * 0.034)));
   const box = new fabric.Textbox(text, {
-    width: Math.max(120, doc.width * 0.42),
-    fontSize: Math.round(Math.min(96, Math.max(18, doc.width * 0.05))),
+    width: Math.max(160, doc.width * (preset === "body" ? 0.46 : 0.62)),
+    fontSize,
+    fontWeight: preset === "heading" ? "bold" : "normal",
     fill: INK,
     fontFamily: "sans-serif",
-    textAlign: "center",
+    textAlign: preset === "body" ? "left" : "center",
     originX: "center",
     originY: "center",
     left: doc.width / 2 + nudge,
@@ -343,6 +426,7 @@ export function createStickyNote(
   fabric: FabricNS,
   doc: DocSize,
   offsetIndex: number,
+  color = "#ffe36e",
 ): EditorObject {
   const width = Math.max(180, doc.width * 0.28);
   const height = Math.max(150, doc.height * 0.24);
@@ -351,7 +435,7 @@ export function createStickyNote(
     height,
     originX: "center",
     originY: "center",
-    fill: "#ffe36e",
+    fill: color,
     rx: Math.max(14, width * 0.06),
     ry: Math.max(14, width * 0.06),
     shadow: new fabric.Shadow({
@@ -369,7 +453,10 @@ export function createStickyNote(
     fontSize: Math.max(18, Math.round(width * 0.09)),
     fill: "#3f3420",
     textAlign: "center",
+    selectable: true,
+    evented: true,
   });
+  background.set({ selectable: false, evented: false });
   const nudge = (offsetIndex % 5) * 16;
   return tagObject(
     new fabric.Group([background, text], {
@@ -377,6 +464,8 @@ export function createStickyNote(
       top: doc.height / 2 + nudge,
       originX: "center",
       originY: "center",
+      interactive: true,
+      subTargetCheck: true,
     }),
     "note",
   );
@@ -386,10 +475,12 @@ export function createSignatureText(
   fabric: FabricNS,
   doc: DocSize,
   offsetIndex: number,
+  text = "签名",
+  color = "#18212f",
 ): EditorObject {
   const nudge = (offsetIndex % 5) * 16;
   return tagObject(
-    new fabric.IText("签名", {
+    new fabric.IText(text.slice(0, 120) || "签名", {
       left: doc.width / 2 + nudge,
       top: doc.height / 2 + nudge,
       originX: "center",
@@ -397,7 +488,7 @@ export function createSignatureText(
       fontFamily: "Segoe Script, Brush Script MT, cursive",
       fontStyle: "italic",
       fontSize: Math.round(Math.min(120, Math.max(42, doc.width * 0.08))),
-      fill: "#18212f",
+      fill: color,
     }),
     "signature",
   );
@@ -409,41 +500,87 @@ export function createTable(
   offsetIndex: number,
   rows = 3,
   columns = 3,
+  values: string[][] = [],
+  style: Partial<TableSettings> = {},
 ): EditorObject {
-  const safeRows = Math.min(8, Math.max(1, Math.round(rows)));
-  const safeColumns = Math.min(8, Math.max(1, Math.round(columns)));
-  const width = Math.max(240, doc.width * 0.5);
-  const height = Math.max(150, doc.height * 0.3);
+  const safeRows = Math.min(20, Math.max(1, Math.round(rows)));
+  const safeColumns = Math.min(20, Math.max(1, Math.round(columns)));
+  const tableStyle: TableSettings = {
+    headerFill: style.headerFill || "#f1f3f9",
+    bodyFill: style.bodyFill || "#ffffff",
+    textColor: style.textColor || "#20242c",
+    borderColor: style.borderColor || "#8b93a7",
+    borderWidth: Math.max(0, Math.min(20, style.borderWidth ?? 1)),
+  };
+  const width = Math.min(
+    doc.width * 0.82,
+    Math.max(240, safeColumns * 112),
+  );
+  const height = Math.min(
+    doc.height * 0.82,
+    Math.max(150, safeRows * 56),
+  );
   const cellWidth = width / safeColumns;
   const cellHeight = height / safeRows;
   const cells: FabricObject[] = [];
   for (let row = 0; row < safeRows; row += 1) {
     for (let column = 0; column < safeColumns; column += 1) {
-      cells.push(
-        new fabric.Rect({
-          left: column * cellWidth - width / 2,
-          top: row * cellHeight - height / 2,
-          width: cellWidth,
-          height: cellHeight,
-          originX: "left",
-          originY: "top",
-          fill: row === 0 ? "#eef2ff" : "#ffffff",
-          stroke: "#64748b",
-          strokeWidth: Math.max(1, Math.round(Math.min(doc.width, doc.height) * 0.002)),
-        }),
-      );
+      const left = column * cellWidth - width / 2;
+      const top = row * cellHeight - height / 2;
+      const background = new fabric.Rect({
+        left,
+        top,
+        width: cellWidth,
+        height: cellHeight,
+        originX: "left",
+        originY: "top",
+        fill: row === 0 ? tableStyle.headerFill : tableStyle.bodyFill,
+        stroke: tableStyle.borderColor,
+        strokeWidth: tableStyle.borderWidth,
+        selectable: false,
+        evented: false,
+      }) as EditorObject;
+      background.oceanleoTableRow = row;
+      background.oceanleoTableColumn = column;
+      background.oceanleoTablePart = "cell";
+      const cellText = new fabric.Textbox(
+        values[row]?.[column] || (row === 0 ? `标题 ${column + 1}` : ""),
+        {
+          left: left + cellWidth / 2,
+          top: top + cellHeight / 2,
+          width: Math.max(20, cellWidth - 20),
+          originX: "center",
+          originY: "center",
+          fontFamily: "Noto Sans SC, sans-serif",
+          fontSize: Math.max(12, Math.min(28, cellHeight * 0.28)),
+          fontWeight: row === 0 ? "bold" : "normal",
+          fill: tableStyle.textColor,
+          textAlign: "center",
+          selectable: true,
+          evented: true,
+        },
+      ) as EditorObject;
+      cellText.oceanleoTableRow = row;
+      cellText.oceanleoTableColumn = column;
+      cellText.oceanleoTablePart = "text";
+      cells.push(background, cellText);
     }
   }
   const nudge = (offsetIndex % 5) * 16;
-  return tagObject(
+  const table = tagObject(
     new fabric.Group(cells, {
       left: doc.width / 2 + nudge,
       top: doc.height / 2 + nudge,
       originX: "center",
       originY: "center",
+      interactive: true,
+      subTargetCheck: true,
     }),
     "table",
   );
+  table.oceanleoTableRows = safeRows;
+  table.oceanleoTableColumns = safeColumns;
+  return table;
 }
 
 export function createShape(
@@ -470,6 +607,15 @@ export function createShape(
       height: doc.height * 0.22,
       fill: SHAPE_FILL,
     });
+  } else if (kind === "rounded-rect") {
+    obj = new fabric.Rect({
+      ...common,
+      width: doc.width * 0.3,
+      height: doc.height * 0.22,
+      rx: minSide * 0.035,
+      ry: minSide * 0.035,
+      fill: SHAPE_FILL,
+    });
   } else if (kind === "circle") {
     obj = new fabric.Circle({ ...common, radius: minSide * 0.14, fill: SHAPE_FILL });
   } else if (kind === "ellipse") {
@@ -479,9 +625,65 @@ export function createShape(
       ry: doc.height * 0.1,
       fill: SHAPE_FILL,
     });
-  } else if (kind === "line") {
+  } else if (kind === "triangle") {
+    obj = new fabric.Triangle({
+      ...common,
+      width: minSide * 0.3,
+      height: minSide * 0.27,
+      fill: SHAPE_FILL,
+    });
+  } else if (kind === "diamond") {
+    const side = minSide * 0.18;
+    obj = new fabric.Polygon(
+      [
+        { x: 0, y: -side },
+        { x: side, y: 0 },
+        { x: 0, y: side },
+        { x: -side, y: 0 },
+      ],
+      { ...common, fill: SHAPE_FILL },
+    );
+  } else if (kind === "hexagon") {
+    const radius = minSide * 0.17;
+    obj = new fabric.Polygon(
+      Array.from({ length: 6 }, (_, index) => {
+        const angle = (Math.PI / 3) * index;
+        return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      }),
+      { ...common, fill: SHAPE_FILL },
+    );
+  } else if (kind === "star") {
+    const outer = minSide * 0.18;
+    const inner = outer * 0.45;
+    obj = new fabric.Polygon(
+      Array.from({ length: 10 }, (_, index) => {
+        const radius = index % 2 === 0 ? outer : inner;
+        const angle = -Math.PI / 2 + (Math.PI / 5) * index;
+        return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      }),
+      { ...common, fill: SHAPE_FILL },
+    );
+  } else if (kind === "heart") {
+    obj = new fabric.Path(
+      "M 50 90 C 20 70 0 50 0 27 C 0 8 15 0 29 0 C 40 0 47 7 50 14 C 53 7 60 0 71 0 C 85 0 100 8 100 27 C 100 50 80 70 50 90 Z",
+      { ...common, fill: SHAPE_FILL },
+    );
+    obj.scaleToWidth(minSide * 0.34);
+  } else if (kind === "line" || kind === "dashed-line") {
     obj = new fabric.Line([0, 0, Math.max(80, doc.width * 0.28), 0], {
       ...common,
+      stroke: INK,
+      strokeWidth: Math.max(3, Math.round(minSide * 0.008)),
+      strokeLineCap: "round",
+      strokeDashArray:
+        kind === "dashed-line"
+          ? [Math.max(10, minSide * 0.025), Math.max(7, minSide * 0.016)]
+          : undefined,
+    });
+  } else if (kind === "curve") {
+    obj = new fabric.Path("M 0 80 C 70 -20 170 130 250 20", {
+      ...common,
+      fill: "",
       stroke: INK,
       strokeWidth: Math.max(3, Math.round(minSide * 0.008)),
       strokeLineCap: "round",
@@ -490,14 +692,23 @@ export function createShape(
     const length = Math.max(90, doc.width * 0.24);
     const strokeWidth = Math.max(4, Math.round(minSide * 0.009));
     const head = strokeWidth * 4.5;
-    const line = new fabric.Line([0, 0, length, 0], {
-      stroke: INK,
-      strokeWidth,
-      strokeLineCap: "round",
-    });
+    const line =
+      kind === "elbow-arrow"
+        ? new fabric.Path(`M 0 0 V ${length * 0.45} H ${length}`, {
+            fill: "",
+            stroke: INK,
+            strokeWidth,
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
+          })
+        : new fabric.Line([0, 0, length, 0], {
+            stroke: INK,
+            strokeWidth,
+            strokeLineCap: "round",
+          });
     const tip = new fabric.Triangle({
       left: length + head * 0.4,
-      top: 0,
+      top: kind === "elbow-arrow" ? length * 0.45 : 0,
       originX: "center",
       originY: "center",
       angle: 90,
@@ -505,8 +716,22 @@ export function createShape(
       height: head,
       fill: INK,
     });
-    obj = new fabric.Group([line, tip], common);
-    tagObject(obj, "arrow");
+    const parts: FabricObject[] = [line, tip];
+    if (kind === "double-arrow") {
+      parts.push(
+        new fabric.Triangle({
+          left: -head * 0.4,
+          top: 0,
+          originX: "center",
+          originY: "center",
+          angle: -90,
+          width: head,
+          height: head,
+          fill: INK,
+        }),
+      );
+    }
+    obj = new fabric.Group(parts, common);
   }
   const tagged = tagObject(obj, kind);
   centerOrigin(tagged);
@@ -515,7 +740,9 @@ export function createShape(
 
 export function recolorArrow(fabric: FabricNS, group: Group, color: string): void {
   group.getObjects().forEach((child) => {
-    if (child instanceof fabric.Line) child.set({ stroke: color });
+    if (child instanceof fabric.Line || child instanceof fabric.Path) {
+      child.set({ stroke: color });
+    }
     else child.set({ fill: color });
   });
   group.set("dirty", true);
@@ -527,7 +754,9 @@ export function setArrowStrokeWidth(
   width: number,
 ): void {
   group.getObjects().forEach((child) => {
-    if (child instanceof fabric.Line) child.set({ strokeWidth: width });
+    if (child instanceof fabric.Line || child instanceof fabric.Path) {
+      child.set({ strokeWidth: width });
+    }
   });
   group.set("dirty", true);
 }

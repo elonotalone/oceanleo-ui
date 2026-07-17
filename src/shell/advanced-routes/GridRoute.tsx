@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { GridContextToolbar } from "../doc-editors/GridContextToolbar";
@@ -96,7 +96,7 @@ export function GridRoute({
           <button
             type="button"
             onClick={editor.exportCsv}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             CSV
           </button>
@@ -104,19 +104,9 @@ export function GridRoute({
             type="button"
             disabled={editor.exporting}
             onClick={() => void editor.exportXlsx()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             XLSX
-          </button>
-          <button
-            type="button"
-            disabled={editor.saving}
-            onClick={() => void editor.save()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
           </button>
         </>
       }

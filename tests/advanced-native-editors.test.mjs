@@ -9,7 +9,11 @@ function source(path) {
 test("Fabric image editor exposes object, layer, filter, crop and durable-save tools", () => {
   const types = source("../src/shell/image-editor/types.ts");
   const controls = source("../src/shell/image-editor/FabricImageControls.tsx");
+  const creationPanels = source(
+    "../src/shell/image-editor/FabricImageCreationPanels.tsx",
+  );
   const toolbar = source("../src/shell/image-editor/FabricImageContextToolbar.tsx");
+  const commands = source("../src/shell/image-editor/fabric-image-commands.ts");
   const stage = source("../src/shell/image-editor/FabricImageStage.tsx");
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
   const controller = source("../src/shell/image-editor/fabric-controller.ts");
@@ -28,15 +32,22 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   assert.match(controls, /图层/);
   assert.match(controls, /FabricImageFilterPanel/);
   assert.match(controls, /FabricImageFontPanel/);
-  assert.match(toolbar, /startCrop/);
-  assert.match(toolbar, /setFilter/);
-  assert.match(toolbar, /duplicateSelected/);
+  assert.match(commands, /startCrop/);
+  assert.match(commands, /setFilter/);
+  assert.match(commands, /duplicateSelected/);
   assert.match(toolbar, /panelId: "image-filters"/);
   assert.match(toolbar, /panelAction: "replace"/);
   assert.match(toolbar, /selected\.kind === "image"/);
-  assert.match(controls, /AI 局部创作/);
+  assert.match(creationPanels, /FabricImageShapePanel/);
+  assert.match(creationPanels, /FabricImageTablePanel/);
+  assert.match(creationPanels, /addSignatureFromSvg/);
+  assert.match(creationPanels, /kind: "curve"/);
+  assert.match(toolbar, /table-header-fill/);
+  assert.match(commands, /setSelectedTableStyle/);
   assert.match(stage, /图片编辑画布/);
-  assert.match(hook, /persistImageBlob/);
+  assert.match(hook, /persistImageProject/);
+  assert.match(hook, /saveLocalImageDraft/);
+  assert.match(hook, /loadImageProject/);
   assert.match(hook, /replaceSelectedImageFromUrl/);
   assert.match(controller, /replaceActiveImage/);
   assert.match(

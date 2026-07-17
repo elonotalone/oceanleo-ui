@@ -38,7 +38,7 @@ export function AdvancedAgentPanel({
   item,
   taskId,
   siteId = "",
-  accent = "#4f46e5",
+  accent = "#6d5dfc",
 }: AdvancedAgentPanelProps) {
   const tt = useUI();
   const [activeTaskId, setActiveTaskId] = useState(taskId || "");
@@ -230,7 +230,7 @@ export function AdvancedAgentPanel({
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {rendered.length === 0 && (
           blankWebsite ? (
-            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/7 p-4 text-[12px] leading-relaxed text-[var(--fg-2,#475569)]">
+            <div className="rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--surface,#fafaf9)] p-4 text-[12px] leading-relaxed text-[var(--fg-2,#475569)]">
               <p className="font-semibold text-[var(--fg,#1e293b)]">
                 {tt("先打开一个真正可编辑的网站")}
               </p>
@@ -241,14 +241,19 @@ export function AdvancedAgentPanel({
                 <button
                   type="button"
                   onClick={() => layout?.openDrawer("library")}
-                  className="rounded-xl bg-sky-600 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-sky-700"
+                  className="rounded-xl px-3 py-2 text-[11px] font-semibold text-white transition hover:brightness-95"
+                  style={{ background: accent }}
                 >
                   {tt("打开我的网站")}
                 </button>
                 <button
                   type="button"
                   onClick={() => layout?.openDrawer("materials")}
-                  className="rounded-xl border border-sky-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50"
+                  className="rounded-xl border bg-[var(--card,#fff)] px-3 py-2 text-[11px] font-semibold transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+                  style={{
+                    borderColor: `color-mix(in srgb, ${accent} 26%, transparent)`,
+                    color: accent,
+                  }}
                 >
                   {tt("选择网站模板")}
                 </button>
@@ -265,10 +270,9 @@ export function AdvancedAgentPanel({
             key={message.id}
             className={`rounded-xl px-3 py-2.5 text-[12px] leading-relaxed ${
               message.role === "user"
-                ? "ml-5 text-white"
+                ? "ml-5 border border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] text-[var(--fg,#292524)]"
                 : "mr-2 border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#44403c)]"
             }`}
-            style={message.role === "user" ? { background: accent } : undefined}
           >
             {message.role === "assistant" ? (
               <Markdown>{message.content}</Markdown>

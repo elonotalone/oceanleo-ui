@@ -1,21 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedFontPicker } from "../AdvancedFontPicker";
 import {
   CANVAS_PRESETS,
   type FabricImageEditorState,
-  type ShapeKind,
 } from "./types";
 
 export type FabricImageControlSection =
-  | "tools"
-  | "objects"
   | "layers"
-  | "canvas"
-  | "ai"
-  | "export";
+  | "canvas";
 
 function Section({
   title,
@@ -101,93 +96,19 @@ function ToolButton({
 
 export function FabricImageControls({
   editor,
-  accent = "#4f46e5",
-  sections = ["tools", "objects", "layers", "canvas", "ai", "export"],
+  sections = ["layers", "canvas"],
 }: {
   editor: FabricImageEditorState;
-  accent?: string;
   sections?: FabricImageControlSection[];
 }) {
   const tt = useUI();
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const [imageUrl, setImageUrl] = useState("");
   const [customWidth, setCustomWidth] = useState(editor.doc.width);
   const [customHeight, setCustomHeight] = useState(editor.doc.height);
   const has = (section: FabricImageControlSection) =>
     sections.includes(section);
 
-  const addUrl = async () => {
-    if (!imageUrl.trim()) return;
-    await editor.addImageFromUrl(imageUrl);
-    setImageUrl("");
-  };
-
   return (
     <div className="h-full overflow-y-auto bg-[var(--card,#fff)]">
-      {has("tools") && <Section title={tt("工具")}>
-        <div className="grid grid-cols-3 gap-1.5">
-          <ToolButton active={editor.activeTool === "select"} onClick={() => editor.setActiveTool("select")}>
-            {tt("选择")}
-          </ToolButton>
-          <ToolButton active={editor.activeTool === "draw"} onClick={() => editor.setActiveTool("draw")}>
-            {tt("画笔")}
-          </ToolButton>
-          <ToolButton active={editor.activeTool === "erase"} onClick={() => editor.setActiveTool("erase")}>
-            {tt("橡皮")}
-          </ToolButton>
-        </div>
-        {(editor.activeTool === "draw" || editor.activeTool === "erase") && (
-          <>
-            <label className="flex items-center justify-between text-[10px] text-[var(--muted,#78716c)]">
-              {tt("笔刷颜色")}
-              <input
-                type="color"
-                value={editor.brush.color}
-                disabled={editor.activeTool === "erase"}
-                onChange={(event) => editor.setBrush({ color: event.target.value })}
-                className="h-7 w-12 rounded border-0 bg-transparent"
-              />
-            </label>
-            <Range label={tt("笔刷大小")} value={editor.brush.width} min={1} max={120} onChange={(width) => editor.setBrush({ width })} suffix="px" />
-          </>
-        )}
-      </Section>}
-
-      {has("objects") && <Section title={tt("添加对象")}>
-        <div className="grid grid-cols-3 gap-1.5">
-          <ToolButton onClick={editor.addText}>{tt("文字")}</ToolButton>
-          {(["rect", "circle", "ellipse", "line", "arrow"] as ShapeKind[]).map((shape) => (
-            <ToolButton key={shape} onClick={() => editor.addShape(shape)}>
-              {tt({ rect: "矩形", circle: "圆形", ellipse: "椭圆", line: "线条", arrow: "箭头" }[shape])}
-            </ToolButton>
-          ))}
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void editor.addImageFromFile(file);
-            event.currentTarget.value = "";
-          }}
-        />
-        <ToolButton onClick={() => fileRef.current?.click()}>{tt("添加本地图片图层")}</ToolButton>
-        <div className="flex gap-1">
-          <input
-            value={imageUrl}
-            onChange={(event) => setImageUrl(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void addUrl();
-            }}
-            placeholder={tt("粘贴图片 URL")}
-            className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[10px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
-          />
-          <ToolButton disabled={!imageUrl.trim()} onClick={() => void addUrl()}>{tt("添加")}</ToolButton>
-        </div>
-      </Section>}
-
       {has("layers") && <Section title={tt("图层")}>
         <div className="max-h-56 space-y-1 overflow-y-auto">
           {[...editor.layers].reverse().map((layer) => (
@@ -243,38 +164,6 @@ export function FabricImageControls({
         </label>
       </Section>}
 
-      {has("ai") && <Section title={tt("AI 局部创作")} open>
-        <textarea
-          value={editor.aiPrompt}
-          onChange={(event) => editor.setAiPrompt(event.target.value)}
-          rows={4}
-          placeholder={tt("描述希望 AI 如何修改当前画面")}
-          className="w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5 text-[10px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
-        />
-        <button
-          type="button"
-          disabled={!editor.aiPrompt.trim() || editor.aiBusy}
-          onClick={() => void editor.runAiEdit()}
-          className="w-full rounded-lg px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-40"
-          style={{ background: accent }}
-        >
-          {editor.aiBusy ? tt("AI 处理中…") : tt("应用 AI 修改")}
-        </button>
-      </Section>}
-
-      {has("export") && <Section title={tt("导出设置")}>
-        <div className="grid grid-cols-3 gap-1">
-          {(["png", "jpeg", "webp"] as const).map((format) => (
-            <ToolButton key={format} active={editor.exportFormat === format} onClick={() => editor.setExportFormat(format)}>
-              {format.toUpperCase()}
-            </ToolButton>
-          ))}
-        </div>
-        {editor.exportFormat !== "png" && (
-          <Range label={tt("输出质量")} value={editor.exportQuality} min={10} max={100} onChange={editor.setExportQuality} suffix="%" />
-        )}
-        <Range label={tt("输出倍率")} value={editor.exportScale} min={0.5} max={4} step={0.25} onChange={editor.setExportScale} suffix="×" />
-      </Section>}
     </div>
   );
 }

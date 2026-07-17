@@ -367,18 +367,16 @@ export function SelectionToolbar({
   onCommand,
   onOpenPanel,
   className = "",
-  accent = "#4f46e5",
+  accent = "#6d5dfc",
   leading,
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
   const layout = useAdvancedLayout();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const identity = context ? `${context.kind}:${context.id}` : "";
   useEffect(() => {
     setMoreOpen(false);
-    setToolsOpen(false);
   }, [identity]);
   const [tools, primary, more] = useMemo(() => {
     const controls = context?.controls || [];
@@ -407,8 +405,8 @@ export function SelectionToolbar({
       data-selection-id={context?.id || ""}
       className={`pointer-events-auto flex min-w-0 items-center gap-1 ${
         variant === "floating"
-          ? "max-w-[min(92vw,76rem)] rounded-2xl border border-black/10 bg-white/96 p-1.5 text-slate-900 shadow-[0_10px_36px_rgba(15,23,42,.16)] backdrop-blur-xl"
-          : "max-w-[min(92vw,76rem)] rounded-2xl border border-black/10 bg-white/96 p-1.5 text-slate-900 shadow-[0_10px_36px_rgba(15,23,42,.16)] backdrop-blur-xl"
+          ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
+          : "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
       } ${className}`}
       role="toolbar"
       aria-label={context?.label || "编辑器工具栏"}
@@ -420,73 +418,82 @@ export function SelectionToolbar({
         </>
       )}
       {context && (
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => tools.length && setToolsOpen((value) => !value)}
-            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-xl px-2 transition brightness-100 hover:brightness-95"
-            aria-label={context.label || "当前工具"}
-            title={context.label || "当前工具"}
-            aria-expanded={tools.length ? toolsOpen : undefined}
-            style={{
-              color: accent,
-              background: `color-mix(in srgb, ${accent} 13%, white)`,
-            }}
-          >
-            <AdvancedEditorIcon
-              name={iconForSelection(context.kind)}
-              className="h-[18px] w-[18px]"
-            />
-            {tools.length > 0 && <span className="text-[9px] opacity-60">⌄</span>}
-          </button>
-          {toolsOpen && tools.length > 0 && (
-            <div className="absolute left-0 top-full z-[85] mt-2 grid w-56 grid-cols-2 gap-1 rounded-2xl border border-black/10 bg-white p-2 text-slate-900 shadow-[0_18px_50px_rgba(15,23,42,.22)]">
-              {tools.map((control) => {
-                const active = control.value === true;
-                return (
-                  <button
-                    key={`${identity}:${control.id}`}
-                    type="button"
-                    disabled={control.disabled}
-                    onClick={() => {
-                      onCommand({
-                        requestId: selectionRequestId(),
-                        selectionId: context.id,
-                        controlId: control.id,
-                        ...(control.kind === "toggle"
-                          ? { value: !active }
-                          : {}),
-                      });
-                      setToolsOpen(false);
-                    }}
-                    className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[11px] font-medium transition disabled:opacity-35 ${
-                      active
-                        ? ""
-                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
-                    }`}
-                    style={
-                      active
-                        ? {
-                            color: accent,
-                            background: `color-mix(in srgb, ${accent} 13%, white)`,
-                          }
-                        : undefined
-                    }
-                    title={control.label}
-                  >
-                    <AdvancedEditorIcon
-                      name={control.icon || iconForSelection(control.id)}
-                      className="h-6 w-6"
-                    />
-                    <span>{control.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        <div
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
+          aria-label={context.label || "当前对象"}
+          title={context.label || "当前对象"}
+          style={{
+            color: accent,
+            background: `color-mix(in srgb, ${accent} 9%, var(--card,#fff))`,
+          }}
+        >
+          <AdvancedEditorIcon
+            name={iconForSelection(context.kind)}
+            className="h-[18px] w-[18px]"
+          />
         </div>
       )}
-      {context && <span className="mx-1 h-6 w-px shrink-0 bg-slate-200" />}
+      {tools.length > 0 && context && (
+        <>
+          <div className="flex max-w-[min(52vw,38rem)] shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {tools.map((control) => {
+              const active = control.value === true;
+              const panelId = control.panelId || control.id;
+              const panelActive =
+                control.kind === "panel" &&
+                layout?.hostPanelVisible &&
+                layout.activeDrawerId === panelId;
+              const highlighted = active || panelActive;
+              return (
+                <button
+                  key={`${identity}:${control.id}`}
+                  type="button"
+                  disabled={control.disabled}
+                  onClick={() => {
+                    if (control.kind === "panel") {
+                      (onOpenPanel || layout?.openDrawer)?.(
+                        panelId,
+                        control.panelAction,
+                      );
+                      return;
+                    }
+                    onCommand({
+                      requestId: selectionRequestId(),
+                      selectionId: context.id,
+                      controlId: control.id,
+                      ...(control.kind === "toggle"
+                        ? { value: !active }
+                        : {}),
+                    });
+                  }}
+                  className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)] disabled:opacity-35"
+                  style={
+                    highlighted
+                      ? {
+                          color: accent,
+                          background: `color-mix(in srgb, ${accent} 9%, var(--card,#fff))`,
+                        }
+                      : undefined
+                  }
+                  title={control.label}
+                  aria-label={control.label}
+                  aria-pressed={control.kind === "toggle" ? active : undefined}
+                >
+                  <AdvancedEditorIcon
+                    name={control.icon || iconForSelection(control.id)}
+                    className="h-[17px] w-[17px]"
+                  />
+                  <span className="whitespace-nowrap">{control.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+        </>
+      )}
+      {context && tools.length === 0 && (
+        <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+      )}
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {primary.map((control) => {
           const divider =

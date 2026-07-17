@@ -52,85 +52,49 @@ export function AdvancedWorkbenchHeader({
       : autoSaveState === "error"
         ? tt("自动保存失败，点击重试")
         : tt("已自动保存");
+  const autoSaveTone =
+    autoSaveState === "error"
+      ? "border-amber-300/70 bg-amber-50 text-amber-800"
+      : "border-transparent bg-transparent text-[var(--muted,#78716c)]";
 
   return (
-    <header
-      className="relative flex h-[60px] shrink-0 items-center gap-1.5 px-2.5 text-white shadow-sm md:gap-2 md:px-3"
-      style={{
-        background: `linear-gradient(100deg, color-mix(in srgb, ${accent} 82%, #06b6d4), color-mix(in srgb, ${accent} 78%, #7c3aed))`,
-      }}
-    >
+    <header className="relative flex h-14 shrink-0 items-center gap-1.5 border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[var(--fg,#292524)] md:gap-2 md:px-3">
       <button
         type="button"
         onClick={onClose}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 hover:text-white"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)]"
         aria-label={tt("返回高级功能")}
         title={tt("返回高级功能")}
       >
         <span className="text-lg" aria-hidden="true">←</span>
       </button>
       <div className="hidden min-w-0 max-w-44 px-1 md:block">
-        <p className="truncate text-[13px] font-semibold">{tt(editorLabel)}</p>
+        <p className="truncate text-[12px] font-semibold text-[var(--fg-2,#57534e)]">
+          {tt(editorLabel)}
+        </p>
       </div>
-      <span className="hidden h-6 w-px bg-white/20 md:block" />
+      <span className="hidden h-6 w-px bg-[var(--divider,#e7e5e4)] md:block" />
       <button
         type="button"
         onClick={onStartNew}
         disabled={startingNew}
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-white/12 px-2.5 text-[11px] font-semibold text-white transition hover:bg-white/20 disabled:opacity-45"
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-45"
+        style={{
+          borderColor: `color-mix(in srgb, ${accent} 24%, transparent)`,
+          background: `color-mix(in srgb, ${accent} 8%, var(--card,#fff))`,
+          color: accent,
+        }}
       >
         <AdvancedEditorIcon name="add" className="h-4 w-4" />
         <span className="hidden sm:inline">
-          {startingNew ? tt("保存中…") : tt("新建任务")}
+          {startingNew ? tt("正在创建…") : tt("新建任务")}
         </span>
       </button>
-      <div className="group relative shrink-0">
-        <button
-          type="button"
-          onClick={onAutoSave}
-          className={`grid h-10 w-12 place-items-center rounded-2xl transition ${
-            autoSaveState === "error"
-              ? "bg-rose-500/25 text-rose-100 hover:bg-rose-500/35"
-              : "bg-white/10 text-white hover:bg-white/18"
-          }`}
-          aria-label={autoSaveLabel}
-          title={autoSaveLabel}
-        >
-          <svg
-            viewBox="0 0 32 24"
-            className={`h-6 w-8 ${
-              autoSaveState === "saving" ? "animate-pulse" : ""
-            }`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9.2 20H25a5 5 0 0 0 .8-9.93A8 8 0 0 0 10.4 7.4 6.1 6.1 0 0 0 9.2 20Z" />
-            {autoSaveState === "saved" ? (
-              <path d="m12.2 13.2 3 3 6.3-6.4" />
-            ) : autoSaveState === "error" ? (
-              <>
-                <path d="M16 10v5" />
-                <path d="M16 18h.01" />
-              </>
-            ) : (
-              <path d="M13 15a4.5 4.5 0 0 1 6.8-5.2M20 8v3h-3" />
-            )}
-          </svg>
-        </button>
-        <span className="pointer-events-none absolute left-1/2 top-[calc(100%+9px)] z-[2147483800] hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#202124] px-3 py-2 text-[11px] font-semibold text-white shadow-xl group-hover:block group-focus-within:block">
-          {autoSaveLabel}
-          <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[#202124]" />
-        </span>
-      </div>
       <button
         type="button"
         onClick={history?.undo}
         disabled={!history?.canUndo}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 disabled:opacity-30"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)] disabled:opacity-30"
         aria-label={tt("撤销")}
         title={tt("撤销")}
       >
@@ -140,7 +104,7 @@ export function AdvancedWorkbenchHeader({
         type="button"
         onClick={history?.redo}
         disabled={!history?.canRedo}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/90 transition hover:bg-white/15 disabled:opacity-30"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)] disabled:opacity-30"
         aria-label={tt("重做")}
         title={tt("重做")}
       >
@@ -160,7 +124,7 @@ export function AdvancedWorkbenchHeader({
             }
           }}
           maxLength={160}
-          className="pointer-events-auto h-9 w-full rounded-xl border border-transparent bg-white/10 px-3 text-center text-[12px] font-semibold text-white outline-none transition placeholder:text-white/50 hover:bg-white/15 focus:border-white/25 focus:bg-white/18"
+          className="pointer-events-auto h-9 w-full rounded-xl border border-transparent bg-transparent px-3 text-center text-[12px] font-semibold text-[var(--fg,#292524)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] focus:border-[var(--border-strong,#d6d3d1)] focus:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
           aria-label={tt("项目名称")}
           title={tt("点击编辑项目名称")}
         />
@@ -168,9 +132,46 @@ export function AdvancedWorkbenchHeader({
 
       <div className="min-w-0 flex-1" />
       {status && (
-        <span className="hidden max-w-56 truncate rounded-full bg-black/10 px-3 py-1.5 text-[10px] text-white/80 xl:block">
+        <span className="hidden max-w-56 truncate rounded-full bg-[var(--surface,#fafaf9)] px-3 py-1.5 text-[10px] text-[var(--muted,#78716c)] xl:block">
           {status}
         </span>
+      )}
+      {autoSaveState === "error" ? (
+        <button
+          type="button"
+          onClick={onAutoSave}
+          className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-medium transition hover:bg-amber-100 ${autoSaveTone}`}
+          aria-label={autoSaveLabel}
+          title={autoSaveLabel}
+        >
+          <span className="grid h-4 w-4 place-items-center rounded-full border border-current text-[9px] font-bold" aria-hidden="true">
+            !
+          </span>
+          <span className="hidden lg:inline">{tt("保存遇到问题 · 重试")}</span>
+        </button>
+      ) : (
+        <div
+          className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2 text-[10px] ${autoSaveTone}`}
+          aria-live="polite"
+          title={autoSaveLabel}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 ${autoSaveState === "saving" ? "animate-pulse" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6.7 18h11.1a3.7 3.7 0 0 0 .6-7.35A6 6 0 0 0 6.85 8.8 4.55 4.55 0 0 0 6.7 18Z" />
+            {autoSaveState === "saved" && <path d="m9.2 12.4 2 2 4.1-4.2" />}
+          </svg>
+          <span className="hidden xl:inline">
+            {autoSaveState === "saving" ? tt("正在保存") : tt("已保存")}
+          </span>
+        </div>
       )}
       {actions && (
         <div className="hidden shrink-0 items-center gap-1 md:flex">
@@ -183,14 +184,14 @@ export function AdvancedWorkbenchHeader({
           onClick={onToggleMobileActions}
           aria-expanded={mobileActionsOpen}
           aria-label={tt("文件操作")}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10 text-lg text-white transition hover:bg-white/20 md:hidden"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] md:hidden"
         >
           •••
         </button>
       )}
       {actions && mobileActionsOpen && (
         <div
-          className="absolute right-3 top-[calc(100%+8px)] z-[2147483700] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-1 rounded-2xl border border-white/15 bg-[#18181b]/95 p-2 shadow-2xl backdrop-blur md:hidden"
+          className="absolute right-3 top-[calc(100%+8px)] z-[2147483700] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-1 rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 p-2 shadow-2xl backdrop-blur md:hidden"
           onClick={onToggleMobileActions}
         >
           {actions}

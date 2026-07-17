@@ -3,7 +3,9 @@
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
+import { useAdvancedLayout } from "../advanced-layout-context";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
 import {
@@ -11,6 +13,16 @@ import {
   FabricImageFilterPanel,
   FabricImageFontPanel,
 } from "../image-editor/FabricImageControls";
+import {
+  FabricImageBrushPanel,
+  FabricImageExportPanel,
+  FabricImageLinePanel,
+  FabricImageNotePanel,
+  FabricImageShapePanel,
+  FabricImageSignaturePanel,
+  FabricImageTablePanel,
+  FabricImageTextPanel,
+} from "../image-editor/FabricImageCreationPanels";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
 import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -18,6 +30,27 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+
+function ImageExportAction({
+  loading,
+}: {
+  loading: boolean;
+}) {
+  const layout = useAdvancedLayout();
+  return (
+    <button
+      type="button"
+      onClick={() => layout?.openDrawer("image-export")}
+      disabled={loading}
+      className={ADVANCED_HEADER_ACTION_CLASS}
+      title="选择格式并导出图片"
+      aria-label="导出图片"
+    >
+      <AdvancedEditorIcon name="download" className="h-4 w-4" />
+      导出图片
+    </button>
+  );
+}
 
 export function ImageRoute({
   item,
@@ -82,15 +115,34 @@ export function ImageRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const savedItem = useMemo(
     () =>
-      editor.savedUrl
-        ? advancedSavedItem(item, { url: editor.savedUrl })
+      editor.savedUrl && editor.savedProjectUrl
+        ? advancedSavedItem(item, {
+            url: editor.savedUrl,
+            meta: {
+              editor: "fabric-v3",
+              fabric_document_url: editor.savedProjectUrl,
+              fabric_preview_url: editor.savedUrl,
+              fabric_saved_at: editor.savedAt,
+            },
+          })
         : null,
-    [editor.savedUrl, item],
+    [editor.savedAt, editor.savedProjectUrl, editor.savedUrl, item],
   );
   const saveBeforeNewConversation = useCallback(async () => {
-    const url = await editor.save();
-    return url
-      ? { ok: true as const, item: advancedSavedItem(item, { url }) }
+    const saved = await editor.save();
+    return saved
+      ? {
+          ok: true as const,
+          item: advancedSavedItem(item, {
+            url: saved.url,
+            meta: {
+              editor: "fabric-v3",
+              fabric_document_url: saved.projectUrl,
+              fabric_preview_url: saved.url,
+              fabric_saved_at: saved.savedAt,
+            },
+          }),
+        }
       : { ok: false as const };
   }, [editor.save, item]);
   return (
@@ -104,16 +156,53 @@ export function ImageRoute({
       editorLabel={editorToolLabel({ type: "image" })}
       editorDrawers={[
         {
-          id: "image-create",
-          label: "元素",
-          icon: "elements",
-          content: (
-            <FabricImageControls
-              editor={editor}
-              accent={accent}
-              sections={["tools", "objects"]}
-            />
-          ),
+          id: "image-brush",
+          label: "画笔",
+          icon: "draw",
+          hiddenFromRail: true,
+          content: <FabricImageBrushPanel editor={editor} />,
+        },
+        {
+          id: "image-shapes",
+          label: "形状",
+          icon: "shape",
+          hiddenFromRail: true,
+          content: <FabricImageShapePanel editor={editor} />,
+        },
+        {
+          id: "image-lines",
+          label: "线条",
+          icon: "line",
+          hiddenFromRail: true,
+          content: <FabricImageLinePanel editor={editor} />,
+        },
+        {
+          id: "image-notes",
+          label: "便签",
+          icon: "note",
+          hiddenFromRail: true,
+          content: <FabricImageNotePanel editor={editor} />,
+        },
+        {
+          id: "image-text",
+          label: "文字",
+          icon: "text",
+          hiddenFromRail: true,
+          content: <FabricImageTextPanel editor={editor} />,
+        },
+        {
+          id: "image-signature",
+          label: "签名",
+          icon: "signature",
+          hiddenFromRail: true,
+          content: <FabricImageSignaturePanel editor={editor} />,
+        },
+        {
+          id: "image-tables",
+          label: "表格",
+          icon: "table",
+          hiddenFromRail: true,
+          content: <FabricImageTablePanel editor={editor} />,
         },
         {
           id: "image-layers",
@@ -125,18 +214,10 @@ export function ImageRoute({
         },
         {
           id: "image-canvas",
-          label: "画布",
+          label: "尺寸与背景",
           icon: "templates",
           content: (
             <FabricImageControls editor={editor} sections={["canvas"]} />
-          ),
-        },
-        {
-          id: "image-export",
-          label: "导出",
-          icon: "download",
-          content: (
-            <FabricImageControls editor={editor} sections={["export"]} />
           ),
         },
         {
@@ -152,6 +233,13 @@ export function ImageRoute({
           icon: "font",
           hiddenFromRail: true,
           content: <FabricImageFontPanel editor={editor} />,
+        },
+        {
+          id: "image-export",
+          label: "导出图片",
+          icon: "download",
+          hiddenFromRail: true,
+          content: <FabricImageExportPanel editor={editor} />,
         },
       ]}
       editorContextualToolbar={
@@ -172,28 +260,7 @@ export function ImageRoute({
         fit: editor.zoomFit,
       }}
       editorHeaderActions={
-        <>
-          <button
-            type="button"
-            onClick={editor.download}
-            disabled={editor.loading}
-            className="grid h-9 w-9 place-items-center rounded-lg text-white/80 transition hover:bg-white/15 hover:text-white disabled:opacity-40"
-            title="下载"
-            aria-label="下载"
-          >
-            <AdvancedEditorIcon name="download" className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void editor.save()}
-            disabled={editor.loading || editor.saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm transition hover:bg-white/90 disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
-          </button>
-        </>
+        <ImageExportAction loading={editor.loading} />
       }
       editorStage={<FabricImageStage editor={editor} accent={accent} />}
       editorStatus={
@@ -204,7 +271,7 @@ export function ImageRoute({
       editorDirty={editor.dirty}
       onBeforeNewConversation={saveBeforeNewConversation}
       savedItem={savedItem}
-      versionRevision={editor.savedUrl}
+      versionRevision={`${editor.savedUrl}|${editor.savedProjectUrl}`}
       onClose={onClose}
     />
   );

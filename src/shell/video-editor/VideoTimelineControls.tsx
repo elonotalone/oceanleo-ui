@@ -62,13 +62,6 @@ export function VideoTimelineControls({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [urlDraft, setUrlDraft] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
-  const exportBusy = state.exporting;
-
-  const exportLabel = exportBusy
-    ? state.exportStatus === "running"
-      ? tt("渲染中…")
-      : tt("排队中…")
-    : tt("导出成片");
 
   return (
     <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
@@ -225,36 +218,12 @@ export function VideoTimelineControls({
               ? tt("重设封面帧（已设置）")
               : tt("当前帧设为封面")}
         </button>
-        <button
-          type="button"
-          disabled={state.savingDraft}
-          onClick={() => void state.saveDraft()}
-          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] py-2.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-50"
-        >
-          {state.savingDraft ? tt("保存中…") : tt("保存草稿")}
-        </button>
-        <button
-          type="button"
-          disabled={exportBusy}
-          onClick={() => void state.exportVideo()}
-          className="w-full rounded-lg py-2 text-[11px] font-semibold text-white disabled:opacity-60"
-          style={{ background: accent }}
-        >
-          {exportLabel}
-        </button>
-        {exportBusy && (
-          <>
-            <p className="text-center text-[10px] text-[var(--muted,#78716c)]">
-              {tt("服务端渲染中，每 2 秒查询一次状态")}
-            </p>
-            <button
-              type="button"
-              onClick={state.cancelExport}
-              className="w-full rounded-lg border border-red-200 py-2 text-[11px] text-red-600 hover:bg-red-50"
-            >
-              {tt("取消导出")}
-            </button>
-          </>
+        {state.exporting && (
+          <p className="text-center text-[10px] text-[var(--muted,#78716c)]">
+            {state.exportStatus === "running"
+              ? tt("服务端渲染中…")
+              : tt("等待渲染…")}
+          </p>
         )}
         {state.exportedUrl && (
           <p className="break-all text-[10px] text-emerald-600">

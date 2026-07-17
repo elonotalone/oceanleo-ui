@@ -19,10 +19,8 @@ function csvFromTable(table: ChartWorkbenchState["table"]): string {
 
 export function ChartControls({
   editor,
-  accent = "#4f46e5",
 }: {
   editor: ChartWorkbenchState;
-  accent?: string;
 }) {
   const tt = useUI();
   const [csv, setCsv] = useState(() => csvFromTable(editor.table));
@@ -70,15 +68,6 @@ export function ChartControls({
           {tt("点击图表后，标题、坐标轴、系列类型和颜色会出现在图表上方。")}
         </p>
       </section>
-      <button
-        type="button"
-        disabled={editor.loading || editor.saving}
-        onClick={() => void editor.save()}
-        className="w-full rounded-lg px-3 py-2.5 font-semibold text-white disabled:opacity-50"
-        style={{ background: accent }}
-      >
-        {editor.saving ? tt("保存中…") : tt("保存到我的库")}
-      </button>
       {(editor.error || editor.notice) && (
         <p
           role={editor.error ? "alert" : "status"}

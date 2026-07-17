@@ -102,7 +102,7 @@ export function AdvancedWorkbenchShell({
   item,
   taskId,
   siteId = "",
-  accent = "#4f46e5",
+  accent = "#6d5dfc",
   editorLabel,
   editorToolbox,
   editorDrawerLabel,
@@ -154,14 +154,13 @@ export function AdvancedWorkbenchShell({
     editorToolbox,
   ]);
   const [activeTool, setActiveTool] = useState<string>("agent");
-  const [panelWidth, setPanelWidth] = useState(340);
+  const [panelWidth, setPanelWidth] = useState(380);
   const [panelVisible, setPanelVisible] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768,
   );
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [startingNew, setStartingNew] = useState(false);
-  const [fallbackZoom, setFallbackZoom] = useState(100);
   const [dropMessage, setDropMessage] = useState("");
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
@@ -370,8 +369,8 @@ export function AdvancedWorkbenchShell({
       frame = 0;
       setPanelWidth(
         Math.min(
-          Math.min(620, Math.max(270, window.innerWidth * 0.48)),
-          Math.max(270, startWidth + nextX - startX),
+          Math.min(620, Math.max(320, window.innerWidth * 0.48)),
+          Math.max(320, startWidth + nextX - startX),
         ),
       );
     };
@@ -404,10 +403,11 @@ export function AdvancedWorkbenchShell({
   const startNewTask = useCallback(async () => {
     if (!advancedSession || startingNew) return;
     setStartingNew(true);
+    if (editorDirty) await autoSave.run();
     const next = await advancedSession.startNew();
     if (!next) setDropMessage(tt("新建任务失败，当前内容仍已保留。"));
     setStartingNew(false);
-  }, [advancedSession, startingNew, tt]);
+  }, [advancedSession, autoSave, editorDirty, startingNew, tt]);
 
   const renameTitle = useCallback(
     async (title: string) => {
@@ -416,19 +416,6 @@ export function AdvancedWorkbenchShell({
       if (!renamed) setDropMessage(tt("项目名称保存失败，请稍后重试。"));
     },
     [advancedSession, tt],
-  );
-
-  const viewport = useMemo<AdvancedViewportActions>(
-    () =>
-      editorViewport || {
-        value: fallbackZoom,
-        min: 50,
-        max: 150,
-        step: 1,
-        setValue: setFallbackZoom,
-        fit: () => setFallbackZoom(100),
-      },
-    [editorViewport, fallbackZoom],
   );
 
   const customDrawer = fallbackDrawer.find(
@@ -497,7 +484,7 @@ export function AdvancedWorkbenchShell({
       aria-modal="true"
       aria-label={`${item.title} · ${tt("高级功能")}`}
       tabIndex={-1}
-      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--surface,#f5f5f4)] font-[var(--font-sans,Inter,'Noto_Sans_SC','PingFang_SC','Microsoft_YaHei',sans-serif)] text-[var(--fg,#292524)]"
+      className="fixed inset-0 z-[2147483000] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--bg,#f7f7f5)] font-[var(--font-sans,Inter,'Noto_Sans_SC','PingFang_SC','Microsoft_YaHei',sans-serif)] text-[var(--fg,#292524)]"
     >
       {resizing && (
         <div
@@ -505,6 +492,7 @@ export function AdvancedWorkbenchShell({
           aria-hidden="true"
         />
       )}
+      <AdvancedLayoutContext.Provider value={layoutState}>
       <AdvancedWorkbenchHeader
         item={item}
         editorLabel={editorLabel}
@@ -523,8 +511,6 @@ export function AdvancedWorkbenchShell({
         onRenameTitle={renameTitle}
         onClose={requestClose}
       />
-
-      <AdvancedLayoutContext.Provider value={layoutState}>
       <div className="flex min-h-0 flex-1">
         <AdvancedWorkbenchSidebar
           tools={tools}
@@ -541,14 +527,14 @@ export function AdvancedWorkbenchShell({
 
         <div
           ref={stageRef}
-          className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]"
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--advanced-stage-bg,#f2f3f5)]"
         >
           <AdvancedWorkbenchStage
             editorAvailable={editorAvailable}
             editorStage={editorStage}
             item={item}
             accent={accent}
-            stageScale={editorViewport ? 1 : fallbackZoom / 100}
+            stageScale={1}
             draggedTitle={
               activeMaterialAction
                 ? workbenchMaterials?.draggedItem?.title
@@ -558,24 +544,14 @@ export function AdvancedWorkbenchShell({
             onMaterialDrop={(event) => void handleMaterialDrop(event)}
           />
           <div
-            className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex justify-center"
-            style={
-              editorContextualToolbarInsetLeft
-                ? { paddingLeft: editorContextualToolbarInsetLeft }
-                : undefined
-            }
+            className="pointer-events-none absolute right-3 top-3 z-[70] flex justify-center"
+            style={{ left: editorContextualToolbarInsetLeft + 12 }}
           >
-            {editorAvailable && editorContextualToolbar ? (
-              editorContextualToolbar
-            ) : (
-              <span className="pointer-events-auto rounded-2xl border border-black/10 bg-white/95 px-4 py-2 text-[12px] font-semibold text-slate-600 shadow-lg backdrop-blur">
-                {tt(editorLabel)}
-              </span>
-            )}
+            {editorAvailable ? editorContextualToolbar : null}
           </div>
           <AdvancedStageControls
             stageRef={stageRef}
-            viewport={viewport}
+            viewport={editorViewport}
             accent={accent}
           />
         </div>

@@ -300,7 +300,7 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /getBoundingClientRect/);
   assert.match(shell, /editorContextualToolbarAnchor/);
-  assert.match(shell, /editorContextualToolbar \?/);
+  assert.match(shell, /editorAvailable \? editorContextualToolbar : null/);
   assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });

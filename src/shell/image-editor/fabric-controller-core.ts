@@ -83,7 +83,7 @@ function normalizeAngle(angle: number): number {
 export class FabricEditorCore {
   readonly canvas: Canvas;
   protected doc: DocSize = { ...DEFAULT_DOC };
-  protected canvasBackground = "#f4f1e8";
+  protected canvasBackground = "#ffffff";
   protected zoom = 1;
   protected activeTool: ToolId = "select";
   protected brush: BrushSettings = { ...DEFAULT_BRUSH };
@@ -109,8 +109,8 @@ export class FabricEditorCore {
     this.canvas = new fabric.Canvas(canvasElement, {
       preserveObjectStacking: true,
       selection: false,
-      selectionColor: "rgba(79,70,229,.08)",
-      selectionBorderColor: "#4f46e5",
+      selectionColor: "rgba(109,93,252,.08)",
+      selectionBorderColor: "#6d5dfc",
       fireMiddleClick: true,
       stopContextMenu: true,
     });
@@ -168,6 +168,15 @@ export class FabricEditorCore {
         this.commit();
       }),
       this.canvas.on("text:editing:exited", () => this.commit()),
+      this.canvas.on("mouse:dblclick", ({ subTargets }) => {
+        const editableText = [...(subTargets || [])]
+          .reverse()
+          .find((target) => target instanceof this.fabric.IText);
+        if (!editableText || !(editableText instanceof this.fabric.IText)) return;
+        editableText.enterEditing();
+        editableText.selectAll();
+        this.canvas.requestRenderAll();
+      }),
       this.canvas.on("mouse:wheel", (event) => {
         event.e.preventDefault();
         event.e.stopPropagation();
@@ -217,9 +226,9 @@ export class FabricEditorCore {
 
   protected styleObject(object: FabricObject): void {
     object.set({
-      borderColor: "#4f46e5",
+      borderColor: "#6d5dfc",
       cornerColor: "#ffffff",
-      cornerStrokeColor: "#4f46e5",
+      cornerStrokeColor: "#6d5dfc",
       cornerStyle: "circle",
       cornerSize: 10,
       transparentCorners: false,
@@ -425,7 +434,11 @@ export class FabricEditorCore {
     void this.restore(next);
   }
 
-  private async restore(snapshot: EditorSnapshot): Promise<void> {
+  private async restore(
+    snapshot: EditorSnapshot,
+    notifyDocumentChange = true,
+    resetHistory = false,
+  ): Promise<boolean> {
     this.restoring = true;
     let restored = false;
     this.restoreAbort?.abort();
@@ -435,13 +448,17 @@ export class FabricEditorCore {
       await this.canvas.loadFromJSON(snapshot.json, undefined, {
         signal: abort.signal,
       });
-      if (this.destroyed || abort.signal.aborted) return;
+      if (this.destroyed || abort.signal.aborted) return false;
       this.doc = { ...snapshot.doc };
       this.canvasBackground = snapshot.canvasBackground;
       restoreLockFlags(this.canvas);
       this.canvas.getObjects().forEach((object) => this.styleObject(object));
       ensureLayerOrder(this.canvas);
       this.currentSnapshot = snapshot;
+      if (resetHistory) {
+        this.undoStack = [];
+        this.redoStack = [];
+      }
       this.cropping = false;
       this.cropRatio = "free";
       this.zoom = fitViewport(this.canvas, this.doc, this.container);
@@ -456,9 +473,39 @@ export class FabricEditorCore {
     } finally {
       if (this.restoreAbort === abort) this.restoreAbort = null;
       this.restoring = false;
-      if (restored) this.callbacks.onDocumentChange?.();
+      if (restored && notifyDocumentChange) {
+        this.callbacks.onDocumentChange?.();
+      }
       this.emit();
     }
+    return restored;
+  }
+
+  getSnapshot(): EditorSnapshot {
+    return captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+  }
+
+  async loadSnapshot(snapshot: EditorSnapshot): Promise<boolean> {
+    if (
+      !snapshot ||
+      typeof snapshot !== "object" ||
+      !snapshot.json ||
+      typeof snapshot.json !== "object" ||
+      !Number.isFinite(snapshot.doc?.width) ||
+      !Number.isFinite(snapshot.doc?.height) ||
+      typeof snapshot.canvasBackground !== "string"
+    ) {
+      return false;
+    }
+    return this.restore(
+      {
+        json: snapshot.json,
+        doc: clampDocument(snapshot.doc.width, snapshot.doc.height),
+        canvasBackground: snapshot.canvasBackground.slice(0, 100),
+      },
+      false,
+      true,
+    );
   }
 
   getDocument(): { canvas: Canvas; doc: DocSize } {

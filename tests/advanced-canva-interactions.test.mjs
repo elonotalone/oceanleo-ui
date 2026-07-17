@@ -62,15 +62,62 @@ test("context-only drawers remain reachable from the object property bar", () =>
   assert.match(deckToolbar, /panelId: "deck-fonts"/);
   assert.match(imageToolbar, /panelId: "image-filters"/);
   for (const drawer of [
-    "image-create",
+    "image-brush",
+    "image-shapes",
+    "image-lines",
+    "image-notes",
+    "image-text",
+    "image-signature",
+    "image-tables",
     "image-layers",
     "image-canvas",
-    "image-export",
   ]) {
     assert.match(imageToolbar, new RegExp(`panelId: "${drawer}"`));
   }
+  assert.match(image, /aria-label="导出图片"/);
   for (const toolbar of [deckToolbar, imageToolbar, richToolbar]) {
     assert.doesNotMatch(toolbar, /id: "undo"/);
     assert.doesNotMatch(toolbar, /id: "redo"/);
+  }
+});
+
+test("advanced editors autosave projects and reserve header actions for delivery", () => {
+  const header = source("../src/shell/AdvancedWorkbenchHeader.tsx");
+  const autosave = source("../src/shell/use-advanced-autosave.ts");
+  const imageHook = source(
+    "../src/shell/image-editor/use-fabric-image-editor.ts",
+  );
+  const imagePersistence = source(
+    "../src/shell/image-editor/editor-persistence.ts",
+  );
+  assert.match(header, /正在自动保存/);
+  assert.match(header, /保存遇到问题 · 重试/);
+  assert.match(autosave, /pendingItemRef/);
+  assert.match(autosave, /\[1_500, 4_000, 9_000\]/);
+  assert.match(
+    autosave,
+    /!dirtyRef\.current && !pendingItemRef\.current/,
+    "a stale timer must not start another upload after the editor is clean",
+  );
+  assert.match(
+    autosave,
+    /if \(runningRef\.current\) \{\s*setState\("saving"\)/,
+    "the header must not claim saved while session persistence is still running",
+  );
+  assert.match(imagePersistence, /persistImageProject/);
+  assert.match(imagePersistence, /fabric_document_url/);
+  assert.match(imageHook, /uploadFile\(file/);
+  assert.doesNotMatch(imageHook, /URL\.createObjectURL\(file\)/);
+
+  for (const [path, manualSaveCall] of [
+    ["../src/shell/chart-editor/ChartControls.tsx", /editor\.save\(\)/],
+    ["../src/shell/media-editors/PdfControls.tsx", /editor\.saveCopy\(\)/],
+    ["../src/shell/media-editors/Model3DControls.tsx", /editor\.saveCopy\(\)/],
+    [
+      "../src/shell/video-editor/VideoTimelineControls.tsx",
+      /state\.saveDraft\(\)/,
+    ],
+  ]) {
+    assert.doesNotMatch(source(path), manualSaveCall, path);
   }
 });

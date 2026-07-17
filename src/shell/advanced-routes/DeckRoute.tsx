@@ -4,6 +4,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import {
+  ADVANCED_HEADER_ACTION_CLASS,
+  ADVANCED_HEADER_ICON_ACTION_CLASS,
+} from "../advanced-workbench-chrome";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
 import {
@@ -229,7 +233,7 @@ export function DeckRoute({
           <button
             type="button"
             onClick={editor.downloadJson}
-            className="grid h-9 w-9 place-items-center rounded-lg text-white/80 transition hover:bg-white/15 hover:text-white"
+            className={ADVANCED_HEADER_ICON_ACTION_CLASS}
             title="下载工程"
             aria-label="下载工程"
           >
@@ -239,19 +243,9 @@ export function DeckRoute({
             type="button"
             disabled={editor.exporting}
             onClick={() => void editor.exportPptx()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white transition hover:bg-white/20 disabled:opacity-40"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             {editor.exporting ? "导出中…" : "导出 PPTX"}
-          </button>
-          <button
-            type="button"
-            disabled={editor.saving}
-            onClick={() => void editor.save()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm transition hover:bg-white/90 disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
           </button>
         </>
       }

@@ -8,6 +8,8 @@ import {
   type FilterSettings,
   type ShadowSettings,
   type ShapeKind,
+  type TableSettings,
+  type TextPreset,
   type TextSettings,
 } from "./types";
 import {
@@ -54,12 +56,18 @@ function normalizeAngle(angle: number): number {
 }
 
 export class FabricEditorController extends FabricEditorCore {
-  addText(): void {
+  addText(preset: TextPreset = "body"): void {
+    const labels: Record<TextPreset, string> = {
+      heading: "添加标题",
+      subheading: "添加副标题",
+      body: "双击编辑正文",
+    };
     const object = createTextbox(
       this.fabric,
       this.doc,
-      "双击编辑文字",
+      labels[preset],
       this.canvas.getObjects().length,
+      preset,
     );
     this.styleObject(object);
     this.canvas.add(object);
@@ -80,11 +88,12 @@ export class FabricEditorController extends FabricEditorCore {
     this.commit();
   }
 
-  addStickyNote(): void {
+  addStickyNote(color = "#ffe36e"): void {
     const object = createStickyNote(
       this.fabric,
       this.doc,
       this.canvas.getObjects().length,
+      color,
     );
     this.styleObject(object);
     this.canvas.add(object);
@@ -92,11 +101,13 @@ export class FabricEditorController extends FabricEditorCore {
     this.commit();
   }
 
-  addSignature(): void {
+  addSignature(text = "签名", color = "#18212f"): void {
     const object = createSignatureText(
       this.fabric,
       this.doc,
       this.canvas.getObjects().length,
+      text,
+      color,
     );
     this.styleObject(object);
     this.canvas.add(object);
@@ -116,6 +127,112 @@ export class FabricEditorController extends FabricEditorCore {
     this.canvas.add(object);
     this.canvas.setActiveObject(object);
     this.commit();
+  }
+
+  addSignatureImage(image: FabricImage): void {
+    const object = preparePlacedImage(
+      image,
+      this.doc,
+      this.canvas.getObjects().length,
+    );
+    object.oceanleoKind = "signature";
+    this.styleObject(object);
+    this.canvas.add(object);
+    this.canvas.setActiveObject(object);
+    this.commit();
+  }
+
+  resizeSelectedTable(rows: number, columns: number): void {
+    const active = this.canvas.getActiveObject();
+    if (
+      !(active instanceof this.fabric.Group) ||
+      kindOf(this.fabric, active) !== "table"
+    ) {
+      return;
+    }
+    const table = active as Group & EditorObjectProps;
+    const tableStyle = buildSelectedSnapshot(this.fabric, table).table?.style;
+    const previousRows = Math.max(1, table.oceanleoTableRows || 1);
+    const previousColumns = Math.max(1, table.oceanleoTableColumns || 1);
+    const values = Array.from({ length: previousRows }, () =>
+      Array.from({ length: previousColumns }, () => ""),
+    );
+    table.getObjects().forEach((child) => {
+      const tagged = child as IText & EditorObjectProps;
+      const row = tagged.oceanleoTableRow;
+      const column = tagged.oceanleoTableColumn;
+      if (
+        child instanceof this.fabric.IText &&
+        Number.isInteger(row) &&
+        Number.isInteger(column) &&
+        row! >= 0 &&
+        row! < previousRows &&
+        column! >= 0 &&
+        column! < previousColumns
+      ) {
+        values[row!][column!] = String(tagged.text || "");
+      }
+    });
+    const replacement = createTable(
+      this.fabric,
+      this.doc,
+      this.canvas.getObjects().length,
+      rows,
+      columns,
+      values,
+      tableStyle,
+    );
+    replacement.set({
+      left: table.left,
+      top: table.top,
+      originX: table.originX,
+      originY: table.originY,
+      scaleX: table.scaleX,
+      scaleY: table.scaleY,
+      angle: table.angle,
+      flipX: table.flipX,
+      flipY: table.flipY,
+      opacity: table.opacity,
+    });
+    const index = this.canvas.getObjects().indexOf(table);
+    this.styleObject(replacement);
+    this.canvas.remove(table);
+    this.canvas.add(replacement);
+    this.canvas.moveObjectTo(replacement, Math.max(0, index));
+    replacement.setCoords();
+    this.canvas.setActiveObject(replacement);
+    table.dispose();
+    this.commit();
+  }
+
+  setSelectedTableStyle(patch: Partial<TableSettings>): void {
+    this.mutateSelected((object) => {
+      if (
+        !(object instanceof this.fabric.Group) ||
+        kindOf(this.fabric, object) !== "table"
+      ) {
+        return;
+      }
+      const current = buildSelectedSnapshot(this.fabric, object).table?.style;
+      if (!current) return;
+      const next = { ...current, ...patch };
+      object.getObjects().forEach((child) => {
+        const tagged = child as EditorObject;
+        if (tagged.oceanleoTablePart === "cell") {
+          child.set({
+            fill:
+              tagged.oceanleoTableRow === 0
+                ? next.headerFill
+                : next.bodyFill,
+            stroke: next.borderColor,
+            strokeWidth: Math.max(0, Math.min(20, next.borderWidth)),
+          });
+        } else if (tagged.oceanleoTablePart === "text") {
+          child.set({ fill: next.textColor });
+        }
+      });
+      object.set("dirty", true);
+    });
   }
 
   addImage(image: FabricImage, point?: CanvasClientPoint): void {
@@ -318,10 +435,19 @@ export class FabricEditorController extends FabricEditorCore {
       const snapshot = buildSelectedSnapshot(this.fabric, object);
       const color = patch.color ?? snapshot.stroke;
       const width = Math.max(0, patch.width ?? snapshot.strokeWidth);
-      if (snapshot.kind === "arrow" && object instanceof this.fabric.Group) {
+      if (
+        (snapshot.kind === "arrow" ||
+          snapshot.kind === "elbow-arrow" ||
+          snapshot.kind === "double-arrow") &&
+        object instanceof this.fabric.Group
+      ) {
         recolorArrow(this.fabric, object as Group, color);
         setArrowStrokeWidth(this.fabric, object as Group, width);
-      } else if (snapshot.kind === "line") {
+      } else if (
+        snapshot.kind === "line" ||
+        snapshot.kind === "dashed-line" ||
+        snapshot.kind === "curve"
+      ) {
         object.set({ stroke: color, strokeWidth: width });
       } else {
         object.set({ stroke: color || undefined, strokeWidth: width });
@@ -332,9 +458,18 @@ export class FabricEditorController extends FabricEditorCore {
   setSelectedFill(color: string): void {
     this.mutateSelected((object) => {
       const kind = kindOf(this.fabric, object);
-      if (kind === "arrow" && object instanceof this.fabric.Group) {
+      if (
+        (kind === "arrow" ||
+          kind === "elbow-arrow" ||
+          kind === "double-arrow") &&
+        object instanceof this.fabric.Group
+      ) {
         recolorArrow(this.fabric, object as Group, color);
-      } else if (kind === "line") {
+      } else if (
+        kind === "line" ||
+        kind === "dashed-line" ||
+        kind === "curve"
+      ) {
         object.set("stroke", color);
       } else {
         object.set("fill", color);
@@ -446,13 +581,13 @@ export class FabricEditorController extends FabricEditorCore {
       width: this.doc.width * (1 - inset * 2),
       height: this.doc.height * (1 - inset * 2),
       fill: "rgba(255,255,255,.08)",
-      stroke: "#4f46e5",
+      stroke: "#6d5dfc",
       strokeWidth: Math.max(2, 2 / this.zoom),
       strokeDashArray: [10, 6],
       lockRotation: true,
       transparentCorners: false,
       cornerColor: "#ffffff",
-      cornerStrokeColor: "#4f46e5",
+      cornerStrokeColor: "#6d5dfc",
       cornerStyle: "circle",
     }) as EditorObject;
     crop.oceanleoId = makeId();
@@ -532,7 +667,7 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   setCanvasBackground(color: string): void {
-    this.canvasBackground = color || "#f4f1e8";
+    this.canvasBackground = color || "#ffffff";
     updateDocBackground(this.canvas, this.doc, this.canvasBackground);
     this.commit();
   }

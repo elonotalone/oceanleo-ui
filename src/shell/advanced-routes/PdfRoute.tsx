@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { ADVANCED_HEADER_ACTION_CLASS } from "../advanced-workbench-chrome";
 import { advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
@@ -88,7 +89,7 @@ export function PdfRoute({
       editorLabel={editorToolLabel({ type: "pdf" })}
       editorDrawerLabel="页面"
       editorDrawerIcon="pages"
-      editorToolbox={<PdfControls editor={editor} accent={accent} />}
+      editorToolbox={<PdfControls editor={editor} />}
       editorContextualToolbar={
         <PdfContextToolbar editor={editor} accent={accent} />
       }
@@ -112,20 +113,10 @@ export function PdfRoute({
             type="button"
             onClick={editor.download}
             disabled={editor.loading || editor.processing}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-medium text-white hover:bg-white/20 disabled:opacity-40"
+            className={ADVANCED_HEADER_ACTION_CLASS}
           >
             <AdvancedEditorIcon name="download" className="h-4 w-4" />
             PDF
-          </button>
-          <button
-            type="button"
-            disabled={editor.saving || editor.processing}
-            onClick={() => void editor.saveCopy()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-semibold shadow-sm disabled:opacity-40"
-            style={{ color: accent }}
-          >
-            <AdvancedEditorIcon name="save" className="h-4 w-4" />
-            {editor.saving ? "保存中…" : "保存"}
           </button>
         </>
       }
