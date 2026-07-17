@@ -68,6 +68,30 @@ export function useRightPaneSlot(): RightPaneSlot | null {
   return useContext(RightPaneCtx);
 }
 
+export type WorkspaceLibraryDock = "left" | "right";
+
+export interface WorkspacePaneDetail {
+  ownerId: string;
+  id: string;
+  label: ReactNode;
+  content: ReactNode;
+}
+
+interface WorkspacePaneController {
+  libraryDock: WorkspaceLibraryDock;
+  setLibraryDock: (dock: WorkspaceLibraryDock) => void;
+  detail: WorkspacePaneDetail | null;
+  showDetail: (detail: WorkspacePaneDetail) => void;
+  clearDetail: (ownerId?: string) => void;
+}
+
+const WorkspacePaneCtx = createContext<WorkspacePaneController | null>(null);
+
+/** Lets an inline editor use the existing App pane for tool details. */
+export function useWorkspacePane(): WorkspacePaneController | null {
+  return useContext(WorkspacePaneCtx);
+}
+
 export interface SplitWorkspaceProps {
   /** 左栏内容（AI 推导 / 模板操控）。 */
   left: ReactNode;
@@ -128,9 +152,15 @@ export interface SplitLibraryConfig {
   onOpenChange?: (open: boolean) => void;
   /** 右版面顶部居中标题，默认「库」。 */
   paneTitle?: ReactNode;
+  /** 库停靠侧；不传时由共享本地偏好管理。 */
+  dock?: WorkspaceLibraryDock;
+  /** 受控停靠侧变化。 */
+  onDockChange?: (dock: WorkspaceLibraryDock) => void;
+  /** 全家桶共用一个停靠偏好，默认 oceanleo_library_dock。 */
+  dockStorageKey?: string;
 }
 
-type Maxed = "none" | "left" | "right";
+type Maxed = "none" | "app" | "library";
 
 const MIN_RATIO = 0.18;
 const MAX_RATIO = 0.82;
@@ -225,6 +255,50 @@ export function SplitWorkspace({
     [],
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
+  const [internalLibraryDock, setInternalLibraryDock] =
+    useState<WorkspaceLibraryDock>("right");
+  const libraryDockControlled = library?.dock !== undefined;
+  const libraryDock = libraryDockControlled
+    ? library?.dock || "right"
+    : internalLibraryDock;
+  const dockStorageKey =
+    library?.dockStorageKey || "oceanleo_library_dock";
+  const [detail, setDetail] = useState<WorkspacePaneDetail | null>(null);
+  const activeDetail = hasRight ? detail : null;
+  useEffect(() => {
+    if (!hasRight) setDetail(null);
+  }, [hasRight]);
+  const setLibraryDock = useCallback(
+    (dock: WorkspaceLibraryDock) => {
+      if (!libraryDockControlled) setInternalLibraryDock(dock);
+      library?.onDockChange?.(dock);
+      try {
+        window.localStorage.setItem(dockStorageKey, dock);
+      } catch {
+        // A privacy-restricted embed can keep the in-memory preference.
+      }
+      setMaxed("none");
+    },
+    [dockStorageKey, library, libraryDockControlled],
+  );
+  const showDetail = useCallback((next: WorkspacePaneDetail) => {
+    setDetail(next);
+  }, []);
+  const clearDetail = useCallback((ownerId?: string) => {
+    setDetail((current) =>
+      !current || (ownerId && current.ownerId !== ownerId) ? current : null,
+    );
+  }, []);
+  const paneController = useMemo<WorkspacePaneController>(
+    () => ({
+      libraryDock,
+      setLibraryDock,
+      detail: activeDetail,
+      showDetail,
+      clearDetail,
+    }),
+    [activeDetail, clearDetail, libraryDock, setLibraryDock, showDetail],
+  );
 
   // Restore the remembered ratio during hydration's layout phase. A passive
   // effect painted defaultRatio first and then visibly jumped to the stored
@@ -251,6 +325,18 @@ export function SplitWorkspace({
     setRatio(nextRatio);
     setHydrated(true);
   }, [defaultRatio, storageKey]);
+
+  useLayoutEffect(() => {
+    if (!library || libraryDockControlled) return;
+    try {
+      const remembered = window.localStorage.getItem(dockStorageKey);
+      if (remembered === "left" || remembered === "right") {
+        setInternalLibraryDock(remembered);
+      }
+    } catch {
+      // Keep the deterministic right-side default.
+    }
+  }, [dockStorageKey, library, libraryDockControlled]);
 
   // Agent result cards and trusted workspace actions may target content while
   // the library pane is closed. Open the existing pane in place so the card
@@ -290,9 +376,10 @@ export function SplitWorkspace({
       const wrap = wrapRef.current;
       if (!wrap) return;
       const rect = wrap.getBoundingClientRect();
-      let r = (e.clientX - rect.left) / rect.width;
-      r = Math.max(MIN_RATIO, Math.min(MAX_RATIO, r));
-      setRatio(r);
+      const physicalLeft = (e.clientX - rect.left) / rect.width;
+      const nextAppRatio =
+        libraryDock === "left" ? 1 - physicalLeft : physicalLeft;
+      setRatio(Math.max(MIN_RATIO, Math.min(MAX_RATIO, nextAppRatio)));
     }
     function up() {
       setDragging(false);
@@ -307,28 +394,28 @@ export function SplitWorkspace({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [dragging, persist]);
+  }, [dragging, libraryDock, persist]);
 
-  const toggleMax = (which: "left" | "right") =>
+  const toggleMax = (which: "app" | "library") =>
     setMaxed((m) => (m === which ? "none" : which));
 
-  // computed flex-basis per pane (desktop)
-  const leftBasis = !hasRight
+  // Ratio always means the App/operation pane, even after the library moves.
+  const appBasis = !hasRight
     ? "100%"
-    : maxed === "left"
+    : maxed === "app"
       ? "100%"
-      : maxed === "right"
+      : maxed === "library"
         ? "0%"
         : `${ratio * 100}%`;
-  const rightBasis = !hasRight
+  const libraryBasis = !hasRight
     ? "0%"
-    : maxed === "right"
+    : maxed === "library"
       ? "100%"
-      : maxed === "left"
+      : maxed === "app"
         ? "0%"
         : `${(1 - ratio) * 100}%`;
 
-  function MaxButton({ which }: { which: "left" | "right" }) {
+  function MaxButton({ which }: { which: "app" | "library" }) {
     const on = maxed === which;
     return (
       <button
@@ -363,6 +450,7 @@ export function SplitWorkspace({
   // editor/browser state.
   if (!hasRight && !library) {
     return (
+      <WorkspacePaneCtx.Provider value={paneController}>
       <LeftPaneCtx.Provider value={slot}>
         <div
           className={`p-1.5 ${className}`}
@@ -388,10 +476,144 @@ export function SplitWorkspace({
           </div>
         </div>
       </LeftPaneCtx.Provider>
+      </WorkspacePaneCtx.Provider>
     );
   }
 
+  const detailLabel = activeDetail ? (
+    <div className="flex min-w-0 items-center gap-2">
+      <button
+        type="button"
+        onClick={() => clearDetail(activeDetail.ownerId)}
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+        aria-label={tt("返回操作台")}
+        title={tt("返回操作台")}
+      >
+        ←
+      </button>
+      <span className="truncate text-[12px] font-semibold text-stone-700">
+        {activeDetail.label}
+      </span>
+    </div>
+  ) : effectiveLeftLabel;
+
+  const appPane = (
+    <section
+      key="app-pane"
+      data-workspace-pane="app"
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${
+        maxed === "library" ? "hidden" : "flex"
+      }`}
+      style={
+        hydrated || !hasRight
+          ? { flexBasis: appBasis, flexGrow: 0, flexShrink: 0 }
+          : {
+              flexBasis: `${defaultRatio * 100}%`,
+              flexGrow: 0,
+              flexShrink: 0,
+            }
+      }
+    >
+      {detailLabel != null && <PaneHeader label={detailLabel} />}
+      <div className={bodyClass}>
+        {/* Keep the App mounted while an editor detail temporarily takes its place. */}
+        <div className={`${activeDetail ? "hidden" : "flex"} h-full min-h-0 flex-col`}>
+          {left}
+        </div>
+        <div className={`${activeDetail ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
+          {activeDetail?.content}
+        </div>
+      </div>
+    </section>
+  );
+
+  const libraryPane = (
+    <section
+      key="library-pane"
+      data-workspace-pane="library"
+      data-library-dock={libraryDock}
+      className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
+        !hasRight || maxed === "app" ? "hidden" : "flex"
+      }`}
+      style={
+        hydrated || !hasRight
+          ? { flexBasis: libraryBasis, flexGrow: 1, flexShrink: 1 }
+          : {
+              flexBasis: `${(1 - defaultRatio) * 100}%`,
+              flexGrow: 1,
+              flexShrink: 1,
+            }
+      }
+    >
+      {library ? (
+        <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              clearDetail();
+              setLibraryOpen(false);
+            }}
+            aria-label={tt("关闭")}
+            className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+          >
+            ✕
+          </button>
+          <div className="min-w-0 flex-1">
+            {rightLabelOverride != null ? (
+              rightLabelOverride
+            ) : (
+              <span className="truncate text-[12px] font-medium text-stone-500">
+                {library.paneTitle ?? libraryLabel}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setLibraryDock(libraryDock === "right" ? "left" : "right")
+            }
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+            title={tt(
+              libraryDock === "right" ? "把库移到左侧" : "把库移到右侧",
+            )}
+            aria-label={tt(
+              libraryDock === "right" ? "把库移到左侧" : "把库移到右侧",
+            )}
+          >
+            {libraryDock === "right" ? "←" : "→"}
+            {tt(libraryDock === "right" ? "移到左侧" : "移到右侧")}
+          </button>
+          <div className="shrink-0">
+            <MaxButton which="library" />
+          </div>
+        </div>
+      ) : (
+        <PaneHeader label={effectiveRightLabel}>
+          <MaxButton which="library" />
+        </PaneHeader>
+      )}
+      <div className={bodyClass}>{right}</div>
+    </section>
+  );
+
+  const divider = hasRight && maxed === "none" ? (
+    <div
+      key="workspace-divider"
+      role="separator"
+      aria-orientation="vertical"
+      onPointerDown={onPointerDown}
+      className="group relative hidden w-3 shrink-0 cursor-col-resize items-center justify-center md:flex"
+      title={tt("拖动调整左右比例")}
+    >
+      <div
+        className="h-16 w-1 rounded-full bg-stone-300 transition-colors group-hover:bg-stone-400"
+        style={dragging ? { background: accent } : undefined}
+      />
+    </div>
+  ) : null;
+
   return (
+    <WorkspacePaneCtx.Provider value={paneController}>
     <LeftPaneCtx.Provider value={slot}>
     <RightPaneCtx.Provider value={rightSlot}>
     <div
@@ -399,89 +621,13 @@ export function SplitWorkspace({
       className={`gap-0 p-1.5 ${className} md:flex`}
       style={{ height: rootHeight }}
     >
-      {/* 左栏 */}
-      <section
-        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${
-          maxed === "right" ? "hidden md:flex" : "flex"
-        } ${maxed === "left" ? "" : ""}`}
-        style={
-          hydrated || !hasRight
-            ? { flexBasis: leftBasis, flexGrow: 0, flexShrink: 0 }
-            : { flexBasis: `${defaultRatio * 100}%`, flexGrow: 0, flexShrink: 0 }
-        }
-      >
-        {/* 操作员 2026-07-01：左栏不再放「大屏」按钮——它和左栏标题里的「库」等
-            功能按键并排会显得重复/多余，且操作台/agent 语境下真正需要放大的只有右栏
-            （库/预览/结果）。左栏标题位保留给「库」等功能开关；放大统一用右栏「大屏」。 */}
-        {effectiveLeftLabel != null && <PaneHeader label={effectiveLeftLabel} />}
-        <div className={bodyClass}>{left}</div>
-      </section>
-
-      {/* 竖线（拖动条）—— 仅桌面、未大屏时可见 */}
-      {hasRight && maxed === "none" && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          onPointerDown={onPointerDown}
-          className="group relative hidden w-3 shrink-0 cursor-col-resize items-center justify-center md:flex"
-          title={tt("拖动调整左右比例")}
-        >
-          <div
-            className="h-16 w-1 rounded-full bg-stone-300 transition-colors group-hover:bg-stone-400"
-            style={dragging ? { background: accent } : undefined}
-          />
-        </div>
-      )}
-
-      {/* 右栏 */}
-      <section
-        className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
-          !hasRight || maxed === "left" ? "hidden" : "flex"
-        }`}
-        style={
-          hydrated || !hasRight
-            ? { flexBasis: rightBasis, flexGrow: 1, flexShrink: 1 }
-            : { flexBasis: `${(1 - defaultRatio) * 100}%`, flexGrow: 1, flexShrink: 1 }
-        }
-      >
-        {library ? (
-          /* 库模式右版面顶栏（宗旨 v16，操作员 2026-07-06）：一行搞定 =
-               ✕(左，关闭右版面) / 标签条(中，取代原居中「库」标题) / 大屏(右)。
-             固定标签条（模板 / 预览 / 素材库 / 我的库 / 云端浏览器）由 ResultCanvas 经
-             useRightPaneSlot 注入进 rightLabelOverride —— 它直接坐到原「库」标题的位置，
-             不再单占第二行。右栏内容不是 ResultCanvas（无注入）时回退显示「库」标题。 */
-          <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
-            <button
-              type="button"
-              onClick={() => setLibraryOpen(false)}
-              aria-label={tt("关闭")}
-              className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-            >
-              ✕
-            </button>
-            <div className="min-w-0 flex-1">
-              {rightLabelOverride != null ? (
-                rightLabelOverride
-              ) : (
-                <span className="truncate text-[12px] font-medium text-stone-500">
-                  {library.paneTitle ?? libraryLabel}
-                </span>
-              )}
-            </div>
-            <div className="shrink-0">
-              <MaxButton which="right" />
-            </div>
-          </div>
-        ) : (
-          <PaneHeader label={effectiveRightLabel}>
-            <MaxButton which="right" />
-          </PaneHeader>
-        )}
-        <div className={bodyClass}>{right}</div>
-      </section>
+      {libraryDock === "left"
+        ? [libraryPane, divider, appPane]
+        : [appPane, divider, libraryPane]}
     </div>
     </RightPaneCtx.Provider>
     </LeftPaneCtx.Provider>
+    </WorkspacePaneCtx.Provider>
   );
 }
 

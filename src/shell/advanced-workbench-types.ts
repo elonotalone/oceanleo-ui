@@ -15,5 +15,9 @@ export interface AdvancedContentWorkbenchProps {
   initialSession?: AppSession | null;
   mode?: "workspace" | "history";
   accent?: string;
+  /** Render inside the normal App library instead of opening a standalone shell. */
+  embedded?: boolean;
+  /** Receives the concrete library version produced by autosave. */
+  onSavedItem?: (item: LibraryItem) => void;
   onClose: () => void;
 }

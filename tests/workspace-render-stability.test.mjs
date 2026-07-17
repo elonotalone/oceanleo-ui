@@ -35,9 +35,10 @@ test("configured library visibility never swaps out the left runtime tree", () =
   assert.match(splitWorkspace, /if \(!hasRight && !library\)/);
   assert.match(
     splitWorkspace,
-    /!hasRight \|\| maxed === "left" \? "hidden" : "flex"/,
+    /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/,
   );
-  assert.match(splitWorkspace, /<div className=\{bodyClass\}>\{left\}<\/div>/);
+  assert.match(splitWorkspace, /Keep the App mounted while an editor detail/);
+  assert.match(splitWorkspace, /\{left\}/);
 });
 
 test("remembered split ratio is restored before paint with SSR-stable markup", () => {

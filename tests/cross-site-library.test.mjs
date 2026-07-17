@@ -96,7 +96,7 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   assert.match(source, /FIXED_WORKSPACE_SLOTS\.filter/);
   assert.match(source, /showTemplate \|\| slot !== "template"/);
   assert.match(source, /template: "灵感"/);
-  assert.match(source, /preview: "预览"/);
+  assert.match(source, /preview: "生成"/);
   assert.match(source, /mine: "我的库"/);
   assert.match(source, /useRightPaneSlot/);
   assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
@@ -155,7 +155,8 @@ test("closing a configured library keeps the app runtime mounted", () => {
     "utf8",
   );
   assert.match(source, /if \(!hasRight && !library\)/);
-  assert.match(source, /!hasRight \|\| maxed === "left" \? "hidden" : "flex"/);
+  assert.match(source, /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/);
+  assert.match(source, /Keep the App mounted while an editor detail/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });
 

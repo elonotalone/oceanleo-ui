@@ -8,6 +8,7 @@ export interface AdvancedLayoutState {
   editorToolActive: boolean;
   activeDrawerId: string;
   openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
+  closeDrawer: () => void;
 }
 
 export const AdvancedLayoutContext =

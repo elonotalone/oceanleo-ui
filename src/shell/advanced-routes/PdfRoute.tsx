@@ -72,6 +72,14 @@ export function PdfRoute({
         }
       : { ok: false as const };
   }, [editor.saveCopy, item]);
+  const mergeLocalPdfs = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        await editor.mergePdf(file, "after-current");
+      }
+    },
+    [editor.mergePdf],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -112,6 +120,11 @@ export function PdfRoute({
             onTrigger: editor.download,
           },
         ],
+        upload: {
+          accept: ".pdf,application/pdf",
+          multiple: true,
+          onFiles: mergeLocalPdfs,
+        },
         stage: <PdfStage editor={editor} accent={accent} />,
         status:
           editor.error ||

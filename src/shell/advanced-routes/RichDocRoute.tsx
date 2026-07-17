@@ -87,6 +87,15 @@ export function RichDocRoute({
         }
       : { ok: false as const };
   }, [editor.save, item]);
+  const importLocalFiles = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        if (file.type.startsWith("image/")) await editor.uploadImage(file);
+        else await editor.importSource(file);
+      }
+    },
+    [editor.importSource, editor.uploadImage],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -126,6 +135,12 @@ export function RichDocRoute({
             onTrigger: editor.exportDoc,
           },
         ],
+        upload: {
+          accept:
+            ".doc,.docx,.md,.markdown,.txt,.html,.htm,image/*,text/plain,text/markdown,text/html",
+          multiple: true,
+          onFiles: importLocalFiles,
+        },
         stage: <RichDocStage editor={editor} accent={accent} />,
         status:
           editor.error ||

@@ -194,8 +194,9 @@ test("我的任务包含 active 会话并实时接收新任务，离开历史页
   assert.match(historySource, /includeArchived:\s*true/);
   assert.match(historySource, /surface:\s*"all"/);
   assert.match(historySource, /listTasks\(100, siteId, pending, "all"\)/);
-  assert.match(historySource, /tt\("高级任务"\)/);
-  assert.match(historySource, /advancedFeatureHref/);
+  assert.doesNotMatch(historySource, /tt\("高级任务"\)/);
+  assert.match(historySource, /historySessionHref\(entry\.id\)/);
+  assert.doesNotMatch(historySource, /advancedFeatureHref/);
   assert.match(historySource, /HISTORY_CHANGED_EVENT/);
   assert.match(historySource, /setInterval\(\(\) => reload\(true\), 8000\)/);
   assert.doesNotMatch(

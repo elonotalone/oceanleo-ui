@@ -54,11 +54,6 @@ import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
-import { advancedSnapshotFromSession } from "./advanced-session";
-import {
-  advancedFeatureById,
-  advancedFeatureHref,
-} from "./advanced-features";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -68,21 +63,7 @@ function fmtCost(t: AgentTask): string {
   return y > 0 ? `¥${y.toFixed(2)}` : "";
 }
 
-function isAdvancedHistoryEntry(entry: HistoryListEntry): boolean {
-  return (
-    (entry.kind === "session" ? entry.session.surface : entry.task.surface) ===
-    "advanced"
-  );
-}
-
 function historyHrefFor(entry: HistoryListEntry): string {
-  if (entry.kind === "session" && isAdvancedHistoryEntry(entry)) {
-    const snapshot = advancedSnapshotFromSession(entry.session);
-    const feature = advancedFeatureById(snapshot?.feature_id);
-    if (feature) {
-      return advancedFeatureHref(feature, { sessionId: entry.session.id });
-    }
-  }
   return entry.kind === "session"
     ? historySessionHref(entry.id)
     : `/history?task=${encodeURIComponent(entry.id)}`;
@@ -391,7 +372,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const favorite = isSession
           ? Boolean(entry.session.favorite)
           : Boolean(entry.task.favorite);
-        const advanced = isAdvancedHistoryEntry(entry);
         const renaming = renameFor === entry.id;
         return (
           <div
@@ -452,17 +432,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                     {!isSession && (
                       <span className={`shrink-0 rounded px-1 py-px text-[9px] ${on ? "bg-white/15 text-white/70" : "bg-stone-100 text-stone-400"}`}>
                         {tt("旧")}
-                      </span>
-                    )}
-                    {advanced && (
-                      <span
-                        className={`shrink-0 rounded px-1.5 py-px text-[9px] ${
-                          on
-                            ? "bg-white/15 text-white/80"
-                            : "bg-orange-50 text-orange-600"
-                        }`}
-                      >
-                        {tt("高级任务")}
                       </span>
                     )}
                   </span>
@@ -632,18 +601,6 @@ export function HistoryDetail({
       let sessionResult = await getAppSession(sel);
       if (!sessionResult.ok && sessionResult.status === 404) {
         const advancedResult = await getAppSession(sel, "advanced");
-        if (advancedResult.ok && advancedResult.data) {
-          const snapshot = advancedSnapshotFromSession(advancedResult.data);
-          const feature = advancedFeatureById(snapshot?.feature_id);
-          if (feature) {
-            router.replace(
-              advancedFeatureHref(feature, {
-                sessionId: advancedResult.data.id,
-              }),
-            );
-            return;
-          }
-        }
         sessionResult = advancedResult;
       }
       if (!alive) return;

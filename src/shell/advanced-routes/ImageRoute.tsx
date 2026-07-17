@@ -110,6 +110,16 @@ export function ImageRoute({
         }
       : { ok: false as const };
   }, [editor.save, item]);
+  const addLocalImages = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        if (file.type.startsWith("image/")) {
+          await editor.addImageFromFile(file);
+        }
+      }
+    },
+    [editor.addImageFromFile],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -233,6 +243,11 @@ export function ImageRoute({
             disabled: editor.loading,
           },
         ],
+        upload: {
+          accept: "image/png,image/jpeg,image/webp,image/svg+xml",
+          multiple: true,
+          onFiles: addLocalImages,
+        },
         stage: <FabricImageStage editor={editor} accent={accent} />,
         status:
           editor.error ||

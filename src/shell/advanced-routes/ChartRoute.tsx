@@ -65,6 +65,13 @@ export function ChartRoute({
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const, error: editor.error || "图表保存失败" };
   }, [buildSavedItem, editor]);
+  const importLocalData = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (file) editor.importCsv(await file.text());
+    },
+    [editor.importCsv],
+  );
 
   return (
     <AdvancedWorkbenchShell
@@ -86,6 +93,10 @@ export function ChartRoute({
         contextToolbar: (
           <ChartContextToolbar editor={editor} accent={accent} />
         ),
+        upload: {
+          accept: ".csv,.tsv,text/csv,text/tab-separated-values",
+          onFiles: importLocalData,
+        },
         stage: <ChartStage editor={editor} />,
         status:
           editor.error ||

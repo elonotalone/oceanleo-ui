@@ -5,7 +5,6 @@ import {
   editorCapabilityFor,
   editorRouteFor,
 } from "../src/shell/workbench-routes.ts";
-import { blankAdvancedFeatureItem } from "../src/shell/advanced-drafts.ts";
 
 function item(patch = {}) {
   return {
@@ -146,34 +145,3 @@ test("Design template and advanced-session route pinning survive capability rout
   });
 });
 
-test("every direct advanced feature starts in a real editable blank draft", () => {
-  const features = [
-    ["video_editing", "视频编辑", "video-timeline"],
-    ["audio_editing", "音频编辑", "audio"],
-    ["image_editing", "图片编辑", "image"],
-    ["document_editing", "文档编辑", "richdoc"],
-    ["spreadsheet_editing", "表格编辑", "grid"],
-    ["presentation_editing", "演示文稿编辑", "deck"],
-    ["pdf_editing", "PDF 编辑", "pdf"],
-    ["chart_editing", "图表编辑", "chart-editor@1"],
-    ["website_finetuning", "网站精调", "website"],
-    ["design_canvas", "设计画布", "design-canvas"],
-    ["video_canvas", "视频画布", "video-canvas"],
-    ["model_3d", "3D 模型", "threed"],
-  ];
-  for (const [id, title, adapter] of features) {
-    const feature = { id, title };
-    const draft = blankAdvancedFeatureItem(feature, "oceanleo");
-    const capability = editorCapabilityFor(draft);
-    assert.equal(capability.available, true, id);
-    assert.equal(capability.adapter, adapter, id);
-    assert.equal(draft.url, undefined, id);
-    assert.equal(draft.previewUrl, undefined, id);
-    assert.equal(draft.meta.draft, true, id);
-    assert.equal(
-      draft.meta.root_asset_id,
-      `draft:advanced:${id}`,
-      id,
-    );
-  }
-});

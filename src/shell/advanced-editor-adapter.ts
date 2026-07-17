@@ -49,6 +49,12 @@ export interface AdvancedEditorToolbox {
   content: ReactNode;
 }
 
+export interface AdvancedEditorUploadAdapter {
+  accept?: string;
+  multiple?: boolean;
+  onFiles: (files: File[]) => void | Promise<void>;
+}
+
 /**
  * Exhaustive route-to-shell contract. Editors own model semantics; the shell
  * owns product chrome, reachability, geometry and the persistence queue.
@@ -66,6 +72,8 @@ export interface AdvancedEditorAdapter {
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;
   nativeChrome?: AdvancedEditorNativeChrome;
+  /** Canvas-owned local upload; the host exposes one button and the same drop path. */
+  upload?: AdvancedEditorUploadAdapter;
   persistence?: AdvancedEditorPersistenceAdapter;
   closeRequestRevision?: number;
 }

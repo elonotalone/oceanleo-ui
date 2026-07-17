@@ -70,7 +70,7 @@ export interface ResultCanvasProps {
 
 const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
   template: "灵感",
-  preview: "预览",
+  preview: "生成",
   materials: "素材库",
   mine: "我的库",
   browser: "云端浏览器",
@@ -156,8 +156,8 @@ function previewEntry(
   const isWorkflow =
     kind === "video_canvas" || /workflow|工作流|流程/i.test(`${tab.id} ${tab.label}`);
   const title = /^(生成结果|结果)$/i.test(tab.label.trim())
-    ? "预览"
-    : tab.label || (isResult ? "预览" : "预览");
+    ? "生成"
+    : tab.label || "生成";
   return {
     id: `${options.material ? "workflow" : "preview"}:${tab.id}`,
     title: tab.libraryItem?.title || title,
@@ -171,7 +171,7 @@ function previewEntry(
         ? "应用工作流"
         : "应用页面"
       : isResult
-        ? "预览"
+        ? "生成"
         : isWorkflow
           ? "工作流"
           : "应用页面",
@@ -557,8 +557,8 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={effectiveSiteId}
         searchPlaceholder="搜索生成结果和当前应用页面"
-        emptyTitle="还没有预览"
-        emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里。"
+        emptyTitle="还没有生成内容"
+        emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
       />
     ),
     materials: (

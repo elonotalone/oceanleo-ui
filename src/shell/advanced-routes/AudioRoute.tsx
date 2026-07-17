@@ -74,6 +74,13 @@ export function AudioRoute({
         }
       : { ok: false as const };
   }, [editor.save, item]);
+  const importLocalAudio = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (file) await editor.importSource(file);
+    },
+    [editor.importSource],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -114,6 +121,10 @@ export function AudioRoute({
             onTrigger: editor.download,
           },
         ],
+        upload: {
+          accept: "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac",
+          onFiles: importLocalAudio,
+        },
         stage: <AudioStage editor={editor} accent={accent} />,
         status:
           editor.error ||

@@ -6,23 +6,23 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("workspace files leave App state through a canonical advanced URL", () => {
+test("workspace files enter their typed editor inside the current App library", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
-  assert.match(library, /advancedFeatureHrefForItem\(item\)/);
-  assert.match(library, /router\.push\(href\)/);
   assert.match(library, /editorCapabilityFor\(workbenchItem\)/);
-  assert.match(library, /allowAdvanced && editorCapability\.available/);
+  assert.match(library, /allowAdvanced[\s\S]*editorCapability\.available/);
   assert.match(library, /editorCapability\.unavailableReason/);
-  assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
-  assert.doesNotMatch(library, /setAdvancedOpen/);
+  assert.match(library, /<AdvancedContentWorkbench/);
+  assert.match(library, /embedded/);
+  assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
+  assert.doesNotMatch(library, /router\.push\(href\)/);
 });
 
-test("advanced workbench routes real content into the portal editor shell", () => {
+test("typed routes render real content in the inline App-library editor shell", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   const shell = [
     source("../src/shell/AdvancedWorkbenchShell.tsx"),
-    source("../src/shell/AdvancedWorkbenchPanel.tsx"),
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
     source("../src/shell/AdvancedStageControls.tsx"),
   ].join("\n");
   const routeAdapters = [
@@ -53,25 +53,14 @@ test("advanced workbench routes real content into the portal editor shell", () =
   assert.match(workbench, /ChartRoute/);
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
-  assert.match(shell, /createPortal\(/);
-  assert.match(shell, /fixed inset-0/);
+  assert.match(shell, /data-inline-editor/);
+  assert.match(shell, /workspacePane\.showDetail/);
+  assert.match(shell, /<AdvancedWorkbenchStage/);
   assert.match(shell, /requestFullscreen\(\)/);
-  assert.match(shell, /aria-modal="true"/);
-  assert.match(shell, /element\.inert = true/);
-  assert.match(shell, /event\.key !== "Tab"/);
-  assert.match(shell, /id: "agent", label: tt\("Agent"\)/);
-  assert.match(shell, /id: "materials"[\s\S]*?label: tt\("素材"\)/);
-  assert.match(shell, /id: "tasks"[\s\S]*?label: tt\("我的任务"\)/);
-  assert.match(shell, /id: "library"[\s\S]*?label: tt\("我的库"\)/);
-  assert.doesNotMatch(shell, /id: "preview" as const/);
-  assert.doesNotMatch(shell, /id: "info" as const/);
-  assert.doesNotMatch(shell, /id: "versions" as const/);
-  assert.doesNotMatch(shell, /id: "export" as const/);
-  assert.match(shell, /curatedType=\{curatedTypeFor\(item\)\}/);
-  assert.match(
-    shell,
-    /curatedSeriesId=\{siteId === "design" \? "design-materials" : ""\}/,
-  );
+  assert.doesNotMatch(shell, /createPortal\(/);
+  assert.doesNotMatch(shell, /aria-modal="true"/);
+  assert.doesNotMatch(shell, /id: "tasks"/);
+  assert.doesNotMatch(shell, /id: "uploads"/);
   for (const type of [
     "video-timeline",
     "audio",
@@ -87,75 +76,43 @@ test("advanced workbench routes real content into the portal editor shell", () =
   }
 });
 
-test("advanced Agent follows the current task instead of forking history", () => {
-  const panel = source("../src/shell/AdvancedAgentPanel.tsx");
-  const client = source("../src/lib/agent.ts");
+test("inline editors reuse the current App Agent instead of mounting another chat", () => {
+  const panel = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
-  assert.match(panel, /setActiveTaskId\(sessionTaskId\)/);
-  assert.match(panel, /advancedSession\.taskId/);
-  assert.match(panel, /followUp\([\s\S]*?activeTaskId,[\s\S]*?attachments\.length/);
-  assert.match(panel, /item\.url \|\| item\.previewUrl/);
-  assert.match(panel, /attachments\.length \? attachments : undefined/);
-  assert.match(panel, /const visiblePrompt =/);
-  assert.match(panel, /const hiddenContext =/);
-  assert.match(panel, /prompt: visiblePrompt/);
-  assert.match(panel, /hiddenContext/);
-  assert.match(client, /hidden_context: body\.hiddenContext \|\| ""/);
-  assert.match(client, /hidden_context: hiddenContext/);
-  assert.match(panel, /<LeoComposer/);
-  assert.match(panel, /leoSuggest/);
-  assert.match(panel, /onAttachFiles=\{atts\.handleAttachFiles\}/);
-  assert.match(panel, /onVoiceTranscript=/);
-  assert.doesNotMatch(panel, /<textarea/);
-  assert.doesNotMatch(panel, /advancedSession\?\.navigate/);
+  assert.doesNotMatch(panel, /AdvancedAgentPanel/);
+  assert.doesNotMatch(panel, /LeoComposer/);
+  assert.doesNotMatch(panel, /followUp\(/);
+  assert.match(panel, /workspacePane\.showDetail/);
   assert.match(canvas, /taskId \|\| workspaceSession\?\.taskId \|\| null/);
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
 
-test("advanced work is session-backed, deep-linkable and starts a fresh saved conversation", () => {
+test("inline editing reuses App history while retired URLs only redirect", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
-  const header = source("../src/shell/AdvancedWorkbenchHeader.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const history = source("../src/shell/HistoryMasterDetail.tsx");
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
-  const session = source("../src/shell/WorkspaceSession.tsx");
-  assert.match(workbench, /advancedSessionAppId/);
-  assert.match(workbench, /surface="advanced"/);
-  assert.match(workbench, /advancedFeatureHref\(feature, \{ sessionId \}\)/);
-  assert.match(header, /tt\("新建任务"\)/);
-  assert.match(header, /onStartNew/);
-  assert.match(shell, /advancedSession\.startNew\(\)/);
-  assert.match(pages, /getAppSession\(requestedSessionId, "advanced"\)/);
-  assert.match(pages, /\/advanced/);
-  assert.doesNotMatch(history, /advancedItemFromSession/);
-  assert.doesNotMatch(history, /<AdvancedContentWorkbench/);
-  assert.match(session, /const startNew = useCallback/);
-  assert.doesNotMatch(workbench, /resumeLatest=\{false\}/);
-  assert.match(workbench, /taskId === undefined \? workspace\.taskId : taskId/);
-  assert.match(workbench, /workspace\.mode === "history"/);
-  assert.match(workbench, /sessionId=\{props\.sessionId \|\| undefined\}/);
-  assert.doesNotMatch(workbench, /onSessionIdChange=/);
+  assert.match(workbench, /if \(props\.embedded\)/);
+  assert.match(workbench, /inheritedWorkspace/);
+  assert.match(workbench, /if \(editorHost\.embedded\) return true/);
+  assert.match(workbench, /onSavedItem/);
+  assert.doesNotMatch(shell, /startNew/);
+  assert.doesNotMatch(shell, /新建任务/);
+  assert.match(pages, /router\.replace\("\/"\)/);
+  assert.match(history, /historySessionHref\(entry\.id\)/);
+  assert.doesNotMatch(history, /advancedFeatureHref/);
 });
 
-test("direct advanced routes mount blank editors instead of a library gate", () => {
+test("retired direct advanced routes return to the App surface", () => {
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
-  const features = source("../src/shell/advanced-drafts.ts");
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.match(pages, /blankAdvancedFeatureItem\(feature, runtimeSiteId\)/);
-  assert.match(
-    pages,
-    /!assetReference && !requestedSessionId \? blankItem : null/,
-  );
-  assert.doesNotMatch(pages, /<MyLibrary/);
-  assert.match(features, /case "video_editing":/);
-  assert.match(features, /case "website_finetuning":/);
-  assert.match(features, /case "model_3d":/);
-  assert.match(features, /draft:advanced:\$\{feature\.id\}/);
-  assert.match(embedded, /\? \{ blank: "1" \}/);
+  const exportedSurface = pages.split("function LegacyAdvancedFeatureRoute")[0];
+  assert.match(exportedSurface, /高级编辑已融入 App 的生成与库/);
+  assert.match(exportedSurface, /router\.replace\("\/"\)/);
+  assert.doesNotMatch(exportedSurface, /<MyLibrary/);
 });
 
-test("first advanced edit only ensures history and every mutable route can flush", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+test("first inline edit ensures App history and every mutable route can flush", () => {
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const pdf = source("../src/shell/advanced-routes/PdfRoute.tsx");
   const model = source("../src/shell/advanced-routes/Model3DRoute.tsx");
   const dirtyEffect = shell.match(
@@ -167,18 +124,18 @@ test("first advanced edit only ensures history and every mutable route can flush
   assert.match(model, /flush: saveBeforeNewConversation/);
 });
 
-test("advanced split drag captures the pointer and embedded editors stay two-column", () => {
+test("library docking captures the pointer and embedded editors stay isolated", () => {
   const shell = [
-    source("../src/shell/AdvancedWorkbenchShell.tsx"),
-    source("../src/shell/AdvancedWorkbenchSidebar.tsx"),
+    source("../src/shell/SplitWorkspace.tsx"),
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
   ].join("\n");
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
   assert.match(shell, /setPointerCapture/);
-  assert.match(shell, /requestAnimationFrame/);
-  assert.match(shell, /cursor-col-resize bg-transparent/);
-  assert.match(shell, /adapter\.nativeChrome\?\.toolbar/);
-  assert.match(shell, /setPanelVisible\(false\)/);
+  assert.match(shell, /cursor-col-resize/);
+  assert.match(shell, /libraryDock === "left"/);
+  assert.match(shell, /adapter\.nativeChrome\?\.viewport/);
+  assert.match(shell, /clearDetail/);
   assert.match(protocol, /set-host-layout/);
   assert.match(embed, /sidePanelVisible/);
   assert.match(embed, /saveId: saveRequestId/);
@@ -202,7 +159,7 @@ test("code-backed website starters reach the visual editor without a fake projec
 test("advanced material browsing never navigates out of the current workbench", () => {
   const shell = [
     source("../src/shell/AdvancedWorkbenchShell.tsx"),
-    source("../src/shell/AdvancedWorkbenchPanel.tsx"),
+    source("../src/shell/InlineEditorMaterialPanel.tsx"),
   ].join("\n");
   const materials = source("../src/shell/MaterialLibrary.tsx");
   assert.match(shell, /allowAdvancedOnSelect=\{false\}/);
@@ -213,7 +170,7 @@ test("advanced material browsing never navigates out of the current workbench", 
 });
 
 test("advanced materials click to center and drag to the exact canvas point", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const provider = source("../src/shell/workbench-material-provider.tsx");
   const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
@@ -282,7 +239,7 @@ test("late catalog categories stay behind More and editor loads have hard deadli
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
   assert.match(protocol, /record\.instanceId !== instanceId/);
   assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
@@ -301,7 +258,7 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /message\.type === "selection-changed"/);
   assert.match(embed, /getBoundingClientRect/);
   assert.match(shell, /data-advanced-context-row/);
-  assert.match(shell, /\{editorContextualToolbar\}/);
+  assert.match(shell, /\{adapter\.contextToolbar\}/);
   assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
@@ -433,7 +390,7 @@ test("cloud browser can be opened directly and still supports takeover", () => {
 test("full-page library and right workspace share the heterogeneous My Library", () => {
   const artifacts = source("../src/shell/ArtifactLibrary.tsx");
   const mine = source("../src/shell/MyLibrary.tsx");
-  const advancedShell = source("../src/shell/AdvancedWorkbenchPanel.tsx");
+  const advancedShell = source("../src/shell/InlineEditorMaterialPanel.tsx");
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
@@ -444,7 +401,8 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(mine, /uploadFile/);
   assert.match(mine, /libraryCache/);
   assert.doesNotMatch(advancedShell, /itemFilter=\{\(candidate\) =>/);
-  assert.match(advancedShell, /advancedFeatureHrefForItem\(nextItem\)/);
+  assert.doesNotMatch(advancedShell, /advancedFeatureHrefForItem/);
+  assert.match(advancedShell, /<MaterialLibrary/);
   assert.match(mine, /data\?\.artifacts/);
   assert.match(mine, /artifactsById/);
   assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);

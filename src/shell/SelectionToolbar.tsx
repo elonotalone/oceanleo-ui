@@ -457,6 +457,7 @@ export function SelectionToolbar({
                       );
                       return;
                     }
+                    layout?.closeDrawer();
                     onCommand({
                       requestId: selectionRequestId(),
                       selectionId: context.id,

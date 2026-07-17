@@ -108,6 +108,25 @@ export function DeckRoute({
         }
       : { ok: false as const };
   }, [editor.save, item]);
+  const addLocalImages = useCallback(
+    async (files: File[]) => {
+      const read = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("图片读取失败"));
+          reader.onload = () =>
+            typeof reader.result === "string"
+              ? resolve(reader.result)
+              : reject(new Error("图片读取失败"));
+          reader.readAsDataURL(file);
+        });
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        editor.insertImageElement(await read(file), file.name);
+      }
+    },
+    [editor.insertImageElement],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -242,6 +261,11 @@ export function DeckRoute({
             onTrigger: editor.exportPptx,
           },
         ],
+        upload: {
+          accept: "image/*",
+          multiple: true,
+          onFiles: addLocalImages,
+        },
         stage: (
           <DeckStage
             editor={editor}

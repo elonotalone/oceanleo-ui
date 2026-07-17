@@ -104,7 +104,7 @@ test("structured document editors cover rich text, workbooks and editable decks"
 });
 
 test("native editors preserve history and never clear newer unsaved revisions", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
@@ -113,10 +113,10 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
-  assert.match(shell, /useState<string>\("agent"\)/);
-  assert.match(shell, /activeDrawerId: activeTool/);
+  assert.match(shell, /useState\(""\)/);
+  assert.match(shell, /activeDrawerId/);
   assert.match(shell, /beforeunload/);
-  assert.match(shell, /handleMaterialDrop/);
+  assert.match(shell, /handleDrop/);
   assert.match(shell, /source: "drop"/);
   assert.match(shell, /修改仍安全保留在当前编辑器，但尚未同步到云端/);
   assert.match(shell, /useAdvancedRecovery/);

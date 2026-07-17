@@ -105,6 +105,12 @@ export function VideoTimelineRoute({
         }
       : { ok: false as const };
   }, [editor.saveDraft, item]);
+  const addLocalMedia = useCallback(
+    async (files: File[]) => {
+      for (const file of files) await editor.addMediaFile(file);
+    },
+    [editor.addMediaFile],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -147,6 +153,11 @@ export function VideoTimelineRoute({
                 : editor.exportVideo(),
           },
         ],
+        upload: {
+          accept: "video/*,audio/*,image/*",
+          multiple: true,
+          onFiles: addLocalMedia,
+        },
         stage: <VideoTimelineStage state={editor} accent={accent} />,
         status: editor.error || editor.notice,
         persistence: {

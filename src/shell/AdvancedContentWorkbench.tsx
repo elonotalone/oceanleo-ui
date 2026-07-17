@@ -17,6 +17,7 @@ import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
 import {
   WorkspaceSessionProvider,
+  useOptionalWorkspaceSession,
   useWorkspaceSession,
 } from "./WorkspaceSession";
 import {
@@ -36,6 +37,10 @@ import {
 } from "./advanced-session-context";
 import type { LibraryItem } from "./library-data";
 import { WorkbenchMaterialProvider } from "./workbench-material-provider";
+import {
+  AdvancedEditorHostProvider,
+  useAdvancedEditorHost,
+} from "./advanced-editor-host-context";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 
@@ -121,6 +126,7 @@ export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
 ) {
   const [mounted, setMounted] = useState(false);
+  const inheritedWorkspace = useOptionalWorkspaceSession();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
@@ -130,7 +136,36 @@ export function AdvancedContentWorkbench(
     props.initialSession?.app_id ||
     advancedSessionAppId(props.item, route.type);
   const feature = advancedFeatureForItem(props.item);
-  const materialAppId = feature ? `advanced:${feature.id}` : appId;
+  const materialAppId = props.embedded
+    ? inheritedWorkspace?.appId || props.appId || siteId
+    : feature
+      ? `advanced:${feature.id}`
+      : appId;
+  const editor = (
+    <AdvancedEditorHostProvider
+      value={{
+        embedded: props.embedded === true,
+        onSavedItem: props.onSavedItem,
+      }}
+    >
+      <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
+        <AdvancedContentWorkbenchRuntime {...props} />
+      </WorkbenchMaterialProvider>
+    </AdvancedEditorHostProvider>
+  );
+  if (props.embedded) {
+    if (inheritedWorkspace) return editor;
+    return (
+      <WorkspaceSessionProvider
+        siteId={siteId}
+        appId={props.appId || "library"}
+        mode={props.mode || "workspace"}
+        resumeLatest={false}
+      >
+        {editor}
+      </WorkspaceSessionProvider>
+    );
+  }
   return (
     <WorkspaceSessionProvider
       key={`${appId}:${props.sessionId || "live"}`}
@@ -143,9 +178,7 @@ export function AdvancedContentWorkbench(
       mode={props.mode || (props.sessionId ? "history" : "workspace")}
       resumeLatest={!props.sessionId}
     >
-      <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
-        <AdvancedContentWorkbenchRuntime {...props} />
-      </WorkbenchMaterialProvider>
+      {editor}
     </WorkspaceSessionProvider>
   );
 }
@@ -155,7 +188,10 @@ function AdvancedContentWorkbenchRuntime(
 ) {
   const router = useRouter();
   const workspace = useWorkspaceSession();
-  const restoredItem = advancedItemFromSession(workspace.session);
+  const editorHost = useAdvancedEditorHost();
+  const restoredItem = editorHost.embedded
+    ? null
+    : advancedItemFromSession(workspace.session);
   const [item, setItem] = useState<LibraryItem>(
     () => restoredItem || props.item,
   );
@@ -202,15 +238,27 @@ function AdvancedContentWorkbenchRuntime(
   );
   const navigate = useCallback(
     (sessionId: string) => {
+      if (editorHost.embedded) return;
       const feature = advancedFeatureForItem(materialRef.current);
       if (feature) {
         router.replace(advancedFeatureHref(feature, { sessionId }));
       }
     },
-    [router],
+    [editorHost.embedded, router],
   );
   const ensure = useCallback(
     async (taskId?: string | null) => {
+      if (editorHost.embedded) {
+        const active =
+          workspace.session ||
+          (await workspace.ensureActive({
+            title: materialRef.current.title,
+          }));
+        if (active && taskId && workspace.taskId !== taskId) {
+          return workspace.bindTask(taskId, materialRef.current.title);
+        }
+        return active;
+      }
       const snapshot = makeSnapshot(taskId);
       const session = await workspace.ensureActive({
         title: materialRef.current.title,
@@ -232,11 +280,14 @@ function AdvancedContentWorkbenchRuntime(
       );
       return saved.ok ? saved.session || session : null;
     },
-    [makeSnapshot, workspace],
+    [editorHost.embedded, makeSnapshot, workspace],
   );
   const recordSavedItem = useCallback(
     async (savedItem: LibraryItem) => {
       materialRef.current = savedItem;
+      setItem(savedItem);
+      editorHost.onSavedItem?.(savedItem);
+      if (editorHost.embedded) return true;
       const snapshot = makeSnapshot(workspace.taskId);
       const session = await workspace.ensureActive({
         title: savedItem.title,
@@ -251,7 +302,7 @@ function AdvancedContentWorkbenchRuntime(
       );
       return saved.ok;
     },
-    [makeSnapshot, workspace],
+    [editorHost, makeSnapshot, workspace],
   );
   const renameTitle = useCallback(
     async (title: string) => {
@@ -260,6 +311,8 @@ function AdvancedContentWorkbenchRuntime(
       const nextItem = { ...materialRef.current, title: nextTitle };
       materialRef.current = nextItem;
       setItem(nextItem);
+      editorHost.onSavedItem?.(nextItem);
+      if (editorHost.embedded) return true;
       const snapshot = makeSnapshot(workspace.taskId);
       const session = await workspace.ensureActive({
         title: nextTitle,
@@ -274,9 +327,10 @@ function AdvancedContentWorkbenchRuntime(
       );
       return saved.ok;
     },
-    [makeSnapshot, workspace],
+    [editorHost, makeSnapshot, workspace],
   );
   const startNew = useCallback(async () => {
+    if (editorHost.embedded) return null;
     const flushed = (await flushRef.current?.()) || { ok: true as const };
     if (!flushed.ok) return null;
     if (flushed.item) materialRef.current = flushed.item;
@@ -287,7 +341,7 @@ function AdvancedContentWorkbenchRuntime(
     });
     if (next && workspace.mode === "history") navigate(next.id);
     return next;
-  }, [makeSnapshot, navigate, workspace]);
+  }, [editorHost.embedded, makeSnapshot, navigate, workspace]);
   const registerFlush = useCallback(
     (
       flush:
@@ -301,6 +355,7 @@ function AdvancedContentWorkbenchRuntime(
   const firstUseEnsuredRef = useRef(false);
   useEffect(() => {
     if (
+      editorHost.embedded ||
       workspace.availability !== "ready" ||
       firstUseEnsuredRef.current ||
       workspace.session ||
@@ -312,6 +367,7 @@ function AdvancedContentWorkbenchRuntime(
     void ensure(null);
   }, [
     ensure,
+    editorHost.embedded,
     props.sessionId,
     workspace.availability,
     workspace.session,
@@ -389,7 +445,7 @@ function AdvancedContentWorkbenchRuntime(
       break;
   }
 
-  if (workspace.availability === "loading") {
+  if (!editorHost.embedded && workspace.availability === "loading") {
     return <WorkbenchRouteLoading />;
   }
 

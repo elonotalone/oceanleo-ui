@@ -107,6 +107,13 @@ export function Model3DRoute({
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
   }, [buildSavedItem, editor.saveCopy]);
+  const importLocalModel = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (file) await editor.importModel(file);
+    },
+    [editor.importModel],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -141,6 +148,10 @@ export function Model3DRoute({
             onTrigger: editor.downloadScreenshot,
           },
         ],
+        upload: {
+          accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
+          onFiles: importLocalModel,
+        },
         stage: <Model3DStage editor={editor} />,
         status:
           editor.error ||

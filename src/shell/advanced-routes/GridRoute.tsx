@@ -73,6 +73,13 @@ export function GridRoute({
         }
       : { ok: false as const };
   }, [editor.save, item]);
+  const importLocalFile = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (file) await editor.importSource(file);
+    },
+    [editor.importSource],
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -110,6 +117,11 @@ export function GridRoute({
             onTrigger: editor.exportXlsx,
           },
         ],
+        upload: {
+          accept:
+            ".csv,.tsv,.xls,.xlsx,.xlsm,.ods,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          onFiles: importLocalFile,
+        },
         stage: <GridStage editor={editor} accent={accent} />,
         status:
           editor.error ||

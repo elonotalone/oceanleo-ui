@@ -611,6 +611,7 @@ export function SiteCatalogConsole({
           }
           siteId={currentSession.site_id}
           accent={accent}
+          embedded
           onClose={() => router.push("/history")}
         />
       </WorkspaceSessionProvider>

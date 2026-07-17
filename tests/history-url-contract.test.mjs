@@ -14,8 +14,9 @@ test("聚合历史与单站历史都把选中记录写入 URL", () => {
   assert.notEqual(clickEnd, -1);
   const clickHandler = source.slice(clickStart, clickEnd);
   assert.match(clickHandler, /router\.push\(historyHrefFor\(entry\)\)/);
-  assert.match(source, /advancedFeatureHref\(feature, \{ sessionId: entry\.session\.id \}\)/);
-  assert.match(source, /tt\("高级任务"\)/);
+  assert.match(source, /historySessionHref\(entry\.id\)/);
+  assert.doesNotMatch(source, /advancedFeatureHref/);
+  assert.doesNotMatch(source, /tt\("高级任务"\)/);
   assert.doesNotMatch(clickHandler, /if \(!siteId\) return/);
 });
 

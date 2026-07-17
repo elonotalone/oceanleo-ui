@@ -11,7 +11,6 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { useRouter } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { ensureDatabaseThumbnail } from "../lib/database";
 import type { LibraryItem, LibraryKind } from "./library-data";
@@ -20,10 +19,8 @@ import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { editorCapabilityFor } from "./workbench-routes";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
-import {
-  advancedFeatureHrefForItem,
-  advancedLibraryReferenceFor,
-} from "./advanced-features";
+import { advancedLibraryReferenceFor } from "./advanced-features";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -81,6 +78,8 @@ export interface WorkspaceLibraryProps {
   openAdvancedOnSelect?: boolean;
   /** Route hosts can intercept selection while preserving the shared card UI. */
   onOpenItem?: (item: LibraryItem) => void;
+  /** Receives the concrete version produced by an inline editor autosave. */
+  onSavedItem?: (item: LibraryItem) => void;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -148,7 +147,9 @@ export function WorkspaceLibrary({
   onCategoryChange,
   primaryCategoryIds,
   toolbarActions,
+  taskId,
   siteId = "",
+  appId,
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
@@ -159,6 +160,7 @@ export function WorkspaceLibrary({
   allowAdvanced = true,
   openAdvancedOnSelect = true,
   onOpenItem,
+  onSavedItem,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -166,7 +168,6 @@ export function WorkspaceLibrary({
   plain = false,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
-  const router = useRouter();
   const [internalSearch, setInternalSearch] = useState("");
   const search = query ?? internalSearch;
   const setSearch: Dispatch<SetStateAction<string>> = (value) => {
@@ -187,6 +188,7 @@ export function WorkspaceLibrary({
   const [deletingId, setDeletingId] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [materialActionState, setMaterialActionState] = useState("");
+  const [savedItems, setSavedItems] = useState<Record<string, LibraryItem>>({});
   const detailRef = useRef<HTMLDivElement>(null);
   const materialActionPendingRef = useRef(false);
 
@@ -197,15 +199,11 @@ export function WorkspaceLibrary({
         item &&
         allowAdvanced &&
         openAdvancedOnSelect &&
-        materialActions.length === 0
+        materialActions.length === 0 &&
+        editorCapabilityFor(item).available
       ) {
         if (onOpenItem) {
           onOpenItem(item);
-          return;
-        }
-        const href = advancedFeatureHrefForItem(item);
-        if (href) {
-          router.push(href);
           return;
         }
       }
@@ -216,7 +214,6 @@ export function WorkspaceLibrary({
       materialActions.length,
       onOpenItem,
       openAdvancedOnSelect,
-      router,
     ],
   );
 
@@ -419,6 +416,7 @@ export function WorkspaceLibrary({
       Boolean(externalUrl) &&
       (kind === "website" || kind === "canvas" || kind === "video_canvas");
     const workbenchItem: LibraryItem =
+      savedItems[selected.id] ||
       selected.libraryItem || {
         key: selected.id,
         source: "creation",
@@ -437,6 +435,33 @@ export function WorkspaceLibrary({
         },
       };
     const editorCapability = editorCapabilityFor(workbenchItem);
+    if (
+      allowAdvanced &&
+      openAdvancedOnSelect &&
+      materialActions.length === 0 &&
+      editorCapability.available
+    ) {
+      return (
+        <div className={`h-full min-h-0 ${className}`}>
+          <AdvancedContentWorkbench
+            item={workbenchItem}
+            taskId={taskId}
+            siteId={siteId || workbenchItem.siteId}
+            appId={appId}
+            accent={accent}
+            embedded
+            onSavedItem={(savedItem) => {
+              setSavedItems((current) => ({
+                ...current,
+                [selected.id]: savedItem,
+              }));
+              onSavedItem?.(savedItem);
+            }}
+            onClose={() => setSelectedId("")}
+          />
+        </div>
+      );
+    }
     const actionLabels: Record<WorkbenchMaterialAction, string> = {
       insert: "插入",
       replace: "替换",
@@ -496,23 +521,6 @@ export function WorkspaceLibrary({
               {tt(actionLabels[action])}
             </button>
           ))}
-          {allowAdvanced && editorCapability.available && (
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenItem) {
-                  onOpenItem(workbenchItem);
-                  return;
-                }
-                const href = advancedFeatureHrefForItem(workbenchItem);
-                if (href) router.push(href);
-              }}
-              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
-              style={{ background: accent }}
-            >
-              {tt("高级功能")}
-            </button>
-          )}
           {refreshable && (
             <button
               type="button"

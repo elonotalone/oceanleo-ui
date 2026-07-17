@@ -8,9 +8,9 @@ function source(path) {
 
 test("advanced editor surfaces use semantic theme tokens", () => {
   const themed = [
-    "../src/shell/AdvancedAgentPanel.tsx",
     "../src/shell/AdvancedFeaturePages.tsx",
-    "../src/shell/AdvancedTasks.tsx",
+    "../src/shell/InlineAdvancedWorkbenchShell.tsx",
+    "../src/shell/InlineEditorMaterialPanel.tsx",
     "../src/shell/WorkspaceLibrary.tsx",
     "../src/shell/MaterialLibrary.tsx",
     "../src/shell/LibraryLayout.tsx",
@@ -85,7 +85,7 @@ test("context-only drawers remain reachable from the object property bar", () =>
 });
 
 test("advanced editors autosave projects and reserve header actions for delivery", () => {
-  const header = source("../src/shell/AdvancedWorkbenchHeader.tsx");
+  const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const autosave = source("../src/shell/use-advanced-autosave.ts");
   const imageHook = source(
     "../src/shell/image-editor/use-fabric-image-editor.ts",
@@ -93,8 +93,8 @@ test("advanced editors autosave projects and reserve header actions for delivery
   const imagePersistence = source(
     "../src/shell/image-editor/editor-persistence.ts",
   );
-  assert.match(header, /正在自动保存/);
-  assert.match(header, /同步失败 · 重试/);
+  assert.match(header, /正在保存/);
+  assert.match(header, /保存遇到问题/);
   assert.match(autosave, /AdvancedPersistenceController/);
   assert.match(autosave, /controllerRef\.current\?\.observe/);
   assert.match(autosave, /controllerRef\.current\?\.flushLatest/);

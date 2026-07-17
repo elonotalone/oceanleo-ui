@@ -53,30 +53,29 @@ test("all route components use the single typed adapter prop", () => {
 });
 
 test("shell geometry never scales editor chrome and every legacy toolbox gets a launcher", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const stage = source("../src/shell/AdvancedWorkbenchStage.tsx");
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /data-advanced-viewport-row/);
-  assert.match(shell, /primaryEditorDrawer/);
-  assert.match(shell, /onClick=\{\(\) => openDrawer\(primaryEditorDrawer\.id\)\}/);
-  assert.match(shell, /adapter\.nativeChrome\?\.toolbar/);
+  assert.match(shell, /drawerById/);
+  assert.match(shell, /workspacePane\.showDetail/);
+  assert.match(shell, /adapter\.nativeChrome\?\.viewport/);
   assert.doesNotMatch(stage, /stageScale|data-advanced-scaled-panel/);
   assert.doesNotMatch(shell, /editorContextualToolbarAnchor/);
 });
 
-test("header consumes semantic actions instead of arbitrary JSX slots", () => {
+test("inline context row consumes semantic actions instead of arbitrary JSX slots", () => {
   const contract = source("../src/shell/advanced-workbench-chrome.ts");
-  const header = source("../src/shell/AdvancedWorkbenchHeader.tsx");
+  const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
-  assert.match(header, /actions\?\.map\(\(action\)/);
-  assert.match(header, /data-advanced-topbar-left/);
-  assert.match(header, /data-advanced-topbar-title/);
-  assert.match(header, /data-advanced-topbar-right/);
+  assert.match(header, /adapter\.actions\?\.map\(\(action\)/);
+  assert.match(header, /data-advanced-context-row/);
+  assert.match(header, /action\.panelId/);
 });
 
 test("mutable native editors keep an independent local recovery log", () => {
-  const shell = source("../src/shell/AdvancedWorkbenchShell.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const store = source("../src/shell/advanced-recovery-store.ts");
   assert.match(shell, /useAdvancedRecovery/);
   assert.match(store, /indexedDB\.open/);
