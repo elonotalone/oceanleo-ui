@@ -132,7 +132,7 @@ test("autosave blocks never invoke delivery renderers", () => {
       forbidden: /tiptapJsonToDocxBlob|docx|new File/,
     },
     {
-      path: "../src/shell/media-editors/AudioWorkbench.tsx",
+      path: "../src/shell/media-editors/use-audio-persistence.ts",
       start: "const save = useCallback",
       end: "const captureRecovery = useCallback",
       forbidden: /encodeWav|audio\/wav|new File/,
@@ -166,15 +166,33 @@ test("autosave blocks never invoke delivery renderers", () => {
   const modelProject = source(
     "../src/shell/media-editors/model3d-project.ts",
   );
+  const modelRuntime = source(
+    "../src/shell/media-editors/model3d-runtime.mjs",
+  );
+  const modelWorkbench = source(
+    "../src/shell/media-editors/use-model3d-workbench.ts",
+  );
+  const modelRoute = source(
+    "../src/shell/advanced-routes/Model3DRoute.tsx",
+  );
   assert.doesNotMatch(
     modelSave,
-    /captureBlob|uploadFile|fetchMediaBlob|new File/,
+    /captureBlob|uploadFile|fetchMediaBlob|dataURL|readAsDataURL/,
   );
-  assert.doesNotMatch(
-    modelProject,
-    /fetchMediaBlob|modelBlob|new File/,
-  );
-  assert.match(modelProject, /saveProjectWorkingHead/);
+  // Small scene edits and viewer-only state persist as a replay journal +
+  // sidecar. The full GLB exporter is gated by a bounded checkpoint reason.
+  assert.match(modelSave, /createModel3DSavePlan/);
+  assert.match(modelSave, /if \(plan\.shouldExportGlb\) glb = await runtime\.exportGlb\(\)/);
+  assert.match(modelSave, /operations: plan\.persistedOperations/);
+  assert.match(modelSave, /runtime\.commitCheckpoint\(plan\.coveredOperationIds\)/);
+  assert.match(modelRuntime, /exportGlb\(\)/);
+  assert.match(modelRuntime, /applyOperationJournal/);
+  assert.match(modelWorkbench, /normalizeModel3DProjectRecovery/);
+  assert.match(modelWorkbench, /runtime\.applyOperationJournal\(pendingOperationsRef\.current\)/);
+  assert.match(modelRoute, /operations: editor\.operationJournal/);
+  assert.match(modelProject, /saveFileToLibrary/);
+  assert.match(modelProject, /new File\(\[binary\]/);
+  assert.doesNotMatch(modelProject, /dataURL|readAsDataURL/);
 
   // PDF edits already mutate the canonical PDF bytes. Autosave uploads those
   // bytes without invoking the preview canvas or another PDF render pass.
@@ -187,6 +205,18 @@ test("autosave blocks never invoke delivery renderers", () => {
 });
 
 test("delivery renderers remain attached to explicit export and download actions", () => {
+  assert.match(
+    section(
+      "../src/shell/media-editors/use-model3d-media-actions.ts",
+      "const downloadModel = useCallback",
+      "return {",
+    ),
+    /await exportModel\(\)/,
+  );
+  assert.match(
+    source("../src/shell/media-editors/use-model3d-save.ts"),
+    /checkpointForExport[\s\S]*?persist\(true\)/,
+  );
   assert.match(
     section(
       "../src/shell/image-editor/use-fabric-image-editor.ts",
@@ -223,7 +253,7 @@ test("delivery renderers remain attached to explicit export and download actions
     section(
       "../src/shell/media-editors/AudioWorkbench.tsx",
       "const download = useCallback",
-      "const save = useCallback",
+      "const { save, captureRecovery, restoreRecovery } = useAudioPersistence",
     ),
     /encodeWav/,
   );

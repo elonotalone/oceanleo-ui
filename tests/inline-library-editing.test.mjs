@@ -74,7 +74,9 @@ test("generated and material slots never wrap legacy container tabs as fake card
 });
 
 test("tool bars stay single-line and move overflow into semantic panels", () => {
-  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const toolbar =
+    source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/selection-inspector-host.tsx");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const image = source(
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
@@ -85,7 +87,8 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   assert.match(toolbar, /SELECTION_TOOLBAR_MAX_WIDTH/);
   assert.match(toolbar, /role="dialog"/);
   assert.match(toolbar, /event\.key === "Escape"/);
-  assert.doesNotMatch(toolbar, /selectionToolbarBudget|openTransientPanel/);
+  assert.doesNotMatch(toolbar, /selectionToolbarBudget/);
+  assert.match(toolbar, /openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
   assert.doesNotMatch(toolbar, /overflow-x-auto/);
   assert.match(image, /if \(!selected\) return null/);

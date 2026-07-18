@@ -26,6 +26,7 @@ import {
   normalizeChartDocument,
   patchChartAxis,
   patchChartSeries,
+  patchChartTooltip,
   replaceChartData,
   type ChartAxis,
   type ChartDataTable,
@@ -68,6 +69,7 @@ export interface ChartWorkbenchState {
   setTitle: (title: string) => void;
   setColors: (colors: string[]) => void;
   setLegend: (patch: Partial<ChartDocumentV1["option"]["legend"]>) => void;
+  setTooltip: (patch: Partial<ChartDocumentV1["option"]["tooltip"]>) => void;
   setAxis: (axis: "x" | "y", patch: Partial<ChartAxis>) => void;
   patchSeries: (id: string, patch: Partial<ChartSeries>) => void;
   addSeries: (type?: ChartSeries["type"]) => void;
@@ -398,6 +400,8 @@ export function useChartWorkbench(
           },
         };
       }),
+    setTooltip: (patch) =>
+      mutate((current) => patchChartTooltip(current, patch)),
     replaceData: (table) =>
       mutate((current) => replaceChartData(current, table)),
     importCsv: (csv) =>

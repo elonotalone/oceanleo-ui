@@ -2,9 +2,24 @@
 
 import type { LibraryItem } from "../library-data";
 import {
-  saveProjectWorkingHead,
+  saveFileToLibrary,
   type PersistedEditorVersion,
 } from "../doc-editors/doc-io";
+import {
+  normalizeModel3DAnnotations,
+  normalizeModel3DEnvironmentUrl,
+  normalizeModel3DMaterialOverrides,
+  type Model3DAnnotation,
+  type Model3DMaterialOverride,
+} from "./model3d-view";
+import {
+  MODEL3D_OPERATION_SCHEMA,
+  normalizeModel3DOperationJournal,
+  type Model3DOperation,
+} from "./model3d-operations.mjs";
+
+export const MODEL3D_PROJECT_SCHEMA = "oceanleo.three-editor@2";
+export const LEGACY_MODEL3D_PROJECT_SCHEMA = "oceanleo.three-editor@1";
 
 export interface Model3DViewProject {
   sourceUrl: string;
@@ -17,11 +32,35 @@ export interface Model3DViewProject {
   shadowSoftness: number;
   background: string;
   animationName: string;
+  animationPlaying: boolean;
   animationSpeed: number;
+  animationTime: number;
+  environmentUrl: string;
+  environmentIntensity: number;
+  shadowEnabled: boolean;
+  /** Legacy model-viewer sidecar values, applied once before the next GLB save. */
+  materialOverrides: Model3DMaterialOverride[];
+  annotations: Model3DAnnotation[];
+}
+
+export interface Model3DProjectRecovery {
+  checkpointUrl: string;
+  operations: Model3DOperation[];
+  view: Model3DViewProject;
 }
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
+
+const finite = (
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) => {
+  const numeric = Number(value);
+  return clamp(Number.isFinite(numeric) ? numeric : fallback, minimum, maximum);
+};
 
 export function normalizeModel3DRecovery(
   payload: unknown,
@@ -34,18 +73,23 @@ export function normalizeModel3DRecovery(
       typeof value.sourceUrl === "string"
         ? value.sourceUrl
         : fallback.sourceUrl,
-    azimuth: clamp(Number(value.azimuth ?? fallback.azimuth), -720, 720),
-    elevation: clamp(Number(value.elevation ?? fallback.elevation), -89, 89),
-    zoom: clamp(Number(value.zoom ?? fallback.zoom), 50, 300),
-    autoRotate: Boolean(value.autoRotate),
-    exposure: clamp(Number(value.exposure ?? fallback.exposure), 0.1, 2),
-    shadowIntensity: clamp(
-      Number(value.shadowIntensity ?? fallback.shadowIntensity),
+    azimuth: finite(value.azimuth, fallback.azimuth, -180, 180),
+    elevation: finite(value.elevation, fallback.elevation, 0, 180),
+    zoom: finite(value.zoom, fallback.zoom, 20, 500),
+    autoRotate:
+      typeof value.autoRotate === "boolean"
+        ? value.autoRotate
+        : fallback.autoRotate,
+    exposure: finite(value.exposure, fallback.exposure, 0.1, 4),
+    shadowIntensity: finite(
+      value.shadowIntensity,
+      fallback.shadowIntensity,
       0,
       2,
     ),
-    shadowSoftness: clamp(
-      Number(value.shadowSoftness ?? fallback.shadowSoftness),
+    shadowSoftness: finite(
+      value.shadowSoftness,
+      fallback.shadowSoftness,
       0,
       1,
     ),
@@ -57,11 +101,63 @@ export function normalizeModel3DRecovery(
       typeof value.animationName === "string"
         ? value.animationName
         : fallback.animationName,
-    animationSpeed: clamp(
-      Number(value.animationSpeed ?? fallback.animationSpeed),
+    animationPlaying:
+      typeof value.animationPlaying === "boolean"
+        ? value.animationPlaying
+        : fallback.animationPlaying,
+    animationSpeed: finite(
+      value.animationSpeed,
+      fallback.animationSpeed,
       0.1,
-      3,
+      4,
     ),
+    animationTime: finite(
+      value.animationTime,
+      fallback.animationTime,
+      0,
+      86_400,
+    ),
+    environmentUrl: normalizeModel3DEnvironmentUrl(
+      value.environmentUrl ?? fallback.environmentUrl,
+    ),
+    environmentIntensity: finite(
+      value.environmentIntensity,
+      fallback.environmentIntensity,
+      0,
+      5,
+    ),
+    shadowEnabled:
+      typeof value.shadowEnabled === "boolean"
+        ? value.shadowEnabled
+        : fallback.shadowEnabled,
+    materialOverrides: normalizeModel3DMaterialOverrides(
+      value.materialOverrides ?? fallback.materialOverrides,
+    ),
+    annotations: normalizeModel3DAnnotations(
+      value.annotations ?? fallback.annotations,
+    ),
+  };
+}
+
+export function normalizeModel3DProjectRecovery(
+  payload: unknown,
+  fallback: Model3DViewProject,
+  fallbackCheckpointUrl: string,
+): Model3DProjectRecovery | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const view = normalizeModel3DRecovery(record.view ?? record, fallback);
+  if (!view) return null;
+  const checkpointUrl =
+    typeof record.checkpointUrl === "string" && record.checkpointUrl.trim()
+      ? record.checkpointUrl.trim()
+      : typeof record.sourceUrl === "string" && record.sourceUrl.trim()
+        ? record.sourceUrl.trim()
+        : fallbackCheckpointUrl;
+  return {
+    checkpointUrl,
+    operations: normalizeModel3DOperationJournal(record.operations),
+    view: { ...view, sourceUrl: checkpointUrl },
   };
 }
 
@@ -69,7 +165,10 @@ export async function persistModel3DProject({
   item,
   siteId,
   title,
-  sourceUrl,
+  checkpointUrl,
+  glb,
+  operations,
+  checkpointReason,
   thumbUrl,
   view,
   revision,
@@ -77,11 +176,18 @@ export async function persistModel3DProject({
   item: LibraryItem;
   siteId: string;
   title: string;
-  sourceUrl: string;
+  checkpointUrl: string;
+  glb?: Blob | ArrayBuffer;
+  operations: Model3DOperation[];
+  checkpointReason?: string;
   thumbUrl?: string;
   view: Omit<Model3DViewProject, "sourceUrl">;
   revision: number;
 }): Promise<PersistedEditorVersion> {
+  const {
+    materialOverrides: _legacyMaterialOverrides,
+    ...sidecarView
+  } = view;
   const wireView = {
     camera_orbit: `${view.azimuth}deg ${view.elevation}deg ${view.zoom}%`,
     auto_rotate: view.autoRotate,
@@ -90,30 +196,53 @@ export async function persistModel3DProject({
     shadow_softness: view.shadowSoftness,
     background: view.background,
     animation: view.animationName,
+    animation_playing: view.animationPlaying,
     animation_speed: view.animationSpeed,
+    animation_time: view.animationTime,
+    environment_url: view.environmentUrl,
+    environment_intensity: view.environmentIntensity,
+    shadow_enabled: view.shadowEnabled,
+    annotations: view.annotations,
   };
-  const saved = await saveProjectWorkingHead({
+  const journal = normalizeModel3DOperationJournal(operations);
+  const binary = glb
+    ? glb instanceof Blob
+      ? glb
+      : new Blob([glb], { type: "model/gltf-binary" })
+    : null;
+  const file = binary
+    ? new File([binary], `${title}.glb`, { type: "model/gltf-binary" })
+    : undefined;
+  const saved = await saveFileToLibrary({
     item,
     siteId,
     fallbackSite: "threed",
+    file,
+    deliveryUrl: file ? undefined : checkpointUrl,
     title,
     mediaType: "model3d",
     kind: "model3d",
     idempotencyKey: `model3d:${item.id}:${revision}`,
-    workingHeadUrl: sourceUrl,
     thumbUrl,
     meta: {
-      editor: "model-viewer-native-v1",
+      editor: "three-gltf-editor-v2",
+      format: "glb",
       view: wireView,
-      model_source_url: sourceUrl,
-      model_dependency_mode: "preserved-source-closure",
+      model_dependency_mode: "checkpoint-glb+operation-journal",
+      checkpoint_reason: checkpointReason || "journal-only",
+      journal_count: journal.length,
     },
     project: {
-      schema: "oceanleo.model-view@1",
-      data: { view, sourceUrl },
+      schema: MODEL3D_PROJECT_SCHEMA,
+      data: {
+        checkpointUrl: file ? "" : checkpointUrl,
+        operationSchema: MODEL3D_OPERATION_SCHEMA,
+        operations: journal,
+        view: sidecarView,
+      },
     },
   });
-  if (!saved.ok) throw new Error(saved.error || "3D 副本登记到我的库失败");
+  if (!saved.ok) throw new Error(saved.error || "3D checkpoint/sidecar 保存失败");
   return {
     url: saved.url,
     versionId: saved.versionId,

@@ -20,6 +20,25 @@ export type DeckTextAlign = "left" | "center" | "right";
 export type DeckImageFit = "contain" | "cover" | "fill";
 export type DeckLineDash = "solid" | "dash" | "dot";
 export type DeckLineMarker = "none" | "arrow" | "circle" | "diamond";
+export type DeckTransitionType =
+  | "none"
+  | "fade"
+  | "push-left"
+  | "push-right"
+  | "wipe"
+  | "zoom";
+export type DeckAnimationType = "none" | "fade" | "fly-up" | "wipe" | "zoom";
+
+export interface DeckTransition {
+  type: Exclude<DeckTransitionType, "none">;
+  durationMs: number;
+}
+
+export interface DeckElementAnimation {
+  type: Exclude<DeckAnimationType, "none">;
+  durationMs: number;
+  delayMs: number;
+}
 
 /**
  * Positioned native slide element. Coordinates and dimensions are percentages
@@ -66,6 +85,7 @@ export interface DeckElement {
   blur?: number;
   rows?: string[][];
   label?: string;
+  animation?: DeckElementAnimation;
 }
 
 export interface DeckImage {
@@ -81,8 +101,19 @@ export interface DeckSlide {
   notes: string;
   layout: DeckLayout;
   background: string;
+  transition?: DeckTransition;
+  masterId?: string;
   image?: DeckImage;
   elements: DeckElement[];
+}
+
+export interface DeckMaster {
+  id: string;
+  name: string;
+  background: string;
+  textColor: string;
+  accentColor: string;
+  fontFamily: string;
 }
 
 export interface DeckDocument {
@@ -90,6 +121,7 @@ export interface DeckDocument {
   title: string;
   aspect: DeckAspect;
   theme: DeckThemeId;
+  masters: DeckMaster[];
   slides: DeckSlide[];
   importWarnings?: string[];
 }
@@ -168,11 +200,40 @@ const LAYOUTS = new Set<DeckLayout>([
   "blank",
 ]);
 const THEMES = new Set<DeckThemeId>(DECK_THEMES.map((theme) => theme.id));
+const TRANSITIONS = new Set<Exclude<DeckTransitionType, "none">>([
+  "fade",
+  "push-left",
+  "push-right",
+  "wipe",
+  "zoom",
+]);
+const ANIMATIONS = new Set<Exclude<DeckAnimationType, "none">>([
+  "fade",
+  "fly-up",
+  "wipe",
+  "zoom",
+]);
 let serial = 0;
 
 export function deckId(prefix = "slide"): string {
   serial += 1;
   return `${prefix}-${Date.now().toString(36)}-${serial.toString(36)}`;
+}
+
+export function createDeckMaster(
+  themeId: DeckThemeId,
+  name = "默认母版",
+  id = deckId("master"),
+): DeckMaster {
+  const theme = deckTheme(themeId);
+  return {
+    id,
+    name,
+    background: theme.background,
+    textColor: theme.text,
+    accentColor: theme.accent,
+    fontFamily: theme.fontFamily,
+  };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -213,6 +274,37 @@ function normalizeBullets(value: unknown): string[] {
     .slice(0, 100);
 }
 
+function normalizeMasters(value: unknown, themeId: DeckThemeId): DeckMaster[] {
+  const used = new Set<string>();
+  const masters = (Array.isArray(value) ? value.slice(0, 50) : []).flatMap(
+    (entry, index) => {
+      const source = record(entry);
+      if (!Object.keys(source).length) return [];
+      let id = text(source.id || `master-${index + 1}`)
+        .replace(/[^a-z0-9_.:-]/gi, "-")
+        .slice(0, 80);
+      if (!id || used.has(id)) id = `master-${index + 1}`;
+      used.add(id);
+      const fallback = createDeckMaster(themeId, `母版 ${index + 1}`, id);
+      return [
+        {
+          id,
+          name: text(source.name).trim().slice(0, 120) || fallback.name,
+          background: color(source.background) || fallback.background,
+          textColor: color(source.textColor) || fallback.textColor,
+          accentColor: color(source.accentColor) || fallback.accentColor,
+          fontFamily:
+            text(source.fontFamily).trim().slice(0, 200) ||
+            fallback.fontFamily,
+        },
+      ];
+    },
+  );
+  return masters.length
+    ? masters
+    : [createDeckMaster(themeId, "默认母版", "master-default")];
+}
+
 function finite(
   value: unknown,
   fallback: number,
@@ -251,6 +343,10 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
   const lineStart = text(source.lineStart) as DeckLineMarker;
   const lineEnd = text(source.lineEnd) as DeckLineMarker;
   const src = text(source.src || source.url).trim();
+  const animationSource = record(source.animation);
+  const animationType = text(
+    animationSource.type || source.animationType,
+  ) as Exclude<DeckAnimationType, "none">;
   return {
     id: text(source.id).trim() || deckId("element"),
     type: rawType,
@@ -309,6 +405,23 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
     blur: finite(source.blur, 0, 0, 30),
     rows,
     label: text(source.label).slice(0, 500) || undefined,
+    animation: ANIMATIONS.has(animationType)
+      ? {
+          type: animationType,
+          durationMs: finite(
+            animationSource.durationMs || source.animationDurationMs,
+            500,
+            100,
+            3_000,
+          ),
+          delayMs: finite(
+            animationSource.delayMs || source.animationDelayMs,
+            0,
+            0,
+            10_000,
+          ),
+        }
+      : undefined,
   };
 }
 
@@ -431,6 +544,25 @@ function normalizeSlide(value: unknown, index: number): DeckSlide {
       ? "bullets"
       : "title-body";
   const image = normalizeImage(source.image, source);
+  const transitionSource = record(source.transition);
+  const transitionType = text(
+    transitionSource.type || source.transitionType || source.transition_type,
+  );
+  const transition =
+    TRANSITIONS.has(transitionType as Exclude<DeckTransitionType, "none">)
+      ? {
+          type: transitionType as Exclude<DeckTransitionType, "none">,
+          durationMs: finite(
+            transitionSource.durationMs ||
+              transitionSource.duration_ms ||
+              source.transitionDurationMs ||
+              source.transition_duration_ms,
+            500,
+            100,
+            3_000,
+          ),
+        }
+      : undefined;
   const normalizedElements = Array.isArray(source.elements)
     ? source.elements
         .map(normalizeElement)
@@ -444,6 +576,8 @@ function normalizeSlide(value: unknown, index: number): DeckSlide {
     notes: text(source.notes || source.speakerNotes || source.speaker_notes),
     layout,
     background: color(source.background || source.bg || source.backgroundColor),
+    transition,
+    masterId: text(source.masterId || source.master_id).trim() || undefined,
     image,
     elements:
       normalizedElements.length > 0
@@ -466,7 +600,17 @@ export function normalizeDeckDocument(
       ? source.slides
       : [];
   const rawTheme = text(source.theme || outer.theme) as DeckThemeId;
-  const slides = rawSlides.map(normalizeSlide);
+  const theme = THEMES.has(rawTheme) ? rawTheme : "ocean";
+  const masters = normalizeMasters(source.masters, theme);
+  const masterIds = new Set(masters.map((master) => master.id));
+  const fallbackMasterId = masters[0].id;
+  const slides = rawSlides.map(normalizeSlide).map((slide) => ({
+    ...slide,
+    masterId:
+      slide.masterId && masterIds.has(slide.masterId)
+        ? slide.masterId
+        : fallbackMasterId,
+  }));
   const importWarnings = Array.isArray(source.importWarnings)
     ? source.importWarnings
         .map(text)
@@ -478,8 +622,11 @@ export function normalizeDeckDocument(
     version: 2,
     title: text(source.title || outer.title).trim() || fallbackTitle,
     aspect: text(source.aspect || outer.aspect) === "4:3" ? "4:3" : "16:9",
-    theme: THEMES.has(rawTheme) ? rawTheme : "ocean",
-    slides: slides.length ? slides : [emptyDeckSlide()],
+    theme,
+    masters,
+    slides: slides.length
+      ? slides
+      : [{ ...emptyDeckSlide(), masterId: fallbackMasterId }],
     ...(importWarnings.length ? { importWarnings } : {}),
   };
 }
@@ -487,12 +634,15 @@ export function normalizeDeckDocument(
 export function cloneDeckDocument(deck: DeckDocument): DeckDocument {
   return {
     ...deck,
+    masters: deck.masters.map((master) => ({ ...master })),
     slides: deck.slides.map((slide) => ({
       ...slide,
       bullets: [...slide.bullets],
+      transition: slide.transition ? { ...slide.transition } : undefined,
       image: slide.image ? { ...slide.image } : undefined,
       elements: slide.elements.map((element) => ({
         ...element,
+        animation: element.animation ? { ...element.animation } : undefined,
         rows: element.rows?.map((row) => [...row]),
       })),
     })),
@@ -502,4 +652,15 @@ export function cloneDeckDocument(deck: DeckDocument): DeckDocument {
 
 export function deckTheme(id: DeckThemeId): DeckTheme {
   return DECK_THEMES.find((theme) => theme.id === id) || DECK_THEMES[0];
+}
+
+export function deckMasterFor(
+  deck: DeckDocument,
+  slide: DeckSlide,
+): DeckMaster {
+  return (
+    deck.masters.find((master) => master.id === slide.masterId) ||
+    deck.masters[0] ||
+    createDeckMaster(deck.theme, "默认母版", "master-default")
+  );
 }

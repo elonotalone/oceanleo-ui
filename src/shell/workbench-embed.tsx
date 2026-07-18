@@ -13,11 +13,17 @@ import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
   EDITOR_PROTOCOL,
   asEditorToHostMessage,
+  asHostToEditorMessage,
   buildEditorEmbedUrl,
   isTrustedEditorOrigin,
   type EditorMaterialInsertion,
+  type EditorViewportSnapshot,
 } from "./editor-protocol";
-import type { SelectionCommand, SelectionContext } from "./selection-context";
+import type {
+  SelectionCommand,
+  SelectionContext,
+} from "./selection-context";
+import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
 import { advancedSavedItem } from "./advanced-session";
 
@@ -32,6 +38,12 @@ export interface EmbedEditorPaneProps {
   onCloseRequest?: () => void;
   onDirtyChange?: (dirty: boolean, revision?: number) => void;
   onSelectionChange?: (selection: SelectionContext | null) => void;
+  onSelectionResult?: (result: {
+    requestId: string;
+    ok: boolean;
+    message?: string;
+  }) => void;
+  onViewportChange?: (viewport: EditorViewportSnapshot) => void;
   onSaveResult?: (result: {
     ok: boolean;
     saveId?: string;
@@ -39,6 +51,11 @@ export interface EmbedEditorPaneProps {
   }) => void;
   saveRequestId?: string;
   selectionCommand?: SelectionCommand | null;
+  viewportCommand?: {
+    commandId: string;
+    value?: number;
+    fit?: boolean;
+  } | null;
   materialInsertion?: EditorMaterialInsertion | null;
   onMaterialResult?: (result: {
     commandId: string;
@@ -96,9 +113,12 @@ export function EmbedEditorPane({
   onCloseRequest,
   onDirtyChange,
   onSelectionChange,
+  onSelectionResult,
+  onViewportChange,
   onSaveResult,
   saveRequestId = "",
   selectionCommand = null,
+  viewportCommand = null,
   materialInsertion = null,
   onMaterialResult,
   exportRequestId = "",
@@ -107,6 +127,8 @@ export function EmbedEditorPane({
   const tt = useUI();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyHandledRef = useRef(false);
+  const latestSelectionRef = useRef<SelectionContext | null>(null);
+  const selectionGateRef = useRef(new SelectionCommandGate());
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -117,17 +139,21 @@ export function EmbedEditorPane({
 
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return buildEditorEmbedUrl(editorBase, {
-      instanceId,
-      hostOrigin: window.location.origin,
-      assetUrl: item.url || item.previewUrl || "",
-      assetTitle: item.title,
-      assetKind: item.kind,
-      extra: {
-        ...extraParams,
-        __attempt: String(attempt),
-      },
-    });
+    try {
+      return buildEditorEmbedUrl(editorBase, {
+        instanceId,
+        hostOrigin: window.location.origin,
+        assetUrl: item.url || item.previewUrl || undefined,
+        assetTitle: item.title,
+        assetKind: item.kind,
+        extra: {
+          ...extraParams,
+          __attempt: String(attempt),
+        },
+      });
+    } catch {
+      return "";
+    }
   }, [
     attempt,
     editorBase,
@@ -141,7 +167,8 @@ export function EmbedEditorPane({
 
   const editorOrigin = useMemo(() => {
     try {
-      return new URL(editorBase).origin;
+      const origin = new URL(editorBase).origin;
+      return isTrustedEditorOrigin(origin) ? origin : "";
     } catch {
       return "";
     }
@@ -151,13 +178,35 @@ export function EmbedEditorPane({
     (message: Record<string, unknown>) => {
       const frame = iframeRef.current?.contentWindow;
       if (!frame || !editorOrigin) return;
-      frame.postMessage(
-        { protocol: EDITOR_PROTOCOL, instanceId, ...message },
-        editorOrigin,
-      );
+      const envelope = { ...message, protocol: EDITOR_PROTOCOL, instanceId };
+      if (!asHostToEditorMessage(envelope, instanceId)) return;
+      try {
+        frame.postMessage(envelope, editorOrigin);
+      } catch {
+        // Invalid/non-cloneable data never crosses the frame boundary.
+      }
     },
     [editorOrigin, instanceId],
   );
+  const cancelSelectionTransactions = useCallback(() => {
+    for (const command of selectionGateRef.current.cancelAll()) {
+      sendToEditor({ type: "selection-command", command });
+    }
+  }, [sendToEditor]);
+  useEffect(() => {
+    cancelSelectionTransactions();
+    latestSelectionRef.current = null;
+  }, [
+    attempt,
+    cancelSelectionTransactions,
+    editorOrigin,
+    item.key,
+  ]);
+  useEffect(() => {
+    const cancel = () => cancelSelectionTransactions();
+    window.addEventListener("blur", cancel);
+    return () => window.removeEventListener("blur", cancel);
+  }, [cancelSelectionTransactions]);
 
   const sendOpenAsset = useCallback(() => {
     if (item.meta.draft === true && !item.url && !item.previewUrl) return;
@@ -202,7 +251,7 @@ export function EmbedEditorPane({
       } else if (message.type === "selection-changed") {
         const frameRect = iframeRef.current?.getBoundingClientRect();
         const anchor = message.selection?.anchor;
-        onSelectionChange?.(
+        const selection =
           message.selection && anchor && frameRect
             ? {
                 ...message.selection,
@@ -213,8 +262,20 @@ export function EmbedEditorPane({
                   height: anchor.height,
                 },
               }
-            : message.selection,
-        );
+            : message.selection;
+        for (const command of selectionGateRef.current.reconcile(selection)) {
+          sendToEditor({ type: "selection-command", command });
+        }
+        latestSelectionRef.current = selection;
+        onSelectionChange?.(selection);
+      } else if (message.type === "selection-result") {
+        onSelectionResult?.({
+          requestId: message.requestId,
+          ok: message.ok,
+          message: message.message,
+        });
+      } else if (message.type === "viewport-changed") {
+        onViewportChange?.(message.viewport);
       } else if (message.type === "material-result") {
         onMaterialResult?.({
           commandId: message.commandId,
@@ -322,6 +383,8 @@ export function EmbedEditorPane({
     onExportResult,
     onMaterialResult,
     onSelectionChange,
+    onSelectionResult,
+    onViewportChange,
     onSaveResult,
     onVersionSaved,
     sendToEditor,
@@ -352,8 +415,20 @@ export function EmbedEditorPane({
   useEffect(() => {
     const frame = iframeRef.current?.contentWindow;
     return () => {
-      // dispose 尽力而为——iframe 可能已卸载。
+      latestSelectionRef.current = null;
       try {
+        for (const command of selectionGateRef.current.cancelAll()) {
+          frame?.postMessage(
+            {
+              protocol: EDITOR_PROTOCOL,
+              type: "selection-command",
+              instanceId,
+              command,
+            },
+            editorOrigin,
+          );
+        }
+        // dispose 尽力而为——iframe 可能已卸载。
         frame?.postMessage(
           { protocol: EDITOR_PROTOCOL, type: "dispose", instanceId },
           editorOrigin,
@@ -361,23 +436,14 @@ export function EmbedEditorPane({
       } catch {
         /* ignore */
       }
+      selectionGateRef.current.clear();
     };
   }, [editorOrigin, instanceId]);
 
   useEffect(() => {
     if (!saveRequestId || phase !== "ready") return;
-    const frame = iframeRef.current?.contentWindow;
-    if (!frame || !editorOrigin) return;
-    frame.postMessage(
-      {
-        protocol: EDITOR_PROTOCOL,
-        type: "save-request",
-        instanceId,
-        saveId: saveRequestId,
-      },
-      editorOrigin,
-    );
-  }, [editorOrigin, instanceId, phase, saveRequestId, tt]);
+    sendToEditor({ type: "save-request", saveId: saveRequestId });
+  }, [phase, saveRequestId, sendToEditor]);
 
   useEffect(() => {
     if (!exportRequestId || phase !== "ready") return;
@@ -397,13 +463,32 @@ export function EmbedEditorPane({
       // add a second internal sidebar inside the right canvas.
       sidePanelVisible: true,
       hostOwnsChrome: true,
+      hostOwnsViewport: true,
     });
   }, [phase, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready" || !selectionCommand) return;
+    if (
+      !selectionGateRef.current.accept(
+        selectionCommand,
+        latestSelectionRef.current,
+      )
+    ) {
+      onSelectionResult?.({
+        requestId: selectionCommand.requestId,
+        ok: false,
+        message: "选择已变化，请重新选择后再编辑。",
+      });
+      return;
+    }
     sendToEditor({ type: "selection-command", command: selectionCommand });
-  }, [phase, selectionCommand, sendToEditor]);
+  }, [onSelectionResult, phase, selectionCommand, sendToEditor]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !viewportCommand) return;
+    sendToEditor({ type: "viewport-command", ...viewportCommand });
+  }, [phase, sendToEditor, viewportCommand]);
 
   useEffect(() => {
     if (phase !== "ready" || !materialInsertion) return;
@@ -426,7 +511,7 @@ export function EmbedEditorPane({
 
   return (
     <div className="relative h-full w-full bg-[var(--surface,#f5f5f4)]">
-      {phase === "connecting" && (
+      {phase === "connecting" && src && (
         <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]/90">
           <div
             aria-hidden="true"
@@ -435,27 +520,37 @@ export function EmbedEditorPane({
           />
         </div>
       )}
-      {phase === "error" && (
+      {(phase === "error" || !src) && (
         <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]">
           <div className="max-w-sm text-center">
-            <p className="text-[13px] font-medium text-[var(--fg,#292524)]">{tt("编辑器连接超时")}</p>
-            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-              {tt("专业编辑器没有在预期时间内就绪。请在当前画布重试。")}
+            <p className="text-[13px] font-medium text-[var(--fg,#292524)]">
+              {tt(src ? "编辑器连接超时" : "编辑器地址不受信任")}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                readyHandledRef.current = false;
-                setStatus("");
-                setFrameLoaded(false);
-                setPhase("connecting");
-                setAttempt((value) => value + 1);
-              }}
-              className="mt-4 inline-block rounded-xl px-4 py-2 text-[12px] font-semibold text-white"
-              style={{ background: accent }}
-            >
-              {tt("重新加载编辑器")}
-            </button>
+            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+              {tt(
+                src
+                  ? "专业编辑器没有在预期时间内就绪。请在当前画布重试。"
+                  : "只允许连接受信任的 OceanLeo 编辑器地址。",
+              )}
+            </p>
+            {src && (
+              <button
+                type="button"
+                onClick={() => {
+                  readyHandledRef.current = false;
+                  cancelSelectionTransactions();
+                  latestSelectionRef.current = null;
+                  setStatus("");
+                  setFrameLoaded(false);
+                  setPhase("connecting");
+                  setAttempt((value) => value + 1);
+                }}
+                className="mt-4 inline-block rounded-xl px-4 py-2 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent,#4f46e5)]/40"
+                style={{ background: accent }}
+              >
+                {tt("重新加载编辑器")}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -480,7 +575,14 @@ export function EmbedEditorPane({
           key={`${instanceId}:${attempt}`}
           ref={iframeRef}
           src={src}
-          onLoad={() => setFrameLoaded(true)}
+          onLoad={() => {
+            readyHandledRef.current = false;
+            cancelSelectionTransactions();
+            latestSelectionRef.current = null;
+            setPhase("connecting");
+            setFrameLoaded(true);
+          }}
+          onBlur={cancelSelectionTransactions}
           title={item.title}
           className="h-full w-full border-0"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"

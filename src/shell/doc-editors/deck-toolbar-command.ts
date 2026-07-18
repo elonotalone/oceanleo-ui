@@ -15,6 +15,27 @@ export function applyDeckToolbarCommand(
   element: DeckElement | null,
   message: SelectionCommand,
 ): void {
+  const transactional = (persist: () => void, preview: () => void) => {
+    if (!message.transactionId) {
+      persist();
+      return;
+    }
+    if (message.phase === "start") {
+      editor.beginGesture();
+      return;
+    }
+    if (message.phase === "cancel") {
+      editor.cancelGesture();
+      return;
+    }
+    preview();
+    if (message.phase === "commit") editor.endGesture();
+  };
+  const patchSlide = (patch: Parameters<DeckEditorState["patchSlide"]>[0]) =>
+    transactional(
+      () => editor.patchSlide(patch),
+      () => editor.patchSlideTransient(patch),
+    );
   if (!element) {
     switch (message.controlId) {
       case "undo":
@@ -32,10 +53,79 @@ export function applyDeckToolbarCommand(
       case "title":
       case "body":
       case "notes":
-        editor.patchSlide({ [message.controlId]: String(message.value ?? "") });
+        patchSlide({ [message.controlId]: String(message.value ?? "") });
         break;
       case "background":
-        editor.patchSlide({ background: String(message.value || "") });
+        patchSlide({ background: String(message.value || "") });
+        break;
+      case "transition": {
+        const type = String(message.value || "none");
+        const valid = [
+          "fade",
+          "push-left",
+          "push-right",
+          "wipe",
+          "zoom",
+        ].includes(type);
+        patchSlide({
+          transition:
+            valid
+              ? {
+                  type: type as NonNullable<
+                    DeckEditorState["activeSlide"]["transition"]
+                  >["type"],
+                  durationMs: editor.activeSlide.transition?.durationMs || 500,
+                }
+              : undefined,
+        });
+        break;
+      }
+      case "transition-duration":
+        if (editor.activeSlide.transition) {
+          patchSlide({
+            transition: {
+              ...editor.activeSlide.transition,
+              durationMs: Math.max(
+                100,
+                Math.min(3_000, numeric(message.value, 500)),
+              ),
+            },
+          });
+        }
+        break;
+      case "master":
+        if (editor.deck.masters.some((master) => master.id === message.value)) {
+          patchSlide({ masterId: String(message.value) });
+        }
+        break;
+      case "master-name":
+      case "master-background":
+      case "master-text-color":
+      case "master-accent-color":
+      case "master-font-family": {
+        if (message.transactionId && message.phase !== "commit") break;
+        const field = {
+          "master-name": "name",
+          "master-background": "background",
+          "master-text-color": "textColor",
+          "master-accent-color": "accentColor",
+          "master-font-family": "fontFamily",
+        }[message.controlId] as
+          | "name"
+          | "background"
+          | "textColor"
+          | "accentColor"
+          | "fontFamily";
+        editor.patchMaster(editor.activeMaster.id, {
+          [field]: String(message.value || ""),
+        });
+        break;
+      }
+      case "master-duplicate":
+        editor.duplicateMaster();
+        break;
+      case "master-delete":
+        editor.deleteMaster();
         break;
       case "duplicate-slide":
         editor.duplicateSlide();
@@ -60,6 +150,9 @@ export function applyDeckToolbarCommand(
     case "fill":
     case "shape":
       patch[message.controlId] = String(message.value ?? "");
+      break;
+    case "text":
+      patch.text = String(message.value ?? "");
       break;
     case "font-family":
       patch.fontFamily = String(message.value || "");
@@ -106,6 +199,39 @@ export function applyDeckToolbarCommand(
     case "opacity":
       patch.opacity = numeric(message.value, 1);
       break;
+    case "animation": {
+      const type = String(message.value || "none");
+      patch.animation = ["fade", "fly-up", "wipe", "zoom"].includes(type)
+        ? {
+            type: type as NonNullable<DeckElement["animation"]>["type"],
+            durationMs: element.animation?.durationMs || 500,
+            delayMs: element.animation?.delayMs || 0,
+          }
+        : undefined;
+      break;
+    }
+    case "animation-duration":
+      if (element.animation) {
+        patch.animation = {
+          ...element.animation,
+          durationMs: Math.max(
+            100,
+            Math.min(3_000, numeric(message.value, 500)),
+          ),
+        };
+      }
+      break;
+    case "animation-delay":
+      if (element.animation) {
+        patch.animation = {
+          ...element.animation,
+          delayMs: Math.max(
+            0,
+            Math.min(10_000, numeric(message.value, 0)),
+          ),
+        };
+      }
+      break;
     case "flip-x":
       patch.flipX = !element.flipX;
       break;
@@ -135,5 +261,9 @@ export function applyDeckToolbarCommand(
       editor.deleteElement();
       return;
   }
-  editor.patchElement(element.id, patch);
+  if (!Object.keys(patch).length) return;
+  transactional(
+    () => editor.patchElement(element.id, patch),
+    () => editor.patchElementTransient(element.id, patch),
+  );
 }

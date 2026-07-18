@@ -38,6 +38,14 @@ test("large Canva workbench components stay split below the frontend limit", () 
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
     "../src/shell/SelectionToolbar.tsx",
+    "../src/shell/SelectionInspectorPanel.tsx",
+    "../src/shell/selection-inspector-host.tsx",
+    "../src/shell/selection-context.ts",
+    "../src/shell/InlineAdvancedWorkbenchShell.tsx",
+    "../src/shell/FloatingContextToolbar.tsx",
+    "../src/shell/AdvancedStageControls.tsx",
+    "../src/shell/editor-protocol.ts",
+    "../src/shell/workbench-embed.tsx",
   ]) {
     const lines = source(path).split("\n").length;
     assert.ok(lines < 600, `${path} has ${lines} lines`);
@@ -47,7 +55,9 @@ test("large Canva workbench components stay split below the frontend limit", () 
 test("creation drawers stay in fixed tools while object bars stay contextual", () => {
   const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
   const image = source("../src/shell/advanced-routes/ImageRoute.tsx");
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const shell =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const deckToolbar = source(
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
   );

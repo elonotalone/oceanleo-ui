@@ -1,6 +1,11 @@
 "use client";
 
-import { PDFDocument, degrees } from "pdf-lib";
+import {
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  degrees,
+} from "pdf-lib";
 
 const LOAD_OPTIONS = {
   ignoreEncryption: false,
@@ -49,6 +54,63 @@ export async function rotatePdfPage(
   const current = page.getRotation().angle;
   const normalized = ((current + clockwiseDegrees) % 360 + 360) % 360;
   page.setRotation(degrees(normalized));
+  return savePdf(document);
+}
+
+export async function addPdfTextAnnotation(
+  bytes: Uint8Array,
+  pageIndex: number,
+  contents: string,
+): Promise<Uint8Array> {
+  const text = contents.trim().slice(0, 2_000);
+  if (!text) throw new Error("批注内容不能为空");
+  const document = await loadPdf(bytes);
+  assertPageIndex(document, pageIndex);
+  const page = document.getPage(pageIndex);
+  const crop = page.getCropBox();
+  const iconSize = Math.min(24, crop.width, crop.height);
+  const rotation =
+    ((Math.round(page.getRotation().angle / 90) * 90) % 360 + 360) %
+    360;
+  let u = 0.9;
+  let v = 0.1;
+  if (rotation === 90) {
+    u = 0.1;
+    v = 0.1;
+  } else if (rotation === 180) {
+    u = 0.1;
+    v = 0.9;
+  } else if (rotation === 270) {
+    u = 0.9;
+    v = 0.9;
+  }
+  const centerX = crop.x + u * crop.width;
+  const centerY = crop.y + (1 - v) * crop.height;
+  const x = Math.max(
+    crop.x,
+    Math.min(
+      crop.x + crop.width - iconSize,
+      centerX - iconSize / 2,
+    ),
+  );
+  const y = Math.max(
+    crop.y,
+    Math.min(
+      crop.y + crop.height - iconSize,
+      centerY - iconSize / 2,
+    ),
+  );
+  const annotation = document.context.obj({
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Text"),
+    Rect: [x, y, x + iconSize, y + iconSize],
+    Contents: PDFHexString.fromText(text),
+    T: PDFHexString.fromText("OceanLeo"),
+    Name: PDFName.of("Comment"),
+    C: [1, 0.82, 0.2],
+    F: 4,
+  });
+  page.node.addAnnot(document.context.register(annotation));
   return savePdf(document);
 }
 

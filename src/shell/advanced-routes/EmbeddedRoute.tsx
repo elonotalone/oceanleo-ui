@@ -7,7 +7,10 @@ import type { AdvancedWorkbenchDrawer } from "../advanced-editor-adapter";
 import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import type { EditorMaterialInsertion } from "../editor-protocol";
+import type {
+  EditorMaterialInsertion,
+  EditorViewportSnapshot,
+} from "../editor-protocol";
 import { uploadFile } from "../../lib/database";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
@@ -35,12 +38,14 @@ function RemoteChoicePanel({
   controlId,
   choices,
   selectionId,
+  selectionRevision,
   onCommand,
 }: {
   title: string;
   controlId: string;
   choices: RemoteChoice[];
   selectionId: string;
+  selectionRevision?: SelectionContext["revision"];
   onCommand: (command: SelectionCommand) => void;
 }) {
   return (
@@ -59,6 +64,9 @@ function RemoteChoicePanel({
                 selectionId,
                 controlId,
                 value: choice.value,
+                ...(selectionRevision !== undefined
+                  ? { selectionRevision }
+                  : {}),
               })
             }
             className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)]"
@@ -142,6 +150,13 @@ export function EmbeddedRoute({
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const [selectionCommand, setSelectionCommand] =
     useState<SelectionCommand | null>(null);
+  const [remoteViewport, setRemoteViewport] =
+    useState<EditorViewportSnapshot | null>(null);
+  const [viewportCommand, setViewportCommand] = useState<{
+    commandId: string;
+    value?: number;
+    fit?: boolean;
+  } | null>(null);
   const [materialInsertion, setMaterialInsertion] =
     useState<EditorMaterialInsertion | null>(null);
   const [exportRequestId, setExportRequestId] = useState("");
@@ -168,6 +183,21 @@ export function EmbeddedRoute({
   const saveTimerRef = useRef<number | null>(null);
   const remoteRevisionRef = useRef(0);
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
+  useEffect(() => {
+    setRemoteViewport(null);
+    setViewportCommand(null);
+  }, [hostedMediaType, item.key]);
+  const sendViewportCommand = useCallback(
+    (command: { value?: number; fit?: boolean }) => {
+      setViewportCommand({
+        commandId: `viewport-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+        ...command,
+      });
+    },
+    [],
+  );
   const hostedSelection = useMemo<SelectionContext | null>(() => {
     if (!hostedMediaType || !selection) return selection;
     if (
@@ -203,6 +233,7 @@ export function EmbeddedRoute({
           controlId={controlId}
           choices={choices}
           selectionId={selectionId}
+          selectionRevision={hostedSelection?.revision}
           onCommand={setSelectionCommand}
         />
       ),
@@ -231,7 +262,7 @@ export function EmbeddedRoute({
       ];
     }
     return [];
-  }, [hostedMediaType, hostedSelection?.id]);
+  }, [hostedMediaType, hostedSelection?.id, hostedSelection?.revision]);
   const sendRemoteCommand = useCallback(
     (controlId: string, value?: SelectionCommand["value"]) => {
       setSelectionCommand({
@@ -240,9 +271,12 @@ export function EmbeddedRoute({
           hostedSelection?.id || `host:${hostedMediaType || "editor"}`,
         controlId,
         ...(value !== undefined ? { value } : {}),
+        ...(hostedSelection?.revision !== undefined
+          ? { selectionRevision: hostedSelection.revision }
+          : {}),
       });
     },
-    [hostedMediaType, hostedSelection?.id],
+    [hostedMediaType, hostedSelection?.id, hostedSelection?.revision],
   );
   const remoteHistory =
     hostedMediaType === "canvas" || hostedMediaType === "video_canvas"
@@ -634,7 +668,9 @@ export function EmbeddedRoute({
             onCloseRequest={requestEditorClose}
             onDirtyChange={handleDirtyChange}
             onSelectionChange={setSelection}
+            onViewportChange={setRemoteViewport}
             selectionCommand={selectionCommand}
+            viewportCommand={viewportCommand}
             materialInsertion={materialInsertion}
             onMaterialResult={handleMaterialResult}
             exportRequestId={exportRequestId}
@@ -654,6 +690,18 @@ export function EmbeddedRoute({
           ) : null,
         drawers: remoteDrawers,
         history: remoteHistory,
+        viewport: remoteViewport
+          ? {
+              value: remoteViewport.value,
+              min: remoteViewport.min,
+              max: remoteViewport.max,
+              step: remoteViewport.step,
+              setValue: (value) => sendViewportCommand({ value }),
+              ...(remoteViewport.canFit
+                ? { fit: () => sendViewportCommand({ fit: true }) }
+                : {}),
+            }
+          : undefined,
         directDownload: {
           id: "embedded-export-default",
           label:
@@ -668,7 +716,7 @@ export function EmbeddedRoute({
           onTrigger: requestRemoteExport,
         },
         actions: remoteActions,
-        nativeChrome: { toolbar: true, viewport: true },
+        nativeChrome: { toolbar: true },
         persistence: {
           dirty,
           editRevision,

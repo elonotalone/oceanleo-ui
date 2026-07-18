@@ -57,22 +57,19 @@ export interface WorkbenchMaterialContextValue {
   endMaterialDrag: () => void;
 }
 
+export type WorkbenchMaterialRuntimeValue = Omit<
+  WorkbenchMaterialContextValue,
+  "entries" | "registerAdapter"
+>;
+
 const WorkbenchMaterialContext =
   createContext<WorkbenchMaterialContextValue | null>(null);
 
-export function useWorkbenchMaterialScope(
+function useWorkbenchMaterialRuntimeScope(
   siteId: string,
   appId: string,
-): WorkbenchMaterialContextValue {
+): WorkbenchMaterialRuntimeValue {
   const scope = materialScopeKey(siteId, appId);
-  const entries = useSyncExternalStore(
-    useCallback(
-      (listener) => subscribeWorkbenchMaterials(scope, listener),
-      [scope],
-    ),
-    useCallback(() => getWorkbenchMaterialSnapshot(scope), [scope]),
-    () => getWorkbenchMaterialSnapshot(scope),
-  );
   const runtime = useSyncExternalStore(
     useCallback(
       (listener) => subscribeWorkbenchMaterialRuntime(scope, listener),
@@ -81,9 +78,6 @@ export function useWorkbenchMaterialScope(
     useCallback(() => getWorkbenchMaterialRuntimeSnapshot(scope), [scope]),
     () => getWorkbenchMaterialRuntimeSnapshot(scope),
   );
-  const registerAdapter = useCallback((adapter: WorkbenchMaterialAdapter) => {
-    return registerWorkbenchMaterialAdapter(scope, adapter);
-  }, [scope]);
   const perform = useCallback(
     async (
       action: WorkbenchMaterialAction,
@@ -122,14 +116,12 @@ export function useWorkbenchMaterialScope(
     },
     [scope],
   );
-  return useMemo<WorkbenchMaterialContextValue>(
+  return useMemo<WorkbenchMaterialRuntimeValue>(
     () => ({
       siteId,
       appId,
       scope,
-      entries,
       actions: runtime.actions,
-      registerAdapter,
       canPerform,
       perform,
       draggedItem: runtime.draggedItem,
@@ -141,13 +133,52 @@ export function useWorkbenchMaterialScope(
       canPerform,
       beginMaterialDrag,
       endMaterialDrag,
-      entries,
       perform,
-      registerAdapter,
       runtime,
       scope,
       siteId,
     ],
+  );
+}
+
+/**
+ * Runtime-only material actions for surfaces that render/register the material
+ * entries themselves. Subscribing those owners to the entry snapshot creates a
+ * circular external-store dependency: render -> register -> notify -> render.
+ */
+export function useWorkbenchMaterialActions(
+  siteId: string,
+  appId: string,
+): WorkbenchMaterialRuntimeValue {
+  return useWorkbenchMaterialRuntimeScope(siteId, appId);
+}
+
+export function useWorkbenchMaterialScope(
+  siteId: string,
+  appId: string,
+): WorkbenchMaterialContextValue {
+  const runtime = useWorkbenchMaterialRuntimeScope(siteId, appId);
+  const scope = runtime.scope;
+  const entries = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribeWorkbenchMaterials(scope, listener),
+      [scope],
+    ),
+    useCallback(() => getWorkbenchMaterialSnapshot(scope), [scope]),
+    () => getWorkbenchMaterialSnapshot(scope),
+  );
+  const registerAdapter = useCallback(
+    (adapter: WorkbenchMaterialAdapter) =>
+      registerWorkbenchMaterialAdapter(scope, adapter),
+    [scope],
+  );
+  return useMemo<WorkbenchMaterialContextValue>(
+    () => ({
+      ...runtime,
+      entries,
+      registerAdapter,
+    }),
+    [entries, registerAdapter, runtime],
   );
 }
 

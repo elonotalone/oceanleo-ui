@@ -23,6 +23,7 @@ export type SelectionControlIcon =
   | "border"
   | "bring-forward"
   | "crop"
+  | "color"
   | "delete"
   | "download"
   | "draw"
@@ -62,6 +63,13 @@ export type SelectionControlIcon =
 
 export type SelectionControlValue = string | number | boolean | null;
 export type SelectionPanelAction = "insert" | "replace" | "apply" | "merge";
+export type SelectionRevision = string | number;
+export type SelectionControlSlot =
+  | "compact"
+  | "inspector"
+  | "stage"
+  | "context-menu";
+export type SelectionCommandPhase = "start" | "update" | "commit" | "cancel";
 
 export interface SelectionControlOption {
   value: string;
@@ -83,6 +91,14 @@ export interface SelectionControl {
   panelAction?: SelectionPanelAction;
   /** Optional compact suffix rendered beside number/range values. */
   suffix?: string;
+  /** Shared-shell placement. Continuous controls belong in `inspector`. */
+  slot?: SelectionControlSlot;
+  /** Stable left child-edit-bar group for inspector controls. */
+  inspectorGroup?: string;
+  /** Trigger/header label for the grouped child edit bar. */
+  inspectorLabel?: string;
+  /** Trigger icon for the grouped child edit bar. */
+  inspectorIcon?: SelectionControlIcon;
   value?: SelectionControlValue;
   options?: SelectionControlOption[];
   min?: number;
@@ -90,6 +106,8 @@ export interface SelectionControl {
   step?: number;
   disabled?: boolean;
   danger?: boolean;
+  /** Semantic emphasis used by inspector actions. */
+  tone?: "danger";
   placement?: "primary" | "more" | "tools";
 }
 
@@ -106,6 +124,8 @@ export interface SelectionContext {
   id: string;
   label?: string;
   text?: string;
+  /** Monotonic selection/model revision used to reject stale iframe commands. */
+  revision?: SelectionRevision;
   anchor?: SelectionAnchorRect;
   controls: SelectionControl[];
 }
@@ -115,6 +135,9 @@ export interface SelectionCommand {
   selectionId: string;
   controlId: string;
   value?: SelectionControlValue;
+  selectionRevision?: SelectionRevision;
+  phase?: SelectionCommandPhase;
+  transactionId?: string;
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9_.:-]{0,79}$/i;
@@ -142,6 +165,7 @@ const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "border",
   "bring-forward",
   "crop",
+  "color",
   "delete",
   "download",
   "draw",
@@ -200,6 +224,23 @@ function controlValue(value: unknown): SelectionControlValue | undefined {
   return undefined;
 }
 
+function revisionValue(value: unknown): SelectionRevision | undefined {
+  if (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  ) {
+    return value;
+  }
+  if (typeof value !== "string") return undefined;
+  const revision = value.trim();
+  return revision &&
+    revision.length <= 128 &&
+    !/[\u0000-\u001f\u007f]/.test(revision)
+    ? revision
+    : undefined;
+}
+
 export function normalizeSelectionContext(
   value: unknown,
 ): SelectionContext | null {
@@ -212,7 +253,7 @@ export function normalizeSelectionContext(
     !KIND_RE.test(kind) ||
     !ID_RE.test(id) ||
     !Array.isArray(source.controls) ||
-    source.controls.length > 32
+    source.controls.length > 96
   ) {
     return null;
   }
@@ -278,6 +319,20 @@ export function normalizeSelectionContext(
       ...(shortString(raw.suffix, 12)
         ? { suffix: shortString(raw.suffix, 12) }
         : {}),
+      ...(["compact", "inspector", "stage", "context-menu"].includes(
+        String(raw.slot || ""),
+      )
+        ? { slot: raw.slot as SelectionControlSlot }
+        : {}),
+      ...(ID_RE.test(shortString(raw.inspectorGroup, 80))
+        ? { inspectorGroup: shortString(raw.inspectorGroup, 80) }
+        : {}),
+      ...(shortString(raw.inspectorLabel, 120)
+        ? { inspectorLabel: shortString(raw.inspectorLabel, 120) }
+        : {}),
+      ...(CONTROL_ICONS.has(raw.inspectorIcon as SelectionControlIcon)
+        ? { inspectorIcon: raw.inspectorIcon as SelectionControlIcon }
+        : {}),
       ...(normalizedValue !== undefined ? { value: normalizedValue } : {}),
       ...(options?.length ? { options } : {}),
       ...(finite(raw.min) !== undefined ? { min: finite(raw.min) } : {}),
@@ -285,6 +340,7 @@ export function normalizeSelectionContext(
       ...(finite(raw.step) !== undefined ? { step: finite(raw.step) } : {}),
       ...(raw.disabled === true ? { disabled: true } : {}),
       ...(raw.danger === true ? { danger: true } : {}),
+      ...(raw.tone === "danger" ? { tone: "danger" as const } : {}),
       ...(raw.placement === "more" || raw.placement === "tools"
         ? { placement: raw.placement as "more" | "tools" }
         : {}),
@@ -310,12 +366,15 @@ export function normalizeSelectionContext(
     }
     anchor = { x, y, width, height };
   }
+  const revision = revisionValue(source.revision);
+  if (source.revision !== undefined && revision === undefined) return null;
 
   return {
     version: SELECTION_CONTEXT_VERSION,
     kind,
     id,
     controls,
+    ...(revision !== undefined ? { revision } : {}),
     ...(shortString(source.label, 120)
       ? { label: shortString(source.label, 120) }
       : {}),
@@ -335,11 +394,29 @@ export function normalizeSelectionCommand(
   const selectionId = shortString(source.selectionId, 80);
   const controlId = shortString(source.controlId, 80);
   const valueField = controlValue(source.value);
+  const transactionId =
+    typeof source.transactionId === "string"
+      ? shortString(source.transactionId, 128)
+      : "";
+  const selectionRevision = revisionValue(source.selectionRevision);
+  const validPhase = ["start", "update", "commit", "cancel"].includes(
+    String(source.phase),
+  );
+  const phase = validPhase
+    ? (source.phase as SelectionCommandPhase)
+    : undefined;
   if (
     !requestId ||
     !ID_RE.test(selectionId) ||
     !ID_RE.test(controlId) ||
-    (source.value !== undefined && valueField === undefined)
+    (source.value !== undefined && valueField === undefined) ||
+    (source.selectionRevision !== undefined &&
+      selectionRevision === undefined) ||
+    (source.transactionId !== undefined && !transactionId) ||
+    (source.phase !== undefined && !validPhase) ||
+    (Boolean(transactionId) !== Boolean(phase)) ||
+    ((phase === "start" || phase === "update" || phase === "cancel") &&
+      !transactionId)
   ) {
     return null;
   }
@@ -348,6 +425,9 @@ export function normalizeSelectionCommand(
     selectionId,
     controlId,
     ...(valueField !== undefined ? { value: valueField } : {}),
+    ...(selectionRevision !== undefined ? { selectionRevision } : {}),
+    ...(phase ? { phase } : {}),
+    ...(transactionId ? { transactionId } : {}),
   };
 }
 

@@ -1,6 +1,10 @@
 "use client";
 
-import { deckTheme, type DeckSlide } from "./deck-schema";
+import {
+  deckTheme,
+  type DeckMaster,
+  type DeckSlide,
+} from "./deck-schema";
 import { MiniDeckElementLayer } from "./DeckElementContent";
 
 export function DeckMiniSlide({
@@ -8,12 +12,14 @@ export function DeckMiniSlide({
   number,
   active,
   theme,
+  master,
   onClick,
 }: {
   slide: DeckSlide;
   number: number;
   active: boolean;
   theme: ReturnType<typeof deckTheme>;
+  master: DeckMaster;
   onClick: () => void;
 }) {
   return (
@@ -30,9 +36,9 @@ export function DeckMiniSlide({
         style={{
           borderColor: active ? theme.accent : "#d6d3d1",
           boxShadow: active ? `0 0 0 2px ${theme.accent}22` : undefined,
-          background: slide.background || theme.background,
-          color: theme.text,
-          fontFamily: theme.fontFamily,
+          background: slide.background || master.background || theme.background,
+          color: master.textColor || theme.text,
+          fontFamily: master.fontFamily || theme.fontFamily,
         }}
       >
         {slide.elements.length ? (

@@ -8,8 +8,11 @@ type Token =
   | { type: "eof"; value: "" };
 
 class FormulaError extends Error {
-  constructor(readonly code: string) {
+  readonly code: string;
+
+  constructor(code: string) {
     super(code);
+    this.code = code;
   }
 }
 
@@ -76,12 +79,19 @@ function numeric(value: GridFormulaValue): number {
 
 class Parser {
   private position = 0;
+  private readonly tokens: Token[];
+  private readonly rows: string[][];
+  private readonly visiting: Set<string>;
 
   constructor(
-    private readonly tokens: Token[],
-    private readonly rows: string[][],
-    private readonly visiting: Set<string>,
-  ) {}
+    tokens: Token[],
+    rows: string[][],
+    visiting: Set<string>,
+  ) {
+    this.tokens = tokens;
+    this.rows = rows;
+    this.visiting = visiting;
+  }
 
   parse(): number {
     const result = this.additive();

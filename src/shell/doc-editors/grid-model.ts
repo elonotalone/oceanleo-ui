@@ -4,12 +4,27 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
 import { evaluateGridCell, type GridFormulaValue } from "./grid-formula";
+import { normalizeGridSheetIdentities } from "./grid-sheet-identity";
+import {
+  conditionalGridStyle,
+  normalizeGridConditionalFormats,
+  normalizeGridMerges,
+  type GridConditionalFormat,
+  type GridMerge,
+} from "./grid-structure";
 
 export interface GridSheet {
   id: string;
   name: string;
   rows: string[][];
   formats: Record<string, GridCellFormat>;
+  merges: GridMerge[];
+  conditionalFormats: GridConditionalFormat[];
+}
+
+export interface NormalizedGridProjectSheetState {
+  sheets: GridSheet[];
+  activeSheetId: string;
 }
 
 export interface GridCell {
@@ -54,7 +69,14 @@ export function emptyGridRows(
 }
 
 export function emptyGridSheet(name = "Sheet1"): GridSheet {
-  return { id: gridId(), name, rows: emptyGridRows(), formats: {} };
+  return {
+    id: gridId(),
+    name,
+    rows: emptyGridRows(),
+    formats: {},
+    merges: [],
+    conditionalFormats: [],
+  };
 }
 
 export function cloneGridSheets(sheets: GridSheet[]): GridSheet[] {
@@ -67,6 +89,11 @@ export function cloneGridSheets(sheets: GridSheet[]): GridSheet[] {
         { ...format },
       ]),
     ),
+    merges: (sheet.merges || []).map((merge) => ({ ...merge })),
+    conditionalFormats: (sheet.conditionalFormats || []).map((rule) => ({
+      ...rule,
+      range: { ...rule.range },
+    })),
   }));
 }
 
@@ -124,23 +151,52 @@ function normalizeFormats(value: unknown): Record<string, GridCellFormat> {
   return result;
 }
 
-export function normalizeGridProjectSheets(value: unknown): GridSheet[] {
+export function normalizeGridProjectSheetState(
+  value: unknown,
+  activeSheetId: unknown = "",
+): NormalizedGridProjectSheetState {
   const rawSheets = Array.isArray(value) ? value : [];
-  const used = new Set<string>();
-  return rawSheets.flatMap((raw, index) => {
+  const candidates = rawSheets.flatMap((raw, index) => {
     if (!raw || typeof raw !== "object") return [];
     const record = raw as Record<string, unknown>;
     if (!Array.isArray(record.rows)) return [];
-    const rows = record.rows.filter(Array.isArray) as unknown[][];
     return [
       {
-        id: gridId(),
-        name: uniqueSheetName(String(record.name || `Sheet${index + 1}`), used),
-        rows: normalizeRows(rows),
-        formats: normalizeFormats(record.formats),
+        index,
+        record,
+        rows: record.rows.filter(Array.isArray) as unknown[][],
       },
     ];
   });
+  const identities = normalizeGridSheetIdentities(
+    candidates.map(({ record }) => record.id),
+    activeSheetId,
+  );
+  const usedNames = new Set<string>();
+  const sheets = candidates.map(({ index, record, rows }, sheetIndex) => ({
+    id: identities.ids[sheetIndex],
+    name: uniqueSheetName(
+      String(record.name || `Sheet${index + 1}`),
+      usedNames,
+    ),
+    rows: normalizeRows(rows),
+    formats: normalizeFormats(record.formats),
+    merges: normalizeGridMerges(
+      record.merges,
+      GRID_MAX_ROWS,
+      GRID_MAX_COLS,
+    ),
+    conditionalFormats: normalizeGridConditionalFormats(
+      record.conditionalFormats,
+      GRID_MAX_ROWS,
+      GRID_MAX_COLS,
+    ),
+  }));
+  return { sheets, activeSheetId: identities.activeSheetId };
+}
+
+export function normalizeGridProjectSheets(value: unknown): GridSheet[] {
+  return normalizeGridProjectSheetState(value).sheets;
 }
 
 function structuredSheets(item: LibraryItem): GridSheet[] {
@@ -168,8 +224,12 @@ async function readWorkbook(
     const worksheet = workbook.Sheets[name];
     const rows: string[][] = [];
     const formats: Record<string, GridCellFormat> = {};
+    let originRow = 0;
+    let originCol = 0;
     if (worksheet?.["!ref"]) {
       const range = XLSX.utils.decode_range(worksheet["!ref"]);
+      originRow = range.s.r;
+      originCol = range.s.c;
       const lastRow = Math.min(range.e.r, range.s.r + GRID_MAX_ROWS - 1);
       const lastCol = Math.min(range.e.c, range.s.c + GRID_MAX_COLS - 1);
       for (let row = range.s.r; row <= lastRow; row += 1) {
@@ -237,6 +297,17 @@ async function readWorkbook(
       name: uniqueSheetName(name, used),
       rows,
       formats,
+      merges: normalizeGridMerges(
+        (worksheet["!merges"] || []).map((merge) => ({
+          firstRow: merge.s.r - originRow,
+          lastRow: merge.e.r - originRow,
+          firstCol: merge.s.c - originCol,
+          lastCol: merge.e.c - originCol,
+        })),
+        GRID_MAX_ROWS,
+        GRID_MAX_COLS,
+      ),
+      conditionalFormats: [],
     };
   });
 }
@@ -316,6 +387,22 @@ export function gridCellFormat(
   col: number,
 ): GridCellFormat {
   return sheet.formats?.[cellKey(row, col)] ?? {};
+}
+
+export function gridDisplayFormat(
+  sheet: GridSheet,
+  row: number,
+  col: number,
+): GridCellFormat {
+  return {
+    ...gridCellFormat(sheet, row, col),
+    ...conditionalGridStyle(
+      sheet.conditionalFormats,
+      row,
+      col,
+      evaluateGridCell(sheet.rows, row, col),
+    ),
+  };
 }
 
 export function formatGridValue(
@@ -452,10 +539,18 @@ export async function buildGridWorkbookBlob(
   for (const source of sheets) {
     const bounds = usedBounds(source);
     const worksheet = workbook.addWorksheet(sanitizeSheetName(source.name));
+    for (const merge of source.merges) {
+      worksheet.mergeCells(
+        merge.firstRow + 1,
+        merge.firstCol + 1,
+        merge.lastRow + 1,
+        merge.lastCol + 1,
+      );
+    }
     for (let row = 0; row < bounds.rows; row += 1) {
       for (let col = 0; col < bounds.cols; col += 1) {
         const raw = gridCellValue(source, row, col);
-        const format = gridCellFormat(source, row, col);
+        const format = gridDisplayFormat(source, row, col);
         const target = worksheet.getCell(row + 1, col + 1);
         if (raw.startsWith("=")) {
           const result = evaluateGridCell(source.rows, row, col);

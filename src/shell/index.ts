@@ -143,6 +143,12 @@ export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 export { SelectionToolbar } from "./SelectionToolbar";
 export type { SelectionToolbarProps } from "./SelectionToolbar";
+export { SelectionInspectorPanel } from "./SelectionInspectorPanel";
+export {
+  isCompactSelectionControl,
+  partitionSelectionInspectorControls,
+} from "./selection-inspector-groups";
+export type { SelectionInspectorGroup } from "./selection-inspector-groups";
 export {
   SELECTION_CONTEXT_VERSION,
   SELECTION_PROTOCOL,
@@ -150,14 +156,22 @@ export {
   normalizeSelectionContext,
   selectionRequestId,
 } from "./selection-context";
+export {
+  SelectionCommandGate,
+  SelectionGestureTransaction,
+} from "./selection-transactions";
 export type {
   SelectionAnchorRect,
   SelectionCommand,
+  SelectionCommandPhase,
   SelectionContext,
   SelectionControl,
+  SelectionControlIcon,
   SelectionControlKind,
   SelectionControlOption,
+  SelectionControlSlot,
   SelectionControlValue,
+  SelectionRevision,
 } from "./selection-context";
 export {
   AdvancedFeatureCatalog,

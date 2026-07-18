@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from "react";
@@ -16,11 +15,14 @@ import type {
   AdvancedEditorAdapter,
   AdvancedWorkbenchDrawer,
 } from "./advanced-editor-adapter";
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
-import { AdvancedWorkspaceActionBar } from "./AdvancedWorkspaceActionBar";
 import { AdvancedWorkbenchStage } from "./AdvancedWorkbenchStage";
+import {
+  FloatingContextToolbar,
+  useFloatingContextToolbar,
+} from "./FloatingContextToolbar";
+import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import type { LibraryItem } from "./library-data";
@@ -34,31 +36,10 @@ import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { useAdvancedRecovery } from "./use-advanced-recovery";
 import {
-  clampFloatingToolbar,
-  type FloatingToolbarPoint,
-} from "./floating-toolbar-geometry";
-
-interface LiveDetailStore {
-  node: ReactNode;
-  version: number;
-  listeners: Set<() => void>;
-}
-
-function createLiveDetailStore(): LiveDetailStore {
-  return { node: null, version: 0, listeners: new Set() };
-}
-
-function LiveEditorDetail({ store }: { store: LiveDetailStore }) {
-  useSyncExternalStore(
-    (listener) => {
-      store.listeners.add(listener);
-      return () => store.listeners.delete(listener);
-    },
-    () => store.version,
-    () => store.version,
-  );
-  return <>{store.node}</>;
-}
+  createLiveReactNodeStore,
+  LiveReactNode,
+  publishLiveReactNode,
+} from "./live-react-node";
 
 export interface InlineAdvancedWorkbenchShellProps {
   item: LibraryItem;
@@ -69,11 +50,6 @@ export interface InlineAdvancedWorkbenchShellProps {
   onClose: () => void;
 }
 
-/**
- * Editor chrome owned by the normal App library. It deliberately has no
- * Agent/upload/tasks/library rail: those already belong to the App. Drawers
- * temporarily occupy the App pane through WorkspacePaneContext.
- */
 export function InlineAdvancedWorkbenchShell({
   item,
   taskId,
@@ -91,41 +67,36 @@ export function InlineAdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
+  const floatingToolbar = useFloatingContextToolbar({
+    workspaceRootRef: workspacePane?.fullscreenRef,
+    stageRef,
+    resetKey: `${adapter.id}:${item.key}`,
+  });
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
   );
-  const liveDetailStoreRef = useRef<LiveDetailStore>(createLiveDetailStore());
-  const liveHeaderStoreRef = useRef<LiveDetailStore>(createLiveDetailStore());
+  const liveDetailStoreRef = useRef(createLiveReactNodeStore());
+  const liveHeaderStoreRef = useRef(createLiveReactNodeStore());
   const liveHeaderNode = useMemo(
-    () => <LiveEditorDetail store={liveHeaderStoreRef.current} />,
+    () => <LiveReactNode store={liveHeaderStoreRef.current} />,
     [],
   );
   const closingRef = useRef(false);
   const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
   const [fallbackDetail, setFallbackDetail] = useState<{
-    label: ReactNode;
-    content: ReactNode;
+    label: ReactNode; content: ReactNode;
   } | null>(null);
   const [activeDrawerId, setActiveDrawerId] = useState("");
   const [transientPanel, setTransientPanel] = useState<{
     id: string;
     label: ReactNode;
-    content: ReactNode;
   } | null>(null);
+  const transientPanelRef = useRef(transientPanel);
+  transientPanelRef.current = transientPanel;
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
   const [dropMessage, setDropMessage] = useState("");
-  const [toolbarPosition, setToolbarPosition] =
-    useState<FloatingToolbarPoint>({ x: 0, y: 0 });
-  const [toolbarDragging, setToolbarDragging] = useState(false);
-  const toolbarDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    origin: FloatingToolbarPoint;
-  } | null>(null);
 
   const drawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
     if (adapter.drawers?.length) return [...adapter.drawers];
@@ -172,7 +143,6 @@ export function InlineAdvancedWorkbenchShell({
       ? workspaceDetail
       : null;
   const panelVisible = Boolean(ownedDetail || fallbackDetail);
-
   const panelFor = useCallback(
     (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
       const drawer = drawerById.get(drawerId);
@@ -206,38 +176,47 @@ export function InlineAdvancedWorkbenchShell({
       workbenchMaterials,
     ],
   );
-  const liveDetail =
-    transientPanel && activeDrawerId === transientPanel.id
-      ? transientPanel
-      : activeDrawerId
+  const liveDrawerDetail = useMemo(
+    () =>
+      !transientPanel && activeDrawerId
         ? panelFor(activeDrawerId, requestedMaterialAction)
-        : null;
-  liveDetailStoreRef.current.node = liveDetail?.content || null;
+        : null,
+    [
+      activeDrawerId,
+      panelFor,
+      requestedMaterialAction,
+      transientPanel,
+    ],
+  );
   useLayoutEffect(() => {
-    const store = liveDetailStoreRef.current;
-    store.version += 1;
-    store.listeners.forEach((listener) => listener());
-  }, [liveDetail?.content]);
+    if (transientPanel) return;
+    publishLiveReactNode(
+      liveDetailStoreRef.current,
+      liveDrawerDetail?.content || null,
+    );
+  }, [liveDrawerDetail?.content, transientPanel]);
 
   const openDrawer = useCallback(
     (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
+      transientPanelRef.current = null;
       setTransientPanel(null);
       setActiveDrawerId(drawerId);
       setRequestedMaterialAction(
         drawerId === "materials" ? materialAction : undefined,
       );
       const next = panelFor(drawerId, materialAction);
+      publishLiveReactNode(liveDetailStoreRef.current, next.content);
       if (showWorkspaceDetail) {
         showWorkspaceDetail({
           ownerId: ownerIdRef.current,
           id: drawerId,
           label: next.label,
-          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+          content: <LiveReactNode store={liveDetailStoreRef.current} />,
         });
       } else {
         setFallbackDetail({
           label: next.label,
-          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+          content: <LiveReactNode store={liveDetailStoreRef.current} />,
         });
       }
     },
@@ -246,99 +225,46 @@ export function InlineAdvancedWorkbenchShell({
 
   const openTransientPanel = useCallback(
     (panelId: string, label: ReactNode, content: ReactNode) => {
-      setTransientPanel({ id: panelId, label, content });
+      const panel = { id: panelId, label };
+      transientPanelRef.current = panel;
+      setTransientPanel(panel);
       setActiveDrawerId(panelId);
       setRequestedMaterialAction(undefined);
-      liveDetailStoreRef.current.node = content;
+      publishLiveReactNode(liveDetailStoreRef.current, content);
       if (showWorkspaceDetail) {
         showWorkspaceDetail({
           ownerId: ownerIdRef.current,
           id: panelId,
           label,
-          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+          content: <LiveReactNode store={liveDetailStoreRef.current} />,
         });
       } else {
         setFallbackDetail({
           label,
-          content: <LiveEditorDetail store={liveDetailStoreRef.current} />,
+          content: <LiveReactNode store={liveDetailStoreRef.current} />,
         });
       }
     },
     [showWorkspaceDetail],
+  );
+  const updateTransientPanel = useCallback(
+    (panelId: string, content: ReactNode) => {
+      if (transientPanelRef.current?.id !== panelId) return;
+      publishLiveReactNode(liveDetailStoreRef.current, content);
+    },
+    [],
   );
 
   const closeDetail = useCallback(() => {
     clearWorkspaceDetail?.(ownerIdRef.current);
     setFallbackDetail(null);
     setActiveDrawerId("");
+    transientPanelRef.current = null;
     setTransientPanel(null);
     setRequestedMaterialAction(undefined);
+    publishLiveReactNode(liveDetailStoreRef.current, null);
   }, [clearWorkspaceDetail]);
 
-  const clampToolbar = useCallback(
-    (point: FloatingToolbarPoint) => {
-      const container = stageRef.current?.getBoundingClientRect();
-      const toolbar = toolbarRef.current?.getBoundingClientRect();
-      if (!container || !toolbar) return { x: 0, y: 0 };
-      return clampFloatingToolbar(
-        point,
-        {
-          width: container.width,
-          height: Math.max(0, container.height - 64),
-        },
-        { width: toolbar.width, height: toolbar.height },
-      );
-    },
-    [],
-  );
-  const contextBarLeading = useMemo(
-    () => (
-      <button
-        type="button"
-        onPointerDown={(event) => {
-          if (event.pointerType === "mouse" && event.button !== 0) return;
-          event.preventDefault();
-          toolbarDragRef.current = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            origin: toolbarPosition,
-          };
-          setToolbarDragging(true);
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          const drag = toolbarDragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) return;
-          setToolbarPosition(
-            clampToolbar({
-              x: drag.origin.x + event.clientX - drag.startX,
-              y: drag.origin.y + event.clientY - drag.startY,
-            }),
-          );
-        }}
-        onPointerUp={(event) => {
-          if (toolbarDragRef.current?.pointerId !== event.pointerId) return;
-          toolbarDragRef.current = null;
-          setToolbarDragging(false);
-          event.currentTarget.releasePointerCapture?.(event.pointerId);
-        }}
-        onPointerCancel={() => {
-          toolbarDragRef.current = null;
-          setToolbarDragging(false);
-        }}
-        onDoubleClick={() => setToolbarPosition({ x: 0, y: 0 })}
-        className={`grid h-9 w-6 shrink-0 touch-none select-none place-items-center rounded-lg text-[13px] text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] ${
-          toolbarDragging ? "cursor-grabbing" : "cursor-grab"
-        }`}
-        aria-label={tt("拖动编辑栏")}
-        title={tt("拖动编辑栏；双击复位")}
-      >
-        ⠿
-      </button>
-    ),
-    [clampToolbar, toolbarDragging, toolbarPosition, tt],
-  );
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
@@ -348,44 +274,36 @@ export function InlineAdvancedWorkbenchShell({
         : fallbackDetail
           ? activeDrawerId
           : "",
-      contextBarLeading,
+      activeTransientPanelId:
+        transientPanel &&
+        (showWorkspaceDetail
+          ? ownedDetail?.id === transientPanel.id
+          : Boolean(fallbackDetail))
+          ? transientPanel.id
+          : "",
+      contextBarLeading: floatingToolbar.leading,
       openDrawer,
       openTransientPanel,
+      updateTransientPanel,
       closeDrawer: closeDetail,
     }),
     [
       activeDrawerId,
-      contextBarLeading,
+      floatingToolbar.leading,
       fallbackDetail,
       closeDetail,
       openDrawer,
       openTransientPanel,
+      updateTransientPanel,
       ownedDetail?.id,
       panelVisible,
       showWorkspaceDetail,
+      transientPanel?.id,
     ],
   );
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
-
-  useLayoutEffect(() => {
-    const update = () =>
-      setToolbarPosition((current) => clampToolbar(current));
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(update);
-    if (stageRef.current) observer.observe(stageRef.current);
-    if (toolbarRef.current) observer.observe(toolbarRef.current);
-    return () => observer.disconnect();
-  }, [adapter.id, clampToolbar]);
-
-  useEffect(() => {
-    setToolbarPosition({ x: 0, y: 0 });
-    toolbarDragRef.current = null;
-    setToolbarDragging(false);
-  }, [adapter.id, item.key]);
-
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
@@ -543,72 +461,50 @@ export function InlineAdvancedWorkbenchShell({
     ],
   );
 
-  const actions = adapter.actions || [];
-  const triggerAction = (action: (typeof actions)[number]) => {
-    if (action.panelId) {
-      openDrawer(action.panelId);
-      return;
-    }
-    return action.onTrigger?.();
-  };
-  const toolsPanel = (
-    <div className="h-full overflow-y-auto p-3">
-      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
-        {tt("编辑工具")}
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        {drawers.map((drawer) => (
-          <button
-            key={drawer.id}
-            type="button"
-            onClick={() => openDrawer(drawer.id)}
-            className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-semibold text-[var(--fg-2,#57534e)] transition hover:border-[var(--awb-accent)]/35 hover:bg-[var(--surface-hover,#fafaf9)]"
-          >
-            <span
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
-              style={{ color: accent, background: `${accent}12` }}
-            >
-              <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
-            </span>
-            {tt(drawer.label)}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-  const openTools = () => {
-    if (layoutState.activeDrawerId === "workspace-tools") {
+  const openLibraryPanel = useCallback(
+    (id: "materials" | "mine") => {
       closeDetail();
-      return;
-    }
-    openTransientPanel("workspace-tools", tt("编辑工具"), toolsPanel);
-  };
-  const openLibraryPanel = (
-    id: "materials" | "mine",
-  ) => {
-    closeDetail();
-    workspacePane?.openLibraryPanel(id);
-  };
-  const actionBar = (
-    <AdvancedWorkspaceActionBar
-      adapter={adapter}
-      autoSaveState={autoSave.state}
-      activeDrawerId={layoutState.activeDrawerId}
-      activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
-      onBack={requestClose}
-      onOpenTools={openTools}
-      onOpenLibrary={openLibraryPanel}
-      onRetrySave={() => void autoSave.retry()}
-      onTriggerAction={triggerAction}
-      onUploadFiles={(files) => void performUpload(files)}
-    />
+      workspacePane?.openLibraryPanel(id);
+    },
+    [closeDetail, workspacePane],
   );
-  liveHeaderStoreRef.current.node = actionBar;
+  const actionBar = useMemo(
+    () => (
+      <InlineAdvancedWorkbenchHeader
+        adapter={adapter}
+        autoSaveState={autoSave.state}
+        activeDrawerId={layoutState.activeDrawerId}
+        activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
+        drawers={drawers}
+        accent={accent}
+        onBack={requestClose}
+        onOpenDrawer={openDrawer}
+        onCloseDrawer={closeDetail}
+        onOpenTransientPanel={openTransientPanel}
+        onOpenLibrary={openLibraryPanel}
+        onRetrySave={() => void autoSave.retry()}
+        onUploadFiles={(files) => void performUpload(files)}
+      />
+    ),
+    [
+      adapter,
+      accent,
+      autoSave.retry,
+      autoSave.state,
+      closeDetail,
+      drawers,
+      layoutState.activeDrawerId,
+      openLibraryPanel,
+      openDrawer,
+      openTransientPanel,
+      performUpload,
+      requestClose,
+      workspacePane?.activeLibraryPanelId,
+    ],
+  );
   useLayoutEffect(() => {
-    const store = liveHeaderStoreRef.current;
-    store.version += 1;
-    store.listeners.forEach((listener) => listener());
-  });
+    publishLiveReactNode(liveHeaderStoreRef.current, actionBar);
+  }, [actionBar]);
   useLayoutEffect(() => {
     if (!rightPaneSlot) return;
     rightPaneSlot.setRightFrameless(false);
@@ -629,9 +525,11 @@ export function InlineAdvancedWorkbenchShell({
     activeMaterialAction && workbenchMaterials?.draggedItem
       ? workbenchMaterials.draggedItem.title
       : undefined;
-
   return (
     <AdvancedLayoutContext.Provider value={layoutState}>
+      <FloatingContextToolbar controller={floatingToolbar} accent={accent}>
+        {contextToolbar}
+      </FloatingContextToolbar>
       <div
         data-inline-editor
         data-editor-adapter={adapter.id}
@@ -641,14 +539,19 @@ export function InlineAdvancedWorkbenchShell({
         {fallbackDetail && (
           <aside className="flex w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]">
             <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
-              <button type="button" onClick={closeDetail} aria-label={tt("关闭详情")}>
+              <button
+                type="button"
+                onClick={closeDetail}
+                aria-label={tt("关闭详情")}
+                className="grid h-8 w-8 place-items-center rounded-lg outline-none transition hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
+              >
                 ←
               </button>
               <span className="truncate text-[12px] font-semibold">
                 {fallbackDetail.label}
               </span>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {fallbackDetail.content}
             </div>
           </aside>
@@ -663,42 +566,32 @@ export function InlineAdvancedWorkbenchShell({
             ref={stageRef}
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
           >
-          {contextToolbar && (
             <div
-              data-advanced-context-row
-              ref={toolbarRef}
-              className="absolute left-2 z-[70] flex max-w-[calc(100%-1rem)] min-w-0 will-change-transform"
-              style={{
-                top: 8,
-                transform: `translate3d(${toolbarPosition.x}px, ${toolbarPosition.y}px, 0)`,
-              }}
+              data-advanced-viewport-row
+              className="relative h-full min-h-0 min-w-0 overflow-hidden"
             >
-              {contextToolbar}
-            </div>
-          )}
-          <div
-            data-advanced-viewport-row
-            className="relative h-full min-h-0 min-w-0 overflow-hidden"
-          >
-            <AdvancedWorkbenchStage
-              editorAvailable={editorAvailable}
-              editorStage={adapter.stage}
-              item={item}
-              accent={accent}
-              draggedTitle={draggedTitle}
-              acceptLocalFiles={Boolean(adapter.upload)}
-              dropMessage={dropMessage}
-              onMaterialDrop={(event) => void handleDrop(event)}
-            />
-            <div className="absolute bottom-3 right-3 z-[75]">
-              <AdvancedStageControls
-                fullscreenRef={workspacePane?.fullscreenRef || stageRef}
-                viewport={editorViewport}
+              <AdvancedWorkbenchStage
+                editorAvailable={editorAvailable}
+                editorStage={adapter.stage}
+                item={item}
                 accent={accent}
+                draggedTitle={draggedTitle}
+                acceptLocalFiles={Boolean(adapter.upload)}
+                dropMessage={dropMessage}
+                onMaterialDrop={(event) => void handleDrop(event)}
               />
+              <div
+                className="absolute bottom-3 right-3"
+                style={{ zIndex: 2_147_483_010 }}
+              >
+                <AdvancedStageControls
+                  fullscreenRef={workspacePane?.fullscreenRef || stageRef}
+                  viewport={editorViewport}
+                  accent={accent}
+                />
+              </div>
             </div>
           </div>
-        </div>
         </div>
       </div>
     </AdvancedLayoutContext.Provider>

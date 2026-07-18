@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -6,6 +7,7 @@ import {
   getWorkbenchMaterialSnapshot,
   materialScopeKey,
   registerWorkbenchMaterialSource,
+  subscribeWorkbenchMaterials,
 } from "../src/shell/workbench-material-registry.ts";
 
 function entry(id, title) {
@@ -62,4 +64,43 @@ test("typed insert/replace receives a copy and never mutates the library source"
   assert.notEqual(copy.meta, source.meta);
   assert.deepEqual(source.meta.tags, ["source"]);
   assert.equal(source.title, "Chart");
+});
+
+test("equivalent material registration preserves snapshot identity and stays quiet", () => {
+  const scope = materialScopeKey("image", "poster");
+  const source = Symbol("poster-materials");
+  let notifications = 0;
+  const unsubscribe = subscribeWorkbenchMaterials(scope, () => {
+    notifications += 1;
+  });
+  const unregisterFirst = registerWorkbenchMaterialSource(
+    scope,
+    source,
+    [entry("hero", "Hero")],
+  );
+  const firstSnapshot = getWorkbenchMaterialSnapshot(scope);
+  assert.equal(notifications, 1);
+
+  const unregisterEquivalent = registerWorkbenchMaterialSource(
+    scope,
+    source,
+    [entry("hero", "Hero")],
+  );
+  assert.equal(getWorkbenchMaterialSnapshot(scope), firstSnapshot);
+  assert.equal(notifications, 1);
+
+  unregisterEquivalent();
+  unregisterFirst();
+  unsubscribe();
+});
+
+test("ResultCanvas owns entries without subscribing to its own entry snapshot", () => {
+  const source = readFileSync(
+    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /const EMPTY_MATERIALS: MaterialItem\[\] = \[\]/);
+  assert.match(source, /materials = EMPTY_MATERIALS/);
+  assert.match(source, /useWorkbenchMaterialActions/);
+  assert.doesNotMatch(source, /useWorkbenchMaterialScope/);
 });

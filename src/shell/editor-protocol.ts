@@ -54,6 +54,14 @@ export interface EditorMaterialInsertion {
   point?: { x: number; y: number };
 }
 
+export interface EditorViewportSnapshot {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  canFit?: boolean;
+}
+
 export type HostToEditorMessage =
   | { protocol: typeof EDITOR_PROTOCOL; type: "init"; instanceId: string }
   | {
@@ -83,6 +91,8 @@ export type HostToEditorMessage =
       sidePanelVisible: boolean;
       /** The App owns back/history/autosave chrome; iframe must not duplicate it. */
       hostOwnsChrome?: boolean;
+      /** The host renders the only fit/zoom control for the embedded viewport. */
+      hostOwnsViewport?: boolean;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
@@ -104,6 +114,14 @@ export type HostToEditorMessage =
       type: "material-insert";
       instanceId: string;
       insertion: EditorMaterialInsertion;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "viewport-command";
+      instanceId: string;
+      commandId: string;
+      value?: number;
+      fit?: boolean;
     }
   | { protocol: typeof EDITOR_PROTOCOL; type: "dispose"; instanceId: string };
 
@@ -159,13 +177,27 @@ export type EditorToHostMessage =
       url?: string;
       message?: string;
     }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "viewport-changed";
+      instanceId: string;
+      viewport: EditorViewportSnapshot;
+    }
   | { protocol: typeof EDITOR_PROTOCOL; type: "error"; instanceId: string; message: string }
   | { protocol: typeof EDITOR_PROTOCOL; type: "close-request"; instanceId: string };
 
 /** 允许作为协议对端的 origin（宿主校验子站、子站校验宿主都用它）。 */
 export function isTrustedEditorOrigin(origin: string): boolean {
   try {
-    const { protocol, hostname } = new URL(origin);
+    const parsed = new URL(origin);
+    const { protocol, hostname } = parsed;
+    if (
+      parsed.origin !== origin ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return false;
+    }
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       return protocol === "http:" || protocol === "https:";
     }
@@ -184,10 +216,59 @@ function validAssetUrl(value: unknown): boolean {
   if (typeof value !== "string" || !value || value.length > 4_096) return false;
   try {
     const parsed = new URL(value);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
+    return (
+      parsed.protocol === "https:" ||
+      (parsed.protocol === "http:" &&
+        (parsed.hostname === "localhost" ||
+          parsed.hostname === "127.0.0.1"))
+    );
   } catch {
     return false;
   }
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function boundedString(
+  value: unknown,
+  max: number,
+  required = false,
+): boolean {
+  return (
+    (value === undefined && !required) ||
+    (typeof value === "string" &&
+      value.length <= max &&
+      (!required || value.length > 0))
+  );
+}
+
+function boundedRecord(value: unknown, max: number): boolean {
+  if (!recordValue(value)) return false;
+  try {
+    return JSON.stringify(value).length <= max;
+  } catch {
+    return false;
+  }
+}
+
+function validAssetPayload(value: unknown): value is EditorAssetPayload {
+  const asset = recordValue(value);
+  return Boolean(
+    asset &&
+      boundedString(asset.id, 256, true) &&
+      boundedString(asset.kind, 80, true) &&
+      boundedString(asset.title, 300, true) &&
+      validAssetUrl(asset.url) &&
+      validAssetUrl(asset.previewUrl) &&
+      boundedRecord(asset.meta, 20_000) &&
+      typeof asset.writable === "boolean",
+  );
 }
 
 /** 类型收窄：任意 message data 是否是本协议的子站→宿主消息。 */
@@ -195,42 +276,31 @@ export function asEditorToHostMessage(
   data: unknown,
   instanceId: string,
 ): EditorToHostMessage | null {
-  if (!data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
+  const record = recordValue(data);
+  if (!record) return null;
   if (record.protocol !== EDITOR_PROTOCOL) return null;
-  if (record.instanceId !== instanceId) return null;
+  if (
+    record.instanceId !== instanceId ||
+    !boundedString(instanceId, 128, true)
+  ) {
+    return null;
+  }
   const type = record.type;
   if (type === "artifact-created" || type === "artifact-updated") {
     if (
-      typeof record.url !== "string" ||
-      record.url.length > 2_000 ||
-      !record.url.startsWith("https://")
+      !boundedString(record.url, 2_000, true) ||
+      !validAssetUrl(record.url) ||
+      !validAssetUrl(record.previewUrl) ||
+      !boundedString(record.title, 300) ||
+      !boundedString(record.saveId, 128) ||
+      (record.meta !== undefined && !boundedRecord(record.meta, 20_000))
     ) {
       return null;
-    }
-    if (
-      record.saveId != null &&
-      (typeof record.saveId !== "string" || record.saveId.length > 128)
-    ) {
-      return null;
-    }
-    if (
-      record.meta != null &&
-      (typeof record.meta !== "object" || Array.isArray(record.meta))
-    ) {
-      return null;
-    }
-    if (record.meta != null) {
-      try {
-        if (JSON.stringify(record.meta).length > 20_000) return null;
-      } catch {
-        return null;
-      }
     }
     return record as unknown as EditorToHostMessage;
   }
   if (type === "error") {
-    if (typeof record.message !== "string" || record.message.length > 1_000) {
+    if (!boundedString(record.message, 1_000, true)) {
       return null;
     }
     return record as unknown as EditorToHostMessage;
@@ -245,12 +315,9 @@ export function asEditorToHostMessage(
   }
   if (type === "selection-result") {
     if (
-      typeof record.requestId !== "string" ||
-      !record.requestId ||
-      record.requestId.length > 128 ||
+      !boundedString(record.requestId, 128, true) ||
       typeof record.ok !== "boolean" ||
-      (record.message !== undefined &&
-        (typeof record.message !== "string" || record.message.length > 500))
+      !boundedString(record.message, 500)
     ) {
       return null;
     }
@@ -258,12 +325,9 @@ export function asEditorToHostMessage(
   }
   if (type === "material-result") {
     if (
-      typeof record.commandId !== "string" ||
-      !record.commandId ||
-      record.commandId.length > 128 ||
+      !boundedString(record.commandId, 128, true) ||
       typeof record.ok !== "boolean" ||
-      (record.message !== undefined &&
-        (typeof record.message !== "string" || record.message.length > 500))
+      !boundedString(record.message, 500)
     ) {
       return null;
     }
@@ -271,13 +335,31 @@ export function asEditorToHostMessage(
   }
   if (type === "export-result") {
     if (
-      typeof record.exportId !== "string" ||
-      !record.exportId ||
-      record.exportId.length > 128 ||
+      !boundedString(record.exportId, 128, true) ||
       typeof record.ok !== "boolean" ||
       !validAssetUrl(record.url) ||
-      (record.message !== undefined &&
-        (typeof record.message !== "string" || record.message.length > 500))
+      !boundedString(record.message, 500)
+    ) {
+      return null;
+    }
+    return record as unknown as EditorToHostMessage;
+  }
+  if (type === "viewport-changed") {
+    const viewport = recordValue(record.viewport);
+    if (
+      !viewport ||
+      !Number.isFinite(viewport.value as number) ||
+      !Number.isFinite(viewport.min as number) ||
+      !Number.isFinite(viewport.max as number) ||
+      Number(viewport.min) < 1 ||
+      Number(viewport.max) > 1_000 ||
+      Number(viewport.min) >= Number(viewport.max) ||
+      Number(viewport.value) < Number(viewport.min) ||
+      Number(viewport.value) > Number(viewport.max) ||
+      (viewport.step !== undefined &&
+        (!Number.isFinite(viewport.step as number) ||
+          Number(viewport.step) <= 0)) ||
+      (viewport.canFit !== undefined && typeof viewport.canFit !== "boolean")
     ) {
       return null;
     }
@@ -303,26 +385,25 @@ export function asHostToEditorMessage(
   data: unknown,
   instanceId: string,
 ): HostToEditorMessage | null {
-  if (!data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
+  const record = recordValue(data);
+  if (!record) return null;
   if (record.protocol !== EDITOR_PROTOCOL) return null;
-  if (record.instanceId !== instanceId) return null;
+  if (
+    record.instanceId !== instanceId ||
+    !boundedString(instanceId, 128, true)
+  ) {
+    return null;
+  }
   const type = record.type;
   if (type === "save-request") {
-    if (
-      typeof record.saveId !== "string" ||
-      !record.saveId ||
-      record.saveId.length > 128
-    ) {
+    if (!boundedString(record.saveId, 128, true)) {
       return null;
     }
     return record as unknown as HostToEditorMessage;
   }
   if (type === "export-request") {
     if (
-      typeof record.exportId !== "string" ||
-      !record.exportId ||
-      record.exportId.length > 128 ||
+      !boundedString(record.exportId, 128, true) ||
       record.format !== "default"
     ) {
       return null;
@@ -335,47 +416,15 @@ export function asHostToEditorMessage(
     return { ...record, command } as unknown as HostToEditorMessage;
   }
   if (type === "material-insert") {
-    const insertion =
-      record.insertion &&
-      typeof record.insertion === "object" &&
-      !Array.isArray(record.insertion)
-        ? (record.insertion as Record<string, unknown>)
-        : null;
-    const material =
-      insertion?.material &&
-      typeof insertion.material === "object" &&
-      !Array.isArray(insertion.material)
-        ? (insertion.material as Record<string, unknown>)
-        : null;
-    const point =
-      insertion?.point &&
-      typeof insertion.point === "object" &&
-      !Array.isArray(insertion.point)
-        ? (insertion.point as Record<string, unknown>)
-        : null;
+    const insertion = recordValue(record.insertion);
+    const point = recordValue(insertion?.point);
     if (
       !insertion ||
-      typeof insertion.commandId !== "string" ||
-      !insertion.commandId ||
-      insertion.commandId.length > 128 ||
+      !boundedString(insertion.commandId, 128, true) ||
       !["insert", "replace", "apply", "merge"].includes(
         String(insertion.action),
       ) ||
-      !material ||
-      typeof material.id !== "string" ||
-      !material.id ||
-      material.id.length > 256 ||
-      typeof material.kind !== "string" ||
-      !material.kind ||
-      material.kind.length > 80 ||
-      typeof material.title !== "string" ||
-      material.title.length > 300 ||
-      typeof material.meta !== "object" ||
-      material.meta === null ||
-      Array.isArray(material.meta) ||
-      typeof material.writable !== "boolean" ||
-      !validAssetUrl(material.url) ||
-      !validAssetUrl(material.previewUrl) ||
+      !validAssetPayload(insertion.material) ||
       (point !== null &&
         (!Number.isFinite(point.x as number) ||
           !Number.isFinite(point.y as number) ||
@@ -384,23 +433,54 @@ export function asHostToEditorMessage(
     ) {
       return null;
     }
-    try {
-      if (JSON.stringify(insertion).length > 24_000) return null;
-    } catch {
+    if (!boundedRecord(insertion, 24_000)) return null;
+    return record as unknown as HostToEditorMessage;
+  }
+  if (type === "viewport-command") {
+    const hasValue = record.value !== undefined;
+    const fits = record.fit === true;
+    if (
+      !boundedString(record.commandId, 128, true) ||
+      (hasValue &&
+        (!Number.isFinite(record.value as number) ||
+          Number(record.value) < 1 ||
+          Number(record.value) > 1_000)) ||
+      (record.fit !== undefined && record.fit !== true) ||
+      hasValue === fits
+    ) {
       return null;
     }
     return record as unknown as HostToEditorMessage;
   }
-  if (
-    type === "init" ||
-    type === "open-asset" ||
-    (type === "set-host-layout" &&
-      typeof record.sidePanelVisible === "boolean" &&
-      (record.hostOwnsChrome === undefined ||
-        typeof record.hostOwnsChrome === "boolean")) ||
-    type === "save-result" ||
-    type === "dispose"
-  ) {
+  if (type === "open-asset") {
+    return validAssetPayload(record.asset)
+      ? (record as unknown as HostToEditorMessage)
+      : null;
+  }
+  if (type === "set-host-layout") {
+    if (
+      typeof record.sidePanelVisible !== "boolean" ||
+      (record.hostOwnsChrome !== undefined &&
+        typeof record.hostOwnsChrome !== "boolean") ||
+      (record.hostOwnsViewport !== undefined &&
+        typeof record.hostOwnsViewport !== "boolean")
+    ) {
+      return null;
+    }
+    return record as unknown as HostToEditorMessage;
+  }
+  if (type === "save-result") {
+    if (
+      typeof record.ok !== "boolean" ||
+      !boundedString(record.message, 1_000, true) ||
+      !validAssetUrl(record.url) ||
+      !boundedString(record.saveId, 128)
+    ) {
+      return null;
+    }
+    return record as unknown as HostToEditorMessage;
+  }
+  if (type === "init" || type === "dispose") {
     return record as unknown as HostToEditorMessage;
   }
   return null;
@@ -419,6 +499,16 @@ export function buildEditorEmbedUrl(
   },
 ): string {
   const url = new URL(base);
+  if (
+    !isTrustedEditorOrigin(url.origin) ||
+    !isTrustedEditorOrigin(opts.hostOrigin) ||
+    !boundedString(opts.instanceId, 128, true) ||
+    !validAssetUrl(opts.assetUrl) ||
+    !boundedString(opts.assetTitle, 300) ||
+    !boundedString(opts.assetKind, 80)
+  ) {
+    throw new TypeError("Untrusted or malformed editor embed URL");
+  }
   url.searchParams.set("embed", "1");
   url.searchParams.set("editor", "1");
   url.searchParams.set("instance", opts.instanceId);
@@ -426,7 +516,23 @@ export function buildEditorEmbedUrl(
   if (opts.assetUrl) url.searchParams.set("assetUrl", opts.assetUrl);
   if (opts.assetTitle) url.searchParams.set("assetTitle", opts.assetTitle);
   if (opts.assetKind) url.searchParams.set("assetKind", opts.assetKind);
+  const reserved = new Set([
+    "embed",
+    "editor",
+    "instance",
+    "host",
+    "assetUrl",
+    "assetTitle",
+    "assetKind",
+  ]);
   for (const [key, value] of Object.entries(opts.extra || {})) {
+    if (
+      reserved.has(key) ||
+      !/^[a-z0-9_.:-]{1,80}$/i.test(key) ||
+      value.length > 2_000
+    ) {
+      continue;
+    }
     url.searchParams.set(key, value);
   }
   return url.toString();

@@ -4,11 +4,12 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   columnLabel,
-  gridCellFormat,
   gridCellValue,
   gridColCount,
+  gridDisplayFormat,
   gridDisplayValue,
 } from "./grid-model";
+import { gridMergeAt } from "./grid-structure";
 import type { GridEditorState } from "./use-grid-editor";
 
 const ROW_HEIGHT = 34;
@@ -40,8 +41,26 @@ export function GridStage({
   const [scrollTop, setScrollTop] = useState(0);
   const rows = editor.visibleRowIndexes;
   const columnCount = gridColCount(editor.activeSheet);
-  const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
-  const end = Math.min(rows.length, start + WINDOW_ROWS);
+  const rawStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
+  const firstVisibleRow = rows[rawStart] ?? 0;
+  const coveringMerge = editor.filterQuery
+    ? undefined
+    : editor.activeSheet.merges.find(
+        (merge) =>
+          merge.firstRow < firstVisibleRow && merge.lastRow >= firstVisibleRow,
+      );
+  const start = coveringMerge ? coveringMerge.firstRow : rawStart;
+  const baseEnd = Math.min(rows.length, start + WINDOW_ROWS);
+  const extendedRow = editor.filterQuery
+    ? baseEnd
+    : editor.activeSheet.merges.reduce(
+        (last, merge) =>
+          merge.firstRow < baseEnd && merge.lastRow >= start
+            ? Math.max(last, merge.lastRow + 1)
+            : last,
+        baseEnd,
+      );
+  const end = Math.min(rows.length, start + 500, extendedRow);
   const windowRows = useMemo(() => rows.slice(start, end), [end, rows, start]);
   const selectedAddress = editor.selectedCell
     ? `${columnLabel(editor.selectedCell.col)}${editor.selectedCell.row + 1}`
@@ -95,6 +114,15 @@ export function GridStage({
           <input
             value={editor.selectedValue}
             onChange={(event) => editor.setSelectedValue(event.target.value)}
+            onFocus={editor.beginCellGesture}
+            onBlur={editor.endCellGesture}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                editor.cancelCellGesture();
+                event.currentTarget.blur();
+              }
+            }}
             aria-label={tt("公式栏")}
             placeholder={tt("输入内容或以 = 开头的公式")}
             className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[11px] text-[var(--fg,#292524)] outline-none"
@@ -155,6 +183,15 @@ export function GridStage({
                   {row + 1}
                 </th>
                 {Array.from({ length: columnCount }, (_, col) => {
+                  const merge = editor.filterQuery
+                    ? undefined
+                    : gridMergeAt(editor.activeSheet.merges, row, col);
+                  if (
+                    merge &&
+                    (merge.firstRow !== row || merge.firstCol !== col)
+                  ) {
+                    return null;
+                  }
                   const focused =
                     Boolean(editor.selectedCell) &&
                     editor.selection.focus.row === row &&
@@ -164,10 +201,16 @@ export function GridStage({
                   const value = focused
                     ? raw
                     : gridDisplayValue(editor.activeSheet, row, col);
-                  const format = gridCellFormat(editor.activeSheet, row, col);
+                  const format = gridDisplayFormat(editor.activeSheet, row, col);
                   return (
                     <td
                       key={col}
+                      rowSpan={
+                        merge ? merge.lastRow - merge.firstRow + 1 : undefined
+                      }
+                      colSpan={
+                        merge ? merge.lastCol - merge.firstCol + 1 : undefined
+                      }
                       className="relative h-[34px] min-w-28 border-b border-r border-[var(--border,#e7e5e4)] p-0"
                       style={
                         selected
@@ -184,16 +227,26 @@ export function GridStage({
                         data-grid-cell={`${row}:${col}`}
                         value={value}
                         title={raw.startsWith("=") ? `${raw} → ${value}` : value}
-                        onFocus={() => editor.selectCell({ row, col })}
+                        onFocus={() => {
+                          editor.selectCell({ row, col });
+                          editor.beginCellGesture();
+                        }}
+                        onBlur={editor.endCellGesture}
                         onMouseDown={(event) =>
                           editor.selectCell({ row, col }, event.shiftKey)
                         }
                         onChange={(event) =>
                           editor.setCell(row, col, event.target.value)
                         }
-                        onKeyDown={(event) =>
-                          onCellKeyDown(event, row, col)
-                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            editor.cancelCellGesture();
+                            event.currentTarget.blur();
+                            return;
+                          }
+                          onCellKeyDown(event, row, col);
+                        }}
                         className="h-full w-full min-w-28 bg-transparent px-2 outline-none"
                         style={{
                           color:

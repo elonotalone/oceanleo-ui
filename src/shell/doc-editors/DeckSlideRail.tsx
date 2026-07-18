@@ -3,7 +3,7 @@
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { DeckMiniSlide } from "./DeckMiniSlide";
-import { deckTheme } from "./deck-schema";
+import { deckMasterFor, deckTheme } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckSlideRail({ editor }: { editor: DeckEditorState }) {
@@ -32,6 +32,7 @@ export function DeckSlideRail({ editor }: { editor: DeckEditorState }) {
             number={index + 1}
             active={slide.id === editor.activeSlide.id}
             theme={theme}
+            master={deckMasterFor(editor.deck, slide)}
             onClick={() => editor.selectSlide(slide.id)}
           />
         ))}

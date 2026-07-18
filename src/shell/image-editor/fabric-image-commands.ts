@@ -194,6 +194,9 @@ export function dispatchFabricImageCommand(
     case "grayscale":
       editor.setFilter("grayscale", message.value === true);
       break;
+    case "filter-reset":
+      editor.resetFilters();
+      break;
     case "lock":
       if (selected && message.value !== selected.locked) {
         editor.toggleLayerLock(selected.id);

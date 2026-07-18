@@ -95,6 +95,7 @@ export class FabricEditorCore {
   protected redoStack: EditorSnapshot[] = [];
   protected restoring = false;
   protected destroyed = false;
+  private gestureBase: EditorSnapshot | null = null;
   private panning = false;
   private restoreAbort: AbortController | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -332,6 +333,12 @@ export class FabricEditorCore {
       this.emit();
       return;
     }
+    if (this.gestureBase) {
+      this.currentSnapshot = next;
+      this.canvas.requestRenderAll();
+      this.emit();
+      return;
+    }
     this.undoStack.push(this.currentSnapshot);
     if (this.undoStack.length > MAX_HISTORY) this.undoStack.shift();
     this.currentSnapshot = next;
@@ -349,6 +356,37 @@ export class FabricEditorCore {
     );
     this.undoStack = [];
     this.redoStack = [];
+    this.gestureBase = null;
+  }
+
+  beginGesture(): void {
+    if (!this.destroyed && !this.restoring && !this.gestureBase) {
+      this.gestureBase = this.currentSnapshot;
+    }
+  }
+
+  endGesture(): void {
+    const base = this.gestureBase;
+    if (!base || this.destroyed || this.restoring) return;
+    this.gestureBase = null;
+    ensureLayerOrder(this.canvas);
+    const next = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    this.currentSnapshot = next;
+    if (snapshotKey(next) !== snapshotKey(base)) {
+      this.undoStack.push(base);
+      if (this.undoStack.length > MAX_HISTORY) this.undoStack.shift();
+      this.redoStack = [];
+      this.callbacks.onDocumentChange?.();
+    }
+    this.canvas.requestRenderAll();
+    this.emit();
+  }
+
+  cancelGesture(): void {
+    const base = this.gestureBase;
+    if (!base || this.destroyed || this.restoring) return;
+    this.gestureBase = null;
+    void this.restore(base, false);
   }
 
   setInitialBackground(image: FabricImage, size: DocSize): void {

@@ -53,6 +53,10 @@ export function AudioContextToolbar({
           max: 5,
           step: 0.1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "audio-fades",
+          inspectorLabel: tt("淡入淡出"),
+          inspectorIcon: "effects",
         },
         {
           id: "fade-in",
@@ -60,6 +64,10 @@ export function AudioContextToolbar({
           label: tt("淡入"),
           disabled: editor.loading,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "audio-fades",
+          inspectorLabel: tt("淡入淡出"),
+          inspectorIcon: "effects",
         },
         {
           id: "fade-out",
@@ -67,6 +75,10 @@ export function AudioContextToolbar({
           label: tt("淡出"),
           disabled: editor.loading,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "audio-fades",
+          inspectorLabel: tt("淡入淡出"),
+          inspectorIcon: "effects",
         },
         {
           id: "gain",
@@ -76,6 +88,10 @@ export function AudioContextToolbar({
           min: 0,
           max: 200,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "audio-gain",
+          inspectorLabel: tt("音量增益"),
+          inspectorIcon: "effects",
         },
         {
           id: "apply-gain",
@@ -83,10 +99,89 @@ export function AudioContextToolbar({
           label: tt("应用增益"),
           disabled: editor.loading,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "audio-gain",
+          inspectorLabel: tt("音量增益"),
+          inspectorIcon: "effects",
+        },
+        {
+          id: "effect-speed",
+          kind: "range",
+          label: tt("选区速度"),
+          value: editor.effectSpeed,
+          min: 0.5,
+          max: 2,
+          step: 0.05,
+          slot: "inspector",
+          inspectorGroup: "audio-effect-chain",
+          inspectorLabel: tt("选区效果链"),
+          inspectorIcon: "effects",
+        },
+        {
+          id: "eq-low",
+          kind: "range",
+          label: tt("低频"),
+          value: editor.lowEq,
+          min: -24,
+          max: 24,
+          step: 1,
+          suffix: " dB",
+          slot: "inspector",
+          inspectorGroup: "audio-effect-chain",
+          inspectorLabel: tt("选区效果链"),
+          inspectorIcon: "effects",
+        },
+        {
+          id: "eq-mid",
+          kind: "range",
+          label: tt("中频"),
+          value: editor.midEq,
+          min: -24,
+          max: 24,
+          step: 1,
+          suffix: " dB",
+          slot: "inspector",
+          inspectorGroup: "audio-effect-chain",
+          inspectorLabel: tt("选区效果链"),
+          inspectorIcon: "effects",
+        },
+        {
+          id: "eq-high",
+          kind: "range",
+          label: tt("高频"),
+          value: editor.highEq,
+          min: -24,
+          max: 24,
+          step: 1,
+          suffix: " dB",
+          slot: "inspector",
+          inspectorGroup: "audio-effect-chain",
+          inspectorLabel: tt("选区效果链"),
+          inspectorIcon: "effects",
+        },
+        {
+          id: "apply-effects",
+          kind: "action",
+          label: tt("应用效果链"),
+          disabled: editor.loading || !selection,
+          slot: "inspector",
+          inspectorGroup: "audio-effect-chain",
+          inspectorLabel: tt("选区效果链"),
+          inspectorIcon: "effects",
         },
       ],
     }),
-    [editor.fadeDuration, editor.gain, editor.loading, selection, tt],
+    [
+      editor.effectSpeed,
+      editor.fadeDuration,
+      editor.gain,
+      editor.highEq,
+      editor.loading,
+      editor.lowEq,
+      editor.midEq,
+      selection,
+      tt,
+    ],
   );
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
@@ -111,6 +206,23 @@ export function AudioContextToolbar({
         break;
       case "apply-gain":
         editor.applyGain();
+        break;
+      case "effect-speed":
+        if (typeof message.value === "number") {
+          editor.setEffectSpeed(message.value);
+        }
+        break;
+      case "eq-low":
+        if (typeof message.value === "number") editor.setLowEq(message.value);
+        break;
+      case "eq-mid":
+        if (typeof message.value === "number") editor.setMidEq(message.value);
+        break;
+      case "eq-high":
+        if (typeof message.value === "number") editor.setHighEq(message.value);
+        break;
+      case "apply-effects":
+        editor.applyEffectChain();
         break;
     }
   };

@@ -116,7 +116,9 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const image = source("../src/shell/image-editor/use-fabric-image-editor.ts");
-  const audio = source("../src/shell/media-editors/AudioWorkbench.tsx");
+  const audio =
+    source("../src/shell/media-editors/AudioWorkbench.tsx") +
+    source("../src/shell/media-editors/use-audio-persistence.ts");
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
@@ -149,7 +151,10 @@ test("timeline preview uses the same transition semantics as export", () => {
 });
 
 test("media editors expose usable first-draft surfaces without a source URL", () => {
-  const audio = source("../src/shell/media-editors/AudioWorkbench.tsx");
+  const audio =
+    source("../src/shell/media-editors/AudioWorkbench.tsx") +
+    source("../src/shell/media-editors/audio-workbench-state.ts") +
+    source("../src/shell/media-editors/AudioWorkbenchView.tsx");
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const pdfOperations = source("../src/shell/media-editors/pdf-operations.ts");
   const pdfSource = source("../src/shell/media-editors/pdf-source.ts");

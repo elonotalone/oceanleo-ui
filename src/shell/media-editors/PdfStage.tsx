@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { PdfWorkbenchState } from "./use-pdf-workbench";
+import {
+  normalizedVisualRect,
+  type PdfVisualPoint,
+  type PdfVisualRect,
+} from "./pdf-annotation-operations";
 
 function editableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -14,6 +24,33 @@ function editableTarget(target: EventTarget | null): boolean {
   );
 }
 
+interface PdfAnnotationDrag {
+  id: string;
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+  originX: number;
+  originY: number;
+  rect: PdfVisualRect;
+}
+
+function movedAnnotationRect(
+  drag: PdfAnnotationDrag,
+  point: PdfVisualPoint,
+): PdfVisualRect {
+  return {
+    ...drag.rect,
+    x: Math.max(
+      0,
+      Math.min(1 - drag.rect.width, point.x - drag.offsetX),
+    ),
+    y: Math.max(
+      0,
+      Math.min(1 - drag.rect.height, point.y - drag.offsetY),
+    ),
+  };
+}
+
 export function PdfStage({
   editor,
   accent = "#4f46e5",
@@ -22,6 +59,12 @@ export function PdfStage({
   accent?: string;
 }) {
   const tt = useUI();
+  const [highlightStart, setHighlightStart] =
+    useState<PdfVisualPoint | null>(null);
+  const [highlightPreview, setHighlightPreview] =
+    useState<PdfVisualRect | null>(null);
+  const [annotationDrag, setAnnotationDrag] =
+    useState<PdfAnnotationDrag | null>(null);
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (editableTarget(event.target)) return;
@@ -49,6 +92,15 @@ export function PdfStage({
   const visualScale = editor.zoom / Math.max(1, editor.renderedZoom);
   const visualWidth = editor.pageWidth * visualScale;
   const visualHeight = editor.pageHeight * visualScale;
+  const eventPoint = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): PdfVisualPoint => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    };
+  };
 
   return (
     <div
@@ -76,8 +128,186 @@ export function PdfStage({
             className="block max-w-none origin-top-left bg-white shadow-[0_8px_32px_rgba(28,25,23,.18)] transition-transform duration-75"
             style={{ transform: `scale(${visualScale})` }}
           />
+          {editor.pageWidth > 0 && editor.pageHeight > 0 && (
+            <div
+              data-pdf-annotation-layer
+              className={`absolute inset-0 z-20 touch-none ${
+                editor.annotationTool === "select"
+                  ? "cursor-default"
+                  : editor.annotationTool === "text"
+                    ? "cursor-copy"
+                    : "cursor-crosshair"
+              }`}
+              onPointerDown={(event) => {
+                if (editor.processing || editor.loading) return;
+                const point = eventPoint(event);
+                const annotationElement =
+                  event.target instanceof Element
+                    ? event.target.closest<HTMLElement>(
+                        "[data-pdf-annotation]",
+                      )
+                    : null;
+                const annotation = editor.annotations.find(
+                  (entry) =>
+                    entry.id === annotationElement?.dataset.pdfAnnotation,
+                );
+                if (editor.annotationTool === "select" && annotation) {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  editor.selectAnnotation(annotation.id);
+                  setAnnotationDrag({
+                    id: annotation.id,
+                    pointerId: event.pointerId,
+                    offsetX: point.x - annotation.rect.x,
+                    offsetY: point.y - annotation.rect.y,
+                    originX: annotation.rect.x,
+                    originY: annotation.rect.y,
+                    rect: annotation.rect,
+                  });
+                  return;
+                }
+                if (editor.annotationTool === "text") {
+                  void editor.addTextAnnotationAt(point);
+                  return;
+                }
+                if (editor.annotationTool === "highlight") {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setHighlightStart(point);
+                  setHighlightPreview({
+                    x: point.x,
+                    y: point.y,
+                    width: 0,
+                    height: 0,
+                  });
+                  return;
+                }
+                editor.selectAnnotation("");
+              }}
+              onPointerMove={(event) => {
+                if (
+                  annotationDrag &&
+                  annotationDrag.pointerId === event.pointerId &&
+                  editor.annotationTool === "select"
+                ) {
+                  const point = eventPoint(event);
+                  setAnnotationDrag((current) =>
+                    current && current.pointerId === event.pointerId
+                      ? {
+                          ...current,
+                          rect: movedAnnotationRect(current, point),
+                        }
+                      : current,
+                  );
+                  return;
+                }
+                if (!highlightStart || editor.annotationTool !== "highlight") {
+                  return;
+                }
+                setHighlightPreview(
+                  normalizedVisualRect(highlightStart, eventPoint(event)),
+                );
+              }}
+              onPointerUp={(event) => {
+                if (
+                  annotationDrag &&
+                  annotationDrag.pointerId === event.pointerId
+                ) {
+                  const rect = movedAnnotationRect(
+                    annotationDrag,
+                    eventPoint(event),
+                  );
+                  setAnnotationDrag(null);
+                  if (
+                    Math.abs(rect.x - annotationDrag.originX) > 0.0001 ||
+                    Math.abs(rect.y - annotationDrag.originY) > 0.0001
+                  ) {
+                    void editor.moveAnnotation(annotationDrag.id, rect);
+                  }
+                  return;
+                }
+                if (!highlightStart || editor.annotationTool !== "highlight") {
+                  return;
+                }
+                const rect = normalizedVisualRect(
+                  highlightStart,
+                  eventPoint(event),
+                );
+                setHighlightStart(null);
+                setHighlightPreview(null);
+                if (rect.width >= 0.002 && rect.height >= 0.002) {
+                  void editor.addHighlightAnnotation(rect);
+                }
+              }}
+              onPointerCancel={() => {
+                setAnnotationDrag(null);
+                setHighlightStart(null);
+                setHighlightPreview(null);
+              }}
+            >
+              {editor.annotations.map((annotation) => {
+                const selected =
+                  annotation.id === editor.selectedAnnotationId;
+                const rect =
+                  annotationDrag?.id === annotation.id
+                    ? annotationDrag.rect
+                    : annotation.rect;
+                return (
+                  <button
+                    key={annotation.id}
+                    type="button"
+                    data-pdf-annotation={annotation.id}
+                    aria-label={
+                      annotation.contents ||
+                      (annotation.kind === "highlight"
+                        ? tt("高亮批注")
+                        : tt("文字批注"))
+                    }
+                    title={annotation.contents}
+                    className={
+                      annotation.kind === "highlight"
+                        ? "absolute rounded-sm"
+                        : "absolute grid min-h-5 min-w-5 place-items-center rounded-full text-[11px] font-bold text-amber-950 shadow-sm"
+                    }
+                    style={{
+                      left: `${rect.x * 100}%`,
+                      top: `${rect.y * 100}%`,
+                      width: `${rect.width * 100}%`,
+                      height: `${rect.height * 100}%`,
+                      minWidth:
+                        annotation.kind === "text" ? "20px" : undefined,
+                      minHeight:
+                        annotation.kind === "text" ? "20px" : undefined,
+                      background:
+                        annotation.kind === "highlight"
+                          ? `${annotation.color}66`
+                          : annotation.color,
+                      boxShadow: selected
+                        ? `0 0 0 2px ${accent}`
+                        : annotation.kind === "highlight"
+                          ? `inset 0 0 0 1px ${annotation.color}88`
+                          : undefined,
+                    }}
+                  >
+                    {annotation.kind === "text" ? "✦" : null}
+                  </button>
+                );
+              })}
+              {highlightPreview && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute border border-amber-500 bg-amber-300/35"
+                  style={{
+                    left: `${highlightPreview.x * 100}%`,
+                    top: `${highlightPreview.y * 100}%`,
+                    width: `${highlightPreview.width * 100}%`,
+                    height: `${highlightPreview.height * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+          )}
           {busyLabel && (
-            <div className="absolute inset-0 flex min-h-32 items-center justify-center bg-[var(--card,#fff)]/85 px-5 text-center text-[12px] text-[var(--muted,#78716c)] backdrop-blur-[1px]">
+            <div className="absolute inset-0 z-30 flex min-h-32 items-center justify-center bg-[var(--card,#fff)]/85 px-5 text-center text-[12px] text-[var(--muted,#78716c)] backdrop-blur-[1px]">
               {busyLabel}
             </div>
           )}

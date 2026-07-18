@@ -7,7 +7,9 @@ import type {
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
+import { deckSlideSelectionContext } from "./deck-slide-selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
+import { deckElementAnimationControls } from "./deck-element-animation-controls";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckContextToolbar({
@@ -19,8 +21,9 @@ export function DeckContextToolbar({
 }) {
   const tt = useUI();
   const element = editor.selectedElement;
+  const slide = editor.activeSlide;
   const context = useMemo<SelectionContext | null>(() => {
-    if (!element) return null;
+    if (!element) return deckSlideSelectionContext(editor, tt);
     const common = [
       {
         id: "opacity",
@@ -32,7 +35,12 @@ export function DeckContextToolbar({
         min: 0,
         max: 1,
         step: 0.05,
+        slot: "inspector" as const,
+        inspectorGroup: "deck-object-appearance",
+        inspectorLabel: tt("外观"),
+        inspectorIcon: "opacity" as const,
       },
+      ...deckElementAnimationControls(element, tt),
       {
         id: "position-panel",
         kind: "panel" as const,
@@ -87,6 +95,16 @@ export function DeckContextToolbar({
         ...(element.type === "text"
           ? [
               {
+                id: "text",
+                kind: "text" as const,
+                label: tt("文字内容"),
+                value: element.text || "",
+                slot: "inspector" as const,
+                inspectorGroup: "deck-text-content",
+                inspectorLabel: tt("文字内容"),
+                inspectorIcon: "text" as const,
+              },
+              {
                 id: "font-panel",
                 kind: "panel" as const,
                 label: element.fontFamily || tt("字体"),
@@ -103,6 +121,10 @@ export function DeckContextToolbar({
                 min: 4,
                 max: 300,
                 step: 1,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-text-typography",
+                inspectorLabel: tt("文字排版"),
+                inspectorIcon: "font" as const,
               },
               {
                 id: "color",
@@ -164,6 +186,10 @@ export function DeckContextToolbar({
                 min: 0.7,
                 max: 4,
                 step: 0.05,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-text-spacing",
+                inspectorLabel: tt("文字间距"),
+                inspectorIcon: "spacing" as const,
               },
               {
                 id: "letter-spacing",
@@ -175,6 +201,10 @@ export function DeckContextToolbar({
                 max: 40,
                 step: 0.5,
                 placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-text-spacing",
+                inspectorLabel: tt("文字间距"),
+                inspectorIcon: "spacing" as const,
               },
               {
                 id: "effects-panel",
@@ -211,6 +241,10 @@ export function DeckContextToolbar({
                       min: 1,
                       max: 24,
                       step: 1,
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-line-style",
+                      inspectorLabel: tt("线条样式"),
+                      inspectorIcon: "line" as const,
                     },
                     {
                       id: "line-dash",
@@ -224,6 +258,10 @@ export function DeckContextToolbar({
                         { value: "dash", label: tt("虚线") },
                         { value: "dot", label: tt("点线") },
                       ],
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-line-style",
+                      inspectorLabel: tt("线条样式"),
+                      inspectorIcon: "line" as const,
                     },
                     {
                       id: "line-start",
@@ -237,6 +275,10 @@ export function DeckContextToolbar({
                         { value: "circle", label: tt("圆点") },
                         { value: "diamond", label: tt("菱形") },
                       ],
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-line-markers",
+                      inspectorLabel: tt("线条端点"),
+                      inspectorIcon: "line" as const,
                     },
                     {
                       id: "line-end",
@@ -250,6 +292,10 @@ export function DeckContextToolbar({
                         { value: "circle", label: tt("圆点") },
                         { value: "diamond", label: tt("菱形") },
                       ],
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-line-markers",
+                      inspectorLabel: tt("线条端点"),
+                      inspectorIcon: "line" as const,
                     },
                   ]
                 : [
@@ -302,6 +348,10 @@ export function DeckContextToolbar({
                       min: 0,
                       max: 40,
                       step: 1,
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-shape-border",
+                      inspectorLabel: tt("描边与圆角"),
+                      inspectorIcon: "border" as const,
                     },
                     {
                       id: "border-radius",
@@ -312,6 +362,10 @@ export function DeckContextToolbar({
                       min: 0,
                       max: 999,
                       step: 1,
+                      slot: "inspector" as const,
+                      inspectorGroup: "deck-shape-border",
+                      inspectorLabel: tt("描边与圆角"),
+                      inspectorIcon: "border" as const,
                     },
                   ]),
               {
@@ -349,6 +403,16 @@ export function DeckContextToolbar({
                 ],
               },
               {
+                id: "alt",
+                kind: "text" as const,
+                label: tt("替代文字"),
+                value: element.alt || "",
+                slot: "inspector" as const,
+                inspectorGroup: "deck-image-accessibility",
+                inspectorLabel: tt("图片说明"),
+                inspectorIcon: "image" as const,
+              },
+              {
                 id: "filter-panel",
                 kind: "panel" as const,
                 label: tt("滤镜"),
@@ -382,6 +446,10 @@ export function DeckContextToolbar({
                 max: 999,
                 step: 1,
                 placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-image-effects",
+                inspectorLabel: tt("图片效果"),
+                inspectorIcon: "effects" as const,
               },
               {
                 id: "shadow",
@@ -391,6 +459,10 @@ export function DeckContextToolbar({
                 group: "image",
                 value: element.shadow === true,
                 placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-image-effects",
+                inspectorLabel: tt("图片效果"),
+                inspectorIcon: "effects" as const,
               },
             ]
           : []),
@@ -403,6 +475,10 @@ export function DeckContextToolbar({
                 value: element.fontSize || 16,
                 min: 6,
                 max: 72,
+                slot: "inspector" as const,
+                inspectorGroup: "deck-table-style",
+                inspectorLabel: tt("表格样式"),
+                inspectorIcon: "table" as const,
               },
               {
                 id: "color",
@@ -421,8 +497,30 @@ export function DeckContextToolbar({
             ]
           : []),
         ...common,
-        { id: "x", kind: "number", label: "X", suffix: "%", value: element.x, placement: "more" },
-        { id: "y", kind: "number", label: "Y", suffix: "%", value: element.y, placement: "more" },
+        {
+          id: "x",
+          kind: "number",
+          label: "X",
+          suffix: "%",
+          value: element.x,
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "deck-object-geometry",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
+        },
+        {
+          id: "y",
+          kind: "number",
+          label: "Y",
+          suffix: "%",
+          value: element.y,
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "deck-object-geometry",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
+        },
         {
           id: "width",
           kind: "number",
@@ -430,6 +528,10 @@ export function DeckContextToolbar({
           value: element.width,
           suffix: "%",
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "deck-object-geometry",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "height",
@@ -438,6 +540,10 @@ export function DeckContextToolbar({
           value: element.height,
           suffix: "%",
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "deck-object-geometry",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "rotation",
@@ -445,12 +551,16 @@ export function DeckContextToolbar({
           label: tt("旋转"),
           value: element.rotation,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "deck-object-geometry",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         { id: "layer-up", kind: "action", label: tt("上移一层"), icon: "bring-forward", placement: "more" },
         { id: "layer-down", kind: "action", label: tt("下移一层"), icon: "send-backward", placement: "more" },
       ],
     };
-  }, [element, tt]);
+  }, [editor.activeIndex, editor.deck.slides.length, element, slide, tt]);
 
   const command = (message: SelectionCommand) => {
     if (!context || message.selectionId !== context.id) return;

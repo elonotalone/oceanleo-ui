@@ -8,6 +8,13 @@ export interface FloatingToolbarSize {
   height: number;
 }
 
+export function sameFloatingToolbarPoint(
+  left: FloatingToolbarPoint,
+  right: FloatingToolbarPoint,
+): boolean {
+  return left.x === right.x && left.y === right.y;
+}
+
 export function clampFloatingToolbar(
   point: FloatingToolbarPoint,
   container: FloatingToolbarSize,

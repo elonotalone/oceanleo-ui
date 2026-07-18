@@ -16,6 +16,10 @@ import {
   movePdfPage,
   rotatePdfPage,
 } from "./pdf-operations";
+import {
+  usePdfAnnotations,
+  type PdfMutationResult,
+} from "./use-pdf-annotations";
 import { loadInitialPdfSource } from "./pdf-source";
 import { capturePdfRecovery, decodePdfRecovery } from "./pdf-recovery";
 import {
@@ -26,53 +30,13 @@ import {
   pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
+import type { PdfWorkbenchState } from "./pdf-workbench-state";
+export type { PdfWorkbenchState } from "./pdf-workbench-state";
 import { usePdfPreviewRender } from "./use-pdf-preview-render";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
 const MIN_ZOOM = 25;
 const MAX_ZOOM = 300;
-type PdfMutation = (
-  bytes: Uint8Array,
-) => Promise<{ bytes: Uint8Array; pageNumber?: number; notice: string }>;
-export interface PdfWorkbenchState {
-  canvasRef: RefCallback<HTMLCanvasElement>;
-  sourceUrl: string;
-  pageNumber: number;
-  pageCount: number;
-  rotation: number;
-  zoom: number;
-  renderedZoom: number;
-  pageWidth: number;
-  pageHeight: number;
-  loading: boolean;
-  rendering: boolean;
-  processing: boolean;
-  saving: boolean;
-  dirty: boolean;
-  editRevision: number;
-  canUndo: boolean;
-  canRedo: boolean;
-  error: string;
-  notice: string;
-  savedUrl: string;
-  goToPage: (pageNumber: number) => void;
-  previousPage: () => void;
-  nextPage: () => void;
-  setZoom: (percent: number) => void;
-  zoomBy: (delta: number) => void;
-  rotateCurrentPage: (direction?: 1 | -1) => Promise<void>;
-  movePage: (fromPage: number, toPage: number) => Promise<void>;
-  moveCurrentPage: (offset: 1 | -1) => Promise<void>;
-  deleteCurrentPage: () => Promise<void>;
-  addBlankPage: () => Promise<void>;
-  mergePdf: (file: File, position?: "append" | "after-current") => Promise<void>;
-  extractPages: (pageNumbers?: readonly number[]) => Promise<void>;
-  undo: () => void;
-  redo: () => void;
-  download: () => void;
-  saveCopy: () => Promise<PersistedEditorVersion | null>;
-  captureRecovery: () => Blob | null;
-  restoreRecovery: (payload: unknown) => Promise<boolean>;
-}
+type PdfMutation = (bytes: Uint8Array) => Promise<PdfMutationResult>;
 export function usePdfWorkbench(
   item: LibraryItem,
   siteId = "",
@@ -264,9 +228,11 @@ export function usePdfWorkbench(
   }, [zoom]);
 
   const runMutation = useCallback(
-    async (mutation: PdfMutation) => {
+    async (
+      mutation: PdfMutation,
+    ): Promise<PdfMutationResult | null> => {
       const current = bytesRef.current;
-      if (!current || processingRef.current) return;
+      if (!current || processingRef.current) return null;
       processingRef.current = true;
       const processingToken = ++processingTokenRef.current;
       setProcessing(true);
@@ -281,7 +247,9 @@ export function usePdfWorkbench(
       try {
         const result = await mutation(Uint8Array.from(current));
         const count = await inspectPdf(result.bytes);
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) return;
+        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
+          return null;
+        }
         undoRef.current = appendPdfHistory(undoRef.current, before);
         redoRef.current = [];
         revisionRef.current += 1;
@@ -294,10 +262,12 @@ export function usePdfWorkbench(
         setSavedUrl("");
         setNotice(result.notice);
         setDocumentRevision((value) => value + 1);
+        return result;
       } catch (caught) {
         if (aliveRef.current && generation === sourceGenerationRef.current) {
           setError(pdfErrorMessage(caught, tt("PDF 处理失败")));
         }
+        return null;
       } finally {
         if (processingToken === processingTokenRef.current) {
           processingRef.current = false;
@@ -313,6 +283,16 @@ export function usePdfWorkbench(
     },
     [pageCount, pageNumber, tt],
   );
+  const annotation = usePdfAnnotations({
+    bytesRef,
+    pageNumber,
+    pageCount,
+    documentRevision,
+    resetKey: `${item.id}:${item.url || item.previewUrl || ""}`,
+    runMutation,
+    setError,
+    tt,
+  });
 
   const restoreSnapshot = useCallback((snapshot: PdfSnapshot, noticeText: string) => {
     bytesRef.current = snapshot.bytes;
@@ -323,10 +303,11 @@ export function usePdfWorkbench(
     setSavedUrl("");
     setError("");
     setNotice(noticeText);
+    annotation.clearSelection();
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);
     setDocumentRevision((value) => value + 1);
-  }, []);
+  }, [annotation]);
 
   const undo = useCallback(() => {
     const current = bytesRef.current;
@@ -541,11 +522,12 @@ export function usePdfWorkbench(
       setCanRedo(false);
       setDirty(true);
       setSavedUrl("");
+      annotation.clearSelection();
       setDocumentRevision((value) => value + 1);
       setNotice(tt("已恢复上次未同步的本地草稿"));
       return true;
     },
-    [tt],
+    [annotation, tt],
   );
 
   return {
@@ -569,6 +551,14 @@ export function usePdfWorkbench(
     error,
     notice,
     savedUrl,
+    annotationText: annotation.annotationText,
+    annotations: annotation.annotations,
+    selectedAnnotationId: annotation.selectedAnnotationId,
+    selectedAnnotation: annotation.selectedAnnotation,
+    annotationTool: annotation.annotationTool,
+    setAnnotationText: annotation.setAnnotationText,
+    setAnnotationTool: annotation.setAnnotationTool,
+    selectAnnotation: annotation.selectAnnotation,
     goToPage,
     previousPage: () => goToPage(pageNumber - 1),
     nextPage: () => goToPage(pageNumber + 1),
@@ -585,6 +575,12 @@ export function usePdfWorkbench(
     addBlankPage,
     mergePdf,
     extractPages,
+    addTextAnnotation: annotation.addTextAnnotation,
+    addTextAnnotationAt: annotation.addTextAnnotationAt,
+    addHighlightAnnotation: annotation.addHighlightAnnotation,
+    moveAnnotation: annotation.moveAnnotation,
+    updateSelectedAnnotation: annotation.updateSelectedAnnotation,
+    deleteSelectedAnnotation: annotation.deleteSelectedAnnotation,
     undo,
     redo,
     download,

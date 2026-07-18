@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedViewportActions } from "./advanced-workbench-chrome";
 
@@ -14,8 +14,10 @@ export function AdvancedStageControls({
   accent: string;
 }) {
   const tt = useUI();
+  const zoomId = useId();
   const [fullscreen, setFullscreen] = useState(false);
   const zoomFrameRef = useRef<number | null>(null);
+  const pendingZoomRef = useRef<number | null>(null);
 
   useEffect(() => {
     const update = () =>
@@ -29,6 +31,7 @@ export function AdvancedStageControls({
       if (zoomFrameRef.current !== null) {
         window.cancelAnimationFrame(zoomFrameRef.current);
       }
+      pendingZoomRef.current = null;
     },
     [],
   );
@@ -47,74 +50,98 @@ export function AdvancedStageControls({
 
   const min = viewport?.min ?? 25;
   const max = viewport?.max ?? 200;
-  const step = viewport?.step ?? 1;
+  const step =
+    viewport?.step && viewport.step > 0 ? viewport.step : 1;
   const value = Math.min(
     max,
     Math.max(min, Math.round(viewport?.value ?? 100)),
   );
-  const animateZoom = (target: number) => {
+  const setZoom = (target: number) => {
     if (!viewport) return;
+    viewport.setValue(Math.max(min, Math.min(max, target)));
+  };
+  const scheduleZoom = (target: number) => {
+    pendingZoomRef.current = target;
+    if (zoomFrameRef.current !== null) return;
+    zoomFrameRef.current = window.requestAnimationFrame(() => {
+      zoomFrameRef.current = null;
+      const pending = pendingZoomRef.current;
+      pendingZoomRef.current = null;
+      if (pending !== null) setZoom(pending);
+    });
+  };
+  const flushZoom = () => {
     if (zoomFrameRef.current !== null) {
       window.cancelAnimationFrame(zoomFrameRef.current);
+      zoomFrameRef.current = null;
     }
-    const start = value;
-    const bounded = Math.max(min, Math.min(max, target));
-    const startedAt = performance.now();
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / 140);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      viewport.setValue(start + (bounded - start) * eased);
-      if (progress < 1) {
-        zoomFrameRef.current = window.requestAnimationFrame(tick);
-      } else {
-        zoomFrameRef.current = null;
-      }
-    };
-    zoomFrameRef.current = window.requestAnimationFrame(tick);
+    const pending = pendingZoomRef.current;
+    pendingZoomRef.current = null;
+    if (pending !== null) setZoom(pending);
   };
 
   return (
     <div
       data-advanced-viewport-controls
+      role="group"
+      aria-label={tt("画布视图")}
       className="pointer-events-auto flex h-10 items-center gap-1 rounded-xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-1.5 text-[var(--awb-muted,var(--fg-2,#57534e))] shadow-[var(--awb-shadow-floating,0_8px_28px_rgba(15,23,42,.12))]"
     >
       {viewport && (
         <>
           <button
             type="button"
-            onClick={() => animateZoom(value - Math.max(step, 5))}
-            className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+            onClick={() => setZoom(value - Math.max(step, 5))}
+            disabled={value <= min}
+            className="grid h-7 w-7 place-items-center rounded-lg text-sm outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35 disabled:opacity-35"
             aria-label={tt("缩小")}
             title={tt("缩小")}
           >
             −
           </button>
-          <label className="flex items-center gap-2" title={tt("缩放")}>
+          <div className="flex items-center gap-2" title={tt("缩放")}>
+            <label htmlFor={zoomId} className="sr-only">
+              {tt("缩放")}
+            </label>
             <input
+              id={zoomId}
               type="range"
               min={min}
               max={max}
               step={step}
               value={value}
-              onChange={(event) => animateZoom(Number(event.target.value))}
+              onChange={(event) => scheduleZoom(Number(event.target.value))}
+              onPointerUp={flushZoom}
+              onBlur={flushZoom}
               aria-label={tt("缩放")}
               className="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)] sm:w-32"
               style={{ accentColor: accent }}
             />
-            <button
-              type="button"
-              onClick={viewport.fit}
-              disabled={!viewport.fit}
-              className="min-w-11 rounded-md px-1 py-1 text-[11px] font-semibold tabular-nums transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] disabled:cursor-default disabled:hover:bg-transparent"
-              title={viewport.fit ? tt("适合画布") : tt("当前缩放")}
-            >
-              {value}%
-            </button>
-          </label>
+            {viewport.fit ? (
+              <button
+                type="button"
+                onClick={viewport.fit}
+                aria-label={tt("适合画布")}
+                className="min-w-11 rounded-md px-1 py-1 text-[11px] font-semibold tabular-nums outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
+                title={tt("适合画布")}
+              >
+                {value}%
+              </button>
+            ) : (
+              <output
+                htmlFor={zoomId}
+                aria-label={tt("当前缩放")}
+                className="min-w-11 px-1 py-1 text-center text-[11px] font-semibold tabular-nums"
+              >
+                {value}%
+              </output>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => animateZoom(value + Math.max(step, 5))}
-            className="grid h-7 w-7 place-items-center rounded-lg text-sm transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+            onClick={() => setZoom(value + Math.max(step, 5))}
+            disabled={value >= max}
+            className="grid h-7 w-7 place-items-center rounded-lg text-sm outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35 disabled:opacity-35"
             aria-label={tt("放大")}
             title={tt("放大")}
           >
@@ -126,7 +153,7 @@ export function AdvancedStageControls({
       <button
         type="button"
         onClick={() => void toggleFullscreen()}
-        className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)]"
+        className="grid h-8 w-8 place-items-center rounded-lg outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] hover:text-[var(--fg,#292524)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
         aria-label={fullscreen ? tt("退出全屏") : tt("编辑区域全屏")}
         title={fullscreen ? tt("退出全屏") : tt("编辑区域全屏")}
       >

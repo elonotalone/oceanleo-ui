@@ -27,6 +27,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   const shell = [
     source("../src/shell/AdvancedWorkbenchShell.tsx"),
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
+    source("../src/shell/FloatingContextToolbar.tsx"),
     source("../src/shell/AdvancedStageControls.tsx"),
   ].join("\n");
   const routeAdapters = [
@@ -61,7 +62,8 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(shell, /const showWorkspaceDetail = workspacePane\?\.showDetail/);
   assert.match(shell, /<AdvancedWorkbenchStage/);
   assert.match(shell, /requestFullscreen\(\)/);
-  assert.doesNotMatch(shell, /createPortal\(/);
+  assert.match(shell, /createPortal\(/);
+  assert.match(shell, /data-workspace-floating-toolbar/);
   assert.doesNotMatch(shell, /aria-modal="true"/);
   assert.doesNotMatch(shell, /id: "tasks"/);
   assert.doesNotMatch(shell, /id: "uploads"/);
@@ -224,7 +226,10 @@ test("advanced materials click to center and drag to the exact canvas point", ()
 });
 
 test("the shared property bar dispatches direct, dropdown and drawer controls", () => {
-  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const toolbar =
+    source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/selection-inspector-host.tsx");
+  const inspector = source("../src/shell/SelectionInspectorPanel.tsx");
   const context = source("../src/shell/selection-context.ts");
   assert.match(toolbar, /control\.kind === "action" \|\| control\.kind === "panel"/);
   assert.match(toolbar, /control\.panelAction/);
@@ -232,10 +237,28 @@ test("the shared property bar dispatches direct, dropdown and drawer controls", 
   assert.match(toolbar, /role="option"/);
   assert.match(toolbar, /control\.kind === "toggle"/);
   assert.match(toolbar, /type="color"/);
-  assert.match(toolbar, /type="range"/);
+  assert.doesNotMatch(toolbar, /type="range"/);
+  assert.doesNotMatch(toolbar, /overflow-x-auto/);
+  assert.match(toolbar, /scrollbar-width:none/);
+  assert.match(toolbar, /aria-expanded/);
+  assert.match(inspector, /type="range"/);
+  assert.match(inspector, /<textarea/);
+  assert.match(toolbar, /openTransientPanel/);
+  assert.match(toolbar, /data-selection-inspector-fallback/);
   assert.match(context, /"panel"/);
   assert.match(context, /panelId\?: string/);
   assert.match(context, /panelAction\?: SelectionPanelAction/);
+});
+
+test("live inspector panels refresh through a guarded store without render loops", () => {
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const store = source("../src/shell/live-react-node.tsx");
+  const host = source("../src/shell/selection-inspector-host.tsx");
+  assert.match(store, /Object\.is\(store\.node, node\)/);
+  assert.match(shell, /updateTransientPanel/);
+  assert.match(shell, /publishLiveReactNode\(liveHeaderStoreRef\.current, actionBar\)/);
+  assert.match(host, /layout\.updateTransientPanel/);
+  assert.doesNotMatch(shell, /store\.listeners\.forEach[\s\S]*useLayoutEffect\(\(\) => \{/);
 });
 
 test("late catalog categories stay behind More and editor loads have hard deadlines", () => {
@@ -255,7 +278,9 @@ test("late catalog categories stay behind More and editor loads have hard deadli
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const shell =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/FloatingContextToolbar.tsx");
   const embeddedRoute = source(
     "../src/shell/advanced-routes/EmbeddedRoute.tsx",
   );
@@ -264,6 +289,9 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
   assert.match(embed, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(embed, /event\.origin !== editorOrigin/);
+  assert.match(embed, /\{ \.\.\.message, protocol: EDITOR_PROTOCOL, instanceId \}/);
+  assert.match(embed, /asHostToEditorMessage\(envelope, instanceId\)/);
+  assert.match(embed, /selectionGateRef\.current\.accept/);
   assert.match(
     embed,
     /item\.meta\.draft === true && !item\.url && !item\.previewUrl/,
@@ -307,6 +335,7 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
     EDITOR_PROTOCOL,
     asEditorToHostMessage,
     asHostToEditorMessage,
+    buildEditorEmbedUrl,
     isTrustedEditorOrigin,
   } = await import("../src/shell/editor-protocol.ts");
   const base = {
@@ -409,7 +438,56 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
     ),
   );
   assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com"), true);
+  assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com/path"), false);
   assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com.evil.test"), false);
+  assert.equal(isTrustedEditorOrigin("http://video.oceanleo.com"), false);
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "viewport-command",
+        commandId: "zoom-and-fit",
+        value: 80,
+        fit: true,
+      },
+      "instance-1",
+    ),
+    null,
+  );
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "open-asset",
+        asset: {
+          id: "asset-1",
+          kind: "image",
+          title: "Poster",
+          meta: {},
+          writable: "yes",
+        },
+      },
+      "instance-1",
+    ),
+    null,
+  );
+  const embedUrl = new URL(
+    buildEditorEmbedUrl("https://design.oceanleo.com/embed/editor", {
+      instanceId: "instance-1",
+      hostOrigin: "https://oceanleo.com",
+      extra: { instance: "attacker", mode: "design" },
+    }),
+  );
+  assert.equal(embedUrl.searchParams.get("instance"), "instance-1");
+  assert.equal(embedUrl.searchParams.get("mode"), "design");
+  assert.throws(() =>
+    buildEditorEmbedUrl("https://evil.test/editor", {
+      instanceId: "instance-1",
+      hostOrigin: "https://oceanleo.com",
+    }),
+  );
 });
 
 test("cloud browser can be opened directly and still supports takeover", () => {

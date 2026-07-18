@@ -23,6 +23,8 @@ import {
   partitionSelectionControls,
   SELECTION_TOOLBAR_MAX_WIDTH,
 } from "./selection-toolbar-layout";
+import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
+import { useSelectionInspectorHost } from "./selection-inspector-host";
 
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
@@ -65,6 +67,7 @@ function iconForSelection(kind: string): SelectionControlIcon {
 function Control({
   control,
   selectionId,
+  selectionRevision,
   onCommand,
   onOpenPanel,
   accent,
@@ -72,6 +75,7 @@ function Control({
 }: {
   control: SelectionControl;
   selectionId: string;
+  selectionRevision?: SelectionContext["revision"];
   onCommand: (command: SelectionCommand) => void;
   onOpenPanel?: (
     panelId: string,
@@ -88,6 +92,7 @@ function Control({
       selectionId,
       controlId: control.id,
       ...(value !== undefined ? { value } : {}),
+      ...(selectionRevision !== undefined ? { selectionRevision } : {}),
     });
   const icon = control.icon ? (
     <AdvancedEditorIcon name={control.icon} className="h-[17px] w-[17px]" />
@@ -113,12 +118,14 @@ function Control({
         className={`${buttonClass} ${control.iconOnly ? "w-9 px-0" : ""} ${
           activePanel ? "bg-[var(--surface-hover,rgba(0,0,0,.06))]" : ""
         } ${
-          control.danger
+          control.danger || control.tone === "danger"
             ? "text-rose-600 hover:bg-rose-500/10"
             : ""
         }`}
         title={control.label}
         aria-label={control.label}
+        aria-haspopup={control.kind === "panel" ? "dialog" : undefined}
+        aria-expanded={control.kind === "panel" ? activePanel : undefined}
         style={
           activePanel
             ? {
@@ -160,7 +167,9 @@ function Control({
         : "#000000";
     return (
       <label
-        className={`${buttonClass} ${control.iconOnly ? "w-9 px-0" : ""}`}
+        className={`${buttonClass} relative ${
+          control.iconOnly ? "w-9 px-0" : ""
+        } focus-within:ring-2 focus-within:ring-[var(--accent,#7c3aed)]/40`}
         title={control.label}
         aria-label={control.label}
       >
@@ -177,7 +186,8 @@ function Control({
           value={color}
           disabled={control.disabled}
           onChange={(event) => emit(event.target.value)}
-          className="sr-only"
+          aria-label={control.label}
+          className="absolute inset-0 cursor-pointer opacity-0"
         />
       </label>
     );
@@ -229,7 +239,7 @@ function Control({
           <div
             role="listbox"
             aria-label={control.label}
-            className="fixed z-[2147483500] max-h-72 min-w-44 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl"
+            className="fixed z-[2147483500] max-h-72 min-w-44 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{
               left: Math.max(
                 8,
@@ -329,42 +339,10 @@ function Control({
       </div>
     );
   }
-  if (control.kind === "range") {
-    return (
-      <label className="flex h-9 min-w-40 shrink-0 items-center gap-2 rounded-lg px-2 text-[11px] text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]">
-        {icon}
-        <span className="whitespace-nowrap">{control.label}</span>
-        <input
-          type="range"
-          value={asNumber(control.value)}
-          min={control.min}
-          max={control.max}
-          step={control.step}
-          disabled={control.disabled}
-          onChange={(event) => emit(Number(event.target.value))}
-          className="h-1.5 w-20 cursor-pointer"
-          style={{ accentColor: accent }}
-        />
-        <span className="min-w-7 text-right tabular-nums text-[var(--fg,#292524)]">
-          {Math.round(asNumber(control.value) * 100) / 100}
-          {control.suffix}
-        </span>
-      </label>
-    );
-  }
-  return (
-    <label className="flex h-9 min-w-44 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--muted,#78716c)]">
-      {icon}
-      <span className="whitespace-nowrap">{control.label}</span>
-      <input
-        value={typeof control.value === "string" ? control.value : ""}
-        disabled={control.disabled}
-        maxLength={2_000}
-        onChange={(event) => emit(event.target.value)}
-        className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none"
-      />
-    </label>
-  );
+  // Continuous values and long text are rendered only in a child inspector.
+  // Keeping this guard fail-closed prevents a future route from reintroducing
+  // sliders or content fields into the compact edit bar.
+  return null;
 }
 
 export function SelectionToolbar({
@@ -389,16 +367,42 @@ export function SelectionToolbar({
   const [controlsWidth, setControlsWidth] = useState(SELECTION_TOOLBAR_MAX_WIDTH);
   const [hasMeasured, setHasMeasured] = useState(false);
   const identity = context ? `${context.kind}:${context.id}` : "";
-  const controlsIdentity = (context?.controls || [])
-    .filter((control) => control.id !== "undo" && control.id !== "redo")
-    .map((control) => `${control.id}:${control.kind}:${control.iconOnly ? 1 : 0}`)
+  const sourceControls = useMemo(
+    () =>
+      (context?.controls || []).filter(
+        (control) => control.id !== "undo" && control.id !== "redo",
+      ),
+    [context],
+  );
+  const { compact: controls, groups: inspectorGroups } = useMemo(
+    () => partitionSelectionInspectorControls(sourceControls),
+    [sourceControls],
+  );
+  const controlsIdentity = sourceControls
+    .map(
+      (control) =>
+        `${control.id}:${control.kind}:${control.slot || ""}:${control.inspectorGroup || ""}:${control.iconOnly ? 1 : 0}`,
+    )
     .join("|");
+  const {
+    openPanel: openControlPanel,
+    activePanelId,
+    fallbackPanel,
+  } = useSelectionInspectorHost({
+    layout,
+    groups: inspectorGroups,
+    context,
+    onCommand,
+    onOpenPanel,
+    accent,
+    anchorRef: toolbarRef,
+  });
   useLayoutEffect(() => {
     setMoreOpen(false);
     setHasMeasured(false);
     measuredWidthsRef.current.clear();
     const currentLayout = layoutRef.current;
-    if (currentLayout?.activeDrawerId.startsWith("selection-")) {
+    if (currentLayout?.activeTransientPanelId.startsWith("selection-")) {
       currentLayout.closeDrawer();
     }
   }, [controlsIdentity, identity]);
@@ -412,12 +416,6 @@ export function SelectionToolbar({
     observer.observe(node);
     return () => observer.disconnect();
   }, [identity]);
-  const controls = useMemo(
-    () => (context?.controls || []).filter(
-      (control) => control.id !== "undo" && control.id !== "redo",
-    ),
-    [context],
-  );
   const { visible, overflow } = useMemo(
     () =>
       hasMeasured
@@ -488,13 +486,13 @@ export function SelectionToolbar({
         <Control
           control={control}
           selectionId={context?.id || ""}
+          selectionRevision={context?.revision}
           onCommand={onCommand}
-          onOpenPanel={onOpenPanel || layout?.openDrawer}
+          onOpenPanel={openControlPanel}
           accent={accent}
           activePanel={Boolean(
             control.kind === "panel" &&
-              layout?.hostPanelVisible &&
-              layout.activeDrawerId === (control.panelId || control.id),
+              activePanelId === (control.panelId || control.id),
           )}
         />
       </div>
@@ -581,7 +579,7 @@ export function SelectionToolbar({
               <div
                 role="dialog"
                 aria-label="更多属性"
-                className="absolute right-0 top-full z-[90] mt-2 flex max-h-[min(60vh,32rem)] min-w-64 w-max max-w-[min(48rem,calc(100vw-2rem))] flex-wrap justify-end gap-1 overflow-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl"
+                className="absolute right-0 top-full z-[90] mt-2 flex max-h-[min(60vh,32rem)] min-w-64 w-max max-w-[min(48rem,calc(100vw-2rem))] flex-wrap justify-end gap-1 overflow-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               >
                 {overflow.map((control) => renderControl(control, false))}
               </div>
@@ -592,6 +590,7 @@ export function SelectionToolbar({
       {trailing && (
         <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2">{trailing}</div>
       )}
+      {fallbackPanel}
     </div>
   );
 }

@@ -53,7 +53,9 @@ test("all route components use the single typed adapter prop", () => {
 });
 
 test("shell geometry never scales editor chrome and every legacy toolbox gets a launcher", () => {
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const shell =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/FloatingContextToolbar.tsx");
   const stage = source("../src/shell/AdvancedWorkbenchStage.tsx");
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /data-advanced-viewport-row/);
@@ -66,7 +68,10 @@ test("shell geometry never scales editor chrome and every legacy toolbox gets a 
 
 test("fixed workspace row owns semantic actions outside the object edit bar", () => {
   const contract = source("../src/shell/advanced-workbench-chrome.ts");
-  const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const header =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/InlineAdvancedWorkbenchHeader.tsx") +
+    source("../src/shell/FloatingContextToolbar.tsx");
   const actions = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);

@@ -17,7 +17,12 @@ import {
   rotateDeckElement,
   type DeckResizeHandle,
 } from "./deck-geometry";
-import { deckTheme, type DeckElement, type DeckSlide } from "./deck-schema";
+import {
+  deckMasterFor,
+  deckTheme,
+  type DeckElement,
+  type DeckSlide,
+} from "./deck-schema";
 import {
   DeckElementContent,
   deckShapeClipPath,
@@ -72,6 +77,7 @@ function PositionedSlideCanvas({
   const [editingId, setEditingId] = useState("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
+  const master = deckMasterFor(editor.deck, slide);
 
   useEffect(() => {
     editor.setCanvasElement(canvasRef.current);
@@ -143,9 +149,9 @@ function PositionedSlideCanvas({
       data-deck-canvas
       className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
       style={{
-        background: slide.background || theme.background,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
+        background: slide.background || master.background || theme.background,
+        color: master.textColor || theme.text,
+        fontFamily: master.fontFamily || theme.fontFamily,
         containerType: "inline-size",
       }}
       onPointerDown={(event) => {
@@ -244,6 +250,11 @@ function PositionedSlideCanvas({
             >
               <div
                 className="h-full w-full overflow-hidden rounded-[inherit]"
+                style={{
+                  animation: rendered.animation
+                    ? `oleo-deck-element-${rendered.animation.type} ${rendered.animation.durationMs}ms ease-out ${rendered.animation.delayMs}ms both`
+                    : undefined,
+                }}
               >
                 <DeckElementContent
                   element={rendered}
@@ -370,6 +381,7 @@ function SlideCanvas({
   const tt = useUI();
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
+  const master = deckMasterFor(editor.deck, slide);
   const isCenter = slide.layout === "title" || slide.layout === "section";
   const hasImage = slide.layout === "image-left" || slide.layout === "image-right";
   const imageLeft = slide.layout === "image-left";
@@ -395,7 +407,10 @@ function SlideCanvas({
         className={`w-full resize-none overflow-hidden bg-transparent font-bold outline-none placeholder:opacity-30 ${
           isCenter ? "text-center text-[clamp(24px,4vw,54px)]" : "text-[clamp(20px,3vw,38px)]"
         }`}
-        style={{ color: theme.text, fontFamily: theme.fontFamily }}
+        style={{
+          color: master.textColor || theme.text,
+          fontFamily: master.fontFamily || theme.fontFamily,
+        }}
       />
       {slide.layout !== "blank" && (
         <textarea
@@ -414,7 +429,7 @@ function SlideCanvas({
         <ul className={`mt-4 w-full space-y-2 text-[clamp(12px,1.5vw,20px)] ${isCenter ? "text-left" : ""}`} style={{ color: theme.text }}>
           {slide.bullets.map((bullet, index) => (
             <li key={`${index}-${bullet}`} className="flex gap-3">
-              <span className="mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: theme.accent }} />
+              <span className="mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: master.accentColor || theme.accent }} />
               <span>{bullet}</span>
             </li>
           ))}
@@ -446,14 +461,14 @@ function SlideCanvas({
     <div
       className="relative flex h-full w-full overflow-hidden rounded-lg p-[clamp(28px,5vw,72px)] shadow-2xl"
       style={{
-        background: slide.background || theme.background,
-        color: theme.text,
-        fontFamily: theme.fontFamily,
+        background: slide.background || master.background || theme.background,
+        color: master.textColor || theme.text,
+        fontFamily: master.fontFamily || theme.fontFamily,
       }}
     >
       <div
         className="absolute left-[clamp(28px,5vw,72px)] top-[clamp(20px,3vw,44px)] h-1 w-14 rounded-full"
-        style={{ background: theme.accent }}
+        style={{ background: master.accentColor || theme.accent }}
       />
       <div className={`flex min-h-0 w-full gap-[clamp(24px,4vw,64px)] ${hasImage ? "" : "items-stretch"}`}>
         {imageLeft && imagePanel}
@@ -488,6 +503,7 @@ export function DeckStage({
 }) {
   const tt = useUI();
   const page = deckPageViewport(editor.deck.aspect, zoom);
+  const slideTransition = editor.activeSlide.transition;
   const viewportRef = useCenteredWheelZoom({
     value: zoom,
     min: 10,
@@ -500,6 +516,17 @@ export function DeckStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
+      <style>{`
+        @keyframes oleo-deck-slide-fade{from{opacity:0}to{opacity:1}}
+        @keyframes oleo-deck-slide-push-left{from{translate:14% 0;opacity:.65}to{translate:0 0;opacity:1}}
+        @keyframes oleo-deck-slide-push-right{from{translate:-14% 0;opacity:.65}to{translate:0 0;opacity:1}}
+        @keyframes oleo-deck-slide-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0)}}
+        @keyframes oleo-deck-slide-zoom{from{scale:.82;opacity:0}to{scale:1;opacity:1}}
+        @keyframes oleo-deck-element-fade{from{opacity:0}to{opacity:1}}
+        @keyframes oleo-deck-element-fly-up{from{translate:0 28%;opacity:0}to{translate:0 0;opacity:1}}
+        @keyframes oleo-deck-element-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0)}}
+        @keyframes oleo-deck-element-zoom{from{scale:.72;opacity:0}to{scale:1;opacity:1}}
+      `}</style>
       <div className="flex min-h-0 flex-1">
         <DeckSlideRail editor={editor} />
         <main
@@ -522,6 +549,7 @@ export function DeckStage({
               }}
             >
               <div
+                key={editor.activeSlide.id}
                 className="absolute left-0 top-0 origin-top-left"
                 style={{
                   width: `${page.logicalWidth}px`,
@@ -529,11 +557,20 @@ export function DeckStage({
                   transform: `scale(${page.scale})`,
                 }}
               >
-                <SlideCanvas
-                  editor={editor}
-                  activeTool={activeTool}
-                  inkStyle={inkStyle}
-                />
+                <div
+                  className="h-full w-full"
+                  style={{
+                    animation: slideTransition
+                      ? `oleo-deck-slide-${slideTransition.type} ${slideTransition.durationMs}ms ease-out both`
+                      : undefined,
+                  }}
+                >
+                  <SlideCanvas
+                    editor={editor}
+                    activeTool={activeTool}
+                    inkStyle={inkStyle}
+                  />
+                </div>
               </div>
             </div>
           </div>

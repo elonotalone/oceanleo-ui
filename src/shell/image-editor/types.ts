@@ -267,6 +267,9 @@ export interface FabricImageEditorState {
   duplicateLayer: (id: string) => Promise<void>;
   // ---- 选中对象样式 ----
   selected: SelectedSnapshot | null;
+  beginGesture: () => void;
+  endGesture: () => void;
+  cancelGesture: () => void;
   setSelectedOpacity: (value: number) => void;
   setSelectedShadow: (patch: Partial<ShadowSettings>) => void;
   setSelectedStroke: (patch: { color?: string; width?: number }) => void;

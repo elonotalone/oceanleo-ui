@@ -54,6 +54,14 @@ import {
   trimClipTo,
   type ClipLocation,
 } from "./timeline-model";
+import {
+  beginTimelineGesture,
+  cancelTimelineGesture,
+  commitTimelineGesture,
+  createTimelineGestureHistory,
+  updateTimelineGesture,
+  type TimelineGestureHistory,
+} from "./timeline-gesture-history";
 import type { TimelineClip, TimelineDoc, TrackKind } from "./types";
 
 const PLACEHOLDER_DURATION_MS = 5000;
@@ -106,6 +114,7 @@ export interface VideoTimelineState {
   redo: () => void;
   beginGesture: () => void;
   endGesture: () => void;
+  cancelGesture: () => void;
 
   // structural edits
   addTrack: (kind: TrackKind) => void;
@@ -118,6 +127,10 @@ export interface VideoTimelineState {
   patchClip: (clipId: string, patch: Partial<TimelineClip>) => void;
   /** 拖滑杆等连续修改用：不入 undo 栈，配合 beginGesture/endGesture。 */
   patchClipTransient: (clipId: string, patch: Partial<TimelineClip>) => void;
+  setClipTiming: (
+    clipId: string,
+    patch: { startMs?: number; durationMs?: number; sourceInMs?: number },
+  ) => void;
   setClipSpeed: (clipId: string, speed: number) => void;
   setCanvasFormat: (width: number, height: number, fps: number) => void;
 
@@ -186,7 +199,7 @@ export function useVideoTimeline(
 
   const undoStack = useRef<TimelineDoc[]>([]);
   const redoStack = useRef<TimelineDoc[]>([]);
-  const gestureBase = useRef<TimelineDoc | null>(null);
+  const gestureState = useRef<TimelineGestureHistory<TimelineDoc> | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
 
   const [playheadMs, setPlayheadMs] = useState(0);
@@ -371,6 +384,7 @@ export function useVideoTimeline(
       undoStack.current.push(current);
       if (undoStack.current.length > 100) undoStack.current.shift();
       redoStack.current = [];
+      docRef.current = next;
       setDocState(next);
       revisionRef.current += 1;
       setDirty(true);
@@ -382,33 +396,63 @@ export function useVideoTimeline(
 
   const applyTransient = useCallback(
     (updater: (current: TimelineDoc) => TimelineDoc) => {
-      const next = updater(docRef.current);
-      if (next !== docRef.current) setDocState(next);
+      const activeGesture = gestureState.current;
+      const nextGesture = activeGesture
+        ? updateTimelineGesture(activeGesture, updater)
+        : null;
+      if (nextGesture) gestureState.current = nextGesture;
+      const next = nextGesture?.document || updater(docRef.current);
+      if (next !== docRef.current) {
+        docRef.current = next;
+        setDocState(next);
+      }
     },
     [],
   );
 
   const beginGesture = useCallback(() => {
-    if (!gestureBase.current) gestureBase.current = docRef.current;
-  }, []);
+    if (gestureState.current) return;
+    gestureState.current = beginTimelineGesture(
+      createTimelineGestureHistory(docRef.current, {
+        undo: undoStack.current,
+        redo: redoStack.current,
+        revision: revisionRef.current,
+        dirty,
+      }),
+    );
+  }, [dirty]);
 
   const endGesture = useCallback(() => {
-    const base = gestureBase.current;
-    gestureBase.current = null;
-    if (!base || base === docRef.current) return;
-    undoStack.current.push(base);
-    if (undoStack.current.length > 100) undoStack.current.shift();
-    redoStack.current = [];
-    revisionRef.current += 1;
-    setDirty(true);
+    const activeGesture = gestureState.current;
+    if (!activeGesture) return;
+    const committed = commitTimelineGesture(activeGesture);
+    gestureState.current = null;
+    docRef.current = committed.document;
+    undoStack.current = committed.undo;
+    redoStack.current = committed.redo;
+    if (committed.revision === revisionRef.current) return;
+    revisionRef.current = committed.revision;
+    setDirty(committed.dirty);
     setDraftSavedUrl("");
     setHistoryVersion((value) => value + 1);
+  }, []);
+
+  const cancelGesture = useCallback(() => {
+    const activeGesture = gestureState.current;
+    if (!activeGesture) return;
+    const cancelled = cancelTimelineGesture(activeGesture);
+    gestureState.current = null;
+    if (cancelled.document !== docRef.current) {
+      docRef.current = cancelled.document;
+      setDocState(cancelled.document);
+    }
   }, []);
 
   const undo = useCallback(() => {
     const previous = undoStack.current.pop();
     if (!previous) return;
     redoStack.current.push(docRef.current);
+    docRef.current = previous;
     setDocState(previous);
     revisionRef.current += 1;
     setDirty(true);
@@ -420,6 +464,7 @@ export function useVideoTimeline(
     const next = redoStack.current.pop();
     if (!next) return;
     undoStack.current.push(docRef.current);
+    docRef.current = next;
     setDocState(next);
     revisionRef.current += 1;
     setDirty(true);
@@ -559,6 +604,43 @@ export function useVideoTimeline(
     (clipId: string, patch: Partial<TimelineClip>) =>
       applyTransient((current) => patchClipIn(current, clipId, patch)),
     [applyTransient],
+  );
+
+  const setClipTiming = useCallback(
+    (
+      clipId: string,
+      patch: { startMs?: number; durationMs?: number; sourceInMs?: number },
+    ) =>
+      applyEdit((current) => {
+        let next = current;
+        let located = findClip(next, clipId);
+        if (!located) return current;
+        if (typeof patch.startMs === "number") {
+          next = moveClipTo(
+            next,
+            clipId,
+            located.track.id,
+            Math.max(0, patch.startMs),
+          );
+          located = findClip(next, clipId);
+          if (!located) return next;
+        }
+        if (typeof patch.durationMs === "number") {
+          next = trimClipTo(
+            next,
+            clipId,
+            "end",
+            located.clip.start_ms + Math.max(100, patch.durationMs),
+          );
+        }
+        if (typeof patch.sourceInMs === "number") {
+          next = patchClipIn(next, clipId, {
+            in_ms: Math.max(0, Math.round(patch.sourceInMs)),
+          });
+        }
+        return next;
+      }),
+    [applyEdit],
   );
 
   const setClipSpeed = useCallback(
@@ -956,6 +1038,7 @@ export function useVideoTimeline(
     redo,
     beginGesture,
     endGesture,
+    cancelGesture,
     addTrack,
     removeTrack,
     moveClip,
@@ -965,6 +1048,7 @@ export function useVideoTimeline(
     duplicateSelectedClip,
     patchClip,
     patchClipTransient,
+    setClipTiming,
     setClipSpeed,
     setCanvasFormat,
     addMediaFile,

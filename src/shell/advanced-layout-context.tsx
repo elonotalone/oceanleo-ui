@@ -7,6 +7,7 @@ export interface AdvancedLayoutState {
   hostPanelVisible: boolean;
   editorToolActive: boolean;
   activeDrawerId: string;
+  activeTransientPanelId: string;
   contextBarLeading?: ReactNode;
   openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
   openTransientPanel: (
@@ -14,6 +15,7 @@ export interface AdvancedLayoutState {
     label: ReactNode,
     content: ReactNode,
   ) => void;
+  updateTransientPanel: (panelId: string, content: ReactNode) => void;
   closeDrawer: () => void;
 }
 

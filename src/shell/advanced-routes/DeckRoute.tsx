@@ -223,12 +223,12 @@ export function DeckRoute({
             content: <DeckFontPanel editor={editor} />,
           },
         ],
-        contextToolbar: editor.selectedElement ? (
+        contextToolbar: (
           <DeckContextToolbar
             editor={editor}
             accent={accent}
           />
-        ) : null,
+        ),
         history: {
           canUndo: editor.canUndo,
           canRedo: editor.canRedo,

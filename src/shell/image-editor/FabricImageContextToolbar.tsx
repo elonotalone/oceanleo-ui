@@ -8,6 +8,7 @@ import type {
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
+import { fabricImageFilterControls } from "./fabric-image-filter-controls";
 import { dispatchFabricImageCommand } from "./fabric-image-commands";
 import type { FabricImageEditorState } from "./types";
 
@@ -91,6 +92,10 @@ export function FabricImageContextToolbar({
             { value: "9:16", label: "9:16" },
           ],
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-crop",
+          inspectorLabel: tt("裁剪设置"),
+          inspectorIcon: "crop",
         },
         ...(editor.cropping
           ? [
@@ -107,18 +112,22 @@ export function FabricImageContextToolbar({
     if (selected?.text) {
       controls.push(
         {
+          id: "text",
+          kind: "text",
+          label: tt("文字内容"),
+          value: selected.text.value,
+          slot: "inspector",
+          inspectorGroup: "image-text-content",
+          inspectorLabel: tt("文字内容"),
+          inspectorIcon: "text",
+        },
+        {
           id: "font-panel",
           kind: "panel",
           label: selected.text.fontFamily || tt("字体"),
           icon: "font",
           group: "type",
           panelId: "image-fonts",
-        },
-        {
-          id: "text",
-          kind: "text",
-          label: tt("文字"),
-          value: selected.text.value,
         },
         {
           id: "font-size",
@@ -129,6 +138,10 @@ export function FabricImageContextToolbar({
           min: 6,
           max: 320,
           step: 1,
+          slot: "inspector",
+          inspectorGroup: "image-text-typography",
+          inspectorLabel: tt("文字排版"),
+          inspectorIcon: "font",
         },
         {
           id: "text-color",
@@ -138,6 +151,10 @@ export function FabricImageContextToolbar({
           iconOnly: true,
           group: "type",
           value: selected.text.fill || "#000000",
+          slot: "inspector",
+          inspectorGroup: "image-text-color",
+          inspectorLabel: tt("文字颜色"),
+          inspectorIcon: "text",
         },
         {
           id: "bold",
@@ -197,6 +214,10 @@ export function FabricImageContextToolbar({
           max: 4,
           step: 0.05,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-text-spacing",
+          inspectorLabel: tt("间距"),
+          inspectorIcon: "spacing",
         },
         {
           id: "char-spacing",
@@ -207,6 +228,10 @@ export function FabricImageContextToolbar({
           max: 1_000,
           step: 10,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-text-spacing",
+          inspectorLabel: tt("间距"),
+          inspectorIcon: "spacing",
         },
       );
     } else if (selected?.table) {
@@ -221,6 +246,10 @@ export function FabricImageContextToolbar({
           min: 1,
           max: 20,
           step: 1,
+          slot: "inspector",
+          inspectorGroup: "image-table-structure",
+          inspectorLabel: tt("表格结构"),
+          inspectorIcon: "table",
         },
         {
           id: "table-columns",
@@ -231,6 +260,10 @@ export function FabricImageContextToolbar({
           min: 1,
           max: 20,
           step: 1,
+          slot: "inspector",
+          inspectorGroup: "image-table-structure",
+          inspectorLabel: tt("表格结构"),
+          inspectorIcon: "table",
         },
         {
           id: "table-header-fill",
@@ -239,6 +272,10 @@ export function FabricImageContextToolbar({
           icon: "background",
           group: "table-style",
           value: selected.table.style.headerFill,
+          slot: "inspector",
+          inspectorGroup: "image-table-style",
+          inspectorLabel: tt("表格样式"),
+          inspectorIcon: "table",
         },
         {
           id: "table-body-fill",
@@ -246,6 +283,10 @@ export function FabricImageContextToolbar({
           label: tt("单元格"),
           group: "table-style",
           value: selected.table.style.bodyFill,
+          slot: "inspector",
+          inspectorGroup: "image-table-style",
+          inspectorLabel: tt("表格样式"),
+          inspectorIcon: "table",
         },
         {
           id: "table-text-color",
@@ -254,6 +295,10 @@ export function FabricImageContextToolbar({
           icon: "font",
           group: "table-style",
           value: selected.table.style.textColor,
+          slot: "inspector",
+          inspectorGroup: "image-table-style",
+          inspectorLabel: tt("表格样式"),
+          inspectorIcon: "table",
         },
         {
           id: "table-border-color",
@@ -262,16 +307,24 @@ export function FabricImageContextToolbar({
           group: "table-style",
           value: selected.table.style.borderColor,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-table-style",
+          inspectorLabel: tt("表格样式"),
+          inspectorIcon: "table",
         },
         {
           id: "table-border-width",
-          kind: selectedIsImage ? "number" : "range",
+          kind: "range",
           label: tt("边框宽度"),
           value: selected.table.style.borderWidth,
           min: 0,
           max: 20,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-table-style",
+          inspectorLabel: tt("表格样式"),
+          inspectorIcon: "table",
         },
       );
     } else if (
@@ -300,6 +353,10 @@ export function FabricImageContextToolbar({
           min: 0,
           max: 100,
           step: 1,
+          slot: "inspector",
+          inspectorGroup: "image-appearance",
+          inspectorLabel: tt("外观"),
+          inspectorIcon: "opacity",
         },
         ...(!selected.table && !selectedIsLineLike
           ? [
@@ -323,6 +380,10 @@ export function FabricImageContextToolbar({
                 max: 30,
                 step: 1,
                 placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "image-appearance",
+                inspectorLabel: tt("外观"),
+                inspectorIcon: "effects" as const,
               },
             ]
           : []),
@@ -337,6 +398,10 @@ export function FabricImageContextToolbar({
                 max: 300,
                 step: 1,
                 placement: selectedIsImage ? undefined : ("more" as const),
+                slot: "inspector" as const,
+                inspectorGroup: "image-appearance",
+                inspectorLabel: tt("外观"),
+                inspectorIcon: "effects" as const,
               },
             ]
           : []),
@@ -347,25 +412,6 @@ export function FabricImageContextToolbar({
           icon: "effects",
           value: selected.shadow.enabled,
           placement: selectedIsImage ? undefined : "more",
-        },
-      );
-    } else {
-      controls.push(
-        {
-          id: "canvas-size-panel",
-          kind: "panel",
-          label: tt("尺寸"),
-          icon: "templates",
-          group: "canvas",
-          panelId: "image-canvas",
-        },
-        {
-          id: "canvas-background",
-          kind: "color",
-          label: tt("背景"),
-          icon: "background",
-          group: "canvas",
-          value: editor.canvasBackground,
         },
       );
     }
@@ -384,46 +430,15 @@ export function FabricImageContextToolbar({
           max: 359,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-transform",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
       );
     }
     if (filters) {
-      controls.push(
-        {
-          id: "brightness",
-          kind: "range",
-          label: tt("亮度"),
-          value: filters.brightness,
-          min: -100,
-          max: 100,
-          placement: "more",
-        },
-        {
-          id: "contrast",
-          kind: "range",
-          label: tt("对比度"),
-          value: filters.contrast,
-          min: -100,
-          max: 100,
-          placement: "more",
-        },
-        {
-          id: "saturation",
-          kind: "range",
-          label: tt("饱和度"),
-          value: filters.saturation,
-          min: -100,
-          max: 100,
-          placement: "more",
-        },
-        {
-          id: "grayscale",
-          kind: "toggle",
-          label: tt("黑白"),
-          value: filters.grayscale,
-          placement: "more",
-        },
-      );
+      controls.push(...fabricImageFilterControls(filters, tt));
     }
     if (selected) {
       controls.push(
@@ -434,6 +449,10 @@ export function FabricImageContextToolbar({
           value: selected.x,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-transform",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "position-y",
@@ -442,6 +461,10 @@ export function FabricImageContextToolbar({
           value: selected.y,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-transform",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "object-width",
@@ -451,6 +474,10 @@ export function FabricImageContextToolbar({
           min: 1,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-transform",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "object-height",
@@ -460,6 +487,10 @@ export function FabricImageContextToolbar({
           min: 1,
           step: 1,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "image-transform",
+          inspectorLabel: tt("位置与尺寸"),
+          inspectorIcon: "position",
         },
         {
           id: "lock",
@@ -526,7 +557,18 @@ export function FabricImageContextToolbar({
   const command = (message: SelectionCommand) => {
     if (!context) return;
     if (message.selectionId !== context.id) return;
+    if (message.transactionId && message.phase === "start") {
+      editor.beginGesture();
+      return;
+    }
+    if (message.transactionId && message.phase === "cancel") {
+      editor.cancelGesture();
+      return;
+    }
     dispatchFabricImageCommand(editor, message);
+    if (message.transactionId && message.phase === "commit") {
+      editor.endGesture();
+    }
   };
 
   return (

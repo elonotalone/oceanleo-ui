@@ -9,6 +9,10 @@ import {
 } from "../src/shell/editor-protocol.ts";
 import { imageFitScales } from "../src/shell/image-editor/fabric-geometry.ts";
 import {
+  clampFloatingToolbar,
+  sameFloatingToolbarPoint,
+} from "../src/shell/floating-toolbar-geometry.ts";
+import {
   partitionSelectionControls,
   SELECTION_TOOLBAR_MAX_WIDTH,
 } from "../src/shell/selection-toolbar-layout.ts";
@@ -77,7 +81,9 @@ test("selection toolbar uses measured 960px geometry and only overflows when nee
     "tool",
   ]);
 
-  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const toolbar =
+    source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/selection-inspector-host.tsx");
   assert.match(toolbar, /aria-haspopup="dialog"/);
   assert.match(toolbar, /event\.key === "Escape"/);
   assert.match(toolbar, /onBlur=\{\(event\) =>/);
@@ -85,7 +91,9 @@ test("selection toolbar uses measured 960px geometry and only overflows when nee
   assert.match(toolbar, /min-w-64 w-max max-w-/);
   assert.doesNotMatch(toolbar, /Math\.min\(7|selectionToolbarBudget/);
   assert.doesNotMatch(toolbar, /calc\(100vw-2rem\),100%/);
-  assert.doesNotMatch(toolbar, /openTransientPanel/);
+  assert.match(toolbar, /openTransientPanel/);
+  assert.match(toolbar, /SelectionInspectorPanel/);
+  assert.match(toolbar, /data-selection-inspector-fallback/);
 });
 
 test("Fabric main image is movable and its image geometry commands are concrete", () => {
@@ -295,6 +303,70 @@ test("embedded direct export is a validated request/result protocol, never fake 
   assert.match(embedded, /嵌入编辑器未响应导出协议/);
   assert.match(embedded, /onExportResult=\{handleExportResult\}/);
   assert.doesNotMatch(embedded, /requestRemoteExport[\s\S]*?Promise\.resolve/);
+});
+
+test("embedded viewport protocol exposes one shared bottom-right zoom control", () => {
+  const instanceId = "editor-viewport";
+  assert.equal(
+    asEditorToHostMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        type: "viewport-changed",
+        instanceId,
+        viewport: { value: 75, min: 10, max: 300, step: 1, canFit: true },
+      },
+      instanceId,
+    )?.type,
+    "viewport-changed",
+  );
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        type: "viewport-command",
+        instanceId,
+        commandId: "zoom-1",
+        value: 80,
+      },
+      instanceId,
+    )?.type,
+    "viewport-command",
+  );
+  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const controls = source("../src/shell/AdvancedStageControls.tsx");
+  assert.match(embedded, /onViewportChange=\{setRemoteViewport\}/);
+  assert.match(embedded, /setValue: \(value\) => sendViewportCommand/);
+  assert.doesNotMatch(embedded, /nativeChrome: \{ toolbar: true, viewport: true \}/);
+  assert.match(controls, /scheduleZoom/);
+  assert.match(controls, /viewport\.fit/);
+  assert.match(controls, /<output/);
+  assert.doesNotMatch(controls, /animateZoom|performance\.now/);
+});
+
+test("floating toolbar geometry spans the workspace without escaping its bounds", () => {
+  assert.deepEqual(
+    clampFloatingToolbar(
+      { x: 1_500, y: -50 },
+      { width: 1_200, height: 800 },
+      { width: 500, height: 48 },
+    ),
+    { x: 684, y: 0 },
+  );
+  assert.equal(
+    sameFloatingToolbarPoint({ x: 684, y: 0 }, { x: 684, y: 0 }),
+    true,
+  );
+  const floating = source("../src/shell/FloatingContextToolbar.tsx");
+  const inlineShell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  assert.match(floating, /workspaceRootRef/);
+  assert.match(floating, /createPortal/);
+  assert.match(floating, /onLostPointerCapture/);
+  assert.match(floating, /aria-keyshortcuts/);
+  assert.match(
+    inlineShell,
+    /style=\{\{ zIndex: 2_147_483_010 \}\}/,
+    "viewport and fullscreen controls must stay clickable above a dragged toolbar",
+  );
 });
 
 test("normal autosave progress is icon-only while actionable errors remain visible", () => {

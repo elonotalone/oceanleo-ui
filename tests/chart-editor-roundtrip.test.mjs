@@ -7,6 +7,7 @@ import {
   chartDocumentToJson,
   patchChartAxis,
   patchChartSeries,
+  patchChartTooltip,
   replaceChartData,
 } from "../src/shell/chart-editor/chart-schema.ts";
 
@@ -59,6 +60,49 @@ test("chart-editor@1 load, mutate, save and reopen roundtrip is structural", () 
   assert.equal(reopened.option.series.at(-1).name, "利润率");
   assert.equal(reopened.option.yAxis.name, "金额（万元）");
   assert.deepEqual(reopened.option.xAxis.data, ["Q1", "Q2", "Q3"]);
+});
+
+test("axis bounds, grid, tooltip and deep data-label styles survive reopen", () => {
+  const loaded = chartDocumentFromJson(JSON.stringify(sourceOption));
+  const withAxis = patchChartAxis(loaded, "y", {
+    min: -20,
+    max: 320,
+    interval: 20,
+    axisTick: { show: false },
+    axisLabel: { show: true, rotate: 35, color: "#475569" },
+    splitLine: { show: true, lineStyle: { color: "#cbd5e1" } },
+  });
+  const withTooltip = patchChartTooltip(withAxis, {
+    show: true,
+    trigger: "axis",
+    backgroundColor: "#0f172a",
+    borderColor: "#38bdf8",
+    borderWidth: 2,
+    formatter: "{b}: {c}",
+    textStyle: { color: "#f8fafc", fontSize: 15 },
+  });
+  const styled = patchChartSeries(withTooltip, "revenue", {
+    label: {
+      show: true,
+      position: "insideTop",
+      color: "#ffffff",
+      fontSize: 16,
+      fontWeight: "bold",
+      formatter: "¥{c}",
+    },
+  });
+  const reopened = chartDocumentFromJson(chartDocumentToJson(styled));
+  assert.equal(reopened.option.yAxis.min, -20);
+  assert.equal(reopened.option.yAxis.max, 320);
+  assert.equal(reopened.option.yAxis.interval, 20);
+  assert.equal(reopened.option.yAxis.axisTick.show, false);
+  assert.equal(reopened.option.yAxis.axisLabel.rotate, 35);
+  assert.equal(reopened.option.yAxis.splitLine.lineStyle.color, "#cbd5e1");
+  assert.equal(reopened.option.tooltip.trigger, "axis");
+  assert.equal(reopened.option.tooltip.textStyle.fontSize, 15);
+  assert.equal(reopened.option.series[0].label.position, "insideTop");
+  assert.equal(reopened.option.series[0].label.fontWeight, "bold");
+  assert.equal(reopened.option.series[0].label.formatter, "¥{c}");
 });
 
 test("chart source parser accepts JSON only and never extracts scripts from HTML", () => {

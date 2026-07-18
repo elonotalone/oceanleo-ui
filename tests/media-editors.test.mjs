@@ -81,6 +81,14 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   const modelSave = source("../src/shell/media-editors/use-model3d-save.ts");
   const modelProject = source("../src/shell/media-editors/model3d-project.ts");
   const modelFiles = source("../src/shell/media-editors/model3d-files.ts");
+  const modelRuntime = source("../src/shell/media-editors/model3d-runtime.mjs");
+  const modelRuntimeHook = source(
+    "../src/shell/media-editors/use-model3d-runtime.ts",
+  );
+  const modelGltf = source("../src/shell/media-editors/model3d-gltf.mjs");
+  const modelMediaActions = source(
+    "../src/shell/media-editors/use-model3d-media-actions.ts",
+  );
 
   for (const api of [
     "usePdfWorkbench",
@@ -102,18 +110,29 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   assert.match(pdfPreviewHook, /document\.createElement\("canvas"\)/);
   assert.match(pdfHook, /saveFileToLibrary/);
   assert.match(pdfHook, /deliveryProjectSchema: "pdf-binary@1"/);
-  assert.match(modelHook, /import\("@google\/model-viewer"\)/);
-  assert.match(modelHook, /downloadAbortRef\.current\?\.abort\(\)/);
+  assert.match(modelRuntimeHook, /new Model3DSceneRuntime/);
   assert.match(modelHook, /useModel3DSave/);
+  assert.match(modelHook, /loadedSourceRef\.current === sourceUrl/);
+  assert.match(
+    modelHook,
+    /model3DSidecarWithoutSource\(view,\s*sidecar\.annotations\)/,
+  );
   assert.match(modelSave, /persistModel3DProject/);
-  assert.match(modelProject, /saveProjectWorkingHead/);
-  assert.match(modelProject, /workingHeadUrl: sourceUrl/);
-  assert.match(modelProject, /preserved-source-closure/);
-  assert.doesNotMatch(modelProject, /fetchMediaBlob|new File\(\[modelBlob\]/);
-  assert.doesNotMatch(modelSave, /captureBlob|uploadFile/);
+  assert.match(modelProject, /saveFileToLibrary/);
+  assert.match(modelProject, /new File\(\[binary\]/);
+  assert.match(modelProject, /checkpoint-glb\+operation-journal/);
+  assert.match(modelRuntime, /new TransformControls/);
+  assert.match(modelRuntime, /exportModel3DGlb/);
+  assert.match(modelGltf, /new GLTFLoader/);
+  assert.match(modelGltf, /new GLTFExporter/);
+  assert.doesNotMatch(modelHook + modelRuntime, /@google\/model-viewer|shadowRoot/);
   assert.match(modelFiles, /依赖本地纹理或 \.bin 文件/);
   assert.equal(
-    (modelHook.match(/Number\(saved\.data\?\.saved \|\| 0\) !== 1/g) || []).length,
+    (
+      modelMediaActions.match(
+        /Number\(saved\.data\?\.saved \|\| 0\) !== 1/g,
+      ) || []
+    ).length,
     1,
   );
 });
@@ -121,14 +140,24 @@ test("media editor public API and lifecycle hardening remain wired", () => {
 test("each media editor source file stays below the 600-line component limit", () => {
   const directory = new URL("../src/shell/media-editors/", import.meta.url);
   const taskFiles = new Set([
+    "AudioWorkbench.tsx",
+    "AudioWorkbenchView.tsx",
     "Model3DControls.tsx",
+    "Model3DContextToolbar.tsx",
     "Model3DStage.tsx",
     "Model3DWorkbench.tsx",
     "PdfControls.tsx",
     "PdfStage.tsx",
     "PdfWorkbench.tsx",
     "index.ts",
+    "audio-workbench-state.ts",
+    "audio-workbench-utils.ts",
     "pdf-operations.ts",
+    "use-audio-persistence.ts",
+    "use-model3d-media-actions.ts",
+    "use-model3d-runtime.ts",
+    "use-model3d-save.ts",
+    "use-model3d-sidecar.ts",
     "use-model3d-workbench.ts",
     "use-pdf-preview-render.ts",
     "use-pdf-workbench.ts",

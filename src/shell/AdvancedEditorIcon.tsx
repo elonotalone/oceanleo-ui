@@ -59,6 +59,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M7 3v14a2 2 0 002 2h12M3 7h14a2 2 0 012 2v12" />
     </>
   ),
+  color: (
+    <>
+      <path d="M12 3s6 6.2 6 11a6 6 0 01-12 0c0-4.8 6-11 6-11z" />
+      <path d="M9 15.5a3.5 3.5 0 003 1.5" />
+    </>
+  ),
   delete: (
     <>
       <path d="M4 7h16M9 3h6l1 4H8l1-4zM7 7l1 14h8l1-14" />

@@ -57,6 +57,7 @@ function clipLabel(track: TimelineTrack, clip: TimelineClip, fallback: string): 
 
 interface DragState {
   mode: "move" | "trim-start" | "trim-end" | "playhead";
+  pointerId: number;
   clipId: string;
   originStartMs: number;
   originEndMs: number;
@@ -81,11 +82,43 @@ export function TimelineArea({
     selectedClipId,
     setPxPerSecond,
     endGesture,
+    cancelGesture,
   } = state;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const dragRef = useRef<DragState | null>(null);
+
+  const settleClipGesture = useCallback(
+    (outcome: "commit" | "cancel", pointerId?: number): boolean => {
+      const drag = dragRef.current;
+      if (
+        !drag ||
+        drag.mode === "playhead" ||
+        (pointerId !== undefined && drag.pointerId !== pointerId)
+      ) {
+        return false;
+      }
+
+      // Clear first: releasePointerCapture may synchronously dispatch
+      // lostpointercapture, and a late pointerup must not settle twice.
+      dragRef.current = null;
+      if (outcome === "commit") endGesture();
+      else cancelGesture();
+      return true;
+    },
+    [cancelGesture, endGesture],
+  );
+
+  const cancelActiveDrag = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (drag.mode === "playhead") {
+      dragRef.current = null;
+      return;
+    }
+    settleClipGesture("cancel");
+  }, [settleClipGesture]);
 
   const msToPx = useCallback(
     (ms: number) => (ms / 1000) * pxPerSecond,
@@ -133,10 +166,9 @@ export function TimelineArea({
 
   useEffect(
     () => () => {
-      if (dragRef.current && dragRef.current.mode !== "playhead") endGesture();
-      dragRef.current = null;
+      cancelActiveDrag();
     },
-    [endGesture],
+    [cancelActiveDrag],
   );
 
   // ------------------------------------------------------------- ruler ticks
@@ -175,25 +207,37 @@ export function TimelineArea({
     ) => {
       event.stopPropagation();
       event.preventDefault();
+      cancelActiveDrag();
       state.selectClip(clip.id);
       state.beginGesture();
       dragRef.current = {
         mode,
+        pointerId: event.pointerId,
         clipId: clip.id,
         originStartMs: clip.start_ms,
         originEndMs: clipEndMs(clip),
         startClientX: event.clientX,
         trackKind: track.kind,
       };
-      event.currentTarget.setPointerCapture(event.pointerId);
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        settleClipGesture("cancel", event.pointerId);
+      }
     },
-    [state],
+    [cancelActiveDrag, settleClipGesture, state],
   );
 
   const onClipPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
-      if (!drag || drag.mode === "playhead") return;
+      if (
+        !drag ||
+        drag.mode === "playhead" ||
+        drag.pointerId !== event.pointerId
+      ) {
+        return;
+      }
       const deltaMs = pxToMs(event.clientX - drag.startClientX);
       if (drag.mode === "move") {
         const rawStart = drag.originStartMs + deltaMs;
@@ -240,27 +284,28 @@ export function TimelineArea({
 
   const onClipPointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!dragRef.current) return;
-      dragRef.current = null;
-      state.endGesture();
+      if (!settleClipGesture("commit", event.pointerId)) return;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
     },
-    [state],
+    [settleClipGesture],
   );
 
-  const onClipPointerCancel = useCallback(() => {
-    if (!dragRef.current || dragRef.current.mode === "playhead") return;
-    dragRef.current = null;
-    state.endGesture();
-  }, [state]);
+  const onClipPointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      settleClipGesture("cancel", event.pointerId);
+    },
+    [settleClipGesture],
+  );
 
   const onRulerPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
+      cancelActiveDrag();
       dragRef.current = {
         mode: "playhead",
+        pointerId: event.pointerId,
         clipId: "",
         originStartMs: 0,
         originEndMs: 0,
@@ -270,12 +315,17 @@ export function TimelineArea({
       state.seek(clientXToMs(event.clientX));
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [clientXToMs, state],
+    [cancelActiveDrag, clientXToMs, state],
   );
 
   const onRulerPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (dragRef.current?.mode !== "playhead") return;
+      if (
+        dragRef.current?.mode !== "playhead" ||
+        dragRef.current.pointerId !== event.pointerId
+      ) {
+        return;
+      }
       state.seek(clientXToMs(event.clientX));
     },
     [clientXToMs, state],
@@ -283,7 +333,12 @@ export function TimelineArea({
 
   const onRulerPointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (dragRef.current?.mode !== "playhead") return;
+      if (
+        dragRef.current?.mode !== "playhead" ||
+        dragRef.current.pointerId !== event.pointerId
+      ) {
+        return;
+      }
       dragRef.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
@@ -292,9 +347,17 @@ export function TimelineArea({
     [],
   );
 
-  const onRulerPointerCancel = useCallback(() => {
-    if (dragRef.current?.mode === "playhead") dragRef.current = null;
-  }, []);
+  const onRulerPointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (
+        dragRef.current?.mode === "playhead" &&
+        dragRef.current.pointerId === event.pointerId
+      ) {
+        dragRef.current = null;
+      }
+    },
+    [],
+  );
 
   // ------------------------------------------------------------------ render
 

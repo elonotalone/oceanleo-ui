@@ -12,7 +12,9 @@ import {
 } from "./deck-geometry";
 import {
   cloneDeckDocument,
+  createDeckMaster,
   deckId,
+  deckMasterFor,
   deckTheme,
   emptyDeckSlide,
   normalizeDeckDocument,
@@ -20,6 +22,7 @@ import {
   type DeckDocument,
   type DeckElement,
   type DeckLayout,
+  type DeckMaster,
   type DeckSlide,
   type DeckThemeId,
 } from "./deck-schema";
@@ -37,6 +40,10 @@ import {
   type DeckInkStroke,
   type DeckInkStyle,
 } from "./deck-ink";
+import {
+  deckPptxObjectName,
+  injectDeckPptxOoxml,
+} from "./deck-pptx-ooxml";
 import { importPptxDeck } from "./pptx-deck-import";
 
 interface Snapshot {
@@ -51,6 +58,7 @@ export interface DeckEditorState {
   activeIndex: number;
   selectedElement: DeckElement | null;
   selectedElementId: string;
+  activeMaster: DeckMaster;
   loading: boolean;
   saving: boolean;
   exporting: boolean;
@@ -65,10 +73,18 @@ export interface DeckEditorState {
   setTitle: (title: string) => void;
   setAspect: (aspect: DeckAspect) => void;
   setTheme: (theme: DeckThemeId) => void;
+  patchMaster: (id: string, patch: Partial<DeckMaster>) => void;
+  duplicateMaster: () => void;
+  deleteMaster: () => void;
   patchSlide: (patch: Partial<DeckSlide>) => void;
+  patchSlideTransient: (patch: Partial<DeckSlide>) => void;
   applySlideLayout: (layout: DeckLayout) => void;
   selectElement: (id: string) => void;
   patchElement: (id: string, patch: Partial<DeckElement>) => void;
+  patchElementTransient: (id: string, patch: Partial<DeckElement>) => void;
+  beginGesture: () => void;
+  endGesture: () => void;
+  cancelGesture: () => void;
   addTextElement: (
     preset?: Partial<DeckElement>,
     placement?: WorkbenchMaterialPlacement,
@@ -204,7 +220,11 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
 
   for (const source of deck.slides) {
     const slide = pptx.addSlide();
-    const background = cleanHex(source.background, theme.background);
+    const master = deckMasterFor(deck, source);
+    const background = cleanHex(
+      source.background,
+      master.background || theme.background,
+    );
     slide.background = { color: background };
     if (source.elements.length > 0) {
       const x = (value: number) => (value / 100) * width;
@@ -221,10 +241,15 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
         if (element.type === "text") {
           slide.addText(element.text || "", {
             ...box,
+            objectName: deckPptxObjectName(element.id),
             rotate: element.rotation,
-            fontFace: element.fontFamily || theme.fontFamily.split(",")[0],
+            fontFace:
+              element.fontFamily || master.fontFamily.split(",")[0],
             fontSize: element.fontSize || 18,
-            color: cleanHex(element.color || theme.text, theme.text),
+            color: cleanHex(
+              element.color || master.textColor,
+              master.textColor || theme.text,
+            ),
             bold: element.bold,
             italic: element.italic,
             align: element.align || "left",
@@ -254,12 +279,14 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
             slide.addImage({
               data,
               ...box,
+              objectName: deckPptxObjectName(element.id),
               rotate: element.rotation,
               sizing: { type: "contain", ...box },
             });
           } catch {
             slide.addText(element.alt || "图片无法导出", {
               ...box,
+              objectName: deckPptxObjectName(element.id),
               align: "center",
               valign: "middle",
               color: cleanHex(theme.muted, "64748B"),
@@ -292,6 +319,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
             value === "circle" ? "oval" : value || "none";
           slide.addShape(shapeType, {
             ...box,
+            objectName: deckPptxObjectName(element.id),
             rotate: element.rotation,
             fill: element.fill
               ? { color: cleanHex(element.fill, "FFFFFF") }
@@ -317,10 +345,15 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
           if (element.text) {
             slide.addText(element.text, {
               ...box,
+              objectName: deckPptxObjectName(element.id, "label"),
               rotate: element.rotation,
-              fontFace: element.fontFamily || theme.fontFamily.split(",")[0],
+              fontFace:
+                element.fontFamily || master.fontFamily.split(",")[0],
               fontSize: element.fontSize || 16,
-              color: cleanHex(element.color || theme.text, theme.text),
+              color: cleanHex(
+                element.color || master.textColor,
+                master.textColor || theme.text,
+              ),
               bold: element.bold,
               italic: element.italic,
               align: element.align || "center",
@@ -339,12 +372,13 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
             ),
             {
             ...box,
+            objectName: deckPptxObjectName(element.id),
             border: { type: "solid", color: "D1D5DB", pt: 1 },
-            color: cleanHex(theme.text, "111827"),
+            color: cleanHex(master.textColor, "111827"),
             fill: {
               color: cleanHex(element.fill || theme.surface, "FFFFFF"),
             },
-            fontFace: theme.fontFamily.split(",")[0],
+            fontFace: master.fontFamily.split(",")[0],
             fontSize: Math.max(8, element.fontSize || 12),
             margin: 0.05,
             },
@@ -353,6 +387,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
         }
         slide.addText(element.label || "此元素保留在原始 PPTX 中", {
           ...box,
+          objectName: deckPptxObjectName(element.id),
           align: "center",
           valign: "middle",
           color: cleanHex(theme.muted, "64748B"),
@@ -376,9 +411,9 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
       y: titleY,
       w: textW,
       h: source.layout === "title" || source.layout === "section" ? 1.25 : 0.7,
-      fontFace: theme.fontFamily.split(",")[0],
+      fontFace: master.fontFamily.split(",")[0],
       fontSize: source.layout === "title" || source.layout === "section" ? 34 : 26,
-      color: cleanHex(theme.text, "#111827"),
+      color: cleanHex(master.textColor, "#111827"),
       bold: true,
       margin: 0,
       breakLine: false,
@@ -390,7 +425,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
         y: titleY + 1,
         w: textW,
         h: 2.2,
-        fontFace: theme.fontFamily.split(",")[0],
+        fontFace: master.fontFamily.split(",")[0],
         fontSize: 16,
         color: cleanHex(theme.muted, "#64748b"),
         margin: 0,
@@ -409,9 +444,9 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
           y: source.body ? 4.15 : titleY + 1,
           w: textW,
           h: source.body ? 2.25 : 4.5,
-          fontFace: theme.fontFamily.split(",")[0],
+          fontFace: master.fontFamily.split(",")[0],
           fontSize: 17,
-          color: cleanHex(theme.text, "#111827"),
+          color: cleanHex(master.textColor, "#111827"),
           margin: 0,
           breakLine: false,
           valign: "top",
@@ -452,7 +487,8 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
     }
     if (source.notes) slide.addNotes(source.notes);
   }
-  return (await pptx.write({ outputType: "blob" })) as Blob;
+  const blob = (await pptx.write({ outputType: "blob" })) as Blob;
+  return injectDeckPptxOoxml(blob, deck.slides);
 }
 
 export function useDeckEditor(
@@ -481,6 +517,7 @@ export function useDeckEditor(
   const selectedElementRef = useRef(selectedElementId);
   const undoRef = useRef<Snapshot[]>([]);
   const redoRef = useRef<Snapshot[]>([]);
+  const gestureRef = useRef<Snapshot | null>(null);
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
@@ -510,6 +547,7 @@ export function useDeckEditor(
         setSelectedElementId("");
         undoRef.current = [];
         redoRef.current = [];
+        gestureRef.current = null;
         if (next.importWarnings?.length) {
           setNotice(next.importWarnings.join("；"));
         }
@@ -569,11 +607,45 @@ export function useDeckEditor(
     [snapshot],
   );
 
+  const applyTransient = useCallback(
+    (update: (current: DeckDocument) => DeckDocument) => {
+      const next = update(cloneDeckDocument(deckRef.current));
+      deckRef.current = next;
+      setDeckState(next);
+      setHistoryRevision((value) => value + 1);
+    },
+    [],
+  );
+  const beginGesture = useCallback(() => {
+    if (!gestureRef.current) gestureRef.current = snapshot();
+  }, [snapshot]);
+  const endGesture = useCallback(() => {
+    const base = gestureRef.current;
+    if (!base) return;
+    gestureRef.current = null;
+    if (JSON.stringify(base.deck) === JSON.stringify(deckRef.current)) return;
+    undoRef.current.push(base);
+    if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
+    redoRef.current = [];
+    revisionRef.current += 1;
+    setDirty(true);
+    setSavedUrl("");
+    setNotice("");
+    setHistoryRevision((value) => value + 1);
+  }, []);
+  const cancelGesture = useCallback(() => {
+    const base = gestureRef.current;
+    if (!base) return;
+    gestureRef.current = null;
+    applySnapshot(base);
+  }, [applySnapshot]);
+
   const activeIndex = Math.max(
     0,
     deck.slides.findIndex((slide) => slide.id === activeId),
   );
   const activeSlide = deck.slides[activeIndex] || deck.slides[0];
+  const activeMaster = deckMasterFor(deck, activeSlide);
   const selectedElement =
     activeSlide.elements.find(
       (element) => element.id === selectedElementId,
@@ -617,6 +689,70 @@ export function useDeckEditor(
       })),
     [commit],
   );
+  const patchSlideTransient = useCallback(
+    (patch: Partial<DeckSlide>) =>
+      applyTransient((current) => ({
+        ...current,
+        slides: current.slides.map((slide) =>
+          slide.id === activeRef.current ? { ...slide, ...patch } : slide,
+        ),
+      })),
+    [applyTransient],
+  );
+  const patchMaster = useCallback(
+    (id: string, patch: Partial<DeckMaster>) =>
+      commit((current) => ({
+        ...current,
+        masters: current.masters.map((master) =>
+          master.id === id
+            ? {
+                ...master,
+                ...patch,
+                id: master.id,
+                name: String(patch.name ?? master.name).slice(0, 120),
+              }
+            : master,
+        ),
+      })),
+    [commit],
+  );
+  const duplicateMaster = useCallback(() => {
+    const current = deckMasterFor(
+      deckRef.current,
+      deckRef.current.slides.find((slide) => slide.id === activeRef.current) ||
+        deckRef.current.slides[0],
+    );
+    const copy = {
+      ...current,
+      id: deckId("master"),
+      name: `${current.name} ${tt("副本")}`,
+    };
+    commit((deck) => ({
+      ...deck,
+      masters: [...deck.masters, copy],
+      slides: deck.slides.map((slide) =>
+        slide.id === activeRef.current ? { ...slide, masterId: copy.id } : slide,
+      ),
+    }));
+  }, [commit, tt]);
+  const deleteMaster = useCallback(() => {
+    const current = deckRef.current;
+    if (current.masters.length <= 1) return;
+    const slide = current.slides.find((entry) => entry.id === activeRef.current);
+    const removingId = slide?.masterId || current.masters[0].id;
+    const fallback =
+      current.masters.find((master) => master.id !== removingId) ||
+      createDeckMaster(current.theme, "默认母版", "master-default");
+    commit((deck) => ({
+      ...deck,
+      masters: deck.masters.filter((master) => master.id !== removingId),
+      slides: deck.slides.map((entry) =>
+        entry.masterId === removingId
+          ? { ...entry, masterId: fallback.id }
+          : entry,
+      ),
+    }));
+  }, [commit]);
   const applySlideLayout = useCallback(
     (layout: DeckLayout) => {
       commit((current) => ({
@@ -700,6 +836,24 @@ export function useDeckEditor(
       }));
     },
     [commit],
+  );
+  const patchElementTransient = useCallback(
+    (id: string, patch: Partial<DeckElement>) => {
+      applyTransient((current) => ({
+        ...current,
+        slides: current.slides.map((slide) =>
+          slide.id === activeRef.current
+            ? {
+                ...slide,
+                elements: slide.elements.map((element) =>
+                  element.id === id ? { ...element, ...patch, id } : element,
+                ),
+              }
+            : slide,
+        ),
+      }));
+    },
+    [applyTransient],
   );
 
   const addElement = useCallback(
@@ -1080,6 +1234,7 @@ export function useDeckEditor(
     activeIndex,
     selectedElement,
     selectedElementId,
+    activeMaster,
     loading,
     saving,
     exporting,
@@ -1099,10 +1254,18 @@ export function useDeckEditor(
     setTitle: (title) => commit((current) => ({ ...current, title })),
     setAspect: (aspect) => commit((current) => ({ ...current, aspect })),
     setTheme: (theme) => commit((current) => ({ ...current, theme })),
+    patchMaster,
+    duplicateMaster,
+    deleteMaster,
     patchSlide,
+    patchSlideTransient,
     applySlideLayout,
     selectElement,
     patchElement,
+    patchElementTransient,
+    beginGesture,
+    endGesture,
+    cancelGesture,
     addTextElement,
     addShapeElement,
     addTableElement,
@@ -1114,7 +1277,10 @@ export function useDeckEditor(
     toggleElementLock,
     setCanvasElement,
     addSlide: () => {
-      const slide = emptyDeckSlide();
+      const slide = {
+        ...emptyDeckSlide(),
+        masterId: activeSlide.masterId || deckRef.current.masters[0]?.id,
+      };
       commit((current) => {
         const slides = [...current.slides];
         slides.splice(activeIndex + 1, 0, slide);
@@ -1133,6 +1299,7 @@ export function useDeckEditor(
         elements: activeSlide.elements.map((element) => ({
           ...element,
           id: deckId("element"),
+          animation: element.animation ? { ...element.animation } : undefined,
           rows: element.rows?.map((row) => [...row]),
         })),
       };

@@ -28,7 +28,51 @@ export function VideoTimelineContextToolbar({
     if (!located) return null;
     const { clip, track } = located;
     const style = clip.style || {};
-    const controls: SelectionControl[] = [];
+    const controls: SelectionControl[] = [
+      {
+        id: "start-time",
+        kind: "number",
+        label: tt("时间线开始"),
+        suffix: "s",
+        value: clip.start_ms / 1_000,
+        min: 0,
+        step: 0.01,
+        slot: "inspector",
+        inspectorGroup: "video-timing",
+        inspectorLabel: tt("片段时间"),
+        inspectorIcon: "position",
+      },
+      {
+        id: "duration",
+        kind: "number",
+        label: tt("片段时长"),
+        suffix: "s",
+        value: clip.duration_ms / 1_000,
+        min: 0.1,
+        step: 0.01,
+        slot: "inspector",
+        inspectorGroup: "video-timing",
+        inspectorLabel: tt("片段时间"),
+        inspectorIcon: "position",
+      },
+      ...(clip.source_url
+        ? [
+            {
+              id: "source-in",
+              kind: "number" as const,
+              label: tt("素材入点"),
+              suffix: "s",
+              value: (clip.in_ms || 0) / 1_000,
+              min: 0,
+              step: 0.01,
+              slot: "inspector" as const,
+              inspectorGroup: "video-timing",
+              inspectorLabel: tt("片段时间"),
+              inspectorIcon: "position" as const,
+            },
+          ]
+        : []),
+    ];
     if (track.kind === "text") {
       controls.push(
         {
@@ -36,6 +80,10 @@ export function VideoTimelineContextToolbar({
           kind: "text",
           label: tt("文字"),
           value: clip.text || "",
+          slot: "inspector",
+          inspectorGroup: "video-text-content",
+          inspectorLabel: tt("字幕内容"),
+          inspectorIcon: "text",
         },
         {
           id: "font-size",
@@ -44,6 +92,10 @@ export function VideoTimelineContextToolbar({
           value: style.font_size ?? 64,
           min: 16,
           max: 240,
+          slot: "inspector",
+          inspectorGroup: "video-text-style",
+          inspectorLabel: tt("字幕样式"),
+          inspectorIcon: "font",
         },
         {
           id: "color",
@@ -79,6 +131,10 @@ export function VideoTimelineContextToolbar({
           value: Math.round((clip.volume ?? 1) * 100),
           min: 0,
           max: 200,
+          slot: "inspector",
+          inspectorGroup: "video-audio",
+          inspectorLabel: tt("音量"),
+          inspectorIcon: "effects",
         },
         {
           id: "muted",
@@ -124,6 +180,10 @@ export function VideoTimelineContextToolbar({
           ),
           min: 5,
           max: 200,
+          slot: "inspector",
+          inspectorGroup: "video-transform",
+          inspectorLabel: tt("位置与变换"),
+          inspectorIcon: "position",
         },
         {
           id: "opacity",
@@ -133,6 +193,10 @@ export function VideoTimelineContextToolbar({
           min: 0,
           max: 100,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "video-transform",
+          inspectorLabel: tt("位置与变换"),
+          inspectorIcon: "position",
         },
         {
           id: "rotation",
@@ -142,6 +206,10 @@ export function VideoTimelineContextToolbar({
           min: -180,
           max: 180,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "video-transform",
+          inspectorLabel: tt("位置与变换"),
+          inspectorIcon: "position",
         },
         {
           id: "x",
@@ -151,6 +219,10 @@ export function VideoTimelineContextToolbar({
           min: 0,
           max: 100,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "video-transform",
+          inspectorLabel: tt("位置与变换"),
+          inspectorIcon: "position",
         },
         {
           id: "y",
@@ -160,6 +232,10 @@ export function VideoTimelineContextToolbar({
           min: 0,
           max: 100,
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "video-transform",
+          inspectorLabel: tt("位置与变换"),
+          inspectorIcon: "position",
         },
       );
       if (track.kind === "video") {
@@ -172,6 +248,10 @@ export function VideoTimelineContextToolbar({
             min: -100,
             max: 100,
             placement: "more",
+            slot: "inspector",
+            inspectorGroup: "video-color",
+            inspectorLabel: tt("画面调色"),
+            inspectorIcon: "filter",
           },
           {
             id: "contrast",
@@ -181,6 +261,10 @@ export function VideoTimelineContextToolbar({
             min: 0,
             max: 200,
             placement: "more",
+            slot: "inspector",
+            inspectorGroup: "video-color",
+            inspectorLabel: tt("画面调色"),
+            inspectorIcon: "filter",
           },
           {
             id: "saturation",
@@ -190,36 +274,52 @@ export function VideoTimelineContextToolbar({
             min: 0,
             max: 300,
             placement: "more",
+            slot: "inspector",
+            inspectorGroup: "video-color",
+            inspectorLabel: tt("画面调色"),
+            inspectorIcon: "filter",
           },
         );
       }
     }
     controls.push(
-      {
-        id: "transition",
-        kind: "select",
-        label: tt("转场"),
-        value: clip.transition_in?.type || "",
-        options: [
-          { value: "", label: tt("无") },
-          { value: "fade", label: tt("淡入") },
-          { value: "crossfade", label: tt("交叉溶解") },
-          { value: "black", label: tt("黑场") },
-        ],
-        placement: "more",
-      },
-      ...(clip.transition_in
+      ...(track.kind === "video" || track.kind === "image"
         ? [
             {
-              id: "transition-duration",
-              kind: "range" as const,
-              label: tt("转场时长"),
-              value: clip.transition_in.duration_ms,
-              min: 100,
-              max: 3_000,
-              step: 50,
+              id: "transition",
+              kind: "select" as const,
+              label: tt("转场"),
+              value: clip.transition_in?.type || "",
+              options: [
+                { value: "", label: tt("无") },
+                { value: "fade", label: tt("淡入") },
+                { value: "crossfade", label: tt("交叉溶解") },
+                { value: "black", label: tt("黑场") },
+              ],
               placement: "more" as const,
+              slot: "inspector" as const,
+              inspectorGroup: "video-transition",
+              inspectorLabel: tt("转场"),
+              inspectorIcon: "animate" as const,
             },
+            ...(clip.transition_in
+              ? [
+                  {
+                    id: "transition-duration",
+                    kind: "range" as const,
+                    label: tt("转场时长"),
+                    value: clip.transition_in.duration_ms,
+                    min: 100,
+                    max: 3_000,
+                    step: 50,
+                    placement: "more" as const,
+                    slot: "inspector" as const,
+                    inspectorGroup: "video-transition",
+                    inspectorLabel: tt("转场"),
+                    inspectorIcon: "animate" as const,
+                  },
+                ]
+              : []),
           ]
         : []),
       { id: "duplicate", kind: "action", label: tt("复制"), placement: "more" },
@@ -241,18 +341,67 @@ export function VideoTimelineContextToolbar({
   }, [located, tt]);
 
   if (!context || !located) return null;
-  const { clip } = located;
+  const { clip, track } = located;
   const patch = (next: Partial<TimelineClip>) => state.patchClip(clip.id, next);
   const patchStyle = (next: Partial<TimelineTextStyle>) =>
     patch({ style: { ...(clip.style || {}), ...next } });
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== clip.id) return;
+    const gesture = (mutate: () => void, commit: () => void) => {
+      if (!message.transactionId) {
+        commit();
+        return;
+      }
+      if (message.phase === "start") {
+        state.beginGesture();
+        return;
+      }
+      if (message.phase === "cancel") {
+        state.cancelGesture();
+        return;
+      }
+      mutate();
+      if (message.phase === "commit") state.endGesture();
+    };
+    const patchGesture = (next: Partial<TimelineClip>) =>
+      gesture(
+        () => state.patchClipTransient(clip.id, next),
+        () => state.patchClip(clip.id, next),
+      );
+    const patchStyleGesture = (next: Partial<TimelineTextStyle>) =>
+      patchGesture({ style: { ...(clip.style || {}), ...next } });
     switch (message.controlId) {
+      case "start-time": {
+        const startMs = Math.max(0, number(message.value) * 1_000);
+        gesture(
+          () => state.moveClip(clip.id, track.id, startMs),
+          () => state.setClipTiming(clip.id, { startMs }),
+        );
+        break;
+      }
+      case "duration": {
+        const durationMs = Math.max(100, number(message.value, 0.1) * 1_000);
+        gesture(
+          () =>
+            state.trimClip(
+              clip.id,
+              "end",
+              clip.start_ms + durationMs,
+            ),
+          () => state.setClipTiming(clip.id, { durationMs }),
+        );
+        break;
+      }
+      case "source-in": {
+        const sourceInMs = Math.max(0, number(message.value) * 1_000);
+        patchGesture({ in_ms: Math.round(sourceInMs) });
+        break;
+      }
       case "text":
-        patch({ text: String(message.value ?? "") });
+        patchGesture({ text: String(message.value ?? "") });
         break;
       case "font-size":
-        patchStyle({ font_size: number(message.value, 64) });
+        patchStyleGesture({ font_size: number(message.value, 64) });
         break;
       case "color":
         patchStyle({ color: String(message.value || "#ffffff") });
@@ -266,7 +415,7 @@ export function VideoTimelineContextToolbar({
         }
         break;
       case "volume":
-        patch({ volume: number(message.value, 100) / 100 });
+        patchGesture({ volume: number(message.value, 100) / 100 });
         break;
       case "muted":
         patch({ muted: message.value === true });
@@ -283,15 +432,15 @@ export function VideoTimelineContextToolbar({
       case "opacity":
       case "x":
       case "y":
-        patch({ [message.controlId]: number(message.value) / 100 });
+        patchGesture({ [message.controlId]: number(message.value) / 100 });
         break;
       case "rotation":
-        patch({ rotation: number(message.value) });
+        patchGesture({ rotation: number(message.value) });
         break;
       case "brightness":
       case "contrast":
       case "saturation":
-        patch({ [message.controlId]: number(message.value) / 100 });
+        patchGesture({ [message.controlId]: number(message.value) / 100 });
         break;
       case "transition": {
         const type = String(message.value) as TransitionType | "";
@@ -307,7 +456,7 @@ export function VideoTimelineContextToolbar({
       }
       case "transition-duration":
         if (clip.transition_in) {
-          patch({
+          patchGesture({
             transition_in: {
               ...clip.transition_in,
               duration_ms: number(message.value, 500),

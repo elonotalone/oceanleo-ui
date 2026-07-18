@@ -42,7 +42,9 @@ import {
   advancedRootItemId,
   inlineEditorItemsFromSession,
 } from "./advanced-session";
-import { useWorkbenchMaterialScope } from "./workbench-material-provider";
+import { useWorkbenchMaterialActions } from "./workbench-material-provider";
+
+const EMPTY_MATERIALS: MaterialItem[] = [];
 
 interface LiveWorkspaceNodeStore {
   node: ReactNode;
@@ -287,7 +289,7 @@ export function ResultCanvas({
   empty,
   focusNonce,
   className = "",
-  materials = [],
+  materials = EMPTY_MATERIALS,
   onSeeAllMaterials,
   action: externalAction,
   showTemplate = true,
@@ -318,7 +320,7 @@ export function ResultCanvas({
   const materialSiteId =
     effectiveSiteId || activeCanvasEntry?.libraryItem?.siteId || "oceanleo";
   const materialAppId = workspaceSession?.appId || materialSiteId;
-  const workbenchMaterials = useWorkbenchMaterialScope(
+  const workbenchMaterials = useWorkbenchMaterialActions(
     materialSiteId,
     materialAppId,
   );

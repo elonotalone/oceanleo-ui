@@ -79,6 +79,51 @@ export function materialScopeKey(siteId: string, appId: string): string {
   return `${site}::${app}`;
 }
 
+function jsonFingerprint(value: unknown): string {
+  try {
+    return JSON.stringify(value) || "";
+  } catch {
+    return "";
+  }
+}
+
+function sameMaterialEntry(
+  left: WorkspaceLibraryEntry,
+  right: WorkspaceLibraryEntry,
+): boolean {
+  if (left === right) return true;
+  const leftItem = left.libraryItem;
+  const rightItem = right.libraryItem;
+  return (
+    left.id === right.id &&
+    left.title === right.title &&
+    left.description === right.description &&
+    left.category === right.category &&
+    left.thumbUrl === right.thumbUrl &&
+    left.kind === right.kind &&
+    left.externalUrl === right.externalUrl &&
+    left.linkUrl === right.linkUrl &&
+    left.badge === right.badge &&
+    left.trustedSearchMatch === right.trustedSearchMatch &&
+    left.content === right.content &&
+    left.onDelete === right.onDelete &&
+    leftItem?.key === rightItem?.key &&
+    leftItem?.id === rightItem?.id &&
+    leftItem?.title === rightItem?.title &&
+    leftItem?.kind === rightItem?.kind &&
+    leftItem?.siteId === rightItem?.siteId &&
+    leftItem?.url === rightItem?.url &&
+    leftItem?.previewUrl === rightItem?.previewUrl &&
+    leftItem?.thumbUrl === rightItem?.thumbUrl &&
+    leftItem?.content === rightItem?.content &&
+    leftItem?.favorite === rightItem?.favorite &&
+    leftItem?.createdAt === rightItem?.createdAt &&
+    jsonFingerprint(leftItem?.meta) === jsonFingerprint(rightItem?.meta) &&
+    jsonFingerprint(leftItem?.descriptor) ===
+      jsonFingerprint(rightItem?.descriptor)
+  );
+}
+
 function rebuild(scope: string): void {
   const seen = new Set<string>();
   const merged: WorkspaceLibraryEntry[] = [];
@@ -93,6 +138,13 @@ function rebuild(scope: string): void {
       seen.add(key);
       merged.push(entry);
     }
+  }
+  const current = snapshots.get(scope) || EMPTY;
+  if (
+    current.length === merged.length &&
+    current.every((entry, index) => sameMaterialEntry(entry, merged[index]))
+  ) {
+    return;
   }
   snapshots.set(scope, merged.length ? Object.freeze(merged) : EMPTY);
   listeners.get(scope)?.forEach((listener) => listener());

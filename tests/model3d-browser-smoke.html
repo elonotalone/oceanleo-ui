@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OceanLeo Three.js editor smoke</title>
+    <style>
+      body { margin: 0; font: 14px sans-serif; }
+      #layout { display: grid; grid-template-columns: 520px 280px; gap: 12px; }
+      #viewport { width: 520px; height: 360px; display: block; }
+      #tree button { display: block; width: 100%; text-align: left; }
+      #controls { display: grid; gap: 8px; align-content: start; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/node_modules/three/build/three.module.js",
+          "three/addons/": "/node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="layout">
+      <canvas id="viewport" width="520" height="360"></canvas>
+      <div id="controls">
+        <div id="tree"></div>
+        <label>X <input id="position-x" type="number" step="0.01" value="0" /></label>
+        <button id="apply-position" type="button">Apply position</button>
+        <button id="mode-rotate" type="button">Rotate mode</button>
+        <button id="material-green" type="button">Green material</button>
+        <button id="texture-map" type="button">Replace base color texture</button>
+        <button id="add-point-light" type="button">Add point light</button>
+        <button id="edit-light" type="button">Edit selected light</button>
+        <button id="edit-camera" type="button">Edit selected camera</button>
+        <button id="animation-time" type="button">Seek animation</button>
+        <button id="annotation" type="button">Place annotation</button>
+        <button id="undo" type="button">Undo</button>
+        <button id="redo" type="button">Redo</button>
+        <button id="export" type="button">Export and reload</button>
+        <pre id="status"></pre>
+      </div>
+    </div>
+    <script type="module" src="/tests/model3d-browser-smoke.mjs"></script>
+  </body>
+</html>

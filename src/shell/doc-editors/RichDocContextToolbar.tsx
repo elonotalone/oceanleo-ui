@@ -100,6 +100,10 @@ export function RichDocContextToolbar({
           label: tt("高亮"),
           value: String(highlight.color || "#fef08a"),
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-colors",
+          inspectorLabel: tt("颜色与高亮"),
+          inspectorIcon: "background",
         },
         {
           id: "align",
@@ -138,6 +142,13 @@ export function RichDocContextToolbar({
           placement: "more",
         },
         {
+          id: "code-block",
+          kind: "toggle",
+          label: tt("代码块"),
+          value: editor.isActive("codeBlock"),
+          placement: "more",
+        },
+        {
           id: "clear",
           kind: "action",
           label: tt("清除格式"),
@@ -149,6 +160,10 @@ export function RichDocContextToolbar({
           label: tt("链接"),
           value: String(link.href || ""),
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-link",
+          inspectorLabel: tt("链接"),
+          inspectorIcon: "link",
         },
         {
           id: "unlink",
@@ -156,19 +171,63 @@ export function RichDocContextToolbar({
           label: tt("移除链接"),
           disabled: !editor.isActive("link"),
           placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-link",
+          inspectorLabel: tt("链接"),
+          inspectorIcon: "link",
         },
         ...(inTable
           ? [
-              { id: "row-add", kind: "action" as const, label: tt("增加行"), placement: "more" as const },
-              { id: "row-delete", kind: "action" as const, label: tt("删除行"), placement: "more" as const },
-              { id: "column-add", kind: "action" as const, label: tt("增加列"), placement: "more" as const },
-              { id: "column-delete", kind: "action" as const, label: tt("删除列"), placement: "more" as const },
+              {
+                id: "row-add",
+                kind: "action" as const,
+                label: tt("增加行"),
+                placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "richdoc-table",
+                inspectorLabel: tt("表格结构"),
+                inspectorIcon: "table" as const,
+              },
+              {
+                id: "row-delete",
+                kind: "action" as const,
+                label: tt("删除行"),
+                placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "richdoc-table",
+                inspectorLabel: tt("表格结构"),
+                inspectorIcon: "table" as const,
+              },
+              {
+                id: "column-add",
+                kind: "action" as const,
+                label: tt("增加列"),
+                placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "richdoc-table",
+                inspectorLabel: tt("表格结构"),
+                inspectorIcon: "table" as const,
+              },
+              {
+                id: "column-delete",
+                kind: "action" as const,
+                label: tt("删除列"),
+                placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "richdoc-table",
+                inspectorLabel: tt("表格结构"),
+                inspectorIcon: "table" as const,
+              },
               {
                 id: "table-delete",
                 kind: "action" as const,
                 label: tt("删除表格"),
                 danger: true,
                 placement: "more" as const,
+                slot: "inspector" as const,
+                inspectorGroup: "richdoc-table",
+                inspectorLabel: tt("表格结构"),
+                inspectorIcon: "table" as const,
               },
             ]
           : []),
@@ -209,7 +268,8 @@ export function RichDocContextToolbar({
         chain.setColor(String(message.value || "#1c1917")).run();
         break;
       case "highlight":
-        chain.toggleHighlight({ color: String(message.value || "#fef08a") }).run();
+        if (message.transactionId && message.phase !== "commit") break;
+        chain.setHighlight({ color: String(message.value || "#fef08a") }).run();
         break;
       case "align":
         chain.setTextAlign(String(message.value || "left")).run();
@@ -223,10 +283,14 @@ export function RichDocContextToolbar({
       case "blockquote":
         chain.toggleBlockquote().run();
         break;
+      case "code-block":
+        chain.toggleCodeBlock().run();
+        break;
       case "clear":
         state.clearFormat();
         break;
       case "link":
+        if (message.transactionId && message.phase !== "commit") break;
         state.setLinkHref(String(message.value || ""));
         break;
       case "unlink":

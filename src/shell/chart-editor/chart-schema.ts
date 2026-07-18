@@ -22,6 +22,19 @@ export interface ChartAxis {
   name: string;
   show: boolean;
   data: string[];
+  min?: number;
+  max?: number;
+  interval?: number;
+  axisTick: { show: boolean } & Record<string, unknown>;
+  axisLabel: {
+    show: boolean;
+    rotate: number;
+    color?: string;
+  } & Record<string, unknown>;
+  splitLine: {
+    show: boolean;
+    lineStyle: { color?: string } & Record<string, unknown>;
+  } & Record<string, unknown>;
 }
 
 export interface ChartSeries {
@@ -41,6 +54,18 @@ export interface ChartOption {
   legend: {
     show: boolean;
     position: "top" | "bottom" | "left" | "right";
+  } & Record<string, unknown>;
+  tooltip: {
+    show: boolean;
+    trigger: "item" | "axis";
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth: number;
+    formatter: string;
+    textStyle: {
+      color?: string;
+      fontSize: number;
+    } & Record<string, unknown>;
   } & Record<string, unknown>;
   xAxis: ChartAxis;
   yAxis: ChartAxis;
@@ -105,6 +130,12 @@ function finiteNumber(value: unknown): number {
   return Number.isFinite(number) ? number : 0;
 }
 
+function optionalFinite(value: unknown): number | undefined {
+  if (value === "" || value == null) return undefined;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function safeId(value: unknown, fallback: string): string {
   const id = boundedText(value, "", 80)
     .trim()
@@ -125,6 +156,13 @@ function normalizeAxis(
 ): ChartAxis {
   const axis = firstRecord(value);
   const rawData = Array.isArray(axis.data) ? axis.data : [];
+  const axisTick = asRecord(axis.axisTick) || {};
+  const axisLabel = asRecord(axis.axisLabel) || {};
+  const splitLine = asRecord(axis.splitLine) || {};
+  const splitLineStyle = asRecord(splitLine.lineStyle) || {};
+  const min = optionalFinite(axis.min);
+  const max = optionalFinite(axis.max);
+  const interval = optionalFinite(axis.interval);
   return {
     ...axis,
     type: axis.type === "category" || axis.type === "value"
@@ -133,6 +171,28 @@ function normalizeAxis(
     name: boundedText(axis.name),
     show: axis.show !== false,
     data: rawData.slice(0, MAX_POINTS).map((entry) => boundedText(entry, String(entry), 120)),
+    min,
+    max,
+    interval: interval !== undefined && interval > 0 ? interval : undefined,
+    axisTick: { ...axisTick, show: axisTick.show !== false },
+    axisLabel: {
+      ...axisLabel,
+      show: axisLabel.show !== false,
+      rotate: Math.max(-90, Math.min(90, finiteNumber(axisLabel.rotate))),
+      ...(colorValue(axisLabel.color)
+        ? { color: colorValue(axisLabel.color) }
+        : {}),
+    },
+    splitLine: {
+      ...splitLine,
+      show: splitLine.show !== false,
+      lineStyle: {
+        ...splitLineStyle,
+        ...(colorValue(splitLineStyle.color)
+          ? { color: colorValue(splitLineStyle.color) }
+          : {}),
+      },
+    },
   };
 }
 
@@ -178,7 +238,30 @@ function normalizeSeries(value: unknown, index: number): ChartSeries {
     ...(color
       ? { color, itemStyle: { ...(itemStyle || {}), color } }
       : {}),
-    label: { ...(label || {}), show: label?.show === true },
+    label: {
+      ...(label || {}),
+      show: label?.show === true,
+      position: [
+        "top",
+        "bottom",
+        "left",
+        "right",
+        "inside",
+        "insideTop",
+        "insideBottom",
+      ].includes(String(label?.position))
+        ? label?.position
+        : "top",
+      ...(colorValue(label?.color)
+        ? { color: colorValue(label?.color) }
+        : {}),
+      fontSize: Math.max(
+        8,
+        Math.min(72, optionalFinite(label?.fontSize) ?? 12),
+      ),
+      fontWeight: label?.fontWeight === "bold" ? "bold" : "normal",
+      formatter: boundedText(label?.formatter, "{c}", 200),
+    },
   };
 }
 
@@ -194,6 +277,8 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
   if (!option) throw new Error("chart JSON option must be an object");
   const title = firstRecord(option.title);
   const legend = firstRecord(option.legend);
+  const tooltip = firstRecord(option.tooltip);
+  const tooltipTextStyle = asRecord(tooltip.textStyle) || {};
   const rawColors = Array.isArray(option.color) ? option.color : [];
   const series = (Array.isArray(option.series) ? option.series : [])
     .slice(0, MAX_SERIES)
@@ -229,6 +314,32 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
       },
       color: colors.length ? colors : [...DEFAULT_COLORS],
       legend: { ...legend, show: legend.show !== false, position },
+      tooltip: {
+        ...tooltip,
+        show: tooltip.show !== false,
+        trigger: tooltip.trigger === "axis" ? "axis" : "item",
+        ...(colorValue(tooltip.backgroundColor)
+          ? { backgroundColor: colorValue(tooltip.backgroundColor) }
+          : {}),
+        ...(colorValue(tooltip.borderColor)
+          ? { borderColor: colorValue(tooltip.borderColor) }
+          : {}),
+        borderWidth: Math.max(
+          0,
+          Math.min(10, optionalFinite(tooltip.borderWidth) ?? 1),
+        ),
+        formatter: boundedText(tooltip.formatter, "", 500),
+        textStyle: {
+          ...tooltipTextStyle,
+          ...(colorValue(tooltipTextStyle.color)
+            ? { color: colorValue(tooltipTextStyle.color) }
+            : {}),
+          fontSize: Math.max(
+            8,
+            Math.min(48, optionalFinite(tooltipTextStyle.fontSize) ?? 12),
+          ),
+        },
+      },
       xAxis: normalizeAxis(option.xAxis, "category"),
       yAxis: normalizeAxis(option.yAxis, "value"),
       series,
@@ -266,6 +377,26 @@ export function patchChartAxis(
     axis === "x" ? "category" : "value",
   );
   return next;
+}
+
+export function patchChartTooltip(
+  document: ChartDocumentV1,
+  patch: Partial<ChartOption["tooltip"]>,
+): ChartDocumentV1 {
+  const next = cloneDocument(document);
+  next.option.tooltip = {
+    ...next.option.tooltip,
+    ...patch,
+    ...(patch.textStyle
+      ? {
+          textStyle: {
+            ...next.option.tooltip.textStyle,
+            ...patch.textStyle,
+          },
+        }
+      : {}),
+  };
+  return normalizeChartDocument(next);
 }
 
 export function patchChartSeries(

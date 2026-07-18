@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type WaveSurfer from "wavesurfer.js";
 import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
@@ -20,251 +12,30 @@ import {
 } from "../../lib/media-proxy";
 import { uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
+import { loadEditorProject } from "../doc-editors/doc-io";
+import type { AudioEditOperation } from "./audio-operations";
+import type {
+  AudioProjectData,
+  AudioSelection,
+  AudioWorkbenchState,
+} from "./audio-workbench-state";
 import {
-  loadEditorProject,
-  saveProjectWorkingHead,
-  type PersistedEditorVersion,
-} from "../doc-editors/doc-io";
+  applyAudioOperation,
+  appendAudioHistory,
+  audioBufferBytes,
+  AUDIO_PROJECT_SCHEMA,
+  encodeWav,
+  MAX_AUDIO_FILE_BYTES,
+  MAX_COMPRESSED_AUDIO_BYTES,
+  MAX_DECODED_AUDIO_BYTES,
+  validAudioProject,
+} from "./audio-workbench-utils";
+import { useAudioMutations } from "./use-audio-mutations";
+import { useAudioPersistence } from "./use-audio-persistence";
 
-export interface AudioSelection {
-  start: number;
-  end: number;
-}
-
-export interface AudioWorkbenchState {
-  containerRef: MutableRefObject<HTMLDivElement | null>;
-  loading: boolean;
-  saving: boolean;
-  playing: boolean;
-  error: string;
-  savedUrl: string;
-  duration: number;
-  currentTime: number;
-  selection: AudioSelection | null;
-  fadeDuration: number;
-  setFadeDuration: Dispatch<SetStateAction<number>>;
-  gain: number;
-  setGain: Dispatch<SetStateAction<number>>;
-  speed: number;
-  zoom: number;
-  canUndo: boolean;
-  canRedo: boolean;
-  dirty: boolean;
-  editRevision: number;
-  playPause: () => void;
-  stop: () => void;
-  setPlaybackSpeed: (value: number) => void;
-  setWaveformZoom: (value: number) => void;
-  cropSelection: () => void;
-  deleteSelection: () => void;
-  applyFade: (edge: "in" | "out") => void;
-  applyGain: () => void;
-  undo: () => void;
-  redo: () => void;
-  importSource: (file: File) => Promise<void>;
-  download: () => void;
-  save: () => Promise<PersistedEditorVersion | null>;
-  captureRecovery: () => AudioProjectData | null;
-  restoreRecovery: (payload: unknown) => Promise<boolean>;
-}
-
-const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
-const MAX_COMPRESSED_AUDIO_BYTES = 48 * 1024 * 1024;
-const MAX_DECODED_AUDIO_BYTES = 384 * 1024 * 1024;
-const MAX_UNDO_AUDIO_BYTES = 256 * 1024 * 1024;
-const AUDIO_PROJECT_SCHEMA = "oceanleo.audio.v1";
-
-export type AudioEditOperation =
-  | { type: "crop"; start: number; end: number }
-  | { type: "delete"; start: number; end: number }
-  | { type: "fade"; edge: "in" | "out"; duration: number }
-  | { type: "gain"; multiplier: number };
-
-export interface AudioProjectData {
-  sourceUrl: string;
-  operations: AudioEditOperation[];
-}
-
-function audioBufferBytes(source: AudioBuffer): number {
-  return source.length * source.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
-}
-
-function cloneAudioBuffer(source: AudioBuffer): AudioBuffer {
-  const copy = new AudioBuffer({
-    length: source.length,
-    numberOfChannels: source.numberOfChannels,
-    sampleRate: source.sampleRate,
-  });
-  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
-    copy.copyToChannel(source.getChannelData(channel), channel);
-  }
-  return copy;
-}
-
-function appendAudioHistory(
-  stack: AudioBuffer[],
-  source: AudioBuffer,
-  other: AudioBuffer[] = [],
-): AudioBuffer[] {
-  if (audioBufferBytes(source) > MAX_UNDO_AUDIO_BYTES) return [];
-  const next = [...stack, cloneAudioBuffer(source)].slice(-10);
-  while (
-    next.length > 0 &&
-    [...next, ...other].reduce(
-      (sum, value) => sum + audioBufferBytes(value),
-      0,
-    ) > MAX_UNDO_AUDIO_BYTES
-  ) {
-    next.shift();
-  }
-  return next;
-}
-
-function copyAudioRange(source: AudioBuffer, start: number, end: number): AudioBuffer {
-  const first = Math.max(0, Math.min(source.length, Math.floor(start * source.sampleRate)));
-  const last = Math.max(first + 1, Math.min(source.length, Math.ceil(end * source.sampleRate)));
-  const result = new AudioBuffer({
-    length: last - first,
-    numberOfChannels: source.numberOfChannels,
-    sampleRate: source.sampleRate,
-  });
-  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
-    result.copyToChannel(source.getChannelData(channel).subarray(first, last), channel);
-  }
-  return result;
-}
-
-function deleteAudioRange(source: AudioBuffer, start: number, end: number): AudioBuffer {
-  const first = Math.max(0, Math.min(source.length, Math.floor(start * source.sampleRate)));
-  const last = Math.max(first, Math.min(source.length, Math.ceil(end * source.sampleRate)));
-  const result = new AudioBuffer({
-    length: Math.max(1, source.length - (last - first)),
-    numberOfChannels: source.numberOfChannels,
-    sampleRate: source.sampleRate,
-  });
-  for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
-    const input = source.getChannelData(channel);
-    const output = result.getChannelData(channel);
-    output.set(input.subarray(0, first), 0);
-    output.set(input.subarray(last), first);
-  }
-  return result;
-}
-
-function validAudioProject(value: unknown): value is AudioProjectData {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const project = value as Partial<AudioProjectData>;
-  if (
-    typeof project.sourceUrl !== "string" ||
-    !Array.isArray(project.operations) ||
-    project.operations.length > 500
-  ) {
-    return false;
-  }
-  return project.operations.every((operation) => {
-    if (!operation || typeof operation !== "object") return false;
-    if (operation.type === "crop" || operation.type === "delete") {
-      return (
-        Number.isFinite(operation.start) &&
-        Number.isFinite(operation.end) &&
-        operation.start >= 0 &&
-        operation.end > operation.start
-      );
-    }
-    if (operation.type === "fade") {
-      return (
-        (operation.edge === "in" || operation.edge === "out") &&
-        Number.isFinite(operation.duration) &&
-        operation.duration >= 0
-      );
-    }
-    return (
-      operation.type === "gain" &&
-      Number.isFinite(operation.multiplier) &&
-      operation.multiplier >= 0 &&
-      operation.multiplier <= 8
-    );
-  });
-}
-
-function applyAudioOperation(
-  source: AudioBuffer,
-  operation: AudioEditOperation,
-): AudioBuffer {
-  if (operation.type === "crop") {
-    return copyAudioRange(source, operation.start, operation.end);
-  }
-  if (operation.type === "delete") {
-    return deleteAudioRange(source, operation.start, operation.end);
-  }
-  const next = cloneAudioBuffer(source);
-  if (operation.type === "fade") {
-    const frames = Math.max(
-      1,
-      Math.min(next.length, Math.round(operation.duration * next.sampleRate)),
-    );
-    for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
-      const samples = next.getChannelData(channel);
-      for (let index = 0; index < frames; index += 1) {
-        const envelope = frames === 1 ? 1 : index / (frames - 1);
-        const target =
-          operation.edge === "in" ? index : next.length - 1 - index;
-        samples[target] *= envelope;
-      }
-    }
-    return next;
-  }
-  for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
-    const samples = next.getChannelData(channel);
-    for (let index = 0; index < samples.length; index += 1) {
-      samples[index] *= operation.multiplier;
-    }
-  }
-  return next;
-}
-
-function encodeWav(source: AudioBuffer): Blob {
-  const channels = source.numberOfChannels;
-  const bytesPerSample = 2;
-  const blockAlign = channels * bytesPerSample;
-  const dataSize = source.length * blockAlign;
-  const storage = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(storage);
-  const write = (offset: number, value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-  write(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  write(8, "WAVE");
-  write(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, channels, true);
-  view.setUint32(24, source.sampleRate, true);
-  view.setUint32(28, source.sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  write(36, "data");
-  view.setUint32(40, dataSize, true);
-  let offset = 44;
-  for (let frame = 0; frame < source.length; frame += 1) {
-    for (let channel = 0; channel < channels; channel += 1) {
-      const sample = Math.max(-1, Math.min(1, source.getChannelData(channel)[frame] ?? 0));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-      offset += bytesPerSample;
-    }
-  }
-  return new Blob([storage], { type: "audio/wav" });
-}
-
-function formatTime(value: number): string {
-  if (!Number.isFinite(value)) return "0:00";
-  const minutes = Math.floor(value / 60);
-  const seconds = Math.floor(value % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
+export type { AudioEditOperation } from "./audio-operations";
+export type { AudioProjectData, AudioSelection, AudioWorkbenchProps, AudioWorkbenchState } from "./audio-workbench-state";
+export { AudioControls, AudioStage, AudioWorkbench } from "./AudioWorkbenchView";
 
 export function useAudioWorkbench(
   item: LibraryItem,
@@ -297,6 +68,10 @@ export function useAudioWorkbench(
   const [selection, setSelection] = useState<AudioSelection | null>(null);
   const [fadeDuration, setFadeDuration] = useState(1);
   const [gain, setGain] = useState(100);
+  const [effectSpeed, setEffectSpeed] = useState(1);
+  const [lowEq, setLowEq] = useState(0);
+  const [midEq, setMidEq] = useState(0);
+  const [highEq, setHighEq] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [zoom, setZoom] = useState(30);
   const [canUndo, setCanUndo] = useState(false);
@@ -397,6 +172,10 @@ export function useAudioWorkbench(
         setCanRedo(false);
         setDirty(false);
         setSavedUrl("");
+        setEffectSpeed(1);
+        setLowEq(0);
+        setMidEq(0);
+        setHighEq(0);
         setDuration(decoded.duration);
         const objectUrl = URL.createObjectURL(
           project?.operations.length ? encodeWav(decoded) : blob,
@@ -491,45 +270,26 @@ export function useAudioWorkbench(
     }
   }, []);
 
-  const commit = useCallback(
-    async (
-      next: AudioBuffer,
-      pushUndo = true,
-      operation?: AudioEditOperation,
-    ) => {
-      const current = bufferRef.current;
-      if (!current) return;
-      if (pushUndo) {
-        undoRef.current = appendAudioHistory(undoRef.current, current);
-        redoRef.current = [];
-        undoOperationsRef.current = undoRef.current.length
-          ? [...undoOperationsRef.current, [...operationsRef.current]].slice(
-              -undoRef.current.length,
-            )
-          : [];
-        redoOperationsRef.current = [];
-      }
-      if (operation) {
-        operationsRef.current = [...operationsRef.current, operation];
-      }
-      bufferRef.current = next;
-      revisionRef.current += 1;
-      setCanUndo(undoRef.current.length > 0);
-      setCanRedo(false);
-      setDirty(true);
-      setSavedUrl("");
-      setLoading(true);
-      setError("");
-      try {
-        await reloadWaveform(next);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : tt("波形重建失败"));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [reloadWaveform, tt],
-  );
+  const commit = useAudioMutations({
+    item,
+    siteId,
+    bufferRef,
+    sourceUrlRef,
+    operationsRef,
+    undoOperationsRef,
+    redoOperationsRef,
+    undoRef,
+    redoRef,
+    revisionRef,
+    reloadWaveform,
+    setLoading,
+    setError,
+    setSavedUrl,
+    setDirty,
+    setCanUndo,
+    setCanRedo,
+    tt,
+  });
 
   const importSource = useCallback(
     async (file: File) => {
@@ -590,16 +350,11 @@ export function useAudioWorkbench(
 
   const editSelection = useCallback(
     (mode: "crop" | "delete") => {
-      const source = bufferRef.current;
-      if (!source || !selection) {
+      if (!bufferRef.current || !selection) {
         setError(tt("请先在波形上拖选一个区间"));
         return;
       }
-      const next =
-        mode === "crop"
-          ? copyAudioRange(source, selection.start, selection.end)
-          : deleteAudioRange(source, selection.start, selection.end);
-      void commit(next, true, {
+      void commit({
         type: mode,
         start: selection.start,
         end: selection.end,
@@ -616,10 +371,13 @@ export function useAudioWorkbench(
         type: "fade",
         edge,
         duration: fadeDuration,
+        ...(selection
+          ? { start: selection.start, end: selection.end }
+          : {}),
       };
-      void commit(applyAudioOperation(source, operation), true, operation);
+      void commit(operation);
     },
-    [commit, fadeDuration],
+    [commit, fadeDuration, selection],
   );
 
   const applyGain = useCallback(() => {
@@ -628,9 +386,28 @@ export function useAudioWorkbench(
     const operation: AudioEditOperation = {
       type: "gain",
       multiplier: gain / 100,
+      ...(selection ? { start: selection.start, end: selection.end } : {}),
     };
-    void commit(applyAudioOperation(source, operation), true, operation);
-  }, [commit, gain]);
+    void commit(operation);
+  }, [commit, gain, selection]);
+
+  const applyEffectChain = useCallback(() => {
+    const source = bufferRef.current;
+    if (!source || !selection) {
+      setError(tt("请先在波形上拖选要处理的区间"));
+      return;
+    }
+    const operation: AudioEditOperation = {
+      type: "effects",
+      start: selection.start,
+      end: selection.end,
+      speed: effectSpeed,
+      lowGainDb: lowEq,
+      midGainDb: midEq,
+      highGainDb: highEq,
+    };
+    void commit(operation);
+  }, [commit, effectSpeed, highEq, lowEq, midEq, selection, tt]);
 
   const undo = useCallback(() => {
     const current = bufferRef.current;
@@ -701,142 +478,28 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
-    const source = bufferRef.current;
-    if (!source || savingRef.current) return null;
-    const savingRevision = revisionRef.current;
-    savingRef.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      const title = `${item.title || tt("音频")}-${tt("编辑版")}`;
-      const project: AudioProjectData = {
-        sourceUrl: sourceUrlRef.current,
-        operations: structuredClone(operationsRef.current),
-      };
-      const saved = await saveProjectWorkingHead({
-        item,
-        siteId,
-        fallbackSite: "audio",
-        title,
-        mediaType: "audio",
-        kind: "audio",
-        idempotencyKey: `audio:${item.id}:${savingRevision}`,
-        workingHeadUrl: workingHeadUrlRef.current,
-        meta: {
-          editor: "audio-v3",
-          audio_source_url: project.sourceUrl,
-          audio_operation_count: project.operations.length,
-        },
-        project: {
-          schema: AUDIO_PROJECT_SCHEMA,
-          data: project,
-        },
-      });
-      if (!saved.ok) {
-        throw new Error(saved.error || tt("登记到我的库失败"));
-      }
-      workingHeadUrlRef.current = saved.url;
-      setSavedUrl(saved.url);
-      if (revisionRef.current === savingRevision) setDirty(false);
-      return {
-        url: saved.url,
-        versionId: saved.versionId,
-        projectUrl: saved.projectUrl,
-        projectSchema: saved.projectSchema,
-      };
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : tt("保存到我的库失败"));
-      return null;
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  }, [item, siteId, tt]);
-
-  const captureRecovery = useCallback(
-    (): AudioProjectData | null =>
-      bufferRef.current
-        ? {
-            sourceUrl: sourceUrlRef.current,
-            operations: structuredClone(operationsRef.current),
-          }
-        : null,
-    [],
-  );
-  const restoreRecovery = useCallback(
-    async (payload: unknown): Promise<boolean> => {
-      let project: AudioProjectData;
-      if (validAudioProject(payload)) {
-        project = payload;
-      } else if (payload instanceof Blob && payload.size <= MAX_AUDIO_FILE_BYTES) {
-        const uploaded = await uploadFile(
-          new File([payload], `${item.title || "audio"}-recovery.wav`, {
-            type: payload.type || "audio/wav",
-          }),
-          {
-            siteId: siteId || "audio",
-            title: `${item.title || "audio"}-recovery`,
-            registerAsset: false,
-            idempotencyKey: `audio-recovery:${item.id}:${payload.size}`,
-          },
-        );
-        const url = uploaded.data?.file?.url || "";
-        if (!uploaded.ok || !url) return false;
-        project = { sourceUrl: url, operations: [] };
-      } else {
-        return false;
-      }
-      const context = new AudioContext();
-      try {
-        const durableUrl = project.sourceUrl
-          ? isFirstPartyMediaUrl(project.sourceUrl)
-            ? project.sourceUrl
-            : await importMediaUrl(project.sourceUrl, {
-                kind: "audio",
-                siteId: siteId || "audio",
-                title: item.title,
-                registerAsset: false,
-              })
-          : "";
-        const blob = durableUrl
-          ? await fetchMediaBlob(durableUrl, {
-              maxBytes: MAX_AUDIO_FILE_BYTES,
-            })
-          : encodeWav(
-              new AudioBuffer({
-                length: 44_100,
-                numberOfChannels: 1,
-                sampleRate: 44_100,
-              }),
-            );
-        let decoded = await context.decodeAudioData(
-          (await blob.arrayBuffer()).slice(0),
-        );
-        for (const operation of project.operations) {
-          decoded = applyAudioOperation(decoded, operation);
-        }
-        if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) return false;
-        bufferRef.current = decoded;
-        sourceUrlRef.current = durableUrl;
-        operationsRef.current = [...project.operations];
-        undoRef.current = [];
-        redoRef.current = [];
-        undoOperationsRef.current = [];
-        redoOperationsRef.current = [];
-        revisionRef.current += 1;
-        setCanUndo(false);
-        setCanRedo(false);
-        setDirty(true);
-        setSavedUrl("");
-        await reloadWaveform(decoded);
-        return true;
-      } finally {
-        await context.close();
-      }
-    },
-    [item.id, item.title, reloadWaveform, siteId],
-  );
+  const { save, captureRecovery, restoreRecovery } = useAudioPersistence({
+    item,
+    siteId,
+    bufferRef,
+    sourceUrlRef,
+    operationsRef,
+    undoOperationsRef,
+    redoOperationsRef,
+    workingHeadUrlRef,
+    undoRef,
+    redoRef,
+    revisionRef,
+    savingRef,
+    reloadWaveform,
+    setSaving,
+    setError,
+    setSavedUrl,
+    setDirty,
+    setCanUndo,
+    setCanRedo,
+    tt,
+  });
 
   return {
     containerRef,
@@ -852,6 +515,14 @@ export function useAudioWorkbench(
     setFadeDuration,
     gain,
     setGain,
+    effectSpeed,
+    setEffectSpeed,
+    lowEq,
+    setLowEq,
+    midEq,
+    setMidEq,
+    highEq,
+    setHighEq,
     speed,
     zoom,
     canUndo,
@@ -879,6 +550,7 @@ export function useAudioWorkbench(
     deleteSelection: () => editSelection("delete"),
     applyFade,
     applyGain,
+    applyEffectChain,
     undo,
     redo,
     importSource,
@@ -887,185 +559,4 @@ export function useAudioWorkbench(
     captureRecovery,
     restoreRecovery,
   };
-}
-
-function AudioSlider({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  suffix = "",
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  suffix?: string;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 flex justify-between text-[11px] text-[var(--fg-2,#57534e)]">
-        <span>{label}</span>
-        <span className="tabular-nums text-[var(--muted,#78716c)]">{value}{suffix}</span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-[var(--accent,#7c3aed)]"
-      />
-    </label>
-  );
-}
-
-export function AudioControls({
-  editor,
-}: {
-  editor: AudioWorkbenchState;
-  accent?: string;
-}) {
-  const tt = useUI();
-  const button = "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40";
-  return (
-    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
-      <section>
-        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
-          {tt("音频源")}
-        </p>
-        <label className={`${button} flex w-full cursor-pointer items-center justify-center`}>
-          {tt("导入或替换音频")}
-          <input
-            type="file"
-            accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.aac"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void editor.importSource(file);
-              event.target.value = "";
-            }}
-          />
-        </label>
-      </section>
-      <section>
-        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("播放")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className={button} onClick={editor.playPause}>
-            {editor.playing ? tt("暂停") : tt("播放")}
-          </button>
-          <button type="button" className={button} onClick={editor.stop}>{tt("停止")}</button>
-        </div>
-        <div className="mt-3">
-          <AudioSlider label={tt("试听速度")} value={editor.speed} min={0.5} max={2} step={0.1} suffix="×" onChange={editor.setPlaybackSpeed} />
-        </div>
-      </section>
-      <section className="space-y-2.5 border-t border-[var(--border,#e7e5e4)] pt-3">
-        <AudioSlider label={tt("波形缩放")} value={editor.zoom} min={10} max={200} suffix="px/s" onChange={editor.setWaveformZoom} />
-      </section>
-    </div>
-  );
-}
-
-export function AudioStage({
-  editor,
-  accent = "#4f46e5",
-}: {
-  editor: AudioWorkbenchState;
-  accent?: string;
-}) {
-  const tt = useUI();
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-[var(--surface,#f5f5f4)] p-6">
-        <div className="mb-3 flex items-center justify-between text-[11px] text-[var(--muted,#78716c)]">
-          <span className="tabular-nums">{formatTime(editor.currentTime)} / {formatTime(editor.duration)}</span>
-          <span>
-            {editor.selection
-              ? tt("选区：{start} – {end}", {
-                  start: formatTime(editor.selection.start),
-                  end: formatTime(editor.selection.end),
-                })
-              : tt("未选择区间")}
-          </span>
-        </div>
-        <div className="relative rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-6 shadow-sm">
-          {editor.loading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/80 text-[12px] text-[var(--muted,#78716c)]">{tt("正在处理音频…")}</div>}
-          <div ref={editor.containerRef} className="min-h-44 w-full" />
-          <button
-            type="button"
-            aria-label={editor.playing ? tt("暂停") : tt("播放")}
-            title={editor.playing ? tt("暂停") : tt("播放")}
-            disabled={editor.loading || Boolean(editor.error)}
-            onClick={editor.playPause}
-            className="absolute left-1/2 top-1/2 z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-white shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: accent }}
-          >
-            {editor.playing ? (
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M6.5 5.5h4v13h-4zm7 0h4v13h-4z" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                className="ml-0.5 h-7 w-7"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M8 5.2v13.6L19 12z" />
-              </svg>
-            )}
-          </button>
-        </div>
-        {editor.error && (
-          <p className="mt-3 text-center text-[12px] text-red-600">
-            {editor.error}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export interface AudioWorkbenchProps {
-  item: LibraryItem;
-  siteId?: string;
-  accent?: string;
-  onSaved?: (url: string) => void;
-}
-
-export function AudioWorkbench({
-  item,
-  siteId = "",
-  accent = "#4f46e5",
-  onSaved,
-}: AudioWorkbenchProps) {
-  const editor = useAudioWorkbench(item, siteId);
-  const notifiedRef = useRef("");
-  useEffect(() => {
-    if (editor.savedUrl && editor.savedUrl !== notifiedRef.current) {
-      notifiedRef.current = editor.savedUrl;
-      onSaved?.(editor.savedUrl);
-    }
-  }, [editor.savedUrl, onSaved]);
-  return (
-    <div className="flex h-full min-h-0 bg-[var(--card,#fff)]">
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-[var(--border,#e7e5e4)]">
-        <AudioControls editor={editor} accent={accent} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <AudioStage editor={editor} accent={accent} />
-      </div>
-    </div>
-  );
 }
