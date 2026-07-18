@@ -223,14 +223,12 @@ export function DeckRoute({
             content: <DeckFontPanel editor={editor} />,
           },
         ],
-        contextToolbar: (
+        contextToolbar: editor.selectedElement ? (
           <DeckContextToolbar
             editor={editor}
             accent={accent}
-            activeTool={activeTool}
-            onActiveToolChange={setActiveTool}
           />
-        ),
+        ) : null,
         history: {
           canUndo: editor.canUndo,
           canRedo: editor.canRedo,
@@ -271,6 +269,7 @@ export function DeckRoute({
             editor={editor}
             accent={accent}
             zoom={zoom}
+            onZoomChange={setZoom}
             activeTool={activeTool}
             inkStyle={inkStyle}
           />

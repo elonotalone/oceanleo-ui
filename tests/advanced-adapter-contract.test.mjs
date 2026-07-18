@@ -64,14 +64,17 @@ test("shell geometry never scales editor chrome and every legacy toolbox gets a 
   assert.doesNotMatch(shell, /editorContextualToolbarAnchor/);
 });
 
-test("inline context row consumes semantic actions instead of arbitrary JSX slots", () => {
+test("fixed workspace row owns semantic actions outside the object edit bar", () => {
   const contract = source("../src/shell/advanced-workbench-chrome.ts");
   const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const actions = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
-  assert.match(header, /const actions = adapter\.actions \|\| \[\]/);
-  assert.match(header, /actions\.map\(\(action\)/);
-  assert.match(header, /actions\.length > 1 && actionsOpen/);
+  assert.match(header, /<AdvancedWorkspaceActionBar/);
+  assert.match(actions, /const actions = adapter\.actions \|\| \[\]/);
+  assert.match(actions, /actions\.map\(\(action\)/);
+  assert.match(actions, /actions\.length > 1 && actionsOpen/);
+  assert.match(actions, /data-advanced-workspace-actions/);
   assert.match(header, /data-advanced-context-row/);
   assert.match(header, /action\.panelId/);
 });

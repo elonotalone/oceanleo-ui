@@ -9,6 +9,7 @@ import {
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { useAdvancedLayout } from "../advanced-layout-context";
+import { useCenteredWheelZoom } from "../use-centered-wheel-zoom";
 import {
   deckPageViewport,
   moveDeckElement,
@@ -26,6 +27,7 @@ import {
 } from "./deck-ink";
 import { DeckInkOverlay } from "./DeckInkOverlay";
 import { DeckSlideRail } from "./DeckSlideRail";
+import { useDeckStageShortcuts } from "./use-deck-stage-shortcuts";
 import type { DeckEditorState } from "./use-deck-editor";
 
 interface ElementInteraction {
@@ -469,6 +471,7 @@ export function DeckStage({
   editor,
   accent = "#4f46e5",
   zoom = 100,
+  onZoomChange,
   activeTool = "select",
   inkStyle = {
     color: "#111827",
@@ -479,88 +482,40 @@ export function DeckStage({
   editor: DeckEditorState;
   accent?: string;
   zoom?: number;
+  onZoomChange?: (value: number) => void;
   activeTool?: string;
   inkStyle?: DeckInkStyle;
 }) {
   const tt = useUI();
   const page = deckPageViewport(editor.deck.aspect, zoom);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) editor.redo();
-        else editor.undo();
-      } else if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "d" &&
-        editor.selectedElement
-      ) {
-        event.preventDefault();
-        editor.duplicateElement();
-      } else if (
-        (event.key === "Delete" || event.key === "Backspace") &&
-        editor.selectedElement &&
-        !editor.selectedElement.locked
-      ) {
-        event.preventDefault();
-        editor.deleteElement();
-      } else if (
-        editor.selectedElement &&
-        !editor.selectedElement.locked &&
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-          event.key,
-        )
-      ) {
-        event.preventDefault();
-        const step = event.shiftKey ? 1 : 0.2;
-        editor.patchElement(editor.selectedElement.id, {
-          x:
-            editor.selectedElement.x +
-            (event.key === "ArrowLeft"
-              ? -step
-              : event.key === "ArrowRight"
-                ? step
-                : 0),
-          y:
-            editor.selectedElement.y +
-            (event.key === "ArrowUp"
-              ? -step
-              : event.key === "ArrowDown"
-                ? step
-                : 0),
-        });
-      } else if (event.key === "PageUp") {
-        event.preventDefault();
-        const previous = editor.deck.slides[editor.activeIndex - 1];
-        if (previous) editor.selectSlide(previous.id);
-      } else if (event.key === "PageDown") {
-        event.preventDefault();
-        const next = editor.deck.slides[editor.activeIndex + 1];
-        if (next) editor.selectSlide(next.id);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editor]);
+  const viewportRef = useCenteredWheelZoom({
+    value: zoom,
+    min: 10,
+    max: 300,
+    contentWidth: page.width,
+    contentHeight: page.height,
+    onChange: onZoomChange,
+  });
+  useDeckStageShortcuts(editor);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
       <div className="flex min-h-0 flex-1">
         <DeckSlideRail editor={editor} />
-        <main className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)]">
+        <main
+          ref={viewportRef}
+          className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)]"
+        >
           <div
             className="flex items-center justify-center p-8 lg:p-12"
             style={{
-              minWidth: `${page.width + 96}px`,
-              minHeight: `${page.height + 96}px`,
+              minWidth: `max(100%, ${page.width + 96}px)`,
+              minHeight: `max(100%, ${page.height + 96}px)`,
             }}
           >
             <div
               data-deck-page-frame
-              className="relative shrink-0 transition-[width,height] duration-150"
+              className="relative shrink-0"
               style={{
                 width: `${page.width}px`,
                 height: `${page.height}px`,

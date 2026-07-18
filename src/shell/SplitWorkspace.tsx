@@ -72,6 +72,7 @@ export function useRightPaneSlot(): RightPaneSlot | null {
 }
 
 export type WorkspaceLibraryDock = "left" | "right";
+export type WorkspaceLibraryPanelId = "materials" | "mine";
 
 export interface WorkspacePaneDetail {
   ownerId: string;
@@ -83,12 +84,18 @@ export interface WorkspacePaneDetail {
 export interface WorkspacePaneController {
   /** Fullscreen keeps the semantic left pane and the right editor together. */
   fullscreenRef: RefObject<HTMLDivElement | null>;
-  libraryDock: WorkspaceLibraryDock;
-  setLibraryDock: (dock: WorkspaceLibraryDock) => void;
   libraryOpen: boolean;
-  dockedLibrary: WorkspacePaneDetail | null;
-  showDockedLibrary: (panel: WorkspacePaneDetail) => void;
-  clearDockedLibrary: (ownerId?: string) => void;
+  activeLibraryPanelId: WorkspaceLibraryPanelId | null;
+  registerLibraryPanel: (
+    id: WorkspaceLibraryPanelId,
+    panel: WorkspacePaneDetail,
+  ) => void;
+  unregisterLibraryPanel: (
+    id: WorkspaceLibraryPanelId,
+    ownerId?: string,
+  ) => void;
+  openLibraryPanel: (id: WorkspaceLibraryPanelId) => boolean;
+  closeLibraryPanel: () => void;
   detail: WorkspacePaneDetail | null;
   showDetail: (detail: WorkspacePaneDetail) => void;
   clearDetail: (ownerId?: string) => void;
@@ -161,11 +168,11 @@ export interface SplitLibraryConfig {
   onOpenChange?: (open: boolean) => void;
   /** 右版面顶部居中标题，默认「库」。 */
   paneTitle?: ReactNode;
-  /** 库停靠侧；不传时由共享本地偏好管理。 */
+  /** @deprecated v23.2 起库固定在右侧，编辑器只通过顶部按钮在左栏打开内容。 */
   dock?: WorkspaceLibraryDock;
-  /** 受控停靠侧变化。 */
+  /** @deprecated 保留类型兼容，不再触发。 */
   onDockChange?: (dock: WorkspaceLibraryDock) => void;
-  /** 全家桶共用一个停靠偏好，默认 oceanleo_library_dock。 */
+  /** @deprecated 不再读取库停靠偏好。 */
   dockStorageKey?: string;
 }
 
@@ -213,12 +220,6 @@ export function SplitWorkspace({
   const [ratio, setRatio] = useState(defaultRatio);
   const [maxed, setMaxed] = useState<Maxed>("none");
   const [dragging, setDragging] = useState(false);
-  const [libraryDockDragging, setLibraryDockDragging] = useState(false);
-  const [libraryDockTarget, setLibraryDockTarget] =
-    useState<WorkspaceLibraryDock>("right");
-  const libraryDockStartXRef = useRef(0);
-  const libraryDockMovedRef = useRef(false);
-  const libraryDockTargetRef = useRef<WorkspaceLibraryDock>("right");
   const [hydrated, setHydrated] = useState(false);
   // 左栏标题覆盖（FunctionAgentChat 通过 context 装入「操作台|agent」开关）。
   const [leftLabelOverride, setLeftLabelOverride] = useState<ReactNode | null>(null);
@@ -274,36 +275,25 @@ export function SplitWorkspace({
     [],
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
-  const [internalLibraryDock, setInternalLibraryDock] =
-    useState<WorkspaceLibraryDock>("right");
-  const libraryDockControlled = library?.dock !== undefined;
-  const libraryDock = libraryDockControlled
-    ? library?.dock || "right"
-    : internalLibraryDock;
-  const dockStorageKey =
-    library?.dockStorageKey || "oceanleo_library_dock";
   const [detail, setDetail] = useState<WorkspacePaneDetail | null>(null);
-  const [dockedLibrary, setDockedLibrary] =
-    useState<WorkspacePaneDetail | null>(null);
+  const [libraryPanels, setLibraryPanels] = useState<
+    Partial<Record<WorkspaceLibraryPanelId, WorkspacePaneDetail>>
+  >({});
+  const [activeLibraryPanelId, setActiveLibraryPanelId] =
+    useState<WorkspaceLibraryPanelId | null>(null);
   const activeDetail = hasRight ? detail : null;
+  const activeLibraryPanel =
+    hasRight && activeLibraryPanelId
+      ? libraryPanels[activeLibraryPanelId] || null
+      : null;
   useEffect(() => {
-    if (!hasRight) setDetail(null);
-  }, [hasRight]);
-  const setLibraryDock = useCallback(
-    (dock: WorkspaceLibraryDock) => {
-      if (!libraryDockControlled) setInternalLibraryDock(dock);
-      library?.onDockChange?.(dock);
-      try {
-        window.localStorage.setItem(dockStorageKey, dock);
-      } catch {
-        // A privacy-restricted embed can keep the in-memory preference.
-      }
+    if (!hasRight) {
       setDetail(null);
-      setMaxed("none");
-    },
-    [dockStorageKey, library, libraryDockControlled],
-  );
+      setActiveLibraryPanelId(null);
+    }
+  }, [hasRight]);
   const showDetail = useCallback((next: WorkspacePaneDetail) => {
+    setActiveLibraryPanelId(null);
     setDetail(next);
   }, []);
   const clearDetail = useCallback((ownerId?: string) => {
@@ -311,37 +301,67 @@ export function SplitWorkspace({
       !current || (ownerId && current.ownerId !== ownerId) ? current : null,
     );
   }, []);
-  const showDockedLibrary = useCallback((panel: WorkspacePaneDetail) => {
-    setDockedLibrary(panel);
-  }, []);
-  const clearDockedLibrary = useCallback((ownerId?: string) => {
-    setDockedLibrary((current) =>
-      !current || (ownerId && current.ownerId !== ownerId) ? current : null,
-    );
+  const registerLibraryPanel = useCallback(
+    (id: WorkspaceLibraryPanelId, panel: WorkspacePaneDetail) => {
+      setLibraryPanels((current) =>
+        current[id]?.ownerId === panel.ownerId &&
+        current[id]?.content === panel.content &&
+        current[id]?.label === panel.label
+          ? current
+          : { ...current, [id]: panel },
+      );
+    },
+    [],
+  );
+  const unregisterLibraryPanel = useCallback(
+    (id: WorkspaceLibraryPanelId, ownerId?: string) => {
+      setLibraryPanels((current) => {
+        const panel = current[id];
+        if (!panel || (ownerId && panel.ownerId !== ownerId)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setActiveLibraryPanelId((current) => (current === id ? null : current));
+    },
+    [],
+  );
+  const openLibraryPanel = useCallback(
+    (id: WorkspaceLibraryPanelId) => {
+      if (!libraryPanels[id]) return false;
+      setDetail(null);
+      setActiveLibraryPanelId(id);
+      setMaxed("none");
+      return true;
+    },
+    [libraryPanels],
+  );
+  const closeLibraryPanel = useCallback(() => {
+    setActiveLibraryPanelId(null);
   }, []);
   const paneController = useMemo<WorkspacePaneController>(
     () => ({
       fullscreenRef: wrapRef,
-      libraryDock,
-      setLibraryDock,
       libraryOpen,
-      dockedLibrary,
-      showDockedLibrary,
-      clearDockedLibrary,
+      activeLibraryPanelId,
+      registerLibraryPanel,
+      unregisterLibraryPanel,
+      openLibraryPanel,
+      closeLibraryPanel,
       detail: activeDetail,
       showDetail,
       clearDetail,
     }),
     [
       activeDetail,
+      activeLibraryPanelId,
       clearDetail,
-      clearDockedLibrary,
-      dockedLibrary,
-      libraryDock,
+      closeLibraryPanel,
       libraryOpen,
-      setLibraryDock,
+      openLibraryPanel,
+      registerLibraryPanel,
       showDetail,
-      showDockedLibrary,
+      unregisterLibraryPanel,
     ],
   );
 
@@ -370,18 +390,6 @@ export function SplitWorkspace({
     setRatio(nextRatio);
     setHydrated(true);
   }, [defaultRatio, storageKey]);
-
-  useLayoutEffect(() => {
-    if (!library || libraryDockControlled) return;
-    try {
-      const remembered = window.localStorage.getItem(dockStorageKey);
-      if (remembered === "left" || remembered === "right") {
-        setInternalLibraryDock(remembered);
-      }
-    } catch {
-      // Keep the deterministic right-side default.
-    }
-  }, [dockStorageKey, library, libraryDockControlled]);
 
   // Agent result cards and trusted workspace actions may target content while
   // the library pane is closed. Open the existing pane in place so the card
@@ -439,86 +447,10 @@ export function SplitWorkspace({
     };
   }, [dragging, persist]);
 
-  const finishLibraryDockDrag = useCallback(
-    (element?: HTMLElement, pointerId?: number) => {
-      if (
-        libraryDockMovedRef.current &&
-        libraryDockTargetRef.current !== libraryDock
-      ) {
-        setLibraryDock(libraryDockTargetRef.current);
-      }
-      if (element && pointerId !== undefined) {
-        element.releasePointerCapture?.(pointerId);
-      }
-      libraryDockMovedRef.current = false;
-      setLibraryDockDragging(false);
-    },
-    [libraryDock, setLibraryDock],
-  );
-
-  const libraryDockHandle = (
-    <button
-      type="button"
-      onPointerDown={(event) => {
-        if (event.pointerType === "mouse" && event.button !== 0) return;
-        event.preventDefault();
-        libraryDockStartXRef.current = event.clientX;
-        libraryDockMovedRef.current = false;
-        libraryDockTargetRef.current = libraryDock;
-        setLibraryDockTarget(libraryDock);
-        setLibraryDockDragging(true);
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (!libraryDockDragging) return;
-        const rect = wrapRef.current?.getBoundingClientRect();
-        if (!rect || rect.width <= 0) return;
-        if (Math.abs(event.clientX - libraryDockStartXRef.current) >= 10) {
-          libraryDockMovedRef.current = true;
-        }
-        const target: WorkspaceLibraryDock =
-          event.clientX < rect.left + rect.width / 2 ? "left" : "right";
-        libraryDockTargetRef.current = target;
-        setLibraryDockTarget(target);
-      }}
-      onPointerUp={(event) =>
-        finishLibraryDockDrag(event.currentTarget, event.pointerId)
-      }
-      onPointerCancel={(event) => {
-        libraryDockMovedRef.current = false;
-        finishLibraryDockDrag(event.currentTarget, event.pointerId);
-      }}
-      onClick={(event) => {
-        // Pointer users dock by dragging. Enter/Space keeps the interaction
-        // reachable without turning the visible product affordance back into
-        // the rejected click-only “移到左侧” button.
-        if (event.detail !== 0) return;
-        setLibraryDock(libraryDock === "right" ? "left" : "right");
-      }}
-      className="inline-flex touch-none select-none items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 active:cursor-grabbing"
-      title={tt(
-        libraryDock === "right"
-          ? "拖拽库到左侧；按回车也可停靠"
-          : "拖拽库到右侧；按回车也可停靠",
-      )}
-      aria-label={tt(
-        libraryDock === "right"
-          ? "拖拽库到左侧"
-          : "拖拽库到右侧",
-      )}
-    >
-      <span aria-hidden="true" className="cursor-grab text-sm leading-none">
-        ⠿
-      </span>
-      {tt("拖拽库")}
-    </button>
-  );
-
   const toggleMax = (which: "app" | "library") =>
     setMaxed((m) => (m === which ? "none" : which));
 
-  // Ratio always means the physical left semantic pane. Library docking changes
-  // its content, never the left/right order.
+  // Ratio always means the physical left semantic pane.
   const appBasis = !hasRight
     ? "100%"
     : maxed === "app"
@@ -599,33 +531,34 @@ export function SplitWorkspace({
     );
   }
 
-  const activeDockedLibrary =
-    libraryOpen && libraryDock === "left" ? dockedLibrary : null;
-  const activeLeftPanel = activeDetail || activeDockedLibrary;
-  const returnLabel = activeDockedLibrary ? tt("返回库") : tt("返回操作台");
-  const detailLabel = activeDetail ? (
+  const activeLeftPanel = activeDetail || activeLibraryPanel;
+  const presentedLeftPanel = activeDetail || activeLibraryPanel;
+  const detailLabel = presentedLeftPanel ? (
     <div className="flex min-w-0 items-center gap-2">
       <button
         type="button"
-        onClick={() => clearDetail(activeDetail.ownerId)}
+        onClick={() => {
+          if (activeDetail) clearDetail(activeDetail.ownerId);
+          else closeLibraryPanel();
+        }}
         className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-        aria-label={returnLabel}
-        title={returnLabel}
+        aria-label={tt("返回操作台")}
+        title={tt("返回操作台")}
       >
         ←
       </button>
       <span className="truncate text-[12px] font-semibold text-stone-700">
-        {activeDetail.label}
+        {presentedLeftPanel.label}
       </span>
     </div>
-  ) : activeDockedLibrary?.label ?? effectiveLeftLabel;
+  ) : effectiveLeftLabel;
 
   const appPane = (
     <section
       key="app-pane"
       data-workspace-pane="left"
       data-left-panel={
-        activeDetail ? "tool-detail" : activeDockedLibrary ? "library" : "app"
+        activeDetail ? "tool-detail" : activeLibraryPanel ? "library" : "app"
       }
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${
         maxed === "library" ? "hidden" : "flex"
@@ -642,20 +575,6 @@ export function SplitWorkspace({
     >
       {detailLabel != null && (
         <PaneHeader label={detailLabel}>
-          {activeDockedLibrary && !activeDetail && (
-            <>
-              <button
-                type="button"
-                onClick={() => setLibraryOpen(false)}
-                aria-label={tt("关闭库")}
-                title={tt("关闭库")}
-                className="rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-              >
-                ✕
-              </button>
-              {libraryDockHandle}
-            </>
-          )}
           <MaxButton which="app" />
         </PaneHeader>
       )}
@@ -667,8 +586,8 @@ export function SplitWorkspace({
         <div className={`${activeDetail ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
           {activeDetail?.content}
         </div>
-        <div className={`${!activeDetail && activeDockedLibrary ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
-          {activeDockedLibrary?.content}
+        <div className={`${!activeDetail && activeLibraryPanel ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
+          {activeLibraryPanel?.content}
         </div>
       </div>
     </section>
@@ -678,7 +597,7 @@ export function SplitWorkspace({
     <section
       key="library-pane"
       data-workspace-pane="main"
-      data-library-dock={libraryDock}
+      data-library-dock="right"
       className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
         !hasRight || maxed === "app" ? "hidden" : "flex"
       }`}
@@ -714,9 +633,6 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
-          {dockedLibrary && (
-            <div className="shrink-0">{libraryDockHandle}</div>
-          )}
           <div className="shrink-0">
             <MaxButton which="library" />
           </div>
@@ -752,37 +668,10 @@ export function SplitWorkspace({
     <RightPaneCtx.Provider value={rightSlot}>
     <div
       ref={wrapRef}
-      className={`relative gap-0 p-1.5 ${className} md:flex`}
-      style={{ height: rootHeight }}
+      data-workspace-split
+      className={`relative gap-0 bg-[var(--bg,#f7f7f5)] p-1.5 ${className} md:flex`}
+      style={{ height: rootHeight, backgroundColor: "var(--bg,#f7f7f5)" }}
     >
-      {libraryDockDragging && (
-        <div className="pointer-events-none absolute inset-1.5 z-[90] grid grid-cols-2 gap-3">
-          <div
-            className={`grid place-items-center rounded-2xl border-2 border-dashed text-sm font-semibold backdrop-blur-sm transition ${
-              libraryDockTarget === "left"
-                ? "border-current bg-white/90 shadow-xl"
-                : "border-stone-300 bg-white/55 text-stone-400"
-            }`}
-            style={
-              libraryDockTarget === "left" ? { color: accent } : undefined
-            }
-          >
-            {tt("放到左栏")}
-          </div>
-          <div
-            className={`grid place-items-center rounded-2xl border-2 border-dashed text-sm font-semibold backdrop-blur-sm transition ${
-              libraryDockTarget === "right"
-                ? "border-current bg-white/90 shadow-xl"
-                : "border-stone-300 bg-white/55 text-stone-400"
-            }`}
-            style={
-              libraryDockTarget === "right" ? { color: accent } : undefined
-            }
-          >
-            {tt("放回右栏")}
-          </div>
-        </div>
-      )}
       {[appPane, divider, libraryPane]}
     </div>
     </RightPaneCtx.Provider>

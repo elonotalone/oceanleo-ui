@@ -62,6 +62,7 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
+  const wheelZoom = source("../src/shell/use-centered-wheel-zoom.ts");
   const deckElementContent = source(
     "../src/shell/doc-editors/DeckElementContent.tsx",
   );
@@ -89,6 +90,12 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(deckStage, /RESIZE_HANDLES/);
   assert.match(deckStage, /data-deck-canvas/);
   assert.match(deckStage, /rotateDeckElement/);
+  assert.match(deckStage, /useCenteredWheelZoom/);
+  assert.match(deckStage, /className="relative shrink-0"/);
+  assert.match(wheelZoom, /addEventListener\("wheel", onWheel, \{ passive: false \}\)/);
+  assert.match(wheelZoom, /requestAnimationFrame/);
+  assert.match(wheelZoom, /Math\.exp\(-delta \* 0\.0025\)/);
+  assert.match(wheelZoom, /viewport\.scrollLeft/);
   assert.match(deckControls, /DeckTextPanel/);
   assert.match(deckControls, /DeckElementsPanel/);
   assert.match(deckFonts, /DeckFontPanel/);
@@ -155,6 +162,8 @@ test("media editors expose usable first-draft surfaces without a source URL", ()
   const modelStage = source("../src/shell/media-editors/Model3DStage.tsx");
   assert.match(audio, /new AudioBuffer\(\{/);
   assert.match(audio, /importSource: \(file: File\)/);
+  assert.match(audio, /onClick=\{editor\.playPause\}/);
+  assert.match(audio, /editor\.playing \? tt\("暂停"\) : tt\("播放"\)/);
   assert.match(pdfOperations, /export async function createBlankPdf/);
   assert.match(pdfSource, /await createBlankPdf\(\)/);
   assert.match(pdf, /loadInitialPdfSource/);

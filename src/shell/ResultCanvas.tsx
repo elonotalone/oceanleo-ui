@@ -302,11 +302,14 @@ export function ResultCanvas({
   const runtimeHydration = useWorkspaceRuntimeHydration();
   const rightSlot = useRightPaneSlot();
   const workspacePane = useWorkspacePane();
-  const dockedLibraryInstanceId = useId();
-  const dockedLibraryOwnerRef = useRef(
-    `result-canvas-library:${dockedLibraryInstanceId}`,
+  const libraryPanelInstanceId = useId();
+  const libraryPanelOwnerRef = useRef(
+    `result-canvas-library:${libraryPanelInstanceId}`,
   );
-  const dockedLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
+  const materialLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
+    createLiveWorkspaceNodeStore(),
+  );
+  const myLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
     createLiveWorkspaceNodeStore(),
   );
   const [activeCanvasEntry, setActiveCanvasEntry] =
@@ -729,45 +732,48 @@ export function ResultCanvas({
   };
 
   const libraryContent = content[selected] || empty || content.template;
-  const dockableLibrarySlot: WorkspaceSlotId | null =
-    selected === "materials" || selected === "mine" ? selected : null;
-  const libraryDockedLeft =
-    Boolean(dockableLibrarySlot) &&
-    workspacePane?.libraryOpen === true &&
-    workspacePane.libraryDock === "left";
-  const dockedLibraryNode = (
+  const materialLibraryNode = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-hidden">{libraryContent}</div>
+      <div className="min-h-0 flex-1 overflow-hidden">{content.materials}</div>
     </div>
   );
-  dockedLibraryStoreRef.current.node = dockedLibraryNode;
+  const myLibraryNode = (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">{content.mine}</div>
+    </div>
+  );
+  materialLibraryStoreRef.current.node = materialLibraryNode;
+  myLibraryStoreRef.current.node = myLibraryNode;
   useLayoutEffect(() => {
-    const store = dockedLibraryStoreRef.current;
-    store.version += 1;
-    store.listeners.forEach((listener) => listener());
-  }, [dockedLibraryNode]);
-
-  const showDockedLibrary = workspacePane?.showDockedLibrary;
-  const clearDockedLibrary = workspacePane?.clearDockedLibrary;
-  useLayoutEffect(() => {
-    const ownerId = dockedLibraryOwnerRef.current;
-    if (!dockableLibrarySlot || !showDockedLibrary || !clearDockedLibrary) {
-      clearDockedLibrary?.(ownerId);
-      return;
-    }
-    showDockedLibrary({
-      ownerId,
-      id: `workspace-library:${dockableLibrarySlot}`,
-      label: tt(SLOT_LABELS[dockableLibrarySlot]),
-      content: <LiveWorkspaceNode store={dockedLibraryStoreRef.current} />,
+    const stores = [materialLibraryStoreRef.current, myLibraryStoreRef.current];
+    stores.forEach((store) => {
+      store.version += 1;
+      store.listeners.forEach((listener) => listener());
     });
-    return () => clearDockedLibrary(ownerId);
-  }, [
-    clearDockedLibrary,
-    dockableLibrarySlot,
-    showDockedLibrary,
-    tt,
-  ]);
+  }, [materialLibraryNode, myLibraryNode]);
+
+  const registerLibraryPanel = workspacePane?.registerLibraryPanel;
+  const unregisterLibraryPanel = workspacePane?.unregisterLibraryPanel;
+  useLayoutEffect(() => {
+    if (!registerLibraryPanel || !unregisterLibraryPanel) return;
+    const ownerId = libraryPanelOwnerRef.current;
+    registerLibraryPanel("materials", {
+      ownerId,
+      id: "workspace-library:materials",
+      label: tt(SLOT_LABELS.materials),
+      content: <LiveWorkspaceNode store={materialLibraryStoreRef.current} />,
+    });
+    registerLibraryPanel("mine", {
+      ownerId,
+      id: "workspace-library:mine",
+      label: tt(SLOT_LABELS.mine),
+      content: <LiveWorkspaceNode store={myLibraryStoreRef.current} />,
+    });
+    return () => {
+      unregisterLibraryPanel("materials", ownerId);
+      unregisterLibraryPanel("mine", ownerId);
+    };
+  }, [registerLibraryPanel, tt, unregisterLibraryPanel]);
 
   const activeEditorItem =
     activeCanvasEntry?.libraryItem &&
@@ -798,21 +804,10 @@ export function ResultCanvas({
   const rightMainContent =
     editorContent ||
     viewerContent ||
-    (libraryDockedLeft ? (
-      selectedPreviewTab?.content ||
-      empty || (
-        <CanvasEmpty
-          title="从左侧库选择素材"
-          description="素材预览与完整编辑画布会显示在这里。"
-        />
-      )
-    ) : (
-      libraryContent
-    ));
+    libraryContent;
 
-  // Only Materials/My Library may move left. The fixed tabs remain on the
-  // right so selecting Inspiration/Generated/Browser restores the normal pane
-  // instead of dragging the complete five-slot library as one block.
+  // Materials/My Library reuse these exact nodes when the fixed editor action
+  // bar opens them on the left. The right library itself never moves.
   useLayoutEffect(() => {
     if (!rightSlot) return;
     const frameless = Boolean(activeCanvasEntry);
@@ -834,7 +829,6 @@ export function ResultCanvas({
   }, [
     accent,
     activeCanvasEntry,
-    libraryDockedLeft,
     rightSlot,
     select,
     selected,

@@ -3,108 +3,24 @@
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
-import { useAdvancedLayout } from "../advanced-layout-context";
 import type {
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
-import {
-  applyDeckQuickTool,
-  deckQuickTools,
-  type DeckCreationTool,
-} from "./deck-quick-tools";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckContextToolbar({
   editor,
   accent = "#4f46e5",
-  activeTool = "select",
-  onActiveToolChange,
 }: {
   editor: DeckEditorState;
   accent?: string;
-  activeTool?: DeckCreationTool;
-  onActiveToolChange?: (tool: DeckCreationTool) => void;
 }) {
   const tt = useUI();
-  const layout = useAdvancedLayout();
   const element = editor.selectedElement;
-  const slide = editor.activeSlide;
-  const context = useMemo<SelectionContext>(() => {
-    const tools = deckQuickTools(tt, activeTool);
-    if (!element) {
-      return {
-        version: 1,
-        kind: "slide",
-        id: slide.id,
-        label: tt("当前幻灯片"),
-        controls: [
-          ...tools,
-          {
-            id: "add-slide",
-            kind: "action",
-            label: tt("新建一页"),
-            icon: "add",
-            group: "page",
-          },
-          {
-            id: "layout",
-            kind: "select",
-            label: tt("版式"),
-            icon: "pages",
-            group: "page",
-            value: slide.layout,
-            options: [
-              ["title", "封面标题"],
-              ["title-body", "标题正文"],
-              ["section", "章节页"],
-              ["bullets", "要点列表"],
-              ["image-left", "左图右文"],
-              ["image-right", "左文右图"],
-              ["blank", "空白页"],
-            ].map(([value, label]) => ({ value, label: tt(label) })),
-          },
-          {
-            id: "background",
-            kind: "color",
-            label: tt("背景"),
-            icon: "background",
-            group: "design",
-            value: slide.background || "#ffffff",
-          },
-          {
-            id: "design-panel",
-            kind: "panel",
-            label: tt("设计"),
-            icon: "templates",
-            group: "design",
-            panelId: "deck-design",
-          },
-          {
-            id: "notes",
-            kind: "text",
-            label: tt("备注"),
-            value: slide.notes,
-            placement: "more",
-          },
-          {
-            id: "duplicate-slide",
-            kind: "action",
-            label: tt("复制幻灯片"),
-            placement: "more",
-          },
-          {
-            id: "delete-slide",
-            kind: "action",
-            label: tt("删除幻灯片"),
-            danger: true,
-            disabled: editor.deck.slides.length <= 1,
-            placement: "more",
-          },
-        ],
-      };
-    }
+  const context = useMemo<SelectionContext | null>(() => {
+    if (!element) return null;
     const common = [
       {
         id: "opacity",
@@ -168,7 +84,6 @@ export function DeckContextToolbar({
                 : "对象",
         ),
       controls: [
-        ...tools,
         ...(element.type === "text"
           ? [
               {
@@ -535,26 +450,10 @@ export function DeckContextToolbar({
         { id: "layer-down", kind: "action", label: tt("下移一层"), icon: "send-backward", placement: "more" },
       ],
     };
-  }, [
-    editor.canRedo,
-    editor.canUndo,
-    editor.deck.slides.length,
-    activeTool,
-    element,
-    slide,
-    tt,
-  ]);
+  }, [element, tt]);
 
   const command = (message: SelectionCommand) => {
-    if (message.selectionId !== context.id) return;
-    if (
-      applyDeckQuickTool(editor, message, {
-        setActiveTool: (tool) => onActiveToolChange?.(tool),
-        openDrawer: (drawerId) => layout?.openDrawer(drawerId),
-      })
-    ) {
-      return;
-    }
+    if (!context || message.selectionId !== context.id) return;
     applyDeckToolbarCommand(editor, element, message);
   };
   return (

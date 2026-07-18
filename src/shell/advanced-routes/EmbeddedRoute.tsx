@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedWorkbenchDrawer } from "../advanced-editor-adapter";
+import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import type { EditorMaterialInsertion } from "../editor-protocol";
@@ -15,7 +16,6 @@ import type { LibraryItem } from "../library-data";
 import type {
   SelectionCommand,
   SelectionContext,
-  SelectionControl,
 } from "../selection-context";
 import { selectionRequestId } from "../selection-context";
 import {
@@ -80,30 +80,6 @@ function RemoteChoicePanel({
     </div>
   );
 }
-
-const DESIGN_HOST_TOOLS: SelectionControl[] = [
-  { id: "undo", kind: "action", label: "撤销", icon: "undo", placement: "tools" },
-  { id: "redo", kind: "action", label: "重做", icon: "redo", placement: "tools" },
-  { id: "design-templates", kind: "panel", label: "模板", icon: "templates", placement: "tools", panelId: "materials", panelAction: "replace" },
-  { id: "design-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
-  { id: "design-shapes", kind: "panel", label: "形状", icon: "shape", placement: "tools", panelId: "design-shapes" },
-  { id: "design-text", kind: "panel", label: "文字", icon: "text", placement: "tools", panelId: "design-text" },
-  { id: "design-background", kind: "panel", label: "背景", icon: "background", placement: "tools", panelId: "design-background" },
-];
-
-const VIDEO_HOST_TOOLS: SelectionControl[] = [
-  { id: "undo", kind: "action", label: "撤销", icon: "undo", placement: "tools" },
-  { id: "redo", kind: "action", label: "重做", icon: "redo", placement: "tools" },
-  { id: "video-nodes", kind: "panel", label: "节点", icon: "add", placement: "tools", panelId: "video-nodes" },
-  { id: "video-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
-  { id: "run-all", kind: "action", label: "运行全部", icon: "animate", placement: "tools" },
-];
-
-const WEBSITE_HOST_TOOLS: SelectionControl[] = [
-  { id: "site-device", kind: "panel", label: "设备", icon: "pages", placement: "tools", panelId: "site-device" },
-  { id: "site-materials", kind: "panel", label: "素材", icon: "materials", placement: "tools", panelId: "materials", panelAction: "insert" },
-  { id: "refresh-preview", kind: "action", label: "刷新", icon: "redo", placement: "tools" },
-];
 
 const DESIGN_SHAPES: RemoteChoice[] = [
   ["rect", "矩形"],
@@ -185,17 +161,8 @@ export function EmbeddedRoute({
   const saveTimerRef = useRef<number | null>(null);
   const remoteRevisionRef = useRef(0);
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
-  const hostToolControls =
-    hostedMediaType === "canvas"
-      ? DESIGN_HOST_TOOLS
-      : hostedMediaType === "video_canvas"
-        ? VIDEO_HOST_TOOLS
-        : hostedMediaType === "website"
-          ? WEBSITE_HOST_TOOLS
-          : [];
   const hostedSelection = useMemo<SelectionContext | null>(() => {
     if (!hostedMediaType || !selection) return selection;
-    const hostIds = new Set(hostToolControls.map((control) => control.id));
     if (
       selection.id === "design-canvas" ||
       selection.id === "video-canvas" ||
@@ -203,19 +170,8 @@ export function EmbeddedRoute({
     ) {
       return null;
     }
-    return {
-      version: 1,
-      kind: selection.kind,
-      id: selection.id,
-      label: selection.label,
-      ...(selection.text ? { text: selection.text } : {}),
-      ...(selection.anchor ? { anchor: selection.anchor } : {}),
-      controls: [
-        ...hostToolControls,
-        ...selection.controls.filter((control) => !hostIds.has(control.id)),
-      ].slice(0, 32),
-    };
-  }, [hostToolControls, hostedMediaType, route, selection]);
+    return selection;
+  }, [hostedMediaType, selection]);
   const remoteDrawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
     const selectionId = hostedSelection?.id || `host:${hostedMediaType || "editor"}`;
     const panel = (
@@ -269,6 +225,50 @@ export function EmbeddedRoute({
     }
     return [];
   }, [hostedMediaType, hostedSelection?.id]);
+  const sendRemoteCommand = useCallback(
+    (controlId: string, value?: SelectionCommand["value"]) => {
+      setSelectionCommand({
+        requestId: selectionRequestId(),
+        selectionId:
+          hostedSelection?.id || `host:${hostedMediaType || "editor"}`,
+        controlId,
+        ...(value !== undefined ? { value } : {}),
+      });
+    },
+    [hostedMediaType, hostedSelection?.id],
+  );
+  const remoteHistory =
+    hostedMediaType === "canvas" || hostedMediaType === "video_canvas"
+      ? {
+          canUndo: true,
+          canRedo: true,
+          undo: () => sendRemoteCommand("undo"),
+          redo: () => sendRemoteCommand("redo"),
+        }
+      : undefined;
+  const remoteActions = useMemo<AdvancedWorkbenchAction[]>(
+    () =>
+      hostedMediaType === "video_canvas"
+        ? [
+            {
+              id: "video-run-all",
+              label: "运行全部",
+              icon: "animate",
+              onTrigger: () => sendRemoteCommand("run-all"),
+            },
+          ]
+        : hostedMediaType === "website"
+          ? [
+              {
+                id: "website-refresh",
+                label: "刷新预览",
+                icon: "redo",
+                onTrigger: () => sendRemoteCommand("refresh-preview"),
+              },
+            ]
+          : [],
+    [hostedMediaType, sendRemoteCommand],
+  );
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
@@ -581,15 +581,18 @@ export function EmbeddedRoute({
             saveRequestId={saveRequestId}
           />
         ),
-        renderContextToolbar: ({ openDrawer }) => (
-          <SelectionToolbar
-            context={hostedSelection}
-            onCommand={setSelectionCommand}
-            onOpenPanel={openDrawer}
-            accent={accent}
-          />
-        ),
+        renderContextToolbar: ({ openDrawer }) =>
+          hostedSelection ? (
+            <SelectionToolbar
+              context={hostedSelection}
+              onCommand={setSelectionCommand}
+              onOpenPanel={openDrawer}
+              accent={accent}
+            />
+          ) : null,
         drawers: remoteDrawers,
+        history: remoteHistory,
+        actions: remoteActions,
         nativeChrome: { toolbar: true, viewport: true },
         persistence: {
           dirty,

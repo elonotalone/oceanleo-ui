@@ -388,13 +388,11 @@ export function SelectionToolbar({
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const [moreOpen, setMoreOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [toolbarWidth, setToolbarWidth] = useState(720);
   const identity = context ? `${context.kind}:${context.id}` : "";
   useEffect(() => {
     setMoreOpen(false);
-    setToolsOpen(false);
     const currentLayout = layoutRef.current;
     if (currentLayout?.activeDrawerId.startsWith("selection-")) {
       currentLayout.closeDrawer();
@@ -410,21 +408,20 @@ export function SelectionToolbar({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const [tools, primary, more] = useMemo(() => {
+  const [primary, more] = useMemo(() => {
     const controls = context?.controls || [];
-    const creation: SelectionControl[] = [];
     const visible: SelectionControl[] = [];
     const overflow: SelectionControl[] = [];
     const budget = selectionToolbarBudget(toolbarWidth);
     let used = 0;
     controls.forEach((control) => {
-      if (control.placement === "tools") {
-        creation.push(control);
-        return;
-      }
-      // History lives in the colored product header, never twice in the
-      // contextual object bar.
-      if (control.id === "undo" || control.id === "redo") return;
+      // Workspace navigation, creation and history live in the fixed action
+      // bar. The contextual edit bar accepts object properties/actions only.
+      if (
+        control.placement === "tools" ||
+        control.id === "undo" ||
+        control.id === "redo"
+      ) return;
       const units = controlUnits(control);
       if (control.placement === "more" || used + units > budget) {
         overflow.push(control);
@@ -433,7 +430,7 @@ export function SelectionToolbar({
         used += units;
       }
     });
-    return [creation, visible, overflow];
+    return [visible, overflow];
   }, [context, toolbarWidth]);
 
   if (!context && !leading && !trailing) return null;
@@ -452,16 +449,7 @@ export function SelectionToolbar({
       )}
     />
   );
-  const toolsPanelId = `selection-tools:${identity}`;
   const morePanelId = `selection-more:${identity}`;
-  const toolsPanel = (
-    <div className="h-full overflow-y-auto p-3">
-      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
-        编辑工具
-      </p>
-      <div className="grid grid-cols-2 gap-2">{tools.map(panelControl)}</div>
-    </div>
-  );
   const morePanel = (
     <div className="h-full overflow-y-auto p-3">
       <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
@@ -470,6 +458,8 @@ export function SelectionToolbar({
       <div className="flex flex-wrap gap-2">{more.map(panelControl)}</div>
     </div>
   );
+  const effectiveVariant = layout ? "floating" : variant;
+  const contextLeading = layout?.contextBarLeading;
   let previousGroup = "";
   return (
     <div
@@ -477,20 +467,23 @@ export function SelectionToolbar({
       data-selection-kind={context?.kind || "none"}
       data-selection-id={context?.id || ""}
       className={`pointer-events-auto flex min-w-0 flex-1 flex-nowrap items-center gap-1 ${
-        variant === "floating"
+        effectiveVariant === "floating"
           ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
           : "max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
       role="toolbar"
       aria-label={context?.label || "编辑器工具栏"}
     >
-      {leading && (
+      {(contextLeading || leading) && (
         <>
-          <div className="flex shrink-0 items-center gap-1">{leading}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {contextLeading}
+            {leading}
+          </div>
           <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
         </>
       )}
-      {context && tools.length === 0 && (
+      {context && (
         <div
           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
           aria-label={context.label || "当前对象"}
@@ -506,39 +499,7 @@ export function SelectionToolbar({
           />
         </div>
       )}
-      {tools.length > 0 && context && (
-        <>
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                if (layout) {
-                  layout.openTransientPanel(toolsPanelId, "编辑工具", toolsPanel);
-                } else {
-                  setToolsOpen((value) => !value);
-                }
-              }}
-              className="grid h-9 w-9 place-items-center rounded-xl border border-emerald-500/15 bg-white text-emerald-600 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              aria-label="展开编辑工具"
-              title="编辑工具"
-              aria-expanded={
-                layout
-                  ? layout.activeDrawerId === toolsPanelId
-                  : toolsOpen
-              }
-            >
-              <EditorToolsIcon />
-            </button>
-            {!layout && toolsOpen && (
-              <div className="absolute left-0 top-full z-[70] mt-2 w-64 rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl">
-                <div className="grid grid-cols-2 gap-1">{tools.map(panelControl)}</div>
-              </div>
-            )}
-          </div>
-          <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-        </>
-      )}
-      {context && tools.length === 0 && (
+      {context && (
         <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
       )}
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden">
@@ -616,24 +577,5 @@ export function SelectionToolbar({
         </>
       )}
     </div>
-  );
-}
-
-function EditorToolsIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m15.8 3.5 4.7 4.7-9.8 9.8-5.7 1 1-5.7 9.8-9.8Z" />
-      <path d="m13.8 5.5 4.7 4.7" />
-      <path d="M4 22h13" />
-    </svg>
   );
 }

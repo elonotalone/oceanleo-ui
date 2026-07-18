@@ -129,16 +129,16 @@ test("first inline edit ensures App history and every mutable route can flush", 
   assert.match(model, /flush: saveBeforeNewConversation/);
 });
 
-test("library docking captures the pointer and embedded editors stay isolated", () => {
+test("library panels are static while embedded editors stay isolated", () => {
   const shell = [
     source("../src/shell/SplitWorkspace.tsx"),
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
   ].join("\n");
   const protocol = source("../src/shell/editor-protocol.ts");
   const embed = source("../src/shell/workbench-embed.tsx");
-  assert.match(shell, /setPointerCapture/);
-  assert.match(shell, /cursor-col-resize/);
-  assert.match(shell, /libraryDock === "left"/);
+  assert.match(shell, /registerLibraryPanel/);
+  assert.match(shell, /openLibraryPanel/);
+  assert.doesNotMatch(shell, /libraryDockDragging|libraryDockStartXRef/);
   assert.match(shell, /adapter\.nativeChrome\?\.viewport/);
   assert.match(shell, /clearDetail/);
   assert.match(protocol, /set-host-layout/);

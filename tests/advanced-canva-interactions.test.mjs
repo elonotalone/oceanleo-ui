@@ -43,9 +43,10 @@ test("large Canva workbench components stay split below the frontend limit", () 
   }
 });
 
-test("context-only drawers remain reachable from the object property bar", () => {
+test("creation drawers stay in fixed tools while object bars stay contextual", () => {
   const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
   const image = source("../src/shell/advanced-routes/ImageRoute.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const deckToolbar = source(
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
   );
@@ -70,10 +71,13 @@ test("context-only drawers remain reachable from the object property bar", () =>
     "image-signature",
     "image-tables",
     "image-layers",
-    "image-canvas",
   ]) {
-    assert.match(imageToolbar, new RegExp(`panelId: "${drawer}"`));
+    assert.match(image, new RegExp(`id: "${drawer}"`));
+    assert.doesNotMatch(imageToolbar, new RegExp(`panelId: "${drawer}"`));
   }
+  assert.match(shell, /drawers\.map\(\(drawer\) =>/);
+  assert.match(shell, /<AdvancedWorkspaceActionBar/);
+  assert.doesNotMatch(deckToolbar, /deckQuickTools|applyDeckQuickTool/);
   assert.match(
     image,
     /id: "image-export"[\s\S]*?panelId: "image-export"/,
@@ -85,7 +89,7 @@ test("context-only drawers remain reachable from the object property bar", () =>
 });
 
 test("advanced editors autosave projects and reserve header actions for delivery", () => {
-  const header = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const header = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   const autosave = source("../src/shell/use-advanced-autosave.ts");
   const imageHook = source(
     "../src/shell/image-editor/use-fabric-image-editor.ts",

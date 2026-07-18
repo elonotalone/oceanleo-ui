@@ -19,6 +19,7 @@ import type {
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
+import { AdvancedWorkspaceActionBar } from "./AdvancedWorkspaceActionBar";
 import { AdvancedWorkbenchStage } from "./AdvancedWorkbenchStage";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
@@ -89,7 +90,6 @@ export function InlineAdvancedWorkbenchShell({
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
   );
@@ -119,7 +119,6 @@ export function InlineAdvancedWorkbenchShell({
     startY: number;
     origin: FloatingToolbarPoint;
   } | null>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
 
   const drawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
     if (adapter.drawers?.length) return [...adapter.drawers];
@@ -269,6 +268,70 @@ export function InlineAdvancedWorkbenchShell({
     setRequestedMaterialAction(undefined);
   }, [clearWorkspaceDetail]);
 
+  const clampToolbar = useCallback(
+    (point: FloatingToolbarPoint) => {
+      const container = stageRef.current?.getBoundingClientRect();
+      const toolbar = toolbarRef.current?.getBoundingClientRect();
+      if (!container || !toolbar) return { x: 0, y: 0 };
+      return clampFloatingToolbar(
+        point,
+        {
+          width: container.width,
+          height: Math.max(0, container.height - 64),
+        },
+        { width: toolbar.width, height: toolbar.height },
+      );
+    },
+    [],
+  );
+  const contextBarLeading = useMemo(
+    () => (
+      <button
+        type="button"
+        onPointerDown={(event) => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          event.preventDefault();
+          toolbarDragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            origin: toolbarPosition,
+          };
+          setToolbarDragging(true);
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = toolbarDragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          setToolbarPosition(
+            clampToolbar({
+              x: drag.origin.x + event.clientX - drag.startX,
+              y: drag.origin.y + event.clientY - drag.startY,
+            }),
+          );
+        }}
+        onPointerUp={(event) => {
+          if (toolbarDragRef.current?.pointerId !== event.pointerId) return;
+          toolbarDragRef.current = null;
+          setToolbarDragging(false);
+          event.currentTarget.releasePointerCapture?.(event.pointerId);
+        }}
+        onPointerCancel={() => {
+          toolbarDragRef.current = null;
+          setToolbarDragging(false);
+        }}
+        onDoubleClick={() => setToolbarPosition({ x: 0, y: 0 })}
+        className={`grid h-9 w-6 shrink-0 touch-none select-none place-items-center rounded-lg text-[13px] text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] ${
+          toolbarDragging ? "cursor-grabbing" : "cursor-grab"
+        }`}
+        aria-label={tt("拖动编辑栏")}
+        title={tt("拖动编辑栏；双击复位")}
+      >
+        ⠿
+      </button>
+    ),
+    [clampToolbar, toolbarDragging, toolbarPosition, tt],
+  );
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
@@ -278,12 +341,14 @@ export function InlineAdvancedWorkbenchShell({
         : fallbackDetail
           ? activeDrawerId
           : "",
+      contextBarLeading,
       openDrawer,
       openTransientPanel,
       closeDrawer: closeDetail,
     }),
     [
       activeDrawerId,
+      contextBarLeading,
       fallbackDetail,
       closeDetail,
       openDrawer,
@@ -296,20 +361,6 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
-
-  const clampToolbar = useCallback(
-    (point: FloatingToolbarPoint) => {
-      const container = stageRef.current?.getBoundingClientRect();
-      const toolbar = toolbarRef.current?.getBoundingClientRect();
-      if (!container || !toolbar) return { x: 0, y: 0 };
-      return clampFloatingToolbar(
-        point,
-        { width: container.width, height: container.height },
-        { width: toolbar.width, height: toolbar.height },
-      );
-    },
-    [],
-  );
 
   useLayoutEffect(() => {
     const update = () =>
@@ -326,7 +377,6 @@ export function InlineAdvancedWorkbenchShell({
     setToolbarPosition({ x: 0, y: 0 });
     toolbarDragRef.current = null;
     setToolbarDragging(false);
-    setActionsOpen(false);
   }, [adapter.id, item.key]);
 
   const requestClose = useCallback(() => {
@@ -469,9 +519,46 @@ export function InlineAdvancedWorkbenchShell({
 
   const actions = adapter.actions || [];
   const triggerAction = (action: (typeof actions)[number]) => {
-    setActionsOpen(false);
     if (action.panelId) openDrawer(action.panelId);
     else void action.onTrigger?.();
+  };
+  const toolsPanel = (
+    <div className="h-full overflow-y-auto p-3">
+      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
+        {tt("编辑工具")}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {drawers.map((drawer) => (
+          <button
+            key={drawer.id}
+            type="button"
+            onClick={() => openDrawer(drawer.id)}
+            className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-semibold text-[var(--fg-2,#57534e)] transition hover:border-[var(--awb-accent)]/35 hover:bg-[var(--surface-hover,#fafaf9)]"
+          >
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              style={{ color: accent, background: `${accent}12` }}
+            >
+              <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
+            </span>
+            {tt(drawer.label)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+  const openTools = () => {
+    if (layoutState.activeDrawerId === "workspace-tools") {
+      closeDetail();
+      return;
+    }
+    openTransientPanel("workspace-tools", tt("编辑工具"), toolsPanel);
+  };
+  const openLibraryPanel = (
+    id: "materials" | "mine",
+  ) => {
+    closeDetail();
+    workspacePane?.openLibraryPanel(id);
   };
 
   const editorViewport = adapter.nativeChrome?.viewport
@@ -511,197 +598,37 @@ export function InlineAdvancedWorkbenchShell({
           className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
         >
           <div
-            data-advanced-context-row
-            ref={toolbarRef}
-            className="absolute left-2 top-2 z-[70] flex h-12 max-w-[calc(100%-1rem)] min-w-0 flex-nowrap items-center gap-1 rounded-2xl border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]/96 p-1.5 shadow-[var(--awb-shadow-floating)] backdrop-blur-xl will-change-transform"
-            style={{
-              transform: `translate3d(${toolbarPosition.x}px, ${toolbarPosition.y}px, 0)`,
-            }}
+            data-advanced-action-row
+            className="absolute left-2 right-2 top-2 z-[80]"
           >
-            <button
-              type="button"
-              onPointerDown={(event) => {
-                if (event.pointerType === "mouse" && event.button !== 0) return;
-                event.preventDefault();
-                toolbarDragRef.current = {
-                  pointerId: event.pointerId,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  origin: toolbarPosition,
-                };
-                setToolbarDragging(true);
-                event.currentTarget.setPointerCapture?.(event.pointerId);
+            <AdvancedWorkspaceActionBar
+              adapter={adapter}
+              autoSaveState={autoSave.state}
+              activeDrawerId={layoutState.activeDrawerId}
+              activeLibraryPanelId={
+                workspacePane?.activeLibraryPanelId || null
+              }
+              onBack={requestClose}
+              onOpenTools={openTools}
+              onOpenLibrary={openLibraryPanel}
+              onRetrySave={() => void autoSave.retry()}
+              onTriggerAction={triggerAction}
+              onUploadFiles={(files) => void performUpload(files)}
+            />
+          </div>
+          {contextToolbar && (
+            <div
+              data-advanced-context-row
+              ref={toolbarRef}
+              className="absolute left-2 z-[70] flex max-w-[calc(100%-1rem)] min-w-0 will-change-transform"
+              style={{
+                top: 64,
+                transform: `translate3d(${toolbarPosition.x}px, ${toolbarPosition.y}px, 0)`,
               }}
-              onPointerMove={(event) => {
-                const drag = toolbarDragRef.current;
-                if (!drag || drag.pointerId !== event.pointerId) return;
-                setToolbarPosition(
-                  clampToolbar({
-                    x: drag.origin.x + event.clientX - drag.startX,
-                    y: drag.origin.y + event.clientY - drag.startY,
-                  }),
-                );
-              }}
-              onPointerUp={(event) => {
-                if (toolbarDragRef.current?.pointerId !== event.pointerId) return;
-                toolbarDragRef.current = null;
-                setToolbarDragging(false);
-                event.currentTarget.releasePointerCapture?.(event.pointerId);
-              }}
-              onPointerCancel={() => {
-                toolbarDragRef.current = null;
-                setToolbarDragging(false);
-              }}
-              onDoubleClick={() => setToolbarPosition({ x: 0, y: 0 })}
-              className={`grid h-9 w-6 shrink-0 touch-none select-none place-items-center rounded-lg text-[13px] text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] ${
-                toolbarDragging ? "cursor-grabbing" : "cursor-grab"
-              }`}
-              aria-label={tt("拖动编辑栏")}
-              title={tt("拖动编辑栏；双击复位")}
             >
-              ⠿
-            </button>
-            <button
-              type="button"
-              onClick={requestClose}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-text)]"
-              aria-label={tt("返回库")}
-              title={tt("返回库")}
-            >
-              ←
-            </button>
-            {adapter.history && (
-              <>
-                <button
-                  type="button"
-                  onClick={adapter.history.undo}
-                  disabled={!adapter.history.canUndo}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--awb-hover)] disabled:opacity-30"
-                  aria-label={tt("撤销")}
-                  title={tt("撤销")}
-                >
-                  <AdvancedEditorIcon name="undo" className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={adapter.history.redo}
-                  disabled={!adapter.history.canRedo}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--awb-hover)] disabled:opacity-30"
-                  aria-label={tt("重做")}
-                  title={tt("重做")}
-                >
-                  <AdvancedEditorIcon name="redo" className="h-4 w-4" />
-                </button>
-              </>
-            )}
-            <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden">
               {contextToolbar}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (autoSave.state === "error") void autoSave.retry();
-              }}
-              disabled={autoSave.state !== "error"}
-              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[10px] text-[var(--awb-muted)] transition enabled:hover:bg-[var(--awb-hover)]"
-              aria-live="polite"
-              title={
-                autoSave.state === "error"
-                  ? tt("点击重试自动保存")
-                  : undefined
-              }
-            >
-              <CloudAutoSaveIcon
-                className={`h-3.5 w-3.5 ${
-                  autoSave.state === "saving" ? "animate-pulse" : ""
-                }`}
-              />
-              {autoSave.state === "saving"
-                ? tt("正在自动保存")
-                : autoSave.state === "error"
-                  ? tt("保存遇到问题")
-                  : tt("已保存")}
-            </button>
-            {actions.length > 0 && (
-              <div className="relative shrink-0">
-                <button
-                  type="button"
-                  disabled={
-                    actions.length === 1 &&
-                    (actions[0].disabled || actions[0].busy)
-                  }
-                  onClick={() => {
-                    if (actions.length === 1) triggerAction(actions[0]);
-                    else setActionsOpen((value) => !value);
-                  }}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-                  aria-label={tt(
-                    actions.length === 1 ? actions[0].label : "交付与导出",
-                  )}
-                  title={tt(
-                    actions.length === 1 ? actions[0].label : "交付与导出",
-                  )}
-                  aria-expanded={actions.length > 1 ? actionsOpen : undefined}
-                >
-                  <AdvancedEditorIcon
-                    name={
-                      actions.length > 1
-                        ? "more"
-                        : actions[0].icon || "download"
-                    }
-                    className="h-4 w-4"
-                  />
-                </button>
-                {actions.length > 1 && actionsOpen && (
-                  <div className="absolute right-0 top-full z-[90] mt-2 min-w-44 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 shadow-2xl">
-                    {actions.map((action) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        disabled={action.disabled || action.busy}
-                        onClick={() => triggerAction(action)}
-                        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-                      >
-                        <AdvancedEditorIcon
-                          name={action.icon || "download"}
-                          className="h-4 w-4"
-                        />
-                        {tt(
-                          action.busy && action.busyLabel
-                            ? action.busyLabel
-                            : action.label,
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {adapter.upload && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)]"
-                  aria-label={tt("从本地添加到画布")}
-                  title={tt("从本地添加到画布，也可以直接拖放文件")}
-                >
-                  <AdvancedEditorIcon name="uploads" className="h-4 w-4" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={adapter.upload.accept}
-                  multiple={adapter.upload.multiple}
-                  className="hidden"
-                  onChange={(event) => {
-                    void performUpload(Array.from(event.currentTarget.files || []));
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </>
-            )}
-          </div>
+          )}
           <div
             data-advanced-viewport-row
             className="relative h-full min-h-0 min-w-0 overflow-hidden pt-14"
@@ -727,25 +654,5 @@ export function InlineAdvancedWorkbenchShell({
         </div>
       </div>
     </AdvancedLayoutContext.Provider>
-  );
-}
-
-function CloudAutoSaveIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden="true"
-    >
-      <path
-        d="M7.2 18.5h9.5a4.3 4.3 0 0 0 .8-8.5A6.2 6.2 0 0 0 5.7 8.4a5 5 0 0 0 1.5 10.1Z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="m9.4 13.2 1.8 1.8 3.6-3.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

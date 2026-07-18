@@ -17,20 +17,20 @@ test("library items open in the fixed main canvas without advanced navigation", 
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });
 
-test("library docking changes semantic content without swapping physical panes", () => {
+test("fixed library buttons replace left semantic content without draggable docking", () => {
   const split = source("../src/shell/SplitWorkspace.tsx");
-  assert.match(split, /libraryDock/);
-  assert.match(split, /onDockChange/);
+  assert.match(split, /registerLibraryPanel/);
+  assert.match(split, /openLibraryPanel/);
+  assert.match(split, /activeLibraryPanelId/);
+  assert.match(split, /WorkspaceLibraryPanelId/);
   assert.match(split, /showDetail/);
   assert.match(split, /clearDetail/);
   assert.match(split, /\{\[appPane, divider, libraryPane\]\}/);
   assert.match(split, /Keep every left-panel runtime mounted/);
-  assert.match(split, /onPointerMove/);
-  assert.match(split, /libraryDockMovedRef/);
-  assert.match(split, /放到左栏/);
-  assert.match(split, /放回右栏/);
-  assert.match(split, /event\.detail !== 0/);
-  assert.doesNotMatch(split, /onClick=\{\(\) => setLibraryDock\("left"\)\}/);
+  assert.doesNotMatch(
+    split,
+    /libraryDockMovedRef|libraryDockStartXRef|libraryDockDragging|放到左栏|放回右栏/,
+  );
 });
 
 test("editor tools exist only inside an opened item and delegate details to the app pane", () => {
@@ -41,6 +41,21 @@ test("editor tools exist only inside an opened item and delegate details to the 
   assert.match(inline, /showDetail/);
   assert.match(inline, /clearDetail/);
   assert.match(inline, /data-inline-editor/);
+});
+
+test("workspace actions expose both static libraries and opaque fullscreen chrome", () => {
+  const actionBar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
+  const canvas = source("../src/shell/ResultCanvas.tsx");
+  const theme = source("../src/theme/globals.css");
+  assert.match(actionBar, /data-advanced-workspace-actions/);
+  assert.match(actionBar, /onOpenLibrary\("materials"\)/);
+  assert.match(actionBar, /onOpenLibrary\("mine"\)/);
+  assert.match(actionBar, /tt\("素材库"\)/);
+  assert.match(actionBar, /tt\("我的库"\)/);
+  assert.match(canvas, /registerLibraryPanel\("materials"/);
+  assert.match(canvas, /registerLibraryPanel\("mine"/);
+  assert.match(theme, /\[data-workspace-split\]:fullscreen::backdrop/);
+  assert.match(theme, /height: 100vh !important/);
 });
 
 test("generated and material slots never wrap legacy container tabs as fake cards", () => {
@@ -70,9 +85,9 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   assert.match(toolbar, /layout\.openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
   assert.doesNotMatch(toolbar, /overflow-x-auto/);
-  assert.doesNotMatch(image, /if \(!selected\) return null/);
-  assert.match(image, /kind: selected\?\.kind \|\| "canvas"/);
-  assert.match(image, /label: selected[\s\S]*?: tt\("创建与编辑"\)/);
+  assert.match(image, /if \(!selected\) return null/);
+  assert.match(image, /kind: selected\.kind/);
+  assert.doesNotMatch(image, /tt\("创建与编辑"\)/);
   assert.match(embedded, /hostedMediaType === "canvas"/);
   assert.match(embedded, /hostedMediaType === "video_canvas"/);
   assert.match(embedded, /selection\.id === "design-canvas"/);

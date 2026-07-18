@@ -21,9 +21,10 @@ export function FabricImageContextToolbar({
   const tt = useUI();
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
-  const context = useMemo<SelectionContext>(() => {
-    // Creation tools must remain reachable on a newly opened flat image, whose
-    // locked background cannot produce an editable Fabric selection.
+  const context = useMemo<SelectionContext | null>(() => {
+    // The floating bar is strictly contextual. Creation, canvas and layer
+    // controls remain available from the fixed workspace tools button.
+    if (!selected) return null;
     const selectedIsLineLike = Boolean(
       selected &&
         [
@@ -35,80 +36,7 @@ export function FabricImageContextToolbar({
           "double-arrow",
         ].includes(selected.kind),
     );
-    const controls: SelectionControl[] = [
-      {
-        id: "tool-select",
-        kind: "toggle",
-        label: tt("选择"),
-        icon: "select",
-        value: editor.activeTool === "select",
-        placement: "tools",
-      },
-      {
-        id: "tool-draw",
-        kind: "panel",
-        label: tt("画笔"),
-        icon: "draw",
-        panelId: "image-brush",
-        placement: "tools",
-      },
-      {
-        id: "tool-shape",
-        kind: "panel",
-        label: tt("形状"),
-        icon: "shape",
-        panelId: "image-shapes",
-        placement: "tools",
-      },
-      {
-        id: "tool-line",
-        kind: "panel",
-        label: tt("线条"),
-        icon: "line",
-        panelId: "image-lines",
-        placement: "tools",
-      },
-      {
-        id: "tool-note",
-        kind: "panel",
-        label: tt("便签"),
-        icon: "note",
-        panelId: "image-notes",
-        placement: "tools",
-      },
-      {
-        id: "tool-text",
-        kind: "panel",
-        label: tt("文字"),
-        icon: "text",
-        panelId: "image-text",
-        placement: "tools",
-      },
-      {
-        id: "tool-signature",
-        kind: "panel",
-        label: tt("签名"),
-        icon: "signature",
-        panelId: "image-signature",
-        placement: "tools",
-      },
-      {
-        id: "tool-table",
-        kind: "panel",
-        label: tt("表格"),
-        icon: "table",
-        panelId: "image-tables",
-        placement: "tools",
-      },
-      {
-        id: "layers-panel",
-        kind: "panel",
-        label: tt("图层"),
-        icon: "layers",
-        group: "workspace",
-        panelId: "image-layers",
-      },
-    ];
+    const controls: SelectionControl[] = [];
     if (selected?.text) {
       controls.push(
         {
@@ -505,23 +433,17 @@ export function FabricImageContextToolbar({
     }
     return {
       version: 1,
-      kind: selected?.kind || "canvas",
-      id: selected?.id || "canvas",
-      label: selected
-        ? tt("已选 {kind}", { kind: selected.kind })
-        : tt("创建与编辑"),
+      kind: selected.kind,
+      id: selected.id,
+      label: tt("已选 {kind}", { kind: selected.kind }),
       controls,
     };
   }, [
     editor.canvasBackground,
-    editor.activeTool,
-    editor.canRedo,
-    editor.canUndo,
     editor.cropRatio,
     editor.cropping,
     editor.loading,
     editor.transformInfo,
-    editor.zoom,
     filters,
     selected,
     tt,

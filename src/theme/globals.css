@@ -1732,3 +1732,17 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   color: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 30%, #cbd5e1);
   background: color-mix(in srgb, var(--oc-ph-accent, #4f46e5) 14%, transparent);
 }
+
+/* Advanced editor fullscreen owns the complete split workspace. Keep the
+ * fullscreen element opaque and force it to fill the viewport; otherwise its
+ * normal calc-height exposes the browser's gray backdrop beside the left pane. */
+[data-workspace-split]:fullscreen {
+  width: 100vw;
+  height: 100vh !important;
+  max-width: none;
+  background: var(--bg, #f7f7f5);
+}
+
+[data-workspace-split]:fullscreen::backdrop {
+  background: var(--bg, #f7f7f5);
+}

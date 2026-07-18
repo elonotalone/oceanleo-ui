@@ -217,9 +217,9 @@ export function ImageRoute({
             content: <FabricImageExportPanel editor={editor} />,
           },
         ],
-        contextToolbar: (
+        contextToolbar: editor.selected ? (
           <FabricImageContextToolbar editor={editor} accent={accent} />
-        ),
+        ) : null,
         history: {
           canUndo: editor.canUndo,
           canRedo: editor.canRedo,
