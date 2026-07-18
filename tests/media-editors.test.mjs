@@ -106,9 +106,11 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   assert.match(modelHook, /downloadAbortRef\.current\?\.abort\(\)/);
   assert.match(modelHook, /useModel3DSave/);
   assert.match(modelSave, /persistModel3DProject/);
-  assert.match(modelProject, /preserveDependencyClosure/);
-  assert.match(modelProject, /deliveryUrl: sourceUrl/);
-  assert.match(modelProject, /preserved-gltf-closure/);
+  assert.match(modelProject, /saveProjectWorkingHead/);
+  assert.match(modelProject, /workingHeadUrl: sourceUrl/);
+  assert.match(modelProject, /preserved-source-closure/);
+  assert.doesNotMatch(modelProject, /fetchMediaBlob|new File\(\[modelBlob\]/);
+  assert.doesNotMatch(modelSave, /captureBlob|uploadFile/);
   assert.match(modelFiles, /依赖本地纹理或 \.bin 文件/);
   assert.equal(
     (modelHook.match(/Number\(saved\.data\?\.saved \|\| 0\) !== 1/g) || []).length,

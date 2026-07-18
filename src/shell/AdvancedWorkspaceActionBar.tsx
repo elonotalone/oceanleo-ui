@@ -28,31 +28,43 @@ export function AdvancedWorkspaceActionBar({
   onOpenTools: () => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
-  onTriggerAction: (action: NonNullable<AdvancedEditorAdapter["actions"]>[number]) => void;
+  onTriggerAction: (
+    action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
+  ) => void | Promise<void>;
   onUploadFiles: (files: File[]) => void;
 }) {
   const tt = useUI();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
   const actions = adapter.actions || [];
   const hasTools = Boolean(adapter.drawers?.length || adapter.toolbox?.content);
   const iconButton =
-    "grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-text)] disabled:opacity-30";
+    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-text)] disabled:opacity-30";
   const libraryButton =
-    "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition";
+    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold transition";
 
-  const triggerAction = (action: (typeof actions)[number]) => {
-    setActionsOpen(false);
-    onTriggerAction(action);
+  const triggerAction = async (
+    action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
+  ) => {
+    setActionError("");
+    try {
+      await onTriggerAction(action);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : tt("操作失败，请重试"),
+      );
+    }
   };
 
   return (
     <div
       data-advanced-workspace-actions
+      data-advanced-action-row
       role="toolbar"
       aria-label={tt("工作区操作")}
-      className="flex h-12 w-full flex-nowrap items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]/96 p-1.5 shadow-[var(--awb-shadow-floating)] backdrop-blur-xl"
+      className="flex h-8 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden bg-transparent"
     >
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto">
       <button
         type="button"
         onClick={onBack}
@@ -129,80 +141,28 @@ export function AdvancedWorkspaceActionBar({
         {tt("我的库")}
       </button>
       <span className="min-w-4 flex-1" />
-      <button
-        type="button"
-        onClick={autoSaveState === "error" ? onRetrySave : undefined}
-        disabled={autoSaveState !== "error"}
-        className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[10px] text-[var(--awb-muted)] transition enabled:hover:bg-[var(--awb-hover)]"
-        aria-live="polite"
-        title={autoSaveState === "error" ? tt("点击重试自动保存") : undefined}
-      >
-        <CloudAutoSaveIcon
-          className={`h-3.5 w-3.5 ${
-            autoSaveState === "saving" ? "animate-pulse" : ""
-          }`}
-        />
-        {autoSaveState === "saving"
-          ? tt("正在自动保存")
-          : autoSaveState === "error"
-            ? tt("保存遇到问题")
-            : tt("已保存")}
-      </button>
-      {actions.length > 0 && (
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            disabled={
-              actions.length === 1 &&
-              (actions[0].disabled || actions[0].busy)
-            }
-            onClick={() => {
-              if (actions.length === 1) triggerAction(actions[0]);
-              else setActionsOpen((value) => !value);
-            }}
-            className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-            aria-label={tt(
-              actions.length === 1 ? actions[0].label : "交付与导出",
-            )}
-            title={tt(
-              actions.length === 1 ? actions[0].label : "交付与导出",
-            )}
-            aria-expanded={actions.length > 1 ? actionsOpen : undefined}
-          >
-            <AdvancedEditorIcon
-              name={
-                actions.length > 1
-                  ? "more"
-                  : actions[0].icon || "download"
-              }
-              className="h-4 w-4"
-            />
-          </button>
-          {actions.length > 1 && actionsOpen && (
-            <div className="absolute right-0 top-full z-[110] mt-2 min-w-44 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 shadow-2xl">
-              {actions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  disabled={action.disabled || action.busy}
-                  onClick={() => triggerAction(action)}
-                  className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-                >
-                  <AdvancedEditorIcon
-                    name={action.icon || "download"}
-                    className="h-4 w-4"
-                  />
-                  {tt(
-                    action.busy && action.busyLabel
-                      ? action.busyLabel
-                      : action.label,
-                  )}
-                </button>
-              ))}
-            </div>
+      {actions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          disabled={action.disabled || action.busy}
+          onClick={() => void triggerAction(action)}
+          className={iconButton}
+          aria-label={tt(
+            action.busy && action.busyLabel ? action.busyLabel : action.label,
           )}
-        </div>
-      )}
+          title={tt(
+            action.busy && action.busyLabel ? action.busyLabel : action.label,
+          )}
+        >
+          <AdvancedEditorIcon
+            name={action.icon || "download"}
+            className="h-4 w-4"
+          />
+        </button>
+      ))}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
       {adapter.upload && (
         <>
           <button
@@ -227,11 +187,92 @@ export function AdvancedWorkspaceActionBar({
           />
         </>
       )}
+      {actionError && (
+        <button
+          type="button"
+          onClick={() => setActionError("")}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 transition hover:bg-red-50"
+          aria-label={tt(`操作失败：${actionError}；点击关闭提示`)}
+          title={actionError}
+        >
+          !
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          if (autoSaveState === "error") onRetrySave();
+        }}
+        aria-disabled={autoSaveState !== "error"}
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--awb-hover)] ${
+          autoSaveState === "error"
+            ? "text-red-600"
+            : autoSaveState === "saving"
+              ? "text-amber-600"
+              : "text-emerald-600"
+        }`}
+        aria-live="polite"
+        aria-label={tt(
+          autoSaveState === "saving"
+            ? "正在自动保存"
+            : autoSaveState === "error"
+              ? "保存遇到问题，点击重试"
+              : "已保存",
+        )}
+        title={tt(
+          autoSaveState === "saving"
+            ? "正在自动保存"
+            : autoSaveState === "error"
+              ? "点击重试自动保存"
+              : "已保存",
+        )}
+      >
+        <CloudAutoSaveIcon
+          state={autoSaveState}
+          className={`h-4 w-4 ${
+            autoSaveState === "saving" ? "animate-pulse" : ""
+          }`}
+        />
+      </button>
+      {adapter.directDownload && (
+        <button
+          type="button"
+          disabled={
+            adapter.directDownload.disabled || adapter.directDownload.busy
+          }
+          onClick={() => void triggerAction(adapter.directDownload!)}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
+          aria-label={tt(
+            adapter.directDownload.busy &&
+              adapter.directDownload.busyLabel
+              ? adapter.directDownload.busyLabel
+              : adapter.directDownload.label,
+          )}
+          title={tt(
+            adapter.directDownload.busy &&
+              adapter.directDownload.busyLabel
+              ? adapter.directDownload.busyLabel
+              : adapter.directDownload.label,
+          )}
+        >
+          <AdvancedEditorIcon
+            name={adapter.directDownload.icon || "download"}
+            className="h-4 w-4"
+          />
+        </button>
+      )}
+      </div>
     </div>
   );
 }
 
-function CloudAutoSaveIcon({ className = "" }: { className?: string }) {
+function CloudAutoSaveIcon({
+  state,
+  className = "",
+}: {
+  state: AdvancedAutoSaveState;
+  className?: string;
+}) {
   return (
     <svg
       className={className}
@@ -244,7 +285,13 @@ function CloudAutoSaveIcon({ className = "" }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.2 8.5 4.5 4.5 0 0 0 7 18Z" />
-      <path d="m9.5 13 1.7 1.7 3.5-3.7" />
+      {state === "saved" && <path d="m9.5 13 1.7 1.7 3.5-3.7" />}
+      {state === "error" && (
+        <>
+          <path d="m10 12 4 4" />
+          <path d="m14 12-4 4" />
+        </>
+      )}
     </svg>
   );
 }

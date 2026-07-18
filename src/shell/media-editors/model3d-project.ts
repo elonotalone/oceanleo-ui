@@ -1,12 +1,10 @@
 "use client";
 
-import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import {
-  saveFileToLibrary,
+  saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "../doc-editors/doc-io";
-import { modelExtension } from "./model3d-files";
 
 export interface Model3DViewProject {
   sourceUrl: string;
@@ -72,31 +70,18 @@ export async function persistModel3DProject({
   siteId,
   title,
   sourceUrl,
-  filename,
   thumbUrl,
   view,
   revision,
-  maxBytes,
 }: {
   item: LibraryItem;
   siteId: string;
   title: string;
   sourceUrl: string;
-  filename: string;
   thumbUrl?: string;
   view: Omit<Model3DViewProject, "sourceUrl">;
   revision: number;
-  maxBytes: number;
 }): Promise<PersistedEditorVersion> {
-  const extension = modelExtension(sourceUrl, item.title);
-  // A .gltf JSON file is not a model by itself: relative .bin/textures form one
-  // dependency closure. Re-uploading only the JSON creates a URL that appears
-  // saved but cannot reopen. Keep the already-loaded durable source closure;
-  // self-contained GLB can still be copied into an immutable version.
-  const preserveDependencyClosure = extension === "gltf";
-  const modelBlob = preserveDependencyClosure
-    ? null
-    : await fetchMediaBlob(sourceUrl, { maxBytes });
   const wireView = {
     camera_orbit: `${view.azimuth}deg ${view.elevation}deg ${view.zoom}%`,
     auto_rotate: view.autoRotate,
@@ -107,29 +92,21 @@ export async function persistModel3DProject({
     animation: view.animationName,
     animation_speed: view.animationSpeed,
   };
-  const saved = await saveFileToLibrary({
+  const saved = await saveProjectWorkingHead({
     item,
     siteId,
     fallbackSite: "threed",
-    ...(modelBlob
-      ? {
-          file: new File([modelBlob], filename, {
-            type: modelBlob.type || "model/gltf-binary",
-          }),
-        }
-      : { deliveryUrl: sourceUrl }),
     title,
     mediaType: "model3d",
     kind: "model3d",
     idempotencyKey: `model3d:${item.id}:${revision}`,
+    workingHeadUrl: sourceUrl,
     thumbUrl,
     meta: {
       editor: "model-viewer-native-v1",
       view: wireView,
       model_source_url: sourceUrl,
-      model_dependency_mode: preserveDependencyClosure
-        ? "preserved-gltf-closure"
-        : "self-contained-glb",
+      model_dependency_mode: "preserved-source-closure",
     },
     project: {
       schema: "oceanleo.model-view@1",

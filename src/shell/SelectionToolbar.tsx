@@ -19,6 +19,10 @@ import {
   type SelectionControlIcon,
   type SelectionControlValue,
 } from "./selection-context";
+import {
+  partitionSelectionControls,
+  SELECTION_TOOLBAR_MAX_WIDTH,
+} from "./selection-toolbar-layout";
 
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
@@ -32,17 +36,6 @@ export interface SelectionToolbarProps {
   leading?: ReactNode;
   trailing?: ReactNode;
   variant?: "bar" | "floating";
-}
-
-function controlUnits(control: SelectionControl): number {
-  if (control.kind === "range" || control.kind === "text") return 3;
-  if (control.kind === "number" || control.kind === "select") return 2;
-  return 1;
-}
-
-export function selectionToolbarBudget(width: number): number {
-  if (!Number.isFinite(width) || width <= 0) return 4;
-  return Math.max(1, Math.min(7, Math.floor((width - 168) / 72)));
 }
 
 function asNumber(value: SelectionControlValue | undefined, fallback = 0): number {
@@ -389,90 +382,151 @@ export function SelectionToolbar({
   layoutRef.current = layout;
   const [moreOpen, setMoreOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const [toolbarWidth, setToolbarWidth] = useState(720);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const measuredWidthsRef = useRef(new Map<string, number>());
+  const [measurementRevision, setMeasurementRevision] = useState(0);
+  const [controlsWidth, setControlsWidth] = useState(SELECTION_TOOLBAR_MAX_WIDTH);
+  const [hasMeasured, setHasMeasured] = useState(false);
   const identity = context ? `${context.kind}:${context.id}` : "";
-  useEffect(() => {
+  const controlsIdentity = (context?.controls || [])
+    .filter((control) => control.id !== "undo" && control.id !== "redo")
+    .map((control) => `${control.id}:${control.kind}:${control.iconOnly ? 1 : 0}`)
+    .join("|");
+  useLayoutEffect(() => {
     setMoreOpen(false);
+    setHasMeasured(false);
+    measuredWidthsRef.current.clear();
     const currentLayout = layoutRef.current;
     if (currentLayout?.activeDrawerId.startsWith("selection-")) {
       currentLayout.closeDrawer();
     }
-  }, [identity]);
+  }, [controlsIdentity, identity]);
   useLayoutEffect(() => {
-    const node = toolbarRef.current;
+    const node = controlsRef.current;
     if (!node) return;
-    const update = () => setToolbarWidth(node.getBoundingClientRect().width);
+    const update = () => setControlsWidth(node.getBoundingClientRect().width);
     update();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
-  const [primary, more] = useMemo(() => {
-    const controls = context?.controls || [];
-    const visible: SelectionControl[] = [];
-    const overflow: SelectionControl[] = [];
-    const budget = selectionToolbarBudget(toolbarWidth);
-    let used = 0;
-    controls.forEach((control) => {
-      // Workspace navigation, creation and history live in the fixed action
-      // bar. The contextual edit bar accepts object properties/actions only.
-      if (
-        control.placement === "tools" ||
-        control.id === "undo" ||
-        control.id === "redo"
-      ) return;
-      const units = controlUnits(control);
-      if (control.placement === "more" || used + units > budget) {
-        overflow.push(control);
-      } else {
-        visible.push(control);
-        used += units;
+  }, [identity]);
+  const controls = useMemo(
+    () => (context?.controls || []).filter(
+      (control) => control.id !== "undo" && control.id !== "redo",
+    ),
+    [context],
+  );
+  const { visible, overflow } = useMemo(
+    () =>
+      hasMeasured
+        ? partitionSelectionControls(
+            controls,
+            measuredWidthsRef.current,
+            controlsWidth,
+          )
+        : { visible: [...controls], overflow: [] },
+    [controls, controlsWidth, hasMeasured, measurementRevision],
+  );
+  useLayoutEffect(() => {
+    const node = controlsRef.current;
+    if (!node) return;
+    let changed = false;
+    node
+      .querySelectorAll<HTMLElement>("[data-selection-control-id]")
+      .forEach((element) => {
+        const id = element.dataset.selectionControlId;
+        const width = element.getBoundingClientRect().width;
+        if (
+          id &&
+          width > 0 &&
+          Math.abs((measuredWidthsRef.current.get(id) || 0) - width) > 0.5
+        ) {
+          measuredWidthsRef.current.set(id, width);
+          changed = true;
+        }
+      });
+    if (!hasMeasured) setHasMeasured(true);
+    else if (changed) setMeasurementRevision((value) => value + 1);
+  }, [hasMeasured, identity, visible]);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMoreOpen(false);
+        moreButtonRef.current?.focus();
       }
-    });
-    return [visible, overflow];
-  }, [context, toolbarWidth]);
+    };
+    const closeOutside = (event: PointerEvent) => {
+      if (!toolbarRef.current?.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOutside);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeOutside);
+    };
+  }, [moreOpen]);
+  useEffect(() => {
+    if (!overflow.length) setMoreOpen(false);
+  }, [overflow.length]);
 
   if (!context && !leading && !trailing) return null;
-  const panelControl = (control: SelectionControl) => (
-    <Control
-      key={`${identity}:${control.id}`}
-      control={control}
-      selectionId={context?.id || ""}
-      onCommand={onCommand}
-      onOpenPanel={onOpenPanel || layout?.openDrawer}
-      accent={accent}
-      activePanel={Boolean(
-        control.kind === "panel" &&
-          layout?.hostPanelVisible &&
-          layout.activeDrawerId === (control.panelId || control.id),
-      )}
-    />
-  );
-  const morePanelId = `selection-more:${identity}`;
-  const morePanel = (
-    <div className="h-full overflow-y-auto p-3">
-      <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
-        更多属性
-      </p>
-      <div className="flex flex-wrap gap-2">{more.map(panelControl)}</div>
-    </div>
-  );
   const effectiveVariant = layout ? "floating" : variant;
   const contextLeading = layout?.contextBarLeading;
-  let previousGroup = "";
+  const renderControl = (control: SelectionControl, measure: boolean) => {
+    return (
+      <div
+        key={`${identity}:${control.id}`}
+        data-selection-control-id={measure ? control.id : undefined}
+        className="inline-flex shrink-0"
+      >
+        <Control
+          control={control}
+          selectionId={context?.id || ""}
+          onCommand={onCommand}
+          onOpenPanel={onOpenPanel || layout?.openDrawer}
+          accent={accent}
+          activePanel={Boolean(
+            control.kind === "panel" &&
+              layout?.hostPanelVisible &&
+              layout.activeDrawerId === (control.panelId || control.id),
+          )}
+        />
+      </div>
+    );
+  };
   return (
     <div
       ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
       data-selection-id={context?.id || ""}
-      className={`pointer-events-auto flex min-w-0 flex-1 flex-nowrap items-center gap-1 ${
+      className={`pointer-events-auto flex min-w-0 flex-nowrap items-center gap-1 ${
         effectiveVariant === "floating"
           ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
-          : "max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
+          : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
+      style={
+        effectiveVariant === "floating"
+          ? {
+              width: `min(${SELECTION_TOOLBAR_MAX_WIDTH}px, calc(100vw - 2rem))`,
+            }
+          : undefined
+      }
       role="toolbar"
       aria-label={context?.label || "编辑器工具栏"}
+      onBlur={(event) => {
+        if (
+          moreOpen &&
+          !event.currentTarget.contains(event.relatedTarget as Node | null)
+        ) {
+          setMoreOpen(false);
+        }
+      }}
     >
       {(contextLeading || leading) && (
         <>
@@ -502,79 +556,41 @@ export function SelectionToolbar({
       {context && (
         <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
       )}
-      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden">
-        {primary.map((control) => {
-          const divider =
-            previousGroup &&
-            control.group &&
-            control.group !== previousGroup ? (
-              <span
-                key={`${identity}:${control.id}-divider`}
-                className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]"
-              />
-            ) : null;
-          previousGroup = control.group || previousGroup;
-          return (
-            <span key={`${identity}:${control.id}`} className="contents">
-              {divider}
-              <Control
-                control={control}
-                selectionId={context?.id || ""}
-                onCommand={onCommand}
-                onOpenPanel={onOpenPanel || layout?.openDrawer}
-                accent={accent}
-                activePanel={Boolean(
-                  control.kind === "panel" &&
-                    layout?.hostPanelVisible &&
-                    layout.activeDrawerId === (control.panelId || control.id),
-                )}
-              />
-            </span>
-          );
-        })}
+      <div
+        ref={controlsRef}
+        className={`relative flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-visible ${
+          overflow.length ? "pr-10" : ""
+        }`}
+      >
+        {visible.map((control) => renderControl(control, true))}
+        {overflow.length > 0 && (
+          <div className="absolute right-0 top-0 shrink-0">
+            <button
+              ref={moreButtonRef}
+              type="button"
+              aria-expanded={moreOpen}
+              aria-haspopup="dialog"
+              onClick={() => setMoreOpen((value) => !value)}
+              className="grid h-9 w-9 place-items-center rounded-lg text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+              aria-label="更多属性"
+              title="更多属性"
+            >
+              <AdvancedEditorIcon name="more" />
+            </button>
+            {moreOpen && (
+              <div
+                role="dialog"
+                aria-label="更多属性"
+                className="absolute right-0 top-full z-[90] mt-2 flex max-h-[min(60vh,32rem)] min-w-64 w-max max-w-[min(48rem,calc(100vw-2rem))] flex-wrap justify-end gap-1 overflow-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl"
+              >
+                {overflow.map((control) => renderControl(control, false))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {more.length > 0 && (
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            aria-expanded={
-              layout ? layout.activeDrawerId === morePanelId : moreOpen
-            }
-            onClick={() => {
-              if (layout) {
-                layout.openTransientPanel(morePanelId, "更多属性", morePanel);
-              } else {
-                setMoreOpen((value) => !value);
-              }
-            }}
-            className="grid h-9 w-9 place-items-center rounded-lg text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-            aria-label="更多属性"
-            title="更多属性"
-          >
-            <AdvancedEditorIcon name="more" />
-          </button>
-          {!layout && moreOpen && (
-            <div className="absolute right-0 top-full z-[70] mt-2 flex max-h-[min(60vh,32rem)] w-[min(27rem,90vw)] flex-wrap gap-1 overflow-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl">
-              {more.map((control) => (
-                <Control
-                  key={`${identity}:${control.id}`}
-                  control={control}
-                  selectionId={context?.id || ""}
-                  onCommand={onCommand}
-                  onOpenPanel={onOpenPanel}
-                  accent={accent}
-                  activePanel={false}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       {trailing && (
-        <>
-          <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-          <div className="flex shrink-0 items-center gap-1">{trailing}</div>
-        </>
+        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2">{trailing}</div>
       )}
     </div>
   );

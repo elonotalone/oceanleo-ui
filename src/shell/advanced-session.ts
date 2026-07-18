@@ -1,5 +1,6 @@
 import type { AppSession } from "../lib/app-session";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import { savedItemVisualUrls } from "./editor-working-head";
 import {
   advancedFeatureById,
   advancedFeatureForItem,
@@ -214,13 +215,14 @@ export function advancedSavedItem(
   },
 ): LibraryItem {
   const rootId = advancedRootItemId(item);
+  const visual = savedItemVisualUrls(item, input);
   return {
     ...item,
     id: input.versionId || item.id,
     title: input.title || item.title,
     url: input.url,
-    previewUrl: input.previewUrl || input.url,
-    thumbUrl: input.thumbUrl || input.previewUrl || item.thumbUrl,
+    previewUrl: visual.previewUrl,
+    thumbUrl: visual.thumbUrl,
     meta: {
       ...item.meta,
       ...input.meta,

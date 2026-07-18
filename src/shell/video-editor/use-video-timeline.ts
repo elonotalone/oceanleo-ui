@@ -217,6 +217,7 @@ export function useVideoTimeline(
   const exportAbortRef = useRef<AbortController | null>(null);
   const revisionRef = useRef(0);
   const savingDraftRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
 
   // ------------------------------------------------------------- engine
 
@@ -246,6 +247,9 @@ export function useVideoTimeline(
   }, [doc]);
 
   useEffect(() => {
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     const projectUrl = String(
       item.meta.editor_project_url ||
         (item.meta.editor_project_schema === "oceanleo.timeline.v1"
@@ -270,9 +274,16 @@ export function useVideoTimeline(
       .then((text) => {
         if (controller.signal.aborted) return;
         const parsed: unknown = JSON.parse(text);
-        if (!isTimelineDoc(parsed)) throw new Error("时间线工程格式无效");
-        docRef.current = parsed;
-        setDocState(parsed);
+        const candidate =
+          parsed &&
+          typeof parsed === "object" &&
+          (parsed as { schema?: unknown }).schema === "oceanleo.timeline.v1" &&
+          (parsed as { version?: unknown }).version === 1
+            ? (parsed as { data?: unknown }).data
+            : parsed;
+        if (!isTimelineDoc(candidate)) throw new Error("时间线工程格式无效");
+        docRef.current = candidate;
+        setDocState(candidate);
         setSelectedClipId("");
         setPlayheadMs(0);
         setDirty(false);
@@ -757,19 +768,19 @@ export function useVideoTimeline(
         title,
         siteId || "oceanleo",
         `video-timeline:${item.id}:${savingRevision}`,
+        workingHeadUrlRef.current,
         tt,
       );
       if (!result.url) {
         setError(result.error || tt("草稿上传失败"));
         return null;
       }
+      workingHeadUrlRef.current = result.url;
       setDraftSavedUrl(result.url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
-        setNotice(tt("草稿已保存到我的库"));
-      } else {
-        setNotice(tt("已保存一个草稿版本；之后的修改仍未保存"));
       }
+      setNotice("");
       return result;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("草稿保存失败"));

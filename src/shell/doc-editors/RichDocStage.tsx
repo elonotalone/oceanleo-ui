@@ -36,13 +36,14 @@ export function RichDocStage({
             chars: editor.chars,
           })}
         </span>
-        <span className="min-w-[120px] flex-1 truncate text-[10px] text-[var(--muted,#78716c)]">
-          {editor.error
-            ? tt(editor.error)
-            : editor.savedUrl
-              ? tt("已保存到我的库")
-              : tt("编辑不会覆盖原素材")}
-        </span>
+        {editor.error && (
+          <span
+            role="alert"
+            className="min-w-[120px] flex-1 truncate text-[10px] text-red-600"
+          >
+            {tt(editor.error)}
+          </span>
+        )}
       </div>
     </div>
   );

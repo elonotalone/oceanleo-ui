@@ -26,7 +26,7 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveFileToLibrary,
+  saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "./doc-io";
 import { tiptapJsonToDocxBlob } from "./docx-export";
@@ -92,6 +92,7 @@ export function useRichDocEditor(
   const [counts, setCounts] = useState({ words: 0, chars: 0 });
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
 
   const extensions = useMemo(
     () => [
@@ -130,6 +131,9 @@ export function useRichDocEditor(
     setSavedUrl("");
     setDirty(false);
     revisionRef.current = 0;
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     setLoaded(null);
     const projectUrl = String(item.meta.editor_project_url || "").trim();
     void (projectUrl
@@ -249,19 +253,15 @@ export function useRichDocEditor(
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const blob = await tiptapJsonToDocxBlob(baseTitle, json);
-      const file = new File([blob], `${title}.docx`, {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      });
-      const result = await saveFileToLibrary({
+      const result = await saveProjectWorkingHead({
         item,
         siteId,
         fallbackSite: "word",
-        file,
         title,
         mediaType: "doc",
         kind: "document",
         idempotencyKey: `richdoc:${item.id}:${savingRevision}`,
+        workingHeadUrl: workingHeadUrlRef.current,
         meta: {
           editor: "richdoc-v2",
           html: html.slice(0, 10_000),
@@ -275,6 +275,7 @@ export function useRichDocEditor(
         setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
         return null;
       }
+      workingHeadUrlRef.current = result.url;
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
       return {

@@ -123,16 +123,17 @@ export function RichDocRoute({
             editor.editor?.chain().focus().redo().run();
           },
         },
+        directDownload: {
+          id: "richdoc-export-docx",
+          label: "直接下载 DOCX",
+          icon: "download",
+          onTrigger: editor.exportDoc,
+        },
         actions: [
           {
             id: "richdoc-export-markdown",
             label: "导出 Markdown",
             onTrigger: editor.exportMarkdown,
-          },
-          {
-            id: "richdoc-export-docx",
-            label: "导出 DOCX",
-            onTrigger: editor.exportDoc,
           },
         ],
         upload: {
@@ -142,15 +143,7 @@ export function RichDocRoute({
           onFiles: importLocalFiles,
         },
         stage: <RichDocStage editor={editor} accent={accent} />,
-        status:
-          editor.error ||
-          (editor.dirty
-            ? "有未保存的修改"
-            : editor.savedUrl
-              ? "已保存到我的库"
-              : editor.loading
-                ? "正在载入文档"
-                : ""),
+        status: editor.error || (editor.loading ? "正在载入文档" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

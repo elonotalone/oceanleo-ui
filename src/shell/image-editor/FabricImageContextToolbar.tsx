@@ -37,6 +37,73 @@ export function FabricImageContextToolbar({
         ].includes(selected.kind),
     );
     const controls: SelectionControl[] = [];
+    const selectedIsImage =
+      selected.kind === "image" || selected.kind === "background";
+    if (selectedIsImage) {
+      controls.push(
+        {
+          id: "replace-panel",
+          kind: "panel",
+          label: tt("替换"),
+          icon: "image",
+          group: "image",
+          panelId: "materials",
+          panelAction: "replace",
+        },
+        {
+          id: editor.cropping ? "crop-apply" : "crop-start",
+          kind: "action",
+          label: editor.cropping ? tt("应用裁剪") : tt("裁剪"),
+          icon: "crop",
+          group: "image",
+        },
+        {
+          id: "image-fit",
+          kind: "select",
+          label: tt("适配"),
+          icon: "image",
+          group: "image",
+          value: selected.imageFit || "fill",
+          options: [
+            { value: "contain", label: tt("完整显示") },
+            { value: "cover", label: tt("填满裁剪") },
+            { value: "fill", label: tt("拉伸填满") },
+          ],
+        },
+        {
+          id: "filter-panel",
+          kind: "panel",
+          label: tt("滤镜"),
+          icon: "filter",
+          group: "image",
+          panelId: "image-filters",
+        },
+        {
+          id: "crop-ratio",
+          kind: "select",
+          label: tt("裁剪比例"),
+          value: editor.cropRatio,
+          options: [
+            { value: "free", label: tt("自由") },
+            { value: "1:1", label: "1:1" },
+            { value: "4:3", label: "4:3" },
+            { value: "16:9", label: "16:9" },
+            { value: "9:16", label: "9:16" },
+          ],
+          placement: "more",
+        },
+        ...(editor.cropping
+          ? [
+              {
+                id: "crop-cancel",
+                kind: "action" as const,
+                label: tt("取消"),
+                group: "image",
+              },
+            ]
+          : []),
+      );
+    }
     if (selected?.text) {
       controls.push(
         {
@@ -198,7 +265,7 @@ export function FabricImageContextToolbar({
         },
         {
           id: "table-border-width",
-          kind: "range",
+          kind: selectedIsImage ? "number" : "range",
           label: tt("边框宽度"),
           value: selected.table.style.borderWidth,
           min: 0,
@@ -241,7 +308,7 @@ export function FabricImageContextToolbar({
                 kind: "color" as const,
                 label: tt("描边"),
                 value: selected.stroke || "#000000",
-                placement: "more" as const,
+                placement: selectedIsImage ? undefined : ("more" as const),
               },
             ]
           : []),
@@ -269,7 +336,7 @@ export function FabricImageContextToolbar({
                 min: 0,
                 max: 300,
                 step: 1,
-                placement: "more" as const,
+                placement: selectedIsImage ? undefined : ("more" as const),
               },
             ]
           : []),
@@ -279,7 +346,7 @@ export function FabricImageContextToolbar({
           label: tt("投影"),
           icon: "effects",
           value: selected.shadow.enabled,
-          placement: "more",
+          placement: selectedIsImage ? undefined : "more",
         },
       );
     } else {
@@ -302,71 +369,22 @@ export function FabricImageContextToolbar({
         },
       );
     }
-    if (selected?.kind === "image") {
-      controls.push(
-        {
-          id: "replace-panel",
-          kind: "panel",
-          label: tt("替换"),
-          icon: "image",
-          group: "image",
-          panelId: "materials",
-          panelAction: "replace",
-        },
-        {
-          id: "filter-panel",
-          kind: "panel",
-          label: tt("滤镜"),
-          icon: "filter",
-          group: "image",
-          panelId: "image-filters",
-        },
-      );
-    }
-    if (
-      !selected ||
-      selected.kind === "image" ||
-      selected.kind === "background"
-    ) {
-      controls.push(
-        {
-          id: editor.cropping ? "crop-apply" : "crop-start",
-          kind: "action",
-          label: editor.cropping ? tt("应用裁剪") : tt("裁剪"),
-          icon: "crop",
-          group: "transform",
-        },
-        ...(editor.cropping
-          ? [
-              {
-                id: "crop-cancel",
-                kind: "action" as const,
-                label: tt("取消"),
-              },
-            ]
-          : []),
-        {
-          id: "crop-ratio",
-          kind: "select",
-          label: tt("比例"),
-          value: editor.cropRatio,
-          options: [
-            { value: "free", label: tt("自由") },
-            { value: "1:1", label: "1:1" },
-            { value: "4:3", label: "4:3" },
-            { value: "16:9", label: "16:9" },
-            { value: "9:16", label: "9:16" },
-          ],
-          placement: "more",
-        },
-      );
-    }
     if (selected || editor.transformInfo) {
       controls.push(
         { id: "rotate-left", kind: "action", label: "↶ 90°", icon: "rotate", placement: "more" },
         { id: "rotate-right", kind: "action", label: "↷ 90°", icon: "rotate", placement: "more" },
-        { id: "flip-x", kind: "action", label: tt("水平翻转"), icon: "flip-horizontal", placement: "more" },
-        { id: "flip-y", kind: "action", label: tt("垂直翻转"), icon: "flip-vertical", placement: "more" },
+        { id: "flip-x", kind: "action", label: tt("水平翻转"), icon: "flip-horizontal", placement: selectedIsImage ? undefined : "more" },
+        { id: "flip-y", kind: "action", label: tt("垂直翻转"), icon: "flip-vertical", placement: selectedIsImage ? undefined : "more" },
+        {
+          id: "angle",
+          kind: "number",
+          label: tt("旋转"),
+          value: selected.angle,
+          min: 0,
+          max: 359,
+          step: 1,
+          placement: "more",
+        },
       );
     }
     if (filters) {
@@ -407,8 +425,64 @@ export function FabricImageContextToolbar({
         },
       );
     }
-    if (selected && !selected.isBackground) {
+    if (selected) {
       controls.push(
+        {
+          id: "position-x",
+          kind: "number",
+          label: "X",
+          value: selected.x,
+          step: 1,
+          placement: "more",
+        },
+        {
+          id: "position-y",
+          kind: "number",
+          label: "Y",
+          value: selected.y,
+          step: 1,
+          placement: "more",
+        },
+        {
+          id: "object-width",
+          kind: "number",
+          label: tt("宽"),
+          value: selected.width,
+          min: 1,
+          step: 1,
+          placement: "more",
+        },
+        {
+          id: "object-height",
+          kind: "number",
+          label: tt("高"),
+          value: selected.height,
+          min: 1,
+          step: 1,
+          placement: "more",
+        },
+        {
+          id: "lock",
+          kind: "toggle",
+          label: tt("锁定"),
+          icon: "lock",
+          value: selected.locked,
+          placement: "more",
+        },
+        {
+          id: "layer-up",
+          kind: "action",
+          label: tt("上移一层"),
+          icon: "layers",
+          placement: "more",
+        },
+        {
+          id: "layer-down",
+          kind: "action",
+          label: tt("下移一层"),
+          icon: "layers",
+          placement: "more",
+        },
         {
           id: "duplicate",
           kind: "action",

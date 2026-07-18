@@ -447,7 +447,6 @@ export function useModel3DWorkbench(
       animationName,
       animationSpeed,
     },
-    captureBlob,
     revisionRef,
     sourceGenerationRef,
     aliveRef,

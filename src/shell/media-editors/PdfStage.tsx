@@ -110,9 +110,7 @@ export function PdfStage({
             <span className="text-emerald-600">{editor.notice}</span>
           ) : (
             <span className="text-[var(--muted,#78716c)]">
-              {editor.dirty
-                ? tt("有未保存的 PDF 修改")
-                : tt("方向键翻页 · Ctrl + / − 缩放")}
+              {tt("方向键翻页 · Ctrl + / − 缩放")}
             </span>
           )}
         </span>

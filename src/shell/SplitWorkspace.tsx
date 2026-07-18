@@ -59,11 +59,15 @@ export function useLeftPaneSlot(): LeftPaneSlot | null {
 // PaneHeader 标题位**（同左栏「操作台|agent」开关的做法），自身不再画边框 → 内容直接
 // 贴右栏框、无中间嵌套层。
 // ----------------------------------------------------------------------------
-interface RightPaneSlot {
+export interface RightPaneSlot {
   /** 用一个节点替换右栏标题（「结果」文字）。传 null 恢复默认。 */
   setRightLabel: (node: ReactNode | null) => void;
+  /** 仅当当前标题仍由该节点持有时清理，避免切换编辑器时旧 cleanup 覆盖新标题。 */
+  clearRightLabel: (node: ReactNode) => void;
   /** 编辑器接管右侧主画布时隐藏库标题栏，避免库 chrome 再包一层编辑器。 */
   setRightFrameless: (frameless: boolean) => void;
+  /** 高级编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
+  setRightEditorHeader: (active: boolean) => void;
 }
 const RightPaneCtx = createContext<RightPaneSlot | null>(null);
 /** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
@@ -267,10 +271,14 @@ export function SplitWorkspace({
   // 右栏标题覆盖（ResultCanvas 通过 context 装入标签条 → 去框中框）。
   const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
   const [rightFrameless, setRightFrameless] = useState(false);
+  const [rightEditorHeader, setRightEditorHeader] = useState(false);
   const rightSlot = useMemo<RightPaneSlot>(
     () => ({
       setRightLabel: (node) => setRightLabelOverride(node),
+      clearRightLabel: (node) =>
+        setRightLabelOverride((current) => (current === node ? null : current)),
       setRightFrameless: (frameless) => setRightFrameless(frameless),
+      setRightEditorHeader: (active) => setRightEditorHeader(active),
     }),
     [],
   );
@@ -613,17 +621,19 @@ export function SplitWorkspace({
     >
       {!rightFrameless && (library ? (
         <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              clearDetail();
-              setLibraryOpen(false);
-            }}
-            aria-label={tt("关闭")}
-            className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-          >
-            ✕
-          </button>
+          {!rightEditorHeader && (
+            <button
+              type="button"
+              onClick={() => {
+                clearDetail();
+                setLibraryOpen(false);
+              }}
+              aria-label={tt("关闭")}
+              className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            >
+              ✕
+            </button>
+          )}
           <div className="min-w-0 flex-1">
             {rightLabelOverride != null ? (
               rightLabelOverride

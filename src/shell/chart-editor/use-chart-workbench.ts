@@ -8,12 +8,11 @@ import {
   useState,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import type { MediaType } from "../../lib/database";
 import type {
   EditorManifestV1,
   LibraryItem,
 } from "../library-data";
-import { saveFileToLibrary } from "../doc-editors/doc-io";
+import { saveProjectWorkingHead } from "../doc-editors/doc-io";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -155,6 +154,7 @@ export function useChartWorkbench(
   const revisionRef = useRef(0);
   const documentRef = useRef<ChartDocumentV1>(EMPTY_DOCUMENT);
   const saveBusyRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const [document, setDocument] = useState<ChartDocumentV1>(EMPTY_DOCUMENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -178,6 +178,9 @@ export function useChartWorkbench(
     setSaved(null);
     setDirty(false);
     revisionRef.current = 0;
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     void loadChartDocument(item, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) {
@@ -265,17 +268,15 @@ export function useChartWorkbench(
       const json = chartDocumentToJson(snapshot);
       const savingRevision = revisionRef.current;
       const title = `${snapshot.option.title.text || item.title || tt("图表")}-${tt("编辑版")}`;
-      const result = await saveFileToLibrary({
+      const result = await saveProjectWorkingHead({
         item,
         siteId,
         fallbackSite: "chart",
-        file: new File([json], `${title}.chart.json`, {
-          type: "application/json",
-        }),
         title,
-        mediaType: "other" as MediaType,
+        mediaType: "other",
         kind: "chart",
         idempotencyKey: `chart:${item.id}:${savingRevision}`,
+        workingHeadUrl: workingHeadUrlRef.current,
         thumbUrl: item.thumbUrl || item.previewUrl,
         meta: {
           editor: chartEditorManifest(),
@@ -284,11 +285,15 @@ export function useChartWorkbench(
           subtype: String(item.meta.subtype || item.meta.category || ""),
           chart_document: snapshot,
         },
-        deliveryProjectSchema: "oceanleo.chart.v1",
+        project: {
+          schema: "oceanleo.chart.v1",
+          data: snapshot,
+        },
       });
       if (!result.ok || !result.url) {
         throw new Error(result.error || tt("图表保存到我的库失败"));
       }
+      workingHeadUrlRef.current = result.url;
       const next = {
         url: result.url,
         json,
@@ -301,10 +306,8 @@ export function useChartWorkbench(
         setSaved(next);
         if (revisionRef.current === savingRevision) {
           setDirty(false);
-          setNotice(tt("图表新版本已保存到我的库"));
-        } else {
-          setNotice(tt("已保存一个版本；之后的修改仍未保存"));
         }
+        setNotice("");
       }
       return next;
     } catch (caught) {

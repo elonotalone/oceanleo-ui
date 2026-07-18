@@ -501,10 +501,8 @@ export function usePdfWorkbench(
       setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
-        setNotice(tt("已保存到我的库"));
-      } else {
-        setNotice(tt("已保存一个版本；之后的修改仍未保存"));
       }
+      setNotice("");
       onSaved?.(saved.url);
       return {
         url: saved.url,

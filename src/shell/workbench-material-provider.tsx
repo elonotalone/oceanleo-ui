@@ -7,41 +7,36 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 import {
-  cloneMaterialForWorkbench,
+  beginWorkbenchMaterialDrag,
+  canPerformWorkbenchMaterial,
+  endWorkbenchMaterialDrag,
+  getWorkbenchMaterialRuntimeSnapshot,
   getWorkbenchMaterialSnapshot,
   materialScopeKey,
+  performWorkbenchMaterial,
+  registerWorkbenchMaterialAdapter,
+  subscribeWorkbenchMaterialRuntime,
   subscribeWorkbenchMaterials,
+  type WorkbenchMaterialAction,
+  type WorkbenchMaterialAdapter,
+  type WorkbenchMaterialPlacement,
 } from "./workbench-material-registry";
 
-export type WorkbenchMaterialAction = "insert" | "replace" | "apply" | "merge";
+export type {
+  WorkbenchMaterialAction,
+  WorkbenchMaterialAdapter,
+  WorkbenchMaterialPlacement,
+} from "./workbench-material-registry";
 export const WORKBENCH_MATERIAL_MIME =
   "application/x-oceanleo-material+json" as const;
 
-export interface WorkbenchMaterialPlacement {
-  source: "click" | "drop";
-  clientX?: number;
-  clientY?: number;
-}
-
-export interface WorkbenchMaterialAdapter {
-  id: string;
-  actions: readonly WorkbenchMaterialAction[];
-  accepts: (item: LibraryItem, action: WorkbenchMaterialAction) => boolean;
-  mutate: (
-    action: WorkbenchMaterialAction,
-    detachedItem: LibraryItem,
-    placement?: WorkbenchMaterialPlacement,
-  ) => Promise<void> | void;
-}
-
-interface WorkbenchMaterialContextValue {
+export interface WorkbenchMaterialContextValue {
   siteId: string;
   appId: string;
   scope: string;
@@ -65,19 +60,11 @@ interface WorkbenchMaterialContextValue {
 const WorkbenchMaterialContext =
   createContext<WorkbenchMaterialContextValue | null>(null);
 
-export function WorkbenchMaterialProvider({
-  siteId,
-  appId,
-  children,
-}: {
-  siteId: string;
-  appId: string;
-  children: ReactNode;
-}) {
+export function useWorkbenchMaterialScope(
+  siteId: string,
+  appId: string,
+): WorkbenchMaterialContextValue {
   const scope = materialScopeKey(siteId, appId);
-  const adapterRef = useRef<WorkbenchMaterialAdapter | null>(null);
-  const [adapterRevision, setAdapterRevision] = useState(0);
-  const [draggedItem, setDraggedItem] = useState<LibraryItem | null>(null);
   const entries = useSyncExternalStore(
     useCallback(
       (listener) => subscribeWorkbenchMaterials(scope, listener),
@@ -86,34 +73,31 @@ export function WorkbenchMaterialProvider({
     useCallback(() => getWorkbenchMaterialSnapshot(scope), [scope]),
     () => getWorkbenchMaterialSnapshot(scope),
   );
+  const runtime = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribeWorkbenchMaterialRuntime(scope, listener),
+      [scope],
+    ),
+    useCallback(() => getWorkbenchMaterialRuntimeSnapshot(scope), [scope]),
+    () => getWorkbenchMaterialRuntimeSnapshot(scope),
+  );
   const registerAdapter = useCallback((adapter: WorkbenchMaterialAdapter) => {
-    adapterRef.current = adapter;
-    setAdapterRevision((value) => value + 1);
-    return () => {
-      if (adapterRef.current === adapter) {
-        adapterRef.current = null;
-        setAdapterRevision((value) => value + 1);
-      }
-    };
-  }, []);
+    return registerWorkbenchMaterialAdapter(scope, adapter);
+  }, [scope]);
   const perform = useCallback(
     async (
       action: WorkbenchMaterialAction,
       item: LibraryItem,
       placement?: WorkbenchMaterialPlacement,
     ) => {
-      const adapter = adapterRef.current;
-      if (
-        !adapter ||
-        !adapter.actions.includes(action) ||
-        !adapter.accepts(item, action)
-      ) {
+      if (!canPerformWorkbenchMaterial(scope, action, item)) {
         return { ok: false, error: "当前编辑器不支持这个素材动作。" };
       }
       try {
-        await adapter.mutate(
+        await performWorkbenchMaterial(
+          scope,
           action,
-          cloneMaterialForWorkbench(item),
+          item,
           placement,
         );
         return { ok: true };
@@ -124,53 +108,59 @@ export function WorkbenchMaterialProvider({
         };
       }
     },
-    [],
+    [scope],
   );
   const beginMaterialDrag = useCallback((item: LibraryItem) => {
-    setDraggedItem(cloneMaterialForWorkbench(item));
-  }, []);
+    beginWorkbenchMaterialDrag(scope, item);
+  }, [scope]);
   const endMaterialDrag = useCallback(() => {
-    setDraggedItem(null);
-  }, []);
+    endWorkbenchMaterialDrag(scope);
+  }, [scope]);
   const canPerform = useCallback(
     (action: WorkbenchMaterialAction, item: LibraryItem) => {
-      const adapter = adapterRef.current;
-      return Boolean(
-        adapter &&
-          adapter.actions.includes(action) &&
-          adapter.accepts(item, action),
-      );
+      return canPerformWorkbenchMaterial(scope, action, item);
     },
-    [],
+    [scope],
   );
-  const value = useMemo<WorkbenchMaterialContextValue>(
+  return useMemo<WorkbenchMaterialContextValue>(
     () => ({
       siteId,
       appId,
       scope,
       entries,
-      actions: adapterRef.current?.actions || [],
+      actions: runtime.actions,
       registerAdapter,
       canPerform,
       perform,
-      draggedItem,
+      draggedItem: runtime.draggedItem,
       beginMaterialDrag,
       endMaterialDrag,
     }),
     [
-      adapterRevision,
       appId,
       canPerform,
       beginMaterialDrag,
-      draggedItem,
       endMaterialDrag,
       entries,
       perform,
       registerAdapter,
+      runtime,
       scope,
       siteId,
     ],
   );
+}
+
+export function WorkbenchMaterialProvider({
+  siteId,
+  appId,
+  children,
+}: {
+  siteId: string;
+  appId: string;
+  children: ReactNode;
+}) {
+  const value = useWorkbenchMaterialScope(siteId, appId);
   return (
     <WorkbenchMaterialContext.Provider value={value}>
       {children}

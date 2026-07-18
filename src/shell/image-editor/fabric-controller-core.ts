@@ -23,6 +23,7 @@ import {
   type EditorObject,
   type FabricNS,
 } from "./editor-objects";
+import { imageFitScales } from "./fabric-geometry";
 import {
   captureSnapshot,
   constrainCropToDoc,
@@ -361,19 +362,21 @@ export class FabricEditorCore {
     );
     const background = image as EditorObject;
     background.oceanleoId = makeId();
-    background.oceanleoRole = "background";
+    background.oceanleoRole = undefined;
     background.oceanleoKind = "image";
+    background.oceanleoImageFit = "fill";
+    const scales = imageFitScales(image, this.doc, "fill");
     background.set({
       left: this.doc.width / 2,
       top: this.doc.height / 2,
       originX: "center",
       originY: "center",
-      scaleX: this.doc.width / Math.max(1, image.width),
-      scaleY: this.doc.height / Math.max(1, image.height),
+      ...scales,
     });
-    setLocked(background, true);
+    setLocked(background, false);
     this.styleObject(background);
     this.canvas.add(docBackground, background);
+    this.canvas.setActiveObject(background);
     ensureLayerOrder(this.canvas);
     this.resetHistory();
     this.zoom = fitViewport(this.canvas, this.doc, this.container);
@@ -386,20 +389,21 @@ export class FabricEditorCore {
     removals.forEach((object) => object.dispose());
     const background = image as EditorObject;
     background.oceanleoId = makeId();
-    background.oceanleoRole = "background";
+    background.oceanleoRole = undefined;
     background.oceanleoKind = "image";
+    background.oceanleoImageFit = "fill";
+    const scales = imageFitScales(image, this.doc, "fill");
     background.set({
       left: this.doc.width / 2,
       top: this.doc.height / 2,
       originX: "center",
       originY: "center",
-      scaleX: this.doc.width / Math.max(1, image.width),
-      scaleY: this.doc.height / Math.max(1, image.height),
+      ...scales,
     });
-    setLocked(background, true);
+    setLocked(background, false);
     this.styleObject(background);
     this.canvas.add(background);
-    this.canvas.discardActiveObject();
+    this.canvas.setActiveObject(background);
     this.commit();
   }
 

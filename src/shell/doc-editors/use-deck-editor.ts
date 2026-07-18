@@ -28,7 +28,7 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveFileToLibrary,
+  saveProjectWorkingHead,
   urlExtension,
   type PersistedEditorVersion,
 } from "./doc-io";
@@ -484,6 +484,7 @@ export function useDeckEditor(
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -495,6 +496,9 @@ export function useDeckEditor(
     setError("");
     setNotice("");
     revisionRef.current = 0;
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     void loadDeck(item, previewContent, abort.signal)
       .then((next) => {
         if (abort.signal.aborted) return;
@@ -1004,19 +1008,15 @@ export function useDeckEditor(
     setError("");
     try {
       const title = `${snapshot.title || item.title || tt("演示文稿")}-${tt("编辑版")}`;
-      const blob = await buildDeckPptxBlob(snapshot);
-      const file = new File([blob], `${title}.pptx`, {
-        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      });
-      const result = await saveFileToLibrary({
+      const result = await saveProjectWorkingHead({
         item,
         siteId,
         fallbackSite: "ppt",
-        file,
         title,
         mediaType: "ppt",
         kind: "deck",
         idempotencyKey: `deck:${item.id}:${savingRevision}`,
+        workingHeadUrl: workingHeadUrlRef.current,
         meta: {
           editor: "deck",
           schema: DECK_PROJECT_SCHEMA,
@@ -1030,14 +1030,13 @@ export function useDeckEditor(
         },
       });
       if (!result.ok) throw new Error(result.error || tt("保存到我的库失败"));
+      workingHeadUrlRef.current = result.url;
       if (mountedRef.current) {
         setSavedUrl(result.url);
         if (revisionRef.current === savingRevision) {
           setDirty(false);
-          setNotice(tt("PPTX 新版本已保存到我的库"));
-        } else {
-          setNotice(tt("已保存一个 PPTX 版本；之后的修改仍未保存"));
         }
+        setNotice("");
       }
       return mountedRef.current
         ? {

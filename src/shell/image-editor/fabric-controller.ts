@@ -6,12 +6,15 @@ import {
   type CropRatio,
   type CanvasClientPoint,
   type FilterSettings,
+  type ImageFitMode,
+  type SelectedSnapshot,
   type ShadowSettings,
   type ShapeKind,
   type TableSettings,
   type TextPreset,
   type TextSettings,
 } from "./types";
+import { imageFitScales } from "./fabric-geometry";
 import {
   applyFilterSettings,
   applyImageRadius,
@@ -270,7 +273,7 @@ export class FabricEditorController extends FabricEditorCore {
     if (
       !active ||
       !(active instanceof this.fabric.FabricImage) ||
-      roleOf(active) === "background"
+      !objectIsEditable(active)
     ) {
       image.dispose();
       return false;
@@ -280,8 +283,9 @@ export class FabricEditorController extends FabricEditorCore {
     const replacement = image as FabricImage & EditorObjectProps;
     replacement.oceanleoId = current.oceanleoId || makeId();
     replacement.oceanleoKind = "image";
-    replacement.oceanleoRole = undefined;
+    replacement.oceanleoRole = current.oceanleoRole;
     replacement.oceanleoLocked = false;
+    replacement.oceanleoImageFit = current.oceanleoImageFit;
     replacement.set({
       left: current.left,
       top: current.top,
@@ -335,10 +339,13 @@ export class FabricEditorController extends FabricEditorCore {
     const objects = this.canvas.getObjects();
     const index = objects.indexOf(object);
     const backgroundIndex = objects.findIndex(
-      (entry) => roleOf(entry) === "background",
+      (entry) => {
+        const role = roleOf(entry);
+        return role === "docbg" || role === "background";
+      },
     );
     const cropIndex = objects.findIndex((entry) => roleOf(entry) === "crop");
-    const minimum = Math.max(1, backgroundIndex + 1);
+    const minimum = backgroundIndex >= 0 ? backgroundIndex + 1 : 0;
     const maximum = (cropIndex >= 0 ? cropIndex : objects.length) - 1;
     const next =
       direction === "top"
@@ -381,7 +388,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   async duplicateLayer(id: string): Promise<void> {
     const source = findById(this.canvas, id);
-    if (!source || roleOf(source) === "background") return;
+    if (!source) return;
     const clone = (await source.clone()) as EditorObject;
     if (this.destroyed) {
       clone.dispose();
@@ -473,6 +480,47 @@ export class FabricEditorController extends FabricEditorCore {
       if (object instanceof this.fabric.FabricImage) {
         applyImageRadius(this.fabric, object, Math.max(0, px));
       }
+    });
+  }
+
+  setSelectedGeometry(
+    patch: Partial<Pick<SelectedSnapshot, "x" | "y" | "width" | "height">>,
+  ): void {
+    this.mutateSelected((object) => {
+      centerOrigin(object);
+      if (typeof patch.x === "number" && Number.isFinite(patch.x)) {
+        object.set("left", patch.x);
+      }
+      if (typeof patch.y === "number" && Number.isFinite(patch.y)) {
+        object.set("top", patch.y);
+      }
+      if (typeof patch.width === "number" && Number.isFinite(patch.width)) {
+        object.set(
+          "scaleX",
+          Math.max(1, patch.width) / Math.max(1, object.width),
+        );
+      }
+      if (typeof patch.height === "number" && Number.isFinite(patch.height)) {
+        object.set(
+          "scaleY",
+          Math.max(1, patch.height) / Math.max(1, object.height),
+        );
+      }
+    });
+  }
+
+  setSelectedImageFit(mode: ImageFitMode): void {
+    this.mutateSelected((object) => {
+      if (!(object instanceof this.fabric.FabricImage)) return;
+      const scales = imageFitScales(object, this.doc, mode);
+      (object as FabricImage & EditorObjectProps).oceanleoImageFit = mode;
+      object.set({
+        left: this.doc.width / 2,
+        top: this.doc.height / 2,
+        originX: "center",
+        originY: "center",
+        ...scales,
+      });
     });
   }
 

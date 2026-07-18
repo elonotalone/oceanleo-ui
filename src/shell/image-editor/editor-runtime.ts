@@ -17,6 +17,7 @@ import {
   roleOf,
   setLocked,
 } from "./editor-objects";
+import { imageFitScales } from "./fabric-geometry";
 import type { DocSize } from "./types";
 
 export interface EditorSnapshot {
@@ -94,17 +95,18 @@ export function prepareBackgroundImage(
 ): EditorObject {
   const target = image as EditorObject;
   target.oceanleoId = makeId();
-  target.oceanleoRole = "background";
+  target.oceanleoRole = undefined;
   target.oceanleoKind = "image";
+  target.oceanleoImageFit = "fill";
+  const scales = imageFitScales(image, doc, "fill");
   target.set({
     left: doc.width / 2,
     top: doc.height / 2,
     originX: "center",
     originY: "center",
-    scaleX: doc.width / Math.max(1, image.width),
-    scaleY: doc.height / Math.max(1, image.height),
+    ...scales,
   });
-  setLocked(target, true);
+  setLocked(target, false);
   target.setCoords();
   return target;
 }
@@ -257,6 +259,15 @@ export function ensureLayerOrder(canvas: Canvas): void {
 export function restoreLockFlags(canvas: Canvas): void {
   canvas.getObjects().forEach((object) => {
     const target = object as EditorObject;
+    if (
+      target.oceanleoRole === "background" &&
+      target.oceanleoKind === "image"
+    ) {
+      target.oceanleoRole = undefined;
+      target.oceanleoImageFit ||= "fill";
+      setLocked(target, false);
+      return;
+    }
     if (target.oceanleoLocked != null) {
       setLocked(target, target.oceanleoLocked);
     }

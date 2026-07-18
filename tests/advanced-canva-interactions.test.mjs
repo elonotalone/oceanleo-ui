@@ -37,6 +37,7 @@ test("large Canva workbench components stay split below the frontend limit", () 
     "../src/shell/doc-editors/DeckControls.tsx",
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/SelectionToolbar.tsx",
   ]) {
     const lines = source(path).split("\n").length;
     assert.ok(lines < 600, `${path} has ${lines} lines`);
@@ -99,15 +100,20 @@ test("advanced editors autosave projects and reserve header actions for delivery
   );
   assert.match(header, /正在自动保存/);
   assert.match(header, /CloudAutoSaveIcon/);
-  assert.match(header, /tt\("已保存"\)/);
+  assert.match(header, /"已保存"/);
   assert.doesNotMatch(header, /已自动保存/);
   assert.match(header, /保存遇到问题/);
+  assert.doesNotMatch(
+    header,
+    /<CloudAutoSaveIcon[\s\S]{0,200}\{autoSaveState ===/,
+  );
   assert.match(autosave, /AdvancedPersistenceController/);
   assert.match(autosave, /controllerRef\.current\?\.observe/);
   assert.match(autosave, /controllerRef\.current\?\.flushLatest/);
   assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
   assert.match(imagePersistence, /persistImageProject/);
-  assert.match(imagePersistence, /fabric_document_url/);
+  assert.match(imagePersistence, /saveProjectWorkingHead/);
+  assert.doesNotMatch(imagePersistence, /previewUpload|new File\(\[blob\]/);
   assert.match(imageHook, /uploadFile\(file/);
   assert.doesNotMatch(imageHook, /URL\.createObjectURL\(file\)/);
 

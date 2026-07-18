@@ -21,6 +21,7 @@ import {
   type DocSize,
   type ExportFormat,
   type FilterSettings,
+  type ImageFitMode,
   type LayerKind,
   type SelectedSnapshot,
   type ShadowSettings,
@@ -41,6 +42,7 @@ export interface EditorObjectProps {
   oceanleoLocked?: boolean;
   oceanleoRadius?: number;
   oceanleoFilters?: FilterSettings;
+  oceanleoImageFit?: ImageFitMode;
   oceanleoTableRows?: number;
   oceanleoTableColumns?: number;
   oceanleoTableRow?: number;
@@ -59,6 +61,7 @@ export const SNAPSHOT_PROPS = [
   "oceanleoLocked",
   "oceanleoRadius",
   "oceanleoFilters",
+  "oceanleoImageFit",
   "oceanleoTableRows",
   "oceanleoTableColumns",
   "oceanleoTableRow",
@@ -369,6 +372,12 @@ export function buildSelectedSnapshot(
     angle: normalizeAngle(obj.angle ?? 0),
     flipX: !!obj.flipX,
     flipY: !!obj.flipY,
+    x: Math.round(obj.getCenterPoint().x),
+    y: Math.round(obj.getCenterPoint().y),
+    width: Math.round(obj.getScaledWidth()),
+    height: Math.round(obj.getScaledHeight()),
+    locked: target.oceanleoLocked === true,
+    imageFit: isImage ? target.oceanleoImageFit || null : null,
     fill,
     stroke,
     strokeWidth,

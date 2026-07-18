@@ -111,15 +111,13 @@ export function PdfRoute({
           setValue: editor.setZoom,
           fit: () => editor.setZoom(100),
         },
-        actions: [
-          {
-            id: "pdf-download",
-            label: "下载 PDF",
-            icon: "download",
-            disabled: editor.loading || editor.processing,
-            onTrigger: editor.download,
-          },
-        ],
+        directDownload: {
+          id: "pdf-download",
+          label: "直接下载 PDF",
+          icon: "download",
+          disabled: editor.loading || editor.processing,
+          onTrigger: editor.download,
+        },
         upload: {
           accept: ".pdf,application/pdf",
           multiple: true,

@@ -70,6 +70,13 @@ export type HostToEditorMessage =
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
+      type: "export-request";
+      instanceId: string;
+      exportId: string;
+      format: "default";
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
       type: "set-host-layout";
       instanceId: string;
       /** The App owns the only visible semantic side panel. */
@@ -140,6 +147,16 @@ export type EditorToHostMessage =
       instanceId: string;
       commandId: string;
       ok: boolean;
+      message?: string;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "export-result";
+      instanceId: string;
+      exportId: string;
+      ok: boolean;
+      /** Child may download itself or return a trusted deliverable URL. */
+      url?: string;
       message?: string;
     }
   | { protocol: typeof EDITOR_PROTOCOL; type: "error"; instanceId: string; message: string }
@@ -252,6 +269,20 @@ export function asEditorToHostMessage(
     }
     return record as unknown as EditorToHostMessage;
   }
+  if (type === "export-result") {
+    if (
+      typeof record.exportId !== "string" ||
+      !record.exportId ||
+      record.exportId.length > 128 ||
+      typeof record.ok !== "boolean" ||
+      !validAssetUrl(record.url) ||
+      (record.message !== undefined &&
+        (typeof record.message !== "string" || record.message.length > 500))
+    ) {
+      return null;
+    }
+    return record as unknown as EditorToHostMessage;
+  }
   if (
     type === "dirty" &&
     ((record.dirty !== undefined && typeof record.dirty !== "boolean") ||
@@ -282,6 +313,17 @@ export function asHostToEditorMessage(
       typeof record.saveId !== "string" ||
       !record.saveId ||
       record.saveId.length > 128
+    ) {
+      return null;
+    }
+    return record as unknown as HostToEditorMessage;
+  }
+  if (type === "export-request") {
+    if (
+      typeof record.exportId !== "string" ||
+      !record.exportId ||
+      record.exportId.length > 128 ||
+      record.format !== "default"
     ) {
       return null;
     }

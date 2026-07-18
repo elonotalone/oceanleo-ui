@@ -23,6 +23,7 @@ import {
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
+import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 
 const libraryCache = new Map<
@@ -106,6 +107,19 @@ export interface MyLibraryProps {
   itemFilter?: (item: LibraryItem) => boolean;
   onOpenItem?: (item: LibraryItem) => void;
   openAdvancedOnSelect?: boolean;
+  materialActions?: readonly WorkbenchMaterialAction[];
+  onMaterialAction?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
+  materialActionAvailable?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => boolean;
+  primaryMaterialAction?: WorkbenchMaterialAction;
+  draggableMaterials?: boolean;
+  onMaterialDragStart?: (item: LibraryItem) => void;
+  onMaterialDragEnd?: () => void;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -124,6 +138,13 @@ export function MyLibrary({
   itemFilter,
   onOpenItem,
   openAdvancedOnSelect = true,
+  materialActions,
+  onMaterialAction,
+  materialActionAvailable,
+  primaryMaterialAction,
+  draggableMaterials,
+  onMaterialDragStart,
+  onMaterialDragEnd,
 }: MyLibraryProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -356,6 +377,13 @@ export function MyLibrary({
         siteId={siteId}
         onOpenItem={onOpenItem}
         openAdvancedOnSelect={openAdvancedOnSelect}
+        materialActions={materialActions}
+        onMaterialAction={onMaterialAction}
+        materialActionAvailable={materialActionAvailable}
+        primaryMaterialAction={primaryMaterialAction}
+        draggableMaterials={draggableMaterials}
+        onMaterialDragStart={onMaterialDragStart}
+        onMaterialDragEnd={onMaterialDragEnd}
         toolbarActions={toolbar}
         searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
         emptyTitle={

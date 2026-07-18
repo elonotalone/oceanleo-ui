@@ -5,9 +5,10 @@
 // meta.timeline_doc + is_draft + parent_asset_id，回库后可从 meta 恢复。
 // 文案经调用方传入的 tt（useUI）包裹，保持可本地化。
 
-import { saveWorks, uploadFile } from "../../lib/database";
+import { uploadFile } from "../../lib/database";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
+import { saveProjectWorkingHead } from "../doc-editors/doc-io";
 import type { TimelineDoc } from "./types";
 
 export interface PersistResult {
@@ -48,44 +49,34 @@ export async function uploadDraft(
   title: string,
   siteId: string,
   idempotencyKey: string,
+  workingHeadUrl: string,
   tt: UITranslate,
 ): Promise<PersistResult> {
-  const file = new File([JSON.stringify(doc)], `${title}.json`, {
-    type: "application/json",
-  });
-  const uploaded = await uploadFile(file, {
+  const saved = await saveProjectWorkingHead({
+    item,
     siteId,
+    fallbackSite: "oceanleo",
     title,
-    registerAsset: false,
     idempotencyKey,
-  });
-  const url = uploaded.data?.file?.url || "";
-  if (!uploaded.ok || !url) {
-    return { error: uploaded.error || tt("草稿上传失败") };
-  }
-  const saved = await saveWorks(siteId, [
-    {
-      url,
-      media_type: "video",
-      title,
-      kind: "video",
-      meta: {
-        timeline_doc: doc,
-        is_draft: true,
-        parent_asset_id: item.id,
-        editor_project_url: url,
-        editor_project_schema: "oceanleo.timeline.v1",
-        editor_saved_at: new Date().toISOString(),
-      },
+    workingHeadUrl,
+    mediaType: "video",
+    kind: "video",
+    meta: {
+      timeline_doc: doc,
+      is_draft: true,
     },
-  ]);
-  if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
+    project: {
+      schema: "oceanleo.timeline.v1",
+      data: doc,
+    },
+  });
+  if (!saved.ok) {
     return { error: saved.error || tt("草稿已上传，但登记到我的库失败") };
   }
   return {
-    url,
-    versionId: saved.data?.items?.[0]?.id || "",
-    projectUrl: url,
-    projectSchema: "oceanleo.timeline.v1",
+    url: saved.url,
+    versionId: saved.versionId,
+    projectUrl: saved.projectUrl,
+    projectSchema: saved.projectSchema,
   };
 }

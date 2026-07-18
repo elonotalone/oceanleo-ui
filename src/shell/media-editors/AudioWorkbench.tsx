@@ -18,9 +18,11 @@ import {
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
+import { uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
 import {
-  saveFileToLibrary,
+  loadEditorProject,
+  saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "../doc-editors/doc-io";
 
@@ -62,7 +64,7 @@ export interface AudioWorkbenchState {
   importSource: (file: File) => Promise<void>;
   download: () => void;
   save: () => Promise<PersistedEditorVersion | null>;
-  captureRecovery: () => Blob | null;
+  captureRecovery: () => AudioProjectData | null;
   restoreRecovery: (payload: unknown) => Promise<boolean>;
 }
 
@@ -70,6 +72,18 @@ const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_COMPRESSED_AUDIO_BYTES = 48 * 1024 * 1024;
 const MAX_DECODED_AUDIO_BYTES = 384 * 1024 * 1024;
 const MAX_UNDO_AUDIO_BYTES = 256 * 1024 * 1024;
+const AUDIO_PROJECT_SCHEMA = "oceanleo.audio.v1";
+
+export type AudioEditOperation =
+  | { type: "crop"; start: number; end: number }
+  | { type: "delete"; start: number; end: number }
+  | { type: "fade"; edge: "in" | "out"; duration: number }
+  | { type: "gain"; multiplier: number };
+
+export interface AudioProjectData {
+  sourceUrl: string;
+  operations: AudioEditOperation[];
+}
 
 function audioBufferBytes(source: AudioBuffer): number {
   return source.length * source.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
@@ -137,6 +151,78 @@ function deleteAudioRange(source: AudioBuffer, start: number, end: number): Audi
   return result;
 }
 
+function validAudioProject(value: unknown): value is AudioProjectData {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const project = value as Partial<AudioProjectData>;
+  if (
+    typeof project.sourceUrl !== "string" ||
+    !Array.isArray(project.operations) ||
+    project.operations.length > 500
+  ) {
+    return false;
+  }
+  return project.operations.every((operation) => {
+    if (!operation || typeof operation !== "object") return false;
+    if (operation.type === "crop" || operation.type === "delete") {
+      return (
+        Number.isFinite(operation.start) &&
+        Number.isFinite(operation.end) &&
+        operation.start >= 0 &&
+        operation.end > operation.start
+      );
+    }
+    if (operation.type === "fade") {
+      return (
+        (operation.edge === "in" || operation.edge === "out") &&
+        Number.isFinite(operation.duration) &&
+        operation.duration >= 0
+      );
+    }
+    return (
+      operation.type === "gain" &&
+      Number.isFinite(operation.multiplier) &&
+      operation.multiplier >= 0 &&
+      operation.multiplier <= 8
+    );
+  });
+}
+
+function applyAudioOperation(
+  source: AudioBuffer,
+  operation: AudioEditOperation,
+): AudioBuffer {
+  if (operation.type === "crop") {
+    return copyAudioRange(source, operation.start, operation.end);
+  }
+  if (operation.type === "delete") {
+    return deleteAudioRange(source, operation.start, operation.end);
+  }
+  const next = cloneAudioBuffer(source);
+  if (operation.type === "fade") {
+    const frames = Math.max(
+      1,
+      Math.min(next.length, Math.round(operation.duration * next.sampleRate)),
+    );
+    for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
+      const samples = next.getChannelData(channel);
+      for (let index = 0; index < frames; index += 1) {
+        const envelope = frames === 1 ? 1 : index / (frames - 1);
+        const target =
+          operation.edge === "in" ? index : next.length - 1 - index;
+        samples[target] *= envelope;
+      }
+    }
+    return next;
+  }
+  for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
+    const samples = next.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] *= operation.multiplier;
+    }
+  }
+  return next;
+}
+
 function encodeWav(source: AudioBuffer): Blob {
   const channels = source.numberOfChannels;
   const bytesPerSample = 2;
@@ -189,6 +275,11 @@ export function useAudioWorkbench(
   const waveRef = useRef<WaveSurfer | null>(null);
   const regionsRef = useRef<RegionsPlugin | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
+  const sourceUrlRef = useRef("");
+  const operationsRef = useRef<AudioEditOperation[]>([]);
+  const undoOperationsRef = useRef<AudioEditOperation[][]>([]);
+  const redoOperationsRef = useRef<AudioEditOperation[][]>([]);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const objectUrlRef = useRef("");
   const undoRef = useRef<AudioBuffer[]>([]);
   const redoRef = useRef<AudioBuffer[]>([]);
@@ -219,18 +310,36 @@ export function useAudioWorkbench(
   useEffect(() => {
     const container = containerRef.current;
     const sourceUrl = item.url || item.previewUrl || "";
+    const projectUrl =
+      item.meta.editor_project_schema === AUDIO_PROJECT_SCHEMA
+        ? String(item.meta.editor_project_url || item.url || "").trim()
+        : "";
     if (!container) return;
     let disposed = false;
     const controller = new AbortController();
     let disableDrag: (() => void) | undefined;
     setLoading(true);
     setError("");
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     void (async () => {
       try {
-        const durableUrl = sourceUrl
-          ? isFirstPartyMediaUrl(sourceUrl)
-            ? sourceUrl
-            : await importMediaUrl(sourceUrl, {
+        const project = projectUrl
+          ? await loadEditorProject<AudioProjectData>(
+              projectUrl,
+              AUDIO_PROJECT_SCHEMA,
+              controller.signal,
+            )
+          : null;
+        if (project && !validAudioProject(project)) {
+          throw new Error(tt("音频工程格式无效"));
+        }
+        const requestedSource = project ? project.sourceUrl : sourceUrl;
+        const durableUrl = requestedSource
+          ? isFirstPartyMediaUrl(requestedSource)
+            ? requestedSource
+            : await importMediaUrl(requestedSource, {
                 kind: "audio",
                 siteId: siteId || "audio",
                 title: item.title,
@@ -265,15 +374,22 @@ export function useAudioWorkbench(
           );
         }
         const context = new AudioContext();
-        const decoded = await context.decodeAudioData((await blob.arrayBuffer()).slice(0));
+        let decoded = await context.decodeAudioData((await blob.arrayBuffer()).slice(0));
         await context.close();
         if (disposed) return;
+        for (const operation of project?.operations || []) {
+          decoded = applyAudioOperation(decoded, operation);
+        }
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
           throw new Error(
             tt("音频解码后过大，请改用视频时间线处理长音频"),
           );
         }
         bufferRef.current = decoded;
+        sourceUrlRef.current = durableUrl;
+        operationsRef.current = [...(project?.operations || [])];
+        undoOperationsRef.current = [];
+        redoOperationsRef.current = [];
         undoRef.current = [];
         redoRef.current = [];
         revisionRef.current = 0;
@@ -282,7 +398,9 @@ export function useAudioWorkbench(
         setDirty(false);
         setSavedUrl("");
         setDuration(decoded.duration);
-        const objectUrl = URL.createObjectURL(blob);
+        const objectUrl = URL.createObjectURL(
+          project?.operations.length ? encodeWav(decoded) : blob,
+        );
         objectUrlRef.current = objectUrl;
         const regions = RegionsPluginClass.create();
         const wave = WaveSurferClass.create({
@@ -334,10 +452,23 @@ export function useAudioWorkbench(
       waveRef.current = null;
       regionsRef.current = null;
       bufferRef.current = null;
+      sourceUrlRef.current = "";
+      operationsRef.current = [];
+      undoOperationsRef.current = [];
+      redoOperationsRef.current = [];
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = "";
     };
-  }, [item.previewUrl, item.title, item.url, siteId, syncSelection, tt]);
+  }, [
+    item.meta.editor_project_schema,
+    item.meta.editor_project_url,
+    item.previewUrl,
+    item.title,
+    item.url,
+    siteId,
+    syncSelection,
+    tt,
+  ]);
 
   const reloadWaveform = useCallback(async (next: AudioBuffer) => {
     const wave = waveRef.current;
@@ -361,12 +492,25 @@ export function useAudioWorkbench(
   }, []);
 
   const commit = useCallback(
-    async (next: AudioBuffer, pushUndo = true) => {
+    async (
+      next: AudioBuffer,
+      pushUndo = true,
+      operation?: AudioEditOperation,
+    ) => {
       const current = bufferRef.current;
       if (!current) return;
       if (pushUndo) {
         undoRef.current = appendAudioHistory(undoRef.current, current);
         redoRef.current = [];
+        undoOperationsRef.current = undoRef.current.length
+          ? [...undoOperationsRef.current, [...operationsRef.current]].slice(
+              -undoRef.current.length,
+            )
+          : [];
+        redoOperationsRef.current = [];
+      }
+      if (operation) {
+        operationsRef.current = [...operationsRef.current, operation];
       }
       bufferRef.current = next;
       revisionRef.current += 1;
@@ -411,7 +555,29 @@ export function useAudioWorkbench(
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
           throw new Error(tt("音频解码后过大，请改用视频时间线处理长音频"));
         }
-        await commit(decoded);
+        const uploaded = await uploadFile(file, {
+          siteId: siteId || "audio",
+          title: file.name,
+          registerAsset: false,
+          idempotencyKey: `audio-source:${item.id}:${file.name}:${file.size}:${file.lastModified}`,
+        });
+        const sourceUrl = uploaded.data?.file?.url || "";
+        if (!uploaded.ok || !sourceUrl) {
+          throw new Error(uploaded.error || tt("音频源上传失败"));
+        }
+        bufferRef.current = decoded;
+        sourceUrlRef.current = sourceUrl;
+        operationsRef.current = [];
+        undoOperationsRef.current = [];
+        redoOperationsRef.current = [];
+        undoRef.current = [];
+        redoRef.current = [];
+        revisionRef.current += 1;
+        setCanUndo(false);
+        setCanRedo(false);
+        setDirty(true);
+        setSavedUrl("");
+        await reloadWaveform(decoded);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : tt("音频导入失败"));
       } finally {
@@ -419,7 +585,7 @@ export function useAudioWorkbench(
         setLoading(false);
       }
     },
-    [commit, tt],
+    [item.id, reloadWaveform, siteId, tt],
   );
 
   const editSelection = useCallback(
@@ -433,7 +599,11 @@ export function useAudioWorkbench(
         mode === "crop"
           ? copyAudioRange(source, selection.start, selection.end)
           : deleteAudioRange(source, selection.start, selection.end);
-      void commit(next);
+      void commit(next, true, {
+        type: mode,
+        start: selection.start,
+        end: selection.end,
+      });
     },
     [commit, selection, tt],
   );
@@ -442,20 +612,12 @@ export function useAudioWorkbench(
     (edge: "in" | "out") => {
       const source = bufferRef.current;
       if (!source) return;
-      const next = cloneAudioBuffer(source);
-      const frames = Math.max(
-        1,
-        Math.min(next.length, Math.round(fadeDuration * next.sampleRate)),
-      );
-      for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
-        const samples = next.getChannelData(channel);
-        for (let index = 0; index < frames; index += 1) {
-          const envelope = frames === 1 ? 1 : index / (frames - 1);
-          const target = edge === "in" ? index : next.length - 1 - index;
-          samples[target] *= envelope;
-        }
-      }
-      void commit(next);
+      const operation: AudioEditOperation = {
+        type: "fade",
+        edge,
+        duration: fadeDuration,
+      };
+      void commit(applyAudioOperation(source, operation), true, operation);
     },
     [commit, fadeDuration],
   );
@@ -463,15 +625,11 @@ export function useAudioWorkbench(
   const applyGain = useCallback(() => {
     const source = bufferRef.current;
     if (!source) return;
-    const next = cloneAudioBuffer(source);
-    const multiplier = gain / 100;
-    for (let channel = 0; channel < next.numberOfChannels; channel += 1) {
-      const samples = next.getChannelData(channel);
-      for (let index = 0; index < samples.length; index += 1) {
-        samples[index] *= multiplier;
-      }
-    }
-    void commit(next);
+    const operation: AudioEditOperation = {
+      type: "gain",
+      multiplier: gain / 100,
+    };
+    void commit(applyAudioOperation(source, operation), true, operation);
   }, [commit, gain]);
 
   const undo = useCallback(() => {
@@ -483,6 +641,12 @@ export function useAudioWorkbench(
       current,
       undoRef.current,
     );
+    redoOperationsRef.current = redoRef.current.length
+      ? [...redoOperationsRef.current, [...operationsRef.current]].slice(
+          -redoRef.current.length,
+        )
+      : [];
+    operationsRef.current = undoOperationsRef.current.pop() || [];
     revisionRef.current += 1;
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);
@@ -506,6 +670,12 @@ export function useAudioWorkbench(
       current,
       redoRef.current,
     );
+    undoOperationsRef.current = undoRef.current.length
+      ? [...undoOperationsRef.current, [...operationsRef.current]].slice(
+          -undoRef.current.length,
+        )
+      : [];
+    operationsRef.current = redoOperationsRef.current.pop() || [];
     revisionRef.current += 1;
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);
@@ -540,24 +710,33 @@ export function useAudioWorkbench(
     setError("");
     try {
       const title = `${item.title || tt("音频")}-${tt("编辑版")}`;
-      const file = new File([encodeWav(source)], `${title}.wav`, {
-        type: "audio/wav",
-      });
-      const saved = await saveFileToLibrary({
+      const project: AudioProjectData = {
+        sourceUrl: sourceUrlRef.current,
+        operations: structuredClone(operationsRef.current),
+      };
+      const saved = await saveProjectWorkingHead({
         item,
         siteId,
         fallbackSite: "audio",
-        file,
         title,
         mediaType: "audio",
         kind: "audio",
         idempotencyKey: `audio:${item.id}:${savingRevision}`,
-        meta: { editor: "audio-v2" },
-        deliveryProjectSchema: "audio-wav@1",
+        workingHeadUrl: workingHeadUrlRef.current,
+        meta: {
+          editor: "audio-v3",
+          audio_source_url: project.sourceUrl,
+          audio_operation_count: project.operations.length,
+        },
+        project: {
+          schema: AUDIO_PROJECT_SCHEMA,
+          data: project,
+        },
       });
       if (!saved.ok) {
         throw new Error(saved.error || tt("登记到我的库失败"));
       }
+      workingHeadUrlRef.current = saved.url;
       setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) setDirty(false);
       return {
@@ -576,27 +755,87 @@ export function useAudioWorkbench(
   }, [item, siteId, tt]);
 
   const captureRecovery = useCallback(
-    () => (bufferRef.current ? encodeWav(bufferRef.current) : null),
+    (): AudioProjectData | null =>
+      bufferRef.current
+        ? {
+            sourceUrl: sourceUrlRef.current,
+            operations: structuredClone(operationsRef.current),
+          }
+        : null,
     [],
   );
   const restoreRecovery = useCallback(
     async (payload: unknown): Promise<boolean> => {
-      if (!(payload instanceof Blob) || payload.size > MAX_AUDIO_FILE_BYTES) {
+      let project: AudioProjectData;
+      if (validAudioProject(payload)) {
+        project = payload;
+      } else if (payload instanceof Blob && payload.size <= MAX_AUDIO_FILE_BYTES) {
+        const uploaded = await uploadFile(
+          new File([payload], `${item.title || "audio"}-recovery.wav`, {
+            type: payload.type || "audio/wav",
+          }),
+          {
+            siteId: siteId || "audio",
+            title: `${item.title || "audio"}-recovery`,
+            registerAsset: false,
+            idempotencyKey: `audio-recovery:${item.id}:${payload.size}`,
+          },
+        );
+        const url = uploaded.data?.file?.url || "";
+        if (!uploaded.ok || !url) return false;
+        project = { sourceUrl: url, operations: [] };
+      } else {
         return false;
       }
       const context = new AudioContext();
       try {
-        const decoded = await context.decodeAudioData(
-          (await payload.arrayBuffer()).slice(0),
+        const durableUrl = project.sourceUrl
+          ? isFirstPartyMediaUrl(project.sourceUrl)
+            ? project.sourceUrl
+            : await importMediaUrl(project.sourceUrl, {
+                kind: "audio",
+                siteId: siteId || "audio",
+                title: item.title,
+                registerAsset: false,
+              })
+          : "";
+        const blob = durableUrl
+          ? await fetchMediaBlob(durableUrl, {
+              maxBytes: MAX_AUDIO_FILE_BYTES,
+            })
+          : encodeWav(
+              new AudioBuffer({
+                length: 44_100,
+                numberOfChannels: 1,
+                sampleRate: 44_100,
+              }),
+            );
+        let decoded = await context.decodeAudioData(
+          (await blob.arrayBuffer()).slice(0),
         );
+        for (const operation of project.operations) {
+          decoded = applyAudioOperation(decoded, operation);
+        }
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) return false;
-        await commit(decoded, false);
+        bufferRef.current = decoded;
+        sourceUrlRef.current = durableUrl;
+        operationsRef.current = [...project.operations];
+        undoRef.current = [];
+        redoRef.current = [];
+        undoOperationsRef.current = [];
+        redoOperationsRef.current = [];
+        revisionRef.current += 1;
+        setCanUndo(false);
+        setCanRedo(false);
+        setDirty(true);
+        setSavedUrl("");
+        await reloadWaveform(decoded);
         return true;
       } finally {
         await context.close();
       }
     },
-    [commit],
+    [item.id, item.title, reloadWaveform, siteId],
   );
 
   return {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -26,12 +26,13 @@ export function ChartRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useChartWorkbench(item, siteId);
+  const [exporting, setExporting] = useState(false);
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
       const next = advancedSavedItem(item, {
         url: saved.url,
         versionId: saved.versionId,
-        previewUrl: item.previewUrl || item.thumbUrl || saved.url,
+        previewUrl: item.previewUrl || item.thumbUrl,
         thumbUrl: item.thumbUrl || item.previewUrl,
         meta: {
           editor: chartEditorManifest(),
@@ -72,6 +73,43 @@ export function ChartRoute({
     },
     [editor.importCsv],
   );
+  const exportPng = useCallback(async () => {
+    setExporting(true);
+    const host = document.createElement("div");
+    host.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:1200px;height:675px";
+    document.body.appendChild(host);
+    let chart: import("echarts").ECharts | null = null;
+    try {
+      const echarts = await import("echarts");
+      chart = echarts.init(host, undefined, {
+        renderer: "canvas",
+        width: 1200,
+        height: 675,
+      });
+      chart.setOption(
+        editor.document.option as Parameters<typeof chart.setOption>[0],
+        { notMerge: true },
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = chart.getDataURL({
+        type: "png",
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+      anchor.download = `${item.title || "chart"}.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } finally {
+      chart?.dispose();
+      host.remove();
+      setExporting(false);
+    }
+  }, [editor.document.option, item.title]);
 
   return (
     <AdvancedWorkbenchShell
@@ -93,6 +131,14 @@ export function ChartRoute({
         contextToolbar: (
           <ChartContextToolbar editor={editor} accent={accent} />
         ),
+        directDownload: {
+          id: "chart-download-png",
+          label: "直接下载 PNG",
+          icon: "download",
+          busy: exporting,
+          busyLabel: "导出中…",
+          onTrigger: exportPng,
+        },
         upload: {
           accept: ".csv,.tsv,text/csv,text/tab-separated-values",
           onFiles: importLocalData,

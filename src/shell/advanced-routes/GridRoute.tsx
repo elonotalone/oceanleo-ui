@@ -88,27 +88,28 @@ export function GridRoute({
       adapter={{
         id: "grid",
         label: editorToolLabel({ type: "grid" }),
-        contextToolbar: (
+        contextToolbar: editor.selectedCell ? (
           <GridContextToolbar editor={editor} accent={accent} />
-        ),
+        ) : null,
         history: {
           canUndo: editor.canUndo,
           canRedo: editor.canRedo,
           undo: editor.undo,
           redo: editor.redo,
         },
+        directDownload: {
+          id: "grid-export-xlsx",
+          label: "直接下载 XLSX",
+          icon: "download",
+          busyLabel: "导出中…",
+          busy: editor.exporting,
+          onTrigger: editor.exportXlsx,
+        },
         actions: [
           {
             id: "grid-export-csv",
             label: "导出 CSV",
             onTrigger: editor.exportCsv,
-          },
-          {
-            id: "grid-export-xlsx",
-            label: "导出 XLSX",
-            busyLabel: "导出中…",
-            busy: editor.exporting,
-            onTrigger: editor.exportXlsx,
           },
         ],
         upload: {
@@ -117,15 +118,7 @@ export function GridRoute({
           onFiles: importLocalFile,
         },
         stage: <GridStage editor={editor} accent={accent} />,
-        status:
-          editor.error ||
-          (editor.dirty
-            ? "有未保存的修改"
-            : editor.savedUrl
-              ? "已保存到我的库"
-              : editor.loading
-                ? "正在载入表格"
-                : ""),
+        status: editor.error || (editor.loading ? "正在载入表格" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

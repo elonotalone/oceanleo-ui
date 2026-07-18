@@ -81,8 +81,11 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   );
   assert.match(toolbar, /if \(!context && !leading && !trailing\) return null/);
   assert.match(toolbar, /flex-nowrap items-center/);
-  assert.match(toolbar, /selectionToolbarBudget\(toolbarWidth\)/);
-  assert.match(toolbar, /layout\.openTransientPanel/);
+  assert.match(toolbar, /partitionSelectionControls/);
+  assert.match(toolbar, /SELECTION_TOOLBAR_MAX_WIDTH/);
+  assert.match(toolbar, /role="dialog"/);
+  assert.match(toolbar, /event\.key === "Escape"/);
+  assert.doesNotMatch(toolbar, /selectionToolbarBudget|openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);
   assert.doesNotMatch(toolbar, /overflow-x-auto/);
   assert.match(image, /if \(!selected\) return null/);

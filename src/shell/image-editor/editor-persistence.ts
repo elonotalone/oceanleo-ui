@@ -1,7 +1,7 @@
 "use client";
 
-import { saveWorks, uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
+import { saveProjectWorkingHead } from "../doc-editors/doc-io";
 import type { EditorSnapshot } from "./editor-runtime";
 import type { ExportFormat } from "./types";
 
@@ -136,17 +136,29 @@ export async function loadImageProject(
     throw new Error("图片工程为空或超过 5MB 安全上限");
   }
   const parsed: unknown = JSON.parse(text);
-  if (!isImageProject(parsed)) throw new Error("图片工程格式无效");
-  return parsed;
+  if (isImageProject(parsed)) return parsed;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    (parsed as { schema?: unknown }).schema === PROJECT_SCHEMA &&
+    (parsed as { version?: unknown }).version === 1
+  ) {
+    const wrapped = parsed as { data?: unknown; updatedAt?: unknown };
+    const normalized = imageProject(
+      wrapped.data as EditorSnapshot,
+      typeof wrapped.updatedAt === "string" ? wrapped.updatedAt : undefined,
+    );
+    if (isImageProject(normalized)) return normalized;
+  }
+  throw new Error("图片工程格式无效");
 }
 
 export async function persistImageProject(
-  blob: Blob,
   snapshot: EditorSnapshot,
   item: LibraryItem,
   siteId: string,
-  format: ExportFormat,
   idempotencyKey: string,
+  workingHeadUrl: string,
   messages: { uploadFailed: string; registerFailed: string },
 ): Promise<PersistedImageProject> {
   const targetSite = siteId || "design";
@@ -159,62 +171,31 @@ export async function persistImageProject(
   if (byteLength(projectJson) > MAX_PROJECT_BYTES) {
     throw new Error("图片工程超过 5MB，暂时无法自动保存");
   }
-  const projectUpload = await uploadFile(
-    new File([projectJson], `${title}.oceanleo-image.json`, {
-      type: "application/json",
-    }),
-    {
-      siteId: targetSite,
-      title: `${title}工程`,
-      registerAsset: false,
-      idempotencyKey: `${idempotencyKey}:project`,
+  const saved = await saveProjectWorkingHead({
+    item,
+    siteId: targetSite,
+    fallbackSite: "design",
+    title,
+    mediaType: "image",
+    kind: "image",
+    idempotencyKey,
+    workingHeadUrl,
+    meta: {
+      parent_asset_id: rootId,
+      editor: "fabric-v3",
+      fabric_saved_at: savedAt,
     },
-  );
-  const projectUrl = projectUpload.data?.file?.url || "";
-  if (!projectUpload.ok || !projectUrl) {
-    throw new Error(projectUpload.error || messages.uploadFailed);
-  }
-  const previewUpload = await uploadFile(
-    new File([blob], `${title}.${extensionFor(format)}`, {
-      type: mimeFor(format),
-    }),
-    {
-      siteId: targetSite,
-      title,
-      registerAsset: false,
-      idempotencyKey: `${idempotencyKey}:preview`,
-    },
-  );
-  const previewUrl = previewUpload.data?.file?.url || "";
-  if (!previewUpload.ok || !previewUrl) {
-    throw new Error(previewUpload.error || messages.uploadFailed);
-  }
-  const saved = await saveWorks(targetSite, [
-    {
-      url: previewUrl,
-      thumb_url: previewUrl,
-      media_type: "image",
-      title,
-      kind: "image",
-      meta: {
-        parent_asset_id: rootId,
-        editor: "fabric-v3",
-        fabric_document_url: projectUrl,
-        fabric_preview_url: previewUrl,
-        fabric_saved_at: savedAt,
-        editor_project_url: projectUrl,
-        editor_project_schema: PROJECT_SCHEMA,
-        editor_saved_at: savedAt,
-      },
-    },
-  ]);
-  if (!saved.ok || Number(saved.data?.saved || 0) !== 1) {
-    throw new Error(saved.error || messages.registerFailed);
+    project: { schema: PROJECT_SCHEMA, data: snapshot },
+  });
+  if (!saved.ok) {
+    throw new Error(
+      saved.error || messages.uploadFailed || messages.registerFailed,
+    );
   }
   return {
-    previewUrl,
-    projectUrl,
+    previewUrl: saved.url,
+    projectUrl: saved.projectUrl,
     savedAt,
-    versionId: saved.data?.items?.[0]?.id || "",
+    versionId: saved.versionId,
   };
 }

@@ -45,6 +45,13 @@ export interface EmbedEditorPaneProps {
     ok: boolean;
     message?: string;
   }) => void;
+  exportRequestId?: string;
+  onExportResult?: (result: {
+    exportId: string;
+    ok: boolean;
+    url?: string;
+    message?: string;
+  }) => void;
 }
 
 function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
@@ -94,6 +101,8 @@ export function EmbedEditorPane({
   selectionCommand = null,
   materialInsertion = null,
   onMaterialResult,
+  exportRequestId = "",
+  onExportResult,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -179,7 +188,7 @@ export function EmbedEditorPane({
       if (!message) return;
       if (message.type === "ready") {
         setPhase("ready");
-        setStatus(tt("编辑器已连接"));
+        setStatus("");
         if (!readyHandledRef.current) {
           readyHandledRef.current = true;
           onDirtyChange?.(false);
@@ -187,11 +196,7 @@ export function EmbedEditorPane({
         }
       } else if (message.type === "dirty") {
         onDirtyChange?.(message.dirty !== false, message.revision);
-        setStatus(
-          message.dirty === false
-            ? tt("修改已保存")
-            : tt("有未保存的修改"),
-        );
+        if (message.dirty === false) setStatus("");
       } else if (message.type === "error") {
         setStatus(message.message || tt("编辑器发生错误"));
       } else if (message.type === "selection-changed") {
@@ -216,10 +221,16 @@ export function EmbedEditorPane({
           ok: message.ok,
           message: message.message,
         });
+      } else if (message.type === "export-result") {
+        onExportResult?.({
+          exportId: message.exportId,
+          ok: message.ok,
+          url: message.url,
+          message: message.message,
+        });
       } else if (message.type === "close-request") {
         onCloseRequest?.();
       } else if (message.type === "artifact-created" || message.type === "artifact-updated") {
-        setStatus(tt("保存中…"));
         void (async () => {
           let saved = false;
           let detail = tt("保存失败");
@@ -271,7 +282,7 @@ export function EmbedEditorPane({
                 ? caught.message
                 : tt("保存失败");
           }
-          setStatus(detail);
+          setStatus(saved ? "" : detail);
           const savedItem = saved
             ? advancedSavedItem(item, {
                 url: durableUrl,
@@ -308,6 +319,7 @@ export function EmbedEditorPane({
     mediaType,
     onCloseRequest,
     onDirtyChange,
+    onExportResult,
     onMaterialResult,
     onSelectionChange,
     onSaveResult,
@@ -356,7 +368,6 @@ export function EmbedEditorPane({
     if (!saveRequestId || phase !== "ready") return;
     const frame = iframeRef.current?.contentWindow;
     if (!frame || !editorOrigin) return;
-    setStatus(tt("正在请求编辑器保存…"));
     frame.postMessage(
       {
         protocol: EDITOR_PROTOCOL,
@@ -367,6 +378,15 @@ export function EmbedEditorPane({
       editorOrigin,
     );
   }, [editorOrigin, instanceId, phase, saveRequestId, tt]);
+
+  useEffect(() => {
+    if (!exportRequestId || phase !== "ready") return;
+    sendToEditor({
+      type: "export-request",
+      exportId: exportRequestId,
+      format: "default",
+    });
+  }, [exportRequestId, phase, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready") return;
@@ -408,13 +428,11 @@ export function EmbedEditorPane({
     <div className="relative h-full w-full bg-[var(--surface,#f5f5f4)]">
       {phase === "connecting" && (
         <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]/90">
-          <div className="text-center">
-            <div
-              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
-              style={{ borderTopColor: accent }}
-            />
-            <p className="mt-3 text-[13px] text-[var(--muted,#78716c)]">{tt("正在连接编辑器…")}</p>
-          </div>
+          <div
+            aria-hidden="true"
+            className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)]"
+            style={{ borderTopColor: accent }}
+          />
         </div>
       )}
       {phase === "error" && (
@@ -442,8 +460,19 @@ export function EmbedEditorPane({
         </div>
       )}
       {status && phase === "ready" && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[var(--fg,#292524)]/80 px-3 py-1 text-[11px] text-[var(--card,#fff)]">
-          {status}
+        <div
+          role="alert"
+          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-red-700 px-3 py-2 text-[11px] text-white shadow-lg"
+        >
+          <span>{status}</span>
+          <button
+            type="button"
+            onClick={() => setStatus("")}
+            className="rounded px-1 font-bold hover:bg-[rgba(255,255,255,.15)]"
+            aria-label={tt("关闭错误提示")}
+          >
+            ×
+          </button>
         </div>
       )}
       {src && (

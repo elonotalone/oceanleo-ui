@@ -178,7 +178,15 @@ const WORD_EXT = new Set([
   "epub",
   "mht",
 ]);
-const CELL_EXT = new Set(["xlsx", "xls", "ods", "xlsm", "xltx"]);
+const CELL_EXT = new Set([
+  "xlsx",
+  "xls",
+  "ods",
+  "xlsm",
+  "xlsb",
+  "xltx",
+]);
+const NATIVE_GRID_EXT = new Set(["xlsx", "xls", "ods"]);
 const SLIDE_EXT = new Set([
   "pptx",
   "ppt",
@@ -616,6 +624,9 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
 
   if (NATIVE_DECK_EXT.has(officeExt)) {
     return available("deck", { type: "deck" });
+  }
+  if (NATIVE_GRID_EXT.has(officeExt)) {
+    return available("grid", { type: "grid" });
   }
   if (
     officeExt &&

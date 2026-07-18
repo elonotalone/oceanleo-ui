@@ -26,10 +26,11 @@ import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import type { LibraryItem } from "./library-data";
 import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
 import {
+  WORKBENCH_MATERIAL_MIME,
   useWorkbenchMaterials,
   type WorkbenchMaterialAction,
 } from "./workbench-material-provider";
-import { useWorkspacePane } from "./SplitWorkspace";
+import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { useAdvancedRecovery } from "./use-advanced-recovery";
 import {
@@ -83,6 +84,7 @@ export function InlineAdvancedWorkbenchShell({
 }: InlineAdvancedWorkbenchShellProps) {
   const tt = useUI();
   const workspacePane = useWorkspacePane();
+  const rightPaneSlot = useRightPaneSlot();
   const workspaceDetail = workspacePane?.detail;
   const showWorkspaceDetail = workspacePane?.showDetail;
   const clearWorkspaceDetail = workspacePane?.clearDetail;
@@ -94,6 +96,11 @@ export function InlineAdvancedWorkbenchShell({
     `inline-editor:${adapter.id}:${item.key || item.id}`,
   );
   const liveDetailStoreRef = useRef<LiveDetailStore>(createLiveDetailStore());
+  const liveHeaderStoreRef = useRef<LiveDetailStore>(createLiveDetailStore());
+  const liveHeaderNode = useMemo(
+    () => <LiveEditorDetail store={liveHeaderStoreRef.current} />,
+    [],
+  );
   const closingRef = useRef(false);
   const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
@@ -485,24 +492,43 @@ export function InlineAdvancedWorkbenchShell({
   const handleDrop = useCallback(
     async (event: ReactDragEvent<HTMLDivElement>) => {
       event.preventDefault();
+      event.stopPropagation();
       const files = Array.from(event.dataTransfer.files || []);
       if (files.length && adapter.upload) {
         await performUpload(files);
         return;
       }
-      const material = workbenchMaterials?.draggedItem;
-      if (!material || !activeMaterialAction || !workbenchMaterials) return;
+      if (!activeMaterialAction || !workbenchMaterials) return;
+      let material = workbenchMaterials.draggedItem;
+      if (!material) {
+        try {
+          const payload = JSON.parse(
+            event.dataTransfer.getData(WORKBENCH_MATERIAL_MIME) || "{}",
+          ) as { id?: string };
+          material =
+            workbenchMaterials.entries.find(
+              (entry) =>
+                entry.id === payload.id ||
+                entry.libraryItem?.key === payload.id ||
+                entry.libraryItem?.url === payload.id,
+            )?.libraryItem || null;
+        } catch {
+          material = null;
+        }
+      }
+      if (!material) {
+        setDropMessage(tt("无法读取这个素材，请从素材库重新拖入"));
+        window.setTimeout(() => setDropMessage(""), 1800);
+        return;
+      }
       setDropMessage(tt("正在添加素材…"));
-      const result = await workbenchMaterials.perform(
-        activeMaterialAction,
-        material,
-        {
+      const result = await workbenchMaterials
+        .perform(activeMaterialAction, material, {
           source: "drop",
           clientX: event.clientX,
           clientY: event.clientY,
-        },
-      );
-      workbenchMaterials.endMaterialDrag();
+        })
+        .finally(workbenchMaterials.endMaterialDrag);
       setDropMessage(
         result.ok ? tt("素材已添加到画布") : result.error || tt("素材添加失败"),
       );
@@ -519,8 +545,11 @@ export function InlineAdvancedWorkbenchShell({
 
   const actions = adapter.actions || [];
   const triggerAction = (action: (typeof actions)[number]) => {
-    if (action.panelId) openDrawer(action.panelId);
-    else void action.onTrigger?.();
+    if (action.panelId) {
+      openDrawer(action.panelId);
+      return;
+    }
+    return action.onTrigger?.();
   };
   const toolsPanel = (
     <div className="h-full overflow-y-auto p-3">
@@ -560,6 +589,37 @@ export function InlineAdvancedWorkbenchShell({
     closeDetail();
     workspacePane?.openLibraryPanel(id);
   };
+  const actionBar = (
+    <AdvancedWorkspaceActionBar
+      adapter={adapter}
+      autoSaveState={autoSave.state}
+      activeDrawerId={layoutState.activeDrawerId}
+      activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
+      onBack={requestClose}
+      onOpenTools={openTools}
+      onOpenLibrary={openLibraryPanel}
+      onRetrySave={() => void autoSave.retry()}
+      onTriggerAction={triggerAction}
+      onUploadFiles={(files) => void performUpload(files)}
+    />
+  );
+  liveHeaderStoreRef.current.node = actionBar;
+  useLayoutEffect(() => {
+    const store = liveHeaderStoreRef.current;
+    store.version += 1;
+    store.listeners.forEach((listener) => listener());
+  });
+  useLayoutEffect(() => {
+    if (!rightPaneSlot) return;
+    rightPaneSlot.setRightFrameless(false);
+    rightPaneSlot.setRightEditorHeader(true);
+    rightPaneSlot.setRightLabel(liveHeaderNode);
+    return () => {
+      rightPaneSlot.clearRightLabel(liveHeaderNode);
+      rightPaneSlot.setRightEditorHeader(false);
+      rightPaneSlot.setRightFrameless(false);
+    };
+  }, [liveHeaderNode, rightPaneSlot]);
 
   const editorViewport = adapter.nativeChrome?.viewport
     ? undefined
@@ -593,36 +653,23 @@ export function InlineAdvancedWorkbenchShell({
             </div>
           </aside>
         )}
-        <div
-          ref={stageRef}
-          className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
-        >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {!rightPaneSlot && (
+            <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
+              {actionBar}
+            </div>
+          )}
           <div
-            data-advanced-action-row
-            className="absolute left-2 right-2 top-2 z-[80]"
+            ref={stageRef}
+            className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
           >
-            <AdvancedWorkspaceActionBar
-              adapter={adapter}
-              autoSaveState={autoSave.state}
-              activeDrawerId={layoutState.activeDrawerId}
-              activeLibraryPanelId={
-                workspacePane?.activeLibraryPanelId || null
-              }
-              onBack={requestClose}
-              onOpenTools={openTools}
-              onOpenLibrary={openLibraryPanel}
-              onRetrySave={() => void autoSave.retry()}
-              onTriggerAction={triggerAction}
-              onUploadFiles={(files) => void performUpload(files)}
-            />
-          </div>
           {contextToolbar && (
             <div
               data-advanced-context-row
               ref={toolbarRef}
               className="absolute left-2 z-[70] flex max-w-[calc(100%-1rem)] min-w-0 will-change-transform"
               style={{
-                top: 64,
+                top: 8,
                 transform: `translate3d(${toolbarPosition.x}px, ${toolbarPosition.y}px, 0)`,
               }}
             >
@@ -631,7 +678,7 @@ export function InlineAdvancedWorkbenchShell({
           )}
           <div
             data-advanced-viewport-row
-            className="relative h-full min-h-0 min-w-0 overflow-hidden pt-14"
+            className="relative h-full min-h-0 min-w-0 overflow-hidden"
           >
             <AdvancedWorkbenchStage
               editorAvailable={editorAvailable}
@@ -651,6 +698,7 @@ export function InlineAdvancedWorkbenchShell({
               />
             </div>
           </div>
+        </div>
         </div>
       </div>
     </AdvancedLayoutContext.Provider>

@@ -73,10 +73,12 @@ test("fixed workspace row owns semantic actions outside the object edit bar", ()
   assert.match(header, /<AdvancedWorkspaceActionBar/);
   assert.match(actions, /const actions = adapter\.actions \|\| \[\]/);
   assert.match(actions, /actions\.map\(\(action\)/);
-  assert.match(actions, /actions\.length > 1 && actionsOpen/);
+  assert.match(actions, /adapter\.directDownload/);
+  assert.doesNotMatch(actions, /actionsOpen|name="more"/);
   assert.match(actions, /data-advanced-workspace-actions/);
   assert.match(header, /data-advanced-context-row/);
   assert.match(header, /action\.panelId/);
+  assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
 });
 
 test("mutable native editors keep an independent local recovery log", () => {

@@ -117,6 +117,7 @@ export function useFabricImageEditor(
   const savingRef = useRef(false);
   const revisionRef = useRef(0);
   const aiBusyRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const pendingAborts = useRef(new Set<AbortController>());
   optionsRef.current = options;
   viewRef.current = view;
@@ -143,6 +144,11 @@ export function useFabricImageEditor(
       pendingAborts.current.clear();
     };
   }, []);
+  useEffect(() => {
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
+  }, [item.key]);
 
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
@@ -444,6 +450,17 @@ export function useFabricImageEditor(
         setError(caught instanceof Error ? caught.message : "图片下载失败"),
       );
   }, [exportFormat, item.title, makeExportBlob]);
+  const downloadDefaultPng = useCallback(async () => {
+    try {
+      const blob = await makeExportBlob("png", 100, exportScale);
+      downloadImageBlob(blob, item.title, "png");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "PNG 下载失败";
+      setError(message);
+      throw new Error(message);
+    }
+  }, [exportScale, item.title, makeExportBlob]);
 
   const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
     if (savingRef.current) return null;
@@ -455,30 +472,27 @@ export function useFabricImageEditor(
       const controller = controllerRef.current;
       if (!controller) throw new Error("图片画布尚未就绪");
       const snapshot = controller.getSnapshot();
-      const blob = await makeExportBlob();
       const saved = await persistImageProject(
-        blob,
         snapshot,
         item,
         siteId,
-        exportFormat,
         `image:${item.id}:${savingRevision}`,
+        workingHeadUrlRef.current,
         {
           uploadFailed: "保存到我的库失败",
-          registerFailed: "图片已上传，但登记到我的库失败",
+          registerFailed: "图片工程已上传，但登记到我的库失败",
         },
       );
       if (!aliveRef.current) return null;
+      workingHeadUrlRef.current = saved.previewUrl;
       setSavedUrl(saved.previewUrl);
       setSavedProjectUrl(saved.projectUrl);
       setSavedAt(saved.savedAt);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
         clearLocalImageDraft(item);
-        setNotice("可编辑工程与预览已自动保存，原素材未被覆盖");
-      } else {
-        setNotice("已保存一个版本；之后的修改仍未保存");
       }
+      setNotice("");
       optionsRef.current.onSaved?.(saved.previewUrl);
       return {
         url: saved.previewUrl,
@@ -495,7 +509,7 @@ export function useFabricImageEditor(
       savingRef.current = false;
       if (aliveRef.current) setSaving(false);
     }
-  }, [exportFormat, item, makeExportBlob, siteId]);
+  }, [item, siteId]);
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
@@ -593,6 +607,8 @@ export function useFabricImageEditor(
     setSelectedStroke: (patch) => controller()?.setSelectedStroke(patch),
     setSelectedFill: (color) => controller()?.setSelectedFill(color),
     setSelectedRadius: (px) => controller()?.setSelectedRadius(px),
+    setSelectedGeometry: (patch) => controller()?.setSelectedGeometry(patch),
+    setSelectedImageFit: (mode) => controller()?.setSelectedImageFit(mode),
     setSelectedText: (patch) => controller()?.setSelectedText(patch),
     setSelectedTableStyle: (patch) =>
       controller()?.setSelectedTableStyle(patch),
@@ -626,6 +642,7 @@ export function useFabricImageEditor(
     setExportScale: (scale) =>
       setExportScaleState(Math.max(0.25, Math.min(4, scale))),
     download,
+    downloadDefaultPng,
     save,
     aiAvailable: true,
     aiPrompt,

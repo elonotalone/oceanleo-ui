@@ -13,7 +13,7 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveFileToLibrary,
+  saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "./doc-io";
 import {
@@ -55,6 +55,8 @@ export interface GridEditorState {
   activeSheet: GridSheet;
   activeSheetId: string;
   selection: GridSelection;
+  /** Null until the user explicitly clicks or keyboard-selects a cell. */
+  selectedCell: GridCell | null;
   selectionRange: GridSelectionRange;
   selectedValue: string;
   selectedDisplayValue: string;
@@ -163,6 +165,7 @@ export function useGridEditor(
     anchor: { row: 0, col: 0 },
     focus: { row: 0, col: 0 },
   });
+  const [hasSelectedCell, setHasSelectedCell] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
   const [headerRow, setHeaderRow] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -181,6 +184,7 @@ export function useGridEditor(
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
 
   const applySnapshot = useCallback((snapshot: GridSnapshot) => {
     const next = cloneGridSheets(snapshot.sheets);
@@ -233,6 +237,9 @@ export function useGridEditor(
     setSavedUrl("");
     setDirty(false);
     revisionRef.current = 0;
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+    );
     const projectUrl = String(item.meta.editor_project_url || "").trim();
     void (projectUrl
       ? loadEditorProject<GridProject>(
@@ -273,6 +280,7 @@ export function useGridEditor(
           anchor: { row: 0, col: 0 },
           focus: { row: 0, col: 0 },
         });
+        setHasSelectedCell(false);
         setFilterQuery("");
         setHeaderRow(loaded.headerRow);
       })
@@ -280,6 +288,7 @@ export function useGridEditor(
         if (controller.signal.aborted || !mountedRef.current) return;
         const fallback = emptyGridSheet();
         applySnapshot({ sheets: [fallback], activeSheetId: fallback.id });
+        setHasSelectedCell(false);
         setError(
           caught instanceof Error ? tt(caught.message) : tt("工作簿加载失败"),
         );
@@ -338,10 +347,12 @@ export function useGridEditor(
       anchor: { row: 0, col: 0 },
       focus: { row: 0, col: 0 },
     });
+    setHasSelectedCell(false);
     setFilterQuery("");
   }, []);
 
   const selectCell = useCallback((cell: GridCell, extend = false) => {
+    setHasSelectedCell(true);
     setSelection((current) => ({
       anchor: extend ? current.anchor : cell,
       focus: cell,
@@ -471,6 +482,7 @@ export function useGridEditor(
       anchor: { row: 0, col: 0 },
       focus: { row: 0, col: 0 },
     });
+    setHasSelectedCell(false);
   }, [mutate]);
 
   const renameSheet = useCallback(
@@ -497,6 +509,7 @@ export function useGridEditor(
       },
       nextId,
     );
+    setHasSelectedCell(false);
   }, [mutate]);
 
   const sort = useCallback(
@@ -576,6 +589,7 @@ export function useGridEditor(
           anchor: { row: 0, col: 0 },
           focus: { row: 0, col: 0 },
         });
+        setHasSelectedCell(false);
         setFilterQuery("");
       } catch (caught) {
         if (mountedRef.current && operation === operationRef.current) {
@@ -628,16 +642,15 @@ export function useGridEditor(
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const blob = await buildGridWorkbookBlob(snapshot);
-      const result = await saveFileToLibrary({
+      const result = await saveProjectWorkingHead({
         item,
         siteId,
         fallbackSite: "excel",
-        file: new File([blob], `${title}.xlsx`, { type: blob.type }),
         title,
         mediaType: "sheet",
         kind: "sheet",
         idempotencyKey: `grid:${item.id}:${savingRevision}`,
+        workingHeadUrl: workingHeadUrlRef.current,
         meta: {
           editor: "grid-v2",
           sheet_count: snapshot.length,
@@ -657,6 +670,7 @@ export function useGridEditor(
         setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
         return null;
       }
+      workingHeadUrlRef.current = result.url;
       setSavedUrl(result.url);
       if (revisionRef.current === savingRevision) setDirty(false);
       return {
@@ -693,6 +707,7 @@ export function useGridEditor(
       redoRef.current = [];
       applySnapshot({ sheets: next, activeSheetId: nextActive });
       setHeaderRow(project.headerRow !== false);
+      setHasSelectedCell(false);
       revisionRef.current += 1;
       setDirty(true);
       setSavedUrl("");
@@ -709,6 +724,7 @@ export function useGridEditor(
     activeSheet,
     activeSheetId,
     selection,
+    selectedCell: hasSelectedCell ? selection.focus : null,
     selectionRange: range,
     selectedValue,
     selectedDisplayValue,

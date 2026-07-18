@@ -256,7 +256,13 @@ export function WorkspaceLibrary({
 
   const removeEntry = async (entry: WorkspaceLibraryEntry) => {
     if (!entry.onDelete || deletingId) return;
-    if (!window.confirm(tt("确定删除「{title}」吗？", { title: entry.title }))) {
+    if (
+      !window.confirm(
+        tt("确定彻底删除「{title}」吗？此操作无法撤销。", {
+          title: entry.title,
+        }),
+      )
+    ) {
       return;
     }
     setDeleteError("");
@@ -546,7 +552,7 @@ export function WorkspaceLibrary({
               disabled={deletingId === selected.id}
               className="shrink-0 rounded-lg border border-rose-500/25 px-2.5 py-1.5 text-[11px] font-medium text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
             >
-              {tt(deletingId === selected.id ? "删除中…" : "删除")}
+              {tt(deletingId === selected.id ? "删除中…" : "彻底删除")}
             </button>
           )}
           <button

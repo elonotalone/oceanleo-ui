@@ -5,6 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
+import { WORKBENCH_MATERIAL_MIME } from "./workbench-material-provider";
 
 export function AdvancedWorkbenchStage({
   editorAvailable,
@@ -27,34 +28,40 @@ export function AdvancedWorkbenchStage({
 }) {
   const tt = useUI();
   const dragDepth = useRef(0);
-  const [localFileDragging, setLocalFileDragging] = useState(false);
-  const acceptsFiles = (event: DragEvent<HTMLDivElement>) =>
-    acceptLocalFiles &&
-    Array.from(event.dataTransfer.types || []).includes("Files");
+  const [stageDragging, setStageDragging] = useState(false);
+  const acceptsDrop = (event: DragEvent<HTMLDivElement>) => {
+    const types = Array.from(event.dataTransfer.types || []);
+    return (
+      (acceptLocalFiles && types.includes("Files")) ||
+      types.includes(WORKBENCH_MATERIAL_MIME) ||
+      Boolean(draggedTitle)
+    );
+  };
   return (
     <div
       role="main"
       className="relative h-full min-h-0 min-w-0 overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)]"
       onDragEnter={(event) => {
-        if (!acceptsFiles(event)) return;
+        if (!acceptsDrop(event)) return;
         event.preventDefault();
         dragDepth.current += 1;
-        setLocalFileDragging(true);
+        setStageDragging(true);
       }}
       onDragOver={(event) => {
-        if (!acceptsFiles(event)) return;
+        if (!acceptsDrop(event)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
       }}
       onDragLeave={(event) => {
-        if (!localFileDragging && !acceptsFiles(event)) return;
+        if (!stageDragging && !acceptsDrop(event)) return;
         dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setLocalFileDragging(false);
+        if (dragDepth.current === 0) setStageDragging(false);
       }}
       onDrop={(event) => {
-        if (!acceptsFiles(event)) return;
+        if (!acceptsDrop(event)) return;
+        event.preventDefault();
         dragDepth.current = 0;
-        setLocalFileDragging(false);
+        setStageDragging(false);
         onMaterialDrop(event);
       }}
     >
@@ -65,7 +72,7 @@ export function AdvancedWorkbenchStage({
           <LibraryItemViewer item={item} accent={accent} />
         </div>
       )}
-      {(draggedTitle || localFileDragging) && (
+      {(draggedTitle || stageDragging) && (
         <div
           className="absolute inset-3 z-[80] grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--card,#fff)]/88 p-6 text-center shadow-2xl backdrop-blur-sm"
           style={{ borderColor: accent }}
@@ -75,9 +82,10 @@ export function AdvancedWorkbenchStage({
             event.dataTransfer.dropEffect = "copy";
           }}
           onDrop={(event) => {
+            event.preventDefault();
             event.stopPropagation();
             dragDepth.current = 0;
-            setLocalFileDragging(false);
+            setStageDragging(false);
             onMaterialDrop(event);
           }}
         >

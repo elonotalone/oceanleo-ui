@@ -234,6 +234,13 @@ export function ImageRoute({
           setValue: (value) => editor.setZoom(value / 100),
           fit: editor.zoomFit,
         },
+        directDownload: {
+          id: "image-download-png",
+          label: "直接下载 PNG",
+          icon: "download",
+          disabled: editor.loading,
+          onTrigger: editor.downloadDefaultPng,
+        },
         actions: [
           {
             id: "image-export",

@@ -142,17 +142,24 @@ export function VideoTimelineRoute({
           setValue: (value) => editor.setPxPerSecond((value / 100) * 80),
           fit: () => editor.setPxPerSecond(80),
         },
-        actions: [
-          {
-            id: "video-export",
-            label: editor.exporting ? "取消渲染" : "导出视频",
-            variant: editor.exporting ? "danger" : "primary",
-            onTrigger: () =>
-              editor.exporting
-                ? editor.cancelExport()
-                : editor.exportVideo(),
-          },
-        ],
+        directDownload: {
+          id: "video-export",
+          label: "直接导出视频",
+          icon: "download",
+          busyLabel: "渲染中…",
+          busy: editor.exporting,
+          onTrigger: editor.exportVideo,
+        },
+        actions: editor.exporting
+          ? [
+              {
+                id: "video-cancel-export",
+                label: "取消渲染",
+                variant: "danger",
+                onTrigger: editor.cancelExport,
+              },
+            ]
+          : [],
         upload: {
           accept: "video/*,audio/*,image/*",
           multiple: true,

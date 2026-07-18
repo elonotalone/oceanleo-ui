@@ -144,6 +144,7 @@ export function EmbeddedRoute({
     useState<SelectionCommand | null>(null);
   const [materialInsertion, setMaterialInsertion] =
     useState<EditorMaterialInsertion | null>(null);
+  const [exportRequestId, setExportRequestId] = useState("");
   const materialResolversRef = useRef(
     new Map<
       string,
@@ -154,6 +155,12 @@ export function EmbeddedRoute({
       }
     >(),
   );
+  const exportResolverRef = useRef<{
+    exportId: string;
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: number;
+  } | null>(null);
   const pendingSaveIdRef = useRef("");
   const saveResolverRef = useRef<
     ((result: AdvancedFlushResult) => void) | null
@@ -273,6 +280,7 @@ export function EmbeddedRoute({
     setSelection(null);
     setSelectionCommand(null);
     setMaterialInsertion(null);
+    setExportRequestId("");
     setDirty(false);
     setEditRevision(0);
     remoteRevisionRef.current = 0;
@@ -297,8 +305,14 @@ export function EmbeddedRoute({
         pending.reject(new Error("嵌入编辑器已关闭。"));
       });
       materialResolversRef.current.clear();
+      const pendingExport = exportResolverRef.current;
+      if (pendingExport) {
+        window.clearTimeout(pendingExport.timer);
+        pendingExport.reject(new Error("嵌入编辑器已关闭。"));
+        exportResolverRef.current = null;
+      }
     },
-    [],
+    [item.key],
   );
   const settleSave = useCallback((result: AdvancedFlushResult) => {
     if (saveTimerRef.current !== null) {
@@ -314,7 +328,7 @@ export function EmbeddedRoute({
     () => () => {
       settleSave({ ok: false });
     },
-    [settleSave],
+    [item.key, settleSave],
   );
   const saveBeforeNewConversation = useCallback(
     () =>
@@ -472,6 +486,52 @@ export function EmbeddedRoute({
     },
     [],
   );
+  const requestRemoteExport = useCallback(() => {
+    if (exportResolverRef.current) {
+      return Promise.reject(new Error("已有导出请求正在处理中。"));
+    }
+    const exportId = `export-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 9)}`;
+    setExportRequestId(exportId);
+    return new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        exportResolverRef.current = null;
+        setExportRequestId("");
+        reject(new Error("嵌入编辑器未响应导出协议，请稍后重试。"));
+      }, 25_000);
+      exportResolverRef.current = { exportId, resolve, reject, timer };
+    });
+  }, []);
+  const handleExportResult = useCallback(
+    (result: {
+      exportId: string;
+      ok: boolean;
+      url?: string;
+      message?: string;
+    }) => {
+      const pending = exportResolverRef.current;
+      if (!pending || pending.exportId !== result.exportId) return;
+      window.clearTimeout(pending.timer);
+      exportResolverRef.current = null;
+      setExportRequestId("");
+      if (!result.ok) {
+        pending.reject(new Error(result.message || "嵌入编辑器导出失败。"));
+        return;
+      }
+      if (result.url) {
+        const anchor = document.createElement("a");
+        anchor.href = result.url;
+        anchor.download = "";
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      pending.resolve();
+    },
+    [],
+  );
   const websiteId = useMemo(
     () =>
       String(
@@ -577,6 +637,8 @@ export function EmbeddedRoute({
             selectionCommand={selectionCommand}
             materialInsertion={materialInsertion}
             onMaterialResult={handleMaterialResult}
+            exportRequestId={exportRequestId}
+            onExportResult={handleExportResult}
             onSaveResult={handleSaveResult}
             saveRequestId={saveRequestId}
           />
@@ -592,6 +654,19 @@ export function EmbeddedRoute({
           ) : null,
         drawers: remoteDrawers,
         history: remoteHistory,
+        directDownload: {
+          id: "embedded-export-default",
+          label:
+            route.mediaType === "website"
+              ? "直接导出网站"
+              : route.mediaType === "video_canvas"
+                ? "直接导出视频"
+                : "直接下载设计",
+          icon: "download",
+          busy: Boolean(exportRequestId),
+          busyLabel: "等待编辑器导出…",
+          onTrigger: requestRemoteExport,
+        },
         actions: remoteActions,
         nativeChrome: { toolbar: true, viewport: true },
         persistence: {

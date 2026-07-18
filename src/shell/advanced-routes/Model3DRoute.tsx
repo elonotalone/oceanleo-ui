@@ -145,15 +145,13 @@ export function Model3DRoute({
           setValue: editor.setZoom,
           fit: editor.resetCamera,
         },
-        actions: [
-          {
-            id: "model3d-screenshot",
-            label: "下载截图",
-            icon: "download",
-            disabled: !editor.modelLoaded || editor.capturing,
-            onTrigger: editor.downloadScreenshot,
-          },
-        ],
+        directDownload: {
+          id: "model3d-screenshot",
+          label: "直接下载截图",
+          icon: "download",
+          disabled: !editor.modelLoaded || editor.capturing,
+          onTrigger: editor.downloadScreenshot,
+        },
         upload: {
           accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
           onFiles: importLocalModel,

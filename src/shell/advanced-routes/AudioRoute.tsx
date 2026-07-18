@@ -112,29 +112,19 @@ export function AudioRoute({
           setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
           fit: () => editor.setWaveformZoom(30),
         },
-        actions: [
-          {
-            id: "audio-download-wav",
-            label: "下载 WAV",
-            icon: "download",
-            disabled: editor.loading,
-            onTrigger: editor.download,
-          },
-        ],
+        directDownload: {
+          id: "audio-download-wav",
+          label: "直接下载 WAV",
+          icon: "download",
+          disabled: editor.loading,
+          onTrigger: editor.download,
+        },
         upload: {
           accept: "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac",
           onFiles: importLocalAudio,
         },
         stage: <AudioStage editor={editor} accent={accent} />,
-        status:
-          editor.error ||
-          (editor.dirty
-            ? "有未保存的修改"
-            : editor.savedUrl
-              ? "已保存到我的库"
-              : editor.loading
-                ? "正在载入音频"
-                : ""),
+        status: editor.error || (editor.loading ? "正在载入音频" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

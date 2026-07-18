@@ -1,5 +1,9 @@
 import type { SelectionCommand } from "../selection-context";
-import type { CropRatio, FabricImageEditorState } from "./types";
+import type {
+  CropRatio,
+  FabricImageEditorState,
+  ImageFitMode,
+} from "./types";
 
 function numeric(value: SelectionCommand["value"], fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -79,6 +83,30 @@ export function dispatchFabricImageCommand(
       break;
     case "radius":
       editor.setSelectedRadius(numeric(message.value));
+      break;
+    case "position-x":
+      editor.setSelectedGeometry({ x: numeric(message.value, selected?.x ?? 0) });
+      break;
+    case "position-y":
+      editor.setSelectedGeometry({ y: numeric(message.value, selected?.y ?? 0) });
+      break;
+    case "object-width":
+      editor.setSelectedGeometry({
+        width: numeric(message.value, selected?.width ?? 1),
+      });
+      break;
+    case "object-height":
+      editor.setSelectedGeometry({
+        height: numeric(message.value, selected?.height ?? 1),
+      });
+      break;
+    case "angle":
+      editor.setTargetAngle(numeric(message.value, selected?.angle ?? 0));
+      break;
+    case "image-fit":
+      if (["contain", "cover", "fill"].includes(String(message.value))) {
+        editor.setSelectedImageFit(message.value as ImageFitMode);
+      }
       break;
     case "shadow":
       editor.setSelectedShadow({ enabled: message.value === true });
@@ -165,6 +193,17 @@ export function dispatchFabricImageCommand(
       break;
     case "grayscale":
       editor.setFilter("grayscale", message.value === true);
+      break;
+    case "lock":
+      if (selected && message.value !== selected.locked) {
+        editor.toggleLayerLock(selected.id);
+      }
+      break;
+    case "layer-up":
+      if (selected) editor.moveLayer(selected.id, "up");
+      break;
+    case "layer-down":
+      if (selected) editor.moveLayer(selected.id, "down");
       break;
     case "duplicate":
       void editor.duplicateSelected();

@@ -42,6 +42,7 @@ import {
   advancedRootItemId,
   inlineEditorItemsFromSession,
 } from "./advanced-session";
+import { useWorkbenchMaterialScope } from "./workbench-material-provider";
 
 interface LiveWorkspaceNodeStore {
   node: ReactNode;
@@ -314,6 +315,17 @@ export function ResultCanvas({
   );
   const [activeCanvasEntry, setActiveCanvasEntry] =
     useState<WorkspaceLibraryEntry | null>(null);
+  const materialSiteId =
+    effectiveSiteId || activeCanvasEntry?.libraryItem?.siteId || "oceanleo";
+  const materialAppId = workspaceSession?.appId || materialSiteId;
+  const workbenchMaterials = useWorkbenchMaterialScope(
+    materialSiteId,
+    materialAppId,
+  );
+  const primaryMaterialAction =
+    workbenchMaterials.actions.includes("insert")
+      ? "insert"
+      : workbenchMaterials.actions[0];
   const [savedEditorItems, setSavedEditorItems] = useState<
     Record<string, LibraryItem>
   >({});
@@ -710,9 +722,17 @@ export function ResultCanvas({
         accent={accent}
         action={actionFor("materials")}
         taskId={effectiveTaskId}
-        siteId={effectiveSiteId}
+        siteId={materialSiteId}
+        appId={materialAppId}
         onSeeAll={onSeeAllMaterials}
         onOpenItem={openCanvasItem}
+        materialActions={workbenchMaterials.actions}
+        onMaterialAction={workbenchMaterials.perform}
+        materialActionAvailable={workbenchMaterials.canPerform}
+        primaryMaterialAction={primaryMaterialAction}
+        draggableMaterials={Boolean(primaryMaterialAction)}
+        onMaterialDragStart={workbenchMaterials.beginMaterialDrag}
+        onMaterialDragEnd={workbenchMaterials.endMaterialDrag}
       />
     ),
     mine: (
@@ -721,10 +741,17 @@ export function ResultCanvas({
           accent={accent}
           action={actionFor("mine")}
           taskId={effectiveTaskId}
-          siteId={effectiveSiteId}
+          siteId={materialSiteId}
           featuredEntries={minePageEntries}
           refreshNonce={libraryRefreshNonce}
           onOpenItem={openCanvasItem}
+          materialActions={workbenchMaterials.actions}
+          onMaterialAction={workbenchMaterials.perform}
+          materialActionAvailable={workbenchMaterials.canPerform}
+          primaryMaterialAction={primaryMaterialAction}
+          draggableMaterials={Boolean(primaryMaterialAction)}
+          onMaterialDragStart={workbenchMaterials.beginMaterialDrag}
+          onMaterialDragEnd={workbenchMaterials.endMaterialDrag}
         />
       </div>
     ),
@@ -810,17 +837,16 @@ export function ResultCanvas({
   // bar opens them on the left. The right library itself never moves.
   useLayoutEffect(() => {
     if (!rightSlot) return;
-    const frameless = Boolean(activeCanvasEntry);
-    rightSlot.setRightFrameless(frameless);
+    rightSlot.setRightFrameless(false);
+    if (activeCanvasEntry) return;
+    rightSlot.setRightEditorHeader(false);
     rightSlot.setRightLabel(
-      frameless ? null : (
-        <FixedWorkspaceTabs
-          slots={visibleSlots}
-          selected={selected}
-          onSelect={select}
-          accent={accent}
-        />
-      ),
+      <FixedWorkspaceTabs
+        slots={visibleSlots}
+        selected={selected}
+        onSelect={select}
+        accent={accent}
+      />,
     );
     return () => {
       rightSlot.setRightLabel(null);

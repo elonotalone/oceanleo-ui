@@ -11,6 +11,8 @@
 import { useEffect, useRef } from "react";
 import { saveWorks, uploadFile, type MediaType } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
+import { editorWorkingHeadUrl } from "../editor-working-head";
+export { editorWorkingHeadUrl } from "../editor-working-head";
 
 export function downloadBlob(name: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
@@ -89,6 +91,10 @@ export interface SaveToLibraryInput {
   };
   /** The exported delivery file is itself the exact editable project. */
   deliveryProjectSchema?: string;
+  /** Register only the structured project, keeping one stable creation URL. */
+  projectOnly?: boolean;
+  /** Previously chosen working-head URL (needed when the first head used a project URL). */
+  workingHeadUrl?: string;
 }
 
 export interface SaveToLibraryResult {
@@ -105,7 +111,45 @@ export type PersistedEditorVersion = Pick<
   "url" | "versionId" | "projectUrl" | "projectSchema"
 >;
 
-/** 上传成品文件并登记到我的库；error 为空串时由调用方兜底文案。 */
+export interface SaveProjectWorkingHeadInput
+  extends Omit<
+    SaveToLibraryInput,
+    "deliveryProjectSchema" | "deliveryUrl" | "file" | "projectOnly"
+  > {
+  project: NonNullable<SaveToLibraryInput["project"]>;
+}
+
+/**
+ * Autosave contract: upload only the JSON project and upsert one creation.
+ * The original durable delivery/preview URL remains the creation key. A blank
+ * draft uses its first project URL as that stable key until a delivery exists.
+ */
+export async function saveProjectWorkingHead(
+  input: SaveProjectWorkingHeadInput,
+): Promise<SaveToLibraryResult> {
+  const thumbnailUrl = editorWorkingHeadUrl({
+    url: input.thumbUrl,
+    previewUrl: input.item.thumbUrl || input.item.previewUrl,
+  });
+  const priorProjectUrl = String(
+    input.item.meta.editor_project_url || "",
+  ).trim();
+  const projectBackedWorkingHead = Boolean(
+    input.item.meta.editor_working_head_uses_project_url,
+  );
+  const thumbnailIsProject =
+    thumbnailUrl === priorProjectUrl ||
+    (projectBackedWorkingHead &&
+      (thumbnailUrl === input.workingHeadUrl ||
+        thumbnailUrl === input.item.url));
+  return saveFileToLibrary({
+    ...input,
+    projectOnly: true,
+    thumbUrl: thumbnailIsProject ? undefined : thumbnailUrl || undefined,
+  });
+}
+
+/** 上传交付文件或轻量工程并登记到我的库；error 为空串时由调用方兜底文案。 */
 export async function saveFileToLibrary(
   input: SaveToLibraryInput,
 ): Promise<SaveToLibraryResult> {
@@ -154,7 +198,24 @@ export async function saveFileToLibrary(
       };
     }
   }
-  let url = (input.deliveryUrl || "").trim();
+  const existingWorkingHead = editorWorkingHeadUrl(
+    input.item,
+    input.workingHeadUrl,
+  );
+  const requestedDeliveryUrl = (input.deliveryUrl || "").trim();
+  let url = input.projectOnly
+    ? editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl)
+    : editorWorkingHeadUrl({ url: requestedDeliveryUrl });
+  if (!input.projectOnly && requestedDeliveryUrl && !url) {
+    return {
+      ok: false,
+      url: "",
+      versionId: "",
+      projectUrl,
+      projectSchema,
+      error: "现有交付地址无效",
+    };
+  }
   if (!url) {
     if (!input.file) {
       return {
@@ -183,24 +244,17 @@ export async function saveFileToLibrary(
         error: uploaded.error || "",
       };
     }
-  } else {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-        throw new Error("unsupported protocol");
-      }
-    } catch {
-      return {
-        ok: false,
-        url: "",
-        versionId: "",
-        projectUrl,
-        projectSchema,
-        error: "现有交付地址无效",
-      };
-    }
   }
   if (!projectUrl && projectSchema) projectUrl = url;
+  const projectUrlIsWorkingHead =
+    input.projectOnly &&
+    (Boolean(input.item.meta.editor_working_head_uses_project_url) ||
+      (!existingWorkingHead && url === projectUrl));
+  const rootId = String(
+    input.item.meta.root_asset_id ||
+      input.item.meta.parent_asset_id ||
+      input.item.id,
+  ).slice(0, 600);
   const saved = await saveWorks(site, [
     {
       url,
@@ -209,16 +263,24 @@ export async function saveFileToLibrary(
       title: input.title,
       kind: input.kind,
       meta: {
-        parent_asset_id: input.item.id,
+        ...input.meta,
+        parent_asset_id: rootId,
+        root_asset_id: rootId,
         source_site: input.item.siteId || site,
         ...(projectUrl
           ? {
               editor_project_url: projectUrl,
               editor_project_schema: projectSchema,
               editor_saved_at: savedAt,
+              ...(input.projectOnly
+                ? {
+                    editor_working_head_url: url,
+                    editor_working_head_uses_project_url:
+                      projectUrlIsWorkingHead,
+                  }
+                : {}),
             }
           : {}),
-        ...input.meta,
       },
     },
   ]);

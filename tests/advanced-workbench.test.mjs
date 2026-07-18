@@ -179,6 +179,7 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const provider = source("../src/shell/workbench-material-provider.tsx");
+  const registry = source("../src/shell/workbench-material-registry.ts");
   const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
   const timeline = source(
     "../src/shell/advanced-routes/VideoTimelineRoute.tsx",
@@ -195,7 +196,7 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   );
   assert.match(library, /draggable: enabled/);
   assert.match(library, /dataTransfer\.setData/);
-  assert.match(provider, /source: "click" \| "drop"/);
+  assert.match(registry, /source: "click" \| "drop"/);
   assert.match(shell, /source: "drop"/);
   assert.match(shell, /clientX: event\.clientX/);
   assert.match(shell, /clientY: event\.clientY/);
@@ -218,6 +219,8 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   );
   assert.match(provider, /const adapterRef = useRef\(adapter\)/);
   assert.match(provider, /Register a stable proxy/);
+  assert.match(provider, /useWorkbenchMaterialScope/);
+  assert.match(registry, /beginWorkbenchMaterialDrag/);
 });
 
 test("the shared property bar dispatches direct, dropdown and drawer controls", () => {

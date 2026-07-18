@@ -75,11 +75,11 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const deckGeometry = source("../src/shell/doc-editors/deck-geometry.ts");
   const deckSchema = source("../src/shell/doc-editors/deck-schema.ts");
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
-  assert.match(rich, /saveFileToLibrary/);
+  assert.match(rich, /saveProjectWorkingHead/);
   assert.match(grid, /buildGridWorkbookBlob/);
   assert.match(grid, /gridSelectionRange/);
   assert.match(deck, /pptxgenjs/);
-  assert.match(deck, /saveFileToLibrary/);
+  assert.match(deck, /saveProjectWorkingHead/);
   assert.match(deck, /importPptxDeck/);
   assert.match(pptxImport, /pptxtojson\/dist\/index\.js/);
   assert.match(pptxImport, /imageMode: "base64"/);
@@ -137,10 +137,8 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   assert.match(pdf, /const undo = useCallback/);
   assert.match(pdf, /const redo = useCallback/);
   assert.match(deck, /\.pptx/);
-  assert.match(
-    deck,
-    /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/,
-  );
+  assert.match(deck, /buildDeckPptxBlob/);
+  assert.match(deck, /saveProjectWorkingHead/);
 });
 
 test("timeline preview uses the same transition semantics as export", () => {

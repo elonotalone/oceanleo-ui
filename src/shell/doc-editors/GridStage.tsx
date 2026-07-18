@@ -19,6 +19,7 @@ function withinSelection(
   row: number,
   col: number,
 ): boolean {
+  if (!editor.selectedCell) return false;
   const range = editor.selectionRange;
   return (
     row >= range.firstRow &&
@@ -42,9 +43,9 @@ export function GridStage({
   const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
   const end = Math.min(rows.length, start + WINDOW_ROWS);
   const windowRows = useMemo(() => rows.slice(start, end), [end, rows, start]);
-  const selectedAddress = `${columnLabel(editor.selection.focus.col)}${
-    editor.selection.focus.row + 1
-  }`;
+  const selectedAddress = editor.selectedCell
+    ? `${columnLabel(editor.selectedCell.col)}${editor.selectedCell.row + 1}`
+    : "";
 
   const focusCell = (row: number, col: number) => {
     window.requestAnimationFrame(() => {
@@ -85,85 +86,26 @@ export function GridStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]">
-      <div className="flex shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-3 py-2">
-        <select
-          value={editor.activeSheetId}
-          onChange={(event) => editor.setActiveSheet(event.target.value)}
-          aria-label={tt("工作表")}
-          className="h-8 w-32 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] font-medium text-[var(--fg,#292524)] outline-none"
-        >
-          {editor.sheets.map((sheet) => (
-            <option key={sheet.id} value={sheet.id}>
-              {sheet.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={editor.addSheet}
-          aria-label={tt("新增工作表")}
-          title={tt("新增工作表")}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-sm text-[var(--fg-2,#57534e)]"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={editor.deleteSheet}
-          disabled={editor.sheets.length <= 1}
-          aria-label={tt("删除工作表")}
-          title={tt("删除工作表")}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-sm text-[var(--fg-2,#57534e)] disabled:opacity-30"
-        >
-          ×
-        </button>
-        <input
-          key={editor.activeSheetId}
-          defaultValue={editor.activeSheet.name}
-          onBlur={(event) => editor.renameSheet(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          aria-label={tt("工作表名称")}
-          className="h-8 w-28 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] text-[var(--fg,#292524)] outline-none"
-        />
-        <label className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[10px] text-[var(--muted,#78716c)]">
-          <input
-            type="checkbox"
-            checked={editor.headerRow}
-            onChange={(event) => editor.setHeaderRow(event.target.checked)}
-            style={{ accentColor: accent }}
-          />
-          {tt("表头")}
-        </label>
-        <input
-          value={editor.filterQuery}
-          onChange={(event) => editor.setFilterQuery(event.target.value)}
-          placeholder={tt("筛选当前列")}
-          aria-label={tt("筛选当前列")}
-          className="h-8 w-32 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[10px] text-[var(--fg,#292524)] outline-none"
-        />
-        <span className="mx-1 h-5 w-px shrink-0 bg-[var(--border,#e7e5e4)]" />
-        <span className="w-16 shrink-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
-          {selectedAddress}
-        </span>
-        <span className="text-[13px] font-semibold text-[var(--muted,#78716c)]">fx</span>
-        <input
-          value={editor.selectedValue}
-          onChange={(event) => editor.setSelectedValue(event.target.value)}
-          aria-label={tt("公式栏")}
-          placeholder={tt("输入内容或以 = 开头的公式")}
-          className="min-w-0 flex-1 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
-        />
-        {editor.selectedValue.startsWith("=") && (
-          <span
-            className="max-w-48 truncate text-[10px] text-[var(--muted,#78716c)]"
-            title={editor.selectedDisplayValue}
-          >
-            {tt("结果")}：{editor.selectedDisplayValue}
+      {editor.selectedCell && (
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border,#e7e5e4)] px-3">
+          <span className="w-14 shrink-0 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
+            {selectedAddress}
           </span>
-        )}
-      </div>
+          <span className="text-[12px] font-semibold text-[var(--muted,#78716c)]">fx</span>
+          <input
+            value={editor.selectedValue}
+            onChange={(event) => editor.setSelectedValue(event.target.value)}
+            aria-label={tt("公式栏")}
+            placeholder={tt("输入内容或以 = 开头的公式")}
+            className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[11px] text-[var(--fg,#292524)] outline-none"
+          />
+          {editor.selectedValue.startsWith("=") && (
+            <span className="max-w-48 truncate text-[10px] text-[var(--muted,#78716c)]">
+              {editor.selectedDisplayValue}
+            </span>
+          )}
+        </div>
+      )}
 
       <div
         className="relative min-h-0 flex-1 overflow-auto bg-[var(--card,#fff)]"
@@ -214,6 +156,7 @@ export function GridStage({
                 </th>
                 {Array.from({ length: columnCount }, (_, col) => {
                   const focused =
+                    Boolean(editor.selectedCell) &&
                     editor.selection.focus.row === row &&
                     editor.selection.focus.col === col;
                   const selected = withinSelection(editor, row, col);
@@ -284,6 +227,55 @@ export function GridStage({
             {tt("没有符合筛选条件的行")}
           </div>
         )}
+      </div>
+      <div
+        role="tablist"
+        aria-label={tt("工作表")}
+        className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-t border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2"
+      >
+        {editor.sheets.map((sheet) =>
+          sheet.id === editor.activeSheetId ? (
+            <input
+              key={sheet.id}
+              defaultValue={sheet.name}
+              onBlur={(event) => editor.renameSheet(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              aria-label={tt("工作表名称")}
+              className="w-28 shrink-0 border-x border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 text-[10px] font-semibold outline-none"
+              style={{ color: accent }}
+            />
+          ) : (
+            <button
+              key={sheet.id}
+              type="button"
+              role="tab"
+              aria-selected={false}
+              onClick={() => editor.setActiveSheet(sheet.id)}
+              className="shrink-0 px-3 text-[10px] text-[var(--muted,#78716c)] hover:bg-[var(--card,#fff)]"
+            >
+              {sheet.name}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={editor.addSheet}
+          aria-label={tt("新增工作表")}
+          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--card,#fff)]"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={editor.deleteSheet}
+          disabled={editor.sheets.length <= 1}
+          aria-label={tt("删除工作表")}
+          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+        >
+          ×
+        </button>
       </div>
     </div>
   );

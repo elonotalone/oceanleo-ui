@@ -243,6 +243,14 @@ export function DeckRoute({
           setValue: setZoom,
           fit: () => setZoom(100),
         },
+        directDownload: {
+          id: "deck-export-pptx",
+          label: "直接下载 PPTX",
+          icon: "download",
+          busyLabel: "导出中…",
+          busy: editor.exporting,
+          onTrigger: editor.exportPptx,
+        },
         actions: [
           {
             id: "deck-download-project",
@@ -250,13 +258,6 @@ export function DeckRoute({
             icon: "download",
             variant: "icon",
             onTrigger: editor.downloadJson,
-          },
-          {
-            id: "deck-export-pptx",
-            label: "导出 PPTX",
-            busyLabel: "导出中…",
-            busy: editor.exporting,
-            onTrigger: editor.exportPptx,
           },
         ],
         upload: {

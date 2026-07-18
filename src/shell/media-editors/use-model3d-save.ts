@@ -9,10 +9,9 @@ import {
   type SetStateAction,
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
 import type { PersistedEditorVersion } from "../doc-editors/doc-io";
-import { MAX_MODEL_BYTES, modelExtension, safeModelStem } from "./model3d-files";
+import { safeModelStem } from "./model3d-files";
 import {
   persistModel3DProject,
   type Model3DViewProject,
@@ -25,7 +24,6 @@ export function useModel3DSave({
   modelLoaded,
   posterUrl,
   view,
-  captureBlob,
   revisionRef,
   sourceGenerationRef,
   aliveRef,
@@ -42,7 +40,6 @@ export function useModel3DSave({
   modelLoaded: boolean;
   posterUrl: string;
   view: Omit<Model3DViewProject, "sourceUrl">;
-  captureBlob: () => Promise<Blob>;
   revisionRef: MutableRefObject<number>;
   sourceGenerationRef: MutableRefObject<number>;
   aliveRef: MutableRefObject<boolean>;
@@ -67,34 +64,15 @@ export function useModel3DSave({
     setError("");
     try {
       const title = `${safeModelStem(item.title)}-${tt("视图副本")}`;
-      let thumbUrl = posterUrl;
-      try {
-        const screenshot = await captureBlob();
-        const uploaded = await uploadFile(
-          new File([screenshot], `${title}.png`, { type: "image/png" }),
-          {
-            siteId: siteId || "threed",
-            title: `${title}-${tt("预览")}`,
-            registerAsset: false,
-            idempotencyKey: `model3d:${item.id}:${savingRevision}:thumbnail`,
-          },
-        );
-        if (uploaded.ok && uploaded.data?.file?.url) {
-          thumbUrl = uploaded.data.file.url;
-        }
-      } catch {
-        // A cross-origin texture may block previews; the model remains valid.
-      }
       const saved = await persistModel3DProject({
         item,
         siteId,
         title,
         sourceUrl,
-        filename: `${title}.${modelExtension(sourceUrl, item.title)}`,
-        thumbUrl: thumbUrl || undefined,
+        thumbUrl:
+          posterUrl || item.thumbUrl || item.previewUrl || undefined,
         view,
         revision: savingRevision,
-        maxBytes: MAX_MODEL_BYTES,
       });
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
         return null;
@@ -102,10 +80,8 @@ export function useModel3DSave({
       setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) {
         setDirty(false);
-        setNotice(tt("3D 视图副本已保存到我的库"));
-      } else {
-        setNotice(tt("已保存一个视图副本；之后的调整仍未保存"));
       }
+      setNotice("");
       onSaved?.(saved.url);
       return saved;
     } catch (caught) {
@@ -121,7 +97,6 @@ export function useModel3DSave({
     }
   }, [
     aliveRef,
-    captureBlob,
     item,
     modelLoaded,
     onSaved,

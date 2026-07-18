@@ -35,6 +35,7 @@ export type ShapeKind =
 export type TextPreset = "heading" | "subheading" | "body";
 
 export type CropRatio = "free" | "1:1" | "4:3" | "16:9" | "9:16";
+export type ImageFitMode = "contain" | "cover" | "fill";
 
 export const CROP_RATIOS: CropRatio[] = ["free", "1:1", "4:3", "16:9", "9:16"];
 
@@ -139,6 +140,12 @@ export interface SelectedSnapshot {
   angle: number;
   flipX: boolean;
   flipY: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  locked: boolean;
+  imageFit: ImageFitMode | null;
   fill: string;
   stroke: string;
   strokeWidth: number;
@@ -265,6 +272,10 @@ export interface FabricImageEditorState {
   setSelectedStroke: (patch: { color?: string; width?: number }) => void;
   setSelectedFill: (color: string) => void;
   setSelectedRadius: (px: number) => void;
+  setSelectedGeometry: (
+    patch: Partial<Pick<SelectedSnapshot, "x" | "y" | "width" | "height">>,
+  ) => void;
+  setSelectedImageFit: (mode: ImageFitMode) => void;
   setSelectedText: (patch: Partial<TextSettings>) => void;
   setSelectedTableStyle: (patch: Partial<TableSettings>) => void;
   resizeSelectedTable: (rows: number, columns: number) => void;
@@ -302,6 +313,7 @@ export interface FabricImageEditorState {
   exportScale: number;
   setExportScale: (scale: number) => void;
   download: () => void;
+  downloadDefaultPng: () => Promise<void>;
   save: () => Promise<FabricImageSaveResult | null>;
   // ---- AI 编辑 ----
   aiAvailable: boolean;

@@ -108,9 +108,31 @@ export function GridContextToolbar({
         },
         { id: "sort-asc", kind: "action", label: tt("升序"), placement: "more" },
         { id: "sort-desc", kind: "action", label: tt("降序"), placement: "more" },
+        {
+          id: "header-row",
+          kind: "toggle",
+          label: tt("首行为表头"),
+          value: editor.headerRow,
+          placement: "more",
+        },
+        {
+          id: "filter-query",
+          kind: "text",
+          label: tt("筛选当前列"),
+          value: editor.filterQuery,
+          placement: "more",
+        },
       ],
     }),
-    [address, editor.activeSheetId, format, range, tt],
+    [
+      address,
+      editor.activeSheetId,
+      editor.filterQuery,
+      editor.headerRow,
+      format,
+      range,
+      tt,
+    ],
   );
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
@@ -164,6 +186,12 @@ export function GridContextToolbar({
         break;
       case "sort-desc":
         editor.sort("desc");
+        break;
+      case "header-row":
+        editor.setHeaderRow(message.value === true);
+        break;
+      case "filter-query":
+        editor.setFilterQuery(String(message.value || ""));
         break;
     }
   };
