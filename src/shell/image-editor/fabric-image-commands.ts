@@ -4,6 +4,7 @@ import type {
   FabricImageEditorState,
   ImageFitMode,
 } from "./types";
+import { imageToolbarCommandAllowed } from "./image-mutation-policy";
 
 function numeric(value: SelectionCommand["value"], fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -14,6 +15,12 @@ export function dispatchFabricImageCommand(
   message: SelectionCommand,
 ): void {
   const selected = editor.selected;
+  if (
+    selected?.locked &&
+    !imageToolbarCommandAllowed(true, message.controlId)
+  ) {
+    return;
+  }
   switch (message.controlId) {
     case "tool-select":
       editor.setActiveTool("select");

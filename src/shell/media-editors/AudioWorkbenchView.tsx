@@ -48,6 +48,68 @@ function AudioSlider({
   );
 }
 
+type AudioToolIconName = "import" | "play" | "pause" | "stop";
+
+function AudioToolIcon({ name }: { name: AudioToolIconName }) {
+  if (name === "import") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden>
+        <path
+          d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (name === "stop") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+        <path d="M6.5 6.5h11v11h-11z" />
+      </svg>
+    );
+  }
+  if (name === "pause") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+        <path d="M6.5 5.5h4v13h-4zm7 0h4v13h-4z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <path d="M8 5.2v13.6L19 12z" />
+    </svg>
+  );
+}
+
+function AudioIconButton({
+  label,
+  icon,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  icon: AudioToolIconName;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
+    >
+      <AudioToolIcon name={icon} />
+    </button>
+  );
+}
+
 export function AudioControls({
   editor,
 }: {
@@ -55,8 +117,6 @@ export function AudioControls({
   accent?: string;
 }) {
   const tt = useUI();
-  const button =
-    "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40";
   return (
     <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
       <section>
@@ -64,11 +124,14 @@ export function AudioControls({
           {tt("音频源")}
         </p>
         <label
-          className={`${button} flex w-full cursor-pointer items-center justify-center`}
+          title={tt("导入或替换音频")}
+          className="grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
         >
-          {tt("导入或替换音频")}
+          <AudioToolIcon name="import" />
+          <span className="sr-only">{tt("导入或替换音频")}</span>
           <input
             type="file"
+            aria-label={tt("导入或替换音频")}
             accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.aac"
             className="hidden"
             onChange={(event) => {
@@ -83,13 +146,19 @@ export function AudioControls({
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("播放")}
         </p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className={button} onClick={editor.playPause}>
-            {editor.playing ? tt("暂停") : tt("播放")}
-          </button>
-          <button type="button" className={button} onClick={editor.stop}>
-            {tt("停止")}
-          </button>
+        <div className="flex items-center gap-1.5">
+          <AudioIconButton
+            label={editor.playing ? tt("暂停") : tt("播放")}
+            icon={editor.playing ? "pause" : "play"}
+            disabled={editor.loading || Boolean(editor.error)}
+            onClick={editor.playPause}
+          />
+          <AudioIconButton
+            label={tt("停止")}
+            icon="stop"
+            disabled={editor.loading || Boolean(editor.error)}
+            onClick={editor.stop}
+          />
         </div>
         <div className="mt-3">
           <AudioSlider

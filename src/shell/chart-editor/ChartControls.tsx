@@ -43,7 +43,7 @@ export function ChartControls({
             {tt("导入 CSV")}
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.tsv,text/csv,text/tab-separated-values"
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];

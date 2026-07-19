@@ -38,6 +38,22 @@ export function sourceSpanMs(clip: TimelineClip): number {
   return clip.duration_ms * (clip.speed ?? 1);
 }
 
+/** 最大可用时间线时长，保证预览和 FFmpeg 都不会读过素材尾部。 */
+export function availableTimelineDurationMs(
+  clip: TimelineClip,
+  sourceInMs = clip.in_ms ?? 0,
+): number {
+  const sourceDuration = clip.source_duration_ms;
+  if (!Number.isFinite(sourceDuration) || Number(sourceDuration) <= 0) {
+    return Infinity;
+  }
+  const speed = clampNumber(clip.speed ?? 1, 0.25, 4);
+  return Math.max(
+    MIN_CLIP_MS,
+    Math.floor((Number(sourceDuration) - Math.max(0, sourceInMs)) / speed),
+  );
+}
+
 export function createEmptyDoc(): TimelineDoc {
   return {
     width: 1920,
@@ -50,6 +66,122 @@ export function createEmptyDoc(): TimelineDoc {
       { id: makeId("track"), kind: "image", clips: [] },
     ],
   };
+}
+
+function canonicalNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const numeric = Number(value);
+  return clampNumber(Number.isFinite(numeric) ? numeric : fallback, min, max);
+}
+
+/**
+ * Canonical model consumed by both the canvas preview and the FFmpeg request.
+ * Defaults and bounds mirror the converter contract so a reopened legacy
+ * project cannot render one value in-browser and another value on export.
+ */
+export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
+  const normalized: TimelineDoc = {
+    width: Math.round(canonicalNumber(doc.width, 1920, 16, 3840)),
+    height: Math.round(canonicalNumber(doc.height, 1080, 16, 3840)),
+    fps: Math.round(canonicalNumber(doc.fps, 30, 1, 60)),
+    tracks: doc.tracks.map((track) => ({
+      id: track.id,
+      kind: track.kind,
+      clips: track.clips.map((clip) => {
+        const next: TimelineClip = {
+          ...clip,
+          start_ms: Math.max(0, Math.round(Number(clip.start_ms) || 0)),
+          duration_ms: Math.max(
+            MIN_CLIP_MS,
+            Math.round(Number(clip.duration_ms) || MIN_CLIP_MS),
+          ),
+        };
+        const transition = clip.transition_in;
+        if (
+          transition &&
+          ["fade", "crossfade", "black"].includes(transition.type)
+        ) {
+          next.transition_in = {
+            type: transition.type,
+            duration_ms: Math.round(
+              canonicalNumber(transition.duration_ms, 500, 100, 3_000),
+            ),
+          };
+        } else {
+          delete next.transition_in;
+        }
+        if (track.kind === "video" || track.kind === "audio") {
+          next.speed = canonicalNumber(clip.speed, 1, 0.25, 4);
+          next.volume = canonicalNumber(clip.volume, 1, 0, 2);
+          next.muted = clip.muted === true;
+          next.in_ms = Math.max(0, Math.round(Number(clip.in_ms) || 0));
+          if (
+            Number.isFinite(clip.source_duration_ms) &&
+            Number(clip.source_duration_ms) > 0
+          ) {
+            next.source_duration_ms = Math.round(
+              Number(clip.source_duration_ms),
+            );
+            next.in_ms = Math.min(
+              next.in_ms,
+              Math.max(
+                0,
+                next.source_duration_ms - MIN_CLIP_MS * next.speed,
+              ),
+            );
+            next.duration_ms = Math.min(
+              next.duration_ms,
+              availableTimelineDurationMs(next),
+            );
+          } else {
+            delete next.source_duration_ms;
+          }
+        }
+        if (track.kind === "video" || track.kind === "image") {
+          next.x = canonicalNumber(clip.x, 0.5, 0, 1);
+          next.y = canonicalNumber(clip.y, 0.5, 0, 1);
+          next.scale = canonicalNumber(
+            clip.scale,
+            track.kind === "video" ? 1 : 0.35,
+            track.kind === "video" ? 0.05 : 0.02,
+            2,
+          );
+          next.opacity = canonicalNumber(clip.opacity, 1, 0, 1);
+          next.rotation = canonicalNumber(clip.rotation, 0, -180, 180);
+        }
+        if (track.kind === "video") {
+          next.fit = ["contain", "cover", "stretch"].includes(
+            String(clip.fit),
+          )
+            ? clip.fit
+            : "contain";
+          next.brightness = canonicalNumber(clip.brightness, 0, -1, 1);
+          next.contrast = canonicalNumber(clip.contrast, 1, 0, 2);
+          next.saturation = canonicalNumber(clip.saturation, 1, 0, 3);
+        }
+        if (track.kind === "text") {
+          const style = clip.style || {};
+          next.style = {
+            ...style,
+            font_size: canonicalNumber(style.font_size, 64, 8, 300),
+            color: style.color || "#ffffff",
+            x: canonicalNumber(style.x, 0.5, 0, 1),
+            y: canonicalNumber(style.y, 0.85, 0, 1),
+            align: ["left", "center", "right"].includes(String(style.align))
+              ? style.align
+              : "center",
+            bold: style.bold === true,
+          };
+        }
+        return next;
+      }),
+    })),
+  };
+  return normalized;
 }
 
 export function docDurationMs(doc: TimelineDoc): number {
@@ -350,8 +482,13 @@ export function trimClipTo(
       .filter((entry) => entry.start_ms >= clipEndMs(clip))
       .map((entry) => entry.start_ms),
   );
+  const sourceEnd = clip.start_ms + availableTimelineDurationMs(clip);
   const end = Math.round(
-    clampNumber(desiredMs, clip.start_ms + MIN_CLIP_MS, rightNeighborStart),
+    clampNumber(
+      desiredMs,
+      clip.start_ms + MIN_CLIP_MS,
+      Math.min(rightNeighborStart, sourceEnd),
+    ),
   );
   if (end === clipEndMs(clip)) return doc;
   return patchClipIn(doc, clipId, { duration_ms: end - clip.start_ms });

@@ -66,7 +66,20 @@ export function DeckDesignPanel({
             {tt("标题")}
             <input
               value={editor.deck.title}
-              onChange={(event) => editor.setTitle(event.target.value)}
+              onFocus={editor.beginGesture}
+              onChange={(event) => {
+                editor.beginGesture();
+                editor.setTitleTransient(event.target.value);
+              }}
+              onBlur={editor.endGesture}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  editor.cancelGesture();
+                  event.currentTarget.blur();
+                } else if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
               className={`${inputClass} mt-1`}
             />
           </label>
@@ -193,7 +206,17 @@ export function DeckDesignPanel({
           <input
             type="color"
             value={slide.background || "#ffffff"}
-            onChange={(event) => editor.patchSlide({ background: event.target.value })}
+            onFocus={editor.beginGesture}
+            onPointerDown={editor.beginGesture}
+            onChange={(event) => {
+              editor.beginGesture();
+              editor.patchSlideTransient({ background: event.target.value });
+            }}
+            onPointerUp={editor.endGesture}
+            onPointerCancel={editor.cancelGesture}
+            onKeyDown={editor.beginGesture}
+            onKeyUp={editor.endGesture}
+            onBlur={editor.endGesture}
             className="mt-1 h-10 w-full cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent p-1"
           />
         </label>
@@ -478,10 +501,20 @@ export function DeckEffectsPanel({ editor }: { editor: DeckEditorState }) {
         max={max}
         step={step}
         value={element[key] ?? fallback}
-        onChange={(event) =>
-          editor.patchElement(element.id, { [key]: Number(event.target.value) })
-        }
-        className="mt-2 w-full"
+        disabled={element.locked}
+        onPointerDown={editor.beginGesture}
+        onPointerUp={editor.endGesture}
+        onPointerCancel={editor.cancelGesture}
+        onKeyDown={editor.beginGesture}
+        onKeyUp={editor.endGesture}
+        onBlur={editor.endGesture}
+        onChange={(event) => {
+          editor.beginGesture();
+          editor.patchElementTransient(element.id, {
+            [key]: Number(event.target.value),
+          })
+        }}
+        className="mt-2 w-full disabled:opacity-40"
       />
     </label>
   );
@@ -490,10 +523,11 @@ export function DeckEffectsPanel({ editor }: { editor: DeckEditorState }) {
       <Panel title={tt("对象效果")}>
         <button
           type="button"
+          disabled={element.locked}
           onClick={() =>
             editor.patchElement(element.id, { shadow: !element.shadow })
           }
-          className={`${buttonClass} flex w-full items-center justify-between`}
+          className={`${buttonClass} flex w-full items-center justify-between disabled:opacity-40`}
         >
           <span>{tt("阴影")}</span>
           <span>{element.shadow ? tt("已开启") : tt("关闭")}</span>
@@ -508,6 +542,7 @@ export function DeckEffectsPanel({ editor }: { editor: DeckEditorState }) {
             {range("blur", "模糊", 0, 20, 0.5, 0)}
             <button
               type="button"
+              disabled={element.locked}
               onClick={() =>
                 editor.patchElement(element.id, {
                   brightness: 1,
@@ -516,7 +551,7 @@ export function DeckEffectsPanel({ editor }: { editor: DeckEditorState }) {
                   blur: 0,
                 })
               }
-              className={`${buttonClass} w-full`}
+              className={`${buttonClass} w-full disabled:opacity-40`}
             >
               {tt("重置调整")}
             </button>

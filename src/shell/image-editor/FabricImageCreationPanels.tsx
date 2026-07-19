@@ -93,6 +93,7 @@ export function FabricImageBrushPanel({
   editor: FabricImageEditorState;
 }) {
   const tt = useUI();
+  const eraseBlocked = editor.layers.some((layer) => layer.locked);
   return (
     <div className="min-h-full bg-[var(--card,#fff)]">
       <Panel
@@ -106,8 +107,14 @@ export function FabricImageBrushPanel({
               <button
                 key={tool}
                 type="button"
+                disabled={tool === "erase" && eraseBlocked}
                 onClick={() => editor.setActiveTool(tool)}
-                className="rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition"
+                className="rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+                title={
+                  tool === "erase" && eraseBlocked
+                    ? tt("请先解锁图层，再使用橡皮擦")
+                    : undefined
+                }
                 style={
                   active
                     ? {

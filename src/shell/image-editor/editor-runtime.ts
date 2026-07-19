@@ -19,12 +19,13 @@ import {
 } from "./editor-objects";
 import { imageFitScales } from "./fabric-geometry";
 import type { DocSize } from "./types";
+import {
+  normalizeImageEditorSnapshot,
+  type ImageEditorSnapshot,
+} from "./image-document-contract";
 
-export interface EditorSnapshot {
-  json: Record<string, unknown>;
-  doc: DocSize;
-  canvasBackground: string;
-}
+export type EditorSnapshot = ImageEditorSnapshot;
+export const normalizeEditorSnapshot = normalizeImageEditorSnapshot;
 
 export function captureSnapshot(
   canvas: Canvas,
@@ -259,13 +260,22 @@ export function ensureLayerOrder(canvas: Canvas): void {
 export function restoreLockFlags(canvas: Canvas): void {
   canvas.getObjects().forEach((object) => {
     const target = object as EditorObject;
+    if (target.oceanleoRole === "docbg") {
+      target.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hoverCursor: "default",
+      });
+      return;
+    }
     if (
       target.oceanleoRole === "background" &&
       target.oceanleoKind === "image"
     ) {
       target.oceanleoRole = undefined;
       target.oceanleoImageFit ||= "fill";
-      setLocked(target, false);
+      setLocked(target, target.oceanleoLocked === true);
       return;
     }
     if (target.oceanleoLocked != null) {

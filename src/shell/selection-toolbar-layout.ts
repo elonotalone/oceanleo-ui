@@ -3,10 +3,53 @@ import type { SelectionControl } from "./selection-context";
 export const SELECTION_TOOLBAR_MAX_WIDTH = 960;
 export const SELECTION_TOOLBAR_GAP = 4;
 export const SELECTION_TOOLBAR_MORE_WIDTH = 40;
+/**
+ * The compact surface is a deliberately small, stable command projection.
+ * Width may change how those controls are painted, never which surface owns
+ * them. Controls after this cap stay in More at every viewport width.
+ */
+export const SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS = 6;
+
+export interface SelectionOverflowGroup {
+  id: string;
+  controls: SelectionControl[];
+}
+
+export function selectionControlUsesIconOnly(
+  control: SelectionControl,
+): boolean {
+  if (control.iconOnly !== undefined) return control.iconOnly;
+  return Boolean(control.icon);
+}
+
+function overflowGroupId(control: SelectionControl): string {
+  if (control.danger || control.tone === "danger") return "danger";
+  if (control.group) return `group:${control.group}`;
+  if (control.inspectorGroup || control.kind === "panel") return "inspectors";
+  return "actions";
+}
+
+export function groupSelectionOverflowControls(
+  controls: readonly SelectionControl[],
+): SelectionOverflowGroup[] {
+  const groups = new Map<string, SelectionOverflowGroup>();
+  for (const control of controls) {
+    const id = overflowGroupId(control);
+    const group = groups.get(id) || { id, controls: [] };
+    group.controls.push(control);
+    groups.set(id, group);
+  }
+  return [...groups.values()];
+}
 
 export function estimatedSelectionControlWidth(
   control: SelectionControl,
 ): number {
+  if (selectionControlUsesIconOnly(control)) {
+    if (control.kind === "number") return 92;
+    if (control.kind === "select") return 104;
+    return 36;
+  }
   if (control.kind === "range") return 210;
   if (control.kind === "text") return 180;
   if (control.kind === "number") return 108;
@@ -25,53 +68,32 @@ export function partitionSelectionControls(
   visible: SelectionControl[];
   overflow: SelectionControl[];
 } {
-  if (!controls.length) return { visible: [], overflow: [] };
-  const widths = controls.map((control) =>
-    Math.max(
-      32,
-      measuredWidths.get(control.id) ||
-        estimatedSelectionControlWidth(control),
-    ),
-  );
-  const total =
-    widths.reduce((sum, width) => sum + width, 0) +
-    Math.max(0, controls.length - 1) * SELECTION_TOOLBAR_GAP;
-  if (total <= availableWidth) {
-    return { visible: [...controls], overflow: [] };
-  }
+  // Retain the arguments while old callers migrate; v8 intentionally ignores
+  // geometry so 320px and 1920px project the same command surfaces.
+  void measuredWidths;
+  void availableWidth;
 
-  const visibleIndexes = new Set(controls.map((_, index) => index));
-  const removalOrder = controls
-    .map((control, index) => ({
-      index,
-      priority:
-        control.placement === "more"
-          ? 0
-          : control.placement === "tools"
-            ? 1
-            : 2,
-    }))
-    .sort((left, right) =>
-      left.priority === right.priority
-        ? right.index - left.index
-        : left.priority - right.priority,
-    );
-  const budget = Math.max(0, availableWidth - SELECTION_TOOLBAR_MORE_WIDTH);
-  let used = total;
-  for (const candidate of removalOrder) {
-    if (used <= budget) break;
-    visibleIndexes.delete(candidate.index);
-    used -= widths[candidate.index] + SELECTION_TOOLBAR_GAP;
+  const visible: SelectionControl[] = [];
+  const overflow: SelectionControl[] = [];
+  for (const control of controls) {
+    // These controls have dedicated semantic surfaces and must never leak into
+    // either the compact row or its More projection.
+    if (
+      control.slot === "context-menu" ||
+      control.slot === "stage" ||
+      control.slot === "inspector" ||
+      control.placement === "tools"
+    ) {
+      continue;
+    }
+    if (
+      control.placement === "more" ||
+      visible.length >= SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS
+    ) {
+      overflow.push(control);
+      continue;
+    }
+    visible.push(control);
   }
-
-  return controls.reduce(
-    (result, control, index) => {
-      result[visibleIndexes.has(index) ? "visible" : "overflow"].push(control);
-      return result;
-    },
-    { visible: [], overflow: [] } as {
-      visible: SelectionControl[];
-      overflow: SelectionControl[];
-    },
-  );
+  return { visible, overflow };
 }

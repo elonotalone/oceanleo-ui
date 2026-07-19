@@ -11,10 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import type {
-  AdvancedEditorAdapter,
-  AdvancedWorkbenchDrawer,
-} from "./advanced-editor-adapter";
+import type { AdvancedEditorAdapter, AdvancedWorkbenchDrawer } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
 import { AdvancedWorkbenchStage } from "./AdvancedWorkbenchStage";

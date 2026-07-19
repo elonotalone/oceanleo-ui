@@ -116,8 +116,10 @@ export function useFloatingContextToolbar({
     () => (
       <button
         type="button"
+        data-floating-toolbar-handle
         onPointerDown={(event) => {
           if (event.pointerType === "mouse" && event.button !== 0) return;
+          event.currentTarget.focus();
           event.preventDefault();
           dragRef.current = {
             pointerId: event.pointerId,
@@ -201,7 +203,7 @@ export function FloatingContextToolbar({
       data-advanced-context-row
       data-workspace-floating-toolbar
       ref={controller.toolbarRef}
-      className="absolute left-2 top-2 z-[2147483000] flex max-w-[calc(100%-1rem)] min-w-0 will-change-transform"
+      className="absolute left-2 top-2 z-[2147483000] flex max-w-[calc(100%-1rem)] min-w-0 overflow-visible will-change-transform"
       style={{
         ...advancedWorkbenchStyle(accent),
         transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,

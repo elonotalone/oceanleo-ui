@@ -7,7 +7,12 @@ import type {
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
-import { columnLabel, type GridCellType } from "./grid-model";
+import {
+  columnLabel,
+  gridColCount,
+  gridRowCount,
+  type GridCellType,
+} from "./grid-model";
 import {
   rangesIntersect,
   type GridConditionalOperator,
@@ -49,20 +54,45 @@ export function GridContextToolbar({
   const hasConditional = editor.activeSheet.conditionalFormats.some((rule) =>
     rangesIntersect(rule.range, range),
   );
+  const rowCount = gridRowCount(editor.activeSheet);
+  const columnCount = gridColCount(editor.activeSheet);
+  const wholeRows =
+    range.firstCol === 0 && range.lastCol === columnCount - 1;
+  const wholeColumns =
+    range.firstRow === 0 && range.lastRow === rowCount - 1;
   const context = useMemo<SelectionContext>(
     () => ({
       version: 1,
       kind:
-        range.firstRow === range.lastRow && range.firstCol === range.lastCol
+        wholeRows && wholeColumns
+          ? "grid-sheet"
+          : wholeRows
+            ? "grid-row"
+            : wholeColumns
+              ? "grid-column"
+              : range.firstRow === range.lastRow &&
+                  range.firstCol === range.lastCol
           ? "grid-cell"
           : "grid-range",
       id: `cell:${editor.activeSheetId}:${address}`,
-      label: address,
+      label: `${address}${
+        wholeRows && wholeColumns
+          ? ` · ${tt("整张工作表")}`
+          : wholeRows
+            ? ` · ${tt("整行")}`
+            : wholeColumns
+              ? ` · ${tt("整列")}`
+              : ""
+      }`,
+      revision: editor.editRevision,
       controls: [
         {
           id: "type",
           kind: "select",
           label: tt("数据类型"),
+          icon: "table",
+          iconOnly: true,
+          group: "format",
           value: format.type || "auto",
           options: [
             { value: "auto", label: tt("自动") },
@@ -76,13 +106,19 @@ export function GridContextToolbar({
         {
           id: "bold",
           kind: "toggle",
-          label: "B",
+          label: tt("粗体"),
+          icon: "bold",
+          iconOnly: true,
+          group: "format",
           value: format.bold === true,
         },
         {
           id: "align",
           kind: "select",
           label: tt("对齐"),
+          icon: "align-left",
+          iconOnly: true,
+          group: "format",
           value: format.align || "left",
           options: [
             { value: "left", label: tt("左") },
@@ -94,12 +130,18 @@ export function GridContextToolbar({
           id: "color",
           kind: "color",
           label: tt("文字"),
+          icon: "font",
+          iconOnly: true,
+          group: "format",
           value: format.color || "#292524",
         },
         {
           id: "background",
           kind: "color",
           label: tt("底色"),
+          icon: "background",
+          iconOnly: true,
+          group: "format",
           value: format.background || "#ffffff",
         },
         {
@@ -322,6 +364,7 @@ export function GridContextToolbar({
     [
       address,
       editor.activeSheetId,
+      editor.editRevision,
       editor.filterQuery,
       editor.headerRow,
       editor.activeSheet.conditionalFormats,
@@ -331,11 +374,20 @@ export function GridContextToolbar({
       hasConditional,
       hasMerge,
       range,
+      wholeColumns,
+      wholeRows,
       tt,
     ],
   );
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
+    if (
+      message.selectionRevision !== undefined &&
+      message.selectionRevision !== editor.editRevision
+    ) {
+      return;
+    }
+    if (message.transactionId && message.phase !== "commit") return;
     switch (message.controlId) {
       case "type":
         editor.applyFormat({ type: String(message.value) as GridCellType });
@@ -357,7 +409,6 @@ export function GridContextToolbar({
         });
         break;
       case "decimals":
-        if (message.transactionId && message.phase !== "commit") break;
         if (typeof message.value === "number") {
           editor.applyFormat({
             decimals: Math.max(0, Math.min(8, message.value)),

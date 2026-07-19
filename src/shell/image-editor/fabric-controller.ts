@@ -146,7 +146,8 @@ export class FabricEditorController extends FabricEditorCore {
     const active = this.canvas.getActiveObject();
     if (
       !(active instanceof this.fabric.Group) ||
-      kindOf(this.fabric, active) !== "table"
+      kindOf(this.fabric, active) !== "table" ||
+      !this.canMutateObject(active as EditorObject, "content")
     ) {
       return;
     }
@@ -273,7 +274,8 @@ export class FabricEditorController extends FabricEditorCore {
     if (
       !active ||
       !(active instanceof this.fabric.FabricImage) ||
-      !objectIsEditable(active)
+      !objectIsEditable(active) ||
+      !this.canMutateObject(active, "replace")
     ) {
       image.dispose();
       return false;
@@ -335,7 +337,13 @@ export class FabricEditorController extends FabricEditorCore {
 
   moveLayer(id: string, direction: "up" | "down" | "top" | "bottom"): void {
     const object = findById(this.canvas, id);
-    if (!object || roleOf(object) === "background") return;
+    if (
+      !object ||
+      roleOf(object) === "background" ||
+      !this.canMutateObject(object, "layer")
+    ) {
+      return;
+    }
     const objects = this.canvas.getObjects();
     const index = objects.indexOf(object);
     const backgroundIndex = objects.findIndex(
@@ -363,13 +371,19 @@ export class FabricEditorController extends FabricEditorCore {
   toggleLayerLock(id: string): void {
     const object = findById(this.canvas, id);
     if (!object) return;
+    const ownsGesture = this.beginGesture();
     setLocked(object, !object.oceanleoLocked);
+    if (object.oceanleoLocked && this.activeTool === "erase") {
+      this.activeTool = "select";
+      this.applyTool();
+    }
     this.commit();
+    if (ownsGesture) this.endGesture();
   }
 
   toggleLayerVisible(id: string): void {
     const object = findById(this.canvas, id);
-    if (!object) return;
+    if (!object || !this.canMutateObject(object, "visibility")) return;
     object.set("visible", object.visible === false);
     if (object.visible === false && this.canvas.getActiveObject() === object) {
       this.canvas.discardActiveObject();
@@ -379,7 +393,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   removeLayer(id: string): void {
     const object = findById(this.canvas, id);
-    if (!object) return;
+    if (!object || !this.canMutateObject(object, "delete")) return;
     this.canvas.remove(object);
     object.dispose();
     this.canvas.discardActiveObject();
@@ -388,7 +402,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   async duplicateLayer(id: string): Promise<void> {
     const source = findById(this.canvas, id);
-    if (!source) return;
+    if (!source || !this.canMutateObject(source, "duplicate")) return;
     const clone = (await source.clone()) as EditorObject;
     if (this.destroyed) {
       clone.dispose();
@@ -407,9 +421,17 @@ export class FabricEditorController extends FabricEditorCore {
     this.commitAndSelect(clone);
   }
 
-  private mutateSelected(run: (object: EditorObject) => void): void {
+  private mutateSelected(
+    run: (object: EditorObject) => void,
+    intent: "style" | "geometry" | "content" = "style",
+  ): void {
     const object = this.canvas.getActiveObject();
-    if (!objectIsEditable(object)) return;
+    if (
+      !objectIsEditable(object) ||
+      !this.canMutateObject(object, intent)
+    ) {
+      return;
+    }
     run(object);
     object.setCoords();
     this.commit();
@@ -506,7 +528,7 @@ export class FabricEditorController extends FabricEditorCore {
           Math.max(1, patch.height) / Math.max(1, object.height),
         );
       }
-    });
+    }, "geometry");
   }
 
   setSelectedImageFit(mode: ImageFitMode): void {
@@ -552,7 +574,7 @@ export class FabricEditorController extends FabricEditorCore {
         props.strokeWidth = Math.max(0, patch.strokeWidth);
       }
       text.set(props);
-    });
+    }, "content");
   }
 
   deleteSelected(): void {
@@ -569,7 +591,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   rotateTarget(delta: 90 | -90): void {
     const target = this.target();
-    if (!target) return;
+    if (!target || !this.canMutateObject(target, "geometry")) return;
     centerOrigin(target);
     target.rotate(normalizeAngle((target.angle ?? 0) + delta));
     this.commit();
@@ -577,7 +599,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   setTargetAngle(angle: number): void {
     const target = this.target();
-    if (!target) return;
+    if (!target || !this.canMutateObject(target, "geometry")) return;
     centerOrigin(target);
     target.rotate(normalizeAngle(angle));
     this.commit();
@@ -585,7 +607,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   flipTarget(axis: "x" | "y"): void {
     const target = this.target();
-    if (!target) return;
+    if (!target || !this.canMutateObject(target, "geometry")) return;
     if (axis === "x") target.set("flipX", !target.flipX);
     else target.set("flipY", !target.flipY);
     this.commit();
@@ -596,7 +618,12 @@ export class FabricEditorController extends FabricEditorCore {
     value: FilterSettings[K],
   ): void {
     const image = this.imageTarget();
-    if (!image) return;
+    if (
+      !image ||
+      !this.canMutateObject(image as FabricImage & EditorObjectProps, "style")
+    ) {
+      return;
+    }
     applyFilterSettings(this.fabric, image, {
       ...readFilterSettings(image),
       [key]: value,
@@ -606,13 +633,22 @@ export class FabricEditorController extends FabricEditorCore {
 
   resetFilters(): void {
     const image = this.imageTarget();
-    if (!image) return;
+    if (
+      !image ||
+      !this.canMutateObject(image as FabricImage & EditorObjectProps, "style")
+    ) {
+      return;
+    }
     applyFilterSettings(this.fabric, image, { ...INITIAL_FILTERS });
     this.commit();
   }
 
   startCrop(): void {
     if (this.cropping) return;
+    if (this.hasLockedEditableObjects()) {
+      this.callbacks.onError("请先解锁图层，再裁剪画布");
+      return;
+    }
     const inset = 0.1;
     const crop = new this.fabric.Rect({
       left: this.doc.width * inset,
@@ -667,6 +703,10 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   async confirmCrop(): Promise<void> {
+    if (this.hasLockedEditableObjects()) {
+      this.callbacks.onError("请先解锁图层，再裁剪画布");
+      return;
+    }
     const crop = findByRole(this.canvas, "crop");
     const bounds = crop ? cropBounds(crop, this.doc) : null;
     if (!crop || !bounds) {
@@ -712,6 +752,10 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   resizeDoc(width: number, height: number): void {
+    if (this.hasLockedEditableObjects()) {
+      this.callbacks.onError("请先解锁图层，再调整画布尺寸");
+      return;
+    }
     this.doc = clampDocument(width, height);
     updateDocBackground(this.canvas, this.doc, this.canvasBackground);
     this.zoom = fitViewport(this.canvas, this.doc, this.container);

@@ -76,6 +76,7 @@ test("generated and material slots never wrap legacy container tabs as fake card
 test("tool bars stay single-line and move overflow into semantic panels", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/SelectionToolbarSelectControl.tsx") +
     source("../src/shell/selection-inspector-host.tsx");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const image = source(
@@ -96,7 +97,7 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   assert.doesNotMatch(image, /tt\("创建与编辑"\)/);
   assert.match(embedded, /hostedMediaType === "canvas"/);
   assert.match(embedded, /hostedMediaType === "video_canvas"/);
-  assert.match(embedded, /selection\.id === "design-canvas"/);
+  assert.doesNotMatch(embedded, /selection\.id === "design-canvas"/);
 });
 
 test("normal apps call the result area generation and no advanced task surface remains", () => {

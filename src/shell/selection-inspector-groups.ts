@@ -15,6 +15,7 @@ export function isCompactSelectionControl(control: SelectionControl): boolean {
     control.slot !== "inspector" &&
     control.slot !== "stage" &&
     control.slot !== "context-menu" &&
+    control.placement !== "tools" &&
     control.kind !== "range" &&
     control.kind !== "text"
   );
@@ -32,12 +33,16 @@ export function partitionSelectionInspectorControls(
   const panelIds = new Set<string>();
   for (const control of source) {
     if (isCompactSelectionControl(control)) {
-      if (control.slot !== "stage" && control.slot !== "context-menu") {
-        compact.push(control);
-      }
+      compact.push(control);
       continue;
     }
-    if (control.slot === "stage" || control.slot === "context-menu") continue;
+    if (
+      control.slot === "stage" ||
+      control.slot === "context-menu" ||
+      control.placement === "tools"
+    ) {
+      continue;
+    }
     const id = control.inspectorGroup || control.group || "adjustments";
     const basePanelId = `selection-inspector-${id.replace(
       /[^a-z0-9_.:-]/gi,
@@ -69,8 +74,9 @@ export function partitionSelectionInspectorControls(
           kind: "panel",
           label: group.label,
           icon: group.icon,
+          iconOnly: true,
           panelId: group.panelId,
-          placement: "more",
+          placement: "primary",
           slot: "compact",
         }),
       ),

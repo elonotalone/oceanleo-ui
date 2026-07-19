@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { SelectionCommandTransaction } from "../selection-command-transaction";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type {
   SelectionCommand,
@@ -38,26 +39,10 @@ export function Model3DContextToolbar({
     editor.annotations.find(
       (entry) => entry.id === editor.selectedAnnotationId,
     ) || null;
+  const transactionRef = useRef(new SelectionCommandTransaction());
 
   const context = useMemo<SelectionContext>(() => {
-    const controls: SelectionControl[] = [
-      {
-        id: "undo",
-        kind: "action",
-        label: tt("撤销"),
-        icon: "undo",
-        iconOnly: true,
-        disabled: !editor.canUndo,
-      },
-      {
-        id: "redo",
-        kind: "action",
-        label: tt("重做"),
-        icon: "redo",
-        iconOnly: true,
-        disabled: !editor.canRedo,
-      },
-    ];
+    const controls: SelectionControl[] = [];
     if (selection) {
       const transformGroup = inspector(
         "model-transform",
@@ -69,6 +54,9 @@ export function Model3DContextToolbar({
           id: "transform-mode",
           kind: "select",
           label: tt("变换工具"),
+          icon: "position",
+          iconOnly: true,
+          group: "transform",
           value: editor.transformMode,
           options: [
             { value: "translate", label: tt("移动") },
@@ -90,16 +78,19 @@ export function Model3DContextToolbar({
           id: "node-visible",
           kind: "toggle",
           label: tt("显示节点"),
+          icon: "select",
+          iconOnly: true,
+          group: "transform",
           value: selection.visible,
-          ...transformGroup,
         },
         {
           id: "node-delete",
           kind: "action",
           label: tt("删除节点"),
+          icon: "delete",
           danger: true,
           tone: "danger",
-          ...transformGroup,
+          placement: "more",
         },
       );
     }
@@ -306,12 +297,13 @@ export function Model3DContextToolbar({
         kind: "toggle",
         label: tt("自动旋转"),
         value: editor.autoRotate,
+        ...viewGroup,
       },
       {
         id: "reset-camera",
         kind: "action",
         label: tt("重置相机"),
-        placement: "more",
+        ...viewGroup,
       },
     );
 
@@ -480,7 +472,10 @@ export function Model3DContextToolbar({
           kind: "action",
           label: tt("删除标注"),
           danger: true,
-          ...annotationGroup,
+          slot: "inspector",
+          inspectorGroup: "model-annotations",
+          inspectorLabel: tt("标注"),
+          inspectorIcon: "note",
         },
       );
     }
@@ -496,22 +491,24 @@ export function Model3DContextToolbar({
 
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
-    const gesture = (mutate: () => void) => {
-      if (!message.transactionId) {
-        mutate();
-        return;
-      }
-      if (message.phase === "start") {
-        editor.beginGesture(message.controlId);
-        return;
-      }
-      if (message.phase === "cancel") {
-        editor.cancelGesture();
-        return;
-      }
-      mutate();
-      if (message.phase === "commit") editor.commitGesture();
-    };
+    const continuingTransaction = transactionRef.current.continues(message);
+    if (
+      message.selectionRevision !== undefined &&
+      message.selectionRevision !== editor.editRevision &&
+      !continuingTransaction
+    ) {
+      return;
+    }
+    const gesture = (mutate: () => void) =>
+      transactionRef.current.run(
+        message,
+        {
+          begin: editor.beginGesture,
+          commit: editor.commitGesture,
+          cancel: editor.cancelGesture,
+        },
+        mutate,
+      );
     const value =
       typeof message.value === "number" && Number.isFinite(message.value)
         ? message.value
@@ -538,8 +535,6 @@ export function Model3DContextToolbar({
       return;
     }
     switch (message.controlId) {
-      case "undo": editor.undo(); break;
-      case "redo": editor.redo(); break;
       case "transform-mode":
         editor.setTransformMode(String(message.value) as "translate" | "rotate" | "scale");
         break;

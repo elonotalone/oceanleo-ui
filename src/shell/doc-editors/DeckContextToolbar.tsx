@@ -5,11 +5,13 @@ import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type {
   SelectionCommand,
+  SelectionControl,
   SelectionContext,
 } from "../selection-context";
 import { deckSlideSelectionContext } from "./deck-slide-selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
 import { deckElementAnimationControls } from "./deck-element-animation-controls";
+import { deckToolbarControlAllowed } from "./DeckMutationPolicy";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function DeckContextToolbar({
@@ -91,7 +93,7 @@ export function DeckContextToolbar({
                 ? "形状"
                 : "对象",
         ),
-      controls: [
+      controls: ([
         ...(element.type === "text"
           ? [
               {
@@ -558,12 +560,19 @@ export function DeckContextToolbar({
         },
         { id: "layer-up", kind: "action", label: tt("上移一层"), icon: "bring-forward", placement: "more" },
         { id: "layer-down", kind: "action", label: tt("下移一层"), icon: "send-backward", placement: "more" },
-      ],
+      ] as SelectionControl[]).map((control) =>
+        deckToolbarControlAllowed(element, control.id)
+          ? control
+          : { ...control, disabled: true },
+      ),
     };
   }, [editor.activeIndex, editor.deck.slides.length, element, slide, tt]);
 
   const command = (message: SelectionCommand) => {
     if (!context || message.selectionId !== context.id) return;
+    if (element && !deckToolbarControlAllowed(element, message.controlId)) {
+      return;
+    }
     applyDeckToolbarCommand(editor, element, message);
   };
   return (

@@ -7,11 +7,18 @@ import type { AdvancedWorkbenchDrawer } from "../advanced-editor-adapter";
 import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import type {
-  EditorMaterialInsertion,
-  EditorViewportSnapshot,
+import {
+  isEditorRecoverySnapshot,
+  type EditorDocumentRevision,
+  type EditorHistorySnapshot,
+  type EditorMaterialInsertion,
+  type EditorProjectManifest,
+  type EditorRecoverySnapshot,
+  type EditorToolManifestEntry,
+  type EditorViewportSnapshot,
 } from "../editor-protocol";
 import { uploadFile } from "../../lib/database";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -28,7 +35,7 @@ import {
 import { UnsupportedRoute } from "./UnsupportedRoute";
 
 interface RemoteChoice {
-  value: string;
+  value: Exclude<SelectionCommand["value"], undefined>;
   label: string;
   swatch?: string;
 }
@@ -56,7 +63,7 @@ function RemoteChoicePanel({
       <div className="grid grid-cols-2 gap-2">
         {choices.map((choice) => (
           <button
-            key={choice.value}
+            key={`${typeof choice.value}:${String(choice.value)}`}
             type="button"
             onClick={() =>
               onCommand({
@@ -133,6 +140,56 @@ const VIDEO_NODES: RemoteChoice[] = [
   ["output", "输出"],
 ].map(([value, label]) => ({ value, label }));
 
+const EMBEDDED_TOOLS_MANIFEST: Partial<
+  Record<"canvas" | "video_canvas" | "website", EditorToolManifestEntry[]>
+> = {
+  canvas: [
+    {
+      id: "design-shapes",
+      label: "形状",
+      icon: "elements",
+      controlId: "insert-shape",
+      choices: DESIGN_SHAPES,
+    },
+    {
+      id: "design-text",
+      label: "文字",
+      icon: "text",
+      controlId: "insert-text",
+      choices: DESIGN_TEXT,
+    },
+    {
+      id: "design-background",
+      label: "背景",
+      icon: "background",
+      controlId: "background-color",
+      choices: DESIGN_BACKGROUND,
+    },
+  ],
+  video_canvas: [
+    {
+      id: "video-nodes",
+      label: "添加节点",
+      icon: "add",
+      controlId: "add-node",
+      choices: VIDEO_NODES,
+    },
+  ],
+  website: [
+    {
+      id: "site-device",
+      label: "预览设备",
+      icon: "pages",
+      controlId: "set-device",
+      choices: [
+        { value: "desktop", label: "桌面" },
+        { value: "tablet", label: "平板" },
+        { value: "mobile", label: "手机" },
+      ],
+    },
+  ],
+};
+
 export function EmbeddedRoute({
   item,
   previewContent,
@@ -147,6 +204,20 @@ export function EmbeddedRoute({
   const [editRevision, setEditRevision] = useState(0);
   const [closeRequestRevision, setCloseRequestRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [remoteHistoryState, setRemoteHistoryState] =
+    useState<EditorHistorySnapshot>({ canUndo: false, canRedo: false });
+  const [remoteToolsManifest, setRemoteToolsManifest] = useState<{
+    revision: EditorDocumentRevision;
+    tools: EditorToolManifestEntry[];
+  } | null>(null);
+  const [projectManifest, setProjectManifest] =
+    useState<EditorProjectManifest | null>(null);
+  const [projectCommand, setProjectCommand] = useState<{
+    requestId: string;
+    kind: "view" | "action";
+    targetId: string;
+    manifestRevision: EditorDocumentRevision;
+  } | null>(null);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const [selectionCommand, setSelectionCommand] =
     useState<SelectionCommand | null>(null);
@@ -160,6 +231,12 @@ export function EmbeddedRoute({
   const [materialInsertion, setMaterialInsertion] =
     useState<EditorMaterialInsertion | null>(null);
   const [exportRequestId, setExportRequestId] = useState("");
+  const [recoveryCaptureRequestId, setRecoveryCaptureRequestId] =
+    useState("");
+  const [recoveryRestore, setRecoveryRestore] = useState<{
+    recoveryId: string;
+    snapshot: EditorRecoverySnapshot;
+  } | null>(null);
   const materialResolversRef = useRef(
     new Map<
       string,
@@ -172,6 +249,7 @@ export function EmbeddedRoute({
   );
   const exportResolverRef = useRef<{
     exportId: string;
+    promise: Promise<void>;
     resolve: () => void;
     reject: (error: Error) => void;
     timer: number;
@@ -180,9 +258,32 @@ export function EmbeddedRoute({
   const saveResolverRef = useRef<
     ((result: AdvancedFlushResult) => void) | null
   >(null);
+  const savePromiseRef = useRef<Promise<AdvancedFlushResult> | null>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const remoteRevisionRef = useRef(0);
+  const lastDirtyRevisionRef = useRef<EditorDocumentRevision | null>(null);
+  const remoteRevisionRef = useRef<EditorDocumentRevision | null>(null);
+  const recoveryGenerationRef = useRef(0);
+  const recoverySnapshotRef = useRef<EditorRecoverySnapshot | null>(null);
+  const recoveryCaptureRef = useRef<{
+    recoveryId: string;
+    generation: number;
+    promise: Promise<EditorRecoverySnapshot>;
+    resolve: (snapshot: EditorRecoverySnapshot) => void;
+    reject: (error: Error) => void;
+    timer: number;
+  } | null>(null);
+  const recoveryRestoreRef = useRef<{
+    recoveryId: string;
+    snapshot: EditorRecoverySnapshot;
+  } | null>(null);
+  recoveryRestoreRef.current = recoveryRestore;
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
+  const embeddedAdapterId =
+    hostedMediaType === "website"
+      ? "website"
+      : hostedMediaType === "video_canvas"
+        ? "video-canvas"
+        : "design-canvas";
   useEffect(() => {
     setRemoteViewport(null);
     setViewportCommand(null);
@@ -198,136 +299,350 @@ export function EmbeddedRoute({
     },
     [],
   );
-  const hostedSelection = useMemo<SelectionContext | null>(() => {
-    if (!hostedMediaType || !selection) return selection;
-    if (
-      selection.id === "design-canvas" ||
-      selection.id === "video-canvas" ||
-      selection.id === "website-canvas"
-    ) {
-      return null;
-    }
-    return selection;
-  }, [hostedMediaType, selection]);
+  // Canvas/background selections used to be hidden because the leading icon
+  // was only a static type badge. It is now the real tools launcher, so keep
+  // those selections in the shared edit bar as well.
+  const hostedSelection = selection;
+  const remoteSelectionId =
+    hostedSelection?.id || `host:${hostedMediaType || "editor"}`;
+  const remoteSelectionRevision =
+    hostedSelection?.revision ?? remoteToolsManifest?.revision;
   const remoteDrawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
-    const selectionId = hostedSelection?.id || `host:${hostedMediaType || "editor"}`;
-    const panel = (
-      id: string,
-      label: string,
-      controlId: string,
-      choices: RemoteChoice[],
-    ): AdvancedWorkbenchDrawer => ({
-      id,
-      label,
-      icon:
-        id === "design-text"
-          ? "text"
-          : id === "design-background"
-            ? "background"
-            : id === "video-nodes"
-              ? "add"
-              : "elements",
+    const tools =
+      remoteToolsManifest?.tools ||
+      (hostedMediaType === "canvas" ||
+      hostedMediaType === "video_canvas" ||
+      hostedMediaType === "website"
+        ? EMBEDDED_TOOLS_MANIFEST[hostedMediaType] || []
+        : []);
+    return tools.map((tool): AdvancedWorkbenchDrawer => ({
+      id: tool.id,
+      label: tool.label,
+      icon: tool.icon || "elements",
       content: (
         <RemoteChoicePanel
-          title={label}
-          controlId={controlId}
-          choices={choices}
-          selectionId={selectionId}
-          selectionRevision={hostedSelection?.revision}
+          title={tool.label}
+          controlId={tool.controlId}
+          choices={tool.choices}
+          selectionId={remoteSelectionId}
+          selectionRevision={remoteSelectionRevision}
           onCommand={setSelectionCommand}
         />
       ),
-    });
-    if (hostedMediaType === "canvas") {
-      return [
-        panel("design-shapes", "形状", "insert-shape", DESIGN_SHAPES),
-        panel("design-text", "文字", "insert-text", DESIGN_TEXT),
-        panel(
-          "design-background",
-          "背景",
-          "background-color",
-          DESIGN_BACKGROUND,
-        ),
-      ];
-    }
-    if (hostedMediaType === "video_canvas") {
-      return [panel("video-nodes", "添加节点", "add-node", VIDEO_NODES)];
-    }
-    if (hostedMediaType === "website") {
-      return [
-        panel("site-device", "预览设备", "set-device", [
-          { value: "desktop", label: "桌面" },
-          { value: "mobile", label: "手机" },
-        ]),
-      ];
-    }
-    return [];
-  }, [hostedMediaType, hostedSelection?.id, hostedSelection?.revision]);
+    }));
+  }, [
+    hostedMediaType,
+    remoteSelectionId,
+    remoteSelectionRevision,
+    remoteToolsManifest,
+  ]);
   const sendRemoteCommand = useCallback(
-    (controlId: string, value?: SelectionCommand["value"]) => {
+    (
+      controlId: string,
+      value?: SelectionCommand["value"],
+      revision = remoteSelectionRevision,
+    ) => {
       setSelectionCommand({
         requestId: selectionRequestId(),
-        selectionId:
-          hostedSelection?.id || `host:${hostedMediaType || "editor"}`,
+        selectionId: remoteSelectionId,
         controlId,
         ...(value !== undefined ? { value } : {}),
-        ...(hostedSelection?.revision !== undefined
-          ? { selectionRevision: hostedSelection.revision }
-          : {}),
+        ...(revision !== undefined ? { selectionRevision: revision } : {}),
       });
     },
-    [hostedMediaType, hostedSelection?.id, hostedSelection?.revision],
+    [remoteSelectionId, remoteSelectionRevision],
   );
-  const remoteHistory =
-    hostedMediaType === "canvas" || hostedMediaType === "video_canvas"
-      ? {
-          canUndo: true,
-          canRedo: true,
-          undo: () => sendRemoteCommand("undo"),
-          redo: () => sendRemoteCommand("redo"),
-        }
-      : undefined;
+  const remoteHistory = hostedMediaType
+    ? {
+        canUndo: remoteHistoryState.canUndo,
+        canRedo: remoteHistoryState.canRedo,
+        undo: () =>
+          sendRemoteCommand(
+            "undo",
+            undefined,
+            remoteHistoryState.revision ?? remoteSelectionRevision,
+          ),
+        redo: () =>
+          sendRemoteCommand(
+            "redo",
+            undefined,
+            remoteHistoryState.revision ?? remoteSelectionRevision,
+          ),
+      }
+    : undefined;
+  const sendProjectCommand = useCallback(
+    (
+      kind: "view" | "action",
+      targetId: string,
+      manifestRevision: EditorDocumentRevision,
+    ) => {
+      setProjectCommand({
+        requestId: `project-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+        kind,
+        targetId,
+        manifestRevision,
+      });
+    },
+    [],
+  );
   const remoteActions = useMemo<AdvancedWorkbenchAction[]>(
-    () =>
-      hostedMediaType === "video_canvas"
-        ? [
-            {
-              id: "video-run-all",
-              label: "运行全部",
-              icon: "animate",
-              onTrigger: () => sendRemoteCommand("run-all"),
-            },
-          ]
-        : hostedMediaType === "website"
-          ? [
-              {
-                id: "website-refresh",
-                label: "刷新预览",
-                icon: "redo",
-                onTrigger: () => sendRemoteCommand("refresh-preview"),
-              },
-            ]
-          : [],
-    [hostedMediaType, sendRemoteCommand],
+    () => {
+      if (projectManifest) {
+        return [
+          ...projectManifest.views.map(
+            (view): AdvancedWorkbenchAction => ({
+              id: `project-view:${view.id}`,
+              label: view.label,
+              icon: view.icon,
+              variant: view.active ? "primary" : "default",
+              disabled: view.disabled,
+              onTrigger: () =>
+                sendProjectCommand(
+                  "view",
+                  view.id,
+                  projectManifest.revision,
+                ),
+            }),
+          ),
+          ...projectManifest.actions.map(
+            (action): AdvancedWorkbenchAction => ({
+              id: `project-action:${action.id}`,
+              label: action.label,
+              busyLabel: action.busyLabel,
+              icon: action.icon,
+              variant: action.variant,
+              disabled: action.disabled,
+              busy: action.busy,
+              onTrigger: () =>
+                sendProjectCommand(
+                  "action",
+                  action.id,
+                  projectManifest.revision,
+                ),
+            }),
+          ),
+        ];
+      }
+      if (hostedMediaType === "video_canvas") {
+        return [
+          {
+            id: "video-run-all",
+            label: "运行全部",
+            icon: "animate",
+            onTrigger: () => sendRemoteCommand("run-all"),
+          },
+        ];
+      }
+      if (hostedMediaType === "website") {
+        return [
+          {
+            id: "website-refresh",
+            label: "刷新预览",
+            icon: "redo",
+            onTrigger: () => sendRemoteCommand("refresh-preview"),
+          },
+        ];
+      }
+      return [];
+    },
+    [
+      hostedMediaType,
+      projectManifest,
+      sendProjectCommand,
+      sendRemoteCommand,
+    ],
   );
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
     setMaterialInsertion(null);
     setExportRequestId("");
+    setRemoteHistoryState({ canUndo: false, canRedo: false });
+    setRemoteToolsManifest(null);
+    setProjectManifest(null);
+    setProjectCommand(null);
+    setRecoveryCaptureRequestId("");
+    setRecoveryRestore(null);
+    recoveryRestoreRef.current = null;
     setDirty(false);
     setEditRevision(0);
-    remoteRevisionRef.current = 0;
+    lastDirtyRevisionRef.current = null;
+    remoteRevisionRef.current = null;
+    recoveryGenerationRef.current += 1;
+    recoverySnapshotRef.current = null;
   }, [item.key]);
   const handleDirtyChange = useCallback(
     (nextDirty: boolean, remoteRevision?: number) => {
       setDirty(nextDirty);
-      if (!nextDirty) return;
+      if (!nextDirty) {
+        lastDirtyRevisionRef.current = null;
+        recoveryGenerationRef.current += 1;
+        recoverySnapshotRef.current = null;
+        const pendingRecovery = recoveryCaptureRef.current;
+        if (pendingRecovery) {
+          window.clearTimeout(pendingRecovery.timer);
+          pendingRecovery.reject(
+            new Error("该编辑器 revision 已由云端确认。"),
+          );
+          recoveryCaptureRef.current = null;
+          setRecoveryCaptureRequestId("");
+        }
+        return;
+      }
       if (Number.isSafeInteger(remoteRevision) && Number(remoteRevision) >= 0) {
         const nextRemote = Number(remoteRevision);
-        if (nextRemote === remoteRevisionRef.current) return;
+        if (Object.is(nextRemote, lastDirtyRevisionRef.current)) return;
+        lastDirtyRevisionRef.current = nextRemote;
         remoteRevisionRef.current = nextRemote;
       }
+      setEditRevision((value) => value + 1);
+    },
+    [],
+  );
+  const handleHistoryChange = useCallback((history: EditorHistorySnapshot) => {
+    if (history.revision !== undefined) {
+      remoteRevisionRef.current = history.revision;
+    }
+    setRemoteHistoryState(history);
+  }, []);
+  const handleToolsManifest = useCallback(
+    (
+      revision: EditorDocumentRevision,
+      tools: EditorToolManifestEntry[],
+    ) => {
+      setRemoteToolsManifest({ revision, tools });
+    },
+    [],
+  );
+  const handleProjectManifest = useCallback(
+    (manifest: EditorProjectManifest) => {
+      setProjectManifest(manifest);
+    },
+    [],
+  );
+  const handleProjectResult = useCallback(
+    (result: { requestId: string }) => {
+      setProjectCommand((current) =>
+        current?.requestId === result.requestId ? null : current,
+      );
+    },
+    [],
+  );
+  const handleProtocolReset = useCallback(() => {
+    setSelection(null);
+    setSelectionCommand(null);
+    setRemoteViewport(null);
+    setRemoteHistoryState({ canUndo: false, canRedo: false });
+    setRemoteToolsManifest(null);
+    setProjectManifest(null);
+    setProjectCommand(null);
+  }, []);
+  const captureEmbeddedRecovery = useCallback(() => {
+    const latest = recoverySnapshotRef.current;
+    if (
+      latest &&
+      remoteRevisionRef.current !== null &&
+      Object.is(latest.revision, remoteRevisionRef.current)
+    ) {
+      return Promise.resolve(latest);
+    }
+    const active = recoveryCaptureRef.current;
+    if (active) return active.promise;
+    const recoveryId = `recovery-capture-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const generation = recoveryGenerationRef.current;
+    let resolvePromise!: (snapshot: EditorRecoverySnapshot) => void;
+    let rejectPromise!: (error: Error) => void;
+    const promise = new Promise<EditorRecoverySnapshot>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+    const timer = window.setTimeout(() => {
+      if (recoveryCaptureRef.current?.recoveryId !== recoveryId) return;
+      recoveryCaptureRef.current = null;
+      setRecoveryCaptureRequestId("");
+      rejectPromise(new Error("嵌入编辑器草稿捕获超时。"));
+    }, 8_000);
+    recoveryCaptureRef.current = {
+      recoveryId,
+      generation,
+      promise,
+      resolve: resolvePromise,
+      reject: rejectPromise,
+      timer,
+    };
+    setRecoveryCaptureRequestId(recoveryId);
+    return promise;
+  }, []);
+  const handleRecoverySnapshot = useCallback(
+    (result: {
+      recoveryId: string;
+      ok: boolean;
+      snapshot?: EditorRecoverySnapshot;
+      message?: string;
+    }) => {
+      const pending = recoveryCaptureRef.current;
+      if (!pending || pending.recoveryId !== result.recoveryId) return;
+      window.clearTimeout(pending.timer);
+      recoveryCaptureRef.current = null;
+      setRecoveryCaptureRequestId("");
+      if (
+        !result.ok ||
+        !result.snapshot ||
+        pending.generation !== recoveryGenerationRef.current
+      ) {
+        pending.reject(
+          new Error(
+            result.message ||
+              (pending.generation !== recoveryGenerationRef.current
+                ? "草稿对应的 revision 已由云端确认。"
+                : "嵌入编辑器无法捕获草稿。"),
+          ),
+        );
+        return;
+      }
+      if (
+        remoteRevisionRef.current !== null &&
+        !Object.is(result.snapshot.revision, remoteRevisionRef.current)
+      ) {
+        pending.reject(new Error("编辑器返回了过期的草稿 revision。"));
+        return;
+      }
+      recoverySnapshotRef.current = result.snapshot;
+      pending.resolve(result.snapshot);
+    },
+    [],
+  );
+  const restoreEmbeddedRecovery = useCallback((payload: unknown) => {
+    if (!isEditorRecoverySnapshot(payload)) return false;
+    const recoveryId = `recovery-restore-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    setRecoveryRestore({ recoveryId, snapshot: payload });
+    return true;
+  }, []);
+  const handleRecoveryResult = useCallback(
+    (result: {
+      recoveryId: string;
+      ok: boolean;
+      revision?: EditorDocumentRevision;
+      message?: string;
+    }) => {
+      const restored = recoveryRestoreRef.current;
+      if (!restored || restored.recoveryId !== result.recoveryId) return;
+      recoveryRestoreRef.current = null;
+      setRecoveryRestore(null);
+      if (!result.ok) return;
+      const revision = result.revision ?? restored.snapshot.revision;
+      const snapshot = { ...restored.snapshot, revision };
+      recoveryGenerationRef.current += 1;
+      recoverySnapshotRef.current = snapshot;
+      lastDirtyRevisionRef.current = revision;
+      remoteRevisionRef.current = revision;
+      setDirty(true);
       setEditRevision((value) => value + 1);
     },
     [],
@@ -345,6 +660,12 @@ export function EmbeddedRoute({
         pendingExport.reject(new Error("嵌入编辑器已关闭。"));
         exportResolverRef.current = null;
       }
+      const pendingRecovery = recoveryCaptureRef.current;
+      if (pendingRecovery) {
+        window.clearTimeout(pendingRecovery.timer);
+        pendingRecovery.reject(new Error("嵌入编辑器已关闭。"));
+        recoveryCaptureRef.current = null;
+      }
     },
     [item.key],
   );
@@ -355,7 +676,9 @@ export function EmbeddedRoute({
     }
     const resolve = saveResolverRef.current;
     saveResolverRef.current = null;
+    savePromiseRef.current = null;
     pendingSaveIdRef.current = "";
+    setSaveRequestId("");
     resolve?.(result);
   }, []);
   useEffect(
@@ -365,12 +688,12 @@ export function EmbeddedRoute({
     [item.key, settleSave],
   );
   const saveBeforeNewConversation = useCallback(
-    () =>
-      new Promise<AdvancedFlushResult>((resolve) => {
-        settleSave({ ok: false });
-        const requestId = `host-${Date.now().toString(36)}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`;
+    () => {
+      if (savePromiseRef.current) return savePromiseRef.current;
+      const requestId = `host-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      const promise = new Promise<AdvancedFlushResult>((resolve) => {
         pendingSaveIdRef.current = requestId;
         saveResolverRef.current = resolve;
         setSaveRequestId(requestId);
@@ -378,7 +701,10 @@ export function EmbeddedRoute({
           () => settleSave({ ok: false, error: "编辑器保存超时" }),
           item.kind === "website" ? 5 * 60_000 : 25_000,
         );
-      }),
+      });
+      savePromiseRef.current = promise;
+      return promise;
+    },
     [item.kind, settleSave],
   );
   const handleSaveResult = useCallback(
@@ -522,20 +848,31 @@ export function EmbeddedRoute({
   );
   const requestRemoteExport = useCallback(() => {
     if (exportResolverRef.current) {
-      return Promise.reject(new Error("已有导出请求正在处理中。"));
+      return exportResolverRef.current.promise;
     }
     const exportId = `export-${Date.now().toString(36)}-${Math.random()
       .toString(36)
       .slice(2, 9)}`;
     setExportRequestId(exportId);
-    return new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        exportResolverRef.current = null;
-        setExportRequestId("");
-        reject(new Error("嵌入编辑器未响应导出协议，请稍后重试。"));
-      }, 25_000);
-      exportResolverRef.current = { exportId, resolve, reject, timer };
+    let resolvePromise!: () => void;
+    let rejectPromise!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
     });
+    const timer = window.setTimeout(() => {
+      exportResolverRef.current = null;
+      setExportRequestId("");
+      rejectPromise(new Error("嵌入编辑器未响应导出协议，请稍后重试。"));
+    }, 25_000);
+    exportResolverRef.current = {
+      exportId,
+      promise,
+      resolve: resolvePromise,
+      reject: rejectPromise,
+      timer,
+    };
+    return promise;
   }, []);
   const handleExportResult = useCallback(
     (result: {
@@ -650,12 +987,7 @@ export function EmbeddedRoute({
       siteId={siteId}
       accent={accent}
       adapter={{
-        id:
-          route.mediaType === "website"
-            ? "website"
-            : route.mediaType === "video_canvas"
-              ? "video-canvas"
-              : "design-canvas",
+        id: embeddedAdapterId,
         label: editorToolLabel(route),
         stage: (
           <EmbedEditorPane
@@ -667,6 +999,11 @@ export function EmbeddedRoute({
             extraParams={extraParams}
             onCloseRequest={requestEditorClose}
             onDirtyChange={handleDirtyChange}
+            onHistoryChange={handleHistoryChange}
+            onToolsManifest={handleToolsManifest}
+            onProjectManifest={handleProjectManifest}
+            onProjectResult={handleProjectResult}
+            onProtocolReset={handleProtocolReset}
             onSelectionChange={setSelection}
             onViewportChange={setRemoteViewport}
             selectionCommand={selectionCommand}
@@ -675,6 +1012,11 @@ export function EmbeddedRoute({
             onMaterialResult={handleMaterialResult}
             exportRequestId={exportRequestId}
             onExportResult={handleExportResult}
+            projectCommand={projectCommand}
+            recoveryCaptureRequestId={recoveryCaptureRequestId}
+            onRecoverySnapshot={handleRecoverySnapshot}
+            recoveryRestore={recoveryRestore}
+            onRecoveryResult={handleRecoveryResult}
             onSaveResult={handleSaveResult}
             saveRequestId={saveRequestId}
           />
@@ -716,11 +1058,16 @@ export function EmbeddedRoute({
           onTrigger: requestRemoteExport,
         },
         actions: remoteActions,
-        nativeChrome: { toolbar: true },
         persistence: {
           dirty,
           editRevision,
           flush: saveBeforeNewConversation,
+          recovery: {
+            key: advancedRecoveryKey(embeddedAdapterId, item),
+            ready: true,
+            capture: captureEmbeddedRecovery,
+            restore: restoreEmbeddedRecovery,
+          },
         },
         upload: materialAdapter
           ? {

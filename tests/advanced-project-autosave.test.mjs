@@ -175,6 +175,9 @@ test("autosave blocks never invoke delivery renderers", () => {
   const modelRoute = source(
     "../src/shell/advanced-routes/Model3DRoute.tsx",
   );
+  const modelRouteHistory = source(
+    "../src/shell/media-editors/Model3DRouteHistory.ts",
+  );
   assert.doesNotMatch(
     modelSave,
     /captureBlob|uploadFile|fetchMediaBlob|dataURL|readAsDataURL/,
@@ -189,7 +192,8 @@ test("autosave blocks never invoke delivery renderers", () => {
   assert.match(modelRuntime, /applyOperationJournal/);
   assert.match(modelWorkbench, /normalizeModel3DProjectRecovery/);
   assert.match(modelWorkbench, /runtime\.applyOperationJournal\(pendingOperationsRef\.current\)/);
-  assert.match(modelRoute, /operations: editor\.operationJournal/);
+  assert.match(modelRoute, /captureModel3DRouteSnapshot\(editor\)/);
+  assert.match(modelRouteHistory, /operations: editor\.operationJournal/);
   assert.match(modelProject, /saveFileToLibrary/);
   assert.match(modelProject, /new File\(\[binary\]/);
   assert.doesNotMatch(modelProject, /dataURL|readAsDataURL/);

@@ -37,9 +37,11 @@ export interface TimelineClip {
   source_url?: string;
   /** 源内起点。 */
   in_ms?: number;
+  /** 浏览器元数据探针得到的源总时长，用于阻止预览冻结而导出提前结束。 */
+  source_duration_ms?: number;
   /** 默认 1。源消耗时长 = duration_ms * speed。 */
   speed?: number;
-  /** 0..2 默认 1（浏览器预览封顶 1，导出按实际值）。 */
+  /** 0..2 默认 1；预览通过 Web Audio GainNode 与导出保持同一增益。 */
   volume?: number;
   muted?: boolean;
   /** 文字 clip 内容。 */

@@ -69,6 +69,7 @@ export type SelectionControlSlot =
   | "inspector"
   | "stage"
   | "context-menu";
+export type SelectionControlPlacement = "primary" | "more" | "tools";
 export type SelectionCommandPhase = "start" | "update" | "commit" | "cancel";
 
 export interface SelectionControlOption {
@@ -108,7 +109,11 @@ export interface SelectionControl {
   danger?: boolean;
   /** Semantic emphasis used by inspector actions. */
   tone?: "danger";
-  placement?: "primary" | "more" | "tools";
+  /**
+   * Semantic surface compatibility field. `more` and `tools` are hard
+   * placements; viewport width must never promote them into the compact bar.
+   */
+  placement?: SelectionControlPlacement;
 }
 
 export interface SelectionAnchorRect {
@@ -307,7 +312,9 @@ export function normalizeSelectionContext(
       ...(shortString(raw.group, 40)
         ? { group: shortString(raw.group, 40) }
         : {}),
-      ...(raw.iconOnly === true ? { iconOnly: true } : {}),
+      ...(typeof raw.iconOnly === "boolean"
+        ? { iconOnly: raw.iconOnly }
+        : {}),
       ...(ID_RE.test(shortString(raw.panelId, 80))
         ? { panelId: shortString(raw.panelId, 80) }
         : {}),
@@ -341,8 +348,8 @@ export function normalizeSelectionContext(
       ...(raw.disabled === true ? { disabled: true } : {}),
       ...(raw.danger === true ? { danger: true } : {}),
       ...(raw.tone === "danger" ? { tone: "danger" as const } : {}),
-      ...(raw.placement === "more" || raw.placement === "tools"
-        ? { placement: raw.placement as "more" | "tools" }
+      ...(["primary", "more", "tools"].includes(String(raw.placement || ""))
+        ? { placement: raw.placement as SelectionControlPlacement }
         : {}),
     });
   }

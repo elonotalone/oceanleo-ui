@@ -5,11 +5,17 @@
 
 import { canvasSafeUrl } from "../../lib/media-proxy";
 
-/** 探测 video/audio 源时长（ms）；失败或 15s 超时返回 null。 */
-export function probeMediaDuration(
+export interface MediaProbeResult {
+  durationMs: number;
+  width: number;
+  height: number;
+}
+
+/** 探测 video/audio 的真实时长与像素尺寸；失败或 15s 超时返回 null。 */
+export function probeMediaSource(
   url: string,
   kind: "video" | "audio",
-): Promise<number | null> {
+): Promise<MediaProbeResult | null> {
   return new Promise((resolve) => {
     if (typeof document === "undefined") {
       resolve(null);
@@ -17,9 +23,11 @@ export function probeMediaDuration(
     }
     const el = document.createElement(kind);
     let settled = false;
-    const done = (value: number | null) => {
+    let timer = 0;
+    const done = (value: MediaProbeResult | null) => {
       if (settled) return;
       settled = true;
+      window.clearTimeout(timer);
       el.onloadedmetadata = null;
       el.onerror = null;
       el.removeAttribute("src");
@@ -32,16 +40,30 @@ export function probeMediaDuration(
     };
     el.preload = "metadata";
     el.crossOrigin = "anonymous";
-    el.onloadedmetadata = () =>
-      done(
-        Number.isFinite(el.duration) && el.duration > 0
-          ? Math.round(el.duration * 1000)
-          : null,
-      );
+    el.onloadedmetadata = () => {
+      if (!Number.isFinite(el.duration) || el.duration <= 0) {
+        done(null);
+        return;
+      }
+      const video = kind === "video" ? (el as HTMLVideoElement) : null;
+      done({
+        durationMs: Math.round(el.duration * 1000),
+        width: video?.videoWidth || 0,
+        height: video?.videoHeight || 0,
+      });
+    };
     el.onerror = () => done(null);
-    window.setTimeout(() => done(null), 15000);
+    timer = window.setTimeout(() => done(null), 15000);
     el.src = canvasSafeUrl(url);
   });
+}
+
+/** Backward-compatible duration-only probe. */
+export async function probeMediaDuration(
+  url: string,
+  kind: "video" | "audio",
+): Promise<number | null> {
+  return (await probeMediaSource(url, kind))?.durationMs ?? null;
 }
 
 /** 猜测 URL 的媒体类别（加素材时决定进哪类轨）。 */

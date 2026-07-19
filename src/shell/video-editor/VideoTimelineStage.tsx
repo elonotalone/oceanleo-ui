@@ -9,10 +9,19 @@
 // Delete 删除、Ctrl+Z / Ctrl+Shift+Z 撤销重做、←/→ 逐帧。
 // ============================================================================
 
-import { useCallback, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { TimelineArea } from "./TimelineArea";
 import { formatMs } from "./timeline-model";
+import {
+  clampTimelinePxPerSecond,
+  timelineAnchorMs,
+  timelineScrollLeftForAnchor,
+} from "./timeline-viewport";
 import type { VideoTimelineState } from "./use-video-timeline";
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -33,6 +42,37 @@ export function VideoTimelineStage({
   accent?: string;
 }) {
   const tt = useUI();
+  const stageRef = useRef<HTMLDivElement | null>(null);
+
+  const zoomTimeline = useCallback(
+    (factor: number) => {
+      const scroller = stageRef.current?.querySelector<HTMLElement>(
+        "[data-video-timeline-scroll]",
+      );
+      const nextPxPerSecond = clampTimelinePxPerSecond(
+        state.pxPerSecond * factor,
+      );
+      if (!scroller || nextPxPerSecond === state.pxPerSecond) {
+        state.setPxPerSecond(nextPxPerSecond);
+        return;
+      }
+      const offsetInViewport = scroller.clientWidth / 2;
+      const anchorMs = timelineAnchorMs(
+        scroller.scrollLeft,
+        offsetInViewport,
+        state.pxPerSecond,
+      );
+      state.setPxPerSecond(nextPxPerSecond);
+      requestAnimationFrame(() => {
+        scroller.scrollLeft = timelineScrollLeftForAnchor(
+          anchorMs,
+          offsetInViewport,
+          nextPxPerSecond,
+        );
+      });
+    },
+    [state],
+  );
 
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -74,6 +114,7 @@ export function VideoTimelineStage({
 
   return (
     <div
+      ref={stageRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.currentTarget.focus()}
@@ -129,23 +170,31 @@ export function VideoTimelineStage({
             tt("空格播放 · S 分割 · Delete 删除 · Ctrl+Z 撤销 · Ctrl+滚轮缩放")
           )}
         </span>
-        <div className="flex items-center gap-1">
+        <div
+          data-video-timeline-native-zoom
+          className="flex items-center gap-1"
+        >
           <button
             type="button"
-            onClick={() => state.zoomBy(1 / 1.4)}
+            onClick={() => zoomTimeline(1 / 1.4)}
             className="rounded-lg border border-[var(--border,#e7e5e4)] px-2 py-1 text-[12px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
             title={tt("缩小时间线")}
+            aria-label={tt("缩小时间线")}
           >
             −
           </button>
-          <span className="w-14 text-center text-[10px] tabular-nums text-[var(--muted,#78716c)]">
+          <output
+            aria-label={tt("时间线刻度")}
+            className="w-14 text-center text-[10px] tabular-nums text-[var(--muted,#78716c)]"
+          >
             {state.pxPerSecond}px/s
-          </span>
+          </output>
           <button
             type="button"
-            onClick={() => state.zoomBy(1.4)}
+            onClick={() => zoomTimeline(1.4)}
             className="rounded-lg border border-[var(--border,#e7e5e4)] px-2 py-1 text-[12px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
             title={tt("放大时间线")}
+            aria-label={tt("放大时间线")}
           >
             +
           </button>

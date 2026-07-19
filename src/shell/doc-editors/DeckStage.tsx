@@ -27,9 +27,8 @@ import {
   DeckElementContent,
   deckShapeClipPath,
 } from "./DeckElementContent";
-import {
-  type DeckInkStyle,
-} from "./deck-ink";
+import type { DeckInkStyle } from "./deck-ink";
+import { deckTextGestureProps } from "./deck-text-gesture";
 import { DeckInkOverlay } from "./DeckInkOverlay";
 import { DeckSlideRail } from "./DeckSlideRail";
 import { useDeckStageShortcuts } from "./use-deck-stage-shortcuts";
@@ -83,6 +82,16 @@ function PositionedSlideCanvas({
     editor.setCanvasElement(canvasRef.current);
     return () => editor.setCanvasElement(null);
   }, [editor.setCanvasElement]);
+  useEffect(() => {
+    if (
+      editingId &&
+      slide.elements.some(
+        (element) => element.id === editingId && element.locked,
+      )
+    ) {
+      setEditingId("");
+    }
+  }, [editingId, slide.elements]);
 
   const startInteraction = (
     event: ReactPointerEvent<HTMLElement>,
@@ -171,7 +180,7 @@ function PositionedSlideCanvas({
             interaction?.id === element.id ? interaction.preview : null;
           const rendered = preview ? { ...element, ...preview } : element;
           const selected = editor.selectedElementId === element.id;
-          const editing = editingId === element.id;
+          const editing = editingId === element.id && !element.locked;
           const shapeClip =
             element.type === "shape"
               ? deckShapeClipPath(element.shape)
@@ -296,8 +305,9 @@ function PositionedSlideCanvas({
                     </button>
                     <button
                       type="button"
+                      disabled={element.locked}
                       onClick={editor.duplicateElement}
-                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:cursor-not-allowed disabled:opacity-35"
                       title="复制"
                       aria-label="复制"
                     >
@@ -317,8 +327,9 @@ function PositionedSlideCanvas({
                     </button>
                     <button
                       type="button"
+                      disabled={element.locked}
                       onClick={editor.deleteElement}
-                      className="grid h-7 w-7 place-items-center rounded-lg text-rose-600 hover:bg-rose-500/10"
+                      className="grid h-7 w-7 place-items-center rounded-lg text-rose-600 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-35"
                       title="删除"
                       aria-label="删除"
                     >
@@ -402,7 +413,7 @@ function SlideCanvas({
         aria-label={tt("幻灯片标题")}
         value={slide.title}
         rows={isCenter ? 2 : 1}
-        onChange={(event) => editor.patchSlide({ title: event.target.value })}
+        {...deckTextGestureProps(editor, "title")}
         placeholder={tt("输入标题")}
         className={`w-full resize-none overflow-hidden bg-transparent font-bold outline-none placeholder:opacity-30 ${
           isCenter ? "text-center text-[clamp(24px,4vw,54px)]" : "text-[clamp(20px,3vw,38px)]"
@@ -417,7 +428,7 @@ function SlideCanvas({
           aria-label={tt("幻灯片正文")}
           value={slide.body}
           rows={isCenter ? 3 : 5}
-          onChange={(event) => editor.patchSlide({ body: event.target.value })}
+          {...deckTextGestureProps(editor, "body")}
           placeholder={tt("输入正文")}
           className={`mt-3 w-full resize-none bg-transparent text-[clamp(12px,1.6vw,21px)] leading-relaxed outline-none placeholder:opacity-30 ${
             isCenter ? "text-center" : "text-left"

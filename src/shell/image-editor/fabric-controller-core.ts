@@ -30,6 +30,7 @@ import {
   createDocBackground,
   ensureLayerOrder,
   fitViewport,
+  normalizeEditorSnapshot,
   objectIsEditable,
   panViewport,
   removeEditableObjects,
@@ -37,6 +38,10 @@ import {
   snapshotKey,
   type EditorSnapshot,
 } from "./editor-runtime";
+import {
+  imageObjectMutationAllowed,
+  type ImageObjectMutationIntent,
+} from "./image-mutation-policy";
 
 export interface FabricControllerView {
   doc: DocSize;
@@ -141,6 +146,13 @@ export class FabricEditorCore {
           this.canvas.requestRenderAll();
           return;
         }
+        if (
+          objectIsEditable(target) &&
+          !this.canMutateObject(target, "geometry")
+        ) {
+          void this.restore(this.currentSnapshot, false);
+          return;
+        }
         this.commit();
       }),
       this.canvas.on("object:scaling", ({ target }) => {
@@ -159,6 +171,15 @@ export class FabricEditorCore {
       }),
       this.canvas.on("path:created", ({ path }) => {
         const erasing = this.activeTool === "erase";
+        if (erasing && this.hasLockedEditableObjects()) {
+          this.canvas.remove(path);
+          path.dispose();
+          this.activeTool = "select";
+          this.applyTool();
+          this.callbacks.onError("请先解锁图层，再使用橡皮擦");
+          this.emit();
+          return;
+        }
         tagObject(path, erasing ? "eraser" : "path");
         if (erasing) {
           path.set({
@@ -169,12 +190,35 @@ export class FabricEditorCore {
         this.styleObject(path);
         this.commit();
       }),
+      this.canvas.on("text:editing:entered", ({ target }) => {
+        const active = this.canvas.getActiveObject();
+        const locked =
+          (objectIsEditable(active) &&
+            !this.canMutateObject(active, "content")) ||
+          (objectIsEditable(target) &&
+            !this.canMutateObject(target, "content"));
+        if (!locked) return;
+        const editable = target as FabricObject & {
+          exitEditing?: () => void;
+        };
+        editable.exitEditing?.();
+        this.canvas.requestRenderAll();
+      }),
       this.canvas.on("text:editing:exited", () => this.commit()),
       this.canvas.on("mouse:dblclick", ({ subTargets }) => {
         const editableText = [...(subTargets || [])]
           .reverse()
           .find((target) => target instanceof this.fabric.IText);
         if (!editableText || !(editableText instanceof this.fabric.IText)) return;
+        const active = this.canvas.getActiveObject();
+        if (
+          (objectIsEditable(active) &&
+            !this.canMutateObject(active, "content")) ||
+          (objectIsEditable(editableText) &&
+            !this.canMutateObject(editableText, "content"))
+        ) {
+          return;
+        }
         editableText.enterEditing();
         editableText.selectAll();
         this.canvas.requestRenderAll();
@@ -325,6 +369,26 @@ export class FabricEditorCore {
     if (!this.destroyed) this.callbacks.onChange(this.readView());
   }
 
+  protected canMutateObject(
+    object: EditorObject,
+    intent: ImageObjectMutationIntent,
+  ): boolean {
+    return imageObjectMutationAllowed(
+      object.oceanleoLocked === true,
+      intent,
+    );
+  }
+
+  protected hasLockedEditableObjects(): boolean {
+    return this.canvas
+      .getObjects()
+      .some(
+        (object) =>
+          objectIsEditable(object) &&
+          !this.canMutateObject(object, "geometry"),
+      );
+  }
+
   protected commit(): void {
     if (this.destroyed || this.restoring) return;
     ensureLayerOrder(this.canvas);
@@ -359,10 +423,12 @@ export class FabricEditorCore {
     this.gestureBase = null;
   }
 
-  beginGesture(): void {
+  beginGesture(): boolean {
     if (!this.destroyed && !this.restoring && !this.gestureBase) {
       this.gestureBase = this.currentSnapshot;
+      return true;
     }
+    return false;
   }
 
   endGesture(): void {
@@ -421,7 +487,12 @@ export class FabricEditorCore {
     this.emit();
   }
 
-  replaceWithBackground(image: FabricImage): void {
+  replaceWithBackground(image: FabricImage): boolean {
+    if (this.hasLockedEditableObjects()) {
+      image.dispose();
+      this.callbacks.onError("请先解锁图层，再替换整个画布");
+      return false;
+    }
     const removals = this.canvas.getObjects().filter(objectIsEditable);
     if (removals.length) this.canvas.remove(...removals);
     removals.forEach((object) => object.dispose());
@@ -443,9 +514,14 @@ export class FabricEditorCore {
     this.canvas.add(background);
     this.canvas.setActiveObject(background);
     this.commit();
+    return true;
   }
 
   setTool(tool: ToolId): void {
+    if (tool === "erase" && this.hasLockedEditableObjects()) {
+      this.callbacks.onError("请先解锁图层，再使用橡皮擦");
+      return;
+    }
     this.activeTool = tool;
     this.applyTool();
     this.emit();
@@ -464,16 +540,28 @@ export class FabricEditorCore {
     if (this.restoring) return;
     const previous = this.undoStack.pop();
     if (!previous) return;
-    this.redoStack.push(this.currentSnapshot);
-    void this.restore(previous);
+    const current = this.currentSnapshot;
+    this.redoStack.push(current);
+    void this.restore(previous).then((restored) => {
+      if (restored || this.destroyed) return;
+      if (this.redoStack.at(-1) === current) this.redoStack.pop();
+      this.undoStack.push(previous);
+      this.emit();
+    });
   }
 
   redo(): void {
     if (this.restoring) return;
     const next = this.redoStack.pop();
     if (!next) return;
-    this.undoStack.push(this.currentSnapshot);
-    void this.restore(next);
+    const current = this.currentSnapshot;
+    this.undoStack.push(current);
+    void this.restore(next).then((restored) => {
+      if (restored || this.destroyed) return;
+      if (this.undoStack.at(-1) === current) this.undoStack.pop();
+      this.redoStack.push(next);
+      this.emit();
+    });
   }
 
   private async restore(
@@ -481,6 +569,7 @@ export class FabricEditorCore {
     notifyDocumentChange = true,
     resetHistory = false,
   ): Promise<boolean> {
+    const fallback = this.currentSnapshot;
     this.restoring = true;
     let restored = false;
     this.restoreAbort?.abort();
@@ -507,18 +596,47 @@ export class FabricEditorCore {
       this.canvas.requestRenderAll();
       restored = true;
     } catch (caught) {
-      if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-        this.callbacks.onError(
-          caught instanceof Error ? caught.message : "无法恢复画布历史",
-        );
+      const aborted =
+        abort.signal.aborted ||
+        (caught instanceof DOMException && caught.name === "AbortError");
+      if (!aborted) {
+        try {
+          await this.canvas.loadFromJSON(fallback.json, undefined, {
+            signal: abort.signal,
+          });
+          if (!this.destroyed && !abort.signal.aborted) {
+            this.doc = { ...fallback.doc };
+            this.canvasBackground = fallback.canvasBackground;
+            restoreLockFlags(this.canvas);
+            this.canvas
+              .getObjects()
+              .forEach((object) => this.styleObject(object));
+            ensureLayerOrder(this.canvas);
+            this.currentSnapshot = fallback;
+            this.cropping = false;
+            this.cropRatio = "free";
+            this.zoom = fitViewport(this.canvas, this.doc, this.container);
+            this.canvas.requestRenderAll();
+          }
+        } catch {
+          // The prior in-memory snapshot is known-good in normal operation.
+          // If Fabric cannot reload it either, keep the original error below.
+        }
+        if (!abort.signal.aborted && this.restoreAbort === abort) {
+          this.callbacks.onError(
+            caught instanceof Error ? caught.message : "无法恢复画布历史",
+          );
+        }
       }
     } finally {
-      if (this.restoreAbort === abort) this.restoreAbort = null;
-      this.restoring = false;
-      if (restored && notifyDocumentChange) {
-        this.callbacks.onDocumentChange?.();
+      if (this.restoreAbort === abort) {
+        this.restoreAbort = null;
+        this.restoring = false;
+        if (restored && notifyDocumentChange) {
+          this.callbacks.onDocumentChange?.();
+        }
+        this.emit();
       }
-      this.emit();
     }
     return restored;
   }
@@ -528,22 +646,13 @@ export class FabricEditorCore {
   }
 
   async loadSnapshot(snapshot: EditorSnapshot): Promise<boolean> {
-    if (
-      !snapshot ||
-      typeof snapshot !== "object" ||
-      !snapshot.json ||
-      typeof snapshot.json !== "object" ||
-      !Number.isFinite(snapshot.doc?.width) ||
-      !Number.isFinite(snapshot.doc?.height) ||
-      typeof snapshot.canvasBackground !== "string"
-    ) {
-      return false;
-    }
+    const normalized = normalizeEditorSnapshot(snapshot);
+    if (!normalized) return false;
     return this.restore(
       {
-        json: snapshot.json,
-        doc: clampDocument(snapshot.doc.width, snapshot.doc.height),
-        canvasBackground: snapshot.canvasBackground.slice(0, 100),
+        json: normalized.json,
+        doc: clampDocument(normalized.doc.width, normalized.doc.height),
+        canvasBackground: normalized.canvasBackground,
       },
       false,
       true,

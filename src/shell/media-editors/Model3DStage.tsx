@@ -29,7 +29,10 @@ function StageButton({
       style={
         active
           ? { borderColor: accent, color: accent, background: `${accent}12` }
-          : { borderColor: "var(--border,#e7e5e4)", color: "var(--fg-2,#57534e)" }
+          : {
+              borderColor: "var(--border,#e7e5e4)",
+              color: "var(--fg-2,#57534e)",
+            }
       }
     >
       {children}
@@ -40,9 +43,11 @@ function StageButton({
 export function Model3DStage({
   editor,
   accent = "#4f46e5",
+  showNativeControls = true,
 }: {
   editor: Model3DWorkbenchState;
   accent?: string;
+  showNativeControls?: boolean;
 }) {
   const tt = useUI();
   const screens = useMemo(
@@ -73,7 +78,9 @@ export function Model3DStage({
         <canvas
           ref={editor.canvasRef}
           data-testid="model3d-canvas"
+          data-selection-mode="single"
           aria-label={tt("Three.js 3D 编辑画布")}
+          aria-describedby="model3d-stage-status"
           className="block h-full min-h-[280px] w-full touch-none outline-none"
         />
 
@@ -154,64 +161,75 @@ export function Model3DStage({
               ? `${tt("动画")} ${editor.animationTime.toFixed(2)}s`
               : editor.annotationPlacementArmed
                 ? tt("标注放置模式")
-                : editor.selectedNode?.type || tt("Three.js 场景")}
+                : editor.selectedNode
+                  ? `${tt("单选")} · ${editor.selectedNode.type}`
+                  : tt("Three.js 场景")}
           </div>
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5">
-        <StageButton
-          accent={accent}
-          disabled={!editor.canUndo}
-          onClick={editor.undo}
-          testId="model3d-undo"
-        >
-          {tt("撤销")}
-        </StageButton>
-        <StageButton
-          accent={accent}
-          disabled={!editor.canRedo}
-          onClick={editor.redo}
-          testId="model3d-redo"
-        >
-          {tt("重做")}
-        </StageButton>
-        {(["translate", "rotate", "scale"] as const).map((mode) => (
-          <StageButton
-            key={mode}
-            accent={accent}
-            active={editor.transformMode === mode}
-            disabled={!editor.selectedNode}
-            onClick={() => editor.setTransformMode(mode)}
-            testId={`model3d-mode-${mode}`}
-          >
-            {mode === "translate"
-              ? tt("移动")
-              : mode === "rotate"
-                ? tt("旋转")
-                : tt("缩放")}
-          </StageButton>
-        ))}
-        <StageButton
-          accent={accent}
-          disabled={!editor.modelLoaded}
-          onClick={editor.resetCamera}
-        >
-          {tt("重置视角")}
-        </StageButton>
-        {editor.animations.length > 0 && (
-          <StageButton
-            accent={accent}
-            active={editor.animationPlaying}
-            disabled={!editor.animationName}
-            onClick={() =>
-              editor.setAnimationPlaying(!editor.animationPlaying)
-            }
-          >
-            {editor.animationPlaying ? tt("暂停动画") : tt("播放动画")}
-          </StageButton>
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2">
+        {showNativeControls && (
+          <>
+            <StageButton
+              accent={accent}
+              disabled={!editor.canUndo}
+              onClick={editor.undo}
+              testId="model3d-undo"
+            >
+              {tt("撤销")}
+            </StageButton>
+            <StageButton
+              accent={accent}
+              disabled={!editor.canRedo}
+              onClick={editor.redo}
+              testId="model3d-redo"
+            >
+              {tt("重做")}
+            </StageButton>
+            {(["translate", "rotate", "scale"] as const).map((mode) => (
+              <StageButton
+                key={mode}
+                accent={accent}
+                active={editor.transformMode === mode}
+                disabled={!editor.selectedNode}
+                onClick={() => editor.setTransformMode(mode)}
+                testId={`model3d-mode-${mode}`}
+              >
+                {mode === "translate"
+                  ? tt("移动")
+                  : mode === "rotate"
+                    ? tt("旋转")
+                    : tt("缩放")}
+              </StageButton>
+            ))}
+            <StageButton
+              accent={accent}
+              disabled={!editor.modelLoaded}
+              onClick={editor.resetCamera}
+            >
+              {tt("重置视角")}
+            </StageButton>
+            {editor.animations.length > 0 && (
+              <StageButton
+                accent={accent}
+                active={editor.animationPlaying}
+                disabled={!editor.animationName}
+                onClick={() =>
+                  editor.setAnimationPlaying(!editor.animationPlaying)
+                }
+              >
+                {editor.animationPlaying ? tt("暂停动画") : tt("播放动画")}
+              </StageButton>
+            )}
+          </>
         )}
+        <span className="shrink-0 text-[10px] text-[var(--muted,#78716c)]">
+          {editor.selectedNode ? tt("单选模式") : tt("未选择对象")}
+        </span>
         <p
+          id="model3d-stage-status"
+          role={editor.error ? "alert" : "status"}
           aria-live="polite"
           className={`min-w-0 flex-1 truncate text-right text-[11px] ${
             editor.error

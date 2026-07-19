@@ -30,6 +30,11 @@ import {
   type TextPreset,
   type TextSettings,
 } from "./types";
+import {
+  IMAGE_LOCK_SERIALIZED_PROPS,
+  imageLockInteractionProps,
+} from "./image-mutation-policy";
+import { exportFrozenImageDocument } from "./image-document-contract";
 
 export type FabricNS = typeof import("fabric");
 
@@ -58,7 +63,7 @@ export const SNAPSHOT_PROPS = [
   "oceanleoId",
   "oceanleoRole",
   "oceanleoKind",
-  "oceanleoLocked",
+  ...IMAGE_LOCK_SERIALIZED_PROPS,
   "oceanleoRadius",
   "oceanleoFilters",
   "oceanleoImageFit",
@@ -67,12 +72,6 @@ export const SNAPSHOT_PROPS = [
   "oceanleoTableRow",
   "oceanleoTableColumn",
   "oceanleoTablePart",
-  "selectable",
-  "evented",
-  "lockMovementX",
-  "lockMovementY",
-  "hasControls",
-  "hoverCursor",
 ];
 
 export function makeId(): string {
@@ -151,14 +150,25 @@ export function tagObject(obj: FabricObject, kind?: string): EditorObject {
 }
 
 export function setLocked(obj: EditorObject, locked: boolean): void {
+  if (locked) {
+    const stopEditing = (candidate: FabricObject) => {
+      const editable = candidate as FabricObject & {
+        isEditing?: boolean;
+        exitEditing?: () => void;
+        forEachObject?: (run: (child: FabricObject) => void) => void;
+      };
+      if (editable.isEditing && typeof editable.exitEditing === "function") {
+        editable.exitEditing();
+      }
+      editable.forEachObject?.(stopEditing);
+    };
+    stopEditing(obj);
+  }
   obj.oceanleoLocked = locked;
   obj.set({
-    selectable: !locked,
-    evented: !locked,
-    lockMovementX: locked,
-    lockMovementY: locked,
-    hasControls: !locked,
-    hoverCursor: locked ? "not-allowed" : "move",
+    // A locked object remains selectable/inspectable so the same selection can
+    // expose metadata and the explicit unlock command.
+    ...imageLockInteractionProps(locked),
   });
   obj.setCoords();
 }
@@ -801,17 +811,7 @@ export async function exportDocBlob(
   doc: DocSize,
   options: { format: ExportFormat; quality: number; multiplier: number },
 ): Promise<Blob | null> {
-  return withIdentityViewport(canvas, () =>
-    canvas.toBlob({
-      left: 0,
-      top: 0,
-      width: doc.width,
-      height: doc.height,
-      multiplier: options.multiplier,
-      format: options.format,
-      quality: options.quality,
-    }),
-  );
+  return exportFrozenImageDocument(canvas, doc, options);
 }
 
 export function exportRegionDataUrl(

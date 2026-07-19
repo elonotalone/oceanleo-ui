@@ -14,6 +14,7 @@ import {
 } from "../src/shell/floating-toolbar-geometry.ts";
 import {
   partitionSelectionControls,
+  SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS,
   SELECTION_TOOLBAR_MAX_WIDTH,
 } from "../src/shell/selection-toolbar-layout.ts";
 import {
@@ -45,7 +46,7 @@ function fileItem(filename, mime = "") {
   };
 }
 
-test("selection toolbar uses measured 960px geometry and only overflows when needed", () => {
+test("selection toolbar keeps the deterministic v8 compact projection at every width", () => {
   const controls = Array.from({ length: 12 }, (_, index) => ({
     id: `control-${index}`,
     kind: "action",
@@ -58,8 +59,11 @@ test("selection toolbar uses measured 960px geometry and only overflows when nee
     measured,
     SELECTION_TOOLBAR_MAX_WIDTH,
   );
-  assert.equal(wide.visible.length, 12);
-  assert.equal(wide.overflow.length, 0);
+  assert.equal(wide.visible.length, SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS);
+  assert.equal(
+    wide.overflow.length,
+    controls.length - SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS,
+  );
 
   const prioritized = [
     { id: "core-a", kind: "action", label: "A" },
@@ -76,19 +80,17 @@ test("selection toolbar uses measured 960px geometry and only overflows when nee
     "core-a",
     "core-b",
   ]);
-  assert.deepEqual(narrow.overflow.map((control) => control.id), [
-    "extra",
-    "tool",
-  ]);
+  assert.deepEqual(narrow.overflow.map((control) => control.id), ["extra"]);
 
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/SelectionToolbarSelectControl.tsx") +
     source("../src/shell/selection-inspector-host.tsx");
   assert.match(toolbar, /aria-haspopup="dialog"/);
   assert.match(toolbar, /event\.key === "Escape"/);
   assert.match(toolbar, /onBlur=\{\(event\) =>/);
   assert.match(toolbar, /overflow\.length > 0/);
-  assert.match(toolbar, /min-w-64 w-max max-w-/);
+  assert.match(toolbar, /w-72 max-w-/);
   assert.doesNotMatch(toolbar, /Math\.min\(7|selectionToolbarBudget/);
   assert.doesNotMatch(toolbar, /calc\(100vw-2rem\),100%/);
   assert.match(toolbar, /openTransientPanel/);

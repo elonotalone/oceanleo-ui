@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type {
@@ -47,11 +47,8 @@ export function ChartContextToolbar({
   const legendFontSize = Number.isFinite(rawLegendFontSize)
     ? Math.max(8, Math.min(48, rawLegendFontSize))
     : 12;
-  const [activeSeriesId, setActiveSeriesId] = useState(
-    () => option.series[0]?.id || "",
-  );
   const activeSeries =
-    option.series.find((series) => series.id === activeSeriesId) ||
+    option.series.find((series) => series.id === editor.activeSeriesId) ||
     option.series[0];
   const context = useMemo<SelectionContext>(() => {
     const controls: SelectionControl[] = [
@@ -69,6 +66,9 @@ export function ChartContextToolbar({
         id: "legend-show",
         kind: "toggle",
         label: tt("图例"),
+        icon: "select",
+        iconOnly: true,
+        group: "legend",
         value: option.legend.show,
       },
       {
@@ -82,6 +82,10 @@ export function ChartContextToolbar({
           { value: "left", label: tt("左") },
           { value: "right", label: tt("右") },
         ],
+        slot: "inspector",
+        inspectorGroup: "chart-legend",
+        inspectorLabel: tt("图例样式"),
+        inspectorIcon: "position",
       },
       {
         id: "legend-color",
@@ -181,13 +185,17 @@ export function ChartContextToolbar({
         kind: "action",
         label: "+ " + tt("系列"),
         placement: "more",
+        icon: "add",
       },
       ...(option.series.length > 1
         ? [
             {
               id: "series-selector",
               kind: "select" as const,
-              label: tt("当前系列"),
+              label: tt("当前系列（单选）"),
+              icon: "line" as const,
+              iconOnly: true,
+              group: "series",
               value: activeSeries?.id || "",
               options: option.series.map((series) => ({
                 value: series.id,
@@ -228,59 +236,51 @@ export function ChartContextToolbar({
           id: `series:${series.id}:type`,
           kind: "select",
           label: series.name || tt("系列类型"),
+          icon: "line",
+          iconOnly: true,
+          group: "series",
           value: series.type,
           options: SERIES_OPTIONS.map((entry) => ({
             value: entry.value,
             label: tt(entry.label),
           })),
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "chart-series",
-          inspectorLabel: tt("当前系列"),
-          inspectorIcon: "line",
         },
         {
           id: `series:${series.id}:color`,
           kind: "color",
           label: tt("系列颜色"),
+          icon: "color",
+          iconOnly: true,
+          group: "series",
           value: series.color || option.color[0] || accent,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "chart-series",
-          inspectorLabel: tt("当前系列"),
-          inspectorIcon: "line",
         },
         {
           id: `series:${series.id}:label`,
           kind: "toggle",
           label: tt("数据标签"),
+          icon: "text",
+          iconOnly: true,
+          group: "series",
           value: series.label.show,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "chart-series",
-          inspectorLabel: tt("当前系列"),
-          inspectorIcon: "line",
         },
         {
           id: `series:${series.id}:delete`,
           kind: "action",
           label: tt("删除系列"),
+          icon: "delete",
           danger: true,
           disabled: option.series.length <= 1,
           placement: "more",
-          slot: "inspector",
-          inspectorGroup: "chart-series",
-          inspectorLabel: tt("当前系列"),
-          inspectorIcon: "line",
         },
       );
     }
     controls.push(...chartAdvancedControls(option, activeSeries, tt));
     return {
       version: 1,
-      kind: "chart",
-      id: "chart",
-      label: tt("图表"),
+      kind: activeSeries ? "chart-series" : "chart",
+      id: activeSeries ? `chart-series:${activeSeries.id}` : "chart",
+      label: activeSeries?.name || tt("图表"),
+      revision: editor.editRevision,
       controls,
     };
   }, [
@@ -290,11 +290,18 @@ export function ChartContextToolbar({
     legendFontSize,
     legendTextStyle,
     option,
+    editor.editRevision,
     tt,
   ]);
 
   const command = (message: SelectionCommand) => {
-    if (message.selectionId !== "chart") return;
+    if (message.selectionId !== context.id) return;
+    if (
+      message.selectionRevision !== undefined &&
+      message.selectionRevision !== editor.editRevision
+    ) {
+      return;
+    }
     if (message.transactionId && message.phase !== "commit") return;
     if (applyChartAdvancedCommand(editor, option, message)) return;
     if (message.controlId === "title") {
@@ -339,7 +346,7 @@ export function ChartContextToolbar({
     if (message.controlId === "series-selector") {
       const next = String(message.value || "");
       if (option.series.some((series) => series.id === next)) {
-        setActiveSeriesId(next);
+        editor.selectSeries(next);
       }
       return;
     }

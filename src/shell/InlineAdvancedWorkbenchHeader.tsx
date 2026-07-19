@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type {
   AdvancedEditorAdapter,
@@ -8,6 +8,11 @@ import type {
 } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AdvancedWorkspaceActionBar } from "./AdvancedWorkspaceActionBar";
+import {
+  ADVANCED_TOOLS_PANEL_ID,
+  focusAdvancedToolsTrigger,
+  useAdvancedToolsLauncherRegistration,
+} from "./advanced-layout-context";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 
@@ -45,17 +50,34 @@ export function InlineAdvancedWorkbenchHeader({
   onUploadFiles: (files: File[]) => void;
 }) {
   const tt = useUI();
+  const closeToolsAndRestoreFocus = useCallback(() => {
+    onCloseDrawer();
+    window.requestAnimationFrame(() => focusAdvancedToolsTrigger(adapter.id));
+  }, [adapter.id, onCloseDrawer]);
   const toolsPanel = useMemo(
     () => (
-      <div className="h-full overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        id={ADVANCED_TOOLS_PANEL_ID}
+        role="dialog"
+        aria-label={tt("编辑工具")}
+        aria-modal="false"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          closeToolsAndRestoreFocus();
+        }}
+        className="h-full overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
           {tt("编辑工具")}
         </p>
         <div className="grid grid-cols-2 gap-2">
-          {drawers.map((drawer) => (
+          {drawers.map((drawer, index) => (
             <button
               key={drawer.id}
               type="button"
+              autoFocus={index === 0}
               onClick={() => onOpenDrawer(drawer.id)}
               className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-semibold text-[var(--fg-2,#57534e)] outline-none transition hover:border-[var(--awb-accent)]/35 hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
             >
@@ -71,15 +93,36 @@ export function InlineAdvancedWorkbenchHeader({
         </div>
       </div>
     ),
-    [accent, drawers, onOpenDrawer, tt],
+    [accent, closeToolsAndRestoreFocus, drawers, onOpenDrawer, tt],
   );
-  const openTools = () => {
+  const openTools = useCallback(() => {
     if (activeDrawerId === "workspace-tools") {
-      onCloseDrawer();
+      closeToolsAndRestoreFocus();
       return;
     }
     onOpenTransientPanel("workspace-tools", tt("编辑工具"), toolsPanel);
-  };
+  }, [
+    activeDrawerId,
+    closeToolsAndRestoreFocus,
+    onOpenTransientPanel,
+    toolsPanel,
+    tt,
+  ]);
+  const toolsLauncher = useMemo(
+    () => ({
+      id: adapter.id,
+      label: tt("打开{label}工具", { label: tt(adapter.label) }),
+      controlsId: ADVANCED_TOOLS_PANEL_ID,
+      available: drawers.length > 0,
+      expanded: activeDrawerId === "workspace-tools",
+      ...(drawers.length
+        ? {}
+        : { unavailableReason: tt("当前编辑器没有可用工具") }),
+      toggle: openTools,
+    }),
+    [activeDrawerId, adapter.id, adapter.label, drawers.length, openTools, tt],
+  );
+  useAdvancedToolsLauncherRegistration(toolsLauncher);
   const triggerAction = (action: NonNullable<AdvancedEditorAdapter["actions"]>[number]) => {
     if (action.panelId) {
       onOpenDrawer(action.panelId);
@@ -92,10 +135,8 @@ export function InlineAdvancedWorkbenchHeader({
     <AdvancedWorkspaceActionBar
       adapter={adapter}
       autoSaveState={autoSaveState}
-      activeDrawerId={activeDrawerId}
       activeLibraryPanelId={activeLibraryPanelId}
       onBack={onBack}
-      onOpenTools={openTools}
       onOpenLibrary={onOpenLibrary}
       onRetrySave={onRetrySave}
       onTriggerAction={triggerAction}

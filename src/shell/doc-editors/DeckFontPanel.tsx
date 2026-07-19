@@ -8,7 +8,7 @@ export function DeckFontPanel({ editor }: { editor: DeckEditorState }) {
   return (
     <AdvancedFontPicker
       selectedFamily={selected?.fontFamily}
-      disabled={!selected || selected.type !== "text"}
+      disabled={!selected || selected.type !== "text" || selected.locked}
       onSelect={(fontFamily) => {
         if (selected?.type === "text") {
           editor.patchElement(selected.id, { fontFamily });

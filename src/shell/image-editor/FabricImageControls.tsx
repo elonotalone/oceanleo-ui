@@ -39,6 +39,10 @@ function Range({
   step = 1,
   suffix = "",
   onChange,
+  onBegin,
+  onCommit,
+  onCancel,
+  disabled = false,
 }: {
   label: string;
   value: number;
@@ -47,6 +51,10 @@ function Range({
   step?: number;
   suffix?: string;
   onChange: (value: number) => void;
+  onBegin?: () => void;
+  onCommit?: () => void;
+  onCancel?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -60,8 +68,18 @@ function Range({
         min={min}
         max={max}
         step={step}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-[var(--accent,#7c3aed)]"
+        disabled={disabled}
+        onPointerDown={onBegin}
+        onPointerUp={onCommit}
+        onPointerCancel={onCancel}
+        onKeyDown={onBegin}
+        onKeyUp={onCommit}
+        onBlur={onCommit}
+        onChange={(event) => {
+          onBegin?.();
+          onChange(Number(event.target.value));
+        }}
+        className="w-full accent-[var(--accent,#7c3aed)] disabled:opacity-40"
       />
     </label>
   );
@@ -104,6 +122,7 @@ export function FabricImageControls({
   const tt = useUI();
   const [customWidth, setCustomWidth] = useState(editor.doc.width);
   const [customHeight, setCustomHeight] = useState(editor.doc.height);
+  const hasLockedLayers = editor.layers.some((layer) => layer.locked);
   const has = (section: FabricImageControlSection) =>
     sections.includes(section);
 
@@ -123,12 +142,27 @@ export function FabricImageControls({
               }`}
             >
               <span className="min-w-0 flex-1 truncate">{layer.kind}</span>
-              <span onClick={(event) => { event.stopPropagation(); editor.toggleLayerVisible(layer.id); }}>{layer.visible ? "◉" : "○"}</span>
+              <span
+                className={layer.locked ? "pointer-events-none opacity-30" : ""}
+                onClick={(event) => { event.stopPropagation(); editor.toggleLayerVisible(layer.id); }}
+              >
+                {layer.visible ? "◉" : "○"}
+              </span>
               <span onClick={(event) => { event.stopPropagation(); editor.toggleLayerLock(layer.id); }}>{layer.locked ? "🔒" : "◇"}</span>
               {!layer.isBackground && (
                 <>
-                  <span onClick={(event) => { event.stopPropagation(); editor.moveLayer(layer.id, "up"); }}>↑</span>
-                  <span onClick={(event) => { event.stopPropagation(); editor.moveLayer(layer.id, "down"); }}>↓</span>
+                  <span
+                    className={layer.locked ? "pointer-events-none opacity-30" : ""}
+                    onClick={(event) => { event.stopPropagation(); editor.moveLayer(layer.id, "up"); }}
+                  >
+                    ↑
+                  </span>
+                  <span
+                    className={layer.locked ? "pointer-events-none opacity-30" : ""}
+                    onClick={(event) => { event.stopPropagation(); editor.moveLayer(layer.id, "down"); }}
+                  >
+                    ↓
+                  </span>
                 </>
               )}
             </button>
@@ -141,6 +175,7 @@ export function FabricImageControls({
           {CANVAS_PRESETS.map((preset) => (
             <ToolButton
               key={preset.id}
+              disabled={hasLockedLayers}
               active={editor.doc.width === preset.width && editor.doc.height === preset.height}
               onClick={() => {
                 editor.resizeDoc(preset.width, preset.height);
@@ -156,11 +191,30 @@ export function FabricImageControls({
           <input type="number" value={customWidth} min={16} max={8192} onChange={(event) => setCustomWidth(Number(event.target.value))} className="min-w-0 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-[10px] text-[var(--fg,#292524)]" />
           <span className="text-[var(--muted,#78716c)]">×</span>
           <input type="number" value={customHeight} min={16} max={8192} onChange={(event) => setCustomHeight(Number(event.target.value))} className="min-w-0 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1.5 text-[10px] text-[var(--fg,#292524)]" />
-          <ToolButton onClick={() => editor.resizeDoc(customWidth, customHeight)}>{tt("应用")}</ToolButton>
+          <ToolButton
+            disabled={hasLockedLayers}
+            onClick={() => editor.resizeDoc(customWidth, customHeight)}
+          >
+            {tt("应用")}
+          </ToolButton>
         </div>
         <label className="flex items-center justify-between text-[10px] text-[var(--muted,#78716c)]">
           {tt("画布背景")}
-          <input type="color" value={editor.canvasBackground} onChange={(event) => editor.setCanvasBackground(event.target.value)} />
+          <input
+            type="color"
+            value={editor.canvasBackground}
+            onFocus={editor.beginGesture}
+            onPointerDown={editor.beginGesture}
+            onChange={(event) => {
+              editor.beginGesture();
+              editor.setCanvasBackground(event.target.value);
+            }}
+            onPointerUp={editor.endGesture}
+            onPointerCancel={editor.cancelGesture}
+            onKeyDown={editor.beginGesture}
+            onKeyUp={editor.endGesture}
+            onBlur={editor.endGesture}
+          />
         </label>
       </Section>}
 
@@ -182,6 +236,7 @@ export function FabricImageFilterPanel({
       </div>
     );
   }
+  const locked = editor.selected?.locked === true;
   const ranges: {
     key: "brightness" | "contrast" | "saturation" | "blur" | "pixelate";
     label: string;
@@ -220,6 +275,10 @@ export function FabricImageFilterPanel({
             value={settings[range.key]}
             min={range.min}
             max={range.max}
+            disabled={locked}
+            onBegin={editor.beginGesture}
+            onCommit={editor.endGesture}
+            onCancel={editor.cancelGesture}
             onChange={(value) => editor.setFilter(range.key, value)}
           />
         ))}
@@ -229,6 +288,7 @@ export function FabricImageFilterPanel({
           <ToolButton
             key={toggle.key}
             active={settings[toggle.key]}
+            disabled={locked}
             onClick={() =>
               editor.setFilter(toggle.key, !settings[toggle.key])
             }
@@ -239,8 +299,9 @@ export function FabricImageFilterPanel({
       </div>
       <button
         type="button"
+        disabled={locked}
         onClick={editor.resetFilters}
-        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
       >
         {tt("重置调整")}
       </button>
@@ -257,7 +318,7 @@ export function FabricImageFontPanel({
   return (
     <AdvancedFontPicker
       selectedFamily={selected?.fontFamily}
-      disabled={!selected}
+      disabled={!selected || editor.selected?.locked === true}
       onSelect={(fontFamily) => editor.setSelectedText({ fontFamily })}
     />
   );

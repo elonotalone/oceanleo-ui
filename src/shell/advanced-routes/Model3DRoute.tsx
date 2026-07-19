@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
@@ -12,11 +18,122 @@ import {
   Model3DStage,
   useModel3DWorkbench,
 } from "../media-editors";
+import {
+  captureModel3DRouteSnapshot,
+  Model3DRouteHistory,
+} from "../media-editors/Model3DRouteHistory";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+
+type Model3DEditorState = ReturnType<typeof useModel3DWorkbench>;
+
+function useModel3DDocumentHistory(
+  editor: Model3DEditorState,
+  itemKey: string,
+) {
+  const historyRef = useRef(new Model3DRouteHistory());
+  const itemRef = useRef("");
+  const loadingRef = useRef(editor.loading);
+  const skipObservedRevisionRef = useRef(false);
+  const [, renderHistory] = useState(0);
+  const [error, setError] = useState("");
+  const snapshot = useMemo(
+    () => captureModel3DRouteSnapshot(editor),
+    [
+      editor.animationName,
+      editor.animationPlaying,
+      editor.animationSpeed,
+      editor.animationTime,
+      editor.annotations,
+      editor.autoRotate,
+      editor.azimuth,
+      editor.background,
+      editor.elevation,
+      editor.environmentIntensity,
+      editor.environmentUrl,
+      editor.exposure,
+      editor.operationJournal,
+      editor.shadowEnabled,
+      editor.shadowIntensity,
+      editor.shadowSoftness,
+      editor.sourceUrl,
+      editor.zoom,
+    ],
+  );
+  const fingerprint = useMemo(() => JSON.stringify(snapshot), [snapshot]);
+
+  useEffect(() => {
+    const itemChanged = itemRef.current !== itemKey;
+    const loadingChanged = loadingRef.current !== editor.loading;
+    loadingRef.current = editor.loading;
+    if (
+      itemChanged ||
+      (loadingChanged && !skipObservedRevisionRef.current)
+    ) {
+      itemRef.current = itemKey;
+      skipObservedRevisionRef.current = false;
+      historyRef.current.reset(editor.editRevision, snapshot);
+      setError("");
+      renderHistory((value) => value + 1);
+      return;
+    }
+    if (editor.loading) {
+      if (!skipObservedRevisionRef.current) {
+        historyRef.current.accept(editor.editRevision, snapshot);
+      }
+      return;
+    }
+    if (skipObservedRevisionRef.current) {
+      skipObservedRevisionRef.current = false;
+      historyRef.current.accept(editor.editRevision, snapshot);
+      setError("");
+      renderHistory((value) => value + 1);
+      return;
+    }
+    if (historyRef.current.observe(editor.editRevision, snapshot)) {
+      setError("");
+      renderHistory((value) => value + 1);
+    }
+  }, [editor.editRevision, editor.loading, fingerprint, itemKey, snapshot]);
+
+  const restore = useCallback(
+    (direction: "undo" | "redo") => {
+      const current = captureModel3DRouteSnapshot(editor);
+      const target =
+        direction === "undo"
+          ? historyRef.current.undo(current)
+          : historyRef.current.redo(current);
+      if (!target) return;
+      skipObservedRevisionRef.current = true;
+      const restored: unknown = editor.restoreRecovery(target);
+      if (restored === false) {
+        skipObservedRevisionRef.current = false;
+        if (direction === "undo") historyRef.current.rollbackUndo();
+        else historyRef.current.rollbackRedo();
+        setError("3D 历史快照恢复失败，当前模型保持不变。");
+        renderHistory((value) => value + 1);
+        return;
+      }
+      setError("");
+      renderHistory((value) => value + 1);
+    },
+    [editor],
+  );
+  const undo = useCallback(() => restore("undo"), [restore]);
+  const redo = useCallback(() => restore("redo"), [restore]);
+
+  return {
+    canUndo: historyRef.current.canUndo,
+    canRedo: historyRef.current.canRedo,
+    undo,
+    redo,
+    snapshot,
+    error,
+  };
+}
 
 export function Model3DRoute({
   item,
@@ -28,6 +145,12 @@ export function Model3DRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useModel3DWorkbench(item, siteId);
+  const history = useModel3DDocumentHistory(
+    editor,
+    `${item.id}:${item.url || item.previewUrl || ""}`,
+  );
+  const deliveryBusy =
+    editor.downloading || editor.capturing || editor.saving;
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "model3d-materials@2",
@@ -149,11 +272,23 @@ export function Model3DRoute({
         toolbox: {
           label: "场景",
           icon: "shape",
-          content: <Model3DControls editor={editor} />,
+          content: (
+            <Model3DControls
+              editor={editor}
+              showDeliveryActions={false}
+              showSelectionActions={false}
+            />
+          ),
         },
         contextToolbar: (
           <Model3DContextToolbar editor={editor} accent={accent} />
         ),
+        history: {
+          canUndo: history.canUndo,
+          canRedo: history.canRedo,
+          undo: history.undo,
+          redo: history.redo,
+        },
         viewport: {
           value: editor.zoom,
           min: 20,
@@ -166,15 +301,33 @@ export function Model3DRoute({
           id: "model3d-glb",
           label: "导出修改后 GLB",
           icon: "download",
-          disabled: !editor.modelLoaded || editor.downloading,
+          disabled: !editor.modelLoaded || deliveryBusy,
+          busy: editor.downloading,
           onTrigger: editor.downloadModel,
         },
+        actions: [
+          {
+            id: "model3d-download-screenshot",
+            label: "下载 PNG 截图",
+            disabled: !editor.modelLoaded || deliveryBusy,
+            busy: editor.capturing,
+            onTrigger: editor.downloadScreenshot,
+          },
+          {
+            id: "model3d-save-screenshot",
+            label: "截图存入文件库",
+            disabled: !editor.modelLoaded || deliveryBusy,
+            busy: editor.saving,
+            onTrigger: editor.saveScreenshot,
+          },
+        ],
         upload: {
           accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
           onFiles: importLocalModel,
         },
-        stage: <Model3DStage editor={editor} />,
+        stage: <Model3DStage editor={editor} showNativeControls={false} />,
         status:
+          history.error ||
           editor.error ||
           editor.notice ||
           (editor.loading
@@ -187,26 +340,7 @@ export function Model3DRoute({
           recovery: {
             key: advancedRecoveryKey("threed", item),
             ready: !editor.loading,
-            capture: () => ({
-              checkpointUrl: editor.sourceUrl,
-              operations: editor.operationJournal,
-              azimuth: editor.azimuth,
-              elevation: editor.elevation,
-              zoom: editor.zoom,
-              autoRotate: editor.autoRotate,
-              exposure: editor.exposure,
-              shadowIntensity: editor.shadowIntensity,
-              shadowSoftness: editor.shadowSoftness,
-              background: editor.background,
-              animationName: editor.animationName,
-              animationPlaying: editor.animationPlaying,
-              animationSpeed: editor.animationSpeed,
-              animationTime: editor.animationTime,
-              environmentUrl: editor.environmentUrl,
-              environmentIntensity: editor.environmentIntensity,
-              shadowEnabled: editor.shadowEnabled,
-              annotations: editor.annotations,
-            }),
+            capture: () => history.snapshot,
             restore: editor.restoreRecovery,
           },
         },

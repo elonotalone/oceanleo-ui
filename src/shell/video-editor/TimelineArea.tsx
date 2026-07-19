@@ -16,6 +16,10 @@ import {
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { clipEndMs, formatMs, snapDelta, snapPoints } from "./timeline-model";
+import {
+  clampTimelinePxPerSecond,
+  timelineScrollLeftForAnchor,
+} from "./timeline-viewport";
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TimelineClip, TimelineTrack, TrackKind } from "./types";
 
@@ -154,10 +158,14 @@ export function TimelineArea({
       const anchorMs = clientXToMs(event.clientX);
       const offsetInView =
         event.clientX - scroller.getBoundingClientRect().left;
-      const nextPps = Math.min(480, Math.max(8, Math.round(pxPerSecond * factor)));
+      const nextPps = clampTimelinePxPerSecond(pxPerSecond * factor);
       setPxPerSecond(nextPps);
       requestAnimationFrame(() => {
-        scroller.scrollLeft = (anchorMs / 1000) * nextPps - offsetInView;
+        scroller.scrollLeft = timelineScrollLeftForAnchor(
+          anchorMs,
+          offsetInView,
+          nextPps,
+        );
       });
     };
     scroller.addEventListener("wheel", onWheel, { passive: false });
@@ -403,7 +411,11 @@ export function TimelineArea({
       </div>
 
       {/* 滚动时间线 */}
-      <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+      <div
+        ref={scrollRef}
+        data-video-timeline-scroll
+        className="min-w-0 flex-1 overflow-x-auto"
+      >
         <div
           ref={contentRef}
           data-video-timeline-content

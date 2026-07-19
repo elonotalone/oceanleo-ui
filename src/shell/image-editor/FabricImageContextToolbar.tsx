@@ -10,6 +10,7 @@ import type {
 } from "../selection-context";
 import { fabricImageFilterControls } from "./fabric-image-filter-controls";
 import { dispatchFabricImageCommand } from "./fabric-image-commands";
+import { imageToolbarCommandAllowed } from "./image-mutation-policy";
 import type { FabricImageEditorState } from "./types";
 
 export function FabricImageContextToolbar({
@@ -22,6 +23,7 @@ export function FabricImageContextToolbar({
   const tt = useUI();
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
+  const hasLockedLayers = editor.layers.some((layer) => layer.locked);
   const context = useMemo<SelectionContext | null>(() => {
     // The floating bar is strictly contextual. Creation, canvas and layer
     // controls remain available from the fixed workspace tools button.
@@ -531,11 +533,17 @@ export function FabricImageContextToolbar({
         },
       );
     }
-    if (editor.loading) {
-      controls.forEach((control) => {
+    controls.forEach((control) => {
+      if (
+        editor.loading ||
+        (selected.locked &&
+          !imageToolbarCommandAllowed(true, control.id)) ||
+        (hasLockedLayers &&
+          ["crop-start", "crop-apply", "crop-ratio"].includes(control.id))
+      ) {
         control.disabled = true;
-      });
-    }
+      }
+    });
     return {
       version: 1,
       kind: selected.kind,
@@ -547,6 +555,7 @@ export function FabricImageContextToolbar({
     editor.canvasBackground,
     editor.cropRatio,
     editor.cropping,
+    hasLockedLayers,
     editor.loading,
     editor.transformInfo,
     filters,

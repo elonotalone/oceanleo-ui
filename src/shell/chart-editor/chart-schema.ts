@@ -265,6 +265,21 @@ function normalizeSeries(value: unknown, index: number): ChartSeries {
   };
 }
 
+function uniqueSeriesIds(series: ChartSeries[]): ChartSeries[] {
+  const used = new Set<string>();
+  return series.map((entry, index) => {
+    const base = safeId(entry.id, `series-${index + 1}`);
+    let id = base;
+    let suffix = 2;
+    while (used.has(id)) {
+      id = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(id);
+    return id === entry.id ? entry : { ...entry, id };
+  });
+}
+
 export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
   const root = asRecord(value);
   if (!root) throw new Error("chart JSON root must be an object");
@@ -280,9 +295,11 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
   const tooltip = firstRecord(option.tooltip);
   const tooltipTextStyle = asRecord(tooltip.textStyle) || {};
   const rawColors = Array.isArray(option.color) ? option.color : [];
-  const series = (Array.isArray(option.series) ? option.series : [])
-    .slice(0, MAX_SERIES)
-    .map(normalizeSeries);
+  const series = uniqueSeriesIds(
+    (Array.isArray(option.series) ? option.series : [])
+      .slice(0, MAX_SERIES)
+      .map(normalizeSeries),
+  );
   if (!series.length) throw new Error("chart JSON must contain at least one series");
   const position =
     legend.position === "bottom" ||
@@ -313,7 +330,12 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
             : boundedText(title.text),
       },
       color: colors.length ? colors : [...DEFAULT_COLORS],
-      legend: { ...legend, show: legend.show !== false, position },
+      legend: {
+        ...legend,
+        show: legend.show !== false,
+        position,
+        data: series.map((entry) => entry.name),
+      },
       tooltip: {
         ...tooltip,
         show: tooltip.show !== false,
@@ -376,7 +398,7 @@ export function patchChartAxis(
     { ...next.option[key], ...patch },
     axis === "x" ? "category" : "value",
   );
-  return next;
+  return normalizeChartDocument(next);
 }
 
 export function patchChartTooltip(
@@ -426,7 +448,7 @@ export function patchChartSeries(
     },
     index,
   );
-  return next;
+  return normalizeChartDocument(next);
 }
 
 export function appendChartSeries(
@@ -438,7 +460,7 @@ export function appendChartSeries(
     throw new Error(`chart supports at most ${MAX_SERIES} series`);
   }
   next.option.series.push(normalizeSeries(series, next.option.series.length));
-  return next;
+  return normalizeChartDocument(next);
 }
 
 export function replaceChartData(
@@ -469,7 +491,7 @@ export function replaceChartData(
       index,
     );
   });
-  return next;
+  return normalizeChartDocument(next);
 }
 
 export function chartDataTable(document: ChartDocumentV1): ChartDataTable {
@@ -494,17 +516,81 @@ export function chartDataTable(document: ChartDocumentV1): ChartDataTable {
   ];
 }
 
+function chartDataDelimiter(source: string): "," | "\t" {
+  let quoted = false;
+  let commas = 0;
+  let tabs = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      if (quoted && source[index + 1] === '"') index += 1;
+      else quoted = !quoted;
+    } else if (!quoted && (character === "\n" || character === "\r")) {
+      break;
+    } else if (!quoted && character === ",") {
+      commas += 1;
+    } else if (!quoted && character === "\t") {
+      tabs += 1;
+    }
+  }
+  return tabs > commas ? "\t" : ",";
+}
+
+function parseChartDataRows(source: string): string[][] {
+  if (source.length > 2_000_000) throw new Error("CSV 超过 2MB 安全上限");
+  const delimiter = chartDataDelimiter(source);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"' && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        cell += character;
+      }
+      continue;
+    }
+    if (character === '"' && cell.length === 0) {
+      quoted = true;
+    } else if (character === delimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (character === "\r" || character === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+    } else {
+      cell += character;
+    }
+  }
+  if (quoted) throw new Error("CSV 包含未闭合的引号");
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows.filter((entry) => entry.some((value) => value.trim()));
+}
+
 export function chartDocumentFromCsv(csv: string): ChartDataTable {
-  const rows = csv
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .filter((line) => line.trim())
+  const rows = parseChartDataRows(csv.replace(/^\uFEFF/, ""))
     .slice(0, MAX_POINTS + 1)
-    .map((line) =>
-      line.split(",").slice(0, MAX_SERIES + 1).map((cell, index) => {
-        const trimmed = cell.trim().replace(/^"|"$/g, "").replace(/""/g, '"');
+    .map((row) =>
+      row.slice(0, MAX_SERIES + 1).map((cell, index) => {
+        // parseChartDataRows already removes CSV quoting and unescapes doubled
+        // quotes. Stripping quote characters again would corrupt literal data.
+        const trimmed = cell.trim();
         const numeric = Number(trimmed);
-        return index > 0 && Number.isFinite(numeric) ? numeric : trimmed;
+        return index > 0 && trimmed !== "" && Number.isFinite(numeric)
+          ? numeric
+          : trimmed;
       }),
     );
   if (rows.length < 2) throw new Error("CSV 至少需要标题行和一行数据");

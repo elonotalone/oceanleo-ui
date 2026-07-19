@@ -41,9 +41,23 @@ import {
   type DeckInkStyle,
 } from "./deck-ink";
 import {
-  deckPptxObjectName,
-  injectDeckPptxOoxml,
-} from "./deck-pptx-ooxml";
+  applyDeckElementPatch,
+  deckDocumentsEqual,
+  deckElementMutationAllowed,
+  deckElementPatchAllowed,
+} from "./DeckMutationPolicy";
+import {
+  deckPptxImageStyle,
+  deckPptxShadow,
+  deckPptxShapeStyle,
+  deckPptxTableImageData,
+  deckPptxTableRequiresImage,
+  deckPptxTextStyle,
+  deckPptxTransparency,
+  deckPptxVisualObjectName,
+  injectDeckPptxVisuals,
+} from "./DeckPptxVisuals";
+import { injectDeckPptxOoxml } from "./deck-pptx-ooxml";
 import { importPptxDeck } from "./pptx-deck-import";
 
 interface Snapshot {
@@ -71,6 +85,7 @@ export interface DeckEditorState {
   canRedo: boolean;
   selectSlide: (id: string) => void;
   setTitle: (title: string) => void;
+  setTitleTransient: (title: string) => void;
   setAspect: (aspect: DeckAspect) => void;
   setTheme: (theme: DeckThemeId) => void;
   patchMaster: (id: string, patch: Partial<DeckMaster>) => void;
@@ -203,24 +218,43 @@ async function loadDeck(
 }
 
 function cleanHex(color: string, fallback: string): string {
-  return (color || fallback).replace("#", "").slice(0, 6);
+  const normalize = (value: string) => value.trim().replace(/^#/, "");
+  const candidate = normalize(color || "");
+  if (/^[0-9a-f]{6}$/i.test(candidate)) return candidate.toUpperCase();
+  if (/^[0-9a-f]{3}$/i.test(candidate)) {
+    return candidate
+      .split("")
+      .map((part) => `${part}${part}`)
+      .join("")
+      .toUpperCase();
+  }
+  const safeFallback = normalize(fallback || "000000");
+  return /^[0-9a-f]{6}$/i.test(safeFallback)
+    ? safeFallback.toUpperCase()
+    : "000000";
+}
+
+function visibleColor(color: string | undefined): boolean {
+  return Boolean(color && color.toLowerCase() !== "transparent");
 }
 
 export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   const { default: PptxGenJS } = await import("pptxgenjs");
+  const pinnedDeck = cloneDeckDocument(deck);
   const pptx = new PptxGenJS();
-  pptx.layout = deck.aspect === "4:3" ? "LAYOUT_4X3" : "LAYOUT_WIDE";
+  pptx.layout =
+    pinnedDeck.aspect === "4:3" ? "LAYOUT_4X3" : "LAYOUT_WIDE";
   pptx.author = "OceanLeo";
-  pptx.subject = deck.title;
-  pptx.title = deck.title;
+  pptx.subject = pinnedDeck.title;
+  pptx.title = pinnedDeck.title;
   pptx.company = "OceanLeo";
-  const theme = deckTheme(deck.theme);
-  const width = deck.aspect === "4:3" ? 10 : 13.333;
+  const theme = deckTheme(pinnedDeck.theme);
+  const width = pinnedDeck.aspect === "4:3" ? 10 : 13.333;
   const height = 7.5;
 
-  for (const source of deck.slides) {
+  for (const source of pinnedDeck.slides) {
     const slide = pptx.addSlide();
-    const master = deckMasterFor(deck, source);
+    const master = deckMasterFor(pinnedDeck, source);
     const background = cleanHex(
       source.background,
       master.background || theme.background,
@@ -239,9 +273,11 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
           h: y(element.height),
         };
         if (element.type === "text") {
+          const textStyle = deckPptxTextStyle(element);
+          const transparency = deckPptxTransparency(element);
           slide.addText(element.text || "", {
             ...box,
-            objectName: deckPptxObjectName(element.id),
+            objectName: deckPptxVisualObjectName(element.id),
             rotate: element.rotation,
             fontFace:
               element.fontFamily || master.fontFamily.split(",")[0],
@@ -252,16 +288,21 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
             ),
             bold: element.bold,
             italic: element.italic,
+            ...textStyle,
             align: element.align || "left",
             valign: "middle",
             margin: 0,
-            fill: element.fill
-              ? { color: cleanHex(element.fill, "FFFFFF") }
+            fill: visibleColor(element.fill)
+              ? {
+                  color: cleanHex(element.fill || "", "FFFFFF"),
+                  transparency,
+                }
               : { color: "FFFFFF", transparency: 100 },
             line: element.borderWidth
               ? {
                   color: cleanHex(element.borderColor || "#000000", "000000"),
                   width: element.borderWidth,
+                  transparency,
                 }
               : { color: "FFFFFF", transparency: 100 },
           });
@@ -279,14 +320,14 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
             slide.addImage({
               data,
               ...box,
-              objectName: deckPptxObjectName(element.id),
+              objectName: deckPptxVisualObjectName(element.id),
               rotate: element.rotation,
-              sizing: { type: "contain", ...box },
+              ...deckPptxImageStyle(element, box),
             });
           } catch {
             slide.addText(element.alt || "图片无法导出", {
               ...box,
-              objectName: deckPptxObjectName(element.id),
+              objectName: deckPptxVisualObjectName(element.id),
               align: "center",
               valign: "middle",
               color: cleanHex(theme.muted, "64748B"),
@@ -298,9 +339,13 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
         if (element.type === "shape") {
           const shapeName = (element.shape || "").toLowerCase();
           const shapeType =
-            shapeName.includes("ellipse") || shapeName.includes("oval")
+            shapeName.includes("ellipse") ||
+            shapeName.includes("oval") ||
+            shapeName.includes("circle")
               ? pptx.ShapeType.ellipse
-              : shapeName.includes("round")
+              : shapeName.includes("round") ||
+                  ((shapeName === "rectangle" || shapeName === "rect") &&
+                    (element.borderRadius || 0) > 0)
                 ? pptx.ShapeType.roundRect
                 : shapeName.includes("triangle")
                   ? pptx.ShapeType.triangle
@@ -317,21 +362,38 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
                   : pptx.ShapeType.rect;
           const marker = (value: DeckElement["lineStart"]) =>
             value === "circle" ? "oval" : value || "none";
+          const {
+            transparency,
+            ...shapeStyle
+          } = deckPptxShapeStyle(element, box, pinnedDeck.aspect);
+          const lineColor = visibleColor(element.borderColor)
+            ? element.borderColor || "#000000"
+            : visibleColor(element.fill)
+              ? element.fill || "#111827"
+              : "#111827";
+          const lineVisible =
+            shapeName.includes("line")
+              ? visibleColor(element.borderColor) || visibleColor(element.fill)
+              : Boolean(element.borderWidth) &&
+                visibleColor(element.borderColor);
           slide.addShape(shapeType, {
             ...box,
-            objectName: deckPptxObjectName(element.id),
+            objectName: deckPptxVisualObjectName(element.id),
             rotate: element.rotation,
-            fill: element.fill
-              ? { color: cleanHex(element.fill, "FFFFFF") }
+            ...shapeStyle,
+            fill: visibleColor(element.fill)
+              ? {
+                  color: cleanHex(element.fill || "", "FFFFFF"),
+                  transparency,
+                }
               : { color: "FFFFFF", transparency: 100 },
             line: {
-              color: cleanHex(element.borderColor || "#000000", "000000"),
+              color: cleanHex(lineColor, "000000"),
               width:
                 shapeName.includes("line")
                   ? element.borderWidth || 2
                   : element.borderWidth || 0,
-              transparency:
-                shapeName.includes("line") || element.borderWidth ? 0 : 100,
+              transparency: lineVisible ? transparency : 100,
               dashType:
                 element.lineDash === "dot"
                   ? "sysDot"
@@ -345,7 +407,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
           if (element.text) {
             slide.addText(element.text, {
               ...box,
-              objectName: deckPptxObjectName(element.id, "label"),
+              objectName: deckPptxVisualObjectName(element.id, "label"),
               rotate: element.rotation,
               fontFace:
                 element.fontFamily || master.fontFamily.split(",")[0],
@@ -356,6 +418,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
               ),
               bold: element.bold,
               italic: element.italic,
+              ...deckPptxTextStyle(element, { includeShadow: false }),
               align: element.align || "center",
               valign: "middle",
               margin: 0.05,
@@ -366,33 +429,69 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
           continue;
         }
         if (element.type === "table" && element.rows?.length) {
+          const transparency = deckPptxTransparency(element);
+          if (deckPptxTableRequiresImage(element)) {
+            slide.addImage({
+              data: deckPptxTableImageData(element, pinnedDeck.aspect),
+              ...box,
+              objectName: deckPptxVisualObjectName(element.id),
+              altText: element.alt || element.label || "Table",
+              rotate: element.rotation,
+              transparency,
+              shadow: deckPptxShadow(element),
+              flipH: element.flipX === true,
+              flipV: element.flipY === true,
+            });
+            continue;
+          }
           slide.addTable(
             element.rows.map((row) =>
               row.map((text) => ({ text })),
             ),
             {
-            ...box,
-            objectName: deckPptxObjectName(element.id),
-            border: { type: "solid", color: "D1D5DB", pt: 1 },
-            color: cleanHex(master.textColor, "111827"),
-            fill: {
-              color: cleanHex(element.fill || theme.surface, "FFFFFF"),
-            },
-            fontFace: master.fontFamily.split(",")[0],
-            fontSize: Math.max(8, element.fontSize || 12),
-            margin: 0.05,
+              ...box,
+              objectName: deckPptxVisualObjectName(element.id),
+              border: {
+                type: "solid",
+                color: cleanHex(element.borderColor || "#D1D5DB", "D1D5DB"),
+                pt: Math.max(0.25, element.borderWidth || 1),
+              },
+              color: cleanHex(
+                element.color || master.textColor,
+                "111827",
+              ),
+              fill: {
+                color: cleanHex(element.fill || theme.surface, "FFFFFF"),
+                transparency:
+                  element.fill?.toLowerCase() === "transparent"
+                    ? 100
+                    : transparency,
+              },
+              fontFace:
+                element.fontFamily || master.fontFamily.split(",")[0],
+              fontSize: Math.max(8, element.fontSize || 12),
+              margin: 0.05,
             },
           );
           continue;
         }
         slide.addText(element.label || "此元素保留在原始 PPTX 中", {
           ...box,
-          objectName: deckPptxObjectName(element.id),
+          objectName: deckPptxVisualObjectName(element.id),
+          rotate: element.rotation,
+          ...deckPptxTextStyle(element),
           align: "center",
           valign: "middle",
           color: cleanHex(theme.muted, "64748B"),
-          fill: { color: "F8FAFC" },
-          line: { color: "CBD5E1", dashType: "dash" },
+          fill: {
+            color: "F8FAFC",
+            transparency: deckPptxTransparency(element),
+          },
+          line: {
+            color: "CBD5E1",
+            dashType: "dash",
+            transparency: deckPptxTransparency(element),
+          },
           fontSize: 9,
           margin: 0.04,
         });
@@ -488,7 +587,12 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
     if (source.notes) slide.addNotes(source.notes);
   }
   const blob = (await pptx.write({ outputType: "blob" })) as Blob;
-  return injectDeckPptxOoxml(blob, deck.slides);
+  const withMotion = await injectDeckPptxOoxml(blob, pinnedDeck.slides);
+  return injectDeckPptxVisuals(
+    withMotion,
+    pinnedDeck.slides,
+    pinnedDeck.aspect,
+  );
 }
 
 export function useDeckEditor(
@@ -589,11 +693,19 @@ export function useDeckEditor(
 
   const commit = useCallback(
     (update: (current: DeckDocument) => DeckDocument, nextActive?: string) => {
-      undoRef.current.push(snapshot());
+      const base = snapshot();
+      const next = update(cloneDeckDocument(base.deck));
+      const resolvedActive = nextActive || base.activeId || next.slides[0].id;
+      if (deckDocumentsEqual(next, base.deck)) {
+        if (resolvedActive !== base.activeId) {
+          activeRef.current = resolvedActive;
+          setActiveId(resolvedActive);
+        }
+        return false;
+      }
+      undoRef.current.push(base);
       if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
       redoRef.current = [];
-      const next = update(cloneDeckDocument(deckRef.current));
-      const resolvedActive = nextActive || activeRef.current || next.slides[0].id;
       deckRef.current = next;
       activeRef.current = resolvedActive;
       setDeckState(next);
@@ -603,16 +715,20 @@ export function useDeckEditor(
       revisionRef.current += 1;
       setDirty(true);
       setHistoryRevision((value) => value + 1);
+      return true;
     },
     [snapshot],
   );
 
   const applyTransient = useCallback(
     (update: (current: DeckDocument) => DeckDocument) => {
-      const next = update(cloneDeckDocument(deckRef.current));
+      const current = deckRef.current;
+      const next = update(cloneDeckDocument(current));
+      if (deckDocumentsEqual(next, current)) return false;
       deckRef.current = next;
       setDeckState(next);
       setHistoryRevision((value) => value + 1);
+      return true;
     },
     [],
   );
@@ -623,7 +739,7 @@ export function useDeckEditor(
     const base = gestureRef.current;
     if (!base) return;
     gestureRef.current = null;
-    if (JSON.stringify(base.deck) === JSON.stringify(deckRef.current)) return;
+    if (deckDocumentsEqual(base.deck, deckRef.current)) return;
     undoRef.current.push(base);
     if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
     redoRef.current = [];
@@ -776,6 +892,7 @@ export function useDeckEditor(
             ...slide,
             layout,
             elements: slide.elements.map((element) => {
+              if (element.locked) return element;
               if (element.type === "image" && imageSide) {
                 return {
                   ...element,
@@ -821,6 +938,10 @@ export function useDeckEditor(
 
   const patchElement = useCallback(
     (id: string, patch: Partial<DeckElement>) => {
+      const selected = deckRef.current.slides
+        .find((slide) => slide.id === activeRef.current)
+        ?.elements.find((element) => element.id === id);
+      if (!selected || !deckElementPatchAllowed(selected, patch)) return;
       commit((current) => ({
         ...current,
         slides: current.slides.map((slide) =>
@@ -828,7 +949,9 @@ export function useDeckEditor(
             ? {
                 ...slide,
                 elements: slide.elements.map((element) =>
-                  element.id === id ? { ...element, ...patch, id } : element,
+                  element.id === id
+                    ? applyDeckElementPatch(element, patch)
+                    : element,
                 ),
               }
             : slide,
@@ -839,6 +962,10 @@ export function useDeckEditor(
   );
   const patchElementTransient = useCallback(
     (id: string, patch: Partial<DeckElement>) => {
+      const selected = deckRef.current.slides
+        .find((slide) => slide.id === activeRef.current)
+        ?.elements.find((element) => element.id === id);
+      if (!selected || !deckElementPatchAllowed(selected, patch)) return;
       applyTransient((current) => ({
         ...current,
         slides: current.slides.map((slide) =>
@@ -846,7 +973,9 @@ export function useDeckEditor(
             ? {
                 ...slide,
                 elements: slide.elements.map((element) =>
-                  element.id === id ? { ...element, ...patch, id } : element,
+                  element.id === id
+                    ? applyDeckElementPatch(element, patch)
+                    : element,
                 ),
               }
             : slide,
@@ -1053,6 +1182,15 @@ export function useDeckEditor(
   const deleteElement = useCallback(() => {
     const id = selectedElementRef.current;
     if (!id) return;
+    const selected = deckRef.current.slides
+      .find((slide) => slide.id === activeRef.current)
+      ?.elements.find((element) => element.id === id);
+    if (
+      !selected ||
+      !deckElementMutationAllowed(selected, "delete")
+    ) {
+      return;
+    }
     commit((current) => ({
       ...current,
       slides: current.slides.map((slide) =>
@@ -1075,7 +1213,12 @@ export function useDeckEditor(
     const selected = current?.elements.find(
       (element) => element.id === selectedElementRef.current,
     );
-    if (!selected) return;
+    if (
+      !selected ||
+      !deckElementMutationAllowed(selected, "duplicate")
+    ) {
+      return;
+    }
     addElement({
       ...selected,
       id: deckId("element"),
@@ -1096,7 +1239,13 @@ export function useDeckEditor(
         (slide) => slide.id === activeRef.current,
       );
       const selected = current?.elements.find((element) => element.id === id);
-      if (!selected || !current) return;
+      if (
+        !selected ||
+        !current ||
+        !deckElementMutationAllowed(selected, "layer")
+      ) {
+        return;
+      }
       const orders = current.elements.map((element) => element.order);
       patchElement(id, {
         order:
@@ -1252,6 +1401,8 @@ export function useDeckEditor(
       setSelectedElementId("");
     },
     setTitle: (title) => commit((current) => ({ ...current, title })),
+    setTitleTransient: (title) =>
+      applyTransient((current) => ({ ...current, title })),
     setAspect: (aspect) => commit((current) => ({ ...current, aspect })),
     setTheme: (theme) => commit((current) => ({ ...current, theme })),
     patchMaster,

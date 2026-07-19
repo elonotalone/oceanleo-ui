@@ -94,8 +94,12 @@ function TextureSlotInput({
 
 export function Model3DControls({
   editor,
+  showDeliveryActions = true,
+  showSelectionActions = true,
 }: {
   editor: Model3DWorkbenchState;
+  showDeliveryActions?: boolean;
+  showSelectionActions?: boolean;
 }) {
   const tt = useUI();
   const busy =
@@ -197,7 +201,7 @@ export function Model3DControls({
             {tt("聚光灯")}
           </ActionButton>
         </div>
-        {editor.selectedNode && (
+        {showSelectionActions && editor.selectedNode && (
           <div className="grid grid-cols-2 gap-1.5">
             <ActionButton
               onClick={() =>
@@ -257,31 +261,34 @@ export function Model3DControls({
         </ActionButton>
       </section>
 
-      <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">
-        <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
-          {tt("导出与截图")}
-        </p>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ActionButton
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.downloadModel()}
-          >
-            {editor.downloading ? tt("导出中…") : tt("导出新 GLB")}
-          </ActionButton>
-          <ActionButton
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.downloadScreenshot()}
-          >
-            {editor.capturing ? tt("截图中…") : tt("下载截图")}
-          </ActionButton>
-          <ActionButton
-            disabled={busy || !editor.modelLoaded}
-            onClick={() => void editor.saveScreenshot()}
-          >
-            {tt("截图到文件库")}
-          </ActionButton>
-        </div>
-      </section>
+      {showDeliveryActions && (
+        <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">
+          <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
+            {tt("导出与截图")}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <ActionButton
+              disabled={busy || !editor.modelLoaded}
+              onClick={() => void editor.downloadModel()}
+            >
+              {editor.downloading ? tt("导出中…") : tt("导出新 GLB")}
+            </ActionButton>
+            <ActionButton
+              disabled={busy || !editor.modelLoaded}
+              onClick={() => void editor.downloadScreenshot()}
+            >
+              {editor.capturing ? tt("截图中…") : tt("下载截图")}
+            </ActionButton>
+            <ActionButton
+              disabled={busy || !editor.modelLoaded}
+              onClick={() => void editor.saveScreenshot()}
+            >
+              {tt("截图到文件库")}
+            </ActionButton>
+          </div>
+        </section>
+      )}
+
     </div>
   );
 }

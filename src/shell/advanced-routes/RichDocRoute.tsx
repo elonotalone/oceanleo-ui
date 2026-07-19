@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -8,6 +8,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
+import { downloadText } from "../doc-editors/doc-io";
 import { useRichDocEditor } from "../doc-editors/use-rich-doc-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
@@ -25,6 +26,7 @@ export function RichDocRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useRichDocEditor(item, siteId);
+  const [exportError, setExportError] = useState("");
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "richdoc-materials@2",
@@ -96,6 +98,24 @@ export function RichDocRoute({
     },
     [editor.importSource, editor.uploadImage],
   );
+  const exportStructuredJson = useCallback(() => {
+    setExportError("");
+    if (!editor.editor) {
+      setExportError("文档尚未载入，不能导出可编辑 JSON。");
+      return;
+    }
+    try {
+      downloadText(
+        `${item.title || "document"}.richdoc.json`,
+        JSON.stringify(editor.editor.getJSON(), null, 2),
+        "application/json;charset=utf-8",
+      );
+    } catch (caught) {
+      setExportError(
+        caught instanceof Error ? caught.message : "文档 JSON 导出失败",
+      );
+    }
+  }, [editor.editor, item.title]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -127,13 +147,27 @@ export function RichDocRoute({
           id: "richdoc-export-docx",
           label: "直接下载 DOCX",
           icon: "download",
+          disabled: !editor.editor || editor.loading,
           onTrigger: editor.exportDoc,
         },
         actions: [
           {
             id: "richdoc-export-markdown",
             label: "导出 Markdown",
+            disabled: !editor.editor || editor.loading,
             onTrigger: editor.exportMarkdown,
+          },
+          {
+            id: "richdoc-export-html",
+            label: "导出 HTML",
+            disabled: !editor.editor || editor.loading,
+            onTrigger: editor.exportHtml,
+          },
+          {
+            id: "richdoc-export-json",
+            label: "导出可编辑 JSON",
+            disabled: !editor.editor || editor.loading,
+            onTrigger: exportStructuredJson,
           },
         ],
         upload: {
@@ -143,7 +177,10 @@ export function RichDocRoute({
           onFiles: importLocalFiles,
         },
         stage: <RichDocStage editor={editor} accent={accent} />,
-        status: editor.error || (editor.loading ? "正在载入文档" : ""),
+        status:
+          exportError ||
+          editor.error ||
+          (editor.loading ? "正在载入文档" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

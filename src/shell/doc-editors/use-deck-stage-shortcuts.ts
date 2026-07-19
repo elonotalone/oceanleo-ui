@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { DeckEditorState } from "./use-deck-editor";
 
 export function useDeckStageShortcuts(editor: DeckEditorState) {
+  const heldArrowKeys = useRef(new Set<string>());
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const currentEditor = editorRef.current;
       const target = event.target as HTMLElement | null;
       if (
         target?.matches("input, textarea, select, [contenteditable='true']")
@@ -15,39 +19,42 @@ export function useDeckStageShortcuts(editor: DeckEditorState) {
       const command = event.ctrlKey || event.metaKey;
       if (command && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        if (event.shiftKey) editor.redo();
-        else editor.undo();
+        if (event.shiftKey) currentEditor.redo();
+        else currentEditor.undo();
       } else if (
         command &&
         event.key.toLowerCase() === "d" &&
-        editor.selectedElement
+        currentEditor.selectedElement &&
+        !currentEditor.selectedElement.locked
       ) {
         event.preventDefault();
-        editor.duplicateElement();
+        currentEditor.duplicateElement();
       } else if (
         (event.key === "Delete" || event.key === "Backspace") &&
-        editor.selectedElement &&
-        !editor.selectedElement.locked
+        currentEditor.selectedElement &&
+        !currentEditor.selectedElement.locked
       ) {
         event.preventDefault();
-        editor.deleteElement();
+        currentEditor.deleteElement();
       } else if (
-        editor.selectedElement &&
-        !editor.selectedElement.locked &&
+        currentEditor.selectedElement &&
+        !currentEditor.selectedElement.locked &&
         ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)
       ) {
         event.preventDefault();
+        heldArrowKeys.current.add(event.key);
+        currentEditor.beginGesture();
         const step = event.shiftKey ? 1 : 0.2;
-        editor.patchElement(editor.selectedElement.id, {
+        currentEditor.patchElementTransient(currentEditor.selectedElement.id, {
           x:
-            editor.selectedElement.x +
+            currentEditor.selectedElement.x +
             (event.key === "ArrowLeft"
               ? -step
               : event.key === "ArrowRight"
                 ? step
                 : 0),
           y:
-            editor.selectedElement.y +
+            currentEditor.selectedElement.y +
             (event.key === "ArrowUp"
               ? -step
               : event.key === "ArrowDown"
@@ -56,15 +63,40 @@ export function useDeckStageShortcuts(editor: DeckEditorState) {
         });
       } else if (event.key === "PageUp") {
         event.preventDefault();
-        const previous = editor.deck.slides[editor.activeIndex - 1];
-        if (previous) editor.selectSlide(previous.id);
+        const previous =
+          currentEditor.deck.slides[currentEditor.activeIndex - 1];
+        if (previous) currentEditor.selectSlide(previous.id);
       } else if (event.key === "PageDown") {
         event.preventDefault();
-        const next = editor.deck.slides[editor.activeIndex + 1];
-        if (next) editor.selectSlide(next.id);
+        const next =
+          currentEditor.deck.slides[currentEditor.activeIndex + 1];
+        if (next) currentEditor.selectSlide(next.id);
       }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (
+        heldArrowKeys.current.delete(event.key) &&
+        heldArrowKeys.current.size === 0
+      ) {
+        editorRef.current.endGesture();
+      }
+    };
+    const onBlur = () => {
+      if (!heldArrowKeys.current.size) return;
+      heldArrowKeys.current.clear();
+      editorRef.current.endGesture();
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editor]);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      if (heldArrowKeys.current.size) {
+        heldArrowKeys.current.clear();
+        editorRef.current.endGesture();
+      }
+    };
+  }, []);
 }

@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   columnLabel,
@@ -8,12 +13,53 @@ import {
   gridColCount,
   gridDisplayFormat,
   gridDisplayValue,
+  gridRowCount,
 } from "./grid-model";
 import { gridMergeAt } from "./grid-structure";
 import type { GridEditorState } from "./use-grid-editor";
 
 const ROW_HEIGHT = 34;
 const WINDOW_ROWS = 72;
+
+function SheetNameInput({
+  name,
+  label,
+  accent,
+  onCommit,
+}: {
+  name: string;
+  label: string;
+  accent: string;
+  onCommit: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState(name);
+  useEffect(() => setDraft(name), [name]);
+  const commit = () => {
+    if (draft !== name) onCommit(draft);
+    // The model owns normalization and duplicate-name rejection. Reset now;
+    // the next model render supplies the accepted value.
+    setDraft(name);
+  };
+  return (
+    <input
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setDraft(name);
+        }
+      }}
+      role="tab"
+      aria-selected
+      aria-label={label}
+      className="w-28 shrink-0 border-x border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 text-[10px] font-semibold outline-none"
+      style={{ color: accent }}
+    />
+  );
+}
 
 function withinSelection(
   editor: GridEditorState,
@@ -41,6 +87,7 @@ export function GridStage({
   const [scrollTop, setScrollTop] = useState(0);
   const rows = editor.visibleRowIndexes;
   const columnCount = gridColCount(editor.activeSheet);
+  const rowCount = gridRowCount(editor.activeSheet);
   const rawStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
   const firstVisibleRow = rows[rawStart] ?? 0;
   const coveringMerge = editor.filterQuery
@@ -65,6 +112,13 @@ export function GridStage({
   const selectedAddress = editor.selectedCell
     ? `${columnLabel(editor.selectedCell.col)}${editor.selectedCell.row + 1}`
     : "";
+  const selectRange = (
+    anchor: { row: number; col: number },
+    focus: { row: number; col: number },
+  ) => {
+    editor.selectCell(anchor);
+    editor.selectCell(focus, true);
+  };
 
   const focusCell = (row: number, col: number) => {
     window.requestAnimationFrame(() => {
@@ -128,7 +182,18 @@ export function GridStage({
             className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[11px] text-[var(--fg,#292524)] outline-none"
           />
           {editor.selectedValue.startsWith("=") && (
-            <span className="max-w-48 truncate text-[10px] text-[var(--muted,#78716c)]">
+            <span
+              role={
+                editor.selectedDisplayValue.startsWith("#")
+                  ? "alert"
+                  : "status"
+              }
+              className={`max-w-48 truncate text-[10px] ${
+                editor.selectedDisplayValue.startsWith("#")
+                  ? "text-red-600"
+                  : "text-[var(--muted,#78716c)]"
+              }`}
+            >
               {editor.selectedDisplayValue}
             </span>
           )}
@@ -147,14 +212,34 @@ export function GridStage({
         <table className="border-separate border-spacing-0 text-[11px]">
           <thead className="sticky top-0 z-30">
             <tr>
-              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]" />
+              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]">
+                <button
+                  type="button"
+                  aria-label={tt("选择整张工作表")}
+                  onClick={() =>
+                    selectRange(
+                      { row: 0, col: 0 },
+                      {
+                        row: Math.max(0, rowCount - 1),
+                        col: Math.max(0, columnCount - 1),
+                      },
+                    )
+                  }
+                  className="h-full w-full text-[9px] text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+                >
+                  ◢
+                </button>
+              </th>
               {Array.from({ length: columnCount }, (_, col) => (
                 <th
                   key={col}
                   className="h-8 min-w-28 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 font-medium text-[var(--muted,#78716c)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    editor.selectCell({ row: editor.selection.focus.row, col });
+                    selectRange(
+                      { row: 0, col },
+                      { row: Math.max(0, rowCount - 1), col },
+                    );
                   }}
                 >
                   {columnLabel(col)}
@@ -177,7 +262,10 @@ export function GridStage({
                   className="sticky left-0 z-20 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 text-right font-medium text-[var(--muted,#78716c)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    editor.selectCell({ row, col: editor.selection.focus.col });
+                    selectRange(
+                      { row, col: 0 },
+                      { row, col: Math.max(0, columnCount - 1) },
+                    );
                   }}
                 >
                   {row + 1}
@@ -198,9 +286,16 @@ export function GridStage({
                     editor.selection.focus.col === col;
                   const selected = withinSelection(editor, row, col);
                   const raw = gridCellValue(editor.activeSheet, row, col);
+                  const displayValue = gridDisplayValue(
+                    editor.activeSheet,
+                    row,
+                    col,
+                  );
                   const value = focused
                     ? raw
-                    : gridDisplayValue(editor.activeSheet, row, col);
+                    : displayValue;
+                  const formulaError =
+                    raw.startsWith("=") && displayValue.startsWith("#");
                   const format = gridDisplayFormat(editor.activeSheet, row, col);
                   return (
                     <td
@@ -226,7 +321,13 @@ export function GridStage({
                       <input
                         data-grid-cell={`${row}:${col}`}
                         value={value}
-                        title={raw.startsWith("=") ? `${raw} → ${value}` : value}
+                        aria-invalid={formulaError}
+                        aria-label={`${columnLabel(col)}${row + 1}`}
+                        title={
+                          raw.startsWith("=")
+                            ? `${raw} → ${displayValue}`
+                            : value
+                        }
                         onFocus={() => {
                           editor.selectCell({ row, col });
                           editor.beginCellGesture();
@@ -250,7 +351,7 @@ export function GridStage({
                         className="h-full w-full min-w-28 bg-transparent px-2 outline-none"
                         style={{
                           color:
-                            value.startsWith("#") && raw.startsWith("=")
+                            formulaError
                               ? "#dc2626"
                               : format.color || "#44403c",
                           fontWeight: format.bold ? 650 : 400,
@@ -288,16 +389,12 @@ export function GridStage({
       >
         {editor.sheets.map((sheet) =>
           sheet.id === editor.activeSheetId ? (
-            <input
+            <SheetNameInput
               key={sheet.id}
-              defaultValue={sheet.name}
-              onBlur={(event) => editor.renameSheet(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              aria-label={tt("工作表名称")}
-              className="w-28 shrink-0 border-x border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 text-[10px] font-semibold outline-none"
-              style={{ color: accent }}
+              name={sheet.name}
+              label={tt("工作表名称")}
+              accent={accent}
+              onCommit={editor.renameSheet}
             />
           ) : (
             <button

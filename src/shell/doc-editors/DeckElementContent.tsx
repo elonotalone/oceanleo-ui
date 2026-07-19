@@ -59,6 +59,11 @@ export function DeckElementContent({
           fontSize: miniature
             ? undefined
             : `${Math.max(0.45, (element.fontSize || 16) / 7.2)}cqi`,
+          fontWeight: element.bold ? 700 : 400,
+          fontStyle: element.italic ? "italic" : "normal",
+          textDecoration: element.underline ? "underline" : "none",
+          lineHeight: element.lineHeight || 1.15,
+          letterSpacing: `${element.letterSpacing || 0}px`,
         }}
       >
         <tbody>
@@ -73,6 +78,14 @@ export function DeckElementContent({
                       key={cellIndex}
                       contentEditable={editing && !miniature}
                       suppressContentEditableWarning
+                      style={{
+                        borderColor:
+                          element.borderColor || "var(--divider,#d6d3d1)",
+                        borderWidth: `${Math.max(
+                          0,
+                          element.borderWidth ?? 1,
+                        )}px`,
+                      }}
                       className={`overflow-hidden border border-[var(--divider,#d6d3d1)] px-[0.2em] ${
                         editing
                           ? "cursor-text outline-none focus:bg-white/20 focus:ring-1 focus:ring-inset focus:ring-[var(--accent,#7c3aed)]"
@@ -261,14 +274,23 @@ export function MiniDeckElementLayer({ slide }: { slide: DeckSlide }) {
             height: `${element.height}%`,
             transform: `rotate(${element.rotation}deg)`,
             zIndex: Math.round(element.order),
+            opacity: element.opacity ?? 1,
             background:
               element.type === "shape" && element.shape !== "line"
                 ? element.fill
                 : undefined,
             border:
-              element.type === "shape" && element.borderWidth
+              (element.type === "shape" || element.type === "image") &&
+              element.borderWidth
                 ? `${Math.max(0.25, element.borderWidth / 4)}px solid ${element.borderColor || "#000"}`
                 : undefined,
+            borderRadius:
+              element.type === "shape" && element.shape === "circle"
+                ? "50%"
+                : `${Math.max(0, (element.borderRadius || 0) / 4)}px`,
+            boxShadow: element.shadow
+              ? "0 3.5px 8px rgba(15,23,42,.24)"
+              : undefined,
             clipPath:
               element.type === "shape"
                 ? deckShapeClipPath(element.shape)

@@ -1,40 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { EChartsType, EChartsOption } from "echarts";
+import type { EChartsType } from "echarts";
 import { useUI } from "../../i18n/ui/useUI";
-import type { ChartOption } from "./chart-schema";
+import { chartRenderOption } from "./chart-render";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
-
-function renderOption(source: ChartOption): EChartsOption {
-  const legend = { ...source.legend } as Record<string, unknown>;
-  const position = legend.position;
-  delete legend.position;
-  if (position === "bottom") {
-    legend.bottom = 8;
-    delete legend.top;
-  } else if (position === "left" || position === "right") {
-    legend[position] = 8;
-    legend.top = "middle";
-    legend.orient = "vertical";
-  } else {
-    legend.top = 8;
-  }
-  return {
-    ...source,
-    legend,
-    animationDuration: 220,
-    animationDurationUpdate: 180,
-  } as EChartsOption;
-}
 
 export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
   const tt = useUI();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const optionRef = useRef(editor.document.option);
+  const selectSeriesRef = useRef(editor.selectSeries);
   const blocked = editor.loading || Boolean(editor.error && !editor.dirty);
   optionRef.current = editor.document.option;
+  selectSeriesRef.current = editor.selectSeries;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -48,9 +28,15 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
         renderer: "canvas",
       });
       chartRef.current = chart;
-      chart.setOption(renderOption(optionRef.current), {
+      chart.setOption(chartRenderOption(optionRef.current), {
         notMerge: true,
         lazyUpdate: true,
+      });
+      chart.on("click", (params) => {
+        if (params.componentType !== "series") return;
+        const series = optionRef.current.series[params.seriesIndex ?? -1];
+        const id = String(params.seriesId || series?.id || "");
+        if (id) selectSeriesRef.current(id);
       });
       observer = new ResizeObserver(() => chart.resize());
       observer.observe(hostRef.current);
@@ -65,7 +51,7 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
   }, [blocked]);
 
   useEffect(() => {
-    chartRef.current?.setOption(renderOption(editor.document.option), {
+    chartRef.current?.setOption(chartRenderOption(editor.document.option), {
       notMerge: true,
       lazyUpdate: true,
     });

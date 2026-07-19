@@ -136,8 +136,12 @@ test("library panels are static while embedded editors stay isolated", () => {
     source("../src/shell/SplitWorkspace.tsx"),
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
   ].join("\n");
-  const protocol = source("../src/shell/editor-protocol.ts");
-  const embed = source("../src/shell/workbench-embed.tsx");
+  const protocol =
+    source("../src/shell/editor-protocol.ts") +
+    source("../src/shell/editor-protocol-types.ts");
+  const embed =
+    source("../src/shell/workbench-embed.tsx") +
+    source("../src/shell/use-embed-editor-messages.ts");
   assert.match(shell, /registerLibraryPanel/);
   assert.match(shell, /openLibraryPanel/);
   assert.doesNotMatch(shell, /libraryDockDragging|libraryDockStartXRef/);
@@ -228,6 +232,7 @@ test("advanced materials click to center and drag to the exact canvas point", ()
 test("the shared property bar dispatches direct, dropdown and drawer controls", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/SelectionToolbarSelectControl.tsx") +
     source("../src/shell/selection-inspector-host.tsx");
   const inspector = source("../src/shell/SelectionInspectorPanel.tsx");
   const context = source("../src/shell/selection-context.ts");
@@ -276,8 +281,12 @@ test("late catalog categories stay behind More and editor loads have hard deadli
 });
 
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
-  const protocol = source("../src/shell/editor-protocol.ts");
-  const embed = source("../src/shell/workbench-embed.tsx");
+  const protocol =
+    source("../src/shell/editor-protocol.ts") +
+    source("../src/shell/editor-protocol-types.ts");
+  const embed =
+    source("../src/shell/workbench-embed.tsx") +
+    source("../src/shell/use-embed-editor-messages.ts");
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/FloatingContextToolbar.tsx");

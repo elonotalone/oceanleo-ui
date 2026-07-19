@@ -26,7 +26,7 @@ import {
 } from "../../lib/media-proxy";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import { guessFileKind, guessMediaKind, probeMediaDuration } from "./media-probe";
+import { guessFileKind, guessMediaKind, probeMediaSource } from "./media-probe";
 import {
   uploadCoverPng,
   uploadDraft,
@@ -37,8 +37,10 @@ import { renderTimeline, type RenderJobStatus } from "./render-client";
 import {
   DEFAULT_IMAGE_CLIP_MS,
   DEFAULT_TEXT_CLIP_MS,
+  MIN_CLIP_MS,
   addClipToTrack,
   addTrackTo,
+  availableTimelineDurationMs,
   changeClipSpeed,
   createEmptyDoc,
   docDurationMs,
@@ -47,6 +49,7 @@ import {
   isTimelineDoc,
   makeId,
   moveClipTo,
+  normalizeTimelineDoc,
   patchClipIn,
   removeClipFrom,
   removeTrackFrom,
@@ -62,11 +65,10 @@ import {
   updateTimelineGesture,
   type TimelineGestureHistory,
 } from "./timeline-gesture-history";
+import { clampTimelinePxPerSecond } from "./timeline-viewport";
 import type { TimelineClip, TimelineDoc, TrackKind } from "./types";
 
 const PLACEHOLDER_DURATION_MS = 5000;
-const MIN_PX_PER_SECOND = 8;
-const MAX_PX_PER_SECOND = 480;
 
 export interface VideoTimelineState {
   doc: TimelineDoc;
@@ -103,7 +105,6 @@ export interface VideoTimelineState {
 
   // view
   setPxPerSecond: (value: number) => void;
-  zoomBy: (factor: number) => void;
   setSnapEnabled: (value: boolean) => void;
 
   // selection
@@ -159,7 +160,11 @@ function buildInitialDoc(item: LibraryItem): {
   const meta = item.meta ?? {};
   const draft = meta.timeline_doc;
   if (isTimelineDoc(draft)) {
-    return { doc: draft, seededClipId: "", seededKind: null };
+    return {
+      doc: normalizeTimelineDoc(draft),
+      seededClipId: "",
+      seededKind: null,
+    };
   }
   const doc = createEmptyDoc();
   if (meta.editor_project_schema === "oceanleo.timeline.v1") {
@@ -231,6 +236,7 @@ export function useVideoTimeline(
   const revisionRef = useRef(0);
   const savingDraftRef = useRef(false);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  const sourceProbeKeysRef = useRef(new Set<string>());
 
   // ------------------------------------------------------------- engine
 
@@ -257,6 +263,62 @@ export function useVideoTimeline(
 
   useEffect(() => {
     engineRef.current?.setDoc(doc);
+  }, [doc]);
+
+  useEffect(() => {
+    for (const track of doc.tracks) {
+      if (track.kind !== "video" && track.kind !== "audio") continue;
+      for (const clip of track.clips) {
+        const sourceUrl = clip.source_url || "";
+        if (
+          !sourceUrl ||
+          Number.isFinite(clip.source_duration_ms)
+        ) {
+          continue;
+        }
+        const key = `${track.kind}:${sourceUrl}`;
+        if (sourceProbeKeysRef.current.has(key)) continue;
+        sourceProbeKeysRef.current.add(key);
+        void probeMediaSource(sourceUrl, track.kind).then((probe) => {
+          if (!probe) return;
+          setDocState((current) => {
+            let changed = false;
+            const next: TimelineDoc = {
+              ...current,
+              tracks: current.tracks.map((candidateTrack) => {
+                if (candidateTrack.kind !== track.kind) return candidateTrack;
+                return {
+                  ...candidateTrack,
+                  clips: candidateTrack.clips.map((candidateClip) => {
+                    if (
+                      candidateClip.source_url !== sourceUrl ||
+                      Number.isFinite(candidateClip.source_duration_ms)
+                    ) {
+                      return candidateClip;
+                    }
+                    changed = true;
+                    const withProbe: TimelineClip = {
+                      ...candidateClip,
+                      source_duration_ms: probe.durationMs,
+                    };
+                    return {
+                      ...withProbe,
+                      duration_ms: Math.min(
+                        withProbe.duration_ms,
+                        availableTimelineDurationMs(withProbe),
+                      ),
+                    };
+                  }),
+                };
+              }),
+            };
+            if (!changed) return current;
+            docRef.current = next;
+            return next;
+          });
+        });
+      }
+    }
   }, [doc]);
 
   useEffect(() => {
@@ -295,8 +357,9 @@ export function useVideoTimeline(
             ? (parsed as { data?: unknown }).data
             : parsed;
         if (!isTimelineDoc(candidate)) throw new Error("时间线工程格式无效");
-        docRef.current = candidate;
-        setDocState(candidate);
+        const normalized = normalizeTimelineDoc(candidate);
+        docRef.current = normalized;
+        setDocState(normalized);
         setSelectedClipId("");
         setPlayheadMs(0);
         setDirty(false);
@@ -349,15 +412,18 @@ export function useVideoTimeline(
             patchClipIn(current, seededClipId, { source_url: sourceUrl }),
           );
         }
-        const duration = await probeMediaDuration(sourceUrl, seededKind);
+        const probe = await probeMediaSource(sourceUrl, seededKind);
         if (cancelled) return;
-        if (!duration) return;
+        if (!probe) return;
         setDocState((current) => {
           const located = findClip(current, seededClipId);
-          if (!located || located.clip.duration_ms !== PLACEHOLDER_DURATION_MS) {
-            return current;
-          }
-          return patchClipIn(current, seededClipId, { duration_ms: duration });
+          if (!located) return current;
+          return patchClipIn(current, seededClipId, {
+            source_duration_ms: probe.durationMs,
+            ...(located.clip.duration_ms === PLACEHOLDER_DURATION_MS
+              ? { duration_ms: probe.durationMs }
+              : {}),
+          });
         });
       } catch (caught) {
         if (!cancelled) {
@@ -506,22 +572,8 @@ export function useVideoTimeline(
   // ---------------------------------------------------------------- view
 
   const setPxPerSecond = useCallback((value: number) => {
-    setPxPerSecondState(
-      Math.min(MAX_PX_PER_SECOND, Math.max(MIN_PX_PER_SECOND, Math.round(value))),
-    );
+    setPxPerSecondState(clampTimelinePxPerSecond(value));
   }, []);
-
-  const zoomBy = useCallback(
-    (factor: number) => {
-      setPxPerSecondState((current) =>
-        Math.min(
-          MAX_PX_PER_SECOND,
-          Math.max(MIN_PX_PER_SECOND, Math.round(current * factor)),
-        ),
-      );
-    },
-    [],
-  );
 
   // ------------------------------------------------------- structural ops
 
@@ -634,9 +686,30 @@ export function useVideoTimeline(
           );
         }
         if (typeof patch.sourceInMs === "number") {
+          const sourceDuration = located.clip.source_duration_ms;
+          const speed = located.clip.speed ?? 1;
+          const maximumSourceIn = Number.isFinite(sourceDuration)
+            ? Math.max(0, Number(sourceDuration) - MIN_CLIP_MS * speed)
+            : Infinity;
+          const sourceInMs = Math.min(
+            maximumSourceIn,
+            Math.max(0, Math.round(patch.sourceInMs)),
+          );
           next = patchClipIn(next, clipId, {
-            in_ms: Math.max(0, Math.round(patch.sourceInMs)),
+            in_ms: sourceInMs,
           });
+          located = findClip(next, clipId);
+          if (located) {
+            const maximumDuration = availableTimelineDurationMs(
+              located.clip,
+              sourceInMs,
+            );
+            if (located.clip.duration_ms > maximumDuration) {
+              next = patchClipIn(next, clipId, {
+                duration_ms: maximumDuration,
+              });
+            }
+          }
         }
         return next;
       }),
@@ -666,9 +739,11 @@ export function useVideoTimeline(
     ) => {
       const kind = trackKindForMedia(media);
       let duration = DEFAULT_IMAGE_CLIP_MS;
+      let sourceDurationMs: number | undefined;
       if (media !== "image") {
-        duration =
-          (await probeMediaDuration(url, media)) ?? PLACEHOLDER_DURATION_MS;
+        const probe = await probeMediaSource(url, media);
+        duration = probe?.durationMs ?? PLACEHOLDER_DURATION_MS;
+        sourceDurationMs = probe?.durationMs;
       }
       applyEdit((current) => {
         let next = current;
@@ -692,7 +767,14 @@ export function useVideoTimeline(
           source_url: url,
           ...(media === "image"
             ? { x: 0.5, y: 0.5, scale: 0.35, opacity: 1 }
-            : { in_ms: 0, speed: 1, volume: 1 }),
+            : {
+                in_ms: 0,
+                speed: 1,
+                volume: 1,
+                ...(sourceDurationMs
+                  ? { source_duration_ms: sourceDurationMs }
+                  : {}),
+              }),
         };
         setSelectedClipId(clip.id);
         return addClipToTrack(next, track.id, clip);
@@ -875,7 +957,7 @@ export function useVideoTimeline(
 
   const exportVideo = useCallback(async () => {
     if (exporting) return;
-    let docToRender = docRef.current;
+    let docToRender = normalizeTimelineDoc(docRef.current);
     if (docDurationMs(docToRender) <= 0) {
       setError(tt("时间线是空的，没有可导出的内容"));
       return;
@@ -973,7 +1055,7 @@ export function useVideoTimeline(
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
       if (!isTimelineDoc(payload)) return false;
-      const next = structuredClone(payload);
+      const next = normalizeTimelineDoc(structuredClone(payload));
       docRef.current = next;
       setDocState(next);
       undoStack.current = [];
@@ -1031,7 +1113,6 @@ export function useVideoTimeline(
     seek,
     stepFrame,
     setPxPerSecond,
-    zoomBy,
     setSnapEnabled,
     selectClip: setSelectedClipId,
     undo,

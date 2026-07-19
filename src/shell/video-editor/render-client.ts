@@ -10,7 +10,10 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
-import type { TimelineDoc } from "./types";
+import {
+  timelineRenderRequestBody,
+  type TimelineRenderRequest,
+} from "./render-contract";
 
 export type RenderJobStatus =
   | "charging"
@@ -28,13 +31,7 @@ export interface RenderJobState {
   error?: string;
 }
 
-export interface SubmitRenderPayload {
-  timeline: TimelineDoc;
-  title?: string;
-  site_id?: string;
-  cover_url?: string;
-  parent_id?: string;
-}
+export type SubmitRenderPayload = TimelineRenderRequest;
 
 async function authHeaders(): Promise<Record<string, string> | null> {
   const token = await accessToken();
@@ -55,10 +52,7 @@ export async function submitRenderJob(
     res = await fetch(`${GATEWAY_BASE}/v1/video/render-timeline`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload,
-        ...(requestId ? { request_id: requestId } : {}),
-      }),
+      body: JSON.stringify(timelineRenderRequestBody(payload, requestId)),
       cache: "no-store",
       signal,
     });

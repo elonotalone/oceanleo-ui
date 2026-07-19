@@ -513,6 +513,10 @@ export function useFabricImageEditor(
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
+    if (viewRef.current.layers.some((layer) => layer.locked)) {
+      setError("请先解锁图层，再让 AI 替换整个画布");
+      return;
+    }
     const controller = controllerRef.current;
     const fabric = fabricRef.current;
     if (!controller || !fabric) return;
@@ -536,8 +540,11 @@ export function useFabricImageEditor(
         image.dispose();
         return;
       }
-      controller.replaceWithBackground(image);
-      setNotice("AI 结果已载入画布，可撤销或继续编辑");
+      if (controller.replaceWithBackground(image)) {
+        setNotice("AI 结果已载入画布，可撤销或继续编辑");
+      } else {
+        setNotice("");
+      }
     } catch (caught) {
       if (!isAbortError(caught) && aliveRef.current) {
         setError(caught instanceof Error ? caught.message : "AI 改图失败");

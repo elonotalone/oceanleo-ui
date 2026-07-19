@@ -106,6 +106,9 @@ async function loadTimelineArea() {
   const timelineModelUrl = pathToFileURL(
     resolve("src/shell/video-editor/timeline-model.ts"),
   ).href;
+  const timelineViewportUrl = pathToFileURL(
+    resolve("src/shell/video-editor/timeline-viewport.ts"),
+  ).href;
   const reactUrl = pathToFileURL(require.resolve("react")).href;
   const jsxRuntimeUrl = pathToFileURL(
     require.resolve("react/jsx-runtime"),
@@ -122,6 +125,10 @@ async function loadTimelineArea() {
     .replace(
       'from "./timeline-model";',
       `from ${JSON.stringify(timelineModelUrl)};`,
+    )
+    .replace(
+      'from "./timeline-viewport";',
+      `from ${JSON.stringify(timelineViewportUrl)};`,
     );
   const compiled = ts.transpileModule(source, {
     compilerOptions: {

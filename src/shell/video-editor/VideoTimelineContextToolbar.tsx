@@ -8,6 +8,10 @@ import type {
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
+import {
+  MIN_CLIP_MS,
+  availableTimelineDurationMs,
+} from "./timeline-model";
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TimelineClip, TimelineTextStyle, TransitionType } from "./types";
 
@@ -393,8 +397,24 @@ export function VideoTimelineContextToolbar({
         break;
       }
       case "source-in": {
-        const sourceInMs = Math.max(0, number(message.value) * 1_000);
-        patchGesture({ in_ms: Math.round(sourceInMs) });
+        const requestedSourceIn = Math.max(0, number(message.value) * 1_000);
+        const sourceDuration = clip.source_duration_ms;
+        const maximumSourceIn = Number.isFinite(sourceDuration)
+          ? Math.max(
+              0,
+              Number(sourceDuration) - MIN_CLIP_MS * (clip.speed ?? 1),
+            )
+          : Infinity;
+        const sourceInMs = Math.round(
+          Math.min(maximumSourceIn, requestedSourceIn),
+        );
+        const maximumDuration = availableTimelineDurationMs(clip, sourceInMs);
+        patchGesture({
+          in_ms: sourceInMs,
+          ...(clip.duration_ms > maximumDuration
+            ? { duration_ms: maximumDuration }
+            : {}),
+        });
         break;
       }
       case "text":

@@ -2,10 +2,13 @@
 
 import type { LibraryItem } from "../library-data";
 import { saveProjectWorkingHead } from "../doc-editors/doc-io";
-import type { EditorSnapshot } from "./editor-runtime";
+import {
+  normalizeEditorSnapshot,
+  type EditorSnapshot,
+} from "./editor-runtime";
 import type { ExportFormat } from "./types";
 
-const PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
+export const IMAGE_PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
 const MAX_PROJECT_BYTES = 5_000_000;
 const LOCAL_DRAFT_PREFIX = "oceanleo:advanced:image-draft:v1:";
 
@@ -14,7 +17,7 @@ function byteLength(value: string): number {
 }
 
 export interface FabricImageProject {
-  schema: typeof PROJECT_SCHEMA;
+  schema: typeof IMAGE_PROJECT_SCHEMA;
   version: 1;
   updatedAt: string;
   snapshot: EditorSnapshot;
@@ -48,30 +51,38 @@ export function downloadImageBlob(
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-function imageProject(
+export function createFabricImageProject(
   snapshot: EditorSnapshot,
   updatedAt = new Date().toISOString(),
 ): FabricImageProject {
   return {
-    schema: PROJECT_SCHEMA,
+    schema: IMAGE_PROJECT_SCHEMA,
     version: 1,
     updatedAt,
     snapshot,
   };
 }
 
-function isImageProject(value: unknown): value is FabricImageProject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+export function parseFabricImageProject(
+  value: unknown,
+): FabricImageProject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const project = value as Partial<FabricImageProject>;
-  return (
-    project.schema === PROJECT_SCHEMA &&
-    project.version === 1 &&
-    typeof project.updatedAt === "string" &&
-    Boolean(project.snapshot) &&
-    typeof project.snapshot?.json === "object" &&
-    Number.isFinite(project.snapshot?.doc?.width) &&
-    Number.isFinite(project.snapshot?.doc?.height) &&
-    typeof project.snapshot?.canvasBackground === "string"
+  if (project.schema !== IMAGE_PROJECT_SCHEMA) return null;
+  const wrapped = value as {
+    version?: unknown;
+    updatedAt?: unknown;
+    snapshot?: unknown;
+    data?: unknown;
+  };
+  if (wrapped.version != null && wrapped.version !== 1) return null;
+  const snapshot = normalizeEditorSnapshot(
+    wrapped.snapshot ?? wrapped.data,
+  );
+  if (!snapshot) return null;
+  return createFabricImageProject(
+    snapshot,
+    typeof wrapped.updatedAt === "string" ? wrapped.updatedAt : "",
   );
 }
 
@@ -88,7 +99,7 @@ export function saveLocalImageDraft(
 ): void {
   if (typeof window === "undefined") return;
   try {
-    const encoded = JSON.stringify(imageProject(snapshot));
+    const encoded = JSON.stringify(createFabricImageProject(snapshot));
     if (byteLength(encoded) > MAX_PROJECT_BYTES) return;
     window.localStorage.setItem(localDraftKey(item), encoded);
   } catch {
@@ -104,7 +115,7 @@ export function loadLocalImageDraft(
     const encoded = window.localStorage.getItem(localDraftKey(item));
     if (!encoded || byteLength(encoded) > MAX_PROJECT_BYTES) return null;
     const parsed: unknown = JSON.parse(encoded);
-    return isImageProject(parsed) ? parsed : null;
+    return parseFabricImageProject(parsed);
   } catch {
     return null;
   }
@@ -136,20 +147,8 @@ export async function loadImageProject(
     throw new Error("图片工程为空或超过 5MB 安全上限");
   }
   const parsed: unknown = JSON.parse(text);
-  if (isImageProject(parsed)) return parsed;
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    (parsed as { schema?: unknown }).schema === PROJECT_SCHEMA &&
-    (parsed as { version?: unknown }).version === 1
-  ) {
-    const wrapped = parsed as { data?: unknown; updatedAt?: unknown };
-    const normalized = imageProject(
-      wrapped.data as EditorSnapshot,
-      typeof wrapped.updatedAt === "string" ? wrapped.updatedAt : undefined,
-    );
-    if (isImageProject(normalized)) return normalized;
-  }
+  const project = parseFabricImageProject(parsed);
+  if (project) return project;
   throw new Error("图片工程格式无效");
 }
 
@@ -167,7 +166,9 @@ export async function persistImageProject(
     item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
   );
   const savedAt = new Date().toISOString();
-  const projectJson = JSON.stringify(imageProject(snapshot, savedAt));
+  const projectJson = JSON.stringify(
+    createFabricImageProject(snapshot, savedAt),
+  );
   if (byteLength(projectJson) > MAX_PROJECT_BYTES) {
     throw new Error("图片工程超过 5MB，暂时无法自动保存");
   }
@@ -185,7 +186,7 @@ export async function persistImageProject(
       editor: "fabric-v3",
       fabric_saved_at: savedAt,
     },
-    project: { schema: PROJECT_SCHEMA, data: snapshot },
+    project: { schema: IMAGE_PROJECT_SCHEMA, data: snapshot },
   });
   if (!saved.ok) {
     throw new Error(

@@ -68,7 +68,14 @@ export function PdfStage({
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (editableTarget(event.target)) return;
-      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "z"
+      ) {
+        event.preventDefault();
+        if (event.shiftKey) editor.redo();
+        else editor.undo();
+      } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
         event.preventDefault();
         editor.previousPage();
       } else if (event.key === "ArrowRight" || event.key === "PageDown") {
@@ -316,6 +323,8 @@ export function PdfStage({
       <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4 py-2.5">
         <button
           type="button"
+          aria-label={tt("上一页")}
+          title={tt("上一页")}
           disabled={editor.loading || editor.pageNumber <= 1}
           onClick={editor.previousPage}
           className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-40"
@@ -327,6 +336,8 @@ export function PdfStage({
         </span>
         <button
           type="button"
+          aria-label={tt("下一页")}
+          title={tt("下一页")}
           disabled={editor.loading || editor.pageNumber >= editor.pageCount}
           onClick={editor.nextPage}
           className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-40"
@@ -340,7 +351,7 @@ export function PdfStage({
             <span className="text-emerald-600">{editor.notice}</span>
           ) : (
             <span className="text-[var(--muted,#78716c)]">
-              {tt("方向键翻页 · Ctrl + / − 缩放")}
+              {tt("方向键翻页 · Ctrl + / − 缩放 · Ctrl+Z 撤销")}
             </span>
           )}
         </span>

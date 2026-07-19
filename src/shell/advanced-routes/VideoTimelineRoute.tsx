@@ -17,6 +17,7 @@ import {
   type WorkbenchMaterialAdapter,
   type WorkbenchMaterialPlacement,
 } from "../workbench-material-provider";
+import { timelineMsAtClientPoint } from "../video-editor/timeline-viewport";
 
 function timelineInsertionMs(
   placement: WorkbenchMaterialPlacement | undefined,
@@ -35,18 +36,20 @@ function timelineInsertionMs(
   );
   const rect = timeline?.getBoundingClientRect();
   const pxPerSecond = Number(timeline?.dataset.pxPerSecond);
-  if (
-    !rect ||
-    placement.clientY < rect.top ||
-    placement.clientY > rect.bottom ||
-    !Number.isFinite(pxPerSecond) ||
-    pxPerSecond <= 0
-  ) {
-    return fallback;
-  }
-  return Math.max(
-    0,
-    Math.round(((placement.clientX - rect.left) / pxPerSecond) * 1_000),
+  return timelineMsAtClientPoint(
+    {
+      clientX: placement.clientX,
+      clientY: placement.clientY,
+    },
+    rect
+      ? {
+          left: rect.left,
+          top: rect.top,
+          bottom: rect.bottom,
+          pxPerSecond,
+        }
+      : null,
+    fallback,
   );
 }
 
@@ -133,14 +136,6 @@ export function VideoTimelineRoute({
           canRedo: editor.canRedo,
           undo: editor.undo,
           redo: editor.redo,
-        },
-        viewport: {
-          value: Math.round((editor.pxPerSecond / 80) * 100),
-          min: 10,
-          max: 600,
-          step: 5,
-          setValue: (value) => editor.setPxPerSecond((value / 100) * 80),
-          fit: () => editor.setPxPerSecond(80),
         },
         directDownload: {
           id: "video-export",

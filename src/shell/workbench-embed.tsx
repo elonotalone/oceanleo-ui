@@ -8,83 +8,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { saveWorks, type MediaType } from "../lib/database";
-import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
   EDITOR_PROTOCOL,
-  asEditorToHostMessage,
   asHostToEditorMessage,
   buildEditorEmbedUrl,
   isTrustedEditorOrigin,
-  type EditorMaterialInsertion,
-  type EditorViewportSnapshot,
+  type EditorDocumentRevision,
 } from "./editor-protocol";
-import type {
-  SelectionCommand,
-  SelectionContext,
-} from "./selection-context";
+import type { SelectionContext } from "./selection-context";
 import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
-import { advancedSavedItem } from "./advanced-session";
+import { useEmbedEditorMessages } from "./use-embed-editor-messages";
+import type { EmbedEditorPaneProps } from "./workbench-embed-types";
 
-export interface EmbedEditorPaneProps {
-  item: LibraryItem;
-  editorBase: string;
-  mediaType: MediaType;
-  siteId?: string;
-  accent?: string;
-  extraParams?: Record<string, string>;
-  onVersionSaved?: (item: LibraryItem) => void;
-  onCloseRequest?: () => void;
-  onDirtyChange?: (dirty: boolean, revision?: number) => void;
-  onSelectionChange?: (selection: SelectionContext | null) => void;
-  onSelectionResult?: (result: {
-    requestId: string;
-    ok: boolean;
-    message?: string;
-  }) => void;
-  onViewportChange?: (viewport: EditorViewportSnapshot) => void;
-  onSaveResult?: (result: {
-    ok: boolean;
-    saveId?: string;
-    item?: LibraryItem;
-  }) => void;
-  saveRequestId?: string;
-  selectionCommand?: SelectionCommand | null;
-  viewportCommand?: {
-    commandId: string;
-    value?: number;
-    fit?: boolean;
-  } | null;
-  materialInsertion?: EditorMaterialInsertion | null;
-  onMaterialResult?: (result: {
-    commandId: string;
-    ok: boolean;
-    message?: string;
-  }) => void;
-  exportRequestId?: string;
-  onExportResult?: (result: {
-    exportId: string;
-    ok: boolean;
-    url?: string;
-    message?: string;
-  }) => void;
-}
-
-function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
-  if (isFirstPartyMediaUrl(url)) return true;
-  if (mediaType !== "website") return false;
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" &&
-      (parsed.hostname === "oceanleo.com" ||
-        parsed.hostname.endsWith(".oceanleo.com"))
-    );
-  } catch {
-    return false;
-  }
-}
+export type { EmbedEditorPaneProps } from "./workbench-embed-types";
 
 /** 每类嵌入编辑器的地址；只列已实现 editor.v1 接收端的页面。 */
 export function embedEditorBase(item: LibraryItem): string {
@@ -112,6 +49,11 @@ export function EmbedEditorPane({
   onVersionSaved,
   onCloseRequest,
   onDirtyChange,
+  onHistoryChange,
+  onToolsManifest,
+  onProjectManifest,
+  onProjectResult,
+  onProtocolReset,
   onSelectionChange,
   onSelectionResult,
   onViewportChange,
@@ -123,12 +65,38 @@ export function EmbedEditorPane({
   onMaterialResult,
   exportRequestId = "",
   onExportResult,
+  projectCommand = null,
+  recoveryCaptureRequestId = "",
+  onRecoverySnapshot,
+  recoveryRestore = null,
+  onRecoveryResult,
 }: EmbedEditorPaneProps) {
   const tt = useUI();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyHandledRef = useRef(false);
   const latestSelectionRef = useRef<SelectionContext | null>(null);
   const selectionGateRef = useRef(new SelectionCommandGate());
+  const sentSaveRequestsRef = useRef(new Set<string>());
+  const sentExportRequestsRef = useRef(new Set<string>());
+  const sentProjectRequestsRef = useRef(new Set<string>());
+  const projectRequestsRef = useRef(
+    new Map<string, EditorDocumentRevision>(),
+  );
+  const latestProjectManifestRevisionRef =
+    useRef<EditorDocumentRevision | null>(null);
+  const sentRecoveryCaptureRequestsRef = useRef(new Set<string>());
+  const sentRecoveryRestoreRequestsRef = useRef(new Set<string>());
+  const artifactSaveOperationsRef = useRef(
+    new Map<
+      string,
+      Promise<{
+        saved: boolean;
+        detail: string;
+        durableUrl: string;
+        savedItem?: LibraryItem;
+      }>
+    >(),
+  );
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -136,6 +104,11 @@ export function EmbedEditorPane({
   const instanceId = useRef(
     `wb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   ).current;
+  const disposedRef = useRef(false);
+  const disposeId = useMemo(
+    () => `dispose-${instanceId}-${attempt}`,
+    [attempt, instanceId],
+  );
 
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -177,13 +150,15 @@ export function EmbedEditorPane({
   const sendToEditor = useCallback(
     (message: Record<string, unknown>) => {
       const frame = iframeRef.current?.contentWindow;
-      if (!frame || !editorOrigin) return;
+      if (!frame || !editorOrigin) return false;
       const envelope = { ...message, protocol: EDITOR_PROTOCOL, instanceId };
-      if (!asHostToEditorMessage(envelope, instanceId)) return;
+      if (!asHostToEditorMessage(envelope, instanceId)) return false;
       try {
         frame.postMessage(envelope, editorOrigin);
+        return true;
       } catch {
         // Invalid/non-cloneable data never crosses the frame boundary.
+        return false;
       }
     },
     [editorOrigin, instanceId],
@@ -202,6 +177,16 @@ export function EmbedEditorPane({
     editorOrigin,
     item.key,
   ]);
+  useEffect(() => {
+    artifactSaveOperationsRef.current.clear();
+    sentSaveRequestsRef.current.clear();
+    sentExportRequestsRef.current.clear();
+    sentProjectRequestsRef.current.clear();
+    sentRecoveryCaptureRequestsRef.current.clear();
+    sentRecoveryRestoreRequestsRef.current.clear();
+    projectRequestsRef.current.clear();
+    latestProjectManifestRevisionRef.current = null;
+  }, [item.key]);
   useEffect(() => {
     const cancel = () => cancelSelectionTransactions();
     window.addEventListener("blur", cancel);
@@ -229,169 +214,42 @@ export function EmbedEditorPane({
     });
   }, [item, sendToEditor]);
 
-  useEffect(() => {
-    const receive = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      if (event.origin !== editorOrigin || !isTrustedEditorOrigin(event.origin)) return;
-      const message = asEditorToHostMessage(event.data, instanceId);
-      if (!message) return;
-      if (message.type === "ready") {
-        setPhase("ready");
-        setStatus("");
-        if (!readyHandledRef.current) {
-          readyHandledRef.current = true;
-          onDirtyChange?.(false);
-          sendOpenAsset();
-        }
-      } else if (message.type === "dirty") {
-        onDirtyChange?.(message.dirty !== false, message.revision);
-        if (message.dirty === false) setStatus("");
-      } else if (message.type === "error") {
-        setStatus(message.message || tt("编辑器发生错误"));
-      } else if (message.type === "selection-changed") {
-        const frameRect = iframeRef.current?.getBoundingClientRect();
-        const anchor = message.selection?.anchor;
-        const selection =
-          message.selection && anchor && frameRect
-            ? {
-                ...message.selection,
-                anchor: {
-                  x: frameRect.left + anchor.x,
-                  y: frameRect.top + anchor.y,
-                  width: anchor.width,
-                  height: anchor.height,
-                },
-              }
-            : message.selection;
-        for (const command of selectionGateRef.current.reconcile(selection)) {
-          sendToEditor({ type: "selection-command", command });
-        }
-        latestSelectionRef.current = selection;
-        onSelectionChange?.(selection);
-      } else if (message.type === "selection-result") {
-        onSelectionResult?.({
-          requestId: message.requestId,
-          ok: message.ok,
-          message: message.message,
-        });
-      } else if (message.type === "viewport-changed") {
-        onViewportChange?.(message.viewport);
-      } else if (message.type === "material-result") {
-        onMaterialResult?.({
-          commandId: message.commandId,
-          ok: message.ok,
-          message: message.message,
-        });
-      } else if (message.type === "export-result") {
-        onExportResult?.({
-          exportId: message.exportId,
-          ok: message.ok,
-          url: message.url,
-          message: message.message,
-        });
-      } else if (message.type === "close-request") {
-        onCloseRequest?.();
-      } else if (message.type === "artifact-created" || message.type === "artifact-updated") {
-        void (async () => {
-          let saved = false;
-          let detail = tt("保存失败");
-          let durableUrl = message.url;
-          try {
-            if (!isDurableArtifactUrl(durableUrl, mediaType)) {
-              const importKind =
-                mediaType === "image"
-                  ? "image"
-                  : mediaType === "video"
-                    ? "video"
-                    : mediaType === "audio"
-                      ? "audio"
-                      : mediaType === "model3d"
-                        ? "model3d"
-                        : "file";
-              durableUrl = await importMediaUrl(durableUrl, {
-                kind: importKind,
-                siteId: siteId || "oceanleo",
-                title: message.title || `${item.title}-编辑版`,
-                registerAsset: false,
-              });
-            }
-            const result = await saveWorks(siteId || "oceanleo", [
-              {
-                url: durableUrl,
-                thumb_url:
-                  message.previewUrl &&
-                  isDurableArtifactUrl(message.previewUrl, mediaType)
-                    ? message.previewUrl
-                    : durableUrl,
-                media_type: mediaType,
-                title: message.title || `${item.title}-编辑版`,
-                kind: item.kind,
-                meta: {
-                  ...(message.meta || {}),
-                  parent_asset_id: item.id,
-                  editor_instance: instanceId,
-                },
-              },
-            ]);
-            saved = result.ok && Number(result.data?.saved || 0) === 1;
-            detail = saved
-              ? tt("新版本已保存到我的库")
-              : result.error || tt("保存失败");
-          } catch (caught) {
-            detail =
-              caught instanceof Error && caught.message
-                ? caught.message
-                : tt("保存失败");
-          }
-          setStatus(saved ? "" : detail);
-          const savedItem = saved
-            ? advancedSavedItem(item, {
-                url: durableUrl,
-                previewUrl: message.previewUrl,
-                title: message.title,
-                meta: message.meta,
-              })
-            : undefined;
-          onSaveResult?.({
-            ok: saved,
-            saveId: message.saveId,
-            item: savedItem,
-          });
-          sendToEditor({
-            type: "save-result",
-            ok: saved,
-            message: detail,
-            url: durableUrl,
-            saveId: message.saveId,
-          });
-          if (saved) {
-            onDirtyChange?.(false);
-            if (savedItem) onVersionSaved?.(savedItem);
-          }
-        })();
-      }
-    };
-    window.addEventListener("message", receive);
-    return () => window.removeEventListener("message", receive);
-  }, [
+  useEmbedEditorMessages({
+    iframeRef,
     editorOrigin,
     instanceId,
     item,
     mediaType,
+    siteId,
+    readyHandledRef,
+    latestSelectionRef,
+    selectionGateRef,
+    projectRequestsRef,
+    latestProjectManifestRevisionRef,
+    sentRecoveryCaptureRequestsRef,
+    sentRecoveryRestoreRequestsRef,
+    artifactSaveOperationsRef,
+    sendToEditor,
+    sendOpenAsset,
+    setPhase,
+    setStatus,
+    tt,
     onCloseRequest,
     onDirtyChange,
     onExportResult,
+    onHistoryChange,
     onMaterialResult,
+    onProjectManifest,
+    onProjectResult,
+    onRecoveryResult,
+    onRecoverySnapshot,
     onSelectionChange,
     onSelectionResult,
+    onToolsManifest,
     onViewportChange,
     onSaveResult,
     onVersionSaved,
-    sendToEditor,
-    sendOpenAsset,
-    siteId,
-    tt,
-  ]);
+  });
 
   useEffect(() => {
     if (phase !== "connecting" || !frameLoaded) return;
@@ -413,9 +271,12 @@ export function EmbedEditorPane({
   }, [attempt, frameLoaded, phase]);
 
   useEffect(() => {
+    disposedRef.current = false;
     const frame = iframeRef.current?.contentWindow;
     return () => {
       latestSelectionRef.current = null;
+      if (disposedRef.current) return;
+      disposedRef.current = true;
       try {
         for (const command of selectionGateRef.current.cancelAll()) {
           frame?.postMessage(
@@ -430,7 +291,12 @@ export function EmbedEditorPane({
         }
         // dispose 尽力而为——iframe 可能已卸载。
         frame?.postMessage(
-          { protocol: EDITOR_PROTOCOL, type: "dispose", instanceId },
+          {
+            protocol: EDITOR_PROTOCOL,
+            type: "dispose",
+            instanceId,
+            disposeId,
+          },
           editorOrigin,
         );
       } catch {
@@ -438,21 +304,91 @@ export function EmbedEditorPane({
       }
       selectionGateRef.current.clear();
     };
-  }, [editorOrigin, instanceId]);
+  }, [attempt, disposeId, editorOrigin, instanceId]);
 
   useEffect(() => {
     if (!saveRequestId || phase !== "ready") return;
-    sendToEditor({ type: "save-request", saveId: saveRequestId });
+    if (sentSaveRequestsRef.current.has(saveRequestId)) return;
+    if (sendToEditor({ type: "save-request", saveId: saveRequestId })) {
+      sentSaveRequestsRef.current.add(saveRequestId);
+    }
   }, [phase, saveRequestId, sendToEditor]);
 
   useEffect(() => {
     if (!exportRequestId || phase !== "ready") return;
-    sendToEditor({
-      type: "export-request",
-      exportId: exportRequestId,
-      format: "default",
-    });
+    if (sentExportRequestsRef.current.has(exportRequestId)) return;
+    if (
+      sendToEditor({
+        type: "export-request",
+        exportId: exportRequestId,
+        format: "default",
+      })
+    ) {
+      sentExportRequestsRef.current.add(exportRequestId);
+    }
   }, [exportRequestId, phase, sendToEditor]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !projectCommand) return;
+    if (sentProjectRequestsRef.current.has(projectCommand.requestId)) return;
+    const sent = sendToEditor(
+      projectCommand.kind === "view"
+        ? {
+            type: "project-view",
+            requestId: projectCommand.requestId,
+            viewId: projectCommand.targetId,
+            manifestRevision: projectCommand.manifestRevision,
+          }
+        : {
+            type: "project-action",
+            requestId: projectCommand.requestId,
+            actionId: projectCommand.targetId,
+            manifestRevision: projectCommand.manifestRevision,
+          },
+    );
+    if (sent) {
+      sentProjectRequestsRef.current.add(projectCommand.requestId);
+      projectRequestsRef.current.set(
+        projectCommand.requestId,
+        projectCommand.manifestRevision,
+      );
+    }
+  }, [phase, projectCommand, sendToEditor]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !recoveryCaptureRequestId) return;
+    if (
+      sentRecoveryCaptureRequestsRef.current.has(recoveryCaptureRequestId)
+    ) {
+      return;
+    }
+    if (
+      sendToEditor({
+        type: "recovery-capture",
+        recoveryId: recoveryCaptureRequestId,
+      })
+    ) {
+      sentRecoveryCaptureRequestsRef.current.add(recoveryCaptureRequestId);
+    }
+  }, [phase, recoveryCaptureRequestId, sendToEditor]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !recoveryRestore) return;
+    if (
+      sentRecoveryRestoreRequestsRef.current.has(recoveryRestore.recoveryId)
+    ) {
+      return;
+    }
+    if (
+      sendToEditor({
+        type: "recovery-restore",
+        recoveryId: recoveryRestore.recoveryId,
+        snapshot: recoveryRestore.snapshot,
+      })
+    ) {
+      sentRecoveryRestoreRequestsRef.current.add(recoveryRestore.recoveryId);
+    }
+  }, [phase, recoveryRestore, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready") return;
@@ -475,6 +411,7 @@ export function EmbedEditorPane({
         latestSelectionRef.current,
       )
     ) {
+      setStatus(tt("选择已变化，请重新选择后再编辑。"));
       onSelectionResult?.({
         requestId: selectionCommand.requestId,
         ok: false,
@@ -483,7 +420,7 @@ export function EmbedEditorPane({
       return;
     }
     sendToEditor({ type: "selection-command", command: selectionCommand });
-  }, [onSelectionResult, phase, selectionCommand, sendToEditor]);
+  }, [onSelectionResult, phase, selectionCommand, sendToEditor, tt]);
 
   useEffect(() => {
     if (phase !== "ready" || !viewportCommand) return;
@@ -540,6 +477,9 @@ export function EmbedEditorPane({
                   readyHandledRef.current = false;
                   cancelSelectionTransactions();
                   latestSelectionRef.current = null;
+                  projectRequestsRef.current.clear();
+                  latestProjectManifestRevisionRef.current = null;
+                  onProtocolReset?.();
                   setStatus("");
                   setFrameLoaded(false);
                   setPhase("connecting");
@@ -579,6 +519,14 @@ export function EmbedEditorPane({
             readyHandledRef.current = false;
             cancelSelectionTransactions();
             latestSelectionRef.current = null;
+            projectRequestsRef.current.clear();
+            latestProjectManifestRevisionRef.current = null;
+            sentSaveRequestsRef.current.clear();
+            sentExportRequestsRef.current.clear();
+            sentProjectRequestsRef.current.clear();
+            sentRecoveryCaptureRequestsRef.current.clear();
+            sentRecoveryRestoreRequestsRef.current.clear();
+            onProtocolReset?.();
             setPhase("connecting");
             setFrameLoaded(true);
           }}

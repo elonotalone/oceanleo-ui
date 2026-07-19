@@ -42,22 +42,53 @@ export function RichDocContextToolbar({
       editor.isActive({ textAlign: value }),
     ) || "left";
     const inTable = editor.isActive("table");
+    const selectedNode = (
+      editor.state.selection as typeof editor.state.selection & {
+        node?: { type?: { name?: string } };
+      }
+    ).node;
+    const selectionKind = selectedNode
+      ? selectedNode.type?.name === "image"
+        ? "embedded-object"
+        : "block"
+      : inTable
+        ? "table-cell"
+        : from === to
+          ? "text-caret"
+          : "text-range";
     return {
       version: 1,
-      kind: inTable ? "table-cell" : from === to ? "text-caret" : "text-range",
+      kind: selectionKind,
       id: `text:${from}-${to}`,
-      label: inTable
+      label: selectedNode
+        ? selectedNode.type?.name === "image"
+          ? tt("嵌入图片（单选）")
+          : tt("文档块（单选）")
+        : inTable
         ? tt("表格单元格")
         : from === to
           ? tt("当前段落")
           : tt("选中文字"),
       text: from === to ? "" : editor.state.doc.textBetween(from, to, " "),
-      controls: [
+      revision: state.editRevision,
+      controls: selectedNode
+        ? [
+            {
+              id: "delete-selection",
+              kind: "action" as const,
+              label: tt("删除所选对象"),
+              icon: "delete" as const,
+              danger: true,
+              placement: "more" as const,
+            },
+          ]
+        : [
         {
           id: "format",
           kind: "select",
           label: tt("样式"),
           icon: "font",
+          iconOnly: true,
           group: "type",
           value: format,
           options: [
@@ -82,8 +113,9 @@ export function RichDocContextToolbar({
         {
           id: "strike",
           kind: "toggle",
-          label: "S",
+          label: tt("删除线"),
           value: editor.isActive("strike"),
+          placement: "more",
         },
         {
           id: "color",
@@ -110,6 +142,7 @@ export function RichDocContextToolbar({
           kind: "select",
           label: tt("对齐"),
           icon: "align-left",
+          iconOnly: true,
           group: "paragraph",
           value: align,
           options: [
@@ -118,7 +151,6 @@ export function RichDocContextToolbar({
             { value: "right", label: tt("右") },
             { value: "justify", label: tt("两端") },
           ],
-          placement: "more",
         },
         {
           id: "bullet-list",
@@ -231,20 +263,24 @@ export function RichDocContextToolbar({
               },
             ]
           : []),
-      ],
+          ],
     };
-  }, [editor, editor?.state, tt]);
+  }, [editor, editor?.state, state.editRevision, tt]);
 
   if (!editor || !context) return null;
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
+    if (
+      message.selectionRevision !== undefined &&
+      message.selectionRevision !== state.editRevision
+    ) {
+      return;
+    }
+    if (message.transactionId && message.phase !== "commit") return;
     const chain = editor.chain().focus();
     switch (message.controlId) {
-      case "undo":
-        chain.undo().run();
-        break;
-      case "redo":
-        chain.redo().run();
+      case "delete-selection":
+        chain.deleteSelection().run();
         break;
       case "format": {
         const value = String(message.value || "p");
@@ -268,7 +304,6 @@ export function RichDocContextToolbar({
         chain.setColor(String(message.value || "#1c1917")).run();
         break;
       case "highlight":
-        if (message.transactionId && message.phase !== "commit") break;
         chain.setHighlight({ color: String(message.value || "#fef08a") }).run();
         break;
       case "align":
@@ -290,8 +325,11 @@ export function RichDocContextToolbar({
         state.clearFormat();
         break;
       case "link":
-        if (message.transactionId && message.phase !== "commit") break;
-        state.setLinkHref(String(message.value || ""));
+        if (String(message.value || "").trim()) {
+          state.setLinkHref(String(message.value).trim());
+        } else {
+          state.unsetLink();
+        }
         break;
       case "unlink":
         state.unsetLink();
