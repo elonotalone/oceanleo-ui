@@ -1,35 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import {
-  deleteArtifact,
-  deleteAsset,
-  deleteWork,
-  getDatabaseOverview,
   uploadFile,
   type AssetItem,
   type WorkItem,
 } from "../lib/database";
 import {
-  buildLibraryItems,
-  type LibraryArtifactRow,
+  artifactTypeForLibraryKind,
+  inferLibraryKind,
+  isDurableLibraryItem,
   type LibraryItem,
   type LibraryKind,
 } from "./library-data";
+import {
+  ensureArtifact,
+  retireArtifact,
+  searchArtifactLibrary,
+} from "./artifact-client";
+import type { TransientGenerationResult } from "./artifact-contract";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
+import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-
-const libraryCache = new Map<
-  string,
-  { items: LibraryItem[]; cachedAt: number }
->();
 
 const KIND_CATEGORY: Record<LibraryKind, string> = {
   website: "网站",
@@ -116,6 +114,10 @@ export interface MyLibraryProps {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  materialActionEvidence?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => WorkbenchMaterialActionAvailability;
   primaryMaterialAction?: WorkbenchMaterialAction;
   draggableMaterials?: boolean;
   onMaterialDragStart?: (item: LibraryItem) => void;
@@ -141,6 +143,7 @@ export function MyLibrary({
   materialActions,
   onMaterialAction,
   materialActionAvailable,
+  materialActionEvidence,
   primaryMaterialAction,
   draggableMaterials,
   onMaterialDragStart,
@@ -154,102 +157,20 @@ export function MyLibrary({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
-  const cacheUserIdRef = useRef("");
 
   const load = useCallback(async () => {
     setFailed(false);
-    const supabase = browserClient();
-    const sessionResult = supabase
-      ? await supabase.auth.getSession()
-      : { data: { session: null } };
-    const userId = sessionResult.data.session?.user.id || "";
-    cacheUserIdRef.current = userId;
-    if (!userId || !supabase) {
+    setLoading(true);
+    const result = await searchArtifactLibrary({ limit: 200 });
+    if (!result.ok || !result.data) {
       setItems([]);
-      setAuthRequired(true);
-      setLoading(false);
-      return;
-    }
-
-    const cached = libraryCache.get(userId);
-    if (cached) {
-      setItems(cached.items);
-      setAuthRequired(false);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-
-    // The gateway and direct owner-scoped RLS reads are intentionally
-    // independent. SSO cookies can briefly lag behind the Supabase session
-    // after cross-site navigation; direct reads prevent that transient from
-    // turning a populated library into an empty panel.
-    const [
-      overview,
-      creationResponse,
-      assetResponse,
-      artifactResponse,
-    ] = await Promise.all([
-      getDatabaseOverview({ limit: 200 }),
-      supabase
-        .from("user_creations")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("user_assets")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("agent_artifacts")
-        .select("id,title,kind,content,url,favorite,created_at,task_id,session_id")
-        .order("created_at", { ascending: false })
-        .limit(500),
-    ]);
-    const directLibraryAvailable =
-      !creationResponse.error || !assetResponse.error || !artifactResponse.error;
-    if (!overview.ok && !directLibraryAvailable) {
-      if (!cached) setItems([]);
-      setAuthRequired(overview.status === 401);
-      setFailed(overview.status !== 401);
+      setAuthRequired(result.status === 401);
+      setFailed(result.status !== 401);
       setLoading(false);
       return;
     }
     setAuthRequired(false);
-    const data = overview.data;
-    const worksById = new Map<string, WorkItem>();
-    const rawWorks: WorkItem[] = [
-      ...(((creationResponse.data as WorkItem[] | null) || []).map((item) => ({
-        ...item,
-        meta: { ...(item.meta || {}), library_table: "work" },
-      }))),
-      ...(((assetResponse.data as AssetItem[] | null) || []).map(assetAsWork)),
-      ...(data?.works || []).map((item) => ({
-        ...item,
-        meta: { ...(item.meta || {}), library_table: "work" },
-      })),
-      ...(data?.assets || []).map(assetAsWork),
-    ];
-    rawWorks.forEach((work) => {
-      const table = String(work.meta?.library_table || "work");
-      worksById.set(`${table}:${work.id}`, work);
-    });
-    const works = [...worksById.values()];
-    const artifactsById = new Map<string, LibraryArtifactRow>();
-    for (const artifact of [
-      ...((data?.artifacts || []) as LibraryArtifactRow[]),
-      ...((artifactResponse.data as LibraryArtifactRow[] | null) || []),
-    ]) {
-      if (artifact?.id) artifactsById.set(artifact.id, artifact);
-    }
-    const artifacts = [...artifactsById.values()];
-    const nextItems = buildLibraryItems(works, artifacts);
-    setItems(nextItems);
-    libraryCache.set(userId, {
-      items: nextItems,
-      cachedAt: Date.now(),
-    });
+    setItems(result.data.items);
     setLoading(false);
   }, []);
 
@@ -268,35 +189,17 @@ export function MyLibrary({
   }, [action?.nonce, load]);
 
   const removeItem = useCallback(async (item: LibraryItem) => {
-    const table = String(item.meta.library_table || "");
-    const artifactId =
-      typeof item.meta.artifact_id === "string"
-        ? item.meta.artifact_id
-        : item.source === "artifact"
-          ? item.id
-          : "";
-    const requests: Array<Promise<{ ok: boolean; error?: string }>> = [];
-    if (item.source === "creation") {
-      requests.push(
-        table === "asset" ? deleteAsset(item.id) : deleteWork(item.id),
-      );
+    if (!isDurableLibraryItem(item)) {
+      throw new Error("缺少 durable artifact identity，不能按 URL 猜测删除对象。");
     }
-    if (artifactId) requests.push(deleteArtifact(artifactId));
-    const results = await Promise.all(requests);
-    const rejected = results.find((result) => !result.ok);
-    if (rejected) {
-      throw new Error(rejected.error || "删除失败，请重试。");
-    }
+    const result = await retireArtifact(item.artifactId);
+    if (!result.ok) throw new Error(result.error || "删除失败，请重试。");
     setItems((current) => {
-      const next = current.filter((entry) => entry.key !== item.key);
-      const userId = cacheUserIdRef.current;
-      if (userId) {
-        libraryCache.set(userId, {
-          items: next,
-          cachedAt: Date.now(),
-        });
-      }
-      return next;
+      return current.filter(
+        (entry) =>
+          !isDurableLibraryItem(entry) ||
+          entry.artifactId !== item.artifactId,
+      );
     });
   }, []);
 
@@ -310,13 +213,71 @@ export function MyLibrary({
       for (let index = 0; index < queue.length; index += 1) {
         const file = queue[index];
         setUploadProgress(`${index + 1}/${queue.length} · ${file.name}`);
+        const uploadIdempotencyKey = [
+          "library-upload-v1",
+          siteId || "home",
+          file.name,
+          file.size,
+          file.lastModified,
+        ].join(":");
         const result = await uploadFile(file, {
           siteId: siteId || "home",
           title: file.name,
+          idempotencyKey: uploadIdempotencyKey,
         });
-        if (!result.ok) {
+        if (!result.ok || !result.data?.file) {
           failedCount += 1;
           setUploadError(result.error || "文件上传失败，请重试。");
+          continue;
+        }
+        const uploaded = result.data.file;
+        const kind = inferLibraryKind({
+          kind: uploaded.media_type,
+          mediaType: uploaded.media_type,
+          url: uploaded.url,
+          siteId: uploaded.site_id,
+          meta: uploaded.meta,
+        });
+        const payloadDigest = String(
+          uploaded.meta?.content_digest ||
+            uploaded.meta?.sha256 ||
+            `upload-record:${uploaded.id}:${uploaded.bytes || file.size}`,
+        );
+        const transient: TransientGenerationResult = {
+          schema: "oceanleo.transient-generation.v1",
+          operation: "upload",
+          resultId: uploaded.id,
+          idempotencyKey: `artifact-upload:${uploaded.id}`,
+          payloadDigest,
+          artifactType: artifactTypeForLibraryKind(kind),
+          title: uploaded.title || file.name,
+          renditionUrl: uploaded.thumb_url || uploaded.url,
+          sourceUrl: uploaded.url,
+          sourceFormat:
+            file.name.split(".").pop()?.toLowerCase() || file.type,
+          siteId: uploaded.site_id || siteId || "home",
+          provenance: {
+            source_kind: "user_upload",
+            upload_id: uploaded.id,
+            rights_attested: true,
+          },
+        };
+        const ensured = await ensureArtifact(transient);
+        if (!ensured.ok || !ensured.data) {
+          failedCount += 1;
+          setUploadError(
+            ensured.error ||
+              "文件已上传，但耐久 artifact identity 建立失败；可重试刷新。",
+          );
+        } else {
+          setItems((current) => [
+            ensured.data!,
+            ...current.filter(
+              (item) =>
+                !isDurableLibraryItem(item) ||
+                item.artifactId !== ensured.data!.artifactId,
+            ),
+          ]);
         }
       }
       setUploading(false);
@@ -328,7 +289,13 @@ export function MyLibrary({
 
   const entries = useMemo(
     () => [
-      ...(onlyFavorites ? [] : featuredEntries),
+      ...(onlyFavorites
+        ? []
+        : featuredEntries.filter(
+            (entry) =>
+              entry.libraryItem &&
+              isDurableLibraryItem(entry.libraryItem),
+          )),
       ...items
         .filter(
           (item) =>
@@ -380,6 +347,7 @@ export function MyLibrary({
         materialActions={materialActions}
         onMaterialAction={onMaterialAction}
         materialActionAvailable={materialActionAvailable}
+        materialActionEvidence={materialActionEvidence}
         primaryMaterialAction={primaryMaterialAction}
         draggableMaterials={draggableMaterials}
         onMaterialDragStart={onMaterialDragStart}

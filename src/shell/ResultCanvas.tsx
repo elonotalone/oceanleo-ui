@@ -35,6 +35,8 @@ import {
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import { isDurableLibraryItem } from "./library-data";
+import type { ArtifactContextRef } from "./artifact-contract";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { WorkspaceEntryCanvas } from "./WorkspaceEntryCanvas";
 import { editorCapabilityFor } from "./workbench-routes";
@@ -103,6 +105,8 @@ export interface ResultCanvasProps {
   /** Advanced content workbench reuses this exact Agent thread. */
   taskId?: string | null;
   siteId?: string;
+  /** Server-issued exact binding context for the Primary material shelf. */
+  materialContext?: ArtifactContextRef;
 }
 
 const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
@@ -295,6 +299,7 @@ export function ResultCanvas({
   showTemplate = true,
   taskId,
   siteId = "",
+  materialContext,
 }: ResultCanvasProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -317,9 +322,16 @@ export function ResultCanvas({
   );
   const [activeCanvasEntry, setActiveCanvasEntry] =
     useState<WorkspaceLibraryEntry | null>(null);
+  const [activeCanvasMode, setActiveCanvasMode] =
+    useState<"preview" | "edit">("preview");
+  const [artifactSaveError, setArtifactSaveError] = useState("");
   const materialSiteId =
-    effectiveSiteId || activeCanvasEntry?.libraryItem?.siteId || "oceanleo";
-  const materialAppId = workspaceSession?.appId || materialSiteId;
+    materialContext?.siteKey ||
+    effectiveSiteId ||
+    activeCanvasEntry?.libraryItem?.siteId ||
+    "oceanleo";
+  const materialAppId =
+    materialContext?.appId || workspaceSession?.appId || materialSiteId;
   const workbenchMaterials = useWorkbenchMaterialActions(
     materialSiteId,
     materialAppId,
@@ -335,6 +347,7 @@ export function ResultCanvas({
     (entry: WorkspaceLibraryEntry) => {
       const item = entry.libraryItem;
       if (!item) {
+        setActiveCanvasMode("preview");
         setActiveCanvasEntry(entry);
         return;
       }
@@ -350,16 +363,36 @@ export function ResultCanvas({
             }
           : entry,
       );
+      setActiveCanvasMode("preview");
+      setArtifactSaveError("");
     },
     [savedEditorItems],
   );
   const openCanvasItem = useCallback(
-    (item: LibraryItem) =>
-      openCanvasEntry(workspaceEntryFromLibraryItem(item)),
-    [openCanvasEntry],
+    (item: LibraryItem) => {
+      setActiveCanvasMode("edit");
+      setArtifactSaveError("");
+      setActiveCanvasEntry(workspaceEntryFromLibraryItem(item));
+    },
+    [],
   );
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
+    const source = activeCanvasEntry?.libraryItem;
+    if (source && isDurableLibraryItem(source)) {
+      if (
+        !isDurableLibraryItem(item) ||
+        item.artifactId !== source.artifactId ||
+        item.revisionId === source.revisionId ||
+        !item.artifact.integrity.ok
+      ) {
+        setArtifactSaveError(
+          "编辑器未返回同一 artifact root 的新、完整 revision；旧 head 仍保留，未把临时 URL 记为已保存。",
+        );
+        return;
+      }
+    }
     const rootId = advancedRootItemId(item);
+    setArtifactSaveError("");
     setSavedEditorItems((current) => ({ ...current, [rootId]: item }));
     setActiveCanvasEntry((current) =>
       current?.libraryItem &&
@@ -373,7 +406,7 @@ export function ResultCanvas({
           }
         : current,
     );
-  }, []);
+  }, [activeCanvasEntry?.libraryItem]);
 
   const guideTab: CanvasTab | null = guide
     ? {
@@ -712,6 +745,7 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={effectiveSiteId}
         onOpenEntry={openCanvasEntry}
+        onOpenItem={openCanvasItem}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有生成内容"
         emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
@@ -726,11 +760,14 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={materialSiteId}
         appId={materialAppId}
+        contextId={materialContext?.contextId || ""}
+        functionId={materialContext?.functionId || ""}
         onSeeAll={onSeeAllMaterials}
         onOpenItem={openCanvasItem}
         materialActions={workbenchMaterials.actions}
         onMaterialAction={workbenchMaterials.perform}
         materialActionAvailable={workbenchMaterials.canPerform}
+        materialActionEvidence={workbenchMaterials.availability}
         primaryMaterialAction={primaryMaterialAction}
         draggableMaterials={Boolean(primaryMaterialAction)}
         onMaterialDragStart={workbenchMaterials.beginMaterialDrag}
@@ -750,6 +787,7 @@ export function ResultCanvas({
           materialActions={workbenchMaterials.actions}
           onMaterialAction={workbenchMaterials.perform}
           materialActionAvailable={workbenchMaterials.canPerform}
+          materialActionEvidence={workbenchMaterials.availability}
           primaryMaterialAction={primaryMaterialAction}
           draggableMaterials={Boolean(primaryMaterialAction)}
           onMaterialDragStart={workbenchMaterials.beginMaterialDrag}
@@ -805,6 +843,7 @@ export function ResultCanvas({
   }, [registerLibraryPanel, tt, unregisterLibraryPanel]);
 
   const activeEditorItem =
+    activeCanvasMode === "edit" &&
     activeCanvasEntry?.libraryItem &&
     editorCapabilityFor(activeCanvasEntry.libraryItem).available
       ? activeCanvasEntry.libraryItem
@@ -819,18 +858,35 @@ export function ResultCanvas({
       accent={accent}
       embedded
       onSavedItem={recordSavedEditorItem}
-      onClose={() => setActiveCanvasEntry(null)}
+      onClose={() => {
+        setActiveCanvasEntry(null);
+        setArtifactSaveError("");
+      }}
     />
   ) : null;
   const viewerContent =
-    activeCanvasEntry && !activeEditorItem ? (
+    activeCanvasEntry && activeCanvasMode === "preview" ? (
       <WorkspaceEntryCanvas
         entry={activeCanvasEntry}
         accent={accent}
-        onClose={() => setActiveCanvasEntry(null)}
+        onClose={() => {
+          setActiveCanvasEntry(null);
+          setArtifactSaveError("");
+        }}
       />
     ) : null;
   const rightMainContent =
+    artifactSaveError ? (
+      <div className="flex h-full min-h-0 flex-col">
+        <div
+          role="alert"
+          className="shrink-0 border-b border-rose-500/25 bg-rose-500/10 px-3 py-2 text-[11px] leading-relaxed text-rose-700"
+        >
+          {artifactSaveError}
+        </div>
+        <div className="min-h-0 flex-1">{editorContent}</div>
+      </div>
+    ) :
     editorContent ||
     viewerContent ||
     libraryContent;

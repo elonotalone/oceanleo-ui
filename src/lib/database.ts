@@ -46,6 +46,10 @@ export interface WorkItem {
   meta?: Record<string, unknown>;
   favorite?: boolean;
   created_at?: string;
+  /** New generation paths return these; url remains a rendition only. */
+  artifact_id?: string;
+  revision_id?: string;
+  artifact?: unknown;
 }
 
 export interface AssetItem {
@@ -59,6 +63,9 @@ export interface AssetItem {
   site_id?: string;
   meta?: Record<string, unknown>;
   created_at?: string;
+  artifact_id?: string;
+  revision_id?: string;
+  artifact?: unknown;
 }
 
 export interface KnowledgeItem {
@@ -88,6 +95,10 @@ export interface DatabaseOverview {
     created_at?: string;
     task_id?: string;
     session_id?: string;
+    artifact_id?: string;
+    revision_id?: string;
+    artifact_type?: string;
+    artifact?: unknown;
   }>;
   counts: {
     works: number;
@@ -218,7 +229,14 @@ export function saveWorks(
     meta?: Record<string, unknown>;
   }>,
 ) {
-  return authed<{ ok: boolean; saved: number; items?: WorkItem[] }>(`/v1/creations`, {
+  return authed<{
+    ok: boolean;
+    saved: number;
+    items?: WorkItem[];
+    /** Canonical v1 contract; callers must not treat item URLs as identity. */
+    artifacts?: unknown[];
+    artifact_errors?: Array<{ result_id: string; detail: string }>;
+  }>(`/v1/creations`, {
     method: "POST",
     body: JSON.stringify({ site_id: siteId, items }),
   });
@@ -268,6 +286,9 @@ export interface FileItem {
   site_id?: string;
   meta?: Record<string, unknown>;
   created_at?: string;
+  artifact_id?: string;
+  revision_id?: string;
+  artifact?: unknown;
 }
 
 /** 文件库列表。scope="site"（默认当前站）| "all"（跨站全系列）。 */

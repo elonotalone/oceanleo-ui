@@ -11,7 +11,16 @@ import {
 import DOMPurify from "dompurify";
 import { Markdown } from "./Markdown";
 import { useUI } from "../i18n/ui/useUI";
-import { threeDSubtypeFor, type LibraryItem } from "./library-data";
+import {
+  isDurableLibraryItem,
+  threeDSubtypeFor,
+  type LibraryItem,
+} from "./library-data";
+import {
+  ArtifactRenditionFailure,
+  useArtifactRendition,
+  withResolvedRendition,
+} from "./ArtifactRendition";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -155,7 +164,13 @@ function StructuredCanvas({ item }: { item: LibraryItem }) {
   );
 }
 
-function PptViewer({ item }: { item: LibraryItem }) {
+function PptViewer({
+  item,
+  onResourceError,
+}: {
+  item: LibraryItem;
+  onResourceError?: () => void;
+}) {
   const tt = useUI();
   const host = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">(
@@ -173,8 +188,15 @@ function PptViewer({ item }: { item: LibraryItem }) {
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const response = await fetch(item.url!, {
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            onResourceError?.();
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         const buffer = await response.arrayBuffer();
         if (cancelled) return;
         const { init } = await import("pptx-preview");
@@ -203,7 +225,7 @@ function PptViewer({ item }: { item: LibraryItem }) {
       previewer?.destroy();
       node.replaceChildren();
     };
-  }, [item.url]);
+  }, [item.url, onResourceError]);
 
   const slides = asRecords(item.meta.slides);
   return (
@@ -266,7 +288,13 @@ function StructuredSlides({
   );
 }
 
-function SpreadsheetViewer({ item }: { item: LibraryItem }) {
+function SpreadsheetViewer({
+  item,
+  onResourceError,
+}: {
+  item: LibraryItem;
+  onResourceError?: () => void;
+}) {
   const tt = useUI();
   const [sheets, setSheets] = useState<
     Array<{ name: string; rows: unknown[][] }>
@@ -289,8 +317,15 @@ function SpreadsheetViewer({ item }: { item: LibraryItem }) {
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const response = await fetch(item.url!, {
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            onResourceError?.();
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.arrayBuffer();
         const XLSX = await import("xlsx");
         const workbook = XLSX.read(data, { dense: true });
@@ -316,7 +351,7 @@ function SpreadsheetViewer({ item }: { item: LibraryItem }) {
     return () => {
       cancelled = true;
     };
-  }, [item.url, item.meta]);
+  }, [item.url, item.meta, onResourceError]);
 
   if (loading) return <LoadingView label={tt("正在读取工作簿…")} />;
   if (error || sheets.length === 0)
@@ -384,7 +419,13 @@ function SpreadsheetViewer({ item }: { item: LibraryItem }) {
   );
 }
 
-function DocumentViewer({ item }: { item: LibraryItem }) {
+function DocumentViewer({
+  item,
+  onResourceError,
+}: {
+  item: LibraryItem;
+  onResourceError?: () => void;
+}) {
   const tt = useUI();
   const ext = extension(item.url);
   const [html, setHtml] = useState("");
@@ -398,8 +439,15 @@ function DocumentViewer({ item }: { item: LibraryItem }) {
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const response = await fetch(item.url!, {
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            onResourceError?.();
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.arrayBuffer();
         const module = await import("mammoth");
         const result = await module.default.convertToHtml(
@@ -417,13 +465,14 @@ function DocumentViewer({ item }: { item: LibraryItem }) {
     return () => {
       cancelled = true;
     };
-  }, [item.url, ext]);
+  }, [item.url, ext, onResourceError]);
 
   if (ext === "pdf" && item.url) {
     return (
       <iframe
         src={item.url}
         title={item.title}
+        referrerPolicy="no-referrer"
         className="h-full min-h-[560px] w-full border-0 bg-stone-100"
       />
     );
@@ -452,7 +501,13 @@ function DocumentViewer({ item }: { item: LibraryItem }) {
   );
 }
 
-function ThreeDViewer({ item }: { item: LibraryItem }) {
+function ThreeDViewer({
+  item,
+  onResourceError,
+}: {
+  item: LibraryItem;
+  onResourceError?: () => void;
+}) {
   const tt = useUI();
   const subtype = threeDSubtypeFor(item);
   const modelUrl = item.url || "";
@@ -497,6 +552,7 @@ function ThreeDViewer({ item }: { item: LibraryItem }) {
       setLoadError(
         detail?.message || detail?.type || tt("模型文件或其依赖资源加载失败"),
       );
+      onResourceError?.();
     };
     const loaded = () => setLoadError("");
     viewer.addEventListener("error", failed);
@@ -505,7 +561,7 @@ function ThreeDViewer({ item }: { item: LibraryItem }) {
       viewer.removeEventListener("error", failed);
       viewer.removeEventListener("load", loaded);
     };
-  }, [modelUrl, subtype, tt, ready]);
+  }, [modelUrl, onResourceError, subtype, tt, ready]);
   if (subtype === "hdri" || subtype === "texture") {
     const label =
       subtype === "hdri"
@@ -518,6 +574,7 @@ function ThreeDViewer({ item }: { item: LibraryItem }) {
           <img
             src={previewUrl}
             alt={item.title}
+            referrerPolicy="no-referrer"
             className="max-h-[64vh] max-w-full rounded-xl object-contain shadow-sm"
           />
         ) : (
@@ -598,6 +655,7 @@ function XiaohongshuViewer({ item }: { item: LibraryItem }) {
             <img
               src={covers[0]}
               alt={item.title}
+              referrerPolicy="no-referrer"
               className="h-full w-full object-cover"
             />
           </div>
@@ -699,54 +757,96 @@ export function LibraryItemViewer({
   item: LibraryItem;
   accent?: string;
 }) {
-  const url = item.previewUrl || item.url;
-  if (item.kind === "website") {
+  const rendition = useArtifactRendition(item);
+  const resolvedItem = withResolvedRendition(item, rendition);
+  const url =
+    rendition.url || resolvedItem.previewUrl || resolvedItem.url;
+  if (
+    isDurableLibraryItem(item) &&
+    (rendition.error || (!url && rendition.loading))
+  ) {
+    return (
+      <ArtifactRenditionFailure
+        message={rendition.error || "当前 revision 没有可用 rendition。"}
+        loading={rendition.loading}
+        onRetry={rendition.retry}
+      />
+    );
+  }
+  if (resolvedItem.kind === "website") {
     return url ? (
-      <SandboxedWebViewer url={url} title={item.title} />
+      <SandboxedWebViewer url={url} title={resolvedItem.title} />
     ) : (
       <ErrorView message="没有可打开的网站预览地址。" />
     );
   }
-  if (item.kind === "canvas") {
+  if (resolvedItem.kind === "canvas") {
     return url ? (
-      <SandboxedWebViewer url={url} title={item.title} />
+      <SandboxedWebViewer url={url} title={resolvedItem.title} />
     ) : (
-      <StructuredCanvas item={item} />
+      <StructuredCanvas item={resolvedItem} />
     );
   }
-  if (item.kind === "ppt") return <PptViewer item={item} />;
-  if (item.kind === "sheet") return <SpreadsheetViewer item={item} />;
-  if (item.kind === "document" || item.kind === "file")
-    return <DocumentViewer item={item} />;
-  if (item.kind === "video_canvas")
-    return <VideoCanvasViewer item={item} />;
-  if (item.kind === "xhs") return <XiaohongshuViewer item={item} />;
-  if (item.kind === "threed") return <ThreeDViewer item={item} />;
-  if (item.kind === "image" && url) {
+  if (resolvedItem.kind === "ppt")
+    return (
+      <PptViewer
+        item={resolvedItem}
+        onResourceError={rendition.resourceFailed}
+      />
+    );
+  if (resolvedItem.kind === "sheet")
+    return (
+      <SpreadsheetViewer
+        item={resolvedItem}
+        onResourceError={rendition.resourceFailed}
+      />
+    );
+  if (resolvedItem.kind === "document" || resolvedItem.kind === "file")
+    return (
+      <DocumentViewer
+        item={resolvedItem}
+        onResourceError={rendition.resourceFailed}
+      />
+    );
+  if (resolvedItem.kind === "video_canvas")
+    return <VideoCanvasViewer item={resolvedItem} />;
+  if (resolvedItem.kind === "xhs")
+    return <XiaohongshuViewer item={resolvedItem} />;
+  if (resolvedItem.kind === "threed")
+    return (
+      <ThreeDViewer
+        item={resolvedItem}
+        onResourceError={rendition.resourceFailed}
+      />
+    );
+  if (resolvedItem.kind === "image" && url) {
     return (
       <Center>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={url}
-          alt={item.title}
+          alt={resolvedItem.title}
+          onError={rendition.resourceFailed}
+          referrerPolicy="no-referrer"
           className="max-h-[70vh] max-w-full rounded-lg object-contain"
         />
       </Center>
     );
   }
-  if (item.kind === "video" && url) {
+  if (resolvedItem.kind === "video" && url) {
     return (
       <Center>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           src={url}
           controls
+          onError={rendition.resourceFailed}
           className="max-h-[70vh] max-w-full rounded-lg bg-black"
         />
       </Center>
     );
   }
-  if (item.kind === "audio" && url) {
+  if (resolvedItem.kind === "audio" && url) {
     return (
       <Center>
         <div className="grid h-20 w-20 place-items-center rounded-3xl bg-stone-100 text-stone-400">
@@ -762,13 +862,25 @@ export function LibraryItemViewer({
             <circle cx="17" cy="16" r="3" />
           </svg>
         </div>
-        <p className="text-sm font-medium text-stone-700">{item.title}</p>
+        <p className="text-sm font-medium text-stone-700">
+          {resolvedItem.title}
+        </p>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <audio src={url} controls className="w-full max-w-md" />
+        <audio
+          src={url}
+          controls
+          onError={rendition.resourceFailed}
+          className="w-full max-w-md"
+        />
       </Center>
     );
   }
-  return <ErrorView message="这个内容还没有可用的查看器数据。" url={item.url} />;
+  return (
+    <ErrorView
+      message="这个内容还没有可用的查看器数据。"
+      url={resolvedItem.url}
+    />
+  );
 }
 
 export function libraryKindLabel(kind: LibraryItem["kind"]): string {

@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./WorkspaceLibrary";
+import { prepareArtifactForAction } from "./artifact-client";
 import {
   beginWorkbenchMaterialDrag,
   canPerformWorkbenchMaterial,
@@ -23,14 +24,18 @@ import {
   registerWorkbenchMaterialAdapter,
   subscribeWorkbenchMaterialRuntime,
   subscribeWorkbenchMaterials,
+  workbenchMaterialActionAvailability,
   type WorkbenchMaterialAction,
+  type WorkbenchMaterialActionAvailability,
   type WorkbenchMaterialAdapter,
   type WorkbenchMaterialPlacement,
 } from "./workbench-material-registry";
 
 export type {
   WorkbenchMaterialAction,
+  WorkbenchMaterialActionAvailability,
   WorkbenchMaterialAdapter,
+  WorkbenchMaterialCommandContract,
   WorkbenchMaterialPlacement,
 } from "./workbench-material-registry";
 export const WORKBENCH_MATERIAL_MIME =
@@ -47,6 +52,10 @@ export interface WorkbenchMaterialContextValue {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  availability: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => WorkbenchMaterialActionAvailability;
   perform: (
     action: WorkbenchMaterialAction,
     item: LibraryItem,
@@ -84,14 +93,29 @@ function useWorkbenchMaterialRuntimeScope(
       item: LibraryItem,
       placement?: WorkbenchMaterialPlacement,
     ) => {
-      if (!canPerformWorkbenchMaterial(scope, action, item)) {
-        return { ok: false, error: "当前编辑器不支持这个素材动作。" };
-      }
       try {
+        const prepared =
+          action === "insert" || action === "replace"
+            ? await prepareArtifactForAction(action, item)
+            : { ok: true as const, data: item };
+        if (!prepared.ok || !prepared.data) {
+          return {
+            ok: false,
+            error: prepared.error || "素材没有可用的耐久 identity。",
+          };
+        }
+        const availability = workbenchMaterialActionAvailability(
+          scope,
+          action,
+          prepared.data,
+        );
+        if (!availability.available) {
+          return { ok: false, error: availability.reason };
+        }
         await performWorkbenchMaterial(
           scope,
           action,
-          item,
+          prepared.data,
           placement,
         );
         return { ok: true };
@@ -116,6 +140,11 @@ function useWorkbenchMaterialRuntimeScope(
     },
     [scope],
   );
+  const availability = useCallback(
+    (action: WorkbenchMaterialAction, item: LibraryItem) =>
+      workbenchMaterialActionAvailability(scope, action, item),
+    [scope],
+  );
   return useMemo<WorkbenchMaterialRuntimeValue>(
     () => ({
       siteId,
@@ -123,6 +152,7 @@ function useWorkbenchMaterialRuntimeScope(
       scope,
       actions: runtime.actions,
       canPerform,
+      availability,
       perform,
       draggedItem: runtime.draggedItem,
       beginMaterialDrag,
@@ -130,6 +160,7 @@ function useWorkbenchMaterialRuntimeScope(
     }),
     [
       appId,
+      availability,
       canPerform,
       beginMaterialDrag,
       endMaterialDrag,
@@ -212,6 +243,9 @@ export function useWorkbenchMaterialAdapter(
   adapterRef.current = adapter;
   const adapterId = adapter?.id || "";
   const actionsKey = adapter?.actions.join("|") || "";
+  const commandKey = adapter?.command
+    ? `${adapter.command.version}:${adapter.command.history}`
+    : "";
   useEffect(() => {
     if (!register || !adapterId) return;
     const current = adapterRef.current;
@@ -222,13 +256,35 @@ export function useWorkbenchMaterialAdapter(
     return register({
       id: adapterId,
       actions: current.actions,
+      ...(current.command
+        ? {
+            command: {
+              version: 1 as const,
+              history: "editor-command" as const,
+              createCommand: (action, item, placement) => {
+                const active = adapterRef.current?.command;
+                if (!active) {
+                  throw new Error("目标编辑器的 command contract 已卸载。");
+                }
+                return active.createCommand(action, item, placement);
+              },
+              execute: (command, item, placement) => {
+                const active = adapterRef.current?.command;
+                if (!active) {
+                  throw new Error("目标编辑器的 command executor 已卸载。");
+                }
+                return active.execute(command, item, placement);
+              },
+            },
+          }
+        : {}),
       accepts: (item, action) =>
         adapterRef.current?.accepts(item, action) || false,
-      mutate: (action, item, placement) => {
+      mutate: (action, item, placement, command) => {
         const active = adapterRef.current;
         if (!active) throw new Error("当前编辑器已经关闭。");
-        return active.mutate(action, item, placement);
+        return active.mutate(action, item, placement, command);
       },
     });
-  }, [actionsKey, adapterId, register]);
+  }, [actionsKey, adapterId, commandKey, register]);
 }

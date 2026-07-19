@@ -39,7 +39,7 @@ test("viewer kind prefers explicit metadata and recognizes real Office files", (
   );
 });
 
-test("works and task artifacts with the same URL merge into one rich item", () => {
+test("works and task artifacts never use a matching URL as identity", () => {
   const items = buildLibraryItems(
     [
       {
@@ -62,11 +62,13 @@ test("works and task artifacts with the same URL merge into one rich item", () =
       },
     ],
   );
-  assert.equal(items.length, 1);
-  assert.equal(items[0].kind, "ppt");
-  assert.equal(items[0].title, "产品发布会");
-  assert.equal(items[0].favorite, true);
-  assert.deepEqual(items[0].meta.slides, [{ title: "封面" }]);
+  assert.equal(items.length, 2);
+  const creation = items.find((item) => item.id === "creation-1");
+  const artifact = items.find((item) => item.id === "artifact-1");
+  assert.equal(creation.kind, "ppt");
+  assert.equal(creation.title, "产品发布会");
+  assert.deepEqual(creation.meta.slides, [{ title: "封面" }]);
+  assert.equal(artifact.favorite, true);
 });
 
 test("legacy pages normalize into exactly five fixed workspace slots", () => {
@@ -160,7 +162,7 @@ test("closing a configured library keeps the app runtime mounted", () => {
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });
 
-test("task Preview cards are removable while My Library refreshes from the durable copy", () => {
+test("task receipts refresh My Library without adding a fifth shared card action", () => {
   const canvas = readFileSync(
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
@@ -169,11 +171,16 @@ test("task Preview cards are removable while My Library refreshes from the durab
     new URL("../src/shell/MyLibrary.tsx", import.meta.url),
     "utf8",
   );
+  const library = readFileSync(
+    new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(canvas, /onDelete: tab\.onDelete/);
   assert.match(canvas, /libraryRefreshNonce/);
   assert.match(canvas, /refreshNonce=\{libraryRefreshNonce\}/);
   assert.match(mine, /refreshNonce\?: string \| number/);
   assert.match(mine, /\[load, refreshNonce\]/);
+  assert.doesNotMatch(library, /彻底删除/);
 });
 
 test("inspiration slot preserves both quick-start guide and legacy prompt pages", () => {

@@ -24,6 +24,13 @@ export type AppSessionStatus = "active" | "archived" | string;
 export type AppSessionSurface = "app" | "advanced";
 export type AppSessionListSurface = AppSessionSurface | "all";
 
+export interface AppSessionArtifactPin {
+  artifact_id: string;
+  revision_id: string;
+  role: "input" | "output" | "editor-head" | "insert-source";
+  artifact_type?: string;
+}
+
 /** 一次完整 app 工作会话。snapshot 对共享包保持不透明，由各站 runtime 解释。 */
 export interface AppSession {
   id: string;
@@ -52,6 +59,8 @@ export interface AppSession {
   pinned?: boolean | null;
   favorite?: boolean | null;
   project_id?: string | null;
+  /** Revision-pinned references used by save/reopen; never rendition URLs. */
+  artifact_refs?: AppSessionArtifactPin[];
 }
 
 export interface ListAppSessionsOptions {
@@ -71,6 +80,7 @@ export interface EnsureAppSessionInput {
   title?: string;
   snapshot?: Record<string, unknown>;
   schemaVersion?: number;
+  artifactRefs?: AppSessionArtifactPin[];
 }
 
 export interface UpdateAppSessionInput {
@@ -81,6 +91,7 @@ export interface UpdateAppSessionInput {
   /** 快照 schema 版本。 */
   schemaVersion: number;
   title?: string;
+  artifactRefs?: AppSessionArtifactPin[];
 }
 
 export interface ArchiveAppSessionResult {
@@ -140,6 +151,41 @@ function unwrapSession(
   const session =
     "session" in data && data.session ? data.session : (data as AppSession);
   return { ...result, data: session };
+}
+
+export function normalizeAppSessionArtifactPins(
+  value: unknown,
+): AppSessionArtifactPin[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const raw = entry as Record<string, unknown>;
+    const artifactId = String(raw.artifact_id || "").trim();
+    const revisionId = String(raw.revision_id || "").trim();
+    const role = String(raw.role || "");
+    if (
+      !artifactId ||
+      !revisionId ||
+      !["input", "output", "editor-head", "insert-source"].includes(role)
+    ) {
+      return [];
+    }
+    const key = `${artifactId}:${revisionId}:${role}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [
+      {
+        artifact_id: artifactId,
+        revision_id: revisionId,
+        role: role as AppSessionArtifactPin["role"],
+        ...(typeof raw.artifact_type === "string" &&
+        raw.artifact_type.trim()
+          ? { artifact_type: raw.artifact_type.trim() }
+          : {}),
+      },
+    ];
+  });
 }
 
 /** 按最后活动时间倒序列工作会话。 */
@@ -205,6 +251,11 @@ export async function ensureAppSession(
   if (input.schemaVersion !== undefined) {
     payload.schema_version = input.schemaVersion;
   }
+  if (input.artifactRefs !== undefined) {
+    payload.artifact_refs = normalizeAppSessionArtifactPins(
+      input.artifactRefs,
+    );
+  }
   const result = await sessionRequest<SessionEnvelope>(
     "",
     jsonMutation("POST", payload),
@@ -229,6 +280,11 @@ export async function updateAppSession(
     schema_version: input.schemaVersion,
   };
   if (input.title !== undefined) payload.title = input.title;
+  if (input.artifactRefs !== undefined) {
+    payload.artifact_refs = normalizeAppSessionArtifactPins(
+      input.artifactRefs,
+    );
+  }
 
   const suffix = `/${encodeURIComponent(id)}/snapshot`;
   const result = await sessionRequest<SessionEnvelope>(

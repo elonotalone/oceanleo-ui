@@ -134,6 +134,62 @@ export { OptionRow } from "./OptionRow";
 export type { OptionRowProps, OptionItem } from "./OptionRow";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
+// v0.179 canonical artifact control-plane surface. Consumers must not fork
+// response parsers, /v1 HTTP clients, ACL checks or editor command contracts.
+export * from "./artifact-contract";
+export {
+  bindArtifactToContext,
+  createArtifactRevision,
+  ensureArtifact,
+  ensureDurableArtifactItem,
+  forkArtifact,
+  getArtifactEditDecision,
+  getArtifactItem,
+  listPrimaryArtifacts,
+  prepareArtifactForAction,
+  refreshArtifactRendition,
+  retireArtifact,
+  searchArtifactLibrary,
+  setArtifactFavorite,
+} from "./artifact-client";
+export type {
+  ArtifactApiResult,
+  ArtifactEditDecision,
+  ArtifactRevisionCommit,
+  ArtifactSearchResult,
+} from "./artifact-client";
+export {
+  ArtifactActionButtons,
+  artifactActionMatrix,
+} from "./ArtifactActions";
+export type {
+  ArtifactActionMatrixOptions,
+  ArtifactActionState,
+  ArtifactTargetActionEvidence,
+} from "./ArtifactActions";
+export {
+  ArtifactRenditionFailure,
+  useArtifactRendition,
+  withResolvedRendition,
+} from "./ArtifactRendition";
+export type { ArtifactRenditionState } from "./ArtifactRendition";
+export {
+  WORKBENCH_MATERIAL_MIME,
+  WorkbenchMaterialProvider,
+  useWorkbenchMaterialActions,
+  useWorkbenchMaterialAdapter,
+  useWorkbenchMaterialScope,
+  useWorkbenchMaterials,
+} from "./workbench-material-provider";
+export type {
+  WorkbenchMaterialAction,
+  WorkbenchMaterialActionAvailability,
+  WorkbenchMaterialAdapter,
+  WorkbenchMaterialCommandContract,
+  WorkbenchMaterialContextValue,
+  WorkbenchMaterialPlacement,
+  WorkbenchMaterialRuntimeValue,
+} from "./workbench-material-provider";
 // 固定五槽位中「预览 / 素材库 / 我的库」共用的搜索、分类和 master/detail 原语。
 export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";

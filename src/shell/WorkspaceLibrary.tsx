@@ -13,13 +13,23 @@ import {
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { ensureDatabaseThumbnail } from "../lib/database";
-import type { LibraryItem, LibraryKind } from "./library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+  type LibraryKind,
+} from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { editorCapabilityFor } from "./workbench-routes";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
+import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import { advancedLibraryReferenceFor } from "./advanced-features";
+import {
+  ArtifactActionButtons,
+  artifactActionMatrix,
+  type ArtifactTargetActionEvidence,
+} from "./ArtifactActions";
+import { useArtifactRendition } from "./ArtifactRendition";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -66,6 +76,10 @@ export interface WorkspaceLibraryProps {
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => boolean;
+  materialActionEvidence?: (
+    action: WorkbenchMaterialAction,
+    item: LibraryItem,
+  ) => WorkbenchMaterialActionAvailability;
   /** Advanced-editor drawers use one click as an immediate editor action. */
   primaryMaterialAction?: WorkbenchMaterialAction;
   /** Enables dragging a material card into the current editor canvas. */
@@ -105,6 +119,17 @@ const KIND_LABELS: Partial<Record<LibraryKind, string>> = {
 const generatedThumbnailCache = new Map<string, string>();
 const generatedThumbnailPending = new Map<string, Promise<string>>();
 const generatedThumbnailFailed = new Set<string>();
+const THUMBNAIL_PURPOSES = ["thumbnail", "preview"] as const;
+const EMPTY_THUMBNAIL_ITEM: LibraryItem = {
+  key: "empty-thumbnail",
+  source: "artifact",
+  id: "empty-thumbnail",
+  title: "",
+  kind: "file",
+  siteId: "",
+  favorite: false,
+  meta: {},
+};
 
 export function workspaceEntryFromLibraryItem(
   item: LibraryItem,
@@ -186,7 +211,7 @@ export function WorkspaceLibrary({
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
-  primaryMaterialAction,
+  materialActionEvidence,
   draggableMaterials = false,
   onMaterialDragStart,
   onMaterialDragEnd,
@@ -218,100 +243,95 @@ export function WorkspaceLibrary({
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const [deletingId, setDeletingId] = useState("");
-  const [deleteError, setDeleteError] = useState("");
   const [materialActionState, setMaterialActionState] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
   const materialActionPendingRef = useRef(false);
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
-      if (materialActions.length === 0 && onOpenEntry) {
+      if (onOpenEntry) {
         onOpenEntry(entry);
         return;
       }
-      const item = entry.libraryItem;
-      if (
-        item &&
-        allowAdvanced &&
-        openAdvancedOnSelect &&
-        materialActions.length === 0 &&
-        editorCapabilityFor(item).available
-      ) {
-        if (onOpenItem) {
-          onOpenItem(item);
-          return;
-        }
-      }
       setSelectedId(entry.id);
     },
-    [
-      allowAdvanced,
-      materialActions.length,
-      onOpenEntry,
-      onOpenItem,
-      openAdvancedOnSelect,
-    ],
+    [onOpenEntry],
   );
-
-  const removeEntry = async (entry: WorkspaceLibraryEntry) => {
-    if (!entry.onDelete || deletingId) return;
-    if (
-      !window.confirm(
-        tt("确定彻底删除「{title}」吗？此操作无法撤销。", {
-          title: entry.title,
-        }),
-      )
-    ) {
-      return;
-    }
-    setDeleteError("");
-    setDeletingId(entry.id);
-    try {
-      await entry.onDelete();
-      if (selectedId === entry.id) setSelectedId("");
-    } catch (error) {
-      setDeleteError(
-        error instanceof Error ? error.message : tt("删除失败，请重试。"),
-      );
-    } finally {
-      setDeletingId("");
-    }
-  };
 
   const applyMaterialAction = async (
     action: WorkbenchMaterialAction,
     item: LibraryItem,
   ) => {
-    if (!onMaterialAction || materialActionPendingRef.current) return;
+    if (!onMaterialAction) {
+      throw new Error("当前编辑器没有注册素材命令执行器。");
+    }
+    if (materialActionPendingRef.current) {
+      throw new Error("另一个素材命令仍在执行。");
+    }
     materialActionPendingRef.current = true;
     setMaterialActionState(tt("应用中…"));
     try {
       const result = await onMaterialAction(action, item);
-      setMaterialActionState(
-        result.ok ? tt("已应用素材副本") : result.error || tt("素材应用失败"),
-      );
+      if (!result.ok) {
+        throw new Error(result.error || tt("素材应用失败"));
+      }
+      setMaterialActionState(tt("已通过编辑器历史应用素材"));
     } catch (caught) {
-      setMaterialActionState(
-        caught instanceof Error ? caught.message : tt("素材应用失败"),
-      );
+      const message =
+        caught instanceof Error ? caught.message : tt("素材应用失败");
+      setMaterialActionState(message);
+      throw caught instanceof Error ? caught : new Error(message);
     } finally {
       materialActionPendingRef.current = false;
     }
   };
 
+  const targetEvidence = (
+    action: "insert" | "replace",
+    item: LibraryItem,
+  ): ArtifactTargetActionEvidence => {
+    if (!materialActions.includes(action)) {
+      return {
+        visible: false,
+        available: false,
+        reason: "当前编辑器没有声明这个动作。",
+      };
+    }
+    const evidence = materialActionEvidence?.(action, item);
+    if (evidence) return evidence;
+    const available =
+      materialActionAvailable?.(action, item) ?? Boolean(onMaterialAction);
+    return {
+      visible: true,
+      available,
+      reason: available
+        ? ""
+        : "目标编辑器没有可验证的 command/history 契约。",
+    };
+  };
+
+  const matrixFor = (item: LibraryItem) =>
+    artifactActionMatrix(item, {
+      canOpenPreview: true,
+      canOpenEdit:
+        allowAdvanced && openAdvancedOnSelect && Boolean(onOpenItem),
+      insert: targetEvidence("insert", item),
+      replace: targetEvidence("replace", item),
+    });
+
+  const editItem = async (item: LibraryItem) => {
+    if (!onOpenItem) throw new Error("当前工作区没有注册 typed Edit route。");
+    onOpenItem(item);
+  };
+
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
     const item = entry.libraryItem;
-    if (
-      item &&
-      primaryMaterialAction &&
-      onMaterialAction &&
-      (!materialActionAvailable ||
-        materialActionAvailable(primaryMaterialAction, item))
-    ) {
-      void applyMaterialAction(primaryMaterialAction, item);
+    if (!item) {
+      openEntry(entry);
       return;
     }
+    // Card activation is always Preview. Insert/Replace/Edit are explicit
+    // adjacent actions and never inferred from the current editor.
     openEntry(entry);
   };
 
@@ -321,8 +341,7 @@ export function WorkspaceLibrary({
       draggableMaterials &&
         item &&
         onMaterialDragStart &&
-        (!materialActionAvailable ||
-          materialActionAvailable(primaryMaterialAction || "insert", item)),
+        matrixFor(item).insert.available,
     );
     return {
       draggable: enabled,
@@ -379,6 +398,11 @@ export function WorkspaceLibrary({
     };
   }, [categories, categoriesExpanded, category, primaryCategoryIds]);
 
+  useEffect(() => {
+    if (categories.some((item) => item.id === category)) return;
+    setCategory("all");
+  }, [categories, category]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return entries.filter((entry) => {
@@ -429,15 +453,50 @@ export function WorkspaceLibrary({
     const byUrl = !byId && next.url
       ? entries.find(
           (entry) =>
-            entry.externalUrl === next.url ||
-            entry.libraryItem?.url === next.url ||
-            entry.libraryItem?.previewUrl === next.url,
+            (!entry.libraryItem ||
+              !isDurableLibraryItem(entry.libraryItem)) &&
+            (entry.externalUrl === next.url ||
+              entry.libraryItem?.url === next.url ||
+              entry.libraryItem?.previewUrl === next.url),
         )
       : null;
     if (byId || byUrl) openEntry((byId || byUrl)!);
   // Remote material/file rows may arrive after the action. Re-run against the
   // new entry set so `itemId` opens once its card exists.
   }, [action?.nonce, entries, categories]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const actionButtonsFor = (
+    entry: WorkspaceLibraryEntry,
+    compact = false,
+  ) => {
+    const item = entry.libraryItem;
+    if (!item) return null;
+    return (
+      <ArtifactActionButtons
+        item={item}
+        matrix={matrixFor(item)}
+        onPreview={(prepared) =>
+          openEntry({
+            ...entry,
+            title: prepared.title,
+            thumbUrl: prepared.thumbUrl || prepared.previewUrl,
+            externalUrl: prepared.url || prepared.previewUrl,
+            libraryItem: prepared,
+          })
+        }
+        onEdit={editItem}
+        onInsert={(prepared) =>
+          applyMaterialAction("insert", prepared)
+        }
+        onReplace={(prepared) =>
+          applyMaterialAction("replace", prepared)
+        }
+        onStatus={setMaterialActionState}
+        accent={accent}
+        compact={compact}
+      />
+    );
+  };
 
   if (selected) {
     const kind = selected.kind || selected.libraryItem?.kind;
@@ -476,13 +535,6 @@ export function WorkspaceLibrary({
           description: selected.description || "",
         },
       };
-    const editorCapability = editorCapabilityFor(workbenchItem);
-    const actionLabels: Record<WorkbenchMaterialAction, string> = {
-      insert: "插入",
-      replace: "替换",
-      apply: "应用",
-      merge: "合并",
-    };
     return (
       <>
       <div
@@ -518,24 +570,13 @@ export function WorkspaceLibrary({
               </p>
             )}
           </div>
-          {materialActions
-            .filter(
-              (action) =>
-                !materialActionAvailable ||
-                materialActionAvailable(action, workbenchItem),
-            )
-            .map((action) => (
-            <button
-              key={action}
-              type="button"
-              disabled={!onMaterialAction || Boolean(materialActionState === tt("应用中…"))}
-              onClick={() => void applyMaterialAction(action, workbenchItem)}
-              className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:opacity-50"
-              style={{ borderColor: accent, color: accent }}
-            >
-              {tt(actionLabels[action])}
-            </button>
-          ))}
+          {actionButtonsFor(
+            {
+              ...selected,
+              libraryItem: workbenchItem,
+            },
+            true,
+          )}
           {refreshable && (
             <button
               type="button"
@@ -543,16 +584,6 @@ export function WorkspaceLibrary({
               className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
             >
               {tt("刷新")}
-            </button>
-          )}
-          {selected.onDelete && (
-            <button
-              type="button"
-              onClick={() => void removeEntry(selected)}
-              disabled={deletingId === selected.id}
-              className="shrink-0 rounded-lg border border-rose-500/25 px-2.5 py-1.5 text-[11px] font-medium text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
-            >
-              {tt(deletingId === selected.id ? "删除中…" : "彻底删除")}
             </button>
           )}
           <button
@@ -581,15 +612,13 @@ export function WorkspaceLibrary({
             </a>
           )}
         </header>
-        {(materialActionState ||
-          (allowAdvanced &&
-            !editorCapability.available &&
-            editorCapability.unavailableReason)) && (
+        {materialActionState && (
           <div
             role="status"
+            aria-live="polite"
             className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-600"
           >
-            {materialActionState || tt(editorCapability.unavailableReason)}
+            {materialActionState}
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
@@ -619,9 +648,13 @@ export function WorkspaceLibrary({
         placeholder={tt(searchPlaceholder)}
         tt={tt}
       />
-      {deleteError && (
-        <p className="mt-2 shrink-0 rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-500">
-          {deleteError}
+      {materialActionState && (
+        <p
+          className="mt-2 shrink-0 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700"
+          role="status"
+          aria-live="polite"
+        >
+          {materialActionState}
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
@@ -665,10 +698,7 @@ export function WorkspaceLibrary({
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
-                onDelete={
-                  entry.onDelete ? () => void removeEntry(entry) : undefined
-                }
-                deleting={deletingId === entry.id}
+                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
@@ -680,11 +710,8 @@ export function WorkspaceLibrary({
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
-                onDelete={
-                  entry.onDelete ? () => void removeEntry(entry) : undefined
-                }
-                deleting={deletingId === entry.id}
                 accent={accent}
+                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
@@ -697,16 +724,14 @@ export function WorkspaceLibrary({
 function WorkspaceCard({
   entry,
   onOpen,
-  onDelete,
-  deleting,
   accent,
   dragProps,
+  actions,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
-  onDelete?: () => void;
-  deleting?: boolean;
   accent: string;
+  actions?: ReactNode;
   dragProps?: {
     draggable?: boolean;
     onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
@@ -722,7 +747,12 @@ function WorkspaceCard({
         dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
       }`}
     >
-      <button type="button" onClick={onOpen} className="block w-full text-left">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block w-full text-left"
+        aria-label={tt("预览「{title}」", { title: entry.title })}
+      >
         <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail
             url={entry.thumbUrl}
@@ -747,21 +777,10 @@ function WorkspaceCard({
           )}
         </div>
       </button>
-      {onDelete && (
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          aria-label={tt("删除「{title}」", { title: entry.title })}
-          title={tt("删除")}
-          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--card,#fff)]/95 text-[var(--muted,#a8a29e)] opacity-0 shadow-sm backdrop-blur transition hover:text-rose-600 disabled:opacity-50 group-hover:opacity-100 focus:opacity-100"
-        >
-          {deleting ? (
-            <span className="v-spinner h-3 w-3" />
-          ) : (
-            <TrashIcon />
-          )}
-        </button>
+      {actions && (
+        <div className="border-t border-[var(--border,#e7e5e4)] px-2 py-2">
+          {actions}
+        </div>
       )}
     </div>
   );
@@ -770,14 +789,12 @@ function WorkspaceCard({
 function WorkspaceListRow({
   entry,
   onOpen,
-  onDelete,
-  deleting,
   dragProps,
+  actions,
 }: {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
-  onDelete?: () => void;
-  deleting?: boolean;
+  actions?: ReactNode;
   dragProps?: {
     draggable?: boolean;
     onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
@@ -789,7 +806,7 @@ function WorkspaceListRow({
   return (
     <div
       {...dragProps}
-      className={`flex w-full items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
+      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
         dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
       }`}
     >
@@ -797,6 +814,7 @@ function WorkspaceListRow({
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
+        aria-label={tt("预览「{title}」", { title: entry.title })}
       >
         <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail
@@ -823,33 +841,8 @@ function WorkspaceListRow({
           <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      {onDelete && (
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          aria-label={tt("删除「{title}」", { title: entry.title })}
-          title={tt("删除")}
-          className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--muted,#a8a29e)] transition hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50"
-        >
-          {deleting ? <span className="v-spinner h-3 w-3" /> : <TrashIcon />}
-        </button>
-      )}
+      {actions && <div className="mr-2 py-1">{actions}</div>}
     </div>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      className="h-3.5 w-3.5"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 
@@ -889,6 +882,10 @@ function WorkspaceThumbnail({
   compact?: boolean;
 }) {
   const tt = useUI();
+  const artifactRendition = useArtifactRendition(
+    item || EMPTY_THUMBNAIL_ITEM,
+    THUMBNAIL_PURPOSES,
+  );
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -910,7 +907,9 @@ function WorkspaceThumbnail({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const reference = item ? advancedLibraryReferenceFor(item) : null;
+  const typedArtifact = Boolean(item && isDurableLibraryItem(item));
+  const reference =
+    item && !typedArtifact ? advancedLibraryReferenceFor(item) : null;
   const referenceKey =
     reference &&
     (reference.source === "work" ||
@@ -945,7 +944,7 @@ function WorkspaceThumbnail({
     setGeneratedUrl(
       referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
     );
-  }, [referenceKey, url]);
+  }, [artifactRendition.url, referenceKey, url]);
   useEffect(() => {
     if (
       !referenceKey ||
@@ -992,12 +991,19 @@ function WorkspaceThumbnail({
     url,
     visible,
   ]);
-  const displayUrl =
-    generatedUrl || (requiresGeneratedThumbnail ? "" : url);
+  const displayUrl = typedArtifact
+    ? artifactRendition.url
+    : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
   if (!displayUrl || failed) {
     return (
       <div ref={hostRef} className="grid h-full place-items-center">
-        {compact ? (
+        {typedArtifact && artifactRendition.loading ? (
+          <span
+            className="v-spinner h-4 w-4"
+            role="status"
+            aria-label={tt("正在刷新缩略图")}
+          />
+        ) : compact ? (
           <span className="text-[10px] font-medium text-[var(--muted,#a8a29e)]">
             {tt(KIND_LABELS[kind] || "内容")}
           </span>
@@ -1016,7 +1022,10 @@ function WorkspaceThumbnail({
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
+        onError={() => {
+          artifactRendition.resourceFailed();
+          setFailed(true);
+        }}
         className={imageClassName}
       />
     </div>

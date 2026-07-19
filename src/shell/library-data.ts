@@ -1,4 +1,9 @@
 import type { WorkItem } from "../lib/database";
+import type {
+  ArtifactProjection,
+  ArtifactType,
+  TransientGenerationResult,
+} from "./artifact-contract";
 
 /**
  * Cross-site library kinds are content/viewer semantics, not storage-table
@@ -65,6 +70,13 @@ export interface LibraryItem {
   meta: Record<string, unknown>;
   /** Viewer semantics stay in `kind`; editability lives in this descriptor. */
   descriptor?: LibraryContentDescriptor;
+  /** Durable identity. URLs below are only refreshable renditions. */
+  artifactId?: string;
+  revisionId?: string;
+  artifactType?: ArtifactType;
+  artifact?: ArtifactProjection;
+  /** Compatibility receipt; never accepted as mutation identity. */
+  transient?: TransientGenerationResult;
 }
 
 export interface LibraryArtifactRow {
@@ -77,6 +89,253 @@ export interface LibraryArtifactRow {
   created_at?: string | null;
   task_id?: string | null;
   session_id?: string | null;
+  artifact_id?: string | null;
+  revision_id?: string | null;
+  artifact_type?: ArtifactType | null;
+  artifact?: unknown;
+}
+
+const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
+  single_file_image: "image",
+  composite_image: "image",
+  vector_image: "image",
+  chart: "image",
+  document: "document",
+  grid: "sheet",
+  deck: "ppt",
+  pdf: "document",
+  website: "website",
+  video: "video",
+  audio: "audio",
+  model_3d: "threed",
+  workflow: "canvas",
+};
+
+export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
+  return ({
+    website: "website",
+    canvas: "workflow",
+    ppt: "deck",
+    sheet: "grid",
+    document: "document",
+    image: "single_file_image",
+    video: "video",
+    video_canvas: "workflow",
+    audio: "audio",
+    xhs: "document",
+    threed: "model_3d",
+    file: "document",
+  } as Record<LibraryKind, ArtifactType>)[kind];
+}
+
+function editorRouteHint(artifact: ArtifactProjection): string {
+  const capability = artifact.editorCapability || "";
+  const exact: Record<string, string> = {
+    "image-editor": "image",
+    "composite-image-editor": "image",
+    "vector-editor": "image",
+    "chart-editor": "grid",
+    "richdoc-editor": "richdoc",
+    "grid-editor": "grid",
+    "deck-editor": "deck",
+    "pdf-editor": "pdf",
+    "video-timeline": "video-timeline",
+    "audio-editor": "audio",
+    "model-3d-editor": "threed",
+    "website-editor": "embed",
+    website: "embed",
+    "design-canvas": "embed",
+    "video-canvas": "embed",
+  };
+  return exact[capability] || "";
+}
+
+/**
+ * Convert one server-authoritative projection. No type, ACL or editability is
+ * inferred from a filename, site or tag.
+ */
+export function artifactProjectionToLibraryItem(
+  artifact: ArtifactProjection,
+  options: { forEdit?: boolean } = {},
+): LibraryItem {
+  const kind =
+    artifact.artifactType === "workflow" &&
+    artifact.editorCapability === "video-canvas"
+      ? "video_canvas"
+      : ARTIFACT_KIND[artifact.artifactType];
+  const preview = artifact.renditions.preview;
+  const thumbnail = artifact.renditions.thumbnail;
+  const full = artifact.renditions.full;
+  const source = artifact.renditions.source;
+  const viewer =
+    artifact.renditions.preview ||
+    artifact.renditions.full ||
+    (artifact.access.canExportSource
+      ? artifact.renditions.source
+      : undefined);
+  const routeHint = editorRouteHint(artifact);
+  const url = options.forEdit
+    ? source?.url || full?.url || viewer?.url
+    : full?.url || viewer?.url;
+  const meta: Record<string, unknown> = {
+    artifact_id: artifact.artifactId,
+    revision_id: artifact.revisionId,
+    artifact_type: artifact.artifactType,
+    roles: artifact.roles,
+    source_format: artifact.sourceFormat,
+    source_url: source?.url || "",
+    source_revision_id: source?.revisionId || "",
+    editor_manifest_url:
+      artifact.renditions.editor_manifest?.url || "",
+    editor_capability: artifact.editorCapability || "",
+    editor: artifact.editorCapability || "",
+    editability: artifact.editability,
+    access: artifact.access,
+    integrity: artifact.integrity,
+    provenance: artifact.provenance,
+    context_bindings: artifact.bindings,
+    artifact_scene: artifact.scene,
+    format: artifact.sourceFormat,
+    ...(routeHint ? { advanced_editor_route: routeHint } : {}),
+    ...(artifact.scene
+      ? {
+          scene_revision_id: artifact.scene.sceneRevisionId,
+          dependency_revision_ids:
+            artifact.scene.dependencyRevisionIds,
+          dependency_closure_digest: artifact.scene.closureDigest,
+          dependency_closure_status: artifact.scene.closureStatus,
+        }
+      : {}),
+  };
+  return {
+    key: `artifact:${artifact.artifactId}:${artifact.revisionId}`,
+    source: "artifact",
+    id: artifact.artifactId,
+    artifactId: artifact.artifactId,
+    revisionId: artifact.revisionId,
+    artifactType: artifact.artifactType,
+    artifact,
+    title: artifact.title,
+    kind,
+    siteId: artifact.owner.originSiteKey || "",
+    url: url || undefined,
+    previewUrl: preview?.url || viewer?.url || undefined,
+    thumbUrl: thumbnail?.url || preview?.url || undefined,
+    favorite: artifact.favorite,
+    createdAt: artifact.createdAt || undefined,
+    meta,
+    descriptor: {
+      contentType: artifact.artifactType,
+      representation: artifact.sourceFormat,
+      subtype: artifact.artifactType,
+      editor: null,
+      capabilities:
+        artifact.editability === "view_only"
+          ? []
+          : ["load", "mutate", "save", "reopen"],
+      unavailableReason: artifact.integrity.ok
+        ? artifact.editability === "view_only"
+          ? "此 revision 是只读素材。"
+          : ""
+        : artifact.integrity.reason,
+    },
+  };
+}
+
+export function isDurableLibraryItem(
+  item: LibraryItem,
+): item is LibraryItem & {
+  artifactId: string;
+  revisionId: string;
+  artifactType: ArtifactType;
+  artifact: ArtifactProjection;
+} {
+  return Boolean(
+    item.artifactId &&
+      item.revisionId &&
+      item.artifactType &&
+      item.artifact &&
+      item.artifact.artifactId === item.artifactId &&
+      item.artifact.revisionId === item.revisionId,
+  );
+}
+
+function isCanonicalArtifactProjection(
+  value: unknown,
+): value is ArtifactProjection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const artifact = value as Partial<ArtifactProjection>;
+  return Boolean(
+    artifact.schema === "oceanleo.artifact.v1" &&
+      artifact.artifactId &&
+      artifact.revisionId &&
+      artifact.artifactType &&
+      artifact.renditions &&
+      artifact.access &&
+      artifact.integrity,
+  );
+}
+
+export function libraryItemIdentityKey(item: LibraryItem): string {
+  return isDurableLibraryItem(item)
+    ? `artifact:${item.artifactId}:${item.revisionId}`
+    : `${item.source}:${item.id}`;
+}
+
+function transientFromMeta(
+  input: {
+    id: string;
+    title: string;
+    url?: string;
+    kind: LibraryKind;
+    siteId?: string;
+    meta: Record<string, unknown>;
+  },
+  operation: TransientGenerationResult["operation"],
+): TransientGenerationResult | undefined {
+  const resultId = String(
+    input.meta.generation_result_id ||
+      input.meta.result_id ||
+      input.meta.upload_id ||
+      "",
+  ).trim();
+  const idempotencyKey = String(
+    input.meta.artifact_idempotency_key ||
+      input.meta.idempotency_key ||
+      "",
+  ).trim();
+  const payloadDigest = String(
+    input.meta.payload_digest || input.meta.content_digest || "",
+  ).trim();
+  const renditionUrl = String(
+    input.meta.preview_url || input.url || "",
+  ).trim();
+  if (!resultId || !idempotencyKey || !payloadDigest || !renditionUrl) {
+    return undefined;
+  }
+  return {
+    schema: "oceanleo.transient-generation.v1",
+    operation,
+    resultId,
+    idempotencyKey,
+    payloadDigest,
+    artifactType: artifactTypeForLibraryKind(input.kind),
+    title: input.title,
+    renditionUrl,
+    sourceUrl:
+      typeof input.meta.source_url === "string"
+        ? input.meta.source_url
+        : input.url,
+    sourceFormat: String(input.meta.format || ""),
+    siteId: input.siteId || "",
+    appId: String(input.meta.app_id || ""),
+    functionId: String(input.meta.function_id || ""),
+    provenance:
+      input.meta.provenance &&
+      typeof input.meta.provenance === "object"
+        ? (input.meta.provenance as Record<string, unknown>)
+        : undefined,
+  };
 }
 
 const KIND_ALIASES: Record<string, LibraryKind> = {
@@ -347,18 +606,13 @@ function previewFromMeta(meta: Record<string, unknown>): string {
   return metaString(meta, "preview_url", "previewUrl", "render_url", "renderUrl");
 }
 
-function normalizeUrlKey(url?: string): string {
-  if (!url) return "";
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${decodeURIComponent(parsed.pathname)}`.replace(/\/+$/, "");
-  } catch {
-    return url.split(/[?#]/, 1)[0].replace(/\/+$/, "");
-  }
-}
-
 export function normalizeWork(work: WorkItem): LibraryItem {
   const meta = work.meta ?? {};
+  const projection =
+    work.artifact ?? meta.artifact ?? meta.artifact_projection;
+  if (isCanonicalArtifactProjection(projection)) {
+    return artifactProjectionToLibraryItem(projection);
+  }
   const url = (work.url || "").trim();
   const kind = inferLibraryKind({
     meta,
@@ -367,11 +621,12 @@ export function normalizeWork(work: WorkItem): LibraryItem {
     url,
     siteId: work.site_id,
   });
-  return {
+  const title = (work.title || titleFromUrl(url) || "未命名作品").trim();
+  const item: LibraryItem = {
     key: `creation:${work.id}`,
     source: "creation",
     id: work.id,
-    title: (work.title || titleFromUrl(url) || "未命名作品").trim(),
+    title,
     kind,
     siteId: work.site_id || "",
     url: url || undefined,
@@ -383,9 +638,24 @@ export function normalizeWork(work: WorkItem): LibraryItem {
     meta,
     descriptor: libraryContentDescriptor({ kind, meta }),
   };
+  item.transient = transientFromMeta(
+    {
+      id: work.id,
+      title,
+      url,
+      kind,
+      siteId: work.site_id,
+      meta,
+    },
+    meta.library_source === "upload" ? "upload" : "generation",
+  );
+  return item;
 }
 
 export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
+  if (isCanonicalArtifactProjection(row.artifact)) {
+    return artifactProjectionToLibraryItem(row.artifact);
+  }
   const url = (row.url || "").trim();
   const content = row.content || "";
   const meta: Record<string, unknown> = {
@@ -393,11 +663,12 @@ export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
     session_id: row.session_id || undefined,
   };
   const kind = inferLibraryKind({ kind: row.kind, url, meta });
-  return {
+  const title = (row.title || titleFromUrl(url) || "未命名交付物").trim();
+  const item: LibraryItem = {
     key: `artifact:${row.id}`,
     source: "artifact",
     id: row.id,
-    title: (row.title || titleFromUrl(url) || "未命名交付物").trim(),
+    title,
     kind,
     siteId: "",
     url: url || undefined,
@@ -407,56 +678,30 @@ export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
     meta,
     descriptor: libraryContentDescriptor({ kind, meta }),
   };
+  item.transient = transientFromMeta(
+    { id: row.id, title, url, kind, meta },
+    "legacy-import",
+  );
+  return item;
 }
 
-function mergeItem(preferred: LibraryItem, other: LibraryItem): LibraryItem {
-  const creation =
-    preferred.source === "creation"
-      ? preferred
-      : other.source === "creation"
-        ? other
-        : preferred;
-  const artifact = creation === preferred ? other : preferred;
-  return {
-    ...artifact,
-    ...creation,
-    key: creation.key,
-    title:
-      creation.title && creation.title !== "未命名作品"
-        ? creation.title
-        : artifact.title,
-    kind: creation.kind === "file" ? artifact.kind : creation.kind,
-    url: creation.url || artifact.url,
-    previewUrl: creation.previewUrl || artifact.previewUrl,
-    thumbUrl: creation.thumbUrl || artifact.thumbUrl,
-    content: creation.content || artifact.content,
-    favorite: creation.favorite || artifact.favorite,
-    createdAt: creation.createdAt || artifact.createdAt,
-    meta: { ...artifact.meta, ...creation.meta, artifact_id: artifact.id },
-    descriptor: creation.descriptor || artifact.descriptor,
-  };
-}
-
-/** Merge both durable stores and de-duplicate the same file URL. */
+/**
+ * Union compatibility stores without using signed/transient URLs as identity.
+ * Canonical projections dedupe only by artifactId + pinned revisionId.
+ */
 export function buildLibraryItems(
   works: WorkItem[],
   artifacts: LibraryArtifactRow[],
 ): LibraryItem[] {
   const merged = new Map<string, LibraryItem>();
-  const noUrl: LibraryItem[] = [];
   for (const item of [
     ...works.map(normalizeWork),
     ...artifacts.map(normalizeArtifact),
   ]) {
-    const urlKey = normalizeUrlKey(item.url);
-    if (!urlKey) {
-      noUrl.push(item);
-      continue;
-    }
-    const current = merged.get(urlKey);
-    merged.set(urlKey, current ? mergeItem(current, item) : item);
+    const key = libraryItemIdentityKey(item);
+    if (!merged.has(key)) merged.set(key, item);
   }
-  return [...merged.values(), ...noUrl].sort((a, b) =>
+  return [...merged.values()].sort((a, b) =>
     String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
   );
 }

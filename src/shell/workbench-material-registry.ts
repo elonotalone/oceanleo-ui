@@ -1,3 +1,4 @@
+import type { ArtifactEditorCommand } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 
@@ -12,15 +13,46 @@ export interface WorkbenchMaterialPlacement {
 
 export type WorkbenchMaterialAction = "insert" | "replace" | "apply" | "merge";
 
+export interface WorkbenchMaterialCommandContract {
+  version: 1;
+  history: "editor-command";
+  createCommand: (
+    action: "insert" | "replace",
+    item: LibraryItem & {
+      artifactId: string;
+      revisionId: string;
+    },
+    placement?: WorkbenchMaterialPlacement,
+  ) => ArtifactEditorCommand;
+  execute: (
+    command: ArtifactEditorCommand,
+    detachedItem: LibraryItem,
+    placement?: WorkbenchMaterialPlacement,
+  ) => Promise<void> | void;
+}
+
 export interface WorkbenchMaterialAdapter {
   id: string;
   actions: readonly WorkbenchMaterialAction[];
+  /**
+   * Required for shared Insert/Replace. The target editor owns selection,
+   * geometry and expected target revision, and must put the returned command
+   * through its own history stack.
+   */
+  command?: WorkbenchMaterialCommandContract;
   accepts: (item: LibraryItem, action: WorkbenchMaterialAction) => boolean;
   mutate: (
     action: WorkbenchMaterialAction,
     detachedItem: LibraryItem,
     placement?: WorkbenchMaterialPlacement,
+    command?: ArtifactEditorCommand,
   ) => Promise<void> | void;
+}
+
+export interface WorkbenchMaterialActionAvailability {
+  visible: boolean;
+  available: boolean;
+  reason: string;
 }
 
 export interface WorkbenchMaterialRuntimeSnapshot {
@@ -47,6 +79,31 @@ const sources = new Map<
 >();
 const snapshots = new Map<string, readonly WorkspaceLibraryEntry[]>();
 const listeners = new Map<string, Set<() => void>>();
+
+function isDurableLibraryItem(
+  item: LibraryItem,
+): item is LibraryItem & {
+  artifactId: string;
+  revisionId: string;
+} {
+  return Boolean(
+    item.artifactId &&
+      item.revisionId &&
+      item.artifact?.artifactId === item.artifactId &&
+      item.artifact?.revisionId === item.revisionId,
+  );
+}
+
+function isEnsureableTransient(
+  value: LibraryItem["transient"],
+): boolean {
+  return Boolean(
+    value?.resultId &&
+      value.idempotencyKey &&
+      value.payloadDigest &&
+      value.renditionUrl,
+  );
+}
 
 function runtimeFor(scope: string): RuntimeState {
   const current = runtimes.get(scope);
@@ -118,7 +175,14 @@ function sameMaterialEntry(
     leftItem?.content === rightItem?.content &&
     leftItem?.favorite === rightItem?.favorite &&
     leftItem?.createdAt === rightItem?.createdAt &&
+    leftItem?.artifactId === rightItem?.artifactId &&
+    leftItem?.revisionId === rightItem?.revisionId &&
+    leftItem?.artifactType === rightItem?.artifactType &&
     jsonFingerprint(leftItem?.meta) === jsonFingerprint(rightItem?.meta) &&
+    jsonFingerprint(leftItem?.artifact) ===
+      jsonFingerprint(rightItem?.artifact) &&
+    jsonFingerprint(leftItem?.transient) ===
+      jsonFingerprint(rightItem?.transient) &&
     jsonFingerprint(leftItem?.descriptor) ===
       jsonFingerprint(rightItem?.descriptor)
   );
@@ -130,8 +194,9 @@ function rebuild(scope: string): void {
   for (const entries of sources.get(scope)?.values() || []) {
     for (const entry of entries) {
       const key =
-        entry.libraryItem?.url ||
-        entry.externalUrl ||
+        entry.libraryItem && isDurableLibraryItem(entry.libraryItem)
+          ? `${entry.libraryItem.artifactId}:${entry.libraryItem.revisionId}`
+          :
         entry.libraryItem?.key ||
         entry.id;
       if (!key || seen.has(key)) continue;
@@ -229,10 +294,100 @@ export function canPerformWorkbenchMaterial(
   actionId: WorkbenchMaterialAction,
   item: LibraryItem,
 ): boolean {
+  return workbenchMaterialActionAvailability(
+    scope,
+    actionId,
+    item,
+  ).available;
+}
+
+export function workbenchMaterialActionAvailability(
+  scope: string,
+  actionId: WorkbenchMaterialAction,
+  item: LibraryItem,
+): WorkbenchMaterialActionAvailability {
   const adapter = runtimes.get(scope)?.adapter;
-  return Boolean(
-    adapter?.actions.includes(actionId) && adapter.accepts(item, actionId),
-  );
+  if (!adapter || !adapter.actions.includes(actionId)) {
+    return {
+      visible: false,
+      available: false,
+      reason: "当前编辑器没有声明这个素材动作。",
+    };
+  }
+  if (!adapter.accepts(item, actionId)) {
+    return {
+      visible: true,
+      available: false,
+      reason: "当前编辑器不接受这种 artifact type/source。",
+    };
+  }
+  if (actionId === "insert" || actionId === "replace") {
+    if (
+      !isDurableLibraryItem(item) &&
+      !isEnsureableTransient(item.transient)
+    ) {
+      return {
+        visible: true,
+        available: false,
+        reason: "Insert/Replace 前必须取得 artifactId + revisionId。",
+      };
+    }
+    if (
+      adapter.command?.version !== 1 ||
+      adapter.command.history !== "editor-command" ||
+      typeof adapter.command.execute !== "function"
+    ) {
+      return {
+        visible: true,
+        available: false,
+        reason: "目标编辑器尚未注册 command/history 执行契约。",
+      };
+    }
+  }
+  return { visible: true, available: true, reason: "" };
+}
+
+function validateEditorCommand(
+  action: "insert" | "replace",
+  item: LibraryItem & { artifactId: string; revisionId: string },
+  command: ArtifactEditorCommand,
+): ArtifactEditorCommand {
+  if (
+    command.schema !== "oceanleo.editor-command.v1" ||
+    command.action !== action ||
+    !command.commandId ||
+    !command.historyGroupId ||
+    command.source.artifactId !== item.artifactId ||
+    command.source.revisionId !== item.revisionId ||
+    command.source.artifactType !== item.artifactType ||
+    command.source.sourceFormat !== item.artifact?.sourceFormat ||
+    !command.target.documentId ||
+    !command.expectedRevision.targetRevisionId ||
+    command.cas.expectedRevisionId !==
+      command.expectedRevision.targetRevisionId ||
+    (action === "insert" &&
+      command.strategy.mode !== "insert-new-object") ||
+    (action === "replace" &&
+      (command.strategy.mode === "insert-new-object" ||
+        !command.target.targetId ||
+        !command.target.slotId ||
+        !command.target.geometry ||
+        ![
+          command.target.geometry.x,
+          command.target.geometry.y,
+          command.target.geometry.width,
+          command.target.geometry.height,
+        ].every(
+          (value) => typeof value === "number" && Number.isFinite(value),
+        ) ||
+        Number(command.target.geometry.width) <= 0 ||
+        Number(command.target.geometry.height) <= 0 ||
+        !command.strategy.preserve.includes("slot") ||
+        !command.strategy.preserve.includes("geometry")))
+  ) {
+    throw new Error("编辑器返回了无效或未固定 revision 的素材命令。");
+  }
+  return command;
 }
 
 export function performWorkbenchMaterial(
@@ -242,17 +397,32 @@ export function performWorkbenchMaterial(
   placement?: WorkbenchMaterialPlacement,
 ): void | Promise<void> {
   const adapter = runtimes.get(scope)?.adapter;
-  if (
-    !adapter?.actions.includes(actionId) ||
-    !adapter.accepts(item, actionId)
-  ) {
-    throw new Error("当前编辑器已关闭或不支持这个素材动作。");
-  }
-  return adapter.mutate(
+  const availability = workbenchMaterialActionAvailability(
+    scope,
     actionId,
-    cloneMaterialForWorkbench(item),
-    placement,
+    item,
   );
+  if (!adapter || !availability.available) {
+    throw new Error(
+      availability.reason || "当前编辑器已关闭或不支持这个素材动作。",
+    );
+  }
+  let command: ArtifactEditorCommand | undefined;
+  if (actionId === "insert" || actionId === "replace") {
+    if (!isDurableLibraryItem(item) || !adapter.command) {
+      throw new Error("素材动作缺少 durable identity 或 command contract。");
+    }
+    command = validateEditorCommand(
+      actionId,
+      item,
+      adapter.command.createCommand(actionId, item, placement),
+    );
+  }
+  const detached = cloneMaterialForWorkbench(item);
+  if (command && adapter.command) {
+    return adapter.command.execute(command, detached, placement);
+  }
+  return adapter.mutate(actionId, detached, placement, command);
 }
 
 export function beginWorkbenchMaterialDrag(
@@ -283,5 +453,7 @@ export function cloneMaterialForWorkbench(item: LibraryItem): LibraryItem {
     ...(item.descriptor
       ? { descriptor: cloneValue(item.descriptor) }
       : {}),
+    ...(item.artifact ? { artifact: cloneValue(item.artifact) } : {}),
+    ...(item.transient ? { transient: cloneValue(item.transient) } : {}),
   };
 }

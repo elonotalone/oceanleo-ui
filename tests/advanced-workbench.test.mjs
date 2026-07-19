@@ -10,13 +10,14 @@ test("workspace files leave the library list and take over the fixed main canvas
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
-  assert.match(library, /editorCapabilityFor\(workbenchItem\)/);
-  assert.match(library, /allowAdvanced[\s\S]*editorCapability\.available/);
-  assert.match(library, /editorCapability\.unavailableReason/);
+  assert.match(library, /artifactActionMatrix/);
+  assert.match(library, /Card activation is always Preview/);
+  assert.match(library, /onEdit=\{editItem\}/);
   assert.match(library, /onOpenEntry\(entry\)/);
   assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
   assert.match(canvas, /<AdvancedContentWorkbench/);
   assert.match(canvas, /activeCanvasEntry/);
+  assert.match(canvas, /activeCanvasMode === "edit"/);
   assert.match(canvas, /<WorkspaceEntryCanvas/);
   assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
   assert.doesNotMatch(library, /router\.push\(href\)/);
@@ -177,8 +178,9 @@ test("advanced material browsing never navigates out of the current workbench", 
   assert.match(shell, /allowAdvancedOnSelect=\{false\}/);
   assert.match(
     materials,
-    /allowAdvanced=\{allowAdvancedOnSelect && materialActions\.length === 0\}/,
+    /allowAdvanced=\{allowAdvancedOnSelect\}/,
   );
+  assert.match(materials, /materialActionEvidence/);
 });
 
 test("advanced materials click to center and drag to the exact canvas point", () => {
@@ -520,17 +522,16 @@ test("full-page library and right workspace share the heterogeneous My Library",
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
-  assert.match(mine, /getDatabaseOverview/);
+  assert.match(mine, /searchArtifactLibrary/);
   assert.match(mine, /onlyFavorites/);
-  assert.match(mine, /Promise\.all\(\[/);
-  assert.match(mine, /deleteArtifact/);
+  assert.match(mine, /isDurableLibraryItem/);
+  assert.match(mine, /retireArtifact/);
   assert.match(mine, /uploadFile/);
-  assert.match(mine, /libraryCache/);
+  assert.match(mine, /ensureArtifact/);
   assert.doesNotMatch(advancedShell, /itemFilter=\{\(candidate\) =>/);
   assert.doesNotMatch(advancedShell, /advancedFeatureHrefForItem/);
   assert.match(advancedShell, /<MaterialLibrary/);
-  assert.match(mine, /data\?\.artifacts/);
-  assert.match(mine, /artifactsById/);
+  assert.doesNotMatch(mine, /user_creations|agent_artifacts/);
   assert.match(i18n, /\.replaceAll\("文件库", "我的库"\)/);
   assert.match(i18n, /\.replaceAll\("檔案庫", "我的库"\)/);
 });

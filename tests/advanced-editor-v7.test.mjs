@@ -199,14 +199,49 @@ test("regular spreadsheets use Grid while macro workbooks retain Office fidelity
 
 test("material adapter runtime bridges right libraries to the mounted editor scope", async () => {
   const scope = materialScopeKey("design", "poster-v7-test");
-  const sourceItem = fileItem("hero.png", "image/png");
+  const sourceItem = {
+    ...fileItem("hero.png", "image/png"),
+    artifactId: "hero-artifact",
+    revisionId: "hero-r1",
+    artifactType: "single_file_image",
+    artifact: {
+      artifactId: "hero-artifact",
+      revisionId: "hero-r1",
+      sourceFormat: "png",
+    },
+  };
   let received = null;
   const unregister = registerWorkbenchMaterialAdapter(scope, {
     id: "test-image-adapter",
     actions: ["insert"],
+    command: {
+      version: 1,
+      history: "editor-command",
+      createCommand: (_action, item) => ({
+        schema: "oceanleo.editor-command.v1",
+        commandId: "insert-hero",
+        historyGroupId: "history-hero",
+        action: "insert",
+        source: {
+          artifactId: item.artifactId,
+          revisionId: item.revisionId,
+          artifactType: item.artifactType,
+          sourceFormat: item.artifact.sourceFormat,
+        },
+        target: {
+          documentId: "poster",
+        },
+        strategy: { mode: "insert-new-object" },
+        expectedRevision: { targetRevisionId: "poster-r1" },
+        cas: { expectedRevisionId: "poster-r1" },
+      }),
+      execute: (command, item, placement) => {
+        received = { action: command.action, item, placement };
+      },
+    },
     accepts: (item, action) => item.kind === "file" && action === "insert",
-    mutate: (action, item, placement) => {
-      received = { action, item, placement };
+    mutate: () => {
+      throw new Error("typed Insert must execute through command history");
     },
   });
   assert.equal(canPerformWorkbenchMaterial(scope, "insert", sourceItem), true);
@@ -384,8 +419,10 @@ test("normal autosave progress is icon-only while actionable errors remain visib
   );
   assert.match(embed, /role="alert"/);
   const library = source("../src/shell/WorkspaceLibrary.tsx");
-  assert.match(library, /"彻底删除"/);
-  assert.match(library, /此操作无法撤销/);
+  const artifactActions = source("../src/shell/ArtifactActions.tsx");
+  assert.doesNotMatch(library, /"彻底删除"|此操作无法撤销/);
+  assert.match(artifactActions, /aria-describedby/);
+  assert.match(artifactActions, /unavailableReason/);
   assert.doesNotMatch(pdf, /有未保存的 PDF 修改/);
   assert.doesNotMatch(richdoc, /已保存到我的库/);
   for (const route of ["AudioRoute", "GridRoute", "RichDocRoute"]) {
