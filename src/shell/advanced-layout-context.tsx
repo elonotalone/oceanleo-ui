@@ -126,6 +126,7 @@ export interface AdvancedLayoutState {
   activeDrawerId: string;
   activeTransientPanelId: string;
   contextBarLeading?: ReactNode;
+  contextBarTrailing?: ReactNode;
   openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
   openTransientPanel: (
     panelId: string,

@@ -73,7 +73,7 @@ test("generated and material slots never wrap legacy container tabs as fake card
   assert.doesNotMatch(canvas, /workflowEntries/);
 });
 
-test("tool bars stay single-line and move overflow into semantic panels", () => {
+test("tool bars stay single-line and keep viewport overflow reachable", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
     source("../src/shell/SelectionToolbarSelectControl.tsx") +
@@ -85,7 +85,7 @@ test("tool bars stay single-line and move overflow into semantic panels", () => 
   assert.match(toolbar, /if \(!context && !leading && !trailing\) return null/);
   assert.match(toolbar, /flex-nowrap items-center/);
   assert.match(toolbar, /partitionSelectionControls/);
-  assert.match(toolbar, /SELECTION_TOOLBAR_MAX_WIDTH/);
+  assert.match(toolbar, /SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.match(toolbar, /role="dialog"/);
   assert.match(toolbar, /event\.key === "Escape"/);
   assert.doesNotMatch(toolbar, /selectionToolbarBudget/);

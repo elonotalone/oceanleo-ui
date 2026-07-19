@@ -14,8 +14,7 @@ import {
 } from "../src/shell/floating-toolbar-geometry.ts";
 import {
   partitionSelectionControls,
-  SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS,
-  SELECTION_TOOLBAR_MAX_WIDTH,
+  SELECTION_TOOLBAR_VIEWPORT_MAX,
 } from "../src/shell/selection-toolbar-layout.ts";
 import {
   beginWorkbenchMaterialDrag,
@@ -46,7 +45,7 @@ function fileItem(filename, mime = "") {
   };
 }
 
-test("selection toolbar keeps the deterministic v8 compact projection at every width", () => {
+test("selection toolbar keeps every primary capability at every width", () => {
   const controls = Array.from({ length: 12 }, (_, index) => ({
     id: `control-${index}`,
     kind: "action",
@@ -57,13 +56,11 @@ test("selection toolbar keeps the deterministic v8 compact projection at every w
   const wide = partitionSelectionControls(
     controls,
     measured,
-    SELECTION_TOOLBAR_MAX_WIDTH,
+    960,
   );
-  assert.equal(wide.visible.length, SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS);
-  assert.equal(
-    wide.overflow.length,
-    controls.length - SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS,
-  );
+  assert.equal(wide.visible.length, 9);
+  assert.equal(wide.overflow.length, 3);
+  assert.match(SELECTION_TOOLBAR_VIEWPORT_MAX, /100dvw/);
 
   const prioritized = [
     { id: "core-a", kind: "action", label: "A" },
@@ -91,6 +88,8 @@ test("selection toolbar keeps the deterministic v8 compact projection at every w
   assert.match(toolbar, /onBlur=\{\(event\) =>/);
   assert.match(toolbar, /overflow\.length > 0/);
   assert.match(toolbar, /w-72 max-w-/);
+  assert.match(toolbar, /maxInlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX/);
+  assert.doesNotMatch(toolbar, /width:\s*`min\(/);
   assert.doesNotMatch(toolbar, /Math\.min\(7|selectionToolbarBudget/);
   assert.doesNotMatch(toolbar, /calc\(100vw-2rem\),100%/);
   assert.match(toolbar, /openTransientPanel/);

@@ -20,23 +20,14 @@ import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
 import { useEmbedEditorMessages } from "./use-embed-editor-messages";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
+import { editorRouteFor } from "./workbench-routes";
 
 export type { EmbedEditorPaneProps } from "./workbench-embed-types";
 
 /** 每类嵌入编辑器的地址；只列已实现 editor.v1 接收端的页面。 */
 export function embedEditorBase(item: LibraryItem): string {
-  switch (item.kind) {
-    case "canvas":
-      return item.siteId === "video"
-        ? "https://video.oceanleo.com/canvas-board"
-        : "https://design.oceanleo.com/embed/editor";
-    case "video_canvas":
-      return "https://video.oceanleo.com/canvas-board";
-    case "website":
-      return "https://website.oceanleo.com/embed/site-editor";
-    default:
-      return "";
-  }
+  const route = editorRouteFor(item);
+  return route.type === "embed" ? route.base : "";
 }
 
 export function EmbedEditorPane({

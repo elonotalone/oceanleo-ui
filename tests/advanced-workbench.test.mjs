@@ -234,10 +234,14 @@ test("advanced materials click to center and drag to the exact canvas point", ()
 test("the shared property bar dispatches direct, dropdown and drawer controls", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/SelectionToolbarButtonControl.tsx") +
+    source("../src/shell/SelectionToolbarNumberControl.tsx") +
     source("../src/shell/SelectionToolbarSelectControl.tsx") +
     source("../src/shell/selection-inspector-host.tsx");
   const inspector = source("../src/shell/SelectionInspectorPanel.tsx");
-  const context = source("../src/shell/selection-context.ts");
+  const context =
+    source("../src/shell/selection-context.ts") +
+    source("../src/shell/selection-context-types.ts");
   assert.match(toolbar, /control\.kind === "action" \|\| control\.kind === "panel"/);
   assert.match(toolbar, /control\.panelAction/);
   assert.match(toolbar, /aria-haspopup="listbox"/);

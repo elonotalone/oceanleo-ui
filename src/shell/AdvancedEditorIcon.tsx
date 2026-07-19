@@ -27,6 +27,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     </>
   ),
   "align-center": <path d="M5 6h14M7 10h10M5 14h14M8 18h8" />,
+  "align-justify": <path d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
   "align-left": <path d="M4 6h16M4 10h11M4 14h16M4 18h9" />,
   "align-right": <path d="M4 6h16M9 10h11M4 14h16M11 18h9" />,
   animate: (
@@ -52,6 +53,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     <>
       <rect x="8" y="4" width="12" height="12" rx="2" />
       <path d="M4 8v10a2 2 0 002 2h10" />
+    </>
+  ),
+  case: (
+    <>
+      <path d="M4 18l4.5-12L13 18M5.5 14h6" />
+      <path d="M15 11.5c1.2-.8 4-.7 4 1.5v5M19 15c-3.5-1.2-5 .2-4.5 1.8.4 1.4 3.2 1.5 4.5-.3" />
     </>
   ),
   crop: (
@@ -210,6 +217,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     </>
   ),
   spacing: <path d="M4 7h16M4 17h16M8 10l4 4 4-4M12 14v-4" />,
+  strike: (
+    <>
+      <path d="M7 7.5C7 5.8 8.7 5 11 5c2.5 0 4 .9 4 2.5M9 16.8c.7.2 1.5.3 2.4.3 2.5 0 4.1-1 4.1-2.7 0-.6-.2-1.1-.7-1.5" />
+      <path d="M4 11.5h16" />
+    </>
+  ),
   table: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -223,6 +236,12 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     <>
       <rect x="5" y="10" width="14" height="11" rx="2" />
       <path d="M8 10V7a4 4 0 017.5-2" />
+    </>
+  ),
+  "vertical-text": (
+    <>
+      <path d="M8 4h8M12 4v9" />
+      <path d="M8 16h8M9 20h6" />
     </>
   ),
   agent: (

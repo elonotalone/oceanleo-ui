@@ -12,7 +12,6 @@ import {
   groupSelectionOverflowControls,
   partitionSelectionControls,
   selectionControlUsesIconOnly,
-  SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS,
 } from "../src/shell/selection-toolbar-layout.ts";
 import {
   isCompactSelectionControl,
@@ -78,6 +77,11 @@ const iconStubUrl = dataModule(`
     return jsx("span", { "data-icon": name, className, "aria-hidden": "true" });
   }
 `);
+const animationGalleryStubUrl = dataModule(`
+  export function SelectionAnimationGallery() {
+    return null;
+  }
+`);
 const layoutStubUrl = dataModule(`
   export function useAdvancedLayout() {
     return globalThis.__oceanleoV8Layout || null;
@@ -113,6 +117,11 @@ const uiStubUrl = dataModule(`
       value.replace(/\\{(\\w+)\\}/g, (match, key) =>
         vars && key in vars ? String(vars[key]) : match
       );
+  }
+`);
+const chromeStubUrl = dataModule(`
+  export function advancedWorkbenchStyle() {
+    return {};
   }
 `);
 
@@ -175,10 +184,10 @@ async function click(target) {
   });
 }
 
-test("v8 semantic placement is stable at every width and capped deterministically", () => {
+test("semantic placement is stable at every width without index truncation", () => {
   const controls = [
     ...Array.from(
-      { length: SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS + 2 },
+      { length: 8 },
       (_, index) => ({
         id: `compact-${index}`,
         kind: "action",
@@ -213,10 +222,10 @@ test("v8 semantic placement is stable at every width and capped deterministicall
     ),
   );
   const expectedVisible = Array.from(
-    { length: SELECTION_TOOLBAR_MAX_COMPACT_CONTROLS },
+    { length: 8 },
     (_, index) => `compact-${index}`,
   );
-  const expectedOverflow = ["compact-6", "compact-7", "hard-more"];
+  const expectedOverflow = ["hard-more"];
   for (const snapshot of snapshots) {
     assert.deepEqual(
       snapshot.visible.map((control) => control.id),
@@ -284,14 +293,15 @@ test("inspector triggers are compact icon controls while context-menu controls s
   ]);
   assert.equal(result.compact.length, 1);
   assert.deepEqual(result.compact[0], {
-    id: "selection-inspector-typography",
+    id: "selection-inspector-text-spacing",
     kind: "panel",
-    label: "Typography",
+    label: "间距",
     icon: "spacing",
     iconOnly: true,
-    panelId: "selection-inspector-typography",
+    panelId: "selection-inspector-text-spacing",
     placement: "primary",
     slot: "compact",
+    semantic: "spacing",
   });
   assert.equal(isCompactSelectionControl(result.compact[0]), true);
 
@@ -388,6 +398,137 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
   assert.match(headerSource, /focusAdvancedToolsTrigger\(adapter\.id\)/);
 });
 
+test("both floating handles share pointer, keyboard, and reset state symmetrically", async () => {
+  const { useFloatingContextToolbar } = await loadTsx(
+    "src/shell/FloatingContextToolbar.tsx",
+    {
+      react: reactUrl,
+      "react-dom": pathToFileURL(require.resolve("react-dom")).href,
+      "../i18n/ui/useUI": uiStubUrl,
+      "./advanced-workbench-chrome": chromeStubUrl,
+      "./floating-toolbar-geometry": pathToFileURL(
+        resolve("src/shell/floating-toolbar-geometry.ts"),
+      ).href,
+    },
+  );
+  function Harness() {
+    const stageRef = React.useRef(null);
+    const controller = useFloatingContextToolbar({
+      stageRef,
+      resetKey: "selection:one",
+    });
+    return React.createElement(
+      "div",
+      { ref: stageRef, "data-handle-stage": true },
+      React.createElement(
+        "div",
+        { ref: controller.toolbarRef, "data-handle-toolbar": true },
+        controller.leading,
+        controller.trailing,
+      ),
+    );
+  }
+
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
+    if (this.hasAttribute("data-handle-stage")) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-handle-toolbar")) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 300, bottom: 52,
+        width: 300, height: 52, toJSON() {},
+      };
+    }
+    return originalRect.call(this);
+  };
+
+  const mounted = await createMounted(Harness, {});
+  const handles = () => [
+    ...mounted.container.querySelectorAll("[data-floating-toolbar-handle]"),
+  ];
+  const offsets = () =>
+    handles().map((handle) =>
+      handle.getAttribute("data-floating-toolbar-offset"),
+    );
+  const key = async (handle, keyValue) => {
+    await act(async () => {
+      handle.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: keyValue,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+  };
+  const pointer = async (handle, type, values) => {
+    await act(async () => {
+      const event = new window.Event(type, { bubbles: true, cancelable: true });
+      for (const [name, value] of Object.entries(values)) {
+        Object.defineProperty(event, name, { configurable: true, value });
+      }
+      handle.dispatchEvent(event);
+    });
+  };
+  const reset = async (handle) => {
+    await act(async () => {
+      handle.dispatchEvent(
+        new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }),
+      );
+    });
+  };
+
+  try {
+    assert.equal(handles().length, 2);
+    assert.deepEqual(
+      handles().map((handle) =>
+        handle.getAttribute("data-floating-toolbar-handle"),
+      ),
+      ["left", "right"],
+    );
+    await key(handles()[0], "ArrowRight");
+    assert.deepEqual(offsets(), ["16,0", "16,0"]);
+    await key(handles()[1], "Home");
+    assert.deepEqual(offsets(), ["0,0", "0,0"]);
+    await key(handles()[1], "ArrowLeft");
+    assert.deepEqual(offsets(), ["-16,0", "-16,0"]);
+    await reset(handles()[0]);
+    assert.deepEqual(offsets(), ["0,0", "0,0"]);
+
+    await pointer(handles()[0], "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10,
+    });
+    await pointer(handles()[0], "pointermove", {
+      pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 20,
+    });
+    await pointer(handles()[0], "pointerup", {
+      pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 20,
+    });
+    assert.deepEqual(offsets(), ["20,10", "20,10"]);
+    await reset(handles()[1]);
+
+    await pointer(handles()[1], "pointerdown", {
+      pointerId: 2, pointerType: "touch", button: 0, clientX: 10, clientY: 10,
+    });
+    await pointer(handles()[1], "pointermove", {
+      pointerId: 2, pointerType: "touch", clientX: 30, clientY: 20,
+    });
+    await pointer(handles()[1], "pointerup", {
+      pointerId: 2, pointerType: "touch", clientX: 30, clientY: 20,
+    });
+    assert.deepEqual(offsets(), ["20,10", "20,10"]);
+    await reset(handles()[1]);
+    assert.deepEqual(offsets(), ["0,0", "0,0"]);
+  } finally {
+    await mounted.unmount();
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+  }
+});
+
 test("shared edit bar opens host tools, keeps values, and uses a focused vertical More dialog", async () => {
   const editorToolsIconUrl = await compileTsxUrl(
     "src/shell/EditorToolsIcon.tsx",
@@ -407,11 +548,24 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       ).href,
     },
   );
+  const buttonControlUrl = await compileTsxUrl(
+    "src/shell/SelectionToolbarButtonControl.tsx",
+    {
+      react: reactUrl,
+    },
+  );
+  const numberControlUrl = await compileTsxUrl(
+    "src/shell/SelectionToolbarNumberControl.tsx",
+    {
+      react: reactUrl,
+    },
+  );
   const { SelectionToolbar } = await loadTsx(
     "src/shell/SelectionToolbar.tsx",
     {
       react: reactUrl,
       "./AdvancedEditorIcon": iconStubUrl,
+      "./SelectionAnimationGallery": animationGalleryStubUrl,
       "./advanced-layout-context": layoutStubUrl,
       "./EditorToolsIcon": editorToolsIconUrl,
       "./selection-context": selectionContextStubUrl,
@@ -423,6 +577,8 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       ).href,
       "./selection-inspector-host": inspectorHostStubUrl,
       "./SelectionToolbarSelectControl": selectControlUrl,
+      "./SelectionToolbarButtonControl": buttonControlUrl,
+      "./SelectionToolbarNumberControl": numberControlUrl,
     },
   );
   let toolsOpened = 0;
@@ -544,6 +700,31 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       'input[aria-label="Font size"]',
     );
     assert.equal(fontSize?.value, "24");
+    await act(async () => {
+      fontSize.dispatchEvent(
+        new window.Event("compositionstart", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      fontSize.value = "30";
+      fontSize.dispatchEvent(
+        new window.Event("input", { bubbles: true, cancelable: true }),
+      );
+    });
+    assert.equal(commands.length, 0);
+    await act(async () => {
+      fontSize.dispatchEvent(
+        new window.Event("compositionend", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0].controlId, "font-size");
+    assert.equal(commands[0].value, 30);
+    commands.length = 0;
     assert.equal(
       mounted.container.querySelector(
         '[data-selection-control-id="crop"]',
@@ -551,7 +732,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       "Crop",
     );
     const inspector = mounted.container.querySelector(
-      'button[aria-label="Typography"]',
+      'button[aria-label="间距"]',
     );
     assert.ok(inspector);
     assert.equal(inspector.textContent, "");
@@ -587,7 +768,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     assert.equal(dialog.isConnected, false);
     assert.equal(document.activeElement, more);
     assert.deepEqual(commands[0], {
-      requestId: "selection-test-1",
+      requestId: "selection-test-2",
       selectionId: "text:hero",
       controlId: "delete",
       selectionRevision: 7,
@@ -631,14 +812,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     const unavailableTools = mounted.container.querySelector(
       "[data-editor-tools-trigger]",
     );
-    assert.equal(unavailableTools.getAttribute("aria-disabled"), "true");
-    assert.match(unavailableTools.getAttribute("aria-label"), /Read only/);
-    assert.equal(unavailableTools.getAttribute("aria-haspopup"), null);
-    assert.equal(unavailableTools.getAttribute("aria-expanded"), null);
-    assert.equal(unavailableTools.getAttribute("aria-controls"), null);
-    unavailableTools.focus();
-    assert.equal(document.activeElement, unavailableTools);
-    await click(unavailableTools);
+    assert.equal(unavailableTools, null);
     assert.equal(toolsOpened, 1);
   } finally {
     await mounted.unmount();

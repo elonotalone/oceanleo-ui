@@ -15,6 +15,9 @@ import {
   useAdvancedLayout,
 } from "./advanced-layout-context";
 import { EditorToolsTrigger } from "./EditorToolsIcon";
+import { SelectionAnimationGallery } from "./SelectionAnimationGallery";
+import { SelectionToolbarButtonControl } from "./SelectionToolbarButtonControl";
+import { SelectionToolbarNumberControl } from "./SelectionToolbarNumberControl";
 import {
   selectionRequestId,
   type SelectionPanelAction,
@@ -24,10 +27,14 @@ import {
   type SelectionControlValue,
 } from "./selection-context";
 import {
+  DESIGN_TEXT_CONTROL_ORDER,
   groupSelectionOverflowControls,
+  nextTextAlignment,
+  orderDesignTextControls,
   partitionSelectionControls,
+  selectionControlSemantic,
   selectionControlUsesIconOnly,
-  SELECTION_TOOLBAR_MAX_WIDTH,
+  SELECTION_TOOLBAR_VIEWPORT_MAX,
 } from "./selection-toolbar-layout";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
 import { useSelectionInspectorHost } from "./selection-inspector-host";
@@ -44,20 +51,25 @@ export interface SelectionToolbarProps {
   variant?: "bar" | "floating";
 }
 
-function asNumber(
-  value: SelectionControlValue | undefined,
-  fallback = 0,
-): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+function hasCanonicalAlignmentCapability(control: SelectionControl): boolean {
+  if (control.kind !== "select") return false;
+  const declaredValues = new Set(
+    (control.options || []).map((option) => option.value),
+  );
+  return ["left", "center", "right", "justify"].every((value) =>
+    declaredValues.has(value),
+  );
 }
 
 function Control({
   control,
   selectionId,
   selectionRevision,
+  selectionEpoch,
   onCommand,
   onOpenPanel,
   accent,
+  canonicalDesignText = false,
   activePanel = false,
   presentation = "compact",
   onActivated,
@@ -65,128 +77,117 @@ function Control({
   control: SelectionControl;
   selectionId: string;
   selectionRevision?: SelectionContext["revision"];
+  selectionEpoch?: SelectionContext["epoch"];
   onCommand: (command: SelectionCommand) => void;
   onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
   accent: string;
+  canonicalDesignText?: boolean;
   activePanel?: boolean;
   presentation?: "compact" | "menu";
   onActivated?: () => void;
 }) {
   const menu = presentation === "menu";
   const iconOnly = !menu && selectionControlUsesIconOnly(control);
-  const emit = (value?: SelectionControlValue) =>
+  const emit = (
+    value?: SelectionControlValue,
+    controlId = control.id,
+    history?: SelectionCommand["history"],
+  ) =>
     onCommand({
       requestId: selectionRequestId(),
       selectionId,
-      controlId: control.id,
+      controlId,
       ...(value !== undefined ? { value } : {}),
       ...(selectionRevision !== undefined ? { selectionRevision } : {}),
+      ...(selectionEpoch !== undefined ? { selectionEpoch } : {}),
+      ...(history ? { history } : {}),
     });
   const icon = control.icon
     ? <AdvancedEditorIcon name={control.icon} className="h-[17px] w-[17px]" />
     : null;
   const buttonClass = menu
-    ? "group/control flex min-h-9 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
-    : "group/control inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
+    ? "group/control flex min-h-11 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
+    : "group/control inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
 
-  if (control.kind === "action" || control.kind === "panel") {
+  if (control.kind === "animation-gallery") {
+    return (
+      <SelectionAnimationGallery
+        control={control}
+        selection={{
+          id: selectionId,
+          revision: selectionRevision,
+          epoch: selectionEpoch,
+        }}
+        onCommand={onCommand}
+        accent={accent}
+      />
+    );
+  }
+
+  if (
+    canonicalDesignText &&
+    selectionControlSemantic(control) === "alignment" &&
+    (control.kind === "select" || control.kind === "action")
+  ) {
+    if (!hasCanonicalAlignmentCapability(control)) return null;
+    const current =
+      typeof control.value === "string" ? control.value : undefined;
+    const next = nextTextAlignment(current);
+    const alignmentLabel =
+      control.disabled && control.unavailableReason
+        ? `${control.label}：${control.unavailableReason}`
+        : control.label;
+    const alignmentIcon =
+      current === "center"
+        ? "align-center"
+        : current === "right"
+          ? "align-right"
+          : current === "justify"
+            ? "align-justify"
+            : "align-left";
     return (
       <button
         type="button"
         disabled={control.disabled}
         onClick={() => {
-          if (control.kind === "panel" && onOpenPanel) {
-            onOpenPanel(control.panelId || control.id, control.panelAction);
-            onActivated?.();
-            return;
-          }
-          emit();
+          emit(next);
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-9 px-0" : ""} ${
-          activePanel ? "bg-[var(--surface-hover,rgba(0,0,0,.06))]" : ""
-        } ${
-          control.danger || control.tone === "danger"
-            ? "text-rose-600 hover:bg-rose-500/10"
-            : ""
-        }`}
-        title={control.label}
-        aria-label={control.label}
-        aria-haspopup={control.kind === "panel" ? "dialog" : undefined}
-        aria-expanded={control.kind === "panel" ? activePanel : undefined}
-        aria-controls={
-          control.kind === "panel" ? control.panelId || control.id : undefined
-        }
-        style={
-          activePanel
-            ? {
-                color: accent,
-                boxShadow: `inset 0 -2px 0 ${accent}`,
-              }
-            : undefined
-        }
+        className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""}`}
+        title={`${alignmentLabel}: ${current || "未设置"}`}
+        aria-label={`${alignmentLabel}: ${current || "未设置"}`}
+        aria-pressed={current !== undefined}
+        data-selection-alignment={current || "unset"}
       >
-        {icon}
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
-      </button>
-    );
-  }
-  if (control.kind === "toggle") {
-    const active = control.value === true;
-    return (
-      <button
-        type="button"
-        aria-pressed={active}
-        disabled={control.disabled}
-        onClick={() => {
-          emit(!active);
-          onActivated?.();
-        }}
-        className={`${buttonClass} ${iconOnly ? "w-9 px-0" : ""} ${
-          active ? "text-white shadow-sm" : ""
-        }`}
-        style={active ? { background: accent } : undefined}
-        title={control.label}
-        aria-label={control.label}
-      >
-        {icon}
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
-      </button>
-    );
-  }
-  if (control.kind === "color") {
-    const color =
-      typeof control.value === "string" && /^#[0-9a-f]{6}$/i.test(control.value)
-        ? control.value
-        : "#000000";
-    return (
-      <label
-        className={`${buttonClass} relative ${
-          iconOnly ? "w-9 px-0" : ""
-        } focus-within:ring-2 focus-within:ring-[var(--accent,#7c3aed)]/40`}
-        title={control.label}
-        aria-label={control.label}
-      >
-        <span className="relative grid h-5 w-5 place-items-center">
-          {icon}
-          <span
-            className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-full ring-1 ring-black/10"
-            style={{ background: color }}
-          />
-        </span>
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
-        <input
-          type="color"
-          value={color}
-          disabled={control.disabled}
-          onChange={(event) => {
-            emit(event.target.value);
-            onActivated?.();
-          }}
-          aria-label={control.label}
-          className="absolute inset-0 cursor-pointer opacity-0"
+        <AdvancedEditorIcon
+          name={alignmentIcon}
+          className="h-[17px] w-[17px]"
         />
-      </label>
+        {!iconOnly && (
+          <span className="whitespace-nowrap">{control.label}</span>
+        )}
+      </button>
+    );
+  }
+
+  if (
+    control.kind === "action" ||
+    control.kind === "panel" ||
+    control.kind === "toggle" ||
+    control.kind === "color"
+  ) {
+    return (
+      <SelectionToolbarButtonControl
+        control={control}
+        buttonClass={buttonClass}
+        iconOnly={iconOnly}
+        icon={icon}
+        accent={accent}
+        activePanel={activePanel}
+        onOpenPanel={onOpenPanel}
+        onActivated={onActivated}
+        emit={emit}
+      />
     );
   }
   if (control.kind === "select") {
@@ -195,6 +196,7 @@ function Control({
         control={control}
         selectionId={selectionId}
         selectionRevision={selectionRevision}
+        selectionEpoch={selectionEpoch}
         onCommand={onCommand}
         accent={accent}
         presentation={presentation}
@@ -203,71 +205,14 @@ function Control({
     );
   }
   if (control.kind === "number") {
-    const value = asNumber(control.value);
-    const step = control.step || 1;
-    const clamp = (next: number) =>
-      Math.min(
-        control.max ?? Number.POSITIVE_INFINITY,
-        Math.max(control.min ?? Number.NEGATIVE_INFINITY, next),
-      );
     return (
-      <div
-        className={`flex h-9 shrink-0 items-center overflow-hidden rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
-          menu ? "w-full" : ""
-        }`}
-        title={control.label}
-      >
-        {!iconOnly && (
-          <span className="flex items-center gap-1.5 border-r border-[var(--divider,#e7e5e4)] px-2 text-[11px] text-[var(--muted,#78716c)]">
-            {icon}
-            {control.label}
-          </span>
-        )}
-        {iconOnly && icon && (
-          <span
-            className="grid h-full w-7 shrink-0 place-items-center text-[var(--muted,#78716c)]"
-            aria-hidden="true"
-          >
-            {icon}
-          </span>
-        )}
-        <button
-          type="button"
-          disabled={control.disabled}
-          onClick={() => emit(clamp(value - step))}
-          className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-          aria-label={`${control.label} -`}
-        >
-          −
-        </button>
-        <input
-          type="number"
-          value={value}
-          min={control.min}
-          max={control.max}
-          step={step}
-          disabled={control.disabled}
-          onChange={(event) => emit(Number(event.target.value))}
-          aria-label={control.label}
-          className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-            menu ? "min-w-16 flex-1" : "w-12"
-          }`}
-        />
-        {control.suffix && (
-          <span className="-ml-1 pr-1 text-[10px] text-[var(--muted,#78716c)]">
-            {control.suffix}
-          </span>
-        )}
-        <button
-          type="button"
-          disabled={control.disabled}
-          onClick={() => emit(clamp(value + step))}
-          className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-          aria-label={`${control.label} +`}
-        >
-          +
-        </button>
-      </div>
+      <SelectionToolbarNumberControl
+        control={control}
+        menu={menu}
+        iconOnly={iconOnly}
+        icon={icon}
+        emit={emit}
+      />
     );
   }
   // Continuous values and long text are rendered only in a child inspector.
@@ -289,6 +234,7 @@ export function SelectionToolbar({
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const toolsLauncher = layout?.toolsLauncher || null;
   const [moreOpen, setMoreOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -296,7 +242,11 @@ export function SelectionToolbar({
   const morePanelRef = useRef<HTMLDivElement | null>(null);
   const toolsButtonRef = useRef<HTMLButtonElement | null>(null);
   const morePanelId = `selection-more-${useId().replace(/:/g, "")}`;
-  const identity = context ? `${context.kind}:${context.id}` : "";
+  const identity = context
+    ? `${context.kind}:${context.id}:${String(context.epoch ?? "")}:${String(
+        context.revision ?? "",
+      )}`
+    : "";
   const sourceControls = useMemo(
     () =>
       (context?.controls || []).filter(
@@ -304,9 +254,41 @@ export function SelectionToolbar({
       ),
     [context],
   );
+  const canonicalDesignText =
+    toolsLauncher?.id === "design-canvas" &&
+    Boolean(context?.kind.toLowerCase().includes("text"));
+  const projectedSourceControls = useMemo(
+    () =>
+      canonicalDesignText
+        ? sourceControls.map((control) => {
+            const semantic = selectionControlSemantic(control);
+            return semantic &&
+              DESIGN_TEXT_CONTROL_ORDER.includes(semantic) &&
+              control.slot !== "stage" &&
+              control.slot !== "context-menu"
+              ? { ...control, placement: "primary" as const }
+              : control;
+          })
+        : sourceControls,
+    [canonicalDesignText, sourceControls],
+  );
   const { compact: controls, groups: inspectorGroups } = useMemo(
-    () => partitionSelectionInspectorControls(sourceControls),
-    [sourceControls],
+    () => partitionSelectionInspectorControls(projectedSourceControls),
+    [projectedSourceControls],
+  );
+  const orderedControls = useMemo(
+    () =>
+      toolsLauncher?.id === "design-canvas" &&
+      context?.kind.toLowerCase().includes("text")
+        ? orderDesignTextControls(
+            controls.filter(
+              (control) =>
+                selectionControlSemantic(control) !== "alignment" ||
+                hasCanonicalAlignmentCapability(control),
+            ),
+          )
+        : controls,
+    [context?.kind, controls, toolsLauncher?.id],
   );
   const controlsIdentity = sourceControls
     .map(
@@ -336,11 +318,11 @@ export function SelectionToolbar({
   const { visible, overflow } = useMemo(
     () =>
       partitionSelectionControls(
-        controls,
+        orderedControls,
         new Map(),
-        SELECTION_TOOLBAR_MAX_WIDTH,
+        Number.POSITIVE_INFINITY,
       ),
-    [controls],
+    [orderedControls],
   );
   const overflowGroups = useMemo(
     () => groupSelectionOverflowControls(overflow),
@@ -354,8 +336,9 @@ export function SelectionToolbar({
     );
     (firstControl || panel)?.focus();
   }, [moreOpen]);
-  const toolsLauncher = layout?.toolsLauncher || null;
-  const toolsLauncherId = toolsLauncher?.id;
+  const toolsLauncherId = toolsLauncher?.available
+    ? toolsLauncher.id
+    : undefined;
   useLayoutEffect(() => {
     if (!toolsLauncherId) return;
     return registerAdvancedToolsTrigger(toolsLauncherId, () =>
@@ -390,6 +373,7 @@ export function SelectionToolbar({
   if (!context && !leading && !trailing) return null;
   const effectiveVariant = layout ? "floating" : variant;
   const contextLeading = layout?.contextBarLeading;
+  const contextTrailing = layout?.contextBarTrailing;
   const renderControl = (
     control: SelectionControl,
     presentation: "compact" | "menu",
@@ -411,9 +395,11 @@ export function SelectionToolbar({
           control={control}
           selectionId={context?.id || ""}
           selectionRevision={context?.revision}
+          selectionEpoch={context?.epoch}
           onCommand={onCommand}
           onOpenPanel={openControlPanel}
           accent={accent}
+          canonicalDesignText={canonicalDesignText}
           activePanel={Boolean(
             control.kind === "panel" &&
               activePanelId === (control.panelId || control.id),
@@ -438,15 +424,19 @@ export function SelectionToolbar({
       ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
       data-selection-id={context?.id || ""}
-      className={`pointer-events-auto flex min-w-0 flex-nowrap items-center gap-1 ${
+      data-selection-anchor-x={context?.anchor?.x}
+      data-selection-anchor-y={context?.anchor?.y}
+      data-selection-anchor-width={context?.anchor?.width}
+      data-selection-anchor-height={context?.anchor?.height}
+      className={`pointer-events-auto flex flex-nowrap items-center gap-1 ${
         effectiveVariant === "floating"
-          ? "max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
+          ? "w-fit max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
           : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
       style={
         effectiveVariant === "floating"
           ? {
-              width: `min(${SELECTION_TOOLBAR_MAX_WIDTH}px, calc(100vw - 2rem))`,
+              maxInlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX,
             }
           : undefined
       }
@@ -470,7 +460,7 @@ export function SelectionToolbar({
           <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
         </>
       )}
-      {context && (
+      {context && toolsLauncher?.available && (
         <EditorToolsTrigger
           ref={toolsButtonRef}
           selectionKind={context.kind}
@@ -478,12 +468,14 @@ export function SelectionToolbar({
           accent={accent}
         />
       )}
-      {context && (
+      {context &&
+        toolsLauncher?.available &&
+        (visible.length > 0 || overflow.length > 0) && (
         <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
       )}
       <div
         ref={controlsRef}
-        className="relative flex min-w-0 flex-1 flex-nowrap items-center gap-1 [overflow-x:auto] overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="relative flex min-w-0 max-w-full flex-nowrap items-center gap-1 [overflow-x:auto] overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {visible.map((control) => renderControl(control, "compact"))}
       </div>
@@ -496,7 +488,7 @@ export function SelectionToolbar({
             aria-haspopup="dialog"
             aria-controls={morePanelId}
             onClick={() => setMoreOpen((value) => !value)}
-            className="grid h-9 w-9 place-items-center rounded-lg text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
+            className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
             aria-label="更多属性"
             title="更多属性"
           >
@@ -539,8 +531,11 @@ export function SelectionToolbar({
           )}
         </div>
       )}
-      {trailing && (
-        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2">{trailing}</div>
+      {(trailing || contextTrailing) && (
+        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2">
+          {trailing}
+          {contextTrailing}
+        </div>
       )}
       {fallbackPanel}
     </div>

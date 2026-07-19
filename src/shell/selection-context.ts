@@ -1,149 +1,65 @@
+import type {
+  AnimationPresetId,
+  SelectionAnchorRect,
+  SelectionAnimationGalleryCapability,
+  SelectionAnimationParameterCapability,
+  SelectionAnimationPresetCapability,
+  SelectionAnimationPreviewCapability,
+  SelectionCommand,
+  SelectionCommandPhase,
+  SelectionContext,
+  SelectionControl,
+  SelectionControlIcon,
+  SelectionControlKind,
+  SelectionControlPlacement,
+  SelectionControlSemantic,
+  SelectionControlSlot,
+  SelectionControlValue,
+  SelectionPanelAction,
+  SelectionRevision,
+} from "./selection-context-types";
+
+export type {
+  AnimationPresetId,
+  SelectionAnchorRect,
+  SelectionAnimationGalleryCapability,
+  SelectionAnimationParameterCapability,
+  SelectionAnimationPresetCapability,
+  SelectionAnimationPreviewCapability,
+  SelectionCommand,
+  SelectionCommandPhase,
+  SelectionContext,
+  SelectionControl,
+  SelectionControlIcon,
+  SelectionControlKind,
+  SelectionControlOption,
+  SelectionControlPlacement,
+  SelectionControlSemantic,
+  SelectionControlSlot,
+  SelectionControlValue,
+  SelectionPanelAction,
+  SelectionRevision,
+} from "./selection-context-types";
+
 export const SELECTION_PROTOCOL = "oceanleo.selection.v1" as const;
 export const SELECTION_CONTEXT_VERSION = 1 as const;
 
-export type SelectionControlKind =
-  | "action"
-  | "toggle"
-  | "select"
-  | "number"
-  | "range"
-  | "color"
-  | "text"
-  | "panel";
-
-export type SelectionControlIcon =
-  | "add"
-  | "ai"
-  | "align-center"
-  | "align-left"
-  | "align-right"
-  | "animate"
-  | "background"
-  | "bold"
-  | "border"
-  | "bring-forward"
-  | "crop"
-  | "color"
-  | "delete"
-  | "download"
-  | "draw"
-  | "duplicate"
-  | "effects"
-  | "elements"
-  | "filter"
-  | "flip-horizontal"
-  | "flip-vertical"
-  | "font"
-  | "image"
-  | "italic"
-  | "layers"
-  | "line"
-  | "link"
-  | "lock"
-  | "more"
-  | "materials"
-  | "note"
-  | "opacity"
-  | "pages"
-  | "position"
-  | "redo"
-  | "rotate"
-  | "save"
-  | "select"
-  | "send-backward"
-  | "shape"
-  | "signature"
-  | "spacing"
-  | "table"
-  | "text"
-  | "templates"
-  | "underline"
-  | "undo"
-  | "unlock";
-
-export type SelectionControlValue = string | number | boolean | null;
-export type SelectionPanelAction = "insert" | "replace" | "apply" | "merge";
-export type SelectionRevision = string | number;
-export type SelectionControlSlot =
-  | "compact"
-  | "inspector"
-  | "stage"
-  | "context-menu";
-export type SelectionControlPlacement = "primary" | "more" | "tools";
-export type SelectionCommandPhase = "start" | "update" | "commit" | "cancel";
-
-export interface SelectionControlOption {
-  value: string;
-  label: string;
-}
-
-export interface SelectionControl {
-  id: string;
-  kind: SelectionControlKind;
-  label: string;
-  icon?: SelectionControlIcon;
-  /** Visual grouping in the shared top property bar. */
-  group?: string;
-  /** Hide the label visually while keeping it as tooltip/aria-label. */
-  iconOnly?: boolean;
-  /** `panel` controls open a host drawer with this id. */
-  panelId?: string;
-  /** Optional material action used when a panel opens the shared library. */
-  panelAction?: SelectionPanelAction;
-  /** Optional compact suffix rendered beside number/range values. */
-  suffix?: string;
-  /** Shared-shell placement. Continuous controls belong in `inspector`. */
-  slot?: SelectionControlSlot;
-  /** Stable left child-edit-bar group for inspector controls. */
-  inspectorGroup?: string;
-  /** Trigger/header label for the grouped child edit bar. */
-  inspectorLabel?: string;
-  /** Trigger icon for the grouped child edit bar. */
-  inspectorIcon?: SelectionControlIcon;
-  value?: SelectionControlValue;
-  options?: SelectionControlOption[];
-  min?: number;
-  max?: number;
-  step?: number;
-  disabled?: boolean;
-  danger?: boolean;
-  /** Semantic emphasis used by inspector actions. */
-  tone?: "danger";
-  /**
-   * Semantic surface compatibility field. `more` and `tools` are hard
-   * placements; viewport width must never promote them into the compact bar.
-   */
-  placement?: SelectionControlPlacement;
-}
-
-export interface SelectionAnchorRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface SelectionContext {
-  version: typeof SELECTION_CONTEXT_VERSION;
-  kind: string;
-  id: string;
-  label?: string;
-  text?: string;
-  /** Monotonic selection/model revision used to reject stale iframe commands. */
-  revision?: SelectionRevision;
-  anchor?: SelectionAnchorRect;
-  controls: SelectionControl[];
-}
-
-export interface SelectionCommand {
-  requestId: string;
-  selectionId: string;
-  controlId: string;
-  value?: SelectionControlValue;
-  selectionRevision?: SelectionRevision;
-  phase?: SelectionCommandPhase;
-  transactionId?: string;
-}
+export const ANIMATION_PRESET_IDS = [
+  "typewriter",
+  "ascend",
+  "shift",
+  "merge",
+  "block",
+  "burst",
+  "bounce",
+  "roll",
+  "skate",
+  "spread",
+  "clarify",
+  "rise",
+  "pan",
+  "fade",
+] as const;
 
 const ID_RE = /^[a-z0-9][a-z0-9_.:-]{0,79}$/i;
 const KIND_RE = /^[a-z][a-z0-9_-]{0,47}$/i;
@@ -156,12 +72,14 @@ const CONTROL_KINDS = new Set<SelectionControlKind>([
   "color",
   "text",
   "panel",
+  "animation-gallery",
 ]);
 
 const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "add",
   "ai",
   "align-center",
+  "align-justify",
   "align-left",
   "align-right",
   "animate",
@@ -169,6 +87,7 @@ const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "bold",
   "border",
   "bring-forward",
+  "case",
   "crop",
   "color",
   "delete",
@@ -201,13 +120,34 @@ const CONTROL_ICONS = new Set<SelectionControlIcon>([
   "shape",
   "signature",
   "spacing",
+  "strike",
   "table",
   "text",
   "templates",
   "underline",
   "undo",
   "unlock",
+  "vertical-text",
 ]);
+
+const CONTROL_SEMANTICS = new Set<SelectionControlSemantic>([
+  "font-size",
+  "color",
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "case",
+  "alignment",
+  "spacing",
+  "vertical-text",
+  "opacity",
+  "effects",
+  "animation",
+  "position",
+]);
+
+const ANIMATION_PRESETS = new Set<AnimationPresetId>(ANIMATION_PRESET_IDS);
 
 function finite(value: unknown, fallback?: number): number | undefined {
   return typeof value === "number" &&
@@ -246,6 +186,165 @@ function revisionValue(value: unknown): SelectionRevision | undefined {
     : undefined;
 }
 
+function normalizeAnimationGallery(
+  value: unknown,
+): SelectionAnimationGalleryCapability | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  if (
+    !Array.isArray(source.presets) ||
+    source.presets.length < 1 ||
+    source.presets.length > ANIMATION_PRESET_IDS.length
+  ) {
+    return null;
+  }
+  const presetIds = new Set<string>();
+  let currentCount = 0;
+  const presets: SelectionAnimationPresetCapability[] = [];
+  for (const candidate of source.presets) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return null;
+    }
+    const raw = candidate as Record<string, unknown>;
+    const id = shortString(raw.id, 40) as AnimationPresetId;
+    const label = shortString(raw.label, 120);
+    const applyCommandId = shortString(raw.applyCommandId, 80);
+    if (
+      !ANIMATION_PRESETS.has(id) ||
+      presetIds.has(id) ||
+      !label ||
+      !ID_RE.test(applyCommandId)
+    ) {
+      return null;
+    }
+    presetIds.add(id);
+    if (raw.current === true) currentCount += 1;
+    if (currentCount > 1) return null;
+
+    const parameters: SelectionAnimationParameterCapability[] = [];
+    const parameterIds = new Set<string>();
+    if (raw.parameters !== undefined) {
+      if (!Array.isArray(raw.parameters) || raw.parameters.length > 12) {
+        return null;
+      }
+      for (const parameterCandidate of raw.parameters) {
+        if (
+          !parameterCandidate ||
+          typeof parameterCandidate !== "object" ||
+          Array.isArray(parameterCandidate)
+        ) {
+          return null;
+        }
+        const parameter = parameterCandidate as Record<string, unknown>;
+        const parameterId = shortString(parameter.id, 80);
+        const parameterLabel = shortString(parameter.label, 120);
+        const commandId = shortString(parameter.commandId, 80);
+        const kind = parameter.kind;
+        const normalizedValue = controlValue(parameter.value);
+        const options = Array.isArray(parameter.options)
+          ? parameter.options.slice(0, 50).map((option) => {
+              const record =
+                option && typeof option === "object" && !Array.isArray(option)
+                  ? (option as Record<string, unknown>)
+                  : {};
+              return {
+                value: shortString(record.value, 160),
+                label: shortString(record.label, 120),
+              };
+            })
+          : undefined;
+        if (
+          !ID_RE.test(parameterId) ||
+          parameterIds.has(parameterId) ||
+          !parameterLabel ||
+          !ID_RE.test(commandId) ||
+          (kind !== "number" && kind !== "select") ||
+          (kind === "number" && typeof normalizedValue !== "number") ||
+          (kind === "select" &&
+            (typeof normalizedValue !== "string" ||
+              !options?.length ||
+              options.some((option) => !option.value || !option.label)))
+        ) {
+          return null;
+        }
+        parameterIds.add(parameterId);
+        parameters.push({
+          id: parameterId,
+          label: parameterLabel,
+          commandId,
+          kind,
+          value: normalizedValue as string | number,
+          ...(options?.length ? { options } : {}),
+          ...(finite(parameter.min) !== undefined
+            ? { min: finite(parameter.min) }
+            : {}),
+          ...(finite(parameter.max) !== undefined
+            ? { max: finite(parameter.max) }
+            : {}),
+          ...(finite(parameter.step) !== undefined
+            ? { step: finite(parameter.step) }
+            : {}),
+        });
+      }
+    }
+
+    let preview: SelectionAnimationPreviewCapability | undefined;
+    if (raw.preview !== undefined) {
+      if (!raw.preview || typeof raw.preview !== "object" || Array.isArray(raw.preview)) {
+        return null;
+      }
+      const previewSource = raw.preview as Record<string, unknown>;
+      const commandId = shortString(previewSource.commandId, 80);
+      const durationMs = finite(previewSource.durationMs);
+      const previewParameterIds = Array.isArray(previewSource.parameterIds)
+        ? previewSource.parameterIds.map((entry) => shortString(entry, 80))
+        : [];
+      if (
+        (previewSource.parameterIds !== undefined &&
+          !Array.isArray(previewSource.parameterIds)) ||
+        !ID_RE.test(commandId) ||
+        durationMs === undefined ||
+        durationMs < 100 ||
+        durationMs > 60_000 ||
+        new Set(previewParameterIds).size !== previewParameterIds.length ||
+        previewParameterIds.some((entry) => !parameterIds.has(entry))
+      ) {
+        return null;
+      }
+      preview = {
+        commandId,
+        durationMs,
+        ...(previewParameterIds.length
+          ? { parameterIds: previewParameterIds }
+          : {}),
+      };
+    }
+
+    presets.push({
+      id,
+      label,
+      applyCommandId,
+      ...(raw.current === true ? { current: true } : {}),
+      ...(preview ? { preview } : {}),
+      ...(parameters.length ? { parameters } : {}),
+    });
+  }
+
+  const removeCommandId = shortString(source.removeCommandId, 80);
+  const clearCommandId = shortString(source.clearCommandId, 80);
+  if (
+    (source.removeCommandId !== undefined && !ID_RE.test(removeCommandId)) ||
+    (source.clearCommandId !== undefined && !ID_RE.test(clearCommandId))
+  ) {
+    return null;
+  }
+  return {
+    presets,
+    ...(removeCommandId ? { removeCommandId } : {}),
+    ...(clearCommandId ? { clearCommandId } : {}),
+  };
+}
+
 export function normalizeSelectionContext(
   value: unknown,
 ): SelectionContext | null {
@@ -271,7 +370,7 @@ export function normalizeSelectionContext(
     }
     const raw = candidate as Record<string, unknown>;
     const controlId = shortString(raw.id, 80);
-    const controlKind = shortString(raw.kind, 16) as SelectionControlKind;
+    const controlKind = shortString(raw.kind, 24) as SelectionControlKind;
     const label = shortString(raw.label, 120);
     if (
       !ID_RE.test(controlId) ||
@@ -302,6 +401,23 @@ export function normalizeSelectionContext(
     }
     const normalizedValue = controlValue(raw.value);
     if (raw.value !== undefined && normalizedValue === undefined) return null;
+    if (
+      raw.semantic !== undefined &&
+      !CONTROL_SEMANTICS.has(raw.semantic as SelectionControlSemantic)
+    ) {
+      return null;
+    }
+    const animationGallery =
+      raw.animationGallery === undefined
+        ? null
+        : normalizeAnimationGallery(raw.animationGallery);
+    if (
+      (controlKind === "animation-gallery" && !animationGallery) ||
+      (controlKind !== "animation-gallery" &&
+        raw.animationGallery !== undefined)
+    ) {
+      return null;
+    }
     controls.push({
       id: controlId,
       kind: controlKind,
@@ -311,6 +427,9 @@ export function normalizeSelectionContext(
         : {}),
       ...(shortString(raw.group, 40)
         ? { group: shortString(raw.group, 40) }
+        : {}),
+      ...(CONTROL_SEMANTICS.has(raw.semantic as SelectionControlSemantic)
+        ? { semantic: raw.semantic as SelectionControlSemantic }
         : {}),
       ...(typeof raw.iconOnly === "boolean"
         ? { iconOnly: raw.iconOnly }
@@ -346,8 +465,12 @@ export function normalizeSelectionContext(
       ...(finite(raw.max) !== undefined ? { max: finite(raw.max) } : {}),
       ...(finite(raw.step) !== undefined ? { step: finite(raw.step) } : {}),
       ...(raw.disabled === true ? { disabled: true } : {}),
+      ...(shortString(raw.unavailableReason, 240)
+        ? { unavailableReason: shortString(raw.unavailableReason, 240) }
+        : {}),
       ...(raw.danger === true ? { danger: true } : {}),
       ...(raw.tone === "danger" ? { tone: "danger" as const } : {}),
+      ...(animationGallery ? { animationGallery } : {}),
       ...(["primary", "more", "tools"].includes(String(raw.placement || ""))
         ? { placement: raw.placement as SelectionControlPlacement }
         : {}),
@@ -375,6 +498,8 @@ export function normalizeSelectionContext(
   }
   const revision = revisionValue(source.revision);
   if (source.revision !== undefined && revision === undefined) return null;
+  const epoch = revisionValue(source.epoch);
+  if (source.epoch !== undefined && epoch === undefined) return null;
 
   return {
     version: SELECTION_CONTEXT_VERSION,
@@ -382,6 +507,7 @@ export function normalizeSelectionContext(
     id,
     controls,
     ...(revision !== undefined ? { revision } : {}),
+    ...(epoch !== undefined ? { epoch } : {}),
     ...(shortString(source.label, 120)
       ? { label: shortString(source.label, 120) }
       : {}),
@@ -406,9 +532,14 @@ export function normalizeSelectionCommand(
       ? shortString(source.transactionId, 128)
       : "";
   const selectionRevision = revisionValue(source.selectionRevision);
+  const selectionEpoch = revisionValue(source.selectionEpoch);
   const validPhase = ["start", "update", "commit", "cancel"].includes(
     String(source.phase),
   );
+  const history =
+    source.history === "document" || source.history === "view"
+      ? source.history
+      : undefined;
   const phase = validPhase
     ? (source.phase as SelectionCommandPhase)
     : undefined;
@@ -419,6 +550,8 @@ export function normalizeSelectionCommand(
     (source.value !== undefined && valueField === undefined) ||
     (source.selectionRevision !== undefined &&
       selectionRevision === undefined) ||
+    (source.selectionEpoch !== undefined && selectionEpoch === undefined) ||
+    (source.history !== undefined && history === undefined) ||
     (source.transactionId !== undefined && !transactionId) ||
     (source.phase !== undefined && !validPhase) ||
     (Boolean(transactionId) !== Boolean(phase)) ||
@@ -433,6 +566,8 @@ export function normalizeSelectionCommand(
     controlId,
     ...(valueField !== undefined ? { value: valueField } : {}),
     ...(selectionRevision !== undefined ? { selectionRevision } : {}),
+    ...(selectionEpoch !== undefined ? { selectionEpoch } : {}),
+    ...(history ? { history } : {}),
     ...(phase ? { phase } : {}),
     ...(transactionId ? { transactionId } : {}),
   };

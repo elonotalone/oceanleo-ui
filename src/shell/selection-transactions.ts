@@ -10,6 +10,7 @@ interface ActiveSelectionGesture {
   id: string;
   selectionId: string;
   selectionRevision?: SelectionRevision;
+  selectionEpoch?: SelectionRevision;
   initialValue?: SelectionControlValue;
   latestValue?: SelectionControlValue;
 }
@@ -17,6 +18,7 @@ interface ActiveSelectionGesture {
 interface SelectionTransactionIdentity {
   selectionId: string;
   selectionRevision?: SelectionRevision;
+  selectionEpoch?: SelectionRevision;
   controlId: string;
 }
 
@@ -41,7 +43,8 @@ function matchesTransaction(
   return (
     command.selectionId === transaction.selectionId &&
     command.controlId === transaction.controlId &&
-    sameRevision(command.selectionRevision, transaction.selectionRevision)
+    sameRevision(command.selectionRevision, transaction.selectionRevision) &&
+    sameRevision(command.selectionEpoch, transaction.selectionEpoch)
   );
 }
 
@@ -58,7 +61,7 @@ export class SelectionGestureTransaction {
   }
 
   start(
-    selection: Pick<SelectionContext, "id" | "revision">,
+    selection: Pick<SelectionContext, "id" | "revision" | "epoch">,
     value?: SelectionControlValue,
   ): SelectionCommand | null {
     if (this.gesture) return null;
@@ -66,6 +69,7 @@ export class SelectionGestureTransaction {
       id: requestId("txn"),
       selectionId: selection.id,
       selectionRevision: selection.revision,
+      selectionEpoch: selection.epoch,
       initialValue: value,
       latestValue: value,
     };
@@ -105,6 +109,9 @@ export class SelectionGestureTransaction {
       ...(value !== undefined ? { value } : {}),
       ...(gesture.selectionRevision !== undefined
         ? { selectionRevision: gesture.selectionRevision }
+        : {}),
+      ...(gesture.selectionEpoch !== undefined
+        ? { selectionEpoch: gesture.selectionEpoch }
         : {}),
       phase,
       transactionId: gesture.id,
@@ -165,7 +172,8 @@ export class SelectionCommandGate {
     } else if (context) {
       if (
         command.selectionId !== context.id ||
-        !sameRevision(command.selectionRevision, context.revision)
+        !sameRevision(command.selectionRevision, context.revision) ||
+        !sameRevision(command.selectionEpoch, context.epoch)
       ) {
         return false;
       }
@@ -179,6 +187,7 @@ export class SelectionCommandGate {
       this.transactions.set(transactionId, {
         selectionId: command.selectionId,
         selectionRevision: command.selectionRevision,
+        selectionEpoch: command.selectionEpoch,
         controlId: command.controlId,
       });
     }
@@ -192,7 +201,8 @@ export class SelectionCommandGate {
       if (
         context &&
         transaction.selectionId === context.id &&
-        sameRevision(transaction.selectionRevision, context.revision)
+        sameRevision(transaction.selectionRevision, context.revision) &&
+        sameRevision(transaction.selectionEpoch, context.epoch)
       ) {
         continue;
       }
@@ -222,6 +232,7 @@ export class SelectionCommandGate {
       requestId: requestId("sel"),
       selectionId: transaction.selectionId,
       selectionRevision: transaction.selectionRevision,
+      selectionEpoch: transaction.selectionEpoch,
       controlId: transaction.controlId,
       phase: "cancel",
       transactionId,

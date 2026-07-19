@@ -279,6 +279,7 @@ export function InlineAdvancedWorkbenchShell({
           ? transientPanel.id
           : "",
       contextBarLeading: floatingToolbar.leading,
+      contextBarTrailing: floatingToolbar.trailing,
       openDrawer,
       openTransientPanel,
       updateTransientPanel,
@@ -287,6 +288,7 @@ export function InlineAdvancedWorkbenchShell({
     [
       activeDrawerId,
       floatingToolbar.leading,
+      floatingToolbar.trailing,
       fallbackDetail,
       closeDetail,
       openDrawer,

@@ -206,6 +206,7 @@ export {
 } from "./selection-inspector-groups";
 export type { SelectionInspectorGroup } from "./selection-inspector-groups";
 export {
+  ANIMATION_PRESET_IDS,
   SELECTION_CONTEXT_VERSION,
   SELECTION_PROTOCOL,
   normalizeSelectionCommand,
@@ -217,7 +218,12 @@ export {
   SelectionGestureTransaction,
 } from "./selection-transactions";
 export type {
+  AnimationPresetId,
   SelectionAnchorRect,
+  SelectionAnimationGalleryCapability,
+  SelectionAnimationParameterCapability,
+  SelectionAnimationPresetCapability,
+  SelectionAnimationPreviewCapability,
   SelectionCommand,
   SelectionCommandPhase,
   SelectionContext,
@@ -225,6 +231,7 @@ export type {
   SelectionControlIcon,
   SelectionControlKind,
   SelectionControlOption,
+  SelectionControlSemantic,
   SelectionControlSlot,
   SelectionControlValue,
   SelectionRevision,

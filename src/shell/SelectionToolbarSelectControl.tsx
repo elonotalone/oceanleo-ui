@@ -15,6 +15,7 @@ export function SelectionToolbarSelectControl({
   control,
   selectionId,
   selectionRevision,
+  selectionEpoch,
   onCommand,
   accent,
   presentation,
@@ -23,6 +24,7 @@ export function SelectionToolbarSelectControl({
   control: SelectionControl;
   selectionId: string;
   selectionRevision?: SelectionContext["revision"];
+  selectionEpoch?: SelectionContext["epoch"];
   onCommand: (command: SelectionCommand) => void;
   accent: string;
   presentation: "compact" | "menu";
@@ -32,6 +34,10 @@ export function SelectionToolbarSelectControl({
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menu = presentation === "menu";
   const iconOnly = !menu && selectionControlUsesIconOnly(control);
+  const accessibleLabel =
+    control.disabled && control.unavailableReason
+      ? `${control.label}：${control.unavailableReason}`
+      : control.label;
   const selectedOption = (control.options || []).find(
     (option) => option.value === String(control.value ?? ""),
   );
@@ -42,15 +48,16 @@ export function SelectionToolbarSelectControl({
       controlId: control.id,
       value,
       ...(selectionRevision !== undefined ? { selectionRevision } : {}),
+      ...(selectionEpoch !== undefined ? { selectionEpoch } : {}),
     });
   const buttonClass = menu
-    ? "group/control flex min-h-9 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
-    : "group/control inline-flex h-9 shrink-0 max-w-48 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
+    ? "group/control flex min-h-11 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
+    : "group/control inline-flex h-11 min-w-11 shrink-0 max-w-48 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
 
   return (
     <div
       className={`group/control relative shrink-0 ${menu ? "w-full" : ""}`}
-      title={control.label}
+      title={accessibleLabel}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
           setOpen(false);
@@ -70,7 +77,7 @@ export function SelectionToolbarSelectControl({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={control.label}
+        aria-label={accessibleLabel}
         className={buttonClass}
       >
         {control.icon && (

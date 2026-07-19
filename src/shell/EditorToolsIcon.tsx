@@ -75,7 +75,7 @@ export const EditorToolsTrigger = forwardRef<
       aria-expanded={available ? launcher?.expanded || false : undefined}
       aria-controls={available ? launcher?.controlsId : undefined}
       title={accessibleLabel}
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 ${
+      className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 ${
         available
           ? "hover:brightness-95"
           : "cursor-not-allowed opacity-40"
