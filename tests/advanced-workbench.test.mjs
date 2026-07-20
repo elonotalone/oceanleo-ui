@@ -505,14 +505,24 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
   );
 });
 
-test("cloud browser can be opened directly and still supports takeover", () => {
+test("cloud browser powers on at Google and negotiates v2 with v1 compatibility", () => {
   const panel =
     source("../src/shell/CloudBrowserPanel.tsx") +
-    source("../src/shell/cloud-browser-controls.tsx");
+    source("../src/shell/cloud-browser-controls.tsx") +
+    source("../src/shell/cloud-browser-live.ts") +
+    source("../src/shell/cloud-browser-transport.ts") +
+    source("../src/shell/cloud-browser-transport-actions.ts") +
+    source("../src/shell/cloud-browser-protocol.ts") +
+    source("../src/shell/cloud-browser-session-data.ts");
   const client = source("../src/lib/browser.ts");
-  assert.match(panel, /createCloudBrowser\(url, effectiveTaskId \|\| undefined\)/);
-  assert.match(panel, /reload\(session\.id\)/);
-  assert.match(panel, /driving \? "release" : "takeover"/);
+  assert.match(
+    panel,
+    /createCloudBrowser\(\s*DEFAULT_BROWSER_URL,\s*effectiveTaskId \|\| undefined/,
+  );
+  assert.match(panel, /reload\(created\.id\)/);
+  assert.match(panel, /v2Envelope\("control\.acquire"/);
+  assert.match(panel, /legacyDrivingRef\.current \? "release" : "takeover"/);
+  assert.match(panel, /v2Envelope\("frame\.presented"/);
   assert.match(panel, /socket\.binaryType = "blob"/);
   assert.match(panel, /event\.data instanceof Blob/);
   assert.match(panel, /URL\.revokeObjectURL/);

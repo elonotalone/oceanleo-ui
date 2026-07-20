@@ -9,6 +9,9 @@ export interface CloudBrowserSession {
   task_id?: string | null;
   app_session_id?: string | null;
   status: string;
+  runtime_state?: string | null;
+  live_state?: string | null;
+  failure_reason?: string | null;
   last_url?: string;
   last_title?: string;
   sensitive_active?: boolean;
@@ -24,10 +27,76 @@ export interface CloudBrowserEvent {
   sequence_no?: number;
   action?: string;
   url?: string;
+  display_url?: string;
   title?: string;
+  tab_id?: string | null;
+  tab_title?: string | null;
+  reason?: string | null;
+  captured_at?: string;
   sensitive?: boolean;
   has_screenshot?: boolean;
   created_at?: string;
+}
+
+export type CloudBrowserTransportState =
+  | "idle"
+  | "ticketing"
+  | "ws_connecting"
+  | "authenticated"
+  | "awaiting_first_frame"
+  | "streaming"
+  | "reconnecting"
+  | "failed"
+  | "closed";
+
+export type CloudBrowserTabState =
+  | "opening"
+  | "loading"
+  | "ready"
+  | "crashed"
+  | "closing"
+  | "closed";
+
+export interface CloudBrowserTab {
+  id: string;
+  title: string;
+  displayUrl: string;
+  faviconUrl?: string;
+  status: CloudBrowserTabState;
+  openerTabId?: string | null;
+}
+
+export interface CloudBrowserControlLease {
+  leaseId: string;
+  epoch: number;
+  holderKind: "agent" | "human" | "free";
+  holderId?: string;
+  connectionId?: string;
+  expiresAt?: string;
+  privacyMode?: boolean;
+}
+
+export interface CloudBrowserFrameMeta {
+  sequence?: number;
+  width?: number;
+  height?: number;
+  byteLength?: number;
+  capturedAtMs?: number;
+  streamId?: string;
+  generation?: number;
+  tabId?: string;
+  runtimeId?: string;
+  incarnation?: number;
+  kind?: "bootstrap" | "screencast" | string;
+}
+
+export interface CloudBrowserTicket {
+  ticket: string;
+  expires_in: number;
+  protocol_version?: number;
+  session_id?: string;
+  runtime_id?: string;
+  incarnation?: number;
 }
 
 const base = "/v1/browser";
@@ -78,7 +147,7 @@ export function deleteCloudBrowser(sessionId: string) {
 }
 
 export function createCloudBrowserTicket(sessionId: string) {
-  return authed<{ ticket: string; expires_in: number }>(
+  return authed<CloudBrowserTicket>(
     `${base}/sessions/${encodeURIComponent(sessionId)}/live-ticket`,
     { method: "POST" },
   );
