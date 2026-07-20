@@ -42,7 +42,9 @@ test("typed routes render real content in the inline App-library editor shell", 
     source("../src/shell/advanced-routes/Model3DRoute.tsx"),
     source("../src/shell/advanced-routes/ChartRoute.tsx"),
   ].join("\n");
-  const routes = source("../src/shell/workbench-routes.ts");
+  const routes =
+    source("../src/shell/workbench-routes.ts") +
+    source("../src/shell/workbench-capability-registry.ts");
   assert.match(workbench, /editorRouteFor\(props\.item\)/);
   assert.match(workbench, /dynamic\(/);
   assert.match(workbench, /WorkbenchRouteLoading/);
@@ -157,7 +159,10 @@ test("library panels are static while embedded editors stay isolated", () => {
 test("code-backed website starters reach the visual editor without a fake project id", () => {
   const routes = source("../src/shell/workbench-routes.ts");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  const materials = source("../src/shell/MaterialLibrary.tsx");
+  const materials =
+    source("../src/shell/MaterialLibrary.tsx") +
+    source("../src/shell/material-library-controller.ts") +
+    source("../src/shell/material-library-view.tsx");
   assert.match(
     routes,
     /if \(!projectId && !starterId && !githubRepo\) \{[\s\S]*?return unavailable\(/,
@@ -174,7 +179,9 @@ test("advanced material browsing never navigates out of the current workbench", 
     source("../src/shell/AdvancedWorkbenchShell.tsx"),
     source("../src/shell/InlineEditorMaterialPanel.tsx"),
   ].join("\n");
-  const materials = source("../src/shell/MaterialLibrary.tsx");
+  const materials =
+    source("../src/shell/MaterialLibrary.tsx") +
+    source("../src/shell/material-library-view.tsx");
   assert.match(shell, /allowAdvancedOnSelect=\{false\}/);
   assert.match(
     materials,

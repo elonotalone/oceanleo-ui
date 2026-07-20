@@ -4,6 +4,7 @@ import type {
   ArtifactType,
   TransientGenerationResult,
 } from "./artifact-contract";
+import { editorRouteHintForArtifactCapability } from "./workbench-capability-registry";
 
 /**
  * Cross-site library kinds are content/viewer semantics, not storage-table
@@ -128,28 +129,6 @@ export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
   } as Record<LibraryKind, ArtifactType>)[kind];
 }
 
-function editorRouteHint(artifact: ArtifactProjection): string {
-  const capability = artifact.editorCapability || "";
-  const exact: Record<string, string> = {
-    "image-editor": "image",
-    "composite-image-editor": "image",
-    "vector-editor": "image",
-    "chart-editor": "grid",
-    "richdoc-editor": "richdoc",
-    "grid-editor": "grid",
-    "deck-editor": "deck",
-    "pdf-editor": "pdf",
-    "video-timeline": "video-timeline",
-    "audio-editor": "audio",
-    "model-3d-editor": "threed",
-    "website-editor": "embed",
-    website: "embed",
-    "design-canvas": "embed",
-    "video-canvas": "embed",
-  };
-  return exact[capability] || "";
-}
-
 /**
  * Convert one server-authoritative projection. No type, ACL or editability is
  * inferred from a filename, site or tag.
@@ -173,7 +152,9 @@ export function artifactProjectionToLibraryItem(
     (artifact.access.canExportSource
       ? artifact.renditions.source
       : undefined);
-  const routeHint = editorRouteHint(artifact);
+  const routeHint = editorRouteHintForArtifactCapability(
+    artifact.editorCapability,
+  );
   const url = options.forEdit
     ? source?.url || full?.url || viewer?.url
     : full?.url || viewer?.url;

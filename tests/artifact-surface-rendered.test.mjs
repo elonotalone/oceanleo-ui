@@ -181,13 +181,22 @@ const workspaceLibraryStubUrl = dataModule(`
     );
   }
 `);
+const materialControllerUrl = await compileModule(
+  "src/shell/material-library-controller.ts",
+  {
+    "./library-data": libraryDataUrl,
+    "./artifact-contract": contractUrl,
+    "./artifact-client": artifactClientUrl,
+    "./workspace-library-model": workspaceLibraryStubUrl,
+  },
+);
 const MaterialLibrary = (
   await import(
-    await compileModule("src/shell/MaterialLibrary.tsx", {
+    await compileModule("src/shell/material-library-view.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
       "./library-data": libraryDataUrl,
       "./artifact-contract": contractUrl,
-      "./artifact-client": artifactClientUrl,
+      "./material-library-controller": materialControllerUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
       "./workbench-material-registry": registryStubUrl,

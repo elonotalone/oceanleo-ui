@@ -216,10 +216,13 @@ test("shared UI source contains exact primary/global More endpoints and no serie
     new URL("../src/shell/artifact-client.ts", import.meta.url),
     "utf8",
   );
-  const material = readFileSync(
-    new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
-    "utf8",
-  );
+  const material = [
+    "../src/shell/MaterialLibrary.tsx",
+    "../src/shell/material-library-controller.ts",
+    "../src/shell/material-library-view.tsx",
+  ]
+    .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+    .join("\n");
   assert.match(client, /\/v1\/library\/primary/);
   assert.match(client, /\/v1\/library\/search/);
   assert.match(client, /"Idempotency-Key"/);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
+import { dirname } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +35,27 @@ import {
 const pixel =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+3MxZ5wAAAABJRU5ErkJggg==";
 
+function javascriptModuleFormat(url) {
+  if (url.endsWith(".mjs")) return "module";
+  if (url.endsWith(".cjs")) return "commonjs";
+  let directory = dirname(fileURLToPath(url));
+  while (true) {
+    const packageJson = `${directory}/package.json`;
+    if (existsSync(packageJson)) {
+      try {
+        return JSON.parse(readFileSync(packageJson, "utf8")).type === "module"
+          ? "module"
+          : "commonjs";
+      } catch {
+        return "commonjs";
+      }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return "commonjs";
+    directory = parent;
+  }
+}
+
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier.startsWith(".") && context.parentURL) {
@@ -48,16 +70,38 @@ registerHooks({
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
-    if (url.endsWith(".tsx")) {
+    if (url.endsWith(".tsx") || url.endsWith(".ts")) {
       return {
         format: "module",
         source: ts.transpileModule(readFileSync(fileURLToPath(url), "utf8"), {
           compilerOptions: {
-            jsx: ts.JsxEmit.ReactJSX,
+            jsx: url.endsWith(".tsx")
+              ? ts.JsxEmit.ReactJSX
+              : ts.JsxEmit.Preserve,
             module: ts.ModuleKind.ESNext,
             target: ts.ScriptTarget.ES2022,
           },
         }).outputText,
+        shortCircuit: true,
+      };
+    }
+    if (url.startsWith("node:")) {
+      return {
+        format: "builtin",
+        source: "",
+        shortCircuit: true,
+      };
+    }
+    if (url.startsWith("file:") && !url.endsWith(".node")) {
+      const format =
+        url.endsWith(".js") ||
+        url.endsWith(".mjs") ||
+        url.endsWith(".cjs")
+          ? javascriptModuleFormat(url)
+          : context.format || (url.endsWith(".json") ? "json" : "module");
+      return {
+        format,
+        source: readFileSync(fileURLToPath(url)),
         shortCircuit: true,
       };
     }

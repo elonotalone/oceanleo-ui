@@ -11,6 +11,9 @@ import {
   normalizeWorkspaceAction,
   workspaceSlotForLegacyId,
 } from "../src/shell/workspace-actions.ts";
+import {
+  buildWorkspaceSurfaceModel,
+} from "../src/shell/workspace-surface-model.ts";
 
 test("viewer kind prefers explicit metadata and recognizes real Office files", () => {
   assert.equal(
@@ -91,31 +94,24 @@ test("legacy pages normalize into exactly five fixed workspace slots", () => {
 });
 
 test("dynamic plus/minus libraries are removed from the right workspace", () => {
-  const source = readFileSync(
-    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
-    "utf8",
+  const model = buildWorkspaceSurfaceModel([
+    { id: "__guide", label: "模板", displayLabel: "灵感", slot: "template", role: "panel", content: null, callbackId: null },
+    { id: "result", label: "生成结果", displayLabel: "生成结果", slot: "preview", role: "entry", content: null },
+    { id: "materials", label: "素材库", displayLabel: "素材库", slot: "materials", role: "container", content: null },
+    { id: "files", label: "文件库", displayLabel: "文件库", slot: "mine", role: "container", content: null },
+    { id: "browser", label: "云端浏览器", displayLabel: "云端浏览器", slot: "browser", role: "panel", content: null },
+  ]);
+  assert.deepEqual(
+    FIXED_WORKSPACE_SLOTS.map((slot) => model.groups[slot][0]?.id),
+    ["__guide", "result", "materials", "files", "browser"],
   );
-  assert.match(source, /FIXED_WORKSPACE_SLOTS\.filter/);
-  assert.match(source, /showTemplate \|\| slot !== "template"/);
-  assert.match(source, /template: "灵感"/);
-  assert.match(source, /preview: "生成"/);
-  assert.match(source, /mine: "我的库"/);
-  assert.match(source, /useRightPaneSlot/);
-  assert.match(source, /setRightLabel\([\s\S]*?<FixedWorkspaceTabs/);
-  assert.match(source, /hint\?: string/);
-  assert.match(source, /tab\.id !== "__guide"/);
-  assert.match(source, /const selected =[\s\S]*internal/);
-  assert.match(source, /setInternal\(id\)/);
-  assert.match(source, /setRightTab\(id\)/);
-  assert.doesNotMatch(source, /expanded \? "−" : "\+"/);
-  assert.doesNotMatch(source, /crossSiteLibraryTabs/);
-  assert.doesNotMatch(source, /\bmoreTabs\b/);
-  assert.match(source, /!isGenericMaterialsTab\(tab\)/);
+  assert.equal(model.byId.get("__guide").displayLabel, "灵感");
+  assert.equal(model.byId.get("materials").role, "container");
 });
 
 test("chart viewer cover stays separate from typed chart edit capability", () => {
   const source = readFileSync(
-    new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
+    new URL("../src/shell/material-library-controller.ts", import.meta.url),
     "utf8",
   );
   assert.match(source, /chart: "image"/);
@@ -131,7 +127,7 @@ test("chart viewer cover stays separate from typed chart edit capability", () =>
 
 test("Design template series keeps its layered document for Advanced editing", () => {
   const source = readFileSync(
-    new URL("../src/shell/MaterialLibrary.tsx", import.meta.url),
+    new URL("../src/shell/material-library-controller.ts", import.meta.url),
     "utf8",
   );
   const routesSource = readFileSync(
@@ -163,10 +159,12 @@ test("closing a configured library keeps the app runtime mounted", () => {
 });
 
 test("task receipts refresh My Library without adding a fifth shared card action", () => {
-  const canvas = readFileSync(
-    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
-    "utf8",
-  );
+  const canvas = [
+    "../src/shell/ResultCanvas.tsx",
+    "../src/shell/legacy-workspace-surface-adapter.tsx",
+  ]
+    .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+    .join("\n");
   const mine = readFileSync(
     new URL("../src/shell/MyLibrary.tsx", import.meta.url),
     "utf8",
@@ -184,18 +182,16 @@ test("task receipts refresh My Library without adding a fifth shared card action
 });
 
 test("inspiration slot preserves both quick-start guide and legacy prompt pages", () => {
-  const source = readFileSync(
-    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
-    "utf8",
+  const model = buildWorkspaceSurfaceModel([
+    { id: "__guide", label: "模板", displayLabel: "灵感", slot: "template", role: "panel", content: null, callbackId: null },
+    { id: "prompt-page", label: "创作灵感", displayLabel: "创作灵感", slot: "template", role: "entry", content: null, callbackId: "prompt-page" },
+  ]);
+  assert.deepEqual(
+    model.groups.template.map((tab) => tab.id),
+    ["__guide", "prompt-page"],
   );
-  assert.match(source, /templatePageId/);
-  assert.match(source, /grouped\.template\.find/);
-  assert.match(source, /grouped\.template\.length > 1/);
-  assert.match(source, /tab\.id === "__guide"[\s\S]*?"快速起手"[\s\S]*?inspirationLabel\(tab\.label\)/);
-  assert.match(source, /if \(id !== "__guide"\) onChange\?\.\(id\)/);
-  assert.match(source, /slotForCanvasTab/);
-  assert.match(source, /灵感\|靈感\|模板\|範本\|template\|inspiration/);
-  assert.match(source, /!isGenericMineTab\(tab\)/);
+  assert.equal(model.byId.get("__guide").callbackId, null);
+  assert.equal(model.byId.get("prompt-page").callbackId, "prompt-page");
 });
 
 test("workspace actions are versioned, bounded and reject unsafe URLs", () => {

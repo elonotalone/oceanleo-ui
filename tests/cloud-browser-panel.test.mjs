@@ -22,6 +22,18 @@ import {
   cloudBrowserAuthMessage,
   cloudBrowserV2Message,
 } from "../src/shell/cloud-browser-wire.ts";
+import {
+  createCloudBrowserProtocolState,
+  decodeCloudBrowserProtocolMessage,
+  isCloudBrowserTransportTransitionLegal,
+  reduceCloudBrowserProtocolMessage,
+} from "../src/shell/cloud-browser-transport-model.ts";
+
+const protocolFallbacks = {
+  runtimeFailed: "runtime failed",
+  navigationRejected: "navigation rejected",
+  operationFailed: "operation failed",
+};
 
 const CLOUD_BROWSER_MESSAGES = {
   zh: CLOUD_BROWSER_ZH,
@@ -73,6 +85,10 @@ const protocolSource = readFileSync(
   new URL("../src/shell/cloud-browser-protocol.ts", import.meta.url),
   "utf8",
 );
+const transportModelSource = readFileSync(
+  new URL("../src/shell/cloud-browser-transport-model.ts", import.meta.url),
+  "utf8",
+);
 const wireSource = readFileSync(
   new URL("../src/shell/cloud-browser-wire.ts", import.meta.url),
   "utf8",
@@ -98,6 +114,7 @@ const source = [
   transportActionsSource,
   transportConfigSource,
   protocolSource,
+  transportModelSource,
   wireSource,
   interactionSource,
   sessionSource,
@@ -282,28 +299,66 @@ test("socket open authenticates but only painted first frame becomes live", () =
     (transportSource.match(/transition\("streaming"\)/g) || []).length,
     1,
   );
-  assert.match(protocolSource, /type === "hello"/);
-  assert.match(protocolSource, /sessionId !== context\.socketSessionRef\.current/);
-  assert.match(protocolSource, /runtimeId !== context\.runtimeIdRef\.current/);
-  const legacyFrameMetaBranch = protocolSource.slice(
-    protocolSource.indexOf('type === "frame.meta"'),
-    protocolSource.indexOf('type === "frame" && message.data'),
+  const authenticated = createCloudBrowserProtocolState({
+    transportState: "authenticated",
+    socketSessionId: "session",
+    runtimeId: "runtime",
+    incarnation: 7,
+  });
+  const hello = reduceCloudBrowserProtocolMessage(
+    authenticated,
+    {
+      v: 2,
+      t: "hello",
+      session_id: "session",
+      runtime_id: "runtime",
+      incarnation: 7,
+      connection_id: "connection",
+      tabs: [{ id: "tab", title: "Google", status: "ready" }],
+      active_tab_id: "tab",
+    },
+    protocolFallbacks,
   );
-  assert.match(
-    legacyFrameMetaBranch,
-    /type === "frame-meta"[\s\S]*protocolRef\.current === 2[\s\S]*return/,
+  assert.equal(hello.state.protocol, 2);
+  assert.equal(hello.state.handshake, true);
+  assert.equal(hello.state.transportState, "awaiting_first_frame");
+  assert.ok(hello.effects.some((effect) => effect.type === "arm_first_frame"));
+  const mismatched = reduceCloudBrowserProtocolMessage(
+    authenticated,
+    {
+      v: 2,
+      t: "hello",
+      session_id: "another-session",
+      runtime_id: "runtime",
+      incarnation: 7,
+      connection_id: "connection",
+    },
+    protocolFallbacks,
   );
+  assert.equal(mismatched.state.transportState, "failed");
+  assert.equal(mismatched.effects[0].type, "reject");
+
   for (const legacyType of ["lock", "meta"]) {
-    const start = protocolSource.indexOf(`type === "${legacyType}"`);
-    const end = protocolSource.indexOf("\n  if (type ===", start + 1);
-    assert.match(
-      protocolSource.slice(start, end),
-      /protocolRef\.current === 2\) return/,
-      `v2 must ignore duplicate legacy ${legacyType} messages`,
+    const reduced = reduceCloudBrowserProtocolMessage(
+      hello.state,
+      { t: legacyType, driving: "human", url: "https://example.com" },
+      protocolFallbacks,
     );
+    assert.deepEqual(reduced.state, hello.state);
   }
-  assert.match(source, /transition\("awaiting_first_frame"\)/);
-  assert.match(source, /armFirstFrameTimeout\(\)/);
+  assert.equal(decodeCloudBrowserProtocolMessage("{").ok, false);
+  assert.equal(decodeCloudBrowserProtocolMessage([]).ok, false);
+  assert.equal(
+    isCloudBrowserTransportTransitionLegal(
+      "authenticated",
+      "awaiting_first_frame",
+    ),
+    true,
+  );
+  assert.equal(
+    isCloudBrowserTransportTransitionLegal("streaming", "ticketing"),
+    false,
+  );
   assert.match(transportSource, /5_000/);
   assert.match(
     transportSource,
@@ -316,10 +371,59 @@ test("tabs are protocol pages and plus never creates a browser session", () => {
   assert.match(createTab, /"tab\.create"/);
   assert.match(createTab, /DEFAULT_BROWSER_URL/);
   assert.doesNotMatch(createTab, /startBrowser|createCloudBrowser/);
-  assert.match(protocolSource, /type === "tabs\.snapshot"/);
-  assert.match(protocolSource, /type === "tab\.opened"/);
-  assert.match(protocolSource, /type === "tab\.activated"/);
-  assert.match(protocolSource, /type === "tab\.closed"/);
+  const binding = {
+    v: 2,
+    session_id: "session",
+    runtime_id: "runtime",
+    incarnation: 7,
+    connection_id: "connection",
+  };
+  let state = createCloudBrowserProtocolState({
+    transportState: "streaming",
+    protocol: 2,
+    handshake: true,
+    socketSessionId: "session",
+    runtimeId: "runtime",
+    incarnation: 7,
+    connectionId: "connection",
+  });
+  state = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...binding,
+      t: "tabs.snapshot",
+      tabs: [
+        { id: "first", title: "One", status: "ready" },
+        { id: "second", title: "Two", status: "ready" },
+      ],
+      active_tab_id: "first",
+    },
+    protocolFallbacks,
+  ).state;
+  assert.deepEqual(state.tabs.map((tab) => tab.id), ["first", "second"]);
+  state = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...binding,
+      t: "tab.activated",
+      tab: { id: "second", title: "Two", status: "ready" },
+      stream_id: "stream-2",
+      stream_generation: 2,
+    },
+    protocolFallbacks,
+  ).state;
+  assert.equal(state.activeTabId, "second");
+  state = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...binding,
+      t: "tab.closed",
+      tab_id: "first",
+      active_tab_id: "second",
+    },
+    protocolFallbacks,
+  ).state;
+  assert.deepEqual(state.tabs.map((tab) => tab.id), ["second"]);
   assert.match(chromeSource, /data-cloud-browser-history/);
   assert.match(chromeSource, /data-cloud-browser-tabs/);
   assert.doesNotMatch(
@@ -338,7 +442,38 @@ test("single-writer lease wraps every v2 mutation and renews explicitly", () => 
   assert.match(toggle, /"control\.acquire"/);
   assert.match(toggle, /"control\.release"/);
   assert.match(transportSource, /"control\.renew"/);
-  assert.match(protocolSource, /"LEASE_NOT_HELD"/);
+  const leaseFailure = reduceCloudBrowserProtocolMessage(
+    createCloudBrowserProtocolState({
+      transportState: "streaming",
+      protocol: 2,
+      handshake: true,
+      socketSessionId: "session",
+      runtimeId: "runtime",
+      incarnation: 7,
+      connectionId: "connection",
+      lease: {
+        leaseId: "lease",
+        epoch: 3,
+        holderKind: "human",
+        connectionId: "connection",
+      },
+      leaseOwned: true,
+      controlPending: true,
+    }),
+    {
+      v: 2,
+      t: "error",
+      session_id: "session",
+      runtime_id: "runtime",
+      incarnation: 7,
+      connection_id: "connection",
+      code: "LEASE_NOT_HELD",
+    },
+    protocolFallbacks,
+  );
+  assert.equal(leaseFailure.state.leaseOwned, false);
+  assert.equal(leaseFailure.state.lease.holderKind, "free");
+  assert.equal(leaseFailure.state.controlPending, false);
   const capture = functionSource("captureHistory");
   assert.match(capture, /sendRaw\(v2Envelope\("history\.capture"/);
   assert.doesNotMatch(capture, /sendMutation\(/);

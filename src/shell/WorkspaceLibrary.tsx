@@ -12,45 +12,39 @@ import {
   type SetStateAction,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { ensureDatabaseThumbnail } from "../lib/database";
 import {
   isDurableLibraryItem,
   type LibraryItem,
-  type LibraryKind,
 } from "./library-data";
-import { LibraryItemViewer } from "./library-viewers";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
-import { advancedLibraryReferenceFor } from "./advanced-features";
 import {
   ArtifactActionButtons,
   artifactActionMatrix,
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
-import { useArtifactRendition } from "./ArtifactRendition";
+import {
+  WORKSPACE_KIND_LABELS,
+  filterWorkspaceLibraryEntries,
+  visibleWorkspaceLibraryCategories,
+  workspaceEntryFromLibraryItem,
+  workspaceLibraryCategories,
+  type WorkspaceLibraryEntry,
+} from "./workspace-library-model";
+import {
+  WorkspaceCard,
+  WorkspaceLibraryEmpty,
+  WorkspaceLibraryEntryViewer,
+  WorkspaceListRow,
+} from "./workspace-library-view";
 
-export interface WorkspaceLibraryEntry {
-  id: string;
-  title: string;
-  description?: string;
-  category?: string;
-  keywords?: string[];
-  thumbUrl?: string;
-  kind?: LibraryKind;
-  libraryItem?: LibraryItem;
-  content?: ReactNode;
-  /** Viewer resource URL; never use this as the card-click navigation target. */
-  externalUrl?: string;
-  /** User-facing destination, usually the matching asset/project page. */
-  linkUrl?: string;
-  badge?: string;
-  /** The current query was already applied by the authoritative remote index. */
-  trustedSearchMatch?: boolean;
-  /** Present only for user-owned rows. Curated/platform entries stay read-only. */
-  onDelete?: () => Promise<void> | void;
-}
+export {
+  workspaceEntryFromLibraryItem,
+} from "./workspace-library-model";
+export { WorkspaceLibraryEntryViewer } from "./workspace-library-view";
+export type { WorkspaceLibraryEntry } from "./workspace-library-model";
 
 export interface WorkspaceLibraryProps {
   entries: WorkspaceLibraryEntry[];
@@ -99,95 +93,6 @@ export interface WorkspaceLibraryProps {
   className?: string;
   /** Full-page libraries render directly on the page instead of inside a white panel. */
   plain?: boolean;
-}
-
-const KIND_LABELS: Partial<Record<LibraryKind, string>> = {
-  website: "网站",
-  canvas: "画布",
-  ppt: "PPT",
-  sheet: "表格",
-  document: "文档",
-  image: "图片",
-  video: "视频",
-  video_canvas: "视频工作流",
-  audio: "音频",
-  xhs: "小红书",
-  threed: "3D",
-  file: "文件",
-};
-
-const generatedThumbnailCache = new Map<string, string>();
-const generatedThumbnailPending = new Map<string, Promise<string>>();
-const generatedThumbnailFailed = new Set<string>();
-const THUMBNAIL_PURPOSES = ["thumbnail", "preview"] as const;
-const EMPTY_THUMBNAIL_ITEM: LibraryItem = {
-  key: "empty-thumbnail",
-  source: "artifact",
-  id: "empty-thumbnail",
-  title: "",
-  kind: "file",
-  siteId: "",
-  favorite: false,
-  meta: {},
-};
-
-export function workspaceEntryFromLibraryItem(
-  item: LibraryItem,
-  extra: Partial<WorkspaceLibraryEntry> = {},
-): WorkspaceLibraryEntry {
-  return {
-    id: item.key,
-    title: item.title,
-    description: item.siteId || item.source || "",
-    category: KIND_LABELS[item.kind] || "内容",
-    keywords: [item.kind, item.siteId || "", item.source || ""].filter(Boolean),
-    thumbUrl: item.thumbUrl || item.previewUrl,
-    kind: item.kind,
-    libraryItem: item,
-    externalUrl: item.url || item.previewUrl,
-    linkUrl:
-      (typeof item.meta.asset_page_url === "string"
-        ? item.meta.asset_page_url
-        : "") ||
-      (typeof item.meta.open_url === "string" ? item.meta.open_url : "") ||
-      item.url ||
-      item.previewUrl,
-    ...extra,
-  };
-}
-
-export function WorkspaceLibraryEntryViewer({
-  entry,
-  accent = "#4f46e5",
-  viewerNonce = 0,
-}: {
-  entry: WorkspaceLibraryEntry;
-  accent?: string;
-  viewerNonce?: number;
-}) {
-  const tt = useUI();
-  if (entry.libraryItem) {
-    return (
-      <LibraryItemViewer
-        key={`${entry.id}:${viewerNonce}`}
-        item={entry.libraryItem}
-        accent={accent}
-      />
-    );
-  }
-  if (entry.content) {
-    return (
-      <div key={viewerNonce} className="h-full min-h-[520px]">
-        {entry.content}
-      </div>
-    );
-  }
-  return (
-    <WorkspaceLibraryEmpty
-      title={tt("暂时无法预览")}
-      description={tt("这个条目还没有可显示的内容。")}
-    />
-  );
 }
 
 /**
@@ -363,64 +268,30 @@ export function WorkspaceLibrary({
     };
   };
 
-  const categories = useMemo(() => {
-    const seen = new Set<string>();
-    for (const entry of entries) {
-      const value = String(entry.category || "").trim();
-      if (value) seen.add(value);
-    }
-    return [
-      { id: "all", label: "全部" },
-      ...[...seen].map((value) => ({ id: value, label: value })),
-    ];
-  }, [entries]);
-  const { visibleCategories, overflowCategoryCount } = useMemo(() => {
-    if (!primaryCategoryIds) {
-      return { visibleCategories: categories, overflowCategoryCount: 0 };
-    }
-    const primary = new Set(primaryCategoryIds);
-    const head = categories.filter(
-      (item) => item.id === "all" || primary.has(item.id),
-    );
-    const overflow = categories.filter(
-      (item) => item.id !== "all" && !primary.has(item.id),
-    );
-    if (categoriesExpanded) {
-      return {
-        visibleCategories: [...head, ...overflow],
-        overflowCategoryCount: overflow.length,
-      };
-    }
-    const selectedOverflow = overflow.find((item) => item.id === category);
-    return {
-      visibleCategories: selectedOverflow ? [...head, selectedOverflow] : head,
-      overflowCategoryCount: overflow.length,
-    };
-  }, [categories, categoriesExpanded, category, primaryCategoryIds]);
+  const categories = useMemo(
+    () => workspaceLibraryCategories(entries),
+    [entries],
+  );
+  const { visibleCategories, overflowCategoryCount } = useMemo(
+    () =>
+      visibleWorkspaceLibraryCategories(
+        categories,
+        primaryCategoryIds,
+        category,
+        categoriesExpanded,
+      ),
+    [categories, categoriesExpanded, category, primaryCategoryIds],
+  );
 
   useEffect(() => {
     if (categories.some((item) => item.id === category)) return;
     setCategory("all");
   }, [categories, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLocaleLowerCase();
-    return entries.filter((entry) => {
-      if (category !== "all" && entry.category !== category) return false;
-      if (!needle) return true;
-      if (entry.trustedSearchMatch) return true;
-      return [
-        entry.title,
-        entry.description,
-        entry.category,
-        ...(entry.keywords || []),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(needle);
-    });
-  }, [entries, search, category]);
+  const filtered = useMemo(
+    () => filterWorkspaceLibraryEntries(entries, search, category),
+    [entries, search, category],
+  );
 
   const selected = useMemo(
     () => entries.find((entry) => entry.id === selectedId) || null,
@@ -560,7 +431,7 @@ export function WorkspaceLibrary({
               </h3>
               {kind && (
                 <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {tt(KIND_LABELS[kind] || "内容")}
+                  {tt(WORKSPACE_KIND_LABELS[kind] || "内容")}
                 </span>
               )}
             </div>
@@ -717,338 +588,6 @@ export function WorkspaceLibrary({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function WorkspaceCard({
-  entry,
-  onOpen,
-  accent,
-  dragProps,
-  actions,
-}: {
-  entry: WorkspaceLibraryEntry;
-  onOpen: () => void;
-  accent: string;
-  actions?: ReactNode;
-  dragProps?: {
-    draggable?: boolean;
-    onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
-    onDragEnd?: () => void;
-  };
-}) {
-  const tt = useUI();
-  const kind = entry.kind || entry.libraryItem?.kind || "file";
-  return (
-    <div
-      {...dragProps}
-      className={`group relative overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm ${
-        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="block w-full text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
-      >
-        <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
-          <WorkspaceThumbnail
-            url={entry.thumbUrl}
-            item={entry.libraryItem}
-            alt={entry.title}
-            kind={kind}
-            accent={accent}
-            imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-          />
-          <span className="absolute bottom-2 left-2 rounded-md bg-[var(--card,#fff)]/90 px-1.5 py-0.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] shadow-sm backdrop-blur">
-            {tt(KIND_LABELS[kind] || entry.category || "内容")}
-          </span>
-        </div>
-        <div className="p-2.5">
-          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
-            {entry.title}
-          </p>
-          {entry.description && (
-            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-[var(--muted,#a8a29e)]">
-              {tt(entry.description)}
-            </p>
-          )}
-        </div>
-      </button>
-      {actions && (
-        <div className="border-t border-[var(--border,#e7e5e4)] px-2 py-2">
-          {actions}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WorkspaceListRow({
-  entry,
-  onOpen,
-  dragProps,
-  actions,
-}: {
-  entry: WorkspaceLibraryEntry;
-  onOpen: () => void;
-  actions?: ReactNode;
-  dragProps?: {
-    draggable?: boolean;
-    onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
-    onDragEnd?: () => void;
-  };
-}) {
-  const tt = useUI();
-  const kind = entry.kind || entry.libraryItem?.kind || "file";
-  return (
-    <div
-      {...dragProps}
-      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
-        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
-      >
-        <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)]">
-          <WorkspaceThumbnail
-            url={entry.thumbUrl}
-            item={entry.libraryItem}
-            alt={entry.title}
-            kind={kind}
-            accent="#78716c"
-            imageClassName="h-full w-full object-cover"
-            compact
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
-            {entry.title}
-          </p>
-          <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-            {entry.description
-              ? tt(entry.description)
-              : tt(KIND_LABELS[kind] || entry.category || "内容")}
-          </p>
-        </div>
-        <svg className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {actions && <div className="mr-2 py-1">{actions}</div>}
-    </div>
-  );
-}
-
-function WorkspaceKindIcon({
-  kind,
-  accent,
-}: {
-  kind: LibraryKind;
-  accent: string;
-}) {
-  const tt = useUI();
-  return (
-    <div
-      className="grid h-12 w-12 place-items-center rounded-2xl text-[11px] font-semibold"
-      style={{ background: `${accent}12`, color: accent }}
-    >
-      {tt(KIND_LABELS[kind] || "内容")}
-    </div>
-  );
-}
-
-function WorkspaceThumbnail({
-  url,
-  item,
-  alt,
-  kind,
-  accent,
-  imageClassName,
-  compact = false,
-}: {
-  url?: string;
-  item?: LibraryItem;
-  alt: string;
-  kind: LibraryKind;
-  accent: string;
-  imageClassName: string;
-  compact?: boolean;
-}) {
-  const tt = useUI();
-  const artifactRendition = useArtifactRendition(
-    item || EMPTY_THUMBNAIL_ITEM,
-    THUMBNAIL_PURPOSES,
-  );
-  const [failed, setFailed] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const hostRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const node = hostRef.current;
-    if (!node) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setVisible(true);
-        observer.disconnect();
-      },
-      { rootMargin: "300px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-  const typedArtifact = Boolean(item && isDurableLibraryItem(item));
-  const reference =
-    item && !typedArtifact ? advancedLibraryReferenceFor(item) : null;
-  const referenceKey =
-    reference &&
-    (reference.source === "work" ||
-      reference.source === "asset" ||
-      reference.source === "artifact")
-      ? `${reference.source}:${reference.id}`
-      : "";
-  const thumbnailFilename = String(
-    item?.meta.filename ||
-      item?.meta.format ||
-      item?.url ||
-      "",
-  ).toLowerCase();
-  const canGenerateThumbnail =
-    /\.(?:pdf|docx?|odt|rtf|pptx?|odp|xlsx?|ods|csv|mp4|mov|webm)(?:$|[?#])/i.test(
-      thumbnailFilename,
-    ) ||
-    /^(?:pdf|docx?|odt|rtf|pptx?|odp|xlsx?|ods|csv|mp4|mov|webm)$/.test(
-      String(item?.meta.format || "").toLowerCase(),
-    );
-  const requiresGeneratedThumbnail = Boolean(
-    item &&
-      canGenerateThumbnail &&
-      ["ppt", "sheet", "document", "video", "file"].includes(kind) &&
-      (!url || url === item.url),
-  );
-  const [generatedUrl, setGeneratedUrl] = useState(
-    referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
-  );
-  useEffect(() => {
-    setFailed(false);
-    setGeneratedUrl(
-      referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
-    );
-  }, [artifactRendition.url, referenceKey, url]);
-  useEffect(() => {
-    if (
-      !referenceKey ||
-      generatedThumbnailFailed.has(referenceKey) ||
-      !visible ||
-      generatedUrl ||
-      (url && !failed && !requiresGeneratedThumbnail) ||
-      !reference
-    ) {
-      return;
-    }
-    let alive = true;
-    let pending = generatedThumbnailPending.get(referenceKey);
-    if (!pending) {
-      pending = ensureDatabaseThumbnail(
-        reference.source as "work" | "asset" | "artifact",
-        reference.id,
-      )
-        .then((result) => (result.ok ? result.data?.thumb_url || "" : ""))
-        .catch(() => "");
-      generatedThumbnailPending.set(referenceKey, pending);
-    }
-    void pending.then((nextUrl) => {
-      generatedThumbnailPending.delete(referenceKey);
-      if (!nextUrl) {
-        generatedThumbnailFailed.add(referenceKey);
-        return;
-      }
-      generatedThumbnailCache.set(referenceKey, nextUrl);
-      if (alive) {
-        setGeneratedUrl(nextUrl);
-        setFailed(false);
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, [
-    failed,
-    generatedUrl,
-    reference,
-    referenceKey,
-    requiresGeneratedThumbnail,
-    url,
-    visible,
-  ]);
-  const displayUrl = typedArtifact
-    ? artifactRendition.url
-    : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
-  if (!displayUrl || failed) {
-    return (
-      <div ref={hostRef} className="grid h-full place-items-center">
-        {typedArtifact && artifactRendition.loading ? (
-          <span
-            className="v-spinner h-4 w-4"
-            role="status"
-            aria-label={tt("正在刷新缩略图")}
-          />
-        ) : compact ? (
-          <span className="text-[10px] font-medium text-[var(--muted,#a8a29e)]">
-            {tt(KIND_LABELS[kind] || "内容")}
-          </span>
-        ) : (
-          <WorkspaceKindIcon kind={kind} accent={accent} />
-        )}
-      </div>
-    );
-  }
-  return (
-    <div ref={hostRef} className="h-full w-full">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={displayUrl}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => {
-          artifactRendition.resourceFailed();
-          setFailed(true);
-        }}
-        className={imageClassName}
-      />
-    </div>
-  );
-}
-
-function WorkspaceLibraryEmpty({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex h-full min-h-[260px] flex-col items-center justify-center px-6 text-center">
-      <svg className="h-10 w-10 text-[var(--border-strong,#d6d3d1)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M7 9h10M7 13h7M7 17h5" strokeLinecap="round" />
-      </svg>
-      <p className="mt-3 text-[13px] font-medium text-[var(--fg-2,#57534e)]">{title}</p>
-      <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-[var(--muted,#a8a29e)]">
-        {description}
-      </p>
     </div>
   );
 }

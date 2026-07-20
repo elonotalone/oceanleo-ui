@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 import {
   cloudBrowserLiveUrl,
   createCloudBrowserTicket,
@@ -17,6 +23,10 @@ import {
   cloudBrowserAuthMessage,
   cloudBrowserV2Message,
 } from "./cloud-browser-wire";
+import {
+  decodeCloudBrowserProtocolMessage,
+  reduceCloudBrowserTransportTransition,
+} from "./cloud-browser-transport-model";
 
 export function useCloudBrowserTransport({
   selectedId,
@@ -31,15 +41,15 @@ export function useCloudBrowserTransport({
   const [transportState, setTransportState] =
     useState<CloudBrowserTransportState>("idle");
   const [protocol, setProtocol] = useState<1 | 2 | null>(null);
-  const [tabs, setTabs] = useState<CloudBrowserTab[]>([]);
+  const [tabs, setTabsState] = useState<CloudBrowserTab[]>([]);
   const [activeTabId, setActiveTabId] = useState("");
   const [lease, setLease] =
     useState<CloudBrowserControlLease>(EMPTY_BROWSER_LEASE);
   const [leaseOwned, setLeaseOwned] = useState(false);
   const [legacyDriving, setLegacyDriving] = useState(false);
-  const [controlPending, setControlPending] = useState(false);
+  const [controlPending, setControlPendingState] = useState(false);
   const [hasCanvasFrame, setHasCanvasFrame] = useState(false);
-  const [address, setAddress] = useState("");
+  const [address, setAddressState] = useState("");
 
   const socketRef = useRef<WebSocket | null>(null);
   const socketSessionRef = useRef("");
@@ -67,6 +77,48 @@ export function useCloudBrowserTransport({
   const mutationSequenceRef = useRef(0);
   const dropNextBinaryRef = useRef(false);
   const pendingV2BinaryRef = useRef(false);
+  const tabsRef = useRef<CloudBrowserTab[]>([]);
+  const controlPendingRef = useRef(false);
+  const addressRef = useRef("");
+
+  const setTabs = useCallback(
+    (value: SetStateAction<CloudBrowserTab[]>) => {
+      setTabsState((current) => {
+        const next =
+          typeof value === "function"
+            ? value(current)
+            : value;
+        tabsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setControlPending = useCallback(
+    (value: SetStateAction<boolean>) => {
+      setControlPendingState((current) => {
+        const next =
+          typeof value === "function"
+            ? value(current)
+            : value;
+        controlPendingRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setAddress = useCallback((value: SetStateAction<string>) => {
+    setAddressState((current) => {
+      const next =
+        typeof value === "function"
+          ? value(current)
+          : value;
+      addressRef.current = next;
+      return next;
+    });
+  }, []);
 
   const {
     canvasRef,
@@ -83,8 +135,12 @@ export function useCloudBrowserTransport({
   const driving = protocol === 2 ? leaseOwned : legacyDriving;
 
   const transition = useCallback((next: CloudBrowserTransportState) => {
-    transportStateRef.current = next;
-    setTransportState(next);
+    const legal = reduceCloudBrowserTransportTransition(
+      transportStateRef.current,
+      next,
+    );
+    transportStateRef.current = legal;
+    setTransportState(legal);
   }, []);
 
   const setProtocolVersion = useCallback((next: 1 | 2 | null) => {
@@ -225,8 +281,13 @@ export function useCloudBrowserTransport({
     streamIdRef,
     streamGenerationRef,
     activeTabIdRef,
+    tabsRef,
     leaseRef,
+    leaseOwnedRef,
+    legacyDrivingRef,
     controlIntentRef,
+    controlPendingRef,
+    addressRef,
     dropNextBinaryRef,
     pendingV2BinaryRef,
     socketSessionRef,
@@ -242,7 +303,6 @@ export function useCloudBrowserTransport({
     rejectProtocol,
     transition,
     armFirstFrameTimeout,
-    adoptLegacyHandshake,
     cancelFrameDecode,
     acceptFrameMeta,
     drawTextFrame,
@@ -255,7 +315,6 @@ export function useCloudBrowserTransport({
     rejectProtocol,
     transition,
     armFirstFrameTimeout,
-    adoptLegacyHandshake,
     cancelFrameDecode,
     acceptFrameMeta,
     drawTextFrame,
@@ -470,14 +529,9 @@ export function useCloudBrowserTransport({
         drawBlobFrame(event.data);
         return;
       }
-      try {
-        handleCloudBrowserProtocolMessage(
-          JSON.parse(String(event.data)) as Record<string, unknown>,
-          protocolContext(),
-        );
-      } catch {
-        // Malformed control messages never become user input or live state.
-      }
+      const decoded = decodeCloudBrowserProtocolMessage(event.data);
+      if (!decoded.ok) return;
+      handleCloudBrowserProtocolMessage(decoded.message, protocolContext());
     };
     socket.onerror = () => {
       if (socketRef.current === socket) {

@@ -33,7 +33,7 @@ import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
 import { type GoalApp } from "./app-catalog";
 import { AgentChat } from "./AgentChat";
-import { type FunctionGuide, type GuideExample, type GuideSection } from "./NavigatorGuide";
+import { type FunctionGuide } from "./NavigatorGuide";
 import {
   getAppSession,
   isAppSessionApiUnavailableStatus,
@@ -44,26 +44,37 @@ import {
   WorkspaceSessionProvider,
   useOptionalWorkspaceSession,
 } from "./WorkspaceSession";
-import { findLinkedAgentTaskId } from "./workspace-session-task";
 import {
   historySessionHref,
   historySessionIdFromPath,
-  workspaceAppHref,
-  workspaceAppIdFromPath,
 } from "./workspace-route";
 import {
+  catalogCanonicalRedirect,
+  catalogNavigationForChange,
+  resolveSiteCatalogRoute,
+} from "./site-catalog-controller";
+import {
   WorkspaceRuntimeBoundary,
-  useWorkspaceRuntimeHydration,
 } from "./workspace-runtime-hydration";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   advancedItemFromSession,
   advancedSnapshotFromSession,
 } from "./advanced-session";
+import type { OceanLeoSiteManifest } from "../contracts/site-manifest";
+import {
+  CatalogOps,
+  IncompleteHistorySession,
+  LegacyHistoryPlayback,
+  withGuideDefaults,
+  withPresetCard,
+} from "./site-catalog-view-helpers";
 
 export interface SiteCatalogConsoleProps {
   /** 本站 site_id（计量 / 历史分区 / 深链）。 */
   siteId: string;
+  /** Stable thin-host contract. Existing props remain the compatibility facade. */
+  manifest?: OceanLeoSiteManifest<GoalApp>;
   /** 本站成品 app 清单（≥20 个，面向目的、名词化）。 */
   apps: GoalApp[];
   /**
@@ -186,6 +197,7 @@ export async function beforeLeaveWithDeadline(
  */
 export function SiteCatalogConsole({
   siteId,
+  manifest,
   apps,
   renderOps,
   renderCanvas,
@@ -205,11 +217,22 @@ export function SiteCatalogConsole({
   agentApp = true,
   groups,
 }: SiteCatalogConsoleProps) {
+  const canonicalSiteKey = manifest?.siteKey || siteId;
+  const catalogApps = manifest?.catalog.entries || apps;
+  const catalogAliases = useMemo(
+    () => ({
+      ...(manifest?.catalog.aliases || {}),
+      ...(legacyAppAliases || {}),
+    }),
+    [legacyAppAliases, manifest?.catalog.aliases],
+  );
   const pathname = usePathname() || "";
   const router = useRouter();
-  const pathAppId = workspaceAppIdFromPath(pathname);
-  const historySessionId = historySessionIdFromPath(pathname);
-  const [legacyRouteAppId, setLegacyRouteAppId] = useState("");
+  const historySessionId = historySessionIdFromPath(
+    pathname,
+    manifest?.workspace,
+  );
+  const [locationSearch, setLocationSearch] = useState("");
   const [historySession, setHistorySession] = useState<AppSession | null>(null);
   const [legacyHistoryTask, setLegacyHistoryTask] =
     useState<LegacyHistoryTaskRef | null>(null);
@@ -236,17 +259,19 @@ export function SiteCatalogConsole({
       }
       taskRouteInFlightRef.current = sessionId;
       const flushed = await beforeLeaveRef.current();
-      if (flushed) router.replace(historySessionHref(sessionId));
+      if (flushed) {
+        router.replace(historySessionHref(sessionId, manifest?.workspace));
+      }
       else taskRouteInFlightRef.current = "";
     },
-    [historySessionId, router],
+    [historySessionId, manifest?.workspace, router],
   );
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const inheritedHistorySession =
     historySessionId &&
     inheritedWorkspace?.mode === "history" &&
     inheritedWorkspace.session?.id === historySessionId &&
-    inheritedWorkspace.session.site_id === siteId
+    inheritedWorkspace.session.site_id === canonicalSiteKey
       ? inheritedWorkspace.session
       : null;
   const effectiveHistorySession =
@@ -292,7 +317,7 @@ export function SiteCatalogConsole({
             taskResult.ok &&
             taskResult.data &&
             (!taskResult.data.task.site_id ||
-              taskResult.data.task.site_id === siteId)
+              taskResult.data.task.site_id === canonicalSiteKey)
           ) {
             const firstUser = taskResult.data.messages.find(
               (message) => message.role === "user",
@@ -304,7 +329,7 @@ export function SiteCatalogConsole({
             setHistorySession(null);
             setLegacyHistoryTask({
               taskId: historySessionId,
-              siteId: taskResult.data.task.site_id || siteId,
+              siteId: taskResult.data.task.site_id || canonicalSiteKey,
               appLabel: taskResult.data.task.app_id || metaApp || "旧工作",
             });
             setHistoryLoading(false);
@@ -321,7 +346,7 @@ export function SiteCatalogConsole({
         );
         return;
       }
-      if (result.data.site_id !== siteId) {
+      if (result.data.site_id !== canonicalSiteKey) {
         setHistorySession(null);
         setLegacyHistoryTask(null);
         setHistoryLoading(false);
@@ -337,7 +362,7 @@ export function SiteCatalogConsole({
     };
   }, [
     historySessionId,
-    siteId,
+    canonicalSiteKey,
     inheritedHistorySession?.id,
     inheritedHistorySession?.revision,
     inheritedHistorySession?.task_id,
@@ -348,14 +373,7 @@ export function SiteCatalogConsole({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
-      if (workspaceAppIdFromPath(window.location.pathname)) {
-        setLegacyRouteAppId("");
-        return;
-      }
-      const params = new URLSearchParams(window.location.search);
-      setLegacyRouteAppId(
-        (params.get("fn") || params.get("mode") || "").trim(),
-      );
+      setLocationSearch(window.location.search);
     };
     sync();
     window.addEventListener("popstate", sync);
@@ -380,65 +398,61 @@ export function SiteCatalogConsole({
   }, [agentApp]);
 
   const allApps = useMemo(
-    () => (agentCard ? [agentCard, ...apps] : apps),
-    [agentCard, apps],
+    () => (agentCard ? [agentCard, ...catalogApps] : catalogApps),
+    [agentCard, catalogApps],
   );
   const knownAppIds = useMemo(
     () => new Set(allApps.map((app) => app.id)),
     [allApps],
   );
-  const rawRequestedAppId = (
-    effectiveHistorySession?.app_id ||
-    pathAppId ||
-    legacyRouteAppId ||
-    ((embed || solo) ? value : "") ||
-    ""
-  ).trim();
-  const requestedAppId =
-    effectiveHistorySession?.app_id === "home-agent"
-      ? "agent"
-      : (!effectiveHistorySession && legacyAppAliases?.[rawRequestedAppId]) ||
-        rawRequestedAppId;
-  const invalidAppId =
-    Boolean(requestedAppId) && !knownAppIds.has(requestedAppId);
-  const activeAppId = invalidAppId ? "" : requestedAppId;
+  const routeState = useMemo(
+    () =>
+      resolveSiteCatalogRoute({
+        pathname,
+        search: locationSearch,
+        controlledValue: value,
+        embed,
+        solo,
+        historyAppId: effectiveHistorySession?.app_id,
+        aliases: catalogAliases,
+        knownAppIds,
+        route: manifest?.workspace,
+      }),
+    [
+      effectiveHistorySession?.app_id,
+      embed,
+      knownAppIds,
+      catalogAliases,
+      locationSearch,
+      pathname,
+      solo,
+      value,
+      manifest?.workspace,
+    ],
+  );
+  const requestedAppId = routeState.requestedAppId;
+  const invalidAppId = Boolean(routeState.invalidAppId);
+  const activeAppId = routeState.activeAppId;
   const activeApp = allApps.find((app) => app.id === activeAppId);
   const activeAppTitle =
     typeof activeApp?.name === "string" ? activeApp.name : activeAppId;
-  const canonicalAppHref = useCallback(
-    (id: string, preserveQuery = false) => {
-      const base = workspaceAppHref(id);
-      if (!preserveQuery || typeof window === "undefined") return base;
-      const params = new URLSearchParams(window.location.search);
-      params.delete("fn");
-      params.delete("mode");
-      const query = params.toString();
-      return query ? `${base}?${query}` : base;
-    },
-    [],
-  );
-
   // 普通页面只认 URL（保证浏览器后退真的回目录）；旧 query 是一次性迁移输入。
   // 只有没有独立地址栏的 embed/solo 才继续使用宿主受控 value。
   useEffect(() => {
-    if (
-      embed ||
-      historySessionId ||
-      (pathAppId && pathAppId === activeAppId) ||
-      !activeAppId ||
-      (!pathAppId && !/\/workspace\/?$/.test(pathname))
-    ) {
-      return;
-    }
-    router.replace(canonicalAppHref(activeAppId, true));
+    const href = catalogCanonicalRedirect(
+      routeState,
+      pathname,
+      locationSearch,
+      embed,
+      manifest?.workspace,
+    );
+    if (href) router.replace(href);
   }, [
     embed,
-    historySessionId,
-    pathAppId,
-    activeAppId,
+    locationSearch,
     pathname,
     router,
-    canonicalAppHref,
+    routeState,
   ]);
 
   const changeApp = useCallback(
@@ -446,27 +460,23 @@ export function SiteCatalogConsole({
       if (activeAppId && id !== activeAppId) {
         await beforeLeaveWithDeadline(beforeLeaveRef.current);
       }
-      if (embed) {
-        onChange?.(id);
-        return;
-      }
       // URL 是 app 身份真源，但消费站的本地选择/草稿作用域仍需同步；尤其返回目录时必须
       // 先清空旧 value，否则 `/workspace` 会立刻被旧受控值 replace 回刚才的 app。
       onChange?.(id);
-      // 历史回看按下「返回」应回历史列表；live app 返回工作台目录。
-      if (historySessionId && !id) {
-        router.push("/history");
-        return;
-      }
-      router.push(canonicalAppHref(id));
+      const navigation = catalogNavigationForChange(id, {
+        embed,
+        historySessionId,
+        route: manifest?.workspace,
+      });
+      if (navigation.kind === "route") router.push(navigation.href);
     },
     [
       activeAppId,
       embed,
       onChange,
       historySessionId,
+      manifest?.workspace,
       router,
-      canonicalAppHref,
     ],
   );
 
@@ -483,7 +493,7 @@ export function SiteCatalogConsole({
             icon: app.icon,
             tagline: app.tagline,
             scenes: app.scenes,
-            agentId: cfg.agentId || `${siteId}.agent`,
+            agentId: cfg.agentId || `${canonicalSiteKey}.agent`,
             // The directory needs ConsoleFunction metadata, but the active agent
             // bypasses OperatorConsole below and mounts the canonical AgentChat.
             ops: null,
@@ -521,14 +531,14 @@ export function SiteCatalogConsole({
           scenes: app.scenes,
           group: app.group,
           hiddenFromDirectory: app.hiddenFromDirectory,
-          agentId: `${siteId}.${app.id}`,
+          agentId: `${canonicalSiteKey}.${app.id}`,
           ops: <CatalogOps app={app} renderOps={renderOps} onEnterApp={onEnterApp} />,
           canvas: renderCanvas(app),
           guide,
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allApps, siteId, accent, agentApp, agentCard, renderOps, renderCanvas, onEnterApp, injectPresetCard, guideIntro],
+    [allApps, canonicalSiteKey, accent, agentApp, agentCard, renderOps, renderCanvas, onEnterApp, injectPresetCard, guideIntro],
   );
   void applyPreset; // 宗旨 v15 决策 D：不再进入即调用（保留 prop 供兼容）。
 
@@ -555,7 +565,9 @@ export function SiteCatalogConsole({
           </p>
           <button
             type="button"
-            onClick={() => router.push("/history")}
+            onClick={() =>
+              router.push(historySessionHref("", manifest?.workspace))
+            }
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
             style={{ background: accent }}
           >
@@ -572,7 +584,9 @@ export function SiteCatalogConsole({
         siteId={legacyHistoryTask.siteId}
         appLabel={legacyHistoryTask.appLabel}
         accent={accent}
-        onBack={() => router.push("/history")}
+        onBack={() =>
+          router.push(historySessionHref("", manifest?.workspace))
+        }
       />
     );
   }
@@ -612,7 +626,9 @@ export function SiteCatalogConsole({
           siteId={currentSession.site_id}
           accent={accent}
           embedded
-          onClose={() => router.push("/history")}
+          onClose={() =>
+            router.push(historySessionHref("", manifest?.workspace))
+          }
         />
       </WorkspaceSessionProvider>
     );
@@ -629,9 +645,13 @@ export function SiteCatalogConsole({
           </p>
           <button
             type="button"
-            onClick={() =>
-              router.push(historySessionId ? "/history" : "/workspace")
-            }
+            onClick={() => {
+              const navigation = catalogNavigationForChange("", {
+                historySessionId,
+                route: manifest?.workspace,
+              });
+              if (navigation.kind === "route") router.push(navigation.href);
+            }}
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
             style={{ background: accent }}
           >
@@ -654,7 +674,9 @@ export function SiteCatalogConsole({
       <IncompleteHistorySession
         session={effectiveHistorySession}
         accent={accent}
-        onBack={() => router.push("/history")}
+        onBack={() =>
+          router.push(historySessionHref("", manifest?.workspace))
+        }
       />
     );
   }
@@ -664,8 +686,10 @@ export function SiteCatalogConsole({
   const consoleNode =
     activeAppId === "agent" && agentCard ? (
       <AgentChat
-        siteId={siteId}
-        agentId={activeAgentConfig.agentId || `${siteId}.agent`}
+        siteId={canonicalSiteKey}
+        agentId={
+          activeAgentConfig.agentId || `${canonicalSiteKey}.agent`
+        }
         mode="agent"
         accent={accent}
         headerHeight={0}
@@ -688,9 +712,9 @@ export function SiteCatalogConsole({
         directoryGroups={groups}
         directoryTitle={directoryTitle}
         directorySubtitle={directorySubtitle}
-        siteId={siteId}
+        siteId={canonicalSiteKey}
         modelCategories={modelCategories}
-        modelSiteId={siteId}
+        modelSiteId={canonicalSiteKey}
         // 宗旨 v15 决策 H：进 app 后左「操作台」:右「库/结果」默认 3:4（操作台占 3/7）。
         // 宗旨 v20（操作员 2026-07-07「为什么 3:4 各站不一样」）：storageKey **全站共用一个**
         // `oceanleo_console_split`——各站进 app 都从同一个 3/7 起步、拖一次全家桶统一，杜绝
@@ -721,14 +745,14 @@ export function SiteCatalogConsole({
     Boolean(historySessionId) &&
     inheritedWorkspace?.mode === "history" &&
     inheritedWorkspace.sessionId === historySessionId &&
-    inheritedWorkspace.siteId === siteId &&
+    inheritedWorkspace.siteId === canonicalSiteKey &&
     inheritedWorkspace.appId === runtimeSessionAppId;
   if (reusingHistoryProvider) return hydratedConsoleNode;
 
   return (
     <WorkspaceSessionProvider
       key={`${historySessionId ? "history" : embed ? "embed" : "workspace"}:${activeAppId}:${historySessionId}`}
-      siteId={siteId}
+      siteId={canonicalSiteKey}
       appId={runtimeSessionAppId}
       title={activeAppTitle}
       onTaskBound={handleTaskBound}
@@ -740,156 +764,4 @@ export function SiteCatalogConsole({
       {hydratedConsoleNode}
     </WorkspaceSessionProvider>
   );
-}
-
-function IncompleteHistorySession({
-  session,
-  accent,
-  onBack,
-}: {
-  session: AppSession;
-  accent: string;
-  onBack: () => void;
-}) {
-  const [taskId, setTaskId] = useState<string | null | undefined>(undefined);
-  useEffect(() => {
-    let alive = true;
-    void findLinkedAgentTaskId(session).then((id) => {
-      if (alive) setTaskId(id ?? null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [session.id]);
-
-  return (
-    <LegacyHistoryPlayback
-      taskId={taskId}
-      siteId={session.site_id}
-      appLabel={session.app_id}
-      accent={accent}
-      onBack={onBack}
-    />
-  );
-}
-
-function LegacyHistoryPlayback({
-  taskId,
-  siteId,
-  appLabel,
-  accent,
-  onBack,
-}: {
-  taskId: string | null | undefined;
-  siteId: string;
-  appLabel: string;
-  accent: string;
-  onBack: () => void;
-}) {
-  return (
-    <div className="flex h-full min-h-[420px] flex-col bg-white">
-      <div className="flex shrink-0 justify-end border-b border-stone-100 px-4 py-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="shrink-0 rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-        >
-          返回我的任务
-        </button>
-      </div>
-      <div className="min-h-0 flex-1">
-        {taskId === undefined ? (
-          <div className="grid h-full place-items-center text-[13px] text-stone-400">
-            正在读取旧对话…
-          </div>
-        ) : taskId ? (
-          <AgentChat
-            key={taskId}
-            siteId={siteId}
-            taskId={taskId}
-            appLabel={appLabel}
-            accent={accent}
-            headerHeight={49}
-            libraryTabs={{ showFiles: true, showBrowser: true }}
-          />
-        ) : (
-          <div className="grid h-full place-items-center p-8 text-center text-[13px] text-stone-400">
-            该旧记录没有可回放的 Agent 对话。
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 宗旨 v15 修正：把成品默认参数(app.preset.set)合并进每一张导航示例的 set——示例已写
-// 的 key 保留（覆盖），未写的用成品默认补齐。→ 点任意导航卡片都会把【整套参数】灌进
-// 操作台（文体/字数/比例/画质…），而不只是主输入框（修「点卡片参数不变」）。
-function withGuideDefaults(
-  sections: GuideSection[] | undefined,
-  app: GoalApp,
-): GuideSection[] | undefined {
-  const base = app.preset?.set;
-  if (!sections || sections.length === 0) return sections;
-  // 无成品默认参数时也照常返回（示例自带的 set 仍生效）。
-  if (!base || Object.keys(base).length === 0) return sections;
-  return sections.map((s) => ({
-    ...s,
-    examples: s.examples.map((ex) => {
-      const merged = { ...base, ...(ex.set || {}) };
-      return { ...ex, set: merged };
-    }),
-  }));
-}
-
-// 宗旨 v15 §2：把成品的 preset（标准起手 prompt + 参数）注入其「快速起手」板块的第一
-// 张卡——进入 app 后操作台是空的（决策 D），用户一眼看到「快速起手」，点这张 = 老的
-// 「进入即灌」效果（含参数），但由用户主动触发。约定「快速起手」= 最后一个板块。
-function withPresetCard(
-  sections: GuideSection[] | undefined,
-  app: GoalApp,
-): GuideSection[] | undefined {
-  const preset = app.preset;
-  // 无 preset.prompt（如纯抠图成品，靠 onEnterApp 选模式）→ 不注入，原样返回。
-  if (!preset || preset.prompt == null) return sections;
-  const presetCard: GuideExample = {
-    label: "标准灵感（含参数）",
-    hint: "一键套用本成品的标准起手式（含推荐参数）",
-    prompt: preset.prompt,
-    set: preset.set,
-    icon: "⭐",
-    badge: "起手",
-  };
-  if (!sections || sections.length === 0) {
-    return [{ title: "快速起手", examples: [presetCard] }];
-  }
-  // 注入到最后一个板块（约定 = 快速起手）的最前面，避免与其已有「一句话XXX」卡重复
-  // 语义时，标准卡在最上，用户优先看到。
-  const out = sections.map((s) => ({ ...s, examples: [...s.examples] }));
-  const last = out[out.length - 1];
-  last.examples = [presetCard, ...last.examples];
-  return out;
-}
-
-// 进入某成品 app 时只做**非文本**初始化（选引擎/模式，宗旨 v15 决策 D），再渲染站点
-// 共享操作台。OperatorConsole 用 key={active.id} 包裹当前功能的 ops，切成品时本组件重挂
-// → useEffect 再次触发。**不再**往操作台灌 prompt（进入即空；预置改由「快速起手」首卡
-// 按需灌）。
-function CatalogOps({
-  app,
-  renderOps,
-  onEnterApp,
-}: {
-  app: GoalApp;
-  renderOps: (app: GoalApp) => ReactNode;
-  onEnterApp?: (app: GoalApp) => void;
-}) {
-  const hydration = useWorkspaceRuntimeHydration();
-  useEffect(() => {
-    onEnterApp?.(app);
-    hydration?.markAppInitialized();
-    // 仅按 app.id 触发一次。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app.id]);
-  return <div className="h-full">{renderOps(app)}</div>;
 }

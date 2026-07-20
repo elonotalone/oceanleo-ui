@@ -1,0 +1,2665 @@
+{
+  "schema": "oceanleo.ui-consumer-imports.v1",
+  "inventory": "/opt/cursor-workspaces/oceandino/scripts/oceanleo-sites.tsv",
+  "consumerCount": 31,
+  "specifiers": [
+    "@oceanleo/ui/i18n",
+    "@oceanleo/ui/i18n/provider.js",
+    "@oceanleo/ui/i18n/server",
+    "@oceanleo/ui/lib",
+    "@oceanleo/ui/lib/auth",
+    "@oceanleo/ui/lib/auth/account",
+    "@oceanleo/ui/lib/auth/client",
+    "@oceanleo/ui/lib/auth/config",
+    "@oceanleo/ui/lib/auth/middleware",
+    "@oceanleo/ui/org-canvas",
+    "@oceanleo/ui/pages",
+    "@oceanleo/ui/shell",
+    "@oceanleo/ui/shell/ArtifactActions.js",
+    "@oceanleo/ui/shell/MaterialLibrary.js",
+    "@oceanleo/ui/shell/library-data.js",
+    "@oceanleo/ui/shell/selection-context",
+    "@oceanleo/ui/theme",
+    "@oceanleo/ui/theme/server",
+    "@oceanleo/ui/theme/ui.css"
+  ],
+  "sites": [
+    {
+      "siteKey": "agent",
+      "root": "/root/projects/agent",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/org-canvas",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 50,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TeamOrgPanel.tsx",
+          "line": 30
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/agent-artifact-context.test.ts",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/agent-catalog.ts",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/org-canvas",
+          "file": "components/TeamOrgPanel.tsx",
+          "line": 19
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/agent-artifact-context.test.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/agent-artifact-context.test.ts",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "website",
+      "root": "/root/projects/website/front",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/selection-context",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 53,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "components/workspace/BuildConsole.tsx",
+          "line": 39
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "app/settings/page.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 16
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/selection-context",
+          "file": "components/site-editor/editor-controls.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 20
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 21
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 9
+        }
+      ]
+    },
+    {
+      "siteKey": "ecommerce",
+      "root": "/root/projects/ecommerce-assets/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 41,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "ppt",
+      "root": "/root/projects/ppt-maker/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 46,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TemplateGallery.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "excel",
+      "root": "/root/projects/excel-ai/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 57,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/Topbar.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "word",
+      "root": "/root/projects/word-ai/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 49,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 2
+        }
+      ]
+    },
+    {
+      "siteKey": "converter",
+      "root": "/root/projects/converter-suite/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 55,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "aihuman",
+      "root": "/root/projects/aihuman-studio/frontend",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 50,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/oceanleo-ai.ts",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 2
+        }
+      ]
+    },
+    {
+      "siteKey": "image",
+      "root": "/root/projects/image",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 70,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/selfie/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 16
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "siteKey": "video",
+      "root": "/root/projects/video",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 61,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 18
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/material-convergence.test.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "resume",
+      "root": "/root/projects/resume",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 59,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "bizdev",
+      "root": "/root/projects/bizdev",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 55,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/artifact-contexts.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "logo",
+      "root": "/root/projects/logo",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 38,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/artifact-contexts.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "interior",
+      "root": "/root/projects/interior",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 53,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/UploadStep.tsx",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/artifact-contexts.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "chat",
+      "root": "/root/projects/chat",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 50,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "threed",
+      "root": "/root/projects/threed",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 39,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/ThreedStudioHome.tsx",
+          "line": 28
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "music",
+      "root": "/root/projects/music",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 62,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TaskProgressCard.tsx",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "meeting",
+      "root": "/root/projects/meeting",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 49,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TranscriptInput.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "paper",
+      "root": "/root/projects/paper",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 70,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/WorkspaceClient.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "law",
+      "root": "/root/projects/law",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 85,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "study",
+      "root": "/root/projects/study",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 78,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/tools/RelatedTools.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "edu",
+      "root": "/root/projects/edu",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 41,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "novel",
+      "root": "/root/projects/novel",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 87,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "script",
+      "root": "/root/projects/script",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 82,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "design",
+      "root": "/root/projects/design",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/selection-context",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 70,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/UserMenu.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/selection-context",
+          "file": "tests/typecheck-v0.177-contract.ts",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "siteKey": "make",
+      "root": "/root/projects/make",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 65,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "search",
+      "root": "/root/projects/search",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/ArtifactActions.js",
+        "@oceanleo/ui/shell/library-data.js",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 51,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteShell.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/searchApi.ts",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/ArtifactActions.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/library-data.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "money",
+      "root": "/root/projects/money",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/account",
+        "@oceanleo/ui/lib/auth/client",
+        "@oceanleo/ui/lib/auth/config",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 50,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TxList.tsx",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib",
+          "file": "lib/gateway.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/account",
+          "file": "lib/oceanleo-auth/account.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/client",
+          "file": "lib/oceanleo-auth/client.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/config",
+          "file": "lib/oceanleo-auth/config.ts",
+          "line": 1
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "aitools",
+      "root": "/root/projects/aitools",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/ArtifactActions.js",
+        "@oceanleo/ui/shell/library-data.js",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 20,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/SiteFooter.tsx",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/ArtifactActions.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/library-data.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "siteKey": "asset",
+      "root": "/root/projects/asset",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/pages",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/ArtifactActions.js",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 55,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "components/TemplateThumb.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/pages",
+          "file": "components/AccountSettings.tsx",
+          "line": 17
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/ArtifactActions.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 7
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 8
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 9
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "siteKey": "game",
+      "root": "/root/projects/game",
+      "specifiers": [
+        "@oceanleo/ui/i18n",
+        "@oceanleo/ui/i18n/provider.js",
+        "@oceanleo/ui/i18n/server",
+        "@oceanleo/ui/lib/auth",
+        "@oceanleo/ui/lib/auth/middleware",
+        "@oceanleo/ui/shell",
+        "@oceanleo/ui/shell/ArtifactActions.js",
+        "@oceanleo/ui/shell/library-data.js",
+        "@oceanleo/ui/shell/MaterialLibrary.js",
+        "@oceanleo/ui/theme",
+        "@oceanleo/ui/theme/server",
+        "@oceanleo/ui/theme/ui.css"
+      ],
+      "occurrenceCount": 16,
+      "evidence": [
+        {
+          "specifier": "@oceanleo/ui/i18n",
+          "file": "app/layout.tsx",
+          "line": 5
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/provider.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/i18n/server",
+          "file": "i18n/request.ts",
+          "line": 4
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth",
+          "file": "lib/oceanleo-auth/index.ts",
+          "line": 3
+        },
+        {
+          "specifier": "@oceanleo/ui/lib/auth/middleware",
+          "file": "lib/oceanleo-auth/middleware.ts",
+          "line": 2
+        },
+        {
+          "specifier": "@oceanleo/ui/shell",
+          "file": "lib/materials.ts",
+          "line": 6
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/ArtifactActions.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 10
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/library-data.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 12
+        },
+        {
+          "specifier": "@oceanleo/ui/shell/MaterialLibrary.js",
+          "file": "tests/artifact-surface.test.tsx",
+          "line": 11
+        },
+        {
+          "specifier": "@oceanleo/ui/theme",
+          "file": "app/layout.tsx",
+          "line": 13
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/server",
+          "file": "app/layout.tsx",
+          "line": 14
+        },
+        {
+          "specifier": "@oceanleo/ui/theme/ui.css",
+          "file": "app/layout.tsx",
+          "line": 4
+        }
+      ]
+    }
+  ]
+}

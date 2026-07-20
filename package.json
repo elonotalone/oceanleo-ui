@@ -1,6 +1,6 @@
 {
   "name": "@oceanleo/ui",
-  "version": "0.182.0",
+  "version": "0.183.0",
   "description": "OceanLeo 全家桶统一前端外壳 — 单一事实源（侧边栏/AI 模型市场/账户/设置/主题/SSO/网关）。所有 *.oceanleo.com 站（除 crm）共享此包。",
   "private": false,
   "license": "UNLICENSED",
@@ -11,14 +11,22 @@
   "scripts": {
     "build:themes": "node scripts/gen-theme-css.mjs",
     "build:css": "node scripts/gen-theme-css.mjs && tailwindcss -i ./src/theme/_ui-input.css -o ./src/theme/ui.css --minify",
+    "architecture:check": "node --experimental-strip-types scripts/check-domain-boundaries.mjs",
+    "api:snapshot": "node scripts/public-api-snapshot.mjs",
+    "api:check": "node scripts/public-api-snapshot.mjs --check",
+    "consumers:scan": "node scripts/scan-consumer-imports.mjs",
+    "consumers:check": "node scripts/scan-consumer-imports.mjs --summary --check-exports",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test": "node --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/*.test.mjs",
     "build": "npm run build:css && npm run typecheck"
   },
   "exports": {
     ".": "./src/index.ts",
     "./shell": "./src/shell/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
+    "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
+    "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
+    "./shell/library-data.js": "./src/shell/library-data.ts",
     "./org-canvas": "./src/shell/OrgCanvas.tsx",
     "./pages": "./src/pages/index.ts",
     "./ui": "./src/ui/index.tsx",
@@ -29,6 +37,7 @@
     "./lib/auth/client": "./src/lib/auth/client.ts",
     "./lib/auth/account": "./src/lib/auth/account.ts",
     "./i18n": "./src/i18n/index.ts",
+    "./i18n/provider.js": "./src/i18n/provider.tsx",
     "./i18n/server": "./src/i18n/server.ts",
     "./i18n/messages/zh.json": "./src/i18n/messages/zh.json",
     "./i18n/messages/en.json": "./src/i18n/messages/en.json",
@@ -37,7 +46,15 @@
     "./theme/globals.css": "./src/theme/globals.css",
     "./theme/ui.css": "./src/theme/ui.css",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",
-    "./*": "./src/*"
+    "./contracts": "./src/contracts/index.ts",
+    "./manifest": "./src/contracts/site-manifest.ts",
+    "./facades": "./src/facades/index.ts",
+    "./artifact": "./src/facades/artifact.ts",
+    "./library": "./src/facades/library.ts",
+    "./workspace": "./src/facades/workspace.ts",
+    "./session": "./src/facades/session.ts",
+    "./workbench": "./src/facades/workbench.ts",
+    "./browser": "./src/facades/browser.ts"
   },
   "files": [
     "src"

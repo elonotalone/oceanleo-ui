@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  isValidElement,
   useCallback,
   useEffect,
   useId,
@@ -9,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
@@ -34,7 +32,7 @@ import {
 } from "./workspace-actions";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
-import type { LibraryItem, LibraryKind } from "./library-data";
+import type { LibraryItem } from "./library-data";
 import { isDurableLibraryItem } from "./library-data";
 import type { ArtifactContextRef } from "./artifact-contract";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
@@ -45,42 +43,32 @@ import {
   inlineEditorItemsFromSession,
 } from "./advanced-session";
 import { useWorkbenchMaterialActions } from "./workbench-material-provider";
+import {
+  adaptLegacyWorkspaceSurfaceTabs,
+  legacyWorkspaceEntry,
+  type LegacyWorkspaceSurfaceTab,
+} from "./legacy-workspace-surface-adapter";
+import {
+  buildWorkspaceSurfaceModel,
+  workspaceSurfaceCallerId,
+  workspaceSurfacePrimaryTab,
+  workspaceSurfaceSlotForId,
+} from "./workspace-surface-model";
+import {
+  CanvasEmpty,
+  CanvasSubTabs,
+  FixedWorkspaceTabs,
+  LiveWorkspaceNode,
+  WORKSPACE_SLOT_LABELS,
+  createLiveWorkspaceNodeStore,
+  type LiveWorkspaceNodeStore,
+} from "./result-canvas-view";
+
+export { CanvasEmpty, CanvasSubTabs } from "./result-canvas-view";
 
 const EMPTY_MATERIALS: MaterialItem[] = [];
 
-interface LiveWorkspaceNodeStore {
-  node: ReactNode;
-  version: number;
-  listeners: Set<() => void>;
-}
-
-function createLiveWorkspaceNodeStore(): LiveWorkspaceNodeStore {
-  return { node: null, version: 0, listeners: new Set() };
-}
-
-function LiveWorkspaceNode({ store }: { store: LiveWorkspaceNodeStore }) {
-  useSyncExternalStore(
-    (listener) => {
-      store.listeners.add(listener);
-      return () => store.listeners.delete(listener);
-    },
-    () => store.version,
-    () => store.version,
-  );
-  return <>{store.node}</>;
-}
-
-export interface CanvasTab {
-  id: string;
-  label: string;
-  content: ReactNode;
-  /** Normalized payload shared with Materials/My Library rich viewers. */
-  libraryItem?: LibraryItem;
-  /** Real flat entries for a result tab that produced multiple artifacts. */
-  entries?: WorkspaceLibraryEntry[];
-  /** Task Preview can remove its receipt without deleting the durable My Library copy. */
-  onDelete?: () => Promise<void> | void;
-}
+export interface CanvasTab extends LegacyWorkspaceSurfaceTab {}
 
 export interface ResultCanvasProps {
   /**
@@ -107,178 +95,6 @@ export interface ResultCanvasProps {
   siteId?: string;
   /** Server-issued exact binding context for the Primary material shelf. */
   materialContext?: ArtifactContextRef;
-}
-
-const SLOT_LABELS: Record<WorkspaceSlotId, string> = {
-  template: "灵感",
-  preview: "生成",
-  materials: "素材库",
-  mine: "我的库",
-  browser: "云端浏览器",
-};
-
-function FixedWorkspaceTabs({
-  slots,
-  selected,
-  onSelect,
-  accent,
-}: {
-  slots: WorkspaceSlotId[];
-  selected: WorkspaceSlotId;
-  onSelect: (slot: WorkspaceSlotId) => void;
-  accent: string;
-}) {
-  const tt = useUI();
-  return (
-    <nav
-      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-xl bg-stone-100 p-1"
-      aria-label={tt("工作区")}
-    >
-      {slots.map((slot) => {
-        const active = selected === slot;
-        return (
-          <button
-            key={slot}
-            type="button"
-            onClick={() => onSelect(slot)}
-            className={`min-w-fit flex-1 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] font-medium transition-colors ${
-              active
-                ? "bg-white shadow-sm"
-                : "text-stone-500 hover:text-stone-700"
-            }`}
-            style={active ? { color: accent } : undefined}
-          >
-            {tt(SLOT_LABELS[slot])}
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
-const PREVIEW_KIND_HINTS: Array<[RegExp, LibraryKind]> = [
-  [
-    /(?:(视频|video).*(工作流|workflow|时间线|timeline|剪辑)|(?:工作流|workflow|时间线|timeline|剪辑).*(视频|video))/i,
-    "video_canvas",
-  ],
-  [/(ppt|幻灯|演示)/i, "ppt"],
-  [/(excel|表格|sheet)/i, "sheet"],
-  [/(网站|网页|website|web)/i, "website"],
-  [/(图片|海报|image|poster)/i, "image"],
-  [/(音频|音乐|audio|music)/i, "audio"],
-  [/(3d|模型)/i, "threed"],
-  [/(大纲|成稿|文档|word|document|draft|outline)/i, "document"],
-  [/(画布|canvas|组织|节点)/i, "canvas"],
-];
-
-function kindForTab(tab: CanvasTab): LibraryKind {
-  const text = `${tab.id} ${tab.label}`;
-  return PREVIEW_KIND_HINTS.find(([pattern]) => pattern.test(text))?.[1] || "file";
-}
-
-function slotForCanvasTab(tab: CanvasTab): WorkspaceSlotId {
-  const label = tab.label.trim().toLowerCase();
-  if (/灵感|靈感|模板|範本|template|inspiration/.test(label)) return "template";
-  if (/素材库|素材庫|materials?/.test(label)) return "materials";
-  if (/我的库|我的庫|文件库|檔案庫|my library/.test(label)) return "mine";
-  if (/我的.*(?:库|庫|记录|記錄)|作品库|作品庫|项目|項目|历史记录|歷史記錄|会议库|會議庫|闪卡库|閃卡庫/.test(label)) {
-    return "mine";
-  }
-  if (/云端浏览器|雲端瀏覽器|cloud browser/.test(label)) return "browser";
-  return workspaceSlotForLegacyId(tab.id);
-}
-
-function previewEntry(
-  tab: CanvasTab,
-  options: { material?: boolean } = {},
-): WorkspaceLibraryEntry {
-  const kind = tab.libraryItem?.kind || kindForTab(tab);
-  const isResult = /^(result|results|preview|artifact)/i.test(tab.id);
-  const isWorkflow =
-    kind === "video_canvas" || /workflow|工作流|流程/i.test(`${tab.id} ${tab.label}`);
-  const title = /^(生成结果|结果)$/i.test(tab.label.trim())
-    ? "生成"
-    : tab.label || "生成";
-  return {
-    id: `${options.material ? "workflow" : "preview"}:${tab.id}`,
-    title: tab.libraryItem?.title || title,
-    description: options.material
-      ? "当前应用已有页面 · 可直接打开查看"
-      : isResult
-        ? "本次任务生成结果"
-        : "当前应用已有页面",
-    category: options.material
-      ? isWorkflow
-        ? "应用工作流"
-        : "应用页面"
-      : isResult
-        ? "生成"
-        : isWorkflow
-          ? "工作流"
-          : "应用页面",
-    keywords: [
-      tab.id,
-      tab.label,
-      tab.libraryItem?.siteId || "",
-      isWorkflow ? "工作流" : "",
-    ].filter(Boolean),
-    kind,
-    thumbUrl: tab.libraryItem?.thumbUrl || tab.libraryItem?.previewUrl,
-    libraryItem: tab.libraryItem,
-    content: tab.libraryItem ? undefined : tab.content,
-    externalUrl: tab.libraryItem?.url || tab.libraryItem?.previewUrl,
-    onDelete: tab.onDelete,
-  };
-}
-
-function isComponentNamed(node: ReactNode, names: string[]): boolean {
-  if (!isValidElement(node)) return false;
-  const type = node.type as { name?: string; displayName?: string } | string;
-  if (typeof type === "string") return false;
-  const name = type.displayName || type.name || "";
-  return names.includes(name);
-}
-
-function isGenericMineTab(tab: CanvasTab): boolean {
-  const label = tab.label.trim();
-  if (
-    /^(?:file|files|file\s*library|library|database|mine|mylib|my\s*library)$/i.test(
-      label,
-    ) ||
-    /^(?:文件库|檔案庫|我的库|我的庫)$/.test(label)
-  ) {
-    return true;
-  }
-  if (label) return false;
-  return /^(?:file|files|filelibrary|library|database|mine|mylib|my_library)$/i.test(
-    tab.id.trim(),
-  );
-}
-
-function isGenericMaterialsTab(tab: CanvasTab): boolean {
-  const label = tab.label.trim();
-  if (
-    /^(?:material|materials|material\s*library)$/i.test(label) ||
-    /^(?:素材|素材库|素材庫)$/.test(label)
-  ) {
-    return true;
-  }
-  if (label) return false;
-  return /^(?:material|materials|material_library)$/i.test(tab.id.trim());
-}
-
-function inspirationLabel(value: string): string {
-  return value
-    .replaceAll("模板", "灵感")
-    .replaceAll("範本", "灵感")
-    .replace(/\btemplates?\b/gi, "灵感");
-}
-
-function extractedMaterialItems(tab: CanvasTab): MaterialItem[] {
-  if (!isValidElement(tab.content)) return [];
-  if (tab.content.type !== MaterialLibrary) return [];
-  const props = tab.content.props as { materials?: MaterialItem[] };
-  return Array.isArray(props.materials) ? props.materials : [];
 }
 
 /**
@@ -412,6 +228,13 @@ export function ResultCanvas({
     ? {
         id: "__guide",
         label: "灵感",
+        surface: {
+          slot: "template",
+          role: "panel",
+          primary: true,
+          displayLabel: "快速起手",
+          callbackId: null,
+        },
         content: (
           <NavigatorGuide
             guide={guide}
@@ -426,26 +249,19 @@ export function ResultCanvas({
     // Guide identity is stable inside one app runtime.
     [tabs, guideTab?.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
-
-  const grouped = useMemo(() => {
-    const map: Record<WorkspaceSlotId, CanvasTab[]> = {
-      template: [],
-      preview: [],
-      materials: [],
-      mine: [],
-      browser: [],
-    };
-    for (const tab of sourceTabs) {
-      map[slotForCanvasTab(tab)].push(tab);
-    }
-    return map;
-  }, [sourceTabs]);
-  const slotForId = useCallback(
-    (id: string) => {
-      const tab = sourceTabs.find((entry) => entry.id === id);
-      return tab ? slotForCanvasTab(tab) : workspaceSlotForLegacyId(id);
-    },
+  const surfaceModel = useMemo(
+    () => adaptLegacyWorkspaceSurfaceTabs(sourceTabs),
     [sourceTabs],
+  );
+  const grouped = surfaceModel.groups;
+  const slotForId = useCallback(
+    (id: string) =>
+      workspaceSurfaceSlotForId(
+        surfaceModel,
+        id,
+        workspaceSlotForLegacyId,
+      ),
+    [surfaceModel],
   );
 
   const inlineHistoryItems = useMemo(
@@ -467,7 +283,7 @@ export function ResultCanvas({
           tab.entries?.length
             ? tab.entries
             : tab.libraryItem
-              ? [previewEntry(tab)]
+              ? [legacyWorkspaceEntry(tab)]
               : [],
         ),
       ...inlineHistoryItems.map((item) =>
@@ -487,7 +303,7 @@ export function ResultCanvas({
   const localMaterials = useMemo(
     () => [
       ...materials,
-      ...grouped.materials.flatMap(extractedMaterialItems),
+      ...grouped.materials.flatMap((tab) => tab.materials || []),
     ],
     [materials, grouped.materials],
   );
@@ -500,12 +316,12 @@ export function ResultCanvas({
         // container tab itself must never become a card.
         .filter(
           (tab) =>
-            !isGenericMaterialsTab(tab) &&
-            extractedMaterialItems(tab).length === 0 &&
+            tab.role !== "container" &&
+            (tab.materials?.length || 0) === 0 &&
             Boolean(tab.libraryItem),
         )
         .map((tab) => ({
-          ...previewEntry(tab, { material: true }),
+          ...legacyWorkspaceEntry(tab, { material: true }),
           id: `material-page:${tab.id}`,
           category: "本站精选",
         })),
@@ -515,17 +331,9 @@ export function ResultCanvas({
   const minePageEntries = useMemo(
     () =>
       grouped.mine
-        .filter(
-          (tab) =>
-            !isGenericMineTab(tab) &&
-            !isComponentNamed(tab.content, [
-              "ArtifactLibrary",
-              "FileLibrary",
-              "MyLibrary",
-            ]),
-        )
+        .filter((tab) => tab.role !== "container")
         .map((tab) => ({
-          ...previewEntry(tab),
+          ...legacyWorkspaceEntry(tab),
           id: `mine-page:${tab.id}`,
           category: "本站数据",
         })),
@@ -568,10 +376,8 @@ export function ResultCanvas({
     !showTemplate && internal === "template" ? "preview" : internal;
   const previousActive = useRef(active);
   const callerIdForSlot = useCallback(
-    (id: WorkspaceSlotId) =>
-      grouped[id].find((tab) => tab.id !== "__guide")?.id ||
-      (id === "template" ? null : id),
-    [grouped],
+    (id: WorkspaceSlotId) => workspaceSurfaceCallerId(surfaceModel, id),
+    [surfaceModel],
   );
 
   const select = useCallback(
@@ -665,10 +471,11 @@ export function ResultCanvas({
     select(action.tab);
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedTemplateTab =
-    grouped.template.find((tab) => tab.id === templatePageId) ||
-    grouped.template[0] ||
-    null;
+  const selectedTemplateTab = workspaceSurfacePrimaryTab(
+    surfaceModel,
+    "template",
+    templatePageId,
+  );
   const templateContent =
     selectedTemplateTab?.content || (
       <CanvasEmpty
@@ -677,15 +484,17 @@ export function ResultCanvas({
       />
     );
   const previewPanelTabs = grouped.preview.filter(
-    (tab) => !tab.libraryItem && !tab.entries?.length,
+    (tab) => tab.role === "panel",
   );
-  const selectedPreviewTab =
-    previewPanelTabs.find((tab) => tab.id === active) ||
-    previewPanelTabs.find((tab) =>
-      /^(?:result|results|preview|artifact)$/i.test(tab.id),
-    ) ||
-    previewPanelTabs[0] ||
-    null;
+  const previewPanelModel = useMemo(
+    () => buildWorkspaceSurfaceModel(previewPanelTabs),
+    [previewPanelTabs],
+  );
+  const selectedPreviewTab = workspaceSurfacePrimaryTab(
+    previewPanelModel,
+    "preview",
+    active,
+  );
   const browserContent = (
     <CloudBrowserPanel taskId={effectiveTaskId} accent={accent} />
   );
@@ -699,10 +508,7 @@ export function ResultCanvas({
           <CanvasSubTabs
             tabs={grouped.template.map((tab) => ({
               id: tab.id,
-              label:
-                tab.id === "__guide"
-                  ? "快速起手"
-                  : inspirationLabel(tab.label),
+              label: tab.displayLabel,
             }))}
             active={selectedTemplateTab.id}
             onChange={(id) => {
@@ -827,13 +633,13 @@ export function ResultCanvas({
     registerLibraryPanel("materials", {
       ownerId,
       id: "workspace-library:materials",
-      label: tt(SLOT_LABELS.materials),
+      label: tt(WORKSPACE_SLOT_LABELS.materials),
       content: <LiveWorkspaceNode store={materialLibraryStoreRef.current} />,
     });
     registerLibraryPanel("mine", {
       ownerId,
       id: "workspace-library:mine",
-      label: tt(SLOT_LABELS.mine),
+      label: tt(WORKSPACE_SLOT_LABELS.mine),
       content: <LiveWorkspaceNode store={myLibraryStoreRef.current} />,
     });
     return () => {
@@ -952,7 +758,7 @@ export function ResultCanvas({
                     : "text-stone-400 hover:text-stone-700"
                 }`}
               >
-                {tt(SLOT_LABELS[slot])}
+                {tt(WORKSPACE_SLOT_LABELS[slot])}
                 {isActive && (
                   <span
                     className="absolute inset-x-3 bottom-0 h-0.5 rounded-full"
@@ -968,75 +774,5 @@ export function ResultCanvas({
         {rightMainContent}
       </div>
     </section>
-  );
-}
-
-/** Secondary tabs inside a Preview card; kept API-compatible with all sites. */
-export function CanvasSubTabs({
-  tabs,
-  active,
-  onChange,
-  accent = "#4f46e5",
-  right,
-  className = "",
-}: {
-  tabs: { id: string; label: string }[];
-  active: string;
-  onChange: (id: string) => void;
-  accent?: string;
-  right?: ReactNode;
-  className?: string;
-}) {
-  const tt = useUI();
-  return (
-    <div className={`mb-3 flex flex-wrap items-center gap-2 ${className}`}>
-      {tabs.map((tab) => {
-        const selected = active === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onChange(tab.id)}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              selected
-                ? "text-white"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-            }`}
-            style={selected ? { background: accent } : undefined}
-          >
-            {tt(tab.label)}
-          </button>
-        );
-      })}
-      {right && <span className="ml-auto">{right}</span>}
-    </div>
-  );
-}
-
-export function CanvasEmpty({
-  title = "结果将在这里显示",
-  description = "在左侧设置参数并开始后，可在这里查看和下载。",
-  hint,
-  icon,
-}: {
-  title?: string;
-  description?: string;
-  hint?: string;
-  icon?: ReactNode;
-}) {
-  const tt = useUI();
-  return (
-    <div className="flex h-full min-h-[320px] flex-col items-center justify-center px-8 text-center">
-      {icon ?? (
-        <svg className="mb-3 h-10 w-10 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <path d="M7 9h10M7 13h7M7 17h4" strokeLinecap="round" />
-        </svg>
-      )}
-      <h3 className="text-[13px] font-semibold text-stone-700">{tt(title)}</h3>
-      <p className="mt-1.5 max-w-xs text-[11px] leading-relaxed text-stone-400">
-        {tt(hint || description)}
-      </p>
-    </div>
   );
 }

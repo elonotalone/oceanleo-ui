@@ -6,29 +6,45 @@ const routes = readFileSync(
   new URL("../src/shell/workbench-routes.ts", import.meta.url),
   "utf8",
 );
+const registrySource = readFileSync(
+  new URL(
+    "../src/shell/workbench-capability-registry.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const workbench = readFileSync(
   new URL("../src/shell/AdvancedContentWorkbench.tsx", import.meta.url),
   "utf8",
 );
-const { editorCapabilityFor } = await import(
+const {
+  TRUSTED_EDITOR_REGISTRY,
+  editorCapabilityFor,
+} = await import(
   "../src/shell/workbench-routes.ts"
 );
 
 test("advanced editor routing covers every durable material family", () => {
-  for (const type of [
-    "office",
-    "video-timeline",
-    "audio",
-    "image",
-    "pdf",
-    "richdoc",
-    "grid",
-    "deck",
-    "threed",
-    "embed",
-    "none",
-  ]) {
-    assert.match(routes, new RegExp(`type: "${type}"`));
+  assert.deepEqual(
+    Object.keys(TRUSTED_EDITOR_REGISTRY).sort(),
+    [
+      "audio",
+      "chart-editor@1",
+      "deck",
+      "design-canvas",
+      "grid",
+      "image",
+      "office",
+      "pdf",
+      "richdoc",
+      "threed",
+      "video-canvas",
+      "video-timeline",
+      "website",
+    ],
+  );
+  for (const entry of Object.values(TRUSTED_EDITOR_REGISTRY)) {
+    assert.deepEqual(entry.roundTrip, ["load", "mutate", "save", "reopen"]);
   }
   assert.match(routes, /WORD_EXT/);
   assert.match(routes, /CELL_EXT/);
@@ -41,9 +57,7 @@ test("advanced editor routing covers every durable material family", () => {
   assert.match(routes, /mime\.startsWith\("video\/"\)/);
   assert.match(routes, /mime\.startsWith\("audio\/"\)/);
   assert.match(routes, /mime\.startsWith\("image\/"\)/);
-  assert.match(routes, /TRUSTED_EDITOR_REGISTRY/);
-  assert.match(routes, /chart-editor@1/);
-  assert.match(routes, /load", "mutate", "save", "reopen"/);
+  assert.match(registrySource, /TRUSTED_EDITOR_REGISTRY/);
   assert.match(workbench, /editorRouteFor\(props\.item\)/);
 });
 

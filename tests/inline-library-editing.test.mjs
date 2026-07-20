@@ -68,7 +68,7 @@ test("generated and material slots never wrap legacy container tabs as fake card
   );
   assert.match(
     canvas,
-    /extractedMaterialItems\(tab\)\.length === 0 &&[\s\S]*?Boolean\(tab\.libraryItem\)/,
+    /tab\.role !== "container" &&[\s\S]*?\(tab\.materials\?\.length \|\| 0\) === 0[\s\S]*?Boolean\(tab\.libraryItem\)/,
   );
   assert.doesNotMatch(canvas, /workflowEntries/);
 });
@@ -101,7 +101,9 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
 });
 
 test("normal apps call the result area generation and no advanced task surface remains", () => {
-  const canvas = source("../src/shell/ResultCanvas.tsx");
+  const canvas =
+    source("../src/shell/ResultCanvas.tsx") +
+    source("../src/shell/result-canvas-view.tsx");
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   assert.match(canvas, /preview: "生成"/);
   assert.doesNotMatch(shell, /id: "tasks"/);

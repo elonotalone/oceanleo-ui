@@ -1,0 +1,5144 @@
+{
+  "schema": "oceanleo.public-api.v1",
+  "package": "@oceanleo/ui",
+  "packageExports": {
+    ".": "./src/index.ts",
+    "./artifact": "./src/facades/artifact.ts",
+    "./browser": "./src/facades/browser.ts",
+    "./contracts": "./src/contracts/index.ts",
+    "./facades": "./src/facades/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./i18n/messages/en.json": "./src/i18n/messages/en.json",
+    "./i18n/messages/zh.json": "./src/i18n/messages/zh.json",
+    "./i18n/provider.js": "./src/i18n/provider.tsx",
+    "./i18n/server": "./src/i18n/server.ts",
+    "./lib": "./src/lib/index.ts",
+    "./lib/auth": "./src/lib/auth/index.ts",
+    "./lib/auth/account": "./src/lib/auth/account.ts",
+    "./lib/auth/client": "./src/lib/auth/client.ts",
+    "./lib/auth/config": "./src/lib/auth/config.ts",
+    "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
+    "./library": "./src/facades/library.ts",
+    "./manifest": "./src/contracts/site-manifest.ts",
+    "./org-canvas": "./src/shell/OrgCanvas.tsx",
+    "./pages": "./src/pages/index.ts",
+    "./session": "./src/facades/session.ts",
+    "./shell": "./src/shell/index.ts",
+    "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
+    "./shell/library-data.js": "./src/shell/library-data.ts",
+    "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
+    "./shell/selection-context": "./src/shell/selection-context.ts",
+    "./tailwind-preset": "./src/theme/tailwind-preset.ts",
+    "./theme": "./src/theme/index.ts",
+    "./theme/globals.css": "./src/theme/globals.css",
+    "./theme/server": "./src/theme/server.ts",
+    "./theme/ui.css": "./src/theme/ui.css",
+    "./ui": "./src/ui/index.tsx",
+    "./workbench": "./src/facades/workbench.ts",
+    "./workspace": "./src/facades/workspace.ts"
+  },
+  "entrypoints": {
+    ".": {
+      "target": "./src/index.ts",
+      "declarations": [
+        {
+          "kind": "star",
+          "source": "./lib"
+        },
+        {
+          "kind": "star",
+          "source": "./pages"
+        },
+        {
+          "kind": "star",
+          "source": "./shell"
+        },
+        {
+          "kind": "star",
+          "source": "./ui"
+        }
+      ]
+    },
+    "./artifact": {
+      "target": "./src/facades/artifact.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "ArtifactActionButtons",
+          "importedName": "ArtifactActionButtons",
+          "source": "../shell/ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "artifactActionMatrix",
+          "importedName": "artifactActionMatrix",
+          "source": "../shell/ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactActionMatrixOptions",
+          "importedName": "ArtifactActionMatrixOptions",
+          "source": "../shell/ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactActionState",
+          "importedName": "ArtifactActionState",
+          "source": "../shell/ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactApiResult",
+          "importedName": "ArtifactApiResult",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactEditDecision",
+          "importedName": "ArtifactEditDecision",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRenditionFailure",
+          "importedName": "ArtifactRenditionFailure",
+          "source": "../shell/ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRenditionState",
+          "importedName": "ArtifactRenditionState",
+          "source": "../shell/ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRevisionCommit",
+          "importedName": "ArtifactRevisionCommit",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactSearchResult",
+          "importedName": "ArtifactSearchResult",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactTargetActionEvidence",
+          "importedName": "ArtifactTargetActionEvidence",
+          "source": "../shell/ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "bindArtifactToContext",
+          "importedName": "bindArtifactToContext",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "createArtifactRevision",
+          "importedName": "createArtifactRevision",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ensureArtifact",
+          "importedName": "ensureArtifact",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ensureDurableArtifactItem",
+          "importedName": "ensureDurableArtifactItem",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "forkArtifact",
+          "importedName": "forkArtifact",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "getArtifactEditDecision",
+          "importedName": "getArtifactEditDecision",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "getArtifactItem",
+          "importedName": "getArtifactItem",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "listPrimaryArtifacts",
+          "importedName": "listPrimaryArtifacts",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "prepareArtifactForAction",
+          "importedName": "prepareArtifactForAction",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "refreshArtifactRendition",
+          "importedName": "refreshArtifactRendition",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "retireArtifact",
+          "importedName": "retireArtifact",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "searchArtifactLibrary",
+          "importedName": "searchArtifactLibrary",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "setArtifactFavorite",
+          "importedName": "setArtifactFavorite",
+          "source": "../shell/artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "useArtifactRendition",
+          "importedName": "useArtifactRendition",
+          "source": "../shell/ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "withResolvedRendition",
+          "importedName": "withResolvedRendition",
+          "source": "../shell/ArtifactRendition"
+        },
+        {
+          "kind": "star",
+          "source": "../shell/artifact-contract"
+        }
+      ]
+    },
+    "./browser": {
+      "target": "./src/facades/browser.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "CLOUD_BROWSER_LEGAL_TRANSITIONS",
+          "importedName": "CLOUD_BROWSER_LEGAL_TRANSITIONS",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserControlIntent",
+          "importedName": "CloudBrowserControlIntent",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserControlLease",
+          "importedName": "CloudBrowserControlLease",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserEvent",
+          "importedName": "CloudBrowserEvent",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserFrameMeta",
+          "importedName": "CloudBrowserFrameMeta",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "cloudBrowserLiveUrl",
+          "importedName": "cloudBrowserLiveUrl",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserMessageDecodeResult",
+          "importedName": "CloudBrowserMessageDecodeResult",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserPanel",
+          "importedName": "CloudBrowserPanel",
+          "source": "../shell/CloudBrowserPanel"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserProtocolEffect",
+          "importedName": "CloudBrowserProtocolEffect",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserProtocolFallbacks",
+          "importedName": "CloudBrowserProtocolFallbacks",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserProtocolReduction",
+          "importedName": "CloudBrowserProtocolReduction",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserProtocolState",
+          "importedName": "CloudBrowserProtocolState",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "cloudBrowserScreenshot",
+          "importedName": "cloudBrowserScreenshot",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserSession",
+          "importedName": "CloudBrowserSession",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserTab",
+          "importedName": "CloudBrowserTab",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserTabState",
+          "importedName": "CloudBrowserTabState",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserTicket",
+          "importedName": "CloudBrowserTicket",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserTransportState",
+          "importedName": "CloudBrowserTransportState",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "createCloudBrowser",
+          "importedName": "createCloudBrowser",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "createCloudBrowserProtocolState",
+          "importedName": "createCloudBrowserProtocolState",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "createCloudBrowserTicket",
+          "importedName": "createCloudBrowserTicket",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "decodeCloudBrowserProtocolMessage",
+          "importedName": "decodeCloudBrowserProtocolMessage",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "deleteCloudBrowser",
+          "importedName": "deleteCloudBrowser",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "hibernateCloudBrowser",
+          "importedName": "hibernateCloudBrowser",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "isCloudBrowserTransportTransitionLegal",
+          "importedName": "isCloudBrowserTransportTransitionLegal",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "listCloudBrowserEvents",
+          "importedName": "listCloudBrowserEvents",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "listCloudBrowsers",
+          "importedName": "listCloudBrowsers",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "pointInContainedFrame",
+          "importedName": "pointInContainedFrame",
+          "source": "../shell/CloudBrowserPanel"
+        },
+        {
+          "kind": "named",
+          "name": "reduceCloudBrowserProtocolMessage",
+          "importedName": "reduceCloudBrowserProtocolMessage",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "reduceCloudBrowserTransportTransition",
+          "importedName": "reduceCloudBrowserTransportTransition",
+          "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "resumeCloudBrowser",
+          "importedName": "resumeCloudBrowser",
+          "source": "../lib/browser"
+        }
+      ]
+    },
+    "./contracts": {
+      "target": "./src/contracts/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "canonicalOceanLeoSiteKey",
+          "importedName": "canonicalOceanLeoSiteKey",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "createOceanLeoAppContext",
+          "importedName": "createOceanLeoAppContext",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "defineOceanLeoSiteManifest",
+          "importedName": "defineOceanLeoSiteManifest",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OCEANLEO_SITE_MANIFEST_SCHEMA",
+          "importedName": "OCEANLEO_SITE_MANIFEST_SCHEMA",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoAppContext",
+          "importedName": "OceanLeoAppContext",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoAuthContract",
+          "importedName": "OceanLeoAuthContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoBrandContract",
+          "importedName": "OceanLeoBrandContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoCatalogContract",
+          "importedName": "OceanLeoCatalogContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoCreditsContract",
+          "importedName": "OceanLeoCreditsContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoHostAdapterDeclaration",
+          "importedName": "OceanLeoHostAdapterDeclaration",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoShellContract",
+          "importedName": "OceanLeoShellContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteKey",
+          "importedName": "OceanLeoSiteKey",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteManifest",
+          "importedName": "OceanLeoSiteManifest",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteManifestInput",
+          "importedName": "OceanLeoSiteManifestInput",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoWorkspaceRouteContract",
+          "importedName": "OceanLeoWorkspaceRouteContract",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "resolveCatalogAlias",
+          "importedName": "resolveCatalogAlias",
+          "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "siteManifestMatches",
+          "importedName": "siteManifestMatches",
+          "source": "./site-manifest"
+        }
+      ]
+    },
+    "./facades": {
+      "target": "./src/facades/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "OCEANLEO_DOMAIN_FACADES",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoDomainFacade",
+          "source": ""
+        }
+      ]
+    },
+    "./i18n": {
+      "target": "./src/i18n/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "DEFAULT_LOCALE",
+          "importedName": "DEFAULT_LOCALE",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "htmlLang",
+          "importedName": "htmlLang",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "I18nProvider",
+          "importedName": "I18nProvider",
+          "source": "./provider"
+        },
+        {
+          "kind": "named",
+          "name": "I18nProviderProps",
+          "importedName": "I18nProviderProps",
+          "source": "./provider"
+        },
+        {
+          "kind": "named",
+          "name": "isLocale",
+          "importedName": "isLocale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LanguageSwitcher",
+          "importedName": "LanguageSwitcher",
+          "source": "./LanguageSwitcher"
+        },
+        {
+          "kind": "named",
+          "name": "LanguageSwitcherProps",
+          "importedName": "LanguageSwitcherProps",
+          "source": "./LanguageSwitcher"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALE_COOKIE_MAX_AGE",
+          "importedName": "LOCALE_COOKIE_MAX_AGE",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALE_COOKIE",
+          "importedName": "LOCALE_COOKIE",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALE_LABELS",
+          "importedName": "LOCALE_LABELS",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "Locale",
+          "importedName": "Locale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "localeDir",
+          "importedName": "localeDir",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALES",
+          "importedName": "LOCALES",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeLocale",
+          "importedName": "normalizeLocale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "RTL_LOCALES",
+          "importedName": "RTL_LOCALES",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "UITranslate",
+          "importedName": "UITranslate",
+          "source": "./ui/useUI"
+        },
+        {
+          "kind": "named",
+          "name": "useFormatter",
+          "importedName": "useFormatter",
+          "source": "./useT.client"
+        },
+        {
+          "kind": "named",
+          "name": "useLocale",
+          "importedName": "useLocale",
+          "source": "./useT.client"
+        },
+        {
+          "kind": "named",
+          "name": "useMessages",
+          "importedName": "useMessages",
+          "source": "./useT.client"
+        },
+        {
+          "kind": "named",
+          "name": "useT",
+          "importedName": "useT",
+          "source": "./useT.client"
+        },
+        {
+          "kind": "named",
+          "name": "useUI",
+          "importedName": "useUI",
+          "source": "./ui/useUI"
+        }
+      ]
+    },
+    "./i18n/provider.js": {
+      "target": "./src/i18n/provider.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "I18nProvider",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "I18nProviderProps",
+          "source": ""
+        }
+      ]
+    },
+    "./i18n/server": {
+      "target": "./src/i18n/server.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "createI18nRequest",
+          "importedName": "createI18nRequest",
+          "source": "./request"
+        },
+        {
+          "kind": "named",
+          "name": "DEFAULT_LOCALE",
+          "importedName": "DEFAULT_LOCALE",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "getLocale",
+          "importedName": "getLocale",
+          "source": "next-intl/server"
+        },
+        {
+          "kind": "named",
+          "name": "getMessages",
+          "importedName": "getMessages",
+          "source": "next-intl/server"
+        },
+        {
+          "kind": "named",
+          "name": "getT",
+          "importedName": "getTranslations",
+          "source": "next-intl/server"
+        },
+        {
+          "kind": "named",
+          "name": "htmlLang",
+          "importedName": "htmlLang",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "isLocale",
+          "importedName": "isLocale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALE_COOKIE",
+          "importedName": "LOCALE_COOKIE",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALE_LABELS",
+          "importedName": "LOCALE_LABELS",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "Locale",
+          "importedName": "Locale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "localeDir",
+          "importedName": "localeDir",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "LOCALES",
+          "importedName": "LOCALES",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeLocale",
+          "importedName": "normalizeLocale",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "RTL_LOCALES",
+          "importedName": "RTL_LOCALES",
+          "source": "./config"
+        },
+        {
+          "kind": "named",
+          "name": "sharedOnlyI18nRequest",
+          "importedName": "sharedOnlyI18nRequest",
+          "source": "./request"
+        },
+        {
+          "kind": "named",
+          "name": "SiteMessagesLoader",
+          "importedName": "SiteMessagesLoader",
+          "source": "./request"
+        },
+        {
+          "kind": "named",
+          "name": "ttFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "ttServer",
+          "source": ""
+        }
+      ]
+    },
+    "./lib": {
+      "target": "./src/lib/index.ts",
+      "declarations": [
+        {
+          "kind": "star",
+          "source": "./agent-progress"
+        },
+        {
+          "kind": "star",
+          "source": "./agent"
+        },
+        {
+          "kind": "star",
+          "source": "./app-session"
+        },
+        {
+          "kind": "star",
+          "source": "./asset-thumb"
+        },
+        {
+          "kind": "star",
+          "source": "./auth"
+        },
+        {
+          "kind": "star",
+          "source": "./brand-color"
+        },
+        {
+          "kind": "star",
+          "source": "./capabilities"
+        },
+        {
+          "kind": "star",
+          "source": "./console-draft"
+        },
+        {
+          "kind": "star",
+          "source": "./database"
+        },
+        {
+          "kind": "star",
+          "source": "./embed"
+        },
+        {
+          "kind": "star",
+          "source": "./fn-agent"
+        },
+        {
+          "kind": "star",
+          "source": "./image-ai-edit"
+        },
+        {
+          "kind": "star",
+          "source": "./manifest-fetch"
+        },
+        {
+          "kind": "star",
+          "source": "./manifest"
+        },
+        {
+          "kind": "star",
+          "source": "./media-proxy"
+        },
+        {
+          "kind": "star",
+          "source": "./model-tier"
+        },
+        {
+          "kind": "star",
+          "source": "./office-client"
+        },
+        {
+          "kind": "star",
+          "source": "./operator-remark"
+        },
+        {
+          "kind": "star",
+          "source": "./organization"
+        },
+        {
+          "kind": "star",
+          "source": "./presence"
+        },
+        {
+          "kind": "star",
+          "source": "./recommend"
+        },
+        {
+          "kind": "star",
+          "source": "./taxonomy"
+        },
+        {
+          "kind": "star",
+          "source": "./workflows"
+        }
+      ]
+    },
+    "./lib/auth": {
+      "target": "./src/lib/auth/index.ts",
+      "declarations": [
+        {
+          "kind": "star",
+          "source": "./account"
+        },
+        {
+          "kind": "star",
+          "source": "./client"
+        },
+        {
+          "kind": "star",
+          "source": "./config"
+        }
+      ]
+    },
+    "./lib/auth/account": {
+      "target": "./src/lib/auth/account.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "addUserKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "CapabilitySelection",
+          "importedName": "CapabilitySelection",
+          "source": "../model-tier"
+        },
+        {
+          "kind": "named",
+          "name": "createModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "deleteModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "deleteUserKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getAudit",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getCreditHistory",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getCredits",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getKeyProviders",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getModelCatalog",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getModelGroups",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getModelSelection",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getPreferredModel",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getSelectedModels",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getSelectedModelsByCapability",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getSelectedModelsByCategory",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getUsageBySite",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "invalidateSelectedModelsCache",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "listUserKeys",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "MODEL_GROUP_CHANGED_EVENT",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "ModelTierId",
+          "importedName": "ModelTierId",
+          "source": "../model-tier"
+        },
+        {
+          "kind": "named",
+          "name": "ModelTierSelection",
+          "importedName": "ModelTierSelection",
+          "source": "../model-tier"
+        },
+        {
+          "kind": "named",
+          "name": "pricingDocUrl",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "setActiveModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "setModelSelection",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "setModelTier",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "updateModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AuditMedia",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AuditRecord",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "CatalogCapability",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "CatalogGroup",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "CatalogModel",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "CatalogProviderBlock",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "CreditEvent",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelCatalog",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelGroupKind",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelGroupsPayload",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelPrice",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelSelectionPayload",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PreferredModel",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PricingMeta",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProviderMeta",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProviderMetaBYOK",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "SelectedCapability",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "SelectedModels",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "SiteUsage",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "UsageTotal",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "UserKey",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "WalletInfo",
+          "source": ""
+        }
+      ]
+    },
+    "./lib/auth/client": {
+      "target": "./src/lib/auth/client.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "accessToken",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "browserClient",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "cachedAccessToken",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getUserEmail",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getUserId",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isSignedIn",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeCnPhone",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "oceanleoConfigured",
+          "importedName": "configured",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "sendPhoneOtp",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "signIn",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "signOutEverywhere",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "verifyPhoneOtp",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "wechatLoginUrl",
+          "source": ""
+        }
+      ]
+    },
+    "./lib/auth/config": {
+      "target": "./src/lib/auth/config.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "configured",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "cookieDomainFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "cookieOptions",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GATEWAY_BASE",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SUPABASE_ANON_KEY",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SUPABASE_URL",
+          "source": ""
+        }
+      ]
+    },
+    "./lib/auth/middleware": {
+      "target": "./src/lib/auth/middleware.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "applyColorSchemeHints",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "applyWorkspacePrivacyHeaders",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "updateSession",
+          "source": ""
+        }
+      ]
+    },
+    "./library": {
+      "target": "./src/facades/library.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "artifactEntry",
+          "importedName": "artifactEntry",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "buildLibraryItems",
+          "importedName": "buildLibraryItems",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "EditorCapabilityName",
+          "importedName": "EditorCapabilityName",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "EditorManifestV1",
+          "importedName": "EditorManifestV1",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "filterWorkspaceLibraryEntries",
+          "importedName": "filterWorkspaceLibraryEntries",
+          "source": "../shell/workspace-library-model"
+        },
+        {
+          "kind": "named",
+          "name": "inferLibraryKind",
+          "importedName": "inferLibraryKind",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryArtifactRow",
+          "importedName": "LibraryArtifactRow",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "libraryContentDescriptor",
+          "importedName": "libraryContentDescriptor",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryContentDescriptor",
+          "importedName": "LibraryContentDescriptor",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryItem",
+          "importedName": "LibraryItem",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemMatches",
+          "importedName": "libraryItemMatches",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryItemViewer",
+          "importedName": "LibraryItemViewer",
+          "source": "../shell/library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryKind",
+          "importedName": "LibraryKind",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryKindIcon",
+          "importedName": "LibraryKindIcon",
+          "source": "../shell/library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "libraryKindLabel",
+          "importedName": "libraryKindLabel",
+          "source": "../shell/library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_TAXONOMY_LABEL",
+          "importedName": "MATERIAL_TAXONOMY_LABEL",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialItem",
+          "importedName": "MaterialItem",
+          "source": "../shell/MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibrary",
+          "importedName": "MaterialLibrary",
+          "source": "../shell/MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibraryLevel",
+          "importedName": "MaterialLibraryLevel",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibraryProps",
+          "importedName": "MaterialLibraryProps",
+          "source": "../shell/MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "materialToEntry",
+          "importedName": "materialToEntry",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "mergeMaterialEntries",
+          "importedName": "mergeMaterialEntries",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeArtifact",
+          "importedName": "normalizeArtifact",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "normalizedMaterialTaxonomy",
+          "importedName": "normalizedMaterialTaxonomy",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeEditorManifest",
+          "importedName": "normalizeEditorManifest",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeWork",
+          "importedName": "normalizeWork",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "PlatformAsset",
+          "importedName": "PlatformAsset",
+          "source": "../shell/MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "platformToEntry",
+          "importedName": "platformToEntry",
+          "source": "../shell/MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "queryMaterialLibrary",
+          "importedName": "queryMaterialLibrary",
+          "source": "../shell/material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "ThreeDSubtype",
+          "importedName": "ThreeDSubtype",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "threeDSubtypeFor",
+          "importedName": "threeDSubtypeFor",
+          "source": "../shell/library-data"
+        },
+        {
+          "kind": "named",
+          "name": "visibleWorkspaceLibraryCategories",
+          "importedName": "visibleWorkspaceLibraryCategories",
+          "source": "../shell/workspace-library-model"
+        },
+        {
+          "kind": "named",
+          "name": "WORKSPACE_KIND_LABELS",
+          "importedName": "WORKSPACE_KIND_LABELS",
+          "source": "../shell/workspace-library-model"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceEntryFromLibraryItem",
+          "importedName": "workspaceEntryFromLibraryItem",
+          "source": "../shell/WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibrary",
+          "importedName": "WorkspaceLibrary",
+          "source": "../shell/WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceLibraryCategories",
+          "importedName": "workspaceLibraryCategories",
+          "source": "../shell/workspace-library-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryCategory",
+          "importedName": "WorkspaceLibraryCategory",
+          "source": "../shell/workspace-library-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryEntry",
+          "importedName": "WorkspaceLibraryEntry",
+          "source": "../shell/WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryEntryViewer",
+          "importedName": "WorkspaceLibraryEntryViewer",
+          "source": "../shell/WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryProps",
+          "importedName": "WorkspaceLibraryProps",
+          "source": "../shell/WorkspaceLibrary"
+        }
+      ]
+    },
+    "./manifest": {
+      "target": "./src/contracts/site-manifest.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "canonicalOceanLeoSiteKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "createOceanLeoAppContext",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "defineOceanLeoSiteManifest",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "OCEANLEO_SITE_MANIFEST_SCHEMA",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "resolveCatalogAlias",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "siteManifestMatches",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoAppContext",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoAuthContract",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoBrandContract",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoCatalogContract",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoCreditsContract",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoHostAdapterDeclaration",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoShellContract",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoSiteKey",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoSiteManifest",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoSiteManifestInput",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OceanLeoWorkspaceRouteContract",
+          "source": ""
+        }
+      ]
+    },
+    "./org-canvas": {
+      "target": "./src/shell/OrgCanvas.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "OrgCanvas",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OrgCanvasAgent",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OrgCanvasProps",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OrgNodeStatus",
+          "source": ""
+        }
+      ]
+    },
+    "./pages": {
+      "target": "./src/pages/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AccountMenuItem",
+          "importedName": "AccountMenuItem",
+          "source": "./AccountPage"
+        },
+        {
+          "kind": "named",
+          "name": "AccountPage",
+          "importedName": "AccountPage",
+          "source": "./AccountPage"
+        },
+        {
+          "kind": "named",
+          "name": "AccountPageProps",
+          "importedName": "AccountPageProps",
+          "source": "./AccountPage"
+        },
+        {
+          "kind": "named",
+          "name": "ApiGuidePage",
+          "importedName": "ApiGuidePage",
+          "source": "./ApiGuidePage"
+        },
+        {
+          "kind": "named",
+          "name": "ApiPage",
+          "importedName": "ApiPage",
+          "source": "./ApiPage"
+        },
+        {
+          "kind": "named",
+          "name": "ApiPageProps",
+          "importedName": "ApiPageProps",
+          "source": "./ApiPage"
+        },
+        {
+          "kind": "named",
+          "name": "ByokKeys",
+          "importedName": "ByokKeys",
+          "source": "./ByokKeys"
+        },
+        {
+          "kind": "named",
+          "name": "CostPage",
+          "importedName": "CostPage",
+          "source": "./CostPage"
+        },
+        {
+          "kind": "named",
+          "name": "GeneralPage",
+          "importedName": "GeneralPage",
+          "source": "./GeneralPage"
+        },
+        {
+          "kind": "named",
+          "name": "GeneralPageProps",
+          "importedName": "GeneralPageProps",
+          "source": "./GeneralPage"
+        },
+        {
+          "kind": "named",
+          "name": "MyDatabasePage",
+          "importedName": "MyDatabasePage",
+          "source": "./MyDatabasePage"
+        },
+        {
+          "kind": "named",
+          "name": "MyDatabasePageProps",
+          "importedName": "MyDatabasePageProps",
+          "source": "./MyDatabasePage"
+        },
+        {
+          "kind": "named",
+          "name": "MyDatabasePanel",
+          "importedName": "MyDatabasePanel",
+          "source": "./MyDatabasePage"
+        },
+        {
+          "kind": "named",
+          "name": "MyDatabasePanelProps",
+          "importedName": "MyDatabasePanelProps",
+          "source": "./MyDatabasePage"
+        },
+        {
+          "kind": "named",
+          "name": "PageHeader",
+          "importedName": "PageHeader",
+          "source": "./PageHeader"
+        },
+        {
+          "kind": "named",
+          "name": "PluginsPage",
+          "importedName": "PluginsPage",
+          "source": "./PluginsPage"
+        },
+        {
+          "kind": "named",
+          "name": "PluginsPageProps",
+          "importedName": "PluginsPageProps",
+          "source": "./PluginsPage"
+        },
+        {
+          "kind": "named",
+          "name": "SettingsPage",
+          "importedName": "SettingsPage",
+          "source": "./SettingsPage"
+        },
+        {
+          "kind": "named",
+          "name": "SettingsPageProps",
+          "importedName": "SettingsPageProps",
+          "source": "./SettingsPage"
+        },
+        {
+          "kind": "named",
+          "name": "UsageHistory",
+          "importedName": "UsageHistory",
+          "source": "./UsageHistory"
+        }
+      ]
+    },
+    "./session": {
+      "target": "./src/facades/session.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "APP_SESSION_API_BASE",
+          "importedName": "APP_SESSION_API_BASE",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "AppSession",
+          "importedName": "AppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "AppSessionArtifactPin",
+          "importedName": "AppSessionArtifactPin",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "AppSessionListSurface",
+          "importedName": "AppSessionListSurface",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "AppSessionStatus",
+          "importedName": "AppSessionStatus",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "AppSessionSurface",
+          "importedName": "AppSessionSurface",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "archiveAppSession",
+          "importedName": "archiveAppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "ArchiveAppSessionResult",
+          "importedName": "ArchiveAppSessionResult",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "deleteAppSession",
+          "importedName": "deleteAppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "ensureAppSession",
+          "importedName": "ensureAppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "EnsureAppSessionInput",
+          "importedName": "EnsureAppSessionInput",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "EnsureWorkspaceSessionOptions",
+          "importedName": "EnsureWorkspaceSessionOptions",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "getAppSession",
+          "importedName": "getAppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "isAppSessionApiUnavailableStatus",
+          "importedName": "isAppSessionApiUnavailableStatus",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "listAppSessions",
+          "importedName": "listAppSessions",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "ListAppSessionsOptions",
+          "importedName": "ListAppSessionsOptions",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeAppSessionArtifactPins",
+          "importedName": "normalizeAppSessionArtifactPins",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "RuntimeHydrationValue",
+          "importedName": "RuntimeHydrationValue",
+          "source": "../shell/workspace-runtime-hydration"
+        },
+        {
+          "kind": "named",
+          "name": "updateAppSession",
+          "importedName": "updateAppSession",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "UpdateAppSessionInput",
+          "importedName": "UpdateAppSessionInput",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "updateAppSessionMetadata",
+          "importedName": "updateAppSessionMetadata",
+          "source": "../lib/app-session"
+        },
+        {
+          "kind": "named",
+          "name": "useOptionalWorkspaceSession",
+          "importedName": "useOptionalWorkspaceSession",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceRuntimeHydration",
+          "importedName": "useWorkspaceRuntimeHydration",
+          "source": "../shell/workspace-runtime-hydration"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceSession",
+          "importedName": "useWorkspaceSession",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceRuntime",
+          "importedName": "WorkspaceRuntime",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionAvailability",
+          "importedName": "WorkspaceSessionAvailability",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionConflict",
+          "importedName": "WorkspaceSessionConflict",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionContextValue",
+          "importedName": "WorkspaceSessionContextValue",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionMode",
+          "importedName": "WorkspaceSessionMode",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionProvider",
+          "importedName": "WorkspaceSessionProvider",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionProviderProps",
+          "importedName": "WorkspaceSessionProviderProps",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionRecordContext",
+          "importedName": "WorkspaceSessionRecordContext",
+          "source": "../shell/WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSnapshotSaveResult",
+          "importedName": "WorkspaceSnapshotSaveResult",
+          "source": "../shell/WorkspaceSession"
+        }
+      ]
+    },
+    "./shell": {
+      "target": "./src/shell/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AddPromptModal",
+          "importedName": "AddPromptModal",
+          "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "ADVANCED_FEATURES",
+          "importedName": "ADVANCED_FEATURES",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbench",
+          "importedName": "AdvancedContentWorkbench",
+          "source": "./AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbenchProps",
+          "importedName": "AdvancedContentWorkbenchProps",
+          "source": "./AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "advancedFeatureById",
+          "importedName": "advancedFeatureById",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedFeatureCatalog",
+          "importedName": "AdvancedFeatureCatalog",
+          "source": "./AdvancedFeaturePages"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedFeatureDefinition",
+          "importedName": "AdvancedFeatureDefinition",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "advancedFeatureForItem",
+          "importedName": "advancedFeatureForItem",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "advancedFeatureHref",
+          "importedName": "advancedFeatureHref",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "advancedFeatureHrefForItem",
+          "importedName": "advancedFeatureHrefForItem",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedFeatureId",
+          "importedName": "AdvancedFeatureId",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedFeatureRoute",
+          "importedName": "AdvancedFeatureRoute",
+          "source": "./AdvancedFeaturePages"
+        },
+        {
+          "kind": "named",
+          "name": "AgentAttachment",
+          "importedName": "AgentAttachment",
+          "source": "../lib/agent"
+        },
+        {
+          "kind": "named",
+          "name": "AgentCardConfig",
+          "importedName": "AgentCardConfig",
+          "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "AgentChat",
+          "importedName": "AgentChat",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "AgentChatProps",
+          "importedName": "AgentChatProps",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "AgentConsole",
+          "importedName": "AgentConsole",
+          "source": "./AgentConsole"
+        },
+        {
+          "kind": "named",
+          "name": "AgentConsoleProps",
+          "importedName": "AgentConsoleProps",
+          "source": "./AgentConsole"
+        },
+        {
+          "kind": "named",
+          "name": "AgentLibraryTabs",
+          "importedName": "AgentLibraryTabs",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "AgentProgress",
+          "importedName": "AgentProgress",
+          "source": "./AgentProgress"
+        },
+        {
+          "kind": "named",
+          "name": "AiAssistant",
+          "importedName": "AiAssistant",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "AiAssistantProps",
+          "importedName": "AiAssistantProps",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "AiRecommendBox",
+          "importedName": "AiRecommendBox",
+          "source": "./AiRecommendBox"
+        },
+        {
+          "kind": "named",
+          "name": "AiRecommendBoxProps",
+          "importedName": "AiRecommendBoxProps",
+          "source": "./AiRecommendBox"
+        },
+        {
+          "kind": "named",
+          "name": "ANIMATION_PRESET_IDS",
+          "importedName": "ANIMATION_PRESET_IDS",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "AnimationPresetId",
+          "importedName": "AnimationPresetId",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "AppDirectory",
+          "importedName": "AppDirectory",
+          "source": "./AppDirectory"
+        },
+        {
+          "kind": "named",
+          "name": "AppDirectoryProps",
+          "importedName": "AppDirectoryProps",
+          "source": "./AppDirectory"
+        },
+        {
+          "kind": "named",
+          "name": "appendOperatorRemark",
+          "importedName": "appendOperatorRemark",
+          "source": "../lib/operator-remark"
+        },
+        {
+          "kind": "named",
+          "name": "AppShell",
+          "importedName": "AppShell",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "AppShellBrand",
+          "importedName": "AppShellBrand",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "AppShellLayout",
+          "importedName": "AppShellLayout",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "AppShellProps",
+          "importedName": "AppShellProps",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "ARTIFACT_FILTERS",
+          "importedName": "ARTIFACT_FILTERS",
+          "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactActionButtons",
+          "importedName": "ArtifactActionButtons",
+          "source": "./ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "artifactActionMatrix",
+          "importedName": "artifactActionMatrix",
+          "source": "./ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactActionMatrixOptions",
+          "importedName": "ArtifactActionMatrixOptions",
+          "source": "./ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactActionState",
+          "importedName": "ArtifactActionState",
+          "source": "./ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactApiResult",
+          "importedName": "ArtifactApiResult",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactEditDecision",
+          "importedName": "ArtifactEditDecision",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactFilter",
+          "importedName": "ArtifactFilter",
+          "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactItem",
+          "importedName": "ArtifactItem",
+          "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactLibrary",
+          "importedName": "ArtifactLibrary",
+          "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactLibraryProps",
+          "importedName": "ArtifactLibraryProps",
+          "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRenderer",
+          "importedName": "ArtifactRenderer",
+          "source": "./ArtifactRenderer"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRendererProps",
+          "importedName": "ArtifactRendererProps",
+          "source": "./ArtifactRenderer"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRenditionFailure",
+          "importedName": "ArtifactRenditionFailure",
+          "source": "./ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRenditionState",
+          "importedName": "ArtifactRenditionState",
+          "source": "./ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactRevisionCommit",
+          "importedName": "ArtifactRevisionCommit",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactSearchResult",
+          "importedName": "ArtifactSearchResult",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ArtifactTargetActionEvidence",
+          "importedName": "ArtifactTargetActionEvidence",
+          "source": "./ArtifactActions"
+        },
+        {
+          "kind": "named",
+          "name": "BackButton",
+          "importedName": "BackButton",
+          "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "BillingNotice",
+          "importedName": "BillingNotice",
+          "source": "./HomeIntro"
+        },
+        {
+          "kind": "named",
+          "name": "bindArtifactToContext",
+          "importedName": "bindArtifactToContext",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "BRAND_PALETTE",
+          "importedName": "BRAND_PALETTE",
+          "source": "../lib/brand-color"
+        },
+        {
+          "kind": "named",
+          "name": "brandColorFor",
+          "importedName": "brandColorFor",
+          "source": "../lib/brand-color"
+        },
+        {
+          "kind": "named",
+          "name": "buildLibraryItems",
+          "importedName": "buildLibraryItems",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasEmpty",
+          "importedName": "CanvasEmpty",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasSubTabs",
+          "importedName": "CanvasSubTabs",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasTab",
+          "importedName": "CanvasTab",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserPanel",
+          "importedName": "CloudBrowserPanel",
+          "source": "./CloudBrowserPanel"
+        },
+        {
+          "kind": "named",
+          "name": "CollapsibleSection",
+          "importedName": "CollapsibleSection",
+          "source": "./StudioSection"
+        },
+        {
+          "kind": "named",
+          "name": "ComposerAttachment",
+          "importedName": "ComposerAttachment",
+          "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "ComposerMenuItem",
+          "importedName": "ComposerMenuItem",
+          "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "ComposerRecentFile",
+          "importedName": "ComposerRecentFile",
+          "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleFnItem",
+          "importedName": "ConsoleFnItem",
+          "source": "./WorkspaceMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleFnSubNav",
+          "importedName": "ConsoleFnSubNav",
+          "source": "./WorkspaceMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleFunction",
+          "importedName": "ConsoleFunction",
+          "source": "./OperatorConsole"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleRunBeginArgs",
+          "importedName": "ConsoleRunBeginArgs",
+          "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleRunFinishArgs",
+          "importedName": "ConsoleRunFinishArgs",
+          "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "createArtifactRevision",
+          "importedName": "createArtifactRevision",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "CreateSkillModal",
+          "importedName": "CreateSkillModal",
+          "source": "./CreateSkillModal"
+        },
+        {
+          "kind": "named",
+          "name": "CreateSkillModalProps",
+          "importedName": "CreateSkillModalProps",
+          "source": "./CreateSkillModal"
+        },
+        {
+          "kind": "named",
+          "name": "CreateSkillTeamModal",
+          "importedName": "CreateSkillTeamModal",
+          "source": "./CreateSkillModal"
+        },
+        {
+          "kind": "named",
+          "name": "CreateSkillTeamModalProps",
+          "importedName": "CreateSkillTeamModalProps",
+          "source": "./CreateSkillModal"
+        },
+        {
+          "kind": "named",
+          "name": "DirectoryItem",
+          "importedName": "DirectoryItem",
+          "source": "./AppDirectory"
+        },
+        {
+          "kind": "named",
+          "name": "dispatchWorkspaceAction",
+          "importedName": "dispatchWorkspaceAction",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "EmbedChrome",
+          "importedName": "EmbedChrome",
+          "source": "./EmbedChrome"
+        },
+        {
+          "kind": "named",
+          "name": "ensureArtifact",
+          "importedName": "ensureArtifact",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "ensureDurableArtifactItem",
+          "importedName": "ensureDurableArtifactItem",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "EnsureWorkspaceSessionOptions",
+          "importedName": "EnsureWorkspaceSessionOptions",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "ExploreAssetType",
+          "importedName": "ExploreAssetType",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "ExploreCategory",
+          "importedName": "ExploreCategory",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "exploreCategoryLabel",
+          "importedName": "exploreCategoryLabel",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "ExploreConfig",
+          "importedName": "ExploreConfig",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "ExplorePage",
+          "importedName": "ExplorePage",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "ExplorePageProps",
+          "importedName": "ExplorePageProps",
+          "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "FileLibrary",
+          "importedName": "FileLibrary",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "FileLibraryProps",
+          "importedName": "FileLibraryProps",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "FillNonceProvider",
+          "importedName": "FillNonceProvider",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "FIXED_WORKSPACE_SLOTS",
+          "importedName": "FIXED_WORKSPACE_SLOTS",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "forkArtifact",
+          "importedName": "forkArtifact",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "FunctionAgentChat",
+          "importedName": "FunctionAgentChat",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "FunctionAgentChatProps",
+          "importedName": "FunctionAgentChatProps",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "FunctionGuide",
+          "importedName": "FunctionGuide",
+          "source": "./NavigatorGuide"
+        },
+        {
+          "kind": "named",
+          "name": "getArtifactEditDecision",
+          "importedName": "getArtifactEditDecision",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "getArtifactItem",
+          "importedName": "getArtifactItem",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "GoalApp",
+          "importedName": "GoalApp",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "GoalAppPreset",
+          "importedName": "GoalAppPreset",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "GuideExample",
+          "importedName": "GuideExample",
+          "source": "./NavigatorGuide"
+        },
+        {
+          "kind": "named",
+          "name": "GuideProvider",
+          "importedName": "GuideProvider",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "GuideSection",
+          "importedName": "GuideSection",
+          "source": "./NavigatorGuide"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryDetail",
+          "importedName": "HistoryDetail",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryDetailProps",
+          "importedName": "HistoryDetailProps",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryInlineList",
+          "importedName": "HistoryInlineList",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryPage",
+          "importedName": "HistoryPage",
+          "source": "./HistoryPage"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryPageProps",
+          "importedName": "HistoryPageProps",
+          "source": "./HistoryPage"
+        },
+        {
+          "kind": "named",
+          "name": "HistorySubNav",
+          "importedName": "HistorySubNav",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "HistoryWorkspaceRenderer",
+          "importedName": "HistoryWorkspaceRenderer",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAgentCards",
+          "importedName": "HomeAgentCards",
+          "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAgentPick",
+          "importedName": "HomeAgentPick",
+          "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeIntro",
+          "importedName": "HomeIntro",
+          "source": "./HomeIntro"
+        },
+        {
+          "kind": "named",
+          "name": "HomeIntroProps",
+          "importedName": "HomeIntroProps",
+          "source": "./HomeIntro"
+        },
+        {
+          "kind": "named",
+          "name": "HomePromptCards",
+          "importedName": "HomePromptCards",
+          "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "inferLibraryKind",
+          "importedName": "inferLibraryKind",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "InputAttachment",
+          "importedName": "InputAttachment",
+          "source": "./InputCard"
+        },
+        {
+          "kind": "named",
+          "name": "InputCard",
+          "importedName": "InputCard",
+          "source": "./InputCard"
+        },
+        {
+          "kind": "named",
+          "name": "InputCardProps",
+          "importedName": "InputCardProps",
+          "source": "./InputCard"
+        },
+        {
+          "kind": "named",
+          "name": "isCompactSelectionControl",
+          "importedName": "isCompactSelectionControl",
+          "source": "./selection-inspector-groups"
+        },
+        {
+          "kind": "named",
+          "name": "isLeoEnabled",
+          "importedName": "isLeoEnabled",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "ItemDetailModal",
+          "importedName": "ItemDetailModal",
+          "source": "./ItemDetailModal"
+        },
+        {
+          "kind": "named",
+          "name": "ItemDetailModalProps",
+          "importedName": "ItemDetailModalProps",
+          "source": "./ItemDetailModal"
+        },
+        {
+          "kind": "named",
+          "name": "LEO_ENABLED_EVENT",
+          "importedName": "LEO_ENABLED_EVENT",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "LEO_ENABLED_KEY",
+          "importedName": "LEO_ENABLED_KEY",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "LeoAssistant",
+          "importedName": "LeoAssistant",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "LeoAssistantProps",
+          "importedName": "LeoAssistantProps",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "LeoComposer",
+          "importedName": "LeoComposer",
+          "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "LeoComposerProps",
+          "importedName": "LeoComposerProps",
+          "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_TABS",
+          "importedName": "LIBRARY_TABS",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryArtifactRow",
+          "importedName": "LibraryArtifactRow",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryChip",
+          "importedName": "LibraryChip",
+          "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryChips",
+          "importedName": "LibraryChips",
+          "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryChipsProps",
+          "importedName": "LibraryChipsProps",
+          "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryDetail",
+          "importedName": "LibraryDetail",
+          "source": "./LibraryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryItem",
+          "importedName": "LibraryItem",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemMatches",
+          "importedName": "libraryItemMatches",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryItemViewer",
+          "importedName": "LibraryItemViewer",
+          "source": "./library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryKind",
+          "importedName": "LibraryKind",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryKindIcon",
+          "importedName": "LibraryKindIcon",
+          "source": "./library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "libraryKindLabel",
+          "importedName": "libraryKindLabel",
+          "source": "./library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "LibrarySubNav",
+          "importedName": "LibrarySubNav",
+          "source": "./LibraryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryTab",
+          "importedName": "LibraryTab",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryToolbar",
+          "importedName": "LibraryToolbar",
+          "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryToolbarProps",
+          "importedName": "LibraryToolbarProps",
+          "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "listPrimaryArtifacts",
+          "importedName": "listPrimaryArtifacts",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "loadAllCustomPromptCards",
+          "importedName": "loadAllCustomPromptCards",
+          "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "loadCustomPromptCards",
+          "importedName": "loadCustomPromptCards",
+          "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "Markdown",
+          "importedName": "Markdown",
+          "source": "./Markdown"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_BOARDS",
+          "importedName": "MATERIAL_BOARDS",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialBoard",
+          "importedName": "MaterialBoard",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialBoardId",
+          "importedName": "MaterialBoardId",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialCatalog",
+          "importedName": "MaterialCatalog",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialCatalogProps",
+          "importedName": "MaterialCatalogProps",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialItem",
+          "importedName": "MaterialItem",
+          "source": "./MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibrary",
+          "importedName": "MaterialLibrary",
+          "source": "./MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibraryProps",
+          "importedName": "MaterialLibraryProps",
+          "source": "./MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "materialsForBoards",
+          "importedName": "materialsForBoards",
+          "source": "./material-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "ModelCategory",
+          "importedName": "ModelCategory",
+          "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "ModelGroupPicker",
+          "importedName": "ModelGroupPicker",
+          "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "ModelGroupPickerProps",
+          "importedName": "ModelGroupPickerProps",
+          "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "ModelPicker",
+          "importedName": "ModelPicker",
+          "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "ModelPickerProps",
+          "importedName": "ModelPickerProps",
+          "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "MyLibrary",
+          "importedName": "MyLibrary",
+          "source": "./MyLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MyLibraryProps",
+          "importedName": "MyLibraryProps",
+          "source": "./MyLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "NavigatorGuide",
+          "importedName": "NavigatorGuide",
+          "source": "./NavigatorGuide"
+        },
+        {
+          "kind": "named",
+          "name": "NavigatorGuideProps",
+          "importedName": "NavigatorGuideProps",
+          "source": "./NavigatorGuide"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeArtifact",
+          "importedName": "normalizeArtifact",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeSelectionCommand",
+          "importedName": "normalizeSelectionCommand",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeSelectionContext",
+          "importedName": "normalizeSelectionContext",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeWork",
+          "importedName": "normalizeWork",
+          "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeWorkspaceAction",
+          "importedName": "normalizeWorkspaceAction",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "OPEN_LEO_EVENT",
+          "importedName": "OPEN_LEO_EVENT",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "openLeoAssistant",
+          "importedName": "openLeoAssistant",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "OPERATOR_REMARK_MAX_LENGTH",
+          "importedName": "OPERATOR_REMARK_MAX_LENGTH",
+          "source": "../lib/operator-remark"
+        },
+        {
+          "kind": "named",
+          "name": "OperatorConsole",
+          "importedName": "OperatorConsole",
+          "source": "./OperatorConsole"
+        },
+        {
+          "kind": "named",
+          "name": "OperatorConsoleProps",
+          "importedName": "OperatorConsoleProps",
+          "source": "./OperatorConsole"
+        },
+        {
+          "kind": "named",
+          "name": "OperatorRemarkField",
+          "importedName": "OperatorRemarkField",
+          "source": "./OperatorRemark"
+        },
+        {
+          "kind": "named",
+          "name": "OperatorRemarkProvider",
+          "importedName": "OperatorRemarkProvider",
+          "source": "./OperatorRemark"
+        },
+        {
+          "kind": "named",
+          "name": "OperatorRemarkValue",
+          "importedName": "OperatorRemarkValue",
+          "source": "./OperatorRemark"
+        },
+        {
+          "kind": "named",
+          "name": "OpsFiller",
+          "importedName": "OpsFiller",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "OptionItem",
+          "importedName": "OptionItem",
+          "source": "./OptionRow"
+        },
+        {
+          "kind": "named",
+          "name": "OptionRow",
+          "importedName": "OptionRow",
+          "source": "./OptionRow"
+        },
+        {
+          "kind": "named",
+          "name": "OptionRowProps",
+          "importedName": "OptionRowProps",
+          "source": "./OptionRow"
+        },
+        {
+          "kind": "named",
+          "name": "orgStatusFromMessages",
+          "importedName": "orgStatusFromMessages",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "pageFromPath",
+          "importedName": "pageFromPath",
+          "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "PageTitle",
+          "importedName": "PageTitle",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "partitionSelectionInspectorControls",
+          "importedName": "partitionSelectionInspectorControls",
+          "source": "./selection-inspector-groups"
+        },
+        {
+          "kind": "named",
+          "name": "PlaygroundBoardCtx",
+          "importedName": "PlaygroundBoardCtx",
+          "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "PlaygroundBoardKind",
+          "importedName": "PlaygroundBoardKind",
+          "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "PlaygroundDetail",
+          "importedName": "PlaygroundDetail",
+          "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "PlaygroundSubNav",
+          "importedName": "PlaygroundSubNav",
+          "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "prepareArtifactForAction",
+          "importedName": "prepareArtifactForAction",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "presetToOpsPatch",
+          "importedName": "presetToOpsPatch",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "PromptCard",
+          "importedName": "PromptCard",
+          "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "PromptCardModal",
+          "importedName": "PromptCardModal",
+          "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "promptCardsForSite",
+          "importedName": "promptCardsForSite",
+          "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "PromptHighlightArea",
+          "importedName": "PromptHighlightArea",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "PromptHighlightAreaHandle",
+          "importedName": "PromptHighlightAreaHandle",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "PromptHighlightAreaProps",
+          "importedName": "PromptHighlightAreaProps",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "refreshArtifactRendition",
+          "importedName": "refreshArtifactRendition",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "RestartDraftButton",
+          "importedName": "RestartDraftButton",
+          "source": "./RestartDraftButton"
+        },
+        {
+          "kind": "named",
+          "name": "RestartDraftButtonProps",
+          "importedName": "RestartDraftButtonProps",
+          "source": "./RestartDraftButton"
+        },
+        {
+          "kind": "named",
+          "name": "RestorableAppSession",
+          "importedName": "RestorableAppSession",
+          "source": "./HistoryMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "ResultCanvas",
+          "importedName": "ResultCanvas",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "ResultCanvasProps",
+          "importedName": "ResultCanvasProps",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "retireArtifact",
+          "importedName": "retireArtifact",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "RunCapabilityFn",
+          "importedName": "RunCapabilityFn",
+          "source": "./AgentConsole"
+        },
+        {
+          "kind": "named",
+          "name": "runLeoQuickSuggest",
+          "importedName": "runLeoQuickSuggest",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "RuntimeHydrationValue",
+          "importedName": "RuntimeHydrationValue",
+          "source": "./workspace-runtime-hydration"
+        },
+        {
+          "kind": "named",
+          "name": "saveCustomPromptCards",
+          "importedName": "saveCustomPromptCards",
+          "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "SavedWorkflow",
+          "importedName": "SavedWorkflow",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "searchArtifactLibrary",
+          "importedName": "searchArtifactLibrary",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "SELECTION_CONTEXT_VERSION",
+          "importedName": "SELECTION_CONTEXT_VERSION",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SELECTION_PROTOCOL",
+          "importedName": "SELECTION_PROTOCOL",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnchorRect",
+          "importedName": "SelectionAnchorRect",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationGalleryCapability",
+          "importedName": "SelectionAnimationGalleryCapability",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationParameterCapability",
+          "importedName": "SelectionAnimationParameterCapability",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationPresetCapability",
+          "importedName": "SelectionAnimationPresetCapability",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationPreviewCapability",
+          "importedName": "SelectionAnimationPreviewCapability",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionCommand",
+          "importedName": "SelectionCommand",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionCommandGate",
+          "importedName": "SelectionCommandGate",
+          "source": "./selection-transactions"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionCommandPhase",
+          "importedName": "SelectionCommandPhase",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionContext",
+          "importedName": "SelectionContext",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControl",
+          "importedName": "SelectionControl",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlIcon",
+          "importedName": "SelectionControlIcon",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlKind",
+          "importedName": "SelectionControlKind",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlOption",
+          "importedName": "SelectionControlOption",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlSemantic",
+          "importedName": "SelectionControlSemantic",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlSlot",
+          "importedName": "SelectionControlSlot",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlValue",
+          "importedName": "SelectionControlValue",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionGestureTransaction",
+          "importedName": "SelectionGestureTransaction",
+          "source": "./selection-transactions"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionInspectorGroup",
+          "importedName": "SelectionInspectorGroup",
+          "source": "./selection-inspector-groups"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionInspectorPanel",
+          "importedName": "SelectionInspectorPanel",
+          "source": "./SelectionInspectorPanel"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionNamespace",
+          "importedName": "SelectionNamespace",
+          "source": "./WorkspaceSelection"
+        },
+        {
+          "kind": "named",
+          "name": "selectionRequestId",
+          "importedName": "selectionRequestId",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionRevision",
+          "importedName": "SelectionRevision",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionToolbar",
+          "importedName": "SelectionToolbar",
+          "source": "./SelectionToolbar"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionToolbarProps",
+          "importedName": "SelectionToolbarProps",
+          "source": "./SelectionToolbar"
+        },
+        {
+          "kind": "named",
+          "name": "setArtifactFavorite",
+          "importedName": "setArtifactFavorite",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "setLeoEnabled",
+          "importedName": "setLeoEnabled",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "ShellChromeProvider",
+          "importedName": "ShellChromeProvider",
+          "source": "./ShellChrome"
+        },
+        {
+          "kind": "named",
+          "name": "ShellNavDisclosure",
+          "importedName": "ShellNavDisclosure",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "ShellNavGroup",
+          "importedName": "ShellNavGroup",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "ShellNavItem",
+          "importedName": "ShellNavItem",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "ShellSubNav",
+          "importedName": "ShellSubNav",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "SITE_BRAND_COLOR",
+          "importedName": "SITE_BRAND_COLOR",
+          "source": "./site-icons"
+        },
+        {
+          "kind": "named",
+          "name": "SITE_ICONS",
+          "importedName": "SITE_ICONS",
+          "source": "./site-icons"
+        },
+        {
+          "kind": "named",
+          "name": "siteBrandColorFor",
+          "importedName": "siteBrandColorFor",
+          "source": "./site-icons"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogConsole",
+          "importedName": "SiteCatalogConsole",
+          "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogConsoleProps",
+          "importedName": "SiteCatalogConsoleProps",
+          "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "siteIconFor",
+          "importedName": "siteIconFor",
+          "source": "./site-icons"
+        },
+        {
+          "kind": "named",
+          "name": "SiteOption",
+          "importedName": "SiteOption",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "SiteSkillDirectory",
+          "importedName": "SiteSkillDirectory",
+          "source": "./SiteSkillDirectory"
+        },
+        {
+          "kind": "named",
+          "name": "SiteSkillDirectoryProps",
+          "importedName": "SiteSkillDirectoryProps",
+          "source": "./SiteSkillDirectory"
+        },
+        {
+          "kind": "named",
+          "name": "SkillPromptPanel",
+          "importedName": "SkillPromptPanel",
+          "source": "./SkillPromptPanel"
+        },
+        {
+          "kind": "named",
+          "name": "SkillPromptPanelProps",
+          "importedName": "SkillPromptPanelProps",
+          "source": "./SkillPromptPanel"
+        },
+        {
+          "kind": "named",
+          "name": "SplitLibraryConfig",
+          "importedName": "SplitLibraryConfig",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "SplitWorkspace",
+          "importedName": "SplitWorkspace",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "SplitWorkspaceProps",
+          "importedName": "SplitWorkspaceProps",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "Studio",
+          "importedName": "Studio",
+          "source": "./Studio"
+        },
+        {
+          "kind": "named",
+          "name": "StudioProps",
+          "importedName": "StudioProps",
+          "source": "./Studio"
+        },
+        {
+          "kind": "named",
+          "name": "StudioSection",
+          "importedName": "StudioSection",
+          "source": "./StudioSection"
+        },
+        {
+          "kind": "named",
+          "name": "StudioSectionProps",
+          "importedName": "StudioSectionProps",
+          "source": "./StudioSection"
+        },
+        {
+          "kind": "named",
+          "name": "TeamRosterModal",
+          "importedName": "TeamRosterModal",
+          "source": "./TeamRosterModal"
+        },
+        {
+          "kind": "named",
+          "name": "TeamRosterModalProps",
+          "importedName": "TeamRosterModalProps",
+          "source": "./TeamRosterModal"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateFillArea",
+          "importedName": "TemplateFillArea",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateFillAreaHandle",
+          "importedName": "TemplateFillAreaHandle",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateFillAreaProps",
+          "importedName": "TemplateFillAreaProps",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "templateSegments",
+          "importedName": "templateSegments",
+          "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "tintOf",
+          "importedName": "tintOf",
+          "source": "../lib/brand-color"
+        },
+        {
+          "kind": "named",
+          "name": "useArtifactRendition",
+          "importedName": "useArtifactRendition",
+          "source": "./ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "useConsoleDraft",
+          "importedName": "useConsoleDraft",
+          "source": "./useConsoleDraft"
+        },
+        {
+          "kind": "named",
+          "name": "UseConsoleDraftArgs",
+          "importedName": "UseConsoleDraftArgs",
+          "source": "./useConsoleDraft"
+        },
+        {
+          "kind": "named",
+          "name": "UseConsoleDraftReturn",
+          "importedName": "UseConsoleDraftReturn",
+          "source": "./useConsoleDraft"
+        },
+        {
+          "kind": "named",
+          "name": "useConsoleRun",
+          "importedName": "useConsoleRun",
+          "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "UseConsoleRunArgs",
+          "importedName": "UseConsoleRunArgs",
+          "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "UseConsoleRunReturn",
+          "importedName": "UseConsoleRunReturn",
+          "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "useFillNonce",
+          "importedName": "useFillNonce",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "useFnAgentBridge",
+          "importedName": "useFnAgentBridge",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "useFunctionGuide",
+          "importedName": "useFunctionGuide",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "useGuideWorkflows",
+          "importedName": "useGuideWorkflows",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "useLeftPaneSlot",
+          "importedName": "useLeftPaneSlot",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "useLeoEnabled",
+          "importedName": "useLeoEnabled",
+          "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "useOperatorRemark",
+          "importedName": "useOperatorRemark",
+          "source": "./OperatorRemark"
+        },
+        {
+          "kind": "named",
+          "name": "useOptionalWorkspaceSession",
+          "importedName": "useOptionalWorkspaceSession",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "useRegisterOpsFiller",
+          "importedName": "useRegisterOpsFiller",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "useRightPaneSlot",
+          "importedName": "useRightPaneSlot",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "useShellChrome",
+          "importedName": "useShellChrome",
+          "source": "./ShellChrome"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialActions",
+          "importedName": "useWorkbenchMaterialActions",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialAdapter",
+          "importedName": "useWorkbenchMaterialAdapter",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterials",
+          "importedName": "useWorkbenchMaterials",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialScope",
+          "importedName": "useWorkbenchMaterialScope",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceNavLabels",
+          "importedName": "useWorkspaceNavLabels",
+          "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceRuntimeHydration",
+          "importedName": "useWorkspaceRuntimeHydration",
+          "source": "./workspace-runtime-hydration"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceSelection",
+          "importedName": "useWorkspaceSelection",
+          "source": "./WorkspaceSelection"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkspaceSession",
+          "importedName": "useWorkspaceSession",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "withResolvedRendition",
+          "importedName": "withResolvedRendition",
+          "source": "./ArtifactRendition"
+        },
+        {
+          "kind": "named",
+          "name": "WORKBENCH_MATERIAL_MIME",
+          "importedName": "WORKBENCH_MATERIAL_MIME",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialAction",
+          "importedName": "WorkbenchMaterialAction",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialActionAvailability",
+          "importedName": "WorkbenchMaterialActionAvailability",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialAdapter",
+          "importedName": "WorkbenchMaterialAdapter",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialCommandContract",
+          "importedName": "WorkbenchMaterialCommandContract",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialContextValue",
+          "importedName": "WorkbenchMaterialContextValue",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialPlacement",
+          "importedName": "WorkbenchMaterialPlacement",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialProvider",
+          "importedName": "WorkbenchMaterialProvider",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialRuntimeValue",
+          "importedName": "WorkbenchMaterialRuntimeValue",
+          "source": "./workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkflowDraft",
+          "importedName": "WorkflowDraft",
+          "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "WORKSPACE_ACTION_EVENT",
+          "importedName": "WORKSPACE_ACTION_EVENT",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceActionEnvelope",
+          "importedName": "WorkspaceActionEnvelope",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceActionV1",
+          "importedName": "WorkspaceActionV1",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceDetail",
+          "importedName": "WorkspaceDetail",
+          "source": "./WorkspaceMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceEntryFromLibraryItem",
+          "importedName": "workspaceEntryFromLibraryItem",
+          "source": "./WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibrary",
+          "importedName": "WorkspaceLibrary",
+          "source": "./WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryEntry",
+          "importedName": "WorkspaceLibraryEntry",
+          "source": "./WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceLibraryProps",
+          "importedName": "WorkspaceLibraryProps",
+          "source": "./WorkspaceLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceNav",
+          "importedName": "workspaceNav",
+          "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceNavOptions",
+          "importedName": "WorkspaceNavOptions",
+          "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspacePage",
+          "importedName": "WorkspacePage",
+          "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceRuntime",
+          "importedName": "WorkspaceRuntime",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSelectionProvider",
+          "importedName": "WorkspaceSelectionProvider",
+          "source": "./WorkspaceSelection"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionAvailability",
+          "importedName": "WorkspaceSessionAvailability",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionConflict",
+          "importedName": "WorkspaceSessionConflict",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionContextValue",
+          "importedName": "WorkspaceSessionContextValue",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionMode",
+          "importedName": "WorkspaceSessionMode",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionProvider",
+          "importedName": "WorkspaceSessionProvider",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionProviderProps",
+          "importedName": "WorkspaceSessionProviderProps",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSessionRecordContext",
+          "importedName": "WorkspaceSessionRecordContext",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceShell",
+          "importedName": "WorkspaceShell",
+          "source": "./WorkspaceShell"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceShellProps",
+          "importedName": "WorkspaceShellProps",
+          "source": "./WorkspaceShell"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSiteItem",
+          "importedName": "WorkspaceSiteItem",
+          "source": "./WorkspaceMasterDetail"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceSlotForLegacyId",
+          "importedName": "workspaceSlotForLegacyId",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSlotId",
+          "importedName": "WorkspaceSlotId",
+          "source": "./workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSnapshotSaveResult",
+          "importedName": "WorkspaceSnapshotSaveResult",
+          "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSubNav",
+          "importedName": "WorkspaceSubNav",
+          "source": "./WorkspaceMasterDetail"
+        },
+        {
+          "kind": "star",
+          "source": "./artifact-contract"
+        },
+        {
+          "kind": "star",
+          "source": "./editor-protocol"
+        },
+        {
+          "kind": "star",
+          "source": "./icons"
+        }
+      ]
+    },
+    "./shell/ArtifactActions.js": {
+      "target": "./src/shell/ArtifactActions.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "ArtifactActionButtons",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "artifactActionMatrix",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ArtifactActionMatrixOptions",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ArtifactActionState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ArtifactTargetActionEvidence",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/library-data.js": {
+      "target": "./src/shell/library-data.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "artifactProjectionToLibraryItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "artifactTypeForLibraryKind",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "buildLibraryItems",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "inferLibraryKind",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isDurableLibraryItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryContentDescriptor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemIdentityKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemMatches",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeArtifact",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeEditorManifest",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeWork",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "threeDSubtypeFor",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "EditorCapabilityName",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "EditorManifestV1",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "EditorSourceDescriptor",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibraryArtifactRow",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibraryContentDescriptor",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibraryItem",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibraryKind",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ThreeDSubtype",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/MaterialLibrary.js": {
+      "target": "./src/shell/MaterialLibrary.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "MaterialItem",
+          "importedName": "MaterialItem",
+          "source": "./material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibrary",
+          "importedName": "MaterialLibrary",
+          "source": "./material-library-view"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialLibraryProps",
+          "importedName": "MaterialLibraryProps",
+          "source": "./material-library-view"
+        },
+        {
+          "kind": "named",
+          "name": "PlatformAsset",
+          "importedName": "PlatformAsset",
+          "source": "./material-library-controller"
+        },
+        {
+          "kind": "named",
+          "name": "platformToEntry",
+          "importedName": "platformToEntry",
+          "source": "./material-library-controller"
+        }
+      ]
+    },
+    "./shell/selection-context": {
+      "target": "./src/shell/selection-context.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "ANIMATION_PRESET_IDS",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "AnimationPresetId",
+          "importedName": "AnimationPresetId",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeSelectionCommand",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeSelectionContext",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SELECTION_CONTEXT_VERSION",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SELECTION_PROTOCOL",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnchorRect",
+          "importedName": "SelectionAnchorRect",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationGalleryCapability",
+          "importedName": "SelectionAnimationGalleryCapability",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationParameterCapability",
+          "importedName": "SelectionAnimationParameterCapability",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationPresetCapability",
+          "importedName": "SelectionAnimationPresetCapability",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAnimationPreviewCapability",
+          "importedName": "SelectionAnimationPreviewCapability",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionCommand",
+          "importedName": "SelectionCommand",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionCommandPhase",
+          "importedName": "SelectionCommandPhase",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionContext",
+          "importedName": "SelectionContext",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControl",
+          "importedName": "SelectionControl",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlIcon",
+          "importedName": "SelectionControlIcon",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlKind",
+          "importedName": "SelectionControlKind",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlOption",
+          "importedName": "SelectionControlOption",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlPlacement",
+          "importedName": "SelectionControlPlacement",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlSemantic",
+          "importedName": "SelectionControlSemantic",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlSlot",
+          "importedName": "SelectionControlSlot",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlValue",
+          "importedName": "SelectionControlValue",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionPanelAction",
+          "importedName": "SelectionPanelAction",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "selectionRequestId",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SelectionRevision",
+          "importedName": "SelectionRevision",
+          "source": "./selection-context-types"
+        }
+      ]
+    },
+    "./tailwind-preset": {
+      "target": "./src/theme/tailwind-preset.ts",
+      "declarations": [
+        {
+          "kind": "default"
+        }
+      ]
+    },
+    "./theme": {
+      "target": "./src/theme/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "allThemeClassNames",
+          "importedName": "allThemeClassNames",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "appearanceToHtmlClass",
+          "importedName": "appearanceToHtmlClass",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "DARK_VARIANT_THEMES",
+          "importedName": "DARK_VARIANT_THEMES",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "DarkVariantTheme",
+          "importedName": "DarkVariantTheme",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "DEFAULT_THEME_MODE",
+          "importedName": "DEFAULT_THEME_MODE",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "isDarkVariant",
+          "importedName": "isDarkVariant",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "isLightAppearance",
+          "importedName": "isLightAppearance",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "isLightVariant",
+          "importedName": "isLightVariant",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "isThemeMode",
+          "importedName": "isThemeMode",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "isVariantTheme",
+          "importedName": "isVariantTheme",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LIGHT_VARIANT_THEMES",
+          "importedName": "LIGHT_VARIANT_THEMES",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LightVariantTheme",
+          "importedName": "LightVariantTheme",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeThemeMode",
+          "importedName": "normalizeThemeMode",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "resolveThemeClass",
+          "importedName": "resolveThemeClass",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_COOKIE_MAX_AGE",
+          "importedName": "THEME_COOKIE_MAX_AGE",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_COOKIE",
+          "importedName": "THEME_COOKIE",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_MODES",
+          "importedName": "THEME_MODES",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_STORAGE_KEY",
+          "importedName": "THEME_STORAGE_KEY",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeAppearance",
+          "importedName": "ThemeAppearance",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeMode",
+          "importedName": "ThemeMode",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeProvider",
+          "importedName": "ThemeProvider",
+          "source": "./ThemeProvider"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeProviderProps",
+          "importedName": "ThemeProviderProps",
+          "source": "./ThemeProvider"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeScript",
+          "importedName": "ThemeScript",
+          "source": "./ThemeScript"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeSwitcher",
+          "importedName": "ThemeSwitcher",
+          "source": "./ThemeSwitcher"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeSwitcherProps",
+          "importedName": "ThemeSwitcherProps",
+          "source": "./ThemeSwitcher"
+        },
+        {
+          "kind": "named",
+          "name": "useTheme",
+          "importedName": "useTheme",
+          "source": "./ThemeProvider"
+        },
+        {
+          "kind": "named",
+          "name": "VARIANT_META",
+          "importedName": "VARIANT_META",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "VARIANT_THEMES",
+          "importedName": "VARIANT_THEMES",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "VariantTheme",
+          "importedName": "VariantTheme",
+          "source": "./theme-config"
+        }
+      ]
+    },
+    "./theme/server": {
+      "target": "./src/theme/server.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "DEFAULT_THEME_MODE",
+          "importedName": "DEFAULT_THEME_MODE",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "getThemeClass",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "normalizeThemeMode",
+          "importedName": "normalizeThemeMode",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "resolveThemeClass",
+          "importedName": "resolveThemeClass",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_COOKIE",
+          "importedName": "THEME_COOKIE",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_MODES",
+          "importedName": "THEME_MODES",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "THEME_STORAGE_KEY",
+          "importedName": "THEME_STORAGE_KEY",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeMode",
+          "importedName": "ThemeMode",
+          "source": "./theme-config"
+        }
+      ]
+    },
+    "./ui": {
+      "target": "./src/ui/index.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "ButtonSpinner",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "ConfirmDialog",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "EmptyState",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "Modal",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "Segmented",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "Select",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SkeletonCard",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SkeletonLine",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "Switch",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "timeAgo",
+          "source": ""
+        }
+      ]
+    },
+    "./workbench": {
+      "target": "./src/facades/workbench.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbench",
+          "importedName": "AdvancedContentWorkbench",
+          "source": "../shell/AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbenchProps",
+          "importedName": "AdvancedContentWorkbenchProps",
+          "source": "../shell/AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "editorAdapterForArtifactCapability",
+          "importedName": "editorAdapterForArtifactCapability",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "EditorAdapterId",
+          "importedName": "EditorAdapterId",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "EditorCapability",
+          "importedName": "EditorCapability",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "editorCapabilityFor",
+          "importedName": "editorCapabilityFor",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "EditorRoute",
+          "importedName": "EditorRoute",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "editorRouteFor",
+          "importedName": "editorRouteFor",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "editorRouteHintForArtifactCapability",
+          "importedName": "editorRouteHintForArtifactCapability",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "editorToolLabel",
+          "importedName": "editorToolLabel",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "officeExtensionForItem",
+          "importedName": "officeExtensionForItem",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "RegistryEntry",
+          "importedName": "RegistryEntry",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "TRUSTED_EDITOR_REGISTRY",
+          "importedName": "TRUSTED_EDITOR_REGISTRY",
+          "source": "../shell/workbench-routes"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialActions",
+          "importedName": "useWorkbenchMaterialActions",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialAdapter",
+          "importedName": "useWorkbenchMaterialAdapter",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterials",
+          "importedName": "useWorkbenchMaterials",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "useWorkbenchMaterialScope",
+          "importedName": "useWorkbenchMaterialScope",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WORKBENCH_MATERIAL_MIME",
+          "importedName": "WORKBENCH_MATERIAL_MIME",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialAction",
+          "importedName": "WorkbenchMaterialAction",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialActionAvailability",
+          "importedName": "WorkbenchMaterialActionAvailability",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialAdapter",
+          "importedName": "WorkbenchMaterialAdapter",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialCommandContract",
+          "importedName": "WorkbenchMaterialCommandContract",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialContextValue",
+          "importedName": "WorkbenchMaterialContextValue",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialPlacement",
+          "importedName": "WorkbenchMaterialPlacement",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialProvider",
+          "importedName": "WorkbenchMaterialProvider",
+          "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "named",
+          "name": "WorkbenchMaterialRuntimeValue",
+          "importedName": "WorkbenchMaterialRuntimeValue",
+          "source": "../shell/workbench-material-provider"
+        }
+      ]
+    },
+    "./workspace": {
+      "target": "./src/facades/workspace.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AdaptedWorkspaceSurfaceTab",
+          "importedName": "AdaptedWorkspaceSurfaceTab",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "adaptLegacyWorkspaceSurfaceTab",
+          "importedName": "adaptLegacyWorkspaceSurfaceTab",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "adaptLegacyWorkspaceSurfaceTabs",
+          "importedName": "adaptLegacyWorkspaceSurfaceTabs",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "AgentCardConfig",
+          "importedName": "AgentCardConfig",
+          "source": "../shell/SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "buildWorkspaceSurfaceModel",
+          "importedName": "buildWorkspaceSurfaceModel",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "canonicalCatalogAppHref",
+          "importedName": "canonicalCatalogAppHref",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "canonicalOceanLeoSiteKey",
+          "importedName": "canonicalOceanLeoSiteKey",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasEmpty",
+          "importedName": "CanvasEmpty",
+          "source": "../shell/ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasSubTabs",
+          "importedName": "CanvasSubTabs",
+          "source": "../shell/ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "CanvasTab",
+          "importedName": "CanvasTab",
+          "source": "../shell/ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "catalogCanonicalRedirect",
+          "importedName": "catalogCanonicalRedirect",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "catalogNavigationForChange",
+          "importedName": "catalogNavigationForChange",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "createOceanLeoAppContext",
+          "importedName": "createOceanLeoAppContext",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "defineOceanLeoSiteManifest",
+          "importedName": "defineOceanLeoSiteManifest",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "dispatchWorkspaceAction",
+          "importedName": "dispatchWorkspaceAction",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "emptyWorkspaceSurfaceGroups",
+          "importedName": "emptyWorkspaceSurfaceGroups",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "FIXED_WORKSPACE_SLOTS",
+          "importedName": "FIXED_WORKSPACE_SLOTS",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "historySessionHref",
+          "importedName": "historySessionHref",
+          "source": "../shell/workspace-route"
+        },
+        {
+          "kind": "named",
+          "name": "historySessionIdFromPath",
+          "importedName": "historySessionIdFromPath",
+          "source": "../shell/workspace-route"
+        },
+        {
+          "kind": "named",
+          "name": "legacyWorkspaceAppId",
+          "importedName": "legacyWorkspaceAppId",
+          "source": "../shell/workspace-route"
+        },
+        {
+          "kind": "named",
+          "name": "legacyWorkspaceEntry",
+          "importedName": "legacyWorkspaceEntry",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "LegacyWorkspaceSurfaceHints",
+          "importedName": "LegacyWorkspaceSurfaceHints",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "LegacyWorkspaceSurfaceTab",
+          "importedName": "LegacyWorkspaceSurfaceTab",
+          "source": "../shell/legacy-workspace-surface-adapter"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeWorkspaceAction",
+          "importedName": "normalizeWorkspaceAction",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "OCEANLEO_SITE_MANIFEST_SCHEMA",
+          "importedName": "OCEANLEO_SITE_MANIFEST_SCHEMA",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoAppContext",
+          "importedName": "OceanLeoAppContext",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoAuthContract",
+          "importedName": "OceanLeoAuthContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoBrandContract",
+          "importedName": "OceanLeoBrandContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoCatalogContract",
+          "importedName": "OceanLeoCatalogContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoCreditsContract",
+          "importedName": "OceanLeoCreditsContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoHostAdapterDeclaration",
+          "importedName": "OceanLeoHostAdapterDeclaration",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoShellContract",
+          "importedName": "OceanLeoShellContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteKey",
+          "importedName": "OceanLeoSiteKey",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteManifest",
+          "importedName": "OceanLeoSiteManifest",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoSiteManifestInput",
+          "importedName": "OceanLeoSiteManifestInput",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "OceanLeoWorkspaceRouteContract",
+          "importedName": "OceanLeoWorkspaceRouteContract",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "resolveCatalogAlias",
+          "importedName": "resolveCatalogAlias",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "resolveSiteCatalogRoute",
+          "importedName": "resolveSiteCatalogRoute",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "ResultCanvas",
+          "importedName": "ResultCanvas",
+          "source": "../shell/ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "ResultCanvasProps",
+          "importedName": "ResultCanvasProps",
+          "source": "../shell/ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogConsole",
+          "importedName": "SiteCatalogConsole",
+          "source": "../shell/SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogConsoleProps",
+          "importedName": "SiteCatalogConsoleProps",
+          "source": "../shell/SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogNavigation",
+          "importedName": "SiteCatalogNavigation",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogRouteInput",
+          "importedName": "SiteCatalogRouteInput",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "SiteCatalogRouteState",
+          "importedName": "SiteCatalogRouteState",
+          "source": "../shell/site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "siteManifestMatches",
+          "importedName": "siteManifestMatches",
+          "source": "../contracts/site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "WORKSPACE_ACTION_EVENT",
+          "importedName": "WORKSPACE_ACTION_EVENT",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WORKSPACE_SURFACE_SLOTS",
+          "importedName": "WORKSPACE_SURFACE_SLOTS",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceActionEnvelope",
+          "importedName": "WorkspaceActionEnvelope",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceActionV1",
+          "importedName": "WorkspaceActionV1",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceAppHref",
+          "importedName": "workspaceAppHref",
+          "source": "../shell/workspace-route"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceAppIdFromPath",
+          "importedName": "workspaceAppIdFromPath",
+          "source": "../shell/workspace-route"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceSlotForLegacyId",
+          "importedName": "workspaceSlotForLegacyId",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSlotId",
+          "importedName": "WorkspaceSlotId",
+          "source": "../shell/workspace-actions"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceSurfaceCallerId",
+          "importedName": "workspaceSurfaceCallerId",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSurfaceModel",
+          "importedName": "WorkspaceSurfaceModel",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceSurfacePrimaryTab",
+          "importedName": "workspaceSurfacePrimaryTab",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSurfaceRole",
+          "importedName": "WorkspaceSurfaceRole",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceSurfaceSlotForId",
+          "importedName": "workspaceSurfaceSlotForId",
+          "source": "../shell/workspace-surface-model"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceSurfaceTab",
+          "importedName": "WorkspaceSurfaceTab",
+          "source": "../shell/workspace-surface-model"
+        }
+      ]
+    }
+  }
+}

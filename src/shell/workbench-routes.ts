@@ -3,170 +3,32 @@
 // 高级内容工作台 v3 的能力路由：一个素材是否有真实 round-trip adapter。
 // 单一事实源——壳（AdvancedContentWorkbench）与工具栏标签都从这里取。
 
-import type { MediaType } from "../lib/database";
 import type {
   EditorCapabilityName,
   EditorManifestV1,
   LibraryItem,
 } from "./library-data";
+import {
+  TRUSTED_EDITOR_REGISTRY,
+  type EditorAdapterId,
+  type EditorCapability,
+  type EditorRoute,
+  type RegistryEntry,
+} from "./workbench-capability-registry";
 
-export type EditorRoute =
-  | { type: "office"; ext: string }
-  | { type: "video-timeline" }
-  | { type: "audio" }
-  | { type: "image" }
-  | { type: "pdf" }
-  | { type: "richdoc" }
-  | { type: "grid"; adapter?: "chart-editor@1" }
-  | { type: "deck" }
-  | { type: "threed" }
-  | { type: "embed"; base: string; mediaType: MediaType }
-  | { type: "none" };
-
-export type EditorAdapterId =
-  | "office"
-  | "video-timeline"
-  | "audio"
-  | "image"
-  | "pdf"
-  | "richdoc"
-  | "grid"
-  | "chart-editor@1"
-  | "deck"
-  | "threed"
-  | "website"
-  | "design-canvas"
-  | "video-canvas"
-  | "none";
-
-export interface EditorCapability {
-  available: boolean;
-  adapter: EditorAdapterId;
-  route: EditorRoute;
-  manifest: EditorManifestV1 | null;
-  unavailableReason: string;
-}
-
-export interface RegistryEntry {
-  routeType: EditorRoute["type"];
-  roundTrip: readonly EditorCapabilityName[];
-  projectSchema: string;
-  viewportOwnership: "content" | "native";
-  toolbarOwnership: "shared" | "native";
-  persistence: "project" | "native-callback";
-}
+export {
+  TRUSTED_EDITOR_REGISTRY,
+  editorAdapterForArtifactCapability,
+  editorRouteHintForArtifactCapability,
+} from "./workbench-capability-registry";
+export type {
+  EditorAdapterId,
+  EditorCapability,
+  EditorRoute,
+  RegistryEntry,
+} from "./workbench-capability-registry";
 
 const ROUND_TRIP = ["load", "mutate", "save", "reopen"] as const;
-
-/** Only ids in this data-only registry can activate an editor implementation. */
-export const TRUSTED_EDITOR_REGISTRY: Readonly<
-  Record<Exclude<EditorAdapterId, "none">, RegistryEntry>
-> = {
-  office: {
-    routeType: "office",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "office-file@1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
-    persistence: "native-callback",
-  },
-  "video-timeline": {
-    routeType: "video-timeline",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.timeline.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  audio: {
-    routeType: "audio",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.audio-project.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  image: {
-    routeType: "image",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.fabric-image.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  pdf: {
-    routeType: "pdf",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "pdf-binary@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  richdoc: {
-    routeType: "richdoc",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "tiptap-json@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  grid: {
-    routeType: "grid",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.grid.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  "chart-editor@1": {
-    routeType: "grid",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.chart.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  deck: {
-    routeType: "deck",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.deck.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  threed: {
-    routeType: "threed",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.model-view@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  website: {
-    routeType: "embed",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "website-source@1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
-    persistence: "project",
-  },
-  "design-canvas": {
-    routeType: "embed",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.design-document.v1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
-    persistence: "project",
-  },
-  "video-canvas": {
-    routeType: "embed",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.video-canvas.v1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
-    persistence: "project",
-  },
-};
 
 const WORD_EXT = new Set([
   "docx",
