@@ -17,6 +17,7 @@ type SessionDataOptions = {
 };
 
 const CHECKPOINT_STATES = new Set([
+  "ready",
   "warm",
   "hibernated",
   "restoring",

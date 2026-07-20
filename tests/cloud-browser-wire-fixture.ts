@@ -74,7 +74,7 @@ export function buildCloudBrowserV3Fixture(now = Date.now()) {
     session_checkpoint: true,
     clipboard: true,
     ime_composition: true,
-    viewport_resize: true,
+    viewport_resize: false,
   };
   const binding: CloudBrowserWireBinding = {
     sessionId: ticket.session_id,

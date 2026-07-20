@@ -55,6 +55,7 @@ const EMPTY_CAPABILITIES: CloudBrowserCapabilitiesV3 = {
 };
 const MAX_SOCKET_BUFFER_BYTES = 256 * 1024;
 const MAX_SENT_EVENT_IDS = 256;
+const LIVE_HEARTBEAT_MS = 15_000;
 
 export function useCloudBrowserTransport({
   selectedId,
@@ -615,6 +616,25 @@ export function useCloudBrowserTransport({
     },
     [cancelFrameDecode, clearFirstFrameTimeout],
   );
+
+  useEffect(() => {
+    if (protocol !== 3 || transportState !== "streaming") return;
+    const timer = window.setInterval(() => {
+      if (!handshakeRef.current) return;
+      const fence = currentFence();
+      sendRaw(
+        v3Envelope("heartbeat", { sent_at: Date.now() }),
+        fence,
+      );
+    }, LIVE_HEARTBEAT_MS);
+    return () => window.clearInterval(timer);
+  }, [
+    currentFence,
+    protocol,
+    sendRaw,
+    transportState,
+    v3Envelope,
+  ]);
 
   useEffect(() => {
     if (

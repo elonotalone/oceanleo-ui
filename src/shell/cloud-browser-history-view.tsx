@@ -6,6 +6,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { redactedDisplayUrl } from "./cloud-browser-live";
 
 const CHECKPOINT_STATE_COPY = {
+  ready: "快照状态：可用",
   warm: "快照状态：可用",
   hibernated: "快照状态：已休眠",
   restoring: "快照状态：恢复中",

@@ -55,7 +55,7 @@ const capabilities = {
   session_checkpoint: true,
   clipboard: true,
   ime_composition: true,
-  viewport_resize: true,
+  viewport_resize: false,
 };
 
 function ticket(now = Date.now()) {
@@ -431,6 +431,25 @@ test("free lease acquires once while stale and agent-held fences fail closed", (
       binding.connectionId,
     ),
     true,
+  );
+  const saved = reduceCloudBrowserProtocolMessage(
+    acquired.state,
+    {
+      ...cloudBrowserV3Message(binding, "checkpoint.saved"),
+      checkpoint_id: "checkpoint-ready",
+      generation: 4,
+      created_at: "2026-07-20T13:00:00Z",
+      page_title: "Example",
+      page_url: "https://example.com/",
+      state: "ready",
+      action_sequence: 9,
+      callback_sequence: 5,
+    },
+    protocolFallbacks,
+  );
+  assert.equal(saved.state.transportState, acquired.state.transportState);
+  assert.ok(
+    saved.effects.some((effect) => effect.type === "refresh_checkpoints"),
   );
   const released = reduceCloudBrowserProtocolMessage(
     {
@@ -929,6 +948,16 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
   assert.match(interactionSource, /"composition\.start"/);
   assert.match(interactionSource, /"composition\.update"/);
   assert.match(interactionSource, /"composition\.end"/);
+  assert.match(interactionSource, /const INPUT_COALESCE_MS = 32/);
+  assert.match(interactionSource, /schedulePointerMove\(/);
+  assert.match(interactionSource, /scheduleWheel\(/);
+  assert.match(interactionSource, /flushPointerMove\(\)/);
+  assert.match(interactionSource, /flushWheel\(\)/);
+  assert.match(transportSource, /const LIVE_HEARTBEAT_MS = 15_000/);
+  assert.match(
+    transportSource,
+    /v3Envelope\("heartbeat", \{ sent_at: Date\.now\(\) \}\)/,
+  );
 });
 
 test("the panel has one session row and no synthetic browser controls", () => {
@@ -982,7 +1011,7 @@ test("checkpoint cards are durable pins rather than screenshot history", () => {
         created_at: "2026-07-20T03:00:00.000Z",
         page_title: "New",
         page_url: "https://example.com/new",
-        state: "warm",
+        state: "ready",
         session_version: 9,
         runtime_version: "runtime-r2",
       },

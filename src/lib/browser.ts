@@ -50,6 +50,7 @@ export interface CloudBrowserEvent {
 }
 
 export type CloudBrowserCheckpointState =
+  | "ready"
   | "warm"
   | "hibernated"
   | "restoring"

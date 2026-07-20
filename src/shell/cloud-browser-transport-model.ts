@@ -798,9 +798,14 @@ export function reduceCloudBrowserProtocolMessage(
       !Number.isFinite(Date.parse(message.created_at)) ||
       !boundedString(message.page_title, 512, true) ||
       !boundedString(message.page_url, 2_048, true) ||
-      !["warm", "hibernated", "restoring", "restored", "failed"].includes(
-        String(message.state),
-      ) ||
+      ![
+        "ready",
+        "warm",
+        "hibernated",
+        "restoring",
+        "restored",
+        "failed",
+      ].includes(String(message.state)) ||
       !validActionSequence(state, message.action_sequence) ||
       !freshCallbackSequence(state, message.callback_sequence)
     ) {

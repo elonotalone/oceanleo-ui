@@ -74,6 +74,23 @@ const COMMAND_KEYS = new Set([
   "F12",
 ]);
 
+const INPUT_COALESCE_MS = 32;
+
+type PendingPointerMove = {
+  event: "move";
+  nx: number;
+  ny: number;
+  button: string;
+  pointer_id: number;
+};
+
+type PendingWheel = {
+  nx: number;
+  ny: number;
+  dx: number;
+  dy: number;
+};
+
 type HiddenSibling = {
   element: HTMLElement;
   ariaHidden: string | null;
@@ -148,6 +165,10 @@ export function useCloudBrowserInteraction({
     button: string;
     point: { nx: number; ny: number };
   } | null>(null);
+  const pendingPointerMoveRef = useRef<PendingPointerMove | null>(null);
+  const pointerMoveTimerRef = useRef<number | null>(null);
+  const pendingWheelRef = useRef<PendingWheel | null>(null);
+  const wheelTimerRef = useRef<number | null>(null);
   const lastViewportRef = useRef("");
   const resizeTimerRef = useRef<number | null>(null);
   const immersiveTimerRef = useRef<number | null>(null);
@@ -159,7 +180,70 @@ export function useCloudBrowserInteraction({
     if (hiddenInputRef.current) hiddenInputRef.current.value = "";
   }
 
+  function discardCoalescedInput() {
+    if (pointerMoveTimerRef.current !== null) {
+      window.clearTimeout(pointerMoveTimerRef.current);
+      pointerMoveTimerRef.current = null;
+    }
+    if (wheelTimerRef.current !== null) {
+      window.clearTimeout(wheelTimerRef.current);
+      wheelTimerRef.current = null;
+    }
+    pendingPointerMoveRef.current = null;
+    pendingWheelRef.current = null;
+  }
+
+  function flushPointerMove() {
+    if (pointerMoveTimerRef.current !== null) {
+      window.clearTimeout(pointerMoveTimerRef.current);
+      pointerMoveTimerRef.current = null;
+    }
+    const pending = pendingPointerMoveRef.current;
+    pendingPointerMoveRef.current = null;
+    if (pending) sendMutation("pointer", pending);
+  }
+
+  function flushWheel() {
+    if (wheelTimerRef.current !== null) {
+      window.clearTimeout(wheelTimerRef.current);
+      wheelTimerRef.current = null;
+    }
+    const pending = pendingWheelRef.current;
+    pendingWheelRef.current = null;
+    if (pending) sendMutation("wheel", pending);
+  }
+
+  function schedulePointerMove(pending: PendingPointerMove) {
+    pendingPointerMoveRef.current = pending;
+    if (pointerMoveTimerRef.current !== null) return;
+    pointerMoveTimerRef.current = window.setTimeout(() => {
+      pointerMoveTimerRef.current = null;
+      const latest = pendingPointerMoveRef.current;
+      pendingPointerMoveRef.current = null;
+      if (latest) sendMutation("pointer", latest);
+    }, INPUT_COALESCE_MS);
+  }
+
+  function scheduleWheel(pending: PendingWheel) {
+    const previous = pendingWheelRef.current;
+    pendingWheelRef.current = previous
+      ? {
+          ...pending,
+          dx: Math.max(-2_000, Math.min(2_000, previous.dx + pending.dx)),
+          dy: Math.max(-2_000, Math.min(2_000, previous.dy + pending.dy)),
+        }
+      : pending;
+    if (wheelTimerRef.current !== null) return;
+    wheelTimerRef.current = window.setTimeout(() => {
+      wheelTimerRef.current = null;
+      const latest = pendingWheelRef.current;
+      pendingWheelRef.current = null;
+      if (latest) sendMutation("wheel", latest);
+    }, INPUT_COALESCE_MS);
+  }
+
   function resetInputState() {
+    discardCoalescedInput();
     textGateRef.current.reset();
     compositionTextRef.current = "";
     compositionIdRef.current = "";
@@ -241,6 +325,7 @@ export function useCloudBrowserInteraction({
       if (immersiveTimerRef.current !== null) {
         window.clearTimeout(immersiveTimerRef.current);
       }
+      discardCoalescedInput();
     },
     [],
   );
@@ -405,6 +490,8 @@ export function useCloudBrowserInteraction({
     }
     const button = pointerButton(event.button);
     const mappedPointerId = wirePointerId(event.pointerId);
+    flushWheel();
+    discardCoalescedInput();
     activePointerRef.current = {
       pointerId: event.pointerId,
       wirePointerId: mappedPointerId,
@@ -433,7 +520,7 @@ export function useCloudBrowserInteraction({
     event.preventDefault();
     const active = activePointerRef.current;
     if (active?.pointerId === event.pointerId) active.point = point;
-    sendMutation("pointer", {
+    schedulePointerMove({
       event: "move",
       ...point,
       button: active?.button || "",
@@ -456,6 +543,7 @@ export function useCloudBrowserInteraction({
       active?.pointerId === event.pointerId
         ? active.button
         : pointerButton(event.button);
+    flushPointerMove();
     sendMutation("pointer", {
       event: event.type === "pointercancel" ? "cancel" : "up",
       ...point,
@@ -488,7 +576,7 @@ export function useCloudBrowserInteraction({
           : 1;
     const cap = (value: number) =>
       Math.max(-2_000, Math.min(2_000, Math.round(value * unit)));
-    sendMutation("wheel", {
+    scheduleWheel({
       ...point,
       dx: cap(event.deltaX),
       dy: cap(event.deltaY),
