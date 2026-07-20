@@ -161,7 +161,7 @@ export function MyLibrary({
   const load = useCallback(async () => {
     setFailed(false);
     setLoading(true);
-    const result = await searchArtifactLibrary({ limit: 200 });
+    const result = await searchArtifactLibrary({ limit: 100 });
     if (!result.ok || !result.data) {
       setItems([]);
       setAuthRequired(result.status === 401);

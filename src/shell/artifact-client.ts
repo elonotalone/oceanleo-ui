@@ -82,6 +82,37 @@ const ENSURE_PENDING = new Map<
   }
 >();
 
+const ARTIFACT_LIBRARY_MAX_LIMIT = 100;
+const ARTIFACT_LIBRARY_MAX_OFFSET = 100_000;
+
+function boundedLibraryLimit(value: number | undefined): string {
+  const requested =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.trunc(value)
+      : 60;
+  return String(Math.min(Math.max(requested, 1), ARTIFACT_LIBRARY_MAX_LIMIT));
+}
+
+function boundedLibraryOffset(value: number | string | undefined): number {
+  const raw =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value.trim())
+        ? Number(value.trim())
+        : 0;
+  if (!Number.isFinite(raw)) return 0;
+  return Math.min(Math.max(Math.trunc(raw), 0), ARTIFACT_LIBRARY_MAX_OFFSET);
+}
+
+function setTrimmedParam(
+  params: URLSearchParams,
+  key: string,
+  value: string | undefined,
+): void {
+  const normalized = value?.trim();
+  if (normalized) params.set(key, normalized);
+}
+
 function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
   const raw =
     value && typeof value === "object"
@@ -212,6 +243,8 @@ function projectionsFromPayload(payload: unknown): {
   invalidCount: number;
   error: string;
   responseContext: ArtifactContextRef | null;
+  responseContextPresent: boolean;
+  responseContextId: string | null;
 } {
   const envelope =
     payload &&
@@ -228,6 +261,8 @@ function projectionsFromPayload(payload: unknown): {
       invalidCount: 0,
       error: "素材服务响应缺少 v1 items envelope。",
       responseContext: null,
+      responseContextPresent: false,
+      responseContextId: null,
     };
   }
   const rawItems = envelope.items;
@@ -235,22 +270,39 @@ function projectionsFromPayload(payload: unknown): {
     const item = normalizeArtifactProjection(value);
     return item ? [item] : [];
   });
+  const responseContextPresent = Object.prototype.hasOwnProperty.call(
+    envelope,
+    "context",
+  );
+  const responseContext = normalizeArtifactContextRef(envelope.context);
+  const rawNextCursor =
+    envelope.nextOffset ??
+    envelope.next_offset ??
+    envelope.nextCursor ??
+    envelope.next_cursor;
+  const nextCursor =
+    typeof rawNextCursor === "number" && Number.isFinite(rawNextCursor)
+      ? String(Math.trunc(rawNextCursor))
+      : typeof rawNextCursor === "string" && rawNextCursor.trim()
+        ? rawNextCursor.trim()
+        : null;
+  const rawResponseContextId = envelope.contextId ?? envelope.context_id;
   return {
     ok: true,
     projections,
-    nextCursor:
-      typeof envelope.next_cursor === "string"
-        ? envelope.next_cursor
-        : typeof envelope.nextCursor === "string"
-          ? envelope.nextCursor
-          : null,
+    nextCursor,
     total:
       typeof envelope.total === "number" && Number.isFinite(envelope.total)
         ? envelope.total
         : null,
     invalidCount: rawItems.length - projections.length,
     error: "",
-    responseContext: normalizeArtifactContextRef(envelope.context),
+    responseContext,
+    responseContextPresent,
+    responseContextId:
+      typeof rawResponseContextId === "string" && rawResponseContextId.trim()
+        ? rawResponseContextId.trim()
+        : null,
   };
 }
 
@@ -298,7 +350,7 @@ export async function getArtifactItem(
   revisionId: string,
   signal?: AbortSignal,
 ): Promise<ArtifactApiResult<LibraryItem>> {
-  const params = new URLSearchParams({ revision_id: revisionId.trim() });
+  const params = new URLSearchParams({ revisionId: revisionId.trim() });
   return itemResult(
     await artifactRequest<unknown>(
       `/v1/library/items/${encodeURIComponent(artifactId.trim())}?${params}`,
@@ -326,23 +378,33 @@ export async function listPrimaryArtifacts(
     };
   }
   const params = new URLSearchParams({
-    context_id: context.contextId.trim(),
-    site_key: context.siteKey.trim(),
-    app_id: context.appId?.trim() || "",
-    function_id: context.functionId?.trim() || "",
-    artifact_type: options.artifactType || "",
-    limit: String(options.limit ?? 60),
+    contextId: context.contextId.trim(),
+    siteKey: context.siteKey.trim(),
+    limit: boundedLibraryLimit(options.limit),
   });
+  setTrimmedParam(params, "appId", context.appId);
+  setTrimmedParam(params, "functionId", context.functionId);
   const result = await artifactRequest<unknown>(
     `/v1/library/primary?${params}`,
     { signal: options.signal },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
   const normalized = projectionsFromPayload(result.data);
+  const requestedContextId = context.contextId.trim();
+  const fullResponseContextMatches = normalized.responseContextPresent
+    ? Boolean(
+        normalized.responseContext &&
+          artifactContextsEqual(normalized.responseContext, context),
+      )
+    : true;
+  const responseContextIdMatches = normalized.responseContextId
+    ? normalized.responseContextId === requestedContextId
+    : normalized.responseContextPresent;
+  const responseContextMatches =
+    fullResponseContextMatches && responseContextIdMatches;
   if (
     !normalized.ok ||
-    !normalized.responseContext ||
-    !artifactContextsEqual(normalized.responseContext, context)
+    !responseContextMatches
   ) {
     return {
       ok: false,
@@ -357,7 +419,9 @@ export async function listPrimaryArtifacts(
   const authorized = normalized.projections.filter(
     (artifact) =>
       artifactIsVisible(artifact) &&
-      artifactHasExactContext(artifact, context.contextId),
+      artifactHasExactContext(artifact, context.contextId) &&
+      (!options.artifactType ||
+        artifact.artifactType === options.artifactType),
   );
   const omitted =
     normalized.invalidCount +
@@ -380,18 +444,21 @@ export async function searchArtifactLibrary(options: {
   artifactType?: ArtifactType | "";
   role?: string;
   sourceFormat?: string;
+  offset?: number;
+  /** @deprecated The backend paginates by numeric offset; retained for callers on v0.180. */
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
 } = {}): Promise<ArtifactApiResult<ArtifactSearchResult>> {
   const params = new URLSearchParams({
-    q: options.query?.trim() || "",
-    artifact_type: options.artifactType || "",
-    role: options.role?.trim() || "",
-    source_format: options.sourceFormat?.trim() || "",
-    cursor: options.cursor?.trim() || "",
-    limit: String(options.limit ?? 60),
+    limit: boundedLibraryLimit(options.limit),
   });
+  setTrimmedParam(params, "q", options.query);
+  setTrimmedParam(params, "artifactType", options.artifactType);
+  setTrimmedParam(params, "role", options.role);
+  setTrimmedParam(params, "sourceFormat", options.sourceFormat);
+  const offset = boundedLibraryOffset(options.offset ?? options.cursor);
+  if (offset > 0) params.set("offset", String(offset));
   const result = await artifactRequest<unknown>(
     `/v1/library/search?${params}`,
     { signal: options.signal },
@@ -534,7 +601,7 @@ export async function getArtifactEditDecision(
     canonical = forked.data;
   }
   const params = new URLSearchParams({
-    revision_id: canonical.revisionId || "",
+    revisionId: canonical.revisionId || "",
   });
   const result = await artifactRequest<unknown>(
     `/v1/artifacts/${encodeURIComponent(

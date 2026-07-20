@@ -118,6 +118,12 @@ const artifactClientUrl = await compileModule(
     "./library-data": libraryDataUrl,
   },
 );
+const {
+  getArtifactEditDecision,
+  getArtifactItem,
+  listPrimaryArtifacts,
+  searchArtifactLibrary,
+} = await import(artifactClientUrl);
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value) => value;
@@ -327,16 +333,211 @@ function jsonResponse(payload, status = 200) {
   };
 }
 
+test("artifact library requests match FastAPI aliases, bounds, empty-value, and offset contracts", async () => {
+  const contextId = "00000000-0000-0000-0000-000000000001";
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.pathname === "/v1/library/primary") {
+      return jsonResponse({ contextId, items: [] });
+    }
+    return jsonResponse({
+      items: [],
+      nextOffset: calls.length === 2 ? 100 : null,
+      offset: Number(url.searchParams.get("offset") || 0),
+      limit: Number(url.searchParams.get("limit") || 0),
+    });
+  };
+
+  const primary = await listPrimaryArtifacts(
+    {
+      contextId,
+      siteKey: "image",
+      appId: " poster ",
+      functionId: " ",
+    },
+    { artifactType: "single_file_image", limit: 200 },
+  );
+  assert.equal(primary.ok, true);
+  assert.deepEqual(
+    Object.fromEntries(calls[0].searchParams),
+    {
+      contextId,
+      siteKey: "image",
+      limit: "100",
+      appId: "poster",
+    },
+  );
+  for (const rejected of [
+    "context",
+    "context_id",
+    "site_key",
+    "app_id",
+    "function_id",
+    "artifact_type",
+    "artifactType",
+  ]) {
+    assert.equal(calls[0].searchParams.has(rejected), false);
+  }
+
+  const filtered = await searchArtifactLibrary({
+    query: " poster ",
+    artifactType: "single_file_image",
+    role: " primary ",
+    sourceFormat: " png ",
+    limit: 200,
+  });
+  assert.equal(filtered.ok, true);
+  assert.equal(filtered.data?.nextCursor, "100");
+  assert.deepEqual(
+    Object.fromEntries(calls[1].searchParams),
+    {
+      limit: "100",
+      q: "poster",
+      artifactType: "single_file_image",
+      role: "primary",
+      sourceFormat: "png",
+    },
+  );
+  for (const rejected of ["artifact_type", "source_format", "cursor"]) {
+    assert.equal(calls[1].searchParams.has(rejected), false);
+  }
+
+  const paginated = await searchArtifactLibrary({
+    cursor: filtered.data?.nextCursor || "",
+    limit: 60,
+  });
+  assert.equal(paginated.ok, true);
+  assert.deepEqual(
+    Object.fromEntries(calls[2].searchParams),
+    { limit: "60", offset: "100" },
+  );
+
+  const myLibrary = await searchArtifactLibrary({ limit: 200 });
+  assert.equal(myLibrary.ok, true);
+  assert.deepEqual(
+    Object.fromEntries(calls[3].searchParams),
+    { limit: "100" },
+  );
+});
+
+test("Primary validates exact full and contextId-only response contexts fail-closed", async () => {
+  const requested = {
+    contextId: "00000000-0000-0000-0000-000000000001",
+    siteKey: "image",
+    appId: "poster",
+    functionId: "hero",
+  };
+  const responses = [
+    {
+      context: { ...requested },
+      contextId: requested.contextId,
+      items: [],
+    },
+    {
+      context: { ...requested },
+      items: [],
+    },
+    {
+      contextId: requested.contextId,
+      items: [],
+    },
+    {
+      context: { ...requested, appId: "other-app" },
+      contextId: requested.contextId,
+      items: [],
+    },
+    {
+      context: { ...requested },
+      contextId: "00000000-0000-0000-0000-000000000002",
+      items: [],
+    },
+    {
+      context: { contextId: requested.contextId },
+      contextId: requested.contextId,
+      items: [],
+    },
+    {
+      contextId: "00000000-0000-0000-0000-000000000002",
+      items: [],
+    },
+    {
+      items: [],
+    },
+  ];
+  globalThis.fetch = async () => jsonResponse(responses.shift());
+
+  const exactFullWithId = await listPrimaryArtifacts(requested);
+  const exactFullOnly = await listPrimaryArtifacts(requested);
+  const exactIdOnly = await listPrimaryArtifacts(requested);
+  const mismatchedFull = await listPrimaryArtifacts(requested);
+  const conflictingFullAndId = await listPrimaryArtifacts(requested);
+  const malformedFull = await listPrimaryArtifacts(requested);
+  const mismatchedIdOnly = await listPrimaryArtifacts(requested);
+  const missingContext = await listPrimaryArtifacts(requested);
+
+  assert.equal(exactFullWithId.ok, true);
+  assert.equal(exactFullOnly.ok, true);
+  assert.equal(exactIdOnly.ok, true);
+  for (const rejected of [
+    mismatchedFull,
+    conflictingFullAndId,
+    malformedFull,
+    mismatchedIdOnly,
+    missingContext,
+  ]) {
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.code, "invalid-binding");
+    assert.match(rejected.error || "", /context/);
+  }
+});
+
+test("artifact detail and edit capability use canonical revisionId query aliases", async () => {
+  const rawProjection = projection({
+    id: "revision-contract",
+    editable: true,
+  });
+  const normalized = normalizeArtifactProjection(rawProjection);
+  assert.ok(normalized);
+  const item = artifactProjectionToLibraryItem(normalized);
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    return url.pathname.endsWith("/edit-capability")
+      ? jsonResponse({ available: true, item: rawProjection })
+      : jsonResponse(rawProjection);
+  };
+
+  const detail = await getArtifactItem("revision-contract", "r1");
+  const editDecision = await getArtifactEditDecision(item);
+
+  assert.equal(detail.ok, true);
+  assert.equal(editDecision.ok, true);
+  assert.deepEqual(
+    calls.map((url) => url.pathname),
+    [
+      "/v1/library/items/revision-contract",
+      "/v1/library/items/revision-contract",
+      "/v1/artifacts/revision-contract/edit-capability",
+    ],
+  );
+  for (const url of calls) {
+    assert.deepEqual(
+      Object.fromEntries(url.searchParams),
+      { revisionId: "r1" },
+    );
+    assert.equal(url.searchParams.has("revision_id"), false);
+  }
+});
+
 test("rendered Primary is exact, ACL-safe, and rejects mismatched response context", async () => {
   const calls = [];
   globalThis.fetch = async (input) => {
     calls.push(String(input));
     return jsonResponse({
-      context: {
-        context_id: "ctx:image:poster",
-        site_key: "image",
-        app_id: "poster",
-      },
+      contextId: "ctx:image:poster",
       items: [
         projection({ id: "exact", title: "Exact primary" }),
         projection({
@@ -404,14 +605,9 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
 
   globalThis.fetch = async () =>
     jsonResponse({
-      context: {
-        context_id: "ctx:image:other",
-        site_key: "image",
-        app_id: "poster",
-      },
+      contextId: "ctx:image:other",
       items: [projection({ id: "leaked", title: "Mismatched response" })],
-      next_cursor: null,
-      total: 1,
+      nextOffset: null,
     });
   const mismatched = await createMounted(MaterialLibrary, {
     materials: [],
@@ -471,8 +667,7 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
     calls.push(String(input));
     return jsonResponse({
       items: [projection({ id: "global", title: "Global More" })],
-      next_cursor: null,
-      total: 1,
+      nextOffset: null,
     });
   };
   const mounted = await createMounted(MaterialLibrary, {

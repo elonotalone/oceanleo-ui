@@ -527,6 +527,8 @@ test("full-page library and right workspace share the heterogeneous My Library",
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
   assert.match(mine, /searchArtifactLibrary/);
+  assert.match(mine, /searchArtifactLibrary\(\{ limit: 100 \}\)/);
+  assert.doesNotMatch(mine, /searchArtifactLibrary\(\{ limit: 200 \}\)/);
   assert.match(mine, /onlyFavorites/);
   assert.match(mine, /isDurableLibraryItem/);
   assert.match(mine, /retireArtifact/);
