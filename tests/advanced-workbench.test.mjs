@@ -512,7 +512,7 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
   );
 });
 
-test("cloud browser powers on at Google and negotiates v2 with v1 compatibility", () => {
+test("cloud browser powers on at Google and negotiates strict native-window v3", () => {
   const panel =
     source("../src/shell/CloudBrowserPanel.tsx") +
     source("../src/shell/cloud-browser-controls.tsx") +
@@ -520,20 +520,26 @@ test("cloud browser powers on at Google and negotiates v2 with v1 compatibility"
     source("../src/shell/cloud-browser-transport.ts") +
     source("../src/shell/cloud-browser-transport-actions.ts") +
     source("../src/shell/cloud-browser-protocol.ts") +
-    source("../src/shell/cloud-browser-session-data.ts");
+    source("../src/shell/cloud-browser-session-data.ts") +
+    source("../src/shell/cloud-browser-wire.ts");
   const client = source("../src/lib/browser.ts");
   assert.match(
     panel,
     /createCloudBrowser\(\s*DEFAULT_BROWSER_URL,\s*effectiveTaskId \|\| undefined/,
   );
   assert.match(panel, /reload\(created\.id\)/);
-  assert.match(panel, /v2Envelope\("control\.acquire"/);
-  assert.match(panel, /legacyDrivingRef\.current \? "release" : "takeover"/);
-  assert.match(panel, /v2Envelope\("frame\.presented"/);
+  assert.match(panel, /cloudBrowserAuthMessage/);
+  assert.match(panel, /cloudBrowserV3Message/);
+  assert.match(panel, /cloudBrowserV3FrameReceipt/);
+  assert.match(panel, /native-chrome-window/);
+  assert.match(panel, /transportStateRef\.current !== "streaming"/);
+  assert.doesNotMatch(panel, /v2Envelope|legacyDrivingRef|protocol_versions/);
   assert.match(panel, /socket\.binaryType = "blob"/);
   assert.match(panel, /event\.data instanceof Blob/);
-  assert.match(panel, /URL\.revokeObjectURL/);
+  assert.match(panel, /createImageBitmap/);
+  assert.match(panel, /bitmap\?\.close\(\)/);
   assert.match(client, /export function createCloudBrowser/);
+  assert.match(client, /protocol_version: 3/);
 });
 
 test("full-page library and right workspace share the heterogeneous My Library", () => {
@@ -543,9 +549,10 @@ test("full-page library and right workspace share the heterogeneous My Library",
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
   assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
-  assert.match(mine, /searchArtifactLibrary/);
-  assert.match(mine, /searchArtifactLibrary\(\{ limit: 100 \}\)/);
-  assert.doesNotMatch(mine, /searchArtifactLibrary\(\{ limit: 200 \}\)/);
+  assert.match(mine, /listMyArtifacts/);
+  assert.match(mine, /limit: 100/);
+  assert.match(mine, /ownerPrincipalId/);
+  assert.doesNotMatch(mine, /searchArtifactLibrary/);
   assert.match(mine, /onlyFavorites/);
   assert.match(mine, /isDurableLibraryItem/);
   assert.match(mine, /retireArtifact/);

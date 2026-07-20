@@ -235,6 +235,30 @@
         },
         {
           "kind": "named",
+          "name": "CloudBrowserApiRequest",
+          "importedName": "CloudBrowserApiRequest",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserCapabilitiesV3",
+          "importedName": "CloudBrowserCapabilitiesV3",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserCheckpoint",
+          "importedName": "CloudBrowserCheckpoint",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserCheckpointState",
+          "importedName": "CloudBrowserCheckpointState",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "CloudBrowserControlIntent",
           "importedName": "CloudBrowserControlIntent",
           "source": "../shell/cloud-browser-transport-model"
@@ -253,8 +277,26 @@
         },
         {
           "kind": "named",
+          "name": "CloudBrowserFencedLifecycleBody",
+          "importedName": "CloudBrowserFencedLifecycleBody",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserFrameContractV3",
+          "importedName": "CloudBrowserFrameContractV3",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "CloudBrowserFrameMeta",
           "importedName": "CloudBrowserFrameMeta",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserLifecycleResponse",
+          "importedName": "CloudBrowserLifecycleResponse",
           "source": "../lib/browser"
         },
         {
@@ -301,6 +343,24 @@
         },
         {
           "kind": "named",
+          "name": "CloudBrowserResumeBody",
+          "importedName": "CloudBrowserResumeBody",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserResumeOptions",
+          "importedName": "CloudBrowserResumeOptions",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "CloudBrowserRuntimeFenceRule",
+          "importedName": "CloudBrowserRuntimeFenceRule",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "cloudBrowserScreenshot",
           "importedName": "cloudBrowserScreenshot",
           "source": "../lib/browser"
@@ -343,6 +403,18 @@
         },
         {
           "kind": "named",
+          "name": "createCloudBrowserLifecycleClient",
+          "importedName": "createCloudBrowserLifecycleClient",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "createCloudBrowserOperationId",
+          "importedName": "createCloudBrowserOperationId",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "createCloudBrowserProtocolState",
           "importedName": "createCloudBrowserProtocolState",
           "source": "../shell/cloud-browser-transport-model"
@@ -367,6 +439,12 @@
         },
         {
           "kind": "named",
+          "name": "getCloudBrowserSession",
+          "importedName": "getCloudBrowserSession",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "hibernateCloudBrowser",
           "importedName": "hibernateCloudBrowser",
           "source": "../lib/browser"
@@ -376,6 +454,12 @@
           "name": "isCloudBrowserTransportTransitionLegal",
           "importedName": "isCloudBrowserTransportTransitionLegal",
           "source": "../shell/cloud-browser-transport-model"
+        },
+        {
+          "kind": "named",
+          "name": "listCloudBrowserCheckpoints",
+          "importedName": "listCloudBrowserCheckpoints",
+          "source": "../lib/browser"
         },
         {
           "kind": "named",
@@ -409,8 +493,20 @@
         },
         {
           "kind": "named",
+          "name": "restoreCloudBrowserCheckpoint",
+          "importedName": "restoreCloudBrowserCheckpoint",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
           "name": "resumeCloudBrowser",
           "importedName": "resumeCloudBrowser",
+          "source": "../lib/browser"
+        },
+        {
+          "kind": "named",
+          "name": "validateCloudBrowserSessionFence",
+          "importedName": "validateCloudBrowserSessionFence",
           "source": "../lib/browser"
         }
       ]

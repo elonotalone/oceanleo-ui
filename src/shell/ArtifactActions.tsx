@@ -1,12 +1,16 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
   isEnsureableTransient,
   type ArtifactCardAction,
 } from "./artifact-contract";
-import { prepareArtifactForAction } from "./artifact-client";
+import {
+  getArtifactDownload,
+  prepareArtifactForAction,
+  setArtifactFavorite,
+} from "./artifact-client";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -303,7 +307,19 @@ export function ArtifactActionButtons({
 }) {
   const tt = useUI();
   const reasonId = useId();
-  const [pending, setPending] = useState<ArtifactCardAction | null>(null);
+  const [pending, setPending] = useState<
+    ArtifactCardAction | "download" | "favorite" | null
+  >(null);
+  const [favorite, setFavorite] = useState(item.favorite);
+  const [liveStatus, setLiveStatus] = useState("");
+  useEffect(() => {
+    setFavorite(item.favorite);
+  }, [item.artifactId, item.favorite, item.revisionId]);
+  const report = (message: string) => {
+    const translated = tt(message);
+    setLiveStatus(translated);
+    onStatus?.(translated);
+  };
   const handlers = useMemo(
     () => ({
       preview: onPreview,
@@ -317,14 +333,14 @@ export function ArtifactActionButtons({
     const state = matrix[action];
     const handler = handlers[action];
     if (!state.available || !handler || pending) {
-      if (state.reason) onStatus?.(state.reason);
+      if (state.reason) report(state.reason);
       return;
     }
     setPending(action);
-    onStatus?.(
+    report(
       state.requiresEnsure
-        ? tt("正在建立耐久 artifact identity…")
-        : tt(`${ACTION_LABEL[action]}中…`),
+        ? "正在建立耐久 artifact identity…"
+        : `${ACTION_LABEL[action]}中…`,
     );
     try {
       const prepared = await prepareArtifactForAction(action, item);
@@ -332,13 +348,79 @@ export function ArtifactActionButtons({
         throw new Error(prepared.error || `${ACTION_LABEL[action]}失败。`);
       }
       await handler(prepared.data);
-      onStatus?.(tt(`${ACTION_LABEL[action]}已执行。`));
+      report(`${ACTION_LABEL[action]}已执行。`);
     } catch (error) {
-      onStatus?.(
+      report(
         error instanceof Error
           ? error.message
-          : tt(`${ACTION_LABEL[action]}失败，请重试。`),
+          : `${ACTION_LABEL[action]}失败，请重试。`,
       );
+    } finally {
+      setPending(null);
+    }
+  };
+  const durableItem = isDurableLibraryItem(item) ? item : null;
+  const downloadAvailable = Boolean(
+    durableItem &&
+      durableItem.artifact.access.canRead &&
+      durableItem.artifact.access.canPreview,
+  );
+  const favoriteVisible = Boolean(
+    durableItem &&
+      durableItem.artifact.access.canRead &&
+      durableItem.artifact.integrity.ok &&
+      durableItem.artifact.access.canFavorite,
+  );
+  const runDownload = async () => {
+    if (!downloadAvailable || pending) return;
+    setPending("download");
+    report("正在准备固定 revision 的下载…");
+    try {
+      const result = await getArtifactDownload(item);
+      if (
+        !result.ok ||
+        !result.data ||
+        !durableItem ||
+        result.data.artifactId !== durableItem.artifactId ||
+        result.data.revisionId !== durableItem.revisionId
+      ) {
+        throw new Error(result.error || "下载 identity 校验失败。");
+      }
+      const link = document.createElement("a");
+      link.href = result.data.url;
+      link.download = result.data.filename;
+      link.rel = "noopener noreferrer";
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      report("下载已开始。");
+    } catch (error) {
+      report(error instanceof Error ? error.message : "下载失败。");
+    } finally {
+      setPending(null);
+    }
+  };
+  const toggleFavorite = async () => {
+    if (!favoriteVisible || pending) return;
+    setPending("favorite");
+    const next = !favorite;
+    report(next ? "正在收藏…" : "正在取消收藏…");
+    try {
+      const result = await setArtifactFavorite(item, next);
+      if (
+        !result.ok ||
+        !result.data ||
+        !durableItem ||
+        result.data.artifactId !== durableItem.artifactId ||
+        result.data.revisionId !== durableItem.revisionId
+      ) {
+        throw new Error(result.error || "收藏 identity 校验失败。");
+      }
+      setFavorite(next);
+      report(next ? "已收藏。" : "已取消收藏。");
+    } catch (error) {
+      report(error instanceof Error ? error.message : "收藏失败。");
     } finally {
       setPending(null);
     }
@@ -403,6 +485,60 @@ export function ArtifactActionButtons({
             </button>
           );
         })}
+        {downloadAvailable && (
+          <button
+            type="button"
+            onClick={() => void runDownload()}
+            disabled={!downloadAvailable || pending !== null}
+            aria-disabled={!downloadAvailable || pending !== null}
+            aria-label={tt(
+              `下载「${item.title}」revision ${durableItem?.revisionId || ""}`,
+            )}
+            title={tt(
+              downloadAvailable
+                ? "下载"
+                : "当前 revision 没有可下载的授权 rendition。",
+            )}
+            className={`inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+              compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
+            }`}
+            style={{
+              borderColor: downloadAvailable
+                ? `${accent}66`
+                : "var(--border,#e7e5e4)",
+              color: downloadAvailable
+                ? accent
+                : "var(--muted,#a8a29e)",
+              outlineColor: accent,
+            }}
+          >
+            {pending === "download" ? tt("处理中…") : tt("下载")}
+          </button>
+        )}
+        {favoriteVisible && (
+          <button
+            type="button"
+            onClick={() => void toggleFavorite()}
+            disabled={pending !== null}
+            aria-disabled={pending !== null}
+            aria-pressed={favorite}
+            aria-label={tt(
+              `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
+            )}
+            className={`inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+              compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
+            }`}
+            style={{
+              borderColor: `${accent}66`,
+              color: accent,
+              outlineColor: accent,
+            }}
+          >
+            {pending === "favorite"
+              ? tt("处理中…")
+              : tt(favorite ? "已收藏" : "收藏")}
+          </button>
+        )}
       </div>
       {unavailableReason && (
         <p
@@ -413,6 +549,9 @@ export function ArtifactActionButtons({
           {tt(unavailableReason)}
         </p>
       )}
+      <span className="sr-only" role="status" aria-live="polite">
+        {liveStatus}
+      </span>
     </div>
   );
 }

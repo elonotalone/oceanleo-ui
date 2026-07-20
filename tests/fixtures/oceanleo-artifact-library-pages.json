@@ -1,0 +1,187 @@
+{
+  "publicPage": {
+    "scope": "public",
+    "total": 1,
+    "invalidCount": 0,
+    "items": [
+      {
+        "schema": "oceanleo.artifact.v1",
+        "artifact_id": "fixture-public-image",
+        "revision_id": "public-r1",
+        "artifact_type": "single_file_image",
+        "roles": ["stock"],
+        "title": "Public fixture",
+        "favorite": false,
+        "owner": {
+          "principal_id": "owner-public",
+          "visibility": "public",
+          "origin_site_key": "asset"
+        },
+        "access": {
+          "can_read": true,
+          "can_preview": true,
+          "can_edit": false,
+          "can_fork": true,
+          "can_insert": true,
+          "can_replace": true,
+          "can_favorite": true,
+          "can_bind": true,
+          "can_export_source": true
+        },
+        "editability": "bounded",
+        "editor_capability": "image-editor",
+        "source_format": "png",
+        "renditions": {
+          "preview": {
+            "purpose": "preview",
+            "revision_id": "public-r1",
+            "url": "https://signed.test/public-r1-preview.png",
+            "format": "png"
+          },
+          "source": {
+            "purpose": "source",
+            "revision_id": "public-r1",
+            "url": "https://signed.test/public-r1-source.png",
+            "format": "png",
+            "digest": "sha256:public-r1"
+          }
+        },
+        "provenance": {
+          "id": "prov-public-r1",
+          "source_kind": "owned",
+          "license_code": "owned"
+        },
+        "context_bindings": [],
+        "integrity": {
+          "ok": true,
+          "code": "ok",
+          "reason": ""
+        }
+      }
+    ]
+  },
+  "mineOwnerAPage": {
+    "scope": "mine",
+    "ownerPrincipalId": "owner-a",
+    "total": 1,
+    "invalidCount": 0,
+    "items": [
+      {
+        "schema": "oceanleo.artifact.v1",
+        "artifact_id": "fixture-owned-document",
+        "revision_id": "owned-r4",
+        "artifact_type": "document",
+        "roles": ["delivery"],
+        "title": "Owned fixture",
+        "favorite": true,
+        "owner": {
+          "principal_id": "owner-a",
+          "visibility": "private",
+          "origin_site_key": "word"
+        },
+        "access": {
+          "can_read": true,
+          "can_preview": true,
+          "can_edit": true,
+          "can_fork": false,
+          "can_insert": true,
+          "can_replace": true,
+          "can_favorite": true,
+          "can_bind": true,
+          "can_export_source": true
+        },
+        "editability": "native",
+        "editor_capability": "richdoc-editor",
+        "source_format": "tiptap-json",
+        "renditions": {
+          "preview": {
+            "purpose": "preview",
+            "revision_id": "owned-r4",
+            "url": "https://signed.test/owned-r4-preview",
+            "format": "html"
+          },
+          "source": {
+            "purpose": "source",
+            "revision_id": "owned-r4",
+            "url": "https://signed.test/owned-r4-source",
+            "format": "json",
+            "digest": "sha256:owned-r4"
+          }
+        },
+        "provenance": {
+          "id": "prov-owned-r4",
+          "source_kind": "generated",
+          "license_code": "owned"
+        },
+        "context_bindings": [],
+        "integrity": {
+          "ok": true,
+          "code": "ok",
+          "reason": ""
+        }
+      }
+    ]
+  },
+  "mineMixedOwnerPage": {
+    "scope": "mine",
+    "ownerPrincipalId": "owner-a",
+    "total": 1,
+    "invalidCount": 0,
+    "items": [
+      {
+        "schema": "oceanleo.artifact.v1",
+        "artifact_id": "fixture-owner-b-document",
+        "revision_id": "owner-b-r1",
+        "artifact_type": "document",
+        "roles": ["delivery"],
+        "title": "Wrong owner fixture",
+        "favorite": false,
+        "owner": {
+          "principal_id": "owner-b",
+          "visibility": "private",
+          "origin_site_key": "word"
+        },
+        "access": {
+          "can_read": true,
+          "can_preview": true,
+          "can_edit": true,
+          "can_fork": false,
+          "can_insert": true,
+          "can_replace": true,
+          "can_favorite": true,
+          "can_bind": true,
+          "can_export_source": true
+        },
+        "editability": "native",
+        "editor_capability": "richdoc-editor",
+        "source_format": "tiptap-json",
+        "renditions": {
+          "preview": {
+            "purpose": "preview",
+            "revision_id": "owner-b-r1",
+            "url": "https://signed.test/owner-b-r1-preview",
+            "format": "html"
+          },
+          "source": {
+            "purpose": "source",
+            "revision_id": "owner-b-r1",
+            "url": "https://signed.test/owner-b-r1-source",
+            "format": "json",
+            "digest": "sha256:owner-b-r1"
+          }
+        },
+        "provenance": {
+          "id": "prov-owner-b-r1",
+          "source_kind": "generated",
+          "license_code": "owned"
+        },
+        "context_bindings": [],
+        "integrity": {
+          "ok": true,
+          "code": "ok",
+          "reason": ""
+        }
+      }
+    ]
+  }
+}

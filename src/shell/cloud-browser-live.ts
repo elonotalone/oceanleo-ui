@@ -4,10 +4,11 @@ import { useCallback, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   CloudBrowserControlLease,
+  CloudBrowserFrameContractV3,
   CloudBrowserFrameMeta,
-  CloudBrowserTab,
-  CloudBrowserTabState,
 } from "../lib/browser";
+import type { CloudBrowserWireBinding } from "./cloud-browser-wire";
+import { CLOUD_BROWSER_MAX_FRAME_BYTES } from "./cloud-browser-wire";
 
 export const DEFAULT_BROWSER_URL = "https://www.google.com/";
 export const DEFAULT_FRAME_SIZE = { width: 1280, height: 800 };
@@ -21,9 +22,56 @@ type FrameBounds = {
 
 type PendingBlobFrame = {
   blob: Blob;
-  meta: CloudBrowserFrameMeta | null;
+  meta: ValidatedCloudBrowserFrameMeta;
   generation: number;
 };
+
+export type ValidatedCloudBrowserFrameMeta = Required<
+  Pick<
+    CloudBrowserFrameMeta,
+    | "sequence"
+    | "actionSequence"
+    | "width"
+    | "height"
+    | "byteLength"
+    | "capturedAtMs"
+    | "streamId"
+    | "generation"
+    | "windowId"
+    | "runtimeId"
+    | "runtimeVersion"
+    | "sessionVersion"
+    | "incarnation"
+    | "connectionId"
+    | "nonce"
+    | "codec"
+    | "source"
+    | "paintState"
+    | "nativeChromeWindow"
+  >
+>;
+
+export type CloudBrowserFrameExpectation = {
+  binding: CloudBrowserWireBinding;
+  contract: CloudBrowserFrameContractV3;
+  afterSequence: number;
+  minimumActionSequence?: number;
+  maxAgeMs?: number;
+};
+
+export type CloudBrowserFrameValidation =
+  | { ok: true; meta: ValidatedCloudBrowserFrameMeta }
+  | {
+      ok: false;
+      reason:
+        | "invalid_schema"
+        | "binding_mismatch"
+        | "stale_sequence"
+        | "stale_action"
+        | "stale_capture"
+        | "size_exceeded"
+        | "native_chrome_missing";
+    };
 
 export type CloudBrowserTextCommit = {
   text: string;
@@ -33,6 +81,9 @@ export type CloudBrowserTextCommit = {
 
 export type CloudBrowserTextCommitGate = {
   compositionStart: () => string;
+  compositionUpdate: (
+    text: string,
+  ) => { text: string; compositionId: string } | null;
   compositionEnd: (text: string) => CloudBrowserTextCommit | null;
   beforeInput: (
     inputType: string,
@@ -103,33 +154,6 @@ export function pointInContainedFrame(
   };
 }
 
-export function normalizedHttpUrl(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  try {
-    const parsed = new URL(
-      /^https?:\/\//i.test(value) ? value : `https://${value}`,
-    );
-    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-export function browserNavigationTarget(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  const looksLikeAddress =
-    /^https?:\/\//i.test(value) ||
-    /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i.test(value) ||
-    /^(?:[\p{L}\p{N}-]+\.)+[\p{L}]{2,}(?::\d+)?(?:\/|$)/iu.test(value);
-  if (looksLikeAddress) return normalizedHttpUrl(value);
-  return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
-}
-
 const PRIVATE_QUERY_KEY =
   /^(?:access_?token|auth|code|credential|key|otp|pass(?:word)?|secret|session|signature|sig|token)$/i;
 
@@ -153,98 +177,178 @@ export function redactedDisplayUrl(raw: string): string {
 export function parseCloudBrowserFrameMeta(
   message: Record<string, unknown>,
 ): CloudBrowserFrameMeta {
+  const nativeChrome = recordValue(message.native_chrome);
   return {
-    sequence: finitePositive(message.sequence ?? message.seq),
-    width: finitePositive(message.width ?? message.w),
-    height: finitePositive(message.height ?? message.h),
-    byteLength: finitePositive(
-      message.byte_length ?? message.byteLength,
-    ),
-    capturedAtMs: finitePositive(
-      message.captured_at_ms ?? message.capturedAtMs,
-    ),
-    streamId: stringValue(message.stream_id ?? message.streamId) || undefined,
-    generation: finitePositive(
-      message.generation ?? message.stream_generation,
-    ),
-    tabId: stringValue(message.tab_id ?? message.tabId) || undefined,
-    runtimeId: stringValue(message.runtime_id ?? message.runtimeId) || undefined,
+    sequence: finitePositive(message.frame_sequence),
+    actionSequence: finitePositive(message.action_sequence) ?? 0,
+    width: finitePositive(message.width),
+    height: finitePositive(message.height),
+    byteLength: finitePositive(message.byte_length),
+    capturedAtMs: finitePositive(message.captured_at_ms),
+    streamId: stringValue(message.stream_id) || undefined,
+    generation: finitePositive(message.stream_generation),
+    windowId: stringValue(message.window_id) || undefined,
+    runtimeId: stringValue(message.runtime_id) || undefined,
+    runtimeVersion: stringValue(message.runtime_version) || undefined,
+    sessionVersion: finitePositive(message.session_version),
     incarnation: finitePositive(message.incarnation),
-    kind: stringValue(message.kind) || undefined,
-  };
-}
-
-function tabState(value: unknown): CloudBrowserTabState {
-  switch (value) {
-    case "opening":
-    case "loading":
-    case "ready":
-    case "crashed":
-    case "closing":
-    case "closed":
-      return value;
-    default:
-      return "ready";
-  }
-}
-
-export function normalizeCloudBrowserTab(
-  value: unknown,
-): CloudBrowserTab | null {
-  const item = recordValue(value);
-  if (!item) return null;
-  const id = stringValue(item.tab_id ?? item.id);
-  if (!id) return null;
-  return {
-    id,
-    title: stringValue(item.title),
-    displayUrl: redactedDisplayUrl(
-      stringValue(item.display_url ?? item.url),
+    connectionId: stringValue(message.connection_id) || undefined,
+    nonce: stringValue(message.nonce) || undefined,
+    codec: stringValue(message.codec) || undefined,
+    source: stringValue(message.source) || undefined,
+    paintState: stringValue(message.paint_state) || undefined,
+    nativeChromeWindow: Boolean(
+      nativeChrome &&
+        nativeChrome.window_id === message.window_id &&
+        nativeChrome.tab_strip === true &&
+        nativeChrome.omnibox === true &&
+        nativeChrome.maximized === true,
     ),
-    faviconUrl:
-      stringValue(item.favicon_url ?? item.faviconUrl) || undefined,
-    status: tabState(item.status),
-    openerTabId:
-      stringValue(item.opener_tab_id ?? item.openerTabId) || null,
   };
 }
 
-export function normalizeCloudBrowserTabs(value: unknown): CloudBrowserTab[] {
-  const source = Array.isArray(value)
-    ? value
-    : Array.isArray(recordValue(value)?.tabs)
-      ? (recordValue(value)?.tabs as unknown[])
-      : [];
-  return source
-    .map(normalizeCloudBrowserTab)
-    .filter((item): item is CloudBrowserTab => item !== null);
+const FRAME_META_KEYS = new Set([
+  "v",
+  "t",
+  "session_id",
+  "session_version",
+  "runtime_id",
+  "runtime_version",
+  "incarnation",
+  "nonce",
+  "connection_id",
+  "stream_id",
+  "stream_generation",
+  "window_id",
+  "frame_sequence",
+  "action_sequence",
+  "width",
+  "height",
+  "byte_length",
+  "captured_at_ms",
+  "codec",
+  "source",
+  "paint_state",
+  "native_chrome",
+]);
+const NATIVE_CHROME_KEYS = new Set([
+  "window_id",
+  "tab_strip",
+  "omnibox",
+  "maximized",
+]);
+
+function safeInteger(
+  value: unknown,
+  minimum: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+  );
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+export function validateCloudBrowserFrameMeta(
+  message: Record<string, unknown>,
+  expectation: CloudBrowserFrameExpectation,
+  now = Date.now(),
+): CloudBrowserFrameValidation {
+  const nativeChrome = recordValue(message.native_chrome);
+  if (
+    !exactKeys(message, FRAME_META_KEYS) ||
+    message.v !== 3 ||
+    message.t !== "frame.meta" ||
+    !nativeChrome ||
+    !exactKeys(nativeChrome, NATIVE_CHROME_KEYS) ||
+    !safeInteger(message.frame_sequence, 1) ||
+    !safeInteger(message.action_sequence, 0) ||
+    !safeInteger(message.width, 1) ||
+    !safeInteger(message.height, 1) ||
+    !safeInteger(message.byte_length, 1, CLOUD_BROWSER_MAX_FRAME_BYTES) ||
+    !safeInteger(message.captured_at_ms, 1)
+  ) {
+    return { ok: false, reason: "invalid_schema" };
+  }
+  const { binding, contract } = expectation;
+  if (
+    message.session_id !== binding.sessionId ||
+    message.session_version !== binding.sessionVersion ||
+    message.runtime_id !== binding.runtimeId ||
+    message.runtime_version !== binding.runtimeVersion ||
+    message.incarnation !== binding.incarnation ||
+    message.nonce !== binding.nonce ||
+    message.connection_id !== binding.connectionId ||
+    message.stream_id !== binding.streamId ||
+    message.stream_generation !== binding.streamGeneration ||
+    message.window_id !== binding.windowId
+  ) {
+    return { ok: false, reason: "binding_mismatch" };
+  }
+  if ((message.frame_sequence as number) <= expectation.afterSequence) {
+    return { ok: false, reason: "stale_sequence" };
+  }
+  if (
+    (message.action_sequence as number) <
+      (expectation.minimumActionSequence ?? 0)
+  ) {
+    return { ok: false, reason: "stale_action" };
+  }
+  const maxAgeMs = expectation.maxAgeMs ?? 10_000;
+  const captureAge = now - (message.captured_at_ms as number);
+  if (captureAge > maxAgeMs || captureAge < -2_000) {
+    return { ok: false, reason: "stale_capture" };
+  }
+  if (
+    message.codec !== contract.codec ||
+    message.source !== contract.source ||
+    (message.byte_length as number) > contract.max_frame_bytes ||
+    (message.width as number) > contract.max_width ||
+    (message.height as number) > contract.max_height
+  ) {
+    return { ok: false, reason: "size_exceeded" };
+  }
+  if (
+    message.paint_state !== "real" ||
+    nativeChrome.window_id !== binding.windowId ||
+    nativeChrome.tab_strip !== true ||
+    nativeChrome.omnibox !== true ||
+    nativeChrome.maximized !== true
+  ) {
+    return { ok: false, reason: "native_chrome_missing" };
+  }
+  const parsed = parseCloudBrowserFrameMeta(message);
+  return {
+    ok: true,
+    meta: parsed as ValidatedCloudBrowserFrameMeta,
+  };
 }
 
 export function normalizeCloudBrowserLease(
   value: unknown,
 ): CloudBrowserControlLease {
   const item = recordValue(value) || {};
-  const explicitExpiry = stringValue(
-    item.expires_at ?? item.expiresAt,
-  );
-  const expiryMs = finitePositive(item.expires_at_ms ?? item.expiresAtMs);
-  const holderRaw = stringValue(
-    item.holder_kind ?? item.holder ?? item.driving,
-  );
+  const explicitExpiry = stringValue(item.expires_at);
+  const holderRaw = stringValue(item.holder_kind);
   const holderKind =
     holderRaw === "human" ? "human" : holderRaw === "agent" ? "agent" : "free";
   return {
-    leaseId: stringValue(item.lease_id ?? item.leaseId),
-    epoch: finitePositive(item.epoch ?? item.lease_epoch) || 0,
+    leaseId: stringValue(item.lease_id),
+    epoch: finitePositive(item.lease_epoch) || 0,
     holderKind,
-    holderId: stringValue(item.holder_id ?? item.holderId) || undefined,
-    connectionId:
-      stringValue(item.connection_id ?? item.connectionId) || undefined,
-    expiresAt:
-      explicitExpiry ||
-      (expiryMs ? new Date(expiryMs).toISOString() : undefined),
-    privacyMode:
-      item.privacy_mode === true || item.privacyMode === true,
+    holderId: stringValue(item.holder_id) || undefined,
+    connectionId: stringValue(item.connection_id) || undefined,
+    expiresAt: explicitExpiry || undefined,
+    privacyMode: item.privacy_mode === true,
   };
 }
 
@@ -298,6 +402,10 @@ export function createCloudBrowserTextCommitGate(): CloudBrowserTextCommitGate {
       activeCompositionId = `composition-${++serial}`;
       pendingEcho = null;
       return activeCompositionId;
+    },
+    compositionUpdate(text) {
+      if (!composing || !activeCompositionId) return null;
+      return { text, compositionId: activeCompositionId };
     },
     compositionEnd(text) {
       const compositionId =
@@ -379,39 +487,48 @@ export function playwrightKey(
 }
 
 export function useCloudBrowserFramePainter(options: {
-  onPresented?: (meta: CloudBrowserFrameMeta | null) => void;
-  onDecodeError?: () => void;
+  onReceived?: (
+    meta: ValidatedCloudBrowserFrameMeta,
+  ) => boolean | void;
+  onPresented?: (meta: ValidatedCloudBrowserFrameMeta) => void;
+  onDropped?: (meta: ValidatedCloudBrowserFrameMeta) => void;
+  onDecodeError?: (reason: string) => void;
 } = {}) {
+  const receivedCallbackRef = useRef(options.onReceived);
   const presentedCallbackRef = useRef(options.onPresented);
+  const droppedCallbackRef = useRef(options.onDropped);
   const decodeErrorCallbackRef = useRef(options.onDecodeError);
+  receivedCallbackRef.current = options.onReceived;
   presentedCallbackRef.current = options.onPresented;
+  droppedCallbackRef.current = options.onDropped;
   decodeErrorCallbackRef.current = options.onDecodeError;
 
-  const frameImageRef = useRef<HTMLImageElement | null>(null);
   const frameDecodeGenerationRef = useRef(0);
   const frameDecodeBusyRef = useRef(false);
   const pendingBlobFrameRef = useRef<PendingBlobFrame | null>(null);
   const frameSizeRef = useRef(DEFAULT_FRAME_SIZE);
-  const pendingFrameMetaRef = useRef<CloudBrowserFrameMeta | null>(null);
+  const pendingFrameMetaRef =
+    useRef<ValidatedCloudBrowserFrameMeta | null>(null);
+  const lastPresentedSequenceRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const cancelFrameDecode = useCallback((clearCanvas = false) => {
     ++frameDecodeGenerationRef.current;
     pendingFrameMetaRef.current = null;
-    pendingBlobFrameRef.current = null;
-    const image = frameImageRef.current;
-    if (image) {
-      image.onload = null;
-      image.onerror = null;
-      image.removeAttribute("src");
+    if (pendingBlobFrameRef.current) {
+      droppedCallbackRef.current?.(pendingBlobFrameRef.current.meta);
     }
+    pendingBlobFrameRef.current = null;
+    lastPresentedSequenceRef.current = 0;
     if (clearCanvas) {
       const canvas = canvasRef.current;
       canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
       frameSizeRef.current = DEFAULT_FRAME_SIZE;
       if (canvas) {
         delete canvas.dataset.frameSequence;
+        delete canvas.dataset.actionSequence;
         delete canvas.dataset.captureToPaintMs;
+        delete canvas.dataset.frameSource;
       }
     }
   }, []);
@@ -421,14 +538,20 @@ export function useCloudBrowserFramePainter(options: {
       image: CanvasImageSource,
       naturalWidth: number,
       naturalHeight: number,
-      meta: CloudBrowserFrameMeta | null,
+      meta: ValidatedCloudBrowserFrameMeta,
     ) => {
       const canvas = canvasRef.current;
-      const width =
-        naturalWidth || meta?.width || DEFAULT_FRAME_SIZE.width;
-      const height =
-        naturalHeight || meta?.height || DEFAULT_FRAME_SIZE.height;
-      if (!canvas || width <= 0 || height <= 0) return false;
+      const width = naturalWidth || meta.width;
+      const height = naturalHeight || meta.height;
+      if (
+        !canvas ||
+        width !== meta.width ||
+        height !== meta.height ||
+        meta.sequence <= lastPresentedSequenceRef.current
+      ) {
+        decodeErrorCallbackRef.current?.("frame dimensions or order mismatch");
+        return false;
+      }
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
       const context = canvas.getContext("2d");
@@ -436,46 +559,17 @@ export function useCloudBrowserFramePainter(options: {
       context.clearRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
       frameSizeRef.current = { width, height };
-      if (meta?.sequence) {
-        canvas.dataset.frameSequence = String(meta.sequence);
-      }
-      if (meta?.capturedAtMs) {
-        canvas.dataset.captureToPaintMs = String(
-          Math.max(0, Math.round(Date.now() - meta.capturedAtMs)),
-        );
-      }
+      lastPresentedSequenceRef.current = meta.sequence;
+      canvas.dataset.frameSequence = String(meta.sequence);
+      canvas.dataset.actionSequence = String(meta.actionSequence);
+      canvas.dataset.captureToPaintMs = String(
+        Math.max(0, Math.round(Date.now() - meta.capturedAtMs)),
+      );
+      canvas.dataset.frameSource = meta.source;
       presentedCallbackRef.current?.(meta);
       return true;
     },
     [],
-  );
-
-  const drawFrameSource = useCallback(
-    (source: string, meta: CloudBrowserFrameMeta | null) => {
-      cancelFrameDecode(false);
-      if (document.visibilityState === "hidden") return;
-      const generation = frameDecodeGenerationRef.current;
-      const image = frameImageRef.current || new Image();
-      frameImageRef.current = image;
-      image.decoding = "async";
-      const release = () => {
-        image.onload = null;
-        image.onerror = null;
-        image.removeAttribute("src");
-      };
-      image.onload = () => {
-        if (generation === frameDecodeGenerationRef.current) {
-          paintFrame(image, image.naturalWidth, image.naturalHeight, meta);
-        }
-        release();
-      };
-      image.onerror = () => {
-        decodeErrorCallbackRef.current?.();
-        release();
-      };
-      image.src = source;
-    },
-    [cancelFrameDecode, paintFrame],
   );
 
   const pumpBlobFrames = useCallback(async () => {
@@ -492,10 +586,16 @@ export function useCloudBrowserFramePainter(options: {
             pending.generation === frameDecodeGenerationRef.current &&
             document.visibilityState !== "hidden"
           ) {
-            paintFrame(bitmap, bitmap.width, bitmap.height, pending.meta);
+            const newer =
+              pendingBlobFrameRef.current as PendingBlobFrame | null;
+            if (newer && newer.meta.sequence > pending.meta.sequence) {
+              droppedCallbackRef.current?.(pending.meta);
+            } else {
+              paintFrame(bitmap, bitmap.width, bitmap.height, pending.meta);
+            }
           }
         } catch {
-          decodeErrorCallbackRef.current?.();
+          decodeErrorCallbackRef.current?.("jpeg decode failed");
         } finally {
           bitmap?.close();
         }
@@ -509,11 +609,25 @@ export function useCloudBrowserFramePainter(options: {
     (value: Blob) => {
       const meta = pendingFrameMetaRef.current;
       pendingFrameMetaRef.current = null;
-      if (meta?.byteLength && value.size !== meta.byteLength) {
-        decodeErrorCallbackRef.current?.();
-        return;
+      if (!meta) {
+        decodeErrorCallbackRef.current?.("binary frame missing metadata");
+        return false;
       }
-      if (document.visibilityState === "hidden") return;
+      if (
+        value.size !== meta.byteLength ||
+        value.size > CLOUD_BROWSER_MAX_FRAME_BYTES
+      ) {
+        decodeErrorCallbackRef.current?.("binary frame size mismatch");
+        return false;
+      }
+      if (receivedCallbackRef.current?.(meta) === false) return true;
+      if (document.visibilityState === "hidden") {
+        droppedCallbackRef.current?.(meta);
+        return true;
+      }
+      if (pendingBlobFrameRef.current) {
+        droppedCallbackRef.current?.(pendingBlobFrameRef.current.meta);
+      }
       pendingBlobFrameRef.current = {
         blob:
           value.type === "image/jpeg"
@@ -523,27 +637,21 @@ export function useCloudBrowserFramePainter(options: {
         generation: frameDecodeGenerationRef.current,
       };
       void pumpBlobFrames();
+      return true;
     },
     [pumpBlobFrames],
   );
 
   const acceptFrameMeta = useCallback(
-    (message: Record<string, unknown>) => {
-      const meta = parseCloudBrowserFrameMeta(message);
+    (meta: ValidatedCloudBrowserFrameMeta) => {
+      if (pendingFrameMetaRef.current) {
+        decodeErrorCallbackRef.current?.("frame metadata was not paired");
+        return false;
+      }
       pendingFrameMetaRef.current = meta;
-      return meta;
+      return true;
     },
     [],
-  );
-
-  const drawTextFrame = useCallback(
-    (base64: string, message: Record<string, unknown>) => {
-      const meta =
-        pendingFrameMetaRef.current || parseCloudBrowserFrameMeta(message);
-      pendingFrameMetaRef.current = null;
-      drawFrameSource(`data:image/jpeg;base64,${base64}`, meta);
-    },
-    [drawFrameSource],
   );
 
   return {
@@ -552,6 +660,5 @@ export function useCloudBrowserFramePainter(options: {
     cancelFrameDecode,
     acceptFrameMeta,
     drawBlobFrame,
-    drawTextFrame,
   };
 }

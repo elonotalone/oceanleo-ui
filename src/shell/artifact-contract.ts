@@ -215,6 +215,12 @@ export type ArtifactApiErrorCode =
   | "invalid-response"
   | "unknown";
 
+export interface ArtifactProjectionNormalizationResult {
+  ok: boolean;
+  data?: ArtifactProjection;
+  error?: string;
+}
+
 const ARTIFACT_TYPE_SET = new Set<string>(ARTIFACT_TYPES);
 const RENDITION_PURPOSES: ArtifactRenditionPurpose[] = [
   "thumbnail",
@@ -255,6 +261,17 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function trustedRenditionUrl(value: unknown): string {
+  const candidate = text(value);
+  if (!candidate || candidate.length > 4_096) return "";
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? [
@@ -286,7 +303,9 @@ function normalizeRendition(
   if (!RENDITION_PURPOSES.includes(purpose) || purpose !== purposeHint) {
     return null;
   }
-  const url = text(raw.url, raw.signed_url, raw.signedUrl);
+  const url = trustedRenditionUrl(
+    text(raw.url, raw.signed_url, raw.signedUrl),
+  );
   const renditionRevisionId = text(raw.revisionId, raw.revision_id);
   if (!url || !renditionRevisionId) return null;
   return {
@@ -523,7 +542,14 @@ export function artifactIntegrityFor(input: {
     };
   }
   if (
-    !["owned", "generated", "internal"].includes(
+    ![
+      "owned",
+      "generated",
+      "internal",
+      "user_upload",
+      "agent",
+      "agent_generated",
+    ].includes(
       input.provenance.sourceKind.trim().toLowerCase(),
     ) &&
     (!input.provenance.licenseUrl || !input.provenance.attribution)
@@ -682,6 +708,158 @@ export function normalizeArtifactProjection(
     integrity: effectiveIntegrity,
     createdAt: text(raw.createdAt, raw.created_at) || null,
   };
+}
+
+/**
+ * Strict service-boundary normalization. Compatibility callers may still use
+ * `normalizeArtifactProjection` to inspect an invalid projection's integrity
+ * reason, but list/detail clients must reject every incomplete rich-v1 row.
+ */
+export function normalizeArtifactProjectionResult(
+  value: unknown,
+): ArtifactProjectionNormalizationResult {
+  const envelope = record(value);
+  const raw =
+    record(envelope?.item) ||
+    record(envelope?.artifact) ||
+    envelope;
+  if (!raw) {
+    return {
+      ok: false,
+      error: "artifact projection 必须是对象。",
+    };
+  }
+  if (raw.schema !== "oceanleo.artifact.v1") {
+    return {
+      ok: false,
+      error: `未知 artifact schema：${text(raw.schema) || "missing"}。`,
+    };
+  }
+  const revisionId = text(
+    raw.revisionId,
+    raw.revision_id,
+    record(raw.revision)?.id,
+  );
+  if (
+    !text(raw.artifactId, raw.artifact_id) ||
+    !revisionId
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少 artifactId/revisionId。",
+    };
+  }
+  if (!normalizeArtifactType(raw.artifactType ?? raw.artifact_type)) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少受支持的 artifactType。",
+    };
+  }
+  if (
+    !Array.isArray(raw.roles) ||
+    stringList(raw.roles).length !== raw.roles.length
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少显式 roles。",
+    };
+  }
+  if (!normalizeOwner(raw.owner)) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少完整 owner/visibility。",
+    };
+  }
+  if (!normalizeAccess(raw.access)) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少完整显式 access ACL。",
+    };
+  }
+  if (
+    !["native", "bounded", "view_only"].includes(text(raw.editability))
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少显式 editability。",
+    };
+  }
+  if (typeof raw.favorite !== "boolean") {
+    return {
+      ok: false,
+      error: "artifact projection 缺少显式 favorite 状态。",
+    };
+  }
+  const declaredIntegrity = record(raw.integrity);
+  if (
+    !declaredIntegrity ||
+    typeof declaredIntegrity.ok !== "boolean" ||
+    !text(declaredIntegrity.code) ||
+    typeof declaredIntegrity.reason !== "string" ||
+    (declaredIntegrity.ok === true &&
+      text(declaredIntegrity.code) !== "ok") ||
+    (declaredIntegrity.ok === false &&
+      text(declaredIntegrity.code) === "ok")
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少显式 integrity 状态。",
+    };
+  }
+  if (!normalizeProvenance(raw.provenance)) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少完整 provenance/license。",
+    };
+  }
+  const rawRenditions = raw.renditions;
+  const rawRenditionRecord = record(rawRenditions);
+  const normalizedRenditions = normalizeRenditions(raw, revisionId);
+  const renditionCount = Object.keys(normalizedRenditions).length;
+  const declaredRenditionCount = Array.isArray(rawRenditions)
+    ? rawRenditions.length
+    : rawRenditionRecord
+      ? Object.keys(rawRenditionRecord).length
+      : -1;
+  if (
+    declaredRenditionCount < 1 ||
+    renditionCount !== declaredRenditionCount
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少完整、可验证的 renditions。",
+    };
+  }
+  const rawBindings = raw.bindings ?? raw.context_bindings;
+  if (
+    !Array.isArray(rawBindings) ||
+    normalizeBindings(rawBindings).length !== rawBindings.length ||
+    rawBindings.some((value) => {
+      const binding = record(value);
+      return !binding || !text(binding.role, binding.binding_role);
+    })
+  ) {
+    return {
+      ok: false,
+      error: "artifact projection 缺少完整 context bindings。",
+    };
+  }
+  const projection = normalizeArtifactProjection(value);
+  if (!projection) {
+    return {
+      ok: false,
+      error: "artifact projection 无法按 rich v1 规范化。",
+    };
+  }
+  if (!projection.integrity.ok) {
+    return {
+      ok: false,
+      error:
+        projection.integrity.reason ||
+        "artifact projection 未通过完整性校验。",
+    };
+  }
+  return { ok: true, data: projection };
 }
 
 export function isArtifactProjection(

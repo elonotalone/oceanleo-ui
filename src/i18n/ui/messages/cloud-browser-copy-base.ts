@@ -68,6 +68,94 @@ export const CLOUD_BROWSER_KEYS = [
   "标签页 {tab}",
   "网址已隐藏",
   "关键节点",
+  "会话快照加载失败",
+  "会话快照数据不符合 v3 契约",
+  "只有当前控制租约持有者可以休眠浏览会话",
+  "休眠浏览会话失败",
+  "当前没有有效控制租约，无法收藏当前页面",
+  "已发送收藏当前页面请求",
+  "当前没有有效控制租约，无法创建会话快照",
+  "未选择浏览会话",
+  "会话快照恢复失败",
+  "会话快照已恢复，但实时画面重连失败",
+  "正在获取一次性连接票据…",
+  "正在连接 v3 原生窗口流…",
+  "v3 连接已验证",
+  "正在验证原生 Chrome 首帧…",
+  "原生 Chrome 窗口实时",
+  "连接中断，正在获取新票据重连…",
+  "原生窗口连接失败",
+  "会话未连接",
+  "协议不匹配，输入已停用",
+  "连接票据已过期",
+  "画面流已过期，输入已停用",
+  "原生 Chrome 首帧验证失败",
+  "实时连接已中断",
+  "实时画面可见，但控制租约已丢失",
+  "v3 连接已验证，等待原生 Chrome 首帧…",
+  "正在验证新鲜实绘画面、窗口身份、标签栏和地址栏证据…",
+  "连接中断，旧画面不再代表实时，正在重连…",
+  "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。",
+  "原生 Chrome 窗口画面；接管后直接操作画面内的标签栏和地址栏",
+  "浏览会话未连接；从“更多”中连接或恢复当前会话。",
+  "原生 Chrome 窗口键盘与输入法入口",
+  "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。",
+  "使用新票据重试连接",
+  "你正在控制 · 租约代 {epoch}",
+  "Agent 正在控制 · 租约代 {epoch}",
+  "另一位用户正在控制 · 租约代 {epoch}",
+  "当前没有控制者 · 租约代 {epoch}",
+  "释放控制并交还 Agent",
+  "接管浏览器控制",
+  "释放给 Agent",
+  "接管控制",
+  "收藏当前页面",
+  "会话快照与恢复",
+  "退出沉浸全屏",
+  "沉浸全屏",
+  "更多会话操作",
+  "更多",
+  "浏览会话",
+  "云端浏览器会话",
+  "恢复当前浏览会话",
+  "连接当前浏览会话",
+  "休眠当前浏览会话",
+  "确认永久删除此浏览会话",
+  "删除此浏览会话",
+  "会话快照是可恢复的持久浏览器状态，不是屏幕截图。",
+  "创建当前会话快照",
+  "关闭会话快照面板",
+  "会话快照创建请求已发送，保存完成后会显示新一代。",
+  "当前没有有效控制租约，无法创建会话快照。",
+  "正在加载会话快照…",
+  "还没有可恢复的会话快照。",
+  "会话快照第 {generation} 代",
+  "快照状态：可用",
+  "快照状态：已休眠",
+  "快照状态：恢复中",
+  "快照状态：已恢复",
+  "快照状态：失败",
+  "固定版本：会话 v{session} · 运行时 {runtime}",
+  "正在恢复此会话快照…",
+  "确认恢复此会话快照",
+  "恢复此会话快照",
+  "浏览器拒绝原生全屏，已使用沉浸式覆盖模式",
+  "当前环境不支持原生全屏，已使用沉浸式覆盖模式",
+  "5 秒内未收到带原生 Chrome 证据的新鲜首帧，未进入实时状态",
+  "控制租约续期失败，输入已停用",
+  "实时连接票据已过期，请重试",
+  "服务端未提供严格平铺 v3 票据，已拒绝降级连接",
+  "实时连接票据在握手前已过期，请重试",
+  "收到未配对的二进制画面，已拒绝连接",
+  "二进制画面大小或配对校验失败",
+  "控制消息格式无效或超过大小限制",
+  "画面接收确认发送失败，未进入实时状态",
+  "首帧不含新鲜的原生 Chrome 窗口证据",
+  "原生 Chrome 窗口画面校验或解码失败",
+  "云浏览器协议不匹配，已拒绝连接",
+  "收到过期画面流，已停止输入",
+  "控制租约已失效，请重新接管",
+  "二进制画面与元数据未按顺序配对",
 ] as const;
 
 export type CloudBrowserKey = (typeof CLOUD_BROWSER_KEYS)[number];
@@ -158,6 +246,144 @@ export const CLOUD_BROWSER_EN: CloudBrowserDictionary = {
   "标签页 {tab}": "Tab {tab}",
   "网址已隐藏": "Address hidden",
   "关键节点": "Key moment",
+  "会话快照加载失败": "Failed to load session checkpoints",
+  "会话快照数据不符合 v3 契约":
+    "Session checkpoint data does not match the v3 contract",
+  "只有当前控制租约持有者可以休眠浏览会话":
+    "Only the current control-lease holder can hibernate the browsing session",
+  "休眠浏览会话失败": "Failed to hibernate the browsing session",
+  "当前没有有效控制租约，无法收藏当前页面":
+    "The current page cannot be bookmarked without a valid control lease",
+  "已发送收藏当前页面请求":
+    "The request to bookmark the current page was sent",
+  "当前没有有效控制租约，无法创建会话快照":
+    "A session checkpoint cannot be created without a valid control lease",
+  "未选择浏览会话": "No browsing session is selected",
+  "会话快照恢复失败": "Failed to restore the session checkpoint",
+  "会话快照已恢复，但实时画面重连失败":
+    "The session checkpoint was restored, but the live view failed to reconnect",
+  "正在获取一次性连接票据…":
+    "Requesting a one-use connection ticket…",
+  "正在连接 v3 原生窗口流…":
+    "Connecting to the v3 native-window stream…",
+  "v3 连接已验证": "The v3 connection is authenticated",
+  "正在验证原生 Chrome 首帧…":
+    "Validating the first native Chrome frame…",
+  "原生 Chrome 窗口实时": "Native Chrome window live",
+  "连接中断，正在获取新票据重连…":
+    "Connection interrupted; requesting a new ticket to reconnect…",
+  "原生窗口连接失败": "Native-window connection failed",
+  "会话未连接": "Session not connected",
+  "协议不匹配，输入已停用":
+    "Protocol mismatch; input has been disabled",
+  "连接票据已过期": "Connection ticket expired",
+  "画面流已过期，输入已停用":
+    "The frame stream is stale; input has been disabled",
+  "原生 Chrome 首帧验证失败":
+    "Native Chrome first-frame validation failed",
+  "实时连接已中断": "The live connection was interrupted",
+  "实时画面可见，但控制租约已丢失":
+    "The live view is visible, but the control lease was lost",
+  "v3 连接已验证，等待原生 Chrome 首帧…":
+    "The v3 connection is authenticated; waiting for the first native Chrome frame…",
+  "正在验证新鲜实绘画面、窗口身份、标签栏和地址栏证据…":
+    "Validating a fresh real-paint frame, window identity, tab strip, and omnibox evidence…",
+  "连接中断，旧画面不再代表实时，正在重连…":
+    "Connection interrupted; the old frame is no longer live. Reconnecting…",
+  "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。":
+    "Power on to connect to a complete native Chrome window, including its tab strip and omnibox.",
+  "原生 Chrome 窗口画面；接管后直接操作画面内的标签栏和地址栏":
+    "Native Chrome window; after taking control, use the tab strip and omnibox inside the frame",
+  "浏览会话未连接；从“更多”中连接或恢复当前会话。":
+    "The browsing session is disconnected. Use More to connect or restore it.",
+  "原生 Chrome 窗口键盘与输入法入口":
+    "Keyboard and input-method entry for the native Chrome window",
+  "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。":
+    "The last frame is retained only as failure context. It is not live and accepts no input.",
+  "使用新票据重试连接": "Retry with a new ticket",
+  "你正在控制 · 租约代 {epoch}":
+    "You are controlling · lease epoch {epoch}",
+  "Agent 正在控制 · 租约代 {epoch}":
+    "Agent is controlling · lease epoch {epoch}",
+  "另一位用户正在控制 · 租约代 {epoch}":
+    "Another user is controlling · lease epoch {epoch}",
+  "当前没有控制者 · 租约代 {epoch}":
+    "No current controller · lease epoch {epoch}",
+  "释放控制并交还 Agent": "Release control to the Agent",
+  "接管浏览器控制": "Take browser control",
+  "释放给 Agent": "Release to Agent",
+  "接管控制": "Take control",
+  "收藏当前页面": "Bookmark current page",
+  "会话快照与恢复": "Session checkpoints and restore",
+  "退出沉浸全屏": "Exit immersive fullscreen",
+  "沉浸全屏": "Immersive fullscreen",
+  "更多会话操作": "More session actions",
+  "更多": "More",
+  "浏览会话": "Browsing session",
+  "云端浏览器会话": "Cloud browser session",
+  "恢复当前浏览会话": "Restore current browsing session",
+  "连接当前浏览会话": "Connect current browsing session",
+  "休眠当前浏览会话": "Hibernate current browsing session",
+  "确认永久删除此浏览会话":
+    "Confirm permanent deletion of this browsing session",
+  "删除此浏览会话": "Delete this browsing session",
+  "会话快照是可恢复的持久浏览器状态，不是屏幕截图。":
+    "A session checkpoint is durable, restorable browser state—not a screenshot.",
+  "创建当前会话快照": "Create checkpoint of current session",
+  "关闭会话快照面板": "Close session checkpoint panel",
+  "会话快照创建请求已发送，保存完成后会显示新一代。":
+    "The checkpoint request was sent. A new generation will appear after it is saved.",
+  "当前没有有效控制租约，无法创建会话快照。":
+    "A session checkpoint cannot be created without a valid control lease.",
+  "正在加载会话快照…": "Loading session checkpoints…",
+  "还没有可恢复的会话快照。":
+    "There are no restorable session checkpoints yet.",
+  "会话快照第 {generation} 代":
+    "Session checkpoint generation {generation}",
+  "快照状态：可用": "Checkpoint state: warm",
+  "快照状态：已休眠": "Checkpoint state: hibernated",
+  "快照状态：恢复中": "Checkpoint state: restoring",
+  "快照状态：已恢复": "Checkpoint state: restored",
+  "快照状态：失败": "Checkpoint state: failed",
+  "固定版本：会话 v{session} · 运行时 {runtime}":
+    "Pinned versions: session v{session} · runtime {runtime}",
+  "正在恢复此会话快照…": "Restoring this session checkpoint…",
+  "确认恢复此会话快照": "Confirm restoration of this checkpoint",
+  "恢复此会话快照": "Restore this session checkpoint",
+  "浏览器拒绝原生全屏，已使用沉浸式覆盖模式":
+    "Native fullscreen was denied; immersive overlay mode is active",
+  "当前环境不支持原生全屏，已使用沉浸式覆盖模式":
+    "Native fullscreen is unavailable; immersive overlay mode is active",
+  "5 秒内未收到带原生 Chrome 证据的新鲜首帧，未进入实时状态":
+    "No fresh first frame with native Chrome evidence arrived within 5 seconds; live mode was not enabled",
+  "控制租约续期失败，输入已停用":
+    "Control-lease renewal failed; input has been disabled",
+  "实时连接票据已过期，请重试":
+    "The live connection ticket expired; retry",
+  "服务端未提供严格平铺 v3 票据，已拒绝降级连接":
+    "The server did not provide a strict flat v3 ticket; downgrade was rejected",
+  "实时连接票据在握手前已过期，请重试":
+    "The live ticket expired before the handshake; retry",
+  "收到未配对的二进制画面，已拒绝连接":
+    "An unpaired binary frame was received; the connection was rejected",
+  "二进制画面大小或配对校验失败":
+    "Binary frame size or pairing validation failed",
+  "控制消息格式无效或超过大小限制":
+    "The control message is invalid or exceeds the size limit",
+  "画面接收确认发送失败，未进入实时状态":
+    "The frame receipt could not be sent; live mode was not enabled",
+  "首帧不含新鲜的原生 Chrome 窗口证据":
+    "The first frame lacks fresh native Chrome window evidence",
+  "原生 Chrome 窗口画面校验或解码失败":
+    "Native Chrome window frame validation or decoding failed",
+  "云浏览器协议不匹配，已拒绝连接":
+    "Cloud browser protocol mismatch; connection rejected",
+  "收到过期画面流，已停止输入":
+    "A stale frame stream was received; input was stopped",
+  "控制租约已失效，请重新接管":
+    "The control lease is no longer valid; take control again",
+  "二进制画面与元数据未按顺序配对":
+    "Binary frame data was not paired with metadata in order",
 };
 
 export function cloudBrowserTranslated(

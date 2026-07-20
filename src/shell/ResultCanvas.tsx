@@ -156,33 +156,15 @@ export function ResultCanvas({
     workbenchMaterials.actions.includes("insert")
       ? "insert"
       : workbenchMaterials.actions[0];
-  const [savedEditorItems, setSavedEditorItems] = useState<
-    Record<string, LibraryItem>
-  >({});
   const openCanvasEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
-      const item = entry.libraryItem;
-      if (!item) {
-        setActiveCanvasMode("preview");
-        setActiveCanvasEntry(entry);
-        return;
-      }
-      const saved = savedEditorItems[advancedRootItemId(item)];
-      setActiveCanvasEntry(
-        saved
-          ? {
-              ...entry,
-              title: saved.title,
-              thumbUrl: saved.thumbUrl || saved.previewUrl,
-              externalUrl: saved.url || saved.previewUrl,
-              libraryItem: saved,
-            }
-          : entry,
-      );
+      // An explicit library card is a pinned artifact/revision identity.
+      // Never replace a historical card with a locally saved head by root id.
+      setActiveCanvasEntry(entry);
       setActiveCanvasMode("preview");
       setArtifactSaveError("");
     },
-    [savedEditorItems],
+    [],
   );
   const openCanvasItem = useCallback(
     (item: LibraryItem) => {
@@ -195,21 +177,24 @@ export function ResultCanvas({
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
     const source = activeCanvasEntry?.libraryItem;
     if (source && isDurableLibraryItem(source)) {
+      const previousRevisionId = String(
+        item.meta.previous_revision_id || "",
+      ).trim();
       if (
         !isDurableLibraryItem(item) ||
         item.artifactId !== source.artifactId ||
         item.revisionId === source.revisionId ||
+        previousRevisionId !== source.revisionId ||
         !item.artifact.integrity.ok
       ) {
         setArtifactSaveError(
-          "编辑器未返回同一 artifact root 的新、完整 revision；旧 head 仍保留，未把临时 URL 记为已保存。",
+          "编辑器未返回同一 artifact root、以当前 pin 为 previous revision 的新完整 revision；旧 head 仍保留。",
         );
         return;
       }
     }
     const rootId = advancedRootItemId(item);
     setArtifactSaveError("");
-    setSavedEditorItems((current) => ({ ...current, [rootId]: item }));
     setActiveCanvasEntry((current) =>
       current?.libraryItem &&
       advancedRootItemId(current.libraryItem) === rootId
@@ -752,6 +737,7 @@ export function ResultCanvas({
                 key={slot}
                 type="button"
                 onClick={() => select(slot)}
+                aria-current={isActive ? "page" : undefined}
                 className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition ${
                   isActive
                     ? "text-stone-900"

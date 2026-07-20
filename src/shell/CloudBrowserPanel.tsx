@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createCloudBrowser,
+  createCloudBrowserOperationId,
   deleteCloudBrowser,
   hibernateCloudBrowser,
+  restoreCloudBrowserCheckpoint,
   resumeCloudBrowser,
+  type CloudBrowserCheckpoint,
   type CloudBrowserTransportState,
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
-import { BrowserGlyph } from "./cloud-browser-controls";
 import { CloudBrowserChrome } from "./cloud-browser-chrome";
-import { CloudBrowserTimeline } from "./cloud-browser-history-view";
+import { BrowserGlyph } from "./cloud-browser-controls";
+import type { CloudBrowserRestoreResult } from "./cloud-browser-history-view";
 import { useCloudBrowserInteraction } from "./cloud-browser-interaction";
 import { DEFAULT_BROWSER_URL } from "./cloud-browser-live";
 import { useCloudBrowserSessionData } from "./cloud-browser-session-data";
@@ -33,6 +36,14 @@ export function CloudBrowserPanel({
   const [liveRequested, setLiveRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [checkpointsOpen, setCheckpointsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const session = useCloudBrowserSessionData({
     effectiveTaskId,
@@ -48,20 +59,17 @@ export function CloudBrowserPanel({
     tt,
     setBusy,
     setError,
-    refreshEvents: session.refreshEvents,
+    refreshCheckpoints: session.refreshCheckpoints,
   });
   const interaction = useCloudBrowserInteraction({
     liveRequested,
     driving: transport.driving,
     protocol: transport.protocol,
+    capabilities: transport.capabilities,
     transportState: transport.transportState,
-    tabs: transport.tabs,
-    activeTabId: transport.activeTabId,
-    address: transport.address,
     canvasRef: transport.canvasRef,
     frameSizeRef: transport.frameSizeRef,
     sendMutation: transport.sendMutation,
-    setAddress: transport.setAddress,
     setError,
     tt,
   });
@@ -81,31 +89,47 @@ export function CloudBrowserPanel({
       return;
     }
     session.upsertSession(created);
+    await session.reload(created.id);
     await transport.openLive(created.id);
-    void session.reload(created.id);
   }
 
   async function restorePrevious() {
     if (!session.selectedId) return;
+    const operationId = createCloudBrowserOperationId();
     setBusy(true);
-    const result = await resumeCloudBrowser(session.selectedId);
+    setError("");
+    const result = await resumeCloudBrowser(session.selectedId, {
+      operationId,
+    });
     setBusy(false);
     if (!result.ok) {
       setError(result.error || tt("恢复上次浏览失败"));
       return;
     }
+    await session.reload(session.selectedId);
     await transport.openLive(session.selectedId);
-    void session.reload(session.selectedId);
   }
 
-  async function saveAndShutdown() {
-    if (!session.selectedId) return;
-    if (transport.lease.holderKind === "human") return;
+  async function hibernateCurrentSession() {
+    if (
+      !session.selectedId ||
+      !transport.driving ||
+      transport.transportState !== "streaming"
+    ) {
+      setError(tt("只有当前控制租约持有者可以休眠浏览会话"));
+      return;
+    }
+    const operationId = createCloudBrowserOperationId();
     transport.stopLive(true);
     setBusy(true);
-    const result = await hibernateCloudBrowser(session.selectedId);
+    const result = await hibernateCloudBrowser(
+      session.selectedId,
+      operationId,
+    );
     setBusy(false);
-    if (!result.ok) setError(result.error || tt("保存并关机失败"));
+    if (!result.ok) {
+      setError(result.error || tt("休眠浏览会话失败"));
+    }
     await session.reload(session.selectedId);
   }
 
@@ -124,6 +148,7 @@ export function CloudBrowserPanel({
       setError(result.error || tt("删除浏览记录失败"));
       return;
     }
+    setCheckpointsOpen(false);
     session.clearSelection();
     await session.reload();
   }
@@ -131,27 +156,98 @@ export function CloudBrowserPanel({
   function chooseSession(sessionId: string) {
     if (sessionId === session.selectedId) return;
     transport.stopLive(true);
+    setCheckpointsOpen(false);
     session.chooseSession(sessionId);
+  }
+
+  function bookmarkCurrentPage() {
+    if (!transport.bookmarkCurrentPage()) {
+      setError(tt("当前没有有效控制租约，无法收藏当前页面"));
+      return;
+    }
+    setError("");
+    setNotice(tt("已发送收藏当前页面请求"));
+  }
+
+  function createCheckpoint() {
+    const sent = transport.createCheckpoint();
+    if (!sent) {
+      setError(tt("当前没有有效控制租约，无法创建会话快照"));
+    }
+    return sent;
+  }
+
+  async function restoreCheckpoint(
+    checkpoint: CloudBrowserCheckpoint,
+  ): Promise<CloudBrowserRestoreResult> {
+    if (!session.selectedId) {
+      return { ok: false, error: tt("未选择浏览会话") };
+    }
+    const selectedId = session.selectedId;
+    const operationId = createCloudBrowserOperationId();
+    transport.stopLive(true);
+    setBusy(true);
+    setError("");
+    const result = await restoreCloudBrowserCheckpoint(
+      selectedId,
+      checkpoint,
+      operationId,
+    );
+    setBusy(false);
+    if (!result.ok) {
+      const message =
+        result.error || tt("会话快照恢复失败");
+      setError(message);
+      await session.refreshCheckpoints();
+      return { ok: false, error: message };
+    }
+    await session.reload(selectedId);
+    await session.refreshCheckpoints();
+    const opened = await transport.openLive(selectedId);
+    if (!opened) {
+      const message = tt("会话快照已恢复，但实时画面重连失败");
+      setError(message);
+      return { ok: false, error: message };
+    }
+    setCheckpointsOpen(false);
+    return { ok: true };
   }
 
   const statusText: Record<CloudBrowserTransportState, string> = {
     idle: tt("未连接"),
-    ticketing: tt("正在准备浏览器…"),
-    ws_connecting: tt("正在验证连接…"),
-    authenticated: tt("连接已验证"),
-    awaiting_first_frame: tt("正在取得首帧…"),
-    streaming: tt("实时"),
-    reconnecting: tt("正在重新连接…"),
-    failed: tt("连接失败"),
-    closed: tt("已关机"),
+    ticketing: tt("正在获取一次性连接票据…"),
+    ws_connecting: tt("正在连接 v3 原生窗口流…"),
+    authenticated: tt("v3 连接已验证"),
+    awaiting_first_frame: tt("正在验证原生 Chrome 首帧…"),
+    streaming: tt("原生 Chrome 窗口实时"),
+    reconnecting: tt("连接中断，正在获取新票据重连…"),
+    failed: tt("原生窗口连接失败"),
+    closed: tt("会话未连接"),
   };
-  const overlayCopy: Partial<Record<CloudBrowserTransportState, string>> = {
-    ticketing: tt("正在准备浏览器…"),
-    ws_connecting: tt("正在验证连接…"),
-    authenticated: tt("连接已验证，正在取得首帧…"),
-    awaiting_first_frame: tt("正在解码并绘制首帧…"),
-    reconnecting: tt("连接中断，正在重新连接…"),
-    failed: error || tt("浏览器连接失败"),
+  const failureStatus = {
+    protocol_mismatch: tt("协议不匹配，输入已停用"),
+    ticket_expired: tt("连接票据已过期"),
+    stale_stream: tt("画面流已过期，输入已停用"),
+    first_paint: tt("原生 Chrome 首帧验证失败"),
+    connection: tt("实时连接已中断"),
+    lease_lost: tt("实时画面可见，但控制租约已丢失"),
+  } as const;
+  const effectiveStatus =
+    transport.failureKind &&
+    failureStatus[transport.failureKind]
+      ? failureStatus[transport.failureKind]
+      : statusText[transport.transportState];
+  const overlayCopy: Partial<
+    Record<CloudBrowserTransportState, string>
+  > = {
+    ticketing: tt("正在获取一次性连接票据…"),
+    ws_connecting: tt("正在连接 v3 原生窗口流…"),
+    authenticated: tt("v3 连接已验证，等待原生 Chrome 首帧…"),
+    awaiting_first_frame: tt(
+      "正在验证新鲜实绘画面、窗口身份、标签栏和地址栏证据…",
+    ),
+    reconnecting: tt("连接中断，旧画面不再代表实时，正在重连…"),
+    failed: error || tt("原生窗口连接失败"),
   };
   const overlayText = overlayCopy[transport.transportState];
 
@@ -161,96 +257,69 @@ export function CloudBrowserPanel({
         <div className="w-full max-w-md">
           <BrowserGlyph className="mx-auto h-10 w-10 text-stone-300" />
           <p className="mt-3 text-[13px] text-stone-600">
-            {tt("开机后默认打开 Google；Agent 与你会共用并保存这段浏览。")}
+            {tt(
+              "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。",
+            )}
           </p>
           <button
             type="button"
             onClick={() => void startBrowser()}
             disabled={busy}
-            className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white disabled:opacity-50"
+            className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
             style={{ background: accent }}
             data-cloud-browser-power
           >
             {busy ? tt("正在开机…") : tt("开机")}
           </button>
           {error && (
-            <p className="mt-2 text-[12px] text-rose-500">{error}</p>
+            <p className="mt-2 text-[12px] text-rose-500" role="alert">
+              {error}
+            </p>
           )}
         </div>
       </div>
     );
   }
 
+  const fallbackImmersive =
+    interaction.immersive &&
+    interaction.fullscreenMode === "fallback";
+
   return (
     <div
       ref={interaction.rootRef}
-      className="flex h-full min-h-0 flex-col bg-stone-50/60"
+      className={`flex min-h-0 flex-col overflow-hidden bg-stone-950 ${
+        interaction.immersive ? "h-screen w-screen" : "h-full"
+      } ${
+        fallbackImmersive
+          ? "fixed inset-0 z-[2147483647]"
+          : "relative"
+      }`}
       data-cloud-browser-root
-      data-cloud-browser-protocol={transport.protocol || "negotiating"}
+      data-cloud-browser-protocol={
+        transport.protocol === 3 ? "v3" : "negotiating"
+      }
+      data-cloud-browser-failure={transport.failureKind || undefined}
+      data-cloud-browser-immersive={
+        interaction.immersive ? interaction.fullscreenMode : undefined
+      }
+      onPointerMoveCapture={interaction.revealImmersiveControls}
     >
-      <CloudBrowserChrome
-        accent={accent}
-        sessions={session.sessions}
-        selected={session.selected}
-        selectedId={session.selectedId}
-        tabs={transport.tabs}
-        activeTabId={transport.activeTabId}
-        transportState={transport.transportState}
-        statusText={statusText[transport.transportState]}
-        liveRequested={liveRequested}
-        driving={transport.driving}
-        controlPending={transport.controlPending}
-        busy={busy}
-        canCaptureHistory={
-          transport.protocol === 2 &&
-          transport.transportState === "streaming" &&
-          transport.lease.holderKind !== "human"
-        }
-        canHibernate={transport.lease.holderKind !== "human"}
-        deleteArmed={session.deleteArmed}
-        omniboxOpen={interaction.omniboxOpen}
-        omniboxValue={interaction.omniboxValue}
-        omniboxInputRef={interaction.omniboxInputRef}
-        fullscreen={interaction.fullscreen}
-        onChooseSession={chooseSession}
-        onOpenOrResume={() =>
-          void (session.selected?.status === "hibernated"
-            ? restorePrevious()
-            : transport.openLive())
-        }
-        onHibernate={() => void saveAndShutdown()}
-        onDelete={() => void removeRecord()}
-        onNavigate={transport.navigate}
-        onCreateTab={transport.createTab}
-        onActivateTab={transport.activateTab}
-        onCloseTab={transport.closeTab}
-        onToggleControl={transport.toggleControl}
-        onOpenOmnibox={interaction.openOmnibox}
-        onCloseOmnibox={interaction.closeOmnibox}
-        onOmniboxValue={interaction.setOmniboxValue}
-        onSubmitOmnibox={interaction.submitOmnibox}
-        onCaptureHistory={transport.captureHistory}
-        onToggleFullscreen={interaction.toggleFullscreen}
-      />
-
       <div
         ref={interaction.viewportRef}
         className="relative min-h-0 flex-1 overflow-hidden bg-stone-950"
         data-cloud-browser-viewport
       >
-        {session.shotUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={session.shotUrl}
-            alt={tt("最后保存的浏览截图")}
-            className="absolute inset-0 h-full w-full object-contain"
-            data-cloud-browser-last-screenshot
-          />
-        )}
         {liveRequested && (
           <canvas
             ref={transport.canvasRef}
-            aria-label={tt("云端浏览器实时画面")}
+            role="application"
+            tabIndex={transport.driving ? 0 : -1}
+            aria-label={tt(
+              "原生 Chrome 窗口画面；接管后直接操作画面内的标签栏和地址栏",
+            )}
+            aria-disabled={!transport.driving}
+            onFocus={interaction.handleCanvasFocus}
             onPointerDown={interaction.handlePointerDown}
             onPointerMove={interaction.handlePointerMove}
             onPointerUp={interaction.handlePointerUp}
@@ -259,14 +328,24 @@ export function CloudBrowserPanel({
             onContextMenu={(event) => {
               if (transport.driving) event.preventDefault();
             }}
-            className={`absolute inset-0 block h-full w-full touch-none object-contain outline-none transition-opacity ${
+            className={`absolute inset-0 block h-full w-full touch-none object-contain outline-none transition-opacity motion-reduce:transition-none ${
               transport.hasCanvasFrame ? "opacity-100" : "opacity-0"
-            } ${transport.driving ? "cursor-crosshair" : ""}`}
+            } ${
+              transport.driving
+                ? "cursor-default focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+                : "cursor-not-allowed"
+            }`}
+            data-cloud-browser-native-window
           />
         )}
-        {!liveRequested && !session.shotUrl && (
-          <div className="grid h-full place-items-center text-[12px] text-stone-400">
-            {tt("这条浏览记录还没有关键截图。")}
+
+        {!liveRequested && (
+          <div className="grid h-full place-items-center px-6 text-center text-[12px] text-stone-400">
+            <p>
+              {tt(
+                "浏览会话未连接；从“更多”中连接或恢复当前会话。",
+              )}
+            </p>
           </div>
         )}
 
@@ -279,7 +358,10 @@ export function CloudBrowserPanel({
             autoCorrect="off"
             autoComplete="off"
             spellCheck={false}
-            aria-label={tt("浏览器隐藏键盘输入")}
+            aria-label={tt("原生 Chrome 窗口键盘与输入法入口")}
+            aria-disabled={!transport.driving}
+            onFocus={interaction.handleHiddenFocus}
+            onBlur={interaction.handleHiddenBlur}
             onKeyDown={interaction.handleHiddenKeyDown}
             onBeforeInput={interaction.handleBeforeInput}
             onInput={interaction.handleInput}
@@ -297,52 +379,109 @@ export function CloudBrowserPanel({
           transport.transportState !== "streaming" &&
           overlayText && (
             <div
-              className={`absolute inset-0 grid place-items-center bg-stone-950/55 px-6 text-center text-[12px] text-stone-100 ${
+              className={`absolute inset-0 grid place-items-center bg-stone-950/80 px-6 text-center text-[12px] text-stone-100 ${
                 transport.transportState === "failed"
                   ? "pointer-events-auto"
                   : "pointer-events-none"
               }`}
               data-cloud-browser-overlay={transport.transportState}
             >
-              <div>
+              <div className="max-w-md">
                 <p>{overlayText}</p>
-                {(transport.hasCanvasFrame || session.shotUrl) && (
+                {transport.hasCanvasFrame && (
                   <p className="mt-1 text-[10px] text-stone-400">
-                    {transport.hasCanvasFrame
-                      ? tt("当前显示最后一帧，不代表实时状态。")
-                      : tt("当前显示最后截图，不代表实时状态。")}
+                    {tt(
+                      "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。",
+                    )}
                   </p>
                 )}
                 {transport.transportState === "failed" && (
                   <button
                     type="button"
                     onClick={() => void transport.openLive()}
-                    className="mt-3 rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-stone-900"
+                    className="mt-3 rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-stone-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                   >
-                    {tt("重试连接")}
+                    {tt("使用新票据重试连接")}
                   </button>
                 )}
               </div>
             </div>
           )}
+
+        {error &&
+          transport.transportState === "streaming" && (
+            <div
+              className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-rose-50/95 px-3 py-2 text-[11px] text-rose-700 shadow"
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
+        {notice &&
+          !error &&
+          transport.transportState === "streaming" && (
+            <div
+              className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-emerald-50/95 px-3 py-2 text-[11px] text-emerald-700 shadow"
+              role="status"
+            >
+              {notice}
+            </div>
+          )}
       </div>
 
-      {!liveRequested &&
-        session.events.some((event) => event.has_screenshot) && (
-          <CloudBrowserTimeline
-            events={session.events}
-            selectedId={session.eventId}
-            onSelect={session.setEventId}
-          />
-        )}
-      {error && transport.transportState !== "failed" && (
-        <div
-          className="shrink-0 bg-rose-50 px-3 py-2 text-[12px] text-rose-600"
-          role="alert"
-        >
-          {error}
-        </div>
-      )}
+      <CloudBrowserChrome
+        accent={accent}
+        sessions={session.sessions}
+        selected={session.selected}
+        selectedId={session.selectedId}
+        transportState={transport.transportState}
+        statusText={effectiveStatus}
+        liveRequested={liveRequested}
+        driving={transport.driving}
+        lease={transport.lease}
+        controlPending={transport.controlPending}
+        busy={busy}
+        canBookmark={
+          transport.capabilities.page_bookmark &&
+          transport.driving &&
+          transport.transportState === "streaming"
+        }
+        canCreateCheckpoint={
+          transport.capabilities.session_checkpoint &&
+          transport.driving &&
+          transport.transportState === "streaming"
+        }
+        canHibernate={
+          transport.driving &&
+          transport.transportState === "streaming"
+        }
+        deleteArmed={session.deleteArmed}
+        immersive={interaction.immersive}
+        immersiveControlsVisible={
+          interaction.immersiveControlsVisible
+        }
+        checkpointsOpen={checkpointsOpen}
+        checkpoints={session.checkpoints}
+        checkpointsLoading={session.checkpointsLoading}
+        checkpointsError={session.checkpointsError}
+        onChooseSession={chooseSession}
+        onOpenOrResume={() =>
+          void (session.selected?.status === "hibernated"
+            ? restorePrevious()
+            : transport.openLive())
+        }
+        onHibernate={() => void hibernateCurrentSession()}
+        onDelete={() => void removeRecord()}
+        onToggleControl={transport.toggleControl}
+        onBookmarkCurrentPage={bookmarkCurrentPage}
+        onToggleCheckpoints={() => {
+          setCheckpointsOpen((current) => !current);
+          if (!checkpointsOpen) void session.refreshCheckpoints();
+        }}
+        onCreateCheckpoint={createCheckpoint}
+        onRestoreCheckpoint={restoreCheckpoint}
+        onToggleFullscreen={interaction.toggleFullscreen}
+      />
     </div>
   );
 }

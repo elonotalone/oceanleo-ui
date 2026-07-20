@@ -3,13 +3,15 @@
 // 高级内容工作台 v3 的能力路由：一个素材是否有真实 round-trip adapter。
 // 单一事实源——壳（AdvancedContentWorkbench）与工具栏标签都从这里取。
 
-import type {
-  EditorCapabilityName,
-  EditorManifestV1,
-  LibraryItem,
+import {
+  isDurableLibraryItem,
+  type EditorCapabilityName,
+  type EditorManifestV1,
+  type LibraryItem,
 } from "./library-data";
 import {
   TRUSTED_EDITOR_REGISTRY,
+  editorAdapterForArtifactCapability,
   type EditorAdapterId,
   type EditorCapability,
   type EditorRoute,
@@ -337,8 +339,119 @@ function hasStructuredSlides(item: LibraryItem): boolean {
   return false;
 }
 
+const DURABLE_ADAPTER_TYPES: Readonly<
+  Record<Exclude<EditorAdapterId, "none">, readonly string[]>
+> = {
+  office: ["document", "grid", "deck"],
+  "video-timeline": ["video"],
+  audio: ["audio"],
+  image: ["single_file_image", "composite_image", "vector_image"],
+  pdf: ["pdf"],
+  richdoc: ["document"],
+  grid: ["grid"],
+  "chart-editor@1": ["chart"],
+  deck: ["deck"],
+  threed: ["model_3d"],
+  website: ["website"],
+  "design-canvas": ["composite_image", "workflow"],
+  "video-canvas": ["workflow"],
+};
+
+function durableEditorCapabilityFor(
+  item: LibraryItem,
+): EditorCapability | null {
+  if (!isDurableLibraryItem(item)) return null;
+  const artifact = item.artifact;
+  if (
+    artifact.artifactId !== item.artifactId ||
+    artifact.revisionId !== item.revisionId
+  ) {
+    return unavailable("artifact/revision identity 与卡片不一致。");
+  }
+  if (!artifact.integrity.ok) {
+    return unavailable(
+      artifact.integrity.reason || "artifact 未通过完整性校验。",
+    );
+  }
+  if (!artifact.access.canRead) {
+    return unavailable("当前主体没有读取这个 revision 的权限。");
+  }
+  if (!artifact.access.canEdit && !artifact.access.canFork) {
+    return unavailable("当前主体没有编辑或 fork 这个 revision 的权限。");
+  }
+  if (artifact.editability === "view_only") {
+    return unavailable("此 revision 明确为只读。");
+  }
+  const adapter = editorAdapterForArtifactCapability(
+    artifact.editorCapability,
+  );
+  if (!adapter) {
+    return unavailable(
+      "服务端没有声明受信任的 typed editor capability。",
+    );
+  }
+  if (!DURABLE_ADAPTER_TYPES[adapter].includes(artifact.artifactType)) {
+    return unavailable(
+      `editor capability ${artifact.editorCapability} 与 artifact type ${artifact.artifactType} 不匹配。`,
+    );
+  }
+  switch (adapter) {
+    case "office": {
+      const ext =
+        officeExtensionOf(artifact.sourceFormat) ||
+        OFFICE_MIME_EXT.get(artifact.sourceFormat.toLowerCase()) ||
+        "";
+      return ext
+        ? available("office", { type: "office", ext })
+        : unavailable("Office artifact 缺少受支持的 source format。");
+    }
+    case "video-timeline":
+      return available(adapter, { type: "video-timeline" });
+    case "audio":
+      return available(adapter, { type: "audio" });
+    case "image":
+      return available(adapter, { type: "image" });
+    case "pdf":
+      return available(adapter, { type: "pdf" });
+    case "richdoc":
+      return available(adapter, { type: "richdoc" });
+    case "grid":
+      return available(adapter, { type: "grid" });
+    case "chart-editor@1":
+      return available(adapter, {
+        type: "grid",
+        adapter: "chart-editor@1",
+      });
+    case "deck":
+      return available(adapter, { type: "deck" });
+    case "threed":
+      return available(adapter, { type: "threed" });
+    case "website":
+      return available(adapter, {
+        type: "embed",
+        base: "https://website.oceanleo.com/embed/site-editor",
+        mediaType: "website",
+      });
+    case "design-canvas":
+      return available(adapter, {
+        type: "embed",
+        base: "https://design.oceanleo.com/embed/editor",
+        mediaType: "canvas",
+      });
+    case "video-canvas":
+      return available(adapter, {
+        type: "embed",
+        base: "https://video.oceanleo.com/canvas-board",
+        mediaType: "video_canvas",
+      });
+  }
+  return unavailable("没有匹配的受信任 typed editor adapter。");
+}
+
 /** 素材 → 受信任 editor capability；viewer kind 本身不授予编辑能力。 */
 export function editorCapabilityFor(item: LibraryItem): EditorCapability {
+  const durable = durableEditorCapabilityFor(item);
+  if (durable) return durable;
   const templateDocumentUrl = String(item.meta.template_doc_url || "");
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);

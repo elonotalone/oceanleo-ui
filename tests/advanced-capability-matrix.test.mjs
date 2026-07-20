@@ -5,6 +5,8 @@ import {
   editorCapabilityFor,
   editorRouteFor,
 } from "../src/shell/workbench-routes.ts";
+import { normalizeArtifactProjection } from "../src/shell/artifact-contract.ts";
+import { artifactProjectionToLibraryItem } from "../src/shell/library-data.ts";
 
 function item(patch = {}) {
   return {
@@ -188,6 +190,63 @@ test("editor routing follows material capability and never the hosting site", ()
       },
       `${siteId} can edit a website`,
     );
+  }
+});
+
+test("durable routing rejects capability/type mismatch on every host site", () => {
+  const projection = normalizeArtifactProjection({
+    schema: "oceanleo.artifact.v1",
+    artifact_id: "typed-image",
+    revision_id: "image-r7",
+    artifact_type: "single_file_image",
+    title: "Typed image",
+    favorite: false,
+    owner: {
+      principal_id: "owner-a",
+      visibility: "private",
+      origin_site_key: "image",
+    },
+    access: {
+      can_read: true,
+      can_preview: true,
+      can_edit: true,
+      can_fork: false,
+      can_insert: true,
+      can_replace: true,
+      can_favorite: true,
+      can_bind: true,
+      can_export_source: true,
+    },
+    editability: "native",
+    editor_capability: "video-timeline",
+    source_format: "png",
+    renditions: {
+      preview: {
+        purpose: "preview",
+        revision_id: "image-r7",
+        url: "https://signed.test/image-r7.png",
+      },
+      source: {
+        purpose: "source",
+        revision_id: "image-r7",
+        url: "https://signed.test/image-r7-source.png",
+        digest: "sha256:image-r7",
+      },
+    },
+    provenance: {
+      id: "prov-image-r7",
+      source_kind: "owned",
+      license_code: "owned",
+    },
+  });
+  assert.ok(projection);
+  const durable = artifactProjectionToLibraryItem(projection, {
+    forEdit: true,
+  });
+  for (const siteId of ["edu", "website", "video", "image"]) {
+    const capability = editorCapabilityFor({ ...durable, siteId });
+    assert.equal(capability.available, false, siteId);
+    assert.match(capability.unavailableReason, /不匹配/, siteId);
   }
 });
 

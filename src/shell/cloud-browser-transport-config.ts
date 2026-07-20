@@ -18,5 +18,5 @@ export type CloudBrowserTransportOptions = {
   tt: UITranslate;
   setBusy: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string>>;
-  refreshEvents: () => Promise<void>;
+  refreshCheckpoints: () => Promise<void>;
 };

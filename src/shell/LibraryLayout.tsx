@@ -12,7 +12,12 @@
 // 这样「搜索框大小 / 左右留白 / 分类样式 / 间距」三分区天然统一，改一处全同步。
 // ============================================================================
 
-import { type Dispatch, type ReactNode, type SetStateAction } from "react";
+import {
+  useId,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 
 type TT = (s: string, vars?: Record<string, string | number>) => string;
 
@@ -40,9 +45,13 @@ export function LibraryToolbar({
   tt,
   actions,
 }: LibraryToolbarProps) {
+  const searchId = useId();
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {actions}
+      <label className="sr-only" htmlFor={searchId}>
+        {placeholder}
+      </label>
       <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm sm:max-w-64">
         <svg
           className="h-3.5 w-3.5 shrink-0 text-[var(--muted,#a3a3a3)]"
@@ -50,11 +59,16 @@ export function LibraryToolbar({
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
+          aria-hidden="true"
+          focusable="false"
         >
           <circle cx="11" cy="11" r="7" />
           <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
         </svg>
         <input
+          id={searchId}
+          type="search"
+          aria-label={placeholder}
           className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)]"
           placeholder={placeholder}
           value={search}
@@ -64,13 +78,19 @@ export function LibraryToolbar({
           <button
             type="button"
             onClick={() => setSearch("")}
+            aria-label={tt("清除搜索")}
+            title={tt("清除搜索")}
             className="shrink-0 text-[var(--muted,#a3a3a3)] transition hover:text-[var(--fg-2,#525252)]"
           >
             ✕
           </button>
         )}
       </div>
-      <div className="flex shrink-0 items-center rounded-lg bg-[var(--surface,#f5f5f5)] p-0.5">
+      <div
+        className="flex shrink-0 items-center rounded-lg bg-[var(--surface,#f5f5f5)] p-0.5"
+        role="group"
+        aria-label={tt("素材视图")}
+      >
         <button
           type="button"
           onClick={() => setView("grid")}
@@ -80,8 +100,10 @@ export function LibraryToolbar({
               : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
           }`}
           title={tt("网格视图")}
+          aria-label={tt("网格视图")}
+          aria-pressed={view === "grid"}
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1" />
             <rect x="14" y="3" width="7" height="7" rx="1" />
             <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -97,8 +119,10 @@ export function LibraryToolbar({
               : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
           }`}
           title={tt("列表视图")}
+          aria-label={tt("列表视图")}
+          aria-pressed={view === "list"}
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
           </svg>
         </button>
@@ -133,7 +157,11 @@ export function LibraryChips({
   trailing,
 }: LibraryChipsProps) {
   return (
-    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+    <div
+      className={`flex flex-wrap gap-1.5 ${className}`}
+      role="group"
+      aria-label={tt("素材分类")}
+    >
       {chips.map((c) => {
         const on = active === c.id;
         return (
@@ -141,6 +169,7 @@ export function LibraryChips({
             key={c.id}
             type="button"
             onClick={() => onChange(c.id)}
+            aria-pressed={on}
             className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
               on
                 ? "font-medium text-white"

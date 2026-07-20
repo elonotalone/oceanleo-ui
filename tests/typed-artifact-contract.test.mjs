@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  ARTIFACT_TYPES,
   artifactHasExactContext,
   normalizeArtifactProjection,
+  normalizeArtifactProjectionResult,
   renditionNeedsRefresh,
   selectArtifactRendition,
   viewerRenditionOrder,
@@ -24,13 +26,14 @@ function projection(overrides = {}) {
     artifact_type: "composite_image",
     roles: ["template"],
     title: "Food shot",
+    favorite: false,
     owner: {
       principal_id: "user-1",
       visibility: "private",
       origin_site_key: "ecommerce",
       origin_app_id: "food-shot",
     },
-    permissions: {
+    access: {
       read: true,
       preview: true,
       edit: true,
@@ -79,6 +82,11 @@ function projection(overrides = {}) {
       source_kind: "owned",
       license_code: "owned",
     },
+    integrity: {
+      ok: true,
+      code: "ok",
+      reason: "",
+    },
     context_bindings: [
       {
         context_id: "ctx:ecommerce:food-shot",
@@ -90,6 +98,11 @@ function projection(overrides = {}) {
     ...overrides,
   };
 }
+
+test("rich artifact taxonomy exposes exactly thirteen canonical types", () => {
+  assert.equal(ARTIFACT_TYPES.length, 13);
+  assert.equal(new Set(ARTIFACT_TYPES).size, 13);
+});
 
 test("one normalized item pins identity, scene and every rendition to one revision", () => {
   const artifact = normalizeArtifactProjection(projection());
@@ -166,6 +179,28 @@ test("revision mixing and incomplete composite closures fail closed", () => {
   assert.equal(incomplete.integrity.code, "incomplete-dependency-closure");
 });
 
+test("strict rich-v1 normalization explains unknown schema and missing authority fields", () => {
+  const unknown = normalizeArtifactProjectionResult({
+    ...projection(),
+    schema: "oceanleo.artifact.v2",
+  });
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.error || "", /未知 artifact schema/);
+
+  for (const [name, patch, expected] of [
+    ["access", { access: undefined }, /access ACL/],
+    ["provenance", { provenance: undefined }, /provenance/],
+    ["rendition", { renditions: {} }, /preview|rendition/],
+  ]) {
+    const result = normalizeArtifactProjectionResult({
+      ...projection(),
+      ...patch,
+    });
+    assert.equal(result.ok, false, name);
+    assert.match(result.error || "", expected, name);
+  }
+});
+
 test("viewer uses preview/full before source and refreshes expiring signed URLs", () => {
   const artifact = normalizeArtifactProjection(projection());
   assert.ok(artifact);
@@ -238,7 +273,46 @@ test("shared UI source contains exact primary/global More endpoints and no serie
   );
 });
 
-test("shared cards expose only explicit Preview/Edit/Insert/Replace actions", () => {
+test("catalog and Explore share public rich-v1 search, deep links and accessible controls", () => {
+  const materialView = readFileSync(
+    new URL("../src/shell/material-library-view.tsx", import.meta.url),
+    "utf8",
+  );
+  const catalog = readFileSync(
+    new URL("../src/shell/material-catalog.tsx", import.meta.url),
+    "utf8",
+  );
+  const explore = readFileSync(
+    new URL("../src/shell/ExplorePage.tsx", import.meta.url),
+    "utf8",
+  );
+  const layout = readFileSync(
+    new URL("../src/shell/LibraryLayout.tsx", import.meta.url),
+    "utf8",
+  );
+  const mine = readFileSync(
+    new URL("../src/shell/MyLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(materialView, /artifactId/);
+  assert.match(materialView, /revisionId/);
+  assert.match(materialView, /loadMoreAbortRef/);
+  assert.match(materialView, /epoch !== requestEpochRef\.current/);
+  assert.match(catalog, /initialLevel="more"/);
+  assert.match(catalog, /lockLevel="more"/);
+  assert.match(catalog, /taxonomy/);
+  assert.match(explore, /<MaterialLibrary/);
+  assert.doesNotMatch(explore, /\/v1\/assets\/library\/search/);
+  assert.match(layout, /aria-pressed=\{view === "grid"\}/);
+  assert.match(layout, /aria-label=\{tt\("清除搜索"\)\}/);
+  assert.match(layout, /type="search"/);
+  assert.match(mine, /listMyArtifacts/);
+  assert.match(mine, /ARTIFACT_LIBRARY_CHANGE_EVENT/);
+  assert.match(mine, /dedupeDurableItems/);
+  assert.match(mine, /owner\.visibility !== "public"/);
+});
+
+test("shared cards keep explicit mutations and pinned download/favorite controls", () => {
   const actions = readFileSync(
     new URL("../src/shell/ArtifactActions.tsx", import.meta.url),
     "utf8",
@@ -252,7 +326,15 @@ test("shared cards expose only explicit Preview/Edit/Insert/Replace actions", ()
     /\["preview", "edit", "insert", "replace"\]/,
   );
   assert.doesNotMatch(actions, /"apply"|"merge"/);
+  assert.match(actions, /getArtifactDownload/);
+  assert.match(actions, /setArtifactFavorite/);
+  assert.match(
+    actions,
+    /result\.data\.revisionId !== durableItem\.revisionId/,
+  );
   assert.match(library, /Card activation is always Preview/);
+  assert.match(library, /application\/x-oceanleo-material\+json/);
+  assert.match(library, /id: item\?\.key \|\| entry\.id/);
   assert.doesNotMatch(
     library.slice(
       library.indexOf("const openEntry"),
@@ -267,16 +349,16 @@ test("video timeline and workflow canvas keep distinct typed editor routes", () 
     schema: "oceanleo.artifact.v1",
     title: "Typed route",
     owner: { principal_id: "user-1", visibility: "private" },
-    permissions: {
-      read: true,
-      preview: true,
-      edit: true,
-      fork: false,
-      insert: true,
-      replace: true,
-      favorite: false,
-      bind: false,
-      export_source: true,
+    access: {
+      can_read: true,
+      can_preview: true,
+      can_edit: true,
+      can_fork: false,
+      can_insert: true,
+      can_replace: true,
+      can_favorite: false,
+      can_bind: false,
+      can_export_source: true,
     },
     editability: "native",
     provenance: {
@@ -359,5 +441,7 @@ test("save/reopen snapshots carry revision pins rather than rendition URLs", () 
   assert.match(sessions, /artifact_refs/);
   assert.match(sessions, /normalizeAppSessionArtifactPins/);
   assert.match(canvas, /item\.revisionId === source\.revisionId/);
+  assert.match(canvas, /previousRevisionId !== source\.revisionId/);
+  assert.doesNotMatch(canvas, /savedEditorItems\[advancedRootItemId\(item\)\]/);
   assert.match(canvas, /old head|旧 head/);
 });

@@ -1,16 +1,21 @@
 import type {
+  CloudBrowserCapabilitiesV3,
   CloudBrowserControlLease,
-  CloudBrowserTab,
+  CloudBrowserFrameContractV3,
   CloudBrowserTransportState,
 } from "../lib/browser";
 import {
   normalizeCloudBrowserLease,
-  normalizeCloudBrowserTab,
-  normalizeCloudBrowserTabs,
-  parseCloudBrowserFrameMeta,
-  redactedDisplayUrl,
+  validateCloudBrowserFrameMeta,
+  type ValidatedCloudBrowserFrameMeta,
 } from "./cloud-browser-live";
 import { EMPTY_BROWSER_LEASE } from "./cloud-browser-transport-config";
+import {
+  CLOUD_BROWSER_MAX_CONTROL_BYTES,
+  CLOUD_BROWSER_MAX_FRAME_BYTES,
+  CLOUD_BROWSER_PROTOCOL_VERSION,
+  type CloudBrowserWireBinding,
+} from "./cloud-browser-wire";
 
 export const CLOUD_BROWSER_LEGAL_TRANSITIONS: Readonly<
   Record<CloudBrowserTransportState, readonly CloudBrowserTransportState[]>
@@ -27,7 +32,6 @@ export const CLOUD_BROWSER_LEGAL_TRANSITIONS: Readonly<
   authenticated: [
     "authenticated",
     "awaiting_first_frame",
-    "streaming",
     "reconnecting",
     "failed",
     "closed",
@@ -74,27 +78,61 @@ export function reduceCloudBrowserTransportTransition(
 }
 
 export type CloudBrowserControlIntent = "acquire" | "release" | "";
+export type CloudBrowserHelloTab = {
+  id: string;
+  title: string;
+  status:
+    | "opening"
+    | "loading"
+    | "ready"
+    | "crashed"
+    | "closing"
+    | "closed";
+};
+export type CloudBrowserFailureKind =
+  | "protocol_mismatch"
+  | "ticket_expired"
+  | "stale_stream"
+  | "first_paint"
+  | "connection"
+  | "lease_lost"
+  | null;
+
+const EMPTY_CAPABILITIES: CloudBrowserCapabilitiesV3 = {
+  page_bookmark: false,
+  session_checkpoint: false,
+  clipboard: false,
+  ime_composition: false,
+  viewport_resize: false,
+};
 
 export interface CloudBrowserProtocolState {
   transportState: CloudBrowserTransportState;
-  protocol: 1 | 2 | null;
+  protocol: 3 | null;
   handshake: boolean;
   socketSessionId: string;
-  connectionId: string;
+  sessionVersion: number;
   runtimeId: string;
+  runtimeVersion: string;
   incarnation: number;
+  nonce: string;
+  connectionId: string;
   streamId: string;
   streamGeneration: number;
-  activeTabId: string;
-  tabs: CloudBrowserTab[];
+  windowId: string;
+  frameContract: CloudBrowserFrameContractV3 | null;
+  capabilities: CloudBrowserCapabilitiesV3;
+  tabs: CloudBrowserHelloTab[];
+  helloFrameSequence: number;
+  lastFrameSequence: number;
+  lastActionSequence: number;
+  lastCallbackSequence: number;
   lease: CloudBrowserControlLease;
   leaseOwned: boolean;
-  legacyDriving: boolean;
   controlPending: boolean;
   controlIntent: CloudBrowserControlIntent;
-  address: string;
-  dropNextBinary: boolean;
-  pendingV2Binary: boolean;
+  pendingBinary: boolean;
+  failureKind: CloudBrowserFailureKind;
 }
 
 export function createCloudBrowserProtocolState(
@@ -105,43 +143,54 @@ export function createCloudBrowserProtocolState(
     protocol: null,
     handshake: false,
     socketSessionId: "",
-    connectionId: "",
+    sessionVersion: 0,
     runtimeId: "",
+    runtimeVersion: "",
     incarnation: 0,
+    nonce: "",
+    connectionId: "",
     streamId: "",
     streamGeneration: 0,
-    activeTabId: "",
+    windowId: "",
+    frameContract: null,
+    capabilities: EMPTY_CAPABILITIES,
     tabs: [],
+    helloFrameSequence: 0,
+    lastFrameSequence: 0,
+    lastActionSequence: 0,
+    lastCallbackSequence: 0,
     lease: EMPTY_BROWSER_LEASE,
     leaseOwned: false,
-    legacyDriving: false,
     controlPending: false,
     controlIntent: "",
-    address: "",
-    dropNextBinary: false,
-    pendingV2Binary: false,
+    pendingBinary: false,
+    failureKind: null,
     ...input,
   };
 }
 
 export type CloudBrowserProtocolEffect =
-  | { type: "reject"; message: string }
-  | { type: "error"; message: string }
+  | {
+      type: "reject";
+      message: string;
+      kind: Exclude<CloudBrowserFailureKind, "lease_lost" | null>;
+    }
+  | { type: "error"; message: string; kind?: CloudBrowserFailureKind }
   | { type: "clear_error" }
   | { type: "arm_first_frame" }
   | { type: "cancel_frame_decode" }
-  | { type: "accept_frame_meta"; message: Record<string, unknown> }
   | {
-      type: "draw_text_frame";
-      data: string;
-      message: Record<string, unknown>;
+      type: "accept_frame_meta";
+      meta: ValidatedCloudBrowserFrameMeta;
     }
-  | { type: "refresh_events" };
+  | { type: "refresh_checkpoints" };
 
 export interface CloudBrowserProtocolFallbacks {
   runtimeFailed: string;
-  navigationRejected: string;
   operationFailed: string;
+  protocolMismatch: string;
+  staleStream: string;
+  leaseLost: string;
 }
 
 export interface CloudBrowserProtocolReduction {
@@ -151,13 +200,23 @@ export interface CloudBrowserProtocolReduction {
 
 export type CloudBrowserMessageDecodeResult =
   | { ok: true; message: Record<string, unknown> }
-  | { ok: false; reason: "invalid_json" | "invalid_shape" };
+  | {
+      ok: false;
+      reason: "invalid_json" | "invalid_shape" | "message_too_large";
+    };
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
 
 export function decodeCloudBrowserProtocolMessage(
   raw: unknown,
 ): CloudBrowserMessageDecodeResult {
   let decoded = raw;
   if (typeof raw === "string") {
+    if (byteLength(raw) > CLOUD_BROWSER_MAX_CONTROL_BYTES) {
+      return { ok: false, reason: "message_too_large" };
+    }
     try {
       decoded = JSON.parse(raw);
     } catch {
@@ -189,145 +248,382 @@ function transition(
 function reject(
   state: CloudBrowserProtocolState,
   message: string,
+  kind: Exclude<CloudBrowserFailureKind, "lease_lost" | null>,
 ): CloudBrowserProtocolReduction {
   return {
     state: transition(
       {
         ...state,
         handshake: false,
-        pendingV2Binary: false,
-        dropNextBinary: false,
+        pendingBinary: false,
+        leaseOwned: false,
+        controlPending: false,
+        controlIntent: "",
+        failureKind: kind,
       },
       "failed",
     ),
-    effects: [{ type: "reject", message }],
+    effects: [{ type: "reject", message, kind }],
   };
 }
 
-function adoptLegacy(
-  state: CloudBrowserProtocolState,
-  effects: CloudBrowserProtocolEffect[],
-): CloudBrowserProtocolState {
-  if (state.protocol === 2) return state;
-  let next: CloudBrowserProtocolState = {
-    ...state,
-    protocol: 1,
-    handshake: true,
-  };
-  if (next.transportState !== "streaming") {
-    next = transition(next, "awaiting_first_frame");
-    effects.push({ type: "arm_first_frame" });
-  }
-  return next;
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-function expectedStream(
-  state: CloudBrowserProtocolState,
-  message: Record<string, unknown>,
-  effects: CloudBrowserProtocolEffect[],
-): CloudBrowserProtocolState {
-  effects.push({ type: "arm_first_frame" });
-  return transition(
-    {
-      ...state,
-      streamId: String(message.stream_id || ""),
-      streamGeneration: Number(
-        message.stream_generation || message.generation || 0,
-      ),
-    },
-    "awaiting_first_frame",
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function boundedString(
+  value: unknown,
+  maximum: number,
+  allowEmpty = false,
+): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= maximum &&
+    (allowEmpty || value.length > 0)
   );
 }
 
-function upsertTab(
-  current: readonly CloudBrowserTab[],
-  tab: CloudBrowserTab,
-): CloudBrowserTab[] {
-  const index = current.findIndex((item) => item.id === tab.id);
-  if (index < 0) return [...current, tab];
-  const next = [...current];
-  next[index] = {
-    ...next[index],
-    ...tab,
-    title: tab.title || next[index].title,
-    displayUrl: tab.displayUrl || next[index].displayUrl,
-    faviconUrl: tab.faviconUrl || next[index].faviconUrl,
-  };
-  return next;
+function safeInteger(
+  value: unknown,
+  minimum: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+  );
 }
 
-function updateActiveTab(
+function strictFrameContract(
+  actual: unknown,
+): CloudBrowserFrameContractV3 | null {
+  const value = recordValue(actual);
+  if (
+    !value ||
+    !exactKeys(value, [
+      "transport",
+      "codec",
+      "source",
+      "max_frame_bytes",
+      "max_width",
+      "max_height",
+    ]) ||
+    value.transport !== "adjacent-binary" ||
+    value.codec !== "image/jpeg" ||
+    value.source !== "native-chrome-window" ||
+    !safeInteger(
+      value.max_frame_bytes,
+      32 * 1024,
+      CLOUD_BROWSER_MAX_FRAME_BYTES,
+    ) ||
+    !safeInteger(value.max_width, 640, 4_096) ||
+    !safeInteger(value.max_height, 480, 4_096)
+  ) {
+    return null;
+  }
+  return value as unknown as CloudBrowserFrameContractV3;
+}
+
+function strictCapabilities(
+  actual: unknown,
+): CloudBrowserCapabilitiesV3 | null {
+  const value = recordValue(actual);
+  const keys = [
+    "page_bookmark",
+    "session_checkpoint",
+    "clipboard",
+    "ime_composition",
+    "viewport_resize",
+  ] as const;
+  if (
+    !value ||
+    !exactKeys(value, [...keys]) ||
+    !keys.every((key) => typeof value[key] === "boolean")
+  ) {
+    return null;
+  }
+  return value as unknown as CloudBrowserCapabilitiesV3;
+}
+
+function strictTabs(value: unknown): CloudBrowserHelloTab[] | null {
+  if (!Array.isArray(value) || value.length > 128) return null;
+  const tabs: CloudBrowserHelloTab[] = [];
+  const ids = new Set<string>();
+  for (const candidate of value) {
+    const tab = recordValue(candidate);
+    if (
+      !tab ||
+      !exactKeys(tab, ["id", "title", "status"]) ||
+      !boundedString(tab.id, 160) ||
+      !boundedString(tab.title, 512, true) ||
+      ![
+        "opening",
+        "loading",
+        "ready",
+        "crashed",
+        "closing",
+        "closed",
+      ].includes(String(tab.status)) ||
+      ids.has(tab.id)
+    ) {
+      return null;
+    }
+    ids.add(tab.id);
+    tabs.push(tab as unknown as CloudBrowserHelloTab);
+  }
+  return tabs;
+}
+
+function strictLease(value: unknown): CloudBrowserControlLease | null {
+  const item = recordValue(value);
+  if (
+    !item ||
+    !exactKeys(item, [
+      "lease_id",
+      "lease_epoch",
+      "holder_kind",
+      "holder_id",
+      "connection_id",
+      "expires_at",
+      "privacy_mode",
+    ]) ||
+    !boundedString(item.lease_id, 160, true) ||
+    !safeInteger(item.lease_epoch, 1) ||
+    !["agent", "human", "free"].includes(String(item.holder_kind)) ||
+    (item.holder_id !== undefined &&
+      !boundedString(item.holder_id, 160)) ||
+    (item.connection_id !== undefined &&
+      !boundedString(item.connection_id, 160)) ||
+    (item.expires_at !== undefined &&
+      (!boundedString(item.expires_at, 64) ||
+        !Number.isFinite(Date.parse(item.expires_at)))) ||
+    (item.privacy_mode !== undefined &&
+      typeof item.privacy_mode !== "boolean")
+  ) {
+    return null;
+  }
+  const free = item.holder_kind === "free";
+  if (
+    (free &&
+      (item.lease_id !== "" ||
+        item.holder_id !== undefined ||
+        item.connection_id !== undefined ||
+        item.expires_at !== undefined)) ||
+    (!free &&
+      (item.lease_id === "" ||
+        !boundedString(item.connection_id, 160)))
+  ) {
+    return null;
+  }
+  return normalizeCloudBrowserLease(item);
+}
+
+function coherentLeaseTransition(
+  previous: CloudBrowserControlLease,
+  next: CloudBrowserControlLease,
+): boolean {
+  if (next.epoch < previous.epoch) return false;
+  const identityChanged =
+    next.leaseId !== previous.leaseId ||
+    next.holderKind !== previous.holderKind ||
+    next.holderId !== previous.holderId ||
+    next.connectionId !== previous.connectionId;
+  return !identityChanged || next.epoch > previous.epoch;
+}
+
+function bindingFromState(
   state: CloudBrowserProtocolState,
-  patch: Partial<Omit<CloudBrowserTab, "id">>,
-): CloudBrowserProtocolState {
-  if (!state.activeTabId) return state;
+): CloudBrowserWireBinding {
   return {
-    ...state,
-    tabs: state.tabs.map((tab) =>
-      tab.id === state.activeTabId
-        ? {
-            ...tab,
-            ...patch,
-            displayUrl: patch.displayUrl ?? tab.displayUrl,
-          }
-        : tab,
-    ),
+    sessionId: state.socketSessionId,
+    sessionVersion: state.sessionVersion,
+    runtimeId: state.runtimeId,
+    runtimeVersion: state.runtimeVersion,
+    incarnation: state.incarnation,
+    nonce: state.nonce,
+    connectionId: state.connectionId,
+    streamId: state.streamId,
+    streamGeneration: state.streamGeneration,
+    windowId: state.windowId,
   };
+}
+
+function bindingMatches(
+  state: CloudBrowserProtocolState,
+  message: Record<string, unknown>,
+): boolean {
+  return (
+    message.v === CLOUD_BROWSER_PROTOCOL_VERSION &&
+    message.session_id === state.socketSessionId &&
+    message.session_version === state.sessionVersion &&
+    message.runtime_id === state.runtimeId &&
+    message.runtime_version === state.runtimeVersion &&
+    message.incarnation === state.incarnation &&
+    message.nonce === state.nonce &&
+    message.connection_id === state.connectionId &&
+    message.stream_id === state.streamId &&
+    message.stream_generation === state.streamGeneration &&
+    message.window_id === state.windowId
+  );
+}
+
+const BINDING_KEYS = [
+  "v",
+  "t",
+  "session_id",
+  "session_version",
+  "runtime_id",
+  "runtime_version",
+  "incarnation",
+  "nonce",
+  "connection_id",
+  "stream_id",
+  "stream_generation",
+  "window_id",
+];
+
+function messageHasOnly(
+  message: Record<string, unknown>,
+  extra: readonly string[],
+): boolean {
+  return exactKeys(message, [...BINDING_KEYS, ...extra]);
+}
+
+function validActionSequence(
+  state: CloudBrowserProtocolState,
+  value: unknown,
+): value is number {
+  return safeInteger(value, 0) && value >= state.lastActionSequence;
+}
+
+function freshCallbackSequence(
+  state: CloudBrowserProtocolState,
+  value: unknown,
+): value is number {
+  return (
+    safeInteger(value, 1) &&
+    value > state.lastCallbackSequence
+  );
 }
 
 export function reduceCloudBrowserProtocolMessage(
   current: CloudBrowserProtocolState,
   message: Record<string, unknown>,
   fallback: CloudBrowserProtocolFallbacks,
+  now = Date.now(),
 ): CloudBrowserProtocolReduction {
   const effects: CloudBrowserProtocolEffect[] = [];
-  const type = String(message.t || message.type || "");
-  const isV2 = message.v === 2 || type.includes(".");
+  const type = String(message.t || "");
   let state = current;
 
   if (type === "hello") {
-    const sessionId = String(message.session_id || "");
-    const runtimeId = String(message.runtime_id || "");
-    const incarnation = Number(message.incarnation || 0);
-    const connectionId = String(message.connection_id || "");
+    const windowEvidence = recordValue(message.window);
+    const lease = strictLease(message.lease);
+    const frameContract = strictFrameContract(message.frame_contract);
+    const capabilities = strictCapabilities(message.capabilities);
+    const tabs = strictTabs(message.tabs);
     if (
-      message.v !== 2 ||
-      !sessionId ||
-      sessionId !== state.socketSessionId ||
-      !runtimeId ||
-      (state.runtimeId && runtimeId !== state.runtimeId) ||
-      !Number.isInteger(incarnation) ||
-      incarnation <= 0 ||
-      (state.incarnation && incarnation !== state.incarnation) ||
-      !connectionId
+      !messageHasOnly(message, [
+        "frame_contract",
+        "capabilities",
+        "window",
+        "lease",
+        "tabs",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      state.handshake ||
+      state.runtimeVersion !== "" ||
+      state.connectionId !== "" ||
+      state.streamId !== "" ||
+      state.streamGeneration !== 0 ||
+      state.windowId !== "" ||
+      state.frameContract !== null ||
+      message.v !== CLOUD_BROWSER_PROTOCOL_VERSION ||
+      message.session_id !== state.socketSessionId ||
+      message.session_version !== state.sessionVersion ||
+      message.runtime_id !== state.runtimeId ||
+      !boundedString(message.runtime_version, 160) ||
+      message.incarnation !== state.incarnation ||
+      message.nonce !== state.nonce ||
+      !boundedString(message.connection_id, 160) ||
+      !boundedString(message.stream_id, 160) ||
+      !safeInteger(message.stream_generation, 1) ||
+      !boundedString(message.window_id, 160) ||
+      !frameContract ||
+      !capabilities ||
+      !tabs ||
+      !windowEvidence ||
+      !exactKeys(windowEvidence, [
+        "window_id",
+        "app",
+        "native_chrome",
+        "maximized",
+        "tab_strip",
+        "omnibox",
+        "width",
+        "height",
+        "native_band_height",
+      ]) ||
+      windowEvidence.window_id !== message.window_id ||
+      windowEvidence.app !== "chromium" ||
+      windowEvidence.native_chrome !== true ||
+      windowEvidence.maximized !== true ||
+      windowEvidence.tab_strip !== true ||
+      windowEvidence.omnibox !== true ||
+      !safeInteger(windowEvidence.width, 640, 4096) ||
+      !safeInteger(windowEvidence.height, 480, 4096) ||
+      !safeInteger(
+        windowEvidence.native_band_height,
+        1,
+        Math.min(512, Number(windowEvidence.height) - 1),
+      ) ||
+      !lease ||
+      !safeInteger(message.action_sequence, 0) ||
+      !safeInteger(message.callback_sequence, 0)
     ) {
-      return reject(state, fallback.runtimeFailed);
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
     }
-    const tabs = normalizeCloudBrowserTabs(message.tabs);
-    const activeTabId = String(
-      message.active_tab_id ||
-        tabs.find((tab) => tab.status !== "closed")?.id ||
-        "",
-    );
-    const lease = normalizeCloudBrowserLease(message.lease || message.control);
+    const connectionId = message.connection_id as string;
+    const owned =
+      lease.holderKind === "human" &&
+      lease.connectionId === connectionId;
     state = transition(
       {
         ...state,
-        protocol: 2,
+        protocol: CLOUD_BROWSER_PROTOCOL_VERSION,
         handshake: true,
+        runtimeVersion: message.runtime_version as string,
         connectionId,
-        runtimeId,
-        incarnation,
-        streamId: String(message.stream_id || ""),
-        streamGeneration: Number(
-          message.stream_generation || message.generation || 0,
-        ),
+        streamId: message.stream_id as string,
+        streamGeneration: message.stream_generation as number,
+        windowId: message.window_id as string,
+        frameContract,
+        capabilities,
         tabs,
-        activeTabId,
+        helloFrameSequence: 0,
+        lastFrameSequence: 0,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
         lease,
-        leaseOwned:
-          lease.holderKind === "human" &&
-          Boolean(lease.connectionId && lease.connectionId === connectionId),
+        leaseOwned: owned,
+        failureKind: null,
       },
       "awaiting_first_frame",
     );
@@ -335,286 +631,318 @@ export function reduceCloudBrowserProtocolMessage(
     return { state, effects };
   }
 
-  if (
-    message.v === 2 &&
-    !(type === "error" && !state.handshake) &&
-    (!state.handshake ||
-      String(message.session_id || "") !== state.socketSessionId ||
-      String(message.runtime_id || "") !== state.runtimeId ||
-      Number(message.incarnation || 0) !== state.incarnation ||
-      String(message.connection_id || "") !== state.connectionId)
-  ) {
-    return reject(state, fallback.runtimeFailed);
+  if (!state.handshake || !bindingMatches(state, message)) {
+    return reject(
+      state,
+      fallback.protocolMismatch,
+      "protocol_mismatch",
+    );
   }
 
-  if (type === "frame.meta" || type === "frame-meta") {
-    if (type === "frame-meta" && state.protocol === 2) {
-      return { state, effects };
-    }
-    if (isV2 && !state.handshake) {
-      return { state: { ...state, dropNextBinary: true }, effects };
-    }
-    if (!isV2) state = adoptLegacy(state, effects);
-    const meta = parseCloudBrowserFrameMeta(message);
-    const staleStream =
-      state.protocol === 2 &&
-      Boolean(
-        state.streamId &&
-          meta.streamId &&
-          meta.streamId !== state.streamId &&
-          (!meta.generation || meta.generation <= state.streamGeneration),
-      );
-    const staleGeneration =
-      state.protocol === 2 &&
-      Boolean(
-        meta.generation &&
-          state.streamGeneration &&
-          meta.generation < state.streamGeneration,
-      );
-    const wrongRuntime =
-      (meta.runtimeId && state.runtimeId && meta.runtimeId !== state.runtimeId) ||
-      (meta.incarnation &&
-        state.incarnation &&
-        meta.incarnation !== state.incarnation) ||
-      (meta.tabId && state.activeTabId && meta.tabId !== state.activeTabId);
-    if (state.protocol === 2 && (staleStream || staleGeneration || wrongRuntime)) {
-      return {
-        state: { ...state, dropNextBinary: true, pendingV2Binary: false },
-        effects,
-      };
-    }
-    const streamChanged =
-      Boolean(meta.streamId && meta.streamId !== state.streamId) ||
-      Boolean(
-        meta.generation && meta.generation > state.streamGeneration,
-      );
-    if (streamChanged) {
-      state = transition(
-        {
-          ...state,
-          streamId: meta.streamId || state.streamId,
-          streamGeneration: meta.generation || state.streamGeneration,
-        },
-        "awaiting_first_frame",
-      );
-      effects.push(
-        { type: "cancel_frame_decode" },
-        { type: "arm_first_frame" },
+  if (type === "frame.meta") {
+    if (state.pendingBinary || !state.frameContract) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
       );
     }
-    effects.push({ type: "accept_frame_meta", message });
-    return {
-      state: { ...state, pendingV2Binary: state.protocol === 2 },
-      effects,
-    };
-  }
-
-  if (type === "frame" && message.data) {
-    if (isV2 && !state.handshake) return { state, effects };
-    if (!isV2) state = adoptLegacy(state, effects);
-    effects.push({
-      type: "draw_text_frame",
-      data: String(message.data),
+    const validation = validateCloudBrowserFrameMeta(
       message,
+      {
+        binding: bindingFromState(state),
+        contract: state.frameContract,
+        afterSequence: state.lastFrameSequence,
+        minimumActionSequence: state.lastActionSequence,
+      },
+      now,
+    );
+    if (!validation.ok) {
+      const stale =
+        validation.reason === "stale_sequence" ||
+        validation.reason === "stale_action" ||
+        validation.reason === "stale_capture" ||
+        validation.reason === "binding_mismatch";
+      return reject(
+        state,
+        stale ? fallback.staleStream : fallback.protocolMismatch,
+        stale ? "stale_stream" : "protocol_mismatch",
+      );
+    }
+    state = {
+      ...state,
+      pendingBinary: true,
+      lastFrameSequence: validation.meta.sequence,
+      lastActionSequence: Math.max(
+        state.lastActionSequence,
+        validation.meta.actionSequence,
+      ),
+    };
+    effects.push({
+      type: "accept_frame_meta",
+      meta: validation.meta,
     });
-    return { state, effects };
-  }
-
-  if (type === "tabs.snapshot") {
-    const tabs = normalizeCloudBrowserTabs(message.tabs || message.items);
-    state = {
-      ...state,
-      tabs,
-      activeTabId: String(
-        message.active_tab_id ||
-          tabs.find((tab) => tab.id === state.activeTabId)?.id ||
-          tabs[0]?.id ||
-          "",
-      ),
-    };
-    if (message.stream_id) state = expectedStream(state, message, effects);
-    return { state, effects };
-  }
-
-  if (
-    type === "tab.opened" ||
-    type === "tab.updated" ||
-    type === "tab.activated"
-  ) {
-    const tab = normalizeCloudBrowserTab(message.tab || message);
-    if (tab) state = { ...state, tabs: upsertTab(state.tabs, tab) };
-    const activate =
-      type === "tab.activated" ||
-      message.active === true ||
-      message.active_tab_id === tab?.id;
-    if (activate && tab) {
-      state = expectedStream(
-        { ...state, activeTabId: tab.id },
-        message,
-        effects,
-      );
-    }
-    return { state, effects };
-  }
-
-  if (type === "tab.closed") {
-    state = {
-      ...state,
-      tabs: state.tabs.filter(
-        (tab) => tab.id !== String(message.tab_id || ""),
-      ),
-    };
-    const activeTabId = String(message.active_tab_id || "");
-    if (activeTabId) {
-      state = expectedStream(
-        { ...state, activeTabId },
-        message,
-        effects,
-      );
-    }
     return { state, effects };
   }
 
   if (type === "control.state") {
-    const lease = normalizeCloudBrowserLease(message.lease || message);
+    const lease = strictLease(message.lease);
+    if (
+      !messageHasOnly(message, [
+        "lease",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      !lease ||
+      !coherentLeaseTransition(state.lease, lease) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence)
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
     const owned =
       lease.holderKind === "human" &&
-      Boolean(
-        (lease.connectionId && lease.connectionId === state.connectionId) ||
-          (!lease.connectionId && state.controlIntent === "acquire"),
-      );
-    return {
-      state: {
-        ...state,
-        lease,
-        leaseOwned: owned,
-        controlIntent: "",
-        controlPending: false,
-      },
-      effects,
+      lease.connectionId === state.connectionId;
+    const expectedRelease =
+      state.controlPending &&
+      state.controlIntent === "release" &&
+      lease.holderKind === "free" &&
+      lease.leaseId === "";
+    const lost =
+      state.leaseOwned &&
+      !expectedRelease &&
+      (!owned ||
+        lease.leaseId !== state.lease.leaseId ||
+        lease.epoch !== state.lease.epoch);
+    state = {
+      ...state,
+      lease,
+      leaseOwned: owned,
+      controlIntent: "",
+      controlPending: false,
+      lastActionSequence: message.action_sequence as number,
+      lastCallbackSequence: message.callback_sequence as number,
+      failureKind: lost ? "lease_lost" : state.failureKind,
     };
-  }
-
-  if (type === "lock") {
-    if (state.protocol === 2) return { state, effects };
-    state = adoptLegacy(state, effects);
-    return {
-      state: {
-        ...state,
-        legacyDriving: message.driving === "human",
-        controlPending: false,
-      },
-      effects,
-    };
-  }
-
-  if (type === "meta") {
-    if (state.protocol === 2) return { state, effects };
-    state = adoptLegacy(state, effects);
-    const address = redactedDisplayUrl(String(message.url || ""));
-    const id = `legacy:${state.socketSessionId}`;
-    return {
-      state: {
-        ...state,
-        address,
-        tabs: [
-          {
-            id,
-            title: String(message.title || ""),
-            displayUrl: address,
-            status: "ready",
-          },
-        ],
-        activeTabId: id,
-      },
-      effects,
-    };
-  }
-
-  if (type === "navigation") {
-    const failed =
-      message.ok === false ||
-      message.state === "failed" ||
-      message.status === "failed";
-    if (failed) {
+    if (lost) {
       effects.push({
         type: "error",
-        message: String(
-          message.message || message.msg || fallback.navigationRejected,
-        ),
+        message: fallback.leaseLost,
+        kind: "lease_lost",
       });
+    }
+    return { state, effects };
+  }
+
+  if (type === "action.receipt") {
+    if (
+      !messageHasOnly(message, [
+        "action_sequence",
+        "client_event_id",
+        "status",
+        "code",
+        "message",
+        "callback_sequence",
+      ]) ||
+      !safeInteger(message.action_sequence, 1) ||
+      !boundedString(message.client_event_id, 240) ||
+      !["accepted", "rejected"].includes(String(message.status)) ||
+      !freshCallbackSequence(state, message.callback_sequence) ||
+      (message.code !== undefined &&
+        !boundedString(message.code, 96, true)) ||
+      (message.message !== undefined &&
+        !boundedString(message.message, 1_000, true))
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
+    if ((message.action_sequence as number) <= state.lastActionSequence) {
       return { state, effects };
     }
-    const address = redactedDisplayUrl(
-      String(message.display_url || message.url || ""),
-    );
-    const loading =
-      message.state === "started" || message.status === "started";
-    if (loading) {
-      state = transition(state, "awaiting_first_frame");
-      effects.push({ type: "arm_first_frame" });
-    }
-    if (message.stream_id) {
-      state = expectedStream(state, message, effects);
-      effects.push({ type: "cancel_frame_decode" });
-    }
-    state = updateActiveTab(
-      { ...state, address: address || state.address },
-      {
-        displayUrl: address || undefined,
-        title: typeof message.title === "string" ? message.title : undefined,
-        status: loading ? "loading" : "ready",
-      },
-    );
-    if (!loading) effects.push({ type: "clear_error" });
-    return { state, effects };
-  }
-
-  if (type === "history.saved") {
-    return { state, effects: [{ type: "refresh_events" }] };
-  }
-
-  if (type === "checkpoint.saved") return { state, effects };
-
-  if (type === "session.state") {
-    const failed =
-      message.state === "failed" ||
-      message.durable_state === "failed" ||
-      message.runtime_state === "dead" ||
-      message.live_state === "failed";
-    if (failed) {
+    state = {
+      ...state,
+      lastActionSequence: message.action_sequence as number,
+      lastCallbackSequence: message.callback_sequence as number,
+    };
+    if (message.status === "rejected") {
       effects.push({
         type: "error",
-        message: String(message.reason || fallback.runtimeFailed),
+        message: String(message.message || fallback.operationFailed),
       });
-      return { state: transition(state, "failed"), effects };
-    }
-    if (
-      message.live_state === "awaiting_first_frame" &&
-      state.transportState !== "streaming"
-    ) {
-      effects.push({ type: "arm_first_frame" });
-      return {
-        state: transition(state, "awaiting_first_frame"),
-        effects,
-      };
     }
     return { state, effects };
   }
 
-  if (type === "error" || type === "warn") {
-    if (String(message.code || "") === "LEASE_NOT_HELD") {
+  if (type === "checkpoint.saved") {
+    if (
+      !messageHasOnly(message, [
+        "checkpoint_id",
+        "generation",
+        "created_at",
+        "page_title",
+        "page_url",
+        "state",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      !boundedString(message.checkpoint_id, 160) ||
+      !safeInteger(message.generation, 1) ||
+      !boundedString(message.created_at, 64) ||
+      !Number.isFinite(Date.parse(message.created_at)) ||
+      !boundedString(message.page_title, 512, true) ||
+      !boundedString(message.page_url, 2_048, true) ||
+      !["warm", "hibernated", "restoring", "restored", "failed"].includes(
+        String(message.state),
+      ) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence)
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
+    state = {
+      ...state,
+      lastActionSequence: message.action_sequence as number,
+      lastCallbackSequence: message.callback_sequence as number,
+    };
+    return {
+      state,
+      effects: [{ type: "refresh_checkpoints" }],
+    };
+  }
+
+  if (type === "page.bookmarked") {
+    if (
+      !messageHasOnly(message, [
+        "page_title",
+        "page_url",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      !boundedString(message.page_title, 512, true) ||
+      !boundedString(message.page_url, 2_048) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence)
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
+    return {
+      state: {
+        ...state,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
+      },
+      effects,
+    };
+  }
+
+  if (type === "session.state") {
+    if (
+      !messageHasOnly(message, [
+        "state",
+        "reason",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      !["warm", "hibernated", "restoring", "restored", "failed"].includes(
+        String(message.state),
+      ) ||
+      (message.reason !== undefined &&
+        !boundedString(message.reason, 1_000, true)) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence)
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
+    if (message.state === "failed") {
+      return reject(
+        state,
+        String(message.reason || fallback.runtimeFailed),
+        "connection",
+      );
+    }
+    return {
+      state: {
+        ...state,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
+      },
+      effects,
+    };
+  }
+
+  if (type === "error") {
+    if (
+      !messageHasOnly(message, [
+        "code",
+        "message",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      !boundedString(message.code, 96) ||
+      !boundedString(message.message, 1_000) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence)
+    ) {
+      return reject(
+        state,
+        fallback.protocolMismatch,
+        "protocol_mismatch",
+      );
+    }
+    const leaseLost = [
+      "LEASE_NOT_HELD",
+      "LEASE_EPOCH_STALE",
+      "LEASE_LOST",
+    ].includes(message.code as string);
+    if (leaseLost) {
       state = {
         ...state,
-        lease: { ...state.lease, holderKind: "free" },
         leaseOwned: false,
         controlPending: false,
+        controlIntent: "",
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
+        failureKind: "lease_lost",
+      };
+    } else {
+      state = {
+        ...state,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
       };
     }
     effects.push({
       type: "error",
-      message: String(message.message || message.msg || fallback.operationFailed),
+      message: leaseLost
+        ? fallback.leaseLost
+        : String(message.message || fallback.operationFailed),
+      kind: leaseLost ? "lease_lost" : undefined,
     });
+    return { state, effects };
   }
-  return { state, effects };
+
+  return reject(
+    state,
+    fallback.protocolMismatch,
+    "protocol_mismatch",
+  );
 }

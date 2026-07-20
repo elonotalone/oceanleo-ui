@@ -1,336 +1,322 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useRef } from "react";
 import type {
+  CloudBrowserCheckpoint,
+  CloudBrowserControlLease,
   CloudBrowserSession,
-  CloudBrowserTab,
   CloudBrowserTransportState,
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  CloudBrowserCheckpointPanel,
+  type CloudBrowserRestoreResult,
+} from "./cloud-browser-history-view";
 
-type BrowserChromeProps = {
+type BrowserSessionRowProps = {
   accent: string;
   sessions: CloudBrowserSession[];
   selected: CloudBrowserSession | null;
   selectedId: string;
-  tabs: CloudBrowserTab[];
-  activeTabId: string;
   transportState: CloudBrowserTransportState;
   statusText: string;
   liveRequested: boolean;
   driving: boolean;
+  lease: CloudBrowserControlLease;
   controlPending: boolean;
   busy: boolean;
-  canCaptureHistory: boolean;
+  canBookmark: boolean;
+  canCreateCheckpoint: boolean;
   canHibernate: boolean;
   deleteArmed: boolean;
-  omniboxOpen: boolean;
-  omniboxValue: string;
-  omniboxInputRef: RefObject<HTMLInputElement | null>;
-  fullscreen: boolean;
+  immersive: boolean;
+  immersiveControlsVisible: boolean;
+  checkpointsOpen: boolean;
+  checkpoints: CloudBrowserCheckpoint[];
+  checkpointsLoading: boolean;
+  checkpointsError: string;
   onChooseSession: (sessionId: string) => void;
   onOpenOrResume: () => void;
   onHibernate: () => void;
   onDelete: () => void;
-  onNavigate: (action: "back" | "forward" | "reload") => void;
-  onCreateTab: () => void;
-  onActivateTab: (tabId: string) => void;
-  onCloseTab: (tabId: string) => void;
   onToggleControl: () => void;
-  onOpenOmnibox: () => void;
-  onCloseOmnibox: () => void;
-  onOmniboxValue: (value: string) => void;
-  onSubmitOmnibox: () => void;
-  onCaptureHistory: () => void;
+  onBookmarkCurrentPage: () => void;
+  onToggleCheckpoints: () => void;
+  onCreateCheckpoint: () => boolean;
+  onRestoreCheckpoint: (
+    checkpoint: CloudBrowserCheckpoint,
+  ) => Promise<CloudBrowserRestoreResult>;
   onToggleFullscreen: () => void;
 };
 
-function controlButtonClass(enabled = true) {
-  return `grid h-7 min-w-7 place-items-center rounded-md border border-stone-200 px-2 text-[11px] text-stone-600 transition ${
-    enabled ? "hover:bg-stone-50" : "cursor-not-allowed opacity-35"
+function buttonClass(enabled = true) {
+  return `h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-semibold outline-none transition motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+    enabled
+      ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+      : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-400"
   }`;
 }
 
-export function CloudBrowserChrome(props: BrowserChromeProps) {
+export function CloudBrowserChrome(props: BrowserSessionRowProps) {
   const tt = useUI();
+  const moreRef = useRef<HTMLDetailsElement | null>(null);
   const {
     accent,
     sessions,
     selected,
     selectedId,
-    tabs,
-    activeTabId,
     transportState,
     statusText,
     liveRequested,
     driving,
+    lease,
     controlPending,
     busy,
-    canCaptureHistory,
+    canBookmark,
+    canCreateCheckpoint,
     canHibernate,
     deleteArmed,
-    omniboxOpen,
-    omniboxValue,
-    omniboxInputRef,
-    fullscreen,
+    immersive,
+    immersiveControlsVisible,
+    checkpointsOpen,
+    checkpoints,
+    checkpointsLoading,
+    checkpointsError,
   } = props;
-  const canMutate = driving && transportState === "streaming";
+  const connected = transportState === "streaming";
   const stateTone =
-    transportState === "streaming"
+    connected
       ? "bg-emerald-500"
       : transportState === "failed"
         ? "bg-rose-500"
         : transportState === "reconnecting"
           ? "bg-amber-400"
           : "bg-stone-300";
+  const leaseText = driving
+    ? tt("你正在控制 · 租约代 {epoch}", { epoch: lease.epoch })
+    : lease.holderKind === "agent"
+      ? tt("Agent 正在控制 · 租约代 {epoch}", {
+          epoch: lease.epoch,
+        })
+      : lease.holderKind === "human"
+        ? tt("另一位用户正在控制 · 租约代 {epoch}", {
+            epoch: lease.epoch,
+          })
+        : tt("当前没有控制者 · 租约代 {epoch}", {
+            epoch: lease.epoch,
+          });
+  const hiddenInImmersive =
+    immersive && !immersiveControlsVisible;
+
+  function closeMore() {
+    if (moreRef.current) moreRef.current.open = false;
+  }
 
   return (
     <header
-      className="relative z-20 shrink-0 border-b border-stone-200 bg-white"
-      data-cloud-browser-chrome
+      className={`z-30 shrink-0 border-t border-stone-200/90 bg-white/95 px-2 py-1.5 shadow-[0_-4px_18px_rgba(0,0,0,.08)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
+        immersive
+          ? "absolute inset-x-0 bottom-0"
+          : "relative"
+      } ${
+        hiddenInImmersive
+          ? "translate-y-[calc(100%-4px)] opacity-20 hover:translate-y-0 hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"
+          : "translate-y-0 opacity-100"
+      }`}
+      data-cloud-browser-session-row
+      data-cloud-browser-auto-hidden={
+        hiddenInImmersive ? "true" : "false"
+      }
     >
-      <div className="flex min-w-0 items-center gap-2 border-b border-stone-100 px-3 py-2">
-        <label className="sr-only" htmlFor="cloud-browser-history">
-          {tt("浏览记录")}
-        </label>
-        <select
-          id="cloud-browser-history"
-          value={selectedId}
-          onChange={(event) => props.onChooseSession(event.target.value)}
-          className="min-w-0 flex-1 truncate rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] text-stone-700 outline-none"
-          aria-label={tt("浏览记录")}
-          data-cloud-browser-history
-        >
-          {sessions.map((session) => (
-            <option key={session.id} value={session.id}>
-              {session.last_title || session.last_url || tt("云端浏览器记录")} ·{" "}
-              {new Date(session.updated_at || session.created_at).toLocaleString()}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={props.onOpenOrResume}
-          disabled={busy || liveRequested}
-          className="shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-          style={{ background: accent }}
-          data-cloud-browser-power
-        >
-          {selected?.status === "hibernated"
-            ? tt("恢复上次浏览")
-            : tt("已开机")}
-        </button>
-        <button
-          type="button"
-          onClick={props.onHibernate}
-          disabled={busy || !canHibernate}
-          className={controlButtonClass(!busy && canHibernate)}
-          data-cloud-browser-hibernate
-        >
-          {tt("保存并关机")}
-        </button>
-        <button
-          type="button"
-          onClick={props.onDelete}
-          disabled={busy}
-          className={`h-7 shrink-0 rounded-md border px-2 text-[11px] ${
-            deleteArmed
-              ? "border-rose-300 bg-rose-50 text-rose-600"
-              : "border-stone-200 text-stone-500"
-          }`}
-          data-cloud-browser-delete
-        >
-          {deleteArmed ? tt("确认删除记录") : tt("删除记录")}
-        </button>
-      </div>
-
-      <div className="flex min-w-0 items-center gap-1.5 px-3 py-2">
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => props.onNavigate("back")}
-            disabled={!canMutate}
-            className={controlButtonClass(canMutate)}
-            aria-label={tt("后退")}
-            title={tt("后退")}
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={() => props.onNavigate("forward")}
-            disabled={!canMutate}
-            className={controlButtonClass(canMutate)}
-            aria-label={tt("前进")}
-            title={tt("前进")}
-          >
-            →
-          </button>
-          <button
-            type="button"
-            onClick={() => props.onNavigate("reload")}
-            disabled={!canMutate}
-            className={controlButtonClass(canMutate)}
-            aria-label={tt("重新加载")}
-            title={tt("重新加载")}
-          >
-            ↻
-          </button>
-        </div>
-
+      <div className="flex min-w-0 items-center gap-1.5">
         <div
-          className="flex min-w-[120px] flex-1 items-center gap-1 overflow-x-auto"
-          role="tablist"
-          aria-label={tt("浏览器标签页")}
-          data-cloud-browser-tabs
-        >
-          {tabs.map((tab) => {
-            const active = tab.id === activeTabId;
-            return (
-              <div
-                key={tab.id}
-                role="tab"
-                aria-selected={active}
-                data-tab-id={tab.id}
-                className={`group flex h-7 min-w-[112px] max-w-[190px] shrink-0 items-center rounded-md border text-[11px] ${
-                  active
-                    ? "border-stone-300 bg-stone-100 text-stone-800"
-                    : "border-transparent bg-stone-50 text-stone-500"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => props.onActivateTab(tab.id)}
-                  className="min-w-0 flex-1 truncate px-2 text-left"
-                  title={tab.title || tab.displayUrl || tt("新标签页")}
-                >
-                  {tab.status === "loading" ? "◌ " : ""}
-                  {tab.title || tt("新标签页")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => props.onCloseTab(tab.id)}
-                  disabled={!canMutate}
-                  className="mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-stone-400 hover:bg-stone-200 disabled:opacity-30"
-                  aria-label={tt("关闭标签页")}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={props.onCreateTab}
-            disabled={!canMutate}
-            className={controlButtonClass(canMutate)}
-            aria-label={tt("新建标签页")}
-            title={tt("新建标签页")}
-            data-cloud-browser-new-tab
-          >
-            ＋
-          </button>
-        </div>
-
-        <div
-          className="hidden max-w-[150px] shrink-0 items-center gap-1.5 text-[10px] text-stone-500 sm:flex"
+          className="flex min-w-0 flex-1 items-center gap-2"
           role="status"
           aria-live="polite"
           data-cloud-browser-live-state={transportState}
+          data-cloud-browser-lease-holder={lease.holderKind}
         >
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stateTone}`} />
-          <span className="truncate">{statusText}</span>
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${stateTone}`}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 truncate text-[10px] font-medium text-stone-700">
+            {statusText}
+          </span>
+          <span
+            className="hidden min-w-0 truncate text-[10px] text-stone-500 sm:inline"
+            data-cloud-browser-lease-status
+          >
+            {leaseText}
+          </span>
         </div>
 
         <button
           type="button"
           onClick={props.onToggleControl}
-          disabled={controlPending || transportState !== "streaming"}
-          className={`h-8 shrink-0 rounded-lg px-3 text-[11px] font-semibold disabled:opacity-45 ${
+          disabled={controlPending || !connected}
+          className={`h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
             driving
-              ? "bg-amber-100 text-amber-800"
+              ? "bg-amber-100 text-amber-900"
               : "bg-stone-900 text-white"
           }`}
+          aria-label={
+            driving
+              ? tt("释放控制并交还 Agent")
+              : tt("接管浏览器控制")
+          }
           data-cloud-browser-control
         >
           {controlPending
             ? tt("切换控制中…")
             : driving
-              ? tt("交还 Agent")
-              : tt("接管")}
+              ? tt("释放给 Agent")
+              : tt("接管控制")}
         </button>
+
+        {canBookmark && (
+          <button
+            type="button"
+            onClick={props.onBookmarkCurrentPage}
+            className={buttonClass()}
+            data-cloud-browser-bookmark-page
+          >
+            {tt("收藏当前页面")}
+          </button>
+        )}
 
         <div className="relative shrink-0">
           <button
             type="button"
-            onClick={props.onOpenOmnibox}
-            disabled={!canMutate}
-            className={controlButtonClass(canMutate)}
-            aria-expanded={omniboxOpen}
-            aria-controls="cloud-browser-omnibox"
-            title={`${tt("打开网址或搜索")} · Ctrl/⌘+L`}
-            data-cloud-browser-open-omnibox
+            onClick={props.onToggleCheckpoints}
+            className={buttonClass()}
+            aria-expanded={checkpointsOpen}
+            aria-controls="cloud-browser-checkpoints"
+            data-cloud-browser-checkpoint-history
           >
-            ⌕
+            {tt("会话快照与恢复")}
           </button>
-          {omniboxOpen && (
-            <form
-              id="cloud-browser-omnibox"
-              onSubmit={(event) => {
-                event.preventDefault();
-                props.onSubmitOmnibox();
-              }}
-              className="absolute right-0 top-9 z-40 flex w-[min(420px,85vw)] gap-2 rounded-xl border border-stone-200 bg-white p-2 shadow-xl"
-              data-cloud-browser-omnibox
-            >
-              <input
-                ref={omniboxInputRef}
-                value={omniboxValue}
-                onChange={(event) => props.onOmniboxValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    props.onCloseOmnibox();
-                  }
-                }}
-                placeholder={tt("输入网址或搜索内容")}
-                className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-2 text-[12px] outline-none focus:border-stone-400"
-                autoComplete="off"
-                aria-label={tt("打开网址或搜索")}
-              />
-              <button
-                type="submit"
-                disabled={!omniboxValue.trim()}
-                className="rounded-lg px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40"
-                style={{ background: accent }}
-              >
-                {tt("打开")}
-              </button>
-            </form>
+          {checkpointsOpen && (
+            <CloudBrowserCheckpointPanel
+              checkpoints={checkpoints}
+              loading={checkpointsLoading}
+              loadError={checkpointsError}
+              canCreate={canCreateCheckpoint}
+              onCreate={props.onCreateCheckpoint}
+              onRestore={props.onRestoreCheckpoint}
+              onClose={props.onToggleCheckpoints}
+            />
           )}
         </div>
 
         <button
           type="button"
-          onClick={props.onCaptureHistory}
-          disabled={!canCaptureHistory}
-          className={controlButtonClass(canCaptureHistory)}
-          title={tt("保存关键节点")}
-          aria-label={tt("保存关键节点")}
-          data-cloud-browser-capture
-        >
-          ◉
-        </button>
-        <button
-          type="button"
           onClick={props.onToggleFullscreen}
-          className={controlButtonClass()}
-          title={fullscreen ? tt("退出全屏") : tt("全屏")}
-          aria-label={fullscreen ? tt("退出全屏") : tt("全屏")}
+          className={buttonClass()}
+          title={
+            immersive ? tt("退出沉浸全屏") : tt("沉浸全屏")
+          }
+          aria-label={
+            immersive ? tt("退出沉浸全屏") : tt("沉浸全屏")
+          }
           data-cloud-browser-fullscreen
         >
-          {fullscreen ? "⤡" : "⤢"}
+          {immersive ? "⤡" : "⤢"}
         </button>
+
+        <details
+          ref={moreRef}
+          className="relative shrink-0"
+          data-cloud-browser-more
+        >
+          <summary
+            className={`${buttonClass()} flex cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden`}
+            aria-label={tt("更多会话操作")}
+          >
+            {tt("更多")}
+          </summary>
+          <div className="absolute bottom-10 right-0 z-50 max-h-[min(60vh,360px)] w-[min(320px,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-stone-200 bg-white p-2 shadow-2xl">
+            <label
+              htmlFor="cloud-browser-session-select"
+              className="mb-1 block text-[9px] font-medium text-stone-500"
+            >
+              {tt("浏览会话")}
+            </label>
+            <select
+              id="cloud-browser-session-select"
+              value={selectedId}
+              onChange={(event) => {
+                props.onChooseSession(event.target.value);
+                closeMore();
+              }}
+              className="w-full truncate rounded-lg border border-stone-200 bg-white px-2 py-2 text-[10px] outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              aria-label={tt("浏览会话")}
+              data-cloud-browser-session-select
+            >
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.last_title ||
+                    session.last_url ||
+                    tt("云端浏览器会话")}{" "}
+                  ·{" "}
+                  {new Date(
+                    session.updated_at || session.created_at,
+                  ).toLocaleString()}
+                </option>
+              ))}
+            </select>
+
+            {!liveRequested && (
+              <button
+                type="button"
+                onClick={() => {
+                  props.onOpenOrResume();
+                  closeMore();
+                }}
+                disabled={busy}
+                className="mt-2 w-full rounded-lg px-3 py-2 text-left text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
+                style={{ background: accent }}
+                data-cloud-browser-power
+              >
+                {selected?.status === "hibernated"
+                  ? tt("恢复当前浏览会话")
+                  : tt("连接当前浏览会话")}
+              </button>
+            )}
+            {liveRequested && (
+              <button
+                type="button"
+                onClick={() => {
+                  props.onHibernate();
+                  closeMore();
+                }}
+                disabled={busy || !canHibernate}
+                className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-left text-[10px] font-medium text-stone-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
+                data-cloud-browser-hibernate
+              >
+                {tt("休眠当前浏览会话")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                props.onDelete();
+                if (deleteArmed) closeMore();
+              }}
+              disabled={busy}
+              className={`mt-1.5 w-full rounded-lg border px-3 py-2 text-left text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
+                deleteArmed
+                  ? "border-rose-300 bg-rose-50 text-rose-700"
+                  : "border-stone-200 text-stone-600"
+              }`}
+              data-cloud-browser-delete
+            >
+              {deleteArmed
+                ? tt("确认永久删除此浏览会话")
+                : tt("删除此浏览会话")}
+            </button>
+          </div>
+        </details>
       </div>
     </header>
   );

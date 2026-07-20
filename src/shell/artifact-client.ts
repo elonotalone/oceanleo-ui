@@ -9,6 +9,9 @@ import {
   isEnsureableTransient,
   normalizeArtifactContextRef,
   normalizeArtifactProjection,
+  normalizeArtifactProjectionResult,
+  renditionNeedsRefresh,
+  selectArtifactRendition,
   type ArtifactApiErrorCode,
   type ArtifactCardAction,
   type ArtifactContextRef,
@@ -37,7 +40,18 @@ export interface ArtifactSearchResult {
   items: LibraryItem[];
   nextCursor: string | null;
   total: number | null;
+  ownerPrincipalId?: string | null;
 }
+
+export interface ArtifactDownloadResult {
+  artifactId: string;
+  revisionId: string;
+  url: string;
+  filename: string;
+}
+
+export const ARTIFACT_LIBRARY_CHANGE_EVENT =
+  "oceanleo:artifact-library-change";
 
 export interface ArtifactEditDecision {
   available: boolean;
@@ -111,6 +125,47 @@ function setTrimmedParam(
 ): void {
   const normalized = value?.trim();
   if (normalized) params.set(key, normalized);
+}
+
+function trustedHttpsUrl(value: unknown): string {
+  const candidate = String(value || "").trim();
+  if (!candidate || candidate.length > 4_096) return "";
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+const ARTIFACT_ACCESS_PATH = /^\/v1\/artifact-renditions\/access\/[^/?#]+$/;
+const ARTIFACT_URL_FIELDS = new Set([
+  "url",
+  "accessUrl",
+  "access_url",
+  "signedUrl",
+  "signed_url",
+]);
+
+function qualifyArtifactAccessUrls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(qualifyArtifactAccessUrls);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+      if (
+        ARTIFACT_URL_FIELDS.has(key) &&
+        typeof entry === "string" &&
+        ARTIFACT_ACCESS_PATH.test(entry)
+      ) {
+        const qualified = new URL(
+          entry,
+          `${GATEWAY_BASE.replace(/\/+$/, "")}/`,
+        ).toString();
+        return [key, trustedHttpsUrl(qualified) || entry];
+      }
+      return [key, qualifyArtifactAccessUrls(entry)];
+    }),
+  );
 }
 
 function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
@@ -197,7 +252,7 @@ async function artifactRequest<T>(
     });
     let payload: unknown = null;
     try {
-      payload = await response.json();
+      payload = qualifyArtifactAccessUrls(await response.json());
     } catch {
       payload = null;
     }
@@ -245,6 +300,8 @@ function projectionsFromPayload(payload: unknown): {
   responseContext: ArtifactContextRef | null;
   responseContextPresent: boolean;
   responseContextId: string | null;
+  scope: string;
+  ownerPrincipalId: string | null;
 } {
   const envelope =
     payload &&
@@ -263,13 +320,47 @@ function projectionsFromPayload(payload: unknown): {
       responseContext: null,
       responseContextPresent: false,
       responseContextId: null,
+      scope: "",
+      ownerPrincipalId: null,
     };
   }
   const rawItems = envelope.items;
-  const projections = rawItems.flatMap((value) => {
-    const item = normalizeArtifactProjection(value);
-    return item ? [item] : [];
-  });
+  const normalizedItems = rawItems.map(normalizeArtifactProjectionResult);
+  const projections = normalizedItems.flatMap((result) =>
+    result.ok && result.data ? [result.data] : [],
+  );
+  const computedInvalidCount = normalizedItems.length - projections.length;
+  const rawDeclaredInvalidCount =
+    envelope.invalidCount ?? envelope.invalid_count;
+  const invalidCountPresent =
+    Object.prototype.hasOwnProperty.call(envelope, "invalidCount") ||
+    Object.prototype.hasOwnProperty.call(envelope, "invalid_count");
+  if (
+    invalidCountPresent &&
+    (typeof rawDeclaredInvalidCount !== "number" ||
+      !Number.isFinite(rawDeclaredInvalidCount) ||
+      rawDeclaredInvalidCount < 0)
+  ) {
+    return {
+      ok: false,
+      projections: [],
+      nextCursor: null,
+      total: null,
+      invalidCount: 1,
+      error: "素材服务 invalidCount 字段无效。",
+      responseContext: null,
+      responseContextPresent: false,
+      responseContextId: null,
+      scope: String(envelope.scope || "").trim().toLowerCase(),
+      ownerPrincipalId: null,
+    };
+  }
+  const declaredInvalidCount =
+    typeof rawDeclaredInvalidCount === "number" &&
+    Number.isFinite(rawDeclaredInvalidCount) &&
+    rawDeclaredInvalidCount >= 0
+      ? Math.trunc(rawDeclaredInvalidCount)
+      : 0;
   const responseContextPresent = Object.prototype.hasOwnProperty.call(
     envelope,
     "context",
@@ -281,21 +372,112 @@ function projectionsFromPayload(payload: unknown): {
     envelope.nextCursor ??
     envelope.next_cursor;
   const nextCursor =
-    typeof rawNextCursor === "number" && Number.isFinite(rawNextCursor)
+    typeof rawNextCursor === "number" &&
+    Number.isFinite(rawNextCursor) &&
+    rawNextCursor >= 0
       ? String(Math.trunc(rawNextCursor))
-      : typeof rawNextCursor === "string" && rawNextCursor.trim()
+      : typeof rawNextCursor === "string" &&
+          /^\d+$/.test(rawNextCursor.trim())
         ? rawNextCursor.trim()
         : null;
   const rawResponseContextId = envelope.contextId ?? envelope.context_id;
+  const rawOwner =
+    envelope.owner &&
+    typeof envelope.owner === "object" &&
+    !Array.isArray(envelope.owner)
+      ? (envelope.owner as Record<string, unknown>)
+      : {};
+  const rawOwnerPrincipalId =
+    envelope.ownerPrincipalId ??
+    envelope.owner_principal_id ??
+    rawOwner.principalId ??
+    rawOwner.principal_id;
+  const rawTotal = envelope.total;
+  const total =
+    typeof rawTotal === "number" &&
+    Number.isFinite(rawTotal) &&
+    rawTotal >= 0
+      ? Math.trunc(rawTotal)
+      : null;
+  const invalidReason = normalizedItems.find((result) => !result.ok)?.error;
+  const invalidCount = computedInvalidCount + declaredInvalidCount;
+  if (invalidCount > 0) {
+    return {
+      ok: false,
+      projections: [],
+      nextCursor: null,
+      total,
+      invalidCount,
+      error:
+        invalidReason ||
+        `素材服务声明 ${declaredInvalidCount} 条无效 projection。`,
+      responseContext,
+      responseContextPresent,
+      responseContextId:
+        typeof rawResponseContextId === "string" &&
+        rawResponseContextId.trim()
+          ? rawResponseContextId.trim()
+          : null,
+      scope: String(envelope.scope || "").trim().toLowerCase(),
+      ownerPrincipalId:
+        typeof rawOwnerPrincipalId === "string" &&
+        rawOwnerPrincipalId.trim()
+          ? rawOwnerPrincipalId.trim()
+          : null,
+    };
+  }
+  if (total === null) {
+    return {
+      ok: false,
+      projections: [],
+      nextCursor: null,
+      total: null,
+      invalidCount: 0,
+      error: "素材服务 items envelope 缺少权威 total。",
+      responseContext,
+      responseContextPresent,
+      responseContextId:
+        typeof rawResponseContextId === "string" &&
+        rawResponseContextId.trim()
+          ? rawResponseContextId.trim()
+          : null,
+      scope: String(envelope.scope || "").trim().toLowerCase(),
+      ownerPrincipalId:
+        typeof rawOwnerPrincipalId === "string" &&
+        rawOwnerPrincipalId.trim()
+          ? rawOwnerPrincipalId.trim()
+          : null,
+    };
+  }
+  if (total !== null && total < rawItems.length) {
+    return {
+      ok: false,
+      projections: [],
+      nextCursor: null,
+      total,
+      invalidCount: 0,
+      error: "素材服务 total 小于当前页 items 数量。",
+      responseContext,
+      responseContextPresent,
+      responseContextId:
+        typeof rawResponseContextId === "string" &&
+        rawResponseContextId.trim()
+          ? rawResponseContextId.trim()
+          : null,
+      scope: String(envelope.scope || "").trim().toLowerCase(),
+      ownerPrincipalId:
+        typeof rawOwnerPrincipalId === "string" &&
+        rawOwnerPrincipalId.trim()
+          ? rawOwnerPrincipalId.trim()
+          : null,
+    };
+  }
   return {
     ok: true,
     projections,
     nextCursor,
-    total:
-      typeof envelope.total === "number" && Number.isFinite(envelope.total)
-        ? envelope.total
-        : null,
-    invalidCount: rawItems.length - projections.length,
+    total,
+    invalidCount: 0,
     error: "",
     responseContext,
     responseContextPresent,
@@ -303,6 +485,32 @@ function projectionsFromPayload(payload: unknown): {
       typeof rawResponseContextId === "string" && rawResponseContextId.trim()
         ? rawResponseContextId.trim()
         : null,
+    scope: String(envelope.scope || "").trim().toLowerCase(),
+    ownerPrincipalId:
+      typeof rawOwnerPrincipalId === "string" &&
+      rawOwnerPrincipalId.trim()
+        ? rawOwnerPrincipalId.trim()
+        : null,
+  };
+}
+
+function artifactItemFromProjection(
+  projection: ArtifactProjection,
+  options: { forEdit?: boolean } = {},
+): LibraryItem {
+  const item = artifactProjectionToLibraryItem(projection, options);
+  const href = new URL("https://asset.oceanleo.com/materials");
+  href.searchParams.set("artifactId", projection.artifactId);
+  href.searchParams.set("revisionId", projection.revisionId);
+  href.searchParams.set("taxonomy", projection.artifactType);
+  return {
+    ...item,
+    meta: {
+      ...item.meta,
+      ...(projection.owner.visibility === "public"
+        ? { asset_page_url: href.toString() }
+        : {}),
+    },
   };
 }
 
@@ -311,11 +519,14 @@ function itemResult(
   expected?: { artifactId: string; revisionId?: string },
 ): ArtifactApiResult<LibraryItem> {
   if (!result.ok) return result as ArtifactApiResult<LibraryItem>;
-  const projection = normalizeArtifactProjection(result.data);
-  if (!projection) {
+  const normalized = normalizeArtifactProjectionResult(result.data);
+  const projection = normalized.data;
+  if (!normalized.ok || !projection) {
     return {
       ok: false,
-      error: "素材服务返回了无效的 artifact/revision 投影。",
+      error:
+        normalized.error ||
+        "素材服务返回了无效的 artifact/revision 投影。",
       code: "invalid-response",
       status: result.status,
       retryable: false,
@@ -341,7 +552,7 @@ function itemResult(
   }
   return {
     ...result,
-    data: artifactProjectionToLibraryItem(projection),
+    data: artifactItemFromProjection(projection),
   };
 }
 
@@ -354,7 +565,7 @@ export async function getArtifactItem(
   return itemResult(
     await artifactRequest<unknown>(
       `/v1/library/items/${encodeURIComponent(artifactId.trim())}?${params}`,
-      { signal },
+      { signal, auth: "optional" },
     ),
     { artifactId, revisionId },
   );
@@ -390,6 +601,15 @@ export async function listPrimaryArtifacts(
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
   const normalized = projectionsFromPayload(result.data);
+  if (!normalized.ok) {
+    return {
+      ok: false,
+      error: normalized.error,
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
   const requestedContextId = context.contextId.trim();
   const fullResponseContextMatches = normalized.responseContextPresent
     ? Boolean(
@@ -402,39 +622,43 @@ export async function listPrimaryArtifacts(
     : normalized.responseContextPresent;
   const responseContextMatches =
     fullResponseContextMatches && responseContextIdMatches;
-  if (
-    !normalized.ok ||
-    !responseContextMatches
-  ) {
+  if (!responseContextMatches) {
     return {
       ok: false,
       error:
-        normalized.error ||
         "Primary 响应缺少请求 context，或返回了不匹配的 context。",
       code: "invalid-binding",
       status: result.status,
       retryable: false,
     };
   }
-  const authorized = normalized.projections.filter(
+  const invalid = normalized.projections.find(
     (artifact) =>
-      artifactIsVisible(artifact) &&
-      artifactHasExactContext(artifact, context.contextId) &&
-      (!options.artifactType ||
-        artifact.artifactType === options.artifactType),
+      !artifactIsVisible(artifact) ||
+      !artifactHasExactContext(artifact, context.contextId) ||
+      Boolean(
+        options.artifactType &&
+          artifact.artifactType !== options.artifactType,
+      ),
   );
-  const omitted =
-    normalized.invalidCount +
-    normalized.projections.length -
-    authorized.length;
+  if (invalid) {
+    return {
+      ok: false,
+      error:
+        "Primary 返回了未授权、非精确 context 或 taxonomy 不匹配的 projection。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
   return {
     ...result,
     data: {
-      items: authorized.map((artifact) =>
-        artifactProjectionToLibraryItem(artifact),
+      items: normalized.projections.map((artifact) =>
+        artifactItemFromProjection(artifact),
       ),
-      nextCursor: omitted === 0 ? normalized.nextCursor : null,
-      total: omitted === 0 ? normalized.total : null,
+      nextCursor: normalized.nextCursor,
+      total: normalized.total,
     },
   };
 }
@@ -450,6 +674,8 @@ export async function searchArtifactLibrary(options: {
   limit?: number;
   signal?: AbortSignal;
 } = {}): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const requestedRole = options.role?.trim() || "";
+  const requestedSourceFormat = options.sourceFormat?.trim() || "";
   const params = new URLSearchParams({
     limit: boundedLibraryLimit(options.limit),
   });
@@ -461,6 +687,79 @@ export async function searchArtifactLibrary(options: {
   if (offset > 0) params.set("offset", String(offset));
   const result = await artifactRequest<unknown>(
     `/v1/library/search?${params}`,
+    { signal: options.signal, auth: "optional" },
+  );
+  if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
+  const normalized = projectionsFromPayload(result.data);
+  if (!normalized.ok) {
+    return {
+      ok: false,
+      error: normalized.error,
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  if (normalized.scope !== "public") {
+    return {
+      ok: false,
+      error: "完整素材库响应 scope 不是 public。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  const invalid = normalized.projections.find(
+    (artifact) =>
+      !artifactIsVisible(artifact) ||
+      artifact.owner.visibility !== "public" ||
+      Boolean(
+        options.artifactType &&
+          artifact.artifactType !== options.artifactType,
+      ) ||
+      Boolean(requestedRole && !artifact.roles.includes(requestedRole)) ||
+      Boolean(
+        requestedSourceFormat &&
+          artifact.sourceFormat !== requestedSourceFormat,
+      ),
+  );
+  if (invalid) {
+    return {
+      ok: false,
+      error:
+        "完整素材库返回了非 public、未授权或筛选条件不匹配的 projection。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  return {
+    ...result,
+    data: {
+      items: normalized.projections.map((artifact) =>
+        artifactItemFromProjection(artifact),
+      ),
+      nextCursor: normalized.nextCursor,
+      total: normalized.total,
+    },
+  };
+}
+
+export async function listMyArtifacts(options: {
+  artifactType?: ArtifactType | "";
+  offset?: number;
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+} = {}): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const params = new URLSearchParams({
+    limit: boundedLibraryLimit(options.limit),
+  });
+  setTrimmedParam(params, "artifactType", options.artifactType);
+  const offset = boundedLibraryOffset(options.offset ?? options.cursor);
+  if (offset > 0) params.set("offset", String(offset));
+  const result = await artifactRequest<unknown>(
+    `/v1/library/mine?${params}`,
     { signal: options.signal },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
@@ -474,28 +773,54 @@ export async function searchArtifactLibrary(options: {
       retryable: false,
     };
   }
-  const authorized = normalized.projections.filter(
-    artifactIsVisible,
+  if (
+    !normalized.ownerPrincipalId ||
+    normalized.scope !== "mine"
+  ) {
+    return {
+      ok: false,
+      error: "我的库响应缺少 ownerPrincipalId 或 scope 不是 mine。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  const invalid = normalized.projections.find(
+    (artifact) =>
+      !artifactIsVisible(artifact) ||
+      artifact.owner.principalId !== normalized.ownerPrincipalId ||
+      artifact.owner.visibility === "public" ||
+      Boolean(
+        options.artifactType &&
+          artifact.artifactType !== options.artifactType,
+      ),
   );
-  const omitted =
-    normalized.invalidCount +
-    normalized.projections.length -
-    authorized.length;
+  if (invalid) {
+    return {
+      ok: false,
+      error:
+        "我的库返回了其他 owner、public inventory 或未授权 projection。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
   return {
     ...result,
     data: {
-      items: authorized.map((artifact) =>
-        artifactProjectionToLibraryItem(artifact),
+      items: normalized.projections.map((artifact) =>
+        artifactItemFromProjection(artifact),
       ),
-      nextCursor: omitted === 0 ? normalized.nextCursor : null,
-      total: omitted === 0 ? normalized.total : null,
+      nextCursor: normalized.nextCursor,
+      total: normalized.total,
+      ownerPrincipalId: normalized.ownerPrincipalId,
     },
   };
 }
 
 export async function ensureArtifact(
   transient: TransientGenerationResult,
-  _signal?: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<ArtifactApiResult<LibraryItem>> {
   if (!isEnsureableTransient(transient)) {
     return {
@@ -521,7 +846,8 @@ export async function ensureArtifact(
     }
     return current.promise;
   }
-  const promise = artifactRequest<unknown>("/v1/artifacts/ensure", {
+  const promise: Promise<ArtifactApiResult<LibraryItem>> =
+    artifactRequest<unknown>("/v1/artifacts/ensure", {
       method: "POST",
       headers: { "Idempotency-Key": key },
       body: JSON.stringify({
@@ -539,10 +865,67 @@ export async function ensureArtifact(
         function_id: transient.functionId || null,
         provenance: transient.provenance || {},
       }),
-    }).then(itemResult);
+      signal,
+    }).then((result): ArtifactApiResult<LibraryItem> => {
+      if (!result.ok) return result as ArtifactApiResult<LibraryItem>;
+      const envelope =
+        result.data &&
+        typeof result.data === "object" &&
+        !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : {};
+      const receiptValue =
+        envelope.receipt &&
+        typeof envelope.receipt === "object" &&
+        !Array.isArray(envelope.receipt)
+          ? (envelope.receipt as Record<string, unknown>)
+          : {};
+      const resultId = String(
+        receiptValue.resultId || receiptValue.result_id || "",
+      ).trim();
+      const payloadDigest = String(
+        receiptValue.payloadDigest || receiptValue.payload_digest || "",
+      ).trim();
+      const idempotencyKey = String(
+        receiptValue.idempotencyKey ||
+          receiptValue.idempotency_key ||
+          "",
+      ).trim();
+      if (
+        resultId !== transient.resultId ||
+        payloadDigest !== transient.payloadDigest ||
+        idempotencyKey !== transient.idempotencyKey
+      ) {
+        return {
+          ok: false,
+          error:
+            "ensure 响应缺少与请求一致的 resultId/payloadDigest/idempotencyKey receipt。",
+          code: "transient-persistence-failed",
+          status: result.status,
+          retryable: false,
+        };
+      }
+      return itemResult(result);
+    });
   ENSURE_PENDING.set(key, { digest: transient.payloadDigest, promise });
   try {
-    return await promise;
+    const ensured = await promise;
+    if (
+      ensured.ok &&
+      ensured.data &&
+      typeof window !== "undefined"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+          detail: {
+            action: "ensure",
+            artifactId: ensured.data.artifactId,
+            revisionId: ensured.data.revisionId,
+          },
+        }),
+      );
+    }
+    return ensured;
   } finally {
     if (ENSURE_PENDING.get(key)?.promise === promise) {
       ENSURE_PENDING.delete(key);
@@ -614,13 +997,27 @@ export async function getArtifactEditDecision(
     result.data && typeof result.data === "object"
       ? (result.data as Record<string, unknown>)
       : {};
-  const projection = normalizeArtifactProjection(raw.item ?? raw.artifact);
+  const normalizedProjection = normalizeArtifactProjectionResult(
+    raw.item ?? raw.artifact,
+  );
+  const projection = normalizedProjection.data;
+  const declaredCapability =
+    typeof raw.editor_capability === "string"
+      ? raw.editor_capability.trim()
+      : typeof raw.editorCapability === "string"
+        ? raw.editorCapability.trim()
+        : "";
   if (
     !isDurableLibraryItem(canonical) ||
+    !normalizedProjection.ok ||
     !projection ||
     !artifactIsVisible(projection) ||
     projection.artifactId !== canonical.artifactId ||
-    projection.revisionId !== canonical.revisionId
+    projection.revisionId !== canonical.revisionId ||
+    typeof raw.available !== "boolean" ||
+    (raw.available === true &&
+      (!declaredCapability ||
+        declaredCapability !== projection.editorCapability))
   ) {
     return {
       ok: false,
@@ -636,13 +1033,8 @@ export async function getArtifactEditDecision(
     data: {
       available: raw.available === true,
       reason: String(raw.reason || raw.unavailable_reason || ""),
-      editorCapability:
-        typeof raw.editor_capability === "string"
-          ? raw.editor_capability
-          : typeof raw.editorCapability === "string"
-            ? raw.editorCapability
-            : canonical.artifact?.editorCapability || null,
-      item: artifactProjectionToLibraryItem(projection, { forEdit: true }),
+      editorCapability: declaredCapability || null,
+      item: artifactItemFromProjection(projection, { forEdit: true }),
     },
   };
 }
@@ -710,7 +1102,7 @@ export async function refreshArtifactRendition(
     `/v1/library/items/${encodeURIComponent(
       identity.artifactId,
     )}/renditions/${purpose}/url?${params}`,
-    { method: "POST", body: "{}", signal },
+    { method: "POST", body: "{}", signal, auth: "optional" },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactRendition>;
   const projection = normalizeArtifactProjection(result.data);
@@ -753,9 +1145,9 @@ export async function refreshArtifactRendition(
           rawRendition.revisionId ||
           "",
       ).trim();
-      const url = String(
-        rawRendition.url || rawRendition.signed_url || "",
-      ).trim();
+      const url = trustedHttpsUrl(
+        rawRendition.url || rawRendition.signed_url,
+      );
       return url &&
         artifactId === identity.artifactId &&
         revisionId === identity.revisionId &&
@@ -805,6 +1197,87 @@ export async function refreshArtifactRendition(
   return { ...result, data: rendition };
 }
 
+export async function getArtifactDownload(
+  item: LibraryItem,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<ArtifactDownloadResult>> {
+  const durable = await ensureDurableArtifactItem(item, signal);
+  if (!durable.ok || !durable.data) {
+    return {
+      ok: false,
+      error: durable.error,
+      code: durable.code,
+      status: durable.status,
+      retryable: durable.retryable,
+    };
+  }
+  if (!isDurableLibraryItem(durable.data)) {
+    return {
+      ok: false,
+      error: "下载准备未返回 durable artifact identity。",
+      code: "invalid-response",
+      status: durable.status,
+      retryable: false,
+    };
+  }
+  const artifact = durable.data.artifact;
+  if (!artifact.access.canRead || !artifact.access.canPreview) {
+    return {
+      ok: false,
+      error: "当前主体没有下载这个 revision 的权限。",
+      code: "unauthorized",
+      status: 403,
+      retryable: false,
+    };
+  }
+  const purposes: ArtifactRenditionPurpose[] = artifact.access.canExportSource
+    ? ["full", "source", "preview"]
+    : ["full", "preview"];
+  let rendition = selectArtifactRendition(artifact, purposes);
+  if (!rendition) {
+    return {
+      ok: false,
+      error: "当前 revision 没有可下载的授权 rendition。",
+      code: "missing-source",
+      status: 422,
+      retryable: false,
+    };
+  }
+  if (renditionNeedsRefresh(rendition)) {
+    const refreshed = await refreshArtifactRendition(
+      {
+        artifactId: artifact.artifactId,
+        revisionId: artifact.revisionId,
+      },
+      rendition.purpose,
+      signal,
+    );
+    if (!refreshed.ok || !refreshed.data) {
+      return {
+        ok: false,
+        error: refreshed.error || "下载 rendition 刷新失败。",
+        code: refreshed.code || "invalid-response",
+        status: refreshed.status,
+        retryable: refreshed.retryable,
+      };
+    }
+    rendition = refreshed.data;
+  }
+  const extension = rendition.format.trim().replace(/[^a-z0-9]+/gi, "");
+  const baseName =
+    artifact.title.trim().replace(/[\\/:*?"<>|]+/g, "-") || "artifact";
+  return {
+    ok: true,
+    status: durable.status,
+    data: {
+      artifactId: artifact.artifactId,
+      revisionId: artifact.revisionId,
+      url: rendition.url,
+      filename: extension ? `${baseName}.${extension}` : baseName,
+    },
+  };
+}
+
 export async function setArtifactFavorite(
   item: LibraryItem,
   favorite: boolean,
@@ -823,7 +1296,7 @@ export async function setArtifactFavorite(
       retryable: false,
     };
   }
-  return itemResult(
+  const updated = itemResult(
     await artifactRequest<unknown>(
       `/v1/artifacts/${encodeURIComponent(
         durable.data.artifactId || "",
@@ -841,6 +1314,32 @@ export async function setArtifactFavorite(
       revisionId: durable.data.revisionId,
     },
   );
+  if (updated.ok && updated.data?.favorite !== favorite) {
+    return {
+      ok: false,
+      error: "收藏响应未确认请求的 artifact/revision favorite 状态。",
+      code: "invalid-response",
+      status: updated.status,
+      retryable: false,
+    };
+  }
+  if (
+    updated.ok &&
+    updated.data &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(
+      new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+        detail: {
+          action: "favorite",
+          artifactId: updated.data.artifactId,
+          revisionId: updated.data.revisionId,
+          favorite,
+        },
+      }),
+    );
+  }
+  return updated;
 }
 
 export async function bindArtifactToContext(
@@ -942,26 +1441,73 @@ export async function forkArtifact(
       retryable: false,
     };
   }
-  return itemResult(
-    await artifactRequest<unknown>(
-      `/v1/artifacts/${encodeURIComponent(
-        durable.data.artifactId || "",
-      )}:fork`,
-      {
-        method: "POST",
-        headers: {
-          "Idempotency-Key": [
-            "artifact-fork-v1",
-            durable.data.artifactId,
-            durable.data.revisionId,
-          ].join(":"),
-        },
-        body: JSON.stringify({
-          source_revision_id: durable.data.revisionId,
-        }),
+  const result = await artifactRequest<unknown>(
+    `/v1/artifacts/${encodeURIComponent(
+      durable.data.artifactId || "",
+    )}:fork`,
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": [
+          "artifact-fork-v1",
+          durable.data.artifactId,
+          durable.data.revisionId,
+        ].join(":"),
       },
-    ),
+      body: JSON.stringify({
+        source_revision_id: durable.data.revisionId,
+      }),
+    },
   );
+  if (!result.ok) return result as ArtifactApiResult<LibraryItem>;
+  const envelope =
+    result.data &&
+    typeof result.data === "object" &&
+    !Array.isArray(result.data)
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const forkedFrom =
+    envelope.forkedFrom &&
+    typeof envelope.forkedFrom === "object" &&
+    !Array.isArray(envelope.forkedFrom)
+      ? (envelope.forkedFrom as Record<string, unknown>)
+      : envelope.forked_from &&
+          typeof envelope.forked_from === "object" &&
+          !Array.isArray(envelope.forked_from)
+        ? (envelope.forked_from as Record<string, unknown>)
+        : {};
+  if (
+    String(
+      forkedFrom.artifactId || forkedFrom.artifact_id || "",
+    ).trim() !== durable.data.artifactId ||
+    String(
+      forkedFrom.revisionId || forkedFrom.revision_id || "",
+    ).trim() !== durable.data.revisionId
+  ) {
+    return {
+      ok: false,
+      error: "fork 响应未证明来源 artifact/revision。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  const forked = itemResult(result);
+  if (
+    forked.ok &&
+    forked.data &&
+    isDurableLibraryItem(forked.data) &&
+    forked.data.artifactId === durable.data.artifactId
+  ) {
+    return {
+      ok: false,
+      error: "fork 响应复用了原 artifact root。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  return forked;
 }
 
 /**
@@ -1040,14 +1586,102 @@ export async function createArtifactRevision(
       retryable: false,
     };
   }
-  return result;
+  const committed: ArtifactApiResult<LibraryItem> = {
+    ...result,
+    data: {
+      ...result.data,
+      meta: {
+        ...result.data.meta,
+        previous_revision_id: commit.expectedRevisionId,
+      },
+    },
+  };
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+        detail: {
+          action: "revision",
+          artifactId: committed.data?.artifactId,
+          revisionId: committed.data?.revisionId,
+          previousRevisionId: commit.expectedRevisionId,
+        },
+      }),
+    );
+  }
+  return committed;
 }
 
 export async function retireArtifact(
-  artifactId: string,
+  item: LibraryItem,
 ): Promise<ArtifactApiResult<{ retired: boolean }>> {
-  return artifactRequest<{ retired: boolean }>(
-    `/v1/artifacts/${encodeURIComponent(artifactId)}`,
-    { method: "DELETE" },
+  const durable = await ensureDurableArtifactItem(item);
+  if (
+    !durable.ok ||
+    !durable.data ||
+    !isDurableLibraryItem(durable.data)
+  ) {
+    return {
+      ok: false,
+      error: durable.error || "缺少可 retire 的 durable identity。",
+      code: durable.code || "invalid-response",
+      status: durable.status,
+      retryable: false,
+    };
+  }
+  const identity = durable.data;
+  const params = new URLSearchParams({
+    revisionId: identity.revisionId,
+  });
+  const result = await artifactRequest<unknown>(
+    `/v1/artifacts/${encodeURIComponent(identity.artifactId)}?${params}`,
+    {
+      method: "DELETE",
+      headers: { "If-Match": identity.revisionId },
+    },
   );
+  if (!result.ok) {
+    return result as ArtifactApiResult<{ retired: boolean }>;
+  }
+  const raw =
+    result.data &&
+    typeof result.data === "object" &&
+    !Array.isArray(result.data)
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const artifactId = String(
+    raw.artifactId || raw.artifact_id || "",
+  ).trim();
+  const revisionId = String(
+    raw.revisionId || raw.revision_id || "",
+  ).trim();
+  if (
+    raw.retired !== true ||
+    artifactId !== identity.artifactId ||
+    revisionId !== identity.revisionId
+  ) {
+    return {
+      ok: false,
+      error:
+        "retire 响应没有确认请求的 artifact/revision，列表状态保持不变。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+        detail: {
+          action: "retire",
+          artifactId,
+          revisionId,
+        },
+      }),
+    );
+  }
+  return {
+    ok: true,
+    status: result.status,
+    data: { retired: true },
+  };
 }
