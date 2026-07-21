@@ -165,8 +165,8 @@ export function handleCloudBrowserProtocolMessage(
   const reduction = reduceCloudBrowserProtocolMessage(previous, message, {
     runtimeFailed: context.tt("浏览器运行失败"),
     operationFailed: context.tt("浏览器操作失败"),
-    protocolMismatch: context.tt("云浏览器协议不匹配，已拒绝连接"),
-    staleStream: context.tt("收到过期画面流，已停止输入"),
+    protocolMismatch: context.tt("云浏览器连接校验失败，已断开连接，请重试"),
+    staleStream: context.tt("画面流已过期，已断开实时画面，请重新连接"),
     leaseLost: context.tt("控制租约已失效，请重新接管"),
   });
   commit(previous, reduction.state, context);
@@ -183,9 +183,12 @@ export function handleCloudBrowserProtocolMessage(
     } else if (effect.type === "cancel_frame_decode") {
       context.cancelFrameDecode(false);
     } else if (effect.type === "accept_frame_meta") {
+      // The pure reducer cannot drop a frame and wait for the next
+      // metadata, so pairing failures reject here and rely on the
+      // transport's bounded ticket-reissue recovery.
       if (!context.acceptFrameMeta(effect.meta)) {
         context.rejectProtocol(
-          context.tt("二进制画面与元数据未按顺序配对"),
+          context.tt("画面流校验失败（元数据未配对），请重试连接"),
           "protocol_mismatch",
         );
       }

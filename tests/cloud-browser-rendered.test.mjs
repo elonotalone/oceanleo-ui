@@ -206,7 +206,13 @@ test("rendered session row has no duplicate browser chrome", async () => {
   assert.match(container.textContent, /你正在控制 · 租约代 12/);
   assert.match(container.textContent, /释放给 Agent/);
   assert.match(container.textContent, /收藏当前页面/);
-  assert.match(container.textContent, /会话快照与恢复/);
+  // Flattened bottom bar: 历史 + 新建 + 休眠 replace the old 更多 dropdown.
+  assert.match(container.textContent, /历史/);
+  assert.match(container.textContent, /新建/);
+  assert.match(container.textContent, /休眠/);
+  assert.equal(container.querySelector("[data-cloud-browser-more]"), null);
+  assert.ok(container.querySelector("[data-cloud-browser-power]"));
+  assert.ok(container.querySelector("[data-cloud-browser-hibernate]"));
   const liveStatus = container.querySelector('[role="status"]');
   assert.equal(liveStatus?.getAttribute("aria-live"), "polite");
   for (const button of container.querySelectorAll("button, summary")) {
@@ -261,6 +267,12 @@ test("checkpoint card exposes pins and restore confirmation/error", async () => 
   await act(async () => {
     root.render(
       React.createElement(CloudBrowserCheckpointPanel, {
+        sessions: [session],
+        selectedId: session.id,
+        busy: false,
+        deleteArmed: false,
+        onChooseSession() {},
+        onDelete() {},
         checkpoints: [checkpoint],
         loading: false,
         loadError: "",

@@ -9,7 +9,10 @@ import {
   validateCloudBrowserFrameMeta,
   type ValidatedCloudBrowserFrameMeta,
 } from "./cloud-browser-live";
-import { EMPTY_BROWSER_LEASE } from "./cloud-browser-transport-config";
+import {
+  EMPTY_BROWSER_LEASE,
+  LIVE_RECOVERY_DELAYS_MS,
+} from "./cloud-browser-transport-config";
 import {
   CLOUD_BROWSER_MAX_CONTROL_BYTES,
   CLOUD_BROWSER_MAX_FRAME_BYTES,
@@ -97,6 +100,35 @@ export type CloudBrowserFailureKind =
   | "connection"
   | "lease_lost"
   | null;
+
+export type CloudBrowserLiveRecoveryPlan =
+  | { retry: true; delayMs: number }
+  | { retry: false };
+
+const RECOVERABLE_FAILURE_KINDS: ReadonlySet<CloudBrowserFailureKind> =
+  new Set(["first_paint", "protocol_mismatch", "stale_stream"]);
+
+/**
+ * Client-side validation failures (first paint timeout, protocol or
+ * frame-pairing rejects, stale streams) get a bounded automatic
+ * recovery: each retry re-issues a one-use ticket and reconnects.
+ * Anything else (connection loss, expired tickets, lost leases) keeps
+ * its existing dedicated handling.
+ */
+export function planCloudBrowserLiveRecovery(
+  kind: CloudBrowserFailureKind,
+  attemptsUsed: number,
+): CloudBrowserLiveRecoveryPlan {
+  if (
+    !RECOVERABLE_FAILURE_KINDS.has(kind) ||
+    !Number.isSafeInteger(attemptsUsed) ||
+    attemptsUsed < 0 ||
+    attemptsUsed >= LIVE_RECOVERY_DELAYS_MS.length
+  ) {
+    return { retry: false };
+  }
+  return { retry: true, delayMs: LIVE_RECOVERY_DELAYS_MS[attemptsUsed] };
+}
 
 const EMPTY_CAPABILITIES: CloudBrowserCapabilitiesV3 = {
   page_bookmark: false,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef } from "react";
 import type {
   CloudBrowserCheckpoint,
   CloudBrowserControlLease,
@@ -37,6 +36,7 @@ type BrowserSessionRowProps = {
   checkpointsError: string;
   onChooseSession: (sessionId: string) => void;
   onOpenOrResume: () => void;
+  onStartNew: () => void;
   onHibernate: () => void;
   onDelete: () => void;
   onToggleControl: () => void;
@@ -59,7 +59,6 @@ function buttonClass(enabled = true) {
 
 export function CloudBrowserChrome(props: BrowserSessionRowProps) {
   const tt = useUI();
-  const moreRef = useRef<HTMLDetailsElement | null>(null);
   const {
     accent,
     sessions,
@@ -107,10 +106,16 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           });
   const hiddenInImmersive =
     immersive && !immersiveControlsVisible;
-
-  function closeMore() {
-    if (moreRef.current) moreRef.current.open = false;
-  }
+  const powerLabel = liveRequested
+    ? tt("新建")
+    : selected?.status === "hibernated"
+      ? tt("恢复")
+      : tt("连接");
+  const powerAria = liveRequested
+    ? tt("新建浏览会话")
+    : selected?.status === "hibernated"
+      ? tt("恢复当前浏览会话")
+      : tt("连接当前浏览会话");
 
   return (
     <header
@@ -192,12 +197,19 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
             className={buttonClass()}
             aria-expanded={checkpointsOpen}
             aria-controls="cloud-browser-checkpoints"
+            aria-label={tt("会话快照与恢复")}
             data-cloud-browser-checkpoint-history
           >
-            {tt("会话快照与恢复")}
+            {tt("历史")}
           </button>
           {checkpointsOpen && (
             <CloudBrowserCheckpointPanel
+              sessions={sessions}
+              selectedId={selectedId}
+              busy={busy}
+              deleteArmed={deleteArmed}
+              onChooseSession={props.onChooseSession}
+              onDelete={props.onDelete}
               checkpoints={checkpoints}
               loading={checkpointsLoading}
               loadError={checkpointsError}
@@ -208,6 +220,31 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
             />
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={
+            liveRequested ? props.onStartNew : props.onOpenOrResume
+          }
+          disabled={busy}
+          className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
+          style={{ background: accent }}
+          aria-label={powerAria}
+          data-cloud-browser-power
+        >
+          {powerLabel}
+        </button>
+
+        <button
+          type="button"
+          onClick={props.onHibernate}
+          disabled={busy || !canHibernate}
+          className={buttonClass(!busy && canHibernate)}
+          aria-label={tt("休眠当前浏览会话")}
+          data-cloud-browser-hibernate
+        >
+          {tt("休眠")}
+        </button>
 
         <button
           type="button"
@@ -223,100 +260,6 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
         >
           {immersive ? "⤡" : "⤢"}
         </button>
-
-        <details
-          ref={moreRef}
-          className="relative shrink-0"
-          data-cloud-browser-more
-        >
-          <summary
-            className={`${buttonClass()} flex cursor-pointer list-none items-center [&::-webkit-details-marker]:hidden`}
-            aria-label={tt("更多会话操作")}
-          >
-            {tt("更多")}
-          </summary>
-          <div className="absolute bottom-10 right-0 z-50 max-h-[min(60vh,360px)] w-[min(320px,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-stone-200 bg-white p-2 shadow-2xl">
-            <label
-              htmlFor="cloud-browser-session-select"
-              className="mb-1 block text-[9px] font-medium text-stone-500"
-            >
-              {tt("浏览会话")}
-            </label>
-            <select
-              id="cloud-browser-session-select"
-              value={selectedId}
-              onChange={(event) => {
-                props.onChooseSession(event.target.value);
-                closeMore();
-              }}
-              className="w-full truncate rounded-lg border border-stone-200 bg-white px-2 py-2 text-[10px] outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-              aria-label={tt("浏览会话")}
-              data-cloud-browser-session-select
-            >
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.last_title ||
-                    session.last_url ||
-                    tt("云端浏览器会话")}{" "}
-                  ·{" "}
-                  {new Date(
-                    session.updated_at || session.created_at,
-                  ).toLocaleString()}
-                </option>
-              ))}
-            </select>
-
-            {!liveRequested && (
-              <button
-                type="button"
-                onClick={() => {
-                  props.onOpenOrResume();
-                  closeMore();
-                }}
-                disabled={busy}
-                className="mt-2 w-full rounded-lg px-3 py-2 text-left text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
-                style={{ background: accent }}
-                data-cloud-browser-power
-              >
-                {selected?.status === "hibernated"
-                  ? tt("恢复当前浏览会话")
-                  : tt("连接当前浏览会话")}
-              </button>
-            )}
-            {liveRequested && (
-              <button
-                type="button"
-                onClick={() => {
-                  props.onHibernate();
-                  closeMore();
-                }}
-                disabled={busy || !canHibernate}
-                className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-left text-[10px] font-medium text-stone-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
-                data-cloud-browser-hibernate
-              >
-                {tt("休眠当前浏览会话")}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                props.onDelete();
-                if (deleteArmed) closeMore();
-              }}
-              disabled={busy}
-              className={`mt-1.5 w-full rounded-lg border px-3 py-2 text-left text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
-                deleteArmed
-                  ? "border-rose-300 bg-rose-50 text-rose-700"
-                  : "border-stone-200 text-stone-600"
-              }`}
-              data-cloud-browser-delete
-            >
-              {deleteArmed
-                ? tt("确认永久删除此浏览会话")
-                : tt("删除此浏览会话")}
-            </button>
-          </div>
-        </details>
       </div>
     </header>
   );

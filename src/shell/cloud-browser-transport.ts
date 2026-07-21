@@ -26,12 +26,14 @@ import {
 import { createCloudBrowserTransportActions } from "./cloud-browser-transport-actions";
 import {
   EMPTY_BROWSER_LEASE,
+  FIRST_FRAME_TIMEOUT_MS,
   LIVE_RECONNECT_BASE_MS,
   MAX_LIVE_RECONNECTS,
   type CloudBrowserTransportOptions,
 } from "./cloud-browser-transport-config";
 import {
   decodeCloudBrowserProtocolMessage,
+  planCloudBrowserLiveRecovery,
   reduceCloudBrowserTransportTransition,
   type CloudBrowserFailureKind,
   type CloudBrowserHelloTab,
@@ -84,6 +86,7 @@ export function useCloudBrowserTransport({
   const socketSessionRef = useRef("");
   const socketGenerationRef = useRef(0);
   const reconnectAttemptsRef = useRef(0);
+  const liveRecoveryAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameTimerRef = useRef<number | null>(null);
   const liveRequestedRef = useRef(false);
@@ -122,6 +125,9 @@ export function useCloudBrowserTransport({
   const sentEventIdsRef = useRef(new Set<string>());
   const cancelFrameDecodeRef =
     useRef<(clearCanvas?: boolean) => void>(() => {});
+  const scheduleLiveRecoveryRef = useRef<
+    (kind: Exclude<CloudBrowserFailureKind, null>) => boolean
+  >(() => false);
 
   const setControlPending = useCallback(
     (value: SetStateAction<boolean>) => {
@@ -384,7 +390,6 @@ export function useCloudBrowserTransport({
       ) {
         return;
       }
-      liveRequestedRef.current = false;
       const socket = socketRef.current;
       socketRef.current = null;
       cancelFrameDecodeRef.current(false);
@@ -394,12 +399,16 @@ export function useCloudBrowserTransport({
         // A retry always creates a fresh one-use ticket and connection.
       }
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
+      if (scheduleLiveRecoveryRef.current("first_paint")) {
+        setFailureKind(null);
+        setError("");
+        return;
+      }
+      liveRequestedRef.current = false;
       setFailureKind("first_paint");
       transition("failed");
-      setError(
-        tt("5 秒内未收到带原生 Chrome 证据的新鲜首帧，未进入实时状态"),
-      );
-    }, 5_000);
+      setError(tt("启动超时：原生 Chrome 画面未就绪，请重试"));
+    }, FIRST_FRAME_TIMEOUT_MS);
   }, [
     clearFirstFrameTimeout,
     setCurrentLease,
@@ -414,15 +423,11 @@ export function useCloudBrowserTransport({
       message: string,
       kind: Exclude<CloudBrowserFailureKind, "lease_lost" | null>,
     ) => {
-      liveRequestedRef.current = false;
       handshakeRef.current = false;
       pendingBinaryRef.current = false;
       clearFirstFrameTimeout();
       cancelFrameDecodeRef.current(false);
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
-      setFailureKind(kind);
-      transition("failed");
-      setError(message);
       const socket = socketRef.current;
       socketRef.current = null;
       try {
@@ -430,6 +435,15 @@ export function useCloudBrowserTransport({
       } catch {
         // The failed state is already final for this connection.
       }
+      if (scheduleLiveRecoveryRef.current(kind)) {
+        setFailureKind(null);
+        setError("");
+        return;
+      }
+      liveRequestedRef.current = false;
+      setFailureKind(kind);
+      transition("failed");
+      setError(message);
     },
     [
       clearFirstFrameTimeout,
@@ -549,6 +563,7 @@ export function useCloudBrowserTransport({
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
       setControlPending(false);
       setFailureKind(null);
+      liveRecoveryAttemptsRef.current = 0;
       ++socketGenerationRef.current;
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
@@ -673,6 +688,40 @@ export function useCloudBrowserTransport({
       socketSessionRef.current === sessionId
     );
   }
+
+  function scheduleLiveRecovery(
+    kind: Exclude<CloudBrowserFailureKind, null>,
+  ): boolean {
+    const sessionId = socketSessionRef.current;
+    const generation = socketGenerationRef.current;
+    if (!connectionCurrent(sessionId, generation)) return false;
+    if (
+      transportStateRef.current === "reconnecting" &&
+      reconnectTimerRef.current !== null
+    ) {
+      // A retry is already pending; a duplicate reject for the same
+      // failure must not burn a second recovery attempt.
+      return true;
+    }
+    const plan = planCloudBrowserLiveRecovery(
+      kind,
+      liveRecoveryAttemptsRef.current,
+    );
+    if (!plan.retry) return false;
+    liveRecoveryAttemptsRef.current += 1;
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+    }
+    transition("reconnecting");
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      // Reuses the ticket path: connectLive re-issues a one-use ticket
+      // and rebuilds the socket under the same generation fence.
+      void connectLive(sessionId, generation, false);
+    }, plan.delayMs);
+    return true;
+  }
+  scheduleLiveRecoveryRef.current = scheduleLiveRecovery;
 
   function scheduleReconnect(
     sessionId: string,
@@ -817,7 +866,7 @@ export function useCloudBrowserTransport({
           !pendingBinaryRef.current
         ) {
           rejectProtocol(
-            tt("收到未配对的二进制画面，已拒绝连接"),
+            tt("画面流校验失败（收到未配对的画面数据），请重试连接"),
             "protocol_mismatch",
           );
           return;
@@ -825,7 +874,7 @@ export function useCloudBrowserTransport({
         pendingBinaryRef.current = false;
         if (!drawBlobFrame(event.data)) {
           rejectProtocol(
-            tt("二进制画面大小或配对校验失败"),
+            tt("画面流校验失败，请重试连接"),
             "protocol_mismatch",
           );
         }
@@ -834,7 +883,7 @@ export function useCloudBrowserTransport({
       const decoded = decodeCloudBrowserProtocolMessage(event.data);
       if (!decoded.ok) {
         rejectProtocol(
-          tt("控制消息格式无效或超过大小限制"),
+          tt("连接数据格式异常，请重试连接"),
           "protocol_mismatch",
         );
         return;
@@ -887,6 +936,7 @@ export function useCloudBrowserTransport({
     }
     const generation = ++socketGenerationRef.current;
     reconnectAttemptsRef.current = 0;
+    liveRecoveryAttemptsRef.current = 0;
     socketSessionRef.current = requestedSessionId;
     liveRequestedRef.current = true;
     setLiveRequested(true);
@@ -921,7 +971,7 @@ export function useCloudBrowserTransport({
     pendingBinaryRef.current = false;
     if (!sendFrameReceipt("frame.received", meta)) {
       rejectProtocol(
-        tt("画面接收确认发送失败，未进入实时状态"),
+        tt("网络不稳定，画面确认发送失败，请重试连接"),
         "connection",
       );
       return false;
@@ -943,7 +993,7 @@ export function useCloudBrowserTransport({
       !meta.nativeChromeWindow
     ) {
       rejectProtocol(
-        tt("首帧不含新鲜的原生 Chrome 窗口证据"),
+        tt("画面校验未通过（不是新鲜的原生 Chrome 画面），请重试连接"),
         "stale_stream",
       );
       return;
@@ -953,6 +1003,7 @@ export function useCloudBrowserTransport({
     }
     clearFirstFrameTimeout();
     reconnectAttemptsRef.current = 0;
+    liveRecoveryAttemptsRef.current = 0;
     setFailureKind(null);
     transition("streaming");
     setHasCanvasFrame(true);
@@ -961,7 +1012,7 @@ export function useCloudBrowserTransport({
 
   function handleFrameDecodeError(reason: string) {
     rejectProtocol(
-      `${tt("原生 Chrome 窗口画面校验或解码失败")}：${reason}`,
+      `${tt("画面显示失败，请重试连接")}：${reason}`,
       transportStateRef.current === "streaming"
         ? "protocol_mismatch"
         : "first_paint",

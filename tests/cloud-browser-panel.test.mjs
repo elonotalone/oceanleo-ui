@@ -982,8 +982,14 @@ test("the panel has one session row and no synthetic browser controls", () => {
     />\s*[←→↻＋]\s*</,
   );
   assert.match(chromeSource, /收藏当前页面/);
-  assert.match(chromeSource, /会话快照与恢复/);
-  assert.match(chromeSource, /data-cloud-browser-more/);
+  // The old "更多" dropdown is flattened into first-class bottom-bar
+  // buttons: 历史 (checkpoint history), 新建/连接/恢复 (power) and 休眠.
+  assert.doesNotMatch(chromeSource, /data-cloud-browser-more/);
+  assert.match(chromeSource, /tt\("历史"\)/);
+  assert.match(chromeSource, /data-cloud-browser-power/);
+  assert.match(chromeSource, /data-cloud-browser-hibernate/);
+  assert.match(chromeSource, /tt\("新建"\)/);
+  assert.match(chromeSource, /tt\("休眠"\)/);
 });
 
 test("lifecycle success reloads the durable session before ticketing", () => {

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CloudBrowserCheckpoint } from "../lib/browser";
+import type {
+  CloudBrowserCheckpoint,
+  CloudBrowserSession,
+} from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
 import { redactedDisplayUrl } from "./cloud-browser-live";
 
@@ -19,6 +22,12 @@ export type CloudBrowserRestoreResult =
   | { ok: false; error: string };
 
 export function CloudBrowserCheckpointPanel({
+  sessions,
+  selectedId,
+  busy,
+  deleteArmed,
+  onChooseSession,
+  onDelete,
   checkpoints,
   loading,
   loadError,
@@ -27,6 +36,12 @@ export function CloudBrowserCheckpointPanel({
   onRestore,
   onClose,
 }: {
+  sessions: CloudBrowserSession[];
+  selectedId: string;
+  busy: boolean;
+  deleteArmed: boolean;
+  onChooseSession: (sessionId: string) => void;
+  onDelete: () => void;
   checkpoints: CloudBrowserCheckpoint[];
   loading: boolean;
   loadError: string;
@@ -100,7 +115,7 @@ export function CloudBrowserCheckpointPanel({
             tabIndex={-1}
             className="text-[12px] font-semibold outline-none"
           >
-            {tt("会话快照与恢复")}
+            {tt("历史")}
           </h2>
           <p className="mt-0.5 text-[10px] text-stone-500">
             {tt(
@@ -123,11 +138,59 @@ export function CloudBrowserCheckpointPanel({
             type="button"
             onClick={onClose}
             className="grid h-7 w-7 place-items-center rounded-md text-stone-500 outline-none hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-indigo-400"
-            aria-label={tt("关闭会话快照面板")}
+            aria-label={tt("关闭历史面板")}
           >
             ×
           </button>
         </div>
+      </div>
+
+      <div className="flex shrink-0 items-end gap-1.5 border-b border-stone-100 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <label
+            htmlFor="cloud-browser-session-select"
+            className="mb-1 block text-[9px] font-medium text-stone-500"
+          >
+            {tt("浏览会话")}
+          </label>
+          <select
+            id="cloud-browser-session-select"
+            value={selectedId}
+            onChange={(event) =>
+              onChooseSession(event.target.value)
+            }
+            className="w-full truncate rounded-lg border border-stone-200 bg-white px-2 py-2 text-[10px] outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            aria-label={tt("浏览会话")}
+            data-cloud-browser-session-select
+          >
+            {sessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.last_title ||
+                  session.last_url ||
+                  tt("云端浏览器会话")}{" "}
+                ·{" "}
+                {new Date(
+                  session.updated_at || session.created_at,
+                ).toLocaleString()}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy}
+          className={`h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
+            deleteArmed
+              ? "border-rose-300 bg-rose-50 text-rose-700"
+              : "border-stone-200 text-stone-600"
+          }`}
+          data-cloud-browser-delete
+        >
+          {deleteArmed
+            ? tt("确认永久删除此浏览会话")
+            : tt("删除此浏览会话")}
+        </button>
       </div>
 
       {createState === "sent" && (

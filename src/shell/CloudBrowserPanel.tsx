@@ -156,7 +156,6 @@ export function CloudBrowserPanel({
   function chooseSession(sessionId: string) {
     if (sessionId === session.selectedId) return;
     transport.stopLive(true);
-    setCheckpointsOpen(false);
     session.chooseSession(sessionId);
   }
 
@@ -218,17 +217,17 @@ export function CloudBrowserPanel({
     ticketing: tt("正在获取一次性连接票据…"),
     ws_connecting: tt("正在连接 v3 原生窗口流…"),
     authenticated: tt("v3 连接已验证"),
-    awaiting_first_frame: tt("正在验证原生 Chrome 首帧…"),
+    awaiting_first_frame: tt("正在启动原生 Chrome…"),
     streaming: tt("原生 Chrome 窗口实时"),
-    reconnecting: tt("连接中断，正在获取新票据重连…"),
+    reconnecting: tt("正在自动重连…"),
     failed: tt("原生窗口连接失败"),
     closed: tt("会话未连接"),
   };
   const failureStatus = {
-    protocol_mismatch: tt("协议不匹配，输入已停用"),
+    protocol_mismatch: tt("画面流校验失败，已断开"),
     ticket_expired: tt("连接票据已过期"),
-    stale_stream: tt("画面流已过期，输入已停用"),
-    first_paint: tt("原生 Chrome 首帧验证失败"),
+    stale_stream: tt("画面流已过期，已断开"),
+    first_paint: tt("启动超时，未收到画面"),
     connection: tt("实时连接已中断"),
     lease_lost: tt("实时画面可见，但控制租约已丢失"),
   } as const;
@@ -244,9 +243,9 @@ export function CloudBrowserPanel({
     ws_connecting: tt("正在连接 v3 原生窗口流…"),
     authenticated: tt("v3 连接已验证，等待原生 Chrome 首帧…"),
     awaiting_first_frame: tt(
-      "正在验证新鲜实绘画面、窗口身份、标签栏和地址栏证据…",
+      "正在启动原生 Chrome…冷启动最长可能需要十几秒，画面就绪后自动进入实时。",
     ),
-    reconnecting: tt("连接中断，旧画面不再代表实时，正在重连…"),
+    reconnecting: tt("连接出现波动，正在自动重连…"),
     failed: error || tt("原生窗口连接失败"),
   };
   const overlayText = overlayCopy[transport.transportState];
@@ -343,7 +342,7 @@ export function CloudBrowserPanel({
           <div className="grid h-full place-items-center px-6 text-center text-[12px] text-stone-400">
             <p>
               {tt(
-                "浏览会话未连接；从“更多”中连接或恢复当前会话。",
+                "浏览会话未连接；点击底栏「连接」或「恢复」继续当前会话。",
               )}
             </p>
           </div>
@@ -470,6 +469,7 @@ export function CloudBrowserPanel({
             ? restorePrevious()
             : transport.openLive())
         }
+        onStartNew={() => void startBrowser()}
         onHibernate={() => void hibernateCurrentSession()}
         onDelete={() => void removeRecord()}
         onToggleControl={transport.toggleControl}
