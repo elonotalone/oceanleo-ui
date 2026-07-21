@@ -1,7 +1,7 @@
 "use client";
 
 // 封面帧 / 草稿的上传持久化（无 React state），useVideoTimeline 调用。
-// 草稿合同：TimelineDoc JSON 先 uploadFile 成公网 URL，再 saveWorks 登记
+// 草稿合同：TimelineDoc JSON 先 uploadFile 成公网 URL，再 saveCreations 登记
 // meta.timeline_doc + is_draft + parent_asset_id，回库后可从 meta 恢复。
 // 文案经调用方传入的 tt（useUI）包裹，保持可本地化。
 

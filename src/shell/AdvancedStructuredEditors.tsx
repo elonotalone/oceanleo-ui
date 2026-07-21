@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { saveWorks, uploadFile } from "../lib/database";
+import { saveCreations, uploadFile } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
 import { Markdown } from "./Markdown";
 import type { LibraryItem } from "./library-data";
@@ -36,7 +36,7 @@ async function saveTextVersion(
     if (!uploaded.ok || !file?.url) {
       return { ok: false, error: uploaded.error || "上传失败" };
     }
-    const saved = await saveWorks(siteId || "oceanleo", [
+    const saved = await saveCreations(siteId || "oceanleo", [
       {
         url: file.url,
         thumb_url: file.thumb_url || file.url,

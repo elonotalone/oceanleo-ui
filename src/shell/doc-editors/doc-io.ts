@@ -4,12 +4,12 @@
 // @oceanleo/ui — doc-editors 共享 IO（高级内容工作台 v2 文档三件套公共层）
 // ----------------------------------------------------------------------------
 // 富文本 / 表格 / Deck 三个编辑器共用：文件下载、Blob→dataURL、「保存到我的库」
-// 两步链路（uploadFile 上传成品 → saveWorks 登记 creation），以及 onSaved 回调
+// 两步链路（uploadFile 上传成品 → saveCreations 登记 creation），以及 onSaved 回调
 // 去重 hook。避免三处重复同一套上传登记样板。
 // ============================================================================
 
 import { useEffect, useRef } from "react";
-import { saveWorks, uploadFile, type MediaType } from "../../lib/database";
+import { saveCreations, uploadFile, type MediaType } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
 import { editorWorkingHeadUrl } from "../editor-working-head";
 export { editorWorkingHeadUrl } from "../editor-working-head";
@@ -255,7 +255,7 @@ export async function saveFileToLibrary(
       input.item.meta.parent_asset_id ||
       input.item.id,
   ).slice(0, 600);
-  const saved = await saveWorks(site, [
+  const saved = await saveCreations(site, [
     {
       url,
       ...(input.thumbUrl ? { thumb_url: input.thumbUrl } : {}),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { saveWorks, type MediaType } from "../lib/database";
+import { saveCreations, type MediaType } from "../lib/database";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
   asEditorToHostMessage,
@@ -288,7 +288,7 @@ export function useEmbedEditorMessages({
                   registerAsset: false,
                 });
               }
-              const result = await saveWorks(siteId || "oceanleo", [
+              const result = await saveCreations(siteId || "oceanleo", [
                 {
                   url: durableUrl,
                   thumb_url:

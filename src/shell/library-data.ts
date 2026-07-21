@@ -1,4 +1,4 @@
-import type { WorkItem } from "../lib/database";
+import type { Creation } from "../lib/database";
 import type {
   ArtifactProjection,
   ArtifactType,
@@ -587,7 +587,7 @@ function previewFromMeta(meta: Record<string, unknown>): string {
   return metaString(meta, "preview_url", "previewUrl", "render_url", "renderUrl");
 }
 
-export function normalizeWork(work: WorkItem): LibraryItem {
+export function normalizeWork(work: Creation): LibraryItem {
   const meta = work.meta ?? {};
   const projection =
     work.artifact ?? meta.artifact ?? meta.artifact_projection;
@@ -616,7 +616,7 @@ export function normalizeWork(work: WorkItem): LibraryItem {
     previewUrl: previewFromMeta(meta) || work.thumb_url || undefined,
     thumbUrl: work.thumb_url || previewFromMeta(meta) || undefined,
     content: typeof meta.content === "string" ? meta.content : undefined,
-    favorite: Boolean((work as WorkItem & { favorite?: boolean }).favorite),
+    favorite: Boolean((work as Creation & { favorite?: boolean }).favorite),
     createdAt: work.created_at,
     meta,
     descriptor: libraryContentDescriptor({ kind, meta }),
@@ -675,7 +675,7 @@ export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
  * Canonical projections dedupe only by artifactId + pinned revisionId.
  */
 export function buildLibraryItems(
-  works: WorkItem[],
+  works: Creation[],
   artifacts: LibraryArtifactRow[],
 ): LibraryItem[] {
   const merged = new Map<string, LibraryItem>();

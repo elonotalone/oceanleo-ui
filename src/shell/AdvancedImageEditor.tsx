@@ -9,7 +9,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { saveWorks, uploadFile } from "../lib/database";
+import { saveCreations, uploadFile } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
 import type { LibraryItem } from "./library-data";
 
@@ -218,7 +218,7 @@ export function useImageWorkbench(
         setError(uploaded.error || "保存到我的库失败");
         return;
       }
-      const saved = await saveWorks(siteId || "oceanleo", [
+      const saved = await saveCreations(siteId || "oceanleo", [
         {
           url,
           thumb_url: url,

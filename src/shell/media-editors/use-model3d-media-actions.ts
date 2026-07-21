@@ -6,7 +6,7 @@ import {
   type MutableRefObject,
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { saveWorks, uploadFile } from "../../lib/database";
+import { saveCreations, uploadFile } from "../../lib/database";
 import type { LibraryItem } from "../library-data";
 import { safeModelStem, triggerModelDownload } from "./model3d-files";
 import type { Model3DSceneRuntime } from "./model3d-runtime.mjs";
@@ -77,7 +77,7 @@ export function useModel3DMediaActions({
       if (!uploaded.ok || !url) {
         throw new Error(uploaded.error || tt("截图上传失败"));
       }
-      const saved = await saveWorks(siteId || "threed", [{
+      const saved = await saveCreations(siteId || "threed", [{
         url,
         thumb_url: url,
         media_type: "image",

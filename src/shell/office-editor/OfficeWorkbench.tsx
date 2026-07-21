@@ -12,7 +12,11 @@ import {
   officeExtensionOf,
   officeKindForExtension,
 } from "../../lib/office-client";
-import { listWorks, type MediaType, type WorkItem } from "../../lib/database";
+import {
+  listCreations,
+  type Creation,
+  type MediaType,
+} from "../../lib/database";
 import { importMediaUrl } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 
@@ -68,7 +72,7 @@ export function useOfficeWorkbench(
   const officeKind = officeKindForExtension(extension);
   const resolveSavedItem = useCallback(
     async (notBefore = 0): Promise<LibraryItem | null> => {
-      const result = await listWorks({
+      const result = await listCreations({
         siteId: siteId || "oceanleo",
         mediaType: officeMediaType(officeKind),
         limit: 50,
@@ -77,7 +81,7 @@ export function useOfficeWorkbench(
       const rootId = String(
         item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
       );
-      const match = result.data.items.find((work: WorkItem) => {
+      const match = result.data.items.find((work: Creation) => {
         const meta = work.meta || {};
         const created = Date.parse(work.created_at || "");
         return (

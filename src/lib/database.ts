@@ -9,7 +9,7 @@
 //   assets    用户上传 / 收藏进来的输入素材（user_assets）。
 //   knowledge 用户写下 / 上传、供各站 AI 生成参考的知识条目（user_knowledge）。
 //
-// 后端：网关 /v1/database/*（见 oceanleo/backend/app/routers/database_router.py）。
+// 后端：作品走 /v1/creations，其余分类走 /v1/database/*。
 // 旧的「我的图片（image 站私有作品库）」概念被本统一数据库替代。
 // ============================================================================
 
@@ -32,7 +32,7 @@ export type MediaType =
   | "xhs"
   | "other";
 
-export interface WorkItem {
+export interface Creation {
   id: string;
   url: string;
   thumb_url?: string;
@@ -51,6 +51,9 @@ export interface WorkItem {
   revision_id?: string;
   artifact?: unknown;
 }
+
+/** @deprecated Use Creation. The backend resource is user_creations. */
+export type WorkItem = Creation;
 
 export interface AssetItem {
   id: string;
@@ -81,7 +84,7 @@ export interface KnowledgeItem {
 }
 
 export interface DatabaseOverview {
-  works: WorkItem[];
+  works: Creation[];
   assets: AssetItem[];
   knowledge: KnowledgeItem[];
   files?: FileItem[];
@@ -196,17 +199,51 @@ export function deleteArtifact(id: string) {
   );
 }
 
-// ---------- works (= user_creations) ----------
-export function listWorks(
-  opts: { siteId?: string; mediaType?: MediaType; limit?: number } = {},
+// ---------- creations (= legacy overview "works", user_creations) ----------
+export interface ListCreationsOptions {
+  siteId?: string;
+  mediaType?: MediaType;
+  limit?: number;
+}
+
+export interface CreationSaveItem {
+  url: string;
+  media_type?: MediaType;
+  thumb_url?: string;
+  title?: string;
+  kind?: string;
+  prompt?: string;
+  model?: string;
+  ratio?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface CreationArtifactError {
+  result_id: string;
+  detail: string;
+}
+
+export interface SaveCreationsResponse {
+  ok: true;
+  saved: number;
+  items: Creation[];
+  /** Canonical v1 contract; callers must not treat item URLs as identity. */
+  artifacts?: unknown[];
+  artifact_errors: CreationArtifactError[];
+  request_id?: string;
+  durable: boolean;
+}
+
+export function listCreations(
+  opts: ListCreationsOptions = {},
 ) {
-  return authed<{ items: WorkItem[] }>(
-    `/v1/database/works${qs({ site_id: opts.siteId, media_type: opts.mediaType, limit: opts.limit })}`,
+  return authed<{ items: Creation[] }>(
+    `/v1/creations${qs({ site_id: opts.siteId, media_type: opts.mediaType, limit: opts.limit })}`,
   );
 }
 
-export function deleteWork(id: string) {
-  return authed<{ ok: boolean }>(`/v1/database/works/${encodeURIComponent(id)}`, {
+export function deleteCreation(id: string) {
+  return authed<{ ok: boolean; id: string }>(`/v1/creations/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
@@ -215,32 +252,22 @@ export function deleteWork(id: string) {
  * 归档一批刚生成的作品到「我的数据库」。各站生成成功后调用即可（best-effort，
  * 失败不应阻塞出图/出视频）。media_type 决定它在数据库里被归为哪类。
  */
-export function saveWorks(
+export function saveCreations(
   siteId: string,
-  items: Array<{
-    url: string;
-    media_type?: MediaType;
-    thumb_url?: string;
-    title?: string;
-    kind?: string;
-    prompt?: string;
-    model?: string;
-    ratio?: string;
-    meta?: Record<string, unknown>;
-  }>,
+  items: CreationSaveItem[],
 ) {
-  return authed<{
-    ok: boolean;
-    saved: number;
-    items?: WorkItem[];
-    /** Canonical v1 contract; callers must not treat item URLs as identity. */
-    artifacts?: unknown[];
-    artifact_errors?: Array<{ result_id: string; detail: string }>;
-  }>(`/v1/creations`, {
+  return authed<SaveCreationsResponse>(`/v1/creations`, {
     method: "POST",
     body: JSON.stringify({ site_id: siteId, items }),
   });
 }
+
+/** @deprecated Use listCreations. Kept as a direct alias for pinned consumers. */
+export const listWorks = listCreations;
+/** @deprecated Use deleteCreation. Kept as a direct alias for pinned consumers. */
+export const deleteWork = deleteCreation;
+/** @deprecated Use saveCreations. Kept as a direct alias for pinned consumers. */
+export const saveWorks = saveCreations;
 
 // ---------- assets (user uploads) ----------
 export function listAssets(

@@ -5,7 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import {
   uploadFile,
   type AssetItem,
-  type WorkItem,
+  type Creation,
 } from "../lib/database";
 import {
   artifactTypeForLibraryKind,
@@ -100,7 +100,7 @@ function myLibraryFailure(status: number | undefined, error = ""): {
   };
 }
 
-export function assetAsWork(item: AssetItem): WorkItem {
+export function assetAsWork(item: AssetItem): Creation {
   const uploaded = item.meta?.is_upload === true;
   return {
     id: item.id,

@@ -17,13 +17,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   getDatabaseOverview,
-  deleteWork,
+  deleteCreation,
   deleteAsset,
   addKnowledge,
   deleteKnowledge,
   MEDIA_TYPE_LABEL,
+  type Creation,
   type DatabaseOverview,
-  type WorkItem,
   type AssetItem,
   type KnowledgeItem,
 } from "../lib/database";
@@ -43,9 +43,9 @@ export interface MyDatabasePanelProps {
   /** 强调色（删除按钮/选中态等），默认 indigo。 */
   accent?: string;
   /** 点击某条作品/素材的回调（如三栏工作台里「用作参考」）。 */
-  onPick?: (url: string, item: WorkItem | AssetItem) => void;
+  onPick?: (url: string, item: Creation | AssetItem) => void;
   /** 仅展示某媒体类型的作品/素材（如 video 站只看视频）；不传=全部。 */
-  mediaType?: WorkItem["media_type"];
+  mediaType?: Creation["media_type"];
 }
 
 export function MyDatabasePanel({
@@ -80,7 +80,7 @@ export function MyDatabasePanel({
 
   async function onDeleteWork(id: string) {
     setOv((o) => (o ? { ...o, works: o.works.filter((w) => w.id !== id) } : o));
-    await deleteWork(id);
+    await deleteCreation(id);
   }
   async function onDeleteAsset(id: string) {
     setOv((o) => (o ? { ...o, assets: o.assets.filter((a) => a.id !== id) } : o));
@@ -134,7 +134,7 @@ export function MyDatabasePanel({
             onZoom={setZoom}
             onPick={onPick}
             onDelete={onDeleteWork}
-            badge={(it) => (it as WorkItem).media_type}
+            badge={(it) => (it as Creation).media_type}
           />
         )}
         {tab === "assets" && (
@@ -189,13 +189,13 @@ function MediaGrid({
   badge,
 }: {
   loading: boolean;
-  items: (WorkItem | AssetItem)[];
+  items: (Creation | AssetItem)[];
   accent: string;
   emptyText: string;
   onZoom: (src: string) => void;
-  onPick?: (url: string, item: WorkItem | AssetItem) => void;
+  onPick?: (url: string, item: Creation | AssetItem) => void;
   onDelete: (id: string) => void;
-  badge?: (it: WorkItem | AssetItem) => string | undefined;
+  badge?: (it: Creation | AssetItem) => string | undefined;
 }) {
   const tt = useUI();
   if (!loading && items.length === 0) {
@@ -224,7 +224,7 @@ function MediaGrid({
               <div
                 key={c.id}
                 className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                title={c.title || (c as WorkItem).prompt || ""}
+                title={c.title || (c as Creation).prompt || ""}
               >
                 {video && !c.thumb_url ? (
                   <video src={c.url} muted className="h-full w-full object-cover" onClick={() => onZoom(c.url)} />

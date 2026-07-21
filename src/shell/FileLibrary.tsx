@@ -20,13 +20,13 @@ import {
   uploadFile,
   deleteFile,
   getDatabaseOverview,
-  deleteWork,
+  deleteCreation,
   deleteAsset,
   addKnowledge,
   deleteKnowledge,
   MEDIA_TYPE_LABEL,
+  type Creation,
   type FileItem,
-  type WorkItem,
   type AssetItem,
   type KnowledgeItem,
 } from "../lib/database";
@@ -345,7 +345,7 @@ function FileRow({
 // --- 作品 / 素材 / 知识库（复用 overview，跨站分区作用于 works） -----------
 function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }) {
   const tt = useUI();
-  const [items, setItems] = useState<WorkItem[]>([]);
+  const [items, setItems] = useState<Creation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestEpochRef = useRef(0);
@@ -381,9 +381,9 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
       emptyText={tt("该分区还没有作品。")}
       onDelete={async (id) => {
         setItems((xs) => xs.filter((x) => x.id !== id));
-        await deleteWork(id);
+        await deleteCreation(id);
       }}
-      badge={(it) => (it as WorkItem).media_type}
+      badge={(it) => (it as Creation).media_type}
       crossSite={scopeSite === "__all__"}
     />
   );
@@ -548,11 +548,11 @@ function MediaGrid({
   crossSite,
 }: {
   loading: boolean;
-  items: (WorkItem | AssetItem)[];
+  items: (Creation | AssetItem)[];
   accent: string;
   emptyText: string;
   onDelete: (id: string) => void;
-  badge?: (it: WorkItem | AssetItem) => string | undefined;
+  badge?: (it: Creation | AssetItem) => string | undefined;
   crossSite?: boolean;
 }) {
   const tt = useUI();
@@ -572,7 +572,7 @@ function MediaGrid({
                 <div
                   key={c.id}
                   className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                  title={c.title || (c as WorkItem).prompt || ""}
+                  title={c.title || (c as Creation).prompt || ""}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
