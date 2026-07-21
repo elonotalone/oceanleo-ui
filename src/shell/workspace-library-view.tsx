@@ -57,6 +57,12 @@ interface WorkspaceRowProps {
   };
 }
 
+function showsSecondaryDescription(entry: WorkspaceLibraryEntry): boolean {
+  return (
+    entry.libraryItem?.meta.workspace_library_surface !== "materials"
+  );
+}
+
 export function WorkspaceCard({
   entry,
   onOpen,
@@ -112,6 +118,7 @@ export function WorkspaceListRow({
 }: WorkspaceRowProps) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
+  const showDescription = showsSecondaryDescription(entry);
   return (
     <div
       {...dragProps}
@@ -140,15 +147,17 @@ export function WorkspaceListRow({
           <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
             {entry.title}
           </p>
-          <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-            {entry.description
-              ? tt(entry.description)
-              : tt(
-                  WORKSPACE_KIND_LABELS[kind] ||
-                    entry.category ||
-                    "内容",
-                )}
-          </p>
+          {showDescription && (
+            <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
+              {entry.description
+                ? tt(entry.description)
+                : tt(
+                    WORKSPACE_KIND_LABELS[kind] ||
+                      entry.category ||
+                      "内容",
+                  )}
+            </p>
+          )}
         </div>
         <svg
           className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]"

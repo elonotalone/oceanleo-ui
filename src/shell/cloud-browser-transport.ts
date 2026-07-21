@@ -87,10 +87,17 @@ export function useCloudBrowserTransport({
   const socketGenerationRef = useRef(0);
   const reconnectAttemptsRef = useRef(0);
   const liveRecoveryAttemptsRef = useRef(0);
+  const liveRecoveryAttemptSerialRef = useRef(0);
+  const liveRecoveryAttemptRef = useRef<{
+    token: number;
+    sessionId: string;
+    generation: number;
+  } | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameTimerRef = useRef<number | null>(null);
   const liveRequestedRef = useRef(false);
-  const selectedIdRef = useRef("");
+  const selectedIdRef = useRef(selectedId);
+  const selectedPropRef = useRef(selectedId);
   const scopeRef = useRef(scopeKey);
   const transportStateRef =
     useRef<CloudBrowserTransportState>("idle");
@@ -565,10 +572,7 @@ export function useCloudBrowserTransport({
       setFailureKind(null);
       liveRecoveryAttemptsRef.current = 0;
       ++socketGenerationRef.current;
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
+      invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
       const socket = socketRef.current;
       socketRef.current = null;
@@ -594,8 +598,17 @@ export function useCloudBrowserTransport({
   );
 
   useEffect(() => {
+    const selectionChanged = selectedPropRef.current !== selectedId;
+    if (!selectionChanged) return;
+    selectedPropRef.current = selectedId;
     selectedIdRef.current = selectedId;
-  }, [selectedId]);
+    if (
+      liveRequestedRef.current &&
+      socketSessionRef.current !== selectedId
+    ) {
+      stopLive(true);
+    }
+  }, [selectedId, stopLive]);
 
   useEffect(() => {
     if (scopeRef.current === scopeKey) return;
@@ -621,9 +634,7 @@ export function useCloudBrowserTransport({
     () => () => {
       liveRequestedRef.current = false;
       ++socketGenerationRef.current;
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current);
-      }
+      invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
       socketRef.current?.close();
       socketRef.current = null;
@@ -689,12 +700,30 @@ export function useCloudBrowserTransport({
     );
   }
 
+  function invalidateLiveRecoveryAttempt(clearTimer = false) {
+    ++liveRecoveryAttemptSerialRef.current;
+    liveRecoveryAttemptRef.current = null;
+    if (clearTimer && reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }
+
   function scheduleLiveRecovery(
     kind: Exclude<CloudBrowserFailureKind, null>,
   ): boolean {
     const sessionId = socketSessionRef.current;
     const generation = socketGenerationRef.current;
     if (!connectionCurrent(sessionId, generation)) return false;
+    const activeAttempt = liveRecoveryAttemptRef.current;
+    if (
+      activeAttempt?.sessionId === sessionId &&
+      activeAttempt.generation === generation
+    ) {
+      // Keep one attempt active from backoff expiry until its asynchronous
+      // ticket/connect path settles. Duplicate rejects share that attempt.
+      return true;
+    }
     if (
       transportStateRef.current === "reconnecting" &&
       reconnectTimerRef.current !== null
@@ -709,15 +738,31 @@ export function useCloudBrowserTransport({
     );
     if (!plan.retry) return false;
     liveRecoveryAttemptsRef.current += 1;
+    const token = ++liveRecoveryAttemptSerialRef.current;
+    liveRecoveryAttemptRef.current = { token, sessionId, generation };
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current);
     }
     transition("reconnecting");
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
+      const attempt = liveRecoveryAttemptRef.current;
+      if (
+        attempt?.token !== token ||
+        !connectionCurrent(sessionId, generation)
+      ) {
+        if (attempt?.token === token) {
+          liveRecoveryAttemptRef.current = null;
+        }
+        return;
+      }
       // Reuses the ticket path: connectLive re-issues a one-use ticket
       // and rebuilds the socket under the same generation fence.
-      void connectLive(sessionId, generation, false);
+      void connectLive(sessionId, generation, false).finally(() => {
+        if (liveRecoveryAttemptRef.current?.token === token) {
+          liveRecoveryAttemptRef.current = null;
+        }
+      });
     }, plan.delayMs);
     return true;
   }
@@ -923,10 +968,7 @@ export function useCloudBrowserTransport({
     const requestedSessionId = sessionId || selectedIdRef.current;
     if (!requestedSessionId) return false;
     selectedIdRef.current = requestedSessionId;
-    if (reconnectTimerRef.current !== null) {
-      window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
+    invalidateLiveRecoveryAttempt(true);
     const oldSocket = socketRef.current;
     socketRef.current = null;
     try {
@@ -1004,6 +1046,7 @@ export function useCloudBrowserTransport({
     clearFirstFrameTimeout();
     reconnectAttemptsRef.current = 0;
     liveRecoveryAttemptsRef.current = 0;
+    invalidateLiveRecoveryAttempt(true);
     setFailureKind(null);
     transition("streaming");
     setHasCanvasFrame(true);

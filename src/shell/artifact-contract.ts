@@ -552,12 +552,13 @@ export function artifactIntegrityFor(input: {
     ].includes(
       input.provenance.sourceKind.trim().toLowerCase(),
     ) &&
-    (!input.provenance.licenseUrl || !input.provenance.attribution)
+    !input.provenance.licenseUrl &&
+    !input.provenance.attribution
   ) {
     return {
       ok: false,
       code: "license-restricted",
-      reason: "第三方 artifact 缺少 license URL 或 attribution。",
+      reason: "第三方 artifact 同时缺少 license URL 与 attribution。",
     };
   }
   const renditions = Object.values(input.renditions).filter(

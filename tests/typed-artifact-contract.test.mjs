@@ -204,6 +204,53 @@ test("strict rich-v1 normalization explains unknown schema and missing authority
   }
 });
 
+test("third-party provenance accepts either evidence field and still fails closed otherwise", () => {
+  const thirdPartyProjection = (provenance) =>
+    normalizeArtifactProjectionResult(
+      projection({
+        provenance: {
+          id: "prov-provider",
+          source_kind: "approved_provider",
+          license_code: "CC-BY-4.0",
+          license_url: "",
+          attribution: "",
+          ...provenance,
+        },
+      }),
+    );
+
+  assert.equal(
+    thirdPartyProjection({
+      license_url: "https://creativecommons.org/licenses/by/4.0/",
+    }).ok,
+    true,
+  );
+  assert.equal(
+    thirdPartyProjection({
+      attribution: "Photo by Example Author",
+    }).ok,
+    true,
+  );
+
+  const missingEvidence = thirdPartyProjection({});
+  assert.equal(missingEvidence.ok, false);
+  assert.match(missingEvidence.error || "", /同时缺少 license URL 与 attribution/);
+
+  const restrictedLicense = thirdPartyProjection({
+    license_code: "restricted",
+    license_url: "https://provider.test/terms",
+  });
+  assert.equal(restrictedLicense.ok, false);
+  assert.match(restrictedLicense.error || "", /license/);
+
+  const missingSourceKind = thirdPartyProjection({
+    source_kind: "",
+    attribution: "Photo by Example Author",
+  });
+  assert.equal(missingSourceKind.ok, false);
+  assert.match(missingSourceKind.error || "", /provenance/);
+});
+
 test("viewer uses preview/full before source and refreshes expiring signed URLs", () => {
   const artifact = normalizeArtifactProjection(projection());
   assert.ok(artifact);

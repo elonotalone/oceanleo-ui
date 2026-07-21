@@ -595,7 +595,12 @@ export function useCloudBrowserFramePainter(options: {
             }
           }
         } catch {
-          decodeErrorCallbackRef.current?.("jpeg decode failed");
+          if (
+            pending.generation === frameDecodeGenerationRef.current &&
+            document.visibilityState !== "hidden"
+          ) {
+            decodeErrorCallbackRef.current?.("jpeg decode failed");
+          }
         } finally {
           bitmap?.close();
         }

@@ -136,6 +136,22 @@ function designTemplateDocumentUrl(value = ""): string {
   }
 }
 
+function materialSurfaceEntry(
+  item: LibraryItem,
+  extra: Partial<WorkspaceLibraryEntry> = {},
+): WorkspaceLibraryEntry {
+  return workspaceEntryFromLibraryItem(
+    {
+      ...item,
+      meta: {
+        ...item.meta,
+        workspace_library_surface: "materials",
+      },
+    },
+    extra,
+  );
+}
+
 export function materialToEntry(
   material: MaterialItem,
 ): WorkspaceLibraryEntry {
@@ -155,7 +171,7 @@ export function materialToEntry(
           },
         }
       : baseItem;
-    return workspaceEntryFromLibraryItem(normalizedItem, {
+    return materialSurfaceEntry(normalizedItem, {
       id: `site:${material.id}`,
       title: material.title || material.libraryItem.title,
       description: material.desc,
@@ -212,7 +228,7 @@ export function materialToEntry(
       template_doc_url: templateDocUrl,
     },
   };
-  return workspaceEntryFromLibraryItem(item, {
+  return materialSurfaceEntry(item, {
     description: material.desc,
     category:
       material.categories?.[0] || KIND_CATEGORY[viewerKind] || "本站精选",
@@ -306,7 +322,7 @@ export function platformToEntry(
       unavailable_reason: asset.unavailable_reason || "",
     },
   });
-  return workspaceEntryFromLibraryItem(item, {
+  return materialSurfaceEntry(item, {
     category: KIND_CATEGORY[kind] || asset.category || "精选素材",
     description: asset.category
       ? `OceanLeo 精选 · ${asset.category}`
@@ -368,7 +384,7 @@ export function artifactEntry(
   item: LibraryItem,
   trustedSearchMatch = false,
 ): WorkspaceLibraryEntry {
-  return workspaceEntryFromLibraryItem(item, {
+  return materialSurfaceEntry(item, {
     category: item.artifactType
       ? MATERIAL_TAXONOMY_LABEL[item.artifactType]
       : KIND_CATEGORY[item.kind] || "素材",

@@ -215,6 +215,7 @@ const materialControllerUrl = await compileModule(
     "./workspace-library-model": workspaceLibraryStubUrl,
   },
 );
+const { artifactEntry } = await import(materialControllerUrl);
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
@@ -229,6 +230,33 @@ const MaterialLibrary = (
     })
   )
 ).MaterialLibrary;
+const libraryViewerStubUrl = dataModule(`
+  export function LibraryItemViewer() {
+    return null;
+  }
+`);
+const thumbnailStubUrl = dataModule(`
+  export function WorkspaceThumbnail() {
+    return null;
+  }
+`);
+const workspaceLibraryModelStubUrl = dataModule(`
+  export const WORKSPACE_KIND_LABELS = {
+    image: "图片",
+    file: "文件",
+  };
+`);
+const {
+  WorkspaceCard,
+  WorkspaceListRow,
+} = await import(
+  await compileModule("src/shell/workspace-library-view.tsx", {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./library-viewers": libraryViewerStubUrl,
+    "./workspace-library-model": workspaceLibraryModelStubUrl,
+    "./workspace-library-thumbnail": thumbnailStubUrl,
+  })
+);
 const databaseStubUrl = dataModule(`
   export async function uploadFile() {
     return { ok: false, error: "upload not used in this test" };
@@ -623,6 +651,176 @@ test("public search and owner-scoped mine reject mixed authority rows", async ()
     calls.map((url) => url.pathname),
     ["/v1/library/search", "/v1/library/mine", "/v1/library/mine"],
   );
+});
+
+test("local production-shape 20-item pages accept either third-party evidence field", async () => {
+  const context = {
+    contextId: "olctx:v1:image:app:poster",
+    siteKey: "image",
+    appId: "poster",
+  };
+  const items = Array.from({ length: 20 }, (_, index) => {
+    const item = projection({
+      id: `production-provider-${String(index + 1).padStart(2, "0")}`,
+      title: `Production provider ${index + 1}`,
+      contextId: context.contextId,
+      visibility: "public",
+    });
+    item.roles = ["acceptance_fixture"];
+    item.provenance = {
+      id: `prov-production-provider-${index + 1}`,
+      source_kind: "approved_provider",
+      license_code: index === 18 ? "CC-BY-4.0" : "CC0",
+      license_url:
+        index === 18
+          ? ""
+          : "https://creativecommons.org/publicdomain/zero/1.0/",
+      attribution:
+        index === 18
+          ? "Photo by Example Author"
+          : index === 19
+            ? "Example catalog"
+            : "",
+    };
+    return item;
+  });
+  assert.equal(
+    items.filter(
+      (item) =>
+        item.provenance.license_url && !item.provenance.attribution,
+    ).length,
+    18,
+  );
+  assert.equal(
+    items.filter(
+      (item) =>
+        !item.provenance.license_url && item.provenance.attribution,
+    ).length,
+    1,
+  );
+
+  const page = {
+    scope: "public",
+    total: 20,
+    invalidCount: 0,
+    context,
+    contextId: context.contextId,
+    items,
+  };
+  const invalidPage = {
+    ...page,
+    items: items.map((item, index) =>
+      index === 19
+        ? {
+            ...item,
+            provenance: {
+              ...item.provenance,
+              license_url: "",
+              attribution: "",
+            },
+          }
+        : item,
+    ),
+  };
+  const responses = [page, page, invalidPage];
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(new URL(String(input)).pathname);
+    return jsonResponse(responses.shift());
+  };
+
+  const search = await searchArtifactLibrary({ limit: 20 });
+  const primary = await listPrimaryArtifacts(context, {
+    artifactType: "single_file_image",
+    limit: 20,
+  });
+  const rejected = await searchArtifactLibrary({ limit: 20 });
+
+  assert.equal(search.ok, true);
+  assert.equal(search.data?.items.length, 20);
+  assert.equal(primary.ok, true);
+  assert.equal(primary.data?.items.length, 20);
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.code, "invalid-response");
+  assert.match(rejected.error || "", /同时缺少 license URL 与 attribution/);
+  assert.deepEqual(calls, [
+    "/v1/library/search",
+    "/v1/library/primary",
+    "/v1/library/search",
+  ]);
+});
+
+test("material cards and rows hide machine copy without changing generic rows", async () => {
+  const normalized = normalizeArtifactProjection(
+    projection({
+      id: "quiet-material",
+      title: "Quiet material",
+      visibility: "public",
+    }),
+  );
+  assert.ok(normalized);
+  normalized.roles = ["acceptance_fixture"];
+  const sourceItem = artifactProjectionToLibraryItem(normalized);
+  const entry = artifactEntry(sourceItem);
+  entry.description =
+    "图片 OceanLeo owned acceptance_fixture 预览 编辑 下载 收藏";
+
+  assert.equal(
+    entry.libraryItem?.meta.workspace_library_surface,
+    "materials",
+  );
+  assert.equal(sourceItem.meta.workspace_library_surface, undefined);
+
+  const materialRow = await createMounted(WorkspaceListRow, {
+    entry,
+    onOpen() {},
+  });
+  try {
+    assert.match(materialRow.container.textContent || "", /Quiet material/);
+    assert.doesNotMatch(
+      materialRow.container.textContent || "",
+      /图片|OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
+    );
+  } finally {
+    await materialRow.unmount();
+  }
+
+  const materialCard = await createMounted(WorkspaceCard, {
+    entry,
+    onOpen() {},
+    accent: "#4f46e5",
+  });
+  try {
+    assert.match(materialCard.container.textContent || "", /Quiet material/);
+    assert.doesNotMatch(
+      materialCard.container.textContent || "",
+      /图片|OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
+    );
+  } finally {
+    await materialCard.unmount();
+  }
+
+  const genericMeta = { ...entry.libraryItem.meta };
+  delete genericMeta.workspace_library_surface;
+  const genericRow = await createMounted(WorkspaceListRow, {
+    entry: {
+      ...entry,
+      id: "generic-entry",
+      title: "Generic entry",
+      description: "用户自定义说明",
+      libraryItem: {
+        ...entry.libraryItem,
+        key: "generic-entry",
+        meta: genericMeta,
+      },
+    },
+    onOpen() {},
+  });
+  try {
+    assert.match(genericRow.container.textContent || "", /用户自定义说明/);
+  } finally {
+    await genericRow.unmount();
+  }
 });
 
 test("unknown schema, declared invalidCount and unauthoritative empty pages are service errors", async () => {
