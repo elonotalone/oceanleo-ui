@@ -239,7 +239,7 @@ function FilesPanel({
   }
 
   if (error) {
-    return <PanelMessage text={error} />;
+    return <PanelMessage text={error} onRetry={() => void load()} />;
   }
 
   return (
@@ -348,26 +348,31 @@ function WorksPanel({ scopeSite, accent }: { scopeSite: string; accent: string }
   const [items, setItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestEpochRef = useRef(0);
 
-  useEffect(() => {
-    let alive = true;
+  const load = useCallback(async () => {
+    const epoch = ++requestEpochRef.current;
     setLoading(true);
-    getDatabaseOverview({ limit: 200 }).then((r) => {
-      if (!alive) return;
-      setLoading(false);
-      if (!r.ok || !r.data) {
-        setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
-        return;
-      }
-      const all = r.data.works || [];
-      setItems(scopeSite === "__all__" ? all : all.filter((w) => (w.site_id || "") === scopeSite));
-    });
-    return () => {
-      alive = false;
-    };
+    setError(null);
+    const r = await getDatabaseOverview({ limit: 200 });
+    if (epoch !== requestEpochRef.current) return;
+    setLoading(false);
+    if (!r.ok || !r.data) {
+      setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
+      return;
+    }
+    const all = r.data.works || [];
+    setItems(scopeSite === "__all__" ? all : all.filter((w) => (w.site_id || "") === scopeSite));
   }, [scopeSite, tt]);
 
-  if (error) return <PanelMessage text={error} />;
+  useEffect(() => {
+    void load();
+    return () => {
+      requestEpochRef.current += 1;
+    };
+  }, [load]);
+
+  if (error) return <PanelMessage text={error} onRetry={() => void load()} />;
   return (
     <MediaGrid
       loading={loading}
@@ -389,23 +394,31 @@ function AssetsPanel({ accent }: { accent: string }) {
   const [items, setItems] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    getDatabaseOverview({ limit: 200 }).then((r) => {
-      if (!alive) return;
-      setLoading(false);
-      if (!r.ok || !r.data) {
-        setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
-        return;
-      }
-      // 素材 = 收藏的（非上传）。上传的在「上传文件」tab，这里排除。
-      setItems((r.data.assets || []).filter((a) => !(a.meta as { is_upload?: boolean })?.is_upload));
-    });
-    return () => {
-      alive = false;
-    };
+  const requestEpochRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const epoch = ++requestEpochRef.current;
+    setLoading(true);
+    setError(null);
+    const r = await getDatabaseOverview({ limit: 200 });
+    if (epoch !== requestEpochRef.current) return;
+    setLoading(false);
+    if (!r.ok || !r.data) {
+      setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
+      return;
+    }
+    // 素材 = 收藏的（非上传）。上传的在「上传文件」tab，这里排除。
+    setItems((r.data.assets || []).filter((a) => !(a.meta as { is_upload?: boolean })?.is_upload));
   }, [tt]);
-  if (error) return <PanelMessage text={error} />;
+
+  useEffect(() => {
+    void load();
+    return () => {
+      requestEpochRef.current += 1;
+    };
+  }, [load]);
+
+  if (error) return <PanelMessage text={error} onRetry={() => void load()} />;
   return (
     <MediaGrid
       loading={loading}
@@ -425,18 +438,32 @@ function KnowledgePanel({ accent }: { accent: string }) {
   const tt = useUI();
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const requestEpochRef = useRef(0);
 
   const load = useCallback(() => {
+    const epoch = ++requestEpochRef.current;
     setLoading(true);
+    setError(null);
     getDatabaseOverview({ limit: 200 }).then((r) => {
+      if (epoch !== requestEpochRef.current) return;
       setLoading(false);
-      if (r.ok && r.data) setItems(r.data.knowledge || []);
+      if (!r.ok || !r.data) {
+        setError(r.status === 401 ? tt("登录后即可查看。") : r.error || tt("加载失败"));
+        return;
+      }
+      setItems(r.data.knowledge || []);
     });
-  }, []);
-  useEffect(() => load(), [load]);
+  }, [tt]);
+  useEffect(() => {
+    load();
+    return () => {
+      requestEpochRef.current += 1;
+    };
+  }, [load]);
 
   async function save() {
     if (!title.trim() && !content.trim()) return;
@@ -478,7 +505,9 @@ function KnowledgePanel({ accent }: { accent: string }) {
           </button>
         </div>
       </div>
-      {!loading && items.length === 0 ? (
+      {error ? (
+        <PanelMessage text={error} onRetry={load} />
+      ) : !loading && items.length === 0 ? (
         <PanelMessage text={tt("还没有知识条目，添加第一条吧。")} />
       ) : (
         <div className="space-y-2">
@@ -590,7 +619,13 @@ function MediaGrid({
   );
 }
 
-function PanelMessage({ text }: { text: string }) {
+function PanelMessage({
+  text,
+  onRetry,
+}: {
+  text: string;
+  onRetry?: () => void;
+}) {
   const tt = useUI();
   return (
     <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center text-stone-400">
@@ -599,6 +634,15 @@ function PanelMessage({ text }: { text: string }) {
         <path d="M4 17l5-5 4 4 3-3 4 4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <p className="max-w-xs text-sm">{tt(text)}</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50"
+        >
+          {tt("重试")}
+        </button>
+      )}
     </div>
   );
 }

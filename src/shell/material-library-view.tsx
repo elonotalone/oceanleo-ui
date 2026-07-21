@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  ARTIFACT_CONTEXT_MISSING_MESSAGE,
   ARTIFACT_TYPES,
   artifactHasExactContext,
   artifactIsVisible,
@@ -372,8 +373,11 @@ export function MaterialLibrary({
       setNextCursor(null);
       setLoading(false);
       setLoadingMore(false);
-      setError("缺少精确 contextId；Primary 已保持为空，不做宽泛回填。");
-      setErrorStatus(400);
+      // A missing context is a normal setup state (site did not derive a
+      // binding yet), not a failure: fall through to the friendly empty
+      // shelf and any site-curated featured materials.
+      setError("");
+      setErrorStatus(undefined);
       return;
     }
     const fetchEnabled = level === "primary" ? primaryFetchEnabled : fetchMore;
@@ -408,8 +412,20 @@ export function MaterialLibrary({
       if (!result.ok || !result.data) {
         setRemote([]);
         setNextCursor(null);
-        setError(result.error || "素材库暂时无法加载。");
-        setErrorStatus(result.status);
+        // "This app has no binding yet" class responses (missing context,
+        // unknown context, no bindings) are a normal empty shelf, not a
+        // failure banner.
+        const noBinding =
+          level === "primary" &&
+          (result.status === 400 || result.status === 404) &&
+          (result.code === "invalid-binding" || result.code === "not-found");
+        if (noBinding) {
+          setError("");
+          setErrorStatus(undefined);
+        } else {
+          setError(result.error || "素材库暂时无法加载。");
+          setErrorStatus(result.status);
+        }
       } else {
         setRemote(
           result.data.items.map((item) => ({
@@ -502,12 +518,31 @@ export function MaterialLibrary({
       }),
     [contextId, featuredEntries, localEntries],
   );
+  // Site-curated MaterialItems (design templates, real examples) have no
+  // durable artifact identity, so the exact-context filter can never admit
+  // them. They stay visible on the primary shelf as "本站精选" instead of
+  // silently disappearing.
+  const siteFeaturedEntries = useMemo(
+    () =>
+      [...featuredEntries, ...localEntries]
+        .filter((entry) => {
+          const item = entry.libraryItem;
+          return Boolean(item && !isDurableLibraryItem(item));
+        })
+        .map((entry) => ({ ...entry, category: "本站精选" })),
+    [featuredEntries, localEntries],
+  );
   const entries = useMemo(
     () => {
       if (deepLinkError) return [];
       const deepLinked = deepLinkedEntry ? [deepLinkedEntry] : [];
       return level === "primary"
-        ? mergeMaterialEntries([deepLinked, remote, exactLocalEntries])
+        ? mergeMaterialEntries([
+            deepLinked,
+            remote,
+            exactLocalEntries,
+            siteFeaturedEntries,
+          ])
         : mergeMaterialEntries([deepLinked, remote]);
     },
     [
@@ -516,6 +551,7 @@ export function MaterialLibrary({
       exactLocalEntries,
       level,
       remote,
+      siteFeaturedEntries,
     ],
   );
   const primaryCategoryIds = useMemo(
@@ -541,6 +577,8 @@ export function MaterialLibrary({
     );
   }, [entries, registerRuntimeSource, runtimeAppId, siteId]);
 
+  const contextMissing =
+    level === "primary" && (!context.contextId || !context.siteKey);
   const effectiveError = deepLinkError || error;
   const effectiveErrorStatus = deepLinkError
     ? deepLinkStatus
@@ -680,7 +718,9 @@ export function MaterialLibrary({
           ? failureCopy.description
           : level === "primary"
             ? emptyHint ||
-              "这里不会用标签、站点、系列或热门素材回填；请点「更多」搜索完整库。"
+              (contextMissing
+                ? ARTIFACT_CONTEXT_MISSING_MESSAGE
+                : "这里不会用标签、站点、系列或热门素材回填；请点「更多」搜索完整库。")
             : emptyHint ||
               "换一个关键词或 taxonomy；未授权素材不会出现在结果、计数或建议中。"
       }

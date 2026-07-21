@@ -3,6 +3,7 @@
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import {
+  ARTIFACT_CONTEXT_MISSING_MESSAGE,
   artifactContextsEqual,
   artifactHasExactContext,
   artifactIsVisible,
@@ -535,9 +536,10 @@ function itemResult(
   if (
     !artifactIsVisible(projection) ||
     (expected &&
-      (projection.artifactId !== expected.artifactId.trim() ||
+      (projection.artifactId !== String(expected.artifactId ?? "").trim() ||
         (expected.revisionId &&
-          projection.revisionId !== expected.revisionId.trim())))
+          projection.revisionId !==
+            String(expected.revisionId ?? "").trim())))
   ) {
     return {
       ok: false,
@@ -561,13 +563,15 @@ export async function getArtifactItem(
   revisionId: string,
   signal?: AbortSignal,
 ): Promise<ArtifactApiResult<LibraryItem>> {
-  const params = new URLSearchParams({ revisionId: revisionId.trim() });
+  const safeArtifactId = String(artifactId ?? "").trim();
+  const safeRevisionId = String(revisionId ?? "").trim();
+  const params = new URLSearchParams({ revisionId: safeRevisionId });
   return itemResult(
     await artifactRequest<unknown>(
-      `/v1/library/items/${encodeURIComponent(artifactId.trim())}?${params}`,
+      `/v1/library/items/${encodeURIComponent(safeArtifactId)}?${params}`,
       { signal, auth: "optional" },
     ),
-    { artifactId, revisionId },
+    { artifactId: safeArtifactId, revisionId: safeRevisionId },
   );
 }
 
@@ -579,18 +583,21 @@ export async function listPrimaryArtifacts(
     signal?: AbortSignal;
   } = {},
 ): Promise<ArtifactApiResult<ArtifactSearchResult>> {
-  if (!context.contextId.trim() || !context.siteKey.trim()) {
+  // Context refs arrive from plain-JS site callers and may miss fields.
+  const contextId = String(context?.contextId ?? "").trim();
+  const siteKey = String(context?.siteKey ?? "").trim();
+  if (!contextId || !siteKey) {
     return {
       ok: false,
-      error: "Primary shelf 缺少精确 contextId/siteKey，已停止宽泛回填。",
+      error: ARTIFACT_CONTEXT_MISSING_MESSAGE,
       code: "invalid-binding",
       status: 400,
       retryable: false,
     };
   }
   const params = new URLSearchParams({
-    contextId: context.contextId.trim(),
-    siteKey: context.siteKey.trim(),
+    contextId,
+    siteKey,
     limit: boundedLibraryLimit(options.limit),
   });
   setTrimmedParam(params, "appId", context.appId);
@@ -610,7 +617,6 @@ export async function listPrimaryArtifacts(
       retryable: false,
     };
   }
-  const requestedContextId = context.contextId.trim();
   const fullResponseContextMatches = normalized.responseContextPresent
     ? Boolean(
         normalized.responseContext &&
@@ -618,7 +624,7 @@ export async function listPrimaryArtifacts(
       )
     : true;
   const responseContextIdMatches = normalized.responseContextId
-    ? normalized.responseContextId === requestedContextId
+    ? normalized.responseContextId === contextId
     : normalized.responseContextPresent;
   const responseContextMatches =
     fullResponseContextMatches && responseContextIdMatches;
@@ -635,7 +641,7 @@ export async function listPrimaryArtifacts(
   const invalid = normalized.projections.find(
     (artifact) =>
       !artifactIsVisible(artifact) ||
-      !artifactHasExactContext(artifact, context.contextId) ||
+      !artifactHasExactContext(artifact, contextId) ||
       Boolean(
         options.artifactType &&
           artifact.artifactType !== options.artifactType,
@@ -1347,7 +1353,7 @@ export async function bindArtifactToContext(
   context: ArtifactContextRef,
   role: string,
 ): Promise<ArtifactApiResult<LibraryItem>> {
-  if (!normalizeArtifactContextRef(context) || !role.trim()) {
+  if (!normalizeArtifactContextRef(context) || !String(role ?? "").trim()) {
     return {
       ok: false,
       error: "context binding 缺少精确 context 或 role。",

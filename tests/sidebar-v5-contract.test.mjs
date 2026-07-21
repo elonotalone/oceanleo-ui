@@ -50,3 +50,13 @@ test("file categories and legacy tabs always render in the main page", () => {
     /!hideHeader && \(\s*<div className="flex gap-1 rounded-xl bg-stone-100 p-1">/,
   );
 });
+
+test("every FileLibrary panel offers a retry action in its error state", () => {
+  assert.equal(
+    fileLibrary.split("onRetry={").length - 1,
+    4,
+    "FilesPanel, WorksPanel, AssetsPanel and KnowledgePanel each wire onRetry",
+  );
+  assert.match(fileLibrary, /onRetry\?: \(\) => void/);
+  assert.match(fileLibrary, /\{tt\("重试"\)\}/);
+});

@@ -34,7 +34,10 @@ import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import type { LibraryItem } from "./library-data";
 import { isDurableLibraryItem } from "./library-data";
-import type { ArtifactContextRef } from "./artifact-contract";
+import {
+  canonicalArtifactContextId,
+  type ArtifactContextRef,
+} from "./artifact-contract";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { WorkspaceEntryCanvas } from "./WorkspaceEntryCanvas";
 import { editorCapabilityFor } from "./workbench-routes";
@@ -148,6 +151,12 @@ export function ResultCanvas({
     "oceanleo";
   const materialAppId =
     materialContext?.appId || workspaceSession?.appId || materialSiteId;
+  // Explicit server-issued context wins; otherwise derive the canonical
+  // olctx:v1 binding so sites without materialContextForApp still get a
+  // working Primary shelf.
+  const materialContextId =
+    materialContext?.contextId ||
+    canonicalArtifactContextId(materialSiteId, materialAppId);
   const workbenchMaterials = useWorkbenchMaterialActions(
     materialSiteId,
     materialAppId,
@@ -551,7 +560,7 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={materialSiteId}
         appId={materialAppId}
-        contextId={materialContext?.contextId || ""}
+        contextId={materialContextId}
         functionId={materialContext?.functionId || ""}
         onSeeAll={onSeeAllMaterials}
         onOpenItem={openCanvasItem}

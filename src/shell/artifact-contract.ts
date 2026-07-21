@@ -874,13 +874,16 @@ export function isArtifactProjection(
 export function isEnsureableTransient(
   value: TransientGenerationResult | null | undefined,
 ): value is TransientGenerationResult {
+  // Callers cross the JS boundary from 31 sites; every field may be missing.
+  const filled = (field: unknown): boolean =>
+    typeof field === "string" && field.trim().length > 0;
   return Boolean(
     value &&
       value.schema === "oceanleo.transient-generation.v1" &&
-      value.resultId.trim() &&
-      value.idempotencyKey.trim() &&
-      value.payloadDigest.trim() &&
-      value.renditionUrl.trim() &&
+      filled(value.resultId) &&
+      filled(value.idempotencyKey) &&
+      filled(value.payloadDigest) &&
+      filled(value.renditionUrl) &&
       ARTIFACT_TYPE_SET.has(value.artifactType),
   );
 }
@@ -937,6 +940,27 @@ export function selectArtifactRendition(
   return null;
 }
 
+/**
+ * Canonical exact-binding context id shared by every OceanLeo site:
+ * `olctx:v1:<siteKey>:app:<encodeURIComponent(appId)>`, both inputs trimmed.
+ * Matches `catalog_contexts.external_context_id` in the production catalog.
+ * Returns "" when either part is missing so callers can fall back to the
+ * friendly no-context empty state instead of guessing a binding.
+ */
+export function canonicalArtifactContextId(
+  siteKey: string,
+  appId: string,
+): string {
+  const site = String(siteKey ?? "").trim();
+  const app = String(appId ?? "").trim();
+  if (!site || !app) return "";
+  return `olctx:v1:${site}:app:${encodeURIComponent(app)}`;
+}
+
+/** Single source for the "no exact context" copy shown by material surfaces. */
+export const ARTIFACT_CONTEXT_MISSING_MESSAGE =
+  "素材面板缺少上下文标识，无法加载专属素材。";
+
 export function normalizeArtifactContextRef(
   value: unknown,
 ): ArtifactContextRef | null {
@@ -958,11 +982,12 @@ export function normalizeArtifactContextRef(
 export function artifactContextKey(
   context: ArtifactContextRef,
 ): string {
+  // JS callers may hand us refs with missing fields despite the TS type.
   return [
-    context.contextId.trim(),
-    context.siteKey.trim(),
-    context.appId?.trim() || "",
-    context.functionId?.trim() || "",
+    String(context?.contextId ?? "").trim(),
+    String(context?.siteKey ?? "").trim(),
+    String(context?.appId ?? "").trim(),
+    String(context?.functionId ?? "").trim(),
   ].join("::");
 }
 
@@ -980,7 +1005,7 @@ export function artifactHasExactContext(
   const expected =
     typeof context === "string"
       ? context.trim()
-      : context.contextId.trim();
+      : String(context?.contextId ?? "").trim();
   return Boolean(
     expected &&
       artifact.bindings.some(

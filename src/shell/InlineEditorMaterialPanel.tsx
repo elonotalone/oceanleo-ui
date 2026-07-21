@@ -1,5 +1,6 @@
 "use client";
 
+import { canonicalArtifactContextId } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { MaterialLibrary } from "./MaterialLibrary";
 import type {
@@ -69,6 +70,10 @@ export function InlineEditorMaterialPanel({
         taskId={taskId}
         siteId={siteId}
         appId={materials?.appId}
+        contextId={canonicalArtifactContextId(
+          siteId || "",
+          materials?.appId || "",
+        )}
         registerRuntimeSource={false}
         materialActions={materials?.actions || []}
         onMaterialAction={

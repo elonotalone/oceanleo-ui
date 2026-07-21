@@ -4,7 +4,10 @@ import test from "node:test";
 
 import {
   ARTIFACT_TYPES,
+  artifactContextKey,
   artifactHasExactContext,
+  canonicalArtifactContextId,
+  isEnsureableTransient,
   normalizeArtifactProjection,
   normalizeArtifactProjectionResult,
   renditionNeedsRefresh,
@@ -266,10 +269,84 @@ test("shared UI source contains exact primary/global More endpoints and no serie
   assert.match(client, /"If-Match": commit\.expectedRevisionId/);
   assert.match(client, /refreshArtifactRendition/);
   assert.match(material, /artifactHasExactContext/);
-  assert.match(material, /缺少精确 contextId/);
+  // The missing-context copy lives in one shared constant, and the old
+  // frightening "缺少精确 contextId" wording never reappears in the shelf.
+  assert.match(client, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
+  assert.match(material, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
+  assert.doesNotMatch(material, /缺少精确 contextId/);
+  assert.doesNotMatch(client, /缺少精确 contextId\/siteKey/);
   assert.doesNotMatch(
     material.slice(material.indexOf("export function MaterialLibrary")),
     /series_id|\/v1\/assets\/library\/search/,
+  );
+});
+
+test("material panels derive the canonical context id when hosts omit it", () => {
+  const inlinePanel = readFileSync(
+    new URL("../src/shell/InlineEditorMaterialPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const resultCanvas = readFileSync(
+    new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(inlinePanel, /canonicalArtifactContextId\(/);
+  assert.match(
+    inlinePanel,
+    /contextId=\{canonicalArtifactContextId\(\s*siteId \|\| "",\s*materials\?\.appId \|\| "",?\s*\)\}/,
+  );
+  assert.match(resultCanvas, /canonicalArtifactContextId\(/);
+  // Explicit server-issued context still wins over the derived fallback.
+  assert.match(
+    resultCanvas,
+    /materialContext\?\.contextId \|\|\s*canonicalArtifactContextId\(materialSiteId, materialAppId\)/,
+  );
+  assert.match(resultCanvas, /contextId=\{materialContextId\}/);
+});
+
+test("canonical context id derivation trims, encodes and fails closed", () => {
+  assert.equal(
+    canonicalArtifactContextId("image", "poster"),
+    "olctx:v1:image:app:poster",
+  );
+  assert.equal(
+    canonicalArtifactContextId(" image ", " social / banner "),
+    "olctx:v1:image:app:social%20%2F%20banner",
+  );
+  assert.equal(canonicalArtifactContextId("", "poster"), "");
+  assert.equal(canonicalArtifactContextId("image", "  "), "");
+  assert.equal(
+    canonicalArtifactContextId(undefined, null),
+    "",
+  );
+});
+
+test("boundary helpers survive undefined fields from plain-JS callers", () => {
+  assert.equal(
+    artifactContextKey({ contextId: undefined, siteKey: undefined }),
+    "::::::",
+  );
+  assert.equal(
+    artifactContextKey({ contextId: " ctx ", siteKey: "image" }),
+    "ctx::image::::",
+  );
+  const artifact = normalizeArtifactProjection(projection());
+  assert.ok(artifact);
+  assert.equal(
+    artifactHasExactContext(artifact, { contextId: undefined, siteKey: "x" }),
+    false,
+  );
+  assert.equal(isEnsureableTransient(undefined), false);
+  assert.equal(
+    isEnsureableTransient({
+      schema: "oceanleo.transient-generation.v1",
+      resultId: undefined,
+      idempotencyKey: "k",
+      payloadDigest: "d",
+      renditionUrl: "https://signed.test/x.png",
+      artifactType: "single_file_image",
+    }),
+    false,
   );
 });
 
@@ -342,6 +419,39 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     ),
     /editorCapabilityFor/,
   );
+});
+
+test("library cards stay quiet: no badge, no per-card actions, no machine roles", () => {
+  const cardView = readFileSync(
+    new URL("../src/shell/workspace-library-view.tsx", import.meta.url),
+    "utf8",
+  );
+  const library = readFileSync(
+    new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  const controller = readFileSync(
+    new URL("../src/shell/material-library-controller.ts", import.meta.url),
+    "utf8",
+  );
+  const card = cardView.slice(
+    cardView.indexOf("export function WorkspaceCard"),
+    cardView.indexOf("export function WorkspaceListRow"),
+  );
+  // No cover badge and a single-line title without a description paragraph.
+  assert.doesNotMatch(card, /absolute bottom-2 left-2/);
+  assert.match(card, /line-clamp-1/);
+  assert.doesNotMatch(card, /entry\.description &&/);
+  // Grid/list cards carry no per-card action buttons; the detail header keeps
+  // them (exactly one call site of actionButtonsFor remains).
+  const gridAndList = library.slice(library.indexOf("view === \"list\""));
+  assert.doesNotMatch(gridAndList, /actionButtonsFor/);
+  assert.equal(library.split("actionButtonsFor(").length - 1, 1);
+  // Machine role names never become card descriptions.
+  assert.doesNotMatch(controller, /roles\.join/);
+  // Drag-to-canvas and one-click primary actions survive the cleanup.
+  assert.match(library, /dragPropsFor\(entry\)/);
+  assert.match(library, /primaryMaterialAction/);
 });
 
 test("video timeline and workflow canvas keep distinct typed editor routes", () => {

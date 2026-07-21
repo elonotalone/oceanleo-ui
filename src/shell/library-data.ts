@@ -594,7 +594,7 @@ export function normalizeWork(work: WorkItem): LibraryItem {
   if (isCanonicalArtifactProjection(projection)) {
     return artifactProjectionToLibraryItem(projection);
   }
-  const url = (work.url || "").trim();
+  const url = String(work.url ?? "").trim();
   const kind = inferLibraryKind({
     meta,
     mediaType: work.media_type,
@@ -602,7 +602,9 @@ export function normalizeWork(work: WorkItem): LibraryItem {
     url,
     siteId: work.site_id,
   });
-  const title = (work.title || titleFromUrl(url) || "未命名作品").trim();
+  const title = String(
+    work.title || titleFromUrl(url) || "未命名作品",
+  ).trim();
   const item: LibraryItem = {
     key: `creation:${work.id}`,
     source: "creation",
@@ -637,14 +639,16 @@ export function normalizeArtifact(row: LibraryArtifactRow): LibraryItem {
   if (isCanonicalArtifactProjection(row.artifact)) {
     return artifactProjectionToLibraryItem(row.artifact);
   }
-  const url = (row.url || "").trim();
+  const url = String(row.url ?? "").trim();
   const content = row.content || "";
   const meta: Record<string, unknown> = {
     task_id: row.task_id || undefined,
     session_id: row.session_id || undefined,
   };
   const kind = inferLibraryKind({ kind: row.kind, url, meta });
-  const title = (row.title || titleFromUrl(url) || "未命名交付物").trim();
+  const title = String(
+    row.title || titleFromUrl(url) || "未命名交付物",
+  ).trim();
   const item: LibraryItem = {
     key: `artifact:${row.id}`,
     source: "artifact",

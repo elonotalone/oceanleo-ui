@@ -372,9 +372,11 @@ export function artifactEntry(
     category: item.artifactType
       ? MATERIAL_TAXONOMY_LABEL[item.artifactType]
       : KIND_CATEGORY[item.kind] || "素材",
-    description: item.artifact?.roles.length
-      ? item.artifact.roles.join(" · ")
-      : "OceanLeo 素材",
+    // Machine role names (acceptance_fixture, template, …) are keywords for
+    // search only and never shown as human-facing description copy.
+    description: item.artifactType
+      ? MATERIAL_TAXONOMY_LABEL[item.artifactType]
+      : "",
     keywords: [
       item.artifactType || "",
       ...(item.artifact?.roles || []),

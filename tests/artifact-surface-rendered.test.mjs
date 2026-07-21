@@ -1014,13 +1014,118 @@ test("rendered missing context stays empty without issuing a Primary request", a
       mounted.container.querySelectorAll("[data-entry-title]").length,
       0,
     );
-    assert.match(
+    // Friendly empty state, never the old frightening error banner.
+    const description =
       mounted.container.querySelector("[data-empty-description]")
+        ?.textContent || "";
+    assert.match(description, /素材面板缺少上下文标识/);
+    assert.doesNotMatch(description, /缺少精确 contextId|响应无效/);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("rendered no-binding backend responses render as empty state, not errors", async () => {
+  globalThis.fetch = async () =>
+    jsonResponse({ detail: "context 不存在", code: "invalid_binding" }, 404);
+  const mounted = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId: "olctx:v1:image:app:poster",
+  });
+  try {
+    await settle();
+    const description =
+      mounted.container.querySelector("[data-empty-description]")
+        ?.textContent || "";
+    assert.doesNotMatch(description, /响应无效|context 不存在/);
+  } finally {
+    await mounted.unmount();
+  }
+
+  // 401/403/503 keep their explicit copy.
+  globalThis.fetch = async () => jsonResponse({ detail: "denied" }, 403);
+  const denied = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId: "olctx:v1:image:app:poster",
+  });
+  try {
+    await settle();
+    assert.match(
+      denied.container.querySelector("[data-empty-description]")
         ?.textContent || "",
-      /缺少精确 contextId/,
+      /拒绝了此素材范围/,
+    );
+  } finally {
+    await denied.unmount();
+  }
+});
+
+test("rendered primary keeps non-durable site picks visible as 本站精选", async () => {
+  globalThis.fetch = async () =>
+    jsonResponse({
+      contextId: "olctx:v1:image:app:poster",
+      items: [
+        projection({
+          id: "exact",
+          title: "Exact primary",
+          contextId: "olctx:v1:image:app:poster",
+        }),
+      ],
+      total: 1,
+    });
+  const mounted = await createMounted(MaterialLibrary, {
+    materials: [
+      {
+        id: "site-pick",
+        title: "Site pick poster",
+        thumb: "https://signed.test/site-pick.png",
+        kind: "image",
+      },
+    ],
+    siteId: "image",
+    appId: "poster",
+    contextId: "olctx:v1:image:app:poster",
+  });
+  try {
+    await settle();
+    assert.ok(
+      mounted.container.querySelector('[data-entry-title="Exact primary"]'),
+    );
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Site pick poster"]',
+      ),
     );
   } finally {
     await mounted.unmount();
+  }
+
+  // Even with no context at all, curated site materials stay visible.
+  const noContext = await createMounted(MaterialLibrary, {
+    materials: [
+      {
+        id: "site-pick-2",
+        title: "Contextless site pick",
+        thumb: "https://signed.test/site-pick-2.png",
+        kind: "image",
+      },
+    ],
+    siteId: "image",
+    appId: "poster",
+  });
+  try {
+    await settle();
+    assert.ok(
+      noContext.container.querySelector(
+        '[data-entry-title="Contextless site pick"]',
+      ),
+    );
+  } finally {
+    await noContext.unmount();
   }
 });
 

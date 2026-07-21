@@ -88,19 +88,11 @@ export function WorkspaceCard({
             accent={accent}
             imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
           />
-          <span className="absolute bottom-2 left-2 rounded-md bg-[var(--card,#fff)]/90 px-1.5 py-0.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] shadow-sm backdrop-blur">
-            {tt(WORKSPACE_KIND_LABELS[kind] || entry.category || "内容")}
-          </span>
         </div>
         <div className="p-2.5">
-          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
+          <p className="line-clamp-1 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
             {entry.title}
           </p>
-          {entry.description && (
-            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-[var(--muted,#a8a29e)]">
-              {tt(entry.description)}
-            </p>
-          )}
         </div>
       </button>
       {actions && (

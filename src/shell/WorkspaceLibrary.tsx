@@ -563,13 +563,14 @@ export function WorkspaceLibrary({
           />
         ) : view === "list" ? (
           <div className="space-y-1.5">
+            {/* Cards stay quiet: click = open detail, where the action
+                buttons live in the detail header. */}
             {filtered.map((entry) => (
               <WorkspaceListRow
                 key={entry.id}
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
-                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
@@ -582,7 +583,6 @@ export function WorkspaceLibrary({
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
                 accent={accent}
-                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
