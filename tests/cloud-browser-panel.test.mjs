@@ -21,8 +21,13 @@ import {
   createCloudBrowserProtocolState,
   decodeCloudBrowserProtocolMessage,
   isCloudBrowserTransportTransitionLegal,
+  planCloudBrowserLiveRecovery,
   reduceCloudBrowserProtocolMessage,
 } from "../src/shell/cloud-browser-transport-model.ts";
+import {
+  FIRST_FRAME_TIMEOUT_MS,
+  LIVE_RECOVERY_DELAYS_MS,
+} from "../src/shell/cloud-browser-transport-config.ts";
 import {
   CLOUD_BROWSER_MAX_CONTROL_BYTES,
   canSendCloudBrowserControlMutation,
@@ -1103,6 +1108,46 @@ test("oversized control messages and illegal transitions fail closed", () => {
   assert.equal(
     isCloudBrowserTransportTransitionLegal("streaming", "ticketing"),
     false,
+  );
+});
+
+test("live validation failures recover twice with fresh-ticket backoff", () => {
+  assert.equal(FIRST_FRAME_TIMEOUT_MS, 15_000);
+  assert.deepEqual([...LIVE_RECOVERY_DELAYS_MS], [1_000, 3_000]);
+  for (const kind of [
+    "first_paint",
+    "protocol_mismatch",
+    "stale_stream",
+  ]) {
+    assert.deepEqual(planCloudBrowserLiveRecovery(kind, 0), {
+      retry: true,
+      delayMs: 1_000,
+    });
+    assert.deepEqual(planCloudBrowserLiveRecovery(kind, 1), {
+      retry: true,
+      delayMs: 3_000,
+    });
+    assert.deepEqual(planCloudBrowserLiveRecovery(kind, 2), {
+      retry: false,
+    });
+  }
+  for (const kind of ["connection", "ticket_expired", "lease_lost", null]) {
+    assert.deepEqual(planCloudBrowserLiveRecovery(kind, 0), {
+      retry: false,
+    });
+  }
+  assert.deepEqual(planCloudBrowserLiveRecovery("first_paint", -1), {
+    retry: false,
+  });
+  assert.match(
+    transportSource,
+    /connectLive\(sessionId,\s*generation,\s*false\)/,
+    "automatic recovery must re-enter the one-use ticket path",
+  );
+  assert.match(
+    transportSource,
+    /transportStateRef\.current === "reconnecting"[\s\S]*reconnectTimerRef\.current !== null/,
+    "duplicate rejects must not schedule duplicate recovery timers",
   );
 });
 
