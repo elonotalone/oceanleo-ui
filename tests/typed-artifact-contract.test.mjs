@@ -418,10 +418,33 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
     new URL("../src/shell/MyLibrary.tsx", import.meta.url),
     "utf8",
   );
+  const workspace = readFileSync(
+    new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(materialView, /artifactId/);
   assert.match(materialView, /revisionId/);
   assert.match(materialView, /loadMoreAbortRef/);
   assert.match(materialView, /epoch !== requestEpochRef\.current/);
+  // Material shelf type filter is the taxonomy 「货架」dropdown on both
+  // primary (当前 App) and more (更多) pages — never overlapping LibraryChips.
+  assert.match(materialView, /hideCategoryChips/);
+  assert.match(materialView, /tt\("货架"\)/);
+  assert.match(materialView, /tt\("全部类型"\)/);
+  assert.match(materialView, /ARTIFACT_TYPES\.map/);
+  assert.doesNotMatch(materialView, /primaryCategoryIds/);
+  assert.match(workspace, /hideCategoryChips/);
+  assert.match(workspace, /!hideCategoryChips && categories\.length > 1/);
+  // Other libraries keep chips when they omit hideCategoryChips.
+  const mineSource = mine;
+  assert.doesNotMatch(mineSource, /hideCategoryChips/);
+  assert.match(
+    readFileSync(
+      new URL("../src/shell/material-library-controller.ts", import.meta.url),
+      "utf8",
+    ),
+    /queryMaterialLibrary\(input: \{[\s\S]*taxonomy: ArtifactType \| ""/,
+  );
   assert.match(catalog, /initialLevel="more"/);
   assert.match(catalog, /lockLevel="more"/);
   assert.match(catalog, /taxonomy/);

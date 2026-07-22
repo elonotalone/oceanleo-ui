@@ -1782,3 +1782,97 @@ test("rendered shared editor host forwards typed source, target, strategy and CA
     await mounted.unmount();
   }
 });
+
+test("material shelf type filter is 货架 dropdown only on primary and more", async () => {
+  const assertShelfOnly = (container) => {
+    const shelf = container.querySelector('select[aria-label="货架"]');
+    assert.ok(shelf);
+    assert.ok(
+      [...shelf.querySelectorAll("option")].some(
+        (option) => option.textContent === "全部类型",
+      ),
+    );
+    assert.equal(
+      container.querySelector('[aria-label="素材分类"]'),
+      null,
+      "LibraryChips type pills must not appear on material library",
+    );
+  };
+
+  globalThis.fetch = async () =>
+    jsonResponse({
+      contextId: "ctx:image:poster",
+      items: [
+        projection({
+          id: "primary-image",
+          title: "Primary image",
+          artifactType: "single_file_image",
+        }),
+        projection({
+          id: "primary-doc",
+          title: "Primary document",
+          artifactType: "document",
+        }),
+      ],
+      next_cursor: null,
+      total: 2,
+    });
+  const primary = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId: "ctx:image:poster",
+  });
+  try {
+    await settle();
+    assertShelfOnly(primary.container);
+    assert.ok(
+      primary.container.querySelector('[data-entry-title="Primary image"]'),
+    );
+    assert.ok(
+      primary.container.querySelector('[data-entry-title="Primary document"]'),
+    );
+  } finally {
+    await primary.unmount();
+  }
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input), "https://api.test");
+    const artifactType =
+      url.searchParams.get("artifactType") || "single_file_image";
+    return jsonResponse({
+      scope: "public",
+      items: [
+        projection({
+          id: `more-${artifactType}`,
+          title: `More ${artifactType}`,
+          visibility: "public",
+          artifactType,
+          editable: true,
+        }),
+      ],
+      nextOffset: null,
+      total: 1,
+    });
+  };
+  const more = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId: "ctx:image:poster",
+    initialLevel: "more",
+    lockLevel: "more",
+    fetchPrimary: false,
+  });
+  try {
+    await settle();
+    assertShelfOnly(more.container);
+    assert.ok(
+      more.container.querySelector(
+        '[data-entry-title="More single_file_image"]',
+      ),
+    );
+  } finally {
+    await more.unmount();
+  }
+});

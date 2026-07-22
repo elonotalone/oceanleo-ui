@@ -561,20 +561,6 @@ export function MaterialLibrary({
       siteFeaturedEntries,
     ],
   );
-  const primaryCategoryIds = useMemo(
-    () =>
-      level === "primary"
-        ? [
-            ...new Set(
-              entries
-                .map((entry) => String(entry.category || "").trim())
-                .filter(Boolean),
-            ),
-          ]
-        : undefined,
-    [entries, level],
-  );
-
   useEffect(() => {
     if (!registerRuntimeSource) return;
     return registerWorkbenchMaterialSource(
@@ -652,7 +638,7 @@ export function MaterialLibrary({
         </button>
       )}
       <label className="sr-only" htmlFor={taxonomyId}>
-        {tt("素材类型")}
+        {tt("货架")}
       </label>
       <select
         id={taxonomyId}
@@ -660,6 +646,7 @@ export function MaterialLibrary({
         onChange={(event) =>
           setTaxonomy(event.currentTarget.value as ArtifactType | "")
         }
+        aria-label={tt("货架")}
         className="min-h-8 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg-2,#57534e)]"
       >
         <option value="">{tt("全部类型")}</option>
@@ -704,7 +691,7 @@ export function MaterialLibrary({
       appId={runtimeAppId}
       query={query}
       onQueryChange={setQuery}
-      primaryCategoryIds={primaryCategoryIds}
+      hideCategoryChips
       toolbarActions={toolbar}
       searchPlaceholder={
         level === "primary"

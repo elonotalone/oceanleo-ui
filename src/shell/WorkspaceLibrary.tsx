@@ -56,6 +56,12 @@ export interface WorkspaceLibraryProps {
   onCategoryChange?: (category: string) => void;
   /** Categories kept visible before the user expands the remote catalog. */
   primaryCategoryIds?: string[];
+  /**
+   * Material library uses the toolbar taxonomy `<select>` as the sole type
+   * shelf. Hide the overlapping horizontal LibraryChips row there without
+   * affecting 我的库 / Navigator surfaces that still need chips.
+   */
+  hideCategoryChips?: boolean;
   toolbarActions?: ReactNode;
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
@@ -113,6 +119,7 @@ export function WorkspaceLibrary({
   category: controlledCategory,
   onCategoryChange,
   primaryCategoryIds,
+  hideCategoryChips = false,
   toolbarActions,
   siteId = "",
   materialActions = [],
@@ -526,7 +533,7 @@ export function WorkspaceLibrary({
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
-        {categories.length > 1 && (
+        {!hideCategoryChips && categories.length > 1 && (
           <LibraryChips
             chips={visibleCategories}
             active={category}
