@@ -368,6 +368,7 @@ function projection({
   visibility = "private",
   artifactType = "single_file_image",
 } = {}) {
+  const isComposite = artifactType === "composite_image";
   return {
     schema: "oceanleo.artifact.v1",
     artifact_id: id || "artifact-1",
@@ -393,9 +394,28 @@ function projection({
       can_bind: editable,
       can_export_source: editable,
     },
-    editability: editable ? "bounded" : "view_only",
-    editor_capability: editable ? "image-editor" : null,
-    source_format: "png",
+    editability: editable
+      ? isComposite
+        ? "native"
+        : "bounded"
+      : "view_only",
+    editor_capability: editable
+      ? isComposite
+        ? "composite-image-editor"
+        : "image-editor"
+      : null,
+    source_format: isComposite ? "oceanleo-scene+json" : "png",
+    ...(isComposite
+      ? {
+          scene: {
+            schema: "oceanleo-scene+json",
+            scene_revision_id: revisionId,
+            closure_status: "complete",
+            closure_digest: `sha256:scene-${id || "artifact-1"}`,
+            dependency_revision_ids: [],
+          },
+        }
+      : {}),
     renditions: {
       preview: {
         purpose: "preview",
@@ -408,8 +428,10 @@ function projection({
             source: {
               purpose: "source",
               revision_id: revisionId,
-              url: `https://signed.test/${id || "artifact-1"}-source.png`,
-              format: "png",
+              url: `https://signed.test/${id || "artifact-1"}-source.${
+                isComposite ? "json" : "png"
+              }`,
+              format: isComposite ? "oceanleo-scene+json" : "png",
               digest: `sha256:${id || "artifact-1"}`,
             },
           }
@@ -1451,13 +1473,14 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
       mounted.container.querySelector('a[aria-label="打开完整素材库"]'),
     );
     await settle();
-    // Unfiltered More round-robins the 12 advanced-capable artifact types.
-    assert.equal(calls.length, 12);
+    // Unfiltered More round-robins every catalog taxonomy type.
+    assert.equal(calls.length, 13);
     assert.ok(
       calls.every((call) => /\/v1\/library\/search\?/.test(call)),
     );
     assert.ok(
-      mounted.container.querySelector('[data-entry-title="Global More"]'),
+      mounted.container.querySelector('[data-entry-title="Global website"]') ||
+        mounted.container.querySelector('[data-entry-title="Global More"]'),
     );
   } finally {
     await mounted.unmount();

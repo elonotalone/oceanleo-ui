@@ -1,6 +1,6 @@
 {
   "name": "@oceanleo/ui",
-  "version": "0.188.2",
+  "version": "0.188.3",
   "description": "OceanLeo \u5168\u5bb6\u6876\u7edf\u4e00\u524d\u7aef\u5916\u58f3 \u2014 \u5355\u4e00\u4e8b\u5b9e\u6e90\uff08\u4fa7\u8fb9\u680f/AI \u6a21\u578b\u5e02\u573a/\u8d26\u6237/\u8bbe\u7f6e/\u4e3b\u9898/SSO/\u7f51\u5173\uff09\u3002\u6240\u6709 *.oceanleo.com \u7ad9\uff08\u9664 crm\uff09\u5171\u4eab\u6b64\u5305\u3002",
   "private": false,
   "license": "UNLICENSED",

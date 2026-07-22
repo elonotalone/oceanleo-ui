@@ -409,7 +409,7 @@ export function artifactEntry(
  */
 export const MATERIAL_LIBRARY_MORE_ROLE = "template";
 
-/** One page of the unfiltered more shelf mixes these editable types. */
+/** One page of the unfiltered more shelf mixes every catalog taxonomy type. */
 const BALANCED_MORE_TYPES: readonly ArtifactType[] = [
   "website",
   "workflow",
@@ -417,6 +417,7 @@ const BALANCED_MORE_TYPES: readonly ArtifactType[] = [
   "document",
   "grid",
   "single_file_image",
+  "composite_image",
   "vector_image",
   "pdf",
   "video",
@@ -466,7 +467,7 @@ export async function queryMaterialLibrary(input: {
       signal: input.signal,
     });
   }
-  // Unfiltered more shelf: round-robin the 12 advanced-capable types so a
+  // Unfiltered more shelf: round-robin every catalog taxonomy type so a
   // single recent promote wave (e.g. model_3d) cannot monopolize page one.
   if (!input.taxonomy && !input.query.trim() && !input.cursor) {
     const perType = 5;
