@@ -13,11 +13,11 @@
 // 与目录项随站变化。改这里 = 改所有站的外壳，一处生效，永不漂移。
 // ----------------------------------------------------------------------------
 // 集成契约：各站把目录(nav)、品牌(brand)、当前用户(userEmail)、余额(credits)
-// 与退出(onSignOut)传进来即可。右上角统一切换全局模型组合，AI 模型页负责组合管理。
+// 与退出(onSignOut)传进来即可。目录路由右上角统一切换全局模型组合，AI 模型页负责组合管理。
 // ============================================================================
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   ReactNode,
   createContext,
@@ -31,6 +31,7 @@ import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import { LOCALES } from "../i18n/config";
 import { useUI } from "../i18n/ui/useUI";
 import { usePresenceHeartbeat } from "../lib/presence";
 
@@ -95,6 +96,91 @@ function isActive(pathname: string, item: ShellNavItem): boolean {
   if (!item.href) return false; // 纯动作项（搜索等）不高亮
   if (item.exact || item.href === "/") return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+type ModelPickerSearchParams = Pick<URLSearchParams, "get" | "has">;
+type ModelPickerSearchInput = string | ModelPickerSearchParams | null | undefined;
+
+const MODEL_PICKER_CONTEXT_PARAMS = [
+  "fn",
+  "function",
+  "app",
+  "task",
+  "session",
+  // SiteCatalogConsole still accepts this legacy function-selection key.
+  "mode",
+] as const;
+const LOCALE_PATH_PREFIXES = new Set(
+  LOCALES.map((locale) => locale.toLowerCase()),
+);
+const DISABLED_QUERY_FLAGS = new Set(["0", "false", "no", "off"]);
+
+function searchParamReader(search: ModelPickerSearchInput): ModelPickerSearchParams {
+  if (typeof search === "string") {
+    return new URLSearchParams(search.replace(/^\?/, ""));
+  }
+  return search ?? new URLSearchParams();
+}
+
+function decodedRouteSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function logicalRouteSegments(pathname: string): string[] {
+  const pathOnly = (pathname || "/").split(/[?#]/, 1)[0];
+  const segments = pathOnly
+    .split("/")
+    .filter(Boolean)
+    .map(decodedRouteSegment);
+  if (segments[0] && LOCALE_PATH_PREFIXES.has(segments[0].toLowerCase())) {
+    return segments.slice(1);
+  }
+  return segments;
+}
+
+function enabledQueryFlag(
+  searchParams: ModelPickerSearchParams,
+  key: "embed" | "solo",
+): boolean {
+  if (!searchParams.has(key)) return false;
+  const value = (searchParams.get(key) || "").trim().toLowerCase();
+  return !DISABLED_QUERY_FLAGS.has(value);
+}
+
+/**
+ * The shared route-level source of truth for model-picker visibility.
+ *
+ * Root and one-segment routes are directory surfaces. Deeper routes are
+ * concrete detail/runtime surfaces. Search params cover legacy root runtimes,
+ * history details, and iframe/solo entry points before their canonical route
+ * migration has completed.
+ */
+export function shouldShowModelPicker(
+  pathname: string,
+  search: ModelPickerSearchInput = "",
+): boolean {
+  const searchParams = searchParamReader(search);
+  if (
+    enabledQueryFlag(searchParams, "embed")
+    || enabledQueryFlag(searchParams, "solo")
+  ) {
+    return false;
+  }
+  if (
+    MODEL_PICKER_CONTEXT_PARAMS.some(
+      (key) => (searchParams.get(key) || "").trim().length > 0,
+    )
+  ) {
+    return false;
+  }
+
+  const segments = logicalRouteSegments(pathname);
+  if (segments[0]?.toLowerCase() === "advanced") return false;
+  return segments.length <= 1;
 }
 
 export interface AppShellProps {
@@ -203,6 +289,7 @@ function AppShellInner({
 }: AppShellProps) {
   const tt = useUI();
   const rawPathname = usePathname() || "/";
+  const searchParams = useSearchParams();
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
   // 在线心跳：登录用户每 60s ping 网关（admin「在线人数」曲线的数据源）。
   usePresenceHeartbeat(siteId);
@@ -444,7 +531,15 @@ function AppShellInner({
     );
   }
 
-  const showHeader = !hideHeader;
+  const showModelPicker =
+    !hideHeader && shouldShowModelPicker(pathname, searchParams);
+  const modelPickerSlot = showModelPicker ? (
+    <div className="pointer-events-auto" data-oceanleo-model-picker-slot>
+      <ModelGroupPicker apiHref={apiHref} />
+    </div>
+  ) : null;
+  const showHeaderTools =
+    !hideHeader && (showModelPicker || Boolean(headerRight));
 
   const sidebarBody = (
     <>
@@ -600,7 +695,7 @@ function AppShellInner({
           {/* 右：切换器 + 自定义插槽 + token 余额 + 账户 */}
           <div className="flex shrink-0 items-center gap-2">
             {renderSwitchers()}
-            <ModelGroupPicker apiHref={apiHref} />
+            {modelPickerSlot}
             {headerRight}
             {renderCredits()}
             {renderAccountButton()}
@@ -669,14 +764,13 @@ function AppShellInner({
         </button>
 
         {/* 右侧主区全局模型组合 + 可选 headerRight 浮在右上角，不占整行高度。 */}
-        {showHeader && (
+        {showHeaderTools && (
           <div
             data-oceanleo-chrome
+            data-oceanleo-header-tools
             className="pointer-events-none absolute right-4 top-3 z-30 flex items-center gap-2 md:right-6"
           >
-            <div className="pointer-events-auto">
-              <ModelGroupPicker apiHref={apiHref} />
-            </div>
+            {modelPickerSlot}
             {/* headerRight 各站自定义操作按钮（与模型组合同一行浮层） */}
             {headerRight && (
               <div className="pointer-events-auto flex min-w-0 items-center gap-2">

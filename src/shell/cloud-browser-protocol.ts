@@ -18,6 +18,7 @@ import {
   reduceCloudBrowserProtocolMessage,
   type CloudBrowserFailureKind,
   type CloudBrowserHelloTab,
+  type CloudBrowserProtocolDiagnostic,
   type CloudBrowserProtocolState,
 } from "./cloud-browser-transport-model";
 
@@ -48,6 +49,7 @@ export interface CloudBrowserProtocolContext {
   leaseRef: Ref<CloudBrowserControlLease>;
   leaseOwnedRef: Ref<boolean>;
   controlIntentRef: Ref<"acquire" | "release" | "">;
+  controlIntentSentRef: Ref<boolean>;
   controlPendingRef: Ref<boolean>;
   pendingBinaryRef: Ref<boolean>;
   failureKindRef: Ref<CloudBrowserFailureKind>;
@@ -69,6 +71,8 @@ export interface CloudBrowserProtocolContext {
   armFirstFrameTimeout: () => void;
   cancelFrameDecode: (clearCanvas?: boolean) => void;
   acceptFrameMeta: (meta: ValidatedCloudBrowserFrameMeta) => boolean;
+  reconcileControlIntent: () => void;
+  recordDiagnostic: (diagnostic: CloudBrowserProtocolDiagnostic) => void;
   refreshCheckpoints: () => Promise<void>;
 }
 
@@ -100,6 +104,7 @@ function snapshot(
     leaseOwned: context.leaseOwnedRef.current,
     controlPending: context.controlPendingRef.current,
     controlIntent: context.controlIntentRef.current,
+    controlIntentSent: context.controlIntentSentRef.current,
     pendingBinary: context.pendingBinaryRef.current,
     failureKind: context.failureKindRef.current,
   });
@@ -130,6 +135,7 @@ function commit(
   context.leaseRef.current = next.lease;
   context.leaseOwnedRef.current = next.leaseOwned;
   context.controlIntentRef.current = next.controlIntent;
+  context.controlIntentSentRef.current = next.controlIntentSent;
   context.controlPendingRef.current = next.controlPending;
   context.pendingBinaryRef.current = next.pendingBinary;
   context.failureKindRef.current = next.failureKind;
@@ -171,6 +177,12 @@ export function handleCloudBrowserProtocolMessage(
   });
   commit(previous, reduction.state, context);
   for (const effect of reduction.effects) {
+    if (
+      (effect.type === "reject" || effect.type === "error") &&
+      effect.diagnostic
+    ) {
+      context.recordDiagnostic(effect.diagnostic);
+    }
     if (effect.type === "reject") {
       context.rejectProtocol(effect.message, effect.kind);
     } else if (effect.type === "error") {
@@ -182,6 +194,8 @@ export function handleCloudBrowserProtocolMessage(
       context.armFirstFrameTimeout();
     } else if (effect.type === "cancel_frame_decode") {
       context.cancelFrameDecode(false);
+    } else if (effect.type === "reconcile_control_intent") {
+      context.reconcileControlIntent();
     } else if (effect.type === "accept_frame_meta") {
       // The pure reducer cannot drop a frame and wait for the next
       // metadata, so pairing failures reject here and rely on the

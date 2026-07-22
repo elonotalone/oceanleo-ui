@@ -24,6 +24,7 @@ type PendingBlobFrame = {
   blob: Blob;
   meta: ValidatedCloudBrowserFrameMeta;
   generation: number;
+  settled: boolean;
 };
 
 export type ValidatedCloudBrowserFrameMeta = Required<
@@ -504,7 +505,8 @@ export function useCloudBrowserFramePainter(options: {
   decodeErrorCallbackRef.current = options.onDecodeError;
 
   const frameDecodeGenerationRef = useRef(0);
-  const frameDecodeBusyRef = useRef(false);
+  const frameDecodeBusyGenerationRef = useRef<number | null>(null);
+  const activeBlobFrameRef = useRef<PendingBlobFrame | null>(null);
   const pendingBlobFrameRef = useRef<PendingBlobFrame | null>(null);
   const frameSizeRef = useRef(DEFAULT_FRAME_SIZE);
   const pendingFrameMetaRef =
@@ -512,11 +514,26 @@ export function useCloudBrowserFramePainter(options: {
   const lastPresentedSequenceRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const cancelFrameDecode = useCallback((clearCanvas = false) => {
+  const dropBlobFrame = useCallback((frame: PendingBlobFrame) => {
+    if (frame.settled) return;
+    frame.settled = true;
+    droppedCallbackRef.current?.(frame.meta);
+  }, []);
+
+  const cancelFrameDecode = useCallback((
+    clearCanvas = false,
+    preservePendingMeta = false,
+  ) => {
+    const generation = frameDecodeGenerationRef.current;
     ++frameDecodeGenerationRef.current;
-    pendingFrameMetaRef.current = null;
-    if (pendingBlobFrameRef.current) {
-      droppedCallbackRef.current?.(pendingBlobFrameRef.current.meta);
+    if (!preservePendingMeta) pendingFrameMetaRef.current = null;
+    const active = activeBlobFrameRef.current;
+    if (active?.generation === generation) {
+      dropBlobFrame(active);
+    }
+    const pending = pendingBlobFrameRef.current;
+    if (pending?.generation === generation) {
+      dropBlobFrame(pending);
     }
     pendingBlobFrameRef.current = null;
     lastPresentedSequenceRef.current = 0;
@@ -531,7 +548,7 @@ export function useCloudBrowserFramePainter(options: {
         delete canvas.dataset.frameSource;
       }
     }
-  }, []);
+  }, [dropBlobFrame]);
 
   const paintFrame = useCallback(
     (
@@ -555,7 +572,10 @@ export function useCloudBrowserFramePainter(options: {
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
       const context = canvas.getContext("2d");
-      if (!context) return false;
+      if (!context) {
+        decodeErrorCallbackRef.current?.("canvas context unavailable");
+        return false;
+      }
       context.clearRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
       frameSizeRef.current = { width, height };
@@ -572,43 +592,67 @@ export function useCloudBrowserFramePainter(options: {
     [],
   );
 
-  const pumpBlobFrames = useCallback(async () => {
-    if (frameDecodeBusyRef.current) return;
-    frameDecodeBusyRef.current = true;
+  const pumpBlobFrames = useCallback(async (generation: number) => {
+    if (frameDecodeBusyGenerationRef.current === generation) return;
+    frameDecodeBusyGenerationRef.current = generation;
     try {
-      while (pendingBlobFrameRef.current) {
+      while (
+        pendingBlobFrameRef.current?.generation === generation
+      ) {
         const pending = pendingBlobFrameRef.current;
         pendingBlobFrameRef.current = null;
+        activeBlobFrameRef.current = pending;
         let bitmap: ImageBitmap | null = null;
         try {
           bitmap = await createImageBitmap(pending.blob);
-          if (
-            pending.generation === frameDecodeGenerationRef.current &&
-            document.visibilityState !== "hidden"
-          ) {
+          if (!pending.settled) {
+            if (
+              pending.generation !== frameDecodeGenerationRef.current ||
+              document.visibilityState === "hidden"
+            ) {
+              dropBlobFrame(pending);
+              continue;
+            }
             const newer =
               pendingBlobFrameRef.current as PendingBlobFrame | null;
-            if (newer && newer.meta.sequence > pending.meta.sequence) {
-              droppedCallbackRef.current?.(pending.meta);
+            if (
+              newer?.generation === generation &&
+              newer.meta.sequence > pending.meta.sequence
+            ) {
+              // latest-frame-backpressure: retain one pending value.
+              dropBlobFrame(pending);
             } else {
-              paintFrame(bitmap, bitmap.width, bitmap.height, pending.meta);
+              const painted = paintFrame(
+                bitmap,
+                bitmap.width,
+                bitmap.height,
+                pending.meta,
+              );
+              if (!painted) dropBlobFrame(pending);
             }
           }
         } catch {
           if (
+            !pending.settled &&
             pending.generation === frameDecodeGenerationRef.current &&
             document.visibilityState !== "hidden"
           ) {
+            dropBlobFrame(pending);
             decodeErrorCallbackRef.current?.("jpeg decode failed");
           }
         } finally {
+          if (activeBlobFrameRef.current === pending) {
+            activeBlobFrameRef.current = null;
+          }
           bitmap?.close();
         }
       }
     } finally {
-      frameDecodeBusyRef.current = false;
+      if (frameDecodeBusyGenerationRef.current === generation) {
+        frameDecodeBusyGenerationRef.current = null;
+      }
     }
-  }, [paintFrame]);
+  }, [dropBlobFrame, paintFrame]);
 
   const drawBlobFrame = useCallback(
     (value: Blob) => {
@@ -626,25 +670,28 @@ export function useCloudBrowserFramePainter(options: {
         return false;
       }
       if (receivedCallbackRef.current?.(meta) === false) return true;
-      if (document.visibilityState === "hidden") {
-        droppedCallbackRef.current?.(meta);
-        return true;
-      }
-      if (pendingBlobFrameRef.current) {
-        droppedCallbackRef.current?.(pendingBlobFrameRef.current.meta);
-      }
-      pendingBlobFrameRef.current = {
+      const generation = frameDecodeGenerationRef.current;
+      const pending: PendingBlobFrame = {
         blob:
           value.type === "image/jpeg"
             ? value
             : new Blob([value], { type: "image/jpeg" }),
         meta,
-        generation: frameDecodeGenerationRef.current,
+        generation,
+        settled: false,
       };
-      void pumpBlobFrames();
+      if (document.visibilityState === "hidden") {
+        dropBlobFrame(pending);
+        return true;
+      }
+      if (pendingBlobFrameRef.current) {
+        dropBlobFrame(pendingBlobFrameRef.current);
+      }
+      pendingBlobFrameRef.current = pending;
+      void pumpBlobFrames(generation);
       return true;
     },
-    [pumpBlobFrames],
+    [dropBlobFrame, pumpBlobFrames],
   );
 
   const acceptFrameMeta = useCallback(

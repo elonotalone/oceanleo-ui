@@ -9,6 +9,7 @@ import type {
 import { useUI } from "../i18n/ui/useUI";
 import {
   CloudBrowserCheckpointPanel,
+  type CloudBrowserRenameResult,
   type CloudBrowserRestoreResult,
 } from "./cloud-browser-history-view";
 
@@ -18,11 +19,11 @@ type BrowserSessionRowProps = {
   selected: CloudBrowserSession | null;
   selectedId: string;
   transportState: CloudBrowserTransportState;
-  statusText: string;
   liveRequested: boolean;
   driving: boolean;
   lease: CloudBrowserControlLease;
   controlPending: boolean;
+  hasCanvasFrame: boolean;
   busy: boolean;
   canBookmark: boolean;
   canCreateCheckpoint: boolean;
@@ -35,6 +36,10 @@ type BrowserSessionRowProps = {
   checkpointsLoading: boolean;
   checkpointsError: string;
   onChooseSession: (sessionId: string) => void;
+  onRenameSession: (
+    sessionId: string,
+    title: string,
+  ) => Promise<CloudBrowserRenameResult>;
   onOpenOrResume: () => void;
   onStartNew: () => void;
   onHibernate: () => void;
@@ -65,11 +70,11 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     selected,
     selectedId,
     transportState,
-    statusText,
     liveRequested,
     driving,
     lease,
     controlPending,
+    hasCanvasFrame,
     busy,
     canBookmark,
     canCreateCheckpoint,
@@ -91,19 +96,14 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
         : transportState === "reconnecting"
           ? "bg-amber-400"
           : "bg-stone-300";
-  const leaseText = driving
-    ? tt("你正在控制 · 租约代 {epoch}", { epoch: lease.epoch })
+  const controllerText = driving
+    ? tt("你正在控制")
     : lease.holderKind === "agent"
-      ? tt("Agent 正在控制 · 租约代 {epoch}", {
-          epoch: lease.epoch,
-        })
+      ? tt("Agent 正在控制")
       : lease.holderKind === "human"
-        ? tt("另一位用户正在控制 · 租约代 {epoch}", {
-            epoch: lease.epoch,
-          })
-        : tt("当前没有控制者 · 租约代 {epoch}", {
-            epoch: lease.epoch,
-          });
+        ? tt("另一位用户正在控制")
+        : "";
+  const controlAvailable = connected || hasCanvasFrame;
   const hiddenInImmersive =
     immersive && !immersiveControlsVisible;
   const powerLabel = liveRequested
@@ -145,35 +145,55 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
             className={`h-2 w-2 shrink-0 rounded-full ${stateTone}`}
             aria-hidden="true"
           />
-          <span className="min-w-0 truncate text-[10px] font-medium text-stone-700">
-            {statusText}
-          </span>
-          <span
-            className="hidden min-w-0 truncate text-[10px] text-stone-500 sm:inline"
-            data-cloud-browser-lease-status
-          >
-            {leaseText}
-          </span>
+          {connected && (
+            <span className="min-w-0 truncate text-[10px] font-medium text-stone-700">
+              {tt("实时")}
+            </span>
+          )}
+          {controllerText && (
+            <span
+              className="hidden min-w-0 truncate text-[10px] text-stone-500 sm:inline"
+              data-cloud-browser-lease-status
+            >
+              {controllerText}
+            </span>
+          )}
         </div>
 
         <button
           type="button"
           onClick={props.onToggleControl}
-          disabled={controlPending || !connected}
+          disabled={controlPending || !controlAvailable}
           className={`h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
             driving
               ? "bg-amber-100 text-amber-900"
               : "bg-stone-900 text-white"
           }`}
+          aria-busy={controlPending}
           aria-label={
-            driving
+            controlPending
+              ? tt("控制请求处理中")
+              : driving
               ? tt("释放控制并交还 Agent")
               : tt("接管浏览器控制")
+          }
+          title={
+            controlPending
+              ? tt("控制请求处理中")
+              : driving
+                ? tt("释放控制并交还 Agent")
+                : tt("接管浏览器控制")
           }
           data-cloud-browser-control
         >
           {controlPending
-            ? tt("切换控制中…")
+            ? (
+                <span
+                  className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
+                  aria-hidden="true"
+                  data-cloud-browser-control-spinner
+                />
+              )
             : driving
               ? tt("释放给 Agent")
               : tt("接管控制")}
@@ -209,6 +229,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
               busy={busy}
               deleteArmed={deleteArmed}
               onChooseSession={props.onChooseSession}
+              onRenameSession={props.onRenameSession}
               onDelete={props.onDelete}
               checkpoints={checkpoints}
               loading={checkpointsLoading}

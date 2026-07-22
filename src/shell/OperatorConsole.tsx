@@ -1,26 +1,10 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）
+// @oceanleo/ui — 单页「操作台」目录 + 工作区（OceanLeo 统一版式）
 // ----------------------------------------------------------------------------
-// 这是 OceanLeo 全家桶（除 oceanleo/crm/ui/aitools/chat 5 站）所有产品站「业务
-// 功能页」的统一范本。宗旨：每个站只有一个功能性路由；该站全部功能用「操作台
-// 顶部一排功能按键」在页面内切换（翻页），不再用多个业务路由页。
-// 设计文档：docs/architecture/oceanleo-single-page-operator-console.md（oceandino repo）。
-//
-//   ┌──────────┬────────────────────────────────┬────────────────────────┐
-//   │ 侧边栏    │ [功能A][功能B][功能C]…(整条顶栏，跨中+右两栏)              │
-//   │(AppShell) │ ┌──────────────┬───────────────────────────────────────┐│
-//   │ 站级导航  │ │ 操作台         │ 结果 / 素材查看区                       ││
-//   │           │ │  ① 步骤一 …    │ (ResultCanvas)                        ││
-//   │           │ └──────────────┴───────────────────────────────────────┘│
-//   └──────────┴────────────────────────────────┴────────────────────────┘
-//
-// 与 <Studio> 的关系：OperatorConsole = 顶部功能按键条（在「操作台/结果」两栏标题
-// 之上，整条横跨）+ 下方 <Studio>（中列操作流 + 右列 canvas）。单功能站也可直接
-// 用 <Studio>；多功能站用本组件统一翻页。
-// 操作员 2026-06-21：功能按键条从「操作台」栏内部上移到整个 Studio 之上 —— 即在
-// 「操作台」标题栏上面，作为整页顶栏，而不是塞在「操作台」栏体里。
+// 目录负责选择 app；进入 app 后，返回、app 身份和操作控件共用左侧 PaneHeader。
+// 工作区上方不再额外占一整行，右侧 PaneHeader 继续独立承载画布/编辑器控件。
 //
 // 框架无关：不 import next/navigation。深链同步交给消费端——传 `value`/`onChange`
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
@@ -29,7 +13,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { BackButton } from "./Playground";
 import type { ModelCategory } from "./ModelPicker";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
 import { GuideProvider } from "./guide-context";
@@ -38,11 +21,6 @@ import { promptCardsForSite } from "./home-cards";
 import { useUI } from "../i18n/ui/useUI";
 import { OperatorRemarkProvider } from "./OperatorRemark";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
-
-// 顶部功能按键条 + 上方可选 header 占用的竖向高度（px）。Studio 用它从可视
-// 高度里扣除，保证三栏整体不溢出一屏。按键条约 56px（pill 高 + 上下 padding），
-// 留一点呼吸空间；带 header 时再加一截。
-const TABS_BAR_HEIGHT = 60;
 
 export interface ConsoleFunction {
   /** 功能唯一 id（用于受控选中 / 深链 ?fn=<id>）。 */
@@ -73,10 +51,7 @@ export interface ConsoleFunction {
   group?: string;
   /** Runtime-only function: available to embeds/deep links, omitted from catalog. */
   hiddenFromDirectory?: boolean;
-  /**
-   * doctrine v3：本功能区绑定的 agent id（"<site_id>.<fn_id>"）。给了它，功能按键
-   * 上会显示「✦ agent」标记，表示这个功能区有专属 agent 可一边聊一边生成。
-   */
+  /** 本功能区绑定的 agent id（"<site_id>.<fn_id>"）；保留为运行时能力元数据。 */
   agentId?: string;
   /**
    * 该功能的中列操作流（通常是若干 <StudioSection> + 底部主按钮）。
@@ -99,7 +74,7 @@ export interface ConsoleFunction {
 }
 
 export interface OperatorConsoleProps {
-  /** 全部功能（= 顶部功能按键，从左到右）。 */
+  /** 全部 app/function 定义；目录负责选择，工作区一次只呈现当前项。 */
   functions: ConsoleFunction[];
   /** 受控：当前功能 id。不传则组件内部自管（非受控）。 */
   value?: string;
@@ -121,12 +96,12 @@ export interface OperatorConsoleProps {
   opsLabel?: ReactNode;
   /** 右栏（结果）标题，默认「结果」。透传给 <Studio>。 */
   canvasLabel?: ReactNode;
-  /** 顶部 header 高度（px），默认 56（= AppShell header）。透传给 <Studio>。 */
+  /** @deprecated App chrome 已并入 PaneHeader；保留字段供旧调用端类型兼容。 */
   headerHeight?: number;
-  /** 功能按键条上方可选标题区（如功能描述 / 提示）。 */
+  /** 可选紧凑补充内容；与 app 标题同处左侧 PaneHeader，不另占一行。 */
   header?: ReactNode;
   /**
-   * 隐藏顶部功能区按键条，只渲染当前选中的那一个功能区（含其操作台/agent + 结果）。
+   * 隐藏 app 身份 chrome，只渲染当前选中的功能区（含其操作台/agent + 结果）。
    * 主站工作台 iframe 内嵌子站时用 `?solo=1` 触发——主站那条「我的 Agents」行已经
    * 是功能区选择器，子站不该再带出整站的功能区按键。
    */
@@ -329,43 +304,69 @@ export function OperatorConsole({
     );
   }
 
-  // 宗旨 v10（操作员 2026-06-28）：一个 app 功能页 = 一个功能 = 一个操作台，进入
-  // 功能区后**绝不显示顶部功能切换条**（参考图 law 案例检索页：顶栏只有 ← 返回 /
-  // 功能名 / 模型选择）。换功能靠「返回目录 → 选另一张卡片」，不在页内横切。多功能
-  // 站走 directory 目录模式选功能；非目录的多功能站（理论上少见）默认进入第一个功能
-  // 区，仍不显示切换条。
-
-  // 顶栏 = 可选 header + 「← 返回 / 当前功能名 / 模型选择」（宗旨 v10：无功能切换条）。
-  // 它在「操作台 / 结果」两栏标题之上，整条横跨中+右两栏（即 Studio 之上）。
-  // hideTabs（solo 模式）：彻底不渲染顶栏（主站 iframe 内嵌，模型选择由主站那行承担）。
-  // directory 模式且已进入：顶栏左侧是「← 返回」（回目录）+ 当前功能名。
-  // 非目录站：顶栏只承载可选 header。
-  const showTopBar = (header != null || directoryMode) && !hideTabs;
-  const topBar = showTopBar ? (
-    <div className="shrink-0 space-y-3 px-4 pt-4">
-      {header}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {directoryMode && (
-            <div className="flex items-center gap-2">
-              <BackButton onClick={backToDirectory} />
-              <span className="truncate text-[13px] font-medium text-stone-600">
-                {active?.icon != null && <span className="mr-1">{active.icon}</span>}
-                {active?.label ? tt(active.label) : null}
-                {active?.agentId && (
-                  <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">
-                    ✦ agent
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
+  // app 身份直接成为 Studio 左侧 PaneHeader 的基础 label。FunctionAgentChat 会把
+  // 操作台/agent 与保存/新建控件装到同一个 header 的后半段；SplitWorkspace 保证
+  // 身份区域可收缩、控件不收缩。solo/embed 继续沿用消费端给的 opsLabel，避免宿主重复。
+  const activeTitle = active?.label ? tt(active.label) : "";
+  const appToolbarLabel: ReactNode = hideTabs ? (
+    opsLabel
+  ) : (
+    <div
+      data-workbench-app-identity
+      className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden"
+    >
+      {directoryMode && (
+        <button
+          type="button"
+          onClick={backToDirectory}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+          aria-label={tt("返回 App 目录")}
+          title={tt("返回 App 目录")}
+        >
+          <svg
+            aria-hidden="true"
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path
+              d="m15 18-6-6 6-6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+      {active?.icon != null && (
+        <span
+          data-workbench-app-icon
+          aria-hidden="true"
+          className="shrink-0 text-[15px] leading-none"
+        >
+          {active.icon}
+        </span>
+      )}
+      <span
+        data-workbench-app-title
+        className="min-w-0 flex-1 truncate text-[12px] font-semibold text-stone-700"
+        title={activeTitle}
+      >
+        {activeTitle}
+      </span>
+      {header != null && (
+        <div
+          data-workbench-toolbar-extra
+          className="min-w-0 max-w-[35%] overflow-hidden"
+        >
+          {header}
         </div>
-      </div>
+      )}
     </div>
-  ) : null;
+  );
 
-  // 中列 = 当前功能的操作流（功能按键条已上移到顶栏）。The outer
+  // 中列 = 当前功能的操作流；app chrome 由左侧 PaneHeader 承载。The outer
   // app-level entrance boundary below already owns the active-id key; a second
   // key here only caused a redundant nested remount.
   // h-full：让 agent/chat 形态（FunctionAgentChat 的 `flex h-full flex-col`）能撑满
@@ -377,13 +378,11 @@ export function OperatorConsole({
   // owner. Canonicalizing the same app URL keeps pageKey unchanged.
   const pageKey = active?.id ?? "ops";
 
-  // Studio 自己用 height: calc(100dvh - headerHeight) 定高（视口相对，稳）。顶栏
-  // 占了一截竖向空间，所以把它的高度叠加进 Studio 的 headerHeight 里扣除，三栏
-  // 整体仍恰好一屏、不溢出。无需依赖 h-full 的高度链路。
-  //
-  // AppShell 不再渲染模型选择 header；标准工作台页也没有 headerRight，因此外壳占高为 0。
+  // AppShell 不再渲染模型选择 header；app chrome 已并入 PaneHeader，不再从工作区高度
+  // 额外扣除一条横跨双栏的 app row。保留 headerHeight prop 仅作调用端类型兼容。
+  void headerHeight;
   const appShellHeader = 0;
-  const studioHeaderHeight = appShellHeader + (showTopBar ? TABS_BAR_HEIGHT : 0);
+  const studioHeaderHeight = appShellHeader;
 
   // 宗旨 v12.1/v12.2：每个功能页右栏首屏都要有「导航」——功能自带 guide 优先；没给的
   // 功能，按 siteId 从内置 prompt 库**自动兜底**一份（教学一句话 + 前几张卡片当示例，
@@ -397,7 +396,6 @@ export function OperatorConsole({
 
   return (
     <div className={className}>
-      {topBar}
       {/* 进功能区「从上到下」阶梯淡入（宗旨 v11）。key 变化重挂 → 重新触发 .v-page。 */}
       <div key={pageKey} className="v-page contents">
         {/* 宗旨 v12.1：GuideProvider 把当前功能的 guide + fill-bus 供给整棵子树
@@ -410,7 +408,7 @@ export function OperatorConsole({
               opsWidth={opsWidth}
               defaultRatio={defaultRatio}
               storageKey={storageKey}
-              opsLabel={opsLabel}
+              opsLabel={appToolbarLabel}
               canvasLabel={canvasLabel}
               accent={accent}
               headerHeight={studioHeaderHeight}

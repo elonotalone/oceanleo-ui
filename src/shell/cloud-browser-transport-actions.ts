@@ -1,7 +1,5 @@
 import type {
-  Dispatch,
   MutableRefObject,
-  SetStateAction,
 } from "react";
 import type {
   CloudBrowserCapabilitiesV3,
@@ -13,42 +11,38 @@ type MutationSender = (
   type: string,
   payload?: Record<string, unknown>,
 ) => boolean;
-type ControlSender = (
-  type: "control.acquire" | "control.release",
-  requireOwned: boolean,
-) => boolean;
-
 type ActionOptions = {
   transportStateRef: Ref<CloudBrowserTransportState>;
   leaseOwnedRef: Ref<boolean>;
-  controlIntentRef: Ref<"acquire" | "release" | "">;
+  controlPendingRef: Ref<boolean>;
   capabilitiesRef: Ref<CloudBrowserCapabilitiesV3>;
-  setControlPending: Dispatch<SetStateAction<boolean>>;
   sendMutation: MutationSender;
-  sendControlMutation: ControlSender;
+  requestControlIntent: (intent: "acquire" | "release") => void;
 };
 
 export function createCloudBrowserTransportActions({
   transportStateRef,
   leaseOwnedRef,
-  controlIntentRef,
+  controlPendingRef,
   capabilitiesRef,
-  setControlPending,
   sendMutation,
-  sendControlMutation,
+  requestControlIntent,
 }: ActionOptions) {
   function toggleControl() {
-    if (transportStateRef.current !== "streaming") return;
-    setControlPending(true);
+    if (controlPendingRef.current) return;
+    const state = transportStateRef.current;
     const owned = leaseOwnedRef.current;
-    controlIntentRef.current = owned ? "release" : "acquire";
-    const sent = sendControlMutation(
-      owned ? "control.release" : "control.acquire",
-      owned,
-    );
-    if (!sent) {
-      controlIntentRef.current = "";
-      setControlPending(false);
+    if (owned) {
+      if (state === "streaming") requestControlIntent("release");
+      return;
+    }
+    if (
+      state === "streaming" ||
+      state === "reconnecting" ||
+      state === "authenticated" ||
+      state === "awaiting_first_frame"
+    ) {
+      requestControlIntent("acquire");
     }
   }
 

@@ -145,6 +145,8 @@ function trustedHttpsUrl(value: unknown): string {
 }
 
 const ARTIFACT_ACCESS_PATH = /^\/v1\/artifact-renditions\/access\/[^/?#]+$/;
+const PUBLIC_ARTIFACT_ACCESS_PATH =
+  "/v1/artifact-renditions/access/public";
 const ARTIFACT_URL_FIELDS = new Set([
   "url",
   "accessUrl",
@@ -152,6 +154,27 @@ const ARTIFACT_URL_FIELDS = new Set([
   "signedUrl",
   "signed_url",
 ]);
+
+function isGatewayRelativeArtifactAccessUrl(value: string): boolean {
+  if (ARTIFACT_ACCESS_PATH.test(value)) return true;
+  try {
+    const parsed = new URL(value, "https://gateway.invalid");
+    const keys = [...new Set(parsed.searchParams.keys())].sort();
+    return (
+      value.startsWith("/") &&
+      !parsed.hash &&
+      parsed.pathname === PUBLIC_ARTIFACT_ACCESS_PATH &&
+      keys.join(",") === "artifactId,purpose,revisionId" &&
+      Boolean(parsed.searchParams.get("artifactId")) &&
+      Boolean(parsed.searchParams.get("revisionId")) &&
+      ["thumbnail", "preview"].includes(
+        parsed.searchParams.get("purpose") || "",
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 function trustedGatewayArtifactAccessUrl(value: unknown): string {
   const candidate = trustedHttpsUrl(value);
@@ -201,7 +224,7 @@ function qualifyArtifactAccessUrls(value: unknown): unknown {
       if (
         ARTIFACT_URL_FIELDS.has(key) &&
         typeof entry === "string" &&
-        ARTIFACT_ACCESS_PATH.test(entry)
+        isGatewayRelativeArtifactAccessUrl(entry)
       ) {
         const qualified = new URL(
           entry,

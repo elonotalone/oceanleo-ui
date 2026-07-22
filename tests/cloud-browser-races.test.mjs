@@ -10,6 +10,15 @@ import { createRoot } from "react-dom/client";
 import ts from "typescript";
 
 import { useCloudBrowserFramePainter } from "../src/shell/cloud-browser-live.ts";
+import {
+  createCloudBrowserProtocolState,
+  reduceCloudBrowserProtocolMessage,
+} from "../src/shell/cloud-browser-transport-model.ts";
+import {
+  canSendCloudBrowserControlMutation,
+  cloudBrowserV3Message,
+} from "../src/shell/cloud-browser-wire.ts";
+import { buildCloudBrowserV3Fixture } from "./cloud-browser-wire-fixture.ts";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -100,6 +109,10 @@ const protocolStubUrl = dataModule(`
     context.streamGenerationRef.current = serial;
     context.windowIdRef.current = "window-" + serial;
     context.helloFrameSequenceRef.current = 0;
+    context.setCurrentLease(
+      { leaseId: "", epoch: serial + 3, holderKind: "free" },
+      false,
+    );
     context.setProtocolVersion(3);
     context.transition("awaiting_first_frame");
     context.armFirstFrameTimeout();
@@ -318,6 +331,10 @@ function createRuntime() {
     writable: true,
     value: FakeWebSocket,
   });
+  Object.defineProperty(window.navigator, "onLine", {
+    configurable: true,
+    value: true,
+  });
   window.setTimeout = clock.setTimeout.bind(clock);
   window.clearTimeout = clock.clearTimeout.bind(clock);
   window.setInterval = clock.setInterval.bind(clock);
@@ -397,6 +414,19 @@ async function rejectFrame(runtime, reason = "forced decode reject") {
   });
 }
 
+async function presentFrame(runtime, sequence = 1) {
+  await act(async () => {
+    runtime.frameCallbacks.onPresented({
+      sequence,
+      actionSequence: 0,
+      source: "native-chrome-window",
+      paintState: "real",
+      nativeChromeWindow: true,
+    });
+    await flushMicrotasks();
+  });
+}
+
 async function tick(runtime, milliseconds) {
   await act(async () => {
     runtime.clock.tick(milliseconds);
@@ -414,6 +444,7 @@ test("a delayed decode rejection from an invalidated generation is silent", asyn
   const pendingDecodes = [];
   const decodeErrors = [];
   const presented = [];
+  const dropped = [];
   const closed = [];
   const previousCreateImageBitmap = globalThis.createImageBitmap;
   globalThis.createImageBitmap = () => {
@@ -427,6 +458,9 @@ test("a delayed decode rejection from an invalidated generation is silent", asyn
     painter = useCloudBrowserFramePainter({
       onPresented(meta) {
         presented.push(meta.sequence);
+      },
+      onDropped(meta) {
+        dropped.push(meta.sequence);
       },
       onDecodeError(reason) {
         decodeErrors.push(reason);
@@ -471,6 +505,12 @@ test("a delayed decode rejection from an invalidated generation is silent", asyn
     painter.cancelFrameDecode(false);
     assert.equal(painter.acceptFrameMeta(meta(2)), true);
     assert.equal(painter.drawBlobFrame(frame), true);
+    assert.equal(
+      pendingDecodes.length,
+      2,
+      "the current generation must not wait on a stale decode",
+    );
+    assert.deepEqual(dropped, [1]);
     pendingDecodes[0].reject(new Error("old generation failed"));
     await flushMicrotasks();
 
@@ -492,6 +532,263 @@ test("a delayed decode rejection from an invalidated generation is silent", asyn
     globalThis.createImageBitmap = previousCreateImageBitmap;
     await act(async () => root.unmount());
     container.remove();
+  }
+});
+
+test("latest-value frame decoding keeps one pending frame", async () => {
+  const pendingDecodes = [];
+  const presented = [];
+  const dropped = [];
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  globalThis.createImageBitmap = () => {
+    const pending = deferred();
+    pendingDecodes.push(pending);
+    return pending.promise;
+  };
+
+  let painter;
+  function PainterHarness() {
+    painter = useCloudBrowserFramePainter({
+      onPresented(meta) {
+        presented.push(meta.sequence);
+      },
+      onDropped(meta) {
+        dropped.push(meta.sequence);
+      },
+    });
+    return null;
+  }
+
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(React.createElement(PainterHarness)));
+    painter.canvasRef.current = {
+      width: 0,
+      height: 0,
+      dataset: {},
+      getContext() {
+        return {
+          clearRect() {},
+          drawImage() {},
+        };
+      },
+    };
+    const frame = new Blob([Uint8Array.of(1)], {
+      type: "image/jpeg",
+    });
+    const meta = (sequence) => ({
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      sequence,
+      actionSequence: 0,
+      capturedAtMs: Date.now(),
+      source: "native-chrome-window",
+      paintState: "real",
+      nativeChromeWindow: true,
+    });
+
+    for (const sequence of [1, 2, 3]) {
+      assert.equal(painter.acceptFrameMeta(meta(sequence)), true);
+      assert.equal(painter.drawBlobFrame(frame), true);
+    }
+    assert.equal(pendingDecodes.length, 1);
+    assert.deepEqual(dropped, [2]);
+
+    pendingDecodes[0].resolve({
+      width: 1,
+      height: 1,
+      close() {},
+    });
+    await flushMicrotasks();
+    assert.equal(pendingDecodes.length, 2);
+    assert.deepEqual(dropped, [2, 1]);
+
+    pendingDecodes[1].resolve({
+      width: 1,
+      height: 1,
+      close() {},
+    });
+    await flushMicrotasks();
+    assert.deepEqual(presented, [3]);
+  } finally {
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("a failed paint receipt retains the frame and reconnects", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    socket.bufferedAmount = 300 * 1024;
+
+    await presentFrame(runtime);
+
+    assert.equal(runtime.transport.hasCanvasFrame, true);
+    assert.equal(runtime.transport.transportState, "reconnecting");
+    assert.equal(socket.closed?.code, 1001);
+    await tick(runtime, 499);
+    assert.equal(runtime.ticketCalls.length, 1);
+    await tick(runtime, 1);
+    assert.equal(runtime.ticketCalls.length, 2);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("heartbeat backpressure cannot leave a stale socket live", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    await presentFrame(runtime);
+    socket.bufferedAmount = 300 * 1024;
+
+    await tick(runtime, 15_000);
+
+    assert.equal(runtime.transport.transportState, "reconnecting");
+    assert.equal(runtime.transport.hasCanvasFrame, true);
+    assert.equal(socket.closed?.code, 1001);
+    assert.equal(runtime.ticketCalls.length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("an expired ticket is replaced by a fresh bounded retry", async () => {
+  const runtime = createRuntime();
+  const expired = ticketResult("session-a", 1);
+  expired.data.expires_at = new Date(Date.now() - 1).toISOString();
+  runtime.ticketQueue.push(Promise.resolve(expired));
+  const mounted = await mountTransport(runtime);
+  try {
+    let opened;
+    await act(async () => {
+      opened = await runtime.transport.openLive("session-a");
+      await flushMicrotasks();
+    });
+    assert.equal(opened, false);
+    assert.equal(runtime.transport.transportState, "reconnecting");
+    assert.equal(FakeWebSocket.instances.length, 0);
+
+    await tick(runtime, 499);
+    assert.equal(runtime.ticketCalls.length, 1);
+    await tick(runtime, 1);
+    assert.equal(runtime.ticketCalls.length, 2);
+    const socket = FakeWebSocket.instances.at(-1);
+    await act(async () => socket.open());
+    assert.deepEqual(authTickets(), ["one-use-ticket-2"]);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("stale socket callbacks cannot disturb a fresh reconnect", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const staleSocket = await openLive(runtime, "session-a");
+    await establish(staleSocket);
+    await act(async () => staleSocket.close(1006, "network lost"));
+    await tick(runtime, 500);
+
+    const freshSocket = FakeWebSocket.instances.at(-1);
+    await establish(freshSocket);
+    const helloCount = runtime.helloSerial;
+    const ticketCount = runtime.ticketCalls.length;
+
+    staleSocket.onmessage?.({
+      data: JSON.stringify({ t: "hello" }),
+    });
+    staleSocket.onclose?.({ code: 1006, reason: "late close" });
+    await tick(runtime, 5_000);
+
+    assert.equal(runtime.helloSerial, helloCount);
+    assert.equal(runtime.ticketCalls.length, ticketCount);
+    assert.equal(runtime.transport.transportState, "awaiting_first_frame");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("takeover intent survives reconnect and sends only after paint", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const firstSocket = await openLive(runtime, "session-a");
+    await establish(firstSocket);
+    await presentFrame(runtime);
+    assert.equal(runtime.transport.transportState, "streaming");
+
+    await act(async () => firstSocket.close(1006, "network lost"));
+    assert.equal(runtime.transport.hasCanvasFrame, true);
+    await act(async () => runtime.transport.toggleControl());
+    assert.equal(runtime.transport.controlPending, true);
+
+    await tick(runtime, 500);
+    const freshSocket = FakeWebSocket.instances.at(-1);
+    await establish(freshSocket);
+    assert.equal(
+      freshSocket.sent
+        .map((message) => JSON.parse(message).t)
+        .includes("control.acquire"),
+      false,
+    );
+
+    await presentFrame(runtime);
+    const messages = freshSocket.sent.map((message) =>
+      JSON.parse(message),
+    );
+    const presentedIndex = messages.findIndex(
+      (message) => message.t === "frame.presented",
+    );
+    const acquireIndex = messages.findIndex(
+      (message) => message.t === "control.acquire",
+    );
+    assert.ok(presentedIndex >= 0);
+    assert.ok(acquireIndex > presentedIndex);
+    assert.equal(messages[acquireIndex].connection_id, "connection-2");
+    assert.equal(messages[acquireIndex].lease_epoch, 5);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("offline pauses the retry budget and online resumes immediately", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    await presentFrame(runtime);
+
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    await act(async () => window.dispatchEvent(new window.Event("offline")));
+    assert.equal(runtime.transport.transportState, "reconnecting");
+    assert.equal(runtime.transport.hasCanvasFrame, true);
+    await tick(runtime, 30_000);
+    assert.equal(runtime.ticketCalls.length, 1);
+
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await tick(runtime, 0);
+    assert.equal(runtime.ticketCalls.length, 2);
+    assert.equal(FakeWebSocket.instances.length, 2);
+  } finally {
+    await mounted.unmount();
   }
 });
 
@@ -650,4 +947,183 @@ test("validation recovery uses exactly two fresh tickets at 1s and 3s", async ()
   } finally {
     await mounted.unmount();
   }
+});
+
+const PROTOCOL_FALLBACKS = {
+  runtimeFailed: "runtime failed",
+  operationFailed: "operation failed",
+  protocolMismatch: "protocol mismatch",
+  staleStream: "stale stream",
+  leaseLost: "lease lost",
+};
+
+function streamingFixtureState() {
+  const fixture = buildCloudBrowserV3Fixture(Date.now());
+  const seeded = createCloudBrowserProtocolState({
+    transportState: "authenticated",
+    socketSessionId: fixture.ticket.session_id,
+    sessionVersion: fixture.ticket.session_version,
+    runtimeId: fixture.ticket.runtime_id,
+    incarnation: fixture.ticket.incarnation,
+    nonce: fixture.ticket.ticket_nonce,
+  });
+  const hello = reduceCloudBrowserProtocolMessage(
+    seeded,
+    fixture.hello,
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(hello.state.transportState, "awaiting_first_frame");
+  return {
+    fixture,
+    state: { ...hello.state, transportState: "streaming" },
+  };
+}
+
+test("lease loss can queue and reconcile a fenced reacquire", () => {
+  const { fixture, state } = streamingFixtureState();
+  const acquired = reduceCloudBrowserProtocolMessage(
+    state,
+    fixture.control_state,
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(acquired.state.leaseOwned, true);
+
+  const lost = reduceCloudBrowserProtocolMessage(
+    acquired.state,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "control.state"),
+      lease: {
+        lease_id: "agent-lease-6",
+        lease_epoch: 6,
+        holder_kind: "agent",
+        holder_id: "agent:browser-task",
+        connection_id: fixture.binding.connectionId,
+      },
+      action_sequence: 11,
+      callback_sequence: 8,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(lost.state.leaseOwned, false);
+  assert.equal(lost.state.failureKind, "lease_lost");
+
+  const free = reduceCloudBrowserProtocolMessage(
+    {
+      ...lost.state,
+      controlPending: true,
+      controlIntent: "acquire",
+      controlIntentSent: false,
+    },
+    {
+      ...cloudBrowserV3Message(fixture.binding, "control.state"),
+      lease: {
+        lease_id: "",
+        lease_epoch: 7,
+        holder_kind: "free",
+      },
+      action_sequence: 11,
+      callback_sequence: 9,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(free.state.controlPending, true);
+  assert.equal(free.state.controlIntent, "acquire");
+  assert.ok(
+    free.effects.some(
+      (effect) => effect.type === "reconcile_control_intent",
+    ),
+  );
+
+  const reacquired = reduceCloudBrowserProtocolMessage(
+    { ...free.state, controlIntentSent: true },
+    {
+      ...cloudBrowserV3Message(fixture.binding, "control.state"),
+      lease: {
+        lease_id: "human-lease-8",
+        lease_epoch: 8,
+        holder_kind: "human",
+        connection_id: fixture.binding.connectionId,
+      },
+      action_sequence: 12,
+      callback_sequence: 10,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reacquired.state.leaseOwned, true);
+  assert.equal(reacquired.state.controlPending, false);
+  assert.equal(reacquired.state.failureKind, null);
+  assert.ok(
+    reacquired.effects.some((effect) => effect.type === "clear_error"),
+  );
+});
+
+test("agent handoff requires the current connection lease fence", () => {
+  const lease = {
+    leaseId: "agent-lease",
+    epoch: 7,
+    holderKind: "agent",
+    holderId: "agent:browser-task",
+    connectionId: "connection-current",
+  };
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      lease,
+      false,
+      "connection-current",
+    ),
+    true,
+  );
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      lease,
+      false,
+      "connection-stale",
+    ),
+    false,
+  );
+});
+
+test("hibernation callbacks leave the live transport contract unchanged", () => {
+  const { fixture, state } = streamingFixtureState();
+  const reduced = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "session.state"),
+      state: "hibernated",
+      reason: "retention policy",
+      action_sequence: state.lastActionSequence,
+      callback_sequence: state.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.transportState, "streaming");
+  assert.equal(reduced.state.handshake, true);
+  assert.deepEqual(reduced.state.lease, state.lease);
+  assert.deepEqual(reduced.effects, []);
+});
+
+test("backend diagnostics do not become product error copy", () => {
+  const { fixture, state } = streamingFixtureState();
+  const reduced = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "error"),
+      code: "INTERNAL_STACK",
+      message: "executor.py:417 database host=private",
+      action_sequence: state.lastActionSequence,
+      callback_sequence: state.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  const effect = reduced.effects.find(
+    (candidate) => candidate.type === "error",
+  );
+  assert.equal(effect?.message, PROTOCOL_FALLBACKS.operationFailed);
+  assert.equal(effect?.diagnostic?.code, "INTERNAL_STACK");
+  assert.equal(
+    effect?.diagnostic?.message,
+    "executor.py:417 database host=private",
+  );
 });

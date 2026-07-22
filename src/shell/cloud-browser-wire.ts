@@ -69,14 +69,19 @@ export function canSendCloudBrowserControlMutation(
 ): boolean {
   if (!connectionId || lease.epoch <= 0) return false;
   if (type === "control.acquire") {
-    return (
+    const freeLease =
       !leaseOwned &&
       lease.holderKind === "free" &&
       lease.leaseId === "" &&
       lease.holderId === undefined &&
       lease.connectionId === undefined &&
-      lease.expiresAt === undefined
-    );
+      lease.expiresAt === undefined;
+    const fencedAgentHandoff =
+      !leaseOwned &&
+      lease.holderKind === "agent" &&
+      lease.leaseId.length > 0 &&
+      lease.connectionId === connectionId;
+    return freeLease || fencedAgentHandoff;
   }
   return (
     leaseOwned &&

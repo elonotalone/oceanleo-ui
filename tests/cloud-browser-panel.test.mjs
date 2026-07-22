@@ -11,6 +11,10 @@ import {
 import { CLOUD_BROWSER_EASTERN } from "../src/i18n/ui/messages/cloud-browser-copy-eastern.ts";
 import { CLOUD_BROWSER_WESTERN } from "../src/i18n/ui/messages/cloud-browser-copy-western.ts";
 import {
+  MAX_CLOUD_BROWSER_SESSION_TITLE_LENGTH,
+  renameCloudBrowserSession,
+} from "../src/lib/browser.ts";
+import {
   createCloudBrowserTextCommitGate,
   parseCloudBrowserFrameMeta,
   pointInContainedFrame,
@@ -995,6 +999,92 @@ test("the panel has one session row and no synthetic browser controls", () => {
   assert.match(chromeSource, /data-cloud-browser-hibernate/);
   assert.match(chromeSource, /tt\("新建"\)/);
   assert.match(chromeSource, /tt\("休眠"\)/);
+});
+
+test("viewport recovery is spinner-only and retained frames keep takeover available", () => {
+  const presentation = `${panelSource}\n${chromeSource}\n${historySource}`;
+  assert.match(panelSource, /data-cloud-browser-spinner/);
+  assert.match(panelSource, /animate-spin/);
+  assert.match(
+    panelSource,
+    /retainedFrame=\{transport\.hasCanvasFrame\}/,
+  );
+  assert.match(chromeSource, /connected \|\| hasCanvasFrame/);
+  assert.match(chromeSource, /aria-busy=\{controlPending\}/);
+  assert.match(chromeSource, /data-cloud-browser-control-spinner/);
+  for (const removedCopy of [
+    "连接出现波动，正在自动重连",
+    "实时浏览器连接失败",
+    "使用新票据重试连接",
+    "client did not present the in-flight frame",
+    "冷启动最长可能需要十几秒",
+    "当前仅保留最后一帧作为故障上下文",
+    "浏览会话未连接；点击底栏",
+    "租约代",
+  ]) {
+    assert.doesNotMatch(presentation, new RegExp(removedCopy));
+  }
+});
+
+test("history is a viewport-safe focus-trapped portal with metadata and no images", () => {
+  assert.match(historySource, /createPortal\(/);
+  assert.match(historySource, /data-cloud-browser-history-portal/);
+  assert.match(historySource, /role="dialog"/);
+  assert.match(historySource, /aria-modal="true"/);
+  assert.match(historySource, /max-h-\[calc\(100dvh-1rem\)\]/);
+  assert.match(historySource, /FOCUSABLE_SELECTOR/);
+  assert.match(historySource, /previous\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(historySource, /data-cloud-browser-session-list/);
+  assert.match(historySource, /data-cloud-browser-work-id/);
+  assert.match(historySource, /data-cloud-browser-app-session-id/);
+  assert.match(historySource, /data-cloud-browser-rename-session/);
+  assert.match(historySource, /data-cloud-browser-history-spinner/);
+  assert.doesNotMatch(historySource, /<img|has_screenshot|cloudBrowserScreenshot/);
+  assert.doesNotMatch(historySource, /正在加载会话快照|正在恢复此会话快照/);
+});
+
+test("user session naming uses the canonical browse PATCH contract", async () => {
+  const calls = [];
+  const updated = {
+    id: "session-1",
+    session_version: 21,
+    runtime_id: "runtime-1",
+    incarnation: 4,
+    protocol_version: 3,
+    binary_frames: true,
+    status: "active",
+    title: "Research sources",
+    title_source: "user",
+    created_at: "2026-07-20T00:00:00.000Z",
+  };
+  const result = await renameCloudBrowserSession(
+    updated.id,
+    "  Research sources  ",
+    async (path, init) => {
+      calls.push({ path, init });
+      return { ok: true, data: { session: updated } };
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/v1/browse/sessions/session-1");
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    title: "Research sources",
+  });
+
+  const invalidCalls = [];
+  const invalid = await renameCloudBrowserSession(
+    updated.id,
+    "x".repeat(MAX_CLOUD_BROWSER_SESSION_TITLE_LENGTH + 1),
+    async (...args) => {
+      invalidCalls.push(args);
+      return { ok: true, data: { session: updated } };
+    },
+  );
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.status, 400);
+  assert.equal(invalidCalls.length, 0);
 });
 
 test("lifecycle success reloads the durable session before ticketing", () => {

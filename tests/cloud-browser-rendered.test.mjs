@@ -36,10 +36,14 @@ for (const [name, value] of Object.entries({
   document,
   navigator: window.navigator,
   HTMLElement: window.HTMLElement,
+  HTMLInputElement: window.HTMLInputElement,
+  HTMLFormElement: window.HTMLFormElement,
   Element: window.Element,
   Node: window.Node,
   Event: window.Event,
   MouseEvent: window.MouseEvent,
+  KeyboardEvent: window.KeyboardEvent,
+  InputEvent: window.InputEvent,
 })) {
   Object.defineProperty(globalThis, name, {
     configurable: true,
@@ -52,6 +56,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 function dataModule(source) {
@@ -78,6 +83,7 @@ async function compileComponent(relativePath, additional = {}) {
   let source = await readFile(sourcePath, "utf8");
   for (const [specifier, replacement] of Object.entries({
     react: reactUrl,
+    "react-dom": reactDomUrl,
     "../lib/browser": browserStubUrl,
     "../i18n/ui/useUI": uiStubUrl,
     "./cloud-browser-live": liveStubUrl,
@@ -122,6 +128,9 @@ const session = {
   protocol_version: 3,
   stream_generation: 8,
   status: "active",
+  task_id: "task-1",
+  title: "Server-generated research work",
+  title_source: "auto",
   last_title: "Saved browsing session",
   created_at: "2026-07-20T00:00:00.000Z",
 };
@@ -162,6 +171,7 @@ test("rendered session row has no duplicate browser chrome", async () => {
         connectionId: "connection",
       },
       controlPending: false,
+      hasCanvasFrame: true,
       busy: false,
       canBookmark: true,
       canCreateCheckpoint: true,
@@ -174,6 +184,9 @@ test("rendered session row has no duplicate browser chrome", async () => {
       checkpointsLoading: false,
       checkpointsError: "",
       onChooseSession() {},
+      async onRenameSession() {
+        return { ok: true };
+      },
       onOpenOrResume() {},
       onHibernate() {},
       onDelete() {},
@@ -202,8 +215,9 @@ test("rendered session row has no duplicate browser chrome", async () => {
   await act(async () => root.render(React.createElement(Harness)));
 
   assert.ok(container.querySelector("[data-cloud-browser-session-row]"));
-  assert.match(container.textContent, /原生 Chrome 窗口实时/);
-  assert.match(container.textContent, /你正在控制 · 租约代 12/);
+  assert.match(container.textContent, /实时/);
+  assert.match(container.textContent, /你正在控制/);
+  assert.doesNotMatch(container.textContent, /租约代/);
   assert.match(container.textContent, /释放给 Agent/);
   assert.match(container.textContent, /收藏当前页面/);
   // Flattened bottom bar: 历史 + 新建 + 休眠 replace the old 更多 dropdown.
@@ -241,21 +255,282 @@ test("rendered session row has no duplicate browser chrome", async () => {
     container
       .querySelector("[data-cloud-browser-fullscreen]")
       .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    container
-      .querySelector("[data-cloud-browser-checkpoint-history]")
+    const historyTrigger = container.querySelector(
+      "[data-cloud-browser-checkpoint-history]",
+    );
+    historyTrigger.focus();
+    historyTrigger
       .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   });
   assert.equal(calls.bookmark, 1);
   assert.equal(calls.fullscreen, 1);
-  assert.ok(container.querySelector("[data-cloud-browser-checkpoints]"));
+  assert.equal(
+    container.querySelector("[data-cloud-browser-checkpoints]"),
+    null,
+    "history must render outside clipped browser chrome",
+  );
+  const dialog = document.body.querySelector(
+    "[data-cloud-browser-checkpoints]",
+  );
+  assert.ok(dialog);
+  assert.equal(dialog.getAttribute("role"), "dialog");
+  assert.equal(dialog.getAttribute("aria-modal"), "true");
+  assert.equal(
+    document.activeElement,
+    dialog.querySelector("#cloud-browser-checkpoint-title"),
+  );
+
+  const focusable = [
+    ...dialog.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ),
+  ];
+  focusable.at(-1).focus();
+  await act(async () => {
+    focusable
+      .at(-1)
+      .dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: "Tab",
+          bubbles: true,
+        }),
+      );
+  });
+  assert.equal(document.activeElement, focusable[0]);
 
   await act(async () => {
-    container
+    dialog
       .querySelector("[data-cloud-browser-create-checkpoint]")
       .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   });
   assert.equal(calls.checkpoint, 1);
 
+  const historyTrigger = container.querySelector(
+    "[data-cloud-browser-checkpoint-history]",
+  );
+  await act(async () => {
+    dialog
+      .querySelector("[data-cloud-browser-history-close]")
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(
+    document.body.querySelector("[data-cloud-browser-checkpoints]"),
+    null,
+  );
+  assert.equal(document.activeElement, historyTrigger);
+
+  await act(async () => root.unmount());
+});
+
+test("retained reconnect frame enables takeover and pending state stays accessible", async () => {
+  const container = document.querySelector("main");
+  const root = createRoot(container);
+  let toggles = 0;
+  const baseProps = {
+    accent: "#4f46e5",
+    sessions: [session],
+    selected: session,
+    selectedId: session.id,
+    transportState: "reconnecting",
+    liveRequested: true,
+    driving: false,
+    lease: { leaseId: "", epoch: 13, holderKind: "free" },
+    controlPending: false,
+    hasCanvasFrame: true,
+    busy: false,
+    canBookmark: false,
+    canCreateCheckpoint: false,
+    canHibernate: false,
+    deleteArmed: false,
+    immersive: false,
+    immersiveControlsVisible: true,
+    checkpointsOpen: false,
+    checkpoints: [],
+    checkpointsLoading: false,
+    checkpointsError: "",
+    onChooseSession() {},
+    async onRenameSession() {
+      return { ok: true };
+    },
+    onOpenOrResume() {},
+    onStartNew() {},
+    onHibernate() {},
+    onDelete() {},
+    onToggleControl() {
+      toggles += 1;
+    },
+    onBookmarkCurrentPage() {},
+    onToggleCheckpoints() {},
+    onCreateCheckpoint() {
+      return false;
+    },
+    async onRestoreCheckpoint() {
+      return { ok: true };
+    },
+    onToggleFullscreen() {},
+  };
+
+  await act(async () => {
+    root.render(React.createElement(CloudBrowserChrome, baseProps));
+  });
+  const control = container.querySelector("[data-cloud-browser-control]");
+  assert.equal(control.disabled, false);
+  assert.match(control.textContent, /接管控制/);
+  await act(async () => {
+    control.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(toggles, 1);
+
+  await act(async () => {
+    root.render(
+      React.createElement(CloudBrowserChrome, {
+        ...baseProps,
+        controlPending: true,
+      }),
+    );
+  });
+  const pending = container.querySelector("[data-cloud-browser-control]");
+  assert.equal(pending.disabled, true);
+  assert.equal(pending.getAttribute("aria-busy"), "true");
+  assert.equal(pending.getAttribute("aria-label"), "控制请求处理中");
+  assert.ok(pending.querySelector("[data-cloud-browser-control-spinner]"));
+  assert.doesNotMatch(pending.textContent, /切换控制/);
+
+  await act(async () => {
+    root.render(
+      React.createElement(CloudBrowserChrome, {
+        ...baseProps,
+        hasCanvasFrame: false,
+      }),
+    );
+  });
+  assert.equal(
+    container.querySelector("[data-cloud-browser-control]").disabled,
+    true,
+  );
+  await act(async () => root.unmount());
+});
+
+test("history lists work metadata and only user sessions expose inline naming", async () => {
+  const container = document.querySelector("main");
+  const root = createRoot(container);
+  const userSession = {
+    ...session,
+    id: "session-user",
+    task_id: null,
+    app_session_id: "workspace-user",
+    title: "Personal research",
+    title_source: "user",
+  };
+  const renamed = [];
+
+  function Harness() {
+    const [selectedId, setSelectedId] = useState(userSession.id);
+    const [items, setItems] = useState([session, userSession]);
+    return React.createElement(CloudBrowserCheckpointPanel, {
+      sessions: items,
+      selectedId,
+      busy: false,
+      deleteArmed: false,
+      onChooseSession: setSelectedId,
+      async onRenameSession(sessionId, title) {
+        renamed.push({ sessionId, title });
+        setItems((current) =>
+          current.map((item) =>
+            item.id === sessionId ? { ...item, title } : item,
+          ),
+        );
+        return { ok: true };
+      },
+      onDelete() {},
+      checkpoints: [],
+      loading: false,
+      loadError: "",
+      canCreate: false,
+      onCreate() {
+        return false;
+      },
+      async onRestore() {
+        return { ok: true };
+      },
+      onClose() {},
+    });
+  }
+
+  await act(async () => {
+    root.render(React.createElement(Harness));
+  });
+  const dialog = document.body.querySelector(
+    "[data-cloud-browser-checkpoints]",
+  );
+  assert.ok(dialog);
+  assert.match(
+    dialog.querySelector(
+      '[data-cloud-browser-session-option="session-1"]',
+    ).textContent,
+    /Server-generated research work/,
+  );
+  assert.equal(
+    dialog
+      .querySelector('[data-cloud-browser-session-option="session-1"]')
+      .dataset.cloudBrowserWorkId,
+    "task-1",
+  );
+  assert.ok(dialog.querySelector("[data-cloud-browser-rename-session]"));
+  const input = dialog.querySelector('input[aria-label="会话名称"]');
+  assert.equal(input.value, "Personal research");
+  assert.equal(input.maxLength, 160);
+  assert.equal(renamed.length, 0);
+
+  await act(async () => {
+    dialog
+      .querySelector('[data-cloud-browser-session-option="session-1"]')
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(
+    document.body.querySelector("[data-cloud-browser-rename-session]"),
+    null,
+  );
+  await act(async () => root.unmount());
+});
+
+test("history loading renders only an accessible spinner", async () => {
+  const container = document.querySelector("main");
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(CloudBrowserCheckpointPanel, {
+        sessions: [session],
+        selectedId: session.id,
+        busy: false,
+        deleteArmed: false,
+        onChooseSession() {},
+        async onRenameSession() {
+          return { ok: true };
+        },
+        onDelete() {},
+        checkpoints: [],
+        loading: true,
+        loadError: "",
+        canCreate: false,
+        onCreate() {
+          return false;
+        },
+        async onRestore() {
+          return { ok: true };
+        },
+        onClose() {},
+      }),
+    );
+  });
+  const dialog = document.body.querySelector(
+    "[data-cloud-browser-checkpoints]",
+  );
+  const spinner = dialog.querySelector(
+    '[data-cloud-browser-history-spinner][aria-label="正在加载历史"]',
+  );
+  assert.ok(spinner);
+  assert.doesNotMatch(dialog.textContent, /正在加载会话快照|正在加载历史/);
   await act(async () => root.unmount());
 });
 
@@ -272,6 +547,9 @@ test("checkpoint card exposes pins and restore confirmation/error", async () => 
         busy: false,
         deleteArmed: false,
         onChooseSession() {},
+        async onRenameSession() {
+          return { ok: true };
+        },
         onDelete() {},
         checkpoints: [checkpoint],
         loading: false,
@@ -289,7 +567,7 @@ test("checkpoint card exposes pins and restore confirmation/error", async () => 
     );
   });
 
-  const card = container.querySelector(
+  const card = document.body.querySelector(
     "[data-cloud-browser-checkpoint-id='checkpoint-9']",
   );
   assert.ok(card);
@@ -318,7 +596,7 @@ test("checkpoint card exposes pins and restore confirmation/error", async () => 
   assert.equal(restores, 1);
   assert.match(
     card.querySelector("[data-cloud-browser-restore-error]").textContent,
-    /Pinned runtime is unavailable/,
+    /会话快照恢复失败/,
   );
 
   await act(async () => root.unmount());
@@ -338,6 +616,7 @@ test("immersive row advertises and restores auto-hide state", async () => {
     driving: false,
     lease: { leaseId: "lease", epoch: 13, holderKind: "agent" },
     controlPending: false,
+    hasCanvasFrame: false,
     busy: false,
     canBookmark: false,
     canCreateCheckpoint: false,
@@ -348,6 +627,9 @@ test("immersive row advertises and restores auto-hide state", async () => {
     checkpointsLoading: false,
     checkpointsError: "",
     onChooseSession() {},
+    async onRenameSession() {
+      return { ok: true };
+    },
     onOpenOrResume() {},
     onHibernate() {},
     onDelete() {},

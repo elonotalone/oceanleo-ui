@@ -93,18 +93,13 @@ export const CLOUD_BROWSER_KEYS = [
   "实时连接已中断",
   "实时画面可见，但控制租约已丢失",
   "v3 连接已验证，等待原生 Chrome 首帧…",
-  "正在启动原生 Chrome…冷启动最长可能需要十几秒，画面就绪后自动进入实时。",
-  "连接出现波动，正在自动重连…",
-  "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。",
   "原生 Chrome 窗口画面；接管后直接操作画面内的标签栏和地址栏",
-  "浏览会话未连接；点击底栏「连接」或「恢复」继续当前会话。",
   "原生 Chrome 窗口键盘与输入法入口",
-  "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。",
-  "使用新票据重试连接",
-  "你正在控制 · 租约代 {epoch}",
-  "Agent 正在控制 · 租约代 {epoch}",
-  "另一位用户正在控制 · 租约代 {epoch}",
-  "当前没有控制者 · 租约代 {epoch}",
+  "浏览器正在连接",
+  "你正在控制",
+  "Agent 正在控制",
+  "另一位用户正在控制",
+  "控制请求处理中",
   "释放控制并交还 Agent",
   "接管浏览器控制",
   "释放给 Agent",
@@ -131,7 +126,7 @@ export const CLOUD_BROWSER_KEYS = [
   "关闭历史面板",
   "会话快照创建请求已发送，保存完成后会显示新一代。",
   "当前没有有效控制租约，无法创建会话快照。",
-  "正在加载会话快照…",
+  "正在加载历史",
   "还没有可恢复的会话快照。",
   "会话快照第 {generation} 代",
   "快照状态：可用",
@@ -140,9 +135,17 @@ export const CLOUD_BROWSER_KEYS = [
   "快照状态：已恢复",
   "快照状态：失败",
   "固定版本：会话 v{session} · 运行时 {runtime}",
-  "正在恢复此会话快照…",
+  "正在恢复会话快照",
   "确认恢复此会话快照",
   "恢复此会话快照",
+  "浏览会话命名失败",
+  "未命名浏览会话",
+  "工作与会话",
+  "Agent 工作",
+  "个人会话",
+  "会话名称",
+  "正在保存会话名称",
+  "保存名称",
   "浏览器拒绝原生全屏，已使用沉浸式覆盖模式",
   "当前环境不支持原生全屏，已使用沉浸式覆盖模式",
   "启动超时：原生 Chrome 画面未就绪，请重试",
@@ -288,29 +291,15 @@ export const CLOUD_BROWSER_EN: CloudBrowserDictionary = {
     "The live view is visible, but the control lease was lost",
   "v3 连接已验证，等待原生 Chrome 首帧…":
     "The v3 connection is authenticated; waiting for the first native Chrome frame…",
-  "正在启动原生 Chrome…冷启动最长可能需要十几秒，画面就绪后自动进入实时。":
-    "Starting native Chrome… A cold start can take up to fifteen seconds; the live view begins as soon as the frame is ready.",
-  "连接出现波动，正在自动重连…":
-    "The connection hiccuped; reconnecting automatically…",
-  "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。":
-    "Power on to connect to a complete native Chrome window, including its tab strip and omnibox.",
   "原生 Chrome 窗口画面；接管后直接操作画面内的标签栏和地址栏":
     "Native Chrome window; after taking control, use the tab strip and omnibox inside the frame",
-  "浏览会话未连接；点击底栏「连接」或「恢复」继续当前会话。":
-    "The browsing session is disconnected. Use Connect or Restore in the bottom bar to continue.",
   "原生 Chrome 窗口键盘与输入法入口":
     "Keyboard and input-method entry for the native Chrome window",
-  "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。":
-    "The last frame is retained only as failure context. It is not live and accepts no input.",
-  "使用新票据重试连接": "Retry with a new ticket",
-  "你正在控制 · 租约代 {epoch}":
-    "You are controlling · lease epoch {epoch}",
-  "Agent 正在控制 · 租约代 {epoch}":
-    "Agent is controlling · lease epoch {epoch}",
-  "另一位用户正在控制 · 租约代 {epoch}":
-    "Another user is controlling · lease epoch {epoch}",
-  "当前没有控制者 · 租约代 {epoch}":
-    "No current controller · lease epoch {epoch}",
+  "浏览器正在连接": "Browser connecting",
+  "你正在控制": "You are controlling",
+  "Agent 正在控制": "Agent is controlling",
+  "另一位用户正在控制": "Another user is controlling",
+  "控制请求处理中": "Control request pending",
   "释放控制并交还 Agent": "Release control to the Agent",
   "接管浏览器控制": "Take browser control",
   "释放给 Agent": "Release to Agent",
@@ -341,7 +330,7 @@ export const CLOUD_BROWSER_EN: CloudBrowserDictionary = {
     "The checkpoint request was sent. A new generation will appear after it is saved.",
   "当前没有有效控制租约，无法创建会话快照。":
     "A session checkpoint cannot be created without a valid control lease.",
-  "正在加载会话快照…": "Loading session checkpoints…",
+  "正在加载历史": "Loading history",
   "还没有可恢复的会话快照。":
     "There are no restorable session checkpoints yet.",
   "会话快照第 {generation} 代":
@@ -353,9 +342,17 @@ export const CLOUD_BROWSER_EN: CloudBrowserDictionary = {
   "快照状态：失败": "Checkpoint state: failed",
   "固定版本：会话 v{session} · 运行时 {runtime}":
     "Pinned versions: session v{session} · runtime {runtime}",
-  "正在恢复此会话快照…": "Restoring this session checkpoint…",
+  "正在恢复会话快照": "Restoring session checkpoint",
   "确认恢复此会话快照": "Confirm restoration of this checkpoint",
   "恢复此会话快照": "Restore this session checkpoint",
+  "浏览会话命名失败": "Could not name the browsing session",
+  "未命名浏览会话": "Untitled browsing session",
+  "工作与会话": "Works and sessions",
+  "Agent 工作": "Agent work",
+  "个人会话": "Personal session",
+  "会话名称": "Session name",
+  "正在保存会话名称": "Saving session name",
+  "保存名称": "Save name",
   "浏览器拒绝原生全屏，已使用沉浸式覆盖模式":
     "Native fullscreen was denied; immersive overlay mode is active",
   "当前环境不支持原生全屏，已使用沉浸式覆盖模式":

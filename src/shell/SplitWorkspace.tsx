@@ -36,18 +36,17 @@ import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
 
 // ----------------------------------------------------------------------------
-// 左栏标题（PaneHeader）插槽。doctrine v3（2026-06-21 操作员）：功能区的
-// 「操作台 / agent」切换不再是栏体内部的一个 pill 按钮（那会和「操作台」标题
-// 文字重复），而是**直接替换左栏标题**——「操作台」标题本身就是可切换的
-// 「操作台 | agent」开关。FunctionAgentChat 作为左栏 body 的后代，通过此 context
-// 把自己的开关装进左栏标题位置。
+// 左栏标题（PaneHeader）控件插槽。FunctionAgentChat 作为左栏 body 的后代，通过
+// context 把模式与 app actions 装进标题位置。若宿主提供 ReactNode app 身份 label，
+// SplitWorkspace 会把「身份 + 控件」合成同一条不换行 toolbar；纯文字 label 保留旧的
+// replacement 行为，兼容直接使用 Studio 的消费端。
 // ----------------------------------------------------------------------------
 interface LeftPaneSlot {
-  /** 用一个节点替换左栏标题（「操作台」文字）。传 null 恢复默认。 */
+  /** 设置左栏 PaneHeader 的交互控件。传 null 恢复宿主 label。 */
   setLeftLabel: (node: ReactNode | null) => void;
 }
 const LeftPaneCtx = createContext<LeftPaneSlot | null>(null);
-/** 供 FunctionAgentChat 等左栏 body 后代使用：把「操作台|agent」开关装到左栏标题。 */
+/** 供 FunctionAgentChat 等左栏 body 后代使用：把模式与 app actions 装到 PaneHeader。 */
 export function useLeftPaneSlot(): LeftPaneSlot | null {
   return useContext(LeftPaneCtx);
 }
@@ -225,13 +224,42 @@ export function SplitWorkspace({
   const [maxed, setMaxed] = useState<Maxed>("none");
   const [dragging, setDragging] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  // 左栏标题覆盖（FunctionAgentChat 通过 context 装入「操作台|agent」开关）。
+  // 左栏交互控件（FunctionAgentChat 通过 context 装入模式、保存和新建）。
   const [leftLabelOverride, setLeftLabelOverride] = useState<ReactNode | null>(null);
   const slot = useMemo<LeftPaneSlot>(
     () => ({ setLeftLabel: (node) => setLeftLabelOverride(node) }),
     [],
   );
-  const baseLeftLabel = leftLabelOverride ?? leftLabel;
+  const leftLabelIsPlain =
+    typeof leftLabel === "string" || typeof leftLabel === "number";
+  // OperatorConsole supplies a structured app identity label. Keep it before
+  // FunctionAgentChat controls in one bounded row. Legacy plain labels still
+  // get replaced so direct Studio + FunctionAgentChat consumers do not see a
+  // duplicate “操作台”.
+  const baseLeftLabel: ReactNode =
+    leftLabelOverride != null && leftLabel != null && !leftLabelIsPlain ? (
+      <div
+        data-workbench-toolbar
+        role="toolbar"
+        aria-label={tt("App 操作")}
+        className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+      >
+        <div
+          data-workbench-toolbar-identity
+          className="flex min-w-0 flex-1 overflow-hidden"
+        >
+          {leftLabel}
+        </div>
+        <div
+          data-workbench-toolbar-controls
+          className="flex shrink-0 flex-nowrap items-center gap-1"
+        >
+          {leftLabelOverride}
+        </div>
+      </div>
+    ) : (
+      leftLabelOverride ?? leftLabel
+    );
   // 「库」开关按钮（放左栏标题右侧）。默认关态；库【打开后此按钮隐藏】——避免出现两个
   // 「库」（右版面顶栏已有居中「库」标题 + ✕ 关闭）。样式：主站黑胶囊白字，子站默认 accent
   // 胶囊；消费端可用 library.buttonClassName 覆盖关态样式。
@@ -255,8 +283,8 @@ export function SplitWorkspace({
   // 左栏标题 = 原标题（纯字符串包成小灰标题）+ 右侧「库」开关。
   const effectiveLeftLabel: ReactNode =
     library && (baseLeftLabel != null || libraryToggle) ? (
-      <div className="flex w-full items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {typeof baseLeftLabel === "string" || typeof baseLeftLabel === "number" ? (
             <span className="truncate text-[12px] font-medium text-stone-500">{baseLeftLabel}</span>
           ) : (
@@ -697,11 +725,14 @@ function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNo
   // 的「操作台 | agent」开关）。纯字符串时套灰色小标题样式；节点时原样渲染。
   const isPlain = typeof label === "string" || typeof label === "number";
   return (
-    <div className="flex min-h-[2.5rem] shrink-0 items-center justify-between gap-2 border-b border-stone-100 px-3 py-1.5">
+    <div
+      data-pane-header
+      className="flex min-h-[2.5rem] min-w-0 shrink-0 flex-nowrap items-center justify-between gap-1 overflow-hidden border-b border-stone-100 px-3 py-1.5"
+    >
       {isPlain ? (
         <span className="truncate text-[12px] font-medium text-stone-500">{label}</span>
       ) : (
-        <div className="min-w-0 flex-1">{label}</div>
+        <div className="min-w-0 flex-1 overflow-hidden">{label}</div>
       )}
       <div className="flex shrink-0 items-center gap-1">{children}</div>
     </div>

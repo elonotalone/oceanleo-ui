@@ -666,6 +666,28 @@ test("gateway-relative rendition access paths are qualified before normalization
   );
 });
 
+test("public stable rendition identities retain their exact query when qualified", async () => {
+  const rawProjection = projection({
+    id: "public-stable-access",
+    editable: true,
+    visibility: "public",
+  });
+  const stablePath =
+    "/v1/artifact-renditions/access/public" +
+    "?artifactId=public-stable-access" +
+    "&revisionId=r1&purpose=preview";
+  rawProjection.renditions.preview.url = stablePath;
+  globalThis.fetch = async () => jsonResponse(rawProjection);
+
+  const result = await getArtifactItem("public-stable-access", "r1");
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.data?.artifact?.renditions.preview?.url,
+    `https://api.test${stablePath}`,
+  );
+});
+
 test("artifact library requests match FastAPI aliases, bounds, empty-value, and offset contracts", async () => {
   const contextId = "00000000-0000-0000-0000-000000000001";
   const calls = [];

@@ -163,6 +163,7 @@ export interface CloudBrowserProtocolState {
   leaseOwned: boolean;
   controlPending: boolean;
   controlIntent: CloudBrowserControlIntent;
+  controlIntentSent: boolean;
   pendingBinary: boolean;
   failureKind: CloudBrowserFailureKind;
 }
@@ -195,22 +196,37 @@ export function createCloudBrowserProtocolState(
     leaseOwned: false,
     controlPending: false,
     controlIntent: "",
+    controlIntentSent: false,
     pendingBinary: false,
     failureKind: null,
     ...input,
   };
 }
 
+export type CloudBrowserProtocolDiagnostic = {
+  source: "server";
+  type: string;
+  code?: string;
+  message: string;
+};
+
 export type CloudBrowserProtocolEffect =
   | {
       type: "reject";
       message: string;
       kind: Exclude<CloudBrowserFailureKind, "lease_lost" | null>;
+      diagnostic?: CloudBrowserProtocolDiagnostic;
     }
-  | { type: "error"; message: string; kind?: CloudBrowserFailureKind }
+  | {
+      type: "error";
+      message: string;
+      kind?: CloudBrowserFailureKind;
+      diagnostic?: CloudBrowserProtocolDiagnostic;
+    }
   | { type: "clear_error" }
   | { type: "arm_first_frame" }
   | { type: "cancel_frame_decode" }
+  | { type: "reconcile_control_intent" }
   | {
       type: "accept_frame_meta";
       meta: ValidatedCloudBrowserFrameMeta;
@@ -281,7 +297,9 @@ function reject(
   state: CloudBrowserProtocolState,
   message: string,
   kind: Exclude<CloudBrowserFailureKind, "lease_lost" | null>,
+  diagnostic?: CloudBrowserProtocolDiagnostic,
 ): CloudBrowserProtocolReduction {
+  const preserveTakeover = state.controlIntent === "acquire";
   return {
     state: transition(
       {
@@ -289,13 +307,21 @@ function reject(
         handshake: false,
         pendingBinary: false,
         leaseOwned: false,
-        controlPending: false,
-        controlIntent: "",
+        controlPending: preserveTakeover,
+        controlIntent: preserveTakeover ? "acquire" : "",
+        controlIntentSent: false,
         failureKind: kind,
       },
       "failed",
     ),
-    effects: [{ type: "reject", message, kind }],
+    effects: [
+      {
+        type: "reject",
+        message,
+        kind,
+        ...(diagnostic ? { diagnostic } : {}),
+      },
+    ],
   };
 }
 
@@ -636,6 +662,7 @@ export function reduceCloudBrowserProtocolMessage(
     const owned =
       lease.holderKind === "human" &&
       lease.connectionId === connectionId;
+    const preserveTakeover = state.controlIntent === "acquire";
     state = transition(
       {
         ...state,
@@ -655,11 +682,17 @@ export function reduceCloudBrowserProtocolMessage(
         lastCallbackSequence: message.callback_sequence as number,
         lease,
         leaseOwned: owned,
+        controlPending: preserveTakeover && !owned,
+        controlIntent: preserveTakeover && !owned ? "acquire" : "",
+        controlIntentSent: false,
         failureKind: null,
       },
       "awaiting_first_frame",
     );
     effects.push({ type: "arm_first_frame" }, { type: "clear_error" });
+    if (state.controlIntent === "acquire") {
+      effects.push({ type: "reconcile_control_intent" });
+    }
     return { state, effects };
   }
 
@@ -750,15 +783,28 @@ export function reduceCloudBrowserProtocolMessage(
       (!owned ||
         lease.leaseId !== state.lease.leaseId ||
         lease.epoch !== state.lease.epoch);
+    const acquiredPendingTakeover =
+      state.controlIntent === "acquire" &&
+      state.controlIntentSent &&
+      owned;
+    const retainQueuedTakeover =
+      state.controlIntent === "acquire" &&
+      !state.controlIntentSent &&
+      !owned;
     state = {
       ...state,
       lease,
       leaseOwned: owned,
-      controlIntent: "",
-      controlPending: false,
+      controlIntent: retainQueuedTakeover ? "acquire" : "",
+      controlPending: retainQueuedTakeover,
+      controlIntentSent: false,
       lastActionSequence: message.action_sequence as number,
       lastCallbackSequence: message.callback_sequence as number,
-      failureKind: lost ? "lease_lost" : state.failureKind,
+      failureKind: lost
+        ? "lease_lost"
+        : acquiredPendingTakeover
+          ? null
+          : state.failureKind,
     };
     if (lost) {
       effects.push({
@@ -766,6 +812,11 @@ export function reduceCloudBrowserProtocolMessage(
         message: fallback.leaseLost,
         kind: "lease_lost",
       });
+    }
+    if (acquiredPendingTakeover) {
+      effects.push({ type: "clear_error" });
+    } else if (retainQueuedTakeover) {
+      effects.push({ type: "reconcile_control_intent" });
     }
     return { state, effects };
   }
@@ -806,7 +857,16 @@ export function reduceCloudBrowserProtocolMessage(
     if (message.status === "rejected") {
       effects.push({
         type: "error",
-        message: String(message.message || fallback.operationFailed),
+        message: fallback.operationFailed,
+        diagnostic: {
+          source: "server",
+          type,
+          code:
+            typeof message.code === "string"
+              ? message.code
+              : undefined,
+          message: String(message.message || ""),
+        },
       });
     }
     return { state, effects };
@@ -912,8 +972,13 @@ export function reduceCloudBrowserProtocolMessage(
     if (message.state === "failed") {
       return reject(
         state,
-        String(message.reason || fallback.runtimeFailed),
+        fallback.runtimeFailed,
         "connection",
+        {
+          source: "server",
+          type,
+          message: String(message.reason || ""),
+        },
       );
     }
     return {
@@ -956,6 +1021,7 @@ export function reduceCloudBrowserProtocolMessage(
         leaseOwned: false,
         controlPending: false,
         controlIntent: "",
+        controlIntentSent: false,
         lastActionSequence: message.action_sequence as number,
         lastCallbackSequence: message.callback_sequence as number,
         failureKind: "lease_lost",
@@ -963,6 +1029,11 @@ export function reduceCloudBrowserProtocolMessage(
     } else {
       state = {
         ...state,
+        controlPending:
+          state.controlIntentSent ? false : state.controlPending,
+        controlIntent:
+          state.controlIntentSent ? "" : state.controlIntent,
+        controlIntentSent: false,
         lastActionSequence: message.action_sequence as number,
         lastCallbackSequence: message.callback_sequence as number,
       };
@@ -971,8 +1042,14 @@ export function reduceCloudBrowserProtocolMessage(
       type: "error",
       message: leaseLost
         ? fallback.leaseLost
-        : String(message.message || fallback.operationFailed),
+        : fallback.operationFailed,
       kind: leaseLost ? "lease_lost" : undefined,
+      diagnostic: {
+        source: "server",
+        type,
+        code: message.code as string,
+        message: message.message as string,
+      },
     });
     return { state, effects };
   }

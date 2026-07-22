@@ -6,15 +6,18 @@ import {
   createCloudBrowserOperationId,
   deleteCloudBrowser,
   hibernateCloudBrowser,
+  renameCloudBrowserSession,
   restoreCloudBrowserCheckpoint,
   resumeCloudBrowser,
   type CloudBrowserCheckpoint,
-  type CloudBrowserTransportState,
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
 import { CloudBrowserChrome } from "./cloud-browser-chrome";
 import { BrowserGlyph } from "./cloud-browser-controls";
-import type { CloudBrowserRestoreResult } from "./cloud-browser-history-view";
+import type {
+  CloudBrowserRenameResult,
+  CloudBrowserRestoreResult,
+} from "./cloud-browser-history-view";
 import { useCloudBrowserInteraction } from "./cloud-browser-interaction";
 import { DEFAULT_BROWSER_URL } from "./cloud-browser-live";
 import { useCloudBrowserSessionData } from "./cloud-browser-session-data";
@@ -22,6 +25,32 @@ import { useCloudBrowserTransport } from "./cloud-browser-transport";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export { pointInContainedFrame } from "./cloud-browser-live";
+
+function BrowserViewportSpinner({
+  label,
+  retainedFrame = false,
+}: {
+  label: string;
+  retainedFrame?: boolean;
+}) {
+  return (
+    <div
+      className={`absolute inset-0 z-10 grid place-items-center ${
+        retainedFrame ? "bg-stone-950/45" : "bg-stone-950"
+      }`}
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      data-cloud-browser-spinner
+      data-retained-frame={retainedFrame ? "true" : "false"}
+    >
+      <span
+        className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white"
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
 
 export function CloudBrowserPanel({
   taskId,
@@ -159,6 +188,22 @@ export function CloudBrowserPanel({
     session.chooseSession(sessionId);
   }
 
+  async function renameSession(
+    sessionId: string,
+    title: string,
+  ): Promise<CloudBrowserRenameResult> {
+    const result = await renameCloudBrowserSession(sessionId, title);
+    const updated = result.data?.session;
+    if (!result.ok || !updated) {
+      return {
+        ok: false,
+        error: result.error || tt("浏览会话命名失败"),
+      };
+    }
+    session.upsertSession(updated);
+    return { ok: true };
+  }
+
   function bookmarkCurrentPage() {
     if (!transport.bookmarkCurrentPage()) {
       setError(tt("当前没有有效控制租约，无法收藏当前页面"));
@@ -212,69 +257,27 @@ export function CloudBrowserPanel({
     return { ok: true };
   }
 
-  const statusText: Record<CloudBrowserTransportState, string> = {
-    idle: tt("未连接"),
-    ticketing: tt("正在获取一次性连接票据…"),
-    ws_connecting: tt("正在连接 v3 原生窗口流…"),
-    authenticated: tt("v3 连接已验证"),
-    awaiting_first_frame: tt("正在启动原生 Chrome…"),
-    streaming: tt("原生 Chrome 窗口实时"),
-    reconnecting: tt("正在自动重连…"),
-    failed: tt("原生窗口连接失败"),
-    closed: tt("会话未连接"),
-  };
-  const failureStatus = {
-    protocol_mismatch: tt("画面流校验失败，已断开"),
-    ticket_expired: tt("连接票据已过期"),
-    stale_stream: tt("画面流已过期，已断开"),
-    first_paint: tt("启动超时，未收到画面"),
-    connection: tt("实时连接已中断"),
-    lease_lost: tt("实时画面可见，但控制租约已丢失"),
-  } as const;
-  const effectiveStatus =
-    transport.failureKind &&
-    failureStatus[transport.failureKind]
-      ? failureStatus[transport.failureKind]
-      : statusText[transport.transportState];
-  const overlayCopy: Partial<
-    Record<CloudBrowserTransportState, string>
-  > = {
-    ticketing: tt("正在获取一次性连接票据…"),
-    ws_connecting: tt("正在连接 v3 原生窗口流…"),
-    authenticated: tt("v3 连接已验证，等待原生 Chrome 首帧…"),
-    awaiting_first_frame: tt(
-      "正在启动原生 Chrome…冷启动最长可能需要十几秒，画面就绪后自动进入实时。",
-    ),
-    reconnecting: tt("连接出现波动，正在自动重连…"),
-    failed: error || tt("原生窗口连接失败"),
-  };
-  const overlayText = overlayCopy[transport.transportState];
-
   if (!session.sessions.length) {
+    if (busy) {
+      return (
+        <div className="relative h-full overflow-hidden bg-stone-950">
+          <BrowserViewportSpinner label={tt("浏览器正在连接")} />
+        </div>
+      );
+    }
     return (
       <div className="grid h-full place-items-center p-8 text-center">
         <div className="w-full max-w-md">
           <BrowserGlyph className="mx-auto h-10 w-10 text-stone-300" />
-          <p className="mt-3 text-[13px] text-stone-600">
-            {tt(
-              "开机后会连接一扇完整的原生 Chrome 窗口；标签栏和地址栏都在画面内。",
-            )}
-          </p>
           <button
             type="button"
             onClick={() => void startBrowser()}
-            disabled={busy}
             className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
             style={{ background: accent }}
             data-cloud-browser-power
           >
-            {busy ? tt("正在开机…") : tt("开机")}
+            {tt("开机")}
           </button>
-          {error && (
-            <p className="mt-2 text-[12px] text-rose-500" role="alert">
-              {error}
-            </p>
-          )}
         </div>
       </div>
     );
@@ -338,16 +341,6 @@ export function CloudBrowserPanel({
           />
         )}
 
-        {!liveRequested && (
-          <div className="grid h-full place-items-center px-6 text-center text-[12px] text-stone-400">
-            <p>
-              {tt(
-                "浏览会话未连接；点击底栏「连接」或「恢复」继续当前会话。",
-              )}
-            </p>
-          </div>
-        )}
-
         {liveRequested && (
           <textarea
             ref={interaction.hiddenInputRef}
@@ -375,46 +368,11 @@ export function CloudBrowserPanel({
         )}
 
         {liveRequested &&
-          transport.transportState !== "streaming" &&
-          overlayText && (
-            <div
-              className={`absolute inset-0 grid place-items-center bg-stone-950/80 px-6 text-center text-[12px] text-stone-100 ${
-                transport.transportState === "failed"
-                  ? "pointer-events-auto"
-                  : "pointer-events-none"
-              }`}
-              data-cloud-browser-overlay={transport.transportState}
-            >
-              <div className="max-w-md">
-                <p>{overlayText}</p>
-                {transport.hasCanvasFrame && (
-                  <p className="mt-1 text-[10px] text-stone-400">
-                    {tt(
-                      "当前仅保留最后一帧作为故障上下文，不代表实时状态，也不会接收输入。",
-                    )}
-                  </p>
-                )}
-                {transport.transportState === "failed" && (
-                  <button
-                    type="button"
-                    onClick={() => void transport.openLive()}
-                    className="mt-3 rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-stone-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-                  >
-                    {tt("使用新票据重试连接")}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-        {error &&
-          transport.transportState === "streaming" && (
-            <div
-              className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-rose-50/95 px-3 py-2 text-[11px] text-rose-700 shadow"
-              role="alert"
-            >
-              {error}
-            </div>
+          transport.transportState !== "streaming" && (
+            <BrowserViewportSpinner
+              label={tt("浏览器正在连接")}
+              retainedFrame={transport.hasCanvasFrame}
+            />
           )}
         {notice &&
           !error &&
@@ -434,11 +392,11 @@ export function CloudBrowserPanel({
         selected={session.selected}
         selectedId={session.selectedId}
         transportState={transport.transportState}
-        statusText={effectiveStatus}
         liveRequested={liveRequested}
         driving={transport.driving}
         lease={transport.lease}
         controlPending={transport.controlPending}
+        hasCanvasFrame={transport.hasCanvasFrame}
         busy={busy}
         canBookmark={
           transport.capabilities.page_bookmark &&
@@ -464,6 +422,7 @@ export function CloudBrowserPanel({
         checkpointsLoading={session.checkpointsLoading}
         checkpointsError={session.checkpointsError}
         onChooseSession={chooseSession}
+        onRenameSession={renameSession}
         onOpenOrResume={() =>
           void (session.selected?.status === "hibernated"
             ? restorePrevious()

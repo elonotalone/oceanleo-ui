@@ -11,6 +11,8 @@ export interface CloudBrowserSession {
   incarnation: number;
   task_id?: string | null;
   app_session_id?: string | null;
+  title?: string | null;
+  title_source?: string | null;
   status: string;
   protocol_version?: 2 | 3 | null;
   runtime_version?: string | null;
@@ -167,8 +169,10 @@ export interface CloudBrowserTicket {
 }
 
 const base = "/v1/browser";
+const browseBase = "/v1/browse";
 const MAX_BROWSER_ID_LENGTH = 160;
 const MAX_OPERATION_ID_LENGTH = 160;
+export const MAX_CLOUD_BROWSER_SESSION_TITLE_LENGTH = 160;
 
 export interface CloudBrowserFencedLifecycleBody {
   expected_session_version: number;
@@ -453,6 +457,54 @@ export async function createCloudBrowser(url: string, taskId?: string) {
     return {
       ok: false,
       error: "新建云浏览器会话不符合 v3 fence 契约",
+      status: 502,
+    };
+  }
+  return { ok: true, data: { session } };
+}
+
+export async function renameCloudBrowserSession(
+  sessionId: string,
+  title: string,
+  request: CloudBrowserApiRequest = authed,
+): Promise<AgentApiResult<{ session: CloudBrowserSession }>> {
+  if (!boundedIdentifier(sessionId)) {
+    return {
+      ok: false,
+      error: "无效的云浏览器会话标识",
+      status: 400,
+    };
+  }
+  const normalizedTitle = title.trim();
+  if (
+    !normalizedTitle ||
+    normalizedTitle.length > MAX_CLOUD_BROWSER_SESSION_TITLE_LENGTH
+  ) {
+    return {
+      ok: false,
+      error: "会话名称必须为 1 至 160 个字符",
+      status: 400,
+    };
+  }
+  const result = await request<{ session: unknown }>(
+    `${browseBase}/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ title: normalizedTitle }),
+    },
+  );
+  if (!result.ok) {
+    return failedResult<{ session: CloudBrowserSession }>(result);
+  }
+  const returnedId = recordValue(result.data?.session)?.id;
+  const session =
+    returnedId === sessionId
+      ? validateCloudBrowserSessionFence(result.data?.session, sessionId)
+      : null;
+  if (!session) {
+    return {
+      ok: false,
+      error: "更新后的云浏览器会话不符合 v3 fence 契约",
       status: 502,
     };
   }

@@ -37,6 +37,7 @@ import {
   reduceCloudBrowserTransportTransition,
   type CloudBrowserFailureKind,
   type CloudBrowserHelloTab,
+  type CloudBrowserProtocolDiagnostic,
 } from "./cloud-browser-transport-model";
 import {
   CLOUD_BROWSER_MAX_CONTROL_BYTES,
@@ -85,6 +86,8 @@ export function useCloudBrowserTransport({
   const socketRef = useRef<WebSocket | null>(null);
   const socketSessionRef = useRef("");
   const socketGenerationRef = useRef(0);
+  const connectAttemptSerialRef = useRef(0);
+  const activeConnectAttemptRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const liveRecoveryAttemptsRef = useRef(0);
   const liveRecoveryAttemptSerialRef = useRef(0);
@@ -94,6 +97,7 @@ export function useCloudBrowserTransport({
     generation: number;
   } | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const waitingForOnlineRef = useRef(false);
   const firstFrameTimerRef = useRef<number | null>(null);
   const liveRequestedRef = useRef(false);
   const selectedIdRef = useRef(selectedId);
@@ -125,25 +129,40 @@ export function useCloudBrowserTransport({
   const leaseRef = useRef<CloudBrowserControlLease>(EMPTY_BROWSER_LEASE);
   const leaseOwnedRef = useRef(false);
   const controlIntentRef = useRef<"acquire" | "release" | "">("");
+  const controlIntentSentRef = useRef(false);
   const controlPendingRef = useRef(false);
   const pendingBinaryRef = useRef(false);
   const failureKindRef = useRef<CloudBrowserFailureKind>(null);
   const fenceSerialRef = useRef(0);
   const sentEventIdsRef = useRef(new Set<string>());
+  const lastDiagnosticRef =
+    useRef<CloudBrowserProtocolDiagnostic | null>(null);
   const cancelFrameDecodeRef =
-    useRef<(clearCanvas?: boolean) => void>(() => {});
+    useRef<
+      (
+        clearCanvas?: boolean,
+        preservePendingMeta?: boolean,
+      ) => void
+    >(() => {});
   const scheduleLiveRecoveryRef = useRef<
     (kind: Exclude<CloudBrowserFailureKind, null>) => boolean
   >(() => false);
+  const recoverConnectionRef = useRef<
+    (
+      reason: string,
+      kind?: Exclude<CloudBrowserFailureKind, null>,
+      immediate?: boolean,
+    ) => void
+  >(() => {});
+  const reconcileControlIntentRef = useRef<() => void>(() => {});
 
   const setControlPending = useCallback(
     (value: SetStateAction<boolean>) => {
-      setControlPendingState((current) => {
-        const next =
-          typeof value === "function" ? value(current) : value;
-        controlPendingRef.current = next;
-        return next;
-      });
+      const current = controlPendingRef.current;
+      const next =
+        typeof value === "function" ? value(current) : value;
+      controlPendingRef.current = next;
+      setControlPendingState(next);
     },
     [],
   );
@@ -206,6 +225,14 @@ export function useCloudBrowserTransport({
     window.clearTimeout(firstFrameTimerRef.current);
     firstFrameTimerRef.current = null;
   }, []);
+
+  const prepareControlIntentForReconnect = useCallback(() => {
+    const preserveTakeover =
+      controlIntentRef.current === "acquire";
+    controlIntentRef.current = preserveTakeover ? "acquire" : "";
+    controlIntentSentRef.current = false;
+    setControlPending(preserveTakeover);
+  }, [setControlPending]);
 
   const currentBinding = useCallback(
     (): CloudBrowserWireBinding => ({
@@ -384,6 +411,85 @@ export function useCloudBrowserTransport({
     [currentFence, sendRaw, v3Envelope],
   );
 
+  const reconcileControlIntent = useCallback(() => {
+    if (controlIntentRef.current !== "acquire") return;
+    if (
+      leaseOwnedRef.current &&
+      leaseRef.current.connectionId === connectionIdRef.current
+    ) {
+      controlIntentRef.current = "";
+      controlIntentSentRef.current = false;
+      setControlPending(false);
+      if (failureKindRef.current === "lease_lost") {
+        setFailureKind(null);
+        setError("");
+      }
+      return;
+    }
+    if (
+      controlIntentSentRef.current ||
+      protocolRef.current !== 3 ||
+      !handshakeRef.current ||
+      transportStateRef.current !== "streaming"
+    ) {
+      return;
+    }
+    if (
+      !canSendCloudBrowserControlMutation(
+        "control.acquire",
+        leaseRef.current,
+        leaseOwnedRef.current,
+        connectionIdRef.current,
+      )
+    ) {
+      return;
+    }
+    if (sendControlMutation("control.acquire", false)) {
+      controlIntentSentRef.current = true;
+      setControlPending(true);
+      return;
+    }
+    recoverConnectionRef.current(
+      tt("实时浏览器连接失败"),
+      "connection",
+    );
+  }, [
+    sendControlMutation,
+    setControlPending,
+    setError,
+    setFailureKind,
+    tt,
+  ]);
+  reconcileControlIntentRef.current = reconcileControlIntent;
+
+  const requestControlIntent = useCallback(
+    (intent: "acquire" | "release") => {
+      controlIntentRef.current = intent;
+      controlIntentSentRef.current = false;
+      setControlPending(true);
+      if (intent === "acquire") {
+        reconcileControlIntentRef.current();
+        return;
+      }
+      if (
+        transportStateRef.current === "streaming" &&
+        leaseOwnedRef.current &&
+        sendControlMutation("control.release", true)
+      ) {
+        controlIntentSentRef.current = true;
+        return;
+      }
+      controlIntentRef.current = "";
+      controlIntentSentRef.current = false;
+      setControlPending(false);
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
+    },
+    [sendControlMutation, setControlPending, tt],
+  );
+
   const armFirstFrameTimeout = useCallback(() => {
     clearFirstFrameTimeout();
     const generation = socketGenerationRef.current;
@@ -399,6 +505,8 @@ export function useCloudBrowserTransport({
       }
       const socket = socketRef.current;
       socketRef.current = null;
+      handshakeRef.current = false;
+      pendingBinaryRef.current = false;
       cancelFrameDecodeRef.current(false);
       try {
         socket?.close(4000, "validated first paint timeout");
@@ -406,18 +514,24 @@ export function useCloudBrowserTransport({
         // A retry always creates a fresh one-use ticket and connection.
       }
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
+      prepareControlIntentForReconnect();
       if (scheduleLiveRecoveryRef.current("first_paint")) {
         setFailureKind(null);
         setError("");
         return;
       }
       liveRequestedRef.current = false;
+      controlIntentRef.current = "";
+      controlIntentSentRef.current = false;
+      setControlPending(false);
       setFailureKind("first_paint");
       transition("failed");
       setError(tt("启动超时：原生 Chrome 画面未就绪，请重试"));
     }, FIRST_FRAME_TIMEOUT_MS);
   }, [
     clearFirstFrameTimeout,
+    prepareControlIntentForReconnect,
+    setControlPending,
     setCurrentLease,
     setError,
     setFailureKind,
@@ -435,6 +549,7 @@ export function useCloudBrowserTransport({
       clearFirstFrameTimeout();
       cancelFrameDecodeRef.current(false);
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
+      prepareControlIntentForReconnect();
       const socket = socketRef.current;
       socketRef.current = null;
       try {
@@ -448,12 +563,17 @@ export function useCloudBrowserTransport({
         return;
       }
       liveRequestedRef.current = false;
+      controlIntentRef.current = "";
+      controlIntentSentRef.current = false;
+      setControlPending(false);
       setFailureKind(kind);
       transition("failed");
       setError(message);
     },
     [
       clearFirstFrameTimeout,
+      prepareControlIntentForReconnect,
+      setControlPending,
       setCurrentLease,
       setError,
       setFailureKind,
@@ -500,6 +620,7 @@ export function useCloudBrowserTransport({
       leaseRef,
       leaseOwnedRef,
       controlIntentRef,
+      controlIntentSentRef,
       controlPendingRef,
       pendingBinaryRef,
       failureKindRef,
@@ -515,6 +636,11 @@ export function useCloudBrowserTransport({
       armFirstFrameTimeout,
       cancelFrameDecode,
       acceptFrameMeta,
+      reconcileControlIntent: () =>
+        reconcileControlIntentRef.current(),
+      recordDiagnostic: (diagnostic) => {
+        lastDiagnosticRef.current = diagnostic;
+      },
       refreshCheckpoints,
     }),
     [
@@ -557,6 +683,7 @@ export function useCloudBrowserTransport({
     clientActionSequenceRef.current = 0;
     pendingBinaryRef.current = false;
     controlIntentRef.current = "";
+    controlIntentSentRef.current = false;
     sentEventIdsRef.current.clear();
     ++fenceSerialRef.current;
   }, [setProtocolVersion]);
@@ -572,6 +699,9 @@ export function useCloudBrowserTransport({
       setFailureKind(null);
       liveRecoveryAttemptsRef.current = 0;
       ++socketGenerationRef.current;
+      ++connectAttemptSerialRef.current;
+      activeConnectAttemptRef.current = null;
+      waitingForOnlineRef.current = false;
       invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
       const socket = socketRef.current;
@@ -619,7 +749,7 @@ export function useCloudBrowserTransport({
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        cancelFrameDecode(false);
+        cancelFrameDecode(false, true);
       }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -634,6 +764,9 @@ export function useCloudBrowserTransport({
     () => () => {
       liveRequestedRef.current = false;
       ++socketGenerationRef.current;
+      ++connectAttemptSerialRef.current;
+      activeConnectAttemptRef.current = null;
+      waitingForOnlineRef.current = false;
       invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
       socketRef.current?.close();
@@ -648,10 +781,17 @@ export function useCloudBrowserTransport({
     const timer = window.setInterval(() => {
       if (!handshakeRef.current) return;
       const fence = currentFence();
-      sendRaw(
-        v3Envelope("heartbeat", { sent_at: Date.now() }),
-        fence,
-      );
+      if (
+        !sendRaw(
+          v3Envelope("heartbeat", { sent_at: Date.now() }),
+          fence,
+        )
+      ) {
+        recoverConnectionRef.current(
+          tt("实时浏览器连接失败"),
+          "connection",
+        );
+      }
     }, LIVE_HEARTBEAT_MS);
     return () => window.clearInterval(timer);
   }, [
@@ -659,6 +799,7 @@ export function useCloudBrowserTransport({
     protocol,
     sendRaw,
     transportState,
+    tt,
     v3Envelope,
   ]);
 
@@ -673,9 +814,10 @@ export function useCloudBrowserTransport({
     }
     const timer = window.setInterval(() => {
       if (!sendControlMutation("control.renew", true)) {
-        setCurrentLease(EMPTY_BROWSER_LEASE, false);
-        setFailureKind("lease_lost");
-        setError(tt("控制租约续期失败，输入已停用"));
+        recoverConnectionRef.current(
+          tt("实时浏览器连接失败"),
+          "connection",
+        );
       }
     }, 5_000);
     return () => window.clearInterval(timer);
@@ -686,17 +828,57 @@ export function useCloudBrowserTransport({
     lease.epoch,
     transportState,
     sendControlMutation,
-    setCurrentLease,
-    setError,
-    setFailureKind,
     tt,
   ]);
+
+  useEffect(() => {
+    const onOffline = () => {
+      if (!liveRequestedRef.current) return;
+      waitingForOnlineRef.current = true;
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
+    };
+    const onOnline = () => {
+      if (
+        !liveRequestedRef.current ||
+        !waitingForOnlineRef.current
+      ) {
+        return;
+      }
+      waitingForOnlineRef.current = false;
+      reconnectAttemptsRef.current = 0;
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+        true,
+      );
+    };
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [tt]);
 
   function connectionCurrent(sessionId: string, generation: number) {
     return (
       generation === socketGenerationRef.current &&
       liveRequestedRef.current &&
       socketSessionRef.current === sessionId
+    );
+  }
+
+  function connectionAttemptCurrent(
+    sessionId: string,
+    generation: number,
+    attempt: number,
+  ) {
+    return (
+      attempt === connectAttemptSerialRef.current &&
+      connectionCurrent(sessionId, generation)
     );
   }
 
@@ -732,12 +914,28 @@ export function useCloudBrowserTransport({
       // failure must not burn a second recovery attempt.
       return true;
     }
+    if (
+      waitingForOnlineRef.current ||
+      (typeof navigator !== "undefined" &&
+        navigator.onLine === false)
+    ) {
+      scheduleReconnect(
+        sessionId,
+        generation,
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
+      return true;
+    }
     const plan = planCloudBrowserLiveRecovery(
       kind,
       liveRecoveryAttemptsRef.current,
     );
     if (!plan.retry) return false;
     liveRecoveryAttemptsRef.current += 1;
+    ++connectAttemptSerialRef.current;
+    activeConnectAttemptRef.current = null;
+    prepareControlIntentForReconnect();
     const token = ++liveRecoveryAttemptSerialRef.current;
     liveRecoveryAttemptRef.current = { token, sessionId, generation };
     if (reconnectTimerRef.current !== null) {
@@ -772,32 +970,84 @@ export function useCloudBrowserTransport({
     sessionId: string,
     generation: number,
     reason: string,
+    kind: Exclude<CloudBrowserFailureKind, null> = "connection",
+    immediate = false,
   ) {
     if (!connectionCurrent(sessionId, generation)) return;
+    if (
+      reconnectTimerRef.current !== null ||
+      activeConnectAttemptRef.current !== null
+    ) {
+      return;
+    }
+    ++connectAttemptSerialRef.current;
+    activeConnectAttemptRef.current = null;
     clearFirstFrameTimeout();
     handshakeRef.current = false;
     pendingBinaryRef.current = false;
     cancelFrameDecode(false);
     setCurrentLease(EMPTY_BROWSER_LEASE, false);
-    setControlPending(false);
+    prepareControlIntentForReconnect();
     ++fenceSerialRef.current;
+    setFailureKind(kind);
+    transition("reconnecting");
+    setError("");
+    if (
+      waitingForOnlineRef.current ||
+      (typeof navigator !== "undefined" &&
+        navigator.onLine === false)
+    ) {
+      waitingForOnlineRef.current = true;
+      setBusy(false);
+      return;
+    }
     if (reconnectAttemptsRef.current >= MAX_LIVE_RECONNECTS) {
-      liveRequestedRef.current = false;
-      setFailureKind("connection");
       transition("failed");
       setError(reason || tt("实时浏览器连接已中断"));
       setBusy(false);
       return;
     }
     const attempt = reconnectAttemptsRef.current++;
-    const delay = LIVE_RECONNECT_BASE_MS * 2 ** attempt;
-    setFailureKind("connection");
-    transition("reconnecting");
+    const delay = immediate
+      ? 0
+      : LIVE_RECONNECT_BASE_MS * 2 ** attempt;
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
       void connectLive(sessionId, generation, false);
     }, delay);
   }
+
+  function recoverCurrentConnection(
+    reason: string,
+    kind: Exclude<CloudBrowserFailureKind, null> = "connection",
+    immediate = false,
+  ) {
+    const sessionId = socketSessionRef.current;
+    const generation = socketGenerationRef.current;
+    if (!connectionCurrent(sessionId, generation)) return;
+    ++connectAttemptSerialRef.current;
+    activeConnectAttemptRef.current = null;
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    invalidateLiveRecoveryAttempt(false);
+    const socket = socketRef.current;
+    socketRef.current = null;
+    try {
+      socket?.close(1001, "fresh v3 connection required");
+    } catch {
+      // The fresh-ticket reconnect below owns recovery.
+    }
+    scheduleReconnect(
+      sessionId,
+      generation,
+      reason,
+      kind,
+      immediate,
+    );
+  }
+  recoverConnectionRef.current = recoverCurrentConnection;
 
   function seedTicket(
     auth: Extract<
@@ -826,6 +1076,7 @@ export function useCloudBrowserTransport({
     lastCallbackSequenceRef.current = 0;
     clientActionSequenceRef.current = 0;
     pendingBinaryRef.current = false;
+    controlIntentSentRef.current = false;
     sentEventIdsRef.current.clear();
     ++fenceSerialRef.current;
   }
@@ -835,30 +1086,83 @@ export function useCloudBrowserTransport({
     generation: number,
     initial: boolean,
   ): Promise<boolean> {
-    if (initial) transition("ticketing");
-    const ticket = await createCloudBrowserTicket(sessionId);
-    if (initial && generation === socketGenerationRef.current) {
-      setBusy(false);
-    }
     if (!connectionCurrent(sessionId, generation)) return false;
-    if (!ticket.ok || !ticket.data) {
+    if (initial) transition("ticketing");
+    const attempt = ++connectAttemptSerialRef.current;
+    activeConnectAttemptRef.current = attempt;
+    waitingForOnlineRef.current = false;
+    let ticket: Awaited<
+      ReturnType<typeof createCloudBrowserTicket>
+    >;
+    try {
+      ticket = await createCloudBrowserTicket(sessionId);
+    } catch (error) {
+      if (activeConnectAttemptRef.current === attempt) {
+        activeConnectAttemptRef.current = null;
+      }
+      if (!connectionAttemptCurrent(sessionId, generation, attempt)) {
+        return false;
+      }
+      lastDiagnosticRef.current = {
+        source: "server",
+        type: "live-ticket",
+        message:
+          error instanceof Error ? error.message : String(error),
+      };
       scheduleReconnect(
         sessionId,
         generation,
-        ticket.error || tt("云端浏览器恢复失败"),
+        tt("云端浏览器恢复失败"),
+      );
+      return false;
+    }
+    if (activeConnectAttemptRef.current === attempt) {
+      activeConnectAttemptRef.current = null;
+    }
+    if (
+      initial &&
+      connectionAttemptCurrent(sessionId, generation, attempt)
+    ) {
+      setBusy(false);
+    }
+    if (!connectionAttemptCurrent(sessionId, generation, attempt)) {
+      return false;
+    }
+    if (!ticket.ok || !ticket.data) {
+      if (ticket.error) {
+        lastDiagnosticRef.current = {
+          source: "server",
+          type: "live-ticket",
+          message: ticket.error,
+        };
+      }
+      scheduleReconnect(
+        sessionId,
+        generation,
+        tt("云端浏览器恢复失败"),
       );
       return false;
     }
     const auth = cloudBrowserAuthMessage(ticket.data, sessionId);
     if (!auth.ok) {
       const expired = auth.reason === "ticket_expired";
+      if (expired) {
+        scheduleReconnect(
+          sessionId,
+          generation,
+          tt("实时连接票据已过期，请重试"),
+          "ticket_expired",
+        );
+        return false;
+      }
       liveRequestedRef.current = false;
+      controlIntentRef.current = "";
+      controlIntentSentRef.current = false;
+      setControlPending(false);
       setFailureKind(expired ? "ticket_expired" : "protocol_mismatch");
       transition("failed");
       setError(
-        expired
-          ? tt("实时连接票据已过期，请重试")
-          : tt("服务端未提供严格平铺 v3 票据，已拒绝降级连接"),
+        tt("服务端未提供严格平铺 v3 票据，已拒绝降级连接"),
       );
       return false;
     }
@@ -866,27 +1170,43 @@ export function useCloudBrowserTransport({
     handshakeRef.current = false;
     seedTicket(auth);
     setCurrentLease(EMPTY_BROWSER_LEASE, false);
-    setControlPending(false);
+    prepareControlIntentForReconnect();
     setFailureKind(null);
     if (initial) transition("ws_connecting");
-    const socket = new WebSocket(cloudBrowserLiveUrl(sessionId));
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(cloudBrowserLiveUrl(sessionId));
+    } catch {
+      scheduleReconnect(
+        sessionId,
+        generation,
+        tt("实时浏览器连接失败"),
+      );
+      return false;
+    }
+    if (!connectionAttemptCurrent(sessionId, generation, attempt)) {
+      socket.close();
+      return false;
+    }
     socket.binaryType = "blob";
     socketRef.current = socket;
     socket.onopen = () => {
       if (
         socketRef.current !== socket ||
-        generation !== socketGenerationRef.current
+        !connectionAttemptCurrent(sessionId, generation, attempt)
       ) {
         socket.close();
         return;
       }
       if (auth.expiresAt <= Date.now()) {
         socketRef.current = null;
-        liveRequestedRef.current = false;
-        setFailureKind("ticket_expired");
-        transition("failed");
-        setError(tt("实时连接票据在握手前已过期，请重试"));
         socket.close(1008, "ticket expired");
+        scheduleReconnect(
+          sessionId,
+          generation,
+          tt("实时连接票据在握手前已过期，请重试"),
+          "ticket_expired",
+        );
         return;
       }
       try {
@@ -900,7 +1220,7 @@ export function useCloudBrowserTransport({
     socket.onmessage = (event) => {
       if (
         socketRef.current !== socket ||
-        generation !== socketGenerationRef.current
+        !connectionAttemptCurrent(sessionId, generation, attempt)
       ) {
         return;
       }
@@ -950,7 +1270,7 @@ export function useCloudBrowserTransport({
     socket.onclose = () => {
       if (
         socketRef.current !== socket ||
-        generation !== socketGenerationRef.current
+        !connectionAttemptCurrent(sessionId, generation, attempt)
       ) {
         return;
       }
@@ -977,6 +1297,9 @@ export function useCloudBrowserTransport({
       // Already closed.
     }
     const generation = ++socketGenerationRef.current;
+    ++connectAttemptSerialRef.current;
+    activeConnectAttemptRef.current = null;
+    waitingForOnlineRef.current = false;
     reconnectAttemptsRef.current = 0;
     liveRecoveryAttemptsRef.current = 0;
     socketSessionRef.current = requestedSessionId;
@@ -999,21 +1322,45 @@ export function useCloudBrowserTransport({
     meta: ValidatedCloudBrowserFrameMeta,
   ) {
     if (!handshakeRef.current || protocolRef.current !== 3) return false;
+    const binding = currentBinding();
+    if (
+      (meta.sessionVersion !== undefined &&
+        meta.sessionVersion !== binding.sessionVersion) ||
+      (meta.runtimeId !== undefined &&
+        meta.runtimeId !== binding.runtimeId) ||
+      (meta.runtimeVersion !== undefined &&
+        meta.runtimeVersion !== binding.runtimeVersion) ||
+      (meta.incarnation !== undefined &&
+        meta.incarnation !== binding.incarnation) ||
+      (meta.nonce !== undefined && meta.nonce !== binding.nonce) ||
+      (meta.connectionId !== undefined &&
+        meta.connectionId !== binding.connectionId) ||
+      (meta.streamId !== undefined &&
+        meta.streamId !== binding.streamId) ||
+      (meta.generation !== undefined &&
+        meta.generation !== binding.streamGeneration) ||
+      (meta.windowId !== undefined &&
+        meta.windowId !== binding.windowId)
+    ) {
+      return false;
+    }
+    const fence = currentFence();
     return sendRaw(
       cloudBrowserV3FrameReceipt(
-        currentBinding(),
+        binding,
         type,
         meta.sequence,
         meta.actionSequence,
       ),
+      fence,
     );
   }
 
   function handleFrameReceived(meta: ValidatedCloudBrowserFrameMeta) {
     pendingBinaryRef.current = false;
     if (!sendFrameReceipt("frame.received", meta)) {
-      rejectProtocol(
-        tt("网络不稳定，画面确认发送失败，请重试连接"),
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
         "connection",
       );
       return false;
@@ -1022,7 +1369,13 @@ export function useCloudBrowserTransport({
   }
 
   function handleFrameDropped(meta: ValidatedCloudBrowserFrameMeta) {
-    void sendFrameReceipt("frame.dropped", meta);
+    if (!handshakeRef.current || protocolRef.current !== 3) return;
+    if (!sendFrameReceipt("frame.dropped", meta)) {
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
+    }
   }
 
   function handleFramePresented(meta: ValidatedCloudBrowserFrameMeta) {
@@ -1040,7 +1393,12 @@ export function useCloudBrowserTransport({
       );
       return;
     }
+    setHasCanvasFrame(true);
     if (!sendFrameReceipt("frame.presented", meta)) {
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
       return;
     }
     clearFirstFrameTimeout();
@@ -1049,8 +1407,8 @@ export function useCloudBrowserTransport({
     invalidateLiveRecoveryAttempt(true);
     setFailureKind(null);
     transition("streaming");
-    setHasCanvasFrame(true);
     setError("");
+    reconcileControlIntentRef.current();
   }
 
   function handleFrameDecodeError(reason: string) {
@@ -1065,11 +1423,10 @@ export function useCloudBrowserTransport({
   const actions = createCloudBrowserTransportActions({
     transportStateRef,
     leaseOwnedRef,
-    controlIntentRef,
+    controlPendingRef,
     capabilitiesRef,
-    setControlPending,
     sendMutation,
-    sendControlMutation,
+    requestControlIntent,
   });
 
   return {

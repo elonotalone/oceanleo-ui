@@ -37,6 +37,7 @@ import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
 import { useLeftPaneSlot } from "./SplitWorkspace";
+import { IconSparkles, IconWorkspace } from "./icons";
 import { useRegisterOpsFiller, useGuideWorkflows, FillNonceProvider } from "./guide-context";
 import { type WorkflowDraft } from "../lib/workflows";
 import { useAttachments } from "./useAttachments";
@@ -658,14 +659,20 @@ export function FunctionAgentChat({
       return;
     }
     setError(null);
+    setWfSaved(false);
     setWfSaving(true);
-    const w = await guideWf.saveWorkflow(draft);
-    setWfSaving(false);
-    if (w) {
-      setWfSaved(true);
-      setTimeout(() => setWfSaved(false), 1800);
-    } else {
+    try {
+      const w = await guideWf.saveWorkflow(draft);
+      if (w) {
+        setWfSaved(true);
+        setTimeout(() => setWfSaved(false), 1800);
+        return;
+      }
       setError(tt("保存失败，请重试。"));
+    } catch {
+      setError(tt("保存失败，请重试。"));
+    } finally {
+      setWfSaving(false);
     }
   }, [effectiveGetDraft, guideWf, tt]);
   // 关键修（2026-07-06）：下面的「保存工作流」按钮节点被 setLeftLabel 塞进左栏标题槽后
@@ -679,48 +686,105 @@ export function FunctionAgentChat({
     saveActionRef.current = () => void saveWorkflow();
   });
 
-  // ── 「操作台 | agent」切换键装进左栏标题位（宗旨 v10，复用 v0.41.0 机制）──────
-  // SplitWorkspace 的左栏 PaneHeader 标题本身就是这枚开关；不在 SplitWorkspace 内
-  // （slot 为 null）时回退到栏体内嵌。纯对话功能区（!showOps）不装开关。
-  // 宗旨 v16：开关右侧再挂一枚「保存工作流」按钮（getWorkflowDraft 存在时）。
+  // ── 紧凑 app actions 装进左栏 PaneHeader ─────────────────────────────────
+  // 选中形态显示 icon + label，未选中形态固定为窄 icon button；保存灵感和新建始终
+  // icon-only。SplitWorkspace 把这一组接在可截断 app 身份之后，并为 PaneHeader 的
+  // fullscreen/right-pane control 留出独立的 shrink-0 位置。
   const slot = useLeftPaneSlot();
+  const saveState = wfSaving ? "saving" : wfSaved ? "saved" : "idle";
+  const saveLabel =
+    saveState === "saving"
+      ? tt("正在保存灵感")
+      : saveState === "saved"
+        ? tt("已保存灵感")
+        : tt("保存此灵感");
   const toggle = showOps ? (
-    <div className="flex min-w-0 items-center gap-2">
-      <div className="inline-flex shrink-0 rounded-lg bg-stone-100 p-0.5 text-[13px]">
-        {(["ops", "agent"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            title={
-              t === "ops"
-                ? tt("操作台：直接精细操控、直接生成")
-                : tt("agent：跟它说话，它带工具帮你生成（不会动操作台）")
-            }
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              tab === t ? "text-white" : "text-stone-500 hover:text-stone-700"
-            }`}
-            style={tab === t ? { background: accent } : undefined}
-          >
-            {t === "ops" ? opsLabel : "agent"}
-          </button>
-        ))}
+    <div
+      data-workbench-primary-controls
+      className="flex shrink-0 flex-nowrap items-center gap-1"
+    >
+      <div
+        data-workbench-mode-switch
+        role="group"
+        aria-label={tt("工作模式")}
+        className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-stone-100 p-0.5 text-[12px]"
+      >
+        {(["ops", "agent"] as const).map((t) => {
+          const selected = tab === t;
+          const label = t === "ops" ? opsLabel : "agent";
+          const title =
+            t === "ops"
+              ? tt("操作台：直接精细操控、直接生成")
+              : tt("agent：跟它说话，它带工具帮你生成（不会动操作台）");
+          return (
+            <button
+              key={t}
+              type="button"
+              data-workbench-mode={t}
+              data-selected={selected ? "true" : "false"}
+              data-width={selected ? "selected" : "compact"}
+              onClick={() => setTab(t)}
+              title={title}
+              aria-label={title}
+              aria-pressed={selected}
+              className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all ${
+                selected
+                  ? "max-w-[6.5rem] px-2 text-white"
+                  : "w-7 px-0 text-stone-500 hover:bg-white/70 hover:text-stone-700"
+              }`}
+              style={selected ? { background: accent } : undefined}
+            >
+              {t === "ops" ? (
+                <IconWorkspace className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <IconSparkles className="h-3.5 w-3.5 shrink-0" />
+              )}
+              {selected && (
+                <span data-workbench-mode-label className="min-w-0 truncate">
+                  {label}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
       {canSaveWorkflow && (
         <button
           type="button"
+          data-workbench-action="save-inspiration"
+          data-state={saveState}
           onClick={() => saveActionRef.current()}
           disabled={wfSaving}
-          title={tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition active:scale-95 disabled:opacity-50 ${
-            wfSaved
+          aria-busy={wfSaving}
+          aria-label={saveLabel}
+          title={
+            saveState === "idle"
+              ? tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")
+              : saveLabel
+          }
+          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition active:scale-95 disabled:opacity-60 ${
+            saveState === "saved"
               ? "border-transparent text-white"
-              : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+              : saveState === "saving"
+                ? "border-amber-200 bg-amber-50 text-amber-600"
+                : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
           }`}
-          style={wfSaved ? { background: accent } : undefined}
+          style={saveState === "saved" ? { background: accent } : undefined}
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-            {wfSaved ? (
+          <svg
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 ${saveState === "saving" ? "animate-spin" : ""}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.9"
+          >
+            {saveState === "saving" ? (
+              <path
+                d="M20 12a8 8 0 1 1-2.35-5.65"
+                strokeLinecap="round"
+              />
+            ) : saveState === "saved" ? (
               <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
             ) : (
               <path
@@ -730,14 +794,14 @@ export function FunctionAgentChat({
               />
             )}
           </svg>
-          {wfSaved ? tt("已保存") : tt("保存此灵感")}
         </button>
       )}
       {workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           onBeforeRestart={() => restartFlushRef.current()}
           label={tt("新建")}
-          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
+          iconOnly
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-stone-200 text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-60"
         />
       )}
     </div>
