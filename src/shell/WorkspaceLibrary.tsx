@@ -25,7 +25,6 @@ import {
   artifactActionMatrix,
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
-import { prepareArtifactForAction } from "./artifact-client";
 import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
@@ -82,9 +81,9 @@ export interface WorkspaceLibraryProps {
   onMaterialDragStart?: (item: LibraryItem) => void;
   onMaterialDragEnd?: () => void;
   allowAdvanced?: boolean;
-  /** File cards leave the App workspace and enter their canonical advanced URL. */
+  /** When true, the preview-detail header may offer Edit into the advanced workbench. */
   openAdvancedOnSelect?: boolean;
-  /** Route hosts can intercept selection while preserving the shared card UI. */
+  /** Route hosts open the typed advanced editor from the detail-header Edit action. */
   onOpenItem?: (item: LibraryItem) => void;
   /** Workspace hosts can move every preview/editor into the fixed main canvas. */
   onOpenEntry?: (entry: WorkspaceLibraryEntry) => void;
@@ -99,9 +98,11 @@ export interface WorkspaceLibraryProps {
 /**
  * Shared list/detail shell for Preview, Materials and My Library.
  * Those three areas intentionally share the exact same search, categories,
- * card density, detail header and viewer dispatch. Editable items are handed
- * to the workspace-level host through onOpenItem; this component never nests a
- * full editor inside a library detail.
+ * card density, detail header and viewer dispatch. Shelf cards show thumbnail
+ * and title only; the five artifact actions live on the quiet preview detail
+ * header. Editable items are handed to the workspace-level host through the
+ * detail-header Edit action via onOpenItem; this component never nests a full
+ * editor inside a library detail.
  */
 export function WorkspaceLibrary({
   entries,
@@ -259,49 +260,8 @@ export function WorkspaceLibrary({
   };
 
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
-    const item = entry.libraryItem;
-    if (!item) {
-      openEntry(entry);
-      return;
-    }
-    // Primary card activation is Edit → advanced workbench when the host
-    // registered onOpenItem. Preview is no longer a user-facing library action.
-    const edit = matrixFor(item).edit;
-    if (
-      allowAdvanced &&
-      openAdvancedOnSelect &&
-      onOpenItem &&
-      edit.visible
-    ) {
-      if (!edit.available) {
-        if (edit.reason) setMaterialActionState(tt(edit.reason));
-        openEntry(entry);
-        return;
-      }
-      void (async () => {
-        setMaterialActionState(
-          tt(
-            edit.requiresEnsure
-              ? "正在建立耐久 artifact identity…"
-              : "编辑中…",
-          ),
-        );
-        try {
-          const prepared = await prepareArtifactForAction("edit", item);
-          if (!prepared.ok || !prepared.data) {
-            throw new Error(prepared.error || tt("编辑失败。"));
-          }
-          onOpenItem(prepared.data);
-          setMaterialActionState(tt("编辑已执行。"));
-        } catch (caught) {
-          const message =
-            caught instanceof Error ? caught.message : tt("编辑失败。");
-          setMaterialActionState(message);
-          openEntry(entry);
-        }
-      })();
-      return;
-    }
+    // Primary card activation is quiet preview detail. Edit lives on the
+    // detail header and must not be the card-click primary path.
     openEntry(entry);
   };
 
@@ -606,7 +566,6 @@ export function WorkspaceLibrary({
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
-                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
@@ -619,7 +578,6 @@ export function WorkspaceLibrary({
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
                 accent={accent}
-                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>

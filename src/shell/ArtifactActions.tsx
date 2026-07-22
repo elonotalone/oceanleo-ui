@@ -34,7 +34,7 @@ export interface ArtifactTargetActionEvidence {
 export interface ArtifactActionMatrixOptions {
   canOpenPreview?: boolean;
   canOpenEdit?: boolean;
-  /** Library material cards hide Preview; Edit is the primary open action. */
+  /** Library surfaces hide the Preview button; quiet preview is the detail page. */
   hidePreview?: boolean;
   insert?: ArtifactTargetActionEvidence;
   replace?: ArtifactTargetActionEvidence;

@@ -216,6 +216,11 @@ const materialControllerUrl = await compileModule(
   },
 );
 const { artifactEntry } = await import(materialControllerUrl);
+const advancedFeaturesStubUrl = dataModule(`
+  export function isAdvancedEditableShelfItem() {
+    return true;
+  }
+`);
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
@@ -223,6 +228,7 @@ const MaterialLibrary = (
       "./artifact-client": artifactClientUrl,
       "./library-data": libraryDataUrl,
       "./artifact-contract": contractUrl,
+      "./advanced-features": advancedFeaturesStubUrl,
       "./material-library-controller": materialControllerUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
@@ -360,12 +366,13 @@ function projection({
   favorite = false,
   ownerPrincipalId = "user-1",
   visibility = "private",
+  artifactType = "single_file_image",
 } = {}) {
   return {
     schema: "oceanleo.artifact.v1",
     artifact_id: id || "artifact-1",
     revision_id: revisionId,
-    artifact_type: "single_file_image",
+    artifact_type: artifactType,
     roles: ["template"],
     title: title || "Artifact",
     favorite,
@@ -1407,14 +1414,23 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
 test("rendered More remains remote with Primary disabled and keeps legacy fallbacks live", async () => {
   const calls = [];
   globalThis.fetch = async (input) => {
-    calls.push(String(input));
+    const url = String(input);
+    calls.push(url);
+    const artifactType =
+      new URL(url, "https://api.test").searchParams.get("artifactType") ||
+      "single_file_image";
     return jsonResponse({
       scope: "public",
       items: [
         projection({
-          id: "global",
-          title: "Global More",
+          id: `global-${artifactType}`,
+          title:
+            artifactType === "single_file_image"
+              ? "Global More"
+              : `Global ${artifactType}`,
           visibility: "public",
+          artifactType,
+          editable: true,
         }),
       ],
       nextOffset: null,
@@ -1435,8 +1451,11 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
       mounted.container.querySelector('a[aria-label="打开完整素材库"]'),
     );
     await settle();
-    assert.equal(calls.length, 1);
-    assert.match(calls[0], /\/v1\/library\/search\?/);
+    // Unfiltered More round-robins the 12 advanced-capable artifact types.
+    assert.equal(calls.length, 12);
+    assert.ok(
+      calls.every((call) => /\/v1\/library\/search\?/.test(call)),
+    );
     assert.ok(
       mounted.container.querySelector('[data-entry-title="Global More"]'),
     );
@@ -1610,6 +1629,20 @@ test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Repla
     assert.equal(button("收藏")?.getAttribute("aria-pressed"), "false");
     assert.equal(button("全屏")?.getAttribute("type"), "button");
     assert.equal(button("链接")?.getAttribute("href"), "https://example.com/action-source");
+    const labels = [...mounted.container.querySelectorAll("button, a")]
+      .map((entry) => entry.textContent.trim())
+      .filter((label) =>
+        ["编辑", "下载", "收藏", "全屏", "链接", "插入", "替换"].includes(label),
+      );
+    assert.deepEqual(labels, [
+      "编辑",
+      "下载",
+      "收藏",
+      "全屏",
+      "链接",
+      "插入",
+      "替换",
+    ]);
 
     for (const [label, action] of [
       ["编辑", "edit"],

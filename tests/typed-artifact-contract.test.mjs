@@ -460,7 +460,7 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     actions,
     /result\.data\.revisionId !== durableItem\.revisionId/,
   );
-  assert.match(library, /Primary card activation is Edit/);
+  assert.match(library, /Primary card activation is quiet preview/);
   assert.match(library, /application\/x-oceanleo-material\+json/);
   assert.match(library, /id: item\?\.key \|\| entry\.id/);
   assert.doesNotMatch(
@@ -472,7 +472,7 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
   );
 });
 
-test("library cards show Edit/Download/Favorite/Fullscreen/Link actions", () => {
+test("library shelf cards stay quiet; detail header keeps Edit/Download/Favorite/Fullscreen/Link", () => {
   const cardView = readFileSync(
     new URL("../src/shell/workspace-library-view.tsx", import.meta.url),
     "utf8",
@@ -497,15 +497,34 @@ test("library cards show Edit/Download/Favorite/Fullscreen/Link actions", () => 
   assert.doesNotMatch(card, /absolute bottom-2 left-2/);
   assert.match(card, /line-clamp-1/);
   assert.doesNotMatch(card, /entry\.description &&/);
-  // Grid/list cards carry the shared action buttons; detail keeps them too.
+  assert.match(card, /预览「\{title\}」/);
+  // Shelf grid/list must not mount the five text actions under every card.
   const gridAndList = library.slice(library.indexOf("view === \"list\""));
-  assert.match(gridAndList, /actionButtonsFor\(entry, true\)/);
-  assert.ok(library.split("actionButtonsFor(").length - 1 >= 2);
+  assert.doesNotMatch(gridAndList, /actionButtonsFor/);
+  assert.doesNotMatch(gridAndList, /actions=\{/);
+  // Detail/preview header keeps the shared action bar exactly once.
+  assert.match(
+    library.slice(0, library.indexOf("view === \"list\"")),
+    /actionButtonsFor\(/,
+  );
+  assert.equal(library.split("actionButtonsFor(").length - 1, 1);
   assert.match(actions, /hidePreview/);
   assert.match(actions, /onFullscreen/);
   assert.match(actions, /linkUrl/);
   assert.match(actions, /tt\("全屏"\)/);
   assert.match(actions, /tt\("链接"\)/);
+  assert.match(
+    actions,
+    /Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接/,
+  );
+  // Card activation opens quiet preview detail, never Edit-only open.
+  const activate = library.slice(
+    library.indexOf("const activateEntry"),
+    library.indexOf("const dragPropsFor"),
+  );
+  assert.match(activate, /openEntry\(entry\)/);
+  assert.doesNotMatch(activate, /onOpenItem/);
+  assert.doesNotMatch(activate, /prepareArtifactForAction/);
   // Machine role names never become card descriptions.
   assert.doesNotMatch(controller, /roles\.join/);
   // Drag-to-canvas and one-click primary actions survive the cleanup.
