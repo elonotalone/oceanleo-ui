@@ -11,6 +11,7 @@ import {
   type ArtifactType,
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   getArtifactItem,
@@ -143,6 +144,18 @@ function materialFailureCopy(status: number | undefined, message: string): {
   };
 }
 
+function isTrustedEditableMaterialEntry(
+  entry: WorkspaceLibraryEntry,
+): boolean {
+  const item = entry.libraryItem;
+  return Boolean(
+    item &&
+      isDurableLibraryItem(item) &&
+      artifactIsVisible(item.artifact) &&
+      isAdvancedEditableShelfItem(item),
+  );
+}
+
 /**
  * Controller/view facade for the two-level material library. Query decoding,
  * normalization and page merging stay in material-library-controller.
@@ -188,6 +201,7 @@ export function MaterialLibrary({
   const runtimeSourceRef = useRef(Symbol("material-library"));
   const requestEpochRef = useRef(0);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const successfulRemoteRequestKeyRef = useRef("");
   const primaryFetchEnabled = fetchPrimary ?? fetchCurated;
   const [level, setLevel] = useState<MaterialLibraryLevel>(
     lockLevel || initialLevel,
@@ -209,6 +223,8 @@ export function MaterialLibrary({
   const [deepLinkStatus, setDeepLinkStatus] =
     useState<number | undefined>();
   const [retryNonce, setRetryNonce] = useState(0);
+  const [standaloneEditorItem, setStandaloneEditorItem] =
+    useState<LibraryItem | null>(null);
 
   const context = useMemo<ArtifactContextRef>(
     () => ({
@@ -218,6 +234,16 @@ export function MaterialLibrary({
       functionId: functionId || undefined,
     }),
     [contextId, functionId, runtimeAppId, siteId],
+  );
+  const remoteRequestKey = useMemo(
+    () =>
+      JSON.stringify({
+        level,
+        authority: level === "primary" ? context : "public",
+        query: level === "more" ? debounced : "",
+        taxonomy,
+      }),
+    [context, debounced, level, taxonomy],
   );
 
   useEffect(() => {
@@ -336,13 +362,20 @@ export function MaterialLibrary({
       (result) => {
         if (controller.signal.aborted) return;
         const item = result.data;
+        const trustedItem = Boolean(
+          item &&
+            isDurableLibraryItem(item) &&
+            artifactIsVisible(item.artifact) &&
+            isAdvancedEditableShelfItem(item),
+        );
         const inScope = Boolean(
           result.ok &&
             item &&
-            isDurableLibraryItem(item) &&
+            trustedItem &&
             (!taxonomy || item.artifactType === taxonomy) &&
             (level === "more"
-              ? item.artifact.owner.visibility === "public"
+              ? item.artifact.owner.visibility === "public" &&
+                item.artifact.roles.includes("template")
               : artifactHasExactContext(item.artifact, context)),
         );
         if (!inScope || !item) {
@@ -374,6 +407,7 @@ export function MaterialLibrary({
       setNextCursor(null);
       setLoading(false);
       setLoadingMore(false);
+      successfulRemoteRequestKeyRef.current = "";
       // A missing context is a normal setup state (site did not derive a
       // binding yet), not a failure: fall through to the friendly empty
       // shelf and any site-curated featured materials.
@@ -387,6 +421,7 @@ export function MaterialLibrary({
       setNextCursor(null);
       setLoading(false);
       setLoadingMore(false);
+      successfulRemoteRequestKeyRef.current = "";
       setError("");
       setErrorStatus(undefined);
       return;
@@ -394,8 +429,12 @@ export function MaterialLibrary({
     loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
     const epoch = ++requestEpochRef.current;
-    setRemote([]);
-    setNextCursor(null);
+    const requestChanged =
+      successfulRemoteRequestKeyRef.current !== remoteRequestKey;
+    if (requestChanged) {
+      setRemote([]);
+      setNextCursor(null);
+    }
     setLoading(true);
     setLoadingMore(false);
     setError("");
@@ -411,8 +450,6 @@ export function MaterialLibrary({
         return;
       }
       if (!result.ok || !result.data) {
-        setRemote([]);
-        setNextCursor(null);
         // "This app has no binding yet" class responses (missing context,
         // unknown context, no bindings) are a normal empty shelf, not a
         // failure banner.
@@ -421,6 +458,9 @@ export function MaterialLibrary({
           (result.status === 400 || result.status === 404) &&
           (result.code === "invalid-binding" || result.code === "not-found");
         if (noBinding) {
+          successfulRemoteRequestKeyRef.current = remoteRequestKey;
+          setRemote([]);
+          setNextCursor(null);
           setError("");
           setErrorStatus(undefined);
         } else {
@@ -428,12 +468,9 @@ export function MaterialLibrary({
           setErrorStatus(result.status);
         }
       } else {
-        const shelfItems =
-          level === "more"
-            ? result.data.items.filter(isAdvancedEditableShelfItem)
-            : result.data.items;
+        successfulRemoteRequestKeyRef.current = remoteRequestKey;
         setRemote(
-          shelfItems.map((item) => ({
+          result.data.items.map((item) => ({
             ...artifactEntry(
               item,
               level === "more" && Boolean(debounced),
@@ -449,6 +486,17 @@ export function MaterialLibrary({
         setErrorStatus(undefined);
       }
       setLoading(false);
+    }).catch((caught) => {
+      if (controller.signal.aborted || epoch !== requestEpochRef.current) {
+        return;
+      }
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "素材库请求失败，请重试。",
+      );
+      setErrorStatus(0);
+      setLoading(false);
     });
     return () => controller.abort();
   }, [
@@ -457,6 +505,7 @@ export function MaterialLibrary({
     fetchMore,
     level,
     primaryFetchEnabled,
+    remoteRequestKey,
     retryNonce,
     taxonomy,
   ]);
@@ -520,37 +569,25 @@ export function MaterialLibrary({
             isDurableLibraryItem(item) &&
             contextId &&
             artifactIsVisible(item.artifact) &&
+            isAdvancedEditableShelfItem(item) &&
+            (!taxonomy || item.artifactType === taxonomy) &&
             artifactHasExactContext(item.artifact, contextId),
         );
       }),
-    [contextId, featuredEntries, localEntries],
-  );
-  // Site-curated MaterialItems (design templates, real examples) have no
-  // durable artifact identity, so the exact-context filter can never admit
-  // them. They stay visible on the primary shelf as "本站精选" instead of
-  // silently disappearing.
-  const siteFeaturedEntries = useMemo(
-    () =>
-      [...featuredEntries, ...localEntries]
-        .filter((entry) => {
-          const item = entry.libraryItem;
-          return Boolean(item && !isDurableLibraryItem(item));
-        })
-        .map((entry) => ({ ...entry, category: "本站精选" })),
-    [featuredEntries, localEntries],
+    [contextId, context, featuredEntries, localEntries, taxonomy],
   );
   const entries = useMemo(
     () => {
-      if (deepLinkError) return [];
-      const deepLinked = deepLinkedEntry ? [deepLinkedEntry] : [];
-      return level === "primary"
+      const deepLinked =
+        !deepLinkError && deepLinkedEntry ? [deepLinkedEntry] : [];
+      const merged = level === "primary"
         ? mergeMaterialEntries([
             deepLinked,
             remote,
             exactLocalEntries,
-            siteFeaturedEntries,
           ])
         : mergeMaterialEntries([deepLinked, remote]);
+      return merged.filter(isTrustedEditableMaterialEntry);
     },
     [
       deepLinkError,
@@ -558,7 +595,6 @@ export function MaterialLibrary({
       exactLocalEntries,
       level,
       remote,
-      siteFeaturedEntries,
     ],
   );
   useEffect(() => {
@@ -678,8 +714,36 @@ export function MaterialLibrary({
           {tt("重试")}
         </button>
       )}
+      {effectiveError && entries.length > 0 && (
+        <span
+          role="alert"
+          className="max-w-md text-[11px] text-rose-700"
+        >
+          {tt(failureCopy.title)}：{tt(failureCopy.description)}
+        </span>
+      )}
     </div>
   );
+
+  if (standaloneEditorItem) {
+    return (
+      <div className={`h-full min-h-0 ${className}`}>
+        <AdvancedContentWorkbench
+          key={`${standaloneEditorItem.artifactId || standaloneEditorItem.id}:${
+            standaloneEditorItem.revisionId || "transient"
+          }`}
+          item={standaloneEditorItem}
+          taskId={taskId}
+          siteId={siteId || standaloneEditorItem.siteId}
+          appId={runtimeAppId}
+          accent={accent}
+          embedded
+          onSavedItem={setStandaloneEditorItem}
+          onClose={() => setStandaloneEditorItem(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <WorkspaceLibrary
@@ -727,7 +791,7 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
-      onOpenItem={onOpenItem}
+      onOpenItem={onOpenItem || setStandaloneEditorItem}
       className={className}
     />
   );

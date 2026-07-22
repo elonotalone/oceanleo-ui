@@ -6,8 +6,10 @@ import {
   uploadFile,
   type AssetItem,
   type Creation,
+  type FileItem,
 } from "../lib/database";
 import {
+  artifactProjectionToLibraryItem,
   artifactTypeForLibraryKind,
   inferLibraryKind,
   isDurableLibraryItem,
@@ -18,15 +20,22 @@ import {
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   ensureArtifact,
+  listFavoriteArtifacts,
   listMyArtifacts,
   retireArtifact,
 } from "./artifact-client";
-import type { TransientGenerationResult } from "./artifact-contract";
+import {
+  artifactIsVisible,
+  isEnsureableTransient,
+  normalizeArtifactProjectionResult,
+  type TransientGenerationResult,
+} from "./artifact-contract";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -100,6 +109,166 @@ function myLibraryFailure(status: number | undefined, error = ""): {
   };
 }
 
+function libraryAuthorityLost(result: {
+  status?: number;
+  code?: string;
+}): boolean {
+  return (
+    result.status === 401 ||
+    result.status === 403 ||
+    result.code === "unauthorized" ||
+    result.code === "forbidden" ||
+    result.code === "invalid-response"
+  );
+}
+
+type LibraryPageResult = Awaited<ReturnType<typeof listMyArtifacts>>;
+
+function rejectedLibraryPage(reason: unknown): LibraryPageResult {
+  return {
+    ok: false,
+    error:
+      reason instanceof Error
+        ? reason.message
+        : "我的库请求失败，请重试。",
+    code: "network-error",
+    status: 0,
+    retryable: true,
+  };
+}
+
+function favoriteRefreshWarning(result: LibraryPageResult): string {
+  return result.status === 503
+    ? "收藏素材服务暂时不可用；已保留上次验证成功的收藏。"
+    : `收藏素材暂时未刷新：${result.error || "请稍后重试。"}`;
+}
+
+function favoriteItemAllowed(
+  item: LibraryItem,
+  ownerPrincipalId: string,
+): boolean {
+  return Boolean(
+    ownerPrincipalId &&
+      isDurableLibraryItem(item) &&
+      item.favorite &&
+      artifactIsVisible(item.artifact) &&
+      (item.artifact.owner.visibility === "public" ||
+        (item.artifact.owner.visibility === "private" &&
+          item.artifact.owner.principalId === ownerPrincipalId)),
+  );
+}
+
+function withFavoriteState(
+  item: LibraryItem,
+  favorite: boolean,
+): LibraryItem {
+  return isDurableLibraryItem(item)
+    ? {
+        ...item,
+        favorite,
+        artifact: {
+          ...item.artifact,
+          favorite,
+        },
+      }
+    : item;
+}
+
+export function canonicalUploadLibraryItem(
+  uploaded: FileItem,
+): { ok: true; item: LibraryItem } | { ok: false; error: string } {
+  const normalized = normalizeArtifactProjectionResult(uploaded.artifact);
+  if (!normalized.ok || !normalized.data) {
+    return {
+      ok: false,
+      error:
+        normalized.error ||
+        "上传响应 file.artifact 不是 canonical durable projection。",
+    };
+  }
+  const artifactId = String(uploaded.artifact_id || "").trim();
+  const revisionId = String(uploaded.revision_id || "").trim();
+  if (
+    !artifactId ||
+    !revisionId ||
+    normalized.data.artifactId !== artifactId ||
+    normalized.data.revisionId !== revisionId ||
+    !artifactIsVisible(normalized.data)
+  ) {
+    return {
+      ok: false,
+      error:
+        "上传响应的 file.artifact、artifact_id、revision_id 或 ACL/integrity 不一致。",
+    };
+  }
+  return {
+    ok: true,
+    item: artifactProjectionToLibraryItem(normalized.data),
+  };
+}
+
+export function legacyUploadTransient(
+  uploaded: FileItem,
+  file: File,
+  siteId: string,
+):
+  | { ok: true; transient: TransientGenerationResult }
+  | { ok: false; error: string } {
+  const resultId = String(uploaded.id || "").trim();
+  const payloadDigest = String(
+    uploaded.meta?.content_digest || uploaded.meta?.sha256 || "",
+  ).trim();
+  const renditionUrl = String(
+    uploaded.thumb_url || uploaded.url || "",
+  ).trim();
+  if (
+    !resultId ||
+    resultId.toLowerCase() === "undefined" ||
+    resultId.toLowerCase() === "null" ||
+    !payloadDigest ||
+    !renditionUrl
+  ) {
+    return {
+      ok: false,
+      error:
+        "旧上传响应缺少 canonical file.artifact，且没有稳定 id/content digest/rendition；已拒绝构造 transient。",
+    };
+  }
+  const kind = inferLibraryKind({
+    kind: uploaded.media_type,
+    mediaType: uploaded.media_type,
+    url: uploaded.url,
+    siteId: uploaded.site_id,
+    meta: uploaded.meta,
+  });
+  const transient: TransientGenerationResult = {
+    schema: "oceanleo.transient-generation.v1",
+    operation: "upload",
+    resultId,
+    idempotencyKey: `artifact-upload:${resultId}`,
+    payloadDigest,
+    artifactType: artifactTypeForLibraryKind(kind),
+    title: uploaded.title || file.name,
+    renditionUrl,
+    sourceUrl: uploaded.url,
+    sourceFormat:
+      file.name.split(".").pop()?.toLowerCase() || file.type,
+    siteId: uploaded.site_id || siteId || "home",
+    provenance: {
+      source_kind: "user_upload",
+      upload_id: resultId,
+      rights_attested: true,
+    },
+  };
+  return isEnsureableTransient(transient)
+    ? { ok: true, transient }
+    : {
+        ok: false,
+        error:
+          "旧上传响应无法形成完整的 durable ensure receipt；已拒绝继续。",
+      };
+}
+
 export function assetAsWork(item: AssetItem): Creation {
   const uploaded = item.meta?.is_upload === true;
   return {
@@ -121,19 +290,34 @@ export function assetAsWork(item: AssetItem): Creation {
   };
 }
 
-function toEntry(item: LibraryItem, onDelete: () => Promise<void>) {
+function toEntry(
+  item: LibraryItem,
+  onDelete?: () => Promise<void>,
+) {
   const uploaded = item.meta.library_source === "upload";
   const userAsset = item.meta.library_source === "asset";
+  const publicFavorite =
+    isDurableLibraryItem(item) &&
+    item.favorite &&
+    item.artifact.owner.visibility === "public";
   return workspaceEntryFromLibraryItem(item, {
-    category: uploaded ? "上传文件" : userAsset ? "我的素材" : KIND_CATEGORY[item.kind],
-    description:
-      (uploaded
-        ? "用户上传"
+    category: publicFavorite
+      ? "收藏素材"
+      : uploaded
+        ? "上传文件"
         : userAsset
           ? "我的素材"
-          : item.source === "artifact"
-            ? "任务交付物"
-            : "我的作品") +
+          : KIND_CATEGORY[item.kind],
+    description:
+      (publicFavorite
+        ? "公共收藏"
+        : uploaded
+          ? "用户上传"
+          : userAsset
+            ? "我的素材"
+            : item.source === "artifact"
+              ? "任务交付物"
+              : "我的作品") +
       (item.siteId ? ` · ${item.siteId}` : ""),
     keywords: [
       item.kind,
@@ -141,7 +325,7 @@ function toEntry(item: LibraryItem, onDelete: () => Promise<void>) {
       uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
       item.favorite ? "收藏" : "",
     ].filter(Boolean),
-    onDelete,
+    ...(onDelete ? { onDelete } : {}),
   });
 }
 
@@ -206,7 +390,8 @@ export function MyLibrary({
   onMaterialDragEnd,
 }: MyLibraryProps) {
   const tt = useUI();
-  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
+  const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -214,38 +399,139 @@ export function MyLibrary({
   const [failureMessage, setFailureMessage] = useState("");
   const [ownerPrincipalId, setOwnerPrincipalId] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [favoriteNextCursor, setFavoriteNextCursor] =
+    useState<string | null>(null);
+  const [favoriteWarning, setFavoriteWarning] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [standaloneEditorItem, setStandaloneEditorItem] =
+    useState<LibraryItem | null>(null);
 
   const requestEpochRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const favoritesOwnerRef = useRef("");
+  const items = useMemo(() => {
+    const favoriteIdentity = new Set(
+      favoriteItems.map(libraryItemIdentityKey),
+    );
+    return dedupeDurableItems([
+      ...ownedItems.map((item) =>
+        favoriteIdentity.has(libraryItemIdentityKey(item))
+          ? withFavoriteState(item, true)
+          : item,
+      ),
+      ...favoriteItems,
+    ]);
+  }, [favoriteItems, ownedItems]);
+
+  const clearLibraryAuthority = useCallback(() => {
+    setOwnedItems([]);
+    setFavoriteItems([]);
+    setOwnerPrincipalId("");
+    setNextCursor(null);
+    setFavoriteNextCursor(null);
+    setStandaloneEditorItem(null);
+    favoritesOwnerRef.current = "";
+  }, []);
 
   const load = useCallback(async () => {
     loadAbortRef.current?.abort();
+    loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const epoch = ++requestEpochRef.current;
     setFailed(false);
     setFailureStatus(undefined);
     setFailureMessage("");
+    setFavoriteWarning("");
     setLoading(true);
-    const result = await listMyArtifacts({
-      limit: 100,
-      signal: controller.signal,
-    });
+    setLoadingMore(false);
+    const [mineSettled, favoritesSettled] = await Promise.allSettled([
+        listMyArtifacts({
+          limit: 100,
+          signal: controller.signal,
+        }),
+        listFavoriteArtifacts({
+          limit: 100,
+          signal: controller.signal,
+        }),
+      ]);
     if (controller.signal.aborted || epoch !== requestEpochRef.current) {
       return;
     }
-    if (!result.ok || !result.data) {
-      setItems([]);
-      setOwnerPrincipalId("");
-      setNextCursor(null);
-      setAuthRequired(result.status === 401);
-      setFailed(result.status !== 401);
-      setFailureStatus(result.status);
-      setFailureMessage(result.error || "");
+    const mineResult =
+      mineSettled.status === "fulfilled"
+        ? mineSettled.value
+        : rejectedLibraryPage(mineSettled.reason);
+    const favoritesResult =
+      favoritesSettled.status === "fulfilled"
+        ? favoritesSettled.value
+        : rejectedLibraryPage(favoritesSettled.reason);
+    if (!mineResult.ok || !mineResult.data) {
+      if (libraryAuthorityLost(mineResult)) {
+        clearLibraryAuthority();
+      }
+      setAuthRequired(mineResult.status === 401);
+      setFailed(mineResult.status !== 401);
+      setFailureStatus(mineResult.status);
+      setFailureMessage(mineResult.error || "");
+      setFavoriteWarning("");
+      setLoading(false);
+      return;
+    }
+    const mineOwnerPrincipalId =
+      mineResult.data.ownerPrincipalId || "";
+    if (!mineOwnerPrincipalId) {
+      clearLibraryAuthority();
+      setAuthRequired(false);
+      setFailed(true);
+      setFailureStatus(502);
+      setFailureMessage(
+        "我的库响应缺少 ownerPrincipalId，已拒绝显示。",
+      );
+      setLoading(false);
+      return;
+    }
+    if (!favoritesResult.ok || !favoritesResult.data) {
+      if (libraryAuthorityLost(favoritesResult)) {
+        clearLibraryAuthority();
+        setAuthRequired(favoritesResult.status === 401);
+        setFailed(favoritesResult.status !== 401);
+        setFailureStatus(favoritesResult.status);
+        setFailureMessage(favoritesResult.error || "");
+        setLoading(false);
+        return;
+      }
+      setOwnedItems(dedupeDurableItems(mineResult.data.items));
+      setOwnerPrincipalId(mineOwnerPrincipalId);
+      setNextCursor(mineResult.data.nextCursor);
+      if (favoritesOwnerRef.current !== mineOwnerPrincipalId) {
+        setFavoriteItems([]);
+        setFavoriteNextCursor(null);
+        favoritesOwnerRef.current = "";
+      }
+      setAuthRequired(false);
+      setFailed(false);
+      setFailureStatus(undefined);
+      setFailureMessage("");
+      setFavoriteWarning(favoriteRefreshWarning(favoritesResult));
+      setLoading(false);
+      return;
+    }
+    if (
+      mineOwnerPrincipalId !==
+      favoritesResult.data.ownerPrincipalId
+    ) {
+      clearLibraryAuthority();
+      setAuthRequired(false);
+      setFailed(true);
+      setFailureStatus(502);
+      setFailureMessage(
+        "我的库与收藏素材 ownerPrincipalId 不一致，已拒绝合并。",
+      );
       setLoading(false);
       return;
     }
@@ -253,11 +539,15 @@ export function MyLibrary({
     setFailed(false);
     setFailureStatus(undefined);
     setFailureMessage("");
-    setOwnerPrincipalId(result.data.ownerPrincipalId || "");
-    setItems(dedupeDurableItems(result.data.items));
-    setNextCursor(result.data.nextCursor);
+    setFavoriteWarning("");
+    setOwnerPrincipalId(mineOwnerPrincipalId);
+    setOwnedItems(dedupeDurableItems(mineResult.data.items));
+    setFavoriteItems(dedupeDurableItems(favoritesResult.data.items));
+    setNextCursor(mineResult.data.nextCursor);
+    setFavoriteNextCursor(favoritesResult.data.nextCursor);
+    favoritesOwnerRef.current = mineOwnerPrincipalId;
     setLoading(false);
-  }, []);
+  }, [clearLibraryAuthority]);
 
   useEffect(() => {
     void load();
@@ -266,24 +556,38 @@ export function MyLibrary({
   useEffect(
     () => () => {
       loadAbortRef.current?.abort();
+      loadMoreAbortRef.current?.abort();
     },
     [],
   );
 
   useEffect(() => {
     const refresh = (event: Event) => {
+      const invalidatePendingReads = () => {
+        loadAbortRef.current?.abort();
+        loadMoreAbortRef.current?.abort();
+        requestEpochRef.current += 1;
+        setLoading(false);
+        setLoadingMore(false);
+      };
       const detail = (event as CustomEvent<{
         action?: string;
         artifactId?: string;
         revisionId?: string;
         favorite?: boolean;
+        item?: LibraryItem;
       }>).detail;
       if (detail?.action === "retire" && detail.artifactId) {
-        setItems((current) =>
+        invalidatePendingReads();
+        const keep = (item: LibraryItem) =>
+          !isDurableLibraryItem(item) ||
+          item.artifactId !== detail.artifactId;
+        setOwnedItems((current) =>
+          current.filter(keep),
+        );
+        setFavoriteItems((current) =>
           current.filter(
-            (item) =>
-              !isDurableLibraryItem(item) ||
-              item.artifactId !== detail.artifactId,
+            keep,
           ),
         );
         return;
@@ -293,21 +597,68 @@ export function MyLibrary({
         detail.artifactId &&
         detail.revisionId
       ) {
-        setItems((current) =>
+        invalidatePendingReads();
+        setFavoriteNextCursor(null);
+        if (ownerPrincipalId) {
+          favoritesOwnerRef.current = ownerPrincipalId;
+        }
+        const matches = (item: LibraryItem) =>
+          isDurableLibraryItem(item) &&
+          item.artifactId === detail.artifactId &&
+          item.revisionId === detail.revisionId;
+        setOwnedItems((current) =>
           current.map((item) =>
-            isDurableLibraryItem(item) &&
-            item.artifactId === detail.artifactId &&
-            item.revisionId === detail.revisionId
-              ? {
-                  ...item,
-                  favorite: detail.favorite === true,
-                  artifact: {
-                    ...item.artifact,
-                    favorite: detail.favorite === true,
-                  },
-                }
+            matches(item)
+              ? withFavoriteState(item, detail.favorite === true)
               : item,
           ),
+        );
+        if (detail.favorite === true) {
+          if (
+            detail.item &&
+            isDurableLibraryItem(detail.item) &&
+            detail.item.artifactId === detail.artifactId &&
+            detail.item.revisionId === detail.revisionId &&
+            favoriteItemAllowed(detail.item, ownerPrincipalId)
+          ) {
+            setFavoriteItems((current) =>
+              dedupeDurableItems([
+                detail.item!,
+                ...current.filter((item) => !matches(item)),
+              ]),
+            );
+            void load();
+          } else {
+            void load();
+          }
+        } else {
+          setFavoriteItems((current) =>
+            current.filter((item) => !matches(item)),
+          );
+          void load();
+        }
+        return;
+      }
+      if (
+        (detail?.action === "ensure" ||
+          detail?.action === "upload" ||
+          detail?.action === "fork") &&
+        detail.item &&
+        isDurableLibraryItem(detail.item) &&
+        artifactIsVisible(detail.item.artifact) &&
+        detail.item.artifact.owner.principalId === ownerPrincipalId &&
+        detail.item.artifact.owner.visibility !== "public"
+      ) {
+        invalidatePendingReads();
+        setOwnedItems((current) =>
+          dedupeDurableItems([
+            detail.item!,
+            ...current.filter(
+              (item) =>
+                !isDurableLibraryItem(item) ||
+                item.artifactId !== detail.item!.artifactId,
+            ),
+          ]),
         );
         return;
       }
@@ -316,7 +667,7 @@ export function MyLibrary({
     window.addEventListener(ARTIFACT_LIBRARY_CHANGE_EVENT, refresh);
     return () =>
       window.removeEventListener(ARTIFACT_LIBRARY_CHANGE_EVENT, refresh);
-  }, [load]);
+  }, [load, ownerPrincipalId]);
 
   const lastActionNonceRef = useRef("");
   useEffect(() => {
@@ -329,36 +680,136 @@ export function MyLibrary({
   }, [action?.nonce, load]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore || loading) return;
-    setLoadingMore(true);
-    const result = await listMyArtifacts({
-      cursor: nextCursor,
-      limit: 100,
-    });
     if (
-      !result.ok ||
-      !result.data ||
-      !result.data.ownerPrincipalId ||
-      result.data.ownerPrincipalId !== ownerPrincipalId
+      (!nextCursor && !favoriteNextCursor) ||
+      loadingMore ||
+      loading
     ) {
+      return;
+    }
+    const mineCursor = nextCursor;
+    const favoritesCursor = favoriteNextCursor;
+    loadMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
+    const epoch = requestEpochRef.current;
+    setLoadingMore(true);
+    const [mineSettled, favoritesSettled] = await Promise.allSettled([
+      mineCursor
+        ? listMyArtifacts({
+            cursor: mineCursor,
+            limit: 100,
+            signal: controller.signal,
+          })
+        : Promise.resolve(null),
+      favoritesCursor
+        ? listFavoriteArtifacts({
+            cursor: favoritesCursor,
+            limit: 100,
+            signal: controller.signal,
+          })
+        : Promise.resolve(null),
+    ]);
+    if (
+      controller.signal.aborted ||
+      epoch !== requestEpochRef.current
+    ) {
+      return;
+    }
+    const mineResult: LibraryPageResult | null =
+      mineSettled.status === "fulfilled"
+        ? mineSettled.value
+        : rejectedLibraryPage(mineSettled.reason);
+    const favoritesResult: LibraryPageResult | null =
+      favoritesSettled.status === "fulfilled"
+        ? favoritesSettled.value
+        : rejectedLibraryPage(favoritesSettled.reason);
+    const mineAuthorityError = Boolean(
+      mineResult &&
+        ((mineResult.ok && !mineResult.data) ||
+          (!mineResult.ok && libraryAuthorityLost(mineResult)) ||
+          (mineResult.data &&
+            mineResult.data.ownerPrincipalId !== ownerPrincipalId)),
+    );
+    const favoritesAuthorityError = Boolean(
+      favoritesResult &&
+        ((favoritesResult.ok && !favoritesResult.data) ||
+          (!favoritesResult.ok &&
+            libraryAuthorityLost(favoritesResult)) ||
+          (favoritesResult.data &&
+            favoritesResult.data.ownerPrincipalId !== ownerPrincipalId)),
+    );
+    if (mineAuthorityError || favoritesAuthorityError) {
+      const result = mineAuthorityError
+        ? mineResult!
+        : favoritesResult!;
+      clearLibraryAuthority();
+      setFavoriteWarning("");
       setFailed(true);
-      setFailureStatus(result.status);
+      setFailureStatus(result.status || 502);
       setFailureMessage(
         result.error ||
-          "我的库分页 owner 与第一页不一致，已拒绝合并。",
+          "我的库分页 owner/scope 与第一页不一致，已拒绝合并。",
       );
+      setAuthRequired(result.status === 401);
       setLoadingMore(false);
       return;
     }
-    setItems((current) =>
-      dedupeDurableItems([...current, ...result.data!.items]),
-    );
-    setNextCursor(result.data.nextCursor);
+    if (mineResult && (!mineResult.ok || !mineResult.data)) {
+      setAuthRequired(false);
+      setFailed(true);
+      setFailureStatus(mineResult.status);
+      setFailureMessage(mineResult.error || "我的库继续加载失败。");
+      setLoadingMore(false);
+      return;
+    }
+    if (mineResult?.data) {
+      setOwnedItems((current) =>
+        dedupeDurableItems([...current, ...mineResult.data!.items]),
+      );
+      setNextCursor(mineResult.data.nextCursor);
+    }
+    if (
+      favoritesResult &&
+      (!favoritesResult.ok || !favoritesResult.data)
+    ) {
+      if (favoritesOwnerRef.current !== ownerPrincipalId) {
+        setFavoriteItems([]);
+        setFavoriteNextCursor(null);
+        favoritesOwnerRef.current = "";
+      }
+      setAuthRequired(false);
+      setFailed(false);
+      setFailureStatus(undefined);
+      setFailureMessage("");
+      setFavoriteWarning(favoriteRefreshWarning(favoritesResult));
+      setLoadingMore(false);
+      return;
+    }
+    if (favoritesResult?.data) {
+      setFavoriteItems((current) =>
+        dedupeDurableItems([
+          ...current,
+          ...favoritesResult.data!.items,
+        ]),
+      );
+      setFavoriteNextCursor(favoritesResult.data.nextCursor);
+      favoritesOwnerRef.current = ownerPrincipalId;
+      setFavoriteWarning("");
+    }
+    setAuthRequired(false);
     setFailed(false);
     setFailureStatus(undefined);
     setFailureMessage("");
     setLoadingMore(false);
-  }, [loading, loadingMore, nextCursor, ownerPrincipalId]);
+  }, [
+    clearLibraryAuthority,
+    favoriteNextCursor,
+    loading,
+    loadingMore,
+    nextCursor,
+    ownerPrincipalId,
+  ]);
 
   const removeItem = useCallback(async (item: LibraryItem) => {
     if (!isDurableLibraryItem(item)) {
@@ -368,106 +819,135 @@ export function MyLibrary({
     if (!result.ok || result.data?.retired !== true) {
       throw new Error(result.error || "删除失败，请重试。");
     }
-    setItems((current) => {
+    setOwnedItems((current) => {
       return current.filter(
         (entry) =>
           !isDurableLibraryItem(entry) ||
           entry.artifactId !== item.artifactId,
       );
     });
+    setFavoriteItems((current) =>
+      current.filter(
+        (entry) =>
+          !isDurableLibraryItem(entry) ||
+          entry.artifactId !== item.artifactId,
+      ),
+    );
   }, []);
 
   const handleUpload = useCallback(
     async (files: FileList | null) => {
       const queue = Array.from(files || []);
       if (!queue.length || uploading) return;
+      if (!ownerPrincipalId) {
+        setUploadError(
+          "我的库尚未取得当前 ownerPrincipalId，已拒绝上传后猜测归属。",
+        );
+        return;
+      }
       setUploading(true);
       setUploadError("");
-      let failedCount = 0;
-      for (let index = 0; index < queue.length; index += 1) {
-        const file = queue[index];
-        setUploadProgress(`${index + 1}/${queue.length} · ${file.name}`);
-        const uploadIdempotencyKey = [
-          "library-upload-v1",
-          siteId || "home",
-          file.name,
-          file.size,
-          file.lastModified,
-        ].join(":");
-        const result = await uploadFile(file, {
-          siteId: siteId || "home",
-          title: file.name,
-          idempotencyKey: uploadIdempotencyKey,
-        });
-        if (!result.ok || !result.data?.file) {
-          failedCount += 1;
-          setUploadError(result.error || "文件上传失败，请重试。");
-          continue;
+      try {
+        for (let index = 0; index < queue.length; index += 1) {
+          const file = queue[index];
+          setUploadProgress(`${index + 1}/${queue.length} · ${file.name}`);
+          const uploadIdempotencyKey = [
+            "library-upload-v1",
+            siteId || "home",
+            file.name,
+            file.size,
+            file.lastModified,
+          ].join(":");
+          const result = await uploadFile(file, {
+            siteId: siteId || "home",
+            title: file.name,
+            idempotencyKey: uploadIdempotencyKey,
+          });
+          if (!result.ok || !result.data?.file) {
+            setUploadError(result.error || "文件上传失败，请重试。");
+            continue;
+          }
+          const uploaded = result.data.file;
+          const hasCanonicalContract =
+            uploaded.artifact !== undefined ||
+            Boolean(uploaded.artifact_id) ||
+            Boolean(uploaded.revision_id);
+          let uploadedItem: LibraryItem | null = null;
+          if (hasCanonicalContract) {
+            const canonical = canonicalUploadLibraryItem(uploaded);
+            if (!canonical.ok) {
+              setUploadError(canonical.error);
+              continue;
+            }
+            uploadedItem = canonical.item;
+          } else {
+            const legacy = legacyUploadTransient(
+              uploaded,
+              file,
+              siteId,
+            );
+            if (!legacy.ok) {
+              setUploadError(legacy.error);
+              continue;
+            }
+            const ensured = await ensureArtifact(legacy.transient);
+            if (!ensured.ok || !ensured.data) {
+              setUploadError(
+                ensured.error ||
+                  "旧上传文件已落盘，但 durable artifact ensure 失败。",
+              );
+              continue;
+            }
+            uploadedItem = ensured.data;
+          }
+          if (
+            !uploadedItem ||
+            !isDurableLibraryItem(uploadedItem) ||
+            !artifactIsVisible(uploadedItem.artifact) ||
+            uploadedItem.artifact.owner.principalId !==
+              ownerPrincipalId ||
+            uploadedItem.artifact.owner.visibility === "public"
+          ) {
+            setUploadError(
+              "上传 artifact 的 owner/scope/ACL 与当前我的库不一致，已拒绝显示。",
+            );
+            continue;
+          }
+          setOwnedItems((current) =>
+            dedupeDurableItems([
+              uploadedItem!,
+              ...current.filter(
+                (item) =>
+                  !isDurableLibraryItem(item) ||
+                  item.artifactId !== uploadedItem!.artifactId,
+              ),
+            ]),
+          );
+          if (hasCanonicalContract && typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+                detail: {
+                  action: "upload",
+                  artifactId: uploadedItem.artifactId,
+                  revisionId: uploadedItem.revisionId,
+                  item: uploadedItem,
+                },
+              }),
+            );
+          }
         }
-        const uploaded = result.data.file;
-        const kind = inferLibraryKind({
-          kind: uploaded.media_type,
-          mediaType: uploaded.media_type,
-          url: uploaded.url,
-          siteId: uploaded.site_id,
-          meta: uploaded.meta,
-        });
-        const payloadDigest = String(
-          uploaded.meta?.content_digest ||
-            uploaded.meta?.sha256 ||
-            `upload-record:${uploaded.id}:${uploaded.bytes || file.size}`,
+      } catch (caught) {
+        setUploadError(
+          caught instanceof Error
+            ? caught.message
+            : "上传处理失败，请重试。",
         );
-        const transient: TransientGenerationResult = {
-          schema: "oceanleo.transient-generation.v1",
-          operation: "upload",
-          resultId: uploaded.id,
-          idempotencyKey: `artifact-upload:${uploaded.id}`,
-          payloadDigest,
-          artifactType: artifactTypeForLibraryKind(kind),
-          title: uploaded.title || file.name,
-          renditionUrl: uploaded.thumb_url || uploaded.url,
-          sourceUrl: uploaded.url,
-          sourceFormat:
-            file.name.split(".").pop()?.toLowerCase() || file.type,
-          siteId: uploaded.site_id || siteId || "home",
-          provenance: {
-            source_kind: "user_upload",
-            upload_id: uploaded.id,
-            rights_attested: true,
-          },
-        };
-        const ensured = await ensureArtifact(transient);
-        if (!ensured.ok || !ensured.data) {
-          failedCount += 1;
-          setUploadError(
-            ensured.error ||
-              "文件已上传，但耐久 artifact identity 建立失败；可重试刷新。",
-          );
-        } else if (
-          isDurableLibraryItem(ensured.data) &&
-          ensured.data.artifact.owner.principalId === ownerPrincipalId &&
-          ensured.data.artifact.owner.visibility !== "public"
-        ) {
-          setItems((current) => [
-            ensured.data!,
-            ...current.filter(
-              (item) =>
-                !isDurableLibraryItem(item) ||
-                item.artifactId !== ensured.data!.artifactId,
-            ),
-          ]);
-        } else {
-          failedCount += 1;
-          setUploadError(
-            "上传 artifact 的 owner/scope 与当前我的库不一致，已拒绝显示。",
-          );
-        }
+      } finally {
+        setUploading(false);
+        setUploadProgress("");
       }
-      setUploading(false);
-      setUploadProgress("");
-      if (failedCount < queue.length) await load();
     },
-    [load, ownerPrincipalId, siteId, uploading],
+    [ownerPrincipalId, siteId, uploading],
   );
 
   const entries = useMemo(
@@ -479,7 +959,16 @@ export function MyLibrary({
               (!onlyFavorites || item.favorite) &&
               (!itemFilter || itemFilter(item)),
           )
-          .map((item) => toEntry(item, () => removeItem(item))),
+          .map((item) => {
+            const owned =
+              isDurableLibraryItem(item) &&
+              item.artifact.owner.principalId === ownerPrincipalId &&
+              item.artifact.owner.visibility !== "public";
+            return toEntry(
+              item,
+              owned ? () => removeItem(item) : undefined,
+            );
+          }),
         ...(onlyFavorites
           ? []
           : featuredEntries.filter(
@@ -514,7 +1003,13 @@ export function MyLibrary({
           type="file"
           multiple
           className="sr-only"
-          disabled={uploading || authRequired || failed}
+          disabled={
+            uploading ||
+            loading ||
+            authRequired ||
+            failed ||
+            !ownerPrincipalId
+          }
           onChange={(event) => {
             void handleUpload(event.currentTarget.files);
             event.currentTarget.value = "";
@@ -530,7 +1025,7 @@ export function MyLibrary({
       >
         {tt(loading ? "加载中…" : "刷新")}
       </button>
-      {nextCursor && (
+      {(nextCursor || favoriteNextCursor) && (
         <button
           type="button"
           onClick={() => void loadMore()}
@@ -543,6 +1038,26 @@ export function MyLibrary({
     </div>
   );
 
+  if (standaloneEditorItem) {
+    return (
+      <div className={`h-full min-h-0 ${className}`}>
+        <AdvancedContentWorkbench
+          key={`${standaloneEditorItem.artifactId || standaloneEditorItem.id}:${
+            standaloneEditorItem.revisionId || "transient"
+          }`}
+          item={standaloneEditorItem}
+          taskId={taskId}
+          siteId={siteId || standaloneEditorItem.siteId}
+          appId={siteId || "library"}
+          accent={accent}
+          embedded
+          onSavedItem={setStandaloneEditorItem}
+          onClose={() => setStandaloneEditorItem(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full min-h-0">
       <WorkspaceLibrary
@@ -553,7 +1068,7 @@ export function MyLibrary({
         onCategoryChange={onCategoryChange}
         taskId={taskId}
         siteId={siteId}
-        onOpenItem={onOpenItem}
+        onOpenItem={onOpenItem || setStandaloneEditorItem}
         openAdvancedOnSelect={openAdvancedOnSelect}
         materialActions={materialActions}
         onMaterialAction={onMaterialAction}
@@ -564,7 +1079,7 @@ export function MyLibrary({
         onMaterialDragStart={onMaterialDragStart}
         onMaterialDragEnd={onMaterialDragEnd}
         toolbarActions={toolbar}
-        searchPlaceholder="搜索我的作品、网站、交付物和上传文件"
+        searchPlaceholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
         emptyTitle={
           loading
             ? "正在加载我的库…"
@@ -575,7 +1090,7 @@ export function MyLibrary({
         emptyDescription={
           authRequired || failed
             ? failureCopy.description
-            : "生成作品、网站或上传文件后，它们会自动出现在这里。"
+            : "生成作品、收藏公共素材或上传文件后，它们会自动出现在这里。"
         }
         className={className}
         plain={plain}
@@ -586,6 +1101,14 @@ export function MyLibrary({
           className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
         >
           {tt(failureCopy.title)}：{tt(failureCopy.description)}
+        </div>
+      )}
+      {favoriteWarning && !authRequired && !failed && (
+        <div
+          role="alert"
+          className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
+        >
+          {tt(favoriteWarning)}
         </div>
       )}
       {(uploadProgress || uploadError) && (

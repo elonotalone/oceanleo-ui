@@ -5,9 +5,11 @@ import {
   type ArtifactType,
 } from "./artifact-contract";
 import {
+  listEditableShelfArtifacts,
   listPrimaryArtifacts,
   searchArtifactLibrary,
 } from "./artifact-client";
+import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
   artifactProjectionToLibraryItem,
   isDurableLibraryItem,
@@ -409,49 +411,6 @@ export function artifactEntry(
  */
 export const MATERIAL_LIBRARY_MORE_ROLE = "template";
 
-/** One page of the unfiltered more shelf mixes every catalog taxonomy type. */
-const BALANCED_MORE_TYPES: readonly ArtifactType[] = [
-  "website",
-  "workflow",
-  "deck",
-  "document",
-  "grid",
-  "single_file_image",
-  "composite_image",
-  "vector_image",
-  "pdf",
-  "video",
-  "audio",
-  "chart",
-  "model_3d",
-];
-
-function interleaveLibraryItems(
-  groups: readonly (readonly LibraryItem[])[],
-): LibraryItem[] {
-  const out: LibraryItem[] = [];
-  const seen = new Set<string>();
-  let index = 0;
-  let progressed = true;
-  while (progressed) {
-    progressed = false;
-    for (const group of groups) {
-      const item = group[index];
-      if (!item) continue;
-      progressed = true;
-      const key =
-        item.artifactId && item.revisionId
-          ? `${item.artifactId}:${item.revisionId}`
-          : item.key || item.id;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(item);
-    }
-    index += 1;
-  }
-  return out;
-}
-
 export async function queryMaterialLibrary(input: {
   level: MaterialLibraryLevel;
   context: ArtifactContextRef;
@@ -461,46 +420,51 @@ export async function queryMaterialLibrary(input: {
   signal?: AbortSignal;
 }) {
   if (input.level === "primary") {
-    return listPrimaryArtifacts(input.context, {
+    const page = await listPrimaryArtifacts(input.context, {
       artifactType: input.taxonomy,
       limit: 60,
       signal: input.signal,
     });
-  }
-  // Unfiltered more shelf: round-robin every catalog taxonomy type so a
-  // single recent promote wave (e.g. model_3d) cannot monopolize page one.
-  if (!input.taxonomy && !input.query.trim() && !input.cursor) {
-    const perType = 5;
-    const pages = await Promise.all(
-      BALANCED_MORE_TYPES.map((artifactType) =>
-        searchArtifactLibrary({
-          query: "",
-          artifactType,
-          role: MATERIAL_LIBRARY_MORE_ROLE,
-          limit: perType,
-          signal: input.signal,
-        }),
-      ),
-    );
-    const failed = pages.find((page) => !page.ok || !page.data);
-    if (failed) {
-      return failed as (typeof pages)[number];
+    if (!page.ok || !page.data) return page;
+    if (page.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
+      return {
+        ok: false as const,
+        error:
+          "Primary 返回了未通过本地 trusted editor capability 的 projection，已拒绝整页素材。",
+        code: "invalid-response" as const,
+        status: page.status,
+        retryable: false,
+      };
     }
-    const items = interleaveLibraryItems(
-      pages.map((page) => page.data!.items),
-    );
-    return {
-      ok: true as const,
-      data: {
-        items,
-        nextCursor: null,
-        total: items.length,
-      },
-      status: 200,
-      retryable: false,
-    };
+    return page;
   }
-  return searchArtifactLibrary({
+  // The backend balances all 13 taxonomy types atomically. The browser must
+  // never recreate the former 13-request all-or-nothing fan-out.
+  if (!input.taxonomy && !input.query.trim()) {
+    if (input.cursor) {
+      return {
+        ok: false as const,
+        error: "可编辑素材货架是单次权威快照，不接受 cursor 分页。",
+        code: "invalid-response" as const,
+        status: 400,
+        retryable: false,
+      };
+    }
+    const shelf = await listEditableShelfArtifacts(input.signal);
+    if (!shelf.ok || !shelf.data) return shelf;
+    if (shelf.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
+      return {
+        ok: false as const,
+        error:
+          "可编辑素材货架包含未通过本地 trusted editor capability 的条目。",
+        code: "invalid-response" as const,
+        status: shelf.status,
+        retryable: false,
+      };
+    }
+    return shelf;
+  }
+  const page = await searchArtifactLibrary({
     query: input.query,
     artifactType: input.taxonomy,
     role: MATERIAL_LIBRARY_MORE_ROLE,
@@ -508,4 +472,16 @@ export async function queryMaterialLibrary(input: {
     limit: 60,
     signal: input.signal,
   });
+  if (!page.ok || !page.data) return page;
+  if (page.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
+    return {
+      ok: false as const,
+      error:
+        "素材搜索结果包含未通过本地 trusted editor capability 的条目。",
+      code: "invalid-response" as const,
+      status: page.status,
+      retryable: false,
+    };
+  }
+  return page;
 }

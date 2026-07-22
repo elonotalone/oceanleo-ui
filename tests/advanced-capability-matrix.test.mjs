@@ -5,8 +5,12 @@ import {
   editorCapabilityFor,
   editorRouteFor,
 } from "../src/shell/workbench-routes.ts";
-import { normalizeArtifactProjection } from "../src/shell/artifact-contract.ts";
+import {
+  ARTIFACT_TYPES,
+  normalizeArtifactProjection,
+} from "../src/shell/artifact-contract.ts";
 import { artifactProjectionToLibraryItem } from "../src/shell/library-data.ts";
+import { isAdvancedEditableShelfItem } from "../src/shell/advanced-features.ts";
 
 function item(patch = {}) {
   return {
@@ -126,6 +130,108 @@ test("typed editor capability matrix does not infer editing from viewer kind", (
     if (fixture.reason) {
       assert.match(capability.unavailableReason, fixture.reason, fixture.name);
     }
+  }
+});
+
+test("all thirteen shelf taxonomies reach a trusted local editor", () => {
+  const capabilityByType = {
+    single_file_image: ["image-editor", "png"],
+    composite_image: ["composite-image-editor", "fabric-json"],
+    vector_image: ["vector-editor", "svg"],
+    chart: ["chart-editor", "echarts-option+json"],
+    document: ["richdoc-editor", "tiptap-json"],
+    grid: ["grid-editor", "grid-json"],
+    deck: ["deck-editor", "deck-json"],
+    pdf: ["pdf-editor", "pdf"],
+    website: ["website-editor", "website-source@1"],
+    video: ["video-timeline", "timeline-json"],
+    audio: ["audio-editor", "audio-project+json"],
+    model_3d: ["model-3d-editor", "glb"],
+    workflow: ["design-canvas", "workflow-json"],
+  };
+  assert.deepEqual(Object.keys(capabilityByType).sort(), [...ARTIFACT_TYPES].sort());
+
+  for (const artifactType of ARTIFACT_TYPES) {
+    const [editorCapability, sourceFormat] =
+      capabilityByType[artifactType];
+    const revisionId = `${artifactType}-r1`;
+    const projection = normalizeArtifactProjection({
+      schema: "oceanleo.artifact.v1",
+      artifact_id: `shelf-${artifactType}`,
+      revision_id: revisionId,
+      artifact_type: artifactType,
+      roles: ["template"],
+      title: `Shelf ${artifactType}`,
+      favorite: false,
+      owner: {
+        principal_id: "catalog-owner",
+        visibility: "public",
+        origin_site_key: "asset",
+      },
+      access: {
+        can_read: true,
+        can_preview: true,
+        can_edit: false,
+        can_fork: true,
+        can_insert: true,
+        can_replace: true,
+        can_favorite: true,
+        can_bind: true,
+        can_export_source: true,
+      },
+      editability: "bounded",
+      editor_capability: editorCapability,
+      source_format: sourceFormat,
+      renditions: {
+        preview: {
+          purpose: "preview",
+          revision_id: revisionId,
+          url: `https://signed.test/${artifactType}/preview`,
+          format: "bin",
+        },
+        source: {
+          purpose: "source",
+          revision_id: revisionId,
+          url: `https://signed.test/${artifactType}/source`,
+          format: sourceFormat,
+          digest: `sha256:${artifactType}`,
+        },
+      },
+      ...(artifactType === "composite_image"
+        ? {
+            scene: {
+              schema: "oceanleo-scene+json",
+              scene_revision_id: revisionId,
+              closure_status: "complete",
+              closure_digest: "sha256:composite-closure",
+              dependency_revision_ids: [],
+            },
+          }
+        : {}),
+      provenance: {
+        id: `prov-${artifactType}`,
+        source_kind: "owned",
+        license_code: "owned",
+      },
+      context_bindings: [],
+      integrity: {
+        ok: true,
+        code: "ok",
+        reason: "",
+      },
+    });
+    assert.ok(projection, artifactType);
+    const libraryItem = artifactProjectionToLibraryItem(projection);
+    assert.equal(
+      isAdvancedEditableShelfItem(libraryItem),
+      true,
+      artifactType,
+    );
+    assert.equal(
+      editorCapabilityFor(libraryItem).available,
+      true,
+      artifactType,
+    );
   }
 });
 

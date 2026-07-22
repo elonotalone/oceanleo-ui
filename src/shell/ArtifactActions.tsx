@@ -369,10 +369,27 @@ export function ArtifactActionButtons({
   const downloadVisible = Boolean(
     durableItem && durableItem.artifact.access.canRead,
   );
+  const sourceDownloadAvailable = Boolean(
+    durableItem?.artifact.access.canExportSource &&
+      durableItem.artifact.renditions.source,
+  );
+  const renderedDownloadAvailable = Boolean(
+    durableItem?.artifact.access.canPreview &&
+      (durableItem.artifact.renditions.full ||
+        durableItem.artifact.renditions.preview),
+  );
+  const downloadReason = !durableItem
+    ? "下载需要 durable artifact identity。"
+    : !durableItem.artifact.access.canRead
+      ? "当前主体没有下载这个 revision 的权限。"
+      : !durableItem.artifact.integrity.ok
+        ? durableItem.artifact.integrity.reason ||
+          "当前 revision 未通过完整性校验。"
+        : !sourceDownloadAvailable && !renderedDownloadAvailable
+          ? "当前 revision 没有可导出的 source、full 或 preview rendition。"
+          : "";
   const downloadAvailable = Boolean(
-    durableItem &&
-      durableItem.artifact.access.canRead &&
-      durableItem.artifact.access.canPreview,
+    durableItem && !downloadReason,
   );
   const favoriteVisible = Boolean(
     durableItem && durableItem.artifact.access.canRead,
@@ -388,7 +405,7 @@ export function ArtifactActionButtons({
   const runDownload = async () => {
     if (!downloadAvailable || pending) {
       if (!downloadAvailable) {
-        report("当前 revision 没有可下载的授权 rendition。");
+        report(downloadReason);
       }
       return;
     }
@@ -409,6 +426,7 @@ export function ArtifactActionButtons({
       link.href = result.data.url;
       link.download = result.data.filename;
       link.rel = "noopener noreferrer";
+      link.referrerPolicy = "no-referrer";
       link.style.display = "none";
       document.body.append(link);
       link.click();
@@ -537,7 +555,7 @@ export function ArtifactActionButtons({
             title={tt(
               downloadAvailable
                 ? "下载"
-                : "当前 revision 没有可下载的授权 rendition。",
+                : downloadReason,
             )}
             className={chipClass}
             style={chipStyle(downloadAvailable)}

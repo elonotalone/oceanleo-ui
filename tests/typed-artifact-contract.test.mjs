@@ -424,8 +424,15 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   );
   assert.match(materialView, /artifactId/);
   assert.match(materialView, /revisionId/);
+  assert.match(materialView, /AdvancedContentWorkbench/);
+  assert.match(
+    materialView,
+    /onOpenItem=\{onOpenItem \|\| setStandaloneEditorItem\}/,
+  );
   assert.match(materialView, /loadMoreAbortRef/);
   assert.match(materialView, /epoch !== requestEpochRef\.current/);
+  assert.match(materialView, /isTrustedEditableMaterialEntry/);
+  assert.doesNotMatch(materialView, /siteFeaturedEntries/);
   // Material shelf type filter is the taxonomy 「货架」dropdown on both
   // primary (当前 App) and more (更多) pages — never overlapping LibraryChips.
   assert.match(materialView, /hideCategoryChips/);
@@ -454,9 +461,31 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(layout, /aria-label=\{tt\("清除搜索"\)\}/);
   assert.match(layout, /type="search"/);
   assert.match(mine, /listMyArtifacts/);
+  assert.match(mine, /listFavoriteArtifacts/);
+  assert.match(mine, /AdvancedContentWorkbench/);
+  assert.match(
+    mine,
+    /onOpenItem=\{onOpenItem \|\| setStandaloneEditorItem\}/,
+  );
   assert.match(mine, /ARTIFACT_LIBRARY_CHANGE_EVENT/);
   assert.match(mine, /dedupeDurableItems/);
   assert.match(mine, /owner\.visibility !== "public"/);
+  assert.match(mine, /Promise\.allSettled/);
+  assert.match(mine, /favoriteNextCursor/);
+  const controller = readFileSync(
+    new URL(
+      "../src/shell/material-library-controller.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(controller, /listEditableShelfArtifacts/);
+  assert.doesNotMatch(controller, /Promise\.all/);
+  assert.match(controller, /isAdvancedEditableShelfItem/);
+  assert.match(
+    controller,
+    /Primary 返回了未通过本地 trusted editor capability/,
+  );
 });
 
 test("shared cards keep explicit mutations and pinned download/favorite controls", () => {
@@ -483,6 +512,29 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     actions,
     /result\.data\.revisionId !== durableItem\.revisionId/,
   );
+  const client = readFileSync(
+    new URL("../src/shell/artifact-client.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(client, /renditions\/\$\{rendition\.purpose\}\?mode=export/);
+  const downloadClient = client.slice(
+    client.indexOf("export async function getArtifactDownload"),
+    client.indexOf("export async function setArtifactFavorite"),
+  );
+  assert.ok(
+    downloadClient.indexOf("sourceRendition") <
+      downloadClient.indexOf("renderedRendition"),
+  );
+  assert.match(downloadClient, /sourceRendition \|\| renderedRendition/);
+  assert.match(client, /trustedGatewayArtifactAccessUrl/);
+  assert.match(client, /素材请求已取消/);
+  assert.match(client, /素材请求超时，请重试/);
+  assert.doesNotMatch(client, /素材请求超时或已取消/);
+  assert.doesNotMatch(
+    downloadClient,
+    /fetch\([^)]*\)\.then\([^)]*arrayBuffer|window\.open/,
+  );
+  assert.match(actions, /prepareArtifactForAction\(action, item\)/);
   assert.match(library, /Primary card activation is quiet preview/);
   assert.match(library, /application\/x-oceanleo-material\+json/);
   assert.match(library, /id: item\?\.key \|\| entry\.id/);

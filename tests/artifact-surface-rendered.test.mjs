@@ -9,6 +9,7 @@ import React, { act } from "react";
 import ts from "typescript";
 
 import {
+  ARTIFACT_TYPES,
   normalizeArtifactProjection,
 } from "../src/shell/artifact-contract.ts";
 import {
@@ -130,11 +131,14 @@ const artifactClientUrl = await compileModule(
   },
 );
 const {
+  ARTIFACT_LIBRARY_CHANGE_EVENT,
   createArtifactRevision,
   ensureArtifact,
   getArtifactEditDecision,
   getArtifactDownload,
   getArtifactItem,
+  listEditableShelfArtifacts,
+  listFavoriteArtifacts,
   listMyArtifacts,
   listPrimaryArtifacts,
   retireArtifact,
@@ -183,7 +187,26 @@ const workspaceLibraryStubUrl = dataModule(`
         ...props.entries.map((entry) =>
           createElement(
             "article",
-            { key: entry.id, "data-entry-title": entry.title },
+            {
+              key: entry.id,
+              "data-entry-title": entry.title,
+              "data-entry-category": entry.category,
+              "data-entry-durable": String(
+                Boolean(
+                  entry.libraryItem?.artifactId &&
+                    entry.libraryItem?.revisionId,
+                ),
+              ),
+              "data-entry-visible": String(
+                Boolean(
+                  entry.libraryItem?.artifact?.access?.canRead &&
+                    entry.libraryItem?.artifact?.access?.canPreview &&
+                    entry.libraryItem?.artifact?.integrity?.ok,
+                ),
+              ),
+              "data-entry-editor-capability":
+                entry.libraryItem?.artifact?.editorCapability || "",
+            },
             entry.title,
             createElement(
               "a",
@@ -206,9 +229,18 @@ const workspaceLibraryStubUrl = dataModule(`
     );
   }
 `);
+const advancedFeaturesUrl = pathToFileURL(
+  resolve("src/shell/advanced-features.ts"),
+).href;
+const advancedWorkbenchStubUrl = dataModule(`
+  export function AdvancedContentWorkbench() {
+    return null;
+  }
+`);
 const materialControllerUrl = await compileModule(
   "src/shell/material-library-controller.ts",
   {
+    "./advanced-features": advancedFeaturesUrl,
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": artifactClientUrl,
@@ -216,11 +248,6 @@ const materialControllerUrl = await compileModule(
   },
 );
 const { artifactEntry } = await import(materialControllerUrl);
-const advancedFeaturesStubUrl = dataModule(`
-  export function isAdvancedEditableShelfItem() {
-    return true;
-  }
-`);
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
@@ -228,7 +255,8 @@ const MaterialLibrary = (
       "./artifact-client": artifactClientUrl,
       "./library-data": libraryDataUrl,
       "./artifact-contract": contractUrl,
-      "./advanced-features": advancedFeaturesStubUrl,
+      "./advanced-features": advancedFeaturesUrl,
+      "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
       "./material-library-controller": materialControllerUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
@@ -268,17 +296,24 @@ const databaseStubUrl = dataModule(`
     return { ok: false, error: "upload not used in this test" };
   }
 `);
-const MyLibrary = (
+const myLibraryModule = (
   await import(
     await compileModule("src/shell/MyLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
       "../lib/database": databaseStubUrl,
+      "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
       "./artifact-client": artifactClientUrl,
+      "./artifact-contract": contractUrl,
       "./library-data": libraryDataUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
     })
   )
-).MyLibrary;
+);
+const {
+  MyLibrary,
+  canonicalUploadLibraryItem,
+  legacyUploadTransient,
+} = myLibraryModule;
 
 const actionClientStubUrl = dataModule(`
   export async function prepareArtifactForAction(action, item) {
@@ -311,15 +346,62 @@ const materialProviderModule = await import(
     "./workbench-material-registry": materialRegistryUrl,
   }),
 );
-const actionModule = await import(
-  await compileModule("src/shell/ArtifactActions.tsx", {
+const actionModuleUrl = await compileModule(
+  "src/shell/ArtifactActions.tsx",
+  {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": actionClientStubUrl,
     "./library-data": libraryDataUrl,
     "./workbench-routes": routesStubUrl,
-  }),
+  },
 );
+const actionModule = await import(actionModuleUrl);
+const libraryLayoutStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+  export function LibraryToolbar(props) {
+    return createElement("div", null, props.actions);
+  }
+  export function LibraryChips() {
+    return null;
+  }
+`);
+const workspaceViewStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+  export function WorkspaceCard(props) {
+    return createElement(
+      "button",
+      {
+        type: "button",
+        "data-open-entry": props.entry.title,
+        onClick: props.onOpen,
+      },
+      props.entry.title,
+    );
+  }
+  export const WorkspaceListRow = WorkspaceCard;
+  export function WorkspaceLibraryEmpty() {
+    return null;
+  }
+  export function WorkspaceLibraryEntryViewer() {
+    return createElement("div", { "data-entry-viewer": "true" });
+  }
+`);
+const workspaceLibraryModelUrl = pathToFileURL(
+  resolve("src/shell/workspace-library-model.ts"),
+).href;
+const RenderedWorkspaceLibrary = (
+  await import(
+    await compileModule("src/shell/WorkspaceLibrary.tsx", {
+      "../i18n/ui/useUI": uiStubUrl,
+      "./library-data": libraryDataUrl,
+      "./LibraryLayout": libraryLayoutStubUrl,
+      "./ArtifactActions": actionModuleUrl,
+      "./workspace-library-model": workspaceLibraryModelUrl,
+      "./workspace-library-view": workspaceViewStubUrl,
+    })
+  )
+).WorkspaceLibrary;
 
 async function createMounted(Component, props) {
   const { createRoot } = await import("react-dom/client");
@@ -353,6 +435,50 @@ async function click(target) {
     await Promise.resolve();
   });
 }
+
+function assertEveryRenderedMaterialIsEditable(container) {
+  const entries = [
+    ...container.querySelectorAll("[data-entry-title]"),
+  ];
+  assert.ok(entries.length > 0);
+  for (const entry of entries) {
+    assert.equal(entry.getAttribute("data-entry-durable"), "true");
+    assert.equal(entry.getAttribute("data-entry-visible"), "true");
+    assert.ok(entry.getAttribute("data-entry-editor-capability"));
+  }
+}
+
+const TEST_EDITOR_CAPABILITY = {
+  single_file_image: "image-editor",
+  composite_image: "composite-image-editor",
+  vector_image: "vector-editor",
+  chart: "chart-editor",
+  document: "richdoc-editor",
+  grid: "grid-editor",
+  deck: "deck-editor",
+  pdf: "pdf-editor",
+  website: "website-editor",
+  video: "video-timeline",
+  audio: "audio-editor",
+  model_3d: "model-3d-editor",
+  workflow: "design-canvas",
+};
+
+const TEST_SOURCE_FORMAT = {
+  single_file_image: "png",
+  composite_image: "oceanleo-scene+json",
+  vector_image: "svg",
+  chart: "echarts-option+json",
+  document: "tiptap-json",
+  grid: "grid-json",
+  deck: "deck-json",
+  pdf: "pdf",
+  website: "website-source@1",
+  video: "timeline-json",
+  audio: "audio-project+json",
+  model_3d: "glb",
+  workflow: "workflow-json",
+};
 
 function projection({
   id,
@@ -400,11 +526,9 @@ function projection({
         : "bounded"
       : "view_only",
     editor_capability: editable
-      ? isComposite
-        ? "composite-image-editor"
-        : "image-editor"
+      ? TEST_EDITOR_CAPABILITY[artifactType]
       : null,
-    source_format: isComposite ? "oceanleo-scene+json" : "png",
+    source_format: TEST_SOURCE_FORMAT[artifactType],
     ...(isComposite
       ? {
           scene: {
@@ -431,7 +555,7 @@ function projection({
               url: `https://signed.test/${id || "artifact-1"}-source.${
                 isComposite ? "json" : "png"
               }`,
-              format: isComposite ? "oceanleo-scene+json" : "png",
+              format: TEST_SOURCE_FORMAT[artifactType],
               digest: `sha256:${id || "artifact-1"}`,
             },
           }
@@ -682,6 +806,118 @@ test("public search and owner-scoped mine reject mixed authority rows", async ()
   );
 });
 
+test("editable shelf and favorites use one strict owner-scoped envelope each", async () => {
+  const shelfItems = ARTIFACT_TYPES.map((artifactType) =>
+    projection({
+      id: `shelf-${artifactType}`,
+      artifactType,
+      visibility: "public",
+      editable: true,
+    }),
+  );
+  const favoritePublic = projection({
+    id: "favorite-public",
+    visibility: "public",
+    favorite: true,
+    editable: true,
+  });
+  const favoritePrivate = projection({
+    id: "favorite-private",
+    ownerPrincipalId: "owner-a",
+    favorite: true,
+    editable: true,
+  });
+  const responses = [
+    {
+      scope: "public",
+      total: shelfItems.length,
+      invalidCount: 0,
+      items: shelfItems,
+    },
+    {
+      scope: "public",
+      total: shelfItems.length - 1,
+      invalidCount: 0,
+      items: shelfItems.slice(1),
+    },
+    {
+      scope: "public",
+      total: shelfItems.length * 2,
+      invalidCount: 0,
+      nextOffset: shelfItems.length,
+      items: shelfItems,
+    },
+    {
+      scope: "favorites",
+      ownerPrincipalId: "owner-a",
+      total: 3,
+      invalidCount: 0,
+      nextOffset: 2,
+      items: [favoritePublic, favoritePrivate],
+    },
+    {
+      scope: "favorites",
+      ownerPrincipalId: "owner-a",
+      total: 3,
+      invalidCount: 0,
+      items: [
+        projection({
+          id: "favorite-page-2",
+          visibility: "public",
+          favorite: true,
+          editable: true,
+        }),
+      ],
+    },
+    {
+      scope: "favorites",
+      ownerPrincipalId: "owner-a",
+      total: 1,
+      invalidCount: 0,
+      items: [{ ...favoritePublic, favorite: false }],
+    },
+  ];
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(new URL(String(input)));
+    return jsonResponse(responses.shift());
+  };
+
+  const shelf = await listEditableShelfArtifacts();
+  const incompleteShelf = await listEditableShelfArtifacts();
+  const paginatedShelf = await listEditableShelfArtifacts();
+  const favorites = await listFavoriteArtifacts({ limit: 2 });
+  const favoritePage2 = await listFavoriteArtifacts({
+    cursor: favorites.data?.nextCursor || undefined,
+    limit: 2,
+  });
+  const invalidFavorites = await listFavoriteArtifacts();
+
+  assert.equal(shelf.ok, true);
+  assert.equal(shelf.data?.items.length, 13);
+  assert.equal(incompleteShelf.ok, false);
+  assert.match(incompleteShelf.error || "", /13 taxonomy/);
+  assert.equal(paginatedShelf.ok, false);
+  assert.equal(favorites.ok, true);
+  assert.equal(favorites.data?.ownerPrincipalId, "owner-a");
+  assert.equal(favorites.data?.nextCursor, "2");
+  assert.equal(favoritePage2.ok, true);
+  assert.equal(favoritePage2.data?.items[0]?.artifactId, "favorite-page-2");
+  assert.equal(invalidFavorites.ok, false);
+  assert.match(invalidFavorites.error || "", /未收藏/);
+  assert.deepEqual(
+    calls.map((url) => [url.pathname, Object.fromEntries(url.searchParams)]),
+    [
+      ["/v1/library/editable-shelf", { perType: "5" }],
+      ["/v1/library/editable-shelf", { perType: "5" }],
+      ["/v1/library/editable-shelf", { perType: "5" }],
+      ["/v1/library/favorites", { limit: "2", offset: "0" }],
+      ["/v1/library/favorites", { limit: "2", offset: "2" }],
+      ["/v1/library/favorites", { limit: "100", offset: "0" }],
+    ],
+  );
+});
+
 test("local production-shape 20-item pages accept either third-party evidence field", async () => {
   const context = {
     contextId: "olctx:v1:image:app:poster",
@@ -896,6 +1132,12 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
     title: "Upload",
     editable: true,
   });
+  ensuredProjection.source_format = "docx";
+  ensuredProjection.renditions.source = {
+    ...ensuredProjection.renditions.source,
+    url: "https://signed.test/ensured-upload-source.docx",
+    format: "docx",
+  };
   const transient = {
     schema: "oceanleo.transient-generation.v1",
     operation: "upload",
@@ -921,6 +1163,20 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
         },
       });
     }
+    if (
+      url.pathname ===
+        "/v1/artifacts/ensured-upload/revisions/r1/renditions/source" &&
+      url.searchParams.get("mode") === "export"
+    ) {
+      return jsonResponse({
+        artifact_id: "ensured-upload",
+        revision_id: "r1",
+        purpose: "source",
+        mode: "export",
+        access_url: "/v1/artifact-renditions/access/export-token",
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      });
+    }
     return jsonResponse(ensuredProjection);
   };
 
@@ -931,6 +1187,11 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
   assert.equal(download.ok, true);
   assert.equal(download.data?.artifactId, "ensured-upload");
   assert.equal(download.data?.revisionId, "r1");
+  assert.equal(download.data?.filename, "Upload.docx");
+  assert.equal(
+    download.data?.url,
+    "https://api.test/v1/artifact-renditions/access/export-token",
+  );
 
   ensureMismatch = true;
   const rejected = await ensureArtifact({
@@ -940,6 +1201,126 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
   assert.equal(rejected.ok, false);
   assert.equal(rejected.code, "transient-persistence-failed");
   assert.match(rejected.error || "", /receipt/);
+});
+
+test("download export falls back from unavailable source to full then preview", async () => {
+  const fullProjection = projection({
+    id: "download-full",
+    title: "Full export",
+  });
+  fullProjection.renditions.full = {
+    purpose: "full",
+    revision_id: "r1",
+    url: "https://signed.test/download-full.pdf",
+    format: "pdf",
+  };
+  const previewProjection = projection({
+    id: "download-preview",
+    title: "Preview export",
+  });
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.pathname.includes("/renditions/")) {
+      const purpose = url.pathname.endsWith("/full") ? "full" : "preview";
+      return jsonResponse({
+        artifact_id: url.pathname.includes("download-full")
+          ? "download-full"
+          : "download-preview",
+        revision_id: "r1",
+        purpose,
+        mode: "export",
+        access_url: `/v1/artifact-renditions/access/${purpose}-token`,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      });
+    }
+    return jsonResponse(
+      url.pathname.endsWith("/download-full")
+        ? fullProjection
+        : previewProjection,
+    );
+  };
+  const fullItem = normalizeArtifactProjection(fullProjection);
+  const previewItem = normalizeArtifactProjection(previewProjection);
+  assert.ok(fullItem);
+  assert.ok(previewItem);
+
+  const fullDownload = await getArtifactDownload(
+    artifactProjectionToLibraryItem(fullItem),
+  );
+  const previewDownload = await getArtifactDownload(
+    artifactProjectionToLibraryItem(previewItem),
+  );
+
+  assert.equal(fullDownload.ok, true);
+  assert.equal(fullDownload.data?.filename, "Full export.pdf");
+  assert.equal(previewDownload.ok, true);
+  assert.equal(previewDownload.data?.filename, "Preview export.png");
+  assert.deepEqual(
+    calls
+      .filter((url) => url.pathname.includes("/renditions/"))
+      .map((url) => `${url.pathname}?${url.searchParams}`),
+    [
+      "/v1/artifacts/download-full/revisions/r1/renditions/full?mode=export",
+      "/v1/artifacts/download-preview/revisions/r1/renditions/preview?mode=export",
+    ],
+  );
+});
+
+test("upload consumes canonical file.artifact and legacy fallback fails loud", () => {
+  const rawProjection = projection({
+    id: "upload-artifact",
+    ownerPrincipalId: "owner-a",
+    editable: true,
+  });
+  const canonical = canonicalUploadLibraryItem({
+    id: "file-row",
+    url: "https://signed.test/upload.png",
+    artifact_id: "upload-artifact",
+    revision_id: "r1",
+    artifact: rawProjection,
+  });
+  assert.equal(canonical.ok, true);
+  assert.equal(canonical.item?.artifactId, "upload-artifact");
+
+  const mismatched = canonicalUploadLibraryItem({
+    id: "file-row",
+    url: "https://signed.test/upload.png",
+    artifact_id: "other-artifact",
+    revision_id: "r1",
+    artifact: rawProjection,
+  });
+  assert.equal(mismatched.ok, false);
+  assert.match(mismatched.error || "", /不一致/);
+
+  const file = {
+    name: "legacy.png",
+    type: "image/png",
+  };
+  const missing = legacyUploadTransient(
+    {
+      id: undefined,
+      url: "https://signed.test/legacy.png",
+      meta: {},
+    },
+    file,
+    "image",
+  );
+  assert.equal(missing.ok, false);
+  assert.doesNotMatch(missing.error || "", /undefined resultId/);
+
+  const compatible = legacyUploadTransient(
+    {
+      id: "legacy-file",
+      url: "https://signed.test/legacy.png",
+      meta: { content_digest: "sha256:legacy-file" },
+    },
+    file,
+    "image",
+  );
+  assert.equal(compatible.ok, true);
+  assert.equal(compatible.transient?.resultId, "legacy-file");
 });
 
 test("retire requires pinned revision confirmation before removing state", async () => {
@@ -1108,13 +1489,87 @@ test("artifact detail and edit capability use canonical revisionId query aliases
   }
 });
 
+test("public editable material forks before opening the private editor", async () => {
+  const publicProjection = projection({
+    id: "public-template",
+    title: "Public template",
+    visibility: "public",
+  });
+  publicProjection.access.can_fork = true;
+  publicProjection.editability = "bounded";
+  publicProjection.editor_capability = "image-editor";
+  publicProjection.source_format = "png";
+  publicProjection.renditions.source = {
+    purpose: "source",
+    revision_id: "r1",
+    url: "https://signed.test/public-template-source.png",
+    format: "png",
+    digest: "sha256:public-template",
+  };
+  const forkedProjection = projection({
+    id: "private-fork",
+    title: "Public template copy",
+    editable: true,
+  });
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    calls.push({ url, init });
+    if (url.pathname.endsWith(":fork")) {
+      return jsonResponse({
+        ...forkedProjection,
+        forkedFrom: {
+          artifactId: "public-template",
+          revisionId: "r1",
+        },
+      });
+    }
+    if (url.pathname.endsWith("/edit-capability")) {
+      return jsonResponse({
+        available: true,
+        editor_capability: "image-editor",
+        item: forkedProjection,
+      });
+    }
+    return jsonResponse(publicProjection);
+  };
+  const normalized = normalizeArtifactProjection(publicProjection);
+  assert.ok(normalized);
+
+  const decision = await getArtifactEditDecision(
+    artifactProjectionToLibraryItem(normalized),
+  );
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.data?.item.artifactId, "private-fork");
+  assert.equal(decision.data?.item.artifact.owner.visibility, "private");
+  assert.deepEqual(
+    calls.map(({ url }) => url.pathname),
+    [
+      "/v1/library/items/public-template",
+      "/v1/library/items/public-template",
+      "/v1/artifacts/public-template:fork",
+      "/v1/artifacts/private-fork/edit-capability",
+    ],
+  );
+  assert.deepEqual(JSON.parse(calls[2].init.body), {
+    source_revision_id: "r1",
+  });
+});
+
 test("rendered Primary is exact, ACL-safe, and rejects mismatched response context", async () => {
   const calls = [];
   globalThis.fetch = async (input) => {
     calls.push(String(input));
     return jsonResponse({
       contextId: "ctx:image:poster",
-      items: [projection({ id: "exact", title: "Exact primary" })],
+      items: [
+        projection({
+          id: "exact",
+          title: "Exact primary",
+          editable: true,
+        }),
+      ],
       next_cursor: null,
       total: 1,
     });
@@ -1125,9 +1580,26 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
       title: "Local unauthorized",
       canRead: false,
       canPreview: false,
+      editable: true,
     }),
   );
   assert.ok(localDeniedArtifact);
+  const localEditableArtifact = normalizeArtifactProjection(
+    projection({
+      id: "local-editable",
+      title: "Local editable",
+      editable: true,
+    }),
+  );
+  assert.ok(localEditableArtifact);
+  const featuredEditableArtifact = normalizeArtifactProjection(
+    projection({
+      id: "featured-editable",
+      title: "Featured editable",
+      editable: true,
+    }),
+  );
+  assert.ok(featuredEditableArtifact);
   const mounted = await createMounted(MaterialLibrary, {
     materials: [
       {
@@ -1135,6 +1607,32 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
         title: "Local unauthorized",
         thumb: "https://signed.test/local-unauthorized.png",
         libraryItem: artifactProjectionToLibraryItem(localDeniedArtifact),
+      },
+      {
+        id: "local-editable",
+        title: "Local editable",
+        thumb: "https://signed.test/local-editable.png",
+        libraryItem: artifactProjectionToLibraryItem(
+          localEditableArtifact,
+        ),
+      },
+    ],
+    featuredEntries: [
+      artifactEntry(
+        artifactProjectionToLibraryItem(featuredEditableArtifact),
+      ),
+      {
+        id: "featured-nondurable",
+        title: "Featured non-durable",
+        libraryItem: {
+          key: "featured-nondurable",
+          source: "artifact",
+          id: "featured-nondurable",
+          kind: "image",
+          title: "Featured non-durable",
+          favorite: false,
+          meta: {},
+        },
       },
     ],
     siteId: "image",
@@ -1148,6 +1646,21 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
     assert.ok(
       mounted.container.querySelector('[data-entry-title="Exact primary"]'),
     );
+    assert.ok(
+      mounted.container.querySelector('[data-entry-title="Local editable"]'),
+    );
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Featured editable"]',
+      ),
+    );
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Featured non-durable"]',
+      ),
+      null,
+    );
+    assertEveryRenderedMaterialIsEditable(mounted.container);
     assert.equal(
       mounted.container.querySelector(
         '[data-entry-title="Local unauthorized"]',
@@ -1163,11 +1676,54 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
       contextId: "ctx:image:poster",
       total: 2,
       items: [
-        projection({ id: "exact", title: "Exact primary" }),
+        projection({
+          id: "trusted-primary",
+          title: "Trusted primary",
+          editable: true,
+        }),
+        projection({
+          id: "view-only-primary",
+          title: "View-only primary",
+        }),
+      ],
+    });
+  const untrustedPrimary = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId: "ctx:image:poster",
+  });
+  try {
+    await settle();
+    assert.equal(
+      untrustedPrimary.container.querySelectorAll("[data-entry-title]")
+        .length,
+      0,
+    );
+    assert.match(
+      untrustedPrimary.container.querySelector("[data-empty-description]")
+        ?.textContent || "",
+      /trusted editor capability/,
+    );
+  } finally {
+    await untrustedPrimary.unmount();
+  }
+
+  globalThis.fetch = async () =>
+    jsonResponse({
+      contextId: "ctx:image:poster",
+      total: 2,
+      items: [
+        projection({
+          id: "exact",
+          title: "Exact primary",
+          editable: true,
+        }),
         projection({
           id: "wrong-context",
           title: "Wrong context",
           contextId: "ctx:image:other",
+          editable: true,
         }),
       ],
     });
@@ -1195,7 +1751,13 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "ctx:image:other",
-      items: [projection({ id: "leaked", title: "Mismatched response" })],
+      items: [
+        projection({
+          id: "leaked",
+          title: "Mismatched response",
+          editable: true,
+        }),
+      ],
       nextOffset: null,
       total: 1,
     });
@@ -1291,7 +1853,7 @@ test("rendered no-binding backend responses render as empty state, not errors", 
   }
 });
 
-test("rendered primary keeps non-durable site picks visible as 本站精选", async () => {
+test("rendered material library hides every non-durable site pick", async () => {
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "olctx:v1:image:app:poster",
@@ -1300,6 +1862,7 @@ test("rendered primary keeps non-durable site picks visible as 本站精选", as
           id: "exact",
           title: "Exact primary",
           contextId: "olctx:v1:image:app:poster",
+          editable: true,
         }),
       ],
       total: 1,
@@ -1322,16 +1885,17 @@ test("rendered primary keeps non-durable site picks visible as 本站精选", as
     assert.ok(
       mounted.container.querySelector('[data-entry-title="Exact primary"]'),
     );
-    assert.ok(
+    assert.equal(
       mounted.container.querySelector(
         '[data-entry-title="Site pick poster"]',
       ),
+      null,
     );
   } finally {
     await mounted.unmount();
   }
 
-  // Even with no context at all, curated site materials stay visible.
+  // Contextless curated rows belong on an inspiration surface, not Materials.
   const noContext = await createMounted(MaterialLibrary, {
     materials: [
       {
@@ -1346,10 +1910,11 @@ test("rendered primary keeps non-durable site picks visible as 本站精选", as
   });
   try {
     await settle();
-    assert.ok(
+    assert.equal(
       noContext.container.querySelector(
         '[data-entry-title="Contextless site pick"]',
       ),
+      null,
     );
   } finally {
     await noContext.unmount();
@@ -1358,13 +1923,39 @@ test("rendered primary keeps non-durable site picks visible as 本站精选", as
 
 test("rendered My Library is owner-scoped and dedupes cross-site durable identity", async () => {
   const calls = [];
+  let libraryMode = "ok";
+  let favoriteIncluded = true;
   const owned = projection({
     id: "shared-owned",
     title: "Owned across sites",
     ownerPrincipalId: "owner-a",
   });
+  const publicFavorite = projection({
+    id: "public-favorite",
+    title: "Favorite template",
+    visibility: "public",
+    favorite: true,
+    editable: true,
+  });
   globalThis.fetch = async (input) => {
-    calls.push(new URL(String(input)));
+    const url = new URL(String(input));
+    calls.push(url);
+    if (
+      libraryMode === "favorites-unavailable" &&
+      url.pathname === "/v1/library/favorites"
+    ) {
+      return jsonResponse({ detail: "maintenance" }, 503);
+    }
+    if (url.pathname === "/v1/library/favorites") {
+      return jsonResponse({
+        scope: "favorites",
+        ownerPrincipalId:
+          libraryMode === "owner-mismatch" ? "owner-b" : "owner-a",
+        total: favoriteIncluded ? 1 : 0,
+        invalidCount: 0,
+        items: favoriteIncluded ? [publicFavorite] : [],
+      });
+    }
     return jsonResponse({
       scope: "mine",
       ownerPrincipalId: "owner-a",
@@ -1387,13 +1978,287 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
   });
   try {
     await settle();
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2);
     assert.equal(calls[0].pathname, "/v1/library/mine");
+    assert.equal(calls[1].pathname, "/v1/library/favorites");
     assert.equal(
       mounted.container.querySelectorAll(
         '[data-entry-title="Owned across sites"]',
       ).length,
       1,
+    );
+    assert.equal(
+      mounted.container
+        .querySelector('[data-entry-title="Favorite template"]')
+        ?.getAttribute("data-entry-category"),
+      "收藏素材",
+    );
+    favoriteIncluded = false;
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+          detail: {
+            action: "favorite",
+            artifactId: "public-favorite",
+            revisionId: "r1",
+            favorite: false,
+          },
+        }),
+      );
+    });
+    await settle();
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Favorite template"]',
+      ),
+      null,
+    );
+    const favoriteProjection = normalizeArtifactProjection(publicFavorite);
+    assert.ok(favoriteProjection);
+    favoriteIncluded = true;
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+          detail: {
+            action: "favorite",
+            artifactId: "public-favorite",
+            revisionId: "r1",
+            favorite: true,
+            item: artifactProjectionToLibraryItem(favoriteProjection),
+          },
+        }),
+      );
+    });
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Favorite template"]',
+      ),
+    );
+    libraryMode = "favorites-unavailable";
+    const refresh = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "刷新",
+    );
+    await click(refresh);
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Owned across sites"]',
+      ),
+    );
+    assert.match(
+      mounted.container.querySelector('[role="alert"]')?.textContent || "",
+      /收藏素材服务暂时不可用/,
+    );
+    assert.equal(
+      mounted.container.querySelector('input[type="file"]')?.disabled,
+      false,
+    );
+    libraryMode = "owner-mismatch";
+    await click(refresh);
+    await settle();
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Owned across sites"]',
+      ),
+      null,
+    );
+    assert.match(
+      mounted.container.querySelector("[data-empty-description]")
+        ?.textContent || "",
+      /ownerPrincipalId 不一致/,
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("initial favorites outage preserves healthy mine authority and recovers", async () => {
+  let favoritesUnavailable = true;
+  const owned = projection({
+    id: "partial-owned",
+    title: "Healthy owned item",
+    ownerPrincipalId: "owner-a",
+  });
+  const favorite = projection({
+    id: "recovered-favorite",
+    title: "Recovered favorite",
+    visibility: "public",
+    favorite: true,
+    editable: true,
+  });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/library/favorites") {
+      return favoritesUnavailable
+        ? jsonResponse({ detail: "favorites maintenance" }, 503)
+        : jsonResponse({
+            scope: "favorites",
+            ownerPrincipalId: "owner-a",
+            total: 1,
+            invalidCount: 0,
+            items: [favorite],
+          });
+    }
+    return jsonResponse({
+      scope: "mine",
+      ownerPrincipalId: "owner-a",
+      total: 1,
+      invalidCount: 0,
+      items: [owned],
+    });
+  };
+  const mounted = await createMounted(MyLibrary, {});
+  try {
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Healthy owned item"]',
+      ),
+    );
+    assert.match(
+      mounted.container.querySelector('[role="alert"]')?.textContent || "",
+      /收藏素材服务暂时不可用/,
+    );
+    assert.equal(
+      mounted.container.querySelector('input[type="file"]')?.disabled,
+      false,
+    );
+
+    favoritesUnavailable = false;
+    const refresh = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "刷新",
+    );
+    await click(refresh);
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Recovered favorite"]',
+      ),
+    );
+    assert.equal(mounted.container.querySelector('[role="alert"]'), null);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("My Library deterministically paginates favorites beyond one hundred", async () => {
+  const favorites = Array.from({ length: 101 }, (_, index) =>
+    projection({
+      id: `favorite-${index + 1}`,
+      title: `Favorite ${index + 1}`,
+      visibility: "public",
+      favorite: true,
+      editable: true,
+    }),
+  );
+  const favoriteOffsets = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/library/favorites") {
+      const offset = Number(url.searchParams.get("offset") || 0);
+      favoriteOffsets.push(offset);
+      return jsonResponse({
+        scope: "favorites",
+        ownerPrincipalId: "owner-a",
+        total: favorites.length,
+        invalidCount: 0,
+        ...(offset === 0 ? { nextOffset: 100 } : {}),
+        items:
+          offset === 0
+            ? favorites.slice(0, 100)
+            : favorites.slice(100),
+      });
+    }
+    return jsonResponse({
+      scope: "mine",
+      ownerPrincipalId: "owner-a",
+      total: 0,
+      invalidCount: 0,
+      items: [],
+    });
+  };
+  const mounted = await createMounted(MyLibrary, {});
+  try {
+    await settle();
+    assert.ok(
+      mounted.container.querySelector('[data-entry-title="Favorite 100"]'),
+    );
+    assert.equal(
+      mounted.container.querySelector('[data-entry-title="Favorite 101"]'),
+      null,
+    );
+    const loadMore = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "继续加载",
+    );
+    await click(loadMore);
+    await settle();
+    assert.ok(
+      mounted.container.querySelector('[data-entry-title="Favorite 101"]'),
+    );
+    assert.deepEqual(favoriteOffsets, [0, 100]);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("favorites pagination fails closed when a later page changes owner", async () => {
+  const first = projection({
+    id: "favorite-owner-a",
+    title: "Favorite owner A",
+    visibility: "public",
+    favorite: true,
+    editable: true,
+  });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/library/favorites") {
+      const offset = Number(url.searchParams.get("offset") || 0);
+      return jsonResponse({
+        scope: "favorites",
+        ownerPrincipalId: offset === 0 ? "owner-a" : "owner-b",
+        total: 2,
+        invalidCount: 0,
+        ...(offset === 0 ? { nextOffset: 1 } : {}),
+        items:
+          offset === 0
+            ? [first]
+            : [
+                projection({
+                  id: "favorite-owner-b",
+                  visibility: "public",
+                  favorite: true,
+                  editable: true,
+                }),
+              ],
+      });
+    }
+    return jsonResponse({
+      scope: "mine",
+      ownerPrincipalId: "owner-a",
+      total: 0,
+      invalidCount: 0,
+      items: [],
+    });
+  };
+  const mounted = await createMounted(MyLibrary, {});
+  try {
+    await settle();
+    const loadMore = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "继续加载",
+    );
+    await click(loadMore);
+    await settle();
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Favorite owner A"]',
+      ),
+      null,
+    );
+    assert.match(
+      mounted.container.querySelector("[data-empty-description]")
+        ?.textContent || "",
+      /owner\/scope/,
     );
   } finally {
     await mounted.unmount();
@@ -1418,7 +2283,22 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
     [503, { detail: "offline" }, /维护或过载/],
   ];
   for (const [status, payload, expected] of cases) {
-    globalThis.fetch = async () => jsonResponse(payload, status);
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (
+        (status === 200 || status === 503) &&
+        url.pathname === "/v1/library/favorites"
+      ) {
+        return jsonResponse({
+          scope: "favorites",
+          ownerPrincipalId: "owner-a",
+          total: 0,
+          invalidCount: 0,
+          items: [],
+        });
+      }
+      return jsonResponse(payload, status);
+    };
     const mounted = await createMounted(MyLibrary, {});
     try {
       await settle();
@@ -1433,17 +2313,14 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
   }
 });
 
-test("rendered More remains remote with Primary disabled and keeps legacy fallbacks live", async () => {
+test("rendered More uses one balanced endpoint with Primary disabled", async () => {
   const calls = [];
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
-    const artifactType =
-      new URL(url, "https://api.test").searchParams.get("artifactType") ||
-      "single_file_image";
     return jsonResponse({
       scope: "public",
-      items: [
+      items: ARTIFACT_TYPES.map((artifactType) =>
         projection({
           id: `global-${artifactType}`,
           title:
@@ -1454,9 +2331,10 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
           artifactType,
           editable: true,
         }),
-      ],
+      ),
+      invalidCount: 0,
       nextOffset: null,
-      total: 1,
+      total: ARTIFACT_TYPES.length,
     });
   };
   const mounted = await createMounted(MaterialLibrary, {
@@ -1473,15 +2351,13 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
       mounted.container.querySelector('a[aria-label="打开完整素材库"]'),
     );
     await settle();
-    // Unfiltered More round-robins every catalog taxonomy type.
-    assert.equal(calls.length, 13);
-    assert.ok(
-      calls.every((call) => /\/v1\/library\/search\?/.test(call)),
-    );
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /\/v1\/library\/editable-shelf\?perType=5/);
     assert.ok(
       mounted.container.querySelector('[data-entry-title="Global website"]') ||
         mounted.container.querySelector('[data-entry-title="Global More"]'),
     );
+    assertEveryRenderedMaterialIsEditable(mounted.container);
   } finally {
     await mounted.unmount();
   }
@@ -1549,6 +2425,63 @@ test("rendered More remains remote with Primary disabled and keeps legacy fallba
   }
 });
 
+test("material refresh failure preserves the last authoritative shelf", async () => {
+  let failing = false;
+  globalThis.fetch = async () => {
+    if (failing) {
+      return jsonResponse({ detail: "maintenance" }, 503);
+    }
+    return jsonResponse({
+      scope: "public",
+      total: ARTIFACT_TYPES.length,
+      invalidCount: 0,
+      items: ARTIFACT_TYPES.map((artifactType) =>
+        projection({
+          id: `stable-${artifactType}`,
+          title: `Stable ${artifactType}`,
+          visibility: "public",
+          artifactType,
+          editable: true,
+        }),
+      ),
+    });
+  };
+  const mounted = await createMounted(MaterialLibrary, {
+    materials: [],
+    initialLevel: "more",
+    lockLevel: "more",
+    fetchPrimary: false,
+  });
+  try {
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Stable single_file_image"]',
+      ),
+    );
+    failing = true;
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+          detail: { action: "revision" },
+        }),
+      );
+    });
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Stable single_file_image"]',
+      ),
+    );
+    assert.match(
+      mounted.container.querySelector('[role="alert"]')?.textContent || "",
+      /素材库服务暂时不可用/,
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("rendered public material search exposes explicit service-unavailable state", async () => {
   globalThis.fetch = async () =>
     jsonResponse({ detail: "maintenance" }, 503);
@@ -1575,6 +2508,7 @@ test("full material deep link hydrates the exact public artifact revision", asyn
     id: "deep-public",
     title: "Deep public",
     visibility: "public",
+    editable: true,
   });
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -1614,6 +2548,7 @@ test("full material deep link hydrates the exact public artifact revision", asyn
     );
     assert.equal(href.searchParams.get("artifactId"), "deep-public");
     assert.equal(href.searchParams.get("revisionId"), "r1");
+    assertEveryRenderedMaterialIsEditable(mounted.container);
   } finally {
     await mounted.unmount();
   }
@@ -1719,6 +2654,43 @@ test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Repla
     assert.equal(denied.container.querySelectorAll("button").length, 0);
   } finally {
     await denied.unmount();
+  }
+});
+
+test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
+  const artifact = normalizeArtifactProjection(
+    projection({
+      id: "workspace-edit",
+      title: "Workspace edit",
+      editable: true,
+    }),
+  );
+  assert.ok(artifact);
+  const item = artifactProjectionToLibraryItem(artifact);
+  const opened = [];
+  globalThis.__artifactPreparedActions = [];
+  const mounted = await createMounted(RenderedWorkspaceLibrary, {
+    entries: [artifactEntry(item)],
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await click(
+      mounted.container.querySelector(
+        '[data-open-entry="Workspace edit"]',
+      ),
+    );
+    await settle();
+    assert.equal(opened.length, 0, "card click only opens preview detail");
+    const edit = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "编辑",
+    );
+    await click(edit);
+    await settle();
+    assert.deepEqual(globalThis.__artifactPreparedActions, ["edit"]);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].preparedAction, "edit");
+  } finally {
+    await mounted.unmount();
   }
 });
 
@@ -1830,11 +2802,13 @@ test("material shelf type filter is 货架 dropdown only on primary and more", a
           id: "primary-image",
           title: "Primary image",
           artifactType: "single_file_image",
+          editable: true,
         }),
         projection({
           id: "primary-doc",
           title: "Primary document",
           artifactType: "document",
+          editable: true,
         }),
       ],
       next_cursor: null,
@@ -1859,13 +2833,10 @@ test("material shelf type filter is 货架 dropdown only on primary and more", a
     await primary.unmount();
   }
 
-  globalThis.fetch = async (input) => {
-    const url = new URL(String(input), "https://api.test");
-    const artifactType =
-      url.searchParams.get("artifactType") || "single_file_image";
-    return jsonResponse({
+  globalThis.fetch = async () =>
+    jsonResponse({
       scope: "public",
-      items: [
+      items: ARTIFACT_TYPES.map((artifactType) =>
         projection({
           id: `more-${artifactType}`,
           title: `More ${artifactType}`,
@@ -1873,11 +2844,11 @@ test("material shelf type filter is 货架 dropdown only on primary and more", a
           artifactType,
           editable: true,
         }),
-      ],
+      ),
+      invalidCount: 0,
       nextOffset: null,
-      total: 1,
+      total: ARTIFACT_TYPES.length,
     });
-  };
   const more = await createMounted(MaterialLibrary, {
     materials: [],
     siteId: "image",

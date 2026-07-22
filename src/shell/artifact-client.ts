@@ -3,6 +3,7 @@
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import {
+  ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
   artifactContextsEqual,
   artifactHasExactContext,
@@ -11,8 +12,6 @@ import {
   normalizeArtifactContextRef,
   normalizeArtifactProjection,
   normalizeArtifactProjectionResult,
-  renditionNeedsRefresh,
-  selectArtifactRendition,
   type ArtifactApiErrorCode,
   type ArtifactCardAction,
   type ArtifactContextRef,
@@ -99,6 +98,7 @@ const ENSURE_PENDING = new Map<
 
 const ARTIFACT_LIBRARY_MAX_LIMIT = 100;
 const ARTIFACT_LIBRARY_MAX_OFFSET = 100_000;
+export const ARTIFACT_EDITABLE_SHELF_PER_TYPE = 5;
 
 function boundedLibraryLimit(value: number | undefined): string {
   const requested =
@@ -147,6 +147,46 @@ const ARTIFACT_URL_FIELDS = new Set([
   "signedUrl",
   "signed_url",
 ]);
+
+function trustedGatewayArtifactAccessUrl(value: unknown): string {
+  const candidate = trustedHttpsUrl(value);
+  if (!candidate) return "";
+  try {
+    const parsed = new URL(candidate);
+    const gateway = new URL(GATEWAY_BASE);
+    return parsed.origin === gateway.origin &&
+      ARTIFACT_ACCESS_PATH.test(parsed.pathname)
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function safeAttachmentFilename(value: unknown): string {
+  const leaf = String(value || "")
+    .trim()
+    .split(/[\\/]/)
+    .pop() || "";
+  return leaf
+    .replace(/[\u0000-\u001f\u007f<>:"|?*]+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/[. ]+$/, "")
+    .slice(0, 180);
+}
+
+function attachmentExtension(value: unknown): string {
+  const format = String(value || "").trim().toLowerCase();
+  if (!format) return "";
+  if (format.includes("json")) return "json";
+  if (format === "jpeg") return "jpg";
+  const extension = format
+    .split("/")
+    .pop()!
+    .replace(/^\.+/, "")
+    .replace(/[^a-z0-9]+/g, "");
+  return extension.length <= 12 ? extension : "";
+}
 
 function qualifyArtifactAccessUrls(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(qualifyArtifactAccessUrls);
@@ -224,7 +264,25 @@ async function artifactRequest<T>(
     signal: callerSignal,
     ...init
   } = options;
-  const token = await accessToken();
+  let token: string | null;
+  try {
+    token = await accessToken();
+  } catch (error) {
+    if (auth === "optional") {
+      token = null;
+    } else {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "无法读取当前登录凭据。",
+        code: "network-error",
+        status: 0,
+        retryable: true,
+      };
+    }
+  }
   if (auth === "required" && !token) {
     return {
       ok: false,
@@ -235,10 +293,14 @@ async function artifactRequest<T>(
     };
   }
   const controller = new AbortController();
+  let timedOut = false;
   const abort = () => controller.abort(callerSignal?.reason);
   if (callerSignal?.aborted) abort();
   else callerSignal?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort("timeout");
+  }, timeoutMs);
   try {
     const response = await fetch(`${GATEWAY_BASE}${path}`, {
       ...init,
@@ -254,7 +316,8 @@ async function artifactRequest<T>(
     let payload: unknown = null;
     try {
       payload = qualifyArtifactAccessUrls(await response.json());
-    } catch {
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
       payload = null;
     }
     if (!response.ok) {
@@ -273,17 +336,19 @@ async function artifactRequest<T>(
     }
     return { ok: true, data: payload as T, status: response.status };
   } catch (error) {
-    const aborted = controller.signal.aborted;
+    const callerAborted = callerSignal?.aborted === true;
     return {
       ok: false,
-      error: aborted
-        ? "素材请求超时或已取消。"
-        : error instanceof Error
-          ? error.message
-          : "无法连接素材服务。",
+      error: callerAborted
+        ? "素材请求已取消。"
+        : timedOut
+          ? "素材请求超时，请重试。"
+          : error instanceof Error
+            ? error.message
+            : "无法连接素材服务。",
       code: "network-error",
       status: 0,
-      retryable: !callerSignal?.aborted,
+      retryable: !callerAborted,
     };
   } finally {
     clearTimeout(timer);
@@ -751,6 +816,72 @@ export async function searchArtifactLibrary(options: {
   };
 }
 
+export async function listEditableShelfArtifacts(
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const result = await artifactRequest<unknown>(
+    `/v1/library/editable-shelf?perType=${ARTIFACT_EDITABLE_SHELF_PER_TYPE}`,
+    { signal, auth: "optional" },
+  );
+  if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
+  const normalized = projectionsFromPayload(result.data);
+  if (!normalized.ok) {
+    return {
+      ok: false,
+      error: normalized.error,
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  const counts = new Map<ArtifactType, number>();
+  const invalid = normalized.projections.find((artifact) => {
+    counts.set(
+      artifact.artifactType,
+      (counts.get(artifact.artifactType) || 0) + 1,
+    );
+    return (
+      !artifactIsVisible(artifact) ||
+      artifact.owner.visibility !== "public" ||
+      !artifact.roles.includes("template") ||
+      artifact.editability === "view_only" ||
+      !artifact.editorCapability ||
+      (!artifact.access.canEdit && !artifact.access.canFork)
+    );
+  });
+  const missingTypes = ARTIFACT_TYPES.filter((type) => !counts.has(type));
+  const overfilledType = ARTIFACT_TYPES.find(
+    (type) =>
+      (counts.get(type) || 0) > ARTIFACT_EDITABLE_SHELF_PER_TYPE,
+  );
+  if (
+    normalized.scope !== "public" ||
+    invalid ||
+    missingTypes.length > 0 ||
+    overfilledType ||
+    normalized.nextCursor !== null
+  ) {
+    return {
+      ok: false,
+      error:
+        "可编辑素材货架不是完整的 13 taxonomy public/template 平衡 typed projection。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  return {
+    ...result,
+    data: {
+      items: normalized.projections.map((artifact) =>
+        artifactItemFromProjection(artifact),
+      ),
+      nextCursor: null,
+      total: normalized.total,
+    },
+  };
+}
+
 export async function listMyArtifacts(options: {
   artifactType?: ArtifactType | "";
   offset?: number;
@@ -820,6 +951,81 @@ export async function listMyArtifacts(options: {
       nextCursor: normalized.nextCursor,
       total: normalized.total,
       ownerPrincipalId: normalized.ownerPrincipalId,
+    },
+  };
+}
+
+export async function listFavoriteArtifacts(options: {
+  offset?: number;
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+} = {},
+): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const params = new URLSearchParams({
+    limit: boundedLibraryLimit(options.limit ?? 100),
+    offset: String(
+      boundedLibraryOffset(options.offset ?? options.cursor),
+    ),
+  });
+  const result = await artifactRequest<unknown>(
+    `/v1/library/favorites?${params}`,
+    { signal: options.signal },
+  );
+  if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
+  const normalized = projectionsFromPayload(result.data);
+  if (!normalized.ok) {
+    return {
+      ok: false,
+      error: normalized.error,
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  if (
+    normalized.scope !== "favorites" ||
+    !normalized.ownerPrincipalId
+  ) {
+    return {
+      ok: false,
+      error:
+        "收藏素材响应缺少当前 ownerPrincipalId 或 scope 不是 favorites。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  const ownerPrincipalId = normalized.ownerPrincipalId;
+  const invalid = normalized.projections.find(
+    (artifact) =>
+      !artifactIsVisible(artifact) ||
+      artifact.favorite !== true ||
+      (artifact.owner.visibility !== "public" &&
+        !(
+          artifact.owner.visibility === "private" &&
+          artifact.owner.principalId === ownerPrincipalId
+        )),
+  );
+  if (invalid) {
+    return {
+      ok: false,
+      error:
+        "收藏素材返回了未收藏、不可读、其他 owner 或非 public/private projection。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  return {
+    ...result,
+    data: {
+      items: normalized.projections.map((artifact) =>
+        artifactItemFromProjection(artifact),
+      ),
+      nextCursor: normalized.nextCursor,
+      total: normalized.total,
+      ownerPrincipalId,
     },
   };
 }
@@ -927,6 +1133,7 @@ export async function ensureArtifact(
             action: "ensure",
             artifactId: ensured.data.artifactId,
             revisionId: ensured.data.revisionId,
+            item: ensured.data,
           },
         }),
       );
@@ -1227,7 +1434,7 @@ export async function getArtifactDownload(
     };
   }
   const artifact = durable.data.artifact;
-  if (!artifact.access.canRead || !artifact.access.canPreview) {
+  if (!artifact.access.canRead) {
     return {
       ok: false,
       error: "当前主体没有下载这个 revision 的权限。",
@@ -1236,50 +1443,87 @@ export async function getArtifactDownload(
       retryable: false,
     };
   }
-  const purposes: ArtifactRenditionPurpose[] = artifact.access.canExportSource
-    ? ["full", "source", "preview"]
-    : ["full", "preview"];
-  let rendition = selectArtifactRendition(artifact, purposes);
+  const sourceRendition =
+    artifact.access.canExportSource
+      ? artifact.renditions.source || null
+      : null;
+  const renderedRendition = artifact.access.canPreview
+    ? artifact.renditions.full || artifact.renditions.preview || null
+    : null;
+  const rendition =
+    sourceRendition || renderedRendition;
   if (!rendition) {
     return {
       ok: false,
-      error: "当前 revision 没有可下载的授权 rendition。",
+      error:
+        "当前 revision 没有可导出的 source、full 或 preview rendition。",
       code: "missing-source",
       status: 422,
       retryable: false,
     };
   }
-  if (renditionNeedsRefresh(rendition)) {
-    const refreshed = await refreshArtifactRendition(
-      {
-        artifactId: artifact.artifactId,
-        revisionId: artifact.revisionId,
-      },
-      rendition.purpose,
-      signal,
-    );
-    if (!refreshed.ok || !refreshed.data) {
-      return {
-        ok: false,
-        error: refreshed.error || "下载 rendition 刷新失败。",
-        code: refreshed.code || "invalid-response",
-        status: refreshed.status,
-        retryable: refreshed.retryable,
-      };
-    }
-    rendition = refreshed.data;
+  const grant = await artifactRequest<unknown>(
+    `/v1/artifacts/${encodeURIComponent(
+      artifact.artifactId,
+    )}/revisions/${encodeURIComponent(
+      artifact.revisionId,
+    )}/renditions/${rendition.purpose}?mode=export`,
+    { signal },
+  );
+  if (!grant.ok) return grant as ArtifactApiResult<ArtifactDownloadResult>;
+  const raw =
+    grant.data &&
+    typeof grant.data === "object" &&
+    !Array.isArray(grant.data)
+      ? (grant.data as Record<string, unknown>)
+      : {};
+  const grantArtifactId = String(
+    raw.artifactId || raw.artifact_id || "",
+  ).trim();
+  const grantRevisionId = String(
+    raw.revisionId || raw.revision_id || "",
+  ).trim();
+  const grantPurpose = String(raw.purpose || "").trim();
+  const grantMode = String(raw.mode || "").trim();
+  const grantUrl = trustedGatewayArtifactAccessUrl(
+    raw.accessUrl || raw.access_url,
+  );
+  const expiresAt = Date.parse(
+    String(raw.expiresAt || raw.expires_at || ""),
+  );
+  if (
+    grantArtifactId !== artifact.artifactId ||
+    grantRevisionId !== artifact.revisionId ||
+    grantPurpose !== rendition.purpose ||
+    grantMode !== "export" ||
+    !grantUrl ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
+    return {
+      ok: false,
+      error:
+        "下载 grant 未返回固定 revision 的有效 export/attachment access URL。",
+      code: "invalid-response",
+      status: grant.status,
+      retryable: false,
+    };
   }
-  const extension = rendition.format.trim().replace(/[^a-z0-9]+/gi, "");
+  const extension = attachmentExtension(rendition.format);
   const baseName =
-    artifact.title.trim().replace(/[\\/:*?"<>|]+/g, "-") || "artifact";
+    safeAttachmentFilename(artifact.title) || "artifact";
+  const fallbackFilename = extension
+    ? `${baseName}.${extension}`
+    : baseName;
   return {
     ok: true,
-    status: durable.status,
+    status: grant.status,
     data: {
       artifactId: artifact.artifactId,
       revisionId: artifact.revisionId,
-      url: rendition.url,
-      filename: extension ? `${baseName}.${extension}` : baseName,
+      url: grantUrl,
+      filename:
+        safeAttachmentFilename(raw.filename) || fallbackFilename,
     },
   };
 }
@@ -1341,6 +1585,7 @@ export async function setArtifactFavorite(
           artifactId: updated.data.artifactId,
           revisionId: updated.data.revisionId,
           favorite,
+          item: updated.data,
         },
       }),
     );
@@ -1512,6 +1757,18 @@ export async function forkArtifact(
       status: result.status,
       retryable: false,
     };
+  }
+  if (forked.ok && forked.data && typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
+        detail: {
+          action: "fork",
+          artifactId: forked.data.artifactId,
+          revisionId: forked.data.revisionId,
+          item: forked.data,
+        },
+      }),
+    );
   }
   return forked;
 }
