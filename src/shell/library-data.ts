@@ -112,6 +112,35 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   workflow: "canvas",
 };
 
+const WEBSITE_PROJECT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function websiteProjectIdFromProjection(
+  artifact: ArtifactProjection,
+): string {
+  const loose = artifact as ArtifactProjection & Record<string, unknown>;
+  const nested =
+    loose.meta && typeof loose.meta === "object" && !Array.isArray(loose.meta)
+      ? (loose.meta as Record<string, unknown>)
+      : null;
+  const candidates = [
+    loose.project_id,
+    loose.website_id,
+    loose.projectId,
+    loose.websiteId,
+    nested?.project_id,
+    nested?.website_id,
+    nested?.projectId,
+    nested?.websiteId,
+  ];
+  for (const value of candidates) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (WEBSITE_PROJECT_ID_RE.test(trimmed)) return trimmed;
+  }
+  return "";
+}
+
 export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
   return ({
     website: "website",
@@ -188,6 +217,13 @@ export function artifactProjectionToLibraryItem(
         }
       : {}),
   };
+  if (artifact.artifactType === "website") {
+    const projectId = websiteProjectIdFromProjection(artifact);
+    if (projectId) {
+      meta.project_id = projectId;
+      meta.website_id = projectId;
+    }
+  }
   return {
     key: `artifact:${artifact.artifactId}:${artifact.revisionId}`,
     source: "artifact",

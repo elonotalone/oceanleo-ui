@@ -16,6 +16,10 @@ export interface EditorAssetPayload {
   previewUrl?: string;
   meta: Record<string, unknown>;
   writable: boolean;
+  /** Durable identity when the host opened a typed artifact revision. */
+  artifactId?: string;
+  revisionId?: string;
+  artifactType?: string;
 }
 
 export type EditorMaterialAction = "insert" | "replace" | "apply" | "merge";

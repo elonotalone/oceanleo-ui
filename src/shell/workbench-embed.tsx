@@ -21,6 +21,7 @@ import type { LibraryItem } from "./library-data";
 import { useEmbedEditorMessages } from "./use-embed-editor-messages";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
 import { editorRouteFor } from "./workbench-routes";
+import { buildOpenAssetPayload } from "./website-embed-params";
 
 export type { EmbedEditorPaneProps } from "./workbench-embed-types";
 
@@ -188,20 +189,7 @@ export function EmbedEditorPane({
     if (item.meta.draft === true && !item.url && !item.previewUrl) return;
     sendToEditor({
       type: "open-asset",
-      asset: {
-        id: item.id,
-        kind: item.kind,
-        title: item.title,
-        url: item.url,
-        previewUrl: item.previewUrl,
-        meta: item.meta,
-        writable: !(
-          item.siteId === "asset" ||
-          item.key.startsWith("asset:") ||
-          item.meta.asset_id ||
-          item.meta.platform_asset_id
-        ),
-      },
+      asset: buildOpenAssetPayload(item),
     });
   }, [item, sendToEditor]);
 

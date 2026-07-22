@@ -250,3 +250,181 @@ test("durable routing rejects capability/type mismatch on every host site", () =
   }
 });
 
+function durableWebsiteProjection(patch = {}) {
+  return normalizeArtifactProjection({
+    schema: "oceanleo.artifact.v1",
+    artifact_id: "typed-website",
+    revision_id: "site-r3",
+    artifact_type: "website",
+    title: "Typed website",
+    favorite: false,
+    owner: {
+      principal_id: "owner-a",
+      visibility: "private",
+      origin_site_key: "word",
+    },
+    access: {
+      can_read: true,
+      can_preview: true,
+      can_edit: true,
+      can_fork: false,
+      can_insert: true,
+      can_replace: true,
+      can_favorite: true,
+      can_bind: true,
+      can_export_source: true,
+    },
+    editability: "native",
+    editor_capability: "website-editor",
+    source_format: "website-source@1",
+    renditions: {
+      preview: {
+        purpose: "preview",
+        revision_id: "site-r3",
+        url: "https://signed.test/site-r3-preview",
+      },
+      source: {
+        purpose: "source",
+        revision_id: "site-r3",
+        url: "https://signed.test/site-r3-source.tar",
+        digest: "sha256:site-r3",
+      },
+    },
+    provenance: {
+      id: "prov-site-r3",
+      source_kind: "owned",
+      license_code: "owned",
+    },
+    ...patch,
+  });
+}
+
+test("durable website-editor opens the shared embed from every host without project_id", () => {
+  const projection = durableWebsiteProjection();
+  assert.ok(projection);
+  const durable = artifactProjectionToLibraryItem(projection, {
+    forEdit: true,
+  });
+  assert.equal(durable.meta.project_id, undefined);
+  assert.equal(durable.meta.website_id, undefined);
+  assert.equal(durable.meta.advanced_editor_route, "embed");
+  assert.equal(durable.meta.artifact_id, "typed-website");
+  assert.equal(durable.meta.revision_id, "site-r3");
+
+  const expected = {
+    type: "embed",
+    base: "https://website.oceanleo.com/embed/site-editor",
+    mediaType: "website",
+  };
+  for (const siteId of ["word", "image", "design", "chat"]) {
+    const capability = editorCapabilityFor({ ...durable, siteId });
+    assert.equal(capability.available, true, siteId);
+    assert.equal(capability.adapter, "website", siteId);
+    assert.deepEqual(capability.route, expected, siteId);
+  }
+});
+
+test("blank website drafts reach the shared website embed like design/video blanks", () => {
+  for (const siteId of ["word", "image", "design", "chat", "website"]) {
+    assert.deepEqual(
+      editorRouteFor(
+        item({
+          siteId,
+          kind: "website",
+          meta: { draft: true, blank: true },
+        }),
+      ),
+      {
+        type: "embed",
+        base: "https://website.oceanleo.com/embed/site-editor",
+        mediaType: "website",
+      },
+      `${siteId} blank website draft`,
+    );
+  }
+});
+
+test("website embed extras carry durable identity and never invent a host site project id", async () => {
+  const { websiteEmbedExtraParams, buildOpenAssetPayload } = await import(
+    "../src/shell/website-embed-params.ts"
+  );
+
+  assert.deepEqual(
+    websiteEmbedExtraParams(
+      item({
+        kind: "website",
+        url: "https://api.oceanleo.com/v1/assets/library/demo/view",
+      }),
+    ),
+    undefined,
+  );
+
+  assert.deepEqual(
+    websiteEmbedExtraParams(
+      item({
+        kind: "website",
+        meta: { draft: true },
+      }),
+    ),
+    { blank: "1" },
+  );
+
+  assert.deepEqual(
+    websiteEmbedExtraParams(
+      item({
+        kind: "website",
+        siteId: "word",
+        artifactId: "typed-website",
+        revisionId: "site-r3",
+        artifactType: "website",
+        meta: {
+          artifact_id: "typed-website",
+          revision_id: "site-r3",
+        },
+      }),
+    ),
+    {
+      artifactId: "typed-website",
+      revisionId: "site-r3",
+    },
+  );
+
+  assert.deepEqual(
+    websiteEmbedExtraParams(
+      item({
+        kind: "website",
+        artifactId: "typed-website",
+        revisionId: "site-r3",
+        meta: {
+          project_id: "11111111-1111-4111-8111-111111111111",
+          starter_id: "agency-landing",
+        },
+      }),
+    ),
+    {
+      projectId: "11111111-1111-4111-8111-111111111111",
+      siteId: "11111111-1111-4111-8111-111111111111",
+      starterId: "agency-landing",
+      artifactId: "typed-website",
+      revisionId: "site-r3",
+    },
+  );
+
+  const openAsset = buildOpenAssetPayload(
+    item({
+      id: "typed-website",
+      kind: "website",
+      artifactId: "typed-website",
+      revisionId: "site-r3",
+      artifactType: "website",
+      meta: { starter_id: "agency-landing" },
+    }),
+  );
+  assert.equal(openAsset.artifactId, "typed-website");
+  assert.equal(openAsset.revisionId, "site-r3");
+  assert.equal(openAsset.artifactType, "website");
+  assert.equal(openAsset.meta.artifact_id, "typed-website");
+  assert.equal(openAsset.meta.revision_id, "site-r3");
+  assert.equal(openAsset.meta.starter_id, "agency-landing");
+});
+

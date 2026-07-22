@@ -23,6 +23,7 @@ import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import type { LibraryItem } from "../library-data";
+import { websiteEmbedExtraParams } from "../website-embed-params";
 import type {
   SelectionCommand,
   SelectionContext,
@@ -903,68 +904,7 @@ export function EmbeddedRoute({
     },
     [],
   );
-  const websiteId = useMemo(
-    () =>
-      String(
-        item.meta.website_id ||
-          item.meta.project_id ||
-          item.meta.slug ||
-          item.meta.site_id ||
-          "",
-      ),
-    [item.meta],
-  );
-  const starterId = useMemo(
-    () => String(item.meta.starter_id || "").trim(),
-    [item.meta],
-  );
-  const githubRepo = useMemo(
-    () => String(item.meta.github_repo || "").trim(),
-    [item.meta],
-  );
-  const commitSha = useMemo(
-    () => String(item.meta.commit_sha || "").trim(),
-    [item.meta],
-  );
-  const extraParams = useMemo(
-    () => {
-      const blank: Record<string, string> =
-        item.meta.draft === true && !item.url && !item.previewUrl
-          ? { blank: "1" }
-          : {};
-      if (item.kind !== "website") {
-        return Object.keys(blank).length ? blank : undefined;
-      }
-      if (websiteId) {
-        return {
-          ...blank,
-          siteId: websiteId,
-          projectId: websiteId,
-          ...(starterId ? { starterId } : {}),
-          ...(githubRepo ? { githubRepo } : {}),
-          ...(commitSha ? { commitSha } : {}),
-        };
-      }
-      return Object.keys(blank).length || starterId || githubRepo
-        ? {
-            ...blank,
-            ...(starterId ? { starterId } : {}),
-            ...(githubRepo ? { githubRepo } : {}),
-            ...(commitSha ? { commitSha } : {}),
-          }
-        : undefined;
-    },
-    [
-      item.kind,
-      item.meta.draft,
-      item.previewUrl,
-      item.url,
-      starterId,
-      websiteId,
-      githubRepo,
-      commitSha,
-    ],
-  );
+  const extraParams = useMemo(() => websiteEmbedExtraParams(item), [item]);
 
   if (route.type !== "embed") {
     return (

@@ -558,6 +558,19 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   }
 
   if (item.kind === "website" || contentType === "website") {
+    // Blank website drafts are isomorphic to design/video blank embeds: no URL
+    // yet, opened via ?blank=1 on the shared website adapter host.
+    if (
+      (item.meta.draft === true || item.meta.blank === true) &&
+      !item.url &&
+      !item.previewUrl
+    ) {
+      return available("website", {
+        type: "embed",
+        base: "https://website.oceanleo.com/embed/site-editor",
+        mediaType: "website",
+      });
+    }
     const projectId =
       item.meta.website_id ||
       item.meta.project_id ||

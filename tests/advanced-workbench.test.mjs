@@ -158,7 +158,7 @@ test("library panels are static while embedded editors stay isolated", () => {
 
 test("code-backed website starters reach the visual editor without a fake project id", () => {
   const routes = source("../src/shell/workbench-routes.ts");
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const embedParams = source("../src/shell/website-embed-params.ts");
   const materials =
     source("../src/shell/MaterialLibrary.tsx") +
     source("../src/shell/material-library-controller.ts") +
@@ -167,8 +167,10 @@ test("code-backed website starters reach the visual editor without a fake projec
     routes,
     /if \(!projectId && !starterId && !githubRepo\) \{[\s\S]*?return unavailable\(/,
   );
-  assert.match(embedded, /\.\.\.\(starterId \? \{ starterId \} : \{\}\)/);
-  assert.match(embedded, /\.\.\.\(githubRepo \? \{ githubRepo \} : \{\}\)/);
+  assert.match(embedParams, /params\.starterId = starterId/);
+  assert.match(embedParams, /params\.githubRepo = githubRepo/);
+  assert.match(embedParams, /params\.artifactId = artifactId/);
+  assert.match(embedParams, /params\.revisionId = revisionId/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
