@@ -41,6 +41,11 @@ export interface ArtifactSearchResult {
   nextCursor: string | null;
   total: number | null;
   ownerPrincipalId?: string | null;
+  /** Internal row-level degradation evidence; never render these codes. */
+  diagnostics?: {
+    omittedCount: number;
+    reasons: string[];
+  };
 }
 
 export interface ArtifactDownloadResult {
@@ -356,7 +361,10 @@ async function artifactRequest<T>(
   }
 }
 
-function projectionsFromPayload(payload: unknown): {
+function projectionsFromPayload(
+  payload: unknown,
+  options: { allowInvalidItems?: boolean } = {},
+): {
   ok: boolean;
   projections: ArtifactProjection[];
   nextCursor: string | null;
@@ -467,7 +475,7 @@ function projectionsFromPayload(payload: unknown): {
       : null;
   const invalidReason = normalizedItems.find((result) => !result.ok)?.error;
   const invalidCount = computedInvalidCount + declaredInvalidCount;
-  if (invalidCount > 0) {
+  if (invalidCount > 0 && !options.allowInvalidItems) {
     return {
       ok: false,
       projections: [],
@@ -543,8 +551,12 @@ function projectionsFromPayload(payload: unknown): {
     projections,
     nextCursor,
     total,
-    invalidCount: 0,
-    error: "",
+    invalidCount,
+    error:
+      invalidCount > 0
+        ? invalidReason ||
+          `素材服务声明 ${declaredInvalidCount} 条无效 projection。`
+        : "",
     responseContext,
     responseContextPresent,
     responseContextId:
@@ -573,6 +585,9 @@ function artifactItemFromProjection(
     ...item,
     meta: {
       ...item.meta,
+      ...(options.forEdit && projection.renditions.source
+        ? { editor_source_url: projection.renditions.source.url }
+        : {}),
       ...(projection.owner.visibility === "public"
         ? { asset_page_url: href.toString() }
         : {}),
@@ -672,7 +687,9 @@ export async function listPrimaryArtifacts(
     { signal: options.signal },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
-  const normalized = projectionsFromPayload(result.data);
+  const normalized = projectionsFromPayload(result.data, {
+    allowInvalidItems: true,
+  });
   if (!normalized.ok) {
     return {
       ok: false,
@@ -703,33 +720,51 @@ export async function listPrimaryArtifacts(
       retryable: false,
     };
   }
-  const invalid = normalized.projections.find(
-    (artifact) =>
-      !artifactIsVisible(artifact) ||
-      !artifactHasExactContext(artifact, contextId) ||
-      Boolean(
-        options.artifactType &&
-          artifact.artifactType !== options.artifactType,
-      ),
-  );
-  if (invalid) {
-    return {
-      ok: false,
-      error:
-        "Primary 返回了未授权、非精确 context 或 taxonomy 不匹配的 projection。",
-      code: "invalid-response",
-      status: result.status,
-      retryable: false,
-    };
+  const accepted: ArtifactProjection[] = [];
+  const reasons: string[] = normalized.error ? ["invalid-shape"] : [];
+  for (const artifact of normalized.projections) {
+    const source = artifact.renditions.source;
+    const reason =
+      !artifactIsVisible(artifact)
+        ? "not-visible"
+        : !artifactHasExactContext(artifact, contextId)
+          ? "wrong-context"
+          : options.artifactType &&
+              artifact.artifactType !== options.artifactType
+            ? "wrong-type"
+            : artifact.editability === "view_only"
+              ? "view-only"
+              : !artifact.editorCapability
+                ? "missing-editor"
+                : !artifact.access.canEdit && !artifact.access.canFork
+                  ? "not-editable"
+                  : !source ||
+                      source.revisionId !== artifact.revisionId ||
+                      !source.url ||
+                      !source.digest
+                    ? "missing-source"
+                    : "";
+    if (reason) {
+      reasons.push(reason);
+      continue;
+    }
+    accepted.push(artifact);
   }
+  const omittedCount =
+    normalized.invalidCount +
+    (normalized.projections.length - accepted.length);
   return {
     ...result,
     data: {
-      items: normalized.projections.map((artifact) =>
+      items: accepted.map((artifact) =>
         artifactItemFromProjection(artifact),
       ),
       nextCursor: normalized.nextCursor,
       total: normalized.total,
+      diagnostics: {
+        omittedCount,
+        reasons: [...new Set(reasons)].slice(0, 12),
+      },
     },
   };
 }
@@ -824,7 +859,9 @@ export async function listEditableShelfArtifacts(
     { signal, auth: "optional" },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
-  const normalized = projectionsFromPayload(result.data);
+  const normalized = projectionsFromPayload(result.data, {
+    allowInvalidItems: true,
+  });
   if (!normalized.ok) {
     return {
       ok: false,
@@ -835,36 +872,45 @@ export async function listEditableShelfArtifacts(
     };
   }
   const counts = new Map<ArtifactType, number>();
-  const invalid = normalized.projections.find((artifact) => {
-    counts.set(
-      artifact.artifactType,
-      (counts.get(artifact.artifactType) || 0) + 1,
-    );
-    return (
-      !artifactIsVisible(artifact) ||
-      artifact.owner.visibility !== "public" ||
-      !artifact.roles.includes("template") ||
-      artifact.editability === "view_only" ||
-      !artifact.editorCapability ||
-      (!artifact.access.canEdit && !artifact.access.canFork)
-    );
-  });
+  const accepted: ArtifactProjection[] = [];
+  const reasons: string[] = normalized.error ? ["invalid-shape"] : [];
+  for (const artifact of normalized.projections) {
+    const source = artifact.renditions.source;
+    const typeCount = counts.get(artifact.artifactType) || 0;
+    const reason =
+      !artifactIsVisible(artifact)
+        ? "not-visible"
+        : artifact.owner.visibility !== "public"
+          ? "not-public"
+          : !artifact.roles.includes("template")
+            ? "not-template"
+            : artifact.editability === "view_only"
+              ? "view-only"
+              : !artifact.editorCapability
+                ? "missing-editor"
+                : !artifact.access.canEdit && !artifact.access.canFork
+                  ? "not-editable"
+                  : !artifact.sourceFormat ||
+                      !source ||
+                      source.revisionId !== artifact.revisionId ||
+                      !source.url ||
+                      !source.digest
+                    ? "missing-source"
+                    : typeCount >= ARTIFACT_EDITABLE_SHELF_PER_TYPE
+                      ? "type-overflow"
+                      : "";
+    if (reason) {
+      reasons.push(reason);
+      continue;
+    }
+    counts.set(artifact.artifactType, typeCount + 1);
+    accepted.push(artifact);
+  }
   const missingTypes = ARTIFACT_TYPES.filter((type) => !counts.has(type));
-  const overfilledType = ARTIFACT_TYPES.find(
-    (type) =>
-      (counts.get(type) || 0) > ARTIFACT_EDITABLE_SHELF_PER_TYPE,
-  );
-  if (
-    normalized.scope !== "public" ||
-    invalid ||
-    missingTypes.length > 0 ||
-    overfilledType ||
-    normalized.nextCursor !== null
-  ) {
+  if (normalized.scope !== "public" || normalized.nextCursor !== null) {
     return {
       ok: false,
-      error:
-        "可编辑素材货架不是完整的 13 taxonomy public/template 平衡 typed projection。",
+      error: "可编辑素材货架响应不是单次公开 release 快照。",
       code: "invalid-response",
       status: result.status,
       retryable: false,
@@ -873,11 +919,22 @@ export async function listEditableShelfArtifacts(
   return {
     ...result,
     data: {
-      items: normalized.projections.map((artifact) =>
+      items: accepted.map((artifact) =>
         artifactItemFromProjection(artifact),
       ),
       nextCursor: null,
-      total: normalized.total,
+      total: accepted.length,
+      diagnostics: {
+        omittedCount:
+          normalized.invalidCount +
+          (normalized.projections.length - accepted.length),
+        reasons: [
+          ...new Set([
+            ...reasons,
+            ...missingTypes.map((type) => `missing-taxonomy:${type}`),
+          ]),
+        ].slice(0, 24),
+      },
     },
   };
 }

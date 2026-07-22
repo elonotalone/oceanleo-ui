@@ -14,19 +14,22 @@ import {
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
+import { advancedEditorSourceFor } from "../advanced-features";
 import type { LibraryItem } from "../library-data";
 import { loadImageObject, type FabricNS } from "./editor-objects";
 import { exportDocBlob } from "./editor-objects";
 import {
   clearLocalImageDraft,
+  createFabricImageProject,
   downloadImageBlob,
-  loadImageProject,
   loadLocalImageDraft,
+  parseFabricImageProject,
   persistImageProject,
   saveLocalImageDraft,
 } from "./editor-persistence";
 import { FabricEditorController } from "./fabric-controller";
 import type { FabricControllerView } from "./fabric-controller-core";
+import { normalizeEditorSnapshot } from "./editor-runtime";
 import {
   INITIAL_FILTERS,
   type CanvasClientPoint,
@@ -83,6 +86,56 @@ async function canvasImageUrl(
         registerAsset: false,
       });
   return canvasSafeUrl(durable);
+}
+
+async function loadEditableImageProject(
+  url: string,
+  signal: AbortSignal,
+) {
+  const response = await fetch(url, {
+    signal,
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`图片工程读取失败（HTTP ${response.status}）`);
+  }
+  const text = await response.text();
+  if (!text || new TextEncoder().encode(text).byteLength > 5_000_000) {
+    throw new Error("图片工程为空或超过 5MB 安全上限");
+  }
+  const parsed: unknown = JSON.parse(text);
+  const persisted = parseFabricImageProject(parsed);
+  if (persisted) return persisted;
+  const raw =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  let snapshot = normalizeEditorSnapshot(
+    raw.snapshot ?? raw.data ?? raw.document ?? raw.scene ?? parsed,
+  );
+  if (!snapshot && Array.isArray(raw.objects)) {
+    const width = Number(raw.width || raw.canvas_width || 1080);
+    const height = Number(raw.height || raw.canvas_height || 1080);
+    snapshot = normalizeEditorSnapshot({
+      json: raw,
+      doc: {
+        width: Number.isFinite(width) && width > 0 ? width : 1080,
+        height: Number.isFinite(height) && height > 0 ? height : 1080,
+      },
+      canvasBackground:
+        typeof raw.canvasBackground === "string"
+          ? raw.canvasBackground
+          : typeof raw.backgroundColor === "string"
+            ? raw.backgroundColor
+            : "#ffffff",
+    });
+  }
+  if (!snapshot) throw new Error("图片工程格式无效");
+  return createFabricImageProject(
+    snapshot,
+    typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+  );
 }
 
 export function useFabricImageEditor(
@@ -145,21 +198,34 @@ export function useFabricImageEditor(
     };
   }, []);
   useEffect(() => {
+    const editorSource = advancedEditorSourceFor(item);
     workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+      item.meta.editor_working_head_url ||
+        editorSource?.url ||
+        item.url ||
+        item.previewUrl ||
+        "",
     );
-  }, [item.key]);
+  }, [item]);
 
+  const editorSource = advancedEditorSourceFor(item);
+  const structuredSourceRequired = Boolean(
+    item.artifact && editorSource?.structured,
+  );
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
-      ? item.url || item.previewUrl || ""
+      ? editorSource && !editorSource.structured
+        ? editorSource.url
+        : item.previewUrl || item.thumbUrl || item.url || ""
       : "";
-  const projectUrl =
+  const persistedProjectUrl =
     typeof item.meta.fabric_document_url === "string"
       ? item.meta.fabric_document_url
       : typeof item.meta.editor_project_url === "string"
         ? item.meta.editor_project_url
         : "";
+  const projectUrl =
+    persistedProjectUrl || (editorSource?.structured ? editorSource.url : "");
   const projectSavedAt =
     typeof item.meta.fabric_saved_at === "string"
       ? item.meta.fabric_saved_at
@@ -212,7 +278,10 @@ export function useFabricImageEditor(
         let projectLoaded = false;
         if (projectUrl) {
           try {
-            const project = await loadImageProject(projectUrl, abort.signal);
+            const project = await loadEditableImageProject(
+              projectUrl,
+              abort.signal,
+            );
             if (cancelled || abort.signal.aborted) return;
             projectLoaded = await controller.loadSnapshot(project.snapshot);
             cloudProjectUpdatedAt = project.updatedAt;
@@ -223,9 +292,17 @@ export function useFabricImageEditor(
             }
           } catch (caught) {
             if (!isAbortError(caught)) {
+              if (structuredSourceRequired) {
+                setError("可编辑图片源暂时无法读取，请重试。");
+                return;
+              }
               setNotice("可编辑工程暂时无法读取，已改用预览图恢复");
             }
           }
+        }
+        if (structuredSourceRequired && !projectLoaded) {
+          setError("可编辑图片源格式无效，未使用封面代替。");
+          return;
         }
         if (!projectLoaded && sourceUrl) {
           const safeUrl = await canvasImageUrl(sourceUrl, siteId, item.title);
@@ -281,6 +358,7 @@ export function useFabricImageEditor(
     projectUrl,
     siteId,
     sourceUrl,
+    structuredSourceRequired,
   ]);
 
   const addImageFromUrl = useCallback(

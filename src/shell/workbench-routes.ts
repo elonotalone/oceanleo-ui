@@ -379,8 +379,19 @@ function durableEditorCapabilityFor(
   if (!artifact.access.canEdit && !artifact.access.canFork) {
     return unavailable("当前主体没有编辑或 fork 这个 revision 的权限。");
   }
-  // view_only is not a card-level hide gate: editable shelves decide which
-  // materials appear; typed editorCapability remains the hard edit gate.
+  if (artifact.editability === "view_only") {
+    return unavailable("此素材为只读内容，不能进入编辑器。");
+  }
+  const source = artifact.renditions.source;
+  if (
+    !artifact.sourceFormat ||
+    !source ||
+    source.revisionId !== artifact.revisionId ||
+    !source.url ||
+    !source.digest
+  ) {
+    return unavailable("当前版本缺少可重新打开的编辑源。");
+  }
   const adapter = editorAdapterForArtifactCapability(
     artifact.editorCapability,
   );

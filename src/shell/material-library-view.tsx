@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
-  ARTIFACT_CONTEXT_MISSING_MESSAGE,
   ARTIFACT_TYPES,
   artifactHasExactContext,
   artifactIsVisible,
@@ -15,16 +21,21 @@ import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   getArtifactItem,
+  prepareArtifactForAction,
 } from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
   MATERIAL_TAXONOMY_LABEL,
   artifactEntry,
+  invalidateMaterialLibraryCache,
   materialToEntry,
+  materialLibraryRequestKey,
   mergeMaterialEntries,
   normalizedMaterialTaxonomy,
   queryMaterialLibrary,
+  readMaterialLibraryCache,
   type MaterialItem,
+  type MaterialLibraryQueryInput,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import {
@@ -115,20 +126,20 @@ function safeCompleteLibraryHref(value: string | undefined): string {
   }
 }
 
-function materialFailureCopy(status: number | undefined, message: string): {
+function materialFailureCopy(status: number | undefined, _message: string): {
   title: string;
   description: string;
 } {
   if (status === 401) {
     return {
       title: "登录后访问素材库",
-      description: "登录后可查看当前 App 的精确绑定和授权公共库存。",
+      description: "登录后可查看当前 App 素材和可编辑模板。",
     };
   }
   if (status === 403) {
     return {
       title: "当前账号无权访问素材库",
-      description: "服务端拒绝了此素材范围，未显示任何降级或猜测结果。",
+      description: "当前账号无法查看这组素材。",
     };
   }
   if (status === 503) {
@@ -138,9 +149,8 @@ function materialFailureCopy(status: number | undefined, message: string): {
     };
   }
   return {
-    title: "素材库响应无效",
-    description:
-      message || "服务端没有返回完整、可验证的 rich artifact 列表。",
+    title: "素材暂时无法显示",
+    description: "素材数据未通过安全检查，请重试。",
   };
 }
 
@@ -156,6 +166,22 @@ function isTrustedEditableMaterialEntry(
   );
 }
 
+function entriesFromRemoteResult(
+  items: readonly LibraryItem[],
+  level: MaterialLibraryLevel,
+  query: string,
+  taxonomy: ArtifactType | "",
+): WorkspaceLibraryEntry[] {
+  return items.map((item) => ({
+    ...artifactEntry(item, level === "more" && Boolean(query)),
+    linkUrl: materialLibraryHref({
+      query: level === "more" ? query : "",
+      taxonomy,
+      item,
+    }),
+  }));
+}
+
 /**
  * Controller/view facade for the two-level material library. Query decoding,
  * normalization and page merging stay in material-library-controller.
@@ -168,7 +194,7 @@ export function MaterialLibrary({
   onSeeAll,
   seeAllHref,
   hideSeeAll = false,
-  seeAllLabel = "更多",
+  seeAllLabel = "更多素材",
   featuredEntries = [],
   action,
   taskId,
@@ -198,10 +224,6 @@ export function MaterialLibrary({
   const taxonomyId = useId();
   const workspaceSession = useOptionalWorkspaceSession();
   const runtimeAppId = appId || workspaceSession?.appId || "default";
-  const runtimeSourceRef = useRef(Symbol("material-library"));
-  const requestEpochRef = useRef(0);
-  const loadMoreAbortRef = useRef<AbortController | null>(null);
-  const successfulRemoteRequestKeyRef = useRef("");
   const primaryFetchEnabled = fetchPrimary ?? fetchCurated;
   const [level, setLevel] = useState<MaterialLibraryLevel>(
     lockLevel || initialLevel,
@@ -211,10 +233,57 @@ export function MaterialLibrary({
   const [taxonomy, setTaxonomy] = useState<ArtifactType | "">(
     normalizedMaterialTaxonomy(curatedType),
   );
-  const [remote, setRemote] = useState<WorkspaceLibraryEntry[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const context = useMemo<ArtifactContextRef>(
+    () => ({
+      contextId,
+      siteKey: siteId,
+      appId: runtimeAppId,
+      functionId: functionId || undefined,
+    }),
+    [contextId, functionId, runtimeAppId, siteId],
+  );
+  const materialRequest = useMemo<MaterialLibraryQueryInput>(
+    () => ({
+      level,
+      context,
+      query: debounced,
+      taxonomy,
+    }),
+    [context, debounced, level, taxonomy],
+  );
+  const remoteRequestKey = useMemo(
+    () => materialLibraryRequestKey(materialRequest),
+    [materialRequest],
+  );
+  const initialFetchEnabled =
+    (level === "primary" ? primaryFetchEnabled : fetchMore) &&
+    (level === "more" || Boolean(context.contextId && context.siteKey));
+  const initialCache = initialFetchEnabled
+    ? readMaterialLibraryCache(materialRequest)
+    : null;
+  const runtimeSourceRef = useRef(Symbol("material-library"));
+  const requestEpochRef = useRef(0);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const editorOpenAbortRef = useRef<AbortController | null>(null);
+  const successfulRemoteRequestKeyRef = useRef(
+    initialCache ? remoteRequestKey : "",
+  );
+  const [remote, setRemote] = useState<WorkspaceLibraryEntry[]>(() =>
+    initialCache
+      ? entriesFromRemoteResult(
+          initialCache.data.items,
+          level,
+          debounced,
+          taxonomy,
+        )
+      : [],
+  );
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    initialCache?.data.nextCursor || null,
+  );
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
   const [error, setError] = useState("");
   const [errorStatus, setErrorStatus] = useState<number | undefined>();
   const [deepLinkedEntry, setDeepLinkedEntry] =
@@ -226,26 +295,6 @@ export function MaterialLibrary({
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
 
-  const context = useMemo<ArtifactContextRef>(
-    () => ({
-      contextId,
-      siteKey: siteId,
-      appId: runtimeAppId,
-      functionId: functionId || undefined,
-    }),
-    [contextId, functionId, runtimeAppId, siteId],
-  );
-  const remoteRequestKey = useMemo(
-    () =>
-      JSON.stringify({
-        level,
-        authority: level === "primary" ? context : "public",
-        query: level === "more" ? debounced : "",
-        taxonomy,
-      }),
-    [context, debounced, level, taxonomy],
-  );
-
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 300);
     return () => window.clearTimeout(timer);
@@ -254,12 +303,14 @@ export function MaterialLibrary({
   useEffect(
     () => () => {
       loadMoreAbortRef.current?.abort();
+      editorOpenAbortRef.current?.abort();
     },
     [],
   );
 
   useEffect(() => {
     const refresh = (event: Event) => {
+      invalidateMaterialLibraryCache();
       const detail = (event as CustomEvent<{
         action?: string;
         artifactId?: string;
@@ -430,11 +481,31 @@ export function MaterialLibrary({
       return;
     }
     loadMoreAbortRef.current?.abort();
+    const cached = readMaterialLibraryCache(materialRequest);
+    if (cached) {
+      successfulRemoteRequestKeyRef.current = remoteRequestKey;
+      setRemote(
+        entriesFromRemoteResult(
+          cached.data.items,
+          level,
+          debounced,
+          taxonomy,
+        ),
+      );
+      setNextCursor(cached.data.nextCursor);
+      setLoadingMore(false);
+      setError("");
+      setErrorStatus(undefined);
+      if (cached.freshness === "fresh") {
+        setLoading(false);
+        return;
+      }
+    }
     const controller = new AbortController();
     const epoch = ++requestEpochRef.current;
     const requestChanged =
       successfulRemoteRequestKeyRef.current !== remoteRequestKey;
-    if (requestChanged) {
+    if (requestChanged && !cached) {
       setRemote([]);
       setNextCursor(null);
     }
@@ -443,10 +514,8 @@ export function MaterialLibrary({
     setError("");
     setErrorStatus(undefined);
     void queryMaterialLibrary({
-      level,
-      context,
-      query: debounced,
-      taxonomy,
+      ...materialRequest,
+      forceRefresh: cached?.freshness === "stale",
       signal: controller.signal,
     }).then((result) => {
       if (controller.signal.aborted || epoch !== requestEpochRef.current) {
@@ -473,19 +542,15 @@ export function MaterialLibrary({
       } else {
         successfulRemoteRequestKeyRef.current = remoteRequestKey;
         setRemote(
-          result.data.items.map((item) => ({
-            ...artifactEntry(
-              item,
-              level === "more" && Boolean(debounced),
-            ),
-            linkUrl: materialLibraryHref({
-              query: level === "more" ? debounced : "",
-              taxonomy,
-              item,
-            }),
-          })),
+          entriesFromRemoteResult(
+            result.data.items,
+            level,
+            debounced,
+            taxonomy,
+          ),
         );
         setNextCursor(result.data.nextCursor);
+        setError("");
         setErrorStatus(undefined);
       }
       setLoading(false);
@@ -507,6 +572,7 @@ export function MaterialLibrary({
     debounced,
     fetchMore,
     level,
+    materialRequest,
     primaryFetchEnabled,
     remoteRequestKey,
     retryNonce,
@@ -600,6 +666,67 @@ export function MaterialLibrary({
       remote,
     ],
   );
+  const openPreparedItem = useCallback(
+    (item: LibraryItem) => {
+      if (!isAdvancedEditableShelfItem(item)) {
+        setError("editor-source-unavailable");
+        setErrorStatus(422);
+        return;
+      }
+      if (onOpenItem) {
+        onOpenItem(item);
+      } else {
+        setStandaloneEditorItem(item);
+      }
+    },
+    [onOpenItem],
+  );
+  const prepareAndOpenItem = useCallback(
+    (item: LibraryItem) => {
+      if (!isAdvancedEditableShelfItem(item)) return;
+      editorOpenAbortRef.current?.abort();
+      const controller = new AbortController();
+      editorOpenAbortRef.current = controller;
+      setOpeningEditor(true);
+      setError("");
+      setErrorStatus(undefined);
+      void prepareArtifactForAction("edit", item, controller.signal)
+        .then((result) => {
+          if (
+            controller.signal.aborted ||
+            editorOpenAbortRef.current !== controller
+          ) {
+            return;
+          }
+          if (!result.ok || !result.data) {
+            setError("editor-open-failed");
+            setErrorStatus(result.status);
+            return;
+          }
+          openPreparedItem(result.data);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setError("editor-open-failed");
+            setErrorStatus(0);
+          }
+        })
+        .finally(() => {
+          if (editorOpenAbortRef.current === controller) {
+            editorOpenAbortRef.current = null;
+            setOpeningEditor(false);
+          }
+        });
+    },
+    [openPreparedItem],
+  );
+  const openPrimaryEntry = useCallback(
+    (entry: WorkspaceLibraryEntry) => {
+      if (!entry.libraryItem || !isTrustedEditableMaterialEntry(entry)) return;
+      prepareAndOpenItem(entry.libraryItem);
+    },
+    [prepareAndOpenItem],
+  );
   useEffect(() => {
     if (!registerRuntimeSource) return;
     return registerWorkbenchMaterialSource(
@@ -662,6 +789,12 @@ export function MaterialLibrary({
 
   const toolbar = (
     <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        data-material-library-scope={level}
+        className="whitespace-nowrap text-[11px] font-semibold text-[var(--fg,#292524)]"
+      >
+        {tt(level === "primary" ? "当前 App" : "更多素材")}
+      </span>
       {level === "primary" ? (
         primaryMoreControl
       ) : lockLevel ? null : (
@@ -711,11 +844,19 @@ export function MaterialLibrary({
         (level === "more" ? fetchMore : primaryFetchEnabled) && (
         <button
           type="button"
-          onClick={() => setRetryNonce((value) => value + 1)}
+          onClick={() => {
+            invalidateMaterialLibraryCache(materialRequest);
+            setRetryNonce((value) => value + 1);
+          }}
           className="min-h-8 rounded-lg border border-amber-500/30 px-2.5 text-[11px] font-medium text-amber-700"
         >
           {tt("重试")}
         </button>
+      )}
+      {openingEditor && (
+        <span role="status" className="text-[11px] text-[var(--muted,#78716c)]">
+          {tt("正在打开编辑器…")}
+        </span>
       )}
       {effectiveError && entries.length > 0 && (
         <span
@@ -762,8 +903,8 @@ export function MaterialLibrary({
       toolbarActions={toolbar}
       searchPlaceholder={
         level === "primary"
-          ? "筛选当前 App 的精确绑定素材"
-          : "搜索可编辑的高级功能素材"
+          ? "筛选当前 App 可编辑素材"
+          : "搜索可编辑模板"
       }
       emptyTitle={
         loading
@@ -771,8 +912,8 @@ export function MaterialLibrary({
           : effectiveError
             ? failureCopy.title
             : level === "primary"
-              ? "当前 App 暂无绑定素材"
-              : "暂无可编辑高级功能素材"
+              ? "当前 App 暂无可编辑素材"
+              : "暂无可编辑模板"
       }
       emptyDescription={
         effectiveError
@@ -780,10 +921,10 @@ export function MaterialLibrary({
           : level === "primary"
             ? emptyHint ||
               (contextMissing
-                ? ARTIFACT_CONTEXT_MISSING_MESSAGE
-                : "这里不会用标签、站点、系列或热门素材回填；请点「更多」搜索完整库。")
+                ? "当前 App 暂未提供可用素材。"
+                : "这里只显示当前 App 已绑定且可安全编辑的素材；可前往「更多素材」查找模板。")
             : emptyHint ||
-              "完整素材库只展示可进入 12 个高级功能的可编辑模板；换关键词或 taxonomy 再试。"
+              "这里只显示可在高级编辑器中打开并保存的模板；可更换关键词或类型。"
       }
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
@@ -794,7 +935,12 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
-      onOpenItem={onOpenItem || setStandaloneEditorItem}
+      onOpenItem={prepareAndOpenItem}
+      onOpenEntry={
+        level === "primary" && allowAdvancedOnSelect
+          ? openPrimaryEntry
+          : undefined
+      }
       className={className}
     />
   );

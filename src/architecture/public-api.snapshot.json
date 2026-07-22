@@ -2789,6 +2789,12 @@
         },
         {
           "kind": "named",
+          "name": "isAdvancedEditableShelfItem",
+          "importedName": "isAdvancedEditableShelfItem",
+          "source": "./advanced-features"
+        },
+        {
+          "kind": "named",
           "name": "isCompactSelectionControl",
           "importedName": "isCompactSelectionControl",
           "source": "./selection-inspector-groups"

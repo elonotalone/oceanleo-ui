@@ -70,6 +70,7 @@ export function WorkspaceThumbnail({
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
+  const lastFailedUrlRef = useRef("");
   useEffect(() => {
     const node = hostRef.current;
     if (!node) return;
@@ -125,7 +126,15 @@ export function WorkspaceThumbnail({
     setGeneratedUrl(
       referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
     );
-  }, [artifactRendition.url, referenceKey, url]);
+  }, [
+    artifactRendition.url,
+    artifactRendition.version,
+    referenceKey,
+    url,
+  ]);
+  useEffect(() => {
+    lastFailedUrlRef.current = "";
+  }, [artifactRendition.url, url]);
   useEffect(() => {
     if (
       !referenceKey ||
@@ -204,7 +213,10 @@ export function WorkspaceThumbnail({
         decoding="async"
         referrerPolicy="no-referrer"
         onError={() => {
-          artifactRendition.resourceFailed();
+          if (lastFailedUrlRef.current !== displayUrl) {
+            lastFailedUrlRef.current = displayUrl;
+            artifactRendition.resourceFailed();
+          }
           setFailed(true);
         }}
         className={imageClassName}

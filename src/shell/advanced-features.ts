@@ -1,6 +1,9 @@
 "use client";
 
-import type { LibraryItem } from "./library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
 
 export type AdvancedFeatureId =
@@ -181,6 +184,62 @@ export function advancedFeatureForItem(
     default:
       return null;
   }
+}
+
+export interface AdvancedEditorSource {
+  url: string;
+  format: string;
+  structured: boolean;
+}
+
+/**
+ * Resolve the editor input independently from the card poster. Durable items
+ * always use their revision-pinned source rendition.
+ */
+export function advancedEditorSourceFor(
+  item: LibraryItem,
+): AdvancedEditorSource | null {
+  if (isDurableLibraryItem(item)) {
+    const source = item.artifact.renditions.source;
+    if (
+      item.artifact.editability === "view_only" ||
+      !source ||
+      source.revisionId !== item.revisionId ||
+      !source.url ||
+      !source.digest
+    ) {
+      return null;
+    }
+    const format = item.artifact.sourceFormat.trim().toLowerCase();
+    return {
+      url: source.url,
+      format,
+      structured:
+        item.artifactType === "composite_image" ||
+        /(?:fabric|scene|project).*(?:json)|(?:json).*(?:fabric|scene|project)/.test(
+          format,
+        ),
+    };
+  }
+  const format = String(
+    item.meta.source_format || item.meta.format || "",
+  )
+    .trim()
+    .toLowerCase();
+  const url = String(
+    item.meta.editor_source_url ||
+      item.meta.source_url ||
+      item.url ||
+      item.previewUrl ||
+      "",
+  ).trim();
+  return url
+    ? {
+        url,
+        format,
+        structured: /(?:fabric|scene|project).*(?:json)/.test(format),
+      }
+    : null;
 }
 
 export type AdvancedLibraryReferenceSource =

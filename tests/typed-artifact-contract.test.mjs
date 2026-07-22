@@ -319,7 +319,8 @@ test("shared UI source contains exact primary/global More endpoints and no serie
   // The missing-context copy lives in one shared constant, and the old
   // frightening "缺少精确 contextId" wording never reappears in the shelf.
   assert.match(client, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
-  assert.match(material, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
+  assert.doesNotMatch(material, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
+  assert.match(material, /当前 App 暂未提供可用素材/);
   assert.doesNotMatch(material, /缺少精确 contextId/);
   assert.doesNotMatch(client, /缺少精确 contextId\/siteKey/);
   assert.doesNotMatch(
@@ -427,8 +428,10 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(materialView, /AdvancedContentWorkbench/);
   assert.match(
     materialView,
-    /onOpenItem=\{onOpenItem \|\| setStandaloneEditorItem\}/,
+    /onOpenItem=\{prepareAndOpenItem\}/,
   );
+  assert.match(materialView, /onOpenEntry=/);
+  assert.match(materialView, /prepareArtifactForAction\("edit"/);
   assert.match(materialView, /loadMoreAbortRef/);
   assert.match(materialView, /epoch !== requestEpochRef\.current/);
   assert.match(materialView, /isTrustedEditableMaterialEntry/);
@@ -450,7 +453,7 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
       new URL("../src/shell/material-library-controller.ts", import.meta.url),
       "utf8",
     ),
-    /queryMaterialLibrary\(input: \{[\s\S]*taxonomy: ArtifactType \| ""/,
+    /interface MaterialLibraryQueryInput[\s\S]*taxonomy: ArtifactType \| ""/,
   );
   assert.match(catalog, /initialLevel="more"/);
   assert.match(catalog, /lockLevel="more"/);
@@ -482,10 +485,11 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(controller, /listEditableShelfArtifacts/);
   assert.doesNotMatch(controller, /Promise\.all/);
   assert.match(controller, /isAdvancedEditableShelfItem/);
-  assert.match(
+  assert.doesNotMatch(
     controller,
     /Primary 返回了未通过本地 trusted editor capability/,
   );
+  assert.match(controller, /omitUneditableMaterials/);
 });
 
 test("shared cards keep explicit mutations and pinned download/favorite controls", () => {

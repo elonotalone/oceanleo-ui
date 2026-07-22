@@ -9,17 +9,105 @@ import {
   type ArtifactRendition,
   type ArtifactRenditionPurpose,
 } from "./artifact-contract";
-import { refreshArtifactRendition } from "./artifact-client";
+import {
+  refreshArtifactRendition,
+  type ArtifactApiResult,
+} from "./artifact-client";
 import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+
+const renditionRefreshCache = new Map<
+  string,
+  { rendition: ArtifactRendition; usableUntil: number }
+>();
+const renditionRefreshPending = new Map<
+  string,
+  Promise<ArtifactApiResult<ArtifactRendition>>
+>();
+
+function renditionRefreshKey(
+  artifactId: string,
+  revisionId: string,
+  purpose: ArtifactRenditionPurpose,
+): string {
+  return `${artifactId}:${revisionId}:${purpose}`;
+}
+
+function cachedRefreshedRendition(
+  artifactId: string,
+  revisionId: string,
+  purposes: readonly ArtifactRenditionPurpose[],
+  now = Date.now(),
+): ArtifactRendition | null {
+  for (const purpose of purposes) {
+    const key = renditionRefreshKey(artifactId, revisionId, purpose);
+    const cached = renditionRefreshCache.get(key);
+    if (!cached) continue;
+    if (
+      now >= cached.usableUntil ||
+      renditionNeedsRefresh(cached.rendition, now)
+    ) {
+      renditionRefreshCache.delete(key);
+      continue;
+    }
+    return cached.rendition;
+  }
+  return null;
+}
+
+function refreshRenditionOnce(
+  artifactId: string,
+  revisionId: string,
+  purpose: ArtifactRenditionPurpose,
+  force: boolean,
+): Promise<ArtifactApiResult<ArtifactRendition>> {
+  const key = renditionRefreshKey(artifactId, revisionId, purpose);
+  if (force) renditionRefreshCache.delete(key);
+  const cached = cachedRefreshedRendition(
+    artifactId,
+    revisionId,
+    [purpose],
+  );
+  if (cached) {
+    return Promise.resolve({ ok: true as const, data: cached, status: 200 });
+  }
+  const active = renditionRefreshPending.get(key);
+  if (active) return active;
+  // A component unmount must not cancel a refresh shared by another thumbnail.
+  const pending = refreshArtifactRendition(
+    { artifactId, revisionId },
+    purpose,
+  ).then((result) => {
+    if (result.ok && result.data) {
+      const expiresAt = result.data.expiresAt
+        ? Date.parse(result.data.expiresAt)
+        : Number.NaN;
+      const usableUntil = Number.isFinite(expiresAt)
+        ? expiresAt - 60_000
+        : Date.now() + 15_000;
+      if (usableUntil > Date.now()) {
+        renditionRefreshCache.set(key, {
+          rendition: result.data,
+          usableUntil,
+        });
+      }
+    }
+    return result;
+  }).finally(() => {
+    renditionRefreshPending.delete(key);
+  });
+  renditionRefreshPending.set(key, pending);
+  return pending;
+}
 
 export interface ArtifactRenditionState {
   url: string;
   purpose: ArtifactRenditionPurpose | null;
   loading: boolean;
   error: string;
+  version: number;
   retry: () => void;
   resourceFailed: () => void;
 }
@@ -52,46 +140,68 @@ export function useArtifactRendition(
   item: LibraryItem,
   purposes?: readonly ArtifactRenditionPurpose[],
 ): ArtifactRenditionState {
+  const durable = isDurableLibraryItem(item);
+  const artifactId = durable ? item.artifactId : "";
+  const revisionId = durable ? item.revisionId : "";
+  const visible = durable && artifactIsVisible(item.artifact);
+  const requestedKey = purposes?.length
+    ? purposes.join("|")
+    : durable
+      ? viewerRenditionOrder(
+          item.artifact.artifactType,
+          item.artifact.access.canExportSource,
+        ).join("|")
+      : "preview|full";
   const requested = useMemo(
     () =>
-      purposes?.length
-        ? [...purposes]
-        : isDurableLibraryItem(item)
-          ? viewerRenditionOrder(
-              item.artifact.artifactType,
-              item.artifact.access.canExportSource,
-            )
-          : (["preview", "full"] as ArtifactRenditionPurpose[]),
-    [
-      item,
-      purposes,
-    ],
+      requestedKey
+        .split("|")
+        .filter(Boolean) as ArtifactRenditionPurpose[],
+    [requestedKey],
   );
-  const initial = useMemo<ArtifactRendition | null>(() => {
-    if (!isDurableLibraryItem(item)) return null;
-    if (!artifactIsVisible(item.artifact)) return null;
-    return selectArtifactRendition(item.artifact, requested);
-  }, [item, requested]);
-  const identity = isDurableLibraryItem(item)
-    ? `${item.artifactId}:${item.revisionId}`
+  const initialSignature = durable
+    ? requested
+        .map((purpose) => {
+          const rendition = item.artifact.renditions[purpose];
+          return `${purpose}:${rendition?.url || ""}:${rendition?.expiresAt || ""}`;
+        })
+        .join("|")
     : "";
+  const initial = useMemo<ArtifactRendition | null>(() => {
+    if (!durable) return null;
+    if (!visible) return null;
+    return (
+      cachedRefreshedRendition(artifactId, revisionId, requested) ||
+      selectArtifactRendition(item.artifact, requested)
+    );
+  }, [
+    artifactId,
+    durable,
+    initialSignature,
+    requested,
+    revisionId,
+    visible,
+  ]);
+  const identity = durable ? `${artifactId}:${revisionId}` : "";
   const [rendition, setRendition] = useState<ArtifactRendition | null>(
     initial,
   );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [forced, setForced] = useState(false);
 
   useEffect(() => {
     setRendition(initial);
     setError("");
     setForced(false);
+    setRefreshVersion(0);
   }, [identity, initial?.expiresAt, initial?.purpose, initial?.url]);
 
   useEffect(() => {
-    if (!isDurableLibraryItem(item)) return;
-    if (!artifactIsVisible(item.artifact)) {
+    if (!durable) return;
+    if (!visible) {
       setError("当前主体无权查看这个 artifact revision。");
       return;
     }
@@ -104,14 +214,16 @@ export function useArtifactRendition(
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    void refreshArtifactRendition(
-      { artifactId: item.artifactId, revisionId: item.revisionId },
+    void refreshRenditionOnce(
+      artifactId,
+      revisionId,
       selected.purpose,
-      controller.signal,
+      forced,
     ).then((result) => {
       if (controller.signal.aborted) return;
       if (result.ok && result.data) {
         setRendition(result.data);
+        setRefreshVersion((value) => value + 1);
         setForced(false);
         setError("");
       } else {
@@ -122,11 +234,14 @@ export function useArtifactRendition(
     return () => controller.abort();
   }, [
     forced,
+    artifactId,
+    durable,
     identity,
     initial,
-    item,
     refreshNonce,
     rendition,
+    revisionId,
+    visible,
   ]);
 
   const retry = useCallback(() => {
@@ -134,15 +249,16 @@ export function useArtifactRendition(
     setRefreshNonce((value) => value + 1);
   }, []);
   const resourceFailed = useCallback(() => {
-    if (isDurableLibraryItem(item)) retry();
-  }, [item, retry]);
+    if (durable) retry();
+  }, [durable, retry]);
 
-  if (!isDurableLibraryItem(item)) {
+  if (!durable) {
     const legacy = legacyUrl(item, requested);
     return {
       ...legacy,
       loading: false,
       error: legacy.url ? "" : "这个条目没有可用 URL。",
+      version: 0,
       retry: () => undefined,
       resourceFailed: () => undefined,
     };
@@ -153,6 +269,7 @@ export function useArtifactRendition(
       purpose: null,
       loading: false,
       error: "当前主体无权查看这个 artifact revision。",
+      version: 0,
       retry: () => undefined,
       resourceFailed: () => undefined,
     };
@@ -162,6 +279,7 @@ export function useArtifactRendition(
     purpose: rendition?.purpose || initial?.purpose || null,
     loading,
     error,
+    version: refreshVersion,
     retry,
     resourceFailed,
   };

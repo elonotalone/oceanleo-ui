@@ -15,6 +15,8 @@ import {
 import {
   artifactProjectionToLibraryItem,
 } from "../src/shell/library-data.ts";
+import { advancedEditorSourceFor } from "../src/shell/advanced-features.ts";
+import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
 
 const authoritativeLibraryPages = JSON.parse(
   await readFile(
@@ -145,6 +147,15 @@ const {
   searchArtifactLibrary,
   setArtifactFavorite,
 } = await import(artifactClientUrl);
+const artifactRenditionUrl = await compileModule(
+  "src/shell/ArtifactRendition.tsx",
+  {
+    "./artifact-contract": contractUrl,
+    "./artifact-client": artifactClientUrl,
+    "./library-data": libraryDataUrl,
+  },
+);
+const { useArtifactRendition } = await import(artifactRenditionUrl);
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value) => value;
@@ -247,7 +258,13 @@ const materialControllerUrl = await compileModule(
     "./workspace-library-model": workspaceLibraryStubUrl,
   },
 );
-const { artifactEntry } = await import(materialControllerUrl);
+const {
+  artifactEntry,
+  invalidateMaterialLibraryCache,
+  materialLibraryRequestKey,
+  queryMaterialLibrary,
+  readMaterialLibraryCache,
+} = await import(materialControllerUrl);
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
@@ -448,6 +465,24 @@ function assertEveryRenderedMaterialIsEditable(container) {
   }
 }
 
+function RenditionProbe({ item, label }) {
+  const rendition = useArtifactRendition(item, ["preview"]);
+  return React.createElement("span", {
+    "data-rendition": label,
+    "data-rendition-url": rendition.url,
+    "data-rendition-version": String(rendition.version),
+  });
+}
+
+function RenditionPair({ item }) {
+  return React.createElement(
+    "div",
+    null,
+    React.createElement(RenditionProbe, { item, label: "first" }),
+    React.createElement(RenditionProbe, { item, label: "second" }),
+  );
+}
+
 const TEST_EDITOR_CAPABILITY = {
   single_file_image: "image-editor",
   composite_image: "composite-image-editor",
@@ -478,6 +513,22 @@ const TEST_SOURCE_FORMAT = {
   audio: "audio-project+json",
   model_3d: "glb",
   workflow: "workflow-json",
+};
+
+const EXPECTED_EDITOR_ROUTE = {
+  single_file_image: ["image", "image"],
+  composite_image: ["image", "image"],
+  vector_image: ["image", "image"],
+  chart: ["chart-editor@1", "grid"],
+  document: ["richdoc", "richdoc"],
+  grid: ["grid", "grid"],
+  deck: ["deck", "deck"],
+  pdf: ["pdf", "pdf"],
+  website: ["website", "embed"],
+  video: ["video-timeline", "video-timeline"],
+  audio: ["audio", "audio"],
+  model_3d: ["threed", "threed"],
+  workflow: ["design-canvas", "embed"],
 };
 
 function projection({
@@ -778,6 +829,182 @@ test("Primary validates exact full and contextId-only response contexts fail-clo
   }
 });
 
+test("Primary degrades mixed rows but preserves an all-editable page", async () => {
+  const requested = {
+    contextId: "00000000-0000-0000-0000-000000000011",
+    siteKey: "image",
+    appId: "poster",
+    functionId: "hero",
+  };
+  const responseContext = {
+    context: { ...requested },
+    contextId: requested.contextId,
+  };
+  const editable = projection({
+    id: "mixed-editable",
+    title: "Mixed editable",
+    contextId: requested.contextId,
+    editable: true,
+  });
+  const viewOnly = projection({
+    id: "mixed-reference",
+    title: "Mixed reference",
+    contextId: requested.contextId,
+  });
+  const malformed = {
+    ...projection({
+      id: "mixed-malformed",
+      contextId: requested.contextId,
+      editable: true,
+    }),
+    schema: "oceanleo.unknown.v1",
+  };
+  const allEditable = ARTIFACT_TYPES.map((artifactType) =>
+    projection({
+      id: `all-editable-${artifactType}`,
+      contextId: requested.contextId,
+      artifactType,
+      editable: true,
+    }),
+  );
+  const responses = [
+    {
+      ...responseContext,
+      items: [editable, viewOnly, malformed],
+      total: 3,
+    },
+    {
+      ...responseContext,
+      items: allEditable,
+      total: allEditable.length,
+    },
+  ];
+  globalThis.fetch = async () => jsonResponse(responses.shift());
+
+  const mixed = await listPrimaryArtifacts(requested);
+  assert.equal(mixed.ok, true);
+  assert.deepEqual(
+    mixed.data?.items.map((item) => item.artifactId),
+    ["mixed-editable"],
+  );
+  assert.equal(mixed.data?.diagnostics.omittedCount, 2);
+
+  const complete = await listPrimaryArtifacts(requested);
+  assert.equal(complete.ok, true);
+  assert.equal(complete.data?.items.length, ARTIFACT_TYPES.length);
+  assert.equal(complete.data?.diagnostics.omittedCount, 0);
+});
+
+test("each editable artifact type resolves its exact route and pinned source", () => {
+  for (const artifactType of ARTIFACT_TYPES) {
+    const raw = projection({
+      id: `route-${artifactType}`,
+      artifactType,
+      editable: true,
+    });
+    const artifact = normalizeArtifactProjection(raw);
+    assert.ok(artifact);
+    const item = artifactProjectionToLibraryItem(artifact);
+    const capability = editorCapabilityFor(item);
+    const source = advancedEditorSourceFor(item);
+    const [adapter, routeType] = EXPECTED_EDITOR_ROUTE[artifactType];
+
+    assert.equal(capability.available, true, artifactType);
+    assert.equal(capability.adapter, adapter, artifactType);
+    assert.equal(capability.route.type, routeType, artifactType);
+    assert.equal(item.artifactId, artifact.artifactId, artifactType);
+    assert.equal(item.revisionId, artifact.revisionId, artifactType);
+    assert.equal(
+      source?.url,
+      artifact.renditions.source?.url,
+      artifactType,
+    );
+  }
+
+  const viewOnlyArtifact = normalizeArtifactProjection(
+    projection({ id: "route-view-only" }),
+  );
+  assert.ok(viewOnlyArtifact);
+  assert.equal(
+    editorCapabilityFor(
+      artifactProjectionToLibraryItem(viewOnlyArtifact),
+    ).available,
+    false,
+  );
+});
+
+test("rendition refresh is shared, reused, and discarded before URL expiry", async () => {
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  const raw = projection({
+    id: "stable-rendition",
+    title: "Stable rendition",
+  });
+  raw.renditions.preview.expires_at = new Date(now - 1_000).toISOString();
+  const artifact = normalizeArtifactProjection(raw);
+  assert.ok(artifact);
+  const item = artifactProjectionToLibraryItem(artifact);
+  let refreshes = 0;
+  globalThis.fetch = async () => {
+    refreshes += 1;
+    return jsonResponse({
+      artifact_id: artifact.artifactId,
+      revision_id: artifact.revisionId,
+      rendition: {
+        purpose: "preview",
+        revision_id: artifact.revisionId,
+        url: `https://signed.test/stable-rendition-${refreshes}.png`,
+        format: "png",
+        expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+    });
+  };
+  let mounted;
+  try {
+    mounted = await createMounted(RenditionPair, { item });
+    await settle();
+    assert.equal(refreshes, 1);
+    for (const node of mounted.container.querySelectorAll("[data-rendition]")) {
+      assert.equal(
+        node.getAttribute("data-rendition-url"),
+        "https://signed.test/stable-rendition-1.png",
+      );
+    }
+    await mounted.unmount();
+    mounted = await createMounted(RenditionProbe, {
+      item,
+      label: "reopen",
+    });
+    await settle();
+    assert.equal(refreshes, 1);
+    assert.equal(
+      mounted.container
+        .querySelector('[data-rendition="reopen"]')
+        ?.getAttribute("data-rendition-url"),
+      "https://signed.test/stable-rendition-1.png",
+    );
+    await mounted.unmount();
+
+    now += 6 * 60_000;
+    mounted = await createMounted(RenditionProbe, {
+      item,
+      label: "expired",
+    });
+    await settle();
+    assert.equal(refreshes, 2);
+    assert.equal(
+      mounted.container
+        .querySelector('[data-rendition="expired"]')
+        ?.getAttribute("data-rendition-url"),
+      "https://signed.test/stable-rendition-2.png",
+    );
+  } finally {
+    await mounted?.unmount();
+    Date.now = originalNow;
+  }
+});
+
 test("public search and owner-scoped mine reject mixed authority rows", async () => {
   const calls = [];
   const responses = [
@@ -806,7 +1033,7 @@ test("public search and owner-scoped mine reject mixed authority rows", async ()
   );
 });
 
-test("editable shelf and favorites use one strict owner-scoped envelope each", async () => {
+test("editable shelf tolerates real taxonomy gaps and favorites stay owner-scoped", async () => {
   const shelfItems = ARTIFACT_TYPES.map((artifactType) =>
     projection({
       id: `shelf-${artifactType}`,
@@ -895,8 +1122,13 @@ test("editable shelf and favorites use one strict owner-scoped envelope each", a
 
   assert.equal(shelf.ok, true);
   assert.equal(shelf.data?.items.length, 13);
-  assert.equal(incompleteShelf.ok, false);
-  assert.match(incompleteShelf.error || "", /13 taxonomy/);
+  assert.equal(incompleteShelf.ok, true);
+  assert.equal(incompleteShelf.data?.items.length, 12);
+  assert.ok(
+    incompleteShelf.data?.diagnostics?.reasons.some((reason) =>
+      reason.startsWith("missing-taxonomy:"),
+    ),
+  );
   assert.equal(paginatedShelf.ok, false);
   assert.equal(favorites.ok, true);
   assert.equal(favorites.data?.ownerPrincipalId, "owner-a");
@@ -930,6 +1162,7 @@ test("local production-shape 20-item pages accept either third-party evidence fi
       title: `Production provider ${index + 1}`,
       contextId: context.contextId,
       visibility: "public",
+      editable: true,
     });
     item.roles = ["acceptance_fixture"];
     item.provenance = {
@@ -1557,7 +1790,178 @@ test("public editable material forks before opening the private editor", async (
   });
 });
 
-test("rendered Primary is exact, ACL-safe, and rejects mismatched response context", async () => {
+test("material cache keys isolate context, query, and taxonomy across panel reopen", async () => {
+  invalidateMaterialLibraryCache();
+  const contextId = "ctx:image:cache-reopen";
+  const cachedProjection = projection({
+    id: "cache-reopen",
+    title: "Cached reopen",
+    contextId,
+    editable: true,
+  });
+  const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+  cachedProjection.renditions.preview.expires_at = expiresAt;
+  cachedProjection.renditions.source.expires_at = expiresAt;
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return jsonResponse({
+      contextId,
+      items: [cachedProjection],
+      total: 1,
+    });
+  };
+  const props = {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId,
+  };
+
+  const first = await createMounted(MaterialLibrary, props);
+  try {
+    await settle();
+    assert.ok(
+      first.container.querySelector('[data-entry-title="Cached reopen"]'),
+    );
+    assert.equal(fetches, 1);
+  } finally {
+    await first.unmount();
+  }
+
+  const baseInput = {
+    level: "primary",
+    context: { contextId, siteKey: "image", appId: "poster" },
+    query: "",
+    taxonomy: "",
+  };
+  const cacheKey = materialLibraryRequestKey(baseInput);
+  assert.equal(readMaterialLibraryCache(baseInput)?.freshness, "fresh");
+  const moreInput = { ...baseInput, level: "more" };
+  assert.notEqual(
+    materialLibraryRequestKey(moreInput),
+    materialLibraryRequestKey({ ...moreInput, query: "hero" }),
+  );
+  assert.notEqual(
+    cacheKey,
+    materialLibraryRequestKey({
+      ...baseInput,
+      taxonomy: "document",
+    }),
+  );
+  assert.notEqual(
+    cacheKey,
+    materialLibraryRequestKey({
+      ...baseInput,
+      context: {
+        ...baseInput.context,
+        contextId: "ctx:image:cache-other",
+      },
+    }),
+  );
+
+  const reopened = await createMounted(MaterialLibrary, props);
+  try {
+    await settle();
+    assert.ok(
+      reopened.container.querySelector(
+        '[data-entry-title="Cached reopen"]',
+      ),
+    );
+    assert.equal(fetches, 1);
+  } finally {
+    await reopened.unmount();
+  }
+});
+
+test("near-expiry material URLs are never reused from cache", async () => {
+  invalidateMaterialLibraryCache();
+  const contextId = "ctx:image:cache-expiry";
+  const expiringProjection = projection({
+    id: "cache-expiring",
+    contextId,
+    editable: true,
+  });
+  const expiresAt = new Date(Date.now() + 10_000).toISOString();
+  expiringProjection.renditions.preview.expires_at = expiresAt;
+  expiringProjection.renditions.source.expires_at = expiresAt;
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return jsonResponse({
+      contextId,
+      items: [expiringProjection],
+      total: 1,
+    });
+  };
+  const input = {
+    level: "primary",
+    context: { contextId, siteKey: "image", appId: "poster" },
+    query: "",
+    taxonomy: "",
+  };
+
+  const concurrent = await Promise.all([
+    queryMaterialLibrary(input),
+    queryMaterialLibrary(input),
+  ]);
+  assert.ok(concurrent.every((result) => result.ok));
+  assert.equal(fetches, 1);
+  assert.equal(readMaterialLibraryCache(input), null);
+  assert.equal((await queryMaterialLibrary(input)).ok, true);
+  assert.equal(fetches, 2);
+});
+
+test("material retry replaces a service error with an editable result", async () => {
+  invalidateMaterialLibraryCache();
+  const contextId = "ctx:image:retry";
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return jsonResponse({ detail: "maintenance" }, 503);
+    }
+    return jsonResponse({
+      contextId,
+      items: [
+        projection({
+          id: "retry-success",
+          title: "Retry success",
+          contextId,
+          editable: true,
+        }),
+      ],
+      total: 1,
+    });
+  };
+  const mounted = await createMounted(MaterialLibrary, {
+    materials: [],
+    siteId: "image",
+    appId: "poster",
+    contextId,
+  });
+  try {
+    await settle();
+    assert.match(mounted.container.textContent || "", /维护或过载/);
+    const retry = [...mounted.container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "重试",
+    );
+    assert.ok(retry);
+    await click(retry);
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Retry success"]',
+      ),
+    );
+    assert.equal(attempts, 2);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("rendered Primary keeps valid editable rows and isolates invalid rows", async () => {
+  invalidateMaterialLibraryCache();
   const calls = [];
   globalThis.fetch = async (input) => {
     calls.push(String(input));
@@ -1671,6 +2075,7 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
     await mounted.unmount();
   }
 
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "ctx:image:poster",
@@ -1695,20 +2100,26 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
   });
   try {
     await settle();
-    assert.equal(
-      untrustedPrimary.container.querySelectorAll("[data-entry-title]")
-        .length,
-      0,
+    assert.ok(
+      untrustedPrimary.container.querySelector(
+        '[data-entry-title="Trusted primary"]',
+      ),
     );
-    assert.match(
-      untrustedPrimary.container.querySelector("[data-empty-description]")
-        ?.textContent || "",
-      /trusted editor capability/,
+    assert.equal(
+      untrustedPrimary.container.querySelector(
+        '[data-entry-title="View-only primary"]',
+      ),
+      null,
+    );
+    assert.doesNotMatch(
+      untrustedPrimary.container.textContent || "",
+      /projection|trusted editor|taxonomy|artifact\/revision/i,
     );
   } finally {
     await untrustedPrimary.unmount();
   }
 
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "ctx:image:poster",
@@ -1735,19 +2146,20 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
   });
   try {
     await settle();
-    assert.equal(
-      contaminated.container.querySelectorAll("[data-entry-title]").length,
-      0,
+    assert.ok(
+      contaminated.container.querySelector('[data-entry-title="Exact primary"]'),
     );
-    assert.match(
-      contaminated.container.querySelector("[data-empty-description]")
-        ?.textContent || "",
-      /非精确 context/,
+    assert.equal(
+      contaminated.container.querySelector(
+        '[data-entry-title="Wrong context"]',
+      ),
+      null,
     );
   } finally {
     await contaminated.unmount();
   }
 
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "ctx:image:other",
@@ -1778,7 +2190,7 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
     assert.match(
       mismatched.container.querySelector("[data-empty-description]")
         ?.textContent || "",
-      /不匹配的 context/,
+      /素材数据未通过安全检查/,
     );
   } finally {
     await mismatched.unmount();
@@ -1786,6 +2198,7 @@ test("rendered Primary is exact, ACL-safe, and rejects mismatched response conte
 });
 
 test("rendered missing context stays empty without issuing a Primary request", async () => {
+  invalidateMaterialLibraryCache();
   let fetches = 0;
   globalThis.fetch = async () => {
     fetches += 1;
@@ -1807,7 +2220,7 @@ test("rendered missing context stays empty without issuing a Primary request", a
     const description =
       mounted.container.querySelector("[data-empty-description]")
         ?.textContent || "";
-    assert.match(description, /素材面板缺少上下文标识/);
+    assert.match(description, /当前 App 暂未提供可用素材/);
     assert.doesNotMatch(description, /缺少精确 contextId|响应无效/);
   } finally {
     await mounted.unmount();
@@ -1815,6 +2228,7 @@ test("rendered missing context stays empty without issuing a Primary request", a
 });
 
 test("rendered no-binding backend responses render as empty state, not errors", async () => {
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({ detail: "context 不存在", code: "invalid_binding" }, 404);
   const mounted = await createMounted(MaterialLibrary, {
@@ -1834,6 +2248,7 @@ test("rendered no-binding backend responses render as empty state, not errors", 
   }
 
   // 401/403/503 keep their explicit copy.
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () => jsonResponse({ detail: "denied" }, 403);
   const denied = await createMounted(MaterialLibrary, {
     materials: [],
@@ -1846,7 +2261,7 @@ test("rendered no-binding backend responses render as empty state, not errors", 
     assert.match(
       denied.container.querySelector("[data-empty-description]")
         ?.textContent || "",
-      /拒绝了此素材范围/,
+      /当前账号无法查看这组素材/,
     );
   } finally {
     await denied.unmount();
@@ -1854,6 +2269,7 @@ test("rendered no-binding backend responses render as empty state, not errors", 
 });
 
 test("rendered material library hides every non-durable site pick", async () => {
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({
       contextId: "olctx:v1:image:app:poster",
@@ -2313,7 +2729,8 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
   }
 });
 
-test("rendered More uses one balanced endpoint with Primary disabled", async () => {
+test("rendered More uses one active-release endpoint with Primary disabled", async () => {
+  invalidateMaterialLibraryCache();
   const calls = [];
   globalThis.fetch = async (input) => {
     const url = String(input);
@@ -2426,6 +2843,7 @@ test("rendered More uses one balanced endpoint with Primary disabled", async () 
 });
 
 test("material refresh failure preserves the last authoritative shelf", async () => {
+  invalidateMaterialLibraryCache();
   let failing = false;
   globalThis.fetch = async () => {
     if (failing) {
@@ -2483,6 +2901,7 @@ test("material refresh failure preserves the last authoritative shelf", async ()
 });
 
 test("rendered public material search exposes explicit service-unavailable state", async () => {
+  invalidateMaterialLibraryCache();
   globalThis.fetch = async () =>
     jsonResponse({ detail: "maintenance" }, 503);
   const mounted = await createMounted(MaterialLibrary, {
@@ -2504,6 +2923,7 @@ test("rendered public material search exposes explicit service-unavailable state
 });
 
 test("full material deep link hydrates the exact public artifact revision", async () => {
+  invalidateMaterialLibraryCache();
   const deep = projection({
     id: "deep-public",
     title: "Deep public",
@@ -2779,6 +3199,7 @@ test("rendered shared editor host forwards typed source, target, strategy and CA
 });
 
 test("material shelf type filter is 货架 dropdown only on primary and more", async () => {
+  invalidateMaterialLibraryCache();
   const assertShelfOnly = (container) => {
     const shelf = container.querySelector('select[aria-label="货架"]');
     assert.ok(shelf);

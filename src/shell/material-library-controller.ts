@@ -1,4 +1,5 @@
 import {
+  artifactContextKey,
   ARTIFACT_TYPES,
   normalizeArtifactProjection,
   type ArtifactContextRef,
@@ -8,6 +9,8 @@ import {
   listEditableShelfArtifacts,
   listPrimaryArtifacts,
   searchArtifactLibrary,
+  type ArtifactApiResult,
+  type ArtifactSearchResult,
 } from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
@@ -411,77 +414,230 @@ export function artifactEntry(
  */
 export const MATERIAL_LIBRARY_MORE_ROLE = "template";
 
-export async function queryMaterialLibrary(input: {
+export interface MaterialLibraryQueryInput {
   level: MaterialLibraryLevel;
   context: ArtifactContextRef;
   query: string;
   taxonomy: ArtifactType | "";
   cursor?: string | null;
   signal?: AbortSignal;
-}) {
-  if (input.level === "primary") {
-    const page = await listPrimaryArtifacts(input.context, {
+  forceRefresh?: boolean;
+}
+
+export interface MaterialLibraryCacheSnapshot {
+  data: ArtifactSearchResult;
+  status?: number;
+  freshness: "fresh" | "stale";
+}
+
+interface MaterialLibraryCacheEntry {
+  data: ArtifactSearchResult;
+  status?: number;
+  storedAt: number;
+  freshUntil: number;
+  usableUntil: number;
+}
+
+const MATERIAL_LIBRARY_FRESH_MS = 15_000;
+const MATERIAL_LIBRARY_STALE_MS = 2 * 60_000;
+const MATERIAL_LIBRARY_UNKNOWN_URL_MS = 30_000;
+const MATERIAL_LIBRARY_URL_EXPIRY_SKEW_MS = 60_000;
+const materialLibraryCache = new Map<string, MaterialLibraryCacheEntry>();
+const materialLibraryPending = new Map<
+  string,
+  Promise<ArtifactApiResult<ArtifactSearchResult>>
+>();
+let materialLibraryCacheGeneration = 0;
+
+export function materialLibraryRequestKey(
+  input: MaterialLibraryQueryInput,
+): string {
+  return JSON.stringify({
+    level: input.level,
+    context: artifactContextKey(input.context),
+    query: input.level === "more" ? input.query.trim() : "",
+    taxonomy: input.taxonomy,
+    cursor: input.cursor || "",
+  });
+}
+
+function materialLibraryCacheUsableUntil(
+  data: ArtifactSearchResult,
+  storedAt: number,
+): number {
+  let usableUntil = storedAt + MATERIAL_LIBRARY_STALE_MS;
+  for (const item of data.items) {
+    if (!isDurableLibraryItem(item)) continue;
+    for (const rendition of Object.values(item.artifact.renditions)) {
+      if (!rendition?.url) continue;
+      if (!rendition.expiresAt) {
+        usableUntil = Math.min(
+          usableUntil,
+          storedAt + MATERIAL_LIBRARY_UNKNOWN_URL_MS,
+        );
+        continue;
+      }
+      const expiresAt = Date.parse(rendition.expiresAt);
+      if (Number.isFinite(expiresAt)) {
+        usableUntil = Math.min(
+          usableUntil,
+          expiresAt - MATERIAL_LIBRARY_URL_EXPIRY_SKEW_MS,
+        );
+      }
+    }
+  }
+  return usableUntil;
+}
+
+function rememberMaterialLibraryResult(
+  key: string,
+  result: ArtifactApiResult<ArtifactSearchResult>,
+  storedAt = Date.now(),
+): void {
+  if (!result.ok || !result.data) return;
+  const usableUntil = materialLibraryCacheUsableUntil(result.data, storedAt);
+  if (usableUntil <= storedAt) {
+    materialLibraryCache.delete(key);
+    return;
+  }
+  // Memory-only normalized metadata: response bodies/private bytes are never
+  // retained, and signed URLs are discarded before their refresh skew.
+  materialLibraryCache.set(key, {
+    data: result.data,
+    status: result.status,
+    storedAt,
+    freshUntil: Math.min(
+      usableUntil,
+      storedAt + MATERIAL_LIBRARY_FRESH_MS,
+    ),
+    usableUntil,
+  });
+}
+
+export function readMaterialLibraryCache(
+  input: MaterialLibraryQueryInput,
+  now = Date.now(),
+): MaterialLibraryCacheSnapshot | null {
+  const key = materialLibraryRequestKey(input);
+  const cached = materialLibraryCache.get(key);
+  if (!cached) return null;
+  if (now >= cached.usableUntil) {
+    materialLibraryCache.delete(key);
+    return null;
+  }
+  return {
+    data: cached.data,
+    status: cached.status,
+    freshness: now < cached.freshUntil ? "fresh" : "stale",
+  };
+}
+
+export function invalidateMaterialLibraryCache(
+  input?: MaterialLibraryQueryInput,
+): void {
+  materialLibraryCacheGeneration += 1;
+  if (input) {
+    const key = materialLibraryRequestKey(input);
+    materialLibraryCache.delete(key);
+    materialLibraryPending.delete(key);
+    return;
+  }
+  materialLibraryCache.clear();
+  materialLibraryPending.clear();
+}
+
+function omitUneditableMaterials(
+  result: ArtifactApiResult<ArtifactSearchResult>,
+): ArtifactApiResult<ArtifactSearchResult> {
+  if (!result.ok || !result.data) return result;
+  const items = result.data.items.filter(isAdvancedEditableShelfItem);
+  const locallyOmitted = result.data.items.length - items.length;
+  const existing = result.data.diagnostics;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      items,
+      diagnostics: {
+        omittedCount: (existing?.omittedCount || 0) + locallyOmitted,
+        reasons: [
+          ...(existing?.reasons || []),
+          ...(locallyOmitted > 0 ? ["unsupported-editor-route"] : []),
+        ],
+      },
+    },
+  };
+}
+
+function cacheMaterialLibraryResult(
+  key: string,
+  result: ArtifactApiResult<ArtifactSearchResult>,
+  generation: number,
+): ArtifactApiResult<ArtifactSearchResult> {
+  const safe = omitUneditableMaterials(result);
+  if (generation === materialLibraryCacheGeneration) {
+    rememberMaterialLibraryResult(key, safe);
+  }
+  return safe;
+}
+
+export async function queryMaterialLibrary(
+  input: MaterialLibraryQueryInput,
+): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const key = materialLibraryRequestKey(input);
+  if (!input.forceRefresh) {
+    const cached = readMaterialLibraryCache(input);
+    if (cached?.freshness === "fresh") {
+      return {
+        ok: true,
+        data: cached.data,
+        status: cached.status,
+      };
+    }
+  }
+  const pending = input.signal ? null : materialLibraryPending.get(key);
+  if (pending) return pending;
+  const generation = materialLibraryCacheGeneration;
+  const request = (async () => {
+    if (input.level === "primary") {
+      const page = await listPrimaryArtifacts(input.context, {
+        artifactType: input.taxonomy,
+        limit: 60,
+        signal: input.signal,
+      });
+      return cacheMaterialLibraryResult(key, page, generation);
+    }
+    // The backend returns one revision-pinned active-release snapshot. The
+    // browser must not recreate per-taxonomy fan-out or synthetic completeness.
+    if (!input.taxonomy && !input.query.trim()) {
+      if (input.cursor) {
+        return {
+          ok: false as const,
+          error: "可编辑素材货架是单次权威快照，不接受 cursor 分页。",
+          code: "invalid-response" as const,
+          status: 400,
+          retryable: false,
+        };
+      }
+      const shelf = await listEditableShelfArtifacts(input.signal);
+      return cacheMaterialLibraryResult(key, shelf, generation);
+    }
+    const page = await searchArtifactLibrary({
+      query: input.query,
       artifactType: input.taxonomy,
+      role: MATERIAL_LIBRARY_MORE_ROLE,
+      cursor: input.cursor || undefined,
       limit: 60,
       signal: input.signal,
     });
-    if (!page.ok || !page.data) return page;
-    if (page.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
-      return {
-        ok: false as const,
-        error:
-          "Primary 返回了未通过本地 trusted editor capability 的 projection，已拒绝整页素材。",
-        code: "invalid-response" as const,
-        status: page.status,
-        retryable: false,
-      };
+    return cacheMaterialLibraryResult(key, page, generation);
+  })();
+  if (!input.signal) materialLibraryPending.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (materialLibraryPending.get(key) === request) {
+      materialLibraryPending.delete(key);
     }
-    return page;
   }
-  // The backend balances all 13 taxonomy types atomically. The browser must
-  // never recreate the former 13-request all-or-nothing fan-out.
-  if (!input.taxonomy && !input.query.trim()) {
-    if (input.cursor) {
-      return {
-        ok: false as const,
-        error: "可编辑素材货架是单次权威快照，不接受 cursor 分页。",
-        code: "invalid-response" as const,
-        status: 400,
-        retryable: false,
-      };
-    }
-    const shelf = await listEditableShelfArtifacts(input.signal);
-    if (!shelf.ok || !shelf.data) return shelf;
-    if (shelf.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
-      return {
-        ok: false as const,
-        error:
-          "可编辑素材货架包含未通过本地 trusted editor capability 的条目。",
-        code: "invalid-response" as const,
-        status: shelf.status,
-        retryable: false,
-      };
-    }
-    return shelf;
-  }
-  const page = await searchArtifactLibrary({
-    query: input.query,
-    artifactType: input.taxonomy,
-    role: MATERIAL_LIBRARY_MORE_ROLE,
-    cursor: input.cursor || undefined,
-    limit: 60,
-    signal: input.signal,
-  });
-  if (!page.ok || !page.data) return page;
-  if (page.data.items.some((item) => !isAdvancedEditableShelfItem(item))) {
-    return {
-      ok: false as const,
-      error:
-        "素材搜索结果包含未通过本地 trusted editor capability 的条目。",
-      code: "invalid-response" as const,
-      status: page.status,
-      retryable: false,
-    };
-  }
-  return page;
 }
