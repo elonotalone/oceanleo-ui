@@ -83,7 +83,7 @@ export function WorkspaceCard({
         type="button"
         onClick={onOpen}
         className="block w-full text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
+        aria-label={tt("编辑「{title}」", { title: entry.title })}
       >
         <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail
@@ -130,7 +130,7 @@ export function WorkspaceListRow({
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
+        aria-label={tt("编辑「{title}」", { title: entry.title })}
       >
         <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)]">
           <WorkspaceThumbnail

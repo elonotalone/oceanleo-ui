@@ -34,6 +34,8 @@ export interface ArtifactTargetActionEvidence {
 export interface ArtifactActionMatrixOptions {
   canOpenPreview?: boolean;
   canOpenEdit?: boolean;
+  /** Library material cards hide Preview; Edit is the primary open action. */
+  hidePreview?: boolean;
   insert?: ArtifactTargetActionEvidence;
   replace?: ArtifactTargetActionEvidence;
 }
@@ -89,19 +91,14 @@ function editEvidence(item: LibraryItem): {
         requiresEnsure: false,
       };
     }
+    // Editable shelves are filtered by the host. Always show Edit here; keep
+    // availability tied to typed capability / mutate rights so missing
+    // editorCapability remains the hard gate.
     if (!item.artifact.access.canEdit && !item.artifact.access.canFork) {
-      return {
-        visible: false,
-        available: false,
-        reason: "当前主体没有编辑原 root 或 fork 用户副本的权限。",
-        requiresEnsure: false,
-      };
-    }
-    if (item.artifact.editability === "view_only") {
       return {
         visible: true,
         available: false,
-        reason: "此 revision 明确为只读。",
+        reason: "当前主体没有编辑原 root 或 fork 用户副本的权限。",
         requiresEnsure: false,
       };
     }
@@ -233,16 +230,21 @@ export function artifactActionMatrix(
   const replaceSource = mutationSourceEvidence(item, "replace");
   const insertTarget = options.insert;
   const replaceTarget = options.replace;
+  const hidePreview = options.hidePreview === true;
   return {
     preview: {
       action: "preview",
-      visible: preview.visible,
-      available: preview.available && options.canOpenPreview !== false,
-      reason:
-        preview.reason ||
-        (options.canOpenPreview === false
-          ? "当前工作区没有 Preview 宿主。"
-          : ""),
+      visible: hidePreview ? false : preview.visible,
+      available:
+        !hidePreview &&
+        preview.available &&
+        options.canOpenPreview !== false,
+      reason: hidePreview
+        ? ""
+        : preview.reason ||
+          (options.canOpenPreview === false
+            ? "当前工作区没有 Preview 宿主。"
+            : ""),
       requiresEnsure: false,
     },
     edit: {
@@ -291,6 +293,8 @@ export function ArtifactActionButtons({
   onEdit,
   onInsert,
   onReplace,
+  onFullscreen,
+  linkUrl,
   onStatus,
   accent = "#4f46e5",
   compact = false,
@@ -301,6 +305,8 @@ export function ArtifactActionButtons({
   onEdit?: (item: LibraryItem) => void | Promise<void>;
   onInsert?: (item: LibraryItem) => void | Promise<void>;
   onReplace?: (item: LibraryItem) => void | Promise<void>;
+  onFullscreen?: () => void | Promise<void>;
+  linkUrl?: string;
   onStatus?: (message: string) => void;
   accent?: string;
   compact?: boolean;
@@ -308,7 +314,7 @@ export function ArtifactActionButtons({
   const tt = useUI();
   const reasonId = useId();
   const [pending, setPending] = useState<
-    ArtifactCardAction | "download" | "favorite" | null
+    ArtifactCardAction | "download" | "favorite" | "fullscreen" | null
   >(null);
   const [favorite, setFavorite] = useState(item.favorite);
   const [liveStatus, setLiveStatus] = useState("");
@@ -360,19 +366,32 @@ export function ArtifactActionButtons({
     }
   };
   const durableItem = isDurableLibraryItem(item) ? item : null;
+  const downloadVisible = Boolean(
+    durableItem && durableItem.artifact.access.canRead,
+  );
   const downloadAvailable = Boolean(
     durableItem &&
       durableItem.artifact.access.canRead &&
       durableItem.artifact.access.canPreview,
   );
   const favoriteVisible = Boolean(
+    durableItem && durableItem.artifact.access.canRead,
+  );
+  const favoriteAvailable = Boolean(
     durableItem &&
       durableItem.artifact.access.canRead &&
       durableItem.artifact.integrity.ok &&
       durableItem.artifact.access.canFavorite,
   );
+  const fullscreenVisible = typeof onFullscreen === "function";
+  const linkVisible = Boolean(linkUrl);
   const runDownload = async () => {
-    if (!downloadAvailable || pending) return;
+    if (!downloadAvailable || pending) {
+      if (!downloadAvailable) {
+        report("当前 revision 没有可下载的授权 rendition。");
+      }
+      return;
+    }
     setPending("download");
     report("正在准备固定 revision 的下载…");
     try {
@@ -402,7 +421,12 @@ export function ArtifactActionButtons({
     }
   };
   const toggleFavorite = async () => {
-    if (!favoriteVisible || pending) return;
+    if (!favoriteAvailable || pending) {
+      if (!favoriteAvailable) {
+        report("当前主体没有收藏这个 artifact 的权限。");
+      }
+      return;
+    }
     setPending("favorite");
     const next = !favorite;
     report(next ? "正在收藏…" : "正在取消收藏…");
@@ -425,9 +449,28 @@ export function ArtifactActionButtons({
       setPending(null);
     }
   };
-  const visible = (
-    ["preview", "edit", "insert", "replace"] as ArtifactCardAction[]
+  const runFullscreen = async () => {
+    if (!fullscreenVisible || pending) return;
+    setPending("fullscreen");
+    try {
+      await onFullscreen?.();
+      report("全屏已执行。");
+    } catch (error) {
+      report(error instanceof Error ? error.message : "全屏失败。");
+    } finally {
+      setPending(null);
+    }
+  };
+  // Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接.
+  // Insert/Replace follow when an editor host registers them.
+  // Preview is hidden for library materials via matrix.hidePreview.
+  const primaryActions = (
+    ["edit", "preview"] as ArtifactCardAction[]
   ).filter((action) => matrix[action].visible);
+  const mutationActions = (
+    ["insert", "replace"] as ArtifactCardAction[]
+  ).filter((action) => matrix[action].visible);
+  const visible = [...primaryActions, ...mutationActions];
   const unavailableReason = [
     ...new Set(
       visible
@@ -439,6 +482,41 @@ export function ArtifactActionButtons({
         ),
     ),
   ].join(" · ");
+  const chipClass = `inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+    compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
+  }`;
+  const chipStyle = (enabled: boolean) => ({
+    borderColor: enabled ? `${accent}66` : "var(--border,#e7e5e4)",
+    color: enabled ? accent : "var(--muted,#a8a29e)",
+    outlineColor: accent,
+  });
+  const renderAction = (action: ArtifactCardAction) => {
+    const state = matrix[action];
+    const disabled =
+      !state.available || !handlers[action] || pending !== null;
+    return (
+      <button
+        key={action}
+        type="button"
+        onClick={() => void run(action)}
+        disabled={disabled}
+        aria-disabled={disabled}
+        aria-describedby={
+          !state.available && state.reason ? reasonId : undefined
+        }
+        aria-label={tt(
+          `${ACTION_LABEL[action]}「${item.title}」${
+            state.reason ? `：${state.reason}` : ""
+          }`,
+        )}
+        title={tt(state.reason || ACTION_LABEL[action])}
+        className={chipClass}
+        style={chipStyle(state.available)}
+      >
+        {pending === action ? tt("处理中…") : tt(ACTION_LABEL[action])}
+      </button>
+    );
+  };
   return (
     <div className="min-w-0">
       <div
@@ -446,46 +524,8 @@ export function ArtifactActionButtons({
         role="group"
         aria-label={tt("素材操作")}
       >
-        {visible.map((action) => {
-          const state = matrix[action];
-          const disabled =
-            !state.available || !handlers[action] || pending !== null;
-          return (
-            <button
-              key={action}
-              type="button"
-              onClick={() => void run(action)}
-              disabled={disabled}
-              aria-disabled={disabled}
-              aria-describedby={
-                !state.available && state.reason ? reasonId : undefined
-              }
-              aria-label={tt(
-                `${ACTION_LABEL[action]}「${item.title}」${
-                  state.reason ? `：${state.reason}` : ""
-                }`,
-              )}
-              title={tt(state.reason || ACTION_LABEL[action])}
-              className={`inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
-                compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
-              }`}
-              style={{
-                borderColor: state.available
-                  ? `${accent}66`
-                  : "var(--border,#e7e5e4)",
-                color: state.available
-                  ? accent
-                  : "var(--muted,#a8a29e)",
-                outlineColor: accent,
-              }}
-            >
-              {pending === action
-                ? tt("处理中…")
-                : tt(ACTION_LABEL[action])}
-            </button>
-          );
-        })}
-        {downloadAvailable && (
+        {primaryActions.map(renderAction)}
+        {downloadVisible && (
           <button
             type="button"
             onClick={() => void runDownload()}
@@ -499,18 +539,8 @@ export function ArtifactActionButtons({
                 ? "下载"
                 : "当前 revision 没有可下载的授权 rendition。",
             )}
-            className={`inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
-              compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
-            }`}
-            style={{
-              borderColor: downloadAvailable
-                ? `${accent}66`
-                : "var(--border,#e7e5e4)",
-              color: downloadAvailable
-                ? accent
-                : "var(--muted,#a8a29e)",
-              outlineColor: accent,
-            }}
+            className={chipClass}
+            style={chipStyle(downloadAvailable)}
           >
             {pending === "download" ? tt("处理中…") : tt("下载")}
           </button>
@@ -519,26 +549,55 @@ export function ArtifactActionButtons({
           <button
             type="button"
             onClick={() => void toggleFavorite()}
-            disabled={pending !== null}
-            aria-disabled={pending !== null}
+            disabled={!favoriteAvailable || pending !== null}
+            aria-disabled={!favoriteAvailable || pending !== null}
             aria-pressed={favorite}
             aria-label={tt(
               `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
             )}
-            className={`inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
-              compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
-            }`}
-            style={{
-              borderColor: `${accent}66`,
-              color: accent,
-              outlineColor: accent,
-            }}
+            title={tt(
+              favoriteAvailable
+                ? favorite
+                  ? "已收藏"
+                  : "收藏"
+                : "当前主体没有收藏这个 artifact 的权限。",
+            )}
+            className={chipClass}
+            style={chipStyle(favoriteAvailable)}
           >
             {pending === "favorite"
               ? tt("处理中…")
               : tt(favorite ? "已收藏" : "收藏")}
           </button>
         )}
+        {fullscreenVisible && (
+          <button
+            type="button"
+            onClick={() => void runFullscreen()}
+            disabled={pending !== null}
+            aria-disabled={pending !== null}
+            aria-label={tt(`全屏「${item.title}」`)}
+            title={tt("全屏")}
+            className={chipClass}
+            style={chipStyle(true)}
+          >
+            {pending === "fullscreen" ? tt("处理中…") : tt("全屏")}
+          </button>
+        )}
+        {linkVisible && (
+          <a
+            href={linkUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={tt(`链接「${item.title}」`)}
+            title={tt("链接")}
+            className={chipClass}
+            style={chipStyle(true)}
+          >
+            {tt("链接")}
+          </a>
+        )}
+        {mutationActions.map(renderAction)}
       </div>
       {unavailableReason && (
         <p

@@ -11,7 +11,7 @@ test("workspace files leave the library list and take over the fixed main canvas
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.match(library, /const workbenchItem: LibraryItem/);
   assert.match(library, /artifactActionMatrix/);
-  assert.match(library, /Card activation is always Preview/);
+  assert.match(library, /Primary card activation is Edit/);
   assert.match(library, /onEdit=\{editItem\}/);
   assert.match(library, /onOpenEntry\(entry\)/);
   assert.doesNotMatch(library, /<AdvancedContentWorkbench/);

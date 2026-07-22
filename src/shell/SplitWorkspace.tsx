@@ -476,18 +476,19 @@ export function SplitWorkspace({
 
   function MaxButton({ which }: { which: "app" | "library" }) {
     const on = maxed === which;
+    const label = on ? tt("恢复双栏") : tt("这一栏切大屏");
     return (
       <button
         type="button"
         onClick={() => toggleMax(which)}
-        className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors ${
+        className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors ${
           on ? "text-white" : "text-stone-500 hover:bg-stone-100"
         }`}
         style={on ? { background: accent } : undefined}
-        title={on ? tt("恢复双栏") : tt("这一栏切大屏")}
+        title={label}
+        aria-label={label}
       >
         {on ? <IconCompress /> : <IconExpand />}
-        {on ? tt("恢复") : tt("大屏")}
       </button>
     );
   }

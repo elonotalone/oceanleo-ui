@@ -402,6 +402,55 @@ export function artifactEntry(
   });
 }
 
+/**
+ * Public "更多素材" shelves only surface editable advanced-feature templates.
+ * Owned/promoted catalog rows use the `template` role; view-only reference
+ * rehosts are excluded so every visible card can open an advanced editor.
+ */
+export const MATERIAL_LIBRARY_MORE_ROLE = "template";
+
+/** One page of the unfiltered more shelf mixes these editable types. */
+const BALANCED_MORE_TYPES: readonly ArtifactType[] = [
+  "website",
+  "workflow",
+  "deck",
+  "document",
+  "grid",
+  "single_file_image",
+  "vector_image",
+  "pdf",
+  "video",
+  "audio",
+  "chart",
+  "model_3d",
+];
+
+function interleaveLibraryItems(
+  groups: readonly (readonly LibraryItem[])[],
+): LibraryItem[] {
+  const out: LibraryItem[] = [];
+  const seen = new Set<string>();
+  let index = 0;
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const group of groups) {
+      const item = group[index];
+      if (!item) continue;
+      progressed = true;
+      const key =
+        item.artifactId && item.revisionId
+          ? `${item.artifactId}:${item.revisionId}`
+          : item.key || item.id;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+    index += 1;
+  }
+  return out;
+}
+
 export async function queryMaterialLibrary(input: {
   level: MaterialLibraryLevel;
   context: ArtifactContextRef;
@@ -417,9 +466,43 @@ export async function queryMaterialLibrary(input: {
       signal: input.signal,
     });
   }
+  // Unfiltered more shelf: round-robin the 12 advanced-capable types so a
+  // single recent promote wave (e.g. model_3d) cannot monopolize page one.
+  if (!input.taxonomy && !input.query.trim() && !input.cursor) {
+    const perType = 5;
+    const pages = await Promise.all(
+      BALANCED_MORE_TYPES.map((artifactType) =>
+        searchArtifactLibrary({
+          query: "",
+          artifactType,
+          role: MATERIAL_LIBRARY_MORE_ROLE,
+          limit: perType,
+          signal: input.signal,
+        }),
+      ),
+    );
+    const failed = pages.find((page) => !page.ok || !page.data);
+    if (failed) {
+      return failed as (typeof pages)[number];
+    }
+    const items = interleaveLibraryItems(
+      pages.map((page) => page.data!.items),
+    );
+    return {
+      ok: true as const,
+      data: {
+        items,
+        nextCursor: null,
+        total: items.length,
+      },
+      status: 200,
+      retryable: false,
+    };
+  }
   return searchArtifactLibrary({
     query: input.query,
     artifactType: input.taxonomy,
+    role: MATERIAL_LIBRARY_MORE_ROLE,
     cursor: input.cursor || undefined,
     limit: 60,
     signal: input.signal,

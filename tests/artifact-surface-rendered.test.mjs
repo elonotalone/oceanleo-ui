@@ -1577,40 +1577,39 @@ test("full material deep link hydrates the exact public artifact revision", asyn
   }
 });
 
-test("rendered artifact actions keep Preview read-only and dispatch Edit/Insert/Replace", async () => {
+test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Replace", async () => {
   const artifact = normalizeArtifactProjection(
     projection({ id: "actions", title: "Action source", editable: true }),
   );
   assert.ok(artifact);
   const item = artifactProjectionToLibraryItem(artifact);
   const matrix = actionModule.artifactActionMatrix(item, {
+    hidePreview: true,
     insert: { visible: true, available: true, reason: "" },
     replace: { visible: true, available: true, reason: "" },
   });
+  assert.equal(matrix.preview.visible, false);
   const dispatched = [];
   globalThis.__artifactPreparedActions = [];
   const mounted = await createMounted(actionModule.ArtifactActionButtons, {
     item,
     matrix,
-    onPreview: (prepared) => dispatched.push(["preview", prepared]),
     onEdit: (prepared) => dispatched.push(["edit", prepared]),
     onInsert: (prepared) => dispatched.push(["insert", prepared]),
     onReplace: (prepared) => dispatched.push(["replace", prepared]),
+    onFullscreen: () => dispatched.push(["fullscreen"]),
+    linkUrl: "https://example.com/action-source",
   });
   try {
     const button = (label) =>
-      [...mounted.container.querySelectorAll("button")].find(
+      [...mounted.container.querySelectorAll("button, a")].find(
         (entry) => entry.textContent.trim() === label,
       );
+    assert.equal(button("预览"), undefined);
     assert.equal(button("下载")?.getAttribute("type"), "button");
     assert.equal(button("收藏")?.getAttribute("aria-pressed"), "false");
-    await click(button("预览"));
-    await settle();
-    assert.deepEqual(globalThis.__artifactPreparedActions, ["preview"]);
-    assert.deepEqual(
-      dispatched.map(([action]) => action),
-      ["preview"],
-    );
+    assert.equal(button("全屏")?.getAttribute("type"), "button");
+    assert.equal(button("链接")?.getAttribute("href"), "https://example.com/action-source");
 
     for (const [label, action] of [
       ["编辑", "edit"],
@@ -1623,11 +1622,13 @@ test("rendered artifact actions keep Preview read-only and dispatch Edit/Insert/
       assert.equal(dispatched.at(-1)[1].preparedAction, action);
     }
     assert.deepEqual(globalThis.__artifactPreparedActions, [
-      "preview",
       "edit",
       "insert",
       "replace",
     ]);
+    await click(button("全屏"));
+    await settle();
+    assert.equal(dispatched.at(-1)[0], "fullscreen");
     await click(button("收藏"));
     await settle();
     assert.equal(button("已收藏")?.getAttribute("aria-pressed"), "true");
@@ -1647,13 +1648,13 @@ test("rendered artifact actions keep Preview read-only and dispatch Edit/Insert/
   assert.ok(deniedArtifact);
   const deniedItem = artifactProjectionToLibraryItem(deniedArtifact);
   const deniedMatrix = actionModule.artifactActionMatrix(deniedItem, {
+    hidePreview: true,
     insert: { visible: true, available: true, reason: "" },
     replace: { visible: true, available: true, reason: "" },
   });
   const denied = await createMounted(actionModule.ArtifactActionButtons, {
     item: deniedItem,
     matrix: deniedMatrix,
-    onPreview: () => undefined,
     onEdit: () => undefined,
     onInsert: () => undefined,
     onReplace: () => undefined,

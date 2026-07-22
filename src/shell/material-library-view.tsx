@@ -15,6 +15,7 @@ import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   getArtifactItem,
 } from "./artifact-client";
+import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
   MATERIAL_TAXONOMY_LABEL,
   artifactEntry,
@@ -427,8 +428,12 @@ export function MaterialLibrary({
           setErrorStatus(result.status);
         }
       } else {
+        const shelfItems =
+          level === "more"
+            ? result.data.items.filter(isAdvancedEditableShelfItem)
+            : result.data.items;
         setRemote(
-          result.data.items.map((item) => ({
+          shelfItems.map((item) => ({
             ...artifactEntry(
               item,
               level === "more" && Boolean(debounced),
@@ -480,14 +485,16 @@ export function MaterialLibrary({
       setRemote((current) =>
         mergeMaterialEntries([
           current,
-          result.data!.items.map((item) => ({
-            ...artifactEntry(item, Boolean(debounced)),
-            linkUrl: materialLibraryHref({
-              query: debounced,
-              taxonomy,
-              item,
-            }),
-          })),
+          result.data!.items
+            .filter(isAdvancedEditableShelfItem)
+            .map((item) => ({
+              ...artifactEntry(item, Boolean(debounced)),
+              linkUrl: materialLibraryHref({
+                query: debounced,
+                taxonomy,
+                item,
+              }),
+            })),
         ]),
       );
       setNextCursor(result.data.nextCursor);
@@ -702,7 +709,7 @@ export function MaterialLibrary({
       searchPlaceholder={
         level === "primary"
           ? "筛选当前 App 的精确绑定素材"
-          : "搜索全部有权访问的素材"
+          : "搜索可编辑的高级功能素材"
       }
       emptyTitle={
         loading
@@ -711,7 +718,7 @@ export function MaterialLibrary({
             ? failureCopy.title
             : level === "primary"
               ? "当前 App 暂无绑定素材"
-              : "完整素材库暂无匹配结果"
+              : "暂无可编辑高级功能素材"
       }
       emptyDescription={
         effectiveError
@@ -722,7 +729,7 @@ export function MaterialLibrary({
                 ? ARTIFACT_CONTEXT_MISSING_MESSAGE
                 : "这里不会用标签、站点、系列或热门素材回填；请点「更多」搜索完整库。")
             : emptyHint ||
-              "换一个关键词或 taxonomy；未授权素材不会出现在结果、计数或建议中。"
+              "完整素材库只展示可进入 12 个高级功能的可编辑模板；换关键词或 taxonomy 再试。"
       }
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}

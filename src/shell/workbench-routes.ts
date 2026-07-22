@@ -379,9 +379,8 @@ function durableEditorCapabilityFor(
   if (!artifact.access.canEdit && !artifact.access.canFork) {
     return unavailable("当前主体没有编辑或 fork 这个 revision 的权限。");
   }
-  if (artifact.editability === "view_only") {
-    return unavailable("此 revision 明确为只读。");
-  }
+  // view_only is not a card-level hide gate: editable shelves decide which
+  // materials appear; typed editorCapability remains the hard edit gate.
   const adapter = editorAdapterForArtifactCapability(
     artifact.editorCapability,
   );

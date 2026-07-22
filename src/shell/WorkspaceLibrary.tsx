@@ -25,6 +25,7 @@ import {
   artifactActionMatrix,
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
+import { prepareArtifactForAction } from "./artifact-client";
 import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
@@ -217,7 +218,8 @@ export function WorkspaceLibrary({
 
   const matrixFor = (item: LibraryItem) =>
     artifactActionMatrix(item, {
-      canOpenPreview: true,
+      hidePreview: true,
+      canOpenPreview: false,
       canOpenEdit:
         allowAdvanced && openAdvancedOnSelect && Boolean(onOpenItem),
       insert: targetEvidence("insert", item),
@@ -229,14 +231,77 @@ export function WorkspaceLibrary({
     onOpenItem(item);
   };
 
+  const entryLinkUrl = (entry: WorkspaceLibraryEntry) => {
+    const externalUrl =
+      entry.externalUrl ||
+      entry.libraryItem?.url ||
+      entry.libraryItem?.previewUrl ||
+      "";
+    return (
+      entry.linkUrl ||
+      (typeof entry.libraryItem?.meta.asset_page_url === "string"
+        ? entry.libraryItem.meta.asset_page_url
+        : "") ||
+      (typeof entry.libraryItem?.meta.open_url === "string"
+        ? entry.libraryItem.meta.open_url
+        : "") ||
+      externalUrl
+    );
+  };
+
+  const requestFullscreenFor = (node: HTMLElement | null) => {
+    if (!node) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void node.requestFullscreen();
+  };
+
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
     const item = entry.libraryItem;
     if (!item) {
       openEntry(entry);
       return;
     }
-    // Card activation is always Preview. Insert/Replace/Edit are explicit
-    // adjacent actions and never inferred from the current editor.
+    // Primary card activation is Edit → advanced workbench when the host
+    // registered onOpenItem. Preview is no longer a user-facing library action.
+    const edit = matrixFor(item).edit;
+    if (
+      allowAdvanced &&
+      openAdvancedOnSelect &&
+      onOpenItem &&
+      edit.visible
+    ) {
+      if (!edit.available) {
+        if (edit.reason) setMaterialActionState(tt(edit.reason));
+        openEntry(entry);
+        return;
+      }
+      void (async () => {
+        setMaterialActionState(
+          tt(
+            edit.requiresEnsure
+              ? "正在建立耐久 artifact identity…"
+              : "编辑中…",
+          ),
+        );
+        try {
+          const prepared = await prepareArtifactForAction("edit", item);
+          if (!prepared.ok || !prepared.data) {
+            throw new Error(prepared.error || tt("编辑失败。"));
+          }
+          onOpenItem(prepared.data);
+          setMaterialActionState(tt("编辑已执行。"));
+        } catch (caught) {
+          const message =
+            caught instanceof Error ? caught.message : tt("编辑失败。");
+          setMaterialActionState(message);
+          openEntry(entry);
+        }
+      })();
+      return;
+    }
     openEntry(entry);
   };
 
@@ -339,22 +404,15 @@ export function WorkspaceLibrary({
   const actionButtonsFor = (
     entry: WorkspaceLibraryEntry,
     compact = false,
+    fullscreenNode?: HTMLElement | null,
   ) => {
     const item = entry.libraryItem;
     if (!item) return null;
+    const linkUrl = entryLinkUrl(entry);
     return (
       <ArtifactActionButtons
         item={item}
         matrix={matrixFor(item)}
-        onPreview={(prepared) =>
-          openEntry({
-            ...entry,
-            title: prepared.title,
-            thumbUrl: prepared.thumbUrl || prepared.previewUrl,
-            externalUrl: prepared.url || prepared.previewUrl,
-            libraryItem: prepared,
-          })
-        }
         onEdit={editItem}
         onInsert={(prepared) =>
           applyMaterialAction("insert", prepared)
@@ -362,6 +420,18 @@ export function WorkspaceLibrary({
         onReplace={(prepared) =>
           applyMaterialAction("replace", prepared)
         }
+        onFullscreen={() => {
+          if (fullscreenNode) {
+            requestFullscreenFor(fullscreenNode);
+            return;
+          }
+          openEntry(entry);
+          const split = document.querySelector<HTMLElement>(
+            "[data-workspace-split]",
+          );
+          requestFullscreenFor(split);
+        }}
+        linkUrl={linkUrl || undefined}
         onStatus={setMaterialActionState}
         accent={accent}
         compact={compact}
@@ -376,15 +446,6 @@ export function WorkspaceLibrary({
       selected.libraryItem?.url ||
       selected.libraryItem?.previewUrl ||
       "";
-    const linkUrl =
-      selected.linkUrl ||
-      (typeof selected.libraryItem?.meta.asset_page_url === "string"
-        ? selected.libraryItem.meta.asset_page_url
-        : "") ||
-      (typeof selected.libraryItem?.meta.open_url === "string"
-        ? selected.libraryItem.meta.open_url
-        : "") ||
-      externalUrl;
     const refreshable =
       Boolean(externalUrl) &&
       (kind === "website" || kind === "canvas" || kind === "video_canvas");
@@ -447,6 +508,7 @@ export function WorkspaceLibrary({
               libraryItem: workbenchItem,
             },
             true,
+            detailRef.current,
           )}
           {refreshable && (
             <button
@@ -456,31 +518,6 @@ export function WorkspaceLibrary({
             >
               {tt("刷新")}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              const node = detailRef.current;
-              if (!node) return;
-              if (document.fullscreenElement) {
-                void document.exitFullscreen();
-              } else {
-                void node.requestFullscreen();
-              }
-            }}
-            className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
-          >
-            {tt("全屏")}
-          </button>
-          {linkUrl && (
-            <a
-              href={linkUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
-            >
-              {tt("链接")}
-            </a>
           )}
         </header>
         {materialActionState && (
@@ -563,14 +600,13 @@ export function WorkspaceLibrary({
           />
         ) : view === "list" ? (
           <div className="space-y-1.5">
-            {/* Cards stay quiet: click = open detail, where the action
-                buttons live in the detail header. */}
             {filtered.map((entry) => (
               <WorkspaceListRow
                 key={entry.id}
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
+                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>
@@ -583,6 +619,7 @@ export function WorkspaceLibrary({
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
                 accent={accent}
+                actions={actionButtonsFor(entry, true)}
               />
             ))}
           </div>

@@ -299,3 +299,11 @@ export function advancedFeatureHrefForItem(item: LibraryItem): string | null {
   const feature = advancedFeatureForItem(item);
   return feature ? advancedFeatureHref(feature, { item }) : null;
 }
+
+/**
+ * Public material shelves keep only items that map to one of the 12 advanced
+ * editors with a trusted typed capability. View-only reference rehosts fail.
+ */
+export function isAdvancedEditableShelfItem(item: LibraryItem): boolean {
+  return advancedFeatureForItem(item) !== null;
+}

@@ -246,6 +246,7 @@ export {
   advancedFeatureForItem,
   advancedFeatureHref,
   advancedFeatureHrefForItem,
+  isAdvancedEditableShelfItem,
 } from "./advanced-features";
 export type {
   AdvancedFeatureDefinition,

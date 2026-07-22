@@ -447,7 +447,11 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
   );
   assert.match(
     actions,
-    /\["preview", "edit", "insert", "replace"\]/,
+    /\["edit", "preview"\]/,
+  );
+  assert.match(
+    actions,
+    /\["insert", "replace"\]/,
   );
   assert.doesNotMatch(actions, /"apply"|"merge"/);
   assert.match(actions, /getArtifactDownload/);
@@ -456,7 +460,7 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     actions,
     /result\.data\.revisionId !== durableItem\.revisionId/,
   );
-  assert.match(library, /Card activation is always Preview/);
+  assert.match(library, /Primary card activation is Edit/);
   assert.match(library, /application\/x-oceanleo-material\+json/);
   assert.match(library, /id: item\?\.key \|\| entry\.id/);
   assert.doesNotMatch(
@@ -468,13 +472,17 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
   );
 });
 
-test("library cards stay quiet: no badge, no per-card actions, no machine roles", () => {
+test("library cards show Edit/Download/Favorite/Fullscreen/Link actions", () => {
   const cardView = readFileSync(
     new URL("../src/shell/workspace-library-view.tsx", import.meta.url),
     "utf8",
   );
   const library = readFileSync(
     new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  const actions = readFileSync(
+    new URL("../src/shell/ArtifactActions.tsx", import.meta.url),
     "utf8",
   );
   const controller = readFileSync(
@@ -489,11 +497,15 @@ test("library cards stay quiet: no badge, no per-card actions, no machine roles"
   assert.doesNotMatch(card, /absolute bottom-2 left-2/);
   assert.match(card, /line-clamp-1/);
   assert.doesNotMatch(card, /entry\.description &&/);
-  // Grid/list cards carry no per-card action buttons; the detail header keeps
-  // them (exactly one call site of actionButtonsFor remains).
+  // Grid/list cards carry the shared action buttons; detail keeps them too.
   const gridAndList = library.slice(library.indexOf("view === \"list\""));
-  assert.doesNotMatch(gridAndList, /actionButtonsFor/);
-  assert.equal(library.split("actionButtonsFor(").length - 1, 1);
+  assert.match(gridAndList, /actionButtonsFor\(entry, true\)/);
+  assert.ok(library.split("actionButtonsFor(").length - 1 >= 2);
+  assert.match(actions, /hidePreview/);
+  assert.match(actions, /onFullscreen/);
+  assert.match(actions, /linkUrl/);
+  assert.match(actions, /tt\("全屏"\)/);
+  assert.match(actions, /tt\("链接"\)/);
   // Machine role names never become card descriptions.
   assert.doesNotMatch(controller, /roles\.join/);
   // Drag-to-canvas and one-click primary actions survive the cleanup.
