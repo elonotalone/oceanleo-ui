@@ -362,21 +362,24 @@ export function MaterialLibrary({
       (result) => {
         if (controller.signal.aborted) return;
         const item = result.data;
+        const artifact = item?.artifact;
         const trustedItem = Boolean(
           item &&
+            artifact &&
             isDurableLibraryItem(item) &&
-            artifactIsVisible(item.artifact) &&
+            artifactIsVisible(artifact) &&
             isAdvancedEditableShelfItem(item),
         );
         const inScope = Boolean(
           result.ok &&
             item &&
+            artifact &&
             trustedItem &&
             (!taxonomy || item.artifactType === taxonomy) &&
             (level === "more"
-              ? item.artifact.owner.visibility === "public" &&
-                item.artifact.roles.includes("template")
-              : artifactHasExactContext(item.artifact, context)),
+              ? artifact.owner.visibility === "public" &&
+                artifact.roles.includes("template")
+              : artifactHasExactContext(artifact, context)),
         );
         if (!inScope || !item) {
           setDeepLinkError(
