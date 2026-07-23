@@ -14,18 +14,47 @@ export function RichDocStage({
 }) {
   const tt = useUI();
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
+    <div
+      role="region"
+      aria-label={tt("文档编辑器")}
+      aria-busy={editor.loading}
+      className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]"
+    >
       <style>{RICHDOC_CSS}</style>
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-8">
         <div className="relative mx-auto min-h-full max-w-[860px] rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-8 py-10 shadow-sm sm:px-14">
           {editor.loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/90">
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/90"
+            >
               <p className="text-[12px] text-[var(--muted,#78716c)]">
                 {tt("正在载入文档…")}
               </p>
             </div>
           )}
-          <EditorContent editor={editor.editor} className="min-h-[720px]" />
+          {!editor.loading && editor.error && (
+            <div
+              role="alert"
+              className="absolute inset-x-6 top-4 z-20 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
+            >
+              {tt(editor.error)}
+            </div>
+          )}
+          {!editor.loading && !editor.error && editor.chars === 0 && (
+            <p
+              role="status"
+              className="pointer-events-none absolute inset-x-8 top-12 text-[12px] text-[var(--muted,#78716c)]"
+            >
+              {tt("空白文档，开始输入内容")}
+            </p>
+          )}
+          <EditorContent
+            editor={editor.editor}
+            aria-label={tt("文档编辑区")}
+            className="min-h-[720px]"
+          />
         </div>
       </div>
 

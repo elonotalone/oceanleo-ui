@@ -86,6 +86,15 @@ export function GridStage({
   const tt = useUI();
   const [scrollTop, setScrollTop] = useState(0);
   const rows = editor.visibleRowIndexes;
+  const hasContent = useMemo(
+    () =>
+      editor.sheets.some((sheet) =>
+        sheet.rows.some((row) =>
+          row.some((cell) => String(cell ?? "").trim().length > 0),
+        ),
+      ),
+    [editor.sheets],
+  );
   const columnCount = gridColCount(editor.activeSheet);
   const rowCount = gridRowCount(editor.activeSheet);
   const rawStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
@@ -158,7 +167,12 @@ export function GridStage({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]">
+    <div
+      role="region"
+      aria-label={tt("表格编辑器")}
+      aria-busy={editor.loading}
+      className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]"
+    >
       {editor.selectedCell && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border,#e7e5e4)] px-3">
           <span className="w-14 shrink-0 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
@@ -205,11 +219,34 @@ export function GridStage({
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {editor.loading && (
-          <div className="absolute inset-0 z-40 grid place-items-center bg-[var(--card,#fff)]/90 text-[12px] text-[var(--muted,#78716c)]">
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-40 grid place-items-center bg-[var(--card,#fff)]/90 text-[12px] text-[var(--muted,#78716c)]"
+          >
             {tt("正在读取工作簿…")}
           </div>
         )}
-        <table className="border-separate border-spacing-0 text-[11px]">
+        {!editor.loading && editor.error && (
+          <div
+            role="alert"
+            className="sticky left-1/2 top-3 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
+          >
+            {tt(editor.error)}
+          </div>
+        )}
+        {!editor.loading && !editor.error && !hasContent && (
+          <p
+            role="status"
+            className="pointer-events-none absolute left-16 top-11 z-20 rounded-md bg-[var(--card,#fff)]/90 px-2 py-1 text-[11px] text-[var(--muted,#78716c)]"
+          >
+            {tt("空白工作簿，选择单元格开始输入")}
+          </p>
+        )}
+        <table
+          aria-label={tt("工作簿网格")}
+          className="border-separate border-spacing-0 text-[11px]"
+        >
           <thead className="sticky top-0 z-30">
             <tr>
               <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]">

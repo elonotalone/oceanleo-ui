@@ -201,6 +201,11 @@ async function loadDeck(
   const isPptxPackage =
     officePackageKindForItem(item) === "pptx" ||
     ["pptx", "pptm", "potx", "potm"].includes(extension);
+  if (["ppt", "pot", "odp"].includes(extension)) {
+    throw new Error(
+      `轻量演示编辑器暂不能解析 .${extension} 源文件；请转换为 PPTX 后重试。`,
+    );
+  }
   try {
     if (isPptxPackage) {
       const { arrayBuffer } = await fetchValidatedOfficePackage(

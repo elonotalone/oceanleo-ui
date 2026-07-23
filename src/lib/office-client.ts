@@ -1,163 +1,85 @@
-"use client";
+/**
+ * Pure Office-family classification used by the lightweight browser editors.
+ *
+ * This module deliberately has no transport, script-loader, DOM-global, or
+ * embedded-editor lifecycle. Source retrieval and durable saves stay in the
+ * RichDoc, Grid, and Deck editor chains.
+ */
 
-// ============================================================================
-// @oceanleo/ui — OnlyOffice 客户端（单一事实源）
-// ----------------------------------------------------------------------------
-// 高级内容工作台的 pptx/docx/xlsx 真编辑走自托管 OnlyOffice Document Server
-// （office.oceanleo.com）。浏览器不接触 JWT secret：向网关要一份签好名的
-// editor config，再加载 DS 的 api.js 实例化编辑器。保存由 DS 回调网关完成
-// （新版本进「我的库」，不覆盖原文件）。
-// ============================================================================
+export type LightweightOfficeKind = "document" | "sheet" | "ppt";
+export type LightweightOfficeRoute = "richdoc" | "grid" | "deck";
 
-import { accessToken } from "./auth/client";
-import { GATEWAY_BASE } from "./auth/config";
+const DOCUMENT_EXTENSIONS = new Set([
+  "docx",
+  "doc",
+  "docm",
+  "dotx",
+  "odt",
+  "rtf",
+  "txt",
+  "epub",
+  "mht",
+]);
+const CELL_EXTENSIONS = new Set([
+  "xlsx",
+  "xls",
+  "xlsm",
+  "xlsb",
+  "xltx",
+  "ods",
+  "csv",
+  "tsv",
+]);
+const SLIDE_EXTENSIONS = new Set([
+  "pptx",
+  "ppt",
+  "pptm",
+  "pot",
+  "potx",
+  "potm",
+  "odp",
+]);
 
-export interface OfficeConfigResult {
-  ok: boolean;
-  error?: string;
-  documentServerUrl?: string;
-  config?: Record<string, unknown>;
-}
-
-/** 向网关要一份 JWT 签名的 OnlyOffice editor config。 */
-export async function fetchOfficeConfig(input: {
-  url: string;
-  title: string;
-  kind: string;
-  siteId?: string;
-  itemId?: string;
-}): Promise<OfficeConfigResult> {
-  const token = await accessToken();
-  if (!token) return { ok: false, error: "未登录" };
-  let response: Response;
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 30_000);
-  try {
-    response = await fetch(`${GATEWAY_BASE}/v1/office/config`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        url: input.url,
-        title: input.title,
-        kind: input.kind,
-        site_id: input.siteId || "",
-        item_id: input.itemId || "",
-      }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof DOMException && error.name === "AbortError"
-          ? "获取 Office 配置超时，请重试"
-          : "网络错误：无法连接网关",
-    };
-  } finally {
-    window.clearTimeout(timeout);
-  }
-  let data: Record<string, unknown> | null = null;
-  try {
-    data = (await response.json()) as Record<string, unknown>;
-  } catch {
-    /* non-JSON */
-  }
-  if (!response.ok) {
-    return {
-      ok: false,
-      error: String((data as { detail?: string } | null)?.detail || `HTTP ${response.status}`),
-    };
-  }
-  return {
-    ok: true,
-    documentServerUrl: String(data?.documentServerUrl || ""),
-    config: (data?.config as Record<string, unknown>) || {},
-  };
-}
-
-let scriptPromise: Promise<void> | null = null;
-
-function loadOfficeScriptOnce(documentServerUrl: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `${documentServerUrl.replace(/\/$/, "")}/web-apps/apps/api/documents/api.js`;
-    script.async = true;
-    const timeout = window.setTimeout(() => {
-      script.remove();
-      reject(new Error("OnlyOffice 脚本加载超时"));
-    }, 30_000);
-    script.onload = () => {
-      window.clearTimeout(timeout);
-      resolve();
-    };
-    script.onerror = () => {
-      window.clearTimeout(timeout);
-      script.remove();
-      reject(new Error("OnlyOffice 脚本加载失败"));
-    };
-    document.head.appendChild(script);
-  });
-}
-
-/** 加载 Document Server 的 api.js（幂等）。 */
-export function loadOfficeScript(documentServerUrl: string): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("SSR"));
-  const w = window as unknown as { DocsAPI?: unknown };
-  if (w.DocsAPI) return Promise.resolve();
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = (async () => {
-    try {
-      await loadOfficeScriptOnce(documentServerUrl);
-    } catch {
-      // A mobile/CN route can stall while the browser is opening the first
-      // cross-origin connection. One clean retry avoids leaving every later
-      // editor mount pinned to a rejected global promise.
-      await new Promise((resolve) => window.setTimeout(resolve, 400));
-      await loadOfficeScriptOnce(documentServerUrl);
-    }
-  })().catch((error) => {
-    scriptPromise = null;
-    throw error;
-  });
-  return scriptPromise;
-}
-
-/** OnlyOffice 支持的扩展名（编辑模式）。 */
 const OFFICE_EXTENSIONS = new Set([
-  "docx", "doc", "odt", "rtf", "txt", "docm", "dotx", "epub",
-  "xlsx", "xls", "ods", "csv", "xlsm", "xltx",
-  "pptx", "ppt", "odp", "pptm", "pot", "potx", "potm",
-  "pdf",
+  ...DOCUMENT_EXTENSIONS,
+  ...CELL_EXTENSIONS,
+  ...SLIDE_EXTENSIONS,
 ]);
 
-const OFFICE_CELL_EXTENSIONS = new Set([
-  "xlsx", "xls", "ods", "csv", "xlsm", "xltx",
-]);
-const OFFICE_SLIDE_EXTENSIONS = new Set([
-  "pptx", "ppt", "odp", "pptm", "pot", "potx", "potm",
-]);
-
-/** Normalize generic library files to the material family persisted by Office. */
-export function officeKindForExtension(
-  extension: string,
-): "document" | "sheet" | "ppt" {
-  if (OFFICE_CELL_EXTENSIONS.has(extension.toLowerCase())) return "sheet";
-  if (OFFICE_SLIDE_EXTENSIONS.has(extension.toLowerCase())) return "ppt";
-  return "document";
-}
-
-/** 一个素材 URL 是否应走 OnlyOffice 编辑。 */
-export function officeExtensionOf(url: string): string {
+function normalizeExtension(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^\./, "");
+  if (OFFICE_EXTENSIONS.has(normalized)) return normalized;
   try {
-    const path = new URL(url).pathname.toLowerCase();
-    if (!path.includes(".")) return "";
-    const ext = path.split(".").pop() || "";
-    return OFFICE_EXTENSIONS.has(ext) ? ext : "";
+    const path = new URL(value, "https://local.invalid").pathname.toLowerCase();
+    const extension = path.includes(".") ? path.split(".").pop() || "" : "";
+    return OFFICE_EXTENSIONS.has(extension) ? extension : "";
   } catch {
     return "";
   }
+}
+
+/** Return the recognized Office extension from a URL, filename, or token. */
+export function officeExtensionOf(value: string): string {
+  return normalizeExtension(value);
+}
+
+/** Normalize a recognized extension to the material family used for saves. */
+export function officeKindForExtension(
+  extension: string,
+): LightweightOfficeKind {
+  const normalized = normalizeExtension(extension);
+  if (CELL_EXTENSIONS.has(normalized)) return "sheet";
+  if (SLIDE_EXTENSIONS.has(normalized)) return "ppt";
+  return "document";
+}
+
+/** Select one of the in-process native editor routes, or null when unknown. */
+export function lightweightOfficeRouteForExtension(
+  extension: string,
+): LightweightOfficeRoute | null {
+  const normalized = normalizeExtension(extension);
+  if (DOCUMENT_EXTENSIONS.has(normalized)) return "richdoc";
+  if (CELL_EXTENSIONS.has(normalized)) return "grid";
+  if (SLIDE_EXTENSIONS.has(normalized)) return "deck";
+  return null;
 }

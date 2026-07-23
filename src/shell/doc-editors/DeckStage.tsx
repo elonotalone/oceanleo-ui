@@ -513,8 +513,15 @@ export function DeckStage({
   inkStyle?: DeckInkStyle;
 }) {
   const tt = useUI();
+  const stageRef = useRef<HTMLDivElement>(null);
   const page = deckPageViewport(editor.deck.aspect, zoom);
   const slideTransition = editor.activeSlide.transition;
+  const hasContent = editor.deck.slides.some(
+    (slide) =>
+      Boolean(slide.title.trim() || slide.body.trim() || slide.image?.url) ||
+      slide.bullets.some((bullet) => bullet.trim()) ||
+      slide.elements.length > 0,
+  );
   const viewportRef = useCenteredWheelZoom({
     value: zoom,
     min: 10,
@@ -523,10 +530,17 @@ export function DeckStage({
     contentHeight: page.height,
     onChange: onZoomChange,
   });
-  useDeckStageShortcuts(editor);
+  useDeckStageShortcuts(editor, stageRef);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]">
+    <div
+      ref={stageRef}
+      role="region"
+      tabIndex={0}
+      aria-label={tt("演示文稿编辑器")}
+      aria-busy={editor.loading}
+      className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--awb-accent)]"
+    >
       <style>{`
         @keyframes oleo-deck-slide-fade{from{opacity:0}to{opacity:1}}
         @keyframes oleo-deck-slide-push-left{from{translate:14% 0;opacity:.65}to{translate:0 0;opacity:1}}
@@ -586,9 +600,29 @@ export function DeckStage({
             </div>
           </div>
           {editor.loading && (
-            <div className="absolute inset-0 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]">
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]"
+            >
               {tt("正在载入演示文稿…")}
             </div>
+          )}
+          {!editor.loading && editor.error && (
+            <div
+              role="alert"
+              className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
+            >
+              {tt(editor.error)}
+            </div>
+          )}
+          {!editor.loading && !editor.error && !hasContent && (
+            <p
+              role="status"
+              className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
+            >
+              {tt("空白演示文稿，双击页面文字开始编辑")}
+            </p>
           )}
         </main>
       </div>

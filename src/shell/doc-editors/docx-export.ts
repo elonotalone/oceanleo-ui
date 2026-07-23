@@ -228,7 +228,7 @@ async function blockChildren(
   return output;
 }
 
-/** Build a real OOXML document that can be reopened by OnlyOffice and Word. */
+/** Build a real OOXML document that can be reopened by standard DOCX readers. */
 export async function tiptapJsonToDocxBlob(
   title: string,
   root: TiptapNode,

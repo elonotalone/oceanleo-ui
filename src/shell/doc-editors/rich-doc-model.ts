@@ -12,6 +12,7 @@
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
+import { officeExtensionForItem } from "../workbench-routes";
 import { urlExtension } from "./doc-io";
 import {
   fetchValidatedOfficePackage,
@@ -39,6 +40,14 @@ export interface RichDocLoadResult {
   source: RichDocSource;
   error: string;
 }
+
+const UNSUPPORTED_DOCUMENT_EXTENSIONS = new Set([
+  "doc",
+  "odt",
+  "rtf",
+  "epub",
+  "mht",
+]);
 
 async function sanitizeHtml(html: string): Promise<string> {
   const DOMPurify = (await import("dompurify")).default;
@@ -106,7 +115,7 @@ export async function loadRichDocHtml(
 ): Promise<RichDocLoadResult> {
   try {
     const url = item.url || "";
-    const ext = urlExtension(url);
+    const ext = urlExtension(url) || officeExtensionForItem(item);
     const isDocx =
       officePackageKindForItem(item) === "docx" || ext === "docx";
     if (url && isDocx) {
@@ -123,6 +132,13 @@ export async function loadRichDocHtml(
     const inline = inlineSource(item);
     if (inline) {
       return { html: await markdownToHtml(inline), source: "inline", error: "" };
+    }
+    if (url && UNSUPPORTED_DOCUMENT_EXTENSIONS.has(ext)) {
+      return {
+        html: "<p></p>",
+        source: "empty",
+        error: `轻量文档编辑器暂不能解析 .${ext} 源文件；请转换为 DOCX 后重试。`,
+      };
     }
     if (url && ["md", "markdown", "txt", "html", "htm"].includes(ext)) {
       const text = await (await fetchMediaBlob(url)).text();

@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { DeckEditorState } from "./use-deck-editor";
 
-export function useDeckStageShortcuts(editor: DeckEditorState) {
+export function useDeckStageShortcuts(
+  editor: DeckEditorState,
+  scopeRef?: RefObject<HTMLElement | null>,
+) {
   const heldArrowKeys = useRef(new Set<string>());
   const editorRef = useRef(editor);
   editorRef.current = editor;
@@ -11,6 +14,9 @@ export function useDeckStageShortcuts(editor: DeckEditorState) {
     const onKeyDown = (event: KeyboardEvent) => {
       const currentEditor = editorRef.current;
       const target = event.target as HTMLElement | null;
+      if (scopeRef?.current && (!target || !scopeRef.current.contains(target))) {
+        return;
+      }
       if (
         target?.matches("input, textarea, select, [contenteditable='true']")
       ) {
@@ -98,5 +104,5 @@ export function useDeckStageShortcuts(editor: DeckEditorState) {
         editorRef.current.endGesture();
       }
     };
-  }, []);
+  }, [scopeRef]);
 }

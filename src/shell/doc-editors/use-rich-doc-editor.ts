@@ -116,7 +116,13 @@ export function useRichDocEditor(
     extensions,
     content: "<p></p>",
     editorProps: {
-      attributes: { class: "oleo-richdoc", spellcheck: "false" },
+      attributes: {
+        class: "oleo-richdoc",
+        spellcheck: "true",
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-label": tt("文档编辑区"),
+      },
     },
     onUpdate: ({ editor: instance }) => {
       setCounts(countText(instance.getText()));

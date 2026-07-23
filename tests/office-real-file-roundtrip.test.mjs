@@ -197,17 +197,23 @@ test("preview and all Office routes consume only refreshable source/full inputs"
   const source = (path) =>
     readFileSync(new URL(path, import.meta.url), "utf8");
   const viewer = source("../src/shell/library-viewers.tsx");
-  const office = source(
-    "../src/shell/office-editor/OfficeWorkbench.tsx",
+  const officeSource = source(
+    "../src/shell/office-editor/useOfficeArtifactSource.ts",
   );
+  const officeRoute = source("../src/shell/advanced-routes/OfficeRoute.tsx");
   assert.match(
     viewer,
     /useArtifactRendition\(\s*item,\s*officeViewerRenditionPurposes\(item\)/,
   );
   assert.match(viewer, /fetchValidatedOfficePackage/);
   assert.match(viewer, /fetchValidatedSpreadsheetSource/);
-  assert.match(office, /useOfficeArtifactSource\(item\)/);
-  assert.match(office, /fetchValidatedOfficePackage/);
+  assert.match(officeSource, /officeRenditionPurposes\(item\)/);
+  assert.match(officeSource, /rendition\.purpose === "source"/);
+  assert.match(officeSource, /rendition\.purpose === "full"/);
+  assert.match(officeRoute, /lightweightOfficeRouteForItem\(sourceItem\)/);
+  assert.match(officeRoute, /<RichDocRoute \{\.\.\.routedProps\}/);
+  assert.match(officeRoute, /<GridRoute \{\.\.\.routedProps\}/);
+  assert.match(officeRoute, /<DeckRoute \{\.\.\.routedProps\}/);
   for (const route of ["DeckRoute", "GridRoute", "RichDocRoute"]) {
     const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
     assert.match(contents, /useOfficeArtifactSource\(item\)/, route);
