@@ -476,4 +476,71 @@ test("typed deck save CAS-publishes same-root source and manifest, then hands of
   );
   assert.equal(handoff.meta.previous_revision_id, "r7");
   assert.equal(handoff.title, "Quarterly Plan");
+  assert.equal(handoff.meta.editor_manifest.source.format, DECK_PROJECT_SCHEMA);
+  assert.equal(
+    handoff.meta.editor_manifest.source.url,
+    handoff.meta.editor_project_url,
+  );
+  assert.notEqual(deckDeliveryUrlFor(handoff), deckProjectUrlFor(handoff));
+});
+
+test("legacy oceanleo.deck.v1 source is editor head, never delivery", () => {
+  const legacy = libraryItem({
+    key: "artifact:deck-legacy:r1",
+    source: "artifact",
+    id: "deck-legacy",
+    artifactId: "deck-legacy",
+    revisionId: "r1",
+    artifactType: "deck",
+    url: "https://cdn.test/legacy-deck.json",
+    meta: {
+      artifact_id: "deck-legacy",
+      revision_id: "r1",
+      artifact_type: "deck",
+      source_format: DECK_PROJECT_SCHEMA,
+      source_media_type: "application/vnd.oceanleo.deck+json",
+    },
+    artifact: {
+      artifactId: "deck-legacy",
+      revisionId: "r1",
+      artifactType: "deck",
+      sourceFormat: DECK_PROJECT_SCHEMA,
+      integrity: { ok: true, code: "ok", reason: "" },
+      renditions: {
+        source: {
+          purpose: "source",
+          revisionId: "r1",
+          url: "https://cdn.test/legacy-deck.json",
+          format: DECK_PROJECT_SCHEMA,
+          mediaType: "application/vnd.oceanleo.deck+json",
+          digest: "sha256:abc",
+        },
+      },
+    },
+  });
+
+  assert.equal(deckProjectUrlFor(legacy), "https://cdn.test/legacy-deck.json");
+  assert.equal(deckDeliveryUrlFor(legacy), "");
+});
+
+test("doc-io rejects editor JSON masquerading as delivery source", async () => {
+  const events = [];
+  const dependencies = producerDependencies({
+    events,
+    onSave: () => {
+      throw new Error("must not publish");
+    },
+  });
+  const failed = await saveFileToLibraryWithDependencies(
+    saveInput(libraryItem(), async () => {
+      throw new Error("should not build delivery");
+    }, {
+      sourceFormat: DECK_PROJECT_SCHEMA,
+      sourceMediaType: "application/vnd.oceanleo.deck+json",
+    }),
+    dependencies,
+  );
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /交付 source 不能是 editor JSON/);
+  assert.deepEqual(events, []);
 });

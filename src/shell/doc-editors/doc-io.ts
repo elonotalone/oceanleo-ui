@@ -368,6 +368,22 @@ export async function saveFileToLibraryWithDependencies(
     error: result.error ?? "",
   });
 
+  if (
+    input.project &&
+    !input.projectOnly &&
+    (sourceFormat.startsWith("oceanleo.") ||
+      sourceFormat.includes("json") ||
+      sourceMediaType === "application/json" ||
+      sourceMediaType.startsWith("application/vnd.oceanleo") ||
+      sourceMediaType.endsWith("+json"))
+  ) {
+    return finish({
+      ok: false,
+      error:
+        "交付 source 不能是 editor JSON/project schema；请登记真实二进制格式（如 pptx）",
+    });
+  }
+
   if (input.project) {
     projectSchema = boundedText(input.project.schema, 120);
     if (!projectSchema) {

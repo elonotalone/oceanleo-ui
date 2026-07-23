@@ -154,6 +154,58 @@ export function groupSelectionOverflowControls(
   return [...groups.values()];
 }
 
+/**
+ * Live selection kinds that must remain reachable through More under real
+ * measured widths. Site adapters project these kinds into SelectionToolbar;
+ * the shared chrome owns overflow discoverability.
+ */
+export interface SelectionLiveCapability {
+  id: string;
+  label: string;
+}
+
+const LIVE_CAPABILITY_BY_PREFIX: ReadonlyArray<{
+  prefix: string;
+  capability: SelectionLiveCapability;
+}> = [
+  { prefix: "grid", capability: { id: "grid", label: "表格" } },
+  { prefix: "chart", capability: { id: "chart", label: "图表" } },
+  { prefix: "design", capability: { id: "design", label: "设计" } },
+  { prefix: "deck", capability: { id: "deck", label: "幻灯片" } },
+  { prefix: "rich-doc", capability: { id: "rich-doc", label: "文档" } },
+  { prefix: "doc", capability: { id: "doc", label: "文档" } },
+  { prefix: "video", capability: { id: "video", label: "视频" } },
+  { prefix: "image", capability: { id: "image", label: "图片" } },
+  { prefix: "audio", capability: { id: "audio", label: "音频" } },
+  { prefix: "pdf", capability: { id: "pdf", label: "PDF" } },
+  { prefix: "model", capability: { id: "model", label: "模型" } },
+];
+
+export function selectionLiveCapability(
+  kind: string | null | undefined,
+): SelectionLiveCapability | null {
+  if (!kind) return null;
+  const normalized = kind.trim().toLowerCase();
+  if (!normalized) return null;
+  for (const entry of LIVE_CAPABILITY_BY_PREFIX) {
+    if (
+      normalized === entry.prefix ||
+      normalized.startsWith(`${entry.prefix}-`) ||
+      normalized.startsWith(`${entry.prefix}_`)
+    ) {
+      return entry.capability;
+    }
+  }
+  return null;
+}
+
+export function selectionMoreDialogLabel(
+  kind: string | null | undefined,
+): string {
+  const capability = selectionLiveCapability(kind);
+  return capability ? `更多属性 · ${capability.label}` : "更多属性";
+}
+
 export function estimatedSelectionControlWidth(
   control: SelectionControl,
 ): number {

@@ -148,6 +148,9 @@ export function DeckElementContent({
                       key={cellIndex}
                       contentEditable={editing && !miniature}
                       suppressContentEditableWarning
+                      data-deck-editable-text={
+                        editing && !miniature ? true : undefined
+                      }
                       autoFocus={
                         editing &&
                         !miniature &&

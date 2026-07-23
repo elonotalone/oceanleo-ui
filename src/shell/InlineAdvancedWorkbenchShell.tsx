@@ -19,6 +19,7 @@ import {
   FloatingContextToolbar,
   useFloatingContextToolbar,
 } from "./FloatingContextToolbar";
+import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
@@ -64,14 +65,38 @@ export function InlineAdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
+  // MaterialCatalog / MaterialLibrary / MyLibrary embed this shell without
+  // SplitWorkspace. Keep a local dock host under the action row so pin /
+  // undock / redock still expose data-workspace-edit-bar-dock on those
+  // production surfaces.
+  const localEditBarDockRef = useRef<HTMLDivElement>(null);
+  const editBarDockRef =
+    rightPaneSlot?.editBarDockRef ?? localEditBarDockRef;
   const floatingToolbar = useFloatingContextToolbar({
     workspaceRootRef: workspacePane?.fullscreenRef,
     stageRef,
-    dockRootRef: rightPaneSlot?.editBarDockRef,
+    dockRootRef: editBarDockRef,
     resetKey: `${adapter.id}:${item.key || item.id}`,
   });
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
+  );
+  const localDockPresentation = useMemo(
+    () =>
+      rightPaneSlot
+        ? null
+        : {
+            ownerId: ownerIdRef.current,
+            mode: floatingToolbar.mode,
+            dropActive: floatingToolbar.dropActive,
+            accent,
+          },
+    [
+      accent,
+      floatingToolbar.dropActive,
+      floatingToolbar.mode,
+      rightPaneSlot,
+    ],
   );
   const liveDetailStoreRef = useRef(createLiveReactNodeStore());
   const liveHeaderStoreRef = useRef(createLiveReactNodeStore());
@@ -553,7 +578,11 @@ export function InlineAdvancedWorkbenchShell({
         style={advancedWorkbenchStyle(accent)}
       >
         {fallbackDetail && (
-          <aside className="flex w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]">
+          <aside
+            data-workspace-pane="left"
+            data-left-panel="tool-detail"
+            className="flex w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
+          >
             <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
               <button
                 type="button"
@@ -574,9 +603,15 @@ export function InlineAdvancedWorkbenchShell({
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {!rightPaneSlot && (
-            <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
-              {actionBar}
-            </div>
+            <>
+              <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
+                {actionBar}
+              </div>
+              <EditBarDockHost
+                hostRef={localEditBarDockRef}
+                presentation={localDockPresentation}
+              />
+            </>
           )}
           <div
             ref={stageRef}

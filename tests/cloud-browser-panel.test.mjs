@@ -1024,9 +1024,10 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
   assert.match(interactionSource, /event\.key\.toLowerCase\(\) === "v"/);
   assert.doesNotMatch(interactionSource, /openOmnibox|nav\.open/);
   assert.match(interactionSource, /"focus"/);
-  // Remote focus must follow pointer up, never sit between down and up.
-  // A mid-click windowactivate corrupts the native Chrome click and drops
-  // page focus before text.commit paste (V2-04/V2-05).
+  // Remote focus must never sit in the pointer chord, after pointer up, on
+  // hidden-input focus, or immediately before text.commit. Extra
+  // windowactivate after the click steals page focus before paste; executor
+  // commit_text already activates before ctrl+v (V2-04/V2-05).
   assert.match(
     interactionSource,
     /sendMutation\("pointer", \{[\s\S]*?event: "down"[\s\S]*?\}\);\s*\/\/ Local keyboard sink only[\s\S]*?focusLocalInput\(\);/,
@@ -1035,9 +1036,29 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
     interactionSource,
     /event: "down"[\s\S]{0,400}focusRemoteWindow\(\)/,
   );
+  assert.doesNotMatch(
+    interactionSource,
+    /event: event\.type === "pointercancel" \? "cancel" : "up"[\s\S]{0,500}focusRemoteWindow\(\)/,
+  );
   assert.match(
     interactionSource,
-    /event: event\.type === "pointercancel" \? "cancel" : "up"[\s\S]*?focusRemoteWindow\(\);/,
+    /event: event\.type === "pointercancel" \? "cancel" : "up"[\s\S]*?focusLocalInput\(\);/,
+  );
+  assert.match(
+    interactionSource,
+    /function handleHiddenFocus\(\) \{\s*\/\/ The hidden textarea is only a local keyboard/,
+  );
+  assert.match(
+    interactionSource,
+    /function handleHiddenFocus\(\) \{\s*\/\/ The hidden textarea[\s\S]*?\}\s*function handleHiddenBlur/,
+  );
+  assert.doesNotMatch(
+    interactionSource,
+    /function handleHiddenFocus\(\) \{[^}]*sendMutation/,
+  );
+  assert.doesNotMatch(
+    interactionSource,
+    /function sendText\([^)]*\) \{[^}]*sendMutation\("focus"/,
   );
   assert.match(interactionSource, /"clipboard\.paste"/);
   assert.match(interactionSource, /"composition\.start"/);
@@ -1052,6 +1073,13 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
   assert.match(
     transportSource,
     /v3Envelope\("heartbeat", \{ sent_at: Date\.now\(\) \}\)/,
+  );
+  // Executor successful receipts include JSON null for optional code/message.
+  assert.match(modelSource, /message\.code != null/);
+  assert.match(modelSource, /message\.message != null/);
+  assert.doesNotMatch(
+    modelSource,
+    /message\.code !== undefined &&\s*!boundedString\(message\.code/,
   );
 });
 

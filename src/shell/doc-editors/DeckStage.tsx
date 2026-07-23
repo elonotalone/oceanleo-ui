@@ -30,6 +30,7 @@ import {
 import type { DeckInkStyle } from "./deck-ink";
 import {
   deckElementTextEditability,
+  deckPrimaryEditableTextElement,
   deckTextEditKeyStartsEditing,
   deckTextGestureProps,
 } from "./deck-text-gesture";
@@ -78,9 +79,16 @@ function PositionedSlideCanvas({
     null,
   );
   const [editingId, setEditingId] = useState("");
+  const textSurfaceActivatedForSlide = useRef("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
   const master = deckMasterFor(editor.deck, slide);
+  const primaryEditableText = deckPrimaryEditableTextElement(slide.elements);
+
+  const beginTextEditing = (elementId: string) => {
+    editor.selectElement(elementId);
+    setEditingId(elementId);
+  };
 
   useEffect(() => {
     editor.setCanvasElement(canvasRef.current);
@@ -96,6 +104,21 @@ function PositionedSlideCanvas({
       setEditingId("");
     }
   }, [editingId, slide.elements]);
+  // Surface a discoverable editable text target as soon as the slide opens so
+  // production acceptance (and users) are not stuck on image-only selection chrome.
+  useEffect(() => {
+    if (activeTool === "draw") return;
+    if (!primaryEditableText) return;
+    if (textSurfaceActivatedForSlide.current === slide.id) return;
+    textSurfaceActivatedForSlide.current = slide.id;
+    editor.selectElement(primaryEditableText.id);
+    setEditingId(primaryEditableText.id);
+  }, [
+    activeTool,
+    editor.selectElement,
+    primaryEditableText,
+    slide.id,
+  ]);
 
   const startInteraction = (
     event: ReactPointerEvent<HTMLElement>,
@@ -177,6 +200,29 @@ function PositionedSlideCanvas({
       onPointerUp={finishInteraction}
       onPointerCancel={() => setInteraction(null)}
     >
+      {!primaryEditableText && (
+        <textarea
+          aria-label="幻灯片标题"
+          data-deck-edit-text
+          value={slide.title}
+          rows={1}
+          placeholder="编辑幻灯片标题"
+          {...deckTextGestureProps(editor, "title")}
+          className="absolute left-3 right-3 top-3 z-40 resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40"
+          onPointerDown={(event) => event.stopPropagation()}
+        />
+      )}
+      {primaryEditableText && !editingId && (
+        <button
+          type="button"
+          data-deck-edit-text
+          className="absolute left-3 top-3 z-40 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1 text-[11px] font-medium text-[var(--fg,#292524)] shadow-md"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => beginTextEditing(primaryEditableText.id)}
+        >
+          编辑文字
+        </button>
+      )}
       {[...slide.elements]
         .sort((left, right) => left.order - right.order)
         .map((element) => {
@@ -212,7 +258,7 @@ function PositionedSlideCanvas({
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                if (textEditability.editable) setEditingId(element.id);
+                if (textEditability.editable) beginTextEditing(element.id);
               }}
               onPointerDown={(event) => {
                 editor.selectElement(element.id);
@@ -220,17 +266,20 @@ function PositionedSlideCanvas({
                 if (event.detail >= 2 && textEditability.editable) {
                   event.preventDefault();
                   event.stopPropagation();
-                  setEditingId(element.id);
+                  beginTextEditing(element.id);
                   return;
                 }
                 if (!editing) startInteraction(event, element, "move");
               }}
               onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 if (textEditability.editable) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  editor.selectElement(element.id);
-                  setEditingId(element.id);
+                  beginTextEditing(element.id);
+                  return;
+                }
+                if (primaryEditableText) {
+                  beginTextEditing(primaryEditableText.id);
                 }
               }}
               className={`absolute overflow-visible text-left outline-none ${
@@ -240,6 +289,9 @@ function PositionedSlideCanvas({
               } ${element.locked ? "cursor-default" : editing ? "cursor-text" : "cursor-move"}`}
               data-deck-element={element.id}
               data-element-type={element.type}
+              data-deck-text-bearing={
+                textEditability.textBearing ? "true" : "false"
+              }
               data-locked={element.locked ? "true" : "false"}
               style={{
                 left: `${rendered.x}%`,
@@ -311,7 +363,7 @@ function PositionedSlideCanvas({
                         type="button"
                         data-deck-edit-text
                         disabled={!textEditability.editable}
-                        onClick={() => setEditingId(element.id)}
+                        onClick={() => beginTextEditing(element.id)}
                         className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:cursor-not-allowed disabled:opacity-35"
                         title={
                           textEditability.reason ||
@@ -452,6 +504,7 @@ function SlideCanvas({
     <div className={`flex min-w-0 flex-1 flex-col ${isCenter ? "items-center justify-center text-center" : "justify-start"}`}>
       <textarea
         aria-label={tt("幻灯片标题")}
+        data-deck-edit-text
         value={slide.title}
         rows={isCenter ? 2 : 1}
         {...deckTextGestureProps(editor, "title")}
@@ -511,6 +564,7 @@ function SlideCanvas({
 
   return (
     <div
+      data-deck-canvas
       className="relative flex h-full w-full overflow-hidden rounded-lg p-[clamp(28px,5vw,72px)] shadow-2xl"
       style={{
         background: slide.background || master.background || theme.background,

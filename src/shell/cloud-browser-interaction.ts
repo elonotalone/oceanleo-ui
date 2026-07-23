@@ -473,9 +473,9 @@ export function useCloudBrowserInteraction({
   function focusRemoteWindow() {
     if (!driving || transportState !== "streaming") return;
     // Remote focus is a separate wire mutation (executor windowactivate).
-    // Never emit it between pointer down and up — that sandwiches an extra
-    // windowactivate into a held native click and drops page focus before
-    // text.commit paste (V2-04/V2-05 empty Google search after takeover).
+    // Never emit it around a pointer chord or local textarea focus — an
+    // extra windowactivate after the click steals page focus from the
+    // Google search field before text.commit paste (V2-04/V2-05).
     sendMutation("focus", { focused: true });
     focusLocalInput();
   }
@@ -513,7 +513,7 @@ export function useCloudBrowserInteraction({
       pointer_id: mappedPointerId,
     });
     // Local keyboard sink only. Executor pointer() already activates the
-    // Chrome window before mousedown; do not send focus here.
+    // Chrome window before mousedown; do not send remote focus here.
     focusLocalInput();
   }
 
@@ -567,13 +567,10 @@ export function useCloudBrowserInteraction({
     } catch {
       // Pointer may already have been released.
     }
-    if (event.type === "pointercancel") {
-      focusLocalInput();
-      return;
-    }
-    // After the click completes, arm remote focus for the following text
-    // path without interleaving windowactivate into the pointer chord.
-    focusRemoteWindow();
+    // Local keyboard sink only. Do not remote-focus after up: executor
+    // pointer() already windowactivated, and another activate here races
+    // the page focus the click just established before text.commit paste.
+    focusLocalInput();
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
@@ -605,9 +602,9 @@ export function useCloudBrowserInteraction({
   }
 
   function handleHiddenFocus() {
-    if (driving && transportState === "streaming") {
-      sendMutation("focus", { focused: true });
-    }
+    // The hidden textarea is only a local keyboard/IME sink. Focusing it
+    // after a canvas click must not emit remote windowactivate — that
+    // steals DOM focus from the remote page field before paste.
   }
 
   function handleHiddenBlur(
@@ -652,9 +649,9 @@ export function useCloudBrowserInteraction({
 
   function sendText(text: string, compositionId: string) {
     if (!text) return false;
-    // Ensure the native window is active before clipboard paste injection.
-    // Safe here: text commits never run between pointer down and up.
-    sendMutation("focus", { focused: true });
+    // Do not send a client focus mutation first. Executor commit_text
+    // already windowactivates immediately before ctrl+v; a prior client
+    // focus can clear the page field focus established by the click.
     return sendMutation("text.commit", {
       text,
       composition_id: compositionId,

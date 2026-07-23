@@ -1479,6 +1479,42 @@ test("a rejected acquire is explicit and cannot remain queued for replay", () =>
   );
 });
 
+test("executor action.receipt null code/message does not tear down the lease", () => {
+  // Production executor serializes optional receipt fields as JSON null.
+  // Treating null like a bad string caused protocol_mismatch → reconnect →
+  // 只读/spinner and left V2-04/V2-05 with byte-identical frames.
+  const { fixture, state } = streamingFixtureState();
+  const acquired = reduceCloudBrowserProtocolMessage(
+    state,
+    fixture.control_state,
+    PROTOCOL_FALLBACKS,
+  ).state;
+  assert.equal(acquired.leaseOwned, true);
+  const reduced = reduceCloudBrowserProtocolMessage(
+    acquired,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "action.receipt"),
+      action_sequence: acquired.lastActionSequence + 1,
+      client_event_id: "connection-fixture.5.12",
+      status: "accepted",
+      code: null,
+      message: null,
+      callback_sequence: acquired.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.leaseOwned, true);
+  assert.equal(reduced.state.failureKind, null);
+  assert.equal(
+    reduced.state.lastActionSequence,
+    acquired.lastActionSequence + 1,
+  );
+  assert.equal(
+    reduced.effects.some((effect) => effect.type === "reject"),
+    false,
+  );
+});
+
 test("canonical stale-lease errors revoke driving immediately", () => {
   const { fixture, state } = streamingFixtureState();
   const acquired = reduceCloudBrowserProtocolMessage(

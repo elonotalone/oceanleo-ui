@@ -632,4 +632,140 @@ test("dock follows the action row and showDetail reveals console without exiting
     "utf8",
   );
   assert.equal((inline.match(/showWorkspaceDetail\(\{/g) || []).length, 2);
+  // Standalone MaterialCatalog embeds must still own a dock host + pin path
+  // and mark the fallback inspector as the left console for V3-09.
+  assert.match(inline, /localEditBarDockRef/);
+  assert.match(
+    inline,
+    /rightPaneSlot\?\.editBarDockRef \?\? localEditBarDockRef/,
+  );
+  assert.match(inline, /<EditBarDockHost/);
+  assert.match(inline, /localDockPresentation/);
+  assert.match(
+    inline,
+    /data-workspace-pane=\"left\"[\s\S]*data-left-panel=\"tool-detail\"/,
+  );
+});
+
+test("standalone local dock host pins under the action row without SplitWorkspace", async () => {
+  window.localStorage.clear();
+  const storageKey = "test:edit-bar:standalone-local-dock";
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
+    if (this.hasAttribute("data-edit-bar-test-root")) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-dock")) {
+      return {
+        x: 40, y: 40, left: 40, top: 40, right: 960, bottom: 100,
+        width: 920, height: 60, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-edit-bar-test-stage")) {
+      return {
+        x: 40, y: 120, left: 40, top: 120, right: 960, bottom: 560,
+        width: 920, height: 440, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-docked-toolbar") ||
+      this.hasAttribute("data-workspace-floating-toolbar")
+    ) {
+      return {
+        x: 80, y: 50, left: 80, top: 50, right: 480, bottom: 94,
+        width: 400, height: 44, toJSON() {},
+      };
+    }
+    return originalRect.call(this);
+  };
+
+  function StandaloneLocalDock() {
+    const rootRef = useRef(null);
+    const dockRef = useRef(null);
+    const stageRef = useRef(null);
+    const controller = useFloatingContextToolbar({
+      workspaceRootRef: rootRef,
+      stageRef,
+      dockRootRef: dockRef,
+      resetKey: storageKey,
+      storageKey,
+    });
+    return React.createElement(
+      "div",
+      { ref: rootRef, "data-edit-bar-test-root": true },
+      React.createElement(
+        "div",
+        { "data-advanced-action-row": true },
+        "action row",
+      ),
+      React.createElement("div", {
+        ref: dockRef,
+        "data-workspace-edit-bar-dock": true,
+        "data-edit-bar-dock-state": controller.mode,
+      }),
+      React.createElement("div", {
+        ref: stageRef,
+        "data-edit-bar-test-stage": true,
+      }),
+      React.createElement(
+        FloatingContextToolbar,
+        { controller, accent: "#0ea5e9" },
+        React.createElement(
+          "div",
+          null,
+          controller.leading,
+          React.createElement("span", null, "controls"),
+          controller.trailing,
+        ),
+      ),
+    );
+  }
+
+  const mounted = await createMounted(StandaloneLocalDock);
+  try {
+    const dock = mounted.container.querySelector(
+      "[data-workspace-edit-bar-dock]",
+    );
+    assert.ok(dock);
+    assert.equal(dock.dataset.editBarDockState, "docked");
+    assert.ok(
+      dock.querySelector("[data-workspace-docked-toolbar]"),
+    );
+    const pin = mounted.container.querySelector("[data-edit-bar-pin]");
+    assert.ok(pin);
+    assert.equal(pin.getAttribute("data-edit-bar-mode"), "docked");
+    await click(pin);
+    assert.equal(
+      mounted.container
+        .querySelector("[data-edit-bar-pin]")
+        .getAttribute("data-edit-bar-mode"),
+      "floating",
+    );
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-floating-toolbar]"),
+    );
+    assert.equal(
+      mounted.container.querySelector("[data-workspace-edit-bar-dock]")
+        .dataset.editBarDockState,
+      "floating",
+    );
+    await click(mounted.container.querySelector("[data-edit-bar-pin]"));
+    assert.equal(
+      mounted.container
+        .querySelector("[data-edit-bar-pin]")
+        .getAttribute("data-edit-bar-mode"),
+      "docked",
+    );
+    assert.ok(
+      mounted.container
+        .querySelector("[data-workspace-edit-bar-dock]")
+        .querySelector("[data-workspace-docked-toolbar]"),
+    );
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+    await mounted.unmount();
+  }
 });

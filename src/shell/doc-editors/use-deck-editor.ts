@@ -65,7 +65,6 @@ import { importPptxDeck } from "./pptx-deck-import";
 import {
   fetchValidatedOfficePackage,
   notifyOfficeAccessDenied,
-  officePackageKindForItem,
 } from "./office-file";
 
 interface Snapshot {
@@ -170,22 +169,127 @@ function httpUrl(value: unknown): string {
   }
 }
 
+function textHint(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+/** True when a URL/format/media type is structured editor JSON, never OOXML. */
+export function isDeckEditorJsonHint(...hints: unknown[]): boolean {
+  for (const hint of hints) {
+    const value = textHint(hint);
+    if (!value) continue;
+    if (
+      value === DECK_PROJECT_SCHEMA ||
+      value === "application/json" ||
+      value === "application/vnd.oceanleo.deck+json" ||
+      value.startsWith("application/vnd.oceanleo") ||
+      value.includes("oceanleo.deck") ||
+      value.includes("oceanleo-project") ||
+      value.includes("oceanleo-deck") ||
+      value.endsWith("+json") ||
+      /\.json(?:$|[?#])/i.test(value)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function looksLikePptxDelivery(...hints: unknown[]): boolean {
+  for (const hint of hints) {
+    const value = textHint(hint);
+    if (!value || isDeckEditorJsonHint(value)) continue;
+    if (
+      value === DECK_SOURCE_FORMAT ||
+      value === "ppt" ||
+      value === DECK_SOURCE_MEDIA_TYPE ||
+      value.includes("presentationml") ||
+      value.includes("ms-powerpoint") ||
+      /\.pptx?(?:$|[?#])/i.test(value)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Load a durable deck working head. Accepts both the wrapped
+ * `{schema,version,data}` project envelope and legacy raw deck JSON that was
+ * historically published as the artifact source.
+ */
+export async function loadDeckEditorHead(
+  url: string,
+  title: string,
+  signal?: AbortSignal,
+): Promise<DeckDocument> {
+  try {
+    const project = await loadEditorProject<unknown>(
+      url,
+      DECK_PROJECT_SCHEMA,
+      signal,
+    );
+    return normalizeDeckDocument(project, title || "演示文稿");
+  } catch (caught) {
+    if (caught instanceof DOMException && caught.name === "AbortError") {
+      throw caught;
+    }
+    const response = await fetch(url, {
+      signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw caught instanceof Error
+        ? caught
+        : new Error(`可编辑工程读取失败（HTTP ${response.status}）`);
+    }
+    const text = await response.text();
+    if (!text || new TextEncoder().encode(text).byteLength > 20_000_000) {
+      throw caught instanceof Error
+        ? caught
+        : new Error("可编辑工程为空或超过 20MB 安全上限");
+    }
+    return normalizeDeckDocument(JSON.parse(text), title || "演示文稿");
+  }
+}
+
 /** Structured head wins for reopen; the PPTX source remains a separate URL. */
 export function deckProjectUrlFor(item: LibraryItem): string {
   const manifest = record(item.meta.editor_manifest);
   const manifestSource = record(manifest?.source);
-  const artifactManifest = item.artifact?.renditions.editor_manifest?.url;
+  const artifactManifest = item.artifact?.renditions.editor_manifest;
+  const artifactSource = item.artifact?.renditions.source;
+  const legacyJsonSource =
+    isDeckEditorJsonHint(
+      item.artifact?.sourceFormat,
+      artifactSource?.format,
+      artifactSource?.mediaType,
+      item.meta.source_format,
+      item.meta.source_media_type,
+      item.meta.format,
+      item.meta.mime,
+      item.url,
+    ) && !looksLikePptxDelivery(artifactSource?.format, artifactSource?.mediaType)
+      ? artifactSource?.url || item.meta.source_url || item.url
+      : "";
   const candidates = [
     item.meta.editor_project_url,
     item.meta.editor_manifest_url,
-    manifestSource?.format === DECK_PROJECT_SCHEMA
-      ? manifestSource.url
+    manifestSource?.format === DECK_PROJECT_SCHEMA ||
+    isDeckEditorJsonHint(manifestSource?.format)
+      ? manifestSource?.url
       : "",
-    item.meta.editor_working_head_schema === DECK_PROJECT_SCHEMA
+    item.meta.editor_working_head_schema === DECK_PROJECT_SCHEMA ||
+    isDeckEditorJsonHint(item.meta.editor_working_head_schema)
       ? item.meta.editor_working_head_project_url ||
         item.meta.editor_working_head_url
       : "",
-    artifactManifest,
+    artifactManifest?.url,
+    isDeckEditorJsonHint(artifactManifest?.format, artifactManifest?.mediaType)
+      ? artifactManifest?.url
+      : "",
+    legacyJsonSource,
   ];
   for (const candidate of candidates) {
     const url = httpUrl(candidate);
@@ -196,13 +300,52 @@ export function deckProjectUrlFor(item: LibraryItem): string {
 
 /** Download/source handoff never selects the JSON editor project. */
 export function deckDeliveryUrlFor(item: LibraryItem): string {
-  for (const candidate of [
-    item.artifact?.renditions.source?.url,
-    item.meta.source_url,
-    item.url,
-  ]) {
-    const url = httpUrl(candidate);
-    if (url && url !== deckProjectUrlFor(item)) return url;
+  const projectUrl = deckProjectUrlFor(item);
+  const artifactSource = item.artifact?.renditions.source;
+  const candidates: Array<{ url: unknown; hints: unknown[] }> = [
+    {
+      url: artifactSource?.url,
+      hints: [
+        artifactSource?.format,
+        artifactSource?.mediaType,
+        item.artifact?.sourceFormat,
+      ],
+    },
+    {
+      url: item.meta.source_url,
+      hints: [
+        item.meta.source_format,
+        item.meta.source_media_type,
+        item.meta.format,
+        item.meta.mime,
+        item.meta.delivery_format,
+        item.meta.file_name,
+        item.meta.source_url,
+      ],
+    },
+    {
+      url: item.url,
+      hints: [
+        item.artifact?.sourceFormat,
+        item.meta.source_format,
+        item.meta.source_media_type,
+        item.meta.format,
+        item.meta.mime,
+        item.meta.file_name,
+        item.url,
+      ],
+    },
+  ];
+  for (const candidate of candidates) {
+    const url = httpUrl(candidate.url);
+    if (!url || url === projectUrl) continue;
+    if (isDeckEditorJsonHint(...candidate.hints, url)) continue;
+    if (
+      looksLikePptxDelivery(...candidate.hints, url) ||
+      looksLikePptxDelivery(item.meta.source_format, item.meta.delivery_format)
+    ) {
+      return url;
+    }
   }
   return "";
 }
@@ -217,6 +360,23 @@ export function deckSavedItemForHandoff(
       original.artifactId ||
       original.id,
   );
+  const projectUrl = saved.projectUrl || "";
+  const projectSchema = saved.projectSchema || DECK_PROJECT_SCHEMA;
+  const sourceFormat = saved.sourceFormat || DECK_SOURCE_FORMAT;
+  const sourceMediaType = saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE;
+  const editorManifest = projectUrl
+    ? {
+        schema: "oceanleo.editor-manifest.v1",
+        id: "deck-editor",
+        version: 1,
+        capabilities: ["load", "mutate", "save", "reopen"],
+        source: {
+          kind: "url",
+          format: projectSchema,
+          url: projectUrl,
+        },
+      }
+    : undefined;
   const base: LibraryItem =
     saved.item ||
     ({
@@ -234,25 +394,29 @@ export function deckSavedItemForHandoff(
     ...base,
     title: saved.title || base.title,
     url: saved.url,
+    kind: "ppt",
     artifactId: saved.artifactId || base.artifactId,
     revisionId: saved.revisionId || base.revisionId,
+    artifactType: "deck",
     meta: {
       ...base.meta,
-      source_format: saved.sourceFormat || DECK_SOURCE_FORMAT,
-      source_media_type: saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE,
+      source_format: sourceFormat,
+      source_media_type: sourceMediaType,
       source_url: saved.url,
-      format: saved.sourceFormat || DECK_SOURCE_FORMAT,
-      mime: saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE,
+      format: sourceFormat,
+      mime: sourceMediaType,
       delivery_format: DECK_SOURCE_FORMAT,
-      file_name: saved.fileName,
-      editor_project_url: saved.projectUrl,
-      editor_project_schema: saved.projectSchema || DECK_PROJECT_SCHEMA,
-      editor_manifest_url: saved.projectUrl,
-      editor_manifest_schema: saved.projectSchema || DECK_PROJECT_SCHEMA,
-      editor_working_head_url: saved.projectUrl,
-      editor_working_head_project_url: saved.projectUrl,
-      editor_working_head_schema:
-        saved.projectSchema || DECK_PROJECT_SCHEMA,
+      file_name: saved.fileName || `${saved.title || base.title || "deck"}.pptx`,
+      representation: DECK_SOURCE_FORMAT,
+      editor_project_url: projectUrl,
+      editor_project_schema: projectSchema,
+      editor_manifest_url: projectUrl,
+      editor_manifest_schema: projectSchema,
+      editor_manifest_media_type: "application/json",
+      ...(editorManifest ? { editor_manifest: editorManifest } : {}),
+      editor_working_head_url: projectUrl,
+      editor_working_head_project_url: projectUrl,
+      editor_working_head_schema: projectSchema,
       editor_saved_at: saved.savedAt,
       ...(saved.previousRevisionId
         ? { previous_revision_id: saved.previousRevisionId }
@@ -293,12 +457,11 @@ async function loadDeck(
   let projectError: unknown;
   if (projectUrl) {
     try {
-      const project = await loadEditorProject<unknown>(
+      return await loadDeckEditorHead(
         projectUrl,
-        DECK_PROJECT_SCHEMA,
+        item.title || "演示文稿",
         signal,
       );
-      return normalizeDeckDocument(project, item.title || "演示文稿");
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         throw caught;
@@ -322,53 +485,38 @@ async function loadDeck(
     officeExtensionForItem(item) ||
     urlExtension(deliveryUrl) ||
     String(item.meta.source_format || "") ||
-    String(item.meta.format || "")
+    String(item.meta.format || "") ||
+    DECK_SOURCE_FORMAT
   ).toLowerCase();
-  const isPptxPackage =
-    officePackageKindForItem(item) === "pptx" ||
-    ["pptx", "pptm", "potx", "potm"].includes(extension);
   if (["ppt", "pot", "odp"].includes(extension)) {
     throw new Error(
       `轻量演示编辑器暂不能解析 .${extension} 源文件；请转换为 PPTX 后重试。`,
     );
   }
   try {
-    if (isPptxPackage) {
-      const { arrayBuffer } = await fetchValidatedOfficePackage(
-        deliveryUrl,
-        "pptx",
-        {
-          maxBytes: 64 * 1024 * 1024,
-          signal,
-          onAccessDenied: onSourceAccessError,
-        },
-      );
-      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      return await importPptxDeck(
-        arrayBuffer,
-        item.title || "演示文稿",
-        extension || "pptx",
-      );
-    }
-    const blob = await fetchMediaBlob(deliveryUrl, {
-      maxBytes: 64 * 1024 * 1024,
-      signal,
-    });
-    const text = await blob.text();
+    const { arrayBuffer } = await fetchValidatedOfficePackage(
+      deliveryUrl,
+      "pptx",
+      {
+        maxBytes: 64 * 1024 * 1024,
+        signal,
+        onAccessDenied: onSourceAccessError,
+      },
+    );
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    return normalizeDeckDocument(JSON.parse(text), item.title || "演示文稿");
+    return await importPptxDeck(
+      arrayBuffer,
+      item.title || "演示文稿",
+      extension === "ppt" ? "pptx" : extension || "pptx",
+    );
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     notifyOfficeAccessDenied(error, onSourceAccessError);
-    if (isPptxPackage) {
-      throw new Error(
-        error instanceof Error
-          ? `PPTX 导入失败：${error.message}`
-          : "PPTX 导入失败",
-      );
-    }
-    if (projectError) throw projectError;
-    return fallback;
+    throw new Error(
+      error instanceof Error
+        ? `PPTX 导入失败：${error.message}`
+        : "PPTX 导入失败",
+    );
   }
 }
 
@@ -820,7 +968,7 @@ export function useDeckEditor(
     delivery?: PreparedDeliveryUpload;
   } | null>(null);
   const workingHeadUrlRef = useRef(
-    deckDeliveryUrlFor(item) || item.previewUrl || "",
+    deckProjectUrlFor(item) || item.previewUrl || "",
   );
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
@@ -836,7 +984,7 @@ export function useDeckEditor(
     persistedItemRef.current = item;
     preparedSaveRef.current = null;
     workingHeadUrlRef.current =
-      deckDeliveryUrlFor(item) || item.previewUrl || "";
+      deckProjectUrlFor(item) || item.previewUrl || "";
     void loadDeck(item, previewContent, abort.signal, onSourceAccessError)
       .then((next) => {
         if (abort.signal.aborted) return;
@@ -1587,28 +1735,13 @@ export function useDeckEditor(
         throw new Error(result.error || tt("保存到我的库失败"));
       }
       preparedSaveRef.current = null;
-      persistedItemRef.current =
-        result.item ||
-        ({
-          ...baseItem,
-          id: result.versionId || baseItem.id,
-          title,
-          url: result.url,
-          artifactId: result.artifactId || baseItem.artifactId,
-          revisionId: result.revisionId || baseItem.revisionId,
-          meta: {
-            ...baseItem.meta,
-            source_format: result.sourceFormat,
-            source_media_type: result.sourceMediaType,
-            source_url: result.url,
-            editor_project_url: result.projectUrl,
-            editor_project_schema: result.projectSchema,
-            editor_manifest_url: result.projectUrl,
-            editor_working_head_url: result.projectUrl,
-            previous_revision_id: result.previousRevisionId,
-          },
-        } satisfies LibraryItem);
-      workingHeadUrlRef.current = result.url;
+      const handoff = deckSavedItemForHandoff(
+        result.item || baseItem,
+        result,
+      );
+      persistedItemRef.current = handoff;
+      workingHeadUrlRef.current =
+        result.projectUrl || deckProjectUrlFor(handoff);
       if (mountedRef.current) {
         setSavedUrl(result.url);
         if (revisionRef.current === savingRevision) {
@@ -1622,15 +1755,15 @@ export function useDeckEditor(
             versionId: result.versionId,
             projectUrl: result.projectUrl,
             projectSchema: result.projectSchema,
-            sourceFormat: result.sourceFormat,
-            sourceMediaType: result.sourceMediaType,
+            sourceFormat: result.sourceFormat || DECK_SOURCE_FORMAT,
+            sourceMediaType: result.sourceMediaType || DECK_SOURCE_MEDIA_TYPE,
             title: result.title,
             fileName: result.fileName,
             savedAt: result.savedAt,
             artifactId: result.artifactId,
             revisionId: result.revisionId,
             previousRevisionId: result.previousRevisionId,
-            item: result.item,
+            item: handoff,
             preparedProject: result.preparedProject,
             preparedDelivery: result.preparedDelivery,
           }
@@ -1777,7 +1910,7 @@ export function useDeckEditor(
     redo,
     downloadJson: () =>
       downloadText(
-        `${deckRef.current.title || "演示文稿"}.oceanleo-deck.json`,
+        `${deckRef.current.title || "演示文稿"}.oceanleo-deck.v1.json`,
         JSON.stringify(deckRef.current, null, 2),
         "application/json",
       ),

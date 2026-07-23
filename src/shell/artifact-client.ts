@@ -7,6 +7,8 @@ import {
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
   artifactContextsEqual,
   artifactDownloadPlanFor,
+  artifactUserFacingDownloadHint,
+  isEditorProjectDownloadMedia,
   artifactHasExactContext,
   artifactIsVisible,
   isEnsureableTransient,
@@ -1775,6 +1777,27 @@ export function artifactDownloadEvidence(
   };
 }
 
+/** Shelf/API-facing download type hint; never editor JSON. */
+export function artifactDownloadTypeHint(item: LibraryItem): {
+  downloadMediaType: string;
+  downloadFilename: string;
+} | null {
+  const artifact = item.artifact;
+  if (!artifact) return null;
+  const hint = artifactUserFacingDownloadHint({
+    artifactType: artifact.artifactType,
+    sourceFormat: artifact.sourceFormat,
+    editorCapability: artifact.editorCapability,
+    title: artifact.title,
+    renditions: artifact.renditions,
+  });
+  if (!hint) return null;
+  return {
+    downloadMediaType: hint.mediaType,
+    downloadFilename: hint.filename,
+  };
+}
+
 export async function getArtifactDownload(
   item: LibraryItem,
   signal?: AbortSignal,
@@ -1881,6 +1904,21 @@ export async function getArtifactDownload(
   const format =
     rendition.format ||
     (mode === "source" ? artifact.sourceFormat : "");
+  if (
+    isEditorProjectDownloadMedia(
+      grantFormat || format,
+      grantMediaType || renditionMediaType,
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "editor JSON / project source 不是用户下载物；已拒绝生成误导附件名或 MIME。",
+      code: "invalid-response",
+      status: grant.status,
+      retryable: false,
+    };
+  }
   const extension = attachmentExtension(
     format,
     grantMediaType || renditionMediaType,
@@ -1890,7 +1928,7 @@ export async function getArtifactDownload(
     grantMediaType || renditionMediaType,
     extension,
   );
-  if (!extension || !mediaType) {
+  if (!extension || !mediaType || extension === "json") {
     return {
       ok: false,
       error:

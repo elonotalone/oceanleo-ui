@@ -869,9 +869,12 @@ export function reduceCloudBrowserProtocolMessage(
       !boundedString(message.client_event_id, 240) ||
       !["accepted", "rejected"].includes(String(message.status)) ||
       !freshCallbackSequence(state, message.callback_sequence) ||
-      (message.code !== undefined &&
+      // Executor successful receipts serialize optional code/message as JSON
+      // null. Treat null like omitted — rejecting it tears down the live
+      // socket (V2-04/V2-05: 只读 + spinner, byte-identical frames).
+      (message.code != null &&
         !boundedString(message.code, 96, true)) ||
-      (message.message !== undefined &&
+      (message.message != null &&
         !boundedString(message.message, 1_000, true))
     ) {
       return reject(

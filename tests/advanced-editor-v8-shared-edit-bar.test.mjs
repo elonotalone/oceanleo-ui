@@ -786,12 +786,12 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     );
 
     const more = mounted.container.querySelector(
-      'button[aria-label="更多属性"]',
+      'button[aria-label="更多属性 · 图片"]',
     );
     assert.ok(more);
     await click(more);
     const dialog = mounted.container.querySelector(
-      '[role="dialog"][aria-label="更多属性"]',
+      '[role="dialog"][aria-label="更多属性 · 图片"]',
     );
     assert.ok(dialog);
     assert.equal(
@@ -815,7 +815,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     await click(more);
     assert.ok(
       mounted.container.querySelector(
-        '[role="dialog"][aria-label="更多属性"]',
+        '[role="dialog"][aria-label="更多属性 · 图片"]',
       ),
     );
     await act(async () => {
@@ -829,7 +829,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     });
     assert.equal(
       mounted.container.querySelector(
-        '[role="dialog"][aria-label="更多属性"]',
+        '[role="dialog"][aria-label="更多属性 · 图片"]',
       ),
       null,
     );

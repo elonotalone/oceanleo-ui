@@ -1802,6 +1802,167 @@ export interface ArtifactDownloadCandidate {
  * standard source deliverable; structured projects request rendered exports.
  * `editor_manifest` is editor state and is never a user-facing Download target.
  */
+/** Editor/project JSON is never a card Download deliverable. */
+export function isEditorProjectDownloadMedia(
+  formatValue: unknown,
+  mediaTypeValue: unknown,
+): boolean {
+  const format = String(formatValue || "").trim().toLowerCase();
+  const renditionMediaType = mediaType(mediaTypeValue);
+  if (!renditionMediaType && !format) return false;
+  if (renditionMediaType === "model/gltf+json") return false;
+  return (
+    renditionMediaType === "application/json" ||
+    renditionMediaType.endsWith("+json") ||
+    renditionMediaType.startsWith("application/vnd.oceanleo") ||
+    format === "json" ||
+    format.includes("json") ||
+    format.startsWith("oceanleo.") ||
+    /-source@\d+$/.test(format)
+  );
+}
+
+/**
+ * Shelf/API user-facing download hint derived from the capability contract.
+ * Structured projects advertise a rendered image/export type; native files
+ * advertise their binary source MIME/extension. Never returns editor JSON.
+ */
+export function artifactUserFacingDownloadHint(input: {
+  artifactType: ArtifactType;
+  sourceFormat: string;
+  editorCapability: string | null;
+  title?: string;
+  renditions?: Partial<
+    Record<"source" | "full" | "preview", ArtifactRendition | null | undefined>
+  >;
+}): {
+  mediaType: string;
+  extension: string;
+  filename: string;
+} | null {
+  const capability =
+    advancedCapabilityForArtifactFields({
+      artifactType: input.artifactType,
+      sourceFormat: input.sourceFormat,
+      editorCapability: input.editorCapability,
+    }) ||
+    ADVANCED_CAPABILITY_MATRIX.find(
+      (entry) =>
+        entry.artifactBindings.some(
+          (binding) => binding.artifactType === input.artifactType,
+        ) &&
+        (entry.editorCapability ===
+          String(input.editorCapability || "")
+            .trim()
+            .toLowerCase() ||
+          entry.sourceFormat ===
+            String(input.sourceFormat || "").trim().toLowerCase()),
+    ) ||
+    null;
+  if (!capability) return null;
+
+  const stem =
+    String(input.title || "")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/^\.+/, "")
+      .slice(0, 160) || "artifact";
+
+  const fromRendition = (
+    rendition: ArtifactRendition | null | undefined,
+  ): { mediaType: string; extension: string } | null => {
+    if (!rendition) return null;
+    if (isEditorProjectDownloadMedia(rendition.format, rendition.mediaType)) {
+      return null;
+    }
+    const declared = mediaType(rendition.mediaType);
+    if (!declared) return null;
+    const extension = (() => {
+      const lower = declared.toLowerCase();
+      if (lower === "image/jpeg") return "jpg";
+      if (lower === "image/svg+xml") return "svg";
+      if (lower.startsWith("image/")) return lower.slice("image/".length);
+      if (
+        lower ===
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ) {
+        return "pptx";
+      }
+      if (
+        lower ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ) {
+        return "xlsx";
+      }
+      if (
+        lower ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ) {
+        return "docx";
+      }
+      if (lower === "application/pdf") return "pdf";
+      if (lower === "video/mp4") return "mp4";
+      if (lower === "model/gltf+json") return "gltf";
+      if (lower === "model/gltf-binary") return "glb";
+      const format = String(rendition.format || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^\./, "");
+      return /^[a-z0-9]{2,8}$/.test(format) ? format : "";
+    })();
+    if (!extension || extension === "json") return null;
+    return { mediaType: declared, extension };
+  };
+
+  if (capability.download.preferredMode === "source") {
+    const source = fromRendition(input.renditions?.source || null);
+    if (source) {
+      return {
+        mediaType: source.mediaType,
+        extension: source.extension,
+        filename: `${stem}.${source.extension}`,
+      };
+    }
+    const extension = capability.sourceFormat.replace(/^\./, "");
+    if (
+      !extension ||
+      extension === "json" ||
+      extension.startsWith("oceanleo.") ||
+      isEditorProjectDownloadMedia(extension, capability.sourceMediaType)
+    ) {
+      return null;
+    }
+    return {
+      mediaType: capability.sourceMediaType,
+      extension,
+      filename: `${stem}.${extension}`,
+    };
+  }
+
+  for (const purpose of [
+    capability.download.preferredPurpose,
+    ...capability.download.fallbackPurposes,
+  ] as const) {
+    if (purpose === "source") continue;
+    const rendered = fromRendition(input.renditions?.[purpose] || null);
+    if (rendered) {
+      return {
+        mediaType: rendered.mediaType,
+        extension: rendered.extension,
+        filename: `${stem}.${rendered.extension}`,
+      };
+    }
+  }
+
+  // Structured projects without a rendered export still advertise a safe
+  // user-facing image type so shelf hints never fall back to editor JSON.
+  return {
+    mediaType: "image/png",
+    extension: "png",
+    filename: `${stem}.png`,
+  };
+}
+
 export function artifactDownloadPlanFor(
   artifact: ArtifactProjection,
 ): ArtifactDownloadCandidate[] {
@@ -1850,32 +2011,16 @@ export function artifactDownloadPlanFor(
         artifact.sourceFormat.trim().toLowerCase() !==
           capability.sourceFormat)
     ) {
-      const format = rendition.format.trim().toLowerCase();
-      const renditionMediaType = mediaType(rendition.mediaType);
-      if (
-        renditionMediaType === "application/json" ||
-        renditionMediaType.startsWith("application/vnd.oceanleo") ||
-        format.includes("json") ||
-        format.startsWith("oceanleo.") ||
-        /-source@\d+$/.test(format)
-      ) {
+      if (isEditorProjectDownloadMedia(rendition.format, rendition.mediaType)) {
         return null;
       }
     }
     if (
       mode === "export" &&
-      capability?.openMode === "structured-project"
+      (capability?.openMode === "structured-project" ||
+        isEditorProjectDownloadMedia(rendition.format, rendition.mediaType))
     ) {
-      const format = rendition.format.trim().toLowerCase();
-      const renditionMediaType = mediaType(rendition.mediaType);
-      if (
-        renditionMediaType === "application/json" ||
-        renditionMediaType.endsWith("+json") ||
-        renditionMediaType.startsWith("application/vnd.oceanleo") ||
-        format.includes("json") ||
-        format.startsWith("oceanleo.") ||
-        /-source@\d+$/.test(format)
-      ) {
+      if (isEditorProjectDownloadMedia(rendition.format, rendition.mediaType)) {
         return null;
       }
     }

@@ -20,6 +20,7 @@ import {
 } from "../src/shell/doc-editors/deck-pptx-ooxml.ts";
 import {
   deckElementTextEditability,
+  deckPrimaryEditableTextElement,
   deckTextEditKeyStartsEditing,
 } from "../src/shell/doc-editors/deck-text-gesture.ts";
 import { mapPptxPresentationToDeck } from "../src/shell/doc-editors/pptx-deck-import.ts";
@@ -477,6 +478,23 @@ test("selected text has explicit keyboard entry, locked reason, and one reliable
     deckElementTextEditability({ ...element, locked: true }).reason,
     /先解锁再编辑文字/,
   );
+  assert.equal(
+    deckPrimaryEditableTextElement([
+      {
+        id: "image-first",
+        type: "image",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        order: 0,
+        src: "data:image/png;base64,AA==",
+      },
+      element,
+    ])?.id,
+    "editable-text",
+  );
   const stage = readFileSync(
     new URL("../src/shell/doc-editors/DeckStage.tsx", import.meta.url),
     "utf8",
@@ -484,6 +502,9 @@ test("selected text has explicit keyboard entry, locked reason, and one reliable
   assert.match(stage, /data-deck-edit-text/);
   assert.match(stage, /deckTextEditKeyStartsEditing\(event\.key\)/);
   assert.match(stage, /data-deck-edit-lock-reason/);
+  assert.match(stage, /deckPrimaryEditableTextElement/);
+  assert.match(stage, /data-deck-text-bearing/);
+  assert.match(stage, /编辑幻灯片标题/);
 
   const { DeckElementContent } = await import(deckElementContentModuleUrl());
   const container = window.document.createElement("div");
@@ -514,4 +535,35 @@ test("selected text has explicit keyboard entry, locked reason, and one reliable
   assert.deepEqual(commits, ["Committed once"]);
   await act(async () => root.unmount());
   container.remove();
+});
+
+test("image-only PPTX slides still import a discoverable editable text element", () => {
+  const parsed = {
+    size: { width: 960, height: 540 },
+    slides: [
+      {
+        fill: { type: "color", value: "#0f172a" },
+        note: "Fallback title from notes",
+        elements: [
+          {
+            type: "image",
+            name: "Hero",
+            left: 0,
+            top: 0,
+            width: 960,
+            height: 540,
+            order: 0,
+            base64: "data:image/png;base64,AA==",
+          },
+        ],
+      },
+    ],
+  };
+  const deck = mapPptxPresentationToDeck(parsed, "Image deck");
+  const elements = deck.slides[0].elements;
+  assert.ok(elements.some((element) => element.type === "image"));
+  const text = elements.find((element) => element.type === "text");
+  assert.ok(text);
+  assert.equal(text.text, "Fallback title from notes");
+  assert.equal(deckElementTextEditability(text).editable, true);
 });

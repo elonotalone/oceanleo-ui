@@ -11,7 +11,10 @@ import ts from "typescript";
 import {
   groupSelectionOverflowControls,
   partitionSelectionControls,
+  selectionLiveCapability,
+  selectionMoreDialogLabel,
 } from "../src/shell/selection-toolbar-layout.ts";
+import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
 
 test("measured thresholds preserve priority, semantic slots, and authored More", () => {
   const controls = [
@@ -122,6 +125,21 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
       ["danger", ["authored-more"]],
     ],
   );
+});
+
+test("live capability labels map grid and sibling kinds for More discoverability", () => {
+  assert.deepEqual(selectionLiveCapability("grid-cell"), {
+    id: "grid",
+    label: "表格",
+  });
+  assert.deepEqual(selectionLiveCapability("grid-range"), {
+    id: "grid",
+    label: "表格",
+  });
+  assert.equal(selectionMoreDialogLabel("grid-column"), "更多属性 · 表格");
+  assert.equal(selectionMoreDialogLabel("design-text"), "更多属性 · 设计");
+  assert.equal(selectionMoreDialogLabel("unknown-kind"), "更多属性");
+  assert.equal(selectionLiveCapability(""), null);
 });
 
 const require = createRequire(import.meta.url);
@@ -451,7 +469,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
     assert.equal(toolbar.getAttribute("data-selection-overflow-controls"), "");
     assert.equal(
-      mounted.host.querySelector('button[aria-label="更多属性"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
       null,
     );
 
@@ -472,17 +490,28 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
       null,
     );
 
-    const more = mounted.host.querySelector('button[aria-label="更多属性"]');
+    const more = mounted.host.querySelector(
+      'button[aria-label="更多属性 · 表格"]',
+    );
     assert.ok(more);
     assert.equal(more.getAttribute("aria-haspopup"), "dialog");
     assert.equal(more.getAttribute("aria-expanded"), "false");
     await click(more);
     const dialog = mounted.host.querySelector(
-      '[role="dialog"][aria-label="更多属性"]',
+      '[role="dialog"][aria-label="更多属性 · 表格"]',
     );
     assert.ok(dialog);
     assert.equal(more.getAttribute("aria-expanded"), "true");
     assert.equal(more.getAttribute("aria-controls"), dialog.id);
+    assert.equal(
+      dialog.getAttribute("data-selection-overflow-live-capability"),
+      "grid",
+    );
+    assert.equal(
+      dialog.querySelector("[data-selection-overflow-capability-label]")
+        ?.textContent,
+      "表格",
+    );
     assert.deepEqual(
       [...dialog.querySelectorAll("[data-selection-overflow-group]")].map(
         (group) => [
@@ -521,7 +550,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
     assert.equal(toolbar.getAttribute("data-selection-overflow-controls"), "");
     assert.equal(
-      mounted.host.querySelector('button[aria-label="更多属性"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
       null,
     );
     assert.equal(document.activeElement?.getAttribute("aria-label"), "删除对象");
@@ -540,6 +569,216 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
   } finally {
     await mounted.unmount();
+  }
+});
+
+test("realistic grid live controls overflow into More under docked real width", async () => {
+  const SelectionToolbar = await loadSelectionToolbar();
+  const sourceControls = [
+    {
+      id: "type",
+      kind: "select",
+      label: "数据类型",
+      icon: "table",
+      iconOnly: true,
+      group: "format",
+      value: "auto",
+      options: [
+        { value: "auto", label: "自动" },
+        { value: "number", label: "数字" },
+      ],
+    },
+    {
+      id: "bold",
+      kind: "toggle",
+      label: "粗体",
+      icon: "bold",
+      iconOnly: true,
+      group: "format",
+      value: false,
+    },
+    {
+      id: "align",
+      kind: "select",
+      label: "对齐",
+      icon: "align-left",
+      iconOnly: true,
+      group: "format",
+      value: "left",
+      options: [
+        { value: "left", label: "左" },
+        { value: "center", label: "中" },
+        { value: "right", label: "右" },
+      ],
+    },
+    {
+      id: "color",
+      kind: "color",
+      label: "文字",
+      icon: "font",
+      iconOnly: true,
+      group: "format",
+      value: "#292524",
+    },
+    {
+      id: "background",
+      kind: "color",
+      label: "底色",
+      icon: "background",
+      iconOnly: true,
+      group: "format",
+      value: "#ffffff",
+    },
+    {
+      id: "decimals",
+      kind: "number",
+      label: "小数位",
+      value: 2,
+      placement: "more",
+      slot: "inspector",
+      inspectorGroup: "grid-number-format",
+      inspectorLabel: "数字格式",
+      inspectorIcon: "table",
+    },
+    {
+      id: "row-before",
+      kind: "action",
+      label: "上方插入行",
+      placement: "more",
+      slot: "inspector",
+      inspectorGroup: "grid-rows",
+      inspectorLabel: "行",
+      inspectorIcon: "table",
+    },
+    {
+      id: "column-before",
+      kind: "action",
+      label: "左侧插入列",
+      placement: "more",
+      slot: "inspector",
+      inspectorGroup: "grid-columns",
+      inspectorLabel: "列",
+      inspectorIcon: "table",
+    },
+    {
+      id: "sort-asc",
+      kind: "action",
+      label: "升序",
+      placement: "more",
+      slot: "inspector",
+      inspectorGroup: "grid-data",
+      inspectorLabel: "排序与筛选",
+      inspectorIcon: "filter",
+    },
+    {
+      id: "merge-cells",
+      kind: "action",
+      label: "合并所选单元格",
+      slot: "inspector",
+      inspectorGroup: "grid-merge",
+      inspectorLabel: "合并单元格",
+      inspectorIcon: "table",
+    },
+    {
+      id: "condition-apply",
+      kind: "action",
+      label: "应用到所选区域",
+      slot: "inspector",
+      inspectorGroup: "grid-conditional",
+      inspectorLabel: "条件格式",
+      inspectorIcon: "filter",
+    },
+  ];
+  const { compact } = partitionSelectionInspectorControls(sourceControls);
+  assert.ok(
+    compact.some((control) => control.label === "合并单元格"),
+    "grid inspector groups project into compact panel launchers",
+  );
+  for (const control of compact) {
+    measuredControlWidths.set(control.id, control.kind === "panel" ? 44 : 44);
+  }
+  globalThis.__adaptiveToolbarLayout = {
+    toolsLauncher: null,
+    contextBarLeading: null,
+    contextBarTrailing: null,
+    activeTransientPanelId: "",
+    closeDrawer() {},
+  };
+  visualViewport.width = 980;
+  containerWidth = 220;
+  const mounted = await createMounted(
+    SelectionToolbar,
+    {
+      context: {
+        version: 1,
+        kind: "grid-cell",
+        id: "cell:sheet:A1",
+        label: "A1",
+        controls: sourceControls,
+      },
+      onCommand() {},
+    },
+    "docked",
+  );
+  try {
+    const toolbar = mounted.host.querySelector('[role="toolbar"]');
+    assert.ok(toolbar);
+    assert.equal(toolbar.getAttribute("data-selection-live-capability"), "grid");
+    assert.equal(toolbar.getAttribute("data-selection-kind"), "grid-cell");
+    const overflowIds = (
+      toolbar.getAttribute("data-selection-overflow-controls") || ""
+    )
+      .split(/\s+/)
+      .filter(Boolean);
+    assert.ok(
+      overflowIds.length > 0,
+      "narrow docked width must overflow live grid controls",
+    );
+    assert.ok(
+      overflowIds.some((id) => id.includes("grid-merge") || id.includes("merge")),
+      `grid merge capability must enter More, got: ${overflowIds.join(" ")}`,
+    );
+    assert.ok(
+      overflowIds.some(
+        (id) =>
+          id.includes("grid-rows") ||
+          id.includes("grid-columns") ||
+          id.includes("grid-data") ||
+          id.includes("grid-conditional") ||
+          id.includes("grid-number"),
+      ),
+      `grid inspector panels must enter More, got: ${overflowIds.join(" ")}`,
+    );
+
+    const more = mounted.host.querySelector(
+      'button[aria-label="更多属性 · 表格"]',
+    );
+    assert.ok(more);
+    await click(more);
+    const dialog = mounted.host.querySelector(
+      '[role="dialog"][data-selection-overflow-live-capability="grid"]',
+    );
+    assert.ok(dialog);
+    assert.match(dialog.getAttribute("aria-label") || "", /表格/);
+    assert.equal(
+      dialog.querySelector("[data-selection-overflow-capability-label]")
+        ?.textContent,
+      "表格",
+    );
+    const overflowLabels = [
+      ...dialog.querySelectorAll("[data-selection-control-id]"),
+    ].map(
+      (node) =>
+        node.querySelector("button, [aria-label]")?.getAttribute("aria-label") ||
+        node.textContent?.trim(),
+    );
+    assert.ok(
+      overflowLabels.some((label) => label && /合并单元格|行|列|条件格式|排序|数字格式/.test(label)),
+      `More must expose grid live capability labels, got: ${overflowLabels.join("|")}`,
+    );
+  } finally {
+    await mounted.unmount();
+    globalThis.__adaptiveToolbarLayout = null;
   }
 });
 
@@ -675,7 +914,7 @@ test("Design canonical ordering never promotes authored More controls", async ()
       "design-authored-more",
     );
     assert.ok(
-      mounted.host.querySelector('button[aria-label="更多属性"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · 设计"]'),
     );
   } finally {
     await mounted.unmount();

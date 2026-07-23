@@ -104,23 +104,29 @@ export function DeckRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    const receipt = saved
-      ? advancedSavedItem(item, {
-          url: saved.url,
-          versionId: saved.versionId,
-          title: saved.title,
-          meta: {
-            editor_project_url: saved.projectUrl,
-            editor_project_schema: saved.projectSchema,
-          },
-        })
-      : null;
-    return saved
-      ? {
-          ok: true as const,
-          item: deckSavedItemForHandoff(receipt || item, saved),
-        }
-      : { ok: false as const };
+    if (!saved) return { ok: false as const };
+    const receipt = advancedSavedItem(item, {
+      url: saved.url,
+      versionId: saved.versionId,
+      title: saved.title,
+      meta: {
+        source_format: saved.sourceFormat || "pptx",
+        source_media_type: saved.sourceMediaType,
+        source_url: saved.url,
+        delivery_format: "pptx",
+        editor_project_url: saved.projectUrl,
+        editor_project_schema: saved.projectSchema || "oceanleo.deck.v1",
+        editor_manifest_url: saved.projectUrl,
+        editor_manifest_schema: saved.projectSchema || "oceanleo.deck.v1",
+        editor_working_head_url: saved.projectUrl,
+        editor_working_head_project_url: saved.projectUrl,
+        editor_working_head_schema: saved.projectSchema || "oceanleo.deck.v1",
+      },
+    });
+    return {
+      ok: true as const,
+      item: deckSavedItemForHandoff(receipt || item, saved),
+    };
   }, [editor.save, item]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
@@ -261,7 +267,7 @@ export function DeckRoute({
           id: "deck-export-pptx",
           label: "直接下载 PPTX",
           icon: "download",
-          busyLabel: "导出中…",
+          busyLabel: "导出 PPTX…",
           busy: editor.exporting,
           onTrigger: editor.exportPptx,
         },
@@ -277,7 +283,7 @@ export function DeckRoute({
             : []),
           {
             id: "deck-download-project",
-            label: "下载工程",
+            label: "下载编辑工程 JSON",
             icon: "download",
             variant: "icon",
             onTrigger: editor.downloadJson,

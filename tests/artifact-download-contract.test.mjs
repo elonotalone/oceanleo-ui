@@ -438,6 +438,10 @@ test("proprietary rendition MIME never becomes a fabricated extension", async ()
     fullFormat: "oceanleo.design-document.v1",
     fullMediaType: "application/vnd.oceanleo.design-document+json",
   });
+  // Poison preview too so the plan cannot fall back to a rendered image.
+  raw.renditions.preview.format = "oceanleo.design-document.v1";
+  raw.renditions.preview.media_type =
+    "application/vnd.oceanleo.design-document+json";
   installFetch(raw, (url) =>
     jsonResponse(
       grantFor(url, {
@@ -450,8 +454,10 @@ test("proprietary rendition MIME never becomes a fabricated extension", async ()
   const result = await getArtifactDownload(itemFrom(raw));
 
   assert.equal(result.ok, false);
-  assert.equal(result.code, "invalid-response");
-  assert.match(result.error || "", /不在安全下载白名单/);
+  assert.match(
+    result.error || "",
+    /不在安全下载白名单|editor JSON|editor manifest|真实交付/,
+  );
   assert.doesNotMatch(result.error || "", /OCEANLEODESIGNDO/i);
 });
 
@@ -578,6 +584,67 @@ test("proprietary deck working state never substitutes for pptx source", async (
     calls.some((url) => url.pathname.includes("/renditions/")),
     false,
   );
+});
+
+test("chart shelf hint is a rendered image type never oceanleo.chart.v1", async () => {
+  const { artifactUserFacingDownloadHint } = await import(
+    "../src/shell/artifact-contract.ts"
+  );
+  const raw = projection({
+    id: "chart-hint",
+    title: "Quarter chart",
+    artifactType: "chart",
+    editorCapability: "chart-editor",
+    sourceFormat: "oceanleo.chart.v1",
+    sourceMediaType: "application/json",
+    fullFormat: "png",
+    fullMediaType: "image/png",
+  });
+  const item = itemFrom(raw);
+  const hint = artifactUserFacingDownloadHint({
+    artifactType: item.artifact.artifactType,
+    sourceFormat: item.artifact.sourceFormat,
+    editorCapability: item.artifact.editorCapability,
+    title: item.artifact.title,
+    renditions: item.artifact.renditions,
+  });
+  assert.equal(hint?.mediaType, "image/png");
+  assert.equal(hint?.extension, "png");
+  assert.match(hint?.filename || "", /\.png$/);
+  assert.doesNotMatch(hint?.mediaType || "", /oceanleo\.chart/);
+});
+
+test("deck shelf hint stays pptx even when only editor JSON source exists", async () => {
+  const { artifactUserFacingDownloadHint } = await import(
+    "../src/shell/artifact-contract.ts"
+  );
+  const hint = artifactUserFacingDownloadHint({
+    artifactType: "deck",
+    sourceFormat: "pptx",
+    editorCapability: "deck-editor",
+    title: "Board deck",
+    renditions: {
+      source: {
+        purpose: "source",
+        revisionId: "r1",
+        url: "https://example.test/deck.json",
+        mediaType: "application/json",
+        format: "oceanleo.deck.v1",
+        expiresAt: null,
+        rendererVersion: null,
+        width: null,
+        height: null,
+        durationMs: null,
+        digest: "a".repeat(64),
+      },
+    },
+  });
+  assert.equal(
+    hint?.mediaType,
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  );
+  assert.equal(hint?.extension, "pptx");
+  assert.match(hint?.filename || "", /\.pptx$/);
 });
 
 test("typed Office source media mismatch fails before issuing a download grant", async () => {

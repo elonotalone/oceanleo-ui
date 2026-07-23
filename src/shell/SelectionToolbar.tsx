@@ -34,6 +34,8 @@ import {
   partitionSelectionControls,
   selectionControlSemantic,
   selectionControlUsesIconOnly,
+  selectionLiveCapability,
+  selectionMoreDialogLabel,
   SELECTION_TOOLBAR_VIEWPORT_MAX,
 } from "./selection-toolbar-layout";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
@@ -91,27 +93,45 @@ function equalMeasuredWidths(
   return true;
 }
 
+function toolbarFloatingHost(
+  toolbar: HTMLDivElement,
+): HTMLElement | null {
+  return toolbar.closest<HTMLElement>("[data-workspace-floating-toolbar]");
+}
+
+function toolbarDockedHost(toolbar: HTMLDivElement): HTMLElement | null {
+  return toolbar.closest<HTMLElement>("[data-workspace-docked-toolbar]");
+}
+
 function toolbarSizingBoundary(toolbar: HTMLDivElement): HTMLElement | null {
-  const floatingHost = toolbar.closest<HTMLElement>(
-    "[data-workspace-floating-toolbar]",
-  );
-  return floatingHost?.parentElement || toolbar.parentElement;
+  const floatingHost = toolbarFloatingHost(toolbar);
+  if (floatingHost) return floatingHost.parentElement;
+  // Docked edit bars fill the action-row dock slot; measure that host's real
+  // width so live capabilities (including grid) overflow into More.
+  const dockedHost = toolbarDockedHost(toolbar);
+  if (dockedHost) return dockedHost;
+  return toolbar.parentElement;
 }
 
 function toolbarContainerInlineSize(
   toolbar: HTMLDivElement,
   variant: "bar" | "floating",
 ): number {
-  const floatingHost = toolbar.closest<HTMLElement>(
-    "[data-workspace-floating-toolbar]",
-  );
+  const floatingHost = toolbarFloatingHost(toolbar);
+  const dockedHost = toolbarDockedHost(toolbar);
   const boundary = toolbarSizingBoundary(toolbar);
   const boundaryRect = boundary?.getBoundingClientRect();
   const toolbarRect = toolbar.getBoundingClientRect();
   let width =
-    variant === "bar" && toolbarRect.width > 0
+    variant === "bar" && !dockedHost && toolbarRect.width > 0
       ? toolbarRect.width
       : boundaryRect?.width || 0;
+  if (dockedHost) {
+    const dockedWidth = elementInlineSize(dockedHost);
+    if (dockedWidth > 0) {
+      width = dockedWidth;
+    }
+  }
   if (boundaryRect && typeof window !== "undefined") {
     const viewport = window.visualViewport;
     const viewportLeft = viewport?.offsetLeft || 0;
@@ -133,7 +153,10 @@ function toolbarContainerInlineSize(
     // FloatingContextToolbar reserves .5rem at both container edges.
     width = Math.max(0, width - 16);
   }
-  if (variant === "floating" && typeof window !== "undefined") {
+  if (
+    (variant === "floating" || dockedHost) &&
+    typeof window !== "undefined"
+  ) {
     const viewportWidth =
       window.visualViewport?.width || window.innerWidth;
     // SelectionToolbar itself keeps one rem of reachable space per side.
@@ -689,10 +712,13 @@ export function SelectionToolbar({
     </div>
   );
   const adaptiveRegionVisible = visible.length > 0 || overflow.length > 0;
+  const liveCapability = selectionLiveCapability(context?.kind);
+  const moreDialogLabel = selectionMoreDialogLabel(context?.kind);
   return (
     <div
       ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
+      data-selection-live-capability={liveCapability?.id || undefined}
       data-selection-id={context?.id || ""}
       data-selection-anchor-x={context?.anchor?.x}
       data-selection-anchor-y={context?.anchor?.y}
@@ -777,8 +803,8 @@ export function SelectionToolbar({
                 aria-controls={morePanelId}
                 onClick={() => setMoreOpen((value) => !value)}
                 className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
-                aria-label="更多属性"
-                title="更多属性"
+                aria-label={moreDialogLabel}
+                title={moreDialogLabel}
               >
                 <AdvancedEditorIcon name="more" />
               </button>
@@ -787,11 +813,22 @@ export function SelectionToolbar({
                   ref={morePanelRef}
                   id={morePanelId}
                   role="dialog"
-                  aria-label="更多属性"
+                  aria-label={moreDialogLabel}
                   aria-modal="false"
                   tabIndex={-1}
+                  data-selection-overflow-live-capability={
+                    liveCapability?.id || undefined
+                  }
                   className="absolute right-0 top-full z-[90] mt-2 grid max-h-[min(60vh,32rem)] w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
+                  {liveCapability && (
+                    <div
+                      data-selection-overflow-capability-label
+                      className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
+                    >
+                      {liveCapability.label}
+                    </div>
+                  )}
                   {overflowGroups.map((group, groupIndex) => (
                     <div
                       key={group.id}

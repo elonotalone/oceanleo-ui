@@ -521,6 +521,59 @@ function inferSlideTitle(elements: DeckElement[], index: number): string {
   return textElements[0]?.text?.split(/\r?\n/)[0]?.slice(0, 200) || `第 ${index + 1} 页`;
 }
 
+function slideHasEditableText(elements: readonly DeckElement[]): boolean {
+  return elements.some(
+    (element) =>
+      element.type === "text" ||
+      element.type === "table" ||
+      (element.type === "shape" && typeof element.text === "string"),
+  );
+}
+
+function ensureSlideEditableText(
+  elements: DeckElement[],
+  slideIndex: number,
+  usedIds: Set<string>,
+  notes: string,
+): DeckElement[] {
+  if (slideHasEditableText(elements)) return elements;
+  const base = `pptx-slide-${slideIndex + 1}-title`;
+  let id = base;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${base}-duplicate-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  const maxOrder = elements.reduce(
+    (highest, element) => Math.max(highest, number(element.order)),
+    0,
+  );
+  const title =
+    notes.trim().split(/\r?\n/)[0]?.slice(0, 200) || `第 ${slideIndex + 1} 页`;
+  return [
+    ...elements,
+    {
+      id,
+      type: "text",
+      x: 8,
+      y: 8,
+      width: 84,
+      height: 12,
+      rotation: 0,
+      order: maxOrder + 1,
+      text: title,
+      fontSize: 28,
+      align: "left",
+      color: "#1c1917",
+      lineHeight: 1.15,
+      letterSpacing: 0,
+      opacity: 1,
+      label: "可编辑标题",
+    },
+  ];
+}
+
 export function mapPptxPresentationToDeck(
   parsed: JsonRecord,
   fallbackTitle: string,
@@ -540,19 +593,25 @@ export function mapPptxPresentationToDeck(
       ? source.layoutElements
       : [];
     const slideElements = Array.isArray(source.elements) ? source.elements : [];
-    const elements = convertPptxElements(
-      explicitSlideElements(layoutElements, slideElements),
-      size,
+    const notes = string(source.note);
+    const elements = ensureSlideEditableText(
+      convertPptxElements(
+        explicitSlideElements(layoutElements, slideElements),
+        size,
+        slideIndex,
+        unsupported,
+        usedIds,
+      ),
       slideIndex,
-      unsupported,
       usedIds,
+      notes,
     );
     return {
       id: `pptx-slide-${slideIndex + 1}`,
       title: inferSlideTitle(elements, slideIndex),
       body: "",
       bullets: [],
-      notes: string(source.note),
+      notes,
       layout: "blank",
       background: slideBackground(source.fill),
       elements,
