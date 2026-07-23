@@ -4100,6 +4100,14 @@
         {
           "kind": "star",
           "source": "./icons"
+        },
+        {
+          "kind": "star",
+          "source": "./media-editors/model3d-capabilities"
+        },
+        {
+          "kind": "star",
+          "source": "./video-editor/capabilities"
         }
       ]
     },
@@ -4874,6 +4882,14 @@
           "name": "WorkbenchMaterialRuntimeValue",
           "importedName": "WorkbenchMaterialRuntimeValue",
           "source": "../shell/workbench-material-provider"
+        },
+        {
+          "kind": "star",
+          "source": "../shell/media-editors/model3d-capabilities"
+        },
+        {
+          "kind": "star",
+          "source": "../shell/video-editor/capabilities"
         }
       ]
     },

@@ -9,7 +9,24 @@ const source = (path) =>
 
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
   assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 13);
+  assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office, {
+    routeType: "none",
+    artifactCapabilities: [],
+    featureId: null,
+    routable: false,
+    roundTrip: [],
+    projectSchema: "office-file@1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  });
+  assert.equal(
+    Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
+      .length,
+    12,
+  );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
+    if (!contract.routable) continue;
     assert.deepEqual(
       [...contract.roundTrip],
       ["load", "mutate", "save", "reopen"],

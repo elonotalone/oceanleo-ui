@@ -1,4 +1,8 @@
 import type { AppSession } from "../lib/app-session";
+import {
+  lightweightOfficeRouteForExtension,
+  type LightweightOfficeRoute,
+} from "../lib/office-client";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { savedItemVisualUrls } from "./editor-working-head";
 import {
@@ -15,8 +19,9 @@ const INLINE_EDITOR_HISTORY_VERSION = 1;
 const MAX_APP_ID = 160;
 const MAX_META_JSON = 20_000;
 
-const ROUTE_TYPES = new Set<EditorRoute["type"]>([
-  "office",
+type StoredEditorRouteType = EditorRoute["type"] | "office";
+
+const CANONICAL_ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "video-timeline",
   "audio",
   "image",
@@ -27,6 +32,10 @@ const ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "threed",
   "embed",
   "none",
+]);
+const STORED_ROUTE_TYPES = new Set<StoredEditorRouteType>([
+  ...CANONICAL_ROUTE_TYPES,
+  "office",
 ]);
 const ITEM_KINDS = new Set<LibraryKind>([
   "website",
@@ -45,6 +54,10 @@ const ITEM_KINDS = new Set<LibraryKind>([
 const META_KEYS = new Set([
   "mime",
   "format",
+  "file_name",
+  "filename",
+  "extension",
+  "ext",
   "library_source",
   "draft",
   "blank",
@@ -167,12 +180,32 @@ function durableUrl(value: unknown): string | undefined {
   }
 }
 
-function isNativeDeckFile(url: string | undefined, meta: Record<string, unknown>): boolean {
-  const format = String(meta.format || "").trim().toLowerCase();
-  return (
-    ["pptx", "pptm", "potx", "potm"].includes(format) ||
-    /\.(?:pptx|pptm|potx|potm)(?:$|[?#])/i.test(url || "")
-  );
+function legacyOfficeRouteForSnapshot(input: {
+  kind: LibraryKind;
+  title: string;
+  url?: string;
+  meta: Record<string, unknown>;
+}): LightweightOfficeRoute | null {
+  for (const candidate of [
+    input.meta.format,
+    input.meta.file_name,
+    input.meta.filename,
+    input.meta.extension,
+    input.meta.ext,
+    input.url,
+    input.title,
+  ]) {
+    const route = lightweightOfficeRouteForExtension(String(candidate || ""));
+    if (route) return route;
+  }
+  const mime = String(input.meta.mime || "").trim().toLowerCase();
+  if (/wordprocessingml|msword/.test(mime)) return "richdoc";
+  if (/spreadsheetml|ms-excel/.test(mime)) return "grid";
+  if (/presentationml|ms-powerpoint/.test(mime)) return "deck";
+  if (input.kind === "document") return "richdoc";
+  if (input.kind === "sheet") return "grid";
+  if (input.kind === "ppt") return "deck";
+  return null;
 }
 
 export function advancedRootItemId(item: LibraryItem): string {
@@ -195,12 +228,22 @@ function stableDigest(value: string): string {
     .padStart(8, "0")}`;
 }
 
+function advancedSessionAppIdForStoredRoute(
+  item: LibraryItem,
+  route: StoredEditorRouteType,
+): string {
+  const rootId = advancedRootItemId(item);
+  return `advanced:v2:${route}:${stableDigest(rootId)}`.slice(0, MAX_APP_ID);
+}
+
 export function advancedSessionAppId(
   item: LibraryItem,
   route: EditorRoute["type"],
 ): string {
-  const rootId = advancedRootItemId(item);
-  return `advanced:v2:${route}:${stableDigest(rootId)}`.slice(0, MAX_APP_ID);
+  if (!CANONICAL_ROUTE_TYPES.has(route)) {
+    throw new Error("Legacy office route cannot create an advanced session.");
+  }
+  return advancedSessionAppIdForStoredRoute(item, route);
 }
 
 export function advancedSavedItem(
@@ -240,6 +283,9 @@ export function advancedSessionSnapshot(
   const feature = advancedFeatureForItem(item);
   if (!feature) {
     throw new Error("当前素材没有可恢复的高级功能。");
+  }
+  if (!CANONICAL_ROUTE_TYPES.has(route)) {
+    throw new Error("Legacy office route cannot be persisted.");
   }
   return {
     kind: ADVANCED_SESSION_KIND,
@@ -369,10 +415,11 @@ export function inlineEditorItemsFromSession(
   for (const entry of ordered.slice(0, 24)) {
     const head = entry?.head;
     const raw = head?.item;
+    const storedHeadRoute = head?.route as StoredEditorRouteType;
     if (
       !head ||
       head.version !== INLINE_EDITOR_HISTORY_VERSION ||
-      !ROUTE_TYPES.has(head.route) ||
+      !STORED_ROUTE_TYPES.has(storedHeadRoute) ||
       !raw ||
       typeof raw !== "object"
     ) {
@@ -414,13 +461,16 @@ export function inlineEditorItemsFromSession(
     candidate.meta.parent_asset_id = boundedString(raw.id, 512);
     const feature = advancedFeatureForItem(candidate);
     if (!feature) continue;
-    const expectedAppId = advancedSessionAppId(candidate, head.route);
+    const expectedAppId = advancedSessionAppIdForStoredRoute(
+      candidate,
+      storedHeadRoute,
+    );
     // Reuse the hardened legacy decoder in memory; the normal App snapshot
     // stores an inline head, never an advanced session or advanced surface.
-    const decoderSnapshot: AdvancedSessionSnapshot = {
+    const decoderSnapshot = {
       kind: ADVANCED_SESSION_KIND,
       version: ADVANCED_SESSION_SCHEMA_VERSION,
-      editor_route: head.route,
+      editor_route: storedHeadRoute,
       feature_id: feature.id,
       task_id: head.task_id,
       item: raw,
@@ -446,7 +496,7 @@ export function advancedSnapshotFromSession(
   if (
     record.kind !== ADVANCED_SESSION_KIND ||
     record.version !== ADVANCED_SESSION_SCHEMA_VERSION ||
-    !ROUTE_TYPES.has(record.editor_route as EditorRoute["type"]) ||
+    !STORED_ROUTE_TYPES.has(record.editor_route as StoredEditorRouteType) ||
     !record.item ||
     typeof record.item !== "object" ||
     Array.isArray(record.item)
@@ -504,13 +554,23 @@ export function advancedSnapshotFromSession(
   ) {
     return null;
   }
-  let route = record.editor_route as EditorRoute["type"];
+  const storedRoute = record.editor_route as StoredEditorRouteType;
   const meta = jsonSafeMeta(raw.meta as Record<string, unknown>);
-  // Sessions created before the native importer used the Office iframe for
-  // PPTX. Upgrade those snapshots in place while retaining their durable id.
-  if (route === "office" && isNativeDeckFile(url, meta)) {
-    route = "deck";
-    meta.advanced_editor_route = "deck";
+  let route: EditorRoute["type"];
+  // Historical snapshots may name the removed Office/native-Chrome adapter.
+  // Recover only when their typed source identifies one lightweight editor.
+  if (storedRoute === "office") {
+    const lightweightRoute = legacyOfficeRouteForSnapshot({
+      kind,
+      title,
+      url,
+      meta,
+    });
+    if (!lightweightRoute) return null;
+    route = lightweightRoute;
+    meta.advanced_editor_route = lightweightRoute;
+  } else {
+    route = storedRoute;
   }
   if (
     route === "embed" &&
@@ -565,8 +625,8 @@ export function advancedSnapshotFromSession(
       : null;
   const expectedAppId = advancedSessionAppId(restored, route);
   const legacyOfficeAppId =
-    route === "deck" && isNativeDeckFile(url, meta)
-      ? advancedSessionAppId(restored, "office")
+    storedRoute === "office"
+      ? advancedSessionAppIdForStoredRoute(restored, "office")
       : "";
   if (
     !feature ||

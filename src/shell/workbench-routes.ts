@@ -14,10 +14,12 @@ import {
   artifactEditorCapabilityIsCompatible,
   artifactSourceFormatIsCompatible,
   chartOptionEvidenceIsPresent,
+  type AdvancedEditorAdapterId,
 } from "./artifact-contract";
 import {
   TRUSTED_EDITOR_REGISTRY,
   editorAdapterForArtifactCapability,
+  isLegacyOfficeMetadata,
   type EditorAdapterId,
   type EditorCapability,
   type EditorRoute,
@@ -27,6 +29,7 @@ import {
 export {
   TRUSTED_EDITOR_REGISTRY,
   editorAdapterForArtifactCapability,
+  registryEntryForAdvancedFeature,
   editorRouteHintForArtifactCapability,
 } from "./workbench-capability-registry";
 export type {
@@ -56,7 +59,7 @@ const CELL_EXT = new Set([
   "xlsb",
   "xltx",
 ]);
-const NATIVE_GRID_EXT = new Set(["xlsx", "xls", "ods"]);
+const NATIVE_GRID_EXT = new Set(CELL_EXT);
 const SLIDE_EXT = new Set([
   "pptx",
   "ppt",
@@ -66,7 +69,8 @@ const SLIDE_EXT = new Set([
   "potx",
   "potm",
 ]);
-const NATIVE_DECK_EXT = new Set(["pptx", "pptm", "potx", "potm"]);
+const NATIVE_DECK_EXT = new Set(SLIDE_EXT);
+const NATIVE_RICHDOC_EXT = new Set(WORD_EXT);
 const VIDEO_EXT = new Set([
   "mp4",
   "webm",
@@ -173,6 +177,27 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function hasLegacyOfficeMetadata(item: LibraryItem): boolean {
+  const metaEditor = asRecord(item.meta.editor);
+  const descriptorEditor = asRecord(item.descriptor?.editor);
+  return [
+    item.meta.advanced_editor_route,
+    item.meta.editor,
+    item.meta.editor_adapter,
+    item.meta.editor_capability,
+    item.meta.editor_project_schema,
+    item.meta.project_schema,
+    item.meta.schema,
+    item.descriptor?.representation,
+    metaEditor?.id,
+    metaEditor?.projectSchema,
+    metaEditor?.project_schema,
+    descriptorEditor?.id,
+    descriptorEditor?.projectSchema,
+    descriptorEditor?.project_schema,
+  ].some(isLegacyOfficeMetadata);
 }
 
 function editorManifestFor(item: LibraryItem): EditorManifestV1 | null {
@@ -345,24 +370,6 @@ function hasStructuredSlides(item: LibraryItem): boolean {
   return false;
 }
 
-const DURABLE_ADAPTER_TYPES: Readonly<
-  Record<Exclude<EditorAdapterId, "none">, readonly string[]>
-> = {
-  office: ["document", "grid", "deck"],
-  "video-timeline": ["video"],
-  audio: ["audio"],
-  image: ["single_file_image", "composite_image", "vector_image"],
-  pdf: ["pdf"],
-  richdoc: ["document"],
-  grid: ["grid"],
-  "chart-editor@1": ["chart"],
-  deck: ["deck"],
-  threed: ["model_3d"],
-  website: ["website"],
-  "design-canvas": ["composite_image", "workflow"],
-  "video-canvas": ["workflow"],
-};
-
 function durableEditorCapabilityFor(
   item: LibraryItem,
 ): EditorCapability | null {
@@ -438,39 +445,18 @@ function durableEditorCapabilityFor(
       "图表缺少 oceanleo.chart.v1 option 源或带摘要的 editor manifest。",
     );
   }
-  const adapter = editorAdapterForArtifactCapability(
-    artifact.editorCapability,
-  );
-  if (!adapter) {
-    return unavailable(
-      "服务端没有声明受信任的 typed editor capability。",
-    );
-  }
   const advancedContract = advancedCapabilityForArtifactFields({
     artifactType: artifact.artifactType,
     sourceFormat: artifact.sourceFormat,
     editorCapability: artifact.editorCapability,
   });
-  if (advancedContract && advancedContract.adapter !== adapter) {
+  if (!advancedContract) {
     return unavailable(
-      `高级功能 ${advancedContract.featureId} 与 adapter ${adapter} 不一致。`,
+      "服务端 typed artifact 无法通过共享 feature/capability/adapter matrix。",
     );
   }
-  if (!DURABLE_ADAPTER_TYPES[adapter].includes(artifact.artifactType)) {
-    return unavailable(
-      `editor capability ${artifact.editorCapability} 与 artifact type ${artifact.artifactType} 不匹配。`,
-    );
-  }
+  const adapter: AdvancedEditorAdapterId = advancedContract.adapter;
   switch (adapter) {
-    case "office": {
-      const ext =
-        officeExtensionOf(artifact.sourceFormat) ||
-        OFFICE_MIME_EXT.get(artifact.sourceFormat.toLowerCase()) ||
-        "";
-      return ext
-        ? available("office", { type: "office", ext })
-        : unavailable("Office artifact 缺少受支持的 source format。");
-    }
     case "video-timeline":
       return available(adapter, { type: "video-timeline" });
     case "audio":
@@ -577,8 +563,19 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
         "此内容没有可安全回写的结构化编辑器。",
     );
   }
-  if (pinnedRoute === "office" && officeExt) {
-    return available("office", { type: "office", ext: officeExt });
+  if (hasLegacyOfficeMetadata(item)) {
+    if (NATIVE_DECK_EXT.has(officeExt)) {
+      return available("deck", { type: "deck" });
+    }
+    if (NATIVE_GRID_EXT.has(officeExt)) {
+      return available("grid", { type: "grid" });
+    }
+    if (NATIVE_RICHDOC_EXT.has(officeExt)) {
+      return available("richdoc", { type: "richdoc" });
+    }
+    return unavailable(
+      "Legacy Office metadata requires a typed document, grid, or deck source.",
+    );
   }
   if (pinnedRoute === "embed") {
     const pinnedEditor = String(item.meta.editor || "").toLowerCase();
@@ -682,13 +679,8 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   if (NATIVE_GRID_EXT.has(officeExt)) {
     return available("grid", { type: "grid" });
   }
-  if (
-    officeExt &&
-    (WORD_EXT.has(officeExt) ||
-      CELL_EXT.has(officeExt) ||
-      SLIDE_EXT.has(officeExt))
-  ) {
-    return available("office", { type: "office", ext: officeExt });
+  if (NATIVE_RICHDOC_EXT.has(officeExt)) {
+    return available("richdoc", { type: "richdoc" });
   }
   if (isPdf) return available("pdf", { type: "pdf" });
   if (VIDEO_EXT.has(ext) || mime.startsWith("video/")) {
@@ -758,8 +750,6 @@ export function editorRouteFor(item: LibraryItem): EditorRoute {
 /** 「编辑」工具在工具栏上的具体名字（按路由）。 */
 export function editorToolLabel(route: EditorRoute): string {
   switch (route.type) {
-    case "office":
-      return "Office 编辑";
     case "video-timeline":
       return "时间线剪辑";
     case "audio":

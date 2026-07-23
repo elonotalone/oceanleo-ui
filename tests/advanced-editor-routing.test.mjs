@@ -19,7 +19,9 @@ const workbench = readFileSync(
 );
 const {
   TRUSTED_EDITOR_REGISTRY,
+  editorAdapterForArtifactCapability,
   editorCapabilityFor,
+  editorRouteHintForArtifactCapability,
 } = await import(
   "../src/shell/workbench-routes.ts"
 );
@@ -44,6 +46,7 @@ test("advanced editor routing covers every durable material family", () => {
     ],
   );
   for (const entry of Object.values(TRUSTED_EDITOR_REGISTRY)) {
+    if (!entry.routable) continue;
     assert.deepEqual(entry.roundTrip, ["load", "mutate", "save", "reopen"]);
   }
   assert.match(routes, /WORD_EXT/);
@@ -59,6 +62,56 @@ test("advanced editor routing covers every durable material family", () => {
   assert.match(routes, /mime\.startsWith\("image\/"\)/);
   assert.match(registrySource, /TRUSTED_EDITOR_REGISTRY/);
   assert.match(workbench, /editorRouteFor\(props\.item\)/);
+  assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
+  assert.doesNotMatch(registrySource, /routeType: "office"/);
+});
+
+test("legacy Office metadata remaps only typed sources and otherwise fails closed", () => {
+  const metadataCases = [
+    { advanced_editor_route: "office" },
+    { editor: "office-editor" },
+    { editor_project_schema: "office-file@1" },
+  ];
+  const typedCases = [
+    ["docx", "richdoc"],
+    ["xlsx", "grid"],
+    ["pptx", "deck"],
+  ];
+
+  for (const meta of metadataCases) {
+    for (const [extension, route] of typedCases) {
+      const capability = editorCapabilityFor({
+        id: `${Object.keys(meta)[0]}-${extension}`,
+        title: `legacy.${extension}`,
+        kind: "file",
+        url: `https://files.test/legacy.${extension}`,
+        meta,
+      });
+      assert.equal(capability.available, true);
+      assert.equal(capability.adapter, route);
+      assert.deepEqual(capability.route, { type: route });
+    }
+
+    const rejected = editorCapabilityFor({
+      id: `untyped-${Object.keys(meta)[0]}`,
+      title: "legacy.bin",
+      kind: "file",
+      url: "https://files.test/legacy.bin",
+      meta,
+    });
+    assert.equal(rejected.available, false);
+    assert.equal(rejected.adapter, "none");
+    assert.deepEqual(rejected.route, { type: "none" });
+    assert.equal(
+      rejected.unavailableReason,
+      "Legacy Office metadata requires a typed document, grid, or deck source.",
+    );
+  }
+
+  for (const token of ["office", "office-editor", "office-file@1"]) {
+    assert.equal(editorAdapterForArtifactCapability(token), null);
+    assert.equal(editorRouteHintForArtifactCapability(token), "");
+  }
 });
 
 test("opaque URLs and blob uploads still identify every PPTX as a native deck", () => {

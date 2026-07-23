@@ -23,6 +23,24 @@ export const ARTIFACT_TYPES = [
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
+export const ADVANCED_EDITOR_ADAPTER_IDS = [
+  "video-timeline",
+  "website",
+  "design-canvas",
+  "deck",
+  "richdoc",
+  "grid",
+  "image",
+  "pdf",
+  "audio",
+  "chart-editor@1",
+  "video-canvas",
+  "threed",
+] as const;
+
+export type AdvancedEditorAdapterId =
+  (typeof ADVANCED_EDITOR_ADAPTER_IDS)[number];
+
 export type AdvancedCapabilityRequirementKind = "none" | "scene" | "manifest";
 export type AdvancedCapabilityDependencyClosure = "not_required" | "complete";
 export type ArtifactAccessMode = "preview" | "source" | "export";
@@ -50,13 +68,19 @@ export interface AdvancedCapabilityRequirement {
   dependencyClosure: AdvancedCapabilityDependencyClosure;
 }
 
+export interface AdvancedCapabilityArtifactBinding {
+  artifactType: ArtifactType;
+  editorCapabilities: readonly string[];
+}
+
 export interface AdvancedCapabilityContractEntry {
   featureId: AdvancedFeatureId;
   artifactType: ArtifactType;
   sourceFormat: string;
   sourceMediaType: string;
   editorCapability: string;
-  adapter: string;
+  artifactBindings: readonly AdvancedCapabilityArtifactBinding[];
+  adapter: AdvancedEditorAdapterId;
   projectSchema: string;
   editability: Exclude<ArtifactEditability, "view_only">;
   sourceIntegrity: "content_addressed" | "complete_dependency_closure";
@@ -73,6 +97,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "mp4",
     sourceMediaType: "video/mp4",
     editorCapability: "video-timeline",
+    artifactBindings: [
+      { artifactType: "video", editorCapabilities: ["video-timeline"] },
+    ],
     adapter: "video-timeline",
     projectSchema: "oceanleo.timeline.v1",
     editability: "bounded",
@@ -92,6 +119,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "website-source@1",
     sourceMediaType: "application/json",
     editorCapability: "website-editor",
+    artifactBindings: [
+      { artifactType: "website", editorCapabilities: ["website-editor"] },
+    ],
     adapter: "website",
     projectSchema: "website-source@1",
     editability: "native",
@@ -111,6 +141,13 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "oceanleo.design-document.v1",
     sourceMediaType: "application/json",
     editorCapability: "design-canvas",
+    artifactBindings: [
+      {
+        artifactType: "composite_image",
+        editorCapabilities: ["design-canvas"],
+      },
+      { artifactType: "workflow", editorCapabilities: ["design-canvas"] },
+    ],
     adapter: "design-canvas",
     projectSchema: "oceanleo.design-document.v1",
     editability: "native",
@@ -130,9 +167,15 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "pptx",
     sourceMediaType:
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    editorCapability: "office-editor",
-    adapter: "office",
-    projectSchema: "office-file@1",
+    editorCapability: "deck-editor",
+    artifactBindings: [
+      {
+        artifactType: "deck",
+        editorCapabilities: ["deck-editor", "office-editor"],
+      },
+    ],
+    adapter: "deck",
+    projectSchema: "oceanleo.deck.v1",
     editability: "native",
     sourceIntegrity: "content_addressed",
     openMode: "native-file",
@@ -150,9 +193,19 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "docx",
     sourceMediaType:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    editorCapability: "office-editor",
-    adapter: "office",
-    projectSchema: "office-file@1",
+    editorCapability: "richdoc-editor",
+    artifactBindings: [
+      {
+        artifactType: "document",
+        editorCapabilities: [
+          "richdoc-editor",
+          "document-editor",
+          "office-editor",
+        ],
+      },
+    ],
+    adapter: "richdoc",
+    projectSchema: "tiptap-json@1",
     editability: "native",
     sourceIntegrity: "content_addressed",
     openMode: "native-file",
@@ -170,9 +223,15 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "xlsx",
     sourceMediaType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    editorCapability: "office-editor",
-    adapter: "office",
-    projectSchema: "office-file@1",
+    editorCapability: "grid-editor",
+    artifactBindings: [
+      {
+        artifactType: "grid",
+        editorCapabilities: ["grid-editor", "office-editor"],
+      },
+    ],
+    adapter: "grid",
+    projectSchema: "oceanleo.grid.v1",
     editability: "native",
     sourceIntegrity: "content_addressed",
     openMode: "native-file",
@@ -190,6 +249,20 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "webp",
     sourceMediaType: "image/webp",
     editorCapability: "image-editor",
+    artifactBindings: [
+      {
+        artifactType: "single_file_image",
+        editorCapabilities: ["image-editor", "raster-image"],
+      },
+      {
+        artifactType: "composite_image",
+        editorCapabilities: ["composite-image-editor"],
+      },
+      {
+        artifactType: "vector_image",
+        editorCapabilities: ["vector-editor"],
+      },
+    ],
     adapter: "image",
     projectSchema: "oceanleo.fabric-image.v1",
     editability: "bounded",
@@ -209,6 +282,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "pdf",
     sourceMediaType: "application/pdf",
     editorCapability: "pdf-editor",
+    artifactBindings: [
+      { artifactType: "pdf", editorCapabilities: ["pdf-editor"] },
+    ],
     adapter: "pdf",
     projectSchema: "pdf-binary@1",
     editability: "bounded",
@@ -228,6 +304,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "mp3",
     sourceMediaType: "audio/mpeg",
     editorCapability: "audio-editor",
+    artifactBindings: [
+      { artifactType: "audio", editorCapabilities: ["audio-editor"] },
+    ],
     adapter: "audio",
     projectSchema: "oceanleo.audio-project.v1",
     editability: "bounded",
@@ -247,6 +326,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "oceanleo.chart.v1",
     sourceMediaType: "application/json",
     editorCapability: "chart-editor",
+    artifactBindings: [
+      { artifactType: "chart", editorCapabilities: ["chart-editor"] },
+    ],
     adapter: "chart-editor@1",
     projectSchema: "oceanleo.chart.v1",
     editability: "native",
@@ -266,6 +348,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "oceanleo.video.project.v2",
     sourceMediaType: "application/json",
     editorCapability: "video-canvas",
+    artifactBindings: [
+      { artifactType: "workflow", editorCapabilities: ["video-canvas"] },
+    ],
     adapter: "video-canvas",
     projectSchema: "oceanleo.video-canvas.v1",
     editability: "native",
@@ -285,6 +370,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     sourceFormat: "gltf",
     sourceMediaType: "model/gltf+json",
     editorCapability: "model-3d-editor",
+    artifactBindings: [
+      { artifactType: "model_3d", editorCapabilities: ["model-3d-editor"] },
+    ],
     adapter: "threed",
     projectSchema: "oceanleo.model-view@1",
     editability: "bounded",
@@ -303,36 +391,119 @@ const ADVANCED_CAPABILITY_ROWS = [
 export type AdvancedFeatureId =
   (typeof ADVANCED_CAPABILITY_ROWS)[number]["featureId"];
 
-const ADVANCED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = {
+const ADVANCED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
   preferredPurpose: "source",
   preferredMode: "source",
-  fallbackPurposes: ["full", "preview"],
+  fallbackPurposes: Object.freeze(["full", "preview"] as const),
   fallbackMode: "export",
-};
+});
 
-/** Generated mirror of scripts/advanced-capability-contract.json. */
-export const ADVANCED_CAPABILITY_CONTRACT: readonly AdvancedCapabilityContractEntry[] =
-  ADVANCED_CAPABILITY_ROWS.map(
-    ({
-      previewPurposes,
-      ...row
-    }): AdvancedCapabilityContractEntry => ({
-      ...row,
-      previewSource: {
+/**
+ * The canonical shared capability plane. Feature identity, accepted typed
+ * artifact bindings and adapter identity are declared here once; all runtime
+ * registries and presentation catalogs are projections of this object.
+ */
+export const ADVANCED_CAPABILITY_MATRIX: readonly AdvancedCapabilityContractEntry[] =
+  Object.freeze(
+    ADVANCED_CAPABILITY_ROWS.map(
+      ({
         previewPurposes,
-        editorPurpose: "source",
-        sameRevisionRequired: true,
-        sourceDigestRequired: true,
-        derivedFromSourceDigestRequired: true,
-        renderedSourceSubstitution: "forbidden",
-      },
-      download: ADVANCED_DOWNLOAD_RULE,
-    }),
+        artifactBindings,
+        requirement,
+        ...row
+      }): AdvancedCapabilityContractEntry =>
+        Object.freeze({
+          ...row,
+          artifactBindings: Object.freeze(
+            artifactBindings.map((binding) =>
+              Object.freeze({
+                ...binding,
+                editorCapabilities: Object.freeze([
+                  ...binding.editorCapabilities,
+                ]),
+              }),
+            ),
+          ),
+          requirement: Object.freeze({
+            ...requirement,
+            requiredPaths: Object.freeze([...requirement.requiredPaths]),
+          }),
+          previewSource: Object.freeze({
+            previewPurposes: Object.freeze([...previewPurposes]),
+            editorPurpose: "source",
+            sameRevisionRequired: true,
+            sourceDigestRequired: true,
+            derivedFromSourceDigestRequired: true,
+            renderedSourceSubstitution: "forbidden",
+          }),
+          download: ADVANCED_DOWNLOAD_RULE,
+        }),
+    ),
   );
 
-const ADVANCED_CAPABILITY_BY_FEATURE = new Map(
-  ADVANCED_CAPABILITY_CONTRACT.map((entry) => [entry.featureId, entry]),
-);
+/** Backward-compatible name; both exports intentionally share object identity. */
+export const ADVANCED_CAPABILITY_CONTRACT = ADVANCED_CAPABILITY_MATRIX;
+
+const ADVANCED_CAPABILITY_BY_FEATURE = new Map<
+  AdvancedFeatureId,
+  AdvancedCapabilityContractEntry
+>();
+const ADVANCED_CAPABILITY_BY_ADAPTER = new Map<
+  AdvancedEditorAdapterId,
+  AdvancedCapabilityContractEntry
+>();
+const ADVANCED_CAPABILITY_BY_BINDING = new Map<
+  string,
+  AdvancedCapabilityContractEntry
+>();
+
+function advancedBindingKey(
+  artifactType: ArtifactType,
+  editorCapability: string,
+): string {
+  return `${artifactType}\u0000${editorCapability.trim().toLowerCase()}`;
+}
+
+for (const entry of ADVANCED_CAPABILITY_MATRIX) {
+  if (ADVANCED_CAPABILITY_BY_FEATURE.has(entry.featureId)) {
+    throw new Error(`Duplicate advanced feature id: ${entry.featureId}`);
+  }
+  if (ADVANCED_CAPABILITY_BY_ADAPTER.has(entry.adapter)) {
+    throw new Error(`Duplicate advanced adapter target: ${entry.adapter}`);
+  }
+  ADVANCED_CAPABILITY_BY_FEATURE.set(entry.featureId, entry);
+  ADVANCED_CAPABILITY_BY_ADAPTER.set(entry.adapter, entry);
+
+  const canonicalBinding = entry.artifactBindings.find(
+    (binding) =>
+      binding.artifactType === entry.artifactType &&
+      binding.editorCapabilities.includes(entry.editorCapability),
+  );
+  if (!canonicalBinding) {
+    throw new Error(
+      `Advanced feature ${entry.featureId} omits its canonical typed binding`,
+    );
+  }
+  for (const binding of entry.artifactBindings) {
+    for (const editorCapability of binding.editorCapabilities) {
+      const key = advancedBindingKey(binding.artifactType, editorCapability);
+      const existing = ADVANCED_CAPABILITY_BY_BINDING.get(key);
+      if (existing && existing.featureId !== entry.featureId) {
+        throw new Error(
+          `Typed artifact binding ${binding.artifactType}/${editorCapability} maps to multiple features`,
+        );
+      }
+      ADVANCED_CAPABILITY_BY_BINDING.set(key, entry);
+    }
+  }
+}
+
+if (
+  ADVANCED_CAPABILITY_MATRIX.length !== 12 ||
+  ADVANCED_CAPABILITY_MATRIX.length !== ADVANCED_EDITOR_ADAPTER_IDS.length
+) {
+  throw new Error("The shared advanced capability plane must contain 12 rows");
+}
 
 export function advancedCapabilityContractPayload(): {
   schema: "oceanleo.advanced-capability-contract.v1";
@@ -344,7 +515,7 @@ export function advancedCapabilityContractPayload(): {
     schema: "oceanleo.advanced-capability-contract.v1",
     version: 1,
     roundTripCapabilities: ["load", "mutate", "save", "reopen"],
-    capabilities: ADVANCED_CAPABILITY_CONTRACT,
+    capabilities: ADVANCED_CAPABILITY_MATRIX,
   };
 }
 
@@ -358,6 +529,16 @@ export function advancedCapabilityForFeatureId(
   );
 }
 
+export function advancedCapabilityForAdapter(
+  adapter: string | null | undefined,
+): AdvancedCapabilityContractEntry | null {
+  return (
+    ADVANCED_CAPABILITY_BY_ADAPTER.get(
+      String(adapter || "").trim() as AdvancedEditorAdapterId,
+    ) || null
+  );
+}
+
 export function advancedCapabilityForArtifactFields(input: {
   artifactType: ArtifactType;
   sourceFormat: string;
@@ -367,12 +548,16 @@ export function advancedCapabilityForArtifactFields(input: {
   const editorCapability = String(input.editorCapability || "")
     .trim()
     .toLowerCase();
+  if (
+    !sourceFormat ||
+    !editorCapability ||
+    !artifactSourceFormatIsCompatible(input.artifactType, sourceFormat)
+  ) {
+    return null;
+  }
   return (
-    ADVANCED_CAPABILITY_CONTRACT.find(
-      (entry) =>
-        entry.artifactType === input.artifactType &&
-        entry.sourceFormat === sourceFormat &&
-        entry.editorCapability === editorCapability,
+    ADVANCED_CAPABILITY_BY_BINDING.get(
+      advancedBindingKey(input.artifactType, editorCapability),
     ) || null
   );
 }
@@ -516,6 +701,56 @@ export interface ArtifactContextRef {
   appId?: string;
   functionId?: string;
 }
+
+export type AdvancedCapabilityDispatchPolicy =
+  | { scope: "global" }
+  | {
+      scope: "exact-context";
+      context: string | ArtifactContextRef;
+    };
+
+export interface AdvancedCapabilityDispatchReceipt extends ArtifactIdentity {
+  schema: "oceanleo.advanced-capability-dispatch.v1";
+  featureId: AdvancedFeatureId;
+  artifactType: ArtifactType;
+  sourceFormat: string;
+  editorCapability: string;
+  adapter: AdvancedEditorAdapterId;
+  projectSchema: string;
+  sourceRevisionId: string;
+  sourceDigest: string;
+  context: {
+    scope: AdvancedCapabilityDispatchPolicy["scope"];
+    contextId: string | null;
+    siteKey: string | null;
+    exact: boolean;
+  };
+}
+
+export interface AdvancedCapabilityDispatchSuccess {
+  ok: true;
+  /** Exact canonical row; its identity is shared across every site context. */
+  capability: AdvancedCapabilityContractEntry;
+  receipt: AdvancedCapabilityDispatchReceipt;
+}
+
+export interface AdvancedCapabilityDispatchFailure {
+  ok: false;
+  code:
+    | "invalid-artifact-identity"
+    | "integrity-failed"
+    | "access-denied"
+    | "missing-source"
+    | "incompatible-source"
+    | "incompatible-capability"
+    | "context-required"
+    | "context-mismatch";
+  reason: string;
+}
+
+export type AdvancedCapabilityDispatchResult =
+  | AdvancedCapabilityDispatchSuccess
+  | AdvancedCapabilityDispatchFailure;
 
 export interface ArtifactCommandSource extends ArtifactIdentity {
   artifactType: ArtifactType;
@@ -693,23 +928,29 @@ const SOURCE_FORMAT_PREFIXES: Readonly<
   workflow: ["workflow-", "oceanleo.workflow."],
 };
 
+const artifactEditorCapabilities = Object.fromEntries(
+  ARTIFACT_TYPES.map((artifactType) => [artifactType, new Set<string>()]),
+) as Record<ArtifactType, Set<string>>;
+
+for (const entry of ADVANCED_CAPABILITY_MATRIX) {
+  for (const binding of entry.artifactBindings) {
+    for (const editorCapability of binding.editorCapabilities) {
+      artifactEditorCapabilities[binding.artifactType].add(editorCapability);
+    }
+  }
+}
+
+if (
+  ARTIFACT_TYPES.some(
+    (artifactType) => artifactEditorCapabilities[artifactType].size === 0,
+  )
+) {
+  throw new Error("Every typed artifact must resolve through the shared matrix");
+}
+
 export const ARTIFACT_EDITOR_CAPABILITIES: Readonly<
   Record<ArtifactType, ReadonlySet<string>>
-> = {
-  single_file_image: new Set(["image-editor", "raster-image"]),
-  composite_image: new Set(["composite-image-editor", "design-canvas"]),
-  vector_image: new Set(["vector-editor"]),
-  chart: new Set(["chart-editor"]),
-  document: new Set(["richdoc-editor", "document-editor", "office-editor"]),
-  grid: new Set(["grid-editor", "office-editor"]),
-  deck: new Set(["deck-editor", "office-editor"]),
-  pdf: new Set(["pdf-editor"]),
-  website: new Set(["website-editor"]),
-  video: new Set(["video-timeline"]),
-  audio: new Set(["audio-editor"]),
-  model_3d: new Set(["model-3d-editor"]),
-  workflow: new Set(["design-canvas", "video-canvas"]),
-};
+> = Object.freeze(artifactEditorCapabilities);
 
 const CHART_OPTION_SOURCE_FORMATS = new Set([
   "echarts-option+json",
@@ -1148,6 +1389,8 @@ export function artifactIntegrityFor(input: {
   const declaredSourceMediaType = mediaType(input.renditions.source?.mediaType);
   if (
     advancedContract &&
+    String(input.sourceFormat || "").trim().toLowerCase() ===
+      advancedContract.sourceFormat &&
     declaredSourceMediaType &&
     declaredSourceMediaType !== advancedContract.sourceMediaType
   ) {
@@ -1649,6 +1892,143 @@ export function artifactHasExactContext(
           binding.pinnedRevisionId === artifact.revisionId,
       ),
   );
+}
+
+/**
+ * Resolve one typed artifact through the shared plane. Exact App filtering and
+ * global routeability are explicit policies: neither the origin site nor the
+ * calling site can alter feature/adapter identity.
+ */
+export function resolveAdvancedCapabilityDispatch(
+  artifact: ArtifactProjection,
+  policy: AdvancedCapabilityDispatchPolicy,
+): AdvancedCapabilityDispatchResult {
+  if (!artifact?.artifactId || !artifact.revisionId) {
+    return {
+      ok: false,
+      code: "invalid-artifact-identity",
+      reason: "artifact dispatch 缺少 artifactId/revisionId。",
+    };
+  }
+  if (!artifact.integrity?.ok) {
+    return {
+      ok: false,
+      code: "integrity-failed",
+      reason:
+        artifact.integrity?.reason ||
+        "artifact 未通过完整性校验，不能进入高级编辑器。",
+    };
+  }
+  if (
+    !artifact.access?.canRead ||
+    (!artifact.access.canEdit && !artifact.access.canFork) ||
+    artifact.editability === "view_only"
+  ) {
+    return {
+      ok: false,
+      code: "access-denied",
+      reason: "当前主体没有读取并编辑或 fork 此 revision 的权限。",
+    };
+  }
+  const source = artifact.renditions?.source;
+  if (
+    !source ||
+    source.purpose !== "source" ||
+    source.revisionId !== artifact.revisionId ||
+    !source.url ||
+    !source.digest
+  ) {
+    return {
+      ok: false,
+      code: "missing-source",
+      reason: "当前 revision 缺少带摘要且 revision 一致的 source rendition。",
+    };
+  }
+  if (
+    !artifactSourceFormatIsCompatible(
+      artifact.artifactType,
+      artifact.sourceFormat,
+    )
+  ) {
+    return {
+      ok: false,
+      code: "incompatible-source",
+      reason:
+        `source format ${artifact.sourceFormat || "missing"} 与 artifact type ` +
+        `${artifact.artifactType} 不匹配。`,
+    };
+  }
+  const capability = advancedCapabilityForArtifactFields({
+    artifactType: artifact.artifactType,
+    sourceFormat: artifact.sourceFormat,
+    editorCapability: artifact.editorCapability,
+  });
+  if (!capability) {
+    return {
+      ok: false,
+      code: "incompatible-capability",
+      reason:
+        `editor capability ${artifact.editorCapability || "missing"} 与 typed artifact ` +
+        `${artifact.artifactType} 不匹配。`,
+    };
+  }
+
+  let contextId: string | null = null;
+  let siteKey: string | null = null;
+  if (policy?.scope === "exact-context") {
+    contextId =
+      typeof policy.context === "string"
+        ? policy.context.trim()
+        : String(policy.context?.contextId || "").trim();
+    siteKey =
+      typeof policy.context === "string"
+        ? null
+        : String(policy.context?.siteKey || "").trim() || null;
+    if (!contextId) {
+      return {
+        ok: false,
+        code: "context-required",
+        reason: "exact-context dispatch 缺少 contextId。",
+      };
+    }
+    if (!artifactHasExactContext(artifact, contextId)) {
+      return {
+        ok: false,
+        code: "context-mismatch",
+        reason: "artifact 未绑定到当前 App 的同一 revision。",
+      };
+    }
+  } else if (policy?.scope !== "global") {
+    return {
+      ok: false,
+      code: "context-required",
+      reason: "dispatch 必须显式选择 global 或 exact-context policy。",
+    };
+  }
+
+  return {
+    ok: true,
+    capability,
+    receipt: {
+      schema: "oceanleo.advanced-capability-dispatch.v1",
+      artifactId: artifact.artifactId,
+      revisionId: artifact.revisionId,
+      featureId: capability.featureId,
+      artifactType: artifact.artifactType,
+      sourceFormat: artifact.sourceFormat,
+      editorCapability: String(artifact.editorCapability),
+      adapter: capability.adapter,
+      projectSchema: capability.projectSchema,
+      sourceRevisionId: source.revisionId,
+      sourceDigest: source.digest,
+      context: {
+        scope: policy.scope,
+        contextId,
+        siteKey,
+        exact: policy.scope === "exact-context",
+      },
+    },
+  };
 }
 
 export function artifactIsVisible(

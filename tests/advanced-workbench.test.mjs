@@ -33,7 +33,6 @@ test("typed routes render real content in the inline App-library editor shell", 
   ].join("\n");
   const routeAdapters = [
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
-    source("../src/shell/advanced-routes/OfficeRoute.tsx"),
     source("../src/shell/advanced-routes/EmbeddedRoute.tsx"),
     source("../src/shell/advanced-routes/ImageRoute.tsx"),
     source("../src/shell/advanced-routes/GridRoute.tsx"),
@@ -49,7 +48,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /dynamic\(/);
   assert.match(workbench, /WorkbenchRouteLoading/);
   assert.match(workbench, /VideoTimelineRoute/);
-  assert.match(workbench, /OfficeRoute/);
+  assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
   assert.match(workbench, /EmbeddedRoute/);
   assert.match(workbench, /AudioRoute/);
   assert.match(workbench, /RichDocRoute/);
@@ -229,7 +228,10 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   );
   assert.match(embedded, /onMaterialResult/);
   assert.doesNotMatch(embedded, /editorToolbox=/);
-  assert.match(embedded, /\}, \[hostedMediaType\]\);/);
+  assert.match(
+    embedded,
+    /\}, \[\s*designComposite,\s*designSourceReceipt,\s*hostedMediaType,\s*\]\);/,
+  );
   assert.doesNotMatch(
     embedded,
     /\}, \[route\]\);\s*useWorkbenchMaterialAdapter/,
@@ -281,18 +283,22 @@ test("live inspector panels refresh through a guarded store without render loops
   assert.doesNotMatch(shell, /store\.listeners\.forEach[\s\S]*useLayoutEffect\(\(\) => \{/);
 });
 
-test("late catalog categories stay behind More and editor loads have hard deadlines", () => {
+test("late catalog categories stay behind More and Office uses the compact native edit bar", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const officeClient = source("../src/lib/office-client.ts");
-  const officeWorkbench = source("../src/shell/office-editor/OfficeWorkbench.tsx");
+  const officeRoute = source("../src/shell/advanced-routes/OfficeRoute.tsx");
+  const actionBar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(library, /primaryCategoryIds/);
   assert.match(library, /setCategoriesExpanded\(\(value\) => !value\)/);
   assert.match(library, /tt\(categoriesExpanded \? "收起" : "更多"\)/);
-  assert.match(officeClient, /controller\.abort\(\), 30_000/);
-  assert.match(officeClient, /loadOfficeScriptOnce/);
-  assert.match(officeClient, /OnlyOffice 脚本加载超时/);
-  assert.match(officeWorkbench, /Office 编辑器加载超时，请重试或打开原文件/);
-  assert.match(officeWorkbench, /dirtySinceSaveRef\.current/);
+  assert.match(officeClient, /lightweightOfficeRouteForExtension/);
+  assert.match(officeRoute, /<RichDocRoute/);
+  assert.match(officeRoute, /<GridRoute/);
+  assert.match(officeRoute, /<DeckRoute/);
+  assert.doesNotMatch(officeRoute, /nativeChrome/);
+  assert.match(actionBar, /role="toolbar"/);
+  assert.match(actionBar, /className="flex h-8/);
+  assert.match(actionBar, /adapter\.directDownload/);
 });
 
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {

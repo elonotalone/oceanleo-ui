@@ -6,6 +6,14 @@ const source = readFileSync(
   new URL("../src/shell/advanced-session.ts", import.meta.url),
   "utf8",
 );
+const {
+  INLINE_EDITOR_HISTORY_KEY,
+  advancedSessionAppId,
+  advancedSessionSnapshot,
+  advancedSnapshotFromSession,
+  inlineEditorItemsFromSession,
+  withInlineEditorHistoryHead,
+} = await import("../src/shell/advanced-session.ts");
 
 test("advanced session keeps a stable bounded root identity across saved versions", () => {
   assert.match(source, /ADVANCED_SESSION_SCHEMA_VERSION = 2/);
@@ -56,10 +64,69 @@ test("advanced Design sessions preserve and recover their layered editor route",
   );
 });
 
-test("legacy Office PPTX sessions upgrade in place to the native deck route", () => {
-  assert.match(
-    source,
-    /if \(route === "office" && isNativeDeckFile\(url, meta\)\) \{\s*route = "deck";\s*meta\.advanced_editor_route = "deck";/,
+test("legacy Office sessions upgrade to typed lightweight routes only", () => {
+  for (const [kind, extension, route] of [
+    ["document", "docx", "richdoc"],
+    ["sheet", "xlsx", "grid"],
+    ["ppt", "pptx", "deck"],
+  ]) {
+    const item = {
+      key: `creation:${kind}`,
+      source: "creation",
+      id: `legacy-${kind}`,
+      title: `legacy.${extension}`,
+      kind,
+      siteId: "word",
+      url: `https://files.test/legacy.${extension}`,
+      favorite: false,
+      meta: { format: extension },
+    };
+    const snapshot = advancedSessionSnapshot(item, route);
+    const appId = advancedSessionAppId(item, route);
+    const restored = advancedSnapshotFromSession({
+      app_id: appId.replace(`advanced:v2:${route}:`, "advanced:v2:office:"),
+      snapshot: {
+        ...snapshot,
+        editor_route: "office",
+        item: {
+          ...snapshot.item,
+          meta: {
+            ...snapshot.item.meta,
+            advanced_editor_route: "office",
+          },
+        },
+      },
+    });
+    assert.ok(restored, `${kind} legacy snapshot`);
+    assert.equal(restored.editor_route, route);
+    assert.equal(restored.item.meta.advanced_editor_route, route);
+
+    const history = withInlineEditorHistoryHead({}, item, route);
+    const [head] = Object.values(
+      history[INLINE_EDITOR_HISTORY_KEY].heads,
+    );
+    head.head.route = "office";
+    head.head.item.meta.advanced_editor_route = "office";
+    const [inlineItem] = inlineEditorItemsFromSession({ snapshot: history });
+    assert.ok(inlineItem, `${kind} legacy inline head`);
+    assert.equal(inlineItem.meta.advanced_editor_route, route);
+  }
+  assert.throws(
+    () =>
+      advancedSessionAppId(
+        {
+          key: "creation:invalid-office",
+          source: "creation",
+          id: "invalid-office",
+          title: "invalid.docx",
+          kind: "document",
+          siteId: "word",
+          favorite: false,
+          meta: {},
+        },
+        "office",
+      ),
+    /Legacy office route/,
   );
   assert.match(source, /const legacyOfficeAppId =/);
   assert.match(

@@ -197,6 +197,10 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+// Shared timeline/director capability engines. Re-export only through the
+// owner-maintained public barrels so implementation modules remain private.
+export * from "./video-editor/capabilities";
+export * from "./media-editors/model3d-capabilities";
 export { SelectionToolbar } from "./SelectionToolbar";
 export type { SelectionToolbarProps } from "./SelectionToolbar";
 export { SelectionInspectorPanel } from "./SelectionInspectorPanel";

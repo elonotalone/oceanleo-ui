@@ -66,13 +66,6 @@ const ImageRoute = dynamic(
     ),
   { ssr: false, loading: WorkbenchRouteLoading },
 );
-const OfficeRoute = dynamic(
-  () =>
-    import("./advanced-routes/OfficeRoute").then(
-      (module) => module.OfficeRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
-);
 const PdfRoute = dynamic(
   () =>
     import("./advanced-routes/PdfRoute").then(
@@ -443,9 +436,6 @@ function AdvancedContentWorkbenchRuntime(
       break;
     case "image":
       editor = <ImageRoute {...activeProps} />;
-      break;
-    case "office":
-      editor = <OfficeRoute {...activeProps} />;
       break;
     case "pdf":
       editor = <PdfRoute {...activeProps} />;

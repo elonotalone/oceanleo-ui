@@ -161,16 +161,12 @@ test("Fabric main image is movable and its image geometry commands are concrete"
   assert.match(commands, /case "layer-up"/);
 });
 
-test("regular spreadsheets use Grid while macro workbooks retain Office fidelity", () => {
-  for (const extension of ["xlsx", "xls", "ods"]) {
+test("all spreadsheet formats use the lightweight Grid route", () => {
+  for (const extension of ["xlsx", "xls", "xlsm", "ods"]) {
     assert.deepEqual(editorCapabilityFor(fileItem(`budget.${extension}`)).route, {
       type: "grid",
     });
   }
-  assert.deepEqual(editorCapabilityFor(fileItem("budget.xlsm")).route, {
-    type: "office",
-    ext: "xlsm",
-  });
   assert.deepEqual(
     editorCapabilityFor(
       fileItem(
@@ -292,7 +288,6 @@ test("advanced action bar is native PaneHeader chrome with fixed direct download
     "GridRoute",
     "ImageRoute",
     "Model3DRoute",
-    "OfficeRoute",
     "PdfRoute",
     "RichDocRoute",
     "VideoTimelineRoute",
