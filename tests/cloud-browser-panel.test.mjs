@@ -1216,6 +1216,10 @@ test("terminal configuration and v3 failures are visible instead of spinning for
 
 test("takeover pending is cancellable and bounded without bypassing lease fences", () => {
   assert.equal(CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS, 12_000);
+  assert.match(
+    chromeSource,
+    /if \(!takeoverPending \|\| !controlIntentSent\) return/,
+  );
   const intents = [];
   const refs = {
     transportStateRef: { current: "streaming" },

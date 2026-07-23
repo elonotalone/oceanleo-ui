@@ -1127,3 +1127,32 @@ test("backend diagnostics do not become product error copy", () => {
     "executor.py:417 database host=private",
   );
 });
+
+test("PERSISTENCE_UNAVAILABLE keeps queued takeover for reconcile retry", () => {
+  const { fixture, state: base } = streamingFixtureState();
+  const state = {
+    ...base,
+    controlPending: true,
+    controlIntent: "acquire",
+    controlIntentSent: true,
+  };
+  const reduced = reduceCloudBrowserProtocolMessage(
+    state,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "error"),
+      code: "PERSISTENCE_UNAVAILABLE",
+      message: "browser control ledger is temporarily unavailable; retry takeover",
+      action_sequence: state.lastActionSequence,
+      callback_sequence: state.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.controlPending, true);
+  assert.equal(reduced.state.controlIntent, "acquire");
+  assert.equal(reduced.state.controlIntentSent, false);
+  assert.ok(
+    reduced.effects.some(
+      (effect) => effect.type === "reconcile_control_intent",
+    ),
+  );
+});

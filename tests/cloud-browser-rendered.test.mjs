@@ -174,6 +174,7 @@ test("rendered session row has no duplicate browser chrome", async () => {
         connectionId: "connection",
       },
       controlPending: false,
+      controlIntentSent: false,
       hasCanvasFrame: true,
       busy: false,
       canBookmark: true,
@@ -400,6 +401,7 @@ test("retained reconnect frame enables takeover and pending state stays accessib
       React.createElement(CloudBrowserChrome, {
         ...baseProps,
         controlPending: true,
+        controlIntentSent: true,
       }),
     );
   });
@@ -649,6 +651,7 @@ test("immersive row advertises and restores auto-hide state", async () => {
     driving: false,
     lease: { leaseId: "lease", epoch: 13, holderKind: "agent" },
     controlPending: false,
+    controlIntentSent: false,
     hasCanvasFrame: false,
     busy: false,
     canBookmark: false,

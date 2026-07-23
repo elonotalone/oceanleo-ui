@@ -79,6 +79,7 @@ export function useCloudBrowserTransport({
     useState<CloudBrowserControlLease>(EMPTY_BROWSER_LEASE);
   const [leaseOwned, setLeaseOwned] = useState(false);
   const [controlPending, setControlPendingState] = useState(false);
+  const [controlIntentSent, setControlIntentSentState] = useState(false);
   const [hasCanvasFrame, setHasCanvasFrame] = useState(false);
   const [failureKind, setFailureKindState] =
     useState<CloudBrowserFailureKind>(null);
@@ -167,6 +168,11 @@ export function useCloudBrowserTransport({
     [],
   );
 
+  const setControlIntentSent = useCallback((next: boolean) => {
+    controlIntentSentRef.current = next;
+    setControlIntentSentState(next);
+  }, []);
+
   const setCapabilities = useCallback(
     (value: SetStateAction<CloudBrowserCapabilitiesV3>) => {
       setCapabilitiesState((current) => {
@@ -230,7 +236,7 @@ export function useCloudBrowserTransport({
     const preserveTakeover =
       controlIntentRef.current === "acquire";
     controlIntentRef.current = preserveTakeover ? "acquire" : "";
-    controlIntentSentRef.current = false;
+    setControlIntentSent(false);
     setControlPending(preserveTakeover);
   }, [setControlPending]);
 
@@ -418,7 +424,7 @@ export function useCloudBrowserTransport({
       leaseRef.current.connectionId === connectionIdRef.current
     ) {
       controlIntentRef.current = "";
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(false);
       if (failureKindRef.current === "lease_lost") {
         setFailureKind(null);
@@ -445,7 +451,7 @@ export function useCloudBrowserTransport({
       return;
     }
     if (sendControlMutation("control.acquire", false)) {
-      controlIntentSentRef.current = true;
+      setControlIntentSent(true);
       setControlPending(true);
       return;
     }
@@ -465,7 +471,7 @@ export function useCloudBrowserTransport({
   const requestControlIntent = useCallback(
     (intent: "acquire" | "release") => {
       controlIntentRef.current = intent;
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(true);
       if (intent === "acquire") {
         reconcileControlIntentRef.current();
@@ -476,11 +482,11 @@ export function useCloudBrowserTransport({
         leaseOwnedRef.current &&
         sendControlMutation("control.release", true)
       ) {
-        controlIntentSentRef.current = true;
+        setControlIntentSent(true);
         return;
       }
       controlIntentRef.current = "";
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(false);
       recoverConnectionRef.current(
         tt("实时浏览器连接失败"),
@@ -522,7 +528,7 @@ export function useCloudBrowserTransport({
       }
       liveRequestedRef.current = false;
       controlIntentRef.current = "";
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(false);
       setFailureKind("first_paint");
       transition("failed");
@@ -564,7 +570,7 @@ export function useCloudBrowserTransport({
       }
       liveRequestedRef.current = false;
       controlIntentRef.current = "";
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(false);
       setFailureKind(kind);
       transition("failed");
@@ -629,6 +635,7 @@ export function useCloudBrowserTransport({
       setCurrentLease,
       setCapabilities,
       setControlPending,
+      setControlIntentSent,
       setFailureKind,
       setError,
       rejectProtocol,
@@ -649,6 +656,7 @@ export function useCloudBrowserTransport({
       setCurrentLease,
       setCapabilities,
       setControlPending,
+      setControlIntentSent,
       setFailureKind,
       setError,
       rejectProtocol,
@@ -683,7 +691,7 @@ export function useCloudBrowserTransport({
     clientActionSequenceRef.current = 0;
     pendingBinaryRef.current = false;
     controlIntentRef.current = "";
-    controlIntentSentRef.current = false;
+    setControlIntentSent(false);
     sentEventIdsRef.current.clear();
     ++fenceSerialRef.current;
   }, [setProtocolVersion]);
@@ -1076,7 +1084,7 @@ export function useCloudBrowserTransport({
     lastCallbackSequenceRef.current = 0;
     clientActionSequenceRef.current = 0;
     pendingBinaryRef.current = false;
-    controlIntentSentRef.current = false;
+    setControlIntentSent(false);
     sentEventIdsRef.current.clear();
     ++fenceSerialRef.current;
   }
@@ -1157,7 +1165,7 @@ export function useCloudBrowserTransport({
       }
       liveRequestedRef.current = false;
       controlIntentRef.current = "";
-      controlIntentSentRef.current = false;
+      setControlIntentSent(false);
       setControlPending(false);
       setFailureKind(expired ? "ticket_expired" : "protocol_mismatch");
       transition("failed");
@@ -1436,6 +1444,7 @@ export function useCloudBrowserTransport({
     driving: leaseOwned,
     lease,
     controlPending,
+    controlIntentSent,
     hasCanvasFrame,
     failureKind,
     canvasRef,

@@ -543,6 +543,7 @@ export function CloudBrowserPanel({
         driving={transport.driving}
         lease={transport.lease}
         controlPending={transport.controlPending}
+        controlIntentSent={transport.controlIntentSent}
         hasCanvasFrame={transport.hasCanvasFrame}
         busy={busy}
         canBookmark={

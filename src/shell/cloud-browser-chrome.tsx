@@ -25,6 +25,8 @@ type BrowserSessionRowProps = {
   driving: boolean;
   lease: CloudBrowserControlLease;
   controlPending: boolean;
+  /** True only after control.acquire was written to the socket. */
+  controlIntentSent: boolean;
   hasCanvasFrame: boolean;
   busy: boolean;
   canBookmark: boolean;
@@ -78,6 +80,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     driving,
     lease,
     controlPending,
+    controlIntentSent,
     hasCanvasFrame,
     busy,
     canBookmark,
@@ -115,13 +118,15 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
   const cancelTakeoverRef = useRef(props.onCancelControl);
   cancelTakeoverRef.current = props.onCancelControl;
   useEffect(() => {
-    if (!takeoverPending) return;
+    // Only bound the wait after acquire was actually written. Queued takeover
+    // while awaiting first paint must not cancel before reconcile can send.
+    if (!takeoverPending || !controlIntentSent) return;
     const timer = window.setTimeout(
       () => cancelTakeoverRef.current(),
       CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [takeoverPending]);
+  }, [takeoverPending, controlIntentSent]);
   const powerLabel = liveRequested
     ? tt("新建")
     : selected?.status === "hibernated"

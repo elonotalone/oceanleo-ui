@@ -61,6 +61,7 @@ export interface CloudBrowserProtocolContext {
   ) => void;
   setCapabilities: Setter<CloudBrowserCapabilitiesV3>;
   setControlPending: Setter<boolean>;
+  setControlIntentSent: (sent: boolean) => void;
   setFailureKind: (kind: CloudBrowserFailureKind) => void;
   setError: (message: string) => void;
   rejectProtocol: (
@@ -157,6 +158,9 @@ function commit(
   }
   if (next.controlPending !== previous.controlPending) {
     context.setControlPending(next.controlPending);
+  }
+  if (next.controlIntentSent !== previous.controlIntentSent) {
+    context.setControlIntentSent(next.controlIntentSent);
   }
   if (next.failureKind !== previous.failureKind) {
     context.setFailureKind(next.failureKind);

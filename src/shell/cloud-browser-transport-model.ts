@@ -1035,6 +1035,11 @@ export function reduceCloudBrowserProtocolMessage(
       "LEASE_EPOCH_STALE",
       "LEASE_LOST",
     ].includes(message.code as string);
+    const persistenceUnavailable =
+      message.code === "PERSISTENCE_UNAVAILABLE";
+    const queuedAcquire =
+      persistenceUnavailable &&
+      (state.controlIntent === "acquire" || state.controlIntentSent);
     if (leaseLost) {
       state = {
         ...state,
@@ -1045,6 +1050,17 @@ export function reduceCloudBrowserProtocolMessage(
         lastActionSequence: message.action_sequence as number,
         lastCallbackSequence: message.callback_sequence as number,
         failureKind: "lease_lost",
+      };
+    } else if (queuedAcquire) {
+      // Ledger blip during admit: keep the takeover intent so reconcile can
+      // resend once streaming is healthy again.
+      state = {
+        ...state,
+        controlPending: true,
+        controlIntent: "acquire",
+        controlIntentSent: false,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
       };
     } else {
       state = {
@@ -1071,6 +1087,9 @@ export function reduceCloudBrowserProtocolMessage(
         message: message.message as string,
       },
     });
+    if (queuedAcquire) {
+      effects.push({ type: "reconcile_control_intent" });
+    }
     return { state, effects };
   }
 
