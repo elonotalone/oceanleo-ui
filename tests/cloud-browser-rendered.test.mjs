@@ -414,10 +414,12 @@ test("retained reconnect frame enables takeover and pending state stays accessib
 test("history lists work metadata and only user sessions expose inline naming", async () => {
   const container = document.querySelector("main");
   const root = createRoot(container);
+  // Standalone browser sessions still carry a synthetic companion task_id;
+  // renameability follows title_source, not the mere presence of task_id.
   const userSession = {
     ...session,
     id: "session-user",
-    task_id: null,
+    task_id: "synthetic-browser-task",
     app_session_id: "workspace-user",
     title: "Personal research",
     title_source: "user",
@@ -475,6 +477,18 @@ test("history lists work metadata and only user sessions expose inline naming", 
       .querySelector('[data-cloud-browser-session-option="session-1"]')
       .dataset.cloudBrowserWorkId,
     "task-1",
+  );
+  assert.equal(
+    dialog
+      .querySelector('[data-cloud-browser-session-option="session-user"]')
+      .dataset.cloudBrowserWorkId,
+    undefined,
+  );
+  assert.equal(
+    dialog
+      .querySelector('[data-cloud-browser-session-option="session-user"]')
+      .dataset.cloudBrowserTitleSource,
+    "user",
   );
   assert.ok(dialog.querySelector("[data-cloud-browser-rename-session]"));
   const input = dialog.querySelector('input[aria-label="会话名称"]');

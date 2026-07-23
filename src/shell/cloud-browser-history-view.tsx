@@ -117,7 +117,12 @@ export function CloudBrowserCheckpointPanel({
 
   const selected =
     sessions.find((session) => session.id === selectedId) || null;
-  const selectedIsAgentWork = Boolean(selected?.task_id);
+  // Standalone “开机” sessions still get a synthetic companion task_id for
+  // ledger bookkeeping. Only agent-authored titles (title_source=auto) are
+  // agent work; default/user titles remain user-renameable.
+  const isAgentNamedWork = (session: CloudBrowserSession | null) =>
+    (session?.title_source || "").trim() === "auto";
+  const selectedIsAgentWork = isAgentNamedWork(selected);
 
   const displayTitle = (session: CloudBrowserSession) =>
     session.title?.trim() ||
@@ -307,7 +312,7 @@ export function CloudBrowserCheckpointPanel({
             >
               {sessions.map((session) => {
                 const current = session.id === selectedId;
-                const agentWork = Boolean(session.task_id);
+                const agentWork = isAgentNamedWork(session);
                 const pageUrl = redactedDisplayUrl(session.last_url || "");
                 return (
                   <button
@@ -322,7 +327,12 @@ export function CloudBrowserCheckpointPanel({
                         : "border-stone-200 bg-white hover:bg-stone-50"
                     }`}
                     data-cloud-browser-session-option={session.id}
-                    data-cloud-browser-work-id={session.task_id || undefined}
+                    data-cloud-browser-work-id={
+                      agentWork ? session.task_id || undefined : undefined
+                    }
+                    data-cloud-browser-title-source={
+                      session.title_source || "default"
+                    }
                     data-cloud-browser-app-session-id={
                       session.app_session_id || undefined
                     }
