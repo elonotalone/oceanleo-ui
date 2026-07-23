@@ -184,7 +184,7 @@ async function click(target) {
   });
 }
 
-test("semantic placement is stable at every width without index truncation", () => {
+test("measured width overflow preserves semantic placement without fixed truncation", () => {
   const controls = [
     ...Array.from(
       { length: 8 },
@@ -221,19 +221,25 @@ test("semantic placement is stable at every width without index truncation", () 
       width,
     ),
   );
-  const expectedVisible = Array.from(
-    { length: 8 },
-    (_, index) => `compact-${index}`,
-  );
-  const expectedOverflow = ["hard-more"];
-  for (const snapshot of snapshots) {
+  const expectedVisibleCounts = [1, 1, 2, 5, 7];
+  for (const [snapshotIndex, snapshot] of snapshots.entries()) {
+    const visibleCount = expectedVisibleCounts[snapshotIndex];
     assert.deepEqual(
       snapshot.visible.map((control) => control.id),
-      expectedVisible,
+      Array.from(
+        { length: visibleCount },
+        (_, index) => `compact-${index}`,
+      ),
     );
     assert.deepEqual(
       snapshot.overflow.map((control) => control.id),
-      expectedOverflow,
+      [
+        ...Array.from(
+          { length: 8 - visibleCount },
+          (_, index) => `compact-${index + visibleCount}`,
+        ),
+        "hard-more",
+      ],
     );
     assert.equal(
       [...snapshot.visible, ...snapshot.overflow].some(
@@ -383,12 +389,16 @@ test("the tools launcher registry keeps one active host launcher and focus targe
 });
 
 test("shared edit bar popovers expose focusable dialog semantics", async () => {
-  const [floatingSource, headerSource] = await Promise.all([
-    readFile(resolve("src/shell/FloatingContextToolbar.tsx"), "utf8"),
-    readFile(resolve("src/shell/InlineAdvancedWorkbenchHeader.tsx"), "utf8"),
-  ]);
-  assert.match(floatingSource, /data-floating-toolbar-handle/);
-  assert.match(floatingSource, /event\.currentTarget\.focus\(\)/);
+  const [floatingSource, controllerSource, controlsSource, headerSource] =
+    await Promise.all([
+      readFile(resolve("src/shell/FloatingContextToolbar.tsx"), "utf8"),
+      readFile(resolve("src/shell/edit-bar-dock-controller.tsx"), "utf8"),
+      readFile(resolve("src/shell/EditBarDockControls.tsx"), "utf8"),
+      readFile(resolve("src/shell/InlineAdvancedWorkbenchHeader.tsx"), "utf8"),
+    ]);
+  const editBarSource = floatingSource + controllerSource + controlsSource;
+  assert.match(editBarSource, /data-floating-toolbar-handle/);
+  assert.match(editBarSource, /event\.currentTarget\.focus\(\)/);
   assert.match(floatingSource, /overflow-visible/);
   assert.match(
     headerSource,
@@ -399,6 +409,32 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
 });
 
 test("both floating handles share pointer, keyboard, and reset state symmetrically", async () => {
+  const dockStateUrl = pathToFileURL(
+    resolve("src/shell/edit-bar-dock-state.ts"),
+  ).href;
+  const dockControlsUrl = await compileTsxUrl(
+    "src/shell/EditBarDockControls.tsx",
+    {
+      react: reactUrl,
+      "../i18n/ui/useUI": uiStubUrl,
+      "./edit-bar-dock-state": dockStateUrl,
+      "./floating-toolbar-geometry": pathToFileURL(
+        resolve("src/shell/floating-toolbar-geometry.ts"),
+      ).href,
+    },
+  );
+  const dockControllerUrl = await compileTsxUrl(
+    "src/shell/edit-bar-dock-controller.tsx",
+    {
+      react: reactUrl,
+      "../i18n/ui/useUI": uiStubUrl,
+      "./EditBarDockControls": dockControlsUrl,
+      "./edit-bar-dock-state": dockStateUrl,
+      "./floating-toolbar-geometry": pathToFileURL(
+        resolve("src/shell/floating-toolbar-geometry.ts"),
+      ).href,
+    },
+  );
   const { useFloatingContextToolbar } = await loadTsx(
     "src/shell/FloatingContextToolbar.tsx",
     {
@@ -406,6 +442,8 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
       "react-dom": pathToFileURL(require.resolve("react-dom")).href,
       "../i18n/ui/useUI": uiStubUrl,
       "./advanced-workbench-chrome": chromeStubUrl,
+      "./edit-bar-dock-controller": dockControllerUrl,
+      "./edit-bar-dock-state": dockStateUrl,
       "./floating-toolbar-geometry": pathToFileURL(
         resolve("src/shell/floating-toolbar-geometry.ts"),
       ).href,
@@ -495,7 +533,7 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
     await key(handles()[1], "Home");
     assert.deepEqual(offsets(), ["0,0", "0,0"]);
     await key(handles()[1], "ArrowLeft");
-    assert.deepEqual(offsets(), ["-16,0", "-16,0"]);
+    assert.deepEqual(offsets(), ["0,0", "0,0"]);
     await reset(handles()[0]);
     assert.deepEqual(offsets(), ["0,0", "0,0"]);
 

@@ -56,8 +56,8 @@ document, grid, and deck targeted `richdoc`, `grid`, and `deck`.
 and the advanced workbench host. Historical `office` metadata, App snapshots,
 and inline-editor heads are compatibility inputs only: typed Office sources
 upgrade to `richdoc`, `grid`, or `deck`; ambiguous sources fail closed. The
-compatibility `OfficeRoute` module is therefore not reachable from shared
-dispatch.
+former compatibility `OfficeRoute` module has been deleted, so shared dispatch
+has no Office compatibility route to load or reach.
 
 Timeline and 3D director contracts enter the package only through Owner 9's
 `video-editor/capabilities` and `media-editors/model3d-capabilities` barrels.

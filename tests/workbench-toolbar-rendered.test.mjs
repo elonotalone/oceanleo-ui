@@ -137,11 +137,22 @@ const workspaceActionsStubUrl = dataModule(`
   export function dispatchWorkspaceAction() {}
   export function normalizeWorkspaceAction() { return null; }
 `);
+const editBarDockHostStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function EditBarDockHost({ hostRef, presentation }) {
+    return jsx("div", {
+      ref: hostRef,
+      hidden: !presentation,
+      "data-workspace-edit-bar-dock": true
+    });
+  }
+`);
 
 const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./workspace-actions": workspaceActionsStubUrl,
+  "./EditBarDockHost": editBarDockHostStubUrl,
 });
 const {
   SplitWorkspace,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, type CSSProperties } from "react";
 import type { DeckElement, DeckSlide } from "./deck-schema";
 
 export function deckShapeClipPath(shape?: string): string | undefined {
@@ -17,6 +18,75 @@ export function deckShapeClipPath(shape?: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+export function deckEditableTextValue(element: HTMLElement): string {
+  return (element.innerText || element.textContent || "").replace(/\r\n?/g, "\n");
+}
+
+function DeckEditableText({
+  element,
+  textStyle,
+  onCommitText,
+  onCancelEditing,
+}: {
+  element: DeckElement;
+  textStyle: CSSProperties;
+  onCommitText?: (text: string) => void;
+  onCancelEditing?: () => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const settledRef = useRef(false);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, []);
+  const commit = (editor: HTMLDivElement) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCommitText?.(deckEditableTextValue(editor));
+  };
+  return (
+    <div
+      ref={editorRef}
+      role="textbox"
+      aria-multiline="true"
+      contentEditable
+      suppressContentEditableWarning
+      data-deck-editable-text
+      className="flex h-full w-full cursor-text overflow-hidden whitespace-pre-wrap rounded-sm outline-none ring-2 ring-white/70"
+      style={textStyle}
+      onPointerDown={(event) => event.stopPropagation()}
+      onBlur={(event) => commit(event.currentTarget)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          settledRef.current = true;
+          event.currentTarget.textContent = element.text || "";
+          onCancelEditing?.();
+          event.currentTarget.blur();
+        } else if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key === "Enter"
+        ) {
+          event.preventDefault();
+          commit(event.currentTarget);
+          event.currentTarget.blur();
+        }
+      }}
+    >
+      {element.text || ""}
+    </div>
+  );
 }
 
 export function DeckElementContent({
@@ -78,6 +148,12 @@ export function DeckElementContent({
                       key={cellIndex}
                       contentEditable={editing && !miniature}
                       suppressContentEditableWarning
+                      autoFocus={
+                        editing &&
+                        !miniature &&
+                        rowIndex === 0 &&
+                        cellIndex === 0
+                      }
                       style={{
                         borderColor:
                           element.borderColor || "var(--divider,#d6d3d1)",
@@ -94,16 +170,31 @@ export function DeckElementContent({
                       onPointerDown={(event) => {
                         if (editing) event.stopPropagation();
                       }}
-                      onBlur={(event) =>
+                      onBlur={(event) => {
+                        if (event.currentTarget.dataset.deckEditCancelled) {
+                          delete event.currentTarget.dataset.deckEditCancelled;
+                          return;
+                        }
                         onCommitCell?.(
                           rowIndex,
                           cellIndex,
                           event.currentTarget.textContent || "",
-                        )
-                      }
+                        );
+                        const nextTarget = event.relatedTarget;
+                        const staysInTable =
+                          nextTarget instanceof Node &&
+                          Boolean(
+                            event.currentTarget
+                              .closest("table")
+                              ?.contains(nextTarget),
+                          );
+                        if (!staysInTable) onCancelEditing?.();
+                      }}
                       onKeyDown={(event) => {
+                        event.stopPropagation();
                         if (event.key === "Escape") {
                           event.preventDefault();
+                          event.currentTarget.dataset.deckEditCancelled = "true";
                           event.currentTarget.textContent = cell;
                           onCancelEditing?.();
                           event.currentTarget.blur();
@@ -225,29 +316,12 @@ export function DeckElementContent({
   } as const;
   if (editing && !miniature) {
     return (
-      <div
-        contentEditable
-        suppressContentEditableWarning
-        autoFocus
-        className="flex h-full w-full cursor-text overflow-hidden whitespace-pre-wrap rounded-sm outline-none ring-2 ring-white/70"
-        style={textStyle}
-        onPointerDown={(event) => event.stopPropagation()}
-        onBlur={(event) => onCommitText?.(event.currentTarget.innerText || "")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.currentTarget.textContent = element.text || "";
-            onCancelEditing?.();
-            event.currentTarget.blur();
-          }
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            event.currentTarget.blur();
-          }
-        }}
-      >
-        {element.text || ""}
-      </div>
+      <DeckEditableText
+        element={element}
+        textStyle={textStyle}
+        onCommitText={onCommitText}
+        onCancelEditing={onCancelEditing}
+      />
     );
   }
   return (

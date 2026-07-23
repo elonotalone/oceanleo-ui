@@ -168,8 +168,9 @@ test("code-backed website starters reach the visual editor without a fake projec
   );
   assert.match(embedParams, /params\.starterId = starterId/);
   assert.match(embedParams, /params\.githubRepo = githubRepo/);
-  assert.match(embedParams, /params\.artifactId = artifactId/);
-  assert.match(embedParams, /params\.revisionId = revisionId/);
+  assert.match(embedParams, /const identity = stableArtifactIdentity\(item\)/);
+  assert.match(embedParams, /params\.artifactId = identity\.artifactId/);
+  assert.match(embedParams, /params\.revisionId = identity\.revisionId/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
@@ -283,19 +284,25 @@ test("live inspector panels refresh through a guarded store without render loops
   assert.doesNotMatch(shell, /store\.listeners\.forEach[\s\S]*useLayoutEffect\(\(\) => \{/);
 });
 
-test("late catalog categories stay behind More and Office uses the compact native edit bar", () => {
+test("late catalog categories stay behind More and native Office routes use the compact edit bar", () => {
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const officeClient = source("../src/lib/office-client.ts");
-  const officeRoute = source("../src/shell/advanced-routes/OfficeRoute.tsx");
+  const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   const actionBar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(library, /primaryCategoryIds/);
   assert.match(library, /setCategoriesExpanded\(\(value\) => !value\)/);
   assert.match(library, /tt\(categoriesExpanded \? "收起" : "更多"\)/);
   assert.match(officeClient, /lightweightOfficeRouteForExtension/);
-  assert.match(officeRoute, /<RichDocRoute/);
-  assert.match(officeRoute, /<GridRoute/);
-  assert.match(officeRoute, /<DeckRoute/);
-  assert.doesNotMatch(officeRoute, /nativeChrome/);
+  assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
+  for (const route of ["RichDocRoute", "GridRoute", "DeckRoute"]) {
+    const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
+    assert.match(
+      contents,
+      /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,
+      route,
+    );
+    assert.doesNotMatch(contents, /nativeChrome/, route);
+  }
   assert.match(actionBar, /role="toolbar"/);
   assert.match(actionBar, /className="flex h-8/);
   assert.match(actionBar, /adapter\.directDownload/);
@@ -549,7 +556,7 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
   );
 });
 
-test("cloud browser powers on at Google and negotiates strict native-window v3", () => {
+test("cloud browser creates a fresh Google session and negotiates strict native-window v3", () => {
   const panel =
     source("../src/shell/CloudBrowserPanel.tsx") +
     source("../src/shell/cloud-browser-controls.tsx") +
@@ -562,7 +569,11 @@ test("cloud browser powers on at Google and negotiates strict native-window v3",
   const client = source("../src/lib/browser.ts");
   assert.match(
     panel,
-    /createCloudBrowser\(\s*DEFAULT_BROWSER_URL,\s*effectiveTaskId \|\| undefined/,
+    /createCloudBrowser\(\s*DEFAULT_BROWSER_URL,\s*\)/,
+  );
+  assert.doesNotMatch(
+    panel,
+    /createCloudBrowser\(\s*DEFAULT_BROWSER_URL,\s*effectiveTaskId/,
   );
   assert.match(panel, /reload\(created\.id\)/);
   assert.match(panel, /cloudBrowserAuthMessage/);

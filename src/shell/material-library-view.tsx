@@ -20,7 +20,6 @@ import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   getArtifactItem,
-  prepareArtifactForAction,
 } from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
@@ -271,7 +270,6 @@ export function MaterialLibrary({
   const runtimeSourceRef = useRef(Symbol("material-library"));
   const requestEpochRef = useRef(0);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
-  const editorOpenAbortRef = useRef<AbortController | null>(null);
   const successfulRemoteRequestKeyRef = useRef(
     initialCache ? remoteRequestKey : "",
   );
@@ -291,7 +289,6 @@ export function MaterialLibrary({
   );
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [openingEditor, setOpeningEditor] = useState(false);
   const [error, setError] = useState("");
   const [errorStatus, setErrorStatus] = useState<number | undefined>();
   const [deepLinkedEntry, setDeepLinkedEntry] =
@@ -311,7 +308,6 @@ export function MaterialLibrary({
   useEffect(
     () => () => {
       loadMoreAbortRef.current?.abort();
-      editorOpenAbortRef.current?.abort();
     },
     [],
   );
@@ -681,7 +677,7 @@ export function MaterialLibrary({
       if (!isAdvancedEditableShelfItem(item)) {
         setError("editor-source-unavailable");
         setErrorStatus(422);
-        return;
+        throw new Error("当前 revision 缺少可验证的编辑器 source。");
       }
       if (onOpenItem) {
         onOpenItem(item);
@@ -690,52 +686,6 @@ export function MaterialLibrary({
       }
     },
     [onOpenItem],
-  );
-  const prepareAndOpenItem = useCallback(
-    (item: LibraryItem) => {
-      if (!isAdvancedEditableShelfItem(item)) return;
-      editorOpenAbortRef.current?.abort();
-      const controller = new AbortController();
-      editorOpenAbortRef.current = controller;
-      setOpeningEditor(true);
-      setError("");
-      setErrorStatus(undefined);
-      void prepareArtifactForAction("edit", item, controller.signal)
-        .then((result) => {
-          if (
-            controller.signal.aborted ||
-            editorOpenAbortRef.current !== controller
-          ) {
-            return;
-          }
-          if (!result.ok || !result.data) {
-            setError("editor-open-failed");
-            setErrorStatus(result.status);
-            return;
-          }
-          openPreparedItem(result.data);
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) {
-            setError("editor-open-failed");
-            setErrorStatus(0);
-          }
-        })
-        .finally(() => {
-          if (editorOpenAbortRef.current === controller) {
-            editorOpenAbortRef.current = null;
-            setOpeningEditor(false);
-          }
-        });
-    },
-    [openPreparedItem],
-  );
-  const openPrimaryEntry = useCallback(
-    (entry: WorkspaceLibraryEntry) => {
-      if (!entry.libraryItem || !isTrustedEditableMaterialEntry(entry)) return;
-      prepareAndOpenItem(entry.libraryItem);
-    },
-    [prepareAndOpenItem],
   );
   useEffect(() => {
     if (!registerRuntimeSource) return;
@@ -863,11 +813,6 @@ export function MaterialLibrary({
           {tt("重试")}
         </button>
       )}
-      {openingEditor && (
-        <span role="status" className="text-[11px] text-[var(--muted,#78716c)]">
-          {tt("正在打开编辑器…")}
-        </span>
-      )}
       {effectiveError && entries.length > 0 && (
         <span
           role="alert"
@@ -945,12 +890,7 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
-      onOpenItem={prepareAndOpenItem}
-      onOpenEntry={
-        level === "primary" && allowAdvancedOnSelect
-          ? openPrimaryEntry
-          : undefined
-      }
+      onOpenItem={openPreparedItem}
       className={className}
     />
   );

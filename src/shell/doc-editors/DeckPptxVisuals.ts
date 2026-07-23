@@ -5,10 +5,17 @@ import type {
   DeckElement,
   DeckSlide,
 } from "./deck-schema";
+import {
+  assertDeckPptxSlideXml,
+  deckPptxElementObjectNames,
+  deckPptxObjectName,
+  normalizeDeckPptxSlideObjectIdentity,
+  reportDeckPptxEnhancementWarning,
+  type DeckPptxEnhancementOptions,
+} from "./deck-pptx-ooxml";
 
 const PPTX_MIME =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const OBJECT_PREFIX = "OceanLeoElement-";
 const EMU_PER_CSS_PIXEL = 9_525;
 
 export interface DeckPptxBox {
@@ -43,8 +50,9 @@ function finite(value: number | undefined, fallback: number): number {
 export function deckPptxVisualObjectName(
   elementId: string,
   part = "main",
+  occurrence = 1,
 ): string {
-  return `${OBJECT_PREFIX}${encodeURIComponent(elementId)}-${part}`;
+  return deckPptxObjectName(elementId, part, occurrence);
 }
 
 export function deckPptxTransparency(element: DeckElement): number {
@@ -271,40 +279,91 @@ function imageEffectXml(element: DeckElement): string {
   ].join("");
 }
 
-function findObjectBlock(
+interface VisualObjectBlock {
+  start: number;
+  end: number;
+  xml: string;
+}
+
+function findObjectBlocks(
   xml: string,
   objectName: string,
-): { start: number; end: number; close: string; xml: string } | null {
-  const marker = `name="${objectName}"`;
-  const markerIndex = xml.indexOf(marker);
-  if (markerIndex < 0) return null;
-  const prefix = xml.slice(0, markerIndex);
-  const matches = [...prefix.matchAll(/<p:(pic|sp|graphicFrame)\b/g)];
-  const match = matches.at(-1);
-  if (!match || match.index == null) return null;
-  const close = `</p:${match[1]}>`;
-  const closeIndex = xml.indexOf(close, markerIndex);
-  if (closeIndex < 0) return null;
-  const end = closeIndex + close.length;
-  return {
-    start: match.index,
-    end,
-    close,
-    xml: xml.slice(match.index, end),
-  };
+): VisualObjectBlock[] {
+  const markers = [...xml.matchAll(/<p:cNvPr\b[^>]*>/g)].filter(
+    (match) => /\sname="([^"]*)"/.exec(match[0])?.[1] === objectName,
+  );
+  const blocks = markers.flatMap((marker) => {
+    if (marker.index == null) return [];
+    const prefix = xml.slice(0, marker.index);
+    const matches = [...prefix.matchAll(/<p:(pic|sp|graphicFrame)\b/g)];
+    const match = matches.at(-1);
+    if (!match || match.index == null) return [];
+    const close = `</p:${match[1]}>`;
+    const closeIndex = xml.indexOf(close, marker.index);
+    if (closeIndex < 0) return [];
+    const end = closeIndex + close.length;
+    return [
+      {
+        start: match.index,
+        end,
+        xml: xml.slice(match.index, end),
+      },
+    ];
+  });
+  return blocks.filter(
+    (block, index) =>
+      blocks.findIndex(
+        (candidate) =>
+          candidate.start === block.start && candidate.end === block.end,
+      ) === index,
+  );
 }
 
 function replaceObjectBlock(
   xml: string,
   objectName: string,
   update: (block: string) => string,
+  options: DeckPptxEnhancementOptions,
+  slideNumber: number,
+  elementId: string,
 ): string {
-  const target = findObjectBlock(xml, objectName);
-  if (!target) {
-    throw new Error(`PPTX visual target is missing: ${objectName}`);
+  const targets = findObjectBlocks(xml, objectName);
+  if (targets.length === 0) {
+    reportDeckPptxEnhancementWarning(options, {
+      code: "visual-target-missing",
+      phase: "visual",
+      slideNumber,
+      target: objectName,
+      elementId,
+    });
+    return xml;
   }
-  const next = update(target.xml);
-  return `${xml.slice(0, target.start)}${next}${xml.slice(target.end)}`;
+  if (targets.length > 1) {
+    reportDeckPptxEnhancementWarning(options, {
+      code: "visual-target-ambiguous",
+      phase: "visual",
+      slideNumber,
+      target: objectName,
+      elementId,
+    });
+    return xml;
+  }
+  const target = targets[0];
+  try {
+    const next = update(target.xml);
+    const candidate = `${xml.slice(0, target.start)}${next}${xml.slice(target.end)}`;
+    assertDeckPptxSlideXml(candidate, `PPTX slide ${slideNumber}`);
+    return candidate;
+  } catch {
+    reportDeckPptxEnhancementWarning(options, {
+      code: "visual-enhancement-invalid",
+      phase: "visual",
+      slideNumber,
+      target: objectName,
+      elementId,
+    });
+    return xml;
+  }
 }
 
 function injectBlipEffects(block: string, effects: string): string {
@@ -449,24 +508,38 @@ function applyTableOpacity(block: string, element: DeckElement): string {
   );
 }
 
-function objectNamesForElement(element: DeckElement): string[] {
-  const names = [deckPptxVisualObjectName(element.id)];
-  if (element.type === "shape" && element.text) {
-    names.push(deckPptxVisualObjectName(element.id, "label"));
-  }
-  return names;
-}
-
 export function injectDeckSlideVisualOoxml(
   xml: string,
   slide: DeckSlide,
   aspect: DeckAspect,
+  options: DeckPptxEnhancementOptions = {},
+  slideNumber = 1,
 ): string {
-  let next = xml;
+  let next = normalizeDeckPptxSlideObjectIdentity(
+    xml,
+    slide,
+    options,
+    slideNumber,
+  );
+  const occurrences = new Map<string, number>();
   for (const element of slide.elements) {
-    const mainName = deckPptxVisualObjectName(element.id);
+    const objectNames = deckPptxElementObjectNames(element, occurrences);
+    const mainName = objectNames[0];
+    const enhance = (
+      objectName: string,
+      update: (block: string) => string,
+    ) => {
+      next = replaceObjectBlock(
+        next,
+        objectName,
+        update,
+        options,
+        slideNumber,
+        element.id,
+      );
+    };
     if (element.type === "image") {
-      next = replaceObjectBlock(next, mainName, (block) =>
+      enhance(mainName, (block) =>
         applyPictureRadius(
           injectBlipEffects(block, imageEffectXml(element)),
           element,
@@ -474,29 +547,30 @@ export function injectDeckSlideVisualOoxml(
         ),
       );
     } else if (element.type === "shape") {
-      next = replaceObjectBlock(next, mainName, (block) =>
+      enhance(mainName, (block) =>
         applyShapeRadius(block, element, aspect),
       );
     } else if (
       (element.type === "text" || element.type === "unsupported") &&
       (element.borderRadius || 0) > 0
     ) {
-      next = replaceObjectBlock(next, mainName, (block) =>
+      enhance(mainName, (block) =>
         applyPictureRadius(block, element, aspect),
       );
     } else if (element.type === "table") {
-      next = replaceObjectBlock(next, mainName, (block) =>
+      enhance(mainName, (block) =>
         block.startsWith("<p:graphicFrame")
           ? applyTableOpacity(block, element)
           : block,
       );
     }
     if (element.locked) {
-      for (const objectName of objectNamesForElement(element)) {
-        next = replaceObjectBlock(next, objectName, applyNativeLock);
+      for (const objectName of objectNames) {
+        enhance(objectName, applyNativeLock);
       }
     }
   }
+  assertDeckPptxSlideXml(next, `PPTX slide ${slideNumber}`);
   return next;
 }
 
@@ -504,14 +578,24 @@ export async function injectDeckPptxVisuals(
   blob: Blob,
   slides: readonly DeckSlide[],
   aspect: DeckAspect,
+  options: DeckPptxEnhancementOptions = {},
 ): Promise<Blob> {
   const archive = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+  if (!archive["[Content_Types].xml"] || !archive["ppt/presentation.xml"]) {
+    throw new Error("PPTX package is missing required presentation parts");
+  }
   for (let index = 0; index < slides.length; index += 1) {
     const path = `ppt/slides/slide${index + 1}.xml`;
     const data = archive[path];
     if (!data) throw new Error(`PPTX package is missing ${path}`);
     archive[path] = strToU8(
-      injectDeckSlideVisualOoxml(strFromU8(data), slides[index], aspect),
+      injectDeckSlideVisualOoxml(
+        strFromU8(data),
+        slides[index],
+        aspect,
+        options,
+        index + 1,
+      ),
     );
   }
   const bytes = Uint8Array.from(zipSync(archive, { level: 6 }));

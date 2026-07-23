@@ -121,6 +121,7 @@ async function verifyDesignCompositeSource(
   const evidence = await validateDesignCompositeSource(blob, item, {
     requireBaseIdentity: false,
     requireBaseRevision: false,
+    validation: "open",
   });
   if (evidence.sourceDigest !== normalizedDigest(rendition.digest)) {
     throw new DesignCompositeCommitError(

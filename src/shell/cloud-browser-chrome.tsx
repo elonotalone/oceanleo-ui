@@ -13,6 +13,7 @@ import {
   type CloudBrowserRenameResult,
   type CloudBrowserRestoreResult,
 } from "./cloud-browser-history-view";
+import type { CloudBrowserSessionOpenAction } from "./cloud-browser-session-data";
 import { CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS } from "./cloud-browser-transport-actions";
 
 type BrowserSessionRowProps = {
@@ -45,6 +46,7 @@ type BrowserSessionRowProps = {
     sessionId: string,
     title: string,
   ) => Promise<CloudBrowserRenameResult>;
+  selectedOpenAction: CloudBrowserSessionOpenAction;
   onOpenOrResume: () => void;
   onStartNew: () => void;
   onHibernate: () => void;
@@ -60,6 +62,8 @@ type BrowserSessionRowProps = {
   onToggleFullscreen: () => void;
 };
 
+const VIEW_ONLY_LABEL = "只读";
+
 function buttonClass(enabled = true) {
   return `h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-semibold outline-none transition motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
     enabled
@@ -73,7 +77,6 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
   const {
     accent,
     sessions,
-    selected,
     selectedId,
     transportState,
     liveRequested,
@@ -104,17 +107,29 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
         : transportState === "reconnecting"
           ? "bg-amber-400"
           : "bg-stone-300";
-  const controllerText = driving
-    ? tt("你正在控制")
-    : lease.holderKind === "agent"
-      ? tt("Agent 正在控制")
-      : lease.holderKind === "human"
-        ? tt("另一位用户正在控制")
-        : "";
   const controlAvailable = connected || hasCanvasFrame;
   const hiddenInImmersive =
     immersive && !immersiveControlsVisible;
   const takeoverPending = controlPending && !driving;
+  const controlState = controlPending
+    ? "pending"
+    : driving
+      ? "driving"
+      : lease.holderKind === "agent"
+        ? "agent-controlled"
+        : "viewing";
+  const controllerText =
+    controlState === "driving"
+      ? tt("你正在控制")
+      : controlState === "pending"
+        ? tt("控制请求处理中")
+        : controlState === "agent-controlled"
+          ? tt("Agent 正在控制")
+          : lease.holderKind === "human"
+            ? tt("另一位用户正在控制")
+            : tt(VIEW_ONLY_LABEL);
+  const otherHumanControls =
+    lease.holderKind === "human" && !driving;
   const cancelTakeoverRef = useRef(props.onCancelControl);
   cancelTakeoverRef.current = props.onCancelControl;
   useEffect(() => {
@@ -127,33 +142,27 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     );
     return () => window.clearTimeout(timer);
   }, [takeoverPending, controlIntentSent]);
-  const powerLabel = liveRequested
-    ? tt("新建")
-    : selected?.status === "hibernated"
-      ? tt("恢复")
-      : tt("连接");
-  const powerAria = liveRequested
-    ? tt("新建浏览会话")
-    : selected?.status === "hibernated"
-      ? tt("恢复当前浏览会话")
-      : tt("连接当前浏览会话");
+  const powerLabel = tt("新建");
+  const powerAria = tt("新建浏览会话");
 
   return (
-    <header
-      className={`z-30 shrink-0 border-t border-stone-200/90 bg-white/95 px-2 py-1.5 shadow-[0_-4px_18px_rgba(0,0,0,.08)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
-        immersive
-          ? "absolute inset-x-0 bottom-0"
-          : "relative"
-      } ${
-        hiddenInImmersive
-          ? "translate-y-[calc(100%-4px)] opacity-20 hover:translate-y-0 hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"
-          : "translate-y-0 opacity-100"
-      }`}
-      data-cloud-browser-session-row
-      data-cloud-browser-auto-hidden={
-        hiddenInImmersive ? "true" : "false"
-      }
-    >
+    <>
+      {liveRequested && (
+        <header
+          className={`z-30 shrink-0 border-t border-stone-200/90 bg-white/95 px-2 py-1.5 shadow-[0_-4px_18px_rgba(0,0,0,.08)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
+            immersive
+              ? "absolute inset-x-0 bottom-0"
+              : "relative"
+          } ${
+            hiddenInImmersive
+              ? "translate-y-[calc(100%-4px)] opacity-20 hover:translate-y-0 hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"
+              : "translate-y-0 opacity-100"
+          }`}
+          data-cloud-browser-session-row
+          data-cloud-browser-auto-hidden={
+            hiddenInImmersive ? "true" : "false"
+          }
+        >
       <div className="flex min-w-0 items-center gap-1.5">
         <div
           className="flex min-w-0 flex-1 items-center gap-2"
@@ -161,6 +170,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           aria-live="polite"
           data-cloud-browser-live-state={transportState}
           data-cloud-browser-lease-holder={lease.holderKind}
+          data-cloud-browser-control-state={controlState}
         >
           <span
             className={`h-2 w-2 shrink-0 rounded-full ${stateTone}`}
@@ -190,7 +200,8 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           }
           disabled={
             (!controlAvailable && !takeoverPending) ||
-            (controlPending && driving)
+            (controlPending && driving) ||
+            otherHumanControls
           }
           className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
             driving
@@ -234,11 +245,14 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
               )
             : controlPending
               ? (
-                  <span
-                    className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
-                    aria-hidden="true"
-                    data-cloud-browser-control-spinner
-                  />
+                  <>
+                    <span
+                      className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
+                      aria-hidden="true"
+                      data-cloud-browser-control-spinner
+                    />
+                    {tt("控制请求处理中")}
+                  </>
                 )
             : driving
               ? tt("释放给 Agent")
@@ -268,34 +282,12 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           >
             {tt("历史")}
           </button>
-          {checkpointsOpen && (
-            <CloudBrowserCheckpointPanel
-              sessions={sessions}
-              selectedId={selectedId}
-              busy={busy}
-              deleteArmed={deleteArmed}
-              onChooseSession={props.onChooseSession}
-              onRenameSession={props.onRenameSession}
-              onDelete={props.onDelete}
-              checkpoints={checkpoints}
-              loading={checkpointsLoading}
-              loadError={checkpointsError}
-              canCreate={canCreateCheckpoint}
-              onCreate={props.onCreateCheckpoint}
-              onRestore={props.onRestoreCheckpoint}
-              onClose={props.onToggleCheckpoints}
-            />
-          )}
         </div>
 
         {showPowerButton && (
           <button
             type="button"
-            onClick={
-              liveRequested
-                ? props.onStartNew
-                : props.onOpenOrResume
-            }
+            onClick={props.onStartNew}
             disabled={busy}
             className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
             style={{ background: accent }}
@@ -332,6 +324,28 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           {immersive ? "⤡" : "⤢"}
         </button>
       </div>
-    </header>
+        </header>
+      )}
+      {checkpointsOpen && (
+        <CloudBrowserCheckpointPanel
+          sessions={sessions}
+          selectedId={selectedId}
+          busy={busy}
+          deleteArmed={deleteArmed}
+          onChooseSession={props.onChooseSession}
+          onRenameSession={props.onRenameSession}
+          onOpenSession={props.onOpenOrResume}
+          selectedOpenAction={props.selectedOpenAction}
+          onDelete={props.onDelete}
+          checkpoints={checkpoints}
+          loading={checkpointsLoading}
+          loadError={checkpointsError}
+          canCreate={canCreateCheckpoint}
+          onCreate={props.onCreateCheckpoint}
+          onRestore={props.onRestoreCheckpoint}
+          onClose={props.onToggleCheckpoints}
+        />
+      )}
+    </>
   );
 }

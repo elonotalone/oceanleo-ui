@@ -959,10 +959,6 @@
         },
         {
           "kind": "star",
-          "source": "./office-client"
-        },
-        {
-          "kind": "star",
           "source": "./operator-remark"
         },
         {

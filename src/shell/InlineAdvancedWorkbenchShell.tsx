@@ -67,7 +67,8 @@ export function InlineAdvancedWorkbenchShell({
   const floatingToolbar = useFloatingContextToolbar({
     workspaceRootRef: workspacePane?.fullscreenRef,
     stageRef,
-    resetKey: `${adapter.id}:${item.key}`,
+    dockRootRef: rightPaneSlot?.editBarDockRef,
+    resetKey: `${adapter.id}:${item.key || item.id}`,
   });
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
@@ -515,6 +516,22 @@ export function InlineAdvancedWorkbenchShell({
       rightPaneSlot.setRightFrameless(false);
     };
   }, [liveHeaderNode, rightPaneSlot]);
+  useLayoutEffect(() => {
+    if (!rightPaneSlot) return;
+    rightPaneSlot.setEditBarDockPresentation({
+      ownerId: ownerIdRef.current,
+      mode: floatingToolbar.mode,
+      dropActive: floatingToolbar.dropActive,
+      accent,
+    });
+    return () =>
+      rightPaneSlot.clearEditBarDockPresentation(ownerIdRef.current);
+  }, [
+    accent,
+    floatingToolbar.dropActive,
+    floatingToolbar.mode,
+    rightPaneSlot,
+  ]);
 
   const editorViewport = adapter.nativeChrome?.viewport
     ? undefined

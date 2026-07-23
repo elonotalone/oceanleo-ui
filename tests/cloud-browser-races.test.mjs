@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import ts from "typescript";
 
 import { useCloudBrowserFramePainter } from "../src/shell/cloud-browser-live.ts";
+import { CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS } from "../src/shell/cloud-browser-transport-actions.ts";
 import {
   createCloudBrowserProtocolState,
   reduceCloudBrowserProtocolMessage,
@@ -17,6 +18,7 @@ import {
 import {
   canSendCloudBrowserControlMutation,
   cloudBrowserV3Message,
+  isAuthoritativeCloudBrowserHumanLease,
 } from "../src/shell/cloud-browser-wire.ts";
 import { buildCloudBrowserV3Fixture } from "./cloud-browser-wire-fixture.ts";
 
@@ -104,14 +106,23 @@ const protocolStubUrl = dataModule(`
     const serial = ++runtime.helloSerial;
     context.handshakeRef.current = true;
     context.runtimeVersionRef.current = "runtime-version-" + serial;
-    context.connectionIdRef.current = "connection-" + serial;
+    const connectionId = "connection-" + serial;
+    context.connectionIdRef.current = connectionId;
     context.streamIdRef.current = "stream-" + serial;
     context.streamGenerationRef.current = serial;
     context.windowIdRef.current = "window-" + serial;
     context.helloFrameSequenceRef.current = 0;
+    const lease = runtime.helloLeases.shift() || {
+      leaseId: "",
+      epoch: serial + 3,
+      holderKind: "free",
+    };
     context.setCurrentLease(
-      { leaseId: "", epoch: serial + 3, holderKind: "free" },
-      false,
+      lease,
+      lease.holderKind === "human" &&
+        lease.leaseId.length > 0 &&
+        lease.epoch > 0 &&
+        lease.connectionId === connectionId,
     );
     context.setProtocolVersion(3);
     context.transition("awaiting_first_frame");
@@ -306,6 +317,7 @@ function createRuntime() {
     frameCallbacks: null,
     protocolContext: null,
     helloSerial: 0,
+    helloLeases: [],
     cancelFrameDecodeCalls: [],
     liveRequestedUpdates: [],
     busyUpdates: [],
@@ -438,6 +450,12 @@ function authTickets() {
   return FakeWebSocket.instances.flatMap((socket) =>
     socket.sent.map((message) => JSON.parse(message).ticket),
   );
+}
+
+function sentMessages(socket, type) {
+  return socket.sent
+    .map((message) => JSON.parse(message))
+    .filter((message) => message.t === type);
 }
 
 test("a delayed decode rejection from an invalidated generation is silent", async () => {
@@ -797,6 +815,252 @@ test("takeover intent survives reconnect and sends only after paint", async () =
     assert.ok(acquireIndex > presentedIndex);
     assert.equal(messages[acquireIndex].connection_id, "connection-2");
     assert.equal(messages[acquireIndex].lease_epoch, 5);
+    await act(async () => {
+      runtime.protocolContext.reconcileControlIntent();
+      runtime.protocolContext.reconcileControlIntent();
+      await flushMicrotasks();
+    });
+    assert.equal(sentMessages(freshSocket, "control.acquire").length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("agent-held lease hands off once across connection identities and gates input", async () => {
+  const runtime = createRuntime();
+  runtime.helloLeases.push({
+    leaseId: "agent-lease-17",
+    epoch: 17,
+    holderKind: "agent",
+    holderId: "agent:browser-task",
+    connectionId: "agent-connection",
+    expiresAt: "2099-01-01T00:00:00Z",
+  });
+  const mounted = await mountTransport(runtime);
+  const pointer = {
+    event: "down",
+    nx: 0.25,
+    ny: 0.75,
+    button: "left",
+    pointer_id: 1,
+  };
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+
+    assert.equal(runtime.transport.driving, false);
+    assert.equal(runtime.transport.sendMutation("pointer", pointer), false);
+    await act(async () => runtime.transport.toggleControl());
+    assert.equal(runtime.transport.controlPending, true);
+    assert.equal(sentMessages(socket, "control.acquire").length, 0);
+    await presentFrame(runtime);
+    await act(async () => {
+      runtime.protocolContext.reconcileControlIntent();
+      runtime.protocolContext.reconcileControlIntent();
+      await flushMicrotasks();
+    });
+
+    const acquires = sentMessages(socket, "control.acquire");
+    assert.equal(acquires.length, 1);
+    assert.equal(acquires[0].lease_id, "agent-lease-17");
+    assert.equal(acquires[0].lease_epoch, 17);
+    assert.equal(acquires[0].connection_id, "connection-1");
+    assert.equal(acquires[0].holder_kind, "human");
+    assert.equal(runtime.transport.sendMutation("pointer", pointer), false);
+
+    await act(async () => {
+      runtime.protocolContext.setCurrentLease(
+        {
+          leaseId: "other-human-lease-18",
+          epoch: 18,
+          holderKind: "human",
+          holderId: "user:other",
+          connectionId: "other-human-connection",
+        },
+        true,
+      );
+      await flushMicrotasks();
+    });
+    assert.equal(runtime.transport.driving, false);
+    assert.equal(runtime.transport.sendMutation("pointer", pointer), false);
+
+    await act(async () => {
+      runtime.protocolContext.controlIntentRef.current = "";
+      runtime.protocolContext.setControlIntentSent(false);
+      runtime.protocolContext.setControlPending(false);
+      runtime.protocolContext.setCurrentLease(
+        {
+          leaseId: "human-lease-19",
+          epoch: 19,
+          holderKind: "human",
+          holderId: "user:test-owner",
+          connectionId: "connection-1",
+          expiresAt: "2099-01-01T00:01:00Z",
+        },
+        true,
+      );
+      await flushMicrotasks();
+    });
+    assert.equal(runtime.transport.driving, true);
+    assert.equal(runtime.transport.sendMutation("pointer", pointer), true);
+    assert.equal(sentMessages(socket, "pointer").length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("free lease sends exactly one fenced acquire", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    await presentFrame(runtime);
+    await act(async () => {
+      runtime.transport.toggleControl();
+      runtime.protocolContext.reconcileControlIntent();
+      runtime.protocolContext.reconcileControlIntent();
+      await flushMicrotasks();
+    });
+
+    const acquires = sentMessages(socket, "control.acquire");
+    assert.equal(acquires.length, 1);
+    assert.equal(acquires[0].lease_id, "");
+    assert.equal(acquires[0].lease_epoch, 4);
+    assert.equal(acquires[0].connection_id, "connection-1");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("reconnect emits one fresh fenced acquire without replaying its event identity", async () => {
+  const runtime = createRuntime();
+  runtime.helloLeases.push(
+    {
+      leaseId: "agent-lease-30",
+      epoch: 30,
+      holderKind: "agent",
+      holderId: "agent:browser-task",
+      connectionId: "agent-connection-a",
+    },
+    {
+      leaseId: "agent-lease-31",
+      epoch: 31,
+      holderKind: "agent",
+      holderId: "agent:browser-task",
+      connectionId: "agent-connection-b",
+    },
+  );
+  const mounted = await mountTransport(runtime);
+  try {
+    const firstSocket = await openLive(runtime, "session-a");
+    await establish(firstSocket);
+    await presentFrame(runtime);
+    await act(async () => runtime.transport.toggleControl());
+    const firstAcquire = sentMessages(
+      firstSocket,
+      "control.acquire",
+    );
+    assert.equal(firstAcquire.length, 1);
+
+    await act(async () =>
+      firstSocket.close(1006, "network lost before grant"),
+    );
+    await tick(runtime, 500);
+    const freshSocket = FakeWebSocket.instances.at(-1);
+    await establish(freshSocket);
+    assert.equal(
+      sentMessages(freshSocket, "control.acquire").length,
+      0,
+    );
+    await presentFrame(runtime);
+
+    const freshAcquire = sentMessages(
+      freshSocket,
+      "control.acquire",
+    );
+    assert.equal(freshAcquire.length, 1);
+    assert.equal(freshAcquire[0].lease_id, "agent-lease-31");
+    assert.equal(freshAcquire[0].lease_epoch, 31);
+    assert.equal(freshAcquire[0].connection_id, "connection-2");
+    assert.notEqual(
+      freshAcquire[0].client_event_id,
+      firstAcquire[0].client_event_id,
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("takeover timeout cancels the old writer path without replay", async () => {
+  const runtime = createRuntime();
+  runtime.helloLeases.push({
+    leaseId: "agent-lease-timeout",
+    epoch: 21,
+    holderKind: "agent",
+    holderId: "agent:browser-task",
+    connectionId: "agent-connection",
+  });
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    await presentFrame(runtime);
+    await act(async () => runtime.transport.toggleControl());
+    assert.equal(sentMessages(socket, "control.acquire").length, 1);
+    assert.equal(runtime.transport.controlPending, true);
+
+    await tick(runtime, CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS - 1);
+    assert.equal(runtime.transport.controlPending, true);
+    await tick(runtime, 1);
+
+    assert.equal(runtime.transport.controlPending, false);
+    assert.equal(runtime.transport.driving, false);
+    assert.equal(runtime.transport.transportState, "reconnecting");
+    assert.equal(socket.closed?.code, 1001);
+    assert.equal(sentMessages(socket, "control.acquire").length, 1);
+    assert.equal(runtime.ticketCalls.length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("explicit takeover cancellation closes the in-flight socket once", async () => {
+  const runtime = createRuntime();
+  runtime.helloLeases.push({
+    leaseId: "agent-lease-cancel",
+    epoch: 24,
+    holderKind: "agent",
+    holderId: "agent:browser-task",
+    connectionId: "agent-connection",
+  });
+  const mounted = await mountTransport(runtime);
+  try {
+    const socket = await openLive(runtime, "session-a");
+    await establish(socket);
+    await presentFrame(runtime);
+    await act(async () => runtime.transport.toggleControl());
+    assert.equal(runtime.transport.controlPending, true);
+
+    let cancelled;
+    await act(async () => {
+      cancelled = runtime.transport.cancelTakeover();
+      await flushMicrotasks();
+    });
+    assert.equal(cancelled, true);
+    assert.equal(runtime.transport.controlPending, false);
+    assert.equal(runtime.transport.driving, false);
+    assert.equal(socket.closed?.code, 1001);
+    assert.equal(sentMessages(socket, "control.acquire").length, 1);
+    assert.equal(sentMessages(socket, "control.release").length, 0);
+
+    await tick(runtime, CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS);
+    assert.equal(
+      FakeWebSocket.instances.flatMap((item) =>
+        sentMessages(item, "control.acquire"),
+      ).length,
+      1,
+    );
   } finally {
     await mounted.unmount();
   }
@@ -1146,7 +1410,106 @@ test("lease loss can queue and reconcile a fenced reacquire", () => {
   );
 });
 
-test("agent handoff requires the current connection lease fence", () => {
+test("an in-flight acquire is not duplicated by an intermediate lease update", () => {
+  const { fixture, state: base } = streamingFixtureState();
+  const pending = {
+    ...base,
+    controlPending: true,
+    controlIntent: "acquire",
+    controlIntentSent: true,
+  };
+  const reduced = reduceCloudBrowserProtocolMessage(
+    pending,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "control.state"),
+      lease: {
+        lease_id: "agent-lease-5",
+        lease_epoch: 5,
+        holder_kind: "agent",
+        holder_id: "agent:browser-task",
+        connection_id: "agent-connection",
+      },
+      action_sequence: pending.lastActionSequence + 1,
+      callback_sequence: pending.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.leaseOwned, false);
+  assert.equal(reduced.state.controlPending, true);
+  assert.equal(reduced.state.controlIntent, "acquire");
+  assert.equal(reduced.state.controlIntentSent, true);
+  assert.equal(
+    reduced.effects.some(
+      (effect) => effect.type === "reconcile_control_intent",
+    ),
+    false,
+  );
+});
+
+test("a rejected acquire is explicit and cannot remain queued for replay", () => {
+  const { fixture, state: base } = streamingFixtureState();
+  const pending = {
+    ...base,
+    controlPending: true,
+    controlIntent: "acquire",
+    controlIntentSent: true,
+  };
+  const reduced = reduceCloudBrowserProtocolMessage(
+    pending,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "action.receipt"),
+      action_sequence: pending.lastActionSequence + 1,
+      client_event_id: "connection-fixture.4.11",
+      status: "rejected",
+      code: "STALE_LEASE",
+      message: "browser control lease was superseded",
+      callback_sequence: pending.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.controlPending, false);
+  assert.equal(reduced.state.controlIntent, "");
+  assert.equal(reduced.state.controlIntentSent, false);
+  assert.ok(
+    reduced.effects.some(
+      (effect) =>
+        effect.type === "error" &&
+        effect.message.endsWith("(STALE_LEASE)"),
+    ),
+  );
+});
+
+test("canonical stale-lease errors revoke driving immediately", () => {
+  const { fixture, state } = streamingFixtureState();
+  const acquired = reduceCloudBrowserProtocolMessage(
+    state,
+    fixture.control_state,
+    PROTOCOL_FALLBACKS,
+  ).state;
+  assert.equal(acquired.leaseOwned, true);
+
+  const reduced = reduceCloudBrowserProtocolMessage(
+    acquired,
+    {
+      ...cloudBrowserV3Message(fixture.binding, "error"),
+      code: "STALE_LEASE",
+      message: "browser control lease was superseded",
+      action_sequence: acquired.lastActionSequence,
+      callback_sequence: acquired.lastCallbackSequence + 1,
+    },
+    PROTOCOL_FALLBACKS,
+  );
+  assert.equal(reduced.state.leaseOwned, false);
+  assert.equal(reduced.state.failureKind, "lease_lost");
+  assert.ok(
+    reduced.effects.some(
+      (effect) =>
+        effect.type === "error" && effect.kind === "lease_lost",
+    ),
+  );
+});
+
+test("agent handoff uses lease id and epoch without sharing connection identity", () => {
   const lease = {
     leaseId: "agent-lease",
     epoch: 7,
@@ -1168,7 +1531,36 @@ test("agent handoff requires the current connection lease fence", () => {
       "control.acquire",
       lease,
       false,
-      "connection-stale",
+      "human-connection",
+    ),
+    true,
+  );
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      { ...lease, epoch: 0 },
+      false,
+      "human-connection",
+    ),
+    false,
+  );
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      { ...lease, leaseId: "" },
+      false,
+      "human-connection",
+    ),
+    false,
+  );
+  assert.equal(
+    isAuthoritativeCloudBrowserHumanLease(
+      {
+        ...lease,
+        holderKind: "human",
+        connectionId: "other-human-connection",
+      },
+      "human-connection",
     ),
     false,
   );

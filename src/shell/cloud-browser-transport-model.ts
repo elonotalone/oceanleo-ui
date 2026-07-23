@@ -17,6 +17,7 @@ import {
   CLOUD_BROWSER_MAX_CONTROL_BYTES,
   CLOUD_BROWSER_MAX_FRAME_BYTES,
   CLOUD_BROWSER_PROTOCOL_VERSION,
+  isAuthoritativeCloudBrowserHumanLease,
   type CloudBrowserWireBinding,
 } from "./cloud-browser-wire";
 
@@ -685,9 +686,10 @@ export function reduceCloudBrowserProtocolMessage(
       );
     }
     const connectionId = message.connection_id as string;
-    const owned =
-      lease.holderKind === "human" &&
-      lease.connectionId === connectionId;
+    const owned = isAuthoritativeCloudBrowserHumanLease(
+      lease,
+      connectionId,
+    );
     const preserveTakeover = state.controlIntent === "acquire";
     state = transition(
       {
@@ -795,9 +797,10 @@ export function reduceCloudBrowserProtocolMessage(
         "protocol_mismatch",
       );
     }
-    const owned =
-      lease.holderKind === "human" &&
-      lease.connectionId === state.connectionId;
+    const owned = isAuthoritativeCloudBrowserHumanLease(
+      lease,
+      state.connectionId,
+    );
     const expectedRelease =
       state.controlPending &&
       state.controlIntent === "release" &&
@@ -813,17 +816,22 @@ export function reduceCloudBrowserProtocolMessage(
       state.controlIntent === "acquire" &&
       state.controlIntentSent &&
       owned;
-    const retainQueuedTakeover =
+    const retainPendingTakeover =
       state.controlIntent === "acquire" &&
-      !state.controlIntentSent &&
       !owned;
+    const reconcileQueuedTakeover =
+      retainPendingTakeover && !state.controlIntentSent;
     state = {
       ...state,
       lease,
       leaseOwned: owned,
-      controlIntent: retainQueuedTakeover ? "acquire" : "",
-      controlPending: retainQueuedTakeover,
-      controlIntentSent: false,
+      controlIntent: retainPendingTakeover ? "acquire" : "",
+      controlPending: retainPendingTakeover,
+      // A fresh control.state can race an in-flight acquire. Preserve the
+      // sent marker until an authoritative grant or explicit rejection so
+      // reconciliation cannot emit a second acquire against a newer fence.
+      controlIntentSent:
+        retainPendingTakeover && state.controlIntentSent,
       lastActionSequence: message.action_sequence as number,
       lastCallbackSequence: message.callback_sequence as number,
       failureKind: lost
@@ -841,7 +849,7 @@ export function reduceCloudBrowserProtocolMessage(
     }
     if (acquiredPendingTakeover) {
       effects.push({ type: "clear_error" });
-    } else if (retainQueuedTakeover) {
+    } else if (reconcileQueuedTakeover) {
       effects.push({ type: "reconcile_control_intent" });
     }
     return { state, effects };
@@ -875,8 +883,19 @@ export function reduceCloudBrowserProtocolMessage(
     if ((message.action_sequence as number) <= state.lastActionSequence) {
       return { state, effects };
     }
+    const rejectedPendingControl =
+      message.status === "rejected" &&
+      state.controlPending &&
+      state.controlIntentSent;
     state = {
       ...state,
+      ...(rejectedPendingControl
+        ? {
+            controlPending: false,
+            controlIntent: "" as const,
+            controlIntentSent: false,
+          }
+        : {}),
       lastActionSequence: message.action_sequence as number,
       lastCallbackSequence: message.callback_sequence as number,
     };
@@ -1043,6 +1062,8 @@ export function reduceCloudBrowserProtocolMessage(
       "LEASE_NOT_HELD",
       "LEASE_EPOCH_STALE",
       "LEASE_LOST",
+      "LEASE_NOT_OWNED",
+      "STALE_LEASE",
     ].includes(message.code as string);
     const persistenceUnavailable =
       message.code === "PERSISTENCE_UNAVAILABLE";

@@ -19,6 +19,7 @@ import {
   buildLibraryItems,
   isDurableLibraryItem,
 } from "../src/shell/library-data.ts";
+import { savedEditorRevisionTransition } from "../src/shell/advanced-session.ts";
 import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
 
 function projection(overrides = {}) {
@@ -428,10 +429,11 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(materialView, /AdvancedContentWorkbench/);
   assert.match(
     materialView,
-    /onOpenItem=\{prepareAndOpenItem\}/,
+    /onOpenItem=\{openPreparedItem\}/,
   );
-  assert.match(materialView, /onOpenEntry=/);
-  assert.match(materialView, /prepareArtifactForAction\("edit"/);
+  assert.doesNotMatch(materialView, /onOpenEntry=/);
+  assert.doesNotMatch(materialView, /prepareAndOpenItem/);
+  assert.doesNotMatch(materialView, /prepareArtifactForAction/);
   assert.match(materialView, /loadMoreAbortRef/);
   assert.match(materialView, /epoch !== requestEpochRef\.current/);
   assert.match(materialView, /isTrustedEditableMaterialEntry/);
@@ -722,8 +724,61 @@ test("save/reopen snapshots carry revision pins rather than rendition URLs", () 
   assert.match(sessions, /interface AppSessionArtifactPin/);
   assert.match(sessions, /artifact_refs/);
   assert.match(sessions, /normalizeAppSessionArtifactPins/);
-  assert.match(canvas, /item\.revisionId === source\.revisionId/);
-  assert.match(canvas, /previousRevisionId !== source\.revisionId/);
+  assert.match(canvas, /savedEditorRevisionTransition\(source, item\)/);
+  assert.match(canvas, /if \(transition && !transition\.ok\)/);
   assert.doesNotMatch(canvas, /savedEditorItems\[advancedRootItemId\(item\)\]/);
   assert.match(canvas, /old head|旧 head/);
+
+  const sourceArtifact = normalizeArtifactProjection(projection());
+  assert.ok(sourceArtifact);
+  const source = artifactProjectionToLibraryItem(sourceArtifact);
+  const metadataOnly = {
+    ...source,
+    title: "Metadata-only rename",
+  };
+  assert.deepEqual(savedEditorRevisionTransition(source, metadataOnly), {
+    ok: true,
+    durableCommit: false,
+    code: "metadata-only",
+    reason: "",
+  });
+
+  const revisionId = "r3";
+  const committed = {
+    ...source,
+    key: `artifact:${source.artifactId}:${revisionId}`,
+    revisionId,
+    artifact: {
+      ...source.artifact,
+      revisionId,
+      renditions: Object.fromEntries(
+        Object.entries(source.artifact.renditions).map(([purpose, rendition]) => [
+          purpose,
+          { ...rendition, revisionId },
+        ]),
+      ),
+      scene: {
+        ...source.artifact.scene,
+        sceneRevisionId: revisionId,
+      },
+    },
+    meta: {
+      ...source.meta,
+      previous_revision_id: source.revisionId,
+    },
+  };
+  assert.equal(
+    savedEditorRevisionTransition(source, committed).code,
+    "revision-commit",
+  );
+  assert.equal(
+    savedEditorRevisionTransition(source, {
+      ...committed,
+      meta: {
+        ...committed.meta,
+        previous_revision_id: "stale-revision",
+      },
+    }).code,
+    "wrong-previous-revision",
+  );
 });

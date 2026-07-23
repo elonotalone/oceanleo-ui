@@ -61,6 +61,19 @@ export type CloudBrowserControlMutationType =
   | "control.renew"
   | "control.release";
 
+export function isAuthoritativeCloudBrowserHumanLease(
+  lease: CloudBrowserControlLease,
+  connectionId: string,
+): boolean {
+  return (
+    connectionId.length > 0 &&
+    lease.holderKind === "human" &&
+    lease.leaseId.length > 0 &&
+    lease.epoch > 0 &&
+    lease.connectionId === connectionId
+  );
+}
+
 export function canSendCloudBrowserControlMutation(
   type: CloudBrowserControlMutationType,
   lease: CloudBrowserControlLease,
@@ -79,15 +92,12 @@ export function canSendCloudBrowserControlMutation(
     const fencedAgentHandoff =
       !leaseOwned &&
       lease.holderKind === "agent" &&
-      lease.leaseId.length > 0 &&
-      lease.connectionId === connectionId;
+      lease.leaseId.length > 0;
     return freeLease || fencedAgentHandoff;
   }
   return (
     leaseOwned &&
-    lease.holderKind === "human" &&
-    lease.leaseId.length > 0 &&
-    lease.connectionId === connectionId
+    isAuthoritativeCloudBrowserHumanLease(lease, connectionId)
   );
 }
 

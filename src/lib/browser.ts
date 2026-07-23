@@ -355,6 +355,10 @@ function failedResult<T>(
     ok: false,
     error: result.error,
     status: result.status,
+    ...(result.detail ? { detail: result.detail } : {}),
+    ...(result.retryAfterSeconds === undefined
+      ? {}
+      : { retryAfterSeconds: result.retryAfterSeconds }),
   };
 }
 

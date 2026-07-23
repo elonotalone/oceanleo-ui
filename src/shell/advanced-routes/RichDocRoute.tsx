@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { advancedSavedItem } from "../advanced-session";
+import { createArtifactRevision } from "../artifact-client";
+import {
+  advancedSavedItem,
+  commitAdvancedSavedRevision,
+} from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
@@ -10,12 +15,26 @@ import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
 import { useRichDocEditor } from "../doc-editors/use-rich-doc-editor";
+import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+
+async function sha256(blob: Blob): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("当前环境缺少 Web Crypto，无法验证文档 revision。");
+  }
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    await blob.arrayBuffer(),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export function RichDocRoute({
   item,
@@ -26,7 +45,11 @@ export function RichDocRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const officeSource = useOfficeArtifactSource(item);
+  // A successful commit updates `item` to the new pinned revision. Keep the
+  // loaded bytes stable so that parent identity updates cannot discard edits
+  // that landed while the save request was in flight.
+  const openedItemRef = useRef(item);
+  const officeSource = useOfficeArtifactSource(openedItemRef.current);
   const editor = useRichDocEditor(
     officeSource.item,
     siteId,
@@ -81,19 +104,82 @@ export function RichDocRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    return saved
-      ? {
-          ok: true as const,
-          item: advancedSavedItem(item, {
+    if (!saved) return { ok: false as const };
+    const savedMeta = {
+      editor_project_url: saved.projectUrl,
+      editor_project_schema: saved.projectSchema,
+    };
+    if (!isDurableLibraryItem(item)) {
+      return {
+        ok: true as const,
+        item: advancedSavedItem(item, {
+          url: saved.url,
+          versionId: saved.versionId,
+          meta: savedMeta,
+        }),
+      };
+    }
+    try {
+      if (!saved.url || !saved.projectUrl) {
+        throw new Error("文档保存没有返回完整的 source/editor manifest。");
+      }
+      const sourceBlobPromise = fetchMediaBlob(saved.url, {
+        maxBytes: 40_000_000,
+        cache: "no-store",
+      });
+      const manifestBlobPromise =
+        saved.projectUrl === saved.url
+          ? sourceBlobPromise
+          : fetchMediaBlob(saved.projectUrl, {
+              maxBytes: 20_000_000,
+              cache: "no-store",
+            });
+      const [sourceBlob, manifestBlob] = await Promise.all([
+        sourceBlobPromise,
+        manifestBlobPromise,
+      ]);
+      const [sourceDigest, manifestDigest] = await Promise.all([
+        sha256(sourceBlob),
+        sha256(manifestBlob),
+      ]);
+      const committed = await commitAdvancedSavedRevision(item, {
+        publish: createArtifactRevision,
+        commit: {
+          source: {
+            format: "docx",
             url: saved.url,
-            versionId: saved.versionId,
-            meta: {
-              editor_project_url: saved.projectUrl,
-              editor_project_schema: saved.projectSchema,
+            digest: sourceDigest,
+          },
+          renditions: [
+            {
+              purpose: "full",
+              url: saved.url,
+              digest: sourceDigest,
             },
-          }),
-        }
-      : { ok: false as const };
+            {
+              purpose: "editor_manifest",
+              url: saved.projectUrl,
+              digest: manifestDigest,
+            },
+          ],
+          provenance: {
+            editor: "richdoc",
+            editorProjectSchema: saved.projectSchema,
+            previousRevisionId: item.revisionId,
+          },
+        },
+        meta: savedMeta,
+      });
+      return { ok: true as const, item: committed };
+    } catch (caught) {
+      return {
+        ok: false as const,
+        error:
+          caught instanceof Error
+            ? caught.message
+            : "文档 artifact revision 保存失败",
+      };
+    }
   }, [editor.save, item]);
   const importLocalFiles = useCallback(
     async (files: File[]) => {

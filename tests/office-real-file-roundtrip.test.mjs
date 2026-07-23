@@ -193,14 +193,14 @@ test("Office rendition selection excludes PNG preview and signed 403 requests re
   assert.equal(requestCache, "no-store");
 });
 
-test("preview and all Office routes consume only refreshable source/full inputs", () => {
+test("preview and native Office routes consume only refreshable source/full inputs", () => {
   const source = (path) =>
     readFileSync(new URL(path, import.meta.url), "utf8");
   const viewer = source("../src/shell/library-viewers.tsx");
   const officeSource = source(
     "../src/shell/office-editor/useOfficeArtifactSource.ts",
   );
-  const officeRoute = source("../src/shell/advanced-routes/OfficeRoute.tsx");
+  const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   assert.match(
     viewer,
     /useArtifactRendition\(\s*item,\s*officeViewerRenditionPurposes\(item\)/,
@@ -210,13 +210,14 @@ test("preview and all Office routes consume only refreshable source/full inputs"
   assert.match(officeSource, /officeRenditionPurposes\(item\)/);
   assert.match(officeSource, /rendition\.purpose === "source"/);
   assert.match(officeSource, /rendition\.purpose === "full"/);
-  assert.match(officeRoute, /lightweightOfficeRouteForItem\(sourceItem\)/);
-  assert.match(officeRoute, /<RichDocRoute \{\.\.\.routedProps\}/);
-  assert.match(officeRoute, /<GridRoute \{\.\.\.routedProps\}/);
-  assert.match(officeRoute, /<DeckRoute \{\.\.\.routedProps\}/);
+  assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
   for (const route of ["DeckRoute", "GridRoute", "RichDocRoute"]) {
     const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
-    assert.match(contents, /useOfficeArtifactSource\(item\)/, route);
+    assert.match(
+      contents,
+      /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,
+      route,
+    );
     assert.match(contents, /resourceFailed/, route);
     assert.match(contents, /刷新 source\/full 后重试/, route);
   }

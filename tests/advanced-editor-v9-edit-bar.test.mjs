@@ -22,7 +22,7 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("v9 renders every primary capability without fixed-six truncation", () => {
+test("primary capabilities overflow by measured width without fixed-six truncation", () => {
   const primary = Array.from({ length: 14 }, (_, index) => ({
     id: `primary-${index}`,
     kind: "action",
@@ -33,10 +33,26 @@ test("v9 renders every primary capability without fixed-six truncation", () => {
     { id: "semantic-more", kind: "action", label: "More", placement: "more" },
     { id: "tools-only", kind: "action", label: "Tools", placement: "tools" },
   ];
-  for (const width of [240, 320, 768, 1920]) {
-    const projected = partitionSelectionControls(controls, new Map(), width);
-    assert.deepEqual(projected.visible.map(({ id }) => id), primary.map(({ id }) => id));
-    assert.deepEqual(projected.overflow.map(({ id }) => id), ["semantic-more"]);
+  const measured = new Map(primary.map(({ id }) => [id, 100]));
+  const widthsAndVisibleCounts = [
+    [240, 1],
+    [320, 2],
+    [768, 6],
+    [1920, 14],
+  ];
+  for (const [width, visibleCount] of widthsAndVisibleCounts) {
+    const projected = partitionSelectionControls(controls, measured, width);
+    assert.deepEqual(
+      projected.visible.map(({ id }) => id),
+      primary.slice(0, visibleCount).map(({ id }) => id),
+    );
+    assert.deepEqual(
+      projected.overflow.map(({ id }) => id),
+      [
+        ...primary.slice(visibleCount).map(({ id }) => id),
+        "semantic-more",
+      ],
+    );
   }
   const layout = source("../src/shell/selection-toolbar-layout.ts");
   assert.doesNotMatch(layout, /MAX_COMPACT_CONTROLS|visible\.length\s*>=\s*6/);
@@ -48,7 +64,10 @@ test("v9 floating bar is intrinsic width with only a viewport safety maximum", (
   assert.match(toolbar, /w-fit max-w-full/);
   assert.match(toolbar, /maxInlineSize:\s*SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.doesNotMatch(toolbar, /width:\s*`min\(|min-w-\[[^\]]+\]|flex-1 flex-nowrap/);
-  assert.match(toolbar, /\[overflow-x:auto\]/);
+  assert.match(toolbar, /new ResizeObserver\(readLayout\)/);
+  assert.match(toolbar, /data-selection-toolbar-measurements/);
+  assert.match(toolbar, /data-selection-toolbar-adaptive-region/);
+  assert.doesNotMatch(toolbar, /\[overflow-x:auto\]/);
   assert.match(floating, /inline-flex w-fit max-w-/);
 });
 

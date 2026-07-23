@@ -3,7 +3,17 @@ import {
   lightweightOfficeRouteForExtension,
   type LightweightOfficeRoute,
 } from "../lib/office-client";
-import type { LibraryItem, LibraryKind } from "./library-data";
+import type { ArtifactRevisionCommit } from "./artifact-client";
+import {
+  normalizeArtifactProjectionResult,
+  type ArtifactProjection,
+  type ArtifactType,
+} from "./artifact-contract";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+  type LibraryKind,
+} from "./library-data";
 import { savedItemVisualUrls } from "./editor-working-head";
 import {
   advancedFeatureById,
@@ -18,6 +28,7 @@ export const INLINE_EDITOR_HISTORY_KEY = "oceanleo_inline_editor";
 const INLINE_EDITOR_HISTORY_VERSION = 1;
 const MAX_APP_ID = 160;
 const MAX_META_JSON = 20_000;
+const MAX_ARTIFACT_JSON = 120_000;
 
 type StoredEditorRouteType = EditorRoute["type"] | "office";
 
@@ -117,6 +128,7 @@ const META_KEYS = new Set([
   "source_asset_url",
   "open_url",
   "advanced_editor_route",
+  "previous_revision_id",
 ]);
 
 export interface AdvancedSessionSnapshot extends Record<string, unknown> {
@@ -141,6 +153,10 @@ export interface AdvancedSessionSnapshot extends Record<string, unknown> {
     favorite: boolean;
     createdAt?: string;
     meta: Record<string, unknown>;
+    artifactId?: string;
+    revisionId?: string;
+    artifactType?: ArtifactType;
+    artifact?: ArtifactProjection;
   };
   task_id: string | null;
 }
@@ -215,6 +231,275 @@ export function advancedRootItemId(item: LibraryItem): string {
   );
 }
 
+export type SavedEditorRevisionTransitionCode =
+  | "non-durable-source"
+  | "metadata-only"
+  | "revision-commit"
+  | "missing-durable-item"
+  | "wrong-artifact-root"
+  | "same-revision-commit"
+  | "wrong-previous-revision"
+  | "invalid-integrity";
+
+export interface SavedEditorRevisionTransition {
+  ok: boolean;
+  durableCommit: boolean;
+  code: SavedEditorRevisionTransitionCode;
+  reason: string;
+}
+
+function previousRevisionId(item: LibraryItem): string {
+  return boundedString(item.meta.previous_revision_id, 512);
+}
+
+/**
+ * Classify one editor callback against the exact revision that was opened.
+ * Same-revision callbacks are normal working-head/metadata updates as long as
+ * they retain the source's existing lineage metadata. Only a returned durable
+ * revision with a changed revision id is evaluated as a commit.
+ */
+export function savedEditorRevisionTransition(
+  source: LibraryItem,
+  returned: LibraryItem,
+): SavedEditorRevisionTransition {
+  if (!isDurableLibraryItem(source)) {
+    return {
+      ok: true,
+      durableCommit: false,
+      code: "non-durable-source",
+      reason: "",
+    };
+  }
+  if (!isDurableLibraryItem(returned)) {
+    return {
+      ok: false,
+      durableCommit: false,
+      code: "missing-durable-item",
+      reason: "编辑器返回值丢失了已打开素材的 durable artifact identity。",
+    };
+  }
+
+  const sameRoot = returned.artifactId === source.artifactId;
+  const sameRevision = returned.revisionId === source.revisionId;
+  const returnedPrevious = previousRevisionId(returned);
+  const sourcePrevious = previousRevisionId(source);
+
+  if (sameRoot && sameRevision && returnedPrevious === sourcePrevious) {
+    if (!returned.artifact.integrity.ok) {
+      return {
+        ok: false,
+        durableCommit: false,
+        code: "invalid-integrity",
+        reason: "编辑器返回的 artifact projection 未通过完整性校验。",
+      };
+    }
+    return {
+      ok: true,
+      durableCommit: false,
+      code: "metadata-only",
+      reason: "",
+    };
+  }
+  if (!sameRoot) {
+    return {
+      ok: false,
+      durableCommit: true,
+      code: "wrong-artifact-root",
+      reason: "编辑器 revision commit 改变了 artifact root。",
+    };
+  }
+  if (sameRevision) {
+    return {
+      ok: false,
+      durableCommit: true,
+      code: "same-revision-commit",
+      reason: "编辑器把同一 revision 冒充为新的 revision commit。",
+    };
+  }
+  if (returnedPrevious !== source.revisionId) {
+    return {
+      ok: false,
+      durableCommit: true,
+      code: "wrong-previous-revision",
+      reason: "编辑器 revision commit 没有以当前 pin 作为 previous revision。",
+    };
+  }
+  if (!returned.artifact.integrity.ok) {
+    return {
+      ok: false,
+      durableCommit: true,
+      code: "invalid-integrity",
+      reason: "编辑器返回的新 artifact revision 未通过完整性校验。",
+    };
+  }
+  return {
+    ok: true,
+    durableCommit: true,
+    code: "revision-commit",
+    reason: "",
+  };
+}
+
+/**
+ * Add the pinned lineage marker to a publisher result and validate the entire
+ * transition before it can replace the opened head. A publisher may omit the
+ * compatibility metadata, but it may never contradict it.
+ */
+export function advancedCommittedRevisionItem(
+  source: LibraryItem,
+  committed: LibraryItem,
+  meta: Record<string, unknown> = {},
+): LibraryItem {
+  if (!isDurableLibraryItem(source)) {
+    throw new Error("durable revision commit 缺少 pinned source revision。");
+  }
+  const declaredPrevious = previousRevisionId(committed);
+  if (declaredPrevious && declaredPrevious !== source.revisionId) {
+    throw new Error("revision commit 返回了错误的 previous_revision_id。");
+  }
+  const pinned: LibraryItem = {
+    ...committed,
+    meta: {
+      ...committed.meta,
+      ...meta,
+      previous_revision_id: source.revisionId,
+    },
+  };
+  const transition = savedEditorRevisionTransition(source, pinned);
+  if (!transition.ok || !transition.durableCommit) {
+    throw new Error(transition.reason || "revision commit 未推进 artifact revision。");
+  }
+  return pinned;
+}
+
+export interface AdvancedRevisionPublishResult {
+  ok: boolean;
+  data?: LibraryItem;
+  error?: string;
+}
+
+/**
+ * Publish against the exact opened pin. Callers provide bytes/rendition
+ * evidence only; this helper owns expectedRevisionId, artifactType and lineage
+ * metadata so route implementations cannot accidentally omit or rebase them.
+ */
+export async function commitAdvancedSavedRevision(
+  source: LibraryItem,
+  input: {
+    commit: Omit<
+      ArtifactRevisionCommit,
+      "expectedRevisionId" | "artifactType"
+    >;
+    publish: (
+      artifactId: string,
+      commit: ArtifactRevisionCommit,
+    ) => Promise<AdvancedRevisionPublishResult>;
+    meta?: Record<string, unknown>;
+  },
+): Promise<LibraryItem> {
+  if (
+    !isDurableLibraryItem(source) ||
+    !source.artifact.integrity.ok ||
+    !source.artifact.access.canEdit
+  ) {
+    throw new Error(
+      "当前素材没有可提交新 revision 的完整、可编辑 durable identity。",
+    );
+  }
+  const published = await input.publish(source.artifactId, {
+    ...input.commit,
+    expectedRevisionId: source.revisionId,
+    artifactType: source.artifactType,
+  });
+  if (!published.ok || !published.data) {
+    throw new Error(published.error || "artifact revision commit 失败。");
+  }
+  return advancedCommittedRevisionItem(
+    source,
+    published.data,
+    input.meta,
+  );
+}
+
+interface StoredDurableArtifact {
+  artifactId: string;
+  revisionId: string;
+  artifactType: ArtifactType;
+  artifact: ArtifactProjection;
+}
+
+function durableArtifactForSnapshot(
+  item: LibraryItem,
+): StoredDurableArtifact | null {
+  if (!isDurableLibraryItem(item)) return null;
+  let encoded = "";
+  try {
+    encoded = JSON.stringify(item.artifact);
+  } catch {
+    throw new Error("artifact projection 无法序列化到高级编辑 session。");
+  }
+  if (!encoded || encoded.length > MAX_ARTIFACT_JSON) {
+    throw new Error("artifact projection 超过高级编辑 session 安全上限。");
+  }
+  const normalized = normalizeArtifactProjectionResult(JSON.parse(encoded));
+  if (
+    !normalized.ok ||
+    !normalized.data ||
+    normalized.data.artifactId !== item.artifactId ||
+    normalized.data.revisionId !== item.revisionId ||
+    normalized.data.artifactType !== item.artifactType ||
+    !normalized.data.integrity.ok
+  ) {
+    throw new Error(
+      normalized.error ||
+        "artifact projection 无法以完整 durable identity 写入 session。",
+    );
+  }
+  return {
+    artifactId: item.artifactId,
+    revisionId: item.revisionId,
+    artifactType: item.artifactType,
+    artifact: normalized.data,
+  };
+}
+
+/**
+ * undefined = legacy/non-durable snapshot, null = a malformed durable claim.
+ */
+function durableArtifactFromStoredItem(
+  raw: Record<string, unknown>,
+): StoredDurableArtifact | null | undefined {
+  const claimed = [
+    raw.artifactId,
+    raw.revisionId,
+    raw.artifactType,
+    raw.artifact,
+  ].some((value) => value !== undefined);
+  if (!claimed) return undefined;
+  const artifactId = boundedString(raw.artifactId, 512);
+  const revisionId = boundedString(raw.revisionId, 512);
+  const normalized = normalizeArtifactProjectionResult(raw.artifact);
+  if (
+    !artifactId ||
+    !revisionId ||
+    !normalized.ok ||
+    !normalized.data ||
+    normalized.data.artifactId !== artifactId ||
+    normalized.data.revisionId !== revisionId ||
+    normalized.data.artifactType !== raw.artifactType ||
+    !normalized.data.integrity.ok ||
+    boundedString(raw.id, 512) !== artifactId
+  ) {
+    return null;
+  }
+  return {
+    artifactId,
+    revisionId,
+    artifactType: normalized.data.artifactType,
+    artifact: normalized.data,
+  };
+}
+
 function stableDigest(value: string): string {
   let first = 0x811c9dc5;
   let second = 0x9e3779b9;
@@ -280,6 +565,7 @@ export function advancedSessionSnapshot(
   taskId?: string | null,
 ): AdvancedSessionSnapshot {
   const rootId = advancedRootItemId(item);
+  const durableArtifact = durableArtifactForSnapshot(item);
   const feature = advancedFeatureForItem(item);
   if (!feature) {
     throw new Error("当前素材没有可恢复的高级功能。");
@@ -310,6 +596,7 @@ export function advancedSessionSnapshot(
         ...item.meta,
         advanced_editor_route: route,
       }),
+      ...(durableArtifact || {}),
     },
     task_id: taskId?.trim() || null,
   };
@@ -449,6 +736,11 @@ export function inlineEditorItemsFromSession(
           ? jsonSafeMeta(raw.meta)
           : {},
     };
+    const durableArtifact = durableArtifactFromStoredItem(
+      raw as unknown as Record<string, unknown>,
+    );
+    if (durableArtifact === null) continue;
+    if (durableArtifact) Object.assign(candidate, durableArtifact);
     if (
       !candidate.key ||
       !candidate.id ||
@@ -556,6 +848,8 @@ export function advancedSnapshotFromSession(
   }
   const storedRoute = record.editor_route as StoredEditorRouteType;
   const meta = jsonSafeMeta(raw.meta as Record<string, unknown>);
+  const durableArtifact = durableArtifactFromStoredItem(raw);
+  if (durableArtifact === null) return null;
   let route: EditorRoute["type"];
   // Historical snapshots may name the removed Office/native-Chrome adapter.
   // Recover only when their typed source identifies one lightweight editor.
@@ -612,6 +906,7 @@ export function advancedSnapshotFromSession(
     favorite: raw.favorite,
     createdAt,
     meta,
+    ...(durableArtifact || {}),
   };
   const restored: LibraryItem = {
     ...item,

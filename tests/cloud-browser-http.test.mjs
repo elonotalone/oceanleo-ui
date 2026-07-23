@@ -7,6 +7,7 @@ import {
   createCloudBrowserOperationId,
   validateCloudBrowserSessionFence,
 } from "../src/lib/browser.ts";
+import { agentApiFailureFromPayload } from "../src/lib/agent.ts";
 
 function activeSession(overrides = {}) {
   return {
@@ -46,6 +47,92 @@ function parsedBody(call) {
   assert.equal(typeof call.init?.body, "string");
   return JSON.parse(call.init.body);
 }
+
+test("FastAPI lifecycle failures preserve only safe structured diagnostics and retry timing", () => {
+  const busy = agentApiFailureFromPayload(
+    503,
+    {
+      detail: {
+        code: "EXECUTOR_BUSY",
+        operation: "session_create",
+        retryable: true,
+        retry_after_seconds: 9,
+        diagnostics: {
+          component: "browser_executor",
+          scope: "global",
+          tier: "browser",
+          state: "busy",
+          live_nodes: 2,
+          eligible_nodes: 2,
+          capacity: 4,
+          free_slots: 0,
+          private_host: "executor.internal",
+          token: "must-not-cross",
+        },
+      },
+    },
+    "5",
+  );
+  assert.deepEqual(busy, {
+    ok: false,
+    error: "EXECUTOR_BUSY",
+    status: 503,
+    detail: {
+      code: "EXECUTOR_BUSY",
+      operation: "session_create",
+      retryable: true,
+      retry_after_seconds: 5,
+      diagnostics: {
+        component: "browser_executor",
+        scope: "global",
+        tier: "browser",
+        state: "busy",
+        live_nodes: 2,
+        eligible_nodes: 2,
+        capacity: 4,
+        free_slots: 0,
+      },
+    },
+    retryAfterSeconds: 5,
+  });
+
+  const expected = [
+    ["BROWSER_SESSION_LIST_UNAVAILABLE", "session_list", 502],
+    ["BROWSER_SESSION_CREATE_UNAVAILABLE", "session_create", 502],
+    ["BROWSER_NOT_CONFIGURED", "session_create", 503],
+    ["EXECUTOR_ORIGIN_REJECTED", "session_create", 503],
+  ];
+  for (const [code, operation, status] of expected) {
+    const result = agentApiFailureFromPayload(status, {
+      detail: { code, operation, retryable: false },
+    });
+    assert.equal(result.error, code);
+    assert.equal(result.detail?.code, code);
+    assert.equal(result.detail?.operation, operation);
+  }
+});
+
+test("cloud browser failure projection retains the safe API envelope", async () => {
+  const failure = agentApiFailureFromPayload(
+    502,
+    {
+      detail: {
+        code: "BROWSER_SESSION_READ_UNAVAILABLE",
+        operation: "session_read",
+        retryable: true,
+        diagnostics: {
+          component: "browser_persistence",
+          reason: "sessions_query_failed",
+        },
+      },
+    },
+  );
+  const client = createCloudBrowserLifecycleClient(async () => failure);
+  const result = await client.resume("session-1", {
+    operationId: "resume-envelope-projection",
+  });
+  assert.deepEqual(result, failure);
+});
 
 test("live ticket fetches a fresh active fence and posts exact v3 JSON", async () => {
   const { client, calls } = lifecycleHarness(

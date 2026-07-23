@@ -132,9 +132,21 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   assert.match(shell, /source: "drop"/);
   assert.match(shell, /修改仍安全保留在当前编辑器，但尚未同步到云端/);
   assert.match(shell, /useAdvancedRecovery/);
-  for (const editor of [rich, grid, deck, image, audio, pdf, timeline]) {
+  for (const [name, editor] of [
+    ["richdoc", rich],
+    ["grid", grid],
+    ["deck", deck],
+    ["image", image],
+    ["audio", audio],
+    ["pdf", pdf],
+    ["timeline", timeline],
+  ]) {
     assert.match(editor, /revisionRef/);
-    assert.match(editor, /setDirty\(true\)/);
+    assert.match(
+      editor,
+      /\b(?:setDirty|updateDirty)\(true\)/,
+      `${name} marks the current revision dirty`,
+    );
     assert.match(editor, /revisionRef\.current === savingRevision/);
   }
   assert.match(audio, /canRedo/);

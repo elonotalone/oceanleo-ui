@@ -206,14 +206,26 @@ function AdvancedContentWorkbenchRuntime(
   }, [restoredSessionId, workspace.session]);
   const materialRef = useRef<LibraryItem>(activeItem);
   const materialSessionIdRef = useRef(restoredSessionId);
+  const embeddedPinnedRevisionChanged = Boolean(
+    editorHost.embedded &&
+      props.item.artifactId &&
+      props.item.revisionId &&
+      advancedRootItemId(props.item) ===
+        advancedRootItemId(materialRef.current) &&
+      (materialRef.current.artifactId !== props.item.artifactId ||
+        materialRef.current.revisionId !== props.item.revisionId),
+  );
   if (
     (restoredSessionId &&
       materialSessionIdRef.current !== restoredSessionId) ||
     advancedRootItemId(materialRef.current) !== advancedRootItemId(activeItem) ||
     materialRef.current.kind !== activeItem.kind ||
-    materialRef.current.siteId !== activeItem.siteId
+    materialRef.current.siteId !== activeItem.siteId ||
+    embeddedPinnedRevisionChanged
   ) {
-    materialRef.current = activeItem;
+    materialRef.current = embeddedPinnedRevisionChanged
+      ? props.item
+      : activeItem;
     materialSessionIdRef.current = restoredSessionId;
   }
   const flushRef = useRef<
@@ -221,6 +233,13 @@ function AdvancedContentWorkbenchRuntime(
   >(null);
   const capability = editorCapabilityFor(activeItem);
   const route = capability.route;
+  // RichDoc publishes a canonical artifact revision while retaining its
+  // mounted in-memory document. On the parent callback render, use the newly
+  // pinned identity for the next CAS without replacing the editor source.
+  const routeItem =
+    editorHost.embedded && route.type === "richdoc"
+      ? materialRef.current
+      : activeItem;
   const makeSnapshot = useCallback(
     (taskId?: string | null) =>
       advancedSessionSnapshot(
@@ -418,12 +437,15 @@ function AdvancedContentWorkbenchRuntime(
 
   const activeProps: AdvancedContentWorkbenchProps = {
     ...props,
-    item: activeItem,
-    previewContent: activeItem.content ?? props.previewContent,
-    linkUrl: activeItem.url || activeItem.previewUrl || props.linkUrl,
+    item: routeItem,
+    previewContent: routeItem.content ?? props.previewContent,
+    linkUrl: routeItem.url || routeItem.previewUrl || props.linkUrl,
     taskId: workspace.taskId,
   };
-  const routeKey = `${capability.adapter}:${activeItem.kind}:${activeItem.id}:${activeItem.url || activeItem.previewUrl || ""}`;
+  const routeKey =
+    editorHost.embedded && route.type === "richdoc"
+      ? `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`
+      : `${capability.adapter}:${activeItem.kind}:${activeItem.id}:${activeItem.url || activeItem.previewUrl || ""}`;
   let editor: ReactNode;
   if (capability.adapter === "chart-editor@1") {
     editor = <ChartRoute {...activeProps} />;

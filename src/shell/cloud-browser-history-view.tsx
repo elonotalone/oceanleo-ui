@@ -13,6 +13,7 @@ import type {
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
 import { redactedDisplayUrl } from "./cloud-browser-live";
+import type { CloudBrowserSessionOpenAction } from "./cloud-browser-session-data";
 
 const CHECKPOINT_STATE_COPY = {
   ready: "快照状态：可用",
@@ -71,6 +72,8 @@ export function CloudBrowserCheckpointPanel({
   deleteArmed,
   onChooseSession,
   onRenameSession,
+  onOpenSession,
+  selectedOpenAction,
   onDelete,
   checkpoints,
   loading,
@@ -89,6 +92,8 @@ export function CloudBrowserCheckpointPanel({
     sessionId: string,
     title: string,
   ) => Promise<CloudBrowserRenameResult>;
+  onOpenSession: () => void;
+  selectedOpenAction: CloudBrowserSessionOpenAction;
   onDelete: () => void;
   checkpoints: CloudBrowserCheckpoint[];
   loading: boolean;
@@ -310,6 +315,14 @@ export function CloudBrowserCheckpointPanel({
               aria-label={tt("工作与会话")}
               data-cloud-browser-session-list
             >
+              {!sessions.length && (
+                <p
+                  className="rounded-xl border border-dashed border-stone-200 px-3 py-6 text-center text-[10px] text-stone-500"
+                  data-cloud-browser-session-empty
+                >
+                  {tt("未选择浏览会话")}
+                </p>
+              )}
               {sessions.map((session) => {
                 const current = session.id === selectedId;
                 const agentWork = isAgentNamedWork(session);
@@ -393,31 +406,52 @@ export function CloudBrowserCheckpointPanel({
                         : tt("个人会话")}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onDelete}
-                    disabled={busy}
-                    className={`h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
-                      deleteArmed
-                        ? "border-rose-300 bg-rose-50 text-rose-700"
-                        : "border-stone-200 text-stone-600"
-                    }`}
-                    aria-label={
-                      deleteArmed
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={onOpenSession}
+                      disabled={
+                        busy || selectedOpenAction === "unavailable"
+                      }
+                      className="h-8 rounded-lg bg-stone-900 px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                      aria-label={
+                        selectedOpenAction === "resume"
+                          ? tt("恢复当前浏览会话")
+                          : tt("连接当前浏览会话")
+                      }
+                      data-cloud-browser-open-session
+                      data-cloud-browser-session-action={selectedOpenAction}
+                    >
+                      {selectedOpenAction === "resume"
+                        ? tt("恢复")
+                        : tt("连接")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      disabled={busy}
+                      className={`h-8 rounded-lg border px-2.5 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
+                        deleteArmed
+                          ? "border-rose-300 bg-rose-50 text-rose-700"
+                          : "border-stone-200 text-stone-600"
+                      }`}
+                      aria-label={
+                        deleteArmed
+                          ? tt("确认永久删除此浏览会话")
+                          : tt("删除此浏览会话")
+                      }
+                      title={
+                        deleteArmed
+                          ? tt("确认永久删除此浏览会话")
+                          : tt("删除此浏览会话")
+                      }
+                      data-cloud-browser-delete
+                    >
+                      {deleteArmed
                         ? tt("确认永久删除此浏览会话")
-                        : tt("删除此浏览会话")
-                    }
-                    title={
-                      deleteArmed
-                        ? tt("确认永久删除此浏览会话")
-                        : tt("删除此浏览会话")
-                    }
-                    data-cloud-browser-delete
-                  >
-                    {deleteArmed
-                      ? tt("确认永久删除此浏览会话")
-                      : tt("删除此浏览会话")}
-                  </button>
+                        : tt("删除此浏览会话")}
+                    </button>
+                  </div>
                 </div>
 
                 {!selectedIsAgentWork && (
@@ -486,6 +520,14 @@ export function CloudBrowserCheckpointPanel({
                   </p>
                 )}
               </div>
+            )}
+            {!selected && (
+              <p
+                className="shrink-0 border-b border-stone-100 px-4 py-6 text-center text-[11px] text-stone-500"
+                data-cloud-browser-no-session-selected
+              >
+                {tt("未选择浏览会话")}
+              </p>
             )}
 
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-100 px-3 py-2">

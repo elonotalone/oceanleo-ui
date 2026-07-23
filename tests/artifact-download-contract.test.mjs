@@ -188,6 +188,8 @@ function grantFor(url, overrides = {}) {
     mode: url.searchParams.get("mode"),
     access_url: `/v1/artifact-renditions/access/${parts[6]}-token`,
     expires_at: new Date(Date.now() + 300_000).toISOString(),
+    format: "png",
+    media_type: "image/png",
     ...overrides,
   };
 }
@@ -208,20 +210,22 @@ function installFetch(raw, issueGrant) {
   return calls;
 }
 
-test("source and editor_manifest grants use source mode with coherent file metadata", async () => {
+test("structured projects export a rendered deliverable and never editor state", async () => {
   const raw = projection({
     id: "layered-poster",
     title: "Layered poster",
     artifactType: "chart",
     editorCapability: "chart-editor",
-    sourceFormat: "echarts-option+json",
+    sourceFormat: "oceanleo.chart.v1",
     sourceMediaType: "application/json",
+    editorManifest: true,
   });
   const calls = installFetch(raw, (url) =>
     jsonResponse(
       grantFor(url, {
         filename: "../layered-poster.png",
-        media_type: "application/json",
+        format: "png",
+        media_type: "image/png",
       }),
     ),
   );
@@ -231,30 +235,33 @@ test("source and editor_manifest grants use source mode with coherent file metad
       purpose,
       mode,
     })),
-    [{ purpose: "source", mode: "source" }],
+    [
+      { purpose: "full", mode: "export" },
+      { purpose: "preview", mode: "export" },
+    ],
   );
   assert.deepEqual(artifactDownloadEvidence(item), {
     visible: true,
     available: true,
     reason: "",
-    purpose: "source",
-    mode: "source",
+    purpose: "full",
+    mode: "export",
   });
 
   const result = await getArtifactDownload(item);
 
   assert.equal(result.ok, true);
-  assert.equal(result.data?.purpose, "source");
-  assert.equal(result.data?.mode, "source");
-  assert.equal(result.data?.filename, "layered-poster.json");
-  assert.equal(result.data?.mediaType, "application/json");
+  assert.equal(result.data?.purpose, "full");
+  assert.equal(result.data?.mode, "export");
+  assert.equal(result.data?.filename, "layered-poster.png");
+  assert.equal(result.data?.mediaType, "image/png");
   assert.match(result.data?.expiresAt || "", /Z$/);
   assert.deepEqual(
     calls
       .filter((url) => url.pathname.includes("/renditions/"))
       .map((url) => `${url.pathname}?${url.searchParams}`),
     [
-      "/v1/artifacts/layered-poster/revisions/r1/renditions/source?mode=source",
+      "/v1/artifacts/layered-poster/revisions/r1/renditions/full?mode=export",
     ],
   );
 
@@ -266,18 +273,11 @@ test("source and editor_manifest grants use source mode with coherent file metad
   });
   installFetch(manifestRaw, (url) => jsonResponse(grantFor(url)));
   const manifestItem = itemFrom(manifestRaw);
-  assert.deepEqual(
-    artifactDownloadPlanFor(manifestItem.artifact).map(
-      ({ purpose, mode }) => ({ purpose, mode }),
-    ),
-    [{ purpose: "editor_manifest", mode: "source" }],
-  );
+  assert.deepEqual(artifactDownloadPlanFor(manifestItem.artifact), []);
   const manifestResult = await getArtifactDownload(manifestItem);
-  assert.equal(manifestResult.ok, true);
-  assert.equal(manifestResult.data?.purpose, "editor_manifest");
-  assert.equal(manifestResult.data?.mode, "source");
-  assert.equal(manifestResult.data?.filename, "Manifest only.json");
-  assert.equal(manifestResult.data?.mediaType, "application/json");
+  assert.equal(manifestResult.ok, false);
+  assert.equal(manifestResult.code, "missing-source");
+  assert.match(manifestResult.error || "", /editor manifest 不是用户下载物/);
 });
 
 test("rendered-only artifacts export full or preview and never touch source", async () => {
@@ -290,7 +290,12 @@ test("rendered-only artifacts export full or preview and never touch source", as
     fullMediaType: "application/pdf",
   });
   const calls = installFetch(raw, (url) =>
-    jsonResponse(grantFor(url)),
+    jsonResponse(
+      grantFor(url, {
+        format: "pdf",
+        media_type: "application/pdf",
+      }),
+    ),
   );
   const item = itemFrom(raw);
   assert.deepEqual(
@@ -323,6 +328,154 @@ test("rendered-only artifacts export full or preview and never touch source", as
   );
 });
 
+test("deck grid and richdoc download their real OOXML source", async (t) => {
+  const cases = [
+    {
+      name: "deck",
+      artifactType: "deck",
+      editorCapability: "deck-editor",
+      format: "pptx",
+      mediaType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    },
+    {
+      name: "grid",
+      artifactType: "grid",
+      editorCapability: "grid-editor",
+      format: "xlsx",
+      mediaType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    {
+      name: "richdoc",
+      artifactType: "document",
+      editorCapability: "richdoc-editor",
+      format: "docx",
+      mediaType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+  ];
+  for (const entry of cases) {
+    await t.test(entry.name, async () => {
+      const raw = projection({
+        id: `binary-${entry.name}`,
+        title: `Binary ${entry.name}`,
+        artifactType: entry.artifactType,
+        editorCapability: entry.editorCapability,
+        sourceFormat: entry.format,
+        sourceMediaType: entry.mediaType,
+      });
+      const calls = installFetch(raw, (url) =>
+        jsonResponse(
+          grantFor(url, {
+            filename: `artifact.json`,
+            format: entry.format,
+            media_type: entry.mediaType,
+          }),
+        ),
+      );
+      const item = itemFrom(raw);
+      assert.deepEqual(
+        artifactDownloadPlanFor(item.artifact).map(({ purpose, mode }) => ({
+          purpose,
+          mode,
+        })),
+        [{ purpose: "source", mode: "source" }],
+      );
+
+      const result = await getArtifactDownload(item);
+
+      assert.equal(result.ok, true);
+      assert.equal(result.data?.purpose, "source");
+      assert.equal(result.data?.mode, "source");
+      assert.equal(
+        result.data?.filename,
+        `Binary ${entry.name}.${entry.format}`,
+      );
+      assert.equal(result.data?.mediaType, entry.mediaType);
+      assert.equal(
+        calls.some(
+          (url) =>
+            url.pathname.endsWith("/renditions/source") &&
+            url.searchParams.get("mode") === "source",
+        ),
+        true,
+      );
+    });
+  }
+});
+
+test("gltf+json stays a gltf deliverable instead of becoming json", async () => {
+  const raw = projection({
+    id: "model-deliverable",
+    title: "Scene",
+    artifactType: "model_3d",
+    editorCapability: "model-3d-editor",
+    sourceFormat: "gltf",
+    sourceMediaType: "model/gltf+json",
+  });
+  installFetch(raw, (url) =>
+    jsonResponse(
+      grantFor(url, {
+        format: "gltf",
+        media_type: "model/gltf+json",
+      }),
+    ),
+  );
+
+  const result = await getArtifactDownload(itemFrom(raw));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data?.filename, "Scene.gltf");
+  assert.equal(result.data?.mediaType, "model/gltf+json");
+});
+
+test("proprietary rendition MIME never becomes a fabricated extension", async () => {
+  const raw = projection({
+    id: "proprietary-full",
+    title: "Unsafe project",
+    canExportSource: false,
+    fullFormat: "oceanleo.design-document.v1",
+    fullMediaType: "application/vnd.oceanleo.design-document+json",
+  });
+  installFetch(raw, (url) =>
+    jsonResponse(
+      grantFor(url, {
+        format: "oceanleo.design-document.v1",
+        media_type: "application/vnd.oceanleo.design-document+json",
+      }),
+    ),
+  );
+
+  const result = await getArtifactDownload(itemFrom(raw));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "invalid-response");
+  assert.match(result.error || "", /不在安全下载白名单/);
+  assert.doesNotMatch(result.error || "", /OCEANLEODESIGNDO/i);
+});
+
+test("structured project JSON full falls back to a rendered preview", () => {
+  const raw = projection({
+    id: "chart-project",
+    artifactType: "chart",
+    editorCapability: "chart-editor",
+    sourceFormat: "oceanleo.chart.v1",
+    sourceMediaType: "application/json",
+    fullFormat: "oceanleo.chart.v1",
+    fullMediaType: "application/vnd.oceanleo.chart+json",
+  });
+  const item = itemFrom(raw);
+
+  assert.deepEqual(
+    artifactDownloadPlanFor(item.artifact).map(({ purpose, mode }) => ({
+      purpose,
+      mode,
+    })),
+    [{ purpose: "preview", mode: "export" }],
+  );
+});
+
 test("source-capable artifacts fail closed when source is missing or denied", async () => {
   const missing = projection({
     id: "missing-source",
@@ -335,7 +488,7 @@ test("source-capable artifacts fail closed when source is missing or denied", as
   assert.deepEqual(artifactDownloadPlanFor(missingItem.artifact), []);
   const evidence = artifactDownloadEvidence(missingItem);
   assert.equal(evidence.available, false);
-  assert.match(evidence.reason, /拒绝降级为渲染图片/);
+  assert.match(evidence.reason, /缺少符合能力合同的真实交付 rendition/);
 
   const missingResult = await getArtifactDownload(missingItem);
   assert.equal(missingResult.ok, false);
@@ -403,6 +556,30 @@ test("unified plan and client reject a digestless source without rendered fallba
   );
 });
 
+test("proprietary deck working state never substitutes for pptx source", async () => {
+  const raw = projection({
+    id: "deck-working-state",
+    artifactType: "deck",
+    editorCapability: "deck-editor",
+    sourceFormat: "oceanleo.deck.v1",
+    sourceMediaType: "application/vnd.oceanleo.deck+json",
+  });
+  const calls = installFetch(raw, (url) =>
+    jsonResponse(grantFor(url)),
+  );
+  const item = itemFrom(raw);
+
+  assert.deepEqual(artifactDownloadPlanFor(item.artifact), []);
+  const result = await getArtifactDownload(item);
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "missing-source");
+  assert.match(result.error || "", /editor manifest 不是用户下载物/);
+  assert.equal(
+    calls.some((url) => url.pathname.includes("/renditions/")),
+    false,
+  );
+});
+
 test("typed Office source media mismatch fails before issuing a download grant", async () => {
   const raw = projection({
     id: "docx-image-source",
@@ -440,6 +617,10 @@ test("expired and identity-purpose-mode mismatched grants are rejected", async (
     ["revision mismatch", { revision_id: "r2" }],
     ["purpose mismatch", { purpose: "full" }],
     ["mode mismatch", { mode: "export" }],
+    ["media type mismatch", { media_type: "image/webp" }],
+    ["format mismatch", { format: "webp" }],
+    ["missing media type", { media_type: "" }],
+    ["missing format", { format: "" }],
   ];
   for (const [name, override] of cases) {
     await t.test(name, async () => {

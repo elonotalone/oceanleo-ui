@@ -18,13 +18,158 @@ import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
 
+export type AgentApiDiagnosticValue = string | number | boolean;
+
+export type AgentApiErrorDetail = {
+  code: string;
+  operation?: string;
+  retryable?: boolean;
+  diagnostics?: Record<string, AgentApiDiagnosticValue>;
+  retry_after_seconds?: number;
+};
+
 /** OceanLeo 网关统一返回形状。导出供同一 client 层的其它资源 API 复用。 */
 export type AgentApiResult<T> = {
   ok: boolean;
   data?: T;
   error?: string;
   status?: number;
+  detail?: AgentApiErrorDetail;
+  retryAfterSeconds?: number;
 };
+
+const AGENT_API_PUBLIC_DIAGNOSTIC_KEYS = new Set([
+  "component",
+  "reason",
+  "scope",
+  "tier",
+  "state",
+  "live_nodes",
+  "eligible_nodes",
+  "capacity",
+  "active_runtimes",
+  "free_slots",
+]);
+
+function agentErrorRecord(
+  value: unknown,
+): Record<string, unknown> | null {
+  return value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function boundedRetryAfter(value: unknown): number | null {
+  const parsed =
+    typeof value === "string" && value.trim()
+      ? Number(value)
+      : value;
+  return typeof parsed === "number" &&
+    Number.isSafeInteger(parsed) &&
+    parsed >= 0 &&
+    parsed <= 3_600
+    ? parsed
+    : null;
+}
+
+function safeAgentApiDiagnostics(
+  value: unknown,
+): Record<string, AgentApiDiagnosticValue> | undefined {
+  const source = agentErrorRecord(value);
+  if (!source) return undefined;
+  const diagnostics: Record<string, AgentApiDiagnosticValue> = {};
+  for (const [key, raw] of Object.entries(source)) {
+    if (!AGENT_API_PUBLIC_DIAGNOSTIC_KEYS.has(key)) continue;
+    if (
+      typeof raw === "number" &&
+      Number.isSafeInteger(raw) &&
+      raw >= 0 &&
+      raw <= 1_000_000
+    ) {
+      diagnostics[key] = raw;
+      continue;
+    }
+    if (typeof raw === "boolean") {
+      diagnostics[key] = raw;
+      continue;
+    }
+    if (
+      typeof raw === "string" &&
+      raw.length > 0 &&
+      raw.length <= 120 &&
+      /^[A-Za-z0-9._:-]+$/.test(raw)
+    ) {
+      diagnostics[key] = raw;
+    }
+  }
+  return Object.keys(diagnostics).length ? diagnostics : undefined;
+}
+
+function safeAgentApiErrorDetail(
+  value: unknown,
+): AgentApiErrorDetail | undefined {
+  const source = agentErrorRecord(value);
+  if (!source) return undefined;
+  const code = String(source.code || "").trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]{1,95}$/.test(code)) return undefined;
+  const operation = String(source.operation || "").trim();
+  const retryAfterSeconds = boundedRetryAfter(
+    source.retry_after_seconds,
+  );
+  const diagnostics = safeAgentApiDiagnostics(source.diagnostics);
+  return {
+    code,
+    ...(/^[a-z][a-z0-9_]{0,63}$/.test(operation)
+      ? { operation }
+      : {}),
+    ...(typeof source.retryable === "boolean"
+      ? { retryable: source.retryable }
+      : {}),
+    ...(diagnostics ? { diagnostics } : {}),
+    ...(retryAfterSeconds === null
+      ? {}
+      : { retry_after_seconds: retryAfterSeconds }),
+  };
+}
+
+export function agentApiFailureFromPayload<T>(
+  status: number,
+  payload: unknown,
+  retryAfterHeader?: unknown,
+): AgentApiResult<T> {
+  const rawDetail = agentErrorRecord(payload)?.detail;
+  const parsedDetail = safeAgentApiErrorDetail(rawDetail);
+  const retryAfterSeconds =
+    boundedRetryAfter(retryAfterHeader) ??
+    parsedDetail?.retry_after_seconds ??
+    null;
+  const detail =
+    parsedDetail && retryAfterSeconds !== null
+      ? {
+          ...parsedDetail,
+          retry_after_seconds: retryAfterSeconds,
+        }
+      : parsedDetail;
+  const detailRecord = agentErrorRecord(rawDetail);
+  const error =
+    detail?.code ||
+    (typeof rawDetail === "string"
+      ? rawDetail
+      : detailRecord && "message" in detailRecord
+        ? String(detailRecord.message || `HTTP ${status}`)
+        : `HTTP ${status}`);
+  return {
+    ok: false,
+    error,
+    status,
+    ...(detail ? { detail } : {}),
+    ...(retryAfterSeconds === null
+      ? {}
+      : { retryAfterSeconds }),
+  };
+}
 
 export async function authed<T>(
   path: string,
@@ -57,18 +202,11 @@ export async function authed<T>(
     /* non-JSON */
   }
   if (!res.ok) {
-    const detail = (data as { detail?: unknown } | null)?.detail;
-    const error =
-      typeof detail === "string"
-        ? detail
-        : detail && typeof detail === "object" && "message" in detail
-          ? String((detail as { message?: unknown }).message || `HTTP ${res.status}`)
-          : `HTTP ${res.status}`;
-    return {
-      ok: false,
-      error,
-      status: res.status,
-    };
+    return agentApiFailureFromPayload<T>(
+      res.status,
+      data,
+      res.headers?.get?.("Retry-After"),
+    );
   }
   return { ok: true, data: data as T };
 }

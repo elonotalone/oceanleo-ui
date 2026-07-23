@@ -218,7 +218,7 @@ function safeAttachmentFilename(value: unknown): string {
     .slice(0, 180);
 }
 
-const MEDIA_TYPE_EXTENSIONS: Record<string, string> = {
+const MEDIA_TYPE_EXTENSIONS: Readonly<Record<string, string>> = Object.freeze({
   "application/json": "json",
   "application/pdf": "pdf",
   "application/rtf": "rtf",
@@ -256,45 +256,31 @@ const MEDIA_TYPE_EXTENSIONS: Record<string, string> = {
   "video/mp4": "mp4",
   "video/quicktime": "mov",
   "video/webm": "webm",
-};
+});
 
-const EXTENSION_MEDIA_TYPES: Record<string, string> = {
-  aac: "audio/aac",
-  bmp: "image/bmp",
-  csv: "text/csv",
-  doc: "application/msword",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  flac: "audio/flac",
-  gif: "image/gif",
-  glb: "model/gltf-binary",
-  gltf: "model/gltf+json",
-  html: "text/html",
-  jpg: "image/jpeg",
-  json: "application/json",
-  m4a: "audio/m4a",
-  md: "text/markdown",
-  mov: "video/quicktime",
-  mp3: "audio/mpeg",
-  mp4: "video/mp4",
-  odp: "application/vnd.oasis.opendocument.presentation",
-  ods: "application/vnd.oasis.opendocument.spreadsheet",
-  odt: "application/vnd.oasis.opendocument.text",
-  ogg: "audio/ogg",
-  pdf: "application/pdf",
-  png: "image/png",
-  ppt: "application/vnd.ms-powerpoint",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  rtf: "application/rtf",
-  svg: "image/svg+xml",
-  tiff: "image/tiff",
-  txt: "text/plain",
-  wav: "audio/wav",
-  webm: "video/webm",
-  webp: "image/webp",
-  xls: "application/vnd.ms-excel",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  zip: "application/zip",
-};
+const EXTENSION_MEDIA_TYPES: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MEDIA_TYPE_EXTENSIONS).map(([mediaType, extension]) => [
+      extension,
+      mediaType,
+    ]),
+  ),
+);
+
+const GENERIC_BINARY_MEDIA_TYPES = new Set([
+  "",
+  "application/download",
+  "application/octet-stream",
+  "application/x-download",
+  "binary/octet-stream",
+]);
+
+const FORMAT_EXTENSION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  jpeg: "jpg",
+  markdown: "md",
+  text: "txt",
+  "svg+xml": "svg",
+});
 
 function normalizedMediaType(value: unknown): string {
   const mediaType = String(value || "")
@@ -312,37 +298,23 @@ function attachmentExtension(
   purpose: ArtifactRenditionPurpose,
 ): string {
   const mediaType = normalizedMediaType(mediaTypeValue);
-  if (purpose === "editor_manifest") return "json";
-  if (mediaType.endsWith("+json")) return "json";
+  if (purpose === "editor_manifest") return "";
   if (MEDIA_TYPE_EXTENSIONS[mediaType]) {
     return MEDIA_TYPE_EXTENSIONS[mediaType];
   }
+  if (!GENERIC_BINARY_MEDIA_TYPES.has(mediaType)) return "";
   const format = String(formatValue || "").trim().toLowerCase();
-  if (
-    format.includes("json") ||
-    format.startsWith("oceanleo.") ||
-    /-source@\d+$/.test(format)
-  ) {
-    return "json";
-  }
-  if (format === "jpeg" || format === "image/jpeg") return "jpg";
-  if (format === "markdown" || format === "text/markdown") return "md";
-  if (format === "text" || format === "text/plain") return "txt";
-  if (format === "svg+xml" || format === "image/svg+xml") return "svg";
-  const extension = format
-    .split("/")
-    .pop()!
-    .replace(/^\.+/, "")
-    .replace(/[^a-z0-9]+/g, "");
-  return extension && extension.length <= 12 ? extension : "bin";
+  const canonical = FORMAT_EXTENSION_ALIASES[format] || format;
+  return EXTENSION_MEDIA_TYPES[canonical] ? canonical : "";
 }
 
 function attachmentMediaType(value: unknown, extension: string): string {
-  return (
-    normalizedMediaType(value) ||
-    EXTENSION_MEDIA_TYPES[extension] ||
-    "application/octet-stream"
-  );
+  const mediaType = normalizedMediaType(value);
+  if (MEDIA_TYPE_EXTENSIONS[mediaType] === extension) return mediaType;
+  if (GENERIC_BINARY_MEDIA_TYPES.has(mediaType)) {
+    return EXTENSION_MEDIA_TYPES[extension] || "";
+  }
+  return "";
 }
 
 function attachmentFilename(
@@ -352,7 +324,10 @@ function attachmentFilename(
 ): string {
   const suppliedName = safeAttachmentFilename(supplied);
   const fallbackName = safeAttachmentFilename(title) || "artifact";
-  let stem = suppliedName || fallbackName;
+  const suppliedIsGeneric = /^artifact(?:\.[a-z0-9]{1,12})?$/i.test(
+    suppliedName,
+  );
+  let stem = suppliedName && !suppliedIsGeneric ? suppliedName : fallbackName;
   if (!extension) return stem;
   const suffix = `.${extension}`;
   if (stem.toLowerCase().endsWith(suffix)) return stem;
@@ -1705,37 +1680,65 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
     };
   }
   const [candidate] = artifactDownloadPlanFor(artifact);
-  if (artifact.access.canExportSource) {
-    const source =
+  if (!candidate) {
+    const declaredProjectState =
       artifact.renditions.source ||
       artifact.renditions.editor_manifest ||
       null;
-    if (!source) {
-      return {
-        visible: true,
-        available: false,
-        reason:
-          "当前 revision 声明可导出源码，但缺少 source 或 editor_manifest；已拒绝降级为渲染图片。",
-        purpose: null,
-        mode: null,
-        rendition: null,
-        code: "missing-source",
-        status: 422,
-      };
+    const hasAnyDownloadPermission =
+      artifact.access.canExportSource || artifact.access.canPreview;
+    const sourceEvidenceIsInvalid = Boolean(
+      artifact.access.canExportSource &&
+        artifact.renditions.source &&
+        (artifact.renditions.source.revisionId !== artifact.revisionId ||
+          !artifact.renditions.source.digest),
+    );
+    let reason: string;
+    let code: ArtifactApiErrorCode;
+    let status: number;
+    if (sourceEvidenceIsInvalid) {
+      reason =
+        "source rendition 没有摘要或没有固定到当前 artifact revision。";
+      code = "integrity-failed";
+      status = 409;
+    } else if (!hasAnyDownloadPermission) {
+      reason = "当前主体没有下载 source 或 rendered deliverable 的权限。";
+      code = "unauthorized";
+      status = 403;
+    } else {
+      reason = declaredProjectState
+        ? "当前 revision 没有符合能力合同的真实交付 rendition；project source/editor manifest 不是用户下载物，已拒绝降级为渲染图片。"
+        : "当前 revision 缺少符合能力合同的真实交付 rendition。";
+      code = "missing-source";
+      status = 422;
     }
-    if (!candidate) {
-      return {
-        visible: true,
-        available: false,
-        reason:
-          "源码 rendition 没有摘要或没有固定到当前 artifact revision。",
-        purpose: null,
-        mode: null,
-        rendition: null,
-        code: "integrity-failed",
-        status: 409,
-      };
-    }
+    return {
+      visible: true,
+      available: false,
+      reason,
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code,
+      status,
+    };
+  }
+  if (
+    (candidate.mode === "source" && !artifact.access.canExportSource) ||
+    (candidate.mode === "export" && !artifact.access.canPreview)
+  ) {
+    return {
+      visible: true,
+      available: false,
+      reason: "当前主体没有合同所需的 rendition 下载权限。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "unauthorized",
+      status: 403,
+    };
+  }
+  if (candidate.mode === "source") {
     return {
       visible: true,
       available: true,
@@ -1747,54 +1750,13 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
       status: 200,
     };
   }
-  if (!artifact.access.canPreview) {
-    return {
-      visible: true,
-      available: false,
-      reason: "当前主体没有导出 rendered rendition 的权限。",
-      purpose: null,
-      mode: null,
-      rendition: null,
-      code: "unauthorized",
-      status: 403,
-    };
-  }
-  const rendered = candidate?.rendition || null;
-  if (!rendered) {
-    return {
-      visible: true,
-      available: false,
-      reason:
-        "这个 rendered-only revision 没有可导出的 full 或 preview rendition。",
-      purpose: null,
-      mode: null,
-      rendition: null,
-      code: "missing-source",
-      status: 422,
-    };
-  }
-  if (
-    !["full", "preview"].includes(rendered.purpose) ||
-    rendered.revisionId !== artifact.revisionId
-  ) {
-    return {
-      visible: true,
-      available: false,
-      reason: "渲染 rendition 没有固定到当前 artifact revision。",
-      purpose: null,
-      mode: null,
-      rendition: null,
-      code: "integrity-failed",
-      status: 409,
-    };
-  }
   return {
     visible: true,
     available: true,
     reason: "",
-    purpose: rendered.purpose,
+    purpose: candidate.purpose,
     mode: "export",
-    rendition: rendered,
+    rendition: candidate.rendition,
     code: "unknown",
     status: 200,
   };
@@ -1886,6 +1848,12 @@ export async function getArtifactDownload(
       raw.content_type,
   );
   const renditionMediaType = normalizedMediaType(rendition.mediaType);
+  const grantFormat = String(raw.format || "")
+    .trim()
+    .toLowerCase();
+  const renditionFormat = String(rendition.format || "")
+    .trim()
+    .toLowerCase();
   if (
     grantArtifactId !== artifact.artifactId ||
     grantRevisionId !== artifact.revisionId ||
@@ -1894,11 +1862,12 @@ export async function getArtifactDownload(
     !grantUrl ||
     !Number.isFinite(expiresAt) ||
     expiresAt <= Date.now() ||
-    Boolean(
-      grantMediaType &&
-        renditionMediaType &&
-        grantMediaType !== renditionMediaType,
-    )
+    !grantMediaType ||
+    !renditionMediaType ||
+    grantMediaType !== renditionMediaType ||
+    !grantFormat ||
+    !renditionFormat ||
+    grantFormat !== renditionFormat
   ) {
     return {
       ok: false,
@@ -1921,6 +1890,16 @@ export async function getArtifactDownload(
     grantMediaType || renditionMediaType,
     extension,
   );
+  if (!extension || !mediaType) {
+    return {
+      ok: false,
+      error:
+        `rendition MIME ${grantMediaType || "missing"} / format ${grantFormat || "missing"} 不在安全下载白名单；已拒绝生成误导文件名。`,
+      code: "invalid-response",
+      status: grant.status,
+      retryable: false,
+    };
+  }
   return {
     ok: true,
     status: grant.status,

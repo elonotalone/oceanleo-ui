@@ -32,8 +32,10 @@ import {
 } from "./workspace-actions";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
-import type { LibraryItem } from "./library-data";
-import { isDurableLibraryItem } from "./library-data";
+import {
+  libraryItemIdentityKey,
+  type LibraryItem,
+} from "./library-data";
 import {
   canonicalArtifactContextId,
   type ArtifactContextRef,
@@ -44,6 +46,7 @@ import { editorCapabilityFor } from "./workbench-routes";
 import {
   advancedRootItemId,
   inlineEditorItemsFromSession,
+  savedEditorRevisionTransition,
 } from "./advanced-session";
 import { useWorkbenchMaterialActions } from "./workbench-material-provider";
 import {
@@ -144,6 +147,14 @@ export function ResultCanvas({
   const [activeCanvasMode, setActiveCanvasMode] =
     useState<"preview" | "edit">("preview");
   const [artifactSaveError, setArtifactSaveError] = useState("");
+  const activeCanvasRevisionKey = activeCanvasEntry?.libraryItem
+    ? libraryItemIdentityKey(activeCanvasEntry.libraryItem)
+    : "";
+  useEffect(() => {
+    // A failure belongs to one exact material revision in one canvas mode.
+    // Metadata/no-op callbacks do not clear it; an actual transition does.
+    setArtifactSaveError("");
+  }, [activeCanvasMode, activeCanvasRevisionKey]);
   const materialSiteId =
     materialContext?.siteKey ||
     effectiveSiteId ||
@@ -185,25 +196,19 @@ export function ResultCanvas({
   );
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
     const source = activeCanvasEntry?.libraryItem;
-    if (source && isDurableLibraryItem(source)) {
-      const previousRevisionId = String(
-        item.meta.previous_revision_id || "",
-      ).trim();
-      if (
-        !isDurableLibraryItem(item) ||
-        item.artifactId !== source.artifactId ||
-        item.revisionId === source.revisionId ||
-        previousRevisionId !== source.revisionId ||
-        !item.artifact.integrity.ok
-      ) {
-        setArtifactSaveError(
-          "编辑器未返回同一 artifact root、以当前 pin 为 previous revision 的新完整 revision；旧 head 仍保留。",
-        );
-        return;
-      }
+    const transition = source
+      ? savedEditorRevisionTransition(source, item)
+      : null;
+    if (transition && !transition.ok) {
+      setArtifactSaveError(
+        "编辑器未返回同一 artifact root、以当前 pin 为 previous revision 的新完整 revision；旧 head 仍保留。",
+      );
+      return;
     }
     const rootId = advancedRootItemId(item);
-    setArtifactSaveError("");
+    // A valid new durable revision resolves an earlier commit failure. A
+    // rename/open/autosave-noop must not hide a still-unresolved real failure.
+    if (transition?.durableCommit) setArtifactSaveError("");
     setActiveCanvasEntry((current) =>
       current?.libraryItem &&
       advancedRootItemId(current.libraryItem) === rootId

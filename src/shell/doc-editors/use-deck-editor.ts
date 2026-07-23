@@ -1,5 +1,6 @@
 "use client";
 
+import { unzipSync } from "fflate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchMediaBlob } from "../../lib/media-proxy";
@@ -33,6 +34,8 @@ import {
   loadEditorProject,
   saveFileToLibrary,
   urlExtension,
+  type PreparedDeliveryUpload,
+  type PreparedProjectUpload,
   type PersistedEditorVersion,
 } from "./doc-io";
 import {
@@ -144,7 +147,119 @@ export interface DeckEditorState {
 }
 
 const HISTORY_LIMIT = 60;
-const DECK_PROJECT_SCHEMA = "oceanleo.deck.v1";
+export const DECK_PROJECT_SCHEMA = "oceanleo.deck.v1";
+export const DECK_SOURCE_FORMAT = "pptx";
+export const DECK_SOURCE_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function httpUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Structured head wins for reopen; the PPTX source remains a separate URL. */
+export function deckProjectUrlFor(item: LibraryItem): string {
+  const manifest = record(item.meta.editor_manifest);
+  const manifestSource = record(manifest?.source);
+  const artifactManifest = item.artifact?.renditions.editor_manifest?.url;
+  const candidates = [
+    item.meta.editor_project_url,
+    item.meta.editor_manifest_url,
+    manifestSource?.format === DECK_PROJECT_SCHEMA
+      ? manifestSource.url
+      : "",
+    item.meta.editor_working_head_schema === DECK_PROJECT_SCHEMA
+      ? item.meta.editor_working_head_project_url ||
+        item.meta.editor_working_head_url
+      : "",
+    artifactManifest,
+  ];
+  for (const candidate of candidates) {
+    const url = httpUrl(candidate);
+    if (url) return url;
+  }
+  return "";
+}
+
+/** Download/source handoff never selects the JSON editor project. */
+export function deckDeliveryUrlFor(item: LibraryItem): string {
+  for (const candidate of [
+    item.artifact?.renditions.source?.url,
+    item.meta.source_url,
+    item.url,
+  ]) {
+    const url = httpUrl(candidate);
+    if (url && url !== deckProjectUrlFor(item)) return url;
+  }
+  return "";
+}
+
+export function deckSavedItemForHandoff(
+  original: LibraryItem,
+  saved: PersistedEditorVersion,
+): LibraryItem {
+  const rootId = String(
+    original.meta.root_asset_id ||
+      original.meta.parent_asset_id ||
+      original.artifactId ||
+      original.id,
+  );
+  const base: LibraryItem =
+    saved.item ||
+    ({
+      ...original,
+      id: saved.versionId || original.id,
+      title: saved.title || original.title,
+      url: saved.url,
+      meta: {
+        ...original.meta,
+        parent_asset_id: rootId,
+        root_asset_id: rootId,
+      },
+    } satisfies LibraryItem);
+  return {
+    ...base,
+    title: saved.title || base.title,
+    url: saved.url,
+    artifactId: saved.artifactId || base.artifactId,
+    revisionId: saved.revisionId || base.revisionId,
+    meta: {
+      ...base.meta,
+      source_format: saved.sourceFormat || DECK_SOURCE_FORMAT,
+      source_media_type: saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE,
+      source_url: saved.url,
+      format: saved.sourceFormat || DECK_SOURCE_FORMAT,
+      mime: saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE,
+      delivery_format: DECK_SOURCE_FORMAT,
+      file_name: saved.fileName,
+      editor_project_url: saved.projectUrl,
+      editor_project_schema: saved.projectSchema || DECK_PROJECT_SCHEMA,
+      editor_manifest_url: saved.projectUrl,
+      editor_manifest_schema: saved.projectSchema || DECK_PROJECT_SCHEMA,
+      editor_working_head_url: saved.projectUrl,
+      editor_working_head_project_url: saved.projectUrl,
+      editor_working_head_schema:
+        saved.projectSchema || DECK_PROJECT_SCHEMA,
+      editor_saved_at: saved.savedAt,
+      ...(saved.previousRevisionId
+        ? { previous_revision_id: saved.previousRevisionId }
+        : {}),
+    },
+  };
+}
 
 function initialSource(
   item: LibraryItem,
@@ -174,7 +289,8 @@ async function loadDeck(
   signal?: AbortSignal,
   onSourceAccessError?: () => void,
 ): Promise<DeckDocument> {
-  const projectUrl = String(item.meta.editor_project_url || "").trim();
+  const projectUrl = deckProjectUrlFor(item);
+  let projectError: unknown;
   if (projectUrl) {
     try {
       const project = await loadEditorProject<unknown>(
@@ -184,18 +300,28 @@ async function loadDeck(
       );
       return normalizeDeckDocument(project, item.title || "演示文稿");
     } catch (caught) {
-      notifyOfficeAccessDenied(caught, onSourceAccessError);
-      throw caught;
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        throw caught;
+      }
+      projectError = caught;
     }
   }
   const fallback = normalizeDeckDocument(
     initialSource(item, previewContent),
     item.title || "演示文稿",
   );
-  if (!item.url) return fallback;
+  const deliveryUrl = deckDeliveryUrlFor(item);
+  if (!deliveryUrl) {
+    if (projectError) {
+      notifyOfficeAccessDenied(projectError, onSourceAccessError);
+      throw projectError;
+    }
+    return fallback;
+  }
   const extension = (
     officeExtensionForItem(item) ||
-    urlExtension(item.url) ||
+    urlExtension(deliveryUrl) ||
+    String(item.meta.source_format || "") ||
     String(item.meta.format || "")
   ).toLowerCase();
   const isPptxPackage =
@@ -209,7 +335,7 @@ async function loadDeck(
   try {
     if (isPptxPackage) {
       const { arrayBuffer } = await fetchValidatedOfficePackage(
-        item.url,
+        deliveryUrl,
         "pptx",
         {
           maxBytes: 64 * 1024 * 1024,
@@ -224,7 +350,7 @@ async function loadDeck(
         extension || "pptx",
       );
     }
-    const blob = await fetchMediaBlob(item.url, {
+    const blob = await fetchMediaBlob(deliveryUrl, {
       maxBytes: 64 * 1024 * 1024,
       signal,
     });
@@ -241,6 +367,7 @@ async function loadDeck(
           : "PPTX 导入失败",
       );
     }
+    if (projectError) throw projectError;
     return fallback;
   }
 }
@@ -264,6 +391,36 @@ function cleanHex(color: string, fallback: string): string {
 
 function visibleColor(color: string | undefined): boolean {
   return Boolean(color && color.toLowerCase() !== "transparent");
+}
+
+export async function assertDeckPptxDelivery(
+  blob: Blob,
+  expectedSlideCount: number,
+): Promise<void> {
+  if (!blob.size || blob.size > 64 * 1024 * 1024) {
+    throw new Error("PPTX 交付为空或超过 64MB 安全上限");
+  }
+  let archive: Record<string, Uint8Array>;
+  try {
+    archive = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+  } catch {
+    throw new Error("PPTX 交付不是有效的 OOXML ZIP");
+  }
+  const required = [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "ppt/presentation.xml",
+    "ppt/_rels/presentation.xml.rels",
+  ];
+  if (required.some((path) => !archive[path]?.length)) {
+    throw new Error("PPTX 交付缺少必要的 OOXML 部件");
+  }
+  const slideCount = Object.keys(archive).filter((path) =>
+    /^ppt\/slides\/slide\d+\.xml$/.test(path),
+  ).length;
+  if (slideCount !== Math.max(1, expectedSlideCount)) {
+    throw new Error("PPTX 交付页数与结构化工程不一致");
+  }
 }
 
 export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
@@ -616,11 +773,13 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   }
   const blob = (await pptx.write({ outputType: "blob" })) as Blob;
   const withMotion = await injectDeckPptxOoxml(blob, pinnedDeck.slides);
-  return injectDeckPptxVisuals(
+  const delivery = await injectDeckPptxVisuals(
     withMotion,
     pinnedDeck.slides,
     pinnedDeck.aspect,
   );
+  await assertDeckPptxDelivery(delivery, pinnedDeck.slides.length);
+  return delivery;
 }
 
 export function useDeckEditor(
@@ -654,7 +813,15 @@ export function useDeckEditor(
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
-  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  const persistedItemRef = useRef(item);
+  const preparedSaveRef = useRef<{
+    key: string;
+    project?: PreparedProjectUpload;
+    delivery?: PreparedDeliveryUpload;
+  } | null>(null);
+  const workingHeadUrlRef = useRef(
+    deckDeliveryUrlFor(item) || item.previewUrl || "",
+  );
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -666,9 +833,10 @@ export function useDeckEditor(
     setError("");
     setNotice("");
     revisionRef.current = 0;
-    workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
-    );
+    persistedItemRef.current = item;
+    preparedSaveRef.current = null;
+    workingHeadUrlRef.current =
+      deckDeliveryUrlFor(item) || item.previewUrl || "";
     void loadDeck(item, previewContent, abort.signal, onSourceAccessError)
       .then((next) => {
         if (abort.signal.aborted) return;
@@ -1335,38 +1503,111 @@ export function useDeckEditor(
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneDeckDocument(deckRef.current);
+    const baseItem = persistedItemRef.current;
+    const baseRevision = String(
+      baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
+    );
+    const rootId = String(
+      baseItem.artifactId ||
+        baseItem.meta.artifact_id ||
+        baseItem.meta.root_asset_id ||
+        baseItem.meta.parent_asset_id ||
+        baseItem.id,
+    );
+    const saveKey =
+      `deck:${savingRevision}:${baseRevision.slice(-80)}:${rootId.slice(-80)}`;
+    const prepared =
+      preparedSaveRef.current?.key === saveKey
+        ? preparedSaveRef.current
+        : null;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
-      const title = `${snapshot.title || item.title || tt("演示文稿")}-${tt("编辑版")}`;
-      const delivery = await buildDeckPptxBlob(snapshot);
+      const title =
+        String(snapshot.title || baseItem.title || tt("演示文稿")).trim() ||
+        tt("演示文稿");
+      const fileStem =
+        title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) ||
+        tt("演示文稿");
       const result = await saveFileToLibrary({
-        item,
+        item: baseItem,
         siteId,
         fallbackSite: "ppt",
-        file: new File([delivery], `${title}.pptx`, {
-          type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        }),
+        createFile: async () => {
+          const delivery = await buildDeckPptxBlob(snapshot);
+          return new File([delivery], `${fileStem}.pptx`, {
+            type: DECK_SOURCE_MEDIA_TYPE,
+          });
+        },
+        sourceFormat: DECK_SOURCE_FORMAT,
+        sourceMediaType: DECK_SOURCE_MEDIA_TYPE,
         title,
         mediaType: "ppt",
         kind: "deck",
-        idempotencyKey: `deck:${item.id}:${savingRevision}`,
+        idempotencyKey: saveKey,
         workingHeadUrl: workingHeadUrlRef.current,
+        preparedProject: prepared?.project,
+        preparedDelivery: prepared?.delivery,
         meta: {
-          editor: "deck",
-          schema: DECK_PROJECT_SCHEMA,
+          editor: "deck-editor",
+          editor_capability: "deck-editor",
+          content_type: "deck",
+          representation: DECK_SOURCE_FORMAT,
           slides: snapshot.slides.length,
           aspect: snapshot.aspect,
           theme: snapshot.theme,
-          delivery_format: "pptx",
+          deck_version: snapshot.version,
         },
         project: {
           schema: DECK_PROJECT_SCHEMA,
           data: snapshot,
         },
+        editorManifest: {
+          id: "deck-editor",
+          format: DECK_PROJECT_SCHEMA,
+        },
+        artifactRevision: {
+          artifactType: "deck",
+          provenance: {
+            editorRevision: savingRevision,
+            deckVersion: snapshot.version,
+          },
+        },
       });
-      if (!result.ok) throw new Error(result.error || tt("保存到我的库失败"));
+      if (!result.ok) {
+        preparedSaveRef.current =
+          result.preparedProject || result.preparedDelivery
+            ? {
+                key: saveKey,
+                project: result.preparedProject,
+                delivery: result.preparedDelivery,
+              }
+            : preparedSaveRef.current;
+        throw new Error(result.error || tt("保存到我的库失败"));
+      }
+      preparedSaveRef.current = null;
+      persistedItemRef.current =
+        result.item ||
+        ({
+          ...baseItem,
+          id: result.versionId || baseItem.id,
+          title,
+          url: result.url,
+          artifactId: result.artifactId || baseItem.artifactId,
+          revisionId: result.revisionId || baseItem.revisionId,
+          meta: {
+            ...baseItem.meta,
+            source_format: result.sourceFormat,
+            source_media_type: result.sourceMediaType,
+            source_url: result.url,
+            editor_project_url: result.projectUrl,
+            editor_project_schema: result.projectSchema,
+            editor_manifest_url: result.projectUrl,
+            editor_working_head_url: result.projectUrl,
+            previous_revision_id: result.previousRevisionId,
+          },
+        } satisfies LibraryItem);
       workingHeadUrlRef.current = result.url;
       if (mountedRef.current) {
         setSavedUrl(result.url);
@@ -1381,6 +1622,17 @@ export function useDeckEditor(
             versionId: result.versionId,
             projectUrl: result.projectUrl,
             projectSchema: result.projectSchema,
+            sourceFormat: result.sourceFormat,
+            sourceMediaType: result.sourceMediaType,
+            title: result.title,
+            fileName: result.fileName,
+            savedAt: result.savedAt,
+            artifactId: result.artifactId,
+            revisionId: result.revisionId,
+            previousRevisionId: result.previousRevisionId,
+            item: result.item,
+            preparedProject: result.preparedProject,
+            preparedDelivery: result.preparedDelivery,
           }
         : null;
     } catch (caught) {
@@ -1392,7 +1644,7 @@ export function useDeckEditor(
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
     }
-  }, [item, siteId, tt]);
+  }, [siteId, tt]);
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {

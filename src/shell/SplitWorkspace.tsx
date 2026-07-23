@@ -34,6 +34,10 @@ import {
 import { IconLibrary } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
+import {
+  EditBarDockHost,
+  type EditBarDockPresentation,
+} from "./EditBarDockHost";
 
 // ----------------------------------------------------------------------------
 // 左栏标题（PaneHeader）控件插槽。FunctionAgentChat 作为左栏 body 的后代，通过
@@ -67,6 +71,11 @@ export interface RightPaneSlot {
   setRightFrameless: (frameless: boolean) => void;
   /** 高级编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
   setRightEditorHeader: (active: boolean) => void;
+  /** 右栏 action row 下方的正常流编辑栏停靠节点。 */
+  editBarDockRef: RefObject<HTMLDivElement | null>;
+  /** 发布当前编辑栏的停靠/拖放呈现；ownerId 防止旧编辑器 cleanup 覆盖新实例。 */
+  setEditBarDockPresentation: (state: EditBarDockPresentation) => void;
+  clearEditBarDockPresentation: (ownerId: string) => void;
 }
 const RightPaneCtx = createContext<RightPaneSlot | null>(null);
 /** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
@@ -300,6 +309,9 @@ export function SplitWorkspace({
   const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
   const [rightFrameless, setRightFrameless] = useState(false);
   const [rightEditorHeader, setRightEditorHeader] = useState(false);
+  const editBarDockRef = useRef<HTMLDivElement>(null);
+  const [editBarDockPresentation, setEditBarDockPresentation] =
+    useState<EditBarDockPresentation | null>(null);
   const rightSlot = useMemo<RightPaneSlot>(
     () => ({
       setRightLabel: (node) => setRightLabelOverride(node),
@@ -307,6 +319,13 @@ export function SplitWorkspace({
         setRightLabelOverride((current) => (current === node ? null : current)),
       setRightFrameless: (frameless) => setRightFrameless(frameless),
       setRightEditorHeader: (active) => setRightEditorHeader(active),
+      editBarDockRef,
+      setEditBarDockPresentation: (state) =>
+        setEditBarDockPresentation(state),
+      clearEditBarDockPresentation: (ownerId) =>
+        setEditBarDockPresentation((current) =>
+          current?.ownerId === ownerId ? null : current,
+        ),
     }),
     [],
   );
@@ -329,6 +348,10 @@ export function SplitWorkspace({
     }
   }, [hasRight]);
   const showDetail = useCallback((next: WorkspacePaneDetail) => {
+    // Selection drawers live in the semantic left operation pane. If the
+    // library/editor was maximized, reveal that pane without leaving browser
+    // fullscreen so the edit-bar action is never opened into a hidden console.
+    setMaxed("none");
     setActiveLibraryPanelId(null);
     setDetail(next);
   }, []);
@@ -515,6 +538,7 @@ export function SplitWorkspace({
         style={on ? { background: accent } : undefined}
         title={label}
         aria-label={label}
+      aria-pressed={on}
       >
         {on ? <IconCompress /> : <IconExpand />}
       </button>
@@ -649,7 +673,10 @@ export function SplitWorkspace({
       }
     >
       {!rightFrameless && (library ? (
-        <div className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5">
+        <div
+          data-pane-header
+          className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5"
+        >
           {!rightEditorHeader && (
             <button
               type="button"
@@ -681,6 +708,10 @@ export function SplitWorkspace({
           <MaxButton which="library" />
         </PaneHeader>
       ))}
+      <EditBarDockHost
+        hostRef={editBarDockRef}
+        presentation={editBarDockPresentation}
+      />
       <div className={bodyClass}>{right}</div>
     </section>
   );
@@ -708,6 +739,7 @@ export function SplitWorkspace({
     <div
       ref={wrapRef}
       data-workspace-split
+      data-workspace-maximized={maxed}
       className={`relative gap-0 bg-[var(--bg,#f7f7f5)] p-1.5 ${className} md:flex`}
       style={{ height: rootHeight, backgroundColor: "var(--bg,#f7f7f5)" }}
     >

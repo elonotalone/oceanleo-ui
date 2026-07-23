@@ -10,6 +10,19 @@ import type {
 export const SELECTION_TOOLBAR_VIEWPORT_MAX =
   "calc(100dvw - max(1rem, env(safe-area-inset-left)) - max(1rem, env(safe-area-inset-right)))";
 
+/** Matches the compact row's `gap-1` spacing. */
+export const SELECTION_TOOLBAR_CONTROL_GAP = 4;
+
+/** Matches the More launcher's `h-11 w-11` hit target. */
+export const SELECTION_TOOLBAR_MORE_BUTTON_WIDTH = 44;
+
+/**
+ * Fractional ResizeObserver values can differ by a sub-pixel across layout
+ * passes. A half CSS pixel cannot make a control visibly fit, so tolerate it
+ * at the exact boundary instead of flipping the More projection repeatedly.
+ */
+const SELECTION_TOOLBAR_FIT_EPSILON = 0.5;
+
 export const DESIGN_TEXT_CONTROL_ORDER: readonly SelectionControlSemantic[] = [
   "font-size",
   "color",
@@ -145,18 +158,52 @@ export function estimatedSelectionControlWidth(
   control: SelectionControl,
 ): number {
   if (selectionControlUsesIconOnly(control)) {
-    if (control.kind === "number") return 92;
-    if (control.kind === "select") return 104;
-    return 36;
+    if (control.kind === "number") return 132;
+    if (control.kind === "select") return 112;
+    return 44;
   }
   if (control.kind === "range") return 210;
   if (control.kind === "text") return 180;
-  if (control.kind === "number") return 108;
-  if (control.kind === "select") return 132;
+  if (control.kind === "number") {
+    return Math.max(144, Math.min(244, 116 + control.label.length * 12));
+  }
+  if (control.kind === "select") {
+    const selectedLabel = (control.options || []).find(
+      (option) => option.value === String(control.value ?? ""),
+    )?.label;
+    const contentLength = Math.max(
+      control.label.length,
+      selectedLabel?.length || 0,
+    );
+    return Math.max(112, Math.min(192, 52 + contentLength * 12));
+  }
   if (control.kind === "panel") {
     return Math.max(44, Math.min(124, 28 + control.label.length * 12));
   }
-  return control.label ? Math.max(40, Math.min(112, 24 + control.label.length * 12)) : 40;
+  return control.label
+    ? Math.max(44, Math.min(144, 24 + control.label.length * 12))
+    : 44;
+}
+
+function isDedicatedSelectionSurface(control: SelectionControl): boolean {
+  return (
+    control.slot === "context-menu" ||
+    control.slot === "stage" ||
+    control.slot === "inspector" ||
+    control.placement === "tools"
+  );
+}
+
+function measuredSelectionControlWidth(
+  control: SelectionControl,
+  measuredWidths: ReadonlyMap<string, number>,
+): number {
+  const measured = measuredWidths.get(control.id);
+  return typeof measured === "number" &&
+    Number.isFinite(measured) &&
+    measured > 0
+    ? measured
+    : estimatedSelectionControlWidth(control);
 }
 
 export function partitionSelectionControls(
@@ -167,29 +214,71 @@ export function partitionSelectionControls(
   visible: SelectionControl[];
   overflow: SelectionControl[];
 } {
-  // Geometry may only change wrapping/scrolling. It must never move commands
-  // between semantic surfaces.
-  void measuredWidths;
-  void availableWidth;
+  const projected = controls.filter(
+    (control) => !isDedicatedSelectionSurface(control),
+  );
+  const compact = projected.filter(
+    (control) => control.placement !== "more",
+  );
+  const authoredOverflow = projected.filter(
+    (control) => control.placement === "more",
+  );
+  const normalizedAvailableWidth =
+    Number.isFinite(availableWidth) && availableWidth >= 0
+      ? availableWidth
+      : Number.POSITIVE_INFINITY;
+  const compactWidth = compact.reduce(
+    (total, control) =>
+      total + measuredSelectionControlWidth(control, measuredWidths),
+    0,
+  );
+  const compactGaps =
+    Math.max(0, compact.length - 1) * SELECTION_TOOLBAR_CONTROL_GAP;
+  const authoredMoreWidth =
+    authoredOverflow.length > 0
+      ? SELECTION_TOOLBAR_MORE_BUTTON_WIDTH +
+        (compact.length > 0 ? SELECTION_TOOLBAR_CONTROL_GAP : 0)
+      : 0;
 
-  const visible: SelectionControl[] = [];
-  const overflow: SelectionControl[] = [];
-  for (const control of controls) {
-    // These controls have dedicated semantic surfaces and must never leak into
-    // either the compact row or its More projection.
-    if (
-      control.slot === "context-menu" ||
-      control.slot === "stage" ||
-      control.slot === "inspector" ||
-      control.placement === "tools"
-    ) {
-      continue;
-    }
-    if (control.placement === "more") {
-      overflow.push(control);
-      continue;
-    }
-    visible.push(control);
+  if (
+    compactWidth + compactGaps + authoredMoreWidth <=
+    normalizedAvailableWidth + SELECTION_TOOLBAR_FIT_EPSILON
+  ) {
+    return { visible: compact, overflow: authoredOverflow };
   }
-  return { visible, overflow };
+
+  // More is now mandatory. Explicit primary controls are considered before
+  // ordinary bar controls; source order breaks ties and remains the final DOM
+  // order. Every visible control contributes one gap: between compact
+  // controls, or between the last compact control and the More launcher.
+  let occupiedWidth = SELECTION_TOOLBAR_MORE_BUTTON_WIDTH;
+  const visibleIds = new Set<string>();
+  const prioritized = compact
+    .map((control, index) => ({ control, index }))
+    .sort((left, right) => {
+      const leftRank = left.control.placement === "primary" ? 0 : 1;
+      const rightRank = right.control.placement === "primary" ? 0 : 1;
+      return leftRank - rightRank || left.index - right.index;
+    });
+  for (const { control } of prioritized) {
+    const nextWidth =
+      occupiedWidth +
+      SELECTION_TOOLBAR_CONTROL_GAP +
+      measuredSelectionControlWidth(control, measuredWidths);
+    if (
+      nextWidth <=
+      normalizedAvailableWidth + SELECTION_TOOLBAR_FIT_EPSILON
+    ) {
+      visibleIds.add(control.id);
+      occupiedWidth = nextWidth;
+    }
+  }
+
+  return {
+    visible: compact.filter((control) => visibleIds.has(control.id)),
+    overflow: projected.filter(
+      (control) =>
+        control.placement === "more" || !visibleIds.has(control.id),
+    ),
+  };
 }

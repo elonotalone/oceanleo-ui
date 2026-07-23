@@ -51,6 +51,97 @@ export interface SelectionToolbarProps {
   variant?: "bar" | "floating";
 }
 
+function cssPixelValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function elementInlineSize(element: HTMLElement | null): number {
+  if (!element) return 0;
+  const measured = element.getBoundingClientRect().width;
+  return measured > 0 ? measured : element.offsetWidth;
+}
+
+function elementOuterInlineSize(element: HTMLElement | null): number {
+  if (!element) return 0;
+  const style = window.getComputedStyle(element);
+  return (
+    elementInlineSize(element) +
+    cssPixelValue(style.marginInlineStart) +
+    cssPixelValue(style.marginInlineEnd)
+  );
+}
+
+function normalizedMeasuredWidth(width: number): number {
+  return Math.ceil(width * 2) / 2;
+}
+
+function normalizedAvailableWidth(width: number): number {
+  return Math.max(0, Math.floor(width * 2) / 2);
+}
+
+function equalMeasuredWidths(
+  left: ReadonlyMap<string, number>,
+  right: ReadonlyMap<string, number>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [id, width] of left) {
+    if (right.get(id) !== width) return false;
+  }
+  return true;
+}
+
+function toolbarSizingBoundary(toolbar: HTMLDivElement): HTMLElement | null {
+  const floatingHost = toolbar.closest<HTMLElement>(
+    "[data-workspace-floating-toolbar]",
+  );
+  return floatingHost?.parentElement || toolbar.parentElement;
+}
+
+function toolbarContainerInlineSize(
+  toolbar: HTMLDivElement,
+  variant: "bar" | "floating",
+): number {
+  const floatingHost = toolbar.closest<HTMLElement>(
+    "[data-workspace-floating-toolbar]",
+  );
+  const boundary = toolbarSizingBoundary(toolbar);
+  const boundaryRect = boundary?.getBoundingClientRect();
+  const toolbarRect = toolbar.getBoundingClientRect();
+  let width =
+    variant === "bar" && toolbarRect.width > 0
+      ? toolbarRect.width
+      : boundaryRect?.width || 0;
+  if (boundaryRect && typeof window !== "undefined") {
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft || 0;
+    const viewportRight =
+      viewportLeft + (viewport?.width || window.innerWidth);
+    const visibleBoundaryWidth = Math.max(
+      0,
+      Math.min(boundaryRect.right, viewportRight) -
+        Math.max(boundaryRect.left, viewportLeft),
+    );
+    if (visibleBoundaryWidth > 0) {
+      width =
+        width > 0
+          ? Math.min(width, visibleBoundaryWidth)
+          : visibleBoundaryWidth;
+    }
+  }
+  if (floatingHost && width > 0) {
+    // FloatingContextToolbar reserves .5rem at both container edges.
+    width = Math.max(0, width - 16);
+  }
+  if (variant === "floating" && typeof window !== "undefined") {
+    const viewportWidth =
+      window.visualViewport?.width || window.innerWidth;
+    // SelectionToolbar itself keeps one rem of reachable space per side.
+    width = Math.min(width, Math.max(0, viewportWidth - 32));
+  }
+  return width;
+}
+
 function hasCanonicalAlignmentCapability(control: SelectionControl): boolean {
   if (control.kind !== "select") return false;
   const declaredValues = new Set(
@@ -236,10 +327,20 @@ export function SelectionToolbar({
   layoutRef.current = layout;
   const toolsLauncher = layout?.toolsLauncher || null;
   const [moreOpen, setMoreOpen] = useState(false);
+  const [availableWidth, setAvailableWidth] = useState(
+    Number.POSITIVE_INFINITY,
+  );
+  const [measuredWidths, setMeasuredWidths] = useState<
+    ReadonlyMap<string, number>
+  >(() => new Map());
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const prefixRef = useRef<HTMLDivElement | null>(null);
+  const suffixRef = useRef<HTMLDivElement | null>(null);
+  const measurementRef = useRef<HTMLDivElement | null>(null);
+  const viewportCapacityRef = useRef<HTMLDivElement | null>(null);
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const morePanelRef = useRef<HTMLDivElement | null>(null);
+  const restoreMoreFocusRef = useRef(false);
   const toolsButtonRef = useRef<HTMLButtonElement | null>(null);
   const morePanelId = `selection-more-${useId().replace(/:/g, "")}`;
   const identity = context
@@ -264,6 +365,7 @@ export function SelectionToolbar({
             const semantic = selectionControlSemantic(control);
             return semantic &&
               DESIGN_TEXT_CONTROL_ORDER.includes(semantic) &&
+              control.placement !== "more" &&
               control.slot !== "stage" &&
               control.slot !== "context-menu"
               ? { ...control, placement: "primary" as const }
@@ -298,6 +400,18 @@ export function SelectionToolbar({
         }`,
     )
     .join("|");
+  const measurementIdentity = orderedControls
+    .map(
+      (control) =>
+        `${control.id}:${control.kind}:${control.label}:${String(
+          control.value ?? "",
+        )}:${(control.options || [])
+          .map((option) => `${option.value}:${option.label}`)
+          .join(",")}:${control.icon || ""}:${control.suffix || ""}:${
+          control.iconOnly === false ? "label" : "icon"
+        }`,
+    )
+    .join("|");
   const { openPanel: openControlPanel, activePanelId, fallbackPanel } =
     useSelectionInspectorHost({
     layout,
@@ -315,7 +429,7 @@ export function SelectionToolbar({
       currentLayout.closeDrawer();
     }
   }, [controlsIdentity, identity]);
-  const { visible, overflow } = useMemo(
+  const semanticProjection = useMemo(
     () =>
       partitionSelectionControls(
         orderedControls,
@@ -324,18 +438,32 @@ export function SelectionToolbar({
       ),
     [orderedControls],
   );
+  const measurableControls = semanticProjection.visible;
+  const hasAdaptiveControls =
+    measurableControls.length > 0 || semanticProjection.overflow.length > 0;
+  const { visible, overflow } = useMemo(
+    () =>
+      partitionSelectionControls(
+        orderedControls,
+        measuredWidths,
+        availableWidth,
+      ),
+    [availableWidth, measuredWidths, orderedControls],
+  );
   const overflowGroups = useMemo(
     () => groupSelectionOverflowControls(overflow),
     [overflow],
   );
+  const overflowIdentity = overflow.map((control) => control.id).join("|");
   useLayoutEffect(() => {
     if (!moreOpen) return;
     const panel = morePanelRef.current;
+    if (panel?.contains(document.activeElement)) return;
     const firstControl = panel?.querySelector<HTMLElement>(
       "button:not(:disabled), input:not(:disabled), [tabindex='0']",
     );
     (firstControl || panel)?.focus();
-  }, [moreOpen]);
+  }, [moreOpen, overflowIdentity]);
   const toolsLauncherId = toolsLauncher?.available
     ? toolsLauncher.id
     : undefined;
@@ -356,6 +484,7 @@ export function SelectionToolbar({
     };
     const closeOutside = (event: PointerEvent) => {
       if (!toolbarRef.current?.contains(event.target as Node)) {
+        restoreMoreFocusRef.current = false;
         setMoreOpen(false);
       }
     };
@@ -366,14 +495,134 @@ export function SelectionToolbar({
       document.removeEventListener("pointerdown", closeOutside);
     };
   }, [moreOpen]);
-  useEffect(() => {
-    if (!overflow.length) setMoreOpen(false);
-  }, [overflow.length]);
+  useLayoutEffect(() => {
+    if (
+      overflow.length ||
+      (!moreOpen && !restoreMoreFocusRef.current)
+    ) {
+      return;
+    }
+    if (moreOpen) setMoreOpen(false);
+    if (restoreMoreFocusRef.current || moreOpen) {
+      const focusable = toolbarRef.current?.querySelectorAll<HTMLElement>(
+        "[data-selection-control-id] button:not(:disabled), [data-selection-control-id] input:not(:disabled), [data-selection-control-id] [tabindex='0']",
+      );
+      focusable?.item(Math.max(0, focusable.length - 1))?.focus();
+    }
+    restoreMoreFocusRef.current = false;
+  }, [moreOpen, overflow.length]);
 
-  if (!context && !leading && !trailing) return null;
   const effectiveVariant = layout ? "floating" : variant;
   const contextLeading = layout?.contextBarLeading;
   const contextTrailing = layout?.contextBarTrailing;
+  const toolsAvailable = Boolean(context && toolsLauncher?.available);
+  const prefixVisible = Boolean(contextLeading || leading || toolsAvailable);
+  const suffixVisible = Boolean(trailing || contextTrailing);
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+
+    const readLayout = () => {
+      restoreMoreFocusRef.current =
+        moreButtonRef.current === document.activeElement ||
+        Boolean(morePanelRef.current?.contains(document.activeElement));
+      const nextMeasured = new Map<string, number>();
+      const measurementNodes =
+        measurementRef.current?.querySelectorAll<HTMLElement>(
+          "[data-selection-measure-control-id]",
+        );
+      measurementNodes?.forEach((node) => {
+        const width = elementInlineSize(node);
+        const id = node.dataset.selectionMeasureControlId;
+        if (id && width > 0) {
+          nextMeasured.set(id, normalizedMeasuredWidth(width));
+        }
+      });
+      setMeasuredWidths((current) =>
+        equalMeasuredWidths(current, nextMeasured)
+          ? current
+          : nextMeasured,
+      );
+
+      let containerWidth = toolbarContainerInlineSize(
+        toolbar,
+        effectiveVariant,
+      );
+      const measuredViewportCapacity =
+        effectiveVariant === "floating"
+          ? elementInlineSize(viewportCapacityRef.current)
+          : 0;
+      if (measuredViewportCapacity > 0) {
+        containerWidth = Math.min(
+          containerWidth,
+          measuredViewportCapacity,
+        );
+      }
+      if (!(containerWidth > 0)) {
+        setAvailableWidth(Number.POSITIVE_INFINITY);
+        return;
+      }
+      const style = window.getComputedStyle(toolbar);
+      const chromeWidth =
+        cssPixelValue(style.paddingInlineStart) +
+        cssPixelValue(style.paddingInlineEnd) +
+        cssPixelValue(style.borderInlineStartWidth) +
+        cssPixelValue(style.borderInlineEndWidth) +
+        elementOuterInlineSize(prefixRef.current) +
+        elementOuterInlineSize(suffixRef.current);
+      const regionCount =
+        (prefixVisible ? 1 : 0) +
+        (hasAdaptiveControls ? 1 : 0) +
+        (suffixVisible ? 1 : 0);
+      const regionGaps =
+        Math.max(0, regionCount - 1) * cssPixelValue(style.columnGap);
+      const nextAvailable = normalizedAvailableWidth(
+        containerWidth - chromeWidth - regionGaps,
+      );
+      setAvailableWidth((current) =>
+        current === nextAvailable ? current : nextAvailable,
+      );
+    };
+
+    readLayout();
+    const boundary = toolbarSizingBoundary(toolbar);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(readLayout);
+    if (boundary) observer?.observe(boundary);
+    if (prefixRef.current) observer?.observe(prefixRef.current);
+    if (suffixRef.current) observer?.observe(suffixRef.current);
+    if (measurementRef.current) observer?.observe(measurementRef.current);
+    if (viewportCapacityRef.current) {
+      observer?.observe(viewportCapacityRef.current);
+    }
+    measurementRef.current
+      ?.querySelectorAll<HTMLElement>("[data-selection-measure-control-id]")
+      .forEach((node) => observer?.observe(node));
+    window.addEventListener("resize", readLayout);
+    window.visualViewport?.addEventListener("resize", readLayout);
+    window.visualViewport?.addEventListener("scroll", readLayout);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", readLayout);
+      window.visualViewport?.removeEventListener("resize", readLayout);
+      window.visualViewport?.removeEventListener("scroll", readLayout);
+    };
+  }, [
+    contextLeading,
+    contextTrailing,
+    effectiveVariant,
+    hasAdaptiveControls,
+    leading,
+    measurementIdentity,
+    prefixVisible,
+    suffixVisible,
+    toolsLauncher,
+    trailing,
+  ]);
+
+  if (!context && !leading && !trailing) return null;
   const renderControl = (
     control: SelectionControl,
     presentation: "compact" | "menu",
@@ -419,6 +668,27 @@ export function SelectionToolbar({
       </div>
     );
   };
+  const renderMeasurementControl = (control: SelectionControl) => (
+    <div
+      key={`measure:${identity}:${control.id}`}
+      data-selection-measure-control-id={control.id}
+      className="inline-flex shrink-0"
+    >
+      <Control
+        control={control}
+        selectionId={context?.id || ""}
+        selectionRevision={context?.revision}
+        selectionEpoch={context?.epoch}
+        onCommand={onCommand}
+        onOpenPanel={openControlPanel}
+        accent={accent}
+        canonicalDesignText={canonicalDesignText}
+        activePanel={false}
+        presentation="compact"
+      />
+    </div>
+  );
+  const adaptiveRegionVisible = visible.length > 0 || overflow.length > 0;
   return (
     <div
       ref={toolbarRef}
@@ -428,7 +698,13 @@ export function SelectionToolbar({
       data-selection-anchor-y={context?.anchor?.y}
       data-selection-anchor-width={context?.anchor?.width}
       data-selection-anchor-height={context?.anchor?.height}
-      className={`pointer-events-auto flex flex-nowrap items-center gap-1 ${
+      data-selection-visible-controls={visible
+        .map((control) => control.id)
+        .join(" ")}
+      data-selection-overflow-controls={overflow
+        .map((control) => control.id)
+        .join(" ")}
+      className={`pointer-events-auto relative flex flex-nowrap items-center gap-1 ${
         effectiveVariant === "floating"
           ? "w-fit max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
           : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
@@ -447,95 +723,146 @@ export function SelectionToolbar({
           moreOpen &&
           !event.currentTarget.contains(event.relatedTarget as Node | null)
         ) {
+          restoreMoreFocusRef.current = false;
           setMoreOpen(false);
         }
       }}
     >
-      {(contextLeading || leading) && (
-        <>
-          <div className="flex shrink-0 items-center gap-1">
-            {contextLeading}
-            {leading}
-          </div>
-          <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-        </>
+      {prefixVisible && (
+        <div
+          ref={prefixRef}
+          data-selection-toolbar-prefix
+          className="flex shrink-0 items-center gap-1"
+        >
+          {(contextLeading || leading) && (
+            <div className="flex shrink-0 items-center gap-1">
+              {contextLeading}
+              {leading}
+            </div>
+          )}
+          {(contextLeading || leading) &&
+            (toolsAvailable || adaptiveRegionVisible) && (
+              <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+            )}
+          {toolsAvailable && context && toolsLauncher && (
+            <EditorToolsTrigger
+              ref={toolsButtonRef}
+              selectionKind={context.kind}
+              launcher={toolsLauncher}
+              accent={accent}
+            />
+          )}
+          {toolsAvailable && adaptiveRegionVisible && (
+            <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+          )}
+        </div>
       )}
-      {context && toolsLauncher?.available && (
-        <EditorToolsTrigger
-          ref={toolsButtonRef}
-          selectionKind={context.kind}
-          launcher={toolsLauncher}
-          accent={accent}
-        />
-      )}
-      {context &&
-        toolsLauncher?.available &&
-        (visible.length > 0 || overflow.length > 0) && (
-        <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-      )}
-      <div
-        ref={controlsRef}
-        className="relative flex min-w-0 max-w-full flex-nowrap items-center gap-1 [overflow-x:auto] overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {visible.map((control) => renderControl(control, "compact"))}
-      </div>
-      {overflow.length > 0 && (
-        <div className="relative shrink-0">
-          <button
-            ref={moreButtonRef}
-            type="button"
-            aria-expanded={moreOpen}
-            aria-haspopup="dialog"
-            aria-controls={morePanelId}
-            onClick={() => setMoreOpen((value) => !value)}
-            className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
-            aria-label="更多属性"
-            title="更多属性"
-          >
-            <AdvancedEditorIcon name="more" />
-          </button>
-          {moreOpen && (
-            <div
-              ref={morePanelRef}
-              id={morePanelId}
-              role="dialog"
-              aria-label="更多属性"
-              aria-modal="false"
-              tabIndex={-1}
-              className="absolute right-0 top-full z-[90] mt-2 grid max-h-[min(60vh,32rem)] w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {overflowGroups.map((group, groupIndex) => (
+      {adaptiveRegionVisible && (
+        <div
+          data-selection-toolbar-adaptive-region
+          className="relative flex min-w-0 max-w-full flex-nowrap items-center gap-1"
+        >
+          {visible.length > 0 && (
+            <div className="relative flex min-w-0 max-w-full flex-nowrap items-center gap-1">
+              {visible.map((control) => renderControl(control, "compact"))}
+            </div>
+          )}
+          {overflow.length > 0 && (
+            <div className="relative shrink-0">
+              <button
+                ref={moreButtonRef}
+                type="button"
+                aria-expanded={moreOpen}
+                aria-haspopup="dialog"
+                aria-controls={morePanelId}
+                onClick={() => setMoreOpen((value) => !value)}
+                className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
+                aria-label="更多属性"
+                title="更多属性"
+              >
+                <AdvancedEditorIcon name="more" />
+              </button>
+              {moreOpen && (
                 <div
-                  key={group.id}
-                  role="group"
-                  aria-label={
-                    group.id === "inspectors"
-                      ? "属性面板"
-                      : group.id === "danger"
-                        ? "危险操作"
-                        : "更多操作"
-                  }
-                  data-selection-overflow-group={group.id}
-                  className={`grid min-w-0 gap-0.5 ${
-                    groupIndex > 0
-                      ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
-                      : ""
-                  }`}
+                  ref={morePanelRef}
+                  id={morePanelId}
+                  role="dialog"
+                  aria-label="更多属性"
+                  aria-modal="false"
+                  tabIndex={-1}
+                  className="absolute right-0 top-full z-[90] mt-2 grid max-h-[min(60vh,32rem)] w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  {group.controls.map((control) =>
-                    renderControl(control, "menu"),
-                  )}
+                  {overflowGroups.map((group, groupIndex) => (
+                    <div
+                      key={group.id}
+                      role="group"
+                      aria-label={
+                        group.id === "inspectors"
+                          ? "属性面板"
+                          : group.id === "danger"
+                            ? "危险操作"
+                            : "更多操作"
+                      }
+                      data-selection-overflow-group={group.id}
+                      className={`grid min-w-0 gap-0.5 ${
+                        groupIndex > 0
+                          ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
+                          : ""
+                      }`}
+                    >
+                      {group.controls.map((control) =>
+                        renderControl(control, "menu"),
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
       )}
-      {(trailing || contextTrailing) && (
-        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2">
+      {suffixVisible && (
+        <div
+          ref={suffixRef}
+          data-selection-toolbar-suffix
+          className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2"
+        >
           {trailing}
           {contextTrailing}
         </div>
+      )}
+      {context && measurableControls.length > 0 && (
+        <div
+          ref={measurementRef}
+          aria-hidden="true"
+          inert
+          data-selection-toolbar-measurements
+          className="pointer-events-none invisible fixed left-0 top-0 flex w-max flex-nowrap items-center gap-1"
+          style={{ contain: "layout style paint" }}
+        >
+          {measurableControls.map(renderMeasurementControl)}
+        </div>
+      )}
+      {effectiveVariant === "floating" && (
+        <div
+          ref={viewportCapacityRef}
+          aria-hidden="true"
+          inert
+          data-selection-toolbar-viewport-capacity
+          className="pointer-events-none invisible fixed left-0 top-0 h-px"
+          style={{
+            contain: "strict",
+            inlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX,
+          }}
+        />
+      )}
+      {!context && (
+        <div
+          ref={measurementRef}
+          aria-hidden="true"
+          inert
+          className="hidden"
+        />
       )}
       {fallbackPanel}
     </div>

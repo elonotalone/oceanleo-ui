@@ -405,7 +405,7 @@ test("hello is bound to nonce, versions, lease, and native Chrome window", () =>
   }
 });
 
-test("free lease acquires once while stale and agent-held fences fail closed", () => {
+test("free and current agent leases acquire while stale fences fail closed", () => {
   const freeState = reduceCloudBrowserProtocolMessage(
     seededState(),
     hello(),
@@ -559,10 +559,30 @@ test("free lease acquires once while stale and agent-held fences fail closed", (
   );
   assert.equal(agentHeld.state.handshake, true);
   assert.equal(agentHeld.state.leaseOwned, false);
+  assert.equal(agentHeld.state.lease.leaseId, "agent-lease");
+  assert.equal(agentHeld.state.lease.epoch, 4);
   assert.equal(
     canSendCloudBrowserControlMutation(
       "control.acquire",
       agentHeld.state.lease,
+      agentHeld.state.leaseOwned,
+      binding.connectionId,
+    ),
+    true,
+  );
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      { ...agentHeld.state.lease, leaseId: "" },
+      agentHeld.state.leaseOwned,
+      binding.connectionId,
+    ),
+    false,
+  );
+  assert.equal(
+    canSendCloudBrowserControlMutation(
+      "control.acquire",
+      { ...agentHeld.state.lease, epoch: 0 },
       agentHeld.state.leaseOwned,
       binding.connectionId,
     ),
@@ -1158,8 +1178,10 @@ test("hibernated and failed sessions require explicit fenced resume", () => {
   );
   assert.match(
     panelSource,
-    /selected\?\.status === "hibernated"[\s\S]*?tt\("恢复"\)[\s\S]*?tt\("开机"\)/,
+    /historyLabel=\{cloudBrowserOpenHistoryLabel\(tt\)\}/,
   );
+  assert.match(panelSource, /newLabel=\{tt\("新建"\)\}/);
+  assert.doesNotMatch(panelSource, /tt\("开机"\)/);
 });
 
 test("terminal configuration and v3 failures are visible instead of spinning forever", () => {
@@ -1182,7 +1204,7 @@ test("terminal configuration and v3 failures are visible instead of spinning for
       { error: "HTTP 503", status: 503 },
       "start failed",
     ),
-    "start failed: BROWSER_NOT_CONFIGURED / EXECUTOR_ORIGIN_REJECTED",
+    "start failed: BROWSER_SERVICE_UNAVAILABLE",
   );
   assert.equal(
     formatCloudBrowserLifecycleError(
@@ -1202,11 +1224,11 @@ test("terminal configuration and v3 failures are visible instead of spinning for
   assert.match(panelSource, /v3 protocol_mismatch/);
   assert.match(
     sessionSource,
-    /formatCloudBrowserLifecycleError\(\s*recentResult/,
+    /cloudBrowserLifecycleIssue\(\s*\{\s*operation:\s*"session_list",\s*\.\.\.recentResult\s*\}/,
   );
   assert.match(
     sessionSource,
-    /formatCloudBrowserLifecycleError\(\s*result,\s*tt\("会话快照加载失败"\)/,
+    /formatCloudBrowserLifecycleError\(\s*\{\s*operation:\s*"checkpoint_list",\s*\.\.\.result\s*\},\s*tt\("会话快照加载失败"\)/,
   );
   assert.match(
     panelSource,

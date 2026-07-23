@@ -287,6 +287,27 @@ const ACTION_LABEL: Record<ArtifactCardAction, string> = {
   replace: "替换",
 };
 
+const ACTION_PENDING_STATUS: Record<ArtifactCardAction, string> = {
+  preview: "正在打开预览…",
+  edit: "正在打开编辑器…",
+  insert: "正在插入素材…",
+  replace: "正在替换素材…",
+};
+
+const ACTION_ENSURE_PENDING_STATUS: Record<ArtifactCardAction, string> = {
+  preview: "正在建立耐久 artifact identity 并打开预览…",
+  edit: "正在建立耐久 artifact identity 并打开编辑器…",
+  insert: "正在建立耐久 artifact identity 并插入素材…",
+  replace: "正在建立耐久 artifact identity 并替换素材…",
+};
+
+const ACTION_SUCCESS_STATUS: Record<ArtifactCardAction, string> = {
+  preview: "预览已打开。",
+  edit: "编辑器已打开。",
+  insert: "素材已插入。",
+  replace: "素材已替换。",
+};
+
 export function ArtifactActionButtons({
   item,
   matrix,
@@ -346,8 +367,8 @@ export function ArtifactActionButtons({
     setPending(action);
     report(
       state.requiresEnsure
-        ? "正在建立耐久 artifact identity…"
-        : `${ACTION_LABEL[action]}中…`,
+        ? ACTION_ENSURE_PENDING_STATUS[action]
+        : ACTION_PENDING_STATUS[action],
     );
     try {
       const prepared = await prepareArtifactForAction(action, item);
@@ -355,7 +376,7 @@ export function ArtifactActionButtons({
         throw new Error(prepared.error || `${ACTION_LABEL[action]}失败。`);
       }
       await handler(prepared.data);
-      report(`${ACTION_LABEL[action]}已执行。`);
+      report(ACTION_SUCCESS_STATUS[action]);
     } catch (error) {
       report(
         error instanceof Error
@@ -451,9 +472,10 @@ export function ArtifactActionButtons({
   const runFullscreen = async () => {
     if (!fullscreenVisible || pending) return;
     setPending("fullscreen");
+    report("正在进入全屏…");
     try {
       await onFullscreen?.();
-      report("全屏已执行。");
+      report("已进入全屏。");
     } catch (error) {
       report(error instanceof Error ? error.message : "全屏失败。");
     } finally {

@@ -28,7 +28,11 @@ import {
   deckShapeClipPath,
 } from "./DeckElementContent";
 import type { DeckInkStyle } from "./deck-ink";
-import { deckTextGestureProps } from "./deck-text-gesture";
+import {
+  deckElementTextEditability,
+  deckTextEditKeyStartsEditing,
+  deckTextGestureProps,
+} from "./deck-text-gesture";
 import { DeckInkOverlay } from "./DeckInkOverlay";
 import { DeckSlideRail } from "./DeckSlideRail";
 import { useDeckStageShortcuts } from "./use-deck-stage-shortcuts";
@@ -181,6 +185,7 @@ function PositionedSlideCanvas({
           const rendered = preview ? { ...element, ...preview } : element;
           const selected = editor.selectedElementId === element.id;
           const editing = editingId === element.id && !element.locked;
+          const textEditability = deckElementTextEditability(element);
           const shapeClip =
             element.type === "shape"
               ? deckShapeClipPath(element.shape)
@@ -190,17 +195,29 @@ function PositionedSlideCanvas({
               key={element.id}
               role="button"
               tabIndex={selected ? 0 : -1}
-              aria-label={element.alt || element.label || element.type}
+              aria-label={`${element.alt || element.label || element.type}${
+                textEditability.reason ? `（${textEditability.reason}）` : ""
+              }`}
               aria-pressed={selected}
+              aria-keyshortcuts={
+                textEditability.textBearing ? "Enter F2" : undefined
+              }
+              onKeyDown={(event) => {
+                if (
+                  editing ||
+                  !deckTextEditKeyStartsEditing(event.key) ||
+                  !textEditability.textBearing
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                if (textEditability.editable) setEditingId(element.id);
+              }}
               onPointerDown={(event) => {
                 editor.selectElement(element.id);
-                if (
-                  event.detail >= 2 &&
-                  !element.locked &&
-                  (element.type === "text" ||
-                    element.type === "table" ||
-                    (element.type === "shape" && Boolean(element.text)))
-                ) {
+                event.currentTarget.focus({ preventScroll: true });
+                if (event.detail >= 2 && textEditability.editable) {
                   event.preventDefault();
                   event.stopPropagation();
                   setEditingId(element.id);
@@ -209,12 +226,7 @@ function PositionedSlideCanvas({
                 if (!editing) startInteraction(event, element, "move");
               }}
               onDoubleClick={(event) => {
-                if (
-                  !element.locked &&
-                  (element.type === "text" ||
-                    element.type === "table" ||
-                    (element.type === "shape" && element.text))
-                ) {
+                if (textEditability.editable) {
                   event.preventDefault();
                   event.stopPropagation();
                   editor.selectElement(element.id);
@@ -294,6 +306,22 @@ function PositionedSlideCanvas({
                     }}
                     onPointerDown={(event) => event.stopPropagation()}
                   >
+                    {textEditability.textBearing && (
+                      <button
+                        type="button"
+                        data-deck-edit-text
+                        disabled={!textEditability.editable}
+                        onClick={() => setEditingId(element.id)}
+                        className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:cursor-not-allowed disabled:opacity-35"
+                        title={
+                          textEditability.reason ||
+                          "编辑文字（选中后也可按 Enter 或 F2）"
+                        }
+                        aria-label={textEditability.actionLabel}
+                      >
+                        <AdvancedEditorIcon name="case" className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => layout?.openDrawer("agent")}
@@ -360,6 +388,19 @@ function PositionedSlideCanvas({
                       />
                     </>
                   )}
+                  {textEditability.textBearing &&
+                    !textEditability.editable && (
+                      <span
+                        role="status"
+                        data-deck-edit-lock-reason
+                        className="pointer-events-none absolute left-1/2 top-[-72px] z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white shadow"
+                        style={{
+                          transform: `translateX(-50%) rotate(${-rendered.rotation}deg)`,
+                        }}
+                      >
+                        {textEditability.reason}
+                      </span>
+                    )}
                 </>
               )}
             </div>
@@ -621,7 +662,9 @@ export function DeckStage({
               role="status"
               className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
             >
-              {tt("空白演示文稿，双击页面文字开始编辑")}
+              {tt(
+                "空白演示文稿。添加或选中文字后点击“编辑文字”，也可按 Enter / F2。",
+              )}
             </p>
           )}
         </main>

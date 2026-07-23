@@ -21,6 +21,9 @@ type SessionDataOptions = {
   liveRequested: boolean;
   tt: UITranslate;
   setError: Dispatch<SetStateAction<string>>;
+  setLifecycleIssue?: Dispatch<
+    SetStateAction<CloudBrowserLifecycleIssue | null>
+  >;
 };
 
 type SessionSelectionOptions = {
@@ -32,6 +35,72 @@ type SessionSelectionOptions = {
   currentId?: string;
   keepCurrent?: boolean;
 };
+
+export type CloudBrowserSessionOpenAction =
+  | "connect"
+  | "resume"
+  | "unavailable";
+
+export type CloudBrowserLifecycleDiagnosticValue =
+  | string
+  | number
+  | boolean;
+
+export type CloudBrowserLifecycleIssue = {
+  message: string;
+  code: string;
+  operation: string;
+  retryable: boolean | null;
+  retryAfterSeconds: number | null;
+  diagnostics: Record<
+    string,
+    CloudBrowserLifecycleDiagnosticValue
+  >;
+  status: number;
+};
+
+type CloudBrowserLifecycleFailure = {
+  error?: unknown;
+  status?: number;
+  detail?: unknown;
+  code?: unknown;
+  operation?: unknown;
+  retryable?: unknown;
+  diagnostics?: unknown;
+  retryAfterSeconds?: unknown;
+  retry_after_seconds?: unknown;
+  headers?: unknown;
+};
+
+const PUBLIC_LIFECYCLE_CODES = new Set([
+  "BROWSER_NOT_CONFIGURED",
+  "EXECUTOR_ORIGIN_REJECTED",
+  "EXECUTOR_BUSY",
+  "BROWSER_CAPACITY_EXHAUSTED",
+  "INVALID_LIFECYCLE_STATE",
+  "STALE_FENCE",
+  "PERSISTENCE_UNAVAILABLE",
+  "SESSION_NOT_FOUND",
+  "TASK_NOT_FOUND",
+  "NAVIGATION_URL_REJECTED",
+  "BROWSER_RESTORE_FAILED",
+  "BROWSER_HIBERNATE_FAILED",
+  "BROWSER_DELETE_FAILED",
+  "BROWSER_WARM_FAILED",
+]);
+
+const PUBLIC_DIAGNOSTIC_KEYS = new Set([
+  "component",
+  "reason",
+  "scope",
+  "tier",
+  "state",
+  "live_nodes",
+  "eligible_nodes",
+  "capacity",
+  "active_runtimes",
+  "free_slots",
+]);
 
 const CHECKPOINT_STATES = new Set([
   "ready",
@@ -75,39 +144,269 @@ export function resolveCloudBrowserSessionSelection({
 }
 
 export function formatCloudBrowserLifecycleError(
-  result: { error?: string; status?: number },
+  result: CloudBrowserLifecycleFailure,
   fallback: string,
 ): string {
-  const raw = String(result.error || "").trim();
-  if (raw.includes("BROWSER_NOT_CONFIGURED")) {
-    return `${fallback}: BROWSER_NOT_CONFIGURED`;
+  return cloudBrowserLifecycleIssue(result, fallback).message;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parsedErrorRecord(value: unknown): Record<string, unknown> | null {
+  const direct = recordValue(value);
+  if (direct) return direct;
+  if (typeof value !== "string") return null;
+  const source = value.trim();
+  if (!source.startsWith("{") || source.length > 8_192) return null;
+  try {
+    return recordValue(JSON.parse(source));
+  } catch {
+    return null;
   }
-  if (raw.includes("EXECUTOR_ORIGIN_REJECTED")) {
-    return `${fallback}: EXECUTOR_ORIGIN_REJECTED`;
+}
+
+function publicLifecycleCode(value: unknown): string {
+  const source = String(value || "").trim().toUpperCase();
+  if (PUBLIC_LIFECYCLE_CODES.has(source)) return source;
+  if (
+    /^BROWSER_SESSION_(?:LIST|CREATE|READ|CHECKPOINTS?)_(?:UNAVAILABLE|CONTRACT_INVALID)$/.test(
+      source,
+    )
+  ) {
+    return source;
   }
-  if (result.status === 503) {
-    // The shared API client currently flattens structured FastAPI detail to
-    // "HTTP 503". Keep the two server-side configuration causes visible
-    // instead of presenting an unactionable generic failure.
-    return `${fallback}: BROWSER_NOT_CONFIGURED / EXECUTOR_ORIGIN_REJECTED`;
+  return "";
+}
+
+function codeFromText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  for (const token of value.match(/[A-Z][A-Z0-9_]{2,80}/g) || []) {
+    const code = publicLifecycleCode(token);
+    if (code) return code;
   }
-  // Gateway details can contain executor paths, private hosts, or credentials.
-  // Only the public allowlisted codes above may cross into product copy.
-  return fallback;
+  return "";
+}
+
+function boundedOperation(value: unknown): string {
+  const source = String(value || "").trim();
+  return /^[a-z][a-z0-9_]{0,63}$/.test(source) ? source : "";
+}
+
+function boundedRetryAfter(value: unknown): number | null {
+  const parsed =
+    typeof value === "string" && value.trim()
+      ? Number(value)
+      : value;
+  return typeof parsed === "number" &&
+    Number.isSafeInteger(parsed) &&
+    parsed >= 0 &&
+    parsed <= 3_600
+    ? parsed
+    : null;
+}
+
+function retryAfterFromHeaders(value: unknown): number | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    "get" in value &&
+    typeof (value as { get?: unknown }).get === "function"
+  ) {
+    try {
+      return boundedRetryAfter(
+        (value as { get: (name: string) => unknown }).get(
+          "Retry-After",
+        ),
+      );
+    } catch {
+      return null;
+    }
+  }
+  const headers = recordValue(value);
+  if (headers) {
+    return boundedRetryAfter(
+      headers["Retry-After"] ?? headers["retry-after"],
+    );
+  }
+  return null;
+}
+
+function publicDiagnostics(
+  value: unknown,
+): Record<string, CloudBrowserLifecycleDiagnosticValue> {
+  const source = recordValue(value);
+  if (!source) return {};
+  const diagnostics: Record<
+    string,
+    CloudBrowserLifecycleDiagnosticValue
+  > = {};
+  for (const [key, raw] of Object.entries(source)) {
+    if (!PUBLIC_DIAGNOSTIC_KEYS.has(key)) continue;
+    if (
+      typeof raw === "number" &&
+      Number.isSafeInteger(raw) &&
+      raw >= 0 &&
+      raw <= 1_000_000
+    ) {
+      diagnostics[key] = raw;
+      continue;
+    }
+    if (typeof raw === "boolean") {
+      diagnostics[key] = raw;
+      continue;
+    }
+    if (
+      typeof raw === "string" &&
+      raw.length > 0 &&
+      raw.length <= 120 &&
+      /^[A-Za-z0-9._:-]+$/.test(raw)
+    ) {
+      diagnostics[key] = raw;
+    }
+  }
+  return diagnostics;
+}
+
+function fallbackCodeForStatus(status: number): string {
+  if (status === 0) return "NETWORK_UNAVAILABLE";
+  if (status === 404) return "SESSION_NOT_FOUND";
+  if (status === 409) return "INVALID_LIFECYCLE_STATE";
+  if (status === 502) return "BROWSER_GATEWAY_ERROR";
+  // An unstructured 503 has unknown cause. Never mislabel it as a
+  // configuration failure; only an explicit stable code can do that.
+  if (status === 503) return "BROWSER_SERVICE_UNAVAILABLE";
+  return "";
+}
+
+function defaultRetryableForCode(code: string): boolean | null {
+  if (
+    code === "EXECUTOR_BUSY" ||
+    code === "BROWSER_CAPACITY_EXHAUSTED" ||
+    code === "BROWSER_SERVICE_UNAVAILABLE" ||
+    code === "NETWORK_UNAVAILABLE" ||
+    code.endsWith("_UNAVAILABLE")
+  ) {
+    return true;
+  }
+  if (!code || code === "BROWSER_GATEWAY_ERROR") return null;
+  return false;
+}
+
+export function cloudBrowserLifecycleIssue(
+  result: CloudBrowserLifecycleFailure,
+  fallback: string,
+): CloudBrowserLifecycleIssue {
+  const status =
+    typeof result.status === "number" &&
+    Number.isInteger(result.status)
+      ? result.status
+      : 0;
+  const errorRecord = parsedErrorRecord(result.error);
+  const directDetail = recordValue(result.detail);
+  const envelope =
+    recordValue(directDetail?.detail) ||
+    directDetail ||
+    recordValue(errorRecord?.detail) ||
+    errorRecord ||
+    recordValue(result);
+  const rawError =
+    typeof result.error === "string" ? result.error.trim() : "";
+  const code =
+    publicLifecycleCode(envelope?.code ?? result.code) ||
+    codeFromText(rawError) ||
+    fallbackCodeForStatus(status);
+  const operation = boundedOperation(
+    envelope?.operation ?? result.operation,
+  );
+  const explicitRetryable =
+    typeof (envelope?.retryable ?? result.retryable) === "boolean"
+      ? Boolean(envelope?.retryable ?? result.retryable)
+      : null;
+  const retryable =
+    explicitRetryable ?? defaultRetryableForCode(code);
+  const retryAfterSeconds =
+    boundedRetryAfter(
+      envelope?.retry_after_seconds ??
+        envelope?.retryAfterSeconds ??
+        result.retry_after_seconds ??
+        result.retryAfterSeconds,
+    ) ?? retryAfterFromHeaders(result.headers);
+  const diagnostics = publicDiagnostics(
+    envelope?.diagnostics ?? result.diagnostics,
+  );
+  const suffix = [
+    code,
+    retryAfterSeconds !== null
+      ? `Retry-After ${retryAfterSeconds}s`
+      : "",
+  ].filter(Boolean);
+  return {
+    message: suffix.length
+      ? `${fallback}: ${suffix.join(" · ")}`
+      : fallback,
+    code,
+    operation,
+    retryable,
+    retryAfterSeconds,
+    diagnostics,
+    status,
+  };
 }
 
 export function cloudBrowserSessionNeedsResume(
   session: CloudBrowserSession | null,
 ): boolean {
-  if (!session) return false;
-  if (session.status === "hibernated" || session.status === "failed") {
-    return true;
+  return cloudBrowserSessionOpenAction(session) === "resume";
+}
+
+export function cloudBrowserSessionOpenAction(
+  session: CloudBrowserSession | null,
+): CloudBrowserSessionOpenAction {
+  if (!session) return "unavailable";
+  const status = String(session.status || "").trim();
+  const runtimeState = String(session.runtime_state || "").trim();
+  const hasLiveRuntime =
+    Boolean(session.runtime_id) && session.incarnation > 0;
+
+  if (
+    (status === "active" || status === "warm") &&
+    runtimeState === "ready" &&
+    hasLiveRuntime
+  ) {
+    return "connect";
   }
-  if (!["active", "warm"].includes(session.status)) return true;
-  if (!session.runtime_id || session.incarnation <= 0) return true;
-  return Boolean(
-    session.runtime_state &&
-      session.runtime_state !== "ready",
+  if (
+    (status === "active" || status === "warm") &&
+    (!hasLiveRuntime ||
+      !runtimeState ||
+      runtimeState === "absent" ||
+      runtimeState === "dead")
+  ) {
+    return "resume";
+  }
+  if (
+    status === "created" ||
+    status === "hibernated" ||
+    status === "failed"
+  ) {
+    return "resume";
+  }
+  return "unavailable";
+}
+
+export function cloudBrowserSessionCanHibernate(
+  session: CloudBrowserSession | null,
+  transportState: string,
+): boolean {
+  return (
+    transportState === "streaming" &&
+    cloudBrowserSessionOpenAction(session) === "connect"
   );
 }
 
@@ -162,6 +461,7 @@ export function useCloudBrowserSessionData({
   liveRequested,
   tt,
   setError,
+  setLifecycleIssue,
 }: SessionDataOptions) {
   const [sessions, setSessions] = useState<CloudBrowserSession[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -189,27 +489,30 @@ export function useCloudBrowserSessionData({
       ]);
       if (generation !== reloadGenerationRef.current) return;
       if (!recentResult.ok) {
-        const message =
-          formatCloudBrowserLifecycleError(
-            recentResult,
-            tt("浏览记录加载失败"),
-          );
+        const issue = cloudBrowserLifecycleIssue(
+          { operation: "session_list", ...recentResult },
+          tt("浏览记录加载失败"),
+        );
+        const message = issue.message;
         sessionLoadErrorRef.current = message;
+        setLifecycleIssue?.(issue);
         setError(message);
         return;
       }
       if (effectiveTaskId && taskResult && !taskResult.ok) {
-        const message =
-          formatCloudBrowserLifecycleError(
-            taskResult,
-            tt("当前任务的浏览记录加载失败"),
-          );
+        const issue = cloudBrowserLifecycleIssue(
+          { operation: "session_list", ...taskResult },
+          tt("当前任务的浏览记录加载失败"),
+        );
+        const message = issue.message;
         sessionLoadErrorRef.current = message;
+        setLifecycleIssue?.(issue);
         setError(message);
       } else {
         const previous = sessionLoadErrorRef.current;
         sessionLoadErrorRef.current = "";
         if (previous) {
+          setLifecycleIssue?.(null);
           setError((current) =>
             current === previous ? "" : current,
           );
@@ -239,7 +542,7 @@ export function useCloudBrowserSessionData({
         return next;
       });
     },
-    [effectiveTaskId, setError, tt],
+    [effectiveTaskId, setError, setLifecycleIssue, tt],
   );
 
   const refreshCheckpoints = useCallback(async () => {
@@ -256,7 +559,7 @@ export function useCloudBrowserSessionData({
     if (!result.ok) {
       setCheckpointsError(
         formatCloudBrowserLifecycleError(
-          result,
+          { operation: "checkpoint_list", ...result },
           tt("会话快照加载失败"),
         ),
       );

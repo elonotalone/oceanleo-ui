@@ -21,6 +21,8 @@ const DESIGN_DEPENDENCY_SCHEMA = "oceanleo.dependency-manifest.v1";
 const DESIGN_HISTORY_SCHEMA = "oceanleo.design-history.v1";
 const MAX_DEPENDENCIES = 1_024;
 const MAX_DESIGN_ELEMENTS = 100_000;
+const MAX_DURABLE_MEDIA_URL_LENGTH = 4_096;
+const MAX_INLINE_IMAGE_SOURCE_LENGTH = 20_000_000;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -125,6 +127,136 @@ interface DesignDependencyReference {
   sourceRevisionId?: string;
 }
 
+function validInlineImageDataUrl(value: string): boolean {
+  if (
+    !value.toLowerCase().startsWith("data:image/") ||
+    value.length > MAX_INLINE_IMAGE_SOURCE_LENGTH
+  ) {
+    return false;
+  }
+  const comma = value.indexOf(",");
+  if (comma <= "data:image/".length || comma > 512 || comma === value.length - 1) {
+    return false;
+  }
+  const header = value.slice(0, comma);
+  return /^data:image\/[a-z0-9.+-]+(?:;[^,\r\n]*)?$/i.test(header);
+}
+
+function designImageSource(value: unknown, label: string): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value !== "string") {
+    throw new DesignCompositeCommitError(
+      `design ${label} 图片引用不是字符串。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const candidate = value.trim();
+  if (!candidate) return "";
+  if (candidate.toLowerCase().startsWith("data:")) {
+    if (!validInlineImageDataUrl(candidate)) {
+      throw new DesignCompositeCommitError(
+        `design ${label} 包含无效或过大的内联图片。`,
+        "design-source-invalid-structure",
+      );
+    }
+    return candidate;
+  }
+  if (candidate.length > MAX_DURABLE_MEDIA_URL_LENGTH) {
+    throw new DesignCompositeCommitError(
+      `design ${label} 图片引用超过安全长度。`,
+      "design-source-invalid-structure",
+    );
+  }
+  if (candidate.startsWith("blob:")) return candidate;
+  if (!isDurableFirstPartyMediaUrl(candidate)) {
+    throw new DesignCompositeCommitError(
+      `design ${label} 图片引用不是受信任的耐久 URL。`,
+      "invalid-dependency",
+    );
+  }
+  return candidate;
+}
+
+function alternateDurableImageSource(
+  value: unknown,
+  label: string,
+): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value !== "string") {
+    throw new DesignCompositeCommitError(
+      `design ${label} 的 alternate source 不是字符串。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const candidate = value.trim();
+  if (!candidate) return "";
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate) && !candidate.startsWith("/")) {
+    // Legacy metadata may contain a human-readable source label such as
+    // "provider"; it is not an alternate media reference.
+    return "";
+  }
+  if (
+    candidate.length > MAX_DURABLE_MEDIA_URL_LENGTH ||
+    !isDurableFirstPartyMediaUrl(candidate)
+  ) {
+    throw new DesignCompositeCommitError(
+      `design ${label} 的 alternate source 不是受信任的耐久 URL。`,
+      "invalid-dependency",
+    );
+  }
+  return candidate;
+}
+
+function designImageDependency(
+  id: string,
+  rawUrl: unknown,
+  rawMetadata: unknown,
+): DesignDependencyReference | null {
+  const metadata =
+    rawMetadata === undefined || rawMetadata === null
+      ? null
+      : record(rawMetadata);
+  if (rawMetadata !== undefined && rawMetadata !== null && !metadata) {
+    throw new DesignCompositeCommitError(
+      `design dependency ${id} 的 metadata 结构无效。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const sourceArtifactId = text(metadata?.sourceArtifactId, 300);
+  const sourceRevisionId = text(metadata?.sourceRevisionId, 300);
+  if (Boolean(sourceArtifactId) !== Boolean(sourceRevisionId)) {
+    throw new DesignCompositeCommitError(
+      `design dependency ${id} 的 artifact/revision identity 不完整。`,
+      "invalid-dependency",
+    );
+  }
+  const renderSource = designImageSource(rawUrl, id);
+  const renderSourceKind = renderSource.slice(0, 5).toLowerCase();
+  const durableSource =
+    renderSource &&
+    renderSourceKind !== "data:" &&
+    renderSourceKind !== "blob:"
+      ? renderSource
+      : alternateDurableImageSource(metadata?.source, id);
+  if (renderSourceKind === "blob:" && !durableSource) {
+    throw new DesignCompositeCommitError(
+      `design dependency ${id} 只有临时 blob 且没有耐久引用。`,
+      "invalid-dependency",
+    );
+  }
+  if (!durableSource) {
+    // Empty image slots are legitimate placeholders and data URLs are
+    // self-contained. Neither creates an external dependency closure entry.
+    return null;
+  }
+  return {
+    id,
+    url: durableSource,
+    ...(sourceArtifactId ? { sourceArtifactId } : {}),
+    ...(sourceRevisionId ? { sourceRevisionId } : {}),
+  };
+}
+
 function designDocumentDependencies(
   value: unknown,
   prefix: string,
@@ -138,50 +270,37 @@ function designDocumentDependencies(
     );
   }
   const dependencies: DesignDependencyReference[] = [];
-  const add = (
-    id: string,
-    rawUrl: unknown,
-    rawMetadata?: unknown,
-  ) => {
-    const url = text(rawUrl);
-    if (!url || url.startsWith("data:")) return;
-    const metadata = record(rawMetadata);
-    const sourceArtifactId = text(metadata?.sourceArtifactId, 300);
-    const sourceRevisionId = text(metadata?.sourceRevisionId, 300);
-    if (Boolean(sourceArtifactId) !== Boolean(sourceRevisionId)) {
-      throw new DesignCompositeCommitError(
-        `design dependency ${id} 的 artifact/revision identity 不完整。`,
-        "invalid-dependency",
-      );
-    }
-    dependencies.push({
-      id,
-      url,
-      ...(sourceArtifactId ? { sourceArtifactId } : {}),
-      ...(sourceRevisionId ? { sourceRevisionId } : {}),
-    });
+  const add = (id: string, rawUrl: unknown, rawMetadata?: unknown) => {
+    const dependency = designImageDependency(id, rawUrl, rawMetadata);
+    if (dependency) dependencies.push(dependency);
   };
   const collectElements = (rawElements: unknown, path: string) => {
     if (rawElements === undefined) return;
-    if (!Array.isArray(rawElements)) {
+    if (
+      !Array.isArray(rawElements) ||
+      rawElements.length > MAX_DESIGN_ELEMENTS
+    ) {
       throw new DesignCompositeCommitError(
-        `design ${path} 不是可恢复的 element 列表。`,
+        `design ${path} 不是有界、可恢复的 element 列表。`,
         "invalid-source",
       );
     }
+    const ids = new Set<string>();
     for (const [index, rawElement] of rawElements.entries()) {
       const element = record(rawElement);
-      if (!element || element.type !== "image") continue;
-      const id = text(element.id, 300);
-      const props = record(element.props);
-      const src = text(props?.src);
-      if (!id || !src) {
+      const id = text(element?.id, 300);
+      const type = text(element?.type, 80);
+      const props = record(element?.props);
+      if (!element || !id || !type || !props || ids.has(id)) {
         throw new DesignCompositeCommitError(
-          `design ${path}[${index}] 图片缺少 id/src。`,
+          `design ${path}[${index}] element 结构或 identity 无效。`,
           "invalid-source",
         );
       }
-      add(`${path}:${id}`, src, element.metadata);
+      ids.add(id);
+      if (type === "image") {
+        add(`${path}:${id}`, props.src, element.metadata);
+      }
     }
   };
   const background = record(document.background);
@@ -349,12 +468,6 @@ function assertFlatDesignDocument(value: JsonRecord): DesignCompositeSourceMode 
         );
       }
       ids.add(elementId);
-      if (elementType === "image" && !text(props.src)) {
-        throw new DesignCompositeCommitError(
-          `design flat template ${path}[${index}] 图片缺少 src。`,
-          "design-source-invalid-structure",
-        );
-      }
     }
   };
   assertElements(value.elements, "elements");
@@ -625,6 +738,7 @@ export async function validateDesignCompositeSource(
   options: {
     requireBaseIdentity?: boolean;
     requireBaseRevision?: boolean;
+    validation?: "open" | "commit";
   } = {},
 ): Promise<DesignCompositeSourceEvidence> {
   if (
@@ -780,10 +894,14 @@ export async function validateDesignCompositeSource(
   }
   const declaredById = new Map<string, DesignDependencyReference>();
   const dependencyRevisionIds: string[] = [];
+  const enforceDependencyClosure = options.validation !== "open";
   for (const [index, value] of dependencies.entries()) {
     const dependency = record(value);
     const id = text(dependency?.id, 300);
-    const url = text(dependency?.url);
+    const url = alternateDurableImageSource(
+      dependency?.url,
+      `dependency[${index}]`,
+    );
     const sourceArtifactId = text(dependency?.sourceArtifactId, 300);
     const sourceRevisionId = text(dependency?.sourceRevisionId, 300);
     if (
@@ -803,6 +921,7 @@ export async function validateDesignCompositeSource(
     }
     const expectedDependency = expectedById.get(id);
     if (
+      enforceDependencyClosure &&
       expectedDependency?.sourceArtifactId &&
       (sourceArtifactId !== expectedDependency.sourceArtifactId ||
         sourceRevisionId !== expectedDependency.sourceRevisionId)
@@ -820,10 +939,17 @@ export async function validateDesignCompositeSource(
     });
     if (sourceRevisionId) dependencyRevisionIds.push(sourceRevisionId);
   }
+  if (!enforceDependencyClosure) {
+    for (const dependency of expectedById.values()) {
+      if (dependency.sourceRevisionId) {
+        dependencyRevisionIds.push(dependency.sourceRevisionId);
+      }
+    }
+  }
   const missing = [...expectedById].find(
     ([id, dependency]) => declaredById.get(id)?.url !== dependency.url,
   );
-  if (missing) {
+  if (enforceDependencyClosure && missing) {
     throw new DesignCompositeCommitError(
       `design dependency closure 缺少图层资源 ${missing[0]}。`,
       "incomplete-dependency-closure",
@@ -832,7 +958,10 @@ export async function validateDesignCompositeSource(
   const orphan = [...declaredById].find(
     ([id, dependency]) => expectedById.get(id)?.url !== dependency.url,
   );
-  if (orphan || declaredById.size !== expectedById.size) {
+  if (
+    enforceDependencyClosure &&
+    (orphan || declaredById.size !== expectedById.size)
+  ) {
     throw new DesignCompositeCommitError(
       `design dependency closure 含未引用资源 ${orphan?.[0] || "unknown"}。`,
       "incomplete-dependency-closure",

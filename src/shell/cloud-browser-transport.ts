@@ -23,7 +23,10 @@ import {
   handleCloudBrowserProtocolMessage,
   type CloudBrowserProtocolContext,
 } from "./cloud-browser-protocol";
-import { createCloudBrowserTransportActions } from "./cloud-browser-transport-actions";
+import {
+  CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS,
+  createCloudBrowserTransportActions,
+} from "./cloud-browser-transport-actions";
 import {
   EMPTY_BROWSER_LEASE,
   FIRST_FRAME_TIMEOUT_MS,
@@ -45,6 +48,7 @@ import {
   cloudBrowserAuthMessage,
   cloudBrowserV3FrameReceipt,
   cloudBrowserV3Message,
+  isAuthoritativeCloudBrowserHumanLease,
   validateCloudBrowserMutation,
   type CloudBrowserWireBinding,
 } from "./cloud-browser-wire";
@@ -109,6 +113,7 @@ export function useCloudBrowserTransport({
   const reconnectTimerRef = useRef<number | null>(null);
   const waitingForOnlineRef = useRef(false);
   const firstFrameTimerRef = useRef<number | null>(null);
+  const takeoverTimeoutRef = useRef<number | null>(null);
   const liveRequestedRef = useRef(false);
   const selectedIdRef = useRef(selectedId);
   const selectedPropRef = useRef(selectedId);
@@ -166,21 +171,32 @@ export function useCloudBrowserTransport({
   >(() => {});
   const reconcileControlIntentRef = useRef<() => void>(() => {});
 
+  const clearTakeoverTimeout = useCallback(() => {
+    if (takeoverTimeoutRef.current === null) return;
+    window.clearTimeout(takeoverTimeoutRef.current);
+    takeoverTimeoutRef.current = null;
+  }, []);
+
   const setControlPending = useCallback(
     (value: SetStateAction<boolean>) => {
       const current = controlPendingRef.current;
       const next =
         typeof value === "function" ? value(current) : value;
+      if (!next) clearTakeoverTimeout();
       controlPendingRef.current = next;
       setControlPendingState(next);
     },
-    [],
+    [clearTakeoverTimeout],
   );
 
-  const setControlIntentSent = useCallback((next: boolean) => {
-    controlIntentSentRef.current = next;
-    setControlIntentSentState(next);
-  }, []);
+  const setControlIntentSent = useCallback(
+    (next: boolean) => {
+      if (!next) clearTakeoverTimeout();
+      controlIntentSentRef.current = next;
+      setControlIntentSentState(next);
+    },
+    [clearTakeoverTimeout],
+  );
 
   const setCapabilities = useCallback(
     (value: SetStateAction<CloudBrowserCapabilitiesV3>) => {
@@ -219,18 +235,24 @@ export function useCloudBrowserTransport({
   const setCurrentLease = useCallback(
     (next: CloudBrowserControlLease, owned: boolean) => {
       const previous = leaseRef.current;
+      const authoritativeOwned =
+        owned &&
+        isAuthoritativeCloudBrowserHumanLease(
+          next,
+          connectionIdRef.current,
+        );
       if (
         previous.leaseId !== next.leaseId ||
         previous.epoch !== next.epoch ||
         previous.connectionId !== next.connectionId ||
-        leaseOwnedRef.current !== owned
+        leaseOwnedRef.current !== authoritativeOwned
       ) {
         ++fenceSerialRef.current;
       }
       leaseRef.current = next;
-      leaseOwnedRef.current = owned;
+      leaseOwnedRef.current = authoritativeOwned;
       setLease(next);
-      setLeaseOwned(owned);
+      setLeaseOwned(authoritativeOwned);
     },
     [],
   );
@@ -427,6 +449,40 @@ export function useCloudBrowserTransport({
     [currentFence, sendRaw, v3Envelope],
   );
 
+  const armTakeoverTimeout = useCallback(() => {
+    clearTakeoverTimeout();
+    const generation = socketGenerationRef.current;
+    const connectionId = connectionIdRef.current;
+    takeoverTimeoutRef.current = window.setTimeout(() => {
+      takeoverTimeoutRef.current = null;
+      if (
+        generation !== socketGenerationRef.current ||
+        connectionId !== connectionIdRef.current ||
+        controlIntentRef.current !== "acquire" ||
+        !controlIntentSentRef.current ||
+        !controlPendingRef.current ||
+        leaseOwnedRef.current
+      ) {
+        return;
+      }
+      // Never leave a timed-out acquire live on its old socket. Clearing the
+      // intent before reconnect prevents the sent mutation from being replayed
+      // while gateway cleanup releases any grant that raced the timeout.
+      controlIntentRef.current = "";
+      setControlIntentSent(false);
+      setControlPending(false);
+      recoverConnectionRef.current(
+        tt("实时浏览器连接失败"),
+        "connection",
+      );
+    }, CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS);
+  }, [
+    clearTakeoverTimeout,
+    setControlIntentSent,
+    setControlPending,
+    tt,
+  ]);
+
   const reconcileControlIntent = useCallback(() => {
     if (controlIntentRef.current !== "acquire") return;
     if (
@@ -463,6 +519,7 @@ export function useCloudBrowserTransport({
     if (sendControlMutation("control.acquire", false)) {
       setControlIntentSent(true);
       setControlPending(true);
+      armTakeoverTimeout();
       return;
     }
     recoverConnectionRef.current(
@@ -470,6 +527,7 @@ export function useCloudBrowserTransport({
       "connection",
     );
   }, [
+    armTakeoverTimeout,
     sendControlMutation,
     setControlPending,
     setError,
@@ -787,11 +845,16 @@ export function useCloudBrowserTransport({
       waitingForOnlineRef.current = false;
       invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
+      clearTakeoverTimeout();
       socketRef.current?.close();
       socketRef.current = null;
       cancelFrameDecode(false);
     },
-    [cancelFrameDecode, clearFirstFrameTimeout],
+    [
+      cancelFrameDecode,
+      clearFirstFrameTimeout,
+      clearTakeoverTimeout,
+    ],
   );
 
   useEffect(() => {

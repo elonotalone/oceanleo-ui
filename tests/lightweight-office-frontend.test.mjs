@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -68,19 +68,40 @@ test("reachable lightweight Office code has no embedded-editor runtime", () => {
   }
 });
 
-test("compatibility Office route delegates to native workbench routes", () => {
-  const route = source("../src/shell/advanced-routes/OfficeRoute.tsx");
+test("OnlyOffice route, components, transport API, and public export stay retired", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
+  const officeExports = source("../src/shell/office-editor/index.ts");
+  const publicLib = source("../src/lib/index.ts");
+
+  assert.equal(
+    existsSync(
+      fileURLToPath(
+        new URL(
+          "../src/shell/advanced-routes/OfficeRoute.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    existsSync(
+      fileURLToPath(
+        new URL(
+          "../src/shell/office-editor/OfficeWorkbench.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
-  assert.match(route, /lightweightOfficeRouteForItem\(sourceItem\)/);
-  assert.match(route, /route === "richdoc"/);
-  assert.match(route, /<RichDocRoute/);
-  assert.match(route, /route === "grid"/);
-  assert.match(route, /<GridRoute/);
-  assert.match(route, /route === "deck"/);
-  assert.match(route, /<DeckRoute/);
-  assert.match(route, /LightweightOfficeEmptyState/);
-  assert.doesNotMatch(route, /\bnativeChrome\b/);
+  assert.doesNotMatch(officeExports, /OfficeWorkbench|LightweightOffice/);
+  assert.doesNotMatch(publicLib, /office-client/);
+  assert.doesNotMatch(
+    source("../src/lib/office-client.ts"),
+    /\/v1\/office|office\.oceanleo\.com|DocsAPI|documentServerUrl/i,
+  );
 });
 
 test("native Office editors keep compact top actions and durable receipts", () => {

@@ -257,13 +257,21 @@ export function WorkspaceLibrary({
     );
   };
 
-  const requestFullscreenFor = (node: HTMLElement | null) => {
-    if (!node) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-      return;
+  const requestFullscreenFor = async (node: HTMLElement | null) => {
+    if (!node) {
+      throw new Error("当前详情没有可进入全屏的容器。");
     }
-    void node.requestFullscreen();
+    if (document.fullscreenElement === node) return;
+    if (
+      document.fullscreenElement &&
+      typeof document.exitFullscreen === "function"
+    ) {
+      await document.exitFullscreen();
+    }
+    if (typeof node.requestFullscreen !== "function") {
+      throw new Error("当前环境不支持全屏。");
+    }
+    await node.requestFullscreen();
   };
 
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
@@ -371,7 +379,7 @@ export function WorkspaceLibrary({
   const actionButtonsFor = (
     entry: WorkspaceLibraryEntry,
     compact = false,
-    fullscreenNode?: HTMLElement | null,
+    fullscreenNode?: () => HTMLElement | null,
   ) => {
     const item = entry.libraryItem;
     if (!item) return null;
@@ -387,16 +395,11 @@ export function WorkspaceLibrary({
         onReplace={(prepared) =>
           applyMaterialAction("replace", prepared)
         }
-        onFullscreen={() => {
-          if (fullscreenNode) {
-            requestFullscreenFor(fullscreenNode);
-            return;
-          }
-          openEntry(entry);
-          const split = document.querySelector<HTMLElement>(
-            "[data-workspace-split]",
-          );
-          requestFullscreenFor(split);
+        onFullscreen={async () => {
+          const target =
+            fullscreenNode?.() ||
+            document.querySelector<HTMLElement>("[data-workspace-split]");
+          await requestFullscreenFor(target);
         }}
         linkUrl={linkUrl || undefined}
         onStatus={setMaterialActionState}
@@ -443,7 +446,17 @@ export function WorkspaceLibrary({
         <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border,#e7e5e4)] px-3 py-2.5">
           <button
             type="button"
-            onClick={() => setSelectedId("")}
+            onClick={() => {
+              const fullscreenElement = document.fullscreenElement;
+              if (
+                fullscreenElement &&
+                detailRef.current?.contains(fullscreenElement) &&
+                typeof document.exitFullscreen === "function"
+              ) {
+                void document.exitFullscreen();
+              }
+              setSelectedId("");
+            }}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
             aria-label={tt("返回列表")}
             title={tt("返回列表")}
@@ -475,7 +488,7 @@ export function WorkspaceLibrary({
               libraryItem: workbenchItem,
             },
             true,
-            detailRef.current,
+            () => detailRef.current,
           )}
           {refreshable && (
             <button

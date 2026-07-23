@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
 import {
@@ -25,7 +25,10 @@ import { DeckFontPanel } from "../doc-editors/DeckFontPanel";
 import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
-import { useDeckEditor } from "../doc-editors/use-deck-editor";
+import {
+  deckSavedItemForHandoff,
+  useDeckEditor,
+} from "../doc-editors/use-deck-editor";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
@@ -101,17 +104,21 @@ export function DeckRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
+    const receipt = saved
+      ? advancedSavedItem(item, {
+          url: saved.url,
+          versionId: saved.versionId,
+          title: saved.title,
+          meta: {
+            editor_project_url: saved.projectUrl,
+            editor_project_schema: saved.projectSchema,
+          },
+        })
+      : null;
     return saved
       ? {
           ok: true as const,
-          item: advancedSavedItem(item, {
-            url: saved.url,
-            versionId: saved.versionId,
-            meta: {
-              editor_project_url: saved.projectUrl,
-              editor_project_schema: saved.projectSchema,
-            },
-          }),
+          item: deckSavedItemForHandoff(receipt || item, saved),
         }
       : { ok: false as const };
   }, [editor.save, item]);

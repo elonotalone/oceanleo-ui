@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import {
   createCloudBrowser,
   createCloudBrowserOperationId,
@@ -21,14 +26,78 @@ import type {
 import { useCloudBrowserInteraction } from "./cloud-browser-interaction";
 import { DEFAULT_BROWSER_URL } from "./cloud-browser-live";
 import {
+  cloudBrowserLifecycleIssue,
+  cloudBrowserSessionCanHibernate,
   cloudBrowserSessionNeedsResume,
+  cloudBrowserSessionOpenAction,
   formatCloudBrowserLifecycleError,
+  type CloudBrowserLifecycleIssue,
   useCloudBrowserSessionData,
 } from "./cloud-browser-session-data";
 import { useCloudBrowserTransport } from "./cloud-browser-transport";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export { pointInContainedFrame } from "./cloud-browser-live";
+
+export function cloudBrowserOpenHistoryLabel(
+  tt: (value: string) => string,
+): string {
+  const open = tt("打开");
+  const history = tt("历史");
+  return open === "打开" && history === "历史"
+    ? "从历史中打开"
+    : `${open} ${history}`.trim();
+}
+
+export function CloudBrowserLifecycleErrorView({
+  className,
+  issue,
+  message,
+}: {
+  className: string;
+  issue: CloudBrowserLifecycleIssue | null;
+  message: string;
+}) {
+  const diagnostics = issue
+    ? Object.entries(issue.diagnostics)
+    : [];
+  return (
+    <div
+      className={className}
+      role="alert"
+      data-cloud-browser-lifecycle-error
+      data-cloud-browser-lifecycle-code={issue?.code || undefined}
+      data-cloud-browser-lifecycle-operation={
+        issue?.operation || undefined
+      }
+      data-cloud-browser-lifecycle-retryable={
+        issue?.retryable === null || issue?.retryable === undefined
+          ? undefined
+          : issue.retryable
+            ? "true"
+            : "false"
+      }
+      data-cloud-browser-lifecycle-retry-after={
+        issue?.retryAfterSeconds ?? undefined
+      }
+    >
+      <p>{message}</p>
+      {diagnostics.length > 0 && (
+        <dl
+          className="mt-1 flex flex-wrap justify-center gap-x-2 gap-y-0.5 font-mono text-[9px] opacity-80"
+          data-cloud-browser-lifecycle-diagnostics
+        >
+          {diagnostics.map(([key, value]) => (
+            <div key={key} className="flex gap-0.5">
+              <dt>{key}=</dt>
+              <dd>{String(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
 
 function BrowserViewportSpinner({
   label,
@@ -56,51 +125,73 @@ function BrowserViewportSpinner({
   );
 }
 
-function BrowserPowerPrompt({
+export function BrowserPowerPrompt({
   accent,
   busy,
-  description,
   error,
-  label,
-  onPower,
+  historyLabel,
+  lifecycleIssue,
+  newLabel,
+  notice,
+  onHistory,
+  onNew,
 }: {
   accent: string;
   busy: boolean;
-  description: string;
   error: string;
-  label: string;
-  onPower: () => void;
+  historyLabel: string;
+  lifecycleIssue: CloudBrowserLifecycleIssue | null;
+  newLabel: string;
+  notice: string;
+  onHistory: () => void;
+  onNew: () => void;
 }) {
   return (
     <div
       className="absolute inset-0 grid place-items-center bg-stone-950 p-8 text-center"
+      data-cloud-browser-launch-prompt
       data-cloud-browser-power-prompt
     >
       <div className="w-full max-w-md">
         <BrowserGlyph className="mx-auto h-10 w-10 text-stone-500" />
-        <p className="mt-3 text-[11px] leading-5 text-stone-400">
-          {description}
-        </p>
         {error && (
-          <div
+          <CloudBrowserLifecycleErrorView
             className="mt-3 rounded-lg border border-rose-400/30 bg-rose-950/60 px-3 py-2 text-[11px] leading-5 text-rose-200"
-            role="alert"
-            data-cloud-browser-lifecycle-error
+            issue={lifecycleIssue}
+            message={error}
+          />
+        )}
+        {notice && !error && (
+          <div
+            className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-3 py-2 text-[11px] leading-5 text-emerald-200"
+            role="status"
+            data-cloud-browser-lifecycle-notice
           >
-            {error}
+            {notice}
           </div>
         )}
-        <button
-          type="button"
-          onClick={onPower}
-          disabled={busy}
-          className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
-          style={{ background: accent }}
-          aria-busy={busy}
-          data-cloud-browser-power
-        >
-          {label}
-        </button>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onNew}
+            disabled={busy}
+            className="rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
+            style={{ background: accent }}
+            aria-busy={busy}
+            data-cloud-browser-new
+          >
+            {newLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onHistory}
+            disabled={busy}
+            className="rounded-xl border border-stone-600 bg-stone-900 px-5 py-2.5 text-[12px] font-semibold text-stone-100 outline-none hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
+            data-cloud-browser-open-history
+          >
+            {historyLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -119,8 +210,17 @@ export function CloudBrowserPanel({
   const [liveRequested, setLiveRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lifecycleIssue, setLifecycleIssue] =
+    useState<CloudBrowserLifecycleIssue | null>(null);
   const [notice, setNotice] = useState("");
   const [checkpointsOpen, setCheckpointsOpen] = useState(false);
+  const setPlainError = useCallback(
+    (value: SetStateAction<string>) => {
+      setLifecycleIssue(null);
+      setError(value);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!notice) return;
@@ -133,6 +233,7 @@ export function CloudBrowserPanel({
     liveRequested,
     tt,
     setError,
+    setLifecycleIssue,
   });
   const transport = useCloudBrowserTransport({
     selectedId: session.selectedId,
@@ -141,7 +242,7 @@ export function CloudBrowserPanel({
     scopeKey: effectiveTaskId,
     tt,
     setBusy,
-    setError,
+    setError: setPlainError,
     refreshCheckpoints: session.refreshCheckpoints,
   });
   const interaction = useCloudBrowserInteraction({
@@ -153,26 +254,46 @@ export function CloudBrowserPanel({
     canvasRef: transport.canvasRef,
     frameSizeRef: transport.frameSizeRef,
     sendMutation: transport.sendMutation,
-    setError,
+    setError: setPlainError,
     tt,
   });
+
+  function clearLifecycleIssue() {
+    setLifecycleIssue(null);
+    setError("");
+  }
+
+  function showLifecycleIssue(
+    result: Parameters<typeof cloudBrowserLifecycleIssue>[0],
+    fallback: string,
+    operation: string,
+  ) {
+    const issue = cloudBrowserLifecycleIssue(
+      { operation, ...result },
+      fallback,
+    );
+    setLifecycleIssue(issue);
+    setError(issue.message);
+    return issue;
+  }
 
   async function startBrowser() {
     if (busy) return;
     setBusy(true);
-    setError("");
+    clearLifecycleIssue();
+    setNotice("");
+    // A task-bound create call reuses that task's durable session. The explicit
+    // “新建” action must always create a fresh isolation domain.
     const result = await createCloudBrowser(
       DEFAULT_BROWSER_URL,
-      effectiveTaskId || undefined,
     );
     setBusy(false);
     const created = result.data?.session;
     if (!result.ok || !created) {
-      setError(
-        formatCloudBrowserLifecycleError(
-          result,
-          tt("云端浏览器启动失败"),
-        ),
+      showLifecycleIssue(
+        result,
+        tt("云端浏览器启动失败"),
+        "session_create",
       );
       return;
     }
@@ -182,33 +303,53 @@ export function CloudBrowserPanel({
   }
 
   async function restorePrevious() {
-    if (!session.selectedId) return;
+    if (busy || !session.selectedId) return;
     const selectedId = session.selectedId;
     const operationId = createCloudBrowserOperationId();
     setBusy(true);
-    setError("");
+    clearLifecycleIssue();
+    setNotice("");
     const result = await resumeCloudBrowser(selectedId, {
       operationId,
     });
     setBusy(false);
     if (!result.ok) {
-      setError(
-        formatCloudBrowserLifecycleError(
-          result,
-          tt("恢复上次浏览失败"),
-        ),
+      showLifecycleIssue(
+        result,
+        tt("恢复上次浏览失败"),
+        "session_resume",
       );
+      setCheckpointsOpen(false);
       return;
     }
     await session.reload(selectedId);
+    setCheckpointsOpen(false);
     await transport.openLive(selectedId);
   }
 
-  async function activateSelectedOrStart() {
+  async function openSelectedSession() {
     if (busy) return;
     const selected = session.selected;
     if (!selected) {
-      await startBrowser();
+      setPlainError(tt("未选择浏览会话"));
+      return;
+    }
+    const openAction = cloudBrowserSessionOpenAction(selected);
+    if (openAction === "unavailable") {
+      showLifecycleIssue(
+        {
+          error: "INVALID_LIFECYCLE_STATE",
+          status: 409,
+          operation: "session_open",
+          retryable: false,
+          diagnostics: {
+            component: "browser_lifecycle",
+            state: selected.status,
+          },
+        },
+        tt("浏览器操作失败"),
+        "session_open",
+      );
       return;
     }
     if (cloudBrowserSessionNeedsResume(selected)) {
@@ -220,42 +361,65 @@ export function CloudBrowserPanel({
       selected.protocol_version !== null &&
       selected.protocol_version !== 3
     ) {
-      setError(
+      setPlainError(
         `${tt(
           "服务端未提供严格平铺 v3 票据，已拒绝降级连接",
         )} (v3 protocol_mismatch)`,
       );
       return;
     }
+    clearLifecycleIssue();
+    setCheckpointsOpen(false);
     await transport.openLive(selected.id);
   }
 
   async function hibernateCurrentSession() {
+    if (busy) return;
+    const selected = session.selected;
     if (
-      !session.selectedId ||
-      !transport.driving ||
-      transport.transportState !== "streaming"
+      !selected ||
+      !cloudBrowserSessionCanHibernate(
+        selected,
+        transport.transportState,
+      )
     ) {
-      setError(tt("只有当前控制租约持有者可以休眠浏览会话"));
+      showLifecycleIssue(
+        {
+          error: "INVALID_LIFECYCLE_STATE",
+          status: 409,
+          operation: "session_hibernate",
+          retryable: false,
+          diagnostics: {
+            component: "browser_lifecycle",
+            state: selected?.status || "missing",
+          },
+        },
+        tt("休眠浏览会话失败"),
+        "session_hibernate",
+      );
       return;
     }
+    const selectedId = selected.id;
     const operationId = createCloudBrowserOperationId();
-    transport.stopLive(true);
     setBusy(true);
+    clearLifecycleIssue();
     const result = await hibernateCloudBrowser(
-      session.selectedId,
+      selectedId,
       operationId,
     );
     setBusy(false);
     if (!result.ok) {
-      setError(
-        formatCloudBrowserLifecycleError(
-          result,
-          tt("休眠浏览会话失败"),
-        ),
+      showLifecycleIssue(
+        result,
+        tt("休眠浏览会话失败"),
+        "session_hibernate",
       );
+      await session.reload(selectedId);
+      return;
     }
-    await session.reload(session.selectedId);
+    transport.stopLive(true);
+    await session.reload(selectedId);
+    setNotice(tt("休眠"));
   }
 
   async function removeRecord() {
@@ -266,15 +430,15 @@ export function CloudBrowserPanel({
     }
     transport.stopLive(true);
     setBusy(true);
+    clearLifecycleIssue();
     const result = await deleteCloudBrowser(session.selectedId);
     setBusy(false);
     session.setDeleteArmed(false);
     if (!result.ok) {
-      setError(
-        formatCloudBrowserLifecycleError(
-          result,
-          tt("删除浏览记录失败"),
-        ),
+      showLifecycleIssue(
+        result,
+        tt("删除浏览记录失败"),
+        "session_delete",
       );
       return;
     }
@@ -310,17 +474,17 @@ export function CloudBrowserPanel({
 
   function bookmarkCurrentPage() {
     if (!transport.bookmarkCurrentPage()) {
-      setError(tt("当前没有有效控制租约，无法收藏当前页面"));
+      setPlainError(tt("当前没有有效控制租约，无法收藏当前页面"));
       return;
     }
-    setError("");
+    setPlainError("");
     setNotice(tt("已发送收藏当前页面请求"));
   }
 
   function createCheckpoint() {
     const sent = transport.createCheckpoint();
     if (!sent) {
-      setError(tt("当前没有有效控制租约，无法创建会话快照"));
+      setPlainError(tt("当前没有有效控制租约，无法创建会话快照"));
     }
     return sent;
   }
@@ -335,7 +499,7 @@ export function CloudBrowserPanel({
     const operationId = createCloudBrowserOperationId();
     transport.stopLive(true);
     setBusy(true);
-    setError("");
+    clearLifecycleIssue();
     const result = await restoreCloudBrowserCheckpoint(
       selectedId,
       checkpoint,
@@ -343,21 +507,20 @@ export function CloudBrowserPanel({
     );
     setBusy(false);
     if (!result.ok) {
-      const message =
-        formatCloudBrowserLifecycleError(
-          result,
-          tt("会话快照恢复失败"),
-        );
-      setError(message);
+      const issue = showLifecycleIssue(
+        result,
+        tt("会话快照恢复失败"),
+        "checkpoint_restore",
+      );
       await session.refreshCheckpoints();
-      return { ok: false, error: message };
+      return { ok: false, error: issue.message };
     }
     await session.reload(selectedId);
     await session.refreshCheckpoints();
     const opened = await transport.openLive(selectedId);
     if (!opened) {
       const message = tt("会话快照已恢复，但实时画面重连失败");
-      setError(message);
+      setPlainError(message);
       return { ok: false, error: message };
     }
     setCheckpointsOpen(false);
@@ -380,12 +543,6 @@ export function CloudBrowserPanel({
           "服务端未提供严格平铺 v3 票据，已拒绝降级连接",
         )} (v3 protocol_mismatch)`
       : error || tt("原生窗口连接失败");
-  const startupPowerLabel = busy
-    ? tt("正在开机…")
-    : session.selected?.status === "hibernated"
-      ? tt("恢复")
-      : tt("开机");
-
   return (
     <div
       ref={interaction.rootRef}
@@ -415,12 +572,18 @@ export function CloudBrowserPanel({
           <BrowserPowerPrompt
             accent={accent}
             busy={busy}
-            description={tt(
-              "开机后默认打开 Google；Agent 与你会共用并保存这段浏览。",
-            )}
             error={error}
-            label={startupPowerLabel}
-            onPower={() => void activateSelectedOrStart()}
+            historyLabel={cloudBrowserOpenHistoryLabel(tt)}
+            lifecycleIssue={lifecycleIssue}
+            newLabel={tt("新建")}
+            notice={notice}
+            onHistory={() => {
+              setCheckpointsOpen(true);
+              if (session.selectedId) {
+                void session.refreshCheckpoints();
+              }
+            }}
+            onNew={() => void startBrowser()}
           />
         )}
 
@@ -490,6 +653,23 @@ export function CloudBrowserPanel({
             className="absolute inset-0 z-20 grid place-items-center bg-stone-950/90 p-8 text-center"
             role="alert"
             data-cloud-browser-terminal-failure
+            data-cloud-browser-lifecycle-code={
+              lifecycleIssue?.code || undefined
+            }
+            data-cloud-browser-lifecycle-operation={
+              lifecycleIssue?.operation || undefined
+            }
+            data-cloud-browser-lifecycle-retryable={
+              lifecycleIssue?.retryable === null ||
+              lifecycleIssue?.retryable === undefined
+                ? undefined
+                : lifecycleIssue.retryable
+                  ? "true"
+                  : "false"
+            }
+            data-cloud-browser-lifecycle-retry-after={
+              lifecycleIssue?.retryAfterSeconds ?? undefined
+            }
           >
             <div className="max-w-md">
               <p
@@ -500,7 +680,7 @@ export function CloudBrowserPanel({
               </p>
               <button
                 type="button"
-                onClick={() => void activateSelectedOrStart()}
+                onClick={() => void openSelectedSession()}
                 disabled={busy}
                 className="mt-4 rounded-xl px-4 py-2 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
                 style={{ background: accent }}
@@ -514,11 +694,13 @@ export function CloudBrowserPanel({
         {error &&
           transport.transportState === "streaming" && (
             <div
-              className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-rose-50/95 px-3 py-2 text-[11px] text-rose-700 shadow"
-              role="alert"
               data-cloud-browser-live-error
             >
-              {error}
+              <CloudBrowserLifecycleErrorView
+                className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-rose-50/95 px-3 py-2 text-[11px] text-rose-700 shadow"
+                issue={lifecycleIssue}
+                message={error}
+              />
             </div>
           )}
         {notice &&
@@ -557,8 +739,10 @@ export function CloudBrowserPanel({
           transport.transportState === "streaming"
         }
         canHibernate={
-          transport.driving &&
-          transport.transportState === "streaming"
+          cloudBrowserSessionCanHibernate(
+            session.selected,
+            transport.transportState,
+          )
         }
         deleteArmed={session.deleteArmed}
         immersive={interaction.immersive}
@@ -572,7 +756,10 @@ export function CloudBrowserPanel({
         showPowerButton={liveRequested}
         onChooseSession={chooseSession}
         onRenameSession={renameSession}
-        onOpenOrResume={() => void activateSelectedOrStart()}
+        selectedOpenAction={cloudBrowserSessionOpenAction(
+          session.selected,
+        )}
+        onOpenOrResume={() => void openSelectedSession()}
         onStartNew={() => void startBrowser()}
         onHibernate={() => void hibernateCurrentSession()}
         onDelete={() => void removeRecord()}

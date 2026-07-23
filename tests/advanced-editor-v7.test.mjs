@@ -423,10 +423,6 @@ test("normal autosave progress is icon-only while actionable errors remain visib
     const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
     assert.doesNotMatch(contents, /有未保存的修改|已保存到我的库/, route);
   }
-  assert.doesNotMatch(
-    source("../src/shell/advanced-routes/OfficeRoute.tsx"),
-    /status: editor\.error \|\| editor\.state/,
-  );
   for (const [path, message] of [
     ["../src/shell/image-editor/use-fabric-image-editor.ts", /可编辑工程与预览已自动保存|已保存一个版本；之后的修改仍未保存/],
     ["../src/shell/doc-editors/use-deck-editor.ts", /PPTX 新版本已保存|已保存一个 PPTX 版本/],

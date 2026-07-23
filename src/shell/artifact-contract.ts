@@ -55,8 +55,8 @@ export interface AdvancedCapabilityPreviewSourceRule {
 }
 
 export interface AdvancedCapabilityDownloadRule {
-  preferredPurpose: "source";
-  preferredMode: "source";
+  preferredPurpose: "source" | "full";
+  preferredMode: Extract<ArtifactAccessMode, "source" | "export">;
   fallbackPurposes: readonly ("full" | "preview")[];
   fallbackMode: "export";
 }
@@ -89,6 +89,11 @@ export interface AdvancedCapabilityContractEntry {
   download: AdvancedCapabilityDownloadRule;
   requirement: AdvancedCapabilityRequirement;
 }
+
+export type AdvancedCapabilityMachineContractEntry = Omit<
+  AdvancedCapabilityContractEntry,
+  "artifactBindings"
+>;
 
 const ADVANCED_CAPABILITY_ROWS = [
   {
@@ -391,10 +396,17 @@ const ADVANCED_CAPABILITY_ROWS = [
 export type AdvancedFeatureId =
   (typeof ADVANCED_CAPABILITY_ROWS)[number]["featureId"];
 
-const ADVANCED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
+const SOURCE_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
   preferredPurpose: "source",
   preferredMode: "source",
   fallbackPurposes: Object.freeze(["full", "preview"] as const),
+  fallbackMode: "export",
+});
+
+const RENDERED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
+  preferredPurpose: "full",
+  preferredMode: "export",
+  fallbackPurposes: Object.freeze(["preview"] as const),
   fallbackMode: "export",
 });
 
@@ -436,7 +448,10 @@ export const ADVANCED_CAPABILITY_MATRIX: readonly AdvancedCapabilityContractEntr
             derivedFromSourceDigestRequired: true,
             renderedSourceSubstitution: "forbidden",
           }),
-          download: ADVANCED_DOWNLOAD_RULE,
+          download:
+            row.openMode === "structured-project"
+              ? RENDERED_DOWNLOAD_RULE
+              : SOURCE_DOWNLOAD_RULE,
         }),
     ),
   );
@@ -509,13 +524,15 @@ export function advancedCapabilityContractPayload(): {
   schema: "oceanleo.advanced-capability-contract.v1";
   version: 1;
   roundTripCapabilities: readonly ["load", "mutate", "save", "reopen"];
-  capabilities: readonly AdvancedCapabilityContractEntry[];
+  capabilities: readonly AdvancedCapabilityMachineContractEntry[];
 } {
   return {
     schema: "oceanleo.advanced-capability-contract.v1",
     version: 1,
     roundTripCapabilities: ["load", "mutate", "save", "reopen"],
-    capabilities: ADVANCED_CAPABILITY_MATRIX,
+    capabilities: ADVANCED_CAPABILITY_MATRIX.map(
+      ({ artifactBindings: _artifactBindings, ...entry }) => entry,
+    ),
   };
 }
 
@@ -1775,47 +1792,128 @@ export function selectArtifactRendition(
 }
 
 export interface ArtifactDownloadCandidate {
-  purpose: "source" | "editor_manifest" | "full" | "preview";
+  purpose: "source" | "full" | "preview";
   mode: Extract<ArtifactAccessMode, "source" | "export">;
   rendition: ArtifactRendition;
 }
 
 /**
- * Contract-first download order. Source/editor-manifest renditions are
- * requested with `mode=source`; only rendered full/preview deliveries use
- * `mode=export`. A source-capable artifact fails closed instead of substituting
- * a rendered rendition.
+ * Contract-first card Download order. Native-file capabilities request their
+ * standard source deliverable; structured projects request rendered exports.
+ * `editor_manifest` is editor state and is never a user-facing Download target.
  */
 export function artifactDownloadPlanFor(
   artifact: ArtifactProjection,
 ): ArtifactDownloadCandidate[] {
   if (!artifact.access.canRead || !artifact.integrity.ok) return [];
-  if (artifact.access.canExportSource) {
-    const sourcePurpose = artifact.renditions.source
-      ? "source"
-      : "editor_manifest";
-    const source = artifact.renditions[sourcePurpose];
-    return source?.purpose === sourcePurpose &&
-      source.revisionId === artifact.revisionId &&
-      source.url &&
-      source.digest
-      ? [{ purpose: sourcePurpose, mode: "source", rendition: source }]
-      : [];
-  }
-  const candidates: ArtifactDownloadCandidate[] = [];
-  if (artifact.access.canPreview) {
-    for (const purpose of ADVANCED_DOWNLOAD_RULE.fallbackPurposes) {
-      const rendition = artifact.renditions[purpose];
+
+  const capability =
+    advancedCapabilityForArtifactFields({
+      artifactType: artifact.artifactType,
+      sourceFormat: artifact.sourceFormat,
+      editorCapability: artifact.editorCapability,
+    }) ||
+    ADVANCED_CAPABILITY_MATRIX.find(
+      (entry) =>
+        entry.sourceFormat === artifact.sourceFormat.trim().toLowerCase() &&
+        entry.artifactBindings.some(
+          (binding) => binding.artifactType === artifact.artifactType,
+        ),
+    ) ||
+    null;
+
+  const candidate = (
+    purpose: "source" | "full" | "preview",
+    mode: "source" | "export",
+  ): ArtifactDownloadCandidate | null => {
+    const rendition = artifact.renditions[purpose];
+    if (
+      rendition?.purpose !== purpose ||
+      rendition.revisionId !== artifact.revisionId ||
+      !rendition.url ||
+      (mode === "source" && !rendition.digest)
+    ) {
+      return null;
+    }
+    if (
+      purpose === "source" &&
+      capability &&
+      artifact.sourceFormat.trim().toLowerCase() === capability.sourceFormat &&
+      (rendition.format.trim().toLowerCase() !== capability.sourceFormat ||
+        mediaType(rendition.mediaType) !== capability.sourceMediaType)
+    ) {
+      return null;
+    }
+    if (
+      purpose === "source" &&
+      (!capability ||
+        artifact.sourceFormat.trim().toLowerCase() !==
+          capability.sourceFormat)
+    ) {
+      const format = rendition.format.trim().toLowerCase();
+      const renditionMediaType = mediaType(rendition.mediaType);
       if (
-        rendition?.purpose === purpose &&
-        rendition.revisionId === artifact.revisionId &&
-        rendition.url
+        renditionMediaType === "application/json" ||
+        renditionMediaType.startsWith("application/vnd.oceanleo") ||
+        format.includes("json") ||
+        format.startsWith("oceanleo.") ||
+        /-source@\d+$/.test(format)
       ) {
-        candidates.push({ purpose, mode: "export", rendition });
+        return null;
       }
     }
+    if (
+      mode === "export" &&
+      capability?.openMode === "structured-project"
+    ) {
+      const format = rendition.format.trim().toLowerCase();
+      const renditionMediaType = mediaType(rendition.mediaType);
+      if (
+        renditionMediaType === "application/json" ||
+        renditionMediaType.endsWith("+json") ||
+        renditionMediaType.startsWith("application/vnd.oceanleo") ||
+        format.includes("json") ||
+        format.startsWith("oceanleo.") ||
+        /-source@\d+$/.test(format)
+      ) {
+        return null;
+      }
+    }
+    return { purpose, mode, rendition };
+  };
+
+  const exportCandidates = (
+    purposes: readonly ("full" | "preview")[],
+  ): ArtifactDownloadCandidate[] => {
+    if (!artifact.access.canPreview) return [];
+    return purposes.flatMap((purpose) => {
+      const value = candidate(purpose, "export");
+      return value ? [value] : [];
+    });
+  };
+
+  if (capability) {
+    const rule = capability.download;
+    if (rule.preferredMode === "source") {
+      if (artifact.access.canExportSource) {
+        const source = candidate("source", "source");
+        // A claimed source permission must not silently degrade around a
+        // missing, stale, or wrongly typed source rendition.
+        return source ? [source] : [];
+      }
+      return exportCandidates(rule.fallbackPurposes);
+    }
+    return exportCandidates([
+      rule.preferredPurpose as "full",
+      ...rule.fallbackPurposes,
+    ]);
   }
-  return candidates;
+
+  if (artifact.access.canExportSource) {
+    const source = candidate("source", "source");
+    return source ? [source] : [];
+  }
+  return exportCandidates(SOURCE_DOWNLOAD_RULE.fallbackPurposes);
 }
 
 /**
