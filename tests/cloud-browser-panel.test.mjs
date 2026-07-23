@@ -1024,10 +1024,11 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
   assert.match(interactionSource, /event\.key\.toLowerCase\(\) === "v"/);
   assert.doesNotMatch(interactionSource, /openOmnibox|nav\.open/);
   assert.match(interactionSource, /"focus"/);
-  // Remote focus must never sit in the pointer chord, after pointer up, on
-  // hidden-input focus, or immediately before text.commit. Extra
-  // windowactivate after the click steals page focus before paste; executor
-  // commit_text already activates before ctrl+v (V2-04/V2-05).
+  // Remote focus (windowactivate) must never sit in the pointer chord,
+  // after pointer up, on canvas/hidden-input focus, or immediately before
+  // text.commit. Playwright focuses the canvas before pointerdown; an
+  // extra activate races the page focus the click establishes before
+  // paste. Executor pointer()/commit_text already windowactivate.
   assert.match(
     interactionSource,
     /sendMutation\("pointer", \{[\s\S]*?event: "down"[\s\S]*?\}\);\s*\/\/ Local keyboard sink only[\s\S]*?focusLocalInput\(\);/,
@@ -1044,6 +1045,15 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
     interactionSource,
     /event: event\.type === "pointercancel" \? "cancel" : "up"[\s\S]*?focusLocalInput\(\);/,
   );
+  assert.match(
+    interactionSource,
+    /function handleCanvasFocus\(\) \{\s*\/\/ Tab\/programmatic canvas focus[\s\S]*?focusLocalInput\(\);\s*\}/,
+  );
+  assert.doesNotMatch(
+    interactionSource,
+    /function handleCanvasFocus\(\) \{[^}]*sendMutation/,
+  );
+  assert.doesNotMatch(interactionSource, /function focusRemoteWindow\(/);
   assert.match(
     interactionSource,
     /function handleHiddenFocus\(\) \{\s*\/\/ The hidden textarea is only a local keyboard/,

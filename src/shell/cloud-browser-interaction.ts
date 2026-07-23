@@ -470,16 +470,6 @@ export function useCloudBrowserInteraction({
     hiddenInputRef.current?.focus({ preventScroll: true });
   }
 
-  function focusRemoteWindow() {
-    if (!driving || transportState !== "streaming") return;
-    // Remote focus is a separate wire mutation (executor windowactivate).
-    // Never emit it around a pointer chord or local textarea focus — an
-    // extra windowactivate after the click steals page focus from the
-    // Google search field before text.commit paste (V2-04/V2-05).
-    sendMutation("focus", { focused: true });
-    focusLocalInput();
-  }
-
   function handlePointerDown(
     event: ReactPointerEvent<HTMLCanvasElement>,
   ) {
@@ -598,7 +588,13 @@ export function useCloudBrowserInteraction({
   }
 
   function handleCanvasFocus() {
-    focusRemoteWindow();
+    // Tab/programmatic canvas focus must only arm the local keyboard
+    // sink. Playwright's mouse.click focuses the canvas before
+    // pointerdown; a remote focus mutation here is ordered on the wire
+    // ahead of the click and still races commit_text's windowactivate
+    // so ctrl+v misses the search field (V2-04/V2-05 after lease stayed
+    // human).
+    focusLocalInput();
   }
 
   function handleHiddenFocus() {
