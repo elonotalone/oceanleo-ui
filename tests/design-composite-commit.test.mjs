@@ -5,6 +5,8 @@ import {
   DesignCompositeCommitError,
   persistDesignCompositeCommit,
   validateDesignCompositeCommit,
+  validateDesignCompositeSource,
+  verifyDesignCompositeSourceDigest,
 } from "../src/shell/design-composite-commit.ts";
 
 globalThis.window ||= {
@@ -151,6 +153,117 @@ test("design typed commit validates canonical source and dependency closure", as
   assert.match(evidence.previewDigest, /^[0-9a-f]{64}$/);
   assert.match(evidence.closureDigest, /^[0-9a-f]{64}$/);
   assert.deepEqual(evidence.dependencyRevisionIds, [dependencyRevisionId]);
+});
+
+test("published flat Design template normalizes structurally without weakening digest pin", async () => {
+  const flatTemplate = {
+    templateId: "promo-poster-1",
+    id: "tpl-promo-poster-1",
+    title: "促销海报 夏日焕新",
+    width: 800,
+    height: 1200,
+    background: {
+      gradient: "linear-gradient(180deg,#dbeafe,#bfdbfe)",
+    },
+    elements: [
+      {
+        id: "r1",
+        type: "shape",
+        x: 45,
+        y: 55,
+        w: 710,
+        h: 1090,
+        rotation: 0,
+        locked: false,
+        props: {
+          kind: "rect",
+          fill: "#ffffff",
+          stroke: "transparent",
+          strokeWidth: 0,
+          radius: 24,
+        },
+      },
+      {
+        id: "t1",
+        type: "text",
+        x: 90,
+        y: 130,
+        w: 620,
+        h: 120,
+        rotation: 0,
+        locked: false,
+        props: {
+          text: "{{title}}",
+          fontSize: 72,
+          color: "#2563eb",
+          fontFamily: "system-ui",
+        },
+      },
+    ],
+    updatedAt: "2026-06-12T00:00:00.000Z",
+  };
+  const source = new Blob([`${JSON.stringify(flatTemplate)}\n`], {
+    type: "application/json",
+  });
+  const evidence = await validateDesignCompositeSource(source, item({
+    closureDigest: "d".repeat(64),
+  }), {
+    requireBaseIdentity: false,
+    requireBaseRevision: false,
+  });
+
+  assert.equal(evidence.sourceKind, "flat-template");
+  assert.equal(evidence.sourceMode, "layered");
+  assert.equal(evidence.revision, 0);
+  assert.deepEqual(evidence.dependencyRevisionIds, []);
+  await assert.doesNotReject(
+    verifyDesignCompositeSourceDigest(source, evidence.sourceDigest),
+  );
+  await assert.rejects(
+    verifyDesignCompositeSourceDigest(source, "f".repeat(64)),
+    (error) =>
+      error instanceof DesignCompositeCommitError &&
+      error.code === "design-source-digest-mismatch",
+  );
+});
+
+test("canonical flattened projects are valid but stale or split revisions fail precisely", async () => {
+  const flattened = project();
+  flattened.sceneGraph.sourceMode = "flattened";
+  flattened.document.sourceMode = "flattened";
+  const valid = await validateDesignCompositeSource(
+    new Blob([JSON.stringify(flattened)], { type: "application/json" }),
+    item(),
+  );
+  assert.equal(valid.sourceMode, "flattened");
+
+  const stale = project({
+    baseArtifact: { artifactId, revisionId: "stale-revision" },
+  });
+  await assert.rejects(
+    validateDesignCompositeSource(
+      new Blob([JSON.stringify(stale)], { type: "application/json" }),
+      item(),
+    ),
+    (error) =>
+      error instanceof DesignCompositeCommitError &&
+      error.code === "design-source-stale-revision" &&
+      error.currentRevisionId === revisionId,
+  );
+
+  const splitRevision = project();
+  splitRevision.sceneGraph.revision = splitRevision.revision + 1;
+  await assert.rejects(
+    validateDesignCompositeSource(
+      new Blob([JSON.stringify(splitRevision)], {
+        type: "application/json",
+      }),
+      item(),
+    ),
+    (error) =>
+      error instanceof DesignCompositeCommitError &&
+      error.code === "design-source-revision-mismatch",
+  );
 });
 
 test("design typed commit rejects preview impostors and incomplete closure", async () => {

@@ -370,22 +370,40 @@ test("design composite handshake binds one scene source revision before open", (
   assert.match(route, /item\.artifact\.sourceFormat !== DESIGN_SOURCE_FORMAT/);
   assert.match(route, /item\.artifact\.scene\.closureStatus !== "complete"/);
   assert.match(route, /refreshArtifactRendition/);
-  assert.match(route, /verifyDesignCompositeSource\(item, binding, abort\.signal\)/);
-  assert.match(route, /sourceDigest !== normalizedDigest\(rendition\.digest\)/);
+  assert.match(
+    route,
+    /verifyDesignCompositeSource\(\s*item,\s*binding,\s*abort\.signal,\s*\)/,
+  );
+  assert.match(route, /evidence\.sourceDigest !== normalizedDigest\(rendition\.digest\)/);
   assert.match(route, /validateDesignCompositeSource\(blob, item/);
   assert.match(validator, /design dependency closure 缺少图层资源/);
   assert.match(validator, /manifest\?\.schema !== DESIGN_DEPENDENCY_SCHEMA/);
-  assert.match(route, /closureDigest !== normalizedDigest\(item\.artifact\.scene\.closureDigest\)/);
+  assert.match(
+    route,
+    /evidence\.closureDigest !== normalizedDigest\(item\.artifact\.scene\.closureDigest\)/,
+  );
   assert.match(
     route,
     /normalizedDigest\(refreshed\.digest\) !== normalizedDigest\(source\.digest\)/,
   );
   assert.match(route, /url: undefined,[\s\S]*previewUrl: undefined/);
-  assert.match(route, /design_document_url: designSourceBinding\.url/);
-  assert.match(route, /source_digest: designSourceBinding\.digest/);
+  assert.match(route, /design_document_url: source\.url/);
+  assert.match(route, /source_digest: source\.digest/);
+  assert.match(route, /source_handshake_id: designSourceBinding\.handshakeId/);
+  assert.match(
+    route,
+    /source_project_revision: designSourceBinding\.evidence\.revision/,
+  );
   assert.match(route, /dependency_closure_digest: scene\?\.closureDigest/);
   assert.match(route, /requires_typed_artifact_commit: true/);
   assert.match(route, /data-design-handshake=/);
+  assert.match(route, /DESIGN_SOURCE_ACK_TYPE = "design-source-ack"/);
+  assert.match(route, /event\.source !== frame\.contentWindow/);
+  assert.match(route, /data\.instanceId !== frameInstanceId/);
+  assert.match(route, /data\.artifactRevisionId !== item\.revisionId/);
+  assert.match(route, /design-handshake-receipt-mismatch/);
+  assert.match(route, /design-handshake-timeout/);
+  assert.match(route, /designHandshakeReady/);
   assert.match(
     host,
     /message\.type === "ready"[\s\S]*?readyHandledRef\.current[\s\S]*?sendOpenAsset\(\)/,

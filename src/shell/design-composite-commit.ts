@@ -20,8 +20,12 @@ export const DESIGN_SCENE_SCHEMA = "oceanleo.design-scene.v1";
 const DESIGN_DEPENDENCY_SCHEMA = "oceanleo.dependency-manifest.v1";
 const DESIGN_HISTORY_SCHEMA = "oceanleo.design-history.v1";
 const MAX_DEPENDENCIES = 1_024;
+const MAX_DESIGN_ELEMENTS = 100_000;
 
 type JsonRecord = Record<string, unknown>;
+
+export type DesignCompositeSourceKind = "canonical" | "flat-template";
+export type DesignCompositeSourceMode = "layered" | "flattened";
 
 export class DesignCompositeCommitError extends Error {
   readonly code: string;
@@ -117,6 +121,8 @@ export function isFirstPartyHttpsMediaUrl(value: string): boolean {
 interface DesignDependencyReference {
   id: string;
   url: string;
+  sourceArtifactId?: string;
+  sourceRevisionId?: string;
 }
 
 function designDocumentDependencies(
@@ -132,10 +138,28 @@ function designDocumentDependencies(
     );
   }
   const dependencies: DesignDependencyReference[] = [];
-  const add = (id: string, rawUrl: unknown) => {
+  const add = (
+    id: string,
+    rawUrl: unknown,
+    rawMetadata?: unknown,
+  ) => {
     const url = text(rawUrl);
     if (!url || url.startsWith("data:")) return;
-    dependencies.push({ id, url });
+    const metadata = record(rawMetadata);
+    const sourceArtifactId = text(metadata?.sourceArtifactId, 300);
+    const sourceRevisionId = text(metadata?.sourceRevisionId, 300);
+    if (Boolean(sourceArtifactId) !== Boolean(sourceRevisionId)) {
+      throw new DesignCompositeCommitError(
+        `design dependency ${id} 的 artifact/revision identity 不完整。`,
+        "invalid-dependency",
+      );
+    }
+    dependencies.push({
+      id,
+      url,
+      ...(sourceArtifactId ? { sourceArtifactId } : {}),
+      ...(sourceRevisionId ? { sourceRevisionId } : {}),
+    });
   };
   const collectElements = (rawElements: unknown, path: string) => {
     if (rawElements === undefined) return;
@@ -157,7 +181,7 @@ function designDocumentDependencies(
           "invalid-source",
         );
       }
-      add(`${path}:${id}`, src);
+      add(`${path}:${id}`, src, element.metadata);
     }
   };
   const background = record(document.background);
@@ -217,6 +241,258 @@ function designDocumentDependencies(
   return dependencies;
 }
 
+interface NormalizedDesignCompositeEnvelope {
+  envelope: JsonRecord;
+  sourceKind: DesignCompositeSourceKind;
+  sourceMode: DesignCompositeSourceMode;
+  revision: number;
+}
+
+function declaredDesignRevision(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new DesignCompositeCommitError(
+      `design ${label} revision 不是非负安全整数。`,
+      "design-source-revision-mismatch",
+    );
+  }
+  return value;
+}
+
+function flatDesignRevision(
+  source: JsonRecord,
+  document: JsonRecord,
+): number {
+  const data = record(source.data);
+  const meta = record(source.meta);
+  const declarations = [
+    declaredDesignRevision(source.revision, "source"),
+    declaredDesignRevision(data?.revision, "data"),
+    declaredDesignRevision(meta?.design_document_revision, "meta"),
+    declaredDesignRevision(meta?.editor_revision, "editor"),
+    declaredDesignRevision(document.revision, "document"),
+  ].filter((value): value is number => value !== undefined);
+  const unique = [...new Set(declarations)];
+  if (unique.length > 1) {
+    throw new DesignCompositeCommitError(
+      "design flat template 的 revision 声明互相冲突。",
+      "design-source-revision-mismatch",
+    );
+  }
+  return unique[0] ?? 0;
+}
+
+function assertFlatDesignDocument(value: JsonRecord): DesignCompositeSourceMode {
+  const id = text(value.id, 300);
+  const title = text(value.title, 300);
+  const width = value.width;
+  const height = value.height;
+  const updatedAt = text(value.updatedAt, 100);
+  const background = record(value.background);
+  const sourceMode = value.sourceMode ?? "layered";
+  if (
+    !id ||
+    !title ||
+    typeof width !== "number" ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    width > 100_000 ||
+    typeof height !== "number" ||
+    !Number.isFinite(height) ||
+    height <= 0 ||
+    height > 100_000 ||
+    !updatedAt ||
+    !Number.isFinite(Date.parse(updatedAt)) ||
+    !background ||
+    (sourceMode !== "layered" && sourceMode !== "flattened")
+  ) {
+    throw new DesignCompositeCommitError(
+      "design flat template 缺少有效的 id、尺寸、背景、时间或 sourceMode。",
+      "design-source-invalid-structure",
+    );
+  }
+  const assertElements = (raw: unknown, path: string) => {
+    if (!Array.isArray(raw) || raw.length > MAX_DESIGN_ELEMENTS) {
+      throw new DesignCompositeCommitError(
+        `design flat template ${path} 不是有界 element 列表。`,
+        "design-source-invalid-structure",
+      );
+    }
+    const ids = new Set<string>();
+    for (const [index, rawElement] of raw.entries()) {
+      const element = record(rawElement);
+      const elementId = text(element?.id, 300);
+      const elementType = text(element?.type, 80);
+      const props = record(element?.props);
+      if (
+        !element ||
+        !elementId ||
+        !elementType ||
+        !props ||
+        ids.has(elementId) ||
+        !["x", "y", "w", "h", "rotation"].every(
+          (key) =>
+            typeof element[key] === "number" &&
+            Number.isFinite(element[key] as number),
+        )
+      ) {
+        throw new DesignCompositeCommitError(
+          `design flat template ${path}[${index}] 结构或 identity 无效。`,
+          "design-source-invalid-structure",
+        );
+      }
+      ids.add(elementId);
+      if (elementType === "image" && !text(props.src)) {
+        throw new DesignCompositeCommitError(
+          `design flat template ${path}[${index}] 图片缺少 src。`,
+          "design-source-invalid-structure",
+        );
+      }
+    }
+  };
+  assertElements(value.elements, "elements");
+  if (value.components !== undefined) {
+    if (!Array.isArray(value.components)) {
+      throw new DesignCompositeCommitError(
+        "design flat template components 不是列表。",
+        "design-source-invalid-structure",
+      );
+    }
+    for (const [index, rawComponent] of value.components.entries()) {
+      const component = record(rawComponent);
+      if (!component || !text(component.id, 300)) {
+        throw new DesignCompositeCommitError(
+          `design flat template component[${index}] 缺少 identity。`,
+          "design-source-invalid-structure",
+        );
+      }
+      assertElements(component.elements, `component[${index}].elements`);
+    }
+  }
+  if (value.artboards !== undefined) {
+    if (!Array.isArray(value.artboards)) {
+      throw new DesignCompositeCommitError(
+        "design flat template artboards 不是列表。",
+        "design-source-invalid-structure",
+      );
+    }
+    for (const [index, rawArtboard] of value.artboards.entries()) {
+      const artboard = record(rawArtboard);
+      if (
+        !artboard ||
+        !text(artboard.id, 300) ||
+        !record(artboard.background)
+      ) {
+        throw new DesignCompositeCommitError(
+          `design flat template artboard[${index}] 结构无效。`,
+          "design-source-invalid-structure",
+        );
+      }
+      assertElements(artboard.elements, `artboard[${index}].elements`);
+    }
+  }
+  return sourceMode;
+}
+
+function normalizeDesignCompositeEnvelope(
+  source: JsonRecord,
+): NormalizedDesignCompositeEnvelope {
+  if (source.schema === DESIGN_SOURCE_FORMAT) {
+    const scene = record(source.sceneGraph);
+    const revision = declaredDesignRevision(source.revision, "source");
+    const sourceMode = scene?.sourceMode;
+    if (
+      revision === undefined ||
+      (sourceMode !== "layered" && sourceMode !== "flattened")
+    ) {
+      throw new DesignCompositeCommitError(
+        "design canonical source 缺少 revision 或有效 sourceMode。",
+        "design-source-revision-mismatch",
+      );
+    }
+    return {
+      envelope: source,
+      sourceKind: "canonical",
+      sourceMode,
+      revision,
+    };
+  }
+  if (source.schema !== undefined) {
+    throw new DesignCompositeCommitError(
+      "design source schema 不受支持。",
+      "design-source-invalid-structure",
+    );
+  }
+  const data = record(source.data);
+  const document =
+    record(source.document) ||
+    record(data?.document) ||
+    (data && text(data.id, 300) ? data : null) ||
+    (text(source.id, 300) ? source : null);
+  if (!document) {
+    throw new DesignCompositeCommitError(
+      "design source 不是可规范化的 flat template document。",
+      "design-source-invalid-structure",
+    );
+  }
+  const sourceMode = assertFlatDesignDocument(document);
+  const revision = flatDesignRevision(source, document);
+  const historyEntries = [document];
+  const references = [
+    ...designDocumentDependencies(document, "scene"),
+    ...designDocumentDependencies(document, "history:0"),
+  ];
+  const dependencies = references.map((dependency) => ({
+    id: dependency.id,
+    kind: "image",
+    required: true,
+    url: dependency.url,
+    ...(dependency.sourceArtifactId
+      ? { sourceArtifactId: dependency.sourceArtifactId }
+      : {}),
+    ...(dependency.sourceRevisionId
+      ? { sourceRevisionId: dependency.sourceRevisionId }
+      : {}),
+  }));
+  return {
+    envelope: {
+      schema: DESIGN_SOURCE_FORMAT,
+      version: 1,
+      updatedAt: document.updatedAt,
+      revision,
+      artifactType: "composite_image",
+      sceneGraph: {
+        schema: DESIGN_SCENE_SCHEMA,
+        revision,
+        documentId: document.id,
+        sourceMode,
+      },
+      dependencyManifest: {
+        schema: DESIGN_DEPENDENCY_SCHEMA,
+        revision,
+        sceneGraphFormat: DESIGN_SOURCE_FORMAT,
+        dependencies,
+      },
+      history: {
+        schema: DESIGN_HISTORY_SCHEMA,
+        entries: historyEntries,
+        index: 0,
+      },
+      document,
+    },
+    sourceKind: "flat-template",
+    sourceMode,
+    revision,
+  };
+}
+
 async function sha256Hex(blob: Blob): Promise<string> {
   if (!globalThis.crypto?.subtle) {
     throw new DesignCompositeCommitError(
@@ -231,6 +507,27 @@ async function sha256Hex(blob: Blob): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
+}
+
+export async function verifyDesignCompositeSourceDigest(
+  sourceBlob: Blob,
+  expectedDigest: string,
+): Promise<string> {
+  const expected = normalizedDigest(expectedDigest);
+  if (!/^[0-9a-f]{64}$/.test(expected)) {
+    throw new DesignCompositeCommitError(
+      "design source revision 缺少有效 SHA-256 digest。",
+      "design-source-digest-mismatch",
+    );
+  }
+  const actual = normalizedDigest(await sha256Hex(sourceBlob));
+  if (actual !== expected) {
+    throw new DesignCompositeCommitError(
+      "design source 实际字节与 revision digest 不一致。",
+      "design-source-digest-mismatch",
+    );
+  }
+  return actual;
 }
 
 function imageSignature(
@@ -291,6 +588,8 @@ export interface DesignCompositeSourceEvidence {
   sourceFormat: typeof DESIGN_SOURCE_FORMAT;
   sceneSchema: typeof DESIGN_SOURCE_FORMAT;
   revision: number;
+  sourceKind: DesignCompositeSourceKind;
+  sourceMode: DesignCompositeSourceMode;
 }
 
 export interface DesignCompositeCommitEvidence
@@ -344,7 +643,7 @@ export async function validateDesignCompositeSource(
   if (sourceBlob.size <= 0 || sourceBlob.size > 20_000_000) {
     throw new DesignCompositeCommitError(
       "design source 大小无效或超过 20MB。",
-      "invalid-source",
+      "design-source-invalid-structure",
     );
   }
   const sourceMime = sourceBlob.type.split(";")[0].trim().toLowerCase();
@@ -355,58 +654,94 @@ export async function validateDesignCompositeSource(
   ) {
     throw new DesignCompositeCommitError(
       "design source 的 Content-Type 不是 JSON。",
-      "invalid-source",
+      "design-source-invalid-json",
     );
   }
-  let source: JsonRecord | null = null;
+  let parsedSource: JsonRecord | null = null;
   try {
-    source = record(JSON.parse(await sourceBlob.text()) as unknown);
+    parsedSource = record(JSON.parse(await sourceBlob.text()) as unknown);
   } catch {
     throw new DesignCompositeCommitError(
       "design source 不是有效 JSON。",
-      "invalid-source",
+      "design-source-invalid-json",
     );
   }
-  const scene = record(source?.sceneGraph);
-  const manifest = record(source?.dependencyManifest);
-  const history = record(source?.history);
-  const document = record(source?.document);
-  const baseArtifact = record(source?.baseArtifact);
+  if (!parsedSource) {
+    throw new DesignCompositeCommitError(
+      "design source JSON 顶层不是对象。",
+      "design-source-invalid-json",
+    );
+  }
+  const normalized = normalizeDesignCompositeEnvelope(parsedSource);
+  const source = normalized.envelope;
+  const scene = record(source.sceneGraph);
+  const manifest = record(source.dependencyManifest);
+  const history = record(source.history);
+  const document = record(source.document);
+  const baseArtifact = record(source.baseArtifact);
   const dependencies = Array.isArray(manifest?.dependencies)
     ? manifest.dependencies
     : null;
   const historyEntries = Array.isArray(history?.entries)
     ? history.entries
     : null;
-  const revision = source?.revision;
+  const revision = normalized.revision;
   const historyIndex = history?.index;
-  const updatedAt = text(source?.updatedAt, 100);
+  const updatedAt = text(source.updatedAt, 100);
   const baseArtifactId = text(baseArtifact?.artifactId, 300);
   const baseRevisionId = text(baseArtifact?.revisionId, 300);
   const hasBaseIdentity = Boolean(baseArtifactId || baseRevisionId);
-  const validBaseIdentity =
-    options.requireBaseIdentity === false
-      ? !hasBaseIdentity ||
-        (baseArtifactId === item.artifactId && Boolean(baseRevisionId))
-      : baseArtifactId === item.artifactId && Boolean(baseRevisionId);
   if (
-    !source ||
+    hasBaseIdentity &&
+    (baseArtifactId !== item.artifactId || !baseRevisionId)
+  ) {
+    throw new DesignCompositeCommitError(
+      "design source base artifact 与当前 artifact identity 不一致。",
+      "design-source-artifact-mismatch",
+    );
+  }
+  if (options.requireBaseIdentity !== false && !hasBaseIdentity) {
+    throw new DesignCompositeCommitError(
+      "design source 缺少提交所需的 base artifact identity。",
+      "design-source-stale-revision",
+    );
+  }
+  if (
+    options.requireBaseRevision !== false &&
+    baseRevisionId !== item.revisionId
+  ) {
+    throw new DesignCompositeCommitError(
+      `design source base revision 已过期（expected ${item.revisionId}，received ${
+        baseRevisionId || "missing"
+      }）。`,
+      "design-source-stale-revision",
+      item.revisionId,
+    );
+  }
+  if (
+    scene &&
+    manifest &&
+    (scene.revision !== revision || manifest.revision !== revision)
+  ) {
+    throw new DesignCompositeCommitError(
+      "design source、scene 与 dependency manifest revision 不一致。",
+      "design-source-revision-mismatch",
+    );
+  }
+  if (
     source.schema !== DESIGN_SOURCE_FORMAT ||
     source.version !== 1 ||
     source.artifactType !== "composite_image" ||
     !updatedAt ||
     !Number.isFinite(Date.parse(updatedAt)) ||
-    typeof revision !== "number" ||
-    !Number.isSafeInteger(revision) ||
-    revision < 0 ||
     scene?.schema !== DESIGN_SCENE_SCHEMA ||
-    scene.revision !== revision ||
-    scene.sourceMode !== "layered" ||
+    scene.sourceMode !== normalized.sourceMode ||
     !document ||
     !text(document.id, 300) ||
     scene.documentId !== document.id ||
+    (document.sourceMode !== undefined &&
+      document.sourceMode !== normalized.sourceMode) ||
     manifest?.schema !== DESIGN_DEPENDENCY_SCHEMA ||
-    manifest.revision !== revision ||
     manifest.sceneGraphFormat !== DESIGN_SOURCE_FORMAT ||
     !dependencies ||
     dependencies.length > MAX_DEPENDENCIES ||
@@ -414,14 +749,11 @@ export async function validateDesignCompositeSource(
     !historyEntries?.length ||
     !Number.isSafeInteger(historyIndex) ||
     Number(historyIndex) < 0 ||
-    Number(historyIndex) >= historyEntries.length ||
-    !validBaseIdentity ||
-    (options.requireBaseRevision !== false &&
-      baseRevisionId !== item.revisionId)
+    Number(historyIndex) >= historyEntries.length
   ) {
     throw new DesignCompositeCommitError(
-      "design source 的 schema、revision、history、scene 或 base artifact 无效。",
-      "invalid-source",
+      "design source 的 schema、history、scene 或 document 结构无效。",
+      "design-source-invalid-structure",
     );
   }
   const expected = [
@@ -436,7 +768,7 @@ export async function validateDesignCompositeSource(
       "invalid-dependency",
     );
   }
-  const expectedById = new Map<string, string>();
+  const expectedById = new Map<string, DesignDependencyReference>();
   for (const dependency of expected) {
     if (expectedById.has(dependency.id)) {
       throw new DesignCompositeCommitError(
@@ -444,9 +776,9 @@ export async function validateDesignCompositeSource(
         "invalid-dependency",
       );
     }
-    expectedById.set(dependency.id, dependency.url);
+    expectedById.set(dependency.id, dependency);
   }
-  const declaredById = new Map<string, string>();
+  const declaredById = new Map<string, DesignDependencyReference>();
   const dependencyRevisionIds: string[] = [];
   for (const [index, value] of dependencies.entries()) {
     const dependency = record(value);
@@ -469,11 +801,27 @@ export async function validateDesignCompositeSource(
         "invalid-dependency",
       );
     }
-    declaredById.set(id, url);
+    const expectedDependency = expectedById.get(id);
+    if (
+      expectedDependency?.sourceArtifactId &&
+      (sourceArtifactId !== expectedDependency.sourceArtifactId ||
+        sourceRevisionId !== expectedDependency.sourceRevisionId)
+    ) {
+      throw new DesignCompositeCommitError(
+        `design dependency[${index}] 的 source artifact revision 不一致。`,
+        "incomplete-dependency-closure",
+      );
+    }
+    declaredById.set(id, {
+      id,
+      url,
+      ...(sourceArtifactId ? { sourceArtifactId } : {}),
+      ...(sourceRevisionId ? { sourceRevisionId } : {}),
+    });
     if (sourceRevisionId) dependencyRevisionIds.push(sourceRevisionId);
   }
   const missing = [...expectedById].find(
-    ([id, url]) => declaredById.get(id) !== url,
+    ([id, dependency]) => declaredById.get(id)?.url !== dependency.url,
   );
   if (missing) {
     throw new DesignCompositeCommitError(
@@ -482,7 +830,7 @@ export async function validateDesignCompositeSource(
     );
   }
   const orphan = [...declaredById].find(
-    ([id, url]) => expectedById.get(id) !== url,
+    ([id, dependency]) => expectedById.get(id)?.url !== dependency.url,
   );
   if (orphan || declaredById.size !== expectedById.size) {
     throw new DesignCompositeCommitError(
@@ -498,6 +846,8 @@ export async function validateDesignCompositeSource(
     sourceFormat: DESIGN_SOURCE_FORMAT,
     sceneSchema: DESIGN_SOURCE_FORMAT,
     revision,
+    sourceKind: normalized.sourceKind,
+    sourceMode: normalized.sourceMode,
   };
 }
 

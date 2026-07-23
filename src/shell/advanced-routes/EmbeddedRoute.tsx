@@ -9,7 +9,9 @@ import type { AdvancedFlushResult } from "../advanced-session-context";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import {
+  EDITOR_PROTOCOL,
   isEditorRecoverySnapshot,
+  isTrustedEditorOrigin,
   type EditorDocumentRevision,
   type EditorHistorySnapshot,
   type EditorMaterialInsertion,
@@ -33,10 +35,11 @@ import {
   type LibraryItem,
 } from "../library-data";
 import {
+  DesignCompositeCommitError,
   DESIGN_SOURCE_FORMAT,
-  designArtifactClosureDigest,
   isFirstPartyHttpsMediaUrl,
   validateDesignCompositeSource,
+  type DesignCompositeSourceEvidence,
 } from "../design-composite-commit";
 import { websiteEmbedExtraParams } from "../website-embed-params";
 import type {
@@ -56,6 +59,23 @@ interface RemoteChoice {
   swatch?: string;
 }
 
+const DESIGN_SOURCE_ACK_TYPE = "design-source-ack";
+const DESIGN_HANDSHAKE_TIMEOUT_MS = 20_000;
+
+interface DesignSourceBinding {
+  rendition: ArtifactRendition;
+  evidence: DesignCompositeSourceEvidence;
+  handshakeId: string;
+}
+
+interface DesignSourceReceipt {
+  handshakeId: string;
+  artifactId: string;
+  artifactRevisionId: string;
+  sourceDigest: string;
+  projectRevision: number;
+}
+
 function normalizedDigest(value: string | null | undefined): string {
   return String(value || "")
     .trim()
@@ -69,24 +89,20 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-async function sha256BlobHex(blob: Blob): Promise<string> {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error("当前环境不支持 SHA-256，无法校验 design source。");
+function designHandshakeId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `design-source-${globalThis.crypto.randomUUID()}`;
   }
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    await blob.arrayBuffer(),
-  );
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return `design-source-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 14)}`;
 }
 
 async function verifyDesignCompositeSource(
   item: LibraryItem,
   rendition: ArtifactRendition,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<DesignCompositeSourceEvidence> {
   if (
     !isDurableLibraryItem(item) ||
     item.artifactType !== "composite_image" ||
@@ -102,29 +118,37 @@ async function verifyDesignCompositeSource(
     maxBytes: 20_000_000,
     signal,
   });
-  const sourceDigest = await sha256BlobHex(blob);
-  if (sourceDigest !== normalizedDigest(rendition.digest)) {
-    throw new Error("design source 实际字节与 revision digest 不一致。");
-  }
   const evidence = await validateDesignCompositeSource(blob, item, {
     requireBaseIdentity: false,
     requireBaseRevision: false,
   });
+  if (evidence.sourceDigest !== normalizedDigest(rendition.digest)) {
+    throw new DesignCompositeCommitError(
+      "design source 实际字节与 revision digest 不一致。",
+      "design-source-digest-mismatch",
+    );
+  }
   if (
     !sameStringSet(
       item.artifact.scene.dependencyRevisionIds,
       evidence.dependencyRevisionIds,
     )
   ) {
-    throw new Error("design source dependency revisions 与 artifact 不一致。");
+    throw new DesignCompositeCommitError(
+      "design source dependency revisions 与 artifact 不一致。",
+      "design-source-dependency-mismatch",
+    );
   }
-  const closureDigest = await designArtifactClosureDigest(sourceDigest);
   if (
     item.artifact.scene.schema !== evidence.sceneSchema ||
-    closureDigest !== normalizedDigest(item.artifact.scene.closureDigest)
+    evidence.closureDigest !== normalizedDigest(item.artifact.scene.closureDigest)
   ) {
-    throw new Error("design source closure digest 与 artifact revision 不一致。");
+    throw new DesignCompositeCommitError(
+      "design source closure digest 与 artifact revision 不一致。",
+      "design-source-closure-mismatch",
+    );
   }
+  return evidence;
 }
 
 function RemoteChoicePanel({
@@ -364,10 +388,16 @@ export function EmbeddedRoute({
     snapshot: EditorRecoverySnapshot;
   } | null>(null);
   const [designSourceBinding, setDesignSourceBinding] =
-    useState<ArtifactRendition | null>(null);
+    useState<DesignSourceBinding | null>(null);
+  const [designSourceReceipt, setDesignSourceReceipt] =
+    useState<DesignSourceReceipt | null>(null);
+  const [designHandshakeGeneration, setDesignHandshakeGeneration] =
+    useState(0);
   const [designHandshakeError, setDesignHandshakeError] = useState("");
+  const designFrameContainerRef = useRef<HTMLDivElement>(null);
   recoveryRestoreRef.current = recoveryRestore;
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
+  const embeddedEditorBase = route.type === "embed" ? route.base : "";
   const embeddedAdapterId =
     hostedMediaType === "website"
       ? "website"
@@ -380,6 +410,7 @@ export function EmbeddedRoute({
     item.artifactType === "composite_image";
   useEffect(() => {
     setDesignSourceBinding(null);
+    setDesignSourceReceipt(null);
     setDesignHandshakeError("");
     if (!designComposite || !isDurableLibraryItem(item)) return;
     const source = item.artifact.renditions.source;
@@ -395,7 +426,7 @@ export function EmbeddedRoute({
       !item.artifact.scene.closureDigest
     ) {
       setDesignHandshakeError(
-        "设计画布握手已拒绝：composite source、scene closure 或 revision pin 不完整。",
+        "设计画布握手已拒绝：[design-source-incomplete-binding] composite source、scene closure 或 revision pin 不完整。",
       );
       return;
     }
@@ -415,25 +446,157 @@ export function EmbeddedRoute({
           refreshed.revisionId !== item.revisionId ||
           normalizedDigest(refreshed.digest) !== normalizedDigest(source.digest)
         ) {
-          throw new Error(
-            "过期 source URL 无法刷新到同一 revision/digest",
+          throw new DesignCompositeCommitError(
+            "过期 source URL 无法刷新到同一 revision/digest。",
+            "design-source-refresh-mismatch",
           );
         }
         binding = refreshed;
       }
-      await verifyDesignCompositeSource(item, binding, abort.signal);
-      if (!abort.signal.aborted) setDesignSourceBinding(binding);
+      const evidence = await verifyDesignCompositeSource(
+        item,
+        binding,
+        abort.signal,
+      );
+      if (!abort.signal.aborted) {
+        setDesignSourceBinding({
+          rendition: binding,
+          evidence,
+          handshakeId: designHandshakeId(),
+        });
+      }
     })()
       .catch((caught) => {
         if (abort.signal.aborted) return;
+        const code =
+          caught instanceof DesignCompositeCommitError
+            ? caught.code
+            : "design-source-validation-failed";
         setDesignHandshakeError(
-          `设计画布握手已拒绝：source revision 校验失败（${
+          `设计画布握手已拒绝：[${code}] source revision 校验失败（${
             caught instanceof Error ? caught.message : "未知错误"
           }）。`,
         );
       });
     return () => abort.abort();
   }, [designComposite, item]);
+  useEffect(() => {
+    setDesignSourceReceipt(null);
+    if (
+      !designComposite ||
+      !designSourceBinding ||
+      !isDurableLibraryItem(item) ||
+      !embeddedEditorBase
+    ) {
+      return;
+    }
+    let editorOrigin = "";
+    try {
+      editorOrigin = new URL(embeddedEditorBase).origin;
+    } catch {
+      editorOrigin = "";
+    }
+    if (!editorOrigin || !isTrustedEditorOrigin(editorOrigin)) {
+      setDesignHandshakeError(
+        "设计画布握手已拒绝：[design-handshake-untrusted-origin] 编辑器 origin 不受信任。",
+      );
+      return;
+    }
+    let settled = false;
+    let timer: number | null = null;
+    const reject = (code: string, message: string) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      setDesignSourceReceipt(null);
+      setDesignHandshakeError(`设计画布握手已拒绝：[${code}] ${message}`);
+    };
+    const receive = (event: MessageEvent) => {
+      const frame =
+        designFrameContainerRef.current?.querySelector("iframe") || null;
+      if (!frame || event.source !== frame.contentWindow) return;
+      if (event.origin !== editorOrigin) return;
+      const data =
+        event.data &&
+        typeof event.data === "object" &&
+        !Array.isArray(event.data)
+          ? (event.data as Record<string, unknown>)
+          : null;
+      if (!data || data.type !== DESIGN_SOURCE_ACK_TYPE) return;
+      let frameInstanceId = "";
+      try {
+        frameInstanceId = new URL(frame.src).searchParams.get("instance") || "";
+      } catch {
+        frameInstanceId = "";
+      }
+      if (
+        data.protocol !== EDITOR_PROTOCOL ||
+        !frameInstanceId ||
+        data.instanceId !== frameInstanceId ||
+        data.handshakeId !== designSourceBinding.handshakeId
+      ) {
+        reject(
+          "design-handshake-receipt-mismatch",
+          "iframe 返回了无法关联到当前 protocol instance/source request 的回执。",
+        );
+        return;
+      }
+      if (data.ok !== true) {
+        reject(
+          typeof data.code === "string" && data.code
+            ? data.code.slice(0, 100)
+            : "design-source-load-rejected",
+          typeof data.message === "string" && data.message
+            ? data.message.slice(0, 1_000)
+            : "嵌入编辑器拒绝了 source revision。",
+        );
+        return;
+      }
+      const sourceDigest = normalizedDigest(String(data.sourceDigest || ""));
+      if (
+        data.artifactId !== item.artifactId ||
+        data.artifactRevisionId !== item.revisionId ||
+        sourceDigest !== designSourceBinding.evidence.sourceDigest ||
+        data.projectRevision !== designSourceBinding.evidence.revision
+      ) {
+        reject(
+          "design-handshake-receipt-mismatch",
+          "iframe 回执的 artifact revision、source digest 或 project revision 与当前 source 不一致。",
+        );
+        return;
+      }
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      setDesignHandshakeError("");
+      setDesignSourceReceipt({
+        handshakeId: designSourceBinding.handshakeId,
+        artifactId: item.artifactId,
+        artifactRevisionId: item.revisionId,
+        sourceDigest,
+        projectRevision: designSourceBinding.evidence.revision,
+      });
+    };
+    timer = window.setTimeout(
+      () =>
+        reject(
+          "design-handshake-timeout",
+          "嵌入编辑器未在 20 秒内确认当前 source revision；请重试打开。",
+        ),
+      DESIGN_HANDSHAKE_TIMEOUT_MS,
+    );
+    window.addEventListener("message", receive);
+    return () => {
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("message", receive);
+    };
+  }, [
+    designComposite,
+    designHandshakeGeneration,
+    designSourceBinding,
+    embeddedEditorBase,
+    item,
+  ]);
   const embeddedItem = useMemo<LibraryItem>(() => {
     if (
       !designComposite ||
@@ -443,6 +606,7 @@ export function EmbeddedRoute({
       return item;
     }
     const scene = item.artifact.scene;
+    const source = designSourceBinding.rendition;
     return {
       ...item,
       // Do not quick-open the poster. The child receives the structured source
@@ -456,12 +620,17 @@ export function EmbeddedRoute({
         expected_artifact_revision_id: item.revisionId,
         artifact_type: "composite_image",
         editor: "design-canvas",
-        editor_project_url: designSourceBinding.url,
-        design_document_url: designSourceBinding.url,
+        editor_project_url: source.url,
+        design_document_url: source.url,
         editor_project_schema: item.artifact.sourceFormat,
         source_format: item.artifact.sourceFormat,
-        source_digest: designSourceBinding.digest,
-        source_expires_at: designSourceBinding.expiresAt,
+        source_digest: source.digest,
+        source_expires_at: source.expiresAt,
+        source_handshake_id: designSourceBinding.handshakeId,
+        source_project_revision: designSourceBinding.evidence.revision,
+        design_document_revision: designSourceBinding.evidence.revision,
+        source_kind: designSourceBinding.evidence.sourceKind,
+        source_mode: designSourceBinding.evidence.sourceMode,
         scene_revision_id: scene?.sceneRevisionId,
         dependency_revision_ids: scene?.dependencyRevisionIds || [],
         dependency_closure_digest: scene?.closureDigest,
@@ -724,6 +893,8 @@ export function EmbeddedRoute({
     setRemoteToolsManifest(null);
     setProjectManifest(null);
     setProjectCommand(null);
+    setDesignSourceReceipt(null);
+    setDesignHandshakeGeneration((value) => value + 1);
   }, []);
   const captureEmbeddedRecovery = useCallback(() => {
     const latest = recoverySnapshotRef.current;
@@ -912,7 +1083,12 @@ export function EmbeddedRoute({
     setCloseRequestRevision((value) => value + 1);
   }, []);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter | null>(() => {
-    if (!hostedMediaType) return null;
+    if (
+      !hostedMediaType ||
+      (designComposite && !designSourceReceipt)
+    ) {
+      return null;
+    }
     return {
       id: `embed-materials:${hostedMediaType}@2`,
       actions:
@@ -1016,7 +1192,11 @@ export function EmbeddedRoute({
         });
       },
     };
-  }, [hostedMediaType]);
+  }, [
+    designComposite,
+    designSourceReceipt,
+    hostedMediaType,
+  ]);
   useWorkbenchMaterialAdapter(materialAdapter);
   const handleMaterialResult = useCallback(
     (result: { commandId: string; ok: boolean; message?: string }) => {
@@ -1102,7 +1282,9 @@ export function EmbeddedRoute({
       ...websiteParams,
       artifactId: item.artifactId,
       revisionId: item.revisionId,
-      sourceDigest: designSourceBinding.digest || "",
+      sourceDigest: designSourceBinding.rendition.digest || "",
+      sourceHandshakeId: designSourceBinding.handshakeId,
+      sourceProjectRevision: String(designSourceBinding.evidence.revision),
       sceneClosureDigest: item.artifact.scene?.closureDigest || "",
       sourceFormat: item.artifact.sourceFormat,
     };
@@ -1121,6 +1303,13 @@ export function EmbeddedRoute({
       />
     );
   }
+  const designHandshakeReady =
+    !designComposite ||
+    Boolean(
+      designSourceBinding &&
+        designSourceReceipt &&
+        designSourceReceipt.handshakeId === designSourceBinding.handshakeId,
+    );
 
   return (
     <AdvancedWorkbenchShell
@@ -1146,38 +1335,63 @@ export function EmbeddedRoute({
               </p>
             </div>
           ) : (
-            <EmbedEditorPane
-              key={`${embeddedItem.key}:${
-                designSourceBinding?.digest || ""
-              }:${item.artifact?.scene?.closureDigest || ""}`}
-              item={embeddedItem}
-              editorBase={route.base}
-              mediaType={route.mediaType}
-              siteId={siteId}
-              extraParams={extraParams}
-              onCloseRequest={requestEditorClose}
-              onDirtyChange={handleDirtyChange}
-              onHistoryChange={handleHistoryChange}
-              onToolsManifest={handleToolsManifest}
-              onProjectManifest={handleProjectManifest}
-              onProjectResult={handleProjectResult}
-              onProtocolReset={handleProtocolReset}
-              onSelectionChange={setSelection}
-              onViewportChange={setRemoteViewport}
-              selectionCommand={selectionCommand}
-              viewportCommand={viewportCommand}
-              materialInsertion={materialInsertion}
-              onMaterialResult={handleMaterialResult}
-              exportRequestId={exportRequestId}
-              onExportResult={handleExportResult}
-              projectCommand={projectCommand}
-              recoveryCaptureRequestId={recoveryCaptureRequestId}
-              onRecoverySnapshot={handleRecoverySnapshot}
-              recoveryRestore={recoveryRestore}
-              onRecoveryResult={handleRecoveryResult}
-              onSaveResult={handleSaveResult}
-              saveRequestId={saveRequestId}
-            />
+            <div
+              ref={designFrameContainerRef}
+              className="relative h-full min-h-0"
+              data-design-handshake={
+                designHandshakeReady
+                  ? "accepted"
+                  : designHandshakeError
+                    ? "rejected"
+                    : "waiting-for-source-receipt"
+              }
+            >
+              <EmbedEditorPane
+                key={`${embeddedItem.key}:${
+                  designSourceBinding?.rendition.digest || ""
+                }:${designSourceBinding?.handshakeId || ""}:${
+                  item.artifact?.scene?.closureDigest || ""
+                }`}
+                item={embeddedItem}
+                editorBase={route.base}
+                mediaType={route.mediaType}
+                siteId={siteId}
+                extraParams={extraParams}
+                onCloseRequest={requestEditorClose}
+                onDirtyChange={handleDirtyChange}
+                onHistoryChange={handleHistoryChange}
+                onToolsManifest={handleToolsManifest}
+                onProjectManifest={handleProjectManifest}
+                onProjectResult={handleProjectResult}
+                onProtocolReset={handleProtocolReset}
+                onSelectionChange={setSelection}
+                onViewportChange={setRemoteViewport}
+                selectionCommand={selectionCommand}
+                viewportCommand={viewportCommand}
+                materialInsertion={materialInsertion}
+                onMaterialResult={handleMaterialResult}
+                exportRequestId={exportRequestId}
+                onExportResult={handleExportResult}
+                projectCommand={projectCommand}
+                recoveryCaptureRequestId={recoveryCaptureRequestId}
+                onRecoverySnapshot={handleRecoverySnapshot}
+                recoveryRestore={recoveryRestore}
+                onRecoveryResult={handleRecoveryResult}
+                onSaveResult={handleSaveResult}
+                saveRequestId={saveRequestId}
+              />
+              {designComposite && !designHandshakeReady && (
+                <div
+                  className="absolute inset-0 z-50 grid place-items-center bg-[var(--surface,#f5f5f4)]/95 p-6 text-center backdrop-blur-sm"
+                  role={designHandshakeError ? "alert" : "status"}
+                >
+                  <p className="max-w-lg text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+                    {designHandshakeError ||
+                      "正在等待设计画布确认当前 artifact/source revision…"}
+                  </p>
+                </div>
+              )}
+            </div>
           ),
         renderContextToolbar: ({ openDrawer }) =>
           hostedSelection ? (
@@ -1215,7 +1429,7 @@ export function EmbeddedRoute({
           busyLabel: "等待编辑器导出…",
           disabled:
             Boolean(designHandshakeError) ||
-            (designComposite && !designSourceBinding),
+            !designHandshakeReady,
           onTrigger: designHandshakeError
             ? () => Promise.reject(new Error(designHandshakeError))
             : requestRemoteExport,
@@ -1224,12 +1438,17 @@ export function EmbeddedRoute({
         persistence: {
           dirty,
           editRevision,
-          flush: designHandshakeError
-            ? async () => ({ ok: false, error: designHandshakeError })
+          flush: !designHandshakeReady
+            ? async () => ({
+                ok: false,
+                error:
+                  designHandshakeError ||
+                  "设计画布尚未确认当前 source revision。",
+              })
             : saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey(embeddedAdapterId, item),
-            ready: !designComposite || Boolean(designSourceBinding),
+            ready: designHandshakeReady,
             capture: captureEmbeddedRecovery,
             restore: restoreEmbeddedRecovery,
           },
