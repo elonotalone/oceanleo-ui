@@ -1,4 +1,5 @@
 import { threeDSubtypeFor, type LibraryItem } from "../library-data";
+import { createModel3DDirectorDocument } from "./model3d-director";
 import type { Model3DViewProject } from "./model3d-project";
 import type { Model3DRuntimeSnapshot } from "./model3d-runtime.mjs";
 
@@ -21,6 +22,7 @@ export const DEFAULT_MODEL3D_VIEW: Model3DViewProject = {
   environmentIntensity: 1,
   materialOverrides: [],
   annotations: [],
+  director: createModel3DDirectorDocument(),
 };
 
 export const EMPTY_MODEL3D_RUNTIME: Model3DRuntimeSnapshot = {

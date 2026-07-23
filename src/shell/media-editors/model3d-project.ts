@@ -17,6 +17,10 @@ import {
   normalizeModel3DOperationJournal,
   type Model3DOperation,
 } from "./model3d-operations.mjs";
+import {
+  normalizeModel3DDirectorDocument,
+  type Model3DDirectorDocument,
+} from "./model3d-director";
 
 export const MODEL3D_PROJECT_SCHEMA = "oceanleo.three-editor@2";
 export const LEGACY_MODEL3D_PROJECT_SCHEMA = "oceanleo.three-editor@1";
@@ -55,6 +59,7 @@ export interface Model3DViewProject {
   /** Legacy model-viewer sidecar values, applied once before the next GLB save. */
   materialOverrides: Model3DMaterialOverride[];
   annotations: Model3DAnnotation[];
+  director: Readonly<Model3DDirectorDocument>;
 }
 
 export interface Model3DProjectRecovery {
@@ -283,6 +288,10 @@ export function normalizeModel3DRecovery(
     annotations: normalizeModel3DAnnotations(
       value.annotations ?? fallback.annotations,
     ),
+    director: normalizeModel3DDirectorDocument(
+      value.director ?? fallback.director,
+      fallback.director.scene.id,
+    ),
   };
 }
 
@@ -382,6 +391,7 @@ export async function persistModel3DProject({
     environment_intensity: view.environmentIntensity,
     shadow_enabled: view.shadowEnabled,
     annotations: view.annotations,
+    director: view.director,
   };
   const journal = normalizeModel3DOperationJournal(operations);
   const binary = glb

@@ -2,6 +2,7 @@
 
 import { threeDSubtypeFor, type LibraryItem } from "../library-data";
 import { Model3DControls } from "./Model3DControls";
+import type { Model3DPrevisAdapter } from "./model3d-director";
 import { Model3DStage } from "./Model3DStage";
 import { useModel3DWorkbench } from "./use-model3d-workbench";
 import { isModel3DSourceItem } from "./model3d-workbench-defaults";
@@ -11,6 +12,7 @@ export interface Model3DWorkbenchProps {
   siteId?: string;
   accent?: string;
   onSaved?: (url: string) => void;
+  previsAdapter?: Model3DPrevisAdapter;
 }
 
 export function Model3DWorkbench({
@@ -18,6 +20,7 @@ export function Model3DWorkbench({
   siteId = "",
   accent = "#4f46e5",
   onSaved,
+  previsAdapter,
 }: Model3DWorkbenchProps) {
   const subtype = threeDSubtypeFor(item);
   if (!isModel3DSourceItem(item)) {
@@ -42,6 +45,7 @@ export function Model3DWorkbench({
       siteId={siteId}
       accent={accent}
       onSaved={onSaved}
+      previsAdapter={previsAdapter}
     />
   );
 }
@@ -51,8 +55,14 @@ function Model3DWorkbenchRuntime({
   siteId = "",
   accent = "#4f46e5",
   onSaved,
+  previsAdapter,
 }: Model3DWorkbenchProps) {
-  const editor = useModel3DWorkbench(item, siteId, onSaved);
+  const editor = useModel3DWorkbench(
+    item,
+    siteId,
+    onSaved,
+    previsAdapter,
+  );
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)] md:flex-row">
       <aside className="max-h-[42%] w-full shrink-0 overflow-y-auto border-b border-[var(--border,#e7e5e4)] md:max-h-none md:w-64 md:border-b-0 md:border-r">

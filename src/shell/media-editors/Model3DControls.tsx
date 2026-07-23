@@ -1,6 +1,7 @@
 "use client";
 
 import { useUI } from "../../i18n/ui/useUI";
+import { Model3DDirectorPanel } from "./Model3DDirectorPanel";
 import type { Model3DTextureSlot } from "./model3d-runtime.mjs";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
 
@@ -103,7 +104,11 @@ export function Model3DControls({
 }) {
   const tt = useUI();
   const busy =
-    editor.loading || editor.capturing || editor.saving || editor.downloading;
+    editor.loading ||
+    editor.capturing ||
+    editor.saving ||
+    editor.downloading ||
+    editor.directing;
   const selectedMaterial = editor.materials.find(
     (entry) => entry.index === editor.selectedMaterialIndex,
   );
@@ -216,6 +221,8 @@ export function Model3DControls({
           </div>
         )}
       </section>
+
+      <Model3DDirectorPanel editor={editor} />
 
       {selectedMaterial && (
         <section className="space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { uploadFile } from "../../lib/database";
 import { loadEditorProject } from "../doc-editors/doc-io";
 import type { LibraryItem } from "../library-data";
+import { normalizeModel3DDirectorDocument, type Model3DPrevisAdapter } from "./model3d-director";
 import {
   LEGACY_MODEL3D_PROJECT_SCHEMA,
   MODEL3D_PROJECT_SCHEMA,
@@ -15,13 +15,8 @@ import {
   type Model3DViewProject,
 } from "./model3d-project";
 import type { Model3DOperation } from "./model3d-operations.mjs";
-import {
-  Model3DSceneRuntime,
-  type Model3DAnnotationPoint,
-  type Model3DAnnotationScreen,
-  type Model3DTextureSlot,
-  type Model3DViewState,
-} from "./model3d-runtime.mjs";
+import { Model3DSceneRuntime, type Model3DAnnotationPoint,
+  type Model3DAnnotationScreen, type Model3DViewState } from "./model3d-runtime.mjs";
 import { normalizeModel3DEnvironmentUrl, normalizeSavedModelView } from "./model3d-view";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 import {
@@ -31,12 +26,12 @@ import {
   model3DSourceForItem,
 } from "./model3d-workbench-defaults";
 import { useModel3DMediaActions } from "./use-model3d-media-actions";
+import { useModel3DDirector } from "./use-model3d-director";
 import { useModel3DRuntime } from "./use-model3d-runtime";
 import { useModel3DSave } from "./use-model3d-save";
 import { useModel3DSidecar } from "./use-model3d-sidecar";
 import { useModel3DSourceActions } from "./use-model3d-source-actions";
 import { useModel3DSourceLoader } from "./use-model3d-source-loader";
-import { assertBlobSource } from "./source-integrity.mjs";
 
 export type { Model3DWorkbenchState } from "./model3d-workbench-state";
 const clamp = (value: number, minimum: number, maximum: number) =>
@@ -60,6 +55,7 @@ export function useModel3DWorkbench(
   item: LibraryItem,
   siteId = "",
   onSaved?: (url: string) => void,
+  previsAdapter?: Model3DPrevisAdapter,
 ): Model3DWorkbenchState {
   const tt = useUI();
   const runtimeRef = useRef<Model3DSceneRuntime | null>(null);
@@ -180,6 +176,7 @@ export function useModel3DWorkbench(
       environmentIntensity: saved.environmentIntensity,
       materialOverrides: saved.materialOverrides,
       annotations: saved.annotations,
+      director: normalizeModel3DDirectorDocument(saved.director, item.id),
     };
     const generation = ++sourceGenerationRef.current;
     runtimeRef.current?.clear();
@@ -382,33 +379,23 @@ export function useModel3DWorkbench(
     onSaved,
     tt,
   });
-
-  const replaceMaterialTexture = useCallback(async (
-    slot: Model3DTextureSlot,
-    file: File,
-  ) => {
-    setError("");
-    try {
-      const actualFormat = await assertBlobSource(file, "image");
-      if (!["png", "jpeg"].includes(actualFormat)) {
-        throw new Error(tt("纹理只支持 PNG 或 JPEG，以确保 GLB 可安全导出"));
-      }
-      const uploaded = await uploadFile(file, {
-        siteId: siteId || "threed",
-        title: file.name,
-      });
-      const url = uploaded.data?.file?.url || "";
-      if (!uploaded.ok || !url) {
-        throw new Error(uploaded.error || tt("纹理上传失败"));
-      }
-      const runtime = runtimeRef.current;
-      if (!runtime) throw new Error(tt("3D 编辑器尚未就绪"));
-      await runtime.replaceSelectedTexture(slot, url);
-      setNotice(tt("材质纹理已替换"));
-    } catch (caught) {
-      setError(errorMessage(caught, tt("纹理替换失败")));
-    }
-  }, [siteId, tt]);
+  const directorActions = useModel3DDirector({
+    runtimeRef,
+    view,
+    viewRef,
+    setView,
+    runtimeSelection: runtimeState.selection,
+    modelReady,
+    itemId: item.id,
+    itemTitle: item.title,
+    siteId,
+    saveScreenshot: mediaActions.saveScreenshot,
+    overrideAdapter: previsAdapter,
+    markDirty,
+    setError,
+    setNotice,
+    tt,
+  });
 
   const restoreRecovery = useCallback((payload: unknown) => {
     const recovered = normalizeModel3DProjectRecovery(
@@ -453,6 +440,7 @@ export function useModel3DWorkbench(
     capturing: mediaActions.capturing,
     saving: mediaActions.savingScreenshot || savingCopy,
     downloading: mediaActions.downloading,
+    directing: directorActions.directing,
     dirty,
     editRevision: revisionRef.current,
     operationJournal: runtimeState.operationJournal,
@@ -487,6 +475,12 @@ export function useModel3DWorkbench(
     selectedAnnotationId: sidecar.selectedAnnotationId,
     annotationDraft: sidecar.annotationDraft,
     annotationPlacementArmed: runtimeState.annotationPlacementArmed,
+    director: view.director,
+    directorPrevisReceipt: directorActions.receipt,
+    directorDepthOfFieldAvailability:
+      directorActions.depthOfFieldAvailability,
+    directorScreenshotAvailability: directorActions.screenshotAvailability,
+    directorPlayblastAvailability: directorActions.playblastAvailability,
     selectNode: (id) => runtimeRef.current?.setSelectedNode(id),
     setTransformMode: (mode) => runtimeRef.current?.setTransformMode(mode),
     beginGesture: (controlId) => void runtimeRef.current?.beginGesture(controlId),
@@ -577,7 +571,7 @@ export function useModel3DWorkbench(
       runtimeRef.current?.patchSelectedMaterial({ metalness }),
     setMaterialRoughness: (roughness) =>
       runtimeRef.current?.patchSelectedMaterial({ roughness }),
-    replaceMaterialTexture,
+    replaceMaterialTexture: mediaActions.replaceMaterialTexture,
     clearMaterialTexture: (slot) =>
       runtimeRef.current?.clearSelectedTexture(slot),
     selectAnnotation: sidecar.selectAnnotation,
@@ -585,10 +579,16 @@ export function useModel3DWorkbench(
     beginAnnotationPlacement: sidecar.beginAnnotationPlacement,
     updateSelectedAnnotation: sidecar.updateSelectedAnnotation,
     deleteSelectedAnnotation: sidecar.deleteSelectedAnnotation,
+    dispatchDirectorCommand: directorActions.dispatch,
+    captureDirectorScreenshot: directorActions.captureScreenshot,
+    captureDirectorPlayblast: directorActions.capturePlayblast,
+    cancelDirectorPrevis: directorActions.cancel,
     importModel,
     openModelUrl,
     downloadScreenshot: mediaActions.downloadScreenshot,
-    saveScreenshot: mediaActions.saveScreenshot,
+    saveScreenshot: async () => {
+      await mediaActions.saveScreenshot();
+    },
     downloadModel: mediaActions.downloadModel,
     saveCopy,
     restoreRecovery,

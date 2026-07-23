@@ -10,11 +10,13 @@ export { VideoTimelineStage } from "./VideoTimelineStage";
 export { useVideoTimeline } from "./use-video-timeline";
 export type { VideoTimelineState } from "./use-video-timeline";
 export {
+  createGatewayTimelineRenderAdapter,
   renderTimeline,
   submitRenderJob,
   getRenderJob,
 } from "./render-client";
 export type {
+  GatewayTimelineRenderAdapterOptions,
   RenderJobState,
   RenderJobStatus,
   SubmitRenderPayload,
@@ -28,3 +30,38 @@ export type {
   TransitionType,
   TrackKind,
 } from "./types";
+export {
+  TIMELINE_COMMAND_REGISTRY,
+  TIMELINE_DOCUMENT_VERSION,
+  TIMELINE_KERNEL_SCHEMA,
+  TIMELINE_RUN_RECEIPT_SCHEMA,
+  TIMELINE_SNAPSHOT_SCHEMA,
+  applyTimelineCommand,
+  createTimelineCompositeKernel,
+  createTimelineKernelState,
+  createTimelineVersionSnapshot,
+  freezeTimelineDoc,
+  startTimelineRender,
+  startTimelineSave,
+} from "./timeline-capability-engine";
+export type {
+  TimelineCapabilityAvailability,
+  TimelineCommandDescriptor,
+  TimelineCompositeKernel,
+  TimelineEditResult,
+  TimelineEngineClock,
+  TimelineKernelState,
+  TimelineRenderAdapter,
+  TimelineRenderReceipt,
+  TimelineRenderResult,
+  TimelineRunError,
+  TimelineRunHandle,
+  TimelineRunProgress,
+  TimelineRunSnapshot,
+  TimelineSaveAdapter,
+  TimelineSaveReceipt,
+  TimelineSaveResult,
+  TimelineSemanticCommand,
+  TimelineSemanticCommandId,
+  TimelineVersionSnapshot,
+} from "./timeline-capability-engine";

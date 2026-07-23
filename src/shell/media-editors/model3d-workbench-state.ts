@@ -9,6 +9,12 @@ import type {
   Model3DAnnotation,
 } from "./model3d-view";
 import type {
+  Model3DDirectorCommand,
+  Model3DDirectorDocument,
+  Model3DPrevisAvailability,
+  Model3DPrevisReceipt,
+} from "./model3d-director";
+import type {
   Model3DAnnotationScreen,
   Model3DMaterialState,
   Model3DSceneNode,
@@ -34,6 +40,7 @@ export interface Model3DWorkbenchState {
   capturing: boolean;
   saving: boolean;
   downloading: boolean;
+  directing: boolean;
   dirty: boolean;
   editRevision: number;
   operationJournal: Model3DOperation[];
@@ -68,6 +75,11 @@ export interface Model3DWorkbenchState {
   selectedAnnotationId: string;
   annotationDraft: string;
   annotationPlacementArmed: boolean;
+  director: Readonly<Model3DDirectorDocument>;
+  directorPrevisReceipt: Readonly<Model3DPrevisReceipt> | null;
+  directorDepthOfFieldAvailability: Readonly<Model3DPrevisAvailability>;
+  directorScreenshotAvailability: Readonly<Model3DPrevisAvailability>;
+  directorPlayblastAvailability: Readonly<Model3DPrevisAvailability>;
   selectNode: (id: string) => void;
   setTransformMode: (mode: Model3DTransformMode) => void;
   beginGesture: (controlId: string) => void;
@@ -127,6 +139,10 @@ export interface Model3DWorkbenchState {
   beginAnnotationPlacement: () => void;
   updateSelectedAnnotation: (patch: Partial<Model3DAnnotation>) => void;
   deleteSelectedAnnotation: () => void;
+  dispatchDirectorCommand: (command: Model3DDirectorCommand) => void;
+  captureDirectorScreenshot: () => Promise<Readonly<Model3DPrevisReceipt>>;
+  captureDirectorPlayblast: () => Promise<Readonly<Model3DPrevisReceipt>>;
+  cancelDirectorPrevis: () => void;
   importModel: (file: File) => Promise<void>;
   openModelUrl: (url: string, format?: Model3DSourceFormat) => void;
   downloadScreenshot: () => Promise<void>;

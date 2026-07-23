@@ -14,6 +14,11 @@ import {
   timelineRenderRequestBody,
   type TimelineRenderRequest,
 } from "./render-contract";
+import type {
+  TimelineRenderAdapter,
+  TimelineRunProgress,
+} from "./timeline-capability-engine";
+import type { TimelineDoc } from "./types";
 
 export type RenderJobStatus =
   | "charging"
@@ -187,4 +192,77 @@ export async function renderTimeline(
     }
     throw caught;
   }
+}
+
+export interface GatewayTimelineRenderAdapterOptions
+  extends Omit<TimelineRenderRequest, "timeline"> {
+  adapterId?: string;
+  pollMs?: number;
+}
+
+function gatewayRenderProgress(
+  status: RenderJobStatus,
+): TimelineRunProgress {
+  switch (status) {
+    case "charging":
+      return { phase: "submitting", progress: 0.08 };
+    case "queued":
+      return { phase: "queued", progress: 0.15 };
+    case "running":
+      return { phase: "rendering", progress: 0.55 };
+    case "canceling":
+    case "canceled":
+      return { phase: "canceling", progress: 0.55 };
+    case "settling":
+      return { phase: "finalizing", progress: 0.9 };
+    case "done":
+      return { phase: "complete", progress: 1 };
+    case "error":
+      return { phase: "finalizing", progress: 0.9 };
+  }
+}
+
+/**
+ * Adapter from the generic TimelineDoc kernel to the existing durable gateway
+ * FFmpeg job. The endpoint is real; unsupported renderers should supply no
+ * adapter rather than reuse this identifier.
+ */
+export function createGatewayTimelineRenderAdapter(
+  options: GatewayTimelineRenderAdapterOptions = {},
+): TimelineRenderAdapter {
+  return {
+    id: options.adapterId || "oceanleo-timeline-ffmpeg",
+    availability: () => ({ enabled: true }),
+    async execute(version, context) {
+      let jobId = "";
+      context.onProgress({ phase: "submitting", progress: 0.05 });
+      const url = await renderTimeline(
+        {
+          timeline: structuredClone(version.doc) as TimelineDoc,
+          ...(options.title ? { title: options.title } : {}),
+          ...(options.site_id ? { site_id: options.site_id } : {}),
+          ...(options.cover_url ? { cover_url: options.cover_url } : {}),
+          ...(options.parent_id ? { parent_id: options.parent_id } : {}),
+        },
+        (state, nextJobId) => {
+          if (nextJobId && nextJobId !== jobId) {
+            jobId = nextJobId;
+            context.setExternalRunId(nextJobId);
+          }
+          context.onProgress(gatewayRenderProgress(state.status));
+        },
+        options.pollMs ?? 2_000,
+        context.signal,
+      );
+      if (!jobId) throw new Error("Gateway render completed without a job ID");
+      return {
+        jobId,
+        url,
+        mimeType: "video/mp4",
+      };
+    },
+    async cancel(_runId, externalRunId) {
+      if (externalRunId) await cancelRenderJob(externalRunId);
+    },
+  };
 }

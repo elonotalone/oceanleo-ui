@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
 import {
   disposeModel3DObject,
   editablePbrMaterials,
@@ -18,6 +21,14 @@ import {
   normalizeModel3DOperation,
   normalizeModel3DOperationJournal,
 } from "./model3d-operations.mjs";
+import {
+  model3DBokehSettings,
+  model3DDepthOfFieldRuntimeCapability,
+  model3DDirectorFrameAt,
+  model3DPlayblastRuntimeCapability,
+  model3DRecorderMime,
+  model3DRuntimeError,
+} from "./model3d-director-runtime.mjs";
 
 const TEXTURE_SLOTS = {
   baseColor: ["map"],
@@ -243,6 +254,16 @@ export class Model3DSceneRuntime {
     this.renderScene.background = new THREE.Color("#f5f5f4");
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 10_000);
     this.camera.position.set(4, 3, 6);
+    this.composer = null;
+    this.renderPass = null;
+    this.bokehPass = null;
+    this.depthOfFieldReason = "";
+    this.depthOfField = {
+      enabled: false,
+      apertureFStop: 2.8,
+      focusDistance: 5,
+    };
+    this.initializeDepthOfField();
     this.orbit = new OrbitControls(this.camera, canvas);
     this.orbit.enableDamping = true;
     this.orbit.dampingFactor = 0.08;
@@ -355,6 +376,403 @@ export class Model3DSceneRuntime {
     });
     this.resize();
     this.animate();
+  }
+
+  initializeDepthOfField() {
+    try {
+      const context = this.renderer.getContext();
+      const colorBufferFloat =
+        context.getExtension("EXT_color_buffer_float") ||
+        context.getExtension("EXT_color_buffer_half_float");
+      const capability = model3DDepthOfFieldRuntimeCapability({
+        webgl2: this.renderer.capabilities.isWebGL2,
+        renderableHalfFloatColorBuffer: Boolean(colorBufferFloat),
+      });
+      if (!capability.enabled) {
+        this.depthOfFieldReason = capability.reason;
+        return;
+      }
+      this.composer = new EffectComposer(this.renderer);
+      this.renderPass = new RenderPass(this.renderScene, this.camera);
+      this.bokehPass = new BokehPass(this.renderScene, this.camera, {
+        focus: this.depthOfField.focusDistance,
+        aperture: 0.000025,
+        maxblur: 0.008,
+      });
+      this.composer.addPass(this.renderPass);
+      this.composer.addPass(this.bokehPass);
+    } catch (caught) {
+      this.composer?.dispose?.();
+      this.bokehPass?.dispose?.();
+      this.composer = null;
+      this.renderPass = null;
+      this.bokehPass = null;
+      this.depthOfFieldReason = `Depth-of-field postprocessing initialization failed: ${
+        caught instanceof Error ? caught.message : "unknown WebGL error"
+      }`;
+    }
+  }
+
+  depthOfFieldCapability() {
+    return this.composer && this.bokehPass
+      ? { enabled: true }
+      : {
+          enabled: false,
+          reason:
+            this.depthOfFieldReason ||
+            "Depth-of-field postprocessing is unavailable in this WebGL runtime",
+        };
+  }
+
+  setDepthOfField(value = {}, render = true) {
+    const enabled = value.enabled === true;
+    const apertureFStop = clamp(
+      value.apertureFStop ?? this.depthOfField.apertureFStop,
+      0.7,
+      64,
+    );
+    const focusDistance = clamp(
+      value.focusDistance ?? this.depthOfField.focusDistance,
+      0.001,
+      1_000_000,
+    );
+    if (enabled && (!this.composer || !this.bokehPass)) {
+      throw model3DRuntimeError(
+        "model3d-dof-runtime-unavailable",
+        this.depthOfFieldCapability().reason,
+      );
+    }
+    this.depthOfField = {
+      enabled,
+      apertureFStop,
+      focusDistance,
+    };
+    if (this.bokehPass) {
+      const settings = model3DBokehSettings(apertureFStop, focusDistance);
+      this.bokehPass.uniforms.focus.value = settings.focus;
+      this.bokehPass.uniforms.aperture.value = settings.aperture;
+      this.bokehPass.uniforms.maxblur.value = settings.maxBlur;
+    }
+    if (render) this.renderFrame(enabled);
+    return this.depthOfFieldCapability();
+  }
+
+  applyDirectorCameraFrame(camera, frame) {
+    this.camera.position.fromArray(frame.position);
+    this.camera.fov = clamp(frame.fovDegrees, 1, 179);
+    this.camera.near = clamp(camera.near, 0.0001, 1_000_000);
+    this.camera.far = Math.max(
+      this.camera.near + 0.001,
+      clamp(camera.far, 0.001, 10_000_000),
+    );
+    this.orbit?.target.fromArray(frame.target);
+    this.camera.lookAt(frame.target[0], frame.target[1], frame.target[2]);
+    this.camera.updateProjectionMatrix();
+    if (camera.depthOfFieldEnabled) {
+      this.setDepthOfField({
+        enabled: true,
+        apertureFStop: frame.apertureFStop,
+        focusDistance: camera.focusDistance,
+      }, false);
+    } else if (this.depthOfField.enabled) {
+      this.setDepthOfField({
+        enabled: false,
+        apertureFStop: frame.apertureFStop,
+        focusDistance: camera.focusDistance,
+      }, false);
+    }
+  }
+
+  setDirectorCamera(camera) {
+    if (camera?.projection === "orthographic") {
+      throw model3DRuntimeError(
+        "model3d-orthographic-previs-unavailable",
+        "The current Three workbench uses a perspective viewer camera; orthographic director metadata is preserved but cannot be previewed",
+      );
+    }
+    const frame = model3DDirectorFrameAt(camera, [], 0);
+    this.applyDirectorCameraFrame(camera, frame);
+    this.renderFrame(camera.depthOfFieldEnabled === true);
+  }
+
+  renderFrame(strictDepthOfField = false) {
+    if (this.depthOfField.enabled && this.composer) {
+      try {
+        this.composer.render();
+        return;
+      } catch (caught) {
+        const message = `Depth-of-field postprocessing failed at runtime: ${
+          caught instanceof Error ? caught.message : "unknown WebGL error"
+        }`;
+        this.depthOfField.enabled = false;
+        this.depthOfFieldReason = message;
+        this.options.onError(message);
+        if (strictDepthOfField) {
+          throw model3DRuntimeError(
+            "model3d-dof-render-failed",
+            message,
+            true,
+          );
+        }
+      }
+    }
+    this.renderer.render(this.renderScene, this.camera);
+  }
+
+  playblastCapability() {
+    if (!this.contentScene) {
+      return { enabled: false, reason: "The 3D scene is not loaded" };
+    }
+    const capability = model3DPlayblastRuntimeCapability({
+      canvasCaptureStream: typeof this.canvas.captureStream === "function",
+      mediaRecorder: typeof globalThis.MediaRecorder === "function",
+    });
+    if (!capability.enabled) return capability;
+    return {
+      enabled: true,
+      mimeType: model3DRecorderMime(globalThis.MediaRecorder) || "browser-default",
+    };
+  }
+
+  async capturePlayblast({
+    durationMs,
+    fps = 24,
+    camera,
+    motionPath = [],
+    poses = [],
+    signal,
+    onProgress = noop,
+  }) {
+    const capability = this.playblastCapability();
+    if (!capability.enabled) {
+      throw model3DRuntimeError(
+        "model3d-playblast-runtime-unavailable",
+        capability.reason,
+      );
+    }
+    if (camera?.projection === "orthographic") {
+      throw model3DRuntimeError(
+        "model3d-orthographic-previs-unavailable",
+        "The current Three workbench cannot record an orthographic director camera",
+      );
+    }
+    const boundedDuration = Number(durationMs);
+    if (
+      !Number.isInteger(boundedDuration) ||
+      boundedDuration < 100 ||
+      boundedDuration > 120_000
+    ) {
+      throw model3DRuntimeError(
+        "model3d-playblast-duration-unsupported",
+        "Browser playblast duration must be an integer between 100ms and 120000ms",
+      );
+    }
+    const boundedFps = Math.round(clamp(fps, 1, 60));
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    if (camera.depthOfFieldEnabled && !this.depthOfFieldCapability().enabled) {
+      throw model3DRuntimeError(
+        "model3d-dof-runtime-unavailable",
+        this.depthOfFieldCapability().reason,
+      );
+    }
+
+    const saved = {
+      position: this.camera.position.clone(),
+      quaternion: this.camera.quaternion.clone(),
+      fov: this.camera.fov,
+      near: this.camera.near,
+      far: this.camera.far,
+      target: this.orbit.target.clone(),
+      orbitEnabled: this.orbit.enabled,
+      depthOfField: { ...this.depthOfField },
+    };
+    const poseSnapshots = [];
+    for (const pose of poses) {
+      const object = this.objectByEditorId(pose.nodeId);
+      if (!object) continue;
+      poseSnapshots.push({ object, transform: transformSnapshot(object) });
+      applyTransform(object, pose.transform);
+    }
+    this.orbit.enabled = false;
+    const stream = this.canvas.captureStream(boundedFps);
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+      stream.getTracks().forEach((entry) => entry.stop());
+      throw model3DRuntimeError(
+        "model3d-playblast-track-unavailable",
+        "Canvas capture did not produce a video track",
+      );
+    }
+    const mimeType = model3DRecorderMime(globalThis.MediaRecorder);
+    let recorder;
+    try {
+      recorder = mimeType
+        ? new globalThis.MediaRecorder(stream, {
+            mimeType,
+            videoBitsPerSecond: 8_000_000,
+          })
+        : new globalThis.MediaRecorder(stream);
+    } catch (caught) {
+      stream.getTracks().forEach((entry) => entry.stop());
+      throw model3DRuntimeError(
+        "model3d-playblast-encoder-unavailable",
+        `MediaRecorder could not initialize a canvas video encoder: ${
+          caught instanceof Error ? caught.message : "unknown encoder error"
+        }`,
+      );
+    }
+
+    let frameCount = 0;
+    let animationFrame = 0;
+    const chunks = [];
+    try {
+      const blob = await new Promise((resolve, reject) => {
+        let aborted = false;
+        let settled = false;
+        const cleanup = () => {
+          cancelAnimationFrame(animationFrame);
+          signal?.removeEventListener("abort", onAbort);
+        };
+        const fail = (error) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (recorder.state !== "inactive") {
+            try {
+              recorder.stop();
+            } catch {
+              // Stopping a failed encoder is best effort.
+            }
+          }
+          reject(error);
+        };
+        const onAbort = () => {
+          aborted = true;
+          cancelAnimationFrame(animationFrame);
+          if (recorder.state === "inactive") {
+            fail(new DOMException("Aborted", "AbortError"));
+          } else {
+            recorder.stop();
+          }
+        };
+        recorder.ondataavailable = (event) => {
+          if (event.data?.size) chunks.push(event.data);
+        };
+        recorder.onerror = (event) => {
+          fail(
+            model3DRuntimeError(
+              "model3d-playblast-encode-failed",
+              `MediaRecorder failed while encoding the playblast: ${
+                event.error?.message || "unknown encoder error"
+              }`,
+              true,
+            ),
+          );
+        };
+        recorder.onstop = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (aborted || signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          const output = new Blob(chunks, {
+            type: recorder.mimeType || mimeType || "video/webm",
+          });
+          if (!output.size) {
+            reject(
+              model3DRuntimeError(
+                "model3d-playblast-empty",
+                "MediaRecorder produced an empty playblast",
+                true,
+              ),
+            );
+            return;
+          }
+          resolve(output);
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        let startedAt = 0;
+        let nextFrameAt = 0;
+        const frameInterval = 1_000 / boundedFps;
+        const tick = (timestamp) => {
+          try {
+            if (!startedAt) startedAt = timestamp;
+            if (signal?.aborted) {
+              onAbort();
+              return;
+            }
+            const elapsed = Math.min(boundedDuration, timestamp - startedAt);
+            if (elapsed + 0.5 >= nextFrameAt || elapsed >= boundedDuration) {
+              const frame = model3DDirectorFrameAt(camera, motionPath, elapsed);
+              this.applyDirectorCameraFrame(camera, frame);
+              this.renderFrame(camera.depthOfFieldEnabled === true);
+              track.requestFrame?.();
+              frameCount += 1;
+              nextFrameAt = Math.max(nextFrameAt + frameInterval, elapsed);
+              onProgress(Math.min(1, elapsed / boundedDuration));
+            }
+            if (elapsed >= boundedDuration) {
+              recorder.stop();
+            } else {
+              animationFrame = requestAnimationFrame(tick);
+            }
+          } catch (caught) {
+            fail(
+              caught instanceof Error
+                ? caught
+                : model3DRuntimeError(
+                    "model3d-playblast-capture-failed",
+                    "Playblast frame capture failed",
+                    true,
+                  ),
+            );
+          }
+        };
+        try {
+          recorder.start(250);
+          animationFrame = requestAnimationFrame(tick);
+        } catch (caught) {
+          fail(
+            model3DRuntimeError(
+              "model3d-playblast-encode-failed",
+              `MediaRecorder could not start: ${
+                caught instanceof Error ? caught.message : "unknown encoder error"
+              }`,
+            ),
+          );
+        }
+      });
+      return {
+        blob,
+        durationMs: boundedDuration,
+        fps: boundedFps,
+        frameCount,
+        mimeType: blob.type || mimeType || "video/webm",
+        width: Math.max(1, this.canvas.width || this.canvas.clientWidth || 1),
+        height: Math.max(1, this.canvas.height || this.canvas.clientHeight || 1),
+      };
+    } finally {
+      stream.getTracks().forEach((entry) => entry.stop());
+      for (const entry of poseSnapshots) {
+        applyTransform(entry.object, entry.transform);
+      }
+      this.camera.position.copy(saved.position);
+      this.camera.quaternion.copy(saved.quaternion);
+      this.camera.fov = saved.fov;
+      this.camera.near = saved.near;
+      this.camera.far = saved.far;
+      this.camera.updateProjectionMatrix();
+      this.orbit.target.copy(saved.target);
+      this.orbit.enabled = saved.orbitEnabled;
+      try {
+        this.setDepthOfField(saved.depthOfField);
+      } catch {
+        this.depthOfField.enabled = false;
+      }
+      this.renderFrame();
+    }
   }
 
   async loadUrl(url, onProgress) {
@@ -656,7 +1074,7 @@ export class Model3DSceneRuntime {
   }
 
   async capturePng() {
-    this.renderer.render(this.renderScene, this.camera);
+    this.renderFrame(this.depthOfField.enabled);
     const blob = await new Promise((resolve) =>
       this.canvas.toBlob(resolve, "image/png", 1),
     );
@@ -1431,6 +1849,8 @@ export class Model3DSceneRuntime {
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(width, height, false);
+    this.composer?.setPixelRatio(pixelRatio);
+    this.composer?.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   }
@@ -1447,6 +1867,9 @@ export class Model3DSceneRuntime {
     this.transform.detach();
     this.transform.dispose();
     this.orbit.dispose();
+    this.bokehPass?.dispose?.();
+    this.renderPass?.dispose?.();
+    this.composer?.dispose?.();
     this.environmentTexture?.dispose();
     if (this.contentScene) disposeModel3DObject(this.contentScene);
     this.renderer.dispose();
@@ -1508,7 +1931,7 @@ export class Model3DSceneRuntime {
     if (this.annotations.length && now - this.lastOverlayAt > 100) {
       this.emitAnnotationFrame(now);
     }
-    this.renderer.render(this.renderScene, this.camera);
+    this.renderFrame();
   };
 
   handlePointerUp(event) {

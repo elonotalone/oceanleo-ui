@@ -1,3 +1,8 @@
+import {
+  normalizeModel3DDirectorDocument,
+  type Model3DDirectorDocument,
+} from "./model3d-director";
+
 export interface Model3DMaterialOverride {
   index: number;
   name: string;
@@ -36,6 +41,7 @@ export interface Model3DSavedView {
   shadowEnabled: boolean;
   materialOverrides: Model3DMaterialOverride[];
   annotations: Model3DAnnotation[];
+  director: Readonly<Model3DDirectorDocument>;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -155,5 +161,6 @@ export function normalizeSavedModelView(value: unknown): Model3DSavedView {
       record.material_overrides,
     ),
     annotations: normalizeModel3DAnnotations(record.annotations),
+    director: normalizeModel3DDirectorDocument(record.director),
   };
 }

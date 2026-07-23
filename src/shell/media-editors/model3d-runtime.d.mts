@@ -1,4 +1,9 @@
 import type { Model3DOperation } from "./model3d-operations.mjs";
+import type {
+  Model3DDirectorCamera,
+  Model3DDirectorPose,
+  Model3DMotionKeyframe,
+} from "./model3d-director";
 
 export type Model3DTransformMode = "translate" | "rotate" | "scale";
 export type Model3DTextureSlot =
@@ -124,6 +129,28 @@ export interface Model3DRuntimeOptions {
   resolveAssetUrl?: (url: string) => string;
 }
 
+export interface Model3DRuntimeCapability {
+  enabled: boolean;
+  reason?: string;
+  mimeType?: string;
+}
+
+export interface Model3DDepthOfFieldOptions {
+  enabled: boolean;
+  apertureFStop: number;
+  focusDistance: number;
+}
+
+export interface Model3DPlayblastCapture {
+  blob: Blob;
+  durationMs: number;
+  fps: number;
+  frameCount: number;
+  mimeType: string;
+  width: number;
+  height: number;
+}
+
 export class Model3DSceneRuntime {
   constructor(canvas: HTMLCanvasElement, options?: Model3DRuntimeOptions);
   readonly gestureActive: boolean;
@@ -141,6 +168,21 @@ export class Model3DSceneRuntime {
   applyOperationJournal(value: unknown): Promise<number>;
   commitCheckpoint(coveredOperationIds?: string[]): void;
   capturePng(): Promise<Blob>;
+  depthOfFieldCapability(): Model3DRuntimeCapability;
+  setDepthOfField(
+    value: Partial<Model3DDepthOfFieldOptions>,
+  ): Model3DRuntimeCapability;
+  setDirectorCamera(camera: Readonly<Model3DDirectorCamera>): void;
+  playblastCapability(): Model3DRuntimeCapability;
+  capturePlayblast(input: {
+    durationMs: number;
+    fps?: number;
+    camera: Readonly<Model3DDirectorCamera>;
+    motionPath?: readonly Readonly<Model3DMotionKeyframe>[];
+    poses?: readonly Readonly<Model3DDirectorPose>[];
+    signal?: AbortSignal;
+    onProgress?: (progress: number) => void;
+  }): Promise<Model3DPlayblastCapture>;
   setSelectedNode(id: string): void;
   setTransformMode(mode: Model3DTransformMode): void;
   beginGesture(controlId: string): boolean;

@@ -1126,7 +1126,10 @@ export function useFabricImageEditor(
       const execute =
         optionsRef.current.onAiEdit ??
         ((prompt: string, image: Blob) =>
-          aiEditImage(prompt, image, { siteId: siteId || "image" }));
+          aiEditImage(prompt, image, {
+            siteId: siteId || "image",
+            signal: abort.signal,
+          }));
       const resultUrl = await execute(aiPrompt.trim(), source);
       if (abort.signal.aborted || controllerRef.current !== controller) return;
       const loadedSource = await canvasImageSource(

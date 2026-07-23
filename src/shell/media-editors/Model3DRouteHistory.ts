@@ -1,4 +1,5 @@
 import type { Model3DOperation } from "./model3d-operations.mjs";
+import type { Model3DDirectorDocument } from "./model3d-director";
 import type { Model3DSourceProvenance } from "./model3d-project";
 import type { Model3DAnnotation } from "./model3d-view";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
@@ -26,6 +27,7 @@ export interface Model3DRouteSnapshot {
     environmentIntensity: number;
     materialOverrides: [];
     annotations: Model3DAnnotation[];
+    director: Readonly<Model3DDirectorDocument>;
   };
 }
 
@@ -83,6 +85,7 @@ export function captureModel3DRouteSnapshot(
     | "environmentUrl"
     | "environmentIntensity"
     | "annotations"
+    | "director"
   > & { sourceProvenance?: Model3DSourceProvenance },
 ): Model3DRouteSnapshot {
   return cloneSnapshot({
@@ -110,6 +113,7 @@ export function captureModel3DRouteSnapshot(
       environmentIntensity: editor.environmentIntensity,
       materialOverrides: [],
       annotations: editor.annotations,
+      director: editor.director,
     },
   });
 }
