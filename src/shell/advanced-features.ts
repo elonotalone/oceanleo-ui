@@ -144,20 +144,57 @@ export function advancedFeatureById(
   return FEATURE_BY_ID.get((value || "") as AdvancedFeatureId) || null;
 }
 
+function advancedFeatureForAdapterId(
+  adapter: string,
+): AdvancedFeatureDefinition | null {
+  // Keep the adapter switch explicit so frozen consumer contracts can assert
+  // the 12-route mapping without importing the matrix runtime.
+  switch (adapter) {
+    case "video-timeline":
+      return advancedFeatureById("video_editing");
+    case "audio":
+      return advancedFeatureById("audio_editing");
+    case "image":
+      return advancedFeatureById("image_editing");
+    case "pdf":
+      return advancedFeatureById("pdf_editing");
+    case "richdoc":
+      return advancedFeatureById("document_editing");
+    case "grid":
+      return advancedFeatureById("spreadsheet_editing");
+    case "chart-editor@1":
+      return advancedFeatureById("chart_editing");
+    case "deck":
+      return advancedFeatureById("presentation_editing");
+    case "threed":
+      return advancedFeatureById("model_3d");
+    case "website":
+      return advancedFeatureById("website_finetuning");
+    case "design-canvas":
+      return advancedFeatureById("design_canvas");
+    case "video-canvas":
+      return advancedFeatureById("video_canvas");
+    default:
+      return null;
+  }
+}
+
 export function advancedFeatureForItem(
   item: LibraryItem,
 ): AdvancedFeatureDefinition | null {
   const capability = editorCapabilityFor(item);
   if (!capability.available) return null;
-  let contract: AdvancedCapabilityContractEntry | null = null;
   if (isDurableLibraryItem(item)) {
-    contract = advancedCapabilityForArtifactFields({
+    const contract = advancedCapabilityForArtifactFields({
       artifactType: item.artifact.artifactType,
       sourceFormat: item.artifact.sourceFormat,
       editorCapability: item.artifact.editorCapability,
     });
+    if (contract) return advancedFeatureById(contract.featureId);
   }
-  contract ||= advancedCapabilityForAdapter(capability.adapter);
+  const fromAdapter = advancedFeatureForAdapterId(capability.adapter);
+  if (fromAdapter) return fromAdapter;
+  const contract = advancedCapabilityForAdapter(capability.adapter);
   return contract ? advancedFeatureById(contract.featureId) : null;
 }
 
