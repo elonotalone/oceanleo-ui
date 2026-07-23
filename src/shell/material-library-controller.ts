@@ -1,4 +1,5 @@
 import {
+  artifactHasExactContext,
   artifactContextKey,
   ARTIFACT_TYPES,
   normalizeArtifactProjection,
@@ -454,11 +455,32 @@ export function materialLibraryRequestKey(
 ): string {
   return JSON.stringify({
     level: input.level,
-    context: artifactContextKey(input.context),
+    context:
+      input.level === "primary"
+        ? artifactContextKey(input.context)
+        : "global",
     query: input.level === "more" ? input.query.trim() : "",
     taxonomy: input.taxonomy,
     cursor: input.cursor || "",
   });
+}
+
+export function libraryItemHasExactPrimaryContext(
+  item: LibraryItem,
+  context: ArtifactContextRef,
+): boolean {
+  if (
+    !isDurableLibraryItem(item) ||
+    !artifactHasExactContext(item.artifact, context)
+  ) {
+    return false;
+  }
+  return item.artifact.bindings.some(
+    (binding) =>
+      binding.contextId === context.contextId &&
+      binding.role.trim().toLowerCase() === "primary" &&
+      binding.pinnedRevisionId === item.revisionId,
+  );
 }
 
 function materialLibraryCacheUsableUntil(

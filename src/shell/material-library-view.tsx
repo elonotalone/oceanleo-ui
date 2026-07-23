@@ -11,7 +11,6 @@ import {
 import { useUI } from "../i18n/ui/useUI";
 import {
   ARTIFACT_TYPES,
-  artifactHasExactContext,
   artifactIsVisible,
   type ArtifactContextRef,
   type ArtifactType,
@@ -28,6 +27,7 @@ import {
   MATERIAL_TAXONOMY_LABEL,
   artifactEntry,
   invalidateMaterialLibraryCache,
+  libraryItemHasExactPrimaryContext,
   materialToEntry,
   materialLibraryRequestKey,
   mergeMaterialEntries,
@@ -169,10 +169,17 @@ function isTrustedEditableMaterialEntry(
 function entriesFromRemoteResult(
   items: readonly LibraryItem[],
   level: MaterialLibraryLevel,
+  context: ArtifactContextRef,
   query: string,
   taxonomy: ArtifactType | "",
 ): WorkspaceLibraryEntry[] {
-  return items.map((item) => ({
+  const scopedItems =
+    level === "primary"
+      ? items.filter((item) =>
+          libraryItemHasExactPrimaryContext(item, context),
+        )
+      : items;
+  return scopedItems.map((item) => ({
     ...artifactEntry(item, level === "more" && Boolean(query)),
     linkUrl: materialLibraryHref({
       query: level === "more" ? query : "",
@@ -273,6 +280,7 @@ export function MaterialLibrary({
       ? entriesFromRemoteResult(
           initialCache.data.items,
           level,
+          context,
           debounced,
           taxonomy,
         )
@@ -430,7 +438,7 @@ export function MaterialLibrary({
             (level === "more"
               ? artifact.owner.visibility === "public" &&
                 artifact.roles.includes("template")
-              : artifactHasExactContext(artifact, context)),
+              : libraryItemHasExactPrimaryContext(item, context)),
         );
         if (!inScope || !item) {
           setDeepLinkError(
@@ -488,6 +496,7 @@ export function MaterialLibrary({
         entriesFromRemoteResult(
           cached.data.items,
           level,
+          context,
           debounced,
           taxonomy,
         ),
@@ -545,6 +554,7 @@ export function MaterialLibrary({
           entriesFromRemoteResult(
             result.data.items,
             level,
+            context,
             debounced,
             taxonomy,
           ),
@@ -640,10 +650,10 @@ export function MaterialLibrary({
             artifactIsVisible(item.artifact) &&
             isAdvancedEditableShelfItem(item) &&
             (!taxonomy || item.artifactType === taxonomy) &&
-            artifactHasExactContext(item.artifact, contextId),
+            libraryItemHasExactPrimaryContext(item, context),
         );
       }),
-    [contextId, context, featuredEntries, localEntries, taxonomy],
+    [context, featuredEntries, localEntries, taxonomy],
   );
   const entries = useMemo(
     () => {

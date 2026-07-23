@@ -184,9 +184,10 @@ export function artifactProjectionToLibraryItem(
   const routeHint = editorRouteHintForArtifactCapability(
     artifact.editorCapability,
   );
-  const url = options.forEdit
-    ? source?.url || full?.url || viewer?.url
-    : full?.url || viewer?.url;
+  const selectedRendition = options.forEdit
+    ? source || full || viewer
+    : full || viewer;
+  const url = selectedRendition?.url;
   const meta: Record<string, unknown> = {
     artifact_id: artifact.artifactId,
     revision_id: artifact.revisionId,
@@ -195,6 +196,12 @@ export function artifactProjectionToLibraryItem(
     source_format: artifact.sourceFormat,
     source_url: source?.url || "",
     source_revision_id: source?.revisionId || "",
+    source_media_type: source?.mediaType || "",
+    preview_media_type: preview?.mediaType || "",
+    thumbnail_media_type: thumbnail?.mediaType || "",
+    full_media_type: full?.mediaType || "",
+    viewer_media_type: selectedRendition?.mediaType || "",
+    content_type: selectedRendition?.mediaType || artifact.artifactType,
     editor_manifest_url:
       artifact.renditions.editor_manifest?.url || "",
     editor_capability: artifact.editorCapability || "",
@@ -527,6 +534,7 @@ export function libraryContentDescriptor(input: {
 export type ThreeDSubtype = "model" | "hdri" | "texture" | "unknown";
 
 export function threeDSubtypeFor(item: LibraryItem): ThreeDSubtype {
+  if (item.artifactType === "model_3d") return "model";
   const descriptor = item.descriptor || libraryContentDescriptor(item);
   const explicit = [
     descriptor.subtype,
@@ -545,7 +553,10 @@ export function threeDSubtypeFor(item: LibraryItem): ThreeDSubtype {
   if (values.includes("hdri") || values.includes("environment_map")) return "hdri";
   if (values.includes("texture")) return "texture";
   if (values.includes("model") || values.includes("mesh")) return "model";
-  const hint = `${item.url || ""} ${item.meta.format || ""}`.toLowerCase();
+  const hint =
+    `${item.url || ""} ${item.meta.format || ""} ${
+      item.meta.source_format || ""
+    }`.toLowerCase();
   if (/\.(?:hdr|exr)(?:$|[?#\s])/.test(hint)) return "hdri";
   if (/\.(?:glb|gltf)(?:$|[?#\s])/.test(hint)) return "model";
   return "unknown";

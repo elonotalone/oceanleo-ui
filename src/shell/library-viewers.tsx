@@ -453,6 +453,10 @@ function DocumentViewer({
   const ext = extension(item.url);
   const packageKind = officePackageKindForItem(item);
   const isDocx = packageKind === "docx" || ext === "docx";
+  const isPdf = item.artifactType === "pdf" || ext === "pdf";
+  const viewerMediaType = String(
+    item.meta.viewer_media_type || item.meta.content_type || "",
+  ).toLowerCase();
   const [html, setHtml] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(isDocx);
@@ -499,7 +503,20 @@ function DocumentViewer({
     }
   }, [isDocx]);
 
-  if (ext === "pdf" && item.url) {
+  if (isPdf && item.url && viewerMediaType.startsWith("image/")) {
+    return (
+      <Center>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={item.url}
+          alt={item.title}
+          referrerPolicy="no-referrer"
+          className="max-h-[72vh] max-w-full rounded-xl object-contain shadow-sm"
+        />
+      </Center>
+    );
+  }
+  if (isPdf && item.url) {
     return (
       <iframe
         src={item.url}
@@ -552,10 +569,13 @@ function ThreeDViewer({
   const subtype = threeDSubtypeFor(item);
   const modelUrl = item.url || "";
   const previewUrl = item.previewUrl || item.thumbUrl || "";
+  const viewerMediaType = String(
+    item.meta.viewer_media_type || item.meta.mime || "",
+  ).toLowerCase();
   const modelFormat =
     ["glb", "gltf"].includes(extension(modelUrl)) ||
     ["model/gltf-binary", "model/gltf+json"].includes(
-      String(item.meta.mime || "").toLowerCase(),
+      viewerMediaType,
     );
   const [ready, setReady] = useState(
     () =>
@@ -638,6 +658,22 @@ function ThreeDViewer({
             {tt("打开原素材")}
           </a>
         )}
+      </Center>
+    );
+  }
+  if (subtype === "model" && !modelFormat && previewUrl) {
+    return (
+      <Center>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={previewUrl}
+          alt={item.title}
+          referrerPolicy="no-referrer"
+          className="max-h-[64vh] max-w-full rounded-xl object-contain shadow-sm"
+        />
+        <p className="text-sm text-stone-500">
+          {tt("当前展示已验证的模型预览；编辑时会加载固定 revision 的完整模型。")}
+        </p>
       </Center>
     );
   }
