@@ -59,6 +59,15 @@ const EMPTY_CAPABILITIES: CloudBrowserCapabilitiesV3 = {
 const MAX_SOCKET_BUFFER_BYTES = 256 * 1024;
 const MAX_SENT_EVENT_IDS = 256;
 const LIVE_HEARTBEAT_MS = 15_000;
+const REUSABLE_LIVE_STATES: ReadonlySet<CloudBrowserTransportState> =
+  new Set([
+    "ticketing",
+    "ws_connecting",
+    "authenticated",
+    "awaiting_first_frame",
+    "streaming",
+    "reconnecting",
+  ]);
 
 export function useCloudBrowserTransport({
   selectedId,
@@ -234,7 +243,8 @@ export function useCloudBrowserTransport({
 
   const prepareControlIntentForReconnect = useCallback(() => {
     const preserveTakeover =
-      controlIntentRef.current === "acquire";
+      controlIntentRef.current === "acquire" ||
+      leaseOwnedRef.current;
     controlIntentRef.current = preserveTakeover ? "acquire" : "";
     setControlIntentSent(false);
     setControlPending(preserveTakeover);
@@ -519,8 +529,8 @@ export function useCloudBrowserTransport({
       } catch {
         // A retry always creates a fresh one-use ticket and connection.
       }
-      setCurrentLease(EMPTY_BROWSER_LEASE, false);
       prepareControlIntentForReconnect();
+      setCurrentLease(EMPTY_BROWSER_LEASE, false);
       if (scheduleLiveRecoveryRef.current("first_paint")) {
         setFailureKind(null);
         setError("");
@@ -554,8 +564,8 @@ export function useCloudBrowserTransport({
       pendingBinaryRef.current = false;
       clearFirstFrameTimeout();
       cancelFrameDecodeRef.current(false);
-      setCurrentLease(EMPTY_BROWSER_LEASE, false);
       prepareControlIntentForReconnect();
+      setCurrentLease(EMPTY_BROWSER_LEASE, false);
       const socket = socketRef.current;
       socketRef.current = null;
       try {
@@ -994,8 +1004,8 @@ export function useCloudBrowserTransport({
     handshakeRef.current = false;
     pendingBinaryRef.current = false;
     cancelFrameDecode(false);
-    setCurrentLease(EMPTY_BROWSER_LEASE, false);
     prepareControlIntentForReconnect();
+    setCurrentLease(EMPTY_BROWSER_LEASE, false);
     ++fenceSerialRef.current;
     setFailureKind(kind);
     transition("reconnecting");
@@ -1296,6 +1306,15 @@ export function useCloudBrowserTransport({
     const requestedSessionId = sessionId || selectedIdRef.current;
     if (!requestedSessionId) return false;
     selectedIdRef.current = requestedSessionId;
+    if (
+      liveRequestedRef.current &&
+      socketSessionRef.current === requestedSessionId &&
+      REUSABLE_LIVE_STATES.has(transportStateRef.current)
+    ) {
+      // Power-on and reconnect are idempotent for the active session. A
+      // repeated render/click must not issue another ticket or WSS stream.
+      return true;
+    }
     invalidateLiveRecoveryAttempt(true);
     const oldSocket = socketRef.current;
     socketRef.current = null;

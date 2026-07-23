@@ -331,6 +331,12 @@ function reject(
   };
 }
 
+function productErrorWithCode(fallback: string, code: unknown): string {
+  return typeof code === "string" && code
+    ? `${fallback} (${code})`
+    : fallback;
+}
+
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -877,7 +883,10 @@ export function reduceCloudBrowserProtocolMessage(
     if (message.status === "rejected") {
       effects.push({
         type: "error",
-        message: fallback.operationFailed,
+        message: productErrorWithCode(
+          fallback.operationFailed,
+          message.code,
+        ),
         diagnostic: {
           source: "server",
           type,
@@ -1052,12 +1061,13 @@ export function reduceCloudBrowserProtocolMessage(
         failureKind: "lease_lost",
       };
     } else if (queuedAcquire) {
-      // Ledger blip during admit: keep the takeover intent so reconcile can
-      // resend once streaming is healthy again.
+      // The gateway could not durably admit this acquire. Do not manufacture a
+      // success or replay under a fresh event id; leave a visible error and
+      // require an explicit user retry after persistence recovers.
       state = {
         ...state,
-        controlPending: true,
-        controlIntent: "acquire",
+        controlPending: false,
+        controlIntent: "",
         controlIntentSent: false,
         lastActionSequence: message.action_sequence as number,
         lastCallbackSequence: message.callback_sequence as number,
@@ -1076,9 +1086,10 @@ export function reduceCloudBrowserProtocolMessage(
     }
     effects.push({
       type: "error",
-      message: leaseLost
-        ? fallback.leaseLost
-        : fallback.operationFailed,
+      message: productErrorWithCode(
+        leaseLost ? fallback.leaseLost : fallback.operationFailed,
+        message.code,
+      ),
       kind: leaseLost ? "lease_lost" : undefined,
       diagnostic: {
         source: "server",
@@ -1087,9 +1098,6 @@ export function reduceCloudBrowserProtocolMessage(
         message: message.message as string,
       },
     });
-    if (queuedAcquire) {
-      effects.push({ type: "reconcile_control_intent" });
-    }
     return { state, effects };
   }
 

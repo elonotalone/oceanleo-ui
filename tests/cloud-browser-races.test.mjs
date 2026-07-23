@@ -662,6 +662,47 @@ test("heartbeat backpressure cannot leave a stale socket live", async () => {
   }
 });
 
+test("same-session open is idempotent while ticketing and connected", async () => {
+  const runtime = createRuntime();
+  const pendingTicket = deferred();
+  runtime.ticketQueue.push(pendingTicket.promise);
+  const mounted = await mountTransport(runtime);
+  try {
+    let firstOpen;
+    let duplicateOpen;
+    await act(async () => {
+      firstOpen = runtime.transport.openLive("session-a");
+      duplicateOpen = await runtime.transport.openLive("session-a");
+      await flushMicrotasks();
+    });
+
+    assert.equal(duplicateOpen, true);
+    assert.equal(runtime.ticketCalls.length, 1);
+    assert.equal(FakeWebSocket.instances.length, 0);
+
+    pendingTicket.resolve(ticketResult("session-a", 1));
+    let firstResult;
+    await act(async () => {
+      firstResult = await firstOpen;
+      await flushMicrotasks();
+    });
+    assert.equal(firstResult, true);
+    assert.equal(runtime.ticketCalls.length, 1);
+    assert.equal(FakeWebSocket.instances.length, 1);
+
+    let connectedDuplicate;
+    await act(async () => {
+      connectedDuplicate = await runtime.transport.openLive("session-a");
+      await flushMicrotasks();
+    });
+    assert.equal(connectedDuplicate, true);
+    assert.equal(runtime.ticketCalls.length, 1);
+    assert.equal(FakeWebSocket.instances.length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("an expired ticket is replaced by a fresh bounded retry", async () => {
   const runtime = createRuntime();
   const expired = ticketResult("session-a", 1);
@@ -756,6 +797,54 @@ test("takeover intent survives reconnect and sends only after paint", async () =
     assert.ok(acquireIndex > presentedIndex);
     assert.equal(messages[acquireIndex].connection_id, "connection-2");
     assert.equal(messages[acquireIndex].lease_epoch, 5);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("an owned lease reconnects with one fenced reacquire after fresh paint", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const firstSocket = await openLive(runtime, "session-a");
+    await establish(firstSocket);
+    await presentFrame(runtime);
+    await act(async () => {
+      runtime.protocolContext.setCurrentLease(
+        {
+          leaseId: "human-lease-5",
+          epoch: 5,
+          holderKind: "human",
+          holderId: "user:test-owner",
+          connectionId: "connection-1",
+          expiresAt: "2099-01-01T00:00:00Z",
+        },
+        true,
+      );
+      await flushMicrotasks();
+    });
+    assert.equal(runtime.transport.driving, true);
+
+    await act(async () => firstSocket.close(1006, "network lost"));
+    assert.equal(runtime.transport.controlPending, true);
+    await tick(runtime, 500);
+
+    const freshSocket = FakeWebSocket.instances.at(-1);
+    await establish(freshSocket);
+    assert.equal(
+      freshSocket.sent.some(
+        (raw) => JSON.parse(raw).t === "control.acquire",
+      ),
+      false,
+    );
+
+    await presentFrame(runtime);
+    const acquires = freshSocket.sent
+      .map((raw) => JSON.parse(raw))
+      .filter((message) => message.t === "control.acquire");
+    assert.equal(acquires.length, 1);
+    assert.equal(acquires[0].connection_id, "connection-2");
+    assert.equal(acquires[0].lease_epoch, 5);
   } finally {
     await mounted.unmount();
   }
@@ -1104,7 +1193,7 @@ test("hibernation callbacks leave the live transport contract unchanged", () => 
   assert.deepEqual(reduced.effects, []);
 });
 
-test("backend diagnostics do not become product error copy", () => {
+test("backend error codes stay explicit without exposing diagnostic detail", () => {
   const { fixture, state } = streamingFixtureState();
   const reduced = reduceCloudBrowserProtocolMessage(
     state,
@@ -1120,7 +1209,11 @@ test("backend diagnostics do not become product error copy", () => {
   const effect = reduced.effects.find(
     (candidate) => candidate.type === "error",
   );
-  assert.equal(effect?.message, PROTOCOL_FALLBACKS.operationFailed);
+  assert.equal(
+    effect?.message,
+    `${PROTOCOL_FALLBACKS.operationFailed} (INTERNAL_STACK)`,
+  );
+  assert.doesNotMatch(effect?.message || "", /executor\.py|private/);
   assert.equal(effect?.diagnostic?.code, "INTERNAL_STACK");
   assert.equal(
     effect?.diagnostic?.message,
@@ -1128,7 +1221,7 @@ test("backend diagnostics do not become product error copy", () => {
   );
 });
 
-test("PERSISTENCE_UNAVAILABLE keeps queued takeover for reconcile retry", () => {
+test("PERSISTENCE_UNAVAILABLE fails takeover without an automatic replay", () => {
   const { fixture, state: base } = streamingFixtureState();
   const state = {
     ...base,
@@ -1147,12 +1240,20 @@ test("PERSISTENCE_UNAVAILABLE keeps queued takeover for reconcile retry", () => 
     },
     PROTOCOL_FALLBACKS,
   );
-  assert.equal(reduced.state.controlPending, true);
-  assert.equal(reduced.state.controlIntent, "acquire");
+  assert.equal(reduced.state.controlPending, false);
+  assert.equal(reduced.state.controlIntent, "");
   assert.equal(reduced.state.controlIntentSent, false);
-  assert.ok(
+  assert.equal(
     reduced.effects.some(
       (effect) => effect.type === "reconcile_control_intent",
+    ),
+    false,
+  );
+  assert.ok(
+    reduced.effects.some(
+      (effect) =>
+        effect.type === "error" &&
+        effect.message.endsWith("(PERSISTENCE_UNAVAILABLE)"),
     ),
   );
 });
