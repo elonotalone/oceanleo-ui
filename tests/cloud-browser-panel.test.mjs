@@ -171,6 +171,10 @@ const panelSource = readFileSync(
   new URL("../src/shell/CloudBrowserPanel.tsx", import.meta.url),
   "utf8",
 );
+const powerPromptSource = readFileSync(
+  new URL("../src/shell/cloud-browser-power-prompt.tsx", import.meta.url),
+  "utf8",
+);
 const chromeSource = readFileSync(
   new URL("../src/shell/cloud-browser-chrome.tsx", import.meta.url),
   "utf8",
@@ -1020,6 +1024,21 @@ test("window input, IME, focus, and clipboard contracts are bounded", () => {
   assert.match(interactionSource, /event\.key\.toLowerCase\(\) === "v"/);
   assert.doesNotMatch(interactionSource, /openOmnibox|nav\.open/);
   assert.match(interactionSource, /"focus"/);
+  // Remote focus must follow pointer up, never sit between down and up.
+  // A mid-click windowactivate corrupts the native Chrome click and drops
+  // page focus before text.commit paste (V2-04/V2-05).
+  assert.match(
+    interactionSource,
+    /sendMutation\("pointer", \{[\s\S]*?event: "down"[\s\S]*?\}\);\s*\/\/ Local keyboard sink only[\s\S]*?focusLocalInput\(\);/,
+  );
+  assert.doesNotMatch(
+    interactionSource,
+    /event: "down"[\s\S]{0,400}focusRemoteWindow\(\)/,
+  );
+  assert.match(
+    interactionSource,
+    /event: event\.type === "pointercancel" \? "cancel" : "up"[\s\S]*?focusRemoteWindow\(\);/,
+  );
   assert.match(interactionSource, /"clipboard\.paste"/);
   assert.match(interactionSource, /"composition\.start"/);
   assert.match(interactionSource, /"composition\.update"/);
@@ -1065,13 +1084,16 @@ test("the panel has one session row and no synthetic browser controls", () => {
   assert.match(chromeSource, /data-cloud-browser-power/);
   assert.match(chromeSource, /data-cloud-browser-hibernate/);
   assert.match(chromeSource, /tt\("新建"\)/);
+  assert.match(chromeSource, /tt\("恢复"\)/);
+  assert.match(chromeSource, /tt\("连接"\)/);
   assert.match(chromeSource, /tt\("休眠"\)/);
+  assert.match(panelSource, /transport\.stopLive\(true\);[\s\S]*?hibernateCloudBrowser/);
 });
 
 test("viewport recovery is spinner-only and retained frames keep takeover available", () => {
-  const presentation = `${panelSource}\n${chromeSource}\n${historySource}`;
-  assert.match(panelSource, /data-cloud-browser-spinner/);
-  assert.match(panelSource, /animate-spin/);
+  const presentation = `${panelSource}\n${powerPromptSource}\n${chromeSource}\n${historySource}`;
+  assert.match(powerPromptSource, /data-cloud-browser-spinner/);
+  assert.match(powerPromptSource, /animate-spin/);
   assert.match(
     panelSource,
     /retainedFrame=\{transport\.hasCanvasFrame\}/,
@@ -1137,7 +1159,9 @@ test("power-on stays explicit while task sessions outrank global history", () =>
   );
   assert.match(panelSource, /!liveRequested && \(\s*<BrowserPowerPrompt/);
   assert.match(panelSource, /showPowerButton=\{liveRequested\}/);
-  assert.match(panelSource, /data-cloud-browser-power-prompt/);
+  assert.match(powerPromptSource, /data-cloud-browser-power-prompt/);
+  assert.match(powerPromptSource, /data-cloud-browser-resume/);
+  assert.match(panelSource, /resumeLabel=\{/);
   assert.doesNotMatch(sessionSource, /items\[0\]\?\.id/);
 });
 
@@ -1218,7 +1242,7 @@ test("terminal configuration and v3 failures are visible instead of spinning for
     "start failed",
     "untrusted gateway details must never become product error copy",
   );
-  assert.match(panelSource, /data-cloud-browser-lifecycle-error/);
+  assert.match(powerPromptSource, /data-cloud-browser-lifecycle-error/);
   assert.match(panelSource, /data-cloud-browser-terminal-failure/);
   assert.match(panelSource, /data-cloud-browser-retry/);
   assert.match(panelSource, /v3 protocol_mismatch/);

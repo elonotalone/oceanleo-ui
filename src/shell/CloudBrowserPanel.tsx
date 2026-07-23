@@ -18,13 +18,18 @@ import {
 } from "../lib/browser";
 import { useUI } from "../i18n/ui/useUI";
 import { CloudBrowserChrome } from "./cloud-browser-chrome";
-import { BrowserGlyph } from "./cloud-browser-controls";
 import type {
   CloudBrowserRenameResult,
   CloudBrowserRestoreResult,
 } from "./cloud-browser-history-view";
 import { useCloudBrowserInteraction } from "./cloud-browser-interaction";
 import { DEFAULT_BROWSER_URL } from "./cloud-browser-live";
+import {
+  BrowserPowerPrompt,
+  BrowserViewportSpinner,
+  cloudBrowserOpenHistoryLabel,
+  CloudBrowserLifecycleErrorView,
+} from "./cloud-browser-power-prompt";
 import {
   cloudBrowserLifecycleIssue,
   cloudBrowserSessionCanHibernate,
@@ -38,164 +43,11 @@ import { useCloudBrowserTransport } from "./cloud-browser-transport";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export { pointInContainedFrame } from "./cloud-browser-live";
-
-export function cloudBrowserOpenHistoryLabel(
-  tt: (value: string) => string,
-): string {
-  const open = tt("打开");
-  const history = tt("历史");
-  return open === "打开" && history === "历史"
-    ? "从历史中打开"
-    : `${open} ${history}`.trim();
-}
-
-export function CloudBrowserLifecycleErrorView({
-  className,
-  issue,
-  message,
-}: {
-  className: string;
-  issue: CloudBrowserLifecycleIssue | null;
-  message: string;
-}) {
-  const diagnostics = issue
-    ? Object.entries(issue.diagnostics)
-    : [];
-  return (
-    <div
-      className={className}
-      role="alert"
-      data-cloud-browser-lifecycle-error
-      data-cloud-browser-lifecycle-code={issue?.code || undefined}
-      data-cloud-browser-lifecycle-operation={
-        issue?.operation || undefined
-      }
-      data-cloud-browser-lifecycle-retryable={
-        issue?.retryable === null || issue?.retryable === undefined
-          ? undefined
-          : issue.retryable
-            ? "true"
-            : "false"
-      }
-      data-cloud-browser-lifecycle-retry-after={
-        issue?.retryAfterSeconds ?? undefined
-      }
-    >
-      <p>{message}</p>
-      {diagnostics.length > 0 && (
-        <dl
-          className="mt-1 flex flex-wrap justify-center gap-x-2 gap-y-0.5 font-mono text-[9px] opacity-80"
-          data-cloud-browser-lifecycle-diagnostics
-        >
-          {diagnostics.map(([key, value]) => (
-            <div key={key} className="flex gap-0.5">
-              <dt>{key}=</dt>
-              <dd>{String(value)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </div>
-  );
-}
-
-function BrowserViewportSpinner({
-  label,
-  retainedFrame = false,
-}: {
-  label: string;
-  retainedFrame?: boolean;
-}) {
-  return (
-    <div
-      className={`absolute inset-0 z-10 grid place-items-center ${
-        retainedFrame ? "bg-stone-950/45" : "bg-stone-950"
-      }`}
-      role="status"
-      aria-live="polite"
-      aria-label={label}
-      data-cloud-browser-spinner
-      data-retained-frame={retainedFrame ? "true" : "false"}
-    >
-      <span
-        className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white"
-        aria-hidden="true"
-      />
-    </div>
-  );
-}
-
-export function BrowserPowerPrompt({
-  accent,
-  busy,
-  error,
-  historyLabel,
-  lifecycleIssue,
-  newLabel,
-  notice,
-  onHistory,
-  onNew,
-}: {
-  accent: string;
-  busy: boolean;
-  error: string;
-  historyLabel: string;
-  lifecycleIssue: CloudBrowserLifecycleIssue | null;
-  newLabel: string;
-  notice: string;
-  onHistory: () => void;
-  onNew: () => void;
-}) {
-  return (
-    <div
-      className="absolute inset-0 grid place-items-center bg-stone-950 p-8 text-center"
-      data-cloud-browser-launch-prompt
-      data-cloud-browser-power-prompt
-    >
-      <div className="w-full max-w-md">
-        <BrowserGlyph className="mx-auto h-10 w-10 text-stone-500" />
-        {error && (
-          <CloudBrowserLifecycleErrorView
-            className="mt-3 rounded-lg border border-rose-400/30 bg-rose-950/60 px-3 py-2 text-[11px] leading-5 text-rose-200"
-            issue={lifecycleIssue}
-            message={error}
-          />
-        )}
-        {notice && !error && (
-          <div
-            className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-3 py-2 text-[11px] leading-5 text-emerald-200"
-            role="status"
-            data-cloud-browser-lifecycle-notice
-          >
-            {notice}
-          </div>
-        )}
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={onNew}
-            disabled={busy}
-            className="rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
-            style={{ background: accent }}
-            aria-busy={busy}
-            data-cloud-browser-new
-          >
-            {newLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onHistory}
-            disabled={busy}
-            className="rounded-xl border border-stone-600 bg-stone-900 px-5 py-2.5 text-[12px] font-semibold text-stone-100 outline-none hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
-            data-cloud-browser-open-history
-          >
-            {historyLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+export {
+  BrowserPowerPrompt,
+  cloudBrowserOpenHistoryLabel,
+  CloudBrowserLifecycleErrorView,
+} from "./cloud-browser-power-prompt";
 
 export function CloudBrowserPanel({
   taskId,
@@ -400,9 +252,13 @@ export function CloudBrowserPanel({
       return;
     }
     const selectedId = selected.id;
+    const prior = selected;
     const operationId = createCloudBrowserOperationId();
     setBusy(true);
     clearLifecycleIssue();
+    // Tear down live before the hibernate CAS so ticket/WS recovery cannot
+    // race a hibernating runtime and leave the chrome in a grey dead state.
+    transport.stopLive(true);
     const result = await hibernateCloudBrowser(
       selectedId,
       operationId,
@@ -417,7 +273,16 @@ export function CloudBrowserPanel({
       await session.reload(selectedId);
       return;
     }
-    transport.stopLive(true);
+    const hibernated = result.data;
+    session.upsertSession({
+      ...prior,
+      status: hibernated?.status || "hibernated",
+      session_version:
+        hibernated?.session_version ?? prior.session_version,
+      runtime_id: hibernated?.runtime_id ?? "",
+      incarnation: hibernated?.incarnation ?? 0,
+      runtime_state: "absent",
+    });
     await session.reload(selectedId);
     setNotice(tt("休眠"));
   }
@@ -584,6 +449,16 @@ export function CloudBrowserPanel({
               }
             }}
             onNew={() => void startBrowser()}
+            onResume={
+              cloudBrowserSessionNeedsResume(session.selected)
+                ? () => void openSelectedSession()
+                : undefined
+            }
+            resumeLabel={
+              cloudBrowserSessionNeedsResume(session.selected)
+                ? tt("恢复")
+                : undefined
+            }
           />
         )}
 

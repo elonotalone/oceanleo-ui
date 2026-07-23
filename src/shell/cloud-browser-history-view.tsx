@@ -414,7 +414,7 @@ export function CloudBrowserCheckpointPanel({
                         busy || selectedOpenAction === "unavailable"
                       }
                       className="h-8 rounded-lg bg-stone-900 px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
-                      aria-label={
+                      title={
                         selectedOpenAction === "resume"
                           ? tt("恢复当前浏览会话")
                           : tt("连接当前浏览会话")

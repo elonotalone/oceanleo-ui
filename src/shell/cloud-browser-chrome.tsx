@@ -142,8 +142,31 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     );
     return () => window.clearTimeout(timer);
   }, [takeoverPending, controlIntentSent]);
-  const powerLabel = tt("新建");
-  const powerAria = tt("新建浏览会话");
+  const selectedOpenAction = props.selectedOpenAction;
+  const powerIsResume = selectedOpenAction === "resume";
+  const powerIsConnect = selectedOpenAction === "connect";
+  // While live is requested the power affordance creates a fresh session.
+  // After intentional stop/hibernate the chrome may still render briefly with
+  // a selected hibernated/absent session — expose enabled 恢复/连接 there.
+  const powerLabel = liveRequested
+    ? tt("新建")
+    : powerIsResume
+      ? tt("恢复")
+      : powerIsConnect
+        ? tt("连接")
+        : tt("新建");
+  const powerAria = liveRequested
+    ? tt("新建浏览会话")
+    : powerIsResume
+      ? tt("恢复")
+      : powerIsConnect
+        ? tt("连接")
+        : tt("新建浏览会话");
+  const powerAction = liveRequested
+    ? props.onStartNew
+    : powerIsResume || powerIsConnect
+      ? props.onOpenOrResume
+      : props.onStartNew;
 
   return (
     <>
@@ -287,12 +310,21 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
         {showPowerButton && (
           <button
             type="button"
-            onClick={props.onStartNew}
+            onClick={powerAction}
             disabled={busy}
             className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
             style={{ background: accent }}
             aria-label={powerAria}
             data-cloud-browser-power
+            data-cloud-browser-power-action={
+              liveRequested
+                ? "new"
+                : powerIsResume
+                  ? "resume"
+                  : powerIsConnect
+                    ? "connect"
+                    : "new"
+            }
           >
             {powerLabel}
           </button>

@@ -466,10 +466,18 @@ export function useCloudBrowserInteraction({
     return ((Math.abs(Math.trunc(pointerId)) || 1) % 32) + 1;
   }
 
+  function focusLocalInput() {
+    hiddenInputRef.current?.focus({ preventScroll: true });
+  }
+
   function focusRemoteWindow() {
     if (!driving || transportState !== "streaming") return;
+    // Remote focus is a separate wire mutation (executor windowactivate).
+    // Never emit it between pointer down and up — that sandwiches an extra
+    // windowactivate into a held native click and drops page focus before
+    // text.commit paste (V2-04/V2-05 empty Google search after takeover).
     sendMutation("focus", { focused: true });
-    hiddenInputRef.current?.focus({ preventScroll: true });
+    focusLocalInput();
   }
 
   function handlePointerDown(
@@ -504,7 +512,9 @@ export function useCloudBrowserInteraction({
       button,
       pointer_id: mappedPointerId,
     });
-    focusRemoteWindow();
+    // Local keyboard sink only. Executor pointer() already activates the
+    // Chrome window before mousedown; do not send focus here.
+    focusLocalInput();
   }
 
   function handlePointerMove(
@@ -557,6 +567,13 @@ export function useCloudBrowserInteraction({
     } catch {
       // Pointer may already have been released.
     }
+    if (event.type === "pointercancel") {
+      focusLocalInput();
+      return;
+    }
+    // After the click completes, arm remote focus for the following text
+    // path without interleaving windowactivate into the pointer chord.
+    focusRemoteWindow();
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
@@ -635,6 +652,9 @@ export function useCloudBrowserInteraction({
 
   function sendText(text: string, compositionId: string) {
     if (!text) return false;
+    // Ensure the native window is active before clipboard paste injection.
+    // Safe here: text commits never run between pointer down and up.
+    sendMutation("focus", { focused: true });
     return sendMutation("text.commit", {
       text,
       composition_id: compositionId,

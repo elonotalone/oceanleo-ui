@@ -362,12 +362,19 @@ const chromeModuleUrl = await compileComponent(
   },
 );
 const { CloudBrowserChrome } = await import(chromeModuleUrl);
+const powerPromptModuleUrl = await compileComponent(
+  "src/shell/cloud-browser-power-prompt.tsx",
+  {
+    "./cloud-browser-controls": controlsStubUrl,
+  },
+);
 const panelModuleUrl = await compileComponent(
   "src/shell/CloudBrowserPanel.tsx",
   {
     "./cloud-browser-chrome": chromeModuleUrl,
     "./cloud-browser-controls": controlsStubUrl,
     "./cloud-browser-interaction": interactionStubUrl,
+    "./cloud-browser-power-prompt": powerPromptModuleUrl,
     "./cloud-browser-transport": transportStubUrl,
     "./WorkspaceSession": workspaceStubUrl,
   },
@@ -696,6 +703,17 @@ test("session owner can hibernate a healthy stream while only viewing", async ()
         "[data-cloud-browser-lifecycle-notice]",
       ).textContent,
       /休眠/,
+    );
+    const resume = mounted.container.querySelector(
+      "[data-cloud-browser-resume]",
+    );
+    assert.ok(resume, "hibernated power prompt must expose 恢复");
+    assert.equal(resume.disabled, false);
+    assert.equal(resume.textContent.trim(), "恢复");
+    assert.equal(
+      mounted.container.querySelector("[data-cloud-browser-hibernate]"),
+      null,
+      "live chrome must leave after intentional hibernate",
     );
   } finally {
     await mounted.unmount();
