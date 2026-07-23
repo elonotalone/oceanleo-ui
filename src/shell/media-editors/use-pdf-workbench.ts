@@ -30,6 +30,7 @@ import {
   pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
+import { assertBlobSource } from "./source-integrity.mjs";
 import type { PdfWorkbenchState } from "./pdf-workbench-state";
 export type { PdfWorkbenchState } from "./pdf-workbench-state";
 import { usePdfPreviewRender } from "./use-pdf-preview-render";
@@ -391,6 +392,7 @@ export function usePdfWorkbench(
         return;
       }
       await runMutation(async (bytes) => {
+        await assertBlobSource(file, "pdf");
         const incoming = new Uint8Array(await file.arrayBuffer());
         const after = position === "after-current" ? pageNumber - 1 : undefined;
         const merged = await mergePdfBytes(bytes, incoming, after);

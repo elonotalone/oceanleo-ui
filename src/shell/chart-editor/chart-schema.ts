@@ -1,4 +1,9 @@
 export const CHART_DOCUMENT_SCHEMA = "oceanleo.chart.v1" as const;
+export const CHART_SOURCE_MAX_BYTES = 2_000_000;
+export const CHART_SOURCE_MAX_DEPTH = 32;
+export const CHART_SOURCE_MAX_NODES = 25_000;
+
+export type ChartStructuredSourceKind = "canonical" | "manifest-option";
 
 export type ChartSeriesType =
   | "bar"
@@ -100,12 +105,151 @@ const SERIES_TYPES = new Set<ChartSeriesType>([
   "radar",
   "funnel",
 ]);
-const MAX_SERIES = 20;
-const MAX_POINTS = 500;
-const MAX_DIMENSIONS = 32;
+export const CHART_MAX_SERIES = 20;
+export const CHART_MAX_POINTS = 500;
+export const CHART_MAX_DIMENSIONS = 32;
+
+const FORBIDDEN_OPTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+  "renderitem",
+]);
+const textEncoder = new TextEncoder();
+
+function unsafeOptionString(value: string, key: string): boolean {
+  const trimmed = value.trim();
+  const resourceField =
+    /(?:url|uri|href|link|src|image)$/i.test(key) ||
+    key.toLowerCase() === "symbol";
+  if (
+    /^(?:javascript|vbscript|file|blob):/i.test(trimmed) ||
+    /^data:(?:text\/html|application\/(?:xhtml\+xml|javascript)|image\/svg\+xml)/i.test(
+      trimmed,
+    ) ||
+    /^image:\/\/\s*(?:javascript|vbscript|file|data:(?:text\/html|image\/svg\+xml))/i.test(
+      trimmed,
+    ) ||
+    /url\(\s*['"]?\s*(?:javascript|vbscript|file|blob|https?):/i.test(trimmed) ||
+    (resourceField &&
+      /^(?:https?:|\/\/|image:\/\/\s*(?:https?:|\/\/))/i.test(trimmed))
+  ) {
+    return true;
+  }
+  return (
+    key.toLowerCase().endsWith("formatter") &&
+    /<\s*\/?\s*[a-z][^>]*>/i.test(value)
+  );
+}
+
+function assertChartDataOnly(
+  value: unknown,
+  options: { allowUndefined?: boolean } = {},
+): void {
+  let nodes = 0;
+  const ancestors = new Set<object>();
+  const visit = (entry: unknown, depth: number, key = ""): void => {
+    nodes += 1;
+    if (nodes > CHART_SOURCE_MAX_NODES) {
+      throw new Error(
+        `chart option exceeds ${CHART_SOURCE_MAX_NODES} data nodes`,
+      );
+    }
+    if (depth > CHART_SOURCE_MAX_DEPTH) {
+      throw new Error(
+        `chart option exceeds ${CHART_SOURCE_MAX_DEPTH} nesting levels`,
+      );
+    }
+    if (
+      entry === null ||
+      typeof entry === "boolean" ||
+      typeof entry === "number"
+    ) {
+      if (typeof entry === "number" && !Number.isFinite(entry)) {
+        throw new Error("chart option contains a non-finite number");
+      }
+      return;
+    }
+    if (typeof entry === "string") {
+      if (unsafeOptionString(entry, key)) {
+        throw new Error(`chart option contains unsafe executable content at ${key}`);
+      }
+      return;
+    }
+    if (entry === undefined && options.allowUndefined) return;
+    if (typeof entry !== "object") {
+      throw new Error("chart option must contain JSON data only");
+    }
+    if (ancestors.has(entry)) {
+      throw new Error("chart option contains a circular reference");
+    }
+    const prototype = Object.getPrototypeOf(entry);
+    if (
+      !Array.isArray(entry) &&
+      prototype !== Object.prototype &&
+      prototype !== null
+    ) {
+      throw new Error("chart option must contain plain JSON objects only");
+    }
+    ancestors.add(entry);
+    const descriptors = Object.getOwnPropertyDescriptors(entry);
+    if (Object.getOwnPropertySymbols(entry).length > 0) {
+      throw new Error("chart option contains symbol-keyed data");
+    }
+    if (Array.isArray(entry)) {
+      const elementKeys = Object.keys(descriptors).filter(
+        (childKey) => childKey !== "length",
+      );
+      if (
+        entry.length > CHART_SOURCE_MAX_NODES ||
+        elementKeys.length !== entry.length ||
+        elementKeys.some(
+          (childKey) =>
+            !/^(?:0|[1-9]\d*)$/.test(childKey) ||
+            Number(childKey) >= entry.length,
+        )
+      ) {
+        throw new Error("chart option arrays must be dense JSON arrays");
+      }
+    }
+    for (const [childKey, descriptor] of Object.entries(descriptors)) {
+      if (Array.isArray(entry) && childKey === "length") continue;
+      if (descriptor.get || descriptor.set) {
+        throw new Error(`chart option contains an accessor at ${childKey}`);
+      }
+      if (
+        FORBIDDEN_OPTION_KEYS.has(childKey.toLowerCase()) ||
+        /^on(?:click|load|error|mouse|key|touch|pointer|focus|blur|submit)/i.test(
+          childKey,
+        )
+      ) {
+        throw new Error(`chart option contains forbidden key: ${childKey}`);
+      }
+      visit(descriptor.value, depth + 1, childKey);
+    }
+    ancestors.delete(entry);
+  };
+  visit(value, 0);
+}
+
+function chartValueByteLength(value: unknown): number {
+  const encoded = JSON.stringify(value);
+  if (typeof encoded !== "string") {
+    throw new Error("chart option must be serializable JSON data");
+  }
+  return textEncoder.encode(encoded).byteLength;
+}
+
+function assertChartSourceSize(value: unknown): void {
+  if (chartValueByteLength(value) > CHART_SOURCE_MAX_BYTES) {
+    throw new Error("chart source exceeds the 2MB safety limit");
+  }
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null
     ? (value as Record<string, unknown>)
     : null;
 }
@@ -156,6 +300,9 @@ function normalizeAxis(
 ): ChartAxis {
   const axis = firstRecord(value);
   const rawData = Array.isArray(axis.data) ? axis.data : [];
+  if (rawData.length > CHART_MAX_POINTS) {
+    throw new Error(`chart axis exceeds ${CHART_MAX_POINTS} data points`);
+  }
   const axisTick = asRecord(axis.axisTick) || {};
   const axisLabel = asRecord(axis.axisLabel) || {};
   const splitLine = asRecord(axis.splitLine) || {};
@@ -170,10 +317,10 @@ function normalizeAxis(
       : fallbackType,
     name: boundedText(axis.name),
     show: axis.show !== false,
-    data: rawData.slice(0, MAX_POINTS).map((entry) => boundedText(entry, String(entry), 120)),
-    min,
-    max,
-    interval: interval !== undefined && interval > 0 ? interval : undefined,
+    data: rawData.map((entry) => boundedText(entry, String(entry), 120)),
+    ...(min !== undefined ? { min } : {}),
+    ...(max !== undefined ? { max } : {}),
+    ...(interval !== undefined && interval > 0 ? { interval } : {}),
     axisTick: { ...axisTick, show: axisTick.show !== false },
     axisLabel: {
       ...axisLabel,
@@ -196,10 +343,17 @@ function normalizeAxis(
   };
 }
 
-function normalizeDatum(value: unknown, index: number): ChartDatum {
-  if (Array.isArray(value)) {
-    return value.slice(0, MAX_DIMENSIONS).map(finiteNumber);
+function normalizeVector(value: unknown[]): number[] {
+  if (value.length > CHART_MAX_DIMENSIONS) {
+    throw new Error(
+      `chart data vector exceeds ${CHART_MAX_DIMENSIONS} dimensions`,
+    );
   }
+  return value.map(finiteNumber);
+}
+
+function normalizeDatum(value: unknown, index: number): ChartDatum {
+  if (Array.isArray(value)) return normalizeVector(value);
   const record = asRecord(value);
   if (record) {
     const rawValue = record.value;
@@ -207,7 +361,7 @@ function normalizeDatum(value: unknown, index: number): ChartDatum {
       ...record,
       name: boundedText(record.name, `数据 ${index + 1}`, 120),
       value: Array.isArray(rawValue)
-        ? rawValue.slice(0, MAX_DIMENSIONS).map(finiteNumber)
+        ? normalizeVector(rawValue)
         : finiteNumber(rawValue),
     };
   }
@@ -221,6 +375,11 @@ function normalizeSeries(value: unknown, index: number): ChartSeries {
   if (!SERIES_TYPES.has(type)) {
     throw new Error(`unsupported chart series type: ${type || "unknown"}`);
   }
+  if (Array.isArray(series.data) && series.data.length > CHART_MAX_POINTS) {
+    throw new Error(
+      `chart series ${index + 1} exceeds ${CHART_MAX_POINTS} data points`,
+    );
+  }
   const label = asRecord(series.label);
   const itemStyle = asRecord(series.itemStyle);
   const color =
@@ -232,9 +391,7 @@ function normalizeSeries(value: unknown, index: number): ChartSeries {
     id: safeId(series.id, `series-${index + 1}`),
     name: boundedText(series.name, `系列 ${index + 1}`, 120),
     type,
-    data: (Array.isArray(series.data) ? series.data : [])
-      .slice(0, MAX_POINTS)
-      .map(normalizeDatum),
+    data: (Array.isArray(series.data) ? series.data : []).map(normalizeDatum),
     ...(color
       ? { color, itemStyle: { ...(itemStyle || {}), color } }
       : {}),
@@ -281,8 +438,13 @@ function uniqueSeriesIds(series: ChartSeries[]): ChartSeries[] {
 }
 
 export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
+  assertChartDataOnly(value, { allowUndefined: true });
+  assertChartSourceSize(value);
   const root = asRecord(value);
   if (!root) throw new Error("chart JSON root must be an object");
+  if ("schema" in root && root.schema !== CHART_DOCUMENT_SCHEMA) {
+    throw new Error(`unsupported chart schema: ${String(root.schema || "missing")}`);
+  }
   const versioned = root.schema === CHART_DOCUMENT_SCHEMA;
   const optionCandidate =
     versioned
@@ -295,10 +457,15 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
   const tooltip = firstRecord(option.tooltip);
   const tooltipTextStyle = asRecord(tooltip.textStyle) || {};
   const rawColors = Array.isArray(option.color) ? option.color : [];
+  if (rawColors.length > CHART_MAX_SERIES) {
+    throw new Error(`chart palette exceeds ${CHART_MAX_SERIES} colors`);
+  }
+  const rawSeries = Array.isArray(option.series) ? option.series : [];
+  if (rawSeries.length > CHART_MAX_SERIES) {
+    throw new Error(`chart supports at most ${CHART_MAX_SERIES} series`);
+  }
   const series = uniqueSeriesIds(
-    (Array.isArray(option.series) ? option.series : [])
-      .slice(0, MAX_SERIES)
-      .map(normalizeSeries),
+    rawSeries.map(normalizeSeries),
   );
   if (!series.length) throw new Error("chart JSON must contain at least one series");
   const position =
@@ -307,7 +474,7 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
     legend.position === "right"
       ? legend.position
       : "top";
-  const colors = rawColors.map(colorValue).filter(Boolean).slice(0, MAX_SERIES);
+  const colors = rawColors.map(colorValue).filter(Boolean);
   return {
     ...(versioned ? root : {}),
     schema: CHART_DOCUMENT_SCHEMA,
@@ -369,18 +536,75 @@ export function normalizeChartDocument(value: unknown): ChartDocumentV1 {
   };
 }
 
-export function chartDocumentFromJson(json: string): ChartDocumentV1 {
+function structuredChartDocument(
+  value: unknown,
+  sourceKind: ChartStructuredSourceKind,
+): ChartDocumentV1 {
+  assertChartDataOnly(value);
+  assertChartSourceSize(value);
+  const root = asRecord(value);
+  if (!root) throw new Error("chart JSON root must be an object");
+  if (sourceKind === "canonical") {
+    if (root.schema !== CHART_DOCUMENT_SCHEMA) {
+      throw new Error(
+        `chart source must declare schema ${CHART_DOCUMENT_SCHEMA}`,
+      );
+    }
+  } else if (
+    root.schema !== undefined &&
+    root.schema !== CHART_DOCUMENT_SCHEMA
+  ) {
+    throw new Error(`unsupported chart schema: ${String(root.schema)}`);
+  }
+  if (
+    sourceKind === "manifest-option" &&
+    root.schema !== CHART_DOCUMENT_SCHEMA &&
+    asRecord(root.option)
+  ) {
+    throw new Error(
+      "chart-editor@1 option source must be the option object, not an unversioned wrapper",
+    );
+  }
+  return normalizeChartDocument(value);
+}
+
+export function chartDocumentFromStructuredValue(
+  value: unknown,
+  sourceKind: ChartStructuredSourceKind,
+): ChartDocumentV1 {
+  return structuredChartDocument(value, sourceKind);
+}
+
+export function chartDocumentFromJson(
+  json: string,
+  sourceKind: ChartStructuredSourceKind = "canonical",
+): ChartDocumentV1 {
+  const source = json.replace(/^\uFEFF/, "");
+  if (!source.trim()) throw new Error("chart source is empty");
+  if (textEncoder.encode(source).byteLength > CHART_SOURCE_MAX_BYTES) {
+    throw new Error("chart source exceeds the 2MB safety limit");
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = JSON.parse(source);
   } catch {
     throw new Error("chart source must be valid JSON; HTML/scripts are never evaluated");
   }
-  return normalizeChartDocument(parsed);
+  return structuredChartDocument(parsed, sourceKind);
+}
+
+export function chartDocumentFromManifestOptionJson(
+  json: string,
+): ChartDocumentV1 {
+  return chartDocumentFromJson(json, "manifest-option");
 }
 
 export function chartDocumentToJson(document: ChartDocumentV1): string {
-  return JSON.stringify(normalizeChartDocument(document), null, 2);
+  const json = JSON.stringify(normalizeChartDocument(document), null, 2);
+  if (textEncoder.encode(json).byteLength > CHART_SOURCE_MAX_BYTES) {
+    throw new Error("chart source exceeds the 2MB safety limit");
+  }
+  return json;
 }
 
 function cloneDocument(document: ChartDocumentV1): ChartDocumentV1 {
@@ -456,8 +680,8 @@ export function appendChartSeries(
   series: ChartSeries,
 ): ChartDocumentV1 {
   const next = cloneDocument(document);
-  if (next.option.series.length >= MAX_SERIES) {
-    throw new Error(`chart supports at most ${MAX_SERIES} series`);
+  if (next.option.series.length >= CHART_MAX_SERIES) {
+    throw new Error(`chart supports at most ${CHART_MAX_SERIES} series`);
   }
   next.option.series.push(normalizeSeries(series, next.option.series.length));
   return normalizeChartDocument(next);
@@ -471,8 +695,14 @@ export function replaceChartData(
     throw new Error("chart data table needs a header and at least one row");
   }
   const next = cloneDocument(document);
-  const header = table[0].slice(0, MAX_SERIES + 1);
-  const rows = table.slice(1, MAX_POINTS + 1);
+  if (table[0].length > CHART_MAX_SERIES + 1) {
+    throw new Error(`chart data supports at most ${CHART_MAX_SERIES} series`);
+  }
+  if (table.length > CHART_MAX_POINTS + 1) {
+    throw new Error(`chart data supports at most ${CHART_MAX_POINTS} rows`);
+  }
+  const header = table[0];
+  const rows = table.slice(1);
   next.option.xAxis = {
     ...next.option.xAxis,
     type: "category",
@@ -537,7 +767,9 @@ function chartDataDelimiter(source: string): "," | "\t" {
 }
 
 function parseChartDataRows(source: string): string[][] {
-  if (source.length > 2_000_000) throw new Error("CSV 超过 2MB 安全上限");
+  if (textEncoder.encode(source).byteLength > CHART_SOURCE_MAX_BYTES) {
+    throw new Error("CSV 超过 2MB 安全上限");
+  }
   const delimiter = chartDataDelimiter(source);
   const rows: string[][] = [];
   let row: string[] = [];
@@ -581,9 +813,8 @@ function parseChartDataRows(source: string): string[][] {
 
 export function chartDocumentFromCsv(csv: string): ChartDataTable {
   const rows = parseChartDataRows(csv.replace(/^\uFEFF/, ""))
-    .slice(0, MAX_POINTS + 1)
     .map((row) =>
-      row.slice(0, MAX_SERIES + 1).map((cell, index) => {
+      row.map((cell, index) => {
         // parseChartDataRows already removes CSV quoting and unescapes doubled
         // quotes. Stripping quote characters again would corrupt literal data.
         const trimmed = cell.trim();
@@ -594,5 +825,11 @@ export function chartDocumentFromCsv(csv: string): ChartDataTable {
       }),
     );
   if (rows.length < 2) throw new Error("CSV 至少需要标题行和一行数据");
+  if (rows.length > CHART_MAX_POINTS + 1) {
+    throw new Error(`CSV 超过 ${CHART_MAX_POINTS} 行数据安全上限`);
+  }
+  if (rows.some((row) => row.length > CHART_MAX_SERIES + 1)) {
+    throw new Error(`CSV 超过 ${CHART_MAX_SERIES} 个系列安全上限`);
+  }
   return rows;
 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   listCloudBrowserCheckpoints,
   listCloudBrowsers,
@@ -13,7 +20,17 @@ type SessionDataOptions = {
   effectiveTaskId: string;
   liveRequested: boolean;
   tt: UITranslate;
-  setError: (message: string) => void;
+  setError: Dispatch<SetStateAction<string>>;
+};
+
+type SessionSelectionOptions = {
+  sessions: ReadonlyArray<
+    Pick<CloudBrowserSession, "id" | "task_id">
+  >;
+  effectiveTaskId: string;
+  preferredId?: string;
+  currentId?: string;
+  keepCurrent?: boolean;
 };
 
 const CHECKPOINT_STATES = new Set([
@@ -24,6 +41,75 @@ const CHECKPOINT_STATES = new Set([
   "restored",
   "failed",
 ]);
+
+export function resolveCloudBrowserSessionSelection({
+  sessions,
+  effectiveTaskId,
+  preferredId = "",
+  currentId = "",
+  keepCurrent = false,
+}: SessionSelectionOptions): string {
+  if (
+    preferredId &&
+    sessions.some((item) => item.id === preferredId)
+  ) {
+    return preferredId;
+  }
+  if (
+    keepCurrent &&
+    currentId &&
+    sessions.some((item) => item.id === currentId)
+  ) {
+    return currentId;
+  }
+  if (effectiveTaskId) {
+    return (
+      sessions.find(
+        (item) => item.task_id === effectiveTaskId,
+      )?.id || ""
+    );
+  }
+  // Global history stays available in the history panel, but loading it must
+  // never make a session live or dismiss the explicit power-on state.
+  return "";
+}
+
+export function formatCloudBrowserLifecycleError(
+  result: { error?: string; status?: number },
+  fallback: string,
+): string {
+  const raw = String(result.error || "").trim();
+  if (raw.includes("BROWSER_NOT_CONFIGURED")) {
+    return `${fallback}: BROWSER_NOT_CONFIGURED`;
+  }
+  if (raw.includes("EXECUTOR_ORIGIN_REJECTED")) {
+    return `${fallback}: EXECUTOR_ORIGIN_REJECTED`;
+  }
+  if (result.status === 503) {
+    // The shared API client currently flattens structured FastAPI detail to
+    // "HTTP 503". Keep the two server-side configuration causes visible
+    // instead of presenting an unactionable generic failure.
+    return `${fallback}: BROWSER_NOT_CONFIGURED / EXECUTOR_ORIGIN_REJECTED`;
+  }
+  // Gateway details can contain executor paths, private hosts, or credentials.
+  // Only the public allowlisted codes above may cross into product copy.
+  return fallback;
+}
+
+export function cloudBrowserSessionNeedsResume(
+  session: CloudBrowserSession | null,
+): boolean {
+  if (!session) return false;
+  if (session.status === "hibernated" || session.status === "failed") {
+    return true;
+  }
+  if (!["active", "warm"].includes(session.status)) return true;
+  if (!session.runtime_id || session.incarnation <= 0) return true;
+  return Boolean(
+    session.runtime_state &&
+      session.runtime_state !== "ready",
+  );
+}
 
 function validCheckpoint(
   value: CloudBrowserCheckpoint,
@@ -85,10 +171,12 @@ export function useCloudBrowserSessionData({
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const [checkpointsError, setCheckpointsError] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
-  const taskScopeRef = useRef<string | null>(null);
+  const taskScopeRef = useRef(effectiveTaskId);
+  const selectionExplicitRef = useRef(false);
   const reloadGenerationRef = useRef(0);
   const checkpointGenerationRef = useRef(0);
   const selectedIdRef = useRef("");
+  const sessionLoadErrorRef = useRef("");
 
   const reload = useCallback(
     async (preferredId = "") => {
@@ -101,15 +189,31 @@ export function useCloudBrowserSessionData({
       ]);
       if (generation !== reloadGenerationRef.current) return;
       if (!recentResult.ok) {
-        setError(recentResult.error || tt("浏览记录加载失败"));
+        const message =
+          formatCloudBrowserLifecycleError(
+            recentResult,
+            tt("浏览记录加载失败"),
+          );
+        sessionLoadErrorRef.current = message;
+        setError(message);
         return;
       }
       if (effectiveTaskId && taskResult && !taskResult.ok) {
-        setError(
-          taskResult.error || tt("当前任务的浏览记录加载失败"),
-        );
+        const message =
+          formatCloudBrowserLifecycleError(
+            taskResult,
+            tt("当前任务的浏览记录加载失败"),
+          );
+        sessionLoadErrorRef.current = message;
+        setError(message);
       } else {
-        setError("");
+        const previous = sessionLoadErrorRef.current;
+        sessionLoadErrorRef.current = "";
+        if (previous) {
+          setError((current) =>
+            current === previous ? "" : current,
+          );
+        }
       }
       const recent = recentResult.data?.items || [];
       const scoped = taskResult?.ok ? taskResult.data?.items || [] : [];
@@ -122,34 +226,15 @@ export function useCloudBrowserSessionData({
             ),
         ),
       ];
-      const scopeChanged = taskScopeRef.current !== effectiveTaskId;
-      taskScopeRef.current = effectiveTaskId;
       setSessions(items);
       setSelectedId((current) => {
-        let next = "";
-        if (
-          preferredId &&
-          items.some((item) => item.id === preferredId)
-        ) {
-          next = preferredId;
-        } else {
-          const taskSession = items.find(
-            (item) =>
-              effectiveTaskId && item.task_id === effectiveTaskId,
-          );
-          if (scopeChanged && effectiveTaskId) {
-            next = taskSession?.id || "";
-          } else if (
-            current &&
-            items.some((item) => item.id === current)
-          ) {
-            next = current;
-          } else if (taskSession) {
-            next = taskSession.id;
-          } else {
-            next = items[0]?.id || "";
-          }
-        }
+        const next = resolveCloudBrowserSessionSelection({
+          sessions: items,
+          effectiveTaskId,
+          preferredId,
+          currentId: current,
+          keepCurrent: selectionExplicitRef.current,
+        });
         selectedIdRef.current = next;
         return next;
       });
@@ -170,7 +255,10 @@ export function useCloudBrowserSessionData({
     setCheckpointsLoading(false);
     if (!result.ok) {
       setCheckpointsError(
-        result.error || tt("会话快照加载失败"),
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("会话快照加载失败"),
+        ),
       );
       return;
     }
@@ -192,6 +280,15 @@ export function useCloudBrowserSessionData({
   }, [selectedId]);
 
   useEffect(() => {
+    if (taskScopeRef.current === effectiveTaskId) return;
+    taskScopeRef.current = effectiveTaskId;
+    selectionExplicitRef.current = false;
+    selectedIdRef.current = "";
+    ++reloadGenerationRef.current;
+    setSelectedId("");
+  }, [effectiveTaskId]);
+
+  useEffect(() => {
     if (liveRequested) return;
     void reload();
     const timer = window.setInterval(() => void reload(), 5_000);
@@ -208,11 +305,13 @@ export function useCloudBrowserSessionData({
   }, [refreshCheckpoints, selectedId]);
 
   const chooseSession = useCallback((sessionId: string) => {
+    selectionExplicitRef.current = true;
     selectedIdRef.current = sessionId;
     setSelectedId(sessionId);
   }, []);
 
   const upsertSession = useCallback((session: CloudBrowserSession) => {
+    selectionExplicitRef.current = true;
     setSessions((current) => [
       session,
       ...current.filter((item) => item.id !== session.id),
@@ -222,6 +321,7 @@ export function useCloudBrowserSessionData({
   }, []);
 
   const clearSelection = useCallback(() => {
+    selectionExplicitRef.current = false;
     selectedIdRef.current = "";
     setSelectedId("");
   }, []);

@@ -10,6 +10,7 @@ import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
 import { useRichDocEditor } from "../doc-editors/use-rich-doc-editor";
+import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -25,7 +26,12 @@ export function RichDocRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = useRichDocEditor(item, siteId);
+  const officeSource = useOfficeArtifactSource(item);
+  const editor = useRichDocEditor(
+    officeSource.item,
+    siteId,
+    officeSource.resourceFailed,
+  );
   const [exportError, setExportError] = useState("");
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
@@ -151,6 +157,15 @@ export function RichDocRoute({
           onTrigger: editor.exportDoc,
         },
         actions: [
+          ...(editor.error || officeSource.error
+            ? [
+                {
+                  id: "richdoc-refresh-office-source",
+                  label: "刷新 source/full 后重试",
+                  onTrigger: officeSource.retry,
+                },
+              ]
+            : []),
           {
             id: "richdoc-export-markdown",
             label: "导出 Markdown",
@@ -179,8 +194,11 @@ export function RichDocRoute({
         stage: <RichDocStage editor={editor} accent={accent} />,
         status:
           exportError ||
+          (!item.meta.editor_project_url &&
+            Boolean(item.url || item.artifactId) &&
+            officeSource.error) ||
           editor.error ||
-          (editor.loading ? "正在载入文档" : ""),
+          (editor.loading || officeSource.loading ? "正在载入文档" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

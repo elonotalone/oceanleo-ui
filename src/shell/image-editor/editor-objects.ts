@@ -35,6 +35,7 @@ import {
   imageLockInteractionProps,
 } from "./image-mutation-policy";
 import { exportFrozenImageDocument } from "./image-document-contract";
+import type { ImageSceneDependency } from "./image-scene-source";
 
 export type FabricNS = typeof import("fabric");
 
@@ -53,6 +54,8 @@ export interface EditorObjectProps {
   oceanleoTableRow?: number;
   oceanleoTableColumn?: number;
   oceanleoTablePart?: "cell" | "text";
+  /** Durable, content-addressed source for every external image layer. */
+  oceanleoDependency?: ImageSceneDependency;
 }
 
 export type EditorObject = FabricObject & EditorObjectProps;
@@ -72,6 +75,7 @@ export const SNAPSHOT_PROPS = [
   "oceanleoTableRow",
   "oceanleoTableColumn",
   "oceanleoTablePart",
+  "oceanleoDependency",
 ];
 
 export function makeId(): string {
@@ -142,11 +146,33 @@ export function centerOrigin(obj: FabricObject): void {
   obj.setCoords();
 }
 
+export function setEditorObjectId(
+  obj: FabricObject,
+  id = makeId(),
+): EditorObject {
+  const target = obj as EditorObject;
+  target.oceanleoId = id;
+  if (target.oceanleoDependency) {
+    target.oceanleoDependency = { ...target.oceanleoDependency, id };
+  }
+  return target;
+}
+
 export function tagObject(obj: FabricObject, kind?: string): EditorObject {
   const target = obj as EditorObject;
-  if (!target.oceanleoId) target.oceanleoId = makeId();
+  if (!target.oceanleoId) setEditorObjectId(target);
   if (kind) target.oceanleoKind = kind;
   return target;
+}
+
+export function tagImageDependency(
+  image: FabricImage,
+  dependency: Omit<ImageSceneDependency, "id">,
+): void {
+  const target = image as EditorObject;
+  const id = target.oceanleoId || makeId();
+  setEditorObjectId(target, id);
+  target.oceanleoDependency = { ...dependency, id };
 }
 
 export function setLocked(obj: EditorObject, locked: boolean): void {

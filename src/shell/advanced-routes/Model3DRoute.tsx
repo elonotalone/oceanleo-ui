@@ -12,6 +12,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { threeDSubtypeFor } from "../library-data";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
   Model3DControls,
@@ -22,6 +23,8 @@ import {
   captureModel3DRouteSnapshot,
   Model3DRouteHistory,
 } from "../media-editors/Model3DRouteHistory";
+import { isModel3DSourceItem } from "../media-editors/model3d-workbench-defaults";
+import { assertBlobSource } from "../media-editors/source-integrity.mjs";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -59,6 +62,7 @@ function useModel3DDocumentHistory(
       editor.shadowEnabled,
       editor.shadowIntensity,
       editor.shadowSoftness,
+      editor.sourceProvenance,
       editor.sourceUrl,
       editor.zoom,
     ],
@@ -135,7 +139,28 @@ function useModel3DDocumentHistory(
   };
 }
 
-export function Model3DRoute({
+export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
+  const subtype = threeDSubtypeFor(props.item);
+  if (!isModel3DSourceItem(props.item)) {
+    return (
+      <div
+        role="alert"
+        className="grid h-full min-h-[320px] place-items-center bg-[var(--surface,#f5f5f4)] p-6"
+      >
+        <div className="max-w-md rounded-xl border border-amber-200 bg-[var(--card,#fff)] p-5 text-center text-sm text-amber-700">
+          {subtype === "hdri"
+            ? "HDRI 是环境光照素材，不能作为 3D 模型加载。"
+            : subtype === "texture"
+              ? "纹理是模型贴图素材，不能作为 3D 模型加载。"
+              : "这个条目没有可验证的 GLB 或 glTF 2.x 模型源。"}
+        </div>
+      </div>
+    );
+  }
+  return <Model3DModelRoute {...props} />;
+}
+
+function Model3DModelRoute({
   item,
   previewContent,
   linkUrl,
@@ -157,32 +182,31 @@ export function Model3DRoute({
       actions: ["replace"],
       accepts: (material) => {
         const url = material.url || material.previewUrl || "";
-        const format = String(material.meta.format || "").toLowerCase();
-        return (
-          material.kind === "threed" ||
-          ["glb", "gltf"].includes(format) ||
-          /\.(?:glb|gltf)(?:$|[?#])/i.test(url)
-        );
+        return Boolean(url) && isModel3DSourceItem(material);
       },
       mutate: async (_action, material) => {
         const url = material.url || material.previewUrl || "";
         if (!url) throw new Error("这个 3D 素材没有可用地址。");
-        const extension =
-          String(material.meta.format || "").toLowerCase() ||
-          url.split(/[?#]/)[0].split(".").pop() ||
-          "glb";
-        if (extension === "gltf") {
-          // Keep the remote directory as one dependency closure. Turning only
-          // the JSON entrypoint into a local File severs its .bin/textures.
-          editor.openModelUrl(url);
-          return;
+        if (!isModel3DSourceItem(material)) {
+          throw new Error("只有真实 GLB 或 glTF 模型可替换当前场景；HDRI/纹理已拒绝。");
         }
         const blob = await fetchMediaBlob(url, {
           maxBytes: 256 * 1024 * 1024,
         });
+        const actualFormat = await assertBlobSource(blob, "model3d");
+        if (actualFormat !== "glb" && actualFormat !== "gltf") {
+          throw new Error("3D 素材内容无法识别为 GLB/glTF。");
+        }
+        const extension = actualFormat;
+        if (actualFormat === "gltf") {
+          // Keep the remote directory as one dependency closure. Turning only
+          // the JSON entrypoint into a local File severs its .bin/textures.
+          editor.openModelUrl(url, actualFormat);
+          return;
+        }
         await editor.importModel(
           new File([blob], `${material.title || "model"}.${extension}`, {
-            type: blob.type || "model/gltf-binary",
+            type: "model/gltf-binary",
           }),
         );
       },
@@ -196,14 +220,28 @@ export function Model3DRoute({
       versionId: string;
       projectUrl: string;
       projectSchema: string;
+      sourceFormat: "" | "glb" | "gltf";
+      sourceProvenance: {
+        sourceUrl: string;
+        dependencyBaseUrl: string;
+        format: "" | "glb" | "gltf";
+        identity: string;
+      };
     }) =>
       advancedSavedItem(item, {
         url: saved.url,
         versionId: saved.versionId,
         meta: {
           editor: "three-gltf-editor-v2",
-          format: "glb",
+          format: saved.sourceFormat || editor.sourceFormat || "glb",
+          mime:
+            (saved.sourceFormat || editor.sourceFormat) === "gltf"
+              ? "model/gltf+json"
+              : "model/gltf-binary",
           model_source_url: saved.url,
+          model_dependency_base_url:
+            saved.sourceProvenance.dependencyBaseUrl || saved.url,
+          model_source_identity: saved.sourceProvenance.identity,
           model_dependency_mode: "checkpoint-glb+operation-journal",
           journal_count: editor.operationCount,
           editor_project_url: saved.projectUrl,
@@ -243,6 +281,7 @@ export function Model3DRoute({
       editor.shadowEnabled,
       editor.shadowIntensity,
       editor.shadowSoftness,
+      editor.sourceFormat,
       editor.zoom,
       item,
     ],

@@ -1,6 +1,10 @@
 import type { RefCallback } from "react";
-import type { PersistedEditorVersion } from "../doc-editors/doc-io";
 import type { Model3DOperation } from "./model3d-operations.mjs";
+import type {
+  Model3DSourceFormat,
+  Model3DSourceProvenance,
+  PersistedModel3DVersion,
+} from "./model3d-project";
 import type {
   Model3DAnnotation,
 } from "./model3d-view";
@@ -17,6 +21,8 @@ export interface Model3DWorkbenchState {
   canvasRef: RefCallback<HTMLCanvasElement>;
   title: string;
   sourceUrl: string;
+  sourceFormat: Model3DSourceFormat;
+  sourceProvenance: Model3DSourceProvenance;
   posterUrl: string;
   runtimeReady: boolean;
   modelLoaded: boolean;
@@ -122,10 +128,10 @@ export interface Model3DWorkbenchState {
   updateSelectedAnnotation: (patch: Partial<Model3DAnnotation>) => void;
   deleteSelectedAnnotation: () => void;
   importModel: (file: File) => Promise<void>;
-  openModelUrl: (url: string) => void;
+  openModelUrl: (url: string, format?: Model3DSourceFormat) => void;
   downloadScreenshot: () => Promise<void>;
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;
-  saveCopy: () => Promise<PersistedEditorVersion | null>;
+  saveCopy: () => Promise<PersistedModel3DVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
 }

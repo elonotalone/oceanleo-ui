@@ -9,7 +9,6 @@ import { useUI } from "../../i18n/ui/useUI";
 import {
   fetchOfficeConfig,
   loadOfficeScript,
-  officeExtensionOf,
   officeKindForExtension,
 } from "../../lib/office-client";
 import {
@@ -18,7 +17,17 @@ import {
   type MediaType,
 } from "../../lib/database";
 import { importMediaUrl } from "../../lib/media-proxy";
-import type { LibraryItem } from "../library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
+import { officeExtensionForItem } from "../workbench-routes";
+import {
+  fetchValidatedOfficePackage,
+  isOfficeAccessDeniedError,
+  officePackageKindForItem,
+} from "../doc-editors/office-file";
+import { useOfficeArtifactSource } from "./useOfficeArtifactSource";
 
 function officeMediaType(kind: "document" | "sheet" | "ppt"): MediaType {
   if (kind === "ppt") return "ppt";
@@ -52,6 +61,8 @@ export function useOfficeWorkbench(
   onCloseApproved?: () => void,
 ) {
   const tt = useUI();
+  const source = useOfficeArtifactSource(item);
+  const sourceItem = source.item;
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [saveCount, setSaveCount] = useState(0);
@@ -67,8 +78,8 @@ export function useOfficeWorkbench(
     `oo-host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   );
 
-  const url = item.url || "";
-  const extension = officeExtensionOf(url);
+  const url = source.url || sourceItem.url || "";
+  const extension = officeExtensionForItem(sourceItem);
   const officeKind = officeKindForExtension(extension);
   const resolveSavedItem = useCallback(
     async (notBefore = 0): Promise<LibraryItem | null> => {
@@ -128,8 +139,21 @@ export function useOfficeWorkbench(
     setState("loading");
     setError("");
     try {
-      if (!url) throw new Error(tt("这个素材没有可编辑的文件地址"));
+      if (!url) {
+        throw new Error(
+          source.error ||
+            tt("这个素材没有可编辑的 source/full 文件地址，请刷新安全地址或打开原文件诊断"),
+        );
+      }
       if (!extension) throw new Error(tt("此文件类型不支持 Office 编辑"));
+      const packageKind = officePackageKindForItem(sourceItem);
+      if (packageKind) {
+        await fetchValidatedOfficePackage(url, packageKind, {
+          maxBytes: 96 * 1024 * 1024,
+          onAccessDenied: source.resourceFailed,
+        });
+        if (generation !== mountGenerationRef.current) return;
+      }
       let effectiveUrl = url;
       let result = await fetchOfficeConfig({
         url: effectiveUrl,
@@ -139,6 +163,9 @@ export function useOfficeWorkbench(
         itemId: item.id,
       });
       if (generation !== mountGenerationRef.current) return;
+      if (!result.ok && isOfficeAccessDeniedError(result.error)) {
+        source.resourceFailed();
+      }
       if (!result.ok && result.error?.includes("必须先保存到我的库")) {
         effectiveUrl = await importMediaUrl(url, {
           kind: "file",
@@ -228,11 +255,20 @@ export function useOfficeWorkbench(
     item.title,
     officeKind,
     siteId,
+    source.error,
+    source.resourceFailed,
+    source.version,
+    sourceItem,
     tt,
     url,
   ]);
 
   useEffect(() => {
+    if (source.loading) {
+      setState("loading");
+      setError("");
+      return;
+    }
     void mount();
     return () => {
       mountGenerationRef.current += 1;
@@ -243,7 +279,7 @@ export function useOfficeWorkbench(
       editorRef.current?.destroyEditor();
       editorRef.current = null;
     };
-  }, [mount]);
+  }, [mount, source.loading, url]);
 
   useEffect(() => {
     if (saveCount <= 0) return;
@@ -256,6 +292,8 @@ export function useOfficeWorkbench(
     state,
     error,
     extension,
+    sourceUrl: url,
+    sourcePurpose: source.purpose,
     hostId: hostIdRef.current,
     saveCount,
     editRevision,
@@ -273,7 +311,10 @@ export function useOfficeWorkbench(
         onCloseApprovedRef.current?.();
       }
     },
-    retry: mount,
+    retry: () => {
+      source.retry();
+      if (!isDurableLibraryItem(item)) void mount();
+    },
     noteSaved: () => setSaveCount((value) => value + 1),
     waitForSave: async (): Promise<LibraryItem | null> => {
       const startedAt = Date.now();
@@ -331,8 +372,18 @@ export function OfficeControls({
             className="w-full rounded-xl px-3 py-2 text-[12px] font-semibold text-white"
             style={{ background: accent }}
           >
-            {tt("重试")}
+            {tt("刷新安全地址并重试")}
           </button>
+          {editor.sourceUrl && (
+            <a
+              href={editor.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2 text-center text-[12px] font-semibold text-[var(--fg-2,#57534e)]"
+            >
+              {tt("打开原文件")}
+            </a>
+          )}
         </div>
       )}
       <p className="text-[11px] text-[var(--muted,#78716c)]">
@@ -354,8 +405,32 @@ export function OfficeStage({ editor }: { editor: OfficeWorkbenchEditor }) {
         </div>
       )}
       {editor.state === "error" && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)] text-[13px] text-red-600">
-          {editor.error}
+        <div
+          className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)] px-6"
+          role="alert"
+        >
+          <div className="max-w-xl space-y-3 text-center text-[13px]">
+            <p className="leading-relaxed text-red-600">{editor.error}</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => void editor.retry()}
+                className="rounded-lg bg-[var(--fg,#292524)] px-3 py-2 font-semibold text-white"
+              >
+                {tt("刷新安全地址并重试")}
+              </button>
+              {editor.sourceUrl && (
+                <a
+                  href={editor.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-[var(--border,#e7e5e4)] px-3 py-2 font-semibold text-[var(--fg-2,#57534e)]"
+                >
+                  {tt("打开原文件")}
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
       {/* OnlyOffice replaces this div with its iframe. */}

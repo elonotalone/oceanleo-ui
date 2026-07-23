@@ -11,12 +11,25 @@ import { aiEditImage } from "../../lib/image-ai-edit";
 import { uploadFile } from "../../lib/database";
 import {
   canvasSafeUrl,
+  fetchMediaBlob,
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { advancedEditorSourceFor } from "../advanced-features";
-import type { LibraryItem } from "../library-data";
-import { loadImageObject, type FabricNS } from "./editor-objects";
+import { refreshArtifactRendition } from "../artifact-client";
+import {
+  renditionNeedsRefresh,
+  type ArtifactRendition,
+} from "../artifact-contract";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
+import {
+  loadImageObject,
+  tagImageDependency,
+  type FabricNS,
+} from "./editor-objects";
 import { exportDocBlob } from "./editor-objects";
 import {
   clearLocalImageDraft,
@@ -24,12 +37,28 @@ import {
   downloadImageBlob,
   loadLocalImageDraft,
   parseFabricImageProject,
+  persistCompositeImageProject,
   persistImageProject,
   saveLocalImageDraft,
 } from "./editor-persistence";
 import { FabricEditorController } from "./fabric-controller";
 import type { FabricControllerView } from "./fabric-controller-core";
 import { normalizeEditorSnapshot } from "./editor-runtime";
+import {
+  IMAGE_SCENE_SOURCE_FORMAT,
+  IMAGE_SCENE_SOURCE_SCHEMA,
+  ImageSceneSourceError,
+  assertImageDependencyAccess,
+  artifactSceneClosureDigest,
+  imageDependencyNeedsRefresh,
+  imageSceneDependencyRevisionIds,
+  imageSceneWithResolvedDependencies,
+  isLikelyExpiringUrl,
+  parseImageSceneSource,
+  sha256Blob,
+  sha256Text,
+  type ImageSceneDependency,
+} from "./image-scene-source";
 import {
   INITIAL_FILTERS,
   type CanvasClientPoint,
@@ -71,13 +100,45 @@ function imageDocumentSize(image: FabricImage): {
   };
 }
 
-async function canvasImageUrl(
+type ImageDependencySeed = Omit<ImageSceneDependency, "id">;
+
+function renditionDependencyFor(
+  item: LibraryItem,
+  url: string,
+): ImageDependencySeed | null {
+  if (!isDurableLibraryItem(item)) return null;
+  const rendition = Object.values(item.artifact.renditions).find(
+    (candidate) =>
+      candidate?.url === url &&
+      candidate.digest &&
+      candidate.purpose !== "editor_manifest",
+  );
+  if (!rendition?.digest || rendition.purpose === "editor_manifest") return null;
+  return {
+    kind: "image",
+    required: true,
+    url,
+    digest: rendition.digest.toLowerCase().replace(/^sha256:/, ""),
+    artifactId: item.artifactId,
+    revisionId: item.revisionId,
+    renditionPurpose: rendition.purpose,
+    expiresAt: rendition.expiresAt,
+  };
+}
+
+async function canvasImageSource(
   source: string,
   siteId: string,
   title: string,
-): Promise<string> {
-  if (source.startsWith("data:") || source.startsWith("blob:")) return source;
-  const durable = isFirstPartyMediaUrl(source)
+  evidence?: ImageDependencySeed | null,
+): Promise<{ canvasUrl: string; dependency: ImageDependencySeed | null }> {
+  if (source.startsWith("data:") || source.startsWith("blob:")) {
+    return { canvasUrl: source, dependency: null };
+  }
+  const shouldImport =
+    !isFirstPartyMediaUrl(source) ||
+    (isLikelyExpiringUrl(source) && !evidence?.artifactId);
+  const durable = !shouldImport
     ? source
     : await importMediaUrl(source, {
         kind: "image",
@@ -85,7 +146,30 @@ async function canvasImageUrl(
         title,
         registerAsset: false,
       });
-  return canvasSafeUrl(durable);
+  const digest =
+    evidence?.digest ||
+    (await sha256Blob(
+      await fetchMediaBlob(durable, { maxBytes: 80 * 1024 * 1024 }),
+    ));
+  const dependency: ImageDependencySeed = {
+    kind: "image",
+    required: true,
+    url: durable,
+    digest,
+    ...(evidence?.artifactId && evidence.revisionId
+      ? {
+          artifactId: evidence.artifactId,
+          revisionId: evidence.revisionId,
+        }
+      : {}),
+    ...(evidence?.renditionPurpose
+      ? { renditionPurpose: evidence.renditionPurpose }
+      : {}),
+    ...(evidence?.expiresAt !== undefined
+      ? { expiresAt: evidence.expiresAt }
+      : {}),
+  };
+  return { canvasUrl: canvasSafeUrl(durable), dependency };
 }
 
 async function loadEditableImageProject(
@@ -138,6 +222,279 @@ async function loadEditableImageProject(
   );
 }
 
+function sameRevisionIds(left: readonly string[], right: readonly string[]) {
+  const first = [...new Set(left)].sort();
+  const second = [...new Set(right)].sort();
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
+async function refreshSceneRendition(
+  dependency: ImageSceneDependency,
+  signal: AbortSignal,
+): Promise<ImageSceneDependency> {
+  if (!dependency.artifactId || !dependency.revisionId) {
+    throw new ImageSceneSourceError(
+      "expired-dependency",
+      `图层依赖 ${dependency.id} 的 URL 已过期，且没有可刷新的 artifact/revision identity。`,
+      dependency.id,
+    );
+  }
+  const purpose = dependency.renditionPurpose || "full";
+  const refreshed = await refreshArtifactRendition(
+    {
+      artifactId: dependency.artifactId,
+      revisionId: dependency.revisionId,
+    },
+    purpose,
+    signal,
+  );
+  const rendition = refreshed.data;
+  if (
+    !refreshed.ok ||
+    !rendition ||
+    rendition.revisionId !== dependency.revisionId ||
+    rendition.digest?.toLowerCase().replace(/^sha256:/, "") !==
+      dependency.digest
+  ) {
+    throw new ImageSceneSourceError(
+      "dependency-digest-mismatch",
+      `图层依赖 ${dependency.id} 刷新后没有固定到原 revision/digest。`,
+      dependency.id,
+    );
+  }
+  return {
+    ...dependency,
+    url: rendition.url,
+    expiresAt: rendition.expiresAt,
+    renditionPurpose: purpose,
+  };
+}
+
+async function resolveSceneDependency(
+  dependency: ImageSceneDependency,
+  signal: AbortSignal,
+): Promise<{
+  dependency: ImageSceneDependency;
+  canvasUrl: string;
+}> {
+  let resolved = dependency;
+  let refreshed = false;
+  if (imageDependencyNeedsRefresh(resolved)) {
+    resolved = await refreshSceneRendition(resolved, signal);
+    refreshed = true;
+  }
+  assertImageDependencyAccess(resolved, isFirstPartyMediaUrl);
+  let blob: Blob;
+  try {
+    blob = await fetchMediaBlob(resolved.url, {
+      maxBytes: 80 * 1024 * 1024,
+      signal,
+    });
+  } catch (caught) {
+    if (!refreshed && resolved.artifactId && resolved.revisionId) {
+      resolved = await refreshSceneRendition(resolved, signal);
+      blob = await fetchMediaBlob(resolved.url, {
+        maxBytes: 80 * 1024 * 1024,
+        signal,
+      });
+    } else {
+      throw new ImageSceneSourceError(
+        imageDependencyNeedsRefresh(resolved)
+          ? "expired-dependency"
+          : "dependency-unavailable",
+        `图层依赖 ${resolved.id} 无法读取：${
+          caught instanceof Error ? caught.message : "未知错误"
+        }`,
+        resolved.id,
+      );
+    }
+  }
+  if ((await sha256Blob(blob)) !== resolved.digest) {
+    throw new ImageSceneSourceError(
+      "dependency-digest-mismatch",
+      `图层依赖 ${resolved.id} 的实际字节与 scene digest 不一致。`,
+      resolved.id,
+    );
+  }
+  return {
+    dependency: resolved,
+    canvasUrl: canvasSafeUrl(resolved.url),
+  };
+}
+
+async function fetchPinnedSceneSource(
+  item: LibraryItem,
+  signal: AbortSignal,
+): Promise<{
+  text: string;
+  rendition: ArtifactRendition;
+  digest: string;
+}> {
+  if (
+    !isDurableLibraryItem(item) ||
+    item.artifactType !== "composite_image" ||
+    item.artifact.artifactType !== "composite_image" ||
+    item.artifact.sourceFormat !== IMAGE_SCENE_SOURCE_FORMAT ||
+    !item.artifact.integrity.ok ||
+    item.artifact.scene?.schema !== IMAGE_SCENE_SOURCE_SCHEMA ||
+    item.artifact.scene.sceneRevisionId !== item.revisionId ||
+    item.artifact.scene.closureStatus !== "complete"
+  ) {
+    throw new ImageSceneSourceError(
+      "invalid-scene",
+      "复合图片缺少 durable artifact/revision identity。",
+    );
+  }
+  const pinned = item.artifact.renditions.source;
+  if (
+    !pinned ||
+    pinned.revisionId !== item.revisionId ||
+    !pinned.digest ||
+    !pinned.url
+  ) {
+    throw new ImageSceneSourceError(
+      "missing-dependency",
+      "复合图片当前 revision 缺少 source rendition/digest。",
+    );
+  }
+  let rendition = pinned;
+  let refreshed = false;
+  const assertSourceUrl = (url: string) => {
+    if (!isFirstPartyMediaUrl(url)) {
+      throw new ImageSceneSourceError(
+        "cross-origin-dependency",
+        "复合图片 scene source 指向未托管的跨域资源。",
+      );
+    }
+  };
+  const refresh = async () => {
+    const result = await refreshArtifactRendition(
+      { artifactId: item.artifactId, revisionId: item.revisionId },
+      "source",
+      signal,
+    );
+    if (
+      !result.ok ||
+      !result.data ||
+      result.data.revisionId !== item.revisionId ||
+      result.data.digest?.toLowerCase().replace(/^sha256:/, "") !==
+        pinned.digest?.toLowerCase().replace(/^sha256:/, "")
+    ) {
+      throw new ImageSceneSourceError(
+        "revision-digest-mismatch",
+        "刷新后的复合图片 source 没有固定到原 revision/digest。",
+      );
+    }
+    rendition = result.data;
+    assertSourceUrl(rendition.url);
+    refreshed = true;
+  };
+  assertSourceUrl(rendition.url);
+  if (renditionNeedsRefresh(rendition)) await refresh();
+  let response = await fetch(rendition.url, {
+    signal,
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok && !refreshed && [401, 403, 404].includes(response.status)) {
+    await refresh();
+    response = await fetch(rendition.url, {
+      signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+  }
+  if (!response.ok) {
+    throw new ImageSceneSourceError(
+      renditionNeedsRefresh(rendition)
+        ? "expired-dependency"
+        : "dependency-unavailable",
+      `复合图片 scene source 读取失败（HTTP ${response.status}）。`,
+    );
+  }
+  const text = await response.text();
+  if (!text || new TextEncoder().encode(text).byteLength > 5_000_000) {
+    throw new ImageSceneSourceError(
+      "invalid-scene",
+      "复合图片 scene 为空或超过 5MB 安全上限。",
+    );
+  }
+  const digest = await sha256Text(text);
+  if (
+    digest !== pinned.digest.toLowerCase().replace(/^sha256:/, "") ||
+    digest !== rendition.digest?.toLowerCase().replace(/^sha256:/, "")
+  ) {
+    throw new ImageSceneSourceError(
+      "revision-digest-mismatch",
+      "复合图片 scene source 字节与 revision digest 不一致。",
+    );
+  }
+  return { text, rendition, digest };
+}
+
+async function loadCompositeImageScene(
+  item: LibraryItem,
+  signal: AbortSignal,
+) {
+  const fetched = await fetchPinnedSceneSource(item, signal);
+  const source = await parseImageSceneSource(fetched.text);
+  if (
+    !isDurableLibraryItem(item) ||
+    source.baseArtifact.artifactId !== item.artifactId
+  ) {
+    throw new ImageSceneSourceError(
+      "revision-mismatch",
+      "复合图片 scene 的 artifact root 与打开目标不一致。",
+    );
+  }
+  const dependencyRevisionIds = imageSceneDependencyRevisionIds(source);
+  const expectedSceneClosure = await artifactSceneClosureDigest(fetched.digest);
+  if (
+    !item.artifact.scene ||
+    item.artifact.scene.sceneRevisionId !== item.revisionId ||
+    item.artifact.scene.closureDigest
+      ?.toLowerCase()
+      .replace(/^sha256:/, "") !== expectedSceneClosure ||
+    !sameRevisionIds(
+      item.artifact.scene.dependencyRevisionIds,
+      dependencyRevisionIds,
+    )
+  ) {
+    throw new ImageSceneSourceError(
+      "revision-digest-mismatch",
+      "复合图片 projection 的 scene revision/closure 与 source 不一致。",
+    );
+  }
+  const dependencies: ImageSceneDependency[] = [];
+  const canvasUrls = new Map<string, string>();
+  for (const dependency of source.dependencyClosure.dependencies) {
+    const resolved = await resolveSceneDependency(dependency, signal);
+    dependencies.push(resolved.dependency);
+    canvasUrls.set(dependency.id, resolved.canvasUrl);
+  }
+  return {
+    snapshot: imageSceneWithResolvedDependencies(
+      source,
+      dependencies,
+      canvasUrls,
+    ),
+    updatedAt: source.updatedAt,
+    revision: source.revision,
+    revisionDigest: source.revisionDigest,
+  };
+}
+
+function imageArtifactInputIdentity(item: LibraryItem): string {
+  return isDurableLibraryItem(item)
+    ? `${item.key}:${item.artifactId}:${item.revisionId}`
+    : `${item.key}:${item.id}:${String(
+        item.meta.editor_version_id || item.url || "",
+      )}`;
+}
+
 export function useFabricImageEditor(
   item: LibraryItem,
   siteId = "",
@@ -151,6 +508,8 @@ export function useFabricImageEditor(
   const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [sceneDiagnostic, setSceneDiagnostic] =
+    useState<FabricImageEditorState["sceneDiagnostic"]>(null);
   const [savedUrl, setSavedUrl] = useState("");
   const [savedProjectUrl, setSavedProjectUrl] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -168,12 +527,39 @@ export function useFabricImageEditor(
   const viewRef = useRef(view);
   const aliveRef = useRef(true);
   const savingRef = useRef(false);
+  const dirtyRef = useRef(false);
   const revisionRef = useRef(0);
   const aiBusyRef = useRef(false);
-  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  const workingHeadUrlRef = useRef(
+    String(
+      item.meta.editor_working_head_url ||
+        advancedEditorSourceFor(item)?.url ||
+        item.url ||
+        item.previewUrl ||
+        "",
+    ),
+  );
+  const artifactHeadRef = useRef(item);
+  const artifactInputIdentityRef = useRef(imageArtifactInputIdentity(item));
   const pendingAborts = useRef(new Set<AbortController>());
   optionsRef.current = options;
   viewRef.current = view;
+  const updateDirty = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirty(value);
+  }, []);
+  const nextArtifactInputIdentity = imageArtifactInputIdentity(item);
+  if (artifactInputIdentityRef.current !== nextArtifactInputIdentity) {
+    artifactInputIdentityRef.current = nextArtifactInputIdentity;
+    artifactHeadRef.current = item;
+    workingHeadUrlRef.current = String(
+      item.meta.editor_working_head_url ||
+        advancedEditorSourceFor(item)?.url ||
+        item.url ||
+        item.previewUrl ||
+        "",
+    );
+  }
 
   const stageCanvasRef = useCallback((element: HTMLCanvasElement | null) => {
     setCanvasElement(element);
@@ -197,21 +583,12 @@ export function useFabricImageEditor(
       pendingAborts.current.clear();
     };
   }, []);
-  useEffect(() => {
-    const editorSource = advancedEditorSourceFor(item);
-    workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url ||
-        editorSource?.url ||
-        item.url ||
-        item.previewUrl ||
-        "",
-    );
-  }, [item]);
-
   const editorSource = advancedEditorSourceFor(item);
-  const structuredSourceRequired = Boolean(
-    item.artifact && editorSource?.structured,
-  );
+  const compositeSourceRequired =
+    isDurableLibraryItem(item) && item.artifactType === "composite_image";
+  const structuredSourceRequired =
+    compositeSourceRequired ||
+    Boolean(item.artifact && editorSource?.structured);
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
       ? editorSource && !editorSource.structured
@@ -225,7 +602,9 @@ export function useFabricImageEditor(
         ? item.meta.editor_project_url
         : "";
   const projectUrl =
-    persistedProjectUrl || (editorSource?.structured ? editorSource.url : "");
+    compositeSourceRequired
+      ? editorSource?.url || ""
+      : persistedProjectUrl || (editorSource?.structured ? editorSource.url : "");
   const projectSavedAt =
     typeof item.meta.fabric_saved_at === "string"
       ? item.meta.fabric_saved_at
@@ -238,10 +617,11 @@ export function useFabricImageEditor(
     setLoading(true);
     setError("");
     setNotice("");
+    setSceneDiagnostic(null);
     setSavedUrl("");
     setSavedProjectUrl("");
     setSavedAt("");
-    setDirty(false);
+    updateDirty(false);
     revisionRef.current = 0;
     let controller: FabricEditorController | null = null;
     void (async () => {
@@ -263,7 +643,7 @@ export function useFabricImageEditor(
               if (controller) {
                 saveLocalImageDraft(item, controller.getSnapshot());
               }
-              setDirty(true);
+              updateDirty(true);
               setSavedUrl("");
               setSavedProjectUrl("");
               setSavedAt("");
@@ -278,14 +658,16 @@ export function useFabricImageEditor(
         let projectLoaded = false;
         if (projectUrl) {
           try {
-            const project = await loadEditableImageProject(
-              projectUrl,
-              abort.signal,
-            );
+            const project = compositeSourceRequired
+              ? await loadCompositeImageScene(item, abort.signal)
+              : await loadEditableImageProject(projectUrl, abort.signal);
             if (cancelled || abort.signal.aborted) return;
             projectLoaded = await controller.loadSnapshot(project.snapshot);
             cloudProjectUpdatedAt = project.updatedAt;
             if (projectLoaded) {
+              if ("revision" in project) {
+                revisionRef.current = project.revision;
+              }
               setSavedUrl(sourceUrl);
               setSavedProjectUrl(projectUrl);
               setSavedAt(project.updatedAt);
@@ -293,7 +675,20 @@ export function useFabricImageEditor(
           } catch (caught) {
             if (!isAbortError(caught)) {
               if (structuredSourceRequired) {
-                setError("可编辑图片源暂时无法读取，请重试。");
+                const message =
+                  caught instanceof Error
+                    ? caught.message
+                    : "可编辑图片源暂时无法读取，请重试。";
+                setError(message);
+                if (caught instanceof ImageSceneSourceError) {
+                  setSceneDiagnostic({
+                    code: caught.code,
+                    message,
+                    ...(caught.dependencyId
+                      ? { dependencyId: caught.dependencyId }
+                      : {}),
+                  });
+                }
                 return;
               }
               setNotice("可编辑工程暂时无法读取，已改用预览图恢复");
@@ -301,16 +696,34 @@ export function useFabricImageEditor(
           }
         }
         if (structuredSourceRequired && !projectLoaded) {
-          setError("可编辑图片源格式无效，未使用封面代替。");
+          const message =
+            "可编辑图片源格式无效或缺失，未使用预览 PNG 代替分层工程。";
+          setError(message);
+          setSceneDiagnostic({
+            code: "invalid-scene",
+            message,
+          });
           return;
         }
         if (!projectLoaded && sourceUrl) {
-          const safeUrl = await canvasImageUrl(sourceUrl, siteId, item.title);
+          const loadedSource = await canvasImageSource(
+            sourceUrl,
+            siteId,
+            item.title,
+            renditionDependencyFor(item, sourceUrl),
+          );
           if (cancelled || abort.signal.aborted) return;
-          const image = await loadImageObject(fabric, safeUrl, abort.signal);
+          const image = await loadImageObject(
+            fabric,
+            loadedSource.canvasUrl,
+            abort.signal,
+          );
           if (cancelled || abort.signal.aborted) {
             image.dispose();
             return;
+          }
+          if (loadedSource.dependency) {
+            tagImageDependency(image, loadedSource.dependency);
           }
           controller.setInitialBackground(image, imageDocumentSize(image));
         }
@@ -326,15 +739,24 @@ export function useFabricImageEditor(
           const restored = await controller.loadSnapshot(localDraft.snapshot);
           if (restored && !cancelled) {
             revisionRef.current += 1;
-            setDirty(true);
+            updateDirty(true);
             setNotice("已恢复这台设备上尚未同步的修改，正在继续自动保存");
           }
         }
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
-          setError(
-            caught instanceof Error ? caught.message : "图片画布初始化失败",
-          );
+          const message =
+            caught instanceof Error ? caught.message : "图片画布初始化失败";
+          setError(message);
+          if (caught instanceof ImageSceneSourceError) {
+            setSceneDiagnostic({
+              code: caught.code,
+              message,
+              ...(caught.dependencyId
+                ? { dependencyId: caught.dependencyId }
+                : {}),
+            });
+          }
         }
       } finally {
         finishAbort(abort);
@@ -351,7 +773,10 @@ export function useFabricImageEditor(
     };
   }, [
     canvasElement,
+    compositeSourceRequired,
     finishAbort,
+    item.key,
+    item.revisionId,
     item.title,
     makeAbort,
     projectSavedAt,
@@ -359,6 +784,7 @@ export function useFabricImageEditor(
     siteId,
     sourceUrl,
     structuredSourceRequired,
+    updateDirty,
   ]);
 
   const addImageFromUrl = useCallback(
@@ -371,12 +797,23 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在导入图片…");
       try {
-        const safeUrl = await canvasImageUrl(source, siteId, item.title);
+        const loadedSource = await canvasImageSource(
+          source,
+          siteId,
+          item.title,
+        );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const image = await loadImageObject(fabric, safeUrl, abort.signal);
+        const image = await loadImageObject(
+          fabric,
+          loadedSource.canvasUrl,
+          abort.signal,
+        );
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
+        }
+        if (loadedSource.dependency) {
+          tagImageDependency(image, loadedSource.dependency);
         }
         controller.addImage(image, point);
         setNotice("图片已添加为独立图层");
@@ -400,12 +837,23 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在替换图片…");
       try {
-        const safeUrl = await canvasImageUrl(source, siteId, item.title);
+        const loadedSource = await canvasImageSource(
+          source,
+          siteId,
+          item.title,
+        );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const image = await loadImageObject(fabric, safeUrl, abort.signal);
+        const image = await loadImageObject(
+          fabric,
+          loadedSource.canvasUrl,
+          abort.signal,
+        );
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
+        }
+        if (loadedSource.dependency) {
+          tagImageDependency(image, loadedSource.dependency);
         }
         if (!controller.replaceActiveImage(image)) {
           throw new Error("请先选择要替换的图片。");
@@ -447,16 +895,29 @@ export function useFabricImageEditor(
           throw new Error(uploaded.error || "图片上传失败");
         }
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const safeUrl = await canvasImageUrl(
+        const loadedSource = await canvasImageSource(
           durableUrl,
           siteId,
           file.name || item.title,
+          {
+            kind: "image",
+            required: true,
+            url: durableUrl,
+            digest: await sha256Blob(file),
+          },
         );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const image = await loadImageObject(fabric, safeUrl, abort.signal);
+        const image = await loadImageObject(
+          fabric,
+          loadedSource.canvasUrl,
+          abort.signal,
+        );
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
+        }
+        if (loadedSource.dependency) {
+          tagImageDependency(image, loadedSource.dependency);
         }
         controller.addImage(image);
         setNotice("图片已加入画布和文件库，并会随工程继续保存");
@@ -520,6 +981,21 @@ export function useFabricImageEditor(
     },
     [exportFormat, exportQuality, exportScale],
   );
+  const makeStaticPreviewBlob = useCallback(async () => {
+    const controller = controllerRef.current;
+    if (!controller) throw new Error("图片画布尚未就绪");
+    if (viewRef.current.cropping) {
+      throw new Error("请先确认或取消当前裁剪");
+    }
+    const { canvas, doc } = controller.getDocument();
+    const blob = await exportDocBlob(canvas, doc, {
+      format: "png",
+      quality: 1,
+      multiplier: 1,
+    });
+    if (!blob) throw new Error("当前画布无法生成静态 preview");
+    return blob;
+  }, []);
 
   const download = useCallback(() => {
     void makeExportBlob()
@@ -542,32 +1018,58 @@ export function useFabricImageEditor(
 
   const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
     if (savingRef.current) return null;
+    if (
+      artifactHeadRef.current.artifactType === "composite_image" &&
+      !dirtyRef.current
+    ) {
+      return null;
+    }
     const savingRevision = revisionRef.current;
     savingRef.current = true;
     setSaving(true);
     setError("");
+    setSceneDiagnostic(null);
     try {
       const controller = controllerRef.current;
       if (!controller) throw new Error("图片画布尚未就绪");
       const snapshot = controller.getSnapshot();
-      const saved = await persistImageProject(
-        snapshot,
-        item,
-        siteId,
-        `image:${item.id}:${savingRevision}`,
-        workingHeadUrlRef.current,
-        {
-          uploadFailed: "保存到我的库失败",
-          registerFailed: "图片工程已上传，但登记到我的库失败",
-        },
-      );
+      const head = artifactHeadRef.current;
+      const compositePreview =
+        head.artifactType === "composite_image"
+          ? await makeStaticPreviewBlob()
+          : null;
+      if (revisionRef.current !== savingRevision) {
+        throw new Error("保存期间画布已变化，本次旧快照未提交");
+      }
+      const saved =
+        head.artifactType === "composite_image"
+          ? await persistCompositeImageProject(
+              snapshot,
+              head,
+              siteId,
+              `image-scene:${head.id}:${head.revisionId}:${savingRevision}`,
+              savingRevision,
+              compositePreview!,
+            )
+          : await persistImageProject(
+              snapshot,
+              item,
+              siteId,
+              `image:${item.id}:${savingRevision}`,
+              workingHeadUrlRef.current,
+              {
+                uploadFailed: "保存到我的库失败",
+                registerFailed: "图片工程已上传，但登记到我的库失败",
+              },
+            );
       if (!aliveRef.current) return null;
+      if (saved.item) artifactHeadRef.current = saved.item;
       workingHeadUrlRef.current = saved.previewUrl;
       setSavedUrl(saved.previewUrl);
       setSavedProjectUrl(saved.projectUrl);
       setSavedAt(saved.savedAt);
       if (revisionRef.current === savingRevision) {
-        setDirty(false);
+        updateDirty(false);
         clearLocalImageDraft(item);
       }
       setNotice("");
@@ -577,17 +1079,33 @@ export function useFabricImageEditor(
         projectUrl: saved.projectUrl,
         savedAt: saved.savedAt,
         versionId: saved.versionId,
+        item: saved.item,
+        revisionDigest: saved.revisionDigest,
+        sourceDigest: saved.sourceDigest,
+        dependencyClosureDigest: saved.dependencyClosureDigest,
+        dependencyRevisionIds: saved.dependencyRevisionIds,
       };
     } catch (caught) {
       if (aliveRef.current && !isAbortError(caught)) {
-        setError(caught instanceof Error ? caught.message : "图片保存失败");
+        const message =
+          caught instanceof Error ? caught.message : "图片保存失败";
+        setError(message);
+        if (caught instanceof ImageSceneSourceError) {
+          setSceneDiagnostic({
+            code: caught.code,
+            message,
+            ...(caught.dependencyId
+              ? { dependencyId: caught.dependencyId }
+              : {}),
+          });
+        }
       }
       return null;
     } finally {
       savingRef.current = false;
       if (aliveRef.current) setSaving(false);
     }
-  }, [item, siteId]);
+  }, [item, makeStaticPreviewBlob, siteId, updateDirty]);
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
@@ -611,12 +1129,23 @@ export function useFabricImageEditor(
           aiEditImage(prompt, image, { siteId: siteId || "image" }));
       const resultUrl = await execute(aiPrompt.trim(), source);
       if (abort.signal.aborted || controllerRef.current !== controller) return;
-      const safeUrl = await canvasImageUrl(resultUrl, siteId, `${item.title}-AI`);
+      const loadedSource = await canvasImageSource(
+        resultUrl,
+        siteId,
+        `${item.title}-AI`,
+      );
       if (abort.signal.aborted || controllerRef.current !== controller) return;
-      const image = await loadImageObject(fabric, safeUrl, abort.signal);
+      const image = await loadImageObject(
+        fabric,
+        loadedSource.canvasUrl,
+        abort.signal,
+      );
       if (abort.signal.aborted || controllerRef.current !== controller) {
         image.dispose();
         return;
+      }
+      if (loadedSource.dependency) {
+        tagImageDependency(image, loadedSource.dependency);
       }
       if (controller.replaceWithBackground(image)) {
         setNotice("AI 结果已载入画布，可撤销或继续编辑");
@@ -649,6 +1178,7 @@ export function useFabricImageEditor(
     aiBusy,
     error,
     notice,
+    sceneDiagnostic,
     savedUrl,
     savedProjectUrl,
     savedAt,

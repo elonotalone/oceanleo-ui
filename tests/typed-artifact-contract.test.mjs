@@ -516,20 +516,35 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     actions,
     /result\.data\.revisionId !== durableItem\.revisionId/,
   );
+  assert.match(actions, /artifactDownloadEvidence\(item\)/);
+  assert.match(actions, /link\.type = result\.data\.mediaType/);
   const client = readFileSync(
     new URL("../src/shell/artifact-client.ts", import.meta.url),
     "utf8",
   );
-  assert.match(client, /renditions\/\$\{rendition\.purpose\}\?mode=export/);
+  assert.match(
+    client,
+    /renditions\/\$\{rendition\.purpose\}\?mode=\$\{mode\}/,
+  );
+  const downloadContract = client.slice(
+    client.indexOf("function artifactDownloadPlan"),
+    client.indexOf("export async function setArtifactFavorite"),
+  );
   const downloadClient = client.slice(
     client.indexOf("export async function getArtifactDownload"),
     client.indexOf("export async function setArtifactFavorite"),
   );
-  assert.ok(
-    downloadClient.indexOf("sourceRendition") <
-      downloadClient.indexOf("renderedRendition"),
+  assert.match(
+    downloadContract,
+    /artifact\.renditions\.source \|\|\s*artifact\.renditions\.editor_manifest/,
   );
-  assert.match(downloadClient, /sourceRendition \|\| renderedRendition/);
+  assert.match(downloadContract, /mode: "source"/);
+  assert.match(downloadContract, /mode: "export"/);
+  assert.match(downloadContract, /已拒绝降级为渲染图片/);
+  assert.doesNotMatch(
+    downloadClient,
+    /mode=export[^]*rendition\.purpose === "source"/,
+  );
   assert.match(client, /trustedGatewayArtifactAccessUrl/);
   assert.match(client, /素材请求已取消/);
   assert.match(client, /素材请求超时，请重试/);

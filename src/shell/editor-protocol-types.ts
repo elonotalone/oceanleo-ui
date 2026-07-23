@@ -176,6 +176,10 @@ export type HostToEditorMessage =
       url?: string;
       saveId?: string;
       revision?: EditorDocumentRevision;
+      artifactId?: string;
+      revisionId?: string;
+      code?: string;
+      currentRevisionId?: string;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;

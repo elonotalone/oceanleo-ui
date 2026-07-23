@@ -1,4 +1,8 @@
 import type { MediaType } from "../lib/database";
+import {
+  ADVANCED_CAPABILITY_CONTRACT,
+  type AdvancedFeatureId,
+} from "./artifact-contract";
 import type { EditorCapabilityName, EditorManifestV1 } from "./library-data";
 
 export type EditorRoute =
@@ -176,6 +180,42 @@ export const TRUSTED_EDITOR_REGISTRY: Readonly<
     persistence: "project",
   },
 };
+
+const TRUSTED_ADAPTER_IDS = new Set<string>(
+  Object.keys(TRUSTED_EDITOR_REGISTRY),
+);
+
+for (const capability of ADVANCED_CAPABILITY_CONTRACT) {
+  if (!TRUSTED_ADAPTER_IDS.has(capability.adapter)) {
+    throw new Error(
+      `Advanced capability ${capability.featureId} references unknown adapter ${capability.adapter}`,
+    );
+  }
+  const adapter = capability.adapter as Exclude<EditorAdapterId, "none">;
+  const registry = TRUSTED_EDITOR_REGISTRY[adapter];
+  if (
+    registry.projectSchema !== capability.projectSchema ||
+    !registry.artifactCapabilities.includes(capability.editorCapability)
+  ) {
+    throw new Error(
+      `Advanced capability ${capability.featureId} drifted from adapter ${adapter}`,
+    );
+  }
+}
+
+export function registryEntryForAdvancedFeature(
+  featureId: AdvancedFeatureId,
+): RegistryEntry {
+  const capability = ADVANCED_CAPABILITY_CONTRACT.find(
+    (entry) => entry.featureId === featureId,
+  );
+  if (!capability || !TRUSTED_ADAPTER_IDS.has(capability.adapter)) {
+    throw new Error(`Unknown advanced feature: ${featureId}`);
+  }
+  return TRUSTED_EDITOR_REGISTRY[
+    capability.adapter as Exclude<EditorAdapterId, "none">
+  ];
+}
 
 const ARTIFACT_CAPABILITY_ADAPTER = new Map<
   string,

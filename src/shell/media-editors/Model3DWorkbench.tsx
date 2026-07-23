@@ -4,6 +4,7 @@ import { threeDSubtypeFor, type LibraryItem } from "../library-data";
 import { Model3DControls } from "./Model3DControls";
 import { Model3DStage } from "./Model3DStage";
 import { useModel3DWorkbench } from "./use-model3d-workbench";
+import { isModel3DSourceItem } from "./model3d-workbench-defaults";
 
 export interface Model3DWorkbenchProps {
   item: LibraryItem;
@@ -19,7 +20,7 @@ export function Model3DWorkbench({
   onSaved,
 }: Model3DWorkbenchProps) {
   const subtype = threeDSubtypeFor(item);
-  if (subtype !== "model") {
+  if (!isModel3DSourceItem(item)) {
     return (
       <div
         role="alert"

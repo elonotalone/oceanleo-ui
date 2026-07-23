@@ -43,6 +43,33 @@ export type {
 export { isEditorRecoverySnapshot } from "./editor-protocol-validation.mjs";
 
 export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
+const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
+
+function validTypedCompositeCommitMeta(
+  value: unknown,
+  revision: unknown,
+): boolean {
+  const meta = recordValue(value);
+  return Boolean(
+    meta &&
+      meta.requires_typed_artifact_commit === true &&
+      meta.artifact_type === "composite_image" &&
+      meta.editor_project_schema === DESIGN_SOURCE_FORMAT &&
+      meta.source_format === DESIGN_SOURCE_FORMAT &&
+      boundedString(meta.artifact_id, 300, true) &&
+      boundedString(meta.expected_artifact_revision_id, 300, true) &&
+      (meta.artifact_revision_id === undefined ||
+        meta.artifact_revision_id === meta.expected_artifact_revision_id) &&
+      boundedString(meta.editor_project_url, 2_000, true) &&
+      meta.design_document_url === meta.editor_project_url &&
+      validAssetUrl(meta.editor_project_url) &&
+      Number.isSafeInteger(meta.design_document_revision) &&
+      Number(meta.design_document_revision) >= 0 &&
+      meta.preview_revision === meta.design_document_revision &&
+      meta.preview_static_frame === "final" &&
+      revision === meta.design_document_revision,
+  );
+}
 
 export function isTrustedEditorOrigin(origin: string): boolean {
   try {
@@ -78,6 +105,8 @@ export function asEditorToHostMessage(
   }
   const type = record.type;
   if (type === "artifact-created" || type === "artifact-updated") {
+    const meta = recordValue(record.meta);
+    const typedCommit = meta?.requires_typed_artifact_commit === true;
     if (
       !boundedString(record.url, 2_000, true) ||
       !validAssetUrl(record.url) ||
@@ -85,7 +114,11 @@ export function asEditorToHostMessage(
       !boundedString(record.title, 300) ||
       !boundedString(record.saveId, 128) ||
       (record.revision !== undefined && !validRevision(record.revision)) ||
-      (record.meta !== undefined && !boundedRecord(record.meta, 20_000))
+      (record.meta !== undefined && !boundedRecord(record.meta, 20_000)) ||
+      (typedCommit &&
+        (!boundedString(record.previewUrl, 2_000, true) ||
+          !boundedString(record.saveId, 128, true) ||
+          !validTypedCompositeCommitMeta(record.meta, record.revision)))
     ) {
       return null;
     }
@@ -340,8 +373,15 @@ export function asHostToEditorMessage(
       typeof record.ok !== "boolean" ||
       !boundedString(record.message, 1_000, true) ||
       !validAssetUrl(record.url) ||
-      !boundedString(record.saveId, 128) ||
-      (record.revision !== undefined && !validRevision(record.revision))
+      !boundedString(record.saveId, 128, true) ||
+      (record.revision !== undefined && !validRevision(record.revision)) ||
+      !boundedString(record.artifactId, 300) ||
+      !boundedString(record.revisionId, 300) ||
+      !boundedString(record.code, 100) ||
+      !boundedString(record.currentRevisionId, 300) ||
+      (record.ok === false &&
+        record.code === "revision-conflict" &&
+        !boundedString(record.currentRevisionId, 300, true))
     ) {
       return null;
     }

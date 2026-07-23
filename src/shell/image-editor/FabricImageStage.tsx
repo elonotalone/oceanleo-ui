@@ -54,6 +54,8 @@ export function FabricImageStage({
       data-editor-loading={editor.loading ? "true" : "false"}
       data-editor-layer-count={editor.layers.length}
       data-editor-selected-kind={editor.selected?.kind || ""}
+      data-scene-diagnostic={editor.sceneDiagnostic?.code || ""}
+      data-scene-dependency={editor.sceneDiagnostic?.dependencyId || ""}
     >
       <div
         ref={editor.stageContainerRef}

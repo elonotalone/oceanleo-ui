@@ -20,7 +20,11 @@ import type {
 } from "./cloud-browser-history-view";
 import { useCloudBrowserInteraction } from "./cloud-browser-interaction";
 import { DEFAULT_BROWSER_URL } from "./cloud-browser-live";
-import { useCloudBrowserSessionData } from "./cloud-browser-session-data";
+import {
+  cloudBrowserSessionNeedsResume,
+  formatCloudBrowserLifecycleError,
+  useCloudBrowserSessionData,
+} from "./cloud-browser-session-data";
 import { useCloudBrowserTransport } from "./cloud-browser-transport";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
@@ -48,6 +52,56 @@ function BrowserViewportSpinner({
         className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white"
         aria-hidden="true"
       />
+    </div>
+  );
+}
+
+function BrowserPowerPrompt({
+  accent,
+  busy,
+  description,
+  error,
+  label,
+  onPower,
+}: {
+  accent: string;
+  busy: boolean;
+  description: string;
+  error: string;
+  label: string;
+  onPower: () => void;
+}) {
+  return (
+    <div
+      className="absolute inset-0 grid place-items-center bg-stone-950 p-8 text-center"
+      data-cloud-browser-power-prompt
+    >
+      <div className="w-full max-w-md">
+        <BrowserGlyph className="mx-auto h-10 w-10 text-stone-500" />
+        <p className="mt-3 text-[11px] leading-5 text-stone-400">
+          {description}
+        </p>
+        {error && (
+          <div
+            className="mt-3 rounded-lg border border-rose-400/30 bg-rose-950/60 px-3 py-2 text-[11px] leading-5 text-rose-200"
+            role="alert"
+            data-cloud-browser-lifecycle-error
+          >
+            {error}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onPower}
+          disabled={busy}
+          className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-wait disabled:opacity-70"
+          style={{ background: accent }}
+          aria-busy={busy}
+          data-cloud-browser-power
+        >
+          {label}
+        </button>
+      </div>
     </div>
   );
 }
@@ -114,7 +168,12 @@ export function CloudBrowserPanel({
     setBusy(false);
     const created = result.data?.session;
     if (!result.ok || !created) {
-      setError(result.error || tt("云端浏览器启动失败"));
+      setError(
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("云端浏览器启动失败"),
+        ),
+      );
       return;
     }
     session.upsertSession(created);
@@ -124,19 +183,51 @@ export function CloudBrowserPanel({
 
   async function restorePrevious() {
     if (!session.selectedId) return;
+    const selectedId = session.selectedId;
     const operationId = createCloudBrowserOperationId();
     setBusy(true);
     setError("");
-    const result = await resumeCloudBrowser(session.selectedId, {
+    const result = await resumeCloudBrowser(selectedId, {
       operationId,
     });
     setBusy(false);
     if (!result.ok) {
-      setError(result.error || tt("恢复上次浏览失败"));
+      setError(
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("恢复上次浏览失败"),
+        ),
+      );
       return;
     }
-    await session.reload(session.selectedId);
-    await transport.openLive(session.selectedId);
+    await session.reload(selectedId);
+    await transport.openLive(selectedId);
+  }
+
+  async function activateSelectedOrStart() {
+    if (busy) return;
+    const selected = session.selected;
+    if (!selected) {
+      await startBrowser();
+      return;
+    }
+    if (cloudBrowserSessionNeedsResume(selected)) {
+      await restorePrevious();
+      return;
+    }
+    if (
+      selected.protocol_version !== undefined &&
+      selected.protocol_version !== null &&
+      selected.protocol_version !== 3
+    ) {
+      setError(
+        `${tt(
+          "服务端未提供严格平铺 v3 票据，已拒绝降级连接",
+        )} (v3 protocol_mismatch)`,
+      );
+      return;
+    }
+    await transport.openLive(selected.id);
   }
 
   async function hibernateCurrentSession() {
@@ -157,7 +248,12 @@ export function CloudBrowserPanel({
     );
     setBusy(false);
     if (!result.ok) {
-      setError(result.error || tt("休眠浏览会话失败"));
+      setError(
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("休眠浏览会话失败"),
+        ),
+      );
     }
     await session.reload(session.selectedId);
   }
@@ -174,7 +270,12 @@ export function CloudBrowserPanel({
     setBusy(false);
     session.setDeleteArmed(false);
     if (!result.ok) {
-      setError(result.error || tt("删除浏览记录失败"));
+      setError(
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("删除浏览记录失败"),
+        ),
+      );
       return;
     }
     setCheckpointsOpen(false);
@@ -197,7 +298,10 @@ export function CloudBrowserPanel({
     if (!result.ok || !updated) {
       return {
         ok: false,
-        error: result.error || tt("浏览会话命名失败"),
+        error: formatCloudBrowserLifecycleError(
+          result,
+          tt("浏览会话命名失败"),
+        ),
       };
     }
     session.upsertSession(updated);
@@ -240,7 +344,10 @@ export function CloudBrowserPanel({
     setBusy(false);
     if (!result.ok) {
       const message =
-        result.error || tt("会话快照恢复失败");
+        formatCloudBrowserLifecycleError(
+          result,
+          tt("会话快照恢复失败"),
+        );
       setError(message);
       await session.refreshCheckpoints();
       return { ok: false, error: message };
@@ -257,35 +364,27 @@ export function CloudBrowserPanel({
     return { ok: true };
   }
 
-  if (!session.sessions.length) {
-    if (busy) {
-      return (
-        <div className="relative h-full overflow-hidden bg-stone-950">
-          <BrowserViewportSpinner label={tt("浏览器正在连接")} />
-        </div>
-      );
-    }
-    return (
-      <div className="grid h-full place-items-center p-8 text-center">
-        <div className="w-full max-w-md">
-          <BrowserGlyph className="mx-auto h-10 w-10 text-stone-300" />
-          <button
-            type="button"
-            onClick={() => void startBrowser()}
-            className="mt-4 rounded-xl px-5 py-2.5 text-[12px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
-            style={{ background: accent }}
-            data-cloud-browser-power
-          >
-            {tt("开机")}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const fallbackImmersive =
     interaction.immersive &&
     interaction.fullscreenMode === "fallback";
+  const terminalFailure =
+    liveRequested && transport.transportState === "failed";
+  const waitingForLive =
+    liveRequested &&
+    transport.transportState !== "streaming" &&
+    transport.transportState !== "failed" &&
+    transport.transportState !== "closed";
+  const terminalMessage =
+    transport.failureKind === "protocol_mismatch"
+      ? `${error || tt(
+          "服务端未提供严格平铺 v3 票据，已拒绝降级连接",
+        )} (v3 protocol_mismatch)`
+      : error || tt("原生窗口连接失败");
+  const startupPowerLabel = busy
+    ? tt("正在开机…")
+    : session.selected?.status === "hibernated"
+      ? tt("恢复")
+      : tt("开机");
 
   return (
     <div
@@ -312,6 +411,19 @@ export function CloudBrowserPanel({
         className="relative min-h-0 flex-1 overflow-hidden bg-stone-950"
         data-cloud-browser-viewport
       >
+        {!liveRequested && (
+          <BrowserPowerPrompt
+            accent={accent}
+            busy={busy}
+            description={tt(
+              "开机后默认打开 Google；Agent 与你会共用并保存这段浏览。",
+            )}
+            error={error}
+            label={startupPowerLabel}
+            onPower={() => void activateSelectedOrStart()}
+          />
+        )}
+
         {liveRequested && (
           <canvas
             ref={transport.canvasRef}
@@ -367,12 +479,47 @@ export function CloudBrowserPanel({
           />
         )}
 
-        {liveRequested &&
-          transport.transportState !== "streaming" && (
-            <BrowserViewportSpinner
-              label={tt("浏览器正在连接")}
-              retainedFrame={transport.hasCanvasFrame}
-            />
+        {waitingForLive && (
+          <BrowserViewportSpinner
+            label={tt("浏览器正在连接")}
+            retainedFrame={transport.hasCanvasFrame}
+          />
+        )}
+        {terminalFailure && (
+          <div
+            className="absolute inset-0 z-20 grid place-items-center bg-stone-950/90 p-8 text-center"
+            role="alert"
+            data-cloud-browser-terminal-failure
+          >
+            <div className="max-w-md">
+              <p
+                className="text-[11px] leading-5 text-rose-200"
+                data-cloud-browser-terminal-message
+              >
+                {terminalMessage}
+              </p>
+              <button
+                type="button"
+                onClick={() => void activateSelectedOrStart()}
+                disabled={busy}
+                className="mt-4 rounded-xl px-4 py-2 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
+                style={{ background: accent }}
+                data-cloud-browser-retry
+              >
+                {tt("重试连接")}
+              </button>
+            </div>
+          </div>
+        )}
+        {error &&
+          transport.transportState === "streaming" && (
+            <div
+              className="absolute left-1/2 top-2 z-20 max-w-[min(560px,90%)] -translate-x-1/2 rounded-lg bg-rose-50/95 px-3 py-2 text-[11px] text-rose-700 shadow"
+              role="alert"
+              data-cloud-browser-live-error
+            >
+              {error}
+            </div>
           )}
         {notice &&
           !error &&
@@ -421,17 +568,15 @@ export function CloudBrowserPanel({
         checkpoints={session.checkpoints}
         checkpointsLoading={session.checkpointsLoading}
         checkpointsError={session.checkpointsError}
+        showPowerButton={liveRequested}
         onChooseSession={chooseSession}
         onRenameSession={renameSession}
-        onOpenOrResume={() =>
-          void (session.selected?.status === "hibernated"
-            ? restorePrevious()
-            : transport.openLive())
-        }
+        onOpenOrResume={() => void activateSelectedOrStart()}
         onStartNew={() => void startBrowser()}
         onHibernate={() => void hibernateCurrentSession()}
         onDelete={() => void removeRecord()}
         onToggleControl={transport.toggleControl}
+        onCancelControl={transport.cancelTakeover}
         onBookmarkCurrentPage={bookmarkCurrentPage}
         onToggleCheckpoints={() => {
           setCheckpointsOpen((current) => !current);

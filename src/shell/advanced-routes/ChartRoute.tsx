@@ -36,6 +36,27 @@ export function ChartRoute({
     editor.loading || Boolean(editor.error && !editor.dirty);
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
+      if (saved.item) {
+        const canonicalMeta = {
+          ...saved.item.meta,
+          editor: chartEditorManifest(),
+          content_type: "chart",
+          representation: "echarts-option",
+          editor_project_url: saved.projectUrl,
+          editor_project_schema: saved.projectSchema,
+          editor_revision_id: saved.revisionId,
+          previous_revision_id: saved.previousRevisionId,
+        };
+        return {
+          ...saved.item,
+          content: saved.json,
+          meta: canonicalMeta,
+          descriptor: libraryContentDescriptor({
+            kind: saved.item.kind,
+            meta: canonicalMeta,
+          }),
+        };
+      }
       const next = advancedSavedItem(item, {
         url: saved.url,
         versionId: saved.versionId,
@@ -48,6 +69,8 @@ export function ChartRoute({
           subtype: String(item.meta.subtype || item.meta.category || ""),
           editor_project_url: saved.projectUrl,
           editor_project_schema: saved.projectSchema,
+          editor_revision_id: saved.revisionId,
+          previous_revision_id: saved.previousRevisionId,
         },
       });
       const {

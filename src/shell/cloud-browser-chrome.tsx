@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type {
   CloudBrowserCheckpoint,
   CloudBrowserControlLease,
@@ -12,6 +13,7 @@ import {
   type CloudBrowserRenameResult,
   type CloudBrowserRestoreResult,
 } from "./cloud-browser-history-view";
+import { CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS } from "./cloud-browser-transport-actions";
 
 type BrowserSessionRowProps = {
   accent: string;
@@ -35,6 +37,7 @@ type BrowserSessionRowProps = {
   checkpoints: CloudBrowserCheckpoint[];
   checkpointsLoading: boolean;
   checkpointsError: string;
+  showPowerButton: boolean;
   onChooseSession: (sessionId: string) => void;
   onRenameSession: (
     sessionId: string,
@@ -45,6 +48,7 @@ type BrowserSessionRowProps = {
   onHibernate: () => void;
   onDelete: () => void;
   onToggleControl: () => void;
+  onCancelControl: () => boolean;
   onBookmarkCurrentPage: () => void;
   onToggleCheckpoints: () => void;
   onCreateCheckpoint: () => boolean;
@@ -86,6 +90,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     checkpoints,
     checkpointsLoading,
     checkpointsError,
+    showPowerButton,
   } = props;
   const connected = transportState === "streaming";
   const stateTone =
@@ -106,6 +111,17 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
   const controlAvailable = connected || hasCanvasFrame;
   const hiddenInImmersive =
     immersive && !immersiveControlsVisible;
+  const takeoverPending = controlPending && !driving;
+  const cancelTakeoverRef = useRef(props.onCancelControl);
+  cancelTakeoverRef.current = props.onCancelControl;
+  useEffect(() => {
+    if (!takeoverPending) return;
+    const timer = window.setTimeout(
+      () => cancelTakeoverRef.current(),
+      CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [takeoverPending]);
   const powerLabel = liveRequested
     ? tt("新建")
     : selected?.status === "hibernated"
@@ -162,38 +178,63 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
 
         <button
           type="button"
-          onClick={props.onToggleControl}
-          disabled={controlPending || !controlAvailable}
-          className={`h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
+          onClick={
+            takeoverPending
+              ? () => props.onCancelControl()
+              : props.onToggleControl
+          }
+          disabled={
+            (!controlAvailable && !takeoverPending) ||
+            (controlPending && driving)
+          }
+          className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
             driving
               ? "bg-amber-100 text-amber-900"
               : "bg-stone-900 text-white"
           }`}
           aria-busy={controlPending}
           aria-label={
-            controlPending
-              ? tt("控制请求处理中")
+            takeoverPending
+              ? tt("交还 Agent")
+              : controlPending
+                ? tt("控制请求处理中")
               : driving
               ? tt("释放控制并交还 Agent")
               : tt("接管浏览器控制")
           }
           title={
-            controlPending
-              ? tt("控制请求处理中")
+            takeoverPending
+              ? tt("交还 Agent")
+              : controlPending
+                ? tt("控制请求处理中")
               : driving
                 ? tt("释放控制并交还 Agent")
                 : tt("接管浏览器控制")
           }
           data-cloud-browser-control
+          data-cloud-browser-control-cancel={
+            takeoverPending ? "true" : undefined
+          }
         >
-          {controlPending
+          {takeoverPending
             ? (
-                <span
-                  className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
-                  aria-hidden="true"
-                  data-cloud-browser-control-spinner
-                />
+                <>
+                  <span
+                    className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
+                    aria-hidden="true"
+                    data-cloud-browser-control-spinner
+                  />
+                  {tt("交还 Agent")}
+                </>
               )
+            : controlPending
+              ? (
+                  <span
+                    className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"
+                    aria-hidden="true"
+                    data-cloud-browser-control-spinner
+                  />
+                )
             : driving
               ? tt("释放给 Agent")
               : tt("接管控制")}
@@ -242,19 +283,23 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={
-            liveRequested ? props.onStartNew : props.onOpenOrResume
-          }
-          disabled={busy}
-          className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
-          style={{ background: accent }}
-          aria-label={powerAria}
-          data-cloud-browser-power
-        >
-          {powerLabel}
-        </button>
+        {showPowerButton && (
+          <button
+            type="button"
+            onClick={
+              liveRequested
+                ? props.onStartNew
+                : props.onOpenOrResume
+            }
+            disabled={busy}
+            className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
+            style={{ background: accent }}
+            aria-label={powerAria}
+            data-cloud-browser-power
+          >
+            {powerLabel}
+          </button>
+        )}
 
         <button
           type="button"

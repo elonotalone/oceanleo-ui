@@ -79,10 +79,14 @@ export function canvasSafeUrl(url: string): string {
 /** fetch 一个素材为 Blob（走代理），供波形解码 / PDF / ffmpeg 抽帧等用。 */
 export async function fetchMediaBlob(
   url: string,
-  options: { maxBytes?: number; signal?: AbortSignal } = {},
+  options: {
+    maxBytes?: number;
+    signal?: AbortSignal;
+    cache?: RequestCache;
+  } = {},
 ): Promise<Blob> {
   const response = await fetch(canvasSafeUrl(url), {
-    cache: "force-cache",
+    cache: options.cache ?? "force-cache",
     signal: options.signal,
   });
   if (!response.ok) throw new Error(`媒体加载失败 HTTP ${response.status}`);
@@ -110,7 +114,7 @@ export interface ImportedMedia {
 
 interface MediaImportResponse {
   url?: string;
-  detail?: string;
+  detail?: string | { code?: string; message?: string };
   content_type?: string;
   bytes?: number;
   already_owned?: boolean;
@@ -128,19 +132,20 @@ export async function importMediaAsset(
   const token = await accessToken();
   if (!token) throw new Error("未登录");
   const sourceUrl = absoluteMediaUrl(url);
+  const payload: Record<string, unknown> = {
+    url: sourceUrl,
+    site_id: opts.siteId || "oceanleo",
+    title: opts.title || "",
+    register_asset: opts.registerAsset ?? true,
+  };
+  if (opts.kind) payload.kind = opts.kind;
   const response = await fetch(`${GATEWAY_BASE}/v1/media/import`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      url: sourceUrl,
-      kind: opts.kind || "video",
-      site_id: opts.siteId || "oceanleo",
-      title: opts.title || "",
-      register_asset: opts.registerAsset ?? true,
-    }),
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
   let data: MediaImportResponse | null = null;
@@ -150,7 +155,11 @@ export async function importMediaAsset(
     /* non-JSON */
   }
   if (!response.ok || !data?.url) {
-    throw new Error(data?.detail || `素材导入失败 HTTP ${response.status}`);
+    const detail =
+      typeof data?.detail === "string"
+        ? data.detail
+        : data?.detail?.message;
+    throw new Error(detail || `素材导入失败 HTTP ${response.status}`);
   }
   return {
     url: data.url,

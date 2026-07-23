@@ -22,6 +22,361 @@ export const ARTIFACT_TYPES = [
 ] as const;
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
+
+export type AdvancedCapabilityRequirementKind = "none" | "scene" | "manifest";
+export type AdvancedCapabilityDependencyClosure = "not_required" | "complete";
+export type ArtifactAccessMode = "preview" | "source" | "export";
+
+export interface AdvancedCapabilityPreviewSourceRule {
+  previewPurposes: readonly ("preview" | "full")[];
+  editorPurpose: "source";
+  sameRevisionRequired: true;
+  sourceDigestRequired: true;
+  derivedFromSourceDigestRequired: true;
+  renderedSourceSubstitution: "forbidden";
+}
+
+export interface AdvancedCapabilityDownloadRule {
+  preferredPurpose: "source";
+  preferredMode: "source";
+  fallbackPurposes: readonly ("full" | "preview")[];
+  fallbackMode: "export";
+}
+
+export interface AdvancedCapabilityRequirement {
+  kind: AdvancedCapabilityRequirementKind;
+  schema: string | null;
+  requiredPaths: readonly string[];
+  dependencyClosure: AdvancedCapabilityDependencyClosure;
+}
+
+export interface AdvancedCapabilityContractEntry {
+  featureId: AdvancedFeatureId;
+  artifactType: ArtifactType;
+  sourceFormat: string;
+  sourceMediaType: string;
+  editorCapability: string;
+  adapter: string;
+  projectSchema: string;
+  editability: Exclude<ArtifactEditability, "view_only">;
+  sourceIntegrity: "content_addressed" | "complete_dependency_closure";
+  openMode: "native-file" | "structured-project";
+  previewSource: AdvancedCapabilityPreviewSourceRule;
+  download: AdvancedCapabilityDownloadRule;
+  requirement: AdvancedCapabilityRequirement;
+}
+
+const ADVANCED_CAPABILITY_ROWS = [
+  {
+    featureId: "video_editing",
+    artifactType: "video",
+    sourceFormat: "mp4",
+    sourceMediaType: "video/mp4",
+    editorCapability: "video-timeline",
+    adapter: "video-timeline",
+    projectSchema: "oceanleo.timeline.v1",
+    editability: "bounded",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "website_finetuning",
+    artifactType: "website",
+    sourceFormat: "website-source@1",
+    sourceMediaType: "application/json",
+    editorCapability: "website-editor",
+    adapter: "website",
+    projectSchema: "website-source@1",
+    editability: "native",
+    sourceIntegrity: "complete_dependency_closure",
+    openMode: "structured-project",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "manifest",
+      schema: "website-source@1",
+      requiredPaths: ["pages", "sections"],
+      dependencyClosure: "complete",
+    },
+  },
+  {
+    featureId: "design_canvas",
+    artifactType: "composite_image",
+    sourceFormat: "oceanleo.design-document.v1",
+    sourceMediaType: "application/json",
+    editorCapability: "design-canvas",
+    adapter: "design-canvas",
+    projectSchema: "oceanleo.design-document.v1",
+    editability: "native",
+    sourceIntegrity: "content_addressed",
+    openMode: "structured-project",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "scene",
+      schema: "oceanleo.design-document.v1",
+      requiredPaths: ["document", "document.elements"],
+      dependencyClosure: "complete",
+    },
+  },
+  {
+    featureId: "presentation_editing",
+    artifactType: "deck",
+    sourceFormat: "pptx",
+    sourceMediaType:
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    editorCapability: "office-editor",
+    adapter: "office",
+    projectSchema: "office-file@1",
+    editability: "native",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "document_editing",
+    artifactType: "document",
+    sourceFormat: "docx",
+    sourceMediaType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    editorCapability: "office-editor",
+    adapter: "office",
+    projectSchema: "office-file@1",
+    editability: "native",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "spreadsheet_editing",
+    artifactType: "grid",
+    sourceFormat: "xlsx",
+    sourceMediaType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    editorCapability: "office-editor",
+    adapter: "office",
+    projectSchema: "office-file@1",
+    editability: "native",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "image_editing",
+    artifactType: "single_file_image",
+    sourceFormat: "webp",
+    sourceMediaType: "image/webp",
+    editorCapability: "image-editor",
+    adapter: "image",
+    projectSchema: "oceanleo.fabric-image.v1",
+    editability: "bounded",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "pdf_editing",
+    artifactType: "pdf",
+    sourceFormat: "pdf",
+    sourceMediaType: "application/pdf",
+    editorCapability: "pdf-editor",
+    adapter: "pdf",
+    projectSchema: "pdf-binary@1",
+    editability: "bounded",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "audio_editing",
+    artifactType: "audio",
+    sourceFormat: "mp3",
+    sourceMediaType: "audio/mpeg",
+    editorCapability: "audio-editor",
+    adapter: "audio",
+    projectSchema: "oceanleo.audio-project.v1",
+    editability: "bounded",
+    sourceIntegrity: "content_addressed",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "chart_editing",
+    artifactType: "chart",
+    sourceFormat: "oceanleo.chart.v1",
+    sourceMediaType: "application/json",
+    editorCapability: "chart-editor",
+    adapter: "chart-editor@1",
+    projectSchema: "oceanleo.chart.v1",
+    editability: "native",
+    sourceIntegrity: "content_addressed",
+    openMode: "structured-project",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "manifest",
+      schema: "oceanleo.chart.v1",
+      requiredPaths: ["option", "option.series"],
+      dependencyClosure: "not_required",
+    },
+  },
+  {
+    featureId: "video_canvas",
+    artifactType: "workflow",
+    sourceFormat: "oceanleo.video.project.v2",
+    sourceMediaType: "application/json",
+    editorCapability: "video-canvas",
+    adapter: "video-canvas",
+    projectSchema: "oceanleo.video-canvas.v1",
+    editability: "native",
+    sourceIntegrity: "complete_dependency_closure",
+    openMode: "structured-project",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "manifest",
+      schema: "oceanleo.video.project.v2",
+      requiredPaths: ["schemaVersion", "headVersionId", "versions", "assets"],
+      dependencyClosure: "complete",
+    },
+  },
+  {
+    featureId: "model_3d",
+    artifactType: "model_3d",
+    sourceFormat: "gltf",
+    sourceMediaType: "model/gltf+json",
+    editorCapability: "model-3d-editor",
+    adapter: "threed",
+    projectSchema: "oceanleo.model-view@1",
+    editability: "bounded",
+    sourceIntegrity: "complete_dependency_closure",
+    openMode: "native-file",
+    previewPurposes: ["full", "preview"],
+    requirement: {
+      kind: "manifest",
+      schema: "gltf/2.0",
+      requiredPaths: ["asset.version", "buffers"],
+      dependencyClosure: "complete",
+    },
+  },
+] as const;
+
+export type AdvancedFeatureId =
+  (typeof ADVANCED_CAPABILITY_ROWS)[number]["featureId"];
+
+const ADVANCED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = {
+  preferredPurpose: "source",
+  preferredMode: "source",
+  fallbackPurposes: ["full", "preview"],
+  fallbackMode: "export",
+};
+
+/** Generated mirror of scripts/advanced-capability-contract.json. */
+export const ADVANCED_CAPABILITY_CONTRACT: readonly AdvancedCapabilityContractEntry[] =
+  ADVANCED_CAPABILITY_ROWS.map(
+    ({
+      previewPurposes,
+      ...row
+    }): AdvancedCapabilityContractEntry => ({
+      ...row,
+      previewSource: {
+        previewPurposes,
+        editorPurpose: "source",
+        sameRevisionRequired: true,
+        sourceDigestRequired: true,
+        derivedFromSourceDigestRequired: true,
+        renderedSourceSubstitution: "forbidden",
+      },
+      download: ADVANCED_DOWNLOAD_RULE,
+    }),
+  );
+
+const ADVANCED_CAPABILITY_BY_FEATURE = new Map(
+  ADVANCED_CAPABILITY_CONTRACT.map((entry) => [entry.featureId, entry]),
+);
+
+export function advancedCapabilityContractPayload(): {
+  schema: "oceanleo.advanced-capability-contract.v1";
+  version: 1;
+  roundTripCapabilities: readonly ["load", "mutate", "save", "reopen"];
+  capabilities: readonly AdvancedCapabilityContractEntry[];
+} {
+  return {
+    schema: "oceanleo.advanced-capability-contract.v1",
+    version: 1,
+    roundTripCapabilities: ["load", "mutate", "save", "reopen"],
+    capabilities: ADVANCED_CAPABILITY_CONTRACT,
+  };
+}
+
+export function advancedCapabilityForFeatureId(
+  featureId: string | null | undefined,
+): AdvancedCapabilityContractEntry | null {
+  return (
+    ADVANCED_CAPABILITY_BY_FEATURE.get(
+      String(featureId || "").trim() as AdvancedFeatureId,
+    ) || null
+  );
+}
+
+export function advancedCapabilityForArtifactFields(input: {
+  artifactType: ArtifactType;
+  sourceFormat: string;
+  editorCapability: string | null;
+}): AdvancedCapabilityContractEntry | null {
+  const sourceFormat = String(input.sourceFormat || "").trim().toLowerCase();
+  const editorCapability = String(input.editorCapability || "")
+    .trim()
+    .toLowerCase();
+  return (
+    ADVANCED_CAPABILITY_CONTRACT.find(
+      (entry) =>
+        entry.artifactType === input.artifactType &&
+        entry.sourceFormat === sourceFormat &&
+        entry.editorCapability === editorCapability,
+    ) || null
+  );
+}
+
 export type ArtifactEditability = "native" | "bounded" | "view_only";
 export type ArtifactVisibility = "private" | "workspace" | "public";
 export type ArtifactRenditionPurpose =
@@ -90,6 +445,9 @@ export interface ArtifactIntegrity {
     | "missing-preview"
     | "missing-source"
     | "missing-scene"
+    | "missing-editor-manifest"
+    | "source-format-mismatch"
+    | "editor-capability-mismatch"
     | "missing-provenance"
     | "license-restricted"
     | "incomplete-dependency-closure"
@@ -230,6 +588,168 @@ const RENDITION_PURPOSES: ArtifactRenditionPurpose[] = [
   "editor_manifest",
 ];
 
+const SOURCE_FORMAT_EXACT: Readonly<Record<ArtifactType, ReadonlySet<string>>> = {
+  single_file_image: new Set([
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+    "gif",
+    "bmp",
+    "tiff",
+    "psd",
+    "avif",
+  ]),
+  composite_image: new Set([
+    "fabric-json",
+    "oceanleo-scene+json",
+    "scene+json",
+    "psd-manifest+json",
+    "oceanleo.design-document.v1",
+  ]),
+  vector_image: new Set(["svg", "svg+xml", "ai", "eps"]),
+  chart: new Set([
+    "json",
+    "vega",
+    "vega-lite",
+    "echarts",
+    "echarts-option+json",
+    "oceanleo.chart.v1",
+  ]),
+  document: new Set([
+    "markdown",
+    "md",
+    "txt",
+    "text",
+    "html",
+    "doc",
+    "docx",
+    "rtf",
+    "odt",
+    "json",
+    "zip",
+    "binary",
+    "tiptap-json",
+    "tiptap-json@1",
+  ]),
+  grid: new Set(["csv", "xls", "xlsx", "ods", "oceanleo.grid.v1"]),
+  deck: new Set(["ppt", "pptx", "odp", "oceanleo.deck.v1"]),
+  pdf: new Set(["pdf", "application/pdf"]),
+  website: new Set([
+    "html",
+    "text/html",
+    "zip",
+    "website-source@1",
+    "oceanleo.website-project.v1",
+  ]),
+  video: new Set([
+    "mp4",
+    "mov",
+    "webm",
+    "mkv",
+    "avi",
+    "timeline-json",
+    "oceanleo.timeline.v1",
+  ]),
+  audio: new Set([
+    "mp3",
+    "wav",
+    "ogg",
+    "flac",
+    "m4a",
+    "aac",
+    "oceanleo.audio-project.v1",
+  ]),
+  model_3d: new Set(["glb", "gltf", "obj", "fbx", "stl", "usdz"]),
+  workflow: new Set([
+    "json",
+    "oceanleo.workflow.v1",
+    "oceanleo.video-canvas.v1",
+    "oceanleo.video.project.v2",
+  ]),
+};
+
+const SOURCE_FORMAT_PREFIXES: Readonly<
+  Record<ArtifactType, readonly string[]>
+> = {
+  single_file_image: ["image/", "raster-"],
+  composite_image: ["scene+"],
+  vector_image: ["vector-", "image/svg"],
+  chart: ["chart-", "oceanleo.chart."],
+  document: [
+    "text/",
+    "application/",
+    "document-",
+    "richdoc-",
+    "oceanleo.document.",
+  ],
+  grid: ["grid-", "oceanleo.grid."],
+  deck: ["deck-", "oceanleo.deck."],
+  pdf: ["pdf-"],
+  website: ["website-", "oceanleo.website-"],
+  video: ["video/", "video-", "oceanleo.timeline."],
+  audio: ["audio/", "audio-", "oceanleo.audio-"],
+  model_3d: ["model/", "model-", "3d-"],
+  workflow: ["workflow-", "oceanleo.workflow."],
+};
+
+export const ARTIFACT_EDITOR_CAPABILITIES: Readonly<
+  Record<ArtifactType, ReadonlySet<string>>
+> = {
+  single_file_image: new Set(["image-editor", "raster-image"]),
+  composite_image: new Set(["composite-image-editor", "design-canvas"]),
+  vector_image: new Set(["vector-editor"]),
+  chart: new Set(["chart-editor"]),
+  document: new Set(["richdoc-editor", "document-editor", "office-editor"]),
+  grid: new Set(["grid-editor", "office-editor"]),
+  deck: new Set(["deck-editor", "office-editor"]),
+  pdf: new Set(["pdf-editor"]),
+  website: new Set(["website-editor"]),
+  video: new Set(["video-timeline"]),
+  audio: new Set(["audio-editor"]),
+  model_3d: new Set(["model-3d-editor"]),
+  workflow: new Set(["design-canvas", "video-canvas"]),
+};
+
+const CHART_OPTION_SOURCE_FORMATS = new Set([
+  "echarts-option+json",
+  "oceanleo.chart.v1",
+]);
+
+export function artifactSourceFormatIsCompatible(
+  artifactType: ArtifactType,
+  sourceFormat: unknown,
+): boolean {
+  const normalized = String(sourceFormat || "").trim().toLowerCase();
+  return Boolean(
+    normalized &&
+      (SOURCE_FORMAT_EXACT[artifactType].has(normalized) ||
+        SOURCE_FORMAT_PREFIXES[artifactType].some((prefix) =>
+          normalized.startsWith(prefix),
+        )),
+  );
+}
+
+export function artifactEditorCapabilityIsCompatible(
+  artifactType: ArtifactType,
+  editorCapability: unknown,
+): boolean {
+  return ARTIFACT_EDITOR_CAPABILITIES[artifactType].has(
+    String(editorCapability || "").trim().toLowerCase(),
+  );
+}
+
+export function chartOptionEvidenceIsPresent(input: {
+  sourceFormat: unknown;
+  editorManifest?: ArtifactRendition | null;
+}): boolean {
+  const sourceFormat = String(input.sourceFormat || "").trim().toLowerCase();
+  return Boolean(
+    CHART_OPTION_SOURCE_FORMATS.has(sourceFormat) ||
+      (input.editorManifest?.url && input.editorManifest.digest),
+  );
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -241,6 +761,10 @@ function text(...values: unknown[]): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+function mediaType(value: unknown): string {
+  return text(value).toLowerCase().split(";", 1)[0]?.trim() || "";
 }
 
 function bool(value: unknown): boolean {
@@ -498,6 +1022,7 @@ export function artifactIntegrityFor(input: {
   artifactType: ArtifactType;
   revisionId: string;
   editability: ArtifactEditability;
+  editorCapability: string | null;
   sourceFormat: string;
   owner: ArtifactOwner;
   access: ArtifactAccess;
@@ -581,6 +1106,7 @@ export function artifactIntegrityFor(input: {
   if (
     input.editability !== "view_only" &&
     (!input.sourceFormat ||
+      !input.editorCapability ||
       !input.renditions.source ||
       !input.renditions.source.digest)
   ) {
@@ -588,10 +1114,70 @@ export function artifactIntegrityFor(input: {
       ok: false,
       code: "missing-source",
       reason:
-        "素材声明可编辑，但当前 revision 缺少 source format、source rendition 或 source digest。",
+        "素材声明可编辑，但当前 revision 缺少 source format、editor capability、source rendition 或 source digest。",
     };
   }
-  if (input.artifactType === "composite_image") {
+  if (
+    input.editability !== "view_only" &&
+    !artifactSourceFormatIsCompatible(input.artifactType, input.sourceFormat)
+  ) {
+    return {
+      ok: false,
+      code: "source-format-mismatch",
+      reason: `source format ${input.sourceFormat || "missing"} 与 artifact type ${input.artifactType} 不匹配。`,
+    };
+  }
+  if (
+    input.editability !== "view_only" &&
+    !artifactEditorCapabilityIsCompatible(
+      input.artifactType,
+      input.editorCapability,
+    )
+  ) {
+    return {
+      ok: false,
+      code: "editor-capability-mismatch",
+      reason: `editor capability ${input.editorCapability || "missing"} 与 artifact type ${input.artifactType} 不匹配。`,
+    };
+  }
+  const advancedContract = advancedCapabilityForArtifactFields({
+    artifactType: input.artifactType,
+    sourceFormat: input.sourceFormat,
+    editorCapability: input.editorCapability,
+  });
+  const declaredSourceMediaType = mediaType(input.renditions.source?.mediaType);
+  if (
+    advancedContract &&
+    declaredSourceMediaType &&
+    declaredSourceMediaType !== advancedContract.sourceMediaType
+  ) {
+    return {
+      ok: false,
+      code: "source-format-mismatch",
+      reason:
+        `source Content-Type ${declaredSourceMediaType} 与 ${advancedContract.featureId} contract ` +
+        `${advancedContract.sourceMediaType} 不一致。`,
+    };
+  }
+  if (
+    input.editability !== "view_only" &&
+    input.artifactType === "chart" &&
+    !chartOptionEvidenceIsPresent({
+      sourceFormat: input.sourceFormat,
+      editorManifest: input.renditions.editor_manifest,
+    })
+  ) {
+    return {
+      ok: false,
+      code: "missing-editor-manifest",
+      reason:
+        "图表缺少 oceanleo.chart.v1 option 源或带摘要的 editor manifest，不能进入编辑器。",
+    };
+  }
+  if (
+    input.editability !== "view_only" &&
+    input.artifactType === "composite_image"
+  ) {
     if (!input.scene || input.scene.sceneRevisionId !== input.revisionId) {
       return {
         ok: false,
@@ -647,10 +1233,13 @@ export function normalizeArtifactProjection(
   const provenance = normalizeProvenance(raw.provenance);
   if (!owner || !access) return null;
   const sourceFormat = text(raw.sourceFormat, raw.source_format);
+  const editorCapability =
+    text(raw.editorCapability, raw.editor_capability) || null;
   const integrity = artifactIntegrityFor({
     artifactType,
     revisionId,
     editability,
+    editorCapability,
     sourceFormat,
     owner,
     access,
@@ -673,6 +1262,9 @@ export function normalizeArtifactProjection(
               "missing-preview",
               "missing-source",
               "missing-scene",
+              "missing-editor-manifest",
+              "source-format-mismatch",
+              "editor-capability-mismatch",
               "missing-provenance",
               "license-restricted",
               "incomplete-dependency-closure",
@@ -695,8 +1287,7 @@ export function normalizeArtifactProjection(
     owner,
     access,
     editability,
-    editorCapability:
-      text(raw.editorCapability, raw.editor_capability) || null,
+    editorCapability,
     sourceFormat,
     title: text(raw.title) || "未命名素材",
     favorite: bool(raw.favorite),
@@ -901,7 +1492,7 @@ export function renditionNeedsRefresh(
 
 export function viewerRenditionOrder(
   artifactType: ArtifactType,
-  canExportSource = false,
+  _canExportSource = false,
 ): ArtifactRenditionPurpose[] {
   if (
     artifactType === "single_file_image" ||
@@ -920,9 +1511,8 @@ export function viewerRenditionOrder(
   ) {
     return ["full", "preview"];
   }
-  return canExportSource
-    ? ["full", "preview", "source"]
-    : ["full", "preview"];
+  // Preview must never substitute an editable/download source rendition.
+  return ["full", "preview"];
 }
 
 export function selectArtifactRendition(
@@ -939,6 +1529,50 @@ export function selectArtifactRendition(
     }
   }
   return null;
+}
+
+export interface ArtifactDownloadCandidate {
+  purpose: "source" | "editor_manifest" | "full" | "preview";
+  mode: Extract<ArtifactAccessMode, "source" | "export">;
+  rendition: ArtifactRendition;
+}
+
+/**
+ * Contract-first download order. Source/editor-manifest renditions are
+ * requested with `mode=source`; only rendered full/preview deliveries use
+ * `mode=export`. A source-capable artifact fails closed instead of substituting
+ * a rendered rendition.
+ */
+export function artifactDownloadPlanFor(
+  artifact: ArtifactProjection,
+): ArtifactDownloadCandidate[] {
+  if (!artifact.access.canRead || !artifact.integrity.ok) return [];
+  if (artifact.access.canExportSource) {
+    const sourcePurpose = artifact.renditions.source
+      ? "source"
+      : "editor_manifest";
+    const source = artifact.renditions[sourcePurpose];
+    return source?.purpose === sourcePurpose &&
+      source.revisionId === artifact.revisionId &&
+      source.url &&
+      source.digest
+      ? [{ purpose: sourcePurpose, mode: "source", rendition: source }]
+      : [];
+  }
+  const candidates: ArtifactDownloadCandidate[] = [];
+  if (artifact.access.canPreview) {
+    for (const purpose of ADVANCED_DOWNLOAD_RULE.fallbackPurposes) {
+      const rendition = artifact.renditions[purpose];
+      if (
+        rendition?.purpose === purpose &&
+        rendition.revisionId === artifact.revisionId &&
+        rendition.url
+      ) {
+        candidates.push({ purpose, mode: "export", rendition });
+      }
+    }
+  }
+  return candidates;
 }
 
 /**

@@ -509,32 +509,111 @@ export function formatMs(ms: number, withTenths = false): string {
   return `${base}.${Math.floor((clamped % 1000) / 100)}`;
 }
 
-/** 宽松校验一份草稿 JSON 是否能当 TimelineDoc 恢复。 */
-export function isTimelineDoc(value: unknown): value is TimelineDoc {
-  if (!value || typeof value !== "object") return false;
-  const doc = value as TimelineDoc;
+const MAX_TIMELINE_TRACKS = 64;
+const MAX_TIMELINE_CLIPS = 5_000;
+const MAX_TIMELINE_SOURCE_URL = 8_192;
+
+function validTimelineSourceUrl(value: unknown): boolean {
   if (
-    typeof doc.width !== "number" ||
-    typeof doc.height !== "number" ||
-    typeof doc.fps !== "number" ||
-    !Array.isArray(doc.tracks)
+    typeof value !== "string" ||
+    !value.trim() ||
+    value.length > MAX_TIMELINE_SOURCE_URL
   ) {
     return false;
   }
-  return doc.tracks.every(
-    (track) =>
-      track &&
-      typeof track.id === "string" &&
-      ["video", "audio", "text", "image"].includes(track.kind) &&
-      Array.isArray(track.clips) &&
-      track.clips.every(
-        (clip) =>
-          clip &&
-          typeof clip.id === "string" &&
-          typeof clip.start_ms === "number" &&
-          typeof clip.duration_ms === "number",
-      ),
-  );
+  const source = value.trim();
+  if (source.startsWith("/") && !source.startsWith("//")) return true;
+  try {
+    return ["http:", "https:"].includes(new URL(source).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/** 返回视频工程的首个结构问题；空串代表可安全规范化。 */
+export function timelineDocIssue(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "工程根节点必须是对象";
+  }
+  const doc = value as TimelineDoc;
+  if (
+    !Number.isFinite(doc.width) ||
+    doc.width <= 0 ||
+    !Number.isFinite(doc.height) ||
+    doc.height <= 0 ||
+    !Number.isFinite(doc.fps) ||
+    doc.fps <= 0
+  ) {
+    return "画布宽高和帧率必须是有限数字";
+  }
+  if (!Array.isArray(doc.tracks)) return "tracks 必须是数组";
+  if (doc.tracks.length > MAX_TIMELINE_TRACKS) {
+    return `轨道超过 ${MAX_TIMELINE_TRACKS} 条安全上限`;
+  }
+  const trackIds = new Set<string>();
+  const clipIds = new Set<string>();
+  let clipCount = 0;
+  for (let trackIndex = 0; trackIndex < doc.tracks.length; trackIndex += 1) {
+    if (!(trackIndex in doc.tracks)) return `轨道 ${trackIndex + 1} 为空洞`;
+    const track = doc.tracks[trackIndex];
+    if (!track || typeof track !== "object") {
+      return `轨道 ${trackIndex + 1} 不是对象`;
+    }
+    if (!track.id || typeof track.id !== "string" || track.id.length > 200) {
+      return `轨道 ${trackIndex + 1} 缺少有效 id`;
+    }
+    if (trackIds.has(track.id)) return `轨道 id 重复：${track.id}`;
+    trackIds.add(track.id);
+    if (!["video", "audio", "text", "image"].includes(track.kind)) {
+      return `轨道 ${track.id} 类型无效`;
+    }
+    if (!Array.isArray(track.clips)) return `轨道 ${track.id} 的 clips 必须是数组`;
+    clipCount += track.clips.length;
+    if (clipCount > MAX_TIMELINE_CLIPS) {
+      return `片段超过 ${MAX_TIMELINE_CLIPS} 个安全上限`;
+    }
+    for (let clipIndex = 0; clipIndex < track.clips.length; clipIndex += 1) {
+      if (!(clipIndex in track.clips)) {
+        return `轨道 ${track.id} 的片段 ${clipIndex + 1} 为空洞`;
+      }
+      const clip = track.clips[clipIndex];
+      if (!clip || typeof clip !== "object") {
+        return `轨道 ${track.id} 的片段 ${clipIndex + 1} 不是对象`;
+      }
+      if (!clip.id || typeof clip.id !== "string" || clip.id.length > 200) {
+        return `轨道 ${track.id} 存在无效片段 id`;
+      }
+      if (clipIds.has(clip.id)) return `片段 id 重复：${clip.id}`;
+      clipIds.add(clip.id);
+      if (
+        !Number.isFinite(clip.start_ms) ||
+        clip.start_ms < 0 ||
+        !Number.isFinite(clip.duration_ms) ||
+        clip.duration_ms <= 0
+      ) {
+        return `片段 ${clip.id} 的时间范围无效`;
+      }
+      if (
+        track.kind !== "text" &&
+        !validTimelineSourceUrl(clip.source_url)
+      ) {
+        return `片段 ${clip.id} 缺少安全的 http(s) 媒体源`;
+      }
+      if (
+        track.kind === "text" &&
+        clip.text !== undefined &&
+        typeof clip.text !== "string"
+      ) {
+        return `文字片段 ${clip.id} 的 text 无效`;
+      }
+    }
+  }
+  return "";
+}
+
+/** 严格校验一份草稿 JSON 是否能当 TimelineDoc 恢复。 */
+export function isTimelineDoc(value: unknown): value is TimelineDoc {
+  return timelineDocIssue(value) === "";
 }
 
 export const TRACK_KIND_ORDER: TrackKind[] = ["video", "audio", "text", "image"];

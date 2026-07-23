@@ -6,6 +6,7 @@ import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
   artifactContextsEqual,
+  artifactDownloadPlanFor,
   artifactHasExactContext,
   artifactIsVisible,
   isEnsureableTransient,
@@ -51,8 +52,20 @@ export interface ArtifactSearchResult {
 export interface ArtifactDownloadResult {
   artifactId: string;
   revisionId: string;
+  purpose: ArtifactRenditionPurpose;
+  mode: "source" | "export";
   url: string;
   filename: string;
+  mediaType: string;
+  expiresAt: string;
+}
+
+export interface ArtifactDownloadEvidence {
+  visible: boolean;
+  available: boolean;
+  reason: string;
+  purpose: ArtifactRenditionPurpose | null;
+  mode: "source" | "export" | null;
 }
 
 export const ARTIFACT_LIBRARY_CHANGE_EVENT =
@@ -183,7 +196,9 @@ function trustedGatewayArtifactAccessUrl(value: unknown): string {
     const parsed = new URL(candidate);
     const gateway = new URL(GATEWAY_BASE);
     return parsed.origin === gateway.origin &&
-      ARTIFACT_ACCESS_PATH.test(parsed.pathname)
+      ARTIFACT_ACCESS_PATH.test(parsed.pathname) &&
+      !parsed.search &&
+      !parsed.hash
       ? parsed.toString()
       : "";
   } catch {
@@ -203,17 +218,148 @@ function safeAttachmentFilename(value: unknown): string {
     .slice(0, 180);
 }
 
-function attachmentExtension(value: unknown): string {
-  const format = String(value || "").trim().toLowerCase();
-  if (!format) return "";
-  if (format.includes("json")) return "json";
-  if (format === "jpeg") return "jpg";
+const MEDIA_TYPE_EXTENSIONS: Record<string, string> = {
+  "application/json": "json",
+  "application/pdf": "pdf",
+  "application/rtf": "rtf",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/msword": "doc",
+  "application/vnd.oasis.opendocument.presentation": "odp",
+  "application/vnd.oasis.opendocument.spreadsheet": "ods",
+  "application/vnd.oasis.opendocument.text": "odt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    "pptx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "docx",
+  "application/zip": "zip",
+  "audio/aac": "aac",
+  "audio/flac": "flac",
+  "audio/m4a": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/ogg": "ogg",
+  "audio/wav": "wav",
+  "image/bmp": "bmp",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/tiff": "tiff",
+  "image/webp": "webp",
+  "model/gltf+json": "gltf",
+  "model/gltf-binary": "glb",
+  "text/csv": "csv",
+  "text/html": "html",
+  "text/markdown": "md",
+  "text/plain": "txt",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+};
+
+const EXTENSION_MEDIA_TYPES: Record<string, string> = {
+  aac: "audio/aac",
+  bmp: "image/bmp",
+  csv: "text/csv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  flac: "audio/flac",
+  gif: "image/gif",
+  glb: "model/gltf-binary",
+  gltf: "model/gltf+json",
+  html: "text/html",
+  jpg: "image/jpeg",
+  json: "application/json",
+  m4a: "audio/m4a",
+  md: "text/markdown",
+  mov: "video/quicktime",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  odp: "application/vnd.oasis.opendocument.presentation",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  odt: "application/vnd.oasis.opendocument.text",
+  ogg: "audio/ogg",
+  pdf: "application/pdf",
+  png: "image/png",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  rtf: "application/rtf",
+  svg: "image/svg+xml",
+  tiff: "image/tiff",
+  txt: "text/plain",
+  wav: "audio/wav",
+  webm: "video/webm",
+  webp: "image/webp",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  zip: "application/zip",
+};
+
+function normalizedMediaType(value: unknown): string {
+  const mediaType = String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(";", 1)[0]!;
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType)
+    ? mediaType
+    : "";
+}
+
+function attachmentExtension(
+  formatValue: unknown,
+  mediaTypeValue: unknown,
+  purpose: ArtifactRenditionPurpose,
+): string {
+  const mediaType = normalizedMediaType(mediaTypeValue);
+  if (purpose === "editor_manifest") return "json";
+  if (mediaType.endsWith("+json")) return "json";
+  if (MEDIA_TYPE_EXTENSIONS[mediaType]) {
+    return MEDIA_TYPE_EXTENSIONS[mediaType];
+  }
+  const format = String(formatValue || "").trim().toLowerCase();
+  if (
+    format.includes("json") ||
+    format.startsWith("oceanleo.") ||
+    /-source@\d+$/.test(format)
+  ) {
+    return "json";
+  }
+  if (format === "jpeg" || format === "image/jpeg") return "jpg";
+  if (format === "markdown" || format === "text/markdown") return "md";
+  if (format === "text" || format === "text/plain") return "txt";
+  if (format === "svg+xml" || format === "image/svg+xml") return "svg";
   const extension = format
     .split("/")
     .pop()!
     .replace(/^\.+/, "")
     .replace(/[^a-z0-9]+/g, "");
-  return extension.length <= 12 ? extension : "";
+  return extension && extension.length <= 12 ? extension : "bin";
+}
+
+function attachmentMediaType(value: unknown, extension: string): string {
+  return (
+    normalizedMediaType(value) ||
+    EXTENSION_MEDIA_TYPES[extension] ||
+    "application/octet-stream"
+  );
+}
+
+function attachmentFilename(
+  title: unknown,
+  supplied: unknown,
+  extension: string,
+): string {
+  const suppliedName = safeAttachmentFilename(supplied);
+  const fallbackName = safeAttachmentFilename(title) || "artifact";
+  let stem = suppliedName || fallbackName;
+  if (!extension) return stem;
+  const suffix = `.${extension}`;
+  if (stem.toLowerCase().endsWith(suffix)) return stem;
+  if (suppliedName && /\.[a-z0-9]{1,12}$/i.test(stem)) {
+    stem = stem.slice(0, stem.lastIndexOf(".")) || "artifact";
+  }
+  return `${stem.slice(0, Math.max(1, 180 - suffix.length))}${suffix}`;
 }
 
 function qualifyArtifactAccessUrls(value: unknown): unknown {
@@ -238,17 +384,26 @@ function qualifyArtifactAccessUrls(value: unknown): unknown {
 }
 
 function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
-  const raw =
-    value && typeof value === "object"
-      ? String(
-          (value as { code?: unknown; error_code?: unknown }).code ||
-            (value as { error_code?: unknown }).error_code ||
-            "",
-        )
-          .trim()
-          .toLowerCase()
-          .replaceAll("_", "-")
-      : "";
+  const envelope =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const detail =
+    envelope.detail &&
+    typeof envelope.detail === "object" &&
+    !Array.isArray(envelope.detail)
+      ? (envelope.detail as Record<string, unknown>)
+      : {};
+  const raw = String(
+    envelope.code ||
+      envelope.error_code ||
+      detail.code ||
+      detail.error_code ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
   const known = new Set<ArtifactApiErrorCode>([
     "unauthorized",
     "not-found",
@@ -274,12 +429,26 @@ function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
 
 function errorMessage(value: unknown, fallback: string): string {
   if (!value || typeof value !== "object") return fallback;
-  const raw = value as {
-    detail?: unknown;
-    message?: unknown;
-    error?: unknown;
-  };
-  return String(raw.detail || raw.message || raw.error || fallback);
+  const raw = value as Record<string, unknown>;
+  const detail =
+    raw.detail && typeof raw.detail === "object" && !Array.isArray(raw.detail)
+      ? (raw.detail as Record<string, unknown>)
+      : null;
+  for (const candidate of [
+    detail?.message,
+    detail?.error,
+    typeof raw.detail === "string" ? raw.detail : null,
+    raw.message,
+    raw.error,
+  ]) {
+    if (
+      (typeof candidate === "string" || typeof candidate === "number") &&
+      String(candidate).trim()
+    ) {
+      return String(candidate).trim();
+    }
+  }
+  return fallback;
 }
 
 async function artifactRequest<T>(
@@ -1490,6 +1659,160 @@ export async function refreshArtifactRendition(
   return { ...result, data: rendition };
 }
 
+interface ArtifactDownloadPlan extends ArtifactDownloadEvidence {
+  rendition: ArtifactRendition | null;
+  code: ArtifactApiErrorCode;
+  status: number;
+}
+
+function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
+  if (!isDurableLibraryItem(item)) {
+    return {
+      visible: false,
+      available: false,
+      reason: "下载需要 durable artifact identity。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "invalid-response",
+      status: 409,
+    };
+  }
+  const artifact = item.artifact;
+  if (!artifact.access.canRead) {
+    return {
+      visible: false,
+      available: false,
+      reason: "当前主体没有下载这个 revision 的权限。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "unauthorized",
+      status: 403,
+    };
+  }
+  if (!artifact.integrity.ok) {
+    return {
+      visible: true,
+      available: false,
+      reason:
+        artifact.integrity.reason || "当前 revision 未通过完整性校验。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "integrity-failed",
+      status: 422,
+    };
+  }
+  const [candidate] = artifactDownloadPlanFor(artifact);
+  if (artifact.access.canExportSource) {
+    const source =
+      artifact.renditions.source ||
+      artifact.renditions.editor_manifest ||
+      null;
+    if (!source) {
+      return {
+        visible: true,
+        available: false,
+        reason:
+          "当前 revision 声明可导出源码，但缺少 source 或 editor_manifest；已拒绝降级为渲染图片。",
+        purpose: null,
+        mode: null,
+        rendition: null,
+        code: "missing-source",
+        status: 422,
+      };
+    }
+    if (!candidate) {
+      return {
+        visible: true,
+        available: false,
+        reason:
+          "源码 rendition 没有摘要或没有固定到当前 artifact revision。",
+        purpose: null,
+        mode: null,
+        rendition: null,
+        code: "integrity-failed",
+        status: 409,
+      };
+    }
+    return {
+      visible: true,
+      available: true,
+      reason: "",
+      purpose: candidate.purpose,
+      mode: "source",
+      rendition: candidate.rendition,
+      code: "unknown",
+      status: 200,
+    };
+  }
+  if (!artifact.access.canPreview) {
+    return {
+      visible: true,
+      available: false,
+      reason: "当前主体没有导出 rendered rendition 的权限。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "unauthorized",
+      status: 403,
+    };
+  }
+  const rendered = candidate?.rendition || null;
+  if (!rendered) {
+    return {
+      visible: true,
+      available: false,
+      reason:
+        "这个 rendered-only revision 没有可导出的 full 或 preview rendition。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "missing-source",
+      status: 422,
+    };
+  }
+  if (
+    !["full", "preview"].includes(rendered.purpose) ||
+    rendered.revisionId !== artifact.revisionId
+  ) {
+    return {
+      visible: true,
+      available: false,
+      reason: "渲染 rendition 没有固定到当前 artifact revision。",
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "integrity-failed",
+      status: 409,
+    };
+  }
+  return {
+    visible: true,
+    available: true,
+    reason: "",
+    purpose: rendered.purpose,
+    mode: "export",
+    rendition: rendered,
+    code: "unknown",
+    status: 200,
+  };
+}
+
+export function artifactDownloadEvidence(
+  item: LibraryItem,
+): ArtifactDownloadEvidence {
+  const plan = artifactDownloadPlan(item);
+  return {
+    visible: plan.visible,
+    available: plan.available,
+    reason: plan.reason,
+    purpose: plan.purpose,
+    mode: plan.mode,
+  };
+}
+
 export async function getArtifactDownload(
   item: LibraryItem,
   signal?: AbortSignal,
@@ -1514,31 +1837,15 @@ export async function getArtifactDownload(
     };
   }
   const artifact = durable.data.artifact;
-  if (!artifact.access.canRead) {
+  const plan = artifactDownloadPlan(durable.data);
+  const rendition = plan.rendition;
+  const mode = plan.mode;
+  if (!plan.available || !rendition || !mode) {
     return {
       ok: false,
-      error: "当前主体没有下载这个 revision 的权限。",
-      code: "unauthorized",
-      status: 403,
-      retryable: false,
-    };
-  }
-  const sourceRendition =
-    artifact.access.canExportSource
-      ? artifact.renditions.source || null
-      : null;
-  const renderedRendition = artifact.access.canPreview
-    ? artifact.renditions.full || artifact.renditions.preview || null
-    : null;
-  const rendition =
-    sourceRendition || renderedRendition;
-  if (!rendition) {
-    return {
-      ok: false,
-      error:
-        "当前 revision 没有可导出的 source、full 或 preview rendition。",
-      code: "missing-source",
-      status: 422,
+      error: plan.reason,
+      code: plan.code,
+      status: plan.status,
       retryable: false,
     };
   }
@@ -1547,7 +1854,7 @@ export async function getArtifactDownload(
       artifact.artifactId,
     )}/revisions/${encodeURIComponent(
       artifact.revisionId,
-    )}/renditions/${rendition.purpose}?mode=export`,
+    )}/renditions/${rendition.purpose}?mode=${mode}`,
     { signal },
   );
   if (!grant.ok) return grant as ArtifactApiResult<ArtifactDownloadResult>;
@@ -1568,42 +1875,68 @@ export async function getArtifactDownload(
   const grantUrl = trustedGatewayArtifactAccessUrl(
     raw.accessUrl || raw.access_url,
   );
-  const expiresAt = Date.parse(
-    String(raw.expiresAt || raw.expires_at || ""),
+  const expiresAtValue = String(
+    raw.expiresAt || raw.expires_at || "",
+  ).trim();
+  const expiresAt = Date.parse(expiresAtValue);
+  const grantMediaType = normalizedMediaType(
+    raw.mediaType ||
+      raw.media_type ||
+      raw.contentType ||
+      raw.content_type,
   );
+  const renditionMediaType = normalizedMediaType(rendition.mediaType);
   if (
     grantArtifactId !== artifact.artifactId ||
     grantRevisionId !== artifact.revisionId ||
     grantPurpose !== rendition.purpose ||
-    grantMode !== "export" ||
+    grantMode !== mode ||
     !grantUrl ||
     !Number.isFinite(expiresAt) ||
-    expiresAt <= Date.now()
+    expiresAt <= Date.now() ||
+    Boolean(
+      grantMediaType &&
+        renditionMediaType &&
+        grantMediaType !== renditionMediaType,
+    )
   ) {
     return {
       ok: false,
       error:
-        "下载 grant 未返回固定 revision 的有效 export/attachment access URL。",
+        `下载 grant 未返回固定 revision、${rendition.purpose}/${mode} 与 MIME 一致的有效 attachment access URL。`,
       code: "invalid-response",
       status: grant.status,
       retryable: false,
     };
   }
-  const extension = attachmentExtension(rendition.format);
-  const baseName =
-    safeAttachmentFilename(artifact.title) || "artifact";
-  const fallbackFilename = extension
-    ? `${baseName}.${extension}`
-    : baseName;
+  const format =
+    rendition.format ||
+    (mode === "source" ? artifact.sourceFormat : "");
+  const extension = attachmentExtension(
+    format,
+    grantMediaType || renditionMediaType,
+    rendition.purpose,
+  );
+  const mediaType = attachmentMediaType(
+    grantMediaType || renditionMediaType,
+    extension,
+  );
   return {
     ok: true,
     status: grant.status,
     data: {
       artifactId: artifact.artifactId,
       revisionId: artifact.revisionId,
+      purpose: rendition.purpose,
+      mode,
       url: grantUrl,
-      filename:
-        safeAttachmentFilename(raw.filename) || fallbackFilename,
+      filename: attachmentFilename(
+        artifact.title,
+        raw.filename,
+        extension,
+      ),
+      mediaType,
+      expiresAt: new Date(expiresAt).toISOString(),
     },
   };
 }

@@ -31,7 +31,7 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveProjectWorkingHead,
+  saveFileToLibrary,
   urlExtension,
   type PersistedEditorVersion,
 } from "./doc-io";
@@ -59,6 +59,11 @@ import {
 } from "./DeckPptxVisuals";
 import { injectDeckPptxOoxml } from "./deck-pptx-ooxml";
 import { importPptxDeck } from "./pptx-deck-import";
+import {
+  fetchValidatedOfficePackage,
+  notifyOfficeAccessDenied,
+  officePackageKindForItem,
+} from "./office-file";
 
 interface Snapshot {
   deck: DeckDocument;
@@ -167,15 +172,21 @@ async function loadDeck(
   item: LibraryItem,
   previewContent?: unknown,
   signal?: AbortSignal,
+  onSourceAccessError?: () => void,
 ): Promise<DeckDocument> {
   const projectUrl = String(item.meta.editor_project_url || "").trim();
   if (projectUrl) {
-    const project = await loadEditorProject<unknown>(
-      projectUrl,
-      DECK_PROJECT_SCHEMA,
-      signal,
-    );
-    return normalizeDeckDocument(project, item.title || "演示文稿");
+    try {
+      const project = await loadEditorProject<unknown>(
+        projectUrl,
+        DECK_PROJECT_SCHEMA,
+        signal,
+      );
+      return normalizeDeckDocument(project, item.title || "演示文稿");
+    } catch (caught) {
+      notifyOfficeAccessDenied(caught, onSourceAccessError);
+      throw caught;
+    }
   }
   const fallback = normalizeDeckDocument(
     initialSource(item, previewContent),
@@ -187,26 +198,38 @@ async function loadDeck(
     urlExtension(item.url) ||
     String(item.meta.format || "")
   ).toLowerCase();
+  const isPptxPackage =
+    officePackageKindForItem(item) === "pptx" ||
+    ["pptx", "pptm", "potx", "potm"].includes(extension);
   try {
+    if (isPptxPackage) {
+      const { arrayBuffer } = await fetchValidatedOfficePackage(
+        item.url,
+        "pptx",
+        {
+          maxBytes: 64 * 1024 * 1024,
+          signal,
+          onAccessDenied: onSourceAccessError,
+        },
+      );
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      return await importPptxDeck(
+        arrayBuffer,
+        item.title || "演示文稿",
+        extension || "pptx",
+      );
+    }
     const blob = await fetchMediaBlob(item.url, {
       maxBytes: 64 * 1024 * 1024,
       signal,
     });
-    if (["pptx", "pptm", "potx", "potm"].includes(extension)) {
-      const bytes = await blob.arrayBuffer();
-      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      return await importPptxDeck(
-        bytes,
-        item.title || "演示文稿",
-        extension,
-      );
-    }
     const text = await blob.text();
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     return normalizeDeckDocument(JSON.parse(text), item.title || "演示文稿");
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
-    if (["pptx", "pptm", "potx", "potm"].includes(extension)) {
+    notifyOfficeAccessDenied(error, onSourceAccessError);
+    if (isPptxPackage) {
       throw new Error(
         error instanceof Error
           ? `PPTX 导入失败：${error.message}`
@@ -599,6 +622,7 @@ export function useDeckEditor(
   item: LibraryItem,
   siteId = "",
   previewContent?: unknown,
+  onSourceAccessError?: () => void,
 ): DeckEditorState {
   const tt = useUI();
   const initial = useMemo(
@@ -640,7 +664,7 @@ export function useDeckEditor(
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
-    void loadDeck(item, previewContent, abort.signal)
+    void loadDeck(item, previewContent, abort.signal, onSourceAccessError)
       .then((next) => {
         if (abort.signal.aborted) return;
         deckRef.current = next;
@@ -669,7 +693,7 @@ export function useDeckEditor(
       mountedRef.current = false;
       abort.abort();
     };
-  }, [item, previewContent, tt]);
+  }, [item, onSourceAccessError, previewContent, tt]);
 
   const snapshot = useCallback(
     (): Snapshot => ({
@@ -1311,10 +1335,14 @@ export function useDeckEditor(
     setError("");
     try {
       const title = `${snapshot.title || item.title || tt("演示文稿")}-${tt("编辑版")}`;
-      const result = await saveProjectWorkingHead({
+      const delivery = await buildDeckPptxBlob(snapshot);
+      const result = await saveFileToLibrary({
         item,
         siteId,
         fallbackSite: "ppt",
+        file: new File([delivery], `${title}.pptx`, {
+          type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }),
         title,
         mediaType: "ppt",
         kind: "deck",
@@ -1326,6 +1354,7 @@ export function useDeckEditor(
           slides: snapshot.slides.length,
           aspect: snapshot.aspect,
           theme: snapshot.theme,
+          delivery_format: "pptx",
         },
         project: {
           schema: DECK_PROJECT_SCHEMA,

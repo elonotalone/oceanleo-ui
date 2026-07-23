@@ -1,4 +1,4 @@
-import type { LibraryItem } from "../library-data";
+import { threeDSubtypeFor, type LibraryItem } from "../library-data";
 import type { Model3DViewProject } from "./model3d-project";
 import type { Model3DRuntimeSnapshot } from "./model3d-runtime.mjs";
 
@@ -48,7 +48,21 @@ export const EMPTY_MODEL3D_RUNTIME: Model3DRuntimeSnapshot = {
   view: DEFAULT_MODEL3D_VIEW,
 };
 
+export function isModel3DSourceItem(item: LibraryItem): boolean {
+  const subtype = threeDSubtypeFor(item);
+  if (subtype === "model") return true;
+  if (subtype === "hdri" || subtype === "texture") return false;
+  const format = String(item.meta.format || "").toLowerCase();
+  const mime = String(item.meta.mime || "").toLowerCase();
+  return (
+    ["glb", "gltf"].includes(format) ||
+    mime === "model/gltf-binary" ||
+    mime === "model/gltf+json"
+  );
+}
+
 export function model3DSourceForItem(item: LibraryItem): string {
+  if (!isModel3DSourceItem(item)) return "";
   const edited = ["three-gltf-editor-v1", "three-gltf-editor-v2"].includes(
     String(item.meta.editor || ""),
   );

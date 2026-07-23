@@ -1,10 +1,14 @@
 "use client";
 
-import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
 import { evaluateGridCell, type GridFormulaValue } from "./grid-formula";
 import { normalizeGridSheetIdentities } from "./grid-sheet-identity";
+import {
+  fetchValidatedSpreadsheetSource,
+  validateOfficePackageBlob,
+  validateSpreadsheetParserBytes,
+} from "./office-file";
 import {
   conditionalGridStyle,
   normalizeGridConditionalFormats,
@@ -315,6 +319,7 @@ async function readWorkbook(
 export async function loadGridSheets(
   item: LibraryItem,
   signal?: AbortSignal,
+  onSourceAccessError?: () => void,
 ): Promise<GridSheet[]> {
   const local = structuredSheets(item);
   if (local.length > 0) return local;
@@ -330,9 +335,11 @@ export async function loadGridSheets(
 
   const sheets = hasWorkbookUrl
     ? await readWorkbook(
-        await (
-          await fetchMediaBlob(url, { maxBytes: 48 * 1024 * 1024, signal })
-        ).arrayBuffer(),
+        await fetchValidatedSpreadsheetSource(url, item, {
+          maxBytes: 48 * 1024 * 1024,
+          signal,
+          onAccessDenied: onSourceAccessError,
+        }),
         "array",
       )
     : await readWorkbook(item.content || "", "string");
@@ -347,7 +354,18 @@ export async function loadGridFile(file: File): Promise<GridSheet[]> {
   const sheets =
     extension === "csv"
       ? await readWorkbook(await file.text(), "string")
-      : await readWorkbook(await file.arrayBuffer(), "array");
+      : await readWorkbook(
+          ["xlsx", "xlsm"].includes(extension)
+            ? await validateOfficePackageBlob(file, "xlsx")
+            : await file.arrayBuffer().then((arrayBuffer) => {
+                validateSpreadsheetParserBytes(
+                  new Uint8Array(arrayBuffer),
+                  file.type,
+                );
+                return arrayBuffer;
+              }),
+          "array",
+        );
   return sheets.length > 0 ? sheets : [emptyGridSheet()];
 }
 
@@ -532,21 +550,16 @@ function excelColor(value: string | undefined): { argb: string } | undefined {
 export async function buildGridWorkbookBlob(
   sheets: GridSheet[],
 ): Promise<Blob> {
-  const ExcelJS = await import("exceljs");
+  const imported = (await import("exceljs")) as typeof import("exceljs") & {
+    default?: typeof import("exceljs");
+  };
+  const ExcelJS = imported.Workbook ? imported : (imported.default ?? imported);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "OceanLeo";
   workbook.created = new Date();
   for (const source of sheets) {
     const bounds = usedBounds(source);
     const worksheet = workbook.addWorksheet(sanitizeSheetName(source.name));
-    for (const merge of source.merges) {
-      worksheet.mergeCells(
-        merge.firstRow + 1,
-        merge.firstCol + 1,
-        merge.lastRow + 1,
-        merge.lastCol + 1,
-      );
-    }
     for (let row = 0; row < bounds.rows; row += 1) {
       for (let col = 0; col < bounds.cols; col += 1) {
         const raw = gridCellValue(source, row, col);
@@ -597,6 +610,16 @@ export async function buildGridWorkbookBlob(
           };
         }
       }
+    }
+    // Assign values before merging: ExcelJS redirects writes to merged slave
+    // cells into the master and would otherwise overwrite the leading value.
+    for (const merge of source.merges) {
+      worksheet.mergeCells(
+        merge.firstRow + 1,
+        merge.firstCol + 1,
+        merge.lastRow + 1,
+        merge.lastCol + 1,
+      );
     }
   }
   const bytes = await workbook.xlsx.writeBuffer();

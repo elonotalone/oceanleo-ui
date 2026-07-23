@@ -30,6 +30,7 @@ import {
   MAX_DECODED_AUDIO_BYTES,
   validAudioProject,
 } from "./audio-workbench-utils";
+import { assertBlobSource } from "./source-integrity.mjs";
 import { useAudioMutations } from "./use-audio-mutations";
 import { useAudioPersistence } from "./use-audio-persistence";
 
@@ -139,18 +140,28 @@ export function useAudioWorkbench(
               }),
             );
         if (disposed) return;
-        const sourceHint = `${blob.type} ${durableUrl || "blank.wav"}`.toLowerCase();
-        const isHighlyCompressed = /\.(mp3|m4a|aac|ogg|oga|opus|wma)(?:$|[?#])/.test(
-          sourceHint,
-        ) || /audio\/(mpeg|mp4|aac|ogg|opus)/.test(sourceHint);
+        const sourceFormat = await assertBlobSource(blob, "audio");
+        const isHighlyCompressed = ["mp3", "mp4", "aac", "ogg"].includes(
+          sourceFormat,
+        );
         if (isHighlyCompressed && blob.size > MAX_COMPRESSED_AUDIO_BYTES) {
           throw new Error(
             tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"),
           );
         }
         const context = new AudioContext();
-        let decoded = await context.decodeAudioData((await blob.arrayBuffer()).slice(0));
-        await context.close();
+        let decoded: AudioBuffer;
+        try {
+          decoded = await context.decodeAudioData(
+            (await blob.arrayBuffer()).slice(0),
+          );
+        } catch {
+          throw new Error(
+            tt("音频源虽有正确容器签名，但没有浏览器可解码的音轨"),
+          );
+        } finally {
+          await context.close().catch(() => undefined);
+        }
         if (disposed) return;
         for (const operation of project?.operations || []) {
           decoded = applyAudioOperation(decoded, operation);
@@ -297,21 +308,29 @@ export function useAudioWorkbench(
         setError(tt("音频文件超过 128MB 安全上限"));
         return;
       }
-      if (
-        file.size > MAX_COMPRESSED_AUDIO_BYTES &&
-        (/\.(mp3|m4a|aac|ogg|oga|opus|wma)$/i.test(file.name) ||
-          /audio\/(mpeg|mp4|aac|ogg|opus)/i.test(file.type))
-      ) {
-        setError(tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"));
-        return;
-      }
       setLoading(true);
       setError("");
       const context = new AudioContext();
       try {
-        const decoded = await context.decodeAudioData(
-          (await file.arrayBuffer()).slice(0),
-        );
+        const sourceFormat = await assertBlobSource(file, "audio");
+        if (
+          file.size > MAX_COMPRESSED_AUDIO_BYTES &&
+          ["mp3", "mp4", "aac", "ogg"].includes(sourceFormat)
+        ) {
+          throw new Error(
+            tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"),
+          );
+        }
+        let decoded: AudioBuffer;
+        try {
+          decoded = await context.decodeAudioData(
+            (await file.arrayBuffer()).slice(0),
+          );
+        } catch {
+          throw new Error(
+            tt("音频源虽有正确容器签名，但没有浏览器可解码的音轨"),
+          );
+        }
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
           throw new Error(tt("音频解码后过大，请改用视频时间线处理长音频"));
         }

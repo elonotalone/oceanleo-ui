@@ -8,6 +8,16 @@ import {
   model3DJournalByteLength,
   normalizeModel3DOperationJournal,
 } from "../src/shell/media-editors/model3d-operations.mjs";
+import {
+  DEFAULT_MODEL3D_VIEW,
+  isModel3DSourceItem,
+  model3DSourceForItem,
+} from "../src/shell/media-editors/model3d-workbench-defaults.ts";
+import {
+  isExpiredModel3DSourceUrl,
+  model3DSourceIdentity,
+  normalizeModel3DProjectRecovery,
+} from "../src/shell/media-editors/model3d-project.ts";
 function transformOperation(index, target = "base:0") {
   return {
     id: `operation-${index}`,
@@ -20,6 +30,64 @@ function transformOperation(index, target = "base:0") {
     },
   };
 }
+
+function modelItem(meta, url = "https://cdn.example/download?sig=source") {
+  return {
+    key: "creation:model",
+    source: "creation",
+    id: "model",
+    title: "Signed model",
+    kind: "threed",
+    siteId: "threed",
+    url,
+    favorite: false,
+    meta,
+  };
+}
+
+test("signed model sources survive routing while HDRI and textures fail closed", () => {
+  const signed = modelItem({ mime: "model/gltf-binary" });
+  assert.equal(isModel3DSourceItem(signed), true);
+  assert.equal(model3DSourceForItem(signed), signed.url);
+
+  const hdri = modelItem({
+    subtype: "hdri",
+    format: "glb",
+    mime: "model/gltf-binary",
+  });
+  assert.equal(isModel3DSourceItem(hdri), false);
+  assert.equal(model3DSourceForItem(hdri), "");
+
+  const texture = modelItem({
+    subtype: "texture",
+    format: "gltf",
+  });
+  assert.equal(isModel3DSourceItem(texture), false);
+  assert.equal(model3DSourceForItem(texture), "");
+});
+
+test("3D checkpoint plus mutation journal survives project save and reopen", () => {
+  const checkpointUrl = "https://cdn.example/model.glb?sig=checkpoint";
+  const operation = transformOperation(1);
+  const saved = JSON.parse(JSON.stringify({
+    checkpointUrl,
+    operations: [operation],
+    view: {
+      ...DEFAULT_MODEL3D_VIEW,
+      sourceUrl: undefined,
+      exposure: 1.4,
+    },
+  }));
+  const reopened = normalizeModel3DProjectRecovery(
+    saved,
+    DEFAULT_MODEL3D_VIEW,
+    "",
+  );
+  assert.equal(reopened?.checkpointUrl, checkpointUrl);
+  assert.equal(reopened?.view.sourceUrl, checkpointUrl);
+  assert.equal(reopened?.view.exposure, 1.4);
+  assert.deepEqual(reopened?.operations, [operation]);
+});
 
 test("large pseudo GLB autosave checkpoints at a bounded operation cadence", () => {
   const largePseudoGlb = { byteLength: 512 * 1024 * 1024 };
@@ -129,4 +197,88 @@ test("successful checkpoint clears only its covered journal prefix", () => {
     remaining.map((operation) => operation.id),
     ["operation-65", "operation-66"],
   );
+});
+
+test("expired signed checkpoint uses refreshed source and dependency provenance", () => {
+  const expired =
+    "https://cdn.example/models/scene.gltf" +
+    "?X-Amz-Date=20200101T000000Z&X-Amz-Expires=60&X-Amz-Signature=old";
+  const refreshed =
+    "https://cdn.example/models/scene.gltf" +
+    "?X-Amz-Date=20300101T000000Z&X-Amz-Expires=600&X-Amz-Signature=new";
+  const now = Date.UTC(2026, 6, 23);
+  assert.equal(isExpiredModel3DSourceUrl(expired, now), true);
+  assert.equal(
+    isExpiredModel3DSourceUrl(
+      "https://storage.googleapis.com/models/scene.glb" +
+        "?X-Goog-Date=20200101T000000Z&X-Goog-Expires=60&X-Goog-Signature=old",
+      now,
+    ),
+    true,
+  );
+  assert.equal(model3DSourceIdentity(expired), model3DSourceIdentity(refreshed));
+
+  const recovery = normalizeModel3DProjectRecovery(
+    {
+      checkpointUrl: expired,
+      sourceFormat: "gltf",
+      provenance: {
+        sourceUrl: expired,
+        dependencyBaseUrl: expired,
+        format: "gltf",
+        identity: model3DSourceIdentity(expired),
+      },
+      operations: [transformOperation(1)],
+      view: DEFAULT_MODEL3D_VIEW,
+    },
+    DEFAULT_MODEL3D_VIEW,
+    refreshed,
+    now,
+  );
+  assert.equal(recovery?.checkpointUrl, refreshed);
+  assert.equal(recovery?.view.sourceUrl, refreshed);
+  assert.equal(recovery?.provenance.sourceUrl, refreshed);
+  assert.equal(recovery?.provenance.dependencyBaseUrl, refreshed);
+  assert.equal(recovery?.provenance.format, "gltf");
+});
+
+test("3D load mutate autosave reopen preserves source provenance and journal", () => {
+  const checkpointUrl = "https://cdn.example/models/scene.gltf?version=7";
+  const dependencyBaseUrl =
+    "https://deps.example/releases/v7/scene.gltf?token=closure";
+  const loaded = normalizeModel3DProjectRecovery(
+    {
+      checkpointUrl,
+      sourceFormat: "gltf",
+      provenance: {
+        sourceUrl: checkpointUrl,
+        dependencyBaseUrl,
+        format: "gltf",
+      },
+      operations: [],
+      view: DEFAULT_MODEL3D_VIEW,
+    },
+    DEFAULT_MODEL3D_VIEW,
+    checkpointUrl,
+  );
+  const operations = [...loaded.operations, transformOperation(7)];
+  const savePlan = createModel3DSavePlan(operations);
+  assert.equal(savePlan.shouldExportGlb, false);
+
+  const reopened = normalizeModel3DProjectRecovery(
+    JSON.parse(JSON.stringify({
+      checkpointUrl: loaded.checkpointUrl,
+      sourceFormat: loaded.provenance.format,
+      provenance: loaded.provenance,
+      operations: savePlan.persistedOperations,
+      view: { ...loaded.view, exposure: 1.7 },
+    })),
+    DEFAULT_MODEL3D_VIEW,
+    checkpointUrl,
+  );
+  assert.equal(reopened?.checkpointUrl, checkpointUrl);
+  assert.equal(reopened?.provenance.format, "gltf");
+  assert.equal(reopened?.provenance.dependencyBaseUrl, dependencyBaseUrl);
+  assert.deepEqual(reopened?.operations, operations);
+  assert.equal(reopened?.view.exposure, 1.7);
 });

@@ -10,6 +10,8 @@
 // ============================================================================
 
 import type { MutableRefObject } from "react";
+import type { LibraryItem } from "../library-data";
+import type { ImageSceneDiagnosticCode } from "./image-scene-source";
 
 export type ExportFormat = "png" | "jpeg" | "webp";
 
@@ -212,6 +214,11 @@ export interface FabricImageSaveResult {
   projectUrl: string;
   savedAt: string;
   versionId: string;
+  item?: LibraryItem;
+  revisionDigest?: string;
+  sourceDigest?: string;
+  dependencyClosureDigest?: string;
+  dependencyRevisionIds?: string[];
 }
 
 export interface FabricImageEditorState {
@@ -221,6 +228,11 @@ export interface FabricImageEditorState {
   aiBusy: boolean;
   error: string;
   notice: string;
+  sceneDiagnostic: {
+    code: ImageSceneDiagnosticCode;
+    message: string;
+    dependencyId?: string;
+  } | null;
   savedUrl: string;
   savedProjectUrl: string;
   savedAt: string;

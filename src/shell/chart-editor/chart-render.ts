@@ -41,3 +41,42 @@ export function chartExportOption(source: ChartOption): EChartsOption {
     animationDurationUpdate: 0,
   };
 }
+
+/** Render a static PNG from the same option projection used by the live chart. */
+export async function renderChartPreviewBlob(
+  source: ChartOption,
+): Promise<Blob> {
+  if (typeof document === "undefined") {
+    throw new Error("当前环境无法渲染 chart preview");
+  }
+  const host = document.createElement("div");
+  host.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:1200px;height:675px;pointer-events:none";
+  document.body.appendChild(host);
+  let chart: import("echarts").ECharts | null = null;
+  try {
+    const echarts = await import("echarts");
+    chart = echarts.init(host, undefined, {
+      renderer: "canvas",
+      width: 1200,
+      height: 675,
+    });
+    chart.setOption(chartExportOption(source), {
+      notMerge: true,
+      lazyUpdate: false,
+    });
+    const response = await fetch(
+      chart.getDataURL({
+        type: "png",
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      }),
+    );
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("chart preview 渲染为空");
+    return blob;
+  } finally {
+    chart?.dispose();
+    host.remove();
+  }
+}

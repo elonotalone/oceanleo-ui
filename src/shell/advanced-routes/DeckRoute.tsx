@@ -26,6 +26,7 @@ import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
 import { useDeckEditor } from "../doc-editors/use-deck-editor";
+import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -41,7 +42,13 @@ export function DeckRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = useDeckEditor(item, siteId, previewContent);
+  const officeSource = useOfficeArtifactSource(item);
+  const editor = useDeckEditor(
+    officeSource.item,
+    siteId,
+    previewContent,
+    officeSource.resourceFailed,
+  );
   const [zoom, setZoom] = useState(100);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
@@ -252,6 +259,15 @@ export function DeckRoute({
           onTrigger: editor.exportPptx,
         },
         actions: [
+          ...(editor.error || officeSource.error
+            ? [
+                {
+                  id: "deck-refresh-office-source",
+                  label: "刷新 source/full 后重试",
+                  onTrigger: officeSource.retry,
+                },
+              ]
+            : []),
           {
             id: "deck-download-project",
             label: "下载工程",
@@ -276,9 +292,12 @@ export function DeckRoute({
           />
         ),
         status:
+          (!item.meta.editor_project_url &&
+            Boolean(item.url || item.artifactId) &&
+            officeSource.error) ||
           editor.error ||
           editor.notice ||
-          (editor.loading ? "正在载入演示文稿" : ""),
+          (editor.loading || officeSource.loading ? "正在载入演示文稿" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

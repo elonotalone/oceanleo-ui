@@ -46,6 +46,16 @@ export function probeMediaSource(
         return;
       }
       const video = kind === "video" ? (el as HTMLVideoElement) : null;
+      if (
+        video &&
+        (!Number.isFinite(video.videoWidth) ||
+          video.videoWidth <= 0 ||
+          !Number.isFinite(video.videoHeight) ||
+          video.videoHeight <= 0)
+      ) {
+        done(null);
+        return;
+      }
       done({
         durationMs: Math.round(el.duration * 1000),
         width: video?.videoWidth || 0,

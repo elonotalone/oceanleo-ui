@@ -26,10 +26,11 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveProjectWorkingHead,
+  saveFileToLibrary,
   type PersistedEditorVersion,
 } from "./doc-io";
 import { tiptapJsonToDocxBlob } from "./docx-export";
+import { notifyOfficeAccessDenied } from "./office-file";
 import {
   countText,
   fullHtmlDocument,
@@ -80,6 +81,7 @@ const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
 export function useRichDocEditor(
   item: LibraryItem,
   siteId = "",
+  onSourceAccessError?: () => void,
 ): RichDocEditorState {
   const tt = useUI();
   const [loading, setLoading] = useState(true);
@@ -145,7 +147,7 @@ export function useRichDocEditor(
             error: "",
           }),
         )
-      : loadRichDocHtml(item)
+      : loadRichDocHtml(item, onSourceAccessError)
     )
       .then((result) => {
         if (cancelled) return;
@@ -154,6 +156,7 @@ export function useRichDocEditor(
       })
       .catch((caught) => {
         if (cancelled) return;
+        notifyOfficeAccessDenied(caught, onSourceAccessError);
         setError(
           caught instanceof Error
             ? tt(caught.message)
@@ -164,7 +167,7 @@ export function useRichDocEditor(
     return () => {
       cancelled = true;
     };
-  }, [item, tt]);
+  }, [item, onSourceAccessError, tt]);
 
   useEffect(() => {
     if (!editor || !loaded) return;
@@ -253,10 +256,14 @@ export function useRichDocEditor(
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const result = await saveProjectWorkingHead({
+      const delivery = await tiptapJsonToDocxBlob(baseTitle, json);
+      const result = await saveFileToLibrary({
         item,
         siteId,
         fallbackSite: "word",
+        file: new File([delivery], `${title}.docx`, {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
         title,
         mediaType: "doc",
         kind: "document",
@@ -265,6 +272,7 @@ export function useRichDocEditor(
         meta: {
           editor: "richdoc-v2",
           html: html.slice(0, 10_000),
+          delivery_format: "docx",
         },
         project: {
           schema: RICHDOC_PROJECT_SCHEMA,

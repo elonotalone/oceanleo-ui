@@ -8,6 +8,7 @@ import {
   type RefCallback,
   type SetStateAction,
 } from "react";
+import { canvasSafeUrl } from "../../lib/media-proxy";
 import {
   Model3DSceneRuntime,
   type Model3DAnnotationPoint,
@@ -100,6 +101,7 @@ export function useModel3DRuntime({
       onAnnotationPoint: (point) => annotationPointRef.current?.(point),
       onAnnotationFrame: (entries) => annotationFrameRef.current?.(entries),
       onError: (message) => setError(message),
+      resolveAssetUrl: canvasSafeUrl,
     });
     runtimeRef.current = runtime;
     runtime.setView(viewRef.current, { emit: false });

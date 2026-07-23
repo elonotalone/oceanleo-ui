@@ -305,6 +305,36 @@ test("protocol remains fail-closed and save/export/dispose carry idempotency key
     hostRoundTrip({ type: "save-request", saveId: "save-1" })?.saveId,
     "save-1",
   );
+  const typedSave = {
+    type: "artifact-updated",
+    url: "https://api.oceanleo.com/v1/media/file/design-preview.png",
+    previewUrl: "https://api.oceanleo.com/v1/media/file/design-preview.png",
+    saveId: "save-design-8",
+    revision: 8,
+    meta: {
+      artifact_id: "artifact-design",
+      expected_artifact_revision_id: "revision-design-7",
+      artifact_type: "composite_image",
+      editor_project_url:
+        "https://api.oceanleo.com/v1/media/file/design-project.json",
+      design_document_url:
+        "https://api.oceanleo.com/v1/media/file/design-project.json",
+      editor_project_schema: "oceanleo.design-document.v1",
+      source_format: "oceanleo.design-document.v1",
+      design_document_revision: 8,
+      preview_revision: 8,
+      preview_static_frame: "final",
+      requires_typed_artifact_commit: true,
+    },
+  };
+  assert.equal(childRoundTrip(typedSave)?.type, "artifact-updated");
+  assert.equal(
+    childRoundTrip({
+      ...typedSave,
+      meta: { ...typedSave.meta, expected_artifact_revision_id: "" },
+    }),
+    null,
+  );
   assert.equal(
     hostRoundTrip({
       type: "export-request",
@@ -326,6 +356,46 @@ test("protocol remains fail-closed and save/export/dispose carry idempotency key
   assert.match(host, /artifactSaveOperationsRef/);
   assert.match(route, /return savePromiseRef\.current/);
   assert.match(route, /return exportResolverRef\.current\.promise/);
+});
+
+test("design composite handshake binds one scene source revision before open", () => {
+  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const validator = source("../src/shell/design-composite-commit.ts");
+  const host =
+    source("../src/shell/workbench-embed.tsx") +
+    source("../src/shell/use-embed-editor-messages.ts");
+
+  assert.match(route, /item\.artifactType === "composite_image"/);
+  assert.match(route, /source\.revisionId !== item\.revisionId/);
+  assert.match(route, /item\.artifact\.sourceFormat !== DESIGN_SOURCE_FORMAT/);
+  assert.match(route, /item\.artifact\.scene\.closureStatus !== "complete"/);
+  assert.match(route, /refreshArtifactRendition/);
+  assert.match(route, /verifyDesignCompositeSource\(item, binding, abort\.signal\)/);
+  assert.match(route, /sourceDigest !== normalizedDigest\(rendition\.digest\)/);
+  assert.match(route, /validateDesignCompositeSource\(blob, item/);
+  assert.match(validator, /design dependency closure 缺少图层资源/);
+  assert.match(validator, /manifest\?\.schema !== DESIGN_DEPENDENCY_SCHEMA/);
+  assert.match(route, /closureDigest !== normalizedDigest\(item\.artifact\.scene\.closureDigest\)/);
+  assert.match(
+    route,
+    /normalizedDigest\(refreshed\.digest\) !== normalizedDigest\(source\.digest\)/,
+  );
+  assert.match(route, /url: undefined,[\s\S]*previewUrl: undefined/);
+  assert.match(route, /design_document_url: designSourceBinding\.url/);
+  assert.match(route, /source_digest: designSourceBinding\.digest/);
+  assert.match(route, /dependency_closure_digest: scene\?\.closureDigest/);
+  assert.match(route, /requires_typed_artifact_commit: true/);
+  assert.match(route, /data-design-handshake=/);
+  assert.match(
+    host,
+    /message\.type === "ready"[\s\S]*?readyHandledRef\.current[\s\S]*?sendOpenAsset\(\)/,
+  );
+  assert.match(host, /event\.source !== iframeRef\.current\?\.contentWindow/);
+  assert.match(host, /event\.origin !== editorOrigin/);
+  assert.match(host, /typedCommitQueueRef\.current\.then/);
+  assert.match(host, /artifactHeadRef\.current = committed/);
+  assert.match(host, /artifactId: outcome\.artifactId/);
+  assert.match(host, /revisionId: outcome\.revisionId/);
 });
 
 test("selection and project failures become host-visible errors", () => {

@@ -4,6 +4,7 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { createBlankPdf, inspectPdf } from "./pdf-operations";
+import { assertBlobSource } from "./source-integrity.mjs";
 
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
 
@@ -36,6 +37,7 @@ export async function loadInitialPdfSource(input: {
     maxBytes: MAX_PDF_BYTES,
     signal: input.signal,
   });
+  await assertBlobSource(blob, "pdf");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   return {
     bytes,

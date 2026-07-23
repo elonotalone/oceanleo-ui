@@ -21,6 +21,12 @@ import {
   useArtifactRendition,
   withResolvedRendition,
 } from "./ArtifactRendition";
+import {
+  fetchValidatedOfficePackage,
+  fetchValidatedSpreadsheetSource,
+  officePackageKindForItem,
+  officeViewerRenditionPurposes,
+} from "./doc-editors/office-file";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -60,37 +66,52 @@ function LoadingView({ label }: { label: string }) {
 function ErrorView({
   message,
   url,
+  onRetry,
 }: {
   message: string;
   url?: string;
+  onRetry?: () => void;
 }) {
   const tt = useUI();
   return (
-    <Center>
-      <svg
-        className="h-10 w-10 text-stone-300"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" />
-        <path d="M14 3v5h5M9 13h6M9 17h4" strokeLinecap="round" />
-      </svg>
-      <p className="max-w-md text-center text-[13px] leading-relaxed text-stone-500">
-        {message}
-      </p>
-      {url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[13px] text-stone-600 hover:bg-stone-50"
+    <div role="alert">
+      <Center>
+        <svg
+          className="h-10 w-10 text-stone-300"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
         >
-          {tt("打开原文件")}
-        </a>
-      )}
-    </Center>
+          <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" />
+          <path d="M14 3v5h5M9 13h6M9 17h4" strokeLinecap="round" />
+        </svg>
+        <p className="max-w-md text-center text-[13px] leading-relaxed text-stone-500">
+          {message}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-lg bg-stone-800 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-700"
+            >
+              {tt("刷新安全地址并重试")}
+            </button>
+          )}
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-stone-200 px-3 py-1.5 text-[13px] text-stone-600 hover:bg-stone-50"
+            >
+              {tt("打开原文件")}
+            </a>
+          )}
+        </div>
+      </Center>
+    </div>
   );
 }
 
@@ -177,6 +198,7 @@ function PptViewer({
     item.url ? "loading" : "error",
   );
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!item.url || !host.current) return;
@@ -188,16 +210,14 @@ function PptViewer({
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!, {
-          referrerPolicy: "no-referrer",
-        });
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            onResourceError?.();
-          }
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const buffer = await response.arrayBuffer();
+        const { arrayBuffer } = await fetchValidatedOfficePackage(
+          item.url!,
+          "pptx",
+          {
+            maxBytes: 64 * 1024 * 1024,
+            onAccessDenied: onResourceError,
+          },
+        );
         if (cancelled) return;
         const { init } = await import("pptx-preview");
         if (cancelled) return;
@@ -212,7 +232,7 @@ function PptViewer({
         });
         await (
           previewer as unknown as { preview: (file: ArrayBuffer) => Promise<unknown> }
-        ).preview(buffer);
+        ).preview(arrayBuffer);
         if (!cancelled) setState("ready");
       } catch (reason) {
         if (cancelled) return;
@@ -225,7 +245,7 @@ function PptViewer({
       previewer?.destroy();
       node.replaceChildren();
     };
-  }, [item.url, onResourceError]);
+  }, [attempt, item.url, onResourceError]);
 
   const slides = asRecords(item.meta.slides);
   return (
@@ -243,6 +263,10 @@ function PptViewer({
           <ErrorView
             message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${error}）` : ""}`}
             url={item.url}
+            onRetry={() => {
+              onResourceError?.();
+              setAttempt((value) => value + 1);
+            }}
           />
         ))}
     </div>
@@ -302,6 +326,7 @@ function SpreadsheetViewer({
   const [active, setActive] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(Boolean(item.url));
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!item.url) {
@@ -317,16 +342,10 @@ function SpreadsheetViewer({
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!, {
-          referrerPolicy: "no-referrer",
+        const data = await fetchValidatedSpreadsheetSource(item.url!, item, {
+          maxBytes: 64 * 1024 * 1024,
+          onAccessDenied: onResourceError,
         });
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            onResourceError?.();
-          }
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.arrayBuffer();
         const XLSX = await import("xlsx");
         const workbook = XLSX.read(data, { dense: true });
         const parsed = workbook.SheetNames.map((name) => ({
@@ -351,7 +370,7 @@ function SpreadsheetViewer({
     return () => {
       cancelled = true;
     };
-  }, [item.url, item.meta, onResourceError]);
+  }, [attempt, item, onResourceError]);
 
   if (loading) return <LoadingView label={tt("正在读取工作簿…")} />;
   if (error || sheets.length === 0)
@@ -359,6 +378,10 @@ function SpreadsheetViewer({
       <ErrorView
         message={`${tt("未能读取表格内容。")}${error ? `（${error}）` : ""}`}
         url={item.url}
+        onRetry={() => {
+          onResourceError?.();
+          setAttempt((value) => value + 1);
+        }}
       />
     );
 
@@ -428,30 +451,31 @@ function DocumentViewer({
 }) {
   const tt = useUI();
   const ext = extension(item.url);
+  const packageKind = officePackageKindForItem(item);
+  const isDocx = packageKind === "docx" || ext === "docx";
   const [html, setHtml] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(ext === "docx");
+  const [loading, setLoading] = useState(isDocx);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!item.url || ext !== "docx") return;
+    if (!item.url || !isDocx) return;
     let cancelled = false;
     setLoading(true);
     setError("");
     void (async () => {
       try {
-        const response = await fetch(item.url!, {
-          referrerPolicy: "no-referrer",
-        });
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            onResourceError?.();
-          }
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.arrayBuffer();
+        const { arrayBuffer } = await fetchValidatedOfficePackage(
+          item.url!,
+          "docx",
+          {
+            maxBytes: 64 * 1024 * 1024,
+            onAccessDenied: onResourceError,
+          },
+        );
         const module = await import("mammoth");
         const result = await module.default.convertToHtml(
-          { arrayBuffer: data },
+          { arrayBuffer },
           { convertImage: module.default.images.dataUri },
         );
         if (!cancelled) setHtml(DOMPurify.sanitize(result.value));
@@ -465,7 +489,15 @@ function DocumentViewer({
     return () => {
       cancelled = true;
     };
-  }, [item.url, ext, onResourceError]);
+  }, [attempt, isDocx, item.url, onResourceError]);
+
+  useEffect(() => {
+    if (!isDocx) {
+      setHtml("");
+      setError("");
+      setLoading(false);
+    }
+  }, [isDocx]);
 
   if (ext === "pdf" && item.url) {
     return (
@@ -486,7 +518,7 @@ function DocumentViewer({
       />
     );
   }
-  if (item.content) {
+  if (item.content && !isDocx) {
     return (
       <article className="mx-auto min-h-[520px] max-w-3xl bg-white px-8 py-10 shadow-sm">
         <Markdown>{item.content}</Markdown>
@@ -497,6 +529,14 @@ function DocumentViewer({
     <ErrorView
       message={`${tt("没有可显示的文档正文。")}${error ? `（${error}）` : ""}`}
       url={item.url}
+      onRetry={
+        isDocx
+          ? () => {
+              onResourceError?.();
+              setAttempt((value) => value + 1);
+            }
+          : undefined
+      }
     />
   );
 }
@@ -757,7 +797,10 @@ export function LibraryItemViewer({
   item: LibraryItem;
   accent?: string;
 }) {
-  const rendition = useArtifactRendition(item);
+  const rendition = useArtifactRendition(
+    item,
+    officeViewerRenditionPurposes(item),
+  );
   const resolvedItem = withResolvedRendition(item, rendition);
   const url =
     rendition.url || resolvedItem.previewUrl || resolvedItem.url;

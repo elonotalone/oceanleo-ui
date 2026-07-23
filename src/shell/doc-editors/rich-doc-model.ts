@@ -13,6 +13,11 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
+import {
+  fetchValidatedOfficePackage,
+  officePackageKindForItem,
+  validateOfficePackageBlob,
+} from "./office-file";
 
 export type RichDocSource =
   | "project"
@@ -97,21 +102,27 @@ function inlineSource(item: LibraryItem): string {
 
 export async function loadRichDocHtml(
   item: LibraryItem,
+  onSourceAccessError?: () => void,
 ): Promise<RichDocLoadResult> {
   try {
-    const inline = inlineSource(item);
-    if (inline) {
-      return { html: await markdownToHtml(inline), source: "inline", error: "" };
-    }
     const url = item.url || "";
     const ext = urlExtension(url);
-    if (url && ext === "docx") {
-      const blob = await fetchMediaBlob(url);
+    const isDocx =
+      officePackageKindForItem(item) === "docx" || ext === "docx";
+    if (url && isDocx) {
+      const { arrayBuffer } = await fetchValidatedOfficePackage(url, "docx", {
+        maxBytes: 64 * 1024 * 1024,
+        onAccessDenied: onSourceAccessError,
+      });
       return {
-        html: await docxToHtml(await blob.arrayBuffer()),
+        html: await docxToHtml(arrayBuffer),
         source: "url-docx",
         error: "",
       };
+    }
+    const inline = inlineSource(item);
+    if (inline) {
+      return { html: await markdownToHtml(inline), source: "inline", error: "" };
     }
     if (url && ["md", "markdown", "txt", "html", "htm"].includes(ext)) {
       const text = await (await fetchMediaBlob(url)).text();
@@ -147,7 +158,7 @@ export async function loadRichDocFile(file: File): Promise<RichDocLoadResult> {
     const ext = file.name.toLowerCase().split(".").pop() || "";
     if (ext === "docx") {
       return {
-        html: await docxToHtml(await file.arrayBuffer()),
+        html: await docxToHtml(await validateOfficePackageBlob(file, "docx")),
         source: "import-docx",
         error: "",
       };

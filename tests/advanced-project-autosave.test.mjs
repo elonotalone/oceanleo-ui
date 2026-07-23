@@ -105,31 +105,13 @@ test("autosaved items preserve visual previews and never use project JSON as a t
   assert.doesNotMatch(savedItem, /previewUrl: input\.previewUrl \|\| input\.url/);
 });
 
-test("autosave blocks never invoke delivery renderers", () => {
+test("non-Office autosave blocks never invoke delivery renderers", () => {
   const cases = [
     {
       path: "../src/shell/image-editor/use-fabric-image-editor.ts",
       start: "const save = useCallback",
       end: "const runAiEdit = useCallback",
       forbidden: /makeExportBlob|toDataURL|toBlob/,
-    },
-    {
-      path: "../src/shell/doc-editors/use-deck-editor.ts",
-      start: "const save = useCallback",
-      end: "const restoreRecovery = useCallback",
-      forbidden: /buildDeckPptxBlob|pptxgenjs/,
-    },
-    {
-      path: "../src/shell/doc-editors/use-grid-editor.ts",
-      start: "const save = useCallback",
-      end: "const restoreRecovery = useCallback",
-      forbidden: /buildGridWorkbookBlob|writeFile|XLSX/,
-    },
-    {
-      path: "../src/shell/doc-editors/use-rich-doc-editor.ts",
-      start: "const save = useCallback",
-      end: "const uploadImage = useCallback",
-      forbidden: /tiptapJsonToDocxBlob|docx|new File/,
     },
     {
       path: "../src/shell/media-editors/use-audio-persistence.ts",
@@ -155,7 +137,7 @@ test("autosave blocks never invoke delivery renderers", () => {
     assert.doesNotMatch(autosave, entry.forbidden, entry.path);
     assert.match(
       autosave,
-      /saveProjectWorkingHead|persistImageProject|uploadDraft/,
+      /saveProjectWorkingHead|persistImageProject|saveChartRevision|uploadDraft/,
       entry.path,
     );
   }
@@ -171,6 +153,9 @@ test("autosave blocks never invoke delivery renderers", () => {
   );
   const modelWorkbench = source(
     "../src/shell/media-editors/use-model3d-workbench.ts",
+  );
+  const modelSourceLoader = source(
+    "../src/shell/media-editors/use-model3d-source-loader.ts",
   );
   const modelRoute = source(
     "../src/shell/advanced-routes/Model3DRoute.tsx",
@@ -191,7 +176,7 @@ test("autosave blocks never invoke delivery renderers", () => {
   assert.match(modelRuntime, /exportGlb\(\)/);
   assert.match(modelRuntime, /applyOperationJournal/);
   assert.match(modelWorkbench, /normalizeModel3DProjectRecovery/);
-  assert.match(modelWorkbench, /runtime\.applyOperationJournal\(pendingOperationsRef\.current\)/);
+  assert.match(modelSourceLoader, /runtime\.applyOperationJournal\(pendingOperationsRef\.current\)/);
   assert.match(modelRoute, /captureModel3DRouteSnapshot\(editor\)/);
   assert.match(modelRouteHistory, /operations: editor\.operationJournal/);
   assert.match(modelProject, /saveFileToLibrary/);
@@ -206,6 +191,39 @@ test("autosave blocks never invoke delivery renderers", () => {
     "const captureRecovery = useCallback",
   );
   assert.doesNotMatch(pdfSave, /render|canvas|toDataURL|toBlob/);
+});
+
+test("Office saves persist a real delivery package plus exact project sidecar", () => {
+  for (const [path, end, exporter, extension] of [
+    [
+      "../src/shell/doc-editors/use-deck-editor.ts",
+      "const restoreRecovery = useCallback",
+      "buildDeckPptxBlob",
+      "pptx",
+    ],
+    [
+      "../src/shell/doc-editors/use-grid-editor.ts",
+      "const restoreRecovery = useCallback",
+      "buildGridWorkbookBlob",
+      "xlsx",
+    ],
+    [
+      "../src/shell/doc-editors/use-rich-doc-editor.ts",
+      "const uploadImage = useCallback",
+      "tiptapJsonToDocxBlob",
+      "docx",
+    ],
+  ]) {
+    const save = section(path, "const save = useCallback", end);
+    assert.match(save, new RegExp(exporter), path);
+    assert.match(save, /saveFileToLibrary/, path);
+    assert.match(
+      save,
+      new RegExp(`new File\\(\\[delivery\\].*\\.${extension}`, "s"),
+      path,
+    );
+    assert.match(save, /project: \{/, path);
+  }
 });
 
 test("delivery renderers remain attached to explicit export and download actions", () => {

@@ -28,6 +28,7 @@ const TEXTURE_SLOTS = {
 };
 
 const noop = () => {};
+const identity = (value) => value;
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, Number(value)));
 const degrees = (value) => THREE.MathUtils.radToDeg(value);
@@ -227,6 +228,7 @@ export class Model3DSceneRuntime {
       onAnnotationPoint: options.onAnnotationPoint || noop,
       onAnnotationFrame: options.onAnnotationFrame || noop,
       onError: options.onError || noop,
+      resolveAssetUrl: options.resolveAssetUrl || identity,
     };
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -553,7 +555,9 @@ export class Model3DSceneRuntime {
           `${operation.target}:${operation.materialIndex}:${operation.slot}`,
         ) || null;
       } else if (operation.value) {
-        texture = await new THREE.TextureLoader().loadAsync(operation.value);
+        texture = await new THREE.TextureLoader().loadAsync(
+          this.options.resolveAssetUrl(operation.value),
+        );
         texture.flipY = false;
         texture.colorSpace =
           operation.slot === "baseColor" || operation.slot === "emissive"
@@ -1025,7 +1029,9 @@ export class Model3DSceneRuntime {
       (candidate) => candidate.index === this.selectedMaterialIndex,
     );
     if (!properties || !entry || !url) return;
-    const texture = await new THREE.TextureLoader().loadAsync(url);
+    const texture = await new THREE.TextureLoader().loadAsync(
+      this.options.resolveAssetUrl(url),
+    );
     texture.flipY = false;
     texture.colorSpace =
       slot === "baseColor" || slot === "emissive"
@@ -1335,9 +1341,10 @@ export class Model3DSceneRuntime {
     try {
       let texture = null;
       if (normalized) {
+        const resolved = this.options.resolveAssetUrl(normalized);
         texture = /\.hdr(?:$|[?#])/i.test(normalized)
-          ? await new RGBELoader().loadAsync(normalized)
-          : await new THREE.TextureLoader().loadAsync(normalized);
+          ? await new RGBELoader().loadAsync(resolved)
+          : await new THREE.TextureLoader().loadAsync(resolved);
         texture.mapping = THREE.EquirectangularReflectionMapping;
       }
       if (generation !== this.environmentGeneration || this.disposed) {

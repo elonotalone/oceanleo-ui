@@ -7,6 +7,7 @@ import {
   type ArtifactCardAction,
 } from "./artifact-contract";
 import {
+  artifactDownloadEvidence,
   getArtifactDownload,
   prepareArtifactForAction,
   setArtifactFavorite,
@@ -366,31 +367,10 @@ export function ArtifactActionButtons({
     }
   };
   const durableItem = isDurableLibraryItem(item) ? item : null;
-  const downloadVisible = Boolean(
-    durableItem && durableItem.artifact.access.canRead,
-  );
-  const sourceDownloadAvailable = Boolean(
-    durableItem?.artifact.access.canExportSource &&
-      durableItem.artifact.renditions.source,
-  );
-  const renderedDownloadAvailable = Boolean(
-    durableItem?.artifact.access.canPreview &&
-      (durableItem.artifact.renditions.full ||
-        durableItem.artifact.renditions.preview),
-  );
-  const downloadReason = !durableItem
-    ? "下载需要 durable artifact identity。"
-    : !durableItem.artifact.access.canRead
-      ? "当前主体没有下载这个 revision 的权限。"
-      : !durableItem.artifact.integrity.ok
-        ? durableItem.artifact.integrity.reason ||
-          "当前 revision 未通过完整性校验。"
-        : !sourceDownloadAvailable && !renderedDownloadAvailable
-          ? "当前 revision 没有可导出的 source、full 或 preview rendition。"
-          : "";
-  const downloadAvailable = Boolean(
-    durableItem && !downloadReason,
-  );
+  const downloadEvidence = artifactDownloadEvidence(item);
+  const downloadVisible = downloadEvidence.visible;
+  const downloadReason = downloadEvidence.reason;
+  const downloadAvailable = downloadEvidence.available;
   const favoriteVisible = Boolean(
     durableItem && durableItem.artifact.access.canRead,
   );
@@ -425,6 +405,7 @@ export function ArtifactActionButtons({
       const link = document.createElement("a");
       link.href = result.data.url;
       link.download = result.data.filename;
+      link.type = result.data.mediaType;
       link.rel = "noopener noreferrer";
       link.referrerPolicy = "no-referrer";
       link.style.display = "none";

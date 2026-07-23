@@ -24,6 +24,7 @@ import {
   useGridEditor,
   type GridEditorState,
 } from "../doc-editors/use-grid-editor";
+import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -128,10 +129,15 @@ export function GridRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = useGridEditor(item, siteId);
+  const officeSource = useOfficeArtifactSource(item);
+  const editor = useGridEditor(
+    officeSource.item,
+    siteId,
+    officeSource.resourceFailed,
+  );
   const history = useGridDocumentHistory(
     editor,
-    `${item.id}:${item.url || item.previewUrl || ""}`,
+    `${item.id}:${officeSource.url || ""}`,
   );
   const xlsxExportBusyRef = useRef(false);
   const [xlsxExporting, setXlsxExporting] = useState(false);
@@ -240,6 +246,15 @@ export function GridRoute({
           onTrigger: exportXlsx,
         },
         actions: [
+          ...(editor.error || officeSource.error
+            ? [
+                {
+                  id: "grid-refresh-office-source",
+                  label: "刷新 source/full 后重试",
+                  onTrigger: officeSource.retry,
+                },
+              ]
+            : []),
           {
             id: "grid-export-csv",
             label: "导出 CSV",
@@ -256,8 +271,11 @@ export function GridRoute({
         status:
           xlsxExportError ||
           history.error ||
+          (!item.meta.editor_project_url &&
+            Boolean(item.url || item.artifactId) &&
+            officeSource.error) ||
           editor.error ||
-          (editor.loading ? "正在载入表格" : ""),
+          (editor.loading || officeSource.loading ? "正在载入表格" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

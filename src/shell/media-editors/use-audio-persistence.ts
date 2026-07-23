@@ -23,6 +23,7 @@ import {
   MAX_DECODED_AUDIO_BYTES,
   validAudioProject,
 } from "./audio-workbench-utils";
+import { assertBlobSource } from "./source-integrity.mjs";
 
 interface AudioPersistenceOptions {
   item: LibraryItem;
@@ -161,9 +162,17 @@ export function useAudioPersistence({
         payload instanceof Blob &&
         payload.size <= MAX_AUDIO_FILE_BYTES
       ) {
+        const recoveredFormat = await assertBlobSource(payload, "audio");
+        const extension = recoveredFormat === "mp4" ? "m4a" : recoveredFormat;
+        const recoveredMime =
+          recoveredFormat === "mp3"
+            ? "audio/mpeg"
+            : recoveredFormat === "mp4"
+              ? "audio/mp4"
+              : `audio/${recoveredFormat}`;
         const uploaded = await uploadFile(
-          new File([payload], `${item.title || "audio"}-recovery.wav`, {
-            type: payload.type || "audio/wav",
+          new File([payload], `${item.title || "audio"}-recovery.${extension}`, {
+            type: recoveredMime,
           }),
           {
             siteId: siteId || "audio",
@@ -201,9 +210,17 @@ export function useAudioPersistence({
                 sampleRate: 44_100,
               }),
             );
-        let decoded = await context.decodeAudioData(
-          (await blob.arrayBuffer()).slice(0),
-        );
+        await assertBlobSource(blob, "audio");
+        let decoded: AudioBuffer;
+        try {
+          decoded = await context.decodeAudioData(
+            (await blob.arrayBuffer()).slice(0),
+          );
+        } catch {
+          throw new Error(
+            tt("恢复源虽有正确音频签名，但没有浏览器可解码的音轨"),
+          );
+        }
         for (const operation of project.operations) {
           decoded = applyAudioOperation(decoded, operation);
         }
@@ -241,6 +258,7 @@ export function useAudioPersistence({
       setSavedUrl,
       siteId,
       sourceUrlRef,
+      tt,
       undoOperationsRef,
       undoRef,
     ],

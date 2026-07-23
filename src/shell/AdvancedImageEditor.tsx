@@ -10,8 +10,11 @@ import {
   type SetStateAction,
 } from "react";
 import { saveCreations, uploadFile } from "../lib/database";
+import { canvasSafeUrl } from "../lib/media-proxy";
 import { useUI } from "../i18n/ui/useUI";
-import type { LibraryItem } from "./library-data";
+import { refreshArtifactRendition } from "./artifact-client";
+import { renditionNeedsRefresh } from "./artifact-contract";
+import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 
 export interface ImageEditSettings {
   brightness: number;
@@ -91,8 +94,20 @@ export function useImageWorkbench(
   const [imageVersion, setImageVersion] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const durableSingleFile =
+    isDurableLibraryItem(item) &&
+    item.artifactType === "single_file_image";
+  const pinnedRendition = durableSingleFile
+    ? item.artifact.renditions.source ||
+      item.artifact.renditions.full ||
+      item.artifact.renditions.preview
+    : null;
   const sourceUrl =
-    item.kind === "image" ? item.url || item.previewUrl || "" : "";
+    item.artifactType === "composite_image"
+      ? ""
+      : item.kind === "image"
+        ? pinnedRendition?.url || item.url || item.previewUrl || ""
+        : "";
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -159,30 +174,82 @@ export function useImageWorkbench(
   }, [settings]);
 
   useEffect(() => {
-    if (!sourceUrl) {
+    if (item.artifactType === "composite_image") {
       setLoading(false);
+      setError(
+        "复合图片必须从 versioned scene source 打开，不能把预览 PNG 当作分层工程。",
+      );
       return;
     }
+    if (!sourceUrl) {
+      setLoading(false);
+      setError("当前单文件图片缺少可读取的 source/full rendition。");
+      return;
+    }
+    let cancelled = false;
+    const abort = new AbortController();
     setLoading(true);
     setError("");
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.decoding = "async";
-    image.onload = () => {
-      imageRef.current = image;
+    let image: HTMLImageElement | null = null;
+    void (async () => {
+      let resolvedUrl = sourceUrl;
+      if (
+        durableSingleFile &&
+        pinnedRendition &&
+        renditionNeedsRefresh(pinnedRendition)
+      ) {
+        const refreshed = await refreshArtifactRendition(
+          { artifactId: item.artifactId, revisionId: item.revisionId },
+          pinnedRendition.purpose,
+          abort.signal,
+        );
+        if (
+          !refreshed.ok ||
+          !refreshed.data ||
+          refreshed.data.revisionId !== item.revisionId ||
+          refreshed.data.digest !== pinnedRendition.digest
+        ) {
+          throw new Error("图片 source URL 已过期，且无法固定到原 revision。");
+        }
+        resolvedUrl = refreshed.data.url;
+      }
+      if (cancelled || abort.signal.aborted) return;
+      image = new Image();
+      image.crossOrigin = "anonymous";
+      image.decoding = "async";
+      image.onload = () => {
+        if (cancelled) return;
+        imageRef.current = image;
+        setLoading(false);
+        setImageVersion((value) => value + 1);
+      };
+      image.onerror = () => {
+        if (cancelled) return;
+        setLoading(false);
+        setError("图片源不允许画布读取；请检查 source URL 或跨域权限。");
+      };
+      image.src = canvasSafeUrl(resolvedUrl);
+    })().catch((caught) => {
+      if (cancelled || abort.signal.aborted) return;
       setLoading(false);
-      setImageVersion((value) => value + 1);
-    };
-    image.onerror = () => {
-      setLoading(false);
-      setError("图片源不允许画布读取；仍可在专业编辑器中打开。");
-    };
-    image.src = sourceUrl;
+      setError(caught instanceof Error ? caught.message : "图片 source 读取失败。");
+    });
     return () => {
-      image.onload = null;
-      image.onerror = null;
+      cancelled = true;
+      abort.abort();
+      if (image) {
+        image.onload = null;
+        image.onerror = null;
+      }
     };
-  }, [sourceUrl]);
+  }, [
+    durableSingleFile,
+    item.artifactId,
+    item.artifactType,
+    item.revisionId,
+    pinnedRendition,
+    sourceUrl,
+  ]);
 
   useEffect(() => {
     draw();

@@ -15,6 +15,7 @@ import {
   type FabricNS,
   makeId,
   roleOf,
+  setEditorObjectId,
   setLocked,
 } from "./editor-objects";
 import { imageFitScales } from "./fabric-geometry";
@@ -95,7 +96,7 @@ export function prepareBackgroundImage(
   doc: DocSize,
 ): EditorObject {
   const target = image as EditorObject;
-  target.oceanleoId = makeId();
+  setEditorObjectId(target, target.oceanleoId || makeId());
   target.oceanleoRole = undefined;
   target.oceanleoKind = "image";
   target.oceanleoImageFit = "fill";
@@ -126,7 +127,7 @@ export function preparePlacedImage(
   );
   const nudge = (offsetIndex % 5) * 16;
   const target = image as EditorObject;
-  target.oceanleoId = makeId();
+  setEditorObjectId(target, target.oceanleoId || makeId());
   target.oceanleoRole = undefined;
   target.oceanleoKind = "image";
   target.oceanleoLocked = false;

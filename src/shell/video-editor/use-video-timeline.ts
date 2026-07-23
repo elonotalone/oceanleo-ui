@@ -54,6 +54,7 @@ import {
   removeClipFrom,
   removeTrackFrom,
   splitClipAt,
+  timelineDocIssue,
   trimClipTo,
   type ClipLocation,
 } from "./timeline-model";
@@ -67,6 +68,10 @@ import {
 } from "./timeline-gesture-history";
 import { clampTimelinePxPerSecond } from "./timeline-viewport";
 import type { TimelineClip, TimelineDoc, TrackKind } from "./types";
+import {
+  assertBlobSource,
+  parseVideoProjectEnvelope,
+} from "../media-editors/source-integrity.mjs";
 
 const PLACEHOLDER_DURATION_MS = 5000;
 
@@ -150,6 +155,72 @@ export interface VideoTimelineState {
 
 function trackKindForMedia(kind: "video" | "audio" | "image"): TrackKind {
   return kind;
+}
+
+async function durableTimelineSources(
+  doc: TimelineDoc,
+  siteId: string,
+  title: string,
+): Promise<TimelineDoc> {
+  const replacements = new Map<string, string>();
+  for (const track of doc.tracks) {
+    if (track.kind === "text") continue;
+    for (const clip of track.clips) {
+      const source = clip.source_url || "";
+      if (!source || isFirstPartyMediaUrl(source) || replacements.has(source)) {
+        continue;
+      }
+      replacements.set(
+        source,
+        await importMediaUrl(source, {
+          kind: track.kind,
+          siteId,
+          title,
+          registerAsset: true,
+        }),
+      );
+    }
+  }
+  if (!replacements.size) return doc;
+  const next = structuredClone(doc);
+  for (const track of next.tracks) {
+    if (track.kind === "text") continue;
+    for (const clip of track.clips) {
+      clip.source_url = replacements.get(clip.source_url || "") || clip.source_url;
+    }
+  }
+  return next;
+}
+
+async function assertTimelineMediaSources(doc: TimelineDoc): Promise<void> {
+  const sources = new Map<
+    string,
+    { kind: "video" | "audio"; url: string; clipId: string }
+  >();
+  for (const track of doc.tracks) {
+    if (track.kind !== "video" && track.kind !== "audio") continue;
+    for (const clip of track.clips) {
+      const url = clip.source_url || "";
+      sources.set(`${track.kind}:${url}`, {
+        kind: track.kind,
+        url,
+        clipId: clip.id,
+      });
+    }
+  }
+  if (sources.size > 64) {
+    throw new Error("视频工程包含超过 64 个独立音视频源，无法安全预检");
+  }
+  await Promise.all(
+    [...sources.values()].map(async ({ kind, url, clipId }) => {
+      if (await probeMediaSource(url, kind)) return;
+      throw new Error(
+        kind === "video"
+          ? `片段 ${clipId} 的源无法解码或没有真实视频轨`
+          : `片段 ${clipId} 的源无法解码为音频`,
+      );
+    }),
+  );
 }
 
 function buildInitialDoc(item: LibraryItem): {
@@ -280,7 +351,16 @@ export function useVideoTimeline(
         if (sourceProbeKeysRef.current.has(key)) continue;
         sourceProbeKeysRef.current.add(key);
         void probeMediaSource(sourceUrl, track.kind).then((probe) => {
-          if (!probe) return;
+          if (!probe) {
+            setError(
+              tt(
+                track.kind === "video"
+                  ? "时间线中的视频源无法解码或没有真实视频轨"
+                  : "时间线中的音频源无法解码",
+              ),
+            );
+            return;
+          }
           setDocState((current) => {
             let changed = false;
             const next: TimelineDoc = {
@@ -319,7 +399,7 @@ export function useVideoTimeline(
         });
       }
     }
-  }, [doc]);
+  }, [doc, tt]);
 
   useEffect(() => {
     workingHeadUrlRef.current = String(
@@ -341,23 +421,30 @@ export function useVideoTimeline(
     }
     const controller = new AbortController();
     setLoadingSource(true);
+    setError("");
     void fetchMediaBlob(projectUrl, {
       maxBytes: 20 * 1024 * 1024,
       signal: controller.signal,
     })
-      .then((blob) => blob.text())
-      .then((text) => {
+      .then(async (blob) => {
+        await assertBlobSource(blob, "video-project");
+        return blob.text();
+      })
+      .then(async (text) => {
         if (controller.signal.aborted) return;
-        const parsed: unknown = JSON.parse(text);
-        const candidate =
-          parsed &&
-          typeof parsed === "object" &&
-          (parsed as { schema?: unknown }).schema === "oceanleo.timeline.v1" &&
-          (parsed as { version?: unknown }).version === 1
-            ? (parsed as { data?: unknown }).data
-            : parsed;
-        if (!isTimelineDoc(candidate)) throw new Error("时间线工程格式无效");
-        const normalized = normalizeTimelineDoc(candidate);
+        const candidate = parseVideoProjectEnvelope(text);
+        const issue = timelineDocIssue(candidate);
+        if (issue || !isTimelineDoc(candidate)) {
+          throw new Error(`时间线工程格式无效：${issue || "结构未知"}`);
+        }
+        const normalized = await durableTimelineSources(
+          normalizeTimelineDoc(candidate),
+          siteId || "video",
+          item.title,
+        );
+        if (controller.signal.aborted) return;
+        await assertTimelineMediaSources(normalized);
+        if (controller.signal.aborted) return;
         docRef.current = normalized;
         setDocState(normalized);
         setSelectedClipId("");
@@ -381,7 +468,9 @@ export function useVideoTimeline(
     item.meta.editor_project_schema,
     item.meta.editor_project_url,
     item.meta.timeline_doc,
+    item.title,
     item.url,
+    siteId,
   ]);
 
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -414,7 +503,21 @@ export function useVideoTimeline(
         }
         const probe = await probeMediaSource(sourceUrl, seededKind);
         if (cancelled) return;
-        if (!probe) return;
+        if (!probe) {
+          setDocState((current) => {
+            const next = removeClipFrom(current, seededClipId);
+            docRef.current = next;
+            return next;
+          });
+          setSelectedClipId("");
+          throw new Error(
+            tt(
+              seededKind === "video"
+                ? "初始视频源无法解码或没有真实视频轨"
+                : "初始音频源无法解码",
+            ),
+          );
+        }
         setDocState((current) => {
           const located = findClip(current, seededClipId);
           if (!located) return current;
@@ -742,8 +845,17 @@ export function useVideoTimeline(
       let sourceDurationMs: number | undefined;
       if (media !== "image") {
         const probe = await probeMediaSource(url, media);
-        duration = probe?.durationMs ?? PLACEHOLDER_DURATION_MS;
-        sourceDurationMs = probe?.durationMs;
+        if (!probe) {
+          throw new Error(
+            tt(
+              media === "video"
+                ? "视频源无法解码或没有真实视频轨，未加入时间线"
+                : "音频源无法解码，未加入时间线",
+            ),
+          );
+        }
+        duration = probe.durationMs;
+        sourceDurationMs = probe.durationMs;
       }
       applyEdit((current) => {
         let next = current;
@@ -794,6 +906,7 @@ export function useVideoTimeline(
       }
       setAddingMedia(true);
       try {
+        await assertBlobSource(file, media);
         const uploaded = await uploadFile(file, {
           siteId: siteId || "oceanleo",
           title: file.name,
@@ -828,15 +941,21 @@ export function useVideoTimeline(
           siteId: siteId || "video",
           title,
         });
+        const importedContentType = imported.contentType.toLowerCase();
         const inferred =
-          imported.contentType.startsWith("video/")
+          importedContentType.startsWith("video/")
             ? "video"
-            : imported.contentType.startsWith("audio/")
+            : importedContentType.startsWith("audio/")
               ? "audio"
-              : imported.contentType.startsWith("image/")
+              : importedContentType.startsWith("image/")
                 ? "image"
                 : null;
-        const media = guessed || inferred;
+        if (guessed && inferred && guessed !== inferred) {
+          throw new Error(
+            tt("URL 扩展名与服务器验证的真实素材类型不一致，已拒绝加入时间线"),
+          );
+        }
+        const media = inferred || guessed;
         if (!media) {
           throw new Error(
             tt("无法识别 URL 素材类型，请使用视频、音频或图片直链"),
@@ -920,11 +1039,17 @@ export function useVideoTimeline(
   const saveDraft = useCallback(async (): Promise<PersistResult | null> => {
     if (savingDraftRef.current) return null;
     const savingRevision = revisionRef.current;
-    const snapshot = structuredClone(docRef.current);
+    let snapshot = structuredClone(docRef.current);
     savingDraftRef.current = true;
     setSavingDraft(true);
     setError("");
     try {
+      snapshot = await durableTimelineSources(
+        normalizeTimelineDoc(snapshot),
+        siteId || "video",
+        item.title,
+      );
+      await assertTimelineMediaSources(snapshot);
       const title = `${item.title || tt("视频")}-${tt("时间线草稿")}`;
       const result = await uploadDraft(
         snapshot,
@@ -942,6 +1067,8 @@ export function useVideoTimeline(
       workingHeadUrlRef.current = result.url;
       setDraftSavedUrl(result.url);
       if (revisionRef.current === savingRevision) {
+        docRef.current = snapshot;
+        setDocState(snapshot);
         setDirty(false);
       }
       setNotice("");

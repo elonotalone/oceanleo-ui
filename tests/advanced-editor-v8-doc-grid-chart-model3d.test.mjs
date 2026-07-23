@@ -62,11 +62,14 @@ test("v8 routes expose one real global history and semantic compact controls", (
   assert.match(modelRoute, /showNativeControls=\{false\}/);
   assert.match(modelRoute, /showDeliveryActions=\{false\}/);
   assert.match(modelRoute, /model3d-download-screenshot/);
-  assert.match(modelRoute, /extension === "gltf"/);
-  assert.match(modelRoute, /editor\.openModelUrl\(url\)/);
+  assert.match(modelRoute, /assertBlobSource\(blob, "model3d"\)/);
+  assert.match(modelRoute, /actualFormat === "gltf"/);
+  assert.match(modelRoute, /editor\.openModelUrl\(url, actualFormat\)/);
   assert.match(modelRoute, /editor\.saveCopy\(\)/);
   assert.match(modelRoute, /editor\.downloadModel/);
   assert.match(modelRoute, /checkpoint-glb\+operation-journal/);
+  assert.match(modelRoute, /model_dependency_base_url/);
+  assert.match(modelRoute, /model_source_identity/);
 
   for (const toolbar of [richToolbar, gridToolbar, chartToolbar, modelToolbar]) {
     assert.match(toolbar, /iconOnly: true/);

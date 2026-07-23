@@ -10,6 +10,12 @@ import {
   type LibraryItem,
 } from "./library-data";
 import {
+  advancedCapabilityForArtifactFields,
+  artifactEditorCapabilityIsCompatible,
+  artifactSourceFormatIsCompatible,
+  chartOptionEvidenceIsPresent,
+} from "./artifact-contract";
+import {
   TRUSTED_EDITOR_REGISTRY,
   editorAdapterForArtifactCapability,
   type EditorAdapterId,
@@ -392,12 +398,62 @@ function durableEditorCapabilityFor(
   ) {
     return unavailable("当前版本缺少可重新打开的编辑源。");
   }
+  if (
+    !artifactSourceFormatIsCompatible(
+      artifact.artifactType,
+      artifact.sourceFormat,
+    )
+  ) {
+    return unavailable(
+      `source format ${artifact.sourceFormat} 与 artifact type ${artifact.artifactType} 不匹配。`,
+    );
+  }
+  if (
+    !artifactEditorCapabilityIsCompatible(
+      artifact.artifactType,
+      artifact.editorCapability,
+    )
+  ) {
+    return unavailable(
+      `editor capability ${artifact.editorCapability || "missing"} 与 artifact type ${artifact.artifactType} 不匹配。`,
+    );
+  }
+  if (
+    artifact.artifactType === "composite_image" &&
+    (!artifact.scene ||
+      artifact.scene.sceneRevisionId !== artifact.revisionId ||
+      artifact.scene.closureStatus !== "complete" ||
+      !artifact.scene.closureDigest)
+  ) {
+    return unavailable("复合图片缺少当前 revision 的完整 scene 依赖闭包。");
+  }
+  if (
+    artifact.artifactType === "chart" &&
+    !chartOptionEvidenceIsPresent({
+      sourceFormat: artifact.sourceFormat,
+      editorManifest: artifact.renditions.editor_manifest,
+    })
+  ) {
+    return unavailable(
+      "图表缺少 oceanleo.chart.v1 option 源或带摘要的 editor manifest。",
+    );
+  }
   const adapter = editorAdapterForArtifactCapability(
     artifact.editorCapability,
   );
   if (!adapter) {
     return unavailable(
       "服务端没有声明受信任的 typed editor capability。",
+    );
+  }
+  const advancedContract = advancedCapabilityForArtifactFields({
+    artifactType: artifact.artifactType,
+    sourceFormat: artifact.sourceFormat,
+    editorCapability: artifact.editorCapability,
+  });
+  if (advancedContract && advancedContract.adapter !== adapter) {
+    return unavailable(
+      `高级功能 ${advancedContract.featureId} 与 adapter ${adapter} 不一致。`,
     );
   }
   if (!DURABLE_ADAPTER_TYPES[adapter].includes(artifact.artifactType)) {

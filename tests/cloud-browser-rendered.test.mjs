@@ -117,6 +117,9 @@ const { CloudBrowserCheckpointPanel } = await import(historyModuleUrl);
 const { CloudBrowserChrome } = await import(
   await compileComponent("src/shell/cloud-browser-chrome.tsx", {
     "./cloud-browser-history-view": historyModuleUrl,
+    "./cloud-browser-transport-actions": pathToFileURL(
+      resolve("src/shell/cloud-browser-transport-actions.ts"),
+    ).href,
   })
 );
 
@@ -183,14 +186,19 @@ test("rendered session row has no duplicate browser chrome", async () => {
       checkpoints: [checkpoint],
       checkpointsLoading: false,
       checkpointsError: "",
+      showPowerButton: true,
       onChooseSession() {},
       async onRenameSession() {
         return { ok: true };
       },
       onOpenOrResume() {},
+      onStartNew() {},
       onHibernate() {},
       onDelete() {},
       onToggleControl() {},
+      onCancelControl() {
+        return false;
+      },
       onBookmarkCurrentPage() {
         calls.bookmark += 1;
       },
@@ -326,6 +334,7 @@ test("retained reconnect frame enables takeover and pending state stays accessib
   const container = document.querySelector("main");
   const root = createRoot(container);
   let toggles = 0;
+  let cancellations = 0;
   const baseProps = {
     accent: "#4f46e5",
     sessions: [session],
@@ -348,6 +357,7 @@ test("retained reconnect frame enables takeover and pending state stays accessib
     checkpoints: [],
     checkpointsLoading: false,
     checkpointsError: "",
+    showPowerButton: true,
     onChooseSession() {},
     async onRenameSession() {
       return { ok: true };
@@ -358,6 +368,10 @@ test("retained reconnect frame enables takeover and pending state stays accessib
     onDelete() {},
     onToggleControl() {
       toggles += 1;
+    },
+    onCancelControl() {
+      cancellations += 1;
+      return true;
     },
     onBookmarkCurrentPage() {},
     onToggleCheckpoints() {},
@@ -390,11 +404,16 @@ test("retained reconnect frame enables takeover and pending state stays accessib
     );
   });
   const pending = container.querySelector("[data-cloud-browser-control]");
-  assert.equal(pending.disabled, true);
+  assert.equal(pending.disabled, false);
   assert.equal(pending.getAttribute("aria-busy"), "true");
-  assert.equal(pending.getAttribute("aria-label"), "控制请求处理中");
+  assert.equal(pending.getAttribute("aria-label"), "交还 Agent");
+  assert.equal(pending.dataset.cloudBrowserControlCancel, "true");
   assert.ok(pending.querySelector("[data-cloud-browser-control-spinner]"));
-  assert.doesNotMatch(pending.textContent, /切换控制/);
+  assert.match(pending.textContent, /交还 Agent/);
+  await act(async () => {
+    pending.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(cancellations, 1);
 
   await act(async () => {
     root.render(
@@ -640,14 +659,19 @@ test("immersive row advertises and restores auto-hide state", async () => {
     checkpoints: [],
     checkpointsLoading: false,
     checkpointsError: "",
+    showPowerButton: true,
     onChooseSession() {},
     async onRenameSession() {
       return { ok: true };
     },
     onOpenOrResume() {},
+    onStartNew() {},
     onHibernate() {},
     onDelete() {},
     onToggleControl() {},
+    onCancelControl() {
+      return false;
+    },
     onBookmarkCurrentPage() {},
     onToggleCheckpoints() {},
     onCreateCheckpoint() {

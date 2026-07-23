@@ -3,17 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { uploadFile } from "../../lib/database";
-import {
-  importMediaUrl,
-  isFirstPartyMediaUrl,
-} from "../../lib/media-proxy";
 import { loadEditorProject } from "../doc-editors/doc-io";
 import type { LibraryItem } from "../library-data";
-import { modelExtension, uploadImportedModel } from "./model3d-files";
 import {
   LEGACY_MODEL3D_PROJECT_SCHEMA,
   MODEL3D_PROJECT_SCHEMA,
   normalizeModel3DProjectRecovery,
+  normalizeModel3DSourceProvenance,
+  type Model3DSourceFormat,
+  type Model3DSourceProvenance,
   type Model3DViewProject,
 } from "./model3d-project";
 import type { Model3DOperation } from "./model3d-operations.mjs";
@@ -36,6 +34,9 @@ import { useModel3DMediaActions } from "./use-model3d-media-actions";
 import { useModel3DRuntime } from "./use-model3d-runtime";
 import { useModel3DSave } from "./use-model3d-save";
 import { useModel3DSidecar } from "./use-model3d-sidecar";
+import { useModel3DSourceActions } from "./use-model3d-source-actions";
+import { useModel3DSourceLoader } from "./use-model3d-source-loader";
+import { assertBlobSource } from "./source-integrity.mjs";
 
 export type { Model3DWorkbenchState } from "./model3d-workbench-state";
 const clamp = (value: number, minimum: number, maximum: number) =>
@@ -45,6 +46,16 @@ function errorMessage(caught: unknown, fallback: string): string {
   if (caught instanceof DOMException && caught.name === "AbortError") return "";
   return caught instanceof Error ? caught.message : fallback;
 }
+
+function model3DItemSourceFormat(item: LibraryItem): Model3DSourceFormat {
+  const format = String(item.meta.format || "").toLowerCase();
+  if (format === "glb" || format === "gltf") return format;
+  const mime = String(item.meta.mime || "").toLowerCase();
+  if (mime === "model/gltf+json") return "gltf";
+  if (mime === "model/gltf-binary") return "glb";
+  return "";
+}
+
 export function useModel3DWorkbench(
   item: LibraryItem,
   siteId = "",
@@ -72,6 +83,9 @@ export function useModel3DWorkbench(
   const [notice, setNotice] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [sourceProvenance, setSourceProvenance] =
+    useState<Model3DSourceProvenance>(() =>
+      normalizeModel3DSourceProvenance(null));
   const [view, setView] = useState<Model3DViewProject>(DEFAULT_MODEL3D_VIEW);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -129,6 +143,22 @@ export function useModel3DWorkbench(
 
   useEffect(() => {
     const originalSource = model3DSourceForItem(item);
+    const fallbackProvenance = normalizeModel3DSourceProvenance(
+      {
+        sourceUrl: originalSource,
+        dependencyBaseUrl:
+          typeof item.meta.model_dependency_base_url === "string"
+            ? item.meta.model_dependency_base_url
+            : originalSource,
+        format: model3DItemSourceFormat(item),
+        identity:
+          typeof item.meta.model_source_identity === "string"
+            ? item.meta.model_source_identity
+            : "",
+      },
+      originalSource,
+      model3DItemSourceFormat(item),
+    );
     const saved = normalizeSavedModelView(item.meta.view);
     const fallback: Model3DViewProject = {
       ...DEFAULT_MODEL3D_VIEW,
@@ -171,6 +201,7 @@ export function useModel3DWorkbench(
       let recovered = {
         checkpointUrl: originalSource,
         operations: [] as Model3DOperation[],
+        provenance: fallbackProvenance,
         view: fallback,
       };
       const projectUrl =
@@ -202,6 +233,7 @@ export function useModel3DWorkbench(
         return;
       }
       pendingOperationsRef.current = recovered.operations;
+      setSourceProvenance(recovered.provenance);
       applyView(recovered.view);
       const checkpointSource = recovered.checkpointUrl || originalSource;
       if (!checkpointSource) {
@@ -210,22 +242,21 @@ export function useModel3DWorkbench(
         return;
       }
       try {
-        const preserveGltfClosure =
-          modelExtension(checkpointSource, item.title) === "gltf";
-        const durableUrl =
-          isFirstPartyMediaUrl(checkpointSource) || preserveGltfClosure
-            ? checkpointSource
-            : await importMediaUrl(checkpointSource, {
-                kind: "model3d",
-                siteId: siteId || "threed",
-                title: item.title,
-                registerAsset: true,
-              });
         if (
           aliveRef.current &&
           generation === sourceGenerationRef.current
         ) {
-          setSourceUrl(durableUrl);
+          setSourceProvenance(
+            normalizeModel3DSourceProvenance(
+              recovered.provenance,
+              checkpointSource,
+              recovered.provenance.format,
+            ),
+          );
+          // Keep the canonical entrypoint and dependency base together until
+          // byte-signature detection proves GLB versus glTF. Importing an
+          // opaque URL first can sever a glTF JSON file from its .bin/textures.
+          setSourceUrl(checkpointSource);
         }
       } catch (caught) {
         if (aliveRef.current && generation === sourceGenerationRef.current) {
@@ -243,6 +274,10 @@ export function useModel3DWorkbench(
     item.meta.editor,
     item.meta.editor_project_schema,
     item.meta.editor_project_url,
+    item.meta.format,
+    item.meta.mime,
+    item.meta.model_dependency_base_url,
+    item.meta.model_source_identity,
     item.meta.model_source_url,
     item.meta.source_asset_url,
     item.meta.view,
@@ -253,83 +288,41 @@ export function useModel3DWorkbench(
     tt,
   ]);
 
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime || !runtimeReady || !sourceUrl) return;
-    if (loadedSourceRef.current === sourceUrl) return;
-    const generation = sourceGenerationRef.current;
-    setModelLoading(true);
-    setProgress(0);
-    setError("");
-    void runtime
-      .loadUrl(sourceUrl, (event) => {
-        if (!event.lengthComputable || !event.total) return;
-        setProgress(clamp(event.loaded / event.total, 0, 1));
-      })
-      .then(async () => {
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-          return;
-        }
-        runtime.setView(viewRef.current, { emit: false });
-        runtime.setAnnotations(sidecar.annotations);
-        runtime.applyLegacyMaterialOverrides(
-          viewRef.current.materialOverrides,
-        );
-        await runtime.applyOperationJournal(pendingOperationsRef.current);
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-          return;
-        }
-        loadedSourceRef.current = sourceUrl;
-        runtime.selectAnimation(viewRef.current.animationName, false);
-        runtime.setAnimationSpeed(viewRef.current.animationSpeed);
-        runtime.setAnimationTime(viewRef.current.animationTime);
-        runtime.setAnimationPlaying(viewRef.current.animationPlaying);
-        setModelLoading(false);
-        setProgress(1);
-        setNotice("");
-      })
-      .catch((caught) => {
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-          return;
-        }
-        setModelLoading(false);
-        setError(errorMessage(caught, tt("3D 模型加载失败")));
-      });
-  }, [reloadToken, runtimeReady, sidecar.annotations, sourceUrl, tt]);
+  const { handlePreparedSource, importModel, openModelUrl } =
+    useModel3DSourceActions({
+      siteId,
+      sourceGenerationRef,
+      loadedSourceRef,
+      pendingOperationsRef,
+      markDirty,
+      setSourceProvenance,
+      setSourceUrl,
+      setSourceLoading,
+      setProgress,
+      setError,
+      setNotice,
+      tt,
+    });
 
-  const importModel = useCallback(async (file: File) => {
-    setSourceLoading(true);
-    setError("");
-    setNotice(tt("正在上传 3D 模型…"));
-    try {
-      const url = await uploadImportedModel(file, siteId, tt);
-      sourceGenerationRef.current += 1;
-      loadedSourceRef.current = "";
-      pendingOperationsRef.current = [];
-      setSourceUrl(url);
-      setProgress(0);
-      markDirty();
-      setNotice(tt("模型已导入，可以编辑场景对象"));
-    } catch (caught) {
-      setError(errorMessage(caught, tt("3D 模型导入失败")));
-    } finally {
-      setSourceLoading(false);
-    }
-  }, [markDirty, siteId, tt]);
-
-  const openModelUrl = useCallback((url: string) => {
-    if (!/^https?:\/\//i.test(url)) {
-      setError(tt("3D 模型地址无效"));
-      return;
-    }
-    sourceGenerationRef.current += 1;
-    loadedSourceRef.current = "";
-    pendingOperationsRef.current = [];
-    setSourceUrl(url);
-    setError("");
-    setNotice(tt("正在载入完整 3D 模型…"));
-    markDirty();
-  }, [markDirty, tt]);
+  useModel3DSourceLoader({
+    runtimeRef,
+    runtimeReady,
+    sourceUrl,
+    dependencyBaseUrl: sourceProvenance.dependencyBaseUrl || sourceUrl,
+    reloadToken,
+    sourceGenerationRef,
+    loadedSourceRef,
+    aliveRef,
+    viewRef,
+    pendingOperationsRef,
+    annotations: sidecar.annotations,
+    setModelLoading,
+    setProgress,
+    setError,
+    setNotice,
+    onPreparedSource: handlePreparedSource,
+    tt,
+  });
 
   const updateView = useCallback(
     (patch: Partial<Model3DViewState>) => {
@@ -355,6 +348,7 @@ export function useModel3DWorkbench(
     siteId,
     modelLoaded: modelReady,
     checkpointUrl: sourceUrl,
+    sourceProvenance,
     posterUrl:
       /\.(?:glb|gltf)(?:$|[?#])/i.test(item.thumbUrl || item.previewUrl || "")
         ? ""
@@ -368,8 +362,9 @@ export function useModel3DWorkbench(
     setNotice,
     setSavedUrl,
     setDirty,
-    onDurableModelUrl: (url) => {
+    onDurableModelUrl: (url, provenance) => {
       loadedSourceRef.current = url;
+      setSourceProvenance(provenance);
       setSourceUrl(url);
     },
     onSaved,
@@ -394,7 +389,8 @@ export function useModel3DWorkbench(
   ) => {
     setError("");
     try {
-      if (!["image/png", "image/jpeg"].includes(file.type)) {
+      const actualFormat = await assertBlobSource(file, "image");
+      if (!["png", "jpeg"].includes(actualFormat)) {
         throw new Error(tt("纹理只支持 PNG 或 JPEG，以确保 GLB 可安全导出"));
       }
       const uploaded = await uploadFile(file, {
@@ -429,6 +425,7 @@ export function useModel3DWorkbench(
     loadedSourceRef.current = "";
     pendingOperationsRef.current = recovered.operations;
     runtimeRef.current?.clear();
+    setSourceProvenance(recovered.provenance);
     setSourceUrl(recovered.checkpointUrl);
     setReloadToken((current) => current + 1);
     applyView(recovered.view);
@@ -443,6 +440,8 @@ export function useModel3DWorkbench(
     canvasRef,
     title: item.title,
     sourceUrl,
+    sourceFormat: sourceProvenance.format,
+    sourceProvenance,
     posterUrl: item.thumbUrl || item.previewUrl || "",
     runtimeReady,
     modelLoaded: modelReady,

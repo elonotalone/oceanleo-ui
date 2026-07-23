@@ -10,12 +10,13 @@ import {
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import type { PersistedEditorVersion } from "../doc-editors/doc-io";
 import { safeModelStem } from "./model3d-files";
 import { createModel3DSavePlan } from "./model3d-operations.mjs";
 import {
   persistModel3DProject,
+  type Model3DSourceProvenance,
   type Model3DViewProject,
+  type PersistedModel3DVersion,
 } from "./model3d-project";
 import type { Model3DSceneRuntime } from "./model3d-runtime.mjs";
 
@@ -24,6 +25,7 @@ export function useModel3DSave({
   siteId,
   modelLoaded,
   checkpointUrl,
+  sourceProvenance,
   posterUrl,
   view,
   runtimeRef,
@@ -42,6 +44,7 @@ export function useModel3DSave({
   siteId: string;
   modelLoaded: boolean;
   checkpointUrl: string;
+  sourceProvenance: Model3DSourceProvenance;
   posterUrl: string;
   view: Omit<Model3DViewProject, "sourceUrl">;
   runtimeRef: MutableRefObject<Model3DSceneRuntime | null>;
@@ -52,12 +55,15 @@ export function useModel3DSave({
   setNotice: Dispatch<SetStateAction<string>>;
   setSavedUrl: Dispatch<SetStateAction<string>>;
   setDirty: Dispatch<SetStateAction<boolean>>;
-  onDurableModelUrl: (url: string) => void;
+  onDurableModelUrl: (
+    url: string,
+    provenance: Model3DSourceProvenance,
+  ) => void;
   onSaved?: (url: string) => void;
   tt: UITranslate;
 }): {
   saving: boolean;
-  saveCopy: () => Promise<PersistedEditorVersion | null>;
+  saveCopy: () => Promise<PersistedModel3DVersion | null>;
   checkpointForExport: () => Promise<ArrayBuffer | null>;
 } {
   const busyRef = useRef(false);
@@ -78,12 +84,15 @@ export function useModel3DSave({
     setError("");
     try {
       const title = `${safeModelStem(item.title)}-${tt("编辑版")}`;
+      // GLTFExporter is the canonical editable-source checkpoint serializer,
+      // not a delivery renderer; saves between bounded checkpoints are journal-only.
       if (plan.shouldExportGlb) glb = await runtime.exportGlb();
       const saved = await persistModel3DProject({
         item,
         siteId,
         title,
         checkpointUrl,
+        sourceProvenance,
         glb,
         operations: plan.persistedOperations,
         checkpointReason: plan.checkpointReason,
@@ -98,7 +107,7 @@ export function useModel3DSave({
       setSavedUrl(saved.url);
       if (glb) {
         runtime.commitCheckpoint(plan.coveredOperationIds);
-        onDurableModelUrl(saved.url);
+        onDurableModelUrl(saved.url, saved.sourceProvenance);
       }
       if (revisionRef.current === savingRevision) {
         setDirty(false);
@@ -132,6 +141,7 @@ export function useModel3DSave({
     setNotice,
     setSavedUrl,
     siteId,
+    sourceProvenance,
     sourceGenerationRef,
     tt,
     view,

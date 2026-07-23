@@ -20,7 +20,16 @@ import {
   pointInContainedFrame,
   validateCloudBrowserFrameMeta,
 } from "../src/shell/cloud-browser-live.ts";
-import { normalizeCloudBrowserCheckpoints } from "../src/shell/cloud-browser-session-data.ts";
+import {
+  cloudBrowserSessionNeedsResume,
+  formatCloudBrowserLifecycleError,
+  normalizeCloudBrowserCheckpoints,
+  resolveCloudBrowserSessionSelection,
+} from "../src/shell/cloud-browser-session-data.ts";
+import {
+  CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS,
+  createCloudBrowserTransportActions,
+} from "../src/shell/cloud-browser-transport-actions.ts";
 import {
   createCloudBrowserProtocolState,
   decodeCloudBrowserProtocolMessage,
@@ -56,8 +65,8 @@ const frameContract = {
   codec: "image/jpeg",
   source: "native-chrome-window",
   max_frame_bytes: 2 * 1024 * 1024,
-  max_width: 1920,
-  max_height: 1080,
+  max_width: 1280,
+  max_height: 800,
 };
 const capabilities = {
   page_bookmark: true,
@@ -87,7 +96,7 @@ const binding = {
   sessionId: "session",
   sessionVersion: 11,
   runtimeId: "runtime",
-  runtimeVersion: "chrome-window-r42",
+  runtimeVersion: "native-chrome-window-v3-test",
   incarnation: 7,
   nonce: "ticket-nonce",
   connectionId: "connection",
@@ -293,7 +302,10 @@ test("hello is bound to nonce, versions, lease, and native Chrome window", () =>
   assert.equal(reduced.state.handshake, true);
   assert.equal(reduced.state.transportState, "awaiting_first_frame");
   assert.equal(reduced.state.connectionId, "connection");
-  assert.equal(reduced.state.runtimeVersion, "chrome-window-r42");
+  assert.equal(
+    reduced.state.runtimeVersion,
+    "native-chrome-window-v3-test",
+  );
   assert.equal(reduced.state.streamId, "stream");
   assert.equal(reduced.state.windowId, "window");
   assert.equal(reduced.state.lastCallbackSequence, 3);
@@ -318,12 +330,38 @@ test("hello is bound to nonce, versions, lease, and native Chrome window", () =>
     hello({ nonce: "stale" }),
     hello({ runtime_id: "stale-runtime" }),
     hello({ runtime_version: "" }),
+    hello({ runtime_version: "chrome-window-r42" }),
+    hello({
+      frame_contract: {
+        ...frameContract,
+        max_width: 1920,
+      },
+    }),
+    hello({
+      capabilities: {
+        ...capabilities,
+        clipboard: false,
+      },
+    }),
     hello({
       window: {
         ...hello().window,
         omnibox: false,
       },
     }),
+    hello({
+      window: {
+        ...hello().window,
+        width: 1279,
+      },
+    }),
+    hello({
+      window: {
+        ...hello().window,
+        native_band_height: 88,
+      },
+    }),
+    hello({ tabs: [] }),
     hello({
       lease: {
         lease_id: "incoherent",
@@ -770,9 +808,15 @@ test("executable fixture covers canonical hello, UI mutations, and receipts", ()
     "ticket_nonce",
     "v",
   ]);
-  assert.equal(fixture.hello.runtime_version, "chrome-window-r42");
+  assert.equal(
+    fixture.hello.runtime_version,
+    "native-chrome-window-v3-ui-fixture",
+  );
   assert.equal(fixture.hello.stream_id, "stream-fixture");
   assert.equal(fixture.hello.window_id, "window-fixture");
+  assert.equal(fixture.hello.frame_contract.max_width, 1280);
+  assert.equal(fixture.hello.frame_contract.max_height, 800);
+  assert.equal(fixture.hello.window.native_band_height, 87);
   assert.deepEqual(fixture.hello.lease, {
     lease_id: "",
     lease_epoch: 4,
@@ -788,7 +832,10 @@ test("executable fixture covers canonical hello, UI mutations, and receipts", ()
     lease_id: "lease-fixture",
     lease_epoch: 5,
     holder_kind: "human",
+    holder_id: "user:fixture-owner",
     connection_id: "connection-fixture",
+    expires_at: "2099-01-01T00:00:00+00:00",
+    privacy_mode: true,
   });
   assert.equal(fixture.control_state.action_sequence, 11);
   assert.equal(fixture.control_state.callback_sequence, 7);
@@ -1026,6 +1073,188 @@ test("viewport recovery is spinner-only and retained frames keep takeover availa
   }
 });
 
+test("power-on stays explicit while task sessions outrank global history", () => {
+  const sessions = [
+    { id: "task-session", task_id: "task-current" },
+    { id: "global-session", task_id: "task-other" },
+  ];
+  assert.equal(
+    resolveCloudBrowserSessionSelection({
+      sessions,
+      effectiveTaskId: "task-current",
+    }),
+    "task-session",
+  );
+  assert.equal(
+    resolveCloudBrowserSessionSelection({
+      sessions: [sessions[1]],
+      effectiveTaskId: "task-current",
+    }),
+    "",
+    "another task's global history must not take over the empty state",
+  );
+  assert.equal(
+    resolveCloudBrowserSessionSelection({
+      sessions,
+      effectiveTaskId: "",
+    }),
+    "",
+    "loading global history alone must not implicitly select a session",
+  );
+  assert.equal(
+    resolveCloudBrowserSessionSelection({
+      sessions,
+      effectiveTaskId: "task-current",
+      currentId: "global-session",
+      keepCurrent: true,
+    }),
+    "global-session",
+    "an explicit history selection remains user-controlled",
+  );
+  assert.doesNotMatch(
+    panelSource,
+    /if\s*\(\s*!session\.sessions\.length\s*\)/,
+  );
+  assert.match(panelSource, /!liveRequested && \(\s*<BrowserPowerPrompt/);
+  assert.match(panelSource, /showPowerButton=\{liveRequested\}/);
+  assert.match(panelSource, /data-cloud-browser-power-prompt/);
+  assert.doesNotMatch(sessionSource, /items\[0\]\?\.id/);
+});
+
+test("hibernated and failed sessions require explicit fenced resume", () => {
+  const active = {
+    status: "active",
+    runtime_id: "runtime",
+    incarnation: 4,
+    runtime_state: "ready",
+  };
+  assert.equal(cloudBrowserSessionNeedsResume(active), false);
+  assert.equal(
+    cloudBrowserSessionNeedsResume({
+      ...active,
+      status: "hibernated",
+      runtime_id: "",
+    }),
+    true,
+  );
+  assert.equal(
+    cloudBrowserSessionNeedsResume({
+      ...active,
+      status: "failed",
+    }),
+    true,
+  );
+  assert.equal(
+    cloudBrowserSessionNeedsResume({
+      ...active,
+      runtime_id: "",
+    }),
+    true,
+    "an absent runtime must re-enter the lifecycle CAS path",
+  );
+  assert.match(
+    panelSource,
+    /cloudBrowserSessionNeedsResume\(selected\)[\s\S]*?restorePrevious\(\)/,
+  );
+  assert.match(
+    panelSource,
+    /selected\?\.status === "hibernated"[\s\S]*?tt\("恢复"\)[\s\S]*?tt\("开机"\)/,
+  );
+});
+
+test("terminal configuration and v3 failures are visible instead of spinning forever", () => {
+  assert.equal(
+    formatCloudBrowserLifecycleError(
+      { error: "BROWSER_NOT_CONFIGURED", status: 503 },
+      "start failed",
+    ),
+    "start failed: BROWSER_NOT_CONFIGURED",
+  );
+  assert.equal(
+    formatCloudBrowserLifecycleError(
+      { error: "EXECUTOR_ORIGIN_REJECTED", status: 503 },
+      "start failed",
+    ),
+    "start failed: EXECUTOR_ORIGIN_REJECTED",
+  );
+  assert.equal(
+    formatCloudBrowserLifecycleError(
+      { error: "HTTP 503", status: 503 },
+      "start failed",
+    ),
+    "start failed: BROWSER_NOT_CONFIGURED / EXECUTOR_ORIGIN_REJECTED",
+  );
+  assert.equal(
+    formatCloudBrowserLifecycleError(
+      {
+        error:
+          "executor.py:417 database host=private token=should-not-render",
+        status: 500,
+      },
+      "start failed",
+    ),
+    "start failed",
+    "untrusted gateway details must never become product error copy",
+  );
+  assert.match(panelSource, /data-cloud-browser-lifecycle-error/);
+  assert.match(panelSource, /data-cloud-browser-terminal-failure/);
+  assert.match(panelSource, /data-cloud-browser-retry/);
+  assert.match(panelSource, /v3 protocol_mismatch/);
+  assert.match(
+    sessionSource,
+    /formatCloudBrowserLifecycleError\(\s*recentResult/,
+  );
+  assert.match(
+    sessionSource,
+    /formatCloudBrowserLifecycleError\(\s*result,\s*tt\("会话快照加载失败"\)/,
+  );
+  assert.match(
+    panelSource,
+    /transport\.transportState !== "failed"[\s\S]*?transport\.transportState !== "closed"/,
+  );
+});
+
+test("takeover pending is cancellable and bounded without bypassing lease fences", () => {
+  assert.equal(CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS, 12_000);
+  const intents = [];
+  const refs = {
+    transportStateRef: { current: "streaming" },
+    leaseOwnedRef: { current: false },
+    controlPendingRef: { current: false },
+    capabilitiesRef: {
+      current: {
+        page_bookmark: false,
+        session_checkpoint: false,
+        clipboard: false,
+        ime_composition: false,
+        viewport_resize: false,
+      },
+    },
+  };
+  const actions = createCloudBrowserTransportActions({
+    ...refs,
+    sendMutation: () => {
+      throw new Error("control cancellation must not bypass transport fences");
+    },
+    requestControlIntent: (intent) => {
+      intents.push(intent);
+      refs.controlPendingRef.current = intent === "acquire";
+    },
+  });
+  actions.toggleControl();
+  assert.deepEqual(intents, ["acquire"]);
+  actions.toggleControl();
+  assert.deepEqual(intents, ["acquire", "release"]);
+  assert.equal(actions.cancelTakeover(), false);
+  assert.deepEqual(intents, ["acquire", "release"]);
+  refs.controlPendingRef.current = true;
+  refs.leaseOwnedRef.current = true;
+  assert.equal(actions.cancelTakeover(), false);
+  assert.match(chromeSource, /CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS/);
+  assert.match(chromeSource, /cancelTakeoverRef\.current\(\)/);
+  assert.match(chromeSource, /data-cloud-browser-control-cancel/);
+});
+
 test("history is a viewport-safe focus-trapped portal with metadata and no images", () => {
   assert.match(historySource, /createPortal\(/);
   assert.match(historySource, /data-cloud-browser-history-portal/);
@@ -1094,7 +1323,7 @@ test("lifecycle success reloads the durable session before ticketing", () => {
   );
   assert.match(
     panelSource,
-    /await session\.reload\(session\.selectedId\);[\s\S]*?await transport\.openLive\(session\.selectedId\);/,
+    /const selectedId = session\.selectedId;[\s\S]*?await session\.reload\(selectedId\);[\s\S]*?await transport\.openLive\(selectedId\);/,
   );
   assert.match(
     panelSource,

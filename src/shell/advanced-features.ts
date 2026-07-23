@@ -4,21 +4,14 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+import {
+  ADVANCED_CAPABILITY_CONTRACT,
+  advancedCapabilityForArtifactFields,
+  type AdvancedFeatureId as ContractAdvancedFeatureId,
+} from "./artifact-contract";
 import { editorCapabilityFor } from "./workbench-routes";
 
-export type AdvancedFeatureId =
-  | "video_editing"
-  | "audio_editing"
-  | "image_editing"
-  | "document_editing"
-  | "spreadsheet_editing"
-  | "presentation_editing"
-  | "pdf_editing"
-  | "chart_editing"
-  | "website_finetuning"
-  | "design_canvas"
-  | "video_canvas"
-  | "model_3d";
+export type AdvancedFeatureId = ContractAdvancedFeatureId;
 
 export interface AdvancedFeatureDefinition {
   id: AdvancedFeatureId;
@@ -131,6 +124,21 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] = [
   },
 ] as const;
 
+const declaredFeatureIds = ADVANCED_FEATURES.map((feature) => feature.id);
+const contractFeatureIds = ADVANCED_CAPABILITY_CONTRACT.map(
+  (capability) => capability.featureId,
+);
+if (
+  declaredFeatureIds.length !== contractFeatureIds.length ||
+  declaredFeatureIds.some(
+    (featureId, index) => featureId !== contractFeatureIds[index],
+  )
+) {
+  throw new Error(
+    "Advanced feature presentation order drifted from capability contract",
+  );
+}
+
 const FEATURE_BY_ID = new Map(
   ADVANCED_FEATURES.map((feature) => [feature.id, feature]),
 );
@@ -146,6 +154,14 @@ export function advancedFeatureForItem(
 ): AdvancedFeatureDefinition | null {
   const capability = editorCapabilityFor(item);
   if (!capability.available) return null;
+  if (isDurableLibraryItem(item)) {
+    const contract = advancedCapabilityForArtifactFields({
+      artifactType: item.artifact.artifactType,
+      sourceFormat: item.artifact.sourceFormat,
+      editorCapability: item.artifact.editorCapability,
+    });
+    if (contract) return advancedFeatureById(contract.featureId);
+  }
   switch (capability.adapter) {
     case "video-timeline":
       return advancedFeatureById("video_editing");
@@ -211,10 +227,16 @@ export function advancedEditorSourceFor(
       return null;
     }
     const format = item.artifact.sourceFormat.trim().toLowerCase();
+    const contract = advancedCapabilityForArtifactFields({
+      artifactType: item.artifact.artifactType,
+      sourceFormat: format,
+      editorCapability: item.artifact.editorCapability,
+    });
     return {
       url: source.url,
       format,
       structured:
+        Boolean(contract && contract.requirement.kind !== "none") ||
         item.artifactType === "composite_image" ||
         /(?:fabric|scene|project).*(?:json)|(?:json).*(?:fabric|scene|project)/.test(
           format,

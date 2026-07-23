@@ -121,6 +121,7 @@ export interface Model3DRuntimeOptions {
   onAnnotationPoint?: (point: Model3DAnnotationPoint) => void;
   onAnnotationFrame?: (entries: Model3DAnnotationScreen[]) => void;
   onError?: (message: string) => void;
+  resolveAssetUrl?: (url: string) => string;
 }
 
 export class Model3DSceneRuntime {

@@ -34,6 +34,7 @@ import {
   recolorArrow,
   roleOf,
   setArrowStrokeWidth,
+  setEditorObjectId,
   setLocked,
   type EditorObject,
   type EditorObjectProps,
@@ -283,7 +284,7 @@ export class FabricEditorController extends FabricEditorCore {
     const current = active as FabricImage & EditorObjectProps;
     const index = this.canvas.getObjects().indexOf(current);
     const replacement = image as FabricImage & EditorObjectProps;
-    replacement.oceanleoId = current.oceanleoId || makeId();
+    setEditorObjectId(replacement, current.oceanleoId || makeId());
     replacement.oceanleoKind = "image";
     replacement.oceanleoRole = current.oceanleoRole;
     replacement.oceanleoLocked = false;
@@ -408,7 +409,7 @@ export class FabricEditorController extends FabricEditorCore {
       clone.dispose();
       return;
     }
-    clone.oceanleoId = makeId();
+    setEditorObjectId(clone);
     clone.oceanleoRole = undefined;
     clone.set({
       left: (source.left ?? 0) + 24,

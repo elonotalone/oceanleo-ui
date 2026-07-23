@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { saveCreations, type MediaType } from "../lib/database";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
@@ -9,7 +9,14 @@ import {
   type EditorDocumentRevision,
 } from "./editor-protocol";
 import { advancedSavedItem } from "./advanced-session";
-import type { LibraryItem } from "./library-data";
+import {
+  DesignCompositeCommitError,
+  persistDesignCompositeCommit,
+} from "./design-composite-commit";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "./library-data";
 import type { SelectionContext } from "./selection-context";
 import type { SelectionCommandGate } from "./selection-transactions";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
@@ -19,6 +26,10 @@ interface ArtifactSaveOutcome {
   detail: string;
   durableUrl: string;
   savedItem?: LibraryItem;
+  artifactId?: string;
+  revisionId?: string;
+  code?: string;
+  currentRevisionId?: string;
 }
 
 type MutableRef<T> = { current: T };
@@ -80,6 +91,12 @@ function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
   }
 }
 
+function artifactInputIdentity(item: LibraryItem): string {
+  return isDurableLibraryItem(item)
+    ? `${item.key}:${item.artifactId}:${item.revisionId}`
+    : item.key;
+}
+
 export function useEmbedEditorMessages({
   iframeRef,
   editorOrigin,
@@ -116,7 +133,18 @@ export function useEmbedEditorMessages({
   onVersionSaved,
   onViewportChange,
 }: UseEmbedEditorMessagesInput): void {
+  const artifactHeadRef = useRef(item);
+  const artifactInputIdentityRef = useRef(artifactInputIdentity(item));
+  const artifactHeadGenerationRef = useRef(0);
+  const nextInputIdentity = artifactInputIdentity(item);
+  if (artifactInputIdentityRef.current !== nextInputIdentity) {
+    artifactInputIdentityRef.current = nextInputIdentity;
+    artifactHeadRef.current = item;
+    artifactHeadGenerationRef.current += 1;
+  }
+  const typedCommitQueueRef = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
+    let active = true;
     const receive = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
       if (
@@ -257,77 +285,133 @@ export function useEmbedEditorMessages({
         message.type === "artifact-created" ||
         message.type === "artifact-updated"
       ) {
+        const requestArtifactId =
+          typeof message.meta?.artifact_id === "string"
+            ? message.meta.artifact_id
+            : "";
+        const requestRevisionId =
+          typeof message.meta?.expected_artifact_revision_id === "string"
+            ? message.meta.expected_artifact_revision_id
+            : "";
         const saveKey = message.saveId
-          ? `save:${message.saveId}`
+          ? `save:${instanceId}:${requestArtifactId}:${requestRevisionId}:${message.saveId}`
           : `legacy:${Date.now().toString(36)}:${Math.random()
               .toString(36)
               .slice(2, 8)}`;
         const existing = artifactSaveOperationsRef.current.get(saveKey);
+        const saveGeneration = artifactHeadGenerationRef.current;
         const operation =
           existing ||
           (async (): Promise<ArtifactSaveOutcome> => {
             let saved = false;
             let detail = tt("保存失败");
             let durableUrl = message.url;
+            let savedItem: LibraryItem | undefined;
+            let artifactId: string | undefined;
+            let revisionId: string | undefined;
+            let code: string | undefined;
+            let currentRevisionId: string | undefined;
             try {
-              if (!isDurableArtifactUrl(durableUrl, mediaType)) {
-                const importKind =
-                  mediaType === "image"
-                    ? "image"
-                    : mediaType === "video"
-                      ? "video"
-                      : mediaType === "audio"
-                        ? "audio"
-                        : mediaType === "model3d"
-                          ? "model3d"
-                          : "file";
-                durableUrl = await importMediaUrl(durableUrl, {
-                  kind: importKind,
-                  siteId: siteId || "oceanleo",
-                  title: message.title || `${item.title}-编辑版`,
-                  registerAsset: false,
-                });
-              }
-              const result = await saveCreations(siteId || "oceanleo", [
-                {
-                  url: durableUrl,
-                  thumb_url:
-                    message.previewUrl &&
-                    isDurableArtifactUrl(message.previewUrl, mediaType)
-                      ? message.previewUrl
-                      : durableUrl,
-                  media_type: mediaType,
-                  title: message.title || `${item.title}-编辑版`,
-                  kind: item.kind,
-                  meta: {
-                    ...(message.meta || {}),
-                    parent_asset_id: item.id,
-                    editor_instance: instanceId,
+              if (message.meta?.requires_typed_artifact_commit === true) {
+                const commitTask = typedCommitQueueRef.current.then(
+                  async () => {
+                    if (saveGeneration !== artifactHeadGenerationRef.current) {
+                      throw new DesignCompositeCommitError(
+                        "design artifact 已切换，旧保存请求已拒绝。",
+                        "stale-artifact",
+                      );
+                    }
+                    const committed = await persistDesignCompositeCommit(
+                      artifactHeadRef.current,
+                      message,
+                    );
+                    if (saveGeneration === artifactHeadGenerationRef.current) {
+                      artifactHeadRef.current = committed;
+                    }
+                    return committed;
                   },
-                },
-              ]);
-              saved = result.ok && Number(result.data?.saved || 0) === 1;
-              detail = saved
-                ? tt("新版本已保存到我的库")
-                : result.error || tt("保存失败");
+                );
+                typedCommitQueueRef.current = commitTask.then(
+                  () => undefined,
+                  () => undefined,
+                );
+                const committed = await commitTask;
+                saved = true;
+                detail = tt("新版本已保存到我的库");
+                savedItem = committed;
+                artifactId = committed.artifactId;
+                revisionId = committed.revisionId;
+                durableUrl =
+                  committed.previewUrl || committed.url || durableUrl;
+              } else {
+                if (!isDurableArtifactUrl(durableUrl, mediaType)) {
+                  const importKind =
+                    mediaType === "image"
+                      ? "image"
+                      : mediaType === "video"
+                        ? "video"
+                        : mediaType === "audio"
+                          ? "audio"
+                          : mediaType === "model3d"
+                            ? "model3d"
+                            : "file";
+                  durableUrl = await importMediaUrl(durableUrl, {
+                    kind: importKind,
+                    siteId: siteId || "oceanleo",
+                    title: message.title || `${item.title}-编辑版`,
+                    registerAsset: false,
+                  });
+                }
+                const result = await saveCreations(siteId || "oceanleo", [
+                  {
+                    url: durableUrl,
+                    thumb_url:
+                      message.previewUrl &&
+                      isDurableArtifactUrl(message.previewUrl, mediaType)
+                        ? message.previewUrl
+                        : durableUrl,
+                    media_type: mediaType,
+                    title: message.title || `${item.title}-编辑版`,
+                    kind: item.kind,
+                    meta: {
+                      ...(message.meta || {}),
+                      parent_asset_id: item.id,
+                      editor_instance: instanceId,
+                    },
+                  },
+                ]);
+                saved = result.ok && Number(result.data?.saved || 0) === 1;
+                detail = saved
+                  ? tt("新版本已保存到我的库")
+                  : result.error || tt("保存失败");
+                savedItem = saved
+                  ? advancedSavedItem(item, {
+                      url: durableUrl,
+                      previewUrl: message.previewUrl,
+                      title: message.title,
+                      meta: message.meta,
+                    })
+                  : undefined;
+              }
             } catch (caught) {
               detail =
                 caught instanceof Error && caught.message
                   ? caught.message
                   : tt("保存失败");
+              if (caught instanceof DesignCompositeCommitError) {
+                code = caught.code;
+                currentRevisionId = caught.currentRevisionId;
+              }
             }
             return {
               saved,
               detail,
               durableUrl,
-              savedItem: saved
-                ? advancedSavedItem(item, {
-                    url: durableUrl,
-                    previewUrl: message.previewUrl,
-                    title: message.title,
-                    meta: message.meta,
-                  })
-                : undefined,
+              savedItem,
+              artifactId,
+              revisionId,
+              code,
+              currentRevisionId,
             };
           })();
         if (!existing) {
@@ -338,6 +422,7 @@ export function useEmbedEditorMessages({
           }
         }
         void operation.then((outcome) => {
+          if (!active) return;
           if (!existing) {
             setStatus(outcome.saved ? "" : outcome.detail);
             onSaveResult?.({
@@ -354,12 +439,19 @@ export function useEmbedEditorMessages({
             url: outcome.durableUrl,
             saveId: message.saveId,
             revision: message.revision,
+            artifactId: outcome.artifactId,
+            revisionId: outcome.revisionId,
+            code: outcome.code,
+            currentRevisionId: outcome.currentRevisionId,
           });
         });
       }
     };
     window.addEventListener("message", receive);
-    return () => window.removeEventListener("message", receive);
+    return () => {
+      active = false;
+      window.removeEventListener("message", receive);
+    };
   }, [
     editorOrigin,
     iframeRef,

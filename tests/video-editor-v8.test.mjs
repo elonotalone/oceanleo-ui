@@ -8,8 +8,14 @@ import test from "node:test";
 import ts from "typescript";
 
 import {
+  isTimelineDoc,
   normalizeTimelineDoc,
+  patchClipIn,
+  timelineDocIssue,
 } from "../src/shell/video-editor/timeline-model.ts";
+import {
+  parseVideoProjectEnvelope,
+} from "../src/shell/media-editors/source-integrity.mjs";
 import {
   drawTimelineVideoFrame,
 } from "../src/shell/video-editor/preview-contract.ts";
@@ -58,6 +64,80 @@ test("timeline zoom preserves the viewport-center time anchor", () => {
   const nextScrollLeft = timelineScrollLeftForAnchor(anchorMs, 400, 160);
   assert.equal(nextScrollLeft, 1_840);
   assert.equal(timelineAnchorMs(nextScrollLeft, 400, 160), anchorMs);
+});
+
+test("video project validation rejects unsafe or structurally ambiguous sources", () => {
+  const project = {
+    width: 1_920,
+    height: 1_080,
+    fps: 30,
+    tracks: [
+      {
+        id: "video-track",
+        kind: "video",
+        clips: [
+          {
+            id: "clip-1",
+            start_ms: 0,
+            duration_ms: 1_000,
+            source_url:
+              "https://cdn.example/video.mp4?X-Amz-Signature=source",
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal(isTimelineDoc(project), true);
+
+  const embedded = structuredClone(project);
+  embedded.tracks[0].clips[0].source_url = "data:video/mp4;base64,AAAA";
+  assert.equal(isTimelineDoc(embedded), false);
+  assert.match(timelineDocIssue(embedded), /安全的 http\(s\) 媒体源/);
+
+  const duplicate = structuredClone(project);
+  duplicate.tracks[0].clips.push({
+    ...duplicate.tracks[0].clips[0],
+  });
+  assert.equal(isTimelineDoc(duplicate), false);
+  assert.match(timelineDocIssue(duplicate), /片段 id 重复/);
+
+  const nonFinite = structuredClone(project);
+  nonFinite.tracks[0].clips[0].duration_ms = Number.NaN;
+  assert.equal(isTimelineDoc(nonFinite), false);
+  assert.match(timelineDocIssue(nonFinite), /时间范围无效/);
+});
+
+test("video project load, mutate, save and reopen preserves the canonical timeline", () => {
+  const loaded = normalizeTimelineDoc({
+    width: 1_280,
+    height: 720,
+    fps: 30,
+    tracks: [
+      {
+        id: "video",
+        kind: "video",
+        clips: [{
+          id: "clip",
+          start_ms: 0,
+          duration_ms: 2_000,
+          source_url: "https://cdn.example/source.mp4?sig=source",
+        }],
+      },
+    ],
+  });
+  const mutated = patchClipIn(loaded, "clip", {
+    brightness: 0.2,
+    contrast: 1.25,
+    saturation: 0.8,
+  });
+  const saved = JSON.stringify({
+    schema: "oceanleo.timeline.v1",
+    version: 1,
+    data: mutated,
+  });
+  const reopened = parseVideoProjectEnvelope(saved);
+  assert.equal(isTimelineDoc(reopened), true);
+  assert.deepEqual(normalizeTimelineDoc(reopened), mutated);
 });
 
 test("preview pixel path applies every exposed visual property once", () => {
@@ -274,6 +354,12 @@ test("metadata probe reports duration and video dimensions and releases source",
       width: 640,
       height: 360,
     });
+    media.videoWidth = 0;
+    media.videoHeight = 0;
+    assert.equal(
+      await probeMediaSource("https://cdn.example/audio-only.mp4", "video"),
+      null,
+    );
     assert.equal(released, true);
   } finally {
     globalThis.document = previousDocument;

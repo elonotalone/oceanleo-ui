@@ -12,7 +12,6 @@ import type {
   EditorManifestV1,
   LibraryItem,
 } from "../library-data";
-import { saveProjectWorkingHead } from "../doc-editors/doc-io";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -21,8 +20,6 @@ import {
   appendChartSeries,
   chartDataTable,
   chartDocumentFromCsv,
-  chartDocumentFromJson,
-  chartDocumentToJson,
   normalizeChartDocument,
   patchChartAxis,
   patchChartSeries,
@@ -34,12 +31,18 @@ import {
   type ChartSeries,
 } from "./chart-schema";
 import { ChartDocumentHistory } from "./chart-history";
-
-const GATEWAY =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  "https://api.oceanleo.com";
+import {
+  CHART_EDITOR_ID,
+  CHART_OPTION_FORMAT,
+  loadChartDocument,
+  resolveChartSource,
+} from "./chart-source";
+import {
+  saveChartRevision,
+  type ChartSaveResult,
+} from "./chart-persistence";
+import { renderChartPreviewBlob } from "./chart-render";
+export type { ChartSaveResult } from "./chart-persistence";
 
 const EMPTY_DOCUMENT = normalizeChartDocument({
   title: { text: "新图表" },
@@ -47,15 +50,6 @@ const EMPTY_DOCUMENT = normalizeChartDocument({
   yAxis: { type: "value" },
   series: [{ id: "series-1", name: "系列 1", type: "bar", data: [12, 20, 16] }],
 });
-
-export interface ChartSaveResult {
-  url: string;
-  json: string;
-  document: ChartDocumentV1;
-  versionId: string;
-  projectUrl: string;
-  projectSchema: string;
-}
 
 export interface ChartWorkbenchState {
   document: ChartDocumentV1;
@@ -87,71 +81,26 @@ export interface ChartWorkbenchState {
   restoreRecovery: (payload: unknown) => boolean;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function manifestFor(item: LibraryItem): EditorManifestV1 | null {
-  const record = asRecord(item.descriptor?.editor || item.meta.editor);
-  const source = asRecord(record?.source);
-  if (
-    record?.schema !== "oceanleo.editor-manifest.v1" ||
-    record.id !== "chart-editor" ||
-    record.version !== 1 ||
-    !source ||
-    (source.kind !== "inline" && source.kind !== "url")
-  ) {
-    return null;
-  }
-  return record as unknown as EditorManifestV1;
-}
-
-function inlineDocument(item: LibraryItem): ChartDocumentV1 | null {
-  if (item.content?.trim()) return chartDocumentFromJson(item.content);
-  const value = item.meta.chart_document || item.meta.chart_option;
-  return value ? normalizeChartDocument(value) : null;
-}
-
-function sourceRequestUrl(url: string): string {
-  if (url.startsWith("/")) return `${GATEWAY}${url}`;
-  return url;
-}
-
-async function loadChartDocument(
-  item: LibraryItem,
-  signal?: AbortSignal,
-): Promise<ChartDocumentV1> {
-  const inline = inlineDocument(item);
-  if (inline) return inline;
-  const manifest = manifestFor(item);
-  const sourceUrl =
-    manifest?.source.kind === "url" ? manifest.source.url || "" : "";
-  if (!sourceUrl) {
-    throw new Error(
-      "此图表没有 chart-editor@1 结构化 option 源，不能从 HTML/脚本逆向恢复。",
-    );
-  }
-  const response = await fetch(sourceRequestUrl(sourceUrl), {
-    signal,
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`图表源读取失败（HTTP ${response.status}）`);
-  const text = await response.text();
-  if (text.length > 2_000_000) throw new Error("图表源超过 2MB 安全上限");
-  return chartDocumentFromJson(text);
-}
-
 export function chartEditorManifest(): EditorManifestV1 {
   return {
     schema: "oceanleo.editor-manifest.v1",
-    id: "chart-editor",
+    id: CHART_EDITOR_ID,
     version: 1,
     capabilities: ["load", "mutate", "save", "reopen"],
-    source: { kind: "inline", format: "echarts-option+json" },
+    source: { kind: "inline", format: CHART_OPTION_FORMAT },
   };
+}
+
+function chartArtifactInputIdentity(item: LibraryItem): string {
+  if (item.artifactId && item.revisionId) {
+    return `${item.key}:${item.artifactId}:${item.revisionId}`;
+  }
+  return `${item.key}:${item.id}:${String(
+    item.meta.editor_version_id ||
+      item.meta.editor_project_url ||
+      item.content ||
+      "",
+  )}`;
 }
 
 export function useChartWorkbench(
@@ -164,6 +113,9 @@ export function useChartWorkbench(
   const documentRef = useRef<ChartDocumentV1>(EMPTY_DOCUMENT);
   const historyRef = useRef(new ChartDocumentHistory());
   const saveBusyRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const artifactHeadRef = useRef(item);
+  const artifactInputIdentityRef = useRef(chartArtifactInputIdentity(item));
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const [document, setDocument] = useState<ChartDocumentV1>(EMPTY_DOCUMENT);
   const [activeSeriesId, setActiveSeriesId] = useState(
@@ -175,6 +127,15 @@ export function useChartWorkbench(
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saved, setSaved] = useState<ChartSaveResult | null>(null);
+  const nextInputIdentity = chartArtifactInputIdentity(item);
+  if (artifactInputIdentityRef.current !== nextInputIdentity) {
+    artifactInputIdentityRef.current = nextInputIdentity;
+    artifactHeadRef.current = item;
+  }
+  const updateDirty = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirty(value);
+  }, []);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -189,13 +150,13 @@ export function useChartWorkbench(
     setError("");
     setNotice("");
     setSaved(null);
-    setDirty(false);
+    updateDirty(false);
     revisionRef.current = 0;
     historyRef.current.reset();
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
-    void loadChartDocument(item, controller.signal)
+    void loadChartDocument(item, { signal: controller.signal })
       .then((next) => {
         if (!controller.signal.aborted) {
           documentRef.current = next;
@@ -212,7 +173,11 @@ export function useChartWorkbench(
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [item.content, item.id, item.meta.chart_document, item.meta.chart_option, item.meta.editor, tt]);
+  }, [
+    nextInputIdentity,
+    tt,
+    updateDirty,
+  ]);
 
   const mutate = useCallback((producer: (value: ChartDocumentV1) => ChartDocumentV1) => {
     try {
@@ -222,14 +187,14 @@ export function useChartWorkbench(
       documentRef.current = next;
       revisionRef.current += 1;
       setDocument(next);
-      setDirty(true);
+      updateDirty(true);
       setSaved(null);
       setNotice("");
       setError("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "图表修改失败");
     }
-  }, []);
+  }, [updateDirty]);
 
   useEffect(() => {
     if (document.option.series.some((series) => series.id === activeSeriesId)) {
@@ -243,11 +208,11 @@ export function useChartWorkbench(
     documentRef.current = next;
     revisionRef.current += 1;
     setDocument(next);
-    setDirty(true);
+    updateDirty(true);
     setSaved(null);
     setNotice("");
     setError("");
-  }, []);
+  }, [updateDirty]);
 
   const undo = useCallback(() => {
     applyHistoryDocument(historyRef.current.undo(documentRef.current));
@@ -290,7 +255,8 @@ export function useChartWorkbench(
           ).toLowerCase() === "chart";
         if (!isChart) return false;
         try {
-          return Boolean(manifestFor(material) || inlineDocument(material));
+          resolveChartSource(material);
+          return true;
         } catch {
           return false;
         }
@@ -302,57 +268,37 @@ export function useChartWorkbench(
   useWorkbenchMaterialAdapter(materialAdapter);
 
   const save = useCallback(async (): Promise<ChartSaveResult | null> => {
-    if (saveBusyRef.current || loading) return null;
+    if (saveBusyRef.current || loading || !dirtyRef.current) return null;
     saveBusyRef.current = true;
     setSaving(true);
     setError("");
     try {
-      const snapshot = normalizeChartDocument(document);
-      const json = chartDocumentToJson(snapshot);
+      const snapshot = normalizeChartDocument(documentRef.current);
       const savingRevision = revisionRef.current;
-      const title = `${snapshot.option.title.text || item.title || tt("图表")}-${tt("编辑版")}`;
-      const result = await saveProjectWorkingHead({
-        item,
-        siteId,
-        fallbackSite: "chart",
-        title,
-        mediaType: "other",
-        kind: "chart",
-        idempotencyKey: `chart:${item.id}:${savingRevision}`,
-        workingHeadUrl: workingHeadUrlRef.current,
-        thumbUrl: item.thumbUrl || item.previewUrl,
-        meta: {
-          editor: chartEditorManifest(),
-          content_type: "chart",
-          representation: "echarts-option",
-          subtype: String(item.meta.subtype || item.meta.category || ""),
-          chart_document: snapshot,
-        },
-        project: {
-          schema: "oceanleo.chart.v1",
-          data: snapshot,
-        },
-      });
-      if (!result.ok || !result.url) {
-        throw new Error(result.error || tt("图表保存到我的库失败"));
+      const previewBlob = await renderChartPreviewBlob(snapshot.option);
+      if (revisionRef.current !== savingRevision) {
+        throw new Error("preview 渲染期间图表已变化，本次旧快照未提交");
       }
-      workingHeadUrlRef.current = result.url;
-      const next = {
-        url: result.url,
-        json,
+      const title = `${snapshot.option.title.text || item.title || tt("图表")}-${tt("编辑版")}`;
+      const result = await saveChartRevision({
+        item: artifactHeadRef.current,
+        siteId,
+        editRevision: savingRevision,
         document: snapshot,
-        versionId: result.versionId,
-        projectUrl: result.projectUrl,
-        projectSchema: result.projectSchema,
-      };
+        workingHeadUrl: workingHeadUrlRef.current,
+        title,
+        previewBlob,
+      });
+      if (result.item) artifactHeadRef.current = result.item;
+      workingHeadUrlRef.current = result.url;
       if (aliveRef.current) {
-        setSaved(next);
+        setSaved(result);
         if (revisionRef.current === savingRevision) {
-          setDirty(false);
+          updateDirty(false);
         }
         setNotice("");
       }
-      return next;
+      return result;
     } catch (caught) {
       if (aliveRef.current) {
         setError(caught instanceof Error ? caught.message : tt("图表保存失败"));
@@ -362,7 +308,7 @@ export function useChartWorkbench(
       saveBusyRef.current = false;
       if (aliveRef.current) setSaving(false);
     }
-  }, [document, item, loading, siteId, tt]);
+  }, [item.title, loading, siteId, tt, updateDirty]);
   const table = useMemo(() => chartDataTable(document), [document]);
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {

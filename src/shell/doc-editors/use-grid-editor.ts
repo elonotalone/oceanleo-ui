@@ -13,7 +13,7 @@ import {
   downloadBlob,
   downloadText,
   loadEditorProject,
-  saveProjectWorkingHead,
+  saveFileToLibrary,
   type PersistedEditorVersion,
 } from "./doc-io";
 import {
@@ -36,6 +36,7 @@ import {
   type GridSheet,
 } from "./grid-model";
 import { resolveGridActiveSheetId } from "./grid-sheet-identity";
+import { notifyOfficeAccessDenied } from "./office-file";
 import {
   mergeGridRange,
   rangesIntersect,
@@ -175,6 +176,7 @@ function normalizedSheetName(
 export function useGridEditor(
   item: LibraryItem,
   siteId = "",
+  onSourceAccessError?: () => void,
 ): GridEditorState {
   const tt = useUI();
   const initial = useMemo(() => emptyGridSheet(), []);
@@ -306,7 +308,7 @@ export function useGridEditor(
             filterColumn: Math.max(0, Number(project.filterColumn) || 0),
           };
         })
-      : loadGridSheets(item, controller.signal).then((loaded) => ({
+      : loadGridSheets(item, controller.signal, onSourceAccessError).then((loaded) => ({
           sheets: loaded,
           activeSheetId: "",
           headerRow: true,
@@ -344,6 +346,7 @@ export function useGridEditor(
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted || !mountedRef.current) return;
+        notifyOfficeAccessDenied(caught, onSourceAccessError);
         const fallback = emptyGridSheet();
         applySnapshot({ sheets: [fallback], activeSheetId: fallback.id });
         setHasSelectedCell(false);
@@ -361,7 +364,7 @@ export function useGridEditor(
       operationRef.current += 1;
       mountedRef.current = false;
     };
-  }, [applySnapshot, item, tt]);
+  }, [applySnapshot, item, onSourceAccessError, tt]);
 
   const activeSheet =
     sheets.find((sheet) => sheet.id === activeSheetId) ?? sheets[0];
@@ -837,10 +840,14 @@ export function useGridEditor(
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const result = await saveProjectWorkingHead({
+      const delivery = await buildGridWorkbookBlob(snapshot);
+      const result = await saveFileToLibrary({
         item,
         siteId,
         fallbackSite: "excel",
+        file: new File([delivery], `${title}.xlsx`, {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
         title,
         mediaType: "sheet",
         kind: "sheet",
@@ -850,6 +857,7 @@ export function useGridEditor(
           editor: "grid-v2",
           sheet_count: snapshot.length,
           sheet_names: snapshot.map((sheet) => sheet.name),
+          delivery_format: "xlsx",
         },
         project: {
           schema: GRID_PROJECT_SCHEMA,

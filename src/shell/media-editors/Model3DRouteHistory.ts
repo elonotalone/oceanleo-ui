@@ -1,10 +1,12 @@
 import type { Model3DOperation } from "./model3d-operations.mjs";
+import type { Model3DSourceProvenance } from "./model3d-project";
 import type { Model3DAnnotation } from "./model3d-view";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 
 export interface Model3DRouteSnapshot {
   checkpointUrl: string;
   operations: Model3DOperation[];
+  provenance?: Model3DSourceProvenance;
   view: {
     sourceUrl: string;
     azimuth: number;
@@ -81,11 +83,14 @@ export function captureModel3DRouteSnapshot(
     | "environmentUrl"
     | "environmentIntensity"
     | "annotations"
-  >,
+  > & { sourceProvenance?: Model3DSourceProvenance },
 ): Model3DRouteSnapshot {
   return cloneSnapshot({
     checkpointUrl: editor.sourceUrl,
     operations: editor.operationJournal,
+    ...(editor.sourceProvenance
+      ? { provenance: editor.sourceProvenance }
+      : {}),
     view: {
       sourceUrl: editor.sourceUrl,
       azimuth: editor.azimuth,

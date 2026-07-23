@@ -333,6 +333,34 @@ const {
 } = myLibraryModule;
 
 const actionClientStubUrl = dataModule(`
+  export function artifactDownloadEvidence(item) {
+    const artifact = item?.artifact;
+    const durable = Boolean(
+      item?.artifactId &&
+      item?.revisionId &&
+      artifact?.artifactId === item.artifactId &&
+      artifact?.revisionId === item.revisionId
+    );
+    if (!durable || !artifact.access.canRead) {
+      return {
+        visible: false,
+        available: false,
+        reason: durable ? "denied" : "missing identity",
+        purpose: null,
+        mode: null,
+      };
+    }
+    const source = artifact.renditions.source || artifact.renditions.editor_manifest;
+    const rendered = artifact.renditions.full || artifact.renditions.preview;
+    const rendition = artifact.access.canExportSource ? source : rendered;
+    return {
+      visible: true,
+      available: Boolean(artifact.integrity.ok && rendition),
+      reason: artifact.integrity.ok && rendition ? "" : "download unavailable",
+      purpose: rendition?.purpose || null,
+      mode: artifact.access.canExportSource ? "source" : "export",
+    };
+  }
   export async function prepareArtifactForAction(action, item) {
     globalThis.__artifactPreparedActions.push(action);
     return { ok: true, data: { ...item, preparedAction: action } };
@@ -343,8 +371,12 @@ const actionClientStubUrl = dataModule(`
       data: {
         artifactId: item.artifactId,
         revisionId: item.revisionId,
+        purpose: "source",
+        mode: "source",
         url: "https://signed.test/download",
         filename: "download.bin",
+        mediaType: "application/octet-stream",
+        expiresAt: new Date(Date.now() + 300000).toISOString(),
       },
     };
   }
@@ -1386,6 +1418,7 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
     id: "ensured-upload",
     title: "Upload",
     editable: true,
+    artifactType: "document",
   });
   ensuredProjection.source_format = "docx";
   ensuredProjection.renditions.source = {
@@ -1399,7 +1432,7 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
     resultId: "upload-result-1",
     idempotencyKey: "upload-key-1",
     payloadDigest: "sha256:upload-1",
-    artifactType: "single_file_image",
+    artifactType: "document",
     title: "Upload",
     renditionUrl: "https://signed.test/upload-preview.png",
   };
@@ -1421,14 +1454,14 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
     if (
       url.pathname ===
         "/v1/artifacts/ensured-upload/revisions/r1/renditions/source" &&
-      url.searchParams.get("mode") === "export"
+      url.searchParams.get("mode") === "source"
     ) {
       return jsonResponse({
         artifact_id: "ensured-upload",
         revision_id: "r1",
         purpose: "source",
-        mode: "export",
-        access_url: "/v1/artifact-renditions/access/export-token",
+        mode: "source",
+        access_url: "/v1/artifact-renditions/access/source-token",
         expires_at: new Date(Date.now() + 300_000).toISOString(),
       });
     }
@@ -1442,10 +1475,16 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
   assert.equal(download.ok, true);
   assert.equal(download.data?.artifactId, "ensured-upload");
   assert.equal(download.data?.revisionId, "r1");
+  assert.equal(download.data?.purpose, "source");
+  assert.equal(download.data?.mode, "source");
   assert.equal(download.data?.filename, "Upload.docx");
   assert.equal(
+    download.data?.mediaType,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.equal(
     download.data?.url,
-    "https://api.test/v1/artifact-renditions/access/export-token",
+    "https://api.test/v1/artifact-renditions/access/source-token",
   );
 
   ensureMismatch = true;

@@ -18,6 +18,7 @@ import {
   makeId,
   readFilterSettings,
   roleOf,
+  setEditorObjectId,
   setLocked,
   tagObject,
   type EditorObject,
@@ -465,7 +466,7 @@ export class FabricEditorCore {
       this.canvasBackground,
     );
     const background = image as EditorObject;
-    background.oceanleoId = makeId();
+    setEditorObjectId(background, background.oceanleoId || makeId());
     background.oceanleoRole = undefined;
     background.oceanleoKind = "image";
     background.oceanleoImageFit = "fill";
@@ -497,7 +498,7 @@ export class FabricEditorCore {
     if (removals.length) this.canvas.remove(...removals);
     removals.forEach((object) => object.dispose());
     const background = image as EditorObject;
-    background.oceanleoId = makeId();
+    setEditorObjectId(background, background.oceanleoId || makeId());
     background.oceanleoRole = undefined;
     background.oceanleoKind = "image";
     background.oceanleoImageFit = "fill";

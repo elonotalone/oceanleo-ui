@@ -20,6 +20,12 @@ import {
   type CloudBrowserWireBinding,
 } from "./cloud-browser-wire";
 
+const CLOUD_BROWSER_V3_RUNTIME_VERSION_PREFIX =
+  "native-chrome-window-v3";
+const CLOUD_BROWSER_NATIVE_WINDOW_WIDTH = 1280;
+const CLOUD_BROWSER_NATIVE_WINDOW_HEIGHT = 800;
+const CLOUD_BROWSER_NATIVE_CHROME_BAND_PX = 87;
+
 export const CLOUD_BROWSER_LEGAL_TRANSITIONS: Readonly<
   Record<CloudBrowserTransportState, readonly CloudBrowserTransportState[]>
 > = {
@@ -386,8 +392,8 @@ function strictFrameContract(
       32 * 1024,
       CLOUD_BROWSER_MAX_FRAME_BYTES,
     ) ||
-    !safeInteger(value.max_width, 640, 4_096) ||
-    !safeInteger(value.max_height, 480, 4_096)
+    value.max_width !== CLOUD_BROWSER_NATIVE_WINDOW_WIDTH ||
+    value.max_height !== CLOUD_BROWSER_NATIVE_WINDOW_HEIGHT
   ) {
     return null;
   }
@@ -408,7 +414,12 @@ function strictCapabilities(
   if (
     !value ||
     !exactKeys(value, [...keys]) ||
-    !keys.every((key) => typeof value[key] === "boolean")
+    !keys.every((key) => typeof value[key] === "boolean") ||
+    value.page_bookmark !== true ||
+    value.session_checkpoint !== true ||
+    value.clipboard !== true ||
+    value.ime_composition !== true ||
+    value.viewport_resize !== false
   ) {
     return null;
   }
@@ -416,7 +427,9 @@ function strictCapabilities(
 }
 
 function strictTabs(value: unknown): CloudBrowserHelloTab[] | null {
-  if (!Array.isArray(value) || value.length > 128) return null;
+  if (!Array.isArray(value) || value.length < 1 || value.length > 64) {
+    return null;
+  }
   const tabs: CloudBrowserHelloTab[] = [];
   const ids = new Set<string>();
   for (const candidate of value) {
@@ -442,6 +455,14 @@ function strictTabs(value: unknown): CloudBrowserHelloTab[] | null {
     tabs.push(tab as unknown as CloudBrowserHelloTab);
   }
   return tabs;
+}
+
+function strictRuntimeVersion(value: unknown): value is string {
+  return (
+    boundedString(value, 160) &&
+    (value === CLOUD_BROWSER_V3_RUNTIME_VERSION_PREFIX ||
+      value.startsWith(`${CLOUD_BROWSER_V3_RUNTIME_VERSION_PREFIX}-`))
+  );
 }
 
 function strictLease(value: unknown): CloudBrowserControlLease | null {
@@ -613,7 +634,7 @@ export function reduceCloudBrowserProtocolMessage(
       message.session_id !== state.socketSessionId ||
       message.session_version !== state.sessionVersion ||
       message.runtime_id !== state.runtimeId ||
-      !boundedString(message.runtime_version, 160) ||
+      !strictRuntimeVersion(message.runtime_version) ||
       message.incarnation !== state.incarnation ||
       message.nonce !== state.nonce ||
       !boundedString(message.connection_id, 160) ||
@@ -641,13 +662,12 @@ export function reduceCloudBrowserProtocolMessage(
       windowEvidence.maximized !== true ||
       windowEvidence.tab_strip !== true ||
       windowEvidence.omnibox !== true ||
-      !safeInteger(windowEvidence.width, 640, 4096) ||
-      !safeInteger(windowEvidence.height, 480, 4096) ||
-      !safeInteger(
-        windowEvidence.native_band_height,
-        1,
-        Math.min(512, Number(windowEvidence.height) - 1),
-      ) ||
+      windowEvidence.width !== CLOUD_BROWSER_NATIVE_WINDOW_WIDTH ||
+      windowEvidence.height !== CLOUD_BROWSER_NATIVE_WINDOW_HEIGHT ||
+      windowEvidence.native_band_height !==
+        CLOUD_BROWSER_NATIVE_CHROME_BAND_PX ||
+      frameContract.max_width !== windowEvidence.width ||
+      frameContract.max_height !== windowEvidence.height ||
       !lease ||
       !safeInteger(message.action_sequence, 0) ||
       !safeInteger(message.callback_sequence, 0)

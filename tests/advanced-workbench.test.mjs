@@ -461,6 +461,35 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
       "instance-1",
     ),
   );
+  assert.ok(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "save-result",
+        ok: true,
+        message: "saved",
+        saveId: "host-save-1",
+        artifactId: "11111111-1111-4111-8111-111111111111",
+        revisionId: "22222222-2222-4222-8222-222222222222",
+      },
+      "instance-1",
+    ),
+  );
+  assert.equal(
+    asHostToEditorMessage(
+      {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "instance-1",
+        type: "save-result",
+        ok: true,
+        message: "saved",
+        artifactId: "x".repeat(301),
+      },
+      "instance-1",
+    ),
+    null,
+  );
   assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com"), true);
   assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com/path"), false);
   assert.equal(isTrustedEditorOrigin("https://video.oceanleo.com.evil.test"), false);
