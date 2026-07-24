@@ -64,6 +64,41 @@ export function deckPreviewStagePadding(
 }
 
 /**
+ * Remaining viewport below the layout root. Applied as a definite `height`
+ * (not only max-height) so flex `min-h-0` scrollports shrink under content —
+ * preview library shells often lack the edit workbench height chain.
+ */
+export function deckPreviewViewportCapPx(
+  layoutTop: number,
+  viewportInnerHeight: number,
+  floor = 280,
+  gutter = 4,
+): number {
+  const top = Number.isFinite(layoutTop) ? layoutTop : 0;
+  const inner = finitePositive(viewportInnerHeight, floor);
+  const safeGutter = Number.isFinite(gutter) ? Math.max(0, gutter) : 0;
+  const safeFloor = finitePositive(floor, 280);
+  return Math.max(safeFloor, Math.floor(inner - top - safeGutter));
+}
+
+/** Inline geometry that forces a definite flex containing block for the rail. */
+export function deckPreviewViewportCapStyle(
+  capPx: number | null | undefined,
+): {
+  height?: string;
+  maxHeight?: string;
+  minHeight?: number;
+} {
+  if (capPx == null || !Number.isFinite(capPx) || capPx <= 0) return {};
+  return {
+    height: `${Math.floor(capPx)}px`,
+    maxHeight: `${Math.floor(capPx)}px`,
+    // Defeat consumer min-h-[520px] when the live viewport is tighter.
+    minHeight: 0,
+  };
+}
+
+/**
  * Zoom is absolute against the logical page: 50% ⇒ scale 0.5. When the
  * requested scale would clip the complete slide, it is capped to the live
  * right-stage fitScale (min of width/height after padding). Zoom above 50%

@@ -9,6 +9,8 @@ import {
   deckPreviewLogicalSize,
   deckPreviewStagePadding,
   deckPreviewThumbnailAspect,
+  deckPreviewViewportCapPx,
+  deckPreviewViewportCapStyle,
 } from "../src/shell/doc-editors/deck-preview-geometry.ts";
 
 function approximately(actual, expected, epsilon = 0.0001) {
@@ -120,6 +122,20 @@ test("thumbnail aspect matches the logical stage frame", () => {
   }
 });
 
+test("viewport cap is a definite height so preview flex rails can scroll", () => {
+  // V2 preview-compact: layout top ≈ 160.5, innerHeight 768 ⇒ cap 603.
+  assert.equal(deckPreviewViewportCapPx(160.5, 768), 603);
+  // Edit-compact style top ≈ 198.5 ⇒ cap 565 (matches measured stage height).
+  assert.equal(deckPreviewViewportCapPx(198.5, 768), 565);
+  assert.equal(deckPreviewViewportCapPx(900, 768), 280);
+
+  const style = deckPreviewViewportCapStyle(603);
+  assert.equal(style.height, "603px");
+  assert.equal(style.maxHeight, "603px");
+  assert.equal(style.minHeight, 0);
+  assert.deepEqual(deckPreviewViewportCapStyle(null), {});
+});
+
 test("shared layout contract owns rail, fitted stage and keyboard selection", () => {
   const component = readFileSync(
     new URL(
@@ -144,7 +160,9 @@ test("shared layout contract owns rail, fitted stage and keyboard selection", ()
   assert.match(component, /createPortal\(children, mountNode\)/);
   assert.match(component, /data-deck-thumbnail-surface/);
   assert.match(component, /deckPreviewThumbnailAspect\(logicalSize\)/);
-  assert.match(component, /window\.innerHeight - top/);
+  assert.match(component, /deckPreviewViewportCapPx\(/);
+  assert.match(component, /deckPreviewViewportCapStyle\(viewportMaxHeight\)/);
+  assert.match(component, /data-deck-viewport-cap=/);
   assert.match(
     component,
     /min-h-0 flex-1 overflow-x-hidden overflow-y-auto/,

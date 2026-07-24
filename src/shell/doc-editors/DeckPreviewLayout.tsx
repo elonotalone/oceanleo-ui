@@ -18,6 +18,8 @@ import {
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
   deckPreviewThumbnailAspect,
+  deckPreviewViewportCapPx,
+  deckPreviewViewportCapStyle,
   type DeckPreviewLogicalSize,
 } from "./deck-preview-geometry";
 
@@ -26,6 +28,8 @@ export {
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
   deckPreviewThumbnailAspect,
+  deckPreviewViewportCapPx,
+  deckPreviewViewportCapStyle,
 } from "./deck-preview-geometry";
 export type {
   DeckPreviewFitGeometry,
@@ -217,7 +221,7 @@ export function DeckPreviewLayout({
     if (!root || typeof window === "undefined") return;
     const constrainToViewport = () => {
       const top = root.getBoundingClientRect().top;
-      const next = Math.max(280, Math.floor(window.innerHeight - top - 4));
+      const next = deckPreviewViewportCapPx(top, window.innerHeight);
       setViewportMaxHeight((current) => (current === next ? current : next));
     };
     constrainToViewport();
@@ -273,10 +277,11 @@ export function DeckPreviewLayout({
       style={
         {
           "--deck-preview-accent": accent,
-          ...(viewportMaxHeight
-            ? { maxHeight: `${viewportMaxHeight}px` }
-            : null),
+          ...deckPreviewViewportCapStyle(viewportMaxHeight),
         } as CSSProperties
+      }
+      data-deck-viewport-cap={
+        viewportMaxHeight != null ? String(viewportMaxHeight) : undefined
       }
     >
       <aside
