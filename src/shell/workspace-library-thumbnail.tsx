@@ -72,16 +72,21 @@ export function WorkspaceThumbnail({
   const renditionPurposes = item
     ? workspaceCoverRenditionPurposes(item)
     : THUMBNAIL_PURPOSES;
+  const noDisplayableCover =
+    Boolean(item && isDurableLibraryItem(item)) &&
+    renditionPurposes.length === 0;
   const artifactRendition = useArtifactRendition(
     item || EMPTY_THUMBNAIL_ITEM,
-    renditionPurposes,
+    noDisplayableCover ? [] : renditionPurposes,
   );
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
+  const [solidRejected, setSolidRejected] = useState(false);
   const [generationError, setGenerationError] = useState(false);
   const [visible, setVisible] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const lastFailedUrlRef = useRef("");
+  const solidRejectedKeysRef = useRef(new Set<string>());
   useEffect(() => {
     const node = hostRef.current;
     if (!node) return;
@@ -135,6 +140,7 @@ export function WorkspaceThumbnail({
   useEffect(() => {
     setFailed(false);
     setReady(false);
+    setSolidRejected(false);
     setGenerationError(false);
     setGeneratedUrl(
       referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
@@ -196,9 +202,12 @@ export function WorkspaceThumbnail({
     url,
     visible,
   ]);
-  const displayUrl = typedArtifact
-    ? artifactRendition.url
-    : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
+  const displayUrl =
+    noDisplayableCover || solidRejected
+      ? ""
+      : typedArtifact
+        ? artifactRendition.url
+        : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
   const plan = workspaceCoverPlan({
     item,
     kind,
@@ -228,14 +237,19 @@ export function WorkspaceThumbnail({
   const failureMessage =
     artifactRendition.loading || awaitingGeneratedThumbnail
       ? ""
-      : artifactRendition.error ||
-        (generationError
-          ? "未能生成可显示的真实封面。"
-          : failed
-            ? "封面资源加载失败。"
-            : plan.failureReason);
+      : noDisplayableCover
+        ? "当前 revision 没有可显示的真实封面。"
+        : solidRejected
+          ? "封面是纯色占位图，不是真实媒体。"
+          : artifactRendition.error ||
+            (generationError
+              ? "未能生成可显示的真实封面。"
+              : failed
+                ? "封面资源加载失败。"
+                : plan.failureReason);
   const loading =
     !failureMessage &&
+    !noDisplayableCover &&
     (artifactRendition.loading ||
       awaitingGeneratedThumbnail ||
       (plan.renderer !== "unavailable" && !ready));
@@ -264,9 +278,17 @@ export function WorkspaceThumbnail({
           resourceKey={resourceKey}
           onReady={() => {
             setFailed(false);
+            setSolidRejected(false);
             setReady(true);
           }}
-          onError={() => {
+          onError={(reason) => {
+            if (reason === "solid-color") {
+              solidRejectedKeysRef.current.add(resourceKey);
+              setSolidRejected(true);
+              setReady(false);
+              setFailed(true);
+              return;
+            }
             if (lastFailedUrlRef.current !== resourceKey) {
               lastFailedUrlRef.current = resourceKey;
               artifactRendition.resourceFailed();

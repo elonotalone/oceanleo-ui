@@ -626,6 +626,8 @@ export interface ArtifactRendition {
   width: number | null;
   height: number | null;
   durationMs: number | null;
+  /** Declared payload size when the wire includes it; used to reject flat shelf-fill posters. */
+  byteSize: number | null;
   digest: string | null;
 }
 
@@ -1252,6 +1254,7 @@ function normalizeRendition(
     width: numberOrNull(raw.width),
     height: numberOrNull(raw.height),
     durationMs: numberOrNull(raw.durationMs ?? raw.duration_ms),
+    byteSize: numberOrNull(raw.byteSize ?? raw.byte_size),
     digest: text(raw.digest, raw.sha256) || null,
   };
 }

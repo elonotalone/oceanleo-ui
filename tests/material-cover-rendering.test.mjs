@@ -64,6 +64,8 @@ const {
   WorkspaceCoverResource,
   workspaceCoverPlan,
   workspaceCoverRenditionPurposes,
+  isSyntheticFlatImageCover,
+  COVER_IMAGE_MIN_BYTES,
 } = await import(coverModuleUrl);
 
 const SOURCE_FORMATS = {
@@ -136,6 +138,7 @@ function projection(artifactType) {
         format: "webp",
         width: 640,
         height: 480,
+        byte_size: 48_000,
       },
       preview: {
         purpose: "preview",
@@ -145,6 +148,7 @@ function projection(artifactType) {
         format: "png",
         width: 1280,
         height: 960,
+        byte_size: 120_000,
       },
       full: {
         purpose: "full",
@@ -152,6 +156,7 @@ function projection(artifactType) {
         url: `https://signed.test/${artifactType}-full`,
         media_type: "application/octet-stream",
         format: SOURCE_FORMATS[artifactType],
+        byte_size: 250_000,
       },
     },
     ...(artifactType === "composite_image"
@@ -239,6 +244,7 @@ test("cover selection skips source-shaped false previews and dispatches real med
     ["pdf", "document", "application/pdf", "pdf", "pdf"],
     ["website", "website", "text/html; charset=utf-8", "html", "website"],
     ["workflow", "canvas", "text/html; charset=utf-8", "html", "website"],
+    ["audio", "audio", "audio/mpeg", "mp3", "audio"],
   ];
   for (const [artifactType, kind, mediaType, format, renderer] of mediaCases) {
     const item = normalizedItem(artifactType);
@@ -280,7 +286,82 @@ test("cover selection skips source-shaped false previews and dispatches real med
   }
 });
 
-test("cover resources render image, video, PDF and website semantics without fake tiles", () => {
+test("shelf-fill and undersized flat posters never count as successful covers", () => {
+  const audio = normalizedItem("audio");
+  const solidThumb = {
+    ...audio.artifact.renditions.thumbnail,
+    url: "https://signed.test/audio-shelf-fill.png",
+    mediaType: "image/png",
+    format: "png",
+    rendererVersion: "library-form-shelf-fill/v1/thumbnail",
+    byteSize: 1212,
+    width: null,
+    height: null,
+  };
+  const audioPreview = {
+    ...audio.artifact.renditions.preview,
+    url: "https://signed.test/audio-real.mp3",
+    mediaType: "audio/mpeg",
+    format: "mp3",
+    rendererVersion: "library-form-shelf-fill/v1/preview",
+    byteSize: 7_134_741,
+    width: null,
+    height: null,
+  };
+  audio.artifact.renditions = {
+    thumbnail: solidThumb,
+    preview: audioPreview,
+  };
+  assert.equal(isSyntheticFlatImageCover(solidThumb), true);
+  assert.ok(solidThumb.byteSize < COVER_IMAGE_MIN_BYTES);
+  assert.equal(
+    workspaceCoverPlan({
+      item: audio,
+      kind: "audio",
+      url: solidThumb.url,
+      rendition: solidThumb,
+    }).renderer,
+    "unavailable",
+  );
+  assert.deepEqual(workspaceCoverRenditionPurposes(audio), ["preview"]);
+  assert.equal(
+    workspaceCoverPlan({
+      item: audio,
+      kind: "audio",
+      url: audioPreview.url,
+      rendition: audioPreview,
+    }).renderer,
+    "audio",
+  );
+
+  const document = normalizedItem("document");
+  const flatDoc = {
+    ...document.artifact.renditions.thumbnail,
+    url: "https://signed.test/doc-flat.png",
+    mediaType: "image/png",
+    format: "png",
+    rendererVersion: "library-form-shelf-fill/v1/thumbnail",
+    byteSize: 1212,
+    width: null,
+    height: null,
+  };
+  document.artifact.renditions = {
+    thumbnail: flatDoc,
+    preview: { ...flatDoc, purpose: "preview", url: "https://signed.test/doc-flat-preview.png" },
+  };
+  assert.deepEqual(workspaceCoverRenditionPurposes(document), []);
+  assert.match(
+    workspaceCoverPlan({
+      item: document,
+      kind: "document",
+      url: flatDoc.url,
+      rendition: flatDoc,
+    }).failureReason,
+    /纯色|shelf-fill/,
+  );
+});
+
+test("cover resources render image, video, PDF, website and audio semantics without fake tiles", () => {
   const callbacks = { onReady() {}, onError() {} };
   const render = (plan) =>
     renderToStaticMarkup(
@@ -319,6 +400,19 @@ test("cover resources render image, video, PDF and website semantics without fak
   assert.match(video, /muted=""/);
   assert.match(video, /playsInline=""/);
   assert.match(video, /preload="metadata"/);
+
+  const audio = render({
+    renderer: "audio",
+    url: "https://signed.test/cover.mp3",
+    mediaType: "audio/mpeg",
+    format: "mp3",
+    fit: "contain",
+    sourceAspectRatio: null,
+    failureReason: "",
+  });
+  assert.match(audio, /^<canvas /);
+  assert.match(audio, /data-cover-renderer="audio"/);
+  assert.match(audio, /role="img"/);
 
   const pdf = render({
     renderer: "pdf",
