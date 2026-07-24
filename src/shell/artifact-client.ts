@@ -1808,6 +1808,12 @@ export async function refreshArtifactRendition(
               typeof rawRendition.height === "number"
                 ? rawRendition.height
                 : null,
+            byteSize:
+              typeof rawRendition.byte_size === "number"
+                ? rawRendition.byte_size
+                : typeof rawRendition.byteSize === "number"
+                  ? rawRendition.byteSize
+                  : null,
             durationMs:
               typeof rawRendition.duration_ms === "number"
                 ? rawRendition.duration_ms
