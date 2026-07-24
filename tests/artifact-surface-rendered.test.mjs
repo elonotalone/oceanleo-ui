@@ -699,6 +699,53 @@ test("gateway-relative rendition access paths are qualified before normalization
   );
 });
 
+test("editable-shelf relative source-tree and public access URLs qualify before normalization", async () => {
+  const artifactId = "8886a2d9-2869-4ae0-a806-0ff2c6429b15";
+  const revisionId = "c7e14552-1c1a-4122-a26b-17d9e21d6f2e";
+  const publicPreview =
+    `/v1/artifact-renditions/access/public` +
+    `?artifactId=${artifactId}&revisionId=${revisionId}&purpose=preview`;
+  const sourceTree =
+    `/v1/artifacts/${artifactId}/revisions/${revisionId}/source-tree/@source`;
+  const rawProjection = projection({
+    id: artifactId,
+    revisionId,
+    editable: true,
+    visibility: "public",
+    artifactType: "deck",
+  });
+  rawProjection.renditions.preview.url = publicPreview;
+  rawProjection.renditions.source.url = sourceTree;
+  rawProjection.renditions.source.accessUrl = sourceTree;
+  globalThis.fetch = async () => jsonResponse(rawProjection);
+
+  const result = await getArtifactItem(artifactId, revisionId);
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.data?.artifact?.renditions.preview?.url,
+    `https://api.test${publicPreview}`,
+  );
+  assert.equal(
+    result.data?.artifact?.renditions.source?.url,
+    `https://api.test${sourceTree}`,
+  );
+
+  const rejected = projection({
+    id: artifactId,
+    revisionId,
+    editable: true,
+    visibility: "public",
+    artifactType: "deck",
+  });
+  rejected.renditions.preview.url = publicPreview;
+  rejected.renditions.source.url =
+    `/v1/artifacts/${artifactId}/revisions/${revisionId}/not-source-tree`;
+  globalThis.fetch = async () => jsonResponse(rejected);
+  const closed = await getArtifactItem(artifactId, revisionId);
+  assert.equal(closed.ok, false);
+});
+
 test("public stable rendition identities retain their exact query when qualified", async () => {
   const rawProjection = projection({
     id: "public-stable-access",

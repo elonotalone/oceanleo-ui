@@ -162,6 +162,8 @@ function trustedHttpsUrl(value: unknown): string {
 const ARTIFACT_ACCESS_PATH = /^\/v1\/artifact-renditions\/access\/[^/?#]+$/;
 const PUBLIC_ARTIFACT_ACCESS_PATH =
   "/v1/artifact-renditions/access/public";
+const ARTIFACT_SOURCE_TREE_PATH =
+  /^\/v1\/artifacts\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/revisions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/source-tree\/@source$/;
 const ARTIFACT_URL_FIELDS = new Set([
   "url",
   "accessUrl",
@@ -172,6 +174,7 @@ const ARTIFACT_URL_FIELDS = new Set([
 
 function isGatewayRelativeArtifactAccessUrl(value: string): boolean {
   if (ARTIFACT_ACCESS_PATH.test(value)) return true;
+  if (ARTIFACT_SOURCE_TREE_PATH.test(value)) return true;
   try {
     const parsed = new URL(value, "https://gateway.invalid");
     const keys = [...new Set(parsed.searchParams.keys())].sort();
