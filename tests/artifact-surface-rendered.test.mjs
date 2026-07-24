@@ -824,6 +824,58 @@ test("same-digest full opaque access rewrites source-tree for browser-safe sourc
   );
 });
 
+test("getArtifactItem mints opaque source grant when source-tree cannot same-digest rewrite", async () => {
+  const artifactId = "8886a2d9-2869-4ae0-a806-0ff2c6429b15";
+  const revisionId = "c7e14552-1c1a-4122-a26b-17d9e21d6f2e";
+  const sourceTree =
+    `/v1/artifacts/${artifactId}/revisions/${revisionId}/source-tree/@source`;
+  const opaqueGrant = "/v1/artifact-renditions/access/source-grant-token";
+  const rawProjection = projection({
+    id: artifactId,
+    revisionId,
+    editable: true,
+    visibility: "public",
+    artifactType: "deck",
+  });
+  rawProjection.renditions.source.url = sourceTree;
+  rawProjection.renditions.source.accessUrl = sourceTree;
+  rawProjection.renditions.source.digest =
+    "1ce53ecfa693a4f63edc1fd6f4ade1cb5c7e25dad671effb556a73975c093a39";
+  rawProjection.renditions.full = {
+    purpose: "full",
+    revision_id: revisionId,
+    url: "/v1/artifact-renditions/access/preview-image-token",
+    digest: "945f8f18e6731d65bf49d43b1b5c9c4ac959a0e83f4a203baba369657b6dbbde",
+    format: "webp",
+  };
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("/renditions/source")) {
+      return jsonResponse({
+        accessUrl: opaqueGrant,
+        url: opaqueGrant,
+        purpose: "source",
+      });
+    }
+    return jsonResponse(rawProjection);
+  };
+
+  const result = await getArtifactItem(artifactId, revisionId);
+
+  assert.equal(result.ok, true);
+  assert.ok(calls.some((u) => u.includes("/renditions/source")));
+  assert.equal(
+    result.data?.artifact?.renditions.source?.url,
+    `https://api.test${opaqueGrant}`,
+  );
+  assert.doesNotMatch(
+    result.data?.artifact?.renditions.source?.url || "",
+    /source-tree/,
+  );
+});
+
 test("public stable rendition identities retain their exact query when qualified", async () => {
   const rawProjection = projection({
     id: "public-stable-access",

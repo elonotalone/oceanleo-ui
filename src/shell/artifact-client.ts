@@ -930,13 +930,14 @@ function artifactItemFromProjection(
   };
 }
 
-function itemResult(
+async function itemResult(
   result: ArtifactApiResult<unknown>,
   expected?: { artifactId: string; revisionId?: string },
-): ArtifactApiResult<LibraryItem> {
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<LibraryItem>> {
   if (!result.ok) return result as ArtifactApiResult<LibraryItem>;
   const normalized = normalizeArtifactProjectionResult(result.data);
-  const projection = normalized.data;
+  let projection = normalized.data;
   if (!normalized.ok || !projection) {
     return {
       ok: false,
@@ -967,6 +968,9 @@ function itemResult(
       retryable: false,
     };
   }
+  // Preview/open must not leave relative source-tree URLs for deck/media loaders
+  // (sites do not proxy /v1 → slide.oceanleo.com 404). Mint opaque access when needed.
+  projection = await upgradeSourceTreeForEditor(projection, signal);
   return {
     ...result,
     data: artifactItemFromProjection(projection),
@@ -987,6 +991,7 @@ export async function getArtifactItem(
       { signal, auth: "optional" },
     ),
     { artifactId: safeArtifactId, revisionId: safeRevisionId },
+    signal,
   );
 }
 
@@ -1007,6 +1012,7 @@ export async function getCurrentArtifactItem(
       { signal, auth: "optional" },
     ),
     { artifactId: safeArtifactId },
+    signal,
   );
 }
 
@@ -1490,7 +1496,7 @@ export async function ensureArtifact(
         provenance: transient.provenance || {},
       }),
       signal,
-    }).then((result): ArtifactApiResult<LibraryItem> => {
+    }).then(async (result): Promise<ArtifactApiResult<LibraryItem>> => {
       if (!result.ok) return result as ArtifactApiResult<LibraryItem>;
       const envelope =
         result.data &&
@@ -2165,7 +2171,7 @@ export async function setArtifactFavorite(
       retryable: false,
     };
   }
-  const updated = itemResult(
+  const updated = await itemResult(
     await artifactRequest<unknown>(
       `/v1/artifacts/${encodeURIComponent(
         durable.data.artifactId || "",
@@ -2362,7 +2368,7 @@ export async function forkArtifact(
       retryable: false,
     };
   }
-  const forked = itemResult(result);
+  const forked = await itemResult(result);
   if (
     forked.ok &&
     forked.data &&
@@ -2415,7 +2421,7 @@ export async function createArtifactRevision(
       retryable: false,
     };
   }
-  const result = itemResult(
+  const result = await itemResult(
     await artifactRequest<unknown>(
       `/v1/artifacts/${encodeURIComponent(artifactId)}/revisions`,
       {
