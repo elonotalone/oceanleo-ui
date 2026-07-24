@@ -184,9 +184,18 @@ export function artifactProjectionToLibraryItem(
   const routeHint = editorRouteHintForArtifactCapability(
     artifact.editorCapability,
   );
-  const selectedRendition = options.forEdit
+  // Deck/office binary preview must use the PPTX/source bytes, not a full/preview
+  // poster image. After open-path source-tree grant upgrade, source is opaque https.
+  const prefersBinarySource =
+    artifact.artifactType === "deck" ||
+    artifact.artifactType === "document" ||
+    artifact.artifactType === "grid" ||
+    artifact.artifactType === "pdf";
+  const selectedRendition = prefersBinarySource
     ? source || full || viewer
-    : full || viewer;
+    : options.forEdit
+      ? source || full || viewer
+      : full || viewer;
   const url = selectedRendition?.url;
   const meta: Record<string, unknown> = {
     artifact_id: artifact.artifactId,
