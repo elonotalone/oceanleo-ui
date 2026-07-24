@@ -22,7 +22,20 @@ const ASSET_OSS_HOSTS = new Set([
 export function absoluteMediaUrl(url: string): string {
   if (!url || url.startsWith("data:") || url.startsWith("blob:")) return url;
   try {
-    return new URL(url, window.location.href).href;
+    // Gateway API paths must never resolve against a site origin
+    // (slide.oceanleo.com/v1/... → 404). Bind /v1/* to the API gateway.
+    if (url.startsWith("/v1/")) {
+      return new URL(url, GATEWAY_BASE).href;
+    }
+    const parsed = new URL(url, window.location.href);
+    if (
+      parsed.origin === window.location.origin &&
+      parsed.pathname.startsWith("/v1/")
+    ) {
+      return new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, GATEWAY_BASE)
+        .href;
+    }
+    return parsed.href;
   } catch {
     return url;
   }
@@ -53,17 +66,57 @@ export function isFirstPartyMediaUrl(url: string): boolean {
   }
 }
 
+const MEDIA_PROXY_PATH = "/v1/media/proxy";
+
+/** True when the URL is already a gateway media-proxy absolute URL. */
+export function isMediaProxyUrl(url: string): boolean {
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return false;
+  try {
+    const parsed = new URL(url, window.location.href);
+    const gateway = new URL(GATEWAY_BASE);
+    return (
+      parsed.origin === gateway.origin &&
+      parsed.pathname === MEDIA_PROXY_PATH &&
+      Boolean(parsed.searchParams.get("url"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Unwrap one gateway media-proxy hop back to the durable source URL.
+ * Non-proxy URLs are returned unchanged (trimmed).
+ */
+export function unwrapMediaProxyUrl(url: string): string {
+  const candidate = url.trim();
+  if (!candidate || !isMediaProxyUrl(candidate)) return candidate;
+  try {
+    const nested = new URL(candidate, window.location.href).searchParams.get(
+      "url",
+    );
+    return nested?.trim() || candidate;
+  } catch {
+    return candidate;
+  }
+}
+
 /** 判断 URL 是否已经无需代理（同源 data/blob，或网关自己发的）。 */
 export function needsMediaProxy(url: string): boolean {
   if (!url) return false;
   if (url.startsWith("data:") || url.startsWith("blob:")) return false;
+  // Absolute gateway proxy responses already carry CORS; do not double-wrap.
+  if (isMediaProxyUrl(url)) return false;
   try {
-    const parsed = new URL(url, window.location.href);
-    if (parsed.origin === window.location.origin) return false;
-    if (parsed.origin === new URL(GATEWAY_BASE).origin) {
+    // Prefer gateway binding for /v1 before treating site-origin as "same origin".
+    const absolute = absoluteMediaUrl(url);
+    const parsed = new URL(absolute);
+    const gateway = new URL(GATEWAY_BASE);
+    if (parsed.origin === gateway.origin) {
       // 网关自己的 /v1/media/proxy 与 /v1/assets/... 响应都带 CORS 头。
       return false;
     }
+    if (parsed.origin === window.location.origin) return false;
     return true;
   } catch {
     return false;
@@ -72,8 +125,15 @@ export function needsMediaProxy(url: string): boolean {
 
 /** 把任意自家素材 URL 变成画布可安全读取的 URL。 */
 export function canvasSafeUrl(url: string): string {
-  if (!needsMediaProxy(url)) return url;
-  return `${GATEWAY_BASE}/v1/media/proxy?url=${encodeURIComponent(url)}`;
+  const durable = unwrapMediaProxyUrl(url);
+  if (isMediaProxyUrl(url.trim()) && !needsMediaProxy(durable)) {
+    return url.trim();
+  }
+  // Always bind gateway-relative /v1 paths to api.oceanleo.com before fetch —
+  // returning the relative string lets the browser hit slide/asset origin → 404.
+  if (!needsMediaProxy(durable)) return absoluteMediaUrl(durable);
+  const absolute = absoluteMediaUrl(durable);
+  return `${GATEWAY_BASE}${MEDIA_PROXY_PATH}?url=${encodeURIComponent(absolute)}`;
 }
 
 /** fetch 一个素材为 Blob（走代理），供波形解码 / PDF / ffmpeg 抽帧等用。 */
@@ -85,6 +145,12 @@ export async function fetchMediaBlob(
     cache?: RequestCache;
   } = {},
 ): Promise<Blob> {
+  const absolute = absoluteMediaUrl(url);
+  if (/\/source-tree\/@source\/?$/.test(new URL(absolute).pathname)) {
+    throw new Error(
+      "媒体加载失败：source-tree 需要 opaque grant，不能匿名拉取",
+    );
+  }
   const response = await fetch(canvasSafeUrl(url), {
     cache: options.cache ?? "force-cache",
     signal: options.signal,

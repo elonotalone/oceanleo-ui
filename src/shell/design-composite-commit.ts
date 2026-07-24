@@ -8,6 +8,7 @@ import {
 import {
   fetchMediaBlob,
   isFirstPartyMediaUrl,
+  unwrapMediaProxyUrl,
 } from "../lib/media-proxy";
 import { uploadFile } from "../lib/database";
 import {
@@ -121,7 +122,10 @@ function expiringUrl(value: string): boolean {
 }
 
 export function isDurableFirstPartyMediaUrl(value: string): boolean {
-  const candidate = value.trim();
+  // Runtime canvas may hold gateway /v1/media/proxy?url=… wrappers; durable
+  // identity always evaluates the nested first-party source (design-deco OSS,
+  // gateway assets, supabase public), never the proxy hop itself.
+  const candidate = unwrapMediaProxyUrl(value);
   if (!candidate || candidate.length > 4_096 || expiringUrl(candidate)) {
     return false;
   }
@@ -141,7 +145,7 @@ export function isDurableFirstPartyMediaUrl(value: string): boolean {
 }
 
 export function isFirstPartyHttpsMediaUrl(value: string): boolean {
-  const candidate = value.trim();
+  const candidate = unwrapMediaProxyUrl(value);
   if (!candidate || candidate.length > 4_096) return false;
   try {
     const parsed = new URL(candidate);
@@ -188,7 +192,7 @@ function designImageSource(value: unknown, label: string): string {
       "design-source-invalid-structure",
     );
   }
-  const candidate = value.trim();
+  const candidate = unwrapMediaProxyUrl(value);
   if (!candidate) return "";
   if (candidate.toLowerCase().startsWith("data:")) {
     if (!validInlineImageDataUrl(candidate)) {
@@ -226,7 +230,7 @@ function alternateDurableImageSource(
       "design-source-invalid-structure",
     );
   }
-  const candidate = value.trim();
+  const candidate = unwrapMediaProxyUrl(value);
   if (!candidate) return "";
   if (!/^[a-z][a-z0-9+.-]*:/i.test(candidate) && !candidate.startsWith("/")) {
     // Legacy metadata may contain a human-readable source label such as

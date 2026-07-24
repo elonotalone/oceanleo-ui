@@ -339,7 +339,7 @@ export function buildCloudBrowserV3Fixture(now = Date.now()) {
     }),
     clientMessage("key", 14, {
       event: "press",
-      key: "Control+L",
+      key: "Control+l",
     }),
     clientMessage("text.commit", 15, {
       composition_id: "text-fixture",

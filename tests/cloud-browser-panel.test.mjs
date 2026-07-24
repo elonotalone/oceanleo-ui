@@ -17,6 +17,7 @@ import {
 import {
   createCloudBrowserTextCommitGate,
   parseCloudBrowserFrameMeta,
+  playwrightKey,
   pointInContainedFrame,
   validateCloudBrowserFrameMeta,
 } from "../src/shell/cloud-browser-live.ts";
@@ -1297,6 +1298,30 @@ test("executable fixture covers canonical hello, UI mutations, and receipts", ()
     ],
   );
   assert.equal("legacy" in fixture, false);
+});
+
+test("modifier chords keep lowercase letters so Control+t creates a tab", () => {
+  // V5 CLOUD_TAB_MUTATION_FAILED: forced uppercase became xdotool ctrl+T
+  // (Ctrl+Shift+t reopen) and durable active_tab_id never changed.
+  const chord = (key, init = {}) =>
+    playwrightKey({
+      key,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      ...init,
+    });
+  assert.equal(chord("t", { ctrlKey: true }), "Control+t");
+  assert.equal(chord("T", { ctrlKey: true }), "Control+t");
+  assert.equal(chord("w", { ctrlKey: true }), "Control+w");
+  assert.equal(
+    chord("T", { ctrlKey: true, shiftKey: true }),
+    "Control+Shift+t",
+  );
+  assert.equal(chord("l", { metaKey: true }), "Meta+l");
+  assert.equal(chord("a"), "A");
+  assert.equal(chord("Enter", { ctrlKey: true }), "Control+Enter");
 });
 
 test("window input, IME, focus, and clipboard contracts are bounded", () => {

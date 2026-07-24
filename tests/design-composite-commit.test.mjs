@@ -5,6 +5,8 @@ import test from "node:test";
 
 import {
   DesignCompositeCommitError,
+  isDurableFirstPartyMediaUrl,
+  isFirstPartyHttpsMediaUrl,
   persistDesignCompositeCommit,
   rebaseDesignCompositeSourceToCurrent,
   validateDesignCompositeCommit,
@@ -637,4 +639,13 @@ test("design CAS conflicts report the current cloud revision without overwriting
       error.recovery === "reload-current-revision" &&
       /未覆盖远端内容/.test(error.message),
   );
+});
+
+test("media-proxy wrappers unwrap to durable design-deco OSS for commit identity", () => {
+  const deco =
+    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/design-deco/lip.png";
+  const proxied = `https://api.oceanleo.com/v1/media/proxy?url=${encodeURIComponent(deco)}`;
+  assert.equal(isDurableFirstPartyMediaUrl(deco), true);
+  assert.equal(isDurableFirstPartyMediaUrl(proxied), true);
+  assert.equal(isFirstPartyHttpsMediaUrl(proxied), true);
 });

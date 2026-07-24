@@ -69,6 +69,7 @@ export function SelectionToolbar({
   const [availableWidth, setAvailableWidth] = useState(
     Number.POSITIVE_INFINITY,
   );
+  const [floatingMaxInlineSize, setFloatingMaxInlineSize] = useState(0);
   const [measuredWidths, setMeasuredWidths] = useState<
     ReadonlyMap<string, number>
   >(() => new Map());
@@ -257,6 +258,7 @@ export function SelectionToolbar({
     measurementIdentity,
     setMeasuredWidths,
     setAvailableWidth,
+    setFloatingMaxInlineSize,
   });
 
   if (!context && !leading && !trailing) return null;
@@ -358,7 +360,13 @@ export function SelectionToolbar({
       style={
         effectiveVariant === "floating"
           ? {
-              maxInlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX,
+              // Pixel remaining-strip ceiling beats 100dvw: the latter only
+              // caps magnitude and still lets a translated bar grow past
+              // innerWidth. Fall back to the viewport max before first measure.
+              maxInlineSize:
+                floatingMaxInlineSize > 0
+                  ? `${floatingMaxInlineSize}px`
+                  : SELECTION_TOOLBAR_VIEWPORT_MAX,
             }
           : undefined
       }

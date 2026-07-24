@@ -144,6 +144,7 @@ export function VideoTimelineContextToolbar({
           id: "muted",
           kind: "toggle",
           label: tt("静音"),
+          icon: "effects",
           value: clip.muted === true,
         },
         {

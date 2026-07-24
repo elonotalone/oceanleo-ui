@@ -131,9 +131,12 @@ export function PdfStage({
         >
           <canvas
             ref={editor.canvasRef}
+            width={editor.pageCount > 0 ? undefined : 0}
+            height={editor.pageCount > 0 ? undefined : 0}
             aria-label={tt("PDF 第 {page} 页", { page: editor.pageNumber })}
             className="block max-w-none origin-top-left bg-white shadow-[0_8px_32px_rgba(28,25,23,.18)] transition-transform duration-75"
             style={{ transform: `scale(${visualScale})` }}
+            hidden={editor.pageCount < 1 && !editor.loading}
           />
           {editor.pageWidth > 0 && editor.pageHeight > 0 && (
             <div
@@ -331,8 +334,17 @@ export function PdfStage({
         >
           ←
         </button>
-        <span className="min-w-20 text-center text-[11px] tabular-nums text-[var(--fg-2,#57534e)]">
-          {editor.pageNumber} / {editor.pageCount || "—"}
+        <span
+          className="min-w-20 text-center text-[11px] tabular-nums text-[var(--fg-2,#57534e)]"
+          data-pdf-page-indicator
+          data-pdf-page-number={editor.pageNumber > 0 ? editor.pageNumber : undefined}
+          data-pdf-page-count={editor.pageCount > 0 ? editor.pageCount : undefined}
+        >
+          {editor.pageCount > 0
+            ? `${editor.pageNumber} / ${editor.pageCount}`
+            : editor.loading
+              ? "…"
+              : "—"}
         </span>
         <button
           type="button"

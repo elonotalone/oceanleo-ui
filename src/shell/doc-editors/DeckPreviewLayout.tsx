@@ -164,7 +164,7 @@ export function DeckPreviewLayout({
       <aside
         data-deck-thumbnail-rail
         aria-label={tt("幻灯片缩略图")}
-        className="w-[clamp(7.5rem,18vw,10rem)] shrink-0 overflow-x-hidden overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2"
+        className="flex h-full min-h-0 w-[clamp(7.5rem,18vw,10rem)] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2"
       >
         <div className="sticky top-0 z-10 mb-2 flex min-h-8 items-center justify-between gap-1 bg-[var(--card,#fff)] px-1">
           <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-[var(--muted,#78716c)]">

@@ -456,7 +456,19 @@ export async function saveFileToLibraryWithDependencies(
     input.workingHeadUrl,
   );
   if (input.projectOnly) {
-    url = editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl);
+    // Shelf/public binary sources are not creation keys. Reusing them as the
+    // project-only working head makes /v1/creations return HTTP 409. Only reuse
+    // a prior editor working head / project URL once the row already carries
+    // editor persistence metadata from a successful save.
+    const reuseEditorWorkingHead = Boolean(
+      input.item.meta.editor_working_head_url ||
+        input.item.meta.editor_working_head_uses_project_url ||
+        input.item.meta.editor_project_url,
+    );
+    url = reuseEditorWorkingHead
+      ? editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl)
+      : safePreparedUrl(projectUrl) ||
+        editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl);
   } else {
     const requestedDeliveryUrl = boundedText(input.deliveryUrl);
     if (requestedDeliveryUrl) {
@@ -560,7 +572,9 @@ export async function saveFileToLibraryWithDependencies(
   }
   const projectUrlIsWorkingHead =
     input.projectOnly &&
-    (Boolean(input.item.meta.editor_working_head_uses_project_url) ||
+    Boolean(projectUrl) &&
+    (url === projectUrl ||
+      Boolean(input.item.meta.editor_working_head_uses_project_url) ||
       (!existingWorkingHead && url === projectUrl));
   const rootId = String(
     input.item.meta.root_asset_id ||

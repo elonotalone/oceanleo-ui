@@ -161,9 +161,10 @@ function httpUrl(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) return "";
   try {
     const parsed = new URL(value.trim());
-    return parsed.protocol === "https:" || parsed.protocol === "http:"
-      ? parsed.toString()
-      : "";
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+    // Auth-gated source-tree must never be handed to anonymous browser GETs.
+    if (/\/source-tree\/@source\/?$/.test(parsed.pathname)) return "";
+    return parsed.toString();
   } catch {
     return "";
   }

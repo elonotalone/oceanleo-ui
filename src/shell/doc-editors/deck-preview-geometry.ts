@@ -51,10 +51,10 @@ export function deckPreviewStagePadding(
 }
 
 /**
- * Zoom is presentation-relative: 50% means "fit the complete slide". The fit
- * scale is recomputed from the live right-stage size, so the initial 50% view
- * remains fitted after responsive resizes. Values above 50% intentionally
- * overflow the stage and are scrollable.
+ * Zoom is absolute against the logical page: 50% ⇒ scale 0.5. When the
+ * requested scale would clip the complete slide, it is capped to the live
+ * right-stage fitScale (min of width/height after padding). Zoom above 50%
+ * keeps the absolute scale so the stage can scroll.
  */
 export function deckPreviewFitGeometry({
   viewportWidth,
@@ -100,8 +100,11 @@ export function deckPreviewFitGeometry({
     10,
     300,
   );
+  const requestedScale = safeZoom / 100;
   const scale =
-    fitScale * (safeZoom / DECK_PREVIEW_FIT_ZOOM_PERCENT);
+    safeZoom <= DECK_PREVIEW_FIT_ZOOM_PERCENT
+      ? Math.min(requestedScale, fitScale)
+      : requestedScale;
 
   return {
     logicalWidth,

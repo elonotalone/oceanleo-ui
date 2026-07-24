@@ -111,7 +111,11 @@ export function usePdfWorkbench(
   }, []);
 
   useEffect(() => {
-    const source = item.url || item.previewUrl || "";
+    const source =
+      String(item.meta.editor_source_url || "").trim() ||
+      item.url ||
+      item.previewUrl ||
+      "";
     const generation = ++sourceGenerationRef.current;
     const controller = new AbortController();
     processingTokenRef.current += 1;
@@ -164,7 +168,15 @@ export function usePdfWorkbench(
       }
     })();
     return () => controller.abort();
-  }, [allowBlankSource, item.previewUrl, item.title, item.url, siteId, tt]);
+  }, [
+    allowBlankSource,
+    item.meta.editor_source_url,
+    item.previewUrl,
+    item.title,
+    item.url,
+    siteId,
+    tt,
+  ]);
 
   useEffect(() => {
     let disposed = false;

@@ -57,6 +57,21 @@ test("durable website drafts open their exact artifact revision instead of blank
   assert.equal("starter_id" in payload.meta, false);
 });
 
+test("website embed must not advertise blank=1 for durable remediating tips", () => {
+  const item = websiteItem({
+    meta: {
+      draft: true,
+      blank: true,
+      starter_id: "starter-must-not-win",
+    },
+  });
+  const params = websiteEmbedExtraParams(item);
+  assert.equal(params?.blank, undefined);
+  assert.equal(params?.artifactId, artifactId);
+  assert.equal(params?.revisionId, revisionId);
+  assert.equal("starterId" in (params || {}), false);
+});
+
 test("partial website artifact identity fails closed without starter fallback", () => {
   const item = websiteItem({
     revisionId: undefined,

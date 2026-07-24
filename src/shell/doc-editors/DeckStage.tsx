@@ -458,6 +458,7 @@ export function DeckStage({
         active={candidate.id === editor.activeSlide.id}
         theme={theme}
         master={deckMasterFor(editor.deck, candidate)}
+        aspectRatio={logicalSize.width / logicalSize.height}
       />
     ),
   }));

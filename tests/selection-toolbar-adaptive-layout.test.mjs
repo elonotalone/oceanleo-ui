@@ -15,7 +15,10 @@ import {
   selectionMoreDialogLabel,
 } from "../src/shell/selection-toolbar-layout.ts";
 import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
-import { toolbarContainerInlineSize } from "../src/shell/selection-toolbar-measure.ts";
+import {
+  toolbarContainerInlineSize,
+  toolbarFloatingViewportMetrics,
+} from "../src/shell/selection-toolbar-measure.ts";
 
 test("floating capacity clamps to the remaining viewport strip from the live left edge", () => {
   const previousWindow = globalThis.window;
@@ -32,15 +35,24 @@ test("floating capacity clamps to the remaining viewport strip from the live lef
     documentElement: {},
   };
   try {
+    const translated = {
+      getBoundingClientRect() {
+        return { left: 920, width: 360, right: 1_280 };
+      },
+    };
     const toolbar = {
       getBoundingClientRect() {
         return { left: 920, width: 360, right: 1_280 };
       },
       closest(selector) {
+        if (selector === "[data-workspace-edit-bar-toolbar]") {
+          return translated;
+        }
         if (selector === "[data-workspace-floating-toolbar]") {
           return {
             getBoundingClientRect() {
-              return { left: 920, width: 360, right: 1_280 };
+              // inset-0 layer — must NOT be used as the origin
+              return { left: 0, width: 1_100, right: 1_100 };
             },
             parentElement: {
               getBoundingClientRect() {
@@ -52,11 +64,65 @@ test("floating capacity clamps to the remaining viewport strip from the live lef
         return null;
       },
     };
+    assert.deepEqual(toolbarFloatingViewportMetrics(toolbar), {
+      originLeft: 920,
+      viewportLeft: 0,
+      viewportRight: 1_200,
+      viewportWidth: 1_200,
+      maxInlineSize: 272,
+      reachableWidth: 264,
+    });
     assert.equal(
       toolbarContainerInlineSize(toolbar, "floating"),
       264,
       "1_200 viewport - 920 origin - 16 edge reserve",
     );
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
+});
+
+test("floating maxInlineSize stays zero when the translated shell sits past the viewport", () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  globalThis.window = {
+    visualViewport: { width: 1_200, offsetLeft: 0 },
+    innerWidth: 1_200,
+  };
+  globalThis.document = { documentElement: {} };
+  try {
+    const toolbar = {
+      getBoundingClientRect() {
+        return { left: 1_210, width: 40, right: 1_250 };
+      },
+      closest(selector) {
+        if (selector === "[data-workspace-edit-bar-toolbar]") {
+          return {
+            getBoundingClientRect() {
+              return { left: 1_210, width: 40, right: 1_250 };
+            },
+          };
+        }
+        if (selector === "[data-workspace-floating-toolbar]") {
+          return {
+            getBoundingClientRect() {
+              return { left: 0, width: 1_100, right: 1_100 };
+            },
+            parentElement: {
+              getBoundingClientRect() {
+                return { left: 0, width: 1_100, right: 1_100 };
+              },
+            },
+          };
+        }
+        return null;
+      },
+    };
+    const metrics = toolbarFloatingViewportMetrics(toolbar);
+    assert.equal(metrics.maxInlineSize, 0);
+    assert.equal(metrics.reachableWidth, 0);
+    assert.equal(toolbarContainerInlineSize(toolbar, "floating"), 0);
   } finally {
     globalThis.window = previousWindow;
     globalThis.document = previousDocument;
@@ -436,12 +502,22 @@ const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
 function toolbarRectMock() {
   const measuredId = this.getAttribute("data-selection-measure-control-id");
   if (measuredId) return rect(measuredControlWidths.get(measuredId) || 0);
+  if (this.hasAttribute("data-selection-toolbar-viewport-capacity")) {
+    return rect(Math.max(0, visualViewport.width - 32));
+  }
+  if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
+    // Translated shell mirrors the live toolbar box under the current capacity.
+    return rect(containerWidth, 44, toolbarOffsetLeft);
+  }
   if (
     this.hasAttribute("data-selection-toolbar-test-host") ||
     this.hasAttribute("data-workspace-docked-toolbar") ||
-    this.hasAttribute("data-workspace-floating-toolbar") ||
-    this.getAttribute("role") === "toolbar"
+    this.hasAttribute("data-workspace-floating-toolbar")
   ) {
+    // inset-0 floating layer / boundary — full stage, origin at 0
+    return rect(containerWidth, 44, 0);
+  }
+  if (this.getAttribute("role") === "toolbar") {
     return rect(containerWidth, 44, toolbarOffsetLeft);
   }
   return rect(0, 0);
@@ -595,16 +671,25 @@ async function createMounted(Component, props, mode = "bar") {
   const host = document.createElement("div");
   host.setAttribute("data-selection-toolbar-test-host", "");
   document.body.append(host);
-  const mountPoint =
-    mode === "bar" ? host : document.createElement("div");
+  let mountPoint = host;
   if (mode !== "bar") {
-    mountPoint.setAttribute(
+    const layer = document.createElement("div");
+    layer.setAttribute(
       mode === "floating"
         ? "data-workspace-floating-toolbar"
         : "data-workspace-docked-toolbar",
       "",
     );
-    host.append(mountPoint);
+    host.append(layer);
+    if (mode === "floating") {
+      const translated = document.createElement("div");
+      translated.setAttribute("data-workspace-edit-bar-toolbar", "");
+      translated.style.transform = `translate3d(${toolbarOffsetLeft}px, 0, 0)`;
+      layer.append(translated);
+      mountPoint = translated;
+    } else {
+      mountPoint = layer;
+    }
   }
   const root = createRoot(mountPoint);
   await act(async () => {
@@ -1204,6 +1289,10 @@ test("floating medium width uses remaining viewport strip so the bar does not gr
   // Medium acceptance viewport with the floating bar already translated near
   // the right edge — full stage width would wrongly keep every control visible.
   visualViewport.width = 1_200;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 1_200,
+  });
   containerWidth = 1_100;
   toolbarOffsetLeft = 920;
   measuredControlWidths.set("primary", 70);
@@ -1257,6 +1346,23 @@ test("floating medium width uses remaining viewport strip so the bar does not gr
       mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
       "remaining-width overflow must keep More reachable",
     );
+    const maxInline = toolbar.style.maxInlineSize;
+    assert.match(
+      maxInline,
+      /^272px$/,
+      `hard remaining-strip maxInlineSize expected 272px, got ${maxInline}`,
+    );
+    // Simulate the post-overflow intrinsic width under the hard cap.
+    containerWidth = 264;
+    await act(async () => {
+      ToolbarResizeObserver.flush();
+    });
+    const box = toolbar.getBoundingClientRect();
+    assert.ok(
+      box.right <= window.innerWidth + 2,
+      `toolbar.right ${box.right} must stay within innerWidth+2 (${window.innerWidth + 2})`,
+    );
+    assert.ok(box.left >= -2, `toolbar.left ${box.left} must stay >= -2`);
   } finally {
     await mounted.unmount();
     globalThis.__adaptiveToolbarLayout = null;

@@ -17,7 +17,7 @@ function approximately(actual, expected, epsilon = 0.0001) {
   );
 }
 
-test("50 percent is a complete responsive fit with only aspect-ratio letterboxing", () => {
+test("50 percent is absolute half-scale, capped only when the stage is smaller", () => {
   const logicalSize = deckPreviewLogicalSize(16 / 9);
   const desktop = deckPreviewFitGeometry({
     viewportWidth: 1_000,
@@ -26,21 +26,34 @@ test("50 percent is a complete responsive fit with only aspect-ratio letterboxin
     zoomPercent: DECK_PREVIEW_FIT_ZOOM_PERCENT,
   });
   assert.equal(desktop.padding, 32);
-  approximately(desktop.width, desktop.availableWidth);
-  assert.ok(desktop.height < desktop.availableHeight);
+  approximately(desktop.scale, 0.5);
+  approximately(desktop.width, logicalSize.width * 0.5);
+  approximately(desktop.height, logicalSize.height * 0.5);
   assert.ok(desktop.width <= desktop.availableWidth);
   assert.ok(desktop.height <= desktop.availableHeight);
+  assert.ok(desktop.scale <= desktop.fitScale + 0.0001);
 
-  const compact = deckPreviewFitGeometry({
-    viewportWidth: 600,
-    viewportHeight: 400,
+  // Acceptance desktop stage (~942x547) must land in 0.46..0.54.
+  const acceptanceDesktop = deckPreviewFitGeometry({
+    viewportWidth: 942,
+    viewportHeight: 547,
     logicalSize,
-    zoomPercent: DECK_PREVIEW_FIT_ZOOM_PERCENT,
+    zoomPercent: 50,
   });
-  assert.equal(compact.padding, 12);
-  approximately(compact.width, compact.availableWidth);
-  assert.ok(compact.height <= compact.availableHeight);
-  assert.ok(compact.width < desktop.width);
+  assert.ok(acceptanceDesktop.scale >= 0.46);
+  assert.ok(acceptanceDesktop.scale <= 0.54);
+  approximately(acceptanceDesktop.scale, 0.5);
+
+  const tiny = deckPreviewFitGeometry({
+    viewportWidth: 320,
+    viewportHeight: 200,
+    logicalSize,
+    zoomPercent: 50,
+  });
+  assert.ok(tiny.fitScale < 0.5);
+  approximately(tiny.scale, tiny.fitScale);
+  assert.ok(tiny.width <= tiny.availableWidth + 0.0001);
+  assert.ok(tiny.height <= tiny.availableHeight + 0.0001);
 });
 
 test("fit supports 4:3 sources and zoom above 50 intentionally scrolls", () => {
@@ -52,8 +65,9 @@ test("fit supports 4:3 sources and zoom above 50 intentionally scrolls", () => {
     zoomPercent: 50,
   });
   assert.equal(deckPreviewStagePadding(800, 600), 20);
-  approximately(fitted.height, fitted.availableHeight);
+  approximately(fitted.scale, 0.5);
   assert.ok(fitted.width <= fitted.availableWidth);
+  assert.ok(fitted.height <= fitted.availableHeight);
 
   const doubled = deckPreviewFitGeometry({
     viewportWidth: 800,
@@ -61,12 +75,13 @@ test("fit supports 4:3 sources and zoom above 50 intentionally scrolls", () => {
     logicalSize,
     zoomPercent: 100,
   });
+  approximately(doubled.scale, 1);
   approximately(doubled.width, fitted.width * 2);
   approximately(doubled.height, fitted.height * 2);
   assert.ok(doubled.height > doubled.availableHeight);
 });
 
-test("responsive fit matrix never clips either supported slide aspect", () => {
+test("responsive fit matrix never clips either supported slide aspect at 50 percent", () => {
   for (const aspectRatio of [16 / 9, 4 / 3]) {
     const logicalSize = deckPreviewLogicalSize(aspectRatio);
     for (const [viewportWidth, viewportHeight] of [
@@ -75,6 +90,7 @@ test("responsive fit matrix never clips either supported slide aspect", () => {
       [768, 500],
       [1_024, 640],
       [1_440, 900],
+      [1_680, 1_050],
     ]) {
       const fitted = deckPreviewFitGeometry({
         viewportWidth,
@@ -84,9 +100,9 @@ test("responsive fit matrix never clips either supported slide aspect", () => {
       });
       assert.ok(fitted.width <= fitted.availableWidth + 0.0001);
       assert.ok(fitted.height <= fitted.availableHeight + 0.0001);
-      assert.ok(
-        Math.abs(fitted.width - fitted.availableWidth) <= 0.0001 ||
-          Math.abs(fitted.height - fitted.availableHeight) <= 0.0001,
+      approximately(
+        fitted.scale,
+        Math.min(0.5, fitted.fitScale),
       );
       approximately(fitted.width / fitted.height, aspectRatio);
     }
@@ -106,6 +122,7 @@ test("shared layout contract owns rail, fitted stage and keyboard selection", ()
   assert.doesNotMatch(component, /DeckEditorState/);
   assert.match(component, /data-deck-thumbnail-rail/);
   assert.match(component, /overflow-y-auto/);
+  assert.match(component, /h-full min-h-0/);
   assert.match(component, /data-deck-preview-stage/);
   assert.match(component, /new ResizeObserver\(measure\)/);
   assert.match(component, /aria-current=\{active \? "page"/);
@@ -118,6 +135,10 @@ test("Deck edit route consumes shared layout and resets fit to 50 percent", () =
     new URL("../src/shell/doc-editors/DeckStage.tsx", import.meta.url),
     "utf8",
   );
+  const mini = readFileSync(
+    new URL("../src/shell/doc-editors/DeckMiniSlide.tsx", import.meta.url),
+    "utf8",
+  );
   const route = readFileSync(
     new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url),
     "utf8",
@@ -127,6 +148,9 @@ test("Deck edit route consumes shared layout and resets fit to 50 percent", () =
   assert.match(stage, /onActiveSlideChange=\{editor\.selectSlide\}/);
   assert.match(stage, /<SlideCanvas/);
   assert.doesNotMatch(stage, /<DeckSlideRail/);
+  assert.match(mini, /data-deck-thumbnail-surface/);
+  assert.doesNotMatch(mini, /from "\.\/DeckElementContent"/);
+  assert.doesNotMatch(mini, /<MiniDeckElementLayer/);
   assert.match(
     route,
     /useState\(DECK_PREVIEW_FIT_ZOOM_PERCENT\)/,

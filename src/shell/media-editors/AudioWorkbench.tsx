@@ -54,7 +54,9 @@ export function useAudioWorkbench(
   const operationsRef = useRef<AudioEditOperation[]>([]);
   const undoOperationsRef = useRef<AudioEditOperation[][]>([]);
   const redoOperationsRef = useRef<AudioEditOperation[][]>([]);
-  const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  const workingHeadUrlRef = useRef(
+    String(item.meta.editor_working_head_url || ""),
+  );
   const objectUrlRef = useRef("");
   const undoRef = useRef<AudioBuffer[]>([]);
   const redoRef = useRef<AudioBuffer[]>([]);
@@ -103,9 +105,7 @@ export function useAudioWorkbench(
     let disableDrag: (() => void) | undefined;
     setLoading(true);
     setError("");
-    workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
-    );
+    workingHeadUrlRef.current = String(item.meta.editor_working_head_url || "");
     void (async () => {
       try {
         const project = projectUrl

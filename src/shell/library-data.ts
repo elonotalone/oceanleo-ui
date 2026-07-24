@@ -176,12 +176,14 @@ export function artifactProjectionToLibraryItem(
   const thumbnail = artifact.renditions.thumbnail;
   const full = artifact.renditions.full;
   const source = artifact.renditions.source;
+  const browserSafeSource =
+    source?.url && !isArtifactSourceTreeUrl(source.url) ? source : null;
+  // Never fall back to auth-gated source-tree for LibraryItem.url — sites do not
+  // proxy /v1, so relative source-tree resolves to slide/asset origin → 404.
   const viewer =
     artifact.renditions.preview ||
     artifact.renditions.full ||
-    (artifact.access.canExportSource
-      ? artifact.renditions.source
-      : undefined);
+    (artifact.access.canExportSource ? browserSafeSource : undefined);
   const routeHint = editorRouteHintForArtifactCapability(
     artifact.editorCapability,
   );
@@ -193,14 +195,14 @@ export function artifactProjectionToLibraryItem(
     artifact.artifactType === "document" ||
     artifact.artifactType === "grid" ||
     artifact.artifactType === "pdf";
-  const browserSafeSource =
-    source?.url && !isArtifactSourceTreeUrl(source.url) ? source : null;
   const selectedRendition = prefersBinarySource
     ? browserSafeSource || full || viewer
     : options.forEdit
-      ? source || full || viewer
+      ? browserSafeSource || full || viewer
       : full || viewer;
-  const url = selectedRendition?.url;
+  const rawUrl = selectedRendition?.url;
+  const url =
+    rawUrl && !isArtifactSourceTreeUrl(rawUrl) ? rawUrl : undefined;
   const meta: Record<string, unknown> = {
     artifact_id: artifact.artifactId,
     revision_id: artifact.revisionId,

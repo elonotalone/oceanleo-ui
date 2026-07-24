@@ -477,7 +477,15 @@ export function playwrightKey(
     Down: "ArrowDown",
   };
   let key = aliases[event.key] || event.key;
-  if (key.length === 1) key = key.toUpperCase();
+  const modified =
+    event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+  if (key.length === 1) {
+    // Modifier chords must keep letter case natural. Forcing uppercase
+    // turns Control+t into Control+T; xdotool then emits Ctrl+Shift+t
+    // (reopen closed tab) instead of creating a tab, so active_tab_id
+    // never changes after human lease takeover.
+    key = modified ? key.toLowerCase() : key.toUpperCase();
+  }
   const parts: string[] = [];
   if (event.ctrlKey && key !== "Control") parts.push("Control");
   if (event.metaKey && key !== "Meta") parts.push("Meta");

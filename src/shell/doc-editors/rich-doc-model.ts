@@ -114,7 +114,8 @@ export async function loadRichDocHtml(
   onSourceAccessError?: () => void,
 ): Promise<RichDocLoadResult> {
   try {
-    const url = item.url || "";
+    const url =
+      String(item.meta.editor_source_url || "").trim() || item.url || "";
     const ext = urlExtension(url) || officeExtensionForItem(item);
     const isDocx =
       officePackageKindForItem(item) === "docx" || ext === "docx";

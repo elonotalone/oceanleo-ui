@@ -15,6 +15,9 @@ import {
   normalizedAvailableWidth,
   normalizedMeasuredWidth,
   toolbarContainerInlineSize,
+  toolbarFloatingHost,
+  toolbarFloatingTranslatedShell,
+  toolbarFloatingViewportMetrics,
   toolbarSizingBoundary,
 } from "./selection-toolbar-measure";
 
@@ -39,6 +42,7 @@ export function useSelectionToolbarMeasure({
   measurementIdentity,
   setMeasuredWidths,
   setAvailableWidth,
+  setFloatingMaxInlineSize,
 }: {
   toolbarRef: RefObject<HTMLDivElement | null>;
   prefixRef: RefObject<HTMLDivElement | null>;
@@ -62,6 +66,7 @@ export function useSelectionToolbarMeasure({
     SetStateAction<ReadonlyMap<string, number>>
   >;
   setAvailableWidth: Dispatch<SetStateAction<number>>;
+  setFloatingMaxInlineSize: Dispatch<SetStateAction<number>>;
 }): void {
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
@@ -93,6 +98,25 @@ export function useSelectionToolbarMeasure({
         toolbar,
         effectiveVariant,
       );
+      const inFloatingChrome = Boolean(
+        toolbarFloatingHost(toolbar) ||
+          toolbarFloatingTranslatedShell(toolbar),
+      );
+      if (effectiveVariant === "floating" && inFloatingChrome) {
+        const metrics = toolbarFloatingViewportMetrics(toolbar);
+        setFloatingMaxInlineSize((current) =>
+          current === metrics.maxInlineSize ? current : metrics.maxInlineSize,
+        );
+        // Prefer the hard remaining-strip ceiling when the viewport-capacity
+        // probe still resolves to nearly full 100dvw.
+        if (metrics.maxInlineSize > 0) {
+          containerWidth = Math.min(containerWidth, metrics.maxInlineSize);
+        } else {
+          containerWidth = 0;
+        }
+      } else {
+        setFloatingMaxInlineSize((current) => (current === 0 ? current : 0));
+      }
       const measuredViewportCapacity =
         effectiveVariant === "floating"
           ? elementInlineSize(viewportCapacityRef.current)
@@ -104,7 +128,15 @@ export function useSelectionToolbarMeasure({
         );
       }
       if (!(containerWidth > 0)) {
-        setAvailableWidth(Number.POSITIVE_INFINITY);
+        // Only collapse when we are actually inside the floating edit-bar
+        // chrome. Layout-context alone flips effectiveVariant to "floating"
+        // even in hermetic mounts without a translated shell; those must keep
+        // infinite capacity until a real boundary exists.
+        setAvailableWidth(
+          effectiveVariant === "floating" && inFloatingChrome
+            ? 0
+            : Number.POSITIVE_INFINITY,
+        );
         return;
       }
       const style = window.getComputedStyle(toolbar);
@@ -131,11 +163,18 @@ export function useSelectionToolbarMeasure({
 
     readLayout();
     const boundary = toolbarSizingBoundary(toolbar);
+    const floatingHost = toolbarFloatingHost(toolbar);
+    const translatedShell = toolbarFloatingTranslatedShell(toolbar);
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(readLayout);
     if (boundary) observer?.observe(boundary);
+    // Translated shell size/position and toolbar content both change the
+    // reachable strip; stage-boundary-only observation misses 860→1200
+    // recenters that keep the same overlay size.
+    if (translatedShell) observer?.observe(translatedShell);
+    observer?.observe(toolbar);
     if (prefixRef.current) observer?.observe(prefixRef.current);
     if (suffixRef.current) observer?.observe(suffixRef.current);
     if (measurementRef.current) observer?.observe(measurementRef.current);
@@ -145,11 +184,39 @@ export function useSelectionToolbarMeasure({
     measurementRef.current
       ?.querySelectorAll<HTMLElement>("[data-selection-measure-control-id]")
       .forEach((node) => observer?.observe(node));
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(readLayout);
+    mutationObserver?.observe(toolbar, {
+      attributes: true,
+      attributeFilter: [
+        "data-selection-anchor-x",
+        "data-selection-anchor-y",
+        "data-selection-anchor-width",
+        "data-selection-anchor-height",
+        "style",
+        "class",
+      ],
+    });
+    if (translatedShell) {
+      mutationObserver?.observe(translatedShell, {
+        attributes: true,
+        attributeFilter: ["style", "class"],
+      });
+    }
+    if (floatingHost && floatingHost !== translatedShell) {
+      mutationObserver?.observe(floatingHost, {
+        attributes: true,
+        attributeFilter: ["style", "class", "data-edit-bar-mode"],
+      });
+    }
     window.addEventListener("resize", readLayout);
     window.visualViewport?.addEventListener("resize", readLayout);
     window.visualViewport?.addEventListener("scroll", readLayout);
     return () => {
       observer?.disconnect();
+      mutationObserver?.disconnect();
       window.removeEventListener("resize", readLayout);
       window.visualViewport?.removeEventListener("resize", readLayout);
       window.visualViewport?.removeEventListener("scroll", readLayout);
@@ -168,6 +235,7 @@ export function useSelectionToolbarMeasure({
     prefixVisible,
     restoreMoreFocusRef,
     setAvailableWidth,
+    setFloatingMaxInlineSize,
     setMeasuredWidths,
     suffixRef,
     suffixVisible,

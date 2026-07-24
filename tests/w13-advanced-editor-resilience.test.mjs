@@ -283,3 +283,43 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
     /const image = entry\.el as HTMLImageElement;[\s\S]*image\.removeAttribute\("src"\)/,
   );
 });
+
+test("W13 V7 product gates: PDF page count, audio project key, mute chrome, richdoc source", async () => {
+  const [pdfStage, pdfWorkbench, audio, toolbar, richdoc, harness] =
+    await Promise.all([
+      source("src/shell/media-editors/PdfStage.tsx"),
+      source("src/shell/media-editors/use-pdf-workbench.ts"),
+      source("src/shell/media-editors/AudioWorkbench.tsx"),
+      source("src/shell/video-editor/VideoTimelineContextToolbar.tsx"),
+      source("src/shell/doc-editors/rich-doc-model.ts"),
+      readFile(
+        resolve(
+          "/opt/cursor-workspaces/oceandino/scratch/advanced-editors-hardening-2026-07-24/V7-advanced/live_acceptance.py",
+        ),
+        "utf8",
+      ),
+    ]);
+
+  assert.match(pdfStage, /data-pdf-page-count=\{editor\.pageCount > 0/);
+  assert.match(
+    pdfStage,
+    /editor\.pageCount > 0\s*\?\s*`\$\{editor\.pageNumber\} \/ \$\{editor\.pageCount\}`/,
+  );
+  assert.match(pdfWorkbench, /item\.meta\.editor_source_url/);
+  assert.match(
+    audio,
+    /workingHeadUrlRef = useRef\(\s*String\(item\.meta\.editor_working_head_url \|\| ""\)/,
+  );
+  assert.match(
+    toolbar,
+    /id:\s*"muted"[\s\S]*icon:\s*"effects"[\s\S]*value:\s*clip\.muted === true/,
+  );
+  assert.match(
+    richdoc,
+    /item\.meta\.editor_source_url \|\| ""\)\.trim\(\) \|\| item\.url/,
+  );
+  assert.match(harness, /arg=value/);
+  assert.match(harness, /arg=str\(expected\)\.lower\(\)/);
+  assert.match(harness, /arg=before \+ 1/);
+  assert.match(harness, /data-pdf-page-count/);
+});
