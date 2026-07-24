@@ -4,6 +4,7 @@ import type {
   ArtifactType,
   TransientGenerationResult,
 } from "./artifact-contract";
+import { isArtifactSourceTreeUrl } from "./artifact-contract";
 import { editorRouteHintForArtifactCapability } from "./workbench-capability-registry";
 
 /**
@@ -184,15 +185,18 @@ export function artifactProjectionToLibraryItem(
   const routeHint = editorRouteHintForArtifactCapability(
     artifact.editorCapability,
   );
-  // Deck/office binary preview must use the PPTX/source bytes, not a full/preview
-  // poster image. After open-path source-tree grant upgrade, source is opaque https.
+  // Deck/office binary preview must use PPTX/source bytes when they are already
+  // browser-safe (opaque access https). Never prefer gateway-relative source-tree
+  // on shelf list items — that resolves against the site origin and 404s.
   const prefersBinarySource =
     artifact.artifactType === "deck" ||
     artifact.artifactType === "document" ||
     artifact.artifactType === "grid" ||
     artifact.artifactType === "pdf";
+  const browserSafeSource =
+    source?.url && !isArtifactSourceTreeUrl(source.url) ? source : null;
   const selectedRendition = prefersBinarySource
-    ? source || full || viewer
+    ? browserSafeSource || full || viewer
     : options.forEdit
       ? source || full || viewer
       : full || viewer;
