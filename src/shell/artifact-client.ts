@@ -513,10 +513,15 @@ async function upgradeSourceTreeForEditor(
     return projection;
   }
   const raw = grant.data as Record<string, unknown>;
-  const grantUrl = trustedGatewayArtifactAccessUrl(
-    raw.accessUrl || raw.access_url || raw.url,
-  );
-  if (!grantUrl) return projection;
+  const rawGrantUrl = String(
+    raw.accessUrl || raw.access_url || raw.url || "",
+  ).trim();
+  // Grants commonly return gateway-relative opaque paths; absolutize before trust.
+  const grantUrl =
+    trustedGatewayArtifactAccessUrl(rawGrantUrl) ||
+    (isOpaqueAccessUrl(rawGrantUrl) ? qualifyUrlField(rawGrantUrl) : "") ||
+    trustedGatewayArtifactAccessUrl(qualifyUrlField(rawGrantUrl));
+  if (!grantUrl || !isOpaqueAccessUrl(grantUrl)) return projection;
   return {
     ...projection,
     renditions: {
@@ -2058,9 +2063,14 @@ export async function getArtifactDownload(
   ).trim();
   const grantPurpose = String(raw.purpose || "").trim();
   const grantMode = String(raw.mode || "").trim();
-  const grantUrl = trustedGatewayArtifactAccessUrl(
-    raw.accessUrl || raw.access_url,
-  );
+  const grantUrl =
+    trustedGatewayArtifactAccessUrl(raw.accessUrl || raw.access_url) ||
+    (() => {
+      const relative = String(raw.accessUrl || raw.access_url || "").trim();
+      if (!relative || !isOpaqueAccessUrl(relative)) return "";
+      const qualified = qualifyUrlField(relative);
+      return trustedGatewayArtifactAccessUrl(qualified) || qualified;
+    })();
   const expiresAtValue = String(
     raw.expiresAt || raw.expires_at || "",
   ).trim();
