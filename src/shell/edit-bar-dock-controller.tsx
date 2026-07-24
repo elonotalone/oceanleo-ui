@@ -24,7 +24,7 @@ import {
 } from "./edit-bar-dock-state";
 import {
   clampFloatingToolbarToBounds,
-  pointNearFloatingToolbarBounds,
+  isFloatingToolbarDockIntent,
   sameFloatingToolbarPoint,
   type FloatingToolbarBounds,
   type FloatingToolbarPoint,
@@ -198,18 +198,21 @@ export function useEditBarDockController({
         visualLeft + (visualViewport?.width || window.innerWidth);
       const visualBottom =
         visualTop + (visualViewport?.height || window.innerHeight);
+      // Include the full shell layer (action row + dock + stage) so the bar can
+      // fly through the remembered dock band instead of clamping under it while
+      // the pointer continues into chrome above the strip.
       const surfaceLeft = dockBounds
-        ? Math.min(stage.left, dockBounds.left)
-        : stage.left;
+        ? Math.min(stage.left, dockBounds.left, layer.left)
+        : Math.min(stage.left, layer.left);
       const surfaceTop = dockBounds
-        ? Math.min(stage.top, dockBounds.top)
-        : stage.top;
+        ? Math.min(stage.top, dockBounds.top, layer.top)
+        : Math.min(stage.top, layer.top);
       const surfaceRight = dockBounds
-        ? Math.max(stage.right, dockBounds.right)
-        : stage.right;
+        ? Math.max(stage.right, dockBounds.right, layer.right)
+        : Math.max(stage.right, layer.right);
       const surfaceBottom = dockBounds
-        ? Math.max(stage.bottom, dockBounds.bottom)
-        : stage.bottom;
+        ? Math.max(stage.bottom, dockBounds.bottom, layer.bottom)
+        : Math.max(stage.bottom, layer.bottom);
       const visibleLeft = Math.max(surfaceLeft, layer.left, visualLeft);
       const visibleTop = Math.max(surfaceTop, layer.top, visualTop);
       const visibleRight = Math.max(
@@ -343,18 +346,41 @@ export function useEditBarDockController({
     [persist, setSharedOffset],
   );
 
+  const readLiveToolbarBounds = useCallback((): FloatingToolbarBounds | null => {
+    const layer = readLayerElement()?.getBoundingClientRect();
+    const toolbar = toolbarRef.current?.getBoundingClientRect();
+    if (
+      !layer ||
+      !toolbar ||
+      !(toolbar.width > 0) ||
+      !(toolbar.height > 0)
+    ) {
+      return null;
+    }
+    // Prefer the controller's post-clamp position so drop detection in the
+    // same pointermove frame does not wait for a React transform commit.
+    const left = layer.left + positionRef.current.x;
+    const top = layer.top + positionRef.current.y;
+    return {
+      left,
+      top,
+      right: left + toolbar.width,
+      bottom: top + toolbar.height,
+    };
+  }, [readLayerElement]);
+
   const pointNearDock = useCallback(
     (clientX: number, clientY: number) => {
       const bounds = readDockTargetBounds();
-      return bounds
-        ? pointNearFloatingToolbarBounds(
-            { x: clientX, y: clientY },
-            bounds,
-            DOCK_REVEAL_PROXIMITY_PX,
-          )
-        : false;
+      if (!bounds) return false;
+      return isFloatingToolbarDockIntent(
+        { x: clientX, y: clientY },
+        bounds,
+        readLiveToolbarBounds(),
+        DOCK_REVEAL_PROXIMITY_PX,
+      );
     },
-    [readDockTargetBounds],
+    [readDockTargetBounds, readLiveToolbarBounds],
   );
 
   const dock = useCallback(() => {

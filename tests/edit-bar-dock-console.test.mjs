@@ -22,7 +22,9 @@ import {
 } from "../src/shell/edit-bar-dock-state.ts";
 import {
   clampFloatingToolbarToBounds,
+  isFloatingToolbarDockIntent,
   pointNearFloatingToolbarBounds,
+  rectNearFloatingToolbarBounds,
 } from "../src/shell/floating-toolbar-geometry.ts";
 
 const require = createRequire(import.meta.url);
@@ -320,6 +322,34 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     ),
     true,
   );
+  assert.equal(
+    rectNearFloatingToolbarBounds(
+      { left: 818, top: 216, right: 862, bottom: 260 },
+      { left: 293, top: 201, right: 1643, bottom: 257 },
+      24,
+    ),
+    true,
+  );
+  assert.equal(
+    isFloatingToolbarDockIntent(
+      { x: 840, y: 48 },
+      { left: 293, top: 201, right: 1643, bottom: 257 },
+      { left: 818, top: 216, right: 862, bottom: 260 },
+      24,
+    ),
+    true,
+    "clamped toolbar in the dock band counts even when the pointer overshot above",
+  );
+  assert.equal(
+    isFloatingToolbarDockIntent(
+      { x: 840, y: 48 },
+      { left: 293, top: 201, right: 1643, bottom: 257 },
+      { left: 779, top: 308, right: 823, bottom: 352 },
+      24,
+    ),
+    false,
+    "overshoot alone must not dock while the toolbar is still below the band",
+  );
   const [floatingSource, controllerSource, inlineSource, splitSource] =
     await Promise.all([
       readFile(
@@ -353,7 +383,15 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     controllerSource,
     /setPortalRoot\([\s\S]{0,120}workspaceRootRef\?\.current[\s\S]{0,120}dockRootRef\?\.current\?\.parentElement/,
   );
-  assert.match(controllerSource, /Math\.min\(stage\.top, dockBounds\.top\)/);
+  assert.match(controllerSource, /Math\.min\(stage\.top, dockBounds\.top, layer\.top\)/);
+  assert.match(controllerSource, /isFloatingToolbarDockIntent/);
+  assert.match(
+    await readFile(
+      new URL("../src/shell/floating-toolbar-geometry.ts", import.meta.url),
+      "utf8",
+    ),
+    /export function isFloatingToolbarDockIntent/,
+  );
   assert.match(
     inlineSource,
     /data-edit-bar-layer-root=\{!rightPaneSlot \|\| undefined\}[\s\S]{0,120}relative[\s\S]{0,120}overflow-hidden/,
@@ -626,6 +664,139 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
     assert.deepEqual(
       parseEditBarDockState(window.localStorage.getItem(storageKey)).offset,
       { x: 0, y: 0 },
+    );
+  } finally {
+    await mounted.unmount();
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+  }
+});
+
+test("discrete overshoot past the dock band still flies open and redocks", async () => {
+  // Mirrors V1 production failure: after undock, pointer jumps from below the
+  // dock strip to chrome above it (y≈48) while the handle clamps in-band.
+  window.localStorage.clear();
+  const storageKey = "test:edit-bar:overshoot-redock";
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
+    if (this.hasAttribute("data-edit-bar-test-root")) {
+      return {
+        x: 0, y: 160, left: 0, top: 160, right: 1350, bottom: 1050,
+        width: 1350, height: 890, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-edit-bar-dock") ||
+      this.hasAttribute("data-edit-bar-dock-sentinel")
+    ) {
+      const collapsed =
+        this.getAttribute?.("data-edit-bar-dock-collapsed") === "true";
+      const top = 201;
+      const height = collapsed ? 0 : 56;
+      return {
+        x: 293, y: top, left: 293, top, right: 1643, bottom: top + (height || 56),
+        width: 1350, height: height || 56, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-edit-bar-test-stage")) {
+      return {
+        x: 293, y: 257, left: 293, top: 257, right: 1643, bottom: 1050,
+        width: 1350, height: 793, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
+      const transform = this.style.transform || "";
+      const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
+      const left = match ? Number(match[1]) : 293;
+      const top = match ? Number(match[2]) : 205;
+      return {
+        x: left, y: top, left, top, right: left + 300, bottom: top + 44,
+        width: 300, height: 44, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-docked-toolbar") ||
+      this.hasAttribute("data-workspace-floating-toolbar")
+    ) {
+      return {
+        x: 0, y: 160, left: 0, top: 160, right: 1350, bottom: 1050,
+        width: 1350, height: 890, toJSON() {},
+      };
+    }
+    return originalRect.call(this);
+  };
+
+  const mounted = await createMounted(DockHarness, { storageKey });
+  const dock = () =>
+    mounted.container.querySelector("[data-workspace-edit-bar-dock]");
+  const handle = () =>
+    mounted.container.querySelector("[data-floating-toolbar-handle]");
+  try {
+    await pointer(handle(), "pointerdown", {
+      pointerId: 11,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 620,
+      clientY: 230,
+    });
+    await pointer(handle(), "pointermove", {
+      pointerId: 11,
+      pointerType: "mouse",
+      clientX: 801,
+      clientY: 450,
+    });
+    await pointer(handle(), "pointerup", {
+      pointerId: 11,
+      pointerType: "mouse",
+      clientX: 801,
+      clientY: 450,
+    });
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-floating-toolbar]"),
+    );
+    assert.equal(dock().dataset.editBarDockCollapsed, "true");
+
+    await pointer(handle(), "pointerdown", {
+      pointerId: 12,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 801,
+      clientY: 450,
+    });
+    await pointer(handle(), "pointermove", {
+      pointerId: 12,
+      pointerType: "mouse",
+      clientX: 801,
+      clientY: 330,
+    });
+    // Discrete leap over the dock band into chrome above the strip.
+    await pointer(handle(), "pointermove", {
+      pointerId: 12,
+      pointerType: "mouse",
+      clientX: 840,
+      clientY: 48,
+    });
+    assert.equal(
+      dock().dataset.dropHighlight,
+      "true",
+      "dock must expand/highlight when the clamped bar occupies the band",
+    );
+    assert.equal(dock().dataset.editBarDockCollapsed, "false");
+    await pointer(handle(), "pointermove", {
+      pointerId: 12,
+      pointerType: "mouse",
+      clientX: 900,
+      clientY: 56,
+    });
+    assert.equal(dock().dataset.dropHighlight, "true");
+    await pointer(handle(), "pointerup", {
+      pointerId: 12,
+      pointerType: "mouse",
+      clientX: 880,
+      clientY: 44,
+    });
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-docked-toolbar]"),
+      "release after overshoot must redock on the same gesture",
     );
   } finally {
     await mounted.unmount();

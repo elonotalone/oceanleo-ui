@@ -70,3 +70,45 @@ export function pointNearFloatingToolbarBounds(
     point.y <= bounds.bottom + proximity
   );
 }
+
+export function rectNearFloatingToolbarBounds(
+  rect: FloatingToolbarBounds,
+  bounds: FloatingToolbarBounds,
+  proximity = 24,
+): boolean {
+  return (
+    rect.right >= bounds.left - proximity &&
+    rect.left <= bounds.right + proximity &&
+    rect.bottom >= bounds.top - proximity &&
+    rect.top <= bounds.bottom + proximity
+  );
+}
+
+/**
+ * Dock intent while dragging: raw pointer in the band, or the clamped toolbar
+ * occupying the band (pointer may have overshot into chrome above the dock).
+ */
+export function isFloatingToolbarDockIntent(
+  point: FloatingToolbarPoint,
+  bounds: FloatingToolbarBounds,
+  toolbar: FloatingToolbarBounds | null | undefined,
+  proximity = 24,
+): boolean {
+  if (pointNearFloatingToolbarBounds(point, bounds, proximity)) return true;
+  if (toolbar && rectNearFloatingToolbarBounds(toolbar, bounds, proximity)) {
+    return true;
+  }
+  // Pointer leaped above the dock strip (action row / site chrome) while still
+  // horizontally aligned — count as dock intent once the toolbar is already
+  // pinned against the dock band.
+  if (
+    toolbar &&
+    point.x >= bounds.left - proximity &&
+    point.x <= bounds.right + proximity &&
+    point.y < bounds.top + proximity &&
+    toolbar.top <= bounds.bottom + proximity
+  ) {
+    return true;
+  }
+  return false;
+}
