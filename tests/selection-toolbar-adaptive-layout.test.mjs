@@ -15,6 +15,53 @@ import {
   selectionMoreDialogLabel,
 } from "../src/shell/selection-toolbar-layout.ts";
 import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
+import { toolbarContainerInlineSize } from "../src/shell/selection-toolbar-measure.ts";
+
+test("floating capacity clamps to the remaining viewport strip from the live left edge", () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const visualViewport = {
+    width: 1_200,
+    offsetLeft: 0,
+  };
+  globalThis.window = {
+    visualViewport,
+    innerWidth: 1_200,
+  };
+  globalThis.document = {
+    documentElement: {},
+  };
+  try {
+    const toolbar = {
+      getBoundingClientRect() {
+        return { left: 920, width: 360, right: 1_280 };
+      },
+      closest(selector) {
+        if (selector === "[data-workspace-floating-toolbar]") {
+          return {
+            getBoundingClientRect() {
+              return { left: 920, width: 360, right: 1_280 };
+            },
+            parentElement: {
+              getBoundingClientRect() {
+                return { left: 0, width: 1_100, right: 1_100 };
+              },
+            },
+          };
+        }
+        return null;
+      },
+    };
+    assert.equal(
+      toolbarContainerInlineSize(toolbar, "floating"),
+      264,
+      "1_200 viewport - 920 origin - 16 edge reserve",
+    );
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
+});
 
 test("measured thresholds preserve priority, semantic slots, and authored More", () => {
   const controls = [
@@ -359,6 +406,7 @@ globalThis.ResizeObserver = ToolbarResizeObserver;
 window.ResizeObserver = ToolbarResizeObserver;
 
 let containerWidth = 420;
+let toolbarOffsetLeft = 0;
 const measuredControlWidths = new Map([
   ["primary", 70],
   ["cjk", 160],
@@ -368,13 +416,13 @@ const measuredControlWidths = new Map([
   ["design-authored-more", 44],
 ]);
 
-function rect(width, height = 44) {
+function rect(width, height = 44, left = 0) {
   return {
-    x: 0,
+    x: left,
     y: 0,
-    left: 0,
+    left,
     top: 0,
-    right: width,
+    right: left + width,
     bottom: height,
     width,
     height,
@@ -391,9 +439,10 @@ function toolbarRectMock() {
   if (
     this.hasAttribute("data-selection-toolbar-test-host") ||
     this.hasAttribute("data-workspace-docked-toolbar") ||
+    this.hasAttribute("data-workspace-floating-toolbar") ||
     this.getAttribute("role") === "toolbar"
   ) {
-    return rect(containerWidth);
+    return rect(containerWidth, 44, toolbarOffsetLeft);
   }
   return rect(0, 0);
 }
@@ -976,6 +1025,7 @@ test("floating and docked hosts use their actual observed container widths", asy
 
   visualViewport.width = 1_024;
   containerWidth = 500;
+  toolbarOffsetLeft = 0;
   const floating = await createMounted(
     SelectionToolbar,
     { context, onCommand() {} },
@@ -1005,6 +1055,7 @@ test("floating and docked hosts use their actual observed container widths", asy
 
   visualViewport.width = 1_024;
   containerWidth = 202;
+  toolbarOffsetLeft = 0;
   const docked = await createMounted(
     SelectionToolbar,
     { context, onCommand() {} },
@@ -1023,6 +1074,193 @@ test("floating and docked hosts use their actual observed container widths", asy
   } finally {
     await docked.unmount();
     globalThis.__adaptiveToolbarLayout = null;
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+  }
+});
+
+test("grid toolbar aria-labels stay unique and measurement clones stay unnamed", async () => {
+  window.HTMLElement.prototype.getBoundingClientRect = toolbarRectMock;
+  visualViewport.width = 1_680;
+  containerWidth = 900;
+  toolbarOffsetLeft = 120;
+  for (const id of ["type", "bold", "align", "color", "background"]) {
+    measuredControlWidths.set(id, id === "type" || id === "align" ? 112 : 44);
+  }
+  globalThis.__adaptiveToolbarLayout = {
+    toolsLauncher: null,
+    contextBarLeading: null,
+    contextBarTrailing: null,
+    activeTransientPanelId: "",
+    closeDrawer() {},
+  };
+  const SelectionToolbar = await loadSelectionToolbar();
+  const mounted = await createMounted(
+    SelectionToolbar,
+    {
+      context: {
+        version: 1,
+        kind: "grid-cell",
+        id: "cell:sheet:A1",
+        label: "A1 · 表格",
+        controls: [
+          {
+            id: "type",
+            kind: "select",
+            label: "数据类型",
+            icon: "table",
+            iconOnly: true,
+            group: "format",
+            value: "auto",
+            options: [
+              { value: "auto", label: "自动" },
+              { value: "number", label: "数字" },
+            ],
+          },
+          {
+            id: "bold",
+            kind: "toggle",
+            label: "粗体",
+            icon: "bold",
+            iconOnly: true,
+            group: "format",
+            value: false,
+          },
+          {
+            id: "align",
+            kind: "select",
+            label: "对齐",
+            icon: "align-left",
+            iconOnly: true,
+            group: "format",
+            value: "left",
+            options: [
+              { value: "left", label: "左" },
+              { value: "center", label: "中" },
+              { value: "right", label: "右" },
+            ],
+          },
+          {
+            id: "color",
+            kind: "color",
+            label: "文字",
+            icon: "font",
+            iconOnly: true,
+            group: "format",
+            value: "#292524",
+          },
+          {
+            id: "background",
+            kind: "color",
+            label: "底色",
+            icon: "background",
+            iconOnly: true,
+            group: "format",
+            value: "#ffffff",
+          },
+        ],
+      },
+      onCommand() {},
+    },
+    "floating",
+  );
+  try {
+    const toolbar = mounted.host.querySelector('[role="toolbar"]');
+    assert.ok(toolbar);
+    const labels = [...toolbar.querySelectorAll("[aria-label]")]
+      .map((node) => (node.getAttribute("aria-label") || "").trim())
+      .filter(Boolean);
+    const duplicates = [
+      ...new Set(labels.filter((label, _, all) => all.filter((item) => item === label).length > 1)),
+    ].filter((label) => label !== "更多属性" && label !== "更多");
+    assert.deepEqual(
+      duplicates,
+      [],
+      `expected unique toolbar aria-labels, got duplicates=${duplicates.join(",")} labels=${labels.join("|")}`,
+    );
+    for (const expected of ["对齐", "底色", "数据类型", "文字", "粗体"]) {
+      assert.equal(
+        labels.filter((label) => label === expected).length,
+        1,
+        `${expected} must appear exactly once`,
+      );
+    }
+    const measureRoot = toolbar.querySelector(
+      "[data-selection-toolbar-measurements]",
+    );
+    assert.ok(measureRoot);
+    assert.equal(
+      measureRoot.querySelectorAll("[aria-label]").length,
+      0,
+      "measurement clones must omit aria-label",
+    );
+  } finally {
+    await mounted.unmount();
+    globalThis.__adaptiveToolbarLayout = null;
+  }
+});
+
+test("floating medium width uses remaining viewport strip so the bar does not grow past the edge", async () => {
+  window.HTMLElement.prototype.getBoundingClientRect = toolbarRectMock;
+  // Medium acceptance viewport with the floating bar already translated near
+  // the right edge — full stage width would wrongly keep every control visible.
+  visualViewport.width = 1_200;
+  containerWidth = 1_100;
+  toolbarOffsetLeft = 920;
+  measuredControlWidths.set("primary", 70);
+  measuredControlWidths.set("cjk", 160);
+  measuredControlWidths.set("ordinary", 80);
+  measuredControlWidths.set("danger", 90);
+  globalThis.__adaptiveToolbarLayout = {
+    toolsLauncher: null,
+    contextBarLeading: null,
+    contextBarTrailing: null,
+    activeTransientPanelId: "",
+    closeDrawer() {},
+  };
+  const SelectionToolbar = await loadSelectionToolbar();
+  const mounted = await createMounted(
+    SelectionToolbar,
+    {
+      context: {
+        version: 1,
+        kind: "grid-range",
+        id: "cell:sheet:A1:C3",
+        label: "A1:C3",
+        controls: [
+          {
+            id: "primary",
+            kind: "action",
+            label: "Primary",
+            placement: "primary",
+          },
+          { id: "cjk", kind: "action", label: "较长的中文属性" },
+          { id: "ordinary", kind: "action", label: "Ordinary" },
+          { id: "danger", kind: "action", label: "Delete", danger: true },
+        ],
+      },
+      onCommand() {},
+    },
+    "floating",
+  );
+  try {
+    const toolbar = mounted.host.querySelector('[role="toolbar"]');
+    assert.ok(toolbar);
+    assert.equal(
+      toolbar.getAttribute("data-selection-visible-controls"),
+      "primary",
+    );
+    assert.equal(
+      toolbar.getAttribute("data-selection-overflow-controls"),
+      "cjk ordinary danger",
+    );
+    assert.ok(
+      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
+      "remaining-width overflow must keep More reachable",
+    );
+  } finally {
+    await mounted.unmount();
+    globalThis.__adaptiveToolbarLayout = null;
+    toolbarOffsetLeft = 0;
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;
   }
 });

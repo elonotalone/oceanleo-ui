@@ -16,12 +16,14 @@ export function SelectionToolbarNumberControl({
   iconOnly,
   icon,
   emit,
+  forMeasurement = false,
 }: {
   control: SelectionControl;
   menu: boolean;
   iconOnly: boolean;
   icon: ReactNode;
   emit: (value?: SelectionControlValue) => void;
+  forMeasurement?: boolean;
 }) {
   const composingRef = useRef(false);
   const value = asNumber(control.value);
@@ -30,6 +32,7 @@ export function SelectionToolbarNumberControl({
     control.disabled && control.unavailableReason
       ? `${control.label}：${control.unavailableReason}`
       : control.label;
+  const namedLabel = forMeasurement ? undefined : accessibleLabel;
   const clamp = (next: number) =>
     Math.min(
       control.max ?? Number.POSITIVE_INFINITY,
@@ -40,7 +43,7 @@ export function SelectionToolbarNumberControl({
       className={`flex h-11 max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
         menu ? "w-full" : ""
       }`}
-      title={accessibleLabel}
+      title={namedLabel}
     >
       {!iconOnly && (
         <span
@@ -63,9 +66,10 @@ export function SelectionToolbarNumberControl({
       <button
         type="button"
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onClick={() => emit(clamp(value - step))}
         className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-        aria-label={`${accessibleLabel} -`}
+        aria-label={namedLabel ? `${namedLabel} -` : undefined}
       >
         −
       </button>
@@ -76,6 +80,7 @@ export function SelectionToolbarNumberControl({
         max={control.max}
         step={step}
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onCompositionStart={() => {
           composingRef.current = true;
         }}
@@ -94,7 +99,7 @@ export function SelectionToolbarNumberControl({
           const next = Number(event.target.value);
           if (Number.isFinite(next)) emit(clamp(next));
         }}
-        aria-label={accessibleLabel}
+        aria-label={namedLabel}
         className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
           menu ? "min-w-10 flex-1" : "w-12"
         }`}
@@ -107,9 +112,10 @@ export function SelectionToolbarNumberControl({
       <button
         type="button"
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onClick={() => emit(clamp(value + step))}
         className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-        aria-label={`${accessibleLabel} +`}
+        aria-label={namedLabel ? `${namedLabel} +` : undefined}
       >
         +
       </button>

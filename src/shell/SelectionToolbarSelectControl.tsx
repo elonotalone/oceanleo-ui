@@ -21,6 +21,7 @@ export function SelectionToolbarSelectControl({
   accent,
   presentation,
   onActivated,
+  forMeasurement = false,
 }: {
   control: SelectionControl;
   selectionId: string;
@@ -30,6 +31,7 @@ export function SelectionToolbarSelectControl({
   accent: string;
   presentation: "compact" | "menu";
   onActivated?: () => void;
+  forMeasurement?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -41,6 +43,7 @@ export function SelectionToolbarSelectControl({
     control.disabled && control.unavailableReason
       ? `${control.label}：${control.unavailableReason}`
       : control.label;
+  const namedLabel = forMeasurement ? undefined : accessibleLabel;
   const selectedOption = (control.options || []).find(
     (option) => option.value === String(control.value ?? ""),
   );
@@ -63,8 +66,11 @@ export function SelectionToolbarSelectControl({
   return (
     <div
       className={`group/control relative min-w-0 shrink-0 ${menu ? "w-full" : ""}`}
-      title={`${accessibleLabel}：${selectedLabel}`}
+      title={
+        namedLabel ? `${namedLabel}：${selectedLabel}` : undefined
+      }
       onBlur={(event) => {
+        if (forMeasurement) return;
         const relatedTarget = event.relatedTarget as Node | null;
         if (
           !event.currentTarget.contains(relatedTarget) &&
@@ -78,12 +84,16 @@ export function SelectionToolbarSelectControl({
         ref={buttonRef}
         type="button"
         disabled={control.disabled}
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
-        aria-label={accessibleLabel}
-        aria-describedby={valueDescriptionId}
+        tabIndex={forMeasurement ? -1 : undefined}
+        onClick={() => {
+          if (forMeasurement) return;
+          setOpen((value) => !value);
+        }}
+        aria-haspopup={forMeasurement ? undefined : "listbox"}
+        aria-expanded={forMeasurement ? undefined : open}
+        aria-controls={!forMeasurement && open ? listboxId : undefined}
+        aria-label={namedLabel}
+        aria-describedby={forMeasurement ? undefined : valueDescriptionId}
         className={buttonClass}
       >
         {control.icon && (
@@ -106,11 +116,13 @@ export function SelectionToolbarSelectControl({
         </span>
         <span className="shrink-0 text-[9px] opacity-50">⌄</span>
       </button>
-      <span id={valueDescriptionId} className="sr-only">
-        当前值：{selectedLabel}
-      </span>
+      {!forMeasurement && (
+        <span id={valueDescriptionId} className="sr-only">
+          当前值：{selectedLabel}
+        </span>
+      )}
       <AnchoredPopover
-        open={open}
+        open={!forMeasurement && open}
         anchorRef={buttonRef}
         panelRef={menuRef}
         onClose={() => setOpen(false)}

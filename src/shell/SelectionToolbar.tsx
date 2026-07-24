@@ -322,6 +322,7 @@ export function SelectionToolbar({
         canonicalDesignText={canonicalDesignText}
         activePanel={false}
         presentation="compact"
+        forMeasurement
       />
     </div>
   );

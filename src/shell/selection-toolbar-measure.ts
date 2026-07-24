@@ -102,10 +102,25 @@ export function toolbarContainerInlineSize(
     (variant === "floating" || dockedHost) &&
     typeof window !== "undefined"
   ) {
-    const viewportWidth =
-      window.visualViewport?.width || window.innerWidth;
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft || 0;
+    const viewportWidth = viewport?.width || window.innerWidth;
+    const viewportRight = viewportLeft + viewportWidth;
     // SelectionToolbar itself keeps one rem of reachable space per side.
     width = Math.min(width, Math.max(0, viewportWidth - 32));
+    if (variant === "floating") {
+      // Transformed floating hosts can sit near the right edge. Capacity must
+      // be the remaining reachable strip from the live left edge, otherwise More
+      // collapses too early and the bar grows past the viewport at medium widths.
+      const originLeft =
+        Number.isFinite(toolbarRect.left) && toolbarRect.width > 0
+          ? toolbarRect.left
+          : floatingHost?.getBoundingClientRect().left || viewportLeft;
+      const reachableWidth = Math.max(0, viewportRight - originLeft - 16);
+      if (reachableWidth > 0) {
+        width = Math.min(width, reachableWidth);
+      }
+    }
   }
   return width;
 }

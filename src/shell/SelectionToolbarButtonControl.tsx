@@ -18,6 +18,7 @@ export function SelectionToolbarButtonControl({
   onOpenPanel,
   onActivated,
   emit,
+  forMeasurement = false,
 }: {
   control: SelectionControl;
   buttonClass: string;
@@ -32,16 +33,21 @@ export function SelectionToolbarButtonControl({
   ) => void;
   onActivated?: () => void;
   emit: (value?: SelectionControlValue) => void;
+  forMeasurement?: boolean;
 }) {
   const accessibleLabel =
     control.disabled && control.unavailableReason
       ? `${control.label}：${control.unavailableReason}`
       : control.label;
+  // Measurement clones must omit aria-label/title so the live toolbar's
+  // accessible names stay unique under the same role=toolbar root.
+  const namedLabel = forMeasurement ? undefined : accessibleLabel;
   if (control.kind === "action" || control.kind === "panel") {
     return (
       <button
         type="button"
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onClick={() => {
           if (control.kind === "panel" && onOpenPanel) {
             onOpenPanel(control.panelId || control.id, control.panelAction);
@@ -57,8 +63,8 @@ export function SelectionToolbarButtonControl({
             ? "text-rose-600 hover:bg-rose-500/10"
             : ""
         }`}
-        title={accessibleLabel}
-        aria-label={accessibleLabel}
+        title={namedLabel}
+        aria-label={namedLabel}
         aria-haspopup={control.kind === "panel" ? "dialog" : undefined}
         aria-expanded={control.kind === "panel" ? activePanel : undefined}
         aria-controls={
@@ -90,6 +96,7 @@ export function SelectionToolbarButtonControl({
         type="button"
         aria-pressed={active}
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onClick={() => {
           emit(!active);
           onActivated?.();
@@ -98,8 +105,8 @@ export function SelectionToolbarButtonControl({
           active ? "text-white shadow-sm" : ""
         }`}
         style={active ? { background: accent } : undefined}
-        title={accessibleLabel}
-        aria-label={accessibleLabel}
+        title={namedLabel}
+        aria-label={namedLabel}
       >
         {icon}
         {!iconOnly && (
@@ -121,8 +128,7 @@ export function SelectionToolbarButtonControl({
         className={`${buttonClass} relative ${
           iconOnly ? "w-11 px-0" : ""
         } focus-within:ring-2 focus-within:ring-[var(--accent,#7c3aed)]/40`}
-        title={accessibleLabel}
-        aria-label={accessibleLabel}
+        title={namedLabel}
       >
         <span className="relative grid h-5 w-5 place-items-center">
           {icon}
@@ -140,11 +146,12 @@ export function SelectionToolbarButtonControl({
           type="color"
           value={color}
           disabled={control.disabled}
+          tabIndex={forMeasurement ? -1 : undefined}
           onChange={(event) => {
             emit(event.target.value);
             onActivated?.();
           }}
-          aria-label={accessibleLabel}
+          aria-label={namedLabel}
           className="absolute inset-0 cursor-pointer opacity-0"
         />
       </label>

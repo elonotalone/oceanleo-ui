@@ -43,6 +43,7 @@ export function SelectionToolbarControl({
   activePanel = false,
   presentation = "compact",
   onActivated,
+  forMeasurement = false,
 }: {
   control: SelectionControl;
   selectionId: string;
@@ -55,6 +56,7 @@ export function SelectionToolbarControl({
   activePanel?: boolean;
   presentation?: "compact" | "menu";
   onActivated?: () => void;
+  forMeasurement?: boolean;
 }) {
   const menu = presentation === "menu";
   const iconOnly = !menu && selectionControlUsesIconOnly(control);
@@ -107,6 +109,9 @@ export function SelectionToolbarControl({
       control.disabled && control.unavailableReason
         ? `${control.label}：${control.unavailableReason}`
         : control.label;
+    const namedAlignmentLabel = forMeasurement
+      ? undefined
+      : `${alignmentLabel}: ${current || "未设置"}`;
     const alignmentIcon =
       current === "center"
         ? "align-center"
@@ -119,13 +124,15 @@ export function SelectionToolbarControl({
       <button
         type="button"
         disabled={control.disabled}
+        tabIndex={forMeasurement ? -1 : undefined}
         onClick={() => {
+          if (forMeasurement) return;
           emit(next);
           onActivated?.();
         }}
         className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""}`}
-        title={`${alignmentLabel}: ${current || "未设置"}`}
-        aria-label={`${alignmentLabel}: ${current || "未设置"}`}
+        title={namedAlignmentLabel}
+        aria-label={namedAlignmentLabel}
         aria-pressed={current !== undefined}
         data-selection-alignment={current || "unset"}
       >
@@ -158,6 +165,7 @@ export function SelectionToolbarControl({
         onOpenPanel={onOpenPanel}
         onActivated={onActivated}
         emit={emit}
+        forMeasurement={forMeasurement}
       />
     );
   }
@@ -172,6 +180,7 @@ export function SelectionToolbarControl({
         accent={accent}
         presentation={presentation}
         onActivated={onActivated}
+        forMeasurement={forMeasurement}
       />
     );
   }
@@ -183,6 +192,7 @@ export function SelectionToolbarControl({
         iconOnly={iconOnly}
         icon={icon}
         emit={emit}
+        forMeasurement={forMeasurement}
       />
     );
   }
