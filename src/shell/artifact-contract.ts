@@ -1062,9 +1062,90 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Opaque token access path (browser-safe without Bearer). */
+const ARTIFACT_ACCESS_PATH =
+  /^\/v1\/artifact-renditions\/access\/[^/?#]+$/;
+const PUBLIC_ARTIFACT_ACCESS_PATH =
+  "/v1/artifact-renditions/access/public";
+/** Auth-gated source-tree entrypoint; must stay gateway-relative for normalize. */
+const ARTIFACT_SOURCE_TREE_PATH =
+  /^\/v1\/artifacts\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/revisions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/source-tree\/@source$/;
+
+/**
+ * Allowlisted gateway-relative rendition identities. Source-tree paths require
+ * Bearer and must never be absolutized for anonymous browser GETs; opaque
+ * access tokens and public thumbnail/preview query identities remain valid.
+ */
+export function isAllowlistedGatewayRelativeRenditionUrl(
+  value: string,
+): boolean {
+  if (ARTIFACT_ACCESS_PATH.test(value)) return true;
+  if (ARTIFACT_SOURCE_TREE_PATH.test(value)) return true;
+  try {
+    const parsed = new URL(value, "https://gateway.invalid");
+    const keys = [...new Set(parsed.searchParams.keys())].sort();
+    return (
+      value.startsWith("/") &&
+      !parsed.hash &&
+      parsed.pathname === PUBLIC_ARTIFACT_ACCESS_PATH &&
+      keys.join(",") === "artifactId,purpose,revisionId" &&
+      Boolean(parsed.searchParams.get("artifactId")) &&
+      Boolean(parsed.searchParams.get("revisionId")) &&
+      ["thumbnail", "preview"].includes(
+        parsed.searchParams.get("purpose") || "",
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** True when URL is the auth-gated source-tree entrypoint (relative or absolute). */
+export function isArtifactSourceTreeUrl(value: string): boolean {
+  const candidate = value.trim();
+  if (!candidate) return false;
+  if (ARTIFACT_SOURCE_TREE_PATH.test(candidate)) return true;
+  try {
+    const parsed = new URL(candidate);
+    return (
+      (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+      ARTIFACT_SOURCE_TREE_PATH.test(parsed.pathname) &&
+      !parsed.search &&
+      !parsed.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Prefer relative source-tree path over absolute API URLs (anonymous GET → 401). */
+export function artifactSourceTreeRelativePath(value: string): string {
+  const candidate = value.trim();
+  if (ARTIFACT_SOURCE_TREE_PATH.test(candidate)) return candidate;
+  try {
+    const parsed = new URL(candidate);
+    if (
+      ARTIFACT_SOURCE_TREE_PATH.test(parsed.pathname) &&
+      !parsed.search &&
+      !parsed.hash
+    ) {
+      return parsed.pathname;
+    }
+  } catch {
+    // not a URL
+  }
+  return "";
+}
+
 function trustedRenditionUrl(value: unknown): string {
   const candidate = text(value);
   if (!candidate || candidate.length > 4_096) return "";
+  // Fail-closed: never retain absolute source-tree API URLs for browser media.
+  const sourceTreeRelative = artifactSourceTreeRelativePath(candidate);
+  if (sourceTreeRelative) return sourceTreeRelative;
+  if (isAllowlistedGatewayRelativeRenditionUrl(candidate)) {
+    return candidate;
+  }
   try {
     const parsed = new URL(candidate);
     return parsed.protocol === "https:" ? parsed.toString() : "";
@@ -1110,6 +1191,35 @@ function normalizeArtifactType(value: unknown): ArtifactType | null {
     : null;
 }
 
+function preferOpaqueAccessOverSourceTree(
+  primaryUrl: string,
+  accessUrl: string,
+): string {
+  for (const candidate of [accessUrl, primaryUrl]) {
+    if (
+      candidate &&
+      !isArtifactSourceTreeUrl(candidate) &&
+      (ARTIFACT_ACCESS_PATH.test(candidate) ||
+        (() => {
+          try {
+            const parsed = new URL(candidate);
+            return (
+              parsed.protocol === "https:" &&
+              ARTIFACT_ACCESS_PATH.test(parsed.pathname) &&
+              !parsed.search &&
+              !parsed.hash
+            );
+          } catch {
+            return false;
+          }
+        })())
+    ) {
+      return candidate;
+    }
+  }
+  return primaryUrl;
+}
+
 function normalizeRendition(
   value: unknown,
   purposeHint: ArtifactRenditionPurpose,
@@ -1121,8 +1231,12 @@ function normalizeRendition(
   if (!RENDITION_PURPOSES.includes(purpose) || purpose !== purposeHint) {
     return null;
   }
+  const primaryUrl = text(raw.url, raw.signed_url, raw.signedUrl);
+  const accessUrl = text(raw.accessUrl, raw.access_url);
   const url = trustedRenditionUrl(
-    text(raw.url, raw.signed_url, raw.signedUrl),
+    purpose === "source"
+      ? preferOpaqueAccessOverSourceTree(primaryUrl, accessUrl)
+      : primaryUrl,
   );
   const renditionRevisionId = text(raw.revisionId, raw.revision_id);
   if (!url || !renditionRevisionId) return null;
@@ -1139,6 +1253,30 @@ function normalizeRendition(
     height: numberOrNull(raw.height),
     durationMs: numberOrNull(raw.durationMs ?? raw.duration_ms),
     digest: text(raw.digest, raw.sha256) || null,
+  };
+}
+
+function rewriteSourceTreeFromSameDigestFull(
+  renditions: Partial<Record<ArtifactRenditionPurpose, ArtifactRendition>>,
+): Partial<Record<ArtifactRenditionPurpose, ArtifactRendition>> {
+  const source = renditions.source;
+  const full = renditions.full;
+  if (
+    !source ||
+    !full?.url ||
+    !isArtifactSourceTreeUrl(source.url) ||
+    !source.digest ||
+    !full.digest ||
+    source.digest !== full.digest ||
+    isArtifactSourceTreeUrl(full.url)
+  ) {
+    return renditions;
+  }
+  const opaque = trustedRenditionUrl(full.url);
+  if (!opaque || isArtifactSourceTreeUrl(opaque)) return renditions;
+  return {
+    ...renditions,
+    source: { ...source, url: opaque },
   };
 }
 
@@ -1166,7 +1304,7 @@ function normalizeRenditions(
     );
     if (rendition) result[purpose] = rendition;
   }
-  return result;
+  return rewriteSourceTreeFromSameDigestFull(result);
 }
 
 function normalizeAccess(value: unknown): ArtifactAccess | null {

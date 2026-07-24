@@ -699,7 +699,7 @@ test("gateway-relative rendition access paths are qualified before normalization
   );
 });
 
-test("editable-shelf relative source-tree and public access URLs qualify before normalization", async () => {
+test("editable-shelf relative source-tree normalizes without absolutizing for anonymous GET", async () => {
   const artifactId = "8886a2d9-2869-4ae0-a806-0ff2c6429b15";
   const revisionId = "c7e14552-1c1a-4122-a26b-17d9e21d6f2e";
   const publicPreview =
@@ -728,7 +728,17 @@ test("editable-shelf relative source-tree and public access URLs qualify before 
   );
   assert.equal(
     result.data?.artifact?.renditions.source?.url,
-    `https://api.test${sourceTree}`,
+    sourceTree,
+  );
+  assert.equal(
+    result.data?.artifact?.renditions.source?.url.startsWith(
+      "https://api.test/v1/artifacts/",
+    ),
+    false,
+  );
+  assert.match(
+    result.data?.artifact?.renditions.source?.url || "",
+    /\/source-tree\/@source$/,
   );
 
   const rejected = projection({
@@ -744,6 +754,74 @@ test("editable-shelf relative source-tree and public access URLs qualify before 
   globalThis.fetch = async () => jsonResponse(rejected);
   const closed = await getArtifactItem(artifactId, revisionId);
   assert.equal(closed.ok, false);
+});
+
+test("qualified projection never exposes absolute gateway source-tree as browser source URL", async () => {
+  const artifactId = "8886a2d9-2869-4ae0-a806-0ff2c6429b15";
+  const revisionId = "c7e14552-1c1a-4122-a26b-17d9e21d6f2e";
+  const sourceTree =
+    `/v1/artifacts/${artifactId}/revisions/${revisionId}/source-tree/@source`;
+  const absoluteTree = `https://api.oceanleo.com${sourceTree}`;
+  const rawProjection = projection({
+    id: artifactId,
+    revisionId,
+    editable: true,
+    visibility: "public",
+    artifactType: "deck",
+  });
+  rawProjection.renditions.source.url = absoluteTree;
+  rawProjection.renditions.source.accessUrl = absoluteTree;
+  globalThis.fetch = async () => jsonResponse(rawProjection);
+
+  const result = await getArtifactItem(artifactId, revisionId);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data?.artifact?.renditions.source?.url, sourceTree);
+  assert.doesNotMatch(
+    result.data?.artifact?.renditions.source?.url || "",
+    /^https:\/\/api\.oceanleo\.com\/v1\/artifacts\//,
+  );
+});
+
+test("same-digest full opaque access rewrites source-tree for browser-safe source URL", async () => {
+  const artifactId = "5dbd9529-9a3e-40ae-9a06-25b1c484f661";
+  const revisionId = "e189054e-3ca6-4899-b6d3-4236088acc45";
+  const sourceTree =
+    `/v1/artifacts/${artifactId}/revisions/${revisionId}/source-tree/@source`;
+  const opaqueFull = "/v1/artifact-renditions/access/same-digest-token";
+  const digest =
+    "0b873e092f7f0123456789abcdef0123456789abcdef0123456789abcdef0123";
+  const rawProjection = projection({
+    id: artifactId,
+    revisionId,
+    editable: true,
+    visibility: "public",
+    artifactType: "single_file_image",
+  });
+  rawProjection.renditions.source.url = sourceTree;
+  rawProjection.renditions.source.accessUrl = sourceTree;
+  rawProjection.renditions.source.digest = digest;
+  rawProjection.renditions.full = {
+    purpose: "full",
+    revision_id: revisionId,
+    url: opaqueFull,
+    accessUrl: opaqueFull,
+    digest,
+    format: "png",
+  };
+  globalThis.fetch = async () => jsonResponse(rawProjection);
+
+  const result = await getArtifactItem(artifactId, revisionId);
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.data?.artifact?.renditions.source?.url,
+    `https://api.test${opaqueFull}`,
+  );
+  assert.doesNotMatch(
+    result.data?.artifact?.renditions.source?.url || "",
+    /source-tree/,
+  );
 });
 
 test("public stable rendition identities retain their exact query when qualified", async () => {

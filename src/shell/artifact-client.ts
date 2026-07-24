@@ -13,6 +13,8 @@ import {
   artifactIsVisible,
   isEnsureableTransient,
   normalizeArtifactContextRef,
+  artifactSourceTreeRelativePath,
+  isArtifactSourceTreeUrl,
   normalizeArtifactProjection,
   normalizeArtifactProjectionResult,
   type ArtifactApiErrorCode,
@@ -162,8 +164,6 @@ function trustedHttpsUrl(value: unknown): string {
 const ARTIFACT_ACCESS_PATH = /^\/v1\/artifact-renditions\/access\/[^/?#]+$/;
 const PUBLIC_ARTIFACT_ACCESS_PATH =
   "/v1/artifact-renditions/access/public";
-const ARTIFACT_SOURCE_TREE_PATH =
-  /^\/v1\/artifacts\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/revisions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/source-tree\/@source$/;
 const ARTIFACT_URL_FIELDS = new Set([
   "url",
   "accessUrl",
@@ -172,9 +172,13 @@ const ARTIFACT_URL_FIELDS = new Set([
   "signed_url",
 ]);
 
+/**
+ * Browser-safe gateway-relative identities that may be absolutized against
+ * GATEWAY_BASE. Auth-gated source-tree paths are intentionally excluded —
+ * absolutizing them yields anonymous HTTPS GETs that return HTTP 401.
+ */
 function isGatewayRelativeArtifactAccessUrl(value: string): boolean {
   if (ARTIFACT_ACCESS_PATH.test(value)) return true;
-  if (ARTIFACT_SOURCE_TREE_PATH.test(value)) return true;
   try {
     const parsed = new URL(value, "https://gateway.invalid");
     const keys = [...new Set(parsed.searchParams.keys())].sort();
@@ -188,6 +192,34 @@ function isGatewayRelativeArtifactAccessUrl(value: string): boolean {
       ["thumbnail", "preview"].includes(
         parsed.searchParams.get("purpose") || "",
       )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function digestField(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^sha256:/, "");
+}
+
+function sameRenditionDigest(left: unknown, right: unknown): boolean {
+  const a = digestField(left);
+  const b = digestField(right);
+  return Boolean(a && b && a === b);
+}
+
+function isOpaqueAccessUrl(value: string): boolean {
+  if (ARTIFACT_ACCESS_PATH.test(value)) return true;
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "https:" &&
+      ARTIFACT_ACCESS_PATH.test(parsed.pathname) &&
+      !parsed.search &&
+      !parsed.hash
     );
   } catch {
     return false;
@@ -342,25 +374,156 @@ function attachmentFilename(
   return `${stem.slice(0, Math.max(1, 180 - suffix.length))}${suffix}`;
 }
 
+function qualifyUrlField(entry: string): string {
+  // Never absolutize auth-gated source-tree paths for anonymous browser GETs.
+  const sourceTreeRelative = artifactSourceTreeRelativePath(entry);
+  if (sourceTreeRelative) return sourceTreeRelative;
+  if (!isGatewayRelativeArtifactAccessUrl(entry)) return entry;
+  const qualified = new URL(
+    entry,
+    `${GATEWAY_BASE.replace(/\/+$/, "")}/`,
+  ).toString();
+  return trustedHttpsUrl(qualified) || entry;
+}
+
+function rewriteSourceTreeUrlsInProjection(
+  value: unknown,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map(rewriteSourceTreeUrlsInProjection);
+  }
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    next[key] = rewriteSourceTreeUrlsInProjection(entry);
+  }
+
+  const source =
+    next.source && typeof next.source === "object" && !Array.isArray(next.source)
+      ? (next.source as Record<string, unknown>)
+      : null;
+  const full =
+    next.full && typeof next.full === "object" && !Array.isArray(next.full)
+      ? (next.full as Record<string, unknown>)
+      : null;
+  if (source && typeof source.url === "string" && isArtifactSourceTreeUrl(source.url)) {
+    const accessCandidate =
+      (typeof source.accessUrl === "string" && source.accessUrl) ||
+      (typeof source.access_url === "string" && source.access_url) ||
+      "";
+    let opaque = "";
+    if (isOpaqueAccessUrl(accessCandidate)) {
+      opaque = qualifyUrlField(accessCandidate);
+    } else if (
+      full &&
+      typeof full.url === "string" &&
+      isOpaqueAccessUrl(full.url) &&
+      sameRenditionDigest(source.digest, full.digest)
+    ) {
+      opaque = qualifyUrlField(full.url);
+    }
+    if (opaque && isOpaqueAccessUrl(opaque)) {
+      next.source = {
+        ...source,
+        url: opaque,
+        accessUrl: opaque,
+        access_url: opaque,
+      };
+    } else {
+      const relative = artifactSourceTreeRelativePath(source.url);
+      next.source = {
+        ...source,
+        url: relative || source.url,
+        ...(typeof source.accessUrl === "string" &&
+        isArtifactSourceTreeUrl(source.accessUrl)
+          ? {
+              accessUrl:
+                artifactSourceTreeRelativePath(source.accessUrl) ||
+                source.accessUrl,
+            }
+          : {}),
+        ...(typeof source.access_url === "string" &&
+        isArtifactSourceTreeUrl(source.access_url)
+          ? {
+              access_url:
+                artifactSourceTreeRelativePath(source.access_url) ||
+                source.access_url,
+            }
+          : {}),
+      };
+    }
+  }
+  return next;
+}
+
 function qualifyArtifactAccessUrls(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(qualifyArtifactAccessUrls);
   if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
+  const qualified = Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
-      if (
-        ARTIFACT_URL_FIELDS.has(key) &&
-        typeof entry === "string" &&
-        isGatewayRelativeArtifactAccessUrl(entry)
-      ) {
-        const qualified = new URL(
-          entry,
-          `${GATEWAY_BASE.replace(/\/+$/, "")}/`,
-        ).toString();
-        return [key, trustedHttpsUrl(qualified) || entry];
+      if (ARTIFACT_URL_FIELDS.has(key) && typeof entry === "string") {
+        return [key, qualifyUrlField(entry)];
       }
       return [key, qualifyArtifactAccessUrls(entry)];
     }),
   );
+  return rewriteSourceTreeUrlsInProjection(qualified);
+}
+
+/**
+ * Edit mounts must not hand browsers a naked source-tree API URL. Prefer an
+ * already-issued opaque access URL; otherwise mint a source grant (Bearer).
+ */
+async function upgradeSourceTreeForEditor(
+  projection: ArtifactProjection,
+  signal?: AbortSignal,
+): Promise<ArtifactProjection> {
+  const source = projection.renditions.source;
+  if (!source?.url || !isArtifactSourceTreeUrl(source.url)) {
+    return projection;
+  }
+  const full = projection.renditions.full;
+  if (
+    full?.url &&
+    isOpaqueAccessUrl(full.url) &&
+    sameRenditionDigest(source.digest, full.digest)
+  ) {
+    const opaque = trustedHttpsUrl(full.url) || full.url;
+    if (isOpaqueAccessUrl(opaque)) {
+      return {
+        ...projection,
+        renditions: {
+          ...projection.renditions,
+          source: { ...source, url: opaque },
+        },
+      };
+    }
+  }
+  const grant = await artifactRequest<unknown>(
+    `/v1/artifacts/${encodeURIComponent(
+      projection.artifactId,
+    )}/revisions/${encodeURIComponent(
+      projection.revisionId,
+    )}/renditions/source?mode=source`,
+    { signal },
+  );
+  if (!grant.ok || !grant.data || typeof grant.data !== "object") {
+    // Leave relative source-tree; never absolutize into an anonymous 401 URL.
+    return projection;
+  }
+  const raw = grant.data as Record<string, unknown>;
+  const grantUrl = trustedGatewayArtifactAccessUrl(
+    raw.accessUrl || raw.access_url || raw.url,
+  );
+  if (!grantUrl) return projection;
+  return {
+    ...projection,
+    renditions: {
+      ...projection.renditions,
+      source: { ...source, url: grantUrl },
+    },
+  };
 }
 
 function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
@@ -1462,7 +1625,7 @@ export async function getArtifactEditDecision(
   const normalizedProjection = normalizeArtifactProjectionResult(
     raw.item ?? raw.artifact,
   );
-  const projection = normalizedProjection.data;
+  let projection = normalizedProjection.data;
   const declaredCapability =
     typeof raw.editor_capability === "string"
       ? raw.editor_capability.trim()
@@ -1489,6 +1652,9 @@ export async function getArtifactEditDecision(
       status: result.status,
       retryable: false,
     };
+  }
+  if (raw.available === true) {
+    projection = await upgradeSourceTreeForEditor(projection, signal);
   }
   return {
     ...result,
