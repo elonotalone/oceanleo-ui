@@ -1,7 +1,10 @@
 import { unzipSync } from "fflate";
 
 import { fetchMediaBlob } from "../../lib/media-proxy";
-import type { ArtifactRenditionPurpose } from "../artifact-contract";
+import {
+  isArtifactSourceTreeUrl,
+  type ArtifactRenditionPurpose,
+} from "../artifact-contract";
 import type { LibraryItem } from "../library-data";
 
 export type OfficePackageKind = "pptx" | "xlsx" | "docx";
@@ -182,31 +185,36 @@ function renditionExplicitlyConflicts(
 /**
  * Office viewers/editors may consume only the editable source or full delivery.
  * A thumbnail/preview is often a PNG and is never a parser fallback.
+ * Auth-gated source-tree URLs must never be selected — sites do not proxy /v1
+ * and fetchMediaBlob refuses anonymous source-tree GETs.
  */
 export function officeRenditionPurposes(
   item: LibraryItem,
 ): readonly ArtifactRenditionPurpose[] {
   const kind = officePackageKindForItem(item);
-  if (!kind || !item.artifact) return ["source", "full"];
+  if (!kind || !item.artifact) return ["full"];
   const { source, full } = item.artifact.renditions;
+  const sourceBrowserSafe =
+    Boolean(source?.url) && !isArtifactSourceTreeUrl(source!.url);
   const sourceFormatMatches = kindForHint(item.artifact.sourceFormat) === kind;
   if (
-    (sourceFormatMatches &&
-      source?.url &&
-      !renditionExplicitlyConflicts(source, kind)) ||
-    renditionMatchesKind(source, kind)
+    sourceBrowserSafe &&
+    ((sourceFormatMatches && !renditionExplicitlyConflicts(source, kind)) ||
+      renditionMatchesKind(source, kind))
   ) {
     return ["source", "full"];
   }
-  if (renditionMatchesKind(full, kind)) return ["full", "source"];
+  if (renditionMatchesKind(full, kind)) return ["full"];
   if (
-    source?.url &&
+    sourceBrowserSafe &&
     renditionExplicitlyConflicts(source, kind) &&
     full?.url
   ) {
-    return ["full", "source"];
+    return ["full"];
   }
-  return ["source", "full"];
+  if (sourceBrowserSafe) return ["source", "full"];
+  // Leave source-tree off the purpose list; prepareArtifactForAction upgrades it.
+  return full?.url ? ["full"] : ["full", "preview"];
 }
 
 export function officeViewerRenditionPurposes(

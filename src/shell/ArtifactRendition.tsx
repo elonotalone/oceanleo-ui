@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   artifactIsVisible,
+  isArtifactSourceTreeUrl,
   renditionNeedsRefresh,
   selectArtifactRendition,
   viewerRenditionOrder,
@@ -279,7 +280,12 @@ export function useArtifactRendition(
     };
   }
   return {
-    url: rendition?.url || initial?.url || "",
+    url:
+      rendition?.url && !isArtifactSourceTreeUrl(rendition.url)
+        ? rendition.url
+        : initial?.url && !isArtifactSourceTreeUrl(initial.url)
+          ? initial.url
+          : "",
     purpose: rendition?.purpose || initial?.purpose || null,
     rendition: rendition || initial,
     loading,
@@ -295,6 +301,8 @@ export function withResolvedRendition(
   state: Pick<ArtifactRenditionState, "url" | "purpose">,
 ): LibraryItem {
   if (!state.url) return item;
+  // Never overwrite LibraryItem.url with an auth-gated source-tree path.
+  if (isArtifactSourceTreeUrl(state.url)) return item;
   if (state.purpose === "thumbnail") {
     return { ...item, thumbUrl: state.url };
   }

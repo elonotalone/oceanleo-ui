@@ -2047,7 +2047,11 @@ export function selectArtifactRendition(
 ): ArtifactRendition | null {
   for (const purpose of purposes) {
     const rendition = artifact.renditions[purpose];
-    if (rendition?.url && rendition.revisionId === artifact.revisionId) {
+    if (
+      rendition?.url &&
+      rendition.revisionId === artifact.revisionId &&
+      !isArtifactSourceTreeUrl(rendition.url)
+    ) {
       return rendition;
     }
   }
