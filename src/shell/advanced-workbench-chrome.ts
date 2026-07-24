@@ -16,6 +16,11 @@ export interface AdvancedWorkbenchAction {
   busyLabel?: string;
   icon?: WorkbenchIconName;
   variant?: "default" | "primary" | "danger" | "icon";
+  /**
+   * Explicit semantic grouping for shared chrome. Download menus never infer
+   * membership from translated labels or route-specific ids.
+   */
+  group?: "download";
   disabled?: boolean;
   busy?: boolean;
   panelId?: string;

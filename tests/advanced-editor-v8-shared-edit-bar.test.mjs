@@ -568,6 +568,13 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
 });
 
 test("shared edit bar opens host tools, keeps values, and uses a focused vertical More dialog", async () => {
+  const anchoredPopoverUrl = await compileTsxUrl(
+    "src/shell/anchored-popover.tsx",
+    {
+      react: reactUrl,
+      "react-dom": pathToFileURL(require.resolve("react-dom")).href,
+    },
+  );
   const editorToolsIconUrl = await compileTsxUrl(
     "src/shell/EditorToolsIcon.tsx",
     {
@@ -584,6 +591,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       "./selection-toolbar-layout": pathToFileURL(
         resolve("src/shell/selection-toolbar-layout.ts"),
       ).href,
+      "./anchored-popover": anchoredPopoverUrl,
     },
   );
   const buttonControlUrl = await compileTsxUrl(
@@ -614,6 +622,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
         resolve("src/shell/selection-inspector-groups.ts"),
       ).href,
       "./selection-inspector-host": inspectorHostStubUrl,
+      "./anchored-popover": anchoredPopoverUrl,
       "./SelectionToolbarSelectControl": selectControlUrl,
       "./SelectionToolbarButtonControl": buttonControlUrl,
       "./SelectionToolbarNumberControl": numberControlUrl,
@@ -790,7 +799,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     );
     assert.ok(more);
     await click(more);
-    const dialog = mounted.container.querySelector(
+    const dialog = document.querySelector(
       '[role="dialog"][aria-label="更多属性 · 图片"]',
     );
     assert.ok(dialog);
@@ -814,7 +823,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
 
     await click(more);
     assert.ok(
-      mounted.container.querySelector(
+      document.querySelector(
         '[role="dialog"][aria-label="更多属性 · 图片"]',
       ),
     );
@@ -828,7 +837,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       );
     });
     assert.equal(
-      mounted.container.querySelector(
+      document.querySelector(
         '[role="dialog"][aria-label="更多属性 · 图片"]',
       ),
       null,
@@ -860,12 +869,20 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
 });
 
 test("global action bar no longer renders a second pencil tools launcher", async () => {
+  const anchoredPopoverUrl = await compileTsxUrl(
+    "src/shell/anchored-popover.tsx",
+    {
+      react: reactUrl,
+      "react-dom": pathToFileURL(require.resolve("react-dom")).href,
+    },
+  );
   const { AdvancedWorkspaceActionBar } = await loadTsx(
     "src/shell/AdvancedWorkspaceActionBar.tsx",
     {
       react: reactUrl,
       "../i18n/ui/useUI": uiStubUrl,
       "./AdvancedEditorIcon": iconStubUrl,
+      "./anchored-popover": anchoredPopoverUrl,
     },
   );
   let library = "";
@@ -894,6 +911,12 @@ test("global action bar no longer renders a second pencil tools launcher", async
           id: "export-secondary",
           label: "Secondary export",
           icon: "download",
+          group: "download",
+          onTrigger() {},
+        },
+        {
+          id: "retry-source",
+          label: "Retry source",
           onTrigger() {},
         },
       ],
@@ -923,8 +946,12 @@ test("global action bar no longer renders a second pencil tools launcher", async
     );
     assert.ok(
       mounted.container.querySelector(
-        'button[aria-label="Secondary export"]',
+        'button[aria-label="Retry source"]',
       ),
+    );
+    assert.equal(
+      mounted.container.querySelector('button[aria-label="Secondary export"]'),
+      null,
     );
     assert.equal(
       mounted.container
@@ -932,8 +959,37 @@ test("global action bar no longer renders a second pencil tools launcher", async
         ?.getAttribute("aria-pressed"),
       "true",
     );
-    assert.ok(
-      mounted.container.querySelector('button[aria-label="Download"]'),
+    const downloadLauncher = mounted.container.querySelector(
+      '[data-workspace-download-launcher]',
+    );
+    assert.ok(downloadLauncher);
+    assert.equal(
+      mounted.container.querySelectorAll("[data-workspace-download-launcher]")
+        .length,
+      1,
+    );
+    assert.equal(downloadLauncher.getAttribute("aria-expanded"), "false");
+    await click(downloadLauncher);
+    const downloadMenu = document.querySelector(
+      "[data-workspace-download-menu]",
+    );
+    assert.ok(downloadMenu);
+    assert.equal(downloadLauncher.getAttribute("aria-expanded"), "true");
+    assert.deepEqual(
+      [...downloadMenu.querySelectorAll("[data-workspace-export-action-id]")].map(
+        (action) => [
+          action.dataset.workspaceExportActionId,
+          action.dataset.workspaceExportActionKind,
+        ],
+      ),
+      [
+        ["download", "default"],
+        ["export-secondary", "secondary"],
+      ],
+    );
+    assert.equal(
+      downloadMenu.querySelectorAll('button[role="menuitem"]').length,
+      2,
     );
     const materials = [...mounted.container.querySelectorAll("button")].find(
       (button) => button.textContent.includes("素材库"),

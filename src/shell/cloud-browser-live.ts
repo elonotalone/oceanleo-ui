@@ -523,17 +523,20 @@ export function useCloudBrowserFramePainter(options: {
   const cancelFrameDecode = useCallback((
     clearCanvas = false,
     preservePendingMeta = false,
+    notifyDropped = true,
   ) => {
     const generation = frameDecodeGenerationRef.current;
     ++frameDecodeGenerationRef.current;
     if (!preservePendingMeta) pendingFrameMetaRef.current = null;
     const active = activeBlobFrameRef.current;
     if (active?.generation === generation) {
-      dropBlobFrame(active);
+      if (notifyDropped) dropBlobFrame(active);
+      else active.settled = true;
     }
     const pending = pendingBlobFrameRef.current;
     if (pending?.generation === generation) {
-      dropBlobFrame(pending);
+      if (notifyDropped) dropBlobFrame(pending);
+      else pending.settled = true;
     }
     pendingBlobFrameRef.current = null;
     lastPresentedSequenceRef.current = 0;

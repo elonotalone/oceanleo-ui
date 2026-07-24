@@ -272,6 +272,7 @@ function toolbarRectMock() {
 window.HTMLElement.prototype.getBoundingClientRect = toolbarRectMock;
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 function dataModule(source) {
@@ -304,6 +305,13 @@ async function compileTsxUrl(relativePath, replacements) {
 }
 
 async function loadSelectionToolbar() {
+  const anchoredPopoverUrl = await compileTsxUrl(
+    "src/shell/anchored-popover.tsx",
+    {
+      react: reactUrl,
+      "react-dom": reactDomUrl,
+    },
+  );
   const iconStubUrl = dataModule(`
     import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
     export function AdvancedEditorIcon({ name, className }) {
@@ -355,6 +363,7 @@ async function loadSelectionToolbar() {
       "./selection-toolbar-layout": pathToFileURL(
         resolve("src/shell/selection-toolbar-layout.ts"),
       ).href,
+      "./anchored-popover": anchoredPopoverUrl,
     },
   );
   const toolbarUrl = await compileTsxUrl("src/shell/SelectionToolbar.tsx", {
@@ -371,6 +380,7 @@ async function loadSelectionToolbar() {
       resolve("src/shell/selection-inspector-groups.ts"),
     ).href,
     "./selection-inspector-host": inspectorHostStubUrl,
+    "./anchored-popover": anchoredPopoverUrl,
     "./SelectionToolbarButtonControl": buttonControlUrl,
     "./SelectionToolbarNumberControl": numberControlUrl,
     "./SelectionToolbarSelectControl": selectControlUrl,
@@ -497,10 +507,11 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     assert.equal(more.getAttribute("aria-haspopup"), "dialog");
     assert.equal(more.getAttribute("aria-expanded"), "false");
     await click(more);
-    const dialog = mounted.host.querySelector(
+    const dialog = document.querySelector(
       '[role="dialog"][aria-label="更多属性 · 表格"]',
     );
     assert.ok(dialog);
+    assert.equal(dialog.parentElement, document.body);
     assert.equal(more.getAttribute("aria-expanded"), "true");
     assert.equal(more.getAttribute("aria-controls"), dialog.id);
     assert.equal(
@@ -755,7 +766,7 @@ test("realistic grid live controls overflow into More under docked real width", 
     );
     assert.ok(more);
     await click(more);
-    const dialog = mounted.host.querySelector(
+    const dialog = document.querySelector(
       '[role="dialog"][data-selection-overflow-live-capability="grid"]',
     );
     assert.ok(dialog);

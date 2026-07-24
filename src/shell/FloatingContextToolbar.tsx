@@ -62,17 +62,24 @@ export function FloatingContextToolbar({
   if (!controller.portalRoot) return null;
   return createPortal(
     <div
-      data-advanced-context-row
-      data-workspace-floating-toolbar
-      data-edit-bar-mode="floating"
-      ref={controller.toolbarRef}
-      className="absolute left-0 top-0 z-[2147483000] inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
-      style={{
-        ...advancedWorkbenchStyle(accent),
-        transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
-      }}
+      data-workspace-floating-toolbar-overlay
+      data-floating-toolbar-boundary="editor-stage"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+      style={{ contain: "layout paint", zIndex: 2_147_483_000 }}
     >
-      {children}
+      <div
+        data-advanced-context-row
+        data-workspace-floating-toolbar
+        data-edit-bar-mode="floating"
+        ref={controller.toolbarRef}
+        className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
+        style={{
+          ...advancedWorkbenchStyle(accent),
+          transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
+        }}
+      >
+        {children}
+      </div>
     </div>,
     controller.portalRoot,
   );

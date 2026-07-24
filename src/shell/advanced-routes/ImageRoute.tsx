@@ -246,6 +246,7 @@ export function ImageRoute({
             id: "image-export",
             label: "导出图片",
             icon: "download",
+            group: "download",
             panelId: "image-export",
             disabled: editor.loading,
           },

@@ -18,7 +18,10 @@ import {
 import type { SelectionContext } from "./selection-context";
 import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
-import { useEmbedEditorMessages } from "./use-embed-editor-messages";
+import {
+  useEmbedEditorMessages,
+  type EmbedEditorStatus,
+} from "./use-embed-editor-messages";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
 import { editorRouteFor } from "./workbench-routes";
 import { buildOpenAssetPayload } from "./website-embed-params";
@@ -92,7 +95,7 @@ export function EmbedEditorPane({
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<EmbedEditorStatus | null>(null);
   const instanceId = useRef(
     `wb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   ).current;
@@ -229,6 +232,15 @@ export function EmbedEditorPane({
     onSaveResult,
     onVersionSaved,
   });
+
+  useEffect(() => {
+    if (!status || status.severity === "fatal") return;
+    const timer = window.setTimeout(
+      () => setStatus((current) => (current === status ? null : current)),
+      status.retryable ? 8_000 : 5_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   useEffect(() => {
     if (phase !== "connecting" || !frameLoaded) return;
@@ -390,7 +402,11 @@ export function EmbedEditorPane({
         latestSelectionRef.current,
       )
     ) {
-      setStatus(tt("选择已变化，请重新选择后再编辑。"));
+      setStatus({
+        message: tt("选择已变化，请重新选择后再编辑。"),
+        severity: "warning",
+        retryable: true,
+      });
       onSelectionResult?.({
         requestId: selectionCommand.requestId,
         ok: false,
@@ -438,7 +454,7 @@ export function EmbedEditorPane({
       )}
       {(phase === "error" || !src) && (
         <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--card,#fff)]">
-          <div className="max-w-sm text-center">
+          <div className="max-w-sm text-center" role="alert">
             <p className="text-[13px] font-medium text-[var(--fg,#292524)]">
               {tt(src ? "编辑器连接超时" : "编辑器地址不受信任")}
             </p>
@@ -459,7 +475,7 @@ export function EmbedEditorPane({
                   projectRequestsRef.current.clear();
                   latestProjectManifestRevisionRef.current = null;
                   onProtocolReset?.();
-                  setStatus("");
+                  setStatus(null);
                   setFrameLoaded(false);
                   setPhase("connecting");
                   setAttempt((value) => value + 1);
@@ -475,15 +491,25 @@ export function EmbedEditorPane({
       )}
       {status && phase === "ready" && (
         <div
-          role="alert"
-          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-red-700 px-3 py-2 text-[11px] text-white shadow-lg"
+          role={status.severity === "fatal" ? "alert" : "status"}
+          aria-live={status.severity === "fatal" ? "assertive" : "polite"}
+          aria-atomic="true"
+          data-editor-status-severity={status.severity}
+          data-editor-status-code={status.code || undefined}
+          className={`absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl border px-3 py-2 text-[11px] shadow-lg ${
+            status.severity === "fatal"
+              ? "border-red-800 bg-red-700 text-white"
+              : status.severity === "warning"
+                ? "border-amber-300 bg-amber-50 text-amber-950"
+                : "border-sky-200 bg-sky-50 text-sky-950"
+          }`}
         >
-          <span>{status}</span>
+          <span>{status.message}</span>
           <button
             type="button"
-            onClick={() => setStatus("")}
-            className="rounded px-1 font-bold hover:bg-[rgba(255,255,255,.15)]"
-            aria-label={tt("关闭错误提示")}
+            onClick={() => setStatus(null)}
+            className="rounded px-1 font-bold hover:bg-black/10"
+            aria-label={tt("关闭提示")}
           >
             ×
           </button>

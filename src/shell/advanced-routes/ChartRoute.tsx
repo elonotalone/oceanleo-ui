@@ -214,6 +214,7 @@ export function ChartRoute({
           {
             id: "chart-download-svg",
             label: "导出 SVG",
+            group: "download",
             busy: exporting,
             disabled: exporting || exportUnavailable,
             onTrigger: () => exportImage("svg"),
@@ -221,6 +222,7 @@ export function ChartRoute({
           {
             id: "chart-download-json",
             label: "导出结构化 JSON",
+            group: "download",
             disabled: exporting || exportUnavailable,
             onTrigger: exportJson,
           },

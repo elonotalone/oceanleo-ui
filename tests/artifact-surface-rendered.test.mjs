@@ -1425,6 +1425,8 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
     ...ensuredProjection.renditions.source,
     url: "https://signed.test/ensured-upload-source.docx",
     format: "docx",
+    media_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   };
   const transient = {
     schema: "oceanleo.transient-generation.v1",
@@ -1463,6 +1465,9 @@ test("ensure receipt and pinned download preserve durable identity", async () =>
         mode: "source",
         access_url: "/v1/artifact-renditions/access/source-token",
         expires_at: new Date(Date.now() + 300_000).toISOString(),
+        media_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        format: "docx",
       });
     }
     return jsonResponse(ensuredProjection);
@@ -1507,11 +1512,16 @@ test("download export falls back from unavailable source to full then preview", 
     revision_id: "r1",
     url: "https://signed.test/download-full.pdf",
     format: "pdf",
+    media_type: "application/pdf",
   };
   const previewProjection = projection({
     id: "download-preview",
     title: "Preview export",
   });
+  previewProjection.renditions.preview = {
+    ...previewProjection.renditions.preview,
+    media_type: "image/png",
+  };
   const calls = [];
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -1527,6 +1537,8 @@ test("download export falls back from unavailable source to full then preview", 
         mode: "export",
         access_url: `/v1/artifact-renditions/access/${purpose}-token`,
         expires_at: new Date(Date.now() + 300_000).toISOString(),
+        media_type: purpose === "full" ? "application/pdf" : "image/png",
+        format: purpose === "full" ? "pdf" : "png",
       });
     }
     return jsonResponse(

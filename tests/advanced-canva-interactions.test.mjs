@@ -123,7 +123,14 @@ test("advanced editors autosave projects and reserve header actions for delivery
   assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
   assert.match(imagePersistence, /persistImageProject/);
   assert.match(imagePersistence, /saveProjectWorkingHead/);
-  assert.doesNotMatch(imagePersistence, /previewUpload|new File\(\[blob\]/);
+  assert.match(
+    imagePersistence,
+    /const \[sourceUpload, previewUpload\] = await Promise\.all/,
+  );
+  assert.match(
+    imagePersistence,
+    /createArtifactRevision\(item\.artifactId/,
+  );
   assert.match(imageHook, /uploadFile\(file/);
   assert.doesNotMatch(imageHook, /URL\.createObjectURL\(file\)/);
 

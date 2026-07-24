@@ -316,6 +316,7 @@ export function EmbeddedRoute({
   const [editRevision, setEditRevision] = useState(0);
   const [closeRequestRevision, setCloseRequestRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [embeddedRecoveryReady, setEmbeddedRecoveryReady] = useState(false);
   const [remoteHistoryState, setRemoteHistoryState] =
     useState<EditorHistorySnapshot>({ canUndo: false, canRedo: false });
   const [remoteToolsManifest, setRemoteToolsManifest] = useState<{
@@ -387,6 +388,10 @@ export function EmbeddedRoute({
   const recoveryRestoreRef = useRef<{
     recoveryId: string;
     snapshot: EditorRecoverySnapshot;
+    generation: number;
+    promise: Promise<boolean>;
+    resolve: (restored: boolean) => void;
+    timer: number;
   } | null>(null);
   const [designSourceBinding, setDesignSourceBinding] =
     useState<DesignSourceBinding | null>(null);
@@ -396,7 +401,6 @@ export function EmbeddedRoute({
     useState(0);
   const [designHandshakeError, setDesignHandshakeError] = useState("");
   const designFrameContainerRef = useRef<HTMLDivElement>(null);
-  recoveryRestoreRef.current = recoveryRestore;
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
   const embeddedEditorBase = route.type === "embed" ? route.base : "";
   const embeddedAdapterId =
@@ -821,8 +825,14 @@ export function EmbeddedRoute({
     setProjectCommand(null);
     setRecoveryCaptureRequestId("");
     setRecoveryRestore(null);
-    recoveryRestoreRef.current = null;
+    const pendingRestore = recoveryRestoreRef.current;
+    if (pendingRestore) {
+      window.clearTimeout(pendingRestore.timer);
+      pendingRestore.resolve(false);
+      recoveryRestoreRef.current = null;
+    }
     setDirty(false);
+    setEmbeddedRecoveryReady(false);
     setEditRevision(0);
     lastDirtyRevisionRef.current = null;
     remoteRevisionRef.current = null;
@@ -832,6 +842,9 @@ export function EmbeddedRoute({
   const handleDirtyChange = useCallback(
     (nextDirty: boolean, remoteRevision?: number) => {
       setDirty(nextDirty);
+      const hasRemoteRevision =
+        Number.isSafeInteger(remoteRevision) && Number(remoteRevision) >= 0;
+      if (hasRemoteRevision) setEmbeddedRecoveryReady(true);
       if (!nextDirty) {
         lastDirtyRevisionRef.current = null;
         recoveryGenerationRef.current += 1;
@@ -847,7 +860,7 @@ export function EmbeddedRoute({
         }
         return;
       }
-      if (Number.isSafeInteger(remoteRevision) && Number(remoteRevision) >= 0) {
+      if (hasRemoteRevision) {
         const nextRemote = Number(remoteRevision);
         if (Object.is(nextRemote, lastDirtyRevisionRef.current)) return;
         lastDirtyRevisionRef.current = nextRemote;
@@ -894,8 +907,16 @@ export function EmbeddedRoute({
     setRemoteToolsManifest(null);
     setProjectManifest(null);
     setProjectCommand(null);
+    setEmbeddedRecoveryReady(false);
     setDesignSourceReceipt(null);
     setDesignHandshakeGeneration((value) => value + 1);
+    const pendingRestore = recoveryRestoreRef.current;
+    if (pendingRestore) {
+      window.clearTimeout(pendingRestore.timer);
+      pendingRestore.resolve(false);
+      recoveryRestoreRef.current = null;
+      setRecoveryRestore(null);
+    }
   }, []);
   const captureEmbeddedRecovery = useCallback(() => {
     const latest = recoverySnapshotRef.current;
@@ -976,11 +997,32 @@ export function EmbeddedRoute({
   );
   const restoreEmbeddedRecovery = useCallback((payload: unknown) => {
     if (!isEditorRecoverySnapshot(payload)) return false;
+    const active = recoveryRestoreRef.current;
+    if (active) return active.promise;
     const recoveryId = `recovery-restore-${Date.now().toString(36)}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
+    const generation = recoveryGenerationRef.current;
+    let resolvePromise!: (restored: boolean) => void;
+    const promise = new Promise<boolean>((resolve) => {
+      resolvePromise = resolve;
+    });
+    const timer = window.setTimeout(() => {
+      if (recoveryRestoreRef.current?.recoveryId !== recoveryId) return;
+      recoveryRestoreRef.current = null;
+      setRecoveryRestore(null);
+      resolvePromise(false);
+    }, 30_000);
+    recoveryRestoreRef.current = {
+      recoveryId,
+      snapshot: payload,
+      generation,
+      promise,
+      resolve: resolvePromise,
+      timer,
+    };
     setRecoveryRestore({ recoveryId, snapshot: payload });
-    return true;
+    return promise;
   }, []);
   const handleRecoveryResult = useCallback(
     (result: {
@@ -991,9 +1033,16 @@ export function EmbeddedRoute({
     }) => {
       const restored = recoveryRestoreRef.current;
       if (!restored || restored.recoveryId !== result.recoveryId) return;
+      window.clearTimeout(restored.timer);
       recoveryRestoreRef.current = null;
       setRecoveryRestore(null);
-      if (!result.ok) return;
+      if (
+        !result.ok ||
+        restored.generation !== recoveryGenerationRef.current
+      ) {
+        restored.resolve(false);
+        return;
+      }
       const revision = result.revision ?? restored.snapshot.revision;
       const snapshot = { ...restored.snapshot, revision };
       recoveryGenerationRef.current += 1;
@@ -1002,6 +1051,7 @@ export function EmbeddedRoute({
       remoteRevisionRef.current = revision;
       setDirty(true);
       setEditRevision((value) => value + 1);
+      restored.resolve(true);
     },
     [],
   );
@@ -1023,6 +1073,12 @@ export function EmbeddedRoute({
         window.clearTimeout(pendingRecovery.timer);
         pendingRecovery.reject(new Error("嵌入编辑器已关闭。"));
         recoveryCaptureRef.current = null;
+      }
+      const pendingRestore = recoveryRestoreRef.current;
+      if (pendingRestore) {
+        window.clearTimeout(pendingRestore.timer);
+        pendingRestore.resolve(false);
+        recoveryRestoreRef.current = null;
       }
     },
     [item.key],
@@ -1449,7 +1505,9 @@ export function EmbeddedRoute({
             : saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey(embeddedAdapterId, item),
-            ready: designHandshakeReady,
+            ready:
+              designHandshakeReady &&
+              (hostedMediaType !== "website" || embeddedRecoveryReady),
             capture: captureEmbeddedRecovery,
             restore: restoreEmbeddedRecovery,
           },

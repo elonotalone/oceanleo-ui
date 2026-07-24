@@ -157,6 +157,7 @@ export function useCloudBrowserTransport({
       (
         clearCanvas?: boolean,
         preservePendingMeta?: boolean,
+        notifyDropped?: boolean,
       ) => void
     >(() => {});
   const scheduleLiveRecoveryRef = useRef<
@@ -699,6 +700,7 @@ export function useCloudBrowserTransport({
       pendingBinaryRef,
       failureKindRef,
       transportStateRef,
+      fenceSerialRef,
       setProtocolVersion,
       setCurrentLease,
       setCapabilities,
@@ -710,6 +712,12 @@ export function useCloudBrowserTransport({
       transition,
       armFirstFrameTimeout,
       cancelFrameDecode,
+      resetStreamPaint: () => {
+        // Rebind abandons old decode work without emitting an old-stream
+        // dropped receipt after the binding refs have advanced.
+        cancelFrameDecode(false, false, false);
+        setHasCanvasFrame(false);
+      },
       acceptFrameMeta,
       reconcileControlIntent: () =>
         reconcileControlIntentRef.current(),

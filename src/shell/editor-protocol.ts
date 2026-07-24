@@ -28,6 +28,7 @@ export type {
   EditorHistorySnapshot,
   EditorMaterialAction,
   EditorMaterialInsertion,
+  EditorMessageSeverity,
   EditorProjectAction,
   EditorProjectIcon,
   EditorProjectManifest,
@@ -44,6 +45,18 @@ export { isEditorRecoverySnapshot } from "./editor-protocol-validation.mjs";
 
 export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
 const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
+const EDITOR_MESSAGE_SEVERITIES = new Set(["fatal", "warning", "info"]);
+
+function validIssueMetadata(record: Record<string, unknown>): boolean {
+  return (
+    (record.code === undefined ||
+      (boundedString(record.code, 100, true) &&
+        /^[A-Z0-9][A-Z0-9_.:-]*$/i.test(String(record.code)))) &&
+    (record.severity === undefined ||
+      EDITOR_MESSAGE_SEVERITIES.has(String(record.severity))) &&
+    (record.retryable === undefined || typeof record.retryable === "boolean")
+  );
+}
 
 function validTypedCompositeCommitMeta(
   value: unknown,
@@ -158,6 +171,7 @@ export function asEditorToHostMessage(
       !boundedString(record.recoveryId, 128, true) ||
       typeof record.ok !== "boolean" ||
       !boundedString(record.message, 1_000) ||
+      !validIssueMetadata(record) ||
       (record.ok === true
         ? !isEditorRecoverySnapshot(record.snapshot)
         : record.snapshot !== undefined ||
@@ -173,6 +187,7 @@ export function asEditorToHostMessage(
       typeof record.ok !== "boolean" ||
       (record.revision !== undefined && !validRevision(record.revision)) ||
       !boundedString(record.message, 1_000) ||
+      !validIssueMetadata(record) ||
       (record.ok === false && !boundedString(record.message, 1_000, true))
     ) {
       return null;
@@ -180,7 +195,12 @@ export function asEditorToHostMessage(
     return record as unknown as EditorToHostMessage;
   }
   if (type === "error") {
-    if (!boundedString(record.message, 1_000, true)) return null;
+    if (
+      !boundedString(record.message, 1_000, true) ||
+      !validIssueMetadata(record)
+    ) {
+      return null;
+    }
     return record as unknown as EditorToHostMessage;
   }
   if (type === "selection-changed") {

@@ -4,6 +4,7 @@ export type {
   EditorHistorySnapshot,
   EditorMaterialAction,
   EditorMaterialInsertion,
+  EditorMessageSeverity,
   EditorProjectAction,
   EditorProjectIcon,
   EditorProjectManifest,

@@ -54,6 +54,7 @@ export interface CloudBrowserProtocolContext {
   pendingBinaryRef: Ref<boolean>;
   failureKindRef: Ref<CloudBrowserFailureKind>;
   transportStateRef: Ref<CloudBrowserTransportState>;
+  fenceSerialRef: Ref<number>;
   setProtocolVersion: (version: 3 | null) => void;
   setCurrentLease: (
     lease: CloudBrowserControlLease,
@@ -71,6 +72,7 @@ export interface CloudBrowserProtocolContext {
   transition: (state: CloudBrowserTransportState) => void;
   armFirstFrameTimeout: () => void;
   cancelFrameDecode: (clearCanvas?: boolean) => void;
+  resetStreamPaint: () => void;
   acceptFrameMeta: (meta: ValidatedCloudBrowserFrameMeta) => boolean;
   reconcileControlIntent: () => void;
   recordDiagnostic: (diagnostic: CloudBrowserProtocolDiagnostic) => void;
@@ -116,6 +118,12 @@ function commit(
   next: CloudBrowserProtocolState,
   context: CloudBrowserProtocolContext,
 ) {
+  const streamBindingChanged =
+    next.streamId !== previous.streamId ||
+    next.streamGeneration !== previous.streamGeneration;
+  if (streamBindingChanged) {
+    ++context.fenceSerialRef.current;
+  }
   context.handshakeRef.current = next.handshake;
   context.sessionVersionRef.current = next.sessionVersion;
   context.runtimeIdRef.current = next.runtimeId;
@@ -198,6 +206,8 @@ export function handleCloudBrowserProtocolMessage(
       context.armFirstFrameTimeout();
     } else if (effect.type === "cancel_frame_decode") {
       context.cancelFrameDecode(false);
+    } else if (effect.type === "reset_stream_paint") {
+      context.resetStreamPaint();
     } else if (effect.type === "reconcile_control_intent") {
       context.reconcileControlIntent();
     } else if (effect.type === "accept_frame_meta") {

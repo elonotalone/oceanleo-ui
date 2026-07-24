@@ -7,7 +7,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { useAdvancedLayout } from "../advanced-layout-context";
 import { useCenteredWheelZoom } from "../use-centered-wheel-zoom";
 import {
@@ -21,12 +20,16 @@ import {
   deckMasterFor,
   deckTheme,
   type DeckElement,
-  type DeckSlide,
 } from "./deck-schema";
 import {
   DeckElementContent,
   deckShapeClipPath,
 } from "./DeckElementContent";
+import {
+  DeckElementSelectionChrome,
+  type DeckResizeHandleSpec,
+} from "./DeckElementSelectionChrome";
+import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
 import type { DeckInkStyle } from "./deck-ink";
 import {
   deckElementTextEditability,
@@ -49,11 +52,7 @@ interface ElementInteraction {
   preview: Partial<DeckElement>;
 }
 
-const RESIZE_HANDLES: {
-  id: DeckResizeHandle;
-  className: string;
-  cursor: string;
-}[] = [
+const RESIZE_HANDLES: DeckResizeHandleSpec[] = [
   { id: "nw", className: "-left-1.5 -top-1.5", cursor: "nwse-resize" },
   { id: "n", className: "left-1/2 -top-1.5 -translate-x-1/2", cursor: "ns-resize" },
   { id: "ne", className: "-right-1.5 -top-1.5", cursor: "nesw-resize" },
@@ -351,95 +350,18 @@ function PositionedSlideCanvas({
               </div>
               {selected && (
                 <>
-                  <div
-                    className="absolute left-1/2 top-[-44px] z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1 text-[var(--fg,#292524)] shadow-xl"
-                    style={{
-                      transform: `translateX(-50%) rotate(${-rendered.rotation}deg)`,
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    {textEditability.textBearing && (
-                      <button
-                        type="button"
-                        data-deck-edit-text
-                        disabled={!textEditability.editable}
-                        onClick={() => beginTextEditing(element.id)}
-                        className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:cursor-not-allowed disabled:opacity-35"
-                        title={
-                          textEditability.reason ||
-                          "编辑文字（选中后也可按 Enter 或 F2）"
-                        }
-                        aria-label={textEditability.actionLabel}
-                      >
-                        <AdvancedEditorIcon name="case" className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => layout?.openDrawer("agent")}
-                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-                      title="让 AI 改"
-                      aria-label="让 AI 改"
-                    >
-                      <AdvancedEditorIcon name="ai" className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={element.locked}
-                      onClick={editor.duplicateElement}
-                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:cursor-not-allowed disabled:opacity-35"
-                      title="复制"
-                      aria-label="复制"
-                    >
-                      <AdvancedEditorIcon name="duplicate" className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={editor.toggleElementLock}
-                      className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-                      title={element.locked ? "解锁" : "锁定"}
-                      aria-label={element.locked ? "解锁" : "锁定"}
-                    >
-                      <AdvancedEditorIcon
-                        name={element.locked ? "unlock" : "lock"}
-                        className="h-4 w-4"
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={element.locked}
-                      onClick={editor.deleteElement}
-                      className="grid h-7 w-7 place-items-center rounded-lg text-rose-600 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-35"
-                      title="删除"
-                      aria-label="删除"
-                    >
-                      <AdvancedEditorIcon name="delete" className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {!element.locked &&
-                    RESIZE_HANDLES.map((handle) => (
-                      <span
-                        key={handle.id}
-                        role="presentation"
-                        onPointerDown={(event) =>
-                          startInteraction(event, element, "resize", handle.id)
-                        }
-                        className={`absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[#8b5cf6] shadow ${handle.className}`}
-                        style={{ cursor: handle.cursor }}
-                      />
-                    ))}
-                  {!element.locked && (
-                    <>
-                      <span className="pointer-events-none absolute -bottom-7 left-1/2 h-7 w-px -translate-x-1/2 bg-[#8b5cf6]" />
-                      <span
-                        role="presentation"
-                        onPointerDown={(event) =>
-                          startInteraction(event, element, "rotate")
-                        }
-                        className="absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[#8b5cf6] shadow active:cursor-grabbing"
-                      />
-                    </>
-                  )}
+                  <DeckElementSelectionChrome
+                    element={element}
+                    rendered={rendered}
+                    textEditability={textEditability}
+                    resizeHandles={RESIZE_HANDLES}
+                    onStartInteraction={startInteraction}
+                    onBeginTextEditing={beginTextEditing}
+                    onAskAi={() => layout?.openDrawer("agent")}
+                    onDuplicate={editor.duplicateElement}
+                    onToggleLock={editor.toggleElementLock}
+                    onDelete={editor.deleteElement}
+                  />
                   {textEditability.textBearing &&
                     !textEditability.editable && (
                       <span
@@ -482,13 +404,7 @@ function SlideCanvas({
   activeTool: string;
   inkStyle: DeckInkStyle;
 }) {
-  const tt = useUI();
   const slide = editor.activeSlide;
-  const theme = deckTheme(editor.deck.theme);
-  const master = deckMasterFor(editor.deck, slide);
-  const isCenter = slide.layout === "title" || slide.layout === "section";
-  const hasImage = slide.layout === "image-left" || slide.layout === "image-right";
-  const imageLeft = slide.layout === "image-left";
 
   if (slide.elements.length > 0 || activeTool === "draw") {
     return (
@@ -500,92 +416,7 @@ function SlideCanvas({
     );
   }
 
-  const textPanel = (
-    <div className={`flex min-w-0 flex-1 flex-col ${isCenter ? "items-center justify-center text-center" : "justify-start"}`}>
-      <textarea
-        aria-label={tt("幻灯片标题")}
-        data-deck-edit-text
-        value={slide.title}
-        rows={isCenter ? 2 : 1}
-        {...deckTextGestureProps(editor, "title")}
-        placeholder={tt("输入标题")}
-        className={`w-full resize-none overflow-hidden bg-transparent font-bold outline-none placeholder:opacity-30 ${
-          isCenter ? "text-center text-[clamp(24px,4vw,54px)]" : "text-[clamp(20px,3vw,38px)]"
-        }`}
-        style={{
-          color: master.textColor || theme.text,
-          fontFamily: master.fontFamily || theme.fontFamily,
-        }}
-      />
-      {slide.layout !== "blank" && (
-        <textarea
-          aria-label={tt("幻灯片正文")}
-          value={slide.body}
-          rows={isCenter ? 3 : 5}
-          {...deckTextGestureProps(editor, "body")}
-          placeholder={tt("输入正文")}
-          className={`mt-3 w-full resize-none bg-transparent text-[clamp(12px,1.6vw,21px)] leading-relaxed outline-none placeholder:opacity-30 ${
-            isCenter ? "text-center" : "text-left"
-          }`}
-          style={{ color: theme.muted, fontFamily: theme.fontFamily }}
-        />
-      )}
-      {slide.layout !== "blank" && slide.bullets.length > 0 && (
-        <ul className={`mt-4 w-full space-y-2 text-[clamp(12px,1.5vw,20px)] ${isCenter ? "text-left" : ""}`} style={{ color: theme.text }}>
-          {slide.bullets.map((bullet, index) => (
-            <li key={`${index}-${bullet}`} className="flex gap-3">
-              <span className="mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: master.accentColor || theme.accent }} />
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-
-  const imagePanel = hasImage ? (
-    <div
-      className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-[min(2vw,24px)]"
-      style={{ background: theme.surface }}
-    >
-      {slide.image?.url ? (
-        <img
-          src={slide.image.url}
-          alt={slide.image.alt || ""}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <div className="grid h-full min-h-40 place-items-center border border-dashed border-current/20 text-[12px] opacity-45">
-          {tt("在左侧添加配图 URL")}
-        </div>
-      )}
-    </div>
-  ) : null;
-
-  return (
-    <div
-      data-deck-canvas
-      className="relative flex h-full w-full overflow-hidden rounded-lg p-[clamp(28px,5vw,72px)] shadow-2xl"
-      style={{
-        background: slide.background || master.background || theme.background,
-        color: master.textColor || theme.text,
-        fontFamily: master.fontFamily || theme.fontFamily,
-      }}
-    >
-      <div
-        className="absolute left-[clamp(28px,5vw,72px)] top-[clamp(20px,3vw,44px)] h-1 w-14 rounded-full"
-        style={{ background: master.accentColor || theme.accent }}
-      />
-      <div className={`flex min-h-0 w-full gap-[clamp(24px,4vw,64px)] ${hasImage ? "" : "items-stretch"}`}>
-        {imageLeft && imagePanel}
-        {textPanel}
-        {!imageLeft && imagePanel}
-      </div>
-      <span className="absolute bottom-4 right-5 text-[10px] opacity-40">
-        {editor.activeIndex + 1} / {editor.deck.slides.length}
-      </span>
-    </div>
-  );
+  return <DeckLegacySlideLayout editor={editor} slide={slide} />;
 }
 
 export function DeckStage({

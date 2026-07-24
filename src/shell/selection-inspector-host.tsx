@@ -9,8 +9,8 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import type { AdvancedLayoutState } from "./advanced-layout-context";
+import { AnchoredPopover } from "./anchored-popover";
 import { SelectionInspectorPanel } from "./SelectionInspectorPanel";
 import type { SelectionInspectorGroup } from "./selection-inspector-groups";
 import type {
@@ -18,22 +18,6 @@ import type {
   SelectionContext,
   SelectionPanelAction,
 } from "./selection-context";
-
-interface FallbackPosition {
-  left: number;
-  top: number;
-  width: number;
-  maxHeight: number;
-}
-
-function samePosition(left: FallbackPosition, right: FallbackPosition): boolean {
-  return (
-    left.left === right.left &&
-    left.top === right.top &&
-    left.width === right.width &&
-    left.maxHeight === right.maxHeight
-  );
-}
 
 function FallbackSelectionInspector({
   group,
@@ -48,100 +32,24 @@ function FallbackSelectionInspector({
   onCommand: (command: SelectionCommand) => void;
   accent: string;
   anchorRef: RefObject<HTMLElement | null>;
-  onClose: () => void;
+  onClose: (restoreFocus?: boolean) => void;
 }) {
   const labelId = useId();
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<FallbackPosition>({
-    left: 8,
-    top: 8,
-    width: 352,
-    maxHeight: 560,
-  });
-  const updatePosition = useCallback(() => {
-    const anchor = anchorRef.current?.getBoundingClientRect();
-    if (!anchor) return;
-    const margin = 8;
-    const width = Math.min(352, Math.max(240, window.innerWidth - margin * 2));
-    const maxHeight = Math.min(560, window.innerHeight - margin * 2);
-    const roomBelow = window.innerHeight - anchor.bottom - margin * 2;
-    const top =
-      roomBelow >= Math.min(320, maxHeight)
-        ? anchor.bottom + margin
-        : Math.max(margin, anchor.top - maxHeight - margin);
-    const next = {
-      left: Math.max(
-        margin,
-        Math.min(anchor.right - width, window.innerWidth - width - margin),
-      ),
-      top,
-      width,
-      maxHeight,
-    };
-    setPosition((current) => (samePosition(current, next) ? current : next));
-  }, [anchorRef]);
-
-  useLayoutEffect(() => {
-    updatePosition();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updatePosition);
-    if (anchorRef.current) observer?.observe(anchorRef.current);
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [anchorRef, updatePosition]);
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    const closeOutside = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (
-        panelRef.current?.contains(target) ||
-        anchorRef.current?.contains(target)
-      ) {
-        return;
-      }
-      onClose();
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    document.addEventListener("pointerdown", closeOutside);
-    const frame = window.requestAnimationFrame(() => {
-      panelRef.current
-        ?.querySelector<HTMLElement>(
-          "input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled)",
-        )
-        ?.focus();
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", closeOnEscape);
-      document.removeEventListener("pointerdown", closeOutside);
-    };
-  }, [anchorRef, onClose]);
-
-  return createPortal(
-    <div
-      ref={panelRef}
+  return (
+    <AnchoredPopover
+      open
+      anchorRef={anchorRef}
+      onClose={(reason) => onClose(reason !== "outside")}
       role="dialog"
-      aria-labelledby={labelId}
-      data-selection-inspector-fallback
-      className="fixed z-[2147483600] flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl"
-      style={{
-        left: position.left,
-        top: position.top,
-        width: position.width,
-        maxHeight: position.maxHeight,
+      ariaLabelledBy={labelId}
+      ariaModal={false}
+      align="end"
+      maxHeight={560}
+      attributes={{
+        "data-selection-inspector-fallback": true,
       }}
+      className="z-[2147483600] flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl"
+      style={{ width: 352 }}
     >
       <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border,#e7e5e4)] px-3">
         <h2
@@ -152,7 +60,7 @@ function FallbackSelectionInspector({
         </h2>
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => onClose()}
           aria-label="关闭属性面板"
           className="grid h-8 w-8 place-items-center rounded-lg text-[var(--muted,#78716c)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
         >
@@ -167,8 +75,7 @@ function FallbackSelectionInspector({
           accent={accent}
         />
       </div>
-    </div>,
-    document.body,
+    </AnchoredPopover>
   );
 }
 
@@ -200,11 +107,13 @@ export function useSelectionInspectorHost({
     groups.find(
       (group) => group.panelId === layout?.activeTransientPanelId,
     ) || null;
-  const closeFallback = useCallback(() => {
+  const closeFallback = useCallback((restoreFocus = true) => {
     setFallbackId("");
     const returnFocus = returnFocusRef.current;
     returnFocusRef.current = null;
-    window.requestAnimationFrame(() => returnFocus?.focus());
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => returnFocus?.focus());
+    }
   }, []);
 
   useEffect(() => {

@@ -248,6 +248,7 @@ test("recovery capture and restore preserve a real unconfirmed revision", () => 
   );
 
   const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const pane = source("../src/shell/workbench-embed.tsx");
   assert.match(route, /recovery:\s*\{/);
   assert.match(route, /advancedRecoveryKey\(embeddedAdapterId, item\)/);
   assert.match(route, /capture: captureEmbeddedRecovery/);
@@ -256,6 +257,74 @@ test("recovery capture and restore preserve a real unconfirmed revision", () => 
   assert.match(
     route,
     /handleRecoveryResult[\s\S]*?recoverySnapshotRef\.current = snapshot[\s\S]*?setDirty\(true\)/,
+  );
+  assert.match(route, /restoreEmbeddedRecovery[\s\S]*?return promise/);
+  assert.match(route, /restored\.resolve\(true\)/);
+  assert.match(
+    route,
+    /hostedMediaType !== "website" \|\| embeddedRecoveryReady/,
+  );
+  assert.match(
+    route,
+    /if \(hasRemoteRevision\) setEmbeddedRecoveryReady\(true\)[\s\S]*if \(!nextDirty\)/,
+    "a clean website session must unlock recovery after publishing its revision",
+  );
+  assert.match(
+    pane,
+    /if \(phase !== "ready" \|\| !recoveryRestore\) return/,
+    "restore may queue before handshake but cannot cross the iframe ready gate",
+  );
+});
+
+test("editor issues preserve legacy fatal behavior and validate optional severity", () => {
+  const warning = childRoundTrip({
+    type: "error",
+    message: "Preview is reconnecting",
+    severity: "warning",
+    code: "EDITOR_RECONNECTING",
+    retryable: true,
+  });
+  assert.equal(warning?.severity, "warning");
+  assert.equal(warning?.code, "EDITOR_RECONNECTING");
+  assert.equal(warning?.retryable, true);
+  assert.equal(
+    childRoundTrip({
+      type: "error",
+      message: "Legacy fatal error",
+    })?.type,
+    "error",
+    "v1 children without severity remain compatible",
+  );
+  assert.equal(
+    childRoundTrip({
+      type: "error",
+      message: "Unknown severity",
+      severity: "destructive",
+    }),
+    null,
+  );
+  assert.equal(
+    childRoundTrip({
+      type: "recovery-result",
+      recoveryId: "restore-failed",
+      ok: false,
+      message: "stale source",
+      code: "WEBSITE_RECOVERY_STALE_SOURCE",
+      severity: "fatal",
+    })?.code,
+    "WEBSITE_RECOVERY_STALE_SOURCE",
+  );
+
+  const messages = source("../src/shell/use-embed-editor-messages.ts");
+  const pane = source("../src/shell/workbench-embed.tsx");
+  assert.match(messages, /message\.severity \|\| "fatal"/);
+  assert.match(pane, /status\.severity === "fatal" \? "alert" : "status"/);
+  assert.match(pane, /aria-live=\{status\.severity === "fatal"/);
+  assert.match(pane, /status\.retryable \? 8_000 : 5_000/);
+  assert.match(pane, /data-editor-status-severity/);
+  assert.doesNotMatch(
+    pane,
+    /status && phase === "ready"[\s\S]{0,120}className="[^"]*bg-red-700/,
   );
 });
 
@@ -432,5 +501,5 @@ test("selection and project failures become host-visible errors", () => {
     host,
     /latestProjectManifestRevisionRef\.current[\s\S]*?staleMessage[\s\S]*?onProjectResult/,
   );
-  assert.match(host, /role="alert"/);
+  assert.match(host, /status\.severity === "fatal" \? "alert" : "status"/);
 });

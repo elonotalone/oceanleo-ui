@@ -80,9 +80,12 @@ export interface AdvancedEditorAdapter {
   contextToolbar?: ReactNode;
   /** Use when toolbar panel actions must explicitly target the host left pane. */
   renderContextToolbar?: (host: AdvancedContextToolbarHost) => ReactNode;
-  /** One-click default deliverable pinned in the native right PaneHeader. */
+  /** Default deliverable shown first inside the shared download menu. */
   directDownload?: AdvancedWorkbenchAction;
-  /** Secondary export formats/settings stay individually reachable beside it. */
+  /**
+   * Non-export actions stay in the workspace row. Secondary exports declare
+   * `group: "download"` and join directDownload in one anchored menu.
+   */
   actions?: readonly AdvancedWorkbenchAction[];
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;

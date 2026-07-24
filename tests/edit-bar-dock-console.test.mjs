@@ -20,6 +20,10 @@ import {
   parseEditBarDockState,
   serializeEditBarDockState,
 } from "../src/shell/edit-bar-dock-state.ts";
+import {
+  clampFloatingToolbarToBounds,
+  pointNearFloatingToolbarBounds,
+} from "../src/shell/floating-toolbar-geometry.ts";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -165,6 +169,7 @@ const hostUrl = await compileTsxUrl("src/shell/EditBarDockHost.tsx", {
   "./advanced-workbench-chrome": chromeStubUrl,
   "./edit-bar-dock-state": stateUrl,
 });
+const { EditBarDockHost } = await import(hostUrl);
 const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
@@ -235,10 +240,14 @@ function DockHarness({ storageKey }) {
   return React.createElement(
     "div",
     { ref: rootRef, "data-edit-bar-test-root": true },
-    React.createElement("div", {
-      ref: dockRef,
-      "data-edit-bar-test-dock": true,
-      "data-drop-highlight": String(controller.dropActive),
+    React.createElement(EditBarDockHost, {
+      hostRef: dockRef,
+      presentation: {
+        ownerId: "dock-harness",
+        mode: controller.mode,
+        dropActive: controller.dropActive,
+        accent: "#6d5dfc",
+      },
     }),
     React.createElement("div", {
       ref: stageRef,
@@ -286,6 +295,51 @@ test("dock state is versioned, bounded, and isolated per workbench", () => {
   );
 });
 
+test("floating geometry is stage-bounded inside a clipped non-layout overlay", async () => {
+  assert.deepEqual(
+    clampFloatingToolbarToBounds(
+      { x: 10_000, y: 10_000 },
+      { left: 40, top: 20, right: 640, bottom: 420 },
+      { width: 300, height: 52 },
+    ),
+    { x: 332, y: 360 },
+  );
+  assert.deepEqual(
+    clampFloatingToolbarToBounds(
+      { x: -10_000, y: -10_000 },
+      { left: 40, top: 20, right: 640, bottom: 420 },
+      { width: 300, height: 52 },
+    ),
+    { x: 48, y: 28 },
+  );
+  assert.equal(
+    pointNearFloatingToolbarBounds(
+      { x: 92, y: 30 },
+      { left: 100, top: 40, right: 900, bottom: 104 },
+      24,
+    ),
+    true,
+  );
+  const [floatingSource, controllerSource] = await Promise.all([
+    readFile(
+      new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/shell/edit-bar-dock-controller.tsx", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  assert.match(floatingSource, /data-workspace-floating-toolbar-overlay/);
+  assert.match(floatingSource, /pointer-events-none absolute inset-0 overflow-hidden/);
+  assert.match(floatingSource, /contain: "layout paint"/);
+  assert.match(controllerSource, /setPortalRoot\(stageRef\.current\)/);
+  assert.doesNotMatch(
+    controllerSource,
+    /setPortalRoot\(workspaceRootRef\?\.current/,
+  );
+});
+
 test("both end handles drag out and back with persistence, reset, and pin fallbacks", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:dock-cycle";
@@ -297,7 +351,10 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
         width: 1000, height: 600, toJSON() {},
       };
     }
-    if (this.hasAttribute("data-edit-bar-test-dock")) {
+    if (
+      this.hasAttribute("data-workspace-edit-bar-dock") ||
+      this.hasAttribute("data-edit-bar-dock-sentinel")
+    ) {
       return {
         x: 100, y: 40, left: 100, top: 40, right: 900, bottom: 104,
         width: 800, height: 64, toJSON() {},
@@ -327,7 +384,7 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
 
   const mounted = await createMounted(DockHarness, { storageKey });
   const dock = () =>
-    mounted.container.querySelector("[data-edit-bar-test-dock]");
+    mounted.container.querySelector("[data-workspace-edit-bar-dock]");
   const handles = () => [
     ...mounted.container.querySelectorAll("[data-floating-toolbar-handle]"),
   ];
@@ -374,6 +431,9 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
     assert.ok(
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
     );
+    assert.equal(dock().dataset.editBarDockCollapsed, "true");
+    assert.match(dock().className, /\bh-0\b/);
+    assert.ok(dock().querySelector("[data-edit-bar-dock-sentinel]"));
     assert.equal(parseEditBarDockState(window.localStorage.getItem(storageKey)).mode, "floating");
 
     const rightHandle = handles().find(
@@ -393,6 +453,23 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
       clientY: 70,
     });
     assert.equal(dock().dataset.dropHighlight, "true");
+    assert.equal(dock().dataset.editBarDockCollapsed, "false");
+    await pointer(rightHandle, "pointermove", {
+      pointerId: 2,
+      pointerType: "touch",
+      clientX: 960,
+      clientY: 300,
+    });
+    assert.equal(dock().dataset.dropHighlight, "false");
+    assert.equal(dock().dataset.editBarDockCollapsed, "true");
+    await pointer(rightHandle, "pointermove", {
+      pointerId: 2,
+      pointerType: "touch",
+      clientX: 200,
+      clientY: 70,
+    });
+    assert.equal(dock().dataset.dropHighlight, "true");
+    assert.equal(dock().dataset.editBarDockCollapsed, "false");
     await pointer(rightHandle, "pointerup", {
       pointerId: 2,
       pointerType: "touch",

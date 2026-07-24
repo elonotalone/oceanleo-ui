@@ -7,11 +7,10 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import type { AdvancedEditorAdapter, AdvancedWorkbenchDrawer } from "./advanced-editor-adapter";
+import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
 import { AdvancedWorkbenchStage } from "./AdvancedWorkbenchStage";
@@ -21,12 +20,16 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
+import {
+  resolveActiveMaterialAction,
+  resolveInlineAdvancedDrawers,
+} from "./inline-advanced-shell-helpers";
+import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import type { LibraryItem } from "./library-data";
 import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
 import {
-  WORKBENCH_MATERIAL_MIME,
   useWorkbenchMaterials,
   type WorkbenchMaterialAction,
 } from "./workbench-material-provider";
@@ -119,32 +122,19 @@ export function InlineAdvancedWorkbenchShell({
   transientPanelRef.current = transientPanel;
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
-  const [dropMessage, setDropMessage] = useState("");
 
-  const drawers = useMemo<AdvancedWorkbenchDrawer[]>(() => {
-    if (adapter.drawers?.length) return [...adapter.drawers];
-    if (!adapter.toolbox?.content) return [];
-    return [
-      {
-        id: "editor-global",
-        label: adapter.toolbox.label,
-        icon: adapter.toolbox.icon,
-        content: adapter.toolbox.content,
-      },
-    ];
-  }, [adapter.drawers, adapter.toolbox]);
+  const drawers = useMemo(
+    () => resolveInlineAdvancedDrawers(adapter),
+    [adapter.drawers, adapter.toolbox],
+  );
   const drawerById = useMemo(
     () => new Map(drawers.map((drawer) => [drawer.id, drawer])),
     [drawers],
   );
-  const preferredMaterialAction = (
-    ["insert", "apply", "replace", "merge"] as const
-  ).find((action) => workbenchMaterials?.actions.includes(action));
-  const activeMaterialAction =
-    requestedMaterialAction &&
-    workbenchMaterials?.actions.includes(requestedMaterialAction)
-      ? requestedMaterialAction
-      : preferredMaterialAction;
+  const activeMaterialAction = resolveActiveMaterialAction(
+    requestedMaterialAction,
+    workbenchMaterials?.actions,
+  );
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const autoSave = useAdvancedAutoSave({
@@ -160,6 +150,15 @@ export function InlineAdvancedWorkbenchShell({
     persistenceState: autoSave.state,
     recovery: adapter.persistence?.recovery,
   });
+  // Drop placement contract (implemented in useInlineAdvancedWorkbenchDrop):
+  // source: "drop", clientX: event.clientX, clientY: event.clientY
+  const { dropMessage, performUpload, handleDrop } =
+    useInlineAdvancedWorkbenchDrop({
+      adapter,
+      activeMaterialAction,
+      workbenchMaterials,
+      tt,
+    });
 
   const ownedDetail =
     workspaceDetail?.ownerId === ownerIdRef.current
@@ -412,79 +411,6 @@ export function InlineAdvancedWorkbenchShell({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [editorDirty]);
-
-  const performUpload = useCallback(
-    async (files: File[]) => {
-      if (!adapter.upload || files.length === 0) return;
-      setDropMessage(tt("正在上传并添加到画布…"));
-      try {
-        await adapter.upload.onFiles(
-          adapter.upload.multiple ? files : files.slice(0, 1),
-        );
-        setDropMessage(tt("文件已添加到画布"));
-      } catch (error) {
-        setDropMessage(
-          error instanceof Error ? error.message : tt("上传失败，请重试"),
-        );
-      }
-      window.setTimeout(() => setDropMessage(""), 1800);
-    },
-    [adapter.upload, tt],
-  );
-
-  const handleDrop = useCallback(
-    async (event: ReactDragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const files = Array.from(event.dataTransfer.files || []);
-      if (files.length && adapter.upload) {
-        await performUpload(files);
-        return;
-      }
-      if (!activeMaterialAction || !workbenchMaterials) return;
-      let material = workbenchMaterials.draggedItem;
-      if (!material) {
-        try {
-          const payload = JSON.parse(
-            event.dataTransfer.getData(WORKBENCH_MATERIAL_MIME) || "{}",
-          ) as { id?: string };
-          material =
-            workbenchMaterials.entries.find(
-              (entry) =>
-                entry.id === payload.id ||
-                entry.libraryItem?.key === payload.id ||
-                entry.libraryItem?.url === payload.id,
-            )?.libraryItem || null;
-        } catch {
-          material = null;
-        }
-      }
-      if (!material) {
-        setDropMessage(tt("无法读取这个素材，请从素材库重新拖入"));
-        window.setTimeout(() => setDropMessage(""), 1800);
-        return;
-      }
-      setDropMessage(tt("正在添加素材…"));
-      const result = await workbenchMaterials
-        .perform(activeMaterialAction, material, {
-          source: "drop",
-          clientX: event.clientX,
-          clientY: event.clientY,
-        })
-        .finally(workbenchMaterials.endMaterialDrag);
-      setDropMessage(
-        result.ok ? tt("素材已添加到画布") : result.error || tt("素材添加失败"),
-      );
-      window.setTimeout(() => setDropMessage(""), 1800);
-    },
-    [
-      activeMaterialAction,
-      adapter.upload,
-      performUpload,
-      tt,
-      workbenchMaterials,
-    ],
-  );
 
   const openLibraryPanel = useCallback(
     (id: "materials" | "mine") => {

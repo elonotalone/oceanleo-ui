@@ -258,6 +258,7 @@ export function GridRoute({
           {
             id: "grid-export-csv",
             label: "导出 CSV",
+            group: "download",
             disabled: editor.loading || xlsxExporting,
             onTrigger: editor.exportCsv,
           },

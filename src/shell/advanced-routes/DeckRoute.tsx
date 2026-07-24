@@ -286,6 +286,7 @@ export function DeckRoute({
             label: "下载编辑工程 JSON",
             icon: "download",
             variant: "icon",
+            group: "download",
             onTrigger: editor.downloadJson,
           },
         ],

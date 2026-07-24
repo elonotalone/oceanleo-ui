@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { AnchoredPopover } from "./anchored-popover";
 import {
   selectionRequestId,
   type SelectionCommand,
@@ -32,6 +33,8 @@ export function SelectionToolbarSelectControl({
 }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = `selection-select-${useId().replace(/:/g, "")}`;
   const menu = presentation === "menu";
   const iconOnly = !menu && selectionControlUsesIconOnly(control);
   const accessibleLabel =
@@ -59,15 +62,13 @@ export function SelectionToolbarSelectControl({
       className={`group/control relative shrink-0 ${menu ? "w-full" : ""}`}
       title={accessibleLabel}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        const relatedTarget = event.relatedTarget as Node | null;
+        if (
+          !event.currentTarget.contains(relatedTarget) &&
+          !menuRef.current?.contains(relatedTarget)
+        ) {
           setOpen(false);
         }
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        setOpen(false);
-        buttonRef.current?.focus();
       }}
     >
       <button
@@ -77,6 +78,7 @@ export function SelectionToolbarSelectControl({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         aria-label={accessibleLabel}
         className={buttonClass}
       >
@@ -96,54 +98,51 @@ export function SelectionToolbarSelectControl({
         </span>
         <span className="text-[9px] opacity-50">⌄</span>
       </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label={control.label}
-          className="fixed z-[2147483500] max-h-72 min-w-44 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={{
-            left: Math.max(
-              8,
-              Math.min(
-                buttonRef.current?.getBoundingClientRect().left || 8,
-                (typeof window === "undefined" ? 1_024 : window.innerWidth) -
-                  220,
-              ),
-            ),
-            top:
-              (buttonRef.current?.getBoundingClientRect().bottom || 42) + 6,
-            minWidth: Math.max(
-              176,
-              buttonRef.current?.getBoundingClientRect().width || 0,
-            ),
-          }}
-        >
-          {(control.options || []).map((option) => {
-            const active = option.value === String(control.value ?? "");
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  emit(option.value);
-                  setOpen(false);
-                  onActivated?.();
-                }}
-                className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[11px] whitespace-nowrap transition ${
-                  active
-                    ? "bg-[var(--surface-hover,rgba(0,0,0,.06))] font-semibold text-[var(--fg,#292524)]"
-                    : "text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-                }`}
-              >
-                {option.label}
-                {active && <span style={{ color: accent }}>✓</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <AnchoredPopover
+        open={open}
+        anchorRef={buttonRef}
+        panelRef={menuRef}
+        onClose={() => setOpen(false)}
+        id={listboxId}
+        role="listbox"
+        ariaLabel={control.label}
+        align="start"
+        maxHeight={288}
+        className="z-[2147483500] min-w-44 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{
+          minWidth: Math.max(
+            176,
+            buttonRef.current?.getBoundingClientRect().width || 0,
+          ),
+        }}
+      >
+        {(control.options || []).map((option) => {
+          const active = option.value === String(control.value ?? "");
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() => {
+                emit(option.value);
+                setOpen(false);
+                onActivated?.();
+                window.requestAnimationFrame(() => buttonRef.current?.focus());
+              }}
+              className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[11px] whitespace-nowrap transition ${
+                active
+                  ? "bg-[var(--surface-hover,rgba(0,0,0,.06))] font-semibold text-[var(--fg,#292524)]"
+                  : "text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+              }`}
+            >
+              {option.label}
+              {active && <span style={{ color: accent }}>✓</span>}
+            </button>
+          );
+        })}
+      </AnchoredPopover>
     </div>
   );
 }

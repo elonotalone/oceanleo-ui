@@ -255,18 +255,21 @@ export function RichDocRoute({
           {
             id: "richdoc-export-markdown",
             label: "导出 Markdown",
+            group: "download",
             disabled: !editor.editor || editor.loading,
             onTrigger: editor.exportMarkdown,
           },
           {
             id: "richdoc-export-html",
             label: "导出 HTML",
+            group: "download",
             disabled: !editor.editor || editor.loading,
             onTrigger: editor.exportHtml,
           },
           {
             id: "richdoc-export-json",
             label: "导出可编辑 JSON",
+            group: "download",
             disabled: !editor.editor || editor.loading,
             onTrigger: exportStructuredJson,
           },

@@ -82,12 +82,14 @@ test("selection toolbar keeps every primary capability at every width", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
     source("../src/shell/SelectionToolbarSelectControl.tsx") +
-    source("../src/shell/selection-inspector-host.tsx");
+    source("../src/shell/selection-inspector-host.tsx") +
+    source("../src/shell/anchored-popover.tsx");
   assert.match(toolbar, /aria-haspopup="dialog"/);
-  assert.match(toolbar, /event\.key === "Escape"/);
+  assert.match(toolbar, /event\.key (?:===|!==) "Escape"/);
   assert.match(toolbar, /onBlur=\{\(event\) =>/);
   assert.match(toolbar, /overflow\.length > 0/);
-  assert.match(toolbar, /w-72 max-w-/);
+  assert.match(toolbar, /className="[^"]*w-72/);
+  assert.match(toolbar, /computeAnchoredPopoverPosition/);
   assert.match(toolbar, /maxInlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.doesNotMatch(toolbar, /width:\s*`min\(/);
   assert.doesNotMatch(toolbar, /Math\.min\(7|selectionToolbarBudget/);
@@ -278,8 +280,9 @@ test("advanced action bar is native PaneHeader chrome with fixed direct download
   assert.match(shell, /rightPaneSlot\.setRightEditorHeader\(true\)/);
   assert.doesNotMatch(shell, /absolute left-2 right-2 top-2/);
   assert.match(bar, /adapter\.directDownload/);
-  assert.match(bar, /actions\.map\(\(action\)/);
-  assert.doesNotMatch(bar, /actionsOpen|name="more"/);
+  assert.match(bar, /standaloneActions\.map\(\(action\)/);
+  assert.match(bar, /action\.group === "download"/);
+  assert.match(bar, /data-workspace-download-menu/);
 
   for (const route of [
     "AudioRoute",
@@ -387,7 +390,10 @@ test("floating toolbar geometry spans the workspace without escaping its bounds"
     sameFloatingToolbarPoint({ x: 684, y: 0 }, { x: 684, y: 0 }),
     true,
   );
-  const floating = source("../src/shell/FloatingContextToolbar.tsx");
+  const floating =
+    source("../src/shell/FloatingContextToolbar.tsx") +
+    source("../src/shell/edit-bar-dock-controller.tsx") +
+    source("../src/shell/EditBarDockControls.tsx");
   const inlineShell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   assert.match(floating, /workspaceRootRef/);
   assert.match(floating, /createPortal/);
@@ -411,7 +417,7 @@ test("normal autosave progress is icon-only while actionable errors remain visib
     embed,
     /tt\("修改已保存"\)|tt\("有未保存的修改"\)|正在连接编辑器|编辑器已连接/,
   );
-  assert.match(embed, /role="alert"/);
+  assert.match(embed, /status\.severity === "fatal" \? "alert" : "status"/);
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const artifactActions = source("../src/shell/ArtifactActions.tsx");
   assert.doesNotMatch(library, /"彻底删除"|此操作无法撤销/);

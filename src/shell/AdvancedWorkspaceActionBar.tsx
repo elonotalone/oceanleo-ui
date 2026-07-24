@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { AnchoredPopover } from "./anchored-popover";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 
@@ -34,8 +35,19 @@ export function AdvancedWorkspaceActionBar({
 }) {
   const tt = useUI();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const downloadButtonRef = useRef<HTMLButtonElement>(null);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
   const [actionError, setActionError] = useState("");
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const actions = adapter.actions || [];
+  const standaloneActions = actions.filter(
+    (action) => action.group !== "download",
+  );
+  const downloadActions = [
+    ...(adapter.directDownload ? [adapter.directDownload] : []),
+    ...actions.filter((action) => action.group === "download"),
+  ];
+  const downloadMenuId = `workspace-download-${useId().replace(/:/g, "")}`;
   const iconButton =
     "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-text)] disabled:opacity-30";
   const libraryButton =
@@ -124,7 +136,7 @@ export function AdvancedWorkspaceActionBar({
           {tt("我的库")}
         </button>
         <span className="min-w-4 flex-1" />
-        {actions.map((action) => (
+        {standaloneActions.map((action) => (
           <button
             key={action.id}
             type="button"
@@ -229,32 +241,82 @@ export function AdvancedWorkspaceActionBar({
             }`}
           />
         </button>
-        {adapter.directDownload && (
-          <button
-            type="button"
-            disabled={
-              adapter.directDownload.disabled || adapter.directDownload.busy
-            }
-            onClick={() => void triggerAction(adapter.directDownload!)}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)] disabled:opacity-40"
-            aria-label={tt(
-              adapter.directDownload.busy &&
-                adapter.directDownload.busyLabel
-                ? adapter.directDownload.busyLabel
-                : adapter.directDownload.label,
-            )}
-            title={tt(
-              adapter.directDownload.busy &&
-                adapter.directDownload.busyLabel
-                ? adapter.directDownload.busyLabel
-                : adapter.directDownload.label,
-            )}
-          >
-            <AdvancedEditorIcon
-              name={adapter.directDownload.icon || "download"}
-              className="h-4 w-4"
-            />
-          </button>
+        {downloadActions.length > 0 && (
+          <>
+            <button
+              ref={downloadButtonRef}
+              type="button"
+              data-workspace-download-launcher
+              onClick={() => setDownloadOpen((value) => !value)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)]"
+              aria-label={tt("下载与导出")}
+              title={tt("下载与导出")}
+              aria-haspopup="menu"
+              aria-expanded={downloadOpen}
+              aria-controls={downloadMenuId}
+            >
+              <AdvancedEditorIcon name="download" className="h-4 w-4" />
+            </button>
+            <AnchoredPopover
+              open={downloadOpen}
+              anchorRef={downloadButtonRef}
+              panelRef={downloadMenuRef}
+              onClose={() => setDownloadOpen(false)}
+              id={downloadMenuId}
+              role="menu"
+              ariaLabel={tt("下载与导出")}
+              align="end"
+              maxHeight={384}
+              attributes={{
+                "data-workspace-download-menu": true,
+              }}
+              className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
+            >
+              {downloadActions.map((action, index) => {
+                const label =
+                  action.busy && action.busyLabel
+                    ? action.busyLabel
+                    : action.label;
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    data-workspace-export-action-id={action.id}
+                    data-workspace-export-action-kind={
+                      index === 0 && adapter.directDownload === action
+                        ? "default"
+                        : "secondary"
+                    }
+                    disabled={action.disabled || action.busy}
+                    aria-busy={action.busy || undefined}
+                    onClick={() => {
+                      setDownloadOpen(false);
+                      window.requestAnimationFrame(() =>
+                        downloadButtonRef.current?.focus(),
+                      );
+                      void triggerAction(action);
+                    }}
+                    className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-medium outline-none transition hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35 disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <AdvancedEditorIcon
+                      name={action.icon || "download"}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {tt(label)}
+                    </span>
+                    {index === 0 && adapter.directDownload === action && (
+                      <span className="shrink-0 text-[9px] text-[var(--awb-muted)]">
+                        {tt("默认")}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </AnchoredPopover>
+          </>
         )}
       </div>
     </div>

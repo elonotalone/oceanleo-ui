@@ -22,6 +22,7 @@ export function EditBarDockHost({
   const tt = useUI();
   const floating = presentation?.mode === "floating";
   const highlighted = Boolean(floating && presentation?.dropActive);
+  const collapsed = Boolean(floating && !highlighted);
   return (
     <div
       ref={hostRef}
@@ -29,26 +30,41 @@ export function EditBarDockHost({
       data-workspace-edit-bar-dock
       data-edit-bar-dock-state={presentation?.mode || "inactive"}
       data-drop-highlight={highlighted}
-      role="region"
-      aria-label={tt("编辑栏停靠区")}
+      data-edit-bar-dock-collapsed={collapsed}
+      role={collapsed ? undefined : "region"}
+      aria-label={collapsed ? undefined : tt("编辑栏停靠区")}
+      aria-hidden={collapsed || undefined}
       style={
         presentation
           ? (advancedWorkbenchStyle(presentation.accent) as CSSProperties)
           : undefined
       }
-      className={`relative min-h-[3.5rem] min-w-0 max-w-full shrink-0 items-center justify-center border-b px-2 py-1 ${
+      className={`relative min-w-0 max-w-full shrink-0 items-center justify-center ${
         presentation ? "flex" : "hidden"
       } ${
-        floating
+        collapsed
+          ? "h-0 min-h-0 overflow-hidden border-0 p-0"
+          : "min-h-[3.5rem] border-b px-2 py-1"
+      } ${
+        highlighted
           ? "border-dashed border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
-          : "border-stone-100 bg-transparent"
+          : collapsed
+            ? "bg-transparent"
+            : "border-stone-100 bg-transparent"
       } ${
         highlighted
           ? "ring-2 ring-inset ring-[var(--awb-accent)] bg-[var(--awb-accent-soft)]"
           : ""
       }`}
     >
-      {floating && (
+      {presentation && (
+        <span
+          data-edit-bar-dock-sentinel
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-14"
+        />
+      )}
+      {highlighted && (
         <span
           data-edit-bar-dock-placeholder
           aria-live="polite"

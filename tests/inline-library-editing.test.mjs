@@ -77,7 +77,8 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
   const toolbar =
     source("../src/shell/SelectionToolbar.tsx") +
     source("../src/shell/SelectionToolbarSelectControl.tsx") +
-    source("../src/shell/selection-inspector-host.tsx");
+    source("../src/shell/selection-inspector-host.tsx") +
+    source("../src/shell/anchored-popover.tsx");
   const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const image = source(
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
@@ -87,7 +88,7 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
   assert.match(toolbar, /partitionSelectionControls/);
   assert.match(toolbar, /SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.match(toolbar, /role="dialog"/);
-  assert.match(toolbar, /event\.key === "Escape"/);
+  assert.match(toolbar, /event\.key (?:===|!==) "Escape"/);
   assert.doesNotMatch(toolbar, /selectionToolbarBudget/);
   assert.match(toolbar, /openTransientPanel/);
   assert.doesNotMatch(toolbar, /max-w-\[min\(52vw,38rem\)\]/);

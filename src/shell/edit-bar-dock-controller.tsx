@@ -23,11 +23,14 @@ import {
   type EditBarDockState,
 } from "./edit-bar-dock-state";
 import {
-  clampFloatingToolbar,
+  clampFloatingToolbarToBounds,
+  pointNearFloatingToolbarBounds,
   sameFloatingToolbarPoint,
+  type FloatingToolbarBounds,
   type FloatingToolbarPoint,
 } from "./floating-toolbar-geometry";
 const DRAG_THRESHOLD_PX = 4;
+const DOCK_REVEAL_PROXIMITY_PX = 24;
 interface EditBarDrag {
   pointerId: number;
   startX: number;
@@ -69,6 +72,7 @@ export function useEditBarDockController({
   const defaultMode: EditBarDockMode = dockRootRef ? "docked" : "floating";
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<EditBarDrag | null>(null);
+  const rememberedDockBoundsRef = useRef<FloatingToolbarBounds | null>(null);
   const hydratedStorageKeyRef = useRef("");
   const modeRef = useRef<EditBarDockMode>(defaultMode);
   const offsetRef = useRef<FloatingToolbarPoint>({ x: 0, y: 0 });
@@ -82,11 +86,14 @@ export function useEditBarDockController({
   const [dropActive, setDropActive] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [dockRoot, setDockRoot] = useState<HTMLElement | null>(null);
+  // Kept in the public hook input for source compatibility. Candidate A pins
+  // floating geometry to the editor stage, including while the workspace is
+  // fullscreen.
+  void workspaceRootRef;
 
   const defaultPosition = useCallback((): FloatingToolbarPoint => {
-    const root = portalRoot?.getBoundingClientRect();
     const stage = stageRef.current?.getBoundingClientRect();
-    if (!root || !stage) return { x: 0, y: 0 };
+    if (!stage) return { x: 0, y: 0 };
     const selection = toolbarRef.current?.querySelector<HTMLElement>(
       "[data-selection-anchor-x][data-selection-anchor-y]",
     );
@@ -100,27 +107,24 @@ export function useEditBarDockController({
       const toolbarWidth =
         toolbarRef.current?.getBoundingClientRect().width || 0;
       if ([x, y, width, height].every(Number.isFinite)) {
-        const above = y - root.top - toolbarHeight - 8;
+        const above = y - stage.top - toolbarHeight - 8;
         return {
-          x: Math.max(0, x + width / 2 - root.left - toolbarWidth / 2),
+          x: x + width / 2 - stage.left - toolbarWidth / 2,
           y:
-            above >= 0
+            above >= 8
               ? above
-              : Math.max(0, y + height - root.top + 8),
+              : y + height - stage.top + 8,
         };
       }
     }
-    return {
-      x: Math.max(0, stage.left - root.left - 8),
-      y: Math.max(0, stage.top - root.top - 8),
-    };
-  }, [portalRoot, stageRef]);
+    return { x: 8, y: 8 };
+  }, [stageRef]);
 
   const positionForOffset = useCallback(
     (nextOffset: FloatingToolbarPoint): FloatingToolbarPoint => {
-      const container = portalRoot?.getBoundingClientRect();
+      const stage = stageRef.current?.getBoundingClientRect();
       const toolbar = toolbarRef.current?.getBoundingClientRect();
-      if (!container || !toolbar) return { x: 0, y: 0 };
+      if (!stage || !toolbar) return { x: 0, y: 0 };
       const anchor = defaultPosition();
       const visualViewport =
         typeof window === "undefined" ? null : window.visualViewport;
@@ -130,29 +134,31 @@ export function useEditBarDockController({
         visualLeft + (visualViewport?.width || window.innerWidth);
       const visualBottom =
         visualTop + (visualViewport?.height || window.innerHeight);
-      const minX = Math.max(0, visualLeft - container.left);
-      const minY = Math.max(0, visualTop - container.top);
-      const visibleWidth = Math.max(
-        0,
-        Math.min(container.right, visualRight) -
-          Math.max(container.left, visualLeft),
+      const visibleLeft = Math.max(stage.left, visualLeft);
+      const visibleTop = Math.max(stage.top, visualTop);
+      const visibleRight = Math.max(
+        visibleLeft,
+        Math.min(stage.right, visualRight),
       );
-      const visibleHeight = Math.max(
-        0,
-        Math.min(container.bottom, visualBottom) -
-          Math.max(container.top, visualTop),
+      const visibleBottom = Math.max(
+        visibleTop,
+        Math.min(stage.bottom, visualBottom),
       );
-      const clamped = clampFloatingToolbar(
+      return clampFloatingToolbarToBounds(
         {
-          x: anchor.x + nextOffset.x - minX,
-          y: anchor.y + nextOffset.y - minY,
+          x: anchor.x + nextOffset.x,
+          y: anchor.y + nextOffset.y,
         },
-        { width: visibleWidth, height: visibleHeight },
+        {
+          left: visibleLeft - stage.left,
+          top: visibleTop - stage.top,
+          right: visibleRight - stage.left,
+          bottom: visibleBottom - stage.top,
+        },
         { width: toolbar.width, height: toolbar.height },
       );
-      return { x: clamped.x + minX, y: clamped.y + minY };
     },
-    [defaultPosition, portalRoot],
+    [defaultPosition, stageRef],
   );
 
   const persist = useCallback(
@@ -187,13 +193,13 @@ export function useEditBarDockController({
     ) => {
       let nextOffset = boundedEditBarDockOffset(requestedOffset);
       const nextPosition = positionForOffset(nextOffset);
-      const containerRect = portalRoot?.getBoundingClientRect();
+      const stageRect = stageRef.current?.getBoundingClientRect();
       const toolbarRect = toolbarRef.current?.getBoundingClientRect();
       const hasMeasurableGeometry = Boolean(
-        containerRect &&
+        stageRect &&
           toolbarRect &&
-          containerRect.width > 0 &&
-          containerRect.height > 0 &&
+          stageRect.width > 0 &&
+          stageRect.height > 0 &&
           toolbarRect.width > 0 &&
           toolbarRect.height > 0,
       );
@@ -217,7 +223,7 @@ export function useEditBarDockController({
       if (persistChange) persist(targetMode, nextOffset);
       return nextOffset;
     },
-    [defaultPosition, persist, portalRoot, positionForOffset],
+    [defaultPosition, persist, positionForOffset, stageRef],
   );
 
   const applyModeAndOffset = useCallback(
@@ -232,15 +238,58 @@ export function useEditBarDockController({
   );
 
   const floatingOffsetFromCurrentRect = useCallback(() => {
-    const root = portalRoot?.getBoundingClientRect();
+    const stage = stageRef.current?.getBoundingClientRect();
     const toolbar = toolbarRef.current?.getBoundingClientRect();
-    if (!root || !toolbar) return offsetRef.current;
+    if (!stage || !toolbar) return offsetRef.current;
     const anchor = defaultPosition();
     return boundedEditBarDockOffset({
-      x: toolbar.left - root.left - anchor.x,
-      y: toolbar.top - root.top - anchor.y,
+      x: toolbar.left - stage.left - anchor.x,
+      y: toolbar.top - stage.top - anchor.y,
     });
-  }, [defaultPosition, portalRoot]);
+  }, [defaultPosition, stageRef]);
+
+  const readDockTargetBounds = useCallback((): FloatingToolbarBounds | null => {
+    const target = dockRootRef?.current || dockRoot;
+    if (!target) return rememberedDockBoundsRef.current;
+    const sentinel = target.querySelector<HTMLElement>(
+      "[data-edit-bar-dock-sentinel]",
+    );
+    const sentinelRect = sentinel?.getBoundingClientRect();
+    const measured =
+      sentinelRect && sentinelRect.width > 0
+        ? sentinelRect
+        : target.getBoundingClientRect();
+    if (
+      Number.isFinite(measured.left) &&
+      Number.isFinite(measured.top) &&
+      measured.width > 0
+    ) {
+      const height = measured.height > 0 ? measured.height : 56;
+      const next = {
+        left: measured.left,
+        top: measured.top,
+        right: measured.right || measured.left + measured.width,
+        bottom: measured.top + height,
+      };
+      rememberedDockBoundsRef.current = next;
+      return next;
+    }
+    return rememberedDockBoundsRef.current;
+  }, [dockRoot, dockRootRef]);
+
+  const pointNearDock = useCallback(
+    (clientX: number, clientY: number) => {
+      const bounds = readDockTargetBounds();
+      return bounds
+        ? pointNearFloatingToolbarBounds(
+            { x: clientX, y: clientY },
+            bounds,
+            DOCK_REVEAL_PROXIMITY_PX,
+          )
+        : false;
+    },
+    [readDockTargetBounds],
+  );
 
   const dock = useCallback(() => {
     if (!dockRootRef) return;
@@ -248,8 +297,9 @@ export function useEditBarDockController({
   }, [applyModeAndOffset, dockRootRef]);
 
   const undock = useCallback(() => {
+    readDockTargetBounds();
     applyModeAndOffset("floating", offsetRef.current);
-  }, [applyModeAndOffset]);
+  }, [applyModeAndOffset, readDockTargetBounds]);
 
   const toggleDock = useCallback(() => {
     if (!dockRootRef) return;
@@ -260,21 +310,6 @@ export function useEditBarDockController({
   const resetPosition = useCallback(() => {
     setSharedOffset({ x: 0, y: 0 });
   }, [setSharedOffset]);
-
-  const pointInsideDock = useCallback(
-    (clientX: number, clientY: number) => {
-      const target = dockRootRef?.current || dockRoot;
-      if (!target) return false;
-      const rect = target.getBoundingClientRect();
-      return (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      );
-    },
-    [dockRoot, dockRootRef],
-  );
 
   const finishDrag = useCallback((pointerId?: number) => {
     if (
@@ -334,6 +369,7 @@ export function useEditBarDockController({
       if (event.pointerType === "mouse" && event.button !== 0) return;
       event.currentTarget.focus();
       event.preventDefault();
+      readDockTargetBounds();
       const originOffset =
         modeRef.current === "docked"
           ? floatingOffsetFromCurrentRect()
@@ -362,7 +398,7 @@ export function useEditBarDockController({
         // Pointer capture is optional in embedded/webview implementations.
       }
     },
-    [defaultPosition, floatingOffsetFromCurrentRect],
+    [defaultPosition, floatingOffsetFromCurrentRect, readDockTargetBounds],
   );
 
   const continueDrag = useCallback(
@@ -389,16 +425,16 @@ export function useEditBarDockController({
           "floating",
         );
       }
-      setDropActive(pointInsideDock(event.clientX, event.clientY));
+      setDropActive(pointNearDock(event.clientX, event.clientY));
     },
-    [pointInsideDock, setSharedOffset],
+    [pointNearDock, setSharedOffset],
   );
 
   const endDrag = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      const overDock = pointInsideDock(event.clientX, event.clientY);
+      const overDock = pointNearDock(event.clientX, event.clientY);
       if (drag.originMode === "docked") {
         if (drag.moved && !overDock) {
           applyModeAndOffset("floating", drag.lastOffset);
@@ -427,7 +463,7 @@ export function useEditBarDockController({
       dockRootRef,
       finishDrag,
       persist,
-      pointInsideDock,
+      pointNearDock,
       setSharedOffset,
     ],
   );
@@ -491,9 +527,12 @@ export function useEditBarDockController({
   );
 
   useLayoutEffect(() => {
-    setPortalRoot(workspaceRootRef?.current || stageRef.current);
+    // The floating layer is deliberately rooted in the right editor stage.
+    // FloatingContextToolbar adds an absolute clipped overlay inside this node,
+    // so transforms cannot enlarge workspace scroll width/height.
+    setPortalRoot(stageRef.current);
     setDockRoot(dockRootRef?.current || null);
-  }, [dockRootRef, stageRef, workspaceRootRef]);
+  }, [dockRootRef, stageRef]);
 
   useLayoutEffect(() => {
     let restored: EditBarDockState | null = null;

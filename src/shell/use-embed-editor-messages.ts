@@ -7,6 +7,7 @@ import {
   asEditorToHostMessage,
   isTrustedEditorOrigin,
   type EditorDocumentRevision,
+  type EditorMessageSeverity,
 } from "./editor-protocol";
 import { advancedSavedItem } from "./advanced-session";
 import {
@@ -30,6 +31,28 @@ interface ArtifactSaveOutcome {
   revisionId?: string;
   code?: string;
   currentRevisionId?: string;
+}
+
+export interface EmbedEditorStatus {
+  message: string;
+  severity: EditorMessageSeverity;
+  code?: string;
+  retryable?: boolean;
+}
+
+function editorStatus(
+  message: string,
+  severity: EditorMessageSeverity,
+  options: { code?: string; retryable?: boolean } = {},
+): EmbedEditorStatus {
+  return {
+    message,
+    severity,
+    ...(options.code ? { code: options.code } : {}),
+    ...(options.retryable !== undefined
+      ? { retryable: options.retryable }
+      : {}),
+  };
 }
 
 type MutableRef<T> = { current: T };
@@ -72,7 +95,7 @@ type UseEmbedEditorMessagesInput = MessageCallbacks & {
   sendToEditor: (message: Record<string, unknown>) => boolean;
   sendOpenAsset: () => void;
   setPhase: (phase: "ready") => void;
-  setStatus: (status: string) => void;
+  setStatus: (status: EmbedEditorStatus | null) => void;
   tt: (value: string) => string;
 };
 
@@ -157,7 +180,7 @@ export function useEmbedEditorMessages({
       if (!message) return;
       if (message.type === "ready") {
         setPhase("ready");
-        setStatus("");
+        setStatus(null);
         if (!readyHandledRef.current) {
           readyHandledRef.current = true;
           sendOpenAsset();
@@ -189,7 +212,7 @@ export function useEmbedEditorMessages({
           )
         ) {
           const staleMessage = tt("项目状态已更新，请重试");
-          setStatus(staleMessage);
+          setStatus(editorStatus(staleMessage, "warning", { retryable: true }));
           onProjectResult?.({
             requestId: message.requestId,
             manifestRevision: message.manifestRevision,
@@ -198,7 +221,15 @@ export function useEmbedEditorMessages({
           });
           return;
         }
-        if (!message.ok) setStatus(message.message || tt("项目操作失败"));
+        if (!message.ok) {
+          setStatus(
+            editorStatus(
+              message.message || tt("项目操作失败"),
+              "warning",
+              { retryable: true },
+            ),
+          );
+        }
         onProjectResult?.({
           requestId: message.requestId,
           manifestRevision: message.manifestRevision,
@@ -211,7 +242,16 @@ export function useEmbedEditorMessages({
         }
         sentRecoveryCaptureRequestsRef.current.delete(message.recoveryId);
         if (!message.ok) {
-          setStatus(message.message || tt("编辑器草稿暂时无法保存"));
+          setStatus(
+            editorStatus(
+              message.message || tt("编辑器草稿暂时无法保存"),
+              message.severity || "fatal",
+              {
+                code: message.code,
+                retryable: message.retryable,
+              },
+            ),
+          );
         }
         onRecoverySnapshot?.({
           recoveryId: message.recoveryId,
@@ -225,7 +265,16 @@ export function useEmbedEditorMessages({
         }
         sentRecoveryRestoreRequestsRef.current.delete(message.recoveryId);
         if (!message.ok) {
-          setStatus(message.message || tt("编辑器草稿恢复失败"));
+          setStatus(
+            editorStatus(
+              message.message || tt("编辑器草稿恢复失败"),
+              message.severity || "fatal",
+              {
+                code: message.code,
+                retryable: message.retryable,
+              },
+            ),
+          );
         }
         onRecoveryResult?.({
           recoveryId: message.recoveryId,
@@ -234,7 +283,16 @@ export function useEmbedEditorMessages({
           message: message.message,
         });
       } else if (message.type === "error") {
-        setStatus(message.message || tt("编辑器发生错误"));
+        setStatus(
+          editorStatus(
+            message.message || tt("编辑器发生错误"),
+            message.severity || "fatal",
+            {
+              code: message.code,
+              retryable: message.retryable,
+            },
+          ),
+        );
       } else if (message.type === "selection-changed") {
         const frameRect = iframeRef.current?.getBoundingClientRect();
         const anchor = message.selection?.anchor;
@@ -257,7 +315,13 @@ export function useEmbedEditorMessages({
         onSelectionChange?.(selection);
       } else if (message.type === "selection-result") {
         if (!message.ok) {
-          setStatus(message.message || tt("编辑器未能完成这项修改"));
+          setStatus(
+            editorStatus(
+              message.message || tt("编辑器未能完成这项修改"),
+              "warning",
+              { retryable: true },
+            ),
+          );
         }
         onSelectionResult?.({
           requestId: message.requestId,
@@ -424,7 +488,13 @@ export function useEmbedEditorMessages({
         void operation.then((outcome) => {
           if (!active) return;
           if (!existing) {
-            setStatus(outcome.saved ? "" : outcome.detail);
+            setStatus(
+              outcome.saved
+                ? null
+                : editorStatus(outcome.detail, "fatal", {
+                    code: outcome.code || "EDITOR_SAVE_FAILED",
+                  }),
+            );
             onSaveResult?.({
               ok: outcome.saved,
               saveId: message.saveId,

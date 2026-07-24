@@ -275,6 +275,9 @@ export function cloudBrowserAuthMessage(
       incarnation: binding.incarnation,
       session_version: binding.sessionVersion,
       binary_frames: true,
+      client_capabilities: {
+        stream_rebind: true,
+      },
     },
   };
 }

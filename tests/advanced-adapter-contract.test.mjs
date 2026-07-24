@@ -50,7 +50,6 @@ test("all route components use the single typed adapter prop", () => {
     "GridRoute",
     "RichDocRoute",
     "DeckRoute",
-    "OfficeRoute",
     "EmbeddedRoute",
     "UnsupportedRoute",
   ];
@@ -94,13 +93,40 @@ test("fixed workspace row owns semantic actions outside the object edit bar", ()
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
   assert.match(header, /<AdvancedWorkspaceActionBar/);
   assert.match(actions, /const actions = adapter\.actions \|\| \[\]/);
-  assert.match(actions, /actions\.map\(\(action\)/);
+  assert.match(actions, /standaloneActions\.map\(\(action\)/);
   assert.match(actions, /adapter\.directDownload/);
-  assert.doesNotMatch(actions, /actionsOpen|name="more"/);
+  assert.match(contract, /group\?: "download"/);
+  assert.match(actions, /action\.group === "download"/);
+  assert.match(actions, /data-workspace-download-launcher/);
+  assert.match(actions, /data-workspace-download-menu/);
   assert.match(actions, /data-advanced-workspace-actions/);
   assert.match(header, /data-advanced-context-row/);
   assert.match(header, /action\.panelId/);
   assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
+});
+
+test("RichDoc groups DOCX Markdown HTML and JSON behind one download contract", () => {
+  const route = source("../src/shell/advanced-routes/RichDocRoute.tsx");
+  assert.match(
+    route,
+    /directDownload:\s*\{[\s\S]*?id:\s*"richdoc-export-docx"/,
+  );
+  for (const id of [
+    "richdoc-export-markdown",
+    "richdoc-export-html",
+    "richdoc-export-json",
+  ]) {
+    assert.match(
+      route,
+      new RegExp(`id: "${id}"[\\s\\S]*?group: "download"`),
+      id,
+    );
+  }
+  const retry = route.match(
+    /id: "richdoc-refresh-office-source"[\s\S]*?\}/,
+  )?.[0];
+  assert.ok(retry);
+  assert.doesNotMatch(retry, /group:\s*"download"/);
 });
 
 test("mutable native editors keep an independent local recovery log", () => {

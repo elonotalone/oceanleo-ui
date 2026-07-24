@@ -37,6 +37,7 @@ import {
   planCloudBrowserLiveRecovery,
   reduceCloudBrowserProtocolMessage,
 } from "../src/shell/cloud-browser-transport-model.ts";
+import { handleCloudBrowserProtocolMessage } from "../src/shell/cloud-browser-protocol.ts";
 import {
   FIRST_FRAME_TIMEOUT_MS,
   LIVE_RECOVERY_DELAYS_MS,
@@ -167,6 +168,23 @@ function frameMeta(now = Date.now(), overrides = {}) {
   };
 }
 
+function streamRebind(
+  currentBinding = binding,
+  overrides = {},
+) {
+  return {
+    ...cloudBrowserV3Message(currentBinding, "stream.rebind"),
+    previous_stream_id: currentBinding.streamId,
+    previous_stream_generation: currentBinding.streamGeneration,
+    next_stream_id: `${currentBinding.streamId}-next`,
+    next_stream_generation: currentBinding.streamGeneration + 1,
+    active_tab_id: "tab-next",
+    action_sequence: 8,
+    callback_sequence: 4,
+    ...overrides,
+  };
+}
+
 const panelSource = readFileSync(
   new URL("../src/shell/CloudBrowserPanel.tsx", import.meta.url),
   "utf8",
@@ -230,7 +248,7 @@ test("object-contain mapping targets the complete Chrome-window frame", () => {
   );
 });
 
-test("flat ticket and auth expose no executor-derived binding", () => {
+test("flat auth advertises rebind without executor-derived binding", () => {
   const now = Date.now();
   const valid = validateCloudBrowserTicket(ticket(now), "session", now);
   assert.equal(valid.ok, true);
@@ -250,10 +268,13 @@ test("flat ticket and auth expose no executor-derived binding", () => {
     incarnation: 7,
     session_version: 11,
     binary_frames: true,
+    client_capabilities: {
+      stream_rebind: true,
+    },
   });
   assert.doesNotMatch(
     JSON.stringify(auth.message),
-    /protocol_versions|runtime_version|"nonce":|stream_id|window_id|frame_contract|capabilities/,
+    /protocol_versions|runtime_version|"nonce":|stream_id|window_id|frame_contract/,
   );
 
   assert.equal(
@@ -603,6 +624,339 @@ test("free and current agent leases acquire while stale fences fail closed", () 
   );
 });
 
+test("tab create and close rebind stream while human takeover remains owned", () => {
+  const owned = reduceCloudBrowserProtocolMessage(
+    seededState(),
+    hello({
+      lease: {
+        lease_id: "human-lease",
+        lease_epoch: 5,
+        holder_kind: "human",
+        holder_id: "user:test-owner",
+        connection_id: binding.connectionId,
+        expires_at: "2099-01-01T00:00:00+00:00",
+        privacy_mode: true,
+      },
+    }),
+    protocolFallbacks,
+  ).state;
+  const before = {
+    ...owned,
+    transportState: "streaming",
+    helloFrameSequence: 1,
+    lastFrameSequence: 41,
+    controlPending: true,
+    controlIntent: "release",
+    controlIntentSent: true,
+  };
+  const leaseBefore = before.lease;
+  const opened = reduceCloudBrowserProtocolMessage(
+    before,
+    streamRebind(),
+    protocolFallbacks,
+  );
+
+  assert.equal(opened.state.streamId, "stream-next");
+  assert.equal(opened.state.streamGeneration, 5);
+  assert.equal(opened.state.transportState, "awaiting_first_frame");
+  assert.equal(opened.state.helloFrameSequence, 0);
+  assert.equal(opened.state.lastFrameSequence, 0);
+  assert.equal(opened.state.pendingBinary, false);
+  assert.strictEqual(opened.state.lease, leaseBefore);
+  assert.equal(opened.state.leaseOwned, true);
+  assert.equal(opened.state.controlPending, true);
+  assert.equal(opened.state.controlIntent, "release");
+  assert.equal(opened.state.controlIntentSent, true);
+  assert.deepEqual(
+    opened.effects.map((effect) => effect.type),
+    ["reset_stream_paint", "arm_first_frame"],
+  );
+  assert.equal(
+    opened.effects.some(
+      (effect) =>
+        effect.type === "reject" ||
+        effect.type === "reconcile_control_intent",
+    ),
+    false,
+  );
+
+  const openedBinding = {
+    ...binding,
+    streamId: "stream-next",
+    streamGeneration: 5,
+  };
+  const newFrame = reduceCloudBrowserProtocolMessage(
+    opened.state,
+    frameMeta(Date.now(), {
+      stream_id: openedBinding.streamId,
+      stream_generation: openedBinding.streamGeneration,
+      frame_sequence: 1,
+      action_sequence: 8,
+    }),
+    protocolFallbacks,
+  );
+  assert.equal(newFrame.state.pendingBinary, true);
+  assert.equal(newFrame.state.lastFrameSequence, 1);
+
+  const newStreamControl = reduceCloudBrowserProtocolMessage(
+    opened.state,
+    {
+      ...cloudBrowserV3Message(openedBinding, "control.state"),
+      lease: {
+        lease_id: "human-lease",
+        lease_epoch: 5,
+        holder_kind: "human",
+        holder_id: "user:test-owner",
+        connection_id: binding.connectionId,
+        expires_at: "2099-01-01T00:00:00+00:00",
+        privacy_mode: true,
+      },
+      action_sequence: 8,
+      callback_sequence: 5,
+    },
+    protocolFallbacks,
+  );
+  assert.equal(newStreamControl.state.leaseOwned, true);
+  assert.deepEqual(newStreamControl.state.lease, leaseBefore);
+
+  const staleOldFrame = reduceCloudBrowserProtocolMessage(
+    opened.state,
+    frameMeta(),
+    protocolFallbacks,
+  );
+  assert.equal(staleOldFrame.state.transportState, "failed");
+  assert.equal(staleOldFrame.state.failureKind, "protocol_mismatch");
+  const staleOldControl = reduceCloudBrowserProtocolMessage(
+    opened.state,
+    {
+      ...cloudBrowserV3Message(binding, "control.state"),
+      lease: {
+        lease_id: "human-lease",
+        lease_epoch: 5,
+        holder_kind: "human",
+        connection_id: binding.connectionId,
+      },
+      action_sequence: 8,
+      callback_sequence: 5,
+    },
+    protocolFallbacks,
+  );
+  assert.equal(staleOldControl.state.transportState, "failed");
+  assert.equal(staleOldControl.state.failureKind, "protocol_mismatch");
+  const replay = reduceCloudBrowserProtocolMessage(
+    opened.state,
+    streamRebind(),
+    protocolFallbacks,
+  );
+  assert.equal(replay.state.transportState, "failed");
+
+  const closeReady = {
+    ...newFrame.state,
+    pendingBinary: false,
+    transportState: "streaming",
+  };
+  const closed = reduceCloudBrowserProtocolMessage(
+    closeReady,
+    streamRebind(openedBinding, {
+      next_stream_id: "stream-returned-tab",
+      active_tab_id: "tab",
+      action_sequence: 8,
+      callback_sequence: 5,
+    }),
+    protocolFallbacks,
+  );
+  assert.equal(closed.state.streamId, "stream-returned-tab");
+  assert.equal(closed.state.streamGeneration, 6);
+  assert.equal(closed.state.leaseOwned, true);
+  assert.strictEqual(closed.state.lease, leaseBefore);
+  assert.equal(closed.state.controlIntent, "release");
+});
+
+test("stream rebind rejects replay, skipped generations, and stale fences", () => {
+  const validState = {
+    ...reduceCloudBrowserProtocolMessage(
+      seededState(),
+      hello(),
+      protocolFallbacks,
+    ).state,
+    transportState: "streaming",
+  };
+  const adversarial = [
+    streamRebind(binding, { previous_stream_id: "old-other" }),
+    streamRebind(binding, { previous_stream_generation: 3 }),
+    streamRebind(binding, { next_stream_id: binding.streamId }),
+    streamRebind(binding, { next_stream_generation: 6 }),
+    streamRebind(binding, { active_tab_id: "" }),
+    streamRebind(binding, { action_sequence: 7 }),
+    streamRebind(binding, { callback_sequence: 3 }),
+    streamRebind(binding, { connection_id: "stale-connection" }),
+    streamRebind(binding, { runtime_id: "stale-runtime" }),
+    streamRebind(binding, { window_id: "stale-window" }),
+    streamRebind(binding, { stream_id: "stale-stream" }),
+    { ...streamRebind(), unknown_field: true },
+  ];
+  for (const message of adversarial) {
+    const rejected = reduceCloudBrowserProtocolMessage(
+      validState,
+      message,
+      protocolFallbacks,
+    );
+    assert.equal(rejected.state.transportState, "failed");
+    assert.ok(
+      ["stale_stream", "protocol_mismatch"].includes(
+        rejected.state.failureKind,
+      ),
+    );
+  }
+
+  const pending = reduceCloudBrowserProtocolMessage(
+    { ...validState, pendingBinary: true },
+    streamRebind(),
+    protocolFallbacks,
+  );
+  assert.equal(pending.state.transportState, "failed");
+  assert.equal(pending.state.failureKind, "stale_stream");
+
+  const postNewFrame = reduceCloudBrowserProtocolMessage(
+    validState,
+    frameMeta(Date.now(), {
+      stream_id: "stream-next",
+      stream_generation: 5,
+      frame_sequence: 1,
+    }),
+    protocolFallbacks,
+  );
+  assert.equal(postNewFrame.state.transportState, "failed");
+  assert.equal(postNewFrame.state.failureKind, "protocol_mismatch");
+});
+
+test("stream rebind commits refs and fence serial before paint reset", () => {
+  const state = {
+    ...reduceCloudBrowserProtocolMessage(
+      seededState(),
+      hello({
+        lease: {
+          lease_id: "human-lease",
+          lease_epoch: 5,
+          holder_kind: "human",
+          connection_id: binding.connectionId,
+        },
+      }),
+      protocolFallbacks,
+    ).state,
+    transportState: "streaming",
+    controlPending: true,
+    controlIntent: "release",
+    controlIntentSent: true,
+  };
+  const ref = (current) => ({ current });
+  const observations = [];
+  const context = {
+    tt: (value) => value,
+    protocolRef: ref(state.protocol),
+    handshakeRef: ref(state.handshake),
+    socketSessionRef: ref(state.socketSessionId),
+    sessionVersionRef: ref(state.sessionVersion),
+    runtimeIdRef: ref(state.runtimeId),
+    runtimeVersionRef: ref(state.runtimeVersion),
+    incarnationRef: ref(state.incarnation),
+    nonceRef: ref(state.nonce),
+    connectionIdRef: ref(state.connectionId),
+    streamIdRef: ref(state.streamId),
+    streamGenerationRef: ref(state.streamGeneration),
+    windowIdRef: ref(state.windowId),
+    frameContractRef: ref(state.frameContract),
+    capabilitiesRef: ref(state.capabilities),
+    tabsRef: ref(state.tabs),
+    helloFrameSequenceRef: ref(state.helloFrameSequence),
+    lastFrameSequenceRef: ref(state.lastFrameSequence),
+    lastActionSequenceRef: ref(state.lastActionSequence),
+    lastCallbackSequenceRef: ref(state.lastCallbackSequence),
+    leaseRef: ref(state.lease),
+    leaseOwnedRef: ref(state.leaseOwned),
+    controlIntentRef: ref(state.controlIntent),
+    controlIntentSentRef: ref(state.controlIntentSent),
+    controlPendingRef: ref(state.controlPending),
+    pendingBinaryRef: ref(state.pendingBinary),
+    failureKindRef: ref(state.failureKind),
+    transportStateRef: ref(state.transportState),
+    fenceSerialRef: ref(30),
+    setProtocolVersion(version) {
+      this.protocolRef.current = version;
+    },
+    setCurrentLease(next, owned) {
+      this.leaseRef.current = next;
+      this.leaseOwnedRef.current = owned;
+    },
+    setCapabilities(next) {
+      this.capabilitiesRef.current = next;
+    },
+    setControlPending(next) {
+      this.controlPendingRef.current =
+        typeof next === "function"
+          ? next(this.controlPendingRef.current)
+          : next;
+    },
+    setControlIntentSent(next) {
+      this.controlIntentSentRef.current = next;
+    },
+    setFailureKind(next) {
+      this.failureKindRef.current = next;
+    },
+    setError() {},
+    rejectProtocol(message) {
+      throw new Error(message);
+    },
+    transition(next) {
+      this.transportStateRef.current = next;
+    },
+    armFirstFrameTimeout() {
+      observations.push(["armed", this.streamIdRef.current]);
+    },
+    cancelFrameDecode() {},
+    resetStreamPaint() {
+      observations.push([
+        "reset",
+        this.streamIdRef.current,
+        this.streamGenerationRef.current,
+        this.fenceSerialRef.current,
+        this.leaseOwnedRef.current,
+        this.controlIntentRef.current,
+      ]);
+    },
+    acceptFrameMeta() {
+      return true;
+    },
+    reconcileControlIntent() {
+      throw new Error("rebind must not reacquire control");
+    },
+    recordDiagnostic() {},
+    async refreshCheckpoints() {},
+  };
+
+  handleCloudBrowserProtocolMessage(
+    streamRebind(),
+    context,
+  );
+  assert.equal(context.streamIdRef.current, "stream-next");
+  assert.equal(context.streamGenerationRef.current, 5);
+  assert.equal(context.fenceSerialRef.current, 31);
+  assert.equal(context.leaseOwnedRef.current, true);
+  assert.equal(context.controlIntentRef.current, "release");
+  assert.deepEqual(observations, [
+    ["reset", "stream-next", 5, 31, true, "release"],
+    ["armed", "stream-next"],
+  ]);
+  assert.match(
+    transportSource,
+    /cancelFrameDecode\(false,\s*false,\s*false\)/,
+  );
+  assert.doesNotMatch(
+    modelSource.match(/if \(type === "stream\.rebind"\)[\s\S]*?return \{ state, effects \};/)?.[0] || "",
+    /reconnect|control\.acquire|leaseOwned:\s*false/,
+  );
+});
+
 test("only a fresh real-paint native-window frame can reach paint gate", () => {
   const now = Date.now();
   const expectation = {
@@ -822,6 +1176,7 @@ test("executable fixture covers canonical hello, UI mutations, and receipts", ()
   const fixture = buildCloudBrowserV3Fixture(Date.now());
   assert.deepEqual(Object.keys(fixture.auth).sort(), [
     "binary_frames",
+    "client_capabilities",
     "incarnation",
     "owner_principal",
     "runtime_id",

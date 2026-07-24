@@ -8,6 +8,8 @@ import type {
 
 export declare const EDITOR_PROTOCOL: "oceanleo.editor.v1";
 
+export type EditorMessageSeverity = "fatal" | "warning" | "info";
+
 export interface EditorAssetPayload {
   id: string;
   kind: string;
@@ -264,6 +266,9 @@ export type EditorToHostMessage =
       ok: boolean;
       snapshot?: EditorRecoverySnapshot;
       message?: string;
+      code?: string;
+      severity?: EditorMessageSeverity;
+      retryable?: boolean;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
@@ -273,6 +278,9 @@ export type EditorToHostMessage =
       ok: boolean;
       revision?: EditorDocumentRevision;
       message?: string;
+      code?: string;
+      severity?: EditorMessageSeverity;
+      retryable?: boolean;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
@@ -316,6 +324,9 @@ export type EditorToHostMessage =
       type: "error";
       instanceId: string;
       message: string;
+      code?: string;
+      severity?: EditorMessageSeverity;
+      retryable?: boolean;
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;

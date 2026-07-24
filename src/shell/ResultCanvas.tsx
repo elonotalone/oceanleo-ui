@@ -603,7 +603,6 @@ export function ResultCanvas({
     browser: <div className="h-full min-h-0">{browserContent}</div>,
   };
 
-  const libraryContent = content[selected] || empty || content.template;
   const materialLibraryNode = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">{content.materials}</div>
@@ -680,8 +679,7 @@ export function ResultCanvas({
         }}
       />
     ) : null;
-  const rightMainContent =
-    artifactSaveError ? (
+  const foregroundContent = artifactSaveError ? (
       <div className="flex h-full min-h-0 flex-col">
         <div
           role="alert"
@@ -691,10 +689,47 @@ export function ResultCanvas({
         </div>
         <div className="min-h-0 flex-1">{editorContent}</div>
       </div>
-    ) :
-    editorContent ||
-    viewerContent ||
-    libraryContent;
+    ) : (
+      editorContent || viewerContent
+    );
+  const foregroundVisible = Boolean(foregroundContent);
+  const rightMainContent = (
+    <div className="relative h-full min-h-0 overflow-hidden">
+      <div
+        data-result-canvas-slot-stack
+        className={`h-full min-h-0 ${foregroundVisible ? "hidden" : "block"}`}
+        aria-hidden={foregroundVisible || undefined}
+        inert={foregroundVisible || undefined}
+      >
+        {visibleSlots.map((slot) => {
+          const isActive = !foregroundVisible && selected === slot;
+          return (
+            <div
+              key={slot}
+              data-workspace-slot-panel={slot}
+              data-workspace-slot-active={isActive}
+              role="tabpanel"
+              aria-label={tt(WORKSPACE_SLOT_LABELS[slot])}
+              aria-hidden={!isActive}
+              hidden={!isActive}
+              inert={!isActive || undefined}
+              className="h-full min-h-0 overflow-hidden"
+            >
+              {content[slot] || empty || content.template}
+            </div>
+          );
+        })}
+      </div>
+      {foregroundVisible && (
+        <div
+          data-result-canvas-foreground
+          className="absolute inset-0 min-h-0 overflow-hidden"
+        >
+          {foregroundContent}
+        </div>
+      )}
+    </div>
+  );
 
   // Materials/My Library reuse these exact nodes when the fixed editor action
   // bar opens them on the left. The right library itself never moves.

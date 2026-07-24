@@ -348,6 +348,7 @@ function Model3DModelRoute({
           {
             id: "model3d-download-screenshot",
             label: "下载 PNG 截图",
+            group: "download",
             disabled: !editor.modelLoaded || deliveryBusy,
             busy: editor.capturing,
             onTrigger: editor.downloadScreenshot,

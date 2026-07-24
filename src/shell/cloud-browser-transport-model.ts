@@ -233,6 +233,7 @@ export type CloudBrowserProtocolEffect =
   | { type: "clear_error" }
   | { type: "arm_first_frame" }
   | { type: "cancel_frame_decode" }
+  | { type: "reset_stream_paint" }
   | { type: "reconcile_control_intent" }
   | {
       type: "accept_frame_meta";
@@ -730,6 +731,56 @@ export function reduceCloudBrowserProtocolMessage(
       fallback.protocolMismatch,
       "protocol_mismatch",
     );
+  }
+
+  if (type === "stream.rebind") {
+    if (
+      !messageHasOnly(message, [
+        "previous_stream_id",
+        "previous_stream_generation",
+        "next_stream_id",
+        "next_stream_generation",
+        "active_tab_id",
+        "action_sequence",
+        "callback_sequence",
+      ]) ||
+      message.previous_stream_id !== state.streamId ||
+      message.previous_stream_generation !== state.streamGeneration ||
+      !boundedString(message.next_stream_id, 160) ||
+      message.next_stream_id === state.streamId ||
+      message.next_stream_generation !== state.streamGeneration + 1 ||
+      !boundedString(message.active_tab_id, 160) ||
+      !validActionSequence(state, message.action_sequence) ||
+      !freshCallbackSequence(state, message.callback_sequence) ||
+      state.pendingBinary ||
+      !["awaiting_first_frame", "streaming"].includes(
+        state.transportState,
+      )
+    ) {
+      return reject(
+        state,
+        fallback.staleStream,
+        "stale_stream",
+      );
+    }
+    state = transition(
+      {
+        ...state,
+        streamId: message.next_stream_id as string,
+        streamGeneration: message.next_stream_generation as number,
+        helloFrameSequence: 0,
+        lastFrameSequence: 0,
+        lastActionSequence: message.action_sequence as number,
+        lastCallbackSequence: message.callback_sequence as number,
+        pendingBinary: false,
+      },
+      "awaiting_first_frame",
+    );
+    effects.push(
+      { type: "reset_stream_paint" },
+      { type: "arm_first_frame" },
+    );
+    return { state, effects };
   }
 
   if (type === "frame.meta") {
