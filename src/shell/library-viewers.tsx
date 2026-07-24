@@ -16,6 +16,8 @@ import {
   threeDSubtypeFor,
   type LibraryItem,
 } from "./library-data";
+import { prepareArtifactForAction } from "./artifact-client";
+import { isArtifactSourceTreeUrl } from "./artifact-contract";
 import {
   ArtifactRenditionFailure,
   useArtifactRendition,
@@ -37,6 +39,56 @@ import {
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
   return match?.[1]?.toLowerCase() || "";
+}
+
+/** Office binary preview needs an opaque source grant, not a poster image. */
+function usePreparedOfficeLibraryItem(item: LibraryItem): {
+  item: LibraryItem;
+  loading: boolean;
+  error: string;
+} {
+  const needsPrepare =
+    isDurableLibraryItem(item) && Boolean(officePackageKindForItem(item));
+  const sourceUrl = item.artifact?.renditions.source?.url || "";
+  const needsUpgrade =
+    needsPrepare &&
+    (isArtifactSourceTreeUrl(sourceUrl) ||
+      !sourceUrl ||
+      /\.(png|jpe?g|webp|gif)(?:$|[?#])/i.test(item.url || ""));
+  const [prepared, setPrepared] = useState<LibraryItem>(item);
+  const [loading, setLoading] = useState(needsUpgrade);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setPrepared(item);
+    if (!needsUpgrade) {
+      setLoading(false);
+      setError("");
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    void prepareArtifactForAction("preview", item).then((result) => {
+      if (cancelled) return;
+      if (result.ok && result.data) {
+        setPrepared(result.data);
+        setError("");
+      } else {
+        setError(result.error || "无法签发 PPT/文档源访问地址。");
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    item.artifactId,
+    item.revisionId,
+    item.url,
+    needsUpgrade,
+    sourceUrl,
+  ]);
+  return { item: prepared, loading, error };
 }
 
 function asRecords(value: unknown): Record<string, unknown>[] {
@@ -1145,15 +1197,34 @@ export function LibraryItemViewer({
   item: LibraryItem;
   accent?: string;
 }) {
+  const preparedOffice = usePreparedOfficeLibraryItem(item);
+  const viewerItem = preparedOffice.item;
   const rendition = useArtifactRendition(
-    item,
-    officeViewerRenditionPurposes(item),
+    viewerItem,
+    officeViewerRenditionPurposes(viewerItem),
   );
-  const resolvedItem = withResolvedRendition(item, rendition);
+  const resolvedItem = withResolvedRendition(viewerItem, rendition);
   const url =
     rendition.url || resolvedItem.previewUrl || resolvedItem.url;
+  if (preparedOffice.loading) {
+    return (
+      <ArtifactRenditionFailure
+        message="正在签发文档源访问地址…"
+        loading
+        onRetry={() => undefined}
+      />
+    );
+  }
+  if (preparedOffice.error) {
+    return (
+      <ArtifactRenditionFailure
+        message={preparedOffice.error}
+        onRetry={() => undefined}
+      />
+    );
+  }
   if (
-    isDurableLibraryItem(item) &&
+    isDurableLibraryItem(viewerItem) &&
     (rendition.error || (!url && rendition.loading))
   ) {
     return (
