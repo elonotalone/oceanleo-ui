@@ -41,6 +41,19 @@ export function deckPreviewLogicalSize(
   };
 }
 
+/** Stable light-DOM thumbnail aspect; matches the fitted stage frame. */
+export function deckPreviewThumbnailAspect(
+  logicalSize: DeckPreviewLogicalSize = deckPreviewLogicalSize(),
+): number {
+  return (
+    finitePositive(logicalSize.width, DECK_PREVIEW_LOGICAL_WIDTH) /
+    finitePositive(
+      logicalSize.height,
+      DECK_PREVIEW_LOGICAL_WIDTH * (9 / 16),
+    )
+  );
+}
+
 export function deckPreviewStagePadding(
   viewportWidth: number,
   viewportHeight: number,

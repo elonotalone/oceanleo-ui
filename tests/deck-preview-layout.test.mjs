@@ -8,6 +8,7 @@ import {
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
   deckPreviewStagePadding,
+  deckPreviewThumbnailAspect,
 } from "../src/shell/doc-editors/deck-preview-geometry.ts";
 
 function approximately(actual, expected, epsilon = 0.0001) {
@@ -109,6 +110,16 @@ test("responsive fit matrix never clips either supported slide aspect at 50 perc
   }
 });
 
+test("thumbnail aspect matches the logical stage frame", () => {
+  for (const aspectRatio of [16 / 9, 4 / 3]) {
+    const logicalSize = deckPreviewLogicalSize(aspectRatio);
+    approximately(
+      deckPreviewThumbnailAspect(logicalSize),
+      logicalSize.width / logicalSize.height,
+    );
+  }
+});
+
 test("shared layout contract owns rail, fitted stage and keyboard selection", () => {
   const component = readFileSync(
     new URL(
@@ -123,11 +134,21 @@ test("shared layout contract owns rail, fitted stage and keyboard selection", ()
   assert.match(component, /data-deck-thumbnail-rail/);
   assert.match(component, /overflow-y-auto/);
   assert.match(component, /h-full min-h-0/);
+  assert.match(component, /max-h-full overflow-hidden/);
   assert.match(component, /data-deck-preview-stage/);
   assert.match(component, /new ResizeObserver\(measure\)/);
   assert.match(component, /aria-current=\{active \? "page"/);
   assert.match(component, /event\.key === "ArrowDown"/);
   assert.match(component, /useCenteredWheelZoom/);
+  assert.match(component, /attachShadow\(\{ mode: "open" \}\)/);
+  assert.match(component, /createPortal\(children, mountNode\)/);
+  assert.match(component, /data-deck-thumbnail-surface/);
+  assert.match(component, /deckPreviewThumbnailAspect\(logicalSize\)/);
+  assert.match(component, /window\.innerHeight - top/);
+  assert.match(
+    component,
+    /min-h-0 flex-1 overflow-x-hidden overflow-y-auto/,
+  );
 });
 
 test("Deck edit route consumes shared layout and resets fit to 50 percent", () => {
@@ -149,8 +170,10 @@ test("Deck edit route consumes shared layout and resets fit to 50 percent", () =
   assert.match(stage, /<SlideCanvas/);
   assert.doesNotMatch(stage, /<DeckSlideRail/);
   assert.match(mini, /data-deck-thumbnail-surface/);
+  assert.match(mini, /h-full w-full/);
   assert.doesNotMatch(mini, /from "\.\/DeckElementContent"/);
   assert.doesNotMatch(mini, /<MiniDeckElementLayer/);
+  assert.match(stage, /min-h-0 flex-1 overflow-hidden/);
   assert.match(
     route,
     /useState\(DECK_PREVIEW_FIT_ZOOM_PERCENT\)/,
@@ -159,6 +182,19 @@ test("Deck edit route consumes shared layout and resets fit to 50 percent", () =
     route,
     /fit: \(\) => setZoom\(DECK_PREVIEW_FIT_ZOOM_PERCENT\)/,
   );
+});
+
+test("layout isolates nested thumbnail paint from light-DOM geometry metrics", () => {
+  const component = readFileSync(
+    new URL(
+      "../src/shell/doc-editors/DeckPreviewLayout.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(component, /function DeckRailThumbnail/);
+  assert.match(component, /querySelectorAll\(\s*'link\[rel="stylesheet"\], style'/);
+  assert.match(component, /border-0 bg-transparent p-0/);
 });
 
 test("shared layout and edit integration transpile without diagnostics", () => {

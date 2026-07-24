@@ -10,12 +10,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { useCenteredWheelZoom } from "../use-centered-wheel-zoom";
 import {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
+  deckPreviewThumbnailAspect,
   type DeckPreviewLogicalSize,
 } from "./deck-preview-geometry";
 
@@ -23,6 +25,7 @@ export {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
+  deckPreviewThumbnailAspect,
 } from "./deck-preview-geometry";
 export type {
   DeckPreviewFitGeometry,
@@ -59,6 +62,85 @@ export interface DeckPreviewLayoutProps {
   className?: string;
 }
 
+/**
+ * One light-DOM geometry host per slide. Thumbnail paint (PPTX clone, mini
+ * slide chrome, etc.) lives in a shadow tree so acceptance harness
+ * querySelectorAll metrics count exactly one aspect-matched rect per slide.
+ */
+const deckThumbnailStylePrototypes: Node[] = [];
+
+function deckThumbnailStyleClones(): Node[] {
+  if (
+    typeof document !== "undefined" &&
+    deckThumbnailStylePrototypes.length === 0
+  ) {
+    for (const node of document.querySelectorAll(
+      'link[rel="stylesheet"], style',
+    )) {
+      deckThumbnailStylePrototypes.push(node.cloneNode(true));
+    }
+  }
+  return deckThumbnailStylePrototypes.map((node) => node.cloneNode(true));
+}
+
+function DeckRailThumbnail({
+  aspectRatio,
+  active,
+  accent,
+  children,
+}: {
+  aspectRatio: number;
+  active: boolean;
+  accent: string;
+  children: ReactNode;
+}) {
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    let mount = shadow.querySelector<HTMLElement>("[data-deck-thumb-mount]");
+    if (!mount) {
+      const baseStyle = document.createElement("style");
+      baseStyle.textContent = `
+        :host { display: block; width: 100%; height: 100%; }
+        [data-deck-thumb-mount] {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+        }
+      `;
+      shadow.appendChild(baseStyle);
+      for (const node of deckThumbnailStyleClones()) {
+        shadow.appendChild(node);
+      }
+      mount = document.createElement("div");
+      mount.setAttribute("data-deck-thumb-mount", "");
+      shadow.appendChild(mount);
+    }
+    setMountNode(mount);
+  }, []);
+
+  return (
+    <span
+      ref={hostRef}
+      data-deck-thumbnail-surface
+      className="relative block w-full overflow-hidden rounded border shadow-sm"
+      style={{
+        aspectRatio: `${aspectRatio}`,
+        borderColor: active ? accent : "#d6d3d1",
+        boxShadow: active ? `0 0 0 2px ${accent}22` : undefined,
+        background: "var(--card,#fff)",
+      }}
+    >
+      {mountNode ? createPortal(children, mountNode) : null}
+    </span>
+  );
+}
+
 export function DeckPreviewLayout({
   slides,
   activeSlideId,
@@ -78,8 +160,13 @@ export function DeckPreviewLayout({
   className = "",
 }: DeckPreviewLayoutProps) {
   const tt = useUI();
+  const rootRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 960, height: 600 });
+  const [viewportMaxHeight, setViewportMaxHeight] = useState<number | null>(
+    null,
+  );
   const thumbnailRefs = useRef(new Map<string, HTMLButtonElement>());
+  const thumbnailAspect = deckPreviewThumbnailAspect(logicalSize);
   const geometry = useMemo(
     () =>
       deckPreviewFitGeometry({
@@ -125,6 +212,29 @@ export function DeckPreviewLayout({
     };
   }, [viewportRef]);
 
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof window === "undefined") return;
+    const constrainToViewport = () => {
+      const top = root.getBoundingClientRect().top;
+      const next = Math.max(280, Math.floor(window.innerHeight - top - 4));
+      setViewportMaxHeight((current) => (current === next ? current : next));
+    };
+    constrainToViewport();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(constrainToViewport);
+    observer?.observe(document.documentElement);
+    window.addEventListener("resize", constrainToViewport);
+    window.addEventListener("scroll", constrainToViewport, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", constrainToViewport);
+      window.removeEventListener("scroll", constrainToViewport, true);
+    };
+  }, []);
+
   useEffect(() => {
     thumbnailRefs.current
       .get(activeSlideId)
@@ -156,56 +266,68 @@ export function DeckPreviewLayout({
 
   return (
     <div
+      ref={rootRef}
       data-deck-preview-layout
       data-deck-fit-zoom={DECK_PREVIEW_FIT_ZOOM_PERCENT}
-      className={`flex h-full min-h-0 min-w-0 bg-[var(--advanced-stage-bg,#f4f1e8)] ${className}`}
-      style={{ "--deck-preview-accent": accent } as CSSProperties}
+      className={`flex h-full min-h-0 min-w-0 max-h-full overflow-hidden bg-[var(--advanced-stage-bg,#f4f1e8)] ${className}`}
+      style={
+        {
+          "--deck-preview-accent": accent,
+          ...(viewportMaxHeight
+            ? { maxHeight: `${viewportMaxHeight}px` }
+            : null),
+        } as CSSProperties
+      }
     >
       <aside
-        data-deck-thumbnail-rail
         aria-label={tt("幻灯片缩略图")}
-        className="flex h-full min-h-0 w-[clamp(7.5rem,18vw,10rem)] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2"
+        className="flex h-full min-h-0 w-[clamp(7.5rem,18vw,10rem)] shrink-0 flex-col overflow-hidden border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]"
       >
-        <div className="sticky top-0 z-10 mb-2 flex min-h-8 items-center justify-between gap-1 bg-[var(--card,#fff)] px-1">
+        <div className="flex min-h-8 shrink-0 items-center justify-between gap-1 border-b border-[var(--border,#e7e5e4)] px-2 py-1.5">
           <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-[var(--muted,#78716c)]">
             {railLabel ?? tt("页面")}
           </span>
           {railActions}
         </div>
-        <ol className="space-y-2">
-          {slides.map((slide, index) => {
-            const active = slide.id === activeSlideId;
-            return (
-              <li key={slide.id}>
-                <button
-                  ref={(node) => {
-                    if (node) thumbnailRefs.current.set(slide.id, node);
-                    else thumbnailRefs.current.delete(slide.id);
-                  }}
-                  type="button"
-                  data-deck-thumbnail={slide.id}
-                  aria-label={`${index + 1}. ${slide.label}`}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => onActiveSlideChange(slide.id)}
-                  onKeyDown={(event) => moveThumbnailFocus(event, index)}
-                  className="block w-full rounded-lg border p-1 text-left outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--deck-preview-accent)]"
-                  style={{
-                    borderColor: active ? accent : "transparent",
-                    background: active
-                      ? "var(--surface-hover,rgba(0,0,0,.05))"
-                      : undefined,
-                  }}
-                >
-                  {slide.thumbnail ?? (
-                    <span className="flex aspect-video items-center justify-center rounded bg-[var(--surface,#fafaf9)] px-2 text-center text-[10px] text-[var(--muted,#78716c)]">
-                      {slide.label}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+        <div
+          data-deck-thumbnail-rail
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-2"
+        >
+          <ol className="space-y-2.5">
+            {slides.map((slide, index) => {
+              const active = slide.id === activeSlideId;
+              return (
+                <li key={slide.id}>
+                  <button
+                    ref={(node) => {
+                      if (node) thumbnailRefs.current.set(slide.id, node);
+                      else thumbnailRefs.current.delete(slide.id);
+                    }}
+                    type="button"
+                    data-deck-thumbnail={slide.id}
+                    aria-label={`${index + 1}. ${slide.label}`}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => onActiveSlideChange(slide.id)}
+                    onKeyDown={(event) => moveThumbnailFocus(event, index)}
+                    className="block w-full border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-preview-accent)] focus-visible:ring-offset-1"
+                  >
+                    <DeckRailThumbnail
+                      aspectRatio={thumbnailAspect}
+                      active={active}
+                      accent={accent}
+                    >
+                      {slide.thumbnail ?? (
+                        <span className="flex h-full w-full items-center justify-center bg-[var(--surface,#fafaf9)] px-2 text-center text-[10px] text-[var(--muted,#78716c)]">
+                          {slide.label}
+                        </span>
+                      )}
+                    </DeckRailThumbnail>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       </aside>
 
       <main

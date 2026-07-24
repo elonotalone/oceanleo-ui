@@ -7,9 +7,9 @@ import {
 } from "./deck-schema";
 
 /**
- * Rail thumbnail: one aspect-matched surface per slide. Keep nested content
- * non-geometric (title/body only) so acceptance geometry counts exactly one
- * thumbnail rect per slide — matching the PPT preview thumbnail host.
+ * Rail thumbnail paint. Prefer a single light-DOM geometry host from
+ * DeckPreviewLayout (shadow-isolated). This component fills that host; when
+ * used alone (legacy DeckSlideRail) it still exposes one aspect surface.
  */
 export function DeckMiniSlide({
   slide,
@@ -36,11 +36,12 @@ export function DeckMiniSlide({
   const preview = (
     <span
       data-deck-thumbnail-surface
-      className="relative block w-full overflow-hidden rounded border shadow-sm"
+      className="relative block h-full w-full overflow-hidden"
       style={{
-        aspectRatio: `${ratio}`,
-        borderColor: active ? theme.accent : "#d6d3d1",
-        boxShadow: active ? `0 0 0 2px ${theme.accent}22` : undefined,
+        aspectRatio: onClick ? `${ratio}` : undefined,
+        borderRadius: onClick ? 6 : undefined,
+        border: onClick ? `1px solid ${active ? theme.accent : "#d6d3d1"}` : undefined,
+        boxShadow: onClick && active ? `0 0 0 2px ${theme.accent}22` : undefined,
         background: slide.background || master.background || theme.background,
         color: master.textColor || theme.text,
         fontFamily: master.fontFamily || theme.fontFamily,
@@ -70,15 +71,11 @@ export function DeckMiniSlide({
   );
 
   if (!onClick) {
-    return <span className="block w-full text-left">{preview}</span>;
+    return <span className="block h-full w-full text-left">{preview}</span>;
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="block w-full text-left"
-    >
+    <button type="button" onClick={onClick} className="block w-full text-left">
       {preview}
     </button>
   );

@@ -491,7 +491,7 @@ export function DeckStage({
         @keyframes oleo-deck-element-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0)}}
         @keyframes oleo-deck-element-zoom{from{scale:.72;opacity:0}to{scale:1;opacity:1}}
       `}</style>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <DeckPreviewLayout
           slides={previewSlides}
           activeSlideId={editor.activeSlide.id}
