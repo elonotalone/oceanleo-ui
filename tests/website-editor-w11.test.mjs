@@ -129,3 +129,41 @@ test("embed sender suppresses only a genuinely blank website draft", () => {
     /item\.meta\.draft === true && !item\.url && !item\.previewUrl/,
   );
 });
+
+test("website host document selection is protocol-valid and fills empty edit-bar state", async () => {
+  const {
+    hostedWebsiteEditBarSelection,
+    WEBSITE_HOST_DOCUMENT_SELECTION_ID,
+    websiteHostDocumentSelection,
+  } = await import("../src/shell/website-host-edit-bar.ts");
+  const { normalizeSelectionContext } = await import(
+    "../src/shell/selection-context.ts"
+  );
+  const empty = websiteHostDocumentSelection();
+  assert.equal(empty.id, WEBSITE_HOST_DOCUMENT_SELECTION_ID);
+  assert.equal(empty.kind, "website");
+  assert.ok(normalizeSelectionContext(empty));
+  assert.equal(
+    hostedWebsiteEditBarSelection(null).id,
+    WEBSITE_HOST_DOCUMENT_SELECTION_ID,
+  );
+  const objectSelection = {
+    version: 1,
+    kind: "website-a",
+    id: "site-name",
+    label: "站点名",
+    revision: 3,
+    controls: [],
+  };
+  assert.equal(hostedWebsiteEditBarSelection(objectSelection), objectSelection);
+});
+
+test("EmbeddedRoute always mounts website SelectionToolbar even without object selection", () => {
+  const route = readFileSync(
+    new URL("../src/shell/advanced-routes/EmbeddedRoute.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /hostedWebsiteEditBarSelection/);
+  assert.match(route, /hostedMediaType === "website"/);
+  assert.match(route, /hostedWebsiteEditBarSelection\(hostedSelection\)/);
+});

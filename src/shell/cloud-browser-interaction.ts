@@ -74,6 +74,16 @@ const COMMAND_KEYS = new Set([
   "F12",
 ]);
 
+/** Lone modifier keydowns are chord scaffolding, not remote presses. */
+export function isLoneModifierKey(key: string): boolean {
+  return (
+    key === "Control" ||
+    key === "Meta" ||
+    key === "Alt" ||
+    key === "Shift"
+  );
+}
+
 const INPUT_COALESCE_MS = 32;
 
 type PendingPointerMove = {
@@ -624,6 +634,12 @@ export function useCloudBrowserInteraction({
       event.key === "Process" ||
       event.key === "Dead"
     ) {
+      return;
+    }
+    // Lone modifier keydowns are only chord scaffolding. Forwarding them as
+    // remote presses races Control+t/w tab mutations under human lease and
+    // historically closed the live socket before durable active_tab_id moved.
+    if (isLoneModifierKey(event.key)) {
       return;
     }
     const modified = event.ctrlKey || event.metaKey || event.altKey;

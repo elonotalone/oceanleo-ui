@@ -369,7 +369,6 @@ export function preparePlacedImage(
   setEditorObjectId(target, target.oceanleoId || makeId());
   target.oceanleoRole = undefined;
   target.oceanleoKind = "image";
-  target.oceanleoLocked = false;
   target.set({
     left: doc.width / 2 + nudge,
     top: doc.height / 2 + nudge,
@@ -377,9 +376,8 @@ export function preparePlacedImage(
     originY: "center",
     scaleX: scale,
     scaleY: scale,
-    selectable: true,
-    evented: true,
   });
+  setLocked(target, false);
   target.setCoords();
   return target;
 }
@@ -528,4 +526,59 @@ export function objectIsEditable(object: FabricObject | undefined): object is Ed
   if (!object) return false;
   const role = roleOf(object);
   return role !== "docbg" && role !== "crop";
+}
+
+/** Unlocked non-background image layers available for magnetic snap / V3 selection. */
+export function isUnlockedImageLayerEntry(layer: {
+  kind: string;
+  locked: boolean;
+  isBackground: boolean;
+  visible?: boolean;
+}): boolean {
+  if (layer.locked || layer.isBackground) return false;
+  if (layer.visible === false) return false;
+  return layer.kind === "image" || layer.kind === "background";
+}
+
+export function countUnlockedImageLayers(
+  layers: readonly {
+    kind: string;
+    locked: boolean;
+    isBackground: boolean;
+    visible?: boolean;
+  }[],
+): number {
+  return layers.filter(isUnlockedImageLayerEntry).length;
+}
+
+export function preferredUnlockedImageLayerId(
+  layers: readonly {
+    id: string;
+    kind: string;
+    locked: boolean;
+    isBackground: boolean;
+    visible?: boolean;
+  }[],
+): string | null {
+  // readView emits topmost first (reversed canvas order).
+  const hit = layers.find(isUnlockedImageLayerEntry);
+  return hit?.id ?? null;
+}
+
+export function preferUnlockedImageObject(
+  canvas: Canvas,
+  isFabricImage: (object: FabricObject) => boolean,
+): EditorObject | null {
+  const objects = canvas.getObjects();
+  for (let index = objects.length - 1; index >= 0; index -= 1) {
+    const object = objects[index];
+    if (!objectIsEditable(object)) continue;
+    if (roleOf(object) === "background") continue;
+    const editor = object as EditorObject;
+    if (editor.oceanleoLocked === true) continue;
+    if (object.visible === false) continue;
+    if (!isFabricImage(object) && editor.oceanleoKind !== "image") continue;
+    return editor;
+  }
+  return null;
 }

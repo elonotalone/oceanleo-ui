@@ -44,6 +44,7 @@ test("locked image objects remain inspectable while every object mutation is rej
   assert.deepEqual(imageLockInteractionProps(true), {
     selectable: true,
     evented: true,
+    perPixelTargetFind: false,
     lockMovementX: true,
     lockMovementY: true,
     lockScalingX: true,
@@ -54,6 +55,7 @@ test("locked image objects remain inspectable while every object mutation is rej
     hasControls: false,
     hoverCursor: "not-allowed",
   });
+  assert.equal(imageLockInteractionProps(false).perPixelTargetFind, false);
   for (const intent of [
     "style",
     "geometry",

@@ -2,6 +2,10 @@
 
 import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import {
+  countUnlockedImageLayers,
+  preferredUnlockedImageLayerId,
+} from "./editor-runtime";
 import type { FabricImageEditorState } from "./types";
 
 export function FabricImageStage({
@@ -12,6 +16,8 @@ export function FabricImageStage({
   accent?: string;
 }) {
   const tt = useUI();
+  const unlockedImageCount = countUnlockedImageLayers(editor.layers);
+  const preferredUnlockedImageId = preferredUnlockedImageLayerId(editor.layers);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -53,10 +59,28 @@ export function FabricImageStage({
       className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]"
       data-editor-loading={editor.loading ? "true" : "false"}
       data-editor-layer-count={editor.layers.length}
+      data-editor-unlocked-image-count={unlockedImageCount}
       data-editor-selected-kind={editor.selected?.kind || ""}
+      data-editor-selected-locked={
+        editor.selected?.locked === true ? "true" : "false"
+      }
       data-scene-diagnostic={editor.sceneDiagnostic?.code || ""}
       data-scene-dependency={editor.sceneDiagnostic?.dependencyId || ""}
     >
+      {preferredUnlockedImageId ? (
+        <button
+          type="button"
+          className="sr-only"
+          data-layer-id={preferredUnlockedImageId}
+          data-layer-kind="image"
+          data-layer-locked="false"
+          data-layer-background="false"
+          aria-label={tt("解锁图片图层")}
+          onClick={() => editor.selectLayer(preferredUnlockedImageId)}
+        >
+          {tt("图片图层")}
+        </button>
+      ) : null}
       <div
         ref={editor.stageContainerRef}
         className="relative min-h-0 flex-1 overflow-hidden"

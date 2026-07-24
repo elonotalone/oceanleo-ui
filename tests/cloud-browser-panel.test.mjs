@@ -21,6 +21,7 @@ import {
   pointInContainedFrame,
   validateCloudBrowserFrameMeta,
 } from "../src/shell/cloud-browser-live.ts";
+import { isLoneModifierKey } from "../src/shell/cloud-browser-interaction.ts";
 import {
   cloudBrowserSessionNeedsResume,
   formatCloudBrowserLifecycleError,
@@ -1322,6 +1323,18 @@ test("modifier chords keep lowercase letters so Control+t creates a tab", () => 
   assert.equal(chord("l", { metaKey: true }), "Meta+l");
   assert.equal(chord("a"), "A");
   assert.equal(chord("Enter", { ctrlKey: true }), "Control+Enter");
+});
+
+test("lone modifier keydowns are not remote tab-mutation presses", () => {
+  // Acceptance dispatches Control keydown before KeyT. Forwarding Control
+  // alone raced the Control+t create path and closed the live socket before
+  // durable active_tab_id moved.
+  assert.equal(isLoneModifierKey("Control"), true);
+  assert.equal(isLoneModifierKey("Meta"), true);
+  assert.equal(isLoneModifierKey("Alt"), true);
+  assert.equal(isLoneModifierKey("Shift"), true);
+  assert.equal(isLoneModifierKey("t"), false);
+  assert.equal(isLoneModifierKey("Control+t"), false);
 });
 
 test("window input, IME, focus, and clipboard contracts are bounded", () => {

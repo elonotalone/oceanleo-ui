@@ -134,6 +134,19 @@ export function FabricImageControls({
             <button
               key={layer.id}
               type="button"
+              data-layer-id={layer.id}
+              data-layer-kind={layer.kind}
+              data-layer-locked={layer.locked ? "true" : "false"}
+              data-layer-background={layer.isBackground ? "true" : "false"}
+              aria-label={
+                layer.isBackground
+                  ? tt("背景图层")
+                  : layer.locked
+                    ? tt("锁定图层")
+                    : layer.kind === "image"
+                      ? tt("解锁图片图层")
+                      : tt("图层")
+              }
               onClick={() => editor.selectLayer(layer.id)}
               className={`flex w-full items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-[10px] ${
                 layer.selected

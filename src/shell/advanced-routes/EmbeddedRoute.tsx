@@ -42,6 +42,7 @@ import {
   type DesignCompositeSourceEvidence,
 } from "../design-composite-commit";
 import { websiteEmbedExtraParams } from "../website-embed-params";
+import { hostedWebsiteEditBarSelection } from "../website-host-edit-bar";
 import type {
   SelectionCommand,
   SelectionContext,
@@ -1450,15 +1451,23 @@ export function EmbeddedRoute({
               )}
             </div>
           ),
-        renderContextToolbar: ({ openDrawer }) =>
-          hostedSelection ? (
+        renderContextToolbar: ({ openDrawer }) => {
+          // Website embeds always host-own chrome. Without a SelectionContext the
+          // shared FloatingContextToolbar returns null (no children), so V5 never
+          // sees [data-advanced-context-row] after a View-mode real-artifact open.
+          const editBarSelection =
+            hostedMediaType === "website"
+              ? hostedWebsiteEditBarSelection(hostedSelection)
+              : hostedSelection;
+          return editBarSelection ? (
             <SelectionToolbar
-              context={hostedSelection}
+              context={editBarSelection}
               onCommand={setSelectionCommand}
               onOpenPanel={openDrawer}
               accent={accent}
             />
-          ) : null,
+          ) : null;
+        },
         drawers: remoteDrawers,
         history: remoteHistory,
         viewport: remoteViewport

@@ -39,6 +39,7 @@ import {
   normalizeEditorSnapshot,
   objectIsEditable,
   panViewport,
+  preferUnlockedImageObject,
   removeEditableObjects,
   resolveImageEdgeSnap,
   restoreLockFlags,
@@ -424,6 +425,24 @@ export class FabricEditorCore {
       transparentCorners: false,
       padding: 2,
     });
+    if (object instanceof this.fabric.FabricImage) {
+      // Keep transparent shelf composites hittable for snap/drag selection.
+      object.set({ perPixelTargetFind: false });
+    }
+  }
+
+  /** Prefer a topmost unlocked non-background image after open/restore. */
+  protected selectPreferredUnlockedImage(): boolean {
+    const preferred = preferUnlockedImageObject(
+      this.canvas,
+      (object) => object instanceof this.fabric.FabricImage,
+    );
+    if (!preferred) return false;
+    this.activeTool = "select";
+    this.applyTool();
+    this.canvas.setActiveObject(preferred);
+    this.canvas.requestRenderAll();
+    return true;
   }
 
   private updateBrush(): void {
@@ -737,6 +756,7 @@ export class FabricEditorCore {
       this.cropping = false;
       this.cropRatio = "free";
       this.zoom = fitViewport(this.canvas, this.doc, this.container);
+      this.selectPreferredUnlockedImage();
       this.canvas.requestRenderAll();
       restored = true;
     } catch (caught) {
@@ -760,6 +780,7 @@ export class FabricEditorCore {
             this.cropping = false;
             this.cropRatio = "free";
             this.zoom = fitViewport(this.canvas, this.doc, this.container);
+            this.selectPreferredUnlockedImage();
             this.canvas.requestRenderAll();
           }
         } catch {

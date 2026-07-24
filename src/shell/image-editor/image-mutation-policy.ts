@@ -113,6 +113,9 @@ export function imageLockInteractionProps(locked: boolean) {
   return {
     selectable: true,
     evented: true,
+    // Transparent PNG/WebP composites must stay clickable via AABB; per-pixel
+    // hit testing skips empty alpha and breaks snap-matrix selection.
+    perPixelTargetFind: false,
     lockMovementX: locked,
     lockMovementY: locked,
     lockScalingX: locked,
