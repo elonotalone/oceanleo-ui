@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -21,7 +22,10 @@ globalThis.window ||= {
 const artifactId = "11111111-1111-4111-8111-111111111111";
 const revisionId = "22222222-2222-4222-8222-222222222222";
 
-function designItem() {
+function designItem({
+  sourceDigest = "a".repeat(64),
+  dependencyRevisionIds = [],
+} = {}) {
   return {
     key: `artifact:${artifactId}:${revisionId}`,
     source: "artifact",
@@ -42,13 +46,20 @@ function designItem() {
       sourceFormat: "oceanleo.design-document.v1",
       editorCapability: "design-canvas",
       integrity: { ok: true },
-      renditions: {},
+      renditions: {
+        source: {
+          purpose: "source",
+          revisionId,
+          url: "https://api.oceanleo.com/v1/media/file/design-project.json",
+          digest: sourceDigest,
+        },
+      },
       scene: {
         schema: "oceanleo.design-document.v1",
         sceneRevisionId: revisionId,
         closureStatus: "complete",
         closureDigest: "c".repeat(64),
-        dependencyRevisionIds: [],
+        dependencyRevisionIds,
       },
     },
   };
@@ -127,12 +138,24 @@ test("design open accepts renderable placeholders, alternate refs, long URLs and
     }),
   ]);
   const blob = sourceBlob(project);
+  const sourceDigest = createHash("sha256")
+    .update(JSON.stringify(project))
+    .digest("hex");
 
-  const opened = await validateDesignCompositeSource(blob, designItem(), {
-    requireBaseIdentity: false,
-    requireBaseRevision: false,
-    validation: "open",
-  });
+  const opened = await validateDesignCompositeSource(
+    blob,
+    designItem({
+      sourceDigest,
+      dependencyRevisionIds: [
+        "44444444-4444-4444-8444-444444444444",
+      ],
+    }),
+    {
+      requireBaseIdentity: false,
+      requireBaseRevision: false,
+      validation: "open",
+    },
+  );
   assert.equal(opened.sourceKind, "canonical");
   assert.equal(opened.sourceMode, "layered");
   assert.deepEqual(opened.dependencyRevisionIds, [

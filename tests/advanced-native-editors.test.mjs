@@ -63,6 +63,12 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
+  const deckLayout = source(
+    "../src/shell/doc-editors/DeckPreviewLayout.tsx",
+  );
+  const deckFit = source(
+    "../src/shell/doc-editors/deck-preview-geometry.ts",
+  );
   const wheelZoom = source("../src/shell/use-centered-wheel-zoom.ts");
   const deckElementContent = source(
     "../src/shell/doc-editors/DeckElementContent.tsx",
@@ -93,8 +99,13 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(deckStage, /RESIZE_HANDLES/);
   assert.match(deckStage, /data-deck-canvas/);
   assert.match(deckStage, /rotateDeckElement/);
-  assert.match(deckStage, /useCenteredWheelZoom/);
-  assert.match(deckStage, /className="relative shrink-0"/);
+  assert.match(deckStage, /<DeckPreviewLayout/);
+  assert.match(deckLayout, /useCenteredWheelZoom/);
+  assert.match(deckLayout, /contentWidth: geometry\.width/);
+  assert.match(deckLayout, /new ResizeObserver\(measure\)/);
+  assert.match(deckLayout, /data-deck-page-frame/);
+  assert.match(deckFit, /DECK_PREVIEW_FIT_ZOOM_PERCENT = 50/);
+  assert.match(deckFit, /fitScale/);
   assert.match(wheelZoom, /addEventListener\("wheel", onWheel, \{ passive: false \}\)/);
   assert.match(wheelZoom, /requestAnimationFrame/);
   assert.match(wheelZoom, /Math\.exp\(-delta \* 0\.0025\)/);

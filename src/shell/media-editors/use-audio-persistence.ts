@@ -28,6 +28,7 @@ import { assertBlobSource } from "./source-integrity.mjs";
 interface AudioPersistenceOptions {
   item: LibraryItem;
   siteId: string;
+  requiresExistingSource: boolean;
   bufferRef: MutableRefObject<AudioBuffer | null>;
   sourceUrlRef: MutableRefObject<string>;
   operationsRef: MutableRefObject<AudioEditOperation[]>;
@@ -51,6 +52,7 @@ interface AudioPersistenceOptions {
 export function useAudioPersistence({
   item,
   siteId,
+  requiresExistingSource,
   bufferRef,
   sourceUrlRef,
   operationsRef,
@@ -187,8 +189,15 @@ export function useAudioPersistence({
       } else {
         return false;
       }
-      const context = new AudioContext();
+      if (requiresExistingSource && !project.sourceUrl.trim()) {
+        setError(
+          tt("当前音频 revision 的恢复草稿缺少源文件；已阻止用静音占位替代"),
+        );
+        return false;
+      }
+      let context: AudioContext | null = null;
       try {
+        context = new AudioContext();
         const durableUrl = project.sourceUrl
           ? isFirstPartyMediaUrl(project.sourceUrl)
             ? project.sourceUrl
@@ -225,6 +234,7 @@ export function useAudioPersistence({
           decoded = applyAudioOperation(decoded, operation);
         }
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) return false;
+        await reloadWaveform(decoded);
         bufferRef.current = decoded;
         sourceUrlRef.current = durableUrl;
         operationsRef.current = [...project.operations];
@@ -237,10 +247,16 @@ export function useAudioPersistence({
         setCanRedo(false);
         setDirty(true);
         setSavedUrl("");
-        await reloadWaveform(decoded);
         return true;
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : tt("音频本地草稿恢复失败"),
+        );
+        return false;
       } finally {
-        await context.close();
+        await context?.close().catch(() => undefined);
       }
     },
     [
@@ -251,6 +267,7 @@ export function useAudioPersistence({
       redoOperationsRef,
       redoRef,
       reloadWaveform,
+      requiresExistingSource,
       revisionRef,
       setCanRedo,
       setCanUndo,

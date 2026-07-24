@@ -27,6 +27,12 @@ import {
   officePackageKindForItem,
   officeViewerRenditionPurposes,
 } from "./doc-editors/office-file";
+import {
+  DeckPreviewLayout,
+  deckPreviewLogicalSize,
+  type DeckPreviewLayoutSlide,
+  type DeckPreviewLogicalSize,
+} from "./doc-editors/DeckPreviewLayout";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -185,6 +191,185 @@ function StructuredCanvas({ item }: { item: LibraryItem }) {
   );
 }
 
+interface PptxPreviewModel {
+  width: number;
+  height: number;
+  slides: Array<{ name?: string }>;
+}
+
+interface PptxPreviewInstance {
+  htmlRender: {
+    options: {
+      viewPort?: {
+        width?: number;
+        height?: number;
+      };
+    };
+  };
+  options: {
+    width?: number;
+    height?: number;
+  };
+  wrapper: HTMLElement;
+  load: (file: ArrayBuffer) => Promise<PptxPreviewModel>;
+  renderSingleSlide: (slideIndex: number) => void;
+  destroy: () => void;
+}
+
+interface PptxRenderedSlide {
+  id: string;
+  index: number;
+  label: string;
+  thumbnail: HTMLElement;
+}
+
+function namespacePptxSurfaceIds(surface: HTMLElement, prefix: string) {
+  const idMap = new Map<string, string>();
+  for (const element of surface.querySelectorAll<HTMLElement>("[id]")) {
+    if (!element.id) continue;
+    const nextId = `${prefix}-${element.id}`;
+    idMap.set(element.id, nextId);
+    element.id = nextId;
+  }
+  const replacements = [...idMap.entries()].sort(
+    ([left], [right]) => right.length - left.length,
+  );
+  const replaceReferences = (value: string) => {
+    let next = value;
+    for (const [currentId, nextId] of replacements) {
+      next = next.replaceAll(`#${currentId}`, `#${nextId}`);
+    }
+    return next;
+  };
+  for (const element of surface.querySelectorAll<HTMLElement>("*")) {
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name === "id" || !attribute.value) continue;
+      const nextValue = replaceReferences(attribute.value);
+      if (nextValue !== attribute.value) {
+        element.setAttribute(attribute.name, nextValue);
+      }
+    }
+  }
+  for (const style of surface.querySelectorAll("style")) {
+    if (style.textContent) {
+      style.textContent = replaceReferences(style.textContent);
+    }
+  }
+}
+
+function clonePptxSlideSurface(
+  surface: HTMLElement,
+  slideIndex: number,
+): HTMLElement {
+  const clone = surface.cloneNode(true) as HTMLElement;
+  const sourceCanvases = surface.querySelectorAll("canvas");
+  const clonedCanvases = clone.querySelectorAll("canvas");
+  sourceCanvases.forEach((source, index) => {
+    const target = clonedCanvases[index];
+    if (!target) return;
+    try {
+      target.getContext("2d")?.drawImage(source, 0, 0);
+    } catch {
+      // A tainted chart canvas remains a truthful DOM thumbnail without pixels.
+    }
+  });
+  namespacePptxSurfaceIds(clone, `pptx-thumbnail-${slideIndex + 1}`);
+  return clone;
+}
+
+function PptxSlideThumbnail({
+  surface,
+  logicalSize,
+}: {
+  surface: HTMLElement;
+  logicalSize: DeckPreviewLogicalSize;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = host.current;
+    if (!node) return;
+    surface.style.position = "absolute";
+    surface.style.inset = "0 auto auto 0";
+    surface.style.margin = "0";
+    surface.style.pointerEvents = "none";
+    surface.style.transformOrigin = "top left";
+    node.replaceChildren(surface);
+    const fit = () => {
+      if (!node.clientWidth) return;
+      const scale = node.clientWidth / logicalSize.width;
+      surface.style.transform = `scale(${scale})`;
+      node.style.height = `${logicalSize.height * scale}px`;
+    };
+    fit();
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(node);
+    window.addEventListener("resize", fit);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fit);
+      node.replaceChildren();
+    };
+  }, [logicalSize.height, logicalSize.width, surface]);
+
+  return (
+    <div
+      ref={host}
+      aria-hidden="true"
+      className="relative w-full overflow-hidden rounded bg-white shadow-sm"
+      style={{ aspectRatio: `${logicalSize.width} / ${logicalSize.height}` }}
+    />
+  );
+}
+
+function StructuredSlidePreview({
+  slide,
+  index,
+  count,
+  thumbnail = false,
+}: {
+  slide: Record<string, unknown>;
+  index: number;
+  count: number;
+  thumbnail?: boolean;
+}) {
+  const bullets = Array.isArray(slide.bullets)
+    ? slide.bullets.map(String)
+    : [];
+  return (
+    <article className="relative h-full w-full overflow-hidden bg-white p-[7%]">
+      <span
+        className={`absolute right-[4%] top-[3%] text-stone-300 ${
+          thumbnail ? "text-[5px]" : "text-[10px]"
+        }`}
+      >
+        {index + 1} / {count}
+      </span>
+      <h3
+        className={`max-w-[85%] font-semibold leading-tight text-stone-900 ${
+          thumbnail ? "text-[7px]" : "text-[clamp(18px,3vw,34px)]"
+        }`}
+      >
+        {stringValue(slide.title) || `第 ${index + 1} 页`}
+      </h3>
+      {bullets.length > 0 && (
+        <ul
+          className={`mt-[6%] space-y-[2%] leading-relaxed text-stone-600 ${
+            thumbnail ? "text-[4px]" : "text-[clamp(12px,1.7vw,20px)]"
+          }`}
+        >
+          {bullets.map((bullet, bulletIndex) => (
+            <li key={bulletIndex} className="flex gap-[3%]">
+              <span>•</span>
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
 function PptViewer({
   item,
   onResourceError,
@@ -194,18 +379,36 @@ function PptViewer({
 }) {
   const tt = useUI();
   const host = useRef<HTMLDivElement>(null);
+  const previewerRef = useRef<PptxPreviewInstance | null>(null);
+  const structuredSlides = useMemo(
+    () => asRecords(item.meta.slides),
+    [item.meta.slides],
+  );
   const [state, setState] = useState<"loading" | "ready" | "error">(
     item.url ? "loading" : "error",
   );
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [logicalSize, setLogicalSize] = useState<DeckPreviewLogicalSize>(() =>
+    deckPreviewLogicalSize(),
+  );
+  const [renderedSlides, setRenderedSlides] = useState<PptxRenderedSlide[]>([]);
+  const [activeSlideId, setActiveSlideId] = useState("");
 
   useEffect(() => {
-    if (!item.url || !host.current) return;
-    let cancelled = false;
-    let previewer: { destroy: () => void } | null = null;
     const node = host.current;
+    if (!node) return;
     node.replaceChildren();
+    setRenderedSlides([]);
+    setLogicalSize(deckPreviewLogicalSize());
+    setActiveSlideId("");
+    if (!item.url) {
+      setError(tt("没有可解析的 PPT 地址。"));
+      setState("error");
+      return;
+    }
+    let cancelled = false;
+    let previewer: PptxPreviewInstance | null = null;
     setState("loading");
     setError("");
     void (async () => {
@@ -221,94 +424,203 @@ function PptViewer({
         if (cancelled) return;
         const { init } = await import("pptx-preview");
         if (cancelled) return;
-        const width = Math.max(
-          320,
-          Math.min(1100, node.getBoundingClientRect().width || 900),
-        );
-        previewer = init(node, {
+        const activePreviewer = init(node, {
           mode: "slide",
-          width,
-          height: Math.round((width * 9) / 16),
+          width: 960,
+          height: 540,
+        }) as unknown as PptxPreviewInstance;
+        previewer = activePreviewer;
+        previewerRef.current = activePreviewer;
+        const model = await activePreviewer.load(arrayBuffer);
+        if (cancelled) return;
+        if (!model.slides.length) {
+          throw new Error(tt("PPT 中没有可显示的幻灯片。"));
+        }
+        const nextLogicalSize = deckPreviewLogicalSize(
+          model.width / model.height,
+        );
+        activePreviewer.options.width = nextLogicalSize.width;
+        activePreviewer.options.height = nextLogicalSize.height;
+        const viewPort = activePreviewer.htmlRender.options.viewPort ?? {};
+        viewPort.width = nextLogicalSize.width;
+        viewPort.height = nextLogicalSize.height;
+        activePreviewer.htmlRender.options.viewPort = viewPort;
+        activePreviewer.wrapper.style.width = `${nextLogicalSize.width}px`;
+        activePreviewer.wrapper.style.height = `${nextLogicalSize.height}px`;
+        activePreviewer.wrapper.style.margin = "0";
+        activePreviewer.wrapper.style.overflow = "hidden";
+        activePreviewer.wrapper.style.background = "transparent";
+
+        const nextSlides = model.slides.map((slide, index) => {
+          activePreviewer.renderSingleSlide(index);
+          const rendered = activePreviewer.wrapper.querySelector<HTMLElement>(
+            `.pptx-preview-slide-wrapper-${index}`,
+          );
+          if (!rendered) {
+            throw new Error(tt(`无法渲染第 ${index + 1} 页幻灯片。`));
+          }
+          const metadata = structuredSlides[index];
+          return {
+            id: `pptx-slide-${index + 1}`,
+            index,
+            label:
+              stringValue(metadata?.title) ||
+              stringValue(metadata?.label) ||
+              slide.name ||
+              `第 ${index + 1} 页`,
+            thumbnail: clonePptxSlideSurface(rendered, index),
+          };
         });
-        await (
-          previewer as unknown as { preview: (file: ArrayBuffer) => Promise<unknown> }
-        ).preview(arrayBuffer);
-        if (!cancelled) setState("ready");
+        activePreviewer.renderSingleSlide(0);
+        if (cancelled) return;
+        setLogicalSize(nextLogicalSize);
+        setRenderedSlides(nextSlides);
+        setActiveSlideId(nextSlides[0].id);
+        setState("ready");
       } catch (reason) {
         if (cancelled) return;
+        if (previewerRef.current === previewer) previewerRef.current = null;
+        previewer?.destroy();
+        node.replaceChildren();
         setError(reason instanceof Error ? reason.message : String(reason));
         setState("error");
       }
     })();
     return () => {
       cancelled = true;
+      if (previewerRef.current === previewer) previewerRef.current = null;
       previewer?.destroy();
       node.replaceChildren();
     };
-  }, [attempt, item.url, onResourceError]);
+  }, [attempt, item.url, onResourceError, structuredSlides, tt]);
 
-  const slides = asRecords(item.meta.slides);
-  return (
-    <div className="relative min-h-[520px] overflow-auto bg-stone-100 p-3">
-      {state === "loading" && (
-        <div className="absolute inset-0 z-10 bg-white">
-          <LoadingView label={tt("正在解析 PPT…")} />
-        </div>
-      )}
-      <div ref={host} className={state === "ready" ? "mx-auto" : "hidden"} />
-      {state === "error" &&
-        (slides.length > 0 ? (
-          <StructuredSlides slides={slides} />
-        ) : (
-          <ErrorView
-            message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${error}）` : ""}`}
-            url={item.url}
-            onRetry={() => {
-              onResourceError?.();
-              setAttempt((value) => value + 1);
-            }}
+  const layoutSlides = useMemo<DeckPreviewLayoutSlide[]>(() => {
+    if (state === "ready") {
+      return renderedSlides.map((slide) => ({
+        id: slide.id,
+        label: slide.label,
+        thumbnail: (
+          <PptxSlideThumbnail
+            surface={slide.thumbnail}
+            logicalSize={logicalSize}
           />
-        ))}
-    </div>
+        ),
+      }));
+    }
+    if (state === "error") {
+      return structuredSlides.map((slide, index) => ({
+        id: `structured-slide-${index + 1}`,
+        label: stringValue(slide.title) || `第 ${index + 1} 页`,
+        thumbnail: (
+          <div className="aspect-video overflow-hidden rounded bg-white shadow-sm">
+            <StructuredSlidePreview
+              slide={slide}
+              index={index}
+              count={structuredSlides.length}
+              thumbnail
+            />
+          </div>
+        ),
+      }));
+    }
+    return [];
+  }, [logicalSize, renderedSlides, state, structuredSlides]);
+  const effectiveActiveSlideId = layoutSlides.some(
+    (slide) => slide.id === activeSlideId,
+  )
+    ? activeSlideId
+    : layoutSlides[0]?.id || "";
+  const activeStructuredIndex = layoutSlides.findIndex(
+    (slide) => slide.id === effectiveActiveSlideId,
   );
-}
+  const hasStructuredFallback =
+    state === "error" &&
+    activeStructuredIndex >= 0 &&
+    Boolean(structuredSlides[activeStructuredIndex]);
 
-function StructuredSlides({
-  slides,
-}: {
-  slides: Record<string, unknown>[];
-}) {
+  const selectSlide = (slideId: string) => {
+    const renderedSlide = renderedSlides.find((slide) => slide.id === slideId);
+    if (state === "ready" && renderedSlide && previewerRef.current) {
+      try {
+        previewerRef.current.renderSingleSlide(renderedSlide.index);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+        setState("error");
+        return;
+      }
+    }
+    setActiveSlideId(slideId);
+  };
+  const retry = () => {
+    onResourceError?.();
+    setAttempt((value) => value + 1);
+  };
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      {slides.map((slide, index) => {
-        const bullets = Array.isArray(slide.bullets)
-          ? slide.bullets.map(String)
-          : [];
-        return (
-          <article
-            key={String(slide.id || index)}
-            className="relative aspect-video overflow-hidden rounded-lg bg-white p-[7%] shadow"
-          >
-            <span className="absolute right-4 top-3 text-[10px] text-stone-300">
-              {index + 1} / {slides.length}
-            </span>
-            <h3 className="max-w-[85%] text-[clamp(18px,3vw,34px)] font-semibold leading-tight text-stone-900">
-              {stringValue(slide.title) || `第 ${index + 1} 页`}
-            </h3>
-            {bullets.length > 0 && (
-              <ul className="mt-[6%] space-y-[2%] text-[clamp(12px,1.7vw,20px)] leading-relaxed text-stone-600">
-                {bullets.map((bullet, bulletIndex) => (
-                  <li key={bulletIndex} className="flex gap-3">
-                    <span>•</span>
-                    <span>{bullet}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        );
-      })}
-    </div>
+    <DeckPreviewLayout
+      slides={layoutSlides}
+      activeSlideId={effectiveActiveSlideId}
+      onActiveSlideChange={selectSlide}
+      logicalSize={logicalSize}
+      railLabel={tt("页面")}
+      stageLabel={tt("演示文稿预览")}
+      busy={state === "loading"}
+      className="min-h-[520px]"
+      stageOverlay={
+        <>
+          {state === "loading" && (
+            <div className="absolute inset-0 z-40 bg-white/90">
+              <LoadingView label={tt("正在解析 PPT…")} />
+            </div>
+          )}
+          {state === "error" && hasStructuredFallback && (
+            <div
+              role="alert"
+              className="absolute left-1/2 top-4 z-40 flex max-w-[calc(100%_-_2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow-sm"
+            >
+              <span>
+                {tt("PPT 在线解析失败，正在显示结构化幻灯片快照。")}
+                {error ? `（${error}）` : ""}
+              </span>
+              <button
+                type="button"
+                onClick={retry}
+                className="rounded border border-amber-300 px-2 py-1 font-medium hover:bg-amber-100"
+              >
+                {tt("重试")}
+              </button>
+            </div>
+          )}
+          {state === "error" && !hasStructuredFallback && (
+            <div className="absolute inset-0 z-40 bg-white">
+              <ErrorView
+                message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${error}）` : ""}`}
+                url={item.url}
+                onRetry={retry}
+              />
+            </div>
+          )}
+        </>
+      }
+    >
+      <div className="relative h-full w-full overflow-hidden bg-white">
+        <div
+          ref={host}
+          className={`absolute inset-0 h-full w-full overflow-hidden ${
+            state === "ready" ? "" : "invisible"
+          }`}
+        />
+        {hasStructuredFallback && (
+          <div className="absolute inset-0">
+            <StructuredSlidePreview
+              slide={structuredSlides[activeStructuredIndex]}
+              index={activeStructuredIndex}
+              count={structuredSlides.length}
+            />
+          </div>
+        )}
+      </div>
+    </DeckPreviewLayout>
   );
 }
 

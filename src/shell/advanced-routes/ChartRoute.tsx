@@ -33,7 +33,9 @@ export function ChartRoute({
   const [exportError, setExportError] = useState("");
   const exportBusyRef = useRef(false);
   const exportUnavailable =
-    editor.loading || Boolean(editor.error && !editor.dirty);
+    editor.loading ||
+    !editor.sourceReady ||
+    Boolean(editor.error && !editor.dirty);
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
       if (saved.item) {
@@ -94,7 +96,14 @@ export function ChartRoute({
     const saved = await editor.save();
     return saved
       ? { ok: true as const, item: buildSavedItem(saved) }
-      : { ok: false as const, error: editor.error || "图表保存失败" };
+      : {
+          ok: false as const,
+          error:
+            editor.error ||
+            (!editor.sourceReady
+              ? "图表源未成功载入，未保存示例回退内容。"
+              : "图表保存失败"),
+        };
   }, [buildSavedItem, editor]);
   const importLocalData = useCallback(
     async (files: File[]) => {
@@ -231,7 +240,17 @@ export function ChartRoute({
           accept: ".csv,.tsv,text/csv,text/tab-separated-values",
           onFiles: importLocalData,
         },
-        stage: <ChartStage editor={editor} />,
+        stage:
+          !editor.loading && !editor.sourceReady ? (
+            <div
+              role="alert"
+              className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-rose-700"
+            >
+              {editor.error || "图表源未成功载入，编辑器已停止。"}
+            </div>
+          ) : (
+            <ChartStage editor={editor} />
+          ),
         status:
           exportError ||
           editor.error ||
@@ -244,7 +263,8 @@ export function ChartRoute({
           recovery: {
             key: advancedRecoveryKey("chart-editor@1", item),
             ready: !editor.loading,
-            capture: () => structuredClone(editor.document),
+            capture: () =>
+              editor.sourceReady ? structuredClone(editor.document) : null,
             restore: editor.restoreRecovery,
           },
         },

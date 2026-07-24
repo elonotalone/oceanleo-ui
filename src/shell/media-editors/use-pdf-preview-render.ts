@@ -55,7 +55,10 @@ export function usePdfPreviewRender({
         page = await documentProxy.getPage(
           clamp(pageNumber, 1, documentProxy.numPages),
         );
-        if (disposed) return;
+        if (disposed) {
+          page.cleanup();
+          return;
+        }
         const viewport = page.getViewport({ scale: rasterZoom / 100 });
         const pixelRatio = clamp(
           window.devicePixelRatio || 1,

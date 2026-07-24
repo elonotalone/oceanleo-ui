@@ -25,8 +25,20 @@ import {
   imageSceneDependencyRevisionIds,
   imageSceneWithResolvedDependencies,
   parseImageSceneSource,
+  rebaseImageSceneSourceToCurrent,
   serializeImageSceneSource,
 } from "../src/shell/image-editor/image-scene-source.ts";
+import {
+  CompositeImagePersistenceError,
+  persistCompositeImageProject,
+} from "../src/shell/image-editor/editor-persistence.ts";
+
+globalThis.window ||= {
+  location: {
+    href: "https://image.oceanleo.com/workspace",
+    origin: "https://image.oceanleo.com",
+  },
+};
 
 test("locked image objects remain inspectable while every object mutation is rejected", () => {
   assert.deepEqual(imageLockInteractionProps(true), {
@@ -237,14 +249,157 @@ test("composite autosave commits scene source with a revision-matched static pre
     "utf8",
   );
   const composite = persistence.slice(
-    persistence.indexOf("export async function persistCompositeImageProject"),
+    persistence.indexOf("async function persistCompositeImageProjectInternal"),
   );
   assert.match(composite, /createImageSceneRevisionBundle/);
   assert.match(composite, /assertPngPreview\(previewBlob\)/);
   assert.match(composite, /previewFile/);
   assert.match(composite, /preview_source_digest: sourceDigest/);
-  assert.match(composite, /createArtifactRevision/);
+  assert.match(composite, /dependencies\.createArtifactRevision/);
+  assert.match(composite, /dependencies\.getCurrent/);
+  assert.match(composite, /reload-current-revision/);
   assert.match(composite, /format: IMAGE_SCENE_SOURCE_FORMAT/);
+
+  const route = readFileSync(
+    new URL(
+      "../src/shell/advanced-routes/ImageRoute.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(route, /saved\.item[\s\S]*advancedCommittedRevisionItem/);
+  assert.match(route, /画布仍保持未保存状态/);
+});
+
+function compositeItem(headId) {
+  const artifactId = "artifact-composite";
+  return {
+    id: headId,
+    key: `${artifactId}:${headId}`,
+    title: "Composite image",
+    kind: "image",
+    source: "artifact",
+    siteId: "image",
+    favorite: false,
+    meta: {},
+    artifactId,
+    revisionId: headId,
+    artifactType: "composite_image",
+    artifact: {
+      schema: "oceanleo.artifact.v1",
+      artifactId,
+      revisionId: headId,
+      artifactType: "composite_image",
+      sourceFormat: "oceanleo-scene+json",
+      editorCapability: "composite-image-editor",
+      owner: { visibility: "private" },
+      access: { canEdit: true },
+      integrity: { ok: true },
+      renditions: {},
+      scene: {
+        schema: IMAGE_SCENE_SOURCE_SCHEMA,
+        sceneRevisionId: headId,
+        closureStatus: "complete",
+        closureDigest: "c".repeat(64),
+        dependencyRevisionIds: [],
+      },
+    },
+  };
+}
+
+function plainSnapshot() {
+  return {
+    json: {
+      version: "6.0.0",
+      objects: [
+        {
+          type: "rect",
+          oceanleoId: "shape-1",
+          left: 20,
+          top: 30,
+        },
+      ],
+    },
+    doc: { width: 640, height: 360 },
+    canvasBackground: "#ffffff",
+  };
+}
+
+function pngBlob() {
+  return new Blob(
+    [
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    ],
+    { type: "image/png" },
+  );
+}
+
+test("composite persistence surfaces a recoverable authoritative CAS conflict", async () => {
+  const stale = compositeItem("revision-stale");
+  const current = compositeItem("revision-current");
+  const uploaded = new Map();
+  let publishedCommit;
+  let uploadIndex = 0;
+  await assert.rejects(
+    persistCompositeImageProject(
+      plainSnapshot(),
+      stale,
+      "image",
+      "test-conflict",
+      4,
+      pngBlob(),
+      {
+        upload: async (file) => {
+          uploadIndex += 1;
+          const url = `https://api.oceanleo.com/v1/media/file/upload-${uploadIndex}`;
+          const blob = new Blob([await file.arrayBuffer()], {
+            type: file.type,
+          });
+          uploaded.set(url, blob);
+          return {
+            ok: true,
+            data: {
+              file: {
+                url,
+                meta: {
+                  content_digest: createHash("sha256")
+                    .update(Buffer.from(await blob.arrayBuffer()))
+                    .digest("hex"),
+                },
+              },
+            },
+          };
+        },
+        fetchBlob: async (url) => {
+          const blob = uploaded.get(url);
+          if (!blob) throw new Error(`missing upload ${url}`);
+          return blob;
+        },
+        createArtifactRevision: async (_artifactId, commit) => {
+          publishedCommit = commit;
+          return {
+            ok: false,
+            code: "revision-conflict",
+            error: "head changed",
+          };
+        },
+        getCurrent: async () => ({ ok: true, data: current }),
+      },
+    ),
+    (error) =>
+      error instanceof CompositeImagePersistenceError &&
+      error.code === "revision-conflict" &&
+      error.currentRevisionId === current.revisionId &&
+      error.recovery === "reload-current-revision" &&
+      error.recoverable === true &&
+      error.uploadsPersisted === true &&
+      /未成为新 head/.test(error.message),
+  );
+  assert.equal(publishedCommit.expectedRevisionId, stale.revisionId);
+  assert.equal(uploaded.size, 2);
 });
 
 function layeredSnapshot() {
@@ -351,6 +506,52 @@ test("composite scene performs a real load-layer-change-save-reopen round trip",
       )
       .digest("hex"),
     "artifact closure evidence is reproducible from committed source bytes",
+  );
+});
+
+test("composite scene rebase is explicit, same-root, and digest preserving", async () => {
+  const staleRevisionId = "revision-composite-stale";
+  const currentRevisionId = "revision-composite-current";
+  const source = await createImageSceneSource({
+    snapshot: layeredSnapshot(),
+    revision: 9,
+    artifactId: "artifact-composite",
+    baseRevisionId: staleRevisionId,
+  });
+  const rebased = await rebaseImageSceneSourceToCurrent(
+    source,
+    {
+      artifactId: "artifact-composite",
+      revisionId: staleRevisionId,
+    },
+    {
+      artifactId: "artifact-composite",
+      revisionId: currentRevisionId,
+    },
+  );
+  assert.equal(rebased.baseArtifact.revisionId, currentRevisionId);
+  assert.equal(
+    rebased.dependencyClosure.digest,
+    source.dependencyClosure.digest,
+  );
+  assert.notEqual(rebased.revisionDigest, source.revisionDigest);
+  await assert.doesNotReject(parseImageSceneSource(rebased));
+
+  await assert.rejects(
+    rebaseImageSceneSourceToCurrent(
+      source,
+      {
+        artifactId: "artifact-composite",
+        revisionId: "wrong-stale-revision",
+      },
+      {
+        artifactId: "artifact-composite",
+        revisionId: currentRevisionId,
+      },
+    ),
+    (error) =>
+      error instanceof ImageSceneSourceError &&
+      error.code === "revision-mismatch",
   );
 });
 

@@ -7,7 +7,10 @@ import {
   type SetStateAction,
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { uploadImportedModel } from "./model3d-files";
+import {
+  uploadImportedModel,
+  type Model3DArtifactIdentity,
+} from "./model3d-files";
 import type { Model3DOperation } from "./model3d-operations.mjs";
 import {
   normalizeModel3DSourceProvenance,
@@ -109,6 +112,7 @@ export function useModel3DSourceActions({
   const openModelUrl = useCallback((
     url: string,
     format: Model3DSourceFormat = "",
+    identity: Model3DArtifactIdentity | null = null,
   ) => {
     if (!/^https?:\/\//i.test(url)) {
       setError(tt("3D 模型地址无效"));
@@ -123,6 +127,9 @@ export function useModel3DSourceActions({
           sourceUrl: url,
           dependencyBaseUrl: url,
           format,
+          artifactId: identity?.artifactId || "",
+          revisionId: identity?.revisionId || "",
+          sourceDigest: identity?.sourceDigest || "",
         },
         url,
         format,

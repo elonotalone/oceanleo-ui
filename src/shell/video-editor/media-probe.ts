@@ -64,7 +64,11 @@ export function probeMediaSource(
     };
     el.onerror = () => done(null);
     timer = window.setTimeout(() => done(null), 15000);
-    el.src = canvasSafeUrl(url);
+    try {
+      el.src = canvasSafeUrl(url);
+    } catch {
+      done(null);
+    }
   });
 }
 

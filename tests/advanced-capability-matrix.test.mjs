@@ -495,6 +495,8 @@ test("website embed extras carry durable identity and never invent a host site p
     },
   );
 
+  // Durable artifact identity must omit starter substitutes; blank/new drafts
+  // still use the starter path when no artifactId/revisionId is present.
   assert.deepEqual(
     websiteEmbedExtraParams(
       item({
@@ -510,9 +512,24 @@ test("website embed extras carry durable identity and never invent a host site p
     {
       projectId: "11111111-1111-4111-8111-111111111111",
       siteId: "11111111-1111-4111-8111-111111111111",
-      starterId: "agency-landing",
       artifactId: "typed-website",
       revisionId: "site-r3",
+    },
+  );
+
+  // Starter-backed new drafts keep starterId and are not blank embeds.
+  assert.deepEqual(
+    websiteEmbedExtraParams(
+      item({
+        kind: "website",
+        meta: {
+          draft: true,
+          starter_id: "agency-landing",
+        },
+      }),
+    ),
+    {
+      starterId: "agency-landing",
     },
   );
 
@@ -531,6 +548,6 @@ test("website embed extras carry durable identity and never invent a host site p
   assert.equal(openAsset.artifactType, "website");
   assert.equal(openAsset.meta.artifact_id, "typed-website");
   assert.equal(openAsset.meta.revision_id, "site-r3");
-  assert.equal(openAsset.meta.starter_id, "agency-landing");
+  assert.equal("starter_id" in openAsset.meta, false);
 });
 

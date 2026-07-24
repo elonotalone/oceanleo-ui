@@ -158,6 +158,14 @@ export async function loadRichDocHtml(
       }
       return { html: await sanitizeHtml(text), source: "url-html", error: "" };
     }
+    if (item.source === "artifact") {
+      return {
+        html: "<p></p>",
+        source: "empty",
+        error:
+          "当前文档 revision 缺少可验证的 source/full 内容；已阻止用空白文档替代。",
+      };
+    }
     return { html: "<p></p>", source: "empty", error: "" };
   } catch (caught) {
     return {

@@ -2,7 +2,10 @@
 
 import { useCallback, useMemo } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { advancedSavedItem } from "../advanced-session";
+import {
+  advancedCommittedRevisionItem,
+  advancedSavedItem,
+} from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
 import {
@@ -91,25 +94,44 @@ export function ImageRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    return saved
-      ? {
-          ok: true as const,
-          item: advancedSavedItem(item, {
-            url: saved.url,
-          versionId: saved.versionId,
-            meta: {
-              editor: "fabric-v3",
-              fabric_document_url: saved.projectUrl,
-              fabric_preview_url: saved.url,
-              fabric_saved_at: saved.savedAt,
-            editor_project_url: saved.projectUrl,
-            editor_project_schema: "oceanleo.fabric-image.v1",
-            editor_saved_at: saved.savedAt,
-            },
-          }),
-        }
-      : { ok: false as const };
-  }, [editor.save, item]);
+    if (!saved) {
+      return {
+        ok: false as const,
+        error:
+          editor.error ||
+          "图片没有产生新的 durable revision；画布仍保持未保存状态。",
+      };
+    }
+    const meta = {
+      editor: "fabric-v3",
+      fabric_document_url: saved.projectUrl,
+      fabric_preview_url: saved.url,
+      fabric_saved_at: saved.savedAt,
+      editor_project_url: saved.projectUrl,
+      editor_project_schema: "oceanleo.fabric-image.v1",
+      editor_saved_at: saved.savedAt,
+    };
+    try {
+      return {
+        ok: true as const,
+        item: saved.item
+          ? advancedCommittedRevisionItem(item, saved.item, meta)
+          : advancedSavedItem(item, {
+              url: saved.url,
+              versionId: saved.versionId,
+              meta,
+            }),
+      };
+    } catch (caught) {
+      return {
+        ok: false as const,
+        error:
+          caught instanceof Error
+            ? caught.message
+            : "图片 revision 回执无法固定到当前 artifact head。",
+      };
+    }
+  }, [editor.error, editor.save, item]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       for (const file of files) {

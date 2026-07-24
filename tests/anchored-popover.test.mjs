@@ -226,6 +226,31 @@ test("geometry clamps horizontally and flips above when below cannot fit", () =>
   );
 });
 
+test("geometry constrains oversized panels to a narrow visual viewport", () => {
+  assert.deepEqual(
+    computeAnchoredPopoverPosition(
+      {
+        left: 120,
+        top: 40,
+        right: 152,
+        bottom: 80,
+        width: 32,
+        height: 40,
+      },
+      { width: 352, height: 300 },
+      { left: 0, top: 0, width: 160, height: 240 },
+      { align: "end", maxHeight: 512 },
+    ),
+    {
+      left: 8,
+      top: 86,
+      maxWidth: 144,
+      maxHeight: 146,
+      placement: "below",
+    },
+  );
+});
+
 test("portal follows fullscreen, repositions, and owns escape/outside focus", async () => {
   function Harness() {
     const anchorRef = useRef(null);
@@ -404,6 +429,118 @@ test("menu and listbox composites move focus with arrow keys", async () => {
   }
 });
 
+test("fallback inspectors expose their controlled id and restore More focus", async () => {
+  const inspectorPanelStubUrl = dataModule(`
+    import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+    export function SelectionInspectorPanel() {
+      return jsx("div", { "data-inspector-panel-body": true });
+    }
+  `);
+  const inspectorHostUrl = await compileTsxUrl(
+    "src/shell/selection-inspector-host.tsx",
+    {
+      react: reactUrl,
+      "./anchored-popover": popoverUrl,
+      "./SelectionInspectorPanel": inspectorPanelStubUrl,
+    },
+  );
+  const { useSelectionInspectorHost } = await import(inspectorHostUrl);
+  const panelId = "selection-inspector-grid-rows";
+
+  function Harness() {
+    const toolbarRef = useRef(null);
+    const moreRef = useRef(null);
+    const host = useSelectionInspectorHost({
+      layout: null,
+      groups: [
+        {
+          panelId,
+          label: "行操作",
+          icon: "add",
+          controls: [],
+        },
+      ],
+      context: {
+        version: 1,
+        kind: "grid-row",
+        id: "cell:sheet:1",
+        controls: [],
+      },
+      onCommand() {},
+      accent: "#4f46e5",
+      anchorRef: toolbarRef,
+      overflowTriggerRef: moreRef,
+    });
+    return React.createElement(
+      "div",
+      { ref: toolbarRef },
+      React.createElement(
+        "button",
+        { ref: moreRef, type: "button", "data-more-trigger": true },
+        "More",
+      ),
+      React.createElement(
+        "div",
+        { "data-selection-overflow-control": true },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "data-inspector-trigger": true,
+            "aria-controls": panelId,
+            onClick: () => host.openPanel(panelId),
+          },
+          "Rows",
+        ),
+      ),
+      React.createElement(
+        "span",
+        { "data-active-panel": true },
+        host.activePanelId,
+      ),
+      host.fallbackPanel,
+    );
+  }
+
+  const mounted = await createMounted(Harness);
+  try {
+    const trigger = mounted.container.querySelector("[data-inspector-trigger]");
+    const more = mounted.container.querySelector("[data-more-trigger]");
+    trigger.focus();
+    await act(async () => {
+      trigger.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    await frame();
+
+    const panel = document.getElementById(panelId);
+    assert.ok(panel);
+    assert.equal(panel.getAttribute("role"), "dialog");
+    assert.equal(
+      panel.getAttribute("aria-labelledby"),
+      panel.querySelector("h2")?.id,
+    );
+    assert.equal(
+      mounted.container.querySelector("[data-active-panel]")?.textContent,
+      panelId,
+    );
+
+    const close = panel.querySelector('button[aria-label="关闭属性面板"]');
+    assert.equal(document.activeElement, close);
+    await act(async () => {
+      close.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    await frame();
+    assert.equal(document.getElementById(panelId), null);
+    assert.equal(document.activeElement, more);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("selection More delegates placement to the portal instead of an in-pane absolute panel", async () => {
   const source = await readFile(
     new URL("../src/shell/SelectionToolbar.tsx", import.meta.url),
@@ -412,4 +549,19 @@ test("selection More delegates placement to the portal instead of an in-pane abs
   assert.match(source, /<AnchoredPopover/);
   assert.match(source, /anchorRef=\{moreButtonRef\}/);
   assert.doesNotMatch(source, /className="absolute right-0 top-full/);
+  const selectSource = await readFile(
+    new URL("../src/shell/SelectionToolbarSelectControl.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(selectSource, /overflow-x-hidden/);
+  assert.doesNotMatch(selectSource, /minWidth:\s*Math\.max/);
+  const inspectorHostSource = await readFile(
+    new URL("../src/shell/selection-inspector-host.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(inspectorHostSource, /id=\{group\.panelId\}/);
+  assert.match(
+    inspectorHostSource,
+    /closest\("\[data-selection-overflow-control\]"\)/,
+  );
 });

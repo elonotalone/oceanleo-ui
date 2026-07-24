@@ -20,14 +20,10 @@ export function DeckMiniSlide({
   active: boolean;
   theme: ReturnType<typeof deckTheme>;
   master: DeckMaster;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex w-full items-start gap-2 text-left"
-    >
+  const preview = (
+    <>
       <span className="w-5 shrink-0 pt-5 text-right text-[9px] text-[var(--muted,#a8a29e)]">
         {number}
       </span>
@@ -61,6 +57,24 @@ export function DeckMiniSlide({
           </>
         )}
       </span>
+    </>
+  );
+
+  if (!onClick) {
+    return (
+      <span className="group flex w-full items-start gap-1 text-left">
+        {preview}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-start gap-2 text-left"
+    >
+      {preview}
     </button>
   );
 }

@@ -153,14 +153,15 @@ export function SelectionToolbar({
     .join("|");
   const { openPanel: openControlPanel, activePanelId, fallbackPanel } =
     useSelectionInspectorHost({
-    layout,
-    groups: inspectorGroups,
-    context,
-    onCommand,
-    onOpenPanel,
-    accent,
-    anchorRef: toolbarRef,
-  });
+      layout,
+      groups: inspectorGroups,
+      context,
+      onCommand,
+      onOpenPanel,
+      accent,
+      anchorRef: toolbarRef,
+      overflowTriggerRef: moreButtonRef,
+    });
   useLayoutEffect(() => {
     setMoreOpen(false);
     const currentLayout = layoutRef.current;
@@ -327,6 +328,11 @@ export function SelectionToolbar({
   const adaptiveRegionVisible = visible.length > 0 || overflow.length > 0;
   const liveCapability = selectionLiveCapability(context?.kind);
   const moreDialogLabel = selectionMoreDialogLabel(context?.kind);
+  const overflowGroupLabelId = (groupId: string, groupIndex: number) =>
+    `${morePanelId}-group-${groupIndex}-${groupId.replace(
+      /[^a-z0-9_-]/gi,
+      "-",
+    )}`;
   return (
     <div
       ref={toolbarRef}
@@ -343,7 +349,7 @@ export function SelectionToolbar({
       data-selection-overflow-controls={overflow
         .map((control) => control.id)
         .join(" ")}
-      className={`pointer-events-auto relative flex flex-nowrap items-center gap-1 ${
+      className={`pointer-events-auto relative flex min-w-0 flex-nowrap items-center gap-1 ${
         effectiveVariant === "floating"
           ? "w-fit max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
           : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
@@ -432,7 +438,7 @@ export function SelectionToolbar({
                   "data-selection-overflow-live-capability":
                     liveCapability?.id || undefined,
                 }}
-                className="z-[2147483500] grid w-72 gap-1 overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="z-[2147483500] grid w-72 max-w-[calc(100dvw-1rem)] gap-1 overflow-x-hidden overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               >
                 {liveCapability && (
                   <div
@@ -446,20 +452,24 @@ export function SelectionToolbar({
                   <div
                     key={group.id}
                     role="group"
-                    aria-label={
-                      group.id === "inspectors"
-                        ? "属性面板"
-                        : group.id === "danger"
-                          ? "危险操作"
-                          : "更多操作"
-                    }
+                    aria-labelledby={overflowGroupLabelId(
+                      group.id,
+                      groupIndex,
+                    )}
                     data-selection-overflow-group={group.id}
+                    data-selection-overflow-group-label={group.label}
                     className={`grid min-w-0 gap-0.5 ${
                       groupIndex > 0
                         ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
                         : ""
                     }`}
                   >
+                    <div
+                      id={overflowGroupLabelId(group.id, groupIndex)}
+                      className="truncate px-2.5 pb-0.5 pt-1 text-[10px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
+                    >
+                      {group.label}
+                    </div>
                     {group.controls.map((control) =>
                       renderControl(control, "menu"),
                     )}

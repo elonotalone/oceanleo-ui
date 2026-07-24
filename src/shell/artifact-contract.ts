@@ -637,6 +637,24 @@ export interface ArtifactSceneEvidence {
   dependencyRevisionIds: string[];
 }
 
+/**
+ * Server-verified source closure for one exact artifact revision.
+ *
+ * `scene` describes the editor-facing scene. This record separately proves
+ * that the source bytes and every persisted dependency belong to the same
+ * first-party revision closure; clients must never manufacture it from a
+ * poster URL or from an unverified editor document.
+ */
+export interface ArtifactSourceClosureEvidence {
+  revisionId: string;
+  status: "complete" | "missing" | "unknown";
+  digest: string | null;
+  sourceDigest: string | null;
+  dependencyDigests: string[];
+  dependencyRevisionIds: string[];
+  firstParty: boolean;
+}
+
 export interface ArtifactIntegrity {
   ok: boolean;
   code:
@@ -685,6 +703,7 @@ export interface ArtifactProjection extends ArtifactIdentity {
   favorite: boolean;
   renditions: Partial<Record<ArtifactRenditionPurpose, ArtifactRendition>>;
   scene: ArtifactSceneEvidence | null;
+  sourceClosure?: ArtifactSourceClosureEvidence | null;
   provenance: ArtifactProvenance | null;
   bindings: ArtifactContextBinding[];
   integrity: ArtifactIntegrity;
@@ -1067,6 +1086,23 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+function normalizedSha256(value: unknown): string {
+  const digest = text(value).toLowerCase().replace(/^sha256:/, "");
+  return /^[0-9a-f]{64}$/.test(digest) ? digest : "";
+}
+
+function sameStringSet(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  const first = [...new Set(left)].sort();
+  const second = [...new Set(right)].sort();
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
 function normalizeArtifactType(value: unknown): ArtifactType | null {
   const normalized = text(value).toLowerCase();
   return ARTIFACT_TYPE_SET.has(normalized)
@@ -1242,6 +1278,46 @@ function normalizeScene(
   };
 }
 
+function normalizeSourceClosure(
+  value: unknown,
+): ArtifactSourceClosureEvidence | null {
+  const raw = record(value);
+  if (!raw) return null;
+  const revisionId = text(raw.revisionId, raw.revision_id);
+  const rawStatus = text(raw.status, raw.closureStatus, raw.closure_status);
+  const firstParty = booleanField(raw, "firstParty", "first_party");
+  const rawDependencyDigests =
+    raw.dependencyDigests ?? raw.dependency_digests;
+  const rawDependencyRevisionIds =
+    raw.dependencyRevisionIds ?? raw.dependency_revision_ids;
+  if (
+    !revisionId ||
+    !["complete", "missing", "unknown"].includes(rawStatus) ||
+    firstParty === null ||
+    !Array.isArray(rawDependencyDigests) ||
+    !Array.isArray(rawDependencyRevisionIds)
+  ) {
+    return null;
+  }
+  const dependencyDigests = rawDependencyDigests.map(normalizedSha256);
+  if (
+    dependencyDigests.some((digest) => !digest) ||
+    dependencyDigests.length !== new Set(dependencyDigests).size
+  ) {
+    return null;
+  }
+  return {
+    revisionId,
+    status: rawStatus as ArtifactSourceClosureEvidence["status"],
+    digest: normalizedSha256(raw.digest) || null,
+    sourceDigest:
+      normalizedSha256(raw.sourceDigest ?? raw.source_digest) || null,
+    dependencyDigests,
+    dependencyRevisionIds: stringList(rawDependencyRevisionIds),
+    firstParty,
+  };
+}
+
 function normalizeBindings(value: unknown): ArtifactContextBinding[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -1287,6 +1363,7 @@ export function artifactIntegrityFor(input: {
   provenance: ArtifactProvenance | null;
   renditions: Partial<Record<ArtifactRenditionPurpose, ArtifactRendition>>;
   scene: ArtifactSceneEvidence | null;
+  sourceClosure?: ArtifactSourceClosureEvidence | null;
 }): ArtifactIntegrity {
   if (!input.owner.principalId) {
     return {
@@ -1455,6 +1532,40 @@ export function artifactIntegrityFor(input: {
         reason: "复合图片的 scene 依赖闭包不完整，不能安全编辑或重开。",
       };
     }
+    if (input.sourceClosure) {
+      const sourceDigest = normalizedSha256(
+        input.renditions.source?.digest,
+      );
+      if (input.sourceClosure.revisionId !== input.revisionId) {
+        return {
+          ok: false,
+          code: "revision-mismatch",
+          reason: "复合图片的 source closure 没有固定到当前 revision。",
+        };
+      }
+      if (
+        input.sourceClosure.status !== "complete" ||
+        !input.sourceClosure.firstParty ||
+        !input.sourceClosure.digest ||
+        !input.sourceClosure.sourceDigest ||
+        !sourceDigest ||
+        input.sourceClosure.sourceDigest !== sourceDigest ||
+        input.sourceClosure.digest !==
+          normalizedSha256(input.scene.closureDigest) ||
+        !input.sourceClosure.dependencyDigests.includes(sourceDigest) ||
+        !sameStringSet(
+          input.sourceClosure.dependencyRevisionIds,
+          input.scene.dependencyRevisionIds,
+        )
+      ) {
+        return {
+          ok: false,
+          code: "incomplete-dependency-closure",
+          reason:
+            "复合图片的 source bytes、first-party closure 与 scene 证据不一致。",
+        };
+      }
+    }
   }
   return { ok: true, code: "ok", reason: "" };
 }
@@ -1488,6 +1599,8 @@ export function normalizeArtifactProjection(
     raw.scene ?? raw.source_scene ?? raw.source_manifest,
     revisionId,
   );
+  const rawSourceClosure = raw.sourceClosure ?? raw.source_closure;
+  const sourceClosure = normalizeSourceClosure(rawSourceClosure);
   const owner = normalizeOwner(raw.owner);
   const access = normalizeAccess(raw.access ?? raw.permissions ?? raw.acl);
   const provenance = normalizeProvenance(raw.provenance);
@@ -1495,18 +1608,26 @@ export function normalizeArtifactProjection(
   const sourceFormat = text(raw.sourceFormat, raw.source_format);
   const editorCapability =
     text(raw.editorCapability, raw.editor_capability) || null;
-  const integrity = artifactIntegrityFor({
-    artifactType,
-    revisionId,
-    editability,
-    editorCapability,
-    sourceFormat,
-    owner,
-    access,
-    provenance,
-    renditions,
-    scene,
-  });
+  const integrity =
+    rawSourceClosure !== undefined && !sourceClosure
+      ? {
+          ok: false as const,
+          code: "invalid-projection" as const,
+          reason: "artifact source closure 结构或 SHA-256 证据无效。",
+        }
+      : artifactIntegrityFor({
+          artifactType,
+          revisionId,
+          editability,
+          editorCapability,
+          sourceFormat,
+          owner,
+          access,
+          provenance,
+          renditions,
+          scene,
+          sourceClosure,
+        });
   const declaredIntegrity = record(raw.integrity);
   const declaredCode = text(declaredIntegrity?.code);
   const declaredReason = text(declaredIntegrity?.reason);
@@ -1553,6 +1674,7 @@ export function normalizeArtifactProjection(
     favorite: bool(raw.favorite),
     renditions,
     scene,
+    sourceClosure,
     provenance,
     bindings: normalizeBindings(
       raw.bindings ?? raw.context_bindings,

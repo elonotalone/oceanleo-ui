@@ -12,6 +12,59 @@ export interface SelectionInspectorGroup {
   controls: SelectionControl[];
 }
 
+interface SelectionInspectorGroupPresentation {
+  label: string;
+  icon: SelectionControlIcon;
+  placement: "primary" | "more";
+  overflowGroup?: string;
+}
+
+/**
+ * Route controls may provide a generic icon for every inspector. Canonical
+ * shared presentations keep dense editors recognizable without requiring each
+ * route to duplicate toolbar layout policy.
+ */
+const INSPECTOR_GROUP_PRESENTATIONS: Readonly<
+  Record<string, SelectionInspectorGroupPresentation>
+> = {
+  "grid-number-format": {
+    label: "数字格式",
+    icon: "font",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+  "grid-rows": {
+    label: "行操作",
+    icon: "add",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+  "grid-columns": {
+    label: "列操作",
+    icon: "table",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+  "grid-data": {
+    label: "排序与筛选",
+    icon: "filter",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+  "grid-merge": {
+    label: "合并单元格",
+    icon: "border",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+  "grid-conditional": {
+    label: "条件格式",
+    icon: "color",
+    placement: "more",
+    overflowGroup: "grid-properties",
+  },
+};
+
 const SPACING_DETAIL_IDS = new Set([
   "letter-spacing",
   "char-spacing",
@@ -106,6 +159,7 @@ export function partitionSelectionInspectorControls(
     const id = spacing
       ? "text-spacing"
       : control.inspectorGroup || control.group || "adjustments";
+    const presentation = INSPECTOR_GROUP_PRESENTATIONS[id];
     const basePanelId = `selection-inspector-${id.replace(
       /[^a-z0-9_.:-]/gi,
       "-",
@@ -117,9 +171,11 @@ export function partitionSelectionInspectorControls(
     const current = grouped.get(id) || {
       panelId,
       label:
+        presentation?.label ||
         (spacing ? "间距" : control.inspectorLabel) ||
         (id === "adjustments" ? "调整" : control.label),
       icon:
+        presentation?.icon ||
         (spacing ? "spacing" : control.inspectorIcon) ||
         control.icon ||
         "more",
@@ -136,6 +192,7 @@ export function partitionSelectionInspectorControls(
     compact: compactOrder.map((entry): SelectionControl => {
       if (entry.type === "control") return entry.control;
       const group = grouped.get(entry.id)!;
+      const presentation = INSPECTOR_GROUP_PRESENTATIONS[entry.id];
       return {
         id: group.panelId,
         kind: "panel",
@@ -143,8 +200,11 @@ export function partitionSelectionInspectorControls(
         icon: group.icon,
         iconOnly: true,
         panelId: group.panelId,
-        placement: "primary",
+        placement: presentation?.placement || "primary",
         slot: "compact",
+        ...(presentation?.overflowGroup
+          ? { group: presentation.overflowGroup }
+          : {}),
         ...(group.semantic ? { semantic: group.semantic } : {}),
       };
     }),

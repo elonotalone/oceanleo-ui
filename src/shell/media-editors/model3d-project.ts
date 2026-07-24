@@ -32,11 +32,15 @@ export interface Model3DSourceProvenance {
   dependencyBaseUrl: string;
   format: Model3DSourceFormat;
   identity: string;
+  artifactId: string;
+  revisionId: string;
+  sourceDigest: string;
 }
 
 export interface PersistedModel3DVersion extends PersistedEditorVersion {
   sourceFormat: Model3DSourceFormat;
   sourceProvenance: Model3DSourceProvenance;
+  posterUrl: string;
 }
 
 export interface Model3DViewProject {
@@ -198,6 +202,18 @@ export function normalizeModel3DSourceProvenance(
       typeof record.identity === "string" && record.identity.trim()
         ? record.identity.trim()
         : model3DSourceIdentity(sourceUrl),
+    artifactId:
+      typeof (record.artifactId ?? record.artifact_id) === "string"
+        ? String(record.artifactId ?? record.artifact_id).trim()
+        : "",
+    revisionId:
+      typeof (record.revisionId ?? record.revision_id) === "string"
+        ? String(record.revisionId ?? record.revision_id).trim()
+        : "",
+    sourceDigest:
+      typeof (record.sourceDigest ?? record.source_digest) === "string"
+        ? String(record.sourceDigest ?? record.source_digest).trim().toLowerCase()
+        : "",
   };
 }
 
@@ -413,6 +429,9 @@ export async function persistModel3DProject({
         dependencyBaseUrl: "",
         format: "glb",
         identity: "",
+        artifactId: "",
+        revisionId: "",
+        sourceDigest: "",
       }
     : {
         ...normalizedProvenance,
@@ -443,6 +462,9 @@ export async function persistModel3DProject({
       model_source_url: file ? "" : checkpointUrl,
       model_dependency_base_url: projectProvenance.dependencyBaseUrl,
       model_source_identity: projectProvenance.identity,
+      model_source_artifact_id: projectProvenance.artifactId,
+      model_source_revision_id: projectProvenance.revisionId,
+      model_source_digest: projectProvenance.sourceDigest,
       view: wireView,
       model_dependency_mode: "checkpoint-glb+operation-journal",
       checkpoint_reason: checkpointReason || "journal-only",
@@ -467,6 +489,8 @@ export async function persistModel3DProject({
           sourceUrl: saved.url,
           dependencyBaseUrl: saved.url,
           format: "glb",
+          artifactId: saved.artifactId || "",
+          revisionId: saved.revisionId || "",
         }
       : projectProvenance,
     saved.url,
@@ -479,5 +503,6 @@ export async function persistModel3DProject({
     projectSchema: saved.projectSchema,
     sourceFormat,
     sourceProvenance: persistedProvenance,
+    posterUrl: thumbUrl || "",
   };
 }

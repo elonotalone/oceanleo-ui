@@ -60,11 +60,12 @@ test("primary capabilities overflow by measured width without fixed-six truncati
 
 test("v9 floating bar is intrinsic width with only a viewport safety maximum", () => {
   const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const measureHook = source("../src/shell/useSelectionToolbarMeasure.ts");
   const floating = source("../src/shell/FloatingContextToolbar.tsx");
   assert.match(toolbar, /w-fit max-w-full/);
   assert.match(toolbar, /maxInlineSize:\s*SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.doesNotMatch(toolbar, /width:\s*`min\(|min-w-\[[^\]]+\]|flex-1 flex-nowrap/);
-  assert.match(toolbar, /new ResizeObserver\(readLayout\)/);
+  assert.match(measureHook, /new ResizeObserver\(readLayout\)/);
   assert.match(toolbar, /data-selection-toolbar-measurements/);
   assert.match(toolbar, /data-selection-toolbar-adaptive-region/);
   assert.doesNotMatch(toolbar, /\[overflow-x:auto\]/);
@@ -151,7 +152,9 @@ test("Design alignment is one five-step click cycle and spacing stays separate",
     seen.push(alignment);
   }
   assert.deepEqual(seen, ["left", "center", "right", "justify", "left"]);
-  const toolbar = source("../src/shell/SelectionToolbar.tsx");
+  const toolbar =
+    source("../src/shell/SelectionToolbar.tsx") +
+    source("../src/shell/SelectionToolbarControl.tsx");
   assert.match(toolbar, /data-selection-alignment/);
   assert.match(toolbar, /aria-pressed=\{current !== undefined\}/);
   assert.doesNotMatch(toolbar, /alignment[\s\S]{0,120}aria-haspopup="listbox"/);

@@ -82,7 +82,7 @@ export function VideoTimelineControls({
         <div className="grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            disabled={state.addingMedia}
+            disabled={state.addingMedia || state.loadingSource}
             onClick={() => fileInputRef.current?.click()}
             className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
             style={{ background: accent }}
@@ -91,6 +91,7 @@ export function VideoTimelineControls({
           </button>
           <ToolButton
             label={tt("粘贴 URL")}
+            disabled={state.loadingSource}
             onClick={() => setShowUrlInput((value) => !value)}
           />
         </div>
@@ -98,13 +99,16 @@ export function VideoTimelineControls({
           <div className="mt-1.5 flex gap-1.5">
             <input
               value={urlDraft}
+              disabled={state.loadingSource}
               onChange={(event) => setUrlDraft(event.target.value)}
               placeholder="https://…"
               className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] focus:border-[var(--accent,#7c3aed)] focus:outline-none"
             />
             <ToolButton
               label={tt("添加")}
-              disabled={state.addingMedia || !urlDraft.trim()}
+              disabled={
+                state.addingMedia || state.loadingSource || !urlDraft.trim()
+              }
               onClick={() => {
                 void state.addMediaUrl(urlDraft);
                 setUrlDraft("");
@@ -114,7 +118,11 @@ export function VideoTimelineControls({
           </div>
         )}
         <div className="mt-1.5">
-          <ToolButton label={tt("添加文字")} onClick={state.addTextClip} />
+          <ToolButton
+            label={tt("添加文字")}
+            disabled={!state.sourceReady}
+            onClick={state.addTextClip}
+          />
         </div>
       </section>
 
@@ -125,18 +133,19 @@ export function VideoTimelineControls({
           <ToolButton
             label={tt("分割")}
             title={tt("在播放头处分割（S）")}
+            disabled={!state.sourceReady}
             onClick={state.splitAtPlayhead}
           />
           <ToolButton
             label={tt("撤销")}
             title="Ctrl+Z"
-            disabled={!state.canUndo}
+            disabled={!state.sourceReady || !state.canUndo}
             onClick={state.undo}
           />
           <ToolButton
             label={tt("重做")}
             title="Ctrl+Shift+Z"
-            disabled={!state.canRedo}
+            disabled={!state.sourceReady || !state.canRedo}
             onClick={state.redo}
           />
         </div>
@@ -150,6 +159,7 @@ export function VideoTimelineControls({
             <ToolButton
               key={entry.kind}
               label={`+ ${tt(entry.label)}`}
+              disabled={!state.sourceReady}
               onClick={() => state.addTrack(entry.kind)}
             />
           ))}
@@ -167,10 +177,11 @@ export function VideoTimelineControls({
               <button
                 key={format.label}
                 type="button"
+                disabled={!state.sourceReady}
                 onClick={() =>
                   state.setCanvasFormat(format.width, format.height, state.doc.fps)
                 }
-                className="rounded-lg border px-1 py-1.5 text-[10px]"
+                className="rounded-lg border px-1 py-1.5 text-[10px] disabled:opacity-40"
                 style={
                   active
                     ? { borderColor: accent, color: accent, background: `${accent}12` }
@@ -187,8 +198,9 @@ export function VideoTimelineControls({
             <button
               key={fps}
               type="button"
+              disabled={!state.sourceReady}
               onClick={() => state.setCanvasFormat(state.doc.width, state.doc.height, fps)}
-              className="rounded-lg border px-1 py-1.5 text-[10px] tabular-nums"
+              className="rounded-lg border px-1 py-1.5 text-[10px] tabular-nums disabled:opacity-40"
               style={
                 state.doc.fps === fps
                   ? { borderColor: accent, color: accent, background: `${accent}12` }
@@ -207,7 +219,10 @@ export function VideoTimelineControls({
         <button
           type="button"
           disabled={
-            state.capturingCover || state.loadingSource || !state.previewReady
+            !state.sourceReady ||
+            state.capturingCover ||
+            state.loadingSource ||
+            !state.previewReady
           }
           onClick={() => void state.captureCover()}
           className="w-full rounded-xl border border-[var(--border,#e7e5e4)] py-2.5 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-50"

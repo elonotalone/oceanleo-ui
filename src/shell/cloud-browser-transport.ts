@@ -31,6 +31,7 @@ import {
   EMPTY_BROWSER_LEASE,
   FIRST_FRAME_TIMEOUT_MS,
   LIVE_RECONNECT_BASE_MS,
+  LIVE_TICKET_TIMEOUT_MS,
   MAX_LIVE_RECONNECTS,
   type CloudBrowserTransportOptions,
 } from "./cloud-browser-transport-config";
@@ -267,7 +268,7 @@ export function useCloudBrowserTransport({
   const prepareControlIntentForReconnect = useCallback(() => {
     const preserveTakeover =
       controlIntentRef.current === "acquire" ||
-      leaseOwnedRef.current;
+      (controlIntentRef.current === "" && leaseOwnedRef.current);
     controlIntentRef.current = preserveTakeover ? "acquire" : "";
     setControlIntentSent(false);
     setControlPending(preserveTakeover);
@@ -554,13 +555,15 @@ export function useCloudBrowserTransport({
         setControlIntentSent(true);
         return;
       }
-      controlIntentRef.current = "";
       setControlIntentSent(false);
       setControlPending(false);
       recoverConnectionRef.current(
         tt("实时浏览器连接失败"),
         "connection",
       );
+      if (controlIntentRef.current === "release") {
+        controlIntentRef.current = "";
+      }
     },
     [sendControlMutation, setControlPending, tt],
   );
@@ -573,8 +576,12 @@ export function useCloudBrowserTransport({
       firstFrameTimerRef.current = null;
       if (
         generation !== socketGenerationRef.current ||
-        transportStateRef.current !== "awaiting_first_frame" ||
-        expectedStream !== streamIdRef.current
+        !(
+          (transportStateRef.current === "authenticated" &&
+            !handshakeRef.current) ||
+          (transportStateRef.current === "awaiting_first_frame" &&
+            expectedStream === streamIdRef.current)
+        )
       ) {
         return;
       }
@@ -584,7 +591,7 @@ export function useCloudBrowserTransport({
       pendingBinaryRef.current = false;
       cancelFrameDecodeRef.current(false);
       try {
-        socket?.close(4000, "validated first paint timeout");
+        socket?.close(4000, "validated browser startup timeout");
       } catch {
         // A retry always creates a fresh one-use ticket and connection.
       }
@@ -1091,6 +1098,9 @@ export function useCloudBrowserTransport({
       return;
     }
     if (reconnectAttemptsRef.current >= MAX_LIVE_RECONNECTS) {
+      controlIntentRef.current = "";
+      setControlIntentSent(false);
+      setControlPending(false);
       transition("failed");
       setError(reason || tt("实时浏览器连接已中断"));
       setBusy(false);
@@ -1183,8 +1193,20 @@ export function useCloudBrowserTransport({
     let ticket: Awaited<
       ReturnType<typeof createCloudBrowserTicket>
     >;
+    let ticketTimeout: number | null = null;
     try {
-      ticket = await createCloudBrowserTicket(sessionId);
+      ticket = await Promise.race([
+        createCloudBrowserTicket(sessionId),
+        new Promise<never>((_resolve, reject) => {
+          ticketTimeout = window.setTimeout(
+            () =>
+              reject(
+                new Error("cloud browser live ticket request timed out"),
+              ),
+            LIVE_TICKET_TIMEOUT_MS,
+          );
+        }),
+      ]);
     } catch (error) {
       if (activeConnectAttemptRef.current === attempt) {
         activeConnectAttemptRef.current = null;
@@ -1204,6 +1226,10 @@ export function useCloudBrowserTransport({
         tt("云端浏览器恢复失败"),
       );
       return false;
+    } finally {
+      if (ticketTimeout !== null) {
+        window.clearTimeout(ticketTimeout);
+      }
     }
     if (activeConnectAttemptRef.current === attempt) {
       activeConnectAttemptRef.current = null;
@@ -1305,6 +1331,7 @@ export function useCloudBrowserTransport({
         return;
       }
       transition("authenticated");
+      armFirstFrameTimeout();
     };
     socket.onmessage = (event) => {
       if (

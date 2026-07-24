@@ -824,6 +824,26 @@ export async function getArtifactItem(
   );
 }
 
+/**
+ * Fetch the server-authoritative current head for one artifact root.
+ *
+ * Omitting `revisionId` is intentional: paginated shelf results and their
+ * ordering are not valid evidence for a recoverable CAS rebase.
+ */
+export async function getCurrentArtifactItem(
+  artifactId: string,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<LibraryItem>> {
+  const safeArtifactId = String(artifactId ?? "").trim();
+  return itemResult(
+    await artifactRequest<unknown>(
+      `/v1/library/items/${encodeURIComponent(safeArtifactId)}`,
+      { signal, auth: "optional" },
+    ),
+    { artifactId: safeArtifactId },
+  );
+}
+
 export async function listPrimaryArtifacts(
   context: ArtifactContextRef,
   options: {

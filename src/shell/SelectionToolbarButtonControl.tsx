@@ -10,6 +10,7 @@ import type {
 export function SelectionToolbarButtonControl({
   control,
   buttonClass,
+  menu,
   iconOnly,
   icon,
   accent,
@@ -20,6 +21,7 @@ export function SelectionToolbarButtonControl({
 }: {
   control: SelectionControl;
   buttonClass: string;
+  menu: boolean;
   iconOnly: boolean;
   icon: ReactNode;
   accent: string;
@@ -72,7 +74,11 @@ export function SelectionToolbarButtonControl({
         }
       >
         {icon}
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
+        {!iconOnly && (
+          <span className={menu ? "min-w-0 truncate" : "whitespace-nowrap"}>
+            {control.label}
+          </span>
+        )}
       </button>
     );
   }
@@ -96,7 +102,11 @@ export function SelectionToolbarButtonControl({
         aria-label={accessibleLabel}
       >
         {icon}
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
+        {!iconOnly && (
+          <span className={menu ? "min-w-0 truncate" : "whitespace-nowrap"}>
+            {control.label}
+          </span>
+        )}
       </button>
     );
   }
@@ -121,7 +131,11 @@ export function SelectionToolbarButtonControl({
             style={{ background: color }}
           />
         </span>
-        {!iconOnly && <span className="whitespace-nowrap">{control.label}</span>}
+        {!iconOnly && (
+          <span className={menu ? "min-w-0 truncate" : "whitespace-nowrap"}>
+            {control.label}
+          </span>
+        )}
         <input
           type="color"
           value={color}

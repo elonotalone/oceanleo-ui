@@ -104,7 +104,12 @@ export function RichDocRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    if (!saved) return { ok: false as const };
+    if (!saved) {
+      return {
+        ok: false as const,
+        error: editor.error || "文档未保存；源可能尚未成功载入。",
+      };
+    }
     const savedMeta = {
       editor_project_url: saved.projectUrl,
       editor_project_schema: saved.projectSchema,
@@ -180,7 +185,7 @@ export function RichDocRoute({
             : "文档 artifact revision 保存失败",
       };
     }
-  }, [editor.save, item]);
+  }, [editor.error, editor.save, item]);
   const importLocalFiles = useCallback(
     async (files: File[]) => {
       for (const file of files) {
@@ -239,11 +244,11 @@ export function RichDocRoute({
           id: "richdoc-export-docx",
           label: "直接下载 DOCX",
           icon: "download",
-          disabled: !editor.editor || editor.loading,
+          disabled: !editor.editor || editor.loading || !editor.sourceReady,
           onTrigger: editor.exportDoc,
         },
         actions: [
-          ...(editor.error || officeSource.error
+          ...(officeSource.error && !editor.dirty
             ? [
                 {
                   id: "richdoc-refresh-office-source",
@@ -256,21 +261,21 @@ export function RichDocRoute({
             id: "richdoc-export-markdown",
             label: "导出 Markdown",
             group: "download",
-            disabled: !editor.editor || editor.loading,
+            disabled: !editor.editor || editor.loading || !editor.sourceReady,
             onTrigger: editor.exportMarkdown,
           },
           {
             id: "richdoc-export-html",
             label: "导出 HTML",
             group: "download",
-            disabled: !editor.editor || editor.loading,
+            disabled: !editor.editor || editor.loading || !editor.sourceReady,
             onTrigger: editor.exportHtml,
           },
           {
             id: "richdoc-export-json",
             label: "导出可编辑 JSON",
             group: "download",
-            disabled: !editor.editor || editor.loading,
+            disabled: !editor.editor || editor.loading || !editor.sourceReady,
             onTrigger: exportStructuredJson,
           },
         ],
@@ -280,7 +285,17 @@ export function RichDocRoute({
           multiple: true,
           onFiles: importLocalFiles,
         },
-        stage: <RichDocStage editor={editor} accent={accent} />,
+        stage:
+          !editor.loading && !editor.sourceReady ? (
+            <div
+              role="alert"
+              className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-rose-700"
+            >
+              {editor.error || "文档源未成功载入，编辑器已停止。"}
+            </div>
+          ) : (
+            <RichDocStage editor={editor} accent={accent} />
+          ),
         status:
           exportError ||
           (!item.meta.editor_project_url &&
@@ -295,7 +310,8 @@ export function RichDocRoute({
           recovery: {
             key: advancedRecoveryKey("richdoc", item),
             ready: Boolean(editor.editor) && !editor.loading,
-            capture: () => editor.editor?.getJSON() || null,
+            capture: () =>
+              editor.sourceReady ? editor.editor?.getJSON() || null : null,
             restore: editor.restoreRecovery,
           },
         },

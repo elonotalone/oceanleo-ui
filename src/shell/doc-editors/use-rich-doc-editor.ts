@@ -50,6 +50,7 @@ export interface RichDocEditorState {
   importing: boolean;
   saving: boolean;
   dirty: boolean;
+  sourceReady: boolean;
   editRevision: number;
   error: string;
   savedUrl: string;
@@ -90,10 +91,12 @@ export function useRichDocEditor(
   const [error, setError] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [sourceReady, setSourceReady] = useState(false);
   const [loaded, setLoaded] = useState<RichDocLoadResult | null>(null);
   const [counts, setCounts] = useState({ words: 0, chars: 0 });
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const sourceReadyRef = useRef(false);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
 
   const extensions = useMemo(
@@ -125,12 +128,22 @@ export function useRichDocEditor(
       },
     },
     onUpdate: ({ editor: instance }) => {
+      if (!sourceReadyRef.current) {
+        instance.commands.setContent("<p></p>", { emitUpdate: false });
+        setError(tt("文档源尚未成功载入；已阻止修改空白回退内容"));
+        return;
+      }
       setCounts(countText(instance.getText()));
       revisionRef.current += 1;
       setDirty(true);
       setSavedUrl("");
     },
   });
+  const requireSourceReady = useCallback(() => {
+    if (sourceReadyRef.current) return true;
+    setError(tt("文档源尚未成功载入；请刷新源或导入文件后再操作"));
+    return false;
+  }, [tt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +151,8 @@ export function useRichDocEditor(
     setError("");
     setSavedUrl("");
     setDirty(false);
+    sourceReadyRef.current = false;
+    setSourceReady(false);
     revisionRef.current = 0;
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
@@ -157,8 +172,14 @@ export function useRichDocEditor(
     )
       .then((result) => {
         if (cancelled) return;
+        if (result.error) {
+          setError(tt(result.error));
+          setLoading(false);
+          return;
+        }
+        sourceReadyRef.current = true;
+        setSourceReady(true);
         setLoaded(result);
-        if (result.error) setError(tt(result.error));
       })
       .catch((caught) => {
         if (cancelled) return;
@@ -168,7 +189,7 @@ export function useRichDocEditor(
             ? tt(caught.message)
             : tt("可编辑工程读取失败"),
         );
-        setLoaded({ html: "<p></p>", source: "empty", error: "" });
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -187,7 +208,7 @@ export function useRichDocEditor(
   const baseTitle = item.title || tt("文档");
 
   const exportMarkdown = useCallback(async () => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     try {
       const markdown = await htmlToMarkdown(editor.getHTML());
       downloadText(`${baseTitle}.md`, markdown, "text/markdown;charset=utf-8");
@@ -196,19 +217,19 @@ export function useRichDocEditor(
         caught instanceof Error ? tt(caught.message) : tt("导出 Markdown 失败"),
       );
     }
-  }, [editor, baseTitle, tt]);
+  }, [editor, baseTitle, requireSourceReady, tt]);
 
   const exportHtml = useCallback(async () => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     downloadText(
       `${baseTitle}.html`,
       fullHtmlDocument(baseTitle, editor.getHTML()),
       "text/html;charset=utf-8",
     );
-  }, [editor, baseTitle]);
+  }, [editor, baseTitle, requireSourceReady]);
 
   const exportDoc = useCallback(async () => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     try {
       const blob = await tiptapJsonToDocxBlob(baseTitle, editor.getJSON());
       downloadBlob(`${baseTitle}.docx`, blob);
@@ -217,12 +238,12 @@ export function useRichDocEditor(
         caught instanceof Error ? tt(caught.message) : tt("导出 DOCX 失败"),
       );
     }
-  }, [editor, baseTitle, tt]);
+  }, [editor, baseTitle, requireSourceReady, tt]);
 
   const exportText = useCallback(() => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     downloadText(`${baseTitle}.txt`, editor.getText(), "text/plain;charset=utf-8");
-  }, [editor, baseTitle]);
+  }, [editor, baseTitle, requireSourceReady]);
 
   const importSource = useCallback(
     async (file: File) => {
@@ -239,6 +260,8 @@ export function useRichDocEditor(
         setSavedUrl("");
         revisionRef.current += 1;
         setDirty(true);
+        sourceReadyRef.current = true;
+        setSourceReady(true);
         setLoaded(result);
       } catch (caught) {
         setError(
@@ -254,6 +277,10 @@ export function useRichDocEditor(
 
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (!editor || savingRef.current) return null;
+    if (!sourceReadyRef.current) {
+      setError(tt("文档源尚未成功载入；请刷新源或导入文件后再保存"));
+      return null;
+    }
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
     const html = editor.getHTML();
@@ -311,7 +338,7 @@ export function useRichDocEditor(
 
   const uploadImage = useCallback(
     async (file: File) => {
-      if (!editor) return;
+      if (!editor || !requireSourceReady()) return;
       setError("");
       try {
         const uploaded = await uploadFile(file, {
@@ -330,13 +357,13 @@ export function useRichDocEditor(
         );
       }
     },
-    [editor, siteId, tt],
+    [editor, requireSourceReady, siteId, tt],
   );
 
   const insertImageUrl = useCallback(
     (url: string, point?: { clientX: number; clientY: number }) => {
       const trimmed = url.trim();
-      if (!editor || !trimmed) return;
+      if (!editor || !trimmed || !requireSourceReady()) return;
       const position = point
         ? editor.view.posAtCoords({
             left: point.clientX,
@@ -347,13 +374,13 @@ export function useRichDocEditor(
       if (typeof position === "number") chain.setTextSelection(position);
       chain.setImage({ src: trimmed }).run();
     },
-    [editor],
+    [editor, requireSourceReady],
   );
 
   const setLinkHref = useCallback(
     (href: string) => {
       const trimmed = href.trim();
-      if (!editor || !trimmed) return;
+      if (!editor || !trimmed || !requireSourceReady()) return;
       editor
         .chain()
         .focus()
@@ -361,18 +388,18 @@ export function useRichDocEditor(
         .setLink({ href: trimmed })
         .run();
     },
-    [editor],
+    [editor, requireSourceReady],
   );
 
   const unsetLink = useCallback(() => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     editor.chain().focus().extendMarkRange("link").unsetLink().run();
-  }, [editor]);
+  }, [editor, requireSourceReady]);
 
   const clearFormat = useCallback(() => {
-    if (!editor) return;
+    if (!editor || !requireSourceReady()) return;
     editor.chain().focus().clearNodes().unsetAllMarks().run();
-  }, [editor]);
+  }, [editor, requireSourceReady]);
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
@@ -383,6 +410,8 @@ export function useRichDocEditor(
       setCounts(countText(editor.getText()));
       revisionRef.current += 1;
       setDirty(true);
+      sourceReadyRef.current = true;
+      setSourceReady(true);
       setSavedUrl("");
       setError("");
       return true;
@@ -398,6 +427,7 @@ export function useRichDocEditor(
     importing,
     saving,
     dirty,
+    sourceReady,
     editRevision: revisionRef.current,
     error,
     savedUrl,

@@ -44,6 +44,9 @@ export function SelectionToolbarSelectControl({
   const selectedOption = (control.options || []).find(
     (option) => option.value === String(control.value ?? ""),
   );
+  const valueDescriptionId = `${listboxId}-value`;
+  const selectedLabel =
+    selectedOption?.label || String(control.value ?? "") || "未选择";
   const emit = (value: SelectionControlValue) =>
     onCommand({
       requestId: selectionRequestId(),
@@ -54,13 +57,13 @@ export function SelectionToolbarSelectControl({
       ...(selectionEpoch !== undefined ? { selectionEpoch } : {}),
     });
   const buttonClass = menu
-    ? "group/control flex min-h-11 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
+    ? "group/control flex min-h-11 min-w-0 w-full items-center justify-start gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
     : "group/control inline-flex h-11 min-w-11 shrink-0 max-w-48 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
 
   return (
     <div
-      className={`group/control relative shrink-0 ${menu ? "w-full" : ""}`}
-      title={accessibleLabel}
+      className={`group/control relative min-w-0 shrink-0 ${menu ? "w-full" : ""}`}
+      title={`${accessibleLabel}：${selectedLabel}`}
       onBlur={(event) => {
         const relatedTarget = event.relatedTarget as Node | null;
         if (
@@ -80,6 +83,7 @@ export function SelectionToolbarSelectControl({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-label={accessibleLabel}
+        aria-describedby={valueDescriptionId}
         className={buttonClass}
       >
         {control.icon && (
@@ -89,15 +93,22 @@ export function SelectionToolbarSelectControl({
           />
         )}
         {!iconOnly && (
-          <span className="text-[10px] font-normal text-[var(--muted,#78716c)]">
+          <span
+            className={`text-[10px] font-normal text-[var(--muted,#78716c)] ${
+              menu ? "max-w-[45%] min-w-0 truncate" : "shrink-0"
+            }`}
+          >
             {control.label}
           </span>
         )}
-        <span className="truncate font-semibold">
-          {selectedOption?.label || String(control.value ?? "")}
+        <span className="min-w-0 truncate font-semibold">
+          {selectedLabel}
         </span>
-        <span className="text-[9px] opacity-50">⌄</span>
+        <span className="shrink-0 text-[9px] opacity-50">⌄</span>
       </button>
+      <span id={valueDescriptionId} className="sr-only">
+        当前值：{selectedLabel}
+      </span>
       <AnchoredPopover
         open={open}
         anchorRef={buttonRef}
@@ -108,9 +119,9 @@ export function SelectionToolbarSelectControl({
         ariaLabel={control.label}
         align="start"
         maxHeight={288}
-        className="z-[2147483500] min-w-44 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="z-[2147483500] overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{
-          minWidth: Math.max(
+          width: Math.max(
             176,
             buttonRef.current?.getBoundingClientRect().width || 0,
           ),
@@ -131,14 +142,19 @@ export function SelectionToolbarSelectControl({
                 onActivated?.();
                 window.requestAnimationFrame(() => buttonRef.current?.focus());
               }}
-              className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[11px] whitespace-nowrap transition ${
+              className={`flex min-w-0 w-full items-center justify-between gap-3 overflow-hidden rounded-lg px-3 py-2 text-left text-[11px] transition ${
                 active
                   ? "bg-[var(--surface-hover,rgba(0,0,0,.06))] font-semibold text-[var(--fg,#292524)]"
                   : "text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
               }`}
+              title={option.label}
             >
-              {option.label}
-              {active && <span style={{ color: accent }}>✓</span>}
+              <span className="min-w-0 truncate">{option.label}</span>
+              {active && (
+                <span className="shrink-0" style={{ color: accent }}>
+                  ✓
+                </span>
+              )}
             </button>
           );
         })}

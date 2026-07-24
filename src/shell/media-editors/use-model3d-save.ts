@@ -10,7 +10,7 @@ import {
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import { safeModelStem } from "./model3d-files";
+import { safeModelStem, uploadModel3DPoster } from "./model3d-files";
 import { createModel3DSavePlan } from "./model3d-operations.mjs";
 import {
   persistModel3DProject,
@@ -84,6 +84,16 @@ export function useModel3DSave({
     setError("");
     try {
       const title = `${safeModelStem(item.title)}-${tt("编辑版")}`;
+      let durablePosterUrl = posterUrl;
+      try {
+        durablePosterUrl = await uploadModel3DPoster(
+          await runtime.capturePng(),
+          siteId,
+          title,
+        );
+      } catch (caught) {
+        if (!durablePosterUrl) throw caught;
+      }
       // GLTFExporter is the canonical editable-source checkpoint serializer,
       // not a delivery renderer; saves between bounded checkpoints are journal-only.
       if (plan.shouldExportGlb) glb = await runtime.exportGlb();
@@ -97,7 +107,7 @@ export function useModel3DSave({
         operations: plan.persistedOperations,
         checkpointReason: plan.checkpointReason,
         thumbUrl:
-          posterUrl || item.thumbUrl || item.previewUrl || undefined,
+          durablePosterUrl || item.thumbUrl || item.previewUrl || undefined,
         view,
         revision: savingRevision,
       });

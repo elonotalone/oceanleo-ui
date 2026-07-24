@@ -77,6 +77,16 @@ function stableArtifactIdentity(
     : null;
 }
 
+function hasArtifactIdentitySignal(item: LibraryItem): boolean {
+  return Boolean(
+    item.artifact ||
+      item.artifactId ||
+      item.revisionId ||
+      item.meta.artifact_id ||
+      item.meta.revision_id,
+  );
+}
+
 function websiteProjectId(item: LibraryItem): string {
   const artifact = record(item.artifact);
   const artifactMeta = record(artifact?.meta);
@@ -107,13 +117,7 @@ function isWebsiteEmbedItem(item: LibraryItem): boolean {
 }
 
 export function isWebsiteBlankDraft(item: LibraryItem): boolean {
-  const hasArtifactSignal = Boolean(
-    item.artifact ||
-      item.artifactId ||
-      item.revisionId ||
-      item.meta.artifact_id ||
-      item.meta.revision_id,
-  );
+  const hasArtifactSignal = hasArtifactIdentitySignal(item);
   const hasWebsiteProjectIdentity =
     isWebsiteEmbedItem(item) &&
     Boolean(
@@ -153,6 +157,12 @@ export function websiteEmbedExtraParams(
   const githubRepo = textFrom([item.meta], "github_repo");
   const commitSha = textFrom([item.meta], "commit_sha");
   const identity = stableArtifactIdentity(item);
+  const artifactSignal = hasArtifactIdentitySignal(item);
+  if (artifactSignal && !identity) {
+    // A partial or conflicting durable identity must fail closed. In
+    // particular it must never reopen the card's starter as substitute source.
+    return { sourceIdentity: "invalid" };
+  }
 
   const params: Record<string, string> = { ...blank };
   if (projectId) {
@@ -160,12 +170,13 @@ export function websiteEmbedExtraParams(
     // Adapter still reads projectId || siteId; keep siteId as a project alias only.
     params.siteId = projectId;
   }
-  if (starterId) params.starterId = starterId;
-  if (githubRepo) params.githubRepo = githubRepo;
-  if (commitSha) params.commitSha = commitSha;
   if (identity) {
     params.artifactId = identity.artifactId;
     params.revisionId = identity.revisionId;
+  } else {
+    if (starterId) params.starterId = starterId;
+    if (githubRepo) params.githubRepo = githubRepo;
+    if (commitSha) params.commitSha = commitSha;
   }
 
   return Object.keys(params).length ? params : undefined;
@@ -256,6 +267,39 @@ export function buildOpenAssetPayload(item: LibraryItem): {
     80,
   );
   const meta: Record<string, unknown> = { ...item.meta };
+  const websiteArtifactSignal =
+    isWebsiteEmbedItem(item) && hasArtifactIdentitySignal(item);
+  if (websiteArtifactSignal) {
+    for (const key of [
+      "starter_id",
+      "starterId",
+      "github_repo",
+      "githubRepo",
+      "commit_sha",
+      "commitSha",
+      "source_snapshot_id",
+      "sourceSnapshotId",
+    ]) {
+      delete meta[key];
+    }
+    if (!identity) {
+      for (const key of [
+        "artifact_id",
+        "artifactId",
+        "revision_id",
+        "revisionId",
+        "website_id",
+        "websiteId",
+        "project_id",
+        "projectId",
+        "site_id",
+        "slug",
+      ]) {
+        delete meta[key];
+      }
+      meta.website_source_identity_invalid = true;
+    }
+  }
   const videoCanvasProject = isVideoCanvasProject(item);
   if (videoCanvasProject) {
     // Trust-bearing fields are host assertions, never reusable item metadata.

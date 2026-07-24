@@ -20,8 +20,14 @@ export async function loadInitialPdfSource(input: {
   siteId: string;
   title: string;
   signal: AbortSignal;
+  allowBlank: boolean;
 }): Promise<LoadedPdfSource> {
   if (!input.source) {
+    if (!input.allowBlank) {
+      throw new Error(
+        "当前 PDF revision 缺少可验证的源文件；已阻止用空白页替代。",
+      );
+    }
     const bytes = await createBlankPdf();
     return { bytes, durableUrl: "", pageCount: 1, blank: true };
   }

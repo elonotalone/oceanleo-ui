@@ -71,6 +71,8 @@ export interface RightPaneSlot {
   setRightFrameless: (frameless: boolean) => void;
   /** 高级编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
   setRightEditorHeader: (active: boolean) => void;
+  /** 右栏内覆盖 action row、停靠区与画布的稳定编辑栏浮层根。 */
+  editBarLayerRef: RefObject<HTMLElement | null>;
   /** 右栏 action row 下方的正常流编辑栏停靠节点。 */
   editBarDockRef: RefObject<HTMLDivElement | null>;
   /** 发布当前编辑栏的停靠/拖放呈现；ownerId 防止旧编辑器 cleanup 覆盖新实例。 */
@@ -309,6 +311,7 @@ export function SplitWorkspace({
   const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
   const [rightFrameless, setRightFrameless] = useState(false);
   const [rightEditorHeader, setRightEditorHeader] = useState(false);
+  const editBarLayerRef = useRef<HTMLElement>(null);
   const editBarDockRef = useRef<HTMLDivElement>(null);
   const [editBarDockPresentation, setEditBarDockPresentation] =
     useState<EditBarDockPresentation | null>(null);
@@ -319,6 +322,7 @@ export function SplitWorkspace({
         setRightLabelOverride((current) => (current === node ? null : current)),
       setRightFrameless: (frameless) => setRightFrameless(frameless),
       setRightEditorHeader: (active) => setRightEditorHeader(active),
+      editBarLayerRef,
       editBarDockRef,
       setEditBarDockPresentation: (state) =>
         setEditBarDockPresentation(state),
@@ -657,9 +661,11 @@ export function SplitWorkspace({
   const libraryPane = (
     <section
       key="library-pane"
+      ref={editBarLayerRef}
+      data-edit-bar-layer-root
       data-workspace-pane="main"
       data-library-dock="right"
-      className={`mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
+      className={`relative mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
         !hasRight || maxed === "app" ? "hidden" : "flex"
       }`}
       style={

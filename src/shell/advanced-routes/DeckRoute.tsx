@@ -22,6 +22,7 @@ import {
   DeckUploadPanel,
 } from "../doc-editors/DeckControls";
 import { DeckFontPanel } from "../doc-editors/DeckFontPanel";
+import { DECK_PREVIEW_FIT_ZOOM_PERCENT } from "../doc-editors/deck-preview-geometry";
 import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
@@ -52,7 +53,7 @@ export function DeckRoute({
     previewContent,
     officeSource.resourceFailed,
   );
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
   const [inkStyle, setInkStyle] = useState<DeckInkStyle>({
@@ -261,7 +262,7 @@ export function DeckRoute({
           max: 300,
           step: 1,
           setValue: setZoom,
-          fit: () => setZoom(100),
+          fit: () => setZoom(DECK_PREVIEW_FIT_ZOOM_PERCENT),
         },
         directDownload: {
           id: "deck-export-pptx",

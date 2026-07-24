@@ -105,6 +105,8 @@ function refreshRenditionOnce(
 export interface ArtifactRenditionState {
   url: string;
   purpose: ArtifactRenditionPurpose | null;
+  /** Exact normalized representation selected or returned by refresh. */
+  rendition: ArtifactRendition | null;
   loading: boolean;
   error: string;
   version: number;
@@ -256,6 +258,7 @@ export function useArtifactRendition(
     const legacy = legacyUrl(item, requested);
     return {
       ...legacy,
+      rendition: null,
       loading: false,
       error: legacy.url ? "" : "这个条目没有可用 URL。",
       version: 0,
@@ -267,6 +270,7 @@ export function useArtifactRendition(
     return {
       url: "",
       purpose: null,
+      rendition: null,
       loading: false,
       error: "当前主体无权查看这个 artifact revision。",
       version: 0,
@@ -277,6 +281,7 @@ export function useArtifactRendition(
   return {
     url: rendition?.url || initial?.url || "",
     purpose: rendition?.purpose || initial?.purpose || null,
+    rendition: rendition || initial,
     loading,
     error,
     version: refreshVersion,

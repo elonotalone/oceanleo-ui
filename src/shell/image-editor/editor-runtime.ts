@@ -28,6 +28,245 @@ import {
 export type EditorSnapshot = ImageEditorSnapshot;
 export const normalizeEditorSnapshot = normalizeImageEditorSnapshot;
 
+export const IMAGE_EDGE_SNAP_ACQUIRE_PX = 8;
+export const IMAGE_EDGE_SNAP_RELEASE_PX = 14;
+
+export type ImageCanvasEdge = "left" | "right" | "top" | "bottom";
+export type ImageHorizontalSnapEdge = Extract<
+  ImageCanvasEdge,
+  "left" | "right"
+>;
+export type ImageVerticalSnapEdge = Extract<ImageCanvasEdge, "top" | "bottom">;
+
+export interface ImageEdgeSnapState {
+  x: ImageHorizontalSnapEdge | null;
+  y: ImageVerticalSnapEdge | null;
+}
+
+export interface ImageEdgeSnapResult {
+  dx: number;
+  dy: number;
+  state: ImageEdgeSnapState;
+}
+
+export interface ImageEdgeScaleMultipliers {
+  x: number;
+  y: number;
+}
+
+const ALL_IMAGE_CANVAS_EDGES: readonly ImageCanvasEdge[] = [
+  "left",
+  "right",
+  "top",
+  "bottom",
+];
+
+export function emptyImageEdgeSnapState(): ImageEdgeSnapState {
+  return { x: null, y: null };
+}
+
+/**
+ * Fabric object bounds are in the scene/document plane. Convert edge distances
+ * through the viewport's axis scales so magnetic thresholds stay in CSS pixels.
+ */
+export function viewportAxisScales(
+  viewport: readonly number[],
+): { x: number; y: number } {
+  const x = Math.hypot(viewport[0] ?? 1, viewport[1] ?? 0);
+  const y = Math.hypot(viewport[2] ?? 0, viewport[3] ?? 1);
+  return {
+    x: Number.isFinite(x) && x > 0 ? x : 1,
+    y: Number.isFinite(y) && y > 0 ? y : 1,
+  };
+}
+
+export function imageSnapEdgesForControl(
+  corner: string | undefined,
+): readonly ImageCanvasEdge[] {
+  switch (corner) {
+    case "tl":
+      return ["left", "top"];
+    case "tr":
+      return ["right", "top"];
+    case "bl":
+      return ["left", "bottom"];
+    case "br":
+      return ["right", "bottom"];
+    case "ml":
+      return ["left"];
+    case "mr":
+      return ["right"];
+    case "mt":
+      return ["top"];
+    case "mb":
+      return ["bottom"];
+    default:
+      return ALL_IMAGE_CANVAS_EDGES;
+  }
+}
+
+export function imageScaleControlLocksAspectRatio(
+  corner: string | undefined,
+  shiftKey: boolean,
+): boolean {
+  return (
+    !shiftKey &&
+    (corner === "tl" ||
+      corner === "tr" ||
+      corner === "bl" ||
+      corner === "br")
+  );
+}
+
+function resolveSnapAxis<T extends ImageCanvasEdge>(
+  distances: ReadonlyArray<readonly [T, number]>,
+  eligible: ReadonlySet<ImageCanvasEdge>,
+  previous: T | null,
+  screenScale: number,
+  acquirePx: number,
+  releasePx: number,
+): { correction: number; edge: T | null } {
+  const candidateDistance = (edge: T) =>
+    distances.find(([candidate]) => candidate === edge)?.[1];
+  if (previous && eligible.has(previous)) {
+    const distance = candidateDistance(previous);
+    if (
+      distance != null &&
+      Math.abs(distance) * screenScale <= releasePx
+    ) {
+      return { correction: -distance, edge: previous };
+    }
+  }
+  const candidate = distances
+    .filter(([edge]) => eligible.has(edge))
+    .map(([edge, distance], order) => ({
+      edge,
+      distance,
+      order,
+      screenDistance: Math.abs(distance) * screenScale,
+    }))
+    .filter(({ screenDistance }) => screenDistance <= acquirePx)
+    .sort(
+      (a, b) =>
+        a.screenDistance - b.screenDistance || a.order - b.order,
+    )[0];
+  return candidate
+    ? { correction: -candidate.distance, edge: candidate.edge }
+    : { correction: 0, edge: null };
+}
+
+export function resolveImageEdgeSnap({
+  bounds,
+  doc,
+  viewport,
+  previous = emptyImageEdgeSnapState(),
+  edges = ALL_IMAGE_CANVAS_EDGES,
+  bypass = false,
+  acquirePx = IMAGE_EDGE_SNAP_ACQUIRE_PX,
+  releasePx = IMAGE_EDGE_SNAP_RELEASE_PX,
+}: {
+  bounds: { left: number; top: number; width: number; height: number };
+  doc: DocSize;
+  viewport: readonly number[];
+  previous?: ImageEdgeSnapState;
+  edges?: readonly ImageCanvasEdge[];
+  bypass?: boolean;
+  acquirePx?: number;
+  releasePx?: number;
+}): ImageEdgeSnapResult {
+  if (bypass) {
+    return { dx: 0, dy: 0, state: emptyImageEdgeSnapState() };
+  }
+  const eligible = new Set(edges);
+  const scale = viewportAxisScales(viewport);
+  const acquire = Math.max(0, acquirePx);
+  const release = Math.max(acquire, releasePx);
+  const horizontal = resolveSnapAxis<ImageHorizontalSnapEdge>(
+    [
+      ["left", bounds.left],
+      ["right", bounds.left + bounds.width - doc.width],
+    ],
+    eligible,
+    previous.x,
+    scale.x,
+    acquire,
+    release,
+  );
+  const vertical = resolveSnapAxis<ImageVerticalSnapEdge>(
+    [
+      ["top", bounds.top],
+      ["bottom", bounds.top + bounds.height - doc.height],
+    ],
+    eligible,
+    previous.y,
+    scale.y,
+    acquire,
+    release,
+  );
+  return {
+    dx: horizontal.correction,
+    dy: vertical.correction,
+    state: { x: horizontal.edge, y: vertical.edge },
+  };
+}
+
+/**
+ * Resize the manipulated edge toward its snap correction. The controller keeps
+ * Fabric's opposite transform origin fixed while applying these multipliers.
+ */
+export function imageEdgeScaleMultipliers(
+  bounds: { width: number; height: number },
+  snapped: ImageEdgeSnapResult,
+  lockAspectRatio = false,
+): ImageEdgeScaleMultipliers {
+  const width = Math.max(0.0001, Math.abs(bounds.width));
+  const height = Math.max(0.0001, Math.abs(bounds.height));
+  const widthDelta =
+    snapped.state.x === "left"
+      ? -snapped.dx
+      : snapped.state.x === "right"
+        ? snapped.dx
+        : 0;
+  const heightDelta =
+    snapped.state.y === "top"
+      ? -snapped.dy
+      : snapped.state.y === "bottom"
+        ? snapped.dy
+        : 0;
+  const multipliers = {
+    x: Math.max(0.0001, width + widthDelta) / width,
+    y: Math.max(0.0001, height + heightDelta) / height,
+  };
+  if (!lockAspectRatio) return multipliers;
+  const uniform = snapped.state.x
+    ? multipliers.x
+    : snapped.state.y
+      ? multipliers.y
+      : 1;
+  return { x: uniform, y: uniform };
+}
+
+export function imageEdgeScaleAnchorCorrection(
+  before: { left: number; top: number; width: number; height: number },
+  resized: { left: number; top: number; width: number; height: number },
+  state: ImageEdgeSnapState,
+): { dx: number; dy: number } {
+  return {
+    dx:
+      state.x === "left"
+        ? before.left + before.width - (resized.left + resized.width)
+        : state.x === "right"
+          ? before.left - resized.left
+          : 0,
+    dy:
+      state.y === "top"
+        ? before.top + before.height - (resized.top + resized.height)
+        : state.y === "bottom"
+          ? before.top - resized.top
+          : 0,
+  };
+}
+
 export function captureSnapshot(
   canvas: Canvas,
   doc: DocSize,

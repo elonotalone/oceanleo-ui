@@ -201,7 +201,18 @@ function Model3DModelRoute({
         if (actualFormat === "gltf") {
           // Keep the remote directory as one dependency closure. Turning only
           // the JSON entrypoint into a local File severs its .bin/textures.
-          editor.openModelUrl(url, actualFormat);
+          editor.openModelUrl(
+            url,
+            actualFormat,
+            material.artifactId && material.revisionId
+              ? {
+                  artifactId: material.artifactId,
+                  revisionId: material.revisionId,
+                  sourceDigest:
+                    material.artifact?.renditions.source?.digest || "",
+                }
+              : null,
+          );
           return;
         }
         await editor.importModel(
@@ -220,16 +231,22 @@ function Model3DModelRoute({
       versionId: string;
       projectUrl: string;
       projectSchema: string;
+      posterUrl: string;
       sourceFormat: "" | "glb" | "gltf";
       sourceProvenance: {
         sourceUrl: string;
         dependencyBaseUrl: string;
         format: "" | "glb" | "gltf";
         identity: string;
+        artifactId: string;
+        revisionId: string;
+        sourceDigest: string;
       };
     }) =>
       advancedSavedItem(item, {
         url: saved.url,
+        previewUrl: saved.posterUrl,
+        thumbUrl: saved.posterUrl,
         versionId: saved.versionId,
         meta: {
           editor: "three-gltf-editor-v2",
@@ -242,6 +259,13 @@ function Model3DModelRoute({
           model_dependency_base_url:
             saved.sourceProvenance.dependencyBaseUrl || saved.url,
           model_source_identity: saved.sourceProvenance.identity,
+          model_source_artifact_id: saved.sourceProvenance.artifactId,
+          model_source_revision_id: saved.sourceProvenance.revisionId,
+          model_source_digest: saved.sourceProvenance.sourceDigest,
+          model_poster_url: saved.posterUrl,
+          model_poster_media_type: "image/png",
+          thumbnail_media_type: "image/png",
+          preview_media_type: "image/png",
           model_dependency_mode: "checkpoint-glb+operation-journal",
           journal_count: editor.operationCount,
           editor_project_url: saved.projectUrl,

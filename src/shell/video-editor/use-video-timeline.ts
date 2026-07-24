@@ -25,7 +25,10 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { useUI } from "../../i18n/ui/useUI";
-import type { LibraryItem } from "../library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
 import { guessFileKind, guessMediaKind, probeMediaSource } from "./media-probe";
 import {
   uploadCoverPng,
@@ -99,6 +102,7 @@ export interface VideoTimelineState {
   error: string;
   notice: string;
   dirty: boolean;
+  sourceReady: boolean;
   editRevision: number;
   canvasRef: (canvas: HTMLCanvasElement | null) => void;
   previewCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
@@ -227,6 +231,9 @@ function buildInitialDoc(item: LibraryItem): {
   doc: TimelineDoc;
   seededClipId: string;
   seededKind: "video" | "audio" | null;
+  sourceReady: boolean;
+  sourceError: string;
+  projectExpected: boolean;
 } {
   const meta = item.meta ?? {};
   const draft = meta.timeline_doc;
@@ -235,18 +242,53 @@ function buildInitialDoc(item: LibraryItem): {
       doc: normalizeTimelineDoc(draft),
       seededClipId: "",
       seededKind: null,
+      sourceReady: true,
+      sourceError: "",
+      projectExpected: false,
     };
   }
   const doc = createEmptyDoc();
   if (meta.editor_project_schema === "oceanleo.timeline.v1") {
-    return { doc, seededClipId: "", seededKind: null };
+    const projectUrl = String(meta.editor_project_url || item.url || "").trim();
+    return {
+      doc,
+      seededClipId: "",
+      seededKind: null,
+      sourceReady: false,
+      sourceError: projectUrl
+        ? ""
+        : "当前时间线 revision 缺少工程源；已阻止用空时间线替代。",
+      projectExpected: true,
+    };
   }
   const url = item.url || item.previewUrl || "";
-  if (!url) return { doc, seededClipId: "", seededKind: null };
+  if (!url) {
+    const sourceError =
+      item.source === "artifact" || isDurableLibraryItem(item)
+        ? "当前视频 revision 缺少可验证的媒体源；已阻止用空时间线替代。"
+        : "";
+    return {
+      doc,
+      seededClipId: "",
+      seededKind: null,
+      sourceReady: !sourceError,
+      sourceError,
+      projectExpected: false,
+    };
+  }
   const media: "video" | "audio" =
     item.kind === "audio" ? "audio" : "video";
   const track = doc.tracks.find((entry) => entry.kind === media);
-  if (!track) return { doc, seededClipId: "", seededKind: null };
+  if (!track) {
+    return {
+      doc,
+      seededClipId: "",
+      seededKind: null,
+      sourceReady: false,
+      sourceError: "当前素材没有可用的时间线轨道。",
+      projectExpected: false,
+    };
+  }
   const clip: TimelineClip = {
     id: makeId("clip"),
     start_ms: 0,
@@ -257,7 +299,14 @@ function buildInitialDoc(item: LibraryItem): {
     volume: 1,
   };
   track.clips.push(clip);
-  return { doc, seededClipId: clip.id, seededKind: media };
+  return {
+    doc,
+    seededClipId: clip.id,
+    seededKind: media,
+    sourceReady: false,
+    sourceError: "",
+    projectExpected: false,
+  };
 }
 
 export function useVideoTimeline(
@@ -286,7 +335,8 @@ export function useVideoTimeline(
     seedRef.current.seededClipId,
   );
   const [loadingSource, setLoadingSource] = useState(
-    Boolean(seedRef.current.seededClipId),
+    Boolean(seedRef.current.seededClipId) ||
+      (seedRef.current.projectExpected && !seedRef.current.sourceError),
   );
   const [previewReady, setPreviewReady] = useState(false);
   const [addingMedia, setAddingMedia] = useState(false);
@@ -297,17 +347,34 @@ export function useVideoTimeline(
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<RenderJobStatus | "">("");
   const [exportedUrl, setExportedUrl] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(seedRef.current.sourceError);
   const [notice, setNotice] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [sourceReady, setSourceReady] = useState(
+    seedRef.current.sourceReady,
+  );
 
   const engineRef = useRef<TimelinePreviewEngine | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
   const revisionRef = useRef(0);
   const savingDraftRef = useRef(false);
+  const sourceReadyRef = useRef(seedRef.current.sourceReady);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const sourceProbeKeysRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
+
+  const markSourceReady = useCallback((value: boolean) => {
+    sourceReadyRef.current = value;
+    setSourceReady(value);
+  }, []);
+  const requireSourceReady = useCallback(() => {
+    if (sourceReadyRef.current) return true;
+    setError(
+      tt("时间线源尚未成功载入；请先恢复有效工程，已阻止修改空回退内容"),
+    );
+    return false;
+  }, [tt]);
 
   // ------------------------------------------------------------- engine
 
@@ -325,9 +392,13 @@ export function useVideoTimeline(
   }, []);
 
   useEffect(
-    () => () => {
-      exportAbortRef.current?.abort();
-      exportAbortRef.current = null;
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        exportAbortRef.current?.abort();
+        exportAbortRef.current = null;
+      };
     },
     [],
   );
@@ -350,53 +421,63 @@ export function useVideoTimeline(
         const key = `${track.kind}:${sourceUrl}`;
         if (sourceProbeKeysRef.current.has(key)) continue;
         sourceProbeKeysRef.current.add(key);
-        void probeMediaSource(sourceUrl, track.kind).then((probe) => {
-          if (!probe) {
+        void probeMediaSource(sourceUrl, track.kind)
+          .then((probe) => {
+            if (!mountedRef.current) return;
+            if (!probe) {
+              setError(
+                tt(
+                  track.kind === "video"
+                    ? "时间线中的视频源无法解码或没有真实视频轨"
+                    : "时间线中的音频源无法解码",
+                ),
+              );
+              return;
+            }
+            setDocState((current) => {
+              let changed = false;
+              const next: TimelineDoc = {
+                ...current,
+                tracks: current.tracks.map((candidateTrack) => {
+                  if (candidateTrack.kind !== track.kind) return candidateTrack;
+                  return {
+                    ...candidateTrack,
+                    clips: candidateTrack.clips.map((candidateClip) => {
+                      if (
+                        candidateClip.source_url !== sourceUrl ||
+                        Number.isFinite(candidateClip.source_duration_ms)
+                      ) {
+                        return candidateClip;
+                      }
+                      changed = true;
+                      const withProbe: TimelineClip = {
+                        ...candidateClip,
+                        source_duration_ms: probe.durationMs,
+                      };
+                      return {
+                        ...withProbe,
+                        duration_ms: Math.min(
+                          withProbe.duration_ms,
+                          availableTimelineDurationMs(withProbe),
+                        ),
+                      };
+                    }),
+                  };
+                }),
+              };
+              if (!changed) return current;
+              docRef.current = next;
+              return next;
+            });
+          })
+          .catch((caught) => {
+            if (!mountedRef.current) return;
             setError(
-              tt(
-                track.kind === "video"
-                  ? "时间线中的视频源无法解码或没有真实视频轨"
-                  : "时间线中的音频源无法解码",
-              ),
+              caught instanceof Error
+                ? caught.message
+                : tt("时间线媒体源探测失败"),
             );
-            return;
-          }
-          setDocState((current) => {
-            let changed = false;
-            const next: TimelineDoc = {
-              ...current,
-              tracks: current.tracks.map((candidateTrack) => {
-                if (candidateTrack.kind !== track.kind) return candidateTrack;
-                return {
-                  ...candidateTrack,
-                  clips: candidateTrack.clips.map((candidateClip) => {
-                    if (
-                      candidateClip.source_url !== sourceUrl ||
-                      Number.isFinite(candidateClip.source_duration_ms)
-                    ) {
-                      return candidateClip;
-                    }
-                    changed = true;
-                    const withProbe: TimelineClip = {
-                      ...candidateClip,
-                      source_duration_ms: probe.durationMs,
-                    };
-                    return {
-                      ...withProbe,
-                      duration_ms: Math.min(
-                        withProbe.duration_ms,
-                        availableTimelineDurationMs(withProbe),
-                      ),
-                    };
-                  }),
-                };
-              }),
-            };
-            if (!changed) return current;
-            docRef.current = next;
-            return next;
           });
-        });
       }
     }
   }, [doc, tt]);
@@ -412,14 +493,21 @@ export function useVideoTimeline(
           : "") ||
         "",
     ).trim();
-    if (
-      !projectUrl ||
-      item.meta.editor_project_schema !== "oceanleo.timeline.v1" ||
-      isTimelineDoc(item.meta.timeline_doc)
-    ) {
+    const expectsProject =
+      item.meta.editor_project_schema === "oceanleo.timeline.v1";
+    if (!expectsProject || isTimelineDoc(item.meta.timeline_doc)) {
+      return;
+    }
+    if (!projectUrl) {
+      markSourceReady(false);
+      setLoadingSource(false);
+      setError(
+        tt("当前时间线 revision 缺少工程源；已阻止用空时间线替代"),
+      );
       return;
     }
     const controller = new AbortController();
+    markSourceReady(false);
     setLoadingSource(true);
     setError("");
     void fetchMediaBlob(projectUrl, {
@@ -451,9 +539,11 @@ export function useVideoTimeline(
         setPlayheadMs(0);
         setDirty(false);
         revisionRef.current = 0;
+        markSourceReady(true);
       })
       .catch((caught) => {
         if (!controller.signal.aborted) {
+          markSourceReady(false);
           setError(
             caught instanceof Error ? caught.message : "时间线工程读取失败",
           );
@@ -470,7 +560,9 @@ export function useVideoTimeline(
     item.meta.timeline_doc,
     item.title,
     item.url,
+    markSourceReady,
     siteId,
+    tt,
   ]);
 
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -487,6 +579,7 @@ export function useVideoTimeline(
     const seededClipId = seed.seededClipId;
     const seededKind = seed.seededKind;
     let cancelled = false;
+    markSourceReady(false);
     void (async () => {
       try {
         let sourceUrl = itemSourceUrl;
@@ -528,8 +621,10 @@ export function useVideoTimeline(
               : {}),
           });
         });
+        markSourceReady(true);
       } catch (caught) {
         if (!cancelled) {
+          markSourceReady(false);
           setError(caught instanceof Error ? caught.message : tt("素材导入失败"));
         }
       } finally {
@@ -546,12 +641,23 @@ export function useVideoTimeline(
   // ------------------------------------------------------------- history
 
   const applyEdit = useCallback(
-    (updater: (current: TimelineDoc) => TimelineDoc) => {
+    (
+      updater: (current: TimelineDoc) => TimelineDoc,
+      verifiedSourceRecovery = false,
+    ) => {
+      if (!sourceReadyRef.current && !verifiedSourceRecovery) {
+        requireSourceReady();
+        return false;
+      }
       const current = docRef.current;
       const next = updater(current);
-      if (next === current) return;
-      undoStack.current.push(current);
-      if (undoStack.current.length > 100) undoStack.current.shift();
+      if (next === current) return false;
+      if (verifiedSourceRecovery && !sourceReadyRef.current) {
+        undoStack.current = [];
+      } else {
+        undoStack.current.push(current);
+        if (undoStack.current.length > 100) undoStack.current.shift();
+      }
       redoStack.current = [];
       docRef.current = next;
       setDocState(next);
@@ -559,12 +665,14 @@ export function useVideoTimeline(
       setDirty(true);
       setDraftSavedUrl("");
       setHistoryVersion((value) => value + 1);
+      return true;
     },
-    [],
+    [requireSourceReady],
   );
 
   const applyTransient = useCallback(
     (updater: (current: TimelineDoc) => TimelineDoc) => {
+      if (!requireSourceReady()) return;
       const activeGesture = gestureState.current;
       const nextGesture = activeGesture
         ? updateTimelineGesture(activeGesture, updater)
@@ -576,7 +684,7 @@ export function useVideoTimeline(
         setDocState(next);
       }
     },
-    [],
+    [requireSourceReady],
   );
 
   const beginGesture = useCallback(() => {
@@ -857,48 +965,57 @@ export function useVideoTimeline(
         duration = probe.durationMs;
         sourceDurationMs = probe.durationMs;
       }
-      applyEdit((current) => {
-        let next = current;
-        let track = next.tracks.find((entry) => entry.kind === kind);
-        if (!track) {
-          next = addTrackTo(next, kind);
-          track = next.tracks[next.tracks.length - 1];
-        }
-        const appendAt = Number.isFinite(startAtMs)
-          ? Math.max(0, Math.round(startAtMs as number))
-          : Math.max(
-              0,
-              ...track.clips.map(
-                (clip) => clip.start_ms + clip.duration_ms,
-              ),
-            );
-        const clip: TimelineClip = {
-          id: makeId("clip"),
-          start_ms: appendAt,
-          duration_ms: duration,
-          source_url: url,
-          ...(media === "image"
-            ? { x: 0.5, y: 0.5, scale: 0.35, opacity: 1 }
-            : {
-                in_ms: 0,
-                speed: 1,
-                volume: 1,
-                ...(sourceDurationMs
-                  ? { source_duration_ms: sourceDurationMs }
-                  : {}),
-              }),
-        };
-        setSelectedClipId(clip.id);
-        return addClipToTrack(next, track.id, clip);
-      });
+      const appended = applyEdit(
+        (current) => {
+          let next = current;
+          let track = next.tracks.find((entry) => entry.kind === kind);
+          if (!track) {
+            next = addTrackTo(next, kind);
+            track = next.tracks[next.tracks.length - 1];
+          }
+          const appendAt = Number.isFinite(startAtMs)
+            ? Math.max(0, Math.round(startAtMs as number))
+            : Math.max(
+                0,
+                ...track.clips.map(
+                  (clip) => clip.start_ms + clip.duration_ms,
+                ),
+              );
+          const clip: TimelineClip = {
+            id: makeId("clip"),
+            start_ms: appendAt,
+            duration_ms: duration,
+            source_url: url,
+            ...(media === "image"
+              ? { x: 0.5, y: 0.5, scale: 0.35, opacity: 1 }
+              : {
+                  in_ms: 0,
+                  speed: 1,
+                  volume: 1,
+                  ...(sourceDurationMs
+                    ? { source_duration_ms: sourceDurationMs }
+                    : {}),
+                }),
+          };
+          setSelectedClipId(clip.id);
+          return addClipToTrack(next, track.id, clip);
+        },
+        true,
+      );
+      if (!appended) return;
+      markSourceReady(true);
       setNotice(tt("已添加「{title}」", { title }));
     },
-    [applyEdit, tt],
+    [applyEdit, markSourceReady, tt],
   );
 
   const addMediaFile = useCallback(
     async (file: File) => {
       setError("");
+      if (loadingSource) {
+        setError(tt("时间线源仍在载入，请完成后再导入媒体"));
+        return;
+      }
       const media = guessFileKind(file);
       if (!media) {
         setError(tt("不支持的文件类型（仅视频/音频/图片）"));
@@ -917,16 +1034,22 @@ export function useVideoTimeline(
           return;
         }
         await appendSourceClip(url, media, file.name);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : tt("素材导入失败"));
       } finally {
         setAddingMedia(false);
       }
     },
-    [appendSourceClip, siteId, tt],
+    [appendSourceClip, loadingSource, siteId, tt],
   );
 
   const addMediaUrl = useCallback(
     async (url: string, startAtMs?: number) => {
       setError("");
+      if (loadingSource) {
+        setError(tt("时间线源仍在载入，请完成后再导入媒体"));
+        return;
+      }
       const trimmed = url.trim();
       if (!/^https?:\/\//i.test(trimmed)) {
         setError(tt("请输入 http(s) 链接"));
@@ -973,7 +1096,7 @@ export function useVideoTimeline(
         setAddingMedia(false);
       }
     },
-    [appendSourceClip, siteId, tt],
+    [appendSourceClip, loadingSource, siteId, tt],
   );
 
   const addTextClip = useCallback(() => {
@@ -1007,6 +1130,10 @@ export function useVideoTimeline(
   // ---------------------------------------------------------- persistence
 
   const captureCover = useCallback(async () => {
+    if (!sourceReadyRef.current) {
+      setError(tt("时间线源尚未成功载入，不能从空回退内容截取封面"));
+      return;
+    }
     const canvas = previewCanvasRef.current;
     if (!canvas || !previewReady) {
       setError(tt("当前帧尚未解码完成，请稍后再试"));
@@ -1038,6 +1165,10 @@ export function useVideoTimeline(
 
   const saveDraft = useCallback(async (): Promise<PersistResult | null> => {
     if (savingDraftRef.current) return null;
+    if (!sourceReadyRef.current) {
+      setError(tt("时间线源尚未成功载入；已阻止保存空回退工程"));
+      return null;
+    }
     const savingRevision = revisionRef.current;
     let snapshot = structuredClone(docRef.current);
     savingDraftRef.current = true;
@@ -1084,6 +1215,10 @@ export function useVideoTimeline(
 
   const exportVideo = useCallback(async () => {
     if (exporting) return;
+    if (!sourceReadyRef.current) {
+      setError(tt("时间线源尚未成功载入；已阻止导出空回退工程"));
+      return;
+    }
     let docToRender = normalizeTimelineDoc(docRef.current);
     if (docDurationMs(docToRender) <= 0) {
       setError(tt("时间线是空的，没有可导出的内容"));
@@ -1149,14 +1284,18 @@ export function useVideoTimeline(
           parent_id: item.id,
           ...(coverUrl ? { cover_url: coverUrl } : {}),
         },
-        (state) => setExportStatus(state.status),
+        (state) => {
+          if (mountedRef.current) setExportStatus(state.status);
+        },
         2000,
         abortController.signal,
       );
+      if (!mountedRef.current) return;
       setExportedUrl(url);
       setNotice(tt("导出完成，已保存到我的库"));
       onSaved?.(url);
     } catch (caught) {
+      if (!mountedRef.current) return;
       if (caught instanceof DOMException && caught.name === "AbortError") {
         setExportStatus("canceled");
         setNotice(tt("导出已取消"));
@@ -1168,7 +1307,7 @@ export function useVideoTimeline(
       if (exportAbortRef.current === abortController) {
         exportAbortRef.current = null;
       }
-      setExporting(false);
+      if (mountedRef.current) setExporting(false);
     }
   }, [coverUrl, exporting, item.title, onSaved, siteId, tt]);
 
@@ -1191,11 +1330,13 @@ export function useVideoTimeline(
       setPlayheadMs(0);
       revisionRef.current += 1;
       setDirty(true);
+      markSourceReady(true);
       setDraftSavedUrl("");
+      setError("");
       setNotice(tt("已恢复上次未同步的本地草稿"));
       return true;
     },
-    [tt],
+    [markSourceReady, tt],
   );
 
   // -------------------------------------------------------------- derived
@@ -1233,6 +1374,7 @@ export function useVideoTimeline(
     error,
     notice,
     dirty,
+    sourceReady,
     editRevision: revisionRef.current,
     canvasRef,
     previewCanvasRef,

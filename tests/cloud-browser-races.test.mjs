@@ -10,6 +10,10 @@ import { createRoot } from "react-dom/client";
 import ts from "typescript";
 
 import { useCloudBrowserFramePainter } from "../src/shell/cloud-browser-live.ts";
+import {
+  FIRST_FRAME_TIMEOUT_MS,
+  LIVE_TICKET_TIMEOUT_MS,
+} from "../src/shell/cloud-browser-transport-config.ts";
 import { CLOUD_BROWSER_TAKEOVER_TIMEOUT_MS } from "../src/shell/cloud-browser-transport-actions.ts";
 import {
   createCloudBrowserProtocolState,
@@ -721,6 +725,55 @@ test("same-session open is idempotent while ticketing and connected", async () =
   }
 });
 
+test("ticket issue and authenticated handshake stalls recover on bounded deadlines", async () => {
+  const ticketRuntime = createRuntime();
+  const pendingTicket = deferred();
+  ticketRuntime.ticketQueue.push(pendingTicket.promise);
+  const ticketMounted = await mountTransport(ticketRuntime);
+  try {
+    let opening;
+    await act(async () => {
+      opening = ticketRuntime.transport.openLive("session-a");
+      await flushMicrotasks();
+    });
+    await tick(ticketRuntime, LIVE_TICKET_TIMEOUT_MS - 1);
+    assert.equal(ticketRuntime.ticketCalls.length, 1);
+    assert.equal(ticketRuntime.transport.transportState, "ticketing");
+    await tick(ticketRuntime, 1);
+    assert.equal(await opening, false);
+    assert.equal(ticketRuntime.transport.transportState, "reconnecting");
+    await tick(ticketRuntime, 499);
+    assert.equal(ticketRuntime.ticketCalls.length, 1);
+    await tick(ticketRuntime, 1);
+    assert.equal(ticketRuntime.ticketCalls.length, 2);
+  } finally {
+    await ticketMounted.unmount();
+  }
+
+  const handshakeRuntime = createRuntime();
+  const handshakeMounted = await mountTransport(handshakeRuntime);
+  try {
+    const socket = await openLive(handshakeRuntime, "session-a");
+    await act(async () => {
+      socket.open();
+      await flushMicrotasks();
+    });
+    assert.equal(handshakeRuntime.transport.transportState, "authenticated");
+    await tick(handshakeRuntime, FIRST_FRAME_TIMEOUT_MS - 1);
+    assert.equal(socket.closed, null);
+    await tick(handshakeRuntime, 1);
+    assert.equal(socket.closed?.code, 4000);
+    assert.equal(handshakeRuntime.transport.transportState, "reconnecting");
+    assert.equal(handshakeRuntime.ticketCalls.length, 1);
+    await tick(handshakeRuntime, 999);
+    assert.equal(handshakeRuntime.ticketCalls.length, 1);
+    await tick(handshakeRuntime, 1);
+    assert.equal(handshakeRuntime.ticketCalls.length, 2);
+  } finally {
+    await handshakeMounted.unmount();
+  }
+});
+
 test("an expired ticket is replaced by a fresh bounded retry", async () => {
   const runtime = createRuntime();
   const expired = ticketResult("session-a", 1);
@@ -1109,6 +1162,81 @@ test("an owned lease reconnects with one fenced reacquire after fresh paint", as
     assert.equal(acquires.length, 1);
     assert.equal(acquires[0].connection_id, "connection-2");
     assert.equal(acquires[0].lease_epoch, 5);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("an explicit release is never converted into reconnect takeover", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const firstSocket = await openLive(runtime, "session-a");
+    await establish(firstSocket);
+    await presentFrame(runtime);
+    await act(async () => {
+      runtime.protocolContext.setCurrentLease(
+        {
+          leaseId: "human-lease-release",
+          epoch: 5,
+          holderKind: "human",
+          holderId: "user:test-owner",
+          connectionId: "connection-1",
+          expiresAt: "2099-01-01T00:00:00Z",
+        },
+        true,
+      );
+      await flushMicrotasks();
+    });
+    assert.equal(runtime.transport.driving, true);
+
+    await act(async () => {
+      runtime.transport.toggleControl();
+      await flushMicrotasks();
+    });
+    assert.equal(sentMessages(firstSocket, "control.release").length, 1);
+    assert.equal(runtime.transport.controlPending, true);
+
+    await act(async () =>
+      firstSocket.close(1006, "network lost after release"),
+    );
+    assert.equal(runtime.transport.controlPending, false);
+    await tick(runtime, 500);
+    const freshSocket = FakeWebSocket.instances.at(-1);
+    await establish(freshSocket);
+    await presentFrame(runtime);
+    assert.equal(sentMessages(freshSocket, "control.acquire").length, 0);
+    assert.equal(runtime.transport.driving, false);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("retry exhaustion clears queued takeover and stops issuing tickets", async () => {
+  const runtime = createRuntime();
+  const mounted = await mountTransport(runtime);
+  try {
+    const firstSocket = await openLive(runtime, "session-a");
+    await establish(firstSocket);
+    await presentFrame(runtime);
+    await act(async () => runtime.transport.toggleControl());
+    assert.equal(runtime.transport.controlPending, true);
+
+    await act(async () => firstSocket.close(1006, "network lost"));
+    for (const delay of [500, 1_000, 2_000]) {
+      await tick(runtime, delay);
+      const retrySocket = FakeWebSocket.instances.at(-1);
+      await act(async () =>
+        retrySocket.close(1006, "retry transport failed"),
+      );
+    }
+
+    assert.equal(runtime.ticketCalls.length, 4);
+    assert.equal(runtime.transport.transportState, "failed");
+    assert.equal(runtime.transport.controlPending, false);
+    assert.equal(runtime.transport.driving, false);
+    await tick(runtime, 60_000);
+    assert.equal(runtime.ticketCalls.length, 4);
   } finally {
     await mounted.unmount();
   }

@@ -598,6 +598,11 @@ export interface ImageSceneRevisionBundle {
   dependencyRevisionIds: string[];
 }
 
+export interface ImageSceneArtifactRevisionIdentity {
+  artifactId: string;
+  revisionId: string;
+}
+
 /**
  * Produces the exact content-addressed payload used by the artifact commit.
  * Keeping this pure lets save/reopen verification exercise the same bytes as
@@ -619,6 +624,57 @@ export async function createImageSceneRevisionBundle(input: {
     sourceDigest,
     artifactClosureDigest: await artifactSceneClosureDigest(sourceDigest),
     dependencyRevisionIds: imageSceneDependencyRevisionIds(source),
+  };
+}
+
+/**
+ * Repin a validated local scene after an explicit current-head lookup.
+ *
+ * This is intentionally not an automatic merge or publish operation. The
+ * caller owns conflict review, then must persist the returned source through a
+ * fresh CAS using `currentHead.revisionId`.
+ */
+export async function rebaseImageSceneSourceToCurrent(
+  value: unknown,
+  staleBase: ImageSceneArtifactRevisionIdentity,
+  currentHead: ImageSceneArtifactRevisionIdentity,
+): Promise<ImageSceneSource> {
+  const source = await parseImageSceneSource(value);
+  const staleArtifactId = staleBase.artifactId.trim();
+  const staleRevisionId = staleBase.revisionId.trim();
+  const currentArtifactId = currentHead.artifactId.trim();
+  const currentRevisionId = currentHead.revisionId.trim();
+  if (
+    !staleArtifactId ||
+    !staleRevisionId ||
+    !currentArtifactId ||
+    !currentRevisionId ||
+    staleArtifactId !== currentArtifactId ||
+    staleRevisionId === currentRevisionId ||
+    source.baseArtifact.artifactId !== staleArtifactId ||
+    source.baseArtifact.revisionId !== staleRevisionId
+  ) {
+    throw new ImageSceneSourceError(
+      "revision-mismatch",
+      "图片 scene 只能从精确 stale base 显式 rebase 到同一 root 的不同 current revision。",
+    );
+  }
+  const rebasedWithoutDigest: Omit<ImageSceneSource, "revisionDigest"> = {
+    schema: source.schema,
+    version: source.version,
+    artifactType: source.artifactType,
+    revision: source.revision,
+    updatedAt: source.updatedAt,
+    baseArtifact: {
+      artifactId: currentArtifactId,
+      revisionId: currentRevisionId,
+    },
+    sceneGraph: source.sceneGraph,
+    dependencyClosure: source.dependencyClosure,
+  };
+  return {
+    ...rebasedWithoutDigest,
+    revisionDigest: await imageSceneRevisionDigest(rebasedWithoutDigest),
   };
 }
 

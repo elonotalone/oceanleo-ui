@@ -224,6 +224,11 @@ export class TimelinePreviewEngine {
       } catch {
         /* noop */
       }
+    } else {
+      const image = entry.el as HTMLImageElement;
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute("src");
     }
   }
 

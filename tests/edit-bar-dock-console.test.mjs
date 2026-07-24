@@ -295,7 +295,7 @@ test("dock state is versioned, bounded, and isolated per workbench", () => {
   );
 });
 
-test("floating geometry is stage-bounded inside a clipped non-layout overlay", async () => {
+test("floating geometry is shell-bounded inside a clipped non-layout overlay", async () => {
   assert.deepEqual(
     clampFloatingToolbarToBounds(
       { x: 10_000, y: 10_000 },
@@ -320,23 +320,47 @@ test("floating geometry is stage-bounded inside a clipped non-layout overlay", a
     ),
     true,
   );
-  const [floatingSource, controllerSource] = await Promise.all([
-    readFile(
-      new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../src/shell/edit-bar-dock-controller.tsx", import.meta.url),
-      "utf8",
-    ),
-  ]);
+  const [floatingSource, controllerSource, inlineSource, splitSource] =
+    await Promise.all([
+      readFile(
+        new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
+        "utf8",
+      ),
+      readFile(
+        new URL("../src/shell/edit-bar-dock-controller.tsx", import.meta.url),
+        "utf8",
+      ),
+      readFile(
+        new URL(
+          "../src/shell/InlineAdvancedWorkbenchShell.tsx",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      readFile(
+        new URL("../src/shell/SplitWorkspace.tsx", import.meta.url),
+        "utf8",
+      ),
+    ]);
   assert.match(floatingSource, /data-workspace-floating-toolbar-overlay/);
+  assert.match(floatingSource, /data-floating-toolbar-boundary="editor-shell"/);
   assert.match(floatingSource, /pointer-events-none absolute inset-0 overflow-hidden/);
   assert.match(floatingSource, /contain: "layout paint"/);
-  assert.match(controllerSource, /setPortalRoot\(stageRef\.current\)/);
-  assert.doesNotMatch(
+  assert.match(floatingSource, /data-workspace-docked-toolbar=\{docked/);
+  assert.match(floatingSource, /data-workspace-floating-toolbar=\{!docked/);
+  assert.match(floatingSource, /data-workspace-edit-bar-toolbar/);
+  assert.match(
     controllerSource,
-    /setPortalRoot\(workspaceRootRef\?\.current/,
+    /setPortalRoot\([\s\S]{0,120}workspaceRootRef\?\.current[\s\S]{0,120}dockRootRef\?\.current\?\.parentElement/,
+  );
+  assert.match(controllerSource, /Math\.min\(stage\.top, dockBounds\.top\)/);
+  assert.match(
+    inlineSource,
+    /data-edit-bar-layer-root=\{!rightPaneSlot \|\| undefined\}[\s\S]{0,120}relative[\s\S]{0,120}overflow-hidden/,
+  );
+  assert.match(
+    splitSource,
+    /data-edit-bar-layer-root[\s\S]{0,160}relative[\s\S]{0,160}overflow-hidden/,
   );
 });
 
@@ -366,10 +390,7 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
         width: 1000, height: 490, toJSON() {},
       };
     }
-    if (
-      this.hasAttribute("data-workspace-docked-toolbar") ||
-      this.hasAttribute("data-workspace-floating-toolbar")
-    ) {
+    if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
       const transform = this.style.transform || "";
       const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
       const left = match ? Number(match[1]) : 100;
@@ -377,6 +398,15 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
       return {
         x: left, y: top, left, top, right: left + 300, bottom: top + 52,
         width: 300, height: 52, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-docked-toolbar") ||
+      this.hasAttribute("data-workspace-floating-toolbar")
+    ) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
       };
     }
     return originalRect.call(this);
@@ -391,6 +421,19 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
   try {
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
+    );
+    assert.equal(
+      handles()[0]
+        .closest("[data-workspace-docked-toolbar]")
+        .getBoundingClientRect().width,
+      1000,
+      "the docked sizing boundary must retain the shell width",
+    );
+    assert.equal(
+      mounted.container
+        .querySelector("[data-workspace-edit-bar-toolbar]")
+        .getBoundingClientRect().width,
+      300,
     );
     assert.deepEqual(
       handles().map((handle) =>
@@ -409,21 +452,98 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
       "true",
     );
 
-    await pointer(handles()[0], "pointerdown", {
+    const initialScrollExtent = {
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+    };
+    const firstGestureHandle = handles()[0];
+    await pointer(firstGestureHandle, "pointerdown", {
       pointerId: 1,
       pointerType: "mouse",
       button: 0,
       clientX: 120,
       clientY: 60,
     });
-    await pointer(handles()[0], "pointermove", {
+    await pointer(firstGestureHandle, "pointermove", {
       pointerId: 1,
       pointerType: "mouse",
       clientX: 400,
       clientY: 300,
     });
-    await pointer(handles()[0], "pointerup", {
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-floating-toolbar]"),
+      "the first movement must undock and move the bar before pointerup",
+    );
+    assert.equal(dock().dataset.editBarDockCollapsed, "true");
+    assert.equal(firstGestureHandle.isConnected, true);
+    assert.equal(handles()[0], firstGestureHandle);
+    const movedRect = mounted.container
+      .querySelector("[data-workspace-edit-bar-toolbar]")
+      .getBoundingClientRect();
+    await act(async () => {
+      window.dispatchEvent(new window.Event("resize"));
+    });
+    const resizedRect = mounted.container
+      .querySelector("[data-workspace-edit-bar-toolbar]")
+      .getBoundingClientRect();
+    assert.deepEqual(
+      { left: resizedRect.left, top: resizedRect.top },
+      { left: movedRect.left, top: movedRect.top },
+      "collapsing/reflowing the dock must not consume or jump the drag",
+    );
+    assert.deepEqual(
+      {
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+      },
+      initialScrollExtent,
+      "the transformed overlay must not grow page scroll",
+    );
+
+    await pointer(firstGestureHandle, "pointermove", {
       pointerId: 1,
+      pointerType: "mouse",
+      clientX: 200,
+      clientY: 70,
+    });
+    assert.equal(dock().dataset.dropHighlight, "true");
+    assert.equal(dock().dataset.editBarDockCollapsed, "false");
+    const crossingToolbar = mounted.container.querySelector(
+      "[data-workspace-edit-bar-toolbar]",
+    );
+    const crossingRect = crossingToolbar.getBoundingClientRect();
+    const dockRect = dock().getBoundingClientRect();
+    assert.ok(
+      crossingRect.top < dockRect.bottom && crossingRect.bottom > dockRect.top,
+      "the moving bar must visibly cross the dock target",
+    );
+    await pointer(firstGestureHandle, "pointerup", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 200,
+      clientY: 70,
+    });
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-docked-toolbar]"),
+      "one release in the target must redock the first gesture",
+    );
+
+    const leaveDockHandle = handles()[0];
+    await pointer(leaveDockHandle, "pointerdown", {
+      pointerId: 3,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 120,
+      clientY: 60,
+    });
+    await pointer(leaveDockHandle, "pointermove", {
+      pointerId: 3,
+      pointerType: "mouse",
+      clientX: 400,
+      clientY: 300,
+    });
+    await pointer(leaveDockHandle, "pointerup", {
+      pointerId: 3,
       pointerType: "mouse",
       clientX: 400,
       clientY: 300,
@@ -718,6 +838,17 @@ test("dock follows the action row and showDetail reveals console without exiting
   );
   assert.match(inline, /<EditBarDockHost/);
   assert.match(inline, /localDockPresentation/);
+  const standaloneChrome = inline.indexOf("{!rightPaneSlot && (");
+  const actionRow = inline.indexOf("{actionBar}", standaloneChrome);
+  const editBarDock = inline.indexOf("<EditBarDockHost", actionRow);
+  const editorStage = inline.indexOf("ref={stageRef}", editBarDock);
+  assert.ok(
+    standaloneChrome >= 0 &&
+      actionRow > standaloneChrome &&
+      editBarDock > actionRow &&
+      editorStage > editBarDock,
+    "project/page controls must precede the dock so the website edit bar is adjacent to its displayed stage",
+  );
   assert.match(
     inline,
     /data-workspace-pane=\"left\"[\s\S]*data-left-panel=\"tool-detail\"/,
@@ -747,13 +878,23 @@ test("standalone local dock host pins under the action row without SplitWorkspac
         width: 920, height: 440, toJSON() {},
       };
     }
+    if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
+      const transform = this.style.transform || "";
+      const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
+      const left = match ? Number(match[1]) : 80;
+      const top = match ? Number(match[2]) : 50;
+      return {
+        x: left, y: top, left, top, right: left + 400, bottom: top + 44,
+        width: 400, height: 44, toJSON() {},
+      };
+    }
     if (
       this.hasAttribute("data-workspace-docked-toolbar") ||
       this.hasAttribute("data-workspace-floating-toolbar")
     ) {
       return {
-        x: 80, y: 50, left: 80, top: 50, right: 480, bottom: 94,
-        width: 400, height: 44, toJSON() {},
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
       };
     }
     return originalRect.call(this);
@@ -808,8 +949,14 @@ test("standalone local dock host pins under the action row without SplitWorkspac
     );
     assert.ok(dock);
     assert.equal(dock.dataset.editBarDockState, "docked");
-    assert.ok(
-      dock.querySelector("[data-workspace-docked-toolbar]"),
+    const dockedToolbar = mounted.container.querySelector(
+      "[data-workspace-docked-toolbar]",
+    );
+    assert.ok(dockedToolbar);
+    assert.equal(
+      dockedToolbar.closest("[data-workspace-floating-toolbar-overlay]")
+        .parentElement,
+      mounted.container.querySelector("[data-edit-bar-test-root]"),
     );
     const pin = mounted.container.querySelector("[data-edit-bar-pin]");
     assert.ok(pin);
@@ -837,9 +984,7 @@ test("standalone local dock host pins under the action row without SplitWorkspac
       "docked",
     );
     assert.ok(
-      mounted.container
-        .querySelector("[data-workspace-edit-bar-dock]")
-        .querySelector("[data-workspace-docked-toolbar]"),
+      mounted.container.querySelector("[data-workspace-docked-toolbar]"),
     );
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;

@@ -49,6 +49,17 @@ test("signed model sources survive routing while HDRI and textures fail closed",
   const signed = modelItem({ mime: "model/gltf-binary" });
   assert.equal(isModel3DSourceItem(signed), true);
   assert.equal(model3DSourceForItem(signed), signed.url);
+  const typedProjection = modelItem(
+    {
+      format: "gltf",
+      source_url: "https://api.oceanleo.com/v1/artifact-renditions/access/source",
+    },
+    "https://api.oceanleo.com/v1/artifact-renditions/access/full-poster",
+  );
+  assert.equal(
+    model3DSourceForItem(typedProjection),
+    typedProjection.meta.source_url,
+  );
 
   const hdri = modelItem({
     subtype: "hdri",
@@ -246,6 +257,10 @@ test("3D load mutate autosave reopen preserves source provenance and journal", (
   const checkpointUrl = "https://cdn.example/models/scene.gltf?version=7";
   const dependencyBaseUrl =
     "https://deps.example/releases/v7/scene.gltf?token=closure";
+  const artifactId = "84c56188-2106-4271-ae72-848d32db1335";
+  const revisionId = "43bb4ef9-966a-49cf-a07c-b7171ea52bee";
+  const sourceDigest =
+    "6b908c48f0f5300ba561cbcfe38e938863e8d1d33569e9a1fab6c7e9c16f8e95";
   const loaded = normalizeModel3DProjectRecovery(
     {
       checkpointUrl,
@@ -254,6 +269,9 @@ test("3D load mutate autosave reopen preserves source provenance and journal", (
         sourceUrl: checkpointUrl,
         dependencyBaseUrl,
         format: "gltf",
+        artifactId,
+        revisionId,
+        sourceDigest,
       },
       operations: [],
       view: DEFAULT_MODEL3D_VIEW,
@@ -279,6 +297,9 @@ test("3D load mutate autosave reopen preserves source provenance and journal", (
   assert.equal(reopened?.checkpointUrl, checkpointUrl);
   assert.equal(reopened?.provenance.format, "gltf");
   assert.equal(reopened?.provenance.dependencyBaseUrl, dependencyBaseUrl);
+  assert.equal(reopened?.provenance.artifactId, artifactId);
+  assert.equal(reopened?.provenance.revisionId, revisionId);
+  assert.equal(reopened?.provenance.sourceDigest, sourceDigest);
   assert.deepEqual(reopened?.operations, operations);
   assert.equal(reopened?.view.exposure, 1.7);
 });

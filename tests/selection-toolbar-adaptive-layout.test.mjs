@@ -100,11 +100,26 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
   );
   assert.deepEqual(
     priorityConstrained.visible.map(({ id }) => id),
-    ["late-primary", "ordinary-small"],
+    ["late-primary"],
   );
   assert.deepEqual(
     priorityConstrained.overflow.map(({ id }) => id),
-    ["ordinary-wide", "authored-more"],
+    ["ordinary-wide", "authored-more", "ordinary-small"],
+  );
+  const widerPriorityProjection = partitionSelectionControls(
+    controls,
+    widths,
+    222,
+  );
+  assert.deepEqual(
+    widerPriorityProjection.visible.map(({ id }) => id),
+    ["ordinary-wide", "late-primary"],
+  );
+  assert.ok(
+    priorityConstrained.visible.every((control) =>
+      widerPriorityProjection.visible.some(({ id }) => id === control.id),
+    ),
+    "a wider toolbar must not evict a control that was already visible",
   );
   assert.equal(
     [...priorityConstrained.visible, ...priorityConstrained.overflow].some(
@@ -123,6 +138,119 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     [
       ["group:format", ["ordinary-wide"]],
       ["danger", ["authored-more"]],
+      ["actions", ["ordinary-small"]],
+    ],
+  );
+});
+
+test("grid inspectors use named, distinct More launchers instead of repeated table icons", () => {
+  const source = [
+    {
+      id: "type",
+      kind: "select",
+      label: "数据类型",
+      icon: "table",
+      value: "auto",
+      options: [{ value: "auto", label: "自动" }],
+    },
+    ...[
+      ["decimals", "grid-number-format", "数字格式", "table"],
+      ["row-before", "grid-rows", "行", "table"],
+      ["column-before", "grid-columns", "列", "table"],
+      ["sort-asc", "grid-data", "排序与筛选", "filter"],
+      ["merge-cells", "grid-merge", "合并单元格", "table"],
+      ["condition-apply", "grid-conditional", "条件格式", "filter"],
+    ].map(([id, inspectorGroup, inspectorLabel, inspectorIcon]) => ({
+      id,
+      kind: "action",
+      label: id,
+      slot: "inspector",
+      inspectorGroup,
+      inspectorLabel,
+      inspectorIcon,
+    })),
+  ];
+  const { compact, groups } = partitionSelectionInspectorControls(source);
+  const launchers = compact.filter((control) => control.kind === "panel");
+
+  assert.deepEqual(
+    launchers.map(({ label, icon, placement, group }) => ({
+      label,
+      icon,
+      placement,
+      group,
+    })),
+    [
+      {
+        label: "数字格式",
+        icon: "font",
+        placement: "more",
+        group: "grid-properties",
+      },
+      {
+        label: "行操作",
+        icon: "add",
+        placement: "more",
+        group: "grid-properties",
+      },
+      {
+        label: "列操作",
+        icon: "table",
+        placement: "more",
+        group: "grid-properties",
+      },
+      {
+        label: "排序与筛选",
+        icon: "filter",
+        placement: "more",
+        group: "grid-properties",
+      },
+      {
+        label: "合并单元格",
+        icon: "border",
+        placement: "more",
+        group: "grid-properties",
+      },
+      {
+        label: "条件格式",
+        icon: "color",
+        placement: "more",
+        group: "grid-properties",
+      },
+    ],
+  );
+  assert.equal(new Set(launchers.map(({ icon }) => icon)).size, launchers.length);
+  assert.deepEqual(
+    groups.map(({ label, icon }) => ({ label, icon })),
+    launchers.map(({ label, icon }) => ({ label, icon })),
+  );
+  const projected = partitionSelectionControls(
+    compact,
+    new Map([["type", 80]]),
+    Number.POSITIVE_INFINITY,
+  );
+  assert.deepEqual(projected.visible.map(({ id }) => id), ["type"]);
+  assert.deepEqual(
+    groupSelectionOverflowControls(projected.overflow).map(
+      ({ id, label, controls }) => [
+        id,
+        label,
+        controls.map((control) => control.label),
+      ],
+    ),
+    [
+      [
+        "group:grid-properties",
+        "表格属性",
+        [
+          "数字格式",
+          "行操作",
+          "列操作",
+          "排序与筛选",
+          "合并单元格",
+          "条件格式",
+        ],
+      ],
     ],
   );
 });
@@ -366,6 +494,29 @@ async function loadSelectionToolbar() {
       "./anchored-popover": anchoredPopoverUrl,
     },
   );
+  const toolbarControlUrl = await compileTsxUrl(
+    "src/shell/SelectionToolbarControl.tsx",
+    {
+      "./AdvancedEditorIcon": iconStubUrl,
+      "./SelectionAnimationGallery": animationStubUrl,
+      "./SelectionToolbarButtonControl": buttonControlUrl,
+      "./SelectionToolbarNumberControl": numberControlUrl,
+      "./SelectionToolbarSelectControl": selectControlUrl,
+      "./selection-context": selectionContextStubUrl,
+      "./selection-toolbar-layout": pathToFileURL(
+        resolve("src/shell/selection-toolbar-layout.ts"),
+      ).href,
+    },
+  );
+  const toolbarMeasureHookUrl = await compileTsxUrl(
+    "src/shell/useSelectionToolbarMeasure.ts",
+    {
+      react: reactUrl,
+      "./selection-toolbar-measure": pathToFileURL(
+        resolve("src/shell/selection-toolbar-measure.ts"),
+      ).href,
+    },
+  );
   const toolbarUrl = await compileTsxUrl("src/shell/SelectionToolbar.tsx", {
     react: reactUrl,
     "./AdvancedEditorIcon": iconStubUrl,
@@ -381,9 +532,11 @@ async function loadSelectionToolbar() {
     ).href,
     "./selection-inspector-host": inspectorHostStubUrl,
     "./anchored-popover": anchoredPopoverUrl,
+    "./SelectionToolbarControl": toolbarControlUrl,
     "./SelectionToolbarButtonControl": buttonControlUrl,
     "./SelectionToolbarNumberControl": numberControlUrl,
     "./SelectionToolbarSelectControl": selectControlUrl,
+    "./useSelectionToolbarMeasure": toolbarMeasureHookUrl,
   });
   return (await import(toolbarUrl)).SelectionToolbar;
 }
@@ -489,11 +642,11 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     });
     assert.equal(
       toolbar.getAttribute("data-selection-visible-controls"),
-      "primary ordinary",
+      "primary",
     );
     assert.equal(
       toolbar.getAttribute("data-selection-overflow-controls"),
-      "cjk danger",
+      "cjk ordinary danger",
     );
     assert.equal(
       mounted.host.querySelector('[data-selection-control-id="context-only"]'),
@@ -527,11 +680,12 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
       [...dialog.querySelectorAll("[data-selection-overflow-group]")].map(
         (group) => [
           group.getAttribute("data-selection-overflow-group"),
-          group.getAttribute("aria-label"),
+          group.getAttribute("data-selection-overflow-group-label"),
         ],
       ),
       [
-        ["group:typography", "更多操作"],
+        ["group:typography", "排版"],
+        ["actions", "其他操作"],
         ["danger", "危险操作"],
       ],
     );
@@ -572,11 +726,11 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     });
     assert.equal(
       toolbar.getAttribute("data-selection-visible-controls"),
-      "primary ordinary",
+      "primary",
     );
     assert.equal(
       toolbar.getAttribute("data-selection-overflow-controls"),
-      "cjk danger",
+      "cjk ordinary danger",
     );
   } finally {
     await mounted.unmount();
@@ -839,11 +993,11 @@ test("floating and docked hosts use their actual observed container widths", asy
     });
     assert.equal(
       toolbar.getAttribute("data-selection-visible-controls"),
-      "primary ordinary",
+      "primary",
     );
     assert.equal(
       toolbar.getAttribute("data-selection-overflow-controls"),
-      "cjk danger",
+      "cjk ordinary danger",
     );
   } finally {
     await floating.unmount();
@@ -860,11 +1014,11 @@ test("floating and docked hosts use their actual observed container widths", asy
     const toolbar = docked.host.querySelector('[role="toolbar"]');
     assert.equal(
       toolbar.getAttribute("data-selection-visible-controls"),
-      "primary ordinary",
+      "primary",
     );
     assert.equal(
       toolbar.getAttribute("data-selection-overflow-controls"),
-      "cjk danger",
+      "cjk ordinary danger",
     );
   } finally {
     await docked.unmount();

@@ -18,7 +18,7 @@ export function useFloatingContextToolbar({
   resetKey,
   storageKey,
 }: {
-  workspaceRootRef?: RefObject<HTMLDivElement | null>;
+  workspaceRootRef?: RefObject<HTMLElement | null>;
   stageRef: RefObject<HTMLDivElement | null>;
   dockRootRef?: RefObject<HTMLDivElement | null>;
   resetKey: string;
@@ -43,42 +43,34 @@ export function FloatingContextToolbar({
   children?: ReactNode;
 }) {
   if (!children) return null;
-  if (controller.mode === "docked") {
-    if (!controller.dockRoot) return null;
-    return createPortal(
-      <div
-        data-advanced-context-row
-        data-workspace-docked-toolbar
-        data-edit-bar-mode="docked"
-        ref={controller.toolbarRef}
-        className="flex w-full min-w-0 max-w-full items-center justify-center overflow-visible"
-        style={advancedWorkbenchStyle(accent)}
-      >
-        {children}
-      </div>,
-      controller.dockRoot,
-    );
-  }
   if (!controller.portalRoot) return null;
+  const docked = controller.mode === "docked";
   return createPortal(
     <div
       data-workspace-floating-toolbar-overlay
-      data-floating-toolbar-boundary="editor-stage"
+      data-floating-toolbar-boundary="editor-shell"
       className="pointer-events-none absolute inset-0 overflow-hidden"
       style={{ contain: "layout paint", zIndex: 2_147_483_000 }}
     >
       <div
-        data-advanced-context-row
-        data-workspace-floating-toolbar
-        data-edit-bar-mode="floating"
-        ref={controller.toolbarRef}
-        className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
-        style={{
-          ...advancedWorkbenchStyle(accent),
-          transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
-        }}
+        data-workspace-docked-toolbar={docked || undefined}
+        data-workspace-floating-toolbar={!docked || undefined}
+        data-edit-bar-mode={controller.mode}
+        data-edit-bar-dragging={controller.dragging || undefined}
+        className="pointer-events-none absolute inset-0 overflow-visible"
       >
-        {children}
+        <div
+          ref={controller.toolbarRef}
+          data-advanced-context-row
+          data-workspace-edit-bar-toolbar
+          className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
+          style={{
+            ...advancedWorkbenchStyle(accent),
+            transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>,
     controller.portalRoot,

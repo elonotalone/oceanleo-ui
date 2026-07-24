@@ -283,11 +283,12 @@ export function AnchoredPopover({
     const panel = internalPanelRef.current;
     if (!anchor || !panel) return;
     const panelRect = panel.getBoundingClientRect();
+    const naturalWidth = Math.max(panelRect.width, panel.scrollWidth || 0);
     const naturalHeight = Math.max(panelRect.height, panel.scrollHeight || 0);
     const next = computeAnchoredPopoverPosition(
       anchor,
       {
-        width: panelRect.width,
+        width: naturalWidth,
         height: naturalHeight,
       },
       visualViewportRect(),
@@ -386,10 +387,11 @@ export function AnchoredPopover({
         style={{
           ...style,
           position: "fixed",
+          boxSizing: "border-box",
           left: position.left,
           top: position.top,
-            maxWidth: positioned ? position.maxWidth : undefined,
-            maxHeight: positioned ? position.maxHeight : maxHeight,
+          maxWidth: positioned ? position.maxWidth : undefined,
+          maxHeight: positioned ? position.maxHeight : maxHeight,
           visibility: positioned ? "visible" : "hidden",
         }}
       >

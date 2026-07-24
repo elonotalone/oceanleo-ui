@@ -7,7 +7,10 @@ import {
   type SetStateAction,
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { prepareModelRuntimeSource } from "./model3d-files";
+import {
+  prepareModelRuntimeSource,
+  type Model3DArtifactIdentity,
+} from "./model3d-files";
 import type { Model3DOperation } from "./model3d-operations.mjs";
 import type { Model3DViewProject } from "./model3d-project";
 import type { Model3DAnnotation } from "./model3d-view";
@@ -26,6 +29,7 @@ export function useModel3DSourceLoader({
   runtimeReady,
   sourceUrl,
   dependencyBaseUrl,
+  artifactIdentity,
   reloadToken,
   sourceGenerationRef,
   loadedSourceRef,
@@ -44,6 +48,7 @@ export function useModel3DSourceLoader({
   runtimeReady: boolean;
   sourceUrl: string;
   dependencyBaseUrl: string;
+  artifactIdentity: Model3DArtifactIdentity | null;
   reloadToken: number;
   sourceGenerationRef: MutableRefObject<number>;
   loadedSourceRef: MutableRefObject<string>;
@@ -77,6 +82,7 @@ export function useModel3DSourceLoader({
         sourceUrl,
         controller.signal,
         dependencyBaseUrl,
+        artifactIdentity,
       );
       releasePreparedSource = prepared.release;
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
@@ -99,7 +105,7 @@ export function useModel3DSourceLoader({
       }
       loadedSourceRef.current = sourceUrl;
       onPreparedSource({
-        sourceUrl,
+        sourceUrl: prepared.sourceUrl,
         dependencyBaseUrl: prepared.dependencyBaseUrl,
         format: prepared.format,
       });
@@ -122,11 +128,14 @@ export function useModel3DSourceLoader({
     return () => {
       controller.abort();
       runtime.cancelLoad();
-      releasePreparedSource?.();
+      // GLTFLoader cannot be aborted after it starts consuming local object
+      // URLs. The async finally above revokes the complete closure once that
+      // load settles; revoking here can race image decode and blank the model.
     };
   }, [
     aliveRef,
     annotations,
+    artifactIdentity,
     dependencyBaseUrl,
     loadedSourceRef,
     onPreparedSource,

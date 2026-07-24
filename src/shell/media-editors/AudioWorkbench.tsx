@@ -11,7 +11,10 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { uploadFile } from "../../lib/database";
-import type { LibraryItem } from "../library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
 import { loadEditorProject } from "../doc-editors/doc-io";
 import type { AudioEditOperation } from "./audio-operations";
 import type {
@@ -78,6 +81,10 @@ export function useAudioWorkbench(
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const requiresExistingSource =
+    item.source === "artifact" ||
+    isDurableLibraryItem(item) ||
+    item.meta.editor_project_schema === AUDIO_PROJECT_SCHEMA;
 
   const syncSelection = useCallback((region: Region) => {
     setSelection({ start: region.start, end: region.end });
@@ -112,6 +119,11 @@ export function useAudioWorkbench(
           throw new Error(tt("音频工程格式无效"));
         }
         const requestedSource = project ? project.sourceUrl : sourceUrl;
+        if (!requestedSource && requiresExistingSource) {
+          throw new Error(
+            tt("当前音频 revision 缺少可验证的源文件；已阻止用静音占位替代"),
+          );
+        }
         const durableUrl = requestedSource
           ? isFirstPartyMediaUrl(requestedSource)
             ? requestedSource
@@ -227,8 +239,33 @@ export function useAudioWorkbench(
         wave.on("play", () => setPlaying(true));
         wave.on("pause", () => setPlaying(false));
         wave.on("finish", () => setPlaying(false));
+        wave.on("error", (caught) => {
+          if (disposed) return;
+          setLoading(false);
+          setError(
+            caught instanceof Error ? caught.message : tt("音频波形加载失败"),
+          );
+        });
       } catch (caught) {
         if (!disposed) {
+          disableDrag?.();
+          disableDrag = undefined;
+          try {
+            waveRef.current?.destroy();
+          } catch {
+            // WaveSurfer may be only partially constructed.
+          }
+          waveRef.current = null;
+          regionsRef.current = null;
+          bufferRef.current = null;
+          sourceUrlRef.current = "";
+          operationsRef.current = [];
+          undoOperationsRef.current = [];
+          redoOperationsRef.current = [];
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = "";
+          }
           setLoading(false);
           setError(caught instanceof Error ? caught.message : tt("音频加载失败"));
         }
@@ -255,6 +292,7 @@ export function useAudioWorkbench(
     item.previewUrl,
     item.title,
     item.url,
+    requiresExistingSource,
     siteId,
     syncSelection,
     tt,
@@ -310,8 +348,9 @@ export function useAudioWorkbench(
       }
       setLoading(true);
       setError("");
-      const context = new AudioContext();
+      let context: AudioContext | null = null;
       try {
+        context = new AudioContext();
         const sourceFormat = await assertBlobSource(file, "audio");
         if (
           file.size > MAX_COMPRESSED_AUDIO_BYTES &&
@@ -344,6 +383,7 @@ export function useAudioWorkbench(
         if (!uploaded.ok || !sourceUrl) {
           throw new Error(uploaded.error || tt("音频源上传失败"));
         }
+        await reloadWaveform(decoded);
         bufferRef.current = decoded;
         sourceUrlRef.current = sourceUrl;
         operationsRef.current = [];
@@ -356,11 +396,10 @@ export function useAudioWorkbench(
         setCanRedo(false);
         setDirty(true);
         setSavedUrl("");
-        await reloadWaveform(decoded);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : tt("音频导入失败"));
       } finally {
-        await context.close().catch(() => undefined);
+        await context?.close().catch(() => undefined);
         setLoading(false);
       }
     },
@@ -500,6 +539,7 @@ export function useAudioWorkbench(
   const { save, captureRecovery, restoreRecovery } = useAudioPersistence({
     item,
     siteId,
+    requiresExistingSource,
     bufferRef,
     sourceUrlRef,
     operationsRef,

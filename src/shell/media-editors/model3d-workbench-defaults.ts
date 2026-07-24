@@ -73,6 +73,12 @@ export function model3DSourceForItem(item: LibraryItem): string {
     (typeof item.meta.model_source_url === "string"
       ? item.meta.model_source_url
       : "") ||
+    (typeof item.meta.editor_source_url === "string"
+      ? item.meta.editor_source_url
+      : "") ||
+    (typeof item.meta.source_url === "string"
+      ? item.meta.source_url
+      : "") ||
     (typeof item.meta.source_asset_url === "string"
       ? item.meta.source_asset_url
       : "") ||
@@ -80,6 +86,37 @@ export function model3DSourceForItem(item: LibraryItem): string {
     item.previewUrl ||
     ""
   );
+}
+
+function isDisplayableModelPoster(url: string, mediaType: unknown): boolean {
+  if (!url || /\.(?:glb|gltf)(?:$|[?#])/i.test(url)) return false;
+  const mime = String(mediaType || "").trim().toLowerCase().split(";", 1)[0];
+  return (
+    mime.startsWith("image/") ||
+    url.startsWith("data:image/") ||
+    /\.(?:avif|gif|jpe?g|png|svg|webp)(?:$|[?#])/i.test(url)
+  );
+}
+
+/**
+ * Stable handoff for cards and the editor loading state. It never presents a
+ * GLB/glTF entrypoint as an image and prefers the durable rendered poster.
+ */
+export function model3DPosterForItem(item: LibraryItem): string {
+  const generated =
+    typeof item.meta.model_poster_url === "string"
+      ? item.meta.model_poster_url.trim()
+      : "";
+  if (isDisplayableModelPoster(generated, "image/png")) return generated;
+  const thumbnail = item.thumbUrl || "";
+  if (
+    isDisplayableModelPoster(thumbnail, item.meta.thumbnail_media_type)
+  ) return thumbnail;
+  const preview = item.previewUrl || "";
+  if (isDisplayableModelPoster(preview, item.meta.preview_media_type)) {
+    return preview;
+  }
+  return "";
 }
 
 export function model3DSidecarWithoutSource(

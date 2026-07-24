@@ -37,15 +37,19 @@ export function SelectionToolbarNumberControl({
     );
   return (
     <div
-      className={`flex h-11 shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
+      className={`flex h-11 max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
         menu ? "w-full" : ""
       }`}
       title={accessibleLabel}
     >
       {!iconOnly && (
-        <span className="flex items-center gap-1.5 border-r border-[var(--divider,#e7e5e4)] px-2 text-[11px] text-[var(--muted,#78716c)]">
+        <span
+          className={`flex min-w-0 items-center gap-1.5 border-r border-[var(--divider,#e7e5e4)] px-2 text-[11px] text-[var(--muted,#78716c)] ${
+            menu ? "max-w-[45%]" : ""
+          }`}
+        >
           {icon}
-          {control.label}
+          <span className="min-w-0 truncate">{control.label}</span>
         </span>
       )}
       {iconOnly && icon && (
@@ -92,7 +96,7 @@ export function SelectionToolbarNumberControl({
         }}
         aria-label={accessibleLabel}
         className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-          menu ? "min-w-16 flex-1" : "w-12"
+          menu ? "min-w-10 flex-1" : "w-12"
         }`}
       />
       {control.suffix && (

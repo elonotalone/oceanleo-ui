@@ -2,7 +2,10 @@
 
 import type { LibraryItem } from "../library-data";
 import { isDurableLibraryItem } from "../library-data";
-import { createArtifactRevision } from "../artifact-client";
+import {
+  createArtifactRevision,
+  getCurrentArtifactItem,
+} from "../artifact-client";
 import { uploadFile } from "../../lib/database";
 import {
   fetchMediaBlob,
@@ -50,6 +53,53 @@ export interface PersistedImageProject {
   dependencyClosureDigest?: string;
   dependencyRevisionIds?: string[];
 }
+
+export type CompositeImagePersistenceRecovery =
+  | "none"
+  | "retry"
+  | "refresh-dependency"
+  | "reload-current-revision";
+
+export class CompositeImagePersistenceError extends Error {
+  readonly code: string;
+  readonly recovery: CompositeImagePersistenceRecovery;
+  readonly recoverable: boolean;
+  readonly currentRevisionId?: string;
+  readonly uploadsPersisted: boolean;
+
+  constructor(
+    message: string,
+    options: {
+      code: string;
+      recovery?: CompositeImagePersistenceRecovery;
+      currentRevisionId?: string;
+      uploadsPersisted?: boolean;
+    },
+  ) {
+    super(message);
+    this.name = "CompositeImagePersistenceError";
+    this.code = options.code;
+    this.recovery = options.recovery || "none";
+    this.recoverable = this.recovery !== "none";
+    this.currentRevisionId = options.currentRevisionId;
+    this.uploadsPersisted = options.uploadsPersisted === true;
+  }
+}
+
+export interface CompositeImagePersistenceDependencies {
+  upload: typeof uploadFile;
+  fetchBlob: typeof fetchMediaBlob;
+  createArtifactRevision: typeof createArtifactRevision;
+  getCurrent: typeof getCurrentArtifactItem;
+}
+
+const DEFAULT_COMPOSITE_PERSISTENCE_DEPENDENCIES: CompositeImagePersistenceDependencies =
+  {
+    upload: uploadFile,
+    fetchBlob: fetchMediaBlob,
+    createArtifactRevision,
+    getCurrent: getCurrentArtifactItem,
+  };
 
 export function mimeFor(format: ExportFormat): string {
   return format === "jpeg" ? "image/jpeg" : `image/${format}`;
@@ -290,11 +340,12 @@ async function verifyPersistedUpload(
   url: string,
   digest: string,
   maxBytes: number,
+  fetchBlob: typeof fetchMediaBlob = fetchMediaBlob,
 ): Promise<void> {
   if (!trustedArtifactMediaUrl(url)) {
     throw new Error(`${label}上传返回了未托管的 URL`);
   }
-  const persisted = await fetchMediaBlob(url, {
+  const persisted = await fetchBlob(url, {
     maxBytes,
     cache: "no-store",
   });
@@ -314,6 +365,7 @@ async function verifyCompositeDependencies(
     kind: "image";
     required: true;
   }[],
+  fetchBlob: typeof fetchMediaBlob = fetchMediaBlob,
 ): Promise<void> {
   let cursor = 0;
   const verifyNext = async () => {
@@ -327,7 +379,7 @@ async function verifyCompositeDependencies(
           dependency.id,
         );
       }
-      const blob = await fetchMediaBlob(dependency.url, {
+      const blob = await fetchBlob(dependency.url, {
         maxBytes: 80 * 1024 * 1024,
       });
       if ((await sha256Blob(blob)) !== dependency.digest) {
@@ -353,13 +405,14 @@ async function verifyCompositeDependencies(
  * published through one If-Match artifact revision. The layered scene remains
  * canonical; the PNG is only a content-addressed display derivative.
  */
-export async function persistCompositeImageProject(
+async function persistCompositeImageProjectInternal(
   snapshot: EditorSnapshot,
   item: LibraryItem,
   siteId: string,
   idempotencyKey: string,
   editRevision: number,
   previewBlob: Blob,
+  dependencies: CompositeImagePersistenceDependencies,
 ): Promise<PersistedImageProject> {
   if (
     !isDurableLibraryItem(item) ||
@@ -371,15 +424,19 @@ export async function persistCompositeImageProject(
     item.artifact.scene.sceneRevisionId !== item.revisionId ||
     item.artifact.scene.closureStatus !== "complete"
   ) {
-    throw new Error(
+    throw new CompositeImagePersistenceError(
       "复合图片缺少 durable artifact/revision identity，不能保存分层工程。",
+      { code: "invalid-artifact" },
     );
   }
   if (
     !item.artifact.access.canEdit ||
     item.artifact.owner.visibility === "public"
   ) {
-    throw new Error("当前主体不能更新此复合图片 revision；请先 fork。");
+    throw new CompositeImagePersistenceError(
+      "当前主体不能更新此复合图片 revision；请先 fork。",
+      { code: "unauthorized" },
+    );
   }
   const savedAt = new Date().toISOString();
   const bundle = await createImageSceneRevisionBundle({
@@ -392,7 +449,10 @@ export async function persistCompositeImageProject(
   const scene = bundle.source;
   const sceneJson = bundle.sourceText;
   if (byteLength(sceneJson) > MAX_PROJECT_BYTES) {
-    throw new Error("复合图片 scene 超过 5MB，不能安全提交");
+    throw new CompositeImagePersistenceError(
+      "复合图片 scene 超过 5MB，不能安全提交。",
+      { code: "scene-too-large" },
+    );
   }
   const sourceDigest = bundle.sourceDigest;
   const dependencyRevisionIds = bundle.dependencyRevisionIds;
@@ -400,6 +460,7 @@ export async function persistCompositeImageProject(
   const previewDigest = await assertPngPreview(previewBlob);
   await verifyCompositeDependencies(
     bundle.source.dependencyClosure.dependencies,
+    dependencies.fetchBlob,
   );
   const title = `${item.title || "图片"}-编辑版`;
   const safeTitle =
@@ -417,7 +478,7 @@ export async function persistCompositeImageProject(
   );
   const targetSite = siteId || item.siteId || "image";
   const [sourceUpload, previewUpload] = await Promise.all([
-    uploadFile(sourceFile, {
+    dependencies.upload(sourceFile, {
       siteId: targetSite,
       title: `${title}分层工程`,
       registerAsset: false,
@@ -427,7 +488,7 @@ export async function persistCompositeImageProject(
           180,
         ),
     }),
-    uploadFile(previewFile, {
+    dependencies.upload(previewFile, {
       siteId: targetSite,
       title: `${title}预览`,
       registerAsset: false,
@@ -441,10 +502,22 @@ export async function persistCompositeImageProject(
   const sourceRow = sourceUpload.data?.file;
   const previewRow = previewUpload.data?.file;
   if (!sourceUpload.ok || !sourceRow?.url) {
-    throw new Error(sourceUpload.error || "复合图片 scene 上传失败");
+    throw new CompositeImagePersistenceError(
+      sourceUpload.error || "复合图片 scene 上传失败。",
+      { code: "source-upload-failed", recovery: "retry" },
+    );
   }
   if (!previewUpload.ok || !previewRow?.url) {
-    throw new Error(previewUpload.error || "复合图片 preview 上传失败");
+    throw new CompositeImagePersistenceError(
+      `${
+        previewUpload.error || "复合图片 preview 上传失败。"
+      } scene 可能已上传，但 artifact revision 尚未提交。`,
+      {
+        code: "preview-upload-failed",
+        recovery: "retry",
+        uploadsPersisted: true,
+      },
+    );
   }
   assertUploadDigest("复合图片 scene", sourceDigest, sourceRow);
   assertUploadDigest("复合图片 preview", previewDigest, previewRow);
@@ -454,15 +527,17 @@ export async function persistCompositeImageProject(
       sourceRow.url,
       sourceDigest,
       MAX_PROJECT_BYTES,
+      dependencies.fetchBlob,
     ),
     verifyPersistedUpload(
       "复合图片 preview",
       previewRow.url,
       previewDigest,
       32_000_000,
+      dependencies.fetchBlob,
     ),
   ]);
-  const committed = await createArtifactRevision(item.artifactId, {
+  const committed = await dependencies.createArtifactRevision(item.artifactId, {
     expectedRevisionId: item.revisionId,
     artifactType: "composite_image",
     source: {
@@ -501,7 +576,54 @@ export async function persistCompositeImageProject(
     },
   });
   if (!committed.ok || !committed.data || !isDurableLibraryItem(committed.data)) {
-    throw new Error(committed.error || "复合图片 revision 提交失败");
+    if (committed.code === "revision-conflict") {
+      let currentRevisionId: string | undefined;
+      try {
+        const current = await dependencies.getCurrent(item.artifactId);
+        if (
+          current.ok &&
+          current.data &&
+          isDurableLibraryItem(current.data) &&
+          current.data.artifactId === item.artifactId &&
+          current.data.revisionId !== item.revisionId &&
+          current.data.artifactType === "composite_image" &&
+          current.data.artifact.integrity.ok
+        ) {
+          currentRevisionId = current.data.revisionId;
+        }
+      } catch {
+        currentRevisionId = undefined;
+      }
+      throw new CompositeImagePersistenceError(
+        currentRevisionId
+          ? `${
+              committed.error || "复合图片 revision 冲突。"
+            } 云端 current revision 已是 ${currentRevisionId}；上传字节未成为新 head，请重新载入并显式 rebase。`
+          : `${
+              committed.error || "复合图片 revision 冲突。"
+            } 上传字节未成为新 head，且无法取得 authoritative current revision。`,
+        {
+          code: currentRevisionId
+            ? "revision-conflict"
+            : "revision-conflict-unresolved",
+          recovery: currentRevisionId
+            ? "reload-current-revision"
+            : "retry",
+          currentRevisionId,
+          uploadsPersisted: true,
+        },
+      );
+    }
+    throw new CompositeImagePersistenceError(
+      `${
+        committed.error || "复合图片 revision 提交失败。"
+      } source/preview 可能已上传，但没有返回可接受的新 artifact head。`,
+      {
+        code: committed.code || "revision-commit-failed",
+        recovery: committed.retryable ? "retry" : "none",
+        uploadsPersisted: true,
+      },
+    );
   }
   const next = committed.data;
   const nextSource = next.artifact.renditions.source;
@@ -530,6 +652,19 @@ export async function persistCompositeImageProject(
       next.artifact.scene.dependencyRevisionIds,
       dependencyRevisionIds,
     );
+  const sourceClosure = next.artifact.sourceClosure;
+  const sourceClosureMatches =
+    !sourceClosure ||
+    (sourceClosure.revisionId === next.revisionId &&
+      sourceClosure.status === "complete" &&
+      sourceClosure.firstParty &&
+      normalizedDigest(sourceClosure.sourceDigest) === sourceDigest &&
+      normalizedDigest(sourceClosure.digest) === dependencyClosureDigest &&
+      sourceClosure.dependencyDigests.includes(sourceDigest) &&
+      sameStrings(
+        sourceClosure.dependencyRevisionIds,
+        dependencyRevisionIds,
+      ));
   if (
     next.artifactId !== item.artifactId ||
     next.revisionId === item.revisionId ||
@@ -541,11 +676,16 @@ export async function persistCompositeImageProject(
     !sourceMatches ||
     !previewMatches ||
     !closureMatches ||
+    !sourceClosureMatches ||
     !nextPreview?.url ||
     !nextSource?.url
   ) {
-    throw new Error(
+    throw new CompositeImagePersistenceError(
       "复合图片保存回执的 artifact/revision、source digest 或 dependency closure 不一致。",
+      {
+        code: "invalid-commit-receipt",
+        uploadsPersisted: true,
+      },
     );
   }
   return {
@@ -559,4 +699,61 @@ export async function persistCompositeImageProject(
     dependencyClosureDigest,
     dependencyRevisionIds,
   };
+}
+
+/**
+ * W5 persistence boundary: one stable snapshot + preview becomes one CAS
+ * artifact revision. Failures keep the caller dirty and carry an explicit
+ * recovery mode; this function never auto-rebases or treats uploaded blobs as
+ * a committed head.
+ */
+export async function persistCompositeImageProject(
+  snapshot: EditorSnapshot,
+  item: LibraryItem,
+  siteId: string,
+  idempotencyKey: string,
+  editRevision: number,
+  previewBlob: Blob,
+  dependencyOverrides: Partial<CompositeImagePersistenceDependencies> = {},
+): Promise<PersistedImageProject> {
+  const dependencies = {
+    ...DEFAULT_COMPOSITE_PERSISTENCE_DEPENDENCIES,
+    ...dependencyOverrides,
+  };
+  try {
+    return await persistCompositeImageProjectInternal(
+      snapshot,
+      item,
+      siteId,
+      idempotencyKey,
+      editRevision,
+      previewBlob,
+      dependencies,
+    );
+  } catch (caught) {
+    if (caught instanceof CompositeImagePersistenceError) throw caught;
+    if (caught instanceof ImageSceneSourceError) {
+      const recovery =
+        caught.code === "expired-dependency" ||
+        caught.code === "dependency-unavailable"
+          ? "refresh-dependency"
+          : "none";
+      throw new CompositeImagePersistenceError(caught.message, {
+        code: caught.code,
+        recovery,
+      });
+    }
+    const retryableNetworkFailure =
+      caught instanceof TypeError &&
+      /fetch|network|load|request/i.test(caught.message);
+    throw new CompositeImagePersistenceError(
+      caught instanceof Error ? caught.message : "复合图片保存失败。",
+      {
+        code: retryableNetworkFailure
+          ? "network-error"
+          : "composite-persistence-failed",
+        recovery: retryableNetworkFailure ? "retry" : "none",
+      },
+    );
+  }
 }

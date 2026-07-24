@@ -24,7 +24,10 @@ import {
 } from "./use-embed-editor-messages";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
 import { editorRouteFor } from "./workbench-routes";
-import { buildOpenAssetPayload } from "./website-embed-params";
+import {
+  buildOpenAssetPayload,
+  isWebsiteBlankDraft,
+} from "./website-embed-params";
 
 export type { EmbedEditorPaneProps } from "./workbench-embed-types";
 
@@ -189,7 +192,7 @@ export function EmbedEditorPane({
   }, [cancelSelectionTransactions]);
 
   const sendOpenAsset = useCallback(() => {
-    if (item.meta.draft === true && !item.url && !item.previewUrl) return;
+    if (isWebsiteBlankDraft(item)) return;
     sendToEditor({
       type: "open-asset",
       asset: buildOpenAssetPayload(item),

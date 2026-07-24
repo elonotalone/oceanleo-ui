@@ -5,7 +5,10 @@ import type {
   PDFDocumentProxy,
 } from "pdfjs-dist";
 import { useUI } from "../../i18n/ui/useUI";
-import type { LibraryItem } from "../library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
 import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
 import {
   addBlankPdfPage,
@@ -74,6 +77,10 @@ export function usePdfWorkbench(
   const [savedUrl, setSavedUrl] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
   const [previewRevision, setPreviewRevision] = useState(0);
+  const allowBlankSource =
+    item.source === "creation" &&
+    !isDurableLibraryItem(item) &&
+    !String(item.meta.editor_project_schema || "").trim();
   const { rotation, rendering, renderedZoom, pageWidth, pageHeight } =
     usePdfPreviewRender({
       canvas,
@@ -137,6 +144,7 @@ export function usePdfWorkbench(
           siteId,
           title: item.title,
           signal: controller.signal,
+          allowBlank: allowBlankSource,
         });
         if (loaded.pageCount < 1) throw new Error(tt("PDF 没有可显示的页面"));
         if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
@@ -156,7 +164,7 @@ export function usePdfWorkbench(
       }
     })();
     return () => controller.abort();
-  }, [item.previewUrl, item.title, item.url, siteId, tt]);
+  }, [allowBlankSource, item.previewUrl, item.title, item.url, siteId, tt]);
 
   useEffect(() => {
     let disposed = false;
@@ -186,10 +194,7 @@ export function usePdfWorkbench(
           isEvalSupported: false,
         });
         loadedDocument = await loadingTask.promise;
-        if (disposed) {
-          await loadedDocument.destroy();
-          return;
-        }
+        if (disposed) return;
         pdfDocumentRef.current = loadedDocument;
         setPageCount(loadedDocument.numPages);
         setPageNumber((value) => clamp(value, 1, loadedDocument?.numPages || 1));
@@ -512,22 +517,28 @@ export function usePdfWorkbench(
   );
   const restoreRecovery = useCallback(
     async (payload: unknown): Promise<boolean> => {
-      const recovered = await decodePdfRecovery(payload, MAX_PDF_BYTES);
-      if (!recovered) return false;
-      bytesRef.current = recovered.bytes;
-      undoRef.current = [];
-      redoRef.current = [];
-      revisionRef.current += 1;
-      setPageCount(recovered.pageCount);
-      setPageNumber(1);
-      setCanUndo(false);
-      setCanRedo(false);
-      setDirty(true);
-      setSavedUrl("");
-      annotation.clearSelection();
-      setDocumentRevision((value) => value + 1);
-      setNotice(tt("已恢复上次未同步的本地草稿"));
-      return true;
+      try {
+        const recovered = await decodePdfRecovery(payload, MAX_PDF_BYTES);
+        if (!recovered) return false;
+        bytesRef.current = recovered.bytes;
+        undoRef.current = [];
+        redoRef.current = [];
+        revisionRef.current += 1;
+        setPageCount(recovered.pageCount);
+        setPageNumber(1);
+        setCanUndo(false);
+        setCanRedo(false);
+        setDirty(true);
+        setSavedUrl("");
+        setError("");
+        annotation.clearSelection();
+        setDocumentRevision((value) => value + 1);
+        setNotice(tt("已恢复上次未同步的本地草稿"));
+        return true;
+      } catch (caught) {
+        setError(pdfErrorMessage(caught, tt("PDF 本地草稿恢复失败")));
+        return false;
+      }
     },
     [annotation, tt],
   );

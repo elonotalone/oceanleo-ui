@@ -606,6 +606,29 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       react: reactUrl,
     },
   );
+  const toolbarControlUrl = await compileTsxUrl(
+    "src/shell/SelectionToolbarControl.tsx",
+    {
+      "./AdvancedEditorIcon": iconStubUrl,
+      "./SelectionAnimationGallery": animationGalleryStubUrl,
+      "./SelectionToolbarButtonControl": buttonControlUrl,
+      "./SelectionToolbarNumberControl": numberControlUrl,
+      "./SelectionToolbarSelectControl": selectControlUrl,
+      "./selection-context": selectionContextStubUrl,
+      "./selection-toolbar-layout": pathToFileURL(
+        resolve("src/shell/selection-toolbar-layout.ts"),
+      ).href,
+    },
+  );
+  const toolbarMeasureHookUrl = await compileTsxUrl(
+    "src/shell/useSelectionToolbarMeasure.ts",
+    {
+      react: reactUrl,
+      "./selection-toolbar-measure": pathToFileURL(
+        resolve("src/shell/selection-toolbar-measure.ts"),
+      ).href,
+    },
+  );
   const { SelectionToolbar } = await loadTsx(
     "src/shell/SelectionToolbar.tsx",
     {
@@ -623,9 +646,11 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       ).href,
       "./selection-inspector-host": inspectorHostStubUrl,
       "./anchored-popover": anchoredPopoverUrl,
+      "./SelectionToolbarControl": toolbarControlUrl,
       "./SelectionToolbarSelectControl": selectControlUrl,
       "./SelectionToolbarButtonControl": buttonControlUrl,
       "./SelectionToolbarNumberControl": numberControlUrl,
+      "./useSelectionToolbarMeasure": toolbarMeasureHookUrl,
     },
   );
   let toolsOpened = 0;

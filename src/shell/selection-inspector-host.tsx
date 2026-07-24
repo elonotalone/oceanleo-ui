@@ -40,6 +40,7 @@ function FallbackSelectionInspector({
       open
       anchorRef={anchorRef}
       onClose={(reason) => onClose(reason !== "outside")}
+      id={group.panelId}
       role="dialog"
       ariaLabelledBy={labelId}
       ariaModal={false}
@@ -87,6 +88,7 @@ export function useSelectionInspectorHost({
   onOpenPanel,
   accent,
   anchorRef,
+  overflowTriggerRef,
 }: {
   layout: AdvancedLayoutState | null;
   groups: readonly SelectionInspectorGroup[];
@@ -98,6 +100,7 @@ export function useSelectionInspectorHost({
   ) => void;
   accent: string;
   anchorRef: RefObject<HTMLElement | null>;
+  overflowTriggerRef?: RefObject<HTMLElement | null>;
 }) {
   const [fallbackId, setFallbackId] = useState("");
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -154,10 +157,16 @@ export function useSelectionInspectorHost({
         } else if (fallbackId === panelId) {
           closeFallback();
         } else {
-          returnFocusRef.current =
+          const activeElement =
             document.activeElement instanceof HTMLElement
               ? document.activeElement
               : null;
+          const overflowTrigger = overflowTriggerRef?.current || null;
+          returnFocusRef.current =
+            activeElement?.closest("[data-selection-overflow-control]") &&
+            overflowTrigger
+              ? overflowTrigger
+              : activeElement;
           setFallbackId(panelId);
         }
         return;
@@ -174,6 +183,7 @@ export function useSelectionInspectorHost({
       layout,
       onCommand,
       onOpenPanel,
+      overflowTriggerRef,
     ],
   );
 
@@ -181,6 +191,7 @@ export function useSelectionInspectorHost({
     openPanel,
     activePanelId:
       fallbackId ||
+      hostedGroup?.panelId ||
       (layout?.hostPanelVisible ? layout.activeDrawerId : ""),
     fallbackPanel:
       fallbackGroup && context ? (

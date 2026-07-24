@@ -7,15 +7,18 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { useAdvancedLayout } from "../advanced-layout-context";
-import { useCenteredWheelZoom } from "../use-centered-wheel-zoom";
 import {
-  deckPageViewport,
   moveDeckElement,
   resizeDeckElement,
   rotateDeckElement,
   type DeckResizeHandle,
 } from "./deck-geometry";
+import {
+  DECK_PREVIEW_FIT_ZOOM_PERCENT,
+  deckPreviewLogicalSize,
+} from "./deck-preview-geometry";
 import {
   deckMasterFor,
   deckTheme,
@@ -30,6 +33,8 @@ import {
   type DeckResizeHandleSpec,
 } from "./DeckElementSelectionChrome";
 import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
+import { DeckMiniSlide } from "./DeckMiniSlide";
+import { DeckPreviewLayout } from "./DeckPreviewLayout";
 import type { DeckInkStyle } from "./deck-ink";
 import {
   deckElementTextEditability,
@@ -38,7 +43,6 @@ import {
   deckTextGestureProps,
 } from "./deck-text-gesture";
 import { DeckInkOverlay } from "./DeckInkOverlay";
-import { DeckSlideRail } from "./DeckSlideRail";
 import { useDeckStageShortcuts } from "./use-deck-stage-shortcuts";
 import type { DeckEditorState } from "./use-deck-editor";
 
@@ -422,7 +426,7 @@ function SlideCanvas({
 export function DeckStage({
   editor,
   accent = "#4f46e5",
-  zoom = 100,
+  zoom = DECK_PREVIEW_FIT_ZOOM_PERCENT,
   onZoomChange,
   activeTool = "select",
   inkStyle = {
@@ -440,7 +444,23 @@ export function DeckStage({
 }) {
   const tt = useUI();
   const stageRef = useRef<HTMLDivElement>(null);
-  const page = deckPageViewport(editor.deck.aspect, zoom);
+  const logicalSize = deckPreviewLogicalSize(
+    editor.deck.aspect === "4:3" ? 4 / 3 : 16 / 9,
+  );
+  const theme = deckTheme(editor.deck.theme);
+  const previewSlides = editor.deck.slides.map((candidate, index) => ({
+    id: candidate.id,
+    label: candidate.title.trim() || `第 ${index + 1} 页`,
+    thumbnail: (
+      <DeckMiniSlide
+        slide={candidate}
+        number={index + 1}
+        active={candidate.id === editor.activeSlide.id}
+        theme={theme}
+        master={deckMasterFor(editor.deck, candidate)}
+      />
+    ),
+  }));
   const slideTransition = editor.activeSlide.transition;
   const hasContent = editor.deck.slides.some(
     (slide) =>
@@ -448,14 +468,6 @@ export function DeckStage({
       slide.bullets.some((bullet) => bullet.trim()) ||
       slide.elements.length > 0,
   );
-  const viewportRef = useCenteredWheelZoom({
-    value: zoom,
-    min: 10,
-    max: 300,
-    contentWidth: page.width,
-    contentHeight: page.height,
-    onChange: onZoomChange,
-  });
   useDeckStageShortcuts(editor, stageRef);
 
   return (
@@ -478,83 +490,79 @@ export function DeckStage({
         @keyframes oleo-deck-element-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0)}}
         @keyframes oleo-deck-element-zoom{from{scale:.72;opacity:0}to{scale:1;opacity:1}}
       `}</style>
-      <div className="flex min-h-0 flex-1">
-        <DeckSlideRail editor={editor} />
-        <main
-          ref={viewportRef}
-          className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-[var(--advanced-stage-bg,#f4f1e8)]"
+      <div className="min-h-0 flex-1">
+        <DeckPreviewLayout
+          slides={previewSlides}
+          activeSlideId={editor.activeSlide.id}
+          onActiveSlideChange={editor.selectSlide}
+          logicalSize={logicalSize}
+          zoomPercent={zoom}
+          onZoomPercentChange={onZoomChange}
+          minZoom={10}
+          maxZoom={300}
+          railLabel={tt("页面")}
+          railActions={
+            <button
+              type="button"
+              onClick={editor.addSlide}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]"
+              aria-label={tt("新建一页")}
+              title={tt("新建一页")}
+            >
+              <AdvancedEditorIcon name="add" className="h-4 w-4" />
+            </button>
+          }
+          stageLabel={tt("演示文稿编辑器")}
+          busy={editor.loading}
+          accent={accent}
+          stageOverlay={
+            <>
+              {editor.loading && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="absolute inset-0 z-40 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]"
+                >
+                  {tt("正在载入演示文稿…")}
+                </div>
+              )}
+              {!editor.loading && editor.error && (
+                <div
+                  role="alert"
+                  className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
+                >
+                  {tt(editor.error)}
+                </div>
+              )}
+              {!editor.loading && !editor.error && !hasContent && (
+                <p
+                  role="status"
+                  className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
+                >
+                  {tt(
+                    "空白演示文稿。添加或选中文字后点击“编辑文字”，也可按 Enter / F2。",
+                  )}
+                </p>
+              )}
+            </>
+          }
         >
           <div
-            className="flex items-center justify-center p-8 lg:p-12"
+            className="h-full w-full"
             style={{
-              minWidth: `max(100%, ${page.width + 96}px)`,
-              minHeight: `max(100%, ${page.height + 96}px)`,
+              animation: slideTransition
+                ? `oleo-deck-slide-${slideTransition.type} ${slideTransition.durationMs}ms ease-out both`
+                : undefined,
             }}
           >
-            <div
-              data-deck-page-frame
-              className="relative shrink-0"
-              style={{
-                width: `${page.width}px`,
-                height: `${page.height}px`,
-              }}
-            >
-              <div
-                key={editor.activeSlide.id}
-                className="absolute left-0 top-0 origin-top-left"
-                style={{
-                  width: `${page.logicalWidth}px`,
-                  height: `${page.logicalHeight}px`,
-                  transform: `scale(${page.scale})`,
-                }}
-              >
-                <div
-                  className="h-full w-full"
-                  style={{
-                    animation: slideTransition
-                      ? `oleo-deck-slide-${slideTransition.type} ${slideTransition.durationMs}ms ease-out both`
-                      : undefined,
-                  }}
-                >
-                  <SlideCanvas
-                    editor={editor}
-                    activeTool={activeTool}
-                    inkStyle={inkStyle}
-                  />
-                </div>
-              </div>
-            </div>
+            <SlideCanvas
+              editor={editor}
+              activeTool={activeTool}
+              inkStyle={inkStyle}
+            />
           </div>
-          {editor.loading && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="absolute inset-0 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]"
-            >
-              {tt("正在载入演示文稿…")}
-            </div>
-          )}
-          {!editor.loading && editor.error && (
-            <div
-              role="alert"
-              className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
-            >
-              {tt(editor.error)}
-            </div>
-          )}
-          {!editor.loading && !editor.error && !hasContent && (
-            <p
-              role="status"
-              className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
-            >
-              {tt(
-                "空白演示文稿。添加或选中文字后点击“编辑文字”，也可按 Enter / F2。",
-              )}
-            </p>
-          )}
-        </main>
+        </DeckPreviewLayout>
       </div>
-
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { RefCallback } from "react";
+import type { Model3DArtifactIdentity } from "./model3d-files";
 import type { Model3DOperation } from "./model3d-operations.mjs";
 import type {
   Model3DSourceFormat,
@@ -144,7 +145,11 @@ export interface Model3DWorkbenchState {
   captureDirectorPlayblast: () => Promise<Readonly<Model3DPrevisReceipt>>;
   cancelDirectorPrevis: () => void;
   importModel: (file: File) => Promise<void>;
-  openModelUrl: (url: string, format?: Model3DSourceFormat) => void;
+  openModelUrl: (
+    url: string,
+    format?: Model3DSourceFormat,
+    identity?: Model3DArtifactIdentity | null,
+  ) => void;
   downloadScreenshot: () => Promise<void>;
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;

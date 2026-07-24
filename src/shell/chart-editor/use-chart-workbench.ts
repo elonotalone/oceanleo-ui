@@ -58,6 +58,7 @@ export interface ChartWorkbenchState {
   loading: boolean;
   saving: boolean;
   dirty: boolean;
+  sourceReady: boolean;
   editRevision: number;
   error: string;
   notice: string;
@@ -114,6 +115,7 @@ export function useChartWorkbench(
   const historyRef = useRef(new ChartDocumentHistory());
   const saveBusyRef = useRef(false);
   const dirtyRef = useRef(false);
+  const sourceReadyRef = useRef(false);
   const artifactHeadRef = useRef(item);
   const artifactInputIdentityRef = useRef(chartArtifactInputIdentity(item));
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
@@ -124,6 +126,7 @@ export function useChartWorkbench(
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [sourceReady, setSourceReady] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saved, setSaved] = useState<ChartSaveResult | null>(null);
@@ -151,8 +154,13 @@ export function useChartWorkbench(
     setNotice("");
     setSaved(null);
     updateDirty(false);
+    sourceReadyRef.current = false;
+    setSourceReady(false);
     revisionRef.current = 0;
     historyRef.current.reset();
+    documentRef.current = EMPTY_DOCUMENT;
+    setDocument(EMPTY_DOCUMENT);
+    setActiveSeriesId(EMPTY_DOCUMENT.option.series[0]?.id || "");
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
@@ -162,6 +170,8 @@ export function useChartWorkbench(
           documentRef.current = next;
           setDocument(next);
           setActiveSeriesId(next.option.series[0]?.id || "");
+          sourceReadyRef.current = true;
+          setSourceReady(true);
         }
       })
       .catch((caught) => {
@@ -179,22 +189,29 @@ export function useChartWorkbench(
     updateDirty,
   ]);
 
-  const mutate = useCallback((producer: (value: ChartDocumentV1) => ChartDocumentV1) => {
-    try {
-      const before = documentRef.current;
-      const next = normalizeChartDocument(producer(before));
-      if (!historyRef.current.record(before, next)) return;
-      documentRef.current = next;
-      revisionRef.current += 1;
-      setDocument(next);
-      updateDirty(true);
-      setSaved(null);
-      setNotice("");
-      setError("");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "图表修改失败");
-    }
-  }, [updateDirty]);
+  const mutate = useCallback(
+    (producer: (value: ChartDocumentV1) => ChartDocumentV1) => {
+      if (!sourceReadyRef.current) {
+        setError(tt("图表源尚未成功载入；已阻止修改示例回退内容"));
+        return;
+      }
+      try {
+        const before = documentRef.current;
+        const next = normalizeChartDocument(producer(before));
+        if (!historyRef.current.record(before, next)) return;
+        documentRef.current = next;
+        revisionRef.current += 1;
+        setDocument(next);
+        updateDirty(true);
+        setSaved(null);
+        setNotice("");
+        setError("");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "图表修改失败");
+      }
+    },
+    [tt, updateDirty],
+  );
 
   useEffect(() => {
     if (document.option.series.some((series) => series.id === activeSeriesId)) {
@@ -269,6 +286,10 @@ export function useChartWorkbench(
 
   const save = useCallback(async (): Promise<ChartSaveResult | null> => {
     if (saveBusyRef.current || loading || !dirtyRef.current) return null;
+    if (!sourceReadyRef.current) {
+      setError(tt("图表源尚未成功载入；已阻止保存示例回退内容"));
+      return null;
+    }
     saveBusyRef.current = true;
     setSaving(true);
     setError("");
@@ -319,7 +340,15 @@ export function useChartWorkbench(
       ) {
         return false;
       }
-      mutate(() => normalizeChartDocument(payload));
+      let recovered: ChartDocumentV1;
+      try {
+        recovered = normalizeChartDocument(payload);
+      } catch {
+        return false;
+      }
+      sourceReadyRef.current = true;
+      setSourceReady(true);
+      mutate(() => recovered);
       setNotice(tt("已恢复上次未同步的本地草稿"));
       return true;
     },
@@ -333,6 +362,7 @@ export function useChartWorkbench(
     loading,
     saving,
     dirty,
+    sourceReady,
     editRevision: revisionRef.current,
     error,
     notice,

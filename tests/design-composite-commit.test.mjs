@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   DesignCompositeCommitError,
   persistDesignCompositeCommit,
+  rebaseDesignCompositeSourceToCurrent,
   validateDesignCompositeCommit,
   validateDesignCompositeSource,
   verifyDesignCompositeSourceDigest,
@@ -19,6 +22,26 @@ const dependencyRevisionId = "33333333-3333-4333-8333-333333333333";
 const dependencyArtifactId = "44444444-4444-4444-8444-444444444444";
 const imageUrl = "https://api.oceanleo.com/v1/media/file/layer.png";
 
+test("current-head recovery uses the artifact detail endpoint, not shelf scans", () => {
+  const client = readFileSync(
+    new URL("../src/shell/artifact-client.ts", import.meta.url),
+    "utf8",
+  );
+  const currentHead = client.slice(
+    client.indexOf("export async function getCurrentArtifactItem"),
+    client.indexOf("export async function listPrimaryArtifacts"),
+  );
+  assert.match(currentHead, /\/v1\/library\/items\//);
+  assert.doesNotMatch(currentHead, /revisionId|listMyArtifacts/);
+
+  const commit = readFileSync(
+    new URL("../src/shell/design-composite-commit.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(commit, /getCurrentArtifactItem\(artifactId\)/);
+  assert.doesNotMatch(commit, /listMyArtifacts/);
+});
+
 function item({
   rootId = artifactId,
   headId = revisionId,
@@ -27,6 +50,7 @@ function item({
   sourceDigest = "a".repeat(64),
   previewDigest = "b".repeat(64),
   closureDigest = "c".repeat(64),
+  sourceClosure,
 } = {}) {
   return {
     id: rootId,
@@ -75,6 +99,7 @@ function item({
         closureDigest,
         dependencyRevisionIds: [dependencyRevisionId],
       },
+      ...(sourceClosure ? { sourceClosure } : {}),
     },
   };
 }
@@ -152,6 +177,62 @@ test("design typed commit validates canonical source and dependency closure", as
   assert.match(evidence.sourceDigest, /^[0-9a-f]{64}$/);
   assert.match(evidence.previewDigest, /^[0-9a-f]{64}$/);
   assert.match(evidence.closureDigest, /^[0-9a-f]{64}$/);
+  assert.deepEqual(evidence.dependencyRevisionIds, [dependencyRevisionId]);
+});
+
+test("published composite package opens from server source-closure evidence", async () => {
+  const dependencyDigest = createHash("sha256")
+    .update("published-base-image")
+    .digest("hex");
+  const sourceText = `${JSON.stringify({
+    schema: "oceanleo.design-document.v1",
+    document: {
+      width: 640,
+      height: 360,
+      elements: [
+        {
+          id: "base-image",
+          type: "image",
+          props: { src: "base.png", sha256: dependencyDigest },
+        },
+        {
+          id: "owned-label",
+          type: "text",
+          props: { text: "OceanLeo" },
+        },
+      ],
+    },
+  })}\n`;
+  const sourceDigest = createHash("sha256")
+    .update(sourceText)
+    .digest("hex");
+  const closureDigest = "d".repeat(64);
+  const evidence = await validateDesignCompositeSource(
+    new Blob([sourceText], { type: "application/json" }),
+    item({
+      sourceDigest,
+      closureDigest,
+      sourceClosure: {
+        revisionId,
+        status: "complete",
+        digest: closureDigest,
+        sourceDigest,
+        dependencyDigests: [sourceDigest, dependencyDigest],
+        dependencyRevisionIds: [dependencyRevisionId],
+        firstParty: true,
+      },
+    }),
+    {
+      requireBaseIdentity: false,
+      requireBaseRevision: false,
+      validation: "open",
+    },
+  );
+
+  assert.equal(evidence.sourceDigest, sourceDigest);
+  assert.equal(evidence.closureDigest, closureDigest);
+  assert.equal(evidence.sourceKind, "published-package");
+  assert.equal(evidence.closureEvidence, "source-closure");
   assert.deepEqual(evidence.dependencyRevisionIds, [dependencyRevisionId]);
 });
 
@@ -491,6 +572,39 @@ test("public design templates fork and rebase source before atomic publish", asy
   });
 });
 
+test("design CAS rebase requires an explicit same-root current head", async () => {
+  const currentRevisionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const stale = item();
+  const current = item({ headId: currentRevisionId });
+  const source = new Blob([JSON.stringify(project())], {
+    type: "application/json",
+  });
+  const rebased = await rebaseDesignCompositeSourceToCurrent(
+    source,
+    stale,
+    current,
+  );
+  const parsed = JSON.parse(await rebased.text());
+  assert.deepEqual(parsed.baseArtifact, {
+    artifactId,
+    revisionId: currentRevisionId,
+  });
+  await assert.doesNotReject(
+    validateDesignCompositeSource(rebased, current),
+  );
+  await assert.rejects(
+    rebaseDesignCompositeSourceToCurrent(
+      source,
+      stale,
+      item({ rootId: "different-root", headId: currentRevisionId }),
+    ),
+    (error) =>
+      error instanceof DesignCompositeCommitError &&
+      error.code === "invalid-rebase-target" &&
+      error.recoverable === false,
+  );
+});
+
 test("design CAS conflicts report the current cloud revision without overwriting", async () => {
   const sourceUrl = "https://api.oceanleo.com/v1/media/file/conflict-design.json";
   const previewUrl = "https://api.oceanleo.com/v1/media/file/conflict-design.png";
@@ -518,6 +632,9 @@ test("design CAS conflicts report the current cloud revision without overwriting
     (error) =>
       error instanceof DesignCompositeCommitError &&
       error.code === "revision-conflict" &&
-      error.currentRevisionId === currentRevisionId,
+      error.currentRevisionId === currentRevisionId &&
+      error.recoverable === true &&
+      error.recovery === "reload-current-revision" &&
+      /未覆盖远端内容/.test(error.message),
   );
 });

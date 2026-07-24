@@ -3,7 +3,7 @@
 import {
   createArtifactRevision,
   forkArtifact,
-  listMyArtifacts,
+  getCurrentArtifactItem,
 } from "./artifact-client";
 import {
   fetchMediaBlob,
@@ -26,18 +26,44 @@ const MAX_INLINE_IMAGE_SOURCE_LENGTH = 20_000_000;
 
 type JsonRecord = Record<string, unknown>;
 
-export type DesignCompositeSourceKind = "canonical" | "flat-template";
+export type DesignCompositeSourceKind =
+  | "canonical"
+  | "flat-template"
+  | "published-package";
 export type DesignCompositeSourceMode = "layered" | "flattened";
+export type DesignCompositeRecovery =
+  | "none"
+  | "retry"
+  | "reload-current-revision";
 
 export class DesignCompositeCommitError extends Error {
   readonly code: string;
   readonly currentRevisionId?: string;
+  readonly recovery: DesignCompositeRecovery;
+  readonly recoverable: boolean;
 
-  constructor(message: string, code = "design-commit-failed", currentRevisionId?: string) {
+  constructor(
+    message: string,
+    code = "design-commit-failed",
+    currentRevisionId?: string,
+    recovery?: DesignCompositeRecovery,
+  ) {
     super(message);
     this.name = "DesignCompositeCommitError";
     this.code = code;
     this.currentRevisionId = currentRevisionId;
+    this.recovery =
+      recovery ||
+      (currentRevisionId
+        ? "reload-current-revision"
+        : [
+              "network-error",
+              "revision-conflict-unresolved",
+              "transient-persistence-failed",
+            ].includes(code)
+          ? "retry"
+          : "none");
+    this.recoverable = this.recovery !== "none";
   }
 }
 
@@ -55,6 +81,18 @@ function text(value: unknown, maximum = 3_000): string {
 
 function normalizedDigest(value: string): string {
   return value.trim().toLowerCase().replace(/^sha256:/, "");
+}
+
+function sameStringSet(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  const first = [...new Set(left)].sort();
+  const second = [...new Set(right)].sort();
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
 }
 
 function expiringUrl(value: string): boolean {
@@ -694,6 +732,96 @@ function imageSignature(
     : null;
 }
 
+function publishedPackageEvidence(source: JsonRecord): {
+  dependencyDigests: string[];
+  revision: number;
+  sourceMode: DesignCompositeSourceMode;
+} {
+  const document = record(source.document);
+  const width = document?.width;
+  const height = document?.height;
+  const elements = document?.elements;
+  if (
+    source.schema !== DESIGN_SOURCE_FORMAT ||
+    source.sceneGraph !== undefined ||
+    !document ||
+    typeof width !== "number" ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    width > 100_000 ||
+    typeof height !== "number" ||
+    !Number.isFinite(height) ||
+    height <= 0 ||
+    height > 100_000 ||
+    !Array.isArray(elements) ||
+    elements.length > MAX_DESIGN_ELEMENTS
+  ) {
+    throw new DesignCompositeCommitError(
+      "published design package 的 document/尺寸/elements 结构无效。",
+      "design-source-invalid-structure",
+    );
+  }
+  const ids = new Set<string>();
+  const dependencyDigests: string[] = [];
+  for (const [index, rawElement] of elements.entries()) {
+    const element = record(rawElement);
+    const id = text(element?.id, 300);
+    const type = text(element?.type, 80);
+    const props = record(element?.props);
+    if (!element || !id || !type || !props || ids.has(id)) {
+      throw new DesignCompositeCommitError(
+        `published design package element[${index}] 结构或 identity 无效。`,
+        "design-source-invalid-structure",
+      );
+    }
+    ids.add(id);
+    if (type !== "image") continue;
+    const path = text(props.src, MAX_DURABLE_MEDIA_URL_LENGTH);
+    const digest = normalizedDigest(text(props.sha256, 100));
+    const relativePackagePath =
+      Boolean(path) &&
+      !path.startsWith("/") &&
+      !path.includes("\\") &&
+      !path.includes("?") &&
+      !path.includes("#") &&
+      !path.split("/").some((segment) => segment === ".." || !segment) &&
+      !/^[a-z][a-z0-9+.-]*:/i.test(path);
+    if (
+      (!relativePackagePath && !isDurableFirstPartyMediaUrl(path)) ||
+      !/^[0-9a-f]{64}$/.test(digest)
+    ) {
+      throw new DesignCompositeCommitError(
+        `published design package image ${id} 缺少安全路径或 SHA-256。`,
+        "invalid-dependency",
+      );
+    }
+    dependencyDigests.push(digest);
+  }
+  if (dependencyDigests.length > MAX_DEPENDENCIES) {
+    throw new DesignCompositeCommitError(
+      "published design package dependency 超过安全上限。",
+      "invalid-dependency",
+    );
+  }
+  const declaredMode = document.sourceMode;
+  if (
+    declaredMode !== undefined &&
+    declaredMode !== "layered" &&
+    declaredMode !== "flattened"
+  ) {
+    throw new DesignCompositeCommitError(
+      "published design package sourceMode 无效。",
+      "design-source-invalid-structure",
+    );
+  }
+  return {
+    dependencyDigests: [...new Set(dependencyDigests)],
+    revision: flatDesignRevision(source, document),
+    sourceMode:
+      declaredMode === "flattened" ? "flattened" : "layered",
+  };
+}
+
 export interface DesignCompositeSourceEvidence {
   sourceDigest: string;
   closureDigest: string;
@@ -703,6 +831,7 @@ export interface DesignCompositeSourceEvidence {
   revision: number;
   sourceKind: DesignCompositeSourceKind;
   sourceMode: DesignCompositeSourceMode;
+  closureEvidence: "source-closure" | "scene-projection" | "candidate";
 }
 
 export interface DesignCompositeCommitEvidence
@@ -730,6 +859,85 @@ export async function designArtifactClosureDigest(
   return normalizedDigest(
     await sha256Hex(new Blob([closureText], { type: "application/json" })),
   );
+}
+
+function projectedDesignOpenClosure(
+  item: LibraryItem,
+  sourceDigest: string,
+  declaredDependencyRevisionIds: readonly string[],
+  declaredDependencyDigests: readonly string[] = [],
+  requireSourceClosure = false,
+): Pick<
+  DesignCompositeSourceEvidence,
+  "closureDigest" | "dependencyRevisionIds" | "closureEvidence"
+> {
+  if (!isDurableLibraryItem(item)) {
+    throw new DesignCompositeCommitError(
+      "design open closure 缺少 durable artifact identity。",
+      "invalid-artifact",
+    );
+  }
+  const source = item.artifact.renditions.source;
+  const scene = item.artifact.scene;
+  const sourceClosure = item.artifact.sourceClosure;
+  const sceneClosureDigest = normalizedDigest(scene?.closureDigest || "");
+  if (
+    source?.revisionId !== item.revisionId ||
+    normalizedDigest(source?.digest || "") !== sourceDigest ||
+    scene?.sceneRevisionId !== item.revisionId ||
+    scene.closureStatus !== "complete" ||
+    !/^[0-9a-f]{64}$/.test(sceneClosureDigest) ||
+    (declaredDependencyRevisionIds.length > 0 &&
+      !sameStringSet(
+        declaredDependencyRevisionIds,
+        scene.dependencyRevisionIds,
+      ))
+  ) {
+    throw new DesignCompositeCommitError(
+      "design source bytes、revision 或 scene closure 与当前 artifact 投影不一致。",
+      "incomplete-dependency-closure",
+    );
+  }
+  if (!sourceClosure) {
+    if (requireSourceClosure) {
+      throw new DesignCompositeCommitError(
+        "published design package 缺少服务端 source closure，不能验证相对依赖。",
+        "incomplete-dependency-closure",
+      );
+    }
+    return {
+      closureDigest: sceneClosureDigest,
+      dependencyRevisionIds: [...scene.dependencyRevisionIds].sort(),
+      closureEvidence: "scene-projection",
+    };
+  }
+  const dependencyDigests = [
+    ...new Set([sourceDigest, ...declaredDependencyDigests]),
+  ];
+  if (
+    sourceClosure.revisionId !== item.revisionId ||
+    sourceClosure.status !== "complete" ||
+    !sourceClosure.firstParty ||
+    normalizedDigest(sourceClosure.sourceDigest || "") !== sourceDigest ||
+    normalizedDigest(sourceClosure.digest || "") !== sceneClosureDigest ||
+    !sameStringSet(
+      sourceClosure.dependencyRevisionIds,
+      scene.dependencyRevisionIds,
+    ) ||
+    !sourceClosure.dependencyDigests.includes(sourceDigest) ||
+    ((requireSourceClosure || declaredDependencyDigests.length > 0) &&
+      !sameStringSet(sourceClosure.dependencyDigests, dependencyDigests))
+  ) {
+    throw new DesignCompositeCommitError(
+      "design source closure 未把 source bytes、依赖与当前 scene 固定在同一 revision。",
+      "incomplete-dependency-closure",
+    );
+  }
+  return {
+    closureDigest: sceneClosureDigest,
+    dependencyRevisionIds: [...scene.dependencyRevisionIds].sort(),
+    closureEvidence: "source-closure",
+  };
 }
 
 export async function validateDesignCompositeSource(
@@ -785,6 +993,30 @@ export async function validateDesignCompositeSource(
       "design source JSON 顶层不是对象。",
       "design-source-invalid-json",
     );
+  }
+  const sourceDigest = normalizedDigest(await sha256Hex(sourceBlob));
+  if (
+    options.validation === "open" &&
+    parsedSource.schema === DESIGN_SOURCE_FORMAT &&
+    parsedSource.sceneGraph === undefined
+  ) {
+    const published = publishedPackageEvidence(parsedSource);
+    const closure = projectedDesignOpenClosure(
+      item,
+      sourceDigest,
+      [],
+      published.dependencyDigests,
+      true,
+    );
+    return {
+      sourceDigest,
+      ...closure,
+      sourceFormat: DESIGN_SOURCE_FORMAT,
+      sceneSchema: DESIGN_SOURCE_FORMAT,
+      revision: published.revision,
+      sourceKind: "published-package",
+      sourceMode: published.sourceMode,
+    };
   }
   const normalized = normalizeDesignCompositeEnvelope(parsedSource);
   const source = normalized.envelope;
@@ -967,11 +1199,21 @@ export async function validateDesignCompositeSource(
       "incomplete-dependency-closure",
     );
   }
-  const sourceDigest = normalizedDigest(await sha256Hex(sourceBlob));
+  const closure =
+    options.validation === "open"
+      ? projectedDesignOpenClosure(
+          item,
+          sourceDigest,
+          dependencyRevisionIds,
+        )
+      : {
+          closureDigest: await designArtifactClosureDigest(sourceDigest),
+          dependencyRevisionIds: [...new Set(dependencyRevisionIds)].sort(),
+          closureEvidence: "candidate" as const,
+        };
   return {
     sourceDigest,
-    closureDigest: await designArtifactClosureDigest(sourceDigest),
-    dependencyRevisionIds: [...new Set(dependencyRevisionIds)].sort(),
+    ...closure,
     sourceFormat: DESIGN_SOURCE_FORMAT,
     sceneSchema: DESIGN_SOURCE_FORMAT,
     revision,
@@ -1026,36 +1268,23 @@ export interface DesignCompositeCommitDependencies {
   resolveCurrentRevisionId: (artifactId: string) => Promise<string | undefined>;
 }
 
-function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
-  const first = [...new Set(left)].sort();
-  const second = [...new Set(right)].sort();
-  return (
-    first.length === second.length &&
-    first.every((value, index) => value === second[index])
-  );
-}
-
 async function resolveCurrentCompositeRevisionId(
   artifactId: string,
 ): Promise<string | undefined> {
-  let cursor: string | undefined;
-  for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
-    const page = await listMyArtifacts({
-      artifactType: "composite_image",
-      limit: 100,
-      ...(cursor ? { cursor } : {}),
-    });
-    if (!page.ok || !page.data) return undefined;
-    const current = page.data.items.find(
-      (candidate) =>
-        isDurableLibraryItem(candidate) &&
-        candidate.artifactId === artifactId,
-    );
-    if (current && isDurableLibraryItem(current)) return current.revisionId;
-    cursor = page.data.nextCursor || undefined;
-    if (!cursor) return undefined;
+  const current = await getCurrentArtifactItem(artifactId);
+  if (
+    !current.ok ||
+    !current.data ||
+    !isDurableLibraryItem(current.data) ||
+    current.data.artifactId !== artifactId ||
+    current.data.artifactType !== "composite_image" ||
+    current.data.artifact.editorCapability !== "design-canvas" ||
+    current.data.artifact.sourceFormat !== DESIGN_SOURCE_FORMAT ||
+    !current.data.artifact.integrity.ok
+  ) {
+    return undefined;
   }
-  return undefined;
+  return current.data.revisionId;
 }
 
 async function uploadRebasedDesignSource(
@@ -1102,23 +1331,68 @@ const DEFAULT_COMMIT_DEPENDENCIES: DesignCompositeCommitDependencies = {
 
 async function rebaseDesignCompositeSource(
   sourceBlob: Blob,
+  base: LibraryItem,
   target: LibraryItem,
+  mode: "fork" | "cas-rebase",
 ): Promise<Blob> {
-  if (!isDurableLibraryItem(target)) {
+  if (
+    !isDurableLibraryItem(base) ||
+    !isDurableLibraryItem(target) ||
+    base.artifactType !== "composite_image" ||
+    target.artifactType !== "composite_image"
+  ) {
     throw new DesignCompositeCommitError(
-      "design source 无法 rebase 到非 durable artifact。",
+      "design source 无法 rebase 到非 durable composite artifact。",
       "invalid-artifact",
     );
   }
-  let source: JsonRecord;
+  if (
+    (mode === "cas-rebase" &&
+      (base.artifactId !== target.artifactId ||
+        base.revisionId === target.revisionId)) ||
+    (mode === "fork" && base.artifactId === target.artifactId)
+  ) {
+    throw new DesignCompositeCommitError(
+      mode === "cas-rebase"
+        ? "design CAS rebase 需要同一 root 的不同 current revision。"
+        : "design fork rebase 必须切换到新的私有 artifact root。",
+      "invalid-rebase-target",
+    );
+  }
+  let parsedSource: JsonRecord;
   try {
     const parsed = record(JSON.parse(await sourceBlob.text()) as unknown);
     if (!parsed) throw new Error("not-object");
-    source = parsed;
+    parsedSource = parsed;
   } catch {
     throw new DesignCompositeCommitError(
       "design source rebase 前 JSON 无效。",
       "invalid-source",
+    );
+  }
+  const source = normalizeDesignCompositeEnvelope(parsedSource).envelope;
+  const previousBase = record(source.baseArtifact);
+  const previousArtifactId = text(previousBase?.artifactId, 300);
+  const previousRevisionId = text(previousBase?.revisionId, 300);
+  if (
+    (previousArtifactId || previousRevisionId) &&
+    (previousArtifactId !== base.artifactId ||
+      previousRevisionId !== base.revisionId)
+  ) {
+    throw new DesignCompositeCommitError(
+      "design source 的 declared base 与 rebase 起点不一致。",
+      "design-source-stale-revision",
+      target.revisionId,
+    );
+  }
+  if (
+    mode === "cas-rebase" &&
+    (!previousArtifactId || !previousRevisionId)
+  ) {
+    throw new DesignCompositeCommitError(
+      "design CAS rebase 拒绝没有精确 declared base 的 source。",
+      "design-source-stale-revision",
+      target.revisionId,
     );
   }
   source.baseArtifact = {
@@ -1128,6 +1402,24 @@ async function rebaseDesignCompositeSource(
   return new Blob([`${JSON.stringify(source)}\n`], {
     type: "application/json",
   });
+}
+
+/**
+ * Repin an already-validated local design source after the caller explicitly
+ * fetched and reviewed the authoritative current head. This does not merge or
+ * publish; callers must rehydrate/merge first and run commit validation again.
+ */
+export async function rebaseDesignCompositeSourceToCurrent(
+  sourceBlob: Blob,
+  staleBase: LibraryItem,
+  currentHead: LibraryItem,
+): Promise<Blob> {
+  return rebaseDesignCompositeSource(
+    sourceBlob,
+    staleBase,
+    currentHead,
+    "cas-rebase",
+  );
 }
 
 function assertDesignCommitReceipt(
@@ -1148,6 +1440,7 @@ function assertDesignCommitReceipt(
   const preview = next.artifact.renditions.preview;
   const full = next.artifact.renditions.full;
   const scene = next.artifact.scene;
+  const sourceClosure = next.artifact.sourceClosure;
   if (
     next.artifactId !== target.artifactId ||
     next.revisionId === target.revisionId ||
@@ -1174,7 +1467,21 @@ function assertDesignCommitReceipt(
     !sameStringSet(
       scene.dependencyRevisionIds,
       evidence.dependencyRevisionIds,
-    )
+    ) ||
+    (sourceClosure !== undefined &&
+      sourceClosure !== null &&
+      (sourceClosure.revisionId !== next.revisionId ||
+        sourceClosure.status !== "complete" ||
+        !sourceClosure.firstParty ||
+        normalizedDigest(sourceClosure.sourceDigest || "") !==
+          evidence.sourceDigest ||
+        normalizedDigest(sourceClosure.digest || "") !==
+          evidence.closureDigest ||
+        !sourceClosure.dependencyDigests.includes(evidence.sourceDigest) ||
+        !sameStringSet(
+          sourceClosure.dependencyRevisionIds,
+          evidence.dependencyRevisionIds,
+        )))
   ) {
     throw new DesignCompositeCommitError(
       "design 提交回执的 source/preview digest、scene closure 或新 head identity 不一致。",
@@ -1285,7 +1592,12 @@ export async function persistDesignCompositeCommit(
   }
   let commitSourceUrl = sourceUrl;
   if (requiresFork) {
-    const rebasedSource = await rebaseDesignCompositeSource(sourceBlob, target);
+    const rebasedSource = await rebaseDesignCompositeSource(
+      sourceBlob,
+      item,
+      target,
+      "fork",
+    );
     commitSourceUrl = await dependencies.uploadSource(rebasedSource, target);
     if (!isFirstPartyHttpsMediaUrl(commitSourceUrl)) {
       throw new DesignCompositeCommitError(
@@ -1350,11 +1662,19 @@ export async function persistDesignCompositeCommit(
         currentRevisionId = undefined;
       }
     }
-    throw new DesignCompositeCommitError(
-      committed.error || "design typed artifact revision 提交失败。",
+    const conflictCode =
       committed.code === "revision-conflict" && !currentRevisionId
         ? "revision-conflict-unresolved"
-        : committed.code || "revision-commit-failed",
+        : committed.code || "revision-commit-failed";
+    const detail =
+      committed.error || "design typed artifact revision 提交失败。";
+    throw new DesignCompositeCommitError(
+      committed.code === "revision-conflict"
+        ? currentRevisionId
+          ? `${detail} 云端 current revision 已是 ${currentRevisionId}；未覆盖远端内容，请重新载入并显式 rebase。`
+          : `${detail} 未覆盖远端内容，但无法取得 authoritative current revision。`
+        : detail,
+      conflictCode,
       currentRevisionId,
     );
   }

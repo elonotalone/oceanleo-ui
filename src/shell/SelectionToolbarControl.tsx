@@ -76,7 +76,7 @@ export function SelectionToolbarControl({
     ? <AdvancedEditorIcon name={control.icon} className="h-[17px] w-[17px]" />
     : null;
   const buttonClass = menu
-    ? "group/control flex min-h-11 w-full items-center justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
+    ? "group/control flex min-h-11 min-w-0 w-full items-center justify-start gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
     : "group/control inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-150 hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
 
   if (control.kind === "animation-gallery") {
@@ -150,6 +150,7 @@ export function SelectionToolbarControl({
       <SelectionToolbarButtonControl
         control={control}
         buttonClass={buttonClass}
+        menu={menu}
         iconOnly={iconOnly}
         icon={icon}
         accent={accent}

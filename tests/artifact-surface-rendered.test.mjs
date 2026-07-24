@@ -139,6 +139,7 @@ const {
   getArtifactEditDecision,
   getArtifactDownload,
   getArtifactItem,
+  getCurrentArtifactItem,
   listEditableShelfArtifacts,
   listFavoriteArtifacts,
   listMyArtifacts,
@@ -1771,9 +1772,12 @@ test("artifact detail and edit capability use canonical revisionId query aliases
   };
 
   const detail = await getArtifactItem("revision-contract", "r1");
+  const current = await getCurrentArtifactItem("revision-contract");
   const editDecision = await getArtifactEditDecision(item);
 
   assert.equal(detail.ok, true);
+  assert.equal(current.ok, true);
+  assert.equal(current.data?.revisionId, "r1");
   assert.equal(editDecision.ok, true);
   const detailHref = new URL(detail.data.meta.asset_page_url);
   assert.equal(detailHref.searchParams.get("artifactId"), "revision-contract");
@@ -1783,10 +1787,13 @@ test("artifact detail and edit capability use canonical revisionId query aliases
     [
       "/v1/library/items/revision-contract",
       "/v1/library/items/revision-contract",
+      "/v1/library/items/revision-contract",
       "/v1/artifacts/revision-contract/edit-capability",
     ],
   );
-  for (const url of calls) {
+  assert.deepEqual(Object.fromEntries(calls[1].searchParams), {});
+  for (const [index, url] of calls.entries()) {
+    if (index === 1) continue;
     assert.deepEqual(
       Object.fromEntries(url.searchParams),
       { revisionId: "r1" },

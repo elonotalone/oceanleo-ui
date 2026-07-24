@@ -152,6 +152,57 @@ test("one normalized item pins identity, scene and every rendition to one revisi
   assert.equal(editing.url, "https://signed.test/scene");
 });
 
+test("composite projection retains and cross-checks authoritative source closure", () => {
+  const sourceDigest = "a".repeat(64);
+  const closureDigest = "b".repeat(64);
+  const raw = projection({
+    renditions: {
+      ...projection().renditions,
+      source: {
+        purpose: "source",
+        revision_id: "r2",
+        url: "https://signed.test/scene",
+        digest: `sha256:${sourceDigest}`,
+      },
+    },
+    source_manifest: {
+      schema: "oceanleo.fabric.v1",
+      scene_revision_id: "r2",
+      closure_status: "complete",
+      closure_digest: `sha256:${closureDigest}`,
+      dependency_revision_ids: ["dep-r7"],
+    },
+    source_closure: {
+      revision_id: "r2",
+      status: "complete",
+      digest: `sha256:${closureDigest}`,
+      source_digest: `sha256:${sourceDigest}`,
+      dependency_digests: [`sha256:${sourceDigest}`],
+      dependency_revision_ids: ["dep-r7"],
+      first_party: true,
+    },
+  });
+  const artifact = normalizeArtifactProjection(raw);
+  assert.ok(artifact);
+  assert.equal(artifact.integrity.ok, true);
+  assert.equal(artifact.sourceClosure?.revisionId, "r2");
+  assert.equal(artifact.sourceClosure?.sourceDigest, sourceDigest);
+  assert.equal(artifact.sourceClosure?.digest, closureDigest);
+
+  const mismatched = normalizeArtifactProjection({
+    ...raw,
+    source_closure: {
+      ...raw.source_closure,
+      digest: `sha256:${"c".repeat(64)}`,
+    },
+  });
+  assert.equal(mismatched?.integrity.ok, false);
+  assert.equal(
+    mismatched?.integrity.code,
+    "incomplete-dependency-closure",
+  );
+});
+
 test("revision mixing and incomplete composite closures fail closed", () => {
   const mismatched = normalizeArtifactProjection(
     projection({

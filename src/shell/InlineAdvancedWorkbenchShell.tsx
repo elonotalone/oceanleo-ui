@@ -68,15 +68,18 @@ export function InlineAdvancedWorkbenchShell({
   const advancedSession = useAdvancedSession();
   const workbenchMaterials = useWorkbenchMaterials();
   const stageRef = useRef<HTMLDivElement>(null);
+  const localEditBarLayerRef = useRef<HTMLDivElement>(null);
   // MaterialCatalog / MaterialLibrary / MyLibrary embed this shell without
   // SplitWorkspace. Keep a local dock host under the action row so pin /
   // undock / redock still expose data-workspace-edit-bar-dock on those
   // production surfaces.
   const localEditBarDockRef = useRef<HTMLDivElement>(null);
+  const editBarLayerRef =
+    rightPaneSlot?.editBarLayerRef ?? localEditBarLayerRef;
   const editBarDockRef =
     rightPaneSlot?.editBarDockRef ?? localEditBarDockRef;
   const floatingToolbar = useFloatingContextToolbar({
-    workspaceRootRef: workspacePane?.fullscreenRef,
+    workspaceRootRef: editBarLayerRef,
     stageRef,
     dockRootRef: editBarDockRef,
     resetKey: `${adapter.id}:${item.key || item.id}`,
@@ -527,9 +530,15 @@ export function InlineAdvancedWorkbenchShell({
             </div>
           </aside>
         )}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={localEditBarLayerRef}
+          data-edit-bar-layer-root={!rightPaneSlot || undefined}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        >
           {!rightPaneSlot && (
             <>
+              {/* Project/View actions stay first; the dock is then immediately
+                  adjacent to the displayed website/editor stage. */}
               <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
                 {actionBar}
               </div>

@@ -84,6 +84,16 @@ export function Model3DStage({
           className="block h-full min-h-[280px] w-full touch-none outline-none"
         />
 
+        {!editor.modelLoaded && editor.posterUrl && (
+          <img
+            src={editor.posterUrl}
+            alt=""
+            aria-hidden="true"
+            data-testid="model3d-poster"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain p-6"
+          />
+        )}
+
         {editor.annotations.map((annotation) => {
           const screen = screens.get(annotation.id);
           if (!screen?.visible) return null;

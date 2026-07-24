@@ -124,6 +124,7 @@ export function nextTextAlignment(current: unknown): TextAlignment {
 
 export interface SelectionOverflowGroup {
   id: string;
+  label: string;
   controls: SelectionControl[];
 }
 
@@ -141,13 +142,43 @@ function overflowGroupId(control: SelectionControl): string {
   return "actions";
 }
 
+const OVERFLOW_GROUP_LABELS: Readonly<Record<string, string>> = {
+  actions: "其他操作",
+  danger: "危险操作",
+  inspectors: "属性面板",
+  arrange: "排列",
+  format: "格式",
+  "grid-properties": "表格属性",
+  transform: "变换",
+  typography: "排版",
+};
+
+function overflowGroupLabel(
+  id: string,
+  control: SelectionControl,
+): string {
+  if (!id.startsWith("group:")) {
+    return OVERFLOW_GROUP_LABELS[id] || "更多操作";
+  }
+  const authoredGroup = id.slice("group:".length);
+  return (
+    OVERFLOW_GROUP_LABELS[authoredGroup] ||
+    control.inspectorLabel ||
+    authoredGroup.replace(/[-_]+/g, " ")
+  );
+}
+
 export function groupSelectionOverflowControls(
   controls: readonly SelectionControl[],
 ): SelectionOverflowGroup[] {
   const groups = new Map<string, SelectionOverflowGroup>();
   for (const control of controls) {
     const id = overflowGroupId(control);
-    const group = groups.get(id) || { id, controls: [] };
+    const group = groups.get(id) || {
+      id,
+      label: overflowGroupLabel(id, control),
+      controls: [],
+    };
     group.controls.push(control);
     groups.set(id, group);
   }
@@ -301,8 +332,11 @@ export function partitionSelectionControls(
 
   // More is now mandatory. Explicit primary controls are considered before
   // ordinary bar controls; source order breaks ties and remains the final DOM
-  // order. Every visible control contributes one gap: between compact
-  // controls, or between the last compact control and the More launcher.
+  // order. Keep a prefix of that priority order: skipping one wide control to
+  // pack a later narrow control makes buttons disappear again as width grows.
+  // A priority prefix therefore guarantees monotonic, predictable overflow.
+  // Every visible control contributes one gap: between compact controls, or
+  // between the last compact control and the More launcher.
   let occupiedWidth = SELECTION_TOOLBAR_MORE_BUTTON_WIDTH;
   const visibleIds = new Set<string>();
   const prioritized = compact
@@ -323,6 +357,8 @@ export function partitionSelectionControls(
     ) {
       visibleIds.add(control.id);
       occupiedWidth = nextWidth;
+    } else {
+      break;
     }
   }
 

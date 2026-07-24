@@ -10,6 +10,11 @@ import {
   type LibraryItem,
   type LibraryKind,
 } from "./library-data";
+import {
+  WorkspaceCoverResource,
+  workspaceCoverPlan,
+  workspaceCoverRenditionPurposes,
+} from "./workspace-library-cover";
 import { WORKSPACE_KIND_LABELS } from "./workspace-library-model";
 
 const generatedThumbnailCache = new Map<string, string>();
@@ -37,8 +42,9 @@ export function WorkspaceKindIcon({
   const tt = useUI();
   return (
     <div
-      className="grid h-12 w-12 place-items-center rounded-2xl text-[11px] font-semibold"
-      style={{ background: `${accent}12`, color: accent }}
+      className="grid h-10 w-10 place-items-center rounded-xl border bg-transparent text-[10px] font-semibold opacity-75"
+      style={{ borderColor: `${accent}33`, color: accent }}
+      aria-hidden="true"
     >
       {tt(WORKSPACE_KIND_LABELS[kind] || "内容")}
     </div>
@@ -63,11 +69,16 @@ export function WorkspaceThumbnail({
   compact?: boolean;
 }) {
   const tt = useUI();
+  const renditionPurposes = item
+    ? workspaceCoverRenditionPurposes(item)
+    : THUMBNAIL_PURPOSES;
   const artifactRendition = useArtifactRendition(
     item || EMPTY_THUMBNAIL_ITEM,
-    THUMBNAIL_PURPOSES,
+    renditionPurposes,
   );
   const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [generationError, setGenerationError] = useState(false);
   const [visible, setVisible] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const lastFailedUrlRef = useRef("");
@@ -123,6 +134,8 @@ export function WorkspaceThumbnail({
   );
   useEffect(() => {
     setFailed(false);
+    setReady(false);
+    setGenerationError(false);
     setGeneratedUrl(
       referenceKey ? generatedThumbnailCache.get(referenceKey) || "" : "",
     );
@@ -134,7 +147,7 @@ export function WorkspaceThumbnail({
   ]);
   useEffect(() => {
     lastFailedUrlRef.current = "";
-  }, [artifactRendition.url, url]);
+  }, [artifactRendition.url, artifactRendition.version, url]);
   useEffect(() => {
     if (
       !referenceKey ||
@@ -161,12 +174,14 @@ export function WorkspaceThumbnail({
       generatedThumbnailPending.delete(referenceKey);
       if (!nextUrl) {
         generatedThumbnailFailed.add(referenceKey);
+        if (alive) setGenerationError(true);
         return;
       }
       generatedThumbnailCache.set(referenceKey, nextUrl);
       if (alive) {
         setGeneratedUrl(nextUrl);
         setFailed(false);
+        setGenerationError(false);
       }
     });
     return () => {
@@ -184,43 +199,114 @@ export function WorkspaceThumbnail({
   const displayUrl = typedArtifact
     ? artifactRendition.url
     : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
-  if (!displayUrl || failed) {
-    return (
-      <div ref={hostRef} className="grid h-full place-items-center">
-        {typedArtifact && artifactRendition.loading ? (
+  const plan = workspaceCoverPlan({
+    item,
+    kind,
+    url: displayUrl,
+    rendition: typedArtifact ? artifactRendition.rendition : null,
+    assumeImage: Boolean(
+      generatedUrl ||
+        (!typedArtifact && displayUrl && displayUrl === url),
+    ),
+  });
+  const resourceKey = [
+    plan.renderer,
+    plan.url,
+    artifactRendition.version,
+  ].join(":");
+  useEffect(() => {
+    setReady(false);
+  }, [resourceKey]);
+  const awaitingGeneratedThumbnail = Boolean(
+    referenceKey &&
+      visible &&
+      !generatedUrl &&
+      !generationError &&
+      !generatedThumbnailFailed.has(referenceKey) &&
+      (requiresGeneratedThumbnail || failed),
+  );
+  const failureMessage =
+    artifactRendition.loading || awaitingGeneratedThumbnail
+      ? ""
+      : artifactRendition.error ||
+        (generationError
+          ? "未能生成可显示的真实封面。"
+          : failed
+            ? "封面资源加载失败。"
+            : plan.failureReason);
+  const loading =
+    !failureMessage &&
+    (artifactRendition.loading ||
+      awaitingGeneratedThumbnail ||
+      (plan.renderer !== "unavailable" && !ready));
+  const coverState = failureMessage
+    ? "error"
+    : loading
+      ? "loading"
+      : ready
+        ? "ready"
+        : "error";
+  return (
+    <div
+      ref={hostRef}
+      className="relative h-full w-full overflow-hidden"
+      data-cover-state={coverState}
+      data-cover-artifact-type={item?.artifactType || kind}
+      data-cover-source-aspect={
+        plan.sourceAspectRatio?.toFixed(4) || undefined
+      }
+    >
+      {!failureMessage && plan.renderer !== "unavailable" && (
+        <WorkspaceCoverResource
+          plan={plan}
+          alt={alt}
+          className={imageClassName}
+          resourceKey={resourceKey}
+          onReady={() => {
+            setFailed(false);
+            setReady(true);
+          }}
+          onError={() => {
+            if (lastFailedUrlRef.current !== resourceKey) {
+              lastFailedUrlRef.current = resourceKey;
+              artifactRendition.resourceFailed();
+            }
+            setReady(false);
+            setFailed(true);
+          }}
+        />
+      )}
+      {loading && (
+        <div className="absolute inset-0 grid place-items-center bg-[var(--surface,#f5f5f4)]/80">
           <span
             className="v-spinner h-4 w-4"
             role="status"
-            aria-label={tt("正在刷新缩略图")}
+            aria-label={tt(
+              artifactRendition.loading
+                ? "正在刷新缩略图"
+                : "正在加载真实封面",
+            )}
           />
-        ) : compact ? (
-          <span className="text-[10px] font-medium text-[var(--muted,#a8a29e)]">
-            {tt(WORKSPACE_KIND_LABELS[kind] || "内容")}
+        </div>
+      )}
+      {failureMessage && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 border border-dashed border-[var(--border-strong,#d6d3d1)] bg-[var(--surface,#f5f5f4)] px-2 text-center"
+          role="alert"
+          data-cover-failure="true"
+          title={failureMessage}
+        >
+          {!compact && <WorkspaceKindIcon kind={kind} accent={accent} />}
+          <span className="text-[10px] font-semibold text-[var(--fg-2,#57534e)]">
+            {tt("封面不可用")}
           </span>
-        ) : (
-          <WorkspaceKindIcon kind={kind} accent={accent} />
-        )}
-      </div>
-    );
-  }
-  return (
-    <div ref={hostRef} className="h-full w-full">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={displayUrl}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => {
-          if (lastFailedUrlRef.current !== displayUrl) {
-            lastFailedUrlRef.current = displayUrl;
-            artifactRendition.resourceFailed();
-          }
-          setFailed(true);
-        }}
-        className={imageClassName}
-      />
+          <span className="line-clamp-2 text-[9px] leading-tight text-[var(--muted,#a8a29e)]">
+            {compact
+              ? tt(WORKSPACE_KIND_LABELS[kind] || "内容")
+              : tt(failureMessage)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
