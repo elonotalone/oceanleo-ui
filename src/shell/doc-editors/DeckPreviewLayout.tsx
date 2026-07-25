@@ -15,8 +15,10 @@ import { useUI } from "../../i18n/ui/useUI";
 import { useCenteredWheelZoom } from "../use-centered-wheel-zoom";
 import {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
+  deckPreviewEstimatedLayoutContentHeightPx,
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
+  deckPreviewNeedsDefiniteViewportHeight,
   deckPreviewThumbnailAspect,
   deckPreviewViewportCapPx,
   deckPreviewViewportCapStyle,
@@ -25,8 +27,10 @@ import {
 
 export {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
+  deckPreviewEstimatedLayoutContentHeightPx,
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
+  deckPreviewNeedsDefiniteViewportHeight,
   deckPreviewThumbnailAspect,
   deckPreviewViewportCapPx,
   deckPreviewViewportCapStyle,
@@ -171,6 +175,15 @@ export function DeckPreviewLayout({
   );
   const thumbnailRefs = useRef(new Map<string, HTMLButtonElement>());
   const thumbnailAspect = deckPreviewThumbnailAspect(logicalSize);
+  const layoutContentHeightPx = useMemo(
+    () =>
+      slides.length === 0
+        ? null
+        : deckPreviewEstimatedLayoutContentHeightPx(slides.length, {
+            aspectRatio: thumbnailAspect,
+          }),
+    [slides.length, thumbnailAspect],
+  );
   const geometry = useMemo(
     () =>
       deckPreviewFitGeometry({
@@ -277,11 +290,23 @@ export function DeckPreviewLayout({
       style={
         {
           "--deck-preview-accent": accent,
-          ...deckPreviewViewportCapStyle(viewportMaxHeight),
+          ...deckPreviewViewportCapStyle(
+            viewportMaxHeight,
+            layoutContentHeightPx,
+          ),
         } as CSSProperties
       }
       data-deck-viewport-cap={
         viewportMaxHeight != null ? String(viewportMaxHeight) : undefined
+      }
+      data-deck-viewport-cap-definite={
+        viewportMaxHeight != null &&
+        deckPreviewNeedsDefiniteViewportHeight(
+          viewportMaxHeight,
+          layoutContentHeightPx ?? Number.POSITIVE_INFINITY,
+        )
+          ? "1"
+          : "0"
       }
     >
       <aside

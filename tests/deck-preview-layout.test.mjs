@@ -5,8 +5,10 @@ import ts from "typescript";
 
 import {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
+  deckPreviewEstimatedLayoutContentHeightPx,
   deckPreviewFitGeometry,
   deckPreviewLogicalSize,
+  deckPreviewNeedsDefiniteViewportHeight,
   deckPreviewStagePadding,
   deckPreviewThumbnailAspect,
   deckPreviewViewportCapPx,
@@ -122,18 +124,74 @@ test("thumbnail aspect matches the logical stage frame", () => {
   }
 });
 
-test("viewport cap is a definite height so preview flex rails can scroll", () => {
+test("viewport cap is definite only when content overflows (compact scroll)", () => {
   // V2 preview-compact: layout top ≈ 160.5, innerHeight 768 ⇒ cap 603.
   assert.equal(deckPreviewViewportCapPx(160.5, 768), 603);
   // Edit-compact style top ≈ 198.5 ⇒ cap 565 (matches measured stage height).
   assert.equal(deckPreviewViewportCapPx(198.5, 768), 565);
   assert.equal(deckPreviewViewportCapPx(900, 768), 280);
 
-  const style = deckPreviewViewportCapStyle(603);
-  assert.equal(style.height, "603px");
-  assert.equal(style.maxHeight, "603px");
-  assert.equal(style.minHeight, 0);
+  const eightSlideContent = deckPreviewEstimatedLayoutContentHeightPx(8);
+  // Observed rail scrollHeight ≈ 730 + ~32 header ⇒ content > compact caps.
+  assert.ok(eightSlideContent > 730);
+  assert.ok(eightSlideContent < 800);
+  assert.equal(
+    deckPreviewNeedsDefiniteViewportHeight(603, eightSlideContent),
+    true,
+  );
+  assert.equal(
+    deckPreviewNeedsDefiniteViewportHeight(565, eightSlideContent),
+    true,
+  );
+
+  const compactStyle = deckPreviewViewportCapStyle(603, eightSlideContent);
+  assert.equal(compactStyle.height, "603px");
+  assert.equal(compactStyle.maxHeight, "603px");
+  assert.equal(compactStyle.minHeight, 0);
+
+  // Unknown content keeps fail-safe definite height (compact scroll).
+  const unknown = deckPreviewViewportCapStyle(603);
+  assert.equal(unknown.height, "603px");
+  assert.equal(unknown.minHeight, 0);
   assert.deepEqual(deckPreviewViewportCapStyle(null), {});
+});
+
+test("tall desktop keeps maxHeight but auto height so 50% fit occupancy recovers", () => {
+  const eightSlideContent = deckPreviewEstimatedLayoutContentHeightPx(8);
+  // V2 desktop preview/edit caps from geometry.json tops.
+  const previewDesktopCap = deckPreviewViewportCapPx(160.5, 1050);
+  const editDesktopCap = deckPreviewViewportCapPx(198.5, 1050);
+  assert.equal(previewDesktopCap, 885);
+  assert.equal(editDesktopCap, 847);
+  assert.equal(
+    deckPreviewNeedsDefiniteViewportHeight(previewDesktopCap, eightSlideContent),
+    false,
+  );
+  assert.equal(
+    deckPreviewNeedsDefiniteViewportHeight(editDesktopCap, eightSlideContent),
+    false,
+  );
+
+  const desktopStyle = deckPreviewViewportCapStyle(
+    previewDesktopCap,
+    eightSlideContent,
+  );
+  assert.equal(desktopStyle.height, "auto");
+  assert.equal(desktopStyle.maxHeight, "885px");
+  assert.equal(desktopStyle.minHeight, undefined);
+
+  // Fixed 480×270 slide at 50% inside content-sized stage meets occupancy mins.
+  const stageWidth = 942;
+  const stageHeight = eightSlideContent;
+  const frameWidth = 480;
+  const frameHeight = 270;
+  const heightOccupancy = frameHeight / stageHeight;
+  const areaOccupancy = (frameWidth * frameHeight) / (stageWidth * stageHeight);
+  assert.ok(heightOccupancy >= 0.32, `height ${heightOccupancy}`);
+  assert.ok(areaOccupancy >= 0.16, `area ${areaOccupancy}`);
+  // And still below the prior inflated-cap failure band.
+  assert.ok(heightOccupancy > 0.319);
+  assert.ok(areaOccupancy > 0.155);
 });
 
 test("shared layout contract owns rail, fitted stage and keyboard selection", () => {
@@ -161,8 +219,13 @@ test("shared layout contract owns rail, fitted stage and keyboard selection", ()
   assert.match(component, /data-deck-thumbnail-surface/);
   assert.match(component, /deckPreviewThumbnailAspect\(logicalSize\)/);
   assert.match(component, /deckPreviewViewportCapPx\(/);
-  assert.match(component, /deckPreviewViewportCapStyle\(viewportMaxHeight\)/);
+  assert.match(component, /deckPreviewEstimatedLayoutContentHeightPx\(/);
+  assert.match(
+    component,
+    /deckPreviewViewportCapStyle\(\s*viewportMaxHeight,\s*layoutContentHeightPx,\s*\)/,
+  );
   assert.match(component, /data-deck-viewport-cap=/);
+  assert.match(component, /data-deck-viewport-cap-definite=/);
   assert.match(
     component,
     /min-h-0 flex-1 overflow-x-hidden overflow-y-auto/,

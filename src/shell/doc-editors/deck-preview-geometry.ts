@@ -64,9 +64,9 @@ export function deckPreviewStagePadding(
 }
 
 /**
- * Remaining viewport below the layout root. Applied as a definite `height`
- * (not only max-height) so flex `min-h-0` scrollports shrink under content —
- * preview library shells often lack the edit workbench height chain.
+ * Remaining viewport below the layout root. Always used as `maxHeight`.
+ * A definite `height` is applied only when unconstrained content would
+ * overflow the cap (see `deckPreviewNeedsDefiniteViewportHeight`).
  */
 export function deckPreviewViewportCapPx(
   layoutTop: number,
@@ -81,20 +81,78 @@ export function deckPreviewViewportCapPx(
   return Math.max(safeFloor, Math.floor(inner - top - safeGutter));
 }
 
-/** Inline geometry that forces a definite flex containing block for the rail. */
+/**
+ * Intrinsic height of the deck preview layout for N rail thumbnails.
+ * Matches DeckPreviewLayout chrome: ~32px rail header, p-2, space-y-2.5,
+ * and 16:9 thumbs at the common ~143px content width (159px rail − padding).
+ */
+export function deckPreviewEstimatedLayoutContentHeightPx(
+  slideCount: number,
+  options?: {
+    thumbContentWidthPx?: number;
+    aspectRatio?: number;
+    headerPx?: number;
+    railPaddingYPx?: number;
+    gapPx?: number;
+  },
+): number {
+  const n = Math.max(0, Math.floor(slideCount));
+  const headerPx = finitePositive(options?.headerPx ?? 32, 32);
+  const railPaddingYPx = finitePositive(options?.railPaddingYPx ?? 16, 16);
+  const gapPx = Number.isFinite(options?.gapPx) ? Math.max(0, options!.gapPx!) : 10;
+  const thumbWidth = finitePositive(options?.thumbContentWidthPx ?? 143, 143);
+  const aspect = finitePositive(options?.aspectRatio ?? 16 / 9, 16 / 9);
+  const thumbHeight = thumbWidth / aspect;
+  const listPx =
+    n === 0 ? 0 : n * thumbHeight + Math.max(0, n - 1) * gapPx;
+  return Math.ceil(headerPx + railPaddingYPx + listPx);
+}
+
+/** Definite height is required only when content would overflow the cap. */
+export function deckPreviewNeedsDefiniteViewportHeight(
+  capPx: number,
+  contentHeightPx: number,
+): boolean {
+  if (!Number.isFinite(capPx) || capPx <= 0) return false;
+  if (!Number.isFinite(contentHeightPx) || contentHeightPx <= 0) return false;
+  return contentHeightPx > Math.floor(capPx);
+}
+
+/**
+ * Viewport cap inline style.
+ * - Always `maxHeight` so the root cannot spill past the window.
+ * - Definite `height` + `minHeight:0` only when content overflows the cap
+ *   (compact / short stages that need a flex scrollport).
+ * - Otherwise `height:auto` overrides Tailwind `h-full` so tall desktop
+ *   workbenches shrink to content and keep 50%-fit stage occupancy.
+ */
 export function deckPreviewViewportCapStyle(
   capPx: number | null | undefined,
+  contentHeightPx?: number | null,
 ): {
   height?: string;
   maxHeight?: string;
   minHeight?: number;
 } {
   if (capPx == null || !Number.isFinite(capPx) || capPx <= 0) return {};
+  const cap = Math.floor(capPx);
+  const maxHeight = `${cap}px`;
+  // Unknown content → keep definite height (fail-safe for compact scroll).
+  const needsDefinite =
+    contentHeightPx == null || !Number.isFinite(contentHeightPx)
+      ? true
+      : deckPreviewNeedsDefiniteViewportHeight(cap, contentHeightPx);
+  if (needsDefinite) {
+    return {
+      height: maxHeight,
+      maxHeight,
+      // Defeat consumer min-h-[520px] when the live viewport is tighter.
+      minHeight: 0,
+    };
+  }
   return {
-    height: `${Math.floor(capPx)}px`,
-    maxHeight: `${Math.floor(capPx)}px`,
-    // Defeat consumer min-h-[520px] when the live viewport is tighter.
-    minHeight: 0,
+    height: "auto",
+    maxHeight,
   };
 }
 
