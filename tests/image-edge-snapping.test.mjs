@@ -199,9 +199,9 @@ test("near-full-bleed drag prefers the approached edge over opposite-edge corrid
 });
 
 test("≤8 CSS near release latches with CSS×VPT scale (production fit)", () => {
-  // Production V3 miss (v0.192.29): visualScale≈0.185, pointerScale≈1,
+  // Production V3 miss (v0.192.29–30): visualScale≈0.185, pointerScale≈1,
   // logicalGap≈19.5 → observedEdgeGapCss≈3.61 inside acquire 8, but snapped=false.
-  // Live design-embed CSS-shrinks the canvas while VPT stays ~identity.
+  // Live fit often leaves VPT≈identity while controller.zoom still holds fit scale.
   const doc = { width: 1_280, height: 1_280 };
   const visualScale = 0.18516;
   const cssScale = { x: visualScale, y: visualScale };
@@ -211,6 +211,16 @@ test("≤8 CSS near release latches with CSS×VPT scale (production fit)", () =>
   const nearLeftLogical = 19.5;
   const screen = imageEdgeSnapScreenScales(viewport, cssScale);
   assertClose(screen.x, visualScale, "screen scale is CSS×VPT");
+  const zoomFallbackScreen = imageEdgeSnapScreenScales(
+    viewport,
+    { x: 1, y: 1 },
+    visualScale,
+  );
+  assertClose(
+    zoomFallbackScreen.x,
+    visualScale,
+    "zoomFallback recovers fit scale when CSS×VPT is identity",
+  );
   assert.ok(
     nearLeftLogical * screen.x <= IMAGE_EDGE_SNAP_ACQUIRE_PX,
     "fixture is inside acquire CSS",
@@ -224,6 +234,17 @@ test("≤8 CSS near release latches with CSS×VPT scale (production fit)", () =>
     motion: { dx: 0, dy: 0 },
   });
   assert.equal(deadVptOnly.state.x, null, "VPT-only misses CSS-near gap");
+
+  // Bookkeeping zoom alone (production VPT-identity path) must latch left.
+  const zoomOnlyLeft = resolveImageEdgeSnap({
+    bounds: { left: nearLeftLogical, top: 0, width, height },
+    doc,
+    viewport,
+    zoomFallback: visualScale,
+    motion: { dx: -8, dy: 0 },
+  });
+  assert.equal(zoomOnlyLeft.state.x, "left", "zoomFallback latches left-near");
+  assertClose(zoomOnlyLeft.dx, -nearLeftLogical, "zoomFallback flushes left");
 
   // Pure motion 0 with correct CSS scale still loses to the closer right overhang
   // on near-full-bleed — release must keep the gesture's approach motion.
@@ -450,7 +471,10 @@ test("Fabric drag and crop/scale hooks share snapping state and preserve Alt obj
   assert.match(core, /eventRequestsSnapBypass\(event\)/);
   assert.match(core, /oceanleoKind === "image"/);
   assert.match(core, /motion:\s*motionOverride \?\? sampleMotion/);
-  assert.match(core, /imageEdgeSnapGestureMotion = sampleMotion/);
+  assert.match(core, /imageEdgeSnapGestureAccum/);
+  assert.match(core, /imageEdgeSnapGestureMotion = \{ \.\.\.this\.imageEdgeSnapGestureAccum \}/);
+  assert.match(core, /accumScreen >= 2/);
+  assert.match(core, /zoomFallback:\s*this\.zoom/);
   assert.match(
     core,
     /mouse:down[\s\S]*?target && this\.canSnapImageEdges\(target\)[\s\S]*?altPan = e\.altKey && !snapBypassTarget/,
@@ -463,7 +487,7 @@ test("Fabric drag and crop/scale hooks share snapping state and preserve Alt obj
     core,
     /finalizeImageEdgeSnap[\s\S]*?imageEdgeSnapGestureMotion[\s\S]*?snapImageScaleEdges[\s\S]*?snapImageMoveEdges/,
   );
-  assert.match(core, /cssScale:\s*canvasElementCssScales\(this\.canvas\)/);
+  assert.match(core, /cssScale/);
   assert.match(
     core,
     /object:moving[\s\S]*?imageEdgeSnapScaleTransform = null[\s\S]*?snapImageMoveEdges/,

@@ -35,6 +35,7 @@ import {
   fitViewport,
   imageEdgeScaleAnchorCorrection,
   imageEdgeScaleMultipliers,
+  imageEdgeSnapScreenScales,
   imageScaleControlLocksAspectRatio,
   imageSnapEdgesForControl,
   normalizeEditorSnapshot,
@@ -125,6 +126,11 @@ export class FabricEditorCore {
     dx: 0,
     dy: 0,
   };
+  /** Net scene-space translation since gesture start (release corridor bias). */
+  private imageEdgeSnapGestureAccum: { dx: number; dy: number } = {
+    dx: 0,
+    dy: 0,
+  };
   /** Set while scaling/cropping so release finalize uses scale snap, not move. */
   private imageEdgeSnapScaleTransform: Transform | null = null;
   private restoreAbort: AbortController | null = null;
@@ -164,6 +170,7 @@ export class FabricEditorCore {
     this.imageEdgeSnapState = emptyImageEdgeSnapState();
     this.imageEdgeSnapPrevBounds = null;
     this.imageEdgeSnapGestureMotion = { dx: 0, dy: 0 };
+    this.imageEdgeSnapGestureAccum = { dx: 0, dy: 0 };
     this.imageEdgeSnapScaleTransform = null;
   }
 
@@ -209,11 +216,26 @@ export class FabricEditorCore {
     const sampleMotion = prev
       ? { dx: bounds.left - prev.left, dy: bounds.top - prev.top }
       : { dx: 0, dy: 0 };
-    if (
-      Math.abs(sampleMotion.dx) > 0.25 ||
-      Math.abs(sampleMotion.dy) > 0.25
-    ) {
-      this.imageEdgeSnapGestureMotion = sampleMotion;
+    const cssScale = canvasElementCssScales(this.canvas);
+    const screen = imageEdgeSnapScreenScales(
+      this.canvas.viewportTransform,
+      cssScale,
+      this.zoom,
+    );
+    // Accumulate net gesture travel. Per-frame settle ticks are tiny in CSS and
+    // must not replace the approach direction used on pointer-up finalize.
+    if (prev) {
+      this.imageEdgeSnapGestureAccum = {
+        dx: this.imageEdgeSnapGestureAccum.dx + sampleMotion.dx,
+        dy: this.imageEdgeSnapGestureAccum.dy + sampleMotion.dy,
+      };
+    }
+    const accumScreen = Math.hypot(
+      this.imageEdgeSnapGestureAccum.dx * screen.x,
+      this.imageEdgeSnapGestureAccum.dy * screen.y,
+    );
+    if (accumScreen >= 2) {
+      this.imageEdgeSnapGestureMotion = { ...this.imageEdgeSnapGestureAccum };
     }
     const snapped = resolveImageEdgeSnap({
       bounds,
@@ -223,7 +245,8 @@ export class FabricEditorCore {
       edges,
       bypass: this.eventRequestsSnapBypass(event),
       motion: motionOverride ?? sampleMotion,
-      cssScale: canvasElementCssScales(this.canvas),
+      cssScale,
+      zoomFallback: this.zoom,
     });
     this.imageEdgeSnapState = snapped.state;
     return { bounds, snapped };
@@ -325,6 +348,7 @@ export class FabricEditorCore {
     event: Event | undefined,
   ): void {
     if (!this.canSnapImageEdges(target)) return;
+    // Release must keep the gesture's approach corridor, not the last settle tick.
     const gestureMotion = { ...this.imageEdgeSnapGestureMotion };
     const scaleTransform = this.imageEdgeSnapScaleTransform;
     this.imageEdgeSnapPrevBounds = null;

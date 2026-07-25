@@ -92,6 +92,9 @@ export function FabricImageStage({
       data-editor-selected-locked={
         editor.selected?.locked === true ? "true" : "false"
       }
+      data-editor-doc-width={editor.doc.width}
+      data-editor-doc-height={editor.doc.height}
+      data-editor-viewport-zoom={Number(editor.zoom.toFixed(6))}
       data-scene-diagnostic={editor.sceneDiagnostic?.code || ""}
       data-scene-dependency={editor.sceneDiagnostic?.dependencyId || ""}
     >

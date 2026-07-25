@@ -128,13 +128,38 @@ export function canvasElementCssScales(canvas: {
 export function imageEdgeSnapScreenScales(
   viewport: readonly number[] | null | undefined,
   cssScale: { x?: number; y?: number } | null | undefined = null,
+  /**
+   * Controller fit/zoom bookkeeping. Production occasionally leaves
+   * viewportTransform ≈ identity while `this.zoom` still holds the fit scale
+   * (harness pointerScale≈1, visualScale≈0.19). Never under-read that zoom.
+   */
+  zoomFallback: number | null | undefined = null,
 ): { x: number; y: number } {
   const vpt = viewportAxisScales(viewport);
-  const cssX = cssScale?.x;
-  const cssY = cssScale?.y;
+  const cssX =
+    Number.isFinite(cssScale?.x) && (cssScale?.x as number) > 0
+      ? (cssScale?.x as number)
+      : 1;
+  const cssY =
+    Number.isFinite(cssScale?.y) && (cssScale?.y as number) > 0
+      ? (cssScale?.y as number)
+      : 1;
+  const zoom =
+    Number.isFinite(zoomFallback) && (zoomFallback as number) > 0
+      ? (zoomFallback as number)
+      : 0;
+  // Prefer VPT×CSS. When VPT looks like identity but bookkeeping zoom still
+  // holds a real fit scale (<1), trust zoom — production pointerScale≈1 miss.
+  const axis = (vptScale: number, css: number) => {
+    const fromVpt = Math.max(1e-6, vptScale * css);
+    if (fromVpt > 0.98 && zoom > 0 && zoom < 0.98) {
+      return Math.max(1e-6, zoom * css);
+    }
+    return fromVpt;
+  };
   return {
-    x: vpt.x * (Number.isFinite(cssX) && (cssX as number) > 0 ? (cssX as number) : 1),
-    y: vpt.y * (Number.isFinite(cssY) && (cssY as number) > 0 ? (cssY as number) : 1),
+    x: axis(vpt.x, cssX),
+    y: axis(vpt.y, cssY),
   };
 }
 
@@ -262,6 +287,7 @@ export function resolveImageEdgeSnap({
   releasePx = IMAGE_EDGE_SNAP_RELEASE_PX,
   motion = { dx: 0, dy: 0 },
   cssScale = null,
+  zoomFallback = null,
 }: {
   bounds: { left: number; top: number; width: number; height: number };
   doc: DocSize;
@@ -278,12 +304,14 @@ export function resolveImageEdgeSnap({
    * Combined with viewportTransform for visual CSS thresholds.
    */
   cssScale?: { x?: number; y?: number } | null;
+  /** Fit/zoom bookkeeping when VPT is stale/identity (see screen scale helper). */
+  zoomFallback?: number | null;
 }): ImageEdgeSnapResult {
   if (bypass) {
     return { dx: 0, dy: 0, state: emptyImageEdgeSnapState() };
   }
   const eligible = new Set(edges);
-  const scale = imageEdgeSnapScreenScales(viewport, cssScale);
+  const scale = imageEdgeSnapScreenScales(viewport, cssScale, zoomFallback);
   const acquire = Math.max(0, acquirePx);
   const release = Math.max(acquire, releasePx);
   const horizontal = resolveSnapAxis<ImageHorizontalSnapEdge>(
