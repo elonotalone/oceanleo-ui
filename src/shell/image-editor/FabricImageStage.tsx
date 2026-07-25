@@ -95,6 +95,26 @@ export function FabricImageStage({
       data-editor-doc-width={editor.doc.width}
       data-editor-doc-height={editor.doc.height}
       data-editor-viewport-zoom={Number(editor.zoom.toFixed(6))}
+      data-editor-control-ml={
+        editor.controlClientCoords?.ml
+          ? JSON.stringify(editor.controlClientCoords.ml)
+          : ""
+      }
+      data-editor-control-mr={
+        editor.controlClientCoords?.mr
+          ? JSON.stringify(editor.controlClientCoords.mr)
+          : ""
+      }
+      data-editor-control-mt={
+        editor.controlClientCoords?.mt
+          ? JSON.stringify(editor.controlClientCoords.mt)
+          : ""
+      }
+      data-editor-control-mb={
+        editor.controlClientCoords?.mb
+          ? JSON.stringify(editor.controlClientCoords.mb)
+          : ""
+      }
       data-scene-diagnostic={editor.sceneDiagnostic?.code || ""}
       data-scene-dependency={editor.sceneDiagnostic?.dependencyId || ""}
     >

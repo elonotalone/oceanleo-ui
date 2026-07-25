@@ -6,6 +6,7 @@ import {
   IMAGE_EDGE_SNAP_ACQUIRE_PX,
   IMAGE_EDGE_SNAP_RELEASE_PX,
   emptyImageEdgeSnapState,
+  imageControlClientCoordsFromOCoords,
   imageEdgeScaleAnchorCorrection,
   imageEdgeScaleMultipliers,
   imageEdgeSnapScreenScales,
@@ -30,6 +31,16 @@ function snap(bounds, options = {}) {
 function assertClose(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 1e-9, message);
 }
+
+test("oCoords map to page/client CSS for scale-handle probes", () => {
+  const mapped = imageControlClientCoordsFromOCoords(
+    { ml: { x: 100, y: 200 }, mr: { x: 300, y: 200 } },
+    { left: 50, top: 80, width: 400, height: 300 },
+    { width: 800, height: 600 },
+  );
+  assert.deepEqual(mapped.ml, { x: 100, y: 180 });
+  assert.deepEqual(mapped.mr, { x: 200, y: 180 });
+});
 
 test("all four corresponding image and canvas edge pairs snap", () => {
   assert.deepEqual(

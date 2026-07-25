@@ -249,6 +249,13 @@ export interface FabricImageEditorState {
   resizeDoc: (width: number, height: number) => void;
   // ---- 视图 ----
   zoom: number;
+  /** Active Fabric control positions in page/client CSS px (ml/mr/mt/mb/…). */
+  controlClientCoords: Partial<
+    Record<
+      "ml" | "mr" | "mt" | "mb" | "tl" | "tr" | "bl" | "br",
+      { x: number; y: number }
+    >
+  > | null;
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;

@@ -81,6 +81,7 @@ const INITIAL_VIEW: FabricControllerView = {
   cropRatio: "free",
   canUndo: false,
   canRedo: false,
+  controlClientCoords: null,
 };
 
 function isAbortError(error: unknown): boolean {
@@ -1194,6 +1195,7 @@ export function useFabricImageEditor(
     setCanvasBackground: (color) => controller()?.setCanvasBackground(color),
     resizeDoc: (width, height) => controller()?.resizeDoc(width, height),
     zoom: view.zoom,
+    controlClientCoords: view.controlClientCoords,
     setZoom: (zoom) => controller()?.setZoom(zoom),
     zoomIn: () => controller()?.zoomBy(1.2),
     zoomOut: () => controller()?.zoomBy(1 / 1.2),

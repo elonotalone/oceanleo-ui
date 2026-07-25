@@ -35,6 +35,7 @@ import {
   fitViewport,
   imageEdgeScaleAnchorCorrection,
   imageEdgeScaleMultipliers,
+  imageControlClientCoordsFromOCoords,
   imageEdgeSnapScreenScales,
   imageScaleControlLocksAspectRatio,
   imageSnapEdgesForControl,
@@ -48,6 +49,7 @@ import {
   snapshotKey,
   type EditorSnapshot,
   type ImageCanvasEdge,
+  type ImageControlClientCoords,
   type ImageEdgeSnapResult,
   type ImageEdgeSnapState,
 } from "./editor-runtime";
@@ -70,6 +72,8 @@ export interface FabricControllerView {
   cropRatio: CropRatio;
   canUndo: boolean;
   canRedo: boolean;
+  /** Active-object control positions in page/client CSS px (ml/mr/mt/mb/…). */
+  controlClientCoords: ImageControlClientCoords | null;
 }
 
 export interface ControllerCallbacks {
@@ -625,6 +629,48 @@ export class FabricEditorCore {
       });
     const target = this.target();
     const image = this.imageTarget();
+    let controlClientCoords: ImageControlClientCoords | null = null;
+    if (active) {
+      try {
+        active.setCoords();
+      } catch {
+        /* ignore */
+      }
+      const el =
+        (
+          this.canvas as Canvas & {
+            upperCanvasEl?: HTMLCanvasElement;
+            lowerCanvasEl?: HTMLCanvasElement;
+          }
+        ).upperCanvasEl ||
+        (
+          this.canvas as Canvas & {
+            lowerCanvasEl?: HTMLCanvasElement;
+          }
+        ).lowerCanvasEl ||
+        this.canvas.getElement();
+      if (el && typeof el.getBoundingClientRect === "function") {
+        const rect = el.getBoundingClientRect();
+        const mapped = imageControlClientCoordsFromOCoords(
+          (
+            active as FabricObject & {
+              oCoords?: Record<string, { x?: number; y?: number }>;
+            }
+          ).oCoords,
+          {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+          {
+            width: this.canvas.getWidth(),
+            height: this.canvas.getHeight(),
+          },
+        );
+        if (Object.keys(mapped).length) controlClientCoords = mapped;
+      }
+    }
     return {
       doc: { ...this.doc },
       canvasBackground: this.canvasBackground,
@@ -651,6 +697,7 @@ export class FabricEditorCore {
       cropRatio: this.cropRatio,
       canUndo: this.undoStack.length > 0,
       canRedo: this.redoStack.length > 0,
+      controlClientCoords,
     };
   }
 

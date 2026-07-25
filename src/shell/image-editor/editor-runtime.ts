@@ -163,6 +163,50 @@ export function imageEdgeSnapScreenScales(
   };
 }
 
+/** Page/client CSS positions for Fabric transform controls (V3 scale harness). */
+export type ImageControlClientCoords = Partial<
+  Record<
+    "ml" | "mr" | "mt" | "mb" | "tl" | "tr" | "bl" | "br",
+    { x: number; y: number }
+  >
+>;
+
+/**
+ * Map Fabric `oCoords` (canvas bitmap space) to page/client CSS pixels using the
+ * upper/lower canvas element rect. Used for Playwright scale-handle targeting
+ * when the Fabric instance is not reachable from `window`.
+ */
+export function imageControlClientCoordsFromOCoords(
+  oCoords: Partial<
+    Record<string, { x?: number; y?: number } | null | undefined>
+  > | null
+    | undefined,
+  canvasRect: { left: number; top: number; width: number; height: number },
+  canvasSize: { width: number; height: number },
+): ImageControlClientCoords {
+  const out: ImageControlClientCoords = {};
+  if (!oCoords) return out;
+  const canvasW = Math.max(1, canvasSize.width);
+  const canvasH = Math.max(1, canvasSize.height);
+  const sx = canvasRect.width / canvasW;
+  const sy = canvasRect.height / canvasH;
+  for (const key of ["ml", "mr", "mt", "mb", "tl", "tr", "bl", "br"] as const) {
+    const pt = oCoords[key];
+    if (
+      !pt ||
+      !Number.isFinite(pt.x) ||
+      !Number.isFinite(pt.y)
+    ) {
+      continue;
+    }
+    out[key] = {
+      x: canvasRect.left + (pt.x as number) * sx,
+      y: canvasRect.top + (pt.y as number) * sy,
+    };
+  }
+  return out;
+}
+
 export function imageSnapEdgesForControl(
   corner: string | undefined,
 ): readonly ImageCanvasEdge[] {
