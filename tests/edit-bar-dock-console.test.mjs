@@ -21,7 +21,9 @@ import {
   serializeEditBarDockState,
 } from "../src/shell/edit-bar-dock-state.ts";
 import {
+  DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX,
   clampFloatingToolbarToBounds,
+  dockedFloatingToolbarPosition,
   isFloatingToolbarDockIntent,
   pointNearFloatingToolbarBounds,
   rectNearFloatingToolbarBounds,
@@ -350,7 +352,23 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     false,
     "overshoot alone must not dock while the toolbar is still below the band",
   );
-  const [floatingSource, controllerSource, inlineSource, splitSource] =
+  // V5 website: short 56px dock + ~59px floating chrome → gap=-3 overlap.
+  // Docked placement must anchor above the stage with a small non-negative gap.
+  const docked = dockedFloatingToolbarPosition({
+    layerLeft: 0,
+    layerTop: 0,
+    dock: { left: 40, top: 52, right: 960, bottom: 108 },
+    stageTop: 108,
+    toolbar: { width: 320, height: 59 },
+  });
+  assert.equal(DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX, 2);
+  assert.equal(docked.y, 108 - 59 - DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
+  assert.equal(108 - (docked.y + 59), DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
+  assert.ok(
+    108 - (docked.y + 59) >= 0 && 108 - (docked.y + 59) <= 8,
+    "website edit-bar clearance must stay a few non-negative px above the frame",
+  );
+  const [floatingSource, controllerSource, inlineSource, splitSource, dockHostSource] =
     await Promise.all([
       readFile(
         new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
@@ -371,6 +389,10 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
         new URL("../src/shell/SplitWorkspace.tsx", import.meta.url),
         "utf8",
       ),
+      readFile(
+        new URL("../src/shell/EditBarDockHost.tsx", import.meta.url),
+        "utf8",
+      ),
     ]);
   assert.match(floatingSource, /data-workspace-floating-toolbar-overlay/);
   assert.match(floatingSource, /data-floating-toolbar-boundary="editor-shell"/);
@@ -385,6 +407,7 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
   );
   assert.match(controllerSource, /Math\.min\(stage\.top, dockBounds\.top, layer\.top\)/);
   assert.match(controllerSource, /isFloatingToolbarDockIntent/);
+  assert.match(controllerSource, /dockedFloatingToolbarPosition/);
   assert.match(
     await readFile(
       new URL("../src/shell/floating-toolbar-geometry.ts", import.meta.url),
@@ -392,6 +415,15 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     ),
     /export function isFloatingToolbarDockIntent/,
   );
+  assert.match(
+    await readFile(
+      new URL("../src/shell/floating-toolbar-geometry.ts", import.meta.url),
+      "utf8",
+    ),
+    /export function dockedFloatingToolbarPosition/,
+  );
+  assert.match(dockHostSource, /min-h-16/);
+  assert.match(dockHostSource, /data-edit-bar-dock-sentinel[\s\S]{0,120}h-16/);
   assert.match(
     inlineSource,
     /data-edit-bar-layer-root=\{!rightPaneSlot \|\| undefined\}[\s\S]{0,120}relative[\s\S]{0,120}overflow-hidden/,
@@ -1024,6 +1056,121 @@ test("dock follows the action row and showDetail reveals console without exiting
     inline,
     /data-workspace-pane=\"left\"[\s\S]*data-left-panel=\"tool-detail\"/,
   );
+});
+
+test("docked website bar clears the stage/iframe by a few non-negative px", async () => {
+  window.localStorage.clear();
+  const storageKey = "test:edit-bar:website-adjacency";
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+  // Reproduce V5 geometry: short dock band under taller floating chrome, with
+  // the website iframe flush to the stage top (viewportTop === frameTop).
+  window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
+    if (this.hasAttribute("data-edit-bar-test-root")) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-edit-bar-dock") ||
+      this.hasAttribute("data-edit-bar-dock-sentinel")
+    ) {
+      return {
+        x: 40, y: 52, left: 40, top: 52, right: 960, bottom: 108,
+        width: 920, height: 56, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-edit-bar-test-stage")) {
+      return {
+        x: 40, y: 108, left: 40, top: 108, right: 960, bottom: 560,
+        width: 920, height: 452, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
+      const transform = this.style.transform || "";
+      const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
+      const left = match ? Number(match[1]) : 0;
+      const top = match ? Number(match[2]) : 0;
+      return {
+        x: left, y: top, left, top, right: left + 323, bottom: top + 59,
+        width: 323, height: 59, toJSON() {},
+      };
+    }
+    if (
+      this.hasAttribute("data-workspace-docked-toolbar") ||
+      this.hasAttribute("data-workspace-floating-toolbar")
+    ) {
+      return {
+        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
+        width: 1000, height: 600, toJSON() {},
+      };
+    }
+    return originalRect.call(this);
+  };
+
+  function WebsiteAdjacencyHarness() {
+    const rootRef = useRef(null);
+    const dockRef = useRef(null);
+    const stageRef = useRef(null);
+    const controller = useFloatingContextToolbar({
+      workspaceRootRef: rootRef,
+      stageRef,
+      dockRootRef: dockRef,
+      resetKey: storageKey,
+      storageKey,
+    });
+    return React.createElement(
+      "div",
+      { ref: rootRef, "data-edit-bar-test-root": true },
+      React.createElement("div", {
+        ref: dockRef,
+        "data-workspace-edit-bar-dock": true,
+      }, React.createElement("span", {
+        "data-edit-bar-dock-sentinel": true,
+      })),
+      React.createElement("div", {
+        ref: stageRef,
+        "data-edit-bar-test-stage": true,
+      }),
+      React.createElement(
+        FloatingContextToolbar,
+        { controller, accent: "#0ea5e9" },
+        React.createElement(
+          "div",
+          null,
+          controller.leading,
+          React.createElement("span", null, "website controls"),
+          controller.trailing,
+        ),
+      ),
+    );
+  }
+
+  const mounted = await createMounted(WebsiteAdjacencyHarness);
+  try {
+    await act(async () => {
+      window.dispatchEvent(new window.Event("resize"));
+    });
+    const toolbar = mounted.container.querySelector(
+      "[data-workspace-edit-bar-toolbar]",
+    );
+    assert.ok(toolbar);
+    const transform = toolbar.style.transform || "";
+    const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
+    assert.ok(match, `expected docked translate, got ${transform}`);
+    const barTop = Number(match[2]);
+    const barBottom = barTop + 59;
+    const frameTop = 108;
+    const gap = frameTop - barBottom;
+    assert.ok(
+      gap >= 0 && gap <= 8,
+      `expected website bar clearance 0–8px, got gap=${gap} (barBottom=${barBottom})`,
+    );
+    assert.equal(gap, DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+    await mounted.unmount();
+  }
 });
 
 test("standalone local dock host pins under the action row without SplitWorkspace", async () => {

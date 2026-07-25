@@ -24,6 +24,7 @@ import {
 } from "./edit-bar-dock-state";
 import {
   clampFloatingToolbarToBounds,
+  dockedFloatingToolbarPosition,
   isFloatingToolbarDockIntent,
   sameFloatingToolbarPoint,
   type FloatingToolbarBounds,
@@ -172,22 +173,16 @@ export function useEditBarDockController({
       if (!stage || !toolbar || !layer) return positionRef.current;
       const dockBounds = readDockTargetBounds();
       if (targetMode === "docked" && dockBounds) {
-        return {
-          x:
-            dockBounds.left -
-            layer.left +
-            Math.max(
-              0,
-              (dockBounds.right - dockBounds.left - toolbar.width) / 2,
-            ),
-          y:
-            dockBounds.top -
-            layer.top +
-            Math.max(
-              0,
-              (dockBounds.bottom - dockBounds.top - toolbar.height) / 2,
-            ),
-        };
+        // Sit immediately above the stage/iframe. Vertical centering inside a
+        // short dock sentinel let a taller SelectionToolbar chrome overlap the
+        // website frame (V5 WEBSITE_EDIT_BAR_MISPLACED gap=-3).
+        return dockedFloatingToolbarPosition({
+          layerLeft: layer.left,
+          layerTop: layer.top,
+          dock: dockBounds,
+          stageTop: stage.top,
+          toolbar: { width: toolbar.width, height: toolbar.height },
+        });
       }
       const anchor = defaultPosition();
       const visualViewport =

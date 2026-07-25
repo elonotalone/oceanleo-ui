@@ -15,6 +15,46 @@ export interface FloatingToolbarBounds {
   bottom: number;
 }
 
+/**
+ * Non-negative clearance between a docked edit bar's bottom edge and the
+ * editor stage / website iframe top. V5 adjacency allows gap in [-2, 40];
+ * keep a small positive gap so a taller floating chrome (p-1.5 + h-11 +
+ * border ≈ 58–60px) cannot overlap the frame when the dock band is shorter.
+ */
+export const DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX = 2;
+
+/**
+ * Place a docked toolbar immediately above the editor stage, horizontally
+ * centered in the dock band. Anchoring to stage top (not vertical centering
+ * inside a short sentinel) is what keeps website iframe gap ≥ 0.
+ */
+export function dockedFloatingToolbarPosition({
+  layerLeft,
+  layerTop,
+  dock,
+  stageTop,
+  toolbar,
+  clearancePx = DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX,
+}: {
+  layerLeft: number;
+  layerTop: number;
+  dock: FloatingToolbarBounds;
+  stageTop: number;
+  toolbar: FloatingToolbarSize;
+  clearancePx?: number;
+}): FloatingToolbarPoint {
+  const clearance = Number.isFinite(clearancePx)
+    ? Math.max(0, clearancePx)
+    : DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX;
+  return {
+    x:
+      dock.left -
+      layerLeft +
+      Math.max(0, (dock.right - dock.left - toolbar.width) / 2),
+    y: stageTop - layerTop - toolbar.height - clearance,
+  };
+}
+
 export function sameFloatingToolbarPoint(
   left: FloatingToolbarPoint,
   right: FloatingToolbarPoint,

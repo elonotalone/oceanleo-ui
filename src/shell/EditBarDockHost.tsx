@@ -44,7 +44,9 @@ export function EditBarDockHost({
       } ${
         collapsed
           ? "h-0 min-h-0 overflow-hidden border-0 p-0"
-          : "min-h-[3.5rem] border-b px-2 py-1"
+          : // 4rem fits floating SelectionToolbar chrome (p-1.5 + h-11 + border)
+            // plus a couple px so the reserved band is not shorter than the bar.
+            "min-h-16 border-b px-2 py-1"
       } ${
         highlighted
           ? "border-dashed border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
@@ -61,7 +63,7 @@ export function EditBarDockHost({
         <span
           data-edit-bar-dock-sentinel
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-14"
+          className="pointer-events-none absolute inset-x-0 top-0 h-16"
         />
       )}
       {highlighted && (
