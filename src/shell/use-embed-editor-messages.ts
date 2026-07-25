@@ -4,8 +4,7 @@ import { useEffect, useRef } from "react";
 import { saveCreations, type MediaType } from "../lib/database";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
-  asEditorToHostMessage,
-  isTrustedEditorOrigin,
+  acceptEditorFrameMessage,
   type EditorDocumentRevision,
   type EditorMessageSeverity,
 } from "./editor-protocol";
@@ -169,14 +168,15 @@ export function useEmbedEditorMessages({
   useEffect(() => {
     let active = true;
     const receive = (event: MessageEvent) => {
+      // origin 合法只证明「消息来自该域」。因此除 origin 外还要求 source 是本
+      // frame，且指令必须命中 editor→host 白名单（见 editor-protocol）。
       if (event.source !== iframeRef.current?.contentWindow) return;
-      if (
-        event.origin !== editorOrigin ||
-        !isTrustedEditorOrigin(event.origin)
-      ) {
-        return;
-      }
-      const message = asEditorToHostMessage(event.data, instanceId);
+      if (event.origin !== editorOrigin) return;
+      const message = acceptEditorFrameMessage(event, {
+        expectedOrigin: editorOrigin,
+        frameWindow: iframeRef.current?.contentWindow,
+        instanceId,
+      });
       if (!message) return;
       if (message.type === "ready") {
         setPhase("ready");

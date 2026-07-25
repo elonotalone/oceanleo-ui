@@ -37,11 +37,85 @@ import { brandColorFor, tintOf } from "../lib/brand-color";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  TRUSTED_EMBED_EDITOR_SANDBOX,
+  isTrustedInteractiveViewerUrl,
+} from "./editor-sandbox-origin";
 
 // site_id="agent" 的条目是纯聊天 skill；其余站的条目是有能力的功能区 agent。
 const SKILL_APP_ID = "agent";
 // 「＋ 新建」首卡的哨兵 id（agent / organization / workflow 三个可创建分区共用）。
 const NEW_CARD_ID = "__new__";
+
+// #region workspace-embed-trust
+// UC-3：docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
+// （契约 oceanleo.sandbox-origin.v1 §3 第三档「第一方内嵌」）
+//
+// 子站工作台内嵌 frame（Playground / WorkspaceDetail / WorkspaceShell 三处）的 src
+// **不是**写死字面量：origin 取自消费端注入的 siteOrigin 映射，key 取自后端
+// /v1/agents(/mine) 返回的 site_id。两个输入都不由本包控制，因此「第一方」这件事
+// 必须在渲染前逐个 URL 证明，而不能靠域名后缀或「这里历来只嵌自家站」的惯例。
+//
+// 证明方式：先按固定形状拼出 URL，再用 isTrustedInteractiveViewerUrl 判定
+//（https、无端口、无凭据、host 为 oceanleo.com 及其第一方子域，且显式排除
+// oceanleo.app 与预览/UGC 主机），并额外要求 path 恰为 /workspace。
+// 不通过 → 返回 ""，三处渲染面据此**完全不渲染 frame**（fail closed），
+// 所以 allow-same-origin 永远不可能落到用户内容或 oceanleo.app 沙箱域上。
+// 通过 → 与协议编辑器同档的第一方沙箱（见 WORKSPACE_EMBED_SANDBOX）。
+//
+// 这两件事必须绑定成对：只锁 sandbox 字符串会被「保留 sandbox、改掉来源」绕过，
+// 只锁来源会被「保留来源、松开 sandbox」绕过。回归断言见
+// tests/untrusted-content-sandbox-origin.test.mjs 的 W24 用例。
+export const WORKSPACE_EMBED_PATH = "/workspace";
+
+/**
+ * 第一方子站工作台内嵌 frame 的 sandbox。刻意复用协议编辑器那一档
+ * （W8 的 TRUSTED_EMBED_EDITOR_SANDBOX，单一事实源）：同样是第一方页面、
+ * 同样需要同源才能读会话与 localStorage。它不含 allow-top-navigation*，
+ * 也不含 allow-popups-to-escape-sandbox——子站不得把宿主标签页导航走，
+ * 弹窗也不得脱离沙箱。
+ */
+export const WORKSPACE_EMBED_SANDBOX = TRUSTED_EMBED_EDITOR_SANDBOX;
+
+export interface WorkspaceEmbedAgent {
+  agent_id: string;
+  site_id?: string;
+  fn_id?: string;
+}
+
+/** URL 是否为可信的第一方子站工作台地址（host 判定 + path 必须是 /workspace）。 */
+export function isTrustedWorkspaceEmbedUrl(value: string): boolean {
+  if (!isTrustedInteractiveViewerUrl(value)) return false;
+  try {
+    return new URL(value).pathname === WORKSPACE_EMBED_PATH;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 拼子站工作台内嵌地址。任何无法证明为第一方的结果一律返回 ""（不渲染 frame）。
+ * hasOwnProperty 这道闸门挡的是 site_id 命中 Object.prototype 上的继承属性
+ *（"constructor"、"toString" 之类）后拼出一个相对地址落回宿主 origin。
+ */
+export function workspaceEmbedSrc(
+  siteOrigin: Record<string, string>,
+  agent: WorkspaceEmbedAgent | null,
+): string {
+  if (!agent) return "";
+  const siteId = agent.site_id || "";
+  if (!siteId || !Object.prototype.hasOwnProperty.call(siteOrigin, siteId)) {
+    return "";
+  }
+  const origin = siteOrigin[siteId];
+  if (typeof origin !== "string" || !origin) return "";
+  const fn = agent.fn_id ? `&fn=${encodeURIComponent(agent.fn_id)}` : "";
+  const src = `${origin.replace(/\/+$/, "")}${WORKSPACE_EMBED_PATH}?embed=1&solo=1${fn}&agent=${encodeURIComponent(
+    agent.agent_id,
+  )}`;
+  return isTrustedWorkspaceEmbedUrl(src) ? src : "";
+}
+// #endregion workspace-embed-trust
 
 // 侧栏子栏：doctrine v7 起 playground 的选择全部搬到右侧主区，侧栏不再列东西。
 export function PlaygroundSubNav() {
@@ -230,13 +304,11 @@ export function PlaygroundDetail({
     [agents, activeId],
   );
 
-  const embedSrc = useMemo(() => {
-    if (!active) return "";
-    const origin = siteOrigin[active.site_id];
-    if (!origin) return "";
-    const fn = active.fn_id ? `&fn=${encodeURIComponent(active.fn_id)}` : "";
-    return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(active.agent_id)}`;
-  }, [active, siteOrigin]);
+  // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见本文件 workspace-embed-trust。
+  const embedSrc = useMemo(
+    () => workspaceEmbedSrc(siteOrigin, active),
+    [active, siteOrigin],
+  );
 
   async function addToWorkspace() {
     if (!active || saving) return;
@@ -285,6 +357,8 @@ export function PlaygroundDetail({
               src={embedSrc}
               title={active.name}
               className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+              // UC-3 §8.3：embedSrc 已被证明是第一方子站工作台地址，才配这一档沙箱。
+              sandbox={WORKSPACE_EMBED_SANDBOX}
               allow="clipboard-write; clipboard-read; fullscreen"
               allowFullScreen
             />

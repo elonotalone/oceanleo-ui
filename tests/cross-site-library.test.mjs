@@ -240,6 +240,11 @@ test("only first-party curated video workflows keep an interactive iframe origin
     "utf8",
   );
   assert.match(source, /item\.meta\.asset_type === "video_workflow"/);
-  assert.ok(source.includes('hostname.endsWith(".oceanleo.com")'));
-  assert.match(source, /trustedInteractive \? " allow-same-origin" : ""/);
+  // 域名后缀不再构成信任依据：可信判定与 sandbox 组合都收敛到共享策略，
+  // 预览/UGC 域（oceanleo.app 等）因此拿不到 allow-same-origin。
+  assert.ok(source.includes("isTrustedInteractiveViewerUrl(item.url)"));
+  assert.ok(
+    source.includes("sandbox={webViewerFrameSandbox(trustedInteractive)}"),
+  );
+  assert.equal(source.includes('hostname.endsWith(".oceanleo.com")'), false);
 });

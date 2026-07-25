@@ -10,9 +10,17 @@ type CookieToSet = {
 };
 
 // Keeps the OceanLeo auth session valid on every request and re-writes the auth
-// cookies (httponly, server-set) scoped to .oceanleo.com so the session stays
-// shared across all subdomains. Does NOT redirect — unauthenticated users may
-// freely browse; login is prompted only when an AI action needs it.
+// cookies scoped to .oceanleo.com so the session stays shared across all
+// subdomains. Does NOT redirect — unauthenticated users may freely browse;
+// login is prompted only when an AI action needs it.
+//
+// SESSION MODEL（2026-07-25 更正）：这里写的 cookie **不是 HttpOnly**。
+// 本注释此前把它描述成「服务端下发的 httponly cookie」，那从来就不成立——共享的
+// cookieOptions()（./config）没有 httpOnly，而且也不能有：@supabase/ssr 的
+// createBrowserClient 必须能从 document.cookie 读同一份 session。
+// 所以会话（access token + refresh token）对任何跑在 *.oceanleo.com 页面上的
+// JS 都是可读的，**cookie 的 Domain 是唯一的保护**。不可信 / 用户生成内容
+// 必须留在 oceanleo.com 之外（见 config.ts 顶部的 SESSION MODEL）。
 //
 // Same cookieOptions as the browser client (split-brain guard).
 //
@@ -45,11 +53,22 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet: CookieToSet[]) {
+      setAll(cookiesToSet: CookieToSet[], headers: Record<string, string> = {}) {
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, { ...options, ...opts });
         });
+        // @supabase/ssr 在刷新 token 时会连带下发一组 no-store 头，必须原样落到
+        // response 上：带着 Set-Cookie 的响应一旦被 CDN/反代缓存，下一个访客就会
+        // 拿到别人的 session。之前这个参数被整个忽略了。
+        Object.entries(headers).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        if (Object.keys(headers).length > 0) {
+          // 全家桶跑在 Vercel 上，边缘缓存另看这两个头，跟 applyWorkspacePrivacyHeaders 对齐。
+          response.headers.set("CDN-Cache-Control", "private, no-store");
+          response.headers.set("Vercel-CDN-Cache-Control", "private, no-store");
+        }
       },
     },
   });

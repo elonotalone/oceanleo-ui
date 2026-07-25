@@ -316,6 +316,61 @@ function supportsPdfCover(
   );
 }
 
+/**
+ * UC-1 / UC-3 —— 免沙箱 PDF 封面 frame 的第一方主机白名单。
+ * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1、
+ * §7.5、§8.1、§8.3。
+ *
+ * 与 `library-viewers.tsx` 的同名判定逐字保持一致（本模块被渲染测试以 data: URL
+ * 加载，不能引入相对运行时依赖，因此只能复制而不能 import；两份实现的一致性由
+ * tests/untrusted-content-pdf-frame-host.test.mjs 的源码对账断言锁死）。
+ *
+ * Chromium 内建 PDF 查看器加**任何** sandbox 属性都不渲染（crbug 413851），所以
+ * PDF 封面只能免沙箱。免沙箱 frame 读不到宿主 DOM，但读得到**它自己 origin** 的
+ * cookie，而 `Domain=.oceanleo.com` 的会话 cookie 不是 httpOnly，对任意
+ * `*.oceanleo.com` 主机都是「自己的 cookie」。因此 cookie 域内只放行写死的第一方
+ * rendition 网关（响应带 `Content-Security-Policy: sandbox`，落在 opaque origin），
+ * 域外的对象存储主机本就读不到会话 cookie，用户内容域 `oceanleo.app` 一律挡掉。
+ */
+const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = ["api.oceanleo.com"];
+const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
+  "oceanleo.app",
+];
+const SSO_COOKIE_REGISTRABLE_DOMAIN = "oceanleo.com";
+
+/** 判定 host 是否落在共享 cookie 域内。这是降权判定，不是授信判定。 */
+function isUnderSsoCookieDomain(host: string): boolean {
+  return (
+    host === SSO_COOKIE_REGISTRABLE_DOMAIN ||
+    host.endsWith(`.${SSO_COOKIE_REGISTRABLE_DOMAIN}`)
+  );
+}
+
+export function isSandboxExemptPdfFrameUrl(value: string | undefined): boolean {
+  let parsed: URL;
+  try {
+    // 相对地址证明不了自己落在哪个 origin，一律 fail closed。
+    parsed = new URL(String(value || ""));
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.username || parsed.password || parsed.port) return false;
+  const host = parsed.hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (!host) return false;
+  if (
+    PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS.some(
+      (domain) => host === domain || host.endsWith(`.${domain}`),
+    )
+  ) {
+    return false;
+  }
+  if (isUnderSsoCookieDomain(host)) {
+    return PDF_FRAME_TRUSTED_GATEWAY_HOSTS.includes(host);
+  }
+  return true;
+}
+
 function supportsWebsiteCover(
   artifactType: ArtifactType | undefined,
   kind: LibraryKind,
@@ -412,6 +467,18 @@ export function workspaceCoverPlan({
     };
   }
   if (isPdf(mediaType, format) && supportsPdfCover(artifactType, kind)) {
+    if (!isSandboxExemptPdfFrameUrl(normalizedUrl)) {
+      return {
+        renderer: "unavailable",
+        url: normalizedUrl,
+        mediaType: mediaType || "application/pdf",
+        format: format || "pdf",
+        fit: "contain",
+        sourceAspectRatio: ratio,
+        failureReason:
+          "PDF 封面地址不在第一方渲染网关白名单内；免沙箱 frame 不得加载它。",
+      };
+    }
     return {
       renderer: "pdf",
       url: normalizedUrl,
@@ -663,6 +730,10 @@ export function WorkspaceCoverResource({
     );
   }
   if (plan.renderer === "pdf" || plan.renderer === "website") {
+    // 手工构造的 plan 绕不过白名单：渲染面自己再判一次（UC-1/UC-3）。
+    if (plan.renderer === "pdf" && !isSandboxExemptPdfFrameUrl(plan.url)) {
+      return null;
+    }
     return (
       <iframe
         {...common}
@@ -673,6 +744,10 @@ export function WorkspaceCoverResource({
         title={alt}
         loading="lazy"
         referrerPolicy="no-referrer"
+        // 封面内容一律按不可信处理：allow-same-origin 永不出现（值与
+        // editor-protocol 的 COVER_FRAME_SANDBOX 一致，本模块被渲染测试以
+        // data: URL 加载，不能引入相对运行时依赖）。
+        // sandbox-exempt: pdf-plugin —— PDF 封面加任何 sandbox 都不渲染。
         sandbox={plan.renderer === "website" ? "allow-scripts" : undefined}
         tabIndex={-1}
         onLoad={onReady}

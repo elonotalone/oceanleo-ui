@@ -9,6 +9,10 @@ import {
   type HostToEditorMessage,
 } from "./editor-protocol-types.mjs";
 import {
+  isTrustedEmbedEditorBase,
+  isUntrustedContentHostname,
+} from "./editor-sandbox-origin";
+import {
   boundedRecord,
   boundedString,
   isEditorRecoverySnapshot,
@@ -42,6 +46,7 @@ export type {
   HostToEditorMessage,
 } from "./editor-protocol-types.mjs";
 export { isEditorRecoverySnapshot } from "./editor-protocol-validation.mjs";
+export * from "./editor-sandbox-origin";
 
 export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
 const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
@@ -91,6 +96,7 @@ export function isTrustedEditorOrigin(origin: string): boolean {
     if (parsed.origin !== origin || parsed.username || parsed.password) {
       return false;
     }
+    if (isUntrustedContentHostname(hostname)) return false;
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       return protocol === "http:" || protocol === "https:";
     }
@@ -101,6 +107,66 @@ export function isTrustedEditorOrigin(origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isValidEditorTargetOrigin(origin: string): boolean {
+  // `*` 会把消息广播给任何导航到该 frame 的文档，等于放弃投递方向的校验。
+  return origin !== "*" && isTrustedEditorOrigin(origin);
+}
+
+/** 来自 frame 的消息只允许这些指令；不含任何「代我调用 API」式通用代理。 */
+export const EDITOR_TO_HOST_MESSAGE_TYPES = new Set([
+  "artifact-created",
+  "artifact-updated",
+  "close-request",
+  "dirty",
+  "error",
+  "export-result",
+  "history-changed",
+  "material-result",
+  "project-manifest",
+  "project-result",
+  "ready",
+  "recovery-result",
+  "recovery-snapshot",
+  "selection-changed",
+  "selection-result",
+  "tools-manifest",
+  "viewport-changed",
+]);
+
+export const HOST_TO_EDITOR_MESSAGE_TYPES = new Set([
+  "dispose",
+  "export-request",
+  "init",
+  "material-insert",
+  "open-asset",
+  "project-action",
+  "project-view",
+  "recovery-capture",
+  "recovery-restore",
+  "save-request",
+  "save-result",
+  "selection-command",
+  "set-host-layout",
+  "viewport-command",
+]);
+
+/**
+ * 单一收信闸门：source（必须是本 frame 的 contentWindow）、origin（必须等于
+ * 预期 origin 且仍在受信任集合内）、协议信封与指令白名单，缺一不可。
+ */
+export function acceptEditorFrameMessage(
+  event: { origin: string; source: unknown; data: unknown },
+  gate: { expectedOrigin: string; frameWindow: unknown; instanceId: string },
+): EditorToHostMessage | null {
+  if (!gate.frameWindow || event.source !== gate.frameWindow) return null;
+  if (!gate.expectedOrigin || !isTrustedEditorOrigin(gate.expectedOrigin)) {
+    return null;
+  }
+  if (event.origin !== gate.expectedOrigin) return null;
+  if (!isTrustedEditorOrigin(event.origin)) return null;
+  return asEditorToHostMessage(event.data, gate.instanceId);
 }
 
 export function asEditorToHostMessage(
@@ -117,6 +183,9 @@ export function asEditorToHostMessage(
     return null;
   }
   const type = record.type;
+  if (typeof type !== "string" || !EDITOR_TO_HOST_MESSAGE_TYPES.has(type)) {
+    return null;
+  }
   if (type === "artifact-created" || type === "artifact-updated") {
     const meta = recordValue(record.meta);
     const typedCommit = meta?.requires_typed_artifact_commit === true;
@@ -292,6 +361,9 @@ export function asHostToEditorMessage(
     return null;
   }
   const type = record.type;
+  if (typeof type !== "string" || !HOST_TO_EDITOR_MESSAGE_TYPES.has(type)) {
+    return null;
+  }
   if (type === "save-request") {
     if (!boundedString(record.saveId, 128, true)) return null;
     return record as unknown as HostToEditorMessage;
@@ -428,6 +500,7 @@ export function buildEditorEmbedUrl(
 ): string {
   const url = new URL(base);
   if (
+    !isTrustedEmbedEditorBase(base) ||
     !isTrustedEditorOrigin(url.origin) ||
     !isTrustedEditorOrigin(opts.hostOrigin) ||
     !boundedString(opts.instanceId, 128, true) ||

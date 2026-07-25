@@ -451,6 +451,87 @@ test("scale and crop controls snap only the manipulated edge or corner", () => {
   assert.ok(topScale.y > 0 && bottomScale.y > 0);
 });
 
+test("ml/mr scale near ≤8 CSS latches with zoomFallback and keeps opposite edge", () => {
+  // Production fit: VPT≈identity, controller.zoom≈0.1–0.185, pointerScale≈1.
+  // Side-handle scale must flush the manipulated edge like drag finalize.
+  const doc = { width: 1_280, height: 1_280 };
+  const zoom = 0.1;
+  const viewport = [1, 0, 0, 1, 617, 56];
+  const width = 1_159;
+  const height = 1_280;
+  const nearLeft = 24.5;
+  const screen = imageEdgeSnapScreenScales(viewport, { x: 1, y: 1 }, zoom);
+  assertClose(screen.x, zoom, "zoomFallback is snap screen scale");
+  assert.ok(
+    nearLeft * screen.x <= IMAGE_EDGE_SNAP_ACQUIRE_PX,
+    "seed left is already inside acquire at fit zoom",
+  );
+
+  const leftSnap = resolveImageEdgeSnap({
+    bounds: { left: nearLeft, top: 0, width, height },
+    doc,
+    viewport,
+    edges: imageSnapEdgesForControl("ml"),
+    zoomFallback: zoom,
+    motion: { dx: -8, dy: 0 },
+  });
+  assert.equal(leftSnap.state.x, "left");
+  assertClose(leftSnap.dx, -nearLeft, "ml approach flushes left");
+
+  const multipliers = imageEdgeScaleMultipliers(
+    { width, height },
+    leftSnap,
+    false,
+  );
+  assertClose(multipliers.y, 1, "free ml scale does not change height");
+  const nextWidth = width * multipliers.x;
+  // With origin at right: newLeft = oldRight - nextWidth.
+  const fixedRight = nearLeft + width;
+  const scaledLeft = fixedRight - nextWidth;
+  assertClose(scaledLeft, 0, "ml scale multipliers reach document left");
+  assertClose(multipliers.x, (width + nearLeft) / width, "width grows by gap");
+
+  // Crop with locked ratio still latches the manipulated edge.
+  const cropSnap = resolveImageEdgeSnap({
+    bounds: { left: 4, top: 100, width: 800, height: 600 },
+    doc,
+    viewport,
+    edges: imageSnapEdgesForControl("ml"),
+    zoomFallback: zoom,
+    motion: { dx: -3, dy: 0 },
+  });
+  assert.equal(cropSnap.state.x, "left");
+  const locked = imageEdgeScaleMultipliers(
+    { width: 800, height: 600 },
+    cropSnap,
+    true,
+  );
+  assertClose(locked.x, locked.y, "locked crop scale stays uniform");
+  assert.ok(locked.x > 1, "locked crop expands to absorb left gap");
+
+  const rightGap = 19.5;
+  const rightLeft = doc.width - width - rightGap;
+  const rightSnap = resolveImageEdgeSnap({
+    bounds: { left: rightLeft, top: 0, width, height },
+    doc,
+    viewport,
+    edges: imageSnapEdgesForControl("mr"),
+    zoomFallback: zoom,
+    motion: { dx: 8, dy: 0 },
+  });
+  assert.equal(rightSnap.state.x, "right");
+  const rightMult = imageEdgeScaleMultipliers(
+    { width, height },
+    rightSnap,
+    false,
+  );
+  assertClose(
+    rightLeft + width * rightMult.x,
+    doc.width,
+    "mr scale multipliers reach document right",
+  );
+});
+
 test("Fabric drag and crop/scale hooks share snapping state and preserve Alt object drag", () => {
   const core = readFileSync(
     new URL(

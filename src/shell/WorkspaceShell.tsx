@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentChat } from "./AgentChat";
 import { listMyAgents, type AgentDef } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
+import { WORKSPACE_EMBED_SANDBOX, workspaceEmbedSrc } from "./Playground";
 
 export interface WorkspaceShellProps {
   /** 各 site_id → 该站域名（用于拼 iframe src）。默认 https://<map>。 */
@@ -84,17 +85,14 @@ export function WorkspaceShell({
     [mine, activeId],
   );
 
-  const embedSrc = useMemo(() => {
-    if (!active) return "";
-    const origin = siteOrigin[active.site_id];
-    if (!origin) return "";
-    const fn = active.fn_id ? `&fn=${encodeURIComponent(active.fn_id)}` : "";
-    // solo=1：子站只渲染这一个功能区、隐藏自身功能区按键条（主站这条 agent 行
-    // 已是功能区选择器，不该再带出整站的功能区）。
-    return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(
-      active.agent_id,
-    )}`;
-  }, [active, siteOrigin]);
+  // solo=1：子站只渲染这一个功能区、隐藏自身功能区按键条（主站这条 agent 行
+  // 已是功能区选择器，不该再带出整站的功能区）。
+  // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见 Playground.tsx 的
+  // workspace-embed-trust 区块与 docs/architecture/oceanleo-untrusted-content-isolation.md §8.3。
+  const embedSrc = useMemo(
+    () => workspaceEmbedSrc(siteOrigin, active),
+    [active, siteOrigin],
+  );
 
   return (
     <div className="flex flex-col" style={{ height: `calc(100dvh - ${headerHeight}px)` }}>
@@ -141,6 +139,8 @@ export function WorkspaceShell({
             src={embedSrc}
             title={active.name}
             className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+            // UC-3 §8.3：embedSrc 已被证明是第一方子站工作台地址，才配这一档沙箱。
+            sandbox={WORKSPACE_EMBED_SANDBOX}
             // fullscreen：子站功能区（如画布工作流）内的「全屏」按钮要能调
             // requestFullscreen()，跨源 iframe 必须显式授权 fullscreen，否则被拒。
             allow="clipboard-write; clipboard-read; fullscreen"

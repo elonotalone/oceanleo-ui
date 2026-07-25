@@ -12,9 +12,13 @@ import {
   EDITOR_PROTOCOL,
   asHostToEditorMessage,
   buildEditorEmbedUrl,
-  isTrustedEditorOrigin,
+  isValidEditorTargetOrigin,
   type EditorDocumentRevision,
 } from "./editor-protocol";
+import {
+  embedEditorFrameSandbox,
+  isTrustedEmbedEditorBase,
+} from "./editor-sandbox-origin";
 import type { SelectionContext } from "./selection-context";
 import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
@@ -110,6 +114,8 @@ export function EmbedEditorPane({
 
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
+    // 只有 workbench-routes.ts 写死的白名单 base 能进这条 same-origin 沙箱路径。
+    if (!isTrustedEmbedEditorBase(editorBase)) return "";
     try {
       return buildEditorEmbedUrl(editorBase, {
         instanceId,
@@ -137,18 +143,24 @@ export function EmbedEditorPane({
   ]);
 
   const editorOrigin = useMemo(() => {
+    if (!isTrustedEmbedEditorBase(editorBase)) return "";
     try {
       const origin = new URL(editorBase).origin;
-      return isTrustedEditorOrigin(origin) ? origin : "";
+      return isValidEditorTargetOrigin(origin) ? origin : "";
     } catch {
       return "";
     }
   }, [editorBase]);
 
+  const frameSandbox = useMemo(
+    () => embedEditorFrameSandbox(editorBase),
+    [editorBase],
+  );
+
   const sendToEditor = useCallback(
     (message: Record<string, unknown>) => {
       const frame = iframeRef.current?.contentWindow;
-      if (!frame || !editorOrigin) return false;
+      if (!frame || !isValidEditorTargetOrigin(editorOrigin)) return false;
       const envelope = { ...message, protocol: EDITOR_PROTOCOL, instanceId };
       if (!asHostToEditorMessage(envelope, instanceId)) return false;
       try {
@@ -271,30 +283,33 @@ export function EmbedEditorPane({
       latestSelectionRef.current = null;
       if (disposedRef.current) return;
       disposedRef.current = true;
-      try {
-        for (const command of selectionGateRef.current.cancelAll()) {
+      // targetOrigin 恒为白名单编辑器 origin；地址不受信任时干脆不投递。
+      if (isValidEditorTargetOrigin(editorOrigin)) {
+        try {
+          for (const command of selectionGateRef.current.cancelAll()) {
+            frame?.postMessage(
+              {
+                protocol: EDITOR_PROTOCOL,
+                type: "selection-command",
+                instanceId,
+                command,
+              },
+              editorOrigin,
+            );
+          }
+          // dispose 尽力而为——iframe 可能已卸载。
           frame?.postMessage(
             {
               protocol: EDITOR_PROTOCOL,
-              type: "selection-command",
+              type: "dispose",
               instanceId,
-              command,
+              disposeId,
             },
             editorOrigin,
           );
+        } catch {
+          /* ignore */
         }
-        // dispose 尽力而为——iframe 可能已卸载。
-        frame?.postMessage(
-          {
-            protocol: EDITOR_PROTOCOL,
-            type: "dispose",
-            instanceId,
-            disposeId,
-          },
-          editorOrigin,
-        );
-      } catch {
-        /* ignore */
       }
       selectionGateRef.current.clear();
     };
@@ -541,7 +556,7 @@ export function EmbedEditorPane({
           onBlur={cancelSelectionTransactions}
           title={item.title}
           className="h-full w-full border-0"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"
+          sandbox={frameSandbox}
           allow="clipboard-read; clipboard-write; fullscreen"
           referrerPolicy="strict-origin-when-cross-origin"
         />

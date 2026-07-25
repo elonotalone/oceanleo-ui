@@ -17,7 +17,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import type { ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { BackButton, type PlaygroundBoardCtx } from "./Playground";
+import {
+  BackButton,
+  WORKSPACE_EMBED_SANDBOX,
+  workspaceEmbedSrc,
+  type PlaygroundBoardCtx,
+} from "./Playground";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
@@ -246,13 +251,12 @@ export function WorkspaceDetail({
     [mine, sel],
   );
 
-  const embedSrc = useMemo(() => {
-    if (!active) return "";
-    const origin = siteOrigin[active.site_id];
-    if (!origin) return "";
-    const fn = active.fn_id ? `&fn=${encodeURIComponent(active.fn_id)}` : "";
-    return `${origin}/workspace?embed=1&solo=1${fn}&agent=${encodeURIComponent(active.agent_id)}`;
-  }, [active, siteOrigin]);
+  // UC-3：src 只能来自 workspaceEmbedSrc 的第一方判定，见 Playground.tsx 的
+  // workspace-embed-trust 区块与 docs/architecture/oceanleo-untrusted-content-isolation.md §8.3。
+  const embedSrc = useMemo(
+    () => workspaceEmbedSrc(siteOrigin, active),
+    [active, siteOrigin],
+  );
 
   // 顶部 tab 条（目录页 + organization/workflow 早返回共用）。「skill」标签正名为「agent」。
   const TABS: { id: WorkspaceTab; label: string }[] = [
@@ -307,6 +311,8 @@ export function WorkspaceDetail({
               src={embedSrc}
               title={active.name}
               className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+              // UC-3 §8.3：embedSrc 已被证明是第一方子站工作台地址，才配这一档沙箱。
+              sandbox={WORKSPACE_EMBED_SANDBOX}
               allow="clipboard-write; clipboard-read; fullscreen"
               allowFullScreen
             />

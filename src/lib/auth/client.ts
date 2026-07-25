@@ -13,6 +13,10 @@ import {
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
 // session in a cookie scoped to .oceanleo.com (NOT localStorage), so a login on
 // ANY *.oceanleo.com subdomain is instantly recognized on every other one.
+//
+// 这个客户端就是 cookie 不能是 HttpOnly 的原因：它通过 document.cookie 读写
+// session。会话对同域 JS 可读是既定设计的代价，域边界是唯一的保护。
+// 见 config.ts 顶部的 SESSION MODEL。
 
 let _client: SupabaseClient | null = null;
 let _accessToken: string | null = null;
@@ -135,9 +139,20 @@ export async function wechatLoginUrl(redirect?: string): Promise<{ url?: string;
 
 export async function signOutEverywhere(): Promise<void> {
   const c = browserClient();
+  if (!c) {
+    _accessToken = null;
+    return;
+  }
   // `global` scope revokes the refresh token server-side; the shared cookie is
   // cleared with the same cookieOptions used to set it, so all *.oceanleo.com
   // sites see the logout.
-  await c?.auth.signOut({ scope: "global" });
+  const { error } = await c.auth.signOut({ scope: "global" });
+  if (error) {
+    // 上游 _signOut 在吊销请求失败时（网络/网关抖动，非 401/403/404）直接返回
+    // 错误，**不会**清本地 session —— 用户点了退出，cookie 却还在，31 个站仍是
+    // 登录态。这里兜底做一次本地登出，至少把这台设备上的会话清掉。
+    // 注意：服务端 refresh token 此时仍然有效（见 residual risk）。
+    await c.auth.signOut({ scope: "local" }).catch(() => {});
+  }
   _accessToken = null;
 }

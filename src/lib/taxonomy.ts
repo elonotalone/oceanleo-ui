@@ -85,6 +85,19 @@ export const CONTENTS: TaxonomyOption[] = [
   { id: "other", label: "其它", icon: "🗂️" },
 ];
 
+// ── 命名空间约定（2026-07-25 扩站后必须分清，否则很容易改错）─────────────────
+// 本文件同时出现三套 id，字面可能撞名但语义完全不同：
+//   1) **站 key**（site_id）：lib/sites.tsx 的 `Site.key`，如 "finance" / "med"。
+//      只作为下面 SITE_* 三张表的【键】。
+//   2) **行业 id**（IndustryId）：本文件自有枚举，如 "finance" / "health" / "life"。
+//      只作为 SITE_INDUSTRY / CATEGORY_INDUSTRY 的【值】与 INDUSTRIES 的 id。
+//   3) **分区 id**（sites.tsx 的 CategoryId）：如 "office" / "life"。
+//      只作为 CATEGORY_* 两张表的【键】。
+// 于是 `finance: "finance"`（站 key → 行业 id）、`life: "life"`（分区 id → 行业 id）
+// 这类自映射是**正常且正确**的，不是复制粘贴错误。反过来，任何把站 key 当行业 id
+// 比较（如 `industryOf(x) === "med"`）或把行业 id 当站 key 查表（如
+// `SITE_INDUSTRY["health"]`）的写法都是 bug——industryOf/contentOf 的返回值只可能
+// 是 IndustryId/ContentId，永远不是站 key。
 // site_id → 行业。覆盖到具体产品站，未列出的回退到 category 推断、再回退 "other"。
 const SITE_INDUSTRY: Record<string, IndustryId> = {
   image: "media",
@@ -107,15 +120,23 @@ const SITE_INDUSTRY: Record<string, IndustryId> = {
   paper: "research",
   law: "law",
   study: "education",
+  edu: "education", // 2026-07-25 补：edu 站上线时漏登记，一直只能靠 category 兜底。
   novel: "media",
   script: "film",
-  money: "finance",
+  finance: "finance", // 左=站 key（LeoFinance），右=行业 id（金融）。同名不同空间。
+  med: "health",
+  travel: "life",
+  notebook: "tools",
   search: "tools",
   chat: "tools",
   website: "internet",
   agent: "tools",
   crm: "internet",
   asset: "media",
+  // 遗留站 key 别名：DB 里 leo_sites / agents / my_apps 仍有 site_id="money" 的历史行
+  // （历史计费键 olctx:v1:money:* 有意不回填）。留着别名，旧行不会掉进 "other"。
+  // 回填完成后可由父任务统一删。
+  money: "finance",
   // 开源行业站（Track F）。
   wiki: "tools",
   helpdesk: "life",
@@ -149,15 +170,21 @@ const SITE_CONTENT: Record<string, ContentId> = {
   paper: "doc",
   law: "doc",
   study: "doc",
+  edu: "doc", // 2026-07-25 补：同 SITE_INDUSTRY，edu 站上线时漏登记。
   novel: "doc",
   script: "doc",
-  money: "data",
+  finance: "data", // 记账 / 预算 / 计算器，产出是结构化数据。
+  med: "doc", // 体检报告解读，产出是解读报告文档。
+  travel: "doc", // 结构化行程，产出是可导出的行程文档。
+  notebook: "doc", // 私有知识库带引用问答，产出是文档。
   search: "chat",
   chat: "chat",
   website: "web",
   agent: "chat",
   crm: "data",
   asset: "image",
+  // 遗留站 key 别名，同 SITE_INDUSTRY。
+  money: "data",
   // 开源行业站（Track F）。
   wiki: "doc",
   helpdesk: "chat",
@@ -178,8 +205,10 @@ const CATEGORY_INDUSTRY: Record<string, IndustryId> = {
   search: "tools",
   audio: "film",
   agent: "internet",
-  money: "finance",
+  life: "life", // 分区 id `life`（生活服务，2026-07-25 由 `money`/生活理财更名）→ 行业 id `life`。
   discover: "tools",
+  // 遗留分区 id 别名：DB 里的历史行仍带 category="money"。回填后可删。
+  money: "finance",
 };
 
 const CATEGORY_CONTENT: Record<string, ContentId> = {
@@ -189,8 +218,10 @@ const CATEGORY_CONTENT: Record<string, ContentId> = {
   search: "chat",
   audio: "audio",
   agent: "chat",
-  money: "data",
+  life: "doc", // 该分区含 finance(data)/med(doc)/travel(doc)，站未命中时按文档兜底。
   discover: "web",
+  // 遗留分区 id 别名，同 CATEGORY_INDUSTRY。
+  money: "data",
 };
 
 // ── agent（LeoAgent，site_id="agent"）专用分类映射（重分类 2026-07-03）───────────
@@ -353,12 +384,18 @@ const SITE_SKILL_CATEGORIES: Record<string, string[]> = {
   paper: ["学术教育", "数据智能"],
   law: ["法律行政"],
   study: ["学术教育"],
+  edu: ["学术教育", "文档办公"], // 2026-07-25 补：edu 站上线时漏登记。
   novel: ["内容创作"],
   script: ["内容创作", "游戏空间"],
-  money: ["金融投资", "数据智能"],
+  finance: ["金融投资", "数据智能"],
+  med: ["生活服务"],
+  travel: ["生活服务"],
+  notebook: ["文档办公", "学术教育", "数据智能"],
   search: ["数据智能", "技术工程"],
   chat: ["客户服务", "运营人力"],
   website: ["技术工程", "产品设计"],
+  // 遗留站 key 别名，同 SITE_INDUSTRY。
+  money: ["金融投资", "数据智能"],
   // 主站全家桶聚合站可展示全部，故不在这里限制（传 [] 表示不过滤）。
 };
 

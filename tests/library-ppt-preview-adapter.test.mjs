@@ -243,6 +243,12 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
   const artifactContractStubUrl = dataModule(`
     export function isArtifactSourceTreeUrl() { return false; }
   `);
+  const sandboxOriginStubUrl = dataModule(`
+    export function isTrustedInteractiveViewerUrl() { return false; }
+    export function webViewerFrameSandbox() {
+      return "allow-scripts allow-forms allow-popups allow-downloads";
+    }
+  `);
   const layoutStubUrl = dataModule(`
     import React from ${JSON.stringify(reactUrl)};
     export function deckPreviewLogicalSize(aspectRatio = 16 / 9) {
@@ -327,6 +333,7 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
     "./ArtifactRendition": renditionStubUrl,
     "./artifact-client": artifactClientStubUrl,
     "./artifact-contract": artifactContractStubUrl,
+    "./editor-sandbox-origin": sandboxOriginStubUrl,
     "./doc-editors/office-file": officeStubUrl,
     "./doc-editors/DeckPreviewLayout": layoutStubUrl,
     "pptx-preview": pptxStubUrl,
