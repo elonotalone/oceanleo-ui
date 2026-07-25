@@ -47,6 +47,10 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   assert.match(stage, /图片编辑画布/);
   assert.match(stage, /data-editor-unlocked-image-count/);
   assert.match(stage, /data-layer-id=\{preferredUnlockedImageId\}/);
+  assert.match(stage, /data-editor-geometry-readback/);
+  assert.match(stage, /data-selection-control-id=\{id\}/);
+  assert.match(stage, /"position-x"/);
+  assert.match(stage, /"object-width"/);
   assert.match(hook, /persistImageProject/);
   assert.match(hook, /saveLocalImageDraft/);
   assert.match(hook, /loadEditableImageProject/);

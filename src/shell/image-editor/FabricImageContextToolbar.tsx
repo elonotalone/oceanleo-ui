@@ -443,6 +443,8 @@ export function FabricImageContextToolbar({
       controls.push(...fabricImageFilterControls(filters, tt));
     }
     if (selected) {
+      // Compact primary geometry — V3 primaryReadback expects live
+      // data-selection-control-id number inputs (not inspector-only panels).
       controls.push(
         {
           id: "position-x",
@@ -450,11 +452,8 @@ export function FabricImageContextToolbar({
           label: "X",
           value: selected.x,
           step: 1,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "image-transform",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
+          placement: "primary",
+          semantic: "position",
         },
         {
           id: "position-y",
@@ -462,11 +461,8 @@ export function FabricImageContextToolbar({
           label: "Y",
           value: selected.y,
           step: 1,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "image-transform",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
+          placement: "primary",
+          semantic: "position",
         },
         {
           id: "object-width",
@@ -475,11 +471,8 @@ export function FabricImageContextToolbar({
           value: selected.width,
           min: 1,
           step: 1,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "image-transform",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
+          placement: "primary",
+          semantic: "position",
         },
         {
           id: "object-height",
@@ -488,11 +481,8 @@ export function FabricImageContextToolbar({
           value: selected.height,
           min: 1,
           step: 1,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "image-transform",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
+          placement: "primary",
+          semantic: "position",
         },
         {
           id: "lock",

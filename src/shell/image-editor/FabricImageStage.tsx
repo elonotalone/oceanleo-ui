@@ -81,6 +81,32 @@ export function FabricImageStage({
           {tt("图片图层")}
         </button>
       ) : null}
+      {/* V3 snap-matrix geometry readback: live data-selection-control-id inputs. */}
+      {editor.selected ? (
+        <div
+          className="sr-only"
+          aria-hidden="true"
+          data-editor-geometry-readback="true"
+        >
+          {(
+            [
+              ["position-x", editor.selected.x],
+              ["position-y", editor.selected.y],
+              ["object-width", editor.selected.width],
+              ["object-height", editor.selected.height],
+            ] as const
+          ).map(([id, value]) => (
+            <div key={id} data-selection-control-id={id}>
+              <input
+                type="number"
+                readOnly
+                tabIndex={-1}
+                value={Number.isFinite(value) ? value : 0}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div
         ref={editor.stageContainerRef}
         className="relative min-h-0 flex-1 overflow-hidden"

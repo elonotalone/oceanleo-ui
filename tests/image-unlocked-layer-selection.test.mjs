@@ -119,6 +119,11 @@ test("Fabric stage and layer list expose unlocked image selection hooks for V3",
   assert.match(stage, /data-layer-id=\{preferredUnlockedImageId\}/);
   assert.match(stage, /解锁图片图层/);
   assert.match(stage, /图片图层/);
+  assert.match(stage, /data-editor-geometry-readback/);
+  assert.match(stage, /\["position-x", editor\.selected\.x\]/);
+  assert.match(stage, /\["position-y", editor\.selected\.y\]/);
+  assert.match(stage, /\["object-width", editor\.selected\.width\]/);
+  assert.match(stage, /\["object-height", editor\.selected\.height\]/);
   assert.match(controls, /data-layer-id=\{layer\.id\}/);
   assert.match(controls, /data-layer-locked=\{layer\.locked \? "true" : "false"\}/);
   assert.match(controls, /data-layer-background=\{layer\.isBackground \? "true" : "false"\}/);
@@ -127,4 +132,15 @@ test("Fabric stage and layer list expose unlocked image selection hooks for V3",
   assert.match(policy, /perPixelTargetFind:\s*false/);
   assert.match(runtime, /export function preferredUnlockedImageLayerId/);
   assert.match(runtime, /export function preferUnlockedImageObject/);
+  const toolbar = source(
+    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+  );
+  for (const id of [
+    "position-x",
+    "position-y",
+    "object-width",
+    "object-height",
+  ]) {
+    assert.match(toolbar, new RegExp(`id: "${id}"[\\s\\S]*?placement: "primary"`));
+  }
 });

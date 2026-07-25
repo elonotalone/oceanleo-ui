@@ -74,12 +74,33 @@ test("route toolbars put continuous and long-form controls in semantic inspector
       "stroke-width",
       "radius",
       "angle",
+    ],
+  );
+  // Image X/Y/W/H must stay compact primary for V3 snap-matrix geometry
+  // readback (data-selection-control-id number inputs), not inspector-only.
+  {
+    const toolbar = source(
+      "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    );
+    for (const id of [
       "position-x",
       "position-y",
       "object-width",
       "object-height",
-    ],
-  );
+    ]) {
+      const block = controlBlock(toolbar, id);
+      assert.doesNotMatch(
+        block,
+        /slot:\s*"inspector"/,
+        `${id} must remain compact for geometry readback`,
+      );
+      assert.match(
+        block,
+        /placement:\s*"primary"/,
+        `${id} must be primary so it is not overflow-only`,
+      );
+    }
+  }
   assertInspectorControls(
     "../src/shell/image-editor/fabric-image-filter-controls.ts",
     ["brightness", "contrast", "saturation", "grayscale", "filter-reset"],
