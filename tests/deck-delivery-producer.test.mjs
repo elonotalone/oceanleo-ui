@@ -153,7 +153,7 @@ function producerDependencies({
   return {
     now: () => fixedNow,
     uploadFile: async (file, options) => {
-      const project = options.idempotencyKey.endsWith(":project");
+      const project = /:project(?::|$)/.test(options.idempotencyKey);
       events.push(project ? "upload:project" : "upload:delivery");
       uploadSequence += 1;
       const contentDigest = await digest(file);

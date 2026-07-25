@@ -84,6 +84,8 @@ test("project autosave keeps one stable creation URL with an explicit blank fall
   assert.match(io, /editor_project_url: projectUrl/);
   assert.match(io, /editor_working_head_url: url/);
   assert.match(io, /editor_working_head_uses_project_url/);
+  assert.match(io, /uploadIdempotencyKey/);
+  assert.match(io, /:project:\$\{|role: "project"/);
   assert.match(
     io,
     /reuseEditorWorkingHead[\s\S]*safePreparedUrl\(projectUrl\)/,
@@ -91,6 +93,10 @@ test("project autosave keeps one stable creation URL with an explicit blank fall
   assert.match(
     io,
     /Shelf\/public binary sources are not creation keys|HTTP 409/,
+  );
+  assert.match(
+    io,
+    /Bind upload CAS keys to content digest|different digest/,
   );
 });
 

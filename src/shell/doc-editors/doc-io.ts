@@ -285,6 +285,22 @@ function uploadReceiptDigest(file: unknown): string {
   );
 }
 
+/**
+ * Bind upload CAS keys to content digest. Revision-only keys collide across
+ * sessions (local counters restart at 0) and across AdvancedPersistenceController
+ * retries that rebuild project JSON with a fresh updatedAt — same key + different
+ * digest → POST /v1/database/upload HTTP 409.
+ */
+function uploadIdempotencyKey(
+  base: string,
+  role: "project" | "delivery",
+  digest: string,
+): string {
+  const token = normalizedDigest(digest).slice(0, 24);
+  const suffix = token || `u${Date.now().toString(36)}`;
+  return `${boundedText(base, 140)}:${role}:${suffix}`.slice(0, 200);
+}
+
 function preparedUploadFrom(
   file: unknown,
   url: string,
@@ -419,13 +435,23 @@ export async function saveFileToLibraryWithDependencies(
         `${input.title}.oceanleo-project.json`,
         { type: "application/json" },
       );
+      let digest = "";
+      try {
+        digest = await sha256Blob(projectFile);
+      } catch (caught) {
+        return finish({ ok: false, error: resultError(caught) });
+      }
       let projectUpload: Awaited<ReturnType<typeof uploadFile>>;
       try {
         projectUpload = await dependencies.uploadFile(projectFile, {
           siteId: site,
           title: `${input.title}工程`,
           registerAsset: false,
-          idempotencyKey: `${input.idempotencyKey}:project`,
+          idempotencyKey: uploadIdempotencyKey(
+            input.idempotencyKey,
+            "project",
+            digest,
+          ),
         });
       } catch (caught) {
         return finish({ ok: false, error: resultError(caught) });
@@ -438,7 +464,6 @@ export async function saveFileToLibraryWithDependencies(
         });
       }
       try {
-        const digest = await sha256Blob(projectFile);
         preparedProject = {
           ...preparedUploadFrom(projectUpload.data?.file, projectUrl, digest),
           schema: projectSchema,
@@ -538,7 +563,11 @@ export async function saveFileToLibraryWithDependencies(
           siteId: site,
           title: input.title,
           registerAsset: false,
-          idempotencyKey: `${input.idempotencyKey}:delivery`,
+          idempotencyKey: uploadIdempotencyKey(
+            input.idempotencyKey,
+            "delivery",
+            digest,
+          ),
         });
       } catch (caught) {
         return finish({ ok: false, error: resultError(caught) });
