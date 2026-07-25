@@ -1,12 +1,34 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   countUnlockedImageLayers,
   preferredUnlockedImageLayerId,
 } from "./editor-runtime";
 import type { FabricImageEditorState } from "./types";
+
+type GeometryProbe = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function finiteGeometry(
+  selected: FabricImageEditorState["selected"],
+): GeometryProbe | null {
+  if (!selected) return null;
+  const { x, y, width, height } = selected;
+  if (
+    ![x, y, width, height].every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    )
+  ) {
+    return null;
+  }
+  return { x, y, width, height };
+}
 
 export function FabricImageStage({
   editor,
@@ -18,6 +40,12 @@ export function FabricImageStage({
   const tt = useUI();
   const unlockedImageCount = countUnlockedImageLayers(editor.layers);
   const preferredUnlockedImageId = preferredUnlockedImageLayerId(editor.layers);
+  const liveGeometry = finiteGeometry(editor.selected);
+  const lastGeometryRef = useRef<GeometryProbe | null>(null);
+  if (liveGeometry) lastGeometryRef.current = liveGeometry;
+  // Keep last finite geometry mounted across reselect / crop enter / zoom flickers
+  // so V3 read_geometry never sees all-null mid-matrix.
+  const geometryProbe = liveGeometry ?? lastGeometryRef.current;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -81,19 +109,20 @@ export function FabricImageStage({
           {tt("图片图层")}
         </button>
       ) : null}
-      {/* V3 snap-matrix geometry readback: live data-selection-control-id inputs. */}
-      {editor.selected ? (
+      {/* Durable V3 geometry readback — stays mounted with last finite values. */}
+      {geometryProbe ? (
         <div
           className="sr-only"
           aria-hidden="true"
           data-editor-geometry-readback="true"
+          data-editor-geometry-live={liveGeometry ? "true" : "false"}
         >
           {(
             [
-              ["position-x", editor.selected.x],
-              ["position-y", editor.selected.y],
-              ["object-width", editor.selected.width],
-              ["object-height", editor.selected.height],
+              ["position-x", geometryProbe.x],
+              ["position-y", geometryProbe.y],
+              ["object-width", geometryProbe.width],
+              ["object-height", geometryProbe.height],
             ] as const
           ).map(([id, value]) => (
             <div key={id} data-selection-control-id={id}>
@@ -101,7 +130,7 @@ export function FabricImageStage({
                 type="number"
                 readOnly
                 tabIndex={-1}
-                value={Number.isFinite(value) ? value : 0}
+                value={value}
               />
             </div>
           ))}

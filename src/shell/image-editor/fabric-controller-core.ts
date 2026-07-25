@@ -115,6 +115,10 @@ export class FabricEditorCore {
   private panning = false;
   private imageEdgeSnapTarget: FabricObject | null = null;
   private imageEdgeSnapState: ImageEdgeSnapState = emptyImageEdgeSnapState();
+  private imageEdgeSnapPrevBounds: {
+    left: number;
+    top: number;
+  } | null = null;
   private restoreAbort: AbortController | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeFrame = 0;
@@ -150,20 +154,34 @@ export class FabricEditorCore {
   private resetImageEdgeSnap(target: FabricObject | null = null): void {
     this.imageEdgeSnapTarget = target;
     this.imageEdgeSnapState = emptyImageEdgeSnapState();
+    this.imageEdgeSnapPrevBounds = null;
   }
 
   private canSnapImageEdges(target: FabricObject): boolean {
     if (roleOf(target) === "crop") return true;
+    const editor = target as EditorObject;
+    const isImage =
+      target instanceof this.fabric.FabricImage ||
+      editor.oceanleoKind === "image";
     return (
-      target instanceof this.fabric.FabricImage &&
+      isImage &&
       objectIsEditable(target) &&
       this.canMutateObject(target, "geometry")
     );
   }
 
+  private eventRequestsSnapBypass(event: Event | undefined): boolean {
+    return Boolean(
+      event &&
+        typeof event === "object" &&
+        "altKey" in event &&
+        (event as { altKey?: boolean }).altKey === true,
+    );
+  }
+
   private resolveImageEdgeSnapForTarget(
     target: FabricObject,
-    event: Event,
+    event: Event | undefined,
     edges?: readonly ImageCanvasEdge[],
   ): {
     bounds: ReturnType<FabricObject["getBoundingRect"]>;
@@ -176,21 +194,31 @@ export class FabricEditorCore {
     if (this.imageEdgeSnapTarget !== target) this.resetImageEdgeSnap(target);
     target.setCoords();
     const bounds = target.getBoundingRect();
+    const prev = this.imageEdgeSnapPrevBounds;
     const snapped = resolveImageEdgeSnap({
       bounds,
       doc: this.doc,
       viewport: this.canvas.viewportTransform,
       previous: this.imageEdgeSnapState,
       edges,
-      bypass: "altKey" in event && event.altKey === true,
+      bypass: this.eventRequestsSnapBypass(event),
+      motion: prev
+        ? { dx: bounds.left - prev.left, dy: bounds.top - prev.top }
+        : { dx: 0, dy: 0 },
     });
     this.imageEdgeSnapState = snapped.state;
     return { bounds, snapped };
   }
 
+  private rememberImageEdgeSnapBounds(target: FabricObject): void {
+    target.setCoords();
+    const bounds = target.getBoundingRect();
+    this.imageEdgeSnapPrevBounds = { left: bounds.left, top: bounds.top };
+  }
+
   private snapImageMoveEdges(
     target: FabricObject,
-    event: Event,
+    event: Event | undefined,
   ): void {
     const resolution = this.resolveImageEdgeSnapForTarget(target, event);
     if (!resolution) return;
@@ -202,11 +230,12 @@ export class FabricEditorCore {
       });
       target.setCoords();
     }
+    this.rememberImageEdgeSnapBounds(target);
   }
 
   private snapImageScaleEdges(
     target: FabricObject,
-    event: Event,
+    event: Event | undefined,
     transform: Transform,
   ): void {
     const resolution = this.resolveImageEdgeSnapForTarget(
@@ -226,7 +255,10 @@ export class FabricEditorCore {
           transform.shiftKey,
         ),
     );
-    if (multipliers.x === 1 && multipliers.y === 1) return;
+    if (multipliers.x === 1 && multipliers.y === 1) {
+      this.rememberImageEdgeSnapBounds(target);
+      return;
+    }
 
     const fixedPoint = target.getPointByOrigin(
       transform.originX,
@@ -254,6 +286,7 @@ export class FabricEditorCore {
       });
       target.setCoords();
     }
+    this.rememberImageEdgeSnapBounds(target);
   }
 
   private bindEvents(): void {
@@ -287,6 +320,8 @@ export class FabricEditorCore {
           constrainCropToDoc(target, this.doc);
         }
         this.snapImageMoveEdges(target, e);
+        // Keep V3 geometry probe live across the gesture (no null mid-drag).
+        this.emit();
       }),
       this.canvas.on("object:scaling", ({ target, transform, e }) => {
         if (roleOf(target) === "crop") {
@@ -308,6 +343,7 @@ export class FabricEditorCore {
           constrainCropToDoc(target, this.doc);
         }
         this.snapImageScaleEdges(target, e, transform);
+        this.emit();
       }),
       this.canvas.on("path:created", ({ path }) => {
         const erasing = this.activeTool === "erase";
@@ -478,9 +514,14 @@ export class FabricEditorCore {
 
   private readView(): FabricControllerView {
     const active = this.canvas.getActiveObject();
-    const selected = objectIsEditable(active)
-      ? buildSelectedSnapshot(this.fabric, active)
-      : null;
+    // Crop is excluded from objectIsEditable, but V3 snap-matrix still needs
+    // finite X/Y/W/H while the crop rect is the active object.
+    // Guard `active` first so TS narrows through the crop branch (getActiveObject
+    // is FabricObject | undefined; `&& active` after roleOf does not narrow).
+    const selected =
+      active && (objectIsEditable(active) || roleOf(active) === "crop")
+        ? buildSelectedSnapshot(this.fabric, active)
+        : null;
     const selectedId = selected?.id ?? "";
     const layers = this.canvas
       .getObjects()

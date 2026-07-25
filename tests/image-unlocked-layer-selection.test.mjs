@@ -120,10 +120,12 @@ test("Fabric stage and layer list expose unlocked image selection hooks for V3",
   assert.match(stage, /解锁图片图层/);
   assert.match(stage, /图片图层/);
   assert.match(stage, /data-editor-geometry-readback/);
-  assert.match(stage, /\["position-x", editor\.selected\.x\]/);
-  assert.match(stage, /\["position-y", editor\.selected\.y\]/);
-  assert.match(stage, /\["object-width", editor\.selected\.width\]/);
-  assert.match(stage, /\["object-height", editor\.selected\.height\]/);
+  assert.match(stage, /lastGeometryRef/);
+  assert.match(stage, /geometryProbe/);
+  assert.match(stage, /\["position-x", geometryProbe\.x\]/);
+  assert.match(stage, /\["position-y", geometryProbe\.y\]/);
+  assert.match(stage, /\["object-width", geometryProbe\.width\]/);
+  assert.match(stage, /\["object-height", geometryProbe\.height\]/);
   assert.match(controls, /data-layer-id=\{layer\.id\}/);
   assert.match(controls, /data-layer-locked=\{layer\.locked \? "true" : "false"\}/);
   assert.match(controls, /data-layer-background=\{layer\.isBackground \? "true" : "false"\}/);

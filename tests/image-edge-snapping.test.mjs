@@ -137,6 +137,66 @@ test("Alt-style deliberate bypass clears the latch and movement stays free away 
   );
 });
 
+test("near-full-bleed drag prefers the approached edge over opposite-edge corridors", () => {
+  // Object nearly fills the document: free travel is only 121 logical px while
+  // fit-zoom acquire (~8 CSS) spans ~43 logical — opposite corridors collide.
+  const docBleed = { width: 1_280, height: 1_280 };
+  const zoom = 239 / 1_280;
+  const viewport = [zoom, 0, 0, zoom, 100, 50];
+  const width = 1_159;
+  const height = 1_280;
+
+  // Moving left through the right corridor must not yank to the right edge.
+  const towardLeft = resolveImageEdgeSnap({
+    bounds: { left: 100, top: 0, width, height },
+    doc: docBleed,
+    viewport,
+    motion: { dx: -12, dy: 0 },
+  });
+  assert.equal(towardLeft.state.x, null, "leftward motion ignores right corridor");
+  assert.equal(towardLeft.dx, 0);
+
+  // Inside left acquire while still moving left → snap left to 0.
+  const nearLeft = resolveImageEdgeSnap({
+    bounds: { left: 23.5, top: 0, width, height },
+    doc: docBleed,
+    viewport,
+    motion: { dx: -8, dy: 0 },
+  });
+  assert.equal(nearLeft.state.x, "left");
+  assertClose(nearLeft.dx, -23.5, "near left acquires");
+
+  // Latched right, but motion leaves toward left → drop latch and allow left.
+  const heldRight = resolveImageEdgeSnap({
+    bounds: { left: 100, top: 0, width, height },
+    doc: docBleed,
+    viewport,
+    previous: { x: "right", y: null },
+    motion: { dx: 0, dy: 0 },
+  });
+  assert.equal(heldRight.state.x, "right", "hysteresis still holds without motion");
+
+  const leaveRight = resolveImageEdgeSnap({
+    bounds: { left: 40, top: 0, width, height },
+    doc: docBleed,
+    viewport,
+    previous: { x: "right", y: null },
+    motion: { dx: -20, dy: 0 },
+  });
+  assert.equal(leaveRight.state.x, "left", "leftward motion releases opposite latch");
+  assertClose(leaveRight.dx, -40, "then acquires the approached left edge");
+
+  // Symmetric: approaching right must not stick to left.
+  const nearRight = resolveImageEdgeSnap({
+    bounds: { left: 100, top: 0, width, height },
+    doc: docBleed,
+    viewport,
+    motion: { dx: 10, dy: 0 },
+  });
+  assert.equal(nearRight.state.x, "right");
+  assertClose(nearRight.dx, 21, "near right acquires to doc flush");
+});
+
 test("scale and crop controls snap only the manipulated edge or corner", () => {
   assert.deepEqual(imageSnapEdgesForControl("tl"), ["left", "top"]);
   assert.deepEqual(imageSnapEdgesForControl("tr"), ["right", "top"]);
@@ -263,13 +323,20 @@ test("Fabric drag and crop/scale hooks share snapping state and preserve Alt obj
     core,
     /target instanceof this\.fabric\.FabricImage[\s\S]*?canMutateObject\(target, "geometry"\)/,
   );
-  assert.match(
-    core,
-    /bypass: "altKey" in event && event\.altKey === true/,
-  );
+  assert.match(core, /eventRequestsSnapBypass\(event\)/);
+  assert.match(core, /oceanleoKind === "image"/);
+  assert.match(core, /motion:\s*prev/);
   assert.match(
     core,
     /mouse:down[\s\S]*?target && this\.canSnapImageEdges\(target\)[\s\S]*?altPan = e\.altKey && !snapBypassTarget/,
   );
   assert.match(core, /object:modified[\s\S]*?resetImageEdgeSnap\(\)/);
+  assert.match(
+    core,
+    /object:moving[\s\S]*?snapImageMoveEdges[\s\S]*?this\.emit\(\)/,
+  );
+  assert.match(
+    core,
+    /roleOf\(active\) === "crop"[\s\S]*?buildSelectedSnapshot/,
+  );
 });

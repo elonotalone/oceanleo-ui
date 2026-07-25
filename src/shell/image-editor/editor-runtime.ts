@@ -70,10 +70,11 @@ export function emptyImageEdgeSnapState(): ImageEdgeSnapState {
  * through the viewport's axis scales so magnetic thresholds stay in CSS pixels.
  */
 export function viewportAxisScales(
-  viewport: readonly number[],
+  viewport: readonly number[] | null | undefined,
 ): { x: number; y: number } {
-  const x = Math.hypot(viewport[0] ?? 1, viewport[1] ?? 0);
-  const y = Math.hypot(viewport[2] ?? 0, viewport[3] ?? 1);
+  const matrix = viewport ?? [1, 0, 0, 1, 0, 0];
+  const x = Math.hypot(matrix[0] ?? 1, matrix[1] ?? 0);
+  const y = Math.hypot(matrix[2] ?? 0, matrix[3] ?? 1);
   return {
     x: Number.isFinite(x) && x > 0 ? x : 1,
     y: Number.isFinite(y) && y > 0 ? y : 1,
@@ -118,6 +119,12 @@ export function imageScaleControlLocksAspectRatio(
   );
 }
 
+/**
+ * Near-full-bleed images have overlapping left/right (or top/bottom) magnetic
+ * corridors. Bias acquire toward the edge the object is moving into, and drop a
+ * latch when motion clearly leaves that edge so opposite-edge hysteresis cannot
+ * yank a near approach away from its target.
+ */
 function resolveSnapAxis<T extends ImageCanvasEdge>(
   distances: ReadonlyArray<readonly [T, number]>,
   eligible: ReadonlySet<ImageCanvasEdge>,
@@ -125,20 +132,34 @@ function resolveSnapAxis<T extends ImageCanvasEdge>(
   screenScale: number,
   acquirePx: number,
   releasePx: number,
+  motion = 0,
+  towardLow: T,
+  towardHigh: T,
 ): { correction: number; edge: T | null } {
   const candidateDistance = (edge: T) =>
     distances.find(([candidate]) => candidate === edge)?.[1];
+  const motionEpsilon = 0.25;
   if (previous && eligible.has(previous)) {
     const distance = candidateDistance(previous);
     if (
       distance != null &&
       Math.abs(distance) * screenScale <= releasePx
     ) {
-      return { correction: -distance, edge: previous };
+      const movingAway =
+        (previous === towardLow && motion > motionEpsilon) ||
+        (previous === towardHigh && motion < -motionEpsilon);
+      if (!movingAway) {
+        return { correction: -distance, edge: previous };
+      }
     }
   }
-  const candidate = distances
-    .filter(([edge]) => eligible.has(edge))
+  let acquireEdges = distances.filter(([edge]) => eligible.has(edge));
+  if (motion < -motionEpsilon) {
+    acquireEdges = acquireEdges.filter(([edge]) => edge !== towardHigh);
+  } else if (motion > motionEpsilon) {
+    acquireEdges = acquireEdges.filter(([edge]) => edge !== towardLow);
+  }
+  const candidate = acquireEdges
     .map(([edge, distance], order) => ({
       edge,
       distance,
@@ -164,21 +185,24 @@ export function resolveImageEdgeSnap({
   bypass = false,
   acquirePx = IMAGE_EDGE_SNAP_ACQUIRE_PX,
   releasePx = IMAGE_EDGE_SNAP_RELEASE_PX,
+  motion = { dx: 0, dy: 0 },
 }: {
   bounds: { left: number; top: number; width: number; height: number };
   doc: DocSize;
-  viewport: readonly number[];
+  viewport: readonly number[] | null | undefined;
   previous?: ImageEdgeSnapState;
   edges?: readonly ImageCanvasEdge[];
   bypass?: boolean;
   acquirePx?: number;
   releasePx?: number;
+  /** Scene-space delta of bounds.left / bounds.top since the previous sample. */
+  motion?: { dx?: number; dy?: number };
 }): ImageEdgeSnapResult {
   if (bypass) {
     return { dx: 0, dy: 0, state: emptyImageEdgeSnapState() };
   }
   const eligible = new Set(edges);
-  const scale = viewportAxisScales(viewport);
+  const scale = viewportAxisScales(viewport ?? [1, 0, 0, 1, 0, 0]);
   const acquire = Math.max(0, acquirePx);
   const release = Math.max(acquire, releasePx);
   const horizontal = resolveSnapAxis<ImageHorizontalSnapEdge>(
@@ -191,6 +215,9 @@ export function resolveImageEdgeSnap({
     scale.x,
     acquire,
     release,
+    motion.dx ?? 0,
+    "left",
+    "right",
   );
   const vertical = resolveSnapAxis<ImageVerticalSnapEdge>(
     [
@@ -202,6 +229,9 @@ export function resolveImageEdgeSnap({
     scale.y,
     acquire,
     release,
+    motion.dy ?? 0,
+    "top",
+    "bottom",
   );
   return {
     dx: horizontal.correction,
