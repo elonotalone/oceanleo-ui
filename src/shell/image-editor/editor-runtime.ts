@@ -81,6 +81,63 @@ export function viewportAxisScales(
   };
 }
 
+/**
+ * CSS px per Fabric bitmap/canvas unit. Design-embed often CSS-shrinks the
+ * canvas while viewportTransform stays ~identity for pointer mapping
+ * (pointerScale≈1, visualScale≈0.19). Snap thresholds must use both.
+ */
+export function canvasElementCssScales(canvas: {
+  getElement?: () => HTMLCanvasElement | null | undefined;
+  lowerCanvasEl?: HTMLCanvasElement | null;
+  upperCanvasEl?: HTMLCanvasElement | null;
+  getWidth?: () => number;
+  getHeight?: () => number;
+  width?: number;
+  height?: number;
+} | null | undefined): { x: number; y: number } {
+  if (!canvas) return { x: 1, y: 1 };
+  const el =
+    canvas.lowerCanvasEl ||
+    canvas.upperCanvasEl ||
+    (typeof canvas.getElement === "function" ? canvas.getElement() : null);
+  if (!el || typeof el.getBoundingClientRect !== "function") {
+    return { x: 1, y: 1 };
+  }
+  const rect = el.getBoundingClientRect();
+  const bitmapW = Math.max(
+    1,
+    typeof canvas.getWidth === "function"
+      ? canvas.getWidth()
+      : Number(canvas.width) || el.width || 1,
+  );
+  const bitmapH = Math.max(
+    1,
+    typeof canvas.getHeight === "function"
+      ? canvas.getHeight()
+      : Number(canvas.height) || el.height || 1,
+  );
+  const x = rect.width / bitmapW;
+  const y = rect.height / bitmapH;
+  return {
+    x: Number.isFinite(x) && x > 0 ? x : 1,
+    y: Number.isFinite(y) && y > 0 ? y : 1,
+  };
+}
+
+/** CSS px per scene/logical unit for magnetic edge thresholds. */
+export function imageEdgeSnapScreenScales(
+  viewport: readonly number[] | null | undefined,
+  cssScale: { x?: number; y?: number } | null | undefined = null,
+): { x: number; y: number } {
+  const vpt = viewportAxisScales(viewport);
+  const cssX = cssScale?.x;
+  const cssY = cssScale?.y;
+  return {
+    x: vpt.x * (Number.isFinite(cssX) && (cssX as number) > 0 ? (cssX as number) : 1),
+    y: vpt.y * (Number.isFinite(cssY) && (cssY as number) > 0 ? (cssY as number) : 1),
+  };
+}
+
 export function imageSnapEdgesForControl(
   corner: string | undefined,
 ): readonly ImageCanvasEdge[] {
@@ -124,7 +181,8 @@ export function imageScaleControlLocksAspectRatio(
  * corridors. Bias acquire toward the edge the object is moving into so travel
  * through the opposite corridor does not yank. Keep a still-near latch on tiny
  * away-settle ticks unless the opposite edge is also inside acquire (competing).
- * Release samples should pass motion 0 so any edge ≤acquire CSS latches.
+ * Release should keep the gesture's last significant motion so opposite-corridor
+ * edges do not steal a ≤acquire CSS latch on pointer-up.
  */
 function resolveSnapAxis<T extends ImageCanvasEdge>(
   distances: ReadonlyArray<readonly [T, number]>,
@@ -146,28 +204,31 @@ function resolveSnapAxis<T extends ImageCanvasEdge>(
       : Math.abs(distance) * screenScale;
   };
   const motionEpsilon = 0.25;
+  // Break a latch only on deliberate reverse travel (≥2 CSS), not settle ticks.
+  // Near-full-bleed always has a competing opposite corridor inside acquire.
+  const breakAwayCss = 2;
   if (previous && eligible.has(previous)) {
     const distance = candidateDistance(previous);
     if (
       distance != null &&
       Math.abs(distance) * screenScale <= releasePx
     ) {
-      const movingAway =
+      const away =
         (previous === towardLow && motion > motionEpsilon) ||
         (previous === towardHigh && motion < -motionEpsilon);
+      const awayCss = Math.abs(motion) * screenScale;
       const opposite = previous === towardLow ? towardHigh : towardLow;
-      // Only break hysteresis when the opposite corridor is also magnetic;
-      // otherwise a settle tick inside ≤acquire CSS would unlatch the near edge.
       const oppositeCompeting =
         eligible.has(opposite) && screenDistanceFor(opposite) <= acquirePx;
-      if (!movingAway || !oppositeCompeting) {
+      if (!away || awayCss < breakAwayCss || !oppositeCompeting) {
         return { correction: -distance, edge: previous };
       }
     }
   }
   let acquireEdges = distances.filter(([edge]) => eligible.has(edge));
-  // While moving, ignore the edge behind the pointer so opposite corridors cannot
-  // yank. Callers pass motion 0 on pointer-up so a sole near edge still latches.
+  // Ignore the edge behind the pointer so opposite corridors cannot yank.
+  // Release finalize must pass the gesture's last significant motion — pure 0
+  // lets the closer opposite overhang steal near-full-bleed latches.
   if (motion < -motionEpsilon) {
     acquireEdges = acquireEdges.filter(([edge]) => edge !== towardHigh);
   } else if (motion > motionEpsilon) {
@@ -200,6 +261,7 @@ export function resolveImageEdgeSnap({
   acquirePx = IMAGE_EDGE_SNAP_ACQUIRE_PX,
   releasePx = IMAGE_EDGE_SNAP_RELEASE_PX,
   motion = { dx: 0, dy: 0 },
+  cssScale = null,
 }: {
   bounds: { left: number; top: number; width: number; height: number };
   doc: DocSize;
@@ -211,12 +273,17 @@ export function resolveImageEdgeSnap({
   releasePx?: number;
   /** Scene-space delta of bounds.left / bounds.top since the previous sample. */
   motion?: { dx?: number; dy?: number };
+  /**
+   * CSS px per Fabric canvas/bitmap unit (getBoundingClientRect / getWidth).
+   * Combined with viewportTransform for visual CSS thresholds.
+   */
+  cssScale?: { x?: number; y?: number } | null;
 }): ImageEdgeSnapResult {
   if (bypass) {
     return { dx: 0, dy: 0, state: emptyImageEdgeSnapState() };
   }
   const eligible = new Set(edges);
-  const scale = viewportAxisScales(viewport ?? [1, 0, 0, 1, 0, 0]);
+  const scale = imageEdgeSnapScreenScales(viewport, cssScale);
   const acquire = Math.max(0, acquirePx);
   const release = Math.max(acquire, releasePx);
   const horizontal = resolveSnapAxis<ImageHorizontalSnapEdge>(

@@ -30,6 +30,7 @@ import {
   constrainCropToDoc,
   createDocBackground,
   ensureLayerOrder,
+  canvasElementCssScales,
   emptyImageEdgeSnapState,
   fitViewport,
   imageEdgeScaleAnchorCorrection,
@@ -119,6 +120,13 @@ export class FabricEditorCore {
     left: number;
     top: number;
   } | null = null;
+  /** Last significant scene-space motion in the active gesture (release bias). */
+  private imageEdgeSnapGestureMotion: { dx: number; dy: number } = {
+    dx: 0,
+    dy: 0,
+  };
+  /** Set while scaling/cropping so release finalize uses scale snap, not move. */
+  private imageEdgeSnapScaleTransform: Transform | null = null;
   private restoreAbort: AbortController | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeFrame = 0;
@@ -155,6 +163,8 @@ export class FabricEditorCore {
     this.imageEdgeSnapTarget = target;
     this.imageEdgeSnapState = emptyImageEdgeSnapState();
     this.imageEdgeSnapPrevBounds = null;
+    this.imageEdgeSnapGestureMotion = { dx: 0, dy: 0 };
+    this.imageEdgeSnapScaleTransform = null;
   }
 
   private canSnapImageEdges(target: FabricObject): boolean {
@@ -183,6 +193,7 @@ export class FabricEditorCore {
     target: FabricObject,
     event: Event | undefined,
     edges?: readonly ImageCanvasEdge[],
+    motionOverride?: { dx?: number; dy?: number } | null,
   ): {
     bounds: ReturnType<FabricObject["getBoundingRect"]>;
     snapped: ImageEdgeSnapResult;
@@ -195,6 +206,15 @@ export class FabricEditorCore {
     target.setCoords();
     const bounds = target.getBoundingRect();
     const prev = this.imageEdgeSnapPrevBounds;
+    const sampleMotion = prev
+      ? { dx: bounds.left - prev.left, dy: bounds.top - prev.top }
+      : { dx: 0, dy: 0 };
+    if (
+      Math.abs(sampleMotion.dx) > 0.25 ||
+      Math.abs(sampleMotion.dy) > 0.25
+    ) {
+      this.imageEdgeSnapGestureMotion = sampleMotion;
+    }
     const snapped = resolveImageEdgeSnap({
       bounds,
       doc: this.doc,
@@ -202,9 +222,8 @@ export class FabricEditorCore {
       previous: this.imageEdgeSnapState,
       edges,
       bypass: this.eventRequestsSnapBypass(event),
-      motion: prev
-        ? { dx: bounds.left - prev.left, dy: bounds.top - prev.top }
-        : { dx: 0, dy: 0 },
+      motion: motionOverride ?? sampleMotion,
+      cssScale: canvasElementCssScales(this.canvas),
     });
     this.imageEdgeSnapState = snapped.state;
     return { bounds, snapped };
@@ -219,8 +238,14 @@ export class FabricEditorCore {
   private snapImageMoveEdges(
     target: FabricObject,
     event: Event | undefined,
+    motionOverride?: { dx?: number; dy?: number } | null,
   ): void {
-    const resolution = this.resolveImageEdgeSnapForTarget(target, event);
+    const resolution = this.resolveImageEdgeSnapForTarget(
+      target,
+      event,
+      undefined,
+      motionOverride,
+    );
     if (!resolution) return;
     const { snapped } = resolution;
     if (snapped.dx || snapped.dy) {
@@ -237,11 +262,13 @@ export class FabricEditorCore {
     target: FabricObject,
     event: Event | undefined,
     transform: Transform,
+    motionOverride?: { dx?: number; dy?: number } | null,
   ): void {
     const resolution = this.resolveImageEdgeSnapForTarget(
       target,
       event,
       imageSnapEdgesForControl(transform.corner),
+      motionOverride,
     );
     if (!resolution) return;
     const { bounds, snapped } = resolution;
@@ -289,6 +316,25 @@ export class FabricEditorCore {
     this.rememberImageEdgeSnapBounds(target);
   }
 
+  /**
+   * Pointer-up / object:modified settle: keep gesture motion for corridor bias
+   * and apply move or scale snap so ≤8 CSS near edges latch on the live path.
+   */
+  private finalizeImageEdgeSnap(
+    target: FabricObject,
+    event: Event | undefined,
+  ): void {
+    if (!this.canSnapImageEdges(target)) return;
+    const gestureMotion = { ...this.imageEdgeSnapGestureMotion };
+    const scaleTransform = this.imageEdgeSnapScaleTransform;
+    this.imageEdgeSnapPrevBounds = null;
+    if (scaleTransform) {
+      this.snapImageScaleEdges(target, event, scaleTransform, gestureMotion);
+    } else {
+      this.snapImageMoveEdges(target, event, gestureMotion);
+    }
+  }
+
   private bindEvents(): void {
     const refresh = () => this.emit();
     this.disposers.push(
@@ -299,11 +345,8 @@ export class FabricEditorCore {
         this.resetImageEdgeSnap(transform.target);
       }),
       this.canvas.on("object:modified", ({ target, e }) => {
-        // Release sample: zero motion so a settle tick ≤acquire CSS still latches.
-        if (target) {
-          this.imageEdgeSnapPrevBounds = null;
-          this.snapImageMoveEdges(target, e);
-        }
+        // Live design-embed path: finalize here (Fabric fires this from mouse-up).
+        if (target) this.finalizeImageEdgeSnap(target, e);
         this.resetImageEdgeSnap();
         if (roleOf(target) === "crop") {
           constrainCropToDoc(target, this.doc);
@@ -320,6 +363,7 @@ export class FabricEditorCore {
         this.commit();
       }),
       this.canvas.on("object:moving", ({ target, e }) => {
+        this.imageEdgeSnapScaleTransform = null;
         target.setCoords();
         if (roleOf(target) === "crop") {
           constrainCropToDoc(target, this.doc);
@@ -329,6 +373,7 @@ export class FabricEditorCore {
         this.emit();
       }),
       this.canvas.on("object:scaling", ({ target, transform, e }) => {
+        this.imageEdgeSnapScaleTransform = transform;
         if (roleOf(target) === "crop") {
           const ratio = cropRatioNumber(this.cropRatio);
           if (ratio) {
@@ -435,7 +480,18 @@ export class FabricEditorCore {
         if (!this.panning || !(e instanceof MouseEvent)) return;
         panViewport(this.canvas, e.movementX, e.movementY);
       }),
-      this.canvas.on("mouse:up", () => {
+      this.canvas.on("mouse:up", ({ target, e }) => {
+        // Only when object:modified did not already finalize+reset this gesture.
+        const snapTarget = this.imageEdgeSnapTarget || target;
+        const gestureOpen =
+          this.imageEdgeSnapTarget != null &&
+          (this.imageEdgeSnapPrevBounds != null ||
+            this.imageEdgeSnapScaleTransform != null ||
+            Math.abs(this.imageEdgeSnapGestureMotion.dx) > 0.25 ||
+            Math.abs(this.imageEdgeSnapGestureMotion.dy) > 0.25);
+        if (snapTarget && gestureOpen) {
+          this.finalizeImageEdgeSnap(snapTarget, e);
+        }
         this.resetImageEdgeSnap();
         if (!this.panning) return;
         this.panning = false;
