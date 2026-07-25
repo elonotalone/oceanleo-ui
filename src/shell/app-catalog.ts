@@ -21,10 +21,13 @@
 // 「这一批数据 + 一个共享 ops 渲染器」。
 // ============================================================================
 
-import { type ReactNode } from "react";
-import { type GuideSection } from "./NavigatorGuide";
-import { type MaterialItem } from "./MaterialLibrary";
-import { type OpsPatch } from "../lib/fn-agent";
+// 全部为 `import type`（不是 `import { type X }`）：这样整条 import 语句在类型擦除后
+// 被完全删除，本文件在运行时零依赖，focused test 可以直接 `import` 本 .ts 而不必拖进
+// NavigatorGuide/MaterialLibrary 这两个含 JSX 的 .tsx（Node 的类型擦除不支持 JSX）。
+import type { ReactNode } from "react";
+import type { GuideSection } from "./NavigatorGuide";
+import type { MaterialItem } from "./MaterialLibrary";
+import type { OpsPatch } from "../lib/fn-agent";
 
 /**
  * 一个「成品 app」= 用户一句话能说清、要交付的东西（面向目的，名词化）。
@@ -104,4 +107,70 @@ export function presetToOpsPatch(app: GoalApp, primaryField: string): OpsPatch {
   const set: Record<string, unknown> = { ...(app.preset?.set || {}) };
   if (app.preset?.prompt != null) set[primaryField] = app.preset.prompt;
   return { set };
+}
+
+// ============================================================================
+// 「一张首页卡片 = 一个 app = 一个代表 prompt」的取值契约（操作员 2026-07-25 拍板）
+// ----------------------------------------------------------------------------
+// 首页卡片不再来自 home-cards 的 PROMPT_LIBRARY，而是直接渲染本站 app-catalog 的
+// GoalApp。每张卡要展示/灌进输入框的那一条 prompt 由下面两个函数唯一决定，所有消费者
+// （首页卡片、lightbox、`?fill=preset` 深链）都必须走它们，不许各自现场 `app.preset?.
+// prompt || ...`——否则同一个 app 在首页、预览大图、操作台里会灌出三份不同的文案。
+//
+// 取值顺序：`preset.prompt`（该 app 的「标准起手式」）→ 回退第一个导航板块的第一张
+// 示例卡。为什么不能反过来、也不能直接取「灵感区第一张卡」：共享层的
+// `withPresetCard()` 会把 preset 卡插到【最后一个板块的开头】，所以界面上「灵感区第一
+// 张卡」并不是 preset，取值必须回到数据本身。
+//
+// 全家桶约 636 个 app 里 preset / guideSections 都不是必填（music 站 22 个 app 两者
+// 皆无、law 24 个里只有 19 个有 preset），所以两者皆空是【正常数据形态】，返回 null，
+// 由调用方隐藏「prompt」「生成类似」按钮——绝不允许灌一个空串进输入框。
+// ============================================================================
+
+/** 空白（或缺失）→ undefined；否则返回 trim 后的非空字符串。 */
+function nonBlank(value: string | null | undefined): string | undefined {
+  const trimmed = (value ?? "").trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/** 该 app 第一个导航板块的第一张示例卡（可能整条链路都不存在）。 */
+function firstGuideExample(app: GoalApp) {
+  return app.guideSections?.[0]?.examples?.[0];
+}
+
+/**
+ * 一个 GoalApp 的【代表 prompt】：`preset.prompt` 优先，回退第一个导航板块的第一张
+ * 示例卡的 prompt；两者都缺或都只有空白字符 → `null`（调用方据此隐藏 prompt 相关按钮）。
+ */
+export function representativePrompt(app: GoalApp): string | null {
+  return (
+    nonBlank(app.preset?.prompt) ??
+    nonBlank(firstGuideExample(app)?.prompt) ??
+    null
+  );
+}
+
+/** 代表 prompt + 要一并灌进操作台的整套参数（`?fill=preset` 深链用）。 */
+export interface RepresentativeFill {
+  prompt: string;
+  set: Record<string, unknown>;
+}
+
+/**
+ * 「生成类似」/「高级编辑」深链要预填的整套内容：代表 prompt + 参数。
+ *
+ * 参数合并规则：`preset.set` 作为底，**只有当代表 prompt 来自导航示例卡时**再叠加该示例
+ * 自己的 `set`（示例覆盖 preset 的同名字段）——因为此时进操作台要复现的是那张示例卡，
+ * 而 preset.set 里的通用参数（比例、模式…）仍然是合理的底座。代表 prompt 为 null 时
+ * 返回 null，保证「没有 prompt 的 app」不会被深链灌进半套参数。
+ */
+export function representativeFill(app: GoalApp): RepresentativeFill | null {
+  const presetPrompt = nonBlank(app.preset?.prompt);
+  const base: Record<string, unknown> = { ...(app.preset?.set || {}) };
+  if (presetPrompt) return { prompt: presetPrompt, set: base };
+
+  const example = firstGuideExample(app);
+  const examplePrompt = nonBlank(example?.prompt);
+  if (!examplePrompt) return null;
+  return { prompt: examplePrompt, set: { ...base, ...(example?.set || {}) } };
 }

@@ -6282,5 +6282,11 @@ const ptPT: Record<string, string> = {
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "Eliminar o projeto «{name}»? As tarefas permanecerão em «As minhas tarefas», mas a configuração do projeto não poderá ser recuperada.",
   "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Pré-visualização temporária: apenas quem tiver esta ligação pode aceder. Expira no fim da sessão. Após publicar, poderá obter o seu domínio oficial .oceanleo.app.",
   "临时私有预览 · 会话结束后失效": "Pré-visualização privada temporária · Expira no fim da sessão",
+  // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
+  "生成类似": "Gerar semelhante",
+  "高级编辑": "Edição avançada",
+  "预览大图": "Pré-visualização ampliada",
+  "代表 prompt": "Prompt representativo",
+  "添加 prompt": "Adicionar prompt",
 };
 export default ptPT;

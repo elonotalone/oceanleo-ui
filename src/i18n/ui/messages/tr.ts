@@ -6282,5 +6282,11 @@ const tr: Record<string, string> = {
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "«{name}» projesi silinsin mi? Görevleri «Görevlerim» bölümünde kalır, ancak proje yapılandırması geri getirilemez.",
   "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Geçici önizleme: yalnızca bu bağlantıya sahip kişiler erişebilir. Oturum sona erdiğinde geçerliliğini yitirir. Yayından sonra resmi .oceanleo.app alan adınızı alabilirsiniz.",
   "临时私有预览 · 会话结束后失效": "Geçici özel önizleme · Oturum bitince geçersiz olur",
+  // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
+  "生成类似": "Benzerini oluştur",
+  "高级编辑": "Gelişmiş düzenleme",
+  "预览大图": "Büyük görseli önizle",
+  "代表 prompt": "Temsili prompt",
+  "添加 prompt": "Prompt ekle",
 };
 export default tr;

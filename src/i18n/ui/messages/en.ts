@@ -6400,5 +6400,11 @@ const en: Record<string, string> = {
   "这条记录没有可继续的对话。": "This record has no conversation to continue.",
   "该工作会话可恢复，但站点尚未接入完整工作台渲染器。": "This work session can be restored, but this site has not connected its full workspace renderer.",
   "请在 HistoryDetail 传入 renderWorkspace(session)，复用本站实时 workspace runtime；共享包不会用通用聊天界面伪装当时的操作台。": "Pass renderWorkspace(session) to HistoryDetail to reuse this site's workspace runtime; the shared package will not substitute a generic chat view.",
+  // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
+  "生成类似": "Generate similar",
+  "高级编辑": "Advanced editing",
+  "预览大图": "Preview full image",
+  "代表 prompt": "Representative prompt",
+  "添加 prompt": "Add prompt",
 };
 export default en;

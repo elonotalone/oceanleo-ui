@@ -124,8 +124,10 @@ export {
 // 宗旨 v19（2026-07-08）：SiteCatalogConsole 目录首张自动插「agent」卡片（AgentCardConfig）。
 export { SiteCatalogConsole } from "./SiteCatalogConsole";
 export type { SiteCatalogConsoleProps, AgentCardConfig } from "./SiteCatalogConsole";
-export { presetToOpsPatch } from "./app-catalog";
-export type { GoalApp, GoalAppPreset } from "./app-catalog";
+// 2026-07-25（合同 §3）：一张首页卡 = 一个 app = 一个【代表 prompt】的取值契约由
+// app-catalog 独家提供，首页卡片 / lightbox / `?fill=preset` 深链都必须走它。
+export { presetToOpsPatch, representativeFill, representativePrompt } from "./app-catalog";
+export type { GoalApp, GoalAppPreset, RepresentativeFill } from "./app-catalog";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 // 宗旨 v18（2026-07-07）：操作台「选项按键组」（单选点已选=取消；多选切换）。全家桶
@@ -369,13 +371,37 @@ export type { AgentConsoleProps, RunCapabilityFn } from "./AgentConsole";
 // 主站「工作台」母页面壳（iframe 内嵌子站功能区 + 选/加 agent）。
 export { WorkspaceShell } from "./WorkspaceShell";
 export type { WorkspaceShellProps } from "./WorkspaceShell";
-// 站点首页（介绍 + 30% 盈利说明 + 大输入框 → 进入 agent）。
-export { HomeIntro, BillingNotice } from "./HomeIntro";
+// 站点首页（大输入框 → 进入 agent + 卡片区）。2026-07-25：那张收费 / BYOK 说明卡与
+// `intro` 介绍段已从共享包硬删，首页不再以任何形式保留它们。
+export { HomeIntro } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
-// 首页 prompt 卡片分区（宗旨 v12，2026-07-04）：只留 prompt 卡片（agent 卡片组件保留
+// 首页 app 卡片（合同 §0，2026-07-25）：一卡 = 一个 GoalApp = 一个代表 prompt，
+// 左图右文 → hover 图片铺满 + 预览 + prompt/生成类似 → lightbox 三按钮。
+export {
+  HomeAppCards,
+  HOME_APP_ALL_GROUP,
+  HOME_APP_FEATURED_LIMIT,
+  HOME_APP_SEE_ALL_HREF,
+  appPreviewImageKey,
+  featuredHomeApps,
+  homeAppGroups,
+} from "./HomeAppCards";
+export type { HomeAppCardsProps } from "./HomeAppCards";
+export { ImageLightbox } from "./ImageLightbox";
+export type { ImageLightboxProps } from "./ImageLightbox";
+// 合同 §3 的两个深链 helper（W2 产出，首页 app 卡的「生成类似」「高级编辑」用）。
+export {
+  workspaceAppAdvancedHref,
+  workspaceAppFillHref,
+} from "./site-catalog-controller";
+// 封面图 key/URL 约定（合同 §3，W5 产出）走 `@oceanleo/ui/lib`（见 `src/lib/index.ts`），
+// shell 这层不再重复暴露，避免同一符号两条导入路径。
+// 首页 prompt 卡片分区（宗旨 v12，2026-07-04）：未迁移站的既有路径（agent 卡片组件保留
 // 导出但首页不再渲染）。「添加 prompt」= 预制库选择 + 新建（AddPromptModal）。
-export { HomePromptCards, HomeAgentCards, PromptCardModal, AddPromptModal } from "./HomeCards";
-export type { HomeAgentPick } from "./HomeCards";
+export { HomePromptCards } from "./HomeCards";
+export { PromptCardModal, AddPromptModal } from "./HomePromptModals";
+export { HomeAgentCards } from "./HomeAgentCards";
+export type { HomeAgentPick } from "./HomeAgentCards";
 export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards, loadAllCustomPromptCards } from "./home-cards";
 export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。

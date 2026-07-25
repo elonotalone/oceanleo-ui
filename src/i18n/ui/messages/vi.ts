@@ -6282,5 +6282,11 @@ const vi: Record<string, string> = {
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "Xóa dự án «{name}»? Các nhiệm vụ vẫn ở trong «Nhiệm vụ của tôi», nhưng không thể khôi phục cấu hình dự án.",
   "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Bản xem trước tạm thời: chỉ người có liên kết này mới truy cập được. Liên kết hết hạn khi phiên kết thúc. Sau khi xuất bản, bạn có thể nhận tên miền .oceanleo.app chính thức.",
   "临时私有预览 · 会话结束后失效": "Bản xem trước riêng tư tạm thời · Hết hạn khi phiên kết thúc",
+  // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
+  "生成类似": "Tạo tương tự",
+  "高级编辑": "Chỉnh sửa nâng cao",
+  "预览大图": "Xem ảnh lớn",
+  "代表 prompt": "Prompt tiêu biểu",
+  "添加 prompt": "Thêm prompt",
 };
 export default vi;

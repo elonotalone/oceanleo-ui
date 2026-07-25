@@ -6282,5 +6282,11 @@ const es419: Record<string, string> = {
   "确定删除项目「{name}」？该项目下的任务会保留在「我的任务」，但项目配置将不可恢复。": "¿Eliminar el proyecto «{name}»? Sus tareas permanecerán en «Mis tareas», pero la configuración del proyecto no se podrá recuperar.",
   "临时预览：仅持有此链接的人可访问，会话结束后自动失效。发布后可获得你的 .oceanleo.app 正式域名。": "Vista previa temporal: solo quienes tengan este enlace pueden acceder. Caduca al finalizar la sesión. Al publicar, podrás obtener tu dominio oficial .oceanleo.app.",
   "临时私有预览 · 会话结束后失效": "Vista previa privada temporal · Caduca al finalizar la sesión",
+  // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
+  "生成类似": "Generar similar",
+  "高级编辑": "Edición avanzada",
+  "预览大图": "Vista previa ampliada",
+  "代表 prompt": "Prompt representativo",
+  "添加 prompt": "Agregar prompt",
 };
 export default es419;

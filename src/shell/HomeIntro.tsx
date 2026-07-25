@@ -4,12 +4,16 @@
 // @oceanleo/ui — 站点首页 HomeIntro（单一事实源）
 // ----------------------------------------------------------------------------
 // 操作员 2026-06-19 定稿：每个 OceanLeo 产品站「首页」统一长这样：
-//   - 站点介绍：2–3 句，不花哨。
-//   - 收费说明（固定文案，2026-06-28 改版）：平台仅按用户使用 AI token 的
-//     成本价收费（不加价、不抽成）；用户也可自带各平台 API key 免费使用。
-//     旧文案「盈利 = token 成本的 30%」已作废（网关 SERVICE_MARKUP=0）。
 //   - 一个大输入框（对照主站「我能为你做什么 / 给 OceanLeo 布置一个任务…」）。
 //     用户提交 → onStart(prompt) 进入 agent 工作界面（高级任务自动一分为二）。
+//
+// 2026-07-25（操作员拍板，不再讨论）：首页**彻底删掉两段文案**——
+//   ① 站点介绍句（`intro`）：prop 保留为 deprecated 且被忽略的可选签名（30 个站还在传，
+//      删签名会让它们编译报错；站点侧清理由 W4a–W4f 负责），但**一个字都不渲染**。
+//   ② 那张收费 / BYOK 说明卡：组件本体、调用、导出全部硬删，相关文案不在首页以任何
+//      形式保留（共享包里连标识符都不留，好让零残留 grep 保持干净）。主站与各子站里
+//      残留的调用点由 W4f 在同一轮删除，交接写在
+//      docs/work-logs/2026-07/oceanleo-home-app-cards/W1-marker.md。
 //
 // 2026-07-02 升级（对照豆包首页）：传 siteId 即在输入框下方渲染 prompt 卡片，并让
 // **输入框吸顶常显**——不管卡片列表怎么往下滑，输入框都看得见（点 prompt 卡片时能
@@ -26,6 +30,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { LeoComposer, type ComposerRecentFile } from "./LeoComposer";
 import { HomePromptCards } from "./HomeCards";
+import { HomeAppCards, HOME_APP_FEATURED_LIMIT } from "./HomeAppCards";
+import { type GoalApp } from "./app-catalog";
 import { useAttachments } from "./useAttachments";
 import { listFiles, type FileItem } from "../lib/database";
 import type { AgentAttachment } from "../lib/agent";
@@ -34,8 +40,10 @@ import { useUI } from "../i18n/ui/useUI";
 export interface HomeIntroProps {
   /** 站名（如「LeoImage」）。 */
   siteName: string;
-  /** 介绍文案（2–3 句）。 */
-  intro: ReactNode;
+  /**
+   * @deprecated 2026-07-25 操作员拍板删除首页介绍句。签名保留只为让 30 个还在传
+   * `intro=` 的站继续编译（站点侧清理 = W4a–W4f）；本组件**不渲染**它。 */
+  intro?: ReactNode;
   /** 大标题，默认「我能为你做什么？」。 */
   heading?: string;
   /** 输入框 placeholder，默认「给 OceanLeo 布置一个任务...」。 */
@@ -76,51 +84,19 @@ export interface HomeIntroProps {
   voiceLang?: string;
   /** @deprecated 旧「30% 分成」文案已作废（网关 SERVICE_MARKUP=0）。保留以兼容旧调用方，不再渲染。 */
   markupPct?: number;
-}
-
-// BYOK 支持的平台（与 oceanleo-byok-audit-zerofee.md §5 指导文档一致）。
-const BYOK_PROVIDERS = "OpenAI / Anthropic Claude / DeepSeek / 阿里云百炼 / 火山方舟 / OpenRouter";
-
-/**
- * 收费说明卡（单一事实源，2026-07-02 从 HomeIntro 抽出）：
- * 「{siteName} 属于 OceanLeo 系列。平台仅按 …成本价… 收费；自带 API key 免费。」
- * 各站 HomeIntro 底部用它；主站 oceanleo.com 首页也用它（siteName="OceanLeo"
- * 时用主站文案变体——主站不是「属于系列」而是系列本身）。
- */
-export function BillingNotice({
-  siteName,
-  accent = "#4f46e5",
-  className = "",
-}: {
-  siteName: string;
-  accent?: string;
-  className?: string;
-}) {
-  const tt = useUI();
-  const isMainSite = siteName === "OceanLeo";
-  return (
-    <div
-      className={`max-w-xl rounded-xl border border-stone-200/70 bg-white/60 px-4 py-3 text-center text-[12px] leading-relaxed text-stone-500 ${className}`}
-    >
-      <span className="font-medium text-stone-600">{siteName}</span>{" "}
-      {isMainSite
-        ? tt("平台仅按用户在 OceanLeo 平台使用 AI token 的")
-        : tt("属于 OceanLeo 系列。平台仅按用户在 OceanLeo 平台使用 AI token 的")}
-      <span className="font-semibold" style={{ color: accent }}>
-        {tt("成本价")}
-      </span>
-      {tt("收费。你也可以自带各平台的 API key（{providers}），", { providers: BYOK_PROVIDERS })}
-      <span className="font-semibold" style={{ color: accent }}>
-        {tt("免费")}
-      </span>
-      {tt("使用 OceanLeo 的功能。")}
-    </div>
-  );
+  /**
+   * 本站 app 目录（`XXX_APPS`）。传了它 → 首页卡片区渲染 `HomeAppCards`（一卡 = 一个
+   * app = 一个代表 prompt，左图右文 + hover 铺满 + 预览 lightbox）；不传 → 沿用既有
+   * `HomePromptCards`（PROMPT_LIBRARY 文字卡）。30 站分批迁移期间两条路径都能跑。 */
+  apps?: GoalApp[];
+  /** 首页精选卡片张数上限（合同 §0 第 10 条：8–12 张），默认 12。 */
+  featuredLimit?: number;
 }
 
 export function HomeIntro({
   siteName,
-  intro,
+  // intro 已作废（操作员 2026-07-25 删首页介绍句），仅为兼容旧调用方保留签名。
+  intro: _intro,
   heading: headingProp,
   placeholder: placeholderProp,
   suggestions = [],
@@ -134,8 +110,11 @@ export function HomeIntro({
   voiceLang = "zh-CN",
   // markupPct 已作废，仅为兼容旧调用方保留，不再使用。
   markupPct: _markupPct,
+  apps,
+  featuredLimit = HOME_APP_FEATURED_LIMIT,
 }: HomeIntroProps) {
   void _markupPct;
+  void _intro;
   const tt = useUI();
   const heading = headingProp ?? tt("我能为你做什么？");
   const placeholder = placeholderProp ?? tt("给 OceanLeo 布置一个任务...");
@@ -246,9 +225,6 @@ export function HomeIntro({
       <h1 className="text-center text-[32px] font-semibold tracking-tight text-stone-900">
         {heading}
       </h1>
-      <p className="mt-4 max-w-xl text-center text-[14px] leading-relaxed text-stone-500">
-        {intro}
-      </p>
 
       {/* 输入框：有卡片分区时吸顶常显——往下滑卡片列表时它一直看得见（操作员
           2026-07-02）。2026-07-03：吸顶到【触顶】（top-0，去掉 8px 缝隙）。
@@ -298,15 +274,24 @@ export function HomeIntro({
         </div>
       )}
 
-      {/* prompt 卡片区（宗旨 v12）：直接常显，无 agent | prompt 切换。点卡片 → 预设
-          文案进输入框并高亮占位符。 */}
+      {/* 卡片区：点卡片 → 预设文案进输入框并高亮占位符。
+          传了 `apps`（合同 §0 第 2 条，已迁移的站）→ app 卡片（一卡 = 一个 app）；
+          没传 → 沿用 PROMPT_LIBRARY 文字卡，30 站分批迁移期间两条路径并存。 */}
       {withCards && (
-        <div className="mt-6 w-full pb-6">
-          <HomePromptCards siteId={siteId!} accent={accent} onPick={pickPrompt} />
+        <div className="mt-6 w-full pb-8">
+          {apps && apps.length > 0 ? (
+            <HomeAppCards
+              apps={apps}
+              siteId={siteId!}
+              accent={accent}
+              featuredLimit={featuredLimit}
+              onPick={pickPrompt}
+            />
+          ) : (
+            <HomePromptCards siteId={siteId!} accent={accent} onPick={pickPrompt} />
+          )}
         </div>
       )}
-
-      <BillingNotice siteName={siteName} accent={accent} className={withCards ? "mb-8 mt-4" : "mt-10"} />
     </div>
   );
 }

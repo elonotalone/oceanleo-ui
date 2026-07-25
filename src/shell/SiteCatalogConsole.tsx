@@ -54,6 +54,10 @@ import {
   resolveSiteCatalogRoute,
 } from "./site-catalog-controller";
 import {
+  CatalogDeepLinkBoundary,
+  useCatalogDeepLink,
+} from "./site-catalog-deeplink";
+import {
   WorkspaceRuntimeBoundary,
 } from "./workspace-runtime-hydration";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
@@ -455,6 +459,20 @@ export function SiteCatalogConsole({
     routeState,
   ]);
 
+  // 深链一次性意图（`?fill=preset` / `?open=advanced`）的锁存、消费与派发全部在
+  // `site-catalog-deeplink.tsx`；本文件只做接线。
+  const deepLink = useCatalogDeepLink({
+    activeAppId,
+    apps: allApps,
+    siteKey: canonicalSiteKey,
+    locationSearch,
+    embed,
+    onDeepLinkQueryStripped: (nextSearch, nextHref) => {
+      setLocationSearch(nextSearch);
+      router.replace(nextHref);
+    },
+  });
+
   const changeApp = useCallback(
     async (id: string) => {
       if (activeAppId && id !== activeAppId) {
@@ -732,7 +750,9 @@ export function SiteCatalogConsole({
       scope={activeAppId}
       onRegisterBeforeLeave={registerBeforeLeave}
     >
-      {consoleNode}
+      <CatalogDeepLinkBoundary state={deepLink} accent={accent}>
+        {consoleNode}
+      </CatalogDeepLinkBoundary>
     </WorkspaceRuntimeBoundary>
   );
   // Homepage conversations intentionally live in the separate `home-agent`

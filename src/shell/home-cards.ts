@@ -1,16 +1,33 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 子站首页「工作内容 prompt 卡片」内容库 + 用户自建卡片持久化
+// @oceanleo/ui — 内置 prompt 文案库（playground / 导航兜底）+ 用户自建卡片持久化
 // ----------------------------------------------------------------------------
-// 操作员 2026-07-02 定稿（对照豆包首页）：每个功能子站首页输入框下方有两个分区：
-//   ① 工作内容（prompt 卡片，分类显示）：点卡片 → 预设文字填进输入框。
-//   ② agent 选择（agent 卡片）：点卡片 → 输入框左下角出现该 agent 图标+名称。
-// 每类卡片的【第一张】是「新建」卡片（用户自建，持久化，重进网站仍在）。
-// 每张卡片右上角有「查看/编辑」按钮。
+// ⚠ 2026-07-25（操作员拍板「prompt 卡与 app 卡合二为一」）后本文件的定位变了，读之前
+//   先看清新旧关系，别再把它当首页事实源：
 //
-// prompt 卡片事实源 = 本文件 PROMPT_LIBRARY（按 siteId 分站；没配置的站回退
-// GENERIC_PROMPTS）。用户自建卡片存 localStorage（按站隔离），跨会话保留。
+//   【旧】子站首页输入框下方的「工作内容」卡片 = 本文件 PROMPT_LIBRARY（按 siteId 分
+//         站，没配置的站回退 GENERIC_PROMPTS）。一张卡 = 一段纯文字 prompt，无图、无
+//         预览、点不进 app。
+//   【新】首页卡片 = 该站 `lib/app-catalog.ts` 的 `GoalApp`（一张卡 = 一个 app = 一个
+//         代表 prompt，带封面图/预览大图/「生成类似」/「高级编辑」）。代表 prompt 由
+//         `shell/app-catalog.ts` 的 `representativePrompt()` 唯一决定。
+//
+//   所以 PROMPT_LIBRARY / GENERIC_PROMPTS / promptCardsForSite() **不再是首页内置卡的
+//   来源**，但【必须保留导出】——它们还有两个活着的消费者，删了就是回归：
+//     1. `Playground.tsx` 主站 playground 的 prompt 专区（聚合全部站的内置卡去重展示）。
+//     2. `OperatorConsole.tsx` 的 `autoGuideForSite()`：站点没给 `guideSections` 时，
+//        用本表（或通用兜底）给操作台右栏自动凑一份「导航」，保证导航区不空。
+//
+//   另外：PROMPT_LIBRARY 的键是**本文件自己的 siteId 命名**，与站点仓库传进来的 siteId
+//   并不总是一致（`money` 仓传 `siteId="finance"`，而键是 `money`；`edu`/`med`/`travel`/
+//   `notebook` 干脆没有条目）。这些站过去会在首页落到 GENERIC_PROMPTS 通用兜底——首页
+//   迁到 app 卡片后首页已不再查这张表，该缺陷在首页面消失；对仅存的消费者
+//   `autoGuideForSite()` 而言回退到通用兜底本身就是设计意图（永远有可用导航），因此这些
+//   键缺失是【已知且无害】的。见 tests/home-card-data-contract.test.mjs 的断言。
+//
+// 用户自建卡片存 localStorage（按站隔离，key 前缀 `oceanleo_home_prompts:`），跨会话
+// 保留。⚠ 该前缀与数据形状是**线上老用户数据的兼容契约**，不得改名、不得改结构。
 // ============================================================================
 
 export interface PromptCard {
@@ -209,7 +226,11 @@ export const PROMPT_LIBRARY: Record<string, PromptCard[]> = {
   ],
 };
 
-/** 站点的内置 prompt 卡片（没配置的站回退通用集）。 */
+/**
+ * 站点的内置 prompt 文案（没配置的站回退通用集，因此**永不返回空数组**）。
+ * ⚠ 已不是首页卡片来源（见文件头）；现存消费者 = playground prompt 专区 +
+ * `OperatorConsole.autoGuideForSite()` 的导航兜底。
+ */
 export function promptCardsForSite(siteId: string): PromptCard[] {
   return PROMPT_LIBRARY[(siteId || "").trim()] || GENERIC_PROMPTS;
 }

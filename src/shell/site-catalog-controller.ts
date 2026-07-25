@@ -1,11 +1,21 @@
 import type { OceanLeoWorkspaceRouteContract } from "../contracts/site-manifest";
 import {
+  representativeFill,
+  representativePrompt,
+  type GoalApp,
+} from "./app-catalog";
+import type { LibraryKind } from "./library-data";
+import {
   historySessionHref,
   historySessionIdFromPath,
   legacyWorkspaceAppId,
   workspaceAppHref,
   workspaceAppIdFromPath,
 } from "./workspace-route";
+import {
+  normalizeWorkspaceAction,
+  type WorkspaceActionV1,
+} from "./workspace-actions";
 
 const DEFAULT_ROUTE: OceanLeoWorkspaceRouteContract = {
   canonicalBasePath: "/workspace",
@@ -141,5 +151,391 @@ export function catalogNavigationForChange(
     kind: "route",
     appId,
     href: workspaceAppHref(appId, activeRoute(options.route)),
+  };
+}
+
+// ── 操作台填充总线：显式就绪信号 + 一次性待填 ────────────────────────────────
+// 深链 `?fill=preset` 直落一个 app 时，one-shot 填充很可能跑在左栏填充器注册【之前】
+// （`GuideProvider` 是填充器的父节点，父 effect 后于子 effect）。这里不赌时序：
+// 填充器注册是**显式就绪事件**，注册前到达的 one-shot 排队、注册当下立即执行；切 app
+// （scope 变化）时排队请求与上一个 app 的填充器一起被丢弃，绝不串到下一个 app。
+// 状态机放在这个 framework-free 模块里，`guide-context.tsx` 只做 React 绑定并转出
+// 同名类型——这样时序行为可以被 node --test 直接覆盖。
+
+/** 左栏填充器：把模板内容灌进当前功能的左栏输入框与备注板块。 */
+export type OpsFiller = (
+  text: string,
+  opts?: {
+    imageUrl?: string;
+    /** 升级版 prompt（宗旨 v15）：一并 patch 进左栏操作台的其它参数（ratio/style/…）。 */
+    set?: Record<string, unknown>;
+    /** 保存模板时独立持久化的操作员备注。 */
+    remark?: string;
+    data?: unknown;
+  },
+) => void;
+
+/** 一次性填充请求；`scope` = 发起时的 app id，scope 不匹配即丢弃。 */
+export interface OneShotFillRequest {
+  scope: string;
+  text: string;
+  opts?: Parameters<OpsFiller>[1];
+}
+
+export interface OpsFillBus {
+  /** 当前 app scope；切 app 时由 Provider 在 render 阶段推进。 */
+  scope(): string;
+  setScope(next: string): void;
+  /** 注册 / 注销左栏填充器；注册即就绪，并立刻冲刷同 scope 的待填。 */
+  register(filler: OpsFiller | null): void;
+  ready(): boolean;
+  /** 显式就绪订阅（useSyncExternalStore 用）。 */
+  subscribe(listener: () => void): () => void;
+  /** 排入一次性填充；返回 true 表示已当场填入，false 表示排队或被丢弃。 */
+  request(request: OneShotFillRequest): boolean;
+  /** 普通（用户点击）填充：只在当前 scope 的填充器上生效。 */
+  fill(text: string, opts?: Parameters<OpsFiller>[1]): boolean;
+}
+
+export function createOpsFillBus(): OpsFillBus {
+  let scope = "";
+  let filler: OpsFiller | null = null;
+  let fillerScope = "";
+  let pending: OneShotFillRequest | null = null;
+  const listeners = new Set<() => void>();
+
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  const readyNow = () => Boolean(filler) && fillerScope === scope;
+
+  return {
+    scope: () => scope,
+    setScope(next) {
+      const value = String(next ?? "");
+      if (value === scope) return;
+      scope = value;
+      filler = null;
+      fillerScope = "";
+      pending = null;
+      notify();
+    },
+    register(next) {
+      if (!next) {
+        if (!filler) return;
+        filler = null;
+        fillerScope = "";
+        notify();
+        return;
+      }
+      filler = next;
+      fillerScope = scope;
+      const queued = pending;
+      if (queued && queued.scope === scope) {
+        pending = null;
+        next(queued.text, queued.opts);
+      }
+      notify();
+    },
+    ready: readyNow,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    request(request) {
+      const text = String(request?.text ?? "");
+      if (!text.trim()) return false;
+      if (String(request?.scope ?? "") !== scope) return false;
+      if (readyNow() && filler) {
+        pending = null;
+        filler(text, request.opts);
+        return true;
+      }
+      pending = { scope, text, opts: request.opts };
+      return false;
+    },
+    fill(text, opts) {
+      if (!readyNow() || !filler) return false;
+      filler(text, opts);
+      return true;
+    },
+  };
+}
+
+// ── 深链意图：`?fill=preset` 与 `?open=advanced` ──────────────────────────────
+// 两者都是【一次性入口意图】，不是 app 身份：它们不参与 canonical redirect 的目标
+// 计算，`canonicalCatalogAppHref(..., preserveQuery)` 只删 legacy 的 fn/mode，所以
+// 规范化到 `/workspace/<id>` 之后这两个参数原样留在地址栏，由消费端读一次再消费掉。
+
+export const CATALOG_FILL_QUERY_KEY = "fill";
+export const CATALOG_OPEN_QUERY_KEY = "open";
+/** `?fill=preset`：把代表 prompt + `preset.set` 灌进操作台一次。 */
+export const CATALOG_FILL_PRESET_VALUE = "preset";
+/** `?open=advanced`：右栏直接进入该 app 默认产物类型的高级编辑。 */
+export const CATALOG_OPEN_ADVANCED_VALUE = "advanced";
+
+export interface CatalogDeepLinkIntent {
+  fillPreset: boolean;
+  openAdvanced: boolean;
+}
+
+export const EMPTY_CATALOG_DEEP_LINK_INTENT: CatalogDeepLinkIntent = {
+  fillPreset: false,
+  openAdvanced: false,
+};
+
+function searchParamsOf(search: string | URLSearchParams): URLSearchParams {
+  return search instanceof URLSearchParams
+    ? new URLSearchParams(search)
+    : new URLSearchParams(String(search || "").replace(/^\?/, ""));
+}
+
+/** 只认精确取值；未知取值一律当作没写，绝不猜测。 */
+export function resolveCatalogDeepLinkIntent(
+  search: string | URLSearchParams,
+): CatalogDeepLinkIntent {
+  const params = searchParamsOf(search);
+  return {
+    fillPreset:
+      (params.get(CATALOG_FILL_QUERY_KEY) || "").trim() ===
+      CATALOG_FILL_PRESET_VALUE,
+    openAdvanced:
+      (params.get(CATALOG_OPEN_QUERY_KEY) || "").trim() ===
+      CATALOG_OPEN_ADVANCED_VALUE,
+  };
+}
+
+/** 意图消费后从地址栏抹掉，避免刷新 / 重挂载重复灌入。返回不含 `?` 的 query。 */
+export function searchWithoutCatalogDeepLinkIntent(
+  search: string | URLSearchParams,
+): string {
+  const params = searchParamsOf(search);
+  params.delete(CATALOG_FILL_QUERY_KEY);
+  params.delete(CATALOG_OPEN_QUERY_KEY);
+  return params.toString();
+}
+
+function deepLinkAppSegment(appId: unknown): string {
+  if (typeof appId !== "string") return "";
+  const id = appId.trim();
+  // eslint-disable-next-line no-control-regex
+  if (!id || /[\u0000-\u001f\u007f]/.test(id)) return "";
+  return id;
+}
+
+/** 合同 §3：「生成类似」——跳到 app 并预填代表 prompt + 整套预置参数。 */
+export function workspaceAppFillHref(
+  appId: string,
+  route?: OceanLeoWorkspaceRouteContract,
+): string {
+  const contract = activeRoute(route);
+  const id = deepLinkAppSegment(appId);
+  if (!id) return contract.canonicalBasePath;
+  return `${workspaceAppHref(id, contract)}?${CATALOG_FILL_QUERY_KEY}=${CATALOG_FILL_PRESET_VALUE}`;
+}
+
+/** 合同 §3：「高级编辑」——预填之外，右栏直接进入该 app 的高级编辑器。 */
+export function workspaceAppAdvancedHref(
+  appId: string,
+  route?: OceanLeoWorkspaceRouteContract,
+): string {
+  const contract = activeRoute(route);
+  const id = deepLinkAppSegment(appId);
+  if (!id) return contract.canonicalBasePath;
+  return `${workspaceAppFillHref(id, contract)}&${CATALOG_OPEN_QUERY_KEY}=${CATALOG_OPEN_ADVANCED_VALUE}`;
+}
+
+// ── 代表 prompt 与一次性预填载荷 ─────────────────────────────────────────────
+// 合同 §0.9 的取值规则由 W3 的 `app-catalog.ts` 独家持有（`representativePrompt` /
+// `representativeFill`）。本层只做 null → "" 的口径适配，绝不复制一份取值逻辑：
+// 深链灌进操作台的内容必须与首页卡片「prompt」按钮灌的内容逐字一致。
+
+export function catalogRepresentativePrompt(
+  app: GoalApp | null | undefined,
+): string {
+  return app ? representativePrompt(app) ?? "" : "";
+}
+
+export interface CatalogPresetFill {
+  prompt: string;
+  set?: Record<string, unknown>;
+}
+
+export function catalogPresetFill(
+  app: GoalApp | null | undefined,
+): CatalogPresetFill | null {
+  const fill = app ? representativeFill(app) : null;
+  if (!fill) return null;
+  return Object.keys(fill.set).length > 0
+    ? { prompt: fill.prompt, set: fill.set }
+    : { prompt: fill.prompt };
+}
+
+// ── `?open=advanced`：右栏进入该 app 默认产物类型的高级编辑 ───────────────────
+// GoalApp 没有声明产物类型，所以按【显式 > app id 词元 > 站点默认】三级解析，解析不出
+// 就退化为打开「我的库」并给可见提示——绝不静默无反应，也绝不猜一个错编辑器。
+
+/**
+ * 与 `MyLibrary.tsx` 的 `KIND_CATEGORY` 必须逐字一致（那里是我的库分类的产出端，
+ * 这里是深链的消费端）。`tests/workspace-fill-deeplink.test.mjs` 直接比对两处源码。
+ */
+export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = {
+  website: "网站",
+  canvas: "画布",
+  ppt: "PPT",
+  sheet: "表格",
+  document: "文档",
+  image: "图片",
+  video: "视频",
+  video_canvas: "视频工作流",
+  audio: "音频",
+  xhs: "小红书",
+  threed: "3D",
+  file: "文件",
+};
+
+const LIBRARY_KIND_ALIASES: Record<string, LibraryKind> = {
+  website: "website",
+  web: "website",
+  site: "website",
+  canvas: "canvas",
+  design: "canvas",
+  workflow: "canvas",
+  ppt: "ppt",
+  deck: "ppt",
+  slide: "ppt",
+  slides: "ppt",
+  presentation: "ppt",
+  sheet: "sheet",
+  grid: "sheet",
+  excel: "sheet",
+  table: "sheet",
+  spreadsheet: "sheet",
+  document: "document",
+  doc: "document",
+  docx: "document",
+  richdoc: "document",
+  word: "document",
+  text: "document",
+  image: "image",
+  single_file_image: "image",
+  photo: "image",
+  picture: "image",
+  poster: "image",
+  video: "video",
+  video_canvas: "video_canvas",
+  audio: "audio",
+  music: "audio",
+  voice: "audio",
+  sound: "audio",
+  xhs: "xhs",
+  threed: "threed",
+  "3d": "threed",
+  model: "threed",
+  model_3d: "threed",
+  file: "file",
+};
+
+const PRESET_KIND_KEYS = [
+  "artifactType",
+  "artifact_type",
+  "productKind",
+  "product_kind",
+  "outputKind",
+  "output_kind",
+  "libraryKind",
+  "library_kind",
+  "kind",
+] as const;
+
+/** 站点默认产物类型；含糊的站（chat/search/agent…）刻意不给，走可见的退化提示。 */
+const SITE_DEFAULT_KIND: Record<string, LibraryKind> = {
+  website: "website",
+  design: "canvas",
+  image: "image",
+  logo: "image",
+  interior: "image",
+  video: "video",
+  music: "audio",
+  threed: "threed",
+  ppt: "ppt",
+  excel: "sheet",
+  word: "document",
+  paper: "document",
+  resume: "document",
+  novel: "document",
+  script: "document",
+};
+
+function libraryKindFromToken(value: unknown): LibraryKind | null {
+  const token = String(value || "").trim().toLowerCase();
+  return token ? LIBRARY_KIND_ALIASES[token] || null : null;
+}
+
+function libraryKindFromAppId(appId: string): LibraryKind | null {
+  const tokens = String(appId || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const matched = new Set<LibraryKind>();
+  for (const token of tokens) {
+    const kind = LIBRARY_KIND_ALIASES[token];
+    if (kind) matched.add(kind);
+  }
+  // 词元互相矛盾（如 `video-poster`）时不赌，交给站点默认。
+  return matched.size === 1 ? [...matched][0] : null;
+}
+
+/** 该 app 的默认产物类型；无法确定返回 null。 */
+export function catalogAppProductKind(
+  app: GoalApp | null | undefined,
+  siteKey = "",
+): LibraryKind | null {
+  const set = app?.preset?.set;
+  if (set) {
+    for (const key of PRESET_KIND_KEYS) {
+      const kind = libraryKindFromToken(set[key]);
+      if (kind) return kind;
+    }
+  }
+  const fromId = libraryKindFromAppId(app?.id || "");
+  if (fromId) return fromId;
+  return SITE_DEFAULT_KIND[String(siteKey || "").trim().toLowerCase()] || null;
+}
+
+export interface CatalogAdvancedOpenPlan {
+  /** 解析出的默认产物类型；null = 退化。 */
+  kind: LibraryKind | null;
+  /** 已通过 `normalizeWorkspaceAction` 的 v1 envelope 载荷（字段长度必然合规）。 */
+  action: WorkspaceActionV1;
+  degraded: boolean;
+  /** 退化时给用户的可见提示；正常路径为空串。 */
+  notice: string;
+}
+
+/**
+ * `?open=advanced` → 右栏派发计划。有默认产物类型就把「我的库」收窄到该类型（选中
+ * 即进高级编辑，`openAdvancedOnSelect` 默认 true）；没有就只打开「我的库」并提示。
+ */
+export function catalogAdvancedOpenPlan(
+  app: GoalApp | null | undefined,
+  siteKey = "",
+): CatalogAdvancedOpenPlan {
+  const kind = catalogAppProductKind(app, siteKey);
+  const category = kind ? CATALOG_LIBRARY_KIND_CATEGORY[kind] : "";
+  const action: WorkspaceActionV1 = normalizeWorkspaceAction({
+    version: 1,
+    tab: "mine",
+    ...(category ? { category } : {}),
+  }) || { version: 1, tab: "mine" };
+  return {
+    kind,
+    action,
+    degraded: !kind,
+    notice: kind
+      ? ""
+      : "这个 App 还没有声明可直接编辑的产物类型，已为你打开「我的库」——选中任意作品即可进入高级编辑。",
   };
 }

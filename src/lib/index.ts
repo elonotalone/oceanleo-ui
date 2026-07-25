@@ -23,6 +23,9 @@ export * from "./presence";
 export * from "./brand-color";
 // 宗旨 v15（2026-07-05）：asset.oceanleo.com 素材缩略图直链（图示卡片示意图）。
 export * from "./asset-thumb";
+// 2026-07-25（合同 §3）：每个 app 一张封面图的 OSS key / URL 约定（30 站 catalog 的
+// `thumb` 用它拼）。W5 产出 app-cover.ts 但不编辑本 barrel，导出由 W1 统一补。
+export * from "./app-cover";
 export * from "./media-proxy";
 export * from "./image-ai-edit";
 // 宗旨 v16 补充（2026-07-06）：「我的工作流」存取（操作台输入快照 → 右栏导航「我的」复用）。
