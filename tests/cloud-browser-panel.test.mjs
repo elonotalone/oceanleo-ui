@@ -21,7 +21,10 @@ import {
   pointInContainedFrame,
   validateCloudBrowserFrameMeta,
 } from "../src/shell/cloud-browser-live.ts";
-import { isLoneModifierKey } from "../src/shell/cloud-browser-interaction.ts";
+import {
+  consumeLoneModifierKeyEvent,
+  isLoneModifierKey,
+} from "../src/shell/cloud-browser-interaction.ts";
 import {
   cloudBrowserSessionNeedsResume,
   formatCloudBrowserLifecycleError,
@@ -1335,6 +1338,45 @@ test("lone modifier keydowns are not remote tab-mutation presses", () => {
   assert.equal(isLoneModifierKey("Shift"), true);
   assert.equal(isLoneModifierKey("t"), false);
   assert.equal(isLoneModifierKey("Control+t"), false);
+});
+
+test("V5 Control+t chord consumption preventDefaults Control without remote press", () => {
+  // attempt-18 CLOUD_TAB_CHORD_NOT_CONSUMED: acceptance treats
+  // !dispatchEvent(...) as consumed. Ignoring Control without preventDefault
+  // made controlDown=false; if the letter half also failed, the gate failed
+  // before any websocket press.
+  const prevented = [];
+  const control = {
+    key: "Control",
+    preventDefault() {
+      prevented.push("Control");
+    },
+  };
+  const letter = {
+    key: "t",
+    preventDefault() {
+      prevented.push("t");
+    },
+  };
+  assert.equal(consumeLoneModifierKeyEvent(control), true);
+  assert.equal(consumeLoneModifierKeyEvent(letter), false);
+  assert.deepEqual(prevented, ["Control"]);
+  // Held Control from the scaffolding keydown still forms Control+t even when
+  // the synthetic letter event omits ctrlKey (pairing across two dispatchEvents).
+  assert.equal(
+    playwrightKey(
+      { key: "t", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false },
+      ["Control"],
+    ),
+    "Control+t",
+  );
+  assert.equal(
+    playwrightKey(
+      { key: "t", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false },
+      ["Control"],
+    ),
+    "Control+t",
+  );
 });
 
 test("window input, IME, focus, and clipboard contracts are bounded", () => {

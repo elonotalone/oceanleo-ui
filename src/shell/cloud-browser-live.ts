@@ -465,7 +465,11 @@ export function createCloudBrowserTextCommitGate(): CloudBrowserTextCommitGate {
 }
 
 export function playwrightKey(
-  event: ReactKeyboardEvent<HTMLElement>,
+  event: Pick<
+    ReactKeyboardEvent<HTMLElement>,
+    "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+  >,
+  heldModifiers?: Iterable<string>,
 ): string {
   const aliases: Record<string, string> = {
     Esc: "Escape",
@@ -477,8 +481,15 @@ export function playwrightKey(
     Down: "ArrowDown",
   };
   let key = aliases[event.key] || event.key;
-  const modified =
-    event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+  const held = heldModifiers ? new Set(heldModifiers) : null;
+  // Acceptance (and some synthetic KeyboardEvents) keydown Control then the
+  // letter as separate events. Prefer live event flags, but keep any still-
+  // held lone modifiers so Control+t is not demoted to a plain "t".
+  const ctrlKey = event.ctrlKey || !!held?.has("Control");
+  const metaKey = event.metaKey || !!held?.has("Meta");
+  const altKey = event.altKey || !!held?.has("Alt");
+  const shiftKey = event.shiftKey || !!held?.has("Shift");
+  const modified = ctrlKey || metaKey || altKey || shiftKey;
   if (key.length === 1) {
     // Modifier chords must keep letter case natural. Forcing uppercase
     // turns Control+t into Control+T; xdotool then emits Ctrl+Shift+t
@@ -487,10 +498,10 @@ export function playwrightKey(
     key = modified ? key.toLowerCase() : key.toUpperCase();
   }
   const parts: string[] = [];
-  if (event.ctrlKey && key !== "Control") parts.push("Control");
-  if (event.metaKey && key !== "Meta") parts.push("Meta");
-  if (event.altKey && key !== "Alt") parts.push("Alt");
-  if (event.shiftKey && key !== "Shift") parts.push("Shift");
+  if (ctrlKey && key !== "Control") parts.push("Control");
+  if (metaKey && key !== "Meta") parts.push("Meta");
+  if (altKey && key !== "Alt") parts.push("Alt");
+  if (shiftKey && key !== "Shift") parts.push("Shift");
   parts.push(key);
   return parts.join("+");
 }

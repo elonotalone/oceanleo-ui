@@ -505,6 +505,7 @@ export function CloudBrowserPanel({
             onFocus={interaction.handleHiddenFocus}
             onBlur={interaction.handleHiddenBlur}
             onKeyDown={interaction.handleHiddenKeyDown}
+            onKeyUp={interaction.handleHiddenKeyUp}
             onBeforeInput={interaction.handleBeforeInput}
             onInput={interaction.handleInput}
             onCompositionStart={interaction.handleCompositionStart}

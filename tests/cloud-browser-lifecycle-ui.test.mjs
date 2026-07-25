@@ -175,6 +175,7 @@ const interactionStubUrl = dataModule(`
       handleHiddenFocus: noop,
       handleHiddenBlur: noop,
       handleHiddenKeyDown: noop,
+      handleHiddenKeyUp: noop,
       handleBeforeInput: noop,
       handleInput: noop,
       handleCompositionStart: noop,

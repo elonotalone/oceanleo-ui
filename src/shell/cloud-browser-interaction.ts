@@ -84,6 +84,21 @@ export function isLoneModifierKey(key: string): boolean {
   );
 }
 
+/**
+ * V5 acceptance synthesizes Control then KeyT via dispatchEvent and treats
+ * preventDefault as "consumed". Swallowing lone modifiers without
+ * preventDefault made CLOUD_TAB_CHORD_NOT_CONSUMED when the letter half was
+ * also not canceled. Consume locally; never forward as a remote press.
+ */
+export function consumeLoneModifierKeyEvent(event: {
+  key: string;
+  preventDefault(): void;
+}): boolean {
+  if (!isLoneModifierKey(event.key)) return false;
+  event.preventDefault();
+  return true;
+}
+
 const INPUT_COALESCE_MS = 32;
 
 type PendingPointerMove = {
@@ -177,6 +192,7 @@ export function useCloudBrowserInteraction({
   } | null>(null);
   const pendingPointerMoveRef = useRef<PendingPointerMove | null>(null);
   const pointerMoveTimerRef = useRef<number | null>(null);
+  const heldModifiersRef = useRef<Set<string>>(new Set());
   const pendingWheelRef = useRef<PendingWheel | null>(null);
   const wheelTimerRef = useRef<number | null>(null);
   const lastViewportRef = useRef("");
@@ -258,6 +274,7 @@ export function useCloudBrowserInteraction({
     compositionTextRef.current = "";
     compositionIdRef.current = "";
     activePointerRef.current = null;
+    heldModifiersRef.current.clear();
     clearHiddenInput();
   }
 
@@ -639,13 +656,24 @@ export function useCloudBrowserInteraction({
     // Lone modifier keydowns are only chord scaffolding. Forwarding them as
     // remote presses races Control+t/w tab mutations under human lease and
     // historically closed the live socket before durable active_tab_id moved.
-    if (isLoneModifierKey(event.key)) {
+    // Still preventDefault so V5's dispatchEvent consumption check passes and
+    // the letter half of the chord remains paired via heldModifiersRef.
+    if (consumeLoneModifierKeyEvent(event)) {
+      heldModifiersRef.current.add(event.key);
       return;
     }
-    const modified = event.ctrlKey || event.metaKey || event.altKey;
+    const held = heldModifiersRef.current;
+    const modified =
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      held.has("Control") ||
+      held.has("Meta") ||
+      held.has("Alt");
     const clipboardPaste =
-      (event.ctrlKey || event.metaKey) &&
+      (event.ctrlKey || event.metaKey || held.has("Control") || held.has("Meta")) &&
       !event.altKey &&
+      !held.has("Alt") &&
       event.key.toLowerCase() === "v";
     if (clipboardPaste) {
       // Let the trusted paste event provide bounded clipboard text once.
@@ -655,8 +683,17 @@ export function useCloudBrowserInteraction({
     event.preventDefault();
     sendMutation("key", {
       event: "press",
-      key: playwrightKey(event),
+      key: playwrightKey(event, held),
     });
+  }
+
+  function handleHiddenKeyUp(
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (!isLoneModifierKey(event.key)) return;
+    heldModifiersRef.current.delete(event.key);
+    // Match keydown: consume locally so synthetic chords stay canceled.
+    event.preventDefault();
   }
 
   function sendText(text: string, compositionId: string) {
@@ -828,6 +865,7 @@ export function useCloudBrowserInteraction({
     handleHiddenFocus,
     handleHiddenBlur,
     handleHiddenKeyDown,
+    handleHiddenKeyUp,
     handleBeforeInput,
     handleInput,
     handleCompositionStart,
