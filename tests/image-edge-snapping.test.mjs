@@ -197,6 +197,92 @@ test("near-full-bleed drag prefers the approached edge over opposite-edge corrid
   assertClose(nearRight.dx, 21, "near right acquires to doc flush");
 });
 
+test("≤8 CSS near release latches even when last motion settles away", () => {
+  // Production V3 miss (v0.192.28): visualScale≈0.185, gap≈21.5 logical ≈4 CSS.
+  const docWide = { width: 6_313.586, height: 1_280 };
+  const zoom = 0.18516;
+  const viewport = [zoom, 0, 0, zoom, 100, 50];
+  const width = 1_159;
+  const height = 1_280;
+  const nearLeftLogical = 21.5;
+  assert.ok(
+    nearLeftLogical * zoom <= IMAGE_EDGE_SNAP_ACQUIRE_PX,
+    "fixture is inside acquire CSS",
+  );
+
+  // Away-settle with an existing left latch must keep / flush left — not unlatch.
+  const settleAwayLatched = resolveImageEdgeSnap({
+    bounds: { left: nearLeftLogical, top: 0, width, height },
+    doc: docWide,
+    viewport,
+    previous: { x: "left", y: null },
+    motion: { dx: 4, dy: 0 },
+  });
+  assert.equal(settleAwayLatched.state.x, "left");
+  assertClose(settleAwayLatched.dx, -nearLeftLogical, "latched left flushes");
+
+  // In-drag away motion without a latch still ignores the edge behind the pointer
+  // (corridor travel). Pointer-up passes motion 0 and must latch.
+  const settleAwayFreshDrag = resolveImageEdgeSnap({
+    bounds: { left: nearLeftLogical, top: 0, width, height },
+    doc: docWide,
+    viewport,
+    motion: { dx: 3, dy: 0 },
+  });
+  assert.equal(
+    settleAwayFreshDrag.state.x,
+    null,
+    "in-drag away motion does not acquire behind-pointer edge",
+  );
+
+  const releaseLeft = resolveImageEdgeSnap({
+    bounds: { left: nearLeftLogical, top: 0, width, height },
+    doc: docWide,
+    viewport,
+    motion: { dx: 0, dy: 0 },
+  });
+  assert.equal(releaseLeft.state.x, "left");
+  assertClose(releaseLeft.dx, -nearLeftLogical, "release sample latches left");
+
+  const rightGap = 22.086;
+  const rightZoom = 0.18705;
+  const rightViewport = [rightZoom, 0, 0, rightZoom, 100, 50];
+  const rightLeft = docWide.width - width - rightGap;
+  const releaseRight = resolveImageEdgeSnap({
+    bounds: { left: rightLeft, top: 0, width, height },
+    doc: docWide,
+    viewport: rightViewport,
+    motion: { dx: 0, dy: 0 },
+  });
+  assert.equal(releaseRight.state.x, "right");
+  assertClose(releaseRight.dx, rightGap, "release sample latches right");
+
+  // Top / bottom parity at the same CSS threshold (release / zero motion).
+  const nearTop = resolveImageEdgeSnap({
+    bounds: { left: 400, top: 18, width: 400, height: 400 },
+    doc: docWide,
+    viewport,
+    motion: { dx: 0, dy: 0 },
+  });
+  assert.equal(nearTop.state.y, "top");
+  assertClose(nearTop.dy, -18, "near top latches");
+
+  const nearBottomGap = 20;
+  const nearBottom = resolveImageEdgeSnap({
+    bounds: {
+      left: 400,
+      top: docWide.height - 400 - nearBottomGap,
+      width: 400,
+      height: 400,
+    },
+    doc: docWide,
+    viewport,
+    motion: { dx: 0, dy: 0 },
+  });
+  assert.equal(nearBottom.state.y, "bottom");
+  assertClose(nearBottom.dy, nearBottomGap, "near bottom latches");
+});
+
 test("scale and crop controls snap only the manipulated edge or corner", () => {
   assert.deepEqual(imageSnapEdgesForControl("tl"), ["left", "top"]);
   assert.deepEqual(imageSnapEdgesForControl("tr"), ["right", "top"]);
@@ -330,7 +416,10 @@ test("Fabric drag and crop/scale hooks share snapping state and preserve Alt obj
     core,
     /mouse:down[\s\S]*?target && this\.canSnapImageEdges\(target\)[\s\S]*?altPan = e\.altKey && !snapBypassTarget/,
   );
-  assert.match(core, /object:modified[\s\S]*?resetImageEdgeSnap\(\)/);
+  assert.match(
+    core,
+    /object:modified[\s\S]*?imageEdgeSnapPrevBounds = null[\s\S]*?snapImageMoveEdges[\s\S]*?resetImageEdgeSnap\(\)/,
+  );
   assert.match(
     core,
     /object:moving[\s\S]*?snapImageMoveEdges[\s\S]*?this\.emit\(\)/,

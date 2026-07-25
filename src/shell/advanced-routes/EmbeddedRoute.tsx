@@ -1504,6 +1504,9 @@ export function EmbeddedRoute({
         persistence: {
           dirty,
           editRevision,
+          // Website Apply must stay clickable until the user/harness applies the
+          // session draft; debounce autosave previously save→auto-Applied first.
+          autoSave: hostedMediaType !== "website",
           flush: !designHandshakeReady
             ? async () => ({
                 ok: false,

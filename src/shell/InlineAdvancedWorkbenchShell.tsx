@@ -140,8 +140,11 @@ export function InlineAdvancedWorkbenchShell({
   );
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
+  const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false;
   const autoSave = useAdvancedAutoSave({
-    dirty: editorDirty,
+    // Website keeps dirty for close guards but disables observe-autosave so a
+    // pending visual draft is not save→auto-Applied out from under Apply.
+    dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
     flush: adapter.persistence?.flush,
     session: advancedSession,

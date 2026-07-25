@@ -121,9 +121,10 @@ export function imageScaleControlLocksAspectRatio(
 
 /**
  * Near-full-bleed images have overlapping left/right (or top/bottom) magnetic
- * corridors. Bias acquire toward the edge the object is moving into, and drop a
- * latch when motion clearly leaves that edge so opposite-edge hysteresis cannot
- * yank a near approach away from its target.
+ * corridors. Bias acquire toward the edge the object is moving into so travel
+ * through the opposite corridor does not yank. Keep a still-near latch on tiny
+ * away-settle ticks unless the opposite edge is also inside acquire (competing).
+ * Release samples should pass motion 0 so any edge ≤acquire CSS latches.
  */
 function resolveSnapAxis<T extends ImageCanvasEdge>(
   distances: ReadonlyArray<readonly [T, number]>,
@@ -138,6 +139,12 @@ function resolveSnapAxis<T extends ImageCanvasEdge>(
 ): { correction: number; edge: T | null } {
   const candidateDistance = (edge: T) =>
     distances.find(([candidate]) => candidate === edge)?.[1];
+  const screenDistanceFor = (edge: T) => {
+    const distance = candidateDistance(edge);
+    return distance == null
+      ? Number.POSITIVE_INFINITY
+      : Math.abs(distance) * screenScale;
+  };
   const motionEpsilon = 0.25;
   if (previous && eligible.has(previous)) {
     const distance = candidateDistance(previous);
@@ -148,12 +155,19 @@ function resolveSnapAxis<T extends ImageCanvasEdge>(
       const movingAway =
         (previous === towardLow && motion > motionEpsilon) ||
         (previous === towardHigh && motion < -motionEpsilon);
-      if (!movingAway) {
+      const opposite = previous === towardLow ? towardHigh : towardLow;
+      // Only break hysteresis when the opposite corridor is also magnetic;
+      // otherwise a settle tick inside ≤acquire CSS would unlatch the near edge.
+      const oppositeCompeting =
+        eligible.has(opposite) && screenDistanceFor(opposite) <= acquirePx;
+      if (!movingAway || !oppositeCompeting) {
         return { correction: -distance, edge: previous };
       }
     }
   }
   let acquireEdges = distances.filter(([edge]) => eligible.has(edge));
+  // While moving, ignore the edge behind the pointer so opposite corridors cannot
+  // yank. Callers pass motion 0 on pointer-up so a sole near edge still latches.
   if (motion < -motionEpsilon) {
     acquireEdges = acquireEdges.filter(([edge]) => edge !== towardHigh);
   } else if (motion > motionEpsilon) {

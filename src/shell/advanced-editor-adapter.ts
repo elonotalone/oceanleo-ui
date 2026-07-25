@@ -22,6 +22,12 @@ export interface AdvancedEditorPersistenceAdapter {
   /** Monotonic editor mutation revision, never a saved URL or timestamp. */
   editRevision: string | number;
   dirty: boolean;
+  /**
+   * When false, the shell keeps close/beforeunload dirty guards and explicit
+   * flush, but does not debounce-autosave. Website visual drafts need an
+   * explicit Apply before Save; host autosave must not consume Apply.
+   */
+  autoSave?: boolean;
   /** Serializes and persists the revision current when this function starts. */
   flush: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
   recovery?: AdvancedEditorRecoveryAdapter;

@@ -298,7 +298,12 @@ export class FabricEditorCore {
       this.canvas.on("before:transform", ({ transform }) => {
         this.resetImageEdgeSnap(transform.target);
       }),
-      this.canvas.on("object:modified", ({ target }) => {
+      this.canvas.on("object:modified", ({ target, e }) => {
+        // Release sample: zero motion so a settle tick ≤acquire CSS still latches.
+        if (target) {
+          this.imageEdgeSnapPrevBounds = null;
+          this.snapImageMoveEdges(target, e);
+        }
         this.resetImageEdgeSnap();
         if (roleOf(target) === "crop") {
           constrainCropToDoc(target, this.doc);

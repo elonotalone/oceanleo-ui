@@ -167,3 +167,26 @@ test("EmbeddedRoute always mounts website SelectionToolbar even without object s
   assert.match(route, /hostedMediaType === "website"/);
   assert.match(route, /hostedWebsiteEditBarSelection\(hostedSelection\)/);
 });
+
+test("website host disables observe-autosave so Apply is not save-consumed", () => {
+  const route = readFileSync(
+    new URL("../src/shell/advanced-routes/EmbeddedRoute.tsx", import.meta.url),
+    "utf8",
+  );
+  const shell = readFileSync(
+    new URL("../src/shell/InlineAdvancedWorkbenchShell.tsx", import.meta.url),
+    "utf8",
+  );
+  const adapter = readFileSync(
+    new URL("../src/shell/advanced-editor-adapter.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(adapter, /autoSave\?: boolean/);
+  assert.match(route, /autoSave: hostedMediaType !== "website"/);
+  assert.match(shell, /hostAutoSaveEnabled/);
+  assert.match(shell, /adapter\.persistence\?\.autoSave !== false/);
+  assert.match(
+    shell,
+    /dirty: hostAutoSaveEnabled \? editorDirty : false/,
+  );
+});
