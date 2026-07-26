@@ -24,6 +24,7 @@ import {
   listMyArtifacts,
   retireArtifact,
 } from "./artifact-client";
+import { useLibraryEditIntent } from "./library-edit-intent";
 import {
   artifactIsVisible,
   isEnsureableTransient,
@@ -678,6 +679,19 @@ export function MyLibrary({
     // same itemId/URL action when the fresh entry list arrives, then opens it.
     void load();
   }, [action?.nonce, load]);
+
+  // 「编辑模板」深链已指名一份具体 artifact，直接进 typed 编辑器（时序与兜底取数见
+  // `library-edit-intent.ts`）。不带 `intent` 的 action 语义不变，仍是安静预览详情。
+  useLibraryEditIntent({
+    action,
+    items,
+    onOpenItem: onOpenItem || setStandaloneEditorItem,
+    onFailure: ({ status, message }) => {
+      setFailed(true);
+      setFailureStatus(status);
+      setFailureMessage(message);
+    },
+  });
 
   const loadMore = useCallback(async () => {
     if (

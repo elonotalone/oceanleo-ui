@@ -126,8 +126,23 @@ export { SiteCatalogConsole } from "./SiteCatalogConsole";
 export type { SiteCatalogConsoleProps, AgentCardConfig } from "./SiteCatalogConsole";
 // 2026-07-25（合同 §3）：一张首页卡 = 一个 app = 一个【代表 prompt】的取值契约由
 // app-catalog 独家提供，首页卡片 / lightbox / `?fill=preset` 深链都必须走它。
-export { presetToOpsPatch, representativeFill, representativePrompt } from "./app-catalog";
-export type { GoalApp, GoalAppPreset, RepresentativeFill } from "./app-catalog";
+// 2026-07-26（合同 §0.1 / §3）：两层图像职责分开——`capabilityImageOf` 取**功能图**
+// （首页卡片缩略图，不随模板切换），`appTemplates` 取该 app 的 1–2 份**模板素材**
+// （只在大卡片里出现，且已剔除缺 id/title/previewUrl/artifactId 的脏条目）。站点侧一
+// 律走这两个函数，不要现场读 `app.capabilityImage || app.thumb`。
+export {
+  appTemplates,
+  capabilityImageOf,
+  presetToOpsPatch,
+  representativeFill,
+  representativePrompt,
+} from "./app-catalog";
+export type {
+  GoalApp,
+  GoalAppPreset,
+  RepresentativeFill,
+  TemplateMaterial,
+} from "./app-catalog";
 export { StudioSection, CollapsibleSection } from "./StudioSection";
 export type { StudioSectionProps } from "./StudioSection";
 // 宗旨 v18（2026-07-07）：操作台「选项按键组」（单选点已选=取消；多选切换）。全家桶
@@ -375,8 +390,9 @@ export type { WorkspaceShellProps } from "./WorkspaceShell";
 // `intro` 介绍段已从共享包硬删，首页不再以任何形式保留它们。
 export { HomeIntro } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
-// 首页 app 卡片（合同 §0，2026-07-25）：一卡 = 一个 GoalApp = 一个代表 prompt，
-// 左图右文 → hover 图片铺满 + 预览 + prompt/生成类似 → lightbox 三按钮。
+// 首页 app 卡片（合同 §0.1 / §0.2，2026-07-26）：一卡 = 一个 GoalApp = 一个代表 prompt
+// + 1–2 份模板素材。左图右文（缩略图 = 功能图）→ hover 整卡放大 + 下缘唯一一颗 `prompt`
+// 按钮（触屏常驻）→ 点卡片主体开大卡片。「预览」按钮本轮已删除。
 export {
   HomeAppCards,
   HOME_APP_ALL_GROUP,
@@ -387,12 +403,18 @@ export {
   homeAppGroups,
 } from "./HomeAppCards";
 export type { HomeAppCardsProps } from "./HomeAppCards";
-export { ImageLightbox } from "./ImageLightbox";
-export type { ImageLightboxProps } from "./ImageLightbox";
-// 合同 §3 的两个深链 helper（W2 产出，首页 app 卡的「生成类似」「高级编辑」用）。
+// 大卡片 = 多模板详情浮层（合同 §0.3，W2 产出）。文件名仍是 `ImageLightbox.tsx`，
+// 旧名 `ImageLightbox` 只是一层 `@deprecated` 兼容壳，新代码一律用 `TemplateShowcase`。
+export { ImageLightbox, TemplateShowcase } from "./ImageLightbox";
+export type { ImageLightboxProps, TemplateShowcaseProps } from "./ImageLightbox";
+// 合同 §3 的深链 / 下载 helper（W4 产出）：`workspaceTemplateEditHref` 把**具体那份**
+// 模板素材载入编辑器，`templateDownloadHref` 解析该素材的真实文件地址。
 export {
+  TEMPLATE_DOWNLOAD_PATH,
+  templateDownloadHref,
   workspaceAppAdvancedHref,
   workspaceAppFillHref,
+  workspaceTemplateEditHref,
 } from "./site-catalog-controller";
 // 封面图 key/URL 约定（合同 §3，W5 产出）走 `@oceanleo/ui/lib`（见 `src/lib/index.ts`），
 // shell 这层不再重复暴露，避免同一符号两条导入路径。

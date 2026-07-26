@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 目录深链意图（`?fill=preset` / `?open=advanced`）的编排层
+// @oceanleo/ui — 目录深链意图（`?fill=preset` / `?open=advanced` / `?open=template`）
 // ----------------------------------------------------------------------------
 // 从 `SiteCatalogConsole.tsx` 抽出来单独成文件（V1 判定书 §6.2 / §9.1-3）：那个文件
 // 基线就有 767 行、已超共享包 ≤600 的约定，深链这套一次性意图不应该继续把它顶高。
@@ -29,6 +29,7 @@ import type { GoalApp } from "./app-catalog";
 import {
   catalogAdvancedOpenPlan,
   catalogPresetFill,
+  catalogTemplateOpenPlan,
   resolveCatalogDeepLinkIntent,
   searchWithoutCatalogDeepLinkIntent,
   type CatalogDeepLinkIntent,
@@ -99,7 +100,7 @@ export interface CatalogDeepLinkState {
 /**
  * 目录深链意图的完整生命周期。
  *
- * 规范化 redirect 只删 legacy 的 `fn`/`mode`，所以这两个参数在收敛到 `/workspace/<id>`
+ * 规范化 redirect 只删 legacy 的 `fn`/`mode`，所以这几个参数在收敛到 `/workspace/<id>`
  * 之后仍在地址栏。这里把它们**锁存**成本次进入的一次性待办，消费后立刻从地址栏抹掉：
  * 刷新、重挂载、以及用户手动清空输入框之后都不会被回灌。
  *
@@ -120,7 +121,12 @@ export function useCatalogDeepLink({
   const deepLinkLatchRef = useRef("");
   useEffect(() => {
     const intent = resolveCatalogDeepLinkIntent(locationSearch);
-    if (!activeAppId || (!intent.fillPreset && !intent.openAdvanced)) return;
+    if (
+      !activeAppId ||
+      (!intent.fillPreset && !intent.openAdvanced && !intent.openTemplateId)
+    ) {
+      return;
+    }
     const token = `${activeAppId}\u0000${locationSearch}`;
     if (deepLinkLatchRef.current === token) return;
     deepLinkLatchRef.current = token;
@@ -195,6 +201,32 @@ export function useCatalogDeepLink({
     );
     clearDeepLinkQuery();
   }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey]);
+
+  // 「编辑模板」：与上面同一条派发通道，区别只在 envelope 指名了一份具体 artifact。
+  // 同样不需要定时器——本 effect 在 SiteCatalogConsole 这一层，右栏监听（子）已注册；
+  // 而右栏把 envelope 当 **prop** 交给我的库，所以即使我的库这一刻还没挂载，它挂载时
+  // 第一帧就能拿到这份 action，不存在「派发早于接收方」的窗口。
+  const templateId = deepLink?.openTemplateId || "";
+  useEffect(() => {
+    if (!templateId || deepLink?.appId !== activeAppId) return;
+    const app = apps.find((item) => item.id === activeAppId);
+    if (!app) return;
+    const plan = catalogTemplateOpenPlan(app, templateId, siteKey);
+    dispatchWorkspaceAction({
+      nonce: `catalog-template:${activeAppId}:${templateId}:${Date.now()}`,
+      action: plan.action,
+    });
+    setNotice(plan.notice);
+    setDeepLink((current) =>
+      current &&
+      current.appId === activeAppId &&
+      current.openTemplateId === templateId
+        ? { ...current, openTemplateId: "" }
+        : current,
+    );
+    clearDeepLinkQuery();
+  }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey, templateId]);
+
   useEffect(() => {
     setNotice("");
   }, [activeAppId]);

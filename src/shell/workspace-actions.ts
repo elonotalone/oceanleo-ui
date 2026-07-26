@@ -12,6 +12,23 @@ export type WorkspaceSlotId =
   | "mine"
   | "browser";
 
+/**
+ * What the receiver should do with `itemId` once it resolves it.
+ *
+ * `open` (the default, and what every existing receipt means) reveals the item
+ * in its library detail; the user still presses Edit. `edit` is only issued by
+ * a first-party deep link that already names one exact artifact — the catalog
+ * 「编辑模板」 entry — and asks the receiver to hand that item straight to the
+ * typed advanced editor. Anything else is treated as `open`: an unknown intent
+ * must never silently become an editor launch.
+ */
+export type WorkspaceActionIntent = "open" | "edit";
+
+const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
+  "open",
+  "edit",
+] as const;
+
 export interface WorkspaceActionV1 {
   version: 1;
   tab: WorkspaceSlotId;
@@ -20,6 +37,7 @@ export interface WorkspaceActionV1 {
   itemId?: string;
   url?: string;
   browserSessionId?: string;
+  intent?: WorkspaceActionIntent;
 }
 
 export interface WorkspaceActionEnvelope {
@@ -98,6 +116,13 @@ export function normalizeWorkspaceAction(
       // Receipt payloads must never turn into javascript:/data: links.
     }
   }
+  // Absent unless explicitly and validly requested: every receipt written
+  // before this field existed must keep normalizing to the exact same object.
+  const rawIntent = clean("intent", 16) as WorkspaceActionIntent | undefined;
+  const intent =
+    rawIntent && WORKSPACE_ACTION_INTENTS.includes(rawIntent)
+      ? rawIntent
+      : undefined;
   return {
     version: 1,
     tab,
@@ -106,6 +131,7 @@ export function normalizeWorkspaceAction(
     itemId: clean("itemId", 300),
     url,
     browserSessionId: clean("browserSessionId", 300),
+    ...(intent ? { intent } : {}),
   };
 }
 

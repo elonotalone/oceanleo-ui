@@ -37,6 +37,20 @@ import { listFiles, type FileItem } from "../lib/database";
 import type { AgentAttachment } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
 
+/**
+ * 首页「阅读列」宽度 = 48rem / 768px，也就是改版前那个包住一切的 `max-w-3xl`。
+ *
+ * 合同 §0.2 第 5 条要求卡片更大更宽、消除过大的左右留白，而全链上唯一的宽度瓶颈就是本
+ * 组件最外层容器的 `max-w-3xl`——它同时包着 H1、首页大输入框（LeoComposer）和卡片区，
+ * 直接放宽会把输入框一起拉到 1152px，首页焦点会散掉。
+ *
+ * 处理方式：把「一层管所有」拆成两层。外层容器只在走 app 卡片路径时放宽到 `max-w-6xl`
+ * （1152px），H1 与输入框各自套回这一条 768px 阅读列（宽度与改版前逐像素一致），卡片区
+ * 用 `w-full` 吃满外层——lg 三列的单卡宽度从约 233px 变成约 361px，行数与列数都不变。
+ * 没传 `apps` 的站（agent 走 HomePromptCards）不进这一支，版式零变化。
+ */
+const READING_COLUMN = "max-w-3xl";
+
 export interface HomeIntroProps {
   /** 站名（如「LeoImage」）。 */
   siteName: string;
@@ -203,6 +217,8 @@ export function HomeIntro({
 
   // 有 siteId 且未显式关掉卡片（defaultTab !== "none"）→ 直接常显 prompt 卡片。
   const withCards = Boolean(siteId) && defaultTab !== "none";
+  // 走 app 卡片路径（传了 apps）才放宽栏宽，见下面 `outerWidth` 的说明。
+  const withAppCards = withCards && Boolean(apps && apps.length > 0);
 
   // 点 prompt 卡片（宗旨 v15）：把该卡文案设为模板 → TemplateFillArea 把字面文字灌进编辑器
   // （字面可编辑、`[字段]` 是荧光块）。每次点击显式自增 fillNonce；同卡重复点击也能重灌，
@@ -218,11 +234,11 @@ export function HomeIntro({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-3xl flex-col items-center px-6 ${
-        withCards ? "min-h-[calc(100dvh-56px)] pt-[7vh]" : "min-h-[calc(100dvh-56px)] pt-[12vh]"
-      }`}
+      className={`mx-auto flex w-full flex-col items-center px-6 ${
+        withAppCards ? "max-w-6xl" : "max-w-3xl"
+      } ${withCards ? "min-h-[calc(100dvh-56px)] pt-[7vh]" : "min-h-[calc(100dvh-56px)] pt-[12vh]"}`}
     >
-      <h1 className="text-center text-[32px] font-semibold tracking-tight text-stone-900">
+      <h1 className={`w-full text-center text-[32px] font-semibold tracking-tight text-stone-900 ${READING_COLUMN}`}>
         {heading}
       </h1>
 
@@ -230,7 +246,7 @@ export function HomeIntro({
           2026-07-02）。2026-07-03：吸顶到【触顶】（top-0，去掉 8px 缝隙）。
           2026-07-09：toolsOn 时开启【文件上传 /「＋」菜单（本地 + 最近文件）/ 拖拽 / 语音】——
           与主站 oceanleo.com 首页输入框完全一致，各子站零改动即获此能力。 */}
-      <div className={`mt-8 w-full ${withCards ? "sticky top-0 z-30 pt-2" : ""}`}>
+      <div className={`mt-8 w-full ${READING_COLUMN} ${withCards ? "sticky top-0 z-30 pt-2" : ""}`}>
         <LeoComposer
           value={value}
           onChange={onChangeValue}
@@ -274,14 +290,15 @@ export function HomeIntro({
         </div>
       )}
 
-      {/* 卡片区：点卡片 → 预设文案进输入框并高亮占位符。
-          传了 `apps`（合同 §0 第 2 条，已迁移的站）→ app 卡片（一卡 = 一个 app）；
-          没传 → 沿用 PROMPT_LIBRARY 文字卡，30 站分批迁移期间两条路径并存。 */}
+      {/* 卡片区：`w-full` 吃满外层（app 卡路径下是 1152px 的宽列）。
+          传了 `apps`（已迁移的站）→ app 卡片（一卡 = 一个 app）：点卡片主体开大卡片，
+          点卡上的 `prompt` 才把预设文案灌进输入框并高亮占位符（合同 §0.2 第 3/4 条）。
+          没传 → 沿用 PROMPT_LIBRARY 文字卡（点卡即灌 prompt），两条路径并存。 */}
       {withCards && (
         <div className="mt-6 w-full pb-8">
-          {apps && apps.length > 0 ? (
+          {withAppCards ? (
             <HomeAppCards
-              apps={apps}
+              apps={apps!}
               siteId={siteId!}
               accent={accent}
               featuredLimit={featuredLimit}

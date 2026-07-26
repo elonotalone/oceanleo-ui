@@ -1,9 +1,14 @@
-// 首页 app 卡片（合同 §0，操作员 2026-07-25）的行为契约。
-// 覆盖：① 代表 prompt 为空的 app 不渲染 prompt / 生成类似按钮（也绝不灌空串）；
-//      ② hover / 轻点展开态的铺满层 + 预览 + 下缘按钮条结构存在；
-//      ③ lightbox 三按钮（prompt / 生成类似 / 高级编辑）与无 prompt 时的降级；
-//      ④ 用户自建卡仍从 localStorage 读出并以无图 emoji 版式与 app 卡混排；
-//      ⑤ 首页两段废文案（intro 段渲染、BillingNotice）在共享包零残留。
+// 首页 app 卡片（合同 2026-07-26 §0.1 / §0.2）的行为契约。
+// 覆盖：① 点卡片主体 = 打开大卡片（**不再是**灌 prompt，推翻 2026-07-25 那版第 4 条）；
+//      ② hover = 整张卡片放大（`hover:scale-105` + `hover:z-10`），功能图同时铺满；
+//      ③ 「预览」按钮已删除，卡片下缘只剩 `prompt` 一个按钮，且触屏常驻可见；
+//      ④ 缩略图取 `capabilityImage`（功能图），`thumb` 只是铺开窗口期的回退；
+//      ⑤ 卡片根不是 role=button、也没有整卡 onKeyDown（ARIA 嵌套违规 + 键盘双触发）；
+//      ⑥ 代表 prompt 为空的 app 不渲染 prompt 按钮（也绝不灌空串），但仍能开大卡片；
+//      ⑦ 自建卡没有功能图也没有模板，主动作单独定义 = 灌它自己的 prompt，不得变死卡；
+//      ⑧ 大卡片（W2 的 TemplateShowcase）的接线：模板集合、切换条、三按钮目标；
+//      ⑨ 用户自建卡仍从 localStorage 读出并以无图 emoji 版式与 app 卡混排；
+//      ⑩ 首页两段废文案（intro 段渲染、BillingNotice）在共享包零残留 + 栏宽拆列。
 // 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以本文件可以直接
 // `node --test tests/home-app-cards.test.mjs` 跑，不需要仓库的 ts-extension-loader。
 
@@ -67,16 +72,28 @@ const homeCardsUrl = await compileModule("src/shell/home-cards.ts");
 const appCatalogUrl = await compileModule("src/shell/app-catalog.ts");
 const workspaceRouteUrl = await compileModule("src/shell/workspace-route.ts");
 const workspaceActionsUrl = await compileModule("src/shell/workspace-actions.ts");
-// W2 的深链层复用 W3 的代表 prompt 取值（`catalogRepresentativePrompt` /
-// `catalogPresetFill`），所以控制器也要接真实的 app-catalog，不能留裸相对路径。
+// 深链层复用 W3 的代表 prompt 取值（`catalogRepresentativePrompt` / `catalogPresetFill`），
+// 所以控制器也要接真实的 app-catalog，不能留裸相对路径。「下载」的 href 由真控制器现算，
+// 本文件断言的是用户最终点到的那条 URL——所以 `GATEWAY_BASE` 也接真配置。
+const authConfigUrl = await compileModule("src/lib/auth/config.ts");
+// `library-data` 只被控制器用来把 artifactType 映射成「我的库」分类（`?open=template`
+// 派发计划，W4 的面）。它的真实模块会把整棵 artifact / database 依赖树拖进来，而本文件
+// 一条都不断言那个分支，所以按同一签名给最小替身。
+const libraryDataStubUrl = dataModule(
+  "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
+);
 const controllerUrl = await compileModule("src/shell/site-catalog-controller.ts", {
+  "../lib/auth/config": authConfigUrl,
   "./app-catalog": appCatalogUrl,
+  "./library-data": libraryDataStubUrl,
   "./workspace-route": workspaceRouteUrl,
   "./workspace-actions": workspaceActionsUrl,
 });
 const lightboxUrl = await compileModule("src/shell/ImageLightbox.tsx", {
   "../lib/asset-thumb": assetThumbUrl,
   "../i18n/ui/useUI": uiStubUrl,
+  "./app-catalog": appCatalogUrl,
+  "./site-catalog-controller": controllerUrl,
 });
 const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
   "./app-catalog": appCatalogUrl,
@@ -88,7 +105,6 @@ const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
 });
 
-const { ImageLightbox } = await import(lightboxUrl);
 const {
   HomeAppCards,
   HOME_APP_ALL_GROUP,
@@ -98,13 +114,44 @@ const {
   featuredHomeApps,
   homeAppGroups,
 } = await import(homeAppCardsUrl);
-const { representativePrompt } = await import(appCatalogUrl);
-const { workspaceAppAdvancedHref, workspaceAppFillHref } = await import(
-  controllerUrl
+// 功能图 / 模板素材的取值口径归 W3 的 app-catalog 独家持有（`W3-marker.md` §3）：
+// 卡片侧只许消费它们，不许在 HomeAppCards 里再写一份 `capabilityImage || thumb`。
+const { appTemplates, capabilityImageOf, representativePrompt } = await import(
+  appCatalogUrl
 );
+const {
+  templateDownloadHref,
+  workspaceAppAdvancedHref,
+  workspaceAppFillHref,
+  workspaceTemplateEditHref,
+} = await import(controllerUrl);
 
+// 上一轮那批「渐变底 + 白色线框图标」封面（`thumb`）。本轮 W5 用功能图 `capabilityImage`
+// 全量替换它；铺开窗口期内两者并存，功能图无条件优先。
 const THUMB =
   "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cover-app/image-poster.thumb.webp";
+// 合同 §3 的功能图 key 约定：`assets/image/cap-app/<siteKey>-<appId>.thumb.webp`。
+const CAPABILITY =
+  "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cap-app/image-poster.thumb.webp";
+// W3 的 `TemplateMaterial`（`src/shell/app-catalog.ts`）。每个 app 挂 1–2 份。
+const TEMPLATE = {
+  id: "poster-tpl-1",
+  title: "夏季促销海报",
+  summary: "3:4 竖版，主体居中、上方留文案区",
+  tags: ["营销"],
+  previewUrl: "tpl-material/image-poster-1",
+  artifactId: "art-poster-1",
+  artifactType: "single_file_image",
+};
+const TEMPLATE_2 = {
+  id: "poster-tpl-2",
+  title: "新品发布海报",
+  summary: "1:1 方版，产品居中",
+  tags: ["电商"],
+  previewUrl: "tpl-material/image-poster-2",
+  artifactId: "art-poster-2",
+  artifactType: "single_file_image",
+};
 
 const POSTER = {
   id: "poster",
@@ -182,9 +229,9 @@ test("首页只放精选、按 group 出 tab、末位一张查看全部", () => 
   assert.ok(markup.lastIndexOf("data-home-app-see-all") > markup.lastIndexOf("data-home-app-card"));
 });
 
-test("常态左图右文：1:1 缩略图 + 15px 半粗 app 名 + 13px 两行截断 tagline", () => {
+test("常态左图右文：1:1 功能图 + 15px 半粗 app 名 + 13px 两行截断 tagline", () => {
   const markup = renderCards({ apps: [POSTER] });
-  assert.match(markup, /aspect-square w-\[86px\]/);
+  assert.match(markup, /aspect-square w-\[96px\]/);
   assert.match(markup, new RegExp(`src="${THUMB.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
   assert.match(markup, /text-\[15px\] font-semibold text-stone-800[^>]*>海报生成</);
   assert.match(markup, /line-clamp-2 text-\[13px\][^>]*>活动与产品宣传海报/);
@@ -192,105 +239,115 @@ test("常态左图右文：1:1 缩略图 + 15px 半粗 app 名 + 13px 两行截�
   // 无图的 app 用 emoji tint 占满同一个方块，不留白。
   const noThumb = renderCards({ apps: [AMBIENT] });
   assert.doesNotMatch(noThumb, /<img/);
-  assert.match(noThumb, /aspect-square w-\[86px\]/);
+  assert.match(noThumb, /aspect-square w-\[96px\]/);
   assert.match(noThumb, /🎵/);
 });
 
-test("hover / 轻点展开态：图片铺满 + 图上预览 + 下缘 prompt、生成类似", () => {
-  const markup = renderCards({ apps: [POSTER] });
-  // 常态收起（触屏轻点一次会把它翻成 "1"）。
-  assert.match(markup, /data-expanded="0"/);
-  // 铺满层与预览层默认透明，hover 时显形。
-  assert.match(markup, /data-home-app-card-fill[^>]*opacity-0 group-hover:opacity-100/);
-  assert.match(markup, /data-home-app-card-preview[^>]*opacity-0 group-hover:opacity-100/);
-  assert.match(markup, /预览/);
-  // 下缘按钮条从卡片外浮进来。
-  assert.match(markup, /data-home-app-card-actions[^>]*translate-y-full group-hover:translate-y-0/);
-  assert.match(markup, />prompt</);
-  assert.match(markup, />生成类似</);
-  assert.match(markup, /href="\/workspace\/poster\?fill=preset"/);
-  assert.equal(workspaceAppFillHref("poster"), "/workspace/poster?fill=preset");
+test("缩略图取功能图 capabilityImage；thumb 只是铺开窗口期的回退", () => {
+  // 合同 §0.1：首页卡片缩略图 = 功能图，不是模板图、不是上一轮那批封面。取值口径由
+  // W3 的 capabilityImageOf 独家持有，这里先钉死它的裁决，再钉死卡片确实用了它。
+  assert.equal(capabilityImageOf({ ...POSTER, capabilityImage: CAPABILITY }), CAPABILITY);
+  assert.equal(capabilityImageOf(POSTER), THUMB);
+  assert.equal(capabilityImageOf(AMBIENT), undefined);
+
+  // 渲染面：功能图真的被用在了卡面与 hover 铺满层上，旧 thumb 一次都不出现。
+  const markup = renderCards({ apps: [{ ...POSTER, capabilityImage: CAPABILITY }] });
+  assert.ok(markup.includes(`src="${CAPABILITY}"`));
+  assert.ok(!markup.includes(THUMB));
+
+  // 模板素材**绝不**上首页缩略图：挂了模板也不影响卡面那张功能图（合同 §0.1 两层分离）。
+  const withTemplates = renderCards({
+    apps: [{ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE, TEMPLATE_2] }],
+  });
+  assert.ok(withTemplates.includes(`src="${CAPABILITY}"`));
+  assert.ok(!withTemplates.includes("tpl-material"));
 });
 
-test("代表 prompt 为空的 app：不渲染 prompt / 生成类似，仍可预览", () => {
+test("hover = 整张卡片放大；「预览」按钮已删除；下缘只剩 prompt 且触屏常驻", () => {
+  const markup = renderCards({ apps: [POSTER] });
+
+  // 整卡放大（不只是卡内图片铺满），并靠 z-10 压在邻卡之上。
+  assert.match(markup, /data-home-app-card="true"[^>]*hover:scale-105/);
+  assert.match(markup, /data-home-app-card="true"[^>]*hover:z-10/);
+  // 功能图仍在 hover 时淡入铺满整卡。
+  assert.match(markup, /data-home-app-card-fill[^>]*opacity-0 transition-opacity duration-200 group-hover:opacity-100/);
+
+  // 「预览」按钮删除：既没有那一层，也没有那两个字（点卡片本身即预览）。
+  assert.doesNotMatch(markup, /data-home-app-card-preview/);
+  assert.doesNotMatch(markup, /预览/);
+
+  // 下缘按钮条里**只有** prompt 一个按钮：「生成类似」已移进大卡片。
+  assert.match(markup, /data-home-app-card-actions[^>]*translate-y-full/);
+  assert.match(markup, /data-home-app-card-actions[^>]*group-hover:translate-y-0/);
+  assert.match(markup, />prompt</);
+  assert.doesNotMatch(markup, />生成类似</);
+  assert.doesNotMatch(markup, /href="\/workspace\/poster\?fill=preset"/);
+  // 深链 helper 本身没坏（大卡片还在用），只是不再挂在卡面上。
+  assert.equal(workspaceAppFillHref("poster"), "/workspace/poster?fill=preset");
+
+  // 触屏没有 hover：prompt 按钮必须常驻可见，且去掉那层压暗渐变（触屏不出铺满层）。
+  assert.ok(markup.includes("[@media(hover:none)]:translate-y-0"));
+  assert.ok(markup.includes("[@media(hover:none)]:bg-none"));
+  // 常驻按钮不许压住 tagline：文字块在触屏上让出一条。
+  assert.ok(markup.includes("[@media(hover:none)]:pb-8"));
+});
+
+test("卡片根不是 role=button，主动作由覆盖式 <button> 承担（ARIA + 键盘）", async () => {
+  const markup = renderCards({ apps: [POSTER] });
+  // 既有违规：role=button 的祖先里嵌 <button>/<a>。改法 = 根退回普通 div。
+  assert.doesNotMatch(markup, /data-home-app-card="true"[^>]*role="button"/);
+  assert.doesNotMatch(markup, /data-home-app-card="true"[^>]*tabindex/i);
+  // 覆盖整卡的原生按钮承载「打开大卡片」，有独立无障碍名。
+  assert.match(markup, /<button[^>]*data-home-app-card-main[^>]*aria-label="查看 海报生成"/);
+  assert.match(markup, /data-home-app-card-main[^>]*absolute inset-0/);
+
+  // 整卡 onKeyDown 已不存在：源码里连一个 keydown 处理器都不该有（有的话就会重演
+  // 「在内部按钮上按 Enter 额外触发一次整卡动作」那个既有 bug）。注释里还留着这两个词
+  // 是**故意**的——它们记录了为什么不能加回来——所以扫描前先把注释剥掉。
+  const source = (await readFile(resolve("src/shell/HomeAppCards.tsx"), "utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(source, /onKeyDown/);
+  assert.doesNotMatch(source, /role="button"/);
+});
+
+test("代表 prompt 为空的 app：不渲染 prompt 按钮，但仍能点开大卡片", () => {
   assert.equal(representativePrompt(AMBIENT), null);
   assert.equal(representativePrompt(HEADSHOT), "生成一张白底证件照。");
 
   const markup = renderCards({ apps: [AMBIENT] });
   assert.doesNotMatch(markup, /data-home-app-card-actions/);
   assert.doesNotMatch(markup, />prompt</);
-  assert.doesNotMatch(markup, />生成类似</);
   // 空 prompt 不得被当成可用文案渲染进按钮（不灌空串）。
   assert.doesNotMatch(markup, /fill=preset/);
-  assert.match(markup, /data-home-app-card-preview/);
-  assert.match(markup, /预览/);
+  // 但它不是死卡：主动作按钮照常在（点开大卡片看模板素材）。
+  assert.match(markup, /data-home-app-card-main/);
 
-  // 混排时三张卡里只有有代表 prompt 的两张带按钮条。
+  // 混排时三张卡都有主动作，只有有代表 prompt 的两张带按钮条。
   const mixed = renderCards();
   assert.equal(mixed.match(/data-home-app-card="true"/g).length, 3);
   assert.equal(mixed.match(/data-home-app-card-actions/g).length, 2);
-  assert.equal(mixed.match(/data-home-app-card-preview/g).length, 3);
+  assert.equal(mixed.match(/data-home-app-card-main/g).length, 3);
 });
 
-test("lightbox：大图 + app 名 + 代表 prompt 全文 + 三个按钮", () => {
-  const markup = renderToStaticMarkup(
-    React.createElement(ImageLightbox, {
-      title: "海报生成",
-      imageKey: appPreviewImageKey(POSTER),
-      fallbackIcon: "🖼️",
-      accent: "#6366f1",
-      prompt: representativePrompt(POSTER),
-      onUsePrompt() {},
-      fillHref: workspaceAppFillHref(POSTER.id),
-      advancedHref: workspaceAppAdvancedHref(POSTER.id),
-      onClose() {},
-    }),
+test("appPreviewImageKey = 大卡片**无模板时**的回退大图（功能图的大图变体）", () => {
+  // 有模板的 app 走不到这里：主预览由 TemplateShowcase 从选中模板的 previewUrl 解析，
+  // 所以本函数只认功能图——挂了模板也不许它改口，否则两层图像又混回一个字段。
+  assert.equal(
+    appPreviewImageKey({ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE] }),
+    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cap-app/image-poster.webp",
   );
-  assert.match(markup, /data-image-lightbox/);
-  assert.match(markup, /role="dialog"[^>]*aria-modal="true"/);
-  // 大图用 `<key>.webp`，不是那张 `.thumb.webp`。
-  assert.match(markup, /cover-app\/image-poster\.webp/);
-  assert.doesNotMatch(markup, /image-poster\.thumb\.webp/);
-  assert.match(markup, />海报生成</);
-  assert.match(markup, /生成一张 \[活动\] 宣传海报/);
-  assert.match(markup, />prompt</);
-  assert.match(markup, />生成类似</);
-  assert.match(markup, />高级编辑</);
-  assert.match(markup, /href="\/workspace\/poster\?fill=preset"/);
-  assert.match(markup, /href="\/workspace\/poster\?fill=preset&amp;open=advanced"/);
-  // 关闭键可聚焦（a11y：打开即聚焦它，Esc / 点遮罩关闭）。
-  assert.match(markup, /aria-label="关闭"/);
-
-  // 无代表 prompt：只剩「高级编辑」，prompt / 生成类似都不给。
-  const bare = renderToStaticMarkup(
-    React.createElement(ImageLightbox, {
-      title: "氛围音乐",
-      fallbackIcon: "🎵",
-      prompt: representativePrompt(AMBIENT),
-      onUsePrompt() {},
-      fillHref: workspaceAppFillHref(AMBIENT.id),
-      advancedHref: workspaceAppAdvancedHref(AMBIENT.id),
-      onClose() {},
-    }),
-  );
-  assert.doesNotMatch(bare, />prompt</);
-  assert.doesNotMatch(bare, />生成类似</);
-  assert.match(bare, />高级编辑</);
-  // 无图也不留白：emoji tint 占满图位。
-  assert.doesNotMatch(bare, /<img/);
-  assert.match(bare, /🎵/);
-});
-
-test("appPreviewImageKey 把缩略图变体换成大图变体，素材 key 原样透传", () => {
+  // 完整 URL 的 `.thumb.webp` 要换成大图变体（assetPreviewUrl 对完整 URL 原样透传）。
   assert.equal(
     appPreviewImageKey(POSTER),
     "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cover-app/image-poster.webp",
   );
+  // 素材 key 原样透传（拼 URL 是 assetPreviewUrl 的事）。
   assert.equal(appPreviewImageKey({ ...POSTER, thumb: "cover-app/image-poster" }), "cover-app/image-poster");
   assert.equal(appPreviewImageKey(AMBIENT), undefined);
 });
 
-test("用户自建卡仍从 localStorage 读出，并以无图 emoji 版式与 app 卡混排", async () => {
+test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；自建卡另有主动作；键盘不双触发", async () => {
   const store = new Map([
     [
       "oceanleo_home_prompts:image",
@@ -364,7 +421,9 @@ test("用户自建卡仍从 localStorage 读出，并以无图 emoji 版式与 a
     await act(async () =>
       root.render(
         React.createElement(HomeAppCards, {
-          apps: [POSTER, AMBIENT],
+          // 海报卡挂两份模板素材（合同 §0.1：每 app 1–2 份），氛围音乐一份都没有——
+          // 大卡片的「有模板 / 无模板」两条支路都要在同一棵树里被走到。
+          apps: [{ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE, TEMPLATE_2] }, AMBIENT],
           siteId: "image",
           accent: "#6366f1",
           onPick: (p) => picked.push(p),
@@ -381,71 +440,82 @@ test("用户自建卡仍从 localStorage 读出，并以无图 emoji 版式与 a
     assert.equal(mine.querySelector("img"), null);
     assert.match(mine.innerHTML, /📝/);
 
-    // 点自建卡 = 把它的 prompt 灌进输入框（与旧 prompt 卡一致）。
-    await act(async () => mine.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    // 卡片主体的命中区 = 那枚覆盖式 <button>（浏览器里它铺满整卡，jsdom 没有命中测试，
+    // 所以直接派发到它身上——这也正好钉死「主动作挂在覆盖按钮上，不是挂在卡片根上」）。
+    const main = (card) => card.querySelector("[data-home-app-card-main]");
+    const click = (el) =>
+      act(async () => el.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    const showcase = () => container.querySelector("[data-template-showcase]");
+    const closeBigCard = () =>
+      click(container.querySelector("[data-template-showcase] [aria-label='关闭']"));
+
+    // 自建卡既没有功能图也没有模板素材，「点卡=开大卡片」不套用在它身上：它的主动作
+    // 单独定义 = 灌它自己的 prompt（否则它会变成一张打不开任何东西的死卡）。
+    await click(main(mine));
     assert.deepEqual(picked, ["帮我写周报：[要点]"]);
+    assert.equal(showcase(), null);
 
-    // 点整张 app 卡（未命中按钮）= 灌代表 prompt；没有代表 prompt 的卡点了什么都不发生。
-    await act(async () => cards[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    // 点 app 卡主体 = **打开大卡片**，不再灌 prompt（推翻 2026-07-25 那版第 4 条）。
+    await click(main(cards[1]));
+    assert.ok(showcase());
+    assert.equal(picked.length, 1);
+
+    // 接线断言：卡片侧必须把 W3 的 `appTemplates()` 原样交给 W2 的 TemplateShowcase，
+    // 两份模板 → 出切换条；三个按钮的目标走 W4 的 helper，不许卡片侧另拼一套。
+    const thumbs = [...container.querySelectorAll("[data-template-thumb]")];
+    assert.deepEqual(thumbs.map((t) => t.dataset.templateId), [TEMPLATE.id, TEMPLATE_2.id]);
+    const action = (name) =>
+      container.querySelector(`[data-showcase-action="${name}"]`)?.getAttribute("href");
+    assert.equal(action("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE.id));
+    assert.equal(action("similar"), workspaceAppFillHref(POSTER.id));
+    assert.equal(action("download"), templateDownloadHref(TEMPLATE));
+    assert.ok(action("download").includes(TEMPLATE.artifactId));
+
+    // 切到第二份模板：编辑与下载的目标必须跟着换（`templateDownloadHref` 按 artifact id
+    // 定位素材，而回调只拿得到 `TemplateMaterial.id`——卡片侧的按 id 取回整份不能丢）。
+    await click(thumbs[1]);
+    assert.equal(action("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE_2.id));
+    assert.equal(action("download"), templateDownloadHref(TEMPLATE_2));
+    assert.ok(action("download").includes(TEMPLATE_2.artifactId));
+    await closeBigCard();
+    assert.equal(showcase(), null);
+
+    // 没有代表 prompt、也没有模板的 app 一样能打开大卡片（它只是降级，不是死卡）：
+    // 无模板 → 不出切换条、不出下载，「编辑模板」退回 app 级编辑器（旧「高级编辑」目标）。
+    await click(main(cards[2]));
+    assert.ok(showcase());
+    assert.equal(picked.length, 1);
+    assert.equal(container.querySelector("[data-template-thumb]"), null);
+    assert.equal(container.querySelector('[data-showcase-action="download"]'), null);
+    assert.equal(container.querySelector('[data-showcase-action="similar"]'), null);
+    assert.equal(
+      container.querySelector('[data-showcase-action="edit"]').getAttribute("href"),
+      workspaceAppAdvancedHref(AMBIENT.id),
+    );
+    await closeBigCard();
+
+    // 卡片下缘唯一的按钮 `prompt` = 灌代表 prompt，且**不得**顺带打开大卡片。
+    const promptBtn = cards[1].querySelector("[data-home-app-card-actions] button");
+    assert.ok(promptBtn);
+    assert.equal(promptBtn.textContent, "prompt");
+    assert.equal(cards[2].querySelector("[data-home-app-card-actions]"), null);
+    await click(promptBtn);
     assert.deepEqual(picked, ["帮我写周报：[要点]", POSTER.preset.prompt]);
-    await act(async () => cards[2].dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    assert.equal(picked.length, 2);
+    assert.equal(showcase(), null);
 
-    // 触屏没有 hover：第一次轻点只展开成 hover 等价态，不灌 prompt。
-    // jsdom 20 没有 PointerEvent 构造器 → 用 MouseEvent 冒充 pointerdown 并带上
-    // pointerType（React 的合成事件直接读原生事件的这个字段）。
-    const tapped = cards[1];
-    const touchDown = new window.MouseEvent("pointerdown", { bubbles: true });
-    Object.defineProperty(touchDown, "pointerType", { value: "touch" });
-    await act(async () => {
-      tapped.dispatchEvent(touchDown);
-      tapped.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(tapped.getAttribute("data-expanded"), "1");
-    assert.equal(picked.length, 2);
-
-    // 同一时刻只展开一张：轻点另一张卡，上一张必须收起（V1-verdict RR-2）。
-    const other = cards[2];
-    const otherDown = new window.MouseEvent("pointerdown", { bubbles: true });
-    Object.defineProperty(otherDown, "pointerType", { value: "touch" });
-    await act(async () => {
-      other.dispatchEvent(otherDown);
-      other.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(other.getAttribute("data-expanded"), "1");
-    assert.equal(tapped.getAttribute("data-expanded"), "0");
-
-    // 点卡片以外的地方 → 收起（触屏没有 :hover 兜底，否则会永远停在展开态）。
+    // 键盘守卫：在内部按钮上按 Enter 不得冒泡出**第二次**整卡动作。旧实现的
+    // CardShell.onKeyDown 无条件 preventDefault + onActivate，缺 `e.target !==
+    // e.currentTarget` 守卫；新实现把整卡动作交给原生 <button>，卡片根上根本没有
+    // keydown 处理器，所以这一发 keydown 什么都不该发生。
     await act(async () =>
-      window.document.body.dispatchEvent(
-        new window.MouseEvent("pointerdown", { bubbles: true }),
+      promptBtn.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       ),
     );
-    assert.equal(other.getAttribute("data-expanded"), "0");
     assert.equal(picked.length, 2);
-
-    // 重新展开第一张，供下面的「预览」步骤使用。
-    const reDown = new window.MouseEvent("pointerdown", { bubbles: true });
-    Object.defineProperty(reDown, "pointerType", { value: "touch" });
-    await act(async () => {
-      tapped.dispatchEvent(reDown);
-      tapped.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(tapped.getAttribute("data-expanded"), "1");
-
-    // 点图上「预览」→ 开 lightbox（三按钮由上一条用例断言）。
-    const preview = tapped.querySelector("[data-home-app-card-preview] button");
-    assert.ok(preview);
-    await act(async () => preview.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    assert.ok(container.querySelector("[data-image-lightbox]"));
-    assert.equal(picked.length, 2);
+    assert.equal(showcase(), null);
 
     // 分类 tab 过滤：切到「图像生成」只剩 poster（自建卡不受 group 影响，始终在）。
-    await act(async () =>
-      container
-        .querySelector("[data-image-lightbox] [aria-label='关闭']")
-        .dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
-    );
     const groupTab = [...container.querySelectorAll("button")].find(
       (b) => b.textContent.trim() === "图像生成",
     );
@@ -509,4 +579,21 @@ test("共享包里 intro 段与 BillingNotice 零残留", async () => {
   assert.match(homeIntro, /featuredLimit\?: number/);
   assert.match(homeIntro, /<HomeAppCards/);
   assert.match(homeIntro, /<HomePromptCards/);
+});
+
+test("栅格加宽：外层放宽到 max-w-6xl，输入框留在 768px 阅读列，仍是每行三个", async () => {
+  const homeIntro = await readFile(resolve("src/shell/HomeIntro.tsx"), "utf8");
+  // 改版前那个包住一切的 `max-w-3xl` 已经不在最外层容器上了。
+  assert.doesNotMatch(homeIntro, /mx-auto flex w-full max-w-3xl/);
+  // 拆成两层：外层按「有没有 app 卡」在 1152px / 768px 之间选，H1 与输入框各自套回阅读列。
+  assert.match(homeIntro, /const READING_COLUMN = "max-w-3xl";/);
+  assert.match(homeIntro, /withAppCards \? "max-w-6xl" : "max-w-3xl"/);
+  assert.equal(homeIntro.match(/\$\{READING_COLUMN\}/g).length, 2);
+  // 放宽只在传了 apps 时生效：agent 那种走 HomePromptCards 的站版式零变化。
+  assert.match(homeIntro, /withAppCards\s*=\s*withCards && Boolean\(apps && apps\.length > 0\)/);
+
+  // 卡片区吃满外层，但列数仍是三列（合同 §0.2 第 5 条：更宽，不是更多列）。
+  const cards = await readFile(resolve("src/shell/HomeAppCards.tsx"), "utf8");
+  assert.match(cards, /grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3/);
+  assert.doesNotMatch(cards, /xl:grid-cols-4/);
 });

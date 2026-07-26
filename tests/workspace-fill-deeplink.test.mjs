@@ -54,22 +54,25 @@ test("只有精确取值才算深链意图，未知取值不猜测", () => {
   assert.deepEqual(resolveCatalogDeepLinkIntent("?fill=preset"), {
     fillPreset: true,
     openAdvanced: false,
+    openTemplateId: "",
   });
   assert.deepEqual(
     resolveCatalogDeepLinkIntent("?fill=preset&open=advanced"),
-    { fillPreset: true, openAdvanced: true },
+    { fillPreset: true, openAdvanced: true, openTemplateId: "" },
   );
   assert.deepEqual(resolveCatalogDeepLinkIntent(""), {
     fillPreset: false,
     openAdvanced: false,
+    openTemplateId: "",
   });
   assert.deepEqual(resolveCatalogDeepLinkIntent("?fill=1&open=editor"), {
     fillPreset: false,
     openAdvanced: false,
+    openTemplateId: "",
   });
   assert.deepEqual(
     resolveCatalogDeepLinkIntent(new URLSearchParams("open=advanced")),
-    { fillPreset: false, openAdvanced: true },
+    { fillPreset: false, openAdvanced: true, openTemplateId: "" },
   );
 });
 
@@ -97,7 +100,7 @@ test("legacy ?fn= 收敛到 canonical path 时 fill/open 仍在地址栏", () =>
   assert.equal(href, "/workspace/report?fill=preset&open=advanced&keep=1");
   assert.deepEqual(
     resolveCatalogDeepLinkIntent(href.slice(href.indexOf("?"))),
-    { fillPreset: true, openAdvanced: true },
+    { fillPreset: true, openAdvanced: true, openTemplateId: "" },
   );
 });
 
@@ -117,7 +120,7 @@ test("未知 appId 不因新参数绕过「App 不存在」路径", () => {
   // 所有深链副作用都以 activeAppId 为前置条件；invalid 时 activeAppId 为空串。
   assert.match(
     deepLinkSource,
-    /if \(!activeAppId \|\| \(!intent\.fillPreset && !intent\.openAdvanced\)\) return;/,
+    /!activeAppId \|\|\s*\(!intent\.fillPreset && !intent\.openAdvanced && !intent\.openTemplateId\)/,
   );
   assert.match(consoleSource, /这个 App 不存在或已下线/);
 });
@@ -483,19 +486,21 @@ test("深链编排住在 site-catalog-deeplink.tsx，SiteCatalogConsole 不再�
 
 // ── open=advanced 的口径边界（V1 RR-4 / §8 第 8 条残余风险）────────────────
 
-test("open=advanced 的口径是「默认产物类型的库分类」，不是某一件具体产物的编辑器", () => {
-  // 合同 §0 第 8 条只要求「进入该 app 默认产物类型的高级编辑」；本层没有具体产物
-  // 可指，所以 envelope 里不带 itemId。若哪天要直达编辑器，改的是消费端而不是这里。
+test("open=advanced 的口径仍是「默认产物类型的库分类」，不指名任何一件产物", () => {
+  // 合同 §0 第 8 条只要求「进入该 app 默认产物类型的高级编辑」；这条链上没有具体产物
+  // 可指，所以 envelope 里不带 itemId，也不带 intent。指名一份具体素材是 `?open=template`
+  // 那条链的事（见 workspace-template-deeplink.test.mjs），两者不得互相污染。
   const plan = catalogAdvancedOpenPlan(
     { id: "ppt", name: "PPT", scenes: [] },
     "ppt",
   );
   assert.equal(plan.action.itemId, undefined);
+  assert.equal(plan.action.intent, undefined);
   assert.ok(plan.action.category);
 
-  // 根因钉死在盘上：`openAdvancedOnSelect` 只是「详情页头部可以给 Edit」的开关，
-  // 不是「选中即进高级编辑」；而 action 的落点是 openEntry（安静预览），不是
-  // onOpenItem（高级编辑器）。任一侧语义变化都应让本用例变红并重估口径。
+  // 不带 intent 的 action 落点仍是 openEntry（安静预览），不是 onOpenItem（编辑器）：
+  // `openAdvancedOnSelect` 只是「详情页头部可以给 Edit」的开关。这条老语义不得被
+  // 「编辑模板」的新分支顺手改掉。
   assert.match(
     workspaceLibrarySource,
     /preview-detail header may offer Edit into the advanced workbench/,

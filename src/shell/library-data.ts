@@ -113,6 +113,18 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   workflow: "canvas",
 };
 
+/**
+ * The library category one artifact lands in. Deep-link dispatch
+ * (`site-catalog-controller`) reads it through here rather than keeping its own
+ * table, so a 「编辑模板」 link can never file an artifact under a different
+ * category than the library itself uses for the same artifact.
+ */
+export function libraryKindForArtifactType(
+  artifactType: ArtifactType,
+): LibraryKind | undefined {
+  return ARTIFACT_KIND[artifactType];
+}
+
 const WEBSITE_PROJECT_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

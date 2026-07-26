@@ -1,10 +1,13 @@
 import type { OceanLeoWorkspaceRouteContract } from "../contracts/site-manifest";
+import { GATEWAY_BASE } from "../lib/auth/config";
 import {
+  appTemplates,
   representativeFill,
   representativePrompt,
   type GoalApp,
+  type TemplateMaterial,
 } from "./app-catalog";
-import type { LibraryKind } from "./library-data";
+import { libraryKindForArtifactType, type LibraryKind } from "./library-data";
 import {
   historySessionHref,
   historySessionIdFromPath,
@@ -271,19 +274,26 @@ export function createOpsFillBus(): OpsFillBus {
 
 export const CATALOG_FILL_QUERY_KEY = "fill";
 export const CATALOG_OPEN_QUERY_KEY = "open";
+/** `?template=<templateId>`：`?open=template` 指名的那一份模板素材。 */
+export const CATALOG_TEMPLATE_QUERY_KEY = "template";
 /** `?fill=preset`：把代表 prompt + `preset.set` 灌进操作台一次。 */
 export const CATALOG_FILL_PRESET_VALUE = "preset";
 /** `?open=advanced`：右栏直接进入该 app 默认产物类型的高级编辑。 */
 export const CATALOG_OPEN_ADVANCED_VALUE = "advanced";
+/** `?open=template`：右栏直接载入 `?template=` 指名的那一份模板素材。 */
+export const CATALOG_OPEN_TEMPLATE_VALUE = "template";
 
 export interface CatalogDeepLinkIntent {
   fillPreset: boolean;
   openAdvanced: boolean;
+  /** 「编辑模板」指名的模板 id；空串 = 没有这个意图。 */
+  openTemplateId: string;
 }
 
 export const EMPTY_CATALOG_DEEP_LINK_INTENT: CatalogDeepLinkIntent = {
   fillPreset: false,
   openAdvanced: false,
+  openTemplateId: "",
 };
 
 function searchParamsOf(search: string | URLSearchParams): URLSearchParams {
@@ -297,13 +307,19 @@ export function resolveCatalogDeepLinkIntent(
   search: string | URLSearchParams,
 ): CatalogDeepLinkIntent {
   const params = searchParamsOf(search);
+  const open = (params.get(CATALOG_OPEN_QUERY_KEY) || "").trim();
+  // `open=template` 缺 `template=` 就不是一个完整意图：宁可什么都不做，也不能退化
+  // 成「打开默认产物类型的空编辑器」——那正是本轮要修掉的老行为。
+  const templateId =
+    open === CATALOG_OPEN_TEMPLATE_VALUE
+      ? deepLinkSegment(params.get(CATALOG_TEMPLATE_QUERY_KEY))
+      : "";
   return {
     fillPreset:
       (params.get(CATALOG_FILL_QUERY_KEY) || "").trim() ===
       CATALOG_FILL_PRESET_VALUE,
-    openAdvanced:
-      (params.get(CATALOG_OPEN_QUERY_KEY) || "").trim() ===
-      CATALOG_OPEN_ADVANCED_VALUE,
+    openAdvanced: open === CATALOG_OPEN_ADVANCED_VALUE,
+    openTemplateId: templateId,
   };
 }
 
@@ -314,15 +330,21 @@ export function searchWithoutCatalogDeepLinkIntent(
   const params = searchParamsOf(search);
   params.delete(CATALOG_FILL_QUERY_KEY);
   params.delete(CATALOG_OPEN_QUERY_KEY);
+  params.delete(CATALOG_TEMPLATE_QUERY_KEY);
   return params.toString();
 }
 
-function deepLinkAppSegment(appId: unknown): string {
-  if (typeof appId !== "string") return "";
-  const id = appId.trim();
+/** 深链里可以出现的标识符：非空、无控制字符。其余交给 URL 编码。 */
+function deepLinkSegment(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const id = value.trim();
   // eslint-disable-next-line no-control-regex
   if (!id || /[\u0000-\u001f\u007f]/.test(id)) return "";
   return id;
+}
+
+function deepLinkAppSegment(appId: unknown): string {
+  return deepLinkSegment(appId);
 }
 
 /** 合同 §3：「生成类似」——跳到 app 并预填代表 prompt + 整套预置参数。 */
@@ -345,6 +367,79 @@ export function workspaceAppAdvancedHref(
   const id = deepLinkAppSegment(appId);
   if (!id) return contract.canonicalBasePath;
   return `${workspaceAppFillHref(id, contract)}&${CATALOG_OPEN_QUERY_KEY}=${CATALOG_OPEN_ADVANCED_VALUE}`;
+}
+
+/**
+ * 合同 §3 / §0.3：「编辑模板」——跳到该 app，并让右栏载入**这一份具体的模板素材**。
+ *
+ * 刻意**不带** `?fill=preset`：大卡片上「编辑模板」与「生成类似」是两个按钮，
+ * 前者要的是打开这份成品，后者才是把代表 prompt 灌进操作台。两者混在一条链接里
+ * 会让用户点「编辑模板」时输入框莫名其妙被填满。
+ *
+ * `templateId` 只要求在**同一个 app 内**唯一（`TemplateMaterial.id` 的契约），
+ * 所以 appId 必须一起进 URL；缺 app 时退回目录，缺 template 时退回该 app 的
+ * canonical 地址，绝不产出半截深链。
+ */
+export function workspaceTemplateEditHref(
+  appId: string,
+  templateId: string,
+  route?: OceanLeoWorkspaceRouteContract,
+): string {
+  const contract = activeRoute(route);
+  const id = deepLinkAppSegment(appId);
+  if (!id) return contract.canonicalBasePath;
+  const base = workspaceAppHref(id, contract);
+  const template = deepLinkSegment(templateId);
+  if (!template) return base;
+  const query = new URLSearchParams({
+    [CATALOG_OPEN_QUERY_KEY]: CATALOG_OPEN_TEMPLATE_VALUE,
+    [CATALOG_TEMPLATE_QUERY_KEY]: template,
+  });
+  return `${base}?${query.toString()}`;
+}
+
+// ── 「下载」前端链（合同 §3；端点由 W7 提供）─────────────────────────────────
+// 后端端点按 **artifact id** 定位素材，不是按 `TemplateMaterial.id`：后者只保证
+// 「同一个 app 内唯一」，全站会重名。所以本 helper 的入参优先吃整份
+// `TemplateMaterial`；只给字符串时按 artifact id 处理。
+//
+// website 站下载的是**源码包**（操作员定稿 §0.5）：前端不为此分叉，端点按该素材的
+// artifactType 决定打包形态，这样 34 个站的「下载」按钮永远是同一条链接。
+
+/** W7 的模板素材下载端点（gateway 相对路径，`<artifactId>` 占位）。 */
+export const TEMPLATE_DOWNLOAD_PATH = "/v1/library/templates";
+
+function trustedDownloadUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 合同 §3：「下载」——当前选中模板的真实文件。
+ *
+ * 素材自带稳定公开直链（`TemplateMaterial.downloadUrl`，必须是 https）时用它；
+ * 否则走 W7 的端点，让权限校验与配额统一由后端兜住。无法定位素材时返回空串，
+ * 由 W2 据此隐藏「下载」按钮——绝不产出一条点了就 404 的链接。
+ */
+export function templateDownloadHref(
+  template: TemplateMaterial | string | null | undefined,
+): string {
+  if (typeof template !== "string" && template) {
+    const direct = trustedDownloadUrl(template.downloadUrl);
+    if (direct) return direct;
+  }
+  const artifactId = deepLinkSegment(
+    typeof template === "string" ? template : template?.artifactId,
+  );
+  if (!artifactId) return "";
+  return `${GATEWAY_BASE.replace(/\/+$/, "")}${TEMPLATE_DOWNLOAD_PATH}/${encodeURIComponent(
+    artifactId,
+  )}/download`;
 }
 
 // ── 代表 prompt 与一次性预填载荷 ─────────────────────────────────────────────
@@ -505,14 +600,23 @@ export function catalogAppProductKind(
   return SITE_DEFAULT_KIND[String(siteKey || "").trim().toLowerCase()] || null;
 }
 
-export interface CatalogAdvancedOpenPlan {
-  /** 解析出的默认产物类型；null = 退化。 */
-  kind: LibraryKind | null;
+/** 一条深链要派给右栏的计划。`?open=advanced` 与 `?open=template` 共用这个形状。 */
+export interface CatalogRightPanePlan {
   /** 已通过 `normalizeWorkspaceAction` 的 v1 envelope 载荷（字段长度必然合规）。 */
   action: WorkspaceActionV1;
   degraded: boolean;
   /** 退化时给用户的可见提示；正常路径为空串。 */
   notice: string;
+}
+
+export interface CatalogAdvancedOpenPlan extends CatalogRightPanePlan {
+  /** 解析出的默认产物类型；null = 退化。 */
+  kind: LibraryKind | null;
+}
+
+export interface CatalogTemplateOpenPlan extends CatalogRightPanePlan {
+  /** 命中的那一份模板素材；null = 该 app 下没有这个 templateId。 */
+  template: TemplateMaterial | null;
 }
 
 /**
@@ -538,4 +642,58 @@ export function catalogAdvancedOpenPlan(
       ? ""
       : "这个 App 还没有声明可直接编辑的产物类型，已为你打开「我的库」——选中任意作品即可进入高级编辑。",
   };
+}
+
+/**
+ * `?open=template&template=<id>` → 右栏派发计划（合同 §0.3「编辑模板」）。
+ *
+ * 与 `catalogAdvancedOpenPlan` 的区别就是本轮要补的那个洞：advanced 只知道「该 app 的
+ * 默认产物类型」，所以 envelope 里没有 `itemId`，右栏只能打开「我的库」等用户自己挑；
+ * 这里已经由大卡片指名了一份具体素材，envelope 带上它的 **artifact id** 与
+ * `intent: "edit"`，消费端据此直接把这一份交给 typed 编辑器。
+ *
+ * `templateId` 只在 app 内唯一，所以解析必须在 `appTemplates(app)` 里做——它已经剔除
+ * 了缺 id/artifactId 的脏条目（W3 契约）。命中不了就退化成 advanced 的老路径（打开
+ * 「我的库」+ 可见提示），绝不白屏、不抛错、也不静默无反应。
+ */
+export function catalogTemplateOpenPlan(
+  app: GoalApp | null | undefined,
+  templateId: string,
+  siteKey = "",
+): CatalogTemplateOpenPlan {
+  const wanted = deepLinkSegment(templateId);
+  // `appTemplates` 的入参是必填 `GoalApp`（W3 契约），null app 会直接抛。本 helper 与
+  // `catalogAdvancedOpenPlan` 一样要容忍「app 还没解析出来」，所以在这一侧短路。
+  const template =
+    (wanted && app
+      ? appTemplates(app).find((item) => item.id === wanted)
+      : null) || null;
+  const degradeToAdvanced = (notice: string): CatalogTemplateOpenPlan => ({
+    template: null,
+    action: catalogAdvancedOpenPlan(app, siteKey).action,
+    degraded: true,
+    notice,
+  });
+  if (!template) {
+    return degradeToAdvanced(
+      "这份模板素材不存在或已下线，已为你打开「我的库」。",
+    );
+  }
+  const kind = libraryKindForArtifactType(template.artifactType);
+  const category = kind ? CATALOG_LIBRARY_KIND_CATEGORY[kind] : "";
+  const action = normalizeWorkspaceAction({
+    version: 1,
+    tab: "mine",
+    ...(category ? { category } : {}),
+    itemId: template.artifactId,
+    intent: "edit",
+  });
+  // `normalizeWorkspaceAction` 会把超长 itemId 截断到 300 字符。截断后的 id 指向的是
+  // 「别的东西或什么都不是」，比打不开更糟，所以只接受原样存活下来的 artifact id。
+  if (!action || action.itemId !== template.artifactId) {
+    return degradeToAdvanced(
+      "这份模板素材的标识不合法，已为你打开「我的库」。",
+    );
+  }
+  return { template, action, degraded: false, notice: "" };
 }
