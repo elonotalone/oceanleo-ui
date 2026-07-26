@@ -6291,5 +6291,10 @@ const vi: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Chỉnh sửa mẫu",
   "切换模板": "Đổi mẫu",
+  "登录后下载": "Đăng nhập để tải xuống",
+  "下载中…": "Đang tải xuống…",
+  "请先登录后再下载。": "Vui lòng đăng nhập trước khi tải xuống.",
+  "今日下载次数已达上限，请明天再试。": "Bạn đã đạt giới hạn tải xuống hôm nay. Vui lòng thử lại vào ngày mai.",
+  "这份模板素材不存在或已下线。": "Tài nguyên mẫu này không còn tồn tại.",
 };
 export default vi;

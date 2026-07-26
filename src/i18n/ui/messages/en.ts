@@ -6409,5 +6409,10 @@ const en: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Edit template",
   "切换模板": "Switch template",
+  "登录后下载": "Sign in to download",
+  "下载中…": "Downloading…",
+  "请先登录后再下载。": "Please sign in before downloading.",
+  "今日下载次数已达上限，请明天再试。": "You've reached today's download limit. Please try again tomorrow.",
+  "这份模板素材不存在或已下线。": "This template material no longer exists.",
 };
 export default en;

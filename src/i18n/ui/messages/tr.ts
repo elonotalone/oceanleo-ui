@@ -6291,5 +6291,10 @@ const tr: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Şablonu düzenle",
   "切换模板": "Şablon değiştir",
+  "登录后下载": "İndirmek için giriş yapın",
+  "下载中…": "İndiriliyor…",
+  "请先登录后再下载。": "İndirmeden önce lütfen giriş yapın.",
+  "今日下载次数已达上限，请明天再试。": "Bugünkü indirme sınırına ulaştınız. Lütfen yarın tekrar deneyin.",
+  "这份模板素材不存在或已下线。": "Bu şablon materyali artık mevcut değil.",
 };
 export default tr;

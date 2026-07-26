@@ -10,7 +10,7 @@
 //   右侧按钮（三个，合同 §0.3 定死）：「编辑模板」「生成类似」「下载」
 //     - 编辑模板 = 把**当前选中的那份素材**载入编辑器（W4 workspaceTemplateEditHref）
 //     - 生成类似 = 进操作台并预填代表 prompt + preset.set（既有 ?fill=preset，app 级）
-//     - 下载     = 下载**当前选中模板**的真实文件（W4 templateDownloadHref）
+//     - 下载     = 下载**当前选中模板**的真实文件（W4 downloadTemplateMaterial）
 //   「高级编辑」这个名字本轮取消，统一叫「编辑模板」（推翻 2026-07-25 合同 §0 第 8 条）。
 //
 // 切换模板时，右侧标题/说明/标签与三个按钮的目标**全部跟随当前选中项**——这是本组件
@@ -26,6 +26,19 @@
 // `editHref` 刻意做成调用方显式传入、而不是这里自动 `workspaceAppAdvancedHref(appId)`：
 // 那样每个 app 都会长出一颗名为「编辑模板」却打开空编辑器的按钮，正是 §0.3 要消灭的。
 //
+// 「下载」为什么不是 `<a download>`（V1 终判的唯一 FAIL，2026-07-26）：
+// W7 的下载端点走 `Depends(current_user_id)`，**匿名必 401**——不是因为素材是秘密
+// （它是官方公开素材），而是配额记账需要一个计费主体。而 `<a download>` 是纯浏览器导航，
+// **带不了 `Authorization` 头**，所以那颗按钮点下去必然失败。裁决是「后端契约不动，前端适配」，
+// 于是这里：
+//   - 开卡时先问一次登录态，未登录直接渲染成「登录后下载」并指向账户页，
+//     而不是让用户点下去才吃 401；
+//   - 已登录则渲染成按钮，点击交给 W4 的 `downloadTemplateMaterial(template)`
+//     （带 Bearer 取 blob 触发保存），下载中禁重复点；
+//   - 失败分三档：**401 未登录 / 429 配额超限 / 其它**，文案必须可区分，
+//     统一报「下载失败」是被明令禁止的。
+// 素材自带 https 直链的那一小撮不经过端点，也就不需要登录，仍按普通按钮渲染。
+//
 // 为什么不复用 `../ui` 的 <Modal>：Modal 走 createPortal(document.body)，首帧
 // （SSR / 未 mount）什么都不渲染，而本组件要能在服务端与 node --test 里被静态渲染断言。
 // 因此这里自带遮罩 + Esc 关闭 + 打开即聚焦，行为与 Modal 对齐。**改版时不得换成 Modal。**
@@ -36,14 +49,59 @@
 // `ImageLightbox` 保留为一层薄兼容壳，等 W1 切完调用点即可删。
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
+import { isSignedIn } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import type { TemplateMaterial } from "./app-catalog";
 import {
+  isDirectTemplateDownload,
   templateDownloadHref as defaultDownloadHref,
   workspaceTemplateEditHref as defaultEditHref,
 } from "./site-catalog-controller";
+import { downloadTemplateMaterial } from "./template-download";
+
+/** 「下载」失败的四档，文案必须可区分——「统一报下载失败」是 V1 明令禁止的。 */
+type DownloadIssue = "auth" | "quota" | "notFound" | "failed";
+
+/**
+ * 把 `downloadTemplateMaterial` 抛出的错误归档。
+ *
+ * 首选 W4 的 `TemplateDownloadError.code`（它已经做完了状态码 → 原因的判定）；
+ * 拿不到 code 时才退回状态码，最后才认消息串里的数字。认不出来才落 `failed`——
+ * **绝不把 429 混进「下载失败」**，那会让配额用完的用户一直空点重试。
+ *
+ * 为什么不直接渲染 `error.message`（W4 备了终稿文案）：那是一条**中文硬串**，
+ * 直接渲染会让另外 16 个 locale 露中文。所以只取 `code`，文案在本文件走 `tt()`。
+ */
+function downloadIssueOf(error: unknown): DownloadIssue {
+  const carrier = (error ?? {}) as Record<string, unknown>;
+  switch (carrier.code) {
+    case "unauthorized":
+      return "auth";
+    case "quota-exceeded":
+      return "quota";
+    case "not-found":
+      return "notFound";
+    default:
+      break;
+  }
+  const status = Number(carrier.status ?? carrier.statusCode);
+  if (status === 401 || status === 403) return "auth";
+  if (status === 429) return "quota";
+  if (status === 404) return "notFound";
+  const text = String(carrier.message ?? error ?? "");
+  if (/\b401\b/.test(text)) return "auth";
+  if (/\b429\b/.test(text)) return "quota";
+  return "failed";
+}
 
 /** @deprecated 本轮已收敛到 W3 的 `TemplateMaterial`（合同 §3），改用那个。 */
 export type ShowcaseTemplate = TemplateMaterial;
@@ -82,6 +140,17 @@ export interface TemplateShowcaseProps {
    */
   templateDownloadHref?: (templateId: string) => string;
   /**
+   * 覆盖下载执行器。**不传即可**：默认就是 W4 的
+   * `downloadTemplateMaterial(template)`（带 Bearer 取 blob 触发保存，区分 401 / 429）。
+   * 本组件只负责调它、管 pending 与分档报错，**不自己实现下载**。
+   */
+  downloadTemplate?: (template: TemplateMaterial) => Promise<void>;
+  /**
+   * 「登录后下载」指向的登录/账户页。默认与 `AppShell.accountHref` 同一个约定；
+   * i18n 站请传自己 locale-aware 的那条。
+   */
+  accountHref?: string;
+  /**
    * **没有任何模板时**「编辑模板」的兜底目标（旧「高级编辑」那个 app 级空编辑器）。
    * 只在 `templates` 为空时生效；有模板时永远走 `workspaceTemplateEditHref(选中项)`。
    * 不给 → 无模板的 app 干脆不显示「编辑模板」（见文件头「无模板 app」一节）。 */
@@ -111,11 +180,14 @@ export function TemplateShowcase({
   fillHref,
   templateEditHref,
   templateDownloadHref,
+  downloadTemplate,
+  accountHref = "/account",
   editHref,
   onClose,
 }: TemplateShowcaseProps) {
   const tt = useUI();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const aliveRef = useRef(true);
 
   const list = useMemo(
     () => (templates ?? []).filter((t) => t && typeof t.id === "string" && t.id !== ""),
@@ -136,6 +208,35 @@ export function TemplateShowcase({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  // ——— 下载态 ———
+  // W7 的下载端点走 `Depends(current_user_id)`：匿名必 401。所以**开卡时就问一次登录态**，
+  // 未登录直接把按钮渲染成「登录后下载」，而不是让用户点下去才吃 401（V1 终判的要求）。
+  // `unknown` 是首帧（SSR / 尚未 hydrate）：此时按乐观的「下载」渲染，问出结果再切——
+  // 反过来先渲染「登录后下载」会让已登录用户看到一次错误的闪烁。
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [issue, setIssue] = useState<DownloadIssue | null>(null);
+
+  useEffect(() => {
+    isSignedIn().then(
+      (ok) => {
+        if (aliveRef.current) setSignedIn(ok);
+      },
+      () => {
+        // 登录服务没配好（站点缺 Supabase 环境变量）也按未登录处理：
+        // 那种站上点下载同样只会 401。
+        if (aliveRef.current) setSignedIn(false);
+      },
+    );
+  }, []);
 
   // ——— 右侧信息与三个按钮的目标，全部由 `selected` 派生：切换模板即同步跟随 ———
   const paneTitle = selected?.title?.trim() || title;
@@ -158,12 +259,43 @@ export function TemplateShowcase({
       ? (templateEditHref ?? defaultEditHref)(appId, selected.id)
       : ""
     : editHref || "";
+  // `downloadTarget` 现在只当**可见性探针**用（W4 的 helper 定位不到素材时返回空串 →
+  // 隐藏按钮，不渲染一条点了就 404 的入口）。真正的下载走 `downloadTemplate`，
+  // 因为 `<a download>` 是纯浏览器导航、**带不了 `Authorization` 头**。
   const downloadTarget = selected
     ? templateDownloadHref
       ? templateDownloadHref(selected.id)
       : defaultDownloadHref(selected)
     : "";
+  // 素材自带 https 直链的那一小撮不过端点，也就不需要登录（W7 只对端点强制登录）。
+  // 直链合不合法由 W4 的 `isDirectTemplateDownload` 裁决，这里不复制一份 https 校验。
+  const mustSignInToDownload =
+    signedIn === false && !isDirectTemplateDownload(selected);
   const similarTarget = promptText && fillHref ? fillHref : "";
+
+  // 换模板 = 换下载目标：上一份的 pending 与报错不能粘在新选中的那份上。
+  const selectedKey = selected?.id ?? "";
+  useEffect(() => {
+    setDownloading(false);
+    setIssue(null);
+  }, [selectedKey]);
+
+  const startDownload = useCallback(async () => {
+    if (!selected) return;
+    setIssue(null);
+    setDownloading(true);
+    try {
+      await (downloadTemplate ?? downloadTemplateMaterial)(selected);
+    } catch (error) {
+      const kind = downloadIssueOf(error);
+      if (!aliveRef.current) return;
+      setIssue(kind);
+      // 会话在开卡之后才过期的情况：把按钮换回「登录后下载」，别让用户再空点一次。
+      if (kind === "auth") setSignedIn(false);
+    } finally {
+      if (aliveRef.current) setDownloading(false);
+    }
+  }, [downloadTemplate, selected]);
 
   const actionClass =
     "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition hover:opacity-90";
@@ -321,15 +453,45 @@ export function TemplateShowcase({
                 </a>
               ) : null}
               {downloadTarget ? (
-                <a
-                  data-showcase-action="download"
-                  href={downloadTarget}
-                  download
-                  rel="noopener"
-                  className={ghostAction}
+                mustSignInToDownload ? (
+                  <a
+                    data-showcase-action="download"
+                    data-download-state="signed-out"
+                    href={accountHref}
+                    className={ghostAction}
+                  >
+                    {tt("登录后下载")}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    data-showcase-action="download"
+                    data-download-state={downloading ? "pending" : "idle"}
+                    disabled={downloading}
+                    aria-busy={downloading}
+                    onClick={startDownload}
+                    className={`${ghostAction} disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {downloading ? tt("下载中…") : tt("下载")}
+                  </button>
+                )
+              ) : null}
+
+              {issue ? (
+                <p
+                  data-showcase-download-issue={issue}
+                  role="status"
+                  aria-live="polite"
+                  className="text-[12px] leading-relaxed text-rose-600"
                 >
-                  {tt("下载")}
-                </a>
+                  {issue === "auth"
+                    ? tt("请先登录后再下载。")
+                    : issue === "quota"
+                      ? tt("今日下载次数已达上限，请明天再试。")
+                      : issue === "notFound"
+                        ? tt("这份模板素材不存在或已下线。")
+                        : tt("下载失败，请重试。")}
+                </p>
               ) : null}
             </div>
           </div>

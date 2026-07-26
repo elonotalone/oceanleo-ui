@@ -6291,5 +6291,10 @@ const it: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Modifica modello",
   "切换模板": "Cambia modello",
+  "登录后下载": "Accedi per scaricare",
+  "下载中…": "Download in corso…",
+  "请先登录后再下载。": "Accedi prima di scaricare.",
+  "今日下载次数已达上限，请明天再试。": "Hai raggiunto il limite di download di oggi. Riprova domani.",
+  "这份模板素材不存在或已下线。": "Questo materiale del modello non esiste più.",
 };
 export default it;

@@ -6291,5 +6291,10 @@ const ptBR: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Editar modelo",
   "切换模板": "Trocar de modelo",
+  "登录后下载": "Entrar para baixar",
+  "下载中…": "Baixando…",
+  "请先登录后再下载。": "Entre na sua conta antes de baixar.",
+  "今日下载次数已达上限，请明天再试。": "Você atingiu o limite de downloads de hoje. Tente novamente amanhã.",
+  "这份模板素材不存在或已下线。": "Este material de modelo não existe mais.",
 };
 export default ptBR;

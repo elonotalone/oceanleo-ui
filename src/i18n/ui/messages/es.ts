@@ -6291,5 +6291,10 @@ const es: Record<string, string> = {
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
   "编辑模板": "Editar plantilla",
   "切换模板": "Cambiar de plantilla",
+  "登录后下载": "Inicia sesión para descargar",
+  "下载中…": "Descargando…",
+  "请先登录后再下载。": "Inicia sesión antes de descargar.",
+  "今日下载次数已达上限，请明天再试。": "Has alcanzado el límite de descargas de hoy. Inténtalo de nuevo mañana.",
+  "这份模板素材不存在或已下线。": "Este material de plantilla ya no existe.",
 };
 export default es;
