@@ -398,16 +398,26 @@ export function workspaceTemplateEditHref(
   return `${base}?${query.toString()}`;
 }
 
-// ── 「下载」前端链（合同 §3；端点由 W7 提供）─────────────────────────────────
-// 后端端点按 **artifact id** 定位素材，不是按 `TemplateMaterial.id`：后者只保证
-// 「同一个 app 内唯一」，全站会重名。所以本 helper 的入参优先吃整份
-// `TemplateMaterial`；只给字符串时按 artifact id 处理。
+// ── 「下载」前端链（合同 §3；端点 = W7 的 template_materials_router）───────────
+// 端点实况，逐条对着 `oceanleo/backend/app/routers/template_materials_router.py` 抄的
+// （父任务 2026-07-26 裁决：W7 的契约不动，前端适配）：
 //
-// website 站下载的是**源码包**（操作员定稿 §0.5）：前端不为此分叉，端点按该素材的
-// artifactType 决定打包形态，这样 34 个站的「下载」按钮永远是同一条链接。
+//   * 路由前缀 `/v1/template-materials`（L36），**不是** `/v1/library/…`；
+//   * 主键是 **`TemplateMaterial.id`**（路径参数 `{template_id}`）。W7 出于安全**明确
+//     拒收** artifact id——「唯一能选中内容的入参是不透明的 template_id，这里不得长出
+//     任何指名 artifact / revision / project 的参数」（该文件模块 docstring）；
+//   * `GET /{template_id}/download` 挂 `Depends(current_user_id)`（L81），**强制登录**，
+//     因为 0089 的配额需要一个计费主体。目录读仍匿名可用（`optional_user_id`，L59/L70）。
+//
+// 强制登录直接推翻了上一轮「`<a download>` 纯导航」的假设：导航发不出 `Authorization`
+// 头，必然 401。所以**端点下载一律走 `downloadTemplateMaterial()`**（`template-download.ts`），
+// 本 helper 只负责解析出那个 URL。
+//
+// website 站下载的是**源码包**（操作员定稿 §0.5）：前端不为此分叉，端点按该素材自己的
+// download_kind 决定打包形态，这样 34 个站的「下载」永远是同一条调用。
 
-/** W7 的模板素材下载端点（gateway 相对路径，`<artifactId>` 占位）。 */
-export const TEMPLATE_DOWNLOAD_PATH = "/v1/library/templates";
+/** W7 的模板素材端点前缀（gateway 相对路径）。下载在 `/{templateId}/download`。 */
+export const TEMPLATE_DOWNLOAD_PATH = "/v1/template-materials";
 
 function trustedDownloadUrl(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) return "";
@@ -420,11 +430,16 @@ function trustedDownloadUrl(value: unknown): string {
 }
 
 /**
- * 合同 §3：「下载」——当前选中模板的真实文件。
+ * 合同 §3：「下载」目标 URL 的解析。**不要把返回值直接塞进 `<a download>`。**
  *
- * 素材自带稳定公开直链（`TemplateMaterial.downloadUrl`，必须是 https）时用它；
- * 否则走 W7 的端点，让权限校验与配额统一由后端兜住。无法定位素材时返回空串，
- * 由 W2 据此隐藏「下载」按钮——绝不产出一条点了就 404 的链接。
+ * 两种来源，能不能纯导航是分开的：
+ *   * 素材自带稳定公开直链（`downloadUrl`，必须是 `https:`）→ 可以直连，不必过后端；
+ *   * 否则是 W7 的端点 URL，**需要 Bearer 头**，纯导航必然 401。
+ *
+ * 判断用 `isDirectTemplateDownload()`；实际下载一律调 `downloadTemplateMaterial()`。
+ * 无法定位素材时返回空串，由 W2 据此隐藏「下载」按钮。
+ *
+ * 入参给字符串时按 **templateId** 处理（不是 artifact id——W7 拒收 artifact id）。
  */
 export function templateDownloadHref(
   template: TemplateMaterial | string | null | undefined,
@@ -433,13 +448,26 @@ export function templateDownloadHref(
     const direct = trustedDownloadUrl(template.downloadUrl);
     if (direct) return direct;
   }
-  const artifactId = deepLinkSegment(
-    typeof template === "string" ? template : template?.artifactId,
+  const templateId = deepLinkSegment(
+    typeof template === "string" ? template : template?.id,
   );
-  if (!artifactId) return "";
+  if (!templateId) return "";
   return `${GATEWAY_BASE.replace(/\/+$/, "")}${TEMPLATE_DOWNLOAD_PATH}/${encodeURIComponent(
-    artifactId,
+    templateId,
   )}/download`;
+}
+
+/**
+ * 这份素材的下载是不是一条可以直接导航的公开直链。
+ *
+ * `false` = 必须走 `downloadTemplateMaterial()` 带凭据取。存在这个判定是因为两条路的
+ * 失败方式完全不同：直链失败是 CDN 的事，端点失败要区分 401（未登录）与 429（配额）。
+ */
+export function isDirectTemplateDownload(
+  template: TemplateMaterial | string | null | undefined,
+): boolean {
+  if (typeof template === "string" || !template) return false;
+  return Boolean(trustedDownloadUrl(template.downloadUrl));
 }
 
 // ── 代表 prompt 与一次性预填载荷 ─────────────────────────────────────────────

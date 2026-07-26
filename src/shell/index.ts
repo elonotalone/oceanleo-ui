@@ -411,11 +411,19 @@ export type { ImageLightboxProps, TemplateShowcaseProps } from "./ImageLightbox"
 // 模板素材载入编辑器，`templateDownloadHref` 解析该素材的真实文件地址。
 export {
   TEMPLATE_DOWNLOAD_PATH,
+  isDirectTemplateDownload,
   templateDownloadHref,
   workspaceAppAdvancedHref,
   workspaceAppFillHref,
   workspaceTemplateEditHref,
 } from "./site-catalog-controller";
+// 「下载」的真实执行（W4）。W7 的端点强制登录（配额要计费主体），`<a download>` 带不了
+// Bearer 头，所以按钮必须调这个函数，不能拿 href 去纯导航。失败 throw，401 与 429 可区分。
+export {
+  TemplateDownloadError,
+  downloadTemplateMaterial,
+} from "./template-download";
+export type { TemplateDownloadErrorCode } from "./template-download";
 // 封面图 key/URL 约定（合同 §3，W5 产出）走 `@oceanleo/ui/lib`（见 `src/lib/index.ts`），
 // shell 这层不再重复暴露，避免同一符号两条导入路径。
 // 首页 prompt 卡片分区（宗旨 v12，2026-07-04）：未迁移站的既有路径（agent 卡片组件保留

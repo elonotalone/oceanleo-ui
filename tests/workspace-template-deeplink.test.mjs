@@ -15,6 +15,7 @@ import {
   TEMPLATE_DOWNLOAD_PATH,
   catalogCanonicalRedirect,
   catalogTemplateOpenPlan,
+  isDirectTemplateDownload,
   resolveCatalogDeepLinkIntent,
   resolveSiteCatalogRoute,
   searchWithoutCatalogDeepLinkIntent,
@@ -26,6 +27,12 @@ import { normalizeWorkspaceAction } from "../src/shell/workspace-actions.ts";
 import { libraryKindForArtifactType } from "../src/shell/library-data.ts";
 import { ARTIFACT_TYPES } from "../src/shell/artifact-contract.ts";
 import { libraryEditIntentArtifactId } from "../src/shell/library-edit-intent.ts";
+import {
+  TemplateDownloadError,
+  downloadTemplateMaterial,
+  filenameFromContentDisposition,
+  templateDownloadErrorCodeForStatus,
+} from "../src/shell/template-download.ts";
 
 const controllerSource = await readFile(
   new URL("../src/shell/site-catalog-controller.ts", import.meta.url),
@@ -47,6 +54,20 @@ const editIntentSource = await readFile(
   new URL("../src/shell/library-edit-intent.ts", import.meta.url),
   "utf8",
 );
+const downloadSource = await readFile(
+  new URL("../src/shell/template-download.ts", import.meta.url),
+  "utf8",
+);
+const barrelSource = await readFile(
+  new URL("../src/shell/index.ts", import.meta.url),
+  "utf8",
+);
+
+// 跨仓校准：端点契约的唯一事实源是 W7 的路由源码，不是前端这边的常量。后端仓库不在
+// 本机时跳过（而不是假绿），本机有就必须逐字对上。
+const ROUTER_PATH =
+  "/root/projects/oceanleo/backend/app/routers/template_materials_router.py";
+const routerSource = await readFile(ROUTER_PATH, "utf8").catch(() => "");
 
 const GATEWAY = "https://api.oceanleo.com";
 
@@ -317,20 +338,28 @@ test("intent 只认 open / edit，未知值不得静默变成一次编辑器启�
 
 // ── templateDownloadHref（前端链；端点由 W7 提供）───────────────────────────
 
-test("默认走 W7 的下载端点，并按 artifact id 定位素材", () => {
+test("默认走 W7 的下载端点，并按 templateId 定位素材", () => {
   assert.equal(
     templateDownloadHref(material()),
-    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/art_0001/download`,
+    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/tpl-1/download`,
   );
-  // 只给字符串时按 artifact id 处理（templateId 只在 app 内唯一，全站会重名）。
+  // 只给字符串时按 templateId 处理。W7 出于安全**拒收** artifact id，前端也不许送。
   assert.equal(
-    templateDownloadHref("art_0001"),
-    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/art_0001/download`,
+    templateDownloadHref("tpl-1"),
+    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/tpl-1/download`,
   );
   assert.equal(
-    templateDownloadHref(material({ artifactId: "a b/c" })),
+    templateDownloadHref(material({ id: "a b/c" })),
     `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/a%20b%2Fc/download`,
   );
+});
+
+test("下载链接里绝不出现 artifact id（W7 明确拒收，上一轮就错在这）", () => {
+  const href = templateDownloadHref(
+    material({ id: "tpl-9", artifactId: "art_SECRET" }),
+  );
+  assert.doesNotMatch(href, /art_SECRET/);
+  assert.match(href, /\/tpl-9\/download$/);
 });
 
 test("素材自带 https 直链时优先用它", () => {
@@ -350,29 +379,47 @@ test("非 https 直链一律不信任，回落到端点", () => {
     "  ",
     "not a url",
   ]) {
+    const dirty = material({ downloadUrl: bad });
     assert.equal(
-      templateDownloadHref(material({ downloadUrl: bad })),
-      `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/art_0001/download`,
+      templateDownloadHref(dirty),
+      `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/tpl-1/download`,
       `${bad} 不得成为下载链接`,
     );
+    // 不可信直链也不得被当成「可以纯导航」，否则会绕开凭据与配额。
+    assert.equal(isDirectTemplateDownload(dirty), false);
   }
 });
 
+test("只有 https 直链算「可纯导航」，端点 URL 一律不算", () => {
+  assert.equal(
+    isDirectTemplateDownload(
+      material({ downloadUrl: "https://cdn.oceanleo.com/tpl/poster.zip" }),
+    ),
+    true,
+  );
+  // 端点 URL 需要 Bearer 头，判定必须是 false，否则 W2 又会退回 <a download> 那条死路。
+  assert.equal(isDirectTemplateDownload(material()), false);
+  assert.equal(isDirectTemplateDownload("tpl-1"), false);
+  assert.equal(isDirectTemplateDownload(null), false);
+});
+
 test("定位不到素材时返回空串，让 W2 隐藏按钮，而不是给一条点了就 404 的链接", () => {
-  for (const bad of [null, undefined, "", "   ", {}, material({ artifactId: "" })]) {
+  for (const bad of [null, undefined, "", "   ", {}, material({ id: "" })]) {
     assert.equal(templateDownloadHref(bad), "");
   }
 });
 
-test("website 站的源码包不在前端分叉：34 站共用同一条下载链接", () => {
-  // 合同 §0.5「website 站下载的是源码包」由端点按 artifactType 决定打包形态。
-  // 前端若在这里 if (siteKey === "website")，30 站的按钮就会各写一套。
+test("website 站的源码包不在前端分叉：34 站共用同一条下载调用", () => {
+  // 合同 §0.5「website 站下载的是源码包」由端点按素材自己的 download_kind 决定打包形态
+  // （W7 的 `_download_website_source_zip`）。前端若在这里 if (siteKey === "website")，
+  // 30 站的按钮就会各写一套。
   const websiteMaterial = material({ artifactType: "website" });
   assert.equal(
     templateDownloadHref(websiteMaterial),
-    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/art_0001/download`,
+    `${GATEWAY}${TEMPLATE_DOWNLOAD_PATH}/tpl-1/download`,
   );
   assert.doesNotMatch(controllerSource, /siteKey === "website"/);
+  assert.doesNotMatch(downloadSource, /siteKey === "website"/);
 });
 
 // ── 派发接线与显式 ready 信号 ───────────────────────────────────────────────
@@ -457,6 +504,140 @@ test("不带 intent 的既有 action 语义不变，仍是安静预览", () => {
     workspaceLibrarySource,
     /if \(byId \|\| byUrl\) openEntry\(\(byId \|\| byUrl\)!\);/,
   );
+});
+
+// ── 对着 W7 的真实路由校准（不许再拿自己假设的常量自证）────────────────────
+
+test("端点前缀与主键必须与 W7 路由源码逐字一致", (t) => {
+  if (!routerSource) {
+    t.skip(`后端仓库不在本机（${ROUTER_PATH}），跳过跨仓校准`);
+    return;
+  }
+  // 前缀直接从 APIRouter(...) 里抠出来，而不是再写一遍字面量。
+  const prefix = /APIRouter\(\s*prefix\s*=\s*"([^"]+)"/.exec(routerSource)?.[1];
+  assert.equal(
+    TEMPLATE_DOWNLOAD_PATH,
+    prefix,
+    "前端的端点前缀与 W7 的 APIRouter prefix 不一致",
+  );
+
+  // 下载路由的路径参数名 = 主键口径。W7 用 template_id，不是 artifact_id。
+  const downloadRoute = /@router\.get\(\s*"(\/\{[a-z_]+\}\/download)"/.exec(
+    routerSource,
+  )?.[1];
+  assert.equal(downloadRoute, "/{template_id}/download");
+  assert.equal(
+    templateDownloadHref(material({ id: "tpl-7" })),
+    `${GATEWAY}${prefix}/tpl-7/download`,
+  );
+});
+
+test("下载端点确实强制登录，所以前端必须带 Bearer 而不是纯导航", (t) => {
+  if (!routerSource) {
+    t.skip(`后端仓库不在本机（${ROUTER_PATH}），跳过跨仓校准`);
+    return;
+  }
+  // 下载函数体：`current_user_id`（强制）而不是 `optional_user_id`（匿名可用）。
+  const download = routerSource.slice(
+    routerSource.indexOf("async def download_template_material"),
+  );
+  const signature = download.slice(0, download.indexOf(") -> Response"));
+  assert.match(signature, /Depends\(current_user_id\)/);
+  assert.doesNotMatch(signature, /optional_user_id/);
+  // 目录读则相反，仍是匿名可用——不要顺手把它也变成要登录。
+  assert.match(routerSource, /def list_template_materials[\s\S]*?optional_user_id/);
+
+  // 前端这侧：确实发了 Authorization 头，且没有 token 就不发这一趟。
+  assert.match(downloadSource, /Authorization: `Bearer \$\{token\}`/);
+  assert.match(
+    downloadSource,
+    /if \(!token\) throw new TemplateDownloadError\("unauthorized"\);/,
+  );
+});
+
+test("W7 拒收 artifact id：路由上不得存在任何指名 artifact 的入参", (t) => {
+  if (!routerSource) {
+    t.skip(`后端仓库不在本机（${ROUTER_PATH}），跳过跨仓校准`);
+    return;
+  }
+  const routes = routerSource.match(/@router\.get\(\s*"[^"]*"/g) || [];
+  for (const route of routes) {
+    assert.doesNotMatch(route, /artifact/i, `${route} 不该指名 artifact`);
+  }
+});
+
+// ── 下载失败语义：401 与 429 必须可区分 ─────────────────────────────────────
+
+test("401 与 429 是两回事，文案不得混在一起", () => {
+  assert.equal(templateDownloadErrorCodeForStatus(401), "unauthorized");
+  assert.equal(templateDownloadErrorCodeForStatus(429), "quota-exceeded");
+  const unauthorized = new TemplateDownloadError("unauthorized", 401);
+  const quota = new TemplateDownloadError("quota-exceeded", 429);
+  assert.notEqual(unauthorized.message, quota.message);
+  // 配额文案不得把已登录用户又劝去登录。
+  assert.doesNotMatch(quota.message, /登录/);
+  assert.match(unauthorized.message, /登录/);
+  assert.ok(unauthorized.message.length > 0 && quota.message.length > 0);
+  assert.equal(quota.status, 429);
+  assert.equal(quota.code, "quota-exceeded");
+});
+
+test("W7 会发出的其余状态码都有可见且不同的失败态", () => {
+  // 逐条对着 template_materials_router.py / template_materials.py 的抛出点。
+  const seen = new Map();
+  for (const [status, code] of [
+    [401, "unauthorized"],
+    [429, "quota-exceeded"],
+    [404, "not-found"],
+    [409, "integrity-failed"],
+    [503, "unavailable"],
+  ]) {
+    assert.equal(templateDownloadErrorCodeForStatus(status), code);
+    const { message } = new TemplateDownloadError(code, status);
+    assert.ok(message.length > 0, `${code} 缺文案`);
+    assert.ok(!seen.has(message), `${code} 的文案与 ${seen.get(message)} 撞车`);
+    seen.set(message, code);
+  }
+  // 未知状态不猜。
+  assert.equal(templateDownloadErrorCodeForStatus(418), "failed");
+  assert.equal(templateDownloadErrorCodeForStatus(500), "failed");
+});
+
+test("Content-Disposition 决定落盘文件名，并挡掉路径分隔符", () => {
+  assert.equal(
+    filenameFromContentDisposition(
+      'attachment; filename="oceanleo-poster-1a2b3c4d.zip"',
+    ),
+    "oceanleo-poster-1a2b3c4d.zip",
+  );
+  assert.equal(
+    filenameFromContentDisposition(
+      "attachment; filename*=UTF-8''%E6%B5%B7%E6%8A%A5.zip",
+    ),
+    "海报.zip",
+  );
+  // 服务端给的名字也不许把文件写到别处去。
+  assert.equal(
+    filenameFromContentDisposition('attachment; filename="../../etc/passwd"'),
+    "....etcpasswd",
+  );
+  assert.equal(filenameFromContentDisposition(null), "");
+  assert.equal(filenameFromContentDisposition(""), "");
+});
+
+test("父任务钉死的签名：downloadTemplateMaterial(template) => Promise<void>", () => {
+  assert.equal(typeof downloadTemplateMaterial, "function");
+  assert.equal(downloadTemplateMaterial.length, 1);
+  assert.equal(downloadTemplateMaterial.constructor.name, "AsyncFunction");
+  // 失败一律 throw（而不是返回 false），否则 W2 拿不到可区分的原因。
+  assert.ok(TemplateDownloadError.prototype instanceof Error);
+});
+
+test("W2 该拿到的符号都在共享包导出面上", () => {
+  assert.match(barrelSource, /\bdownloadTemplateMaterial\b/);
+  assert.match(barrelSource, /\bTemplateDownloadError\b/);
+  assert.match(barrelSource, /\bisDirectTemplateDownload\b/);
+  assert.match(barrelSource, /from "\.\/template-download"/);
 });
 
 test("合同 §3 的模板 helper 名称与形状不得漂移（W2 按这个签名调用）", () => {
