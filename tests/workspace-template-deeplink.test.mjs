@@ -76,7 +76,7 @@ function material(overrides = {}) {
   return {
     id: "tpl-1",
     title: "极简海报",
-    previewUrl: "tpl-material/image-poster-1.webp",
+    previewUrl: "tpl-material/image-poster-1",
     artifactId: "art_0001",
     artifactType: "single_file_image",
     ...overrides,
@@ -283,7 +283,7 @@ test("app 没有 templates、或 app 本身为空时同样安全退化", () => {
 test("脏模板条目（缺 artifactId / 缺 id）不得被派发", () => {
   // W3 的 appTemplates 已剔脏；这里钉死深链层确实走它，而不是自己 find。
   const dirty = appWith([
-    { id: "tpl-1", title: "无 artifact", previewUrl: "p.webp" },
+    { id: "tpl-1", title: "无 artifact", previewUrl: "tpl-material/image-poster-9" },
     material({ id: "tpl-2", artifactId: "" }),
   ]);
   for (const wanted of ["tpl-1", "tpl-2"]) {

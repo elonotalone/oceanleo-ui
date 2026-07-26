@@ -194,7 +194,7 @@ test("两个新函数就住在 presetToOpsPatch 旁边（同一文件的数据�
 const templateMaterial = (extra) => ({
   id: "t1",
   title: "科技发布会主视觉海报",
-  previewUrl: "tpl-material/image-poster-1.webp",
+  previewUrl: "tpl-material/image-poster-1",
   artifactId: "art_0001",
   artifactType: "single_file_image",
   ...extra,

@@ -77,8 +77,9 @@ export interface TemplateMaterial {
   /** 标签（大卡片右侧 chips），如 ["海报","科技","16:9"]。不给按空数组处理。 */
   tags?: string[];
   /**
-   * 素材预览图：OSS key（`assets/image/tpl-material/<siteKey>-<appId>-<n>.webp`）
-   * 或完整 URL。与 `capabilityImage` 同一套取值约定。
+   * 素材预览图：**裸 OSS key**（`tpl-material/<siteKey>-<appId>-<n>`）或完整 URL。
+   * 与 `capabilityImage` 同一套取值约定：`assets/image/` 前缀与 `.webp` 扩展名由拼链层
+   * 加，写进取值里就会拼成 `assets/image/assets/image/….webp.thumb.webp`（合同 §9.35）。
    * 这是**真实成品的预览**，不是功能示意图；大卡片的主预览与下方切换条都用它。
    */
   previewUrl: string;
@@ -131,8 +132,8 @@ export interface GoalApp {
   thumb?: string;
   /**
    * 【功能图】表达「这个 app 干什么」的示意图（派活合同 §0.4 四类画法）。取值为
-   * OSS key（`assets/image/cap-app/<siteKey>-<appId>.webp`，即 W5 的
-   * `capabilityImageKey(siteKey, appId)` → `cap-app/<siteKey>-<appId>` 结果）或完整 URL。
+   * **裸 OSS key**（`capabilityImageKey(siteKey, appId)` 的结果，即
+   * `cap-app/<siteKey>-<appId>`，不带 `assets/image/` 前缀、不带 `.webp` 扩展名）或完整 URL。
    *
    * 出现在**首页卡片缩略图**，**不随模板切换而变**；60px 见方要一眼可辨认动作，
    * 画面内不得出现任何文字（17 语无法本地化）。
