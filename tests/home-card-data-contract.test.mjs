@@ -302,6 +302,23 @@ test("两层图像职责分开：capabilityImage 与 templates 是 GoalApp 上�
   assert.match(catalog, /export function appTemplates\(/);
 });
 
+test("capabilityImageOf 的 JSDoc 写明「返回 key、不能直接当 src」并指名拼链函数", () => {
+  const catalog = source("../src/shell/app-catalog.ts");
+  const upTo = catalog.slice(0, catalog.indexOf("export function capabilityImageOf("));
+  const block = upTo.slice(upTo.lastIndexOf("/**"));
+  // 2026-07-26 那次 30 站卡片图全 404（合同 §9.22）的根因不是分了两个模块，
+  // 是本函数的名字与 `string | undefined` 签名让调用方以为拿到的是可渲染 URL。
+  assert.match(block, /不是能直接渲染的 URL/);
+  assert.match(block, /404/);
+  // 必须指名到**具体那个函数**。上一版写了「本函数不做 key→URL 拼接」却把读者引向
+  // `capabilityImageKey(siteKey, appId)`——那是从 site+app 造 key 的，解决不了他的问题。
+  assert.match(block, /capabilityImageThumbSrc/);
+  assert.match(block, /app-capability-image/);
+  // 文档只能提醒；分层靠这条守：拼链层不得被 import 进数据契约层，否则 app-catalog
+  // 就绑上了 OSS 桶名与后缀细节，需要原始 key 的消费者也再取不回 key。
+  assert.doesNotMatch(catalog, /^import .*app-capability-image/m);
+});
+
 test("thumb 保留但已标 @deprecated（W8* 删调用点，字段留到 30 站清干净）", () => {
   const catalog = source("../src/shell/app-catalog.ts");
   // 字段还在：删了会让还没轮到的 W8 批次立刻 typecheck 变红，等于逼 30 站锁步发布。
@@ -466,12 +483,40 @@ const PREEXISTING_GAP_COPY = ["添加 prompt"];
 // 纳入下面这套 17 语判据一起钉死，防止日后有人改动它时漏掉某个 locale。
 const MULTI_TEMPLATE_COPY = ["编辑模板", "下载", "切换模板"];
 
+// 2026-07-26 prompt.oceanleo.com（W10 新站）。清单不是照抄 `W10-marker.md` §10 的手点数
+// （那份写 31 条，但漏了 `选填`，又把 7 条词典里早已存在的当成新增），而是从站点源码里
+// 抠出全部 `tt("…")` 字面量 + `PROMPT_MODALITIES`/`PROMPT_SCENES` 两张数据表
+// （它们经 `tt(PROMPT_MODALITIES[m])` 动态查表，同样要有词条），再与 17 份词典逐条比对，
+// 得到真实缺口 37 条。
+const PROMPT_SITE_COPY = [
+  // 工作台 / 探索区常驻 UI
+  "LeoPrompt 工作台", "探索 · 按模态分区", "提示词", "提示词 / 我的库", "生成提示词",
+  "需求 / 现有提示词", "目标模型 / 平台", "目标模型与约束", "约束与偏好（选填）",
+  "在左侧描述需求", "个成品", "视觉生成", "代表提示词", "带进操作台", "直接去跑生成：",
+  "去", "选填",
+  // 第一层模态分区名（`视频生成`/`演示文稿` 词典里已有，不重复列）
+  "图片生成", "文章写作", "网页与代码", "表格与数据", "音频与音乐", "三维与设计",
+  "智能体与系统",
+  // 第二层提示词工程动作
+  "提示词生成", "提示词优化", "变体扩写", "跨模型迁移", "系统提示词",
+  // 长句与 placeholder
+  "按模态挑一个成品开始——写完的提示词可以一键拿去对应能力站真正跑生成。",
+  "每个分区对应一种产出模态。点卡片看大卡片，点 prompt 取走这条提示词，或直接去对应能力站跑生成。",
+  "填好后点「生成提示词」。产出是可以整段复制的提示词正文，外加为什么这么写、哪几处该按你的情况替换。",
+  "写清「让 AI 做什么、给谁用、要什么效果」即可；要优化就把现有提示词整段粘进来。",
+  "提示词写好了。拿去真正能跑它的站：",
+  "需求 / 现有提示词：出图 / 写文 / 做表 / 生成系统提示词 …",
+  "如：输出 JSON / 200 字内 / 不出现品牌名",
+  "通义万相 / Sora / GPT / Claude / LeoImage",
+];
+
 /** 本文件对 17 语一起施加同一套判据的全部 key。 */
 const ALL_COPY = [
   ...NEW_UI_COPY,
   ...CONTRACT_EXTRA_COPY,
   ...PREEXISTING_GAP_COPY,
   ...MULTI_TEMPLATE_COPY,
+  ...PROMPT_SITE_COPY,
 ];
 
 // zh 是规范来源（key===值）；zh-TW 是中文变体，部分词条的繁体写法与简体源串本就完全
@@ -492,12 +537,26 @@ const ZH_TW_MUST_DIFFER = {
   "编辑模板": "編輯範本",
   "切换模板": "切換範本",
   "下载": "下載",
+  // prompt 站：这几条同样不是逐字转繁，是台湾用词。
+  "网页与代码": "網頁與程式碼", // 台湾叫「程式碼」不叫「代码」
+  "表格与数据": "表格與資料", // 台湾叫「資料」不叫「数据」
+  "音频与音乐": "音訊與音樂", // 台湾叫「音訊」不叫「音频」
+  "去": "前往", // 逐字转繁仍是「去」，台湾 UI 习惯用「前往」
+  "直接去跑生成：": "直接前往生成：",
+  "探索 · 按模态分区": "探索 · 依模態分區", // 台湾用「依」不用「按」
+  "目标模型与约束": "目標模型與限制", // 台湾把 constraint 叫「限制」多于「約束」
 };
 
 // V1-verdict §5 的两条 WARNING：zh-TW 的这两条与简体源串逐字相同。属**语言事实**而非漏翻
 // ——「查看全部」「代表」四字在繁体中写法完全一致，没有可改的字。把它固化成**白名单**：
 // 若日后有人往 zh-TW 里偷懒直接抄简体，这个集合会变大并让测试变红。
-const ZH_TW_SAME_AS_SOURCE = new Set(["查看全部", "代表 prompt"]);
+// 「LeoPrompt 工作台」：「工作台」三字繁体写法与简体完全一致，产品名不翻译，所以整条
+// 逐字相同——同样是语言事实，不是漏翻。
+const ZH_TW_SAME_AS_SOURCE = new Set([
+  "查看全部",
+  "代表 prompt",
+  "LeoPrompt 工作台",
+]);
 
 const dictionaries = new Map();
 for (const locale of LOCALES) {
@@ -514,7 +573,7 @@ test("17 个 locale 的词典都被加载到（locale 清单取自 config.ts，�
   }
 });
 
-test("这 9 条文案在 17 份词典里都存在且非空", () => {
+test(`这 ${ALL_COPY.length} 条文案在 17 份词典里都存在且非空`, () => {
   for (const key of ALL_COPY) {
     for (const [locale, dict] of dictionaries) {
       const value = dict[key];
@@ -633,6 +692,32 @@ test("「编辑模板」「切换模板」处在 renamePromptTemplateTerm 的射
   for (const [locale, dict] of dictionaries) {
     assert.doesNotMatch(dict["下载"], PROMPT_TEMPLATE_TERM[locale]);
   }
+});
+
+// W10 在 `components/ConsoleClient.tsx` 写的是 `tt("提示词 / 我的文件库")`，但 useUI 的
+// canonicalize 会把「文件库」整体换成「我的库」，于是查表键变成「提示词 / 我的我的库」
+// ——源串本身永远查不到，17 语会齐刷刷回退成那句错乱中文。源串在 W10 边界内，我不能改，
+// 所以两个键都备：别名键让今天就显示正确，正式键让 W10 改完源串后词典不用再动。
+const CANONICALIZED_ALIAS = "提示词 / 我的我的库";
+
+test("prompt 站的「我的文件库」被 canonicalize 撞成别名键，17 语都兜住了", () => {
+  const canonicalize = (zh) =>
+    zh
+      .replaceAll("文件库", "我的库")
+      .replaceAll("檔案庫", "我的库")
+      .replaceAll("檔案库", "我的库");
+  // 先钉死前提：这个别名键确实是 W10 那条源串的 canonicalize 产物。
+  assert.equal(canonicalize("提示词 / 我的文件库"), CANONICALIZED_ALIAS);
+  assert.notEqual(CANONICALIZED_ALIAS, "提示词 / 我的库");
+  for (const [locale, dict] of dictionaries) {
+    const alias = dict[CANONICALIZED_ALIAS];
+    assert.equal(typeof alias, "string", `${locale} 缺别名键 "${CANONICALIZED_ALIAS}"`);
+    // 两个键必须给同一句译文，否则改完源串文案会跳变。
+    assert.equal(alias, dict["提示词 / 我的库"], `${locale} 的别名键与正式键译文不一致`);
+  }
+  // 别名键刻意**不**满足 zh key===值：它是 canonicalize 产物，不是给人看的源串，
+  // 照抄成「提示词 / 我的我的库」等于把错乱中文显示给简体用户。
+  assert.equal(dictionaries.get("zh")[CANONICALIZED_ALIAS], "提示词 / 我的库");
 });
 
 test("新文案的查表键就是源串本身（canonicalize 后不变，17 语真命中）", () => {

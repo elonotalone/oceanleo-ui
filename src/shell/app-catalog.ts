@@ -286,13 +286,25 @@ export function representativeFill(app: GoalApp): RepresentativeFill | null {
 // ============================================================================
 
 /**
- * 首页卡片缩略图要用的【功能图】：`capabilityImage` 优先，回退 `@deprecated` 的
+ * 裁决该 app 的【功能图】取哪个字段：`capabilityImage` 优先，回退 `@deprecated` 的
  * `thumb`；两者都没有 → `undefined`（调用方回退 emoji tint 图示，绝不留空白块）。
  *
- * `thumb` 回退**只服务 W8a–W8f 分批铺开的中间态**，全部 30 站铺完后连同字段一起删。
- * 注意本函数不做 key→URL 拼接（那是 `assetThumbUrl` / `capabilityImageKey` 的事），
- * 只负责在两个数据源之间做唯一裁决。
+ * ⚠️ **返回的是 catalog 里存的原始取值，不是能直接渲染的 URL。** 30 个站按合同 §3 一律
+ * 存 **OSS key**（形如 `cap-app/<siteKey>-<appId>`）。把它直接塞进 `<img src>`，浏览器
+ * 会拿它当相对路径请求，30 站首页卡片图会全部 404——2026-07-26 真发生过（合同 §9.22，
+ * 由 W1 的 `7f51b33` 修掉）。
  *
+ * 要渲染就在外面套一层拼链函数（`../lib/app-capability-image`，W5）：
+ *   缩略图：`capabilityImageThumbSrc(capabilityImageOf(app))`
+ *   大图：  `capabilityImagePreviewSrc(appPreviewImageKey(app))`
+ * 两个函数对已经是完整 http(s) URL 的取值都原样透传，所以未迁移站同样安全。
+ *
+ * 本函数**只做数据源裁决**，刻意不碰 OSS 桶名、`.thumb.webp` / `.webp` 后缀，以及
+ * `.preview.webp` 在 OSS 上不存在那个坑——那些全归拼链层。需要**原始 key** 的消费者
+ * （W5 的 verify 流水线、catalog 审计、深链解析）正是靠这条边界才拿得到 key；
+ * 若把拼链合并进来，它们就再也取不回 key 了。
+ *
+ * `thumb` 回退**只服务 W8a–W8f 分批铺开的中间态**，全部 30 站铺完后连同字段一起删。
  * `app` 允许是 `null`/`undefined`（同样返回 `undefined`），理由见 `appTemplates`。
  */
 export function capabilityImageOf(
