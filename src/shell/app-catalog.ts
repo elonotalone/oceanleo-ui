@@ -292,8 +292,13 @@ export function representativeFill(app: GoalApp): RepresentativeFill | null {
  * `thumb` 回退**只服务 W8a–W8f 分批铺开的中间态**，全部 30 站铺完后连同字段一起删。
  * 注意本函数不做 key→URL 拼接（那是 `assetThumbUrl` / `capabilityImageKey` 的事），
  * 只负责在两个数据源之间做唯一裁决。
+ *
+ * `app` 允许是 `null`/`undefined`（同样返回 `undefined`），理由见 `appTemplates`。
  */
-export function capabilityImageOf(app: GoalApp): string | undefined {
+export function capabilityImageOf(
+  app: GoalApp | null | undefined,
+): string | undefined {
+  if (app == null) return undefined;
   return nonBlank(app.capabilityImage) ?? nonBlank(app.thumb);
 }
 
@@ -301,11 +306,17 @@ export function capabilityImageOf(app: GoalApp): string | undefined {
  * 该 app 可展示的【模板素材】列表，已剔除缺少必填字段的脏条目（id / title /
  * previewUrl / artifactId 任缺一个都无法在大卡片里正确渲染或派发编辑）。
  *
- * 永远返回数组（可能为空），调用方据此决定：0 份 → 大卡片不出素材区；1 份 → 不显示
- * 下方切换条；2 份 → 显示切换条。返回的是新数组，调用方 mutate 不会污染 catalog。
+ * **对任何输入都返回数组**（可能为空），包括 `null`/`undefined` 的 app：大卡片与深链
+ * 解析都在「app 还没解析出来」的状态下被调用（浮层未选中、深链 appId 不存在），让取值
+ * 函数在那一刻抛 `TypeError` 只会逼每个调用点各写一遍 `app ? … : []`。调用方据数组长度
+ * 决定：0 份 → 大卡片不出素材区；1 份 → 不显示下方切换条；2 份 → 显示切换条。
+ *
+ * 返回的是新数组，调用方 mutate 不会污染 catalog。
  */
-export function appTemplates(app: GoalApp): TemplateMaterial[] {
-  return (app.templates || []).filter(
+export function appTemplates(
+  app: GoalApp | null | undefined,
+): TemplateMaterial[] {
+  return (app?.templates || []).filter(
     (t) =>
       t != null &&
       nonBlank(t.id) != null &&

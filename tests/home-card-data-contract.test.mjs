@@ -247,6 +247,20 @@ test("appTemplates：缺任一必填字段的脏条目被剔除（渲染或派�
   assert.deepEqual(kept.map((t) => t.id), ["t2"]);
 });
 
+test("appTemplates / capabilityImageOf 容忍 null 与 undefined 的 app（W4 集成实证）", () => {
+  // W4 集成时实证 `appTemplates(null)` 抛 TypeError，而契约写的是「永远返回数组」。
+  // 大卡片（浮层未选中）与深链解析（appId 不存在）都会在「app 还没解析出来」时调用取值
+  // 函数，让它在那一刻抛，等于逼每个调用点各写一遍 `app ? … : []`。
+  for (const missing of [null, undefined]) {
+    assert.deepEqual(appTemplates(missing), []);
+    assert.equal(capabilityImageOf(missing), undefined);
+  }
+  // 类型声明也要一起放宽，否则 TS 调用方仍被迫写 `app!` 或自建短路。
+  const catalog = source("../src/shell/app-catalog.ts");
+  assert.match(catalog, /export function appTemplates\(\s*\n?\s*app: GoalApp \| null \| undefined,/);
+  assert.match(catalog, /export function capabilityImageOf\(\s*\n?\s*app: GoalApp \| null \| undefined,/);
+});
+
 test("appTemplates：返回新数组，调用方 mutate 不污染 catalog", () => {
   const templates = [templateMaterial()];
   const app = appWith({ templates });
