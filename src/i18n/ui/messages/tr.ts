@@ -6288,5 +6288,8 @@ const tr: Record<string, string> = {
   "预览大图": "Büyük görseli önizle",
   "代表 prompt": "Temsili prompt",
   "添加 prompt": "Prompt ekle",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "Şablonu düzenle",
+  "切换模板": "Şablon değiştir",
 };
 export default tr;

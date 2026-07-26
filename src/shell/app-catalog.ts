@@ -27,7 +27,79 @@
 import type { ReactNode } from "react";
 import type { GuideSection } from "./NavigatorGuide";
 import type { MaterialItem } from "./MaterialLibrary";
+import type { ArtifactType } from "./artifact-contract";
 import type { OpsPatch } from "../lib/fn-agent";
+
+// ============================================================================
+// 三层概念模型（操作员 2026-07-26 拍板，全局唯一口径）
+// ----------------------------------------------------------------------------
+//   一个首页卡片 = 一个 app = 一个功能；一个 app 挂一段代表 prompt；
+//   一个 app 下挂 1–2 份模板素材。
+//
+// 两层图像职责【严格分开，不得混用】——上一轮把它们混成一个 `thumb` 才做错：
+//
+//   `GoalApp.capabilityImage`   功能图。表达「这个 app 干什么」的示意图，60px 见方
+//                               一眼可辨认动作。出现在首页卡片缩略图，**不随模板切换
+//                               而变**。一个 app 只有一张。
+//   `TemplateMaterial.previewUrl` 模板素材预览。真实成品实例的预览，证明「做出来长
+//                               这样」。**只在大卡片（TemplateShowcase）里出现**，
+//                               随当前选中模板切换。一个 app 有 1–2 张。
+//
+// 判据：任何时候都不许把 `previewUrl` 拿去当首页缩略图，也不许把 `capabilityImage`
+// 拿去当大卡片主预览。
+// ============================================================================
+
+/**
+ * 一份【模板素材】= 该 app 下的一个真实成品实例，可预览、可下载、可载入编辑器。
+ *
+ * 硬约束（派活合同 §0.5）：
+ *   - 必须是平台的**正式产物对象（typed artifact）**，不是散落的静态文件——否则
+ *     「编辑模板」无法把它载进编辑器。
+ *   - 必须能被「下载」按钮真正下载到真实文件（website 站下载的是源码包）。
+ *   - **严禁使用任何真实用户产出**（law / med / resume / finance 尤其敏感）。
+ *     只能是官方专门制作的样例。这是隐私红线。
+ */
+export interface TemplateMaterial {
+  /**
+   * 该模板素材的稳定 id，在**同一个 app 内唯一**（不要求全站唯一）。
+   * 深链取值：`workspaceTemplateEditHref(appId, templateId)`（W4）与
+   * `templateDownloadHref(templateId)`（W4 前端 / W7 端点）都拿它当键。
+   * 命名建议 `<appId>-<n>`，与素材预览 key 的 `-<n>` 后缀对齐。
+   */
+  id: string;
+  /** 素材标题（大卡片右侧主标题）。人可读、面向成品，如「科技发布会主视觉海报」。 */
+  title: string;
+  /**
+   * 一段说明（大卡片右侧正文）。讲这份成品是什么、适合什么场合。
+   * 不给时由 W2 回退展示该 app 的代表 prompt 全文。
+   */
+  summary?: string;
+  /** 标签（大卡片右侧 chips），如 ["海报","科技","16:9"]。不给按空数组处理。 */
+  tags?: string[];
+  /**
+   * 素材预览图：OSS key（`assets/image/tpl-material/<siteKey>-<appId>-<n>.webp`）
+   * 或完整 URL。与 `capabilityImage` 同一套取值约定。
+   * 这是**真实成品的预览**，不是功能示意图；大卡片的主预览与下方切换条都用它。
+   */
+  previewUrl: string;
+  /**
+   * 该素材背后的 typed artifact id。「编辑模板」靠它把**这一份具体素材**载入编辑器，
+   * 而不是打开该 app 默认产物类型的空编辑器（派活合同 §0.3）。
+   */
+  artifactId: string;
+  /**
+   * 该 artifact 的类型，取值必须来自 `./artifact-contract` 的 `ARTIFACT_TYPES`。
+   * 编辑器适配器的分发就是按它走的，所以这里刻意不放宽成 `string`——写错了
+   * 「编辑模板」会打不开。website 站的源码包用 `"website"`。
+   */
+  artifactType: ArtifactType;
+  /**
+   * 直接可用的下载地址（完整 URL）。**通常不填**：不填时由
+   * `templateDownloadHref(id)`（W4）按 `id` 生成走后端端点的链接，这样权限校验与
+   * 配额都由 W7 的端点统一兜住。只有在素材本身已有稳定公开直链时才填这里。
+   */
+  downloadUrl?: string;
+}
 
 /**
  * 一个「成品 app」= 用户一句话能说清、要交付的东西（面向目的，名词化）。
@@ -41,10 +113,40 @@ export interface GoalApp {
   /** 目录卡片图标（emoji / 单字）。 */
   icon?: ReactNode;
   /**
+   * @deprecated 2026-07-26 起被 `capabilityImage` 取代，**新代码不要再写 `thumb`**。
+   *
    * 目录卡片配图缩略图 URL（宗旨 v15）：图示卡片版式的顶部大图（AI 风格素材，来自
    * asset.oceanleo.com）。不给则回退 emoji tint 图示。用 assetThumbUrl(key) 拼直链。
+   *
+   * 为什么**保留字段而不是直接删**：30 个站的 catalog 目前都在写 `thumb: cover(id)`，
+   * 而 W8a–W8f 六个批次是**分别独立落地**的。若现在删字段，任何一个还没轮到的站都会
+   * 立刻 typecheck 变红，等于逼所有站锁步发布。所以留一个滚动期兜底窗口：
+   *   - W8*：在挂 `capabilityImage` 的**同时删掉该 app 的 `thumb: cover(id)` 那一行**
+   *     （上一轮那批「渐变底 + 白色线框图标」封面功能图/模板图两层都不满足，本轮全部
+   *     替换，不是并存）。
+   *   - 共享层：一律走 `capabilityImageOf(app)`，`capabilityImage` 优先、`thumb` 回退，
+   *     只为「批次 A 已铺、批次 B 未铺」的中间态兜底，让未铺站的卡片不至于空白。
+   *   - 全部 30 站清干净后，由后续一轮删掉本字段与各站的 `cover()` 辅助函数。
    */
   thumb?: string;
+  /**
+   * 【功能图】表达「这个 app 干什么」的示意图（派活合同 §0.4 四类画法）。取值为
+   * OSS key（`assets/image/cap-app/<siteKey>-<appId>.webp`，即 W5 的
+   * `capabilityImageKey(siteKey, appId)` → `cap-app/<siteKey>-<appId>` 结果）或完整 URL。
+   *
+   * 出现在**首页卡片缩略图**，**不随模板切换而变**；60px 见方要一眼可辨认动作，
+   * 画面内不得出现任何文字（17 语无法本地化）。
+   *
+   * 不要拿 `templates[].previewUrl` 顶替它：那是模板成品预览，属于另一层职责。
+   */
+  capabilityImage?: string;
+  /**
+   * 【模板素材】该 app 下挂的 1–2 份真实成品（操作员定：先 1 到 2 份）。
+   *
+   * **只在大卡片（TemplateShowcase）里出现**，首页卡片缩略图不用它。长度为 1 时
+   * 大卡片不显示下方的模板切换条；为空/不给时该 app 只有代表 prompt，没有素材区。
+   */
+  templates?: TemplateMaterial[];
   /** 卡片右上角小角标（如「热」「新」）。 */
   badge?: string;
   /** 卡片图标颜色（hex，可选）；不给按 id 稳定取色。 */
@@ -173,4 +275,42 @@ export function representativeFill(app: GoalApp): RepresentativeFill | null {
   const examplePrompt = nonBlank(example?.prompt);
   if (!examplePrompt) return null;
   return { prompt: examplePrompt, set: { ...base, ...(example?.set || {}) } };
+}
+
+// ============================================================================
+// 功能图与模板素材的取值契约（操作员 2026-07-26）
+// ----------------------------------------------------------------------------
+// 和代表 prompt 同样的道理：所有消费者（首页卡片缩略图、大卡片、深链）都必须走下面
+// 两个函数，不许各自现场 `app.capabilityImage || app.thumb`——否则同一个 app 在首页
+// 和大卡片里会取到两张不同的图，而这正是上一轮把两层图像混成一个字段留下的坑。
+// ============================================================================
+
+/**
+ * 首页卡片缩略图要用的【功能图】：`capabilityImage` 优先，回退 `@deprecated` 的
+ * `thumb`；两者都没有 → `undefined`（调用方回退 emoji tint 图示，绝不留空白块）。
+ *
+ * `thumb` 回退**只服务 W8a–W8f 分批铺开的中间态**，全部 30 站铺完后连同字段一起删。
+ * 注意本函数不做 key→URL 拼接（那是 `assetThumbUrl` / `capabilityImageKey` 的事），
+ * 只负责在两个数据源之间做唯一裁决。
+ */
+export function capabilityImageOf(app: GoalApp): string | undefined {
+  return nonBlank(app.capabilityImage) ?? nonBlank(app.thumb);
+}
+
+/**
+ * 该 app 可展示的【模板素材】列表，已剔除缺少必填字段的脏条目（id / title /
+ * previewUrl / artifactId 任缺一个都无法在大卡片里正确渲染或派发编辑）。
+ *
+ * 永远返回数组（可能为空），调用方据此决定：0 份 → 大卡片不出素材区；1 份 → 不显示
+ * 下方切换条；2 份 → 显示切换条。返回的是新数组，调用方 mutate 不会污染 catalog。
+ */
+export function appTemplates(app: GoalApp): TemplateMaterial[] {
+  return (app.templates || []).filter(
+    (t) =>
+      t != null &&
+      nonBlank(t.id) != null &&
+      nonBlank(t.title) != null &&
+      nonBlank(t.previewUrl) != null &&
+      nonBlank(t.artifactId) != null,
+  );
 }

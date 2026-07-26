@@ -6244,5 +6244,9 @@ const zhTW: Record<string, string> = {
   "预览大图": "預覽大圖",
   "代表 prompt": "代表 prompt",
   "添加 prompt": "新增 prompt",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  // 台湾软件界把 template 叫「範本」而非「模板」，所以这两条不是逐字转繁。
+  "编辑模板": "編輯範本",
+  "切换模板": "切換範本",
 };
 export default zhTW;

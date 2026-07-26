@@ -6288,5 +6288,8 @@ const ko: Record<string, string> = {
   "预览大图": "확대 미리보기",
   "代表 prompt": "대표 prompt",
   "添加 prompt": "prompt 추가",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "템플릿 편집",
+  "切换模板": "템플릿 전환",
 };
 export default ko;

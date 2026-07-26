@@ -6288,5 +6288,8 @@ const fr: Record<string, string> = {
   "预览大图": "Aperçu en grand",
   "代表 prompt": "Prompt représentatif",
   "添加 prompt": "Ajouter un prompt",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "Modifier le modèle",
+  "切换模板": "Changer de modèle",
 };
 export default fr;

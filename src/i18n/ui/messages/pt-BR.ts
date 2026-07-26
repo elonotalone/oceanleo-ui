@@ -6288,5 +6288,8 @@ const ptBR: Record<string, string> = {
   "预览大图": "Pré-visualização ampliada",
   "代表 prompt": "Prompt representativo",
   "添加 prompt": "Adicionar prompt",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "Editar modelo",
+  "切换模板": "Trocar de modelo",
 };
 export default ptBR;

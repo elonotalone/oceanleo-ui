@@ -6406,5 +6406,8 @@ const en: Record<string, string> = {
   "预览大图": "Preview full image",
   "代表 prompt": "Representative prompt",
   "添加 prompt": "Add prompt",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "Edit template",
+  "切换模板": "Switch template",
 };
 export default en;

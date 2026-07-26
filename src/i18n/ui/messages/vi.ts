@@ -6288,5 +6288,8 @@ const vi: Record<string, string> = {
   "预览大图": "Xem ảnh lớn",
   "代表 prompt": "Prompt tiêu biểu",
   "添加 prompt": "Thêm prompt",
+  // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
+  "编辑模板": "Chỉnh sửa mẫu",
+  "切换模板": "Đổi mẫu",
 };
 export default vi;

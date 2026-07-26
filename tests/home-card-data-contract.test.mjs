@@ -1,12 +1,15 @@
 // ============================================================================
 // W3 — 首页 app 卡片的数据契约测试（2026-07-25「prompt 卡与 app 卡合二为一」）
 // ----------------------------------------------------------------------------
-// 覆盖三块：
+// 覆盖四块：
 //   1. `representativePrompt()` / `representativeFill()`（shell/app-catalog.ts）
 //      —— 一张首页卡片要灌进输入框的那条 prompt，以及深链要预填的整套参数。
+//   1b.（2026-07-26 三层概念模型）`capabilityImageOf()` / `appTemplates()` 与
+//      `TemplateMaterial`：功能图与模板素材预览是**两层独立的图像职责**，不得再像
+//      上一轮那样混成一个 `thumb`。
 //   2. `shell/home-cards.ts` 的迁移：不再是首页内置卡来源，但导出面与老用户
 //      localStorage 数据必须一字不动地保留（Playground / OperatorConsole 是活消费者）。
-//   3. 四条新 UI 文案在 17 份词典里都有人工可用译文。
+//   3. 九条 UI 文案在 17 份词典里都有人工可用译文。
 //
 // 本文件跑在【裸 node --test】下（不带 ts-extension-loader / 额外 flag）：
 //   bash scripts/agent-io-guard.sh run-light -- node --test tests/home-card-data-contract.test.mjs
@@ -20,9 +23,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  appTemplates,
+  capabilityImageOf,
   representativeFill,
   representativePrompt,
 } from "../src/shell/app-catalog.ts";
+import { ARTIFACT_TYPES } from "../src/shell/artifact-contract.ts";
 import {
   GENERIC_PROMPTS,
   PROMPT_LIBRARY,
@@ -182,6 +188,115 @@ test("两个新函数就住在 presetToOpsPatch 旁边（同一文件的数据�
 });
 
 // ---------------------------------------------------------------------------
+// 1b. 功能图 / 模板素材：两层图像的取值契约（2026-07-26 三层概念模型）
+// ---------------------------------------------------------------------------
+
+const templateMaterial = (extra) => ({
+  id: "t1",
+  title: "科技发布会主视觉海报",
+  previewUrl: "tpl-material/image-poster-1.webp",
+  artifactId: "art_0001",
+  artifactType: "single_file_image",
+  ...extra,
+});
+
+test("capabilityImageOf：capabilityImage 优先于 @deprecated 的 thumb", () => {
+  assert.equal(
+    capabilityImageOf(appWith({ capabilityImage: "cap-app/image-poster", thumb: "老封面" })),
+    "cap-app/image-poster",
+  );
+});
+
+test("capabilityImageOf：未铺 capabilityImage 的站回退 thumb（W8* 分批期的中间态）", () => {
+  assert.equal(capabilityImageOf(appWith({ thumb: "老封面" })), "老封面");
+  // 空白不算有值，必须穿透到 thumb，否则未铺站会渲染出一个空白图块。
+  assert.equal(capabilityImageOf(appWith({ capabilityImage: "  ", thumb: "老封面" })), "老封面");
+});
+
+test("capabilityImageOf：两者皆无/皆空白 → undefined（调用方回退 emoji 图示）", () => {
+  assert.equal(capabilityImageOf(appWith({})), undefined);
+  assert.equal(capabilityImageOf(appWith({ capabilityImage: " ", thumb: "\t\n" })), undefined);
+});
+
+test("appTemplates：永远返回数组，长度决定大卡片是否出切换条", () => {
+  // 0 份 → 不出素材区；1 份 → 不显示下方切换条；2 份 → 显示。
+  assert.deepEqual(appTemplates(appWith({})), []);
+  assert.deepEqual(appTemplates(appWith({ templates: [] })), []);
+  assert.equal(appTemplates(appWith({ templates: [templateMaterial()] })).length, 1);
+  assert.equal(
+    appTemplates(
+      appWith({ templates: [templateMaterial(), templateMaterial({ id: "t2" })] }),
+    ).length,
+    2,
+  );
+});
+
+test("appTemplates：缺任一必填字段的脏条目被剔除（渲染或派发编辑都会失败）", () => {
+  for (const missing of ["id", "title", "previewUrl", "artifactId"]) {
+    const dirty = templateMaterial({ [missing]: "" });
+    assert.deepEqual(
+      appTemplates(appWith({ templates: [dirty] })),
+      [],
+      `缺 ${missing} 的模板素材必须被剔除`,
+    );
+  }
+  // 只剔脏的那条，好的留下。
+  const kept = appTemplates(
+    appWith({ templates: [templateMaterial({ title: "  " }), templateMaterial({ id: "t2" })] }),
+  );
+  assert.deepEqual(kept.map((t) => t.id), ["t2"]);
+});
+
+test("appTemplates：返回新数组，调用方 mutate 不污染 catalog", () => {
+  const templates = [templateMaterial()];
+  const app = appWith({ templates });
+  appTemplates(app).push(templateMaterial({ id: "t9" }));
+  assert.equal(templates.length, 1);
+});
+
+test("TemplateMaterial 的 artifactType 用平台既有的 ArtifactType，不是自由字符串", () => {
+  const catalog = source("../src/shell/app-catalog.ts");
+  // 编辑器适配器分发按这套词汇走；写成 string 会让「编辑模板」在运行时静默打不开。
+  assert.match(catalog, /^import type \{ ArtifactType \} from "\.\/artifact-contract";$/m);
+  assert.match(catalog, /^\s*artifactType: ArtifactType;$/m);
+  // W8* / W7 会照这个清单填值，清单缩水就要重新对齐后端契约。
+  assert.ok(ARTIFACT_TYPES.includes("single_file_image"));
+  assert.ok(ARTIFACT_TYPES.includes("website"), "website 站的源码包素材要用这个类型");
+});
+
+test("TemplateMaterial 八个字段齐备，且必填/可选的划分不被悄悄放松", () => {
+  const catalog = source("../src/shell/app-catalog.ts");
+  assert.match(catalog, /export interface TemplateMaterial \{/);
+  for (const required of ["id: string", "title: string", "previewUrl: string", "artifactId: string"]) {
+    assert.match(catalog, new RegExp(`^\\s*${required};$`, "m"), `TemplateMaterial 缺必填 ${required}`);
+  }
+  // summary/tags 不给有明确回退；downloadUrl 不给时走 templateDownloadHref(id) 的
+  // 后端端点，这样权限校验与配额由 W7 统一兜住——把它改成必填等于绕开端点。
+  for (const optional of ["summary\\?: string", "tags\\?: string\\[\\]", "downloadUrl\\?: string"]) {
+    assert.match(catalog, new RegExp(`^\\s*${optional};$`, "m"), `TemplateMaterial 缺可选 ${optional}`);
+  }
+});
+
+test("两层图像职责分开：capabilityImage 与 templates 是 GoalApp 上两个独立字段", () => {
+  const catalog = source("../src/shell/app-catalog.ts");
+  assert.match(catalog, /^\s*capabilityImage\?: string;$/m);
+  assert.match(catalog, /^\s*templates\?: TemplateMaterial\[\];$/m);
+  // 上一轮把功能图与模板预览混成一个 thumb 才做错，本轮不许再合并回去。
+  assert.doesNotMatch(catalog, /capabilityImage\?: TemplateMaterial/);
+  assert.doesNotMatch(catalog, /previewUrl\?: string;\s*\n\s*\/\*\* 首页/);
+  assert.match(catalog, /export function capabilityImageOf\(/);
+  assert.match(catalog, /export function appTemplates\(/);
+});
+
+test("thumb 保留但已标 @deprecated（W8* 删调用点，字段留到 30 站清干净）", () => {
+  const catalog = source("../src/shell/app-catalog.ts");
+  // 字段还在：删了会让还没轮到的 W8 批次立刻 typecheck 变红，等于逼 30 站锁步发布。
+  assert.match(catalog, /^\s*thumb\?: string;$/m);
+  // 但必须带 @deprecated，否则新站会继续照抄老写法。
+  assert.match(catalog, /@deprecated[^\n]*capabilityImage/);
+});
+
+// ---------------------------------------------------------------------------
 // 2. home-cards.ts 迁移：导出面与老用户数据不回归
 // ---------------------------------------------------------------------------
 
@@ -331,8 +446,19 @@ const CONTRACT_EXTRA_COPY = ["代表 prompt"];
 // locale 的首页按钮露中文。不是本轮造成的回归，但就长在本轮改版的卡片区上，顺手补齐并钉住。
 const PREEXISTING_GAP_COPY = ["添加 prompt"];
 
+// 2026-07-26 大卡片（多模板详情浮层）的三条文案（派活合同 §0.3 / §3）：右侧「编辑模板」
+// 「下载」两个按钮 + 左下模板切换条的「切换模板」。
+// 「下载」是**既有词条**（17 语早已齐备，`zh.ts:2925` 一带），本轮不新增译文，只是把它
+// 纳入下面这套 17 语判据一起钉死，防止日后有人改动它时漏掉某个 locale。
+const MULTI_TEMPLATE_COPY = ["编辑模板", "下载", "切换模板"];
+
 /** 本文件对 17 语一起施加同一套判据的全部 key。 */
-const ALL_COPY = [...NEW_UI_COPY, ...CONTRACT_EXTRA_COPY, ...PREEXISTING_GAP_COPY];
+const ALL_COPY = [
+  ...NEW_UI_COPY,
+  ...CONTRACT_EXTRA_COPY,
+  ...PREEXISTING_GAP_COPY,
+  ...MULTI_TEMPLATE_COPY,
+];
 
 // zh 是规范来源（key===值）；zh-TW 是中文变体，部分词条的繁体写法与简体源串本就完全
 // 相同（如「查看全部」「代表 prompt」没有简繁差异），所以「译文必须≠中文源串」这条只对
@@ -347,6 +473,11 @@ const ZH_TW_MUST_DIFFER = {
   "高级编辑": "進階編輯",
   "预览大图": "預覽大圖",
   "添加 prompt": "新增 prompt", // 台湾用「新增」而非「添加」
+  // 「模板」在台湾软件界叫「範本」，所以这两条不是逐字转繁——机器转换只会得到
+  // 「編輯模板」「切換模板」，那是漏翻的特征。
+  "编辑模板": "編輯範本",
+  "切换模板": "切換範本",
+  "下载": "下載",
 };
 
 // V1-verdict §5 的两条 WARNING：zh-TW 的这两条与简体源串逐字相同。属**语言事实**而非漏翻
@@ -369,7 +500,7 @@ test("17 个 locale 的词典都被加载到（locale 清单取自 config.ts，�
   }
 });
 
-test("新增/补齐的 6 条文案在 17 份词典里都存在且非空", () => {
+test("这 9 条文案在 17 份词典里都存在且非空", () => {
   for (const key of ALL_COPY) {
     for (const [locale, dict] of dictionaries) {
       const value = dict[key];
@@ -445,6 +576,48 @@ test("「高级编辑」等新文案不会被 renamePromptTemplateTerm 改写", 
     assert.doesNotMatch(key, /灵感|靈感/, `"${key}" 会触发 prompt 语境改名`);
     // 另一条 canonicalize（文件库→我的库）同样不得改动这些 key，否则查表会落空。
     assert.doesNotMatch(key, /文件库|檔案庫|檔案库/);
+  }
+});
+
+// `renamePromptTemplateTerm`（useUI.ts:41-90）会把译文里的 template 词换成 inspiration
+// 词。下面是它逐 locale 要替换的那个词——`编辑模板`/`切换模板` 的译文里**正好都含有它**，
+// 所以「改写只在源串含灵感/靈感时才启动」这个条件分支是**承重的**：一旦有人把它改成
+// 无条件执行，这两条会变成「编辑灵感」「Edit Inspiration」。
+const PROMPT_TEMPLATE_TERM = {
+  zh: /模板/,
+  "zh-TW": /範本/,
+  en: /templates?/i,
+  de: /Vorlagen?/i,
+  es: /plantillas?/i,
+  "es-419": /plantillas?/i,
+  fr: /modèles?/i,
+  it: /modell[oi]/i,
+  "pt-BR": /modelos?/i,
+  "pt-PT": /modelos?/i,
+  vi: /mẫu/i,
+  tr: /şablon/i,
+  ja: /テンプレート/,
+  ko: /템플릿/,
+  ar: /قوالب|قالب/,
+  th: /เทมเพลต/,
+  hi: /टेम्पलेट/,
+};
+
+test("「编辑模板」「切换模板」处在 renamePromptTemplateTerm 的射程内，靠条件分支才幸免", () => {
+  // 这条不是重复上面那个 ALL_COPY 循环：那条证明 key 不含「灵感」所以不进改写分支，
+  // 这条证明**如果真进了**改写分支，17 语会全部被改坏。两条合起来才说明守卫有意义。
+  for (const key of ["编辑模板", "切换模板"]) {
+    for (const [locale, dict] of dictionaries) {
+      assert.match(
+        dict[key],
+        PROMPT_TEMPLATE_TERM[locale],
+        `${locale} 的 "${key}" 译文里找不到 template 词，请核对 PROMPT_TEMPLATE_TERM`,
+      );
+    }
+  }
+  // 「下载」不含 template 词，天然在射程外。
+  for (const [locale, dict] of dictionaries) {
+    assert.doesNotMatch(dict["下载"], PROMPT_TEMPLATE_TERM[locale]);
   }
 });
 
