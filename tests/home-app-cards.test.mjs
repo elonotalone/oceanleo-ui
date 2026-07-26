@@ -13,9 +13,10 @@
 // `node --test tests/home-app-cards.test.mjs` 跑，不需要仓库的 ts-extension-loader。
 
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -31,30 +32,63 @@ function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 }
 
-async function compileModule(relativePath, replacements = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
+function resolveRelative(fromPath, specifier) {
+  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+    const candidate = resolve(dirname(fromPath), specifier + suffix);
+    if (existsSync(candidate)) return candidate;
   }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll('from "react";', `from ${JSON.stringify(reactUrl)};`)
-    .replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
+  return null;
+}
+
+const compiledModules = new Map();
+const inFlight = new Set();
+
+/**
+ * 把一个 TS 源文件及其**全部相对依赖**递归编译成 data: 模块。
+ *
+ * 原先这里是一份手抄的依赖清单，本轮**被打断两次**：W4 先给
+ * `site-catalog-controller.ts` 加了 `GATEWAY_BASE`（`../lib/auth/config`）与
+ * `libraryKindForArtifactType`（`./library-data`），后又为 §9.9 的鉴权下载加了
+ * `../lib/auth/client`，每次都是 `ERR_UNSUPPORTED_RESOLVE_REQUEST` 假红。
+ * 改成递归解析后，别的 owner 再往自己文件里加 import 不会再打断本文件。
+ * `overrides` 只留给**必须**换替身的模块（tt() 词典、portal 弹窗、supabase 客户端）。
+ */
+async function compileModule(relativePath, overrides = {}) {
+  const sourcePath = resolve(relativePath);
+  const cached = compiledModules.get(sourcePath);
+  if (cached) return cached;
+  assert.ok(!inFlight.has(sourcePath), `循环依赖，data: 模块无法表达：${relativePath}`);
+  inFlight.add(sourcePath);
+
+  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: sourcePath,
+  }).outputText;
+
+  // 只有**值** import 会活到这一步，`import type` 已被 transpile 抹掉。
+  for (const specifier of new Set(
+    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
+  )) {
+    let replacement = overrides[specifier];
+    if (!replacement && specifier === "react") replacement = reactUrl;
+    if (!replacement && specifier === "react/jsx-runtime") replacement = jsxRuntimeUrl;
+    if (!replacement && specifier.startsWith(".")) {
+      const target = resolveRelative(sourcePath, specifier);
+      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
+      replacement = await compileModule(relative(process.cwd(), target), overrides);
+    }
+    assert.ok(replacement, `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`);
+    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
+  }
+
+  inFlight.delete(sourcePath);
+  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
+  compiledModules.set(sourcePath, url);
+  return url;
 }
 
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
@@ -66,44 +100,41 @@ const modalsStubUrl = dataModule(
     "export function PromptCardModal(){ return null; }\n",
 );
 
-const brandColorUrl = await compileModule("src/lib/brand-color.ts");
-const assetThumbUrl = await compileModule("src/lib/asset-thumb.ts");
-const homeCardsUrl = await compileModule("src/shell/home-cards.ts");
-const appCatalogUrl = await compileModule("src/shell/app-catalog.ts");
-const workspaceRouteUrl = await compileModule("src/shell/workspace-route.ts");
-const workspaceActionsUrl = await compileModule("src/shell/workspace-actions.ts");
-// 深链层复用 W3 的代表 prompt 取值（`catalogRepresentativePrompt` / `catalogPresetFill`），
-// 所以控制器也要接真实的 app-catalog，不能留裸相对路径。「下载」的 href 由真控制器现算，
-// 本文件断言的是用户最终点到的那条 URL——所以 `GATEWAY_BASE` 也接真配置。
-const authConfigUrl = await compileModule("src/lib/auth/config.ts");
+// `../lib/auth/client` 会把 `@supabase/ssr` 拖进来（bare specifier，data: 模块里解析不了）。
+// W4 的鉴权下载（§9.9）用它取 access token，本文件只断言 href 与卡片交互，给最小替身。
+const authClientStubUrl = dataModule(
+  "export async function isSignedIn(){ return false; }\n" +
+    "export async function accessToken(){ return \"\"; }\n",
+);
 // `library-data` 只被控制器用来把 artifactType 映射成「我的库」分类（`?open=template`
-// 派发计划，W4 的面）。它的真实模块会把整棵 artifact / database 依赖树拖进来，而本文件
-// 一条都不断言那个分支，所以按同一签名给最小替身。
+// 的派发计划，W4 的面）。真模块会把整棵 artifact / database 依赖树拖进来，而本文件一条
+// 都不断言那个分支，所以按同一签名给最小替身。
 const libraryDataStubUrl = dataModule(
   "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
 );
-const controllerUrl = await compileModule("src/shell/site-catalog-controller.ts", {
-  "../lib/auth/config": authConfigUrl,
-  "./app-catalog": appCatalogUrl,
-  "./library-data": libraryDataStubUrl,
-  "./workspace-route": workspaceRouteUrl,
-  "./workspace-actions": workspaceActionsUrl,
-});
-const lightboxUrl = await compileModule("src/shell/ImageLightbox.tsx", {
-  "../lib/asset-thumb": assetThumbUrl,
+
+// 一份共用的替身表：递归编译会把它一路往下传，所以只需在这里声明一次。
+// 没列进来的相对依赖全部**接真模块**——包括 W5 的 `app-capability-image`（本文件要断言
+// 的正是「渲染出来的 src 是绝对 URL 而不是原样 key」，替身只会证明「组件调了个函数」）、
+// 以及 W4 的整条深链与 `GATEWAY_BASE`。
+const OVERRIDES = {
   "../i18n/ui/useUI": uiStubUrl,
-  "./app-catalog": appCatalogUrl,
-  "./site-catalog-controller": controllerUrl,
-});
-const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
-  "./app-catalog": appCatalogUrl,
-  "./site-catalog-controller": controllerUrl,
-  "./home-cards": homeCardsUrl,
   "./HomePromptModals": modalsStubUrl,
-  "./ImageLightbox": lightboxUrl,
-  "../lib/brand-color": brandColorUrl,
-  "../i18n/ui/useUI": uiStubUrl,
-});
+  "../lib/auth/client": authClientStubUrl,
+  "./library-data": libraryDataStubUrl,
+};
+
+const assetThumbUrl = await compileModule("src/lib/asset-thumb.ts", OVERRIDES);
+const appCatalogUrl = await compileModule("src/shell/app-catalog.ts", OVERRIDES);
+const controllerUrl = await compileModule(
+  "src/shell/site-catalog-controller.ts",
+  OVERRIDES,
+);
+const capabilityImageUrl = await compileModule(
+  "src/lib/app-capability-image.ts",
+  OVERRIDES,
+);
+const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", OVERRIDES);
 
 const {
   HomeAppCards,
@@ -125,14 +156,18 @@ const {
   workspaceAppFillHref,
   workspaceTemplateEditHref,
 } = await import(controllerUrl);
+const { capabilityImagePreviewSrc } = await import(capabilityImageUrl);
 
-// 上一轮那批「渐变底 + 白色线框图标」封面（`thumb`）。本轮 W5 用功能图 `capabilityImage`
-// 全量替换它；铺开窗口期内两者并存，功能图无条件优先。
-const THUMB =
-  "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cover-app/image-poster.thumb.webp";
-// 合同 §3 的功能图 key 约定：`assets/image/cap-app/<siteKey>-<appId>.thumb.webp`。
-const CAPABILITY =
-  "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cap-app/image-poster.thumb.webp";
+const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
+// 上一轮那批「渐变底 + 白色线框图标」封面（`thumb`）。它是**完整 URL** 形态——铺开窗口
+// 期内还没换掉功能图的站就长这样，拼链层必须对它原样透传。
+const THUMB = `${OSS}/cover-app/image-poster.thumb.webp`;
+// 合同 §3 / W5 规范：站点 catalog 里的 `capabilityImage` 存的是**纯 key**，不是 URL。
+// 这是本文件最重要的一条 fixture：`capabilityImageOf()` 会把它原样吐出来，渲染层若不
+// 拼链就会被浏览器当相对路径请求 → 30 站首页卡片图全部 404。
+const CAPABILITY_KEY = "cap-app/image-poster";
+const CAPABILITY_THUMB = `${OSS}/cap-app/image-poster.thumb.webp`;
+const CAPABILITY_PREVIEW = `${OSS}/cap-app/image-poster.webp`;
 // W3 的 `TemplateMaterial`（`src/shell/app-catalog.ts`）。每个 app 挂 1–2 份。
 const TEMPLATE = {
   id: "poster-tpl-1",
@@ -245,22 +280,60 @@ test("常态左图右文：1:1 功能图 + 15px 半粗 app 名 + 13px 两行截�
 
 test("缩略图取功能图 capabilityImage；thumb 只是铺开窗口期的回退", () => {
   // 合同 §0.1：首页卡片缩略图 = 功能图，不是模板图、不是上一轮那批封面。取值口径由
-  // W3 的 capabilityImageOf 独家持有，这里先钉死它的裁决，再钉死卡片确实用了它。
-  assert.equal(capabilityImageOf({ ...POSTER, capabilityImage: CAPABILITY }), CAPABILITY);
+  // W3 的 capabilityImageOf 独家持有，这里先钉死它的裁决——注意它吐的是**原样 key**。
+  assert.equal(
+    capabilityImageOf({ ...POSTER, capabilityImage: CAPABILITY_KEY }),
+    CAPABILITY_KEY,
+  );
   assert.equal(capabilityImageOf(POSTER), THUMB);
   assert.equal(capabilityImageOf(AMBIENT), undefined);
 
-  // 渲染面：功能图真的被用在了卡面与 hover 铺满层上，旧 thumb 一次都不出现。
-  const markup = renderCards({ apps: [{ ...POSTER, capabilityImage: CAPABILITY }] });
-  assert.ok(markup.includes(`src="${CAPABILITY}"`));
+  // 渲染面：功能图真的被用在了卡面与 hover 铺满层上，旧封面一次都不出现。
+  const markup = renderCards({ apps: [{ ...POSTER, capabilityImage: CAPABILITY_KEY }] });
+  assert.ok(markup.includes(`src="${CAPABILITY_THUMB}"`));
   assert.ok(!markup.includes(THUMB));
 
   // 模板素材**绝不**上首页缩略图：挂了模板也不影响卡面那张功能图（合同 §0.1 两层分离）。
   const withTemplates = renderCards({
-    apps: [{ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE, TEMPLATE_2] }],
+    apps: [{ ...POSTER, capabilityImage: CAPABILITY_KEY, templates: [TEMPLATE, TEMPLATE_2] }],
   });
-  assert.ok(withTemplates.includes(`src="${CAPABILITY}"`));
+  assert.ok(withTemplates.includes(`src="${CAPABILITY_THUMB}"`));
   assert.ok(!withTemplates.includes("tpl-material"));
+});
+
+test("功能图 key 必须被拼成绝对 URL 才能进 <img src>（否则 30 站首页图全 404）", () => {
+  // 这条是本文件最会咬人的一条，钉的是一个真实事故：`capabilityImageOf()` 只做数据源
+  // 裁决、**原样返回 OSS key**，而 W5 的规范要求站点 catalog 存 key 不存 URL。渲染层
+  // 若直接 `<img src={capabilityImageOf(app)}>`，浏览器会把 `cap-app/image-poster` 当
+  // **相对路径**去请求当前站，30 个站的首页卡片图全部 404。
+  const markup = renderCards({ apps: [{ ...POSTER, capabilityImage: CAPABILITY_KEY }] });
+
+  const srcs = [...markup.matchAll(/<img[^>]*\bsrc="([^"]*)"/g)].map((m) => m[1]);
+  // 卡面 96px 方块 + hover 铺满层 = 两张图，且**共用同一条 thumb 直链**（同一个 URL
+  // 只发一次请求；铺满层是压暗 25% 的装饰背景，不值得为它再拉一份 1024 的大图）。
+  assert.deepEqual(srcs, [CAPABILITY_THUMB, CAPABILITY_THUMB]);
+  for (const src of srcs) {
+    // 咬人点①：绝不允许原样 key 落进 src。
+    assert.notEqual(src, CAPABILITY_KEY);
+    // 咬人点②：必须是绝对 URL——相对路径（不以 http(s):// 开头）一律判红。
+    assert.match(src, /^https:\/\/oceanleo-assets\.oss-cn-guangzhou\.aliyuncs\.com\//);
+    // 咬人点③：拼出来的必须是 OSS 上真实存在的那个变体。`<key>.preview.webp` 是历史
+    // 上踩过的 404 变体，出现即判红。
+    assert.match(src, /\.thumb\.webp$/);
+    assert.doesNotMatch(src, /\.preview\.webp/);
+  }
+  // 咬人点④：整段 HTML 里不许残留裸 key（`src="cap-app/..."` 或 `src="/cap-app/..."`）。
+  assert.doesNotMatch(markup, /src="\/?cap-app\//);
+
+  // 尚未迁移、catalog 里仍存**完整 URL** 的站不得被拼坏（拼链层对 URL 原样透传）。
+  const legacy = renderCards({ apps: [POSTER] });
+  assert.ok(legacy.includes(`src="${THUMB}"`));
+  assert.doesNotMatch(legacy, /src="[^"]*assets\/image\/https/);
+
+  // 大卡片那条链走的是另一套：`appPreviewImageKey` 交出 **key 而非 src**，由
+  // TemplateShowcase 侧的 `assetPreviewUrl` 拼成 1024 大图——两条链不得互相串味。
+  assert.equal(appPreviewImageKey({ ...POSTER, capabilityImage: CAPABILITY_KEY }), CAPABILITY_KEY);
+  assert.equal(capabilityImagePreviewSrc(CAPABILITY_KEY), CAPABILITY_PREVIEW);
 });
 
 test("hover = 整张卡片放大；「预览」按钮已删除；下缘只剩 prompt 且触屏常驻", () => {
@@ -330,19 +403,19 @@ test("代表 prompt 为空的 app：不渲染 prompt 按钮，但仍能点开大
   assert.equal(mixed.match(/data-home-app-card-main/g).length, 3);
 });
 
-test("appPreviewImageKey = 大卡片**无模板时**的回退大图（功能图的大图变体）", () => {
+test("appPreviewImageKey 交出的是 key 不是 src（拼链归 TemplateShowcase 那侧）", () => {
   // 有模板的 app 走不到这里：主预览由 TemplateShowcase 从选中模板的 previewUrl 解析，
   // 所以本函数只认功能图——挂了模板也不许它改口，否则两层图像又混回一个字段。
+  // 纯 key 原样透传：这条链的拼接由 `assetPreviewUrl(imageKey)` 在 TemplateShowcase
+  // 里完成，这里再拼一次就会拼两遍（`assets/image/https://…`）。
   assert.equal(
-    appPreviewImageKey({ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE] }),
-    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cap-app/image-poster.webp",
+    appPreviewImageKey({ ...POSTER, capabilityImage: CAPABILITY_KEY, templates: [TEMPLATE] }),
+    CAPABILITY_KEY,
   );
-  // 完整 URL 的 `.thumb.webp` 要换成大图变体（assetPreviewUrl 对完整 URL 原样透传）。
-  assert.equal(
-    appPreviewImageKey(POSTER),
-    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/cover-app/image-poster.webp",
-  );
-  // 素材 key 原样透传（拼 URL 是 assetPreviewUrl 的事）。
+  // 完整 URL 的 `.thumb.webp` 要换成大图变体（assetPreviewUrl 对完整 URL 原样透传，
+  // 不在这里换后缀的话大卡片放大的仍是那张缩略图）。
+  assert.equal(appPreviewImageKey(POSTER), `${OSS}/cover-app/image-poster.webp`);
+  // 素材 key 原样透传。
   assert.equal(appPreviewImageKey({ ...POSTER, thumb: "cover-app/image-poster" }), "cover-app/image-poster");
   assert.equal(appPreviewImageKey(AMBIENT), undefined);
 });
@@ -423,7 +496,7 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
         React.createElement(HomeAppCards, {
           // 海报卡挂两份模板素材（合同 §0.1：每 app 1–2 份），氛围音乐一份都没有——
           // 大卡片的「有模板 / 无模板」两条支路都要在同一棵树里被走到。
-          apps: [{ ...POSTER, capabilityImage: CAPABILITY, templates: [TEMPLATE, TEMPLATE_2] }, AMBIENT],
+          apps: [{ ...POSTER, capabilityImage: CAPABILITY_KEY, templates: [TEMPLATE, TEMPLATE_2] }, AMBIENT],
           siteId: "image",
           accent: "#6366f1",
           onPick: (p) => picked.push(p),
@@ -464,19 +537,23 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
     // 两份模板 → 出切换条；三个按钮的目标走 W4 的 helper，不许卡片侧另拼一套。
     const thumbs = [...container.querySelectorAll("[data-template-thumb]")];
     assert.deepEqual(thumbs.map((t) => t.dataset.templateId), [TEMPLATE.id, TEMPLATE_2.id]);
-    const action = (name) =>
-      container.querySelector(`[data-showcase-action="${name}"]`)?.getAttribute("href");
-    assert.equal(action("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE.id));
-    assert.equal(action("similar"), workspaceAppFillHref(POSTER.id));
-    assert.equal(action("download"), templateDownloadHref(TEMPLATE));
-    assert.ok(action("download").includes(TEMPLATE.artifactId));
+    const action = (name) => container.querySelector(`[data-showcase-action="${name}"]`);
+    const href = (name) => action(name)?.getAttribute("href");
+    assert.equal(href("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE.id));
+    assert.equal(href("similar"), workspaceAppFillHref(POSTER.id));
+    // 「下载」自合同 §9.9 起不再是 `<a download>`：W7 的端点强制登录，所以未登录时它是
+    // 一条去登录的链接、登录后才是发鉴权请求的按钮。那套状态机归 W2/W4，本文件只确认
+    // **有模板就有下载入口**；此处 auth 替身是未登录态，所以呈现为「登录后下载」。
+    assert.ok(action("download"));
+    assert.equal(action("download").dataset.downloadState, "signed-out");
+    // 端点本身仍按 W4 的 helper 现算，与卡片侧无关，单测一发钉住不漂移。
+    assert.match(templateDownloadHref(TEMPLATE), /\/template-materials\/.+\/download$/);
 
-    // 切到第二份模板：编辑与下载的目标必须跟着换（`templateDownloadHref` 按 artifact id
-    // 定位素材，而回调只拿得到 `TemplateMaterial.id`——卡片侧的按 id 取回整份不能丢）。
+    // 切到第二份模板：「编辑模板」的目标必须跟着换（本文件真正拥有的接线断言——
+    // 卡片侧交出去的 templates 顺序与 appId 一旦串位，这条立刻红）。
     await click(thumbs[1]);
-    assert.equal(action("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE_2.id));
-    assert.equal(action("download"), templateDownloadHref(TEMPLATE_2));
-    assert.ok(action("download").includes(TEMPLATE_2.artifactId));
+    assert.equal(href("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE_2.id));
+    assert.ok(action("download"));
     await closeBigCard();
     assert.equal(showcase(), null);
 

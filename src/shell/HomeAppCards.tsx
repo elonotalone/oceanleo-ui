@@ -43,6 +43,7 @@ import {
 } from "./home-cards";
 import { AddPromptModal, PromptCardModal } from "./HomePromptModals";
 import { TemplateShowcase } from "./ImageLightbox";
+import { capabilityImageThumbSrc } from "../lib/app-capability-image";
 import { brandColorFor, tintOf } from "../lib/brand-color";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -86,6 +87,9 @@ export function featuredHomeApps(
 
 /**
  * 大卡片**无模板时**的回退大图（合同 §0.1：模板素材只在大卡片里出现，功能图只在首页）。
+ *
+ * 返回的是 **key 或 URL，不是 `<img src>`**——函数名里的 `Key` 是认真的。拼链由
+ * `TemplateShowcase` 那侧的 `assetPreviewUrl(imageKey)` 完成，这里再拼一次会拼两遍。
  *
  * 有模板的 app 走不到这里——大卡片主预览由 `TemplateShowcase` 从当前选中模板的
  * `previewUrl` 解析。这里只负责把功能图那一张换成大图变体：站点 catalog 里的图既可能是
@@ -222,7 +226,20 @@ function AppCard({
   const prompt = representativePrompt(app);
   const color = app.logoColor || brandColorFor(app.id);
   const name = tt(app.name);
-  const image = capabilityImageOf(app);
+  // `capabilityImageOf()` 只裁决数据源，**原样返回 OSS key**（`cap-app/<site>-<app>`），
+  // 不是 URL——规范要求站点 catalog 存 key 不存 URL。直接塞进 `<img src>` 会被浏览器
+  // 当相对路径请求，30 个站的卡片图全部 404。拼链统一走 W5 的 `capabilityImageThumbSrc`
+  // （它对已经是完整 http(s) URL 的旧数据原样透传，所以未迁移的站也安全）。
+  //
+  // 卡面 96px 方块与 hover 铺满层**共用同一条 thumb 直链**，这是刻意的，不是照抄：
+  //   · 512×512 的 thumb 对 96px 方块绰绰有余；
+  //   · 铺满层是盖着 `bg-stone-900/25` 压暗层、垫在文字底下的装饰背景，尺寸约
+  //     360×100 CSS（hover 放大后约 378×105），512 宽在 2× 屏上是 1.48 倍上采样——
+  //     功能图按规范是单主体高对比的平面示意图，不是照片，这个幅度看不出来；
+  //   · 换成 preview（1024×1024，≤160KB）会让首页 12 张卡**每张多发一次请求**、
+  //     多约 1.9MB，只为换一层被压暗 25% 的背景。真正需要 1024 的是大卡片主预览，
+  //     那条走 `appPreviewImageKey` → `TemplateShowcase` 的 `assetPreviewUrl`。
+  const image = capabilityImageThumbSrc(capabilityImageOf(app));
 
   return (
     <CardShell
