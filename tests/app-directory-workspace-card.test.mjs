@@ -98,6 +98,22 @@ const cardShellUrl = await compileModule("src/shell/app-card-shell.tsx", OVERRID
 const { AppDirectory } = await import(appDirectoryUrl);
 const { APP_CARD_GRID_CLASS, APP_CARD_FRAME_CLASS } = await import(cardShellUrl);
 
+// 首页那侧只在「逐字符一致」那条用例里用到，替身与 home-app-cards.test.mjs 一致：两个弹窗
+// 和 supabase 客户端在 data: 模块里解析不了，且与卡片 DOM 无关。
+const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
+  ...OVERRIDES,
+  "./HomePromptModals": dataModule(
+    "export function AddPromptModal(){ return null; }\nexport function PromptCardModal(){ return null; }\n",
+  ),
+  "../lib/auth/client": dataModule(
+    "export async function isSignedIn(){ return false; }\nexport async function accessToken(){ return \"\"; }\n",
+  ),
+  "./library-data": dataModule(
+    "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
+  ),
+});
+const { HomeAppCards } = await import(homeAppCardsUrl);
+
 const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
 // 站点 catalog 里的 `capabilityImage` 存的是**纯 key**（合同 §3）。
 const CAPABILITY_KEY = "cap-app/image-poster";
@@ -127,6 +143,66 @@ function renderDirectory(props = {}) {
     }),
   );
 }
+
+/** 从一段 HTML 里取出第一张卡（`data-app-card` 根）的 outerHTML。 */
+async function firstCardHtml(markup) {
+  const fabricRequire = createRequire(require.resolve("fabric/node"));
+  const canvasEntry = fabricRequire.resolve("canvas");
+  const previous = require.cache[canvasEntry];
+  require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
+  const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
+  if (previous) require.cache[canvasEntry] = previous;
+  else delete require.cache[canvasEntry];
+  const dom = new JSDOM(`<!doctype html><html><body>${markup}</body></html>`);
+  const card = dom.window.document.querySelector("[data-app-card]");
+  const html = card ? card.outerHTML : null;
+  dom.window.close();
+  return html;
+}
+
+test("操作员判据：首页卡与工作台卡 DOM 逐字符一致，只差落点与主按钮文案", async () => {
+  // 操作员原话：「完完全全一样的格式，只不过与 homepage 不同的地方在于，workspace 页面中
+  // 的卡片点开后，直接到对应的 app 页面中，而不是先呈现模板。」
+  //
+  // 这条用例把「一样」和「只差那一处」**同时**钉死：先归一化掉**允许**存在的三处差异
+  // （variant 标记、首页专属的 `data-home-app-card*` 验收钩子、主按钮文案与无障碍名），
+  // 剩下的 HTML 必须逐字符相同。任何一方以后偷偷改一个 class、加一层 div、动一下间距，
+  // 这里立刻变红——这正是操作员抱怨「工作台没跟上首页」的那类漂移。
+  const app = { ...POSTER, preset: { prompt: "生成一张 [活动] 宣传海报。" } };
+
+  const homeCard = await firstCardHtml(
+    renderToStaticMarkup(
+      React.createElement(HomeAppCards, { apps: [app], siteId: "image", accent: "#6366f1", onPick() {} }),
+    ),
+  );
+  const workspaceCard = await firstCardHtml(renderDirectory({ items: [app] }));
+  assert.ok(homeCard && workspaceCard, "两侧都应渲染出卡片");
+
+  const normalize = (html) =>
+    html
+      // 允许的差异 ①：variant 标记本身。
+      .replace(/ data-app-card-variant="[^"]*"/g, "")
+      // 允许的差异 ②：首页保留的既有验收钩子（V1 与 30 站回归在扫，抽壳时逐字保留）。
+      .replace(/ data-home-app-card[a-z-]*="true"/g, "")
+      // 允许的差异 ③：主按钮文案（首页 `prompt` / 工作台 `打开`）与覆盖按钮无障碍名。
+      .replace(/aria-label="[^"]*"/g, 'aria-label="§"')
+      .replace(/(data-app-card-primary[^>]*>)[^<]*/g, "$1§");
+
+  assert.equal(
+    normalize(workspaceCard),
+    normalize(homeCard),
+    "首页卡与工作台卡的 DOM 出现了归一化后仍存在的差异——两页版式已经漂了",
+  );
+
+  // 归一化不能把话说尽：确认被归一化掉的那三处**确实是**预期的那三处，别拿正则把真差异也抹了。
+  assert.match(homeCard, /data-app-card-variant="home"/);
+  assert.match(workspaceCard, /data-app-card-variant="workspace"/);
+  assert.match(homeCard, /data-app-card-primary[^>]*>prompt</);
+  assert.match(workspaceCard, /data-app-card-primary[^>]*>打开</);
+  // 几何/描边/阴影这一串一个字都不许差（它就是「完完全全一样」的物理载体）。
+  assert.ok(homeCard.includes(APP_CARD_FRAME_CLASS));
+  assert.ok(workspaceCard.includes(APP_CARD_FRAME_CLASS));
+});
 
 test("网格卡走 W1 的 AppCardShell（variant=workspace），版式与首页同源", () => {
   const markup = renderDirectory();
