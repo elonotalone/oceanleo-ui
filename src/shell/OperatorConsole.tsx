@@ -307,7 +307,9 @@ export function OperatorConsole({
         <AppDirectory
           items={items}
           accent={accent}
-          openLabel={tt("打开")}
+          // 主按钮文案不在这里定：`AppDirectory` 有唯一的默认词条（`OPEN_LABEL_KEY`）。
+          // 这里以前传 `tt("打开")`，而那条 key 在 en/fr/ja/ko 已被一句 OpenRouter 操作说明
+          // 占用；留着它等于把同一个坑抄成两份，W3 修好词典后还得两处一起改。
           onOpen={(it) => openFn(it.id)}
           sceneMode={sceneMode}
           groups={directoryGroups}

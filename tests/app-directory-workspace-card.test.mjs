@@ -178,17 +178,17 @@ test("缩略图取 capabilityImage 并拼成绝对 URL；废弃的 thumb 一次�
   assert.doesNotMatch(legacy, /src="[^"]*assets\/image\/https/);
 });
 
-test("hover 主按钮 =「打开」，触屏常驻可见；无图 app 不是死卡", () => {
+test("hover 主按钮常驻可见；无图 app 不是死卡", () => {
   const markup = renderDirectory();
 
-  // 主按钮条在场，文案是「打开」（`openLabel` 的默认值）。
+  // 主按钮条在场，且有一条非空文案（具体用哪条词条由下一个用例按不变量校验）。
   assert.match(markup, /data-app-card-actions/);
-  assert.match(markup, /data-app-card-primary[^>]*>打开</);
+  assert.match(markup, /data-app-card-primary[^>]*>[^<]+</);
   // 触屏没有 hover：按钮条必须常驻，且去掉压暗渐变；文字块让出一条别被压住。
   assert.ok(markup.includes("[@media(hover:none)]:translate-y-0"));
   assert.ok(markup.includes("[@media(hover:none)]:bg-none"));
   assert.ok(markup.includes("[@media(hover:none)]:pb-8"));
-  // 调用方可以改文案（SiteSkillDirectory 传「开聊」）。
+  // 调用方仍可覆盖文案（SiteSkillDirectory 传「开聊」）。
   assert.match(renderDirectory({ openLabel: "开聊" }), /data-app-card-primary[^>]*>开聊</);
 
   // 无功能图的 app：emoji 占满同一个 96px 方块（不留白），主动作按钮照常在 → 不是死卡。
@@ -198,6 +198,85 @@ test("hover 主按钮 =「打开」，触屏常驻可见；无图 app 不是死�
   assert.match(noImage, /🎵/);
   assert.match(noImage, /data-app-card-main/);
   assert.match(noImage, /data-app-card-primary/);
+});
+
+test("消费 W1 闭合的三条外壳能力：虚线入口卡 / 落点可选 / app 类型放宽", async () => {
+  const { APP_CARD_DASHED_CLASS } = await import(cardShellUrl);
+
+  // W1-1：「＋ 新建」首卡恢复虚线描边。它走 leadingCards，且**不受分类筛选影响**。
+  const withNew = renderDirectory({
+    leadingCards: [{ id: "new", name: "新建 agent", tagline: "创建一个属于你自己的 agent", icon: "＋" }],
+  });
+  assert.ok(withNew.includes(APP_CARD_DASHED_CLASS), "入口卡应带虚线描边");
+  // 只有入口卡是虚线，普通内容卡不受影响（同一张网格里不能一半虚线）。
+  assert.equal(withNew.split(APP_CARD_DASHED_CLASS).length - 1, 1);
+  // 入口卡不借用别人的功能图，且仍是活卡（有主动作）。
+  assert.match(withNew, /＋/);
+  assert.equal(renderDirectory().includes(APP_CARD_DASHED_CLASS), false);
+
+  // W1-2：没有 `onOpen` 时不渲染那枚点了没反应的覆盖按钮，但卡片本身照常渲染。
+  const noOpen = renderDirectory({ onOpen: undefined });
+  assert.match(noOpen, /data-app-card-variant="workspace"/);
+  assert.doesNotMatch(noOpen, /data-app-card-main/);
+  assert.doesNotMatch(noOpen, /data-app-card-primary/);
+
+  // W1-3：`AppCardApp` 放宽后，调用侧不再需要为 `scenes` 造空数组。
+  const source = await readFile(resolve("src/shell/AppDirectory.tsx"), "utf8");
+  assert.doesNotMatch(source, /scenes: item\.scenes \?\? \[\]/);
+});
+
+// 17 语词典（zh 是 key 本身，不必校验）。
+const LOCALES = ["ar", "de", "en", "es-419", "es", "fr", "hi", "it", "ja", "ko", "pt-BR", "pt-PT", "th", "tr", "vi", "zh-TW"];
+
+/** 从一个 messages 文件里抽出 `"key": "value"` 表。 */
+async function dictionary(locale) {
+  const src = await readFile(resolve(`src/i18n/ui/messages/${locale}.ts`), "utf8");
+  return Object.fromEntries(
+    [...src.matchAll(/^\s*"((?:[^"\\]|\\.)*)":\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)].map((m) => [m[1], m[2]]),
+  );
+}
+
+test("工作台主按钮的文案词条：17 语齐备，且不是被占用的一整句话", async () => {
+  // 这条钉的是**不变量**，不是某个具体词。背景：合同 §0.3 要的「打开」一度被
+  // `Open openrouter.ai/keys and click "Create Key".` 占用（父任务裁定 §3.5b A-1，修词典归
+  // W3），期间本文件用「使用」兜底；W3 修好后切了回去，本用例全程不需要改。
+  // 谁要是把主按钮接到一条没进词典、或已被长句占用的 key 上，它立刻变红。
+  const markup = renderDirectory();
+  const label = markup.match(/data-app-card-primary[^>]*>([^<]+)</)?.[1];
+  assert.ok(label, "主按钮应渲染出文案");
+
+  const broken = [];
+  for (const locale of LOCALES) {
+    const value = (await dictionary(locale))[label];
+    if (value === undefined) broken.push(`${locale}: 缺词条`);
+    // 主按钮是一颗 12px 的小胶囊，任何译文长成一句话都说明这条 key 被别的文案占用了。
+    else if (value.length > 24) broken.push(`${locale}: 译文疑似被占用 → ${value.slice(0, 60)}`);
+  }
+  assert.deepEqual(broken, [], `主按钮文案「${label}」在这些语种上不可用：\n${broken.join("\n")}`);
+  // W3 已修好词典，主按钮回到合同 §0.3 原定的「打开」。
+  assert.equal(label, "打开");
+
+  // 同一类事故的第二处：分类器 tab「按行业」也曾被一整句 Console 说明占用，而它同样由本
+  // 文件渲染。一并钉住，避免只盯着主按钮、让邻座的 tab 悄悄退化。
+  const industry = await dictionary("en");
+  assert.equal(industry["按行业"], "By industry");
+});
+
+test("列表视图与网格卡共用同一批已进词典的文案（16 个语种不再露中文）", async () => {
+  // 列表视图以前另写了「编辑 prompt」「加入工作台」「已加入」三条**没进 17 语词典**的
+  // 字面量，非中文语种在列表下会露中文；网格用的三条本来就是齐的，改为复用。
+  const en = await dictionary("en");
+  for (const literal of ["查看 / 编辑 prompt", "＋ 加入工作台", "已在工作台 ✓"]) {
+    assert.ok(en[literal], `${literal} 应已在词典里`);
+  }
+  const source = await readFile(resolve("src/shell/AppDirectory.tsx"), "utf8");
+  for (const orphan of ["编辑 prompt", "加入工作台", "已加入"]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(`tt\\("${orphan}"\\)`),
+      `列表视图不该再用未进词典的 tt("${orphan}")`,
+    );
+  }
 });
 
 test("列表视图保留，缩略图同样换成 capabilityImage 的 .thumb.webp", async () => {

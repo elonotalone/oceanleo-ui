@@ -153,6 +153,18 @@ export interface AppDirectoryProps {
   groupAllLabel?: string;
 }
 
+/**
+ * 工作台卡 hover 主按钮的文案 key（合同 §0.3）。
+ *
+ * 这条 key 一度被一句 OpenRouter 操作说明占用（`en` = `Open openrouter.ai/keys and click
+ * "Create Key".`，fr/ja/ko 同型），期间本文件退到中性词条「使用」兜底。W3 已在
+ * `src/i18n/**`（其独占目录）修正，17 语现在都是通用义，故切回合同原定的「打开」。
+ *
+ * `tests/app-directory-workspace-card.test.mjs` 钉的是**不变量**——主按钮文案必须 17 语齐备
+ * 且译文不是一句话——所以谁再把它接到一条被长句占用的 key 上都会立刻变红。
+ */
+const OPEN_LABEL_KEY = "打开";
+
 export function AppDirectory({
   items,
   leadingCards = [],
@@ -175,9 +187,9 @@ export function AppDirectory({
   groupAllLabel,
 }: AppDirectoryProps) {
   const tt = useUI();
-  // 合同 §0.3：`openLabel` 重新接线为 hover 浮出 / 触屏常驻的**主按钮文案**（首页那枚位置
-  // 上工作台放「打开」）。它的落点与点卡主体完全相同 —— 进该 app 操作台。
-  const openLabelText = openLabel ?? tt("打开");
+  // 合同 §0.3：`openLabel` 重新接线为 hover 浮出 / 触屏常驻的**主按钮文案**。它的落点与
+  // 点卡主体完全相同 —— 进该 app 操作台。默认词条见 `OPEN_LABEL_KEY`。
+  const openLabelText = openLabel ?? tt(OPEN_LABEL_KEY);
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
   const sceneAllText = sceneAllLabel ?? tt("全部");
@@ -470,6 +482,7 @@ function DirectoryCard({
       accent={accent}
       // 文案由 `AppCardShell` 内部过 tt()（W1 的契约：调用方**不要**先翻一遍再传，否则
       // 两侧各翻一套）。宗旨 v13：item.accent 是 logoColor 的向后兼容回退（等价语义）。
+      // 不传 `scenes`：外壳一条都不读，`AppCardApp` 放宽后也不再逼这里造空数组（W1-3）。
       app={{
         id: item.id,
         name: item.name,
@@ -477,13 +490,13 @@ function DirectoryCard({
         icon: item.icon,
         badge: item.badge,
         logoColor: item.logoColor || item.accent,
-        // `GoalApp.scenes` 是必填，但卡片外壳一条都不读（分类 chips 在本文件上游算完了）。
-        // 目录条目的 scenes 是可选的，缺了就补空数组，别让类型逼调用方造假数据。
-        scenes: item.scenes ?? [],
       }}
-      // 「＋ 新建」首卡没有功能图，也不该借用别人的图 → 走 emoji tint 版式。
+      // 「＋ 新建」首卡没有功能图，也不该借用别人的图 → 虚线描边 + emoji tint 版式（W1-1）。
+      dashed={isNew}
       image={isNew ? undefined : capabilityImageThumbSrc(item.capabilityImage)}
-      onCardClick={open}
+      // 落点本身可选：没有 `onOpen` 时整枚覆盖按钮不渲染，而不是渲染一枚点了没反应、却能
+      // 抢走焦点的按钮（W1-2）。卡片本体与右上角按钮照常在，不是死卡。
+      onCardClick={onOpen ? open : undefined}
       cardActionLabel={`${openLabel} ${tt(item.name)}`}
       primaryAction={onOpen ? { label: openLabel, onClick: open } : null}
       extraActions={
@@ -606,7 +619,10 @@ function DirectoryListRow({
             onClick={stop(onPrompt)}
             className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500 hover:bg-stone-50"
           >
-            {tt("编辑 prompt")}
+            {/* 与网格卡共用同一批词条：列表以前另写了「编辑 prompt」「加入工作台」「已加入」
+                三条**没进 17 语词典**的字面量，于是 16 个非中文语种在列表视图下露中文。
+                网格用的那三条本来就是齐的，直接复用即可，不必等 W3 补词条。 */}
+            {tt("查看 / 编辑 prompt")}
           </button>
         )}
         {onAdd && (
@@ -621,7 +637,7 @@ function DirectoryListRow({
             }`}
             style={item.added ? undefined : { background: accent }}
           >
-            {adding ? "…" : item.added ? tt("已加入") : tt("加入工作台")}
+            {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
           </button>
         )}
         {onDelete && item.deletable && (
