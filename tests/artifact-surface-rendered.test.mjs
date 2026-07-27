@@ -289,6 +289,14 @@ const materialEffectsUrl = await compileModule(
     "./material-library-presentation": materialPresentationUrl,
   },
 );
+const materialDownloadUrl = await compileModule(
+  "src/shell/material-library-download.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./artifact-client": artifactClientUrl,
+    "./library-data": libraryDataUrl,
+  },
+);
 const {
   artifactEntry,
   invalidateMaterialLibraryCache,
@@ -308,6 +316,7 @@ const MaterialLibrary = (
       "./material-library-controller": materialControllerUrl,
       "./material-library-presentation": materialPresentationUrl,
       "./material-library-effects": materialEffectsUrl,
+      "./material-library-download": materialDownloadUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
       "./workbench-material-registry": registryStubUrl,

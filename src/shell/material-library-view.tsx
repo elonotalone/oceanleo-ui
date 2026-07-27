@@ -49,6 +49,7 @@ import {
   useMaterialLibraryChangeEvents,
   useMaterialLibraryDeepLink,
 } from "./material-library-effects";
+import { materialEntryDownloadAction } from "./material-library-download";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
@@ -100,6 +101,7 @@ export function MaterialLibrary({
   initialLevel = "primary",
   lockLevel,
   levels,
+  cardDownload,
   types: controlledTypes,
   onTypesChange,
   onLevelChange,
@@ -522,6 +524,9 @@ export function MaterialLibrary({
     );
   }, [entries, registerRuntimeSource, runtimeAppId, siteId]);
 
+  // 素材卡下载（合同 §0.6）。编辑器抽屉注册了主动作时，卡片的职责是喂画布，
+  // 不再挂下载；浏览型货架（探索页、素材总栏目）默认挂。
+  const showCardDownload = cardDownload ?? !primaryMaterialAction;
   const contextMissing =
     level === "primary" && (!context.contextId || !context.siteKey);
   const effectiveError = deepLinkError || error;
@@ -774,6 +779,9 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
+      entryActions={
+        showCardDownload ? materialEntryDownloadAction : undefined
+      }
       onOpenItem={openPreparedItem}
       className={className}
     />

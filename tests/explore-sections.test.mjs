@@ -92,22 +92,39 @@ const OVERRIDES = {
   `),
   "./artifact-client": dataModule(`
     export const ARTIFACT_LIBRARY_CHANGE_EVENT = "oceanleo:artifact-library-change";
+    export function artifactDownloadEvidence(){
+      return { visible: true, available: true, reason: "", purpose: "source", mode: "attachment" };
+    }
+    export async function getArtifactDownload(){ return { ok: true, data: {} }; }
     export async function getArtifactItem(){ return { ok: false, status: 404 }; }
     export async function listPrimaryArtifacts(){ return { ok: true, data: { items: [], nextCursor: null } }; }
     export async function listEditableShelfArtifacts(){ return { ok: true, data: { items: [], nextCursor: null } }; }
     export async function searchArtifactLibrary(){ return { ok: true, data: { items: [], nextCursor: null } }; }
   `),
+  // 桩件照 WorkspaceLibrary 真身的做法把 entryActions 喂给一张素材卡，
+  // 这样「按钮造好了但没接线」会被这份用例当场抓住。
   "./WorkspaceLibrary": dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export function WorkspaceLibrary(props) {
+      const probe = globalThis.__w5cardProbe;
       return createElement(
         "section",
         {
           "data-search-placeholder": props.searchPlaceholder,
           "data-empty-title": props.emptyTitle,
           "data-entry-count": String(props.entries.length),
+          "data-entry-actions-wired": String(
+            typeof props.entryActions === "function",
+          ),
         },
         props.toolbarActions,
+        probe
+          ? createElement(
+              "article",
+              { "data-probe-card": "true" },
+              props.entryActions?.(probe),
+            )
+          : null,
       );
     }
   `),
@@ -194,6 +211,68 @@ test("ExplorePage 解开 lockLevel 并按 §3.1 认 ?app= / ?types=", () => {
   assert.match(source, /const resolvedSiteKey = \(siteKey \|\| siteId\)\.trim\(\)/);
   // 历史营销分类表不授予可见性，不能当类型筛选用。
   assert.doesNotMatch(source, /EXPLORE_CATEGORY_LABELS\[[^\]]*\]\s*as ArtifactType/);
+});
+
+test("探索页素材卡上真的挂出了下载动作（合同 §0.6，不是「造好了没接线」）", () => {
+  const item = {
+    key: "artifact:tpl-1:r1",
+    source: "artifact",
+    id: "tpl-1",
+    artifactId: "tpl-1",
+    revisionId: "r1",
+    artifactType: "single_file_image",
+    title: "本站模板 1",
+    kind: "image",
+    siteId: "image",
+    favorite: false,
+    meta: { workspace_library_surface: "materials" },
+    artifact: {
+      artifactId: "tpl-1",
+      revisionId: "r1",
+      artifactType: "single_file_image",
+      owner: { originSiteKey: "image", visibility: "public" },
+      bindings: [],
+    },
+  };
+  globalThis.__w5cardProbe = {
+    id: "entry:tpl-1",
+    title: item.title,
+    libraryItem: item,
+  };
+  let markup = "";
+  try {
+    markup = renderToStaticMarkup(
+      createElement(ExplorePage, { config: CONFIG, siteKey: "image" }),
+    );
+  } finally {
+    globalThis.__w5cardProbe = null;
+  }
+  // ① 接缝接上了：MaterialLibrary 确实把一个函数交给了 entryActions。
+  assert.match(markup, /data-entry-actions-wired="true"/);
+  // ② 这个函数在素材卡上真的渲染出了下载按钮，而不是返回 null。
+  assert.match(
+    markup,
+    /data-probe-card="true"><div[^>]*><button[^>]*data-material-card-download="tpl-1"/,
+  );
+  assert.match(markup, /aria-label="下载「本站模板 1」revision r1"/);
+  // ③ 卡片上只多出「下载」，另外四个动作仍然只许待在详情头。
+  const card = markup.slice(markup.indexOf('data-probe-card="true"'));
+  assert.equal((card.match(/<button/g) || []).length, 1);
+  for (const forbidden of ["编辑", "收藏", "全屏", "链接"]) {
+    assert.doesNotMatch(card, new RegExp(forbidden));
+  }
+});
+
+test("编辑器抽屉注册了主动作时，卡片不挂下载（喂画布优先）", () => {
+  globalThis.__w5cardProbe = null;
+  const markup = renderToStaticMarkup(
+    createElement(ExplorePage, {
+      config: CONFIG,
+      siteKey: "image",
+      materialActions: ["insert"],
+    }),
+  );
+  assert.match(markup, /data-entry-actions-wired="false"/);
 });
 
 test("siteKey 是站级作用域的正名，siteId 作为旧拼写继续认", () => {

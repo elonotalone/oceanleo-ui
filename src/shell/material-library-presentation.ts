@@ -47,6 +47,12 @@ export interface MaterialLibraryProps {
    * 当前 App ｜ 更多素材 shelf every workbench surface already renders.
    */
   levels?: readonly MaterialLibraryLevel[];
+  /**
+   * Per-card 下载 (合同 §0.6). Defaults to on for browsing surfaces and off
+   * once an editor host registers a primary material action, where the card's
+   * job is to feed the canvas rather than to hand over a file.
+   */
+  cardDownload?: boolean;
   /** Multi-select type chips; overrides the single-value `curatedType`. */
   types?: readonly ArtifactType[];
   onTypesChange?: (types: ArtifactType[]) => void;
