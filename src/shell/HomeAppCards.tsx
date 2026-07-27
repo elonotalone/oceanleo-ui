@@ -22,9 +22,14 @@
 // 「预览」按钮已删除：点卡片本身就是预览，按钮属同义重复（合同 §0.2 第 3 条）。
 // 代表 prompt 为空的 app（music 站 22 个 app 全是这样）：不渲染 `prompt` 按钮，**绝不
 // 灌空串**；卡片主体仍可点开大卡片。
+//
+// 2026-07-27（合同 §0.3 / §3.1 决策 D3）：**版式本身已搬进 `app-card-shell.tsx`**。
+// 操作员要求工作台卡片与首页卡片「完完全全一样的格式」，两边各写一遍 CSS 必然漂移，
+// 所以首页这侧只保留「取什么数据、点了去哪」，尺寸/圆角/hover 放大/铺满/触屏常驻按钮/
+// 栅格一律由 `AppCardShell` 与 `APP_CARD_GRID_CLASS` 提供，工作台（W2）消费同一份。
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   appTemplates,
   capabilityImageOf,
@@ -32,9 +37,13 @@ import {
   type GoalApp,
 } from "./app-catalog";
 import {
-  workspaceAppAdvancedHref,
-  workspaceAppFillHref,
-} from "./site-catalog-controller";
+  APP_CARD_GRID_CLASS,
+  AppCardFrame,
+  AppCardShell,
+  AppCardText,
+  AppCardThumb,
+} from "./app-card-shell";
+import { workspaceAppFillHref } from "./site-catalog-controller";
 import {
   loadCustomPromptCards,
   promptCardsForSite,
@@ -44,7 +53,7 @@ import {
 import { AddPromptModal, PromptCardModal } from "./HomePromptModals";
 import { TemplateShowcase } from "./ImageLightbox";
 import { capabilityImageThumbSrc } from "../lib/app-capability-image";
-import { brandColorFor, tintOf } from "../lib/brand-color";
+import { brandColorFor } from "../lib/brand-color";
 import { useUI } from "../i18n/ui/useUI";
 
 /** 分类 tab 的「全部」哨兵值（不会与站点自定义 group 撞名）。 */
@@ -103,112 +112,8 @@ export function appPreviewImageKey(app: GoalApp): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// 单张卡（app 卡 / 自建 prompt 卡共用外壳：左方图 + 右文 + 覆盖式主动作按钮）
+// 单张卡（版式来自共享外壳 `app-card-shell.tsx`，首页与工作台同一份代码）
 // ---------------------------------------------------------------------------
-
-function CardShell({
-  actionLabel,
-  onAction,
-  children,
-  fill,
-  actions,
-}: {
-  /** 覆盖式主动作按钮的无障碍名。 */
-  actionLabel: string;
-  /** 卡片主体的唯一主动作（app 卡 = 打开大卡片；自建卡 = 灌它自己的 prompt）。 */
-  onAction: () => void;
-  children: ReactNode;
-  /** 主动作按钮**下方**的装饰层（hover 铺满的功能图），必须 `pointer-events-none`。 */
-  fill?: ReactNode;
-  /** 主动作按钮**上方**的可点元素（`prompt` 按钮、自建卡右上角的笔）。 */
-  actions?: ReactNode;
-}) {
-  return (
-    <div
-      data-home-app-card
-      className="group relative flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition duration-200 hover:z-10 hover:scale-105 hover:border-stone-300 hover:shadow-lg"
-    >
-      {children}
-      {fill}
-      {/* 卡片根不再是 `role="button"`：它嵌着 <button>，而 role=button 的祖先里放可交互
-          后代是 ARIA 违规（button 的 allowed content 不含 interactive descendant）。主
-          动作改由这一枚覆盖式原生 <button> 承担，一次解决三件事：
-            ① 嵌套违规消失（覆盖按钮与 `prompt` 按钮是兄弟，不是祖孙）；
-            ② Enter/Space 由原生按钮处理，不再需要手写 onKeyDown —— 也就不会再因为
-               keydown 从内部按钮冒泡上来而把整卡动作**多触发一次**；
-            ③ 焦点顺序与焦点环由浏览器给，无障碍名单独可控。
-          它排在 `fill` 之后、`actions` 之前：同为定位元素时后画的在上，所以铺满层被它
-          盖住（本来就 pointer-events-none），而 `prompt` 按钮盖在它上面、照常可点。 */}
-      <button
-        type="button"
-        data-home-app-card-main
-        onClick={onAction}
-        aria-label={actionLabel}
-        className="absolute inset-0 cursor-pointer rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-500"
-      />
-      {actions}
-    </div>
-  );
-}
-
-/** 左侧 1:1 图块：有图放图，无图放 emoji tint（同尺寸，绝不留白）。 */
-function SquareThumb({
-  image,
-  icon,
-  color,
-  alt,
-}: {
-  image?: string;
-  icon: ReactNode;
-  color: string;
-  alt: string;
-}) {
-  return (
-    <span className="relative block aspect-square w-[96px] shrink-0 overflow-hidden bg-stone-100">
-      {image ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={image} alt={alt} loading="lazy" className="h-full w-full object-cover" />
-      ) : (
-        <span
-          className="grid h-full w-full place-items-center text-[26px] leading-none"
-          style={{ background: tintOf(color, 0.14), color }}
-        >
-          {icon}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** 右侧文字：上深色 15px 半粗 app 名，下浅色 13px tagline（两行截断）。 */
-function CardText({
-  name,
-  tagline,
-  badge,
-  touchActionSpace,
-}: {
-  name: string;
-  tagline?: string;
-  badge?: ReactNode;
-  /** 触屏上 `prompt` 按钮常驻在卡片下缘：给它让出一条，别压住 tagline。 */
-  touchActionSpace?: boolean;
-}) {
-  return (
-    <div
-      className={`flex min-w-0 flex-1 flex-col justify-between px-3 py-2.5 ${
-        touchActionSpace ? "[@media(hover:none)]:pb-8" : ""
-      }`}
-    >
-      <div className="flex items-start gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-stone-800">{name}</span>
-        {badge}
-      </div>
-      {tagline ? (
-        <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-stone-500">{tagline}</p>
-      ) : null}
-    </div>
-  );
-}
 
 function AppCard({
   app,
@@ -224,8 +129,6 @@ function AppCard({
 }) {
   const tt = useUI();
   const prompt = representativePrompt(app);
-  const color = app.logoColor || brandColorFor(app.id);
-  const name = tt(app.name);
   // `capabilityImageOf()` 只裁决数据源，**原样返回 OSS key**（`cap-app/<site>-<app>`），
   // 不是 URL——规范要求站点 catalog 存 key 不存 URL。直接塞进 `<img src>` 会被浏览器
   // 当相对路径请求，30 个站的卡片图全部 404。拼链统一走 W5 的 `capabilityImageThumbSrc`
@@ -242,65 +145,16 @@ function AppCard({
   const image = capabilityImageThumbSrc(capabilityImageOf(app));
 
   return (
-    <CardShell
-      actionLabel={`${tt("查看")} ${name}`}
-      onAction={() => onOpen(app)}
-      fill={
-        /* hover 时功能图淡入铺满整卡（无图的 app 用 tint 铺满，同样不留白）。整卡放大
-           在 CardShell 的根 class 上，这一层只负责「铺满」。 */
-        <span
-          data-home-app-card-fill
-          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-        >
-          {image ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={image} alt="" loading="lazy" className="h-full w-full object-cover" />
-          ) : (
-            <span
-              className="grid h-full w-full place-items-center text-[40px] leading-none"
-              style={{ background: tintOf(color, 0.18), color }}
-            >
-              {app.icon ?? "✨"}
-            </span>
-          )}
-          <span className="absolute inset-0 bg-stone-900/25" />
-        </span>
-      }
-      actions={
-        /* 卡片下缘唯一一个按钮：`prompt`（代表 prompt 为空 → 整条不渲染，不灌空串）。
-           鼠标端从卡外浮进来；触屏没有 hover，`@media (hover: none)` 让它常驻可见，并把
-           压暗渐变去掉（触屏上铺满层不出现，深色渐变会糊住白底卡的文字）。 */
-        prompt ? (
-          <span
-            data-home-app-card-actions
-            className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center gap-1.5 bg-gradient-to-t from-stone-900/70 to-transparent px-2 pb-2 pt-4 transition-transform duration-200 group-hover:translate-y-0 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:justify-end [@media(hover:none)]:bg-none [@media(hover:none)]:pt-0"
-          >
-            <button
-              type="button"
-              onClick={() => onPick(prompt)}
-              className="pointer-events-auto rounded-lg px-3 py-1 text-[12px] font-medium text-white shadow-sm transition hover:opacity-90"
-              style={{ background: accent }}
-            >
-              {tt("prompt")}
-            </button>
-          </span>
-        ) : undefined
-      }
-    >
-      <SquareThumb image={image} icon={app.icon ?? "✨"} color={color} alt={name} />
-      <CardText
-        name={name}
-        tagline={app.tagline ? tt(app.tagline) : undefined}
-        touchActionSpace={Boolean(prompt)}
-        badge={
-          app.badge ? (
-            <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-500">
-              {tt(app.badge)}
-            </span>
-          ) : undefined
-        }
-      />
-    </CardShell>
+    <AppCardShell
+      app={app}
+      image={image}
+      variant="home"
+      accent={accent}
+      /* 点卡片主体 = 打开大卡片；点主按钮 = 把代表 prompt 灌进首页输入框。代表 prompt
+         为空（music 站 22 个 app）→ 不给 primaryAction，整条按钮不渲染，不灌空串。 */
+      onCardClick={() => onOpen(app)}
+      primaryAction={prompt ? { label: tt("prompt"), onClick: () => onPick(prompt) } : null}
+    />
   );
 }
 
@@ -324,7 +178,8 @@ function CustomPromptCard({
   const color = brandColorFor(card.id || card.title);
   const title = tt(card.title);
   return (
-    <CardShell
+    <AppCardFrame
+      variant="home"
       actionLabel={title}
       onAction={() => onPick(card.prompt)}
       actions={
@@ -345,8 +200,8 @@ function CustomPromptCard({
         </button>
       }
     >
-      <SquareThumb icon={card.icon || "✨"} color={color} alt={card.title} />
-      <CardText
+      <AppCardThumb icon={card.icon || "✨"} color={color} alt={card.title} />
+      <AppCardText
         name={title}
         tagline={tt(card.desc || card.prompt)}
         badge={
@@ -355,7 +210,7 @@ function CustomPromptCard({
           </span>
         }
       />
-    </CardShell>
+    </AppCardFrame>
   );
 }
 
@@ -466,8 +321,10 @@ export function HomeAppCards({
 
       {/* 每行三个（合同 §0.2 第 5 条）。lg 下单卡约 360px，`hover:scale-105` 每边外扩约
           9px，比 12px 沟槽的一半略多——所以整卡放大必须配 `hover:z-10`，否则 DOM 顺序靠
-          后的邻卡会盖住它的右边缘。本容器与外层链路都没有 overflow-hidden，不会被裁。 */}
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          后的邻卡会盖住它的右边缘。本容器与外层链路都没有 overflow-hidden，不会被裁。
+          栅格串本身在 `APP_CARD_GRID_CLASS`：工作台（W2）引同一个常量，列数与沟槽才不会
+          在两侧各漂一点（合同 §0.3「逐像素与首页一致」）。 */}
+      <div className={`mt-3 ${APP_CARD_GRID_CLASS}`}>
         {custom.map((c) => (
           <CustomPromptCard key={c.id} card={c} onPick={onPick} onEdit={setEditing} />
         ))}
@@ -500,8 +357,9 @@ export function HomeAppCards({
         </a>
       </div>
 
-      {/* 大卡片（模板详情浮层，W2 的 `TemplateShowcase`）：左上主预览 + 左下多模板切换条
-          + 右侧标题/说明/标签 + 右侧「编辑模板」「生成类似」「下载」。
+      {/* 大卡片（模板详情浮层，W3 的 `TemplateShowcase`）：左上主预览 + 左下多模板切换条
+          + 右侧标题/说明/标签 + 右侧三颗按钮「预览&编辑」「生成类似」「更多」（合同 §0.4，
+          「下载」本轮已从大卡片删除，入口迁到库详情页与探索页素材卡）。
           `imageKey` 只是**无模板**时的回退大图（功能图），有模板时主预览跟随选中项。 */}
       {opened && (
         <TemplateShowcase
@@ -513,11 +371,12 @@ export function HomeAppCards({
           accent={accent}
           prompt={openedPrompt}
           fillHref={workspaceAppFillHref(opened.id)}
-          /* 「编辑模板」与「下载」的目标**不在这里接线**：TemplateShowcase 默认就调 W4 的
-             `workspaceTemplateEditHref` / `templateDownloadHref`，而且下载那条要拿到整份
-             素材（端点按 artifact id 定位，`TemplateMaterial.id` 只保证同 app 内唯一）。
-             在卡片侧转一手只会多一个能拼错的地方。 */
-          editHref={workspaceAppAdvancedHref(opened.id)}
+          /* 「预览&编辑」与「更多」的目标**不在这里接线**：TemplateShowcase 默认就调
+             `workspaceTemplatePreviewHref(appId, artifactId)` 与 `exploreAppHref(appId)`，
+             在卡片侧转一手只会多一个能拼错的地方。
+             也**不给 `editHref` 兜底**：那个 prop 是「无模板时预览&编辑落到哪」，而无模板
+             时唯一能给的旧目标是 app 级高级编辑器——正是操作员点名的「探索时误入重型功能」。
+             宁可让那颗按钮整颗不出现（用户仍有「更多」去探索页）。 */
           onClose={() => setOpened(null)}
         />
       )}

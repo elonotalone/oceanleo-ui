@@ -151,10 +151,9 @@ const { appTemplates, capabilityImageOf, representativePrompt } = await import(
   appCatalogUrl
 );
 const {
-  templateDownloadHref,
-  workspaceAppAdvancedHref,
+  exploreAppHref,
   workspaceAppFillHref,
-  workspaceTemplateEditHref,
+  workspaceTemplatePreviewHref,
 } = await import(controllerUrl);
 const { capabilityImagePreviewSrc } = await import(capabilityImageUrl);
 
@@ -533,42 +532,38 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
     assert.ok(showcase());
     assert.equal(picked.length, 1);
 
-    // 接线断言：卡片侧必须把 W3 的 `appTemplates()` 原样交给 W2 的 TemplateShowcase，
-    // 两份模板 → 出切换条；三个按钮的目标走 W4 的 helper，不许卡片侧另拼一套。
+    // 接线断言：卡片侧必须把 `appTemplates()` 原样交给 W3 的 TemplateShowcase，两份模板
+    // → 出切换条；三颗按钮（预览&编辑 / 生成类似 / 更多，合同 §0.4）的目标走 helper 默认
+    // 解析，不许卡片侧另拼一套。「下载」本轮已从大卡片删除。
     const thumbs = [...container.querySelectorAll("[data-template-thumb]")];
     assert.deepEqual(thumbs.map((t) => t.dataset.templateId), [TEMPLATE.id, TEMPLATE_2.id]);
     const action = (name) => container.querySelector(`[data-showcase-action="${name}"]`);
     const href = (name) => action(name)?.getAttribute("href");
-    assert.equal(href("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE.id));
+    // 「预览&编辑」按 **artifactId** 定位库里的只读预览页（不是 templateId、不是编辑器）。
+    assert.equal(href("preview"), workspaceTemplatePreviewHref(POSTER.id, TEMPLATE.artifactId));
     assert.equal(href("similar"), workspaceAppFillHref(POSTER.id));
-    // 「下载」自合同 §9.9 起不再是 `<a download>`：W7 的端点强制登录，所以未登录时它是
-    // 一条去登录的链接、登录后才是发鉴权请求的按钮。那套状态机归 W2/W4，本文件只确认
-    // **有模板就有下载入口**；此处 auth 替身是未登录态，所以呈现为「登录后下载」。
-    assert.ok(action("download"));
-    assert.equal(action("download").dataset.downloadState, "signed-out");
-    // 端点本身仍按 W4 的 helper 现算，与卡片侧无关，单测一发钉住不漂移。
-    assert.match(templateDownloadHref(TEMPLATE), /\/template-materials\/.+\/download$/);
+    assert.equal(href("more"), exploreAppHref(POSTER.id));
+    assert.equal(action("download"), null);
 
-    // 切到第二份模板：「编辑模板」的目标必须跟着换（本文件真正拥有的接线断言——
+    // 切到第二份模板：「预览&编辑」的目标必须跟着换（本文件真正拥有的接线断言——
     // 卡片侧交出去的 templates 顺序与 appId 一旦串位，这条立刻红）。
     await click(thumbs[1]);
-    assert.equal(href("edit"), workspaceTemplateEditHref(POSTER.id, TEMPLATE_2.id));
-    assert.ok(action("download"));
+    assert.equal(href("preview"), workspaceTemplatePreviewHref(POSTER.id, TEMPLATE_2.artifactId));
     await closeBigCard();
     assert.equal(showcase(), null);
 
     // 没有代表 prompt、也没有模板的 app 一样能打开大卡片（它只是降级，不是死卡）：
-    // 无模板 → 不出切换条、不出下载，「编辑模板」退回 app 级编辑器（旧「高级编辑」目标）。
+    // 无模板 → 不出切换条、不出「生成类似」；「预览&编辑」也整颗不出现——卡片侧刻意不给
+    // `editHref` 兜底，因为无模板时唯一能给的旧目标是重型编辑器，正是操作员点名要避免的
+    // 「探索时误入重型功能」。用户仍有「更多」去本站探索页。
     await click(main(cards[2]));
     assert.ok(showcase());
     assert.equal(picked.length, 1);
     assert.equal(container.querySelector("[data-template-thumb]"), null);
     assert.equal(container.querySelector('[data-showcase-action="download"]'), null);
     assert.equal(container.querySelector('[data-showcase-action="similar"]'), null);
-    assert.equal(
-      container.querySelector('[data-showcase-action="edit"]').getAttribute("href"),
-      workspaceAppAdvancedHref(AMBIENT.id),
-    );
+    assert.equal(container.querySelector('[data-showcase-action="preview"]'), null);
+    assert.equal(href("more"), exploreAppHref(AMBIENT.id));
     await closeBigCard();
 
     // 卡片下缘唯一的按钮 `prompt` = 灌代表 prompt，且**不得**顺带打开大卡片。
@@ -670,7 +665,46 @@ test("栅格加宽：外层放宽到 max-w-6xl，输入框留在 768px 阅读列
   assert.match(homeIntro, /withAppCards\s*=\s*withCards && Boolean\(apps && apps\.length > 0\)/);
 
   // 卡片区吃满外层，但列数仍是三列（合同 §0.2 第 5 条：更宽，不是更多列）。
+  // 2026-07-27 抽壳后栅格串本身住在 `app-card-shell.tsx` 的 `APP_CARD_GRID_CLASS`
+  // （工作台引同一个常量，两侧才不会各漂一点），所以这里断言**渲染结果**没变，并钉住
+  // 首页确实是在消费那个常量而不是又抄了一串。
+  assert.match(renderCards(), /grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3/);
   const cards = await readFile(resolve("src/shell/HomeAppCards.tsx"), "utf8");
-  assert.match(cards, /grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3/);
+  assert.match(cards, /\$\{APP_CARD_GRID_CLASS\}/);
+  const shell = await readFile(resolve("src/shell/app-card-shell.tsx"), "utf8");
+  assert.match(
+    shell,
+    /APP_CARD_GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"/,
+  );
   assert.doesNotMatch(cards, /xl:grid-cols-4/);
+  assert.doesNotMatch(shell, /xl:grid-cols-4/);
+});
+
+// 抽壳（合同 2026-07-27 §0.3 / §3.1 决策 D3）后的**回归护栏**：首页卡片的版式不许再有
+// 第二份实现。`AppCardShell` 是首页与工作台共用的唯一外壳，首页这侧只剩「取什么数据、
+// 点了去哪」——一旦有人把 class 串抄回 HomeAppCards.tsx，工作台就会开始漂。
+test("首页卡片版式来自共享外壳，本文件不再持有第二份 class 串", async () => {
+  // 注释里保留 `hover:scale-105` / `hover:z-10` 这些名字是**故意**的（它们记录了为什么
+  // 必须成对出现），所以扫描前先剥注释，只看真正会渲染出去的那部分源码。
+  const cards = (await readFile(resolve("src/shell/HomeAppCards.tsx"), "utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(cards, /from "\.\/app-card-shell"/);
+  assert.match(cards, /<AppCardShell/);
+  assert.match(cards, /variant="home"/);
+  // 几何/hover/铺满/触屏常驻这些只许在外壳里出现一次。
+  for (const leaked of [
+    /hover:scale-105/,
+    /hover:z-10/,
+    /min-h-\[100px\] overflow-hidden rounded-xl/,
+    /transition-opacity duration-200 group-hover:opacity-100/,
+    /\[@media\(hover:none\)\]:translate-y-0/,
+    /\[@media\(hover:none\)\]:pb-8/,
+  ]) {
+    assert.doesNotMatch(cards, leaked, `版式又被抄回 HomeAppCards.tsx：${leaked}`);
+  }
+  // 但渲染出来的东西一个字都不能变（下面那些断言在同一棵树上已逐条覆盖）。
+  const markup = renderCards({ apps: [POSTER] });
+  assert.match(markup, /data-home-app-card="true"[^>]*hover:scale-105/);
+  assert.match(markup, /data-app-card-variant="home"/);
 });

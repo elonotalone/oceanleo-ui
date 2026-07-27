@@ -390,6 +390,27 @@ export type { WorkspaceShellProps } from "./WorkspaceShell";
 // `intro` 介绍段已从共享包硬删，首页不再以任何形式保留它们。
 export { HomeIntro } from "./HomeIntro";
 export type { HomeIntroProps } from "./HomeIntro";
+// app 卡片外壳（合同 2026-07-27 §0.3 / §3.1 决策 D3，W1 产出）：**首页卡与工作台卡的
+// 唯一一份版式实现**。操作员要求两者「完完全全一样的格式」，所以尺寸/圆角/hover 放大/
+// 铺满层/触屏常驻主按钮/栅格全部只在这里定义；`variant` 只决定落点语义与既有的
+// `data-home-app-card*` 验收钩子，不改任何一条几何 class。
+//   home      → 点卡主体开大卡片；主按钮 = `prompt`
+//   workspace → 点卡主体直接进该 app 操作台；主按钮 = `打开`（W2 消费）
+// `AppCardFrame` / `AppCardThumb` / `AppCardText` 是同一版式的低层积木，给「不是 GoalApp
+// 的卡」（首页自建 prompt 卡、工作台列表视图）复用，避免它们照抄一份 class 串。
+export {
+  APP_CARD_FRAME_CLASS,
+  APP_CARD_GRID_CLASS,
+  AppCardFrame,
+  AppCardShell,
+  AppCardText,
+  AppCardThumb,
+} from "./app-card-shell";
+export type {
+  AppCardPrimaryAction,
+  AppCardShellProps,
+  AppCardVariant,
+} from "./app-card-shell";
 // 首页 app 卡片（合同 §0.1 / §0.2，2026-07-26）：一卡 = 一个 GoalApp = 一个代表 prompt
 // + 1–2 份模板素材。左图右文（缩略图 = 功能图）→ hover 整卡放大 + 下缘唯一一颗 `prompt`
 // 按钮（触屏常驻）→ 点卡片主体开大卡片。「预览」按钮本轮已删除。
@@ -417,6 +438,25 @@ export {
   workspaceAppFillHref,
   workspaceTemplateEditHref,
 } from "./site-catalog-controller";
+// 合同 2026-07-27 §3.1 的两条新深链 helper（W3 产出）：`workspaceTemplatePreviewHref`
+// 把**具体那份**模板素材落到库里的**只读预览页**（W4 的消费端路由认这个 query 形状），
+// `exploreAppHref` 落到本站探索页并锚定该 app（`/explore?app=<appId>`，W5 认这个 query）。
+// 「编辑模板」这个旧落点本轮全站废除，新代码一律用这两条。
+export {
+  CATALOG_APP_QUERY_KEY,
+  EXPLORE_BASE_PATH,
+  LIBRARY_MODE_PREVIEW_VALUE,
+  LIBRARY_MODE_QUERY_KEY,
+  exploreAppHref,
+  workspaceTemplatePreviewHref,
+} from "./site-catalog-controller";
+// 合同 §3.1：库「只读预览」意图（W4 产出，W3 生成链接 / W5 消费）。
+export { LIBRARY_PREVIEW_QUERY_MODE } from "./library-edit-intent";
+export type { LibraryPreviewIntent } from "./library-edit-intent";
+// 合同 §3.1 / §3.2：素材三级作用域（W5 产出）。`MATERIAL_SCOPE_PARAM_NAMES` 是与后端
+// （W7）逐字对齐的 query 参数名，两侧改名必须先改合同 §3.2。
+export { MATERIAL_SCOPE_PARAM_NAMES } from "./material-library-scope";
+export type { MaterialLibraryLevel, MaterialScope } from "./material-library-scope";
 // 「下载」的真实执行（W4）。W7 的端点强制登录（配额要计费主体），`<a download>` 带不了
 // Bearer 头，所以按钮必须调这个函数，不能拿 href 去纯导航。失败 throw，401 与 429 可区分。
 export {
