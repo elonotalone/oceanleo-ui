@@ -24,6 +24,15 @@ import {
   type LibraryKind,
 } from "./library-data";
 import {
+  applyMaterialScope,
+  materialLibrarySearchParams,
+  materialScopeRequestsBackendScope,
+  materialScopeTypes,
+  materialTypesCsv,
+  warnMaterialScopeDegraded,
+  type MaterialLibraryLevel,
+} from "./material-library-scope";
+import {
   workspaceEntryFromLibraryItem,
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
@@ -34,7 +43,21 @@ const GATEWAY =
       process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
   "https://api.oceanleo.com";
 
-export type MaterialLibraryLevel = "primary" | "more";
+export {
+  MATERIAL_LIBRARY_LEVELS,
+  MATERIAL_SCOPE_PARAM_NAMES,
+  libraryItemMatchesOriginScope,
+  materialLibrarySearchParams,
+  materialLibrarySearchQuery,
+  materialScopeTypes,
+  materialTypesCsv,
+  materialTypesFromCsv,
+} from "./material-library-scope";
+export type {
+  MaterialLibraryLevel,
+  MaterialLibrarySearchParams,
+  MaterialScope,
+} from "./material-library-scope";
 
 /** A site-curated finished example shown alongside the central asset catalog. */
 export interface MaterialItem {
@@ -420,6 +443,8 @@ export interface MaterialLibraryQueryInput {
   context: ArtifactContextRef;
   query: string;
   taxonomy: ArtifactType | "";
+  /** Multi-select chips (合同 §0.6); overrides `taxonomy` when non-empty. */
+  types?: readonly ArtifactType[];
   cursor?: string | null;
   signal?: AbortSignal;
   forceRefresh?: boolean;
@@ -453,14 +478,19 @@ let materialLibraryCacheGeneration = 0;
 export function materialLibraryRequestKey(
   input: MaterialLibraryQueryInput,
 ): string {
+  const types = materialScopeTypes(input);
   return JSON.stringify({
     level: input.level,
     context:
       input.level === "primary"
         ? artifactContextKey(input.context)
-        : "global",
-    query: input.level === "more" ? input.query.trim() : "",
+        : input.level === "site"
+          ? `site:${String(input.context?.siteKey ?? "").trim()}`
+          : "global",
+    query: input.level === "primary" ? "" : input.query.trim(),
     taxonomy: input.taxonomy,
+    // Omitted for legacy single-type callers so their cache key is unchanged.
+    types: types.length > 1 ? materialTypesCsv(types) : undefined,
     cursor: input.cursor || "",
   });
 }
@@ -603,6 +633,89 @@ function cacheMaterialLibraryResult(
   return safe;
 }
 
+type LibrarySearchOptions = Parameters<typeof searchArtifactLibrary>[0];
+
+/**
+ * `searchArtifactLibrary` lives in `artifact-client.ts`, which this owner may
+ * not edit, and it drops keys it does not know. Until it forwards the §3.2
+ * names the scoped request degrades to today's global search and
+ * `applyMaterialScope` narrows the page in the browser.
+ */
+type ScopedLibrarySearchOptions = LibrarySearchOptions & {
+  artifactTypes?: string;
+  originSiteKey?: string;
+  originAppId?: string;
+};
+
+async function searchScopedLibrary(
+  input: MaterialLibraryQueryInput,
+  types: readonly ArtifactType[],
+): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+  const params = materialLibrarySearchParams({
+    level: input.level,
+    query: input.query,
+    role: MATERIAL_LIBRARY_MORE_ROLE,
+    siteKey: input.context?.siteKey,
+    appId: input.context?.appId,
+    types,
+    legacyTaxonomyOnly: !input.types || input.types.length === 0,
+  });
+  const base: LibrarySearchOptions = {
+    query: params.q,
+    artifactType: params.artifactType,
+    role: params.role,
+    cursor: input.cursor || undefined,
+    limit: 60,
+    signal: input.signal,
+  };
+  const scoped: ScopedLibrarySearchOptions = {
+    ...base,
+    ...(params.artifactTypes ? { artifactTypes: params.artifactTypes } : {}),
+    ...(params.originSiteKey
+      ? { originSiteKey: params.originSiteKey }
+      : {}),
+    ...(params.originAppId ? { originAppId: params.originAppId } : {}),
+  };
+  const page = await searchArtifactLibrary(scoped);
+  if (
+    page.ok ||
+    !materialScopeRequestsBackendScope(params) ||
+    (page.status !== 400 && page.status !== 404 && page.status !== 422)
+  ) {
+    return page;
+  }
+  // A backend that rejects the new names outright must not white-screen the
+  // explore page: retry the exact request today's build would have sent.
+  warnMaterialScopeDegraded(`reject:${input.level}`, {
+    level: input.level,
+    showedUnscoped: true,
+  });
+  return searchArtifactLibrary(base);
+}
+
+function scopedSearchResult(
+  input: MaterialLibraryQueryInput,
+  types: readonly ArtifactType[],
+  result: ArtifactApiResult<ArtifactSearchResult>,
+): ArtifactApiResult<ArtifactSearchResult> {
+  if (!result.ok || !result.data) return result;
+  const outcome = applyMaterialScope(result.data.items, {
+    // 此 app comes from the exact-context endpoint, which is already
+    // authoritative; only 本站素材 needs browser-side narrowing.
+    siteKey: input.level === "site" ? input.context?.siteKey : "",
+    types,
+  });
+  if (!outcome.degraded) return result;
+  warnMaterialScopeDegraded(
+    `${input.level}:${input.context?.siteKey || ""}:${input.context?.appId || ""}`,
+    { level: input.level, showedUnscoped: outcome.showedUnscoped },
+  );
+  return {
+    ...result,
+    data: { ...result.data, items: outcome.items },
+  };
+}
+
 export async function queryMaterialLibrary(
   input: MaterialLibraryQueryInput,
 ): Promise<ArtifactApiResult<ArtifactSearchResult>> {
@@ -620,18 +733,25 @@ export async function queryMaterialLibrary(
   const pending = input.signal ? null : materialLibraryPending.get(key);
   if (pending) return pending;
   const generation = materialLibraryCacheGeneration;
+  const types = materialScopeTypes(input);
   const request = (async () => {
     if (input.level === "primary") {
+      // `/v1/library/primary` is already exact-context scoped, so 此 app keeps
+      // the endpoint the workbench has always used.
       const page = await listPrimaryArtifacts(input.context, {
-        artifactType: input.taxonomy,
+        artifactType: types.length === 1 ? types[0] : "",
         limit: 60,
         signal: input.signal,
       });
-      return cacheMaterialLibraryResult(key, page, generation);
+      return cacheMaterialLibraryResult(
+        key,
+        scopedSearchResult(input, types, page),
+        generation,
+      );
     }
     // The backend returns one revision-pinned active-release snapshot. The
     // browser must not recreate per-taxonomy fan-out or synthetic completeness.
-    if (!input.taxonomy && !input.query.trim()) {
+    if (input.level === "more" && types.length === 0 && !input.query.trim()) {
       if (input.cursor) {
         return {
           ok: false as const,
@@ -644,15 +764,12 @@ export async function queryMaterialLibrary(
       const shelf = await listEditableShelfArtifacts(input.signal);
       return cacheMaterialLibraryResult(key, shelf, generation);
     }
-    const page = await searchArtifactLibrary({
-      query: input.query,
-      artifactType: input.taxonomy,
-      role: MATERIAL_LIBRARY_MORE_ROLE,
-      cursor: input.cursor || undefined,
-      limit: 60,
-      signal: input.signal,
-    });
-    return cacheMaterialLibraryResult(key, page, generation);
+    const page = await searchScopedLibrary(input, types);
+    return cacheMaterialLibraryResult(
+      key,
+      scopedSearchResult(input, types, page),
+      generation,
+    );
   })();
   if (!input.signal) materialLibraryPending.set(key, request);
   try {

@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import type { ArtifactType } from "./artifact-contract";
+import {
+  canonicalArtifactContextId,
+  type ArtifactType,
+} from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { MaterialLibrary } from "./MaterialLibrary";
+import {
+  materialTypesCsv,
+  materialTypesFromCsv,
+  type MaterialLibraryLevel,
+} from "./material-library-controller";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -30,6 +38,11 @@ export interface ExploreCategory {
 
 export interface ExploreConfig {
   type: ExploreAssetType;
+  /**
+   * Multi-select default for the type chips. Sites still on the single `type`
+   * keep working unchanged; when both are absent the shelf shows every type.
+   */
+  types?: ExploreAssetType[];
   /**
    * Retained for source compatibility. Rich-v1 discovery uses the canonical
    * 13-type taxonomy; legacy marketing categories never grant visibility.
@@ -73,9 +86,22 @@ const EXPLORE_ARTIFACT_TYPE: Record<ExploreAssetType, ArtifactType> = {
   chart: "chart",
 };
 
+function configuredTypes(config: ExploreConfig): ArtifactType[] {
+  const requested = config.types?.length ? config.types : [config.type];
+  const types = requested
+    .map((value) => EXPLORE_ARTIFACT_TYPE[value])
+    .filter(Boolean);
+  return [...new Set(types)];
+}
+
 /**
- * Site discovery is now a thin presentation of the same rich-v1 public
- * library used by the workbench. It never renders legacy raw asset URLs.
+ * Site discovery is a thin presentation of the same rich-v1 public library the
+ * workbench uses, scoped by 合同 §0.6:
+ *
+ *   /explore              → 本站素材 ｜ 更多素材
+ *   /explore?app=<appId>  → 此 app ｜ 本站素材 ｜ 更多素材
+ *
+ * It never renders legacy raw asset URLs.
  */
 export function ExplorePage({
   config,
@@ -91,14 +117,22 @@ export function ExplorePage({
   onMaterialDragEnd,
 }: ExplorePageProps) {
   const tt = useUI();
-  const artifactType = EXPLORE_ARTIFACT_TYPE[config.type];
   const [action, setAction] = useState<WorkspaceActionEnvelope | null>(null);
+  // `?app=` is produced by `exploreAppHref(appId)` (合同 §3.1).
+  const [anchoredApp, setAnchoredApp] = useState(appId);
+  const [types, setTypes] = useState<ArtifactType[]>(() =>
+    configuredTypes(config),
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const artifactId = params.get("artifactId")?.trim() || "";
     const revisionId = params.get("revisionId")?.trim() || "";
     const query = params.get("q")?.trim() || "";
+    const app = params.get("app")?.trim() || "";
+    const urlTypes = materialTypesFromCsv(params.get("types") || "");
+    if (app) setAnchoredApp(app);
+    if (urlTypes.length > 0) setTypes(urlTypes);
     setAction({
       nonce: `explore:${artifactId}:${revisionId}:${query}`,
       action: {
@@ -112,6 +146,25 @@ export function ExplorePage({
       },
     });
   }, []);
+
+  // Chip state survives a refresh; the app anchor stays whatever brought the
+  // reader here.
+  const syncTypesToUrl = useCallback((next: ArtifactType[]) => {
+    setTypes(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const csv = materialTypesCsv(next);
+    if (csv) url.searchParams.set("types", csv);
+    else url.searchParams.delete("types");
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  const exploreAppId = anchoredApp.trim();
+  const levels = useMemo<MaterialLibraryLevel[]>(
+    () =>
+      exploreAppId ? ["primary", "site", "more"] : ["site", "more"],
+    [exploreAppId],
+  );
 
   const primaryAction = useMemo(
     () =>
@@ -144,12 +197,14 @@ export function ExplorePage({
           accent={accent}
           action={action}
           siteId={siteId}
-          appId={appId}
-          initialLevel="more"
-          lockLevel="more"
-          fetchPrimary={false}
+          appId={exploreAppId}
+          contextId={canonicalArtifactContextId(siteId, exploreAppId)}
+          levels={levels}
+          initialLevel={exploreAppId ? "primary" : "site"}
+          fetchPrimary={Boolean(exploreAppId)}
           fetchMore
-          curatedType={artifactType}
+          types={types}
+          onTypesChange={syncTypesToUrl}
           hideSeeAll
           emptyHint={
             config.emptyHint ||

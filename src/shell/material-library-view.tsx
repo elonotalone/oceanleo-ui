@@ -17,10 +17,6 @@ import {
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
-import {
-  ARTIFACT_LIBRARY_CHANGE_EVENT,
-  getArtifactItem,
-} from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
   MATERIAL_TAXONOMY_LABEL,
@@ -29,168 +25,57 @@ import {
   libraryItemHasExactPrimaryContext,
   materialToEntry,
   materialLibraryRequestKey,
+  materialTypesCsv,
   mergeMaterialEntries,
   normalizedMaterialTaxonomy,
   queryMaterialLibrary,
   readMaterialLibraryCache,
-  type MaterialItem,
   type MaterialLibraryQueryInput,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import {
+  MATERIAL_LEVEL_LABEL,
+  entriesFromRemoteResult,
+  isTrustedEditableMaterialEntry,
+  materialFailureCopy,
+  materialLevelEmptyDescription,
+  materialLevelEmptyTitle,
+  materialLevelSearchPlaceholder,
+  materialLibraryHref,
+  safeCompleteLibraryHref,
+  type MaterialLibraryProps,
+} from "./material-library-presentation";
+import {
+  useMaterialLibraryChangeEvents,
+  useMaterialLibraryDeepLink,
+} from "./material-library-effects";
+import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
-  type WorkspaceLibraryProps,
 } from "./WorkspaceLibrary";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
-import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import {
   materialScopeKey,
   registerWorkbenchMaterialSource,
 } from "./workbench-material-registry";
-import type { WorkspaceActionEnvelope } from "./workspace-actions";
 
-export interface MaterialLibraryProps {
-  materials: MaterialItem[];
-  accent?: string;
-  emptyHint?: string;
-  className?: string;
-  onSeeAll?: () => void;
-  seeAllHref?: string;
-  hideSeeAll?: boolean;
-  seeAllLabel?: string;
-  featuredEntries?: WorkspaceLibraryEntry[];
-  action?: WorkspaceActionEnvelope | null;
-  taskId?: string | null;
-  siteId?: string;
-  appId?: string;
-  contextId?: string;
-  functionId?: string;
-  fetchCurated?: boolean;
-  fetchPrimary?: boolean;
-  fetchMore?: boolean;
-  curatedType?: string;
-  curatedSeriesId?: string;
-  initialLevel?: MaterialLibraryLevel;
-  lockLevel?: MaterialLibraryLevel;
-  registerRuntimeSource?: boolean;
-  materialActions?: readonly WorkbenchMaterialAction[];
-  onMaterialAction?: (
-    action: WorkbenchMaterialAction,
-    item: LibraryItem,
-  ) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
-  materialActionAvailable?: (
-    action: WorkbenchMaterialAction,
-    item: LibraryItem,
-  ) => boolean;
-  materialActionEvidence?: WorkspaceLibraryProps["materialActionEvidence"];
-  primaryMaterialAction?: WorkbenchMaterialAction;
-  draggableMaterials?: boolean;
-  onMaterialDragStart?: (item: LibraryItem) => void;
-  onMaterialDragEnd?: () => void;
-  allowAdvancedOnSelect?: boolean;
-  onOpenItem?: (item: LibraryItem) => void;
-}
+export type { MaterialLibraryProps } from "./material-library-presentation";
 
-const MATERIAL_LIBRARY_BASE = "https://asset.oceanleo.com/materials";
+const DEFAULT_LEVELS: readonly MaterialLibraryLevel[] = ["primary", "more"];
 
-function materialLibraryHref(options: {
-  query?: string;
-  taxonomy?: ArtifactType | "";
-  item?: LibraryItem;
-}): string {
-  const url = new URL(MATERIAL_LIBRARY_BASE);
-  if (options.query?.trim()) url.searchParams.set("q", options.query.trim());
-  if (options.taxonomy) {
-    url.searchParams.set("taxonomy", options.taxonomy);
-  }
-  if (options.item && isDurableLibraryItem(options.item)) {
-    url.searchParams.set("artifactId", options.item.artifactId);
-    url.searchParams.set("revisionId", options.item.revisionId);
-  }
-  return url.toString();
-}
-
-function safeCompleteLibraryHref(value: string | undefined): string {
-  if (!value) return "";
-  try {
-    const url = new URL(value, MATERIAL_LIBRARY_BASE);
-    return url.protocol === "https:" &&
-      url.hostname === "asset.oceanleo.com" &&
-      url.pathname === "/materials"
-      ? url.toString()
-      : "";
-  } catch {
-    return "";
-  }
-}
-
-function materialFailureCopy(status: number | undefined, _message: string): {
-  title: string;
-  description: string;
-} {
-  if (status === 401) {
-    return {
-      title: "登录后访问素材库",
-      description: "登录后可查看当前 App 素材和可编辑模板。",
-    };
-  }
-  if (status === 403) {
-    return {
-      title: "当前账号无权访问素材库",
-      description: "当前账号无法查看这组素材。",
-    };
-  }
-  if (status === 503) {
-    return {
-      title: "素材库服务暂时不可用",
-      description: "服务端正在维护或过载，请稍后重试。",
-    };
-  }
-  return {
-    title: "素材暂时无法显示",
-    description: "素材数据未通过安全检查，请重试。",
-  };
-}
-
-function isTrustedEditableMaterialEntry(
-  entry: WorkspaceLibraryEntry,
-): boolean {
-  const item = entry.libraryItem;
-  return Boolean(
-    item &&
-      isDurableLibraryItem(item) &&
-      artifactIsVisible(item.artifact) &&
-      isAdvancedEditableShelfItem(item),
+function orderedLevels(
+  levels: readonly MaterialLibraryLevel[],
+): MaterialLibraryLevel[] {
+  const wanted = new Set(levels);
+  return (["primary", "site", "more"] as const).filter((level) =>
+    wanted.has(level),
   );
 }
 
-function entriesFromRemoteResult(
-  items: readonly LibraryItem[],
-  level: MaterialLibraryLevel,
-  context: ArtifactContextRef,
-  query: string,
-  taxonomy: ArtifactType | "",
-): WorkspaceLibraryEntry[] {
-  const scopedItems =
-    level === "primary"
-      ? items.filter((item) =>
-          libraryItemHasExactPrimaryContext(item, context),
-        )
-      : items;
-  return scopedItems.map((item) => ({
-    ...artifactEntry(item, level === "more" && Boolean(query)),
-    linkUrl: materialLibraryHref({
-      query: level === "more" ? query : "",
-      taxonomy,
-      item,
-    }),
-  }));
-}
-
 /**
- * Controller/view facade for the two-level material library. Query decoding,
- * normalization and page merging stay in material-library-controller.
+ * Controller/view facade for the three-level material library
+ * (此 app ｜ 本站素材 ｜ 更多素材). Query decoding, normalization, scoping and
+ * page merging stay in material-library-controller / -scope.
  */
 export function MaterialLibrary({
   materials,
@@ -214,6 +99,10 @@ export function MaterialLibrary({
   curatedType = "all",
   initialLevel = "primary",
   lockLevel,
+  levels,
+  types: controlledTypes,
+  onTypesChange,
+  onLevelChange,
   registerRuntimeSource = true,
   materialActions = [],
   onMaterialAction,
@@ -231,13 +120,52 @@ export function MaterialLibrary({
   const workspaceSession = useOptionalWorkspaceSession();
   const runtimeAppId = appId || workspaceSession?.appId || "default";
   const primaryFetchEnabled = fetchPrimary ?? fetchCurated;
+  // Multi-select chips are the explore-page filter; drawers keep the compact
+  // taxonomy dropdown they render today.
+  const multiSelectTypes = Boolean(levels || controlledTypes || onTypesChange);
+  const sections = useMemo(
+    () => orderedLevels(lockLevel ? [lockLevel] : levels || DEFAULT_LEVELS),
+    [levels, lockLevel],
+  );
   const [level, setLevel] = useState<MaterialLibraryLevel>(
     lockLevel || initialLevel,
   );
   const [query, setQuery] = useState(action?.action.query || "");
   const [debounced, setDebounced] = useState(query);
-  const [taxonomy, setTaxonomy] = useState<ArtifactType | "">(
-    normalizedMaterialTaxonomy(curatedType),
+  const [internalTypes, setInternalTypes] = useState<ArtifactType[]>(() => {
+    const single = normalizedMaterialTaxonomy(curatedType);
+    return single ? [single] : [];
+  });
+  const selectedTypes = useMemo(
+    () => (controlledTypes ? [...controlledTypes] : internalTypes),
+    [controlledTypes, internalTypes],
+  );
+  const typesCsv = materialTypesCsv(selectedTypes);
+  const taxonomy: ArtifactType | "" =
+    selectedTypes.length === 1 ? selectedTypes[0] : "";
+  const applyTypes = useCallback(
+    (next: ArtifactType[]) => {
+      if (!controlledTypes) setInternalTypes(next);
+      onTypesChange?.(next);
+    },
+    [controlledTypes, onTypesChange],
+  );
+  const toggleType = useCallback(
+    (type: ArtifactType) => {
+      const next = selectedTypes.includes(type)
+        ? selectedTypes.filter((value) => value !== type)
+        : [...selectedTypes, type];
+      applyTypes(next);
+    },
+    [applyTypes, selectedTypes],
+  );
+  const goToLevel = useCallback(
+    (next: MaterialLibraryLevel) => {
+      setLevel(next);
+      setQuery("");
+      onLevelChange?.(next);
+    },
+    [onLevelChange],
   );
   const context = useMemo<ArtifactContextRef>(
     () => ({
@@ -254,16 +182,19 @@ export function MaterialLibrary({
       context,
       query: debounced,
       taxonomy,
+      types: typesCsv ? (typesCsv.split(",") as ArtifactType[]) : [],
     }),
-    [context, debounced, level, taxonomy],
+    [context, debounced, level, taxonomy, typesCsv],
   );
   const remoteRequestKey = useMemo(
     () => materialLibraryRequestKey(materialRequest),
     [materialRequest],
   );
+  const levelFetchEnabled =
+    level === "primary" ? primaryFetchEnabled : fetchMore;
   const initialFetchEnabled =
-    (level === "primary" ? primaryFetchEnabled : fetchMore) &&
-    (level === "more" || Boolean(context.contextId && context.siteKey));
+    levelFetchEnabled &&
+    (level !== "primary" || Boolean(context.contextId && context.siteKey));
   const initialCache = initialFetchEnabled
     ? readMaterialLibraryCache(materialRequest)
     : null;
@@ -312,71 +243,11 @@ export function MaterialLibrary({
     [],
   );
 
-  useEffect(() => {
-    const refresh = (event: Event) => {
-      invalidateMaterialLibraryCache();
-      const detail = (event as CustomEvent<{
-        action?: string;
-        artifactId?: string;
-        revisionId?: string;
-        favorite?: boolean;
-      }>).detail;
-      if (
-        detail?.action === "favorite" &&
-        detail.artifactId &&
-        detail.revisionId
-      ) {
-        const update = (entry: WorkspaceLibraryEntry) => {
-          const item = entry.libraryItem;
-          if (
-            !item ||
-            !isDurableLibraryItem(item) ||
-            item.artifactId !== detail.artifactId ||
-            item.revisionId !== detail.revisionId
-          ) {
-            return entry;
-          }
-          const updatedItem: LibraryItem = {
-            ...item,
-            favorite: detail.favorite === true,
-            artifact: {
-              ...item.artifact,
-              favorite: detail.favorite === true,
-            },
-          };
-          return {
-            ...entry,
-            libraryItem: updatedItem,
-          };
-        };
-        setRemote((current) => current.map(update));
-        setDeepLinkedEntry((current) => (current ? update(current) : null));
-        return;
-      }
-      if (detail?.action === "retire" && detail.artifactId) {
-        setRemote((current) =>
-          current.filter(
-            (entry) =>
-              !entry.libraryItem ||
-              !isDurableLibraryItem(entry.libraryItem) ||
-              entry.libraryItem.artifactId !== detail.artifactId,
-          ),
-        );
-        setDeepLinkedEntry((current) =>
-          current?.libraryItem &&
-          isDurableLibraryItem(current.libraryItem) &&
-          current.libraryItem.artifactId === detail.artifactId
-            ? null
-            : current,
-        );
-        return;
-      }
-      setRetryNonce((value) => value + 1);
-    };
-    window.addEventListener(ARTIFACT_LIBRARY_CHANGE_EVENT, refresh);
-    return () =>
-      window.removeEventListener(ARTIFACT_LIBRARY_CHANGE_EVENT, refresh);
-  }, []);
+  useMaterialLibraryChangeEvents({
+    setRemote,
+    setDeepLinkedEntry,
+    setRetryNonce,
+  });
 
   useEffect(() => {
     setLevel(lockLevel || initialLevel);
@@ -391,8 +262,10 @@ export function MaterialLibrary({
   ]);
 
   useEffect(() => {
-    setTaxonomy(normalizedMaterialTaxonomy(curatedType));
-  }, [curatedType]);
+    if (controlledTypes) return;
+    const single = normalizedMaterialTaxonomy(curatedType);
+    setInternalTypes(single ? [single] : []);
+  }, [controlledTypes, curatedType]);
 
   useEffect(() => {
     if (action?.action.query !== undefined) {
@@ -400,62 +273,18 @@ export function MaterialLibrary({
     }
   }, [action?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const itemId = action?.action.itemId || "";
-    const match = /^artifact:([^:]+):([^:]+)$/.exec(itemId);
-    setDeepLinkedEntry(null);
-    setDeepLinkError("");
-    setDeepLinkStatus(undefined);
-    if (!itemId) return;
-    if (!match) {
-      setDeepLinkError("素材深链缺少有效 artifact/revision identity。");
-      setDeepLinkStatus(400);
-      return;
-    }
-    const controller = new AbortController();
-    void getArtifactItem(match[1], match[2], controller.signal).then(
-      (result) => {
-        if (controller.signal.aborted) return;
-        const item = result.data;
-        const artifact = item?.artifact;
-        const trustedItem = Boolean(
-          item &&
-            artifact &&
-            isDurableLibraryItem(item) &&
-            artifactIsVisible(artifact) &&
-            isAdvancedEditableShelfItem(item),
-        );
-        const inScope = Boolean(
-          result.ok &&
-            item &&
-            artifact &&
-            trustedItem &&
-            (!taxonomy || item.artifactType === taxonomy) &&
-            (level === "more"
-              ? artifact.owner.visibility === "public" &&
-                artifact.roles.includes("template")
-              : libraryItemHasExactPrimaryContext(item, context)),
-        );
-        if (!inScope || !item) {
-          setDeepLinkError(
-            result.error ||
-              "深链 artifact/revision 不属于当前授权范围或 taxonomy。",
-          );
-          setDeepLinkStatus(result.status || 403);
-          return;
-        }
-        setDeepLinkedEntry({
-          ...artifactEntry(item),
-          linkUrl: materialLibraryHref({
-            query: action?.action.query || "",
-            taxonomy,
-            item,
-          }),
-        });
-      },
-    );
-    return () => controller.abort();
-  }, [action?.nonce, context, level, retryNonce, taxonomy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMaterialLibraryDeepLink({
+    nonce: action?.nonce,
+    itemId: action?.action.itemId || "",
+    query: action?.action.query || "",
+    level,
+    context,
+    taxonomy,
+    retryNonce,
+    setDeepLinkedEntry,
+    setDeepLinkError,
+    setDeepLinkStatus,
+  });
 
   useEffect(() => {
     if (level === "primary" && (!context.contextId || !context.siteKey)) {
@@ -586,7 +415,7 @@ export function MaterialLibrary({
   ]);
 
   const loadMore = async () => {
-    if (level !== "more" || !fetchMore || !nextCursor || loadingMore) {
+    if (level === "primary" || !fetchMore || !nextCursor || loadingMore) {
       return;
     }
     loadMoreAbortRef.current?.abort();
@@ -595,10 +424,7 @@ export function MaterialLibrary({
     const epoch = ++requestEpochRef.current;
     setLoadingMore(true);
     const result = await queryMaterialLibrary({
-      level: "more",
-      context,
-      query: debounced,
-      taxonomy,
+      ...materialRequest,
       cursor: nextCursor,
       signal: controller.signal,
     });
@@ -737,8 +563,7 @@ export function MaterialLibrary({
       href={canonicalMoreHref}
       onClick={(event) => {
         event.preventDefault();
-        setLevel("more");
-        setQuery("");
+        goToLevel("more");
       }}
       className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
       aria-label={tt("打开完整素材库")}
@@ -747,37 +572,94 @@ export function MaterialLibrary({
     </a>
   ) : null;
 
-  const toolbar = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span
-        data-material-library-scope={level}
-        className="whitespace-nowrap text-[11px] font-semibold text-[var(--fg,#292524)]"
-      >
-        {tt(level === "primary" ? "当前 App" : "更多素材")}
-      </span>
-      {level === "primary" ? (
-        primaryMoreControl
-      ) : lockLevel ? null : (
+  const sectionTabs = (
+    <div
+      role="tablist"
+      aria-label={tt("素材分区")}
+      className="flex flex-wrap items-center gap-1"
+    >
+      {sections.map((section) => (
         <button
+          key={section}
           type="button"
-          onClick={() => {
-            setLevel(lockLevel || "primary");
-            setQuery("");
-          }}
-          className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+          role="tab"
+          aria-selected={section === level}
+          data-material-library-section={section}
+          onClick={() => goToLevel(section)}
+          className={`min-h-8 whitespace-nowrap rounded-lg border px-2.5 text-[11px] font-medium ${
+            section === level
+              ? "border-transparent bg-[var(--fg,#292524)] text-white"
+              : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+          }`}
         >
-          ← {tt("当前 App")}
+          {tt(MATERIAL_LEVEL_LABEL[section])}
         </button>
-      )}
+      ))}
+    </div>
+  );
+
+  const legacyLevelControl =
+    level === "primary" ? (
+      primaryMoreControl
+    ) : lockLevel ? null : (
+      <button
+        type="button"
+        onClick={() => goToLevel(lockLevel || "primary")}
+        className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+      >
+        ← {tt("当前 App")}
+      </button>
+    );
+
+  const typeChips = (
+    <div
+      role="group"
+      aria-label={tt("货架")}
+      className="flex flex-wrap items-center gap-1"
+    >
+      <button
+        type="button"
+        aria-pressed={selectedTypes.length === 0}
+        onClick={() => applyTypes([])}
+        className={`min-h-8 rounded-full border px-2.5 text-[11px] ${
+          selectedTypes.length === 0
+            ? "border-transparent bg-[var(--fg,#292524)] text-white"
+            : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)]"
+        }`}
+      >
+        {tt("全部类型")}
+      </button>
+      {ARTIFACT_TYPES.map((type) => (
+        <button
+          key={type}
+          type="button"
+          aria-pressed={selectedTypes.includes(type)}
+          data-material-type-chip={type}
+          onClick={() => toggleType(type)}
+          className={`min-h-8 rounded-full border px-2.5 text-[11px] ${
+            selectedTypes.includes(type)
+              ? "border-transparent bg-[var(--fg,#292524)] text-white"
+              : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+          }`}
+        >
+          {tt(MATERIAL_TAXONOMY_LABEL[type])}
+        </button>
+      ))}
+    </div>
+  );
+
+  const typeSelect = (
+    <>
       <label className="sr-only" htmlFor={taxonomyId}>
         {tt("货架")}
       </label>
       <select
         id={taxonomyId}
         value={taxonomy}
-        onChange={(event) =>
-          setTaxonomy(event.currentTarget.value as ArtifactType | "")
-        }
+        onChange={(event) => {
+          const next = event.currentTarget.value as ArtifactType | "";
+          applyTypes(next ? [next] : []);
+        }}
         aria-label={tt("货架")}
         className="min-h-8 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg-2,#57534e)]"
       >
@@ -788,7 +670,20 @@ export function MaterialLibrary({
           </option>
         ))}
       </select>
-      {nextCursor && level === "more" && (
+    </>
+  );
+
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        data-material-library-scope={level}
+        className="whitespace-nowrap text-[11px] font-semibold text-[var(--fg,#292524)]"
+      >
+        {tt(MATERIAL_LEVEL_LABEL[level])}
+      </span>
+      {sections.length > 1 && (levels ? sectionTabs : legacyLevelControl)}
+      {multiSelectTypes ? typeChips : typeSelect}
+      {nextCursor && level !== "primary" && (
         <button
           type="button"
           onClick={() => void loadMore()}
@@ -801,7 +696,7 @@ export function MaterialLibrary({
       {effectiveError &&
         effectiveErrorStatus !== 401 &&
         effectiveErrorStatus !== 403 &&
-        (level === "more" ? fetchMore : primaryFetchEnabled) && (
+        levelFetchEnabled && (
         <button
           type="button"
           onClick={() => {
@@ -856,30 +751,19 @@ export function MaterialLibrary({
       onQueryChange={setQuery}
       hideCategoryChips
       toolbarActions={toolbar}
-      searchPlaceholder={
-        level === "primary"
-          ? "筛选当前 App 可编辑素材"
-          : "搜索可编辑模板"
-      }
+      searchPlaceholder={materialLevelSearchPlaceholder(level)}
       emptyTitle={
         loading
           ? "正在加载素材…"
           : effectiveError
             ? failureCopy.title
-            : level === "primary"
-              ? "当前 App 暂无可编辑素材"
-              : "暂无可编辑模板"
+            : materialLevelEmptyTitle(level)
       }
       emptyDescription={
         effectiveError
           ? failureCopy.description
-          : level === "primary"
-            ? emptyHint ||
-              (contextMissing
-                ? "当前 App 暂未提供可用素材。"
-                : "这里只显示当前 App 已绑定且可安全编辑的素材；可前往「更多素材」查找模板。")
-            : emptyHint ||
-              "这里只显示可在高级编辑器中打开并保存的模板；可更换关键词或类型。"
+          : emptyHint ||
+            materialLevelEmptyDescription(level, contextMissing)
       }
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}

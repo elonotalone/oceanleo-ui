@@ -356,7 +356,10 @@ test("shared UI source contains exact primary/global More endpoints and no serie
   const material = [
     "../src/shell/MaterialLibrary.tsx",
     "../src/shell/material-library-controller.ts",
+    "../src/shell/material-library-scope.ts",
     "../src/shell/material-library-view.tsx",
+    "../src/shell/material-library-presentation.ts",
+    "../src/shell/material-library-effects.ts",
   ]
     .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
     .join("\n");
