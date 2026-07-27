@@ -375,7 +375,8 @@ export function HomeAppCards({
              `workspaceTemplatePreviewHref(appId, artifactId)` 与 `exploreAppHref(appId)`，
              在卡片侧转一手只会多一个能拼错的地方。
              也**不给 `editHref` 兜底**：那个 prop 是「无模板时预览&编辑落到哪」，而无模板
-             时唯一能给的旧目标是 app 级高级编辑器——正是操作员点名的「探索时误入重型功能」。
+             时唯一能给的旧目标是 `workspaceAppAdvancedHref`（app 级重型编辑器）——正是操作员
+             点名的「探索时误入重型功能」。
              宁可让那颗按钮整颗不出现（用户仍有「更多」去探索页）。 */
           onClose={() => setOpened(null)}
         />

@@ -443,7 +443,8 @@ export {
 // 合同 2026-07-27 §3.1 的两条新深链 helper（W3 产出）：`workspaceTemplatePreviewHref`
 // 把**具体那份**模板素材落到库里的**只读预览页**（W4 的消费端路由认这个 query 形状），
 // `exploreAppHref` 落到本站探索页并锚定该 app（`/explore?app=<appId>`，W5 认这个 query）。
-// 「编辑模板」这个旧落点本轮全站废除，新代码一律用这两条。
+// 旧落点 `workspaceTemplateEditHref`（直接把素材怼进编辑器）本轮全站废除，只为未迁移的
+// 调用方留着；新代码一律用上面这两条。
 // `LIBRARY_TAB_*` / `LIBRARY_ITEM_QUERY_KEY` 与 `LIBRARY_MODE_*` 是**同一条 query 的四个
 // 零件**（`?tab=library&item=<id>&mode=preview`，W3-marker §8 追加请求）。只导出 mode 那
 // 两个会让消费端为了拼出完整链接自己硬编码 `tab` / `item`，那正是 helper 想消灭的东西。
@@ -481,6 +482,14 @@ export {
 // （W7）逐字对齐的 query 参数名，两侧改名必须先改合同 §3.2。
 export { MATERIAL_SCOPE_PARAM_NAMES } from "./material-library-scope";
 export type { MaterialLibraryLevel, MaterialScope } from "./material-library-scope";
+// 合同 §0.6：大卡片删掉的「下载」入口迁到素材卡。渲染函数由宿主经 `WorkspaceLibrary` 的
+// `entryActions` 挂载（`<WorkspaceLibrary entryActions={materialEntryDownloadAction} …/>`，
+// 正是该模块自述的消费方式）。包内目前没有任何 import 点，不外露它就等于交付了一个谁也
+// 拿不到的能力——W4-marker §10.7-2 把这条出口权交给了 index.ts 的 owner。
+export {
+  isMaterialDownloadEntry,
+  materialEntryDownloadAction,
+} from "./material-library-download";
 // 「下载」的真实执行（W4）。W7 的端点强制登录（配额要计费主体），`<a download>` 带不了
 // Bearer 头，所以按钮必须调这个函数，不能拿 href 去纯导航。失败 throw，401 与 429 可区分。
 export {
