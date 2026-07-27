@@ -406,6 +406,39 @@ test("放宽只针对 rightsAsserted，真正的第三方复用仍然必须出�
   }
 });
 
+test("字段可选，且「整个不写」与 false 同义——手写 fixture 不会被逼着表态", () => {
+  // 它是 optional 而不是必填：唯一有资格声明它的是服务端。设成必填只会逼着手写
+  // fixture 的人填一个值，而「填 true 让编译过去」恰好会静默关掉这道 license 检查。
+  const base = normalizeArtifactProjection(realForkCopyProjection());
+  const withoutKey = artifactIntegrityFor({
+    ...base,
+    provenance: {
+      id: "p",
+      sourceKind: "approved_provider",
+      licenseCode: "CC-BY",
+      licenseUrl: "",
+      attribution: "",
+      // ← 刻意不写 rightsAsserted
+    },
+  });
+  assert.equal(withoutKey.ok, false, "缺失必须按第三方处理，不能当成已主张权利");
+  assert.equal(withoutKey.code, "license-restricted");
+
+  // 与显式 false 的结论逐字相同。
+  const explicitFalse = artifactIntegrityFor({
+    ...base,
+    provenance: {
+      id: "p",
+      sourceKind: "approved_provider",
+      licenseCode: "CC-BY",
+      licenseUrl: "",
+      attribution: "",
+      rightsAsserted: false,
+    },
+  });
+  assert.deepEqual(withoutKey, explicitFalse);
+});
+
 test("老部署不发 rights_asserted 时按 false 处理，与后端默认值一致", () => {
   const withoutFlag = normalizeArtifactProjection({
     ...realForkCopyProjection(),

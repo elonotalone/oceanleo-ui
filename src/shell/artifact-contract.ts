@@ -693,9 +693,18 @@ export interface ArtifactProvenance {
    * `generated` / `user_upload`）恒为真且通常**没有** license URL 与 attribution；
    * 第三方（`approved_provider`）恒为假且一定带 license URL。fork 会继承父级的这个
    * 标记，所以它是「官方素材的副本」与「第三方复用」之间唯一可靠的分界线。
-   * 由后端 migration 0104 投影；老部署不发这个 key 时按 `false` 处理。
+   * 由后端 migration 0104 投影。
+   *
+   * **可选，且「缺失」与 `false` 同义**——这两件事都是刻意的：
+   *   - 与后端 `ProvenanceProjection.rights_asserted: bool = False` 的默认值一致，
+   *     老部署不发这个 key 时两端读出同一个结论；
+   *   - 缺失按 `false` 是 fail-closed：没人替你主张权利时按第三方处理，仍然必须出示
+   *     license URL 或 attribution。
+   *   - 设成必填会逼着每个手写 fixture 的人给它填一个值，而「填 `true` 让编译过去」
+   *     恰好会静默关掉那道 license 检查。唯一有资格声明它的是服务端，而权威产出者
+   *     `normalizeProvenance()` 总会显式写入具体布尔值，必填对它没有任何增益。
    */
-  rightsAsserted: boolean;
+  rightsAsserted?: boolean;
   licenseUrl: string;
   attribution: string;
 }
@@ -1540,7 +1549,8 @@ function provenanceLacksReuseEvidence(provenance: ArtifactProvenance): boolean {
     !FIRST_PARTY_SOURCE_KINDS.includes(
       provenance.sourceKind.trim().toLowerCase(),
     ) &&
-    !provenance.rightsAsserted &&
+    // 只有显式 `true` 才算主张过权利：缺失与 `false` 一样按第三方处理（fail-closed）。
+    provenance.rightsAsserted !== true &&
     !provenance.licenseUrl &&
     !provenance.attribution
   );
