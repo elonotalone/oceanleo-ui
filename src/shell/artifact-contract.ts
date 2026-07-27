@@ -152,6 +152,14 @@ const ADVANCED_CAPABILITY_ROWS = [
         editorCapabilities: ["design-canvas"],
       },
       { artifactType: "workflow", editorCapabilities: ["design-canvas"] },
+      /**
+       * 矢量素材（svg/ai/eps）走图层工程适配器，不走位图适配器。
+       *
+       * 这条绑定原先挂在 `image_editing` 上，于是 svg 被 `oceanleo.fabric-image.v1`
+       * 当成一张位图打开：能裁切调色，改不了锚点、配不了色、换不了图形——
+       * 矢量该有的编辑能力一条都拿不到。与「能不能改字」无关。
+       */
+      { artifactType: "vector_image", editorCapabilities: ["vector-editor"] },
     ],
     adapter: "design-canvas",
     projectSchema: "oceanleo.design-document.v1",
@@ -262,10 +270,6 @@ const ADVANCED_CAPABILITY_ROWS = [
       {
         artifactType: "composite_image",
         editorCapabilities: ["composite-image-editor"],
-      },
-      {
-        artifactType: "vector_image",
-        editorCapabilities: ["vector-editor"],
       },
     ],
     adapter: "image",
@@ -2115,6 +2119,22 @@ export interface ArtifactDownloadCandidate {
 }
 
 /**
+ * 矢量素材的用户交付物是 svg 源文件本身。
+ *
+ * 它的编辑面是图层工程适配器（`design_canvas` 行），但 `openMode` 推出来的
+ * 「结构化工程 ⇒ 交付渲染导出」对矢量不成立：把 svg 换成 png/webp 就把矢量丢了。
+ * 形态在这里胜过适配器，所以矢量单独走 source 交付规则。
+ */
+function downloadRuleFor(
+  artifactType: ArtifactType,
+  capability: AdvancedCapabilityContractEntry,
+): AdvancedCapabilityDownloadRule {
+  return artifactType === "vector_image"
+    ? SOURCE_DOWNLOAD_RULE
+    : capability.download;
+}
+
+/**
  * Contract-first card Download order. Native-file capabilities request their
  * standard source deliverable; structured projects request rendered exports.
  * `editor_manifest` is editor state and is never a user-facing Download target.
@@ -2231,7 +2251,9 @@ export function artifactUserFacingDownloadHint(input: {
     return { mediaType: declared, extension };
   };
 
-  if (capability.download.preferredMode === "source") {
+  const rule = downloadRuleFor(input.artifactType, capability);
+
+  if (rule.preferredMode === "source") {
     const source = fromRendition(input.renditions?.source || null);
     if (source) {
       return {
@@ -2257,8 +2279,8 @@ export function artifactUserFacingDownloadHint(input: {
   }
 
   for (const purpose of [
-    capability.download.preferredPurpose,
-    ...capability.download.fallbackPurposes,
+    rule.preferredPurpose,
+    ...rule.fallbackPurposes,
   ] as const) {
     if (purpose === "source") continue;
     const rendered = fromRendition(input.renditions?.[purpose] || null);
@@ -2355,7 +2377,7 @@ export function artifactDownloadPlanFor(
   };
 
   if (capability) {
-    const rule = capability.download;
+    const rule = downloadRuleFor(artifact.artifactType, capability);
     if (rule.preferredMode === "source") {
       if (artifact.access.canExportSource) {
         const source = candidate("source", "source");

@@ -4,7 +4,8 @@
 // @oceanleo/ui — 首页 app 卡片的「大卡片」= 多模板详情浮层（合同 §0.4，2026-07-27）
 // ----------------------------------------------------------------------------
 // 版式（参考 Base44 模板详情弹层）：
-//   左上：主预览大图 = **当前选中模板**的真实素材（无模板时回退 app 封面 / emoji tint）
+//   左上：主预览大图 = **当前选中模板**的真实素材（无模板时回退 app 封面 / emoji tint），
+//         按素材真实宽高自适应且 `object-contain`，**任何情况下不裁切**（见 §主预览）
 //   左下：缩略图条，切换同一 app 下的多份模板；**只有 1 份（或 0 份）时整条不渲染**
 //   右侧：素材标题、说明（无模板时退回代表 prompt 全文）、标签
 //   右侧按钮（**恰好三个，顺序定死**，合同 §0.4）：「预览&编辑」「生成类似」「更多」
@@ -35,9 +36,18 @@
 // 「更多」几乎恒在，这是刻意的：素材还没补齐的 app 上，它是用户唯一的去处，
 // 比上一轮那种「零按钮纯预览浮层」强。
 //
-// 为什么不复用 `../ui` 的 <Modal>：Modal 走 createPortal(document.body)，首帧
-// （SSR / 未 mount）什么都不渲染，而本组件要能在服务端与 node --test 里被静态渲染断言。
+// 为什么不复用 `../ui` 的 <Modal>：Modal 是 `if (!mounted) return null` + createPortal，
+// 首帧（SSR / 未 mount）什么都不渲染，而本组件要能在服务端与 node --test 里被静态渲染断言。
 // 因此这里自带遮罩 + Esc 关闭 + 打开即聚焦，行为与 Modal 对齐。**改版时不得换成 Modal。**
+//
+// 浮层挂载方式 = **条件 portal**（2026-07-27，问题 1）：
+//   - SSR / 未 mount：原地内联渲染完整浮层 —— 上面那条静态渲染断言的约束继续成立；
+//   - 客户端 mount 后：`createPortal(…, document.body)`，因为门户首页
+//     （`oceanleo/app/_components/home-content.tsx`）把卡片区包在 `.v-fade-up` 里，
+//     那条 animation 是 `both` 填充、终帧 `transform: translateY(0)` —— 非 none 的
+//     transform 会永久造出新的 containing block，内联的 `fixed inset-0` 只铺满那一层
+//     而不是视口，于是门户浮层不满屏（其余子站没有这层 transform，所以只有门户中招）。
+//     portal 到 body 才是根治：不再依赖任何调用方的祖先链是否干净。
 //
 // 文件名仍是 `ImageLightbox.tsx`：`src/shell/index.ts` 与 `HomeAppCards.tsx` 都从
 // `./ImageLightbox` 导入，那两个文件归 W1，改文件名会让整包 typecheck 在 W1 落地前红掉。
@@ -52,6 +62,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
 import { useUI } from "../i18n/ui/useUI";
 import type { TemplateMaterial } from "./app-catalog";
@@ -108,6 +119,29 @@ export interface TemplateShowcaseProps {
   onClose: () => void;
 }
 
+/**
+ * 主预览的高度上限。对话框整体 `max-h-[88vh]`，右栏说明段最高 `34vh`，主预览留 60vh
+ * 仍能让缩略图条与三颗按钮留在可视区内。写成内联样式而不是 `max-h-[60vh]`：这条取值
+ * 不进 Tailwind 扫描结果也照样生效，消费站的 `ui.css` 若晚一步重建不会退化成裁切。
+ */
+const PREVIEW_MAX_HEIGHT = "60vh";
+
+/**
+ * 素材元数据里的宽高比（`width` / `height`，由官方模板端点透出）。
+ *
+ * 刻意用宽松读法而不是给 `TemplateMaterial` 加字段：那个接口在 `app-catalog.ts` 里，
+ * 不在本组件 owner 的边界内；字段正式落地前先按可选属性取，取不到就回落图片
+ * onLoad 报的 naturalWidth/naturalHeight。
+ */
+function metaAspectRatio(item: TemplateMaterial | null): number | null {
+  const meta = item as (TemplateMaterial & { width?: unknown; height?: unknown }) | null;
+  const width = Number(meta?.width);
+  const height = Number(meta?.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  return width / height;
+}
+
 /** 选中模板的解析：id 命中优先，否则回落第一份（templates 变化时不会选到空）。 */
 function resolveSelected(
   templates: TemplateMaterial[],
@@ -144,8 +178,22 @@ export function TemplateShowcase({
   const selected = resolveSelected(list, selectedId);
   const promptText = (prompt || "").trim();
 
+  // 条件 portal 的开关（见文件头）：首帧内联，mount 之后才 portal 到 body。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 图片自己报的自然宽高比，带 src 一起存：切换模板后不能拿上一份的比例摆新素材。
+  const [loadedRatio, setLoadedRatio] = useState<{ src: string; ratio: number } | null>(null);
+
+  // 打开即聚焦关闭键。依赖 `mounted` 是必须的：内联首帧那棵树在 portal 接上时会被
+  // 卸载重挂，焦点随着旧节点一起消失，只跑一次的话浮层打开后焦点会停在 body 上。
   useEffect(() => {
     closeRef.current?.focus();
+  }, [mounted]);
+
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -169,6 +217,12 @@ export function TemplateShowcase({
       ? assetPreviewUrl(imageKey)
       : "";
 
+  // 主预览的宽高比：素材元数据优先，其次图片自然尺寸；两者都没有时不设 aspect-ratio，
+  // 高度由图片自身撑开（配合 object-contain，任一分支都不会裁切）。
+  const previewRatio =
+    metaAspectRatio(selected) ??
+    (loadedRatio && loadedRatio.src === bigImage ? loadedRatio.ratio : null);
+
   // 「预览&编辑」按 **artifactId** 定位（库预览页按 artifact 取数，不是 templateId）。
   // 选中项缺 artifactId 时这条深链拼不出只读落点，宁可退回调用方给的兜底，也不产出
   // 一条点进去空转的链接。
@@ -185,10 +239,11 @@ export function TemplateShowcase({
     "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition hover:opacity-90";
   const ghostAction = `${actionClass} border border-stone-200 text-stone-700 hover:bg-stone-50`;
 
-  return (
+  const overlay = (
     <div
       data-image-lightbox
       data-template-showcase
+      data-showcase-portal={mounted ? "1" : "0"}
       className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
@@ -216,21 +271,37 @@ export function TemplateShowcase({
         <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           {/* ——— 左列：主预览 + 多模板缩略图条 ——— */}
           <div className="min-w-0">
+            {/* 主预览**不许裁切**：document / grid 这两类素材的全部价值就是让用户看清
+                版面结构，`aspectRatio: 16/10` + `object-cover` 那套硬比例会把 84% 的素材
+                切掉一圈（问题 3）。所以容器跟着素材真实比例走（元数据 → 图片自然尺寸），
+                图片一律 `object-contain`，比例未知时干脆不设 aspect-ratio 让图自己撑高。
+                只有下方缩略图条保留 object-cover —— 那里等比塞进小方块，裁切是合理的。 */}
             <div
               data-template-showcase-preview
-              className="relative w-full overflow-hidden rounded-xl bg-stone-100"
-              style={{ aspectRatio: "16 / 10" }}
+              data-preview-fit={previewRatio ? "intrinsic" : "contain"}
+              className="relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-stone-100"
+              style={{
+                aspectRatio: previewRatio ?? (bigImage ? undefined : "16 / 10"),
+                maxHeight: PREVIEW_MAX_HEIGHT,
+                minHeight: "180px",
+              }}
             >
               {bigImage ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={bigImage}
                   alt={paneTitle}
-                  className="h-full w-full object-cover"
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (!img.naturalWidth || !img.naturalHeight) return;
+                    setLoadedRatio({ src: bigImage, ratio: img.naturalWidth / img.naturalHeight });
+                  }}
+                  className="h-auto w-full object-contain"
+                  style={{ maxHeight: PREVIEW_MAX_HEIGHT }}
                 />
               ) : (
                 <span
-                  className="grid h-full w-full place-items-center text-[48px]"
+                  className="absolute inset-0 grid place-items-center text-[48px]"
                   style={{ background: `${accent}14`, color: accent }}
                 >
                   {fallbackIcon ?? "✨"}
@@ -347,6 +418,12 @@ export function TemplateShowcase({
       </div>
     </div>
   );
+
+  // 条件 portal：mount 之后挂到 body（逃出调用方的 transform 祖先），
+  // SSR / 首帧仍原地返回同一棵树，静态渲染断言与服务端输出都拿得到浮层内容。
+  return mounted && typeof document !== "undefined"
+    ? createPortal(overlay, document.body)
+    : overlay;
 }
 
 // ——————————————————————————————————————————————————————————————————————————

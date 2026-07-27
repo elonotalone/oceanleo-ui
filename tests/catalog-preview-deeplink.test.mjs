@@ -236,10 +236,11 @@ test("端到端：「预览&编辑」的 href 最终落到库只读预览，不�
   FETCHED.length = 0;
   const { href, route, dispatched, delivered } = await runChain();
 
-  // 起点：确实是那条契约形状的 href。
+  // 起点：确实是那条契约形状的 href。`tab=materials` 是接口 A 的落点栏位——官方模板
+  // 素材属于平台，永远不在「我的库」里，落 `mine` 得到的必然是一个空面板。
   assert.equal(
     href,
-    "/workspace?tab=library&item=22a009ad-6c31-4f0e-b0d2-9e4f77a1c5bb&mode=preview&app=divorce-consult",
+    "/workspace?tab=materials&item=22a009ad-6c31-4f0e-b0d2-9e4f77a1c5bb&mode=preview&app=divorce-consult",
   );
   // BLOCKER-1 那一层仍然成立（app 认得出来，否则整条链根本不启动）。
   assert.equal(route.activeAppId, APP.id);
@@ -252,7 +253,7 @@ test("端到端：「预览&编辑」的 href 最终落到库只读预览，不�
   assert.match(envelope.nonce, /^catalog-preview:divorce-consult:22a009ad-/);
   assert.deepEqual(envelope.action, {
     version: 1,
-    tab: "mine",
+    tab: "materials",
     itemId: ARTIFACT.artifactId,
     intent: "open",
   });
@@ -499,13 +500,39 @@ test("law / threed / website 三站的「预览&编辑」都落到库只读预�
     assert.equal(dispatched.length, 1, `${site.siteKey}: 应当恰好派发一次`);
     assert.deepEqual(
       dispatched[0].action,
-      { version: 1, tab: "mine", itemId: site.artifactId, intent: "open" },
-      `${site.siteKey}: 派发的不是库只读预览`,
+      { version: 1, tab: "materials", itemId: site.artifactId, intent: "open" },
+      `${site.siteKey}: 派发的不是素材库只读预览`,
     );
     assert.equal(preview.length, 1, `${site.siteKey}: 库只读预览没被打开`);
     assert.equal(preview[0].artifactId, site.artifactId);
     assert.deepEqual(editor, [], `${site.siteKey}: 不该进 typed 编辑器`);
     assert.deepEqual(FETCHED, [site.artifactId], `${site.siteKey}: 取的不是深链指名那一份`);
+  }
+});
+
+test("落点按素材归属分流：官方模板落素材库，用户自有 artifact 仍落我的库", async () => {
+  // 归属写在 URL 的 `tab` 上（接口 A）：`materials` 一族 = 平台官方模板素材；
+  // `library` / `mine` 一族 = 用户自己的 artifact，也是历史链接的形状，语义必须逐字不变。
+  // 修法是**按归属分流**，不是把那个常量从 mine 换成 materials —— 后者会把用户自有
+  // artifact 的预览也一起推进素材库，等于用一个新缺陷换掉旧缺陷。
+  for (const [tab, expected] of [
+    ["materials", "materials"],
+    ["material", "materials"],
+    ["inspiration", "materials"],
+    ["library", "mine"],
+    ["mine", "mine"],
+    ["my_library", "mine"],
+  ]) {
+    const search = `?tab=${tab}&item=${ARTIFACT.artifactId}&mode=preview&app=${APP.id}`;
+    const { dispatched } = await dispatchWithApp(APP.id, search);
+    assert.equal(dispatched.length, 1, `tab=${tab}: 应当派发且只派发一次`);
+    assert.equal(
+      dispatched[0].action.tab,
+      expected,
+      `tab=${tab} 的落点栏位不对`,
+    );
+    assert.equal(dispatched[0].action.itemId, ARTIFACT.artifactId);
+    assert.equal(dispatched[0].action.intent, "open");
   }
 });
 

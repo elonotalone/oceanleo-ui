@@ -10,9 +10,11 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   artifactEntry,
   libraryItemHasExactPrimaryContext,
+  mergeMaterialEntries,
   type MaterialItem,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
+import { isOfficialTemplateMaterialEntry } from "./material-library-template-source";
 import type { WorkspaceLibraryEntry, WorkspaceLibraryProps } from "./WorkspaceLibrary";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -185,6 +187,57 @@ export function isTrustedEditableMaterialEntry(
       artifactIsVisible(item.artifact) &&
       isAdvancedEditableShelfItem(item),
   );
+}
+
+/**
+ * 货架最终显示哪些卡。两类条目同场：用户可编辑的 durable artifact，以及匿名可读的
+ * 官方模板目录行 —— 后者过不了 durable 判定（目录端点不下发 revision 身份），所以
+ * 它有自己那条窄例外，见 `isOfficialTemplateMaterialEntry`。
+ */
+export function materialShelfEntries(options: {
+  level: MaterialLibraryLevel;
+  deepLinked: readonly WorkspaceLibraryEntry[];
+  officialTemplates: readonly WorkspaceLibraryEntry[];
+  remote: readonly WorkspaceLibraryEntry[];
+  exactLocal: readonly WorkspaceLibraryEntry[];
+}): WorkspaceLibraryEntry[] {
+  const groups = [
+    options.deepLinked,
+    options.officialTemplates,
+    options.remote,
+    ...(options.level === "primary" ? [options.exactLocal] : []),
+  ];
+  return mergeMaterialEntries(groups).filter(
+    (entry) =>
+      isTrustedEditableMaterialEntry(entry) ||
+      isOfficialTemplateMaterialEntry(entry),
+  );
+}
+
+/**
+ * 面板顶上到底报哪一条错。
+ *
+ * `useMaterialLibraryDeepLink` 只认 `artifact:<artifactId>:<revisionId>`，指向官方
+ * 模板的深链（catalog key 或裸 artifactId）在它眼里一律是「缺少有效 identity」。
+ * 目录里确实找到了那一份时，这条报错就是假的；目录还在路上时也别先报，否则正常
+ * 路径会先闪一下红字。
+ */
+export function materialShelfFailure(
+  options: {
+    deepLinkError: string;
+    deepLinkStatus?: number;
+    error: string;
+    errorStatus?: number;
+  },
+  templates: { deepLinkEntryId: string; loading: boolean },
+): { error: string; status?: number } {
+  const deepLinkError =
+    templates.deepLinkEntryId || templates.loading
+      ? ""
+      : options.deepLinkError;
+  return deepLinkError
+    ? { error: deepLinkError, status: options.deepLinkStatus }
+    : { error: options.error, status: options.errorStatus };
 }
 
 export function entriesFromRemoteResult(

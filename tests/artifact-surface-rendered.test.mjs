@@ -82,6 +82,10 @@ const libraryDataUrl = pathToFileURL(
 const materialRegistryUrl = pathToFileURL(
   resolve("src/shell/workbench-material-registry.ts"),
 ).href;
+const assetThumbUrl = pathToFileURL(resolve("src/lib/asset-thumb.ts")).href;
+const workspaceActionsUrl = pathToFileURL(
+  resolve("src/shell/workspace-actions.ts"),
+).href;
 
 function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -269,6 +273,18 @@ const materialControllerUrl = await compileModule(
     "./workspace-library-model": workspaceLibraryStubUrl,
   },
 );
+// 每个模块**只编译一次**，编出来的 URL 在所有导入者的映射里复用。data: URL 没有路径
+// 身份，node 只按 href 字符串命中模块缓存：同一个模块编两份 URL 就是两个实例，而
+// 素材库这一族是菱形依赖（view / presentation / effects 都拉 controller 与
+// template-source），重复编译会让实例数与内联体积一起翻倍。
+const materialTemplateSourceUrl = await compileModule(
+  "src/shell/material-library-template-source.ts",
+  {
+    "../lib/asset-thumb": assetThumbUrl,
+    "./artifact-contract": contractUrl,
+    "./material-library-controller": materialControllerUrl,
+  },
+);
 const materialPresentationUrl = await compileModule(
   "src/shell/material-library-presentation.ts",
   {
@@ -276,6 +292,16 @@ const materialPresentationUrl = await compileModule(
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
     "./material-library-controller": materialControllerUrl,
+    "./material-library-template-source": materialTemplateSourceUrl,
+  },
+);
+const libraryEditIntentUrl = await compileModule(
+  "src/shell/library-edit-intent.ts",
+  {
+    react: reactUrl,
+    "./artifact-client": artifactClientUrl,
+    "./library-data": libraryDataUrl,
+    "./workspace-actions": workspaceActionsUrl,
   },
 );
 const materialEffectsUrl = await compileModule(
@@ -285,8 +311,18 @@ const materialEffectsUrl = await compileModule(
     "./artifact-client": artifactClientUrl,
     "./artifact-contract": contractUrl,
     "./library-data": libraryDataUrl,
+    "./library-edit-intent": libraryEditIntentUrl,
     "./material-library-controller": materialControllerUrl,
     "./material-library-presentation": materialPresentationUrl,
+    "./material-library-template-source": materialTemplateSourceUrl,
+  },
+);
+const materialTypeFilterUrl = await compileModule(
+  "src/shell/material-library-type-filter.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./artifact-contract": contractUrl,
+    "./material-library-controller": materialControllerUrl,
   },
 );
 const materialDownloadUrl = await compileModule(
@@ -316,6 +352,8 @@ const MaterialLibrary = (
       "./material-library-controller": materialControllerUrl,
       "./material-library-presentation": materialPresentationUrl,
       "./material-library-effects": materialEffectsUrl,
+      "./material-library-template-source": materialTemplateSourceUrl,
+      "./material-library-type-filter": materialTypeFilterUrl,
       "./material-library-download": materialDownloadUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
@@ -355,17 +393,6 @@ const databaseStubUrl = dataModule(`
     return { ok: false, error: "upload not used in this test" };
   }
 `);
-const libraryEditIntentUrl = await compileModule(
-  "src/shell/library-edit-intent.ts",
-  {
-    react: reactUrl,
-    "./artifact-client": artifactClientUrl,
-    "./library-data": libraryDataUrl,
-    "./workspace-actions": pathToFileURL(
-      resolve("src/shell/workspace-actions.ts"),
-    ).href,
-  },
-);
 const myLibraryModule = (
   await import(
     await compileModule("src/shell/MyLibrary.tsx", {
@@ -604,7 +631,8 @@ const TEST_SOURCE_FORMAT = {
 const EXPECTED_EDITOR_ROUTE = {
   single_file_image: ["image", "image"],
   composite_image: ["image", "image"],
-  vector_image: ["image", "image"],
+  // 矢量走图层工程适配器：svg 被位图适配器打开时拿不到锚点/配色/图形替换。
+  vector_image: ["design-canvas", "embed"],
   chart: ["chart-editor@1", "grid"],
   document: ["richdoc", "richdoc"],
   grid: ["grid", "grid"],
@@ -2121,7 +2149,15 @@ test("material cache keys isolate context, query, and taxonomy across panel reop
   cachedProjection.renditions.preview.expires_at = expiresAt;
   cachedProjection.renditions.source.expires_at = expiresAt;
   let fetches = 0;
-  globalThis.fetch = async () => {
+  let catalogFetches = 0;
+  globalThis.fetch = async (input) => {
+    // 面板挂载时另有一条匿名的官方模板目录请求（`/v1/template-materials`）。
+    // 这份用例数的是**素材库端点**有没有被重复打，两者分开计数，缓存断言才不会
+    // 被另一条链的请求量掩盖。
+    if (String(input).includes("/v1/template-materials")) {
+      catalogFetches += 1;
+      return jsonResponse({ items: [] });
+    }
     fetches += 1;
     return jsonResponse({
       contextId,
@@ -2146,6 +2182,7 @@ test("material cache keys isolate context, query, and taxonomy across panel reop
   } finally {
     await first.unmount();
   }
+  const catalogAfterFirstMount = catalogFetches;
 
   const baseInput = {
     level: "primary",
@@ -2187,6 +2224,8 @@ test("material cache keys isolate context, query, and taxonomy across panel reop
       ),
     );
     assert.equal(fetches, 1);
+    // 官方模板目录也有自己的 TTL 缓存：重开面板不得再打一次。
+    assert.equal(catalogFetches, catalogAfterFirstMount);
   } finally {
     await reopened.unmount();
   }
@@ -3050,8 +3089,14 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
 test("rendered More uses one active-release endpoint with Primary disabled", async () => {
   invalidateMaterialLibraryCache();
   const calls = [];
+  const catalogCalls = [];
   globalThis.fetch = async (input) => {
     const url = String(input);
+    // 匿名官方模板目录是独立的一条链，不算进「素材库端点打了几次」。
+    if (url.includes("/v1/template-materials")) {
+      catalogCalls.push(url);
+      return jsonResponse({ items: [] });
+    }
     calls.push(url);
     return jsonResponse({
       scope: "public",
@@ -3088,6 +3133,11 @@ test("rendered More uses one active-release endpoint with Primary disabled", asy
     await settle();
     assert.equal(calls.length, 1);
     assert.match(calls[0], /\/v1\/library\/editable-shelf\?perType=5/);
+    // 目录请求每个范围只打一次；「更多」层不带 appId（整站目录）。
+    assert.ok(catalogCalls.length <= 1);
+    for (const url of catalogCalls) {
+      assert.equal(new URL(url).searchParams.get("appId"), null);
+    }
     assert.ok(
       mounted.container.querySelector('[data-entry-title="Global website"]') ||
         mounted.container.querySelector('[data-entry-title="Global More"]'),

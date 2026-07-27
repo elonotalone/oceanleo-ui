@@ -14,7 +14,6 @@ import {
   LIBRARY_MODE_PREVIEW_VALUE,
   LIBRARY_MODE_QUERY_KEY,
   LIBRARY_TAB_QUERY_KEY,
-  LIBRARY_TAB_VALUE,
   catalogQueryAppId,
   historySessionHref,
   historySessionIdFromPath,
@@ -488,8 +487,18 @@ export function warnPreviewDeepLinkWithoutApp(
 }
 
 /**
- * 合同 §3.1：「预览&编辑」落点 =
- * `/workspace?tab=library&item=<artifactId>&mode=preview&app=<appId>`
+ * 官方模板素材的库预览落点栏位（接口 A）。
+ *
+ * 与 `LIBRARY_TAB_VALUE`（= `library`，`mine` 的别名）并存而不是取代它：本 helper 产出的
+ * 是**官方模板素材**的链接，那些素材属于平台、永远不在「我的库」里，落 `mine` 必然是
+ * 一个空面板；而用户自有 artifact 的预览链接仍旧写 `library`，语义与旧链接逐字一致。
+ * 归属分流的解析侧在 `library-edit-intent.ts` 的 `libraryPreviewSurfaceForTab`。
+ */
+export const LIBRARY_TAB_MATERIALS_VALUE = "materials";
+
+/**
+ * 接口 A：「预览&编辑」落点 =
+ * `/workspace?tab=materials&item=<artifactId>&mode=preview&app=<appId>`
  *
  * 入参是 **artifactId**（不是 `TemplateMaterial.id`）：库按 artifact 取数，而 template id
  * 只保证同 app 内唯一，拿它去库里定位会撞车。
@@ -512,7 +521,7 @@ export function workspaceTemplatePreviewHref(
     return contract.canonicalBasePath;
   }
   const query = new URLSearchParams();
-  query.set(LIBRARY_TAB_QUERY_KEY, LIBRARY_TAB_VALUE);
+  query.set(LIBRARY_TAB_QUERY_KEY, LIBRARY_TAB_MATERIALS_VALUE);
   query.set(LIBRARY_ITEM_QUERY_KEY, artifact);
   query.set(LIBRARY_MODE_QUERY_KEY, LIBRARY_MODE_PREVIEW_VALUE);
   query.set(CATALOG_APP_QUERY_KEY, id);

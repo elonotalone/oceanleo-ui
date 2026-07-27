@@ -3,14 +3,12 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
-  ARTIFACT_TYPES,
   artifactIsVisible,
   type ArtifactContextRef,
   type ArtifactType,
@@ -19,7 +17,6 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
-  MATERIAL_TAXONOMY_LABEL,
   artifactEntry,
   invalidateMaterialLibraryCache,
   libraryItemHasExactPrimaryContext,
@@ -33,21 +30,26 @@ import {
   type MaterialLibraryQueryInput,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
+import { templateDeepLinkAction } from "./material-library-template-source";
+import { MaterialTypeFilter } from "./material-library-type-filter";
 import {
   MATERIAL_LEVEL_LABEL,
   entriesFromRemoteResult,
-  isTrustedEditableMaterialEntry,
   materialFailureCopy,
   materialLevelEmptyDescription,
   materialLevelEmptyTitle,
   materialLevelSearchPlaceholder,
   materialLibraryHref,
+  materialShelfEntries,
+  materialShelfFailure,
   safeCompleteLibraryHref,
   type MaterialLibraryProps,
 } from "./material-library-presentation";
 import {
   useMaterialLibraryChangeEvents,
   useMaterialLibraryDeepLink,
+  useMaterialLibraryPreviewIntent,
+  useOfficialTemplateMaterials,
 } from "./material-library-effects";
 import { materialEntryDownloadAction } from "./material-library-download";
 import {
@@ -118,7 +120,6 @@ export function MaterialLibrary({
   onOpenItem,
 }: MaterialLibraryProps) {
   const tt = useUI();
-  const taxonomyId = useId();
   const workspaceSession = useOptionalWorkspaceSession();
   const runtimeAppId = appId || workspaceSession?.appId || "default";
   const primaryFetchEnabled = fetchPrimary ?? fetchCurated;
@@ -151,15 +152,6 @@ export function MaterialLibrary({
       onTypesChange?.(next);
     },
     [controlledTypes, onTypesChange],
-  );
-  const toggleType = useCallback(
-    (type: ArtifactType) => {
-      const next = selectedTypes.includes(type)
-        ? selectedTypes.filter((value) => value !== type)
-        : [...selectedTypes, type];
-      applyTypes(next);
-    },
-    [applyTypes, selectedTypes],
   );
   const goToLevel = useCallback(
     (next: MaterialLibraryLevel) => {
@@ -286,6 +278,15 @@ export function MaterialLibrary({
     setDeepLinkedEntry,
     setDeepLinkError,
     setDeepLinkStatus,
+  });
+
+  // 官方模板素材：面板以前只认带权限的 `/v1/library/*`，匿名进来就是空货架。
+  const templateShelf = useOfficialTemplateMaterials({
+    level,
+    siteKey: siteId,
+    appId: runtimeAppId,
+    itemId: action?.action.itemId || "",
+    types: selectedTypes,
   });
 
   useEffect(() => {
@@ -480,23 +481,20 @@ export function MaterialLibrary({
     [context, featuredEntries, localEntries, taxonomy],
   );
   const entries = useMemo(
-    () => {
-      const deepLinked =
-        !deepLinkError && deepLinkedEntry ? [deepLinkedEntry] : [];
-      const merged = level === "primary"
-        ? mergeMaterialEntries([
-            deepLinked,
-            remote,
-            exactLocalEntries,
-          ])
-        : mergeMaterialEntries([deepLinked, remote]);
-      return merged.filter(isTrustedEditableMaterialEntry);
-    },
+    () =>
+      materialShelfEntries({
+        level,
+        deepLinked: !deepLinkError && deepLinkedEntry ? [deepLinkedEntry] : [],
+        officialTemplates: templateShelf.entries,
+        remote,
+        exactLocal: exactLocalEntries,
+      }),
     [
       deepLinkError,
       deepLinkedEntry,
       exactLocalEntries,
       level,
+      templateShelf.entries,
       remote,
     ],
   );
@@ -515,6 +513,17 @@ export function MaterialLibrary({
     },
     [onOpenItem],
   );
+  // 接口 A 的只读落点。目录已经认领这条深链时不再重复：`templateDeepLinkAction`
+  // 已经把 `item=` 改写成目录条目 id，货架自己会开那一张卡，这里再按 artifact id
+  // 取一次只是多余请求。
+  useMaterialLibraryPreviewIntent({
+    action: templateShelf.deepLinkEntryId ? null : action,
+    entries,
+    onOpenItem: openPreparedItem,
+    setDeepLinkedEntry,
+    setDeepLinkError,
+    setDeepLinkStatus,
+  });
   useEffect(() => {
     if (!registerRuntimeSource) return;
     return registerWorkbenchMaterialSource(
@@ -529,10 +538,11 @@ export function MaterialLibrary({
   const showCardDownload = cardDownload ?? !primaryMaterialAction;
   const contextMissing =
     level === "primary" && (!context.contextId || !context.siteKey);
-  const effectiveError = deepLinkError || error;
-  const effectiveErrorStatus = deepLinkError
-    ? deepLinkStatus
-    : errorStatus;
+  const { error: effectiveError, status: effectiveErrorStatus } =
+    materialShelfFailure(
+      { deepLinkError, deepLinkStatus, error, errorStatus },
+      templateShelf,
+    );
   const failureCopy = materialFailureCopy(
     effectiveErrorStatus,
     effectiveError,
@@ -616,68 +626,6 @@ export function MaterialLibrary({
       </button>
     );
 
-  const typeChips = (
-    <div
-      role="group"
-      aria-label={tt("货架")}
-      className="flex flex-wrap items-center gap-1"
-    >
-      <button
-        type="button"
-        aria-pressed={selectedTypes.length === 0}
-        onClick={() => applyTypes([])}
-        className={`min-h-8 rounded-full border px-2.5 text-[11px] ${
-          selectedTypes.length === 0
-            ? "border-transparent bg-[var(--fg,#292524)] text-white"
-            : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)]"
-        }`}
-      >
-        {tt("全部类型")}
-      </button>
-      {ARTIFACT_TYPES.map((type) => (
-        <button
-          key={type}
-          type="button"
-          aria-pressed={selectedTypes.includes(type)}
-          data-material-type-chip={type}
-          onClick={() => toggleType(type)}
-          className={`min-h-8 rounded-full border px-2.5 text-[11px] ${
-            selectedTypes.includes(type)
-              ? "border-transparent bg-[var(--fg,#292524)] text-white"
-              : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-          }`}
-        >
-          {tt(MATERIAL_TAXONOMY_LABEL[type])}
-        </button>
-      ))}
-    </div>
-  );
-
-  const typeSelect = (
-    <>
-      <label className="sr-only" htmlFor={taxonomyId}>
-        {tt("货架")}
-      </label>
-      <select
-        id={taxonomyId}
-        value={taxonomy}
-        onChange={(event) => {
-          const next = event.currentTarget.value as ArtifactType | "";
-          applyTypes(next ? [next] : []);
-        }}
-        aria-label={tt("货架")}
-        className="min-h-8 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg-2,#57534e)]"
-      >
-        <option value="">{tt("全部类型")}</option>
-        {ARTIFACT_TYPES.map((type) => (
-          <option key={type} value={type}>
-            {tt(MATERIAL_TAXONOMY_LABEL[type])}
-          </option>
-        ))}
-      </select>
-    </>
-  );
-
   const toolbar = (
     <div className="flex flex-wrap items-center gap-1.5">
       <span
@@ -687,7 +635,11 @@ export function MaterialLibrary({
         {tt(MATERIAL_LEVEL_LABEL[level])}
       </span>
       {sections.length > 1 && (levels ? sectionTabs : legacyLevelControl)}
-      {multiSelectTypes ? typeChips : typeSelect}
+      <MaterialTypeFilter
+        multiSelect={multiSelectTypes}
+        selectedTypes={selectedTypes}
+        onApplyTypes={applyTypes}
+      />
       {nextCursor && level !== "primary" && (
         <button
           type="button"
@@ -748,7 +700,7 @@ export function MaterialLibrary({
     <WorkspaceLibrary
       entries={entries}
       accent={accent}
-      action={action}
+      action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
       taskId={taskId}
       siteId={siteId}
       appId={runtimeAppId}

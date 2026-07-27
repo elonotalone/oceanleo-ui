@@ -490,14 +490,33 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.doesNotMatch(materialView, /prepareArtifactForAction/);
   assert.match(materialView, /loadMoreAbortRef/);
   assert.match(materialView, /epoch !== requestEpochRef\.current/);
-  assert.match(materialView, /isTrustedEditableMaterialEntry/);
   assert.doesNotMatch(materialView, /siteFeaturedEntries/);
+  // 货架准入仍然过 `isTrustedEditableMaterialEntry`，只是判定与合并挪进了
+  // `material-library-presentation.ts`（view 贴着 800 行硬顶），view 经
+  // `materialShelfEntries` 消费它。两头都断言，搬家不等于放行。
+  const materialPresentation = readFileSync(
+    new URL("../src/shell/material-library-presentation.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(materialView, /materialShelfEntries\(/);
+  assert.match(materialPresentation, /isTrustedEditableMaterialEntry/);
+  assert.match(
+    materialPresentation,
+    /isTrustedEditableMaterialEntry\(entry\) \|\|/,
+  );
   // Material shelf type filter is the taxonomy 「货架」dropdown on both
   // primary (当前 App) and more (更多) pages — never overlapping LibraryChips.
+  // 筛选器本身拆成了 `material-library-type-filter.tsx`（同一份 DOM 契约），
+  // view 必须仍然把它渲染出来。
+  const materialTypeFilter = readFileSync(
+    new URL("../src/shell/material-library-type-filter.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(materialView, /hideCategoryChips/);
-  assert.match(materialView, /tt\("货架"\)/);
-  assert.match(materialView, /tt\("全部类型"\)/);
-  assert.match(materialView, /ARTIFACT_TYPES\.map/);
+  assert.match(materialView, /<MaterialTypeFilter/);
+  assert.match(materialTypeFilter, /tt\("货架"\)/);
+  assert.match(materialTypeFilter, /tt\("全部类型"\)/);
+  assert.match(materialTypeFilter, /ARTIFACT_TYPES\.map/);
   assert.doesNotMatch(materialView, /primaryCategoryIds/);
   assert.match(workspace, /hideCategoryChips/);
   assert.match(workspace, /!hideCategoryChips && categories\.length > 1/);

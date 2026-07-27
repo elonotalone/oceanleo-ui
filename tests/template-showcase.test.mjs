@@ -3,11 +3,17 @@
 //   ① 左上主预览 + 左下缩略图条（≥2 份才出，0/1 份不出）+ 右侧标题/说明/标签的分栏版式；
 //   ② 右侧按钮**恰好三个**「预览&编辑」「生成类似」「更多」，顺序定死，且**没有下载**；
 //   ③ 两条深链 helper 的输出逐字符正确：
-//        `workspaceTemplatePreviewHref` → /workspace?tab=library&item=…&mode=preview&app=…
+//        `workspaceTemplatePreviewHref` → /workspace?tab=materials&item=…&mode=preview&app=…
+//        （`tab` 的取值归接口 A 定义，见 `W2-interface-A.md`：官方模板素材固定
+//         `materials`，`mine` 留给用户自有 artifact；`library` 作为历史别名归一化到 mine）
 //        `exploreAppHref`               → /explore?app=…
 //   ④ **切换模板时右侧信息与按钮目标同步跟随选中项**（本组件最易回归处，jsdom 真点击）；
 //   ⑤ 无模板 / 无代表 prompt 的 app 上按钮如何降级（「更多」几乎恒在，是唯一去处）；
 //   ⑥ 自带遮罩 / Esc / 打开即聚焦必须保留，且不得改用 `../ui` 的 portal <Modal>；
+//   ⑥b **条件 portal**（问题 1）：SSR / 首帧内联渲染（静态断言拿得到内容），mount 后
+//      `createPortal(document.body)` 逃出调用方的 transform 祖先，`fixed inset-0` 才真满屏；
+//   ⑥c **主预览不裁切**（问题 3）：硬比例 16/10 + object-cover 已废除，容器按素材真实
+//      宽高比（元数据 → 图片自然尺寸）自适应，图片 object-contain；缩略图条仍 object-cover；
 //   ⑦ 本文件的每条中文文案在 17 语词典里都有译文；已废除的两个旧按钮名 17 语全部清干净；
 //   ⑧ 下载四档错误文案的词条**仍在** 17 语词典里（大卡片删了下载按钮，但 W5 的探索页
 //      素材卡要复用同一套下载体验——删词条会让那边 16 个 locale 齐刷刷露中文）。
@@ -28,6 +34,7 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 function dataModule(source) {
@@ -94,7 +101,9 @@ async function compileModule(relativePath, overrides = {}) {
 
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
-const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl };
+// `react-dom` 接真包：条件 portal 必须由**同一个** react-dom 实例创建，替身做不到
+// 「portal 出去的节点仍属于同一棵 React 树」这件事。
+const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl, "react-dom": reactDomUrl };
 
 // 两条深链接**真**控制器而不是替身：本测试断言的是用户最终点到的那条 URL，
 // 替身只会证明「组件调了个函数」。
@@ -202,29 +211,33 @@ async function withDom(run) {
     act(async () =>
       root.render(React.createElement(TemplateShowcase, { ...BASE, ...props })),
     );
+  // mount 之后浮层 portal 到 `document.body`，**不在** root 容器里了（问题 1 的修法），
+  // 所以查询一律走整份 document；容器本身另有专门的用例断言它已经空了。
+  const find = (selector) => window.document.querySelector(selector);
+  const findAll = (selector) => [...window.document.querySelectorAll(selector)];
   const click = (selector) => {
-    const node = container.querySelector(selector);
+    const node = find(selector);
     assert.ok(node, `点不到 ${selector}`);
     return act(async () =>
       node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
     );
   };
   const read = () => ({
-    title: container.querySelector("[data-template-showcase-title]")?.textContent,
-    summary: container.querySelector("[data-template-showcase-summary]")?.textContent,
-    tags: [...container.querySelectorAll("[data-template-showcase-tags] span")].map((n) => n.textContent),
-    preview: container.querySelector("[data-template-showcase-preview] img")?.getAttribute("src"),
-    actions: [...container.querySelectorAll("[data-showcase-action]")].map((n) => ({
+    title: find("[data-template-showcase-title]")?.textContent,
+    summary: find("[data-template-showcase-summary]")?.textContent,
+    tags: findAll("[data-template-showcase-tags] span").map((n) => n.textContent),
+    preview: find("[data-template-showcase-preview] img")?.getAttribute("src"),
+    actions: findAll("[data-showcase-action]").map((n) => ({
       name: n.getAttribute("data-showcase-action"),
       text: n.textContent,
       href: n.getAttribute("href"),
       tag: n.tagName,
     })),
-    active: container.querySelector('[data-template-thumb][data-active="1"]')?.getAttribute("data-template-id"),
+    active: find('[data-template-thumb][data-active="1"]')?.getAttribute("data-template-id"),
   });
 
   try {
-    await run({ window, container, render, click, read });
+    await run({ window, container, render, click, read, find, findAll });
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -241,7 +254,7 @@ async function withDom(run) {
 test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   assert.equal(
     workspaceTemplatePreviewHref("poster", "art-a"),
-    "/workspace?tab=library&item=art-a&mode=preview&app=poster",
+    "/workspace?tab=materials&item=art-a&mode=preview&app=poster",
   );
   // 参数顺序也是契约的一部分：tab → item → mode → app。
   assert.deepEqual(
@@ -255,7 +268,7 @@ test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   // 需要转义的 id 走 URL 编码，不裸拼。
   assert.equal(
     workspaceTemplatePreviewHref("图片 生成", "art/b"),
-    "/workspace?tab=library&item=art%2Fb&mode=preview&app=%E5%9B%BE%E7%89%87+%E7%94%9F%E6%88%90",
+    "/workspace?tab=materials&item=art%2Fb&mode=preview&app=%E5%9B%BE%E7%89%87+%E7%94%9F%E6%88%90",
   );
 
   // 缺 artifact 就拼不出只读落点：退回该 app 的 canonical 地址，绝不产出半截深链。
@@ -274,7 +287,7 @@ test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   // 站点可自定义 canonicalBasePath。
   assert.equal(
     workspaceTemplatePreviewHref("poster", "art-a", { canonicalBasePath: "/studio" }),
-    "/studio?tab=library&item=art-a&mode=preview&app=poster",
+    "/studio?tab=materials&item=art-a&mode=preview&app=poster",
   );
 });
 
@@ -355,7 +368,7 @@ test("方向性：规范化重定向不得吃掉 mode=preview", () => {
 
   // 规范化到 `/workspace/<appId>`，但**预览意图必须活下来**——被删掉的话预览页会退化
   // 成普通库视图，用户点「预览&编辑」等于进了个半成品。
-  assert.equal(redirect, "/workspace/animal-model?tab=library&item=art-1&mode=preview");
+  assert.equal(redirect, "/workspace/animal-model?tab=materials&item=art-1&mode=preview");
   // `app=` 进了路径段，query 里那份重复项收走。
   assert.doesNotMatch(redirect, /[?&]app=/);
 
@@ -491,7 +504,7 @@ test("三按钮目标：预览&编辑指向选中模板的只读预览页，更�
   // 预览&编辑 = 库里的只读预览（**不是**编辑器深链）。
   assert.match(
     html,
-    /data-showcase-action="preview"[^>]*href="\/workspace\?tab=library&amp;item=art-a&amp;mode=preview&amp;app=poster"/,
+    /data-showcase-action="preview"[^>]*href="\/workspace\?tab=materials&amp;item=art-a&amp;mode=preview&amp;app=poster"/,
   );
   // 生成类似仍是 app 级 `?fill=preset`，行为不变。
   assert.match(html, /data-showcase-action="similar"[^>]*href="\/workspace\/poster\?fill=preset"/);
@@ -520,7 +533,7 @@ test("显式传入的解析器覆盖默认落点，且收到的是选中项的 a
   assert.match(html, /data-showcase-action="preview"[^>]*href="\/custom\/poster\/art-b"/);
   assert.deepEqual(seen, [["poster", "art-b"]]);
   assert.match(html, /data-showcase-action="more"[^>]*href="\/ja\/explore\?app=poster"/);
-  assert.doesNotMatch(html, /tab=library/);
+  assert.doesNotMatch(html, /tab=materials/);
 });
 
 test("只有 1 份模板时不渲染切换条，右侧信息与三个按钮仍在", () => {
@@ -541,9 +554,9 @@ test("只有 1 份模板时不渲染切换条，右侧信息与三个按钮仍�
 test("无模板 app：预览&编辑退到调用方兜底，没兜底就只剩生成类似 + 更多", () => {
   const cover = "cover-app/image-poster";
 
-  const withFallback = markup({ templates: [], imageKey: cover, editHref: "/workspace?tab=library&mode=preview&app=poster" });
+  const withFallback = markup({ templates: [], imageKey: cover, editHref: "/workspace?tab=materials&mode=preview&app=poster" });
   assert.deepEqual(actionsOf(withFallback), ["preview", "similar", "more"]);
-  assert.match(withFallback, /data-showcase-action="preview"[^>]*href="\/workspace\?tab=library&amp;mode=preview&amp;app=poster"/);
+  assert.match(withFallback, /data-showcase-action="preview"[^>]*href="\/workspace\?tab=materials&amp;mode=preview&amp;app=poster"/);
   // 无模板 → 主预览回退 app 封面，右侧标题回退 app 名，说明回退代表 prompt 全文。
   assert.match(withFallback, /cover-app\/image-poster\.webp"/);
   assert.match(withFallback, /data-template-showcase-title[^>]*>海报生成</);
@@ -573,7 +586,7 @@ test("选中模板缺 artifactId：预览&编辑退到兜底，不产出半截�
   const html = markup({ templates: [broken] });
   // 没有兜底 → 整颗不渲染，只剩生成类似 + 更多。
   assert.deepEqual(actionsOf(html), ["similar", "more"]);
-  assert.doesNotMatch(html, /tab=library/);
+  assert.doesNotMatch(html, /tab=materials/);
 
   const withFallback = markup({ templates: [broken], editHref: "/workspace/poster" });
   assert.match(withFallback, /data-showcase-action="preview"[^>]*href="\/workspace\/poster"/);
@@ -613,15 +626,161 @@ test("保留自带遮罩 / Esc / 焦点管理，不得改用 ../ui 的 portal <M
   // 注释里会解释「为什么不用 Modal」，所以先剥掉注释再查真实代码。
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(code, /from "\.\.\/ui"/);
-  assert.doesNotMatch(code, /createPortal/);
   assert.doesNotMatch(code, /\bModal\b/);
   assert.match(source, /document\.addEventListener\("keydown"/);
   assert.match(source, /closeRef\.current\?\.focus\(\)/);
   // 遮罩点击关闭 + 对话框内点击不冒泡。
   assert.match(source, /className="fixed inset-0 z-50[^"]*"\s*\n?\s*onClick=\{onClose\}/);
   assert.match(source, /onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
-  // 首帧就能被静态渲染出内容（portal 化的话这里会是空串）。
+  // 首帧就能被静态渲染出内容（Modal 那种 `if (!mounted) return null` 会让这里是空串）。
   assert.notEqual(markup({ templates: [TPL_A] }).trim(), "");
+});
+
+// ————————————————————————————————————————————————————————————————
+// 2b. 条件 portal（问题 1：门户浮层不满屏）
+//
+// 病根不在本组件的 class 上：`fixed inset-0 z-50` 是对的，但门户首页
+// （`oceanleo/app/_components/home-content.tsx`）把卡片区包在 `.v-fade-up` 里，那条
+// animation 是 `both` 填充、终帧 `transform: translateY(0)` —— 非 none 的 transform 会
+// 永久造出新的 containing block，`fixed` 后代于是只铺满那一层。修法是 mount 后 portal
+// 到 `document.body`，同时**保住** SSR / 首帧的内联渲染（本文件其余用例全靠静态渲染）。
+// ————————————————————————————————————————————————————————————————
+
+test("SSR / 静态渲染：仍内联渲染完整浮层，不是 portal 后的空首帧", () => {
+  const html = markup({ templates: [TPL_A, TPL_B] });
+  // 静态渲染时 portal 还没接上（mounted=false），标记为 0。
+  assert.match(html, /data-showcase-portal="0"/);
+  // 浮层的实质内容在首帧就能被断言到：遮罩、dialog、主预览、三颗按钮。
+  assert.match(html, /class="fixed inset-0 z-50/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /data-template-showcase-preview/);
+  assert.deepEqual(actionsOf(html), ["preview", "similar", "more"]);
+  // 兼容壳走同一条 SSR 路径。
+  assert.match(
+    renderToStaticMarkup(
+      React.createElement(ImageLightbox, { title: "海报生成", appId: "poster", onClose() {} }),
+    ),
+    /data-showcase-portal="0"/,
+  );
+});
+
+test("mount 之后浮层 portal 到 document.body，逃出调用方的 transform 祖先", async () => {
+  await withDom(async ({ window, container, render, find }) => {
+    // 复刻门户首页的病灶：把 root 容器包进一个带 transform 的祖先里。
+    const trapped = window.document.createElement("div");
+    trapped.setAttribute("data-transform-ancestor", "1");
+    trapped.style.transform = "translateY(0)";
+    container.before(trapped);
+    trapped.append(container);
+
+    await render({ templates: [TPL_A, TPL_B] });
+
+    const overlay = find("[data-template-showcase]");
+    assert.ok(overlay, "浮层没渲染出来");
+    // ① 已 portal：标记翻成 1，且节点的父级就是 body。
+    assert.equal(overlay.getAttribute("data-showcase-portal"), "1");
+    assert.equal(overlay.parentElement, window.document.body);
+    // ② 关键判据：浮层**不在**那个 transform 祖先里，也不在 React root 容器里。
+    assert.equal(trapped.querySelector("[data-template-showcase]"), null);
+    assert.equal(container.querySelector("[data-template-showcase]"), null);
+    // ③ 满屏的那套定位 class 一个都不许丢（portal 只换挂点，不换版式）。
+    assert.match(overlay.getAttribute("class"), /fixed inset-0 z-50/);
+    // ④ portal 出去的仍是同一棵 React 树：右侧信息与按钮照常渲染。
+    assert.equal(find("[data-template-showcase-title]")?.textContent, "夏季促销海报");
+    assert.equal(window.document.querySelectorAll("[data-showcase-action]").length, 3);
+    // ⑤ 只有一份浮层（内联那份必须被替换掉，不能portal + 内联各留一份）。
+    assert.equal(window.document.querySelectorAll("[data-template-showcase]").length, 1);
+  });
+});
+
+test("卸载后 portal 出去的浮层不留残骸", async () => {
+  await withDom(async ({ window, render }) => {
+    await render({ templates: [TPL_A] });
+    assert.ok(window.document.querySelector("[data-template-showcase]"));
+    // withDom 的 finally 会 unmount，这里先手动确认 body 上那份是受 React 管的。
+    assert.equal(
+      window.document.body.querySelector("[data-template-showcase]")?.getAttribute("data-showcase-portal"),
+      "1",
+    );
+  });
+});
+
+// ————————————————————————————————————————————————————————————————
+// 2c. 主预览不再裁切（问题 3）
+//
+// 旧实现是容器硬写 `aspectRatio: "16 / 10"` + 图片 `object-cover`：实测 84% 的素材被
+// 裁掉一圈，document / grid 最惨 —— 而这两类素材的全部价值就是让用户看清版面结构。
+// 缩略图条那份 `object-cover` 保留：小方块里等比裁切是合理的。
+// ————————————————————————————————————————————————————————————————
+
+test("主预览：不再硬写 16/10，图片走 object-contain（缩略图条仍是 object-cover）", async () => {
+  const html = markup({ templates: [TPL_A, TPL_B] });
+  const preview = html.match(/data-template-showcase-preview[\s\S]*?<\/div>/)[0];
+
+  assert.doesNotMatch(preview, /aspect-ratio:\s*16\s*\/\s*10/);
+  assert.doesNotMatch(preview, /object-cover/, "主预览还在裁切");
+  assert.match(preview, /object-contain/);
+  // 缩略图条那份裁切是刻意保留的。
+  const thumbs = html.slice(html.indexOf("data-template-showcase-thumbs"));
+  assert.match(thumbs, /object-cover/);
+
+  // 源码里 16/10 这条硬比例彻底消失（注释里解释历史除外）。
+  const source = await readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8");
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /"16 \/ 10"[\s\S]{0,80}object-cover/);
+  // 硬比例只剩「没有图、纯 emoji 兜底」那一支可以用（没有内容可裁）。
+  assert.equal((code.match(/16 \/ 10/g) ?? []).length, 1);
+});
+
+test("主预览按素材真实宽高比自适应：元数据里的 width/height 直接生效", () => {
+  // document / grid 类的典型形状：A4 竖版（794×1123）与宽表格（1600×900）。
+  const portrait = { ...TPL_A, width: 794, height: 1123 };
+  const html = markup({ templates: [portrait] });
+  assert.match(html, /data-preview-fit="intrinsic"/);
+  const ratio = 794 / 1123;
+  assert.match(html, new RegExp(`aspect-ratio:\\s*${ratio.toString().slice(0, 8)}`));
+  // 竖版素材的容器比例必须**小于 1**（比 16/10 高得多），否则又是横向硬比例在裁。
+  const rendered = Number(html.match(/aspect-ratio:\s*([0-9.]+)/)[1]);
+  assert.ok(rendered < 1, `竖版素材渲染成了 ${rendered}（又被摆成横版）`);
+
+  const landscape = markup({ templates: [{ ...TPL_A, width: 1600, height: 900 }] });
+  assert.equal(Number(landscape.match(/aspect-ratio:\s*([0-9.]+)/)[1]).toFixed(4), (1600 / 900).toFixed(4));
+
+  // 脏元数据（0 / 负数 / 非数字）不许算出 NaN 比例：退回「不设比例 + object-contain」。
+  for (const bad of [{ width: 0, height: 100 }, { width: -3, height: 4 }, { width: "宽", height: 10 }]) {
+    const dirty = markup({ templates: [{ ...TPL_A, ...bad }] });
+    assert.match(dirty, /data-preview-fit="contain"/);
+    assert.doesNotMatch(dirty, /aspect-ratio:\s*(NaN|-)/);
+  }
+});
+
+test("主预览：没有元数据时先按 object-contain 渲染，图片 onLoad 报出比例后再定高", async () => {
+  // 没有 width/height → 首帧不设 aspect-ratio（宁可让图自己撑高，也不硬摆一个比例）。
+  assert.match(markup({ templates: [TPL_A] }), /data-preview-fit="contain"/);
+
+  await withDom(async ({ window, render, click, find }) => {
+    await render({ templates: [TPL_A] });
+    const img = find("[data-template-showcase-preview] img");
+    assert.ok(img);
+    // jsdom 不真下载图片，直接伪造 naturalWidth/naturalHeight 再触发 load。
+    Object.defineProperty(img, "naturalWidth", { configurable: true, value: 900 });
+    Object.defineProperty(img, "naturalHeight", { configurable: true, value: 1600 });
+    await act(async () => img.dispatchEvent(new window.Event("load")));
+
+    const box = find("[data-template-showcase-preview]");
+    assert.equal(box.getAttribute("data-preview-fit"), "intrinsic");
+    assert.ok(
+      Math.abs(Number(box.style.aspectRatio) - 900 / 1600) < 1e-6,
+      `aspect-ratio 应为 900/1600，实际 ${box.style.aspectRatio}`,
+    );
+    // 切到另一份素材（真点缩略图）：上一份的自然比例必须作废，不能拿旧比例摆新图。
+    await render({ templates: [TPL_A, TPL_B] });
+    assert.equal(find("[data-template-showcase-preview]").getAttribute("data-preview-fit"), "intrinsic");
+    await click('[data-template-thumb][data-template-id="poster-b"]');
+    const next = find("[data-template-showcase-preview]");
+    assert.match(next.querySelector("img").getAttribute("src"), /image-poster-2\.webp$/);
+    assert.equal(next.getAttribute("data-preview-fit"), "contain");
+  });
 });
 
 test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟随选中项", async () => {
@@ -647,7 +806,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     // 浏览器里读到的是解码后的纯文本：`&` 就是 `&`，没有 `&amp;` 漏进正文。
     assert.deepEqual(first.actions.map((a) => a.text), ["预览&编辑", "生成类似", "更多"]);
     assert.deepEqual(first.actions.map((a) => a.tag), ["A", "A", "A"]);
-    assert.equal(first.actions[0].href, "/workspace?tab=library&item=art-a&mode=preview&app=poster");
+    assert.equal(first.actions[0].href, "/workspace?tab=materials&item=art-a&mode=preview&app=poster");
     assert.equal(first.actions[1].href, "/workspace/poster?fill=preset");
     assert.equal(first.actions[2].href, "/explore?app=poster");
 
@@ -663,7 +822,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     assert.deepEqual(second.tags, ["新品", "长图"]);
     assert.match(second.preview, /image-poster-2\.webp$/);
     // 预览&编辑改指 B 的 artifact；生成类似与更多是 app 级，保持不变。
-    assert.equal(second.actions[0].href, "/workspace?tab=library&item=art-b&mode=preview&app=poster");
+    assert.equal(second.actions[0].href, "/workspace?tab=materials&item=art-b&mode=preview&app=poster");
     assert.equal(second.actions[1].href, "/workspace/poster?fill=preset");
     assert.equal(second.actions[2].href, "/explore?app=poster");
 
@@ -672,7 +831,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     const back = read();
     assert.equal(back.active, "poster-a");
     assert.equal(back.title, "夏季促销海报");
-    assert.equal(back.actions[0].href, "/workspace?tab=library&item=art-a&mode=preview&app=poster");
+    assert.equal(back.actions[0].href, "/workspace?tab=materials&item=art-a&mode=preview&app=poster");
 
     // Esc 关闭（自带键盘处理，不依赖 Modal）。
     await act(async () =>

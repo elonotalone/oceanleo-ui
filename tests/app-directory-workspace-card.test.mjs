@@ -31,6 +31,9 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+// 大卡片（`ImageLightbox.tsx`）走条件 portal，所以它 import 了 `react-dom`。这里必须接
+// **真**包：portal 出去的节点得和 `react-dom/client` 建的 root 属于同一个实例，替身给不了。
+const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 function dataModule(source) {
@@ -90,7 +93,7 @@ async function compileModule(relativePath, overrides = {}) {
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
 // `app-capability-image` 与 `brand-color` **一律接真模块**：本文件要断言的正是「渲染出来
 // 的 src 是绝对 URL 而不是原样 key」，换替身只会证明「组件调了个函数」。
-const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl };
+const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl, "react-dom": reactDomUrl };
 
 const appDirectoryUrl = await compileModule("src/shell/AppDirectory.tsx", OVERRIDES);
 const cardShellUrl = await compileModule("src/shell/app-card-shell.tsx", OVERRIDES);
@@ -468,13 +471,15 @@ test("点卡片主体 = 直接进该 app 操作台，不弹大卡片", async () 
     await click(cards[0].querySelector("[data-app-card-main]"));
     assert.deepEqual(opened, ["poster"]);
     // 且**没有**打开大卡片：工作台这条链上根本不存在 TemplateShowcase 浮层。
-    assert.equal(container.querySelector("[data-template-showcase]"), null);
-    assert.equal(container.querySelector("[data-template-thumb]"), null);
+    // 查整份 document 而不是 container：大卡片 mount 后会 portal 到 `document.body`
+    // （逃出调用方的 transform 祖先），拿容器查等于「浮层真开了也照样通过」的假绿。
+    assert.equal(window.document.querySelector("[data-template-showcase]"), null);
+    assert.equal(window.document.querySelector("[data-template-thumb]"), null);
 
     // ② hover 主按钮「打开」= 同一个落点（不是另开一条路）。
     await click(cards[1].querySelector("[data-app-card-primary]"));
     assert.deepEqual(opened, ["poster", "ambient"]);
-    assert.equal(container.querySelector("[data-template-showcase]"), null);
+    assert.equal(window.document.querySelector("[data-template-showcase]"), null);
 
     // ③ 「加入工作台」是卡上的独立动作，**不得**顺带触发进入操作台。
     const addBtn = [...cards[0].querySelectorAll("button")].find((b) =>

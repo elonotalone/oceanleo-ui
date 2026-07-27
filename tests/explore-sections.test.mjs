@@ -6,10 +6,17 @@
 // 导入，所以可以直接 `node --test tests/explore-sections.test.mjs`。
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -35,6 +42,29 @@ function resolveRelative(fromPath, specifier) {
 
 const compiledModules = new Map();
 const inFlight = new Set();
+
+// 编好的模块落成**真文件**，用 `file://` 引用，而不是把依赖的 data: URL 内联进
+// 导入者的源码里。
+//
+// 内联那种写法在菱形依赖上是指数级的：素材库这一族里 view / effects / presentation
+// 各自都拉 controller 与 template-source，每多一层 base64 再放大 4/3，实测
+// `ExplorePage` 一个模块的 URL 就长到 **197 MB**（controller 4.5 MB → presentation
+// 17 MB → effects 41 MB → view 103 MB），本文件因此被 cgroup OOM killer 杀在
+// anon-rss 5.7 GB。落成文件后每个依赖只是一段短路径，体积不再叠加，node 也能按路径
+// 给模块身份（data: URL 没有路径、不去重）。
+const compiledDir = mkdtempSync(join(tmpdir(), "oceanleo-explore-sections-"));
+process.on("exit", () => {
+  rmSync(compiledDir, { recursive: true, force: true });
+});
+let compiledSeq = 0;
+
+function fileModule(relativePath, source) {
+  compiledSeq += 1;
+  const name = `${String(compiledSeq).padStart(3, "0")}-${basename(relativePath).replace(/\.tsx?$/, "")}.mjs`;
+  const file = join(compiledDir, name);
+  writeFileSync(file, source);
+  return pathToFileURL(file).href;
+}
 
 async function compileModule(relativePath, overrides = {}) {
   const sourcePath = resolve(relativePath);
@@ -73,7 +103,7 @@ async function compileModule(relativePath, overrides = {}) {
   }
 
   inFlight.delete(sourcePath);
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
+  const url = fileModule(relativePath, output);
   compiledModules.set(sourcePath, url);
   return url;
 }
@@ -97,6 +127,9 @@ const OVERRIDES = {
     }
     export async function getArtifactDownload(){ return { ok: true, data: {} }; }
     export async function getArtifactItem(){ return { ok: false, status: 404 }; }
+    // 素材库的深链只读落点 useLibraryEditIntent 会按 artifact id 取一次；
+    // 探索页不带深链，所以这里给一个惰性的 404 桩，和上面那条保持一致。
+    export async function getCurrentArtifactItem(){ return { ok: false, status: 404 }; }
     export async function listPrimaryArtifacts(){ return { ok: true, data: { items: [], nextCursor: null } }; }
     export async function listEditableShelfArtifacts(){ return { ok: true, data: { items: [], nextCursor: null } }; }
     export async function searchArtifactLibrary(){ return { ok: true, data: { items: [], nextCursor: null } }; }

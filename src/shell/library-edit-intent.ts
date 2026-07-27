@@ -46,14 +46,49 @@ export interface LibraryEditIntentInput {
   onFailure: (failure: LibraryEditIntentFailure) => void;
 }
 
+/**
+ * 库只读预览的**落点栏位**（接口 A）。
+ *
+ * 官方模板素材属于平台，不在「我的库」里；用户自有 artifact 才在。两者是两条不同的
+ * 归属，因此也是两个不同的落点——不是同一个常量的两种写法。
+ */
+export type LibraryPreviewSurface = "materials" | "mine";
+
 /** 合同 §3.1：库只读预览的意图形状，W3 生成链接、W5 复用。 */
 export interface LibraryPreviewIntent {
   artifactId: string;
   mode: "preview";
+  /**
+   * 落点栏位；**缺省即 `mine`**。
+   *
+   * 沿用 `normalizeWorkspaceAction` 对 `intent` 的同一约定：这个字段出现之前造出来的
+   * 意图必须逐字保持原样，所以「用户自有 artifact 落我的库」这条既有行为不需要任何
+   * 调用点配合就仍然成立。
+   */
+  surface?: LibraryPreviewSurface;
 }
 
 /** `workspaceTemplatePreviewHref` 用的 query 值（合同 §3.1）。 */
 export const LIBRARY_PREVIEW_QUERY_MODE = "preview";
+
+/** 缺省落点：没有显式指定归属时按用户自有 artifact 处理。 */
+const DEFAULT_LIBRARY_PREVIEW_SURFACE: LibraryPreviewSurface = "mine";
+
+/**
+ * `?tab=` 的值 → 落点栏位；不是库预览的 tab 返回 null。
+ *
+ * 归一化复用 `workspaceSlotForLegacyId`，所以两族历史别名都认：
+ * `materials` / `material` / `inspiration` / `style` → 素材库；
+ * `library` / `mine` / `my_library` / `files` / `works` / `favorites` → 我的库。
+ * 其余（`browser` / `template` / 未知值）一律不是库预览落点。
+ */
+export function libraryPreviewSurfaceForTab(
+  tab: string,
+): LibraryPreviewSurface | null {
+  if (!String(tab || "").trim()) return null;
+  const slot = workspaceSlotForLegacyId(tab);
+  return slot === "materials" || slot === "mine" ? slot : null;
+}
 
 /** 这条 envelope 要求直接编辑的 artifact id；空串 = 不是编辑意图。 */
 export function libraryEditIntentArtifactId(
@@ -81,11 +116,11 @@ export function libraryPreviewIntentArtifactId(
 }
 
 /**
- * 解析「预览&编辑」深链：`?tab=library&item=<artifactId>&mode=preview&app=<appId>`
- * （形状由合同 §3.1 锁死，W3 的 `workspaceTemplatePreviewHref` 产出）。
+ * 解析「预览&编辑」深链：`?tab=materials&item=<artifactId>&mode=preview&app=<appId>`
+ * （形状由接口 A 锁死，`workspaceTemplatePreviewHref` 产出）。
  *
- * `tab` 走 `workspaceSlotForLegacyId`，所以 `library` / `mine` / `my_library` 这些
- * 历史别名都认；其余 slot 一律不是库预览，返回 null。
+ * `tab` 决定的是**落点归属**，不只是「是不是库链接」：官方模板素材写 `materials`，
+ * 用户自有 artifact 写 `library`（`mine` 的别名）。历史链接一律是后者，语义原样不变。
  */
 export function libraryPreviewIntentFromSearch(
   search: string | URLSearchParams,
@@ -100,11 +135,14 @@ export function libraryPreviewIntentFromSearch(
   ) {
     return null;
   }
-  const tab = (params.get("tab") || "").trim();
-  if (!tab || workspaceSlotForLegacyId(tab) !== "mine") return null;
+  const surface = libraryPreviewSurfaceForTab(params.get("tab") || "");
+  if (!surface) return null;
   const artifactId = (params.get("item") || "").trim();
   if (!artifactId) return null;
-  return { artifactId, mode: "preview" };
+  // 缺省落点不写进意图，这样 `?tab=library` 解析出来的对象与本字段存在之前逐字相同。
+  return surface === DEFAULT_LIBRARY_PREVIEW_SURFACE
+    ? { artifactId, mode: "preview" }
+    : { artifactId, mode: "preview", surface };
 }
 
 /**
@@ -112,6 +150,10 @@ export function libraryPreviewIntentFromSearch(
  *
  * `intent: "open"` 就是「揭示这一份的库详情，用户还要再按一次编辑」——正是预览页要
  * 的语义，所以本条链路不需要新的 intent 取值，也就不需要动 `workspace-actions.ts`。
+ *
+ * `tab` **按素材归属分流**：官方模板素材落素材库，用户自有 artifact 落我的库。
+ * 这里以前是无条件的 `"mine"` 常量，于是首页卡片的「预览&编辑」必然落进一个不可能
+ * 包含官方模板的栏位——「素材库中没有这个素材」的其中一半就是这么来的。
  */
 export function libraryPreviewIntentAction(
   intent: LibraryPreviewIntent,
@@ -120,7 +162,10 @@ export function libraryPreviewIntentAction(
   if (!artifactId || intent.mode !== "preview") return null;
   return {
     version: 1,
-    tab: "mine",
+    tab:
+      intent.surface === "materials"
+        ? "materials"
+        : DEFAULT_LIBRARY_PREVIEW_SURFACE,
     itemId: artifactId,
     intent: "open",
   };

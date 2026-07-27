@@ -371,6 +371,29 @@ export function ResultCanvas({
   });
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
+  // ── 显式请求 vs 会话恢复的优先级 ────────────────────────────────────────────
+  // 深链在挂载那一刻**同步**派发（`useCatalogDeepLink` → 总线 → 下面的监听），可是会话
+  // 快照是**异步**回来的（`FunctionAgentChat` 取到 session 才调 `restoreSharedUi`）。
+  // 快照一落地，下面那条恢复 effect 就会无条件 `setInternal(快照栏位)`，把用户此刻明确
+  // 请求的落点覆盖掉——「预览&编辑」跳错面的第二个成因就是这个，与 `mine` 常量那条叠加。
+  //
+  // 修法是**显式的优先级**，不是定时器也不是抢跑：凡是走过总线的 action（深链与 agent
+  // receipt 同一条通道）都在这里留下一枚 pin，恢复 effect 见到 pin 就让路——谁先落地都
+  // 得到同一个结果，所以这条不会随渲染时序漂移。pin 只认总线 action，不认用户手点标签页
+  // 与 `focusNonce`：那两条不是深链，无深链时的恢复行为必须逐字不变。
+  const explicitSlotRef = useRef<{
+    identity: string;
+    slot: WorkspaceSlotId;
+  } | null>(null);
+  const pinExplicitSlot = useCallback(
+    (slot: WorkspaceSlotId) => {
+      explicitSlotRef.current = {
+        identity: runtimeHydration?.identity || "",
+        slot,
+      };
+    },
+    [runtimeHydration?.identity],
+  );
   const selected =
     !showTemplate && internal === "template" ? "preview" : internal;
   const previousActive = useRef(active);
@@ -413,6 +436,19 @@ export function ResultCanvas({
 
   useEffect(() => {
     if (!runtimeHydration?.restoredSnapshot) return;
+    const pinned =
+      explicitSlotRef.current?.identity === runtimeHydration.identity
+        ? explicitSlotRef.current.slot
+        : null;
+    if (pinned) {
+      // 深链/receipt 赢。同时把快照带回来的 `rightTab` 覆盖成这个栏位：`restoreSharedUi`
+      // 刚刚改写了 hydration 里的 rightTab，不覆盖回来的话下一次保存会把旧栏位写回去，
+      // 用户再进来又跑偏——那等于这条竞态只修了看得见的那一半。
+      if (runtimeHydration.rightTab !== pinned) {
+        runtimeHydration.setRightTab(pinned);
+      }
+      return;
+    }
     const restoredRightTab = runtimeHydration.rightTab || "";
     const requested = slotForId(restoredRightTab);
     const slot =
@@ -456,6 +492,7 @@ export function ResultCanvas({
         action,
       };
       setWorkspaceAction(envelope);
+      pinExplicitSlot(action.tab);
       select(action.tab);
     };
     window.addEventListener(WORKSPACE_ACTION_EVENT, receive);
@@ -467,6 +504,7 @@ export function ResultCanvas({
     const action = normalizeWorkspaceAction(externalAction.action);
     if (!action) return;
     setWorkspaceAction({ nonce: externalAction.nonce, action });
+    pinExplicitSlot(action.tab);
     select(action.tab);
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 

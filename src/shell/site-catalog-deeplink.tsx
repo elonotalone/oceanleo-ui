@@ -234,7 +234,7 @@ export function useCatalogDeepLink({
     clearDeepLinkQuery();
   }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey, templateId]);
 
-  // ── 「预览&编辑」深链：`?tab=library&item=<artifactId>&mode=preview&app=<appId>` ──
+  // ── 「预览&编辑」深链：`?tab=materials&item=<artifactId>&mode=preview&app=<appId>` ──
   // 合同 §0.4 / §3.1。操作员的原话是「点击后不跳到编辑的页面，而是跳到库中的预览页面，
   // 防止用户在探索时误入重型功能」——在本 effect 落地之前，`libraryPreviewIntentFromSearch`
   // 与 `libraryPreviewIntentAction`（W4 产出）**一个调用者都没有**，只在 `index.ts` 里
@@ -254,6 +254,9 @@ export function useCatalogDeepLink({
     [locationSearch],
   );
   const previewArtifactId = previewIntent?.artifactId || "";
+  // 落点栏位由 URL 的 `tab` 决定（接口 A 的归属分流），派发时必须原样带上：
+  // 丢掉它就退回「一律落我的库」，官方模板素材又会掉进一个不可能包含它的栏位。
+  const previewSurface = previewIntent?.surface;
   // URL 里**写没写** app 锚点，和它此刻**解析出来没有**是两件事，必须分开看（V5 残余 R-3）：
   // 前者是永久性的（没写就永远不会有），后者只是加载中的一帧。合在一起看，就只能要么
   // 对正常加载刷告警，要么对坏链接保持静默——本轮之前选的正是后者。
@@ -282,6 +285,7 @@ export function useCatalogDeepLink({
     const action = libraryPreviewIntentAction({
       artifactId: previewArtifactId,
       mode: "preview",
+      surface: previewSurface,
     });
     if (!action) return;
     previewLatchRef.current = token;
@@ -289,7 +293,7 @@ export function useCatalogDeepLink({
       nonce: `catalog-preview:${activeAppId}:${previewArtifactId}:${Date.now()}`,
       action,
     });
-  }, [activeAppId, previewAnchorAppId, previewArtifactId]);
+  }, [activeAppId, previewAnchorAppId, previewArtifactId, previewSurface]);
 
   useEffect(() => {
     setNotice("");

@@ -26,6 +26,9 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+// 大卡片（`ImageLightbox.tsx`）走条件 portal，所以它 import 了 `react-dom`。这里必须接
+// **真**包：portal 出去的节点得和 `react-dom/client` 建的 root 属于同一个实例，替身给不了。
+const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 function dataModule(source) {
@@ -119,6 +122,7 @@ const libraryDataStubUrl = dataModule(
 // 以及 W4 的整条深链与 `GATEWAY_BASE`。
 const OVERRIDES = {
   "../i18n/ui/useUI": uiStubUrl,
+  "react-dom": reactDomUrl,
   "./HomePromptModals": modalsStubUrl,
   "../lib/auth/client": authClientStubUrl,
   "./library-data": libraryDataStubUrl,
@@ -517,9 +521,13 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
     const main = (card) => card.querySelector("[data-home-app-card-main]");
     const click = (el) =>
       act(async () => el.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    const showcase = () => container.querySelector("[data-template-showcase]");
+    // 大卡片 mount 之后 portal 到 `document.body`（问题 1 的修法：逃出门户首页那层
+    // `v-fade-up` 的 transform 祖先，否则 `fixed inset-0` 只铺满那一层而不是视口），
+    // **不在** React root 容器里了。所以浮层相关的查询一律走整份 document ——
+    // 拿 `container` 查会永远是 null，「浮层没开」的断言于是假绿。
+    const showcase = () => window.document.querySelector("[data-template-showcase]");
     const closeBigCard = () =>
-      click(container.querySelector("[data-template-showcase] [aria-label='关闭']"));
+      click(window.document.querySelector("[data-template-showcase] [aria-label='关闭']"));
 
     // 自建卡既没有功能图也没有模板素材，「点卡=开大卡片」不套用在它身上：它的主动作
     // 单独定义 = 灌它自己的 prompt（否则它会变成一张打不开任何东西的死卡）。
@@ -535,9 +543,9 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
     // 接线断言：卡片侧必须把 `appTemplates()` 原样交给 W3 的 TemplateShowcase，两份模板
     // → 出切换条；三颗按钮（预览&编辑 / 生成类似 / 更多，合同 §0.4）的目标走 helper 默认
     // 解析，不许卡片侧另拼一套。「下载」本轮已从大卡片删除。
-    const thumbs = [...container.querySelectorAll("[data-template-thumb]")];
+    const thumbs = [...window.document.querySelectorAll("[data-template-thumb]")];
     assert.deepEqual(thumbs.map((t) => t.dataset.templateId), [TEMPLATE.id, TEMPLATE_2.id]);
-    const action = (name) => container.querySelector(`[data-showcase-action="${name}"]`);
+    const action = (name) => window.document.querySelector(`[data-showcase-action="${name}"]`);
     const href = (name) => action(name)?.getAttribute("href");
     // 「预览&编辑」按 **artifactId** 定位库里的只读预览页（不是 templateId、不是编辑器）。
     assert.equal(href("preview"), workspaceTemplatePreviewHref(POSTER.id, TEMPLATE.artifactId));
@@ -559,10 +567,12 @@ test("点卡主体 = 开大卡片（模板齐全）；点 prompt = 灌文案；�
     await click(main(cards[2]));
     assert.ok(showcase());
     assert.equal(picked.length, 1);
-    assert.equal(container.querySelector("[data-template-thumb]"), null);
-    assert.equal(container.querySelector('[data-showcase-action="download"]'), null);
-    assert.equal(container.querySelector('[data-showcase-action="similar"]'), null);
-    assert.equal(container.querySelector('[data-showcase-action="preview"]'), null);
+    // 这四条「不该出现」的断言尤其要走 document：容器里本来就查不到 portal 出去的浮层，
+    // 用 `container` 查等于在浮层其实开着的情况下照样通过。
+    assert.equal(window.document.querySelector("[data-template-thumb]"), null);
+    assert.equal(window.document.querySelector('[data-showcase-action="download"]'), null);
+    assert.equal(window.document.querySelector('[data-showcase-action="similar"]'), null);
+    assert.equal(window.document.querySelector('[data-showcase-action="preview"]'), null);
     assert.equal(href("more"), exploreAppHref(AMBIENT.id));
     await closeBigCard();
 
