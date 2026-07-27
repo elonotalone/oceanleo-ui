@@ -172,6 +172,10 @@ function mockGateway({
     total: 0,
   },
   mineStatus = 200,
+  // 身份探测的第二个来源（`/v1/library/favorites`）。默认让它也答不上来，这样
+  // 「mine 坏了」的用例仍然测的是「两个来源都失败」这一最坏情形。
+  favoritesPayload = { detail: "favorites unavailable" },
+  favoritesStatus = 503,
 }) {
   const store = new Map();
   store.set(original.artifact_id, structuredClone(original));
@@ -183,6 +187,9 @@ function mockGateway({
     calls.push({ method, pathname: url.pathname, search: url.search });
     if (url.pathname === "/v1/library/mine") {
       return jsonResponse(minePayload, mineStatus);
+    }
+    if (url.pathname === "/v1/library/favorites") {
+      return jsonResponse(favoritesPayload, favoritesStatus);
     }
     const forkMatch = /^\/v1\/artifacts\/(.+):fork$/.exec(url.pathname);
     if (forkMatch) {
@@ -386,6 +393,11 @@ test("拿不到当前 principalId 时中止编辑，绝不当成「我就是 own
   assert.equal(decision.ok, false);
   assert.equal(decision.status, 401);
   assert.match(decision.error, /登录后才能编辑素材/);
+  // 401 是「真的没登录」，不该再去问第二个端点浪费一次请求。
+  assert.deepEqual(
+    gateway.calls.filter(({ pathname }) => pathname === "/v1/library/favorites"),
+    [],
+  );
   assert.deepEqual(gateway.writesAgainst("official-template"), []);
   assert.deepEqual(gateway.forkCalls(), []);
   assert.deepEqual(gateway.stored("official-template"), before);
@@ -402,8 +414,101 @@ test("我的库响应没声明 ownerPrincipalId 时同样中止，不猜归属",
   const decision = await getArtifactEditDecision(libraryItem(original));
 
   assert.equal(decision.ok, false);
-  assert.match(decision.error, /无法确认当前登录身份/);
+  assert.match(decision.error, /素材库暂时无法确认你的账号归属/);
   assert.deepEqual(gateway.forkCalls(), []);
+});
+
+// ── ③b V5 BLOCKER-2：坏数据不得表现成「登录有问题」，也不得连坐身份 ──────────
+
+test("一条坏投影让 /v1/library/mine 整页 409 时，身份改从收藏端点拿", async () => {
+  // V5 实测的那个形状：登录是好的，坏的是 mine 那一页的数据。
+  const mine = projection({
+    id: "my-own-work",
+    ownerPrincipalId: CURRENT_PRINCIPAL,
+    visibility: "private",
+  });
+  const gateway = mockGateway({
+    original: mine,
+    minePayload: {
+      detail: "canonical library page contains an invalid projection",
+    },
+    mineStatus: 409,
+    favoritesPayload: {
+      schema: "oceanleo.library.v1",
+      scope: "favorites",
+      ownerPrincipalId: CURRENT_PRINCIPAL,
+      items: [],
+      total: 0,
+    },
+    favoritesStatus: 200,
+  });
+
+  const decision = await getArtifactEditDecision(libraryItem(mine));
+
+  // 身份拿到了 → 编辑照常进行；坏数据没有把「我是谁」一起拖下水。
+  assert.equal(decision.ok, true, decision.error);
+  assert.equal(decision.data.item.artifactId, "my-own-work");
+  assert.deepEqual(gateway.forkCalls(), []);
+  assert.deepEqual(
+    gateway.calls
+      .filter(({ pathname }) => pathname.startsWith("/v1/library/"))
+      .map(({ pathname }) => pathname)
+      .filter((pathname) => !pathname.startsWith("/v1/library/items/")),
+    ["/v1/library/mine", "/v1/library/favorites"],
+  );
+});
+
+test("两个身份端点都答不上来时，文案说的是素材库故障，不是登录问题", async () => {
+  const original = projection({ canEdit: true, canFork: true });
+  const before = structuredClone(original);
+  const gateway = mockGateway({
+    original,
+    forked: projection({ id: "user-copy" }),
+    minePayload: {
+      detail: "canonical library page contains an invalid projection",
+    },
+    mineStatus: 409,
+  });
+
+  const decision = await getArtifactEditDecision(libraryItem(original));
+
+  assert.equal(decision.ok, false);
+  // 必须**不**把后端数据缺陷说成登录问题——那会把用户和排障的人引到重登一遍。
+  assert.doesNotMatch(decision.error, /登录后才能编辑素材/);
+  assert.match(decision.error, /素材库暂时无法确认你的账号归属/);
+  assert.match(decision.error, /不是你的登录出了问题/);
+  // 原件依然零变化：中止的语义没有因为换了文案而松动。
+  assert.deepEqual(gateway.forkCalls(), []);
+  assert.deepEqual(gateway.writesAgainst("official-template"), []);
+  assert.deepEqual(gateway.stored("official-template"), before);
+});
+
+test("resolveArtifactEditOwnership 用 reason 区分「没登录」与「库里有坏数据」", async () => {
+  const official = projection({ canEdit: true, canFork: true });
+
+  resetCurrentPrincipalId();
+  mockGateway({
+    original: official,
+    minePayload: { detail: "unauthorized" },
+    mineStatus: 401,
+  });
+  const unauthenticated = await resolveArtifactEditOwnership(
+    libraryItem(official),
+  );
+  assert.equal(unauthenticated.kind, "unknown");
+  assert.equal(unauthenticated.reason, "unauthenticated");
+
+  resetCurrentPrincipalId();
+  mockGateway({
+    original: official,
+    minePayload: { detail: "invalid projection" },
+    mineStatus: 409,
+  });
+  const unavailable = await resolveArtifactEditOwnership(
+    libraryItem(official),
+  );
+  assert.equal(unavailable.kind, "unknown");
+  assert.equal(unavailable.reason, "unavailable");
 });
 
 test("缺 source 授权导致 canFork 为假时给可读错误，而不是静默无反应", async () => {

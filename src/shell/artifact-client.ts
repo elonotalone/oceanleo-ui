@@ -1348,12 +1348,27 @@ export function resetCurrentPrincipalId(): void {
   CURRENT_PRINCIPAL_PROBE = null;
 }
 
-async function probeCurrentPrincipalId(): Promise<ArtifactApiResult<string>> {
-  const result = await artifactRequest<unknown>("/v1/library/mine?limit=1");
-  if (!result.ok) return result as ArtifactApiResult<string>;
+/**
+ * 身份探测的候选端点。
+ *
+ * **刻意不止一个**：身份是「我是谁」，它不该跟「某一页库列表能不能完整投影」绑死。
+ * 线上出过一次——一条非法投影让 `/v1/library/mine` 整页 409，于是每个站点点「编辑」
+ * 都被拒，而且报的是「无法确认登录身份」，把一个后端数据缺陷说成了登录问题。
+ *
+ * 两个端点都由服务端 `current_user_id` 驱动、都自带 scope 校验，但走的是**不同的
+ * 数据集**（自己的作品 / 收藏），一边的坏数据不会连坐另一边。谁先答出权威
+ * `ownerPrincipalId` 就用谁的。
+ */
+const PRINCIPAL_PROBE_SOURCES: readonly { path: string; scope: string }[] = [
+  { path: "/v1/library/mine?limit=1", scope: "mine" },
+  { path: "/v1/library/favorites?limit=1", scope: "favorites" },
+];
+
+/** 只读 envelope 顶层的 owner 声明，**不**解析 items——坏投影不该挡住取身份。 */
+function principalIdFromEnvelope(payload: unknown, expectedScope: string): string {
   const envelope =
-    result.data && typeof result.data === "object" && !Array.isArray(result.data)
-      ? (result.data as Record<string, unknown>)
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
       : {};
   const rawOwner =
     envelope.owner &&
@@ -1369,18 +1384,43 @@ async function probeCurrentPrincipalId(): Promise<ArtifactApiResult<string>> {
       "",
   ).trim();
   const scope = String(envelope.scope || "").trim().toLowerCase();
-  if (scope !== "mine" || !principalId) {
-    return {
+  return scope === expectedScope ? principalId : "";
+}
+
+async function probeCurrentPrincipalId(): Promise<ArtifactApiResult<string>> {
+  let lastFailure: ArtifactApiResult<string> | null = null;
+  for (const source of PRINCIPAL_PROBE_SOURCES) {
+    const result = await artifactRequest<unknown>(source.path);
+    if (!result.ok) {
+      // 401/403 是「你没登录 / 没权限」，换个端点问会得到同样的答复，不必多打一次。
+      if (result.status === 401 || result.status === 403) {
+        return result as ArtifactApiResult<string>;
+      }
+      lastFailure = result as ArtifactApiResult<string>;
+      continue;
+    }
+    const principalId = principalIdFromEnvelope(result.data, source.scope);
+    if (principalId) {
+      CURRENT_PRINCIPAL_ID = principalId;
+      return { ok: true, data: principalId, status: result.status };
+    }
+    lastFailure = {
       ok: false,
-      error:
-        "我的库响应没有声明当前 ownerPrincipalId，无法确认这份素材是不是你的。",
+      error: `${source.path} 的响应没有声明当前 ownerPrincipalId。`,
       code: "invalid-response",
       status: result.status,
       retryable: false,
     };
   }
-  CURRENT_PRINCIPAL_ID = principalId;
-  return { ok: true, data: principalId, status: result.status };
+  return (
+    lastFailure || {
+      ok: false,
+      error: "没有可用的身份端点。",
+      code: "invalid-response",
+      status: 0,
+      retryable: false,
+    }
+  );
 }
 
 /**
@@ -1409,9 +1449,17 @@ export type ArtifactEditOwnership =
   | { kind: "own" }
   /** owner 不是当前主体：无论 `canEdit` 说什么，都必须先 fork 出用户副本。 */
   | { kind: "fork" }
-  /** 身份不可知：中止，绝不猜。 */
+  /**
+   * 身份不可知：中止，绝不猜。
+   *
+   * `reason` 把两种完全不同的处境分开，别再让用户拿着「登录有问题」去排查一个后端
+   * 数据缺陷：
+   *   - `unauthenticated` —— 真的没登录 / 没权限（401、403）；
+   *   - `unavailable`     —— 登录着，但身份端点答不上来（服务端 5xx、409 坏投影…）。
+   */
   | {
       kind: "unknown";
+      reason: "unauthenticated" | "unavailable";
       error: string;
       code: ArtifactApiErrorCode;
       status?: number;
@@ -1434,14 +1482,17 @@ export async function resolveArtifactEditOwnership(
   if (!ownerPrincipalId) return { kind: "fork" };
   const current = await getCurrentPrincipalId();
   if (!current.ok || !current.data) {
+    const unauthenticated =
+      current.status === 401 || current.status === 403;
     return {
       kind: "unknown",
-      error:
-        current.status === 401
-          ? "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。"
-          : `无法确认当前登录身份，已中止编辑以免改到原素材。${
-              current.error ? `（${current.error}）` : ""
-            }`,
+      reason: unauthenticated ? "unauthenticated" : "unavailable",
+      error: unauthenticated
+        ? "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。"
+        : // 登录是好的，答不上来的是素材库服务。说清楚这一点，别把人引去重登一遍。
+          `素材库暂时无法确认你的账号归属，已中止编辑以免改到官方原件；这不是你的登录出了问题，请稍后重试。${
+            current.error ? `（${current.error}）` : ""
+          }`,
       code: current.code || "unauthorized",
       status: current.status,
     };

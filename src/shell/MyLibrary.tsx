@@ -685,8 +685,9 @@ export function MyLibrary({
     void load();
   }, [action?.nonce, load]);
 
-  // 「编辑模板」深链已指名一份具体 artifact，直接进 typed 编辑器（时序与兜底取数见
-  // `library-edit-intent.ts`）。不带 `intent` 的 action 语义不变，仍是安静预览详情。
+  // 指名了一份具体 artifact 的深链：`intent: "open"` 走只读预览，旧的模板直编深链
+  // （`intent: "edit"`）直接进 typed 编辑器（时序与兜底取数见 `library-edit-intent.ts`）。
+  // 不带 `intent` 的 action 语义不变，仍是安静预览详情。
   useLibraryEditIntent({
     action,
     items,

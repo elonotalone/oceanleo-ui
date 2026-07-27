@@ -139,6 +139,47 @@ test("两种意图互不串味：edit 只认 edit，preview 只认 open", () => 
   assert.equal(libraryPreviewIntentArtifactId(previewAction), "art_1");
 });
 
+// ── 接线：V5 BLOCKER-3「helper 都在、零调用者」不许再发生 ────────────────────
+
+test("helper 产出的 envelope 足以让右栏切到「我的库」并被消费端认出", () => {
+  // BLOCKER-3 的形状是：两个 helper 各自都对，中间没人把 URL 变成事件，于是
+  // 「预览&编辑」一路落到 app 操作台，3D 拖不动、website 点不了。接线归 W3
+  // （`site-catalog-deeplink.tsx`），这里锁死**接线所依赖的那份契约**——只要它成立，
+  // 路由侧照着派发就一定能落到只读预览上。
+  const intent = libraryPreviewIntentFromSearch(
+    "?tab=library&item=artifact-9&mode=preview&app=poster",
+  );
+  assert.deepEqual(intent, { artifactId: "artifact-9", mode: "preview" });
+  const action = libraryPreviewIntentAction(intent);
+
+  // `ResultCanvas` 收到事件后直接 `select(action.tab)`。这里必须是 mine，否则右栏
+  // 还停在 app 操作台——V5 看到的正是这个。
+  assert.equal(action.tab, "mine");
+  // 过一遍 normalize（右栏收到时一定会做）后 intent 必须还活着，否则消费端认不出。
+  const normalized = normalizeWorkspaceAction(action);
+  assert.equal(normalized.intent, "open");
+  assert.equal(normalized.itemId, "artifact-9");
+  assert.equal(
+    libraryPreviewIntentArtifactId({ nonce: "n1", action: normalized }),
+    "artifact-9",
+  );
+  assert.equal(
+    libraryEditIntentArtifactId({ nonce: "n1", action: normalized }),
+    "",
+    "预览深链绝不能被当成 edit 意图直接推进重型编辑器",
+  );
+});
+
+test("没有 app 段的预览深链同样要能解析（W3 的 href helper 会产出这种）", () => {
+  // `workspaceTemplatePreviewHref("", "art-a")` → `?tab=library&item=art-a&mode=preview`，
+  // 不带 `app=`。解析这一侧必须认，否则这类链接会静默什么都不发生。
+  const intent = libraryPreviewIntentFromSearch(
+    "?tab=library&item=art-a&mode=preview",
+  );
+  assert.deepEqual(intent, { artifactId: "art-a", mode: "preview" });
+  assert.equal(libraryPreviewIntentAction(intent).tab, "mine");
+});
+
 // ── 预览是纯读：挂载预览页不得发生任何写操作 ─────────────────────────────────
 
 test("预览落点只走 GET，绝不在挂载时 fork", () => {

@@ -1,7 +1,8 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 目录深链意图（`?fill=preset` / `?open=advanced` / `?open=template`）
+// @oceanleo/ui — 目录深链意图
+// （`?fill=preset` / `?open=advanced` / `?open=template` / `?tab=library&mode=preview`）
 // ----------------------------------------------------------------------------
 // 从 `SiteCatalogConsole.tsx` 抽出来单独成文件（V1 判定书 §6.2 / §9.1-3）：那个文件
 // 基线就有 767 行、已超共享包 ≤600 的约定，深链这套一次性意图不应该继续把它顶高。
@@ -26,6 +27,10 @@ import {
   type ReactNode,
 } from "react";
 import type { GoalApp } from "./app-catalog";
+import {
+  libraryPreviewIntentAction,
+  libraryPreviewIntentFromSearch,
+} from "./library-edit-intent";
 import {
   catalogAdvancedOpenPlan,
   catalogPresetFill,
@@ -226,6 +231,43 @@ export function useCatalogDeepLink({
     );
     clearDeepLinkQuery();
   }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey, templateId]);
+
+  // ── 「预览&编辑」深链：`?tab=library&item=<artifactId>&mode=preview&app=<appId>` ──
+  // 合同 §0.4 / §3.1。操作员的原话是「点击后不跳到编辑的页面，而是跳到库中的预览页面，
+  // 防止用户在探索时误入重型功能」——在本 effect 落地之前，`libraryPreviewIntentFromSearch`
+  // 与 `libraryPreviewIntentAction`（W4 产出）**一个调用者都没有**，只在 `index.ts` 里
+  // 被 re-export，于是这条深链只把用户送到 app 操作台，也就是他要防的那件事本身
+  // （V5 判定书 BLOCKER-3，law / threed / website 三站一致复现）。
+  //
+  // 解析**复用 W4 的 helper**，不在本文件另抄一份 query 解析：同一个 query 形状有两处
+  // 实现，迟早会各自漂移。派发通道与上面两条完全一样（右栏把 envelope 当 prop 交给
+  // 我的库，所以不存在「派发早于接收方」的窗口）。
+  //
+  // 与另外三条的**唯一区别：不抹地址栏**。`?fill=preset` 那种是一次性注入，留在 URL 上
+  // 会在刷新时被回灌；而库预览是一个**位置**——「库中的预览页面」本身就该能被刷新、
+  // 被收藏、被分享。抹掉的话用户一刷新就掉回操作台，等于这条 BLOCKER 只修了一半。
+  // 重复派发由 latch 挡住，不靠抹 URL。
+  const previewIntent = useMemo(
+    () => libraryPreviewIntentFromSearch(locationSearch),
+    [locationSearch],
+  );
+  const previewArtifactId = previewIntent?.artifactId || "";
+  const previewLatchRef = useRef("");
+  useEffect(() => {
+    if (!previewArtifactId || !activeAppId) return;
+    const token = `${activeAppId}\u0000${previewArtifactId}`;
+    if (previewLatchRef.current === token) return;
+    const action = libraryPreviewIntentAction({
+      artifactId: previewArtifactId,
+      mode: "preview",
+    });
+    if (!action) return;
+    previewLatchRef.current = token;
+    dispatchWorkspaceAction({
+      nonce: `catalog-preview:${activeAppId}:${previewArtifactId}:${Date.now()}`,
+      action,
+    });
+  }, [activeAppId, previewArtifactId]);
 
   useEffect(() => {
     setNotice("");

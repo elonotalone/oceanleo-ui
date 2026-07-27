@@ -6,7 +6,7 @@
 // 每一条普通 workspace action 的落点都是「安静预览详情」（`WorkspaceLibrary.openEntry`），
 // 用户还要再按一次 Edit。目录大卡片的两条深链是**已经指名了一份具体 artifact** 的：
 //   - 「预览&编辑」（`intent: "open"`）→ 只读预览详情，用户在那里再点编辑才 fork；
-//   - 旧「编辑模板」（`intent: "edit"`）→ 直接交给 typed 编辑器。
+//   - 旧的模板直编深链（`intent: "edit"`）→ 直接交给 typed 编辑器。
 // 两条都只做 GET；fork 是写操作，只能由用户在预览页按下编辑时才发生。
 //
 // 单独成文件而不是塞进 `MyLibrary.tsx`：那个文件基线已经 1100+ 行，远超共享包的
