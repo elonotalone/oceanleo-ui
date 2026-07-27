@@ -1305,6 +1305,137 @@ export async function listEditableShelfArtifacts(
   };
 }
 
+// ============================================================================
+// 「当前主体是谁」—— 编辑归属判定的唯一输入
+// ----------------------------------------------------------------------------
+// 编辑决策**不能**问「我能不能编辑」（`access.canEdit`）：库里那批 `all/*` 的历史
+// `edit` 授权让官方模板素材对任何人都 `canEdit === true`，于是「编辑」会直接落在
+// 官方原件上。唯一站得住的判据是「这份 artifact 的 owner 是不是我」。
+//
+// 平台没有 `/v1/me`；`/v1/library/mine` 是唯一会回权威 `ownerPrincipalId` 的端点
+// （`scope: "mine"` + 服务端 `current_user_id`），所以拿它做一次探测并进程内缓存。
+// 我的库 / 收藏两条已有链路本来就会拿到这个值，它们直接 prime 缓存，正常会话里这
+// 次探测根本不会发生。
+//
+// 探测失败一律**不**降级成「当我是 owner」——那正是本轮要修的漏洞。
+// ============================================================================
+
+let CURRENT_PRINCIPAL_ID = "";
+let CURRENT_PRINCIPAL_PROBE: Promise<ArtifactApiResult<string>> | null = null;
+
+/** 已经由 scope 校验过的权威 ownerPrincipalId，喂给缓存，省掉探测请求。 */
+export function primeCurrentPrincipalId(principalId: string | null | undefined): void {
+  const value = String(principalId || "").trim();
+  if (value) CURRENT_PRINCIPAL_ID = value;
+}
+
+/** 登出 / 换账号时必须调用，否则会拿上一个人的身份判 owner。 */
+export function resetCurrentPrincipalId(): void {
+  CURRENT_PRINCIPAL_ID = "";
+  CURRENT_PRINCIPAL_PROBE = null;
+}
+
+async function probeCurrentPrincipalId(): Promise<ArtifactApiResult<string>> {
+  const result = await artifactRequest<unknown>("/v1/library/mine?limit=1");
+  if (!result.ok) return result as ArtifactApiResult<string>;
+  const envelope =
+    result.data && typeof result.data === "object" && !Array.isArray(result.data)
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const rawOwner =
+    envelope.owner &&
+    typeof envelope.owner === "object" &&
+    !Array.isArray(envelope.owner)
+      ? (envelope.owner as Record<string, unknown>)
+      : {};
+  const principalId = String(
+    envelope.ownerPrincipalId ??
+      envelope.owner_principal_id ??
+      rawOwner.principalId ??
+      rawOwner.principal_id ??
+      "",
+  ).trim();
+  const scope = String(envelope.scope || "").trim().toLowerCase();
+  if (scope !== "mine" || !principalId) {
+    return {
+      ok: false,
+      error:
+        "我的库响应没有声明当前 ownerPrincipalId，无法确认这份素材是不是你的。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: false,
+    };
+  }
+  CURRENT_PRINCIPAL_ID = principalId;
+  return { ok: true, data: principalId, status: result.status };
+}
+
+/**
+ * 当前登录主体的 principalId。拿不到就是拿不到——调用方不许把失败当成「是我」。
+ *
+ * 探测请求刻意不接受调用方的 `signal`：它是全局共享的一次性探测，一个调用方取消
+ * 不能把别人的判定一起打掉。
+ */
+export async function getCurrentPrincipalId(): Promise<
+  ArtifactApiResult<string>
+> {
+  if (CURRENT_PRINCIPAL_ID) {
+    return { ok: true, data: CURRENT_PRINCIPAL_ID, status: 200 };
+  }
+  const pending = CURRENT_PRINCIPAL_PROBE || probeCurrentPrincipalId();
+  CURRENT_PRINCIPAL_PROBE = pending;
+  try {
+    return await pending;
+  } finally {
+    if (CURRENT_PRINCIPAL_PROBE === pending) CURRENT_PRINCIPAL_PROBE = null;
+  }
+}
+
+export type ArtifactEditOwnership =
+  /** owner 就是当前主体：这本来就是用户自己的东西，直接改原 root。 */
+  | { kind: "own" }
+  /** owner 不是当前主体：无论 `canEdit` 说什么，都必须先 fork 出用户副本。 */
+  | { kind: "fork" }
+  /** 身份不可知：中止，绝不猜。 */
+  | {
+      kind: "unknown";
+      error: string;
+      code: ArtifactApiErrorCode;
+      status?: number;
+    };
+
+/**
+ * 「这份 artifact 是不是我的」——`getArtifactEditDecision` 的 fork 判据。
+ *
+ * `access.canEdit` 不参与本判定：历史 `all/*` `edit` 授权会让它对官方素材恒为真。
+ */
+export async function resolveArtifactEditOwnership(
+  item: LibraryItem,
+): Promise<ArtifactEditOwnership> {
+  // 非 durable 的临时结果还没有 owner，它由 ensure 以当前主体的身份落库。
+  if (!isDurableLibraryItem(item)) return { kind: "own" };
+  const ownerPrincipalId = String(
+    item.artifact.owner.principalId || "",
+  ).trim();
+  // 投影没声明 owner 就当成「不是我的」：保守 fork 好过改到别人的原件。
+  if (!ownerPrincipalId) return { kind: "fork" };
+  const current = await getCurrentPrincipalId();
+  if (!current.ok || !current.data) {
+    return {
+      kind: "unknown",
+      error:
+        current.status === 401
+          ? "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。"
+          : `无法确认当前登录身份，已中止编辑以免改到原素材。${
+              current.error ? `（${current.error}）` : ""
+            }`,
+      code: current.code || "unauthorized",
+      status: current.status,
+    };
+  }
+  return current.data === ownerPrincipalId ? { kind: "own" } : { kind: "fork" };
+}
+
 export async function listMyArtifacts(options: {
   artifactType?: ArtifactType | "";
   offset?: number;
@@ -1365,6 +1496,8 @@ export async function listMyArtifacts(options: {
       retryable: false,
     };
   }
+  // scope 已校验为 mine，这就是权威的「我是谁」；喂给 owner 判定省掉探测请求。
+  primeCurrentPrincipalId(normalized.ownerPrincipalId);
   return {
     ...result,
     data: {
@@ -1420,6 +1553,7 @@ export async function listFavoriteArtifacts(options: {
     };
   }
   const ownerPrincipalId = normalized.ownerPrincipalId;
+  primeCurrentPrincipalId(ownerPrincipalId);
   const invalid = normalized.projections.find(
     (artifact) =>
       !artifactIsVisible(artifact) ||
@@ -1602,11 +1736,34 @@ export async function getArtifactEditDecision(
     };
   }
   let canonical = durable.data;
-  if (
-    isDurableLibraryItem(canonical) &&
-    !canonical.artifact.access.canEdit &&
-    canonical.artifact.access.canFork
-  ) {
+  // fork 判据 = owner 判定，与 `access.canEdit` 无关（合同 §0.5.1）。
+  // 旧判据 `!canEdit && canFork` 只在「不能编辑」时才 fork，于是命中 `all/*` `edit`
+  // 授权的官方素材反而跳过 fork，用户改的是官方原件本身。
+  const ownership = await resolveArtifactEditOwnership(canonical);
+  if (ownership.kind === "unknown") {
+    return {
+      ok: false,
+      error: ownership.error,
+      code: ownership.code,
+      status: ownership.status,
+      retryable: false,
+    };
+  }
+  if (ownership.kind === "fork") {
+    if (
+      isDurableLibraryItem(canonical) &&
+      !canonical.artifact.access.canFork
+    ) {
+      // 后端 `can_fork` 要求 `source` 授权。缺了就明确说清楚，不许静默无反应。
+      return {
+        ok: false,
+        error:
+          "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。",
+        code: "unauthorized",
+        status: 403,
+        retryable: false,
+      };
+    }
     const forked = await forkArtifact(canonical);
     if (!forked.ok || !forked.data) {
       return {
@@ -2316,6 +2473,14 @@ export async function bindArtifactToContext(
   return rebound;
 }
 
+/**
+ * 复制出一份属于当前主体的独立 artifact root。
+ *
+ * 这里的 `canFork` 判断与 `getArtifactEditDecision` 的 fork **判据**不是同一件事，
+ * 所以本轮不跟着改成 owner 判定：那边回答「该不该 fork」（owner 说了算），这里回答
+ * 「服务端允不允许这次写」（授权面说了算，后端 `can_fork` 要求 `source` 授权）。
+ * 保留它才能在缺 `source` 时 fail closed，而不是打一个注定 403 的请求。
+ */
 export async function forkArtifact(
   item: LibraryItem,
 ): Promise<ArtifactApiResult<LibraryItem>> {
@@ -2327,7 +2492,8 @@ export async function forkArtifact(
   ) {
     return {
       ok: false,
-      error: "当前主体没有 fork 这个 artifact root 的权限。",
+      error:
+        "当前主体没有 fork 这个 artifact root 的权限（模板素材需要 source 授权）。",
       code: "unauthorized",
       status: 403,
       retryable: false,

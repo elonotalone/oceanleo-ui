@@ -144,6 +144,8 @@ const {
   listFavoriteArtifacts,
   listMyArtifacts,
   listPrimaryArtifacts,
+  primeCurrentPrincipalId,
+  resetCurrentPrincipalId,
   retireArtifact,
   searchArtifactLibrary,
   setArtifactFavorite,
@@ -249,6 +251,13 @@ const advancedWorkbenchStubUrl = dataModule(`
     return null;
   }
 `);
+const materialScopeUrl = await compileModule(
+  "src/shell/material-library-scope.ts",
+  {
+    "./library-data": libraryDataUrl,
+    "./artifact-contract": contractUrl,
+  },
+);
 const materialControllerUrl = await compileModule(
   "src/shell/material-library-controller.ts",
   {
@@ -256,7 +265,28 @@ const materialControllerUrl = await compileModule(
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": artifactClientUrl,
+    "./material-library-scope": materialScopeUrl,
     "./workspace-library-model": workspaceLibraryStubUrl,
+  },
+);
+const materialPresentationUrl = await compileModule(
+  "src/shell/material-library-presentation.ts",
+  {
+    "./advanced-features": advancedFeaturesUrl,
+    "./library-data": libraryDataUrl,
+    "./artifact-contract": contractUrl,
+    "./material-library-controller": materialControllerUrl,
+  },
+);
+const materialEffectsUrl = await compileModule(
+  "src/shell/material-library-effects.ts",
+  {
+    "./advanced-features": advancedFeaturesUrl,
+    "./artifact-client": artifactClientUrl,
+    "./artifact-contract": contractUrl,
+    "./library-data": libraryDataUrl,
+    "./material-library-controller": materialControllerUrl,
+    "./material-library-presentation": materialPresentationUrl,
   },
 );
 const {
@@ -276,6 +306,8 @@ const MaterialLibrary = (
       "./advanced-features": advancedFeaturesUrl,
       "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
       "./material-library-controller": materialControllerUrl,
+      "./material-library-presentation": materialPresentationUrl,
+      "./material-library-effects": materialEffectsUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
       "./workbench-material-registry": registryStubUrl,
@@ -314,6 +346,17 @@ const databaseStubUrl = dataModule(`
     return { ok: false, error: "upload not used in this test" };
   }
 `);
+const libraryEditIntentUrl = await compileModule(
+  "src/shell/library-edit-intent.ts",
+  {
+    react: reactUrl,
+    "./artifact-client": artifactClientUrl,
+    "./library-data": libraryDataUrl,
+    "./workspace-actions": pathToFileURL(
+      resolve("src/shell/workspace-actions.ts"),
+    ).href,
+  },
+);
 const myLibraryModule = (
   await import(
     await compileModule("src/shell/MyLibrary.tsx", {
@@ -323,6 +366,7 @@ const myLibraryModule = (
       "./artifact-client": artifactClientUrl,
       "./artifact-contract": contractUrl,
       "./library-data": libraryDataUrl,
+      "./library-edit-intent": libraryEditIntentUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
     })
   )
@@ -1948,6 +1992,11 @@ test("artifact detail and edit capability use canonical revisionId query aliases
       : jsonResponse(rawProjection);
   };
 
+  // fork 判据是 owner 判定（合同 §0.5.1）。这一份的 owner 就是当前主体，所以既不
+  // fork、也不需要探测身份——喂进缓存后调用序列与本用例原来断言的逐字一致。
+  resetCurrentPrincipalId();
+  primeCurrentPrincipalId("user-1");
+
   const detail = await getArtifactItem("revision-contract", "r1");
   const current = await getCurrentArtifactItem("revision-contract");
   const editDecision = await getArtifactEditDecision(item);
@@ -2025,6 +2074,9 @@ test("public editable material forks before opening the private editor", async (
   };
   const normalized = normalizeArtifactProjection(publicProjection);
   assert.ok(normalized);
+  // 官方素材的 owner 不是当前主体，所以必须 fork——判据是 owner，不再是 canEdit。
+  resetCurrentPrincipalId();
+  primeCurrentPrincipalId("someone-else");
 
   const decision = await getArtifactEditDecision(
     artifactProjectionToLibraryItem(normalized),

@@ -409,6 +409,10 @@ export function MyLibrary({
   const [uploadError, setUploadError] = useState("");
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
+  // 「预览&编辑」深链指名的那一份。官方模板素材不属于当前用户，不会出现在 `items`
+  // 里，所以按 id 取回来后要自己挂上去，右栏才有东西可选中（详见 library-edit-intent）。
+  const [previewIntentItem, setPreviewIntentItem] =
+    useState<LibraryItem | null>(null);
 
   const requestEpochRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -435,6 +439,7 @@ export function MyLibrary({
     setNextCursor(null);
     setFavoriteNextCursor(null);
     setStandaloneEditorItem(null);
+    setPreviewIntentItem(null);
     favoritesOwnerRef.current = "";
   }, []);
 
@@ -686,6 +691,8 @@ export function MyLibrary({
     action,
     items,
     onOpenItem: onOpenItem || setStandaloneEditorItem,
+    // 只读预览落点：纯读取回投影 + 挂进 entries，不碰任何写端点、不 fork。
+    onPreviewItem: setPreviewIntentItem,
     onFailure: ({ status, message }) => {
       setFailed(true);
       setFailureStatus(status);
@@ -999,6 +1006,9 @@ export function MyLibrary({
                     libraryItemIdentityKey(entry.libraryItem!),
                 ),
             )),
+        // 深链指名的只读预览排在最后：万一它本来就在我的库里，前面那份（带删除
+        // 能力）会被 dedupe 保留，这里不会把它降级成一张只读卡。
+        ...(previewIntentItem ? [toEntry(previewIntentItem)] : []),
       ]),
     [
       featuredEntries,
@@ -1006,6 +1016,7 @@ export function MyLibrary({
       items,
       onlyFavorites,
       ownerPrincipalId,
+      previewIntentItem,
       removeItem,
     ],
   );

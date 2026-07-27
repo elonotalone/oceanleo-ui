@@ -205,6 +205,16 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
     export function isDurableLibraryItem() { return false; }
     export function threeDSubtypeFor() { return ""; }
   `);
+  // 首屏闸门用真实实现：JSDOM 没有 IntersectionObserver，它会走下一帧放行的兜底，
+  // 正好证明「闸门缺席不会把预览卡死」。
+  const firstPaintUrl = await compileModule(
+    "src/shell/library-viewer-first-paint.tsx",
+    {
+      react: reactUrl,
+      "../i18n/ui/useUI": uiStubUrl,
+      "./library-data": dataStubUrl,
+    },
+  );
   const renditionStubUrl = dataModule(`
     import React from ${JSON.stringify(reactUrl)};
     const state = {
@@ -336,6 +346,7 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
     "./editor-sandbox-origin": sandboxOriginStubUrl,
     "./doc-editors/office-file": officeStubUrl,
     "./doc-editors/DeckPreviewLayout": layoutStubUrl,
+    "./library-viewer-first-paint": firstPaintUrl,
     "pptx-preview": pptxStubUrl,
   });
   const { LibraryItemViewer } = await import(moduleUrl);

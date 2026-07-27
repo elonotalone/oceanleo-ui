@@ -39,6 +39,12 @@ import {
   type DeckPreviewLayoutSlide,
   type DeckPreviewLogicalSize,
 } from "./doc-editors/DeckPreviewLayout";
+import {
+  ProgressiveArtifactImage,
+  ViewerThumbPoster,
+  libraryViewerIsHeavy,
+  useVisibleViewerGate,
+} from "./library-viewer-first-paint";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -1258,7 +1264,25 @@ function VideoCanvasViewer({ item }: { item: LibraryItem }) {
   );
 }
 
+/**
+ * 类型分发的只读查看器。3D 可拖拽转角度、website 在沙箱 iframe 里可交互、文档可
+ * 翻页——全部由下面的分支复用现成 viewer，本层不新造渲染路径。
+ */
 export function LibraryItemViewer({
+  item,
+  accent,
+}: {
+  item: LibraryItem;
+  accent?: string;
+}) {
+  const gate = useVisibleViewerGate(!libraryViewerIsHeavy(item));
+  if (!gate.ready) {
+    return <ViewerThumbPoster item={item} containerRef={gate.ref} />;
+  }
+  return <LibraryItemViewerBody item={item} accent={accent} />;
+}
+
+function LibraryItemViewerBody({
   item,
 }: {
   item: LibraryItem;
@@ -1351,13 +1375,11 @@ export function LibraryItemViewer({
   if (resolvedItem.kind === "image" && url) {
     return (
       <Center>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
+        <ProgressiveArtifactImage
+          thumbUrl={resolvedItem.thumbUrl || ""}
+          fullUrl={url}
           alt={resolvedItem.title}
           onError={rendition.resourceFailed}
-          referrerPolicy="no-referrer"
-          className="max-h-[70vh] max-w-full rounded-lg object-contain"
         />
       </Center>
     );

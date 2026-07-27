@@ -358,8 +358,20 @@ export function WorkspaceLibrary({
           : "all",
       );
     }
+    // `intent:"edit"` 已经由宿主直接送进 typed 编辑器，这里不要再抢着开一份安静
+    // 预览详情——否则用户会看到编辑器背后还压着一层列表详情。
+    if (next.intent === "edit") return;
+    // 深链指名的是 **artifact id**，而 durable 条目的 `entry.id` 是
+    // `artifact:<artifactId>:<revisionId>`，直接比 id 永远匹配不上。「预览&编辑」
+    // 就落在这一行上，所以两种写法都要认。
     const byId = next.itemId
-      ? entries.find((entry) => entry.id === next.itemId)
+      ? entries.find(
+          (entry) =>
+            entry.id === next.itemId ||
+            (entry.libraryItem &&
+              isDurableLibraryItem(entry.libraryItem) &&
+              entry.libraryItem.artifactId === next.itemId),
+        )
       : null;
     const byUrl = !byId && next.url
       ? entries.find(
