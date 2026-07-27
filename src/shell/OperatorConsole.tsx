@@ -31,8 +31,18 @@ export interface ConsoleFunction {
   icon?: ReactNode;
   /** 可选：「热」「新」之类的小角标。 */
   badge?: string;
-  /** 可选：目录卡片顶部配图缩略图（宗旨 v15，图示卡片版式）。 */
+  /**
+   * @deprecated 2026-07-27（W2）：目录卡片**不再读取它**，缩略图一律走 `capabilityImage`。
+   * 字段保留仅为站点仓库的类型兼容（36 个 consumer 还在传）。
+   */
   thumb?: string;
+  /**
+   * 目录卡片的【功能图】原始取值（裸 OSS key `cap-app/<siteKey>-<appId>` 或完整 URL）。
+   * 由 `SiteCatalogConsole` 从 `capabilityImageOf(app)` 填入，`AppDirectory` 侧再拼链。
+   * **必须是可选字段**：站点仓库直接 import 本类型，加必填字段会让 36 个 consumer 一起
+   * typecheck 变红。
+   */
+  capabilityImage?: string;
   /** 目录卡片用的一句话简介。 */
   tagline?: string;
   /** 目录卡片正文（更长的能力说明）。 */
@@ -260,7 +270,9 @@ export function OperatorConsole({
       tagline: f.tagline,
       capabilities: f.capabilities,
       icon: f.icon,
-      thumb: f.thumb,
+      // 合同 §0.3：工作台卡缩略图与首页同源 = 功能图。旧的 `thumb` 是已废弃字段，上一轮
+      // 换成 `capabilityImage` 时只改了首页，工作台卡显示不对的根因就在这一行。
+      capabilityImage: f.capabilityImage,
       badge: f.badge,
       accent,
       site_id: siteId,

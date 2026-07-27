@@ -6,8 +6,12 @@
 // 操作员要求统一全家桶的「选东西」体验：
 //   - 不再把分类塞进左侧窄侧边栏（太挤、难选）。分类**横排在右侧主区顶部**。
 //   - 二元分类器：顶部先选「分类方式」= 按行业 / 按内容类型；下面再出对应分类 chips。
-//   - 卡片（ce335cef 截图版式）：整块可点开（onOpen），卡片下部一个「加入工作台」
-//     按键（onAdd，已加入显示「已在工作台 ✓」）。
+//
+// 卡片版式（合同 2026-07-27 §0.3）：网格卡直接消费 W1 的 `app-card-shell.tsx`，与首页
+// 是**同一份代码**而不是「长得像」；栅格也引同一个 `APP_CARD_GRID_CLASS`。与首页**唯一**
+// 的差异是落点：点卡片主体 = 直接进该 app 操作台（不先弹模板大卡片），hover 主按钮 =
+// 「打开」（同落点，触屏常驻）。缩略图取 `capabilityImage`（功能图）；旧的 `thumb` 已废弃
+// 且本文件不再读取——工作台卡显示不对的根因正是它（上一轮换字段时只改了首页）。
 //
 // 复用处：all-sites（app / skill / 网站）、playground（app / skill）、workspace
 // 选择页（app / skill / 网站）。各处只是 items 不同、onOpen/onAdd 行为不同。
@@ -21,6 +25,8 @@ import {
   type TaxonomyMode,
 } from "../lib/taxonomy";
 import { brandColorFor, tintOf } from "../lib/brand-color";
+import { capabilityImageThumbSrc } from "../lib/app-capability-image";
+import { APP_CARD_GRID_CLASS, AppCardShell } from "./app-card-shell";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
 
@@ -34,10 +40,17 @@ export interface DirectoryItem {
   /** emoji / 单字 / SVG 节点图标。 */
   icon?: React.ReactNode;
   /**
-   * 宗旨 v15（操作员 2026-07-05）：卡片顶部配图缩略图 URL（AI 风格素材，来自
-   * asset.oceanleo.com）。给了它 → 卡片是「图示卡片」（顶部大图 + 底部标题/简介，
-   * 对照稿定式图示目录）；不给 → 回退 emoji tint 图标版式。 */
+   * @deprecated 2026-07-27（W2）：**本组件不再读取它**，缩略图一律走 `capabilityImage`。
+   * 字段保留只因 30 个站的 catalog 还在传它，删掉会让未迁移站立刻 typecheck 变红。
+   */
   thumb?: string;
+  /**
+   * 【功能图】缩略图的**原始取值**：裸 OSS key（`cap-app/<siteKey>-<appId>`）或完整 URL，
+   * 由 `SiteCatalogConsole` 从 `capabilityImageOf(app)` 透传下来。它**不能**直接进
+   * `<img src>`（裸 key 会被当相对路径请求 → 30 站卡片图全 404）；拼链统一由本文件的
+   * `capabilityImageThumbSrc()` 完成，对完整 URL 的旧数据原样透传。
+   */
+  capabilityImage?: string;
   /** 卡片右上角小角标（如「热」「新」）。 */
   badge?: string;
   /**
@@ -162,9 +175,9 @@ export function AppDirectory({
   groupAllLabel,
 }: AppDirectoryProps) {
   const tt = useUI();
-  // openLabel 仍保留在 props 里（向后兼容旧调用方），但卡片底部已不再渲染「打开」文字
-  // 按钮（宗旨 v19，2026-07-08）——整卡可点开即是「打开」。
-  void openLabel;
+  // 合同 §0.3：`openLabel` 重新接线为 hover 浮出 / 触屏常驻的**主按钮文案**（首页那枚位置
+  // 上工作台放「打开」）。它的落点与点卡主体完全相同 —— 进该 app 操作台。
+  const openLabelText = openLabel ?? tt("打开");
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
   const sceneAllText = sceneAllLabel ?? tt("全部");
@@ -360,10 +373,7 @@ export function AppDirectory({
       {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏）──
           场景模式用 sceneChips（各站自定义场景词）；否则用全局二元分类 chips。 */}
       <LibraryChips
-        chips={(sceneMode ? sceneChips : chips).map((chip) => ({
-          id: chip.id,
-          label: chip.label,
-        }))}
+        chips={(sceneMode ? sceneChips : chips).map((c) => ({ id: c.id, label: c.label }))}
         active={cat}
         onChange={setCat}
         accent={accent}
@@ -373,25 +383,21 @@ export function AppDirectory({
       </>
       )}
 
-      {/* ── 卡片网格（ce335cef：整块可点开 + 底部「加入工作台」） ── */}
+      {/* ── 卡片网格：栅格引首页同一个常量 `APP_CARD_GRID_CLASS`，两页列数与沟槽才不会漂
+          （旧的 `xl:grid-cols-4 gap-4` 会让同一张卡在工作台上比首页窄一截）── */}
       {loading ? (
         <CardGridSkeleton />
       ) : visible.length === 0 && leadingCards.length === 0 ? (
         <p className="py-12 text-center text-sm text-stone-400">{emptyTextText}</p>
       ) : (
-        <div
-          className={
-            view === "grid"
-              ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-              : "space-y-2"
-          }
-        >
+        <div className={view === "grid" ? APP_CARD_GRID_CLASS : "space-y-2"}>
           {[...leadingCards, ...visible].map((it, index) =>
             view === "grid" ? (
               <DirectoryCard
                 key={it.id}
                 item={it}
                 accent={accent}
+                openLabel={openLabelText}
                 onOpen={onOpen}
                 onAdd={index < leadingCards.length ? undefined : onAdd}
                 onDelete={index < leadingCards.length ? undefined : onDelete}
@@ -421,6 +427,7 @@ export function AppDirectory({
 function DirectoryCard({
   item,
   accent,
+  openLabel,
   onOpen,
   onAdd,
   onDelete,
@@ -430,157 +437,86 @@ function DirectoryCard({
 }: {
   item: DirectoryItem;
   accent: string;
+  /** hover 主按钮文案（默认「打开」，SiteSkillDirectory 传「开聊」）。 */
+  openLabel: string;
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
   onDelete?: (item: DirectoryItem) => void;
   onPrompt?: (item: DirectoryItem) => void;
   adding?: boolean;
-  /** "new" = 「＋ 新建」首卡（虚线描边 + 强调色），视觉上区别于普通条目。 */
   variant?: "default" | "new";
 }) {
   const tt = useUI();
-  // 宗旨 v13：卡片图标 = 浅色 tint 底 + 彩色 SVG 图标（不再深色底 + 白图标）。
-  // 优先级：item.logoColor > item.accent（向后兼容） > brandColorFor(id)（稳定回退）。
-  const iconColor = item.logoColor || item.accent || brandColorFor(item.id || item.name);
-  const iconTintBg = tintOf(iconColor, 0.14);
   const isNew = variant === "new";
   const canDelete = Boolean(onDelete && item.deletable);
+  // 合同 §0.3 D4：工作台卡与首页卡同一个外壳，唯一差异是点卡主体的落点——首页开大卡片
+  // （模板浮层），工作台**直接进该 app 操作台**、不先呈现模板。落点沿用调用方给的
+  // `onOpen`（OperatorConsole → openFn → SiteCatalogConsole 的 `/workspace/<appId>`）。
+  const open = () => onOpen?.(item);
+  // 右上角小按钮。`AppCardShell.extraActions` 是主按钮条的**兄弟**，所以这一组自己定位，
+  // 并且必须自带 pointer-events-auto（父层是 pointer-events-none 的装饰带之外的一层）。
+  const corners: { key: string; label: string; danger: boolean; path: string; run: () => void }[] = [];
+  if (onPrompt && !isNew) {
+    corners.push({ key: "prompt", label: tt("查看 / 编辑 prompt"), danger: false, run: () => onPrompt(item),
+      path: "M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" });
+  }
+  if (canDelete) {
+    corners.push({ key: "delete", label: tt("删除"), danger: true, run: () => onDelete?.(item),
+      path: "M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" });
+  }
   return (
-    <div
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
-      onClick={() => onOpen?.(item)}
-      onKeyDown={(e) => {
-        if (onOpen && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onOpen(item);
-        }
+    <AppCardShell
+      variant="workspace"
+      accent={accent}
+      // 文案由 `AppCardShell` 内部过 tt()（W1 的契约：调用方**不要**先翻一遍再传，否则
+      // 两侧各翻一套）。宗旨 v13：item.accent 是 logoColor 的向后兼容回退（等价语义）。
+      app={{
+        id: item.id,
+        name: item.name,
+        tagline: item.tagline || item.capabilities,
+        icon: item.icon,
+        badge: item.badge,
+        logoColor: item.logoColor || item.accent,
+        // `GoalApp.scenes` 是必填，但卡片外壳一条都不读（分类 chips 在本文件上游算完了）。
+        // 目录条目的 scenes 是可选的，缺了就补空数组，别让类型逼调用方造假数据。
+        scenes: item.scenes ?? [],
       }}
-      className={`group relative flex flex-col overflow-hidden rounded-2xl border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-        isNew
-          ? "border-2 border-dashed bg-white/70 hover:border-solid"
-          : "border-stone-200/80 bg-white/85 hover:border-stone-300"
-      } ${onOpen ? "cursor-pointer" : ""}`}
-      style={isNew ? { borderColor: `${accent}99` } : undefined}
-    >
-      {/* 宗旨 v15：图示卡片顶部大图（16:10，AI 风格素材）。悬浮轻微放大 + 底部渐隐蒙层。 */}
-      {item.thumb && !isNew && (
-        <span
-          className="relative block w-full overflow-hidden border-b border-stone-100"
-          style={{ aspectRatio: "16 / 10", background: iconTintBg }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={item.thumb}
-            alt=""
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-          {item.badge && (
-            <span
-              className="absolute left-2 top-2 rounded-md px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm"
-              style={{ background: accent }}
-            >
-              {tt(item.badge)}
-            </span>
-          )}
-        </span>
-      )}
-      {(canDelete || (onPrompt && !isNew)) && (
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
-          {onPrompt && !isNew && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPrompt(item);
-              }}
-              className="grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
-              title={tt("查看 / 编辑 prompt")}
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete?.(item);
-              }}
-              className="grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-              title={tt("删除")}
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-        </div>
-      )}
-      <div className={`flex flex-1 flex-col ${item.thumb && !isNew ? "px-3.5 py-3" : "p-4"}`}>
-        {item.thumb && !isNew ? (
-          // 图示卡片：顶部已有大图，这里只放标题 + 一句简介（无 icon 方块）。
-          <>
-            <p className="truncate text-[14px] font-semibold text-stone-900">{tt(item.name)}</p>
-            {item.tagline && (
-              <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-stone-500">{tt(item.tagline)}</p>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="flex items-start gap-3">
-              <span
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl shadow-sm ring-1"
-                style={{ background: iconTintBg, color: iconColor, boxShadow: `0 1px 0 ${tintOf(iconColor, 0.18)}`, borderColor: tintOf(iconColor, 0.28) }}
+      // 「＋ 新建」首卡没有功能图，也不该借用别人的图 → 走 emoji tint 版式。
+      image={isNew ? undefined : capabilityImageThumbSrc(item.capabilityImage)}
+      onCardClick={open}
+      cardActionLabel={`${openLabel} ${tt(item.name)}`}
+      primaryAction={onOpen ? { label: openLabel, onClick: open } : null}
+      extraActions={
+        (onAdd || corners.length > 0) && (
+          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+            {onAdd && (
+              <button
+                type="button"
+                onClick={() => onAdd(item)}
+                disabled={adding}
+                className={`pointer-events-auto rounded-md px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm backdrop-blur-sm transition group-hover:opacity-100 disabled:opacity-50 [@media(hover:none)]:opacity-100 ${item.added ? "border border-stone-300 bg-white/90 text-stone-500" : "bg-white/90 text-stone-700 hover:bg-white"}`}
               >
-                {item.icon || "✦"}
-              </span>
-              <div className="min-w-0 flex-1 pt-0.5">
-                {/* i18n：站点 functions/agents 配置里的中文 label/tagline 在渲染点过 tt()
-                    （中文原文=key，词典无命中回退原文——用户自建内容安全）。 */}
-                <p className="truncate text-[14px] font-semibold text-stone-900">{tt(item.name)}</p>
-                {item.tagline && (
-                  <p className="mt-0.5 line-clamp-1 text-[12px] text-stone-500">{tt(item.tagline)}</p>
-                )}
-              </div>
-            </div>
-            {item.capabilities && (
-              <p className="mt-2.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-stone-500">
-                {tt(item.capabilities)}
-              </p>
+                {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
+              </button>
             )}
-          </>
-        )}
-      </div>
-
-      {/* 底部一行（宗旨 v19，操作员 2026-07-08）：删除「打开 →」文字按钮——整张卡片本就
-          可点开（onOpen），底部再放「打开」冗余且占一行（截图 331d7102）。仅当有
-          「加入工作台」(onAdd) 时才渲染底部行（playground / all-sites 用）；成品 app 目录
-          不传 onAdd → 不出现底部行，卡片更紧凑。openLabel 保留 prop 兼容但不再单独渲染。 */}
-      {onAdd && (
-        <div className="flex items-center justify-end border-t border-stone-100 px-4 py-2.5">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd(item);
-            }}
-            disabled={adding}
-            className={`rounded-full px-3 py-1 text-[12px] font-medium transition disabled:opacity-50 ${
-              item.added
-                ? "border border-stone-300 text-stone-500 hover:bg-stone-50"
-                : "text-white hover:opacity-90"
-            }`}
-            style={item.added ? undefined : { background: accent }}
-          >
-            {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
-          </button>
-        </div>
-      )}
-    </div>
+            {corners.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={c.run}
+                title={c.label}
+                aria-label={c.label}
+                className={`pointer-events-auto grid h-6 w-6 place-items-center rounded-md bg-white/80 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:bg-white hover:text-stone-600"}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d={c.path} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        )
+      }
+    />
   );
 }
 
@@ -604,6 +540,8 @@ function DirectoryListRow({
   const tt = useUI();
   const iconColor =
     item.logoColor || item.accent || brandColorFor(item.id || item.name);
+  // 列表行同样改吃功能图。96×64 的位置用 `.thumb.webp`（512²）绰绰有余，绝不拉全尺寸图。
+  const rowImage = capabilityImageThumbSrc(item.capabilityImage);
   const stop =
     (action: (entry: DirectoryItem) => void) =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -625,10 +563,10 @@ function DirectoryListRow({
         onOpen ? "cursor-pointer" : ""
       }`}
     >
-      {item.thumb ? (
+      {rowImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={item.thumb}
+          src={rowImage}
           alt=""
           className="h-16 w-24 shrink-0 rounded-lg object-cover"
           loading="lazy"
@@ -700,27 +638,22 @@ function DirectoryListRow({
   );
 }
 
+/** 骨架屏跟着卡片一起换版式（左 96px 方图 + 右两行文字），否则加载完会「跳版」。 */
 function CardGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white/60">
-          <div className="flex flex-1 flex-col p-4">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-stone-200/70" />
-              <div className="min-w-0 flex-1 space-y-2 pt-1">
-                <div className="h-3.5 w-2/3 animate-pulse rounded bg-stone-200/70" />
-                <div className="h-3 w-1/2 animate-pulse rounded bg-stone-200/50" />
-              </div>
-            </div>
-            <div className="mt-3 space-y-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white/60 shadow-sm"
+        >
+          <div className="aspect-square w-[96px] shrink-0 animate-pulse bg-stone-200/70" />
+          <div className="flex min-w-0 flex-1 flex-col justify-between px-3 py-2.5">
+            <div className="h-3.5 w-2/3 animate-pulse rounded bg-stone-200/70" />
+            <div className="space-y-1.5">
               <div className="h-3 w-full animate-pulse rounded bg-stone-200/50" />
               <div className="h-3 w-4/5 animate-pulse rounded bg-stone-200/50" />
             </div>
-          </div>
-          <div className="flex items-center justify-between border-t border-stone-100 px-4 py-2.5">
-            <div className="h-3 w-12 animate-pulse rounded bg-stone-200/60" />
-            <div className="h-6 w-24 animate-pulse rounded-full bg-stone-200/60" />
           </div>
         </div>
       ))}

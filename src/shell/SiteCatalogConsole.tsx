@@ -31,7 +31,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { OperatorConsole, type ConsoleFunction } from "./OperatorConsole";
 import { type ModelCategory } from "./ModelPicker";
-import { type GoalApp } from "./app-catalog";
+import { capabilityImageOf, type GoalApp } from "./app-catalog";
 import { AgentChat } from "./AgentChat";
 import { type FunctionGuide } from "./NavigatorGuide";
 import {
@@ -542,7 +542,11 @@ export function SiteCatalogConsole({
           id: app.id,
           label: app.name,
           icon: app.icon,
-          thumb: app.thumb,
+          // 合同 §0.3：工作台目录卡的缩略图与首页**同一个数据源** —— `capabilityImageOf()`
+          // 的裁决（`capabilityImage` 优先、未迁移站回退 `thumb`）。这里刻意只透传**原始
+          // 取值**，key→URL 的拼链留给 AppDirectory 那一层，两处各拼一次会拼成
+          // `assets/image/assets/image/…`。
+          capabilityImage: capabilityImageOf(app),
           badge: app.badge,
           tagline: app.tagline,
           capabilities: app.capabilities,
