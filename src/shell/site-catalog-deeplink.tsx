@@ -34,9 +34,11 @@ import {
 import {
   catalogAdvancedOpenPlan,
   catalogPresetFill,
+  catalogQueryAppId,
   catalogTemplateOpenPlan,
   resolveCatalogDeepLinkIntent,
   searchWithoutCatalogDeepLinkIntent,
+  warnPreviewDeepLinkWithoutApp,
   type CatalogDeepLinkIntent,
   type CatalogPresetFill,
 } from "./site-catalog-controller";
@@ -252,10 +254,30 @@ export function useCatalogDeepLink({
     [locationSearch],
   );
   const previewArtifactId = previewIntent?.artifactId || "";
+  // URL 里**写没写** app 锚点，和它此刻**解析出来没有**是两件事，必须分开看（V5 残余 R-3）：
+  // 前者是永久性的（没写就永远不会有），后者只是加载中的一帧。合在一起看，就只能要么
+  // 对正常加载刷告警，要么对坏链接保持静默——本轮之前选的正是后者。
+  const previewAnchorAppId = useMemo(
+    () => catalogQueryAppId(locationSearch),
+    [locationSearch],
+  );
   const previewLatchRef = useRef("");
   useEffect(() => {
-    if (!previewArtifactId || !activeAppId) return;
-    const token = `${activeAppId}\u0000${previewArtifactId}`;
+    if (!previewArtifactId) return;
+    if (!activeAppId) {
+      // 没有 app 锚点 = 这条链接永远落不了地（右栏不挂载，总线上没有接收者）。
+      // 不派发，但**必须出声**：静默失效正是 R-3 要消灭的东西。
+      // 「那就照样派发」被否决过：派进一个没有监听者的总线，只会变成
+      // 「看起来接上了、其实掉进真空」，比现在更难查。
+      if (!previewAnchorAppId) {
+        warnPreviewDeepLinkWithoutApp("useCatalogDeepLink", previewArtifactId);
+      }
+      // 有锚点但还没解析出来：正常的加载中（下一帧就好），或者 app 真的不存在——后者由
+      // `SiteCatalogConsole` 渲染「这个 App 不存在或已下线」，本来就可见。两种都保持安静。
+      return;
+    }
+    // latch 只认 artifact，不认 app：app 从空解析到有值时不得再派发第二次。
+    const token = previewArtifactId;
     if (previewLatchRef.current === token) return;
     const action = libraryPreviewIntentAction({
       artifactId: previewArtifactId,
@@ -267,7 +289,7 @@ export function useCatalogDeepLink({
       nonce: `catalog-preview:${activeAppId}:${previewArtifactId}:${Date.now()}`,
       action,
     });
-  }, [activeAppId, previewArtifactId]);
+  }, [activeAppId, previewAnchorAppId, previewArtifactId]);
 
   useEffect(() => {
     setNotice("");

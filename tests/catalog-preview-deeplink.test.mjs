@@ -307,25 +307,106 @@ test("重复渲染不得重复派发（latch 生效）", async () => {
   assert.equal(dispatched.length, 1, "同一条预览深链重渲染只能派发一次");
 });
 
-test("app 还没解析出来时不派发（避免派给一个不存在的右栏）", async () => {
+// ————————————————————————————————————————————————————————————————
+// 缺 app 锚点这一类（V5 残余 R-3）。
+//
+// 背景：`?app=` 看着像可选装饰，其实**承重**——库预览面板挂在 app 操作台的右栏里
+// （`OperatorConsole` → `ResultCanvas` → `MyLibrary`）；没有 app 时 `OperatorConsole`
+// 渲染的是目录页，右栏整块不挂载，总线上没有任何 `useLibraryEditIntent` 在听。
+//
+// 本文件上一版这里只有一条「app 还没解析出来时不派发」，把**两种完全不同的情况**
+// 混成了一条「预期行为」，等于用测试给静默失效上了锁（V5 判词）。现在拆开：
+//   ① URL 写了锚点、此刻还没解析出来 → 加载中的一帧，安静等待，**不许告警**（否则每次
+//      正常预览都刷 console）；解析出来之后要正常派发，且只派发一次。
+//   ② URL 压根没有锚点             → 永远不会解析出来，这条链接结构上落不了地
+//      → 不派发，但**必须出声**。
+//
+// 「那就照样派发」这条路被明确否决：总线上没有接收者，派出去只会变成「看起来接上了、
+// 其实掉进真空」，比静默失效更难查。所以修法放在**生产侧**（不产出这种链接）+
+// **消费侧告警**两端，而不是硬派发。
+// ————————————————————————————————————————————————————————————————
+
+/** 收集 console.warn，同时保证测试之间互不串味。 */
+async function captureWarnings(run) {
+  const warnings = [];
+  const previous = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await run();
+  } finally {
+    console.warn = previous;
+  }
+  return warnings;
+}
+
+async function dispatchWithApp(activeAppId, search, artifactId = ARTIFACT.artifactId) {
   const dispatched = [];
-  const href = workspaceTemplatePreviewHref(APP.id, ARTIFACT.artifactId);
-  const url = new URL(href, "https://law.oceanleo.com");
-  await withDom(url.toString(), async ({ window, root }) => {
-    window.addEventListener(WORKSPACE_ACTION_EVENT, (event) => dispatched.push(event.detail));
-    function Sender() {
-      useCatalogDeepLink({
-        activeAppId: "",
-        apps: [APP],
-        siteKey: SITE_KEY,
-        locationSearch: url.search,
-        onDeepLinkQueryStripped: () => {},
-      });
-      return null;
-    }
-    await act(async () => root.render(React.createElement(Sender)));
+  const warnings = await captureWarnings(async () => {
+    await withDom(`https://law.oceanleo.com/workspace${search}`, async ({ window, root }) => {
+      window.addEventListener(WORKSPACE_ACTION_EVENT, (event) => dispatched.push(event.detail));
+      function Sender({ appId }) {
+        useCatalogDeepLink({
+          activeAppId: appId,
+          apps: [APP],
+          siteKey: SITE_KEY,
+          locationSearch: search,
+          onDeepLinkQueryStripped: () => {},
+        });
+        return null;
+      }
+      // 先按「还没解析出来」渲染一帧，再按传入的 activeAppId 渲染——真实加载顺序。
+      await act(async () => root.render(React.createElement(Sender, { key: "s", appId: "" })));
+      await act(async () => root.render(React.createElement(Sender, { key: "s", appId: activeAppId })));
+    });
   });
-  assert.deepEqual(dispatched, []);
+  return { dispatched, warnings, artifactId };
+}
+
+test("① 有 app 锚点但尚未解析：安静等待，解析后正常派发且只派发一次", async () => {
+  const search = new URL(
+    workspaceTemplatePreviewHref(APP.id, ARTIFACT.artifactId),
+    "https://law.oceanleo.com",
+  ).search;
+  const { dispatched, warnings } = await dispatchWithApp(APP.id, search);
+
+  assert.equal(dispatched.length, 1, "app 解析出来之后必须派发，且只派发一次");
+  assert.equal(dispatched[0].action.itemId, ARTIFACT.artifactId);
+  // 加载中的那一帧不许刷告警——否则每一次正常预览都会污染 console，
+  // 真正坏掉的链接反而被淹没。
+  assert.deepEqual(
+    warnings.filter((line) => line.includes("catalog-deeplink")),
+    [],
+    "正常加载过程不得告警",
+  );
+});
+
+test("② 没有 app 锚点：不派发，但必须出声（不得静默失效）", async () => {
+  // 手写/历史遗留的链接：有 item 与 mode，就是没有 app。
+  const search = `?tab=library&item=${ARTIFACT.artifactId}&mode=preview`;
+  const { dispatched, warnings } = await dispatchWithApp("", search);
+
+  assert.deepEqual(dispatched, [], "没有接收者，派发只会掉进真空");
+  const warned = warnings.filter((line) => line.includes("[catalog-deeplink]"));
+  assert.equal(warned.length, 1, "缺 app 锚点必须告警且只告一次");
+  // 告警要能直接指导修复：说清缺什么、为什么落不了地、该怎么生成正确链接。
+  assert.match(warned[0], /缺少 \?app= 锚点/);
+  assert.match(warned[0], new RegExp(ARTIFACT.artifactId));
+  assert.match(warned[0], /右栏/);
+  assert.match(warned[0], /workspaceTemplatePreviewHref/);
+});
+
+test("③ 生产侧不产出注定落不了地的预览链接", async () => {
+  const warnings = await captureWarnings(async () => {
+    const href = workspaceTemplatePreviewHref("", "art-orphan");
+    // 缺 app 时**不产出** `mode=preview`：与其给一条看着像预览、点了没反应的链接，
+    // 不如退回工作台目录——用户至少落在一个正常页面上，而不是对着没反应的按钮发呆。
+    assert.equal(href, "/workspace");
+    assert.doesNotMatch(href, /mode=preview/);
+    assert.doesNotMatch(href, /item=/);
+  });
+  const warned = warnings.filter((line) => line.includes("[catalog-deeplink]"));
+  assert.equal(warned.length, 1, "生产侧也要出声，否则调用点永远不知道自己传空了");
+  assert.match(warned[0], /workspaceTemplatePreviewHref/);
 });
 
 test("非预览深链一条都不许触发这条链", async () => {

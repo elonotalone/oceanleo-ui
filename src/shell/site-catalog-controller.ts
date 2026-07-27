@@ -454,6 +454,39 @@ export {
 /** 探索页默认路径。locale 前缀站请传自己的 `basePath`。 */
 export const EXPLORE_BASE_PATH = "/explore";
 
+// ── 「预览&编辑」深链缺 app 锚点时的可见降级（V5 残余 R-3）────────────────────
+// `?app=` 看着像可选装饰，其实是**承重**的：库预览面板挂在 app 操作台的右栏里
+// （`OperatorConsole` → `ResultCanvas` → `MyLibrary`）。没有 app 时 `OperatorConsole`
+// 渲染的是**目录页**，右栏整块根本不挂载，`useLibraryEditIntent` 也就没有任何实例在听。
+// 所以一条不带 `app=` 的 `mode=preview` 链接**结构上无处落地**：它看起来像预览链接，
+// 点进去却静静地什么都不发生。
+//
+// 这正是本工程反复栽的那类缺陷（law 白屏被 Suspense 藏住、i18n 静默回退中文、
+// 缺 siteId 却照样显示「本站素材」）。处理原则定为**两侧都不许静默**：
+//   - 生产侧（本 helper）：**不产出**注定落不了地的链接，并告警；
+//   - 消费侧（`useCatalogDeepLink`）：遇到这种链接不假装接上，明确告警。
+// 「照样派发出去」被明确否决：总线上没有任何接收者，那会变成「看起来接上了、其实掉进
+// 真空」——比现在更难查。
+
+const warnedPreviewAnchors = new Set<string>();
+
+/** 一条降级一行 console（沿用 `material-library-scope` 的做法：看得见，但不刷屏）。 */
+export function warnPreviewDeepLinkWithoutApp(
+  context: string,
+  artifactId: string,
+): void {
+  const key = `${context}\u0000${artifactId}`;
+  if (warnedPreviewAnchors.has(key)) return;
+  warnedPreviewAnchors.add(key);
+  if (typeof console === "undefined") return;
+  console.warn(
+    `[catalog-deeplink] 「预览&编辑」深链缺少 ?${CATALOG_APP_QUERY_KEY}= 锚点` +
+      `（item=${artifactId}，来自 ${context}）：库预览面板只存在于 app 操作台的右栏里，` +
+      "没有 app 时右栏不挂载，这条链接无处落地。" +
+      "请改用 workspaceTemplatePreviewHref(appId, artifactId) 生成带锚点的链接。",
+  );
+}
+
 /**
  * 合同 §3.1：「预览&编辑」落点 =
  * `/workspace?tab=library&item=<artifactId>&mode=preview&app=<appId>`
@@ -461,8 +494,9 @@ export const EXPLORE_BASE_PATH = "/explore";
  * 入参是 **artifactId**（不是 `TemplateMaterial.id`）：库按 artifact 取数，而 template id
  * 只保证同 app 内唯一，拿它去库里定位会撞车。
  *
- * 缺 artifact 就拼不出只读落点：此时退回该 app 的 canonical 地址（再缺 app 才退回目录），
- * 绝不产出一条 `mode=preview` 却没有 `item` 的半截深链——那会让预览页开成空壳。
+ * 两个入参**都是必需**的，缺哪个都不产出半截深链：
+ *   - 缺 artifact → 退回该 app 的 canonical 地址（再缺 app 才退回目录）；
+ *   - 缺 app     → 退回目录并告警（见上方注释：没有 app 锚点的预览链接落不了地）。
  */
 export function workspaceTemplatePreviewHref(
   appId: string,
@@ -473,11 +507,15 @@ export function workspaceTemplatePreviewHref(
   const id = deepLinkAppSegment(appId);
   const artifact = deepLinkSegment(artifactId);
   if (!artifact) return id ? workspaceAppHref(id, contract) : contract.canonicalBasePath;
+  if (!id) {
+    warnPreviewDeepLinkWithoutApp("workspaceTemplatePreviewHref", artifact);
+    return contract.canonicalBasePath;
+  }
   const query = new URLSearchParams();
   query.set(LIBRARY_TAB_QUERY_KEY, LIBRARY_TAB_VALUE);
   query.set(LIBRARY_ITEM_QUERY_KEY, artifact);
   query.set(LIBRARY_MODE_QUERY_KEY, LIBRARY_MODE_PREVIEW_VALUE);
-  if (id) query.set(CATALOG_APP_QUERY_KEY, id);
+  query.set(CATALOG_APP_QUERY_KEY, id);
   return `${contract.canonicalBasePath}?${query.toString()}`;
 }
 

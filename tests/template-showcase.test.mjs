@@ -262,11 +262,14 @@ test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   assert.equal(workspaceTemplatePreviewHref("poster", ""), "/workspace/poster");
   assert.equal(workspaceTemplatePreviewHref("", ""), "/workspace");
   assert.doesNotMatch(workspaceTemplatePreviewHref("poster", ""), /mode=preview/);
-  // 缺 app、有 artifact：预览页仍能开（app 只是锚点）。
-  assert.equal(
-    workspaceTemplatePreviewHref("", "art-a"),
-    "/workspace?tab=library&item=art-a&mode=preview",
-  );
+  // 缺 app、有 artifact：**不产出**预览深链（V5 残余 R-3 的修正）。
+  // 本文件上一版这里写的是「预览页仍能开（app 只是锚点）」——那个判断是错的：库预览面板
+  // 挂在 app 操作台的右栏里，没有 app 时右栏根本不挂载，那条链接看着像预览链接、点进去
+  // 静静地什么都不发生。宁可退回目录（用户至少落在正常页面上），也不产出注定落不了地的链接。
+  // 「缺锚点」的完整行为（生产侧与消费侧都必须出声）由
+  // `tests/catalog-preview-deeplink.test.mjs` 的 ①②③ 三条钉死。
+  assert.equal(workspaceTemplatePreviewHref("", "art-a"), "/workspace");
+  assert.doesNotMatch(workspaceTemplatePreviewHref("", "art-a"), /mode=preview/);
 
   // 站点可自定义 canonicalBasePath。
   assert.equal(
