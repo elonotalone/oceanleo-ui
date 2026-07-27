@@ -688,6 +688,14 @@ export interface ArtifactProvenance {
   id: string;
   sourceKind: string;
   licenseCode: string;
+  /**
+   * 服务端已核验过「这份东西的权利归我们/上传者」。第一方素材（`owned` /
+   * `generated` / `user_upload`）恒为真且通常**没有** license URL 与 attribution；
+   * 第三方（`approved_provider`）恒为假且一定带 license URL。fork 会继承父级的这个
+   * 标记，所以它是「官方素材的副本」与「第三方复用」之间唯一可靠的分界线。
+   * 由后端 migration 0104 投影；老部署不发这个 key 时按 `false` 处理。
+   */
+  rightsAsserted: boolean;
   licenseUrl: string;
   attribution: string;
 }
@@ -1490,7 +1498,52 @@ function normalizeProvenance(value: unknown): ArtifactProvenance | null {
     licenseCode,
     licenseUrl: text(raw.licenseUrl, raw.license_url),
     attribution: text(raw.attribution, raw.attribution_text),
+    // 缺这个 key 的老部署按 `false` 处理，与后端 `ProvenanceProjection` 的默认值一致。
+    rightsAsserted:
+      raw.rightsAsserted === true || raw.rights_asserted === true,
   };
+}
+
+/**
+ * 不需要再出示复用证据的第一方来源。
+ *
+ * 比后端那份（`{owned, generated, internal}`）多三个：后端在投影前会把
+ * `user_upload` 归一成 `owned`，而 `agent` / `agent_generated` 是本前端历史上就认的
+ * 写法。这里保持超集是为了不新拒今天能通过的东西——**收窄它属于行为变更，别顺手做**。
+ */
+const FIRST_PARTY_SOURCE_KINDS: readonly string[] = [
+  "owned",
+  "generated",
+  "internal",
+  "user_upload",
+  "agent",
+  "agent_generated",
+];
+
+/**
+ * 「这是第三方复用，却一份复用证据都拿不出来」。
+ *
+ * ⚠️ **这条规则是后端 `typed_artifact_service.py` 那条的镜像**（搜
+ * `third-party provenance lacks license URL and attribution`）。判据必须逐项对齐，
+ * 两边任何一方改动都要同时改另一方——R-7 就是只改了后端、前端这份没跟上：
+ * 用户 fork 一份官方素材后，副本 `sourceKind = "derivative"`，而官方素材本就没有
+ * license URL 与 attribution，于是前端把整份「我的库」响应判为无效，一个条目都列不出来。
+ *
+ * `rightsAsserted` 是第三条出路，也正是解开 fork 的那一条：第一方素材恒为真，第三方
+ * （`approved_provider`）恒为假且一定带 license URL；fork 继承父级的标记，所以官方
+ * 素材的副本不再被当成第三方复用，而真正的第三方素材的副本仍然必须出示 license URL。
+ * 生产数据实测（2026-07-27）：`derivative + rightsAsserted + 无 URL 无 attribution`
+ * 共 19 行，全部是官方素材的用户副本。
+ */
+function provenanceLacksReuseEvidence(provenance: ArtifactProvenance): boolean {
+  return (
+    !FIRST_PARTY_SOURCE_KINDS.includes(
+      provenance.sourceKind.trim().toLowerCase(),
+    ) &&
+    !provenance.rightsAsserted &&
+    !provenance.licenseUrl &&
+    !provenance.attribution
+  );
 }
 
 export function artifactIntegrityFor(input: {
@@ -1542,20 +1595,7 @@ export function artifactIntegrityFor(input: {
       reason: "artifact 的 license 不完整或明确限制复用。",
     };
   }
-  if (
-    ![
-      "owned",
-      "generated",
-      "internal",
-      "user_upload",
-      "agent",
-      "agent_generated",
-    ].includes(
-      input.provenance.sourceKind.trim().toLowerCase(),
-    ) &&
-    !input.provenance.licenseUrl &&
-    !input.provenance.attribution
-  ) {
+  if (provenanceLacksReuseEvidence(input.provenance)) {
     return {
       ok: false,
       code: "license-restricted",

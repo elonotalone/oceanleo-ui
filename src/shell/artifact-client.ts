@@ -51,6 +51,14 @@ export interface ArtifactSearchResult {
     omittedCount: number;
     reasons: string[];
   };
+  /**
+   * 服务端跳过、没能投影出来的行的身份（后端 `invalidItems`）。
+   *
+   * 后端跳过一行而不是整页失败之后，用户看到的是「少了一条」；要把它删掉需要
+   * `revisionId` + `If-Match`，而这两个值恰恰读不出来——所以后端专门把身份放进这个
+   * 字段。**前端必须原样带出来**，否则用户永远清不掉那一行。
+   */
+  invalidItems?: { artifactId: string; revisionId: string }[];
 }
 
 export interface ArtifactDownloadResult {
@@ -699,6 +707,33 @@ async function artifactRequest<T>(
     clearTimeout(timer);
     callerSignal?.removeEventListener("abort", abort);
   }
+}
+
+/**
+ * 服务端跳过的那些行的身份。
+ *
+ * 单独读一次原始 payload，而不是穿过 `projectionsFromPayload` 的每一个早退分支：
+ * 这个字段与「这一页能不能用」无关，它是**用户清理坏数据唯一的抓手**，任何一条
+ * 早退路径把它丢掉都等于让人永远删不掉那一行。
+ */
+function invalidItemsFromPayload(
+  payload: unknown,
+): { artifactId: string; revisionId: string }[] {
+  const envelope =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
+  const raw = envelope.invalidItems ?? envelope.invalid_items;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    const row =
+      entry && typeof entry === "object" && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>)
+        : {};
+    const artifactId = String(row.artifactId ?? row.artifact_id ?? "").trim();
+    const revisionId = String(row.revisionId ?? row.revision_id ?? "").trim();
+    return artifactId ? [{ artifactId, revisionId }] : [];
+  });
 }
 
 function projectionsFromPayload(
@@ -1518,7 +1553,12 @@ export async function listMyArtifacts(options: {
     { signal: options.signal },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
-  const normalized = projectionsFromPayload(result.data);
+  // 一行投影不出来，不该让整份「我的库」什么都列不出来（R-7 的爆炸半径）。
+  // 后端已经改成「跳过那一行 + 计进 invalidCount + 在 invalidItems 里报上身份」，
+  // 前端这一侧必须同样只跳过它，否则后端那半个修复等于白做。
+  const normalized = projectionsFromPayload(result.data, {
+    allowInvalidItems: true,
+  });
   if (!normalized.ok) {
     return {
       ok: false,
@@ -1571,6 +1611,7 @@ export async function listMyArtifacts(options: {
       nextCursor: normalized.nextCursor,
       total: normalized.total,
       ownerPrincipalId: normalized.ownerPrincipalId,
+      invalidItems: invalidItemsFromPayload(result.data),
     },
   };
 }
@@ -1593,7 +1634,11 @@ export async function listFavoriteArtifacts(options: {
     { signal: options.signal },
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactSearchResult>;
-  const normalized = projectionsFromPayload(result.data);
+  // 与 `listMyArtifacts` 同一个理由（R-7）：「我的库」把自有作品与收藏合并成一个面，
+  // 只放宽一边等于没放宽——一条投影不出来的收藏照样能让整个「我的库」空掉。
+  const normalized = projectionsFromPayload(result.data, {
+    allowInvalidItems: true,
+  });
   if (!normalized.ok) {
     return {
       ok: false,
