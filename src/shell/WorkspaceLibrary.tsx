@@ -93,6 +93,16 @@ export interface WorkspaceLibraryProps {
   onOpenItem?: (item: LibraryItem) => void;
   /** Workspace hosts can move every preview/editor into the fixed main canvas. */
   onOpenEntry?: (entry: WorkspaceLibraryEntry) => void;
+  /**
+   * 货架卡片上的动作插槽——**只给「下载」用**（合同 §0.6「每张素材卡带下载」、
+   * §8.9 仲裁）。
+   *
+   * 另外四个动作（编辑 / 收藏 / 全屏 / 链接）仍然只许出现在安静预览详情的头部：
+   * 货架的视觉安静是既定契约。`tests/typed-artifact-contract.test.mjs` 的
+   * 「library shelf cards stay quiet」用 `shelfCardActionViolations()` 挡住把它们
+   * 塞回卡片，那条断言同时带反向用例，改成摆设会被测出来。
+   */
+  entryActions?: (entry: WorkspaceLibraryEntry) => ReactNode;
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -104,8 +114,9 @@ export interface WorkspaceLibraryProps {
 /**
  * Shared list/detail shell for Preview, Materials and My Library.
  * Those three areas intentionally share the exact same search, categories,
- * card density, detail header and viewer dispatch. Shelf cards show thumbnail
- * and title only; the five artifact actions live on the quiet preview detail
+ * card density, detail header and viewer dispatch. Shelf cards show thumbnail,
+ * title, and — only where the host opts in through `entryActions` — a single
+ * 下载 button; the other four artifact actions live on the quiet preview detail
  * header. Editable items are handed to the workspace-level host through the
  * detail-header Edit action via onOpenItem; this component never nests a full
  * editor inside a library detail.
@@ -133,6 +144,7 @@ export function WorkspaceLibrary({
   openAdvancedOnSelect = true,
   onOpenItem,
   onOpenEntry,
+  entryActions,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
@@ -598,6 +610,7 @@ export function WorkspaceLibrary({
                 entry={entry}
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
+                actions={entryActions?.(entry)}
               />
             ))}
           </div>
@@ -610,6 +623,7 @@ export function WorkspaceLibrary({
                 onOpen={() => activateEntry(entry)}
                 dragProps={dragPropsFor(entry)}
                 accent={accent}
+                actions={entryActions?.(entry)}
               />
             ))}
           </div>

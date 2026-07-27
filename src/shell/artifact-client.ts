@@ -1140,6 +1140,13 @@ export async function searchArtifactLibrary(options: {
   artifactType?: ArtifactType | "";
   role?: string;
   sourceFormat?: string;
+  /**
+   * 合同 §3.2 的三个作用域参数，名字由 W5/W7 共锁，任何一方改名先改合同。
+   * 都可选；都不传时请求与本轮之前**逐字一致**（回归保护）。
+   */
+  artifactTypes?: string;
+  originSiteKey?: string;
+  originAppId?: string;
   offset?: number;
   /** @deprecated The backend paginates by numeric offset; retained for callers on v0.180. */
   cursor?: string;
@@ -1155,6 +1162,12 @@ export async function searchArtifactLibrary(options: {
   setTrimmedParam(params, "artifactType", options.artifactType);
   setTrimmedParam(params, "role", options.role);
   setTrimmedParam(params, "sourceFormat", options.sourceFormat);
+  // 站级/app 级作用域（合同 §3.2、D9）。刻意**不**对它们做「服务端是否真的收窄了」
+  // 的强校验：还没上线新参数的部署会静默忽略它们，此时调用方（material-library）
+  // 的浏览器侧收窄降级要继续生效，客户端在这里硬拒只会把探索页打成空列表。
+  setTrimmedParam(params, "artifactTypes", options.artifactTypes);
+  setTrimmedParam(params, "originSiteKey", options.originSiteKey);
+  setTrimmedParam(params, "originAppId", options.originAppId);
   const offset = boundedLibraryOffset(options.offset ?? options.cursor);
   if (offset > 0) params.set("offset", String(offset));
   const result = await artifactRequest<unknown>(

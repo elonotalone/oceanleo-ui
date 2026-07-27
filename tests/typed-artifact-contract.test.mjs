@@ -622,6 +622,87 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
   );
 });
 
+/**
+ * 货架卡片上允许出现的动作接线**只有一处**：`actions={entryActions?.(entry)}`。
+ *
+ * 合同 §8.9 只为「下载」这一个动作放宽了 shelf-quiet 契约，其余四个（编辑 / 收藏 /
+ * 全屏 / 链接）仍然只许出现在安静预览详情的头部。所以这里不是简单地把老断言删掉换成
+ * 一条宽泛的白名单，而是同时钉死三件事：
+ *   ① 五连动作条 `actionButtonsFor` 一个字都不许进 grid/list；
+ *   ② 那四个动作的任何接线标识（`onEdit` / `onFavorite` / `onFullscreen` /
+ *      `linkUrl` …）都不许出现；
+ *   ③ `actions={…}` 插槽的实参必须**逐字**是 `entryActions?.(entry)`，不许换成
+ *      别的表达式偷渡内容。
+ *
+ * 抽成函数是为了能拿它跑**反向用例**（见下一条 test）：光证明「今天的源码恰好干净」
+ * 不算数，得证明这条断言真的还能挡住后来人。
+ */
+function shelfCardActionViolations(gridAndList) {
+  const violations = [];
+  if (/actionButtonsFor/.test(gridAndList)) violations.push("action-bar");
+  for (const [name, pattern] of [
+    ["edit", /\bonEdit\b|\bmatrixFor\b|\bprepareArtifactForAction\b/],
+    ["favorite", /\bonFavorite\b|\bsetArtifactFavorite\b/],
+    ["fullscreen", /\bonFullscreen\b|\brequestFullscreenFor\b/],
+    ["link", /\blinkUrl\b|\bentryLinkUrl\b/],
+    ["insert-replace", /\bonInsert\b|\bonReplace\b|\bapplyMaterialAction\b/],
+  ]) {
+    if (pattern.test(gridAndList)) violations.push(name);
+  }
+  for (const [slot] of gridAndList.matchAll(
+    /(?<![A-Za-z])actions=\{([^}]*)\}/g,
+  )) {
+    if (slot !== "actions={entryActions?.(entry)}") {
+      violations.push(`slot:${slot}`);
+    }
+  }
+  return violations;
+}
+
+test("放宽后的 shelf-quiet 断言仍然挡得住另外四个动作", () => {
+  const library = readFileSync(
+    new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
+    "utf8",
+  );
+  const gridAndList = library.slice(library.indexOf("view === \"list\""));
+  // 真实源码：只有下载这一个插槽，干净。
+  assert.deepEqual(shelfCardActionViolations(gridAndList), []);
+  assert.match(gridAndList, /actions=\{entryActions\?\.\(entry\)\}/);
+  // 反向用例：把「后来人想塞回卡片」的每一种写法都跑一遍，必须逐条被挡下。
+  for (const [expected, injected] of [
+    ["action-bar", "actions={actionButtonsFor(entry, true)}"],
+    ["edit", "onEdit={editItem}"],
+    ["edit", "matrixFor={matrixFor(entry.libraryItem)}"],
+    ["favorite", "onFavorite={() => setArtifactFavorite(entry)}"],
+    ["fullscreen", "onFullscreen={() => requestFullscreenFor(node)}"],
+    ["link", "linkUrl={entryLinkUrl(entry)}"],
+    ["insert-replace", "onInsert={(x) => applyMaterialAction(\"insert\", x)}"],
+    // 直接把五连动作条塞进插槽实参，绕开上面所有标识符规则。
+    ["slot:", "actions={<ArtifactActionButtons item={entry.libraryItem} />}"],
+  ]) {
+    const mutated = gridAndList.replace(
+      "actions={entryActions?.(entry)}",
+      `actions={entryActions?.(entry)}\n                ${injected}`,
+    );
+    const violations = shelfCardActionViolations(mutated);
+    assert.ok(
+      violations.some((violation) => violation.startsWith(expected)),
+      `注入 ${injected} 之后必须报出 ${expected}，实际只有 ` +
+        `${JSON.stringify(violations)}——这条断言已经是摆设`,
+    );
+  }
+  // 连「把插槽实参换成别的表达式」也要挡：这是最容易被用来偷渡的口子。
+  assert.deepEqual(
+    shelfCardActionViolations(
+      gridAndList.replace(
+        "actions={entryActions?.(entry)}",
+        "actions={allEntryActions(entry)}",
+      ),
+    ),
+    ["slot:actions={allEntryActions(entry)}"],
+  );
+});
+
 test("library shelf cards stay quiet; detail header keeps Edit/Download/Favorite/Fullscreen/Link", () => {
   const cardView = readFileSync(
     new URL("../src/shell/workspace-library-view.tsx", import.meta.url),
@@ -648,10 +729,10 @@ test("library shelf cards stay quiet; detail header keeps Edit/Download/Favorite
   assert.match(card, /line-clamp-1/);
   assert.doesNotMatch(card, /entry\.description &&/);
   assert.match(card, /预览「\{title\}」/);
-  // Shelf grid/list must not mount the five text actions under every card.
+  // Shelf grid/list mounts at most the single 下载 slot (合同 §0.6 / §8.9).
+  // The five-action bar and the other four actions stay in the detail header.
   const gridAndList = library.slice(library.indexOf("view === \"list\""));
-  assert.doesNotMatch(gridAndList, /actionButtonsFor/);
-  assert.doesNotMatch(gridAndList, /actions=\{/);
+  assert.deepEqual(shelfCardActionViolations(gridAndList), []);
   // Detail/preview header keeps the shared action bar exactly once.
   assert.match(
     library.slice(0, library.indexOf("view === \"list\"")),
