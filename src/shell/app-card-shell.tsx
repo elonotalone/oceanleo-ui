@@ -31,8 +31,29 @@ export const APP_CARD_GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gri
 export const APP_CARD_FRAME_CLASS =
   "group relative flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition duration-200 hover:z-10 hover:scale-105 hover:border-stone-300 hover:shadow-lg";
 
+/**
+ * 「＋ 新建」这类**入口卡**的虚线描边修饰（W2-marker 的请求 W1-1）。
+ *
+ * 只换描边样式，**几何一个字都不变**——尺寸、圆角、hover 放大、阴影仍然来自
+ * `APP_CARD_FRAME_CLASS`，所以入口卡与内容卡在同一张网格里不会错位半像素。
+ */
+export const APP_CARD_DASHED_CLASS = "border-dashed";
+
 /** 落点语义：首页开大卡片 / 工作台直接进操作台。见文件头。 */
 export type AppCardVariant = "home" | "workspace";
+
+/**
+ * 卡片外壳**真正会读**的字段（W2-marker 的请求 W1-3）。
+ *
+ * 为什么不直接写 `GoalApp`：`GoalApp.scenes` 是必填，但外壳一条都不读（分类 chips 在
+ * 调用方上游就算完了）。工作台的 `DirectoryItem` 的 `scenes` 是可选的，用 `GoalApp` 会
+ * 逼调用方造一个 `scenes: []` 假数据喂类型。
+ *
+ * 写成 `Partial<GoalApp> & Pick<GoalApp, "id" | "name">` 而不是列一串字段，是为了让
+ * **任何 `GoalApp` 仍然逐字可赋值**，同时对象字面量里多带几个 `GoalApp` 已有的字段
+ * （`scenes`、`group`…）也不会撞上 TS 的 excess property check。
+ */
+export type AppCardApp = Partial<GoalApp> & Pick<GoalApp, "id" | "name">;
 
 /** 卡片下缘那颗常驻主按钮（home = `prompt`，workspace = `打开`）。 */
 export interface AppCardPrimaryAction {
@@ -42,7 +63,7 @@ export interface AppCardPrimaryAction {
 
 export interface AppCardShellProps {
   /** 本站 catalog 里的这一个 app（名称/tagline/角标/图标/取色都从它来）。 */
-  app: GoalApp;
+  app: AppCardApp;
   /**
    * **已经拼好的 `<img src>`，不是 OSS key**。取图路径全站唯一一条：
    * `capabilityImageThumbSrc(capabilityImageOf(app))`。直接把裸 key 塞进来会被浏览器
@@ -54,14 +75,32 @@ export interface AppCardShellProps {
    * 正常数据形态，**绝不允许灌空串**，卡片主体照常可点（不是死卡）。
    */
   primaryAction?: AppCardPrimaryAction | null;
-  /** 点卡片主体（未命中主按钮）。home = 开大卡片；workspace = 进操作台。 */
-  onCardClick: () => void;
+  /**
+   * 点卡片主体（未命中主按钮）。home = 开大卡片；workspace = 进操作台。
+   *
+   * 不给 = **整枚覆盖式按钮不渲染**（W2-marker 的请求 W1-2）：调用方的落点本身可选时
+   * （`AppDirectoryProps.onOpen`），渲染一枚点了什么都不发生、却能抢走焦点的按钮比不渲染
+   * 更糟。注意卡上仍可有主按钮与 `extraActions`，所以这不等于死卡。
+   */
+  onCardClick?: () => void;
   variant: AppCardVariant;
   /** 主按钮底色，默认站点 accent。 */
   accent?: string;
   /** 覆盖式主按钮的无障碍名，默认「查看 <app 名>」。 */
   cardActionLabel?: string;
-  /** 主按钮之外的可点元素（如工作台的「加入」）。必须自带 `pointer-events-auto`。 */
+  /**
+   * 「＋ 新建」这类入口卡：描边改虚线并染成 `accent`（W1-1）。几何不变，见
+   * `APP_CARD_DASHED_CLASS`。
+   */
+  dashed?: boolean;
+  /**
+   * 主按钮之外的可点元素（如工作台的「＋ 加入工作台」、首页自建卡右上角那支笔）。
+   *
+   * 它是主按钮条的**兄弟节点，不在按钮条里面**，所以必须**自己定位**（典型写法
+   * `absolute right-1.5 top-1.5`）并自带 `pointer-events-auto`；直接塞进来会与卡片下缘的
+   * 主按钮重叠（W2-marker 的请求 W1-4：本轮按「文档明确」这一支闭合，没有再开
+   * `barActions` 插槽——按钮条里塞第二颗按钮会让两个 variant 的下缘开始各长各的）。
+   */
   extraActions?: ReactNode;
 }
 
@@ -84,24 +123,32 @@ export function AppCardFrame({
   children,
   fill,
   actions,
+  dashed,
+  accent,
 }: {
   variant: AppCardVariant;
   /** 覆盖式主动作按钮的无障碍名。 */
   actionLabel: string;
-  /** 卡片主体的唯一主动作。 */
-  onAction: () => void;
+  /** 卡片主体的唯一主动作。不给 = 不渲染那枚覆盖按钮（见 `AppCardShellProps.onCardClick`）。 */
+  onAction?: () => void;
   children: ReactNode;
   /** 主动作按钮**下方**的装饰层（hover 铺满的功能图），必须 `pointer-events-none`。 */
   fill?: ReactNode;
   /** 主动作按钮**上方**的可点元素（主按钮条、自建卡右上角的笔）。 */
   actions?: ReactNode;
+  /** 入口卡的虚线描边（几何不变）。 */
+  dashed?: boolean;
+  /** 虚线描边的颜色，只在 `dashed` 时生效。 */
+  accent?: string;
 }) {
   return (
     <div
       data-app-card
       data-app-card-variant={variant}
+      data-app-card-dashed={dashed ? true : undefined}
       data-home-app-card={homeHook(variant)}
-      className={APP_CARD_FRAME_CLASS}
+      className={dashed ? `${APP_CARD_FRAME_CLASS} ${APP_CARD_DASHED_CLASS}` : APP_CARD_FRAME_CLASS}
+      style={dashed && accent ? { borderColor: accent } : undefined}
     >
       {children}
       {fill}
@@ -115,14 +162,16 @@ export function AppCardFrame({
             ③ 焦点顺序与焦点环由浏览器给，无障碍名单独可控。
           它排在 `fill` 之后、`actions` 之前：同为定位元素时后画的在上，所以铺满层被它
           盖住（本来就 pointer-events-none），而主按钮盖在它上面、照常可点。 */}
-      <button
-        type="button"
-        data-app-card-main
-        data-home-app-card-main={homeHook(variant)}
-        onClick={onAction}
-        aria-label={actionLabel}
-        className="absolute inset-0 cursor-pointer rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-500"
-      />
+      {onAction ? (
+        <button
+          type="button"
+          data-app-card-main
+          data-home-app-card-main={homeHook(variant)}
+          onClick={onAction}
+          aria-label={actionLabel}
+          className="absolute inset-0 cursor-pointer rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-500"
+        />
+      ) : null}
       {actions}
     </div>
   );
@@ -267,6 +316,7 @@ export function AppCardShell({
   variant,
   accent = "#4f46e5",
   cardActionLabel,
+  dashed,
   extraActions,
 }: AppCardShellProps) {
   const tt = useUI();
@@ -277,6 +327,8 @@ export function AppCardShell({
   return (
     <AppCardFrame
       variant={variant}
+      dashed={dashed}
+      accent={accent}
       actionLabel={cardActionLabel ?? `${tt("查看")} ${name}`}
       onAction={onCardClick}
       fill={<AppCardFill image={image} icon={icon} color={color} variant={variant} />}

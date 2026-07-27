@@ -86,6 +86,7 @@ const OVERRIDES = {
 
 const shellUrl = await compileModule("src/shell/app-card-shell.tsx", OVERRIDES);
 const {
+  APP_CARD_DASHED_CLASS,
   APP_CARD_FRAME_CLASS,
   APP_CARD_GRID_CLASS,
   AppCardFrame,
@@ -243,6 +244,64 @@ test("外壳不产出未进词典的中文文案（i18n 目录是 W3 独占，�
     if (!dictionary.includes(`${JSON.stringify(literal)}:`)) missing.push(literal);
   }
   assert.deepEqual(missing, [], `未进词典的中文文案:\n${missing.join("\n")}`);
+});
+
+// ——— W2-marker 报上来的三条接口请求（W1-1 / W1-2 / W1-4 的文档支）———
+
+test("W1-1 入口卡虚线描边：只换描边，几何一个字不变", () => {
+  const props = { app: BARE, variant: "workspace", accent: "#6366f1", onCardClick() {} };
+  const plain = render(props);
+  const dashed = render({ ...props, dashed: true });
+
+  // 「＋ 新建」这类入口卡与普通卡在同一张网格里，几何必须完全一致，否则会错位。
+  assert.ok(dashed.includes(APP_CARD_FRAME_CLASS));
+  assert.ok(dashed.includes(`${APP_CARD_FRAME_CLASS} ${APP_CARD_DASHED_CLASS}`));
+  assert.equal(APP_CARD_DASHED_CLASS, "border-dashed");
+  // 虚线色跟 accent 走（不给 accent 就退回外壳默认色，不会渲染成透明）。
+  assert.match(dashed, /style="border-color:#6366f1"/);
+  assert.match(dashed, /data-app-card-dashed="true"/);
+
+  // 不传 dashed 时**一个字节都不新增**（首页与工作台的普通卡不受这条影响）。
+  assert.doesNotMatch(plain, /border-dashed/);
+  assert.doesNotMatch(plain, /data-app-card-dashed/);
+  assert.doesNotMatch(plain, /style="border-color/);
+  assert.equal(plain, dashed.replace(` ${APP_CARD_DASHED_CLASS}`, "")
+    .replace(' data-app-card-dashed="true"', "")
+    .replace(' style="border-color:#6366f1"', ""));
+});
+
+test("W1-2 onCardClick 可选：不给就不渲染那枚会抢焦点的空按钮，但卡不死", () => {
+  const markup = render({
+    app: POSTER,
+    image: IMAGE,
+    variant: "workspace",
+    primaryAction: { label: "打开", onClick() {} },
+  });
+  // 没有落点 → 覆盖式主按钮整枚不渲染（渲染一枚点了没反应、却能 Tab 到的按钮更糟）。
+  assert.doesNotMatch(markup, /data-app-card-main/);
+  // 但卡片本体与主按钮照常在：这不是死卡。
+  assert.match(markup, /data-app-card="true"/);
+  assert.match(markup, /data-app-card-primary[^>]*>打开</);
+});
+
+test("W1-4 extraActions 是按钮条的兄弟：自己定位，不与下缘主按钮抢位置", () => {
+  const markup = render({
+    app: POSTER,
+    image: IMAGE,
+    variant: "workspace",
+    primaryAction: { label: "打开", onClick() {} },
+    onCardClick() {},
+    extraActions: React.createElement(
+      "button",
+      { type: "button", "data-extra": true, className: "pointer-events-auto absolute right-1.5 top-1.5" },
+      "＋ 加入工作台",
+    ),
+  });
+  // extraActions 在按钮条**之后**渲染，且不在 `data-app-card-actions` 内部。
+  const bar = markup.indexOf("data-app-card-actions");
+  const extra = markup.indexOf("data-extra");
+  assert.ok(bar > -1 && extra > bar);
+  assert.doesNotMatch(markup, /data-app-card-actions[^>]*>[^<]*<button[^>]*data-extra/);
 });
 
 test("低层积木可被非 GoalApp 的卡复用（自建卡与 app 卡混排时版式同源）", () => {

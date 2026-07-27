@@ -399,6 +399,7 @@ export type { HomeIntroProps } from "./HomeIntro";
 // `AppCardFrame` / `AppCardThumb` / `AppCardText` 是同一版式的低层积木，给「不是 GoalApp
 // 的卡」（首页自建 prompt 卡、工作台列表视图）复用，避免它们照抄一份 class 串。
 export {
+  APP_CARD_DASHED_CLASS,
   APP_CARD_FRAME_CLASS,
   APP_CARD_GRID_CLASS,
   AppCardFrame,
@@ -407,6 +408,7 @@ export {
   AppCardThumb,
 } from "./app-card-shell";
 export type {
+  AppCardApp,
   AppCardPrimaryAction,
   AppCardShellProps,
   AppCardVariant,
