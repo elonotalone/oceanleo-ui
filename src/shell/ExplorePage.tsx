@@ -28,7 +28,13 @@ export type ExploreAssetType =
   | "ppt"
   | "sticker"
   | "font"
-  | "chart";
+  | "chart"
+  /**
+   * Long-form deliverables (word / paper / novel / law / med / resume /
+   * notebook …). Without it those sites had to mislabel documents as `image`,
+   * or ride on `font`, which only maps to `document` by accident.
+   */
+  | "document";
 
 export interface ExploreCategory {
   key: string;
@@ -37,7 +43,11 @@ export interface ExploreCategory {
 }
 
 export interface ExploreConfig {
-  type: ExploreAssetType;
+  /**
+   * Legacy single default. Optional since `types` supersedes it; the 36 sites
+   * that still pass only this keep working unchanged.
+   */
+  type?: ExploreAssetType;
   /**
    * Multi-select default for the type chips. Sites still on the single `type`
    * keep working unchanged; when both are absent the shelf shows every type.
@@ -57,7 +67,14 @@ export interface ExplorePageProps {
   config: ExploreConfig;
   accent?: string;
   className?: string;
+  /**
+   * Canonical site key from `scripts/oceanleo-sites.tsv` (`image`, `word`, …).
+   * 本站素材 cannot exist without it — see `siteId` for the legacy spelling.
+   */
+  siteKey?: string;
+  /** @deprecated Legacy spelling of `siteKey`; still honoured. */
   siteId?: string;
+  /** Anchors 此 app; `?app=` in the URL wins over this prop. */
   appId?: string;
   onOpenItem?: (item: LibraryItem) => void;
   materialActions?: readonly WorkbenchMaterialAction[];
@@ -84,14 +101,44 @@ const EXPLORE_ARTIFACT_TYPE: Record<ExploreAssetType, ArtifactType> = {
   sticker: "vector_image",
   font: "document",
   chart: "chart",
+  document: "document",
 };
 
 function configuredTypes(config: ExploreConfig): ArtifactType[] {
-  const requested = config.types?.length ? config.types : [config.type];
+  const requested = config.types?.length
+    ? config.types
+    : config.type
+      ? [config.type]
+      : [];
   const types = requested
     .map((value) => EXPLORE_ARTIFACT_TYPE[value])
     .filter(Boolean);
   return [...new Set(types)];
+}
+
+const warnedMissingSiteKey = new Set<string>();
+
+/**
+ * 本站素材 is only truthful when the page actually hands us a site key: without
+ * one the controller cannot send `originSiteKey` and the shelf silently serves
+ * a whole-platform search under a 「本站素材」 heading. A wrong label that never
+ * complains is worse than a missing section, so the section is withheld and
+ * the miswiring is reported instead.
+ */
+export function resetExploreSiteKeyWarnings(): void {
+  warnedMissingSiteKey.clear();
+}
+
+function reportMissingSiteKey(appId: string): void {
+  const key = appId || "*";
+  if (warnedMissingSiteKey.has(key)) return;
+  warnedMissingSiteKey.add(key);
+  if (typeof console === "undefined") return;
+  console.error(
+    "[ExplorePage] 缺少 siteKey：本站素材/此 app 两层已停用，只保留「更多素材」。" +
+      "请给 <ExplorePage siteKey=\"<sites.tsv 的站点 key>\" /> 传值" +
+      "（合同 §0.6 / §8.2）。",
+  );
 }
 
 /**
@@ -107,6 +154,7 @@ export function ExplorePage({
   config,
   accent = "#4f46e5",
   className = "",
+  siteKey = "",
   siteId = "",
   appId = "",
   onOpenItem,
@@ -160,11 +208,21 @@ export function ExplorePage({
   }, []);
 
   const exploreAppId = anchoredApp.trim();
-  const levels = useMemo<MaterialLibraryLevel[]>(
-    () =>
-      exploreAppId ? ["primary", "site", "more"] : ["site", "more"],
-    [exploreAppId],
-  );
+  const resolvedSiteKey = (siteKey || siteId).trim();
+  const scopeReady = Boolean(resolvedSiteKey);
+  const levels = useMemo<MaterialLibraryLevel[]>(() => {
+    if (!scopeReady) return ["more"];
+    return exploreAppId ? ["primary", "site", "more"] : ["site", "more"];
+  }, [exploreAppId, scopeReady]);
+  const initialLevel: MaterialLibraryLevel = !scopeReady
+    ? "more"
+    : exploreAppId
+      ? "primary"
+      : "site";
+  // Reported during render, not in an effect: these pages are server-rendered,
+  // and a miswired site has to name itself in the SSR log too. The module-level
+  // dedup keeps it to one line per app.
+  if (!scopeReady) reportMissingSiteKey(exploreAppId);
 
   const primaryAction = useMemo(
     () =>
@@ -187,6 +245,19 @@ export function ExplorePage({
             {tt(config.subtitle)}
           </p>
         )}
+        {!scopeReady &&
+          typeof process !== "undefined" &&
+          process.env.NODE_ENV !== "production" && (
+            <p
+              role="alert"
+              data-explore-missing-site-key="true"
+              className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700"
+            >
+              {tt(
+                "开发提示：<ExplorePage> 没有拿到 siteKey，「本站素材」与「此 app」两层已停用。",
+              )}
+            </p>
+          )}
       </header>
       <section
         className="min-h-[20rem] flex-1 overflow-hidden rounded-2xl border border-[var(--border,#e5e5e5)] bg-[var(--card,#fff)]"
@@ -196,12 +267,15 @@ export function ExplorePage({
           materials={[]}
           accent={accent}
           action={action}
-          siteId={siteId}
+          siteId={resolvedSiteKey}
           appId={exploreAppId}
-          contextId={canonicalArtifactContextId(siteId, exploreAppId)}
+          contextId={canonicalArtifactContextId(
+            resolvedSiteKey,
+            exploreAppId,
+          )}
           levels={levels}
-          initialLevel={exploreAppId ? "primary" : "site"}
-          fetchPrimary={Boolean(exploreAppId)}
+          initialLevel={initialLevel}
+          fetchPrimary={scopeReady && Boolean(exploreAppId)}
           fetchMore
           types={types}
           onTypesChange={syncTypesToUrl}

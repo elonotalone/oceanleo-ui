@@ -113,7 +113,7 @@ const OVERRIDES = {
   `),
 };
 
-const { ExplorePage } = await import(
+const { ExplorePage, resetExploreSiteKeyWarnings } = await import(
   await compileModule("src/shell/ExplorePage.tsx", OVERRIDES)
 );
 
@@ -190,9 +190,99 @@ test("ExplorePage 解开 lockLevel 并按 §3.1 认 ?app= / ?types=", () => {
   assert.match(source, /url\.searchParams\.set\("types", csv\)/);
   assert.match(source, /window\.history\.replaceState/);
   // 此 app 那层要有 catalog context 才能命中 exact binding。
-  assert.match(source, /canonicalArtifactContextId\(siteId, exploreAppId\)/);
+  assert.match(source, /canonicalArtifactContextId\(\s*resolvedSiteKey,/);
+  assert.match(source, /const resolvedSiteKey = \(siteKey \|\| siteId\)\.trim\(\)/);
   // 历史营销分类表不授予可见性，不能当类型筛选用。
   assert.doesNotMatch(source, /EXPLORE_CATEGORY_LABELS\[[^\]]*\]\s*as ArtifactType/);
+});
+
+test("siteKey 是站级作用域的正名，siteId 作为旧拼写继续认", () => {
+  for (const props of [
+    { config: CONFIG, siteKey: "image" },
+    { config: CONFIG, siteId: "image" },
+  ]) {
+    const markup = renderToStaticMarkup(createElement(ExplorePage, props));
+    assert.deepEqual(sections(markup), ["site", "more"]);
+    assert.equal(activeSection(markup), "site");
+  }
+});
+
+test("拿不到 siteKey 就不许挂「本站素材」的招牌（V5 §3 的静默退化）", () => {
+  const errors = [];
+  // 去重是模块级的，先清一次，免得用例顺序变了就吞掉告警。
+  resetExploreSiteKeyWarnings();
+  const realError = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  let markup = "";
+  try {
+    markup = renderToStaticMarkup(
+      createElement(ExplorePage, { config: CONFIG }),
+    );
+  } finally {
+    console.error = realError;
+  }
+  // 标题不许撒谎：站级那两层直接不渲染，只留「更多素材」。
+  // 只剩一段时连分区 tab 都不必渲染，靠 scope 标记确认落在哪一层。
+  assert.equal(activeSection(markup), "more");
+  assert.deepEqual(sections(markup), []);
+  assert.doesNotMatch(markup, /data-material-library-section="site"/);
+  assert.doesNotMatch(markup, /data-material-library-section="primary"/);
+  // 开发态页面上有一条看得见的告警，控制台有点名。
+  assert.match(markup, /data-explore-missing-site-key="true"/);
+  assert.ok(
+    errors.some((line) => line.includes("缺少 siteKey")),
+    `console.error 没有点名缺 siteKey：${JSON.stringify(errors)}`,
+  );
+
+  // 缺 siteKey 时连 ?app= 都不该把首屏定到「此 app」——那层同样拿不到 context。
+  const anchored = renderToStaticMarkup(
+    createElement(ExplorePage, { config: CONFIG, appId: "poster" }),
+  );
+  assert.equal(activeSection(anchored), "more");
+  assert.doesNotMatch(anchored, /data-material-library-section="primary"/);
+});
+
+test("长文档站点有正经的 document 取值，不必再借 image/font", () => {
+  const markup = renderToStaticMarkup(
+    createElement(ExplorePage, {
+      config: { type: "document" },
+      siteKey: "word",
+    }),
+  );
+  assert.match(
+    markup,
+    /aria-pressed="true" data-material-type-chip="document"/,
+  );
+  // 没有被误标成图片。
+  assert.match(
+    markup,
+    /aria-pressed="false" data-material-type-chip="single_file_image"/,
+  );
+  const source = readFileSync(
+    new URL("../src/shell/ExplorePage.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /\| "document";/);
+  assert.match(source, /document: "document",/);
+  // 旧的 font → document 映射保留兼容，不删。
+  assert.match(source, /font: "document",/);
+});
+
+test("config.type 可以整个省掉，只给 types 或什么都不给", () => {
+  const markup = renderToStaticMarkup(
+    createElement(ExplorePage, {
+      config: { types: ["document", "ppt"] },
+      siteKey: "word",
+    }),
+  );
+  assert.match(markup, /aria-pressed="true" data-material-type-chip="document"/);
+  assert.match(markup, /aria-pressed="true" data-material-type-chip="deck"/);
+
+  const unfiltered = renderToStaticMarkup(
+    createElement(ExplorePage, { config: {}, siteKey: "word" }),
+  );
+  // 两个都不传 = 不限类型：「全部类型」是选中态。
+  assert.match(unfiltered, /aria-pressed="true"[^>]*>全部类型</);
 });
 
 test("站点只传 siteId 时也能工作：单值 ExploreConfig.type 保留兼容", () => {
