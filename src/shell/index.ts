@@ -444,11 +444,17 @@ export {
 // 把**具体那份**模板素材落到库里的**只读预览页**（W4 的消费端路由认这个 query 形状），
 // `exploreAppHref` 落到本站探索页并锚定该 app（`/explore?app=<appId>`，W5 认这个 query）。
 // 「编辑模板」这个旧落点本轮全站废除，新代码一律用这两条。
+// `LIBRARY_TAB_*` / `LIBRARY_ITEM_QUERY_KEY` 与 `LIBRARY_MODE_*` 是**同一条 query 的四个
+// 零件**（`?tab=library&item=<id>&mode=preview`，W3-marker §8 追加请求）。只导出 mode 那
+// 两个会让消费端为了拼出完整链接自己硬编码 `tab` / `item`，那正是 helper 想消灭的东西。
 export {
   CATALOG_APP_QUERY_KEY,
   EXPLORE_BASE_PATH,
+  LIBRARY_ITEM_QUERY_KEY,
   LIBRARY_MODE_PREVIEW_VALUE,
   LIBRARY_MODE_QUERY_KEY,
+  LIBRARY_TAB_QUERY_KEY,
+  LIBRARY_TAB_VALUE,
   exploreAppHref,
   workspaceTemplatePreviewHref,
 } from "./site-catalog-controller";
