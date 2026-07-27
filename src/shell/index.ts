@@ -452,9 +452,25 @@ export {
   exploreAppHref,
   workspaceTemplatePreviewHref,
 } from "./site-catalog-controller";
-// 合同 §3.1：库「只读预览」意图（W4 产出，W3 生成链接 / W5 消费）。
-export { LIBRARY_PREVIEW_QUERY_MODE } from "./library-edit-intent";
+// 合同 §3.1：库「只读预览」意图（W4 产出，W3 生成链接 / W5 与站点侧消费）。
+// `?item=<id>&mode=preview` 的解析（`libraryPreviewIntentFromSearch`）与「预览页里点
+// 编辑才 fork」的动作判定（`libraryPreviewIntentAction`）都在这里，站点侧不要各写一份
+// query 解析——写歪了就会把只读预览解析成编辑意图，直接踩到官方原件上。
+export {
+  LIBRARY_PREVIEW_QUERY_MODE,
+  libraryPreviewIntentAction,
+  libraryPreviewIntentArtifactId,
+  libraryPreviewIntentFromSearch,
+} from "./library-edit-intent";
 export type { LibraryPreviewIntent } from "./library-edit-intent";
+// 合同 §0.5：fork 判据改成「我是不是 owner」之后，当前主体 id 在包内有一层缓存。
+// **登出流程必须能清掉它**——不清的话换账号后会拿上一个人的身份去判 owner，那正是本轮
+// 要根治的「改到官方原件」那类事故。`primeCurrentPrincipalId` 给已经拿到主体 id 的宿主
+// 预热，省掉首屏那次探测。
+export {
+  primeCurrentPrincipalId,
+  resetCurrentPrincipalId,
+} from "./artifact-client";
 // 合同 §3.1 / §3.2：素材三级作用域（W5 产出）。`MATERIAL_SCOPE_PARAM_NAMES` 是与后端
 // （W7）逐字对齐的 query 参数名，两侧改名必须先改合同 §3.2。
 export { MATERIAL_SCOPE_PARAM_NAMES } from "./material-library-scope";
