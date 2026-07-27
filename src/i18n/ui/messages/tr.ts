@@ -6344,5 +6344,17 @@ const tr: Record<string, string> = {
   "此 app": "Bu uygulama",
   "本站素材": "Bu sitedeki içerikler",
   "更多素材": "Daha fazla içerik",
+  // —— V1 判据 21 / 判据 10 的补课（2026-07-27，W4/W5 报送 + V1 实证）——
+  // 前 4 条是 W5 的探索页「本站素材」层，中间 3 条是 W4 的库只读预览与 fork 独立性提示，
+  // 末条是那个已下架功能自己的旧名（父任务裁定：只补词典，不改文案、不动它的断言）。
+  // 这批的失败形态是静默的：tt() 未命中就回退中文原文，编译与测试都不会红。
+  "素材分区": "İçerik bölümleri",
+  "搜索本站素材": "Bu sitedeki içeriklerde ara",
+  "本站暂无可编辑素材": "Bu sitede henüz düzenlenebilir içerik yok",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Burada yalnızca bu sitede kayıtlı içerikler görünür; platformun tamamındaki şablonlar için “Daha fazla içerik” bölümüne gidin.",
+  "正在准备预览…": "Önizleme hazırlanıyor…",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Bu içerikte source izni yok, bu yüzden kendi kopyanız henüz oluşturulamıyor; resmi orijinal değişmeden kalır.",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "İçerikleri düzenlemek için oturum açın: değişikliklerin kendi kopyanıza kaydedilebilmesi için önce hesabınızın doğrulanması gerekir.",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "Gelişmiş düzenleme artık her App'in üretimi ve kitaplığının bir parçası; çalışma alanına dönülüyor…",
 };
 export default tr;

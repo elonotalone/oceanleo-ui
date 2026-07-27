@@ -6344,5 +6344,17 @@ const de: Record<string, string> = {
   "此 app": "Diese App",
   "本站素材": "Materialien dieser Website",
   "更多素材": "Weitere Materialien",
+  // —— V1 判据 21 / 判据 10 的补课（2026-07-27，W4/W5 报送 + V1 实证）——
+  // 前 4 条是 W5 的探索页「本站素材」层，中间 3 条是 W4 的库只读预览与 fork 独立性提示，
+  // 末条是那个已下架功能自己的旧名（父任务裁定：只补词典，不改文案、不动它的断言）。
+  // 这批的失败形态是静默的：tt() 未命中就回退中文原文，编译与测试都不会红。
+  "素材分区": "Materialbereiche",
+  "搜索本站素材": "Materialien dieser Website durchsuchen",
+  "本站暂无可编辑素材": "Noch keine bearbeitbaren Materialien auf dieser Website",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Hier erscheinen nur die auf dieser Website registrierten Materialien; unter „Weitere Materialien“ findest du Vorlagen der gesamten Plattform.",
+  "正在准备预览…": "Vorschau wird vorbereitet…",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Diesem Material fehlt die source-Berechtigung, daher lässt sich noch keine eigene Kopie anlegen; das offizielle Original bleibt unverändert.",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Zum Bearbeiten von Materialien musst du dich anmelden: Erst wenn dein Konto bestätigt ist, können Änderungen als eigene Kopie gespeichert werden.",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "Die erweiterte Bearbeitung ist jetzt Teil von Generierung und Bibliothek jeder App; zurück zum Arbeitsbereich…",
 };
 export default de;

@@ -9,8 +9,16 @@ import {
 } from "./app-catalog";
 import { libraryKindForArtifactType, type LibraryKind } from "./library-data";
 import {
+  CATALOG_APP_QUERY_KEY,
+  LIBRARY_ITEM_QUERY_KEY,
+  LIBRARY_MODE_PREVIEW_VALUE,
+  LIBRARY_MODE_QUERY_KEY,
+  LIBRARY_TAB_QUERY_KEY,
+  LIBRARY_TAB_VALUE,
+  catalogQueryAppId,
   historySessionHref,
   historySessionIdFromPath,
+  isLibraryDeepLinkSearch,
   legacyWorkspaceAppId,
   workspaceAppHref,
   workspaceAppIdFromPath,
@@ -41,6 +49,8 @@ export interface SiteCatalogRouteInput {
 export interface SiteCatalogRouteState {
   pathAppId: string;
   historySessionId: string;
+  /** `?app=<appId>`：库深链的 app 锚点（合同 §3.1）。 */
+  queryAppId: string;
   legacyAppId: string;
   requestedAppId: string;
   activeAppId: string;
@@ -59,12 +69,17 @@ export function resolveSiteCatalogRoute(
   const route = activeRoute(input.route);
   const pathAppId = workspaceAppIdFromPath(input.pathname, route);
   const historySessionId = historySessionIdFromPath(input.pathname, route);
+  // 库深链（`/workspace?tab=library&item=…&mode=preview&app=<id>`）把 app 放在 `?app=`，
+  // 路径段是空的。不读它就只剩 `mode=preview` 能被当成 app id——那正是 V5 判定书 §2 那条
+  // 「这个 App 不存在或已下线 / preview」的来源。优先级排在路径段之后、legacy 之前。
+  const queryAppId = pathAppId ? "" : catalogQueryAppId(input.search || "");
   const legacyAppId = pathAppId
     ? ""
     : legacyWorkspaceAppId(input.search || "", route);
   const raw = String(
     input.historyAppId ||
       pathAppId ||
+      queryAppId ||
       legacyAppId ||
       ((input.embed || input.solo) ? input.controlledValue : "") ||
       "",
@@ -80,6 +95,7 @@ export function resolveSiteCatalogRoute(
   return {
     pathAppId,
     historySessionId,
+    queryAppId,
     legacyAppId,
     requestedAppId,
     activeAppId: invalidAppId ? "" : requestedAppId,
@@ -97,7 +113,19 @@ export function canonicalCatalogAppHref(
   const base = workspaceAppHref(appId, contract);
   if (!preserveQuery) return base;
   const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
-  for (const key of contract.legacyQueryKeys) params.delete(key);
+  // 库深链的 `mode=preview` **必须活过规范化**：它是「只读预览」这个意图本身，被当成
+  // legacy 键删掉的话，重定向到 `/workspace/<id>` 之后预览页会退化成普通库视图。
+  const keepPreviewMode =
+    isLibraryDeepLinkSearch(params) &&
+    params.get(LIBRARY_MODE_QUERY_KEY) === LIBRARY_MODE_PREVIEW_VALUE;
+  for (const key of contract.legacyQueryKeys) {
+    if (keepPreviewMode && key === LIBRARY_MODE_QUERY_KEY) continue;
+    params.delete(key);
+  }
+  // app 已经进了路径段，query 里那份是同义重复，留着只会让两处真相有机会漂移。
+  if (params.get(CATALOG_APP_QUERY_KEY) === appId) {
+    params.delete(CATALOG_APP_QUERY_KEY);
+  }
   const query = params.toString();
   return query ? `${base}?${query}` : base;
 }
@@ -409,16 +437,20 @@ export function workspaceTemplateEditHref(
 // 合同 §3.1 锁死：W4 的库预览页与 W5 的探索页分别按这两个形状解析参数，
 // **任何一方改形状必须先改合同**。
 
-/** `?tab=library`：工作台切到「我的库」这一栏。 */
-export const LIBRARY_TAB_QUERY_KEY = "tab";
-export const LIBRARY_TAB_VALUE = "library";
-/** `?item=<artifactId>`：库里要打开的那一份 artifact。 */
-export const LIBRARY_ITEM_QUERY_KEY = "item";
-/** `?mode=preview`：只读预览，**不进重型编辑器**（预览页内点「编辑」才 fork）。 */
-export const LIBRARY_MODE_QUERY_KEY = "mode";
-export const LIBRARY_MODE_PREVIEW_VALUE = "preview";
-/** `?app=<appId>`：预览页与探索页共用的 app 锚点。 */
-export const CATALOG_APP_QUERY_KEY = "app";
+// 这五个 query 常量与 `CATALOG_APP_QUERY_KEY` 的**定义**在 `./workspace-route`：路由解析
+// 必须认它们，而本模块已经 import 那个模块，反向 import 会成环。此处原样 re-export，
+// `src/shell/index.ts`（W1）的导出面与消费端 import 路径都不变。
+export {
+  CATALOG_APP_QUERY_KEY,
+  LIBRARY_ITEM_QUERY_KEY,
+  LIBRARY_MODE_PREVIEW_VALUE,
+  LIBRARY_MODE_QUERY_KEY,
+  LIBRARY_TAB_QUERY_KEY,
+  LIBRARY_TAB_VALUE,
+  catalogQueryAppId,
+  isLibraryDeepLinkSearch,
+} from "./workspace-route";
+
 /** 探索页默认路径。locale 前缀站请传自己的 `basePath`。 */
 export const EXPLORE_BASE_PATH = "/explore";
 

@@ -6344,5 +6344,17 @@ const vi: Record<string, string> = {
   "此 app": "App này",
   "本站素材": "Tài nguyên của trang này",
   "更多素材": "Thêm tài nguyên",
+  // —— V1 判据 21 / 判据 10 的补课（2026-07-27，W4/W5 报送 + V1 实证）——
+  // 前 4 条是 W5 的探索页「本站素材」层，中间 3 条是 W4 的库只读预览与 fork 独立性提示，
+  // 末条是那个已下架功能自己的旧名（父任务裁定：只补词典，不改文案、不动它的断言）。
+  // 这批的失败形态是静默的：tt() 未命中就回退中文原文，编译与测试都不会红。
+  "素材分区": "Phân vùng tài nguyên",
+  "搜索本站素材": "Tìm tài nguyên của trang này",
+  "本站暂无可编辑素材": "Trang này chưa có tài nguyên nào có thể chỉnh sửa",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Ở đây chỉ hiển thị tài nguyên đã đăng ký cho trang này; vào “Thêm tài nguyên” để xem mẫu của toàn nền tảng.",
+  "正在准备预览…": "Đang chuẩn bị bản xem trước…",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Tài nguyên này thiếu quyền source nên chưa thể tạo bản sao của riêng bạn; bản gốc chính thức không bị thay đổi.",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Cần đăng nhập để chỉnh sửa tài nguyên: tài khoản của bạn phải được xác nhận thì thay đổi mới lưu được thành bản sao của riêng bạn.",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "Chỉnh sửa nâng cao đã được tích hợp vào phần tạo và thư viện của mỗi App; đang quay lại không gian làm việc…",
 };
 export default vi;

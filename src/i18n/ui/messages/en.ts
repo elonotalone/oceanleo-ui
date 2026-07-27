@@ -6462,5 +6462,17 @@ const en: Record<string, string> = {
   "此 app": "This app",
   "本站素材": "Materials on this site",
   "更多素材": "More materials",
+  // —— V1 判据 21 / 判据 10 的补课（2026-07-27，W4/W5 报送 + V1 实证）——
+  // 前 4 条是 W5 的探索页「本站素材」层，中间 3 条是 W4 的库只读预览与 fork 独立性提示，
+  // 末条是那个已下架功能自己的旧名（父任务裁定：只补词典，不改文案、不动它的断言）。
+  // 这批的失败形态是静默的：tt() 未命中就回退中文原文，编译与测试都不会红。
+  "素材分区": "Material sections",
+  "搜索本站素材": "Search materials on this site",
+  "本站暂无可编辑素材": "No editable materials on this site yet",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Only materials registered on this site are shown here; go to “More materials” to browse platform-wide templates.",
+  "正在准备预览…": "Preparing preview…",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "This material has no source grant, so your own copy can't be created yet; the official original stays untouched.",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Sign in to edit materials: your account has to be confirmed before changes can be saved as your own copy.",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "Advanced editing is now part of each App's generation and library; returning to the workspace…",
 };
 export default en;

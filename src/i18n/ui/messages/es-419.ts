@@ -6344,5 +6344,17 @@ const es419: Record<string, string> = {
   "此 app": "Esta app",
   "本站素材": "Recursos de este sitio",
   "更多素材": "Más recursos",
+  // —— V1 判据 21 / 判据 10 的补课（2026-07-27，W4/W5 报送 + V1 实证）——
+  // 前 4 条是 W5 的探索页「本站素材」层，中间 3 条是 W4 的库只读预览与 fork 独立性提示，
+  // 末条是那个已下架功能自己的旧名（父任务裁定：只补词典，不改文案、不动它的断言）。
+  // 这批的失败形态是静默的：tt() 未命中就回退中文原文，编译与测试都不会红。
+  "素材分区": "Secciones de recursos",
+  "搜索本站素材": "Buscar recursos de este sitio",
+  "本站暂无可编辑素材": "Aún no hay recursos editables en este sitio",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Aquí solo se muestran los recursos registrados en este sitio; ve a «Más recursos» para ver las plantillas de toda la plataforma.",
+  "正在准备预览…": "Preparando la vista previa…",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Este recurso no tiene permiso source, así que todavía no se puede crear tu propia copia; el original oficial no se modifica.",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Inicia sesión para editar recursos: primero hay que confirmar tu cuenta para poder guardar los cambios como tu propia copia.",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "La edición avanzada ya forma parte de la generación y la biblioteca de cada App; volviendo al espacio de trabajo…",
 };
 export default es419;

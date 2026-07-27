@@ -102,7 +102,12 @@ const showcaseUrl = await compileModule("src/shell/ImageLightbox.tsx", OVERRIDES
 const controllerUrl = await compileModule("src/shell/site-catalog-controller.ts", OVERRIDES);
 
 const { TemplateShowcase, ImageLightbox } = await import(showcaseUrl);
-const { workspaceTemplatePreviewHref, exploreAppHref } = await import(controllerUrl);
+const {
+  workspaceTemplatePreviewHref,
+  exploreAppHref,
+  resolveSiteCatalogRoute,
+  catalogCanonicalRedirect,
+} = await import(controllerUrl);
 
 // `TemplateMaterial` 形状（合同 §3）。两份模板的每个字段都刻意取不同值，
 // 这样「右侧没跟着切」的实现会被下面的 doesNotMatch 抓住。
@@ -280,6 +285,119 @@ test("exploreAppHref 的输出逐字符锁死", () => {
   // locale 前缀站传自己的 basePath。
   assert.equal(exploreAppHref("poster", { basePath: "/ja/explore" }), "/ja/explore?app=poster");
   assert.equal(exploreAppHref("poster", { basePath: "/ja/explore/" }), "/ja/explore?app=poster");
+});
+
+// ————————————————————————————————————————————————————————————————
+// 1b. **方向性端到端**：产链接的人 → 解析链接的人（V5 判定书 §2 的 BLOCKER-1）
+//
+// 上一版这里只有「helper 的输出逐字符正确」，两条 helper 各自都绿，接缝却是断的：
+// 库深链带 `mode=preview`，而 `mode` 同时是 legacy app 深链键（`legacyQueryKeys` 默认
+// `["fn","mode"]`），于是 `preview` 被当成 app id，全站预览落点渲染成
+// 「这个 App 不存在或已下线 / preview」。**单独测每一端永远是绿的**，只有把 A 的输出
+// 真喂给 B 才抓得到。所以下面这几条一律走「helper 产出 → 路由解析器消费」的真实方向。
+// ————————————————————————————————————————————————————————————————
+
+/** 把 helper 产出的 href 拆成路由解析器的入参，中途不手写任何字面量。 */
+function routeStateFor(href, knownAppIds) {
+  const url = new URL(href, "https://image.oceanleo.com");
+  return resolveSiteCatalogRoute({
+    pathname: url.pathname,
+    search: url.search,
+    knownAppIds: new Set(knownAppIds),
+  });
+}
+
+test("方向性：预览深链喂进 resolveSiteCatalogRoute 后仍指向同一个 app", () => {
+  const appId = "animal-model";
+  const artifactId = "4b3f256f-0b3a-4a1e-9f22-7c9a5b1d8e40";
+  const href = workspaceTemplatePreviewHref(appId, artifactId);
+  const state = routeStateFor(href, [appId, "poster"]);
+
+  // 判定书点名的两条。
+  assert.equal(state.activeAppId, appId);
+  assert.equal(state.invalidAppId, "");
+  // 以及事故现场的那三个中间量：`preview` 不许再被当成 app id。
+  assert.equal(state.legacyAppId, "");
+  assert.equal(state.requestedAppId, appId);
+  assert.equal(state.queryAppId, appId);
+});
+
+test("方向性：17 种 app id 形态逐个走完 helper → 路由解析器", () => {
+  // 真实站点的 app id 形态（含连字符、数字、非 ASCII），逐个证明接缝通。
+  for (const appId of [
+    "animal-model", "poster", "3d-model", "ppt", "resume2", "law-brief",
+    "图片生成", "a", "app.with.dot", "app_underscore",
+  ]) {
+    const href = workspaceTemplatePreviewHref(appId, "art-1");
+    const state = routeStateFor(href, [appId]);
+    assert.equal(state.activeAppId, appId, `${appId}: activeAppId 不对（href=${href}）`);
+    assert.equal(state.invalidAppId, "", `${appId}: 被判成了不存在的 app`);
+  }
+});
+
+test("方向性：app 真的不存在时才报「不存在」，且报的是 app 不是 preview", () => {
+  const href = workspaceTemplatePreviewHref("ghost-app", "art-1");
+  const state = routeStateFor(href, ["poster"]);
+  assert.equal(state.invalidAppId, "ghost-app");
+  assert.notEqual(state.invalidAppId, "preview", "又把 mode 当成 app id 了");
+  assert.equal(state.activeAppId, "");
+});
+
+test("方向性：规范化重定向不得吃掉 mode=preview", () => {
+  const appId = "animal-model";
+  const href = workspaceTemplatePreviewHref(appId, "art-1");
+  const url = new URL(href, "https://image.oceanleo.com");
+  const state = routeStateFor(href, [appId]);
+  const redirect = catalogCanonicalRedirect(state, url.pathname, url.search);
+
+  // 规范化到 `/workspace/<appId>`，但**预览意图必须活下来**——被删掉的话预览页会退化
+  // 成普通库视图，用户点「预览&编辑」等于进了个半成品。
+  assert.equal(redirect, "/workspace/animal-model?tab=library&item=art-1&mode=preview");
+  // `app=` 进了路径段，query 里那份重复项收走。
+  assert.doesNotMatch(redirect, /[?&]app=/);
+
+  // 重定向之后再解析一次：必须稳定（不再重定向、app 仍然对）。
+  const after = new URL(redirect, "https://image.oceanleo.com");
+  const settled = routeStateFor(redirect, [appId]);
+  assert.equal(settled.activeAppId, appId);
+  assert.equal(settled.invalidAppId, "");
+  assert.equal(catalogCanonicalRedirect(settled, after.pathname, after.search), null);
+});
+
+test("回归护栏：老式 ?mode=<appId> / ?fn=<appId> 深链一个都不许坏", () => {
+  // 库深链的结构特征（tab=library / item=）不在时，`mode` 仍是 legacy app id。
+  const legacy = resolveSiteCatalogRoute({
+    pathname: "/workspace",
+    search: "?mode=poster",
+    knownAppIds: new Set(["poster"]),
+  });
+  assert.equal(legacy.legacyAppId, "poster");
+  assert.equal(legacy.activeAppId, "poster");
+
+  const fn = resolveSiteCatalogRoute({
+    pathname: "/workspace",
+    search: "?fn=poster",
+    knownAppIds: new Set(["poster"]),
+  });
+  assert.equal(fn.activeAppId, "poster");
+
+  // 极端情形：某个站真有一个叫 `preview` 的 app，它的老式链接照样能开。
+  const appNamedPreview = resolveSiteCatalogRoute({
+    pathname: "/workspace",
+    search: "?mode=preview",
+    knownAppIds: new Set(["preview"]),
+  });
+  assert.equal(appNamedPreview.activeAppId, "preview");
+  assert.equal(appNamedPreview.invalidAppId, "");
+
+  // 路径段永远优先于 query。
+  const pathWins = resolveSiteCatalogRoute({
+    pathname: "/workspace/poster",
+    search: "?tab=library&item=art-1&mode=preview&app=animal-model",
+    knownAppIds: new Set(["poster", "animal-model"]),
+  });
+  assert.equal(pathWins.activeAppId, "poster");
+  assert.equal(pathWins.queryAppId, "");
 });
 
 // ————————————————————————————————————————————————————————————————
@@ -590,6 +708,27 @@ const RETAINED_DOWNLOAD_COPY = [
 /** 本轮全站废除的两个旧按钮名：17 份词典里一条都不许留。 */
 const RETIRED_COPY = ["编辑模板", "高级编辑"];
 
+/**
+ * V1 判据 21 / 判据 10 的补课：W4、W5 的调用点 + 那条已下架功能的旧名。
+ *
+ * 这批词条的失败形态是**静默**的——`tt()` 未命中就回退中文原文，不报错、不炸编译、
+ * 测试全绿，只有 16 个非中文 locale 的用户看得见。所以必须由测试逐格钉住，
+ * 且要同时钉「源码里那个调用点还活着」：词条补了而调用点改了串，等于白补。
+ */
+const V1_GAP_COPY = {
+  "素材分区": "src/shell/material-library-view.tsx",
+  "搜索本站素材": "src/shell/material-library-presentation.ts",
+  "本站暂无可编辑素材": "src/shell/material-library-presentation.ts",
+  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。":
+    "src/shell/material-library-presentation.ts",
+  "正在准备预览…": "src/shell/library-viewer-first-paint.tsx",
+  "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。":
+    "src/shell/artifact-client.ts",
+  "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。":
+    "src/shell/artifact-client.ts",
+  "高级编辑已融入 App 的生成与库，正在返回工作台…": "src/shell/AdvancedFeaturePages.tsx",
+};
+
 /** zh-TW 必须真本地化而不是逐字转繁的那几条。 */
 const ZH_TW_MUST_DIFFER = {
   "预览&编辑": "預覽&編輯",
@@ -674,6 +813,45 @@ test("已废除的两个旧按钮名：17 份词典里一条都不剩", () => {
         `${locale} 词典仍留着已废除的 "${key}"`,
       );
     }
+  }
+});
+
+test("V1 判据 21/10 的 8 条补课词条：17 语逐格齐备（136 格）", () => {
+  const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
+  const cjkOk = new Set(["zh", "zh-TW", "ja", "ko"]);
+  const zh = uiDictionaries.get("zh");
+  let cells = 0;
+
+  for (const key of Object.keys(V1_GAP_COPY)) {
+    assert.equal(zh[key], key, `zh 的 "${key}" 必须 key===值`);
+    for (const [locale, dict] of uiDictionaries) {
+      cells += 1;
+      const value = dict[key];
+      assert.equal(typeof value, "string", `${locale} 缺 "${key}"`);
+      assert.notEqual(value.trim(), "", `${locale} 的 "${key}" 是空串`);
+      assert.doesNotMatch(value, placeholder, `${locale} 的 "${key}" 像占位`);
+      if (cjkOk.has(locale)) continue;
+      // 这一条正是本次 FAIL 的形态：词典没有 → tt() 静默回退中文原文。
+      assert.notEqual(value, key, `${locale} 的 "${key}" 还是中文源串（未翻译）`);
+      assert.doesNotMatch(value, /[\u4e00-\u9fff]/, `${locale} 的 "${key}" 残留汉字`);
+    }
+    // zh-TW 这 8 条都存在简繁差异，照抄简体即漏翻。
+    assert.notEqual(
+      uiDictionaries.get("zh-TW")[key],
+      zh[key],
+      `zh-TW 的 "${key}" 照抄了简体`,
+    );
+  }
+  assert.equal(cells, 8 * 17, "应当覆盖 136 格");
+});
+
+test("那 8 条词条的调用点还活着（词条补了而源串改了 = 白补）", async () => {
+  for (const [key, file] of Object.entries(V1_GAP_COPY)) {
+    const source = await readFile(resolve(file), "utf8");
+    assert.ok(
+      source.includes(key),
+      `${file} 里找不到源串 "${key.slice(0, 24)}…"，词条与调用点已经对不上`,
+    );
   }
 });
 
