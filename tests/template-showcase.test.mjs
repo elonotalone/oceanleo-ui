@@ -1,11 +1,16 @@
-// 大卡片（多模板详情浮层）= `TemplateShowcase` 的行为契约（合同 §0.3，W2，2026-07-26）。
+// 大卡片（多模板详情浮层）= `TemplateShowcase` 的行为契约（合同 §0.4 / §3.1，W3，2026-07-27）。
 // 覆盖：
 //   ① 左上主预览 + 左下缩略图条（≥2 份才出，0/1 份不出）+ 右侧标题/说明/标签的分栏版式；
-//   ② 右侧三按钮「编辑模板」「生成类似」「下载」的目标与可见性矩阵；
-//   ③ **切换模板时右侧信息与三个按钮的目标同步跟随选中项**（本组件最易回归处，jsdom 真点击）；
-//   ④ 无模板 app（含 music 那种连代表 prompt 都没有的）大卡片的降级形态；
-//   ⑤ 自带遮罩 / Esc / 打开即聚焦必须保留，且不得改用 `../ui` 的 portal <Modal>；
-//   ⑥ 本文件的每条中文文案在 17 语词典里都有译文（新词条由 W3 提供，已落地）。
+//   ② 右侧按钮**恰好三个**「预览&编辑」「生成类似」「更多」，顺序定死，且**没有下载**；
+//   ③ 两条深链 helper 的输出逐字符正确：
+//        `workspaceTemplatePreviewHref` → /workspace?tab=library&item=…&mode=preview&app=…
+//        `exploreAppHref`               → /explore?app=…
+//   ④ **切换模板时右侧信息与按钮目标同步跟随选中项**（本组件最易回归处，jsdom 真点击）；
+//   ⑤ 无模板 / 无代表 prompt 的 app 上按钮如何降级（「更多」几乎恒在，是唯一去处）；
+//   ⑥ 自带遮罩 / Esc / 打开即聚焦必须保留，且不得改用 `../ui` 的 portal <Modal>；
+//   ⑦ 本文件的每条中文文案在 17 语词典里都有译文；已废除的两个旧按钮名 17 语全部清干净；
+//   ⑧ 下载四档错误文案的词条**仍在** 17 语词典里（大卡片删了下载按钮，但 W5 的探索页
+//      素材卡要复用同一套下载体验——删词条会让那边 16 个 locale 齐刷刷露中文）。
 // 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以可以直接
 // `node --test tests/template-showcase.test.mjs` 跑，不需要仓库的 ts-extension-loader。
 
@@ -43,9 +48,8 @@ const inFlight = new Set();
 /**
  * 把一个 TS 源文件及其**全部相对依赖**递归编译成 data: 模块。
  *
- * 递归而不是手抄一份依赖清单：「编辑模板」「下载」两条深链由 W4 的
- * `site-catalog-controller` 现算，那个文件还在演进，每加一条 import 就得来改测试。
- * `overrides` 只留给必须换成替身的模块（tt() 词典）。
+ * 递归而不是手抄一份依赖清单：两条深链由 `site-catalog-controller` 现算，那个文件还在
+ * 演进，每加一条 import 就得来改测试。`overrides` 只留给必须换成替身的模块（tt() 词典）。
  */
 async function compileModule(relativePath, overrides = {}) {
   const sourcePath = resolve(relativePath);
@@ -90,29 +94,17 @@ async function compileModule(relativePath, overrides = {}) {
 
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
+const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl };
 
-// `../lib/auth/client` 会把 `@supabase/ssr` 拖进来（bare specifier，data: 模块里解析不了），
-// 而登录态本来就是本轮要测的**输入**，所以换成一个由 `globalThis.__W2_AUTH` 控制的替身。
-// 组件（`isSignedIn`）与 W4 的下载实现（`accessToken`）用的是同一个 specifier，
-// 一处覆盖两边同时生效。
-const AUTH = { signedIn: true, token: "test-access-token" };
-globalThis.__W2_AUTH = AUTH;
-const authStubUrl = dataModule(
-  "export async function isSignedIn(){ return globalThis.__W2_AUTH.signedIn; }\n" +
-    "export async function accessToken(){ return globalThis.__W2_AUTH.token; }\n",
-);
-
-// 「编辑模板」与「下载」的深链由 W4 的 `site-catalog-controller` 现算，所以这里接**真**
-// 控制器而不是替身：本测试断言的是用户最终点到的那条 URL，替身只会证明「组件调了个函数」。
-// 同理，下载的失败分档接 W4 **真**的 `template-download.ts`（见「默认下载执行器」一节）。
-const showcaseUrl = await compileModule("src/shell/ImageLightbox.tsx", {
-  "../i18n/ui/useUI": uiStubUrl,
-  "../lib/auth/client": authStubUrl,
-});
+// 两条深链接**真**控制器而不是替身：本测试断言的是用户最终点到的那条 URL，
+// 替身只会证明「组件调了个函数」。
+const showcaseUrl = await compileModule("src/shell/ImageLightbox.tsx", OVERRIDES);
+const controllerUrl = await compileModule("src/shell/site-catalog-controller.ts", OVERRIDES);
 
 const { TemplateShowcase, ImageLightbox } = await import(showcaseUrl);
+const { workspaceTemplatePreviewHref, exploreAppHref } = await import(controllerUrl);
 
-// W3 的 `TemplateMaterial` 形状（合同 §3）。两份模板的每个字段都刻意取不同值，
+// `TemplateMaterial` 形状（合同 §3）。两份模板的每个字段都刻意取不同值，
 // 这样「右侧没跟着切」的实现会被下面的 doesNotMatch 抓住。
 const TPL_A = {
   id: "poster-a",
@@ -131,7 +123,6 @@ const TPL_B = {
   previewUrl: "tpl-material/image-poster-2",
   artifactId: "art-b",
   artifactType: "single_file_image",
-  // 素材自带直链时优先于 templateDownloadHref（B 用来验证这条优先级）。
   downloadUrl: "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/tpl/poster-b.psd",
 };
 
@@ -149,9 +140,13 @@ function markup(props = {}) {
   return renderToStaticMarkup(React.createElement(TemplateShowcase, { ...BASE, ...props }));
 }
 
+/** 渲染出来的 `data-showcase-action` 取值，按 DOM 顺序。 */
+function actionsOf(html) {
+  return [...html.matchAll(/data-showcase-action="([^"]+)"/g)].map(([, name]) => name);
+}
+
 // ————————————————————————————————————————————————————————————————
-// jsdom 夹具。登录态与下载都是**异步 + 有交互**的，静态渲染看不到，所以下面几个
-// 用例都要真挂载。夹具本身抽出来，免得每个用例复制 40 行 globals 搭建与还原。
+// jsdom 夹具：切换模板是**有交互**的，静态渲染看不到，所以那个用例要真挂载。
 // ————————————————————————————————————————————————————————————————
 async function withDom(run) {
   // fabric 自带的 jsdom 是仓内唯一可用的那份；它的 canvas 依赖在本容器里装不上，
@@ -209,31 +204,19 @@ async function withDom(run) {
       node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
     );
   };
-  const downloadNode = () => container.querySelector('[data-showcase-action="download"]');
-  const read = () => {
-    const node = downloadNode();
-    const issueNode = container.querySelector("[data-showcase-download-issue]");
-    return {
-      title: container.querySelector("[data-template-showcase-title]")?.textContent,
-      summary: container.querySelector("[data-template-showcase-summary]")?.textContent,
-      tags: [...container.querySelectorAll("[data-template-showcase-tags] span")].map((n) => n.textContent),
-      preview: container.querySelector("[data-template-showcase-preview] img")?.getAttribute("src"),
-      edit: container.querySelector('[data-showcase-action="edit"]')?.getAttribute("href"),
-      similar: container.querySelector('[data-showcase-action="similar"]')?.getAttribute("href"),
-      active: container.querySelector('[data-template-thumb][data-active="1"]')?.getAttribute("data-template-id"),
-      download: node
-        ? {
-            tag: node.tagName,
-            state: node.getAttribute("data-download-state"),
-            text: node.textContent,
-            href: node.getAttribute("href"),
-            disabled: node.hasAttribute("disabled"),
-          }
-        : null,
-      issue: issueNode?.getAttribute("data-showcase-download-issue") ?? null,
-      issueText: issueNode?.textContent ?? null,
-    };
-  };
+  const read = () => ({
+    title: container.querySelector("[data-template-showcase-title]")?.textContent,
+    summary: container.querySelector("[data-template-showcase-summary]")?.textContent,
+    tags: [...container.querySelectorAll("[data-template-showcase-tags] span")].map((n) => n.textContent),
+    preview: container.querySelector("[data-template-showcase-preview] img")?.getAttribute("src"),
+    actions: [...container.querySelectorAll("[data-showcase-action]")].map((n) => ({
+      name: n.getAttribute("data-showcase-action"),
+      text: n.textContent,
+      href: n.getAttribute("href"),
+      tag: n.tagName,
+    })),
+    active: container.querySelector('[data-template-thumb][data-active="1"]')?.getAttribute("data-template-id"),
+  });
 
   try {
     await run({ window, container, render, click, read });
@@ -246,7 +229,64 @@ async function withDom(run) {
   }
 }
 
-test("版式：左上主预览 + 左下切换条 + 右侧标题/说明/标签 + 三个按钮", () => {
+// ————————————————————————————————————————————————————————————————
+// 1. 深链 helper（合同 §3.1 锁死的形状；W4 的库预览页与 W5 的探索页按它解析）
+// ————————————————————————————————————————————————————————————————
+
+test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
+  assert.equal(
+    workspaceTemplatePreviewHref("poster", "art-a"),
+    "/workspace?tab=library&item=art-a&mode=preview&app=poster",
+  );
+  // 参数顺序也是契约的一部分：tab → item → mode → app。
+  assert.deepEqual(
+    [...new URL(workspaceTemplatePreviewHref("poster", "art-a"), "https://x").searchParams.keys()],
+    ["tab", "item", "mode", "app"],
+  );
+  // `mode=preview` 是本轮的产品要害：落点必须是**只读预览**，不是编辑器。
+  assert.match(workspaceTemplatePreviewHref("poster", "art-a"), /mode=preview/);
+  assert.doesNotMatch(workspaceTemplatePreviewHref("poster", "art-a"), /open=(advanced|template)/);
+
+  // 需要转义的 id 走 URL 编码，不裸拼。
+  assert.equal(
+    workspaceTemplatePreviewHref("图片 生成", "art/b"),
+    "/workspace?tab=library&item=art%2Fb&mode=preview&app=%E5%9B%BE%E7%89%87+%E7%94%9F%E6%88%90",
+  );
+
+  // 缺 artifact 就拼不出只读落点：退回该 app 的 canonical 地址，绝不产出半截深链。
+  assert.equal(workspaceTemplatePreviewHref("poster", ""), "/workspace/poster");
+  assert.equal(workspaceTemplatePreviewHref("", ""), "/workspace");
+  assert.doesNotMatch(workspaceTemplatePreviewHref("poster", ""), /mode=preview/);
+  // 缺 app、有 artifact：预览页仍能开（app 只是锚点）。
+  assert.equal(
+    workspaceTemplatePreviewHref("", "art-a"),
+    "/workspace?tab=library&item=art-a&mode=preview",
+  );
+
+  // 站点可自定义 canonicalBasePath。
+  assert.equal(
+    workspaceTemplatePreviewHref("poster", "art-a", { canonicalBasePath: "/studio" }),
+    "/studio?tab=library&item=art-a&mode=preview&app=poster",
+  );
+});
+
+test("exploreAppHref 的输出逐字符锁死", () => {
+  assert.equal(exploreAppHref("poster"), "/explore?app=poster");
+  assert.equal(exploreAppHref("3d-model"), "/explore?app=3d-model");
+  assert.equal(exploreAppHref("图片生成"), "/explore?app=%E5%9B%BE%E7%89%87%E7%94%9F%E6%88%90");
+  // 空 app → 不带锚点的探索页，而不是 `?app=`（空参数会让 W5 多一条死分支）。
+  assert.equal(exploreAppHref(""), "/explore");
+  assert.equal(exploreAppHref("   "), "/explore");
+  // locale 前缀站传自己的 basePath。
+  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore" }), "/ja/explore?app=poster");
+  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore/" }), "/ja/explore?app=poster");
+});
+
+// ————————————————————————————————————————————————————————————————
+// 2. 版式与三按钮
+// ————————————————————————————————————————————————————————————————
+
+test("版式：左上主预览 + 左下切换条 + 右侧标题/说明/标签", () => {
   const html = markup({ templates: [TPL_A, TPL_B] });
 
   // 外壳与 a11y 骨架（旧 data-image-lightbox 保留，W1 的既有选择器不失效）。
@@ -283,91 +323,106 @@ test("版式：左上主预览 + 左下切换条 + 右侧标题/说明/标签 + 
   assert.match(html, />竖版</);
   // app 名仍在 header 与 dialog 无障碍名里。
   assert.match(html, /aria-label="海报生成"/);
-
-  // 右侧三按钮，且「高级编辑」这个名字本轮彻底消失。
-  assert.match(html, /data-showcase-action="edit"[^>]*>编辑模板</);
-  assert.match(html, /data-showcase-action="similar"[^>]*>生成类似</);
-  assert.match(html, /data-showcase-action="download"[^>]*>下载</);
-  assert.doesNotMatch(html, /高级编辑/);
-  // 大卡片上不再有旧的「prompt」灌词按钮（合同 §0.3 三按钮定死）。
-  assert.doesNotMatch(html, />prompt</);
 });
 
-test("三按钮目标：编辑模板/下载指向选中模板，生成类似仍是 app 级 ?fill=preset", () => {
+test("按钮恰好三个，顺序为 预览&编辑 → 生成类似 → 更多", () => {
   const html = markup({ templates: [TPL_A, TPL_B] });
-  // 编辑模板走 `?open=template&template=<id>`，**刻意不带** `?fill=preset`：
-  // 点「编辑模板」时不该顺手把 prompt 灌满输入框，那是「生成类似」的活。
-  assert.match(html, /href="\/workspace\/poster\?open=template&amp;template=poster-a"/);
-  assert.doesNotMatch(html, /open=template[^"]*fill=preset|fill=preset[^"]*open=template/);
-  assert.match(html, /href="\/workspace\/poster\?fill=preset"/);
-  // 下载是 button（要带 Bearer，纯导航做不到），不是 <a download>。
-  // 它指向哪一份由「切换模板」那个用例用执行器实参钉死，这里只管形态。
-  assert.match(html, /<button[^>]*data-showcase-action="download"[^>]*>下载</);
 
-  // initialTemplateId 指定第二份时，编辑模板改指 B。
-  const second = markup({ templates: [TPL_A, TPL_B], initialTemplateId: "poster-b" });
-  assert.match(second, /href="\/workspace\/poster\?open=template&amp;template=poster-b"/);
-  assert.doesNotMatch(second, /template=poster-a/);
+  assert.deepEqual(actionsOf(html), ["preview", "similar", "more"]);
+  assert.equal(html.match(/data-showcase-action=/g).length, 3, "按钮必须恰好三个");
+
+  // `&` 渲染成纯文本（HTML 里转义成 &amp;），不是拼进属性里的裸串。
+  assert.match(html, /data-showcase-action="preview"[^>]*>预览&amp;编辑</);
+  assert.match(html, /data-showcase-action="similar"[^>]*>生成类似</);
+  assert.match(html, /data-showcase-action="more"[^>]*>更多</);
 });
 
-// W1 的调用点目前仍显式传这两个 `@deprecated` 解析器（拆掉即回到默认路径）。
-// 它们是活着的生产分支，所以照样钉死：传了就必须用，且拿到的是**选中项**的 id。
-test("显式传入的 href 解析器覆盖默认值，且收到的是选中项", () => {
+test("下载按钮从大卡片彻底消失（入口迁到库与探索页）", () => {
+  const html = markup({ templates: [TPL_A, TPL_B] });
+  assert.doesNotMatch(html, /data-showcase-action="download"/);
+  assert.doesNotMatch(html, />下载</);
+  assert.doesNotMatch(html, /登录后下载|下载中…/);
+  assert.doesNotMatch(html, /data-showcase-download-issue/);
+  // 自带 https 直链的素材也不例外（上一轮那条「直链免登录」分支一起删）。
+  assert.doesNotMatch(markup({ templates: [TPL_B] }), /下载/);
+
+  // 组件源码里整套下载态机（登录探测 / pending / 四档报错）都不该再有。
+  // 唯一允许出现「下载」二字的地方是解释文案迁去哪儿的注释。
+  return readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8").then((source) => {
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const dead of [
+      "download",
+      "下载",
+      "isSignedIn",
+      "signedIn",
+      "accountHref",
+      "DownloadIssue",
+      "template-download",
+    ]) {
+      assert.ok(!code.includes(dead), `下载态机残留：${dead}`);
+    }
+  });
+});
+
+test("三按钮目标：预览&编辑指向选中模板的只读预览页，更多指向本站探索页", () => {
+  const html = markup({ templates: [TPL_A, TPL_B] });
+
+  // 预览&编辑 = 库里的只读预览（**不是**编辑器深链）。
+  assert.match(
+    html,
+    /data-showcase-action="preview"[^>]*href="\/workspace\?tab=library&amp;item=art-a&amp;mode=preview&amp;app=poster"/,
+  );
+  // 生成类似仍是 app 级 `?fill=preset`，行为不变。
+  assert.match(html, /data-showcase-action="similar"[^>]*href="\/workspace\/poster\?fill=preset"/);
+  // 更多 = 本站探索页并锚定该 app。
+  assert.match(html, /data-showcase-action="more"[^>]*href="\/explore\?app=poster"/);
+  // 预览&编辑刻意**不带** `?fill=preset`：那是「生成类似」的活。
+  assert.doesNotMatch(html, /mode=preview[^"]*fill=preset/);
+
+  // initialTemplateId 指定第二份时，预览&编辑改指 B 的 artifact。
+  const second = markup({ templates: [TPL_A, TPL_B], initialTemplateId: "poster-b" });
+  assert.match(second, /item=art-b&amp;mode=preview/);
+  assert.doesNotMatch(second, /item=art-a/);
+});
+
+test("显式传入的解析器覆盖默认落点，且收到的是选中项的 artifactId", () => {
   const seen = [];
   const html = markup({
     templates: [TPL_A, TPL_B],
     initialTemplateId: "poster-b",
-    templateEditHref: (appId, templateId) => `/custom/${appId}/${templateId}`,
-    templateDownloadHref: (templateId) => {
-      seen.push(templateId);
-      return `/custom-download/${templateId}`;
+    templatePreviewHref: (appId, artifactId) => {
+      seen.push([appId, artifactId]);
+      return `/custom/${appId}/${artifactId}`;
     },
+    exploreHref: "/ja/explore?app=poster",
   });
-  assert.match(html, /href="\/custom\/poster\/poster-b"/);
-  assert.deepEqual(seen, ["poster-b"]);
-  assert.doesNotMatch(html, /open=template/);
+  assert.match(html, /data-showcase-action="preview"[^>]*href="\/custom\/poster\/art-b"/);
+  assert.deepEqual(seen, [["poster", "art-b"]]);
+  assert.match(html, /data-showcase-action="more"[^>]*href="\/ja\/explore\?app=poster"/);
+  assert.doesNotMatch(html, /tab=library/);
 });
 
-test("下载定位不到素材时整颗按钮消失，不留一个点了必然失败的入口", () => {
-  // `templateDownloadHref` 返回空串 = W4 说「这份素材没有可下载的东西」。
-  // 它现在只当**可见性探针**（真正的下载走执行器），但这条隐藏规则不能丢。
-  const html = markup({ templates: [TPL_A], templateDownloadHref: () => "" });
-  assert.doesNotMatch(html, /data-showcase-action="download"/);
-  assert.doesNotMatch(html, />下载</);
-  // 同一份素材，探针有值时按钮就该在——否则上面那条断言是空转的。
-  assert.match(
-    markup({ templates: [TPL_A], templateDownloadHref: () => "/x" }),
-    /data-showcase-action="download"/,
-  );
-});
-
-test("只有 1 份模板时不渲染切换条，右侧信息仍取那一份", () => {
+test("只有 1 份模板时不渲染切换条，右侧信息与三个按钮仍在", () => {
   const html = markup({ templates: [TPL_A] });
   assert.doesNotMatch(html, /data-template-showcase-thumbs/);
   assert.doesNotMatch(html, /data-template-thumb/);
   assert.doesNotMatch(html, /aria-label="切换模板"/);
-  // 但主预览、右侧信息与「编辑模板」「下载」照常。
   assert.match(html, /tpl-material\/image-poster-1\.webp"/);
   assert.match(html, />夏季促销海报</);
-  assert.match(html, /href="\/workspace\/poster\?open=template&amp;template=poster-a"/);
-  assert.match(html, /data-showcase-action="download"/);
+  assert.deepEqual(actionsOf(html), ["preview", "similar", "more"]);
 });
 
 // ————————————————————————————————————————————————————————————————
-// 无模板 app 的形态定义（Done when 5）。三档，逐档钉死：
-//   A. 有代表 prompt + 给了 editHref 兜底 → 「编辑模板」(app 级空编辑器) + 「生成类似」，无「下载」
-//   B. 有代表 prompt、无 editHref            → 只有「生成类似」
-//   C. 无代表 prompt、无 editHref（music 站那 22 个）→ 零按钮，降级成纯预览浮层
-// 「编辑模板」「下载」依赖模板存在；「生成类似」依赖代表 prompt 非空。
+// 3. 降级形态。三颗按钮各有前提，缺谁掉谁；「更多」几乎恒在（素材没补齐的 app 上
+//    它是用户唯一的去处，比上一轮那种「零按钮纯预览浮层」强）。
 // ————————————————————————————————————————————————————————————————
-test("无模板 app：按钮集合按 prompt / editHref 兜底三档降级", () => {
+
+test("无模板 app：预览&编辑退到调用方兜底，没兜底就只剩生成类似 + 更多", () => {
   const cover = "cover-app/image-poster";
 
-  const withFallback = markup({ templates: [], imageKey: cover, editHref: "/workspace/poster?fill=preset&open=advanced" });
-  assert.match(withFallback, /data-showcase-action="edit"[^>]*>编辑模板</);
-  assert.match(withFallback, /href="\/workspace\/poster\?fill=preset&amp;open=advanced"/);
-  assert.match(withFallback, /data-showcase-action="similar"/);
-  assert.doesNotMatch(withFallback, /data-showcase-action="download"/);
+  const withFallback = markup({ templates: [], imageKey: cover, editHref: "/workspace?tab=library&mode=preview&app=poster" });
+  assert.deepEqual(actionsOf(withFallback), ["preview", "similar", "more"]);
+  assert.match(withFallback, /data-showcase-action="preview"[^>]*href="\/workspace\?tab=library&amp;mode=preview&amp;app=poster"/);
   // 无模板 → 主预览回退 app 封面，右侧标题回退 app 名，说明回退代表 prompt 全文。
   assert.match(withFallback, /cover-app\/image-poster\.webp"/);
   assert.match(withFallback, /data-template-showcase-title[^>]*>海报生成</);
@@ -375,26 +430,37 @@ test("无模板 app：按钮集合按 prompt / editHref 兜底三档降级", () 
   assert.match(withFallback, /生成一张 \[活动\] 宣传海报/);
 
   const promptOnly = markup({ templates: [], imageKey: cover });
-  assert.doesNotMatch(promptOnly, /data-showcase-action="edit"/);
-  assert.doesNotMatch(promptOnly, /data-showcase-action="download"/);
-  assert.match(promptOnly, /data-showcase-action="similar"[^>]*>生成类似</);
+  assert.deepEqual(actionsOf(promptOnly), ["similar", "more"]);
+  assert.doesNotMatch(promptOnly, /预览&amp;编辑/);
 
-  // C：music 站形态——没有模板、没有代表 prompt。零按钮，但不留白（emoji tint 占满图位）。
-  const bare = markup({ templates: [], prompt: "", fillHref: "/workspace/ambient?fill=preset", title: "氛围音乐", fallbackIcon: "🎵" });
-  assert.doesNotMatch(bare, /data-showcase-action=/);
-  assert.doesNotMatch(bare, /编辑模板|生成类似|>下载</);
+  // 连代表 prompt 都没有（music 站那 22 个）：只剩「更多」——探索页是唯一去处。
+  const bare = markup({ templates: [], prompt: "", fillHref: "", title: "氛围音乐", appId: "ambient", fallbackIcon: "🎵" });
+  assert.deepEqual(actionsOf(bare), ["more"]);
+  assert.match(bare, /data-showcase-action="more"[^>]*href="\/explore\?app=ambient"/);
   assert.doesNotMatch(bare, /<img/);
   assert.match(bare, /🎵/);
-  assert.match(bare, /data-template-showcase-title[^>]*>氛围音乐</);
-  // 关闭途径仍在（否则就是死浮层）。
   assert.match(bare, /aria-label="关闭"/);
+
+  // 连 appId 都没有 → 零按钮，降级成纯预览浮层（关闭途径仍在）。
+  const anonymous = markup({ templates: [], prompt: "", fillHref: "", appId: "", title: "未接线" });
+  assert.deepEqual(actionsOf(anonymous), []);
+  assert.match(anonymous, /aria-label="关闭"/);
 });
 
-test("有模板但无代表 prompt：只掉「生成类似」，编辑模板与下载照常", () => {
+test("选中模板缺 artifactId：预览&编辑退到兜底，不产出半截深链", () => {
+  const broken = { ...TPL_A, artifactId: "" };
+  const html = markup({ templates: [broken] });
+  // 没有兜底 → 整颗不渲染，只剩生成类似 + 更多。
+  assert.deepEqual(actionsOf(html), ["similar", "more"]);
+  assert.doesNotMatch(html, /tab=library/);
+
+  const withFallback = markup({ templates: [broken], editHref: "/workspace/poster" });
+  assert.match(withFallback, /data-showcase-action="preview"[^>]*href="\/workspace\/poster"/);
+});
+
+test("有模板但无代表 prompt：只掉「生成类似」", () => {
   const html = markup({ templates: [TPL_A, TPL_B], prompt: "" });
-  assert.match(html, /data-showcase-action="edit"/);
-  assert.match(html, /data-showcase-action="download"/);
-  assert.doesNotMatch(html, /data-showcase-action="similar"/);
+  assert.deepEqual(actionsOf(html), ["preview", "more"]);
   assert.doesNotMatch(html, /生成类似/);
   // 模板自带 summary，所以说明段还在，只是不挂「代表 prompt」小标题。
   assert.match(html, /3:4 竖版促销主视觉/);
@@ -405,6 +471,7 @@ test("兼容壳 ImageLightbox：旧 props 仍可渲染，advancedHref 映射成�
   const html = renderToStaticMarkup(
     React.createElement(ImageLightbox, {
       title: "海报生成",
+      appId: "poster",
       imageKey: "cover-app/image-poster",
       fallbackIcon: "🖼️",
       accent: "#6366f1",
@@ -416,16 +483,14 @@ test("兼容壳 ImageLightbox：旧 props 仍可渲染，advancedHref 映射成�
     }),
   );
   assert.match(html, /data-image-lightbox/);
-  assert.match(html, /href="\/workspace\/poster\?fill=preset&amp;open=advanced"/);
-  assert.match(html, /data-showcase-action="edit"[^>]*>编辑模板</);
-  assert.match(html, /data-showcase-action="similar"/);
+  assert.match(html, /data-showcase-action="preview"[^>]*href="\/workspace\/poster\?fill=preset&amp;open=advanced"/);
+  assert.deepEqual(actionsOf(html), ["preview", "similar", "more"]);
 });
 
 test("保留自带遮罩 / Esc / 焦点管理，不得改用 ../ui 的 portal <Modal>", async () => {
   const source = await readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8");
   // 注释里会解释「为什么不用 Modal」，所以先剥掉注释再查真实代码。
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  // ImageLightbox.tsx 文件头的禁令：Modal 走 createPortal(document.body)，SSR 首帧空。
   assert.doesNotMatch(code, /from "\.\.\/ui"/);
   assert.doesNotMatch(code, /createPortal/);
   assert.doesNotMatch(code, /\bModal\b/);
@@ -439,17 +504,10 @@ test("保留自带遮罩 / Esc / 焦点管理，不得改用 ../ui 的 portal <M
 });
 
 test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟随选中项", async () => {
-  AUTH.signedIn = true;
   await withDom(async ({ window, render, click, read }) => {
     let closed = 0;
-    const downloaded = [];
     await render({
       templates: [TPL_A, TPL_B],
-      // 「下载」已不是 <a href>，所以「跟随选中项」改用**执行器实际收到的那份素材**来证明，
-      // 这比读一条 href 更贴近用户真正下载到的东西。
-      async downloadTemplate(template) {
-        downloaded.push(template.id);
-      },
       onClose() {
         closed += 1;
       },
@@ -464,10 +522,13 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     assert.match(first.summary, /3:4 竖版促销主视觉/);
     assert.deepEqual(first.tags, ["促销", "竖版"]);
     assert.match(first.preview, /image-poster-1\.webp$/);
-    assert.equal(first.edit, "/workspace/poster?open=template&template=poster-a");
-    assert.equal(first.similar, "/workspace/poster?fill=preset");
-    await click('[data-showcase-action="download"]');
-    assert.deepEqual(downloaded, ["poster-a"]);
+    assert.deepEqual(first.actions.map((a) => a.name), ["preview", "similar", "more"]);
+    // 浏览器里读到的是解码后的纯文本：`&` 就是 `&`，没有 `&amp;` 漏进正文。
+    assert.deepEqual(first.actions.map((a) => a.text), ["预览&编辑", "生成类似", "更多"]);
+    assert.deepEqual(first.actions.map((a) => a.tag), ["A", "A", "A"]);
+    assert.equal(first.actions[0].href, "/workspace?tab=library&item=art-a&mode=preview&app=poster");
+    assert.equal(first.actions[1].href, "/workspace/poster?fill=preset");
+    assert.equal(first.actions[2].href, "/explore?app=poster");
 
     // ——— 点第二颗缩略图 ———
     await click('[data-template-thumb][data-template-id="poster-b"]');
@@ -480,21 +541,17 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     assert.doesNotMatch(second.summary, /3:4 竖版促销主视觉/);
     assert.deepEqual(second.tags, ["新品", "长图"]);
     assert.match(second.preview, /image-poster-2\.webp$/);
-    // 三个按钮全部跟随：编辑模板改指 B，下载交出去的也是 B，生成类似仍是 app 级不变。
-    assert.equal(second.edit, "/workspace/poster?open=template&template=poster-b");
-    assert.equal(second.similar, "/workspace/poster?fill=preset");
-    await click('[data-showcase-action="download"]');
-    assert.deepEqual(downloaded, ["poster-a", "poster-b"]);
+    // 预览&编辑改指 B 的 artifact；生成类似与更多是 app 级，保持不变。
+    assert.equal(second.actions[0].href, "/workspace?tab=library&item=art-b&mode=preview&app=poster");
+    assert.equal(second.actions[1].href, "/workspace/poster?fill=preset");
+    assert.equal(second.actions[2].href, "/explore?app=poster");
 
     // ——— 切回第一份，确认是真·双向同步而不是「一次性走到 B」———
     await click('[data-template-thumb][data-template-id="poster-a"]');
     const back = read();
     assert.equal(back.active, "poster-a");
     assert.equal(back.title, "夏季促销海报");
-    assert.deepEqual(back.tags, ["促销", "竖版"]);
-    assert.equal(back.edit, "/workspace/poster?open=template&template=poster-a");
-    await click('[data-showcase-action="download"]');
-    assert.deepEqual(downloaded, ["poster-a", "poster-b", "poster-a"]);
+    assert.equal(back.actions[0].href, "/workspace?tab=library&item=art-a&mode=preview&app=poster");
 
     // Esc 关闭（自带键盘处理，不依赖 Modal）。
     await act(async () =>
@@ -505,215 +562,24 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
 });
 
 // ————————————————————————————————————————————————————————————————
-// 「下载」的鉴权与失败分档（V1 终判的唯一 FAIL，父任务裁决 §9.9）。
-// W7 的下载端点走 `Depends(current_user_id)`，匿名必 401，而 `<a download>` 是纯浏览器
-// 导航、带不了 `Authorization` 头 —— 所以这颗按钮改成 button + W4 的执行器。
+// 4. 17 语判据（i18n 词典是 W3 独占目录）
 // ————————————————————————————————————————————————————————————————
 
-test("下载按钮不再是 <a download> 纯导航（带不了 Authorization 头）", async () => {
-  const source = await readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8");
-  // 静态渲染下（首帧、登录态未知）就已经是 button，不是带 download 属性的链接。
-  const html = markup({ templates: [TPL_A] });
-  assert.match(html, /<button[^>]*data-showcase-action="download"/);
-  assert.doesNotMatch(html, /data-showcase-action="download"[^>]*\sdownload=""/);
-  // 组件自己不发下载请求：取 blob/落盘/拼路径全在 W4 的 `template-download.ts` 里。
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.doesNotMatch(code, /\bfetch\(/);
-  assert.doesNotMatch(code, /createObjectURL|Bearer/);
-  assert.match(code, /from "\.\/template-download"/);
-});
-
-test("未登录：下载呈现为「登录后下载」并指向账户页，不让用户点下去才吃 401", async () => {
-  AUTH.signedIn = false;
-  await withDom(async ({ render, read }) => {
-    let calls = 0;
-    await render({
-      templates: [TPL_A],
-      async downloadTemplate() {
-        calls += 1;
-      },
-    });
-    const view = read();
-    assert.equal(view.download.tag, "A");
-    assert.equal(view.download.state, "signed-out");
-    assert.equal(view.download.text, "登录后下载");
-    assert.equal(view.download.href, "/account");
-    // 未登录态**不是**报错态：报错行不该先冒出来吓人。
-    assert.equal(view.issue, null);
-    assert.equal(calls, 0, "未登录时不得偷偷发一次必然 401 的下载");
-
-    // 站点可以传自己 locale-aware 的账户页。
-    await render({ templates: [TPL_A], accountHref: "/ja/account" });
-    assert.equal(read().download.href, "/ja/account");
-  });
-});
-
-test("未登录但素材自带 https 直链：不需要登录，仍是普通下载按钮", async () => {
-  AUTH.signedIn = false;
-  await withDom(async ({ render, read }) => {
-    // TPL_B 自带 https 直链 → 不过端点、没有配额、也就不该被登录拦住。
-    await render({ templates: [TPL_B], async downloadTemplate() {} });
-    const view = read();
-    assert.equal(view.download.tag, "BUTTON");
-    assert.equal(view.download.text, "下载");
-    assert.notEqual(view.download.state, "signed-out");
-  });
-});
-
-test("下载中：按钮禁用且文案变「下载中…」，重复点不会重复发起", async () => {
-  AUTH.signedIn = true;
-  await withDom(async ({ render, click, read }) => {
-    let calls = 0;
-    let release;
-    await render({
-      templates: [TPL_A],
-      downloadTemplate() {
-        calls += 1;
-        return new Promise((resolve) => {
-          release = resolve;
-        });
-      },
-    });
-
-    await click('[data-showcase-action="download"]');
-    const pending = read();
-    assert.equal(pending.download.state, "pending");
-    assert.equal(pending.download.text, "下载中…");
-    assert.equal(pending.download.disabled, true);
-    assert.equal(calls, 1);
-
-    // 再点两次：disabled 的 button 不会派发 click，即使派发也被 pending 挡住。
-    await click('[data-showcase-action="download"]');
-    await click('[data-showcase-action="download"]');
-    assert.equal(calls, 1, "下载中不得重复发起");
-
-    await act(async () => {
-      release();
-    });
-    const done = read();
-    assert.equal(done.download.state, "idle");
-    assert.equal(done.download.text, "下载");
-    assert.equal(done.download.disabled, false);
-    assert.equal(done.issue, null, "成功不该留下报错行");
-  });
-});
-
-test("失败分档：401 / 429 / 已下线 / 其它 四种文案互不相同", async () => {
-  AUTH.signedIn = true;
-  // W4 的 `TemplateDownloadError` 带 `code` 与 `status`；这里两种携带方式都验一遍，
-  // 免得 W4 日后只改其中一处时本组件把 429 静默降级成「下载失败」。
-  const cases = [
-    { throw: { code: "unauthorized", status: 401 }, issue: "auth", text: "请先登录后再下载。" },
-    { throw: { code: "quota-exceeded", status: 429 }, issue: "quota", text: "今日下载次数已达上限，请明天再试。" },
-    { throw: { code: "not-found", status: 404 }, issue: "notFound", text: "这份模板素材不存在或已下线。" },
-    { throw: { code: "network-error", status: 0 }, issue: "failed", text: "下载失败，请重试。" },
-    // 只有裸状态码（没有 code）时也必须分对。
-    { throw: { status: 429 }, issue: "quota", text: "今日下载次数已达上限，请明天再试。" },
-    { throw: { status: 401 }, issue: "auth", text: "请先登录后再下载。" },
-  ];
-
-  const seen = new Map();
-  for (const scenario of cases) {
-    AUTH.signedIn = true;
-    await withDom(async ({ render, click, read }) => {
-      await render({
-        templates: [TPL_A],
-        async downloadTemplate() {
-          throw Object.assign(new Error("boom"), scenario.throw);
-        },
-      });
-      await click('[data-showcase-action="download"]');
-      const view = read();
-      assert.equal(view.issue, scenario.issue, `${JSON.stringify(scenario.throw)} 应归 ${scenario.issue}`);
-      assert.equal(view.issueText, scenario.text);
-      // 失败后必须能再点一次（pending 要解开），否则用户被卡死。
-      assert.equal(view.download.disabled, false);
-      seen.set(scenario.issue, scenario.text);
-    });
-  }
-
-  // 四档文案两两不同——「统一报下载失败」正是本轮要修的东西。
-  assert.equal(new Set(seen.values()).size, 4);
-  assert.deepEqual([...seen.keys()].sort(), ["auth", "failed", "notFound", "quota"]);
-});
-
-test("401 之后按钮改回「登录后下载」，不让用户空点第二次", async () => {
-  AUTH.signedIn = true; // 开卡时还有会话，点下去才发现已过期
-  await withDom(async ({ render, click, read }) => {
-    await render({
-      templates: [TPL_A],
-      async downloadTemplate() {
-        throw Object.assign(new Error("expired"), { code: "unauthorized", status: 401 });
-      },
-    });
-    assert.equal(read().download.tag, "BUTTON");
-    await click('[data-showcase-action="download"]');
-    const view = read();
-    assert.equal(view.issue, "auth");
-    assert.equal(view.download.tag, "A");
-    assert.equal(view.download.text, "登录后下载");
-    assert.equal(view.download.href, "/account");
-  });
-});
-
-test("切换模板会清掉上一份的报错，不粘在新选中的那份上", async () => {
-  AUTH.signedIn = true;
-  await withDom(async ({ render, click, read }) => {
-    await render({
-      templates: [TPL_A, TPL_B],
-      async downloadTemplate(template) {
-        if (template.id === "poster-a") {
-          throw Object.assign(new Error("quota"), { code: "quota-exceeded", status: 429 });
-        }
-      },
-    });
-    await click('[data-showcase-action="download"]');
-    assert.equal(read().issue, "quota");
-
-    await click('[data-template-thumb][data-template-id="poster-b"]');
-    assert.equal(read().issue, null, "换了模板还挂着上一份的配额报错就是串档");
-  });
-});
-
-test("默认下载执行器就是 W4 的 downloadTemplateMaterial（真链路，不是替身）", async () => {
-  // 不传 `downloadTemplate`，让组件走默认导入，用假 fetch 让 W7 的端点回 429，
-  // 验证「组件 → W4 实现 → 状态码 → 配额文案」这一整条真的接上了。
-  AUTH.signedIn = true;
-  AUTH.token = "test-access-token";
-  await withDom(async ({ render, click, read }) => {
-    const requests = [];
-    const previousFetch = globalThis.fetch;
-    globalThis.fetch = async (url, init) => {
-      requests.push({ url: String(url), auth: init?.headers?.Authorization });
-      return new Response("", { status: 429 });
-    };
-    try {
-      await render({ templates: [TPL_A] });
-      await click('[data-showcase-action="download"]');
-      const view = read();
-      assert.equal(view.issue, "quota");
-      assert.equal(view.issueText, "今日下载次数已达上限，请明天再试。");
-      assert.equal(requests.length, 1);
-      // W7 的端点按 **templateId** 定位（明确拒收 artifactId），且必须带 Bearer。
-      assert.match(requests[0].url, /\/v1\/template-materials\/poster-a\/download$/);
-      assert.equal(requests[0].auth, "Bearer test-access-token");
-    } finally {
-      if (previousFetch) globalThis.fetch = previousFetch;
-      else delete globalThis.fetch;
-    }
-  });
-});
-
-// 17 语判据（与 W3 在 `home-card-data-contract.test.mjs` 里那套同口径）。
-// 那份清单是 W3 的边界，本轮新增的下载态词条由本文件自己钉，免得两边抢同一个文件。
 const LOCALES = [
   "zh", "zh-TW", "en", "de", "es", "es-419", "fr", "it", "pt-BR",
   "pt-PT", "ja", "ko", "ar", "th", "tr", "vi", "hi",
 ];
 const CHINESE_LOCALES = new Set(["zh", "zh-TW"]);
 
-/** 本轮 W2 新加的五条（下载鉴权与失败分档）。`下载` / `编辑模板` 等是 W3 的既有词条。 */
-const W2_DOWNLOAD_COPY = [
+/** 本轮新增的五条（大卡片两颗按钮 + 探索页三段式分区名）。 */
+const W3_NEW_COPY = ["预览&编辑", "更多", "此 app", "本站素材", "更多素材"];
+
+/**
+ * 下载四档错误文案 + 下载态文案：大卡片已删掉下载按钮，但这些词条**必须留在词典里**
+ * ——W5 的探索页素材卡与库详情页要复用同一套下载体验。删掉会让 16 个 locale 露中文。
+ */
+const RETAINED_DOWNLOAD_COPY = [
+  "下载",
   "登录后下载",
   "下载中…",
   "请先登录后再下载。",
@@ -721,14 +587,19 @@ const W2_DOWNLOAD_COPY = [
   "这份模板素材不存在或已下线。",
 ];
 
-/** zh-TW 必须真本地化而不是逐字转繁的那几条（机器转换给不出右边的写法）。 */
+/** 本轮全站废除的两个旧按钮名：17 份词典里一条都不许留。 */
+const RETIRED_COPY = ["编辑模板", "高级编辑"];
+
+/** zh-TW 必须真本地化而不是逐字转繁的那几条。 */
 const ZH_TW_MUST_DIFFER = {
-  登录后下载: "登入後下載", // 台湾用「登入」不是「登录」
-  "下载中…": "下載中…",
-  "请先登录后再下载。": "請先登入後再下載。",
-  "今日下载次数已达上限，请明天再试。": "今日下載次數已達上限，請明天再試。",
-  "这份模板素材不存在或已下线。": "這份範本素材不存在或已下架。", // 模板→範本、下线→下架
+  "预览&编辑": "預覽&編輯",
 };
+
+/**
+ * zh-TW 与简体逐字相同的那几条：属**语言事实**（「更多」「素材」「此」在繁体中写法完全
+ * 一致，没有可改的字），固化成白名单——日后有人往 zh-TW 里偷懒抄简体，这个集合会变大。
+ */
+const ZH_TW_SAME_AS_SOURCE = new Set(["更多", "此 app", "本站素材", "更多素材"]);
 
 const uiDictionaries = new Map();
 for (const locale of LOCALES) {
@@ -736,13 +607,13 @@ for (const locale of LOCALES) {
   uiDictionaries.set(locale, mod.default);
 }
 
-test("本文件 tt() 的每条中文文案在 17 语词典里都有译文", async () => {
+test("组件 tt() 的每条中文文案在 17 语词典里都有译文", async () => {
   const source = await readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8");
   const literals = [...source.matchAll(/tt\("((?:[^"\\]|\\.)*)"\)/g)]
     .map(([, literal]) => literal)
     .filter((literal) => /[\u4e00-\u9fff]/.test(literal));
   // 组件真的在用这些词条，否则下面的循环会空转成一条永远为真的断言。
-  for (const expected of ["编辑模板", "下载", "切换模板", ...W2_DOWNLOAD_COPY]) {
+  for (const expected of ["预览&编辑", "更多", "生成类似", "切换模板", "关闭"]) {
     assert.ok(literals.includes(expected), `组件应通过 tt("${expected}") 取文案`);
   }
   for (const [locale, dict] of uiDictionaries) {
@@ -751,16 +622,16 @@ test("本文件 tt() 的每条中文文案在 17 语词典里都有译文", asyn
   }
 });
 
-test("W2 新增的五条词条：zh 是 key===值，15 个非中文 locale 真的翻了", () => {
+test("W3 新增的五条词条：17 语齐备，zh 是 key===值，15 个非中文 locale 真的翻了", () => {
   const zh = uiDictionaries.get("zh");
-  for (const key of W2_DOWNLOAD_COPY) {
-    assert.equal(zh[key], key, `zh 的 "${key}" 必须 key===值`);
-  }
   const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
-  for (const key of W2_DOWNLOAD_COPY) {
+  for (const key of W3_NEW_COPY) {
+    assert.equal(zh[key], key, `zh 的 "${key}" 必须 key===值`);
     for (const [locale, dict] of uiDictionaries) {
-      if (CHINESE_LOCALES.has(locale)) continue;
       const value = dict[key];
+      assert.equal(typeof value, "string", `${locale} 缺 "${key}"`);
+      assert.notEqual(value.trim(), "", `${locale} 的 "${key}" 是空串`);
+      if (CHINESE_LOCALES.has(locale)) continue;
       assert.notEqual(value, key, `${locale} 的 "${key}" 还是中文源串（未翻译）`);
       assert.doesNotMatch(value, placeholder, `${locale} 的 "${key}" 像占位`);
       // 汉字残留启发式对 ja/ko 不成立（它们的正确译文本就含 CJK 码位）。
@@ -771,17 +642,50 @@ test("W2 新增的五条词条：zh 是 key===值，15 个非中文 locale 真�
   }
 });
 
-test("W2 新增的五条词条：zh-TW 是真繁体本地化，不是逐字转繁", () => {
+test("W3 新增词条的 zh-TW：该改的改了，逐字相同的那几条是语言事实", () => {
   const zhTW = uiDictionaries.get("zh-TW");
   for (const [key, expected] of Object.entries(ZH_TW_MUST_DIFFER)) {
     assert.equal(zhTW[key], expected, `zh-TW 的 "${key}" 应为「${expected}」`);
-    assert.notEqual(zhTW[key], key, `zh-TW 的 "${key}" 不能照抄简体`);
   }
-  // 五条全部在名单里：新加第六条却忘了想繁体写法时，这里会红。
+  const same = W3_NEW_COPY.filter((key) => zhTW[key] === key);
   assert.deepEqual(
-    new Set(Object.keys(ZH_TW_MUST_DIFFER)),
-    new Set(W2_DOWNLOAD_COPY),
+    new Set(same),
+    ZH_TW_SAME_AS_SOURCE,
+    "zh-TW 出现了新的「与简体逐字相同」词条：要么它真的繁简同形（请加进白名单并说明），" +
+      "要么是有人把简体直接抄进了 zh-TW（必须真翻）",
   );
+});
+
+test("下载四档错误文案仍在 17 语词典里（W5 的探索页素材卡要复用）", () => {
+  for (const key of RETAINED_DOWNLOAD_COPY) {
+    for (const [locale, dict] of uiDictionaries) {
+      assert.equal(typeof dict[key], "string", `${locale} 丢了要复用的下载词条 "${key}"`);
+      assert.notEqual(dict[key].trim(), "", `${locale} 的 "${key}" 是空串`);
+    }
+  }
+});
+
+test("已废除的两个旧按钮名：17 份词典里一条都不剩", () => {
+  for (const key of RETIRED_COPY) {
+    for (const [locale, dict] of uiDictionaries) {
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(dict, key),
+        false,
+        `${locale} 词典仍留着已废除的 "${key}"`,
+      );
+    }
+  }
+});
+
+test("新词条不会被 renamePromptTemplateTerm 改写", async () => {
+  const hook = await readFile(resolve("src/i18n/ui/useUI.ts"), "utf8");
+  // 改写只在源串含「灵感/靈感」时才启动，且只作用在那一支。
+  assert.match(hook, /const isInspirationCopy = \/灵感\|靈感\/\.test\(canonical\);/);
+  for (const key of W3_NEW_COPY) {
+    assert.doesNotMatch(key, /灵感|靈感/, `"${key}" 会触发 prompt 语境改名`);
+    // 另一条 canonicalize（文件库→我的库）同样不得改动这些 key，否则查表会落空。
+    assert.doesNotMatch(key, /文件库|檔案庫|檔案库/);
+  }
 });
 
 test("文件规模守卫：≤800 行", async () => {

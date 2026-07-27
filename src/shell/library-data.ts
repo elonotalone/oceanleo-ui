@@ -116,7 +116,7 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
 /**
  * The library category one artifact lands in. Deep-link dispatch
  * (`site-catalog-controller`) reads it through here rather than keeping its own
- * table, so a 「编辑模板」 link can never file an artifact under a different
+ * table, so a template-edit deep link can never file an artifact under a different
  * category than the library itself uses for the same artifact.
  */
 export function libraryKindForArtifactType(

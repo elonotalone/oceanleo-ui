@@ -10,7 +10,7 @@
 //         站，没配置的站回退 GENERIC_PROMPTS）。一张卡 = 一段纯文字 prompt，无图、无
 //         预览、点不进 app。
 //   【新】首页卡片 = 该站 `lib/app-catalog.ts` 的 `GoalApp`（一张卡 = 一个 app = 一个
-//         代表 prompt，带封面图/预览大图/「生成类似」/「高级编辑」）。代表 prompt 由
+//         代表 prompt，带封面图/预览大图/「预览&编辑」/「生成类似」/「更多」）。代表 prompt 由
 //         `shell/app-catalog.ts` 的 `representativePrompt()` 唯一决定。
 //
 //   所以 PROMPT_LIBRARY / GENERIC_PROMPTS / promptCardsForSite() **不再是首页内置卡的

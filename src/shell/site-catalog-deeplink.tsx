@@ -202,7 +202,7 @@ export function useCatalogDeepLink({
     clearDeepLinkQuery();
   }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey]);
 
-  // 「编辑模板」：与上面同一条派发通道，区别只在 envelope 指名了一份具体 artifact。
+  // 模板编辑深链：与上面同一条派发通道，区别只在 envelope 指名了一份具体 artifact。
   // 同样不需要定时器——本 effect 在 SiteCatalogConsole 这一层，右栏监听（子）已注册；
   // 而右栏把 envelope 当 **prop** 交给我的库，所以即使我的库这一刻还没挂载，它挂载时
   // 第一帧就能拿到这份 action，不存在「派发早于接收方」的窗口。

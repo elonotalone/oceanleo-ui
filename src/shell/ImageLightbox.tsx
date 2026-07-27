@@ -1,56 +1,51 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 首页 app 卡片的「大卡片」= 多模板详情浮层（合同 §0.3，2026-07-26）
+// @oceanleo/ui — 首页 app 卡片的「大卡片」= 多模板详情浮层（合同 §0.4，2026-07-27）
 // ----------------------------------------------------------------------------
 // 版式（参考 Base44 模板详情弹层）：
 //   左上：主预览大图 = **当前选中模板**的真实素材（无模板时回退 app 封面 / emoji tint）
 //   左下：缩略图条，切换同一 app 下的多份模板；**只有 1 份（或 0 份）时整条不渲染**
 //   右侧：素材标题、说明（无模板时退回代表 prompt 全文）、标签
-//   右侧按钮（三个，合同 §0.3 定死）：「编辑模板」「生成类似」「下载」
-//     - 编辑模板 = 把**当前选中的那份素材**载入编辑器（W4 workspaceTemplateEditHref）
+//   右侧按钮（**恰好三个，顺序定死**，合同 §0.4）：「预览&编辑」「生成类似」「更多」
+//     - 预览&编辑 = 进该 app **库里的只读预览页**（`workspaceTemplatePreviewHref`）
 //     - 生成类似 = 进操作台并预填代表 prompt + preset.set（既有 ?fill=preset，app 级）
-//     - 下载     = 下载**当前选中模板**的真实文件（W4 downloadTemplateMaterial）
-//   「高级编辑」这个名字本轮取消，统一叫「编辑模板」（推翻 2026-07-25 合同 §0 第 8 条）。
+//     - 更多     = 进**本站探索页**并锚定该 app（`exploreAppHref`）
+//
+// 为什么「预览&编辑」落在预览页而不是编辑器（操作员 2026-07-27 原话）：用户在探索时点这颗
+// 按钮只是想「看看这份素材长什么样」，直接把重型编辑器怼到脸上是误入。所以本轮改成先进
+// 库里的只读预览（3D 可拖拽 / website 可交互 / 文档可翻页），**预览页内再点「编辑」才 fork**
+// 出独立副本进编辑器（W4）。旧名「编辑模…」这类叫法本轮全站废除，17 语只留「预览&编辑」。
+//
+// 为什么这里没有「下载」（操作员 2026-07-27 原话第 3 条）：大卡片是**探索**面，下载是
+// **取用**动作，混在一起会让探索路径变重。下载入口本轮迁到库详情页与探索页素材卡（W5），
+// 那两处才有登录态、配额与失败分档的上下文。连带删掉的还有本文件旧版那整套下载态机
+// （登录探测 / pending 防重复点 / 四档错误文案）——**四档错误文案的 17 语词条刻意保留**，
+// W5 的素材卡要复用同一套下载体验，删词条会让那边 16 个 locale 齐刷刷露中文。
 //
 // 切换模板时，右侧标题/说明/标签与三个按钮的目标**全部跟随当前选中项**——这是本组件
 // 最容易回归的地方，由 `tests/template-showcase.test.mjs` 钉死。
 //
-// 「无模板 app」的形态（合同 Done when 5；W8* 全量铺开之前 30 个站都处在这一档）：
-// 「编辑模板」「下载」都以**存在选中模板**为前提，「生成类似」以**代表 prompt 非空**
-// 为前提，于是无模板的 app 按这三档降级，主预览退回 app 封面、右侧标题退回 app 名、
-// 说明退回代表 prompt 全文：
-//   A. 有代表 prompt + 调用方给了 `editHref` 兜底 → 「编辑模板」(app 级空编辑器) + 「生成类似」
-//   B. 有代表 prompt、无 `editHref`               → 只有「生成类似」
-//   C. 都没有（music 站那 22 个）                  → 零按钮，降级成纯预览浮层（关闭途径仍在）
-// `editHref` 刻意做成调用方显式传入、而不是这里自动 `workspaceAppAdvancedHref(appId)`：
-// 那样每个 app 都会长出一颗名为「编辑模板」却打开空编辑器的按钮，正是 §0.3 要消灭的。
-//
-// 「下载」为什么不是 `<a download>`（V1 终判的唯一 FAIL，2026-07-26）：
-// W7 的下载端点走 `Depends(current_user_id)`，**匿名必 401**——不是因为素材是秘密
-// （它是官方公开素材），而是配额记账需要一个计费主体。而 `<a download>` 是纯浏览器导航，
-// **带不了 `Authorization` 头**，所以那颗按钮点下去必然失败。裁决是「后端契约不动，前端适配」，
-// 于是这里：
-//   - 开卡时先问一次登录态，未登录直接渲染成「登录后下载」并指向账户页，
-//     而不是让用户点下去才吃 401；
-//   - 已登录则渲染成按钮，点击交给 W4 的 `downloadTemplateMaterial(template)`
-//     （带 Bearer 取 blob 触发保存），下载中禁重复点；
-//   - 失败分三档：**401 未登录 / 429 配额超限 / 其它**，文案必须可区分，
-//     统一报「下载失败」是被明令禁止的。
-// 素材自带 https 直链的那一小撮不经过端点，也就不需要登录，仍按普通按钮渲染。
+// 「无模板 app」的形态（W10* 把素材补到 3–4 份之前仍会遇到）：三颗按钮各有各的前提，
+// 缺谁掉谁，绝不留死按钮：
+//   - 预览&编辑：要有**选中模板的 artifactId**（预览页按 artifact 定位）。没有模板时
+//     退到调用方显式给的 `editHref` 兜底；连兜底都没有就不渲染。
+//   - 生成类似：要有非空代表 prompt。
+//   - 更多    ：只要能拼出探索页深链（有 appId 或调用方给了 `exploreHref`）就在。
+// 「更多」几乎恒在，这是刻意的：素材还没补齐的 app 上，它是用户唯一的去处，
+// 比上一轮那种「零按钮纯预览浮层」强。
 //
 // 为什么不复用 `../ui` 的 <Modal>：Modal 走 createPortal(document.body)，首帧
 // （SSR / 未 mount）什么都不渲染，而本组件要能在服务端与 node --test 里被静态渲染断言。
 // 因此这里自带遮罩 + Esc 关闭 + 打开即聚焦，行为与 Modal 对齐。**改版时不得换成 Modal。**
 //
-// 文件名仍是 `ImageLightbox.tsx`（W2 的独占边界）：`src/shell/index.ts` 与
-// `HomeAppCards.tsx` 都从 `./ImageLightbox` 导入，那两个文件归 W1，改文件名会让整包
-// typecheck 在 W1 落地前红掉。组件名已按合同 §3 更名为 `TemplateShowcase`，旧名
-// `ImageLightbox` 保留为一层薄兼容壳，等 W1 切完调用点即可删。
+// 文件名仍是 `ImageLightbox.tsx`：`src/shell/index.ts` 与 `HomeAppCards.tsx` 都从
+// `./ImageLightbox` 导入，那两个文件归 W1，改文件名会让整包 typecheck 在 W1 落地前红掉。
+// 组件名已按合同 §3.1 更名为 `TemplateShowcase`，旧名 `ImageLightbox` 保留为一层薄兼容壳，
+// 等 W1 切完调用点即可删。
 // ============================================================================
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -58,61 +53,23 @@ import {
   type ReactNode,
 } from "react";
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
-import { isSignedIn } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import type { TemplateMaterial } from "./app-catalog";
 import {
-  isDirectTemplateDownload,
-  templateDownloadHref as defaultDownloadHref,
-  workspaceTemplateEditHref as defaultEditHref,
+  exploreAppHref as defaultExploreHref,
+  workspaceTemplatePreviewHref as defaultPreviewHref,
 } from "./site-catalog-controller";
-import { downloadTemplateMaterial } from "./template-download";
 
-/** 「下载」失败的四档，文案必须可区分——「统一报下载失败」是 V1 明令禁止的。 */
-type DownloadIssue = "auth" | "quota" | "notFound" | "failed";
-
-/**
- * 把 `downloadTemplateMaterial` 抛出的错误归档。
- *
- * 首选 W4 的 `TemplateDownloadError.code`（它已经做完了状态码 → 原因的判定）；
- * 拿不到 code 时才退回状态码，最后才认消息串里的数字。认不出来才落 `failed`——
- * **绝不把 429 混进「下载失败」**，那会让配额用完的用户一直空点重试。
- *
- * 为什么不直接渲染 `error.message`（W4 备了终稿文案）：那是一条**中文硬串**，
- * 直接渲染会让另外 16 个 locale 露中文。所以只取 `code`，文案在本文件走 `tt()`。
- */
-function downloadIssueOf(error: unknown): DownloadIssue {
-  const carrier = (error ?? {}) as Record<string, unknown>;
-  switch (carrier.code) {
-    case "unauthorized":
-      return "auth";
-    case "quota-exceeded":
-      return "quota";
-    case "not-found":
-      return "notFound";
-    default:
-      break;
-  }
-  const status = Number(carrier.status ?? carrier.statusCode);
-  if (status === 401 || status === 403) return "auth";
-  if (status === 429) return "quota";
-  if (status === 404) return "notFound";
-  const text = String(carrier.message ?? error ?? "");
-  if (/\b401\b/.test(text)) return "auth";
-  if (/\b429\b/.test(text)) return "quota";
-  return "failed";
-}
-
-/** @deprecated 本轮已收敛到 W3 的 `TemplateMaterial`（合同 §3），改用那个。 */
+/** @deprecated 本轮已收敛到 `TemplateMaterial`（合同 §3.1），改用那个。 */
 export type ShowcaseTemplate = TemplateMaterial;
 
 export interface TemplateShowcaseProps {
-  /** 所属 app id，「编辑模板」深链要用。 */
+  /** 所属 app id，「预览&编辑」与「更多」两条深链都要用。 */
   appId?: string;
   /** 标题（app 名）。同时作为 dialog 的无障碍名。 */
   title: string;
   /**
-   * 该 app 下挂的模板素材（本轮每 app 1–2 份）。调用方请传 W3 的
+   * 该 app 下挂的模板素材（本轮起常态 3–4 份）。调用方请传
    * `appTemplates(app)`——它已剔除缺 id/title/previewUrl/artifactId 的脏条目。
    */
   templates?: TemplateMaterial[];
@@ -127,33 +84,26 @@ export interface TemplateShowcaseProps {
   accent?: string;
   /** 代表 prompt 全文；为空 → 不渲染「生成类似」（不得跳空预填）。 */
   prompt?: string | null;
-  /** 「生成类似」目标（app 级，W4 的 `workspaceAppFillHref(appId)`）。 */
+  /** 「生成类似」目标（app 级，`workspaceAppFillHref(appId)`）。 */
   fillHref?: string;
   /**
-   * @deprecated 不传即可：默认直接调 W4 的 `workspaceTemplateEditHref(appId, templateId)`。
-   * 只为 W1 尚未拆掉的显式接线留着，删掉行为不变。
+   * 覆盖「预览&编辑」的落点解析。**不传即可**：默认走
+   * `workspaceTemplatePreviewHref(appId, artifactId)`（合同 §3.1 锁死的 query 形状，
+   * W4 的库预览页认它）。只为 locale 前缀站与尚未拆掉的显式接线留着。
    */
-  templateEditHref?: (appId: string, templateId: string) => string;
+  templatePreviewHref?: (appId: string, artifactId: string) => string;
   /**
-   * @deprecated 不传即可：默认直接把**整份**选中素材交给 W4 的 `templateDownloadHref`，
-   * 由它在自带 https 直链与 W7 端点之间裁决。只为 W1 尚未拆掉的显式接线留着。
+   * 覆盖「更多」的落点。**不传即可**：默认走 `exploreAppHref(appId)` →
+   * `/explore?app=<appId>`（W5 的探索页认这个 query）。locale 前缀站可传自己那条。
    */
-  templateDownloadHref?: (templateId: string) => string;
+  exploreHref?: string;
   /**
-   * 覆盖下载执行器。**不传即可**：默认就是 W4 的
-   * `downloadTemplateMaterial(template)`（带 Bearer 取 blob 触发保存，区分 401 / 429）。
-   * 本组件只负责调它、管 pending 与分档报错，**不自己实现下载**。
+   * **没有任何可预览模板时**「预览&编辑」的兜底目标。只在没有选中模板（或选中模板缺
+   * `artifactId`）时生效；有模板时永远走 `workspaceTemplatePreviewHref(选中项)`。
+   * 不给 → 无模板的 app 干脆不显示「预览&编辑」（见文件头「无模板 app」一节）。
+   *
+   * ⚠ 本轮语义已从「进编辑器」改为「进预览页」：调用方传进来的应当是一条**只读落点**。
    */
-  downloadTemplate?: (template: TemplateMaterial) => Promise<void>;
-  /**
-   * 「登录后下载」指向的登录/账户页。默认与 `AppShell.accountHref` 同一个约定；
-   * i18n 站请传自己 locale-aware 的那条。
-   */
-  accountHref?: string;
-  /**
-   * **没有任何模板时**「编辑模板」的兜底目标（旧「高级编辑」那个 app 级空编辑器）。
-   * 只在 `templates` 为空时生效；有模板时永远走 `workspaceTemplateEditHref(选中项)`。
-   * 不给 → 无模板的 app 干脆不显示「编辑模板」（见文件头「无模板 app」一节）。 */
   editHref?: string;
   onClose: () => void;
 }
@@ -178,16 +128,13 @@ export function TemplateShowcase({
   accent = "#4f46e5",
   prompt,
   fillHref,
-  templateEditHref,
-  templateDownloadHref,
-  downloadTemplate,
-  accountHref = "/account",
+  templatePreviewHref,
+  exploreHref,
   editHref,
   onClose,
 }: TemplateShowcaseProps) {
   const tt = useUI();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const aliveRef = useRef(true);
 
   const list = useMemo(
     () => (templates ?? []).filter((t) => t && typeof t.id === "string" && t.id !== ""),
@@ -209,35 +156,6 @@ export function TemplateShowcase({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  useEffect(() => {
-    aliveRef.current = true;
-    return () => {
-      aliveRef.current = false;
-    };
-  }, []);
-
-  // ——— 下载态 ———
-  // W7 的下载端点走 `Depends(current_user_id)`：匿名必 401。所以**开卡时就问一次登录态**，
-  // 未登录直接把按钮渲染成「登录后下载」，而不是让用户点下去才吃 401（V1 终判的要求）。
-  // `unknown` 是首帧（SSR / 尚未 hydrate）：此时按乐观的「下载」渲染，问出结果再切——
-  // 反过来先渲染「登录后下载」会让已登录用户看到一次错误的闪烁。
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [issue, setIssue] = useState<DownloadIssue | null>(null);
-
-  useEffect(() => {
-    isSignedIn().then(
-      (ok) => {
-        if (aliveRef.current) setSignedIn(ok);
-      },
-      () => {
-        // 登录服务没配好（站点缺 Supabase 环境变量）也按未登录处理：
-        // 那种站上点下载同样只会 401。
-        if (aliveRef.current) setSignedIn(false);
-      },
-    );
-  }, []);
-
   // ——— 右侧信息与三个按钮的目标，全部由 `selected` 派生：切换模板即同步跟随 ———
   const paneTitle = selected?.title?.trim() || title;
   const paneSummary = (selected?.summary || "").trim() || promptText;
@@ -251,51 +169,17 @@ export function TemplateShowcase({
       ? assetPreviewUrl(imageKey)
       : "";
 
-  // 「编辑模板」与「下载」的目标由 W4 的两个 helper 现算，入参是**当前选中项**。
-  // 下载优先用素材自带的 https 直链，否则走 W7 的端点——这条优先级住在 helper 里，
-  // 本组件不复制一份，否则两处会各自漂移。
-  const editTarget = selected
-    ? appId
-      ? (templateEditHref ?? defaultEditHref)(appId, selected.id)
-      : ""
-    : editHref || "";
-  // `downloadTarget` 现在只当**可见性探针**用（W4 的 helper 定位不到素材时返回空串 →
-  // 隐藏按钮，不渲染一条点了就 404 的入口）。真正的下载走 `downloadTemplate`，
-  // 因为 `<a download>` 是纯浏览器导航、**带不了 `Authorization` 头**。
-  const downloadTarget = selected
-    ? templateDownloadHref
-      ? templateDownloadHref(selected.id)
-      : defaultDownloadHref(selected)
-    : "";
-  // 素材自带 https 直链的那一小撮不过端点，也就不需要登录（W7 只对端点强制登录）。
-  // 直链合不合法由 W4 的 `isDirectTemplateDownload` 裁决，这里不复制一份 https 校验。
-  const mustSignInToDownload =
-    signedIn === false && !isDirectTemplateDownload(selected);
+  // 「预览&编辑」按 **artifactId** 定位（库预览页按 artifact 取数，不是 templateId）。
+  // 选中项缺 artifactId 时这条深链拼不出只读落点，宁可退回调用方给的兜底，也不产出
+  // 一条点进去空转的链接。
+  const previewArtifactId = (selected?.artifactId || "").trim();
+  const previewTarget =
+    appId && previewArtifactId
+      ? (templatePreviewHref ?? defaultPreviewHref)(appId, previewArtifactId)
+      : editHref || "";
   const similarTarget = promptText && fillHref ? fillHref : "";
-
-  // 换模板 = 换下载目标：上一份的 pending 与报错不能粘在新选中的那份上。
-  const selectedKey = selected?.id ?? "";
-  useEffect(() => {
-    setDownloading(false);
-    setIssue(null);
-  }, [selectedKey]);
-
-  const startDownload = useCallback(async () => {
-    if (!selected) return;
-    setIssue(null);
-    setDownloading(true);
-    try {
-      await (downloadTemplate ?? downloadTemplateMaterial)(selected);
-    } catch (error) {
-      const kind = downloadIssueOf(error);
-      if (!aliveRef.current) return;
-      setIssue(kind);
-      // 会话在开卡之后才过期的情况：把按钮换回「登录后下载」，别让用户再空点一次。
-      if (kind === "auth") setSignedIn(false);
-    } finally {
-      if (aliveRef.current) setDownloading(false);
-    }
-  }, [downloadTemplate, selected]);
+  // 「更多」不依赖模板：素材还没补齐的 app 上它恰恰是最该在的那颗。
+  const moreTarget = exploreHref || (appId ? defaultExploreHref(appId) : "");
 
   const actionClass =
     "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition hover:opacity-90";
@@ -354,7 +238,7 @@ export function TemplateShowcase({
               )}
             </div>
 
-            {/* 只有 1 份模板时不显示切换条（合同 §0.3）。 */}
+            {/* 只有 1 份模板时不显示切换条（合同 §0.4）。 */}
             {list.length > 1 ? (
               <div
                 data-template-showcase-thumbs
@@ -434,17 +318,17 @@ export function TemplateShowcase({
               </div>
             ) : null}
 
-            {/* 三个按钮的可见性：编辑模板/下载依赖「有模板」，生成类似依赖「有代表 prompt」。
-                三者都缺 → 大卡片降级成纯预览（标题 + 大图 + 关闭），不留死按钮。 */}
+            {/* 三个按钮，顺序定死：预览&编辑 → 生成类似 → 更多（合同 §0.4）。
+                各自的前提见文件头；缺前提的那颗整颗不渲染，不留死按钮。 */}
             <div className="mt-5 flex flex-col gap-2 md:mt-auto md:pt-5">
-              {editTarget ? (
+              {previewTarget ? (
                 <a
-                  data-showcase-action="edit"
-                  href={editTarget}
+                  data-showcase-action="preview"
+                  href={previewTarget}
                   className={`${actionClass} text-white`}
                   style={{ background: accent }}
                 >
-                  {tt("编辑模板")}
+                  {tt("预览&编辑")}
                 </a>
               ) : null}
               {similarTarget ? (
@@ -452,46 +336,10 @@ export function TemplateShowcase({
                   {tt("生成类似")}
                 </a>
               ) : null}
-              {downloadTarget ? (
-                mustSignInToDownload ? (
-                  <a
-                    data-showcase-action="download"
-                    data-download-state="signed-out"
-                    href={accountHref}
-                    className={ghostAction}
-                  >
-                    {tt("登录后下载")}
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    data-showcase-action="download"
-                    data-download-state={downloading ? "pending" : "idle"}
-                    disabled={downloading}
-                    aria-busy={downloading}
-                    onClick={startDownload}
-                    className={`${ghostAction} disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    {downloading ? tt("下载中…") : tt("下载")}
-                  </button>
-                )
-              ) : null}
-
-              {issue ? (
-                <p
-                  data-showcase-download-issue={issue}
-                  role="status"
-                  aria-live="polite"
-                  className="text-[12px] leading-relaxed text-rose-600"
-                >
-                  {issue === "auth"
-                    ? tt("请先登录后再下载。")
-                    : issue === "quota"
-                      ? tt("今日下载次数已达上限，请明天再试。")
-                      : issue === "notFound"
-                        ? tt("这份模板素材不存在或已下线。")
-                        : tt("下载失败，请重试。")}
-                </p>
+              {moreTarget ? (
+                <a data-showcase-action="more" href={moreTarget} className={ghostAction}>
+                  {tt("更多")}
+                </a>
               ) : null}
             </div>
           </div>
@@ -502,11 +350,11 @@ export function TemplateShowcase({
 }
 
 // ——————————————————————————————————————————————————————————————————————————
-// 兼容壳：`src/shell/index.ts:390` 与 `HomeAppCards.tsx:508` 仍在用旧名与旧 props，
-// 那两个文件归 W1。保留这层让整包 typecheck 在 W1 切换调用点之前保持绿。
-// W1 切到 `TemplateShowcase` 之后，本段连同 `ImageLightboxProps` 一起删。
-// 旧 `advancedHref`（app 级空编辑器）映射到新的无模板兜底 `editHref`，
-// 所以旧调用点在模板数据到位前不会丢掉编辑入口。
+// 兼容壳：`src/shell/index.ts` 与 `HomeAppCards.tsx` 仍在用旧名与旧 props，那两个文件
+// 归 W1。保留这层让整包 typecheck 在 W1 切换调用点之前保持绿。W1 切到 `TemplateShowcase`
+// 之后，本段连同 `ImageLightboxProps` 一起删。
+// 旧 `advancedHref`（app 级空编辑器）映射到无模板兜底 `editHref`——注意本轮该兜底的语义
+// 已是「只读预览落点」，调用方应尽快换成库预览页那条。
 // ——————————————————————————————————————————————————————————————————————————
 
 /** @deprecated 改用 `TemplateShowcaseProps`。 */
@@ -519,10 +367,10 @@ export interface ImageLightboxProps {
   fallbackIcon?: ReactNode;
   accent?: string;
   prompt?: string | null;
-  /** @deprecated 大卡片不再放「prompt」按钮（合同 §0.3 三按钮定死），首页卡上那颗仍在。 */
+  /** @deprecated 大卡片不再放「prompt」按钮（合同 §0.4 三按钮定死），首页卡上那颗仍在。 */
   onUsePrompt?: (prompt: string) => void;
   fillHref?: string;
-  /** @deprecated 旧「高级编辑」目标；现作为**无模板**时「编辑模板」的兜底。 */
+  /** @deprecated 旧的 app 级编辑器目标；现作为**无模板**时「预览&编辑」的兜底。 */
   advancedHref?: string;
   onClose: () => void;
 }

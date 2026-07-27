@@ -6284,12 +6284,10 @@ const it: Record<string, string> = {
   "临时私有预览 · 会话结束后失效": "Anteprima privata temporanea · Scade al termine della sessione",
   // —— 首页 app 卡片：卡片浮层 + 预览大图 lightbox 的按钮与标签（人工翻译，2026-07-25）——
   "生成类似": "Genera simile",
-  "高级编辑": "Modifica avanzata",
   "预览大图": "Anteprima ingrandita",
   "代表 prompt": "Prompt rappresentativo",
   "添加 prompt": "Aggiungi prompt",
   // —— 大卡片（多模板详情浮层）：右侧按钮 + 左下模板切换条（人工翻译，2026-07-26）——
-  "编辑模板": "Modifica modello",
   "切换模板": "Cambia modello",
   "登录后下载": "Accedi per scaricare",
   "下载中…": "Download in corso…",
@@ -6336,5 +6334,15 @@ const it: Record<string, string> = {
   "需求 / 现有提示词：出图 / 写文 / 做表 / 生成系统提示词 …": "Esigenza / prompt esistente: creare un’immagine / scrivere un testo / costruire una tabella / generare un prompt di sistema …",
   "如：输出 JSON / 200 字内 / 不出现品牌名": "es. output JSON / meno di 200 parole / senza nomi di marca",
   "通义万相 / Sora / GPT / Claude / LeoImage": "Tongyi Wanxiang / Sora / GPT / Claude / LeoImage",
+  // —— 大卡片三按钮改版 + 探索页分区（合同 §0.4 / §0.6，2026-07-27）——
+  // 「预览&编辑」取代已废除的旧模板编辑按钮名：落点是库里的**只读预览页**，不是编辑器。
+  // 「更多」进本站探索页；「此 app / 本站素材 / 更多素材」是探索页三段式分区名（W5）。
+  // 「打开」（工作台卡片 hover 主按钮，W2）此前已在本词典中，未重复新增。
+  // 下载四档错误文案刻意留在本词典：大卡片虽已删掉下载按钮，W5 的探索页素材卡要复用。
+  "预览&编辑": "Anteprima e modifica",
+  "更多": "Altro",
+  "此 app": "Questa app",
+  "本站素材": "Risorse di questo sito",
+  "更多素材": "Altre risorse",
 };
 export default it;

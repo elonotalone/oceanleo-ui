@@ -436,10 +436,10 @@ function durableArtifactForSnapshot(
   try {
     encoded = JSON.stringify(item.artifact);
   } catch {
-    throw new Error("artifact projection 无法序列化到高级编辑 session。");
+    throw new Error("artifact projection 无法序列化到进阶编辑 session。");
   }
   if (!encoded || encoded.length > MAX_ARTIFACT_JSON) {
-    throw new Error("artifact projection 超过高级编辑 session 安全上限。");
+    throw new Error("artifact projection 超过进阶编辑 session 安全上限。");
   }
   const normalized = normalizeArtifactProjectionResult(JSON.parse(encoded));
   if (

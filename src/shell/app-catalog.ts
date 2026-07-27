@@ -54,7 +54,7 @@ import type { OpsPatch } from "../lib/fn-agent";
  *
  * 硬约束（派活合同 §0.5）：
  *   - 必须是平台的**正式产物对象（typed artifact）**，不是散落的静态文件——否则
- *     「编辑模板」无法把它载进编辑器。
+ *     库预览页的「编辑」无法把它载进编辑器。
  *   - 必须能被「下载」按钮真正下载到真实文件（website 站下载的是源码包）。
  *   - **严禁使用任何真实用户产出**（law / med / resume / finance 尤其敏感）。
  *     只能是官方专门制作的样例。这是隐私红线。
@@ -84,14 +84,15 @@ export interface TemplateMaterial {
    */
   previewUrl: string;
   /**
-   * 该素材背后的 typed artifact id。「编辑模板」靠它把**这一份具体素材**载入编辑器，
-   * 而不是打开该 app 默认产物类型的空编辑器（派活合同 §0.3）。
+   * 该素材背后的 typed artifact id。大卡片的「预览&编辑」靠它拼出库预览页深链
+   * （`workspaceTemplatePreviewHref`），预览页里点「编辑」再 fork 出**这一份具体素材**
+   * 的独立副本，而不是打开该 app 默认产物类型的空编辑器（合同 §0.4 / §0.5）。
    */
   artifactId: string;
   /**
    * 该 artifact 的类型，取值必须来自 `./artifact-contract` 的 `ARTIFACT_TYPES`。
    * 编辑器适配器的分发就是按它走的，所以这里刻意不放宽成 `string`——写错了
-   * 「编辑模板」会打不开。website 站的源码包用 `"website"`。
+   * 库预览页的「编辑」会打不开。website 站的源码包用 `"website"`。
    */
   artifactType: ArtifactType;
   /**
@@ -260,7 +261,7 @@ export interface RepresentativeFill {
 }
 
 /**
- * 「生成类似」/「高级编辑」深链要预填的整套内容：代表 prompt + 参数。
+ * 「生成类似」/ `?open=advanced` 深链要预填的整套内容：代表 prompt + 参数。
  *
  * 参数合并规则：`preset.set` 作为底，**只有当代表 prompt 来自导航示例卡时**再叠加该示例
  * 自己的 `set`（示例覆盖 preset 的同名字段）——因为此时进操作台要复现的是那张示例卡，

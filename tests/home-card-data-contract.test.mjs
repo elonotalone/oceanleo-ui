@@ -270,7 +270,7 @@ test("appTemplates：返回新数组，调用方 mutate 不污染 catalog", () =
 
 test("TemplateMaterial 的 artifactType 用平台既有的 ArtifactType，不是自由字符串", () => {
   const catalog = source("../src/shell/app-catalog.ts");
-  // 编辑器适配器分发按这套词汇走；写成 string 会让「编辑模板」在运行时静默打不开。
+  // 编辑器适配器分发按这套词汇走；写成 string 会让模板素材在运行时静默打不开。
   assert.match(catalog, /^import type \{ ArtifactType \} from "\.\/artifact-contract";$/m);
   assert.match(catalog, /^\s*artifactType: ArtifactType;$/m);
   // W8* / W7 会照这个清单填值，清单缩水就要重新对齐后端契约。
@@ -465,8 +465,11 @@ test("home-cards 文件头写清了新旧关系与保留原因", () => {
 // 3. 17 语新词条
 // ---------------------------------------------------------------------------
 
-// 首页 app 卡片浮层 / 预览大图 lightbox 用到的四条文案。
-const NEW_UI_COPY = ["生成类似", "高级编辑", "查看全部", "预览大图"];
+// 首页 app 卡片浮层 / 预览大图 lightbox 用到的文案。
+// 2026-07-27（合同 §0.4，W3）：大卡片上那两个旧按钮名（app 级编辑器那颗、模板编辑那颗）
+// **已全站废除**，17 份词典里的词条一并撤掉，所以本清单里不再有它们；新的「预览&编辑」
+// 「更多」与探索页三段式分区名由 `tests/template-showcase.test.mjs` 钉死（W3 独占 i18n）。
+const NEW_UI_COPY = ["生成类似", "查看全部", "预览大图"];
 
 // 派活合同 §3 还把「代表 prompt」列为 W3 产出的词条（lightbox 里代表 prompt 全文的标签），
 // 一并落地，免得 W1 接线时又缺一条。
@@ -477,11 +480,12 @@ const CONTRACT_EXTRA_COPY = ["代表 prompt"];
 // locale 的首页按钮露中文。不是本轮造成的回归，但就长在本轮改版的卡片区上，顺手补齐并钉住。
 const PREEXISTING_GAP_COPY = ["添加 prompt"];
 
-// 2026-07-26 大卡片（多模板详情浮层）的三条文案（派活合同 §0.3 / §3）：右侧「编辑模板」
-// 「下载」两个按钮 + 左下模板切换条的「切换模板」。
+// 2026-07-26 大卡片（多模板详情浮层）的文案：左下模板切换条的「切换模板」+「下载」。
 // 「下载」是**既有词条**（17 语早已齐备，`zh.ts:2925` 一带），本轮不新增译文，只是把它
-// 纳入下面这套 17 语判据一起钉死，防止日后有人改动它时漏掉某个 locale。
-const MULTI_TEMPLATE_COPY = ["编辑模板", "下载", "切换模板"];
+// 纳入下面这套 17 语判据一起钉死，防止日后有人改动它时漏掉某个 locale——2026-07-27 起
+// 大卡片上已经没有下载按钮了（入口迁到库与探索页），但词条正因此更要盯住：W5 的素材卡
+// 要复用同一套下载体验。
+const MULTI_TEMPLATE_COPY = ["下载", "切换模板"];
 
 // 2026-07-26 prompt.oceanleo.com（W10 新站）。清单不是照抄 `W10-marker.md` §10 的手点数
 // （那份写 31 条，但漏了 `选填`，又把 7 条词典里早已存在的当成新增），而是从站点源码里
@@ -525,16 +529,12 @@ const ALL_COPY = [
 const CHINESE_LOCALES = new Set(["zh", "zh-TW"]);
 
 // zh-TW 里确实存在简繁差异、因此必须被改写的词条。
-// 「高级编辑」→「進階編輯」不是逐字转繁：台湾软件界把 advanced 叫「進階」而非「高級」，
-// 这一条是真人工本地化的证据（机器逐字转换只会得到「高級編輯」）。
 const ZH_TW_MUST_DIFFER = {
   "生成类似": "生成類似",
-  "高级编辑": "進階編輯",
   "预览大图": "預覽大圖",
   "添加 prompt": "新增 prompt", // 台湾用「新增」而非「添加」
-  // 「模板」在台湾软件界叫「範本」，所以这两条不是逐字转繁——机器转换只会得到
-  // 「編輯模板」「切換模板」，那是漏翻的特征。
-  "编辑模板": "編輯範本",
+  // 「模板」在台湾软件界叫「範本」，所以这条不是逐字转繁——机器转换只会得到
+  // 「切換模板」，那是漏翻的特征。
   "切换模板": "切換範本",
   "下载": "下載",
   // prompt 站：这几条同样不是逐字转繁，是台湾用词。
@@ -640,7 +640,7 @@ test("zh-TW 与简体逐字相同的词条只有白名单里那两条（V1 的 2
   );
 });
 
-test("「高级编辑」等新文案不会被 renamePromptTemplateTerm 改写", () => {
+test("这批新文案不会被 renamePromptTemplateTerm 改写", () => {
   const hook = source("../src/i18n/ui/useUI.ts");
   // 改写只在源串含「灵感/靈感」时才启动，且只作用在那一支。
   assert.match(hook, /const isInspirationCopy = \/灵感\|靈感\/\.test\(canonical\);/);
@@ -653,9 +653,9 @@ test("「高级编辑」等新文案不会被 renamePromptTemplateTerm 改写", 
 });
 
 // `renamePromptTemplateTerm`（useUI.ts:41-90）会把译文里的 template 词换成 inspiration
-// 词。下面是它逐 locale 要替换的那个词——`编辑模板`/`切换模板` 的译文里**正好都含有它**，
+// 词。下面是它逐 locale 要替换的那个词——`切换模板` 的译文里**正好含有它**，
 // 所以「改写只在源串含灵感/靈感时才启动」这个条件分支是**承重的**：一旦有人把它改成
-// 无条件执行，这两条会变成「编辑灵感」「Edit Inspiration」。
+// 无条件执行，这条会变成「切换灵感」「Switch Inspiration」。
 const PROMPT_TEMPLATE_TERM = {
   zh: /模板/,
   "zh-TW": /範本/,
@@ -676,10 +676,10 @@ const PROMPT_TEMPLATE_TERM = {
   hi: /टेम्पलेट/,
 };
 
-test("「编辑模板」「切换模板」处在 renamePromptTemplateTerm 的射程内，靠条件分支才幸免", () => {
+test("「切换模板」处在 renamePromptTemplateTerm 的射程内，靠条件分支才幸免", () => {
   // 这条不是重复上面那个 ALL_COPY 循环：那条证明 key 不含「灵感」所以不进改写分支，
   // 这条证明**如果真进了**改写分支，17 语会全部被改坏。两条合起来才说明守卫有意义。
-  for (const key of ["编辑模板", "切换模板"]) {
+  for (const key of ["切换模板"]) {
     for (const [locale, dict] of dictionaries) {
       assert.match(
         dict[key],

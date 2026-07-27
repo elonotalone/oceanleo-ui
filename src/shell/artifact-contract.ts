@@ -2426,7 +2426,7 @@ export function resolveAdvancedCapabilityDispatch(
       code: "integrity-failed",
       reason:
         artifact.integrity?.reason ||
-        "artifact 未通过完整性校验，不能进入高级编辑器。",
+        "artifact 未通过完整性校验，不能进入进阶编辑器。",
     };
   }
   if (

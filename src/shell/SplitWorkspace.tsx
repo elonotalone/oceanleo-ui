@@ -69,7 +69,7 @@ export interface RightPaneSlot {
   clearRightLabel: (node: ReactNode) => void;
   /** 编辑器接管右侧主画布时隐藏库标题栏，避免库 chrome 再包一层编辑器。 */
   setRightFrameless: (frameless: boolean) => void;
-  /** 高级编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
+  /** 进阶编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
   setRightEditorHeader: (active: boolean) => void;
   /** 右栏内覆盖 action row、停靠区与画布的稳定编辑栏浮层根。 */
   editBarLayerRef: RefObject<HTMLElement | null>;

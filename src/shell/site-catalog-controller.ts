@@ -278,7 +278,7 @@ export const CATALOG_OPEN_QUERY_KEY = "open";
 export const CATALOG_TEMPLATE_QUERY_KEY = "template";
 /** `?fill=preset`：把代表 prompt + `preset.set` 灌进操作台一次。 */
 export const CATALOG_FILL_PRESET_VALUE = "preset";
-/** `?open=advanced`：右栏直接进入该 app 默认产物类型的高级编辑。 */
+/** `?open=advanced`：右栏直接进入该 app 默认产物类型的进阶编辑器。 */
 export const CATALOG_OPEN_ADVANCED_VALUE = "advanced";
 /** `?open=template`：右栏直接载入 `?template=` 指名的那一份模板素材。 */
 export const CATALOG_OPEN_TEMPLATE_VALUE = "template";
@@ -286,7 +286,7 @@ export const CATALOG_OPEN_TEMPLATE_VALUE = "template";
 export interface CatalogDeepLinkIntent {
   fillPreset: boolean;
   openAdvanced: boolean;
-  /** 「编辑模板」指名的模板 id；空串 = 没有这个意图。 */
+  /** 模板编辑深链指名的模板 id；空串 = 没有这个意图。 */
   openTemplateId: string;
 }
 
@@ -358,7 +358,7 @@ export function workspaceAppFillHref(
   return `${workspaceAppHref(id, contract)}?${CATALOG_FILL_QUERY_KEY}=${CATALOG_FILL_PRESET_VALUE}`;
 }
 
-/** 合同 §3：「高级编辑」——预填之外，右栏直接进入该 app 的高级编辑器。 */
+/** 合同 §3：预填之外，右栏直接进入该 app 的进阶编辑器（旧按钮名已废除，见下方 §0.4）。 */
 export function workspaceAppAdvancedHref(
   appId: string,
   route?: OceanLeoWorkspaceRouteContract,
@@ -370,11 +370,15 @@ export function workspaceAppAdvancedHref(
 }
 
 /**
- * 合同 §3 / §0.3：「编辑模板」——跳到该 app，并让右栏载入**这一份具体的模板素材**。
+ * 合同 §3：**模板编辑深链**——跳到该 app，并让右栏载入**这一份具体的模板素材**。
  *
- * 刻意**不带** `?fill=preset`：大卡片上「编辑模板」与「生成类似」是两个按钮，
- * 前者要的是打开这份成品，后者才是把代表 prompt 灌进操作台。两者混在一条链接里
- * 会让用户点「编辑模板」时输入框莫名其妙被填满。
+ * ⚠ 本轮（合同 §0.4，2026-07-27）大卡片上**已经没有**指向这条链的按钮了：探索面的那颗
+ * 按钮改成「预览&编辑」，落点是 `workspaceTemplatePreviewHref()` 的**只读预览页**，
+ * 用户在预览页里再点「编辑」才 fork 出独立副本进编辑器。本 helper 因此退居为库/预览页
+ * 侧的编辑落点，仍被 `site-catalog-deeplink` 的派发链消费，不能删。
+ *
+ * 刻意**不带** `?fill=preset`：打开这份成品与「把代表 prompt 灌进操作台」是两件事，
+ * 混在一条链接里会让用户进编辑器时输入框莫名其妙被填满。
  *
  * `templateId` 只要求在**同一个 app 内**唯一（`TemplateMaterial.id` 的契约），
  * 所以 appId 必须一起进 URL；缺 app 时退回目录，缺 template 时退回该 app 的
@@ -396,6 +400,68 @@ export function workspaceTemplateEditHref(
     [CATALOG_TEMPLATE_QUERY_KEY]: template,
   });
   return `${base}?${query.toString()}`;
+}
+
+// ── 「预览&编辑」与「更多」两条落点（合同 §0.4 / §3.1，2026-07-27）─────────────
+// 操作员原话（2026-07-27）：大卡片上那颗旧的模板编辑按钮（旧名已废弃，全站不再出现）
+// 改名为「预览&编辑」，「点击后不跳到编辑页面，而是跳到库中的预览页面，防止用户在探索时
+// 误入重型功能」；另加一颗「更多」，「点击后进入各个网站的探索页面」。两条 query 的形状由
+// 合同 §3.1 锁死：W4 的库预览页与 W5 的探索页分别按这两个形状解析参数，
+// **任何一方改形状必须先改合同**。
+
+/** `?tab=library`：工作台切到「我的库」这一栏。 */
+export const LIBRARY_TAB_QUERY_KEY = "tab";
+export const LIBRARY_TAB_VALUE = "library";
+/** `?item=<artifactId>`：库里要打开的那一份 artifact。 */
+export const LIBRARY_ITEM_QUERY_KEY = "item";
+/** `?mode=preview`：只读预览，**不进重型编辑器**（预览页内点「编辑」才 fork）。 */
+export const LIBRARY_MODE_QUERY_KEY = "mode";
+export const LIBRARY_MODE_PREVIEW_VALUE = "preview";
+/** `?app=<appId>`：预览页与探索页共用的 app 锚点。 */
+export const CATALOG_APP_QUERY_KEY = "app";
+/** 探索页默认路径。locale 前缀站请传自己的 `basePath`。 */
+export const EXPLORE_BASE_PATH = "/explore";
+
+/**
+ * 合同 §3.1：「预览&编辑」落点 =
+ * `/workspace?tab=library&item=<artifactId>&mode=preview&app=<appId>`
+ *
+ * 入参是 **artifactId**（不是 `TemplateMaterial.id`）：库按 artifact 取数，而 template id
+ * 只保证同 app 内唯一，拿它去库里定位会撞车。
+ *
+ * 缺 artifact 就拼不出只读落点：此时退回该 app 的 canonical 地址（再缺 app 才退回目录），
+ * 绝不产出一条 `mode=preview` 却没有 `item` 的半截深链——那会让预览页开成空壳。
+ */
+export function workspaceTemplatePreviewHref(
+  appId: string,
+  artifactId: string,
+  route?: OceanLeoWorkspaceRouteContract,
+): string {
+  const contract = activeRoute(route);
+  const id = deepLinkAppSegment(appId);
+  const artifact = deepLinkSegment(artifactId);
+  if (!artifact) return id ? workspaceAppHref(id, contract) : contract.canonicalBasePath;
+  const query = new URLSearchParams();
+  query.set(LIBRARY_TAB_QUERY_KEY, LIBRARY_TAB_VALUE);
+  query.set(LIBRARY_ITEM_QUERY_KEY, artifact);
+  query.set(LIBRARY_MODE_QUERY_KEY, LIBRARY_MODE_PREVIEW_VALUE);
+  if (id) query.set(CATALOG_APP_QUERY_KEY, id);
+  return `${contract.canonicalBasePath}?${query.toString()}`;
+}
+
+/**
+ * 合同 §3.1：「更多」落点 = `/explore?app=<appId>`。
+ *
+ * 探索页据此把「此 app」那一段顶到首屏（合同 §0.6）。appId 为空时退回不带锚点的探索页，
+ * 而不是产出 `?app=`：空参数会让 W5 那边多一条「有 app 参数但取不到 app」的分支。
+ */
+export function exploreAppHref(
+  appId: string,
+  options?: { basePath?: string },
+): string {
+  const base = (options?.basePath || EXPLORE_BASE_PATH).replace(/\/+$/, "") || EXPLORE_BASE_PATH;
+  const id = deepLinkAppSegment(appId);
+  return id ? `${base}?${CATALOG_APP_QUERY_KEY}=${encodeURIComponent(id)}` : base;
 }
 
 // ── 「下载」前端链（合同 §3；端点 = W7 的 template_materials_router）───────────
@@ -496,7 +562,7 @@ export function catalogPresetFill(
     : { prompt: fill.prompt };
 }
 
-// ── `?open=advanced`：右栏进入该 app 默认产物类型的高级编辑 ───────────────────
+// ── `?open=advanced`：右栏进入该 app 默认产物类型的进阶编辑器 ─────────────────
 // GoalApp 没有声明产物类型，所以按【显式 > app id 词元 > 站点默认】三级解析，解析不出
 // 就退化为打开「我的库」并给可见提示——绝不静默无反应，也绝不猜一个错编辑器。
 
@@ -649,7 +715,7 @@ export interface CatalogTemplateOpenPlan extends CatalogRightPanePlan {
 
 /**
  * `?open=advanced` → 右栏派发计划。有默认产物类型就把「我的库」收窄到该类型（选中
- * 即进高级编辑，`openAdvancedOnSelect` 默认 true）；没有就只打开「我的库」并提示。
+ * 即进进阶编辑器，`openAdvancedOnSelect` 默认 true）；没有就只打开「我的库」并提示。
  */
 export function catalogAdvancedOpenPlan(
   app: GoalApp | null | undefined,
@@ -668,12 +734,12 @@ export function catalogAdvancedOpenPlan(
     degraded: !kind,
     notice: kind
       ? ""
-      : "这个 App 还没有声明可直接编辑的产物类型，已为你打开「我的库」——选中任意作品即可进入高级编辑。",
+      : "这个 App 还没有声明可直接编辑的产物类型，已为你打开「我的库」——选中任意作品即可进入编辑器。",
   };
 }
 
 /**
- * `?open=template&template=<id>` → 右栏派发计划（合同 §0.3「编辑模板」）。
+ * `?open=template&template=<id>` → 右栏派发计划（合同 §0.3 的模板编辑深链）。
  *
  * 与 `catalogAdvancedOpenPlan` 的区别就是本轮要补的那个洞：advanced 只知道「该 app 的
  * 默认产物类型」，所以 envelope 里没有 `itemId`，右栏只能打开「我的库」等用户自己挑；

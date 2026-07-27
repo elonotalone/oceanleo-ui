@@ -18,7 +18,7 @@ export type WorkspaceSlotId =
  * `open` (the default, and what every existing receipt means) reveals the item
  * in its library detail; the user still presses Edit. `edit` is only issued by
  * a first-party deep link that already names one exact artifact — the catalog
- * 「编辑模板」 entry — and asks the receiver to hand that item straight to the
+ * template-edit entry — and asks the receiver to hand that item straight to the
  * typed advanced editor. Anything else is treated as `open`: an unknown intent
  * must never silently become an editor launch.
  */
