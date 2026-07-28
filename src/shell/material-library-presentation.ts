@@ -6,6 +6,7 @@
 
 import { artifactIsVisible, type ArtifactContextRef, type ArtifactType } from "./artifact-contract";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
+import type { ExploreClassDispatchInput } from "./explore-shelf-dispatch";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   artifactEntry,
@@ -48,6 +49,13 @@ export interface MaterialLibraryProps {
    * Sections offered to the reader (合同 §0.6). Defaults to 当前 App ｜ 本站素材。
    */
   levels?: readonly MaterialLibraryLevel[];
+  /**
+   * 探索页的两类分派（可玩游戏 ｜ 游戏素材，本轮合同 §0 P1/P2）。
+   *
+   * **站点侧拿不到也不需要传**：它是共享包内部的呈现模式开关，探索页自己按
+   * artifact 类型推导后交下来。抽屉与工作台面板不传，形状与今天逐字相同。
+   */
+  exploreClassDispatch?: ExploreClassDispatchInput | null;
   /**
    * 分区轴的受控取值（`null` 全部 / `""` 其它 / 场景词）。探索页把它同步进 `?scene=`；
    * 不传就由货架自己管。

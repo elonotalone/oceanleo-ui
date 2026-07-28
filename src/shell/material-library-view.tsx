@@ -18,6 +18,10 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
+  ExplorePlayableSurface,
+  useExploreShelfDispatch,
+} from "./explore-shelf-dispatch";
+import {
   MATERIAL_LIBRARY_LEVELS,
   artifactEntry,
   invalidateMaterialLibraryCache,
@@ -33,7 +37,7 @@ import {
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import { templateDeepLinkAction } from "./material-library-template-source";
-import { MaterialShelfToolbar } from "./material-library-toolbar";
+import { MaterialCompleteLibraryLink, MaterialShelfToolbar } from "./material-library-toolbar";
 import {
   entriesFromRemoteResult,
   materialFailureCopy,
@@ -109,6 +113,7 @@ export function MaterialLibrary({
   initialLevel = "primary",
   lockLevel,
   levels,
+  exploreClassDispatch,
   scene: controlledScene,
   onSceneChange,
   types: controlledTypes,
@@ -563,6 +568,15 @@ export function MaterialLibrary({
     () => (sceneView ? sceneView.cards.map((card) => card.entry) : entries),
     [entries, sceneView],
   );
+  // 按 artifact 类型分派呈现模式（P2）。探索页之外 `exploreClassDispatch` 不传，
+  // `dispatch.entries === visibleEntries` 的顺序与内容都与今天逐字相同。
+  const dispatch = useExploreShelfDispatch({
+    dispatch: exploreClassDispatch,
+    level,
+    siteKey: siteId,
+    entries: visibleEntries,
+  });
+  const shelfEntries = dispatch.enabled ? dispatch.entries : visibleEntries;
   const anchoredAppLabel = useMemo(
     () =>
       directory?.apps.find((app) => app.appId === anchoredAppId)?.name ||
@@ -622,7 +636,8 @@ export function MaterialLibrary({
   // 官方模板目录与库检索是两条并行的取数链，两条都有结论才算 settle：只等一条，
   // 另一条的空窗期照样会漏出空态。
   const shelfLoading = loading || templateShelf.loading;
-  const shelfSettled = shelfSettle.settled && !templateShelf.loading;
+  const shelfSettled =
+    shelfSettle.settled && !templateShelf.loading && dispatch.settled;
   const contextMissing =
     level === "primary" && (!context.contextId || !context.siteKey);
   const { error: effectiveError, status: effectiveErrorStatus } =
@@ -640,18 +655,11 @@ export function MaterialLibrary({
   // D1 之后没有「更多素材」这一层可跳，只剩宿主自己声明的完整素材库外链。
   const primaryMoreControl =
     hideSeeAll || !(onSeeAll || seeAllHref) ? null : (
-      <a
+      <MaterialCompleteLibraryLink
         href={completeLibraryHref}
-        onClick={(event) => {
-          if (!onSeeAll) return;
-          event.preventDefault();
-          onSeeAll();
-        }}
-        className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-        aria-label={tt("打开完整素材库")}
-      >
-        {tt(seeAllLabel)} →
-      </a>
+        label={seeAllLabel}
+        onSeeAll={onSeeAll}
+      />
     );
 
   const toolbar = (
@@ -663,7 +671,8 @@ export function MaterialLibrary({
       onGoToLevel={goToLevel}
       seeAllControl={primaryMoreControl}
       settled={shelfSettled}
-      sceneChips={sceneView?.chips}
+      exploreClassAxis={dispatch.axis}
+      sceneChips={dispatch.artifactClass === "playable" ? undefined : sceneView?.chips}
       scene={scene}
       onSceneChange={applyScene}
       anchoredAppId={sceneView ? anchoredAppId : ""}
@@ -716,7 +725,7 @@ export function MaterialLibrary({
 
   // D5：首帧未 settle 时既没有卡片也不许有「暂无」文案，货架整块换成骨架。
   // 已经有卡片（命中缓存 / 背景刷新）时不退回骨架 —— 那会比空态更晃眼。
-  if (!shelfSettled && visibleEntries.length === 0 && !effectiveError) {
+  if (!shelfSettled && shelfEntries.length === 0 && !effectiveError) {
     return (
       <div
         className={`h-full min-h-0 ${className}`}
@@ -727,9 +736,24 @@ export function MaterialLibrary({
     );
   }
 
+  // P1：可玩游戏那一类只有整屏竖向 feed 一种布局，没有网格变体。
+  if (dispatch.renderMode === "vertical-feed") {
+    return (
+      <ExplorePlayableSurface
+        dispatch={dispatch}
+        toolbar={toolbar}
+        accent={accent}
+        loading={shelfLoading}
+        failure={effectiveError ? failureCopy : null}
+        onPlay={openPreparedItem}
+        className={className}
+      />
+    );
+  }
+
   return (
     <WorkspaceLibrary
-      entries={visibleEntries}
+      entries={shelfEntries}
       accent={accent}
       action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
       taskId={taskId}

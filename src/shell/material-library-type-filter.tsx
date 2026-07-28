@@ -12,6 +12,10 @@
 import { useId } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { ARTIFACT_TYPES, type ArtifactType } from "./artifact-contract";
+import type {
+  ExploreArtifactClass,
+  ExploreClassChip,
+} from "./explore-artifact-class";
 import { MATERIAL_TAXONOMY_LABEL } from "./material-library-controller";
 import {
   MATERIAL_SCENE_ALL_ID,
@@ -78,6 +82,53 @@ export function MaterialSceneFilter({
             className={`${CHIP_BASE} ${pressed ? CHIP_ON : CHIP_OFF}`}
           >
             {builtin ? tt(chip.label) : chip.label}
+            <span className="ml-1 opacity-60">{chip.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 探索页最上面那一轴：**可玩游戏 ｜ 游戏素材**（本轮合同 §0 P1/P2）。
+ *
+ * 它比场景分区轴更高一级，因为两类的**呈现模式**本身不同（可玩那一类是整屏竖向
+ * feed，素材那一类是网格货架），不是同一种布局下的两组筛选。取值来自
+ * `exploreClassChips()`：可玩那一格只在真的有可玩作品时才出现，所以其余 35 站的
+ * 探索页上根本不会多出这一轴。
+ */
+export function ExploreClassFilter({
+  chips,
+  selected,
+  onSelect,
+}: {
+  chips: readonly ExploreClassChip[];
+  selected: ExploreArtifactClass;
+  onSelect: (artifactClass: ExploreArtifactClass) => void;
+}) {
+  const tt = useUI();
+  return (
+    <div
+      role="tablist"
+      aria-label={tt("探索分类")}
+      data-explore-class-axis="true"
+      className="flex flex-wrap items-center gap-1"
+    >
+      {chips.map((chip) => {
+        const current = chip.id === selected;
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            role="tab"
+            aria-selected={current}
+            data-explore-class-chip={chip.id}
+            data-explore-class-render-mode={chip.renderMode}
+            onClick={() => onSelect(chip.id)}
+            className={`${CHIP_BASE} ${current ? CHIP_ON : CHIP_OFF}`}
+          >
+            {tt(chip.label)}
             <span className="ml-1 opacity-60">{chip.count}</span>
           </button>
         );

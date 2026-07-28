@@ -13,6 +13,10 @@ import {
   canonicalArtifactContextId,
   type ArtifactType,
 } from "./artifact-contract";
+import {
+  EXPLORE_ARTIFACT_CLASS_ORDER,
+  type ExploreArtifactClass,
+} from "./explore-artifact-class";
 import type { LibraryItem } from "./library-data";
 import { MaterialLibrary } from "./MaterialLibrary";
 import {
@@ -154,6 +158,19 @@ function legacyPropNames(props: ExplorePageProps): string[] {
 }
 
 const SCENE_QUERY_KEY = "scene";
+/**
+ * 两类分区的深链键（`?class=playable` / `?class=material`）。
+ *
+ * 存在的理由和 `?scene=` 一样：分类是读者选出来的视图，选完必须能把链接发给别人。
+ * 缺省不写进 URL —— 缺省由共享包按「本站有没有可玩作品」推导，写死进 URL 会让
+ * 一条老链接在站点长出可玩作品之后依然落在素材网格上。
+ */
+const CLASS_QUERY_KEY = "class";
+
+function exploreClassFromQuery(value: string): ExploreArtifactClass | null {
+  const candidate = value.trim() as ExploreArtifactClass;
+  return EXPLORE_ARTIFACT_CLASS_ORDER.includes(candidate) ? candidate : null;
+}
 
 /**
  * 站内探索页。**零配置**：站点只交出 site key（外加可选的 app 锚点），
@@ -182,6 +199,9 @@ export function ExplorePage(props: ExplorePageProps) {
   const [anchoredApp, setAnchoredApp] = useState(appId);
   const [types, setTypes] = useState<ArtifactType[]>([]);
   const [scene, setScene] = useState<SceneSelection>(null);
+  // `null` = 还没选过。缺省由 `defaultExploreClass()` 按有没有可玩作品定，不在这里猜。
+  const [artifactClass, setArtifactClass] =
+    useState<ExploreArtifactClass | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -190,8 +210,10 @@ export function ExplorePage(props: ExplorePageProps) {
     const query = params.get("q")?.trim() || "";
     const app = params.get("app")?.trim() || "";
     const urlScene = params.get(SCENE_QUERY_KEY)?.trim() || "";
+    const urlClass = exploreClassFromQuery(params.get(CLASS_QUERY_KEY) || "");
     const urlTypes = materialTypesFromCsv(params.get("types") || "");
     if (app) setAnchoredApp(app);
+    if (urlClass) setArtifactClass(urlClass);
     if (urlTypes.length > 0) setTypes(urlTypes);
     if (urlScene) {
       setScene(urlScene === MATERIAL_SCENE_OTHER_ID ? "" : urlScene);
@@ -233,6 +255,21 @@ export function ExplorePage(props: ExplorePageProps) {
       );
     },
     [syncUrl],
+  );
+
+  const syncClassToUrl = useCallback(
+    (next: ExploreArtifactClass) => {
+      setArtifactClass(next);
+      syncUrl(CLASS_QUERY_KEY, next);
+    },
+    [syncUrl],
+  );
+  const classDispatch = useMemo(
+    () => ({
+      artifactClass,
+      onArtifactClassChange: syncClassToUrl,
+    }),
+    [artifactClass, syncClassToUrl],
   );
 
   const exploreAppId = anchoredApp.trim();
@@ -311,6 +348,7 @@ export function ExplorePage(props: ExplorePageProps) {
           initialLevel="site"
           lockLevel="site"
           fetchPrimary={false}
+          exploreClassDispatch={classDispatch}
           types={types}
           onTypesChange={syncTypesToUrl}
           scene={scene}

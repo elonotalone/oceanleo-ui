@@ -362,6 +362,35 @@ const materialDownloadUrl = await compileModule(
     "./library-data": libraryDataUrl,
   },
 );
+// 探索页的「按 artifact 类型分派呈现模式」这一层：本文件测的是素材网格那一支，所以
+// 竖向 feed 只上桩，分派逻辑本身用真的——`useExploreShelfDispatch` 决定这里到底还走不走
+// 网格，桩掉它就等于把本文件的全部网格断言架空。
+const exploreArtifactClassUrl = await compileModule(
+  "src/shell/explore-artifact-class.ts",
+  {
+    "./artifact-contract": contractUrl,
+  },
+);
+const explorePlayableFeedStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+
+  export function ExplorePlayableFeed(props) {
+    return createElement(
+      "section",
+      { "data-explore-feed": "vertical" },
+      props.toolbar,
+    );
+  }
+`);
+const exploreShelfDispatchUrl = await compileModule(
+  "src/shell/explore-shelf-dispatch.tsx",
+  {
+    "./explore-artifact-class": exploreArtifactClassUrl,
+    "./ExplorePlayableFeed": explorePlayableFeedStubUrl,
+    "./material-library-controller": materialControllerUrl,
+    "./material-library-presentation": materialPresentationUrl,
+  },
+);
 const {
   artifactEntry,
   invalidateMaterialLibraryCache,
@@ -378,6 +407,7 @@ const MaterialLibrary = (
       "./artifact-contract": contractUrl,
       "./advanced-features": advancedFeaturesUrl,
       "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
+      "./explore-shelf-dispatch": exploreShelfDispatchUrl,
       "./material-library-controller": materialControllerUrl,
       "./material-library-presentation": materialPresentationUrl,
       "./material-library-effects": materialEffectsUrl,

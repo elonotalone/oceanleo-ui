@@ -757,6 +757,119 @@ export interface ArtifactProvenance {
   attribution: string;
 }
 
+// ── 热度字段契约（放行层与取值层的唯一出处）────────────────────────────────
+//
+// 为什么住在**这个**文件里：热度这条链有两头——放行头在服务边界上
+// （`normalizeArtifactProjection` 重建对象、丢弃未知键；`artifactProjectionToLibraryItem`
+// 的 `meta` 是白名单），取值头在探索页（`explore-artifact-class.ts::explorePopularity`）。
+// 两头各写一份键名，就会出现「放行了 `play_count`、取值只认 `plays`」这种**静默排错序**
+// 的 bug：热度读不到不报错，只是页面顺序悄悄退回服务端给的创建时间序。
+//
+// 刻意不拆成独立模块：这条链上的两头（`library-data.ts`、`explore-artifact-class.ts`）
+// 与素材控制器都已经 import 本文件，写在这里不新增任何模块边，也就不会让那些把源文件
+// 逐个编译成 data module、再手工改写 import 名单的测试与消费方多一处要登记的依赖。
+
+/** 热度可能被整份包进来的信封键。**只认一层**，不深递归。 */
+export const POPULARITY_ENVELOPE_KEYS: readonly string[] = Object.freeze([
+  "stats",
+  "ugc_stats",
+  "ugcStats",
+  "popularity",
+]);
+
+/**
+ * 每个指标的别名，按优先级排列（先命中者胜）。
+ *
+ * 为什么是**别名组 + 信封**而不是一组精确字段名：产出方还在动。可玩侧的权威是
+ * `ugc_game_stats`（migration `0111` 的 `plays` / `likes` / `remixes`）；素材侧是导入时
+ * 保留的原站数值（ambientCG `downloadCount`、Poly Haven `download_count`）。它们最终叫
+ * `plays` 还是 `play_count`、挂在顶层还是 `stats` / `ugc_stats` 下，本包不该有意见——
+ * 只要落在这两份名单里就接得上。
+ *
+ * 顺序即优先级：`plays` 与 `play_count` 同时出现时取前者，这样同一条数据在不同部署下
+ * 排出来的顺序一致（SSR 与 hydration 也必须一致）。
+ */
+export const POPULARITY_METRIC_ALIASES = Object.freeze({
+  plays: Object.freeze(["plays", "play_count", "playCount"] as const),
+  likes: Object.freeze(["likes", "like_count", "likeCount"] as const),
+  remixes: Object.freeze(["remixes", "remix_count", "remixCount"] as const),
+  downloads: Object.freeze([
+    "downloads",
+    "download_count",
+    "downloadCount",
+    "source_download_count",
+  ] as const),
+});
+
+export type PopularityMetricName = keyof typeof POPULARITY_METRIC_ALIASES;
+
+export const POPULARITY_METRIC_NAMES: readonly PopularityMetricName[] =
+  Object.freeze(["plays", "likes", "remixes", "downloads"] as const);
+
+/** 放行后写进 `LibraryItem.meta` 的信封键。取值层认得它（见上面的信封名单）。 */
+export const POPULARITY_META_KEY = "popularity";
+
+/**
+ * 放行下来的热度数值。键是**产出方用的原始别名**（见 `popularityMetricsFromWire`），
+ * 所以这里是开放键名的 record 而不是四个固定字段。
+ */
+export type PopularityMetrics = Readonly<Record<string, number>>;
+
+/**
+ * 只接受有限非负数。字符串数字**不接受**——`"12"` 与 `"十二"` 分不开，而热度是排序键，
+ * 读错一次就是整页顺序错；产出方发字符串属于契约违规，该在产出侧修。
+ */
+export function popularityCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+/**
+ * 一个原始 wire 对象上所有能读到的热度数值。
+ *
+ * 扫描面**刻意有界**：本层、`meta` 本层，以及这两层下各一层信封。热度是排序键，从任意
+ * 深度捞一个同名数字上来是安全事故的形状（一条 `provenance.source.likes` 就能改排序）。
+ *
+ * 返回值的键**保留原始别名**（读到 `play_count` 就写 `play_count`），不改名成规范名：
+ * 取值层认全部别名，而保留原名让证据与门禁能点出「这一份数据的产出方用的是哪个名字」。
+ *
+ * 没读到任何数值时返回 `null`，调用方据此**不写** `meta.popularity`——于是取值层如实
+ * 得到 `known: false`、呈现层打 `data-explore-popularity-ready="false"`。空信封（`{}`）
+ * 与「热度全是 0」必须区分得开，所以这里绝不返回空对象。
+ */
+export function popularityMetricsFromWire(
+  raw: unknown,
+): PopularityMetrics | null {
+  const top = record(raw);
+  if (!top) return null;
+  const layers: Record<string, unknown>[] = [top];
+  const meta = record(top.meta);
+  if (meta) layers.push(meta);
+  for (const layer of [top, meta]) {
+    if (!layer) continue;
+    for (const key of POPULARITY_ENVELOPE_KEYS) {
+      const envelope = record(layer[key]);
+      if (envelope) layers.push(envelope);
+    }
+  }
+  const metrics: Record<string, number> = {};
+  for (const metric of POPULARITY_METRIC_NAMES) {
+    for (const alias of POPULARITY_METRIC_ALIASES[metric]) {
+      let hit: number | null = null;
+      for (const layer of layers) {
+        hit = popularityCount(layer[alias]);
+        if (hit !== null) break;
+      }
+      if (hit !== null) {
+        metrics[alias] = hit;
+        break;
+      }
+    }
+  }
+  return Object.keys(metrics).length > 0 ? metrics : null;
+}
+
 export interface ArtifactProjection extends ArtifactIdentity {
   schema: "oceanleo.artifact.v1";
   artifactType: ArtifactType;
@@ -775,6 +888,23 @@ export interface ArtifactProjection extends ArtifactIdentity {
   bindings: ArtifactContextBinding[];
   integrity: ArtifactIntegrity;
   createdAt: string | null;
+  /**
+   * 服务端给的热度数值（游玩 / 点赞 / 二创 / 下载），没有就是 `null`。
+   *
+   * 为什么它必须在**这个契约**上：这个 normalizer 重建对象、丢弃一切未知键，是整条链
+   * 上唯一的信息瓶颈。热度停在这里的后果不是报错而是**静默排错序**——探索页按热度排，
+   * 读不到就只能退回服务端给的创建时间序。所以这里给它留一条明确的路，而不是让下游各
+   * 自去猜原始 wire 对象还在不在手上。
+   *
+   * 键名是产出方的原始别名（`plays` / `play_count` / …），本契约刻意不规范化：见
+   * `popularity-fields.ts` 的别名表。`null` 与「全是 0」必须区分得开，所以读不到任何
+   * 数值时是 `null`，不是 `{}`。
+   *
+   * 声明成**可选**是为了 36 个 consumer：它们里若有谁手写过 projection 字面量，加一个
+   * 必填字段等于让那一站直接编译不过。normalizer 恒会填上这个字段，缺席只会出现在
+   * 手写字面量上，而缺席的语义与 `null` 相同（热度未知）。
+   */
+  popularity?: PopularityMetrics | null;
 }
 
 /**
@@ -1928,6 +2058,9 @@ export function normalizeArtifactProjection(
     ),
     integrity: effectiveIntegrity,
     createdAt: text(raw.createdAt, raw.created_at) || null,
+    // 热度不参与完整性判定：读不到只影响排序，不影响这个 artifact 能不能预览/编辑。
+    // 所以它在这里是纯放行，绝不能让一份缺热度的投影被判成 invalid。
+    popularity: popularityMetricsFromWire(raw),
   };
 }
 

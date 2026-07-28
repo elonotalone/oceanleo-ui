@@ -2,9 +2,14 @@ import type { Creation } from "../lib/database";
 import type {
   ArtifactProjection,
   ArtifactType,
+  PopularityMetrics,
   TransientGenerationResult,
 } from "./artifact-contract";
-import { isArtifactSourceTreeUrl } from "./artifact-contract";
+import {
+  isArtifactSourceTreeUrl,
+  POPULARITY_META_KEY,
+  popularityMetricsFromWire,
+} from "./artifact-contract";
 import { editorRouteHintForArtifactCapability } from "./workbench-capability-registry";
 
 /**
@@ -162,6 +167,26 @@ function websiteProjectIdFromProjection(
   return "";
 }
 
+/**
+ * 这个 artifact 的热度数值，没有就是 `null`。
+ *
+ * 两个来源，缺一不可：
+ *   · `artifact.popularity` —— 走过 `normalizeArtifactProjection` 的投影（库检索那条链
+ *     是这一条：`searchArtifactLibrary` → normalizer → 这里）。
+ *   · 原始 wire 对象本身 —— `normalizeArtifact` / `normalizeWork` 这类调用点直接把**未
+ *     规范化**的行传进来（见 `isCanonicalArtifactProjection` 分支），那时 `popularity`
+ *     字段还不存在，但原始键还在手上。
+ * 只覆盖其中一条会得到「本站货架有热度、我的库没有」这种按入口分裂的行为。
+ * 名单与判据都在 `artifact-contract.ts` 那一份（放行与取值同源）。
+ */
+function popularityForProjection(
+  artifact: ArtifactProjection,
+): PopularityMetrics | null {
+  const declared = artifact.popularity;
+  if (declared && Object.keys(declared).length > 0) return declared;
+  return popularityMetricsFromWire(artifact);
+}
+
 export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
   return ({
     website: "website",
@@ -224,6 +249,7 @@ export function artifactProjectionToLibraryItem(
   const rawUrl = selectedRendition?.url;
   const url =
     rawUrl && !isArtifactSourceTreeUrl(rawUrl) ? rawUrl : undefined;
+  const popularity = popularityForProjection(artifact);
   const meta: Record<string, unknown> = {
     artifact_id: artifact.artifactId,
     revision_id: artifact.revisionId,
@@ -250,6 +276,10 @@ export function artifactProjectionToLibraryItem(
     artifact_scene: artifact.scene,
     format: artifact.sourceFormat,
     ...(routeHint ? { advanced_editor_route: routeHint } : {}),
+    // 热度：白名单里唯一一个「有就放行、没有就整键缺席」的字段。写成空对象会让
+    // 「没有热度数据」与「热度全是 0」不可区分，探索页的
+    // `data-explore-popularity-ready` 就再也翻不回 false（见 popularity-fields.ts）。
+    ...(popularity ? { [POPULARITY_META_KEY]: popularity } : {}),
     ...(artifact.scene
       ? {
           scene_revision_id: artifact.scene.sceneRevisionId,

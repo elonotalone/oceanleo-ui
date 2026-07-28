@@ -3,6 +3,8 @@ import {
   artifactContextKey,
   ARTIFACT_TYPES,
   normalizeArtifactProjection,
+  POPULARITY_META_KEY,
+  popularityMetricsFromWire,
   type ArtifactContextRef,
   type ArtifactType,
 } from "./artifact-contract";
@@ -318,6 +320,7 @@ export function platformToEntry(
     : kind === "website" && rawId
       ? `${GATEWAY}/v1/assets/library/${encodeURIComponent(rawId)}/view`
       : "";
+  const assetPopularity = popularityMetricsFromWire(asset);
   const item: LibraryItem = {
     key: `asset:${asset.id}`,
     source: "artifact",
@@ -356,6 +359,10 @@ export function platformToEntry(
       template_doc_url: designTemplateDoc,
       starter_id: starterId,
       asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
+      // 平台素材这条路径不经 artifact 投影（`asset.*` 是另一套字段），所以热度要在这里
+      // 单独放行一次，否则同一份 ambientCG 素材从这个入口进来就没有下载量、排序与
+      // artifact 入口不一致。判据与放行名单同源（`artifact-contract.ts`）。
+      ...(assetPopularity ? { [POPULARITY_META_KEY]: assetPopularity } : {}),
     },
   };
   item.descriptor = libraryContentDescriptor({

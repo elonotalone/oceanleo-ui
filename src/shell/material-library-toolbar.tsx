@@ -13,9 +13,11 @@
 import type { ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ArtifactType } from "./artifact-contract";
+import type { ExploreClassAxis } from "./explore-artifact-class";
 import type { MaterialLibraryLevel } from "./material-library-controller";
 import { materialLevelLabel } from "./material-library-presentation";
 import {
+  ExploreClassFilter,
   MaterialAppAnchorChip,
   MaterialSceneFilter,
   MaterialTypeFilter,
@@ -32,6 +34,36 @@ const TOOLBAR_BUTTON_ON =
 const TOOLBAR_BUTTON_OFF =
   "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]";
 
+/**
+ * 宿主自备的「完整素材库」外链。`onSeeAll` 给了就拦下导航交给宿主，没给就照 href 走——
+ * 从货架搬到这里只为让 `material-library-view.tsx` 守住 800 行硬顶，DOM 与行为不变。
+ */
+export function MaterialCompleteLibraryLink({
+  href,
+  label,
+  onSeeAll,
+}: {
+  href: string;
+  label: string;
+  onSeeAll?: () => void;
+}) {
+  const tt = useUI();
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        if (!onSeeAll) return;
+        event.preventDefault();
+        onSeeAll();
+      }}
+      className={`inline-flex items-center ${TOOLBAR_BUTTON} ${TOOLBAR_BUTTON_OFF}`}
+      aria-label={tt("打开完整素材库")}
+    >
+      {tt(label)} →
+    </a>
+  );
+}
+
 export interface MaterialShelfToolbarProps {
   level: MaterialLibraryLevel;
   sections: readonly MaterialLibraryLevel[];
@@ -42,6 +74,11 @@ export interface MaterialShelfToolbarProps {
   /** 宿主自备的完整素材库外链（`hideSeeAll` 时为 null）。 */
   seeAllControl: ReactNode;
   settled: boolean;
+  /**
+   * 两类分区轴（可玩游戏 ｜ 游戏素材）。只有探索页会传：这一轴切换的是**呈现模式**，
+   * 抽屉里的素材面板没有 feed 那一半，所以不传就整轴不渲染。
+   */
+  exploreClassAxis?: ExploreClassAxis | null;
   sceneChips?: readonly MaterialSceneChip[];
   scene: SceneSelection;
   onSceneChange: (scene: SceneSelection) => void;
@@ -69,6 +106,7 @@ export function MaterialShelfToolbar({
   onGoToLevel,
   seeAllControl,
   settled,
+  exploreClassAxis,
   sceneChips,
   scene,
   onSceneChange,
@@ -133,6 +171,13 @@ export function MaterialShelfToolbar({
         {tt(materialLevelLabel(level))}
       </span>
       {sections.length > 1 && levelControl}
+      {exploreClassAxis && exploreClassAxis.chips.length > 1 && (
+        <ExploreClassFilter
+          chips={exploreClassAxis.chips}
+          selected={exploreClassAxis.selected}
+          onSelect={exploreClassAxis.onSelect}
+        />
+      )}
       {sceneChips && sceneChips.length > 1 && (
         <MaterialSceneFilter
           chips={sceneChips}
@@ -147,12 +192,14 @@ export function MaterialShelfToolbar({
           onClear={onClearAnchor}
         />
       )}
-      <MaterialTypeFilter
-        multiSelect={multiSelectTypes}
-        selectedTypes={selectedTypes}
-        onApplyTypes={onApplyTypes}
-        availableTypes={availableTypes}
-      />
+      {!exploreClassAxis?.hideTypeFilter && (
+        <MaterialTypeFilter
+          multiSelect={multiSelectTypes}
+          selectedTypes={selectedTypes}
+          onApplyTypes={onApplyTypes}
+          availableTypes={availableTypes}
+        />
+      )}
       {canLoadMore && (
         <button
           type="button"
