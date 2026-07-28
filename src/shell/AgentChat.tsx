@@ -169,6 +169,22 @@ export interface AgentChatProps {
   promptOverride?: string;
   /** 输入框占位文案（默认「继续追问，或上传文件让 agent 分析…」）。 */
   placeholder?: string;
+  /**
+   * 对话输入框是否开启【文件上传 / 拖拽 / 「＋」菜单里的本地文件】。**默认 `true`**，
+   * 35 个站的行为与 2026-07-28 之前逐字一致，接入方无需改一行。
+   *
+   * 传 `false` 的唯一后果是**不再把 `onAttachFiles` 交给 `LeoComposer`**——它据此
+   * 同时收起文件选择按钮与整卡拖拽上传（`LeoComposer.tsx` 的 `dragEnabled` 与
+   * 隐藏 `<input type="file">` 都以 `Boolean(onAttachFiles)` 为开关），占位文案也换成
+   * 不提上传的那句。命名与行为都对齐 `HomeIntro` 的同名 prop，全家桶只有一套写法。
+   *
+   * 为什么需要它：`game`（LeoPlay）按操作员拍板的 D8「全站不提供任何上传/导入用户
+   * 文件的入口」，游戏只能由平台生成链产出。在此之前本组件**无条件**传
+   * `onAttachFiles`，于是 game 的对话界面不但能上传，占位文案还在主动邀请用户上传
+   * （V3 验收 J5 判 FAIL）。这里给的是开关，不是按 site key 分叉——按站名分叉会与
+   * 跨站一致性门禁的棘轮冲突。
+   */
+  enableInputTools?: boolean;
   /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
   emptyHint?: React.ReactNode;
   /**
@@ -273,6 +289,7 @@ function AgentChatInner({
   composerInlineSlot,
   promptOverride,
   placeholder,
+  enableInputTools = true,
   emptyHint,
   onBack,
   backLabel,
@@ -333,6 +350,12 @@ function AgentChatInner({
   const seenActionRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
+  // 与 HomeIntro 同名同义的开关（见 AgentChatProps.enableInputTools）。默认 true，
+  // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
+  const toolsOn = enableInputTools;
+  // 关掉输入工具的站，首页那一侧的 HomeIntro 同样是关的，`onStart` 不可能带出附件；
+  // 真收到就说明有人绕过了 D8，这里显式丢弃而不是默默照单全收。
+  const initialAtts = toolsOn ? initialAttachments : undefined;
 
   useEffect(() => {
     setBranchTaskId(null);
@@ -577,22 +600,21 @@ function AgentChatInner({
     if (workspace?.availability === "loading") return;
     startedRef.current = true;
     const hasInitial =
-      Boolean(initialPrompt?.trim()) ||
-      Boolean(initialAttachments && initialAttachments.length);
+      Boolean(initialPrompt?.trim()) || Boolean(initialAtts && initialAtts.length);
     if (!hasInitial) return;
     const prompt = (initialPrompt || "").trim();
     if (taskId) {
       // 只在 WorkspaceSessionProvider 场景接续已有 thread；旧的显式 taskId 调用仍保持
       // “只回看 task、忽略 initialPrompt”的兼容行为。
       if (workspace) {
-        void continueInitialTask(taskId, prompt, initialAttachments);
+        void continueInitialTask(taskId, prompt, initialAtts);
       }
       return;
     }
-    void start(prompt, initialAttachments);
+    void start(prompt, initialAtts);
   }, [
     continueInitialTask,
-    initialAttachments,
+    initialAtts,
     initialPrompt,
     start,
     taskId,
@@ -604,14 +626,17 @@ function AgentChatInner({
     const prompt = input.trim();
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
-    const uploaded = atts.ready();
-    if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
+    // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
+    // 免得留下「界面没有入口、提交路径却还认附件」的半开状态。
+    const uploaded = toolsOn ? atts.ready() : [];
+    if ((!prompt && uploaded.length === 0) || busy || (toolsOn && atts.uploading))
+      return;
     if (readOnly) {
       setError(tt("当前会话为只读状态。"));
       return;
     }
     const submittedInput = input;
-    const submittedAttachments = atts.attachments;
+    const submittedAttachments = toolsOn ? atts.attachments : [];
     const restoreSubmission = () => {
       setInput((current) => (current ? current : submittedInput));
       atts.restoreReady(submittedAttachments);
@@ -1127,11 +1152,17 @@ function AgentChatInner({
             disabled={readOnly}
             leoSuggest
             inlineSlot={inlineSlot}
-            placeholder={placeholder ?? tt("继续追问，或上传文件让 agent 分析…")}
+            placeholder={
+              placeholder ??
+              (toolsOn
+                ? tt("继续追问，或上传文件让 agent 分析…")
+                : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
+                  tt("继续追问"))
+            }
             rows={1}
-            onAttachFiles={atts.handleAttachFiles}
-            attachments={atts.composerAttachments}
-            onRemoveAttachment={atts.removeAttachment}
+            onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
+            attachments={toolsOn ? atts.composerAttachments : undefined}
+            onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onVoiceTranscript={handleVoiceTranscript}
           />
         </div>

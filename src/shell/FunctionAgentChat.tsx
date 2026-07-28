@@ -151,6 +151,21 @@ export interface FunctionAgentChatProps {
   /** @deprecated 模型统一读取「AI 模型」页偏好；该覆盖值不再发送。 */
   agentModel?: string;
   accent?: string;
+  /**
+   * agent 输入框是否开启【文件上传 / 拖拽 / 「＋」菜单里的本地文件】。**默认 `true`**，
+   * 35 个站的行为与 2026-07-28 之前逐字一致，接入方无需改一行。
+   *
+   * 传 `false` 的唯一后果是**不再把 `onAttachFiles` 交给 `LeoComposer`**——它据此
+   * 同时收起文件选择按钮与整卡拖拽上传（`LeoComposer.tsx` 的 `dragEnabled` 与
+   * 隐藏 `<input type="file">` 都以 `Boolean(onAttachFiles)` 为开关），占位文案也换成
+   * 不提上传的那句。命名与行为对齐 `HomeIntro` / `AgentChat` 的同名 prop。
+   *
+   * 为什么需要它：`game`（LeoPlay）按 D8「全站不提供任何上传/导入用户文件的入口」，
+   * 游戏只能由平台生成链产出。本组件是**每个成品的操作台左栏**，比首页对话更常用；
+   * 在此之前它无条件传 `onAttachFiles`，V3 验收据此把 J5 的 D8 一项判为 FAIL。
+   * 这里给的是开关，不是按 site key 分叉——按站名分叉会与跨站一致性门禁的棘轮冲突。
+   */
+  enableInputTools?: boolean;
   /** 操作台页标签，默认「操作台」。 */
   opsLabel?: string;
   /** 默认显示哪个形态，默认 "ops"（操作台第一公民）。 */
@@ -214,6 +229,7 @@ export function FunctionAgentChat({
   onArtifact,
   onRunAction: _onRunAction,
   accent = "#4f46e5",
+  enableInputTools = true,
   opsLabel: opsLabelProp,
   defaultTab = "ops",
   showOps = true,
@@ -275,6 +291,9 @@ export function FunctionAgentChat({
   const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
+  // 与 HomeIntro / AgentChat 同名同义的开关（见 FunctionAgentChatProps）。默认 true，
+  // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
+  const toolsOn = enableInputTools;
   const sessionSnapshotScopeRef = useRef("");
   const sessionSnapshotReadyRef = useRef(false);
   const sessionSnapshotBaselineRef = useRef("");
@@ -945,14 +964,17 @@ export function FunctionAgentChat({
   async function send(override?: string) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
     const prompt = (override ?? input).trim();
-    const uploaded = override ? [] : atts.ready();
-    if ((!prompt && uploaded.length === 0) || busy || atts.uploading) return;
+    // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
+    // 免得留下「界面没有入口、提交路径却还认附件」的半开状态。
+    const uploaded = override || !toolsOn ? [] : atts.ready();
+    if ((!prompt && uploaded.length === 0) || busy || (toolsOn && atts.uploading))
+      return;
     if (sessionReadOnly) {
       setError(tt("当前工作会话不可编辑。"));
       return;
     }
     const submittedInput = override ? "" : input;
-    const submittedAttachments = override ? [] : atts.attachments;
+    const submittedAttachments = override || !toolsOn ? [] : atts.attachments;
     const restoreSubmission = () => {
       if (override) return;
       setInput((current) => (current ? current : submittedInput));
@@ -1330,13 +1352,18 @@ export function FunctionAgentChat({
             disabled={sessionReadOnly}
             leoSuggest
             leoQuickSuggest={{ siteId: siteId || schema.agentId.split(".")[0] }}
-            placeholder={tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })}
+            placeholder={
+              toolsOn
+                ? tt("让 agent 帮你做「{title}」，可上传文件…", { title: schema.title })
+                : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
+                  tt("让 agent 帮你做「{title}」", { title: schema.title })
+            }
             rows={1}
             highlightTemplate={fillTemplate || undefined}
             fillNonce={fillNonce}
-            onAttachFiles={atts.handleAttachFiles}
-            attachments={atts.composerAttachments}
-            onRemoveAttachment={atts.removeAttachment}
+            onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
+            attachments={toolsOn ? atts.composerAttachments : undefined}
+            onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onVoiceTranscript={handleVoiceTranscript}
           />
         </div>
