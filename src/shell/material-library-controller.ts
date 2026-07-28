@@ -47,6 +47,7 @@ export {
   MATERIAL_LIBRARY_LEVELS,
   MATERIAL_SCOPE_PARAM_NAMES,
   libraryItemMatchesOriginScope,
+  libraryItemOriginAppId,
   materialLibrarySearchParams,
   materialLibrarySearchQuery,
   materialScopeTypes,

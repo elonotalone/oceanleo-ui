@@ -31,7 +31,10 @@ import {
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import { templateDeepLinkAction } from "./material-library-template-source";
-import { MaterialTypeFilter } from "./material-library-type-filter";
+import {
+  MaterialAppFilter,
+  MaterialTypeFilter,
+} from "./material-library-type-filter";
 import {
   MATERIAL_LEVEL_LABEL,
   entriesFromRemoteResult,
@@ -42,6 +45,8 @@ import {
   materialLibraryHref,
   materialShelfEntries,
   materialShelfFailure,
+  materialSiteAppChips,
+  materialSiteAppGroups,
   safeCompleteLibraryHref,
   type MaterialLibraryProps,
 } from "./material-library-presentation";
@@ -224,6 +229,12 @@ export function MaterialLibrary({
   const [retryNonce, setRetryNonce] = useState(0);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
+  // `null` = 全部；`""` = 解析不出归属 app 的那一组。两者必须区分得开。
+  const [selectedApp, setSelectedApp] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedApp(null);
+  }, [level, siteId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 300);
@@ -484,6 +495,7 @@ export function MaterialLibrary({
     () =>
       materialShelfEntries({
         level,
+        siteKey: siteId,
         deepLinked: !deepLinkError && deepLinkedEntry ? [deepLinkedEntry] : [],
         officialTemplates: templateShelf.entries,
         remote,
@@ -494,10 +506,37 @@ export function MaterialLibrary({
       deepLinkedEntry,
       exactLocalEntries,
       level,
+      siteId,
       templateShelf.entries,
       remote,
     ],
   );
+  // 本站素材的主分类轴是 app：读者从某个 app 的卡片进来，问的是「这个 app 有什么」，
+  // 而不是「这里有几个 png」。类型筛选留在后面当次级筛选，两者可以叠加。
+  const siteAppGroups = useMemo(
+    () =>
+      level === "site"
+        ? materialSiteAppGroups(entries, {
+            siteKey: siteId,
+            anchoredAppId: runtimeAppId,
+          })
+        : [],
+    [entries, level, runtimeAppId, siteId],
+  );
+  const appChips = useMemo(
+    () => materialSiteAppChips(siteAppGroups, selectedApp),
+    [selectedApp, siteAppGroups],
+  );
+  // 「全部」也按分组顺序铺开，卡片才真的成组，而不是只在筛选时才成组。
+  const visibleEntries = useMemo(() => {
+    if (level !== "site" || siteAppGroups.length === 0) return entries;
+    if (selectedApp === null) {
+      return siteAppGroups.flatMap((group) => group.entries);
+    }
+    return (
+      siteAppGroups.find((group) => group.appId === selectedApp)?.entries || []
+    );
+  }, [entries, level, selectedApp, siteAppGroups]);
   const openPreparedItem = useCallback(
     (item: LibraryItem) => {
       if (!isAdvancedEditableShelfItem(item)) {
@@ -635,6 +674,13 @@ export function MaterialLibrary({
         {tt(MATERIAL_LEVEL_LABEL[level])}
       </span>
       {sections.length > 1 && (levels ? sectionTabs : legacyLevelControl)}
+      {level === "site" && appChips.length > 0 && (
+        <MaterialAppFilter
+          chips={appChips}
+          selected={selectedApp}
+          onSelect={setSelectedApp}
+        />
+      )}
       <MaterialTypeFilter
         multiSelect={multiSelectTypes}
         selectedTypes={selectedTypes}
@@ -698,7 +744,7 @@ export function MaterialLibrary({
 
   return (
     <WorkspaceLibrary
-      entries={entries}
+      entries={visibleEntries}
       accent={accent}
       action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
       taskId={taskId}

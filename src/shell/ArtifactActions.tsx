@@ -134,6 +134,21 @@ function editEvidence(item: LibraryItem): {
       requiresEnsure: false,
     };
   }
+  // 官方模板目录行不是 durable artifact，也没有生成 receipt，但编辑决策链能凭
+  // 目录里的 artifactId 解析服务端当前 head 并 fork 成用户副本（见 artifact-client
+  // 的 durableEditDecisionItem）。这张卡片不预判 canFork / 登录态 / 编辑器能力——
+  // 预览图的扩展名不代表素材本体的编辑器；点击后的决策链会裁决并据实上报原因。
+  if (
+    String(item.meta?.template_material_id || "").trim() &&
+    String(item.meta?.template_material_artifact_id || "").trim()
+  ) {
+    return {
+      visible: true,
+      available: true,
+      reason: "",
+      requiresEnsure: true,
+    };
+  }
   if (!isEnsureableTransient(item.transient)) {
     return {
       visible: true,

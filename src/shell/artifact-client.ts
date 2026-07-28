@@ -1830,11 +1830,45 @@ export async function ensureDurableArtifactItem(
   };
 }
 
+/**
+ * 编辑决策的 durable 起点。
+ *
+ * 官方模板目录行（`/v1/template-materials`）刻意不是 durable artifact：目录端点不
+ * 下发 revision 身份，条目也没有可幂等入库的生成 receipt——但它带着官方 artifact
+ * root 的稳定 id（`meta.template_material_id` + `meta.template_material_artifact_id`，
+ * 两个键都由 `material-library-template-source` 铸造）。编辑链需要的 durable 投影
+ * 由服务端权威当前 head 给出；随后的 owner 判定会把它送进 fork 路径（官方原件的
+ * owner 是平台主体，不是当前用户），用户最终拿到自己的副本。
+ *
+ * 刻意不伪造 transient receipt：那是「生成结果」的幂等入库凭据，模板素材没有
+ * 生成结果，伪造它等于编造一次从未发生的入库。
+ */
+async function durableEditDecisionItem(
+  item: LibraryItem,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<LibraryItem>> {
+  if (isDurableLibraryItem(item) || item.transient) {
+    return ensureDurableArtifactItem(item, signal);
+  }
+  const meta = item.meta || {};
+  const isOfficialTemplate = Boolean(
+    String(meta.template_material_id || "").trim() &&
+      String(meta.template_material_artifact_id || "").trim(),
+  );
+  if (isOfficialTemplate) {
+    return getCurrentArtifactItem(
+      String(meta.template_material_artifact_id).trim(),
+      signal,
+    );
+  }
+  return ensureDurableArtifactItem(item, signal);
+}
+
 export async function getArtifactEditDecision(
   item: LibraryItem,
   signal?: AbortSignal,
 ): Promise<ArtifactApiResult<ArtifactEditDecision>> {
-  const durable = await ensureDurableArtifactItem(item, signal);
+  const durable = await durableEditDecisionItem(item, signal);
   if (!durable.ok || !durable.data) {
     return {
       ok: false,

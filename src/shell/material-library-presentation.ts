@@ -10,6 +10,7 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   artifactEntry,
   libraryItemHasExactPrimaryContext,
+  libraryItemOriginAppId,
   mergeMaterialEntries,
   type MaterialItem,
   type MaterialLibraryLevel,
@@ -189,6 +190,128 @@ export function isTrustedEditableMaterialEntry(
   );
 }
 
+/** 未能解析出归属 app 的本站素材落在这一组，而不是从货架上消失。 */
+export const MATERIAL_SITE_APP_OTHER_LABEL = "其他素材";
+
+const APP_LABEL_META_KEYS = [
+  "template_material_app_title",
+  "template_material_app_name",
+  "origin_app_title",
+  "app_title",
+  "app_name",
+] as const;
+
+function entryAppLabelHint(entry: WorkspaceLibraryEntry): string {
+  const meta = entry.libraryItem?.meta;
+  if (!meta) return "";
+  for (const key of APP_LABEL_META_KEYS) {
+    const value = meta[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+/** appId is the label until a row carries a friendlier name of its own. */
+export function materialSiteAppLabel(
+  appId: string,
+  labels?: Readonly<Record<string, string>>,
+): string {
+  const id = String(appId || "").trim();
+  if (!id) return MATERIAL_SITE_APP_OTHER_LABEL;
+  return String(labels?.[id] || "").trim() || id;
+}
+
+export interface MaterialSiteAppGroup {
+  appId: string;
+  label: string;
+  count: number;
+  entries: WorkspaceLibraryEntry[];
+}
+
+export type MaterialSiteAppChip = Omit<MaterialSiteAppGroup, "entries">;
+
+/**
+ * 本站素材 的主分类轴是 app，不是文件类型：读者是从某个 app 的卡片进来的，问的是
+ * 「这个 app 有什么」。锚定的 app 排头，其余按条目数，解析不出归属的排在最后。
+ */
+export function materialSiteAppGroups(
+  entries: readonly WorkspaceLibraryEntry[],
+  options: { siteKey?: string; anchoredAppId?: string } = {},
+): MaterialSiteAppGroup[] {
+  const siteKey = String(options.siteKey ?? "").trim();
+  const anchored = String(options.anchoredAppId ?? "").trim();
+  const labels: Record<string, string> = {};
+  const grouped = new Map<string, WorkspaceLibraryEntry[]>();
+  for (const entry of entries) {
+    const appId = libraryItemOriginAppId(entry.libraryItem, siteKey);
+    const hint = entryAppLabelHint(entry);
+    if (appId && hint && !labels[appId]) labels[appId] = hint;
+    const bucket = grouped.get(appId);
+    if (bucket) bucket.push(entry);
+    else grouped.set(appId, [entry]);
+  }
+  return [...grouped.entries()]
+    .map(([appId, group]) => ({
+      appId,
+      label: materialSiteAppLabel(appId, labels),
+      count: group.length,
+      entries: group,
+    }))
+    .sort((a, b) => {
+      if (a.appId === b.appId) return 0;
+      if (!a.appId) return 1;
+      if (!b.appId) return -1;
+      if (anchored && a.appId === anchored) return -1;
+      if (anchored && b.appId === anchored) return 1;
+      return b.count - a.count || a.appId.localeCompare(b.appId);
+    });
+}
+
+/**
+ * 一个 app 只有一组时不必挂轴。已选中的 app 即使被类型筛选清空也保留 chip，否则
+ * 读者会被留在一个看不见、也解不掉的筛选里。
+ */
+export function materialSiteAppChips(
+  groups: readonly MaterialSiteAppGroup[],
+  selected: string | null,
+): MaterialSiteAppChip[] {
+  if (groups.length <= 1 && selected === null) return [];
+  const chips = groups.map(({ appId, label, count }) => ({
+    appId,
+    label,
+    count,
+  }));
+  if (selected !== null && !chips.some((chip) => chip.appId === selected)) {
+    chips.push({
+      appId: selected,
+      label: materialSiteAppLabel(selected),
+      count: 0,
+    });
+  }
+  return chips;
+}
+
+/**
+ * 本站层的 `category` 跟着主轴走，这样 `WorkspaceLibrary` 的分类轴与货架上看得见
+ * 的 app 轴说的是同一件事；类型分类标签留在 `description` 上，位置不变。
+ */
+function siteAppEntry(
+  entry: WorkspaceLibraryEntry,
+  siteKey: string,
+): WorkspaceLibraryEntry {
+  const appId = libraryItemOriginAppId(entry.libraryItem, siteKey);
+  const keywords = entry.keywords || [];
+  return {
+    ...entry,
+    category: materialSiteAppLabel(
+      appId,
+      appId ? { [appId]: entryAppLabelHint(entry) } : undefined,
+    ),
+    keywords:
+      appId && !keywords.includes(appId) ? [...keywords, appId] : keywords,
+  };
+}
+
 /**
  * 货架最终显示哪些卡。两类条目同场：用户可编辑的 durable artifact，以及匿名可读的
  * 官方模板目录行 —— 后者过不了 durable 判定（目录端点不下发 revision 身份），所以
@@ -196,6 +319,7 @@ export function isTrustedEditableMaterialEntry(
  */
 export function materialShelfEntries(options: {
   level: MaterialLibraryLevel;
+  siteKey?: string;
   deepLinked: readonly WorkspaceLibraryEntry[];
   officialTemplates: readonly WorkspaceLibraryEntry[];
   remote: readonly WorkspaceLibraryEntry[];
@@ -207,11 +331,14 @@ export function materialShelfEntries(options: {
     options.remote,
     ...(options.level === "primary" ? [options.exactLocal] : []),
   ];
-  return mergeMaterialEntries(groups).filter(
+  const shelf = mergeMaterialEntries(groups).filter(
     (entry) =>
       isTrustedEditableMaterialEntry(entry) ||
       isOfficialTemplateMaterialEntry(entry),
   );
+  if (options.level !== "site") return shelf;
+  const siteKey = String(options.siteKey ?? "").trim();
+  return shelf.map((entry) => siteAppEntry(entry, siteKey));
 }
 
 /**

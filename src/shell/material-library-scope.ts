@@ -180,6 +180,60 @@ export function libraryItemMatchesOriginScope(
   );
 }
 
+/** `olctx:v1:<siteKey>:app:<encodeURIComponent(appId)>` — the app identity a binding carries. */
+function appContextParts(
+  contextId: string,
+): { siteKey: string; appId: string } | null {
+  const match = /^olctx:v1:([^:]+):app:(.+)$/.exec(
+    String(contextId || "").trim(),
+  );
+  if (!match) return null;
+  let appId = match[2];
+  try {
+    appId = decodeURIComponent(appId);
+  } catch {
+    // A malformed escape is still a usable literal app id.
+  }
+  return { siteKey: match[1], appId: appId.trim() };
+}
+
+/**
+ * Which app a material belongs to. The three sources disagree by construction:
+ * durable rows carry `owner.originAppId`, official template catalog rows only
+ * carry `template_material_app_id`, and an artifact minted on another site is
+ * tied to this one through its binding context id alone. Returns "" when none
+ * of them answers.
+ */
+export function libraryItemOriginAppId(
+  item: LibraryItem | null | undefined,
+  siteKey = "",
+): string {
+  if (!item) return "";
+  const site = String(siteKey ?? "").trim();
+  const durable = isDurableLibraryItem(item);
+  const ownerAppId = durable
+    ? String(item.artifact.owner.originAppId ?? "").trim()
+    : "";
+  const ownerSiteKey = durable
+    ? String(item.artifact.owner.originSiteKey ?? "").trim()
+    : "";
+  // An artifact born elsewhere belongs, on this site, to the app its binding
+  // names — not to the app it happened to be minted in.
+  if (ownerAppId && (!site || !ownerSiteKey || ownerSiteKey === site)) {
+    return ownerAppId;
+  }
+  const templateAppId =
+    typeof item.meta?.template_material_app_id === "string"
+      ? item.meta.template_material_app_id.trim()
+      : "";
+  if (templateAppId) return templateAppId;
+  for (const binding of durable ? item.artifact.bindings : []) {
+    const parts = appContextParts(binding.contextId);
+    if (parts?.appId && (!site || parts.siteKey === site)) return parts.appId;
+  }
+  return ownerAppId;
+}
+
 export function libraryItemMatchesTypes(
   item: LibraryItem,
   types: readonly ArtifactType[],

@@ -13,6 +13,62 @@ import { useId } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { ARTIFACT_TYPES, type ArtifactType } from "./artifact-contract";
 import { MATERIAL_TAXONOMY_LABEL } from "./material-library-controller";
+import type { MaterialSiteAppChip } from "./material-library-presentation";
+
+const CHIP_BASE = "min-h-8 rounded-full border px-2.5 text-[11px]";
+const CHIP_ON = "border-transparent bg-[var(--fg,#292524)] text-white";
+const CHIP_OFF =
+  "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]";
+
+/**
+ * 本站素材的主分类轴。`null` 是「全部」，`""` 是解析不出归属 app 的那一组，两者
+ * 必须区分得开，所以选中态不是空字符串哨兵。
+ *
+ * 标签是 app 的身份（多数时候就是 appId），不是 UI 文案，所以不过 `tt`。
+ */
+export function MaterialAppFilter({
+  chips,
+  selected,
+  onSelect,
+}: {
+  chips: readonly MaterialSiteAppChip[];
+  selected: string | null;
+  onSelect: (appId: string | null) => void;
+}) {
+  const tt = useUI();
+  return (
+    <div
+      role="group"
+      aria-label={tt("按 app 分组")}
+      className="flex flex-wrap items-center gap-1"
+    >
+      <button
+        type="button"
+        aria-pressed={selected === null}
+        data-material-app-chip="all"
+        onClick={() => onSelect(null)}
+        className={`${CHIP_BASE} ${selected === null ? CHIP_ON : CHIP_OFF}`}
+      >
+        {tt("全部 app")}
+      </button>
+      {chips.map((chip) => (
+        <button
+          key={chip.appId || "unassigned"}
+          type="button"
+          aria-pressed={selected === chip.appId}
+          data-material-app-chip={chip.appId || "other"}
+          onClick={() => onSelect(chip.appId)}
+          className={`${CHIP_BASE} ${
+            selected === chip.appId ? CHIP_ON : CHIP_OFF
+          }`}
+        >
+          {chip.appId ? chip.label : tt(chip.label)}
+          <span className="ml-1 opacity-60">{chip.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function MaterialTypeFilter({
   multiSelect,
