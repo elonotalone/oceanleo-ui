@@ -1447,6 +1447,7 @@ export function libraryKindLabel(kind: LibraryItem["kind"]): string {
     audio: "音频",
     xhs: "小红书",
     threed: "3D",
+    game: "游戏",
     file: "文件",
   }[kind];
 }
@@ -1472,6 +1473,7 @@ export function LibraryKindIcon({
         audio: "M9 18V6l11-2v12M9 8l11-2M6 21a3 3 0 100-6 3 3 0 000 6zM17 19a3 3 0 100-6 3 3 0 000 6z",
         xhs: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4",
         threed: "M12 2l9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12L3 7",
+        game: "M7 9h10a4 4 0 014 4v1a3 3 0 01-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 013 14v-1a4 4 0 014-4zM7 11v3M5.5 12.5h3M16 12h.01M18 14h.01",
         file: "M6 3h8l4 4v14H6zM14 3v5h5",
       })[kind],
     [kind],

@@ -15,7 +15,12 @@ import {
   loadEditorProject,
   saveFileToLibrary,
   type PersistedEditorVersion,
+  type PreparedDeliveryUpload,
+  type PreparedPreviewUpload,
+  type PreparedProjectUpload,
 } from "./doc-io";
+import { artifactSaveStepMessage } from "./artifact-save-contract";
+import { renderGridPreviewPng } from "./editor-preview-raster";
 import {
   buildGridWorkbookBlob,
   cloneGridSheets,
@@ -122,7 +127,53 @@ interface GridSnapshot {
 }
 
 const HISTORY_LIMIT = 60;
-const GRID_PROJECT_SCHEMA = "oceanleo.grid.v1";
+export const GRID_PROJECT_SCHEMA = "oceanleo.grid.v1";
+export const GRID_SOURCE_FORMAT = "xlsx";
+export const GRID_SOURCE_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export const GRID_EDITOR_CAPABILITY = "grid-editor";
+
+/**
+ * Carry the freshly published revision forward so the next save uses the new
+ * pin as `expectedRevisionId`. Without this a second save inside one session
+ * replays the stale pin and the CAS publish comes back 409.
+ */
+export function gridSavedItemForHandoff(
+  original: LibraryItem,
+  saved: PersistedEditorVersion,
+): LibraryItem {
+  const projectUrl = saved.projectUrl || "";
+  const projectSchema = saved.projectSchema || GRID_PROJECT_SCHEMA;
+  const base = saved.item || original;
+  return {
+    ...base,
+    title: saved.title || base.title,
+    url: saved.url || base.url,
+    artifactId: saved.artifactId || base.artifactId,
+    revisionId: saved.revisionId || base.revisionId,
+    meta: {
+      ...base.meta,
+      source_format: saved.sourceFormat || GRID_SOURCE_FORMAT,
+      source_media_type: saved.sourceMediaType || GRID_SOURCE_MEDIA_TYPE,
+      delivery_format: GRID_SOURCE_FORMAT,
+      ...(projectUrl
+        ? {
+            editor_project_url: projectUrl,
+            editor_project_schema: projectSchema,
+            editor_manifest_url: projectUrl,
+            editor_manifest_schema: projectSchema,
+            editor_working_head_url: projectUrl,
+            editor_working_head_project_url: projectUrl,
+            editor_working_head_schema: projectSchema,
+          }
+        : {}),
+      ...(saved.savedAt ? { editor_saved_at: saved.savedAt } : {}),
+      ...(saved.previousRevisionId
+        ? { previous_revision_id: saved.previousRevisionId }
+        : {}),
+    },
+  };
+}
 
 interface GridProject {
   sheets: unknown;
@@ -208,6 +259,14 @@ export function useGridEditor(
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  /** The pin a save publishes against; advances with every committed revision. */
+  const persistedItemRef = useRef(item);
+  const preparedSaveRef = useRef<{
+    key: string;
+    project?: PreparedProjectUpload;
+    delivery?: PreparedDeliveryUpload;
+    preview?: PreparedPreviewUpload;
+  } | null>(null);
 
   const applySnapshot = useCallback((snapshot: GridSnapshot) => {
     const next = cloneGridSheets(snapshot.sheets);
@@ -287,6 +346,8 @@ export function useGridEditor(
     setFilterQuery("");
     setFilterColumn(0);
     revisionRef.current = 0;
+    persistedItemRef.current = item;
+    preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
@@ -835,29 +896,58 @@ export function useGridEditor(
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneGridSheets(sheetsRef.current);
+    const baseItem = persistedItemRef.current;
+    const baseRevision = String(
+      baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
+    );
+    const rootId = String(
+      baseItem.artifactId || baseItem.meta.artifact_id || baseItem.id,
+    );
+    const saveKey = `grid:${savingRevision}:${baseRevision.slice(
+      -80,
+    )}:${rootId.slice(-80)}`;
+    const prepared =
+      preparedSaveRef.current?.key === saveKey
+        ? preparedSaveRef.current
+        : null;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const delivery = await buildGridWorkbookBlob(snapshot);
+      const fileStem =
+        title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
       const result = await saveFileToLibrary({
-        item,
+        item: baseItem,
         siteId,
         fallbackSite: "excel",
-        file: new File([delivery], `${title}.xlsx`, {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
+        // Build the workbook only after the project sidecar is durable, so an
+        // exporter failure cannot lose the recoverable edit state.
+        createFile: async () => {
+          const delivery = await buildGridWorkbookBlob(snapshot);
+          return new File([delivery], `${fileStem}.xlsx`, {
+            type: GRID_SOURCE_MEDIA_TYPE,
+          });
+        },
+        createPreview: () =>
+          renderGridPreviewPng(snapshot, { headerRow }),
+        sourceFormat: GRID_SOURCE_FORMAT,
+        sourceMediaType: GRID_SOURCE_MEDIA_TYPE,
         title,
         mediaType: "sheet",
         kind: "sheet",
-        idempotencyKey: `grid:${item.id}:${savingRevision}`,
+        idempotencyKey: saveKey,
         workingHeadUrl: workingHeadUrlRef.current,
+        preparedProject: prepared?.project,
+        preparedDelivery: prepared?.delivery,
+        preparedPreview: prepared?.preview,
         meta: {
           editor: "grid-v2",
+          editor_capability: GRID_EDITOR_CAPABILITY,
+          content_type: "grid",
           sheet_count: snapshot.length,
           sheet_names: snapshot.map((sheet) => sheet.name),
-          delivery_format: "xlsx",
+          delivery_format: GRID_SOURCE_FORMAT,
         },
         project: {
           schema: GRID_PROJECT_SCHEMA,
@@ -869,25 +959,69 @@ export function useGridEditor(
             filterColumn,
           },
         },
+        editorManifest: {
+          id: GRID_EDITOR_CAPABILITY,
+          format: GRID_PROJECT_SCHEMA,
+        },
+        // Editing an xlsx material used to go through the legacy creation path
+        // only, so it never produced a new artifact revision.
+        artifactRevision: {
+          artifactType: "grid",
+          provenance: {
+            editorRevision: savingRevision,
+            sheetCount: snapshot.length,
+          },
+        },
       });
       if (!mountedRef.current) return null;
       if (!result.ok) {
-        setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
+        preparedSaveRef.current =
+          result.preparedProject ||
+          result.preparedDelivery ||
+          result.preparedPreview
+            ? {
+                key: saveKey,
+                project: result.preparedProject,
+                delivery: result.preparedDelivery,
+                preview: result.preparedPreview,
+              }
+            : preparedSaveRef.current;
+        setError(
+          tt(result.error) ||
+            artifactSaveStepMessage("revision-publish", ""),
+        );
         return null;
       }
-      workingHeadUrlRef.current = result.url;
-      setSavedUrl(result.url);
-      if (revisionRef.current === savingRevision) setDirty(false);
-      return {
+      preparedSaveRef.current = null;
+      const version: PersistedEditorVersion = {
         url: result.url,
         versionId: result.versionId,
         projectUrl: result.projectUrl,
         projectSchema: result.projectSchema,
+        sourceFormat: result.sourceFormat || GRID_SOURCE_FORMAT,
+        sourceMediaType: result.sourceMediaType || GRID_SOURCE_MEDIA_TYPE,
+        title: result.title,
+        fileName: result.fileName,
+        savedAt: result.savedAt,
+        artifactId: result.artifactId,
+        revisionId: result.revisionId,
+        previousRevisionId: result.previousRevisionId,
+        preparedProject: result.preparedProject,
+        preparedDelivery: result.preparedDelivery,
       };
+      const handoff = gridSavedItemForHandoff(baseItem, version);
+      persistedItemRef.current = handoff;
+      workingHeadUrlRef.current = result.projectUrl || result.url;
+      setSavedUrl(result.url);
+      if (revisionRef.current === savingRevision) setDirty(false);
+      return { ...version, item: handoff };
     } catch (caught) {
       if (mountedRef.current) {
         setError(
-          caught instanceof Error ? tt(caught.message) : tt("保存到我的库失败"),
+          artifactSaveStepMessage(
+            "revision-publish",
+            caught instanceof Error ? tt(caught.message) : caught,
+          ),
         );
       }
       return null;
@@ -895,7 +1029,7 @@ export function useGridEditor(
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
     }
-  }, [baseTitle, filterColumn, filterQuery, headerRow, item, siteId, tt]);
+  }, [baseTitle, filterColumn, filterQuery, headerRow, siteId, tt]);
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {

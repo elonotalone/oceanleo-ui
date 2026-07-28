@@ -35,9 +35,12 @@ import {
   saveFileToLibrary,
   urlExtension,
   type PreparedDeliveryUpload,
+  type PreparedPreviewUpload,
   type PreparedProjectUpload,
   type PersistedEditorVersion,
 } from "./doc-io";
+import { artifactSaveStepMessage } from "./artifact-save-contract";
+import { renderDeckPreviewPng } from "./editor-preview-raster";
 import {
   buildDeckInkAsset,
   type DeckInkStroke,
@@ -967,6 +970,7 @@ export function useDeckEditor(
     key: string;
     project?: PreparedProjectUpload;
     delivery?: PreparedDeliveryUpload;
+    preview?: PreparedPreviewUpload;
   } | null>(null);
   const workingHeadUrlRef = useRef(
     deckProjectUrlFor(item) || item.previewUrl || "",
@@ -1689,6 +1693,9 @@ export function useDeckEditor(
             type: DECK_SOURCE_MEDIA_TYPE,
           });
         },
+        // pptx can never satisfy the backend's displayable-primary assertion,
+        // so the deck ships its own first-slide cover alongside the delivery.
+        createPreview: () => renderDeckPreviewPng(snapshot),
         sourceFormat: DECK_SOURCE_FORMAT,
         sourceMediaType: DECK_SOURCE_MEDIA_TYPE,
         title,
@@ -1698,6 +1705,7 @@ export function useDeckEditor(
         workingHeadUrl: workingHeadUrlRef.current,
         preparedProject: prepared?.project,
         preparedDelivery: prepared?.delivery,
+        preparedPreview: prepared?.preview,
         meta: {
           editor: "deck-editor",
           editor_capability: "deck-editor",
@@ -1726,14 +1734,19 @@ export function useDeckEditor(
       });
       if (!result.ok) {
         preparedSaveRef.current =
-          result.preparedProject || result.preparedDelivery
+          result.preparedProject ||
+          result.preparedDelivery ||
+          result.preparedPreview
             ? {
                 key: saveKey,
                 project: result.preparedProject,
                 delivery: result.preparedDelivery,
+                preview: result.preparedPreview,
               }
             : preparedSaveRef.current;
-        throw new Error(result.error || tt("保存到我的库失败"));
+        throw new Error(
+          result.error || artifactSaveStepMessage("revision-publish", ""),
+        );
       }
       preparedSaveRef.current = null;
       const handoff = deckSavedItemForHandoff(
@@ -1771,7 +1784,11 @@ export function useDeckEditor(
         : null;
     } catch (caught) {
       if (mountedRef.current) {
-        setError(caught instanceof Error ? caught.message : tt("保存失败"));
+        setError(
+          caught instanceof Error
+            ? artifactSaveStepMessage("revision-publish", caught.message)
+            : artifactSaveStepMessage("revision-publish", caught),
+        );
       }
       return null;
     } finally {

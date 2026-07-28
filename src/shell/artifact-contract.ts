@@ -19,6 +19,7 @@ export const ARTIFACT_TYPES = [
   "audio",
   "model_3d",
   "workflow",
+  "game",
 ] as const;
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
@@ -36,6 +37,7 @@ export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "chart-editor@1",
   "video-canvas",
   "threed",
+  "game",
 ] as const;
 
 export type AdvancedEditorAdapterId =
@@ -395,6 +397,48 @@ const ADVANCED_CAPABILITY_ROWS = [
       dependencyClosure: "complete",
     },
   },
+  {
+    /**
+     * 用户生成的游戏（LeoPlay）。
+     *
+     * `game_editing` 而不是 `game_authoring`：这个 id 是
+     * `reviewed_material_catalog.EXPECTED_CLASS_CONTRACT` 与 catalog-release
+     * `expected_contracts` 的连接键，两处都已按这个拼写落地。
+     *
+     * 产物是 `oceanleo.game-bundle.v1` **JSON 信封**，不是裸 `text/html`：
+     * `media_rehost._BLOCKED_MIME` 与
+     * `typed_artifact_repository._validate_upload_media_type` 都拒收 text/html
+     * （`<!doctype html` 正文另有 active-content 拒收），而那两份名单正是
+     * `policy:security.untrusted-content-domain` 的落点，所以是契约让路而不是名单让路。
+     * 单文件 HTML 由沙箱域在开玩时从信封合成。
+     *
+     * 刻意**不**复用 `website` 的 capability：`website-editor` 背后是 Next 源码
+     * 工作台（CAS 源码树 + dev preview），把它接到一份自包含 bundle 上是错的
+     * （`01-decisions.md` D7）。两者同为 JSON 信封只是形态巧合。
+     */
+    featureId: "game_editing",
+    artifactType: "game",
+    sourceFormat: "oceanleo.game-bundle.v1",
+    sourceMediaType: "application/json",
+    editorCapability: "game-editor",
+    artifactBindings: [
+      { artifactType: "game", editorCapabilities: ["game-editor"] },
+    ],
+    adapter: "game",
+    projectSchema: "oceanleo.game-bundle.v1",
+    editability: "bounded",
+    sourceIntegrity: "content_addressed",
+    // 与其他 JSON 信封能力（website / chart / design canvas / video canvas）一致：
+    // 下载解析成 `full` 的导出，永远不交付裸 source 字节。
+    openMode: "structured-project",
+    previewPurposes: ["preview", "full"],
+    requirement: {
+      kind: "manifest",
+      schema: "oceanleo.game-bundle.v1",
+      requiredPaths: ["prompt", "engineApiVersion"],
+      dependencyClosure: "not_required",
+    },
+  },
 ] as const;
 
 export type AdvancedFeatureId =
@@ -518,10 +562,10 @@ for (const entry of ADVANCED_CAPABILITY_MATRIX) {
 }
 
 if (
-  ADVANCED_CAPABILITY_MATRIX.length !== 12 ||
+  ADVANCED_CAPABILITY_MATRIX.length !== 13 ||
   ADVANCED_CAPABILITY_MATRIX.length !== ADVANCED_EDITOR_ADAPTER_IDS.length
 ) {
-  throw new Error("The shared advanced capability plane must contain 12 rows");
+  throw new Error("The shared advanced capability plane must contain 13 rows");
 }
 
 export function advancedCapabilityContractPayload(): {
@@ -961,6 +1005,13 @@ const SOURCE_FORMAT_EXACT: Readonly<Record<ArtifactType, ReadonlySet<string>>> =
     "oceanleo.video-canvas.v1",
     "oceanleo.video.project.v2",
   ]),
+  /**
+   * 只有信封本身是 source format。`html` / `js`（`bundle.ts::UgcBundleFormat`）
+   * 描述的是信封**内部**那段源码的形态，不是 artifact 的 source format ——
+   * 把它们放进来会让 `text/html` 的 source 在前端过检、再到后端被
+   * `_validate_upload_media_type` 拒掉，正是 B12 那条死形状。
+   */
+  game: new Set(["oceanleo.game-bundle.v1"]),
 };
 
 const SOURCE_FORMAT_PREFIXES: Readonly<
@@ -985,6 +1036,7 @@ const SOURCE_FORMAT_PREFIXES: Readonly<
   audio: ["audio/", "audio-", "oceanleo.audio-"],
   model_3d: ["model/", "model-", "3d-"],
   workflow: ["workflow-", "oceanleo.workflow."],
+  game: ["game-", "oceanleo.game-"],
 };
 
 const artifactEditorCapabilities = Object.fromEntries(
@@ -2077,7 +2129,9 @@ export function viewerRenditionOrder(
     artifactType === "vector_image" ||
     artifactType === "chart" ||
     artifactType === "website" ||
-    artifactType === "workflow"
+    artifactType === "workflow" ||
+    // `full` 是可玩 bundle（text/html），卡片位图只能来自封面 `preview`。
+    artifactType === "game"
   ) {
     return ["preview", "full"];
   }

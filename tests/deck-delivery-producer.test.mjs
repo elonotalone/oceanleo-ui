@@ -153,13 +153,20 @@ function producerDependencies({
   return {
     now: () => fixedNow,
     uploadFile: async (file, options) => {
-      const project = /:project(?::|$)/.test(options.idempotencyKey);
-      events.push(project ? "upload:project" : "upload:delivery");
+      const role = /:project:/.test(options.idempotencyKey)
+        ? "project"
+        : /:preview:/.test(options.idempotencyKey)
+          ? "preview"
+          : "delivery";
+      events.push(`upload:${role}`);
       uploadSequence += 1;
       const contentDigest = await digest(file);
-      const url = project
-        ? "https://cdn.test/quarterly.oceanleo-project.json"
-        : "https://cdn.test/quarterly.pptx";
+      const url =
+        role === "project"
+          ? "https://cdn.test/quarterly.oceanleo-project.json"
+          : role === "preview"
+            ? "https://cdn.test/quarterly.preview.png"
+            : "https://cdn.test/quarterly.pptx";
       return {
         ok: true,
         data: {
@@ -383,6 +390,8 @@ test("typed deck save CAS-publishes same-root source and manifest, then hands of
     onPublish: (artifactId, commit) => {
       capturedCommit = commit;
       assert.equal(artifactId, "deck-artifact");
+      const committed = (purpose) =>
+        commit.renditions.find((rendition) => rendition.purpose === purpose);
       const source = {
         purpose: "source",
         revisionId: "r8",
@@ -391,13 +400,21 @@ test("typed deck save CAS-publishes same-root source and manifest, then hands of
         mediaType: DECK_SOURCE_MEDIA_TYPE,
         digest: `sha256:${commit.source.digest}`,
       };
+      const full = {
+        purpose: "full",
+        revisionId: "r8",
+        url: "https://signed.test/deck-r8-full.pptx",
+        format: "pptx",
+        mediaType: DECK_SOURCE_MEDIA_TYPE,
+        digest: `sha256:${committed("full").digest}`,
+      };
       const editorManifest = {
         purpose: "editor_manifest",
         revisionId: "r8",
         url: "https://signed.test/deck-r8.project.json",
         format: DECK_PROJECT_SCHEMA,
         mediaType: "application/json",
-        digest: `sha256:${commit.renditions[0].digest}`,
+        digest: `sha256:${committed("editor_manifest").digest}`,
       };
       return {
         ok: true,
@@ -426,6 +443,7 @@ test("typed deck save CAS-publishes same-root source and manifest, then hands of
             integrity: { ok: true, code: "ok", reason: "" },
             renditions: {
               source,
+              full,
               editor_manifest: editorManifest,
             },
           },
@@ -453,10 +471,23 @@ test("typed deck save CAS-publishes same-root source and manifest, then hands of
   ]);
   assert.equal(capturedCommit.expectedRevisionId, "r7");
   assert.equal(capturedCommit.source.format, "pptx");
-  assert.equal(capturedCommit.renditions[0].purpose, "editor_manifest");
+  // The shared save contract must ship a displayable-primary candidate, not the
+  // editor manifest alone: manifest-only was the payload the backend 422'd on.
+  const committedRendition = (purpose) =>
+    capturedCommit.renditions.find(
+      (rendition) => rendition.purpose === purpose,
+    );
+  assert.deepEqual(
+    capturedCommit.renditions.map((rendition) => rendition.purpose),
+    ["full", "editor_manifest"],
+  );
+  assert.equal(
+    committedRendition("full").url,
+    "https://cdn.test/quarterly.pptx",
+  );
   assert.notEqual(
     capturedCommit.source.url,
-    capturedCommit.renditions[0].url,
+    committedRendition("editor_manifest").url,
   );
   assert.equal(result.artifactId, "deck-artifact");
   assert.equal(result.revisionId, "r8");

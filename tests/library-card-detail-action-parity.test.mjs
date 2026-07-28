@@ -47,6 +47,9 @@ for (const [name, value] of Object.entries({
   });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.__currentArtifactReads = [];
+globalThis.__currentArtifactItems = {};
+globalThis.__previewHrefCalls = [];
 
 let fullscreenElement = null;
 let fullscreenExitCount = 0;
@@ -175,6 +178,14 @@ const clientStubUrl = dataModule(`
   export async function setArtifactFavorite(item, favorite) {
     return { ok: true, data: { ...item, favorite } };
   }
+
+  export async function getCurrentArtifactItem(artifactId) {
+    globalThis.__currentArtifactReads.push(artifactId);
+    const resolved = globalThis.__currentArtifactItems[artifactId];
+    return resolved
+      ? { ok: true, data: resolved }
+      : { ok: false, error: "取不到当前版本。", status: 404 };
+  }
 `);
 const routesStubUrl = dataModule(`
   export function editorCapabilityFor() {
@@ -223,6 +234,29 @@ const modelStubUrl = dataModule(`
   export function workspaceLibraryCategories() {
     return [{ id: "all", label: "全部" }];
   }
+  export function materialDeepLinkArtifactId(item) {
+    return (
+      String(item?.artifactId || "").trim() ||
+      String(item?.meta?.template_material_artifact_id || "").trim()
+    );
+  }
+`);
+const materialScopeStubUrl = dataModule(`
+  export function libraryItemStoredAppAttributions(item) {
+    const stored = item?.meta?.material_app_bindings;
+    return Array.isArray(stored) ? stored : [];
+  }
+`);
+const catalogControllerStubUrl = dataModule(`
+  export function workspaceTemplatePreviewHref(appId, artifactId) {
+    globalThis.__previewHrefCalls.push({ appId, artifactId });
+    return (
+      "/workspace?tab=materials&item=" +
+      encodeURIComponent(artifactId) +
+      "&mode=preview&app=" +
+      encodeURIComponent(appId)
+    );
+  }
 `);
 const viewStubUrl = dataModule(`
   import { createElement } from ${JSON.stringify(reactUrl)};
@@ -247,6 +281,18 @@ const viewStubUrl = dataModule(`
     });
   }
 `);
+// 归属 app 入口本身是被测对象，所以这里编的是**真模块**，只把它的四个依赖换成 stub。
+const detailAppActionsUrl = await compileModule(
+  "src/shell/library-detail-app-actions.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./artifact-client": clientStubUrl,
+    "./library-data": libraryDataStubUrl,
+    "./material-library-scope": materialScopeStubUrl,
+    "./site-catalog-controller": catalogControllerStubUrl,
+    "./workspace-library-model": modelStubUrl,
+  },
+);
 const WorkspaceLibrary = (
   await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
@@ -254,6 +300,7 @@ const WorkspaceLibrary = (
       "./library-data": libraryDataStubUrl,
       "./LibraryLayout": layoutStubUrl,
       "./ArtifactActions": actionModuleUrl,
+      "./library-detail-app-actions": detailAppActionsUrl,
       "./workspace-library-model": modelStubUrl,
       "./workspace-library-view": viewStubUrl,
     })
@@ -501,6 +548,226 @@ test("disabled action evidence is identical on all three shelf details", async (
     } finally {
       await mounted.unmount();
     }
+  }
+});
+
+// ── W5：详情浮层的归属 app 编辑入口（合同 §3 W5 必做 2/3，口径 D3 §4）────────────
+
+function materialItem(title, attributions, extraMeta = {}) {
+  const item = libraryItem(title);
+  item.meta = {
+    ...item.meta,
+    workspace_library_surface: "materials",
+    material_app_bindings: attributions,
+    ...extraMeta,
+  };
+  return item;
+}
+
+function attribution(appId, label, position) {
+  return {
+    appId,
+    siteKey: "image",
+    position,
+    label: label || "",
+    origin: position === 0,
+    role: position === 0 ? "owner" : "binding",
+  };
+}
+
+async function openDetail(mounted, item) {
+  await click(
+    mounted.container.querySelector(`[data-library-card="${item.title}"]`),
+  );
+  await settle();
+}
+
+test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪个进哪个", async () => {
+  globalThis.__previewHrefCalls = [];
+  const item = materialItem("Cross app material", [
+    attribution("avatar-removebg", "人像去背", 0),
+    attribution("inpaint", "局部重绘", 1),
+  ]);
+  const opened = [];
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    siteId: "image",
+    appId: "expand",
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await openDetail(mounted, item);
+
+    // 全部归属都摆在明面上，不是只显示主 app。
+    assert.equal(
+      mounted.container
+        .querySelector("[data-material-owning-apps]")
+        ?.getAttribute("data-material-owning-apps"),
+      "avatar-removebg,inpaint",
+    );
+
+    const entries = [
+      ...mounted.container.querySelectorAll("[data-material-edit-app]"),
+    ];
+    assert.deepEqual(
+      entries.map((node) => node.getAttribute("data-material-edit-app")),
+      ["avatar-removebg", "inpaint"],
+    );
+    assert.deepEqual(
+      entries.map((node) => node.textContent.trim()),
+      ["编辑 · 人像去背", "编辑 · 局部重绘"],
+    );
+    // 归属自己出入口时，不再另挂一颗不指名 app 的「编辑」。
+    assert.equal(action(mounted.container, "编辑"), undefined);
+    // 另外四项照旧齐全。
+    for (const label of ["下载", "收藏", "全屏", "链接"]) {
+      assert.ok(action(mounted.container, label), label);
+    }
+
+    // 每颗入口都指向**自己那个 app** 的工作台 + 该 app 库里的这份预览。
+    assert.deepEqual(
+      entries.map((node) => node.getAttribute("href")),
+      [
+        `/workspace?tab=materials&item=${encodeURIComponent(
+          item.artifactId,
+        )}&mode=preview&app=avatar-removebg`,
+        `/workspace?tab=materials&item=${encodeURIComponent(
+          item.artifactId,
+        )}&mode=preview&app=inpaint`,
+      ],
+    );
+    // href 在 render 里算，重渲染会重复调用；断言看的是**问过哪些 app**。
+    assert.deepEqual(
+      [...new Set(globalThis.__previewHrefCalls.map((call) => call.appId))],
+      ["avatar-removebg", "inpaint"],
+    );
+    assert.ok(
+      globalThis.__previewHrefCalls.every(
+        (call) => call.artifactId === item.artifactId,
+      ),
+    );
+    assert.equal(opened.length, 0, "深链落点是那个 app 的库预览，不是就地开编辑器");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("素材属于当前 app 时就地进编辑器，不做一次原地跳转", async () => {
+  globalThis.__previewHrefCalls = [];
+  const item = materialItem("Same app material", [
+    attribution("inpaint", "局部重绘", 0),
+  ]);
+  const opened = [];
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    siteId: "image",
+    appId: "inpaint",
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await openDetail(mounted, item);
+    // 单归属不摆一排 app 名，也不把按钮改名。
+    assert.equal(
+      mounted.container.querySelector("[data-material-owning-apps]"),
+      null,
+    );
+    const edit = action(mounted.container, "编辑");
+    assert.ok(edit);
+    assert.equal(edit.tagName, "BUTTON", "本 app 的入口不该是一条跳走的链接");
+    await click(edit);
+    await settle();
+    assert.deepEqual(globalThis.__previewHrefCalls, []);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].artifactId, item.artifactId);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("我的库的作品不走归属深链：编辑仍然是就地 typed 编辑器", async () => {
+  globalThis.__previewHrefCalls = [];
+  globalThis.__libraryPreparedActions = [];
+  // 同样带归属，但没有 materials 货架标记 —— 这就是我的库里的一条作品。
+  const item = libraryItem("Owned work");
+  item.meta = {
+    ...item.meta,
+    material_app_bindings: [attribution("avatar-removebg", "人像去背", 0)],
+  };
+  const opened = [];
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await openDetail(mounted, item);
+    assert.equal(
+      mounted.container.querySelector("[data-material-edit-app]"),
+      null,
+    );
+    await click(action(mounted.container, "编辑"));
+    await settle();
+    assert.deepEqual(globalThis.__previewHrefCalls, []);
+    assert.deepEqual(globalThis.__libraryPreparedActions, ["edit"]);
+    assert.equal(opened.length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("官方模板目录行先取回 durable 投影，五项动作才都是真的", async () => {
+  globalThis.__currentArtifactReads = [];
+  const durable = libraryItem("Official template");
+  const catalogRow = {
+    key: "template-material:tpl-1",
+    source: "artifact",
+    id: "template-material:tpl-1",
+    title: "Official template",
+    kind: "image",
+    siteId: "image",
+    url: "https://asset.test/preview.png",
+    previewUrl: "https://asset.test/preview.png",
+    favorite: false,
+    meta: {
+      workspace_library_surface: "materials",
+      template_material_id: "tpl-1",
+      template_material_site_key: "image",
+      template_material_app_id: "avatar-removebg",
+      template_material_artifact_id: durable.artifactId,
+      material_app_bindings: [attribution("avatar-removebg", "人像去背", 0)],
+    },
+  };
+  globalThis.__currentArtifactItems = { [durable.artifactId]: durable };
+  const mounted = await createMounted({
+    entries: [entryFor(catalogRow)],
+    siteId: "image",
+    appId: "avatar-removebg",
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, catalogRow);
+    assert.deepEqual(globalThis.__currentArtifactReads, [durable.artifactId]);
+    const labels = [...mounted.container.querySelectorAll("button, a")]
+      .map((node) => node.textContent.trim())
+      .filter((label) => expectedDetailActionOrder.includes(label));
+    assert.deepEqual(labels, expectedDetailActionOrder);
+  } finally {
+    globalThis.__currentArtifactItems = {};
+    await mounted.unmount();
+  }
+});
+
+test("我的库与素材库两处都不再有「更多素材」这一层入口", async () => {
+  for (const relativePath of [
+    "src/shell/WorkspaceLibrary.tsx",
+    "src/shell/MyLibrary.tsx",
+    "src/shell/ArtifactLibrary.tsx",
+    "src/shell/LibraryMasterDetail.tsx",
+    "src/shell/library-detail-app-actions.tsx",
+    "src/shell/workspace-library-model.ts",
+  ]) {
+    const source = await readFile(resolve(relativePath), "utf8");
+    assert.doesNotMatch(source, /更多素材/, relativePath);
+    assert.doesNotMatch(source, /["']more["']/, relativePath);
   }
 });
 

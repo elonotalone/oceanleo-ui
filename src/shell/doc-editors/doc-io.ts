@@ -17,6 +17,12 @@ import {
   type LibraryItem,
 } from "../library-data";
 import type { ArtifactType } from "../artifact-contract";
+import {
+  artifactSaveStepMessage,
+  planArtifactSaveRenditions,
+  type ArtifactSaveStep,
+} from "./artifact-save-contract";
+import { EDITOR_PREVIEW_MEDIA_TYPE } from "./editor-preview-raster";
 export { editorWorkingHeadUrl } from "../editor-working-head";
 
 export function downloadBlob(name: string, blob: Blob): void {
@@ -90,6 +96,15 @@ export interface SaveToLibraryInput {
   createFile?: () => Promise<File>;
   /** Durable delivery already proven loadable (for example a multi-file glTF dependency closure). */
   deliveryUrl?: string;
+  /**
+   * Client-rendered displayable bitmap for this exact edit revision.
+   *
+   * Office deliveries (docx/xlsx/pptx) can never satisfy the backend's
+   * displayable-primary assertion, so the editor renders its own cover the way
+   * chart/composite_image already do. Returning null is not an error by itself;
+   * `artifact-save-contract.ts` decides per type whether the commit may proceed.
+   */
+  createPreview?: () => Promise<Blob | null>;
   /** Explicit source contract for the user-downloadable delivery. */
   sourceFormat?: string;
   sourceMediaType?: string;
@@ -114,11 +129,14 @@ export interface SaveToLibraryInput {
    */
   artifactRevision?: {
     artifactType: ArtifactType;
+    /** Editor id recorded in provenance when there is no editor manifest. */
+    editor?: string;
     provenance?: Record<string, unknown>;
   };
   /** Retry receipts. Callers may reuse them only for the same edit revision. */
   preparedProject?: PreparedProjectUpload;
   preparedDelivery?: PreparedDeliveryUpload;
+  preparedPreview?: PreparedPreviewUpload;
   /** The exported delivery file is itself the exact editable project. */
   deliveryProjectSchema?: string;
   /** Register only the structured project, keeping one stable creation URL. */
@@ -145,6 +163,10 @@ export interface PreparedDeliveryUpload extends PreparedUpload {
   fileName: string;
 }
 
+export interface PreparedPreviewUpload extends PreparedUpload {
+  mediaType: string;
+}
+
 export interface SaveToLibraryResult {
   ok: boolean;
   url: string;
@@ -162,7 +184,16 @@ export interface SaveToLibraryResult {
   item?: LibraryItem;
   preparedProject?: PreparedProjectUpload;
   preparedDelivery?: PreparedDeliveryUpload;
+  preparedPreview?: PreparedPreviewUpload;
   error: string;
+  /** Which link of the save chain broke; empty on success. */
+  failedStep?: ArtifactSaveStep | "";
+  /**
+   * The cover render was attempted and produced nothing. Not fatal on its own,
+   * but it is the usual root cause behind a later displayable-primary refusal,
+   * so it travels with the result instead of being swallowed.
+   */
+  previewWarning?: string;
 }
 
 export type PersistedEditorVersion = Pick<
@@ -183,17 +214,25 @@ export type PersistedEditorVersion = Pick<
       | "item"
       | "preparedProject"
       | "preparedDelivery"
+      | "preparedPreview"
     >
   >;
 
+/**
+ * Autosave input.
+ *
+ * `artifactRevision` / `editorManifest` / `createPreview` stay in: a
+ * project-only save can still publish a typed revision, because for
+ * `audio` / `video` / `workflow` the project schema is itself an accepted
+ * `source.format` (matrix §3.2 rows 10/11/13). Omitting them here is what made
+ * those types structurally incapable of ever producing a revision.
+ */
 export interface SaveProjectWorkingHeadInput
   extends Omit<
     SaveToLibraryInput,
-    | "artifactRevision"
     | "createFile"
     | "deliveryProjectSchema"
     | "deliveryUrl"
-    | "editorManifest"
     | "file"
     | "preparedDelivery"
     | "projectOnly"
@@ -293,7 +332,7 @@ function uploadReceiptDigest(file: unknown): string {
  */
 function uploadIdempotencyKey(
   base: string,
-  role: "project" | "delivery",
+  role: "project" | "delivery" | "preview",
   digest: string,
 ): string {
   const token = normalizedDigest(digest).slice(0, 24);
@@ -358,6 +397,8 @@ export async function saveFileToLibraryWithDependencies(
   let projectSchema = boundedText(input.deliveryProjectSchema, 120);
   let preparedProject: PreparedProjectUpload | undefined;
   let preparedDelivery: PreparedDeliveryUpload | undefined;
+  let preparedPreview: PreparedPreviewUpload | undefined;
+  let previewWarning = "";
   let savedAt = dependencies.now().toISOString();
   let projectUrl = "";
   let url = "";
@@ -381,8 +422,22 @@ export async function saveFileToLibraryWithDependencies(
     item: result.item,
     preparedProject: result.preparedProject ?? preparedProject,
     preparedDelivery: result.preparedDelivery ?? preparedDelivery,
+    preparedPreview: result.preparedPreview ?? preparedPreview,
     error: result.error ?? "",
+    failedStep: result.failedStep ?? "",
+    previewWarning: result.previewWarning ?? previewWarning,
   });
+
+  /** Every refusal names the link of the chain that broke. */
+  const fail = (
+    step: ArtifactSaveStep,
+    detail: unknown,
+  ): SaveToLibraryResult =>
+    finish({
+      ok: false,
+      failedStep: step,
+      error: artifactSaveStepMessage(step, detail),
+    });
 
   if (
     input.project &&
@@ -393,17 +448,16 @@ export async function saveFileToLibraryWithDependencies(
       sourceMediaType.startsWith("application/vnd.oceanleo") ||
       sourceMediaType.endsWith("+json"))
   ) {
-    return finish({
-      ok: false,
-      error:
-        "交付 source 不能是 editor JSON/project schema；请登记真实二进制格式（如 pptx）",
-    });
+    return fail(
+      "contract",
+      "交付 source 不能是 editor JSON/project schema；请登记真实二进制格式（如 pptx）",
+    );
   }
 
   if (input.project) {
     projectSchema = boundedText(input.project.schema, 120);
     if (!projectSchema) {
-      return finish({ ok: false, error: "可编辑工程缺少 schema" });
+      return fail("project-build", "可编辑工程缺少 schema");
     }
     const reusable = input.preparedProject;
     if (
@@ -425,10 +479,7 @@ export async function saveFileToLibraryWithDependencies(
         data: input.project.data,
       });
       if (new TextEncoder().encode(projectJson).byteLength > 20_000_000) {
-        return finish({
-          ok: false,
-          error: "可编辑工程超过 20MB 安全上限",
-        });
+        return fail("project-build", "可编辑工程超过 20MB 安全上限");
       }
       const projectFile = new File(
         [projectJson],
@@ -439,7 +490,7 @@ export async function saveFileToLibraryWithDependencies(
       try {
         digest = await sha256Blob(projectFile);
       } catch (caught) {
-        return finish({ ok: false, error: resultError(caught) });
+        return fail("project-build", resultError(caught));
       }
       let projectUpload: Awaited<ReturnType<typeof uploadFile>>;
       try {
@@ -454,14 +505,14 @@ export async function saveFileToLibraryWithDependencies(
           ),
         });
       } catch (caught) {
-        return finish({ ok: false, error: resultError(caught) });
+        return fail("project-upload", resultError(caught));
       }
       projectUrl = safePreparedUrl(projectUpload.data?.file?.url);
       if (!projectUpload.ok || !projectUrl) {
-        return finish({
-          ok: false,
-          error: projectUpload.error || "可编辑工程上传失败",
-        });
+        return fail(
+          "project-upload",
+          projectUpload.error || "存储服务没有返回可编辑工程地址",
+        );
       }
       try {
         preparedProject = {
@@ -470,7 +521,7 @@ export async function saveFileToLibraryWithDependencies(
           savedAt,
         };
       } catch (caught) {
-        return finish({ ok: false, error: resultError(caught) });
+        return fail("project-upload", resultError(caught));
       }
     }
     projectUrl = preparedProject.url;
@@ -499,7 +550,7 @@ export async function saveFileToLibraryWithDependencies(
     if (requestedDeliveryUrl) {
       url = safePreparedUrl(requestedDeliveryUrl);
       if (!url) {
-        return finish({ ok: false, error: "现有交付地址无效" });
+        return fail("delivery-build", "现有交付地址无效");
       }
     }
     const reusable = input.preparedDelivery;
@@ -527,14 +578,11 @@ export async function saveFileToLibraryWithDependencies(
         try {
           deliveryFile = await input.createFile();
         } catch (caught) {
-          return finish({
-            ok: false,
-            error: resultError(caught) || "交付文件生成失败",
-          });
+          return fail("delivery-build", resultError(caught));
         }
       }
       if (!deliveryFile) {
-        return finish({ ok: false, error: "缺少可保存的交付文件" });
+        return fail("delivery-build", "缺少可保存的交付文件");
       }
       fileName = deliveryFile.name;
       const extension = urlExtension(deliveryFile.name);
@@ -544,17 +592,17 @@ export async function saveFileToLibraryWithDependencies(
         ["docx", "pdf", "pptx", "xlsx"].includes(sourceFormat) &&
         extension !== sourceFormat
       ) {
-        return finish({
-          ok: false,
-          error: `交付文件扩展名必须是 .${sourceFormat}`,
-        });
+        return fail(
+          "delivery-build",
+          `交付文件扩展名必须是 .${sourceFormat}`,
+        );
       }
       if (
         sourceMediaType &&
         deliveryFile.type &&
         deliveryFile.type.toLowerCase() !== sourceMediaType
       ) {
-        return finish({ ok: false, error: "交付文件 MIME 与 source 合同不一致" });
+        return fail("delivery-build", "交付文件 MIME 与 source 合同不一致");
       }
       const digest = await sha256Blob(deliveryFile);
       let uploaded: Awaited<ReturnType<typeof uploadFile>>;
@@ -570,14 +618,14 @@ export async function saveFileToLibraryWithDependencies(
           ),
         });
       } catch (caught) {
-        return finish({ ok: false, error: resultError(caught) });
+        return fail("delivery-upload", resultError(caught));
       }
       url = safePreparedUrl(uploaded.data?.file?.url);
       if (!uploaded.ok || !url) {
-        return finish({
-          ok: false,
-          error: uploaded.error || "交付文件上传失败",
-        });
+        return fail(
+          "delivery-upload",
+          uploaded.error || "存储服务没有返回交付文件地址",
+        );
       }
       try {
         preparedDelivery = {
@@ -587,17 +635,14 @@ export async function saveFileToLibraryWithDependencies(
           fileName,
         };
       } catch (caught) {
-        return finish({ ok: false, error: resultError(caught) });
+        return fail("delivery-upload", resultError(caught));
       }
     }
   }
 
   if (!projectUrl && projectSchema) projectUrl = url;
   if (input.project && !input.projectOnly && projectUrl === url) {
-    return finish({
-      ok: false,
-      error: "交付 source 与 editor project 必须使用不同文件",
-    });
+    return fail("contract", "交付 source 与 editor project 必须使用不同文件");
   }
   const projectUrlIsWorkingHead =
     input.projectOnly &&
@@ -704,30 +749,142 @@ export async function saveFileToLibraryWithDependencies(
   const hasTypedIdentity = Boolean(identity.artifactId || identity.revisionId);
   if (input.artifactRevision && hasTypedIdentity) {
     if (!identity.artifactId || !identity.revisionId) {
-      return finish({
-        ok: false,
-        error: "typed artifact 保存缺少完整 artifact/revision identity",
-      });
+      return fail(
+        "identity",
+        "typed artifact 保存缺少完整 artifact/revision identity",
+      );
     }
     if (
       identity.artifactType &&
       identity.artifactType !== input.artifactRevision.artifactType
     ) {
-      return finish({
-        ok: false,
-        error: "typed artifact 类型与编辑器不一致",
-      });
+      return fail("identity", "typed artifact 类型与编辑器不一致");
     }
-    if (
-      !preparedDelivery?.digest ||
-      !preparedProject?.digest ||
-      !editorManifest
-    ) {
-      return finish({
-        ok: false,
-        error: "typed artifact revision 缺少 source/editor manifest 摘要",
-      });
+    /**
+     * 这次 revision 的 `source` 用哪份字节。
+     *
+     * 两种形态，都在矩阵 §3.2 的接受范围内：
+     *   - 有独立交付物（docx/xlsx/pptx/pdf/glb/png…）→ source 就是它；
+     *   - 只有工程 JSON（`projectOnly` 的 audio / video / workflow）→ 工程 schema
+     *     本身就是该类型 accepted 的 `source.format`（`oceanleo.audio-project.v1`、
+     *     `oceanleo.timeline.v1`、`oceanleo.workflow.v1`…），source 就是它。
+     *
+     * 原来这里硬要求「交付摘要 + 工程摘要 + editorManifest 三者同时在场」，
+     * 于是没有工程 sidecar 的 `pdf` 和没有独立交付物的 `audio`/`video` 在类型层面
+     * 就永远进不来——这正是 A9-1 里那 8 类没有提交路径的机制之一。
+     */
+    const commitSource = preparedDelivery?.digest
+      ? {
+          url,
+          digest: preparedDelivery.digest,
+          format: sourceFormat,
+          mediaType: sourceMediaType,
+        }
+      : preparedProject?.digest && projectUrl
+        ? {
+            url: projectUrl,
+            digest: preparedProject.digest,
+            format: sourceFormat || projectSchema,
+            mediaType: "application/json",
+          }
+        : null;
+    if (!commitSource || !commitSource.format) {
+      return fail(
+        "contract",
+        "typed artifact revision 既没有交付字节也没有可作为 source 的工程摘要",
+      );
     }
+
+    // Cover bitmap: the only rendition the office three can offer the backend's
+    // displayable-primary assertion. Reuse a receipt from a previous attempt so
+    // a retry never re-renders and re-uploads the same bytes.
+    if (input.preparedPreview && safePreparedUrl(input.preparedPreview.url)) {
+      preparedPreview = {
+        ...input.preparedPreview,
+        url: safePreparedUrl(input.preparedPreview.url),
+        digest: normalizedDigest(input.preparedPreview.digest),
+      };
+    } else if (input.createPreview) {
+      let previewBlob: Blob | null = null;
+      try {
+        previewBlob = await input.createPreview();
+      } catch (caught) {
+        previewWarning = artifactSaveStepMessage(
+          "preview-render",
+          resultError(caught),
+        );
+      }
+      if (previewBlob && previewBlob.size > 0) {
+        const previewFile = new File(
+          [previewBlob],
+          `${input.title}.preview.png`,
+          { type: EDITOR_PREVIEW_MEDIA_TYPE },
+        );
+        const previewDigest = await sha256Blob(previewFile);
+        let previewUpload: Awaited<ReturnType<typeof uploadFile>> | null = null;
+        try {
+          previewUpload = await dependencies.uploadFile(previewFile, {
+            siteId: site,
+            title: `${input.title}封面`,
+            registerAsset: false,
+            idempotencyKey: uploadIdempotencyKey(
+              input.idempotencyKey,
+              "preview",
+              previewDigest,
+            ),
+          });
+        } catch (caught) {
+          return fail("preview-upload", resultError(caught));
+        }
+        const previewUrl = safePreparedUrl(previewUpload.data?.file?.url);
+        if (!previewUpload.ok || !previewUrl) {
+          return fail(
+            "preview-upload",
+            previewUpload.error || "存储服务没有返回封面预览图地址",
+          );
+        }
+        try {
+          preparedPreview = {
+            ...preparedUploadFrom(
+              previewUpload.data?.file,
+              previewUrl,
+              previewDigest,
+            ),
+            mediaType: EDITOR_PREVIEW_MEDIA_TYPE,
+          };
+        } catch (caught) {
+          return fail("preview-upload", resultError(caught));
+        }
+      } else if (!previewWarning) {
+        previewWarning = artifactSaveStepMessage(
+          "preview-render",
+          "当前环境画不出封面位图（缺少 canvas 或内容为空）",
+        );
+      }
+    }
+
+    const plan = planArtifactSaveRenditions(
+      input.artifactRevision.artifactType,
+      {
+        delivery: preparedDelivery?.digest
+          ? { url, digest: preparedDelivery.digest }
+          : null,
+        editorManifest:
+          editorManifest && preparedProject?.digest
+            ? { url: projectUrl, digest: preparedProject.digest }
+            : null,
+        previewBitmap: preparedPreview
+          ? { url: preparedPreview.url, digest: preparedPreview.digest }
+          : null,
+      },
+    );
+    if (!plan.ok) {
+      return fail(
+        "contract",
+        previewWarning ? `${plan.error}（${previewWarning}）` : plan.error,
+      );
+    }
+
     let published: Awaited<ReturnType<typeof createArtifactRevision>>;
     try {
       published = await dependencies.createArtifactRevision(
@@ -736,52 +893,83 @@ export async function saveFileToLibraryWithDependencies(
           expectedRevisionId: identity.revisionId,
           artifactType: input.artifactRevision.artifactType,
           source: {
-            format: sourceFormat,
-            url,
-            digest: preparedDelivery.digest,
+            format: commitSource.format,
+            url: commitSource.url,
+            digest: commitSource.digest,
           },
-          renditions: [
-            {
-              purpose: "editor_manifest",
-              url: projectUrl,
-              digest: preparedProject.digest,
-            },
-          ],
+          renditions: plan.renditions,
           provenance: {
-            editor: editorManifest.id,
+            editor: editorManifest?.id || input.artifactRevision.editor || "",
             previousRevisionId: identity.revisionId,
             editorProjectSchema: projectSchema,
             sourceFormat,
+            displayable_primary: plan.displayablePrimary,
+            ...(preparedPreview
+              ? {
+                  preview_digest: preparedPreview.digest,
+                  preview_media_type: preparedPreview.mediaType,
+                  preview_static_frame: "final",
+                }
+              : {}),
             ...input.artifactRevision.provenance,
           },
         },
       );
     } catch (caught) {
-      return finish({ ok: false, error: resultError(caught) });
+      return fail("revision-publish", resultError(caught));
     }
     const next = published.data;
     const nextSource = next?.artifact?.renditions.source;
     const nextManifest = next?.artifact?.renditions.editor_manifest;
+    if (!published.ok || !next) {
+      // 后端拒绝时最常见的原因就是拿不到可展示主产物；把渲染失败一起说清楚。
+      return fail(
+        "revision-publish",
+        previewWarning
+          ? `${published.error || "服务端未接受这次新版本提交"}（${previewWarning}）`
+          : published.error || "服务端未接受这次新版本提交",
+      );
+    }
+    const manifestPlanned = plan.renditions.some(
+      (rendition) => rendition.purpose === "editor_manifest",
+    );
     if (
-      !published.ok ||
-      !next ||
       next.artifactId !== identity.artifactId ||
       !next.revisionId ||
       next.revisionId === identity.revisionId ||
       next.artifactType !== input.artifactRevision.artifactType ||
-      next.artifact?.sourceFormat !== sourceFormat ||
+      next.artifact?.sourceFormat !== commitSource.format ||
       nextSource?.revisionId !== next.revisionId ||
-      normalizedDigest(nextSource?.digest) !== preparedDelivery.digest ||
-      nextSource?.mediaType.toLowerCase() !== sourceMediaType ||
-      nextManifest?.revisionId !== next.revisionId ||
-      normalizedDigest(nextManifest?.digest) !== preparedProject.digest
+      normalizedDigest(nextSource?.digest) !== commitSource.digest ||
+      // Only assert the media type when the caller declared one; a project-JSON
+      // source is described by its schema, not by a wire MIME the caller picked.
+      (Boolean(commitSource.mediaType) &&
+        nextSource?.mediaType.toLowerCase() !== commitSource.mediaType) ||
+      (manifestPlanned &&
+        (nextManifest?.revisionId !== next.revisionId ||
+          normalizedDigest(nextManifest?.digest) !==
+            preparedProject?.digest))
     ) {
-      return finish({
-        ok: false,
-        error:
-          published.error ||
-          "revision publish 未返回同一 artifact root 的完整 source/editor manifest",
-      });
+      return fail(
+        "revision-verify",
+        "服务端返回的新版本不是同一 artifact root，或 source / 可编辑工程摘要对不上",
+      );
+    }
+    // Every rendition the contract demanded must come back pinned to the new
+    // revision; a silently dropped preview is what leaves shelves thumbnail-less.
+    const unpinned = plan.renditions.find((rendition) => {
+      const returned = next.artifact?.renditions[rendition.purpose];
+      return (
+        !returned ||
+        returned.revisionId !== next.revisionId ||
+        normalizedDigest(returned.digest) !== rendition.digest
+      );
+    });
+    if (unpinned) {
+      return fail(
+        "revision-verify",
+        `服务端返回的新版本缺少契约要求的 ${unpinned.purpose} rendition，或它没有固定到这次新版本`,
+      );
     }
     const item: LibraryItem = {
       ...next,
@@ -813,7 +1001,7 @@ export async function saveFileToLibraryWithDependencies(
       },
     ]);
   } catch (caught) {
-    return finish({ ok: false, error: resultError(caught) });
+    return fail("creation-register", resultError(caught));
   }
   const rawSavedItem = saved.data?.items?.[0];
   if (
@@ -821,10 +1009,10 @@ export async function saveFileToLibraryWithDependencies(
     Number(saved.data?.saved || 0) !== 1 ||
     !rawSavedItem
   ) {
-    return finish({
-      ok: false,
-      error: saved.error || "作品登记失败",
-    });
+    return fail(
+      "creation-register",
+      saved.error || "我的库没有确认这次登记",
+    );
   }
   const normalized = normalizeWork(rawSavedItem);
   const item: LibraryItem = {

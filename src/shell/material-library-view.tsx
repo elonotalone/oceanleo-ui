@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
@@ -17,6 +18,7 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
+  MATERIAL_LIBRARY_LEVELS,
   artifactEntry,
   invalidateMaterialLibraryCache,
   libraryItemHasExactPrimaryContext,
@@ -31,12 +33,8 @@ import {
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import { templateDeepLinkAction } from "./material-library-template-source";
+import { MaterialShelfToolbar } from "./material-library-toolbar";
 import {
-  MaterialAppFilter,
-  MaterialTypeFilter,
-} from "./material-library-type-filter";
-import {
-  MATERIAL_LEVEL_LABEL,
   entriesFromRemoteResult,
   materialFailureCopy,
   materialLevelEmptyDescription,
@@ -45,18 +43,23 @@ import {
   materialLibraryHref,
   materialShelfEntries,
   materialShelfFailure,
-  materialSiteAppChips,
-  materialSiteAppGroups,
   safeCompleteLibraryHref,
   type MaterialLibraryProps,
 } from "./material-library-presentation";
 import {
+  materialSceneView,
+  readSiteAppDirectory,
+  subscribeSiteAppDirectories,
+  type SceneSelection,
+} from "./material-scene-axis";
+import { MaterialShelfSkeleton } from "./material-library-skeleton";
+import {
   useMaterialLibraryChangeEvents,
   useMaterialLibraryDeepLink,
   useMaterialLibraryPreviewIntent,
+  useMaterialShelfSettle,
   useOfficialTemplateMaterials,
 } from "./material-library-effects";
-import { materialEntryDownloadAction } from "./material-library-download";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
@@ -69,21 +72,20 @@ import {
 
 export type { MaterialLibraryProps } from "./material-library-presentation";
 
-const DEFAULT_LEVELS: readonly MaterialLibraryLevel[] = ["primary", "more"];
+const DEFAULT_LEVELS: readonly MaterialLibraryLevel[] = ["primary", "site"];
 
+/** 顺序取自 `MATERIAL_LIBRARY_LEVELS`，这样 W4 下线 `more` 时这里不必跟着改。 */
 function orderedLevels(
   levels: readonly MaterialLibraryLevel[],
 ): MaterialLibraryLevel[] {
   const wanted = new Set(levels);
-  return (["primary", "site", "more"] as const).filter((level) =>
-    wanted.has(level),
-  );
+  return MATERIAL_LIBRARY_LEVELS.filter((level) => wanted.has(level));
 }
 
 /**
- * Controller/view facade for the three-level material library
- * (此 app ｜ 本站素材 ｜ 更多素材). Query decoding, normalization, scoping and
- * page merging stay in material-library-controller / -scope.
+ * Controller/view facade for the two-level material library
+ * (此 app ｜ 本站素材；`more` 已按 D1 下线). Query decoding, normalization, scoping
+ * and page merging stay in material-library-controller / -scope / -dedupe.
  */
 export function MaterialLibrary({
   materials,
@@ -93,7 +95,7 @@ export function MaterialLibrary({
   onSeeAll,
   seeAllHref,
   hideSeeAll = false,
-  seeAllLabel = "更多素材",
+  seeAllLabel = "完整素材库",
   featuredEntries = [],
   action,
   taskId,
@@ -103,12 +105,12 @@ export function MaterialLibrary({
   functionId = "",
   fetchCurated = true,
   fetchPrimary,
-  fetchMore = true,
   curatedType = "all",
   initialLevel = "primary",
   lockLevel,
   levels,
-  cardDownload,
+  scene: controlledScene,
+  onSceneChange,
   types: controlledTypes,
   onTypesChange,
   onLevelChange,
@@ -189,8 +191,10 @@ export function MaterialLibrary({
     () => materialLibraryRequestKey(materialRequest),
     [materialRequest],
   );
+  // 本站层的取数由 site 作用域自己决定（缺 siteKey 就一个请求都不发，见 W4 的
+  // fail-closed 判据）。
   const levelFetchEnabled =
-    level === "primary" ? primaryFetchEnabled : fetchMore;
+    level === "primary" ? primaryFetchEnabled : Boolean(context.siteKey);
   const initialFetchEnabled =
     levelFetchEnabled &&
     (level !== "primary" || Boolean(context.contextId && context.siteKey));
@@ -229,11 +233,22 @@ export function MaterialLibrary({
   const [retryNonce, setRetryNonce] = useState(0);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
-  // `null` = 全部；`""` = 解析不出归属 app 的那一组。两者必须区分得开。
-  const [selectedApp, setSelectedApp] = useState<string | null>(null);
+  // 分区轴的选中态。`null` = 全部；`""` = 「其它」。两者必须区分得开。
+  const [internalScene, setInternalScene] = useState<SceneSelection>(null);
+  const scene = controlledScene !== undefined ? controlledScene : internalScene;
+  const applyScene = useCallback(
+    (next: SceneSelection) => {
+      if (controlledScene === undefined) setInternalScene(next);
+      onSceneChange?.(next);
+    },
+    [controlledScene, onSceneChange],
+  );
+  // `?app=` 锚点在货架内部是可清除的：清掉它回到整站视图，而不是回到一排 appId chips。
+  const [anchorCleared, setAnchorCleared] = useState(false);
 
   useEffect(() => {
-    setSelectedApp(null);
+    setInternalScene(null);
+    setAnchorCleared(false);
   }, [level, siteId]);
 
   useEffect(() => {
@@ -299,9 +314,16 @@ export function MaterialLibrary({
     itemId: action?.action.itemId || "",
     types: selectedTypes,
   });
+  // D5：首次请求 settle 之前只画骨架。`markSettled` 必须覆盖这条 effect 的**每一个**
+  // 终点（不发请求、命中新鲜缓存、成功、失败），漏一个骨架就永远不消失。
+  const shelfSettle = useMaterialShelfSettle(remoteRequestKey, {
+    initiallySettled: Boolean(initialCache),
+  });
+  const markSettled = shelfSettle.markSettled;
 
   useEffect(() => {
     if (level === "primary" && (!context.contextId || !context.siteKey)) {
+      markSettled(remoteRequestKey);
       loadMoreAbortRef.current?.abort();
       requestEpochRef.current += 1;
       setRemote([]);
@@ -316,8 +338,10 @@ export function MaterialLibrary({
       setErrorStatus(undefined);
       return;
     }
-    const fetchEnabled = level === "primary" ? primaryFetchEnabled : fetchMore;
+    const fetchEnabled =
+      level === "primary" ? primaryFetchEnabled : Boolean(context.siteKey);
     if (!fetchEnabled) {
+      markSettled(remoteRequestKey);
       setRemote([]);
       setNextCursor(null);
       setLoading(false);
@@ -345,6 +369,7 @@ export function MaterialLibrary({
       setError("");
       setErrorStatus(undefined);
       if (cached.freshness === "fresh") {
+        markSettled(remoteRequestKey);
         setLoading(false);
         return;
       }
@@ -402,6 +427,7 @@ export function MaterialLibrary({
         setError("");
         setErrorStatus(undefined);
       }
+      markSettled(remoteRequestKey);
       setLoading(false);
     }).catch((caught) => {
       if (controller.signal.aborted || epoch !== requestEpochRef.current) {
@@ -413,14 +439,15 @@ export function MaterialLibrary({
           : "素材库请求失败，请重试。",
       );
       setErrorStatus(0);
+      markSettled(remoteRequestKey);
       setLoading(false);
     });
     return () => controller.abort();
   }, [
     context,
     debounced,
-    fetchMore,
     level,
+    markSettled,
     materialRequest,
     primaryFetchEnabled,
     remoteRequestKey,
@@ -429,7 +456,7 @@ export function MaterialLibrary({
   ]);
 
   const loadMore = async () => {
-    if (level === "primary" || !fetchMore || !nextCursor || loadingMore) {
+    if (level === "primary" || !levelFetchEnabled || !nextCursor || loadingMore) {
       return;
     }
     loadMoreAbortRef.current?.abort();
@@ -511,32 +538,52 @@ export function MaterialLibrary({
       remote,
     ],
   );
-  // 本站素材的主分类轴是 app：读者从某个 app 的卡片进来，问的是「这个 app 有什么」，
-  // 而不是「这里有几个 png」。类型筛选留在后面当次级筛选，两者可以叠加。
-  const siteAppGroups = useMemo(
+  // 本站素材的主分区轴 = 站点 app 目录的场景词（D2）。原来那排原始 appId chips 已下线；
+  // 类型筛选降为次级筛选，与分区叠加。
+  const directory = useSyncExternalStore(
+    subscribeSiteAppDirectories,
+    () => readSiteAppDirectory(siteId),
+    () => readSiteAppDirectory(siteId),
+  );
+  const anchoredAppId = anchorCleared ? "" : appId.trim();
+  const sceneView = useMemo(
     () =>
       level === "site"
-        ? materialSiteAppGroups(entries, {
+        ? materialSceneView({
+            entries,
             siteKey: siteId,
-            anchoredAppId: runtimeAppId,
+            directory,
+            scene,
+            anchoredAppId,
           })
-        : [],
-    [entries, level, runtimeAppId, siteId],
+        : null,
+    [anchoredAppId, directory, entries, level, scene, siteId],
   );
-  const appChips = useMemo(
-    () => materialSiteAppChips(siteAppGroups, selectedApp),
-    [selectedApp, siteAppGroups],
+  const visibleEntries = useMemo(
+    () => (sceneView ? sceneView.cards.map((card) => card.entry) : entries),
+    [entries, sceneView],
   );
-  // 「全部」也按分组顺序铺开，卡片才真的成组，而不是只在筛选时才成组。
-  const visibleEntries = useMemo(() => {
-    if (level !== "site" || siteAppGroups.length === 0) return entries;
-    if (selectedApp === null) {
-      return siteAppGroups.flatMap((group) => group.entries);
+  const anchoredAppLabel = useMemo(
+    () =>
+      directory?.apps.find((app) => app.appId === anchoredAppId)?.name ||
+      anchoredAppId,
+    [anchoredAppId, directory],
+  );
+  // 次级类型 chips 只铺货架上真实出现过的类型。站点不再声明 `types`，所以这份集合
+  // 由数据自己长出来；一旦选了类型，请求会收窄，故用 ref 记住无筛选那一帧的全集。
+  const seenTypesRef = useRef<{ siteKey: string; types: ArtifactType[] }>({
+    siteKey: siteId,
+    types: [],
+  });
+  if (seenTypesRef.current.siteKey !== siteId) {
+    seenTypesRef.current = { siteKey: siteId, types: [] };
+  }
+  for (const type of sceneView?.presentTypes || []) {
+    if (!seenTypesRef.current.types.includes(type)) {
+      seenTypesRef.current.types = [...seenTypesRef.current.types, type];
     }
-    return (
-      siteAppGroups.find((group) => group.appId === selectedApp)?.entries || []
-    );
-  }, [entries, level, selectedApp, siteAppGroups]);
+  }
+  const availableTypes = sceneView ? seenTypesRef.current.types : undefined;
   const openPreparedItem = useCallback(
     (item: LibraryItem) => {
       if (!isAdvancedEditableShelfItem(item)) {
@@ -572,9 +619,10 @@ export function MaterialLibrary({
     );
   }, [entries, registerRuntimeSource, runtimeAppId, siteId]);
 
-  // 素材卡下载（合同 §0.6）。编辑器抽屉注册了主动作时，卡片的职责是喂画布，
-  // 不再挂下载；浏览型货架（探索页、素材总栏目）默认挂。
-  const showCardDownload = cardDownload ?? !primaryMaterialAction;
+  // 官方模板目录与库检索是两条并行的取数链，两条都有结论才算 settle：只等一条，
+  // 另一条的空窗期照样会漏出空态。
+  const shelfLoading = loading || templateShelf.loading;
+  const shelfSettled = shelfSettle.settled && !templateShelf.loading;
   const contextMissing =
     level === "primary" && (!context.contextId || !context.siteKey);
   const { error: effectiveError, status: effectiveErrorStatus } =
@@ -586,140 +634,64 @@ export function MaterialLibrary({
     effectiveErrorStatus,
     effectiveError,
   );
-  const canonicalMoreHref = materialLibraryHref({
-    query,
-    taxonomy,
-  });
   const completeLibraryHref =
-    safeCompleteLibraryHref(seeAllHref) || canonicalMoreHref;
-  const primaryMoreControl = hideSeeAll ? null : onSeeAll ? (
-    <a
-      href={completeLibraryHref}
-      onClick={(event) => {
-        event.preventDefault();
-        onSeeAll();
-      }}
-      className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-      aria-label={tt("打开完整素材库")}
-    >
-      {tt(seeAllLabel)} →
-    </a>
-  ) : seeAllHref ? (
-    <a
-      href={completeLibraryHref}
-      className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-      aria-label={tt("打开完整素材库")}
-    >
-      {tt(seeAllLabel)} →
-    </a>
-  ) : fetchMore ? (
-    <a
-      href={canonicalMoreHref}
-      onClick={(event) => {
-        event.preventDefault();
-        goToLevel("more");
-      }}
-      className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-      aria-label={tt("打开完整素材库")}
-    >
-      {tt(seeAllLabel)} →
-    </a>
-  ) : null;
-
-  const sectionTabs = (
-    <div
-      role="tablist"
-      aria-label={tt("素材分区")}
-      className="flex flex-wrap items-center gap-1"
-    >
-      {sections.map((section) => (
-        <button
-          key={section}
-          type="button"
-          role="tab"
-          aria-selected={section === level}
-          data-material-library-section={section}
-          onClick={() => goToLevel(section)}
-          className={`min-h-8 whitespace-nowrap rounded-lg border px-2.5 text-[11px] font-medium ${
-            section === level
-              ? "border-transparent bg-[var(--fg,#292524)] text-white"
-              : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
-          }`}
-        >
-          {tt(MATERIAL_LEVEL_LABEL[section])}
-        </button>
-      ))}
-    </div>
-  );
-
-  const legacyLevelControl =
-    level === "primary" ? (
-      primaryMoreControl
-    ) : lockLevel ? null : (
-      <button
-        type="button"
-        onClick={() => goToLevel(lockLevel || "primary")}
-        className="min-h-8 whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+    safeCompleteLibraryHref(seeAllHref) ||
+    materialLibraryHref({ query, taxonomy });
+  // D1 之后没有「更多素材」这一层可跳，只剩宿主自己声明的完整素材库外链。
+  const primaryMoreControl =
+    hideSeeAll || !(onSeeAll || seeAllHref) ? null : (
+      <a
+        href={completeLibraryHref}
+        onClick={(event) => {
+          if (!onSeeAll) return;
+          event.preventDefault();
+          onSeeAll();
+        }}
+        className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"
+        aria-label={tt("打开完整素材库")}
       >
-        ← {tt("当前 App")}
-      </button>
+        {tt(seeAllLabel)} →
+      </a>
     );
 
   const toolbar = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span
-        data-material-library-scope={level}
-        className="whitespace-nowrap text-[11px] font-semibold text-[var(--fg,#292524)]"
-      >
-        {tt(MATERIAL_LEVEL_LABEL[level])}
-      </span>
-      {sections.length > 1 && (levels ? sectionTabs : legacyLevelControl)}
-      {level === "site" && appChips.length > 0 && (
-        <MaterialAppFilter
-          chips={appChips}
-          selected={selectedApp}
-          onSelect={setSelectedApp}
-        />
+    <MaterialShelfToolbar
+      level={level}
+      sections={sections}
+      tabbed={Boolean(levels)}
+      lockLevel={lockLevel}
+      onGoToLevel={goToLevel}
+      seeAllControl={primaryMoreControl}
+      settled={shelfSettled}
+      sceneChips={sceneView?.chips}
+      scene={scene}
+      onSceneChange={applyScene}
+      anchoredAppId={sceneView ? anchoredAppId : ""}
+      anchoredAppLabel={anchoredAppLabel}
+      onClearAnchor={() => setAnchorCleared(true)}
+      multiSelectTypes={multiSelectTypes}
+      selectedTypes={selectedTypes}
+      availableTypes={availableTypes}
+      onApplyTypes={applyTypes}
+      canLoadMore={Boolean(
+        nextCursor && level !== "primary" && levelFetchEnabled,
       )}
-      <MaterialTypeFilter
-        multiSelect={multiSelectTypes}
-        selectedTypes={selectedTypes}
-        onApplyTypes={applyTypes}
-      />
-      {nextCursor && level !== "primary" && (
-        <button
-          type="button"
-          onClick={() => void loadMore()}
-          disabled={loadingMore}
-          className="min-h-8 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium disabled:opacity-50"
-        >
-          {tt(loadingMore ? "加载中…" : "继续加载")}
-        </button>
+      loadingMore={loadingMore}
+      onLoadMore={() => void loadMore()}
+      retryable={Boolean(
+        effectiveError &&
+          effectiveErrorStatus !== 401 &&
+          effectiveErrorStatus !== 403 &&
+          levelFetchEnabled,
       )}
-      {effectiveError &&
-        effectiveErrorStatus !== 401 &&
-        effectiveErrorStatus !== 403 &&
-        levelFetchEnabled && (
-        <button
-          type="button"
-          onClick={() => {
-            invalidateMaterialLibraryCache(materialRequest);
-            setRetryNonce((value) => value + 1);
-          }}
-          className="min-h-8 rounded-lg border border-amber-500/30 px-2.5 text-[11px] font-medium text-amber-700"
-        >
-          {tt("重试")}
-        </button>
-      )}
-      {effectiveError && entries.length > 0 && (
-        <span
-          role="alert"
-          className="max-w-md text-[11px] text-rose-700"
-        >
-          {tt(failureCopy.title)}：{tt(failureCopy.description)}
-        </span>
-      )}
-    </div>
+      onRetry={() => {
+        invalidateMaterialLibraryCache(materialRequest);
+        setRetryNonce((value) => value + 1);
+      }}
+      inlineFailure={
+        effectiveError && entries.length > 0 ? failureCopy : null
+      }
+    />
   );
 
   if (standaloneEditorItem) {
@@ -742,6 +714,19 @@ export function MaterialLibrary({
     );
   }
 
+  // D5：首帧未 settle 时既没有卡片也不许有「暂无」文案，货架整块换成骨架。
+  // 已经有卡片（命中缓存 / 背景刷新）时不退回骨架 —— 那会比空态更晃眼。
+  if (!shelfSettled && visibleEntries.length === 0 && !effectiveError) {
+    return (
+      <div
+        className={`h-full min-h-0 ${className}`}
+        data-material-shelf-state="loading"
+      >
+        <MaterialShelfSkeleton toolbar={toolbar} />
+      </div>
+    );
+  }
+
   return (
     <WorkspaceLibrary
       entries={visibleEntries}
@@ -756,17 +741,21 @@ export function MaterialLibrary({
       toolbarActions={toolbar}
       searchPlaceholder={materialLevelSearchPlaceholder(level)}
       emptyTitle={
-        loading
+        shelfLoading
           ? "正在加载素材…"
           : effectiveError
             ? failureCopy.title
             : materialLevelEmptyTitle(level)
       }
       emptyDescription={
-        effectiveError
-          ? failureCopy.description
-          : emptyHint ||
-            materialLevelEmptyDescription(level, contextMissing)
+        // 上一轮的缺陷正在这两行之间：`emptyTitle` 有加载分支、`emptyDescription`
+        // 没有，于是「正在加载素材…」下面跟着一句「暂无经授权的公共素材」。
+        shelfLoading
+          ? "正在为你取回本站素材。"
+          : effectiveError
+            ? failureCopy.description
+            : emptyHint ||
+              materialLevelEmptyDescription(level, contextMissing)
       }
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
@@ -777,9 +766,7 @@ export function MaterialLibrary({
       onMaterialDragStart={onMaterialDragStart}
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
-      entryActions={
-        showCardDownload ? materialEntryDownloadAction : undefined
-      }
+      // D4：网格卡上不再挂「下载」。下载只在详情浮层里（W5），卡片的职责是「点进去看」。
       onOpenItem={openPreparedItem}
       className={className}
     />

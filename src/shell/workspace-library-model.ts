@@ -22,6 +22,25 @@ export interface WorkspaceLibraryEntry {
   onDelete?: () => Promise<void> | void;
 }
 
+/**
+ * 「编辑」深链要指名的 artifact id（D3 §4）。
+ *
+ * durable 行直接用自己的 `artifactId`；官方模板目录行**故意**不是 durable artifact，
+ * 但带着官方 artifact root 的稳定 id。库按 artifact 取数，拿 `TemplateMaterial.id`
+ * 去定位会撞车——那个只保证同一个 app 内唯一。
+ */
+export function materialDeepLinkArtifactId(
+  item: LibraryItem | null | undefined,
+): string {
+  if (!item) return "";
+  const durable = String(item.artifactId || "").trim();
+  if (durable) return durable;
+  const templateArtifactId = item.meta?.template_material_artifact_id;
+  return typeof templateArtifactId === "string"
+    ? templateArtifactId.trim()
+    : "";
+}
+
 export const WORKSPACE_KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   website: "网站",
   canvas: "画布",

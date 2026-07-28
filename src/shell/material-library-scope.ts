@@ -1,7 +1,11 @@
 /**
- * Material library scoping (三段式作用域).
+ * Material library scoping (两段式作用域).
  *
- * `primary` 此 app ｜ `site` 本站素材 ｜ `more` 更多素材（全平台）。
+ * `primary` 此 app ｜ `site` 本站素材。
+ *
+ * 曾经的第三档 `more`（更多素材 = 全平台）已按 `01-decisions.md` D1 整层下线：
+ * 每个站只展示属于该站的素材，用户可见的货架不再兼任「每个高级功能在每个站都能跑」
+ * 的测试夹具——那件事由 W6 的跨站能力一致性门禁接管。
  *
  * The wire parameter names below are locked with the backend owner in
  * `docs/work-logs/2026-07/oceanleo-cards-explore-materials/00-dispatch-contract.md` §3.2:
@@ -16,12 +20,11 @@ import {
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 
-export type MaterialLibraryLevel = "primary" | "site" | "more";
+export type MaterialLibraryLevel = "primary" | "site";
 
 export const MATERIAL_LIBRARY_LEVELS: readonly MaterialLibraryLevel[] = [
   "primary",
   "site",
-  "more",
 ];
 
 /** Contract §3.1 — the scope shape W7 mirrors on the backend. */
@@ -106,7 +109,6 @@ export function materialLibrarySearchParams(scope: {
   const types = uniqueTypes(scope.types);
   const siteKey = String(scope.siteKey ?? "").trim();
   const appId = String(scope.appId ?? "").trim();
-  const scoped = scope.level === "site" || scope.level === "primary";
   return {
     q: String(scope.query ?? "").trim(),
     role: String(scope.role ?? "").trim(),
@@ -117,10 +119,36 @@ export function materialLibrarySearchParams(scope: {
       scope.legacyTaxonomyOnly && types.length <= 1
         ? ""
         : materialTypesCsv(types),
-    originSiteKey: scoped ? siteKey : "",
+    originSiteKey: siteKey,
     originAppId: scope.level === "primary" ? appId : "",
   };
 }
+
+/**
+ * Fail-closed 判据（合同 §3 W4 必做 2）。非空即「这个 scope 没法被真正执行」，
+ * 字符串本身是可直接展示的中文原因。
+ *
+ * 两层都以 `originSiteKey` 为前提：没有站点身份就没有「本站」，而缺了它旧实现会
+ * 悄悄退化成全平台搜索，把别站素材摆到本站货架上——D1 要根除的正是这个。
+ */
+export function materialScopeViolation(scope: {
+  level: MaterialLibraryLevel;
+  siteKey?: string;
+  appId?: string;
+}): string {
+  const siteKey = String(scope.siteKey ?? "").trim();
+  const appId = String(scope.appId ?? "").trim();
+  if (!siteKey) {
+    return `本站素材缺少 ${MATERIAL_SCOPE_PARAM_NAMES.siteKey}，已按 fail-closed 停用（不退化成全平台搜索）。`;
+  }
+  if (scope.level === "primary" && !appId) {
+    return `此 app 素材缺少 ${MATERIAL_SCOPE_PARAM_NAMES.appId}，已按 fail-closed 停用。`;
+  }
+  return "";
+}
+
+/** `ArtifactApiResult.code` 上出现它就表示请求被 fail-closed 拦下，压根没发出去。 */
+export const MATERIAL_SCOPE_UNENFORCEABLE_CODE = "scope-unenforceable";
 
 export function materialLibrarySearchQuery(
   params: MaterialLibrarySearchParams,
@@ -234,6 +262,175 @@ export function libraryItemOriginAppId(
   return ownerAppId;
 }
 
+/**
+ * 一份素材在某个 app 下的归属（D3）。同一个 `artifact_id` 可以绑在多个 `app_id` 上
+ * ——image 站有 9 组——而「同一视图只出一张卡」与「点哪个 app 进哪个工作台」这两条
+ * 要求同时成立的前提，就是多归属在数据层可枚举而不是被去重键吃掉。
+ */
+export interface MaterialAppAttribution {
+  /** `olctx:v1:<siteKey>:app:<appId>` 的 appId 段，已 decodeURIComponent。 */
+  appId: string;
+  /** 该归属所属站点 key；解析不出时 ""。 */
+  siteKey: string;
+  /**
+   * 主归属排序位。durable 条目取 `binding.rank`；铸造地（`owner.originAppId`）
+   * 没有自己的 binding rank 时取 0，因为那就是这份素材的老家；其余取
+   * `Number.MAX_SAFE_INTEGER`。
+   */
+  position: number;
+  /** 人类可读 app 名；数据层解析不出时为 ""，呈现层自行回退到 appId。 */
+  label: string;
+  /** 来自 `owner.originAppId`（铸造地）而非 binding。 */
+  origin: boolean;
+  /** `binding.role`；铸造地归属固定为 `"owner"`。 */
+  role: string;
+}
+
+/** 合并后的 entry 把归属并集写在 `libraryItem.meta` 的这个 key 下。 */
+export const MATERIAL_APP_BINDINGS_META_KEY = "material_app_bindings";
+
+const APP_LABEL_META_KEYS = [
+  "template_material_app_title",
+  "template_material_app_name",
+  "origin_app_title",
+  "app_title",
+  "app_name",
+] as const;
+
+function attributionLabelHint(item: LibraryItem): string {
+  for (const key of APP_LABEL_META_KEYS) {
+    const value = item.meta?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function compareAttributions(
+  a: MaterialAppAttribution,
+  b: MaterialAppAttribution,
+): number {
+  return a.position - b.position || a.appId.localeCompare(b.appId);
+}
+
+/**
+ * 并集，不是拼接：同一个 `(siteKey, appId)` 出现多次时取最小 position、保留任一非空
+ * label、`origin` 取或。返回值已排好序，`[0]` 即 D3.3 说的主 app。
+ */
+export function mergeAppAttributions(
+  ...groups: readonly (readonly MaterialAppAttribution[])[]
+): MaterialAppAttribution[] {
+  const byApp = new Map<string, MaterialAppAttribution>();
+  for (const group of groups) {
+    for (const attribution of group) {
+      if (!attribution.appId) continue;
+      const key = `${attribution.siteKey}\u0000${attribution.appId}`;
+      const existing = byApp.get(key);
+      if (!existing) {
+        byApp.set(key, { ...attribution });
+        continue;
+      }
+      existing.position = Math.min(existing.position, attribution.position);
+      existing.label = existing.label || attribution.label;
+      existing.origin = existing.origin || attribution.origin;
+      existing.role = existing.role || attribution.role;
+    }
+  }
+  return [...byApp.values()].sort(compareAttributions);
+}
+
+/**
+ * 一份素材在（可选地）某个站下的全部归属 app。三个来源合流，和
+ * `libraryItemOriginAppId` 读的是同一批字段，区别只在这里**不挑一个赢家**：
+ * durable 条目的 `owner.originAppId`、官方模板目录行的 `template_material_app_id`、
+ * 以及 binding 的 context id。
+ *
+ * 传 `siteKey` 时只返回该站的归属。站内货架请一律传——不传会把别站的绑定也列出来，
+ * 那正是 D1 要根除的污染。
+ */
+export function libraryItemAppAttributions(
+  item: LibraryItem | null | undefined,
+  siteKey = "",
+): MaterialAppAttribution[] {
+  if (!item) return [];
+  const site = String(siteKey ?? "").trim();
+  const label = attributionLabelHint(item);
+  const inScope = (candidate: string): boolean =>
+    !site || !candidate || candidate === site;
+  const found: MaterialAppAttribution[] = [];
+  // `isDurableLibraryItem` 只核对身份三件套，`owner` / `bindings` 仍可能缺席
+  // （老投影与手写 fixture 都会）。归属解析不出来是正常输入，不该把货架整个打崩。
+  const durable = isDurableLibraryItem(item);
+  if (durable) {
+    const owner = item.artifact.owner ?? {};
+    const ownerAppId = String(owner.originAppId ?? "").trim();
+    const ownerSiteKey = String(owner.originSiteKey ?? "").trim();
+    if (ownerAppId && inScope(ownerSiteKey)) {
+      found.push({
+        appId: ownerAppId,
+        siteKey: ownerSiteKey || site,
+        position: 0,
+        label,
+        origin: true,
+        role: "owner",
+      });
+    }
+    for (const binding of item.artifact.bindings ?? []) {
+      const parts = appContextParts(binding.contextId);
+      if (!parts?.appId || (site && parts.siteKey !== site)) continue;
+      found.push({
+        appId: parts.appId,
+        siteKey: parts.siteKey,
+        position:
+          typeof binding.rank === "number" && Number.isFinite(binding.rank)
+            ? binding.rank
+            : Number.MAX_SAFE_INTEGER,
+        label,
+        origin: false,
+        role: binding.role || "",
+      });
+    }
+  }
+  const templateAppId =
+    typeof item.meta?.template_material_app_id === "string"
+      ? item.meta.template_material_app_id.trim()
+      : "";
+  const templateSiteKey =
+    typeof item.meta?.template_material_site_key === "string"
+      ? item.meta.template_material_site_key.trim()
+      : "";
+  if (templateAppId && inScope(templateSiteKey)) {
+    found.push({
+      appId: templateAppId,
+      siteKey: templateSiteKey || site,
+      position: Number.MAX_SAFE_INTEGER,
+      label,
+      origin: false,
+      role: "template",
+    });
+  }
+  return mergeAppAttributions(found);
+}
+
+/** 读回 `mergeMaterialEntries` 写下的归属并集；没有就现算。 */
+export function libraryItemStoredAppAttributions(
+  item: LibraryItem | null | undefined,
+  siteKey = "",
+): MaterialAppAttribution[] {
+  const stored = item?.meta?.[MATERIAL_APP_BINDINGS_META_KEY];
+  if (Array.isArray(stored)) {
+    return mergeAppAttributions(
+      stored.filter(
+        (value): value is MaterialAppAttribution =>
+          Boolean(value) &&
+          typeof value === "object" &&
+          typeof (value as MaterialAppAttribution).appId === "string" &&
+          Boolean((value as MaterialAppAttribution).appId),
+      ),
+    );
+  }
+  return libraryItemAppAttributions(item, siteKey);
+}
+
 export function libraryItemMatchesTypes(
   item: LibraryItem,
   types: readonly ArtifactType[],
@@ -246,15 +443,17 @@ export interface MaterialScopeFilterOutcome {
   items: LibraryItem[];
   /** The backend ignored at least one §3.2 parameter. */
   degraded: boolean;
-  /** Scope was unenforceable, so the unscoped page is shown instead. */
-  showedUnscoped: boolean;
 }
 
 /**
  * Applies the scope the backend was asked for. Until W7 ships, an old backend
  * answers scoped requests with the global page; we narrow it here rather than
- * showing the wrong shelf, and fall back to the unscoped page when narrowing
- * would leave an empty list (an empty explore page is never acceptable).
+ * showing the wrong shelf.
+ *
+ * 收窄后为空就是空（D1 / 合同 §3 W4 必做 2）。旧实现在这里退回整页，理由是
+ * 「空的探索页永远不可接受」；那条理由被操作员推翻了——摆一屏别站素材比空货架糟得多。
+ * 数据库侧也证明了这一步不会让任何站变空：677 个 `(site_key, app_id)` 槽位每个恰好
+ * 4 份、全部 published。
  */
 export function applyMaterialScope(
   items: readonly LibraryItem[],
@@ -269,7 +468,7 @@ export function applyMaterialScope(
   const wantsScope = Boolean(scopeSite || scopeApp);
   const wantsTypes = scope.types.length > 1;
   if (!wantsScope && !wantsTypes) {
-    return { items: [...items], degraded: false, showedUnscoped: false };
+    return { items: [...items], degraded: false };
   }
   const kept = items.filter(
     (item) =>
@@ -280,11 +479,7 @@ export function applyMaterialScope(
         })) &&
       (!wantsTypes || libraryItemMatchesTypes(item, scope.types)),
   );
-  const degraded = kept.length !== items.length;
-  if (kept.length > 0 || items.length === 0) {
-    return { items: kept, degraded, showedUnscoped: false };
-  }
-  return { items: [...items], degraded: true, showedUnscoped: true };
+  return { items: kept, degraded: kept.length !== items.length };
 }
 
 const warnedScopeKeys = new Set<string>();
@@ -292,7 +487,7 @@ const warnedScopeKeys = new Set<string>();
 /** One console line per degraded scope, so a stale backend is visible but quiet. */
 export function warnMaterialScopeDegraded(
   key: string,
-  detail: { level: MaterialLibraryLevel; showedUnscoped: boolean },
+  detail: { level: MaterialLibraryLevel },
 ): void {
   if (warnedScopeKeys.has(key)) return;
   warnedScopeKeys.add(key);
@@ -300,10 +495,7 @@ export function warnMaterialScopeDegraded(
   console.warn(
     `[material-library] 后端未按合同 §3.2 应用 ${MATERIAL_SCOPE_PARAM_NAMES.siteKey}/` +
       `${MATERIAL_SCOPE_PARAM_NAMES.appId}/${MATERIAL_SCOPE_PARAM_NAMES.types}` +
-      `（level=${detail.level}）；` +
-      (detail.showedUnscoped
-        ? "已退回全局搜索结果。"
-        : "已在浏览器侧按作用域收窄本页结果。"),
+      `（level=${detail.level}）；已在浏览器侧按作用域收窄本页结果。`,
   );
 }
 

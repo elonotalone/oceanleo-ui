@@ -1,20 +1,21 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { createArtifactRevision } from "../artifact-client";
-import {
-  advancedSavedItem,
-  commitAdvancedSavedRevision,
-} from "../advanced-session";
+import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
-import { useRichDocEditor } from "../doc-editors/use-rich-doc-editor";
+import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
+import {
+  richDocSavedItemForHandoff,
+  useRichDocEditor,
+  RICHDOC_SOURCE_FORMAT,
+  RICHDOC_SOURCE_MEDIA_TYPE,
+} from "../doc-editors/use-rich-doc-editor";
 import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -22,19 +23,6 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
-
-async function sha256(blob: Blob): Promise<string> {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error("当前环境缺少 Web Crypto，无法验证文档 revision。");
-  }
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    await blob.arrayBuffer(),
-  );
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export function RichDocRoute({
   item,
@@ -107,84 +95,61 @@ export function RichDocRoute({
     if (!saved) {
       return {
         ok: false as const,
-        error: editor.error || "文档未保存；源可能尚未成功载入。",
+        error:
+          editor.error ||
+          artifactSaveStepMessage(
+            "contract",
+            "文档源可能尚未成功载入，没有可提交的内容",
+          ),
       };
     }
     const savedMeta = {
+      source_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
+      source_media_type: saved.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
+      source_url: saved.url,
+      delivery_format: RICHDOC_SOURCE_FORMAT,
       editor_project_url: saved.projectUrl,
       editor_project_schema: saved.projectSchema,
+      editor_manifest_url: saved.projectUrl,
+      editor_manifest_schema: saved.projectSchema,
+      editor_working_head_url: saved.projectUrl,
+      editor_working_head_project_url: saved.projectUrl,
+      editor_working_head_schema: saved.projectSchema,
     };
-    if (!isDurableLibraryItem(item)) {
+    const receipt = advancedSavedItem(item, {
+      url: saved.url,
+      versionId: saved.versionId,
+      title: saved.title,
+      meta: savedMeta,
+    });
+    // The typed revision is published by the editor's own save through the
+    // shared contract. A durable item that comes back without a new revision
+    // means the commit silently fell through to the legacy creation path.
+    if (isDurableLibraryItem(item)) {
+      if (
+        !saved.item ||
+        !isDurableLibraryItem(saved.item) ||
+        saved.item.artifactId !== item.artifactId ||
+        !saved.revisionId ||
+        saved.revisionId === saved.previousRevisionId
+      ) {
+        return {
+          ok: false as const,
+          error: artifactSaveStepMessage(
+            "revision-verify",
+            "这次保存没有在同一份素材上产生新的版本",
+          ),
+        };
+      }
       return {
         ok: true as const,
-        item: advancedSavedItem(item, {
-          url: saved.url,
-          versionId: saved.versionId,
-          meta: savedMeta,
-        }),
+        item: richDocSavedItemForHandoff(saved.item, saved),
       };
     }
-    try {
-      if (!saved.url || !saved.projectUrl) {
-        throw new Error("文档保存没有返回完整的 source/editor manifest。");
-      }
-      const sourceBlobPromise = fetchMediaBlob(saved.url, {
-        maxBytes: 40_000_000,
-        cache: "no-store",
-      });
-      const manifestBlobPromise =
-        saved.projectUrl === saved.url
-          ? sourceBlobPromise
-          : fetchMediaBlob(saved.projectUrl, {
-              maxBytes: 20_000_000,
-              cache: "no-store",
-            });
-      const [sourceBlob, manifestBlob] = await Promise.all([
-        sourceBlobPromise,
-        manifestBlobPromise,
-      ]);
-      const [sourceDigest, manifestDigest] = await Promise.all([
-        sha256(sourceBlob),
-        sha256(manifestBlob),
-      ]);
-      const committed = await commitAdvancedSavedRevision(item, {
-        publish: createArtifactRevision,
-        commit: {
-          source: {
-            format: "docx",
-            url: saved.url,
-            digest: sourceDigest,
-          },
-          renditions: [
-            {
-              purpose: "full",
-              url: saved.url,
-              digest: sourceDigest,
-            },
-            {
-              purpose: "editor_manifest",
-              url: saved.projectUrl,
-              digest: manifestDigest,
-            },
-          ],
-          provenance: {
-            editor: "richdoc",
-            editorProjectSchema: saved.projectSchema,
-            previousRevisionId: item.revisionId,
-          },
-        },
-        meta: savedMeta,
-      });
-      return { ok: true as const, item: committed };
-    } catch (caught) {
-      return {
-        ok: false as const,
-        error:
-          caught instanceof Error
-            ? caught.message
-            : "文档 artifact revision 保存失败",
-      };
-    }
+    return {
+      ok: true as const,
+      item: richDocSavedItemForHandoff(receipt || item, saved),
+    };
   }, [editor.error, editor.save, item]);
   const importLocalFiles = useCallback(
     async (files: File[]) => {

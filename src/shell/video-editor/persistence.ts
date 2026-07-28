@@ -42,6 +42,20 @@ export async function uploadCoverPng(
   return { url };
 }
 
+/** 把预览 canvas 当前帧导出成 PNG；不可读时返回 null，不抛。 */
+export async function timelineCoverPng(
+  canvas: HTMLCanvasElement | null,
+): Promise<Blob | null> {
+  if (!canvas || typeof canvas.toBlob !== "function") return null;
+  return new Promise<Blob | null>((resolve) => {
+    try {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 /** 上传 TimelineDoc 草稿 JSON 并登记到我的库。 */
 export async function uploadDraft(
   doc: TimelineDoc,
@@ -51,6 +65,7 @@ export async function uploadDraft(
   idempotencyKey: string,
   workingHeadUrl: string,
   tt: UITranslate,
+  createPreview?: () => Promise<Blob | null>,
 ): Promise<PersistResult> {
   const saved = await saveProjectWorkingHead({
     item,
@@ -64,10 +79,27 @@ export async function uploadDraft(
     meta: {
       timeline_doc: doc,
       is_draft: true,
+      editor_capability: "video-timeline",
     },
     project: {
       schema: "oceanleo.timeline.v1",
       data: doc,
+    },
+    editorManifest: {
+      id: "video-timeline",
+      format: "oceanleo.timeline.v1",
+    },
+    // 成品视频在服务端渲染，保存这一刻只有当前帧可以当封面。
+    createPreview,
+    /**
+     * `oceanleo.timeline.v1` 本身就是 `video` accepted 的 `source.format`
+     * （矩阵 §3.2 第 10 行），所以时间轴工程可以直接作为 revision 的 source；
+     * 封面帧满足「preview 或 full」里的 preview。
+     */
+    artifactRevision: {
+      artifactType: "video",
+      editor: "video-timeline",
+      provenance: { timelineSchema: "oceanleo.timeline.v1" },
     },
   });
   if (!saved.ok) {

@@ -31,6 +31,7 @@ import {
 } from "../library-data";
 import { guessFileKind, guessMediaKind, probeMediaSource } from "./media-probe";
 import {
+  timelineCoverPng,
   uploadCoverPng,
   uploadDraft,
   type PersistResult,
@@ -1190,6 +1191,10 @@ export function useVideoTimeline(
         `video-timeline:${item.id}:${savingRevision}`,
         workingHeadUrlRef.current,
         tt,
+        () =>
+          previewReady
+            ? timelineCoverPng(previewCanvasRef.current)
+            : Promise.resolve(null),
       );
       if (!result.url) {
         setError(result.error || tt("草稿上传失败"));
@@ -1211,7 +1216,7 @@ export function useVideoTimeline(
       savingDraftRef.current = false;
       setSavingDraft(false);
     }
-  }, [item, siteId, tt]);
+  }, [item, previewReady, siteId, tt]);
 
   const exportVideo = useCallback(async () => {
     if (exporting) return;

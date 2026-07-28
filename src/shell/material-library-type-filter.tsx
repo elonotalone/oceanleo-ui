@@ -13,74 +13,131 @@ import { useId } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { ARTIFACT_TYPES, type ArtifactType } from "./artifact-contract";
 import { MATERIAL_TAXONOMY_LABEL } from "./material-library-controller";
-import type { MaterialSiteAppChip } from "./material-library-presentation";
+import {
+  MATERIAL_SCENE_ALL_ID,
+  MATERIAL_SCENE_OTHER_ID,
+  type MaterialSceneChip,
+  type SceneSelection,
+} from "./material-scene-axis";
 
 const CHIP_BASE = "min-h-8 rounded-full border px-2.5 text-[11px]";
 const CHIP_ON = "border-transparent bg-[var(--fg,#292524)] text-white";
 const CHIP_OFF =
   "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]";
 
+function chipIdToSelection(id: string): SceneSelection {
+  if (id === MATERIAL_SCENE_ALL_ID) return null;
+  if (id === MATERIAL_SCENE_OTHER_ID) return "";
+  return id;
+}
+
+function selectionToChipId(selected: SceneSelection): string {
+  if (selected === null) return MATERIAL_SCENE_ALL_ID;
+  if (selected === "") return MATERIAL_SCENE_OTHER_ID;
+  return selected;
+}
+
 /**
- * 本站素材的主分类轴。`null` 是「全部」，`""` 是解析不出归属 app 的那一组，两者
- * 必须区分得开，所以选中态不是空字符串哨兵。
+ * 素材的**主分区轴 = 站点 app 目录的场景词**（D2）。原来那排原始 appId chips
+ * （`ad-copy 4` / `xhs-note 4`）已下线：读者在工作台看到的是「学术教育 / 职场精选…」，
+ * 探索页必须是同一套分区。
  *
- * 标签是 app 的身份（多数时候就是 appId），不是 UI 文案，所以不过 `tt`。
+ * `null` 是「全部」，`""` 是「其它」，两者必须区分得开，所以选中态不是空字符串哨兵。
+ * 场景词是站点自己的分类文案，不是共享包 UI 文案，所以不过 `tt`。
  */
-export function MaterialAppFilter({
+export function MaterialSceneFilter({
   chips,
   selected,
   onSelect,
 }: {
-  chips: readonly MaterialSiteAppChip[];
-  selected: string | null;
-  onSelect: (appId: string | null) => void;
+  chips: readonly MaterialSceneChip[];
+  selected: SceneSelection;
+  onSelect: (scene: SceneSelection) => void;
 }) {
   const tt = useUI();
+  const activeId = selectionToChipId(selected);
   return (
     <div
       role="group"
-      aria-label={tt("按 app 分组")}
+      aria-label={tt("素材场景分区")}
+      data-material-scene-axis="true"
       className="flex flex-wrap items-center gap-1"
     >
-      <button
-        type="button"
-        aria-pressed={selected === null}
-        data-material-app-chip="all"
-        onClick={() => onSelect(null)}
-        className={`${CHIP_BASE} ${selected === null ? CHIP_ON : CHIP_OFF}`}
-      >
-        {tt("全部 app")}
-      </button>
-      {chips.map((chip) => (
-        <button
-          key={chip.appId || "unassigned"}
-          type="button"
-          aria-pressed={selected === chip.appId}
-          data-material-app-chip={chip.appId || "other"}
-          onClick={() => onSelect(chip.appId)}
-          className={`${CHIP_BASE} ${
-            selected === chip.appId ? CHIP_ON : CHIP_OFF
-          }`}
-        >
-          {chip.appId ? chip.label : tt(chip.label)}
-          <span className="ml-1 opacity-60">{chip.count}</span>
-        </button>
-      ))}
+      {chips.map((chip) => {
+        const pressed = chip.id === activeId;
+        const builtin =
+          chip.id === MATERIAL_SCENE_ALL_ID ||
+          chip.id === MATERIAL_SCENE_OTHER_ID;
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            aria-pressed={pressed}
+            data-material-scene-chip={chip.id}
+            onClick={() => onSelect(chipIdToSelection(chip.id))}
+            className={`${CHIP_BASE} ${pressed ? CHIP_ON : CHIP_OFF}`}
+          >
+            {builtin ? tt(chip.label) : chip.label}
+            <span className="ml-1 opacity-60">{chip.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
+/** `?app=` 锚点的可清除指示，不是分区轴：一颗，不是一排。 */
+export function MaterialAppAnchorChip({
+  appId,
+  label,
+  onClear,
+}: {
+  appId: string;
+  label: string;
+  onClear: () => void;
+}) {
+  const tt = useUI();
+  return (
+    <button
+      type="button"
+      data-material-app-anchor={appId}
+      onClick={onClear}
+      aria-label={tt(`取消只看「${label || appId}」的筛选`)}
+      className={`${CHIP_BASE} ${CHIP_ON}`}
+    >
+      {label || appId}
+      <span className="ml-1 opacity-60" aria-hidden="true">
+        ×
+      </span>
+    </button>
+  );
+}
+
+/**
+ * 次级筛选（D2：13 个 artifactType chips 从第一层降为次级）。
+ *
+ * `availableTypes` 给了就只铺货架上真实存在的类型 + 已选中的类型：站点不再声明
+ * `types`，铺满 13 颗里有 11 颗点了必空，那不是筛选而是噪音。
+ */
 export function MaterialTypeFilter({
   multiSelect,
   selectedTypes,
   onApplyTypes,
+  availableTypes,
 }: {
   multiSelect: boolean;
   selectedTypes: readonly ArtifactType[];
   onApplyTypes: (types: ArtifactType[]) => void;
+  availableTypes?: readonly ArtifactType[];
 }) {
   const tt = useUI();
   const taxonomyId = useId();
+  const offered = availableTypes
+    ? ARTIFACT_TYPES.filter(
+        (type) =>
+          availableTypes.includes(type) || selectedTypes.includes(type),
+      )
+    : ARTIFACT_TYPES;
   if (!multiSelect) {
     const taxonomy: ArtifactType | "" =
       selectedTypes.length === 1 ? selectedTypes[0] : "";
@@ -100,7 +157,7 @@ export function MaterialTypeFilter({
           className="min-h-8 rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg-2,#57534e)]"
         >
           <option value="">{tt("全部类型")}</option>
-          {ARTIFACT_TYPES.map((type) => (
+          {offered.map((type) => (
             <option key={type} value={type}>
               {tt(MATERIAL_TAXONOMY_LABEL[type])}
             </option>
@@ -127,7 +184,7 @@ export function MaterialTypeFilter({
       >
         {tt("全部类型")}
       </button>
-      {ARTIFACT_TYPES.map((type) => (
+      {offered.map((type) => (
         <button
           key={type}
           type="button"

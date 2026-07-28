@@ -10,11 +10,16 @@
 //
 // 本模块提供：
 //   · MaterialBoardId / MaterialBoard —— 板块数据模型；
-//   · MATERIAL_BOARDS —— 素材总栏目的**板块分类骨架**（id + 中文名 + 图标）。完整目录
+//   · MATERIAL_BOARDS —— 素材总栏目的**板块分类骨架**（id + 中文名 + 图标）。目录
 //     只查询 rich-v1 公共库存；宿主注入的旧 materials 不能绕过服务端 ACL。
 //   · materialsForBoards —— 从「板块→素材」映射里取若干板块的素材并集（各站右栏子页面用）。
-//   · MaterialCatalog —— 完整总栏目组件：顶部板块 tab + 主体 MaterialLibrary（复用现成放大/
+//   · MaterialCatalog —— 总栏目组件：顶部板块 tab + 主体 MaterialLibrary（复用现成放大/
 //     搜索/分类），是各站右栏素材库子页面的父页面。
+//
+// 2026-07-28（`01-decisions.md` D1，父任务仲裁归 W4 收尾）：本组件原来锁在
+// `lockLevel="more"`（全平台）。「更多素材」整层下线后改为**本站作用域**——
+// 宿主必须传 `siteKey`，页面只显示属于该站的素材。这与「彻底删除不属于本站的素材」
+// 是同一条口径，总栏目不再是那条口径的例外。
 // ============================================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -108,6 +113,15 @@ export function materialsForBoards(
 }
 
 export interface MaterialCatalogProps {
+  /**
+   * 宿主站的 site key（`scripts/oceanleo-sites.tsv`）。
+   *
+   * **必填，且刻意不给默认值。** 素材作用域按 D1 只剩「此 app / 本站素材」两层，
+   * 本组件走本站层；没有 site key 时数据层会 fail-closed（一个请求都不发），
+   * 那样只会得到一屏静悄悄的空货架。让它变成编译期错误，比让某个站上线后
+   * 才发现货架是空的强。
+   */
+  siteKey: string;
   /** @deprecated 仅供 materialsForBoards 兼容；完整目录不混入宿主素材。 */
   byBoard?: Partial<Record<MaterialBoardId, MaterialItem[]>>;
   /** 只显示这些板块（不给则全部 MATERIAL_BOARDS）。 */
@@ -119,10 +133,14 @@ export interface MaterialCatalogProps {
 }
 
 /**
- * 完整素材总栏目：顶部板块切换（CanvasSubTabs）+ 主体 MaterialLibrary（当前板块的素材）。
- * 放进 asset 站 / 主站 `/materials` 页；各站右栏素材库子页面的「看全部」深链到这里。
+ * 素材总栏目：顶部板块切换（CanvasSubTabs）+ 主体 MaterialLibrary（当前板块的素材）。
+ * 放进宿主站的 `/materials` 页；各站右栏素材库子页面的「看全部」深链到这里。
+ *
+ * 作用域是**本站**，不是全平台：`01-decisions.md` D1 把「更多素材」整层下线，
+ * 每个站只展示属于自己的素材。
  */
 export function MaterialCatalog({
+  siteKey,
   boards,
   defaultBoard,
   accent = "#4f46e5",
@@ -232,10 +250,10 @@ export function MaterialCatalog({
           accent={accent}
           hideSeeAll
           action={deepLinkAction}
-          initialLevel="more"
-          lockLevel="more"
+          siteId={siteKey}
+          initialLevel="site"
+          lockLevel="site"
           fetchPrimary={false}
-          fetchMore
           curatedType={
             selectedTaxonomy
           }

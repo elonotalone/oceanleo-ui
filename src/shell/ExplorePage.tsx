@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
   canonicalArtifactContextId,
@@ -13,11 +20,20 @@ import {
   materialTypesFromCsv,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
+import {
+  EXPLORE_TITLE,
+  MATERIAL_SCENE_OTHER_ID,
+  exploreEmptyHint,
+  exploreSubtitle,
+  readSiteAppDirectory,
+  subscribeSiteAppDirectories,
+  type SceneSelection,
+} from "./material-scene-axis";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 
-/** Compatibility vocabulary used by existing site Explore configs. */
+/** @deprecated 站点侧词表，零配置之后不再有任何取值被采纳。 */
 export type ExploreAssetType =
   | "image"
   | "vector"
@@ -29,34 +45,25 @@ export type ExploreAssetType =
   | "sticker"
   | "font"
   | "chart"
-  /**
-   * Long-form deliverables (word / paper / novel / law / med / resume /
-   * notebook …). Without it those sites had to mislabel documents as `image`,
-   * or ride on `font`, which only maps to `document` by accident.
-   */
   | "document";
 
+/** @deprecated 站点自造的分类，零配置之后由站点 app 目录的 `scenes` 取代。 */
 export interface ExploreCategory {
   key: string;
   label: string;
   subtab?: string;
 }
 
+/**
+ * @deprecated 整份作废（`01-decisions.md` D6）。
+ *
+ * 站点不再声明类型、标题、副标题与空态文案：全部由共享包按**站点 app 目录**推导
+ * （`registerSiteAppDirectory`）。字段保留只为让 36 个站不必锁步发布；传了会被忽略，
+ * 并在 DOM 上打出 `data-explore-legacy-props`，由 W6 的跨站门禁判红。
+ */
 export interface ExploreConfig {
-  /**
-   * Legacy single default. Optional since `types` supersedes it; the 36 sites
-   * that still pass only this keep working unchanged.
-   */
   type?: ExploreAssetType;
-  /**
-   * Multi-select default for the type chips. Sites still on the single `type`
-   * keep working unchanged; when both are absent the shelf shows every type.
-   */
   types?: ExploreAssetType[];
-  /**
-   * Retained for source compatibility. Rich-v1 discovery uses the canonical
-   * 13-type taxonomy; legacy marketing categories never grant visibility.
-   */
   categories?: ExploreCategory[];
   title?: string;
   subtitle?: string;
@@ -64,18 +71,12 @@ export interface ExploreConfig {
 }
 
 export interface ExplorePageProps {
-  config: ExploreConfig;
+  /** 唯一必填：`scripts/oceanleo-sites.tsv` 的站点 key。 */
+  siteKey?: string;
+  /** 可选 app 锚点；URL 的 `?app=` 优先。 */
+  appId?: string;
   accent?: string;
   className?: string;
-  /**
-   * Canonical site key from `scripts/oceanleo-sites.tsv` (`image`, `word`, …).
-   * 本站素材 cannot exist without it — see `siteId` for the legacy spelling.
-   */
-  siteKey?: string;
-  /** @deprecated Legacy spelling of `siteKey`; still honoured. */
-  siteId?: string;
-  /** Anchors 此 app; `?app=` in the URL wins over this prop. */
-  appId?: string;
   onOpenItem?: (item: LibraryItem) => void;
   materialActions?: readonly WorkbenchMaterialAction[];
   onMaterialAction?: (
@@ -88,89 +89,99 @@ export interface ExplorePageProps {
   ) => WorkbenchMaterialActionAvailability;
   onMaterialDragStart?: (item: LibraryItem) => void;
   onMaterialDragEnd?: () => void;
-}
-
-const EXPLORE_ARTIFACT_TYPE: Record<ExploreAssetType, ArtifactType> = {
-  image: "single_file_image",
-  vector: "vector_image",
-  video: "video",
-  audio: "audio",
-  music: "audio",
-  "3d": "model_3d",
-  ppt: "deck",
-  sticker: "vector_image",
-  font: "document",
-  chart: "chart",
-  document: "document",
-};
-
-function configuredTypes(config: ExploreConfig): ArtifactType[] {
-  const requested = config.types?.length
-    ? config.types
-    : config.type
-      ? [config.type]
-      : [];
-  const types = requested
-    .map((value) => EXPLORE_ARTIFACT_TYPE[value])
-    .filter(Boolean);
-  return [...new Set(types)];
+  /** @deprecated 零配置之后整份被忽略，见 `ExploreConfig`。 */
+  config?: ExploreConfig;
+  /** @deprecated `siteKey` 的旧拼写；仍然认，但记为漂移。 */
+  siteId?: string;
 }
 
 const warnedMissingSiteKey = new Set<string>();
+const warnedLegacyProps = new Set<string>();
+const warnedMissingDirectory = new Set<string>();
+
+export function resetExploreSiteKeyWarnings(): void {
+  warnedMissingSiteKey.clear();
+  warnedLegacyProps.clear();
+  warnedMissingDirectory.clear();
+}
 
 /**
  * 本站素材 is only truthful when the page actually hands us a site key: without
- * one the controller cannot send `originSiteKey` and the shelf silently serves
- * a whole-platform search under a 「本站素材」 heading. A wrong label that never
- * complains is worse than a missing section, so the section is withheld and
- * the miswiring is reported instead.
+ * one the controller cannot send `originSiteKey` and the shelf would serve a
+ * whole-platform search under a 「本站素材」 heading.
  */
-export function resetExploreSiteKeyWarnings(): void {
-  warnedMissingSiteKey.clear();
-}
-
 function reportMissingSiteKey(appId: string): void {
   const key = appId || "*";
   if (warnedMissingSiteKey.has(key)) return;
   warnedMissingSiteKey.add(key);
   if (typeof console === "undefined") return;
   console.error(
-    "[ExplorePage] 缺少 siteKey：本站素材/此 app 两层已停用，只保留「更多素材」。" +
-      "请给 <ExplorePage siteKey=\"<sites.tsv 的站点 key>\" /> 传值" +
-      "（合同 §0.6 / §8.2）。",
+    "[ExplorePage] 缺少 siteKey：本站素材整层已停用。" +
+      '请给 <ExplorePage siteKey="<sites.tsv 的站点 key>" /> 传值。',
   );
 }
 
+/** 站点还在传作废的 props：门禁要看得见，所以不是 dev-only 的软提示。 */
+function reportLegacyProps(siteKey: string, props: readonly string[]): void {
+  const key = `${siteKey}\u0000${props.join(",")}`;
+  if (warnedLegacyProps.has(key) || props.length === 0) return;
+  warnedLegacyProps.add(key);
+  if (typeof console === "undefined") return;
+  console.error(
+    `[ExplorePage] ${siteKey || "(无 siteKey)"} 仍在传已作废的 props：` +
+      `${props.join(" / ")}。零配置之后类型/分区/文案全部由站点 app 目录推导` +
+      "（01-decisions.md D6），这些取值已被忽略，请从站点页面删除。",
+  );
+}
+
+/** 站点没登记 app 目录：分区轴退化成只有「全部」，这是漂移不是正常态。 */
+function reportMissingAppDirectory(siteKey: string): void {
+  if (!siteKey || warnedMissingDirectory.has(siteKey)) return;
+  warnedMissingDirectory.add(siteKey);
+  if (typeof console === "undefined") return;
+  console.error(
+    `[ExplorePage] ${siteKey} 没有登记 app 目录：素材分区无法按工作台场景展开。` +
+      "请在站点侧模块作用域调用 " +
+      `registerSiteAppDirectory("${siteKey}", <本站 app-catalog 数组>)。`,
+  );
+}
+
+function legacyPropNames(props: ExplorePageProps): string[] {
+  const names: string[] = [];
+  if (props.config && Object.keys(props.config).length > 0) names.push("config");
+  if (props.siteId) names.push("siteId");
+  return names;
+}
+
+const SCENE_QUERY_KEY = "scene";
+
 /**
- * Site discovery is a thin presentation of the same rich-v1 public library the
- * workbench uses, scoped by 合同 §0.6:
+ * 站内探索页。**零配置**：站点只交出 site key（外加可选的 app 锚点），
+ * 分区、类型、文案全部由共享包按站点 app 目录推导（`01-decisions.md` D2/D6）。
  *
- *   /explore              → 本站素材 ｜ 更多素材
- *   /explore?app=<appId>  → 此 app ｜ 本站素材 ｜ 更多素材
- *
- * It never renders legacy raw asset URLs.
+ *   /explore              → 按站点 app 目录的场景分区浏览本站素材
+ *   /explore?app=<appId>  → 同一套分区，外加一个可清除的 app 锚点
  */
-export function ExplorePage({
-  config,
-  accent = "#4f46e5",
-  className = "",
-  siteKey = "",
-  siteId = "",
-  appId = "",
-  onOpenItem,
-  materialActions = [],
-  onMaterialAction,
-  materialActionEvidence,
-  onMaterialDragStart,
-  onMaterialDragEnd,
-}: ExplorePageProps) {
+export function ExplorePage(props: ExplorePageProps) {
+  const {
+    accent = "#4f46e5",
+    className = "",
+    siteKey = "",
+    siteId = "",
+    appId = "",
+    onOpenItem,
+    materialActions = [],
+    onMaterialAction,
+    materialActionEvidence,
+    onMaterialDragStart,
+    onMaterialDragEnd,
+  } = props;
   const tt = useUI();
   const [action, setAction] = useState<WorkspaceActionEnvelope | null>(null);
-  // `?app=` is produced by `exploreAppHref(appId)` (合同 §3.1).
+  // `?app=` 由 `exploreAppHref(appId)` 产出（合同 §3.1）。站点不必自己解析 URL。
   const [anchoredApp, setAnchoredApp] = useState(appId);
-  const [types, setTypes] = useState<ArtifactType[]>(() =>
-    configuredTypes(config),
-  );
+  const [types, setTypes] = useState<ArtifactType[]>([]);
+  const [scene, setScene] = useState<SceneSelection>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -178,9 +189,13 @@ export function ExplorePage({
     const revisionId = params.get("revisionId")?.trim() || "";
     const query = params.get("q")?.trim() || "";
     const app = params.get("app")?.trim() || "";
+    const urlScene = params.get(SCENE_QUERY_KEY)?.trim() || "";
     const urlTypes = materialTypesFromCsv(params.get("types") || "");
     if (app) setAnchoredApp(app);
     if (urlTypes.length > 0) setTypes(urlTypes);
+    if (urlScene) {
+      setScene(urlScene === MATERIAL_SCENE_OTHER_ID ? "" : urlScene);
+    }
     setAction({
       nonce: `explore:${artifactId}:${revisionId}:${query}`,
       action: {
@@ -195,70 +210,92 @@ export function ExplorePage({
     });
   }, []);
 
-  // Chip state survives a refresh; the app anchor stays whatever brought the
-  // reader here.
-  const syncTypesToUrl = useCallback((next: ArtifactType[]) => {
-    setTypes(next);
+  const syncUrl = useCallback((key: string, value: string) => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
-    const csv = materialTypesCsv(next);
-    if (csv) url.searchParams.set("types", csv);
-    else url.searchParams.delete("types");
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
     window.history.replaceState(null, "", url.toString());
   }, []);
+  const syncTypesToUrl = useCallback(
+    (next: ArtifactType[]) => {
+      setTypes(next);
+      syncUrl("types", materialTypesCsv(next));
+    },
+    [syncUrl],
+  );
+  const syncSceneToUrl = useCallback(
+    (next: SceneSelection) => {
+      setScene(next);
+      syncUrl(
+        SCENE_QUERY_KEY,
+        next === null ? "" : next === "" ? MATERIAL_SCENE_OTHER_ID : next,
+      );
+    },
+    [syncUrl],
+  );
 
   const exploreAppId = anchoredApp.trim();
   const resolvedSiteKey = (siteKey || siteId).trim();
   const scopeReady = Boolean(resolvedSiteKey);
-  const levels = useMemo<MaterialLibraryLevel[]>(() => {
-    if (!scopeReady) return ["more"];
-    return exploreAppId ? ["primary", "site", "more"] : ["site", "more"];
-  }, [exploreAppId, scopeReady]);
-  const initialLevel: MaterialLibraryLevel = !scopeReady
-    ? "more"
-    : exploreAppId
-      ? "primary"
-      : "site";
-  // Reported during render, not in an effect: these pages are server-rendered,
-  // and a miswired site has to name itself in the SSR log too. The module-level
-  // dedup keeps it to one line per app.
+  const directory = useSyncExternalStore(
+    subscribeSiteAppDirectories,
+    () => readSiteAppDirectory(resolvedSiteKey),
+    () => readSiteAppDirectory(resolvedSiteKey),
+  );
+  // 本站素材是探索页唯一的一层：「更多素材」按 D1 下线，「此 app」退化成一个可清除的
+  // 锚点（分区轴负责分类，不再靠层级切换）。
+  const levels = useMemo<MaterialLibraryLevel[]>(() => ["site"], []);
+  const legacyProps = legacyPropNames(props);
+
+  // 渲染期上报，不放 effect：这些页面是服务端渲染的，漂移必须在 SSR 日志里也点名。
   if (!scopeReady) reportMissingSiteKey(exploreAppId);
+  if (legacyProps.length > 0) reportLegacyProps(resolvedSiteKey, legacyProps);
+  if (scopeReady && !directory) reportMissingAppDirectory(resolvedSiteKey);
 
   const primaryAction = useMemo(
     () =>
-      materialActions.includes("insert")
-        ? "insert"
-        : materialActions[0],
+      materialActions.includes("insert") ? "insert" : materialActions[0],
     [materialActions],
   );
 
   return (
     <main
+      data-explore-shape="zero-config"
+      data-explore-site-key={resolvedSiteKey}
+      {...(legacyProps.length > 0
+        ? { "data-explore-legacy-props": legacyProps.join(",") }
+        : {})}
+      {...(scopeReady && !directory
+        ? { "data-explore-missing-app-directory": resolvedSiteKey }
+        : {})}
       className={`mx-auto flex min-h-0 w-full max-w-6xl flex-col px-6 py-7 ${className}`}
     >
       <header className="mb-4 shrink-0">
         <h1 className="text-[22px] font-semibold tracking-tight text-[var(--fg,#171717)]">
-          {tt(config.title || "探索 · 素材")}
+          {tt(EXPLORE_TITLE)}
         </h1>
-        {config.subtitle && (
-          <p className="mt-1 text-[13px] text-[var(--muted,#737373)]">
-            {tt(config.subtitle)}
-          </p>
-        )}
-        {!scopeReady &&
-          typeof process !== "undefined" &&
-          process.env.NODE_ENV !== "production" && (
-            <p
-              role="alert"
-              data-explore-missing-site-key="true"
-              className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700"
-            >
-              {tt(
-                "开发提示：<ExplorePage> 没有拿到 siteKey，「本站素材」与「此 app」两层已停用。",
-              )}
-            </p>
-          )}
+        <p className="mt-1 text-[13px] text-[var(--muted,#737373)]">
+          {tt(exploreSubtitle(directory))}
+        </p>
       </header>
+      {/*
+        缺 siteKey 是**接线错误**，不是空货架：D1 之后没有全平台那一层可退，照常渲染
+        只会得到一屏别站素材顶着「本站素材」的招牌。所以这里 fail-closed —— 不挂货架，
+        只留一条点名的错误（生产环境的 console.error 见 reportMissingSiteKey）。
+      */}
+      {!scopeReady ? (
+        <section
+          role="alert"
+          data-explore-missing-site-key="true"
+          className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-800"
+        >
+          {tt(
+            "这个探索页没有拿到站点 key，本站素材已按 fail-closed 停用。" +
+              "请给 <ExplorePage siteKey=… /> 传入 sites.tsv 里的站点 key。",
+          )}
+        </section>
+      ) : (
       <section
         className="min-h-[20rem] flex-1 overflow-hidden rounded-2xl border border-[var(--border,#e5e5e5)] bg-[var(--card,#fff)]"
         aria-label={tt("授权公共素材库")}
@@ -269,33 +306,28 @@ export function ExplorePage({
           action={action}
           siteId={resolvedSiteKey}
           appId={exploreAppId}
-          contextId={canonicalArtifactContextId(
-            resolvedSiteKey,
-            exploreAppId,
-          )}
+          contextId={canonicalArtifactContextId(resolvedSiteKey, exploreAppId)}
           levels={levels}
-          initialLevel={initialLevel}
-          fetchPrimary={scopeReady && Boolean(exploreAppId)}
-          fetchMore
+          initialLevel="site"
+          lockLevel="site"
+          fetchPrimary={false}
           types={types}
           onTypesChange={syncTypesToUrl}
+          scene={scene}
+          onSceneChange={syncSceneToUrl}
           hideSeeAll
-          emptyHint={
-            config.emptyHint ||
-            "当前 taxonomy 暂无经授权的公共素材。"
-          }
+          emptyHint={exploreEmptyHint(scene, directory)}
           onOpenItem={onOpenItem}
           materialActions={materialActions}
           onMaterialAction={onMaterialAction}
           materialActionEvidence={materialActionEvidence}
           primaryMaterialAction={primaryAction}
-          draggableMaterials={Boolean(
-            primaryAction && onMaterialDragStart,
-          )}
+          draggableMaterials={Boolean(primaryAction && onMaterialDragStart)}
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
         />
       </section>
+      )}
     </main>
   );
 }
@@ -347,6 +379,7 @@ const EXPLORE_CATEGORY_LABELS: Record<string, string> = {
   "art-text": "艺术字",
 };
 
+/** @deprecated 旧站点分类词表的取值函数，零配置之后没有消费者。 */
 export function exploreCategoryLabel(key: string): string {
   const normalized = (key || "").trim();
   if (EXPLORE_CATEGORY_LABELS[normalized]) {

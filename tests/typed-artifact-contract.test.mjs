@@ -103,9 +103,10 @@ function projection(overrides = {}) {
   };
 }
 
-test("rich artifact taxonomy exposes exactly thirteen canonical types", () => {
-  assert.equal(ARTIFACT_TYPES.length, 13);
-  assert.equal(new Set(ARTIFACT_TYPES).size, 13);
+test("rich artifact taxonomy exposes exactly fourteen canonical types", () => {
+  // 第 14 类是 `game`（`01-decisions.md` D7）。
+  assert.equal(ARTIFACT_TYPES.length, 14);
+  assert.equal(new Set(ARTIFACT_TYPES).size, 14);
 });
 
 test("one normalized item pins identity, scene and every rendition to one revision", () => {
@@ -530,8 +531,13 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
     ),
     /interface MaterialLibraryQueryInput[\s\S]*taxonomy: ArtifactType \| ""/,
   );
-  assert.match(catalog, /initialLevel="more"/);
-  assert.match(catalog, /lockLevel="more"/);
+  // D1（2026-07-28，父任务仲裁归 W4 收尾）：素材总栏目原来锁在全平台的 `more` 层。
+  // 那一层整层下线后，它与其他货架同口径落到本站作用域，宿主必须传 siteKey。
+  // 锚在行首缩进上，只看 JSX 属性；文件顶部那段说明「原来锁在 more」的注释不算命中。
+  assert.doesNotMatch(catalog, /^\s+(?:initialLevel|lockLevel)="more"/m);
+  assert.match(catalog, /initialLevel="site"/);
+  assert.match(catalog, /lockLevel="site"/);
+  assert.match(catalog, /siteId=\{siteKey\}/);
   assert.match(catalog, /taxonomy/);
   assert.match(explore, /<MaterialLibrary/);
   assert.doesNotMatch(explore, /\/v1\/assets\/library\/search/);
@@ -557,7 +563,8 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
     ),
     "utf8",
   );
-  assert.match(controller, /listEditableShelfArtifacts/);
+  // D1（2026-07-28）：「更多素材」整层下线，全平台快照那条路径连同它的 import 一并清掉。
+  assert.doesNotMatch(controller, /listEditableShelfArtifacts/);
   assert.doesNotMatch(controller, /Promise\.all/);
   assert.match(controller, /isAdvancedEditableShelfItem/);
   assert.doesNotMatch(

@@ -115,6 +115,13 @@ const ChartRoute = dynamic(
     ),
   { ssr: false, loading: WorkbenchRouteLoading },
 );
+const GameRoute = dynamic(
+  () =>
+    import("./advanced-routes/GameRoute").then(
+      (module) => module.GameRoute,
+    ),
+  { ssr: false, loading: WorkbenchRouteLoading },
+);
 
 export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
@@ -473,6 +480,9 @@ function AdvancedContentWorkbenchRuntime(
       break;
     case "deck":
       editor = <DeckRoute {...activeProps} />;
+      break;
+    case "game":
+      editor = <GameRoute {...activeProps} />;
       break;
     case "embed":
       editor = <EmbeddedRoute {...activeProps} />;

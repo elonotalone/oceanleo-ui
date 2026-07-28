@@ -262,6 +262,13 @@ const materialScopeUrl = await compileModule(
     "./artifact-contract": contractUrl,
   },
 );
+const materialDedupeUrl = await compileModule(
+  "src/shell/material-library-dedupe.ts",
+  {
+    "./library-data": libraryDataUrl,
+    "./material-library-scope": materialScopeUrl,
+  },
+);
 const materialControllerUrl = await compileModule(
   "src/shell/material-library-controller.ts",
   {
@@ -269,6 +276,7 @@ const materialControllerUrl = await compileModule(
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": artifactClientUrl,
+    "./material-library-dedupe": materialDedupeUrl,
     "./material-library-scope": materialScopeUrl,
     "./workspace-library-model": workspaceLibraryStubUrl,
   },
@@ -317,12 +325,33 @@ const materialEffectsUrl = await compileModule(
     "./material-library-template-source": materialTemplateSourceUrl,
   },
 );
+const materialSceneAxisUrl = await compileModule(
+  "src/shell/material-scene-axis.ts",
+  {
+    "./material-library-dedupe": materialDedupeUrl,
+  },
+);
 const materialTypeFilterUrl = await compileModule(
   "src/shell/material-library-type-filter.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-contract": contractUrl,
     "./material-library-controller": materialControllerUrl,
+    "./material-scene-axis": materialSceneAxisUrl,
+  },
+);
+const materialToolbarUrl = await compileModule(
+  "src/shell/material-library-toolbar.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./material-library-presentation": materialPresentationUrl,
+    "./material-library-type-filter": materialTypeFilterUrl,
+  },
+);
+const materialSkeletonUrl = await compileModule(
+  "src/shell/material-library-skeleton.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
   },
 );
 const materialDownloadUrl = await compileModule(
@@ -353,8 +382,9 @@ const MaterialLibrary = (
       "./material-library-presentation": materialPresentationUrl,
       "./material-library-effects": materialEffectsUrl,
       "./material-library-template-source": materialTemplateSourceUrl,
-      "./material-library-type-filter": materialTypeFilterUrl,
-      "./material-library-download": materialDownloadUrl,
+      "./material-library-toolbar": materialToolbarUrl,
+      "./material-library-skeleton": materialSkeletonUrl,
+      "./material-scene-axis": materialSceneAxisUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
       "./WorkspaceSession": sessionStubUrl,
       "./workbench-material-registry": registryStubUrl,
@@ -464,10 +494,27 @@ const actionClientStubUrl = dataModule(`
   export async function setArtifactFavorite(item, favorite) {
     return { ok: true, data: { ...item, favorite } };
   }
+  export async function getCurrentArtifactItem(artifactId) {
+    const resolved = globalThis.__currentArtifactItems?.[artifactId];
+    return resolved
+      ? { ok: true, data: resolved }
+      : { ok: false, error: "current head unavailable", status: 404 };
+  }
 `);
 const routesStubUrl = dataModule(`
   export function editorCapabilityFor() {
     return { available: true, unavailableReason: "", route: { type: "image" } };
+  }
+`);
+const catalogControllerStubUrl = dataModule(`
+  export function workspaceTemplatePreviewHref(appId, artifactId) {
+    globalThis.__previewHrefCalls?.push({ appId, artifactId });
+    return (
+      "/workspace?tab=materials&item=" +
+      encodeURIComponent(artifactId) +
+      "&mode=preview&app=" +
+      encodeURIComponent(appId)
+    );
   }
 `);
 const materialProviderModule = await import(
@@ -527,6 +574,17 @@ const RenderedWorkspaceLibrary = (
       "./library-data": libraryDataUrl,
       "./LibraryLayout": libraryLayoutStubUrl,
       "./ArtifactActions": actionModuleUrl,
+      "./library-detail-app-actions": await compileModule(
+        "src/shell/library-detail-app-actions.tsx",
+        {
+          "../i18n/ui/useUI": uiStubUrl,
+          "./artifact-client": actionClientStubUrl,
+          "./library-data": libraryDataUrl,
+          "./material-library-scope": materialScopeUrl,
+          "./site-catalog-controller": catalogControllerStubUrl,
+          "./workspace-library-model": workspaceLibraryModelUrl,
+        },
+      ),
       "./workspace-library-model": workspaceLibraryModelUrl,
       "./workspace-library-view": workspaceViewStubUrl,
     })

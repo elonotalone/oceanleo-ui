@@ -447,11 +447,41 @@ export async function persistModel3DProject({
     fallbackSite: "threed",
     file,
     deliveryUrl: file ? undefined : checkpointUrl,
+    ...(file
+      ? {
+          sourceFormat: "glb",
+          sourceMediaType: "model/gltf-binary",
+        }
+      : {}),
     title,
     mediaType: "model3d",
     kind: "model3d",
     idempotencyKey: `model3d:${item.id}:${revision}`,
     thumbUrl,
+    editorManifest: {
+      id: "model-3d-editor",
+      format: MODEL3D_PROJECT_SCHEMA,
+    },
+    /**
+     * Only a fresh glb checkpoint carries bytes this client hashed itself, so
+     * only that path can prove a `source` digest. The gltf/`deliveryUrl` path
+     * reuses an existing URL with no local digest and additionally trips the
+     * backend's complete-source-manifest rule (V1 §4.1), so it stays on the
+     * legacy creation path until that contract is settled.
+     */
+    ...(file
+      ? {
+          artifactRevision: {
+            artifactType: "model_3d" as const,
+            editor: "three-gltf-editor-v2",
+            provenance: {
+              editorRevision: revision,
+              checkpointReason: checkpointReason || "journal-only",
+              journalCount: journal.length,
+            },
+          },
+        }
+      : {}),
     meta: {
       editor: "three-gltf-editor-v2",
       format: sourceFormat || "glb",

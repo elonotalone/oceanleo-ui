@@ -7,7 +7,6 @@ import {
   type ArtifactType,
 } from "./artifact-contract";
 import {
-  listEditableShelfArtifacts,
   listPrimaryArtifacts,
   searchArtifactLibrary,
   type ArtifactApiResult,
@@ -26,8 +25,8 @@ import {
 import {
   applyMaterialScope,
   materialLibrarySearchParams,
-  materialScopeRequestsBackendScope,
   materialScopeTypes,
+  materialScopeViolation,
   materialTypesCsv,
   warnMaterialScopeDegraded,
   type MaterialLibraryLevel,
@@ -44,21 +43,38 @@ const GATEWAY =
   "https://api.oceanleo.com";
 
 export {
+  MATERIAL_APP_BINDINGS_META_KEY,
   MATERIAL_LIBRARY_LEVELS,
   MATERIAL_SCOPE_PARAM_NAMES,
+  MATERIAL_SCOPE_UNENFORCEABLE_CODE,
+  libraryItemAppAttributions,
   libraryItemMatchesOriginScope,
   libraryItemOriginAppId,
+  libraryItemStoredAppAttributions,
   materialLibrarySearchParams,
   materialLibrarySearchQuery,
   materialScopeTypes,
+  materialScopeViolation,
   materialTypesCsv,
   materialTypesFromCsv,
+  mergeAppAttributions,
 } from "./material-library-scope";
 export type {
+  MaterialAppAttribution,
   MaterialLibraryLevel,
   MaterialLibrarySearchParams,
   MaterialScope,
 } from "./material-library-scope";
+// D3 的去重与多归属住在 `material-library-dedupe.ts`（本模块贴着 800 行硬顶）；
+// 从这里 re-export，既有 import 路径不变。
+export {
+  materialAppDedupeKey,
+  materialArtifactDedupeKey,
+  materialEntryAppAttributions,
+  materialEntryAppForScope,
+  materialEntryPrimaryAppId,
+  mergeMaterialEntries,
+} from "./material-library-dedupe";
 
 /** A site-curated finished example shown alongside the central asset catalog. */
 export interface MaterialItem {
@@ -150,6 +166,8 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
   audio: "音频",
   model_3d: "3D",
   workflow: "工作流",
+  // 第 14 个 artifact type，由 W9 加进 `ARTIFACT_TYPES`（D7）。
+  game: "游戏",
 };
 
 function designTemplateDocumentUrl(value = ""): string {
@@ -367,25 +385,6 @@ export function platformToEntry(
   });
 }
 
-export function mergeMaterialEntries(
-  groups: readonly (readonly WorkspaceLibraryEntry[])[],
-): WorkspaceLibraryEntry[] {
-  const seen = new Set<string>();
-  const out: WorkspaceLibraryEntry[] = [];
-  for (const group of groups) {
-    for (const entry of group) {
-      const key =
-        entry.libraryItem && isDurableLibraryItem(entry.libraryItem)
-          ? `${entry.libraryItem.artifactId}:${entry.libraryItem.revisionId}`
-          : entry.libraryItem?.key || entry.id;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(entry);
-    }
-  }
-  return out;
-}
-
 export function normalizedMaterialTaxonomy(
   value: string,
 ): ArtifactType | "" {
@@ -433,11 +432,11 @@ export function artifactEntry(
 }
 
 /**
- * Public "更多素材" shelves only surface editable advanced-feature templates.
+ * Public material shelves only surface editable advanced-feature templates.
  * Owned/promoted catalog rows use the `template` role; view-only reference
  * rehosts are excluded so every visible card can open an advanced editor.
  */
-export const MATERIAL_LIBRARY_MORE_ROLE = "template";
+export const MATERIAL_LIBRARY_TEMPLATE_ROLE = "template";
 
 export interface MaterialLibraryQueryInput {
   level: MaterialLibraryLevel;
@@ -485,9 +484,7 @@ export function materialLibraryRequestKey(
     context:
       input.level === "primary"
         ? artifactContextKey(input.context)
-        : input.level === "site"
-          ? `site:${String(input.context?.siteKey ?? "").trim()}`
-          : "global",
+        : `site:${String(input.context?.siteKey ?? "").trim()}`,
     query: input.level === "primary" ? "" : input.query.trim(),
     taxonomy: input.taxonomy,
     // Omitted for legacy single-type callers so their cache key is unchanged.
@@ -639,8 +636,8 @@ type LibrarySearchOptions = Parameters<typeof searchArtifactLibrary>[0];
 /**
  * `searchArtifactLibrary` lives in `artifact-client.ts`, which this owner may
  * not edit, and it drops keys it does not know. Until it forwards the §3.2
- * names the scoped request degrades to today's global search and
- * `applyMaterialScope` narrows the page in the browser.
+ * names the scoped request comes back unscoped and `applyMaterialScope`
+ * narrows the page in the browser.
  */
 type ScopedLibrarySearchOptions = LibrarySearchOptions & {
   artifactTypes?: string;
@@ -648,6 +645,11 @@ type ScopedLibrarySearchOptions = LibrarySearchOptions & {
   originAppId?: string;
 };
 
+/**
+ * Fail-closed（合同 §3 W4 必做 2）。后端拒绝 §3.2 的作用域参数时**不再重放一次无
+ * 作用域请求**：旧实现那样做是为了不让探索页白屏，代价是把全平台素材摆到本站货架上。
+ * D1 之后那个代价不可接受，错误原样上抛。
+ */
 async function searchScopedLibrary(
   input: MaterialLibraryQueryInput,
   types: readonly ArtifactType[],
@@ -655,43 +657,52 @@ async function searchScopedLibrary(
   const params = materialLibrarySearchParams({
     level: input.level,
     query: input.query,
-    role: MATERIAL_LIBRARY_MORE_ROLE,
+    role: MATERIAL_LIBRARY_TEMPLATE_ROLE,
     siteKey: input.context?.siteKey,
     appId: input.context?.appId,
     types,
     legacyTaxonomyOnly: !input.types || input.types.length === 0,
   });
-  const base: LibrarySearchOptions = {
+  const scoped: ScopedLibrarySearchOptions = {
     query: params.q,
     artifactType: params.artifactType,
     role: params.role,
     cursor: input.cursor || undefined,
     limit: 60,
     signal: input.signal,
-  };
-  const scoped: ScopedLibrarySearchOptions = {
-    ...base,
     ...(params.artifactTypes ? { artifactTypes: params.artifactTypes } : {}),
-    ...(params.originSiteKey
-      ? { originSiteKey: params.originSiteKey }
-      : {}),
+    originSiteKey: params.originSiteKey,
     ...(params.originAppId ? { originAppId: params.originAppId } : {}),
   };
-  const page = await searchArtifactLibrary(scoped);
-  if (
-    page.ok ||
-    !materialScopeRequestsBackendScope(params) ||
-    (page.status !== 400 && page.status !== 404 && page.status !== 422)
-  ) {
-    return page;
-  }
-  // A backend that rejects the new names outright must not white-screen the
-  // explore page: retry the exact request today's build would have sent.
-  warnMaterialScopeDegraded(`reject:${input.level}`, {
-    level: input.level,
-    showedUnscoped: true,
-  });
-  return searchArtifactLibrary(base);
+  return searchArtifactLibrary(scoped);
+}
+
+/**
+ * `ArtifactApiResult.code` 是 `artifact-contract.ts` 里的封闭联合（不是本 owner 的
+ * 文件），所以 fail-closed 的标记走这个独立字段，不去撑那个联合。
+ * `MATERIAL_SCOPE_UNENFORCEABLE_CODE` 是它的稳定标识值。
+ */
+export interface MaterialLibraryResult
+  extends ArtifactApiResult<ArtifactSearchResult> {
+  /** 非空即请求被 fail-closed 拦下，压根没发出去；值是可直接展示的中文原因。 */
+  scopeViolation?: string;
+}
+
+export function isUnenforceableScopeResult(
+  result: MaterialLibraryResult,
+): boolean {
+  return Boolean(result.scopeViolation);
+}
+
+/** 请求压根没发出去时返回的结果。`materialScopeViolation` 的原因原样带给用户。 */
+function unenforceableScopeResult(reason: string): MaterialLibraryResult {
+  return {
+    ok: false,
+    error: reason,
+    status: 400,
+    retryable: false,
+    scopeViolation: reason,
+  };
 }
 
 function scopedSearchResult(
@@ -709,7 +720,7 @@ function scopedSearchResult(
   if (!outcome.degraded) return result;
   warnMaterialScopeDegraded(
     `${input.level}:${input.context?.siteKey || ""}:${input.context?.appId || ""}`,
-    { level: input.level, showedUnscoped: outcome.showedUnscoped },
+    { level: input.level },
   );
   return {
     ...result,
@@ -719,7 +730,15 @@ function scopedSearchResult(
 
 export async function queryMaterialLibrary(
   input: MaterialLibraryQueryInput,
-): Promise<ArtifactApiResult<ArtifactSearchResult>> {
+): Promise<MaterialLibraryResult> {
+  // Fail-closed 在缓存与去重之前：一个不可执行的作用域不该有缓存条目，也不该
+  // 有 in-flight 请求可以被复用。
+  const violation = materialScopeViolation({
+    level: input.level,
+    siteKey: input.context?.siteKey,
+    appId: input.context?.appId,
+  });
+  if (violation) return unenforceableScopeResult(violation);
   const key = materialLibraryRequestKey(input);
   if (!input.forceRefresh) {
     const cached = readMaterialLibraryCache(input);
@@ -749,21 +768,6 @@ export async function queryMaterialLibrary(
         scopedSearchResult(input, types, page),
         generation,
       );
-    }
-    // The backend returns one revision-pinned active-release snapshot. The
-    // browser must not recreate per-taxonomy fan-out or synthetic completeness.
-    if (input.level === "more" && types.length === 0 && !input.query.trim()) {
-      if (input.cursor) {
-        return {
-          ok: false as const,
-          error: "可编辑素材货架是单次权威快照，不接受 cursor 分页。",
-          code: "invalid-response" as const,
-          status: 400,
-          retryable: false,
-        };
-      }
-      const shelf = await listEditableShelfArtifacts(input.signal);
-      return cacheMaterialLibraryResult(key, shelf, generation);
     }
     const page = await searchScopedLibrary(input, types);
     return cacheMaterialLibraryResult(

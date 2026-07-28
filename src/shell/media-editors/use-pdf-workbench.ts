@@ -10,6 +10,7 @@ import {
   type LibraryItem,
 } from "../library-data";
 import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
+import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { inspectPdf } from "./pdf-operations";
 import {
   usePdfAnnotations,
@@ -399,18 +400,35 @@ export function usePdfWorkbench(
         siteId,
         fallbackSite: "oceanleo",
         file,
+        sourceFormat: "pdf",
+        sourceMediaType: "application/pdf",
         title,
         mediaType: "doc",
         kind: "pdf",
         idempotencyKey: `pdf:${item.id}:${savingRevision}`,
         meta: {
           editor: "pdf-native-v1",
+          editor_capability: "pdf-editor",
           page_count: pageCount,
         },
         deliveryProjectSchema: "pdf-binary@1",
+        // The edited PDF bytes are the artifact source and are themselves a
+        // displayable primary (matrix §3.2 row 8). This editor keeps no project
+        // sidecar, which is why it never reached createArtifactRevision before.
+        artifactRevision: {
+          artifactType: "pdf",
+          editor: "pdf-native-v1",
+          provenance: {
+            editorRevision: savingRevision,
+            pageCount,
+          },
+        },
       });
       if (!saved.ok) {
-        throw new Error(saved.error || tt("PDF 已上传，但登记到我的库失败"));
+        throw new Error(
+          saved.error ||
+            artifactSaveStepMessage("revision-publish", ""),
+        );
       }
       if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
       setSavedUrl(saved.url);
@@ -424,6 +442,12 @@ export function usePdfWorkbench(
         versionId: saved.versionId,
         projectUrl: saved.projectUrl,
         projectSchema: saved.projectSchema,
+        sourceFormat: saved.sourceFormat,
+        sourceMediaType: saved.sourceMediaType,
+        artifactId: saved.artifactId,
+        revisionId: saved.revisionId,
+        previousRevisionId: saved.previousRevisionId,
+        item: saved.item,
       };
     } catch (caught) {
       if (aliveRef.current && generation === sourceGenerationRef.current) {

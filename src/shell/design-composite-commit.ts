@@ -15,6 +15,11 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+import type { ArtifactType } from "./artifact-contract";
+import {
+  artifactSaveStepMessage,
+  planArtifactSaveRenditions,
+} from "./doc-editors/artifact-save-contract";
 
 export const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
 export const DESIGN_SCENE_SCHEMA = "oceanleo.design-scene.v1";
@@ -1333,6 +1338,267 @@ const DEFAULT_COMMIT_DEPENDENCIES: DesignCompositeCommitDependencies = {
   resolveCurrentRevisionId: resolveCurrentCompositeRevisionId,
 };
 
+// ===========================================================================
+// 嵌入式编辑器的 typed commit —— composite_image 之外的三类
+// ---------------------------------------------------------------------------
+// `vector_image` / `workflow` / `website` 也由嵌入式画布编辑，但它们过去一次
+// revision 都提交不了：宿主这一侧的 typed commit 从协议校验到发布逐层写死
+// `composite_image`。
+//
+// A12 的裁决是「画布另出类型自洽的 source」而不是「后端放宽 accepted 列表」——
+// 放宽等于让 artifact_type 不再约束 source，类型退化成标签。所以宿主这一侧
+// **fail closed**：画布声明什么类型，就必须交出该类型 accepted 的 source format，
+// 对不上直接拒，绝不把一份注定 422 的 payload 发出去。
+//
+// 与 composite 那条路刻意分开：composite 的 scene 闭包是它的本体（W1 A9 第 3 条
+// 明确「仍然强制要 scene」），而这三类按 W1 A9 第 2 条**不该发 scene**——
+// 闭包由后端从已验签的 `request.source` 自己推导。
+// ===========================================================================
+
+/**
+ * 每一类接受哪些 source format。取自 `artifact-contract.ts` 的
+ * `SOURCE_FORMAT_EXACT`（与后端逐字镜像），不是本文件另立的一份。
+ */
+const EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS: Readonly<
+  Partial<Record<ArtifactType, readonly string[]>>
+> = Object.freeze({
+  vector_image: ["svg", "svg+xml"],
+  /**
+   * A12-W 裁决：`workflow` 就产出 `oceanleo.workflow.v1`，**不许改标成 `json`**。
+   *
+   * 后端的 accepted 列表里确实有 `json`（W1 探针实测 `workflow + json + design-canvas`
+   * 能过），但那条通路正是「把标签从 `artifact_type` 挪到 `source_format`」的退化口子：
+   * 一份设计文档改个 `json` 标签就能混进 workflow。宿主这一侧刻意**比后端更严**，
+   * 只收带语义的那几个 schema，把这个口子焊死。
+   *
+   * 生产库现状（2026-07-28 实测）：`workflow` 共 211 条 revision，
+   * `oceanleo.workflow.v1` 73 条（capability `design-canvas`）、
+   * `oceanleo.video-canvas.v1` 73 条、`oceanleo.video.project.v2` 63 条，
+   * 没有任何一条用 `json`。收严不影响任何存量。
+   */
+  workflow: [
+    "oceanleo.workflow.v1",
+    "oceanleo.video-canvas.v1",
+    "oceanleo.video.project.v2",
+  ],
+  website: [
+    "website-source@1",
+    "html",
+    "zip",
+    "oceanleo.website-project.v1",
+  ],
+});
+
+const EMBEDDED_TYPED_COMMIT_MEDIA_TYPES: Readonly<Record<string, string>> =
+  Object.freeze({
+    svg: "image/svg+xml",
+    "svg+xml": "image/svg+xml",
+    json: "application/json",
+    "oceanleo.workflow.v1": "application/json",
+    "oceanleo.video-canvas.v1": "application/json",
+    "oceanleo.video.project.v2": "application/json",
+    "website-source@1": "application/json",
+    "oceanleo.website-project.v1": "application/json",
+    html: "text/html",
+    zip: "application/zip",
+  });
+
+export function embeddedTypedCommitAccepts(
+  artifactType: string,
+  sourceFormat: string,
+): boolean {
+  const accepted =
+    EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS[artifactType as ArtifactType];
+  return Boolean(accepted?.includes(String(sourceFormat || "").trim()));
+}
+
+/** 这一类是否走本文件的「非 composite」嵌入式 typed commit。 */
+export function isEmbeddedTypedCommitType(artifactType: string): boolean {
+  return Object.prototype.hasOwnProperty.call(
+    EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS,
+    artifactType,
+  );
+}
+
+async function sha256Blob(blob: Blob): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    throw new DesignCompositeCommitError(
+      "当前环境缺少 Web Crypto，无法为这次提交计算摘要。",
+      "integrity-failed",
+    );
+  }
+  const digest = await subtle.digest("SHA-256", await blob.arrayBuffer());
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * 提交一次非 composite 的嵌入式 typed revision。
+ *
+ * 不做设计文档的结构校验（那是 composite 的事），只校验：身份 pin、
+ * 声明类型与 artifact 实际类型一致、source format 属于该类型、
+ * source/preview 都是第一方 https 字节。
+ */
+export async function persistEmbeddedTypedCommit(
+  item: LibraryItem,
+  message: {
+    url?: unknown;
+    previewUrl?: unknown;
+    meta?: Record<string, unknown> | null;
+  },
+  dependencyOverrides: Partial<DesignCompositeCommitDependencies> = {},
+): Promise<LibraryItem> {
+  const dependencies = {
+    ...DEFAULT_COMMIT_DEPENDENCIES,
+    ...dependencyOverrides,
+  };
+  const meta = message.meta || {};
+  const sourceUrl = text(meta.editor_project_url) || text(meta.source_url);
+  const previewUrl = text(message.previewUrl);
+  const declaredType = text(meta.artifact_type, 60);
+  const sourceFormat = text(meta.source_format, 120);
+  const expectedRevisionId = text(meta.expected_artifact_revision_id, 300);
+
+  if (
+    !isDurableLibraryItem(item) ||
+    meta.requires_typed_artifact_commit !== true ||
+    !isEmbeddedTypedCommitType(declaredType) ||
+    declaredType !== item.artifactType ||
+    text(meta.artifact_id, 300) !== item.artifactId ||
+    expectedRevisionId !== item.revisionId ||
+    !sourceUrl ||
+    !previewUrl ||
+    !isFirstPartyHttpsMediaUrl(sourceUrl) ||
+    !isFirstPartyHttpsMediaUrl(previewUrl)
+  ) {
+    throw new DesignCompositeCommitError(
+      "嵌入式保存缺少受控 source/preview URL、精确 base identity 或 typed commit 声明。",
+      "invalid-commit-request",
+    );
+  }
+  if (!embeddedTypedCommitAccepts(declaredType, sourceFormat)) {
+    // A12：不接受「用 composite 的设计文档冒充 vector/workflow」。宁可在本地拒，
+    // 也不把一份后端注定回 422 `source format is incompatible with artifact type`
+    // 的 payload 发出去。
+    throw new DesignCompositeCommitError(
+      `${declaredType} 不接受 source format ${
+        sourceFormat || "(缺失)"
+      }；这一类需要画布另出类型自洽的 source（${(
+        EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS[
+          declaredType as ArtifactType
+        ] || []
+      ).join(" / ")}）。`,
+      "incompatible-source-format",
+    );
+  }
+
+  const [sourceBlob, previewBlob] = await Promise.all([
+    dependencies.fetchBlob(sourceUrl, { maxBytes: 20_000_000 }),
+    dependencies.fetchBlob(previewUrl, { maxBytes: 32_000_000 }),
+  ]);
+  const [sourceDigest, previewDigest] = await Promise.all([
+    sha256Blob(sourceBlob),
+    sha256Blob(previewBlob),
+  ]);
+
+  let target = item;
+  if (
+    item.artifact.owner.visibility === "public" ||
+    !item.artifact.access.canEdit
+  ) {
+    if (!item.artifact.access.canFork) {
+      throw new DesignCompositeCommitError(
+        "当前 artifact 不可编辑且不允许安全 fork。",
+        "unauthorized",
+      );
+    }
+    const forked = await dependencies.fork(item);
+    if (
+      !forked.ok ||
+      !forked.data ||
+      !isDurableLibraryItem(forked.data) ||
+      forked.data.artifactId === item.artifactId ||
+      forked.data.artifactType !== item.artifactType
+    ) {
+      throw new DesignCompositeCommitError(
+        forked.error || "未能为这次保存创建独立、可编辑的 artifact root。",
+        "fork-failed",
+      );
+    }
+    target = forked.data;
+  }
+
+  const plan = planArtifactSaveRenditions(target.artifactType, {
+    delivery: { url: sourceUrl, digest: sourceDigest },
+    previewBitmap: { url: previewUrl, digest: previewDigest },
+  });
+  if (!plan.ok) {
+    throw new DesignCompositeCommitError(
+      artifactSaveStepMessage("contract", plan.error),
+      "invalid-commit-request",
+    );
+  }
+
+  // W1 A9 第 2 条：这三类的闭包由后端从已验签的 source 推导，`scene` 是可选的，
+  // 发了就必须逐字对上。宿主算不出后端那份 manifest digest，所以干脆不发。
+  const committed = await dependencies.publish(target.artifactId, {
+    expectedRevisionId: target.revisionId,
+    artifactType: target.artifactType,
+    source: {
+      format: sourceFormat,
+      url: sourceUrl,
+      digest: sourceDigest,
+    },
+    renditions: plan.renditions,
+    provenance: {
+      editor: text(meta.editor, 120) || "embedded-canvas",
+      source_artifact_id: item.artifactId,
+      source_revision_id: item.revisionId,
+      commit_base_artifact_id: target.artifactId,
+      commit_base_revision_id: target.revisionId,
+      source_media_type:
+        EMBEDDED_TYPED_COMMIT_MEDIA_TYPES[sourceFormat] || "",
+      preview_digest: previewDigest,
+      preview_static_frame: "final",
+    },
+  });
+  const next = committed.data;
+  if (!committed.ok || !next || !isDurableLibraryItem(next)) {
+    let currentRevisionId: string | undefined;
+    if (committed.code === "revision-conflict") {
+      try {
+        currentRevisionId = await dependencies.resolveCurrentRevisionId(
+          target.artifactId,
+        );
+      } catch {
+        currentRevisionId = undefined;
+      }
+    }
+    throw new DesignCompositeCommitError(
+      committed.error || "typed artifact revision 提交失败。",
+      committed.code === "revision-conflict" && !currentRevisionId
+        ? "revision-conflict-unresolved"
+        : committed.code || "revision-commit-failed",
+      currentRevisionId,
+    );
+  }
+  if (
+    next.artifactId !== target.artifactId ||
+    next.revisionId === target.revisionId ||
+    next.artifactType !== target.artifactType ||
+    next.artifact.sourceFormat !== sourceFormat ||
+    !next.artifact.integrity.ok
+  ) {
+    throw new DesignCompositeCommitError(
+      "服务端返回的新版本不是同一 artifact root，或类型/source format 对不上。",
+      "invalid-commit-receipt",
+    );
+  }
+  return next;
+}
+
 async function rebaseDesignCompositeSource(
   sourceBlob: Blob,
   base: LibraryItem,
@@ -1618,6 +1884,18 @@ export async function persistDesignCompositeCommit(
       target,
     );
   }
+  // Same table every other editor commits through. The design canvas carries no
+  // project sidecar, so `editor_manifest` stays absent — the contract allows it.
+  const plan = planArtifactSaveRenditions("composite_image", {
+    delivery: { url: commitSourceUrl, digest: evidence.sourceDigest },
+    previewBitmap: { url: previewUrl, digest: evidence.previewDigest },
+  });
+  if (!plan.ok) {
+    throw new DesignCompositeCommitError(
+      artifactSaveStepMessage("contract", plan.error),
+      "invalid-artifact",
+    );
+  }
   const committed = await dependencies.publish(target.artifactId, {
     expectedRevisionId: target.revisionId,
     artifactType: "composite_image",
@@ -1626,18 +1904,7 @@ export async function persistDesignCompositeCommit(
       url: commitSourceUrl,
       digest: evidence.sourceDigest,
     },
-    renditions: [
-      {
-        purpose: "preview",
-        url: previewUrl,
-        digest: evidence.previewDigest,
-      },
-      {
-        purpose: "full",
-        url: previewUrl,
-        digest: evidence.previewDigest,
-      },
-    ],
+    renditions: plan.renditions,
     scene: {
       schema: evidence.sceneSchema,
       closureDigest: evidence.closureDigest,

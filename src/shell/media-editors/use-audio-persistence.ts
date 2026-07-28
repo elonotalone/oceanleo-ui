@@ -12,6 +12,8 @@ import {
   saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "../doc-editors/doc-io";
+import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
+import { renderAudioWaveformPng } from "../doc-editors/editor-preview-raster";
 import type { AudioEditOperation } from "./audio-operations";
 import type { AudioProjectData } from "./audio-workbench-state";
 import {
@@ -101,6 +103,7 @@ export function useAudioPersistence({
         workingHeadUrl: workingHeadUrlRef.current,
         meta: {
           editor: "audio-v3",
+          editor_capability: "audio-editor",
           audio_source_url: project.sourceUrl,
           audio_operation_count: project.operations.length,
         },
@@ -108,9 +111,32 @@ export function useAudioPersistence({
           schema: AUDIO_PROJECT_SCHEMA,
           data: project,
         },
+        editorManifest: {
+          id: "audio-editor",
+          format: AUDIO_PROJECT_SCHEMA,
+        },
+        // No product bytes exist at save time (source URL + operation journal),
+        // so the waveform is this type's only displayable primary.
+        createPreview: () => renderAudioWaveformPng(bufferRef.current),
+        /**
+         * `oceanleo.audio-project.v1` is itself an accepted `source.format`
+         * (matrix §3.2 row 11), so a project-only save can still publish a
+         * revision. It never did before because `SaveProjectWorkingHeadInput`
+         * omitted `artifactRevision` outright.
+         */
+        artifactRevision: {
+          artifactType: "audio",
+          editor: "audio-v3",
+          provenance: {
+            editorRevision: savingRevision,
+            operationCount: project.operations.length,
+          },
+        },
       });
       if (!saved.ok) {
-        throw new Error(saved.error || tt("登记到我的库失败"));
+        throw new Error(
+          saved.error || artifactSaveStepMessage("revision-publish", ""),
+        );
       }
       workingHeadUrlRef.current = saved.url;
       setSavedUrl(saved.url);
@@ -120,9 +146,18 @@ export function useAudioPersistence({
         versionId: saved.versionId,
         projectUrl: saved.projectUrl,
         projectSchema: saved.projectSchema,
+        artifactId: saved.artifactId,
+        revisionId: saved.revisionId,
+        previousRevisionId: saved.previousRevisionId,
+        item: saved.item,
       };
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : tt("保存到我的库失败"));
+      setError(
+        artifactSaveStepMessage(
+          "revision-publish",
+          caught instanceof Error ? caught.message : caught,
+        ),
+      );
       return null;
     } finally {
       savingRef.current = false;

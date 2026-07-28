@@ -82,6 +82,7 @@ const SOURCE_FORMATS = {
   audio: "mp3",
   model_3d: "glb",
   workflow: "oceanleo.workflow.v1",
+  game: "oceanleo.game-bundle.v1",
 };
 
 const EXPECTED_KINDS = {
@@ -98,6 +99,7 @@ const EXPECTED_KINDS = {
   audio: "audio",
   model_3d: "threed",
   workflow: "canvas",
+  game: "game",
 };
 
 function projection(artifactType) {
@@ -186,7 +188,7 @@ function normalizedItem(artifactType) {
   return artifactProjectionToLibraryItem(artifact);
 }
 
-test("all thirteen normalized catalog types retain real cover metadata and type-correct fit", () => {
+test("all fourteen normalized catalog types retain real cover metadata and type-correct fit", () => {
   const preserveWhole = new Set([
     "composite_image",
     "vector_image",
@@ -198,8 +200,10 @@ test("all thirteen normalized catalog types retain real cover metadata and type-
     "website",
     "model_3d",
     "workflow",
+    // 游戏封面是整幅关键美术，裁掉边缘等于把真实 rendition 换成假封面。
+    "game",
   ]);
-  assert.equal(ARTIFACT_TYPES.length, 13);
+  assert.equal(ARTIFACT_TYPES.length, 14);
   for (const artifactType of ARTIFACT_TYPES) {
     const item = normalizedItem(artifactType);
     assert.equal(item.kind, EXPECTED_KINDS[artifactType], artifactType);

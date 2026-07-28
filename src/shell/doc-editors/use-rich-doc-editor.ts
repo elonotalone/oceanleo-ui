@@ -28,7 +28,12 @@ import {
   loadEditorProject,
   saveFileToLibrary,
   type PersistedEditorVersion,
+  type PreparedDeliveryUpload,
+  type PreparedPreviewUpload,
+  type PreparedProjectUpload,
 } from "./doc-io";
+import { artifactSaveStepMessage } from "./artifact-save-contract";
+import { renderRichDocPreviewPng } from "./editor-preview-raster";
 import { tiptapJsonToDocxBlob } from "./docx-export";
 import { notifyOfficeAccessDenied } from "./office-file";
 import {
@@ -78,6 +83,48 @@ export interface RichDocEditorState {
 }
 
 const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
+export const RICHDOC_SOURCE_FORMAT = "docx";
+export const RICHDOC_SOURCE_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export const RICHDOC_EDITOR_CAPABILITY = "richdoc";
+
+/** Carry the published revision forward so a second save pins the new head. */
+export function richDocSavedItemForHandoff(
+  original: LibraryItem,
+  saved: PersistedEditorVersion,
+): LibraryItem {
+  const projectUrl = saved.projectUrl || "";
+  const projectSchema = saved.projectSchema || RICHDOC_PROJECT_SCHEMA;
+  const base = saved.item || original;
+  return {
+    ...base,
+    title: saved.title || base.title,
+    url: saved.url || base.url,
+    artifactId: saved.artifactId || base.artifactId,
+    revisionId: saved.revisionId || base.revisionId,
+    meta: {
+      ...base.meta,
+      source_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
+      source_media_type: saved.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
+      delivery_format: RICHDOC_SOURCE_FORMAT,
+      ...(projectUrl
+        ? {
+            editor_project_url: projectUrl,
+            editor_project_schema: projectSchema,
+            editor_manifest_url: projectUrl,
+            editor_manifest_schema: projectSchema,
+            editor_working_head_url: projectUrl,
+            editor_working_head_project_url: projectUrl,
+            editor_working_head_schema: projectSchema,
+          }
+        : {}),
+      ...(saved.savedAt ? { editor_saved_at: saved.savedAt } : {}),
+      ...(saved.previousRevisionId
+        ? { previous_revision_id: saved.previousRevisionId }
+        : {}),
+    },
+  };
+}
 
 export function useRichDocEditor(
   item: LibraryItem,
@@ -98,6 +145,14 @@ export function useRichDocEditor(
   const savingRef = useRef(false);
   const sourceReadyRef = useRef(false);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
+  /** The pin a save publishes against; advances with every committed revision. */
+  const persistedItemRef = useRef(item);
+  const preparedSaveRef = useRef<{
+    key: string;
+    project?: PreparedProjectUpload;
+    delivery?: PreparedDeliveryUpload;
+    preview?: PreparedPreviewUpload;
+  } | null>(null);
 
   const extensions = useMemo(
     () => [
@@ -154,6 +209,8 @@ export function useRichDocEditor(
     sourceReadyRef.current = false;
     setSourceReady(false);
     revisionRef.current = 0;
+    persistedItemRef.current = item;
+    preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
@@ -284,57 +341,123 @@ export function useRichDocEditor(
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
     const html = editor.getHTML();
+    const baseItem = persistedItemRef.current;
+    const baseRevision = String(
+      baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
+    );
+    const rootId = String(
+      baseItem.artifactId || baseItem.meta.artifact_id || baseItem.id,
+    );
+    const saveKey = `richdoc:${savingRevision}:${baseRevision.slice(
+      -80,
+    )}:${rootId.slice(-80)}`;
+    const prepared =
+      preparedSaveRef.current?.key === saveKey
+        ? preparedSaveRef.current
+        : null;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const delivery = await tiptapJsonToDocxBlob(baseTitle, json);
+      const fileStem =
+        title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "document";
       const result = await saveFileToLibrary({
-        item,
+        item: baseItem,
         siteId,
         fallbackSite: "word",
-        file: new File([delivery], `${title}.docx`, {
-          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        }),
+        createFile: async () => {
+          const delivery = await tiptapJsonToDocxBlob(baseTitle, json);
+          return new File([delivery], `${fileStem}.docx`, {
+            type: RICHDOC_SOURCE_MEDIA_TYPE,
+          });
+        },
+        // docx is never a displayable primary; ship a rendered cover with it.
+        createPreview: () => renderRichDocPreviewPng(json, baseTitle),
+        sourceFormat: RICHDOC_SOURCE_FORMAT,
+        sourceMediaType: RICHDOC_SOURCE_MEDIA_TYPE,
         title,
         mediaType: "doc",
         kind: "document",
-        idempotencyKey: `richdoc:${item.id}:${savingRevision}`,
+        idempotencyKey: saveKey,
         workingHeadUrl: workingHeadUrlRef.current,
+        preparedProject: prepared?.project,
+        preparedDelivery: prepared?.delivery,
+        preparedPreview: prepared?.preview,
         meta: {
           editor: "richdoc-v2",
+          editor_capability: RICHDOC_EDITOR_CAPABILITY,
+          content_type: "document",
           html: html.slice(0, 10_000),
-          delivery_format: "docx",
+          delivery_format: RICHDOC_SOURCE_FORMAT,
         },
         project: {
           schema: RICHDOC_PROJECT_SCHEMA,
           data: json,
         },
+        editorManifest: {
+          id: RICHDOC_EDITOR_CAPABILITY,
+          format: RICHDOC_PROJECT_SCHEMA,
+        },
+        artifactRevision: {
+          artifactType: "document",
+          provenance: { editorRevision: savingRevision },
+        },
       });
       if (!result.ok) {
-        setError(result.error ? tt(result.error) : tt("保存到我的库失败"));
+        preparedSaveRef.current =
+          result.preparedProject ||
+          result.preparedDelivery ||
+          result.preparedPreview
+            ? {
+                key: saveKey,
+                project: result.preparedProject,
+                delivery: result.preparedDelivery,
+                preview: result.preparedPreview,
+              }
+            : preparedSaveRef.current;
+        setError(
+          tt(result.error) ||
+            artifactSaveStepMessage("revision-publish", ""),
+        );
         return null;
       }
-      workingHeadUrlRef.current = result.url;
-      setSavedUrl(result.url);
-      if (revisionRef.current === savingRevision) setDirty(false);
-      return {
+      preparedSaveRef.current = null;
+      const version: PersistedEditorVersion = {
         url: result.url,
         versionId: result.versionId,
         projectUrl: result.projectUrl,
         projectSchema: result.projectSchema,
+        sourceFormat: result.sourceFormat || RICHDOC_SOURCE_FORMAT,
+        sourceMediaType: result.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
+        title: result.title,
+        fileName: result.fileName,
+        savedAt: result.savedAt,
+        artifactId: result.artifactId,
+        revisionId: result.revisionId,
+        previousRevisionId: result.previousRevisionId,
+        preparedProject: result.preparedProject,
+        preparedDelivery: result.preparedDelivery,
       };
+      const handoff = richDocSavedItemForHandoff(baseItem, version);
+      persistedItemRef.current = handoff;
+      workingHeadUrlRef.current = result.projectUrl || result.url;
+      setSavedUrl(result.url);
+      if (revisionRef.current === savingRevision) setDirty(false);
+      return { ...version, item: handoff };
     } catch (caught) {
       setError(
-        caught instanceof Error ? tt(caught.message) : tt("保存到我的库失败"),
+        artifactSaveStepMessage(
+          "revision-publish",
+          caught instanceof Error ? tt(caught.message) : caught,
+        ),
       );
       return null;
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [editor, item, siteId, baseTitle, tt]);
+  }, [editor, siteId, baseTitle, tt]);
 
   const uploadImage = useCallback(
     async (file: File) => {

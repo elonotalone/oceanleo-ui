@@ -34,6 +34,13 @@ import {
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
 import {
+  MaterialOwningAppEdit,
+  MaterialOwningAppList,
+  materialAppLabel,
+  useMaterialDetailAppPlan,
+  type MaterialAppAttribution,
+} from "./library-detail-app-actions";
+import {
   WorkspaceCard,
   WorkspaceLibraryEmpty,
   WorkspaceLibraryEntryViewer,
@@ -66,6 +73,10 @@ export interface WorkspaceLibraryProps {
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
   siteId?: string;
+  /**
+   * 当前工作台锚定的 app。详情浮层用它区分「这份素材就属于我现在这个 app」（内联
+   * 打开 typed 编辑器）和「它属于别的 app」（深链跳进那个 app 的工作台库预览）。
+   */
   appId?: string;
   materialActions?: readonly WorkbenchMaterialAction[];
   onMaterialAction?: (
@@ -133,6 +144,7 @@ export function WorkspaceLibrary({
   hideCategoryChips = false,
   toolbarActions,
   siteId = "",
+  appId = "",
   materialActions = [],
   onMaterialAction,
   materialActionAvailable,
@@ -350,6 +362,39 @@ export function WorkspaceLibrary({
     [entries, selectedId],
   );
 
+  // 一份素材可以同时绑在多个 app 上（image 站已核实 9 组）。「编辑」要进的是**那个
+  // app 的工作台**，并且落在该 app 库里这份素材的预览上——不是就地弹一个与归属无关
+  // 的编辑器。落点与归属解析都在 `library-detail-app-actions`。
+  const detailAppPlan = useMaterialDetailAppPlan({
+    entry: selected,
+    selectionKey: selectedId,
+    siteKey: siteId,
+    appId,
+    onStatus: setMaterialActionState,
+  });
+
+  /**
+   * 素材就在当前 app 名下：深链会落回这一页，没有意义——直接进 typed 编辑器。
+   * 这条路上的素材必然是 durable / 已解析成 durable 的官方模板行（transient 结果
+   * 没有 app 绑定），所以不需要 `prepareArtifactForAction` 的 ensure 步骤。
+   */
+  const editInCurrentApp = async (
+    app: MaterialAppAttribution,
+    item: LibraryItem,
+  ) => {
+    setMaterialActionState(tt("正在打开编辑器…"));
+    try {
+      await editItem(item);
+      setMaterialActionState(tt("编辑器已打开。"));
+    } catch (caught) {
+      setMaterialActionState(
+        caught instanceof Error
+          ? caught.message
+          : tt(`在「${materialAppLabel(app)}」里打开编辑器失败。`),
+      );
+    }
+  };
+
   useEffect(() => {
     if (!selectedId) return;
     if (!entries.some((entry) => entry.id === selectedId)) setSelectedId("");
@@ -408,10 +453,18 @@ export function WorkspaceLibrary({
     const item = entry.libraryItem;
     if (!item) return null;
     const linkUrl = entryLinkUrl(entry);
+    const matrix = matrixFor(item);
     return (
       <ArtifactActionButtons
         item={item}
-        matrix={matrixFor(item)}
+        matrix={
+          // 归属 app 自己出编辑入口时，这里再渲染一颗无归属的「编辑」就成了第二个
+          // 说法不一样的入口。隐藏而不是禁用：禁用会连带渲染一条「为什么不能编辑」
+          // 的理由，而它此刻明明是能编辑的。
+          detailAppPlan.routeEditByApp
+            ? { ...matrix, edit: { ...matrix.edit, visible: false } }
+            : matrix
+        }
         onEdit={editItem}
         onInsert={(prepared) =>
           applyMaterialAction("insert", prepared)
@@ -444,7 +497,7 @@ export function WorkspaceLibrary({
       Boolean(externalUrl) &&
       (kind === "website" || kind === "canvas" || kind === "video_canvas");
     const workbenchItem: LibraryItem =
-      selected.libraryItem || {
+      detailAppPlan.item || {
         key: selected.id,
         source: "creation",
         id: selected.id,
@@ -505,7 +558,18 @@ export function WorkspaceLibrary({
                 {tt(selected.description)}
               </p>
             )}
+            {/* 跨 app 素材必须把**全部**归属摆在明面上：下面每个归属各有一颗编辑
+                键，不写出来的话那排「编辑 · xxx」看上去像是凭空多出来的。 */}
+            <MaterialOwningAppList plan={detailAppPlan} />
           </div>
+          <MaterialOwningAppEdit
+            plan={detailAppPlan}
+            item={workbenchItem}
+            appId={appId}
+            accent={accent}
+            compact
+            onEditHere={(app, item) => void editInCurrentApp(app, item)}
+          />
           {actionButtonsFor(
             {
               ...selected,

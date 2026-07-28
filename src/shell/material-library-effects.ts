@@ -7,8 +7,10 @@
  */
 
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -116,6 +118,80 @@ export function useMaterialLibraryChangeEvents(options: {
   }, [setDeepLinkedEntry, setRemote, setRetryNonce]);
 }
 
+export interface MaterialShelfSettlePhase {
+  /**
+   * 当前 scope 的**第一次**请求已经有结论了——成功、失败、或被 fail-closed 判定为
+   * 根本不发请求，三者都算 settle。首帧为 `false`。
+   */
+  settled: boolean;
+  /** `settled` 描述的是哪个 scope key（`materialLibraryRequestKey` 的产物）。 */
+  scopeKey: string;
+}
+
+export interface MaterialShelfSettleState extends MaterialShelfSettlePhase {
+  /** 请求有结论时调用；key 对不上会被忽略（防竞态）。 */
+  markSettled: (scopeKey: string) => void;
+}
+
+/**
+ * `useMaterialShelfSettle` 的纯函数内核，好让门禁与单测不必挂载组件就能断言 D5。
+ *
+ * scope 一变就回到未 settle（骨架），而 `resolved` 只会把 settled 推上去，不会推下来：
+ * stale-while-revalidate 的背景刷新期间读者看到的应当是上一帧的卡片，不是骨架。
+ */
+export function materialShelfSettleNext(
+  previous: MaterialShelfSettlePhase,
+  event: { scopeKey: string; kind: "scope-changed" | "resolved" },
+): MaterialShelfSettlePhase {
+  if (event.kind === "scope-changed") {
+    return previous.scopeKey === event.scopeKey
+      ? { settled: previous.settled, scopeKey: previous.scopeKey }
+      : { settled: false, scopeKey: event.scopeKey };
+  }
+  if (event.scopeKey !== previous.scopeKey) {
+    return { settled: previous.settled, scopeKey: previous.scopeKey };
+  }
+  return { settled: true, scopeKey: previous.scopeKey };
+}
+
+/**
+ * D5 的落点：**未 settle 之前呈现层只许渲染骨架，一个字的「暂无」都不许出。**
+ *
+ * 漏调 `markSettled` 的后果是骨架永远不消失。这是刻意做成显性失败的——比「未 settle
+ * 就喊暂无素材」好排障，那句话对用户是误导、对排障是噪音。
+ */
+export function useMaterialShelfSettle(
+  scopeKey: string,
+  options: { initiallySettled?: boolean } = {},
+): MaterialShelfSettleState {
+  const [phase, setPhase] = useState<MaterialShelfSettlePhase>(() => ({
+    settled: Boolean(options.initiallySettled),
+    scopeKey,
+  }));
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  // 渲染期同步，不放 effect：scope 变了却先画一帧「上一个 scope 已 settle」的空态，
+  // 正是 D5 要根除的那一闪。
+  if (phase.scopeKey !== scopeKey) {
+    const next = materialShelfSettleNext(phase, {
+      scopeKey,
+      kind: "scope-changed",
+    });
+    phaseRef.current = next;
+    setPhase(next);
+  }
+  const markSettled = useCallback((key: string) => {
+    setPhase((current) =>
+      materialShelfSettleNext(current, { scopeKey: key, kind: "resolved" }),
+    );
+  }, []);
+  return {
+    settled: phaseRef.current.settled,
+    scopeKey: phaseRef.current.scopeKey,
+    markSettled,
+  };
+}
+
 interface TemplateMaterialsFetchState {
   materials: TemplateMaterialListing[];
   loading: boolean;
@@ -151,7 +227,7 @@ export function useOfficialTemplateMaterials(options: {
   types: readonly ArtifactType[];
 }): OfficialTemplateShelf {
   const { itemId, level, siteKey, types } = options;
-  // 「此 app」按 app 收窄；本站 / 更多两层给整站目录。
+  // 「此 app」按 app 收窄；「本站素材」给整站目录。
   //
   // `"default"` 是宿主在没有 app 会话时的兜底值，不是目录里的 app：拿它去过滤
   // `app_id` 一条都不会命中，货架又变回空的。这种情况按整站目录取。

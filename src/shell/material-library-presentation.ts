@@ -10,12 +10,12 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   artifactEntry,
   libraryItemHasExactPrimaryContext,
-  libraryItemOriginAppId,
   mergeMaterialEntries,
   type MaterialItem,
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import { isOfficialTemplateMaterialEntry } from "./material-library-template-source";
+import type { SceneSelection } from "./material-scene-axis";
 import type { WorkspaceLibraryEntry, WorkspaceLibraryProps } from "./WorkspaceLibrary";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -40,22 +40,20 @@ export interface MaterialLibraryProps {
   functionId?: string;
   fetchCurated?: boolean;
   fetchPrimary?: boolean;
-  fetchMore?: boolean;
   curatedType?: string;
   curatedSeriesId?: string;
   initialLevel?: MaterialLibraryLevel;
   lockLevel?: MaterialLibraryLevel;
   /**
-   * Sections offered to the reader (合同 §0.6). Defaults to the two-level
-   * 当前 App ｜ 更多素材 shelf every workbench surface already renders.
+   * Sections offered to the reader (合同 §0.6). Defaults to 当前 App ｜ 本站素材。
    */
   levels?: readonly MaterialLibraryLevel[];
   /**
-   * Per-card 下载 (合同 §0.6). Defaults to on for browsing surfaces and off
-   * once an editor host registers a primary material action, where the card's
-   * job is to feed the canvas rather than to hand over a file.
+   * 分区轴的受控取值（`null` 全部 / `""` 其它 / 场景词）。探索页把它同步进 `?scene=`；
+   * 不传就由货架自己管。
    */
-  cardDownload?: boolean;
+  scene?: SceneSelection;
+  onSceneChange?: (scene: SceneSelection) => void;
   /** Multi-select type chips; overrides the single-value `curatedType`. */
   types?: readonly ArtifactType[];
   onTypesChange?: (types: ArtifactType[]) => void;
@@ -79,26 +77,30 @@ export interface MaterialLibraryProps {
   onOpenItem?: (item: LibraryItem) => void;
 }
 
-export const MATERIAL_LEVEL_LABEL: Record<MaterialLibraryLevel, string> = {
+/**
+ * 层级标签。刻意用 `Record<string, string>` 而不是 `Record<MaterialLibraryLevel, string>`：
+ * `more` 已按 D1 整层下线，往后这个联合类型再增减成员时，呈现层不该成为阻塞点。
+ * 查表一律走 `materialLevelLabel`。
+ */
+export const MATERIAL_LEVEL_LABEL: Record<string, string> = {
   primary: "此 app",
   site: "本站素材",
-  more: "更多素材",
 };
+
+export function materialLevelLabel(level: MaterialLibraryLevel): string {
+  return MATERIAL_LEVEL_LABEL[level] || "素材";
+}
 
 export function materialLevelSearchPlaceholder(
   level: MaterialLibraryLevel,
 ): string {
-  if (level === "primary") return "筛选当前 App 可编辑素材";
-  if (level === "site") return "搜索本站素材";
-  return "搜索可编辑模板";
+  return level === "primary" ? "筛选当前 App 可编辑素材" : "搜索本站素材";
 }
 
 export function materialLevelEmptyTitle(
   level: MaterialLibraryLevel,
 ): string {
-  if (level === "primary") return "当前 App 暂无可编辑素材";
-  if (level === "site") return "本站暂无可编辑素材";
-  return "暂无可编辑模板";
+  return level === "primary" ? "当前 App 暂无可编辑素材" : "本站暂无可编辑素材";
 }
 
 export function materialLevelEmptyDescription(
@@ -108,12 +110,10 @@ export function materialLevelEmptyDescription(
   if (level === "primary") {
     return contextMissing
       ? "当前 App 暂未提供可用素材。"
-      : "这里只显示当前 App 已绑定且可安全编辑的素材；可前往「更多素材」查找模板。";
+      : "这里只显示当前 App 已绑定且可安全编辑的素材。";
   }
-  if (level === "site") {
-    return "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。";
-  }
-  return "这里只显示可在高级编辑器中打开并保存的模板；可更换关键词或类型。";
+  // D1 之后不再有「更多素材」可以指路：本站没有就是没有，不许把读者送去别站的货架。
+  return "这里只显示本站已登记的素材；可换一个分区或关键词。";
 }
 
 export function materialLibraryHref(options: {
@@ -190,132 +190,13 @@ export function isTrustedEditableMaterialEntry(
   );
 }
 
-/** 未能解析出归属 app 的本站素材落在这一组，而不是从货架上消失。 */
-export const MATERIAL_SITE_APP_OTHER_LABEL = "其他素材";
-
-const APP_LABEL_META_KEYS = [
-  "template_material_app_title",
-  "template_material_app_name",
-  "origin_app_title",
-  "app_title",
-  "app_name",
-] as const;
-
-function entryAppLabelHint(entry: WorkspaceLibraryEntry): string {
-  const meta = entry.libraryItem?.meta;
-  if (!meta) return "";
-  for (const key of APP_LABEL_META_KEYS) {
-    const value = meta[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "";
-}
-
-/** appId is the label until a row carries a friendlier name of its own. */
-export function materialSiteAppLabel(
-  appId: string,
-  labels?: Readonly<Record<string, string>>,
-): string {
-  const id = String(appId || "").trim();
-  if (!id) return MATERIAL_SITE_APP_OTHER_LABEL;
-  return String(labels?.[id] || "").trim() || id;
-}
-
-export interface MaterialSiteAppGroup {
-  appId: string;
-  label: string;
-  count: number;
-  entries: WorkspaceLibraryEntry[];
-}
-
-export type MaterialSiteAppChip = Omit<MaterialSiteAppGroup, "entries">;
-
-/**
- * 本站素材 的主分类轴是 app，不是文件类型：读者是从某个 app 的卡片进来的，问的是
- * 「这个 app 有什么」。锚定的 app 排头，其余按条目数，解析不出归属的排在最后。
- */
-export function materialSiteAppGroups(
-  entries: readonly WorkspaceLibraryEntry[],
-  options: { siteKey?: string; anchoredAppId?: string } = {},
-): MaterialSiteAppGroup[] {
-  const siteKey = String(options.siteKey ?? "").trim();
-  const anchored = String(options.anchoredAppId ?? "").trim();
-  const labels: Record<string, string> = {};
-  const grouped = new Map<string, WorkspaceLibraryEntry[]>();
-  for (const entry of entries) {
-    const appId = libraryItemOriginAppId(entry.libraryItem, siteKey);
-    const hint = entryAppLabelHint(entry);
-    if (appId && hint && !labels[appId]) labels[appId] = hint;
-    const bucket = grouped.get(appId);
-    if (bucket) bucket.push(entry);
-    else grouped.set(appId, [entry]);
-  }
-  return [...grouped.entries()]
-    .map(([appId, group]) => ({
-      appId,
-      label: materialSiteAppLabel(appId, labels),
-      count: group.length,
-      entries: group,
-    }))
-    .sort((a, b) => {
-      if (a.appId === b.appId) return 0;
-      if (!a.appId) return 1;
-      if (!b.appId) return -1;
-      if (anchored && a.appId === anchored) return -1;
-      if (anchored && b.appId === anchored) return 1;
-      return b.count - a.count || a.appId.localeCompare(b.appId);
-    });
-}
-
-/**
- * 一个 app 只有一组时不必挂轴。已选中的 app 即使被类型筛选清空也保留 chip，否则
- * 读者会被留在一个看不见、也解不掉的筛选里。
- */
-export function materialSiteAppChips(
-  groups: readonly MaterialSiteAppGroup[],
-  selected: string | null,
-): MaterialSiteAppChip[] {
-  if (groups.length <= 1 && selected === null) return [];
-  const chips = groups.map(({ appId, label, count }) => ({
-    appId,
-    label,
-    count,
-  }));
-  if (selected !== null && !chips.some((chip) => chip.appId === selected)) {
-    chips.push({
-      appId: selected,
-      label: materialSiteAppLabel(selected),
-      count: 0,
-    });
-  }
-  return chips;
-}
-
-/**
- * 本站层的 `category` 跟着主轴走，这样 `WorkspaceLibrary` 的分类轴与货架上看得见
- * 的 app 轴说的是同一件事；类型分类标签留在 `description` 上，位置不变。
- */
-function siteAppEntry(
-  entry: WorkspaceLibraryEntry,
-  siteKey: string,
-): WorkspaceLibraryEntry {
-  const appId = libraryItemOriginAppId(entry.libraryItem, siteKey);
-  const keywords = entry.keywords || [];
-  return {
-    ...entry,
-    category: materialSiteAppLabel(
-      appId,
-      appId ? { [appId]: entryAppLabelHint(entry) } : undefined,
-    ),
-    keywords:
-      appId && !keywords.includes(appId) ? [...keywords, appId] : keywords,
-  };
-}
-
 /**
  * 货架最终显示哪些卡。两类条目同场：用户可编辑的 durable artifact，以及匿名可读的
  * 官方模板目录行 —— 后者过不了 durable 判定（目录端点不下发 revision 身份），所以
  * 它有自己那条窄例外，见 `isOfficialTemplateMaterialEntry`。
+ *
+ * 本站层的归属 app 与分区**不在这里算**：那是 `material-scene-axis.ts` 的活
+ * （D2/D3 要的是「按 artifact 去重后再挂归属 app」，不是逐条目贴标签）。
  */
 export function materialShelfEntries(options: {
   level: MaterialLibraryLevel;
@@ -331,14 +212,14 @@ export function materialShelfEntries(options: {
     options.remote,
     ...(options.level === "primary" ? [options.exactLocal] : []),
   ];
-  const shelf = mergeMaterialEntries(groups).filter(
+  // `siteKey` 必须往下传：不传的话归属并集会把别站的绑定也收进来（W4 接口 §4.5）。
+  return mergeMaterialEntries(groups, {
+    siteKey: String(options.siteKey ?? "").trim(),
+  }).filter(
     (entry) =>
       isTrustedEditableMaterialEntry(entry) ||
       isOfficialTemplateMaterialEntry(entry),
   );
-  if (options.level !== "site") return shelf;
-  const siteKey = String(options.siteKey ?? "").trim();
-  return shelf.map((entry) => siteAppEntry(entry, siteKey));
 }
 
 /**

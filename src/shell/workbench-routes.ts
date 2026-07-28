@@ -478,6 +478,8 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "deck" });
     case "threed":
       return available(adapter, { type: "threed" });
+    case "game":
+      return available(adapter, { type: "game" });
     case "website":
       return available(adapter, {
         type: "embed",
@@ -556,6 +558,11 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     return threeDSubtypeFor(item) === "model"
       ? available("threed", { type: "threed" })
       : unavailable("只有 3D 模型可进入场景/视图工作台。");
+  }
+  // 必须留在下面 `item.kind === "website"` 分支之前：游戏 bundle 也是单文件 HTML，
+  // 落到那个分支就会被送进 Next 源码工作台（`01-decisions.md` D7 明令禁止）。
+  if (pinnedRoute === "game") {
+    return available("game", { type: "game" });
   }
   if (pinnedRoute === "none") {
     return unavailable(
@@ -766,6 +773,8 @@ export function editorToolLabel(route: EditorRoute): string {
       return "幻灯片编辑";
     case "threed":
       return "3D 场景与视图";
+    case "game":
+      return "游戏编辑";
     case "embed":
       return route.mediaType === "website"
         ? "网站编辑"

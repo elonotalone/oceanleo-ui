@@ -75,6 +75,7 @@ const EXPECTED_ADAPTER = Object.freeze({
   chart_editing: "chart-editor@1",
   video_canvas: "video-canvas",
   model_3d: "threed",
+  game_editing: "game",
 });
 
 const EXPECTED_ROUTE = Object.freeze({
@@ -90,6 +91,7 @@ const EXPECTED_ROUTE = Object.freeze({
   "chart-editor@1": "grid",
   "video-canvas": "embed",
   threed: "threed",
+  game: "game",
 });
 
 const KIND_BY_ARTIFACT = Object.freeze({
@@ -106,6 +108,7 @@ const KIND_BY_ARTIFACT = Object.freeze({
   audio: "audio",
   model_3d: "threed",
   workflow: "canvas",
+  game: "game",
 });
 
 const SOURCE_FORMAT_BY_ARTIFACT = Object.freeze({
@@ -122,6 +125,7 @@ const SOURCE_FORMAT_BY_ARTIFACT = Object.freeze({
   audio: "mp3",
   model_3d: "gltf",
   workflow: "oceanleo.workflow.v1",
+  game: "oceanleo.game-bundle.v1",
 });
 
 function contextId(siteKey) {
@@ -234,10 +238,10 @@ function libraryItemFor(artifact, siteId) {
   };
 }
 
-test("one immutable 12-row matrix drives every feature and public projection", () => {
+test("one immutable 13-row matrix drives every feature and public projection", () => {
   assert.strictEqual(ADVANCED_CAPABILITY_CONTRACT, ADVANCED_CAPABILITY_MATRIX);
-  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 12);
-  assert.equal(new Set(ADVANCED_CAPABILITY_MATRIX).size, 12);
+  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 13);
+  assert.equal(new Set(ADVANCED_CAPABILITY_MATRIX).size, 13);
   assert.equal(TRUSTED_EDITOR_REGISTRY.office.routable, false);
   assert.equal(TRUSTED_EDITOR_REGISTRY.office.routeType, "none");
   assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office.artifactCapabilities, []);
@@ -277,7 +281,7 @@ test("one immutable 12-row matrix drives every feature and public projection", (
   }
 });
 
-test("all 12 features keep shared identity and adapter across all 32 contexts", () => {
+test("all 13 features keep shared identity and adapter across all 32 contexts", () => {
   let dispatches = 0;
   for (const entry of ADVANCED_CAPABILITY_MATRIX) {
     const artifact = artifactFor(entry);
@@ -307,7 +311,7 @@ test("all 12 features keep shared identity and adapter across all 32 contexts", 
       dispatches += 1;
     }
   }
-  assert.equal(dispatches, 12 * 32);
+  assert.equal(dispatches, 13 * 32);
 });
 
 test("global More routes every typed artifact binding through the same matrix", () => {

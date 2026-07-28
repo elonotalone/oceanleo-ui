@@ -661,6 +661,7 @@ export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = {
   audio: "音频",
   xhs: "小红书",
   threed: "3D",
+  game: "游戏",
   file: "文件",
 };
 
@@ -703,6 +704,8 @@ const LIBRARY_KIND_ALIASES: Record<string, LibraryKind> = {
   "3d": "threed",
   model: "threed",
   model_3d: "threed",
+  game: "game",
+  leoplay: "game",
   file: "file",
 };
 
@@ -735,6 +738,7 @@ const SITE_DEFAULT_KIND: Record<string, LibraryKind> = {
   resume: "document",
   novel: "document",
   script: "document",
+  game: "game",
 };
 
 function libraryKindFromToken(value: unknown): LibraryKind | null {

@@ -16,6 +16,7 @@ export type EditorRoute =
   | { type: "grid"; adapter?: "chart-editor@1" }
   | { type: "deck" }
   | { type: "threed" }
+  | { type: "game" }
   | { type: "embed"; base: string; mediaType: MediaType }
   | { type: "none" };
 
@@ -153,6 +154,18 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     routeType: "threed",
     roundTrip: ROUND_TRIP,
     projectSchema: "oceanleo.model-view@1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  /**
+   * 游戏走本地 route 而不是 `embed`：`embed` 会把整块视口交给一个外站编辑器
+   * （website/design/video 三家），而游戏的可玩预览必须留在受控沙箱宿主里。
+   */
+  game: {
+    routeType: "game",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.game-bundle.v1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

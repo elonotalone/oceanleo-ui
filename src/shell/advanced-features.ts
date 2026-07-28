@@ -121,6 +121,15 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "GLB · GLTF · HDR",
   },
+  // 第 14 类 `game`（D7）。编辑面是 prompt 迭代 + 可玩预览，没有代码编辑面、
+  // 也没有任何上传入口（D8）；文案照此写，别暗示可以导入自己的文件。
+  game_editing: {
+    title: "游戏创作",
+    eyebrow: "Game editing",
+    description: "用提示词迭代玩法，边改边试玩并保存新版本。",
+    accent: ADVANCED_PRODUCT_ACCENT,
+    examples: "Playable · Canvas",
+  },
 };
 
 export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] =
@@ -148,7 +157,7 @@ function advancedFeatureForAdapterId(
   adapter: string,
 ): AdvancedFeatureDefinition | null {
   // Keep the adapter switch explicit so frozen consumer contracts can assert
-  // the 12-route mapping without importing the matrix runtime.
+  // the route mapping without importing the matrix runtime.
   switch (adapter) {
     case "video-timeline":
       return advancedFeatureById("video_editing");
@@ -174,6 +183,8 @@ function advancedFeatureForAdapterId(
       return advancedFeatureById("design_canvas");
     case "video-canvas":
       return advancedFeatureById("video_canvas");
+    case "game":
+      return advancedFeatureById("game_editing");
     default:
       return null;
   }

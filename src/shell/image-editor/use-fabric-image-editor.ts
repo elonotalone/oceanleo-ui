@@ -16,6 +16,7 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { advancedEditorSourceFor } from "../advanced-features";
+import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { refreshArtifactRendition } from "../artifact-client";
 import {
   renditionNeedsRefresh,
@@ -1059,9 +1060,13 @@ export function useFabricImageEditor(
               `image:${item.id}:${savingRevision}`,
               workingHeadUrlRef.current,
               {
-                uploadFailed: "保存到我的库失败",
-                registerFailed: "图片工程已上传，但登记到我的库失败",
+                uploadFailed: artifactSaveStepMessage("delivery-upload", ""),
+                registerFailed: artifactSaveStepMessage(
+                  "creation-register",
+                  "图片工程已上传，但没有登记成功",
+                ),
               },
+              makeStaticPreviewBlob,
             );
       if (!aliveRef.current) return null;
       if (saved.item) artifactHeadRef.current = saved.item;

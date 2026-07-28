@@ -11,7 +11,14 @@ import {
   fetchMediaBlob,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
-import { saveProjectWorkingHead } from "../doc-editors/doc-io";
+import {
+  saveFileToLibrary,
+  saveProjectWorkingHead,
+} from "../doc-editors/doc-io";
+import {
+  artifactSaveStepMessage,
+  planArtifactSaveRenditions,
+} from "../doc-editors/artifact-save-contract";
 import {
   normalizeEditorSnapshot,
   type EditorSnapshot,
@@ -230,6 +237,14 @@ export async function persistImageProject(
   idempotencyKey: string,
   workingHeadUrl: string,
   messages: { uploadFailed: string; registerFailed: string },
+  /**
+   * Rasterised canvas for a typed `single_file_image` revision.
+   *
+   * This type's accepted `source.format` list is raster-only (matrix §3.2 row 1),
+   * so the fabric project JSON can never be its source — the exported PNG has to
+   * be. Without a rasteriser the save stays on the legacy project-only path.
+   */
+  createRaster?: () => Promise<Blob>,
 ): Promise<PersistedImageProject> {
   const targetSite = siteId || "design";
   const title = `${item.title || "图片"}-编辑版`;
@@ -243,22 +258,46 @@ export async function persistImageProject(
   if (byteLength(projectJson) > MAX_PROJECT_BYTES) {
     throw new Error("图片工程超过 5MB，暂时无法自动保存");
   }
-  const saved = await saveProjectWorkingHead({
+  const sharedInput = {
     item,
     siteId: targetSite,
     fallbackSite: "design",
     title,
-    mediaType: "image",
+    mediaType: "image" as const,
     kind: "image",
     idempotencyKey,
     workingHeadUrl,
     meta: {
       parent_asset_id: rootId,
       editor: "fabric-v3",
+      editor_capability: "image-editor",
       fabric_saved_at: savedAt,
     },
     project: { schema: IMAGE_PROJECT_SCHEMA, data: snapshot },
-  });
+    editorManifest: { id: "image-editor", format: IMAGE_PROJECT_SCHEMA },
+  };
+  const commitsTypedRevision =
+    Boolean(createRaster) &&
+    isDurableLibraryItem(item) &&
+    item.artifactType === "single_file_image";
+  const saved = commitsTypedRevision
+    ? await saveFileToLibrary({
+        ...sharedInput,
+        createFile: async () => {
+          const raster = await createRaster!();
+          return new File([raster], `${safeImageFileStem(title)}.png`, {
+            type: "image/png",
+          });
+        },
+        sourceFormat: "png",
+        sourceMediaType: "image/png",
+        artifactRevision: {
+          artifactType: "single_file_image",
+          editor: "fabric-v3",
+          provenance: { editorSavedAt: savedAt },
+        },
+      })
+    : await saveProjectWorkingHead(sharedInput);
   if (!saved.ok) {
     throw new Error(
       saved.error || messages.uploadFailed || messages.registerFailed,
@@ -269,7 +308,14 @@ export async function persistImageProject(
     projectUrl: saved.projectUrl,
     savedAt,
     versionId: saved.versionId,
+    item: saved.item,
   };
+}
+
+function safeImageFileStem(value: string): string {
+  return (
+    value.replace(/[\\/:*?"<>|]+/g, "-").trim().slice(0, 120) || "image"
+  );
 }
 
 function normalizedDigest(value: unknown): string {
@@ -537,6 +583,19 @@ async function persistCompositeImageProjectInternal(
       dependencies.fetchBlob,
     ),
   ]);
+  // Same table every other editor commits through; the composite payload is
+  // unchanged, it is just no longer a second hand-written copy of the contract.
+  const plan = planArtifactSaveRenditions("composite_image", {
+    delivery: { url: sourceRow.url, digest: sourceDigest },
+    editorManifest: { url: sourceRow.url, digest: sourceDigest },
+    previewBitmap: { url: previewRow.url, digest: previewDigest },
+  });
+  if (!plan.ok) {
+    throw new CompositeImagePersistenceError(
+      artifactSaveStepMessage("contract", plan.error),
+      { code: "invalid-artifact", uploadsPersisted: true },
+    );
+  }
   const committed = await dependencies.createArtifactRevision(item.artifactId, {
     expectedRevisionId: item.revisionId,
     artifactType: "composite_image",
@@ -545,19 +604,7 @@ async function persistCompositeImageProjectInternal(
       url: sourceRow.url,
       digest: sourceDigest,
     },
-    renditions: [
-      {
-        purpose: "preview",
-        url: previewRow.url,
-        digest: previewDigest,
-      },
-      { purpose: "full", url: previewRow.url, digest: previewDigest },
-      {
-        purpose: "editor_manifest",
-        url: sourceRow.url,
-        digest: sourceDigest,
-      },
-    ],
+    renditions: plan.renditions,
     scene: {
       schema: IMAGE_SCENE_SOURCE_SCHEMA,
       closureDigest: dependencyClosureDigest,

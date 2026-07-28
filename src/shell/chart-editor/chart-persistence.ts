@@ -11,6 +11,10 @@ import {
   type SaveProjectWorkingHeadInput,
   type SaveToLibraryResult,
 } from "../doc-editors/doc-io";
+import {
+  artifactSaveStepMessage,
+  planArtifactSaveRenditions,
+} from "../doc-editors/artifact-save-contract";
 import { uploadFile } from "../../lib/database";
 import {
   fetchMediaBlob,
@@ -298,6 +302,16 @@ async function saveCanonicalRevision(
   assertUploadReceiptDigest("chart preview", previewDigest, previewRow);
   await dependencies.verifySource?.(sourceUrl, digest);
   await dependencies.verifyPreview?.(previewUrl, previewDigest);
+  // Same table every other editor commits through; chart keeps behaving exactly
+  // as before, but the shape is no longer a second hand-written copy.
+  const plan = planArtifactSaveRenditions("chart", {
+    delivery: { url: sourceUrl, digest },
+    editorManifest: { url: sourceUrl, digest },
+    previewBitmap: { url: previewUrl, digest: previewDigest },
+  });
+  if (!plan.ok) {
+    throw new Error(artifactSaveStepMessage("contract", plan.error));
+  }
   const published = await dependencies.publish(item.artifactId, {
     expectedRevisionId: item.revisionId,
     artifactType: "chart",
@@ -306,11 +320,7 @@ async function saveCanonicalRevision(
       url: sourceUrl,
       digest,
     },
-    renditions: [
-      { purpose: "preview", url: previewUrl, digest: previewDigest },
-      { purpose: "full", url: previewUrl, digest: previewDigest },
-      { purpose: "editor_manifest", url: sourceUrl, digest },
-    ],
+    renditions: plan.renditions,
     provenance: {
       editor: CHART_EDITOR_ADAPTER,
       previousRevisionId: item.revisionId,

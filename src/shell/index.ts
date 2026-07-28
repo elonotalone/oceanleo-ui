@@ -319,6 +319,29 @@ export type { MaterialBoard, MaterialBoardId, MaterialCatalogProps } from "./mat
 // 正式库，masonry 瀑布流 + 分类 chips）。各站 /explore 路由传本站 ExploreConfig 即可。
 export { ExplorePage, exploreCategoryLabel } from "./ExplorePage";
 export type { ExplorePageProps, ExploreConfig, ExploreCategory, ExploreAssetType } from "./ExplorePage";
+// 零配置探索页的**唯一**站点入参（`W3-interface-explore-props.md`）：站点在模块作用域
+// 把自己 `lib/app-catalog.ts` 的 app 数组交上来，分区/类型/文案全部由共享包据此推导。
+// 不是 useEffect —— SSR 与 CSR 必须拿到同一份目录，否则首屏没有分区。
+export {
+  MATERIAL_SCENE_ALL_ID,
+  MATERIAL_SCENE_OTHER_ID,
+  MATERIAL_SCENE_OTHER_LABEL,
+  MATERIAL_SITE_APP_OTHER_LABEL,
+  materialSceneView,
+  readSiteAppDirectory,
+  registerSiteAppDirectory,
+  resetSiteAppDirectories,
+  subscribeSiteAppDirectories,
+} from "./material-scene-axis";
+export type {
+  MaterialSceneCard,
+  MaterialSceneChip,
+  MaterialSceneView,
+  SceneSelection,
+  SiteAppDirectory,
+  SiteDirectoryApp,
+  SiteDirectoryAppInput,
+} from "./material-scene-axis";
 // 宗旨 v12.1（2026-07-04）：功能页「使用指南（navigator）」——右栏（库）默认展开、
 // 首屏是导航页（教学文案 + 示例，点示例灌进左栏）。ConsoleFunction.guide 配置。
 export { NavigatorGuide } from "./NavigatorGuide";
@@ -478,14 +501,26 @@ export {
   primeCurrentPrincipalId,
   resetCurrentPrincipalId,
 } from "./artifact-client";
-// 合同 §3.1 / §3.2：素材三级作用域（W5 产出）。`MATERIAL_SCOPE_PARAM_NAMES` 是与后端
-// （W7）逐字对齐的 query 参数名，两侧改名必须先改合同 §3.2。
-export { MATERIAL_SCOPE_PARAM_NAMES } from "./material-library-scope";
-export type { MaterialLibraryLevel, MaterialScope } from "./material-library-scope";
-// 合同 §0.6：大卡片删掉的「下载」入口迁到素材卡。渲染函数由宿主经 `WorkspaceLibrary` 的
-// `entryActions` 挂载（`<WorkspaceLibrary entryActions={materialEntryDownloadAction} …/>`，
-// 正是该模块自述的消费方式）。包内目前没有任何 import 点，不外露它就等于交付了一个谁也
-// 拿不到的能力——W4-marker §10.7-2 把这条出口权交给了 index.ts 的 owner。
+// 合同 §3.1 / §3.2：素材作用域。`MATERIAL_SCOPE_PARAM_NAMES` 是与后端逐字对齐的
+// query 参数名，两侧改名必须先改合同 §3.2。
+//
+// 曾经的第三档 `more`（全平台）已按 `01-decisions.md` D1 整层下线，只剩
+// `primary` 此 app ｜ `site` 本站素材；`materialScopeViolation` 是 fail-closed 判据，
+// 缺 `originSiteKey` 时不许退化成全平台搜索。
+export {
+  MATERIAL_LIBRARY_LEVELS,
+  MATERIAL_SCOPE_PARAM_NAMES,
+  MATERIAL_SCOPE_UNENFORCEABLE_CODE,
+  libraryItemAppAttributions,
+  materialScopeViolation,
+} from "./material-library-scope";
+export type {
+  MaterialAppAttribution,
+  MaterialLibraryLevel,
+  MaterialScope,
+} from "./material-library-scope";
+// 「下载」的渲染函数。**不再挂在网格卡上**（`01-decisions.md` D4：下载只在详情浮层里），
+// 所以包内没有 import 点；导出保留是为了浮层那一侧（W5）与既有宿主能继续拿到它。
 export {
   isMaterialDownloadEntry,
   materialEntryDownloadAction,

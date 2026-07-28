@@ -34,6 +34,7 @@ test("advanced editor routing covers every durable material family", () => {
       "chart-editor@1",
       "deck",
       "design-canvas",
+      "game",
       "grid",
       "image",
       "office",

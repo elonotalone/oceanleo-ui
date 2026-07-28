@@ -133,7 +133,7 @@ test("typed editor capability matrix does not infer editing from viewer kind", (
   }
 });
 
-test("all thirteen shelf taxonomies reach a trusted local editor", () => {
+test("all fourteen shelf taxonomies reach a trusted local editor", () => {
   const capabilityByType = {
     single_file_image: ["image-editor", "png"],
     composite_image: ["composite-image-editor", "fabric-json"],
@@ -148,6 +148,9 @@ test("all thirteen shelf taxonomies reach a trusted local editor", () => {
     audio: ["audio-editor", "audio-project+json"],
     model_3d: ["model-3d-editor", "glb"],
     workflow: ["design-canvas", "workflow-json"],
+    // 第 14 类。`game-editor` 与 `website-editor` 是两条独立能力：游戏不走
+    // Next 源码工作台（`01-decisions.md` D7）。
+    game: ["game-editor", "oceanleo.game-bundle.v1"],
   };
   assert.deepEqual(Object.keys(capabilityByType).sort(), [...ARTIFACT_TYPES].sort());
 

@@ -53,6 +53,7 @@ const KIND_CATEGORY: Record<LibraryKind, string> = {
   audio: "音频",
   xhs: "小红书",
   threed: "3D",
+  game: "游戏",
   file: "文件",
 };
 

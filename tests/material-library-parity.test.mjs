@@ -65,17 +65,20 @@ function durableItem({
   };
 }
 
-test("Current App keeps context identity while More is globally keyed", () => {
+// D1（2026-07-28）：曾经的第三档 `more`（全平台，globally keyed）整层下线。
+// 剩下的两层都必须携带站点身份，不存在「一个 key 服务所有站」的桶了。
+test("Current App keeps context identity and 本站素材 is keyed per site", () => {
   const primaryKeys = contexts.map((context) =>
     materialLibraryRequestKey(request("primary", context)),
   );
-  const moreKeys = contexts.map((context) =>
-    materialLibraryRequestKey(request("more", context)),
+  const siteKeys = contexts.map((context) =>
+    materialLibraryRequestKey(request("site", context)),
   );
 
   assert.equal(new Set(primaryKeys).size, contexts.length);
-  assert.equal(new Set(moreKeys).size, 1);
-  assert.match(moreKeys[0], /"context":"global"/);
+  assert.equal(new Set(siteKeys).size, contexts.length);
+  for (const key of siteKeys) assert.doesNotMatch(key, /"context":"global"/);
+  assert.match(siteKeys[0], /"context":"site:image"/);
 });
 
 test("Current App accepts only an exact primary binding pinned to this revision", () => {
@@ -114,7 +117,9 @@ test("Current App accepts only an exact primary binding pinned to this revision"
   );
 });
 
-test("material merging deduplicates only durable artifact plus revision identity", () => {
+// D3（2026-07-28）：去重键从 `artifactId:revisionId` 改成 artifact 身份——
+// 一份素材在一个视图里只出现一张卡，同一 artifact 的两个 revision 不再各占一张。
+test("material merging keeps one card per artifact identity", () => {
   const revisionOne = durableItem();
   const duplicate = {
     ...durableItem(),
@@ -124,17 +129,24 @@ test("material merging deduplicates only durable artifact plus revision identity
     pinnedRevisionId: "revision-2",
     revisionId: "revision-2",
   });
+  const other = {
+    ...durableItem(),
+    id: "artifact-2",
+    artifactId: "artifact-2",
+    key: "artifact:artifact-2:revision-1",
+  };
   const merged = mergeMaterialEntries([
     [{ id: "first", libraryItem: revisionOne }],
     [
       { id: "duplicate", libraryItem: duplicate },
       { id: "new-revision", libraryItem: revisionTwo },
+      { id: "other-artifact", libraryItem: other },
     ],
   ]);
 
   assert.deepEqual(
     merged.map((entry) => entry.id),
-    ["first", "new-revision"],
+    ["first", "other-artifact"],
   );
 });
 

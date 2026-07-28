@@ -24,6 +24,13 @@ export type LibraryKind =
   | "audio"
   | "xhs"
   | "threed"
+  /**
+   * 可玩的单文件游戏 bundle。刻意不并进 `website`：两者的查看器都是 HTML，
+   * 但游戏必须落在受控沙箱宿主里，且它的编辑面是 prompt 迭代而不是源码工作台
+   * （`01-decisions.md` D7）。并进 `website` 会让非 durable 回退路径把游戏
+   * 送进 Next 源码编辑器。
+   */
+  | "game"
   | "file";
 
 export type EditorCapabilityName = "load" | "mutate" | "save" | "reopen";
@@ -111,6 +118,7 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   audio: "audio",
   model_3d: "threed",
   workflow: "canvas",
+  game: "game",
 };
 
 /**
@@ -167,6 +175,7 @@ export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
     audio: "audio",
     xhs: "document",
     threed: "model_3d",
+    game: "game",
     file: "document",
   } as Record<LibraryKind, ArtifactType>)[kind];
 }
@@ -434,6 +443,9 @@ const KIND_ALIASES: Record<string, LibraryKind> = {
   model3d: "threed",
   model: "threed",
   mesh: "threed",
+  game: "game",
+  games: "game",
+  leoplay: "game",
   file: "file",
   other: "file",
 };

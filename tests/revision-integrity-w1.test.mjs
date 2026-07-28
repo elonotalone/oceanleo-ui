@@ -334,7 +334,19 @@ test("ResultCanvas gates only failed transitions and RichDoc uses canonical publ
     canvas,
     /编辑器未返回同一 artifact root、以当前 pin 为 previous revision 的新完整 revision/,
   );
-  assert.match(richdoc, /commitAdvancedSavedRevision\(item,/);
-  assert.match(richdoc, /publish: createArtifactRevision/);
-  assert.match(richdoc, /previousRevisionId: item\.revisionId/);
+  // The canonical publish moved into the editor's shared save producer
+  // (doc-io -> artifact-save-contract -> createArtifactRevision). The route
+  // used to run a second, hand-built commit that submitted the docx as `full`
+  // and was refused by _require_displayable_primary.
+  const editor = readFileSync(
+    new URL(
+      "../src/shell/doc-editors/use-rich-doc-editor.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(richdoc, /commitAdvancedSavedRevision/);
+  assert.doesNotMatch(richdoc, /purpose: "full"/);
+  assert.match(editor, /artifactRevision: \{\s*artifactType: "document"/);
+  assert.match(richdoc, /saved\.revisionId === saved\.previousRevisionId/);
 });

@@ -21,7 +21,10 @@ import {
 import { GridStage } from "../doc-editors/GridStage";
 import { buildGridRouteWorkbookBlob } from "../doc-editors/GridWorkbookExport";
 import {
+  gridSavedItemForHandoff,
   useGridEditor,
+  GRID_SOURCE_FORMAT,
+  GRID_SOURCE_MEDIA_TYPE,
   type GridEditorState,
 } from "../doc-editors/use-grid-editor";
 import { useOfficeArtifactSource } from "../office-editor";
@@ -175,20 +178,35 @@ export function GridRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    return saved
-      ? {
-          ok: true as const,
-          item: advancedSavedItem(item, {
-            url: saved.url,
-            versionId: saved.versionId,
-            meta: {
-              editor_project_url: saved.projectUrl,
-              editor_project_schema: saved.projectSchema,
-            },
-          }),
-        }
-      : { ok: false as const };
-  }, [editor.save, item]);
+    if (!saved) {
+      return {
+        ok: false as const,
+        error: editor.error || undefined,
+      };
+    }
+    const receipt = advancedSavedItem(item, {
+      url: saved.url,
+      versionId: saved.versionId,
+      title: saved.title,
+      meta: {
+        source_format: saved.sourceFormat || GRID_SOURCE_FORMAT,
+        source_media_type: saved.sourceMediaType || GRID_SOURCE_MEDIA_TYPE,
+        source_url: saved.url,
+        delivery_format: GRID_SOURCE_FORMAT,
+        editor_project_url: saved.projectUrl,
+        editor_project_schema: saved.projectSchema,
+        editor_manifest_url: saved.projectUrl,
+        editor_manifest_schema: saved.projectSchema,
+        editor_working_head_url: saved.projectUrl,
+        editor_working_head_project_url: saved.projectUrl,
+        editor_working_head_schema: saved.projectSchema,
+      },
+    });
+    return {
+      ok: true as const,
+      item: gridSavedItemForHandoff(saved.item || receipt || item, saved),
+    };
+  }, [editor.error, editor.save, item]);
   const importLocalFile = useCallback(
     async (files: File[]) => {
       const file = files[0];

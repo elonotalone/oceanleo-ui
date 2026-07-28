@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { saveCreations, type MediaType } from "../lib/database";
+import { getArtifactItem } from "./artifact-client";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
 import {
   acceptEditorFrameMessage,
@@ -11,7 +12,9 @@ import {
 import { advancedSavedItem } from "./advanced-session";
 import {
   DesignCompositeCommitError,
+  isEmbeddedTypedCommitType,
   persistDesignCompositeCommit,
+  persistEmbeddedTypedCommit,
 } from "./design-composite-commit";
 import {
   isDurableLibraryItem,
@@ -385,10 +388,15 @@ export function useEmbedEditorMessages({
                         "stale-artifact",
                       );
                     }
-                    const committed = await persistDesignCompositeCommit(
-                      artifactHeadRef.current,
-                      message,
-                    );
+                    // composite_image 走原来那条带 scene 闭包的路；
+                    // vector_image / workflow / website 走 A12 新增的、
+                    // 按类型 fail-closed 校验 source format 的那条。
+                    const head = artifactHeadRef.current;
+                    const committed = isEmbeddedTypedCommitType(
+                      String(head?.artifactType || ""),
+                    )
+                      ? await persistEmbeddedTypedCommit(head, message)
+                      : await persistDesignCompositeCommit(head, message);
                     if (saveGeneration === artifactHeadGenerationRef.current) {
                       artifactHeadRef.current = committed;
                     }
@@ -456,6 +464,46 @@ export function useEmbedEditorMessages({
                       meta: message.meta,
                     })
                   : undefined;
+                /**
+                 * A13：`website` 这类编辑器**在服务端**就把 typed revision 落好了
+                 * （`materializeWebsiteProjectArtifact`），消息里带的是已经存在的
+                 * artifact/revision 身份，不是请宿主再提交一次——所以它刻意不设
+                 * `requires_typed_artifact_commit`，宿主再提交会变成重复 revision
+                 * 或对着已推进的 head 打 409。
+                 *
+                 * 宿主真正欠的是**把工作台的 pin 推进到那个新 revision**：过去这里
+                 * 只登记 creation，`savedItem` 仍旧背着打开时的旧 pin，于是下一次
+                 * 保存还是以旧 revision 为基。这里按服务端权威投影收编新 head。
+                 */
+                const declaredArtifactId = String(
+                  message.meta?.artifact_id || "",
+                ).trim();
+                const declaredRevisionId = String(
+                  message.meta?.artifact_revision_id ||
+                    message.meta?.revision_id ||
+                    "",
+                ).trim();
+                if (saved && declaredArtifactId && declaredRevisionId) {
+                  const adopted = await getArtifactItem(
+                    declaredArtifactId,
+                    declaredRevisionId,
+                  );
+                  const projection = adopted.data;
+                  if (
+                    adopted.ok &&
+                    projection &&
+                    isDurableLibraryItem(projection) &&
+                    projection.artifactId === declaredArtifactId &&
+                    projection.revisionId === declaredRevisionId
+                  ) {
+                    savedItem = projection;
+                    artifactId = projection.artifactId;
+                    revisionId = projection.revisionId;
+                    durableUrl =
+                      projection.previewUrl || projection.url || durableUrl;
+                  }
+                  // 取不到权威投影就保持既有 creation 行为，不猜、不伪造 pin。
+                }
               }
             } catch (caught) {
               detail =
