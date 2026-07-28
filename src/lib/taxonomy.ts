@@ -127,6 +127,9 @@ const SITE_INDUSTRY: Record<string, IndustryId> = {
   med: "health",
   travel: "life",
   notebook: "tools",
+  // LeoPlay（2026-07-28 由 registry-only 升为正式功能站）。归「影视」= 泛娱乐，
+  // 与 SKILL_INDUSTRY 里「游戏空间 → film」同一口径，不另开行业桶。
+  game: "film",
   search: "tools",
   chat: "tools",
   website: "internet",
@@ -177,6 +180,11 @@ const SITE_CONTENT: Record<string, ContentId> = {
   med: "doc", // 体检报告解读，产出是解读报告文档。
   travel: "doc", // 结构化行程，产出是可导出的行程文档。
   notebook: "doc", // 私有知识库带引用问答，产出是文档。
+  // LeoPlay 的产物是单文件 HTML 的可玩游戏 —— 在现有 11 个媒介桶里，「网页」是唯一
+  // 如实描述它的一个（打开就能跑）。这里**有意不新增「游戏」内容桶**：CONTENTS 是
+  // 浏览页 chips 的枚举，加一桶会同时改到 36 个 consumer 的浏览页，属于共享包 owner
+  // 的改动，不是本次登记该顺手做的事。要不要独立成桶见 W8-marker 的 handoff。
+  game: "web",
   search: "chat",
   chat: "chat",
   website: "web",
@@ -390,6 +398,7 @@ const SITE_SKILL_CATEGORIES: Record<string, string[]> = {
   finance: ["金融投资", "数据智能"],
   med: ["生活服务"],
   travel: ["生活服务"],
+  game: ["游戏空间", "内容创作"], // LeoPlay：玩法策划与叙事/美术方向的 skill 最相关。
   notebook: ["文档办公", "学术教育", "数据智能"],
   search: ["数据智能", "技术工程"],
   chat: ["客户服务", "运营人力"],
