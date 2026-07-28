@@ -165,10 +165,12 @@ test("all five advanced editor paths enforce the shared source contract", async 
     video,
     timelineModel,
     audio,
+    audioWaveLoader,
     audioPersistence,
     pdfSource,
-    pdfWorkbench,
+    pdfPageActions,
     modelFiles,
+    modelDepRuntime,
     modelHook,
     modelLoader,
     modelRuntime,
@@ -177,10 +179,12 @@ test("all five advanced editor paths enforce the shared source contract", async 
     "src/shell/video-editor/use-video-timeline.ts",
     "src/shell/video-editor/timeline-model.ts",
     "src/shell/media-editors/AudioWorkbench.tsx",
+    "src/shell/media-editors/use-audio-wave-loader.ts",
     "src/shell/media-editors/use-audio-persistence.ts",
     "src/shell/media-editors/pdf-source.ts",
-    "src/shell/media-editors/use-pdf-workbench.ts",
+    "src/shell/media-editors/use-pdf-page-actions.ts",
     "src/shell/media-editors/model3d-files.ts",
+    "src/shell/media-editors/model3d-dependency-runtime.mjs",
     "src/shell/media-editors/use-model3d-workbench.ts",
     "src/shell/media-editors/use-model3d-source-loader.ts",
     "src/shell/media-editors/model3d-runtime.mjs",
@@ -202,15 +206,20 @@ test("all five advanced editor paths enforce the shared source contract", async 
   assert.match(timelineModel, /timelineDocIssue/);
   assert.match(timelineModel, /缺少安全的 http\(s\) 媒体源/);
 
-  assert.match(audio, /assertBlobSource\(blob, "audio"\)/);
   assert.match(audio, /assertBlobSource\(file, "audio"\)/);
+  assert.match(audioWaveLoader, /assertBlobSource\(blob, "audio"\)/);
   assert.match(audioPersistence, /assertBlobSource\(payload, "audio"\)/);
 
   assert.match(pdfSource, /assertBlobSource\(blob, "pdf"\)/);
-  assert.match(pdfWorkbench, /assertBlobSource\(file, "pdf"\)/);
+  assert.match(pdfPageActions, /assertBlobSource\(file, "pdf"\)/);
 
   assert.match(modelFiles, /prepareModelRuntimeSource/);
-  assert.match(modelFiles, /rewriteGltfDependencyUris/);
+  assert.match(modelFiles, /materializeModel3DGltfDependencies/);
+  assert.match(modelFiles, /gltfDependencyUris/);
+  assert.match(modelFiles, /依赖协议不受支持/);
+  assert.match(modelDepRuntime, /export async function materializeModel3DGltfDependencies/);
+  assert.match(modelDepRuntime, /entry\.uri = objectUrl/);
+  assert.match(modelDepRuntime, /uri\.startsWith\("blob:"\)/);
   assert.match(modelHook, /useModel3DSourceLoader/);
   assert.doesNotMatch(modelHook, /importMediaUrl\(checkpointSource/);
   assert.match(modelLoader, /prepareModelRuntimeSource/);

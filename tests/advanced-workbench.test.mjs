@@ -256,7 +256,10 @@ test("the shared property bar dispatches direct, dropdown and drawer controls", 
     source("../src/shell/selection-context-types.ts");
   assert.match(toolbar, /control\.kind === "action" \|\| control\.kind === "panel"/);
   assert.match(toolbar, /control\.panelAction/);
-  assert.match(toolbar, /aria-haspopup="listbox"/);
+  // Dropdown select uses listbox popup; panel/more use dialog (expression or literal).
+  assert.match(toolbar, /aria-haspopup=\{forMeasurement \? undefined : "listbox"\}/);
+  assert.match(toolbar, /aria-haspopup=\{control\.kind === "panel" \? "dialog"/);
+  assert.match(toolbar, /aria-haspopup="dialog"/);
   assert.match(toolbar, /role="option"/);
   assert.match(toolbar, /control\.kind === "toggle"/);
   assert.match(toolbar, /type="color"/);
@@ -329,9 +332,14 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   assert.match(embed, /\{ \.\.\.message, protocol: EDITOR_PROTOCOL, instanceId \}/);
   assert.match(embed, /asHostToEditorMessage\(envelope, instanceId\)/);
   assert.match(embed, /selectionGateRef\.current\.accept/);
+  // Blank/draft website embeds gate on draft|blank with no durable URL yet
+  // (website-embed-params + workbench-routes), not only meta.draft.
+  const embedGate =
+    source("../src/shell/website-embed-params.ts") +
+    source("../src/shell/workbench-routes.ts");
   assert.match(
-    embed,
-    /item\.meta\.draft === true && !item\.url && !item\.previewUrl/,
+    embedGate,
+    /\(item\.meta\.draft === true \|\| item\.meta\.blank === true\) &&\s*!item\.url &&\s*!item\.previewUrl/,
   );
   assert.match(embed, /type: "open-asset"/);
   assert.match(embed, /type: "save-request"/);

@@ -63,7 +63,12 @@ test("v9 floating bar is intrinsic width with only a viewport safety maximum", (
   const measureHook = source("../src/shell/useSelectionToolbarMeasure.ts");
   const floating = source("../src/shell/FloatingContextToolbar.tsx");
   assert.match(toolbar, /w-fit max-w-full/);
-  assert.match(toolbar, /maxInlineSize:\s*SELECTION_TOOLBAR_VIEWPORT_MAX/);
+  // Intrinsic width + viewport safety: measured px when known, else constant.
+  assert.match(
+    toolbar,
+    /maxInlineSize:\s*(?:\n\s*)?floatingMaxInlineSize\s*>\s*0\s*\?\s*`\$\{floatingMaxInlineSize\}px`\s*:\s*SELECTION_TOOLBAR_VIEWPORT_MAX/,
+  );
+  assert.match(toolbar, /SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.doesNotMatch(toolbar, /width:\s*`min\(|min-w-\[[^\]]+\]|flex-1 flex-nowrap/);
   assert.match(measureHook, /new ResizeObserver\(readLayout\)/);
   assert.match(toolbar, /data-selection-toolbar-measurements/);

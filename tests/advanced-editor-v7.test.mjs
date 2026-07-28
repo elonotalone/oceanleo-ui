@@ -90,7 +90,13 @@ test("selection toolbar keeps every primary capability at every width", () => {
   assert.match(toolbar, /overflow\.length > 0/);
   assert.match(toolbar, /className="[^"]*w-72/);
   assert.match(toolbar, /computeAnchoredPopoverPosition/);
-  assert.match(toolbar, /maxInlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX/);
+  // Floating bar uses a measured remaining-strip px ceiling when available,
+  // otherwise the static viewport safety constant (must stay assertable).
+  assert.match(
+    toolbar,
+    /maxInlineSize:\s*(?:\n\s*)?floatingMaxInlineSize\s*>\s*0\s*\?\s*`\$\{floatingMaxInlineSize\}px`\s*:\s*SELECTION_TOOLBAR_VIEWPORT_MAX/,
+  );
+  assert.match(toolbar, /SELECTION_TOOLBAR_VIEWPORT_MAX/);
   assert.doesNotMatch(toolbar, /width:\s*`min\(/);
   assert.doesNotMatch(toolbar, /Math\.min\(7|selectionToolbarBudget/);
   assert.doesNotMatch(toolbar, /calc\(100vw-2rem\),100%/);

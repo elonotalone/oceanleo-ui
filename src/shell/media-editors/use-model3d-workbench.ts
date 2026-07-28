@@ -2,32 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { loadEditorProject } from "../doc-editors/doc-io";
 import type { LibraryItem } from "../library-data";
-import { normalizeModel3DDirectorDocument, type Model3DPrevisAdapter } from "./model3d-director";
+import type { Model3DPrevisAdapter } from "./model3d-director";
 import {
-  LEGACY_MODEL3D_PROJECT_SCHEMA,
-  MODEL3D_PROJECT_SCHEMA,
   normalizeModel3DProjectRecovery,
   normalizeModel3DSourceProvenance,
-  type Model3DSourceFormat,
   type Model3DSourceProvenance,
   type Model3DViewProject,
 } from "./model3d-project";
 import type { Model3DOperation } from "./model3d-operations.mjs";
 import { Model3DSceneRuntime, type Model3DAnnotationPoint,
   type Model3DAnnotationScreen, type Model3DViewState } from "./model3d-runtime.mjs";
-import { normalizeModel3DEnvironmentUrl, normalizeSavedModelView } from "./model3d-view";
+import { normalizeModel3DEnvironmentUrl } from "./model3d-view";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 import {
   DEFAULT_MODEL3D_VIEW,
-  EMPTY_MODEL3D_RUNTIME,
   model3DPosterForItem,
   model3DSidecarWithoutSource,
-  model3DSourceForItem,
 } from "./model3d-workbench-defaults";
+import { clampModel3DValue } from "./model3d-workbench-helpers";
 import { useModel3DMediaActions } from "./use-model3d-media-actions";
 import { useModel3DDirector } from "./use-model3d-director";
+import { useModel3DProjectBootstrap } from "./use-model3d-project-bootstrap";
 import { useModel3DRuntime } from "./use-model3d-runtime";
 import { useModel3DSave } from "./use-model3d-save";
 import { useModel3DSidecar } from "./use-model3d-sidecar";
@@ -35,22 +31,6 @@ import { useModel3DSourceActions } from "./use-model3d-source-actions";
 import { useModel3DSourceLoader } from "./use-model3d-source-loader";
 
 export type { Model3DWorkbenchState } from "./model3d-workbench-state";
-const clamp = (value: number, minimum: number, maximum: number) =>
-  Math.min(maximum, Math.max(minimum, Number(value)));
-
-function errorMessage(caught: unknown, fallback: string): string {
-  if (caught instanceof DOMException && caught.name === "AbortError") return "";
-  return caught instanceof Error ? caught.message : fallback;
-}
-
-function model3DItemSourceFormat(item: LibraryItem): Model3DSourceFormat {
-  const format = String(item.meta.format || "").toLowerCase();
-  if (format === "glb" || format === "gltf") return format;
-  const mime = String(item.meta.mime || "").toLowerCase();
-  if (mime === "model/gltf+json") return "gltf";
-  if (mime === "model/gltf-binary") return "glb";
-  return "";
-}
 
 export function useModel3DWorkbench(
   item: LibraryItem,
@@ -152,184 +132,29 @@ export function useModel3DWorkbench(
     };
   }, []);
 
-  useEffect(() => {
-    const originalSource = model3DSourceForItem(item);
-    const fallbackProvenance = normalizeModel3DSourceProvenance(
-      {
-        sourceUrl: originalSource,
-        dependencyBaseUrl:
-          typeof item.meta.model_dependency_base_url === "string"
-            ? item.meta.model_dependency_base_url
-            : originalSource,
-        format: model3DItemSourceFormat(item),
-        identity:
-          typeof item.meta.model_source_identity === "string"
-            ? item.meta.model_source_identity
-            : "",
-        artifactId:
-          typeof item.meta.model_source_artifact_id === "string"
-            ? item.meta.model_source_artifact_id
-            : item.artifactId || "",
-        revisionId:
-          typeof item.meta.model_source_revision_id === "string"
-            ? item.meta.model_source_revision_id
-            : item.revisionId || "",
-        sourceDigest:
-          typeof item.meta.model_source_digest === "string"
-            ? item.meta.model_source_digest
-            : item.artifact?.renditions.source?.digest || "",
-      },
-      originalSource,
-      model3DItemSourceFormat(item),
-    );
-    const saved = normalizeSavedModelView(item.meta.view);
-    const fallback: Model3DViewProject = {
-      ...DEFAULT_MODEL3D_VIEW,
-      sourceUrl: originalSource,
-      azimuth: saved.azimuth,
-      elevation: saved.elevation,
-      zoom: saved.zoom,
-      autoRotate: saved.autoRotate,
-      exposure: saved.exposure,
-      shadowIntensity: saved.shadowIntensity,
-      shadowSoftness: saved.shadowSoftness,
-      shadowEnabled: saved.shadowEnabled,
-      background: saved.background,
-      animationName: saved.animation,
-      animationPlaying: saved.animationPlaying,
-      animationSpeed: saved.animationSpeed,
-      animationTime: saved.animationTime,
-      environmentUrl: saved.environmentUrl,
-      environmentIntensity: saved.environmentIntensity,
-      materialOverrides: saved.materialOverrides,
-      annotations: saved.annotations,
-      director: normalizeModel3DDirectorDocument(saved.director, item.id),
-    };
-    const generation = ++sourceGenerationRef.current;
-    runtimeRef.current?.clear();
-    loadedSourceRef.current = "";
-    pendingOperationsRef.current = [];
-    setSourceUrl("");
-    setSourceLoading(true);
-    setModelLoading(false);
-    setProgress(0);
-    setRuntimeState(EMPTY_MODEL3D_RUNTIME);
-    setSavedUrl("");
-    setDirty(false);
-    revisionRef.current = 0;
-    setNotice("");
-    setError("");
-    applyView(fallback);
-
-    void (async () => {
-      let recovered = {
-        checkpointUrl: originalSource,
-        operations: [] as Model3DOperation[],
-        provenance: fallbackProvenance,
-        view: fallback,
-      };
-      const projectUrl =
-        typeof item.meta.editor_project_url === "string"
-          ? item.meta.editor_project_url
-          : "";
-      const projectSchema = String(item.meta.editor_project_schema || "");
-      if (
-        projectUrl &&
-        [MODEL3D_PROJECT_SCHEMA, LEGACY_MODEL3D_PROJECT_SCHEMA].includes(
-          projectSchema,
-        )
-      ) {
-        try {
-          const project = await loadEditorProject<unknown>(
-            projectUrl,
-            projectSchema,
-          );
-          recovered = normalizeModel3DProjectRecovery(
-            project,
-            fallback,
-            originalSource,
-          ) || recovered;
-        } catch {
-          // The creation metadata remains a complete sidecar fallback.
-        }
-      }
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-        return;
-      }
-      const recoveredProvenance = normalizeModel3DSourceProvenance(
-        {
-          ...recovered.provenance,
-          artifactId:
-            recovered.provenance.artifactId || fallbackProvenance.artifactId,
-          revisionId:
-            recovered.provenance.revisionId || fallbackProvenance.revisionId,
-          sourceDigest:
-            recovered.provenance.sourceDigest || fallbackProvenance.sourceDigest,
-        },
-        recovered.checkpointUrl || originalSource,
-        recovered.provenance.format,
-      );
-      pendingOperationsRef.current = recovered.operations;
-      setSourceProvenance(recoveredProvenance);
-      applyView(recovered.view);
-      const checkpointSource = recovered.checkpointUrl || originalSource;
-      if (!checkpointSource) {
-        setNotice(tt("空白 3D 场景已就绪，请导入 GLB 或自包含 glTF 模型"));
-        setSourceLoading(false);
-        return;
-      }
-      try {
-        if (
-          aliveRef.current &&
-          generation === sourceGenerationRef.current
-        ) {
-          setSourceProvenance(
-            normalizeModel3DSourceProvenance(
-              recoveredProvenance,
-              checkpointSource,
-              recoveredProvenance.format,
-            ),
-          );
-          // Keep the canonical entrypoint and dependency base together until
-          // byte-signature detection proves GLB versus glTF. Importing an
-          // opaque URL first can sever a glTF JSON file from its .bin/textures.
-          setSourceUrl(checkpointSource);
-        }
-      } catch (caught) {
-        if (aliveRef.current && generation === sourceGenerationRef.current) {
-          setError(errorMessage(caught, tt("3D 模型导入失败")));
-        }
-      } finally {
-        if (aliveRef.current && generation === sourceGenerationRef.current) {
-          setSourceLoading(false);
-        }
-      }
-    })();
-  }, [
-    applyView,
-    item.id,
-    item.meta.editor,
-    item.meta.editor_project_schema,
-    item.meta.editor_project_url,
-    item.meta.format,
-    item.meta.mime,
-    item.meta.model_dependency_base_url,
-    item.meta.model_source_artifact_id,
-    item.meta.model_source_digest,
-    item.meta.model_source_identity,
-    item.meta.model_source_revision_id,
-    item.meta.model_source_url,
-    item.meta.source_asset_url,
-    item.meta.view,
-    item.artifact?.renditions.source?.digest,
-    item.artifactId,
-    item.previewUrl,
-    item.revisionId,
-    item.title,
-    item.url,
+  useModel3DProjectBootstrap({
+    item,
+    artifactSourceDigest: item.artifact?.renditions.source?.digest || "",
     siteId,
     tt,
-  ]);
+    aliveRef,
+    sourceGenerationRef,
+    loadedSourceRef,
+    pendingOperationsRef,
+    runtimeRef,
+    revisionRef,
+    applyView,
+    setSourceUrl,
+    setSourceLoading,
+    setModelLoading,
+    setProgress,
+    setRuntimeState,
+    setSavedUrl,
+    setDirty,
+    setNotice,
+    setError,
+    setSourceProvenance,
+  });
 
   const { handlePreparedSource, importModel, openModelUrl } =
     useModel3DSourceActions({
@@ -545,7 +370,7 @@ export function useModel3DWorkbench(
     undo: () => void runtimeRef.current?.undo(),
     redo: () => void runtimeRef.current?.redo(),
     setOrbit: (azimuth, elevation) => updateView({ azimuth, elevation }),
-    setZoom: (zoom) => updateView({ zoom: clamp(zoom, 20, 500) }),
+    setZoom: (zoom) => updateView({ zoom: clampModel3DValue(zoom, 20, 500) }),
     resetCamera: () =>
       updateView({
         azimuth: DEFAULT_MODEL3D_VIEW.azimuth,
@@ -553,11 +378,16 @@ export function useModel3DWorkbench(
         zoom: DEFAULT_MODEL3D_VIEW.zoom,
       }),
     setAutoRotate: (autoRotate) => updateView({ autoRotate }),
-    setExposure: (exposure) => updateView({ exposure: clamp(exposure, 0.1, 4) }),
+    setExposure: (exposure) =>
+      updateView({ exposure: clampModel3DValue(exposure, 0.1, 4) }),
     setShadowIntensity: (shadowIntensity) =>
-      updateView({ shadowIntensity: clamp(shadowIntensity, 0, 2) }),
+      updateView({
+        shadowIntensity: clampModel3DValue(shadowIntensity, 0, 2),
+      }),
     setShadowSoftness: (shadowSoftness) =>
-      updateView({ shadowSoftness: clamp(shadowSoftness, 0, 1) }),
+      updateView({
+        shadowSoftness: clampModel3DValue(shadowSoftness, 0, 1),
+      }),
     setShadowEnabled: (shadowEnabled) => updateView({ shadowEnabled }),
     setBackground: (background) => updateView({ background }),
     selectAnimation: (name) => {
@@ -608,7 +438,9 @@ export function useModel3DWorkbench(
       environmentUrl: normalizeModel3DEnvironmentUrl(environmentUrl),
     }),
     setEnvironmentIntensity: (environmentIntensity) =>
-      updateView({ environmentIntensity: clamp(environmentIntensity, 0, 5) }),
+      updateView({
+        environmentIntensity: clampModel3DValue(environmentIntensity, 0, 5),
+      }),
     selectMaterial: (index) => runtimeRef.current?.selectMaterialSlot(index),
     setMaterialColor: (color) =>
       runtimeRef.current?.patchSelectedMaterial({ color }),

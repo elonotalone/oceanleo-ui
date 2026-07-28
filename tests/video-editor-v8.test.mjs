@@ -367,32 +367,175 @@ test("metadata probe reports duration and video dimensions and releases source",
   }
 });
 
-const converterAvailable =
-  spawnSync("docker", ["inspect", "oceanleo-convert"], {
+const FFMPEG_THREAD_CAPS = [
+  "-threads",
+  "1",
+  "-filter_threads",
+  "1",
+  "-filter_complex_threads",
+  "1",
+];
+
+/** libx264+aac needs dozens of PIDs; keep this much free under pids_limit. */
+const CONVERT_PID_HEADROOM = 64;
+const CONVERT_PIDS_LIMIT_TARGET = 4096;
+
+function dockerExecConvert(args, options = {}) {
+  return spawnSync(
+    "docker",
+    ["exec", "-w", "/app", "oceanleo-convert", ...args],
+    { encoding: "utf8", timeout: 15_000, ...options },
+  );
+}
+
+function converterPidsLimit() {
+  const limit = spawnSync(
+    "docker",
+    ["inspect", "-f", "{{.HostConfig.PidsLimit}}", "oceanleo-convert"],
+    { encoding: "utf8" },
+  );
+  return Number.parseInt(String(limit.stdout || "").trim(), 10);
+}
+
+function converterPidUsage() {
+  const init = spawnSync(
+    "docker",
+    ["inspect", "-f", "{{.State.Pid}}", "oceanleo-convert"],
+    { encoding: "utf8" },
+  );
+  const initPid = Number.parseInt(String(init.stdout || "").trim(), 10);
+  if (!Number.isFinite(initPid) || initPid <= 0) return null;
+  const children = spawnSync("ps", ["--ppid", String(initPid), "-o", "pid="], {
+    encoding: "utf8",
+  });
+  const childCount = String(children.stdout || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  // init task itself + children (mostly unreaped gpg zombies on this host)
+  return childCount + 1;
+}
+
+function ffmpegEncodeProbe() {
+  // Match smoke cost: tiny libx264+aac lavfi, not a null sink that under-reports
+  // thread pressure when pids_limit is nearly exhausted.
+  return dockerExecConvert([
+    "ffmpeg",
+    ...FFMPEG_THREAD_CAPS,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red:s=32x18:r=5:d=0.2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=0.2",
+    "-shortest",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "/tmp/oceanleo-ui-ffmpeg-probe.mp4",
+  ], { timeout: 12_000 });
+}
+
+function converterPidPressureReason(probe) {
+  const detail = `${probe.stderr || ""}\n${probe.stdout || ""}`;
+  if (/pthread_create failed|Resource temporarily unavailable|Cannot fork/i.test(detail)) {
+    return `oceanleo-convert ffmpeg cannot spawn threads (${detail.match(/pthread_create failed[^\n]*|Resource temporarily unavailable|Cannot fork/)?.[0] || "pid/thread pressure"})`;
+  }
+  if (probe.error?.code === "ETIMEDOUT") {
+    return "oceanleo-convert ffmpeg lavfi probe timed out";
+  }
+  if (probe.status !== 0) {
+    return `oceanleo-convert ffmpeg lavfi probe failed (status=${probe.status})`;
+  }
+  return null;
+}
+
+function raiseConverterPidsLimit() {
+  return spawnSync(
+    "docker",
+    ["update", "--pids-limit", String(CONVERT_PIDS_LIMIT_TARGET), "oceanleo-convert"],
+    { encoding: "utf8" },
+  );
+}
+
+function ensureConverterFfmpegCapacity() {
+  const present = spawnSync("docker", ["inspect", "oceanleo-convert"], {
     stdio: "ignore",
-  }).status === 0;
+  });
+  if (present.status !== 0) {
+    return { ok: false, reason: "oceanleo-convert container missing" };
+  }
+
+  // Known live failure mode: ~500 gpg zombies under uvicorn saturate the
+  // historical pids_limit=512 before smoke can fork libx264. Raise the live
+  // limit without restarting the healthy convert service when headroom is low.
+  const limit = converterPidsLimit();
+  const usage = converterPidUsage();
+  const headroom =
+    Number.isFinite(limit) && limit > 0 && usage != null ? limit - usage : null;
+  if (
+    Number.isFinite(limit) &&
+    limit > 0 &&
+    limit < CONVERT_PIDS_LIMIT_TARGET &&
+    (headroom == null || headroom < CONVERT_PID_HEADROOM)
+  ) {
+    raiseConverterPidsLimit();
+  }
+
+  let probe = ffmpegEncodeProbe();
+  let reason = converterPidPressureReason(probe);
+  if (!reason) return { ok: true, reason: null };
+
+  const limitAfter = converterPidsLimit();
+  if (
+    Number.isFinite(limitAfter) &&
+    limitAfter > 0 &&
+    limitAfter < CONVERT_PIDS_LIMIT_TARGET
+  ) {
+    const updated = raiseConverterPidsLimit();
+    if (updated.status === 0) {
+      probe = ffmpegEncodeProbe();
+      reason = converterPidPressureReason(probe);
+      if (!reason) return { ok: true, reason: null };
+    }
+  }
+
+  return { ok: false, reason };
+}
+
+const converterCapacity = ensureConverterFfmpegCapacity();
 
 test(
   "FFmpeg pixel and ffprobe smoke matches preview geometry and opacity",
   {
     timeout: 30_000,
-    skip: !converterAvailable,
+    skip: converterCapacity.ok ? false : converterCapacity.reason,
   },
   () => {
     const python = [
       "import json, subprocess, tempfile",
       "from pathlib import Path",
       "from timeline import _timeline_command",
+      "THREAD_CAPS = ['-threads','1','-filter_threads','1','-filter_complex_threads','1']",
+      "def run_ffmpeg(argv, **kwargs):",
+      " caps = THREAD_CAPS if argv and argv[0] == 'ffmpeg' else []",
+      " return subprocess.run([*argv[:1], *caps, *argv[1:]], check=True, capture_output=True, **kwargs)",
       "with tempfile.TemporaryDirectory() as directory:",
       " root = Path(directory)",
       " source = root / 'source.mp4'",
-      " subprocess.run(['ffmpeg','-y','-f','lavfi','-i','color=c=red:s=64x36:r=10:d=1','-f','lavfi','-i','sine=frequency=440:duration=1','-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(source)], check=True, capture_output=True)",
+      " run_ffmpeg(['ffmpeg','-y','-f','lavfi','-i','color=c=red:s=64x36:r=10:d=1','-f','lavfi','-i','sine=frequency=440:duration=1','-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(source)])",
       " doc = {'width':64,'height':36,'fps':10,'tracks':[{'id':'video','kind':'video','clips':[{'id':'clip','source_url':'source','start_ms':0,'duration_ms':700,'in_ms':100,'speed':1.25,'volume':1.5,'muted':False,'fit':'cover','scale':0.5,'x':0.25,'y':0.5,'opacity':0.5,'rotation':15,'brightness':0.05,'contrast':1.1,'saturation':0.9,'transition_in':{'type':'fade','duration_ms':200}}]}]}",
       " out, command = _timeline_command(doc, {'source': source}, root, probed_stream_types={'source': {'video','audio'}})",
-      " subprocess.run(command, check=True, capture_output=True)",
+      " run_ffmpeg(command)",
       " graph = command[command.index('-filter_complex') + 1]",
       " probe = json.loads(subprocess.run(['ffprobe','-v','error','-show_entries','stream=width,height:format=duration','-of','json',str(out)], check=True, capture_output=True).stdout)",
-      " frame = subprocess.run(['ffmpeg','-v','error','-ss','0.5','-i',str(out),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'], check=True, capture_output=True).stdout",
+      " frame = run_ffmpeg(['ffmpeg','-v','error','-ss','0.5','-i',str(out),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1']).stdout",
       " def pixel(x, y):",
       "  offset = (y * 64 + x) * 3",
       "  return list(frame[offset:offset + 3])",

@@ -152,23 +152,27 @@ test("Office rendition selection excludes PNG preview and signed 403 requests re
     },
   };
   assert.deepEqual(officeRenditionPurposes(item), ["source", "full"]);
-  assert.deepEqual(
-    officeRenditionPurposes({
-      ...item,
-      artifact: {
-        ...item.artifact,
-        renditions: {
-          ...item.artifact.renditions,
-          source: {
-            purpose: "source",
-            url: "https://signed.test/not-a-deck.png",
-            mediaType: "image/png",
-          },
+  // PNG source conflicts with the pptx package kind: keep only refreshable full.
+  const pngSourceItem = {
+    ...item,
+    artifact: {
+      ...item.artifact,
+      renditions: {
+        ...item.artifact.renditions,
+        source: {
+          purpose: "source",
+          url: "https://signed.test/not-a-deck.png",
+          mediaType: "image/png",
         },
       },
-    }),
-    ["full", "source"],
+    },
+  };
+  assert.match(
+    pngSourceItem.artifact.renditions.source.mediaType,
+    /^image\//,
+    "source excluded because mediaType is an image, not an OOXML package",
   );
+  assert.deepEqual(officeRenditionPurposes(pngSourceItem), ["full"]);
 
   const originalFetch = globalThis.fetch;
   let refreshes = 0;
@@ -203,7 +207,7 @@ test("preview and native Office routes consume only refreshable source/full inpu
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   assert.match(
     viewer,
-    /useArtifactRendition\(\s*item,\s*officeViewerRenditionPurposes\(item\)/,
+    /useArtifactRendition\(\s*(?:item|viewerItem),\s*officeViewerRenditionPurposes\(\s*(?:item|viewerItem)\s*\)/,
   );
   assert.match(viewer, /fetchValidatedOfficePackage/);
   assert.match(viewer, /fetchValidatedSpreadsheetSource/);

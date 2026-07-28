@@ -121,10 +121,12 @@ test("PDF blank creation is explicit and disposed page loads release resources",
 });
 
 test("audio failures preserve prior state and close partial browser resources", async () => {
-  const [workbench, persistence] = await Promise.all([
+  const [workbenchCore, waveLoader, persistence] = await Promise.all([
     source("src/shell/media-editors/AudioWorkbench.tsx"),
+    source("src/shell/media-editors/use-audio-wave-loader.ts"),
     source("src/shell/media-editors/use-audio-persistence.ts"),
   ]);
+  const workbench = workbenchCore + waveLoader;
 
   assert.match(workbench, /requiresExistingSource/);
   assert.match(workbench, /item\.source === "artifact"/);

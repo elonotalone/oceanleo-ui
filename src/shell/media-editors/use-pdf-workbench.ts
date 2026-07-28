@@ -10,15 +10,7 @@ import {
   type LibraryItem,
 } from "../library-data";
 import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
-import {
-  addBlankPdfPage,
-  deletePdfPage,
-  extractPdfPages,
-  inspectPdf,
-  mergePdfBytes,
-  movePdfPage,
-  rotatePdfPage,
-} from "./pdf-operations";
+import { inspectPdf } from "./pdf-operations";
 import {
   usePdfAnnotations,
   type PdfMutationResult,
@@ -28,14 +20,13 @@ import { capturePdfRecovery, decodePdfRecovery } from "./pdf-recovery";
 import {
   appendPdfHistory,
   clamp,
-  downloadPdfBytes,
   pdfErrorMessage,
   pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
-import { assertBlobSource } from "./source-integrity.mjs";
 import type { PdfWorkbenchState } from "./pdf-workbench-state";
 export type { PdfWorkbenchState } from "./pdf-workbench-state";
+import { usePdfPageActions } from "./use-pdf-page-actions";
 import { usePdfPreviewRender } from "./use-pdf-preview-render";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
 const MIN_ZOOM = 25;
@@ -364,106 +355,30 @@ export function usePdfWorkbench(
     [pageCount],
   );
 
-  const rotateCurrentPage = useCallback(
-    async (direction: 1 | -1 = 1) => {
-      await runMutation(async (bytes) => ({
-        bytes: await rotatePdfPage(bytes, pageNumber - 1, direction * 90),
-        pageNumber,
-        notice: tt("当前页已旋转"),
-      }));
-    },
-    [pageNumber, runMutation, tt],
-  );
+  const {
+    rotateCurrentPage,
+    movePage,
+    deleteCurrentPage,
+    addBlankPage,
+    mergePdf,
+    extractPages,
+    download,
+  } = usePdfPageActions({
+    bytesRef,
+    processingRef,
+    processingTokenRef,
+    aliveRef,
+    sourceGenerationRef,
+    pageNumber,
+    pageCount,
+    itemTitle: item.title,
+    runMutation,
+    setProcessing,
+    setError,
+    setNotice,
+    tt,
+  });
 
-  const movePage = useCallback(
-    async (fromPage: number, toPage: number) => {
-      await runMutation(async (bytes) => ({
-        bytes: await movePdfPage(bytes, fromPage - 1, toPage - 1),
-        pageNumber: toPage,
-        notice: tt("页面顺序已更新"),
-      }));
-    },
-    [runMutation, tt],
-  );
-
-  const deleteCurrentPage = useCallback(async () => {
-    await runMutation(async (bytes) => ({
-      bytes: await deletePdfPage(bytes, pageNumber - 1),
-      pageNumber: Math.min(pageNumber, pageCount - 1),
-      notice: tt("当前页已删除"),
-    }));
-  }, [pageCount, pageNumber, runMutation, tt]);
-
-  const addBlankPage = useCallback(async () => {
-    await runMutation(async (bytes) => ({
-      bytes: await addBlankPdfPage(bytes, pageNumber - 1),
-      pageNumber: pageNumber + 1,
-      notice: tt("已在当前页后添加空白页"),
-    }));
-  }, [pageNumber, runMutation, tt]);
-
-  const mergePdf = useCallback(
-    async (file: File, position: "append" | "after-current" = "append") => {
-      if (file.size > MAX_PDF_BYTES) {
-        setError(tt("要合并的 PDF 过大，无法在浏览器内存中安全处理"));
-        return;
-      }
-      await runMutation(async (bytes) => {
-        await assertBlobSource(file, "pdf");
-        const incoming = new Uint8Array(await file.arrayBuffer());
-        const after = position === "after-current" ? pageNumber - 1 : undefined;
-        const merged = await mergePdfBytes(bytes, incoming, after);
-        return {
-          bytes: merged.bytes,
-          pageNumber:
-            position === "after-current" ? pageNumber + 1 : pageNumber,
-          notice: tt("已合并 {count} 页", { count: merged.insertedCount }),
-        };
-      });
-    },
-    [pageNumber, runMutation, tt],
-  );
-
-  const extractPages = useCallback(
-    async (pageNumbers: readonly number[] = [pageNumber]) => {
-      const current = bytesRef.current;
-      if (!current || processingRef.current) return;
-      processingRef.current = true;
-      const processingToken = ++processingTokenRef.current;
-      setProcessing(true);
-      setError("");
-      const generation = sourceGenerationRef.current;
-      try {
-        const extracted = await extractPdfPages(
-          current,
-          pageNumbers.map((value) => value - 1),
-        );
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) return;
-        const suffix =
-          pageNumbers.length === 1
-            ? `page-${pageNumbers[0]}`
-            : `pages-${pageNumbers.join("-")}`;
-        downloadPdfBytes(extracted, `${pdfFileStem(item.title)}-${suffix}.pdf`);
-        setNotice(tt("所选页面已提取并下载"));
-      } catch (caught) {
-        if (aliveRef.current && generation === sourceGenerationRef.current) {
-          setError(pdfErrorMessage(caught, tt("提取页面失败")));
-        }
-      } finally {
-        if (processingToken === processingTokenRef.current) {
-          processingRef.current = false;
-          if (aliveRef.current) setProcessing(false);
-        }
-      }
-    },
-    [item.title, pageNumber, tt],
-  );
-
-  const download = useCallback(() => {
-    if (bytesRef.current) {
-      downloadPdfBytes(bytesRef.current, `${pdfFileStem(item.title)}-edited.pdf`);
-    }
-  }, [item.title]);
   const saveCopy = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const bytes = bytesRef.current;
     if (!bytes || savingRef.current) return null;

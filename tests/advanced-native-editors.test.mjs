@@ -185,6 +185,7 @@ test("timeline preview uses the same transition semantics as export", () => {
 test("media editors expose usable first-draft surfaces without a source URL", () => {
   const audio =
     source("../src/shell/media-editors/AudioWorkbench.tsx") +
+    source("../src/shell/media-editors/use-audio-wave-loader.ts") +
     source("../src/shell/media-editors/audio-workbench-state.ts") +
     source("../src/shell/media-editors/AudioWorkbenchView.tsx");
   const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
