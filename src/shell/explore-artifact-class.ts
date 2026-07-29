@@ -22,10 +22,11 @@ import {
   ARTIFACT_TYPES,
   POPULARITY_ENVELOPE_KEYS,
   POPULARITY_METRIC_ALIASES,
+  artifactIsVisible,
   popularityCount,
   type ArtifactType,
 } from "./artifact-contract";
-import type { LibraryItem } from "./library-data";
+import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 
 export type ExploreArtifactClass = "playable" | "material";
@@ -345,6 +346,163 @@ export function defaultExploreClass(input: {
 }): ExploreArtifactClass {
   return input.playableCount > 0 ? "playable" : "material";
 }
+
+// ── 可玩条目与「开玩」落点 ───────────────────────────────────────────────────
+
+/**
+ * 一条 artifact 是不是**可玩**的。
+ *
+ * 判据里刻意**没有**「可编辑」：100 款 artifact 游戏在生产库里是 `view_only`
+ * （附录 2 §6），要求它们可编辑等于要求它们不存在。反过来也不许把它们标成可编辑
+ * 来蒙混过关——那会让编辑器派发在真实数据上抛「当前 revision 缺少可验证的编辑器
+ * source。」。可玩与可编辑是两件正交的事，这个函数只回答前者。
+ *
+ * 仍然要求 durable + 可见：没有 artifact 坐标就算不出播放落点，不可见的东西
+ * 不该出现在任何货架上。
+ */
+export function isPlayableGameLibraryItem(
+  item: LibraryItem | null | undefined,
+): boolean {
+  if (!item) return false;
+  return Boolean(
+    isDurableLibraryItem(item) &&
+      artifactIsVisible(item.artifact) &&
+      exploreArtifactClassOf(item.artifactType) === "playable",
+  );
+}
+
+export function isPlayableGameShelfEntry(
+  entry: WorkspaceLibraryEntry | null | undefined,
+): boolean {
+  return isPlayableGameLibraryItem(entry?.libraryItem);
+}
+
+/** W7 的 artifact 播放路由前缀。落点形状变了只改这一处。 */
+export const ARTIFACT_PLAY_ROUTE_PREFIX = "/play/artifact/";
+
+/**
+ * 允许的**绝对**播放落点 origin。
+ *
+ * 探索页跑在 36 个站上，而 artifact 播放路由只在 game 仓落地，所以 W9 的
+ * `play_href` 需要能给绝对 URL。放行名单只有这一个 first-party host：
+ * 用户产物本身住在 `*.oceanleo.app` 的沙箱里、由播放页 iframe 装载
+ * （UC-1…UC-7），**顶层导航不许直奔沙箱 host**，否则就绕过了播放页那一层。
+ */
+export const ARTIFACT_PLAY_ORIGIN = "https://game.oceanleo.com";
+
+/** 落库的播放地址读这两个键（后端下划线 / 前端驼峰各一份）。 */
+const PLAY_HREF_META_KEYS = ["play_href", "playHref"] as const;
+
+/**
+ * 校验一个**外来**的播放地址。
+ *
+ * 这是注入面：`play_href` 是服务端数据，直接塞进 `href` 等于把跳转目标交给数据。
+ * 只认两种形状，其余一律丢弃并回落到推导路由（fail-closed，不是 fail-open）：
+ *   · 根相对路径 `/…`（但不含 `//` 开头的协议相对 URL——那是换 host 的写法）；
+ *   · `ARTIFACT_PLAY_ORIGIN` 上的 https 绝对 URL。
+ */
+export function safeArtifactPlayHref(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw || /[\u0000-\u001f\u007f\\]/.test(raw)) return "";
+  if (raw.startsWith("//")) return "";
+  if (raw.startsWith("/")) return raw;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.origin === ARTIFACT_PLAY_ORIGIN
+      ? url.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 「开玩」落到哪个地址。
+ *
+ * 优先用 W9 落库的 `play_href`（它知道跨站该给绝对 URL）；没有就按 artifact 坐标
+ * 推导出 W7 的路由。**推导值恒为根相对路径**：跨站的绝对地址只能由目录给，
+ * 前端猜 host 是安全事故的形状。
+ *
+ * 返回空串 = 这一条算不出可玩落点，调用方必须如实呈现，不许假装能玩。
+ */
+export function artifactPlayHref(
+  item: LibraryItem | null | undefined,
+): string {
+  if (!item || !isPlayableGameLibraryItem(item)) return "";
+  const meta = record(item.meta);
+  for (const key of PLAY_HREF_META_KEYS) {
+    const declared = safeArtifactPlayHref(meta?.[key]);
+    if (declared) return declared;
+  }
+  const artifactId = String(item.artifactId || "").trim();
+  if (!artifactId) return "";
+  const revisionId = String(item.revisionId || "").trim();
+  const path = `${ARTIFACT_PLAY_ROUTE_PREFIX}${encodeURIComponent(artifactId)}`;
+  return revisionId
+    ? `${path}?revision=${encodeURIComponent(revisionId)}`
+    : path;
+}
+
+/**
+ * 跳到播放落点。
+ *
+ * 只接受已经过 `safeArtifactPlayHref` / `artifactPlayHref` 的地址，自己再校一次——
+ * 这是导航 sink，多一道不亏。SSR 下无 `window`，直接放弃（返回 `false`）。
+ *
+ * `navigate` 可注入，纯粹是为了让用例断言「跳到哪」而不必起浏览器。
+ */
+export function navigateToArtifactPlay(
+  href: string,
+  navigate?: (target: string) => void,
+): boolean {
+  const safe = safeArtifactPlayHref(href);
+  if (!safe) return false;
+  if (navigate) {
+    navigate(safe);
+    return true;
+  }
+  if (typeof window === "undefined") return false;
+  window.location.assign(safe);
+  return true;
+}
+
+/**
+ * 「开玩」的整条**独立派发通路**：算落点 → 校验 → 跳转。
+ *
+ * 这是把「可玩」与「可编辑」彻底分开的那个函数。调用方（货架、feed）用它做前置
+ * 分流：返回 `true` 表示这一条已经按可玩处理完了，**不要**再往
+ * `isAdvancedEditableShelfItem` 那条编辑器路径上走——100 款游戏是 `view_only`，
+ * 走过去必抛「当前 revision 缺少可验证的编辑器 source。」。
+ *
+ * 返回 `false` 表示这一条不是可玩游戏、或者算不出落点，调用方按自己的老路继续。
+ */
+export function openArtifactPlay(
+  item: LibraryItem | null | undefined,
+  navigate?: (target: string) => void,
+): boolean {
+  const href = artifactPlayHref(item);
+  return href ? navigateToArtifactPlay(href, navigate) : false;
+}
+
+// ── 可玩探针的分页 ───────────────────────────────────────────────────────────
+
+/**
+ * 可玩探针的单页条数。
+ *
+ * 原来是 `limit: 60`，而 artifact 游戏有 100 款——第一页就装不下，
+ * 「可玩游戏」那一格的计数会少 40 款，排在 60 名之后的游戏永远打不开。
+ * 100 是 `artifact-client.ts` 的 `ARTIFACT_LIBRARY_MAX_LIMIT` 硬顶，
+ * 所以**光把上限调大解决不了问题**，必须翻页，见下。
+ */
+export const EXPLORE_PLAYABLE_PAGE_LIMIT = 100;
+
+/**
+ * 可玩探针最多翻几页（100 × 5 = 500 款）。
+ *
+ * 有上限是刻意的：游标翻页是无界循环的形状，后端游标一旦不前进就会把浏览器
+ * 打死。到顶时**如实告诉读者还有没载入的**（`truncated`），不静默截断。
+ */
+export const EXPLORE_PLAYABLE_MAX_PAGES = 5;
 
 export function exploreClassSubtitle(
   artifactClass: ExploreArtifactClass,

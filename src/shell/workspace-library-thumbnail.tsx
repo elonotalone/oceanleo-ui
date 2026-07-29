@@ -12,6 +12,8 @@ import {
 } from "./library-data";
 import {
   WorkspaceCoverResource,
+  coverEvidenceOf,
+  coverEvidenceReportOf,
   workspaceCoverPlan,
   workspaceCoverRenditionPurposes,
 } from "./workspace-library-cover";
@@ -234,11 +236,18 @@ export function WorkspaceThumbnail({
       !generatedThumbnailFailed.has(referenceKey) &&
       (requiresGeneratedThumbnail || failed),
   );
+  // 候选 rendition 全被判死时，说得出「为什么」才对用户有用：能证实是占位图就直说
+  // 是占位图，证实不了才退回「没有可显示的真实封面」。
+  const provenRendition = Object.values(item?.artifact?.renditions || {}).find(
+    (rendition) =>
+      rendition && coverEvidenceOf(rendition) === "proven-placeholder",
+  );
   const failureMessage =
     artifactRendition.loading || awaitingGeneratedThumbnail
       ? ""
       : noDisplayableCover
-        ? "当前 revision 没有可显示的真实封面。"
+        ? coverEvidenceReportOf(provenRendition).reason ||
+          "当前 revision 没有可显示的真实封面。"
         : solidRejected
           ? "封面是纯色占位图，不是真实媒体。"
           : artifactRendition.error ||
@@ -247,6 +256,22 @@ export function WorkspaceThumbnail({
               : failed
                 ? "封面资源加载失败。"
                 : plan.failureReason);
+  // 三态呈现（合同 §3.2）。只有**证实**是占位图才允许说「占位图」：wire 判据证实的、
+  // 解码后像素证实是纯色的、以及候选 rendition 里确有占位图且没有任何一份能显示的。
+  // 加载失败、缺 revision 这类「没证据」的情况仍旧只是封面不可用，不许改口。
+  const provenPlaceholder =
+    solidRejected ||
+    plan.coverEvidence === "proven-placeholder" ||
+    (noDisplayableCover && Boolean(provenRendition));
+  const coverEvidence = provenPlaceholder
+    ? "proven-placeholder"
+    : plan.coverEvidence;
+  // 元数据没写全的真图：照常显示，只挂一枚不打扰的角标——**绝不写「不可用」**。
+  const metadataIncomplete =
+    !failureMessage &&
+    plan.renderer !== "unavailable" &&
+    coverEvidence === "unknown-metadata" &&
+    Boolean(plan.evidenceReason);
   const loading =
     !failureMessage &&
     !noDisplayableCover &&
@@ -265,6 +290,7 @@ export function WorkspaceThumbnail({
       ref={hostRef}
       className="relative h-full w-full overflow-hidden"
       data-cover-state={coverState}
+      data-cover-evidence={coverEvidence}
       data-cover-artifact-type={item?.artifactType || kind}
       data-cover-source-aspect={
         plan.sourceAspectRatio?.toFixed(4) || undefined
@@ -298,6 +324,27 @@ export function WorkspaceThumbnail({
           }}
         />
       )}
+      {metadataIncomplete && (
+        // 弱化角标只用内联样式：它是本轮新增的形状，`ui.css` 要等父任务 build:css
+        // 重建才会有对应工具类，靠 class 会在 36 个 consumer 上渲染成不可见的空元素。
+        <span
+          data-cover-metadata="incomplete"
+          title={tt(plan.evidenceReason)}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 4,
+            right: 4,
+            width: 6,
+            height: 6,
+            borderRadius: 9999,
+            pointerEvents: "none",
+            backgroundColor: "var(--muted, #a8a29e)",
+            outline: "1.5px solid var(--surface, #f5f5f4)",
+            opacity: 0.75,
+          }}
+        />
+      )}
       {loading && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--surface,#f5f5f4)]/80">
           <span
@@ -315,12 +362,12 @@ export function WorkspaceThumbnail({
         <div
           className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 border border-dashed border-[var(--border-strong,#d6d3d1)] bg-[var(--surface,#f5f5f4)] px-2 text-center"
           role="alert"
-          data-cover-failure="true"
+          data-cover-failure={provenPlaceholder ? "placeholder" : "true"}
           title={failureMessage}
         >
           {!compact && <WorkspaceKindIcon kind={kind} accent={accent} />}
           <span className="text-[10px] font-semibold text-[var(--fg-2,#57534e)]">
-            {tt("封面不可用")}
+            {provenPlaceholder ? tt("占位图") : tt("封面不可用")}
           </span>
           <span className="line-clamp-2 text-[9px] leading-tight text-[var(--muted,#a8a29e)]">
             {compact

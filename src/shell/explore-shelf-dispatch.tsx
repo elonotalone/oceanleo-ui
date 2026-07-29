@@ -22,6 +22,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ArtifactContextRef } from "./artifact-contract";
 import {
   EXPLORE_PLAYABLE_ARTIFACT_TYPES,
+  EXPLORE_PLAYABLE_MAX_PAGES,
+  EXPLORE_PLAYABLE_PAGE_LIMIT,
   defaultExploreClass,
   exploreClassChips,
   exploreEntriesOfClass,
@@ -60,6 +62,8 @@ export interface ExploreShelfDispatch {
   /** 探针是否已有结论。未启用时恒为真，这样调用方的 settle 判据不必分叉。 */
   settled: boolean;
   playableCount: number;
+  /** 翻到页数上限仍未取完；`playableCount` 是下界而不是总数。 */
+  playableTruncated: boolean;
   playableError: string;
 }
 
@@ -79,7 +83,63 @@ function playableRequest(siteKey: string): MaterialLibraryQueryInput {
     taxonomy: EXPLORE_PLAYABLE_ARTIFACT_TYPES[0],
     types: EXPLORE_PLAYABLE_ARTIFACT_TYPES,
     role: EXPLORE_PLAYABLE_LIBRARY_ROLE,
+    // 素材货架那 60 条的默认页宽在这里不够用：artifact 游戏有 100 款，
+    // 第一页装不下就等于第 61 款起永远打不开，「可玩游戏」那一格还会少报 40 款。
+    limit: EXPLORE_PLAYABLE_PAGE_LIMIT,
   };
+}
+
+interface PlayablePages {
+  entries: WorkspaceLibraryEntry[];
+  /** 到达 `EXPLORE_PLAYABLE_MAX_PAGES` 时后面还有页没取，必须如实告诉读者。 */
+  truncated: boolean;
+  error: string;
+}
+
+/**
+ * 把可玩探针一路翻到底。
+ *
+ * 单纯把 `limit` 调大解决不了问题：`artifact-client.ts` 的
+ * `ARTIFACT_LIBRARY_MAX_LIMIT` 是 100，而 100 款游戏正好顶在上限上，之后再上线
+ * 一款就掉出去。所以这里按 `nextCursor` 真的翻页。
+ *
+ * 两条防线让「翻页」不至于变成无界循环：页数硬上限，以及游标不前进就停
+ * （后端把同一个游标回给我们时，继续翻只会原地打转）。
+ */
+async function loadPlayablePages(
+  siteKey: string,
+  signal: AbortSignal,
+): Promise<PlayablePages> {
+  const request = playableRequest(siteKey);
+  const entries: WorkspaceLibraryEntry[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < EXPLORE_PLAYABLE_MAX_PAGES; page += 1) {
+    const result = await queryMaterialLibrary({ ...request, cursor, signal });
+    if (!result.ok || !result.data) {
+      return {
+        entries,
+        truncated: false,
+        error: result.error || "可玩作品暂时无法加载。",
+      };
+    }
+    entries.push(
+      ...entriesFromRemoteResult(
+        result.data.items,
+        "site",
+        request.context,
+        "",
+        request.taxonomy,
+      ),
+    );
+    const next = result.data.nextCursor;
+    if (!next || seenCursors.has(next)) {
+      return { entries, truncated: false, error: "" };
+    }
+    seenCursors.add(next);
+    cursor = next;
+  }
+  return { entries, truncated: true, error: "" };
 }
 
 /**
@@ -99,11 +159,13 @@ function useExplorePlayableShelf(input: {
 }): {
   entries: WorkspaceLibraryEntry[];
   settled: boolean;
+  truncated: boolean;
   error: string;
 } {
   const { enabled, siteKey } = input;
   const [entries, setEntries] = useState<WorkspaceLibraryEntry[]>([]);
   const [settled, setSettled] = useState(false);
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState("");
   const epochRef = useRef(0);
 
@@ -111,44 +173,37 @@ function useExplorePlayableShelf(input: {
     if (!enabled || !siteKey) {
       setEntries([]);
       setError("");
+      setTruncated(false);
       // 未启用 = 没有可玩那一层要等；不能留在「未 settle」上，否则调用方永远画骨架。
       setSettled(true);
       return;
     }
-    const request = playableRequest(siteKey);
     const controller = new AbortController();
     const epoch = ++epochRef.current;
     setSettled(false);
-    void queryMaterialLibrary({ ...request, signal: controller.signal })
-      .then((result) => {
+    void loadPlayablePages(siteKey, controller.signal)
+      .then((pages) => {
         if (controller.signal.aborted || epoch !== epochRef.current) return;
-        if (!result.ok || !result.data) {
-          setEntries([]);
-          setError(result.error || "可玩作品暂时无法加载。");
-        } else {
-          setEntries(
-            materialShelfEntries({
-              level: "site",
-              siteKey,
-              deepLinked: [],
-              officialTemplates: [],
-              remote: entriesFromRemoteResult(
-                result.data.items,
-                "site",
-                request.context,
-                "",
-                request.taxonomy,
-              ),
-              exactLocal: [],
-            }),
-          );
-          setError("");
-        }
+        setEntries(
+          pages.error
+            ? []
+            : materialShelfEntries({
+                level: "site",
+                siteKey,
+                deepLinked: [],
+                officialTemplates: [],
+                remote: pages.entries,
+                exactLocal: [],
+              }),
+        );
+        setTruncated(pages.truncated);
+        setError(pages.error);
         setSettled(true);
       })
       .catch((caught) => {
         if (controller.signal.aborted || epoch !== epochRef.current) return;
         setEntries([]);
+        setTruncated(false);
         setError(
           caught instanceof Error ? caught.message : "可玩作品请求失败，请重试。",
         );
@@ -157,7 +212,7 @@ function useExplorePlayableShelf(input: {
     return () => controller.abort();
   }, [enabled, siteKey]);
 
-  return { entries, settled, error };
+  return { entries, settled, truncated, error };
 }
 
 export function useExploreShelfDispatch(input: {
@@ -213,12 +268,16 @@ export function useExploreShelfDispatch(input: {
     entries: artifactClass === "playable" ? playableEntries : materialEntries,
     settled: !enabled || playable.settled,
     playableCount: playableEntries.length,
+    playableTruncated: playable.truncated,
     playableError: playable.error,
   };
 }
 
 /**
  * 可玩那一类的整块呈现。货架的返回分支只有一行，所有布线在这里。
+ *
+ * `onPlay` 是**可选的旁路通知**，不是落点：真正的「开玩」落点是 feed 里那条
+ * `artifactPlayHref()` 算出来的链接。宿主想接管客户端路由时才传它。
  */
 export function ExplorePlayableSurface({
   dispatch,
@@ -234,7 +293,7 @@ export function ExplorePlayableSurface({
   accent: string;
   loading: boolean;
   failure: { title: string; description: string } | null;
-  onPlay: (item: LibraryItem) => void;
+  onPlay?: (item: LibraryItem) => void;
   className: string;
 }) {
   return (
@@ -244,6 +303,7 @@ export function ExplorePlayableSurface({
       toolbar={toolbar}
       loading={loading}
       settled={dispatch.settled}
+      truncated={dispatch.playableTruncated}
       failure={
         failure ||
         (dispatch.playableError

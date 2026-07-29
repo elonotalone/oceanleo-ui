@@ -17,6 +17,7 @@ import {
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
+import { openArtifactPlay } from "./explore-artifact-class";
 import {
   ExplorePlayableSurface,
   useExploreShelfDispatch,
@@ -600,6 +601,7 @@ export function MaterialLibrary({
   const availableTypes = sceneView ? seenTypesRef.current.types : undefined;
   const openPreparedItem = useCallback(
     (item: LibraryItem) => {
+      if (openArtifactPlay(item)) return;
       if (!isAdvancedEditableShelfItem(item)) {
         setError("editor-source-unavailable");
         setErrorStatus(422);
@@ -745,7 +747,6 @@ export function MaterialLibrary({
         accent={accent}
         loading={shelfLoading}
         failure={effectiveError ? failureCopy : null}
-        onPlay={openPreparedItem}
         className={className}
       />
     );

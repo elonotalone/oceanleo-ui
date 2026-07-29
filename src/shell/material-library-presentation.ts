@@ -6,6 +6,7 @@
 
 import { artifactIsVisible, type ArtifactContextRef, type ArtifactType } from "./artifact-contract";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
+import { isPlayableGameShelfEntry } from "./explore-artifact-class";
 import type { ExploreClassDispatchInput } from "./explore-shelf-dispatch";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
@@ -199,9 +200,16 @@ export function isTrustedEditableMaterialEntry(
 }
 
 /**
- * 货架最终显示哪些卡。两类条目同场：用户可编辑的 durable artifact，以及匿名可读的
- * 官方模板目录行 —— 后者过不了 durable 判定（目录端点不下发 revision 身份），所以
- * 它有自己那条窄例外，见 `isOfficialTemplateMaterialEntry`。
+ * 货架最终显示哪些卡。**三类**条目同场：
+ *   · 用户可编辑的 durable artifact（`isTrustedEditableMaterialEntry`）；
+ *   · 匿名可读的官方模板目录行 —— 过不了 durable 判定（目录端点不下发 revision
+ *     身份），所以有自己那条窄例外，见 `isOfficialTemplateMaterialEntry`；
+ *   · **可玩游戏**（`isPlayableGameShelfEntry`）—— 100 款 artifact 游戏在生产库里是
+ *     `view_only`，前两条一条都不满足，于是过去直接不进货架（附录 2 §6 第一道过滤）。
+ *
+ * 第三类**不是**把游戏标成「可编辑」放进来的：它们照旧过不了
+ * `isAdvancedEditableShelfItem`，编辑器派发对它们仍然 fail-closed。它们走的是
+ * 「开玩」那条独立通路（`artifactPlayHref`），两条派发互不冒充。
  *
  * 本站层的归属 app 与分区**不在这里算**：那是 `material-scene-axis.ts` 的活
  * （D2/D3 要的是「按 artifact 去重后再挂归属 app」，不是逐条目贴标签）。
@@ -226,6 +234,7 @@ export function materialShelfEntries(options: {
   }).filter(
     (entry) =>
       isTrustedEditableMaterialEntry(entry) ||
+      isPlayableGameShelfEntry(entry) ||
       isOfficialTemplateMaterialEntry(entry),
   );
 }

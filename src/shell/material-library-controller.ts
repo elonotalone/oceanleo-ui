@@ -1,6 +1,5 @@
 import {
   artifactHasExactContext,
-  artifactContextKey,
   ARTIFACT_TYPES,
   normalizeArtifactProjection,
   POPULARITY_META_KEY,
@@ -16,6 +15,20 @@ import {
 } from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import {
+  exploreArtifactClassOf,
+  isPlayableGameLibraryItem,
+} from "./explore-artifact-class";
+import {
+  MATERIAL_LIBRARY_TEMPLATE_ROLE,
+  materialLibraryCacheGeneration,
+  materialLibraryPageLimit,
+  materialLibraryPending,
+  materialLibraryRequestKey,
+  readMaterialLibraryCache,
+  rememberMaterialLibraryResult,
+  type MaterialLibraryQueryInput,
+} from "./material-library-cache";
+import {
   artifactProjectionToLibraryItem,
   isDurableLibraryItem,
   libraryContentDescriptor,
@@ -29,9 +42,7 @@ import {
   materialLibrarySearchParams,
   materialScopeTypes,
   materialScopeViolation,
-  materialTypesCsv,
   warnMaterialScopeDegraded,
-  type MaterialLibraryLevel,
 } from "./material-library-scope";
 import {
   workspaceEntryFromLibraryItem,
@@ -77,6 +88,20 @@ export {
   materialEntryPrimaryAppId,
   mergeMaterialEntries,
 } from "./material-library-dedupe";
+// 请求形状 / 内存缓存 / 同键去重同样住在自己的模块里（同一条 800 行硬顶的理由）；
+// 从这里原样 re-export，既有 import 路径一个字不变。
+export {
+  MATERIAL_LIBRARY_DEFAULT_PAGE_LIMIT,
+  MATERIAL_LIBRARY_TEMPLATE_ROLE,
+  invalidateMaterialLibraryCache,
+  materialLibraryPageLimit,
+  materialLibraryRequestKey,
+  readMaterialLibraryCache,
+} from "./material-library-cache";
+export type {
+  MaterialLibraryCacheSnapshot,
+  MaterialLibraryQueryInput,
+} from "./material-library-cache";
 
 /** A site-curated finished example shown alongside the central asset catalog. */
 export interface MaterialItem {
@@ -438,77 +463,6 @@ export function artifactEntry(
   });
 }
 
-/**
- * Public material shelves only surface editable advanced-feature templates.
- * Owned/promoted catalog rows use the `template` role; view-only reference
- * rehosts are excluded so every visible card can open an advanced editor.
- */
-export const MATERIAL_LIBRARY_TEMPLATE_ROLE = "template";
-
-export interface MaterialLibraryQueryInput {
-  level: MaterialLibraryLevel;
-  context: ArtifactContextRef;
-  query: string;
-  taxonomy: ArtifactType | "";
-  /** Multi-select chips (合同 §0.6); overrides `taxonomy` when non-empty. */
-  types?: readonly ArtifactType[];
-  /**
-   * Library role filter. Defaults to `template` (素材货架).
-   * Playable explore probes pass `generated_output` — promoted games are not
-   * templates, and revision.roles is immutable after create.
-   */
-  role?: string;
-  cursor?: string | null;
-  signal?: AbortSignal;
-  forceRefresh?: boolean;
-}
-
-export interface MaterialLibraryCacheSnapshot {
-  data: ArtifactSearchResult;
-  status?: number;
-  freshness: "fresh" | "stale";
-}
-
-interface MaterialLibraryCacheEntry {
-  data: ArtifactSearchResult;
-  status?: number;
-  storedAt: number;
-  freshUntil: number;
-  usableUntil: number;
-}
-
-const MATERIAL_LIBRARY_FRESH_MS = 15_000;
-const MATERIAL_LIBRARY_STALE_MS = 2 * 60_000;
-const MATERIAL_LIBRARY_UNKNOWN_URL_MS = 30_000;
-const MATERIAL_LIBRARY_URL_EXPIRY_SKEW_MS = 60_000;
-const materialLibraryCache = new Map<string, MaterialLibraryCacheEntry>();
-const materialLibraryPending = new Map<
-  string,
-  Promise<ArtifactApiResult<ArtifactSearchResult>>
->();
-let materialLibraryCacheGeneration = 0;
-
-export function materialLibraryRequestKey(
-  input: MaterialLibraryQueryInput,
-): string {
-  const types = materialScopeTypes(input);
-  const role = String(input.role ?? "").trim() || MATERIAL_LIBRARY_TEMPLATE_ROLE;
-  return JSON.stringify({
-    level: input.level,
-    context:
-      input.level === "primary"
-        ? artifactContextKey(input.context)
-        : `site:${String(input.context?.siteKey ?? "").trim()}`,
-    query: input.level === "primary" ? "" : input.query.trim(),
-    taxonomy: input.taxonomy,
-    // Omitted for legacy single-type callers so their cache key is unchanged.
-    types: types.length > 1 ? materialTypesCsv(types) : undefined,
-    // Omitted when default so existing material-shelf cache keys stay stable.
-    role: role === MATERIAL_LIBRARY_TEMPLATE_ROLE ? undefined : role,
-    cursor: input.cursor || "",
-  });
-}
-
 export function libraryItemHasExactPrimaryContext(
   item: LibraryItem,
   context: ArtifactContextRef,
@@ -527,96 +481,27 @@ export function libraryItemHasExactPrimaryContext(
   );
 }
 
-function materialLibraryCacheUsableUntil(
-  data: ArtifactSearchResult,
-  storedAt: number,
-): number {
-  let usableUntil = storedAt + MATERIAL_LIBRARY_STALE_MS;
-  for (const item of data.items) {
-    if (!isDurableLibraryItem(item)) continue;
-    for (const rendition of Object.values(item.artifact.renditions)) {
-      if (!rendition?.url) continue;
-      if (!rendition.expiresAt) {
-        usableUntil = Math.min(
-          usableUntil,
-          storedAt + MATERIAL_LIBRARY_UNKNOWN_URL_MS,
-        );
-        continue;
-      }
-      const expiresAt = Date.parse(rendition.expiresAt);
-      if (Number.isFinite(expiresAt)) {
-        usableUntil = Math.min(
-          usableUntil,
-          expiresAt - MATERIAL_LIBRARY_URL_EXPIRY_SKEW_MS,
-        );
-      }
-    }
-  }
-  return usableUntil;
-}
-
-function rememberMaterialLibraryResult(
-  key: string,
-  result: ArtifactApiResult<ArtifactSearchResult>,
-  storedAt = Date.now(),
-): void {
-  if (!result.ok || !result.data) return;
-  const usableUntil = materialLibraryCacheUsableUntil(result.data, storedAt);
-  if (usableUntil <= storedAt) {
-    materialLibraryCache.delete(key);
-    return;
-  }
-  // Memory-only normalized metadata: response bodies/private bytes are never
-  // retained, and signed URLs are discarded before their refresh skew.
-  materialLibraryCache.set(key, {
-    data: result.data,
-    status: result.status,
-    storedAt,
-    freshUntil: Math.min(
-      usableUntil,
-      storedAt + MATERIAL_LIBRARY_FRESH_MS,
-    ),
-    usableUntil,
-  });
-}
-
-export function readMaterialLibraryCache(
-  input: MaterialLibraryQueryInput,
-  now = Date.now(),
-): MaterialLibraryCacheSnapshot | null {
-  const key = materialLibraryRequestKey(input);
-  const cached = materialLibraryCache.get(key);
-  if (!cached) return null;
-  if (now >= cached.usableUntil) {
-    materialLibraryCache.delete(key);
-    return null;
-  }
-  return {
-    data: cached.data,
-    status: cached.status,
-    freshness: now < cached.freshUntil ? "fresh" : "stale",
-  };
-}
-
-export function invalidateMaterialLibraryCache(
-  input?: MaterialLibraryQueryInput,
-): void {
-  materialLibraryCacheGeneration += 1;
-  if (input) {
-    const key = materialLibraryRequestKey(input);
-    materialLibraryCache.delete(key);
-    materialLibraryPending.delete(key);
-    return;
-  }
-  materialLibraryCache.clear();
-  materialLibraryPending.clear();
-}
-
+/**
+ * 检索结果里剔掉这条货架用不了的条目。
+ *
+ * **这是附录 2 §6 那三道过滤之外的第四道**，而且它在最上游：过去这里无条件只留
+ * `isAdvancedEditableShelfItem`，于是 100 款 `view_only` 的 artifact 游戏在
+ * `materialShelfEntries()` 看到它们之前就已经没了——可玩探针拿回来的永远是空数组。
+ *
+ * 放行是**按请求作用域**的，不是无条件的：只有明确按 `game` 类型检索时才收下可玩
+ * 条目。这样素材货架（抽屉、工作台面板、探索页的素材那一格）的结果集与今天逐字
+ * 相同，36 个消费者的行为不变；而可玩探针（`taxonomy=game`）拿得到它要的东西。
+ */
 function omitUneditableMaterials(
   result: ArtifactApiResult<ArtifactSearchResult>,
+  playableRequested: boolean,
 ): ArtifactApiResult<ArtifactSearchResult> {
   if (!result.ok || !result.data) return result;
-  const items = result.data.items.filter(isAdvancedEditableShelfItem);
+  const items = result.data.items.filter(
+    (item) =>
+      isAdvancedEditableShelfItem(item) ||
+      (playableRequested && isPlayableGameLibraryItem(item)),
+  );
   const locallyOmitted = result.data.items.length - items.length;
   const existing = result.data.diagnostics;
   return {
@@ -639,9 +524,10 @@ function cacheMaterialLibraryResult(
   key: string,
   result: ArtifactApiResult<ArtifactSearchResult>,
   generation: number,
+  playableRequested: boolean,
 ): ArtifactApiResult<ArtifactSearchResult> {
-  const safe = omitUneditableMaterials(result);
-  if (generation === materialLibraryCacheGeneration) {
+  const safe = omitUneditableMaterials(result, playableRequested);
+  if (generation === materialLibraryCacheGeneration()) {
     rememberMaterialLibraryResult(key, safe);
   }
   return safe;
@@ -685,7 +571,7 @@ async function searchScopedLibrary(
     artifactType: params.artifactType,
     role: params.role,
     cursor: input.cursor || undefined,
-    limit: 60,
+    limit: materialLibraryPageLimit(input),
     signal: input.signal,
     ...(params.artifactTypes ? { artifactTypes: params.artifactTypes } : {}),
     originSiteKey: params.originSiteKey,
@@ -769,21 +655,26 @@ export async function queryMaterialLibrary(
   }
   const pending = input.signal ? null : materialLibraryPending.get(key);
   if (pending) return pending;
-  const generation = materialLibraryCacheGeneration;
+  const generation = materialLibraryCacheGeneration();
   const types = materialScopeTypes(input);
+  // 只有明确按可玩类型检索时才放行 `view_only` 游戏，见 `omitUneditableMaterials`。
+  const playableRequested = types.some(
+    (type) => exploreArtifactClassOf(type) === "playable",
+  );
   const request = (async () => {
     if (input.level === "primary") {
       // `/v1/library/primary` is already exact-context scoped, so 此 app keeps
       // the endpoint the workbench has always used.
       const page = await listPrimaryArtifacts(input.context, {
         artifactType: types.length === 1 ? types[0] : "",
-        limit: 60,
+        limit: materialLibraryPageLimit(input),
         signal: input.signal,
       });
       return cacheMaterialLibraryResult(
         key,
         scopedSearchResult(input, types, page),
         generation,
+        playableRequested,
       );
     }
     const page = await searchScopedLibrary(input, types);
@@ -791,6 +682,7 @@ export async function queryMaterialLibrary(
       key,
       scopedSearchResult(input, types, page),
       generation,
+      playableRequested,
     );
   })();
   if (!input.signal) materialLibraryPending.set(key, request);

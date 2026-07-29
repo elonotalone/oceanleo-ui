@@ -564,3 +564,41 @@ export { brandColorFor, tintOf, BRAND_PALETTE } from "../lib/brand-color";
 // 宗旨 v13：专家团成员管理弹窗（agent 站输入框「专家团」小图标 → 弹本 modal）。
 export { TeamRosterModal } from "./TeamRosterModal";
 export type { TeamRosterModalProps } from "./TeamRosterModal";
+// 封面判据三态（2026-07-29 合同 §3.2，W1 产出）。**不再是布尔**：`real` 照常显示、
+// `unknown-metadata` 是「元数据没写全的真图」（弱化呈现，**不得**写「封面不可用」）、
+// 只有 `proven-placeholder` 才是被证实的占位图。字节数不是质量代理——旧的 4096 字节
+// 下限误杀了 5 万份 SVG 与 7,013 份 dimensions 为 null 的健康 webp。
+// `isSourceAliasRendition` 回答「这个 purpose 是不是 source 的同 blob 别名」：别名只
+// 降级排序，**不判失败**。W2 的库搜索投影按同一口径对齐。
+export {
+  coverEvidenceOf,
+  coverEvidenceReportOf,
+  isSourceAliasRendition,
+  workspaceCoverPlan,
+  workspaceCoverRenditionPurposes,
+} from "./workspace-library-cover";
+export type {
+  CoverEvidence,
+  CoverEvidenceReport,
+  WorkspaceCoverPlan,
+  WorkspaceCoverRenderer,
+} from "./workspace-library-cover";
+// 探索区可玩分流与「开玩」落点（W8 产出，符号清单见 `W8-marker.md` §A）。
+export {
+  ARTIFACT_PLAY_ORIGIN,
+  ARTIFACT_PLAY_ROUTE_PREFIX,
+  EXPLORE_PLAYABLE_MAX_PAGES,
+  EXPLORE_PLAYABLE_PAGE_LIMIT,
+  artifactPlayHref,
+  isPlayableGameLibraryItem,
+  isPlayableGameShelfEntry,
+  // 「开玩」的独立派发通路：`openArtifactPlay` 是货架/feed 的前置分流（返回 true 即
+  // 已按可玩处理完，不得再落到 `isAdvancedEditableShelfItem` 那条编辑器路径），
+  // `safeArtifactPlayHref` 是外来 `play_href` 的 fail-closed 校验器，
+  // `navigateToArtifactPlay` 的 `navigate` 可注入以便断言落点。
+  navigateToArtifactPlay,
+  openArtifactPlay,
+  safeArtifactPlayHref,
+} from "./explore-artifact-class";
+export { ExplorePlayableSurface } from "./explore-shelf-dispatch";
+export { EXPLORE_FEED_PLAY_LINK_ATTR } from "./ExplorePlayableFeed";

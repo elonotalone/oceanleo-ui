@@ -22,6 +22,22 @@ export type WorkspaceCoverRenderer =
 
 export type WorkspaceCoverFit = "cover" | "contain";
 
+/**
+ * 封面证据三态（派活合同 §3.2）。**不是布尔**：把「没证据」和「证实是占位图」
+ * 混成同一个 false，正是 5 万份 SVG 与 7,013 份健康 webp 被判「封面不可用」的原因。
+ *   real / unknown-metadata（元数据没写全，图本身没问题，照常显示只做弱化）/
+ *   proven-placeholder（已证实是占位图，必须挡下）
+ */
+export type CoverEvidence = "real" | "unknown-metadata" | "proven-placeholder";
+
+export interface CoverEvidenceReport {
+  evidence: CoverEvidence;
+  /** `code` 是稳定机器码（供 W2 投影与验收对齐），`reason` 是用户可见中文原文
+   * （交 W10 落 17 语）。两者在 `real` 时都是空串。 */
+  code: string;
+  reason: string;
+}
+
 export interface WorkspaceCoverPlan {
   renderer: WorkspaceCoverRenderer;
   url: string;
@@ -30,6 +46,9 @@ export interface WorkspaceCoverPlan {
   fit: WorkspaceCoverFit;
   sourceAspectRatio: number | null;
   failureReason: string;
+  coverEvidence: CoverEvidence;
+  /** 三态里非 `real` 那两态的中文说明；`real` 时为空串。 */
+  evidenceReason: string;
 }
 
 export interface WorkspaceCoverPlanInput {
@@ -41,51 +60,31 @@ export interface WorkspaceCoverPlanInput {
   assumeImage?: boolean;
 }
 
-/** Matches reviewed-catalog quality floor for PNG/JPEG shelf posters. */
-export const COVER_IMAGE_MIN_BYTES = 4096;
+/**
+ * 按名字自证的合成占位图。放水这一条 = 真占位图直接漏上货架。
+ * `library-form-shelf-fill/*` 是 `shelf-fill` 的子串，已被第一项覆盖。
+ */
+const PLACEHOLDER_RENDERER_MARKERS = ["shelf-fill", "fastfill"] as const;
+
+/** 矢量封面不设字节下限也不要求像素尺寸：它本身就是分辨率无关的完整图形。 */
+const VECTOR_COVER_FORMATS = new Set(["svg", "svg+xml"]);
+
+/** 与 imageElementLooksSolidColor 的 <8px 同一条线：声明出来就没法当封面。 */
+const COVER_MIN_DECLARED_PIXELS = 8;
 
 const COVER_PURPOSES: readonly ArtifactRenditionPurpose[] = [
-  "thumbnail",
-  "preview",
-  "full",
-  "source",
+  "thumbnail", "preview", "full", "source",
 ];
 
 const IMAGE_FORMATS = new Set([
-  "avif",
-  "bmp",
-  "gif",
-  "heic",
-  "heif",
-  "jpeg",
-  "jpg",
-  "png",
-  "svg",
-  "svg+xml",
-  "tif",
-  "tiff",
-  "webp",
+  "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg",
+  "png", "svg", "svg+xml", "tif", "tiff", "webp",
 ]);
 
-const VIDEO_FORMATS = new Set([
-  "m4v",
-  "mkv",
-  "mov",
-  "mp4",
-  "ogv",
-  "webm",
-]);
+const VIDEO_FORMATS = new Set(["m4v", "mkv", "mov", "mp4", "ogv", "webm"]);
 
 const AUDIO_FORMATS = new Set([
-  "aac",
-  "flac",
-  "m4a",
-  "mp3",
-  "oga",
-  "ogg",
-  "opus",
-  "wav",
-  "weba",
+  "aac", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav", "weba",
 ]);
 
 function cleanMediaType(value: unknown): string {
@@ -192,42 +191,105 @@ function sourceAspectRatio(
   return width > 0 && height > 0 ? width / height : null;
 }
 
+const REAL_COVER_EVIDENCE: CoverEvidenceReport = {
+  evidence: "real",
+  code: "",
+  reason: "",
+};
+
+function proven(code: string, reason: string): CoverEvidenceReport {
+  return { evidence: "proven-placeholder", code, reason };
+}
+
 /**
- * Shelf-fill and other synthetic flat posters are image/* bytes, but they are
- * not meaningful covers. Reject them before the card marks itself ready.
+ * 按证据判封面，不按字节数猜。
+ *
+ * 字节数**不是**质量代理：2KB 的 SVG 是完整无损的真实图形，50,272 份矢量素材几乎全栽
+ * 在旧的 4096 字节下限上；`dimensions` 为 null 也只说明入库时没记尺寸，7,013 份平均
+ * 80KB 的 webp 缺的是元数据不是画面。能证实「是占位图」的只有三类：名字自证的货架填充
+ * 产物、0 字节载荷、声明出来就承载不了画面的像素尺寸。其余一律不得判死。
+ *
+ * 名字自证那条只在**证实是别的媒体形态**时豁免：同一批 `library-form-shelf-fill/*`
+ * 也盖在真实音频 rendition 上，拿它判死一份 7MB 的 mp3 会把真媒体一起误杀。
  */
-export function isSyntheticFlatImageCover(
+export function coverEvidenceReportOf(
   rendition: ArtifactRendition | null | undefined,
   mediaType = "",
   format = "",
-): boolean {
-  if (!rendition) return false;
+): CoverEvidenceReport {
+  if (!rendition) return REAL_COVER_EVIDENCE;
   const resolvedMedia = cleanMediaType(mediaType || rendition.mediaType);
   const resolvedFormat = cleanFormat(format || rendition.format);
-  if (!isImage(resolvedMedia, resolvedFormat)) return false;
+  // 名字自证那条的作用域比其余判据宽一档：只有**证实是别的媒体形态**才豁免。
+  // 「认不出形态」不算豁免理由 —— `workspaceCoverPlan` 会把没报 mediaType/format 的
+  // thumbnail 当图片渲染，放过去等于占位图直接上货架。认不出即按图像 fail-closed。
+  const provenOtherMedia =
+    isVideo(resolvedMedia, resolvedFormat) ||
+    isAudio(resolvedMedia, resolvedFormat) ||
+    isPdf(resolvedMedia, resolvedFormat) ||
+    isHtml(resolvedMedia, resolvedFormat);
   const renderer = String(rendition.rendererVersion || "").toLowerCase();
   if (
-    renderer.includes("shelf-fill") ||
-    renderer.includes("library-form-shelf-fill") ||
-    renderer.includes("fastfill")
+    !provenOtherMedia &&
+    PLACEHOLDER_RENDERER_MARKERS.some((mark) => renderer.includes(mark))
   ) {
-    return true;
+    return proven(
+      "synthetic-renderer",
+      "这份封面是货架填充生成的占位图，不是素材本身。",
+    );
   }
-  const byteSize =
-    typeof rendition.byteSize === "number" ? rendition.byteSize : null;
-  if (byteSize !== null && byteSize > 0 && byteSize < COVER_IMAGE_MIN_BYTES) {
-    return true;
+  if (!isImage(resolvedMedia, resolvedFormat)) return REAL_COVER_EVIDENCE;
+  if (rendition.byteSize === 0) {
+    return proven("empty-payload", "封面文件是空的，没有可显示的画面。");
   }
-  // Unmeasured tiny posters are almost always solid shelf fills.
+  const { width, height } = rendition;
   if (
-    (rendition.width == null || rendition.height == null) &&
-    byteSize !== null &&
-    byteSize > 0 &&
-    byteSize < COVER_IMAGE_MIN_BYTES * 2
+    (typeof width === "number" && width < COVER_MIN_DECLARED_PIXELS) ||
+    (typeof height === "number" && height < COVER_MIN_DECLARED_PIXELS)
   ) {
-    return true;
+    return proven("degenerate-pixels", "封面只有几个像素，放不出可辨认的画面。");
   }
-  return false;
+  if (
+    VECTOR_COVER_FORMATS.has(resolvedFormat) ||
+    resolvedMedia === "image/svg+xml"
+  ) {
+    return REAL_COVER_EVIDENCE;
+  }
+  if (width == null || height == null) {
+    return {
+      evidence: "unknown-metadata",
+      code: "dimensions-missing",
+      reason: "封面尺寸信息缺失，已按原图显示。",
+    };
+  }
+  return REAL_COVER_EVIDENCE;
+}
+
+/** 合同 §3.2 的三态判据本体。W2 的库搜索投影按这个口径对齐。 */
+export function coverEvidenceOf(
+  rendition: ArtifactRendition | null | undefined,
+  mediaType = "",
+  format = "",
+): CoverEvidence {
+  return coverEvidenceReportOf(rendition, mediaType, format).evidence;
+}
+
+/**
+ * 四个 purpose 指向同一个 blob 时，thumbnail 只是 source 的别名——生产库 11 万份
+ * 素材全是这样，从来没生成过缩略图。别名图仍然能看，所以只降级排序、**不判失败**。
+ */
+export function isSourceAliasRendition(
+  item: LibraryItem | undefined,
+  purpose: ArtifactRenditionPurpose,
+): boolean {
+  if (purpose === "source" || purpose === "full") return false;
+  const rendition = item?.artifact?.renditions[purpose];
+  const digest = rendition?.digest;
+  if (!digest) return false;
+  return (["source", "full"] as const).some((other) => {
+    const alias = item?.artifact?.renditions[other];
+    return Boolean(alias && alias !== rendition && alias.digest === digest);
+  });
 }
 
 /**
@@ -293,10 +355,8 @@ function supportsVideoCover(
   kind: LibraryKind,
 ): boolean {
   return (
-    artifactType === "video" ||
-    artifactType === "workflow" ||
-    kind === "video" ||
-    kind === "video_canvas"
+    artifactType === "video" || artifactType === "workflow" ||
+    kind === "video" || kind === "video_canvas"
   );
 }
 
@@ -311,9 +371,7 @@ function supportsPdfCover(
   artifactType: ArtifactType | undefined,
   kind: LibraryKind,
 ): boolean {
-  return (
-    artifactType === "pdf" || kind === "document" || kind === "file"
-  );
+  return artifactType === "pdf" || kind === "document" || kind === "file";
 }
 
 /**
@@ -376,11 +434,8 @@ function supportsWebsiteCover(
   kind: LibraryKind,
 ): boolean {
   return (
-    artifactType === "website" ||
-    artifactType === "workflow" ||
-    kind === "website" ||
-    kind === "canvas" ||
-    kind === "video_canvas"
+    artifactType === "website" || artifactType === "workflow" ||
+    kind === "website" || kind === "canvas" || kind === "video_canvas"
   );
 }
 
@@ -406,6 +461,8 @@ export function workspaceCoverPlan({
       fit: "contain",
       sourceAspectRatio: null,
       failureReason: "这个条目没有可显示的真实封面。",
+      coverEvidence: "unknown-metadata",
+      evidenceReason: "",
     };
   }
   const rendition =
@@ -418,98 +475,69 @@ export function workspaceCoverPlan({
     rendition?.purpose === "thumbnail" ||
     normalizedUrl === item?.thumbUrl ||
     assumeImage;
-
-  if (
-    isImage(mediaType, format) ||
-    (declaredThumbnail && !mediaType && !format)
-  ) {
-    if (isSyntheticFlatImageCover(rendition, mediaType, format)) {
-      return {
-        renderer: "unavailable",
-        url: normalizedUrl,
-        mediaType: mediaType || "image/*",
-        format,
-        fit: "contain",
-        sourceAspectRatio: ratio,
-        failureReason: "封面是纯色/shelf-fill 占位图，不是真实媒体。",
-      };
-    }
-    return {
-      renderer: "image",
-      url: normalizedUrl,
-      mediaType: mediaType || "image/*",
-      format,
-      fit: imageFit(artifactType, kind, ratio),
-      sourceAspectRatio: ratio,
-      failureReason: "",
-    };
-  }
-  if (isVideo(mediaType, format) && supportsVideoCover(artifactType, kind)) {
-    return {
-      renderer: "video",
-      url: normalizedUrl,
-      mediaType: mediaType || "video/*",
-      format,
-      fit: "cover",
-      sourceAspectRatio: ratio,
-      failureReason: "",
-    };
-  }
-  if (isAudio(mediaType, format) && supportsAudioCover(artifactType, kind)) {
-    return {
-      renderer: "audio",
-      url: normalizedUrl,
-      mediaType: mediaType || "audio/*",
-      format,
-      fit: "contain",
-      sourceAspectRatio: ratio,
-      failureReason: "",
-    };
-  }
-  if (isPdf(mediaType, format) && supportsPdfCover(artifactType, kind)) {
-    if (!isSandboxExemptPdfFrameUrl(normalizedUrl)) {
-      return {
-        renderer: "unavailable",
-        url: normalizedUrl,
-        mediaType: mediaType || "application/pdf",
-        format: format || "pdf",
-        fit: "contain",
-        sourceAspectRatio: ratio,
-        failureReason:
-          "PDF 封面地址不在第一方渲染网关白名单内；免沙箱 frame 不得加载它。",
-      };
-    }
-    return {
-      renderer: "pdf",
-      url: normalizedUrl,
-      mediaType: mediaType || "application/pdf",
-      format: format || "pdf",
-      fit: "contain",
-      sourceAspectRatio: ratio,
-      failureReason: "",
-    };
-  }
-  if (isHtml(mediaType, format) && supportsWebsiteCover(artifactType, kind)) {
-    return {
-      renderer: "website",
-      url: normalizedUrl,
-      mediaType: mediaType || "text/html",
-      format: format || "html",
-      fit: "contain",
-      sourceAspectRatio: ratio,
-      failureReason: "",
-    };
-  }
-  const representation = mediaType || format || "unknown";
-  return {
-    renderer: "unavailable",
+  const evidence = coverEvidenceReportOf(rendition, mediaType, format);
+  const planOf = (
+    renderer: WorkspaceCoverRenderer,
+    over: Partial<WorkspaceCoverPlan> = {},
+  ): WorkspaceCoverPlan => ({
+    renderer,
     url: normalizedUrl,
     mediaType,
     format,
     fit: "contain",
     sourceAspectRatio: ratio,
+    failureReason: "",
+    coverEvidence: evidence.evidence,
+    evidenceReason: evidence.reason,
+    ...over,
+  });
+
+  if (
+    isImage(mediaType, format) ||
+    (declaredThumbnail && !mediaType && !format)
+  ) {
+    if (evidence.evidence === "proven-placeholder") {
+      return planOf("unavailable", {
+        mediaType: mediaType || "image/*",
+        failureReason: evidence.reason,
+      });
+    }
+    // unknown-metadata 只是元数据没写全，图照常显示——弱化交给呈现层。
+    return planOf("image", {
+      mediaType: mediaType || "image/*",
+      fit: imageFit(artifactType, kind, ratio),
+    });
+  }
+  if (isVideo(mediaType, format) && supportsVideoCover(artifactType, kind)) {
+    return planOf("video", { mediaType: mediaType || "video/*", fit: "cover" });
+  }
+  if (isAudio(mediaType, format) && supportsAudioCover(artifactType, kind)) {
+    return planOf("audio", { mediaType: mediaType || "audio/*" });
+  }
+  if (isPdf(mediaType, format) && supportsPdfCover(artifactType, kind)) {
+    const pdfPlan = {
+      mediaType: mediaType || "application/pdf",
+      format: format || "pdf",
+    };
+    if (!isSandboxExemptPdfFrameUrl(normalizedUrl)) {
+      return planOf("unavailable", {
+        ...pdfPlan,
+        failureReason:
+          "PDF 封面地址不在第一方渲染网关白名单内；免沙箱 frame 不得加载它。",
+      });
+    }
+    return planOf("pdf", pdfPlan);
+  }
+  if (isHtml(mediaType, format) && supportsWebsiteCover(artifactType, kind)) {
+    return planOf("website", {
+      mediaType: mediaType || "text/html",
+      format: format || "html",
+    });
+  }
+  const representation = mediaType || format || "unknown";
+  return planOf("unavailable", {
     failureReason: `当前 ${representation} rendition 不能作为真实封面显示。`,
-  };
+  });
 }
 
 /**
@@ -533,8 +561,17 @@ export function workspaceCoverRenditionPurposes(
       }).renderer !== "unavailable"
     );
   });
+  // 真正独立的 thumbnail/preview 排最前；与 source 同 blob 的别名降到它们之后，但
+  // **不降到 full/source 之下**——那两个 purpose 的读取权限更严（`can_export_source`），
+  // 把封面挪过去会让没有导出权的用户直接看不到图。别名本身仍然可显示，不判失败。
+  // sort 稳定，同档保持 COVER_PURPOSES 次序。
+  const dedicated = (purpose: ArtifactRenditionPurpose): number =>
+    (purpose === "thumbnail" || purpose === "preview") &&
+    !isSourceAliasRendition(item, purpose)
+      ? 0
+      : 1;
   // Empty means truthful unavailable — do not fall back to known-bad posters.
-  return purposes;
+  return purposes.sort((left, right) => dedicated(left) - dedicated(right));
 }
 
 function pdfFirstPageUrl(url: string): string {

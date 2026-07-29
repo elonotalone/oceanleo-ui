@@ -64,8 +64,9 @@ const {
   WorkspaceCoverResource,
   workspaceCoverPlan,
   workspaceCoverRenditionPurposes,
-  isSyntheticFlatImageCover,
-  COVER_IMAGE_MIN_BYTES,
+  coverEvidenceOf,
+  coverEvidenceReportOf,
+  isSourceAliasRendition,
 } = await import(coverModuleUrl);
 
 const SOURCE_FORMATS = {
@@ -290,6 +291,240 @@ test("cover selection skips source-shaped false previews and dispatches real med
   }
 });
 
+// 生产库实测形态（01-analysis-covers.md §4）：svg 平均 2,011 字节、最小 126；
+// webp 平均 80,573 字节但 7,013 行 dimensions 全为 null。旧判据按 4096 字节下限
+// 猜，把这两类一起判成占位图——本组按**值**锁死三态，改反必须变红。
+test("封面判据按证据判三态，不按字节数猜", () => {
+  const vector = normalizedItem("vector_image");
+  const tinySvg = {
+    ...vector.artifact.renditions.thumbnail,
+    url: "https://signed.test/kenney-arrow.svg",
+    mediaType: "image/svg+xml",
+    format: "svg",
+    rendererVersion: "kenney-material-catalog/source-v1",
+    byteSize: 126,
+    width: null,
+    height: null,
+  };
+  assert.equal(coverEvidenceOf(tinySvg), "real");
+  assert.equal(coverEvidenceReportOf(tinySvg).reason, "");
+  const svgPlan = workspaceCoverPlan({
+    item: vector,
+    kind: "image",
+    url: tinySvg.url,
+    rendition: tinySvg,
+  });
+  assert.equal(svgPlan.renderer, "image");
+  assert.equal(svgPlan.failureReason, "");
+  assert.equal(svgPlan.coverEvidence, "real");
+  // 矢量豁免有两条独立的入口，生产库两种形状都有：老行常常只有扩展名而没写
+  // `media_type`，也有反过来只有 `media_type` 的。任一条断了都会让那 5 万份里的
+  // 一整批重新掉回按位图判——所以两条各锁各的，不能只靠 OR 的另一边兜住。
+  assert.equal(
+    coverEvidenceOf({ ...tinySvg, mediaType: "", format: "svg" }),
+    "real",
+    "只有扩展名的 SVG 失去了矢量豁免",
+  );
+  assert.equal(
+    coverEvidenceOf({ ...tinySvg, mediaType: "image/svg+xml", format: "" }),
+    "real",
+    "只有 media_type 的 SVG 失去了矢量豁免",
+  );
+
+  const image = normalizedItem("single_file_image");
+  const unmeasuredWebp = {
+    ...image.artifact.renditions.thumbnail,
+    url: "https://signed.test/legacy-rehost.webp",
+    mediaType: "image/webp",
+    format: "webp",
+    rendererVersion: "legacy-rehost-v1",
+    byteSize: 80_573,
+    width: null,
+    height: null,
+  };
+  const webpReport = coverEvidenceReportOf(unmeasuredWebp);
+  assert.equal(webpReport.evidence, "unknown-metadata");
+  assert.equal(webpReport.code, "dimensions-missing");
+  assert.equal(webpReport.reason, "封面尺寸信息缺失，已按原图显示。");
+  const webpPlan = workspaceCoverPlan({
+    item: image,
+    kind: "image",
+    url: unmeasuredWebp.url,
+    rendition: unmeasuredWebp,
+  });
+  // 缺元数据的真图必须照常显示：renderer 不是 unavailable，且没有失败文案。
+  assert.equal(webpPlan.renderer, "image");
+  assert.equal(webpPlan.failureReason, "");
+  assert.equal(webpPlan.coverEvidence, "unknown-metadata");
+  assert.equal(webpPlan.evidenceReason, "封面尺寸信息缺失，已按原图显示。");
+  // 1,394 字节（webp 实测最小值）同样不构成占位图证据。
+  assert.equal(
+    coverEvidenceOf({ ...unmeasuredWebp, byteSize: 1_394 }),
+    "unknown-metadata",
+  );
+  // 尺寸补齐后升为 real——这正是 W2/W4 回填要达到的状态。
+  assert.equal(
+    coverEvidenceOf({ ...unmeasuredWebp, width: 640, height: 480 }),
+    "real",
+  );
+
+  for (const [label, patch, code] of [
+    [
+      "shelf-fill 按名字自证",
+      { rendererVersion: "library-form-shelf-fill/v1/thumbnail" },
+      "synthetic-renderer",
+    ],
+    ["空载荷", { byteSize: 0 }, "empty-payload"],
+    ["像素尺寸退化", { width: 1, height: 1 }, "degenerate-pixels"],
+  ]) {
+    const report = coverEvidenceReportOf({ ...unmeasuredWebp, ...patch });
+    assert.equal(report.evidence, "proven-placeholder", label);
+    assert.equal(report.code, code, label);
+    assert.notEqual(report.reason, "", label);
+  }
+});
+
+// 生产库里同一批 `library-form-shelf-fill/*` 也盖在真实音频 rendition 上。
+// 名字自证只能拦图像形态，否则 7MB 的 mp3 会跟着一起被误杀。
+test("名字自证的占位图判据只作用于图像形态的 rendition", () => {
+  const audio = normalizedItem("audio");
+  const realMp3 = {
+    ...audio.artifact.renditions.preview,
+    url: "https://signed.test/audio-real.mp3",
+    mediaType: "audio/mpeg",
+    format: "mp3",
+    rendererVersion: "library-form-shelf-fill/v1/preview",
+    byteSize: 7_134_741,
+    width: null,
+    height: null,
+  };
+  assert.equal(coverEvidenceOf(realMp3), "real");
+  assert.equal(
+    workspaceCoverPlan({
+      item: audio,
+      kind: "audio",
+      url: realMp3.url,
+      rendition: realMp3,
+    }).renderer,
+    "audio",
+  );
+});
+
+// 「豁免」的条件是**证实是别的媒体形态**，不是「认不出形态」。生产库里
+// `legacy-rehost-v1` 那 55,591 行有 84.7% 连 dimensions 都没有，媒体元数据同样可能
+// 整条缺失；而 `workspaceCoverPlan` 会把没报 mediaType/format 的 thumbnail 当图片渲染。
+// 认不出形态就放过去 = shelf-fill 占位图直接上货架，这正是 V1 要查的「判据被放水」。
+test("认不出媒体形态的 shelf-fill 仍按图像 fail-closed 拦下", () => {
+  const item = normalizedItem("single_file_image");
+  const shapeless = {
+    ...item.artifact.renditions.thumbnail,
+    url: "https://signed.test/shelf-fill-shapeless",
+    mediaType: "",
+    format: "",
+    rendererVersion: "library-form-shelf-fill/v1/thumbnail",
+    byteSize: 20_480,
+    width: null,
+    height: null,
+  };
+  const report = coverEvidenceReportOf(shapeless);
+  assert.equal(report.evidence, "proven-placeholder");
+  assert.equal(report.code, "synthetic-renderer");
+  // 无形态的 thumbnail 走的正是 `declaredThumbnail` 那条图片分支，所以必须判死到底：
+  // renderer 落 unavailable，而且失败文案就是占位图那句，不是泛泛的「不能显示」。
+  const plan = workspaceCoverPlan({
+    item,
+    kind: "image",
+    url: shapeless.url,
+    rendition: shapeless,
+    assumeImage: true,
+  });
+  assert.equal(plan.renderer, "unavailable");
+  assert.equal(plan.coverEvidence, "proven-placeholder");
+  assert.equal(
+    plan.failureReason,
+    "这份封面是货架填充生成的占位图，不是素材本身。",
+  );
+});
+
+// 四个 purpose 指向同一 blob 是生产库的常态（每 purpose 行数完全相同）。
+// 别名要降级排序，但**不判失败**——判失败就是又一次把能看的图挡掉。
+test("取封面优先真 thumbnail，同 blob 别名降级但不判失败", () => {
+  const item = normalizedItem("single_file_image");
+  const aliasDigest = "sha256:same-blob-for-every-purpose";
+  const alias = (purpose, url) => ({
+    ...item.artifact.renditions.thumbnail,
+    purpose,
+    url,
+    mediaType: "image/png",
+    format: "png",
+    byteSize: 4_439,
+    width: 512,
+    height: 512,
+    digest: aliasDigest,
+  });
+  item.artifact.renditions = {
+    thumbnail: alias("thumbnail", "https://signed.test/alias-thumb.png"),
+    preview: alias("preview", "https://signed.test/alias-preview.png"),
+    full: alias("full", "https://signed.test/alias-full.png"),
+    source: alias("source", "https://signed.test/alias-source.png"),
+  };
+  assert.equal(isSourceAliasRendition(item, "thumbnail"), true);
+  assert.equal(isSourceAliasRendition(item, "preview"), true);
+  // 全都是别名时次序不变：没有更好的候选，把封面挪到 full/source 反而会撞上更严的
+  // 读取权限。别名仍然可显示——列表非空，thumbnail 也没有被判失败。
+  assert.deepEqual(workspaceCoverRenditionPurposes(item), [
+    "thumbnail",
+    "preview",
+    "full",
+    "source",
+  ]);
+  assert.equal(
+    workspaceCoverPlan({
+      item,
+      kind: "image",
+      url: item.artifact.renditions.thumbnail.url,
+      rendition: item.artifact.renditions.thumbnail,
+    }).renderer,
+    "image",
+  );
+
+  // W2/W4 写进真正独立的封面 blob 后，它必须排到别名前面。
+  const dedicated = {
+    url: "https://signed.test/real-cover.webp",
+    mediaType: "image/webp",
+    format: "webp",
+    digest: "sha256:dedicated-cover-blob",
+    rendererVersion: "oceanleo-material-cover/raster-v1",
+    width: 640,
+    height: 480,
+  };
+  item.artifact.renditions.preview = {
+    ...item.artifact.renditions.preview,
+    ...dedicated,
+  };
+  assert.equal(isSourceAliasRendition(item, "preview"), false);
+  assert.deepEqual(workspaceCoverRenditionPurposes(item), [
+    "preview",
+    "thumbnail",
+    "full",
+    "source",
+  ]);
+
+  item.artifact.renditions.thumbnail = {
+    ...item.artifact.renditions.thumbnail,
+    ...dedicated,
+    url: "https://signed.test/real-thumb.webp",
+    digest: "sha256:dedicated-thumbnail-blob",
+  };
+  assert.equal(isSourceAliasRendition(item, "thumbnail"), false);
+  assert.deepEqual(workspaceCoverRenditionPurposes(item), [
+    "thumbnail",
+    "preview",
+    "full",
+    "source",
+  ]);
+});
+
 test("shelf-fill and undersized flat posters never count as successful covers", () => {
   const audio = normalizedItem("audio");
   const solidThumb = {
@@ -316,8 +551,7 @@ test("shelf-fill and undersized flat posters never count as successful covers", 
     thumbnail: solidThumb,
     preview: audioPreview,
   };
-  assert.equal(isSyntheticFlatImageCover(solidThumb), true);
-  assert.ok(solidThumb.byteSize < COVER_IMAGE_MIN_BYTES);
+  assert.equal(coverEvidenceOf(solidThumb), "proven-placeholder");
   assert.equal(
     workspaceCoverPlan({
       item: audio,
@@ -354,14 +588,16 @@ test("shelf-fill and undersized flat posters never count as successful covers", 
     preview: { ...flatDoc, purpose: "preview", url: "https://signed.test/doc-flat-preview.png" },
   };
   assert.deepEqual(workspaceCoverRenditionPurposes(document), []);
-  assert.match(
-    workspaceCoverPlan({
-      item: document,
-      kind: "document",
-      url: flatDoc.url,
-      rendition: flatDoc,
-    }).failureReason,
-    /纯色|shelf-fill/,
+  const flatPlan = workspaceCoverPlan({
+    item: document,
+    kind: "document",
+    url: flatDoc.url,
+    rendition: flatDoc,
+  });
+  assert.equal(flatPlan.coverEvidence, "proven-placeholder");
+  assert.equal(
+    flatPlan.failureReason,
+    "这份封面是货架填充生成的占位图，不是素材本身。",
   );
 });
 
@@ -458,7 +694,7 @@ test("cover resources render image, video, PDF, website and audio semantics with
   );
 });
 
-test("thumbnail lifecycle reports loading, real-media success, failure and refreshed recovery", async () => {
+async function bootstrapThumbnailDom() {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -539,6 +775,12 @@ test("thumbnail lifecycle reports loading, real-media success, failure and refre
     },
   );
   const { WorkspaceThumbnail } = await import(thumbnailUrl);
+  return { dom, window, document, WorkspaceThumbnail };
+}
+
+test("thumbnail lifecycle reports loading, real-media success, failure and refreshed recovery", async () => {
+  const { dom, window, document, WorkspaceThumbnail } =
+    await bootstrapThumbnailDom();
   const item = normalizedItem("single_file_image");
   const setRendition = (version, url) => {
     const rendition = {
@@ -625,6 +867,134 @@ test("thumbnail lifecycle reports loading, real-media success, failure and refre
       ),
       "ready",
     );
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    dom.window.close();
+    delete globalThis.__coverRenditionState;
+    delete globalThis.__coverResourceFailures;
+  }
+});
+
+// 三态各有各的呈现（合同 §4 W1）：真封面照常显示；缺元数据只弱化、**绝不写
+// 「不可用」**；已证实的占位图要明说是「占位图」，不能含糊成「封面不可用」。
+test("三态呈现：真封面 / 弱化不写不可用 / 明确的占位图", async () => {
+  const { dom, window, document, WorkspaceThumbnail } =
+    await bootstrapThumbnailDom();
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const mount = async (item, rendition) => {
+    globalThis.__coverRenditionState = {
+      url: rendition?.url || "",
+      purpose: "thumbnail",
+      rendition,
+      loading: false,
+      error: "",
+      version: 0,
+      retry() {},
+      resourceFailed() {},
+    };
+    await act(async () =>
+      root.render(
+        React.createElement(WorkspaceThumbnail, {
+          item,
+          url: rendition?.url || "",
+          alt: "Evidence cover",
+          kind: "image",
+          accent: "#4f46e5",
+          imageClassName: "h-full w-full object-cover",
+        }),
+      ),
+    );
+    const image = container.querySelector("img");
+    if (image) {
+      await act(async () =>
+        image.dispatchEvent(new window.Event("load", { bubbles: true })),
+      );
+    }
+    const host = container.querySelector("[data-cover-state]");
+    return {
+      host,
+      image: container.querySelector("img"),
+      alert: container.querySelector('[role="alert"]'),
+      marker: container.querySelector("[data-cover-metadata]"),
+      evidence: host?.getAttribute("data-cover-evidence"),
+      state: host?.getAttribute("data-cover-state"),
+      text: host?.textContent || "",
+    };
+  };
+
+  try {
+    const real = normalizedItem("single_file_image");
+    const realCover = {
+      ...real.artifact.renditions.thumbnail,
+      url: "https://signed.test/real-cover.webp",
+      rendererVersion: "oceanleo-material-cover/raster-v1",
+      digest: "sha256:dedicated-cover-blob",
+    };
+    real.artifact.renditions = { thumbnail: realCover };
+    const realView = await mount(real, realCover);
+    assert.equal(realView.evidence, "real");
+    assert.equal(realView.state, "ready");
+    assert.ok(realView.image, "真封面必须真的渲染出 <img>");
+    assert.equal(realView.alert, null);
+    assert.equal(realView.marker, null);
+
+    // 7,013 份平均 80KB 的 webp：图是好的，只是 dimensions 没写。
+    const unknown = normalizedItem("single_file_image");
+    const unmeasured = {
+      ...unknown.artifact.renditions.thumbnail,
+      url: "https://signed.test/legacy-rehost.webp",
+      rendererVersion: "legacy-rehost-v1",
+      byteSize: 80_573,
+      width: null,
+      height: null,
+    };
+    unknown.artifact.renditions = { thumbnail: unmeasured };
+    const unknownView = await mount(unknown, unmeasured);
+    assert.equal(unknownView.evidence, "unknown-metadata");
+    assert.equal(unknownView.state, "ready");
+    assert.ok(unknownView.image, "缺元数据的真图必须照常显示");
+    assert.equal(unknownView.alert, null, "弱化态不许出现 role=alert 失败块");
+    assert.doesNotMatch(unknownView.text, /不可用/);
+    assert.equal(
+      unknownView.marker?.getAttribute("title"),
+      "封面尺寸信息缺失，已按原图显示。",
+    );
+    // 弱化角标必须自带尺寸：`ui.css` 要等父任务 build:css 才重建，靠新工具类会在
+    // 36 个 consumer 上渲染成不可见的空元素（§3.3 的发布顺序陷阱）。
+    assert.match(
+      unknownView.marker?.getAttribute("style") || "",
+      /width:\s*6px[\s\S]*height:\s*6px/,
+    );
+
+    // 已证实的占位图：候选全被判死 → 明说「占位图」，不含糊成「封面不可用」。
+    const placeholder = normalizedItem("single_file_image");
+    const shelfFill = {
+      ...placeholder.artifact.renditions.thumbnail,
+      url: "https://signed.test/shelf-fill.png",
+      mediaType: "image/png",
+      format: "png",
+      rendererVersion: "library-form-shelf-fill/v1/thumbnail",
+      byteSize: 1212,
+      width: null,
+      height: null,
+    };
+    placeholder.artifact.renditions = { thumbnail: shelfFill };
+    const placeholderView = await mount(placeholder, shelfFill);
+    assert.equal(placeholderView.evidence, "proven-placeholder");
+    assert.equal(placeholderView.image, null, "占位图不得被当封面渲染");
+    assert.ok(placeholderView.alert);
+    assert.equal(
+      placeholderView.alert.getAttribute("data-cover-failure"),
+      "placeholder",
+    );
+    assert.match(placeholderView.text, /占位图/);
+    assert.doesNotMatch(placeholderView.text, /封面不可用/);
+    // 说得出「为什么」：候选全被判死时不许含糊成「没有可显示的真实封面」。
+    assert.match(placeholderView.text, /这份封面是货架填充生成的占位图/);
   } finally {
     await act(async () => root.unmount());
     container.remove();

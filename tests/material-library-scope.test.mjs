@@ -488,11 +488,20 @@ test("素材库文件全部守住 800 行硬顶", () => {
     "../src/shell/material-library-controller.ts",
     "../src/shell/material-library-scope.ts",
     "../src/shell/material-library-dedupe.ts",
+    "../src/shell/material-library-cache.ts",
     "../src/shell/material-library-view.tsx",
     "../src/shell/material-library-presentation.ts",
     "../src/shell/material-library-effects.ts",
     "../src/shell/material-library-template-source.ts",
     "../src/shell/ExplorePage.tsx",
+    // 封面判据与可玩分流这两簇同样吃这条硬顶。`workspace-library-cover.tsx` 一度
+    // 停在 797 行，没有守卫的话下一次加注释就会静默越顶。
+    "../src/shell/workspace-library-cover.tsx",
+    "../src/shell/workspace-library-thumbnail.tsx",
+    "../src/shell/explore-artifact-class.ts",
+    "../src/shell/explore-shelf-dispatch.tsx",
+    "../src/shell/ExplorePlayableFeed.tsx",
+    "../src/shell/index.ts",
   ]) {
     const lines = readFileSync(new URL(path, import.meta.url), "utf8").split(
       "\n",
