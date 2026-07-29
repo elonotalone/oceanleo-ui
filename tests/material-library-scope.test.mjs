@@ -495,7 +495,8 @@ test("素材库文件全部守住 800 行硬顶", () => {
     "../src/shell/material-library-template-source.ts",
     "../src/shell/ExplorePage.tsx",
     // 封面判据与可玩分流这两簇同样吃这条硬顶。`workspace-library-cover.tsx` 一度
-    // 停在 797 行，没有守卫的话下一次加注释就会静默越顶。
+    // 停在 800 行**整**（正好顶格）而这份清单没有覆盖它：再加一行注释就静默越顶，
+    // 而且没有任何用例会红。收进来的同时把它压回 797 行留出余量。
     "../src/shell/workspace-library-cover.tsx",
     "../src/shell/workspace-library-thumbnail.tsx",
     "../src/shell/explore-artifact-class.ts",
