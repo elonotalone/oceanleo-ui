@@ -452,6 +452,12 @@ export interface MaterialLibraryQueryInput {
   taxonomy: ArtifactType | "";
   /** Multi-select chips (合同 §0.6); overrides `taxonomy` when non-empty. */
   types?: readonly ArtifactType[];
+  /**
+   * Library role filter. Defaults to `template` (素材货架).
+   * Playable explore probes pass `generated_output` — promoted games are not
+   * templates, and revision.roles is immutable after create.
+   */
+  role?: string;
   cursor?: string | null;
   signal?: AbortSignal;
   forceRefresh?: boolean;
@@ -486,6 +492,7 @@ export function materialLibraryRequestKey(
   input: MaterialLibraryQueryInput,
 ): string {
   const types = materialScopeTypes(input);
+  const role = String(input.role ?? "").trim() || MATERIAL_LIBRARY_TEMPLATE_ROLE;
   return JSON.stringify({
     level: input.level,
     context:
@@ -496,6 +503,8 @@ export function materialLibraryRequestKey(
     taxonomy: input.taxonomy,
     // Omitted for legacy single-type callers so their cache key is unchanged.
     types: types.length > 1 ? materialTypesCsv(types) : undefined,
+    // Omitted when default so existing material-shelf cache keys stay stable.
+    role: role === MATERIAL_LIBRARY_TEMPLATE_ROLE ? undefined : role,
     cursor: input.cursor || "",
   });
 }
@@ -664,7 +673,8 @@ async function searchScopedLibrary(
   const params = materialLibrarySearchParams({
     level: input.level,
     query: input.query,
-    role: MATERIAL_LIBRARY_TEMPLATE_ROLE,
+    role:
+      String(input.role ?? "").trim() || MATERIAL_LIBRARY_TEMPLATE_ROLE,
     siteKey: input.context?.siteKey,
     appId: input.context?.appId,
     types,

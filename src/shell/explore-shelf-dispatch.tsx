@@ -63,6 +63,9 @@ export interface ExploreShelfDispatch {
   playableError: string;
 }
 
+/** Official / promoted games land as `generated_output`, never `template`. */
+const EXPLORE_PLAYABLE_LIBRARY_ROLE = "generated_output";
+
 function playableRequest(siteKey: string): MaterialLibraryQueryInput {
   const context: ArtifactContextRef = {
     contextId: "",
@@ -75,6 +78,7 @@ function playableRequest(siteKey: string): MaterialLibraryQueryInput {
     query: "",
     taxonomy: EXPLORE_PLAYABLE_ARTIFACT_TYPES[0],
     types: EXPLORE_PLAYABLE_ARTIFACT_TYPES,
+    role: EXPLORE_PLAYABLE_LIBRARY_ROLE,
   };
 }
 

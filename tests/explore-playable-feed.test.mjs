@@ -414,6 +414,9 @@ test("能力配置一律在共享包内推导：站点侧 props 与分派开关�
   // 分派判据里不许出现任何站点 key：那就是「game 站的站内特例」的形状。
   assert.doesNotMatch(dispatchSource, /siteKey === "/);
   assert.doesNotMatch(dispatchSource, /"game"\s*===/);
+  // 可玩探针必须按 generated_output 搜：promoted games 的 roles 不可变，没有 template。
+  assert.match(dispatchSource, /role:\s*EXPLORE_PLAYABLE_LIBRARY_ROLE/);
+  assert.match(dispatchSource, /generated_output/);
 });
 
 test("素材那一类的预览 / 编辑 / 下载没有被动过", () => {
