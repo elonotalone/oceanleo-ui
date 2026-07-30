@@ -25,8 +25,11 @@ import {
   INTERACTIVE_DOC_FUNCTION_WHITELIST,
   INTERACTIVE_DOC_LIMITS,
   INTERACTIVE_DOC_SCHEMA_ID,
+  INTERACTIVE_DOC_SOURCE_READ_FAILED,
+  INTERACTIVE_DOC_SOURCE_TOO_LARGE,
   INTERACTIVE_DOC_TRANSITIONS,
   createInteractiveDocEngine,
+  readInteractiveDocSourceBytes,
   interactiveDocEditorManifest,
   interactiveDocExpressionIdentifiers,
   interactiveDocTopology,
@@ -1542,4 +1545,88 @@ test("A6 / A8 / A9 呈现与署名信息在视口侧可达", () => {
   const stage = readOwned("InteractiveDocStage.tsx");
   assert.match(stage, /attribution/, "A9 导出物署名的呈现落点");
   assert.match(stage, /licenseCode/);
+});
+
+test("§4 C40 / §5.2 / A7 远端源字节在到达处受上限守卫，超限受控拒绝", async () => {
+  const url = "https://api.oceanleo.com/v1/materials/interactive-doc.json";
+
+  // 1. 上限确实被传给平台统一的 fetchMediaBlob，取自本载体常量而非魔数。
+  const seen = [];
+  const okRead = await readInteractiveDocSourceBytes(url, {
+    fetchBlob: (target, options) => {
+      seen.push({ target, options });
+      const text = JSON.stringify(calculatorProject());
+      return Promise.resolve({
+        size: Buffer.byteLength(text, "utf8"),
+        text: () => Promise.resolve(text),
+      });
+    },
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].target, url);
+  assert.equal(
+    seen[0].options.maxBytes,
+    INTERACTIVE_DOC_LIMITS.sourceBytesMax,
+    "maxBytes 必须是 §4 C40 的 2,097,152",
+  );
+  assert.equal(seen[0].options.maxBytes, 2097152);
+  assert.equal(seen[0].options.cache, "no-store");
+  assert.equal(okRead.ok, true);
+  assert.equal(JSON.parse(okRead.text).schema, INTERACTIVE_DOC_SCHEMA_ID);
+
+  // 2. 超上限的 blob 被受控拒绝：带错误码 + 点名上限，不静默截断。
+  const oversize = INTERACTIVE_DOC_LIMITS.sourceBytesMax + 1;
+  let textCalls = 0;
+  const refused = await readInteractiveDocSourceBytes(url, {
+    fetchBlob: () =>
+      Promise.resolve({
+        size: oversize,
+        text: () => {
+          textCalls += 1;
+          return Promise.resolve("x".repeat(oversize));
+        },
+      }),
+  });
+  assert.equal(refused.ok, false, "超上限必须被拒绝，不许放进编辑器");
+  assert.equal(refused.code, INTERACTIVE_DOC_SOURCE_TOO_LARGE);
+  assert.equal(refused.bytes, oversize);
+  assert.match(refused.message, /2097152/, "文案要点名上限值");
+  assert.match(refused.message, /C40/);
+  assert.equal(textCalls, 0, "拒绝必须发生在读字节之前，不许先吞进内存再截断");
+
+  // 3. fetchMediaBlob 自己按 content-length 拒掉时，同样归到字节上限失败码，
+  //    而不是冒充成通用读取失败，也不是抛裸异常出去。
+  const declined = await readInteractiveDocSourceBytes(url, {
+    fetchBlob: () =>
+      Promise.reject(new Error("素材过大，无法在浏览器内存中安全处理")),
+  });
+  assert.equal(declined.ok, false);
+  assert.equal(declined.code, INTERACTIVE_DOC_SOURCE_TOO_LARGE);
+
+  // 4. 其它网络失败仍是受控结果对象，不是 unhandled rejection。
+  const failed = await readInteractiveDocSourceBytes(url, {
+    fetchBlob: () => Promise.reject(new Error("媒体加载失败 HTTP 404")),
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.code, INTERACTIVE_DOC_SOURCE_READ_FAILED);
+  assert.match(failed.message, /404/);
+
+  // 5. 该路径确实经由 fetchMediaBlob，且这一层不再有裸 fetch。
+  const source = readOwned("use-interactive-doc-workbench.ts");
+  assert.match(
+    source,
+    /import \{ fetchMediaBlob \} from "\.\.\/\.\.\/lib\/media-proxy"/,
+    "必须走平台统一的 fetchMediaBlob",
+  );
+  assert.match(source, /maxBytes,\n\s+signal: options\.signal,/);
+  assert.equal(
+    /\bfetch\(/.test(source.replace(/fetchMediaBlob\(/g, "fetchBlobBound(")),
+    false,
+    "视口层不得再出现裸 fetch(",
+  );
+  assert.match(
+    source,
+    /maxBytes = INTERACTIVE_DOC_LIMITS\.sourceBytesMax/,
+    "上限取自本载体常量，不写魔数",
+  );
 });

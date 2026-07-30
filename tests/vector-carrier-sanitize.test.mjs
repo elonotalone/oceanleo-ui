@@ -10,10 +10,13 @@ import {
 } from "../src/shell/vector-editor/vector-sanitize.ts";
 import {
   VECTOR_ILLEGAL_TRANSITIONS,
+  absolutePathCommands,
   insertVectorAnchor,
   loadVectorSource,
   parsePathAnchors,
+  parsePathCommands,
   recolorVectorToken,
+  serializePathCommands,
   removeVectorAnchor,
   renderVectorProjectToSvg,
   replaceVectorShape,
@@ -553,6 +556,104 @@ test("§8 干净图标满足全部完备判据,§9 C-2/C-3/C-4/C-7/C-9 逐条为
   for (const id of ["C-2", "C-3", "C-4", "C-7", "C-9"]) {
     assert.equal(byId.get(id)?.ok, true, `${id} 未通过:${byId.get(id)?.detail}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// §5.2 path 规范化的幂等性(V3 §6.2 条 F 保留意见的收口)
+// ---------------------------------------------------------------------------
+
+/** 规范化 = 解析 → 转绝对坐标 → 序列化,与改锚点路径上用的是同一条链。 */
+const normalizePathData = (d) =>
+  serializePathCommands(absolutePathCommands(parsePathCommands(d)));
+
+/**
+ * 覆盖实现真实支持的各种 path 形态。每条都取「原始写法」而非已规范化的写法,
+ * 这样第一遍必须真的做事,第二遍才谈得上幂等。
+ */
+const PATH_NORMALIZE_CASES = [
+  ["绝对 lineto", "M 2 6 L 9 6 L 11 9 Z"],
+  ["相对 lineto", "m 2 6 l 7 0 l 2 3 z"],
+  ["隐式 lineto(M 后连续坐标对降级为 L)", "M2 6 9 6 11 9Z"],
+  ["隐式相对 lineto", "m2 6 7 0 2 3z"],
+  ["水平/垂直简写 H/V/h/v", "M 2 6 H 20 V 18 h -18 v -12 Z"],
+  ["多余空白、逗号、制表与换行", "M   2,6    L\t9 , 6\nL 11 9   Z"],
+  ["科学计数", "M 1e1 2e1 L 1.5e2 2.5e2 Z"],
+  ["负指数科学计数", "M 1.5e-3 2.5e-3 L 1e-5 2e-5 Z"],
+  ["三次贝塞尔 绝对与相对混排", "M 0 0 C 10 0 20 10 20 20 c 0 10 -10 20 -20 20 Z"],
+  ["平滑贝塞尔与二次贝塞尔", "M 0 0 Q 10 0 10 10 T 20 20 S 30 30 40 40 Z"],
+  ["圆弧 绝对与相对", "M 5 5 A 5 5 0 0 1 15 15 a 5 5 0 1 0 -10 -10 Z"],
+  ["紧凑负数(无分隔符)", "M0 0L10-5L20-10Z"],
+  ["无前导零的小数", "M .5 .5 L 1.25 2.75 Z"],
+  ["多子路径", "M 0 0 L 5 0 Z M 10 10 L 15 10 Z"],
+  ["Z 之后继续绘制", "M 0 0 L 5 0 Z L 8 8 Z"],
+  ["高精度小数(触发四舍五入到 4 位)", "M 0.123456789 0.987654321 L 1.000000001 2.5 Z"],
+  ["超大数(序列化成指数写法后仍可回读)", "M 1e21 1 L 2 2 Z"],
+  ["大小写命令混排", "M 0 0 l 5 0 L 10 10 z"],
+];
+
+for (const [label, input] of PATH_NORMALIZE_CASES) {
+  test(`§5.2 path 规范化幂等 · ${label}`, () => {
+    const once = normalizePathData(input);
+    const twice = normalizePathData(once);
+    assert.equal(
+      twice,
+      once,
+      `第二遍规范化改了字节:\n  1st: ${once}\n  2nd: ${twice}`,
+    );
+    // 再跑一遍,确认稳定在不动点上而不是两态之间来回摆。
+    assert.equal(normalizePathData(twice), once);
+    // 锚点序列同样不得漂移。
+    assert.deepEqual(parsePathAnchors(twice), parsePathAnchors(once));
+    // 规范化产物必须仍是合法 path(能被再次解析而不抛错)。
+    assert.ok(parsePathCommands(once).length > 0);
+  });
+}
+
+test("§5.2 规范化幂等对整份 IR 成立", () => {
+  const project = loadCleanIcon().project;
+  // tokenize 把源 SVG 的 d 原样存进 IR(不预先规范化),所以 IR 里的 d 未必
+  // 已是不动点;要求的是规范化它之后就不再变。
+  for (const shape of project.shapes) {
+    if (shape.type !== "path" || !shape.d) continue;
+    const once = normalizePathData(shape.d);
+    assert.equal(normalizePathData(once), once, `${shape.id} 规范化不收敛`);
+    assert.deepEqual(
+      parsePathAnchors(once),
+      parsePathAnchors(shape.d),
+      `${shape.id} 规范化改变了锚点几何`,
+    );
+  }
+  // 编辑器写回的 d 由 serializePathCommands 产出,那一份必须已是不动点。
+  const edited = insertVectorAnchor(project, project.shapes[0].id, 1, {
+    x: 15,
+    y: 7,
+  });
+  assert.equal(normalizePathData(edited.shapes[0].d), edited.shapes[0].d);
+});
+
+test("§5.2 净化对已净化输入是幂等的(逐字节不动)", () => {
+  for (const svg of [CLEAN_ICON_SVG, HOSTILE_SVG, HOLLOW_SVG]) {
+    const once = sanitizeSvg(svg).svg;
+    const twice = sanitizeSvg(once).svg;
+    assert.equal(twice, once, "第二遍净化改了字节");
+    assert.equal(sanitizeSvg(twice).svg, once, "第三遍净化仍须停在不动点");
+    assert.deepEqual(sanitizeSvg(once).removals, []);
+  }
+});
+
+test("§5.2 畸形 path 走 fail-closed:Z 后跟数值抛错而不是空转", () => {
+  // 这类 d 可以来自不可信 SVG 的 path 属性;必须给出逐份可判的 invalid,
+  // 而不是让批产管线卡死在一份文件上。
+  for (const malformed of ["M0 0 z 5 5", "M 1 1 Z 2", "m0 0 z 1 2 3"]) {
+    assert.throws(
+      () => parsePathCommands(malformed),
+      (error) =>
+        error instanceof VectorCarrierError && error.code === "vector-invalid-ir",
+      `${malformed} 未被判为畸形`,
+    );
+  }
+  assert.throws(() => parsePathCommands("5 5 L 10 10"), VectorCarrierError);
+  assert.throws(() => parsePathCommands("M 0 0 L"), VectorCarrierError);
 });
 
 test("§3.1 IR 通过 schema 校验,序列化是确定性的", () => {

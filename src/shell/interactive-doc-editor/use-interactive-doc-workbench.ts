@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { EditorManifestV1, LibraryItem } from "../library-data";
 import {
   INTERACTIVE_DOC_GRID,
@@ -2202,6 +2203,83 @@ function interactiveDocSourceUrl(item: LibraryItem): string {
   );
 }
 
+export const INTERACTIVE_DOC_SOURCE_TOO_LARGE = "interactive-doc-source-too-large";
+export const INTERACTIVE_DOC_SOURCE_READ_FAILED = "interactive-doc-source-read-failed";
+export const INTERACTIVE_DOC_SOURCE_ABORTED = "interactive-doc-source-aborted";
+
+/** Structural shape of what a bounded media read hands back. */
+export interface InteractiveDocSourceBlob {
+  size: number;
+  text: () => Promise<string>;
+}
+
+export type InteractiveDocBlobFetcher = (
+  url: string,
+  options: { maxBytes?: number; signal?: AbortSignal; cache?: RequestCache },
+) => Promise<InteractiveDocSourceBlob>;
+
+export type InteractiveDocSourceRead =
+  | { ok: true; text: string; bytes: number }
+  | { ok: false; code: string; message: string; bytes?: number };
+
+/**
+ * §4 C40 / §5.2 / A7 — the byte ceiling is enforced where the bytes actually
+ * arrive, not merely declared as a constant. Remote reads go through the
+ * platform's `fetchMediaBlob`, which rejects on both the declared
+ * `content-length` and the delivered blob size; the delivered size is checked
+ * again here so an over-limit source is a controlled refusal with a code, never
+ * a silent truncation and never a bare exception reaching the caller.
+ */
+export async function readInteractiveDocSourceBytes(
+  url: string,
+  options: { signal?: AbortSignal; fetchBlob?: InteractiveDocBlobFetcher } = {},
+): Promise<InteractiveDocSourceRead> {
+  const maxBytes = INTERACTIVE_DOC_LIMITS.sourceBytesMax;
+  const fetchBlob = options.fetchBlob || (fetchMediaBlob as InteractiveDocBlobFetcher);
+  const tooLarge = (bytes?: number): InteractiveDocSourceRead => ({
+    ok: false,
+    code: INTERACTIVE_DOC_SOURCE_TOO_LARGE,
+    message: `交互文档源超过 ${maxBytes} 字节上限${
+      bytes ? `（实测 ${bytes} 字节）` : ""
+    }，已拒绝载入（§4 C40 / §7 A7）`,
+    bytes,
+  });
+  let blob: InteractiveDocSourceBlob;
+  try {
+    blob = await fetchBlob(url, {
+      maxBytes,
+      signal: options.signal,
+      cache: "no-store",
+    });
+  } catch (caught) {
+    if (options.signal?.aborted) {
+      return { ok: false, code: INTERACTIVE_DOC_SOURCE_ABORTED, message: "已取消载入" };
+    }
+    const detail = caught instanceof Error ? caught.message : "交互文档源读取失败";
+    // `fetchMediaBlob` refuses over-limit blobs by throwing; keep that refusal
+    // typed as the byte-ceiling failure instead of a generic read error.
+    if (detail.includes("过大")) return tooLarge();
+    return {
+      ok: false,
+      code: INTERACTIVE_DOC_SOURCE_READ_FAILED,
+      message: detail,
+    };
+  }
+  const bytes = Number(blob?.size) || 0;
+  if (bytes > maxBytes) return tooLarge(bytes);
+  try {
+    const text = await blob.text();
+    return { ok: true, text, bytes };
+  } catch (caught) {
+    return {
+      ok: false,
+      code: INTERACTIVE_DOC_SOURCE_READ_FAILED,
+      message: caught instanceof Error ? caught.message : "交互文档源读取失败",
+      bytes,
+    };
+  }
+}
+
 export interface InteractiveDocWorkbench extends InteractiveDocWorkbenchState {
   setParameter: InteractiveDocEngine["setParameter"];
   commitInputs: InteractiveDocEngine["commitInputs"];
@@ -2361,24 +2439,21 @@ export function useInteractiveDocWorkbench(
       });
       return () => controller.abort();
     }
-    void fetch(url, { signal: controller.signal, cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`${"交互文档源读取失败"}（HTTP ${response.status}）`);
-        }
-        return response.text();
-      })
-      .then(boot)
-      .catch((caught) => {
-        if (controller.signal.aborted) return;
+    void readInteractiveDocSourceBytes(url, {
+      signal: controller.signal,
+    }).then((outcome) => {
+      if (controller.signal.aborted) return;
+      if (!outcome.ok) {
         setState({
           ...EMPTY_STATE,
           loading: false,
           phase: "invalid",
-          error:
-            caught instanceof Error ? caught.message : "交互文档源读取失败",
+          error: outcome.message,
         });
-      });
+        return;
+      }
+      boot(outcome.text);
+    });
     return () => controller.abort();
   }, [identity, item, publish, siteId]);
 

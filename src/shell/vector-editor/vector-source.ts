@@ -184,7 +184,8 @@ export function parsePathCommands(d: string): VectorPathCommand[] {
   let letter = "";
   while (index < tokens.length) {
     const token = tokens[index];
-    if (/[a-z]/i.test(token)) {
+    const consumedLetter = /[a-z]/i.test(token);
+    if (consumedLetter) {
       letter = token;
       index += 1;
     } else if (!letter) {
@@ -201,6 +202,14 @@ export function parsePathCommands(d: string): VectorPathCommand[] {
       );
     }
     if (arity === 0) {
+      // `Z` takes no arguments, so a numeric token here cannot be an implicit
+      // repetition: without this guard the loop would never consume it.
+      if (!consumedLetter) {
+        throw new VectorCarrierError(
+          "path d 的 Z 命令后跟了数值参数。",
+          "vector-invalid-ir",
+        );
+      }
       commands.push({ command: letter, args: [] });
       continue;
     }
