@@ -60,15 +60,29 @@ export const GRID_NONDETERMINISTIC_FUNCTIONS = [
   "TODAY",
 ] as const;
 
-/** §3.3 third bullet: no macros, no `INDIRECT`, no external workbook refs. */
+/**
+ * §3.3 third bullet, "no `INDIRECT`" half: the argument is computed at open
+ * time, so the reference graph cannot be linked or cycle-checked ahead of
+ * emit, and §3.2 `ir-validated → formula-linked` has nothing to resolve.
+ */
 export const GRID_UNREACHABLE_FUNCTIONS = [
   "INDIRECT",
   "OFFSET",
+  "WEBSERVICE",
+  "HYPERLINK",
+] as const;
+
+/**
+ * §3.3 third bullet, "no macros" half, kept apart from the unreachable set so
+ * §6's macro failure mode gets its own code: these are XLM macro-sheet calls,
+ * which is code execution rather than a reference the linker could follow.
+ */
+export const GRID_MACRO_FUNCTIONS = [
   "CALL",
   "EVALUATE",
   "EXEC",
-  "WEBSERVICE",
-  "HYPERLINK",
+  "REGISTER",
+  "REGISTER.ID",
 ] as const;
 
 /** §4 C12 — `$defs.cell.f` maxLength. */
@@ -1145,6 +1159,10 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
   }
   const nondeterministic = new Set<string>(GRID_NONDETERMINISTIC_FUNCTIONS);
   const unreachable = new Set<string>(GRID_UNREACHABLE_FUNCTIONS);
+  const macros = new Set<string>(GRID_MACRO_FUNCTIONS);
+  /** Paren balance, tracked separately from `callStack` so `=SUM(` is caught. */
+  let depth = 0;
+  let unbalanced = false;
   /** Function name owning each open paren, so `IFERROR` guards can be seen. */
   const callStack: string[] = [];
   const pending: string[] = [];
@@ -1173,11 +1191,11 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
         return;
       }
       if (!functions.includes(token.value)) functions.push(token.value);
-      if (token.value.includes(".")) {
+      if (token.value.includes(".") || macros.has(token.value)) {
         pushViolation(
           violations,
           GRID_FORMULA_REJECTION_CODES.macro,
-          `${token.value}(…) 形如宏调用`,
+          `${token.value}(…) 是宏调用，不是可求值的公式（§6）`,
         );
       } else if (nondeterministic.has(token.value)) {
         pushViolation(
@@ -1202,10 +1220,13 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       return;
     }
     if (token.value === "(") {
+      depth += 1;
       callStack.push(pending.pop() ?? "");
       return;
     }
     if (token.value === ")") {
+      depth -= 1;
+      if (depth < 0) unbalanced = true;
       callStack.pop();
       return;
     }
@@ -1231,6 +1252,16 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       }
     }
   });
+
+  if (unbalanced || depth !== 0) {
+    // An unclosed `=SUM(` must be a controlled rejection, not a pass-through:
+    // OOXML would take the `<f>` verbatim and Excel would show a repair prompt.
+    pushViolation(
+      violations,
+      GRID_FORMULA_REJECTION_CODES.syntax,
+      `括号不配平（${source.slice(0, 80)}）`,
+    );
+  }
 
   for (let position = 0; position < tokens.length - 1; position += 1) {
     if (

@@ -191,9 +191,12 @@ test("C-1 落库四元组与 §1.1 逐字相同", () => {
   assert.equal(GRID_IR_SCHEMA, "oceanleo.grid.v1");
   assert.equal(GRID_IR_VERSION, 1);
   assert.equal(GRID_XLSX_MEDIA_TYPE, GRID_SOURCE_MEDIA_TYPE);
-  const editor = source("../src/shell/doc-editors/use-grid-editor.ts");
-  assert.match(editor, /artifactType:\s*"grid"/);
-  assert.match(editor, /adapter[\s\S]{0,40}|GRID_ADAPTER_ID = "grid"/);
+  assert.match(GRID_EDITOR_SOURCE, /artifactType:\s*"grid"/);
+  // `adapter` 是路由侧的字段，不在 hook 里：§1.1 的 adapter = grid 由 GridRoute
+  // 交给 AdvancedWorkbenchShell 的 `adapter.id` 钉死。
+  const route = source("../src/shell/advanced-routes/GridRoute.tsx");
+  assert.match(route, /adapter=\{\{\s*\n?\s*id: "grid"/);
+  assert.match(route, /editorToolLabel\(\{ type: "grid" \}\)/);
 });
 
 test("C-1 csv MUST NOT 落 native（§1.1 / §6 F8）", () => {
@@ -488,7 +491,9 @@ test("C-4 白名单内 22 个函数逐个真的算得出来", () => {
     INDEX: ["=INDEX(A2:D4,2,1)", "乙"],
     MATCH: ['=MATCH("丙",A2:A4,0)', 3],
     NPV: ["=ROUND(NPV(0.1,B2,B3),4)", 25.6198],
-    IRR: ["=ROUND(IRR(E2:E4),4)", 0.2361],
+    // 现金流 [-100, 70, 70]:令 x = 1/(1+r),7x² + 7x - 10 = 0 →
+    // x = (-7 + √329)/14 = 0.795600 → r = 1/x - 1 = 0.256913 → 0.2569。
+    IRR: ["=ROUND(IRR(E2:E4),4)", 0.2569],
   };
   const grid = rows.map((row) => [...row]);
   grid[1][4] = "-100";
@@ -520,9 +525,16 @@ test("C-4 白名单外的公式受控拒绝，且错误码分类正确", () => {
     ["=OFFSET(A1,1,1)", GRID_FORMULA_REJECTION_CODES.unreachable],
     ["=[Book1.xlsx]Sheet1!A1", GRID_FORMULA_REJECTION_CODES.externalWorkbook],
     ["=Module1.RunMacro()", GRID_FORMULA_REJECTION_CODES.macro],
+    // XLM 宏表函数走 macro 码，与 INDIRECT 那种「链接期解不开」区分开。
+    ['=CALL("kernel32","Beep")', GRID_FORMULA_REJECTION_CODES.macro],
+    ["=EXEC(\"cmd\")", GRID_FORMULA_REJECTION_CODES.macro],
     ["=A1/B1", GRID_FORMULA_REJECTION_CODES.unguardedDivision],
     [`=SUM(${"A1+".repeat(200)}A1)`, GRID_FORMULA_REJECTION_CODES.tooLong],
     ["", GRID_FORMULA_REJECTION_CODES.empty],
+    // 括号不配平必须受控拒绝：透传出去 Excel 会弹修复提示。
+    ["=SUM(", GRID_FORMULA_REJECTION_CODES.syntax],
+    ["=SUM(B2:B9))", GRID_FORMULA_REJECTION_CODES.syntax],
+    ["=IF(A1>0,SUM(B1:B9),0", GRID_FORMULA_REJECTION_CODES.syntax],
   ];
   for (const [formula, code] of cases) {
     const inspection = inspectGridFormula(formula);
@@ -836,25 +848,24 @@ test("C-6 §8.1 两侧字节下限都可判，只满足一侧不算通过", () =
 
   // A workbook that is structurally complete but too small on the xlsx side
   // still fails: §1.2 forbids putting a floor on only one of the two forms.
+  // The thin sheet has to be self-contained — a cross-sheet reference left
+  // dangling would trip the link stage first and never reach the byte floor.
   const thin = carrierFixture();
-  thin.sheets = [
-    {
-      ...thin.sheets[2],
-      rows: thin.sheets[2].rows.map((row) => [
-        row[0],
-        row[1],
-        row[2],
-        row[3],
-      ]),
-    },
-  ];
+  thin.sheets = [detailSheet("营收明细", 6, 120_000)];
   thin.namedRanges = [];
   const thinResult = runGridEmitPipeline(thin);
-  assert.equal(thinResult.state, "invalid");
-  assert.ok(
-    thinResult.issues.some((issue) => issue.code === "grid-hollow"),
-    JSON.stringify(thinResult.issues.slice(0, 3)),
+  // §8.2 is judged on the computed project — cache values only exist after the
+  // compute stage — so the completeness verdict is read off the pipeline.
+  assert.deepEqual(
+    thinResult.completeness.failures,
+    [],
+    "thin fixture 必须先过 §8.2 完备判据，才能证明字节下限是独立可判的",
   );
+  assert.equal(thinResult.liveness.ok, true);
+  assert.equal(thinResult.state, "invalid");
+  const floor = thinResult.issues.find((issue) => issue.code === "grid-hollow");
+  assert.ok(floor, JSON.stringify(thinResult.issues.slice(0, 3)));
+  assert.match(floor.message, /^xlsx \d+ B 不在/);
 });
 
 test("C-6 §5.1「不是死表」有可执行判据：改数字必须联动", () => {
