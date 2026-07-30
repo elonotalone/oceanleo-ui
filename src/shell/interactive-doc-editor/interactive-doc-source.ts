@@ -1999,7 +1999,7 @@ function evaluateRule(
     diagnostics,
   };
   try {
-    const outcome = evaluateNode(parsed.ast, scope);
+    const outcome = evaluateNode(parsed.expression.ast, scope);
     if (typeof outcome !== "boolean") {
       return {
         id: rule.id,
