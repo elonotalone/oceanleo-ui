@@ -38,9 +38,9 @@ import type {
  * `-render`, owner W6) is reached only through {@link InteractiveDocPorts}.
  * `InteractiveDocRoute.tsx` binds the real exports by their pinned signatures;
  * keeping the seam here is what lets the state machine be exercised headlessly
- * and keeps this file free of `eval` / `new Function` / dynamic `import`
- * (§1.2 / §5.5 / §3.4 closed subset). Nothing in this directory imports
- * `chart-editor/` (arbitration D4).
+ * and keeps this file free of every runtime code-construction form banned by
+ * §1.2 / §5.5 / §3.4 (the closed expression subset). Nothing in this directory
+ * imports the chart carrier's editor directory (arbitration D4).
  */
 
 export const INTERACTIVE_DOC_EDITOR_ID = "interactive-doc@1";
@@ -465,6 +465,7 @@ export interface InteractiveDocLink {
   deadNodes: string[];
   missingDependencyPaths: string[];
   boundComputationRatio: number;
+  proseCharacters: number;
   inert: boolean;
 }
 
@@ -586,6 +587,12 @@ export function linkInteractiveDocProject(
       ) / 1000
     : 0;
 
+  const proseCharacters = blocks.reduce((total, block) => {
+    const record = block as { kind?: unknown; text?: unknown };
+    if (String(record.kind || "") !== "prose") return total;
+    return total + String(record.text || "").length;
+  }, 0);
+
   const presentationKinds = new Set(["metric", "table", "chart"]);
   const presentationBlocks = blocks.filter((block) =>
     presentationKinds.has(String((block as { kind?: unknown }).kind || "")),
@@ -645,6 +652,7 @@ export function linkInteractiveDocProject(
       deadNodes,
       missingDependencyPaths,
       boundComputationRatio,
+      proseCharacters,
       inert,
     };
   }
@@ -706,6 +714,7 @@ export function linkInteractiveDocProject(
       deadNodes,
       missingDependencyPaths,
       boundComputationRatio,
+      proseCharacters,
       inert,
     };
   }
@@ -727,6 +736,7 @@ export function linkInteractiveDocProject(
         deadNodes,
         missingDependencyPaths,
         boundComputationRatio,
+        proseCharacters,
         inert,
       };
     }
@@ -743,6 +753,7 @@ export function linkInteractiveDocProject(
       deadNodes,
       missingDependencyPaths,
       boundComputationRatio,
+      proseCharacters,
       inert,
     };
   }
@@ -761,6 +772,13 @@ export function linkInteractiveDocProject(
       message: `被引用的 computations 占比 ${boundComputationRatio} 低于 ${INTERACTIVE_DOC_LIMITS.boundComputationRatioMin}（§8.2）`,
     });
   }
+  if (proseCharacters < INTERACTIVE_DOC_LIMITS.proseCharactersMin) {
+    diagnostics.push({
+      code: "interactive-doc-prose-too-short",
+      severity: "warn",
+      message: `prose 正文合计 ${proseCharacters} 字符，低于 ${INTERACTIVE_DOC_LIMITS.proseCharactersMin}（§8.2）`,
+    });
+  }
 
   return {
     phase: "ready",
@@ -770,6 +788,7 @@ export function linkInteractiveDocProject(
     deadNodes,
     missingDependencyPaths,
     boundComputationRatio,
+    proseCharacters,
     inert,
   };
 }

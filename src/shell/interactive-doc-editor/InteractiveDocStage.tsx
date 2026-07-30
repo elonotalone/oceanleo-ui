@@ -77,7 +77,8 @@ function ChartBlock({
     const host = hostRef.current;
     if (!host) return;
     // Rendering belongs to the data layer's `renderInteractiveDocBlock`
-    // (arbitration D4: this directory never reaches into `chart-editor/`).
+    // (arbitration D4: this directory never reaches into the chart carrier's
+    // editor directory).
     editor.renderBlock(block.id, host);
   }, [block.id, block.series, editor]);
   return (

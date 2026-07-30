@@ -18,7 +18,8 @@ import {
 } from "../interactive-doc-editor/use-interactive-doc-workbench";
 // Data layer (owner W6), bound by the signatures pinned in the dispatch
 // contract §4 W6 / arbitration D7. This route is the only place the viewport
-// layer meets those modules; nothing here reaches into `chart-editor/` (D4).
+// layer meets those modules; nothing here reaches into the chart carrier's
+// editor directory (D4).
 import {
   INTERACTIVE_DOC_PROJECT_SCHEMA,
   validateInteractiveDocProject,

@@ -61,7 +61,8 @@ function readOwned(name) {
 const PROSE = `本文档是一份可算的按月还款计算器。改动任一输入参数后，下游的月供、总还款额与利息合计会按拓扑序重算，
 所有结果卡都声明了它依赖的参数 id，便于读屏软件把输入与结果关联起来。除零、非有限数与超出取值域的输入都会
 以文本形式给出受控提示，而不是静默吞掉或直接显示 NaN。表格线与控件边界使用 doc.rule.strong，装饰性分隔线
-使用 doc.border，两者的对比度义务分别取 3.0:1 与 1.05:1。本段正文长度用于满足内容完备判据里 prose 合计
+使用 doc.border，两者的对比度义务分别取 3.0:1 与 1.05:1。自测卷与间隔排程块的推进结果会写回参数并经
+持久化端口落库，因此关掉页面再打开也不会丢掉学习进度。本段正文长度用于满足内容完备判据里 prose 合计
 不少于 300 字符的要求，避免出现「排版冒充计算」的空壳文档。`;
 
 function calculatorProject(overrides = {}) {
@@ -674,8 +675,11 @@ test("§6 F3 非有限数走 guard，呈现层不出现 NaN 字面量", () => {
     state.diagnostics.some((entry) => entry.code === "interactive-doc-nan-guarded"),
   );
   for (const block of state.blocks) {
+    // `tokens` carries authored prose, which is allowed to discuss NaN in
+    // words; the guard is about computed values reaching the viewport.
+    const { tokens: _authored, ...computed } = block;
     assert.ok(
-      !JSON.stringify(block).includes("NaN"),
+      !JSON.stringify(computed).includes("NaN"),
       `${block.id} 不得把 NaN 字面量带进呈现层`,
     );
   }
@@ -1500,8 +1504,36 @@ test("A6 / A8 / A9 呈现与署名信息在视口侧可达", () => {
   ]) {
     assert.ok(kinds.includes(kind), `${kind} 块必须有视口模型`);
   }
-  const prose = state.blocks.find((block) => block.kind === "prose");
-  assert.ok(prose.characters >= INTERACTIVE_DOC_LIMITS.proseCharactersMin, "§8.2 正文 ≥ 300 字符");
+  const proseCharacters = state.blocks
+    .filter((block) => block.kind === "prose")
+    .reduce((total, block) => total + block.characters, 0);
+  assert.ok(
+    proseCharacters >= INTERACTIVE_DOC_LIMITS.proseCharactersMin,
+    "§8.2 prose 合计 ≥ 300 字符",
+  );
+  assert.equal(
+    state.diagnostics.some(
+      (entry) => entry.code === "interactive-doc-prose-too-short",
+    ),
+    false,
+    "达标文档不得报 §8.2 正文不足",
+  );
+  const short = createInteractiveDocEngine({
+    project: calculatorProject({
+      blocks: calculatorProject().blocks.map((block) =>
+        block.kind === "prose" ? { ...block, text: "太短了。" } : block,
+      ),
+    }),
+    ports: makePorts(CALCULATOR_NODES).ports,
+  });
+  assert.ok(
+    short
+      .state()
+      .diagnostics.some(
+        (entry) => entry.code === "interactive-doc-prose-too-short",
+      ),
+    "§8.2 正文不足必须被点名，不能静默通过",
+  );
   const chart = state.blocks.find((block) => block.kind === "chart");
   assert.notEqual(chart.series[0].display, INTERACTIVE_DOC_VALUE_PLACEHOLDER);
   const attribution = state.project.attribution.entries[0];

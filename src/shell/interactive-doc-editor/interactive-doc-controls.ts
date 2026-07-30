@@ -605,8 +605,8 @@ export type InteractiveDocTextToken =
 /**
  * §5.5 — `blocks[].text` renders through a restricted inline subset
  * (`**strong**`, `*emphasis*`, `` `code` ``) emitted as tokens. The viewport
- * turns tokens into React elements, so no HTML string ever reaches a sink and
- * `dangerouslySetInnerHTML` is never needed.
+ * turns tokens into React elements, so no HTML string ever reaches an injection
+ * sink and no raw-HTML escape hatch is needed.
  */
 export function parseInteractiveDocText(
   text: string,
