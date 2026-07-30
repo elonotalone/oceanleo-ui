@@ -19,6 +19,8 @@
  * touches iframe `sandbox`, CORS or `postMessage` (§5.3).
  */
 
+import { VectorCarrierError } from "./vector-schema.ts";
+
 /** §3.2, one entry per spec table row. C28 = 8 classes. */
 export const SVG_SANITIZE_RULES = Object.freeze([
   Object.freeze({
@@ -645,8 +647,9 @@ function orderedRules(found: ReadonlySet<SvgSanitizeRuleId>): SvgSanitizeRuleId[
 export function assertSvgSanitized(svg: string): void {
   const residual = residualDangerousConstructs(svg);
   if (residual.length > 0) {
-    throw new Error(
+    throw new VectorCarrierError(
       `SVG 仍残留 §3.2 危险构造：${residual.join(", ")}；MUST NOT 进入 tokenized。`,
+      "vector-script-residue",
     );
   }
 }
