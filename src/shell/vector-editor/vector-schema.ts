@@ -502,7 +502,8 @@ export type VectorFailureCode =
   | "vector-dangling-reference"
   | "vector-license-violation"
   | "vector-missing-accessible-name"
-  | "vector-twin";
+  | "vector-twin"
+  | "vector-byte-floor";
 
 export const VECTOR_FAILURE_MODES = Object.freeze({
   F1: "vector-flattened-only",
@@ -582,7 +583,21 @@ export function parseVectorProject(input: string | Uint8Array): VectorProject {
   return validation.project;
 }
 
-/** §8.1: the only carrier whose byte floor is tiered by `canvas.kind`. */
+/**
+ * §8.1: the only carrier whose byte floor is tiered by `canvas.kind` —
+ * 512 B for `icon`, 4,096 B for `illustration` / `logo` / `pattern` /
+ * `map-glyph`. A single floor would either pass empty illustrations or reject
+ * ordinary icons, which is why the tier exists.
+ *
+ * `vector-editor` is not in `REQUIRED_EDITOR_CLASSES` and
+ * `minimumSourceBytesByEditorClass` holds one scalar per class, so the tier has
+ * nowhere to live on the catalog side (§8.1 / §10.1). It is therefore enforced
+ * here, in the carrier's own validation.
+ *
+ * Fail-closed: only `icon` earns the low tier. A missing or unrecognised kind
+ * falls to the strict 4,096 B tier, so an unvalidated project cannot buy the
+ * lower floor by omitting or misspelling the field.
+ */
 export function vectorSourceByteFloor(kind: VectorCanvasKind): number {
   return kind === "icon"
     ? VECTOR_CONSTANTS.C29_iconSourceByteFloor

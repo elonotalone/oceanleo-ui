@@ -26,7 +26,9 @@ import {
   vectorLicenseManifest,
   vectorRenderDigest,
   vectorTransitionAllowed,
+  assertVectorByteFloor,
   assertVectorCarrierConformance,
+  vectorByteBand,
 } from "../src/shell/vector-editor/vector-source.ts";
 import {
   VECTOR_CONSTANTS,
@@ -34,6 +36,7 @@ import {
   VectorCarrierError,
   serializeVectorProject,
   validateVectorProject,
+  vectorSourceByteFloor,
 } from "../src/shell/vector-editor/vector-schema.ts";
 
 const encoder = new TextEncoder();
@@ -654,6 +657,236 @@ test("§5.2 畸形 path 走 fail-closed:Z 后跟数值抛错而不是空转", ()
   }
   assert.throws(() => parsePathCommands("5 5 L 10 10"), VectorCarrierError);
   assert.throws(() => parsePathCommands("M 0 0 L"), VectorCarrierError);
+});
+
+// ---------------------------------------------------------------------------
+// §8.1 分档字节下限(V3 §6.2 条 D 的收口)
+//
+// `vector-editor` 不在 REQUIRED_EDITOR_CLASSES,`minimumSourceBytesByEditorClass`
+// 每个 class 只有一个标量,分档 floor 在 catalog 侧无处安放,因此**只能**在载体
+// 自身校验里强制。以下用例就是这条闸门的凭据。
+// ---------------------------------------------------------------------------
+
+/** 只改 kind,其余保持一份合规 IR,用来单独考察分档。 */
+function projectOfKind(kind) {
+  const project = loadCleanIcon().project;
+  return { ...project, canvas: { ...project.canvas, kind } };
+}
+
+test("§8.1 分档 floor 按 canvas.kind 取值:icon 512 B,其余四档 4,096 B", () => {
+  assert.equal(VECTOR_CONSTANTS.C29_iconSourceByteFloor, 512);
+  assert.equal(VECTOR_CONSTANTS.C30_illustrationSourceByteFloor, 4_096);
+  assert.equal(vectorSourceByteFloor("icon"), 512);
+  for (const kind of ["illustration", "logo", "pattern", "map-glyph"]) {
+    assert.equal(vectorSourceByteFloor(kind), 4_096, `${kind} 未取严档`);
+  }
+  const band = vectorByteBand(projectOfKind("icon"));
+  assert.deepEqual(band, {
+    kind: "icon",
+    sourceFloor: 512,
+    sourceCeiling: VECTOR_CONSTANTS.C31_maximumSourceBytes,
+    irFloor: VECTOR_CONSTANTS.C32_irByteFloor,
+  });
+});
+
+test("§8.1 icon 档:511 B 被拒、512 B 通过(边界逐字节)", () => {
+  const project = projectOfKind("icon");
+  const irByteSize = VECTOR_CONSTANTS.C32_irByteFloor;
+
+  assert.throws(
+    () => assertVectorByteFloor(project, { svgByteSize: 511, irByteSize }),
+    (error) =>
+      error instanceof VectorCarrierError &&
+      error.code === "vector-byte-floor" &&
+      /511 B/.test(error.message) &&
+      /kind=icon/.test(error.message),
+    "511 B 的图标必须被拒且带 code",
+  );
+  assert.doesNotThrow(() =>
+    assertVectorByteFloor(project, { svgByteSize: 512, irByteSize }),
+  );
+});
+
+test("§8.1 illustration 档:4,095 B 被拒、4,096 B 通过(不吃 icon 的低档)", () => {
+  const project = projectOfKind("illustration");
+  const irByteSize = VECTOR_CONSTANTS.C32_irByteFloor;
+
+  // 同样是 1,000 B:图标合格,插画不合格 —— 分档的意义就在这一对断言上。
+  assert.doesNotThrow(() =>
+    assertVectorByteFloor(projectOfKind("icon"), {
+      svgByteSize: 1_000,
+      irByteSize,
+    }),
+  );
+  assert.throws(
+    () => assertVectorByteFloor(project, { svgByteSize: 1_000, irByteSize }),
+    (error) => error.code === "vector-byte-floor" && /4096 B/.test(error.message),
+  );
+
+  assert.throws(
+    () => assertVectorByteFloor(project, { svgByteSize: 4_095, irByteSize }),
+    (error) => error.code === "vector-byte-floor",
+  );
+  assert.doesNotThrow(() =>
+    assertVectorByteFloor(project, { svgByteSize: 4_096, irByteSize }),
+  );
+});
+
+test("§8.1 kind 缺失或未知时 fail-closed:取严档 4,096 B,不得放行", () => {
+  const irByteSize = VECTOR_CONSTANTS.C32_irByteFloor;
+  for (const kind of [undefined, null, "", "ICON", "Icon", "sprite", 42]) {
+    assert.equal(
+      vectorSourceByteFloor(kind),
+      4_096,
+      `kind=${String(kind)} 取到了宽档,fail-open`,
+    );
+    // 512 B 在严档下必须被拒:不能靠省略或拼错 kind 换到低 floor。
+    assert.throws(
+      () =>
+        assertVectorByteFloor(projectOfKind(kind), {
+          svgByteSize: 512,
+          irByteSize,
+        }),
+      (error) =>
+        error instanceof VectorCarrierError &&
+        error.code === "vector-byte-floor",
+      `kind=${String(kind)} 时 512 B 被放行了`,
+    );
+  }
+  // 未知 kind 同时也过不了 §3.1 的枚举校验,这是第二道。
+  assert.equal(validateVectorProject(projectOfKind("sprite")).ok, false);
+});
+
+test("§8.1 IR 下限 1,024 B:1,023 B 被拒、1,024 B 通过", () => {
+  const project = projectOfKind("icon");
+  assert.equal(VECTOR_CONSTANTS.C32_irByteFloor, 1_024);
+  assert.throws(
+    () => assertVectorByteFloor(project, { svgByteSize: 512, irByteSize: 1_023 }),
+    (error) =>
+      error.code === "vector-byte-floor" && /IR 仅 1023 B/.test(error.message),
+  );
+  assert.doesNotThrow(() =>
+    assertVectorByteFloor(project, { svgByteSize: 512, irByteSize: 1_024 }),
+  );
+});
+
+test("§8.1 上限 4 MiB(C31):越界被拒", () => {
+  const project = projectOfKind("icon");
+  const ceiling = VECTOR_CONSTANTS.C31_maximumSourceBytes;
+  assert.equal(ceiling, 4_194_304);
+  assert.doesNotThrow(() =>
+    assertVectorByteFloor(project, {
+      svgByteSize: ceiling,
+      irByteSize: VECTOR_CONSTANTS.C32_irByteFloor,
+    }),
+  );
+  assert.throws(
+    () =>
+      assertVectorByteFloor(project, {
+        svgByteSize: ceiling + 1,
+        irByteSize: VECTOR_CONSTANTS.C32_irByteFloor,
+      }),
+    (error) =>
+      error.code === "vector-byte-floor" && /超过 §8\.1 上限/.test(error.message),
+  );
+});
+
+test("§8.1 分档 floor 进入完备判据与 §9 C-7,不是静默通过", () => {
+  const project = projectOfKind("illustration");
+  const sanitized = sanitizeSvg(CLEAN_ICON_SVG).svg;
+  // 513 B 的干净图标当作插画看待时,字节数不够 4,096 B。
+  assert.ok(byteSize(sanitized) < 4_096);
+
+  const conformance = assertVectorCarrierConformance({
+    svg: sanitized,
+    project,
+    frameColorCount: 16,
+  });
+  const c7 = conformance.checks.find((check) => check.id === "C-7");
+  assert.equal(c7.ok, false, "插画档下字节不足却判通过");
+  assert.match(c7.detail, /svg-bytes/);
+  // 判据里必须写明用的是哪一档,否则无从复核。
+  assert.match(c7.detail, /kind=illustration/);
+  assert.match(c7.detail, /floor=4096/);
+
+  // 同一份产物按 icon 档则达标,C-7 通过并写明低档。
+  const asIcon = assertVectorCarrierConformance({
+    svg: sanitized,
+    project: projectOfKind("icon"),
+    frameColorCount: 4,
+  });
+  const iconC7 = asIcon.checks.find((check) => check.id === "C-7");
+  assert.equal(iconC7.ok, true, iconC7.detail);
+  assert.match(iconC7.detail, /kind=icon/);
+  assert.match(iconC7.detail, /floor=512/);
+});
+
+/**
+ * 13 个图形、两种类型、笔画统一走 token,§5.1 三件能力全成立,体量 968 B。
+ * 它按 icon 档达标、按 illustration 档不达标 —— 除 kind 外一切相同,所以
+ * 两次判定的差异只可能来自分档 floor 本身。
+ */
+const THIRTEEN_SHAPE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>bar chart illustration</title>${[
+  ...Array.from(
+    { length: 7 },
+    (_unused, index) =>
+      `<rect x="${5 + index * 13}" y="8" width="11" height="34" stroke="#1F2328" fill="none"/>`,
+  ),
+  ...Array.from(
+    { length: 6 },
+    (_unused, index) =>
+      `<circle cx="${10 + index * 15}" cy="70" r="9" stroke="#1F2328" fill="none"/>`,
+  ),
+].join("")}</svg>`;
+
+test("§8.1 同一份产物:按 icon 档达标,按 illustration 档凭字节被拒", () => {
+  const bytes = byteSize(sanitizeSvg(THIRTEEN_SHAPE_SVG).svg);
+  assert.ok(bytes >= 512 && bytes < 4_096, `样例 ${bytes} B 落不进考察区间`);
+
+  const common = {
+    accessibility: { label: "bar chart illustration", decorative: false },
+    attribution: [
+      {
+        text: "self",
+        licenseCode: "CC0",
+        licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+        provider: "oceanleo",
+      },
+    ],
+  };
+
+  const asIcon = loadVectorSource({
+    svg: THIRTEEN_SHAPE_SVG,
+    tokenize: { ...common, kind: "icon", title: "柱状图标样例 v1" },
+    frameColorCount: 4,
+  });
+  assert.equal(asIcon.state, "ready");
+  assert.equal(asIcon.code, null);
+  assert.deepEqual(asIcon.completeness.failed, []);
+
+  const asIllustration = loadVectorSource({
+    svg: THIRTEEN_SHAPE_SVG,
+    tokenize: { ...common, kind: "illustration", title: "柱状插画样例 v1" },
+    frameColorCount: 16,
+  });
+  assert.notEqual(asIllustration.state, "ready");
+  // 三件能力全成立、只有字节不够:失败项必须**只有** svg-bytes。
+  assert.equal(asIllustration.capability.flattened, false);
+  assert.deepEqual(asIllustration.completeness.failed, ["svg-bytes"]);
+  // 专属 code,不混进泛化的 incomplete。
+  assert.equal(asIllustration.code, "vector-byte-floor");
+  assert.match(asIllustration.reason, /svg-bytes/);
+});
+
+test("§8.1 空壳按最宽的 icon 档也不够 512 B", () => {
+  assert.ok(byteSize(HOLLOW_SVG) < 512);
+  const hollow = loadVectorSource({
+    svg: HOLLOW_SVG,
+    tokenize: { ...ICON_TOKENIZE, title: "空壳字节下限样例 v1" },
+    frameColorCount: 4,
+  });
+  assert.notEqual(hollow.state, "ready");
+  assert.equal(hollow.trace.includes("ready"), false);
 });
 
 test("§3.1 IR 通过 schema 校验,序列化是确定性的", () => {

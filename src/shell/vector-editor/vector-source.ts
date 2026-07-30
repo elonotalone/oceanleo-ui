@@ -1296,6 +1296,73 @@ export function vectorSourceCompleteness(
   return { ok: failed.length === 0, criteria, failed };
 }
 
+/**
+ * The two §8.1 byte-band criteria. They are separated from the rest of §8.2 so
+ * a byte failure can be rejected with its own code instead of disappearing into
+ * a generic "incomplete" verdict.
+ */
+export const VECTOR_BYTE_BAND_CRITERIA = Object.freeze([
+  "svg-bytes",
+  "ir-bytes",
+]);
+
+export interface VectorByteBandInput {
+  svgByteSize: number;
+  irByteSize: number;
+}
+
+export interface VectorByteBand {
+  kind: VectorCanvasKind;
+  sourceFloor: number;
+  sourceCeiling: number;
+  irFloor: number;
+}
+
+/** The §8.1 band that applies to a project, resolved from `canvas.kind`. */
+export function vectorByteBand(project: VectorProject): VectorByteBand {
+  return {
+    kind: project.canvas.kind,
+    sourceFloor: vectorSourceByteFloor(project.canvas.kind),
+    sourceCeiling: VECTOR_CONSTANTS.C31_maximumSourceBytes,
+    irFloor: VECTOR_CONSTANTS.C32_irByteFloor,
+  };
+}
+
+/**
+ * §8.1 gate. This is where the tiered floor is actually enforced: the catalog
+ * side cannot express it (one scalar per editor class, and `vector-editor` is
+ * not an editor class at all), so a caller that skips this call has not judged
+ * §8.1 at all.
+ *
+ * Rejection is controlled and coded — never a silent pass — so a batch run gets
+ * a per-file verdict it can record.
+ */
+export function assertVectorByteFloor(
+  project: VectorProject,
+  input: VectorByteBandInput,
+): VectorByteBand {
+  const band = vectorByteBand(project);
+  if (input.svgByteSize < band.sourceFloor) {
+    throw new VectorCarrierError(
+      `svg 源仅 ${input.svgByteSize} B，低于 §8.1 中 kind=${band.kind} 的字节下限 ${band.sourceFloor} B。`,
+      "vector-byte-floor",
+    );
+  }
+  if (input.svgByteSize > band.sourceCeiling) {
+    throw new VectorCarrierError(
+      `svg 源 ${input.svgByteSize} B 超过 §8.1 上限 ${band.sourceCeiling} B（C31）。`,
+      "vector-byte-floor",
+    );
+  }
+  if (input.irByteSize < band.irFloor) {
+    throw new VectorCarrierError(
+      `IR 仅 ${input.irByteSize} B，低于 §8.1 的 ${band.irFloor} B（C32）。`,
+      "vector-byte-floor",
+    );
+  }
+  return band;
+}
+
 function sourceFloorLabel(kind: VectorCanvasKind): string {
   return kind === "icon"
     ? `${VECTOR_CONSTANTS.C3_minimumIconShapes}（icon）`
@@ -1448,8 +1515,14 @@ export function loadVectorSource(input: VectorLoadInput): VectorLoadResult {
   });
   result.completeness = completeness;
   if (!completeness.ok) {
+    // A byte-band failure keeps its own code: §8.1 is a different verdict from
+    // "some §8.2 criterion is short", and a batch run needs to tell them apart.
+    const byteFailures = completeness.failed.filter((id) =>
+      VECTOR_BYTE_BAND_CRITERIA.includes(id),
+    );
     result.reason = `§8.2 未全部成立，停在 tokenized：${completeness.failed.join(", ")}。`;
-    result.code = "vector-incomplete";
+    result.code =
+      byteFailures.length > 0 ? "vector-byte-floor" : "vector-incomplete";
     return result;
   }
 
@@ -1790,6 +1863,7 @@ export function assertVectorCarrierConformance(input: {
     };
   }
   const project = validation.project;
+  const band = vectorByteBand(project);
   const capability = vectorCapabilityReport(project);
   const completeness = evaluateVectorCompleteness(project, {
     svgByteSize:
@@ -1818,8 +1892,8 @@ export function assertVectorCarrierConformance(input: {
       ok: completeness.ok,
       detail:
         completeness.failed.length === 0
-          ? "§8.1 / §8.2 全部成立"
-          : `未达标：${completeness.failed.join(", ")}`,
+          ? `§8.1 / §8.2 全部成立（kind=${band.kind} floor=${band.sourceFloor} B）`
+          : `未达标：${completeness.failed.join(", ")}（kind=${band.kind} floor=${band.sourceFloor} B）`,
     },
     {
       id: "C-9",
