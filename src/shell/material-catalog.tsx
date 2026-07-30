@@ -46,7 +46,12 @@ export type MaterialBoardId =
   | "xhs"
   | "design"
   | "audio"
-  | "threed";
+  | "threed"
+  // 第 15 / 16 类各自成板块。它们没有可寄生的板块：地图并进「图片」就只剩一张
+  // 截图，交互文档并进「文档」就只剩死掉的正文（`geo-map.md` §10.3 枚举面的
+  // 「插入」那格 / `interactive-doc.md` §1.1 的 MUST NOT 复用 `document`）。
+  | "geo_map"
+  | "interactive_doc";
 
 export interface MaterialBoard {
   id: MaterialBoardId;
@@ -71,6 +76,8 @@ export const MATERIAL_BOARDS: { id: MaterialBoardId; label: string }[] = [
   { id: "xhs", label: "小红书" },
   { id: "audio", label: "音频" },
   { id: "threed", label: "3D" },
+  { id: "geo_map", label: "地图" },
+  { id: "interactive_doc", label: "交互文档" },
 ];
 
 const BOARD_ARTIFACT_TYPE: Record<MaterialBoardId, ArtifactType> = {
@@ -88,6 +95,8 @@ const BOARD_ARTIFACT_TYPE: Record<MaterialBoardId, ArtifactType> = {
   design: "vector_image",
   audio: "audio",
   threed: "model_3d",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
 };
 
 /**

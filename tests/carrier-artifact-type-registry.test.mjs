@@ -537,6 +537,22 @@ test("枚举面：插入面板按新类型收窄，不落到 all", () => {
   assert.ok(panel.includes('interactive_doc: "interactive_doc"'));
 });
 
+test("枚举面：素材总栏目各给一个板块，board → artifactType 映射也补齐", () => {
+  const catalog = source("../src/shell/material-catalog.tsx");
+  // 板块 id 联合类型、tab 骨架、board→taxonomy 三处都要有，缺一处就是
+  // 「有 tab 打不开」或「打开了筛不到东西」。
+  assert.ok(/\|\s*"geo_map"/.test(catalog));
+  assert.ok(/\|\s*"interactive_doc"/.test(catalog));
+  assert.ok(catalog.includes('{ id: "geo_map", label: "地图" }'));
+  assert.ok(catalog.includes('{ id: "interactive_doc", label: "交互文档" }'));
+  const boardMap = catalog.slice(catalog.indexOf("BOARD_ARTIFACT_TYPE"));
+  assert.ok(boardMap.includes('geo_map: "geo_map"'));
+  assert.ok(boardMap.includes('interactive_doc: "interactive_doc"'));
+  // 两个新板块 MUST NOT 借用别的 artifactType（借用 = 打开地图板块看到图片）。
+  assert.ok(!/geo_map: "single_file_image"/.test(boardMap));
+  assert.ok(!/interactive_doc: "document"/.test(boardMap));
+});
+
 test("枚举面：搜索 / 探索分类把两类新素材算进素材那一格，不进可玩 feed", () => {
   for (const spec of NEW_CARRIERS) {
     assert.equal(exploreArtifactClassOf(spec.artifactType), "material");
