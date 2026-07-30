@@ -131,19 +131,35 @@ export const WEBSITE_SOURCE_ISOLATION_INVARIANTS = Object.freeze([
 ] as const);
 
 /**
- * §3.3:452 份未物化模板的处置需求。
+ * §3.3:452 份未物化模板的处置需求 —— 交给份数上限持有者(5号)的**需求描述**,
+ * 不是实现。本 owner 一行不改物化链,也不新写第二套物化器(§1.4)。
  *
- * 卡点是 `scripts/oceanleo-asset-website-templates-materialize.mjs:109` 的
- * `const PER_APP = MATERIAL_MAX_COUNT;` —— 该文件与该上限**不属于本 owner**。
- * 本常量是交给上限持有者的需求描述,不是实现:
- *   - 解绑 MUST 通过让 `PER_APP` 独立于 `MATERIAL_MAX_COUNT` 来完成;
- *   - MUST NOT 通过改 `MATERIAL_MAX_COUNT` 的语义完成(会连带影响全部 32 站);
- *   - 物化后的每一份 MUST 过 §8.1 与 §8.2,不满足的 MUST NOT 为「凑 500 份」放行。
+ * 上一轮记的卡点(`materialize.mjs:109` 的 `const PER_APP = MATERIAL_MAX_COUNT`)
+ * 已由 5号 在 oceandino@457870dc 解开:`PER_APP` 现在是
+ * `materialCountFor(site).max`,逐站取自 `scripts/data/oceanleo-material-count-policy.json`。
+ * 于是剩下的需求不再是「解绑」,而是**取值**:
+ *   - 策略文件里 `sites.website` 仍是 `min 3 / max 4`,12 个 app × 4 = 48,
+ *     正是 C39 的已物化数,452 份因此仍卡着;
+ *   - 单站方案要装下 500 份需 `max ≥ ceil(500/12) = 42`,且 DB CHECK 的
+ *     `positionUpperBound` 要同步 ≥ 42(现为 24,它是 max 的硬上界);
+ *   - 双站方案(website + resume,各 12 app)需 `max ≥ ceil(500/24) = 21`。
+ * 单站还是双站属于 D6 仲裁范围,本 owner 只给下界与每份的验收判据。
  */
 export const WEBSITE_MATERIALIZE_CAP_REQUEST = Object.freeze({
-  blockingSymbol: "PER_APP = MATERIAL_MAX_COUNT",
-  blockingSite: "scripts/oceanleo-asset-website-templates-materialize.mjs:109",
+  /** 已解开的卡点,留作交接时的对照,不再是当前阻塞项。 */
+  resolvedBlocker: Object.freeze({
+    symbol: "PER_APP = MATERIAL_MAX_COUNT",
+    resolvedIn: "oceandino@457870dc",
+    nowReadsFrom: "scripts/data/oceanleo-material-count-policy.json",
+  }),
+  /** 当前真正决定份数的两个取值点。 */
+  capSites: Object.freeze([
+    "scripts/data/oceanleo-material-count-policy.json → sites.website.max",
+    "scripts/data/oceanleo-material-count-policy.json → positionUpperBound(须 ≥ 各站 max)",
+  ] as const),
   currentPerAppCap: 4,
+  currentPositionUpperBound: 24,
+  websiteAppCount: 12,
   generatorLock: Object.freeze([
     "lib/template-website-source.ts",
     "scripts/oceanleo-asset-website-templates-materialize.mjs",
@@ -152,9 +168,14 @@ export const WEBSITE_MATERIALIZE_CAP_REQUEST = Object.freeze({
   materialized: WEBSITE_SOURCE_CONSTANTS.C39_MATERIALIZED_COUNT,
   pending: WEBSITE_SOURCE_CONSTANTS.C40_PENDING_COUNT,
   subclasses: WEBSITE_SOURCE_CONSTANTS.C41_TEMPLATE_SUBCLASS_COUNT,
-  /** 500 / 105 ≈ 4.76 → 每 app 上限必须能达到 5 才够覆盖约 5 个变体。 */
-  requiredPerAppCap: 5,
+  /** 500 / 12 app:单站装下全部 500 份所需的每 app 份数下界。 */
+  singleSitePerAppMin: 42,
+  /** 500 / 24 app:website + resume 双站方案的每 app 份数下界。 */
+  twoSitePerAppMin: 21,
+  /** 500 / 105 子类 ≈ 4.76:同子类变体数的下界,与总量下界是两件事。 */
+  variantPerSubclassMin: 5,
   mustNot: Object.freeze([
+    "把 sites.website.max 提过 positionUpperBound(DB CHECK 会在第 N+1 份抛 23514)",
     "改 MATERIAL_MAX_COUNT 的语义(影响全部 32 站的每 app 份数)",
     "新写第二套物化器(§1.4 生成器锁)",
     "把现算 HTML 字节直接入库凑数(§1.2 / §3.2 route-only → registered)",

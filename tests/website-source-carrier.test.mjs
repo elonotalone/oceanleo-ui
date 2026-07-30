@@ -635,22 +635,44 @@ test("W14/ws §3.2 状态机:五条非法迁移一条都不许,尤其 route-only
 
 test("W14/ws §3.3 + §1.4:452 份物化是需求描述而非第二套物化器", () => {
   const request = WEBSITE_MATERIALIZE_CAP_REQUEST;
-  assert.equal(request.currentPerAppCap, 4);
-  assert.equal(request.requiredPerAppCap, 5);
   assert.equal(request.templateTotal, 500);
   assert.equal(request.materialized, 48);
   assert.equal(request.pending, 452);
   assert.equal(request.subclasses, 105);
+
+  // 现状是自洽的:12 个 app × 每 app 4 份 = 48 份已物化,余 452。
+  assert.equal(request.currentPerAppCap, 4);
+  assert.equal(request.websiteAppCount * request.currentPerAppCap, request.materialized);
+  assert.equal(request.materialized + request.pending, request.templateTotal);
+
+  // 交给 5号 的下界必须是算得出来的,不是拍的。
   assert.equal(
-    request.blockingSite,
-    "scripts/oceanleo-asset-website-templates-materialize.mjs:109",
+    request.singleSitePerAppMin,
+    Math.ceil(request.templateTotal / request.websiteAppCount),
   );
+  assert.equal(
+    request.twoSitePerAppMin,
+    Math.ceil(request.templateTotal / (request.websiteAppCount * 2)),
+  );
+  assert.equal(
+    request.variantPerSubclassMin,
+    Math.ceil(request.templateTotal / request.subclasses),
+  );
+  // DB CHECK 的硬上界现在低于单站方案的下界 —— 这一条要一起提,否则第 25 份就撞 23514。
+  assert.ok(request.currentPositionUpperBound < request.singleSitePerAppMin);
+
+  // 上一轮记的卡点已由 5号 解开,交接里要留对照而不是继续报一个假卡点。
+  assert.equal(request.resolvedBlocker.symbol, "PER_APP = MATERIAL_MAX_COUNT");
+  assert.ok(request.resolvedBlocker.nowReadsFrom.includes("material-count-policy.json"));
+  assert.ok(request.capSites.every((entry) => entry.includes("material-count-policy.json")));
+
   assert.deepEqual([...request.generatorLock], [
     "lib/template-website-source.ts",
     "scripts/oceanleo-asset-website-templates-materialize.mjs",
   ]);
   assert.ok(request.mustNot.some((entry) => entry.includes("MATERIAL_MAX_COUNT")));
   assert.ok(request.mustNot.some((entry) => entry.includes("第二套物化器")));
+  assert.ok(request.mustNot.some((entry) => entry.includes("positionUpperBound")));
   assert.equal(request.acceptance.length, 5);
 
   // §1.4 生成器锁的落地凭据:本 owner 的三个文件里没有任何生成或写盘代码。
@@ -667,7 +689,6 @@ test("W14/ws §3.3 + §1.4:452 份物化是需求描述而非第二套物化器"
       "writeFile",
       "node:fs",
       "mkdir",
-      "template-dna",
       "MATERIAL_MAX_COUNT =",
       "function materialize",
       "function generateWebsiteSource",
@@ -675,6 +696,12 @@ test("W14/ws §3.3 + §1.4:452 份物化是需求描述而非第二套物化器"
       assert.equal(code.includes(forbidden), false, `${file}: ${forbidden}`);
     }
   }
+  // 反过来:F3 点名的种子核对必须**作为需求**留在交接条目里,
+  // 由上限持有者去核,不由本 owner 自己动 lib/template-dna.ts。
+  assert.ok(
+    request.acceptance.some((entry) => entry.includes("template-dna.ts")),
+    "种子是否真的改变结构必须写成交接判据",
+  );
 });
 
 test("W14/ws §3.3 / §6 F3:只换色的变体判孪生,结构有差异才收", () => {
@@ -832,10 +859,13 @@ test("W14/ws §8.1 / §8.2:参照工程全条达标,350 B 空壳必须不合格"
       error.code === "website-source-schema-invalid",
   );
 
-  // 「四个 hero 拼一页」:计数够了但区块语法只有一种。
+  // 「四个 hero 拼一页」:计数、正文量都够,只有区块语法种类不够 ——
+  // 这一条必须是**唯一**不达标项,否则判据就不是在治 C8 那件事。
   const monoKind = websiteSource();
   monoKind.sections = ["a", "b", "c", "d", "e", "f"].map((id) =>
-    section(`hero-${id}`, "hero"),
+    section(`hero-${id}`, "hero", {
+      items: [{ title: "要点", text: PROSE }],
+    }),
   );
   monoKind.pages = [
     {

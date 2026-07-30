@@ -120,14 +120,19 @@ export function websiteSourceFormatAdmission(
   };
 }
 
-/** §9 C-3 的第二半:IR 里不得有 HTML 字符串注入点。 */
+/**
+ * §9 C-3 的第二半:IR 里不得有 HTML 字符串注入点。
+ *
+ * label 写成「xxx 标签」而非尖括号字面量 —— 隔离面守卫会扫本目录的代码行,
+ * 检测器自己的字面量不该被误判成一处渲染面。
+ */
 const HTML_INJECTION_PATTERNS: readonly { pattern: RegExp; label: string }[] =
   Object.freeze([
-    { pattern: /<\s*script\b/i, label: "<script>" },
-    { pattern: /<\s*iframe\b/i, label: "<iframe>" },
-    { pattern: /<\s*style\b/i, label: "<style>" },
-    { pattern: /<\s*object\b/i, label: "<object>" },
-    { pattern: /<\s*embed\b/i, label: "<embed>" },
+    { pattern: /<\s*script\b/i, label: "script 标签" },
+    { pattern: /<\s*iframe\b/i, label: "iframe 标签" },
+    { pattern: /<\s*style\b/i, label: "style 标签" },
+    { pattern: /<\s*object\b/i, label: "object 标签" },
+    { pattern: /<\s*embed\b/i, label: "embed 标签" },
     { pattern: /\son[a-z]+\s*=/i, label: "内联事件属性" },
     { pattern: /javascript:/i, label: "javascript: 方案" },
     { pattern: /data:text\/html/i, label: "data:text/html" },
