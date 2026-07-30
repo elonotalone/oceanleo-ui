@@ -103,12 +103,6 @@ async function loadTimelineArea() {
   const sourcePath = resolve(
     "src/shell/video-editor/TimelineArea.tsx",
   );
-  const timelineModelUrl = pathToFileURL(
-    resolve("src/shell/video-editor/timeline-model.ts"),
-  ).href;
-  const timelineViewportUrl = pathToFileURL(
-    resolve("src/shell/video-editor/timeline-viewport.ts"),
-  ).href;
   const reactUrl = pathToFileURL(require.resolve("react")).href;
   const jsxRuntimeUrl = pathToFileURL(
     require.resolve("react/jsx-runtime"),
@@ -122,13 +116,15 @@ async function loadTimelineArea() {
       'from "../../i18n/ui/useUI";',
       `from ${JSON.stringify(uiStubUrl)};`,
     )
+    // 同级模块一律按名改写成绝对 file URL。逐个列举的写法在 TimelineArea
+    // 新引入一个同级模块时会静默漏掉它，报错只剩一句 data: URL 里解析不了
+    // "./x" —— 与真正的改动隔了一层转译，很难对上。
     .replace(
-      'from "./timeline-model";',
-      `from ${JSON.stringify(timelineModelUrl)};`,
-    )
-    .replace(
-      'from "./timeline-viewport";',
-      `from ${JSON.stringify(timelineViewportUrl)};`,
+      /from "\.\/([\w-]+)";/g,
+      (_match, name) =>
+        `from ${JSON.stringify(
+          pathToFileURL(resolve(`src/shell/video-editor/${name}.ts`)).href,
+        )};`,
     );
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
