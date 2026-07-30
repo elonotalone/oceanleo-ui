@@ -843,6 +843,17 @@ test("§8.1 the pptx clears 48 KiB and the IR clears 4 KiB", () => {
   assert.ok(completeness.irBytes >= DECK_IR_MIN_BYTES);
   // §8.3 A4 — the IR also has an upper bound.
   assert.ok(completeness.irBytes <= 2_097_152);
+
+  // Emitted so the acceptance owner can read the measured margins over the
+  // §8.1 floors without rebuilding the fixture.
+  console.log(
+    `§8.1 measured: pptx=${bytes.length} B (floor ${DECK_PPTX_MIN_BYTES}), ` +
+      `IR=${completeness.irBytes} B (floor ${DECK_IR_MIN_BYTES}), ` +
+      `slides=${completeness.slideCount}, layouts=${completeness.distinctLayouts}, ` +
+      `p:pic=${conformance.pictureCount}, charts=${conformance.chartPartCount}, ` +
+      `avgShapes=${conformance.averageShapesPerSlide.toFixed(2)}, ` +
+      `maxShapes=${conformance.maxShapesPerSlide}`,
+  );
 });
 
 test("§7 F1 / §8.2 the 233 B hollow deck is rejected on every predicate", () => {
