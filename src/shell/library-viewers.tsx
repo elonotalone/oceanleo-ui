@@ -1372,6 +1372,39 @@ function LibraryItemViewerBody({
         onResourceError={rendition.resourceFailed}
       />
     );
+  /**
+   * 两个新载体的查看器：只看渲出的 `preview` 位图。
+   *
+   * 它们的 `full` rendition 是 JSON 工程信封，**MUST NOT** 送进
+   * `SandboxedWebViewer` 当 HTML 打开（ADR-04：热 HTML 不得冒充素材），也
+   * **MUST NOT** 落到下面 `DocumentViewer` 那条把 JSON 当富文本渲染。可交互的
+   * 图面与重算联动由 `GeoMapRoute` / `InteractiveDocRoute` 承担，不在查看器里。
+   */
+  if (
+    resolvedItem.kind === "geo_map" ||
+    resolvedItem.kind === "interactive_doc"
+  ) {
+    const poster = resolvedItem.previewUrl || resolvedItem.thumbUrl || "";
+    return poster ? (
+      <Center>
+        <ProgressiveArtifactImage
+          thumbUrl={resolvedItem.thumbUrl || ""}
+          fullUrl={poster}
+          alt={resolvedItem.title}
+          onError={rendition.resourceFailed}
+        />
+      </Center>
+    ) : (
+      <ErrorView
+        message={
+          resolvedItem.kind === "geo_map"
+            ? "这张地图还没有渲出预览图；打开地图编辑器可从工程源重新渲染。"
+            : "这份交互文档还没有渲出预览图；打开交互文档编辑器可从工程源重新渲染。"
+        }
+        url={resolvedItem.url}
+      />
+    );
+  }
   if (resolvedItem.kind === "image" && url) {
     return (
       <Center>
@@ -1448,6 +1481,8 @@ export function libraryKindLabel(kind: LibraryItem["kind"]): string {
     xhs: "小红书",
     threed: "3D",
     game: "游戏",
+    geo_map: "地图",
+    interactive_doc: "交互文档",
     file: "文件",
   }[kind];
 }
@@ -1474,6 +1509,12 @@ export function LibraryKindIcon({
         xhs: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4",
         threed: "M12 2l9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12L3 7",
         game: "M7 9h10a4 4 0 014 4v1a3 3 0 01-5.4 1.8L14 14h-4l-1.6 1.8A3 3 0 013 14v-1a4 4 0 014-4zM7 11v3M5.5 12.5h3M16 12h.01M18 14h.01",
+        // 折叠地图 + 定位针：与 `canvas`（矩形分栏）和 `image`（山景）都不同形，
+        // 两个新类型在卡片列表里必须一眼分得开。
+        geo_map: "M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14M12 9a2 2 0 100 4 2 2 0 000-4z",
+        // 文档纸 + 滑杆 + 结果卡：图形本身说明「可调参数、会重算」，
+        // 与 `document` 的纯横线纸区分（`interactive-doc.md` §1.3 的分工）。
+        interactive_doc: "M6 3h9l3 3v15H6zM15 3v4h3M9 11h6M9 15h2M12 15h.01M14 15a2 2 0 104 0 2 2 0 00-4 0M9 19h9",
         file: "M6 3h8l4 4v14H6zM14 3v5h5",
       })[kind],
     [kind],

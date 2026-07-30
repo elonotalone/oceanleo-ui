@@ -17,6 +17,16 @@ export type EditorRoute =
   | { type: "deck" }
   | { type: "threed" }
   | { type: "game" }
+  /**
+   * 两个新载体各占一个**独立** route type。
+   *
+   * `chart-editor@1` 复用 `routeType: "grid"` 是既有设计（下面 `:157-164`），
+   * 但它有一个可复用的宿主视口；地图是 2D 图面、交互文档是文档流 + 计算图，
+   * 两者都没有可寄生的宿主。`geo-map.md` §10.3 末与 `interactive-doc.md` §10.3
+   * 末逐条明令 **MUST NOT** 照抄那条复用。
+   */
+  | { type: "geo-map" }
+  | { type: "interactive-doc" }
   | { type: "embed"; base: string; mediaType: MediaType }
   | { type: "none" };
 
@@ -166,6 +176,22 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     routeType: "game",
     roundTrip: ROUND_TRIP,
     projectSchema: "oceanleo.game-bundle.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  "geo-map": {
+    routeType: "geo-map",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.geo-map.v1",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
+    persistence: "project",
+  },
+  "interactive-doc": {
+    routeType: "interactive-doc",
+    roundTrip: ROUND_TRIP,
+    projectSchema: "oceanleo.interactive-doc.v1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

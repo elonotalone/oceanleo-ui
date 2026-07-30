@@ -160,7 +160,7 @@ export function AudioControls({
             onClick={editor.stop}
           />
         </div>
-        <div className="mt-3">
+        <div className="mt-3 space-y-2.5">
           <AudioSlider
             label={tt("试听速度")}
             value={editor.speed}
@@ -169,6 +169,29 @@ export function AudioControls({
             step={0.1}
             suffix="×"
             onChange={editor.setPlaybackSpeed}
+          />
+          {/*
+            WCAG 2.2 SC 1.4.2（§2.3）：播放、暂停、跳转、音量四个操作各要有
+            键盘通路。播放/暂停是上面的按钮，跳转与音量是这两条 range —— 
+            range 原生支持方向键，波形上拖拽不构成键盘通路。
+          */}
+          <AudioSlider
+            label={tt("播放位置")}
+            value={Math.round(editor.currentTime)}
+            min={0}
+            max={Math.max(1, Math.round(editor.duration))}
+            step={1}
+            suffix="s"
+            onChange={editor.seekTo}
+          />
+          <AudioSlider
+            label={tt("音量")}
+            value={editor.volume}
+            min={0}
+            max={100}
+            step={5}
+            suffix="%"
+            onChange={editor.setVolume}
           />
         </div>
       </section>

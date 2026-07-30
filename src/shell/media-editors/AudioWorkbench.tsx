@@ -56,6 +56,7 @@ export function useAudioWorkbench(
   const savingRef = useRef(false);
   const speedRef = useRef(1);
   const zoomRef = useRef(30);
+  const volumeRef = useRef(100);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -72,6 +73,7 @@ export function useAudioWorkbench(
   const [highEq, setHighEq] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [zoom, setZoom] = useState(30);
+  const [volume, setVolumeState] = useState(100);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -406,6 +408,7 @@ export function useAudioWorkbench(
     setHighEq,
     speed,
     zoom,
+    volume,
     canUndo,
     canRedo,
     dirty,
@@ -426,6 +429,22 @@ export function useAudioWorkbench(
       zoomRef.current = value;
       setZoom(value);
       waveRef.current?.zoom(value);
+    },
+    // §2.3：跳转与音量都要能不靠指针完成，这两个入口由带 range 控件的
+    // 键盘可达 UI 驱动（AudioWorkbenchView 的「播放位置」「音量」两条）。
+    seekTo: (seconds) => {
+      const wave = waveRef.current;
+      if (!wave) return;
+      const total = wave.getDuration() || 0;
+      const target = Math.max(0, Math.min(total, seconds));
+      wave.setTime(target);
+      setCurrentTime(target);
+    },
+    setVolume: (value) => {
+      const clamped = Math.max(0, Math.min(100, value));
+      volumeRef.current = clamped;
+      setVolumeState(clamped);
+      waveRef.current?.setVolume(clamped / 100);
     },
     cropSelection: () => editSelection("crop"),
     deleteSelection: () => editSelection("delete"),

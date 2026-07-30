@@ -1,12 +1,25 @@
+import {
+  DECK_FONT_SIZES,
+  DECK_GRID,
+  DECK_IR_LAYOUTS,
+  DECK_THEME_PALETTE,
+  deckLayoutDefinition,
+  type DeckBox,
+  type DeckFontRole,
+  type DeckIrLayout,
+} from "./deck-layout-grid";
+import type { DeckIrDocument } from "./deck-ir";
+
 export type DeckAspect = "16:9" | "4:3";
 
+/**
+ * The 16 layout grammars of `deck-extension.md` §4 plus the two legacy editor
+ * grammars (`title-body`, `blank`) that pre-date the contract. §4 L1–L5 keep
+ * their original identifiers so existing decks stay compatible (§6.4).
+ */
 export type DeckLayout =
-  | "title"
+  | DeckIrLayout
   | "title-body"
-  | "section"
-  | "bullets"
-  | "image-left"
-  | "image-right"
   | "blank";
 
 export type DeckThemeId = "ocean" | "paper" | "ink" | "sunset" | "forest";
@@ -190,15 +203,143 @@ export const DECK_THEMES: readonly DeckTheme[] = [
   },
 ] as const;
 
-const LAYOUTS = new Set<DeckLayout>([
-  "title",
+/** §4 — every layout the editor accepts, in §4 order with the legacy pair last. */
+export const DECK_EDITOR_LAYOUTS: readonly DeckLayout[] = [
+  ...DECK_IR_LAYOUTS,
   "title-body",
-  "section",
-  "bullets",
-  "image-left",
-  "image-right",
   "blank",
-]);
+];
+
+const LAYOUTS = new Set<DeckLayout>(DECK_EDITOR_LAYOUTS);
+const IR_LAYOUTS = new Set<string>(DECK_IR_LAYOUTS);
+
+export function deckLayoutIsCarrierGrammar(
+  layout: DeckLayout,
+): layout is DeckIrLayout {
+  return IR_LAYOUTS.has(layout);
+}
+
+export interface DeckPercentBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function percentBox(target: DeckBox): DeckPercentBox {
+  return {
+    x: (target.x / DECK_GRID.pageWidth) * 100,
+    y: (target.y / DECK_GRID.pageHeight) * 100,
+    width: (target.cx / DECK_GRID.pageWidth) * 100,
+    height: (target.cy / DECK_GRID.pageHeight) * 100,
+  };
+}
+
+/**
+ * §2.2 → editor percentages. The stage stores element geometry as a percentage
+ * of the page so imported decks stay responsive; the §4 EMU grid is the single
+ * source of truth and is converted here rather than duplicated by hand.
+ */
+export function deckLayoutPercentBoxes(
+  layout: DeckIrLayout,
+): Record<string, DeckPercentBox> {
+  const boxes = deckLayoutDefinition(layout).boxes;
+  const result: Record<string, DeckPercentBox> = {};
+  for (const [name, target] of Object.entries(boxes)) {
+    result[name] = percentBox(target);
+  }
+  return result;
+}
+
+/** §2.3 — the `sz` ladder expressed in points for the browser stage. */
+export function deckFontPoints(role: DeckFontRole): number {
+  return DECK_FONT_SIZES[role] / 100;
+}
+
+interface LayoutSlots {
+  title?: { box: string; role: DeckFontRole; align?: DeckTextAlign };
+  content?: { box: string; role: DeckFontRole; align?: DeckTextAlign };
+  image?: string;
+  accent?: string;
+}
+
+/** Which §4 box each of the editor's three legacy fields lands in. */
+const LAYOUT_SLOTS: Readonly<Record<DeckIrLayout, LayoutSlots>> = {
+  title: {
+    title: { box: "title", role: "display", align: "center" },
+    content: { box: "subtitle", role: "body", align: "center" },
+    accent: "accentBar",
+  },
+  section: {
+    title: { box: "title", role: "section" },
+    content: { box: "subtitle", role: "body-sm" },
+    accent: "accentBar",
+  },
+  bullets: {
+    title: { box: "title", role: "heading" },
+    content: { box: "bullets", role: "body" },
+    accent: "accentDot",
+  },
+  "two-column": {
+    title: { box: "title", role: "heading" },
+    content: { box: "left", role: "body-sm" },
+  },
+  "data-table": {
+    title: { box: "title", role: "heading" },
+    content: { box: "table", role: "table" },
+  },
+  "image-full": {
+    title: { box: "title", role: "section" },
+    image: "image",
+    accent: "scrim",
+  },
+  "image-left": {
+    title: { box: "title", role: "heading" },
+    content: { box: "bullets", role: "body" },
+    image: "image",
+  },
+  "image-right": {
+    title: { box: "title", role: "heading" },
+    content: { box: "bullets", role: "body" },
+    image: "image",
+  },
+  "image-grid": {
+    title: { box: "title", role: "heading" },
+    image: "cell",
+  },
+  "chart-focus": {
+    title: { box: "title", role: "heading" },
+    content: { box: "conclusion", role: "body-sm" },
+  },
+  "chart-with-notes": {
+    title: { box: "title", role: "heading" },
+    content: { box: "bullets", role: "body-sm" },
+  },
+  "kpi-row": {
+    title: { box: "title", role: "heading" },
+    content: { box: "card", role: "kpi", align: "center" },
+  },
+  comparison: {
+    title: { box: "title", role: "heading" },
+    content: { box: "left", role: "body-sm" },
+  },
+  timeline: {
+    title: { box: "title", role: "heading" },
+    content: { box: "axis", role: "caption" },
+    accent: "axis",
+  },
+  quote: {
+    title: { box: "quote", role: "section" },
+    content: { box: "attribution", role: "body", align: "right" },
+    accent: "mark",
+    image: "background",
+  },
+  "mixed-triptych": {
+    title: { box: "title", role: "heading" },
+    content: { box: "bullets", role: "body-sm" },
+    image: "image",
+  },
+};
 const THEMES = new Set<DeckThemeId>(DECK_THEMES.map((theme) => theme.id));
 const TRANSITIONS = new Set<Exclude<DeckTransitionType, "none">>([
   "fade",
@@ -425,6 +566,130 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
   };
 }
 
+export interface DeckCarrierPlacement {
+  title?: DeckPercentBox & { fontSize: number; align: DeckTextAlign };
+  content?: DeckPercentBox & { fontSize: number; align: DeckTextAlign };
+  image?: DeckPercentBox;
+}
+
+/** §4 — where the title, the content block and the picture sit in a grammar. */
+export function deckCarrierPlacement(layout: DeckIrLayout): DeckCarrierPlacement {
+  const boxes = deckLayoutPercentBoxes(layout);
+  const slots = LAYOUT_SLOTS[layout];
+  const placement: DeckCarrierPlacement = {};
+  if (slots.title && boxes[slots.title.box]) {
+    placement.title = {
+      ...boxes[slots.title.box],
+      fontSize: deckFontPoints(slots.title.role),
+      align: slots.title.align || "left",
+    };
+  }
+  if (slots.content && boxes[slots.content.box]) {
+    placement.content = {
+      ...boxes[slots.content.box],
+      fontSize: deckFontPoints(slots.content.role),
+      align: slots.content.align || "left",
+    };
+  }
+  if (slots.image && boxes[slots.image]) placement.image = boxes[slots.image];
+  return placement;
+}
+
+/**
+ * §4 — element scaffolding for the 16 carrier grammars. Placement comes from
+ * the EMU grid so the stage, the preview and the OOXML export agree on where
+ * each block sits.
+ */
+function carrierSlideElements({
+  title,
+  body,
+  bullets,
+  layout,
+  image,
+}: {
+  title: string;
+  body: string;
+  bullets: string[];
+  layout: DeckIrLayout;
+  image?: DeckImage;
+}): DeckElement[] {
+  const boxes = deckLayoutPercentBoxes(layout);
+  const slots = LAYOUT_SLOTS[layout];
+  const elements: DeckElement[] = [];
+  let order = 0;
+
+  if (slots.accent && boxes[slots.accent]) {
+    elements.push({
+      id: deckId("element"),
+      type: "shape",
+      ...boxes[slots.accent],
+      rotation: 0,
+      order: (order += 1),
+      shape: layout === "timeline" ? "rectangle" : "rectangle",
+      fill: `#${DECK_THEME_PALETTE.accent1}`,
+      opacity: layout === "image-full" ? 0.6 : 1,
+      locked: false,
+    });
+  }
+  if (slots.image && boxes[slots.image] && image?.url) {
+    elements.push({
+      id: deckId("element"),
+      type: "image",
+      ...boxes[slots.image],
+      rotation: 0,
+      order: (order += 1),
+      src: image.url,
+      alt: image.alt,
+      imageFit: "cover",
+      opacity: 1,
+      locked: false,
+    });
+  }
+  if (slots.title && boxes[slots.title.box] && title) {
+    elements.push({
+      id: deckId("element"),
+      type: "text",
+      ...boxes[slots.title.box],
+      rotation: 0,
+      order: (order += 1),
+      text: title,
+      fontSize: deckFontPoints(slots.title.role),
+      bold: true,
+      align: slots.title.align || "left",
+      color:
+        layout === "image-full"
+          ? `#${DECK_THEME_PALETTE.lt1}`
+          : `#${DECK_THEME_PALETTE.dk1}`,
+      lineHeight: 1.12,
+      opacity: 1,
+      locked: false,
+    });
+  }
+  const content = [
+    body,
+    bullets.length ? bullets.map((item) => `• ${item}`).join("\n") : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (slots.content && boxes[slots.content.box] && content) {
+    elements.push({
+      id: deckId("element"),
+      type: "text",
+      ...boxes[slots.content.box],
+      rotation: 0,
+      order: (order += 1),
+      text: content,
+      fontSize: deckFontPoints(slots.content.role),
+      align: slots.content.align || "left",
+      color: `#${DECK_THEME_PALETTE.dk1}`,
+      lineHeight: 1.32,
+      opacity: 1,
+      locked: false,
+    });
+  }
+  return elements;
+}
+
 function legacySlideElements({
   title,
   body,
@@ -440,6 +705,9 @@ function legacySlideElements({
 }): DeckElement[] {
   if (layout === "blank" && !title && !body && !bullets.length && !image?.url) {
     return [];
+  }
+  if (deckLayoutIsCarrierGrammar(layout)) {
+    return carrierSlideElements({ title, body, bullets, layout, image });
   }
   const centered = layout === "title" || layout === "section";
   const hasImage = Boolean(image?.url);
@@ -652,6 +920,85 @@ export function cloneDeckDocument(deck: DeckDocument): DeckDocument {
 
 export function deckTheme(id: DeckThemeId): DeckTheme {
   return DECK_THEMES.find((theme) => theme.id === id) || DECK_THEMES[0];
+}
+
+/**
+ * §4 — legacy editor grammars fold onto carrier grammars when a deck is
+ * serialized as `oceanleo.deck.v1`. `blank` has no §4 counterpart, so it
+ * degrades to `bullets`, the §4 default.
+ */
+export function deckCarrierLayoutFor(layout: DeckLayout): DeckIrLayout {
+  if (deckLayoutIsCarrierGrammar(layout)) return layout;
+  return layout === "title-body" ? "bullets" : "bullets";
+}
+
+/**
+ * §1.2 — load the `oceanleo.deck.v1` byte shape into the editor's working
+ * model. `resolveAsset` turns an `assets[].id` into a URL the stage can draw;
+ * unresolved ids leave the page picture-free rather than emitting a broken
+ * reference (§3.6 `degraded`).
+ */
+export function deckDocumentFromIr(
+  project: DeckIrDocument,
+  resolveAsset: (assetId: string) => string | undefined = () => undefined,
+): DeckDocument {
+  const master = createDeckMaster("ocean", "默认母版", "master-default");
+  return {
+    version: 2,
+    title: project.title,
+    aspect: "16:9",
+    theme: "ocean",
+    masters: [
+      {
+        ...master,
+        accentColor: `#${project.theme.accent.toUpperCase()}`,
+      },
+    ],
+    slides: project.slides.map((slide, index) => {
+      const first = slide.images?.[0];
+      const url = first ? resolveAsset(first.assetId) : undefined;
+      const image = url && first ? { url, alt: first.alt } : undefined;
+      const bullets = [
+        ...(slide.bullets || []),
+        ...(slide.left || []),
+        ...(slide.right || []),
+        ...(slide.kpis || []).map((kpi) =>
+          `${kpi.value}${kpi.unit || ""} · ${kpi.label}`,
+        ),
+        ...(slide.milestones || []).map(
+          (milestone) => `${milestone.at} · ${milestone.label}`,
+        ),
+      ];
+      const body =
+        slide.body ||
+        slide.subtitle ||
+        slide.quote?.text ||
+        (slide.table
+          ? [slide.table.header, ...slide.table.rows]
+              .map((row) => row.join(" | "))
+              .join("\n")
+          : "");
+      const title = slide.title || slide.quote?.attribution || `第 ${index + 1} 页`;
+      return {
+        id: deckId(),
+        title,
+        body,
+        bullets,
+        notes: slide.note || "",
+        layout: slide.layout,
+        background: "",
+        masterId: master.id,
+        image,
+        elements: carrierSlideElements({
+          title,
+          body,
+          bullets,
+          layout: slide.layout,
+          image,
+        }),
+      };
+    }),
+  };
 }
 
 export function deckMasterFor(

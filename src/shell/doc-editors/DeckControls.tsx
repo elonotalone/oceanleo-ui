@@ -11,13 +11,25 @@ const inputClass =
   "w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[12px] text-[var(--fg,#292524)] outline-none transition focus:border-[var(--accent,#7c3aed)] focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/10";
 const buttonClass =
   "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:-translate-y-0.5 hover:border-[var(--accent,#7c3aed)]/40 hover:shadow-sm disabled:opacity-35";
+/** deck-extension.md §4 L1–L16, plus the two legacy editor grammars. */
 const DECK_LAYOUTS: readonly { id: DeckLayout; label: string }[] = [
   { id: "title", label: "封面" },
-  { id: "title-body", label: "标题与正文" },
   { id: "section", label: "章节页" },
   { id: "bullets", label: "要点列表" },
+  { id: "two-column", label: "双栏" },
+  { id: "data-table", label: "数据表" },
+  { id: "image-full", label: "满幅图" },
   { id: "image-left", label: "左图右文" },
   { id: "image-right", label: "左文右图" },
+  { id: "image-grid", label: "图片宫格" },
+  { id: "chart-focus", label: "图表主视觉" },
+  { id: "chart-with-notes", label: "图表加要点" },
+  { id: "kpi-row", label: "指标卡" },
+  { id: "comparison", label: "左右对比" },
+  { id: "timeline", label: "时间轴" },
+  { id: "quote", label: "引文" },
+  { id: "mixed-triptych", label: "图文数三联" },
+  { id: "title-body", label: "标题与正文" },
 ];
 
 function Panel({

@@ -10,7 +10,22 @@ import {
   PDFRef,
   PDFString,
 } from "pdf-lib";
+import { PDF_READER_PALETTE } from "./pdf-workbench-utils";
 export type PdfAnnotationKind = "text" | "highlight";
+
+/**
+ * §2.1 — the two annotation colours are normative, so they are written into the
+ * PDF `C` array and used as the read-back fallback from the same source.
+ */
+const HIGHLIGHT_HEX = PDF_READER_PALETTE["annot.highlight"];
+const TEXT_MARKER_HEX = PDF_READER_PALETTE["annot.text.marker"];
+
+function pdfColorChannels(hex: string): [number, number, number] {
+  const value = hex.replace("#", "");
+  return [0, 2, 4].map(
+    (offset) => Number.parseInt(value.slice(offset, offset + 2), 16) / 255,
+  ) as [number, number, number];
+}
 export interface PdfVisualPoint {
   x: number;
   y: number;
@@ -336,7 +351,7 @@ export async function listPdfAnnotations(
         rect: pdfRectToVisual(box, geometry),
         color: colorHex(
           entry.dictionary.lookupMaybe(PDFName.of("C"), PDFArray),
-          entry.subtype === "Highlight" ? "#facc15" : "#f59e0b",
+          entry.subtype === "Highlight" ? HIGHLIGHT_HEX : TEXT_MARKER_HEX,
         ),
       },
     ];
@@ -383,7 +398,7 @@ export async function addPdfTextAnnotationAt(
     NM: PDFHexString.fromText(id),
     T: PDFHexString.fromText("OceanLeo"),
     Name: PDFName.of("Comment"),
-    C: [1, 0.65, 0],
+    C: pdfColorChannels(TEXT_MARKER_HEX),
     F: 4,
   });
   page.node.addAnnot(document.context.register(annotation));
@@ -416,7 +431,7 @@ export async function addPdfHighlightAnnotation(
     Contents: PDFHexString.fromText(contents.trim().slice(0, 2_000)),
     NM: PDFHexString.fromText(id),
     T: PDFHexString.fromText("OceanLeo"),
-    C: [1, 0.8, 0],
+    C: pdfColorChannels(HIGHLIGHT_HEX),
     CA: 0.35,
     F: 4,
   });

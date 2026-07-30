@@ -5,6 +5,8 @@ import {
   CHART_SOURCE_MAX_BYTES,
   chartDocumentFromJson,
   chartDocumentFromStructuredValue,
+  chartRenderArtifactKind,
+  chartSourceFormatIsForbidden,
   type ChartDocumentV1,
   type ChartStructuredSourceKind,
 } from "./chart-schema";
@@ -42,7 +44,103 @@ export type ChartSourceErrorCode =
   | "source-type"
   | "source-too-large"
   | "source-digest"
-  | "invalid-option";
+  | "invalid-option"
+  | "legacy-render-only";
+
+/**
+ * chart.md §3.2 载入与重算状态机。
+ * `empty → parsing → option-linked → ready → dirty → saving → ready`,
+ * 旁路终态 `invalid`、`legacy-render-only`。
+ */
+export type ChartCarrierState =
+  | "empty"
+  | "parsing"
+  | "option-linked"
+  | "ready"
+  | "dirty"
+  | "saving"
+  | "invalid"
+  | "legacy-render-only";
+
+/** §3.2 迁移表(每项 = 一条允许的迁移及其触发条件)。 */
+export const CHART_STATE_TRANSITIONS: ReadonlyArray<{
+  from: ChartCarrierState;
+  to: ChartCarrierState;
+  trigger: string;
+}> = [
+  { from: "empty", to: "parsing", trigger: "取得 source 字节" },
+  {
+    from: "parsing",
+    to: "invalid",
+    trigger: "JSON 解析失败或 §3.1 校验失败",
+  },
+  {
+    from: "parsing",
+    to: "legacy-render-only",
+    trigger: "source_format 为 html 或 source 字节以 PNG 魔数开头",
+  },
+  { from: "parsing", to: "option-linked", trigger: "schema 校验通过" },
+  {
+    from: "option-linked",
+    to: "invalid",
+    trigger:
+      "option.series[].encode 引用了 dataset.dimensions 中不存在的维度名",
+  },
+  {
+    from: "option-linked",
+    to: "ready",
+    trigger: "全部序列可绑定到数据维度",
+  },
+  { from: "ready", to: "dirty", trigger: "编辑器改动 option 或 dataset" },
+  { from: "dirty", to: "saving", trigger: "提交" },
+  { from: "saving", to: "ready", trigger: "收到新 revision_id" },
+  {
+    from: "saving",
+    to: "dirty",
+    trigger: "expected_revision_id 冲突,保留本地字节",
+  },
+];
+
+/** §3.2「非法迁移(MUST NOT 发生)」。 */
+export const CHART_FORBIDDEN_STATE_TRANSITIONS: ReadonlyArray<{
+  from: ChartCarrierState;
+  to: ChartCarrierState;
+  why: string;
+}> = [
+  {
+    from: "legacy-render-only",
+    to: "dirty",
+    why: "只有渲染 HTML/封面的历史图表 MUST NOT 进入可编辑态",
+  },
+  {
+    from: "parsing",
+    to: "ready",
+    why: "跳过维度绑定会让改数据时序列静默不更新",
+  },
+  { from: "invalid", to: "saving", why: "非法源 MUST NOT 落盘" },
+  {
+    from: "saving",
+    to: "invalid",
+    why: "保存失败 MUST 退回 dirty 并保留字节",
+  },
+  { from: "empty", to: "ready", why: "空壳产生路径,MUST 封死" },
+];
+
+export function chartStateTransitionAllowed(
+  from: ChartCarrierState,
+  to: ChartCarrierState,
+): boolean {
+  return CHART_STATE_TRANSITIONS.some(
+    (transition) => transition.from === from && transition.to === to,
+  );
+}
+
+/** 已知 chart 载入错误码到 §3.2 旁路终态的映射。 */
+export function chartStateForSourceError(
+  code: ChartSourceErrorCode,
+): Extract<ChartCarrierState, "invalid" | "legacy-render-only"> {
+  return code === "legacy-render-only" ? "legacy-render-only" : "invalid";
+}
 
 export class ChartSourceError extends Error {
   readonly code: ChartSourceErrorCode;
@@ -495,10 +593,35 @@ function inlineValue(item: LibraryItem): InlineChartSource["value"] | undefined 
   return undefined;
 }
 
+/**
+ * chart.md §1.2 / §3.2 `parsing → legacy-render-only`。
+ * 这是 `workbench-routes.ts:532` 那句用户可见拒绝文案所守的同一条边界:
+ * 只有渲染 HTML / 封面的历史图表 MUST NOT 进入可编辑态。
+ */
+function legacyRenderOnlyFailure(detected: string): ChartSourceError {
+  return sourceFailure(
+    "legacy-render-only",
+    `此历史图表只有渲染 ${detected},没有 ECharts option 源;需补录 chart-editor@1 结构化源后才能编辑。`,
+  );
+}
+
+function declaredSourceFormat(item: LibraryItem): unknown {
+  return (
+    item.artifact?.sourceFormat ??
+    item.meta.source_format ??
+    item.meta.editor_project_schema ??
+    item.meta.format
+  );
+}
+
 export function resolveChartSource(
   item: LibraryItem,
   now = Date.now(),
 ): ResolvedChartSource {
+  const declared = declaredSourceFormat(item);
+  if (chartSourceFormatIsForbidden(declared)) {
+    throw legacyRenderOnlyFailure(`source_format=${String(declared)}`);
+  }
   const canonical = canonicalArtifactSource(item);
   if (canonical) {
     assertFreshChartSourceUrl(canonical.url, canonical.expiresAt, now);
@@ -627,6 +750,10 @@ async function verifyCanonicalDigest(
 function parseResolvedSource(
   source: InlineChartSource,
 ): ChartDocumentV1 {
+  if (typeof source.value === "string") {
+    const rendered = chartRenderArtifactKind(source.value);
+    if (rendered) throw legacyRenderOnlyFailure(rendered.toUpperCase());
+  }
   try {
     return typeof source.value === "string"
       ? chartDocumentFromJson(source.value, source.parseAs)
@@ -790,6 +917,10 @@ export async function loadChartDocument(
         "图表结构化 source 响应中断或不是有效 UTF-8。",
       );
     }
+    // 一个 JSON Content-Type 也可能盖着渲染产物字节。§1.2 的硬禁令按**字节**
+    // 判,不按声明判,所以这里再嗅一次 PNG 魔数与 HTML/SVG 起始标签。
+    const rendered = chartRenderArtifactKind(bytes);
+    if (rendered) throw legacyRenderOnlyFailure(rendered.toUpperCase());
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

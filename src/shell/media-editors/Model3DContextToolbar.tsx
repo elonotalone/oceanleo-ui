@@ -9,6 +9,7 @@ import type {
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
+import { MODEL3D_STAGE_TOKENS } from "./model3d-framing.mjs";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
 
 const inspector = (
@@ -567,7 +568,7 @@ export function Model3DContextToolbar({
       case "shadow-enabled": editor.setShadowEnabled(message.value === true); break;
       case "shadow-intensity": gesture(() => editor.setShadowIntensity(value)); break;
       case "shadow-softness": gesture(() => editor.setShadowSoftness(value)); break;
-      case "background": gesture(() => editor.setBackground(String(message.value || "#f5f5f4"))); break;
+      case "background": gesture(() => editor.setBackground(String(message.value || MODEL3D_STAGE_TOKENS["stage.bg.bottom"]))); break;
       case "animation": editor.selectAnimation(String(message.value || "")); break;
       case "animation-playing": editor.setAnimationPlaying(message.value === true); break;
       case "animation-time": gesture(() => editor.setAnimationTime(value)); break;

@@ -1,5 +1,15 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
+import {
+  DECK_CONTENT_TYPES,
+  DECK_CREDITS_PROPERTY,
+  DECK_CUSTOM_PROPERTY_FIRST_PID,
+  DECK_CUSTOM_PROPERTY_FMTID,
+  DECK_RELATIONSHIP_TYPES,
+  deckCustomPropertiesXml,
+  escapeXml,
+} from "./deck-ooxml-package";
+import { DECK_CONSTANTS } from "./deck-layout-grid";
 import type {
   DeckElement,
   DeckElementAnimation,
@@ -473,10 +483,170 @@ export function injectDeckSlideOoxml(
   }
 }
 
+function nextRelationshipId(rels: string): string {
+  const used = new Set(
+    [...rels.matchAll(/\sId="rId(\d+)"/g)].map((match) => Number(match[1])),
+  );
+  let candidate = 1;
+  while (used.has(candidate)) candidate += 1;
+  return `rId${candidate}`;
+}
+
+function appendRelationship(rels: string, type: string, target: string): string {
+  if (rels.includes(`Type="${type}"`)) return rels;
+  const id = nextRelationshipId(rels);
+  const entry = `<Relationship Id="${id}" Type="${type}" Target="${target}"/>`;
+  return rels.includes("</Relationships>")
+    ? rels.replace("</Relationships>", `${entry}</Relationships>`)
+    : rels;
+}
+
+function appendOverride(
+  contentTypes: string,
+  partName: string,
+  contentType: string,
+): string {
+  if (contentTypes.includes(`PartName="${partName}"`)) return contentTypes;
+  const entry = `<Override PartName="${partName}" ContentType="${contentType}"/>`;
+  return contentTypes.includes("</Types>")
+    ? contentTypes.replace("</Types>", `${entry}</Types>`)
+    : contentTypes;
+}
+
+export interface DeckPptxAttributionEntry {
+  text: string;
+  licenseCode: string;
+}
+
+export interface DeckPptxPackageRepair {
+  /** §3.2a.2 — credits written to `docProps/custom.xml` as `OceanLeoCredits`. */
+  attribution?: readonly DeckPptxAttributionEntry[];
+}
+
+export interface DeckPptxPackageRepairReport {
+  coreOverrideAdded: boolean;
+  coreRelationshipAdded: boolean;
+  customPartAdded: boolean;
+  customOverrideAdded: boolean;
+  customRelationshipAdded: boolean;
+  credits: string;
+}
+
+/** §3.2a.2 / §5 C48 — join credits and cut at the last complete entry. */
+export function deckPptxCreditsText(
+  entries: readonly DeckPptxAttributionEntry[],
+): string {
+  const parts = entries
+    .filter((entry) => entry.text && entry.licenseCode)
+    .map((entry) => `${entry.text} (${entry.licenseCode})`);
+  const joined = parts.join("; ");
+  if (joined.length <= DECK_CONSTANTS.C48) return joined;
+  let text = "";
+  for (const part of parts) {
+    const candidate = text ? `${text}; ${part}` : part;
+    if (candidate.length > DECK_CONSTANTS.C48) break;
+    text = candidate;
+  }
+  return text;
+}
+
+/**
+ * Repairs the two OPC gaps recorded in spec §3.2a.3 on whatever PresentationML
+ * package the editor hands us:
+ *
+ *   1. `docProps/core.xml` is written but has neither an `[Content_Types].xml`
+ *      Override nor an `_rels/.rels` relationship, so its `dc:title` is
+ *      invisible to a conforming consumer.
+ *   2. attribution has nowhere to go — `dc:rights` does not exist in the closed
+ *      15-element OPC core property set — so it goes to `docProps/custom.xml`,
+ *      and all three of part + Override + relationship must land together.
+ *
+ * The function is idempotent: anything already present is left alone.
+ */
+export function repairDeckPptxPackageParts(
+  archive: Record<string, Uint8Array>,
+  repair: DeckPptxPackageRepair = {},
+): DeckPptxPackageRepairReport {
+  const report: DeckPptxPackageRepairReport = {
+    coreOverrideAdded: false,
+    coreRelationshipAdded: false,
+    customPartAdded: false,
+    customOverrideAdded: false,
+    customRelationshipAdded: false,
+    credits: "",
+  };
+  const contentTypesRaw = archive["[Content_Types].xml"];
+  const packageRelsRaw = archive["_rels/.rels"];
+  if (!contentTypesRaw || !packageRelsRaw) return report;
+
+  let contentTypes = strFromU8(contentTypesRaw);
+  let packageRels = strFromU8(packageRelsRaw);
+
+  if (archive["docProps/core.xml"]) {
+    const withOverride = appendOverride(
+      contentTypes,
+      "/docProps/core.xml",
+      DECK_CONTENT_TYPES.coreProperties,
+    );
+    report.coreOverrideAdded = withOverride !== contentTypes;
+    contentTypes = withOverride;
+    const withRelationship = appendRelationship(
+      packageRels,
+      DECK_RELATIONSHIP_TYPES.coreProperties,
+      "docProps/core.xml",
+    );
+    report.coreRelationshipAdded = withRelationship !== packageRels;
+    packageRels = withRelationship;
+  }
+
+  const credits = deckPptxCreditsText(repair.attribution || []);
+  report.credits = credits;
+  if (credits.length >= DECK_CONSTANTS.C49) {
+    if (!archive["docProps/custom.xml"]) {
+      archive["docProps/custom.xml"] = strToU8(deckCustomPropertiesXml(credits));
+      report.customPartAdded = true;
+    } else {
+      const existing = strFromU8(archive["docProps/custom.xml"]);
+      if (!existing.includes(`name="${DECK_CREDITS_PROPERTY}"`)) {
+        const property =
+          `<property fmtid="${DECK_CUSTOM_PROPERTY_FMTID}" ` +
+          `pid="${DECK_CUSTOM_PROPERTY_FIRST_PID + countCustomProperties(existing)}" ` +
+          `name="${DECK_CREDITS_PROPERTY}"><vt:lpwstr>${escapeXml(credits)}</vt:lpwstr></property>`;
+        archive["docProps/custom.xml"] = strToU8(
+          existing.replace("</Properties>", `${property}</Properties>`),
+        );
+        report.customPartAdded = true;
+      }
+    }
+    const withOverride = appendOverride(
+      contentTypes,
+      "/docProps/custom.xml",
+      DECK_CONTENT_TYPES.customProperties,
+    );
+    report.customOverrideAdded = withOverride !== contentTypes;
+    contentTypes = withOverride;
+    const withRelationship = appendRelationship(
+      packageRels,
+      DECK_RELATIONSHIP_TYPES.customProperties,
+      "docProps/custom.xml",
+    );
+    report.customRelationshipAdded = withRelationship !== packageRels;
+    packageRels = withRelationship;
+  }
+
+  archive["[Content_Types].xml"] = strToU8(contentTypes);
+  archive["_rels/.rels"] = strToU8(packageRels);
+  return report;
+}
+
+function countCustomProperties(xml: string): number {
+  return (xml.match(/<property\b/g) || []).length;
+}
+
 export async function injectDeckPptxOoxml(
   blob: Blob,
   slides: readonly DeckSlide[],
-  options: DeckPptxEnhancementOptions = {},
+  options: DeckPptxEnhancementOptions & DeckPptxPackageRepair = {},
 ): Promise<Blob> {
   const archive = unzipSync(new Uint8Array(await blob.arrayBuffer()));
   if (!archive["[Content_Types].xml"] || !archive["ppt/presentation.xml"]) {
@@ -495,6 +665,7 @@ export async function injectDeckPptxOoxml(
       ),
     );
   }
+  repairDeckPptxPackageParts(archive, { attribution: options.attribution });
   const bytes = Uint8Array.from(zipSync(archive, { level: 6 }));
   return new Blob([bytes], { type: PPTX_MIME });
 }

@@ -15,6 +15,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import {
+  TIMELINE_CLIP_LABEL_COLORS,
+  TIMELINE_LAYOUT,
+  TIMELINE_PALETTE,
+} from "./timeline-carrier";
 import { clipEndMs, formatMs, snapDelta, snapPoints } from "./timeline-model";
 import {
   clampTimelinePxPerSecond,
@@ -23,8 +28,12 @@ import {
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TimelineClip, TimelineTrack, TrackKind } from "./types";
 
-const RULER_HEIGHT = 28;
-const ROW_HEIGHT = 48;
+// 版面逐值照 video-timeline.md §2.2；色板照 §2.1。
+const RULER_HEIGHT = TIMELINE_LAYOUT.rulerHeightPx;
+const ROW_HEIGHT = TIMELINE_LAYOUT.trackRowHeightPx;
+const MIN_CLIP_WIDTH_PX = TIMELINE_LAYOUT.minimumClipWidthPx;
+const PLAYHEAD_WIDTH_PX = TIMELINE_LAYOUT.playheadWidthPx;
+const HIT_AREA_PX = TIMELINE_LAYOUT.minimumHitAreaPx;
 const ROW_GAP = 6;
 const SNAP_PX = 8;
 
@@ -35,11 +44,20 @@ const KIND_LABEL: Record<TrackKind, string> = {
   image: "贴图",
 };
 
-const KIND_CLIP_CLASS: Record<TrackKind, string> = {
-  video: "border-sky-300 bg-sky-100 text-sky-900",
-  audio: "border-emerald-300 bg-emerald-100 text-emerald-900",
-  text: "border-amber-300 bg-amber-100 text-amber-900",
-  image: "border-fuchsia-300 bg-fuchsia-100 text-fuchsia-900",
+/**
+ * §2.1：片段块是非文本图形对象（SC 1.4.11，≥ 3.0:1），块上的标签是文字
+ * （SC 1.4.3，≥ 4.5:1）。所以标签色逐块定值，MUST NOT 一律用白字 ——
+ * 白字在 `tl.clip.audio` 上只有 4.17:1。`image` 轨在 IR 里映射为 overlay，
+ * 沿用 text 块的配色。
+ */
+const KIND_CLIP_COLORS: Record<
+  TrackKind,
+  { background: string; label: string }
+> = {
+  video: TIMELINE_CLIP_LABEL_COLORS["tl.clip.video"],
+  audio: TIMELINE_CLIP_LABEL_COLORS["tl.clip.audio"],
+  text: TIMELINE_CLIP_LABEL_COLORS["tl.clip.text"],
+  image: TIMELINE_CLIP_LABEL_COLORS["tl.clip.text"],
 };
 
 function clipLabel(track: TimelineTrack, clip: TimelineClip, fallback: string): string {
@@ -431,16 +449,26 @@ export function TimelineArea({
             onPointerUp={onRulerPointerUp}
             onPointerCancel={onRulerPointerCancel}
             onLostPointerCapture={onRulerPointerCancel}
-            className="relative cursor-col-resize border-b border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]"
-            style={{ height: RULER_HEIGHT }}
+            className="relative cursor-col-resize"
+            style={{
+              height: RULER_HEIGHT,
+              background: TIMELINE_PALETTE["tl.bg"].value,
+              borderBottom: `1px solid ${TIMELINE_PALETTE["tl.grid"].value}`,
+            }}
           >
             {ticks.map((tick) => (
               <div
                 key={tick.ms}
-                className="absolute top-0 h-full border-l border-[var(--divider,#d6d3d1)]"
-                style={{ left: msToPx(tick.ms) }}
+                className="absolute top-0 h-full"
+                style={{
+                  left: msToPx(tick.ms),
+                  borderLeft: `1px solid ${TIMELINE_PALETTE["tl.grid"].value}`,
+                }}
               >
-                <span className="ml-1 text-[9px] tabular-nums text-[var(--muted,#78716c)]">
+                <span
+                  className="ml-1 text-[9px] tabular-nums"
+                  style={{ color: TIMELINE_PALETTE["tl.grid"].value }}
+                >
                   {tick.label}
                 </span>
               </div>
@@ -455,13 +483,19 @@ export function TimelineArea({
                 if (node) rowRefs.current.set(track.id, node);
                 else rowRefs.current.delete(track.id);
               }}
-              className="relative rounded-sm bg-[var(--surface-hover,rgba(0,0,0,.05))]"
-              style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
+              className="relative rounded-sm"
+              style={{
+                height: ROW_HEIGHT,
+                marginBottom: ROW_GAP,
+                background: TIMELINE_PALETTE["tl.bg"].value,
+              }}
               onPointerDown={() => state.selectClip("")}
             >
               {track.clips.map((clip) => {
                 const selected = clip.id === selectedClipId;
-                const width = Math.max(6, msToPx(clip.duration_ms));
+                // §2.2 C21：片段块的最小可视宽是 24 px，再短也要能点中。
+                const width = Math.max(MIN_CLIP_WIDTH_PX, msToPx(clip.duration_ms));
+                const colors = KIND_CLIP_COLORS[track.kind];
                 return (
                   <div
                     key={clip.id}
@@ -472,26 +506,27 @@ export function TimelineArea({
                     onPointerUp={onClipPointerUp}
                     onPointerCancel={onClipPointerCancel}
                     onLostPointerCapture={onClipPointerCancel}
-                    className={`group absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-md border text-[10px] active:cursor-grabbing ${KIND_CLIP_CLASS[track.kind]}`}
+                    className="group absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-md border text-[10px] active:cursor-grabbing"
                     style={{
                       left: msToPx(clip.start_ms),
                       width,
+                      background: colors.background,
+                      color: colors.label,
+                      borderColor: selected ? accent : colors.background,
                       ...(selected
-                        ? {
-                            borderColor: accent,
-                            boxShadow: `0 0 0 1.5px ${accent}`,
-                          }
+                        ? { boxShadow: `0 0 0 1.5px ${accent}` }
                         : {}),
                     }}
                   >
                     {clip.transition_in && (
                       <span
-                        className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-black/25 to-transparent"
+                        className="pointer-events-none absolute inset-y-0 left-0"
                         style={{
                           width: Math.min(
                             width,
                             msToPx(clip.transition_in.duration_ms),
                           ),
+                          background: `linear-gradient(to right, ${TIMELINE_PALETTE["tl.transition"].value}, transparent)`,
                         }}
                         title={tt("转场")}
                       />
@@ -515,7 +550,9 @@ export function TimelineArea({
                       onPointerUp={onClipPointerUp}
                       onPointerCancel={onClipPointerCancel}
                       onLostPointerCapture={onClipPointerCancel}
-                      className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-black/15 opacity-0 group-hover:opacity-100"
+                      // §2.2 / WCAG 2.2 SC 2.5.8：命中区最小边 24 px。
+                      className="absolute inset-y-0 left-0 cursor-ew-resize bg-black/15 opacity-0 group-hover:opacity-100"
+                      style={{ width: Math.min(HIT_AREA_PX, Math.max(6, width / 2)) }}
                     />
                     <div
                       onPointerDown={(event) =>
@@ -525,7 +562,8 @@ export function TimelineArea({
                       onPointerUp={onClipPointerUp}
                       onPointerCancel={onClipPointerCancel}
                       onLostPointerCapture={onClipPointerCancel}
-                      className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-black/15 opacity-0 group-hover:opacity-100"
+                      className="absolute inset-y-0 right-0 cursor-ew-resize bg-black/15 opacity-0 group-hover:opacity-100"
+                      style={{ width: Math.min(HIT_AREA_PX, Math.max(6, width / 2)) }}
                     />
                   </div>
                 );
@@ -538,8 +576,17 @@ export function TimelineArea({
             className="pointer-events-none absolute top-0 bottom-0 z-10"
             style={{ left: playheadX }}
           >
-            <div className="h-full w-px bg-red-500" />
-            <div className="absolute -top-0.5 -left-[5px] h-0 w-0 border-x-[5px] border-t-[7px] border-x-transparent border-t-red-500" />
+            <div
+              className="h-full"
+              style={{
+                width: PLAYHEAD_WIDTH_PX,
+                background: TIMELINE_PALETTE["tl.playhead"].value,
+              }}
+            />
+            <div
+              className="absolute -top-0.5 -left-[5px] h-0 w-0 border-x-[5px] border-t-[7px] border-x-transparent"
+              style={{ borderTopColor: TIMELINE_PALETTE["tl.playhead"].value }}
+            />
           </div>
         </div>
       </div>

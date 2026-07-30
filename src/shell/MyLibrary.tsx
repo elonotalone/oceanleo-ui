@@ -54,6 +54,8 @@ const KIND_CATEGORY: Record<LibraryKind, string> = {
   xhs: "小红书",
   threed: "3D",
   game: "游戏",
+  geo_map: "地图",
+  interactive_doc: "交互文档",
   file: "文件",
 };
 

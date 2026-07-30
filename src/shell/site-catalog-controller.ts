@@ -662,6 +662,8 @@ export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = {
   xhs: "小红书",
   threed: "3D",
   game: "游戏",
+  geo_map: "地图",
+  interactive_doc: "交互文档",
   file: "文件",
 };
 
@@ -706,6 +708,15 @@ const LIBRARY_KIND_ALIASES: Record<string, LibraryKind> = {
   model_3d: "threed",
   game: "game",
   leoplay: "game",
+  /**
+   * 深链词元 → 新载体。`map` 这个裸词**不收**：它在 app id 里几乎总是
+   * 「思维导图 / 站点地图」，收进来会把一堆非地理 app 的深链错判成地图工程。
+   * 权威 token 是下划线枚举值本身（`geo-map.md` §1.1.1）。
+   */
+  geo_map: "geo_map",
+  geomap: "geo_map",
+  interactive_doc: "interactive_doc",
+  interactivedoc: "interactive_doc",
   file: "file",
 };
 

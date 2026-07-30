@@ -40,6 +40,10 @@ function curatedTypeFor(item: LibraryItem): string {
     audio: "audio",
     xhs: "image",
     threed: "3d",
+    // 两个新载体各自成一档，不并进 image：它们的插入面要的是同类工程与数据件，
+    // 落到 `all` 会把整库素材铺进面板（`geo-map.md` §10.3 枚举面的「插入」那格）。
+    geo_map: "geo_map",
+    interactive_doc: "interactive_doc",
   };
   return map[item.kind] || "all";
 }

@@ -345,6 +345,18 @@ function imageFit(
     return "cover";
   }
   if (!artifactType && (kind === "image" || kind === "video")) return "cover";
+  /**
+   * 地图与交互文档的封面是整幅渲出图：地图裁掉边就裁掉了图例与归属声明
+   * （`geo-map.md` §2.2 把图例与 28 px 归属条算进 1600×1000 画布，§8.2 要求
+   * `attribution.entries` 随产物走），交互文档裁掉边就裁掉了参数控件与结果卡。
+   * 两者与下面那批一样 **MUST** 整幅显示，这里显式写出来而不是靠兜底。
+   */
+  if (artifactType === "geo_map" || artifactType === "interactive_doc") {
+    return "contain";
+  }
+  if (!artifactType && (kind === "geo_map" || kind === "interactive_doc")) {
+    return "contain";
+  }
   // Pages, slides, vectors, composites, websites, workflows and model posters
   // must remain whole; cropping them turns a real rendition into a false cover.
   return "contain";
@@ -433,6 +445,19 @@ function supportsWebsiteCover(
   artifactType: ArtifactType | undefined,
   kind: LibraryKind,
 ): boolean {
+  /**
+   * 两个新载体**显式**拒绝 HTML 封面通路。
+   *
+   * 它们的 `full` rendition 是 JSON 工程信封（`geo-map.md` §1.1、
+   * `interactive-doc.md` §1.1 都明令 `source_format` MUST NOT 取 `html`），
+   * 一旦上游把某条 rendition 的 media type 误标成 `text/html`，靠「不在下面
+   * 白名单里」这种默认行为挡不住 —— `kind` 只要漂成 `website` 就放行了。
+   * 所以这里按 artifact type 直接拒。
+   */
+  if (artifactType === "geo_map" || artifactType === "interactive_doc") {
+    return false;
+  }
+  if (kind === "geo_map" || kind === "interactive_doc") return false;
   return (
     artifactType === "website" || artifactType === "workflow" ||
     kind === "website" || kind === "canvas" || kind === "video_canvas"

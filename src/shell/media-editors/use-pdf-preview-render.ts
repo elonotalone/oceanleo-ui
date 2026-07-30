@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   PDFDocumentProxy,
   PDFPageProxy,
   RenderTask,
 } from "pdfjs-dist";
-import { clamp, pdfErrorMessage } from "./pdf-workbench-utils";
+import {
+  PDF_READER_LAYOUT,
+  clamp,
+  pdfErrorMessage,
+} from "./pdf-workbench-utils";
 
 export function usePdfPreviewRender({
   canvas,
@@ -120,5 +124,44 @@ export function usePdfPreviewRender({
     translate,
   ]);
 
-  return { rotation, rendering, renderedZoom, pageWidth, pageHeight };
+  /**
+   * §2.4 SC 2.4.5 — the thumbnail rail is one of the two required ways to
+   * locate a page, and F8 forbids standing in a designed cover for it, so the
+   * rail renders the real page through the same pdf.js document as the stage.
+   */
+  const renderThumbnail = useCallback(
+    async (targetPage: number, target: HTMLCanvasElement) => {
+      if (!documentProxy) return;
+      const page = await documentProxy.getPage(
+        clamp(targetPage, 1, documentProxy.numPages),
+      );
+      try {
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({
+          scale: PDF_READER_LAYOUT.thumbnailPageWidth / Math.max(1, base.width),
+        });
+        target.width = Math.max(1, Math.floor(viewport.width));
+        target.height = Math.max(1, Math.floor(viewport.height));
+        const context = target.getContext("2d", { alpha: false });
+        if (!context) return;
+        await page.render({
+          canvasContext: context,
+          viewport,
+          background: "#ffffff",
+        }).promise;
+      } finally {
+        page.cleanup();
+      }
+    },
+    [documentProxy],
+  );
+
+  return {
+    rotation,
+    rendering,
+    renderedZoom,
+    pageWidth,
+    pageHeight,
+    renderThumbnail,
+  };
 }

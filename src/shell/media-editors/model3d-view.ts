@@ -2,6 +2,7 @@ import {
   normalizeModel3DDirectorDocument,
   type Model3DDirectorDocument,
 } from "./model3d-director";
+import { MODEL3D_STAGE_TOKENS } from "./model3d-framing.mjs";
 
 export interface Model3DMaterialOverride {
   index: number;
@@ -146,7 +147,9 @@ export function normalizeSavedModelView(value: unknown): Model3DSavedView {
     exposure: numeric("exposure", 1, 0.1, 4),
     shadowIntensity: numeric("shadow_intensity", 1, 0, 2),
     shadowSoftness: numeric("shadow_softness", 1, 0, 1),
-    background: /^#[0-9a-f]{6}$/i.test(color) ? color : "#f5f5f4",
+    background: /^#[0-9a-f]{6}$/i.test(color)
+      ? color
+      : MODEL3D_STAGE_TOKENS["stage.bg.bottom"],
     animation:
       typeof record.animation === "string"
         ? record.animation.slice(0, 200)

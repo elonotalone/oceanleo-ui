@@ -43,6 +43,8 @@ import {
 } from "../design-composite-commit";
 import { websiteEmbedExtraParams } from "../website-embed-params";
 import { hostedWebsiteEditBarSelection } from "../website-host-edit-bar";
+import { websiteSourceFormatAdmission } from "../website-source-carrier/website-source-validate";
+import { videoCanvasSourceFormatAdmission } from "../workflow-carrier/video-canvas-source";
 import type {
   SelectionCommand,
   SelectionContext,
@@ -1327,6 +1329,35 @@ export function EmbeddedRoute({
     },
     [],
   );
+  // website-source.md §1.2 / §7 A12(ADR-04):source_format=html 的站点素材落库即
+  // view_only,MUST NOT 被当作可编辑工程打开。宿主侧在挂载 embed 之前就拒。
+  // 只拦硬禁令的 html 家族:`zip` 与 `oceanleo.website-project.v1` 是入库容忍格式,
+  // 其存量处置由规格 §10.3 / §10.4 待裁定,本 owner MUST NOT 顺手改判。
+  const carrierOpenRejection = useMemo(() => {
+    if (hostedMediaType !== "website" || !isDurableLibraryItem(item)) return "";
+    if (item.artifact.artifactType !== "website") return "";
+    if (item.artifact.editability === "view_only") return "";
+    const admission = websiteSourceFormatAdmission(item.artifact.sourceFormat);
+    if (admission.ok || admission.code !== "website-source-html-forbidden") {
+      return "";
+    }
+    return `网站编辑器已拒绝打开：[${admission.code}] ${admission.message}`;
+  }, [hostedMediaType, item]);
+  // workflow.md §1.2 / §6 F2:`oceanleo.workflow.v1` 是历史遗留格式,新产出 MUST NOT
+  // 以它落库。存量的打开与迁移不归本 owner,因此只封**保存**这条产生新产出的路。
+  const carrierSaveRejection = useMemo(() => {
+    if (hostedMediaType !== "video_canvas" || !isDurableLibraryItem(item)) {
+      return "";
+    }
+    if (item.artifact.artifactType !== "workflow") return "";
+    const admission = videoCanvasSourceFormatAdmission(
+      item.artifact.sourceFormat,
+    );
+    if (admission.ok || admission.code !== "workflow-legacy-source-format") {
+      return "";
+    }
+    return `节点图工程已拒绝保存：[${admission.code}] ${admission.message}`;
+  }, [hostedMediaType, item]);
   const extraParams = useMemo(() => {
     const websiteParams = websiteEmbedExtraParams(item);
     if (
@@ -1378,8 +1409,17 @@ export function EmbeddedRoute({
       adapter={{
         id: embeddedAdapterId,
         label: editorToolLabel(route),
-        stage:
-          designComposite && !designSourceBinding ? (
+        stage: carrierOpenRejection ? (
+          <div
+            className="grid h-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-center"
+            data-carrier-admission="rejected"
+            role="alert"
+          >
+            <p className="max-w-lg text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+              {carrierOpenRejection}
+            </p>
+          </div>
+        ) : designComposite && !designSourceBinding ? (
             <div
               className="grid h-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-center"
               data-design-handshake={
@@ -1495,10 +1535,13 @@ export function EmbeddedRoute({
           busyLabel: "等待编辑器导出…",
           disabled:
             Boolean(designHandshakeError) ||
+            Boolean(carrierOpenRejection) ||
             !designHandshakeReady,
           onTrigger: designHandshakeError
             ? () => Promise.reject(new Error(designHandshakeError))
-            : requestRemoteExport,
+            : carrierOpenRejection
+              ? () => Promise.reject(new Error(carrierOpenRejection))
+              : requestRemoteExport,
         },
         actions: remoteActions,
         persistence: {
@@ -1507,14 +1550,20 @@ export function EmbeddedRoute({
           // Website Apply must stay clickable until the user/harness applies the
           // session draft; debounce autosave previously save→auto-Applied first.
           autoSave: hostedMediaType !== "website",
-          flush: !designHandshakeReady
-            ? async () => ({
-                ok: false,
-                error:
-                  designHandshakeError ||
-                  "设计画布尚未确认当前 source revision。",
-              })
-            : saveBeforeNewConversation,
+          flush:
+            carrierOpenRejection || carrierSaveRejection
+              ? async () => ({
+                  ok: false,
+                  error: carrierOpenRejection || carrierSaveRejection,
+                })
+              : !designHandshakeReady
+                ? async () => ({
+                    ok: false,
+                    error:
+                      designHandshakeError ||
+                      "设计画布尚未确认当前 source revision。",
+                  })
+                : saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey(embeddedAdapterId, item),
             ready:

@@ -15,6 +15,12 @@ import {
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { renderAudioWaveformPng } from "../doc-editors/editor-preview-raster";
 import type { AudioEditOperation } from "./audio-operations";
+import {
+  auditAudioLicenseLock,
+  audioLicenseMetadata,
+  AUDIO_LICENSE_CODES,
+  type AudioAttributionEntry,
+} from "./audio-project-carrier";
 import type { AudioProjectData } from "./audio-workbench-state";
 import {
   applyAudioOperation,
@@ -26,6 +32,38 @@ import {
   validAudioProject,
 } from "./audio-workbench-utils";
 import { assertBlobSource } from "./source-integrity.mjs";
+
+const LICENSE_URLS: Record<string, string> = {
+  CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
+  "CC-BY": "https://creativecommons.org/licenses/by/4.0/",
+  "OCEANLEO-AIGEN": "https://oceanleo.com/licenses/aigen",
+};
+
+/**
+ * 从素材元数据抽出署名条目（§1.3 / §7 A8–A9）。`license_code` 是既有键
+ * （`artifact-contract.ts:1765`、`use-pdf-workbench.ts:114` 都读它）。
+ * 抽不出许可时不编一个 —— 空署名比假署名安全，完备判据会把它判为不达标。
+ */
+function audioAttributionFromItem(item: LibraryItem): AudioAttributionEntry[] {
+  const rawCode = String(item.meta.license_code || "").trim();
+  if (!rawCode) return [];
+  const code = rawCode.toUpperCase();
+  const known = AUDIO_LICENSE_CODES.find((entry) => entry === code);
+  const licenseUrl =
+    String(item.meta.license_url || "").trim() || LICENSE_URLS[code] || "";
+  if (!licenseUrl.startsWith("https://")) return [];
+  const text = String(item.meta.attribution || item.title || "").trim();
+  if (text.length < 2) return [];
+  return [
+    {
+      text: text.slice(0, 200),
+      // 未知许可原样带出，交给 auditAudioLicenseLock 判 —— 静默改写成 CC0
+      // 才是真的危险。
+      licenseCode: (known ?? rawCode) as AudioAttributionEntry["licenseCode"],
+      licenseUrl,
+    },
+  ];
+}
 
 interface AudioPersistenceOptions {
   item: LibraryItem;
@@ -83,15 +121,32 @@ export function useAudioPersistence({
     setError("");
     try {
       const title = `${item.title || tt("音频")}-${tt("编辑版")}`;
+      const attribution = audioAttributionFromItem(item);
       const project: AudioProjectData = {
         sourceUrl: sourceUrlRef.current,
         operations: structuredClone(operationsRef.current),
+        ...(attribution.length ? { attribution } : {}),
       };
       if (!validAudioProject(project)) {
         throw new Error(
           tt("音频工程操作日志无效或超过安全上限，保存已阻止；当前状态仍保留"),
         );
       }
+      /**
+       * §1.3 许可锁。CC-BY-SA 件 MUST NOT 进 v1 组合产物 —— 平台还没有
+       * 「署名与许可随产物走」的全链机制，用户导出即断链，SA 义务违约由
+       * 平台承担。这里在落库前就拦，而不是等 catalog 发布时整包被拒。
+       */
+      const licenseLock = auditAudioLicenseLock(project);
+      if (!licenseLock.ok) {
+        const first = licenseLock.violations[0];
+        throw new Error(
+          tt(
+            `音频许可锁拦截：${first.path} 的 ${first.licenseCode} 带 ${first.obligations.join(" + ")} 义务，v1 组合产物不接受`,
+          ),
+        );
+      }
+      const licenseMeta = audioLicenseMetadata(project);
       const saved = await saveProjectWorkingHead({
         item,
         siteId,
@@ -106,6 +161,13 @@ export function useAudioPersistence({
           editor_capability: "audio-editor",
           audio_source_url: project.sourceUrl,
           audio_operation_count: project.operations.length,
+          // §1.3 / §7 A9：许可义务在产物元数据里可见，随产物传递。
+          audio_license_lock: licenseMeta.license_lock,
+          audio_license_share_alike: licenseMeta.share_alike,
+          audio_license_codes: licenseMeta.licenses,
+          audio_license_obligations: licenseMeta.obligations,
+          audio_attribution: licenseMeta.attribution,
+          audio_attribution_text: licenseMeta.attribution_text,
         },
         project: {
           schema: AUDIO_PROJECT_SCHEMA,

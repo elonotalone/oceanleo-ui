@@ -1,9 +1,5 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type RefCallback } from "react";
-import type {
-  PDFDocumentLoadingTask,
-  PDFDocumentProxy,
-} from "pdfjs-dist";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
@@ -19,19 +15,25 @@ import {
 import { loadInitialPdfSource } from "./pdf-source";
 import { capturePdfRecovery, decodePdfRecovery } from "./pdf-recovery";
 import {
+  PDF_ZOOM_STOPS,
   appendPdfHistory,
   clamp,
+  clampPdfZoom,
+  fitPdfZoom,
+  nextPdfZoomStop,
   pdfErrorMessage,
   pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
+import { PDF_FAILURE_CODES } from "./pdf-manifest";
 import type { PdfWorkbenchState } from "./pdf-workbench-state";
 export type { PdfWorkbenchState } from "./pdf-workbench-state";
+import { usePdfDocument } from "./use-pdf-document";
 import { usePdfPageActions } from "./use-pdf-page-actions";
 import { usePdfPreviewRender } from "./use-pdf-preview-render";
+import { usePdfReaderMachine } from "./use-pdf-reader-machine";
+import { usePdfTextLayer } from "./use-pdf-text-layer";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
-const MIN_ZOOM = 25;
-const MAX_ZOOM = 300;
 type PdfMutation = (bytes: Uint8Array) => Promise<PdfMutationResult>;
 export function usePdfWorkbench(
   item: LibraryItem,
@@ -40,7 +42,6 @@ export function usePdfWorkbench(
 ): PdfWorkbenchState {
   const tt = useUI();
   const bytesRef = useRef<Uint8Array | null>(null);
-  const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
   const processingRef = useRef(false);
   const processingTokenRef = useRef(0);
   const savingRef = useRef(false);
@@ -58,7 +59,6 @@ export function usePdfWorkbench(
   const [zoom, setZoomState] = useState(100);
   const [rasterZoom, setRasterZoom] = useState(100);
   const [sourceLoading, setSourceLoading] = useState(true);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -68,22 +68,56 @@ export function usePdfWorkbench(
   const [notice, setNotice] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
-  const [previewRevision, setPreviewRevision] = useState(0);
   const allowBlankSource =
     item.source === "creation" &&
     !isDurableLibraryItem(item) &&
     !String(item.meta.editor_project_schema || "").trim();
-  const { rotation, rendering, renderedZoom, pageWidth, pageHeight } =
-    usePdfPreviewRender({
-      canvas,
-      documentProxy: pdfDocumentRef.current,
-      pageCount,
-      pageNumber,
-      revision: previewRevision,
-      rasterZoom,
-      translate: tt,
-      setError,
-    });
+  const onPageCount = useCallback((count: number) => {
+    setPageCount(count);
+    setPageNumber((value) => clamp(value, 1, count || 1));
+  }, []);
+  const {
+    documentProxy,
+    previewRevision,
+    loading: previewLoading,
+  } = usePdfDocument({
+    bytesRef,
+    documentRevision,
+    translate: tt,
+    setError,
+    onPageCount,
+  });
+  const {
+    rotation,
+    rendering,
+    renderedZoom,
+    pageWidth,
+    pageHeight,
+    renderThumbnail,
+  } = usePdfPreviewRender({
+    canvas,
+    documentProxy,
+    pageCount,
+    pageNumber,
+    revision: previewRevision,
+    rasterZoom,
+    translate: tt,
+    setError,
+  });
+  const textLayer = usePdfTextLayer({ documentProxy, revision: previewRevision });
+  const machine = usePdfReaderMachine({
+    pages: textLayer.pages,
+    textLayer,
+    annotatable: true,
+    provenance: {
+      channel: item.meta.provenance_channel,
+      licenseCode: item.meta.license_code,
+      licenseUrl: item.meta.license_url,
+      sourceUrl: item.meta.source_url,
+      attribution: item.meta.attribution,
+    },
+  });
+  const { advance, reportFailure, clearFailure } = machine;
 
   useEffect(() => {
     aliveRef.current = true;
@@ -133,6 +167,9 @@ export function usePdfWorkbench(
     setSavedUrl("");
     setNotice("");
     setError("");
+    clearFailure();
+    advance("reset");
+    advance("source-received");
     void (async () => {
       try {
         const loaded = await loadInitialPdfSource({
@@ -148,10 +185,19 @@ export function usePdfWorkbench(
         setSourceUrl(loaded.durableUrl);
         setPageCount(loaded.pageCount);
         if (loaded.blank) setNotice(tt("已创建一页空白 PDF"));
+        advance("pages-resolved");
         setDocumentRevision((value) => value + 1);
       } catch (caught) {
         if (!controller.signal.aborted && generation === sourceGenerationRef.current) {
-          setError(pdfErrorMessage(caught, tt("PDF 加载失败")));
+          const message = pdfErrorMessage(caught, tt("PDF 加载失败"));
+          setError(message);
+          advance("parse-failed");
+          reportFailure(
+            /encrypt|密码|加密/i.test(message)
+              ? PDF_FAILURE_CODES.F3_encrypted
+              : PDF_FAILURE_CODES.invalidSource,
+            message,
+          );
         }
       } finally {
         if (!controller.signal.aborted && generation === sourceGenerationRef.current) {
@@ -161,65 +207,17 @@ export function usePdfWorkbench(
     })();
     return () => controller.abort();
   }, [
+    advance,
     allowBlankSource,
+    clearFailure,
     item.meta.editor_source_url,
     item.previewUrl,
     item.title,
     item.url,
+    reportFailure,
     siteId,
     tt,
   ]);
-
-  useEffect(() => {
-    let disposed = false;
-    let loadingTask: PDFDocumentLoadingTask | null = null;
-    let loadedDocument: PDFDocumentProxy | null = null;
-    const bytes = bytesRef.current;
-    pdfDocumentRef.current = null;
-    setPreviewRevision((value) => value + 1);
-    if (!bytes) {
-      setPreviewLoading(false);
-      return;
-    }
-    setPreviewLoading(true);
-    void (async () => {
-      try {
-        const pdfjs = await import("pdfjs-dist");
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-          pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-            "pdfjs-dist/build/pdf.worker.min.mjs",
-            import.meta.url,
-          ).toString();
-        }
-        if (disposed) return;
-        loadingTask = pdfjs.getDocument({
-          data: Uint8Array.from(bytes),
-          stopAtErrors: true,
-          isEvalSupported: false,
-        });
-        loadedDocument = await loadingTask.promise;
-        if (disposed) return;
-        pdfDocumentRef.current = loadedDocument;
-        setPageCount(loadedDocument.numPages);
-        setPageNumber((value) => clamp(value, 1, loadedDocument?.numPages || 1));
-        setPreviewRevision((value) => value + 1);
-      } catch (caught) {
-        if (!disposed) setError(pdfErrorMessage(caught, tt("PDF 预览引擎加载失败")));
-      } finally {
-        if (!disposed) setPreviewLoading(false);
-      }
-    })();
-    return () => {
-      disposed = true;
-      pdfDocumentRef.current = null;
-      const destroying = loadingTask
-        ? loadingTask.destroy()
-        : loadedDocument
-          ? loadedDocument.destroy()
-          : null;
-      void destroying?.catch(() => undefined);
-    };
-  }, [documentRevision, tt]);
 
   useEffect(() => {
     if (zoomTimerRef.current !== null) {
@@ -271,6 +269,7 @@ export function usePdfWorkbench(
         setCanRedo(false);
         setSavedUrl("");
         setNotice(result.notice);
+        advance("annotation-edited");
         setDocumentRevision((value) => value + 1);
         return result;
       } catch (caught) {
@@ -291,7 +290,7 @@ export function usePdfWorkbench(
         }
       }
     },
-    [pageCount, pageNumber, tt],
+    [advance, pageCount, pageNumber, tt],
   );
   const annotation = usePdfAnnotations({
     bytesRef,
@@ -390,6 +389,7 @@ export function usePdfWorkbench(
     setSaving(true);
     setError("");
     setNotice("");
+    advance("commit-started");
     try {
       const title = `${pdfFileStem(item.title)}-${tt("编辑版")}`;
       const file = new File([Uint8Array.from(bytes)], `${title}.pdf`, {
@@ -436,6 +436,7 @@ export function usePdfWorkbench(
         setDirty(false);
       }
       setNotice("");
+      advance("commit-succeeded");
       onSaved?.(saved.url);
       return {
         url: saved.url,
@@ -450,8 +451,13 @@ export function usePdfWorkbench(
         item: saved.item,
       };
     } catch (caught) {
+      // F5 / §5.3: the edited bytes stay in `bytesRef`, and the machine falls
+      // back to `annotating` — the one legal failure path out of `saving`.
       if (aliveRef.current && generation === sourceGenerationRef.current) {
-        setError(pdfErrorMessage(caught, tt("保存 PDF 副本失败")));
+        const message = pdfErrorMessage(caught, tt("保存 PDF 副本失败"));
+        setError(message);
+        advance("commit-conflicted");
+        reportFailure(PDF_FAILURE_CODES.F5_annotationLost, message);
       }
       return null;
     } finally {
@@ -460,7 +466,7 @@ export function usePdfWorkbench(
         if (aliveRef.current) setSaving(false);
       }
     }
-  }, [item, onSaved, pageCount, siteId, tt]);
+  }, [advance, item, onSaved, pageCount, reportFailure, siteId, tt]);
 
   const captureRecovery = useCallback(
     () => capturePdfRecovery(bytesRef.current),
@@ -495,6 +501,22 @@ export function usePdfWorkbench(
   );
 
   return {
+    readerState: machine.readerState,
+    failure: machine.failure,
+    textLayer,
+    manifest: machine.manifest,
+    searchFullText: textLayer.searchFullText,
+    renderPageThumbnail: renderThumbnail,
+    zoomStops: PDF_ZOOM_STOPS,
+    fitZoom: (mode, container) => {
+      const scale = Math.max(0.01, renderedZoom / 100);
+      setZoomState(
+        fitPdfZoom(mode, container, {
+          width: pageWidth / scale,
+          height: pageHeight / scale,
+        }),
+      );
+    },
     canvasRef,
     sourceUrl,
     pageNumber,
@@ -526,9 +548,9 @@ export function usePdfWorkbench(
     goToPage,
     previousPage: () => goToPage(pageNumber - 1),
     nextPage: () => goToPage(pageNumber + 1),
-    setZoom: (value) => setZoomState(clamp(Math.round(value), MIN_ZOOM, MAX_ZOOM)),
+    setZoom: (value) => setZoomState(clampPdfZoom(value)),
     zoomBy: (delta) =>
-      setZoomState((value) => clamp(value + delta, MIN_ZOOM, MAX_ZOOM)),
+      setZoomState((value) => nextPdfZoomStop(value, delta >= 0 ? 1 : -1)),
     rotateCurrentPage,
     movePage,
     moveCurrentPage: async (offset) => {

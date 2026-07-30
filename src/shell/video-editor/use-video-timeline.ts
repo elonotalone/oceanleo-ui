@@ -31,7 +31,7 @@ import {
 } from "../library-data";
 import { guessFileKind, guessMediaKind, probeMediaSource } from "./media-probe";
 import {
-  timelineCoverPng,
+  timelinePreviewRenditionPng,
   uploadCoverPng,
   uploadDraft,
   type PersistResult,
@@ -1135,7 +1135,9 @@ export function useVideoTimeline(
       setError(tt("时间线源尚未成功载入，不能从空回退内容截取封面"));
       return;
     }
-    const canvas = previewCanvasRef.current;
+    // 封面是 poster-frame（§3.3 的 thumbnail 派生源），按源分辨率抓，
+    // 不用被 PREVIEW_MAX_WIDTH 限过的取景画布。
+    const canvas = engineRef.current?.captureRenditionCanvas("preview") ?? null;
     if (!canvas || !previewReady) {
       setError(tt("当前帧尚未解码完成，请稍后再试"));
       return;
@@ -1191,9 +1193,11 @@ export function useVideoTimeline(
         `video-timeline:${item.id}:${savingRevision}`,
         workingHeadUrlRef.current,
         tt,
+        // §3.3：preview rendition 必须与源同分辨率，所以从引擎另取一块
+        // 与 doc 等大的离屏帧，而不是复用被限到 1280 宽的取景画布。
         () =>
           previewReady
-            ? timelineCoverPng(previewCanvasRef.current)
+            ? timelinePreviewRenditionPng(engineRef.current, snapshot)
             : Promise.resolve(null),
       );
       if (!result.url) {

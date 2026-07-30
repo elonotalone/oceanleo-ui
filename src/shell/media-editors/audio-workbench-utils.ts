@@ -4,13 +4,28 @@ import {
   type AudioEditOperation,
 } from "./audio-operations";
 import { validAudioOperationProject } from "./audio-checkpoint.mjs";
+import {
+  AUDIO_PROJECT_SCHEMA_ID,
+  AUDIO_PROJECT_SCHEMA_LEGACY_ID,
+  isAudioProjectSchemaId,
+} from "./audio-project-carrier";
 import type { AudioProjectData } from "./audio-workbench-state";
 
 export const MAX_AUDIO_FILE_BYTES = 128 * 1024 * 1024;
 export const MAX_COMPRESSED_AUDIO_BYTES = 48 * 1024 * 1024;
 export const MAX_DECODED_AUDIO_BYTES = 384 * 1024 * 1024;
 const MAX_UNDO_AUDIO_BYTES = 256 * 1024 * 1024;
-export const AUDIO_PROJECT_SCHEMA = "oceanleo.audio.v1";
+
+/**
+ * audio-project.md §1.1 把 `project_schema` 锁死在 `oceanleo.audio-project.v1`，
+ * 注册面（`workbench-capability-registry.ts:100`、`artifact-contract.ts:326`）与
+ * 后端 `_source_format_matches[AUDIO]` 也都用这个值；编辑器此前写的却是
+ * `oceanleo.audio.v1`，落库工程的 schema 与声明对不上。新写一律用规格值，
+ * 读旧草稿仍认别名，否则存量工程打不开。
+ */
+export const AUDIO_PROJECT_SCHEMA = AUDIO_PROJECT_SCHEMA_ID;
+export const AUDIO_PROJECT_SCHEMA_LEGACY = AUDIO_PROJECT_SCHEMA_LEGACY_ID;
+export { isAudioProjectSchemaId };
 
 export function audioBufferBytes(source: AudioBuffer): number {
   return (

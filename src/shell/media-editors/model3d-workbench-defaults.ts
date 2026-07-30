@@ -1,5 +1,6 @@
 import { threeDSubtypeFor, type LibraryItem } from "../library-data";
 import { createModel3DDirectorDocument } from "./model3d-director";
+import { MODEL3D_STAGE_TOKENS } from "./model3d-framing.mjs";
 import type { Model3DViewProject } from "./model3d-project";
 import type { Model3DRuntimeSnapshot } from "./model3d-runtime.mjs";
 
@@ -13,7 +14,7 @@ export const DEFAULT_MODEL3D_VIEW: Model3DViewProject = {
   shadowIntensity: 1,
   shadowSoftness: 1,
   shadowEnabled: true,
-  background: "#f5f5f4",
+  background: MODEL3D_STAGE_TOKENS["stage.bg.bottom"],
   animationName: "",
   animationPlaying: false,
   animationSpeed: 1,

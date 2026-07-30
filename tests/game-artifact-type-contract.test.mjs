@@ -46,7 +46,7 @@ const gameRouteCode = gameRouteSource
   .join("\n");
 
 test("game is the fourteenth artifact type and owns its own adapter", () => {
-  assert.equal(ARTIFACT_TYPES.length, 14);
+  assert.equal(ARTIFACT_TYPES.length, 16);
   assert.ok(ARTIFACT_TYPES.includes("game"));
   assert.equal(
     ADVANCED_CAPABILITY_MATRIX.length,

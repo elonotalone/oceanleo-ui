@@ -36,6 +36,16 @@ export type LibraryKind =
    * 送进 Next 源码编辑器。
    */
   | "game"
+  /**
+   * 地图工程与交互文档各占一个 viewer kind。
+   *
+   * 刻意不并进 `canvas` 或 `document`：`canvas` 的查看器是嵌入式画布宿主，
+   * `document` 的查看器是富文本；两个新载体的 source 都是结构化 JSON 工程，
+   * 并进任一侧都会让卡片、图标与「编辑」入口指向错误的工作台
+   * （`geo-map.md` §10.3、`interactive-doc.md` §1.1）。
+   */
+  | "geo_map"
+  | "interactive_doc"
   | "file";
 
 export type EditorCapabilityName = "load" | "mutate" | "save" | "reopen";
@@ -124,6 +134,8 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   model_3d: "threed",
   workflow: "canvas",
   game: "game",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
 };
 
 /**
@@ -201,6 +213,8 @@ export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
     xhs: "document",
     threed: "model_3d",
     game: "game",
+    geo_map: "geo_map",
+    interactive_doc: "interactive_doc",
     file: "document",
   } as Record<LibraryKind, ArtifactType>)[kind];
 }
@@ -476,6 +490,15 @@ const KIND_ALIASES: Record<string, LibraryKind> = {
   game: "game",
   games: "game",
   leoplay: "game",
+  /**
+   * `map` 已被上面的 `canvas` 占用（思维导图 / 白板），**不改**：地理地图的
+   * token 一律带 `geo` 前缀。`cleanToken` 把连字符折成下划线，所以
+   * `geo-map` 与 `geo_map` 命中同一个键。
+   */
+  geo_map: "geo_map",
+  geomap: "geo_map",
+  interactive_doc: "interactive_doc",
+  interactivedoc: "interactive_doc",
   file: "file",
   other: "file",
 };

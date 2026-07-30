@@ -235,6 +235,10 @@ export function useExploreShelfDispatch(input: {
     [playable.entries],
   );
   const materialEntries = useMemo(
+    // 素材那一格的成员来自 `EXPLORE_MATERIAL_ARTIFACT_TYPES` 那条全覆盖名单，
+    // 第 15 / 16 类 `geo_map` / `interactive_doc` 就在里面（`explore-artifact-class.ts`
+    // 有加载期不变量兜住漏项），所以两类新素材在探索页网格里可见、
+    // 且**不会**被可玩探针那条 `artifactType=game` 收窄误收进竖向 feed。
     () => exploreEntriesOfClass(input.entries, "material"),
     [input.entries],
   );

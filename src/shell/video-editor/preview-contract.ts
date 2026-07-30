@@ -1,5 +1,20 @@
 import type { TimelineClip } from "./types";
 
+/**
+ * video-timeline.md §3.3 预览分辨率契约的公开面。判据本体在
+ * `timeline-carrier.ts`（与 IR / 完备判据同源），这里转出来是因为调用方
+ * 找「预览契约」时先来这个文件。
+ */
+export {
+  assertPreviewResolution,
+  previewRenditionSize,
+  thumbnailRenditionSize,
+  thumbnailResolutionOk,
+  TIMELINE_DELIVERY_TIERS,
+  deliveryTierFor,
+} from "./timeline-carrier";
+export type { PreviewResolutionVerdict, ResolutionPair } from "./timeline-carrier";
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }

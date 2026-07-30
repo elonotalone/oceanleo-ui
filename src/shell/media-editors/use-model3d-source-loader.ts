@@ -15,12 +15,20 @@ import type { Model3DOperation } from "./model3d-operations.mjs";
 import type { Model3DViewProject } from "./model3d-project";
 import type { Model3DAnnotation } from "./model3d-view";
 import type { Model3DSceneRuntime } from "./model3d-runtime.mjs";
+import { Model3DClosureError } from "./model3d-closure";
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, Number(value)));
 
+/**
+ * §3.3/§6:闭包缺件必须带 §6 错误码与缺哪一件一起显示出来。空场景 + 无提示是
+ * 规格点名要治的观感,所以这里从不把缺件降级成通用文案。
+ */
 function sourceError(caught: unknown, fallback: string): string {
   if (caught instanceof DOMException && caught.name === "AbortError") return "";
+  if (caught instanceof Model3DClosureError) {
+    return `[${caught.code}] ${caught.message}`;
+  }
   return caught instanceof Error ? caught.message : fallback;
 }
 

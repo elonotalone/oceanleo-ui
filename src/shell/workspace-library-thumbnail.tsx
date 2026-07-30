@@ -130,8 +130,19 @@ export function WorkspaceThumbnail({
     /^(?:pdf|docx?|odt|rtf|pptx?|odp|xlsx?|ods|csv|mp4|mov|webm)$/.test(
       String(item?.meta.format || "").toLowerCase(),
     );
+  /**
+   * 两个新载体**显式**不走「浏览器现生成缩略图」这条路。
+   *
+   * 它们的字节是 JSON 工程，浏览器侧没有可栅格化的输入；缩略图只能来自编辑器
+   * 渲出的 `preview`（`geo-map.md` §5.4 的 2D 抓帧路径、§8.2「抓帧颜色数 ≥ 24」）。
+   * 写成显式排除而不是靠 kind 白名单的默认漏过：日后若有人把 `json` 加进上面
+   * 那张可生成扩展名表，这两类不会被顺带卷进去生成一张空白图。
+   */
+  const forbidsGeneratedThumbnail =
+    kind === "geo_map" || kind === "interactive_doc";
   const requiresGeneratedThumbnail = Boolean(
     item &&
+      !forbidsGeneratedThumbnail &&
       canGenerateThumbnail &&
       ["ppt", "sheet", "document", "video", "file"].includes(kind) &&
       (!url || url === item.url),

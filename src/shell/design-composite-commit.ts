@@ -20,6 +20,17 @@ import {
   artifactSaveStepMessage,
   planArtifactSaveRenditions,
 } from "./doc-editors/artifact-save-contract";
+import {
+  DESIGN_DOCUMENT_CONSTANTS,
+  validateDesignDocumentProject,
+} from "./image-editor/design-document-schema";
+import {
+  designDocumentEvidence,
+  designDocumentLicenseManifest,
+  designDocumentSourceCompleteness,
+  verifyDesignDocumentLayerOrder,
+  type DesignDocumentEvidence,
+} from "./image-editor/design-document-carrier";
 
 export const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
 export const DESIGN_SCENE_SCHEMA = "oceanleo.design-scene.v1";
@@ -35,7 +46,8 @@ type JsonRecord = Record<string, unknown>;
 export type DesignCompositeSourceKind =
   | "canonical"
   | "flat-template"
-  | "published-package";
+  | "published-package"
+  | "carrier-document";
 export type DesignCompositeSourceMode = "layered" | "flattened";
 export type DesignCompositeRecovery =
   | "none"
@@ -828,6 +840,96 @@ function publishedPackageEvidence(source: JsonRecord): {
     revision: flatDesignRevision(source, document),
     sourceMode:
       declaredMode === "flattened" ? "flattened" : "layered",
+  };
+}
+
+/**
+ * `oceanleo.design-document.v1` carrier form (design-document.md §3.1): the
+ * flat, `additionalProperties: false` document with `palette` and
+ * `attribution`. It is distinguishable from the editor envelope, which always
+ * carries `sceneGraph` / `dependencyManifest` / `history` and never a top-level
+ * `palette`, so the two shapes never collide.
+ */
+export function isDesignDocumentCarrierSource(value: unknown): boolean {
+  const source = record(value);
+  return Boolean(
+    source &&
+      source.schema === DESIGN_SOURCE_FORMAT &&
+      source.sceneGraph === undefined &&
+      source.dependencyManifest === undefined &&
+      source.history === undefined &&
+      Array.isArray(source.palette) &&
+      record(source.attribution) !== null,
+  );
+}
+
+export interface DesignDocumentCarrierGateResult {
+  evidence: DesignDocumentEvidence;
+  assetIds: string[];
+  licenseCodes: string[];
+}
+
+/**
+ * §8.1 / §8.2 / §9 gate for the carrier form. This is the positive answer to
+ * the 233 B hollow artifact: 16 KiB of source bytes and 20 real elements are
+ * both required before the revision may claim `editability = native`.
+ *
+ * Raster-stage criteria (frame colour count) are enforced later on the
+ * `rasterized → ready` edge, not faked here.
+ */
+export function assertDesignDocumentCarrierSource(
+  parsedSource: unknown,
+  sourceByteSize: number,
+): DesignDocumentCarrierGateResult {
+  const validation = validateDesignDocumentProject(parsedSource);
+  if (!validation.ok) {
+    throw new DesignCompositeCommitError(
+      `design document carrier 未通过 §3.1 校验：${validation.errors
+        .slice(0, 4)
+        .map((error) => `${error.path || "<root>"} ${error.message}`)
+        .join("；")}`,
+      "design-source-invalid-structure",
+    );
+  }
+  const project = validation.project;
+  if (sourceByteSize < DESIGN_DOCUMENT_CONSTANTS.C34_minimumSourceBytes) {
+    throw new DesignCompositeCommitError(
+      `design document carrier source 仅 ${sourceByteSize} B，低于 §8.1 字节下限 ${DESIGN_DOCUMENT_CONSTANTS.C34_minimumSourceBytes} B。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const layer = verifyDesignDocumentLayerOrder(project);
+  if (!layer.ok) {
+    throw new DesignCompositeCommitError(
+      `design document carrier 图层序不合规（§3.3）：z 重复 ${layer.duplicateZ.length}、悬空 childIds ${layer.danglingChildIds.length}、越界子层 ${layer.misplacedChildIds.length}、完全出画板 ${layer.offBoardElementIds.length}。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const completeness = designDocumentSourceCompleteness(
+    project,
+    sourceByteSize,
+  );
+  if (!completeness.ok) {
+    throw new DesignCompositeCommitError(
+      `design document carrier 未满足 §8.2 完备判据：${completeness.failed.join(", ")}。`,
+      "design-source-invalid-structure",
+    );
+  }
+  const license = designDocumentLicenseManifest(project);
+  if (!license.ok) {
+    throw new DesignCompositeCommitError(
+      `design document carrier 许可不合规（§5.4）：未署名字体 ${license.fontsWithoutAttribution.join(",") || "none"}、禁用许可 ${license.forbiddenLicenseCodes.join(",") || "none"}。`,
+      "design-source-invalid-structure",
+    );
+  }
+  return {
+    evidence: designDocumentEvidence(project),
+    assetIds: (project.assets ?? []).map((asset) => asset.id),
+    licenseCodes: [
+      ...new Set(
+        project.attribution.entries.map((entry) => entry.licenseCode),
+      ),
+    ],
   };
 }
 

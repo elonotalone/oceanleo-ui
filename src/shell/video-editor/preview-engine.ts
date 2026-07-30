@@ -17,8 +17,18 @@ import {
   normalizeTimelineDoc,
 } from "./timeline-model";
 import { drawTimelineVideoFrame } from "./preview-contract";
+import {
+  assertPreviewResolution,
+  previewRenditionSize,
+  thumbnailRenditionSize,
+  TimelineCarrierError,
+} from "./timeline-carrier";
 import type { TimelineClip, TimelineDoc, TimelineTrack } from "./types";
 
+/**
+ * 屏上取景宽度上限。这是视口,不是交付物 —— `preview` rendition 走
+ * captureRenditionCanvas("preview"),按 video-timeline.md §3.3 恒等于源分辨率。
+ */
 const PREVIEW_MAX_WIDTH = 1280;
 export const DEFAULT_TEXT_FONT_SIZE = 64;
 
@@ -399,8 +409,22 @@ export class TimelinePreviewEngine {
     const height = Math.max(2, Math.round(this.doc.height * scale));
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
+    const waiting = this.composite(canvas, width, height, scale);
+    this.setFrameReady(!waiting);
+  }
+
+  /**
+   * 把当前时刻合成到给定尺寸的画布上,返回是否仍在等素材解码。
+   * 屏上取景与交付 rendition 共用这一条合成路径,两边不会画出不同的帧。
+   */
+  private composite(
+    canvas: HTMLCanvasElement,
+    width: number,
+    height: number,
+    scale: number,
+  ): boolean {
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return true;
     const t = this.timeMs;
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#0c0a09";
@@ -511,7 +535,45 @@ export class TimelinePreviewEngine {
       ctx.fillRect(0, 0, width, height);
       ctx.globalAlpha = 1;
     }
-    this.setFrameReady(!waitingForActiveVisual);
+    return waitingForActiveVisual;
+  }
+
+  /**
+   * video-timeline.md §3.3 预览分辨率契约。
+   *
+   * `preview` rendition MUST 与源同分辨率 —— 入库校验读的就是
+   * `preview.width == width && preview.height == height`
+   * (`reviewed_material_catalog.py:2707-2708`)。屏上取景画布被
+   * PREVIEW_MAX_WIDTH 限到 1280 宽,直接拿它当 preview 交付就是 F5
+   * 「为省字节交付缩小版预览」,整包会被拒。所以这里另起一块与
+   * `doc.width × doc.height` 等大的离屏画布重新合成,不做任何重采样。
+   *
+   * `thumbnail` 由 poster-frame 派生,MAY 缩小,但最小边 MUST ≥ 128 px。
+   */
+  captureRenditionCanvas(
+    purpose: "preview" | "thumbnail",
+    maxThumbnailEdgePx = 512,
+  ): HTMLCanvasElement | null {
+    if (typeof document === "undefined") return null;
+    const source = { width: this.doc.width, height: this.doc.height };
+    const target =
+      purpose === "preview"
+        ? previewRenditionSize(source)
+        : thumbnailRenditionSize(source, maxThumbnailEdgePx);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(2, target.width);
+    canvas.height = Math.max(2, target.height);
+    this.composite(canvas, canvas.width, canvas.height, canvas.width / Math.max(1, source.width));
+    if (purpose === "preview") {
+      const verdict = assertPreviewResolution(source, {
+        width: canvas.width,
+        height: canvas.height,
+      });
+      if (!verdict.ok) {
+        throw new TimelineCarrierError(verdict.code!, verdict.message!);
+      }
+    }
+    return canvas;
   }
 
   private setFrameReady(ready: boolean): void {

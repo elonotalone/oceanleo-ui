@@ -165,10 +165,16 @@ export function MaterialAppAnchorChip({
 }
 
 /**
- * 次级筛选（D2：13 个 artifactType chips 从第一层降为次级）。
+ * 次级筛选（D2：artifactType chips 从第一层降为次级）。
  *
  * `availableTypes` 给了就只铺货架上真实存在的类型 + 已选中的类型：站点不再声明
- * `types`，铺满 13 颗里有 11 颗点了必空，那不是筛选而是噪音。
+ * `types`，铺满 15 颗里有 13 颗点了必空，那不是筛选而是噪音。
+ *
+ * 颗数与文案都从 `ARTIFACT_TYPES` × `MATERIAL_TAXONOMY_LABEL` 推导，不在本文件
+ * 维护第二份名单，所以 `geo_map` 与 `interactive_doc`（15 / 16 类）一落进枚举
+ * 就自动成为独立 chip 与独立 `<option>`，**没有**任何「其它类型」兜底分支把它们
+ * 收进去 —— `MATERIAL_TAXONOMY_LABEL` 是 `Record<ArtifactType, string>` 全覆盖，
+ * 漏一个类型是编译错误而不是运行时降级。
  */
 export function MaterialTypeFilter({
   multiSelect,

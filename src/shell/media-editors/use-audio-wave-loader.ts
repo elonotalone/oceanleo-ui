@@ -25,9 +25,13 @@ import type {
   AudioSelection,
 } from "./audio-workbench-state";
 import {
+  AUDIO_LAYOUT,
+  AUDIO_WAVE_PALETTE,
+  isAudioProjectSchemaId,
+} from "./audio-project-carrier";
+import {
   applyAudioOperation,
   audioBufferBytes,
-  AUDIO_PROJECT_SCHEMA,
   encodeWav,
   MAX_AUDIO_FILE_BYTES,
   MAX_COMPRESSED_AUDIO_BYTES,
@@ -110,10 +114,11 @@ export function useAudioWaveLoader({
   useEffect(() => {
     const container = containerRef.current;
     const sourceUrl = item.url || item.previewUrl || "";
-    const projectUrl =
-      item.meta.editor_project_schema === AUDIO_PROJECT_SCHEMA
-        ? String(item.meta.editor_project_url || item.url || "").trim()
-        : "";
+    // 存量草稿的 schema 可能是改名前的 `oceanleo.audio.v1`；两个 id 都要能打开。
+    const declaredSchema = String(item.meta.editor_project_schema || "");
+    const projectUrl = isAudioProjectSchemaId(declaredSchema)
+      ? String(item.meta.editor_project_url || item.url || "").trim()
+      : "";
     if (!container) return;
     let disposed = false;
     const controller = new AbortController();
@@ -126,7 +131,7 @@ export function useAudioWaveLoader({
         const project = projectUrl
           ? await loadEditorProject<AudioProjectData>(
               projectUrl,
-              AUDIO_PROJECT_SCHEMA,
+              declaredSchema,
               controller.signal,
             )
           : null;
@@ -220,14 +225,16 @@ export function useAudioWaveLoader({
         );
         objectUrlRef.current = objectUrl;
         const regions = RegionsPluginClass.create();
+        // 波形色板与版面逐值照 audio-project.md §2.1 / §2.2。
         const wave = WaveSurferClass.create({
           container,
           url: objectUrl,
           plugins: [regions],
-          height: 180,
-          waveColor: "#a8a29e",
-          progressColor: "#6d5dfc",
-          cursorColor: "#292524",
+          height: AUDIO_LAYOUT.waveViewHeightPx,
+          waveColor: AUDIO_WAVE_PALETTE["wave.body"].value,
+          progressColor: AUDIO_WAVE_PALETTE["wave.peak"].value,
+          cursorColor: AUDIO_WAVE_PALETTE["wave.playhead"].value,
+          cursorWidth: AUDIO_LAYOUT.playheadWidthPx,
           barWidth: 2,
           barGap: 1,
           barRadius: 2,
@@ -237,7 +244,8 @@ export function useAudioWaveLoader({
         waveRef.current = wave;
         regionsRef.current = regions;
         disableDrag = regions.enableDragSelection({
-          color: "rgba(79,70,229,.20)",
+          // §2.1 `wave.selection` = #2E8B6F（实测 4.31:1 对 wave.bg）。
+          color: `${AUDIO_WAVE_PALETTE["wave.selection"].value}33`,
           drag: true,
           resize: true,
         });

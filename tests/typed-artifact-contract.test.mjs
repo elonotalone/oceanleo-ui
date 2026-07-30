@@ -103,10 +103,11 @@ function projection(overrides = {}) {
   };
 }
 
-test("rich artifact taxonomy exposes exactly fourteen canonical types", () => {
-  // 第 14 类是 `game`（`01-decisions.md` D7）。
-  assert.equal(ARTIFACT_TYPES.length, 14);
-  assert.equal(new Set(ARTIFACT_TYPES).size, 14);
+test("rich artifact taxonomy exposes exactly sixteen canonical types", () => {
+  // 第 14 类是 `game`（`01-decisions.md` D7）；第 15、16 类是 `geo_map` 与
+  // `interactive_doc`（`geo-map.md` / `interactive-doc.md` §1.1）。
+  assert.equal(ARTIFACT_TYPES.length, 16);
+  assert.equal(new Set(ARTIFACT_TYPES).size, 16);
 });
 
 test("one normalized item pins identity, scene and every rendition to one revision", () => {

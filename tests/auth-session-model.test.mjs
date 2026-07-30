@@ -8,7 +8,7 @@
 //      域边界是唯一的保护。注释谎报会让后人做出错误的安全判断。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { cookieDomainFor, cookieOptions } from "../src/lib/auth/config.ts";
 
@@ -162,4 +162,78 @@ test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头"
 test("全局登出失败时兜底清掉本地会话", () => {
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"global"\s*\}\)/);
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"local"\s*\}\)/);
+});
+
+// —————————————————————————————————————————————————————————————————————
+// 身份实现的唯一性（W10，2026-07-29）
+//
+// 附录 3 §3：此前 35 份分叉登录实现散在 32 个站仓里，其中 `game/components/
+// GameShell.tsx` 那第七套**名字里没有 Auth**，按文件名清点直接漏掉。所以这里
+// 按**实现特征**清点，不按文件名：整个共享包里只允许 `src/lib/auth/client.ts`
+// 一处直接调 Supabase 的身份 API；`src/pages/AuthDialog.tsx` 只许消费它。
+// —————————————————————————————————————————————————————————————————————
+
+const SRC_ROOT = new URL("../src/", import.meta.url);
+const IDENTITY_API = /signInWithPassword|signInWithOtp|verifyOtp|auth\.signUp|signInWithOAuth/;
+
+async function sourceFilesUnder(dir) {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const child = new URL(entry.name + (entry.isDirectory() ? "/" : ""), dir);
+    if (entry.isDirectory()) out.push(...(await sourceFilesUnder(child)));
+    else if (/\.tsx?$/.test(entry.name)) out.push(child);
+  }
+  return out;
+}
+
+const packageSources = new Map();
+for (const url of await sourceFilesUnder(SRC_ROOT)) {
+  packageSources.set(url.href.slice(SRC_ROOT.href.length), await readFile(url, "utf8"));
+}
+
+test("共享包里只有一处直接调 Supabase 身份 API（按实现特征清点，不按文件名）", () => {
+  const implementations = [...packageSources]
+    .filter(([, source]) => IDENTITY_API.test(source))
+    .map(([path]) => path)
+    .sort();
+  assert.deepEqual(
+    implementations,
+    ["lib/auth/client.ts"],
+    "共享包出现了第二套身份实现——登录必须只有 lib/auth/client.ts 一个落点",
+  );
+  // 清点本身没有空转：那个唯一实现确实被认出来了。
+  assert.match(packageSources.get("lib/auth/client.ts"), IDENTITY_API);
+});
+
+test("共享登录 UI 只消费 lib/auth，不自建 Supabase 客户端、不碰会话 cookie", () => {
+  const dialog = packageSources.get("pages/AuthDialog.tsx");
+  assert.ok(dialog, "src/pages/AuthDialog.tsx 不存在——共享登录 UI 是全家桶唯一的门");
+  assert.match(
+    dialog,
+    /from\s+"\.\.\/lib\/auth\/client"/,
+    "AuthDialog 必须从 lib/auth/client 取登录函数",
+  );
+  for (const symbol of [
+    "signIn",
+    "sendPhoneOtp",
+    "verifyPhoneOtp",
+    "wechatLoginUrl",
+    "normalizeCnPhone",
+    "oceanleoConfigured",
+  ]) {
+    assert.match(dialog, new RegExp(`\\b${symbol}\\b`), `AuthDialog 没用上既有的 ${symbol}`);
+  }
+  // 下面几条查的是**实现**，注释里点名 cookieDomainFor / .oceanleo.com 是在解释
+  // 会话模型（该写），所以先把整行注释去掉再断言。
+  const code = dialog
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join("\n");
+  // 自建客户端 / 自设 cookie / 自定 cookie 域，都是「第二套身份逻辑」的形态。
+  assert.doesNotMatch(code, /createBrowserClient|createClient|@supabase/);
+  assert.doesNotMatch(code, /document\.cookie|cookieOptions|cookieDomainFor|SSO_REGISTRABLE_DOMAIN/);
+  // 微信回跳必须取当前页；硬编码一个门户 URL 就等于「子站登录后弹回门户」。
+  assert.doesNotMatch(code, /https:\/\/[\w.-]*oceanleo\.com/);
+  // httpOnly 是显式的 false（config.ts），登录 UI 这一侧不得有任何相关"加固"。
+  assert.doesNotMatch(code, /httpOnly/);
 });

@@ -150,7 +150,7 @@ test("矢量下载仍交付 svg 源文件，不退化成 png", () => {
 });
 
 test("deck / website / image / composite 四行未被这次修正碰到", () => {
-  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 13);
+  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 15);
   for (const [featureId, adapter, sourceFormat, projectSchema] of [
     ["presentation_editing", "deck", "pptx", "oceanleo.deck.v1"],
     ["website_finetuning", "website", "website-source@1", "website-source@1"],

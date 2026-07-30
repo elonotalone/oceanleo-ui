@@ -20,6 +20,12 @@ import {
   validateModel3DGrant,
   type Model3DArtifactIdentity,
 } from "./model3d-dependency-runtime.mjs";
+import {
+  Model3DClosureError,
+  model3DDependencyRefs,
+  resolveModel3DDependencyClosure,
+  type Model3DClosureEntry,
+} from "./model3d-closure";
 
 export type { Model3DArtifactIdentity } from "./model3d-dependency-runtime.mjs";
 
@@ -53,7 +59,42 @@ export interface PreparedModelRuntimeSource {
   format: "glb" | "gltf";
   sourceUrl: string;
   dependencyBaseUrl: string;
+  /** §3.3 闭包凭据:实际取回的外部依赖条数与字节合计。 */
+  closure: {
+    dependencyCount: number;
+    closureBytes: number;
+    sourceBytes: number;
+  };
   release: () => void;
+}
+
+/**
+ * §3.3 受控失败:任何一件闭包依赖取不回来时,把它按 buffer / image 分类成
+ * §3.2 的 `invalid`(无几何即无模型)或 `degraded`(缺贴图),并在错误里点名
+ * 具体是哪一件。调用方 MUST 把这条错误显示出来,MUST NOT 静默渲空场景。
+ */
+function closureFailure(
+  document: unknown,
+  failedUri: string,
+  cause: unknown,
+): Model3DClosureError {
+  const available: Model3DClosureEntry[] = model3DDependencyRefs(
+    document as Record<string, unknown>,
+  )
+    .filter((ref) => ref.uri !== failedUri)
+    .map((ref) => ({ path: ref.uri, bytes: 1 }));
+  const resolution = resolveModel3DDependencyClosure(
+    document as Record<string, unknown>,
+    available,
+  );
+  const detail = cause instanceof Error ? cause.message : String(cause || "");
+  const error = new Model3DClosureError({
+    ...resolution,
+    message: detail
+      ? `${resolution.message}（原因：${detail}）`
+      : resolution.message,
+  });
+  return error;
 }
 
 function modelGrantError(payload: unknown, status: number): string {
@@ -199,39 +240,53 @@ export async function prepareModelRuntimeSource(
   let dependencyRelease: (() => void) | null = null;
   let totalBytes = blob.size;
   let runtimeBlob = blob;
+  let closureBytes = 0;
+  let dependencyCount = 0;
   if (format === "gltf") {
     const document = parseGltfDocument(await blob.text());
     gltfDependencyUris(document);
+    dependencyCount = new Set(
+      model3DDependencyRefs(document).map((ref) => ref.uri),
+    ).size;
     const materialized = await materializeModel3DGltfDependencies(
       document,
       async (uri) => {
         let dependency: Blob;
-        if (identity) {
-          const dependencyPath = model3DDependencyPath(uri);
-          const grant = await requestModelGrant(
-            model3DDependencyGrantPath(identity, dependencyPath),
-            identity,
-            token,
-            signal,
-            dependencyPath,
-          );
-          dependency = await fetchGrantedModelBlob(grant.url, token, signal);
-        } else {
-          let resolved: URL;
-          try {
-            resolved = new URL(uri, resolvedDependencyBaseUrl);
-          } catch {
-            throw new Error(`glTF 依赖地址无法解析：${uri.slice(0, 160)}`);
+        try {
+          if (identity) {
+            const dependencyPath = model3DDependencyPath(uri);
+            const grant = await requestModelGrant(
+              model3DDependencyGrantPath(identity, dependencyPath),
+              identity,
+              token,
+              signal,
+              dependencyPath,
+            );
+            dependency = await fetchGrantedModelBlob(grant.url, token, signal);
+          } else {
+            let resolved: URL;
+            try {
+              resolved = new URL(uri, resolvedDependencyBaseUrl);
+            } catch {
+              throw new Error(`glTF 依赖地址无法解析：${uri.slice(0, 160)}`);
+            }
+            if (!["http:", "https:"].includes(resolved.protocol)) {
+              throw new Error(`glTF 依赖协议不受支持：${resolved.protocol}`);
+            }
+            dependency = await fetchMediaBlob(resolved.href, {
+              maxBytes: MAX_MODEL_BYTES,
+              signal,
+            });
           }
-          if (!["http:", "https:"].includes(resolved.protocol)) {
-            throw new Error(`glTF 依赖协议不受支持：${resolved.protocol}`);
+        } catch (caught) {
+          if (caught instanceof DOMException && caught.name === "AbortError") {
+            throw caught;
           }
-          dependency = await fetchMediaBlob(resolved.href, {
-            maxBytes: MAX_MODEL_BYTES,
-            signal,
-          });
+          throw closureFailure(document, uri, caught);
         }
+        if (!dependency.size) throw closureFailure(document, uri, null);
         totalBytes += dependency.size;
+        closureBytes += dependency.size;
         if (totalBytes > MAX_MODEL_BYTES) {
           throw new Error("3D 模型依赖闭包超过 512MB 安全上限");
         }
@@ -256,6 +311,7 @@ export async function prepareModelRuntimeSource(
     format,
     sourceUrl,
     dependencyBaseUrl: resolvedDependencyBaseUrl,
+    closure: { dependencyCount, closureBytes, sourceBytes: blob.size },
     release: () => {
       if (released) return;
       released = true;

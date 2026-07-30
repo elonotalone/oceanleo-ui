@@ -11,6 +11,7 @@
 
 import type { MutableRefObject } from "react";
 import type { LibraryItem } from "../library-data";
+import { DESIGN_ARTBOARD_TIERS } from "./design-document-schema";
 import type { ImageSceneDiagnosticCode } from "./image-scene-source";
 
 export type ExportFormat = "png" | "jpeg" | "webp";
@@ -195,12 +196,28 @@ export interface CanvasPreset {
   height: number;
 }
 
-export const CANVAS_PRESETS: CanvasPreset[] = [
-  { id: "square", label: "1:1 方形", width: 1080, height: 1080 },
-  { id: "classic", label: "4:3 横版", width: 1440, height: 1080 },
-  { id: "wide", label: "16:9 宽屏", width: 1920, height: 1080 },
-  { id: "xhs", label: "3:4 小红书", width: 1080, height: 1440 },
-];
+const CANVAS_PRESET_LABELS: Record<string, string> = {
+  square: "1:1 社媒方图",
+  story: "9:16 竖屏",
+  wide: "16:9 横幅封面",
+  poster: "A4 300dpi 海报",
+  card: "OG 卡片",
+  banner: "站内横幅",
+};
+
+/**
+ * design-document.md §2.2 artboard size tiers. The presets are derived from the
+ * carrier's tier table rather than restated, so `designArtboardTier()` can name
+ * every size the canvas can produce.
+ */
+export const CANVAS_PRESETS: CanvasPreset[] = DESIGN_ARTBOARD_TIERS.map(
+  (tier) => ({
+    id: tier.id,
+    label: CANVAS_PRESET_LABELS[tier.id] || tier.label,
+    width: tier.width,
+    height: tier.height,
+  }),
+);
 
 export interface FabricImageEditorOptions {
   /** 宿主注入的 AI 编辑执行器：给 prompt + 当前画布 PNG，回结果图 URL。 */

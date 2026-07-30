@@ -10,6 +10,10 @@ import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfStage } from "../media-editors/PdfStage";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
+import {
+  PDF_MAX_ZOOM,
+  PDF_MIN_ZOOM,
+} from "../media-editors/pdf-workbench-utils";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -103,10 +107,12 @@ export function PdfRoute({
           undo: editor.undo,
           redo: editor.redo,
         },
+        // §2.3 / C20–C21: the reader's zoom range is 25 %–400 %. The shell
+        // slider must not cap below the carrier contract.
         viewport: {
           value: editor.zoom,
-          min: 25,
-          max: 300,
+          min: PDF_MIN_ZOOM,
+          max: PDF_MAX_ZOOM,
           step: 5,
           setValue: editor.setZoom,
           fit: () => editor.setZoom(100),
@@ -124,8 +130,11 @@ export function PdfRoute({
           onFiles: mergeLocalPdfs,
         },
         stage: <PdfStage editor={editor} accent={accent} />,
+        // §6: a failed load reaches the shell status bar with its code, so the
+        // route never presents an empty stage with no stated reason.
         status:
           editor.error ||
+          editor.failure?.message ||
           editor.notice ||
           (editor.loading ? "正在载入 PDF" : ""),
         persistence: {

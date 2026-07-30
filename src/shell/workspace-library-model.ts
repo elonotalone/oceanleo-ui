@@ -53,6 +53,10 @@ export const WORKSPACE_KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   audio: "音频",
   xhs: "小红书",
   threed: "3D",
+  // 第 15 / 16 类载体的卡片标签。缺项会让缩略图与卡片头都退回 tt("内容")
+  // 那句兜底文案，`geo-map.md` §10.3 的枚举面要求每类都有自己的显式标签。
+  geo_map: "地图",
+  interactive_doc: "交互文档",
   file: "文件",
 };
 

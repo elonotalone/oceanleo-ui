@@ -46,6 +46,23 @@ export const EXPLORE_MATERIAL_ARTIFACT_TYPES: readonly ArtifactType[] =
     ),
   );
 
+/**
+ * 分类是**全覆盖**的：`ARTIFACT_TYPES` 的每个成员恰好落在 playable 或 material
+ * 之一。第 15 / 16 类 `geo_map` / `interactive_doc` 归 material —— 它们不可玩，
+ * 呈现模式是网格货架 —— 并且是经上面这条真名单进来的，**不是**靠
+ * `exploreArtifactClassOf` 那条「认不出来就当素材」的 fail-open 兜底。
+ * 这条不变量把两者的区别钉死：漏一类会在模块加载时炸，不会静默降级。
+ */
+if (
+  EXPLORE_PLAYABLE_ARTIFACT_TYPES.length +
+    EXPLORE_MATERIAL_ARTIFACT_TYPES.length !==
+  ARTIFACT_TYPES.length
+) {
+  throw new Error(
+    "Every artifact type must be classified as playable or material",
+  );
+}
+
 /** 分区顺序：可玩游戏在前。这一站的主角是能玩的东西，素材是它的原料。 */
 export const EXPLORE_ARTIFACT_CLASS_ORDER: readonly ExploreArtifactClass[] =
   Object.freeze(["playable", "material"] as const);

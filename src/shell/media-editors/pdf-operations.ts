@@ -6,6 +6,16 @@ import {
   PDFName,
   degrees,
 } from "pdf-lib";
+import { PDF_READER_PALETTE } from "./pdf-workbench-utils";
+
+// §2.1 `annot.text.marker`, expressed as the PDF `C` array.
+const TEXT_MARKER_CHANNELS = [0, 2, 4].map(
+  (offset) =>
+    Number.parseInt(
+      PDF_READER_PALETTE["annot.text.marker"].slice(1 + offset, 3 + offset),
+      16,
+    ) / 255,
+);
 
 const LOAD_OPTIONS = {
   ignoreEncryption: false,
@@ -107,7 +117,7 @@ export async function addPdfTextAnnotation(
     Contents: PDFHexString.fromText(text),
     T: PDFHexString.fromText("OceanLeo"),
     Name: PDFName.of("Comment"),
-    C: [1, 0.82, 0.2],
+    C: TEXT_MARKER_CHANNELS,
     F: 4,
   });
   page.node.addAnnot(document.context.register(annotation));

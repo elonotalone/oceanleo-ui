@@ -41,6 +41,11 @@ const CANONICAL_ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "grid",
   "deck",
   "threed",
+  // 两个新载体各有独立 route，必须同时进这张表：`advancedSessionAppId` 与
+  // `advancedSessionSnapshot` 对表外的 route 一律抛「Legacy office route」，
+  // 漏登记会让 GeoMapRoute / InteractiveDocRoute 在挂载时就炸掉会话。
+  "geo-map",
+  "interactive-doc",
   "embed",
   "none",
 ]);
@@ -60,6 +65,8 @@ const ITEM_KINDS = new Set<LibraryKind>([
   "audio",
   "xhs",
   "threed",
+  "geo_map",
+  "interactive_doc",
   "file",
 ]);
 const META_KEYS = new Set([

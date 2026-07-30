@@ -84,6 +84,8 @@ const SOURCE_FORMATS = {
   model_3d: "glb",
   workflow: "oceanleo.workflow.v1",
   game: "oceanleo.game-bundle.v1",
+  geo_map: "oceanleo.geo-map.v1",
+  interactive_doc: "oceanleo.interactive-doc.v1",
 };
 
 const EXPECTED_KINDS = {
@@ -101,6 +103,8 @@ const EXPECTED_KINDS = {
   model_3d: "threed",
   workflow: "canvas",
   game: "game",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
 };
 
 function projection(artifactType) {
@@ -189,7 +193,7 @@ function normalizedItem(artifactType) {
   return artifactProjectionToLibraryItem(artifact);
 }
 
-test("all fourteen normalized catalog types retain real cover metadata and type-correct fit", () => {
+test("all sixteen normalized catalog types retain real cover metadata and type-correct fit", () => {
   const preserveWhole = new Set([
     "composite_image",
     "vector_image",
@@ -203,8 +207,11 @@ test("all fourteen normalized catalog types retain real cover metadata and type-
     "workflow",
     // 游戏封面是整幅关键美术，裁掉边缘等于把真实 rendition 换成假封面。
     "game",
+    // 地图的图例与归属条、交互文档的参数区都贴在画面边缘，裁掉就等于换了张假封面。
+    "geo_map",
+    "interactive_doc",
   ]);
-  assert.equal(ARTIFACT_TYPES.length, 14);
+  assert.equal(ARTIFACT_TYPES.length, 16);
   for (const artifactType of ARTIFACT_TYPES) {
     const item = normalizedItem(artifactType);
     assert.equal(item.kind, EXPECTED_KINDS[artifactType], artifactType);

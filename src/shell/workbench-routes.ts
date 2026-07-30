@@ -480,6 +480,12 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "threed" });
     case "game":
       return available(adapter, { type: "game" });
+    // 两个新载体各走自己的 route，不复用 grid 宿主视口
+    // （`geo-map.md` §10.3 / `interactive-doc.md` §10.3 末的 MUST NOT）。
+    case "geo-map":
+      return available(adapter, { type: "geo-map" });
+    case "interactive-doc":
+      return available(adapter, { type: "interactive-doc" });
     case "website":
       return available(adapter, {
         type: "embed",
@@ -527,9 +533,20 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
         chartManifest,
       );
     }
+    /**
+     * `chart.md` R6：这处历史文案只讲了「只有渲染 HTML/封面」一种坏法，
+     * 但落到这里的其实是三种不同的 `legacy-render-only` 成因（§3.2 状态机），
+     * 用同一句话回答会让「有 option 但 manifest 不支持回写」的素材看起来像
+     * 一份 HTML 截图。逐因给话，`html = 不可编辑` 的边界一条都不放宽。
+     */
+    const chartRejection = !chartManifest
+      ? "此历史图表只有渲染 HTML/封面，没有 ECharts option 源；需补录 oceanleo.chart.v1 结构化源后才能编辑。"
+      : !hasRoundTrip(chartManifest)
+        ? "此图表的 editor manifest 没有声明 load/mutate/save/reopen 全套回写能力；补齐 chart-editor@1 的回写声明后才能编辑。"
+        : "此图表声明了 chart-editor@1，但当前版本取不到 option 源字节（manifest 指向的 url 或内联 option 缺失）；补录 oceanleo.chart.v1 源后才能编辑。";
     return unavailable(
       String(item.descriptor?.unavailableReason || item.meta.unavailable_reason || "") ||
-        "此历史图表只有渲染 HTML/封面，没有 ECharts option 源；需补录 chart-editor@1 结构化源后才能编辑。",
+        chartRejection,
     );
   }
 
@@ -563,6 +580,14 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   // 落到那个分支就会被送进 Next 源码工作台（`01-decisions.md` D7 明令禁止）。
   if (pinnedRoute === "game") {
     return available("game", { type: "game" });
+  }
+  // 两个新载体的 pinned route：同样必须留在 `item.kind === "website"` 之前，
+  // 否则交互文档的渲出 HTML 预览会被当成站点源码送进 Next 工作台。
+  if (pinnedRoute === "geo-map") {
+    return available("geo-map", { type: "geo-map" });
+  }
+  if (pinnedRoute === "interactive-doc") {
+    return available("interactive-doc", { type: "interactive-doc" });
   }
   if (pinnedRoute === "none") {
     return unavailable(
@@ -680,6 +705,19 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     });
   }
 
+  /**
+   * 两个新载体的非 durable 回退。必须留在下面「有内联文本就送 richdoc」与
+   * 「image/*」两条之前：两者的 source 都是 JSON 文本，落到 richdoc 会被当成
+   * 富文本打开（`interactive-doc.md` §1.1 明令 MUST NOT 复用 `document`），
+   * 落到 image 会把地图当成一张位图。
+   */
+  if (item.kind === "geo_map" || contentType === "geo_map") {
+    return available("geo-map", { type: "geo-map" });
+  }
+  if (item.kind === "interactive_doc" || contentType === "interactive_doc") {
+    return available("interactive-doc", { type: "interactive-doc" });
+  }
+
   if (NATIVE_DECK_EXT.has(officeExt)) {
     return available("deck", { type: "deck" });
   }
@@ -775,6 +813,10 @@ export function editorToolLabel(route: EditorRoute): string {
       return "3D 场景与视图";
     case "game":
       return "游戏编辑";
+    case "geo-map":
+      return "地图编辑";
+    case "interactive-doc":
+      return "交互文档编辑";
     case "embed":
       return route.mediaType === "website"
         ? "网站编辑"

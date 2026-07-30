@@ -8,7 +8,7 @@ const source = (path) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
-  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 14);
+  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 16);
   assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office, {
     routeType: "none",
     artifactCapabilities: [],
@@ -23,7 +23,7 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
   assert.equal(
     Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
       .length,
-    13,
+    15,
   );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
     if (!contract.routable) continue;

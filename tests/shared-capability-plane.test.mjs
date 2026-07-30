@@ -238,10 +238,10 @@ function libraryItemFor(artifact, siteId) {
   };
 }
 
-test("one immutable 13-row matrix drives every feature and public projection", () => {
+test("one immutable 15-row matrix drives every feature and public projection", () => {
   assert.strictEqual(ADVANCED_CAPABILITY_CONTRACT, ADVANCED_CAPABILITY_MATRIX);
-  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 13);
-  assert.equal(new Set(ADVANCED_CAPABILITY_MATRIX).size, 13);
+  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 15);
+  assert.equal(new Set(ADVANCED_CAPABILITY_MATRIX).size, 15);
   assert.equal(TRUSTED_EDITOR_REGISTRY.office.routable, false);
   assert.equal(TRUSTED_EDITOR_REGISTRY.office.routeType, "none");
   assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office.artifactCapabilities, []);

@@ -14,7 +14,9 @@ import {
 import {
   cloneDeckDocument,
   createDeckMaster,
+  deckCarrierPlacement,
   deckId,
+  deckLayoutIsCarrierGrammar,
   deckMasterFor,
   deckTheme,
   emptyDeckSlide,
@@ -1231,6 +1233,30 @@ export function useDeckEditor(
             .sort((left, right) => left.order - right.order);
           const titleId = orderedText[0]?.id;
           const contentIds = new Set(orderedText.slice(1).map((element) => element.id));
+          // deck-extension.md §4 — the 16 carrier grammars are placed from the
+          // §2.2 EMU grid instead of the pre-contract hand-tuned percentages.
+          if (deckLayoutIsCarrierGrammar(layout)) {
+            const placement = deckCarrierPlacement(layout);
+            return {
+              ...slide,
+              layout,
+              elements: slide.elements.map((element) => {
+                if (element.locked) return element;
+                if (element.type === "image" && placement.image) {
+                  return { ...element, ...placement.image };
+                }
+                if (element.id === titleId && placement.title) {
+                  const { fontSize, align, ...box } = placement.title;
+                  return { ...element, ...box, fontSize, align };
+                }
+                if (contentIds.has(element.id) && placement.content) {
+                  const { fontSize, align, ...box } = placement.content;
+                  return { ...element, ...box, fontSize, align };
+                }
+                return element;
+              }),
+            };
+          }
           const centered = layout === "title" || layout === "section";
           const imageSide =
             layout === "image-left"

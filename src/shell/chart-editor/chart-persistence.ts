@@ -22,6 +22,7 @@ import {
 } from "../../lib/media-proxy";
 import {
   CHART_DOCUMENT_SCHEMA,
+  assertChartSourceIsNotRenderArtifact,
   chartDocumentFromJson,
   chartDocumentToJson,
   normalizeChartDocument,
@@ -467,6 +468,12 @@ export async function saveChartRevision(
 ): Promise<ChartSaveResult> {
   const snapshot = normalizeChartDocument(input.document);
   const json = chartDocumentToJson(snapshot);
+  // chart.md §1.2 硬禁令。渲染 HTML / PNG / SVG 只能做 rendition,落库路径
+  // 在这里就断掉,不留到后端 `chart_option_evidence_is_present` 才发现。
+  assertChartSourceIsNotRenderArtifact({
+    sourceFormat: input.item.artifact?.sourceFormat,
+    bytes: json,
+  });
   const reopened = chartDocumentFromJson(json);
   if (chartDocumentToJson(reopened) !== json) {
     throw new Error("图表保存前结构化 roundtrip 校验失败");

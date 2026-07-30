@@ -3,6 +3,10 @@
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
+import {
+  MODEL3D_STAGE_TOKENS,
+  model3DStageBackgroundCss,
+} from "./model3d-framing.mjs";
 
 function StageButton({
   children,
@@ -73,7 +77,15 @@ export function Model3DStage({
     <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]">
       <div
         className="relative min-h-0 flex-1 overflow-hidden"
-        style={{ background: editor.background }}
+        data-testid="model3d-stage-backdrop"
+        style={{
+          // §2.2:默认背景是 stage.bg.top → stage.bg.bottom 渐变。用户显式挑过
+          // 纯色就尊重 view.background。
+          background:
+            editor.background === MODEL3D_STAGE_TOKENS["stage.bg.bottom"]
+              ? model3DStageBackgroundCss()
+              : editor.background,
+        }}
       >
         <canvas
           ref={editor.canvasRef}
@@ -152,6 +164,7 @@ export function Model3DStage({
         {!editor.loading && editor.error && !editor.modelLoaded && (
           <div
             role="alert"
+            data-testid="model3d-load-error"
             className="pointer-events-none absolute inset-0 flex items-center justify-center p-6"
           >
             <div className="max-w-md rounded-xl border border-red-200 bg-[var(--card,#fff)]/95 p-5 text-center shadow-sm">

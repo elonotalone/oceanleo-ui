@@ -6,6 +6,7 @@ import type {
 
 import type { LibraryItem } from "../library-data";
 import type { PersistedEditorVersion } from "../doc-editors/doc-io";
+import type { AudioAttributionEntry } from "./audio-project-carrier";
 import type { AudioEditOperation } from "./audio-operations";
 
 export interface AudioSelection {
@@ -16,6 +17,12 @@ export interface AudioSelection {
 export interface AudioProjectData {
   sourceUrl: string;
   operations: AudioEditOperation[];
+  /**
+   * audio-project.md §1.3 许可锁的编辑器侧承载。署名与许可义务必须随工程走，
+   * 落库时由 `audioLicenseMetadata()` 展开进 revision meta —— 下游素材族靠
+   * 这一段判断自己继承了哪些义务，缺了就是导出即断链。
+   */
+  attribution?: AudioAttributionEntry[];
 }
 
 export interface AudioWorkbenchState {
@@ -42,6 +49,8 @@ export interface AudioWorkbenchState {
   setHighEq: Dispatch<SetStateAction<number>>;
   speed: number;
   zoom: number;
+  /** 0–100。WCAG 2.2 SC 1.4.2 要求音频必须有音量控制（§2.3）。 */
+  volume: number;
   canUndo: boolean;
   canRedo: boolean;
   dirty: boolean;
@@ -50,6 +59,9 @@ export interface AudioWorkbenchState {
   stop: () => void;
   setPlaybackSpeed: (value: number) => void;
   setWaveformZoom: (value: number) => void;
+  /** §2.3：播放 / 暂停 / 跳转 / 音量四个操作各有键盘通路，这是「跳转」那条。 */
+  seekTo: (seconds: number) => void;
+  setVolume: (value: number) => void;
   cropSelection: () => void;
   deleteSelection: () => void;
   applyFade: (edge: "in" | "out") => void;

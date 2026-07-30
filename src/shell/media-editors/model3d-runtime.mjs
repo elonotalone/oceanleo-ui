@@ -29,6 +29,12 @@ import {
   model3DRecorderMime,
   model3DRuntimeError,
 } from "./model3d-director-runtime.mjs";
+import {
+  MODEL3D_DEFAULT_CAMERA,
+  MODEL3D_DEFAULT_LIGHTING,
+  MODEL3D_STAGE_TOKENS,
+  model3DKeyLightOffset,
+} from "./model3d-framing.mjs";
 
 const TEXTURE_SLOTS = {
   baseColor: ["map"],
@@ -251,8 +257,16 @@ export class Model3DSceneRuntime {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderScene = new THREE.Scene();
-    this.renderScene.background = new THREE.Color("#f5f5f4");
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 10_000);
+    this.renderScene.background = new THREE.Color(
+      MODEL3D_STAGE_TOKENS["stage.bg.bottom"],
+    );
+    // §2.1 默认镜头:FOV 45°、近裁剪 0.1、远裁剪 1,000 场景单位。
+    this.camera = new THREE.PerspectiveCamera(
+      MODEL3D_DEFAULT_CAMERA.fovDeg,
+      1,
+      MODEL3D_DEFAULT_CAMERA.nearPlane,
+      MODEL3D_DEFAULT_CAMERA.farPlane,
+    );
     this.camera.position.set(4, 3, 6);
     this.composer = null;
     this.renderPass = null;
@@ -275,17 +289,53 @@ export class Model3DSceneRuntime {
     this.transformHelper = this.transform.getHelper();
     this.transformHelper.userData.oceanleoEditorHelper = true;
     this.renderScene.add(this.transformHelper);
-    this.grid = new THREE.GridHelper(20, 20, 0x888888, 0xcccccc);
+    // §2.2 网格线与接地阴影盘取 stage.grid / stage.ground。
+    this.grid = new THREE.GridHelper(
+      20,
+      20,
+      MODEL3D_STAGE_TOKENS["stage.grid"],
+      MODEL3D_STAGE_TOKENS["stage.grid"],
+    );
     this.grid.userData.oceanleoEditorHelper = true;
     this.renderScene.add(this.grid);
-    this.viewerLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.8);
-    this.viewerLight.userData.oceanleoEditorHelper = true;
-    this.renderScene.add(this.viewerLight);
-    this.viewerKey = new THREE.DirectionalLight(0xffffff, 2.2);
-    this.viewerKey.position.set(4, 6, 5);
+    this.ground = new THREE.Mesh(
+      new THREE.CircleGeometry(10, 64),
+      new THREE.MeshStandardMaterial({
+        color: MODEL3D_STAGE_TOKENS["stage.ground"],
+        roughness: 1,
+        metalness: 0,
+      }),
+    );
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.ground.userData.oceanleoEditorHelper = true;
+    // The contact-shadow disc is scenery: it must never be pickable, otherwise
+    // clicking empty space would "select" it and arm transform gizmos.
+    this.ground.raycast = () => {};
+    this.renderScene.add(this.ground);
+    // §2.1 三点打光:主光 3.0(方位 45° / 仰角 55°)、补光 1.2、环境光 0.6。
+    this.viewerAmbient = new THREE.AmbientLight(
+      0xffffff,
+      MODEL3D_DEFAULT_LIGHTING.ambientIntensity,
+    );
+    this.viewerAmbient.userData.oceanleoEditorHelper = true;
+    this.renderScene.add(this.viewerAmbient);
+    this.viewerKey = new THREE.DirectionalLight(
+      0xffffff,
+      MODEL3D_DEFAULT_LIGHTING.keyIntensity,
+    );
+    const keyOffset = model3DKeyLightOffset(8);
+    this.viewerKey.position.set(keyOffset.x, keyOffset.y, keyOffset.z);
     this.viewerKey.castShadow = true;
     this.viewerKey.userData.oceanleoEditorHelper = true;
     this.renderScene.add(this.viewerKey);
+    this.viewerFill = new THREE.DirectionalLight(
+      0xffffff,
+      MODEL3D_DEFAULT_LIGHTING.fillIntensity,
+    );
+    this.viewerFill.position.set(-keyOffset.x, keyOffset.y * 0.6, -keyOffset.z);
+    this.viewerFill.userData.oceanleoEditorHelper = true;
+    this.renderScene.add(this.viewerFill);
     this.annotationGroup = new THREE.Group();
     this.annotationGroup.userData.oceanleoEditorHelper = true;
     this.renderScene.add(this.annotationGroup);
@@ -318,7 +368,7 @@ export class Model3DSceneRuntime {
       zoom: 110,
       autoRotate: false,
       exposure: 1,
-      background: "#f5f5f4",
+      background: MODEL3D_STAGE_TOKENS["stage.bg.bottom"],
       environmentUrl: "",
       environmentIntensity: 1,
       shadowEnabled: true,
@@ -1871,6 +1921,8 @@ export class Model3DSceneRuntime {
     this.renderPass?.dispose?.();
     this.composer?.dispose?.();
     this.environmentTexture?.dispose();
+    this.ground.geometry.dispose();
+    this.ground.material.dispose();
     if (this.contentScene) disposeModel3DObject(this.contentScene);
     this.renderer.dispose();
   }
@@ -2028,6 +2080,12 @@ export class Model3DSceneRuntime {
     this.orbit.target.copy(center);
     this.grid.position.y = box.isEmpty() ? 0 : box.min.y;
     this.grid.scale.setScalar(Math.max(radius / 10, 0.1));
+    this.ground.position.set(
+      center.x,
+      box.isEmpty() ? 0 : box.min.y,
+      center.z,
+    );
+    this.ground.scale.setScalar(Math.max(radius / 10, 0.1));
     this.applyOrbit();
   }
 

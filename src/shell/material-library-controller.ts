@@ -161,6 +161,8 @@ const TYPE_TO_KIND: Record<string, LibraryKind> = {
   audio: "audio",
   music: "audio",
   "3d": "threed",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
   font: "document",
 };
 
@@ -176,6 +178,8 @@ const KIND_CATEGORY: Partial<Record<LibraryKind, string>> = {
   audio: "音频",
   threed: "3D",
   xhs: "小红书",
+  geo_map: "地图",
+  interactive_doc: "交互文档",
   file: "文件",
 };
 
@@ -195,6 +199,10 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
   workflow: "工作流",
   // 第 14 个 artifact type，由 W9 加进 `ARTIFACT_TYPES`（D7）。
   game: "游戏",
+  // 第 15 / 16 个 artifact type（`geo-map.md` §1.1、`interactive-doc.md` §1.1）。
+  // 「地图」而不是「地理」：卡片标签讲的是产物形态，不是学科。
+  geo_map: "地图",
+  interactive_doc: "交互文档",
 };
 
 function designTemplateDocumentUrl(value = ""): string {
@@ -437,6 +445,14 @@ export function normalizedMaterialTaxonomy(
       audio: "audio",
       "3d": "model_3d",
       video_workflow: "workflow",
+      // 搜索与深链里的旧写法别名；权威 token 仍是下划线的枚举值本身
+      // （`geo-map.md` §1.1.1「进数据库的一律下划线」）。
+      map: "geo_map",
+      geomap: "geo_map",
+      "geo-map": "geo_map",
+      interactive: "interactive_doc",
+      interactivedoc: "interactive_doc",
+      "interactive-doc": "interactive_doc",
     } as Record<string, ArtifactType>)[value] || ""
   );
 }

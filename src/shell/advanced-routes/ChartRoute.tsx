@@ -244,9 +244,17 @@ export function ChartRoute({
           !editor.loading && !editor.sourceReady ? (
             <div
               role="alert"
-              className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-rose-700"
+              className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-2 bg-stone-50 p-8 text-center text-sm text-rose-700"
             >
-              {editor.error || "图表源未成功载入，编辑器已停止。"}
+              <p className="font-semibold">
+                {editor.carrierState === "legacy-render-only"
+                  ? "此历史图表只有渲染产物，不能编辑"
+                  : "图表源未成功载入，编辑器已停止"}
+              </p>
+              <p className="text-xs leading-relaxed text-stone-600">
+                {editor.error ||
+                  "未取得 oceanleo.chart.v1 结构化源；不会从 HTML、脚本或 PNG 逆向伪恢复。"}
+              </p>
             </div>
           ) : (
             <ChartStage editor={editor} />

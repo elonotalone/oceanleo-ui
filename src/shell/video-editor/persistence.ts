@@ -9,6 +9,12 @@ import { uploadFile } from "../../lib/database";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import { saveProjectWorkingHead } from "../doc-editors/doc-io";
+import type { TimelinePreviewEngine } from "./preview-engine";
+import {
+  assertPreviewResolution,
+  TIMELINE_PROJECT_SCHEMA_ID,
+  TimelineCarrierError,
+} from "./timeline-carrier";
 import type { TimelineDoc } from "./types";
 
 export interface PersistResult {
@@ -56,6 +62,31 @@ export async function timelineCoverPng(
   });
 }
 
+/**
+ * `preview` rendition 的唯一出口(video-timeline.md §3.3)。
+ *
+ * 屏上取景画布被 PREVIEW_MAX_WIDTH 限到 1280 宽,1920×1080 的工程直接拿它当
+ * preview 交付就是 F5「为省字节交付缩小版预览」,入库时 `preview.width !=
+ * width` 会让整包被拒。这里向引擎要一块与源等大的离屏画布,交付前再逐值
+ * 复核一次分辨率 —— 不匹配宁可不交,也不静默降采样冒充。
+ */
+export async function timelinePreviewRenditionPng(
+  engine: TimelinePreviewEngine | null,
+  doc: TimelineDoc,
+): Promise<Blob | null> {
+  if (!engine) return null;
+  const canvas = engine.captureRenditionCanvas("preview");
+  if (!canvas) return null;
+  const verdict = assertPreviewResolution(
+    { width: doc.width, height: doc.height },
+    { width: canvas.width, height: canvas.height },
+  );
+  if (!verdict.ok) {
+    throw new TimelineCarrierError(verdict.code!, verdict.message!);
+  }
+  return timelineCoverPng(canvas);
+}
+
 /** 上传 TimelineDoc 草稿 JSON 并登记到我的库。 */
 export async function uploadDraft(
   doc: TimelineDoc,
@@ -80,14 +111,18 @@ export async function uploadDraft(
       timeline_doc: doc,
       is_draft: true,
       editor_capability: "video-timeline",
+      // §3.3 的凭据面：交付的 preview 与源同分辨率，下游校验按这两个值对账。
+      preview_resolution_contract: `${TIMELINE_PROJECT_SCHEMA_ID}#3.3`,
+      preview_width: doc.width,
+      preview_height: doc.height,
     },
     project: {
-      schema: "oceanleo.timeline.v1",
+      schema: TIMELINE_PROJECT_SCHEMA_ID,
       data: doc,
     },
     editorManifest: {
       id: "video-timeline",
-      format: "oceanleo.timeline.v1",
+      format: TIMELINE_PROJECT_SCHEMA_ID,
     },
     // 成品视频在服务端渲染，保存这一刻只有当前帧可以当封面。
     createPreview,
