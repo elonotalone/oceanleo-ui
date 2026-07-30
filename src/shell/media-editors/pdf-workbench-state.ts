@@ -130,7 +130,12 @@ export interface PdfWorkbenchState {
     canvas: HTMLCanvasElement,
   ) => Promise<void>;
   zoomStops: readonly number[];
-  fitZoom: (mode: "width" | "page") => void;
+  /** §2.3 — fit-width / fit-page are computed stops; the caller supplies the
+   * viewport it measured, and the result is still clamped to 25 %–400 %. */
+  fitZoom: (
+    mode: "width" | "page",
+    container: { width: number; height: number },
+  ) => void;
   canvasRef: RefCallback<HTMLCanvasElement>;
   sourceUrl: string;
   pageNumber: number;

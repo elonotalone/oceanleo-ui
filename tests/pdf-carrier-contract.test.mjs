@@ -919,6 +919,63 @@ test("C-5 §2.1/§2.2/§2.3: palette, layout and zoom stops match the spec value
   assert.ok(fitPdfZoom("width", { width: 100_000, height: 10 }, { width: 595, height: 842 }) <= 400);
 });
 
+test("C-5 §2.1 / §2.4 SC 1.4.3+1.4.11: the palette meets every contrast floor it promises", async () => {
+  const channels = (hex) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+  const relativeLuminance = (hex) => {
+    const [r, g, b] = channels(hex)
+      .map((v) => v / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => {
+    const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  // pdf.js paints the highlight as a translucent quad, so the obligation is on
+  // the composite, not on the swatch: body glyphs stay legible through it.
+  const composite = (fg, bg, alpha) =>
+    `#${channels(fg)
+      .map((v, i) => Math.round(v * alpha + channels(bg)[i] * (1 - alpha)))
+      .map((v) => v.toString(16).padStart(2, "0"))
+      .join("")}`;
+
+  const page = PDF_READER_PALETTE["reader.page"];
+  const chrome = PDF_READER_PALETTE["reader.chrome"];
+  const floors = [
+    ["canvas separates from page", PDF_READER_PALETTE["reader.canvas"], page, 4.5],
+    ["chrome carries white label text", chrome, "#FFFFFF", 4.5],
+    ["accent reads on chrome", PDF_READER_PALETTE["reader.accent"], chrome, 3.0],
+    ["highlight is visible on page", PDF_READER_PALETTE["annot.highlight"], page, 1.4],
+    ["text marker reads on page", PDF_READER_PALETTE["annot.text.marker"], page, 3.0],
+    ["selection ring reads on page", PDF_READER_PALETTE["annot.selected"], page, 3.0],
+  ];
+  for (const [label, fg, bg, floor] of floors) {
+    const ratio = contrast(fg, bg);
+    assert.ok(ratio >= floor, `${label}: ${ratio.toFixed(3)} < ${floor}`);
+  }
+
+  // Two alphas exist and both must clear the floor: the on-screen overlay
+  // PdfStage paints, and the `CA` pdf-lib writes into the saved annotation.
+  const stage = await source("src/shell/media-editors/PdfStage.tsx");
+  const overlayAlpha = Number.parseInt(
+    stage.match(/\$\{annotation\.color\}([0-9a-f]{2})/i)[1],
+    16,
+  ) / 255;
+  const operations = await source("src/shell/media-editors/pdf-annotation-operations.ts");
+  const savedAlpha = Number.parseFloat(operations.match(/CA:\s*([0-9.]+)/)[1]);
+  assert.ok(overlayAlpha > 0 && overlayAlpha <= 0.5, `overlay alpha ${overlayAlpha}`);
+  assert.ok(savedAlpha > 0 && savedAlpha <= 0.5, `saved alpha ${savedAlpha}`);
+
+  for (const alpha of [overlayAlpha, savedAlpha]) {
+    const highlighted = composite(PDF_READER_PALETTE["annot.highlight"], page, alpha);
+    const throughHighlight = contrast("#1A1A1A", highlighted);
+    assert.ok(
+      throughHighlight >= 4.5,
+      `body text through a highlight at CA=${alpha}: ${throughHighlight.toFixed(3)} < 4.5`,
+    );
+  }
+});
+
 test("C-5 §4: the constant table carries C1 to C40", () => {
   const expected = {
     C1_minimumPageCount: 4,
