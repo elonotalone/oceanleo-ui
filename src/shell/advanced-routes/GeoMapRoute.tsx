@@ -12,7 +12,10 @@ import {
   GEO_MAP_LAYOUT,
   renderGeoMapToCanvas,
 } from "../geo-map-editor/geo-map-render";
-import { serializeGeoMapProject } from "../geo-map-editor/geo-map-source";
+import {
+  GEO_MAP_EDITOR_ADAPTER,
+  serializeGeoMapProject,
+} from "../geo-map-editor/geo-map-source";
 import {
   geoMapEditorManifest,
   useGeoMapWorkbench,
@@ -240,7 +243,7 @@ export function GeoMapRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
-            key: advancedRecoveryKey("geo-map-editor@1", item),
+            key: advancedRecoveryKey(GEO_MAP_EDITOR_ADAPTER, item),
             ready: !editor.loading,
             capture: () =>
               editor.sourceReady && editor.project

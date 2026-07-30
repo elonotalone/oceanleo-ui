@@ -815,6 +815,58 @@ test("GeoMapRoute default-exports and actually mounts the editor", () => {
   );
 });
 
+// ---------------------------------------------------------------------------
+// §7 A1–A12:视口层承担的那几条
+// ---------------------------------------------------------------------------
+
+test("A1/A2: the manifest and W3's registry agree on the geo-map quadruple", () => {
+  assert.ok(HOOK_SOURCE.includes('schema: "oceanleo.editor-manifest.v1"'));
+  assert.ok(HOOK_SOURCE.includes("id: GEO_MAP_EDITOR_ID"));
+  assert.ok(HOOK_SOURCE.includes("format: GEO_MAP_PROJECT_SCHEMA"));
+  // W3's registry is read here, never written: `geo-map` must own its own
+  // routeType instead of parasitising `grid` the way chart-editor@1 does.
+  const registry = read("src/shell/workbench-capability-registry.ts");
+  const entry = /"geo-map":\s*\{[\s\S]*?\n {2}\}/.exec(registry);
+  assert.ok(entry, "registry must carry a geo-map entry");
+  assert.match(entry[0], /routeType: "geo-map"/);
+  assert.doesNotMatch(entry[0], /routeType: "grid"/);
+  assert.match(entry[0], /projectSchema: "oceanleo\.geo-map\.v1"/);
+  assert.match(entry[0], /viewportOwnership: "content"/);
+  assert.match(entry[0], /toolbarOwnership: "shared"/);
+  assert.match(entry[0], /persistence: "project"/);
+  // The saved revision carries the same schema back into the library row.
+  assert.ok(ROUTE_SOURCE.includes("editor: geoMapEditorManifest()"));
+  assert.ok(ROUTE_SOURCE.includes("editor_project_schema: saved.projectSchema"));
+});
+
+test("A5/A8: deliverables are full 1600x1000 frames that keep attribution", () => {
+  for (const source of [STAGE_SOURCE, ROUTE_SOURCE]) {
+    assert.ok(source.includes("width: GEO_MAP_LAYOUT.canvasWidthPx"));
+    assert.ok(source.includes("height: GEO_MAP_LAYOUT.canvasHeightPx"));
+    // `chrome: true` is what carries the legend and the attribution bar into
+    // the frame; a headless frame would drop the §1.3 licence notice.
+    assert.ok(source.includes("chrome: true"));
+  }
+  // A rejected render must never be downloaded as a blank PNG.
+  assert.ok(ROUTE_SOURCE.includes("if (!result.ok)"));
+  assert.ok(ROUTE_SOURCE.includes("地图渲染未产出有效帧"));
+  assert.ok(ROUTE_SOURCE.includes("disabled: exporting || exportUnavailable"));
+  // Attribution is also on screen, not only inside the exported bitmap.
+  assert.ok(STAGE_SOURCE.includes("project.attribution.entries"));
+  assert.ok(STAGE_SOURCE.includes("entry.licenseCode"));
+  assert.ok(CONTROLS_SOURCE.includes("entry.licenseCode"));
+});
+
+test("A9: a new project or dependency swap re-renders instead of going stale", () => {
+  assert.ok(
+    STAGE_SOURCE.includes("}, [project, renderable]);"),
+    "the render effect must depend on the project it draws",
+  );
+  assert.ok(HOOK_SOURCE.includes("geoMapArtifactInputIdentity"));
+  assert.ok(HOOK_SOURCE.includes("importProject"));
+  assert.ok(ROUTE_SOURCE.includes("editor.importProject(await file.text())"));
+});
+
 test("the viewport layer never widens the sandbox or edits W4's plane", () => {
   const owned = [HOOK_SOURCE, STAGE_SOURCE, CONTROLS_SOURCE, TOOLBAR_SOURCE, ROUTE_SOURCE];
   for (const source of owned) {
