@@ -396,6 +396,22 @@ test("C-3 empty → invalid：空壳 IR 走不到 ir-validated", () => {
   assert.equal(result.xlsxBytes, undefined, "invalid 不得产出字节");
 });
 
+test("C-3 ir-validated → invalid：引用不存在的工作表（§3.2）", () => {
+  const project = carrierFixture();
+  // IR 本身合规（`Sheet!A1` 形状对），坏的是工作表不在本工作簿里，所以只能在
+  // 链接期被拦，不能被 §3.1 结构校验挡掉 —— 这正是 §3.2 那条迁移的语义。
+  assert.equal(validateGridIrProject(project).ok, true);
+  project.sheets[2].rows[0][1] = { f: "不存在的表!B62" };
+  const result = runGridEmitPipeline(project);
+  assert.equal(result.state, "invalid");
+  assert.ok(
+    result.issues.some((issue) => issue.code === "grid-formula-unknown-sheet"),
+    JSON.stringify(result.issues.slice(0, 3)),
+  );
+  assert.equal(result.computed, undefined, "链接失败 MUST NOT 求值");
+  assert.equal(result.xlsxBytes, undefined, "链接失败 MUST NOT 产出字节");
+});
+
 test("C-3 formula-linked → cyclic 并打印环上完整地址序列（§6 F4）", () => {
   const project = carrierFixture();
   // 利息 → 净利 → 现金 → 债务 → 利息 的闭环，直接写成互相引用。
