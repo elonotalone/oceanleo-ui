@@ -117,16 +117,6 @@ export function GeoMapControls({ editor }: { editor: GeoMapWorkbenchState }) {
             ))}
           </ul>
         )}
-        {editor.closure.danglingLayers.length > 0 && (
-          <ul
-            role="alert"
-            className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-rose-50 p-2 font-mono text-[10px] text-rose-900"
-          >
-            {editor.closure.danglingLayers.map((entry) => (
-              <li key={entry}>{entry}</li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="space-y-1">

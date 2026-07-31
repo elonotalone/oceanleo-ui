@@ -51,10 +51,18 @@ export interface GeoMapFeatureCollection {
   features: GeoMapFeature[];
 }
 
+/**
+ * Paint slot type as the platform declares it. `CanvasRenderingContext2D`
+ * accepts a gradient or a pattern here, so narrowing this to `string` would
+ * make the DOM context fail to satisfy the subset below. This renderer only
+ * ever writes CSS colour strings.
+ */
+export type GeoMapCanvasPaint = string | CanvasGradient | CanvasPattern;
+
 /** The Canvas 2D subset this path needs; `@napi-rs/canvas` and the DOM both satisfy it. */
 export interface GeoMapRenderContext {
-  fillStyle: string;
-  strokeStyle: string;
+  fillStyle: GeoMapCanvasPaint;
+  strokeStyle: GeoMapCanvasPaint;
   lineWidth: number;
   globalAlpha: number;
   font: string;
