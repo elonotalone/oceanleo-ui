@@ -25,6 +25,7 @@ import {
   type DeckDocument,
   type DeckElement,
   type DeckLayout,
+  type DeckLegacyLayout,
   type DeckMaster,
   type DeckSlide,
   type DeckThemeId,
@@ -1257,45 +1258,35 @@ export function useDeckEditor(
               }),
             };
           }
-          const centered = layout === "title" || layout === "section";
-          const imageSide =
-            layout === "image-left"
-              ? "left"
-              : layout === "image-right"
-                ? "right"
-                : "";
+          // `blank` returned above and the 16 §4 grammars took the carrier
+          // branch, so `title-body` is the only grammar still placed from the
+          // pre-contract percentages. The annotation is the guard: adding a
+          // third legacy grammar to `DeckLayout` fails here instead of silently
+          // inheriting the title-body geometry.
+          const titleBody: Exclude<DeckLegacyLayout, "blank"> = layout;
           return {
             ...slide,
-            layout,
+            layout: titleBody,
             elements: slide.elements.map((element) => {
               if (element.locked) return element;
-              if (element.type === "image" && imageSide) {
-                return {
-                  ...element,
-                  x: imageSide === "left" ? 7 : 52,
-                  y: 14,
-                  width: 41,
-                  height: 72,
-                };
-              }
               if (element.id === titleId) {
                 return {
                   ...element,
-                  x: imageSide ? (imageSide === "left" ? 52 : 7) : centered ? 10 : 8,
-                  y: centered ? 28 : 13,
-                  width: imageSide ? 41 : centered ? 80 : 84,
-                  height: centered ? 20 : 14,
-                  align: centered ? ("center" as const) : ("left" as const),
+                  x: 8,
+                  y: 13,
+                  width: 84,
+                  height: 14,
+                  align: "left" as const,
                 };
               }
               if (contentIds.has(element.id)) {
                 return {
                   ...element,
-                  x: imageSide ? (imageSide === "left" ? 52 : 7) : centered ? 15 : 8,
-                  y: centered ? 53 : 33,
-                  width: imageSide ? 41 : centered ? 70 : 84,
-                  height: centered ? 22 : 50,
-                  align: centered ? ("center" as const) : ("left" as const),
+                  x: 8,
+                  y: 33,
+                  width: 84,
+                  height: 50,
+                  align: "left" as const,
                 };
               }
               return element;

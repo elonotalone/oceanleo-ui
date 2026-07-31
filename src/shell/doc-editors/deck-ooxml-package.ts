@@ -458,12 +458,20 @@ interface SlideContext {
   fontEastAsian: string;
 }
 
+/**
+ * §2.2 — `pitch` is an EMU line pitch, not one fixed constant. §5 already names
+ * two of them (C11 `bulletPitch` 520,000 for full-width bullets, C12
+ * `columnPitch` 500,000 for the two-column grammar) and §4 L13 packs the
+ * comparison columns tighter still. The annotation is required: `DECK_GRID` is
+ * `as const`, so an unannotated default would infer the literal `520000` and
+ * reject every other pitch in the domain.
+ */
 function bulletParagraphs(
   items: readonly string[],
   role: DeckFontRole,
   color: string,
   context: SlideContext,
-  pitch = DECK_GRID.bulletPitch,
+  pitch: number = DECK_GRID.bulletPitch,
 ): string[] {
   return items.map((item) =>
     paragraph(item, {

@@ -22,6 +22,14 @@ export type DeckLayout =
   | "title-body"
   | "blank";
 
+/**
+ * The grammars that are *not* §4 carriers. Derived from `DeckLayout` rather
+ * than re-listed, so promoting a grammar into `DECK_IR_LAYOUTS` removes it from
+ * the legacy placement path in the same edit instead of leaving a stale branch
+ * behind.
+ */
+export type DeckLegacyLayout = Exclude<DeckLayout, DeckIrLayout>;
+
 export type DeckThemeId = "ocean" | "paper" | "ink" | "sunset" | "forest";
 export type DeckElementType =
   | "text"
@@ -709,10 +717,13 @@ function legacySlideElements({
   if (deckLayoutIsCarrierGrammar(layout)) {
     return carrierSlideElements({ title, body, bullets, layout, image });
   }
-  const centered = layout === "title" || layout === "section";
+  // Only `DeckLegacyLayout` reaches this point. The centred (`title`,
+  // `section`) and side-by-side (`image-left`, `image-right`) grammars are §4
+  // carriers, so they are placed from the EMU grid above; what is left is the
+  // flush-left `title-body` / `blank` pair, with the picture parked on the
+  // right.
   const hasImage = Boolean(image?.url);
-  const imageLeft = layout === "image-left";
-  const textX = hasImage ? (imageLeft ? 52 : 7) : 8;
+  const textX = hasImage ? 7 : 8;
   const textWidth = hasImage ? 41 : 84;
   const elements: DeckElement[] = [];
   if (title) {
@@ -720,15 +731,15 @@ function legacySlideElements({
       id: deckId("element"),
       type: "text",
       x: textX,
-      y: centered ? 28 : 13,
+      y: 13,
       width: textWidth,
-      height: centered ? 20 : 14,
+      height: 14,
       rotation: 0,
       order: 1,
       text: title,
-      fontSize: centered ? 42 : 32,
+      fontSize: 32,
       bold: true,
-      align: centered ? "center" : "left",
+      align: "left",
       lineHeight: 1.08,
       opacity: 1,
       locked: false,
@@ -737,19 +748,19 @@ function legacySlideElements({
   const content = [body, bullets.length ? bullets.map((item) => `• ${item}`).join("\n") : ""]
     .filter(Boolean)
     .join("\n\n");
-  if (content && layout !== "title") {
+  if (content) {
     elements.push({
       id: deckId("element"),
       type: "text",
       x: textX,
-      y: centered ? 52 : 33,
+      y: 33,
       width: textWidth,
-      height: centered ? 23 : 48,
+      height: 48,
       rotation: 0,
       order: 2,
       text: content,
       fontSize: 19,
-      align: centered ? "center" : "left",
+      align: "left",
       lineHeight: 1.35,
       opacity: 1,
       locked: false,
@@ -759,7 +770,7 @@ function legacySlideElements({
     elements.push({
       id: deckId("element"),
       type: "image",
-      x: imageLeft ? 7 : 52,
+      x: 52,
       y: 14,
       width: 41,
       height: 72,
