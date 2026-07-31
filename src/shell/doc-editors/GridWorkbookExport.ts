@@ -1180,6 +1180,22 @@ export function zipGridXlsxParts(parts: readonly GridXlsxEntry[]): Uint8Array {
   return zipSync(files, { level: 6, mtime: DETERMINISTIC_MTIME });
 }
 
+function isArrayBufferBacked(
+  bytes: Uint8Array,
+): bytes is Uint8Array<ArrayBuffer> {
+  return bytes.buffer instanceof ArrayBuffer;
+}
+
+/**
+ * A `Uint8Array` is only a `BlobPart` when its buffer is an `ArrayBuffer`; a
+ * view over a `SharedArrayBuffer` is rejected by the `Blob` constructor at
+ * runtime too, so the distinction is decided by an actual `instanceof` test and
+ * a copy, never by an assertion that would ship the shared view to the caller.
+ */
+function blobBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return isArrayBufferBacked(bytes) ? bytes : new Uint8Array(bytes);
+}
+
 /**
  * §3.2 in one call. Every transition is recorded, so a caller can prove which
  * path a workbook took and that none of the five illegal transitions ran.
@@ -1376,7 +1392,7 @@ export function buildGridCarrierWorkbookBlob(project: GridIrProject): Blob {
         .join("；")}`,
     );
   }
-  return new Blob([result.xlsxBytes], { type: GRID_XLSX_MEDIA_TYPE });
+  return new Blob([blobBytes(result.xlsxBytes)], { type: GRID_XLSX_MEDIA_TYPE });
 }
 
 /** The IR text that goes to storage as `project_schema` bytes. */

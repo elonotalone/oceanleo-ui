@@ -19,7 +19,7 @@
  * touches iframe `sandbox`, CORS or `postMessage` (§5.3).
  */
 
-import { VectorCarrierError } from "./vector-schema.ts";
+import { VectorCarrierError } from "./vector-schema";
 
 /** §3.2, one entry per spec table row. C28 = 8 classes. */
 export const SVG_SANITIZE_RULES = Object.freeze([

@@ -225,6 +225,30 @@ export interface AudioLicenseLockReport {
 }
 
 /**
+ * 许可锁的入参有两种形态,而且只有一种是 IR:`oceanleo.audio-project.v1` 的
+ * `attribution: { entries }` + `tracks`,以及编辑器工作头 `AudioProjectData`
+ * (sourceUrl + 操作日志 + 裸署名数组,按 §1.2 就没有 `tracks`)。按 IR 的完整
+ * 形状去要求工作头,署名会被静默读成空表 —— §7 A9「署名随产物」在落库那一刻
+ * 断链,而这正是许可锁存在的理由。
+ */
+export type AudioAttributionCarrier =
+  | { entries: AudioAttributionEntry[] }
+  | AudioAttributionEntry[];
+
+export interface AudioLicenseSubject {
+  tracks?: AudioTrack[];
+  attribution?: AudioAttributionCarrier;
+}
+
+function attributionEntriesOf(
+  attribution: AudioAttributionCarrier | undefined,
+): AudioAttributionEntry[] {
+  if (!attribution) return [];
+  if (Array.isArray(attribution)) return attribution;
+  return Array.isArray(attribution.entries) ? attribution.entries : [];
+}
+
+/**
  * §1.3 许可锁。CC0 首发、CC-BY 需署名随产物、CC-BY-SA MUST NOT 进 v1 组合产物。
  * `tracks[].licenseCode` 与 `attribution.entries[].licenseCode` 两处都查 ——
  * 只查署名表的话,一条挂着 SA 素材而署名表写 CC0 的轨会整条溜过去。
@@ -248,14 +272,12 @@ export function auditAudioLicenseLock(project: unknown): AudioLicenseLockReport 
       });
     }
   };
-  const source = (project ?? {}) as Partial<AudioProjectIr>;
+  const source = (project ?? {}) as AudioLicenseSubject;
   const tracks = Array.isArray(source.tracks) ? source.tracks : [];
   tracks.forEach((track, index) => {
     record(`tracks[${index}].licenseCode`, (track as AudioTrack)?.licenseCode);
   });
-  const entries = Array.isArray(source.attribution?.entries)
-    ? source.attribution!.entries
-    : [];
+  const entries = attributionEntriesOf(source.attribution);
   entries.forEach((entry, index) => {
     const code = (entry as AudioAttributionEntry)?.licenseCode;
     record(`attribution.entries[${index}].licenseCode`, code);
@@ -301,10 +323,10 @@ export interface AudioLicenseMetadata {
  * 下游素材族据此判断自己继承了哪些义务 —— 义务随产物走靠的就是它。
  */
 export function audioLicenseMetadata(
-  project: Pick<AudioProjectIr, "attribution" | "tracks">,
+  project: AudioLicenseSubject,
 ): AudioLicenseMetadata {
   const report = auditAudioLicenseLock(project);
-  const attribution = (project.attribution?.entries ?? []).map((entry) => ({
+  const attribution = attributionEntriesOf(project.attribution).map((entry) => ({
     text: entry.text,
     licenseCode: entry.licenseCode,
     licenseUrl: entry.licenseUrl,
