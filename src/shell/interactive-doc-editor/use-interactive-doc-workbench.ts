@@ -25,6 +25,7 @@ import {
   type InteractiveDocSnapshot,
 } from "./interactive-doc-history";
 import type {
+  ComputeNode,
   InteractiveDocBlock,
   InteractiveDocProject,
 } from "./interactive-doc-schema";
@@ -588,7 +589,7 @@ export function linkInteractiveDocProject(
       ) / 1000
     : 0;
 
-  const proseCharacters = blocks.reduce((total, block) => {
+  const proseCharacters = blocks.reduce<number>((total, block) => {
     const record = block as { kind?: unknown; text?: unknown };
     if (String(record.kind || "") !== "prose") return total;
     return total + String(record.text || "").length;
@@ -918,12 +919,14 @@ export const INTERACTIVE_DOC_ASSERT_PREFIX = "assert_";
  * second evaluator is written here (§1.2 forbids one) and W6's files are not
  * touched: the probe is data.
  */
-export function buildInteractiveDocValidationProbe(project: unknown): {
-  project: unknown;
+export function buildInteractiveDocValidationProbe(project: InteractiveDocProject): {
+  project: InteractiveDocProject;
   probes: Array<{ ruleId: string; nodeId: string; severity: string; message: string; tolerance: number | null }>;
 } {
   const rules = projectValidations(project);
-  const computations = projectComputations(project);
+  const computations = Array.isArray(project.computations)
+    ? project.computations
+    : [];
   const existing = new Set(computations.map(idOf));
   const probes: Array<{
     ruleId: string;
@@ -932,7 +935,7 @@ export function buildInteractiveDocValidationProbe(project: unknown): {
     message: string;
     tolerance: number | null;
   }> = [];
-  const extra: unknown[] = [];
+  const extra: ComputeNode[] = [];
   for (const rule of rules) {
     const ruleId = idOf(rule);
     const assertText = String((rule as { assert?: unknown }).assert || "");
@@ -950,7 +953,15 @@ export function buildInteractiveDocValidationProbe(project: unknown): {
     ) {
       break;
     }
-    extra.push({ id: nodeId, label: ruleId, expression: assertText });
+    // The guard mirrors the evaluator's own fallback for a node that declares
+    // none, so a probe node keeps behaving exactly as before while satisfying
+    // the schema's required `guard`.
+    extra.push({
+      id: nodeId,
+      label: ruleId,
+      expression: assertText,
+      guard: { onDivideByZero: "null", onNaN: "null" },
+    });
     const tolerance = (rule as { tolerance?: unknown }).tolerance;
     probes.push({
       ruleId,
@@ -962,10 +973,7 @@ export function buildInteractiveDocValidationProbe(project: unknown): {
   }
   if (!extra.length) return { project, probes: [] };
   return {
-    project: {
-      ...(project as Record<string, unknown>),
-      computations: [...computations, ...extra],
-    },
+    project: { ...project, computations: [...computations, ...extra] },
     probes,
   };
 }
@@ -978,25 +986,57 @@ export interface InteractiveDocValidationOutcome {
   value: unknown;
 }
 
+/**
+ * What {@link InteractiveDocEngine.save} hands the commit port. It carries the
+ * viewport state (`progress` / `scenarios` / `projectSchema`) alongside the
+ * fields `commitInteractiveDocProject` reads, so the route binds the two by
+ * filling in the item rather than by widening either side.
+ */
+export interface InteractiveDocCommitPayload {
+  item: LibraryItem | null;
+  siteId: string;
+  project: InteractiveDocProject;
+  editRevision: number;
+  progress: InteractiveDocProgress;
+  scenarios: Array<Record<string, InteractiveDocParameterValue> | null>;
+  projectSchema: string;
+}
+
+/**
+ * What {@link InteractiveDocWorkbench.renderBlock} hands the render port. The
+ * viewport keeps parameter values and the last result map, not a compute
+ * result, so the route is the side that evaluates for the data layer.
+ */
+export interface InteractiveDocRenderPayload {
+  project: InteractiveDocProject;
+  block: InteractiveDocBlock;
+  values: Record<string, InteractiveDocParameterValue>;
+  results: Record<string, unknown>;
+  host: unknown;
+}
+
 export interface InteractiveDocPorts {
   /** `evaluateComputeGraph(project, inputs)` — W6, pinned by D7. */
-  evaluate: (project: unknown, inputs: Record<string, unknown>) => unknown;
+  evaluate: (
+    project: InteractiveDocProject,
+    inputs: Record<string, unknown>,
+  ) => unknown;
   /** Optional per-node evaluation; when present the topological order drives it. */
   evaluateNode?: (args: {
-    project: unknown;
+    project: InteractiveDocProject;
     nodeId: string;
     scope: Record<string, unknown>;
   }) => unknown;
   /** `parseInteractiveDocSource(input)` — W6. */
   parse?: (input: string | Uint8Array) => unknown;
   /** `serializeInteractiveDocProject(project)` — W6. */
-  serialize?: (project: unknown) => string;
+  serialize?: (project: InteractiveDocProject) => string;
   /** `validateInteractiveDocProject(project)` — W6. */
   validate?: (project: unknown) => unknown;
   /** `commitInteractiveDocProject(args)` — W6. */
-  commit?: (args: unknown) => Promise<unknown>;
+  commit?: (args: InteractiveDocCommitPayload) => Promise<unknown>;
   /** `renderInteractiveDocBlock(args)` — W6. */
-  render?: (args: unknown) => unknown;
+  render?: (args: InteractiveDocRenderPayload) => unknown;
   /** `INTERACTIVE_DOC_PROJECT_SCHEMA` — W6; checked against the parsed source. */
   projectSchema?: string;
   now?: () => number;
@@ -2498,6 +2538,7 @@ export function useInteractiveDocWorkbench(
         publish();
         return outcome;
       },
+      serialize: () => engineRef.current?.serialize() ?? "",
       captureRecovery: () => engineRef.current?.snapshot() ?? null,
       restoreRecovery: (payload) =>
         run((engine) => engine.restore(payload), false),
@@ -2506,12 +2547,14 @@ export function useInteractiveDocWorkbench(
         const render = portsRef.current.render;
         if (!engine || !render) return null;
         const current = engine.state();
-        const block = (current.project as { blocks?: unknown[] } | null)?.blocks?.find(
-          (entry) => String((entry as { id?: unknown })?.id || "") === blockId,
+        const project = current.project;
+        if (!project) return null;
+        const block = project.blocks?.find(
+          (entry) => String(entry?.id || "") === blockId,
         );
         if (!block) return null;
         return render({
-          project: current.project,
+          project,
           block,
           values: current.values,
           results: current.results,

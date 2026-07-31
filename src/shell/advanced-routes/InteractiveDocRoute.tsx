@@ -46,10 +46,18 @@ export function InteractiveDocRoute({
       serialize: (project) => serializeInteractiveDocProject(project),
       validate: (project) => validateInteractiveDocProject(project),
       evaluate: (project, inputs) => evaluateComputeGraph(project, inputs),
-      commit: (args) => commitInteractiveDocProject(args),
-      render: (args) => renderInteractiveDocBlock(args),
+      commit: (args) =>
+        commitInteractiveDocProject({ ...args, item: args.item ?? item }),
+      // The viewport carries values, not a compute result, so the graph is
+      // evaluated here for the block being rendered.
+      render: (args) =>
+        renderInteractiveDocBlock({
+          project: args.project,
+          block: args.block,
+          compute: evaluateComputeGraph(args.project, args.values),
+        }),
     }),
-    [],
+    [item],
   );
   const editor = useInteractiveDocWorkbench(item, siteId, ports);
   const [exportError, setExportError] = useState("");
