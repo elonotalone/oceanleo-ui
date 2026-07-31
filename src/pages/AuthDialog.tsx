@@ -235,6 +235,11 @@ export interface AuthPanelProps extends Omit<AuthDialogProps, "onClose"> {
   /** 内嵌使用时可不传：不传就不渲染右上角关闭键。 */
   onClose?: () => void;
   className?: string;
+  /**
+   * 标题元素的 id，供外层浮层的 `aria-labelledby` 指过来。`AuthDialog` 自己会传，
+   * 内嵌方只有在自带浮层外壳时才需要传；不传则内部 `useId()` 自生成。
+   */
+  titleId?: string;
 }
 
 /** 全家桶统一登录浮层。带 Modal 外壳（遮罩 / Esc / 焦点陷阱由 `../ui` 提供）。 */
@@ -262,7 +267,7 @@ export function AuthPanel({
   closeOnSuccess = true,
   className = "",
   titleId: providedTitleId,
-}: AuthPanelProps & { titleId?: string }): ReactElement {
+}: AuthPanelProps): ReactElement {
   const tt = useUI();
   const generatedId = useId();
   const titleId = providedTitleId || generatedId;
