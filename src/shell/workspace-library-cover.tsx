@@ -11,54 +11,19 @@ import type {
   ArtifactType,
 } from "./artifact-contract";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import type {
+  CoverEvidence,
+  CoverEvidenceReport,
+  WorkspaceCoverFit,
+  WorkspaceCoverPlan,
+  WorkspaceCoverPlanInput,
+  WorkspaceCoverRenderer,
+} from "./workspace-cover-contract";
 
-export type WorkspaceCoverRenderer =
-  | "image"
-  | "video"
-  | "audio"
-  | "pdf"
-  | "website"
-  | "unavailable";
-
-export type WorkspaceCoverFit = "cover" | "contain";
-
-/**
- * 封面证据三态（派活合同 §3.2）。**不是布尔**：把「没证据」和「证实是占位图」
- * 混成同一个 false，正是 5 万份 SVG 与 7,013 份健康 webp 被判「封面不可用」的原因。
- *   real / unknown-metadata（元数据没写全，图本身没问题，照常显示只做弱化）/
- *   proven-placeholder（已证实是占位图，必须挡下）
- */
-export type CoverEvidence = "real" | "unknown-metadata" | "proven-placeholder";
-
-export interface CoverEvidenceReport {
-  evidence: CoverEvidence;
-  /** `code` 是稳定机器码（供 W2 投影与验收对齐），`reason` 是用户可见中文原文
-   * （交 W10 落 17 语）。两者在 `real` 时都是空串。 */
-  code: string;
-  reason: string;
-}
-
-export interface WorkspaceCoverPlan {
-  renderer: WorkspaceCoverRenderer;
-  url: string;
-  mediaType: string;
-  format: string;
-  fit: WorkspaceCoverFit;
-  sourceAspectRatio: number | null;
-  failureReason: string;
-  coverEvidence: CoverEvidence;
-  /** 三态里非 `real` 那两态的中文说明；`real` 时为空串。 */
-  evidenceReason: string;
-}
-
-export interface WorkspaceCoverPlanInput {
-  item?: LibraryItem;
-  kind: LibraryKind;
-  url?: string;
-  rendition?: ArtifactRendition | null;
-  /** A generated/legacy `thumbUrl` is an image declaration, not a source URL. */
-  assumeImage?: boolean;
-}
+// 六个公开类型移到 `workspace-cover-contract.ts`，此处原样转出：`index.ts` 与三个
+// 消费点的既有 import 路径逐字不变。`export type` 在 transpile 时被完整抹除，本模块
+// 因此仍是零相对运行时依赖（为什么必须如此，见下方 PDF 白名单那段注释）。
+export type * from "./workspace-cover-contract";
 
 /**
  * 按名字自证的合成占位图。放水这一条 = 真占位图直接漏上货架。
