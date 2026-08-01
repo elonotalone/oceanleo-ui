@@ -191,6 +191,8 @@ for (const url of await sourceFilesUnder(SRC_ROOT)) {
   packageSources.set(url.href.slice(SRC_ROOT.href.length), await readFile(url, "utf8"));
 }
 
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：共享域判定只活在 config.ts 的 cookieDomainFor()/cookieOptions() 里，而它只在 lib/auth/client.ts 那唯一一处 createBrowserClient 上生效（client.ts:28-30）。包里再出现一套身份实现，它会自带一份 cookie 配置绕过这个判定，把会话 cookie 的 Domain 交给别处决定——而本文件上面 7 条只读 config.ts 的 UC-7 断言仍然全绿，共享 cookie 域已被悄悄扩张却无人变红。
 test("共享包里只有一处直接调 Supabase 身份 API（按实现特征清点，不按文件名）", () => {
   const implementations = [...packageSources]
     .filter(([, source]) => IDENTITY_API.test(source))
@@ -205,6 +207,8 @@ test("共享包里只有一处直接调 Supabase 身份 API（按实现特征清
   assert.match(packageSources.get("lib/auth/client.ts"), IDENTITY_API);
 });
 
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：登录 UI 是全家桶唯一的登录入口，它一旦自建 Supabase 客户端、直写 document.cookie 或自定 cookie 域，会话 cookie 的 Domain 就不再由 cookieDomainFor() 单点决定，共享域随之可被扩张；末尾那条禁 httpOnly 的断言守的是 §8.7 附则的另一半——描述必须与实现一致，谎称 httpOnly 会让后人误判域边界不是唯一保护。
 test("共享登录 UI 只消费 lib/auth，不自建 Supabase 客户端、不碰会话 cookie", () => {
   const dialog = packageSources.get("pages/AuthDialog.tsx");
   assert.ok(dialog, "src/pages/AuthDialog.tsx 不存在——共享登录 UI 是全家桶唯一的门");
