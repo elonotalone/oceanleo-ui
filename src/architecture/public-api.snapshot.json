@@ -903,6 +903,14 @@
         },
         {
           "kind": "star",
+          "source": "./app-capability-image"
+        },
+        {
+          "kind": "star",
+          "source": "./app-cover"
+        },
+        {
+          "kind": "star",
           "source": "./app-session"
         },
         {
@@ -1785,6 +1793,48 @@
         },
         {
           "kind": "named",
+          "name": "AUTH_METHODS",
+          "importedName": "AUTH_METHODS",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AuthDialog",
+          "importedName": "AuthDialog",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AuthDialogProps",
+          "importedName": "AuthDialogProps",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "authErrorCopy",
+          "importedName": "authErrorCopy",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AuthMethod",
+          "importedName": "AuthMethod",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AuthPanel",
+          "importedName": "AuthPanel",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AuthPanelProps",
+          "importedName": "AuthPanelProps",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
           "name": "ByokKeys",
           "importedName": "ByokKeys",
           "source": "./ByokKeys"
@@ -1866,6 +1916,12 @@
           "name": "UsageHistory",
           "importedName": "UsageHistory",
           "source": "./UsageHistory"
+        },
+        {
+          "kind": "named",
+          "name": "wechatRedirectTarget",
+          "importedName": "wechatRedirectTarget",
+          "source": "./AuthDialog"
         }
       ]
     },
@@ -2079,7 +2135,7 @@
           "kind": "named",
           "name": "AddPromptModal",
           "importedName": "AddPromptModal",
-          "source": "./HomeCards"
+          "source": "./HomePromptModals"
         },
         {
           "kind": "named",
@@ -2233,6 +2289,72 @@
         },
         {
           "kind": "named",
+          "name": "APP_CARD_DASHED_CLASS",
+          "importedName": "APP_CARD_DASHED_CLASS",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "APP_CARD_FRAME_CLASS",
+          "importedName": "APP_CARD_FRAME_CLASS",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "APP_CARD_GRID_CLASS",
+          "importedName": "APP_CARD_GRID_CLASS",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardApp",
+          "importedName": "AppCardApp",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardFrame",
+          "importedName": "AppCardFrame",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardPrimaryAction",
+          "importedName": "AppCardPrimaryAction",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardShell",
+          "importedName": "AppCardShell",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardShellProps",
+          "importedName": "AppCardShellProps",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardText",
+          "importedName": "AppCardText",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardThumb",
+          "importedName": "AppCardThumb",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCardVariant",
+          "importedName": "AppCardVariant",
+          "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
           "name": "AppDirectory",
           "importedName": "AppDirectory",
           "source": "./AppDirectory"
@@ -2248,6 +2370,12 @@
           "name": "appendOperatorRemark",
           "importedName": "appendOperatorRemark",
           "source": "../lib/operator-remark"
+        },
+        {
+          "kind": "named",
+          "name": "appPreviewImageKey",
+          "importedName": "appPreviewImageKey",
+          "source": "./HomeAppCards"
         },
         {
           "kind": "named",
@@ -2275,9 +2403,27 @@
         },
         {
           "kind": "named",
+          "name": "appTemplates",
+          "importedName": "appTemplates",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
           "name": "ARTIFACT_FILTERS",
           "importedName": "ARTIFACT_FILTERS",
           "source": "./ArtifactLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "ARTIFACT_PLAY_ORIGIN",
+          "importedName": "ARTIFACT_PLAY_ORIGIN",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
+          "name": "ARTIFACT_PLAY_ROUTE_PREFIX",
+          "importedName": "ARTIFACT_PLAY_ROUTE_PREFIX",
+          "source": "./explore-artifact-class"
         },
         {
           "kind": "named",
@@ -2341,6 +2487,12 @@
         },
         {
           "kind": "named",
+          "name": "artifactPlayHref",
+          "importedName": "artifactPlayHref",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
           "name": "ArtifactRenderer",
           "importedName": "ArtifactRenderer",
           "source": "./ArtifactRenderer"
@@ -2389,12 +2541,6 @@
         },
         {
           "kind": "named",
-          "name": "BillingNotice",
-          "importedName": "BillingNotice",
-          "source": "./HomeIntro"
-        },
-        {
-          "kind": "named",
           "name": "bindArtifactToContext",
           "importedName": "bindArtifactToContext",
           "source": "./artifact-client"
@@ -2434,6 +2580,18 @@
           "name": "CanvasTab",
           "importedName": "CanvasTab",
           "source": "./ResultCanvas"
+        },
+        {
+          "kind": "named",
+          "name": "capabilityImageOf",
+          "importedName": "capabilityImageOf",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "CATALOG_APP_QUERY_KEY",
+          "importedName": "CATALOG_APP_QUERY_KEY",
+          "source": "./site-catalog-controller"
         },
         {
           "kind": "named",
@@ -2497,6 +2655,30 @@
         },
         {
           "kind": "named",
+          "name": "CoverEvidence",
+          "importedName": "CoverEvidence",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "coverEvidenceOf",
+          "importedName": "coverEvidenceOf",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "CoverEvidenceReport",
+          "importedName": "CoverEvidenceReport",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "coverEvidenceReportOf",
+          "importedName": "coverEvidenceReportOf",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
           "name": "createArtifactRevision",
           "importedName": "createArtifactRevision",
           "source": "./artifact-client"
@@ -2539,6 +2721,12 @@
         },
         {
           "kind": "named",
+          "name": "downloadTemplateMaterial",
+          "importedName": "downloadTemplateMaterial",
+          "source": "./template-download"
+        },
+        {
+          "kind": "named",
           "name": "EmbedChrome",
           "importedName": "EmbedChrome",
           "source": "./EmbedChrome"
@@ -2560,6 +2748,36 @@
           "name": "EnsureWorkspaceSessionOptions",
           "importedName": "EnsureWorkspaceSessionOptions",
           "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "EXPLORE_BASE_PATH",
+          "importedName": "EXPLORE_BASE_PATH",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "EXPLORE_FEED_PLAY_LINK_ATTR",
+          "importedName": "EXPLORE_FEED_PLAY_LINK_ATTR",
+          "source": "./ExplorePlayableFeed"
+        },
+        {
+          "kind": "named",
+          "name": "EXPLORE_PLAYABLE_MAX_PAGES",
+          "importedName": "EXPLORE_PLAYABLE_MAX_PAGES",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
+          "name": "EXPLORE_PLAYABLE_PAGE_LIMIT",
+          "importedName": "EXPLORE_PLAYABLE_PAGE_LIMIT",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
+          "name": "exploreAppHref",
+          "importedName": "exploreAppHref",
+          "source": "./site-catalog-controller"
         },
         {
           "kind": "named",
@@ -2596,6 +2814,18 @@
           "name": "ExplorePageProps",
           "importedName": "ExplorePageProps",
           "source": "./ExplorePage"
+        },
+        {
+          "kind": "named",
+          "name": "ExplorePlayableSurface",
+          "importedName": "ExplorePlayableSurface",
+          "source": "./explore-shelf-dispatch"
+        },
+        {
+          "kind": "named",
+          "name": "featuredHomeApps",
+          "importedName": "featuredHomeApps",
+          "source": "./HomeAppCards"
         },
         {
           "kind": "named",
@@ -2731,15 +2961,51 @@
         },
         {
           "kind": "named",
+          "name": "HOME_APP_ALL_GROUP",
+          "importedName": "HOME_APP_ALL_GROUP",
+          "source": "./HomeAppCards"
+        },
+        {
+          "kind": "named",
+          "name": "HOME_APP_FEATURED_LIMIT",
+          "importedName": "HOME_APP_FEATURED_LIMIT",
+          "source": "./HomeAppCards"
+        },
+        {
+          "kind": "named",
+          "name": "HOME_APP_SEE_ALL_HREF",
+          "importedName": "HOME_APP_SEE_ALL_HREF",
+          "source": "./HomeAppCards"
+        },
+        {
+          "kind": "named",
           "name": "HomeAgentCards",
           "importedName": "HomeAgentCards",
-          "source": "./HomeCards"
+          "source": "./HomeAgentCards"
         },
         {
           "kind": "named",
           "name": "HomeAgentPick",
           "importedName": "HomeAgentPick",
-          "source": "./HomeCards"
+          "source": "./HomeAgentCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAppCards",
+          "importedName": "HomeAppCards",
+          "source": "./HomeAppCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAppCardsProps",
+          "importedName": "HomeAppCardsProps",
+          "source": "./HomeAppCards"
+        },
+        {
+          "kind": "named",
+          "name": "homeAppGroups",
+          "importedName": "homeAppGroups",
+          "source": "./HomeAppCards"
         },
         {
           "kind": "named",
@@ -2758,6 +3024,18 @@
           "name": "HomePromptCards",
           "importedName": "HomePromptCards",
           "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "ImageLightbox",
+          "importedName": "ImageLightbox",
+          "source": "./ImageLightbox"
+        },
+        {
+          "kind": "named",
+          "name": "ImageLightboxProps",
+          "importedName": "ImageLightboxProps",
+          "source": "./ImageLightbox"
         },
         {
           "kind": "named",
@@ -2797,9 +3075,39 @@
         },
         {
           "kind": "named",
+          "name": "isDirectTemplateDownload",
+          "importedName": "isDirectTemplateDownload",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
           "name": "isLeoEnabled",
           "importedName": "isLeoEnabled",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "isMaterialDownloadEntry",
+          "importedName": "isMaterialDownloadEntry",
+          "source": "./material-library-download"
+        },
+        {
+          "kind": "named",
+          "name": "isPlayableGameLibraryItem",
+          "importedName": "isPlayableGameLibraryItem",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
+          "name": "isPlayableGameShelfEntry",
+          "importedName": "isPlayableGameShelfEntry",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
+          "name": "isSourceAliasRendition",
+          "importedName": "isSourceAliasRendition",
+          "source": "./workspace-library-cover"
         },
         {
           "kind": "named",
@@ -2851,6 +3159,42 @@
         },
         {
           "kind": "named",
+          "name": "LIBRARY_ITEM_QUERY_KEY",
+          "importedName": "LIBRARY_ITEM_QUERY_KEY",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_MODE_PREVIEW_VALUE",
+          "importedName": "LIBRARY_MODE_PREVIEW_VALUE",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_MODE_QUERY_KEY",
+          "importedName": "LIBRARY_MODE_QUERY_KEY",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_PREVIEW_QUERY_MODE",
+          "importedName": "LIBRARY_PREVIEW_QUERY_MODE",
+          "source": "./library-edit-intent"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_TAB_QUERY_KEY",
+          "importedName": "LIBRARY_TAB_QUERY_KEY",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_TAB_VALUE",
+          "importedName": "LIBRARY_TAB_VALUE",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
           "name": "LIBRARY_TABS",
           "importedName": "LIBRARY_TABS",
           "source": "./FileLibrary"
@@ -2893,6 +3237,12 @@
         },
         {
           "kind": "named",
+          "name": "libraryItemAppAttributions",
+          "importedName": "libraryItemAppAttributions",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
           "name": "libraryItemMatches",
           "importedName": "libraryItemMatches",
           "source": "./library-data"
@@ -2920,6 +3270,30 @@
           "name": "libraryKindLabel",
           "importedName": "libraryKindLabel",
           "source": "./library-viewers"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryPreviewIntent",
+          "importedName": "LibraryPreviewIntent",
+          "source": "./library-edit-intent"
+        },
+        {
+          "kind": "named",
+          "name": "libraryPreviewIntentAction",
+          "importedName": "libraryPreviewIntentAction",
+          "source": "./library-edit-intent"
+        },
+        {
+          "kind": "named",
+          "name": "libraryPreviewIntentArtifactId",
+          "importedName": "libraryPreviewIntentArtifactId",
+          "source": "./library-edit-intent"
+        },
+        {
+          "kind": "named",
+          "name": "libraryPreviewIntentFromSearch",
+          "importedName": "libraryPreviewIntentFromSearch",
+          "source": "./library-edit-intent"
         },
         {
           "kind": "named",
@@ -2977,6 +3351,54 @@
         },
         {
           "kind": "named",
+          "name": "MATERIAL_LIBRARY_LEVELS",
+          "importedName": "MATERIAL_LIBRARY_LEVELS",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SCENE_ALL_ID",
+          "importedName": "MATERIAL_SCENE_ALL_ID",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SCENE_OTHER_ID",
+          "importedName": "MATERIAL_SCENE_OTHER_ID",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SCENE_OTHER_LABEL",
+          "importedName": "MATERIAL_SCENE_OTHER_LABEL",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SCOPE_PARAM_NAMES",
+          "importedName": "MATERIAL_SCOPE_PARAM_NAMES",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SCOPE_UNENFORCEABLE_CODE",
+          "importedName": "MATERIAL_SCOPE_UNENFORCEABLE_CODE",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "MATERIAL_SITE_APP_OTHER_LABEL",
+          "importedName": "MATERIAL_SITE_APP_OTHER_LABEL",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialAppAttribution",
+          "importedName": "MaterialAppAttribution",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
           "name": "MaterialBoard",
           "importedName": "MaterialBoard",
           "source": "./material-catalog"
@@ -3001,6 +3423,12 @@
         },
         {
           "kind": "named",
+          "name": "materialEntryDownloadAction",
+          "importedName": "materialEntryDownloadAction",
+          "source": "./material-library-download"
+        },
+        {
+          "kind": "named",
           "name": "MaterialItem",
           "importedName": "MaterialItem",
           "source": "./MaterialLibrary"
@@ -3013,9 +3441,51 @@
         },
         {
           "kind": "named",
+          "name": "MaterialLibraryLevel",
+          "importedName": "MaterialLibraryLevel",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
           "name": "MaterialLibraryProps",
           "importedName": "MaterialLibraryProps",
           "source": "./MaterialLibrary"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialSceneCard",
+          "importedName": "MaterialSceneCard",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialSceneChip",
+          "importedName": "MaterialSceneChip",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "materialSceneView",
+          "importedName": "materialSceneView",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialSceneView",
+          "importedName": "MaterialSceneView",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "MaterialScope",
+          "importedName": "MaterialScope",
+          "source": "./material-library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "materialScopeViolation",
+          "importedName": "materialScopeViolation",
+          "source": "./material-library-scope"
         },
         {
           "kind": "named",
@@ -3067,6 +3537,12 @@
         },
         {
           "kind": "named",
+          "name": "navigateToArtifactPlay",
+          "importedName": "navigateToArtifactPlay",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
           "name": "NavigatorGuide",
           "importedName": "NavigatorGuide",
           "source": "./NavigatorGuide"
@@ -3112,6 +3588,12 @@
           "name": "OPEN_LEO_EVENT",
           "importedName": "OPEN_LEO_EVENT",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "openArtifactPlay",
+          "importedName": "openArtifactPlay",
+          "source": "./explore-artifact-class"
         },
         {
           "kind": "named",
@@ -3241,6 +3723,12 @@
         },
         {
           "kind": "named",
+          "name": "primeCurrentPrincipalId",
+          "importedName": "primeCurrentPrincipalId",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
           "name": "PromptCard",
           "importedName": "PromptCard",
           "source": "./home-cards"
@@ -3249,7 +3737,7 @@
           "kind": "named",
           "name": "PromptCardModal",
           "importedName": "PromptCardModal",
-          "source": "./HomeCards"
+          "source": "./HomePromptModals"
         },
         {
           "kind": "named",
@@ -3277,9 +3765,51 @@
         },
         {
           "kind": "named",
+          "name": "readSiteAppDirectory",
+          "importedName": "readSiteAppDirectory",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
           "name": "refreshArtifactRendition",
           "importedName": "refreshArtifactRendition",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "registerSiteAppDirectory",
+          "importedName": "registerSiteAppDirectory",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "representativeFill",
+          "importedName": "representativeFill",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "RepresentativeFill",
+          "importedName": "RepresentativeFill",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "representativePrompt",
+          "importedName": "representativePrompt",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
+          "name": "resetCurrentPrincipalId",
+          "importedName": "resetCurrentPrincipalId",
+          "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "resetSiteAppDirectories",
+          "importedName": "resetSiteAppDirectories",
+          "source": "./material-scene-axis"
         },
         {
           "kind": "named",
@@ -3337,6 +3867,12 @@
         },
         {
           "kind": "named",
+          "name": "safeArtifactPlayHref",
+          "importedName": "safeArtifactPlayHref",
+          "source": "./explore-artifact-class"
+        },
+        {
+          "kind": "named",
           "name": "saveCustomPromptCards",
           "importedName": "saveCustomPromptCards",
           "source": "./home-cards"
@@ -3346,6 +3882,12 @@
           "name": "SavedWorkflow",
           "importedName": "SavedWorkflow",
           "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "SceneSelection",
+          "importedName": "SceneSelection",
+          "source": "./material-scene-axis"
         },
         {
           "kind": "named",
@@ -3565,6 +4107,12 @@
         },
         {
           "kind": "named",
+          "name": "SiteAppDirectory",
+          "importedName": "SiteAppDirectory",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
           "name": "siteBrandColorFor",
           "importedName": "siteBrandColorFor",
           "source": "./site-icons"
@@ -3580,6 +4128,18 @@
           "name": "SiteCatalogConsoleProps",
           "importedName": "SiteCatalogConsoleProps",
           "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "named",
+          "name": "SiteDirectoryApp",
+          "importedName": "SiteDirectoryApp",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "SiteDirectoryAppInput",
+          "importedName": "SiteDirectoryAppInput",
+          "source": "./material-scene-axis"
         },
         {
           "kind": "named",
@@ -3661,6 +4221,12 @@
         },
         {
           "kind": "named",
+          "name": "subscribeSiteAppDirectories",
+          "importedName": "subscribeSiteAppDirectories",
+          "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
           "name": "TeamRosterModal",
           "importedName": "TeamRosterModal",
           "source": "./TeamRosterModal"
@@ -3670,6 +4236,30 @@
           "name": "TeamRosterModalProps",
           "importedName": "TeamRosterModalProps",
           "source": "./TeamRosterModal"
+        },
+        {
+          "kind": "named",
+          "name": "TEMPLATE_DOWNLOAD_PATH",
+          "importedName": "TEMPLATE_DOWNLOAD_PATH",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateDownloadError",
+          "importedName": "TemplateDownloadError",
+          "source": "./template-download"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateDownloadErrorCode",
+          "importedName": "TemplateDownloadErrorCode",
+          "source": "./template-download"
+        },
+        {
+          "kind": "named",
+          "name": "templateDownloadHref",
+          "importedName": "templateDownloadHref",
+          "source": "./site-catalog-controller"
         },
         {
           "kind": "named",
@@ -3691,9 +4281,27 @@
         },
         {
           "kind": "named",
+          "name": "TemplateMaterial",
+          "importedName": "TemplateMaterial",
+          "source": "./app-catalog"
+        },
+        {
+          "kind": "named",
           "name": "templateSegments",
           "importedName": "templateSegments",
           "source": "./PromptHighlightArea"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateShowcase",
+          "importedName": "TemplateShowcase",
+          "source": "./ImageLightbox"
+        },
+        {
+          "kind": "named",
+          "name": "TemplateShowcaseProps",
+          "importedName": "TemplateShowcaseProps",
+          "source": "./ImageLightbox"
         },
         {
           "kind": "named",
@@ -3943,6 +4551,42 @@
         },
         {
           "kind": "named",
+          "name": "workspaceAppAdvancedHref",
+          "importedName": "workspaceAppAdvancedHref",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceAppFillHref",
+          "importedName": "workspaceAppFillHref",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceCoverPlan",
+          "importedName": "workspaceCoverPlan",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceCoverPlan",
+          "importedName": "WorkspaceCoverPlan",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspaceCoverRenderer",
+          "importedName": "WorkspaceCoverRenderer",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceCoverRenditionPurposes",
+          "importedName": "workspaceCoverRenditionPurposes",
+          "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
           "name": "WorkspaceDetail",
           "importedName": "WorkspaceDetail",
           "source": "./WorkspaceMasterDetail"
@@ -4086,6 +4730,18 @@
           "source": "./WorkspaceMasterDetail"
         },
         {
+          "kind": "named",
+          "name": "workspaceTemplateEditHref",
+          "importedName": "workspaceTemplateEditHref",
+          "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "workspaceTemplatePreviewHref",
+          "importedName": "workspaceTemplatePreviewHref",
+          "source": "./site-catalog-controller"
+        },
+        {
           "kind": "star",
           "source": "./artifact-contract"
         },
@@ -4178,6 +4834,11 @@
         {
           "kind": "named",
           "name": "libraryItemMatches",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryKindForArtifactType",
           "source": ""
         },
         {
