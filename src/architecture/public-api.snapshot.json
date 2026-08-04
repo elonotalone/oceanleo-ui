@@ -2133,6 +2133,12 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "ActiveAppCapability",
+          "importedName": "ActiveAppCapability",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
           "name": "AddPromptModal",
           "importedName": "AddPromptModal",
           "source": "./HomePromptModals"
@@ -2289,6 +2295,24 @@
         },
         {
           "kind": "named",
+          "name": "APP_CAPABILITY_BAR_HEIGHT",
+          "importedName": "APP_CAPABILITY_BAR_HEIGHT",
+          "source": "./AppCapabilityBar"
+        },
+        {
+          "kind": "named",
+          "name": "APP_CAPABILITY_MAP_SCHEMA",
+          "importedName": "APP_CAPABILITY_MAP_SCHEMA",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "APP_CAPABILITY_QUERY_KEY",
+          "importedName": "APP_CAPABILITY_QUERY_KEY",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
           "name": "APP_CARD_DASHED_CLASS",
           "importedName": "APP_CARD_DASHED_CLASS",
           "source": "./app-card-shell"
@@ -2304,6 +2328,90 @@
           "name": "APP_CARD_GRID_CLASS",
           "importedName": "APP_CARD_GRID_CLASS",
           "source": "./app-card-shell"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityBar",
+          "importedName": "AppCapabilityBar",
+          "source": "./AppCapabilityBar"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityBarProps",
+          "importedName": "AppCapabilityBarProps",
+          "source": "./AppCapabilityBar"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityContextValue",
+          "importedName": "AppCapabilityContextValue",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilityEntries",
+          "importedName": "appCapabilityEntries",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityEntry",
+          "importedName": "AppCapabilityEntry",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilityEntryByFamily",
+          "importedName": "appCapabilityEntryByFamily",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityEntryProvider",
+          "importedName": "AppCapabilityEntryProvider",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityEntryProviderProps",
+          "importedName": "AppCapabilityEntryProviderProps",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilityFamilyFromSearch",
+          "importedName": "appCapabilityFamilyFromSearch",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilityFromSearch",
+          "importedName": "appCapabilityFromSearch",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityMap",
+          "importedName": "AppCapabilityMap",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilityMapKey",
+          "importedName": "appCapabilityMapKey",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "appCapabilitySearch",
+          "importedName": "appCapabilitySearch",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "AppCapabilityUrlBindingArgs",
+          "importedName": "AppCapabilityUrlBindingArgs",
+          "source": "./app-capability-context"
         },
         {
           "kind": "named",
@@ -2877,6 +2985,48 @@
         },
         {
           "kind": "named",
+          "name": "GameBundleDocument",
+          "importedName": "GameBundleDocument",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GameBundleFormat",
+          "importedName": "GameBundleFormat",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GameIterationRequest",
+          "importedName": "GameIterationRequest",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GameIterationResult",
+          "importedName": "GameIterationResult",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GameIterationRunner",
+          "importedName": "GameIterationRunner",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GamePreviewHost",
+          "importedName": "GamePreviewHost",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "GamePreviewHostProps",
+          "importedName": "GamePreviewHostProps",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
           "name": "getArtifactEditDecision",
           "importedName": "getArtifactEditDecision",
           "source": "./artifact-client"
@@ -3108,6 +3258,12 @@
           "name": "isSourceAliasRendition",
           "importedName": "isSourceAliasRendition",
           "source": "./workspace-library-cover"
+        },
+        {
+          "kind": "named",
+          "name": "isUsableAppCapabilityEntry",
+          "importedName": "isUsableAppCapabilityEntry",
+          "source": "./app-capability-entry"
         },
         {
           "kind": "named",
@@ -3615,6 +3771,12 @@
         },
         {
           "kind": "named",
+          "name": "OperatorConsoleCapabilityProps",
+          "importedName": "OperatorConsoleCapabilityProps",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
           "name": "OperatorConsoleProps",
           "importedName": "OperatorConsoleProps",
           "source": "./OperatorConsole"
@@ -3765,6 +3927,12 @@
         },
         {
           "kind": "named",
+          "name": "readAppCapabilityMap",
+          "importedName": "readAppCapabilityMap",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
           "name": "readSiteAppDirectory",
           "importedName": "readSiteAppDirectory",
           "source": "./material-scene-axis"
@@ -3774,6 +3942,24 @@
           "name": "refreshArtifactRendition",
           "importedName": "refreshArtifactRendition",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "registerAppCapabilityMap",
+          "importedName": "registerAppCapabilityMap",
+          "source": "./app-capability-entry"
+        },
+        {
+          "kind": "named",
+          "name": "registerGameIterationRunner",
+          "importedName": "registerGameIterationRunner",
+          "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "registerGamePreviewHost",
+          "importedName": "registerGamePreviewHost",
+          "source": "./advanced-routes/GameRoute"
         },
         {
           "kind": "named",
@@ -3810,6 +3996,12 @@
           "name": "resetSiteAppDirectories",
           "importedName": "resetSiteAppDirectories",
           "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "resolveAppCapabilityEntries",
+          "importedName": "resolveAppCapabilityEntries",
+          "source": "./app-capability-entry"
         },
         {
           "kind": "named",
@@ -4308,6 +4500,24 @@
           "name": "tintOf",
           "importedName": "tintOf",
           "source": "../lib/brand-color"
+        },
+        {
+          "kind": "named",
+          "name": "useActiveAppCapability",
+          "importedName": "useActiveAppCapability",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
+          "name": "useAppCapabilityControls",
+          "importedName": "useAppCapabilityControls",
+          "source": "./app-capability-context"
+        },
+        {
+          "kind": "named",
+          "name": "useAppCapabilityUrlBinding",
+          "importedName": "useAppCapabilityUrlBinding",
+          "source": "./app-capability-context"
         },
         {
           "kind": "named",

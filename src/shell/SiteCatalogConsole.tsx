@@ -60,6 +60,7 @@ import {
 import {
   WorkspaceRuntimeBoundary,
 } from "./workspace-runtime-hydration";
+import { useAppCapabilityUrlBinding } from "./app-capability-context";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   advancedItemFromSession,
@@ -498,6 +499,9 @@ export function SiteCatalogConsole({
     ],
   );
 
+  // 功能直入（H 波 W2）：按键条选中态绑在 `?cap=` 上，路由本体不动（判据 H1-d）。
+  const capabilityProps = useAppCapabilityUrlBinding({ pathname, search: locationSearch, router, onSearchChange: setLocationSearch });
+
   // 每个成品 app → 一个 ConsoleFunction（全部复用 renderOps/renderCanvas；带场景 + 三板块导航）。
   const functions: ConsoleFunction[] = useMemo(
     () =>
@@ -744,6 +748,7 @@ export function SiteCatalogConsole({
         // 老 localStorage 值自然被忽略 = 干净地回到一致的 3:4。
         defaultRatio={3 / 7}
         storageKey="oceanleo_console_split"
+        {...capabilityProps}
       />
     );
 

@@ -10,7 +10,7 @@
 // 即可受控；想同步到 URL `?fn=`，在消费端用自己的 router 监听 onChange。
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Studio } from "./Studio";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import type { ModelCategory } from "./ModelPicker";
@@ -21,6 +21,12 @@ import { promptCardsForSite } from "./home-cards";
 import { useUI } from "../i18n/ui/useUI";
 import { OperatorRemarkProvider } from "./OperatorRemark";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+import { appCapabilityEntries } from "./app-capability-entry";
+import {
+  AppCapabilityBar,
+  APP_CAPABILITY_BAR_HEIGHT,
+} from "./AppCapabilityBar";
+import { AppCapabilityEntryProvider } from "./app-capability-context";
 
 export interface ConsoleFunction {
   /** 功能唯一 id（用于受控选中 / 深链 ?fn=<id>）。 */
@@ -161,6 +167,17 @@ export interface OperatorConsoleProps {
    * 操作员 2026-07-01：单栏（库关闭）时操作台/结果内容最大宽度并居中，防止铺满整页
    * （横向范围与 agent 对话框一致）。透传给 Studio→SplitWorkspace，默认 48rem。 */
   soloMaxWidth?: string | null;
+  /**
+   * H 波（2026-08-04）：功能按键条上【当前打开哪个功能】的受控值 = L3 族 id。
+   *
+   * 与 `value`/`onChange`（选哪个 app）是同一套受控约定的第二条通路，但**刻意分开**：
+   * `value` 决定路由 `/workspace/<appId>`，本值只往那条路由上加一个
+   * `?cap=<family>` query（`APP_CAPABILITY_QUERY_KEY`），**绝不跳出 app**。
+   * 不传 → 组件内部自管（非受控），切 app 时自动清空。
+   * 消费站什么都不用改：`SiteCatalogConsole` 已经把它接到 URL 上了。 */
+  capabilityFamily?: string;
+  /** 功能按键条切换回调（受控必接；也用于同步到 URL `?cap=`）。 */
+  onCapabilityFamilyChange?: (family: string) => void;
 }
 
 export function OperatorConsole({
@@ -187,6 +204,8 @@ export function OperatorConsole({
   skillTab: _skillTab,
   library,
   soloMaxWidth = "48rem",
+  capabilityFamily,
+  onCapabilityFamilyChange,
 }: OperatorConsoleProps) {
   const tt = useUI();
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
@@ -225,6 +244,39 @@ export function OperatorConsole({
     if (value === undefined) setInternal(id);
     onChange?.(id);
   };
+
+  // ── 功能按键条的选中态（H 波 W2） ──────────────────────────────────────────
+  // 「这个 app 该有哪几枚功能按钮」全部来自 W4 的映射，本组件不认识任何站点或族。
+  // 映射里没有这个 app（701 个 app 里 169 个本来就一枚都没有）→ 空数组 → 不渲染按键条。
+  const activeAppId = active?.id ?? "";
+  const capabilityEntries = useMemo(
+    () => appCapabilityEntries(siteId, activeAppId),
+    [siteId, activeAppId],
+  );
+  const capabilityControlled = capabilityFamily !== undefined;
+  const [internalCapability, setInternalCapability] = useState("");
+  // 非受控时切 app 必须清空：族 id 在不同 app 之间会重名（「台账」几乎每个站都有），
+  // 不清会让新 app 一进来就自动开着上一个 app 的功能。
+  useEffect(() => {
+    if (!capabilityControlled) setInternalCapability("");
+  }, [activeAppId, capabilityControlled]);
+  const rawCapability = capabilityControlled
+    ? capabilityFamily
+    : internalCapability;
+  // 选中态 fail-closed：`?cap=` 指到本 app 没有的族（换了 app 的旧书签、映射里被删掉
+  // 的行）一律当作未选中，界面回到 app 自己的流程，而不是留一枚点不开的高亮按钮。
+  const selectedCapability = capabilityEntries.some(
+    (entry) => entry.family === rawCapability,
+  )
+    ? rawCapability
+    : "";
+  const changeCapability = useCallback(
+    (family: string) => {
+      if (!capabilityControlled) setInternalCapability(family);
+      onCapabilityFamilyChange?.(family);
+    },
+    [capabilityControlled, onCapabilityFamilyChange],
+  );
 
   // doctrine v7 目录模式：先列功能目录，点开才进入功能区（带返回）。
   // embed/solo（hideTabs）时不启用。**宗旨 v13（操作员 2026-07-02）**：一进 workspace
@@ -396,7 +448,11 @@ export function OperatorConsole({
   // 额外扣除一条横跨双栏的 app row。保留 headerHeight prop 仅作调用端类型兼容。
   void headerHeight;
   const appShellHeader = 0;
-  const studioHeaderHeight = appShellHeader;
+  // 功能按键条横跨双栏挂在 Studio 之上，它那 40px 必须从可视高度里扣掉，否则两栏被顶
+  // 出一屏（旧按键条当年同样按自身高度扣，见 `c96dd28` 的 headerHeight 注释）。
+  const capabilityBarVisible = capabilityEntries.length > 0;
+  const studioHeaderHeight =
+    appShellHeader + (capabilityBarVisible ? APP_CAPABILITY_BAR_HEIGHT : 0);
 
   // 宗旨 v12.1/v12.2：每个功能页右栏首屏都要有「导航」——功能自带 guide 优先；没给的
   // 功能，按 siteId 从内置 prompt 库**自动兜底**一份（教学一句话 + 前几张卡片当示例，
@@ -416,19 +472,39 @@ export function OperatorConsole({
             （左栏填充器注册 / 右栏 ResultCanvas 读取加「使用指南」标签）。 */}
         <OperatorRemarkProvider value={operatorRemarkValue}>
           <GuideProvider guide={effectiveGuide} siteId={siteId} activeKey={active?.id ?? ""}>
-            <Studio
-              ops={ops}
-              canvas={active?.canvas ?? canvas ?? null}
-              opsWidth={opsWidth}
-              defaultRatio={defaultRatio}
-              storageKey={storageKey}
-              opsLabel={appToolbarLabel}
-              canvasLabel={canvasLabel}
-              accent={accent}
-              headerHeight={studioHeaderHeight}
-              library={libraryConfig}
-              soloMaxWidth={soloMaxWidth}
-            />
+            {/* 功能直入（目标形态 §7(a)）：入口在这条按键条上，挂载归 W3 的承载层。
+                Provider 包住整个 Studio，所以右栏 canvas 也读得到选中态。 */}
+            <AppCapabilityEntryProvider
+              siteKey={siteId}
+              appId={activeAppId}
+              entries={capabilityEntries}
+              family={selectedCapability}
+              onFamilyChange={changeCapability}
+            >
+              {capabilityBarVisible && (
+                <AppCapabilityBar
+                  appLabel={activeTitle}
+                  appIcon={active?.icon}
+                  entries={capabilityEntries}
+                  activeFamily={selectedCapability}
+                  onSelect={changeCapability}
+                  accent={accent}
+                />
+              )}
+              <Studio
+                ops={ops}
+                canvas={active?.canvas ?? canvas ?? null}
+                opsWidth={opsWidth}
+                defaultRatio={defaultRatio}
+                storageKey={storageKey}
+                opsLabel={appToolbarLabel}
+                canvasLabel={canvasLabel}
+                accent={accent}
+                headerHeight={studioHeaderHeight}
+                library={libraryConfig}
+                soloMaxWidth={soloMaxWidth}
+              />
+            </AppCapabilityEntryProvider>
           </GuideProvider>
         </OperatorRemarkProvider>
       </div>

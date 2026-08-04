@@ -108,6 +108,51 @@ export type { StudioProps } from "./Studio";
 // 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
 export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
+// ── 功能直入（H 波 W2，2026-08-04） ─────────────────────────────────────────
+// 目标形态 `docs/architecture/oceanleo-advanced-capability-entry.md` §7(a)：成品素材
+// 的第二个出口 = 在它所属 app 的操控台按键条上，以【它自己的名字】出现一枚按钮。
+//
+// 数据面：`app-capability-entry` 是纯函数层（无 React），映射由 W4 从 L4 装配单生成、
+// 经 `scripts/sync-app-capability-map.mjs` 落成随包发布的 `app-capability-map.generated`。
+// **前端不持有任何站点/app/族清单**：删掉映射里一行，对应按钮就消失（判据 H1-a）。
+// `registerAppCapabilityMap` 只给判据脚本换数据用，生产路径不调。
+//
+// 交接面：承载层（W3）用 `useActiveAppCapability()` 读「现在该在右栏前景层空手挂哪个
+// 编辑器」，用 `useAppCapabilityControls().close()` 关掉它并同步清 URL 上的 `?cap=`。
+// 前景层**不要自己藏**，否则按键条还亮着、两边状态分叉。
+export {
+  APP_CAPABILITY_MAP_SCHEMA,
+  APP_CAPABILITY_QUERY_KEY,
+  appCapabilityEntries,
+  appCapabilityEntryByFamily,
+  appCapabilityFamilyFromSearch,
+  appCapabilityFromSearch,
+  appCapabilityMapKey,
+  appCapabilitySearch,
+  isUsableAppCapabilityEntry,
+  registerAppCapabilityMap,
+  readAppCapabilityMap,
+  resolveAppCapabilityEntries,
+} from "./app-capability-entry";
+export type {
+  AppCapabilityEntry,
+  AppCapabilityMap,
+} from "./app-capability-entry";
+export {
+  AppCapabilityEntryProvider,
+  useActiveAppCapability,
+  useAppCapabilityControls,
+  useAppCapabilityUrlBinding,
+} from "./app-capability-context";
+export type {
+  ActiveAppCapability,
+  AppCapabilityContextValue,
+  AppCapabilityEntryProviderProps,
+  AppCapabilityUrlBindingArgs,
+  OperatorConsoleCapabilityProps,
+} from "./app-capability-context";
+export { AppCapabilityBar, APP_CAPABILITY_BAR_HEIGHT } from "./AppCapabilityBar";
+export type { AppCapabilityBarProps } from "./AppCapabilityBar";
 // 所有成品 app 共用的补充备注：OperatorConsole 提供 app 级状态，
 // FunctionAgentChat 统一渲染；直接生成引擎在最终 prompt 边界读取并追加。
 export {
@@ -214,6 +259,28 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+// LeoPlay 沙箱宿主与生成链的注入面（`advanced-routes/GameRoute`）。
+//
+// 这两个注册函数在共享包里存在很久了，但 `GameRoute` 只被 `AdvancedContentWorkbench`
+// 用 `dynamic()` 懒加载，从没出现在本导出面上，consumer 侧根本够不着 —— `game` 站为此
+// 写了 99 行 namespace-import 防御垫片（`game/app/_console/shared-game-host-registry.ts`
+// 开头记着整条因果）。H 波 W2 顺手补上：垫片那边零改动即变成真实调用。
+//
+// 注册状态是 `GameRoute` 的模块级变量，这里必须是**同一个模块实例**才注册得进去；
+// 静态 re-export 与 `dynamic()` 拿到的是同一份模块记录，所以两条路径不会各存一份。
+export {
+  registerGameIterationRunner,
+  registerGamePreviewHost,
+} from "./advanced-routes/GameRoute";
+export type {
+  GameBundleDocument,
+  GameBundleFormat,
+  GameIterationRequest,
+  GameIterationResult,
+  GameIterationRunner,
+  GamePreviewHost,
+  GamePreviewHostProps,
+} from "./advanced-routes/GameRoute";
 // Shared timeline/director capability engines. Re-export only through the
 // owner-maintained public barrels so implementation modules remain private.
 export * from "./video-editor/capabilities";
