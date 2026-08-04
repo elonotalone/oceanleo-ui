@@ -76,6 +76,9 @@ const EXPECTED_ADAPTER = Object.freeze({
   video_canvas: "video-canvas",
   model_3d: "threed",
   game_editing: "game",
+  // H 波新增的两条:可算文档与地图工程。取值来自 `artifact-contract.ts` 的矩阵行本身。
+  geo_map_editing: "geo-map",
+  interactive_doc_editing: "interactive-doc",
 });
 
 const EXPECTED_ROUTE = Object.freeze({
@@ -92,6 +95,8 @@ const EXPECTED_ROUTE = Object.freeze({
   "video-canvas": "embed",
   threed: "threed",
   game: "game",
+  "geo-map": "geo-map",
+  "interactive-doc": "interactive-doc",
 });
 
 const KIND_BY_ARTIFACT = Object.freeze({
@@ -109,6 +114,8 @@ const KIND_BY_ARTIFACT = Object.freeze({
   model_3d: "threed",
   workflow: "canvas",
   game: "game",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
 });
 
 const SOURCE_FORMAT_BY_ARTIFACT = Object.freeze({
@@ -126,6 +133,8 @@ const SOURCE_FORMAT_BY_ARTIFACT = Object.freeze({
   model_3d: "gltf",
   workflow: "oceanleo.workflow.v1",
   game: "oceanleo.game-bundle.v1",
+  geo_map: "oceanleo.geo-map.v1",
+  interactive_doc: "oceanleo.interactive-doc.v1",
 });
 
 function contextId(siteKey) {
@@ -281,7 +290,7 @@ test("one immutable 15-row matrix drives every feature and public projection", (
   }
 });
 
-test("all 13 features keep shared identity and adapter across all 32 contexts", () => {
+test("all 15 features keep shared identity and adapter across all 32 contexts", () => {
   let dispatches = 0;
   for (const entry of ADVANCED_CAPABILITY_MATRIX) {
     const artifact = artifactFor(entry);
@@ -311,7 +320,7 @@ test("all 13 features keep shared identity and adapter across all 32 contexts", 
       dispatches += 1;
     }
   }
-  assert.equal(dispatches, 13 * 32);
+  assert.equal(dispatches, 15 * 32);
 });
 
 test("global More routes every typed artifact binding through the same matrix", () => {

@@ -133,7 +133,7 @@ test("typed editor capability matrix does not infer editing from viewer kind", (
   }
 });
 
-test("all fourteen shelf taxonomies reach a trusted local editor", () => {
+test("all sixteen shelf taxonomies reach a trusted local editor", () => {
   const capabilityByType = {
     single_file_image: ["image-editor", "png"],
     composite_image: ["composite-image-editor", "fabric-json"],
@@ -151,6 +151,11 @@ test("all fourteen shelf taxonomies reach a trusted local editor", () => {
     // 第 14 类。`game-editor` 与 `website-editor` 是两条独立能力：游戏不走
     // Next 源码工作台（`01-decisions.md` D7）。
     game: ["game-editor", "oceanleo.game-bundle.v1"],
+    // 第 15、16 类（H 波）。取值来自 `artifact-contract.ts` 的契约行本身，
+    // 不另拟：`sourceFormat` 是各自的 schema 名，能力名与 `editorCapabilityFor`
+    // 解析出的适配器同源。
+    geo_map: ["geo-map-editor", "oceanleo.geo-map.v1"],
+    interactive_doc: ["interactive-doc-editor", "oceanleo.interactive-doc.v1"],
   };
   assert.deepEqual(Object.keys(capabilityByType).sort(), [...ARTIFACT_TYPES].sort());
 

@@ -292,6 +292,40 @@ const BLANK_DRAFT_SHAPE: Readonly<Record<BlankDraftFeatureId, BlankDraftShape>> 
     },
   });
 
+/**
+ * 载体类型 → 能空手起手的功能 id。**从 `BLANK_DRAFT_SHAPE` 反查得来,不另写一份清单**:
+ * 上面每一格的 `contentType` 就是该功能起手件的 `artifact_type`,与 `artifact-contract`
+ * 的 `ARTIFACT_TYPES` 同名。入口侧(按键条)手上只有映射行的 `artifactType`,要把它换成
+ * 总线认的 `featureId`,缺的就是这张表。
+ *
+ * 反查而非手写的理由是判据性的:五类中任何一类改了 `contentType`,这张表跟着变;
+ * 手抄一份就会出现「起手件改了、入口还按旧名换算」这种两边各自都绿、合起来不通的缝。
+ */
+const BLANK_DRAFT_FEATURE_BY_CONTENT_TYPE: ReadonlyMap<
+  string,
+  BlankDraftFeatureId
+> = new Map(
+  BLANK_DRAFT_FEATURE_IDS.map((featureId) => [
+    BLANK_DRAFT_SHAPE[featureId].contentType,
+    featureId,
+  ]),
+);
+
+/**
+ * 这个载体类型能不能空手起手。不能就返回 `null` —— 调用方不许猜一个回退功能
+ * (与 `blankDraftLibraryItem` 同一条 fail-closed 约定)。
+ *
+ * 十六类载体里只有五类能空手起手;其余(视频、音频、三维……)没有素材就无从开工,
+ * 它们的按钮是素材库筛选器,不是编辑器启动器。
+ */
+export function blankDraftFeatureIdForContentType(
+  contentType: unknown,
+): BlankDraftFeatureId | null {
+  const key = String(contentType || "").trim();
+  if (!key) return null;
+  return BLANK_DRAFT_FEATURE_BY_CONTENT_TYPE.get(key) ?? null;
+}
+
 export interface BlankDraftOptions {
   siteId?: string;
   appId?: string;

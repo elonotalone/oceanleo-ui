@@ -27,6 +27,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import { useAdvancedFeatureLaunchBridge } from "./app-capability-launch";
 import {
   appCapabilityFamilyFromSearch,
   appCapabilitySearch,
@@ -92,6 +93,11 @@ export function AppCapabilityEntryProvider({
       close: () => onFamilyChange(""),
     };
   }, [appId, entries, family, onFamilyChange, siteKey]);
+
+  // 入口 → 承载的那一跳。逻辑在 `app-capability-launch.ts` 里(那是个不含 JSX 的
+  // `.ts`,缝本身才测得到);这里只负责把选中态喂给它。
+  useAdvancedFeatureLaunchBridge(value.active);
+
   return (
     <AppCapabilityContext.Provider value={value}>
       {children}

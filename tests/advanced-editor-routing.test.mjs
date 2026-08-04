@@ -6,6 +6,10 @@ const routes = readFileSync(
   new URL("../src/shell/workbench-routes.ts", import.meta.url),
   "utf8",
 );
+const routeFormats = readFileSync(
+  new URL("../src/shell/workbench-route-formats.ts", import.meta.url),
+  "utf8",
+);
 const registrySource = readFileSync(
   new URL(
     "../src/shell/workbench-capability-registry.ts",
@@ -35,8 +39,11 @@ test("advanced editor routing covers every durable material family", () => {
       "deck",
       "design-canvas",
       "game",
+      // H 波新增的两条本地路由（可算文档、地图工程）。
+      "geo-map",
       "grid",
       "image",
+      "interactive-doc",
       "office",
       "pdf",
       "richdoc",
@@ -50,9 +57,11 @@ test("advanced editor routing covers every durable material family", () => {
     if (!entry.routable) continue;
     assert.deepEqual(entry.roundTrip, ["load", "mutate", "save", "reopen"]);
   }
-  assert.match(routes, /WORD_EXT/);
-  assert.match(routes, /CELL_EXT/);
-  assert.match(routes, /SLIDE_EXT/);
+  // 三张扩展名表在一次重构里搬进了 `workbench-route-formats.ts`，判据跟着搬：
+  // 要断言的是「这三张表存在且仍是路由的依据」，不是「它们写在哪个文件里」。
+  assert.match(routeFormats, /WORD_EXT/);
+  assert.match(routeFormats, /CELL_EXT/);
+  assert.match(routeFormats, /SLIDE_EXT/);
   assert.match(routes, /NATIVE_DECK_EXT/);
   assert.match(
     routes,

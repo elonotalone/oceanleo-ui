@@ -514,20 +514,31 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
     new URL("../src/shell/material-library-type-filter.tsx", import.meta.url),
     "utf8",
   );
+  // 筛选器的渲染点又下沉了一层，进了工具条（`material-library-toolbar.tsx`）。
+  // 要断言的是「它仍然被渲染」，不是「它写在哪个文件里」。
+  const materialToolbar = readFileSync(
+    new URL("../src/shell/material-library-toolbar.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(materialView, /hideCategoryChips/);
-  assert.match(materialView, /<MaterialTypeFilter/);
+  assert.match(materialToolbar, /<MaterialTypeFilter/);
   assert.match(materialTypeFilter, /tt\("货架"\)/);
   assert.match(materialTypeFilter, /tt\("全部类型"\)/);
-  assert.match(materialTypeFilter, /ARTIFACT_TYPES\.map/);
+  // 选项仍然由 `ARTIFACT_TYPES` 推导（现在中间多了一步按站过滤，落到 `offered`），
+  // 判据要的是「不许在这里手抄一份类型清单」这条不变量，不是那一行的写法。
+  assert.match(materialTypeFilter, /ARTIFACT_TYPES/);
+  assert.match(materialTypeFilter, /offered\.map\(/);
   assert.doesNotMatch(materialView, /primaryCategoryIds/);
   assert.match(workspace, /hideCategoryChips/);
   assert.match(workspace, /!hideCategoryChips && categories\.length > 1/);
   // Other libraries keep chips when they omit hideCategoryChips.
   const mineSource = mine;
   assert.doesNotMatch(mineSource, /hideCategoryChips/);
+  // 这份查询形状搬进了 `material-library-cache.ts`（控制器只消费它）。判据跟着搬：
+  // 要的是「taxonomy 只能取 ArtifactType 或空」这条不变量，不是它住在哪个文件。
   assert.match(
     readFileSync(
-      new URL("../src/shell/material-library-controller.ts", import.meta.url),
+      new URL("../src/shell/material-library-cache.ts", import.meta.url),
       "utf8",
     ),
     /interface MaterialLibraryQueryInput[\s\S]*taxonomy: ArtifactType \| ""/,
