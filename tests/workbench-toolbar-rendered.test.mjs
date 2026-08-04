@@ -263,6 +263,19 @@ const homeCardsStubUrl = dataModule(`
 const hydrationStubUrl = dataModule(`
   export function useWorkspaceRuntimeHydration() { return null; }
 `);
+// 功能按键条（H 波）不是本文件的被测对象：这里判的是左侧 PaneHeader 里的 app 身份。
+// 给一份「这个 app 没有功能按钮」的替身，等价于按键条出现之前的形状，四条断言的
+// 前提（`data-header-height` 为 0）因此原样成立。
+const capabilityEntryStubUrl = dataModule(`
+  export function appCapabilityEntries() { return []; }
+`);
+const capabilityBarStubUrl = dataModule(`
+  export const APP_CAPABILITY_BAR_HEIGHT = 40;
+  export function AppCapabilityBar() { return null; }
+`);
+const capabilityContextStubUrl = dataModule(`
+  export function AppCapabilityEntryProvider({ children }) { return children; }
+`);
 const operatorUrl = await compileTsxUrl("src/shell/OperatorConsole.tsx", {
   "./Studio": studioStubUrl,
   "./AppDirectory": directoryStubUrl,
@@ -271,6 +284,9 @@ const operatorUrl = await compileTsxUrl("src/shell/OperatorConsole.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "./OperatorRemark": identityProviderStubUrl,
   "./workspace-runtime-hydration": hydrationStubUrl,
+  "./app-capability-entry": capabilityEntryStubUrl,
+  "./AppCapabilityBar": capabilityBarStubUrl,
+  "./app-capability-context": capabilityContextStubUrl,
 });
 const { OperatorConsole } = await import(operatorUrl);
 
