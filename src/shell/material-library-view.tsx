@@ -42,8 +42,7 @@ import { MaterialCompleteLibraryLink, MaterialShelfToolbar } from "./material-li
 import {
   entriesFromRemoteResult,
   materialFailureCopy,
-  materialLevelEmptyDescription,
-  materialLevelEmptyTitle,
+  materialShelfEmptyCopy,
   materialLevelSearchPlaceholder,
   materialLibraryHref,
   materialShelfEntries,
@@ -131,6 +130,7 @@ export function MaterialLibrary({
   onMaterialDragEnd,
   allowAdvancedOnSelect = true,
   onOpenItem,
+  emptyCta,
 }: MaterialLibraryProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -752,6 +752,16 @@ export function MaterialLibrary({
     );
   }
 
+  const emptyCopy = materialShelfEmptyCopy({
+    loading: shelfLoading,
+    failed: Boolean(effectiveError),
+    failureCopy,
+    level,
+    contextMissing,
+    emptyHint,
+    cta: emptyCta,
+  });
+
   return (
     <WorkspaceLibrary
       entries={shelfEntries}
@@ -765,23 +775,9 @@ export function MaterialLibrary({
       hideCategoryChips
       toolbarActions={toolbar}
       searchPlaceholder={materialLevelSearchPlaceholder(level)}
-      emptyTitle={
-        shelfLoading
-          ? "正在加载素材…"
-          : effectiveError
-            ? failureCopy.title
-            : materialLevelEmptyTitle(level)
-      }
-      emptyDescription={
-        // 上一轮的缺陷正在这两行之间：`emptyTitle` 有加载分支、`emptyDescription`
-        // 没有，于是「正在加载素材…」下面跟着一句「暂无经授权的公共素材」。
-        shelfLoading
-          ? "正在为你取回本站素材。"
-          : effectiveError
-            ? failureCopy.description
-            : emptyHint ||
-              materialLevelEmptyDescription(level, contextMissing)
-      }
+      emptyTitle={emptyCopy.title}
+      emptyDescription={emptyCopy.description}
+      emptyCta={emptyCopy.showCta ? emptyCta : undefined}
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
       materialActionAvailable={materialActionAvailable}

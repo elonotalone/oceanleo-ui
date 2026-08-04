@@ -181,9 +181,19 @@ export function WorkspaceListRow({
 export function WorkspaceLibraryEmpty({
   title,
   description,
+  cta,
 }: {
   title: string;
   description: string;
+  /**
+   * 空态下方的 CTA 插槽。素材库空着的时候，这里是唯一能把读者指回「这个 app 能做
+   * 什么」的位置；在这之前空态只有一个图标 + 两行灰字，无处可去。
+   *
+   * **必须保持可选**：本组件与 `WorkspaceLibrary` 被 36 个消费站直接 import，加必填
+   * 字段会让它们一起 typecheck 变红。不传时这块空态与今天逐字相同，既有文案的默认值
+   * 一个字未改。
+   */
+  cta?: ReactNode;
 }) {
   return (
     <div className="flex h-full min-h-[260px] flex-col items-center justify-center px-6 text-center">
@@ -203,6 +213,7 @@ export function WorkspaceLibraryEmpty({
       <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-[var(--muted,#a8a29e)]">
         {description}
       </p>
+      {cta && <div className="mt-4">{cta}</div>}
     </div>
   );
 }

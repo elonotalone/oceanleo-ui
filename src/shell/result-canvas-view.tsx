@@ -80,6 +80,67 @@ export function FixedWorkspaceTabs({
   );
 }
 
+/**
+ * 右栏没有被 `SplitWorkspace` 接管时的独立外框（自带一条槽位标签条）。原样从
+ * `ResultCanvas.tsx` 搬来，class 与 DOM 结构逐字未变；拆分理由只有尺寸闸。
+ */
+export function StandaloneWorkspaceFrame({
+  slots,
+  selected,
+  onSelect,
+  accent,
+  className = "",
+  children,
+}: {
+  slots: readonly WorkspaceSlotId[];
+  selected: WorkspaceSlotId;
+  onSelect: (slot: WorkspaceSlotId) => void;
+  accent: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const tt = useUI();
+  return (
+    <section
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white ${className}`}
+      style={{ boxShadow: "0 1px 3px rgba(0,0,0,.035)" }}
+    >
+      <nav
+        className="v-scroll shrink-0 overflow-x-auto border-b border-stone-200 bg-stone-50/80 px-2"
+        aria-label={tt("工作区")}
+      >
+        <div className="flex min-w-max items-center">
+          {slots.map((slot) => {
+            const isActive = selected === slot;
+            return (
+              <button
+                key={slot}
+                type="button"
+                onClick={() => onSelect(slot)}
+                aria-current={isActive ? "page" : undefined}
+                className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition ${
+                  isActive
+                    ? "text-stone-900"
+                    : "text-stone-400 hover:text-stone-700"
+                }`}
+              >
+                {tt(WORKSPACE_SLOT_LABELS[slot])}
+                {isActive && (
+                  <span
+                    className="absolute inset-x-3 bottom-0 h-0.5 rounded-full"
+                    style={{ background: accent }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+    </section>
+  );
+}
+
 /** Secondary tabs inside a Preview card; kept API-compatible with all sites. */
 export function CanvasSubTabs({
   tabs,
@@ -127,11 +188,18 @@ export function CanvasEmpty({
   description = "在左侧设置参数并开始后，可在这里查看和下载。",
   hint,
   icon,
+  action,
 }: {
   title?: string;
   description?: string;
   hint?: string;
   icon?: ReactNode;
+  /**
+   * 空态下方的动作插槽。**必须保持可选**：36 个站直接 import 本组件，加必填字段会让
+   * 它们一起 typecheck 变红（`OperatorConsole.tsx:39-43` 的前车之鉴）。不传时这块
+   * 空态与今天逐字相同。
+   */
+  action?: ReactNode;
 }) {
   const tt = useUI();
   return (
@@ -154,6 +222,7 @@ export function CanvasEmpty({
       <p className="mt-1.5 max-w-xs text-[11px] leading-relaxed text-stone-400">
         {tt(hint || description)}
       </p>
+      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }

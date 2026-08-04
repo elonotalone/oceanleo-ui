@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -58,29 +59,64 @@ function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 }
 
+function resolveRelative(fromPath, specifier) {
+  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+    const candidate = resolve(dirname(fromPath), specifier + suffix);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const compiledModules = new Map();
+
+/**
+ * 没被替身覆盖的相对依赖**递归真编译**（与
+ * `result-canvas-deeplink-priority.test.mjs` 同一套办法）。
+ *
+ * 原先的写法只做字符串替换：`data:` 模块解析不了相对路径，于是 `ResultCanvas` 每加
+ * 一个内部依赖，这份测试就必须给它一个替身，否则直接 import 失败。那等于「右栏拆一次
+ * 文件就得把它自己的测试掏空一次」——槽位保活这条断言反而越拆越假。递归编译之后，
+ * 只有真正与本条断言无关的叶子（面板、i18n）留在替身表里。
+ */
 async function compileTsxUrl(relativePath, replacements) {
   const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
+  const cached = compiledModules.get(sourcePath);
+  if (cached) return cached;
+  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: sourcePath,
+  }).outputText;
+
+  for (const specifier of new Set(
+    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
+  )) {
+    let replacement = replacements[specifier];
+    if (!replacement && specifier === "react") replacement = reactUrl;
+    if (!replacement && specifier === "react/jsx-runtime") {
+      replacement = jsxRuntimeUrl;
+    }
+    if (!replacement && specifier.startsWith(".")) {
+      const target = resolveRelative(sourcePath, specifier);
+      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
+      replacement = await compileTsxUrl(
+        relative(process.cwd(), target),
+        replacements,
+      );
+    }
+    assert.ok(
+      replacement,
+      `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`,
     );
+    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
   }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
+
+  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
+  compiledModules.set(sourcePath, url);
+  return url;
 }
 
 const uiStubUrl = dataModule(`
@@ -224,28 +260,6 @@ const surfaceModelStubUrl = dataModule(`
       : fallback(id);
   }
 `);
-const canvasViewStubUrl = dataModule(`
-  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-  export const FIXED_WORKSPACE_SLOTS = [
-    "template", "preview", "materials", "mine", "browser"
-  ];
-  export const WORKSPACE_SLOT_LABELS = {
-    template: "灵感",
-    preview: "生成",
-    materials: "素材库",
-    mine: "我的库",
-    browser: "浏览器"
-  };
-  export function CanvasEmpty({ title }) {
-    return jsx("div", { children: title });
-  }
-  export function CanvasSubTabs() { return null; }
-  export function FixedWorkspaceTabs() { return null; }
-  export function createLiveWorkspaceNodeStore() {
-    return { node: null, version: 0, listeners: new Set() };
-  }
-  export function LiveWorkspaceNode({ store }) { return store.node; }
-`);
 
 const resultCanvasUrl = await compileTsxUrl("src/shell/ResultCanvas.tsx", {
   react: reactUrl,
@@ -269,7 +283,6 @@ const resultCanvasUrl = await compileTsxUrl("src/shell/ResultCanvas.tsx", {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
-  "./result-canvas-view": canvasViewStubUrl,
 });
 const { ResultCanvas } = await import(resultCanvasUrl);
 
@@ -354,12 +367,12 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     );
     await click(tab("我的库"));
     await click(mounted.container.querySelector('[data-increment-panel="mine"]'));
-    await click(tab("浏览器"));
+    await click(tab("云端浏览器"));
     await click(
       mounted.container.querySelector('[data-increment-panel="browser"]'),
     );
     await click(tab("生成"));
-    await click(tab("浏览器"));
+    await click(tab("云端浏览器"));
 
     for (const slot of ["preview", "materials", "mine", "browser"]) {
       assert.equal(live(slot), originalNodes[slot], `${slot} DOM instance`);

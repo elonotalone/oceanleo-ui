@@ -117,6 +117,11 @@ export interface WorkspaceLibraryProps {
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * 空态下方的 CTA 插槽（只在「本来就没有内容」时出现，搜索无结果时不出现——那时
+   * 该做的是换关键词，不是新建）。**可选**，不传时空态与今天逐字相同。
+   */
+  emptyCta?: ReactNode;
   className?: string;
   /** Full-page libraries render directly on the page instead of inside a white panel. */
   plain?: boolean;
@@ -160,6 +165,7 @@ export function WorkspaceLibrary({
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
+  emptyCta,
   className = "",
   plain = false,
 }: WorkspaceLibraryProps) {
@@ -665,6 +671,7 @@ export function WorkspaceLibrary({
                 ? "换一个关键词或分类试试。"
                 : emptyDescription,
             )}
+            cta={search ? undefined : emptyCta}
           />
         ) : view === "list" ? (
           <div className="space-y-1.5">

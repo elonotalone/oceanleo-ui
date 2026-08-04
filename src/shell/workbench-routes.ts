@@ -25,6 +25,20 @@ import {
   type EditorRoute,
   type RegistryEntry,
 } from "./workbench-capability-registry";
+import {
+  AUDIO_EXT,
+  IMAGE_EXT,
+  MODEL_EXT,
+  NATIVE_DECK_EXT,
+  NATIVE_GRID_EXT,
+  NATIVE_RICHDOC_EXT,
+  ROUND_TRIP,
+  VIDEO_EXT,
+  extOf,
+  officeExtensionForItem,
+} from "./workbench-route-formats";
+
+export { officeExtensionForItem } from "./workbench-route-formats";
 
 export {
   TRUSTED_EDITOR_REGISTRY,
@@ -38,140 +52,6 @@ export type {
   EditorRoute,
   RegistryEntry,
 } from "./workbench-capability-registry";
-
-const ROUND_TRIP = ["load", "mutate", "save", "reopen"] as const;
-
-const WORD_EXT = new Set([
-  "docx",
-  "doc",
-  "odt",
-  "rtf",
-  "docm",
-  "dotx",
-  "epub",
-  "mht",
-]);
-const CELL_EXT = new Set([
-  "xlsx",
-  "xls",
-  "ods",
-  "xlsm",
-  "xlsb",
-  "xltx",
-]);
-const NATIVE_GRID_EXT = new Set(CELL_EXT);
-const SLIDE_EXT = new Set([
-  "pptx",
-  "ppt",
-  "odp",
-  "pptm",
-  "pot",
-  "potx",
-  "potm",
-]);
-const NATIVE_DECK_EXT = new Set(SLIDE_EXT);
-const NATIVE_RICHDOC_EXT = new Set(WORD_EXT);
-const VIDEO_EXT = new Set([
-  "mp4",
-  "webm",
-  "mov",
-  "mkv",
-  "m4v",
-  "avi",
-  "mpeg",
-  "mpg",
-  "ogv",
-]);
-const AUDIO_EXT = new Set([
-  "mp3",
-  "wav",
-  "m4a",
-  "flac",
-  "ogg",
-  "oga",
-  "opus",
-  "aac",
-  "wma",
-]);
-const IMAGE_EXT = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "gif",
-  "bmp",
-  "svg",
-  "avif",
-]);
-const MODEL_EXT = new Set(["glb", "gltf"]);
-const OFFICE_MIME_EXT = new Map<string, string>([
-  [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "docx",
-  ],
-  ["application/msword", "doc"],
-  [
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "xlsx",
-  ],
-  ["application/vnd.ms-excel", "xls"],
-  [
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "pptx",
-  ],
-  ["application/vnd.ms-powerpoint.presentation.macroenabled.12", "pptm"],
-  [
-    "application/vnd.openxmlformats-officedocument.presentationml.template",
-    "potx",
-  ],
-  ["application/vnd.ms-powerpoint.template.macroenabled.12", "potm"],
-  ["application/vnd.ms-powerpoint", "ppt"],
-]);
-
-function extOf(url: string): string {
-  try {
-    const path = new URL(url, "https://local.invalid").pathname.toLowerCase();
-    if (!path.includes(".")) return "";
-    return path.split(".").pop() || "";
-  } catch {
-    return "";
-  }
-}
-
-function officeExtensionOf(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/^\./, "");
-  const extension =
-    WORD_EXT.has(normalized) ||
-    CELL_EXT.has(normalized) ||
-    SLIDE_EXT.has(normalized)
-      ? normalized
-      : extOf(value);
-  return WORD_EXT.has(extension) ||
-    CELL_EXT.has(extension) ||
-    SLIDE_EXT.has(extension)
-    ? extension
-    : "";
-}
-
-export function officeExtensionForItem(item: LibraryItem): string {
-  const meta = item.meta || {};
-  const candidates = [
-    item.url,
-    item.previewUrl,
-    meta.file_name,
-    meta.filename,
-    meta.name,
-    meta.format,
-    meta.extension,
-    meta.ext,
-    item.title,
-  ];
-  for (const candidate of candidates) {
-    const extension = officeExtensionOf(String(candidate || ""));
-    if (extension) return extension;
-  }
-  return OFFICE_MIME_EXT.get(String(meta.mime || "").toLowerCase()) || "";
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -508,10 +388,52 @@ function durableEditorCapabilityFor(
   return unavailable("没有匹配的受信任 typed editor adapter。");
 }
 
+/**
+ * 空手起手件的路由。
+ *
+ * 与下面 `item.kind === "website"` 分支里的网站空白草稿、以及画布空白草稿**同一条
+ * 约定**：`meta.draft`/`meta.blank` 为真且没有任何 URL。这里只是把那条约定摊到另外
+ * 五类载体上，没有新增第三种写法。
+ *
+ * 必须留在 `contentType === "chart"` 分支之前：那条分支对「没有 option 源」的图表
+ * 一律判 `legacy-render-only`，空白图表会被它当成一张渲染残片挡下来。
+ *
+ * 门槛刻意窄：只要素材带了任何一个 URL（预览图、渲出件、下载地址），就不是空手起手
+ * 件，直接交回既有判定 —— 在架素材一件都不受影响。
+ */
+function blankDraftCapabilityFor(item: LibraryItem): EditorCapability | null {
+  if (item.meta.draft !== true && item.meta.blank !== true) return null;
+  if (item.url || item.previewUrl) return null;
+  const contentType = contentTypeFor(item);
+  if (item.kind === "interactive_doc" || contentType === "interactive_doc") {
+    return available("interactive-doc", { type: "interactive-doc" });
+  }
+  if (item.kind === "geo_map" || contentType === "geo_map") {
+    return available("geo-map", { type: "geo-map" });
+  }
+  if (contentType === "chart") {
+    return available(
+      "chart-editor@1",
+      { type: "grid", adapter: "chart-editor@1" },
+      editorManifestFor(item),
+    );
+  }
+  if (item.kind === "sheet" || contentType === "grid") {
+    return available("grid", { type: "grid" });
+  }
+  if (contentType === "pdf") {
+    return available("pdf", { type: "pdf" });
+  }
+  // 网站与画布的空白草稿走它们自己那两条既有分支，这里让路。
+  return null;
+}
+
 /** 素材 → 受信任 editor capability；viewer kind 本身不授予编辑能力。 */
 export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   const durable = durableEditorCapabilityFor(item);
   if (durable) return durable;
+  const blankDraft = blankDraftCapabilityFor(item);
+  if (blankDraft) return blankDraft;
   const templateDocumentUrl = String(item.meta.template_doc_url || "");
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);

@@ -4,6 +4,7 @@
  * `material-library-view.tsx` so that file stays under the 800-line cap.
  */
 
+import type { ReactNode } from "react";
 import { artifactIsVisible, type ArtifactContextRef, type ArtifactType } from "./artifact-contract";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import { isPlayableGameShelfEntry } from "./explore-artifact-class";
@@ -84,6 +85,12 @@ export interface MaterialLibraryProps {
   onMaterialDragEnd?: () => void;
   allowAdvancedOnSelect?: boolean;
   onOpenItem?: (item: LibraryItem) => void;
+  /**
+   * 空态下方的 CTA 插槽——让「这个 app 暂无可编辑素材」不再是一条死路，可以指回这个
+   * app 自己的功能。**只是一个插槽**：既有空态文案（`materialLevelEmptyTitle` /
+   * `materialLevelEmptyDescription`）的默认值一个字未改，不传就完全是今天的样子。
+   */
+  emptyCta?: ReactNode;
 }
 
 /**
@@ -123,6 +130,46 @@ export function materialLevelEmptyDescription(
   }
   // D1 之后不再有「更多素材」可以指路：本站没有就是没有，不许把读者送去别站的货架。
   return "这里只显示本站已登记的素材；可换一个分区或关键词。";
+}
+
+/**
+ * 货架空态那一屏到底说什么、给不给 CTA。
+ *
+ * 三条分支必须**成组**决定，这是上一轮踩过的坑：`emptyTitle` 有加载分支而
+ * `emptyDescription` 没有，于是「正在加载素材…」下面跟着一句「暂无经授权的公共素材」。
+ * CTA 同理 —— 加载骨架与失败文案下面挂一个「去新建」是把读者往错的方向推，所以只有
+ * 「真的空着」这一支才带 CTA。
+ */
+export function materialShelfEmptyCopy(options: {
+  loading: boolean;
+  failed: boolean;
+  failureCopy: { title: string; description: string };
+  level: MaterialLibraryLevel;
+  contextMissing: boolean;
+  emptyHint?: string;
+  cta?: unknown;
+}): { title: string; description: string; showCta: boolean } {
+  if (options.loading) {
+    return {
+      title: "正在加载素材…",
+      description: "正在为你取回本站素材。",
+      showCta: false,
+    };
+  }
+  if (options.failed) {
+    return {
+      title: options.failureCopy.title,
+      description: options.failureCopy.description,
+      showCta: false,
+    };
+  }
+  return {
+    title: materialLevelEmptyTitle(options.level),
+    description:
+      options.emptyHint ||
+      materialLevelEmptyDescription(options.level, options.contextMissing),
+    showCta: Boolean(options.cta),
+  };
 }
 
 export function materialLibraryHref(options: {
