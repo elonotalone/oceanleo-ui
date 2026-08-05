@@ -1,10 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
-
-import ts from "typescript";
 
 import {
   artifactDownloadPlanFor,
@@ -12,28 +7,7 @@ import {
 } from "../src/shell/artifact-contract.ts";
 import { artifactProjectionToLibraryItem } from "../src/shell/library-data.ts";
 
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const authStubUrl = dataModule(`
   export async function accessToken() {
@@ -48,12 +22,6 @@ const artifactClientUrl = await compileModule(
   {
     "../lib/auth/client": authStubUrl,
     "../lib/auth/config": configStubUrl,
-    "./artifact-contract": pathToFileURL(
-      resolve("src/shell/artifact-contract.ts"),
-    ).href,
-    "./library-data": pathToFileURL(
-      resolve("src/shell/library-data.ts"),
-    ).href,
   },
 );
 const {
