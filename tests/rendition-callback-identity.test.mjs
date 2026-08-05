@@ -23,6 +23,8 @@ import test from "node:test";
 import React, { act } from "react";
 import ts from "typescript";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
@@ -66,57 +68,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-const contractUrl = pathToFileURL(
-  resolve("src/shell/artifact-contract.ts"),
-).href;
-const libraryDataUrl = pathToFileURL(resolve("src/shell/library-data.ts")).href;
-const pluginInitialStateUrl = pathToFileURL(
-  resolve("src/shell/plugin-initial-state.ts"),
-).href;
-const ledgerExportUrl = pathToFileURL(
-  resolve("src/shell/plugin-export/ledger-export.ts"),
-).href;
-const pluginExportContractUrl = pathToFileURL(
-  resolve("src/shell/plugin-export/plugin-export-contract.ts"),
-).href;
-const pluginExportWiringUrl = pathToFileURL(
-  resolve("src/shell/plugin-export/plugin-export-wiring.ts"),
-).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 /* -------------------------- ArtifactRendition ---------------------------- */
 
 const artifactClientStubUrl = dataModule(`
@@ -126,11 +77,7 @@ const artifactClientStubUrl = dataModule(`
 `);
 const artifactRenditionUrl = await compileModule(
   "src/shell/ArtifactRendition.tsx",
-  {
-    "./artifact-contract": contractUrl,
-    "./artifact-client": artifactClientStubUrl,
-    "./library-data": libraryDataUrl,
-  },
+  { "./artifact-client": artifactClientStubUrl },
 );
 const { useArtifactRendition } = await import(artifactRenditionUrl);
 
@@ -272,14 +219,8 @@ const gridEditorUrl = await compileModule(
     "./grid-sheet-identity": gridSheetIdentityStubUrl,
     "./office-file": officeFileStubUrl,
     "./grid-structure": gridStructureStubUrl,
-    // 真模块，不打桩：保存对象的判据是产品口径，桩一打就可能悄悄判反。
-    "../plugin-initial-state": pluginInitialStateUrl,
-    // 台账的导出入口（W24 P3）。本文件判的是加载 effect 会不会自激，与导出无关；
-    // 但没进替换表的相对 specifier 会在实例化时炸掉整份文件，所以一条都不能少。
-    // 三份都用真模块：都是纯 `.ts`，从磁盘加载即可，不需要桩。
-    "../plugin-export/ledger-export": ledgerExportUrl,
-    "../plugin-export/plugin-export-contract": pluginExportContractUrl,
-    "../plugin-export/plugin-export-wiring": pluginExportWiringUrl,
+    // 没列出来的（`../plugin-initial-state`、导出链那三份…）一律走真模块：
+    // 保存对象与导出的判据是产品口径，桩一打就可能悄悄判反。
   },
 );
 const { useGridEditor } = await import(gridEditorUrl);

@@ -46,6 +46,12 @@ import {
   validateInteractiveDocProject,
 } from "../src/shell/interactive-doc-editor/interactive-doc-schema.ts";
 
+import {
+  compileModule,
+  dataModule,
+  realModule,
+} from "./helpers/module-bench.mjs";
+
 /* ------------------------------ DOM 与编译台 ------------------------------ */
 
 const require = createRequire(import.meta.url);
@@ -90,45 +96,6 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
-
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function realModule(relativePath) {
-  return pathToFileURL(resolve(relativePath)).href;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 /**
  * 渲染次数上限。加载 effect 一旦自激（W13 修过的那条：effect 体里写 state，
@@ -247,29 +214,10 @@ const alwaysMaterialStubUrl = dataModule(`
 const GRID_REPLACEMENTS = {
   "../../i18n/ui/useUI": uiStubUrl,
   "./doc-io": docIoStubUrl,
-  "./artifact-save-contract": realModule(
-    "src/shell/doc-editors/artifact-save-contract.ts",
-  ),
   "./editor-preview-raster": previewRasterStubUrl,
   "./grid-model": gridModelSpyUrl,
-  "./grid-sheet-identity": realModule(
-    "src/shell/doc-editors/grid-sheet-identity.ts",
-  ),
-  "./office-file": realModule("src/shell/doc-editors/office-file.ts"),
-  "./grid-structure": realModule("src/shell/doc-editors/grid-structure.ts"),
-  "../plugin-initial-state": realModule("src/shell/plugin-initial-state.ts"),
-  // 台账的导出入口（W24 P3）。本文件判的是**保存**那一支，与导出无关；
-  // 但没进替换表的相对 specifier 会在实例化时炸掉整份文件，所以一条都不能少。
-  // 三份都用真模块：都是纯 `.ts`，从磁盘加载即可，不需要桩。
-  "../plugin-export/ledger-export": realModule(
-    "src/shell/plugin-export/ledger-export.ts",
-  ),
-  "../plugin-export/plugin-export-contract": realModule(
-    "src/shell/plugin-export/plugin-export-contract.ts",
-  ),
-  "../plugin-export/plugin-export-wiring": realModule(
-    "src/shell/plugin-export/plugin-export-wiring.ts",
-  ),
+  // 没列出来的（导出链三份、`../plugin-initial-state`…）一律走真模块：
+  // 本文件判的是**保存**那一支，那些模块的产品口径不能被桩改写。
 };
 
 const { useGridEditor } = await import(
@@ -286,14 +234,6 @@ const { useGeoMapWorkbench } = await import(
   await compileModule("src/shell/geo-map-editor/use-geo-map-workbench.ts", {
     "../../i18n/ui/useUI": uiStubUrl,
     "../../lib/media-proxy": mediaProxyStubUrl,
-    "./geo-map-source": realModule("src/shell/geo-map-editor/geo-map-source.ts"),
-    "./geo-map-advanced-controls": realModule(
-      "src/shell/geo-map-editor/geo-map-advanced-controls.ts",
-    ),
-    "./geo-map-persistence": realModule(
-      "src/shell/geo-map-editor/geo-map-persistence.ts",
-    ),
-    "./geo-map-history": realModule("src/shell/geo-map-editor/geo-map-history.ts"),
   })
 );
 
@@ -302,13 +242,6 @@ const { useInteractiveDocWorkbench } = await import(
     "src/shell/interactive-doc-editor/use-interactive-doc-workbench.ts",
     {
       "../../lib/media-proxy": mediaProxyStubUrl,
-      "../plugin-initial-state": realModule("src/shell/plugin-initial-state.ts"),
-      "./interactive-doc-controls": realModule(
-        "src/shell/interactive-doc-editor/interactive-doc-controls.ts",
-      ),
-      "./interactive-doc-history": realModule(
-        "src/shell/interactive-doc-editor/interactive-doc-history.ts",
-      ),
     },
   )
 );
