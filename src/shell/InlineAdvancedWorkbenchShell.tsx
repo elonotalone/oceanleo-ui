@@ -20,8 +20,8 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
+import { flushAdvancedWorkBeforeLeave } from "./advanced-leave-flush";
 import {
-  flushAdvancedWorkBeforeLeave,
   resolveActiveMaterialAction,
   resolveInlineAdvancedDrawers,
 } from "./inline-advanced-shell-helpers";

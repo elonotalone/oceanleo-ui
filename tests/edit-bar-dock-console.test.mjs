@@ -250,6 +250,7 @@ const inlineShellUrl = await compileTsxUrl(
     "./FloatingContextToolbar": floatingUrl,
     "./EditBarDockHost": hostUrl,
     "./InlineAdvancedWorkbenchHeader": shellLeafStubUrl,
+    "./advanced-leave-flush": inertComponentStubUrl,
     "./inline-advanced-shell-helpers": inertComponentStubUrl,
     "./inline-advanced-workbench-drop": inertComponentStubUrl,
     "./advanced-session-context": inertComponentStubUrl,
