@@ -10,9 +10,22 @@ import {
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import {
+  pluginIdForItem,
   saveTargetForItem,
   type PluginSaveTarget,
 } from "../plugin-initial-state";
+import {
+  LEDGER_RENDERABLE_EXPORT_FORMS,
+  LEDGER_SOURCE_ID,
+  ledgerExportRequest,
+  type LedgerEntry,
+  type LedgerSnapshot,
+} from "../plugin-export/ledger-export";
+import {
+  pluginExportForm,
+  type PluginExportFormId,
+} from "../plugin-export/plugin-export-contract";
+import { exportToMyLibrary } from "../plugin-export/plugin-export-wiring";
 import {
   downloadBlob,
   downloadText,
@@ -130,6 +143,86 @@ export interface GridEditorState {
   exportXlsx: () => Promise<void>;
   save: () => Promise<GridSavedVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
+  /**
+   * 台账那一排「导出成 …」。**开的不是台账时为 `null`**，界面因而不渲染它——
+   * 同一台表格编辑器打开一件用户上传的 xlsx 时不该出现台账的导出口。
+   */
+  ledgerExport: LedgerExportState | null;
+}
+
+/**
+ * 台账导出的界面状态。
+ *
+ * 这里与 `save()` 是**两件事，不许合并**：`save()` 存的是用户记的账（功能数据，
+ * 走 `plugin-instance` 那一支，永不进库）；这里导出的是那些账的**成品**
+ * （Excel / 网页 / 图文长图 / PDF / CSV），它是一件素材，进「我的库」、可下载。
+ * 合同 §3.3。两条路各走各的，`tests/plugin-export-ledger-button.test.mjs` 钉着。
+ */
+export interface LedgerExportState {
+  /** 清册声明且真渲得出的形态，界面照它铺按钮。 */
+  forms: readonly PluginExportFormId[];
+  /** 正在导出的那一种；空串表示闲着。 */
+  busyForm: PluginExportFormId | "";
+  /** 上一次导出的结果文案（成功或失败原因），可直接展示。 */
+  notice: string;
+  /** 上一次成功导出的库条目 id，给调用方做跳转用；失败或没导过时为空串。 */
+  lastArtifactId: string;
+  /** 这张台账现在有几笔记录；0 时按钮该禁用（导不出空文件）。 */
+  entryCount: number;
+  exportTo: (form: PluginExportFormId) => Promise<void>;
+}
+
+/**
+ * 台账那张表的四列列头，出自 `plugin-initial-states/grid-plugins.ts:64`
+ * （日期 / 项目 / 金额 / 备注）。这里只按位置读，不重新发明列。
+ */
+const LEDGER_DATE_COLUMN = 0;
+const LEDGER_CATEGORY_COLUMN = 1;
+const LEDGER_AMOUNT_COLUMN = 2;
+const LEDGER_NOTE_COLUMN = 3;
+
+function ledgerAmount(raw: string): number | null {
+  // 单元格里可能带货币符号与千分位——那是用户看的格式，不是数。
+  const cleaned = raw.replace(/[¥￥$,\s]/g, "").replace(/^\((.*)\)$/, "-$1");
+  if (!cleaned) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 把台账那张表读成导出载荷。
+ *
+ * 收支方向来自**金额列自己的正负号**，不是现编的：台账只有四列，负数即支出。
+ * 读不出金额的行整行跳过——一行没有金额的账不是一笔账，硬凑一个 0 进去会让
+ * 导出的合计对不上用户在屏幕上看到的那个数。
+ */
+function ledgerSnapshotFromSheets(
+  title: string,
+  sheets: readonly GridSheet[],
+  headerRow: boolean,
+): LedgerSnapshot {
+  const sheet = sheets[0];
+  const entries: LedgerEntry[] = [];
+  if (sheet) {
+    for (let row = headerRow ? 1 : 0; row < sheet.rows.length; row += 1) {
+      const amount = ledgerAmount(
+        gridCellValue(sheet, row, LEDGER_AMOUNT_COLUMN).trim(),
+      );
+      if (amount === null) continue;
+      const date = gridCellValue(sheet, row, LEDGER_DATE_COLUMN).trim();
+      const category = gridCellValue(sheet, row, LEDGER_CATEGORY_COLUMN).trim();
+      const note = gridCellValue(sheet, row, LEDGER_NOTE_COLUMN).trim();
+      if (!date && !category && !note && amount === 0) continue;
+      entries.push({
+        date,
+        category,
+        direction: amount < 0 ? "out" : "in",
+        amount: Math.abs(amount),
+        ...(note ? { note } : {}),
+      });
+    }
+  }
+  return { title, entries };
 }
 
 /**
@@ -417,6 +510,16 @@ export function useGridEditor(
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [ledgerBusyForm, setLedgerBusyForm] = useState<PluginExportFormId | "">(
+    "",
+  );
+  const [ledgerNotice, setLedgerNotice] = useState("");
+  const [ledgerArtifactId, setLedgerArtifactId] = useState("");
+  const ledgerBusyRef = useRef(false);
+  // 开的是不是台账，只认这一处判据（`plugin_id` / 实例键），不看标题也不看列头：
+  // 用户完全可以把一件上传的 xlsx 的表头改成「日期 项目 金额 备注」。
+  const isLedger = pluginIdForItem(item) === LEDGER_SOURCE_ID;
+  const originAppId = String(item.meta?.origin_app_id || "").trim();
   const sheetsRef = useRef(sheets);
   const activeRef = useRef(activeSheetId);
   const undoRef = useRef<GridSnapshot[]>([]);
@@ -1307,6 +1410,80 @@ export function useGridEditor(
     [applySnapshot],
   );
 
+  const ledgerSnapshot = useMemo(
+    () => ledgerSnapshotFromSheets(baseTitle, sheets, headerRow),
+    [baseTitle, headerRow, sheets],
+  );
+
+  const exportLedgerTo = useCallback(
+    async (form: PluginExportFormId) => {
+      if (ledgerBusyRef.current) return;
+      const snapshot = ledgerSnapshotFromSheets(
+        baseTitle,
+        sheetsRef.current,
+        headerRow,
+      );
+      const formLabel = pluginExportForm(form)?.label || form;
+      if (!snapshot.entries.length) {
+        setLedgerNotice(tt("这张台账还没有一笔记录，先记一笔再导出。"));
+        return;
+      }
+      ledgerBusyRef.current = true;
+      setLedgerBusyForm(form);
+      setLedgerNotice("");
+      try {
+        const result = await exportToMyLibrary(
+          ledgerExportRequest(snapshot, form, {
+            siteId,
+            ...(originAppId ? { appId: originAppId } : {}),
+          }),
+        );
+        if (!mountedRef.current) return;
+        if (!result.ok) {
+          setLedgerNotice(tt(result.error));
+          return;
+        }
+        setLedgerArtifactId(result.item.artifactId || "");
+        setLedgerNotice(
+          `${tt("已导出成")}${tt(formLabel)}${tt("，在「我的库」里可以下载。")}`,
+        );
+      } catch (caught) {
+        if (!mountedRef.current) return;
+        setLedgerNotice(
+          caught instanceof Error
+            ? tt(caught.message)
+            : `${tt("导出成")}${tt(formLabel)}${tt("失败")}`,
+        );
+      } finally {
+        ledgerBusyRef.current = false;
+        if (mountedRef.current) setLedgerBusyForm("");
+      }
+    },
+    [baseTitle, headerRow, originAppId, siteId, tt],
+  );
+
+  const ledgerExport = useMemo<LedgerExportState | null>(
+    () =>
+      isLedger
+        ? {
+            forms: LEDGER_RENDERABLE_EXPORT_FORMS,
+            busyForm: ledgerBusyForm,
+            notice: ledgerNotice,
+            lastArtifactId: ledgerArtifactId,
+            entryCount: ledgerSnapshot.entries.length,
+            exportTo: exportLedgerTo,
+          }
+        : null,
+    [
+      exportLedgerTo,
+      isLedger,
+      ledgerArtifactId,
+      ledgerBusyForm,
+      ledgerNotice,
+      ledgerSnapshot.entries.length,
+    ],
+  );
+
   void historyRevision;
   return {
     item,
@@ -1365,5 +1542,6 @@ export function useGridEditor(
     exportXlsx,
     save,
     restoreRecovery,
+    ledgerExport,
   };
 }

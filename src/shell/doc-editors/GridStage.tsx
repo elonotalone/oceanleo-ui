@@ -16,10 +16,73 @@ import {
   gridRowCount,
 } from "./grid-model";
 import { gridMergeAt } from "./grid-structure";
+import {
+  pluginExportForm,
+  type PluginExportFormId,
+} from "../plugin-export/plugin-export-contract";
 import type { GridEditorState } from "./use-grid-editor";
 
 const ROW_HEIGHT = 34;
 const WINDOW_ROWS = 72;
+
+/**
+ * 台账的「导出成 …」那一排。
+ *
+ * 只在开着台账时出现（`editor.ledgerExport` 不为 null），形态清单来自清册
+ * （`LEDGER_RENDERABLE_EXPORT_FORMS`），不在这里手抄。
+ *
+ * **它跟旁边的保存是两件事**：保存存的是用户记的账，留在功能里；这里导出的是
+ * 那些账的成品，落进「我的库」，可下载（合同 §3.3）。所以文案说的是「导出成」
+ * 与「在「我的库」里可以下载」，不是「已保存」。
+ */
+/** 形态的中文名来自形态表，界面不另存一份名单。 */
+function ledgerFormLabel(form: PluginExportFormId): string {
+  return pluginExportForm(form)?.label || form;
+}
+
+function LedgerExportBar({ editor }: { editor: GridEditorState }) {
+  const tt = useUI();
+  const ledger = editor.ledgerExport;
+  if (!ledger) return null;
+  const empty = ledger.entryCount === 0;
+  return (
+    <div
+      data-ledger-export-bar="true"
+      className="flex h-10 shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--border,#e7e5e4)] px-3"
+    >
+      <span className="shrink-0 text-[11px] font-medium text-[var(--muted,#78716c)]">
+        {tt("导出这些记录")}
+      </span>
+      {ledger.forms.map((form) => (
+        <button
+          key={form}
+          type="button"
+          data-ledger-export-form={form}
+          disabled={empty || Boolean(ledger.busyForm)}
+          onClick={() => void ledger.exportTo(form)}
+          className="min-h-7 shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-40"
+        >
+          {tt(ledgerFormLabel(form))}
+          {ledger.busyForm === form ? ` ${tt("导出中…")}` : ""}
+        </button>
+      ))}
+      {empty && (
+        <span className="text-[10px] text-[var(--muted,#78716c)]">
+          {tt("记第一笔之后就能导出")}
+        </span>
+      )}
+      {ledger.notice && (
+        <span
+          role="status"
+          data-ledger-export-notice="true"
+          className="max-w-md truncate text-[10px] text-[var(--muted,#78716c)]"
+        >
+          {ledger.notice}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function SheetNameInput({
   name,
@@ -173,6 +236,7 @@ export function GridStage({
       aria-busy={editor.loading}
       className="flex h-full min-h-0 flex-col bg-[var(--card,#fff)]"
     >
+      <LedgerExportBar editor={editor} />
       {editor.selectedCell && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border,#e7e5e4)] px-3">
           <span className="w-14 shrink-0 text-center text-[11px] font-medium text-[var(--muted,#78716c)]">
