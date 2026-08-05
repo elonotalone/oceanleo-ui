@@ -22,6 +22,7 @@ import {
   type GeoMapCommitSuccess,
 } from "../geo-map-editor/use-geo-map-workbench";
 import { loadBuiltInGeoFeatures } from "../plugin-initial-states/data/index";
+import { pluginInstanceSavedItem } from "./plugin-instance-saved-item";
 import { downloadText } from "../doc-editors/doc-io";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
@@ -46,6 +47,19 @@ export function GeoMapRoute({
 
   const buildSavedItem = useCallback(
     (saved: GeoMapCommitSuccess): LibraryItem => {
+      // 功能数据没有 URL、没有 revision：套上素材回执等于宣称库里多了一件可下载的
+      // 地图。字节交回工作台记进会话即可，要进库得走导出链。
+      if (saved.saveTarget === "plugin-instance") {
+        return pluginInstanceSavedItem(saved.item || item, {
+          content: saved.json,
+          meta: {
+            editor: geoMapEditorManifest(),
+            content_type: "geo_map",
+            representation: "geo-map-project",
+            editor_project_schema: saved.projectSchema,
+          },
+        });
+      }
       const canonicalMeta = {
         editor: geoMapEditorManifest(),
         content_type: "geo_map",

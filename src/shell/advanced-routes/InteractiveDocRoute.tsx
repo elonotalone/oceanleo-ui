@@ -7,6 +7,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { downloadText } from "../doc-editors/doc-io";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
+import { pluginInstanceSavedItem } from "./plugin-instance-saved-item";
 import { InteractiveDocContextToolbar } from "../interactive-doc-editor/InteractiveDocContextToolbar";
 import { InteractiveDocControls } from "../interactive-doc-editor/InteractiveDocControls";
 import { InteractiveDocStage } from "../interactive-doc-editor/InteractiveDocStage";
@@ -63,7 +64,29 @@ export function InteractiveDocRoute({
   const [exportError, setExportError] = useState("");
 
   const buildSavedItem = useCallback(
-    (payload: { url?: string; versionId?: string; projectUrl?: string; revisionId?: string; previousRevisionId?: string; json?: string }): LibraryItem => {
+    (payload: {
+      url?: string;
+      versionId?: string;
+      projectUrl?: string;
+      revisionId?: string;
+      previousRevisionId?: string;
+      json?: string;
+      saveTarget?: string;
+      item?: LibraryItem;
+    }): LibraryItem => {
+      // 功能数据没有 URL、没有 revision：套上素材回执等于宣称库里多了一件可下载的
+      // 文档。字节交回工作台记进会话即可，要进库得走导出链。
+      if (payload.saveTarget === "plugin-instance") {
+        return pluginInstanceSavedItem(payload.item || item, {
+          content: payload.json || item.content || "",
+          meta: {
+            editor: interactiveDocEditorManifest(),
+            content_type: "interactive_doc",
+            representation: "interactive-doc-project",
+            editor_project_schema: INTERACTIVE_DOC_PROJECT_SCHEMA,
+          },
+        });
+      }
       const next = advancedSavedItem(item, {
         url: payload.url || "",
         versionId: payload.versionId || "",
@@ -106,6 +129,8 @@ export function InteractiveDocRoute({
       projectUrl?: string;
       revisionId?: string;
       previousRevisionId?: string;
+      saveTarget?: string;
+      item?: LibraryItem;
     };
     return {
       ok: true as const,

@@ -69,6 +69,16 @@ const ITEM_KINDS = new Set<LibraryKind>([
   "interactive_doc",
   "file",
 ]);
+/**
+ * 会话快照里允许保留的 `meta` 键。
+ *
+ * 这是一道安全边界，不是一张方便清单：`item.meta` 是个开放口袋，路由层、素材链、
+ * 各编辑器都往里塞东西，而快照会被序列化进 App 会话、存进后端、日后再原样喂回
+ * 承载层。白名单的作用是**只让已知语义的键跨过这一跳**，未知的键在这里一律丢掉，
+ * 免得任何一层临时塞进来的东西（大字节、上游回执、别处才该信的凭据）
+ * 借会话往返长成一份被下游信任的输入。所以补键要一个一个说清理由，
+ * 不许因为"丢东西了"就放宽成全都过。
+ */
 const META_KEYS = new Set([
   "mime",
   "format",
@@ -136,6 +146,31 @@ const META_KEYS = new Set([
   "open_url",
   "advanced_editor_route",
   "previous_revision_id",
+  // 功能实例的身份四件套。缺了它们，从会话里捡回来的台账/地图/换算器会被判成
+  // **一件素材**，下一次保存就照素材链把用户记的账造成 xlsx 发进库
+  // （`plugin-initial-state.saveTargetForItem()`）—— 保存入口堵掉的那个洞
+  // 在"存过再捡回来"这一跳原样复现。四个键全部由
+  // `plugin-initial-state.pluginInstanceFromInitialState()` 自己写下，
+  // 都是有界的短值，且都不是可被信任的凭据：
+  //
+  // - `plugin_id`：认"这是功能实例不是素材"的首选证据。放它进来不会放宽任何判据 ——
+  //   `pluginIdForItem()` 按 `^[a-z][a-z0-9-]{1,63}$` 归一，而功能数据那条保存路
+  //   本身是 fail-closed 的：带 artifact 身份的东西走它一律当场判拒
+  //   （`geo-map-persistence.ts:421-430`、interactive-doc 同构）。伪造这个键换不到
+  //   任何素材链上的权限，只会让一件东西**不能**进库。
+  // - `plugin_runtime`：实例该用哪个内核渲染。缺了只能靠 `content_type` 兜底，
+  //   兜底对不上就 fail-closed 返回 `null`，用户看到的是打不开。取值域是三个内核名。
+  // - `source_manifest`：地图三件的内置底图摘要（path + sha256 + byteSize，三条）。
+  //   缺了 `geoMapAvailableDependencies()` 只能退回"拿工程自己声明的依赖跟自己核对"，
+  //   那是自证，永远判 ready 也永远发现不了摘要不符。带上它，闭包才是真的核过。
+  //   它不是可信字节来源：渲染只按 `builtInGeoAsset()` 那张内置表取字节，
+  //   清单里写什么路径都变不出仓外的数据。
+  // - `app_id`：这份实例是从哪个 app 打开的。`key` 里带着同一信息，但那是拼进
+  //   字符串的、给人看的，回写与统计要的是这一格。纯标识串，长度受 `MAX_META_JSON` 限。
+  "plugin_id",
+  "plugin_runtime",
+  "source_manifest",
+  "app_id",
 ]);
 
 export interface AdvancedSessionSnapshot extends Record<string, unknown> {
