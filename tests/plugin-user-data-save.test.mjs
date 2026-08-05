@@ -1,5 +1,5 @@
 // ============================================================================
-// A-5 / R-4 —— 功能里的用户数据保存，不许走素材完备判据
+// A-5 / R-4 / R-10 —— 功能里的用户数据保存，不许走素材完备判据（三个内核）
 // ----------------------------------------------------------------------------
 // 实测的坏法（V4 §6.3 用 W14 三份初始态跑出来的）：
 //   spaced-repetition-scheduler -> source-too-small / prose-too-short /
@@ -19,6 +19,7 @@
 // ============================================================================
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -37,8 +38,21 @@ import {
   commitInteractiveDocProject,
   interactiveDocSaveTargetForItem,
 } from "../src/shell/interactive-doc-editor/interactive-doc-persistence.ts";
-import { pluginInitialItemInput } from "../src/shell/plugin-initial-states/index.ts";
+import {
+  loadBuiltInGeoPayload,
+  pluginInitialItemInput,
+} from "../src/shell/plugin-initial-states/index.ts";
 import { pluginInstanceLibraryItem } from "../src/shell/plugin-initial-state.ts";
+import {
+  gridCarrierProjectToIr,
+  loadGridSheets,
+  parseGridIrSource,
+  serializeGridIrProject,
+  validateGridIrProject,
+} from "../src/shell/doc-editors/grid-model.ts";
+import { evaluateGeoMapCompleteness } from "../src/shell/geo-map-editor/geo-map-schema.ts";
+import { parseGeoMapSource } from "../src/shell/geo-map-editor/geo-map-source.ts";
+import { commitGeoMapProject } from "../src/shell/geo-map-editor/geo-map-persistence.ts";
 
 /** W14 已提交的三份 interactive-doc 第一屏。 */
 const PLUGIN_IDS = [
@@ -321,4 +335,283 @@ test("反面:真素材走素材那条路,完备判据仍在闸上", async () => 
     },
   );
   assert.deepEqual(calls, [], "判据没过就不该上传任何字节");
+});
+
+// ===========================================================================
+// R-10 第二个内核：grid（台账 / 文献矩阵 / 三表模型）
+// ---------------------------------------------------------------------------
+// 取证（`/tmp/w12-r10-probe.mjs`，跑的是产品自己的函数）：三份第一屏的 IR 逐份
+// 被 `validateGridIrProject` 判红，失败形状与 interactive-doc 那次一模一样 ——
+//   ledger-register        title-length | row-count | attribution-count
+//   literature-matrix      title-length | row-count ×2 | attribution-count
+//   three-statement-model  title-length | attribution-count
+// `row-count` 说的是「数据行数至少 4」，而台账刚打开时是零行数据加一行列头；
+// `attribution-count` 说的是「署名至少 1 条且要有 licenseUrl」。
+// ===========================================================================
+
+const GRID_PLUGIN_IDS = [
+  "ledger-register",
+  "literature-matrix",
+  "three-statement-model",
+];
+
+/** 把功能的第一屏摊成 `oceanleo.grid.v1` IR —— 走产品自己的换算，不手搓。 */
+async function firstScreenGridIr(pluginId) {
+  const item = pluginInstanceLibraryItem(pluginId, {
+    siteId: "excel",
+    appId: "probe",
+    nonce: "n1",
+  });
+  assert.ok(item, `${pluginId} 造不出实例`);
+  const sheets = await loadGridSheets(item);
+  return gridCarrierProjectToIr({
+    sheets,
+    carrier: {
+      title: String(item.title || ""),
+      sheets: Object.fromEntries(
+        sheets.map((sheet) => [
+          sheet.name,
+          { headerRow: true, columns: [], emphasisRows: [] },
+        ]),
+      ),
+      namedRanges: [],
+      attribution: { entries: [] },
+    },
+  });
+}
+
+test("grid:三份第一屏今天确实过不了素材判据 —— 缺陷本身先钉死", async () => {
+  for (const pluginId of GRID_PLUGIN_IDS) {
+    const ir = await firstScreenGridIr(pluginId);
+    const asMaterial = validateGridIrProject(ir);
+    assert.equal(
+      asMaterial.ok,
+      false,
+      `${pluginId} 若已达标，本用例的前提就变了，请重判 R-10`,
+    );
+    const codes = asMaterial.errors.map((error) => error.code);
+    assert.ok(
+      codes.includes("attribution-count") ||
+        codes.includes("attribution-missing"),
+      `${pluginId} 期望仍被署名判据拦下,实际 ${codes.join(",")}`,
+    );
+  }
+});
+
+test("grid:功能里的用户数据存得下去,零行数据的台账也存得下去", async () => {
+  for (const pluginId of GRID_PLUGIN_IDS) {
+    const ir = await firstScreenGridIr(pluginId);
+    const asPlugin = validateGridIrProject(ir, {
+      saveTarget: "plugin-instance",
+    });
+    assert.equal(
+      asPlugin.ok,
+      true,
+      `${pluginId} 功能数据被拒:${(asPlugin.errors || [])
+        .map((error) => `${error.code}@${error.path}`)
+        .join(" | ")}`,
+    );
+    // 存得进去还要读得回来：同一套口径，否则用户下次打开就炸。
+    const reopened = parseGridIrSource(serializeGridIrProject(asPlugin.project), {
+      saveTarget: "plugin-instance",
+    });
+    assert.equal(reopened.title, ir.title, pluginId);
+  }
+});
+
+test("grid:反面 —— 素材那一侧的三条判据一个字没松", async () => {
+  const ir = await firstScreenGridIr("ledger-register");
+  const material = validateGridIrProject(ir);
+  const codes = material.errors.map((error) => error.code);
+  for (const expected of ["title-length", "row-count", "attribution-count"]) {
+    assert.ok(codes.includes(expected), `素材口径丢了 ${expected}`);
+  }
+  // 结构与正确性判据对功能数据照查：未知字段、错 schema、坏单元格一律仍拒。
+  const broken = JSON.parse(JSON.stringify(ir));
+  broken.schema = "oceanleo.grid.v2";
+  broken.sheets[0].rows = "not-an-array";
+  broken.uninvitedKey = 1;
+  const asPlugin = validateGridIrProject(broken, {
+    saveTarget: "plugin-instance",
+  });
+  assert.equal(asPlugin.ok, false, "结构坏了也放行就成了另一个洞");
+  const brokenCodes = asPlugin.errors.map((error) => error.code);
+  assert.ok(brokenCodes.includes("schema-const"), brokenCodes.join(","));
+  assert.ok(brokenCodes.includes("additional-properties"), brokenCodes.join(","));
+  assert.ok(brokenCodes.includes("row-count"), brokenCodes.join(","));
+});
+
+// ===========================================================================
+// R-10 第三个内核：geo-map（地图 / 地球仪 / 户型标注）
+// ---------------------------------------------------------------------------
+// 取证：三份第一屏跑 `evaluateGeoMapCompleteness` 逐份判红
+// （`geo-map-hollow` ×3 + `geo-map-color-collapse`），`commitGeoMapProject`
+// 再叠上封面与 durable 身份两条。父 agent 让我先查证再动手，这一条**查证属实**。
+// ===========================================================================
+
+const GEO_PLUGIN_IDS = [
+  "annotatable-city-map",
+  "interactive-globe",
+  "floorplan-annotation",
+];
+
+function firstScreenGeoProject(pluginId) {
+  const input = pluginInitialItemInput(pluginId);
+  assert.ok(input?.content, `${pluginId} 取不到初始态字节`);
+  return parseGeoMapSource(input.content);
+}
+
+/** 内置底图的真字节 —— 依赖闭包判定是正确性，功能数据也要过。 */
+async function geoDependencyBlobs(project) {
+  const blobs = [];
+  for (const dependency of project.dependencies ?? []) {
+    const payload = await loadBuiltInGeoPayload(dependency.path);
+    assert.ok(payload, `内置数据 ${dependency.path} 取不到`);
+    blobs.push({
+      path: dependency.path,
+      mediaType: dependency.mediaType,
+      blob: new Blob([payload], { type: dependency.mediaType }),
+    });
+  }
+  return blobs;
+}
+
+const geoRuntime = (calls) => ({
+  digest: async (blob) =>
+    createHash("sha256").update(Buffer.from(await blob.arrayBuffer())).digest("hex"),
+  upload: async () => {
+    calls.push("upload");
+    return { ok: true, url: "https://cdn.test/x.json", digest: "0".repeat(64) };
+  },
+  publish: async () => {
+    calls.push("publish");
+    return { ok: false, error: "不该走到这里" };
+  },
+  fork: async () => {
+    calls.push("fork");
+    return { ok: false, error: "不该走到这里" };
+  },
+});
+
+test("geo-map:三份第一屏今天确实过不了素材完备判据 —— 缺陷本身先钉死", () => {
+  for (const pluginId of GEO_PLUGIN_IDS) {
+    const project = firstScreenGeoProject(pluginId);
+    const assessment = evaluateGeoMapCompleteness({
+      project,
+      sourceBytes: new TextEncoder().encode(JSON.stringify(project)).byteLength,
+    });
+    assert.equal(
+      assessment.ok,
+      false,
+      `${pluginId} 若已达标，本用例的前提就变了，请重判 R-10`,
+    );
+    assert.ok(
+      assessment.failures.some((failure) => failure.code === "geo-map-hollow"),
+      `${pluginId} 实际失败项:${assessment.failures
+        .map((failure) => failure.code)
+        .join(",")}`,
+    );
+  }
+});
+
+test("geo-map:功能里的用户数据存得下去,且不碰 artifact 链", async () => {
+  for (const pluginId of GEO_PLUGIN_IDS) {
+    const project = firstScreenGeoProject(pluginId);
+    const item = pluginInstanceLibraryItem(pluginId, { nonce: "n1" });
+    assert.ok(item, `${pluginId} 造不出实例`);
+    const calls = [];
+    const result = await commitGeoMapProject({
+      project,
+      item,
+      title: String(item.title),
+      editRevision: 1,
+      dependencyBlobs: await geoDependencyBlobs(project),
+      runtime: geoRuntime(calls),
+    });
+    assert.equal(
+      result.ok,
+      true,
+      `${pluginId} 被拒:${(result.errors || [])
+        .map((error) => `${error.code}@${error.path}`)
+        .join(" | ")}`,
+    );
+    assert.equal(result.saveTarget, "plugin-instance");
+    assert.deepEqual(calls, [], `${pluginId} 碰了 artifact 链:${calls.join(",")}`);
+    assert.equal(result.artifactId, "", "功能数据不许拿到 artifact 身份");
+    assert.equal(result.revisionId, "", "功能数据不许发 revision");
+    assert.ok(result.closure.length >= 1, "内置底图仍要逐件对上摘要");
+  }
+});
+
+test("geo-map:反面 —— 依赖闭包是正确性,取不到底图字节照样拒", async () => {
+  const pluginId = "annotatable-city-map";
+  const project = firstScreenGeoProject(pluginId);
+  const calls = [];
+  const result = await commitGeoMapProject({
+    project,
+    item: pluginInstanceLibraryItem(pluginId, { nonce: "n2" }),
+    title: "地图",
+    editRevision: 1,
+    // 一件依赖都不给：缺陷二的根因就是「声明了依赖却取不到字节」，
+    // 这条判据对功能数据也必须留着，否则又回到淡蓝空矩形。
+    dependencyBlobs: [],
+    runtime: geoRuntime(calls),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some(
+      (error) => error.code === "geo-map-dependency-closure-incomplete",
+    ),
+    result.errors.map((error) => error.code).join(","),
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("geo-map:反面 —— 给真素材挂 plugin_id 换不到松判据,真素材判据也没松", async () => {
+  const project = firstScreenGeoProject("annotatable-city-map");
+  const blobs = await geoDependencyBlobs(project);
+  const durableGeoItem = {
+    ...materialItem(),
+    artifactType: "geo_map",
+    artifact: {
+      ...materialItem().artifact,
+      artifactType: "geo_map",
+      sourceFormat: "oceanleo.geo-map.v1",
+      editorCapability: "geo-map-editor",
+    },
+    meta: { plugin_id: "annotatable-city-map" },
+  };
+  const calls = [];
+  const disguised = await commitGeoMapProject({
+    project,
+    item: durableGeoItem,
+    title: "伪装成功能数据的真素材",
+    editRevision: 1,
+    dependencyBlobs: blobs,
+    runtime: geoRuntime(calls),
+  });
+  assert.equal(disguised.ok, false);
+  assert.ok(
+    disguised.errors.some(
+      (error) =>
+        error.code === "geo-map-commit-rejected" &&
+        error.message.includes("artifact 身份"),
+    ),
+    disguised.errors.map((error) => error.message).join(" | "),
+  );
+  // 同一份工程按素材存：§8 完备判据仍然把它拦下（这三条正是功能数据不该受的）。
+  const asMaterial = await commitGeoMapProject({
+    project,
+    item: { ...durableGeoItem, meta: {} },
+    title: "真素材",
+    editRevision: 1,
+    dependencyBlobs: blobs,
+    runtime: geoRuntime(calls),
+  });
+  assert.equal(asMaterial.ok, false);
+  assert.ok(
+    asMaterial.errors.some((error) => error.code === "geo-map-hollow"),
+    asMaterial.errors.map((error) => error.code).join(","),
+  );
+  assert.deepEqual(calls, [], "被拒的路径不许留下任何上传");
 });

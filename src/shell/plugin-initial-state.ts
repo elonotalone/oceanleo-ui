@@ -191,6 +191,30 @@ export function pluginIdForItem(
 }
 
 /**
+ * 这一次保存的是**一件素材**，还是**一个功能里用户自己的数据**。
+ *
+ * 三个内核（`interactive-doc` / `grid` / `geo-map`）的保存守门人共用这一个判别，
+ * 不各写一套：
+ *
+ * - `material`：用户在编辑器里改一件真素材。§8 完备判据、字节下限、最小行列数、
+ *   署名、孪生判定全部照旧，**一个字都不放宽** —— 这些东西要进货架、要有份数与许可。
+ * - `plugin-instance`：用户在一个功能里输入的数据（间隔排程里加的第一张卡、
+ *   台账里记的第一笔账、地图上点的第一个标注）。这类数据**不是素材**：不进货架、
+ *   没有份数、没有许可与上游。把货架判据套上去，后果是用户加完第一条就存不下去，
+ *   其中「署名条目至少 1 条且要有许可证 URL」那条等于要用户给自己手打的记账表填许可证。
+ *
+ * 判据落在**保存的对象**上，不落在编辑器上：`grid` 内核既渲染台账这类功能，
+ * 也编辑用户上传的 xlsx；`interactive-doc` 同理。
+ */
+export type PluginSaveTarget = "material" | "plugin-instance";
+
+export function saveTargetForItem(
+  item: Pick<LibraryItem, "meta"> | null | undefined,
+): PluginSaveTarget {
+  return pluginIdForItem(item) ? "plugin-instance" : "material";
+}
+
+/**
  * 插件实例的运行时内核。以 `meta.plugin_runtime` 为准，缺了就按载体类型认，
  * 再缺就回注册表现查 —— 认不出的一律返回 `null`（fail-closed）。
  */

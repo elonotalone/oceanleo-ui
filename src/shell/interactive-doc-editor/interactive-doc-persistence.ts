@@ -13,7 +13,10 @@
 
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
-import { pluginIdForItem } from "../plugin-initial-state";
+import {
+  saveTargetForItem,
+  type PluginSaveTarget,
+} from "../plugin-initial-state";
 import { uploadFile } from "../../lib/database";
 import {
   INTERACTIVE_DOC_ARTIFACT_TYPE,
@@ -39,29 +42,16 @@ import {
 } from "./interactive-doc-source";
 
 /**
- * 这一次保存的是**一件素材**，还是**一个功能里用户自己的数据**。
- *
- * 两者的判据不是同一套，这一格就是把它们分开的地方：
- *
- * - `material`：用户在编辑器里改一件真素材（PPT、图表、可算文档成品……）。
- *   §8 的完备判据、§8.1 的字节下限、F6 孪生判定全部照旧，**一个字都不放宽**：
- *   这些东西要进货架、要有份数与许可，不达标的半成品不许落库。
- * - `plugin-instance`：用户在一个功能里输入的数据（间隔排程里加的第一张卡、
- *   换算器里改的那组单位……）。这类数据**不是素材**：不进货架、没有份数、
- *   没有许可与上游。把素材完备判据套上去，后果是用户加完第一张卡一保存就被拒，
- *   其中 `attribution.entries ≥ 1` 那条等于要求用户给自己手写的卡片填一个
- *   许可证 URL —— 这就是本轮 A-5 要根除的那份拷贝。
- *
- * 判据落在**保存的对象**上（`meta.plugin_id`），不落在编辑器上：同一个
- * interactive-doc 内核既渲染插件，也编辑真素材。
+ * 保存的是一件素材，还是一个功能里用户自己的数据。定义与判别在
+ * `plugin-initial-state.ts`，三个内核共用同一套词汇，这里只做本内核的别名。
  */
-export type InteractiveDocSaveTarget = "material" | "plugin-instance";
+export type InteractiveDocSaveTarget = PluginSaveTarget;
 
 /** 手上这件东西该按哪套判据存。插件实例认 `meta.plugin_id`，其余一律按素材。 */
 export function interactiveDocSaveTargetForItem(
   item: Pick<LibraryItem, "meta"> | null | undefined,
 ): InteractiveDocSaveTarget {
-  return pluginIdForItem(item) ? "plugin-instance" : "material";
+  return saveTargetForItem(item);
 }
 
 export type InteractiveDocCommitErrorCode =

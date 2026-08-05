@@ -1,6 +1,7 @@
 "use client";
 
 import type { LibraryItem } from "../library-data";
+import type { PluginSaveTarget } from "../plugin-initial-state";
 import { urlExtension } from "./doc-io";
 import { evaluateGridCell, type GridFormulaValue } from "./grid-formula";
 import { normalizeGridSheetIdentities } from "./grid-sheet-identity";
@@ -941,6 +942,7 @@ function validateSheet(
   value: unknown,
   path: string,
   errors: GridIrValidationError[],
+  saveTarget: PluginSaveTarget = "material",
 ): void {
   const sheet = record(value);
   if (!sheet) {
@@ -1006,15 +1008,19 @@ function validateSheet(
     }
   }
   const columns = Array.isArray(sheet.columns) ? sheet.columns : null;
+  // 下限「单列不构成表」是货架判据：一件要上架的表格素材单列确实不成立，但用户在
+  // 功能里就是可以只记一列。上限任何时候都查 —— 它是安全边界，不是完备判据。
+  const minColumns =
+    saveTarget === "material" ? GRID_CONSTANTS.C4_minColumns : 1;
   if (
     !columns ||
-    columns.length < GRID_CONSTANTS.C4_minColumns ||
+    columns.length < minColumns ||
     columns.length > GRID_CONSTANTS.C5_maxColumns
   ) {
     errors.push({
       path: `${path}/columns`,
       code: "column-count",
-      message: `列数必须在 ${GRID_CONSTANTS.C4_minColumns} 与 ${GRID_CONSTANTS.C5_maxColumns} 之间（§4 C4/C5，单列不构成表）`,
+      message: `列数必须在 ${minColumns} 与 ${GRID_CONSTANTS.C5_maxColumns} 之间（§4 C4/C5，单列不构成表）`,
     });
   }
   (columns || []).forEach((raw, index) => {
@@ -1090,15 +1096,18 @@ function validateSheet(
     }
   });
   const rows = Array.isArray(sheet.rows) ? sheet.rows : null;
+  // 同理：**零行数据正是功能的正常初始态**（台账刚打开时只有列头）。
+  // 拿「至少 4 行」去拒绝它，与「零张卡的间隔排程是不合格品」是同一个错误。
+  const minRows = saveTarget === "material" ? GRID_CONSTANTS.C6_minDataRows : 0;
   if (
     !rows ||
-    rows.length < GRID_CONSTANTS.C6_minDataRows ||
+    rows.length < minRows ||
     rows.length > GRID_CONSTANTS.C7_maxDataRows
   ) {
     errors.push({
       path: `${path}/rows`,
       code: "row-count",
-      message: `数据行数必须在 ${GRID_CONSTANTS.C6_minDataRows} 与 ${GRID_CONSTANTS.C7_maxDataRows} 之间（§4 C6/C7）`,
+      message: `数据行数必须在 ${minRows} 与 ${GRID_CONSTANTS.C7_maxDataRows} 之间（§4 C6/C7）`,
     });
   }
   (rows || []).forEach((row, rowIndex) => {
@@ -1168,8 +1177,22 @@ function validateSheet(
   }
 }
 
-/** §3.1 structural validation. Rejects unknown keys (`additionalProperties`). */
-export function validateGridIrProject(value: unknown): GridIrValidation {
+/**
+ * §3.1 structural validation. Rejects unknown keys (`additionalProperties`).
+ *
+ * 判据分两段（与 `interactive-doc` 的保存守门人同构，见
+ * `plugin-initial-state.ts` 的 `PluginSaveTarget`）：
+ *   · **结构与正确性** —— schema、版本、未知字段、工作表与单元格形状、公式合法性、
+ *     命名区域、各项上限。两种保存对象都查。
+ *   · **货架完备** —— 标题长度、最小行列数、署名条目。**只有 `material` 查**。
+ *     台账刚打开时是零行数据加一行列头，署名更是无从谈起：拿这三条去拒绝用户自己
+ *     记的账，和「零张卡的间隔排程是不合格品」是同一个错误。
+ */
+export function validateGridIrProject(
+  value: unknown,
+  options: { saveTarget?: PluginSaveTarget } = {},
+): GridIrValidation {
+  const saveTarget: PluginSaveTarget = options.saveTarget || "material";
   const errors: GridIrValidationError[] = [];
   const document = record(value);
   if (!document) {
@@ -1199,15 +1222,16 @@ export function validateGridIrProject(value: unknown): GridIrValidation {
       message: `version 必须是 ${GRID_IR_VERSION}`,
     });
   }
+  const minTitleLength = saveTarget === "material" ? 8 : 1;
   if (
     typeof document.title !== "string" ||
-    document.title.length < 8 ||
+    document.title.length < minTitleLength ||
     document.title.length > 300
   ) {
     errors.push({
       path: "/title",
       code: "title-length",
-      message: "title 长度必须在 8 与 300 之间（§8.2 与 catalog:3309 同档）",
+      message: `title 长度必须在 ${minTitleLength} 与 300 之间（§8.2 与 catalog:3309 同档）`,
     });
   }
   const sheets = Array.isArray(document.sheets) ? document.sheets : null;
@@ -1223,7 +1247,7 @@ export function validateGridIrProject(value: unknown): GridIrValidation {
     });
   }
   (sheets || []).forEach((sheet, index) =>
-    validateSheet(sheet, `/sheets/${index}`, errors),
+    validateSheet(sheet, `/sheets/${index}`, errors, saveTarget),
   );
   if (document.namedRanges !== undefined) {
     const named = Array.isArray(document.namedRanges) ? document.namedRanges : null;
@@ -1270,11 +1294,15 @@ export function validateGridIrProject(value: unknown): GridIrValidation {
   }
   const attribution = record(document.attribution);
   if (!attribution) {
-    errors.push({
-      path: "/attribution",
-      code: "attribution-missing",
-      message: "attribution 必须存在（§7 A8/A9 署名随产物）",
-    });
+    // 署名随**产物**走。功能里用户自己敲的表不是产物，没有上游也没有许可可署；
+    // 要求它填一条 licenseUrl 就是要用户给自己手打的记账表办一张许可证。
+    if (saveTarget === "material") {
+      errors.push({
+        path: "/attribution",
+        code: "attribution-missing",
+        message: "attribution 必须存在（§7 A8/A9 署名随产物）",
+      });
+    }
   } else {
     for (const key of extraKeys(attribution, new Set(["entries"]))) {
       errors.push({
@@ -1284,11 +1312,12 @@ export function validateGridIrProject(value: unknown): GridIrValidation {
       });
     }
     const entries = Array.isArray(attribution.entries) ? attribution.entries : null;
-    if (!entries || entries.length < 1 || entries.length > 12) {
+    const minEntries = saveTarget === "material" ? 1 : 0;
+    if (!entries || entries.length < minEntries || entries.length > 12) {
       errors.push({
         path: "/attribution/entries",
         code: "attribution-count",
-        message: "attribution.entries 必须有 1–12 条（§8.2）",
+        message: `attribution.entries 必须有 ${minEntries}–12 条（§8.2）`,
       });
     }
     (entries || []).forEach((raw, index) => {
@@ -1424,9 +1453,15 @@ export function gridIrByteLength(project: GridIrProject): number {
   return new TextEncoder().encode(serializeGridIrProject(project)).length;
 }
 
-/** Load the JSON IR byte form (§1.2). Failure is a coded error, never silent. */
+/**
+ * Load the JSON IR byte form (§1.2). Failure is a coded error, never silent.
+ *
+ * `saveTarget` 与校验器同义：读一份功能里存下来的表时，货架完备判据不适用 ——
+ * 否则用户存得进去、下次却打不开。
+ */
 export function parseGridIrSource(
   input: string | Uint8Array | ArrayBuffer,
+  options: { saveTarget?: PluginSaveTarget } = {},
 ): GridIrProject {
   const text =
     typeof input === "string"
@@ -1443,7 +1478,7 @@ export function parseGridIrSource(
       `oceanleo.grid.v1 不是合法 JSON：${caught instanceof Error ? caught.message : caught}`,
     );
   }
-  const validation = validateGridIrProject(parsed);
+  const validation = validateGridIrProject(parsed, options);
   if (!validation.ok) {
     throw new GridIrParseError(
       "grid-ir-invalid",

@@ -10,6 +10,10 @@
 
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import {
+  saveTargetForItem,
+  type PluginSaveTarget,
+} from "../plugin-initial-state";
 import { uploadFile } from "../../lib/database";
 import {
   GEO_MAP_ARTIFACT_TYPE,
@@ -106,6 +110,8 @@ export interface GeoMapCommitArgs {
   cohort?: readonly GeoMapProject[];
   /** Contrast base beneath each symbol layer (§6 F8). */
   underlyingColorByLayerId?: Record<string, string>;
+  /** 缺省按 `item` 自己的身份判（`saveTargetForItem`）。 */
+  saveTarget?: PluginSaveTarget;
   runtime?: Partial<GeoMapPersistenceRuntime>;
 }
 
@@ -120,6 +126,8 @@ export interface GeoMapCommitClosureEntry {
 export type GeoMapCommitResult =
   | {
       ok: true;
+      /** 这一版按哪套判据存的；功能数据不进 artifact 链，身份几格为空。 */
+      saveTarget?: PluginSaveTarget;
       artifactId: string;
       revisionId: string;
       previousRevisionId: string;
@@ -258,6 +266,8 @@ export async function commitGeoMapProject(
     ...defaultRuntime,
     ...(args.runtime ?? {}),
   };
+  const saveTarget: PluginSaveTarget =
+    args.saveTarget || saveTargetForItem(args.item);
   const errors: GeoMapValidationError[] = [];
 
   // §6 F8 first: a halo flip changes the bytes we are about to freeze.
@@ -366,29 +376,74 @@ export async function commitGeoMapProject(
       ),
     );
   }
-  if (
-    closure.length > 0 &&
-    closureBytes < GEO_MAP_CLOSURE_FLOORS.dependencyClosureBytesMin
-  ) {
-    errors.push(
-      fail(
-        "geo-map-hollow",
-        "dependencies",
-        `closure is ${closureBytes} B, below the ${GEO_MAP_CLOSURE_FLOORS.dependencyClosureBytesMin} B floor (§8.1)`,
-      ),
-    );
+  /**
+   * 这一段是**货架判据**，只有素材要过：字节下限、§8 完备（帧内颜色数、图层实心度
+   * 之类「够不够格上架」的判定）、F6 同族孪生。
+   *
+   * 用户在地图上点的第一个标注不上货架：拿「工程字节太少」「同族里已有一张长得像的」
+   * 去拒绝它，与「零张卡的间隔排程是不合格品」是同一个错误。依赖闭包的完整性判定
+   * 不在这一段里 —— 那是正确性，取不到底图字节就该照实说，两种保存对象都查。
+   */
+  if (saveTarget === "material") {
+    if (
+      closure.length > 0 &&
+      closureBytes < GEO_MAP_CLOSURE_FLOORS.dependencyClosureBytesMin
+    ) {
+      errors.push(
+        fail(
+          "geo-map-hollow",
+          "dependencies",
+          `closure is ${closureBytes} B, below the ${GEO_MAP_CLOSURE_FLOORS.dependencyClosureBytesMin} B floor (§8.1)`,
+        ),
+      );
+    }
+
+    const completeness = evaluateGeoMapCompleteness({
+      project,
+      sourceBytes: new TextEncoder().encode(json).byteLength,
+      dependencyClosureBytes: closure.length > 0 ? closureBytes : undefined,
+    });
+    errors.push(...completeness.failures);
+
+    if (args.cohort?.length) {
+      const similarity = evaluateGeoMapSimilarity(project, args.cohort);
+      errors.push(...similarity.failures);
+    }
   }
 
-  const completeness = evaluateGeoMapCompleteness({
-    project,
-    sourceBytes: new TextEncoder().encode(json).byteLength,
-    dependencyClosureBytes: closure.length > 0 ? closureBytes : undefined,
-  });
-  errors.push(...completeness.failures);
-
-  if (args.cohort?.length) {
-    const similarity = evaluateGeoMapSimilarity(project, args.cohort);
-    errors.push(...similarity.failures);
+  /**
+   * 功能数据到此为止：**整条不走 artifact 链**。不上传、不发 revision、不要封面
+   * （封面是货架物料），字节回给调用方，由工作台记进本次会话；要变成素材得走导出链。
+   *
+   * 一道反向闸：带着 artifact 身份的东西不许从这条路走 —— 否则给一件真地图素材挂上
+   * `meta.plugin_id` 就能绕开完备判据落库。
+   */
+  if (saveTarget === "plugin-instance") {
+    if (isDurableLibraryItem(args.item) || args.item.artifactId) {
+      errors.push(
+        fail(
+          "geo-map-commit-rejected",
+          "item",
+          "这件内容带着 artifact 身份，不能按功能数据保存；真素材一律走素材那条路与它的完备判据。",
+        ),
+      );
+    }
+    if (errors.length > 0) return { ok: false, errors };
+    return {
+      ok: true,
+      saveTarget: "plugin-instance",
+      artifactId: "",
+      revisionId: "",
+      previousRevisionId: "",
+      projectUrl: "",
+      projectSchema: GEO_MAP_PROJECT_SCHEMA,
+      json,
+      project,
+      closureDigest: closureDigestOf(closure),
+      closureBytes,
+      closure,
+      repairedLabelLayerIds: contrast.repairedLayerIds ?? [],
+    };
   }
 
   if (!isDurableLibraryItem(args.item)) {
