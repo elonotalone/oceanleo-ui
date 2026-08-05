@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import {
   beginTimelineGesture,
@@ -15,6 +12,8 @@ import {
   createTimelineGestureHistory,
   updateTimelineGesture,
 } from "../src/shell/video-editor/timeline-gesture-history.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -100,46 +99,12 @@ function installPointerCapture() {
 }
 
 async function loadTimelineArea() {
-  const sourcePath = resolve(
-    "src/shell/video-editor/TimelineArea.tsx",
-  );
-  const reactUrl = pathToFileURL(require.resolve("react")).href;
-  const jsxRuntimeUrl = pathToFileURL(
-    require.resolve("react/jsx-runtime"),
-  ).href;
-  const uiStubUrl = `data:text/javascript,${encodeURIComponent(
-    "export function useUI() { return (value) => value; }",
-  )}`;
-  const source = (await readFile(sourcePath, "utf8"))
-    .replace('from "react";', `from ${JSON.stringify(reactUrl)};`)
-    .replace(
-      'from "../../i18n/ui/useUI";',
-      `from ${JSON.stringify(uiStubUrl)};`,
-    )
-    // 同级模块一律按名改写成绝对 file URL。逐个列举的写法在 TimelineArea
-    // 新引入一个同级模块时会静默漏掉它，报错只剩一句 data: URL 里解析不了
-    // "./x" —— 与真正的改动隔了一层转译，很难对上。
-    .replace(
-      /from "\.\/([\w-]+)";/g,
-      (_match, name) =>
-        `from ${JSON.stringify(
-          pathToFileURL(resolve(`src/shell/video-editor/${name}.ts`)).href,
-        )};`,
-    );
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText.replace(
-    'from "react/jsx-runtime";',
-    `from ${JSON.stringify(jsxRuntimeUrl)};`,
-  );
-
   return import(
-    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+    await compileModule("src/shell/video-editor/TimelineArea.tsx", {
+      "../../i18n/ui/useUI": dataModule(
+        "export function useUI() { return (value) => value; }",
+      ),
+    })
   );
 }
 

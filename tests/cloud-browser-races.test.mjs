@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import ts from "typescript";
 
 import { useCloudBrowserFramePainter } from "../src/shell/cloud-browser-live.ts";
 import {
@@ -25,6 +22,8 @@ import {
   isAuthoritativeCloudBrowserHumanLease,
 } from "../src/shell/cloud-browser-wire.ts";
 import { buildCloudBrowserV3Fixture } from "./cloud-browser-wire-fixture.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -66,10 +65,6 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const browserStubUrl = dataModule(`
@@ -134,40 +129,12 @@ const protocolStubUrl = dataModule(`
   }
 `);
 
-const sourcePath = resolve("src/shell/cloud-browser-transport.ts");
-let transportSource = await readFile(sourcePath, "utf8");
-for (const [specifier, replacement] of Object.entries({
-  react: reactUrl,
-  "../lib/browser": browserStubUrl,
-  "./cloud-browser-live": liveStubUrl,
-  "./cloud-browser-protocol": protocolStubUrl,
-  "./cloud-browser-transport-actions": pathToFileURL(
-    resolve("src/shell/cloud-browser-transport-actions.ts"),
-  ).href,
-  "./cloud-browser-transport-config": pathToFileURL(
-    resolve("src/shell/cloud-browser-transport-config.ts"),
-  ).href,
-  "./cloud-browser-transport-model": pathToFileURL(
-    resolve("src/shell/cloud-browser-transport-model.ts"),
-  ).href,
-  "./cloud-browser-wire": pathToFileURL(
-    resolve("src/shell/cloud-browser-wire.ts"),
-  ).href,
-})) {
-  transportSource = transportSource.replaceAll(
-    JSON.stringify(specifier),
-    JSON.stringify(replacement),
-  );
-}
-const compiledTransport = ts.transpileModule(transportSource, {
-  compilerOptions: {
-    module: ts.ModuleKind.ESNext,
-    target: ts.ScriptTarget.ES2022,
-  },
-  fileName: sourcePath,
-}).outputText;
 const { useCloudBrowserTransport } = await import(
-  dataModule(compiledTransport)
+  await compileModule("src/shell/cloud-browser-transport.ts", {
+    "../lib/browser": browserStubUrl,
+    "./cloud-browser-live": liveStubUrl,
+    "./cloud-browser-protocol": protocolStubUrl,
+  })
 );
 
 function deferred() {

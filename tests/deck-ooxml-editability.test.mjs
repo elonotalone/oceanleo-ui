@@ -8,7 +8,6 @@ import { strFromU8, unzipSync } from "fflate";
 import PptxGenJS from "pptxgenjs";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import ts from "typescript";
 
 import {
   deckPptxVisualObjectName,
@@ -24,6 +23,8 @@ import {
   deckTextEditKeyStartsEditing,
 } from "../src/shell/doc-editors/deck-text-gesture.ts";
 import { mapPptxPresentationToDeck } from "../src/shell/doc-editors/pptx-deck-import.ts";
+
+import { compileModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -68,35 +69,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function deckElementContentModuleUrl() {
-  const sourcePath = new URL(
-    "../src/shell/doc-editors/DeckElementContent.tsx",
-    import.meta.url,
-  );
-  const reactUrl = pathToFileURL(require.resolve("react")).href;
-  const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-  const source = readFileSync(sourcePath, "utf8").replaceAll(
-    '"react"',
-    JSON.stringify(reactUrl),
-  );
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath.pathname,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return dataModule(compiled);
+async function deckElementContentModuleUrl() {
+  return compileModule("src/shell/doc-editors/DeckElementContent.tsx");
 }
 
 function slideWith(elements, extra = {}) {
@@ -506,7 +480,7 @@ test("selected text has explicit keyboard entry, locked reason, and one reliable
   assert.match(stage, /data-deck-text-bearing/);
   assert.match(stage, /编辑幻灯片标题/);
 
-  const { DeckElementContent } = await import(deckElementContentModuleUrl());
+  const { DeckElementContent } = await import(await deckElementContentModuleUrl());
   const container = window.document.createElement("div");
   window.document.body.append(container);
   const root = createRoot(container);

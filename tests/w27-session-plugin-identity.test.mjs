@@ -22,14 +22,8 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
-
-import ts from "typescript";
 
 import {
   inlineEditorItemsFromSession,
@@ -58,56 +52,14 @@ import {
 } from "../src/shell/plugin-initial-state.ts";
 import { loadGeoMapBuiltInFeatures } from "../src/shell/plugin-initial-states/index.ts";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 /* --------------------------- 取真函数：编译那一份 --------------------------- */
 /**
  * `use-geo-map-workbench.ts` 经 i18n 链拖进 React，node 的 strip-types 载不了，
  * 但 `geoMapAvailableDependencies()` 是这一条判据的**真消费方**，不能拿一份手抄的
- * 副本顶替。做法与 W26 那份同源：整份编出来，相对 specifier 一律重写成绝对
- * `file://`，只对真的加载不进来的那两个留显式桩 —— 这样被编译的文件再加多少
- * import 都不会把整份测试打哑。
+ * 副本顶替。走共享编译台：相对 specifier 自动解析，只桩真的加载不进来的那一个。
  */
-const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-
-const dataModule = (source) =>
-  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-
-function resolveRelative(fromFile, specifier) {
-  const base = resolve(dirname(fromFile), specifier);
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`]) {
-    if (existsSync(candidate)) return pathToFileURL(candidate).href;
-  }
-  return null;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  const stubs = { react: reactUrl, ...replacements };
-  for (const specifier of new Set(
-    [...source.matchAll(/from\s+"(\.[^"]*)"/g)].map((match) => match[1]),
-  )) {
-    if (stubs[specifier]) continue;
-    const resolved = resolveRelative(sourcePath, specifier);
-    assert.ok(resolved, `${relativePath} 的 import ${specifier} 解析不到文件`);
-    stubs[specifier] = resolved;
-  }
-  for (const [specifier, replacement] of Object.entries(stubs)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 const { geoMapAvailableDependencies } = await import(
   await compileModule("src/shell/geo-map-editor/use-geo-map-workbench.ts", {
     "../../i18n/ui/useUI": dataModule(

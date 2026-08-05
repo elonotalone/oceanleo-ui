@@ -23,22 +23,17 @@
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
 
 import { UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS } from "../src/shell/editor-sandbox-origin.ts";
 import { inferLibraryKind, normalizeWork } from "../src/shell/library-data.ts";
 
-const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+import { compileModule } from "./helpers/module-bench.mjs";
 
 function source(relativePath) {
   return readFileSync(
@@ -48,28 +43,12 @@ function source(relativePath) {
 }
 
 /**
- * `workspace-library-cover.tsx` 被渲染测试以 data: URL 加载，因此模块本身不得有
- * 相对运行时依赖；这里沿用 material-cover-rendering 的编译方式加载它。
+ * 封面组件走共享编译台：相对依赖自动解析，不再手工改 react 两条边。
+ * （产品代码两侧 PDF 白名单仍不许互相 import——那是实现一致性约束，见下方对账用例。）
  */
 async function loadCoverModule() {
-  const sourcePath = resolve("src/shell/workspace-library-cover.tsx");
-  const text = await readFile(sourcePath, "utf8");
-  const compiled = ts
-    .transpileModule(text, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll('from "react";', `from ${JSON.stringify(reactUrl)};`)
-    .replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
   return import(
-    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+    await compileModule("src/shell/workspace-library-cover.tsx")
   );
 }
 

@@ -16,37 +16,21 @@
 // 所以额外钉住 `dragEnabled` 的定义式——它与文件选择共用 `Boolean(onAttachFiles)`
 // 这一个开关，选择器消失即拖拽消失。
 //
-// 组件源码经 typescript.transpileModule 编成真文件后导入（与 explore-sections
-// 同一套 harness），所以可以直接 `node --test tests/agent-upload-affordance.test.mjs`。
+// 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
 
 // 任意具名导入都拿得到一个无副作用的空函数——用于上传链路之外的第三方包。
 const lazyStub = dataModule(
@@ -54,68 +38,6 @@ const lazyStub = dataModule(
     "export default new Proxy(noop, { get: () => noop });\n" +
     "export const __stub = true;\n",
 );
-
-const compiledModules = new Map();
-const inFlight = new Set();
-const compiledDir = mkdtempSync(join(tmpdir(), "oceanleo-upload-affordance-"));
-process.on("exit", () => rmSync(compiledDir, { recursive: true, force: true }));
-let compiledSeq = 0;
-
-function fileModule(relativePath, source) {
-  compiledSeq += 1;
-  const name = `${String(compiledSeq).padStart(3, "0")}-${basename(relativePath).replace(/\.tsx?$/, "")}.mjs`;
-  const file = join(compiledDir, name);
-  writeFileSync(file, source);
-  return pathToFileURL(file).href;
-}
-
-async function compileModule(relativePath, overrides) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖：${relativePath}`);
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    if (!replacement) {
-      // 第三方包（supabase / tiptap 之类）：装了就用真的，没装就给一个惰性代理。
-      // 它们都在上传能力这条链之外，取不到时不该让整个测试起不来。
-      try {
-        replacement = pathToFileURL(require.resolve(specifier)).href;
-      } catch {
-        replacement = lazyStub;
-      }
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = fileModule(relativePath, output);
-  compiledModules.set(sourcePath, url);
-  return url;
-}
 
 // 只桩掉「会联网 / 需要 Next 运行时 / 与上传无关的重组件」这三类，其余一律编真源码——
 // 上传能力那条链（组件 → LeoComposer → input/AttachMenu）必须是真的。
@@ -129,7 +51,7 @@ const OVERRIDES = {
   // `../lib/agent` 与 `../lib/database` **不桩**，编真源码：它们的网络调用都在事件
   // 处理器和 effect 里，renderToStaticMarkup 不会触发；桩掉反而要逐个补导出名，
   // 而且会把「组件到底怎么用它们」这层真实性一起桩没。第三方传输依赖（supabase 等）
-  // 由下面的 lazyStub 兜住。
+  // 由 missingPackageStub 兜住。
   "./CloudBrowserPanel": dataModule("export function CloudBrowserPanel(){ return null; }"),
   "./ResultCanvas": dataModule(
     "export function ResultCanvas(){ return null; }\nexport function CanvasEmpty(){ return null; }\nexport function CanvasSubTabs(){ return null; }",
@@ -159,7 +81,11 @@ const OVERRIDES = {
 const shellDir = "src/shell";
 
 async function load(relativePath) {
-  return import(await compileModule(`${shellDir}/${relativePath}`, OVERRIDES));
+  return import(
+    await compileModule(`${shellDir}/${relativePath}`, OVERRIDES, {
+      missingPackageStub: lazyStub,
+    })
+  );
 }
 
 /**

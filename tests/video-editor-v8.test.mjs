@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-
-import ts from "typescript";
 
 import {
   isTimelineDoc,
@@ -24,6 +21,8 @@ import {
   timelineMsAtClientPoint,
   timelineScrollLeftForAnchor,
 } from "../src/shell/video-editor/timeline-viewport.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 test("Video keeps only native px/s zoom and drop time includes scroll", async () => {
   const [route, stage] = await Promise.all([
@@ -281,41 +280,18 @@ test("canonical preview/export model clamps source bounds and preserves properti
 });
 
 async function loadRenderContract() {
-  const sourcePath = resolve("src/shell/video-editor/render-contract.ts");
-  const modelUrl = pathToFileURL(
-    resolve("src/shell/video-editor/timeline-model.ts"),
-  ).href;
-  const source = (await readFile(sourcePath, "utf8")).replace(
-    'from "./timeline-model";',
-    `from ${JSON.stringify(modelUrl)};`,
-  );
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
   return import(
-    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+    await compileModule("src/shell/video-editor/render-contract.ts")
   );
 }
 
 async function loadMediaProbe() {
-  const sourcePath = resolve("src/shell/video-editor/media-probe.ts");
-  const source = (await readFile(sourcePath, "utf8")).replace(
-    'import { canvasSafeUrl } from "../../lib/media-proxy";',
-    'const canvasSafeUrl = (value) => value;',
-  );
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
   return import(
-    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+    await compileModule("src/shell/video-editor/media-probe.ts", {
+      "../../lib/media-proxy": dataModule(
+        "export function canvasSafeUrl(value){ return value; }",
+      ),
+    })
   );
 }
 

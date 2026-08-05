@@ -5,6 +5,8 @@ import test from "node:test";
 
 import ts from "typescript";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 const source = (path) => readFile(resolve(path), "utf8");
 
 function assertTranspiles(path, input) {
@@ -164,20 +166,12 @@ test("audio failures preserve prior state and close partial browser resources", 
 });
 
 async function loadProbeWithRejectedUrlPolicy() {
-  const path = resolve("src/shell/video-editor/media-probe.ts");
-  const input = (await readFile(path, "utf8")).replace(
-    'import { canvasSafeUrl } from "../../lib/media-proxy";',
-    'const canvasSafeUrl = () => { throw new Error("blocked URL"); };',
-  );
-  const output = ts.transpileModule(input, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: path,
-  }).outputText;
   return import(
-    `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`
+    await compileModule("src/shell/video-editor/media-probe.ts", {
+      "../../lib/media-proxy": dataModule(
+        'export function canvasSafeUrl(){ throw new Error("blocked URL"); }',
+      ),
+    })
   );
 }
 
