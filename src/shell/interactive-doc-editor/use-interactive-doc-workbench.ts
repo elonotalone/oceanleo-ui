@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { EditorManifestV1, LibraryItem } from "../library-data";
+import { saveTargetForItem } from "../plugin-initial-state";
 import {
   INTERACTIVE_DOC_GRID,
   coerceInteractiveDocParameter,
@@ -1238,6 +1239,28 @@ function defaultParameterValues(
   return values;
 }
 
+/**
+ * 把用户当前填的值写成参数的新缺省值。
+ *
+ * **只在功能数据那条路上用。** 在一个换算器 / 计算器里，用户填的那几个数**就是**
+ * 这份实例的内容；不写进字节，用户按了保存、重开一看还是第一屏的示例数字。
+ * 素材那一侧一个字节都不动：一件真素材的参数缺省属于作者，不该被读者的一次试算
+ * 改写 —— 那种「我改了一个数就发一版新素材」正是本轮要拆掉的东西。
+ */
+function interactiveDocProjectWithValues(
+  project: InteractiveDocProject,
+  values: Record<string, InteractiveDocParameterValue>,
+): InteractiveDocProject {
+  const next = JSON.parse(JSON.stringify(project)) as InteractiveDocProject;
+  for (const parameter of projectParameters(next)) {
+    const id = idOf(parameter);
+    if (!(id in values)) continue;
+    (parameter as { default?: InteractiveDocParameterValue }).default =
+      values[id];
+  }
+  return next;
+}
+
 function interactionsOf(project: unknown): {
   recomputeMode: "on-change" | "on-commit";
   resetEnabled: boolean;
@@ -2198,6 +2221,11 @@ export function createInteractiveDocEngine(args: {
       }
       saving = true;
       try {
+        // 判据落在保存的对象上：功能实例把用户填的值一并冻进字节，素材不动。
+        if (saveTargetForItem(args.item) === "plugin-instance") {
+          project = interactiveDocProjectWithValues(project, values);
+          baseline = { ...defaultParameterValues(project) };
+        }
         const result = await ports.commit({
           item: args.item || null,
           siteId: args.siteId || "",

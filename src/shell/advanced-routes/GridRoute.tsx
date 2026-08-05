@@ -184,6 +184,12 @@ export function GridRoute({
         error: editor.error || undefined,
       };
     }
+    // 功能数据没有 url、没有 revision、没有 project sidecar：给它套一层素材回执
+    // （`source_format` / `delivery_format` / `editor_project_url`）等于对外宣称
+    // 库里多了一件可下载的 xlsx。可重开的实例编辑器已经交回来了，直接用。
+    if (saved.saveTarget === "plugin-instance") {
+      return { ok: true as const, item: saved.item || item };
+    }
     const receipt = advancedSavedItem(item, {
       url: saved.url,
       versionId: saved.versionId,

@@ -247,6 +247,29 @@ export function useGeoMapWorkbench(
     setFailure(machineRef.current.failure);
   }, []);
 
+  /**
+   * 加载 effect 读这两个 ref，不读形参。
+   *
+   * W13 在 `dcc0a7d` 里治过同一条病（`use-grid-editor.ts` 的 `translateRef`）：
+   * effect 体里写 state，依赖数组里又放着**每渲染换身份**的东西，于是渲染一次就
+   * 重跑一次加载，`setLoading(false)` 永远轮不到，遮罩再也下不来。
+   * 这里两处都满足：`item` 由调用方每渲染重建，`tt` 由 i18n provider owns ——
+   * 今天各站不传 `messages` 所以 `tt` 恰好稳定，但那是巧合不是契约。
+   * 起跑的判据改成取值的 `nextInputIdentity`：**换的是另一件东西**才重载。
+   */
+  const itemRef = useRef(item);
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback(
+    (value: string) => translateRef.current(value),
+    [],
+  );
+
   useEffect(() => {
     aliveRef.current = true;
     return () => {
@@ -255,6 +278,7 @@ export function useGeoMapWorkbench(
   }, []);
 
   useEffect(() => {
+    const source = itemRef.current;
     const controller = new AbortController();
     setError("");
     setNotice("");
@@ -271,23 +295,28 @@ export function useGeoMapWorkbench(
     machineRef.current = new GeoMapLoadMachine();
     syncMachine();
     workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+      source.meta.editor_working_head_url ||
+        source.url ||
+        source.previewUrl ||
+        "",
     );
 
     const load = async () => {
       const machine = machineRef.current;
       let bytes: string;
       try {
-        bytes = await readGeoMapSourceBytes(item, controller.signal);
+        bytes = await readGeoMapSourceBytes(source, controller.signal);
       } catch (caught) {
         if (controller.signal.aborted) return;
         machine.send("source-bytes");
         machine.send("parse-failed", {
           code: "geo-map-empty-source",
-          summary: tt("地图源字节读取失败"),
+          summary: translate("地图源字节读取失败"),
           details: [caught instanceof Error ? caught.message : String(caught)],
         });
-        setError(caught instanceof Error ? caught.message : tt("地图源读取失败"));
+        setError(
+          caught instanceof Error ? caught.message : translate("地图源读取失败"),
+        );
         syncMachine();
         return;
       }
@@ -309,12 +338,14 @@ export function useGeoMapWorkbench(
         };
         machine.send("parse-failed", {
           code: failure.code ?? "geo-map-invalid-json",
-          summary: tt("地图源无法解析为 oceanleo.geo-map.v1"),
+          summary: translate("地图源无法解析为 oceanleo.geo-map.v1"),
           details: failure.errors?.length
             ? failure.errors.map((entry) => `${entry.path}: ${entry.message}`)
             : [String(failure.message ?? caught)],
         });
-        setError(caught instanceof Error ? caught.message : tt("地图源解析失败"));
+        setError(
+          caught instanceof Error ? caught.message : translate("地图源解析失败"),
+        );
         syncMachine();
         return;
       }
@@ -325,7 +356,7 @@ export function useGeoMapWorkbench(
       // §3.3 `resolving`. Dangling `layers[].source` references were already
       // rejected as `geo-map-dangling-layer-source` during validation (§6 F2),
       // so this step only has to settle the dependency closure (§6 F3).
-      const { available, verified } = geoMapAvailableDependencies(item);
+      const { available, verified } = geoMapAvailableDependencies(source);
       const declared = validated.project.dependencies ?? [];
       const closureResult = resolveGeoMapDependencyClosure(
         validated.project,
@@ -350,7 +381,7 @@ export function useGeoMapWorkbench(
       if (closureResult.verdict === "invalid") {
         machine.send("closure-empty", {
           code: "geo-map-dependency-closure-incomplete",
-          summary: tt("依赖闭包不可用，无法渲染任何数据层"),
+          summary: translate("依赖闭包不可用，无法渲染任何数据层"),
           details,
         });
         syncMachine();
@@ -362,7 +393,7 @@ export function useGeoMapWorkbench(
       if (closureResult.verdict === "degraded") {
         machine.send("closure-partial", {
           code: "geo-map-dependency-closure-incomplete",
-          summary: tt("依赖缺失，已降级为只渲底图；降级态不可保存"),
+          summary: translate("依赖缺失，已降级为只渲底图；降级态不可保存"),
           details,
         });
       } else {
@@ -373,7 +404,7 @@ export function useGeoMapWorkbench(
 
     void load();
     return () => controller.abort();
-  }, [item, nextInputIdentity, syncMachine, tt]);
+  }, [nextInputIdentity, syncMachine, translate]);
 
   const mutate = useCallback(
     (producer: (value: GeoMapProject) => GeoMapProject) => {

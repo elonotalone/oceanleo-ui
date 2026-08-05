@@ -10,6 +10,10 @@ import {
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import {
+  saveTargetForItem,
+  type PluginSaveTarget,
+} from "../plugin-initial-state";
+import {
   downloadBlob,
   downloadText,
   loadEditorProject,
@@ -25,6 +29,7 @@ import {
   buildGridWorkbookBlob,
   cloneGridSheets,
   emptyGridSheet,
+  gridCarrierProjectToIr,
   gridCellFormat,
   gridCellValue,
   gridColCount,
@@ -35,7 +40,9 @@ import {
   loadGridSheets,
   normalizeGridProjectSheetState,
   sanitizeSheetName,
+  serializeGridIrProject,
   setGridCell,
+  validateGridIrProject,
   type GridCell,
   type GridCellFormat,
   type GridSheet,
@@ -121,8 +128,23 @@ export interface GridEditorState {
   importSource: (file: File) => Promise<void>;
   exportCsv: () => void;
   exportXlsx: () => Promise<void>;
-  save: () => Promise<PersistedEditorVersion | null>;
+  save: () => Promise<GridSavedVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
+}
+
+/**
+ * 一次保存的回执，外加「这一次存的是什么」。
+ *
+ * `grid` 内核一身二任：它既是编辑类插件「表格编辑器」（打开用户上传的 xlsx，
+ * 那是一件素材，存回去要发 revision），又是台账 / 文献矩阵 / 三表模型的渲染内核
+ * （那是功能里用户自己的数据，永不进货架）。调用方靠 `saveTarget` 分辨这两种回执：
+ * `plugin-instance` 的回执里 `url` / `artifactId` / `revisionId` 一律是空串，
+ * 字节在 `json` 里，可重开的实例在 `item` 里。
+ */
+export interface GridSavedVersion extends PersistedEditorVersion {
+  saveTarget: PluginSaveTarget;
+  /** 功能数据的 `oceanleo.grid.v1` 字节；素材那条路上不带（字节在库里）。 */
+  json?: string;
 }
 
 interface GridSnapshot {
@@ -185,6 +207,96 @@ interface GridProject {
   headerRow?: boolean;
   filterQuery?: string;
   filterColumn?: number;
+}
+
+export interface GridPluginInstanceSaveInput {
+  item: LibraryItem;
+  sheets: GridSheet[];
+  headerRow: boolean;
+}
+
+/**
+ * 保存**一个功能里用户自己的数据**（台账记的账、文献矩阵录的条目、三表模型填的数）。
+ *
+ * 与素材那条路的差别不是判据松一档，是**根本不走同一条链**：不造 xlsx、不渲预览、
+ * 不上传、不发 revision、不碰 `artifact_revisions`。插件永不进货架，用户在台账里
+ * 记的一笔账不是一件可下载的成品（`_COMMON.md` §3.1）；字节回给调用方，由工作台
+ * 记进本次会话的快照，要变成素材得走导出链，导出物才是素材（§3.3）。
+ * 形状与 `interactive-doc` 的 `commitPluginInstanceData` 同构。
+ *
+ * 正确性一条都不放：结构、单元格形状、公式合法性、各项上限照旧由
+ * `validateGridIrProject` 查，只是货架完备那三条（标题长度、最小行数、署名）
+ * 按 `saveTarget` 让开 —— 台账刚打开时零行数据，署名更无从谈起。
+ *
+ * 一道反向闸：带着 artifact 身份的东西不许从这条路走。否则给一件真 xlsx 挂上
+ * `meta.plugin_id` 就能绕开完备判据落库，那正是本轮要堵的洞的镜像。
+ */
+export function gridPluginInstanceVersion(
+  input: GridPluginInstanceSaveInput,
+): GridSavedVersion {
+  const { item, sheets, headerRow } = input;
+  // 比 `isDurableLibraryItem()` 更严一档：artifact 身份**沾上一点**就不许走这条路。
+  // 半截身份（有 artifactId 没 revisionId）同样不许，fail-closed。
+  if (item.artifactId || item.revisionId || item.artifact) {
+    throw new Error(
+      "这件内容带着 artifact 身份，不能按功能数据保存；真素材一律走素材那条路与它的完备判据。",
+    );
+  }
+  const ir = gridCarrierProjectToIr({
+    sheets,
+    carrier: {
+      title: String(item.title || "").trim() || "未命名",
+      namedRanges: [],
+      attribution: { entries: [] },
+      sheets: Object.fromEntries(
+        sheets.map((sheet) => [
+          sheet.name,
+          { headerRow, columns: [], emphasisRows: [] },
+        ]),
+      ),
+    },
+  });
+  const validation = validateGridIrProject(ir, {
+    saveTarget: "plugin-instance",
+  });
+  if (!validation.ok) {
+    const first = validation.errors[0];
+    throw new Error(`表格数据校验失败：${first.path} ${first.message}`);
+  }
+  return {
+    saveTarget: "plugin-instance",
+    json: serializeGridIrProject(validation.project),
+    url: "",
+    versionId: "",
+    projectUrl: "",
+    projectSchema: GRID_PROJECT_SCHEMA,
+    artifactId: "",
+    revisionId: "",
+    previousRevisionId: "",
+    title: item.title,
+    item: gridPluginInstanceItemForHandoff(item, sheets),
+  };
+}
+
+/**
+ * 可重开的实例：把用户填的东西写回 `meta.sheets`，也就是 `loadGridSheets()`
+ * 打开插件实例时读的那一格。不写 `content`（那一格会被当 CSV 解析）、不写
+ * `editor_project_url`（那是素材那条路的 sidecar 地址，功能数据没有对象存储）。
+ *
+ * 只带用户数据，不带视图状态：当前工作表、筛选词、列头开关不进字节，
+ * 重开时按第一屏的缺省来 —— 加一格 `meta` 没人读，等于埋一处漂移。
+ */
+function gridPluginInstanceItemForHandoff(
+  item: LibraryItem,
+  sheets: GridSheet[],
+): LibraryItem {
+  return {
+    ...item,
+    meta: {
+      ...item.meta,
+      sheets: cloneGridSheets(sheets),
+    },
+  };
 }
 
 export function gridSelectionRange(
@@ -997,11 +1109,43 @@ export function useGridEditor(
     }
   }, [baseTitle, tt]);
 
-  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+  const save = useCallback(async (): Promise<GridSavedVersion | null> => {
     if (savingRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneGridSheets(sheetsRef.current);
     const baseItem = persistedItemRef.current;
+    // 判据落在**保存的对象**上，不落在编辑器上：同一台表格编辑器，开的是用户上传
+    // 的 xlsx 就走素材链，开的是台账就走功能数据那条路。
+    if (saveTargetForItem(baseItem) === "plugin-instance") {
+      savingRef.current = true;
+      setSaving(true);
+      setError("");
+      try {
+        const version = gridPluginInstanceVersion({
+          item: baseItem,
+          sheets: snapshot,
+          headerRow,
+        });
+        if (!mountedRef.current) return null;
+        persistedItemRef.current = version.item || baseItem;
+        preparedSaveRef.current = null;
+        setSavedUrl("");
+        if (revisionRef.current === savingRevision) setDirty(false);
+        return version;
+      } catch (caught) {
+        if (mountedRef.current) {
+          setError(
+            caught instanceof Error
+              ? tt(caught.message)
+              : tt("这份表格里的数据没能存下来"),
+          );
+        }
+        return null;
+      } finally {
+        savingRef.current = false;
+        if (mountedRef.current) setSaving(false);
+      }
+    }
     const baseRevision = String(
       baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
     );
@@ -1098,7 +1242,8 @@ export function useGridEditor(
         return null;
       }
       preparedSaveRef.current = null;
-      const version: PersistedEditorVersion = {
+      const version: GridSavedVersion = {
+        saveTarget: "material",
         url: result.url,
         versionId: result.versionId,
         projectUrl: result.projectUrl,
