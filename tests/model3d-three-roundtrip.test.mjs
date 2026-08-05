@@ -22,6 +22,14 @@ const TEXTURE_PNG = Buffer.from(
   "base64",
 );
 
+// Every fixture server that is currently listening. A listening handle keeps
+// the node test runner alive forever, and on 2026-08-05 three `npm test` runs
+// sat wedged on this file for 100 minutes each (State: S, wchan: ep_poll, 0.0%
+// CPU) holding all three CPU slots, because one failure path never reached the
+// close below. The registry turns that into the failing assertion at the bottom
+// of this file instead of a process that never exits.
+const openFixtureServers = new Set();
+
 async function startServer() {
   const server = createServer(async (request, response) => {
     try {
@@ -58,11 +66,26 @@ async function startServer() {
   await new Promise((resolveListen) =>
     server.listen(0, "127.0.0.1", resolveListen),
   );
+  // The fixture must never be the reason the runner stays alive: a leak should
+  // fail a test, not hang the machine. The test's own awaits hold the event
+  // loop open for as long as the work actually needs it.
+  server.unref();
+  server.on("connection", (socket) => socket.unref());
+  openFixtureServers.add(server);
   const address = server.address();
   return {
     server,
     url: `http://127.0.0.1:${address.port}/`,
   };
+}
+
+async function stopServer(server) {
+  openFixtureServers.delete(server);
+  // close() on its own only stops new connections and then waits for the
+  // keep-alive sockets the browser left behind, which is a second way to wait
+  // forever.
+  server.closeAllConnections();
+  await new Promise((resolveClose) => server.close(() => resolveClose()));
 }
 
 test("saved Three editor items reopen the exported GLB, not the stale source", () => {
@@ -117,11 +140,20 @@ test(
   { timeout: 60_000 },
   async (t) => {
     const { server, url } = await startServer();
-    const browser = await chromium.launch({ headless: true });
+    let browser;
+    // Registered before the launch, not after it. The wedge was a failure
+    // between startServer() and the old t.after call: the test was already
+    // over, and nothing had been told to close the server yet. `finally` covers
+    // the same gap on the way out, so a browser that fails to close still
+    // cannot leave the listener behind.
     t.after(async () => {
-      await browser.close();
-      await new Promise((resolveClose) => server.close(resolveClose));
+      try {
+        await browser?.close();
+      } finally {
+        await stopServer(server);
+      }
     });
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 900, height: 520 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -286,5 +318,39 @@ test(
     assert.equal(result.transformAttached, true);
     assert.equal(result.transformMode, "rotate");
     assert.deepEqual(errors, []);
+  },
+);
+
+test(
+  "the fixture server is closed, so this file's process can exit",
+  { timeout: 20_000 },
+  async () => {
+    // Runs last on purpose: the first assertion is a verdict on every test
+    // above it. A leaked listener used to be invisible until somebody ran `ps`
+    // and found a runner that had been sleeping in ep_poll for an hour and a
+    // half with a CPU slot in its pocket.
+    assert.deepEqual(
+      [...openFixtureServers],
+      [],
+      "a test above left its fixture HTTP server listening; that is the leak that made this file's process never exit",
+    );
+
+    const { server, url } = await startServer();
+    const response = await fetch(url);
+    assert.equal(response.status, 200);
+    await response.text();
+    // A served request leaves a live keep-alive socket, which is the case where
+    // a bare close() waits forever.
+    await stopServer(server);
+
+    assert.equal(server.listening, false);
+    assert.equal(openFixtureServers.size, 0);
+    assert.equal(
+      process
+        .getActiveResourcesInfo()
+        .filter((resource) => resource === "TCPSERVERWRAP").length,
+      0,
+      "a listening TCP handle is still open; this process would not exit on its own",
+    );
   },
 );
