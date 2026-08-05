@@ -86,6 +86,13 @@ const assetThumbUrl = pathToFileURL(resolve("src/lib/asset-thumb.ts")).href;
 const workspaceActionsUrl = pathToFileURL(
   resolve("src/shell/workspace-actions.ts"),
 ).href;
+// 「我的库」用它判一件东西是不是可下载的产物（`MyLibrary.tsx:70,86` 两处过滤）。
+// 这正是本文件多条断言要罩的行为，所以走磁盘真文件而不是上桩：桩掉它，
+// 「库里只出现可下载产物」就变成自证。和上面几行同一个办法——它不需要任何替换，
+// 依赖也和这里共用同一份真的 `library-data`，不会编出第二个实例。
+const pluginExportContractUrl = pathToFileURL(
+  resolve("src/shell/plugin-export/plugin-export-contract.ts"),
+).href;
 
 function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -116,6 +123,20 @@ async function compileModule(relativePath, replacements) {
       'from "react/jsx-runtime";',
       `from ${JSON.stringify(jsxRuntimeUrl)};`,
     );
+  // 编出来的模块是 data: URL，没有路径身份，任何**留在产物里**的相对 specifier 都会在
+  // 运行期炸成 `ERR_UNSUPPORTED_RESOLVE_REQUEST`，而 node 报错时把 280KB 的 data URL
+  // 整个当 base 打出来，根本看不出是哪份桩表漏了哪条边。所以在这里当场拦下并点名。
+  // 判的是**产物**不是源码：`import type` 已被 transpile 抹掉，不会误报。
+  const unmapped = [
+    ...compiled.matchAll(/(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g),
+  ].map((match) => match[1]);
+  if (unmapped.length) {
+    throw new Error(
+      `${relativePath} 的模块桩表漏了这些相对 specifier：${[
+        ...new Set(unmapped),
+      ].sort().join("、")}`,
+    );
+  }
   return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
 }
 
@@ -269,6 +290,32 @@ const materialDedupeUrl = await compileModule(
     "./material-library-scope": materialScopeUrl,
   },
 );
+// 探索页的「按 artifact 类型分派呈现模式」这一层：本文件测的是素材网格那一支，所以
+// 竖向 feed 只上桩，分派逻辑本身用真的——`useExploreShelfDispatch` 决定这里到底还走不走
+// 网格，桩掉它就等于把本文件的全部网格断言架空。
+//
+// 它必须编在素材库那一族**前面**：controller / presentation / view 三家都真值导入
+// 它（`exploreArtifactClassOf`、`isPlayableGameShelfEntry`、`openArtifactPlay`），
+// 只在下面 dispatch 那一处编译是不够的——没进映射的相对 specifier 会原样留在
+// data: URL 里，运行时 `ERR_UNSUPPORTED_RESOLVE_REQUEST`。
+// 素材库的请求缓存层：controller 真值导入它（`materialLibraryRequestKey` 那一族），
+// 桩掉就等于把「同一次查询不重复打网关」这条断言架空，所以用真的。
+const materialCacheUrl = await compileModule(
+  "src/shell/material-library-cache.ts",
+  {
+    "./artifact-contract": contractUrl,
+    "./library-data": libraryDataUrl,
+    "./material-library-scope": materialScopeUrl,
+  },
+);
+const exploreArtifactClassUrl = await compileModule(
+  "src/shell/explore-artifact-class.ts",
+  {
+    "./artifact-contract": contractUrl,
+    // 它自己还真值导入 `isDurableLibraryItem`，漏了同样解析不了。
+    "./library-data": libraryDataUrl,
+  },
+);
 const materialControllerUrl = await compileModule(
   "src/shell/material-library-controller.ts",
   {
@@ -276,6 +323,8 @@ const materialControllerUrl = await compileModule(
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": artifactClientUrl,
+    "./explore-artifact-class": exploreArtifactClassUrl,
+    "./material-library-cache": materialCacheUrl,
     "./material-library-dedupe": materialDedupeUrl,
     "./material-library-scope": materialScopeUrl,
     "./workspace-library-model": workspaceLibraryStubUrl,
@@ -299,6 +348,7 @@ const materialPresentationUrl = await compileModule(
     "./advanced-features": advancedFeaturesUrl,
     "./library-data": libraryDataUrl,
     "./artifact-contract": contractUrl,
+    "./explore-artifact-class": exploreArtifactClassUrl,
     "./material-library-controller": materialControllerUrl,
     "./material-library-template-source": materialTemplateSourceUrl,
   },
@@ -362,15 +412,6 @@ const materialDownloadUrl = await compileModule(
     "./library-data": libraryDataUrl,
   },
 );
-// 探索页的「按 artifact 类型分派呈现模式」这一层：本文件测的是素材网格那一支，所以
-// 竖向 feed 只上桩，分派逻辑本身用真的——`useExploreShelfDispatch` 决定这里到底还走不走
-// 网格，桩掉它就等于把本文件的全部网格断言架空。
-const exploreArtifactClassUrl = await compileModule(
-  "src/shell/explore-artifact-class.ts",
-  {
-    "./artifact-contract": contractUrl,
-  },
-);
 const explorePlayableFeedStubUrl = dataModule(`
   import { createElement } from ${JSON.stringify(reactUrl)};
 
@@ -398,6 +439,24 @@ const {
   queryMaterialLibrary,
   readMaterialLibraryCache,
 } = await import(materialControllerUrl);
+const { MATERIAL_LIBRARY_LEVELS } = await import(materialScopeUrl);
+
+/**
+ * 货架层级的名字必须是产品今天真有的那几个。
+ *
+ * 这不是形式主义：`more`（全平台那一层）已按 `01-decisions.md` D1 整层下线
+ * （`material-library-scope.ts:6-8`），而本文件的夹具还写着它。下线之后
+ * `orderedLevels()` 会把它过滤成空 sections、`materialLevelEmptyDescription()`
+ * 走本站那一支，于是几条用例断言的是一层根本不存在的界面——**红得莫名其妙，
+ * 或者更糟：绿得莫名其妙**。这里当场点名，比在几百行外读一句「元素找不到」快得多。
+ */
+function level(name) {
+  assert.ok(
+    MATERIAL_LIBRARY_LEVELS.includes(name),
+    `货架没有「${name}」这一层了，现存的是 ${MATERIAL_LIBRARY_LEVELS.join(" / ")}`,
+  );
+  return name;
+}
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
@@ -407,6 +466,7 @@ const MaterialLibrary = (
       "./artifact-contract": contractUrl,
       "./advanced-features": advancedFeaturesUrl,
       "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
+      "./explore-artifact-class": exploreArtifactClassUrl,
       "./explore-shelf-dispatch": exploreShelfDispatchUrl,
       "./material-library-controller": materialControllerUrl,
       "./material-library-presentation": materialPresentationUrl,
@@ -463,6 +523,7 @@ const myLibraryModule = (
       "./artifact-contract": contractUrl,
       "./library-data": libraryDataUrl,
       "./library-edit-intent": libraryEditIntentUrl,
+      "./plugin-export/plugin-export-contract": pluginExportContractUrl,
       "./WorkspaceLibrary": workspaceLibraryStubUrl,
     })
   )
@@ -654,6 +715,24 @@ async function click(target) {
   });
 }
 
+/**
+ * 按素材标题找那张卡。
+ *
+ * 「本站素材」这一层的卡片标题后面缀着归属 app（`material-scene-axis.ts:253-254`
+ * 的 `<标题> · <app>`），「此 app」那一层不缀——同一份素材在两层里的
+ * `data-entry-title` 因此不是同一个字符串。用例关心的是**哪一件素材在货架上**，
+ * 不是它挂在谁名下，所以两种写法都认。仍然是逐字比对，不是前缀通配：
+ * `Stable single_file` 匹配不到 `Stable single_file_image`。
+ */
+function entryTitled(container, title) {
+  const attribute = (node) => node.getAttribute("data-entry-title") || "";
+  return (
+    [...container.querySelectorAll("[data-entry-title]")].find(
+      (node) => attribute(node) === title || attribute(node).startsWith(`${title} · `),
+    ) || null
+  );
+}
+
 function assertEveryRenderedMaterialIsEditable(container) {
   const entries = [
     ...container.querySelectorAll("[data-entry-title]"),
@@ -698,6 +777,13 @@ const TEST_EDITOR_CAPABILITY = {
   audio: "audio-editor",
   model_3d: "model-3d-editor",
   workflow: "design-canvas",
+  // 后加进 `ARTIFACT_TYPES` 的三类（`artifact-contract.ts:22-24`）。三张表当年停在 13 类，
+  // 于是「每一种可编辑类型都解析得出确切路由」那一条只覆盖了 13/16。
+  // 取值不是猜的：capability 取自 `ARTIFACT_EDITOR_CAPABILITIES`，
+  // source_format 取自 `artifactSourceFormatIsCompatible`，路由取自 `editorCapabilityFor`。
+  game: "game-editor",
+  geo_map: "geo-map-editor",
+  interactive_doc: "interactive-doc-editor",
 };
 
 const TEST_SOURCE_FORMAT = {
@@ -714,6 +800,9 @@ const TEST_SOURCE_FORMAT = {
   audio: "audio-project+json",
   model_3d: "glb",
   workflow: "workflow-json",
+  game: "game-bundle",
+  geo_map: "oceanleo.geo-map.v1",
+  interactive_doc: "oceanleo.interactive-doc.v1",
 };
 
 const EXPECTED_EDITOR_ROUTE = {
@@ -731,7 +820,26 @@ const EXPECTED_EDITOR_ROUTE = {
   audio: ["audio", "audio"],
   model_3d: ["threed", "threed"],
   workflow: ["design-canvas", "embed"],
+  game: ["game", "game"],
+  // 两个非编辑类内核也是 artifact 类型：库里躺着的那一件由对应内核打开。
+  geo_map: ["geo-map", "geo-map"],
+  interactive_doc: ["interactive-doc", "interactive-doc"],
 };
+
+// 三张表必须跟着契约走：漏一类，「每一种可编辑类型都解析得出确切路由」就悄悄少测一类。
+for (const artifactType of ARTIFACT_TYPES) {
+  for (const [name, table] of [
+    ["TEST_EDITOR_CAPABILITY", TEST_EDITOR_CAPABILITY],
+    ["TEST_SOURCE_FORMAT", TEST_SOURCE_FORMAT],
+    ["EXPECTED_EDITOR_ROUTE", EXPECTED_EDITOR_ROUTE],
+  ]) {
+    if (!(artifactType in table)) {
+      throw new Error(
+        `${name} 少了 ${artifactType}：ARTIFACT_TYPES 加了新类型，本文件三张表要一起补`,
+      );
+    }
+  }
+}
 
 function projection({
   id,
@@ -1522,9 +1630,11 @@ test("editable shelf tolerates real taxonomy gaps and favorites stay owner-scope
   const invalidFavorites = await listFavoriteArtifacts();
 
   assert.equal(shelf.ok, true);
-  assert.equal(shelf.data?.items.length, 13);
+  // 夹具本来就是按 `ARTIFACT_TYPES` 一类一件铺的，条数只能跟着它派生。
+  // 这两个数原先手抄成 13 / 12，契约加到 16 类之后就成了两条假绿的口径。
+  assert.equal(shelf.data?.items.length, shelfItems.length);
   assert.equal(incompleteShelf.ok, true);
-  assert.equal(incompleteShelf.data?.items.length, 12);
+  assert.equal(incompleteShelf.data?.items.length, shelfItems.length - 1);
   assert.ok(
     incompleteShelf.data?.diagnostics?.reasons.some((reason) =>
       reason.startsWith("missing-taxonomy:"),
@@ -3174,7 +3284,16 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
   }
 });
 
-test("rendered More uses one active-release endpoint with Primary disabled", async () => {
+// D1 之后货架只剩两层（此 app ｜ 本站素材），「更多素材 = 全平台」那一层整层下线。
+// 本用例原先按那一层写：宿主什么都不传时工具条上会有一枚内建的「更多」，点下去打
+// `/v1/library/editable-shelf?perType=5`。今天两件事都变了——内建入口没了（只剩
+// 宿主自备的完整素材库外链），本站那一层走的是带 `originSiteKey` 的作用域检索。
+// 用例要守的东西一件没变，仍然是这四条：
+//   ① 没人点之前一个素材请求都不许发；
+//   ② 点一次只打一个端点、且只打一次；
+//   ③ 目录请求每个范围至多一次，且「本站」这一层不带 appId；
+//   ④ 宿主自备的外链有 onSeeAll / href / 都不给 三种形态。
+test("rendered site shelf uses one scoped endpoint with Primary disabled", async () => {
   invalidateMaterialLibraryCache();
   const calls = [];
   const catalogCalls = [];
@@ -3210,25 +3329,31 @@ test("rendered More uses one active-release endpoint with Primary disabled", asy
     siteId: "image",
     appId: "poster",
     contextId: "ctx:image:poster",
+    levels: [level("primary"), level("site")],
     fetchCurated: false,
   });
   try {
     await settle();
     assert.equal(calls.length, 0);
     await click(
-      mounted.container.querySelector('a[aria-label="打开完整素材库"]'),
+      mounted.container.querySelector('[data-material-library-section="site"]'),
     );
     await settle();
     assert.equal(calls.length, 1);
-    assert.match(calls[0], /\/v1\/library\/editable-shelf\?perType=5/);
-    // 目录请求每个范围只打一次；「更多」层不带 appId（整站目录）。
+    const scoped = new URL(calls[0]);
+    assert.equal(scoped.pathname, "/v1/library/search");
+    // D1 的那条要求就在这两行上：本站这一层必须**带着站身份**去问，
+    // 而且不许把当前 app 一起带上——否则「本站素材」会退化成「此 app 素材」。
+    assert.equal(scoped.searchParams.get("originSiteKey"), "image");
+    assert.equal(scoped.searchParams.get("originAppId"), null);
+    // 目录请求每个范围只打一次；本站这一层不带 appId（整站目录）。
     assert.ok(catalogCalls.length <= 1);
     for (const url of catalogCalls) {
       assert.equal(new URL(url).searchParams.get("appId"), null);
     }
     assert.ok(
-      mounted.container.querySelector('[data-entry-title="Global website"]') ||
-        mounted.container.querySelector('[data-entry-title="Global More"]'),
+      entryTitled(mounted.container, "Global website") ||
+        entryTitled(mounted.container, "Global More"),
     );
     assertEveryRenderedMaterialIsEditable(mounted.container);
   } finally {
@@ -3242,7 +3367,6 @@ test("rendered More uses one active-release endpoint with Primary disabled", asy
     appId: "poster",
     contextId: "ctx:image:poster",
     fetchPrimary: false,
-    fetchMore: false,
     onSeeAll: () => {
       fallbackCalls += 1;
     },
@@ -3266,7 +3390,6 @@ test("rendered More uses one active-release endpoint with Primary disabled", asy
     appId: "poster",
     contextId: "ctx:image:poster",
     fetchPrimary: false,
-    fetchMore: false,
     seeAllHref: "https://asset.oceanleo.com/materials",
   });
   try {
@@ -3280,21 +3403,21 @@ test("rendered More uses one active-release endpoint with Primary disabled", asy
     await hrefFallback.unmount();
   }
 
-  const noMore = await createMounted(MaterialLibrary, {
+  // 宿主既没给回调也没给 href：不许凭空造一个通往别站货架的出口（D1）。
+  const noSeeAll = await createMounted(MaterialLibrary, {
     materials: [],
     siteId: "image",
     appId: "poster",
     contextId: "ctx:image:poster",
     fetchPrimary: false,
-    fetchMore: false,
   });
   try {
     assert.equal(
-      noMore.container.querySelector('[aria-label="打开完整素材库"]'),
+      noSeeAll.container.querySelector('[aria-label="打开完整素材库"]'),
       null,
     );
   } finally {
-    await noMore.unmount();
+    await noSeeAll.unmount();
   }
 });
 
@@ -3322,17 +3445,17 @@ test("material refresh failure preserves the last authoritative shelf", async ()
   };
   const mounted = await createMounted(MaterialLibrary, {
     materials: [],
-    initialLevel: "more",
-    lockLevel: "more",
+    // 站身份是本站货架的前提：没有它 `materialScopeViolation()` 会 fail-closed，
+    // 请求压根不发（`material-library-scope.ts:134-148`），这一屏就永远是空的，
+    // 「刷新失败保住上一屏」也就无从谈起。
+    siteId: "image",
+    initialLevel: level("site"),
+    lockLevel: level("site"),
     fetchPrimary: false,
   });
   try {
     await settle();
-    assert.ok(
-      mounted.container.querySelector(
-        '[data-entry-title="Stable single_file_image"]',
-      ),
-    );
+    assert.ok(entryTitled(mounted.container, "Stable single_file_image"));
     failing = true;
     await act(async () => {
       window.dispatchEvent(
@@ -3342,11 +3465,7 @@ test("material refresh failure preserves the last authoritative shelf", async ()
       );
     });
     await settle();
-    assert.ok(
-      mounted.container.querySelector(
-        '[data-entry-title="Stable single_file_image"]',
-      ),
-    );
+    assert.ok(entryTitled(mounted.container, "Stable single_file_image"));
     assert.match(
       mounted.container.querySelector('[role="alert"]')?.textContent || "",
       /素材库服务暂时不可用/,
@@ -3362,8 +3481,9 @@ test("rendered public material search exposes explicit service-unavailable state
     jsonResponse({ detail: "maintenance" }, 503);
   const mounted = await createMounted(MaterialLibrary, {
     materials: [],
-    initialLevel: "more",
-    lockLevel: "more",
+    siteId: "image",
+    initialLevel: level("site"),
+    lockLevel: level("site"),
     fetchPrimary: false,
   });
   try {
@@ -3399,8 +3519,9 @@ test("full material deep link hydrates the exact public artifact revision", asyn
   };
   const mounted = await createMounted(MaterialLibrary, {
     materials: [],
-    initialLevel: "more",
-    lockLevel: "more",
+    siteId: "image",
+    initialLevel: level("site"),
+    lockLevel: level("site"),
     fetchPrimary: false,
     curatedType: "single_file_image",
     action: {
@@ -3414,13 +3535,10 @@ test("full material deep link hydrates the exact public artifact revision", asyn
   });
   try {
     await settle();
-    assert.ok(
-      mounted.container.querySelector('[data-entry-title="Deep public"]'),
-    );
+    const deepCard = entryTitled(mounted.container, "Deep public");
+    assert.ok(deepCard);
     const href = new URL(
-      mounted.container
-        .querySelector('[data-entry-link="Deep public"]')
-        ?.getAttribute("href"),
+      deepCard.querySelector("[data-entry-link]")?.getAttribute("href"),
     );
     assert.equal(href.searchParams.get("artifactId"), "deep-public");
     assert.equal(href.searchParams.get("revisionId"), "r1");
@@ -3547,6 +3665,14 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
   globalThis.__artifactPreparedActions = [];
   const mounted = await createMounted(RenderedWorkspaceLibrary, {
     entries: [artifactEntry(item)],
+    // `artifactEntry()` 标的是**素材货架**那一面，而货架上的「编辑」按归属 app
+    // 分派（D3 §4，`library-detail-app-actions.tsx:130-142`）：宿主不说自己锚在
+    // 哪个 app 上时，那颗不指名 app 的「编辑」会被藏掉，换成「编辑 · <app名>」
+    // 的深链。本用例要钉的是「卡片点击只开预览、编辑必须走 prepared 交接」，
+    // 所以把宿主锚在这份素材自己的 app 上，让它落在就地编辑那一支。
+    // 跨 app 的那一支在下面单独钉一遍。
+    siteId: "image",
+    appId: "poster",
     onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
@@ -3567,6 +3693,31 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     assert.equal(opened[0].preparedAction, "edit");
   } finally {
     await mounted.unmount();
+  }
+
+  // 反面：宿主锚在别的 app 上时，那颗不指名 app 的「编辑」不许还在——同一个浮层里
+  // 两个说法不一样的编辑入口，用户点哪个都不知道会去哪。
+  const crossApp = await createMounted(RenderedWorkspaceLibrary, {
+    entries: [artifactEntry(item)],
+    siteId: "image",
+    appId: "collage",
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await click(
+      crossApp.container.querySelector('[data-open-entry="Workspace edit"]'),
+    );
+    await settle();
+    const buttons = [...crossApp.container.querySelectorAll("button")].map(
+      (button) => button.textContent.trim(),
+    );
+    assert.equal(
+      buttons.includes("编辑"),
+      false,
+      "跨 app 时还留着一颗不指名 app 的「编辑」",
+    );
+  } finally {
+    await crossApp.unmount();
   }
 });
 
@@ -3726,24 +3877,20 @@ test("material shelf type filter is 货架 dropdown only on primary and more", a
       nextOffset: null,
       total: ARTIFACT_TYPES.length,
     });
-  const more = await createMounted(MaterialLibrary, {
+  const siteShelf = await createMounted(MaterialLibrary, {
     materials: [],
     siteId: "image",
     appId: "poster",
     contextId: "ctx:image:poster",
-    initialLevel: "more",
-    lockLevel: "more",
+    initialLevel: level("site"),
+    lockLevel: level("site"),
     fetchPrimary: false,
   });
   try {
     await settle();
-    assertShelfOnly(more.container);
-    assert.ok(
-      more.container.querySelector(
-        '[data-entry-title="More single_file_image"]',
-      ),
-    );
+    assertShelfOnly(siteShelf.container);
+    assert.ok(entryTitled(siteShelf.container, "More single_file_image"));
   } finally {
-    await more.unmount();
+    await siteShelf.unmount();
   }
 });
