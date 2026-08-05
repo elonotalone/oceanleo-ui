@@ -7,6 +7,7 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
@@ -252,12 +253,14 @@ export function RichDocRoute({
         },
         stage:
           !editor.loading && !editor.sourceReady ? (
-            <div
-              role="alert"
-              className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-rose-700"
-            >
-              {editor.error || "文档源未成功载入，编辑器已停止。"}
-            </div>
+            // 取源失败时这条路由不挂 tiptap，`RichDocStage` 里的失败态就够不着；
+            // 重试入口必须由顶掉舞台的这一格自己带上，否则文案里的「重新载入」
+            // 又会变成一句用户点不到的空话。
+            <EditorSourceFailurePanel
+              variant="surface"
+              message={editor.error || "文档源未成功载入，编辑器已停止。"}
+              onReload={editor.reload}
+            />
           ) : (
             <RichDocStage editor={editor} accent={accent} />
           ),

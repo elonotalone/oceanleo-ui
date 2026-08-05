@@ -178,10 +178,12 @@ export function richDocSourceLoadKey(item: LibraryItem): string {
  * Name the step that failed and the way out. A bare「可编辑工程读取失败」tells the
  * user nothing they can act on, and an endless mask tells them even less.
  *
- * The way out named here is deliberately limited to what `RichDocStage` actually
- * renders today. `reload()` is exported for a stage that wants a retry button,
- * but no stage renders one yet, and copy that points at a missing button is
- * worse than copy that stays quiet about it.
+ * Every way out named here has to be one the rich-doc surface really offers.
+ * `reload()` now has a button on both surfaces the user can end up on:
+ * `RichDocStage` renders `EditorSourceFailurePanel` on `sourceFailed`, and
+ * `RichDocRoute` — which swaps the stage out entirely while the source is not
+ * ready — renders the same panel in its place. Local upload is backed by that
+ * route's upload slot, which accepts document formats rather than `image/*`.
  */
 export function richDocSourceFailureMessage(
   caught: unknown,
@@ -191,7 +193,7 @@ export function richDocSourceFailureMessage(
     caught instanceof Error ? translate(caught.message).trim() : "";
   const head = translate("没能读到这份文档的源文件，编辑器已停下，没有改动被丢失。");
   const tail = translate(
-    "可以直接上传本地文档接着做，或关掉这份素材重新打开再试一次。",
+    "点「重新载入」再试一次，或直接上传本地文档接着做。",
   );
   return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
 }

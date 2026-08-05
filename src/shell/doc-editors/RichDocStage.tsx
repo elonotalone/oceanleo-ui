@@ -2,6 +2,7 @@
 
 import { EditorContent } from "@tiptap/react";
 import { useUI } from "../../i18n/ui/useUI";
+import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 import { RICHDOC_CSS } from "./rich-doc-model";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 
@@ -34,7 +35,13 @@ export function RichDocStage({
               </p>
             </div>
           )}
-          {!editor.loading && editor.error && (
+          {!editor.loading && editor.sourceFailed && (
+            <EditorSourceFailurePanel
+              message={tt(editor.error)}
+              onReload={editor.reload}
+            />
+          )}
+          {!editor.loading && !editor.sourceFailed && editor.error && (
             <div
               role="alert"
               className="absolute inset-x-6 top-4 z-20 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
@@ -65,7 +72,7 @@ export function RichDocStage({
             chars: editor.chars,
           })}
         </span>
-        {editor.error && (
+        {!editor.sourceFailed && editor.error && (
           <span
             role="alert"
             className="min-w-[120px] flex-1 truncate text-[10px] text-red-600"

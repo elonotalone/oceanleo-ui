@@ -985,11 +985,12 @@ export function deckSourceLoadKey(
  * Name the step that failed and the way out. A bare「演示文稿读取失败」tells the
  * user nothing they can act on, and an endless mask tells them even less.
  *
- * The way out named here is deliberately limited to what the deck surface can
- * actually do today, which is only "reopen": `DeckStage` renders no retry
- * button for `reload()`, and the deck upload slot takes `image/*` only
- * (`DeckRoute.tsx`), silently skipping a PPTX the user picks. Naming an action
- * the UI refuses is the same defect as naming a button that does not exist.
+ * Every way out named here has to be one the deck surface really offers.
+ * `DeckStage` now renders `EditorSourceFailurePanel` on `sourceFailed`, so the
+ * retry button behind `reload()` is real; reopening always is. Local upload
+ * stays unnamed on purpose: the deck upload slot takes `image/*` only
+ * (`DeckRoute.tsx`) and silently skips a PPTX the user picks, and naming an
+ * action the UI refuses is the same defect as naming a button that does not exist.
  */
 export function deckSourceFailureMessage(
   caught: unknown,
@@ -998,7 +999,7 @@ export function deckSourceFailureMessage(
   const detail =
     caught instanceof Error ? translate(caught.message).trim() : "";
   const head = translate("没能读到这份演示文稿的源文件，现在停在一份空白稿上。");
-  const tail = translate("关掉这份素材重新打开可以再试一次。");
+  const tail = translate("点「重新载入」再试一次，或关掉这份素材重新打开。");
   return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
 }
 

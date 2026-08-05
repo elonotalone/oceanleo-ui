@@ -34,6 +34,7 @@ import {
 } from "./DeckElementSelectionChrome";
 import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
 import { DeckMiniSlide } from "./DeckMiniSlide";
+import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 import { DeckPreviewLayout } from "./DeckPreviewLayout";
 import type { DeckInkStyle } from "./deck-ink";
 import {
@@ -527,7 +528,13 @@ export function DeckStage({
                   {tt("正在载入演示文稿…")}
                 </div>
               )}
-              {!editor.loading && editor.error && (
+              {!editor.loading && editor.sourceFailed && (
+                <EditorSourceFailurePanel
+                  message={tt(editor.error)}
+                  onReload={editor.reload}
+                />
+              )}
+              {!editor.loading && !editor.sourceFailed && editor.error && (
                 <div
                   role="alert"
                   className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
