@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -50,7 +52,7 @@ export function useModel3DSourceLoader({
   setError,
   setNotice,
   onPreparedSource,
-  tt,
+  tt: providedTranslate,
 }: {
   runtimeRef: MutableRefObject<Model3DSceneRuntime | null>;
   runtimeReady: boolean;
@@ -75,6 +77,23 @@ export function useModel3DSourceLoader({
   }) => void;
   tt: UITranslate;
 }) {
+  // `tt` 由调用方从 `useUI()` 直接透传，是 provider 所有的函数。它进下面那个源装载
+  // effect 的依赖，就是 W13 治过的自锁引信：effect 体里写 state（setModelLoading /
+  // setProgress / setError）→ 重渲染 → `tt` 换身份 → 整个模型重新下载并重新灌进
+  // 渲染器。这一处重跑还会 `runtime.cancelLoad()` 打断正在进行的加载。
+  // 语言切换与「这份 GLB/glTF 要不要重下」无关，答案明确是不该重跑。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装（`vars` 一并转发）。代价：加载失败文案停在报错当时那个
+  // 语言；`error` 由不在本 owner 面上的 `Model3DStage` 原样渲染，改不成渲染时再翻。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || !runtimeReady || !sourceUrl) return;

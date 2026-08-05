@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type RefCallback } from "react";
-import { useUI } from "../../i18n/ui/useUI";
+import { useUI, type UITranslate } from "../../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -41,6 +41,24 @@ export function usePdfWorkbench(
   onSaved?: (url: string) => void,
 ): PdfWorkbenchState {
   const tt = useUI();
+  // `tt` 是 i18n provider 所有的函数，进 effect 依赖就是 W13 在 `dcc0a7d` 里治掉的
+  // 自锁引信。本文件有两笔账要一起还：
+  //   1) 下面那个源装载 effect（`[…, tt]`）体里写了一整屏 state，`tt` 一换身份就把
+  //      整份 PDF 重新拉一遍、`setSourceLoading(false)` 轮不到；
+  //   2) 它把裸 `tt` 当 `translate` 传给了 `usePdfDocument` 与 `usePdfPreviewRender`,
+  //      等于把同一个引信装进那两个子 hook 的依赖里（W20 在 signals 里点名的那两处）。
+  // 语言切换与「这份 PDF 要不要重下重解析、这一页要不要重画」都无关，答案一律是不该
+  // 重跑。所以这里只包一次恒定身份，自己的 effect 用它，也把它传给两个子 hook。
+  // `vars` 一并转发；代价是装载期文案停在产生时那个语言（`error` / `notice` 由不在
+  // 本 owner 面上的 `PdfStage` / `PdfRoute` 原样渲染，改不成渲染时再翻）。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
   const bytesRef = useRef<Uint8Array | null>(null);
   const processingRef = useRef(false);
   const processingTokenRef = useRef(0);
@@ -83,7 +101,7 @@ export function usePdfWorkbench(
   } = usePdfDocument({
     bytesRef,
     documentRevision,
-    translate: tt,
+    translate,
     setError,
     onPageCount,
   });
@@ -101,7 +119,7 @@ export function usePdfWorkbench(
     pageNumber,
     revision: previewRevision,
     rasterZoom,
-    translate: tt,
+    translate,
     setError,
   });
   const textLayer = usePdfTextLayer({ documentProxy, revision: previewRevision });
@@ -179,17 +197,19 @@ export function usePdfWorkbench(
           signal: controller.signal,
           allowBlank: allowBlankSource,
         });
-        if (loaded.pageCount < 1) throw new Error(tt("PDF 没有可显示的页面"));
+        if (loaded.pageCount < 1) {
+          throw new Error(translate("PDF 没有可显示的页面"));
+        }
         if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
         bytesRef.current = loaded.bytes;
         setSourceUrl(loaded.durableUrl);
         setPageCount(loaded.pageCount);
-        if (loaded.blank) setNotice(tt("已创建一页空白 PDF"));
+        if (loaded.blank) setNotice(translate("已创建一页空白 PDF"));
         advance("pages-resolved");
         setDocumentRevision((value) => value + 1);
       } catch (caught) {
         if (!controller.signal.aborted && generation === sourceGenerationRef.current) {
-          const message = pdfErrorMessage(caught, tt("PDF 加载失败"));
+          const message = pdfErrorMessage(caught, translate("PDF 加载失败"));
           setError(message);
           advance("parse-failed");
           reportFailure(
@@ -216,7 +236,7 @@ export function usePdfWorkbench(
     item.url,
     reportFailure,
     siteId,
-    tt,
+    translate,
   ]);
 
   useEffect(() => {

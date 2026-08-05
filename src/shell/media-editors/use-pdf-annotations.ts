@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
@@ -41,7 +42,7 @@ export function usePdfAnnotations({
   resetKey,
   runMutation,
   setError,
-  tt,
+  tt: providedTranslate,
 }: {
   bytesRef: MutableRefObject<Uint8Array | null>;
   pageNumber: number;
@@ -52,6 +53,22 @@ export function usePdfAnnotations({
   setError: Dispatch<SetStateAction<string>>;
   tt: UITranslate;
 }) {
+  // `tt` 由 `usePdfWorkbench` 从 `useUI()` 直接透传，是 provider 所有的函数。它进
+  // 下面那个批注读取 effect 的依赖，就是 W13 治过的自锁引信：effect 体里
+  // `setAnnotations(...)` / `setError(...)` → 重渲染 → `tt` 换身份 → 再解析一遍
+  // 整份 PDF 的批注。语言切换与「这一页有哪些批注」无关，答案明确是不该重跑。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装（`vars` 一并转发）。其余 `tt` 调用都在延迟执行的回调体里，
+  // 读的是 ref 中的最新 `tt`，文案不会提前定格。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   const [annotationText, setAnnotationText] = useState("");
   const [annotations, setAnnotations] = useState<PdfAnnotationView[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState("");

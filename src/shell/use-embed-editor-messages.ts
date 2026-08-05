@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { UITranslate } from "../i18n/ui/useUI";
 import { saveCreations, type MediaType } from "../lib/database";
 import { getArtifactItem } from "./artifact-client";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
@@ -98,7 +99,7 @@ type UseEmbedEditorMessagesInput = MessageCallbacks & {
   sendOpenAsset: () => void;
   setPhase: (phase: "ready") => void;
   setStatus: (status: EmbedEditorStatus | null) => void;
-  tt: (value: string) => string;
+  tt: UITranslate;
 };
 
 function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
@@ -141,7 +142,7 @@ export function useEmbedEditorMessages({
   sendOpenAsset,
   setPhase,
   setStatus,
-  tt,
+  tt: providedTranslate,
   onCloseRequest,
   onDirtyChange,
   onExportResult,
@@ -158,6 +159,24 @@ export function useEmbedEditorMessages({
   onVersionSaved,
   onViewportChange,
 }: UseEmbedEditorMessagesInput): void {
+  // `tt` 由 `workbench-embed.tsx` 从 `useUI()` 直接透传，是 provider 所有的函数。
+  // 它进下面那个消息 effect 的依赖，后果比一般的「白重跑」严重：该 effect 装的是
+  // `window` 上的 `message` 监听器，清理函数会 `active = false` 并摘掉监听。`tt` 一换
+  // 身份就整条拆了重挂，正在飞的保存回调因此被判 `!active` 而丢弃——用户会看到保存
+  // 既不成功也不失败地卡住；配合 effect 体里的 `setStatus(...)` 就是 W13 治过的自锁形状。
+  // 语言切换与「这条编辑器握手还作不作数」无关，答案明确是不该重跑。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装（`vars` 一并转发）。代价：状态提示文案停在产生时那个语言；
+  // 这些文案有一部分要塞进 `save-result` 发回 iframe 里的编辑器，本来就不能等渲染时再翻。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   const artifactHeadRef = useRef(item);
   const artifactInputIdentityRef = useRef(artifactInputIdentity(item));
   const artifactHeadGenerationRef = useRef(0);

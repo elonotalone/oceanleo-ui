@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState, type MutableRefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
 } from "pdfjs-dist";
+import type { UITranslate } from "../../i18n/ui/useUI";
 import { clamp, pdfErrorMessage } from "./pdf-workbench-utils";
 
 /**
@@ -20,13 +27,13 @@ import { clamp, pdfErrorMessage } from "./pdf-workbench-utils";
 export function usePdfDocument({
   bytesRef,
   documentRevision,
-  translate,
+  translate: providedTranslate,
   setError,
   onPageCount,
 }: {
   bytesRef: MutableRefObject<Uint8Array | null>;
   documentRevision: number;
-  translate: (value: string) => string;
+  translate: UITranslate;
   setError: (message: string) => void;
   onPageCount: (pageCount: number) => void;
 }): {
@@ -39,6 +46,23 @@ export function usePdfDocument({
   );
   const [previewRevision, setPreviewRevision] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // `translate` 这个形参名不代表它是安全的：`use-pdf-workbench.ts` 过去把
+  // `useUI()` 的裸 `tt` 直接当 `translate` 传了进来，于是下面这个 effect 的依赖里
+  // 站着一个 provider 所有的函数。它写的 state 里有
+  // `setPreviewRevision((value) => value + 1)`——每跑一次就必然触发下一次渲染，
+  // 正是 W13 在 `dcc0a7d` 里治掉的那个自锁形状：pdf.js 文档会被反复销毁重建。
+  // 语言切换与「这份字节要不要重新解析成 PDF 文档」无关，答案明确是不该重跑。
+  // ref + 空依赖 `useCallback` 包出恒定身份（沿用 W13 的解法），并把 `vars` 一起
+  // 转发；代价是解析失败的兜底文案停在报错当时那个语言。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
 
   useEffect(() => {
     let disposed = false;

@@ -198,80 +198,24 @@ function tally(sites) {
 const LANGUAGE_RERUN_WHITELIST = [];
 
 /**
- * 欠账：落在别人独占面上的同族缺陷，W20 按 `_COMMON.md` 红线 §2.3 不许动。
- * 逐条已在 `signals/W20-request.md` 报出。**只减不增。**
+ * 欠账：落在别人独占面上的同族缺陷，登记它的 owner 按 `_COMMON.md` 红线 §2.3 不许动。
+ * **只减不增。**
+ *
+ * 2026-08-05 W25 交付时清空：W20 报出的 11 处已全部有人真修掉，一处不剩。
+ *   · `geo-map-editor/use-geo-map-workbench.ts` —— W19 在 `62d7c0f` 里清掉（装载
+ *     effect 改依赖空依赖 `useCallback` 包出的 `translate`）；
+ *   · 其余 10 处（`chart-editor/`、`media-editors/` 八份、`use-embed-editor-messages.ts`）
+ *     —— W25 本轮逐处改成 ref + 恒定包装。
+ *
+ * 空表是有意义的：从此任何一处新引信都不再有登记可挡，会被上面第一个用例当场判红。
  */
-const PENDING_OTHER_OWNERS = [
-  {
-    file: "src/shell/geo-map-editor/use-geo-map-workbench.ts",
-    providerDeps: ["tt"],
-    owner: "W19",
-    reason: "_ROUND3.md §3 明写这个文件的 tt 依赖由 W19 顺手一并修，W20 不碰",
-  },
-  {
-    file: "src/shell/chart-editor/use-chart-workbench.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "图表编辑器内核的装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-audio-wave-loader.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "音频编辑器波形装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-model3d-director.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "3D 运镜 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-model3d-project-bootstrap.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "3D 工程装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-model3d-source-loader.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "3D 源文件装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-pdf-annotations.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "PDF 标注装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/media-editors/use-pdf-document.ts",
-    providerDeps: ["translate"],
-    owner: "未分配",
-    reason: "use-pdf-workbench.ts:86 把裸 tt 当 translate 传进来，改要动调用方",
-  },
-  {
-    file: "src/shell/media-editors/use-pdf-preview-render.ts",
-    providerDeps: ["translate"],
-    owner: "未分配",
-    reason: "use-pdf-workbench.ts:104 把裸 tt 当 translate 传进来，改要动调用方",
-  },
-  {
-    file: "src/shell/media-editors/use-pdf-workbench.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "PDF 工作台装载 effect，本波无 owner，同族缺陷已在 signals 报出",
-  },
-  {
-    file: "src/shell/use-embed-editor-messages.ts",
-    providerDeps: ["tt"],
-    owner: "未分配",
-    reason: "内嵌编辑器消息层的 ready/status effect，本波无 owner，已在 signals 报出",
-  },
-];
+const PENDING_OTHER_OWNERS = [];
 
-/** 今天 `src/` 里真实剩余的欠账数（W20 交付时实测 11）。这个数只许改小。 */
-const PENDING_BUDGET = 11;
+/**
+ * 今天 `src/` 里真实剩余的欠账数。这个数只许改小。
+ * W20 交付时实测 11；W19 清掉 1 处、W25 清掉 10 处之后实测 0。
+ */
+const PENDING_BUDGET = 0;
 
 /** W20 本轮清干净的 11 个文件：谁把 tt 放回这些 effect 的依赖里，立刻红。 */
 const W20_CLEARED_FILES = [

@@ -48,7 +48,7 @@ export function useModel3DDirector({
   markDirty,
   setError,
   setNotice,
-  tt,
+  tt: providedTranslate,
 }: {
   runtimeRef: MutableRefObject<Model3DSceneRuntime | null>;
   view: Model3DViewProject;
@@ -66,6 +66,24 @@ export function useModel3DDirector({
   setNotice: (value: string) => void;
   tt: UITranslate;
 }) {
+  // `tt` 由调用方从 `useUI()` 直接透传，是 provider 所有的函数。它进下面那个运镜同步
+  // effect（`[modelReady, …, tt, view.director]`）的依赖，就是 W13 治过的自锁引信：
+  // 该 effect 体里 `setError(...)` → 重渲染 → `tt` 换身份 → 再把导演相机推一遍。
+  // 「语言切换该不该重跑」在这里答案明确是不该：相机同步与语言毫无关系。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装（`vars` 一并转发）。
+  // 本文件其余 `tt` 调用全都落在延迟执行的函数体里（adapter 的 `availability` /
+  // `capture`、命令处理、预演回执），读的是 ref 里的最新 `tt`，所以文案不会提前定格；
+  // 顺带让 `screenshotAdapter` 这类 memo 不再因换语言白重建一次。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   const previsHandleRef = useRef<Model3DPrevisHandle | null>(null);
   const [directing, setDirecting] = useState(false);
   const [receipt, setReceipt] =

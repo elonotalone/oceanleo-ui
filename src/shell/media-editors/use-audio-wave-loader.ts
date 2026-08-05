@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type RefObject,
@@ -109,8 +111,26 @@ export function useAudioWaveLoader({
   setCanUndo,
   setCanRedo,
   setDirty,
-  tt,
+  tt: providedTranslate,
 }: AudioWaveLoaderOptions): void {
+  // `tt` 由调用方从 `useUI()` 直接透传，是 provider 所有的函数。它进下面那个装载
+  // effect 的依赖，就是 W13 在 `dcc0a7d` 里治掉的自锁引信：effect 体里写 state →
+  // 重渲染 → `tt` 换身份 → 波形整条重装。这里重跑的代价尤其大：destroy 掉
+  // WaveSurfer 实例、清空 undo/redo 操作栈，并把整段音频重新下载、重新解码。
+  // 「语言切换该不该重跑」在这一处答案明确是不该：解码结果与语言无关。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装。文案要拼进 `new Error(...)`（:139 :144 等）在 effect 体内
+  // 即时产生，所以不能改成「state 存中文原文、渲染时再翻」；代价是这些文案停在
+  // 产生时那个语言。`vars` 一并转发，插值形文案不会露出没替换的 `{name}`。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   useEffect(() => {
     const container = containerRef.current;
     const sourceUrl = item.url || item.previewUrl || "";

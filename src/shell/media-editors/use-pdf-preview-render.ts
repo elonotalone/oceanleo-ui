@@ -6,6 +6,7 @@ import type {
   PDFPageProxy,
   RenderTask,
 } from "pdfjs-dist";
+import type { UITranslate } from "../../i18n/ui/useUI";
 import {
   PDF_READER_LAYOUT,
   clamp,
@@ -19,7 +20,7 @@ export function usePdfPreviewRender({
   pageNumber,
   revision,
   rasterZoom,
-  translate,
+  translate: providedTranslate,
   setError,
 }: {
   canvas: HTMLCanvasElement | null;
@@ -28,7 +29,7 @@ export function usePdfPreviewRender({
   pageNumber: number;
   revision: number;
   rasterZoom: number;
-  translate: (value: string) => string;
+  translate: UITranslate;
   setError: (message: string) => void;
 }) {
   const renderedPageKeyRef = useRef("");
@@ -37,6 +38,22 @@ export function usePdfPreviewRender({
   const [renderedZoom, setRenderedZoom] = useState(100);
   const [pageWidth, setPageWidth] = useState(0);
   const [pageHeight, setPageHeight] = useState(0);
+
+  // 同 `use-pdf-document.ts`：形参名叫 `translate` 不代表身份稳定，
+  // `use-pdf-workbench.ts` 过去把裸 `tt` 直接传了进来。它进下面这个渲染 effect 的
+  // 依赖，就是 W13 治过的自锁引信：effect 体里 `setPageWidth` / `setRotation` 等
+  // 写 state → 重渲染 → `translate` 换身份 → 整页重新光栅化一遍。
+  // 语言切换与「这一页要不要重画」无关，答案明确是不该重跑。
+  // ref + 空依赖 `useCallback` 包出恒定身份，`vars` 一并转发；代价是渲染失败文案
+  // 停在报错当时那个语言（`error` 由不在本 owner 面上的 `PdfStage` 原样渲染）。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
 
   useEffect(() => {
     if (!canvas || !documentProxy || pageCount < 1) {

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useUI } from "../../i18n/ui/useUI";
+import { useUI, type UITranslate } from "../../i18n/ui/useUI";
 import type {
   EditorManifestV1,
   LibraryItem,
@@ -123,6 +123,22 @@ export function useChartWorkbench(
   siteId = "",
 ): ChartWorkbenchState {
   const tt = useUI();
+  // `tt` 是 i18n provider 所有的函数。它进下面那个装载 effect 的依赖，等于把 W13 在
+  // `dcc0a7d` 里治掉的自锁循环重新装上引信：effect 体里写 state → 重渲染 → `tt` 换
+  // 身份 → 再装载一次，`setLoading(false)` 永远轮不到。语言切换与「要不要重读这份
+  // 图表源」无关；重跑还会 `updateDirty(false)` 并把 document 打回 `EMPTY_DOCUMENT`，
+  // 也就是用户没保存的改动会被一次语言切换清空。
+  // 代价说清楚：装载失败的兜底文案停在报错当时那个语言。这一处只能选 ref 包装，因为
+  // `error` 由 `ChartControls` / `ChartRoute` 原样渲染，两者都不在本 owner 的独占面里，
+  // 不能改成「state 存中文原文、渲染时再翻」。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
   const aliveRef = useRef(true);
   const revisionRef = useRef(0);
   const documentRef = useRef<ChartDocumentV1>(EMPTY_DOCUMENT);
@@ -215,7 +231,9 @@ export function useChartWorkbench(
               ? chartStateForSourceError(caught.code)
               : "invalid",
           );
-          setError(caught instanceof Error ? caught.message : tt("图表源读取失败"));
+          setError(
+            caught instanceof Error ? caught.message : translate("图表源读取失败"),
+          );
         }
       })
       .finally(() => {
@@ -225,7 +243,7 @@ export function useChartWorkbench(
   }, [
     nextInputIdentity,
     setCarrierState,
-    tt,
+    translate,
     updateDirty,
   ]);
 

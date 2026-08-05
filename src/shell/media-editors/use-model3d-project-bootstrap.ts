@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -38,7 +40,7 @@ export function useModel3DProjectBootstrap({
   item,
   artifactSourceDigest,
   siteId,
-  tt,
+  tt: providedTranslate,
   aliveRef,
   sourceGenerationRef,
   loadedSourceRef,
@@ -79,6 +81,24 @@ export function useModel3DProjectBootstrap({
   setError: Dispatch<SetStateAction<string>>;
   setSourceProvenance: Dispatch<SetStateAction<Model3DSourceProvenance>>;
 }): void {
+  // `tt` 由 `useModel3DWorkbench` 从 `useUI()` 直接透传，是 provider 所有的函数。
+  // 它进下面那个工程装载 effect 的依赖，就是 W13 治过的自锁引信：effect 体里写
+  // state（setSourceUrl / setNotice / setError…）→ 重渲染 → `tt` 换身份 → 整份 3D
+  // 工程重新恢复一遍，`setSourceLoading(false)` 轮不到，进度条下不来。
+  // 语言切换与「这份工程要不要重新读一次 checkpoint」无关，答案是不该重跑。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:518-531` 定下的 ref + 恒定包装，
+  // 下面的 `tt` 即该包装（`vars` 一并转发）。代价：装载期文案停在产生时那个语言；
+  // 这一处不能改成渲染时再翻，因为 `notice` / `error` 由不在本 owner 面上的
+  // `Model3DStage` / `Model3DRoute` 原样显示。
+  const translateRef = useRef(providedTranslate);
+  useEffect(() => {
+    translateRef.current = providedTranslate;
+  }, [providedTranslate]);
+  const tt = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   useEffect(() => {
     const originalSource = model3DSourceForItem(item);
     const fallbackProvenance = normalizeModel3DSourceProvenance(
