@@ -92,6 +92,8 @@ export interface DeckEditorState {
   dirty: boolean;
   editRevision: number;
   error: string;
+  /** The source could not be read; the stage owes the user a retry, not a mask. */
+  sourceFailed: boolean;
   notice: string;
   savedUrl: string;
   canUndo: boolean;
@@ -145,6 +147,8 @@ export interface DeckEditorState {
   moveSlide: (direction: -1 | 1) => void;
   undo: () => void;
   redo: () => void;
+  /** Re-run the source load for the same item after a failure. */
+  reload: () => void;
   downloadJson: () => void;
   exportPptx: () => Promise<void>;
   save: () => Promise<PersistedEditorVersion | null>;
@@ -937,6 +941,68 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   return delivery;
 }
 
+function boundedLoadKey(parts: readonly unknown[]): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parts) || "";
+  } catch {
+    return "unserializable";
+  }
+  return serialized.length <= 8192
+    ? serialized
+    : `${serialized.length}:${serialized.slice(0, 8192)}`;
+}
+
+/**
+ * Everything the load effect reads out of `item` and `previewContent`, flattened
+ * into one string. Keying the effect on the value rather than on the object
+ * identity is what makes a caller that rebuilds either one every render
+ * harmless.
+ */
+export function deckSourceLoadKey(
+  item: LibraryItem,
+  previewContent?: unknown,
+): string {
+  return boundedLoadKey([
+    item.id,
+    item.key,
+    item.title,
+    item.url || "",
+    item.previewUrl || "",
+    deckProjectUrlFor(item),
+    deckDeliveryUrlFor(item),
+    // `loadDeck` picks the unpacker by extension, so the format hints are load
+    // inputs too: leaving them out turns "reloads too often" into "never
+    // reloads when the same address is re-typed as another format".
+    officeExtensionForItem(item),
+    item.meta.source_format ?? "",
+    item.meta.format ?? "",
+    initialSource(item, previewContent),
+  ]);
+}
+
+/**
+ * Name the step that failed and the way out. A bare「演示文稿读取失败」tells the
+ * user nothing they can act on, and an endless mask tells them even less.
+ *
+ * The way out named here is deliberately limited to what `DeckStage` actually
+ * renders today. `reload()` is exported for a stage that wants a retry button,
+ * but no stage renders one yet, and copy that points at a missing button is
+ * worse than copy that stays quiet about it.
+ */
+export function deckSourceFailureMessage(
+  caught: unknown,
+  translate: (value: string) => string,
+): string {
+  const detail =
+    caught instanceof Error ? translate(caught.message).trim() : "";
+  const head = translate("没能读到这份演示文稿的源文件，现在停在一份空白稿上。");
+  const tail = translate(
+    "可以直接上传本地 PPTX 接着做，或关掉这份素材重新打开再试一次。",
+  );
+  return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
+}
+
 export function useDeckEditor(
   item: LibraryItem,
   siteId = "",
@@ -955,6 +1021,8 @@ export function useDeckEditor(
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [sourceFailed, setSourceFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [notice, setNotice] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -980,20 +1048,54 @@ export function useDeckEditor(
   );
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
+  /**
+   * The caller hands these in fresh on every render. Reading them through refs
+   * is what keeps them out of the load effect's dependency array — with them in
+   * it, every render restarted the load and the mask never came down.
+   */
+  const sourceAccessErrorRef = useRef(onSourceAccessError);
   useEffect(() => {
+    sourceAccessErrorRef.current = onSourceAccessError;
+  }, [onSourceAccessError]);
+  const notifySourceAccessError = useCallback(() => {
+    sourceAccessErrorRef.current?.();
+  }, []);
+  const loadInputRef = useRef({ item, previewContent });
+  useEffect(() => {
+    loadInputRef.current = { item, previewContent };
+  }, [item, previewContent]);
+  // `tt` is memoized today, but it is a provider-owned function: one unmemoized
+  // locale provider would re-arm the very loop this file exists to kill.
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback(
+    (value: string) => translateRef.current(value),
+    [],
+  );
+  const loadKey = useMemo(
+    () => deckSourceLoadKey(item, previewContent),
+    [item, previewContent],
+  );
+
+  useEffect(() => {
+    const source = loadInputRef.current.item;
+    const sourcePreview = loadInputRef.current.previewContent;
     mountedRef.current = true;
     const abort = new AbortController();
     setLoading(true);
     setDirty(false);
     setSavedUrl("");
     setError("");
+    setSourceFailed(false);
     setNotice("");
     revisionRef.current = 0;
-    persistedItemRef.current = item;
+    persistedItemRef.current = source;
     preparedSaveRef.current = null;
     workingHeadUrlRef.current =
-      deckProjectUrlFor(item) || item.previewUrl || "";
-    void loadDeck(item, previewContent, abort.signal, onSourceAccessError)
+      deckProjectUrlFor(source) || source.previewUrl || "";
+    void loadDeck(source, sourcePreview, abort.signal, notifySourceAccessError)
       .then((next) => {
         if (abort.signal.aborted) return;
         deckRef.current = next;
@@ -1012,7 +1114,8 @@ export function useDeckEditor(
       })
       .catch((caught) => {
         if (!abort.signal.aborted) {
-          setError(caught instanceof Error ? caught.message : tt("演示文稿读取失败"));
+          setSourceFailed(true);
+          setError(deckSourceFailureMessage(caught, translate));
         }
       })
       .finally(() => {
@@ -1022,7 +1125,11 @@ export function useDeckEditor(
       mountedRef.current = false;
       abort.abort();
     };
-  }, [item, onSourceAccessError, previewContent, tt]);
+  }, [loadKey, notifySourceAccessError, reloadNonce, translate]);
+
+  const reload = useCallback(() => {
+    setReloadNonce((value) => value + 1);
+  }, []);
 
   const snapshot = useCallback(
     (): Snapshot => ({
@@ -1844,6 +1951,7 @@ export function useDeckEditor(
     dirty,
     editRevision: revisionRef.current,
     error,
+    sourceFailed,
     notice,
     savedUrl,
     canUndo: undoRef.current.length > 0 || historyRevision < 0,
@@ -1943,6 +2051,7 @@ export function useDeckEditor(
     },
     undo,
     redo,
+    reload,
     downloadJson: () =>
       downloadText(
         `${deckRef.current.title || "演示文稿"}.oceanleo-deck.v1.json`,

@@ -227,7 +227,24 @@ export function GridStage({
             {tt("正在读取工作簿…")}
           </div>
         )}
-        {!editor.loading && editor.error && (
+        {!editor.loading && editor.sourceFailed && (
+          <div
+            role="alert"
+            className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-[var(--card,#fff)]/95 px-6 text-center"
+          >
+            <p className="max-w-md text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">
+              {tt(editor.error)}
+            </p>
+            <button
+              type="button"
+              onClick={editor.reload}
+              className="min-h-9 rounded-lg border border-[var(--border,#e7e5e4)] px-3 text-[12px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              {tt("重新载入")}
+            </button>
+          </div>
+        )}
+        {!editor.loading && !editor.sourceFailed && editor.error && (
           <div
             role="alert"
             className="sticky left-1/2 top-3 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"

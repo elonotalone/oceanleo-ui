@@ -264,6 +264,15 @@ export function GridRoute({
           onTrigger: exportXlsx,
         },
         actions: [
+          ...(editor.sourceFailed
+            ? [
+                {
+                  id: "grid-reload-source",
+                  label: "重新载入表格",
+                  onTrigger: editor.reload,
+                },
+              ]
+            : []),
           ...(editor.error || officeSource.error
             ? [
                 {

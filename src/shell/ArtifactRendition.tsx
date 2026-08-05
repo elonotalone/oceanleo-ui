@@ -103,6 +103,14 @@ function refreshRenditionOnce(
   return pending;
 }
 
+/**
+ * The early-return branches below have no refresh to run, but their callbacks
+ * still travel into consumer effect dependency arrays. A fresh arrow function
+ * per render made those effects re-run forever; this shared constant keeps the
+ * identity stable exactly like the `useCallback` pair on the durable path.
+ */
+const NO_RENDITION_ACTION = () => undefined;
+
 export interface ArtifactRenditionState {
   url: string;
   purpose: ArtifactRenditionPurpose | null;
@@ -263,8 +271,8 @@ export function useArtifactRendition(
       loading: false,
       error: legacy.url ? "" : "这个条目没有可用 URL。",
       version: 0,
-      retry: () => undefined,
-      resourceFailed: () => undefined,
+      retry: NO_RENDITION_ACTION,
+      resourceFailed: NO_RENDITION_ACTION,
     };
   }
   if (!artifactIsVisible(item.artifact)) {
@@ -275,8 +283,8 @@ export function useArtifactRendition(
       loading: false,
       error: "当前主体无权查看这个 artifact revision。",
       version: 0,
-      retry: () => undefined,
-      resourceFailed: () => undefined,
+      retry: NO_RENDITION_ACTION,
+      resourceFailed: NO_RENDITION_ACTION,
     };
   }
   return {

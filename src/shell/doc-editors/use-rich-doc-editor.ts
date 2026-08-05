@@ -35,7 +35,11 @@ import {
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderRichDocPreviewPng } from "./editor-preview-raster";
 import { tiptapJsonToDocxBlob } from "./docx-export";
-import { notifyOfficeAccessDenied } from "./office-file";
+import {
+  notifyOfficeAccessDenied,
+  officePackageKindForItem,
+} from "./office-file";
+import { officeExtensionForItem } from "../workbench-routes";
 import {
   countText,
   fullHtmlDocument,
@@ -58,11 +62,15 @@ export interface RichDocEditorState {
   sourceReady: boolean;
   editRevision: number;
   error: string;
+  /** The source could not be read; the stage owes the user a retry, not a mask. */
+  sourceFailed: boolean;
   savedUrl: string;
   /** 内容来自哪条加载链路（inline / url-markdown / url-docx / …）。 */
   source: RichDocSource;
   words: number;
   chars: number;
+  /** Re-run the source load for the same item after a failure. */
+  reload: () => void;
   save: () => Promise<PersistedEditorVersion | null>;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
@@ -126,6 +134,68 @@ export function richDocSavedItemForHandoff(
   };
 }
 
+function boundedLoadKey(parts: readonly unknown[]): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parts) || "";
+  } catch {
+    return "unserializable";
+  }
+  return serialized.length <= 8192
+    ? serialized
+    : `${serialized.length}:${serialized.slice(0, 8192)}`;
+}
+
+/**
+ * Everything the load effect reads out of `item`, flattened into one string.
+ * Keying the effect on the value rather than on the object identity is what
+ * makes a caller that rebuilds `item` or the callbacks every render harmless.
+ */
+export function richDocSourceLoadKey(item: LibraryItem): string {
+  const meta = item.meta || {};
+  return boundedLoadKey([
+    item.id,
+    item.key,
+    item.source,
+    item.url || "",
+    item.previewUrl || "",
+    item.content || "",
+    meta.editor_project_url ?? "",
+    meta.editor_source_url ?? "",
+    meta.editor_working_head_url ?? "",
+    meta.markdown ?? "",
+    meta.content ?? "",
+    meta.text ?? "",
+    // `loadRichDocHtml` decides docx-vs-text by these, so they are load inputs
+    // too: leaving them out turns "reloads too often" into "never reloads when
+    // the same address is re-typed as another format".
+    officeExtensionForItem(item),
+    officePackageKindForItem(item) ?? "",
+  ]);
+}
+
+/**
+ * Name the step that failed and the way out. A bare「可编辑工程读取失败」tells the
+ * user nothing they can act on, and an endless mask tells them even less.
+ *
+ * The way out named here is deliberately limited to what `RichDocStage` actually
+ * renders today. `reload()` is exported for a stage that wants a retry button,
+ * but no stage renders one yet, and copy that points at a missing button is
+ * worse than copy that stays quiet about it.
+ */
+export function richDocSourceFailureMessage(
+  caught: unknown,
+  translate: (value: string) => string,
+): string {
+  const detail =
+    caught instanceof Error ? translate(caught.message).trim() : "";
+  const head = translate("没能读到这份文档的源文件，编辑器已停下，没有改动被丢失。");
+  const tail = translate(
+    "可以直接上传本地文档接着做，或关掉这份素材重新打开再试一次。",
+  );
+  return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
+}
+
 export function useRichDocEditor(
   item: LibraryItem,
   siteId = "",
@@ -136,6 +206,8 @@ export function useRichDocEditor(
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [sourceFailed, setSourceFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
   const [sourceReady, setSourceReady] = useState(false);
@@ -200,22 +272,55 @@ export function useRichDocEditor(
     return false;
   }, [tt]);
 
+  /**
+   * The caller hands these in fresh on every render. Reading them through refs
+   * is what keeps them out of the load effect's dependency array — with them in
+   * it, every render restarted the load and the mask never came down.
+   */
+  const sourceAccessErrorRef = useRef(onSourceAccessError);
   useEffect(() => {
+    sourceAccessErrorRef.current = onSourceAccessError;
+  }, [onSourceAccessError]);
+  const notifySourceAccessError = useCallback(() => {
+    sourceAccessErrorRef.current?.();
+  }, []);
+  const itemRef = useRef(item);
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
+  // `tt` is memoized today, but it is a provider-owned function: one unmemoized
+  // locale provider would re-arm the very loop this file exists to kill.
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback(
+    (value: string) => translateRef.current(value),
+    [],
+  );
+  const loadKey = useMemo(() => richDocSourceLoadKey(item), [item]);
+
+  useEffect(() => {
+    const source = itemRef.current;
     let cancelled = false;
     setLoading(true);
     setError("");
+    setSourceFailed(false);
     setSavedUrl("");
     setDirty(false);
     sourceReadyRef.current = false;
     setSourceReady(false);
     revisionRef.current = 0;
-    persistedItemRef.current = item;
+    persistedItemRef.current = source;
     preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+      source.meta.editor_working_head_url ||
+        source.url ||
+        source.previewUrl ||
+        "",
     );
     setLoaded(null);
-    const projectUrl = String(item.meta.editor_project_url || "").trim();
+    const projectUrl = String(source.meta.editor_project_url || "").trim();
     void (projectUrl
       ? loadEditorProject<JSONContent>(projectUrl, RICHDOC_PROJECT_SCHEMA).then(
           (json) => ({
@@ -225,12 +330,15 @@ export function useRichDocEditor(
             error: "",
           }),
         )
-      : loadRichDocHtml(item, onSourceAccessError)
+      : loadRichDocHtml(source, notifySourceAccessError)
     )
       .then((result) => {
         if (cancelled) return;
         if (result.error) {
-          setError(tt(result.error));
+          setSourceFailed(true);
+          setError(
+            richDocSourceFailureMessage(new Error(result.error), translate),
+          );
           setLoading(false);
           return;
         }
@@ -240,18 +348,19 @@ export function useRichDocEditor(
       })
       .catch((caught) => {
         if (cancelled) return;
-        notifyOfficeAccessDenied(caught, onSourceAccessError);
-        setError(
-          caught instanceof Error
-            ? tt(caught.message)
-            : tt("可编辑工程读取失败"),
-        );
+        notifyOfficeAccessDenied(caught, notifySourceAccessError);
+        setSourceFailed(true);
+        setError(richDocSourceFailureMessage(caught, translate));
         setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [item, onSourceAccessError, tt]);
+  }, [loadKey, notifySourceAccessError, reloadNonce, translate]);
+
+  const reload = useCallback(() => {
+    setReloadNonce((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     if (!editor || !loaded) return;
@@ -317,6 +426,8 @@ export function useRichDocEditor(
         setSavedUrl("");
         revisionRef.current += 1;
         setDirty(true);
+        // An imported document replaces the source we could not read.
+        setSourceFailed(false);
         sourceReadyRef.current = true;
         setSourceReady(true);
         setLoaded(result);
@@ -535,6 +646,7 @@ export function useRichDocEditor(
       setDirty(true);
       sourceReadyRef.current = true;
       setSourceReady(true);
+      setSourceFailed(false);
       setSavedUrl("");
       setError("");
       return true;
@@ -553,10 +665,12 @@ export function useRichDocEditor(
     sourceReady,
     editRevision: revisionRef.current,
     error,
+    sourceFailed,
     savedUrl,
     source: loaded?.source ?? "empty",
     words: counts.words,
     chars: counts.chars,
+    reload,
     save,
     exportMarkdown,
     exportHtml,

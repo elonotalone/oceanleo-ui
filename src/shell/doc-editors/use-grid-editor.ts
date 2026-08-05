@@ -85,6 +85,8 @@ export interface GridEditorState {
   dirty: boolean;
   editRevision: number;
   error: string;
+  /** The source could not be read; the stage owes the user a retry, not a mask. */
+  sourceFailed: boolean;
   savedUrl: string;
   canUndo: boolean;
   canRedo: boolean;
@@ -114,6 +116,8 @@ export interface GridEditorState {
   clearConditionalFormats: () => void;
   undo: () => void;
   redo: () => void;
+  /** Re-run the source load for the same item after a failure. */
+  reload: () => void;
   importSource: (file: File) => Promise<void>;
   exportCsv: () => void;
   exportXlsx: () => Promise<void>;
@@ -224,6 +228,56 @@ function normalizedSheetName(
   return `${base.slice(0, 27)}-${serial}`;
 }
 
+function boundedLoadKey(parts: readonly unknown[]): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(parts) || "";
+  } catch {
+    return "unserializable";
+  }
+  return serialized.length <= 8192
+    ? serialized
+    : `${serialized.length}:${serialized.slice(0, 8192)}`;
+}
+
+/**
+ * Everything the load effect reads out of `item`, flattened into one string.
+ * Keying the effect on the value rather than on the object identity is what
+ * makes a caller that rebuilds `item` or the callbacks every render harmless.
+ */
+export function gridSourceLoadKey(item: LibraryItem): string {
+  const meta = item.meta || {};
+  return boundedLoadKey([
+    item.id,
+    item.key,
+    item.kind,
+    item.artifactId || "",
+    item.revisionId || "",
+    item.url || "",
+    item.previewUrl || "",
+    item.content || "",
+    meta.editor_project_url ?? "",
+    meta.editor_working_head_url ?? "",
+    meta.sheets ?? null,
+    meta.rows ?? null,
+  ]);
+}
+
+/**
+ * Name the step that failed and the way out. A bare「工作簿加载失败」tells the
+ * user nothing they can act on, and an endless mask tells them even less.
+ */
+export function gridSourceFailureMessage(
+  caught: unknown,
+  translate: (value: string) => string,
+): string {
+  const detail =
+    caught instanceof Error ? translate(caught.message).trim() : "";
+  const head = translate("没能读到这份表格的源文件，现在停在一张空白工作簿上。");
+  const tail = translate("点「重新载入」再试一次，或直接上传本地表格接着做。");
+  return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
+}
+
 export function useGridEditor(
   item: LibraryItem,
   siteId = "",
@@ -246,6 +300,8 @@ export function useGridEditor(
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [sourceFailed, setSourceFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
@@ -335,23 +391,56 @@ export function useGridEditor(
     applySnapshot(before);
   }, [applySnapshot]);
 
+  /**
+   * The caller hands these in fresh on every render. Reading them through refs
+   * is what keeps them out of the load effect's dependency array — with them in
+   * it, every render restarted the load and the mask never came down.
+   */
+  const sourceAccessErrorRef = useRef(onSourceAccessError);
   useEffect(() => {
+    sourceAccessErrorRef.current = onSourceAccessError;
+  }, [onSourceAccessError]);
+  const notifySourceAccessError = useCallback(() => {
+    sourceAccessErrorRef.current?.();
+  }, []);
+  const itemRef = useRef(item);
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
+  // `tt` is memoized today, but it is a provider-owned function: one unmemoized
+  // locale provider would re-arm the very loop this file exists to kill.
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback(
+    (value: string) => translateRef.current(value),
+    [],
+  );
+  const loadKey = useMemo(() => gridSourceLoadKey(item), [item]);
+
+  useEffect(() => {
+    const source = itemRef.current;
     mountedRef.current = true;
     const controller = new AbortController();
     const operation = ++operationRef.current;
     setLoading(true);
     setError("");
+    setSourceFailed(false);
     setSavedUrl("");
     setDirty(false);
     setFilterQuery("");
     setFilterColumn(0);
     revisionRef.current = 0;
-    persistedItemRef.current = item;
+    persistedItemRef.current = source;
     preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url || item.url || item.previewUrl || "",
+      source.meta.editor_working_head_url ||
+        source.url ||
+        source.previewUrl ||
+        "",
     );
-    const projectUrl = String(item.meta.editor_project_url || "").trim();
+    const projectUrl = String(source.meta.editor_project_url || "").trim();
     void (projectUrl
       ? loadEditorProject<GridProject>(
           projectUrl,
@@ -369,7 +458,11 @@ export function useGridEditor(
             filterColumn: Math.max(0, Number(project.filterColumn) || 0),
           };
         })
-      : loadGridSheets(item, controller.signal, onSourceAccessError).then((loaded) => ({
+      : loadGridSheets(
+          source,
+          controller.signal,
+          notifySourceAccessError,
+        ).then((loaded) => ({
           sheets: loaded,
           activeSheetId: "",
           headerRow: true,
@@ -407,13 +500,12 @@ export function useGridEditor(
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted || !mountedRef.current) return;
-        notifyOfficeAccessDenied(caught, onSourceAccessError);
+        notifyOfficeAccessDenied(caught, notifySourceAccessError);
         const fallback = emptyGridSheet();
         applySnapshot({ sheets: [fallback], activeSheetId: fallback.id });
         setHasSelectedCell(false);
-        setError(
-          caught instanceof Error ? tt(caught.message) : tt("工作簿加载失败"),
-        );
+        setSourceFailed(true);
+        setError(gridSourceFailureMessage(caught, translate));
       })
       .finally(() => {
         if (mountedRef.current && operation === operationRef.current) {
@@ -425,7 +517,17 @@ export function useGridEditor(
       operationRef.current += 1;
       mountedRef.current = false;
     };
-  }, [applySnapshot, item, onSourceAccessError, tt]);
+  }, [
+    applySnapshot,
+    loadKey,
+    notifySourceAccessError,
+    reloadNonce,
+    translate,
+  ]);
+
+  const reload = useCallback(() => {
+    setReloadNonce((value) => value + 1);
+  }, []);
 
   const activeSheet =
     sheets.find((sheet) => sheet.id === activeSheetId) ?? sheets[0];
@@ -843,6 +945,9 @@ export function useGridEditor(
       try {
         const loaded = await loadGridFile(file);
         if (!mountedRef.current || operation !== operationRef.current) return;
+        // An imported workbook replaces the source we could not read.
+        setSourceFailed(false);
+        setLoading(false);
         commitSheets(loaded, loaded[0].id);
         setSelection({
           anchor: { row: 0, col: 0 },
@@ -1042,6 +1147,8 @@ export function useGridEditor(
       if (!normalized.sheets.length) return false;
       undoRef.current = [];
       redoRef.current = [];
+      setSourceFailed(false);
+      setError("");
       applySnapshot(normalized);
       setHeaderRow(project.headerRow !== false);
       setFilterQuery(String(project.filterQuery || "").slice(0, 500));
@@ -1078,6 +1185,7 @@ export function useGridEditor(
     dirty,
     editRevision: revisionRef.current,
     error,
+    sourceFailed,
     savedUrl,
     canUndo: undoRef.current.length > 0,
     canRedo: redoRef.current.length > 0,
@@ -1106,6 +1214,7 @@ export function useGridEditor(
     clearConditionalFormats,
     undo,
     redo,
+    reload,
     importSource,
     exportCsv,
     exportXlsx,

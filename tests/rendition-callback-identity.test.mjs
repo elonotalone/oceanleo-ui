@@ -1,0 +1,581 @@
+// ============================================================================
+// 台账「正在读取工作簿…」永不消失的那条闭环，锁在这里。
+// ----------------------------------------------------------------------------
+// 闭环原样：ArtifactRendition 的非 durable 早退分支每次渲染新建
+// `retry` / `resourceFailed` 两个函数字面量 → useOfficeArtifactSource →
+// GridRoute → useGridEditor 的 onSourceAccessError 形参 → 加载 effect 的依赖数组。
+// 于是每渲染一次就重跑一次加载，遮罩再也下不来。
+//
+// 三条断言分别对应根因、自保闸、诚实的失败态：
+//   1. 非 durable / 不可见两个早退分支的回调，两次渲染之间引用相等；
+//   2. 调用方每次渲染都递新回调，加载也只跑一次，loading 必定归位；
+//   3. 取不到源时 loading 归位、进入可读的失败态，重试入口真能再跑一次。
+// 第 4 条用 AST 检查三个编辑器的加载 effect 依赖数组，防止同一个模式第四次复发。
+// ============================================================================
+
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import test from "node:test";
+
+import React, { act } from "react";
+import ts from "typescript";
+
+const require = createRequire(import.meta.url);
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://excel.oceanleo.com/workspace",
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  MouseEvent: window.MouseEvent,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+const contractUrl = pathToFileURL(
+  resolve("src/shell/artifact-contract.ts"),
+).href;
+const libraryDataUrl = pathToFileURL(resolve("src/shell/library-data.ts")).href;
+
+function dataModule(source) {
+  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+}
+
+async function compileModule(relativePath, replacements) {
+  const sourcePath = resolve(relativePath);
+  let source = await readFile(sourcePath, "utf8");
+  for (const [specifier, replacement] of Object.entries({
+    react: reactUrl,
+    ...replacements,
+  })) {
+    source = source.replaceAll(
+      JSON.stringify(specifier),
+      JSON.stringify(replacement),
+    );
+  }
+  const compiled = ts
+    .transpileModule(source, {
+      compilerOptions: {
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: sourcePath,
+    })
+    .outputText.replaceAll(
+      'from "react/jsx-runtime";',
+      `from ${JSON.stringify(jsxRuntimeUrl)};`,
+    );
+  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
+}
+
+/* -------------------------- ArtifactRendition ---------------------------- */
+
+const artifactClientStubUrl = dataModule(`
+  export async function refreshArtifactRendition() {
+    return { ok: false, status: 503, error: "刷新在测试里被禁用" };
+  }
+`);
+const artifactRenditionUrl = await compileModule(
+  "src/shell/ArtifactRendition.tsx",
+  {
+    "./artifact-contract": contractUrl,
+    "./artifact-client": artifactClientStubUrl,
+    "./library-data": libraryDataUrl,
+  },
+);
+const { useArtifactRendition } = await import(artifactRenditionUrl);
+
+/* ------------------------------ use-grid-editor -------------------------- */
+
+const uiStubUrl = dataModule(`
+  export function useUI() {
+    return (value) => value;
+  }
+`);
+const gridModelStubUrl = dataModule(`
+  let serial = 0;
+  export function emptyGridSheet(name = "Sheet1") {
+    serial += 1;
+    return {
+      id: "sheet-" + serial,
+      name,
+      rows: [[""]],
+      formats: {},
+      merges: [],
+      conditionalFormats: [],
+    };
+  }
+  export function cloneGridSheets(sheets) {
+    return structuredClone(sheets);
+  }
+  export async function loadGridSheets(item) {
+    globalThis.__gridLoads.push(item.id);
+    if (globalThis.__gridLoads.length > 8) {
+      throw new Error(
+        "加载 effect 自激了：loadGridSheets 被反复调用 " +
+          globalThis.__gridLoads.length +
+          " 次",
+      );
+    }
+    if (globalThis.__gridLoadFails) {
+      throw new Error("签名地址已过期（HTTP 403）");
+    }
+    return [emptyGridSheet("载入的工作表")];
+  }
+  export async function loadGridFile() {
+    return [emptyGridSheet("导入的工作表")];
+  }
+  export function normalizeGridProjectSheetState(sheets, activeSheetId) {
+    return { sheets: sheets || [], activeSheetId: activeSheetId || "" };
+  }
+  export async function buildGridWorkbookBlob() {
+    return new Blob([""]);
+  }
+  export function gridSheetToCsv() {
+    return "";
+  }
+  export function gridCellValue() {
+    return "";
+  }
+  export function gridDisplayValue() {
+    return "";
+  }
+  export function gridCellFormat() {
+    return {};
+  }
+  export function gridRowCount(sheet) {
+    return sheet ? sheet.rows.length : 0;
+  }
+  export function gridColCount() {
+    return 1;
+  }
+  export function setGridCell() {}
+  export function sanitizeSheetName(name) {
+    return String(name || "Sheet");
+  }
+`);
+const gridSheetIdentityStubUrl = dataModule(`
+  export function resolveGridActiveSheetId(sheets, requested) {
+    if (requested && sheets.some((sheet) => sheet.id === requested)) {
+      return requested;
+    }
+    return sheets[0] ? sheets[0].id : "";
+  }
+`);
+const officeFileStubUrl = dataModule(`
+  export function notifyOfficeAccessDenied(reason, onAccessDenied) {
+    if (String(reason && reason.message).includes("403")) onAccessDenied?.();
+  }
+`);
+const gridStructureStubUrl = dataModule(`
+  export function mergeGridRange(merges) {
+    return merges;
+  }
+  export function rangesIntersect() {
+    return false;
+  }
+  export function splitGridRange(merges) {
+    return merges;
+  }
+  export function transformGridRanges(ranges) {
+    return ranges;
+  }
+`);
+const docIoStubUrl = dataModule(`
+  export function downloadBlob() {}
+  export function downloadText() {}
+  export async function loadEditorProject() {
+    throw new Error("测试没有可编辑工程");
+  }
+  export async function saveFileToLibrary() {
+    return { ok: false, error: "测试不落库" };
+  }
+`);
+const saveContractStubUrl = dataModule(`
+  export function artifactSaveStepMessage(step, detail) {
+    return step + ":" + String(detail || "");
+  }
+`);
+const previewRasterStubUrl = dataModule(`
+  export async function renderGridPreviewPng() {
+    return null;
+  }
+`);
+
+const gridEditorUrl = await compileModule(
+  "src/shell/doc-editors/use-grid-editor.ts",
+  {
+    "../../i18n/ui/useUI": uiStubUrl,
+    "./doc-io": docIoStubUrl,
+    "./artifact-save-contract": saveContractStubUrl,
+    "./editor-preview-raster": previewRasterStubUrl,
+    "./grid-model": gridModelStubUrl,
+    "./grid-sheet-identity": gridSheetIdentityStubUrl,
+    "./office-file": officeFileStubUrl,
+    "./grid-structure": gridStructureStubUrl,
+  },
+);
+const { useGridEditor } = await import(gridEditorUrl);
+
+/* --------------------------------- fixtures ------------------------------ */
+
+/** A blank starter: exactly the non-durable shape that used to spin forever. */
+function blankStarterItem() {
+  return {
+    key: "blank:grid",
+    source: "creation",
+    id: "blank-grid-starter",
+    title: "未命名台账（空白起手）",
+    kind: "sheet",
+    siteId: "excel",
+    url: "https://cdn.test/blank.xlsx",
+    favorite: false,
+    meta: {},
+  };
+}
+
+function invisibleDurableItem() {
+  return {
+    key: "artifact:hidden",
+    source: "artifact",
+    id: "hidden",
+    title: "无权查看的工作簿",
+    kind: "sheet",
+    siteId: "excel",
+    favorite: false,
+    meta: {},
+    artifactId: "artifact-hidden",
+    revisionId: "revision-hidden",
+    artifactType: "grid",
+    artifact: {
+      artifactId: "artifact-hidden",
+      revisionId: "revision-hidden",
+      artifactType: "grid",
+      renditions: {},
+      access: { canRead: false, canPreview: false, canExportSource: false },
+      integrity: { ok: false },
+    },
+  };
+}
+
+async function mount(element) {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(element);
+  });
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+/* ------------------------------- P1 根因 --------------------------------- */
+
+test("非 durable 与不可见早退分支的 retry / resourceFailed 跨渲染引用相等", async () => {
+  const observed = [];
+  let rerender = () => {};
+
+  function Probe({ item }) {
+    const [, setTick] = React.useState(0);
+    rerender = () => setTick((value) => value + 1);
+    const rendition = useArtifactRendition(item, ["source", "full"]);
+    observed.push(rendition);
+    return null;
+  }
+
+  for (const item of [blankStarterItem(), invisibleDurableItem()]) {
+    observed.length = 0;
+    const mounted = await mount(React.createElement(Probe, { item }));
+    try {
+      await act(async () => rerender());
+      await act(async () => rerender());
+      assert.ok(observed.length >= 3, "至少渲染了三次");
+      const first = observed[0];
+      for (const later of observed.slice(1)) {
+        assert.equal(
+          later.retry,
+          first.retry,
+          `${item.id} 的 retry 每次渲染都是新函数`,
+        );
+        assert.equal(
+          later.resourceFailed,
+          first.resourceFailed,
+          `${item.id} 的 resourceFailed 每次渲染都是新函数`,
+        );
+      }
+    } finally {
+      await mounted.unmount();
+    }
+  }
+});
+
+/* ------------------------------- P2 自保闸 -------------------------------- */
+
+test("调用方每次渲染都递新回调，工作簿加载仍只跑一次且遮罩必定落下", async () => {
+  globalThis.__gridLoads = [];
+  globalThis.__gridLoadFails = false;
+  let rerender = () => {};
+  let latest = null;
+
+  function Probe({ item }) {
+    const [, setTick] = React.useState(0);
+    rerender = () => setTick((value) => value + 1);
+    // 每次渲染新建的回调 —— 修复前的 ArtifactRendition 就是这么递进来的。
+    latest = useGridEditor(item, "excel", () => undefined);
+    return null;
+  }
+
+  const mounted = await mount(
+    React.createElement(Probe, { item: blankStarterItem() }),
+  );
+  try {
+    assert.equal(latest.loading, false, "首次加载结束后遮罩应当落下");
+    assert.deepEqual(globalThis.__gridLoads, ["blank-grid-starter"]);
+
+    for (let round = 0; round < 5; round += 1) {
+      await act(async () => rerender());
+    }
+    assert.deepEqual(
+      globalThis.__gridLoads,
+      ["blank-grid-starter"],
+      "重复渲染不许重新起跑加载",
+    );
+    assert.equal(latest.loading, false, "重复渲染之后遮罩仍然是落下的");
+    assert.equal(latest.error, "");
+    assert.equal(latest.sourceFailed, false);
+  } finally {
+    await mounted.unmount();
+    delete globalThis.__gridLoads;
+    delete globalThis.__gridLoadFails;
+  }
+});
+
+/* ----------------------------- P3 诚实的失败态 ---------------------------- */
+
+test("取不到源时 loading 归位、失败文案说清缘由，重试入口真的再跑一次", async () => {
+  globalThis.__gridLoads = [];
+  globalThis.__gridLoadFails = true;
+  let rerender = () => {};
+  let latest = null;
+
+  function Probe({ item }) {
+    const [, setTick] = React.useState(0);
+    rerender = () => setTick((value) => value + 1);
+    latest = useGridEditor(item, "excel", () => undefined);
+    return null;
+  }
+
+  const mounted = await mount(
+    React.createElement(Probe, { item: blankStarterItem() }),
+  );
+  try {
+    assert.equal(latest.loading, false, "取不到源也必须停止转圈");
+    assert.equal(latest.sourceFailed, true);
+    assert.match(latest.error, /没能读到这份表格的源文件/);
+    assert.match(latest.error, /HTTP 403/, "失败文案要带上真实原因");
+    assert.match(latest.error, /重新载入/, "失败文案要指出重试入口");
+    assert.notEqual(latest.error, "工作簿加载失败");
+    assert.equal(globalThis.__gridLoads.length, 1);
+
+    // 失败态下的重复渲染同样不许自激。
+    await act(async () => rerender());
+    await act(async () => rerender());
+    assert.equal(globalThis.__gridLoads.length, 1);
+
+    globalThis.__gridLoadFails = false;
+    await act(async () => latest.reload());
+    assert.equal(globalThis.__gridLoads.length, 2, "重试入口要真的再跑一次");
+    assert.equal(latest.loading, false);
+    assert.equal(latest.sourceFailed, false);
+    assert.equal(latest.error, "");
+  } finally {
+    await mounted.unmount();
+    delete globalThis.__gridLoads;
+    delete globalThis.__gridLoadFails;
+  }
+});
+
+/* --------------------- 三个编辑器的加载 effect 依赖数组 -------------------- */
+
+function loadEffectDependencies(relativePath, marker, sourceText) {
+  const file = ts.createSourceFile(
+    relativePath,
+    sourceText,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let dependencies = null;
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "useEffect" &&
+      node.arguments.length === 2 &&
+      ts.isArrayLiteralExpression(node.arguments[1]) &&
+      node.arguments[0].getText().includes(marker)
+    ) {
+      dependencies = node.arguments[1].elements.map((element) =>
+        element.getText(),
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(dependencies, `${relativePath} 里找不到含 ${marker} 的加载 effect`);
+  return dependencies;
+}
+
+test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象与回调", async () => {
+  // `tt` belongs on this list too: it is provider-owned, and an unmemoized
+  // locale provider re-arms exactly the same loop as an unmemoized callback.
+  for (const [path, marker, forbidden] of [
+    [
+      "src/shell/doc-editors/use-grid-editor.ts",
+      "loadGridSheets(",
+      ["item", "onSourceAccessError", "tt"],
+    ],
+    [
+      "src/shell/doc-editors/use-deck-editor.ts",
+      "loadDeck(",
+      ["item", "onSourceAccessError", "previewContent", "tt"],
+    ],
+    [
+      "src/shell/doc-editors/use-rich-doc-editor.ts",
+      "loadRichDocHtml(",
+      ["item", "onSourceAccessError", "tt"],
+    ],
+  ]) {
+    const text = await readFile(resolve(path), "utf8");
+    const dependencies = loadEffectDependencies(path, marker, text);
+    for (const name of forbidden) {
+      assert.ok(
+        !dependencies.includes(name),
+        `${path} 的加载 effect 仍然依赖 ${name}，同一条死循环会再犯`,
+      );
+    }
+    assert.ok(
+      dependencies.includes("loadKey"),
+      `${path} 的加载 effect 应当按值 key 起跑，而不是按对象身份`,
+    );
+    assert.ok(
+      dependencies.includes("reloadNonce"),
+      `${path} 的加载 effect 缺少显式重试入口`,
+    );
+    assert.match(
+      text,
+      /sourceAccessErrorRef\.current\?\.\(\)/,
+      `${path} 没有把回调形参收进 ref`,
+    );
+  }
+});
+
+/* ------------------- 失败文案不许承诺不存在的按钮 ------------------------- */
+
+function exportedFunctionBody(relativePath, name, sourceText) {
+  const file = ts.createSourceFile(
+    relativePath,
+    sourceText,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let body = null;
+  const visit = (node) => {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name &&
+      node.name.text === name
+    ) {
+      body = node.getText();
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(body, `${relativePath} 里找不到 ${name}`);
+  return body;
+}
+
+test("失败文案里指出的重试入口，必须真的有外壳在渲染", async () => {
+  const cases = [
+    [
+      "src/shell/doc-editors/use-grid-editor.ts",
+      "gridSourceFailureMessage",
+      "src/shell/doc-editors/GridStage.tsx",
+    ],
+    [
+      "src/shell/doc-editors/use-deck-editor.ts",
+      "deckSourceFailureMessage",
+      "src/shell/doc-editors/DeckStage.tsx",
+    ],
+    [
+      "src/shell/doc-editors/use-rich-doc-editor.ts",
+      "richDocSourceFailureMessage",
+      "src/shell/doc-editors/RichDocStage.tsx",
+    ],
+  ];
+  const rendered = [];
+  for (const [hookPath, name, stagePath] of cases) {
+    const hook = await readFile(resolve(hookPath), "utf8");
+    const stage = await readFile(resolve(stagePath), "utf8");
+    const promises = exportedFunctionBody(hookPath, name, hook).includes(
+      "重新载入",
+    );
+    const renders = /editor\.reload/.test(stage);
+    rendered.push(renders);
+    assert.ok(
+      !promises || renders,
+      `${name} 让用户去点「重新载入」，但 ${stagePath} 根本没渲染这颗按钮 —— ` +
+        "承诺一颗不存在的按钮比不提它更糟",
+    );
+  }
+  // grid 是本波真正交付出去的失败态：文案与按钮两边都必须在。
+  assert.ok(rendered[0], "GridStage 必须渲染「重新载入」按钮");
+  assert.match(
+    await readFile(resolve("src/shell/doc-editors/GridStage.tsx"), "utf8"),
+    /重新载入/,
+  );
+});
