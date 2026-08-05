@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act, useEffect, useMemo, useState } from "react";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -54,40 +55,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 window.HTMLElement.prototype.scrollTo = function scrollTo() {};
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileTsxUrl(relativePath, replacements = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 async function createMounted(Component, props) {
   const { createRoot } = await import("react-dom/client");
@@ -148,7 +116,7 @@ const editBarDockHostStubUrl = dataModule(`
   }
 `);
 
-const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
+const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./workspace-actions": workspaceActionsStubUrl,
@@ -276,7 +244,7 @@ const capabilityBarStubUrl = dataModule(`
 const capabilityContextStubUrl = dataModule(`
   export function AppCapabilityEntryProvider({ children }) { return children; }
 `);
-const operatorUrl = await compileTsxUrl("src/shell/OperatorConsole.tsx", {
+const operatorUrl = await compileModule("src/shell/OperatorConsole.tsx", {
   "./Studio": studioStubUrl,
   "./AppDirectory": directoryStubUrl,
   "./guide-context": identityProviderStubUrl,
@@ -348,7 +316,7 @@ const routerStubUrl = dataModule(`
 const routeStubUrl = dataModule(`
   export function historySessionHref(id) { return "/history/" + id; }
 `);
-const restartUrl = await compileTsxUrl("src/shell/RestartDraftButton.tsx", {
+const restartUrl = await compileModule("src/shell/RestartDraftButton.tsx", {
   "next/navigation": routerStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./WorkspaceSession": workspaceSessionStubUrl,
@@ -414,7 +382,7 @@ const visualStubUrl = dataModule(`
   export function AgentProgress() { return null; }
   export function LeoComposer() { return jsx("div", { "data-composer": "true" }); }
 `);
-const functionAgentUrl = await compileTsxUrl(
+const functionAgentUrl = await compileModule(
   "src/shell/FunctionAgentChat.tsx",
   {
     "./AgentTranscriptBubble": visualStubUrl,

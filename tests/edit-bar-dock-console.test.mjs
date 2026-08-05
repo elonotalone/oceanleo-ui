@@ -12,7 +12,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import ts from "typescript";
 
 import {
   EDIT_BAR_DOCK_OFFSET_LIMIT,
@@ -28,6 +27,8 @@ import {
   pointNearFloatingToolbarBounds,
   rectNearFloatingToolbarBounds,
 } from "../src/shell/floating-toolbar-geometry.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -84,38 +85,6 @@ const geometryUrl = pathToFileURL(
   resolve("src/shell/floating-toolbar-geometry.ts"),
 ).href;
 
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileTsxUrl(relativePath, replacements = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value, vars) =>
@@ -139,7 +108,7 @@ const workspaceActionsStubUrl = dataModule(`
   export const WORKSPACE_ACTION_EVENT = "oceanleo:test-workspace-action";
 `);
 
-const controlsUrl = await compileTsxUrl(
+const controlsUrl = await compileModule(
   "src/shell/EditBarDockControls.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
@@ -147,7 +116,7 @@ const controlsUrl = await compileTsxUrl(
     "./floating-toolbar-geometry": geometryUrl,
   },
 );
-const controllerUrl = await compileTsxUrl(
+const controllerUrl = await compileModule(
   "src/shell/edit-bar-dock-controller.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
@@ -156,7 +125,7 @@ const controllerUrl = await compileTsxUrl(
     "./floating-toolbar-geometry": geometryUrl,
   },
 );
-const floatingUrl = await compileTsxUrl(
+const floatingUrl = await compileModule(
   "src/shell/FloatingContextToolbar.tsx",
   {
     "react-dom": reactDomUrl,
@@ -168,13 +137,13 @@ const floatingUrl = await compileTsxUrl(
 const { FloatingContextToolbar, useFloatingContextToolbar } =
   await import(floatingUrl);
 
-const hostUrl = await compileTsxUrl("src/shell/EditBarDockHost.tsx", {
+const hostUrl = await compileModule("src/shell/EditBarDockHost.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "./advanced-workbench-chrome": chromeStubUrl,
   "./edit-bar-dock-state": stateUrl,
 });
 const { EditBarDockHost } = await import(hostUrl);
-const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
+const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./workspace-actions": workspaceActionsStubUrl,
@@ -240,7 +209,7 @@ const shellLeafStubUrl = dataModule(`
   }
   export function LiveReactNode() { return null; }
 `);
-const inlineShellUrl = await compileTsxUrl(
+const inlineShellUrl = await compileModule(
   "src/shell/InlineAdvancedWorkbenchShell.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,

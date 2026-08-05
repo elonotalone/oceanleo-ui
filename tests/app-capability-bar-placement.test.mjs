@@ -18,14 +18,14 @@
 // ============================================================================
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -73,40 +73,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 window.HTMLElement.prototype.scrollTo = function scrollTo() {};
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileTsxUrl(relativePath, replacements = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 async function createMounted(Component, props) {
   const { createRoot } = await import("react-dom/client");
@@ -188,20 +155,20 @@ const capabilityEntryStubUrl = dataModule(`
   }
 `);
 
-const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
+const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./workspace-actions": workspaceActionsStubUrl,
   "./EditBarDockHost": editBarDockHostStubUrl,
 });
-const studioUrl = await compileTsxUrl("src/shell/Studio.tsx", {
+const studioUrl = await compileModule("src/shell/Studio.tsx", {
   "./SplitWorkspace": splitUrl,
   "../i18n/ui/useUI": uiStubUrl,
 });
-const barUrl = await compileTsxUrl("src/shell/AppCapabilityBar.tsx", {
+const barUrl = await compileModule("src/shell/AppCapabilityBar.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
 });
-const operatorUrl = await compileTsxUrl("src/shell/OperatorConsole.tsx", {
+const operatorUrl = await compileModule("src/shell/OperatorConsole.tsx", {
   "./Studio": studioUrl,
   "./AppDirectory": directoryStubUrl,
   "./guide-context": identityProviderStubUrl,

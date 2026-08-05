@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import {
   groupSelectionOverflowControls,
@@ -19,6 +17,8 @@ import {
   toolbarContainerInlineSize,
   toolbarFloatingViewportMetrics,
 } from "../src/shell/selection-toolbar-measure.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 test("floating capacity clamps to the remaining viewport strip from the live left edge", () => {
   const previousWindow = globalThis.window;
@@ -528,37 +528,8 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileTsxUrl(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      `from ${JSON.stringify(specifier)};`,
-      `from ${JSON.stringify(replacement)};`,
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 async function loadSelectionToolbar() {
-  const anchoredPopoverUrl = await compileTsxUrl(
+  const anchoredPopoverUrl = await compileModule(
     "src/shell/anchored-popover.tsx",
     {
       react: reactUrl,
@@ -599,27 +570,24 @@ async function loadSelectionToolbar() {
       };
     }
   `);
-  const buttonControlUrl = await compileTsxUrl(
+  const buttonControlUrl = await compileModule(
     "src/shell/SelectionToolbarButtonControl.tsx",
     { react: reactUrl },
   );
-  const numberControlUrl = await compileTsxUrl(
+  const numberControlUrl = await compileModule(
     "src/shell/SelectionToolbarNumberControl.tsx",
     { react: reactUrl },
   );
-  const selectControlUrl = await compileTsxUrl(
+  const selectControlUrl = await compileModule(
     "src/shell/SelectionToolbarSelectControl.tsx",
     {
       react: reactUrl,
       "./AdvancedEditorIcon": iconStubUrl,
       "./selection-context": selectionContextStubUrl,
-      "./selection-toolbar-layout": pathToFileURL(
-        resolve("src/shell/selection-toolbar-layout.ts"),
-      ).href,
       "./anchored-popover": anchoredPopoverUrl,
     },
   );
-  const toolbarControlUrl = await compileTsxUrl(
+  const toolbarControlUrl = await compileModule(
     "src/shell/SelectionToolbarControl.tsx",
     {
       "./AdvancedEditorIcon": iconStubUrl,
@@ -628,33 +596,21 @@ async function loadSelectionToolbar() {
       "./SelectionToolbarNumberControl": numberControlUrl,
       "./SelectionToolbarSelectControl": selectControlUrl,
       "./selection-context": selectionContextStubUrl,
-      "./selection-toolbar-layout": pathToFileURL(
-        resolve("src/shell/selection-toolbar-layout.ts"),
-      ).href,
     },
   );
-  const toolbarMeasureHookUrl = await compileTsxUrl(
+  const toolbarMeasureHookUrl = await compileModule(
     "src/shell/useSelectionToolbarMeasure.ts",
     {
       react: reactUrl,
-      "./selection-toolbar-measure": pathToFileURL(
-        resolve("src/shell/selection-toolbar-measure.ts"),
-      ).href,
     },
   );
-  const toolbarUrl = await compileTsxUrl("src/shell/SelectionToolbar.tsx", {
+  const toolbarUrl = await compileModule("src/shell/SelectionToolbar.tsx", {
     react: reactUrl,
     "./AdvancedEditorIcon": iconStubUrl,
     "./SelectionAnimationGallery": animationStubUrl,
     "./advanced-layout-context": advancedLayoutStubUrl,
     "./EditorToolsIcon": editorToolsStubUrl,
     "./selection-context": selectionContextStubUrl,
-    "./selection-toolbar-layout": pathToFileURL(
-      resolve("src/shell/selection-toolbar-layout.ts"),
-    ).href,
-    "./selection-inspector-groups": pathToFileURL(
-      resolve("src/shell/selection-inspector-groups.ts"),
-    ).href,
     "./selection-inspector-host": inspectorHostStubUrl,
     "./anchored-popover": anchoredPopoverUrl,
     "./SelectionToolbarControl": toolbarControlUrl,

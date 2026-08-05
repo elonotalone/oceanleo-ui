@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import {
   groupSelectionOverflowControls,
@@ -18,6 +17,8 @@ import {
   partitionSelectionInspectorControls,
 } from "../src/shell/selection-inspector-groups.ts";
 import { normalizeSelectionContext } from "../src/shell/selection-context.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -66,10 +67,6 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
 
 const iconStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -125,33 +122,8 @@ const chromeStubUrl = dataModule(`
   }
 `);
 
-async function compileTsxUrl(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      `from ${JSON.stringify(specifier)};`,
-      `from ${JSON.stringify(replacement)};`,
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 async function loadTsx(relativePath, replacements) {
-  return import(await compileTsxUrl(relativePath, replacements));
+  return import(await compileModule(relativePath, replacements));
 }
 
 async function createMounted(Component, props) {
@@ -412,27 +384,21 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
   const dockStateUrl = pathToFileURL(
     resolve("src/shell/edit-bar-dock-state.ts"),
   ).href;
-  const dockControlsUrl = await compileTsxUrl(
+  const dockControlsUrl = await compileModule(
     "src/shell/EditBarDockControls.tsx",
     {
       react: reactUrl,
       "../i18n/ui/useUI": uiStubUrl,
       "./edit-bar-dock-state": dockStateUrl,
-      "./floating-toolbar-geometry": pathToFileURL(
-        resolve("src/shell/floating-toolbar-geometry.ts"),
-      ).href,
     },
   );
-  const dockControllerUrl = await compileTsxUrl(
+  const dockControllerUrl = await compileModule(
     "src/shell/edit-bar-dock-controller.tsx",
     {
       react: reactUrl,
       "../i18n/ui/useUI": uiStubUrl,
       "./EditBarDockControls": dockControlsUrl,
       "./edit-bar-dock-state": dockStateUrl,
-      "./floating-toolbar-geometry": pathToFileURL(
-        resolve("src/shell/floating-toolbar-geometry.ts"),
-      ).href,
     },
   );
   const { useFloatingContextToolbar } = await loadTsx(
@@ -444,9 +410,6 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
       "./advanced-workbench-chrome": chromeStubUrl,
       "./edit-bar-dock-controller": dockControllerUrl,
       "./edit-bar-dock-state": dockStateUrl,
-      "./floating-toolbar-geometry": pathToFileURL(
-        resolve("src/shell/floating-toolbar-geometry.ts"),
-      ).href,
     },
   );
   function Harness() {
@@ -568,45 +531,42 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
 });
 
 test("shared edit bar opens host tools, keeps values, and uses a focused vertical More dialog", async () => {
-  const anchoredPopoverUrl = await compileTsxUrl(
+  const anchoredPopoverUrl = await compileModule(
     "src/shell/anchored-popover.tsx",
     {
       react: reactUrl,
       "react-dom": pathToFileURL(require.resolve("react-dom")).href,
     },
   );
-  const editorToolsIconUrl = await compileTsxUrl(
+  const editorToolsIconUrl = await compileModule(
     "src/shell/EditorToolsIcon.tsx",
     {
       react: reactUrl,
       "./AdvancedEditorIcon": iconStubUrl,
     },
   );
-  const selectControlUrl = await compileTsxUrl(
+  const selectControlUrl = await compileModule(
     "src/shell/SelectionToolbarSelectControl.tsx",
     {
       react: reactUrl,
       "./AdvancedEditorIcon": iconStubUrl,
       "./selection-context": selectionContextStubUrl,
-      "./selection-toolbar-layout": pathToFileURL(
-        resolve("src/shell/selection-toolbar-layout.ts"),
-      ).href,
       "./anchored-popover": anchoredPopoverUrl,
     },
   );
-  const buttonControlUrl = await compileTsxUrl(
+  const buttonControlUrl = await compileModule(
     "src/shell/SelectionToolbarButtonControl.tsx",
     {
       react: reactUrl,
     },
   );
-  const numberControlUrl = await compileTsxUrl(
+  const numberControlUrl = await compileModule(
     "src/shell/SelectionToolbarNumberControl.tsx",
     {
       react: reactUrl,
     },
   );
-  const toolbarControlUrl = await compileTsxUrl(
+  const toolbarControlUrl = await compileModule(
     "src/shell/SelectionToolbarControl.tsx",
     {
       "./AdvancedEditorIcon": iconStubUrl,
@@ -615,18 +575,12 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       "./SelectionToolbarNumberControl": numberControlUrl,
       "./SelectionToolbarSelectControl": selectControlUrl,
       "./selection-context": selectionContextStubUrl,
-      "./selection-toolbar-layout": pathToFileURL(
-        resolve("src/shell/selection-toolbar-layout.ts"),
-      ).href,
     },
   );
-  const toolbarMeasureHookUrl = await compileTsxUrl(
+  const toolbarMeasureHookUrl = await compileModule(
     "src/shell/useSelectionToolbarMeasure.ts",
     {
       react: reactUrl,
-      "./selection-toolbar-measure": pathToFileURL(
-        resolve("src/shell/selection-toolbar-measure.ts"),
-      ).href,
     },
   );
   const { SelectionToolbar } = await loadTsx(
@@ -638,12 +592,6 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       "./advanced-layout-context": layoutStubUrl,
       "./EditorToolsIcon": editorToolsIconUrl,
       "./selection-context": selectionContextStubUrl,
-      "./selection-toolbar-layout": pathToFileURL(
-        resolve("src/shell/selection-toolbar-layout.ts"),
-      ).href,
-      "./selection-inspector-groups": pathToFileURL(
-        resolve("src/shell/selection-inspector-groups.ts"),
-      ).href,
       "./selection-inspector-host": inspectorHostStubUrl,
       "./anchored-popover": anchoredPopoverUrl,
       "./SelectionToolbarControl": toolbarControlUrl,
@@ -894,7 +842,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
 });
 
 test("global action bar no longer renders a second pencil tools launcher", async () => {
-  const anchoredPopoverUrl = await compileTsxUrl(
+  const anchoredPopoverUrl = await compileModule(
     "src/shell/anchored-popover.tsx",
     {
       react: reactUrl,

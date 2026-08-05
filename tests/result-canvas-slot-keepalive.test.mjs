@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -55,20 +54,6 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiledModules = new Map();
-
 /**
  * 没被替身覆盖的相对依赖**递归真编译**（与
  * `result-canvas-deeplink-priority.test.mjs` 同一套办法）。
@@ -78,47 +63,6 @@ const compiledModules = new Map();
  * 文件就得把它自己的测试掏空一次」——槽位保活这条断言反而越拆越假。递归编译之后，
  * 只有真正与本条断言无关的叶子（面板、i18n）留在替身表里。
  */
-async function compileTsxUrl(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = replacements[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileTsxUrl(
-        relative(process.cwd(), target),
-        replacements,
-      );
-    }
-    assert.ok(
-      replacement,
-      `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`,
-    );
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiledModules.set(sourcePath, url);
-  return url;
-}
-
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value) => value;
@@ -261,7 +205,7 @@ const surfaceModelStubUrl = dataModule(`
   }
 `);
 
-const resultCanvasUrl = await compileTsxUrl("src/shell/ResultCanvas.tsx", {
+const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   react: reactUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./SplitWorkspace": splitStubUrl,
