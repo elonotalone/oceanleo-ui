@@ -6469,7 +6469,7 @@ const en: Record<string, string> = {
   "素材分区": "Material sections",
   "搜索本站素材": "Search materials on this site",
   "本站暂无可编辑素材": "No editable materials on this site yet",
-  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Only materials registered on this site are shown here; go to “More materials” to browse platform-wide templates.",
+  "这里只显示本站已登记的素材；可换一个分区或关键词。": "Only materials registered on this site are shown here; try a different section or keyword.",
   "正在准备预览…": "Preparing preview…",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "This material has no source grant, so your own copy can't be created yet; the official original stays untouched.",
   "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Sign in to edit materials: your account has to be confirmed before changes can be saved as your own copy.",

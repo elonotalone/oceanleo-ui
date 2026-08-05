@@ -6351,7 +6351,7 @@ const tr: Record<string, string> = {
   "素材分区": "İçerik bölümleri",
   "搜索本站素材": "Bu sitedeki içeriklerde ara",
   "本站暂无可编辑素材": "Bu sitede henüz düzenlenebilir içerik yok",
-  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Burada yalnızca bu sitede kayıtlı içerikler görünür; platformun tamamındaki şablonlar için “Daha fazla içerik” bölümüne gidin.",
+  "这里只显示本站已登记的素材；可换一个分区或关键词。": "Burada yalnızca bu sitede kayıtlı içerikler görünür; başka bir bölüm veya anahtar kelime deneyin.",
   "正在准备预览…": "Önizleme hazırlanıyor…",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Bu içerikte source izni yok, bu yüzden kendi kopyanız henüz oluşturulamıyor; resmi orijinal değişmeden kalır.",
   "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "İçerikleri düzenlemek için oturum açın: değişikliklerin kendi kopyanıza kaydedilebilmesi için önce hesabınızın doğrulanması gerekir.",

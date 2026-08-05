@@ -6351,7 +6351,7 @@ const vi: Record<string, string> = {
   "素材分区": "Phân vùng tài nguyên",
   "搜索本站素材": "Tìm tài nguyên của trang này",
   "本站暂无可编辑素材": "Trang này chưa có tài nguyên nào có thể chỉnh sửa",
-  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Ở đây chỉ hiển thị tài nguyên đã đăng ký cho trang này; vào “Thêm tài nguyên” để xem mẫu của toàn nền tảng.",
+  "这里只显示本站已登记的素材；可换一个分区或关键词。": "Ở đây chỉ hiển thị tài nguyên đã đăng ký cho trang này; hãy thử một phân vùng hoặc từ khóa khác.",
   "正在准备预览…": "Đang chuẩn bị bản xem trước…",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Tài nguyên này thiếu quyền source nên chưa thể tạo bản sao của riêng bạn; bản gốc chính thức không bị thay đổi.",
   "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Cần đăng nhập để chỉnh sửa tài nguyên: tài khoản của bạn phải được xác nhận thì thay đổi mới lưu được thành bản sao của riêng bạn.",

@@ -6351,7 +6351,7 @@ const fr: Record<string, string> = {
   "素材分区": "Sections de ressources",
   "搜索本站素材": "Rechercher des ressources de ce site",
   "本站暂无可编辑素材": "Aucune ressource modifiable sur ce site pour l'instant",
-  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。": "Seules les ressources enregistrées sur ce site apparaissent ici ; allez dans « Plus de ressources » pour voir les modèles de toute la plateforme.",
+  "这里只显示本站已登记的素材；可换一个分区或关键词。": "Seules les ressources enregistrées sur ce site apparaissent ici ; essayez une autre section ou un autre mot-clé.",
   "正在准备预览…": "Préparation de l'aperçu…",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。": "Cette ressource n'a pas l'autorisation source ; votre propre copie ne peut pas encore être créée, et l'original officiel reste intact.",
   "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。": "Connectez-vous pour modifier les ressources : votre compte doit d'abord être confirmé pour enregistrer les modifications dans votre propre copie.",
