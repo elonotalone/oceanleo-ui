@@ -8,7 +8,9 @@
 //   5. 来自 frame 的消息限定为白名单指令集。
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -37,15 +39,11 @@ import {
   isUntrustedContentHostname,
   isUntrustedContentUrl,
   sandboxGrantsScriptedSameOrigin,
+  sandboxTokens,
   webViewerFrameSandbox,
 } from "../src/shell/editor-sandbox-origin.ts";
 
-// W24 追加：三处子站嵌入 frame（Playground / WorkspaceMasterDetail / WorkspaceShell）
-// 的沙箱与来源对账。只追加，不改写上面 W8 的任何用例。
-import ts from "typescript";
-import { pathToFileURL } from "node:url";
-
-import { sandboxTokens } from "../src/shell/editor-sandbox-origin.ts";
+import { compileModule, realModule } from "./helpers/module-bench.mjs";
 
 function source(relativePath) {
   return readFileSync(
@@ -498,24 +496,23 @@ function extractRegion(text, name) {
 
 const W24_PLAYGROUND = source("../src/shell/Playground.tsx");
 const W24_TRUST_REGION = extractRegion(W24_PLAYGROUND, "workspace-embed-trust");
+// Playground 里那段信任判定是 `#region` 摘出来的片段，不是整份源文件；落到临时
+// 真文件再走共享编译台，相对/包名边同样自动解析，只钉一条显式桩把白名单模块接上。
+const workspaceEmbedTrustScratch = join(
+  mkdtempSync(join(tmpdir(), "oceanleo-workspace-embed-trust-")),
+  "workspace-embed-trust.ts",
+);
+writeFileSync(
+  workspaceEmbedTrustScratch,
+  `import { TRUSTED_EMBED_EDITOR_SANDBOX, isTrustedInteractiveViewerUrl } from "oceanleo-editor-sandbox-origin";\n${W24_TRUST_REGION}`,
+  "utf8",
+);
 const workspaceEmbedTrust = await import(
-  `data:text/javascript;base64,${Buffer.from(
-    ts.transpileModule(
-      `import { TRUSTED_EMBED_EDITOR_SANDBOX, isTrustedInteractiveViewerUrl } from ${JSON.stringify(
-        pathToFileURL(
-          fileURLToPath(
-            new URL("../src/shell/editor-sandbox-origin.ts", import.meta.url),
-          ),
-        ).href,
-      )};\n${W24_TRUST_REGION}`,
-      {
-        compilerOptions: {
-          module: ts.ModuleKind.ESNext,
-          target: ts.ScriptTarget.ES2022,
-        },
-      },
-    ).outputText,
-  ).toString("base64")}`
+  await compileModule(workspaceEmbedTrustScratch, {
+    "oceanleo-editor-sandbox-origin": realModule(
+      "src/shell/editor-sandbox-origin.ts",
+    ),
+  })
 );
 
 const W24_TRUSTED_ORIGINS = [

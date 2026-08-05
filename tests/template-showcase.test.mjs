@@ -17,87 +17,22 @@
 //   ⑦ 本文件的每条中文文案在 17 语词典里都有译文；已废除的两个旧按钮名 17 语全部清干净；
 //   ⑧ 下载四档错误文案的词条**仍在** 17 语词典里（大卡片删了下载按钮，但 W5 的探索页
 //      素材卡要复用同一套下载体验——删词条会让那边 16 个 locale 齐刷刷露中文）。
-// 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以可以直接
-// `node --test tests/template-showcase.test.mjs` 跑，不需要仓库的 ts-extension-loader。
+// 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiled = new Map();
-const inFlight = new Set();
-
-/**
- * 把一个 TS 源文件及其**全部相对依赖**递归编译成 data: 模块。
- *
- * 递归而不是手抄一份依赖清单：两条深链由 `site-catalog-controller` 现算，那个文件还在
- * 演进，每加一条 import 就得来改测试。`overrides` 只留给必须换成替身的模块（tt() 词典）。
- */
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiled.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(
-    !inFlight.has(sourcePath),
-    `循环依赖，data: 模块无法表达：${relativePath}`,
-  );
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  // 只有**值** import 会活到这一步，`import type` 已被 transpile 抹掉。
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") replacement = jsxRuntimeUrl;
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiled.set(sourcePath, url);
-  return url;
-}
 
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
