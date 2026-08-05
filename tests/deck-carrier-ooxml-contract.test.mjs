@@ -313,6 +313,64 @@ test("§2.3 the sz ladder is exact and never dips below the note step", () => {
   }
 });
 
+/**
+ * §2.2 / §2.3 — a line pitch written in the wrong unit passes every structural
+ * predicate: the runs are in the package, `textCharCount` is intact and
+ * `assertDeckPackageConformance` reports no failure, while `<a:normAutofit/>`
+ * silently shrinks the copy to 1–2 px so it fits the over-tall line boxes.
+ * The bounds below are therefore read off the rendered result, not off the
+ * conversion constant: a line box may not be shorter than its own glyphs, may
+ * not be taller than a third of the slide, and a paragraph stack must fit its
+ * own shape with no autofit shrink at all.
+ */
+test("§2.2 every declared line pitch renders at a legible height inside its own box", () => {
+  const { parts } = build();
+  const emuToPoints = (emu) => emu / 12_700;
+  const slideHeightPoints = emuToPoints(DECK_GRID.pageHeight);
+  let spacedParagraphs = 0;
+
+  for (let index = 1; index <= DECK_IR_LAYOUTS.length; index += 1) {
+    const xml = parts[`ppt/slides/slide${index}.xml`];
+    const shapes = xml.split("<p:sp>").slice(1).map((chunk) => chunk.split("</p:sp>")[0]);
+    for (const shape of shapes) {
+      const extent = shape.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+      const paragraphs = shape.split("<a:p>").slice(1);
+      let stackPoints = 0;
+      for (const paragraph of paragraphs) {
+        const pitch = paragraph.match(/<a:spcPts val="(\d+)"\/>/);
+        if (!pitch) continue;
+        const fontMatch = paragraph.match(/ sz="(\d+)"/);
+        assert.ok(fontMatch, `slide ${index}: a spaced paragraph carries no sz`);
+        const pitchPoints = Number(pitch[1]) / 100;
+        const fontPoints = Number(fontMatch[1]) / 100;
+        assert.ok(
+          pitchPoints >= fontPoints,
+          `slide ${index}: line box ${pitchPoints}pt is shorter than its ${fontPoints}pt glyphs`,
+        );
+        assert.ok(
+          pitchPoints <= fontPoints * 3,
+          `slide ${index}: line box ${pitchPoints}pt is ${(pitchPoints / fontPoints).toFixed(1)}× its ${fontPoints}pt glyphs`,
+        );
+        assert.ok(
+          pitchPoints <= slideHeightPoints / 3,
+          `slide ${index}: one line claims ${pitchPoints}pt of a ${slideHeightPoints}pt slide`,
+        );
+        stackPoints += pitchPoints;
+        spacedParagraphs += 1;
+      }
+      if (stackPoints === 0) continue;
+      assert.ok(extent, `slide ${index}: a spaced shape carries no a:ext`);
+      const boxPoints = emuToPoints(Number(extent[2]));
+      assert.ok(
+        stackPoints <= boxPoints,
+        `slide ${index}: ${paragraphs.length} lines need ${stackPoints.toFixed(1)}pt in a ${boxPoints.toFixed(1)}pt box, so normAutofit will shrink them`,
+      );
+    }
+  }
+
+  assert.ok(spacedParagraphs >= 20, `only ${spacedParagraphs} spaced paragraphs were inspected`);
+});
+
 // ---------------------------------------------------------------- §3.1 IR schema
 
 test("§3.1 a conformant oceanleo.deck.v1 project validates and round-trips", () => {

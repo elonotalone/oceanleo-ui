@@ -189,10 +189,16 @@ interface TextRunStyle {
   lineSpacing?: number;
 }
 
+/**
+ * `a:spcPts/@val` is in hundredths of a point and one point is 12,700 EMU, so an
+ * EMU line pitch converts with 12,700 / 100 = 127.
+ */
+const EMU_PER_HUNDREDTH_POINT = 127;
+
 function paragraph(text: string, style: TextRunStyle): string {
   const size = DECK_FONT_SIZES[style.role];
   const spacing = style.lineSpacing
-    ? `<a:lnSpc><a:spcPts val="${Math.round(style.lineSpacing / 12.7)}"/></a:lnSpc>`
+    ? `<a:lnSpc><a:spcPts val="${Math.round(style.lineSpacing / EMU_PER_HUNDREDTH_POINT)}"/></a:lnSpc>`
     : "";
   const bullet = style.bullet
     ? '<a:buFont typeface="Arial"/><a:buChar char="\u2022"/>'
