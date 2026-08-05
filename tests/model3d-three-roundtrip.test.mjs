@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import test from "node:test";
 import { chromium } from "playwright-core";
+import { chromiumSkip } from "./chromium-availability.mjs";
 import {
   DEFAULT_MODEL3D_VIEW,
   model3DSidecarWithoutSource,
@@ -135,9 +136,12 @@ test("Three editor autosave uses the current annotation sidecar", () => {
   assert.equal("sourceUrl" in sidecar, false);
 });
 
+// 缺共享库时明确 skip 并说清缺什么、怎么补，而不是每次全量都红一条。
+// 条件由真探针给出（`./chromium-availability.mjs`），库补上就自动恢复执行。
+// 只跳这一格：本文件最后那条句柄泄漏判决不起浏览器，必须照常跑。
 test(
   "Three.js scene interactions survive a real exported GLB round trip",
-  { timeout: 60_000 },
+  { timeout: 60_000, skip: chromiumSkip() },
   async (t) => {
     const { server, url } = await startServer();
     let browser;

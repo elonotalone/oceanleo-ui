@@ -3,12 +3,15 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { chromium } from "playwright-core";
 
+import { chromiumSkip } from "./chromium-availability.mjs";
 import { normalizeChartDocument } from "../src/shell/chart-editor/chart-schema.ts";
 import { chartExportOption } from "../src/shell/chart-editor/chart-render.ts";
 
+// 缺共享库时明确 skip 并说清缺什么、怎么补，而不是每次全量都红一条。
+// 条件由真探针给出（`./chromium-availability.mjs`），库补上就自动恢复执行。
 test(
   "Chart PNG and SVG exports render the pinned model and bottom legend",
-  { timeout: 30_000 },
+  { timeout: 30_000, skip: chromiumSkip() },
   async (t) => {
     const document = normalizeChartDocument({
       title: { text: "季度收入" },
