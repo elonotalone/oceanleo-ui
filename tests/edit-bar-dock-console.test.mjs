@@ -183,6 +183,87 @@ const splitUrl = await compileTsxUrl("src/shell/SplitWorkspace.tsx", {
 const { SplitWorkspace, useRightPaneSlot, useWorkspacePane } =
   await import(splitUrl);
 
+// ---------------------------------------------------------------------------
+// 非编辑类插件没有编辑栏（`_COMMON.md` §3.2）。
+// 操作员：「地图和地球仪上方的 edit bar 是怎么回事？？不应该有吧？？」
+// 判据必须落在**真 DOM** 上：外壳挂一份插件实例时，编辑栏与它的停靠带一个都不许
+// 出现；挂一件素材时两者原样保留。下面这批替身只覆盖与编辑栏无关的叶子（头部、
+// 素材面板、自动保存……），编辑栏本体（FloatingContextToolbar / EditBarDockHost）
+// 与判据来源（workbench-routes）都是真模块。
+// ---------------------------------------------------------------------------
+const workbenchRoutesUrl = pathToFileURL(
+  resolve("src/shell/workbench-routes.ts"),
+).href;
+const { pluginInstanceFromInitialState } = await import(
+  pathToFileURL(resolve("src/shell/plugin-initial-state.ts")).href
+);
+const layoutContextStubUrl = dataModule(`
+  import { createContext } from ${JSON.stringify(reactUrl)};
+  export const AdvancedLayoutContext = createContext(null);
+`);
+const inertComponentStubUrl = dataModule(`
+  export function AdvancedStageControls() { return null; }
+  export function InlineEditorMaterialPanel() { return null; }
+  export function useWorkbenchMaterials() { return null; }
+  export function useAdvancedSession() { return null; }
+  export function useRightPaneSlot() { return null; }
+  export function useWorkspacePane() { return null; }
+  export function useAdvancedRecovery() {}
+  export function useAdvancedAutoSave() {
+    return {
+      state: "saved",
+      flushLatest: async () => ({ ok: true }),
+      retry: async () => {},
+    };
+  }
+  export function resolveActiveMaterialAction() { return undefined; }
+  export function resolveInlineAdvancedDrawers() { return []; }
+  export function useInlineAdvancedWorkbenchDrop() {
+    return { dropMessage: "", performUpload() {}, handleDrop() {} };
+  }
+`);
+const shellLeafStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function InlineAdvancedWorkbenchHeader() {
+    return jsx("div", { "data-test-action-bar": true });
+  }
+  export function AdvancedWorkbenchStage({ editorStage }) {
+    return jsx("div", { "data-test-editor-stage": true, children: editorStage });
+  }
+  export function createLiveReactNodeStore() {
+    return { node: null, listeners: new Set() };
+  }
+  export function publishLiveReactNode(store, node) {
+    store.node = node;
+    store.listeners.forEach((listener) => listener());
+  }
+  export function LiveReactNode() { return null; }
+`);
+const inlineShellUrl = await compileTsxUrl(
+  "src/shell/InlineAdvancedWorkbenchShell.tsx",
+  {
+    "../i18n/ui/useUI": uiStubUrl,
+    "./advanced-layout-context": layoutContextStubUrl,
+    "./AdvancedStageControls": inertComponentStubUrl,
+    "./AdvancedWorkbenchStage": shellLeafStubUrl,
+    "./FloatingContextToolbar": floatingUrl,
+    "./EditBarDockHost": hostUrl,
+    "./InlineAdvancedWorkbenchHeader": shellLeafStubUrl,
+    "./inline-advanced-shell-helpers": inertComponentStubUrl,
+    "./inline-advanced-workbench-drop": inertComponentStubUrl,
+    "./advanced-session-context": inertComponentStubUrl,
+    "./advanced-workbench-chrome": chromeStubUrl,
+    "./InlineEditorMaterialPanel": inertComponentStubUrl,
+    "./workbench-material-provider": inertComponentStubUrl,
+    "./SplitWorkspace": inertComponentStubUrl,
+    "./use-advanced-autosave": inertComponentStubUrl,
+    "./use-advanced-recovery": inertComponentStubUrl,
+    "./live-react-node": shellLeafStubUrl,
+    "./workbench-routes": workbenchRoutesUrl,
+  },
+);
+const { InlineAdvancedWorkbenchShell } = await import(inlineShellUrl);
+
 async function createMounted(Component, props) {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
@@ -1307,5 +1388,96 @@ test("standalone local dock host pins under the action row without SplitWorkspac
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;
     await mounted.unmount();
+  }
+});
+
+function shellAdapter() {
+  return {
+    id: "grid",
+    label: "表格",
+    stage: React.createElement("div", { "data-test-adapter-stage": true }),
+    contextToolbar: React.createElement(
+      "span",
+      { "data-test-context-toolbar": true },
+      "对象属性",
+    ),
+  };
+}
+
+const materialItem = {
+  key: "creation:image-1",
+  source: "creation",
+  id: "image-1",
+  title: "一张图",
+  kind: "image",
+  siteId: "study",
+  url: "https://cdn.test/a.png",
+  favorite: false,
+  meta: {},
+};
+
+test("非编辑类插件挂载后 DOM 里没有编辑栏，素材照旧有", async () => {
+  const ledger = pluginInstanceFromInitialState(
+    "ledger-register",
+    { runtime: "grid", title: "台账" },
+    { siteId: "travel", appId: "trip", nonce: "n1" },
+  );
+  assert.ok(ledger, "造不出插件实例");
+
+  const pluginMount = await createMounted(InlineAdvancedWorkbenchShell, {
+    item: ledger,
+    adapter: shellAdapter(),
+    onClose() {},
+  });
+  try {
+    assert.ok(
+      pluginMount.container.querySelector("[data-inline-editor]"),
+      "插件本体必须照常挂起来",
+    );
+    assert.equal(
+      pluginMount.container.querySelector("[data-workspace-edit-bar-dock]"),
+      null,
+      "插件不该有编辑栏停靠带",
+    );
+    assert.equal(
+      pluginMount.container.querySelector("[data-workspace-edit-bar-toolbar]"),
+      null,
+      "插件不该有编辑栏",
+    );
+    assert.equal(
+      pluginMount.container.querySelector("[data-test-context-toolbar]"),
+      null,
+      "编辑栏里的控件也不许漏出来",
+    );
+    assert.equal(
+      document.querySelector("[data-workspace-floating-toolbar-overlay]"),
+      null,
+      "浮动层整层都不该存在",
+    );
+  } finally {
+    await pluginMount.unmount();
+  }
+
+  const materialMount = await createMounted(InlineAdvancedWorkbenchShell, {
+    item: materialItem,
+    adapter: shellAdapter(),
+    onClose() {},
+  });
+  try {
+    assert.ok(
+      materialMount.container.querySelector("[data-workspace-edit-bar-dock]"),
+      "素材的编辑栏停靠带不许被这次改动带走",
+    );
+    assert.ok(
+      materialMount.container.querySelector(
+        "[data-workspace-edit-bar-toolbar]",
+      ),
+      "素材照旧有编辑栏",
+    );
+    assert.ok(
+      materialMount.container.querySelector("[data-test-context-toolbar]"),
+    );
+  } finally {
+    await materialMount.unmount();
   }
 });

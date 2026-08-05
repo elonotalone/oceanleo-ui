@@ -21,33 +21,32 @@ import {
   type CapabilityLaunchSource,
 } from "./advanced-feature-launch";
 
-/** 这根线认的最小输入:选中的那枚功能,外加它所属的 app 身份(用来判「换了没有」)。 */
+/** 这根线认的最小输入:选中的那枚按键,外加它所属的 app 身份(用来判「换了没有」)。 */
 export interface CapabilityLaunchTarget extends CapabilityLaunchSource {
   siteKey?: string;
   appId?: string;
-  family?: string;
 }
 
 /**
- * 选中态每变成一枚**新的**功能,就往总线上投一次启动。
+ * 选中态每变成一枚**新的**按键,就往总线上投一次启动。
  *
  * 三条约定:
  *   · **深链也算数**:带 `?cap=` 载入页面时,首帧就投一次,不必亲手点。React 的子
  *     effect 先于父 effect 跑,承载层的监听在本 effect 之前已挂上,不会漏投。
- *   · **重渲染不重投**:同一枚功能只投一次;关掉(选中态回空)再点开算新的一次,
+ *   · **重渲染不重投**:同一枚按键只投一次;关掉(选中态回空)再点开算新的一次,
  *     并且换一枚新 nonce,好让右栏重挂一份干净实例。
- *   · **换不出 featureId 就不投**:十六类载体只有五类能空手起手,其余类型的按钮
- *     只承担素材库筛选。这是正常路径,不是失败 —— 不许猜一个回退编辑器。
+ *   · **换不出插件身份就不投**:载荷带的是 `pluginId`,不再从 `artifactType`
+ *     反查通用模板。没有身份的选中态不许猜一个回退编辑器。
  */
 export function useAdvancedFeatureLaunchBridge(
   target: CapabilityLaunchTarget | null | undefined,
 ): void {
   const launchedKeyRef = useRef<string>("");
   const seqRef = useRef(0);
+  const pluginId = target?.pluginId || target?.family || "";
   const key = target
-    ? `${target.siteKey || ""}/${target.appId || ""}/${target.family || ""}`
+    ? `${target.siteKey || ""}/${target.appId || ""}/${pluginId}`
     : "";
-  const artifactType = target?.artifactType || "";
   const label = target?.label || "";
   useEffect(() => {
     if (!key) {
@@ -58,9 +57,9 @@ export function useAdvancedFeatureLaunchBridge(
     launchedKeyRef.current = key;
     seqRef.current += 1;
     const envelope = advancedFeatureLaunchForCapability(
-      { artifactType, label },
+      { pluginId, label },
       `cap:${key}:${seqRef.current}`,
     );
     if (envelope) dispatchAdvancedFeatureLaunch(envelope);
-  }, [artifactType, key, label]);
+  }, [key, label, pluginId]);
 }

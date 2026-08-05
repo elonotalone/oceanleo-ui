@@ -1,4 +1,22 @@
 /**
+ * @deprecated 整个模块已废弃，**不许再有新的调用方**。
+ *
+ * 它是「按键点下去总得显示点什么」那一版的产物：5 份通用空白模板，按载体类型
+ * 反查发给全平台所有按键。结果是点地图、点台账、点换算器打开的都是同一份
+ * 「未命名可算文档 · 输入 A / 输入 B / 比例」——操作员那句「显示的极其简陋」
+ * 说的就是它。按键现在按插件身份派发，第一屏由该插件自己的初始态提供
+ * （`plugin-initial-state.ts` + `plugin-initial-states/`），**没有任何一枚按键
+ * 还会走到本模块**：`ResultCanvas` 与 `workbench-routes` 的两处消费都已拆掉。
+ *
+ * 文件保留而不是删掉，只为一个理由：`tests/blank-draft-starter.test.mjs` 用各
+ * 载体**真正的解析器**校验下面这些字节，那是一份仍然有效的载体契约验证
+ * （geo-map / interactive-doc / chart 三份 schema 与 grid / pdf 两条空态约定）。
+ * 删文件会连带砍掉那份验证。要新增一个插件的第一屏，去
+ * `plugin-initial-states/`，不要往这里加。
+ *
+ * ---
+ * 以下为原注释，描述这些字节为什么长这样：
+ *
  * 空手起手件（blank draft）—— 一个功能在**没有任何素材**时被点开时，右栏拿到的那份素材。
  *
  * 这不是第三种约定：形状与共享包里既有的两条空白草稿逐字一致（`workbench-routes.ts`
@@ -312,6 +330,9 @@ const BLANK_DRAFT_FEATURE_BY_CONTENT_TYPE: ReadonlyMap<
 );
 
 /**
+ * @deprecated 这张反查表正是「2177 枚按键只对应 5 份模板」的换算环节。
+ * 派发已改成带 `pluginId`，没有任何产品路径再调用它。
+ *
  * 这个载体类型能不能空手起手。不能就返回 `null` —— 调用方不许猜一个回退功能
  * (与 `blankDraftLibraryItem` 同一条 fail-closed 约定)。
  *
@@ -335,6 +356,9 @@ export interface BlankDraftOptions {
 }
 
 /**
+ * @deprecated 通用空白模板已废弃；插件的第一屏走
+ * `pluginInstanceLibraryItem()`（`plugin-initial-state.ts`）。
+ *
  * 造一份空手起手件。功能不在五类之内就返回 `null` —— 调用方不许猜一个回退编辑器。
  */
 export function blankDraftLibraryItem(

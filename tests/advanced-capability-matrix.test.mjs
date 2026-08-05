@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  editBarOwnershipForItem,
   editorCapabilityFor,
   editorRouteFor,
 } from "../src/shell/workbench-routes.ts";
+import {
+  pluginInstanceFromInitialState,
+  pluginInstanceLibraryItem,
+} from "../src/shell/plugin-initial-state.ts";
 import {
   ARTIFACT_TYPES,
   normalizeArtifactProjection,
@@ -456,6 +461,74 @@ test("blank website drafts reach the shared website embed like design/video blan
       `${siteId} blank website draft`,
     );
   }
+});
+
+test("插件按身份挂载：查不到初始态就不可用，绝不退回通用模板", () => {
+  // 没有第一屏的插件 = 打不开。以前这里会按载体类型反查一份通用空白模板，
+  // 于是所有按键打开的都是同一份骨架；现在返回空，右栏把理由显示出来。
+  for (const pluginId of [
+    "not-registered-at-all",
+    "probe-plugin",
+    "interactive-doc-editing",
+    "",
+  ]) {
+    assert.equal(
+      pluginInstanceLibraryItem(pluginId, { siteId: "travel", appId: "trip" }),
+      null,
+      pluginId,
+    );
+  }
+  // 有第一屏的时候，实例走的是它自己的内核，而不是「五类通用模板」里的哪一份。
+  const ledger = pluginInstanceFromInitialState(
+    "ledger-register",
+    { runtime: "grid", title: "台账", content: "日期,项目,金额,备注\n" },
+    { siteId: "travel", appId: "trip", nonce: "n1" },
+  );
+  assert.ok(ledger);
+  assert.equal(ledger.meta.plugin_id, "ledger-register");
+  assert.equal(ledger.title, "台账");
+  const capability = editorCapabilityFor(ledger);
+  assert.equal(capability.available, true, capability.unavailableReason);
+  assert.equal(capability.adapter, "grid");
+});
+
+test("编辑栏归属：插件实例一律没有，素材照旧按适配器登记", () => {
+  const ledger = pluginInstanceFromInitialState(
+    "ledger-register",
+    { runtime: "grid", title: "台账" },
+    { nonce: "n1" },
+  );
+  const map = pluginInstanceFromInitialState(
+    "annotatable-city-map",
+    { runtime: "geo-map", title: "地图" },
+    { nonce: "n1" },
+  );
+  // `grid` 一身二任：同一个适配器，插件实例没有编辑栏，用户上传的表格照旧有。
+  assert.equal(editBarOwnershipForItem(ledger), "none");
+  assert.equal(editBarOwnershipForItem(map), "none");
+  assert.equal(
+    editBarOwnershipForItem(
+      item({ kind: "sheet", url: "https://asset.oceanleo.com/book.csv" }),
+    ),
+    "shared",
+  );
+  assert.equal(
+    editBarOwnershipForItem(
+      item({ kind: "image", url: "https://cdn.test/image.png" }),
+    ),
+    "shared",
+  );
+  assert.equal(
+    editBarOwnershipForItem(
+      item({ kind: "website", meta: { starter_id: "agency-landing" } }),
+    ),
+    "native",
+  );
+  // 挂不起来的内容没有编辑栏可言。
+  assert.equal(
+    editBarOwnershipForItem(item({ kind: "file", meta: {} })),
+    "none",
+  );
 });
 
 test("website embed extras carry durable identity and never invent a host site project id", async () => {

@@ -34,6 +34,7 @@ import {
   type WorkbenchMaterialAction,
 } from "./workbench-material-provider";
 import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
+import { editBarOwnershipForItem } from "./workbench-routes";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { useAdvancedRecovery } from "./use-advanced-recovery";
 import {
@@ -87,9 +88,16 @@ export function InlineAdvancedWorkbenchShell({
   const ownerIdRef = useRef(
     `inline-editor:${adapter.id}:${item.key || item.id}`,
   );
+  /**
+   * 编辑栏是用来编辑一件素材的。非编辑类插件没有素材输入、自身即体验
+   * （`_COMMON.md` §3.2），所以地图、地球仪、台账这些打开之后上方**没有编辑栏**
+   * ——不渲染那条栏，也不占那条停靠带。判据在 `editBarOwnershipForItem()`：它按
+   * 挂的是插件实例还是素材来判，不按适配器判（`grid` 两种身份共用一个适配器）。
+   */
+  const editBarSuppressed = editBarOwnershipForItem(item) === "none";
   const localDockPresentation = useMemo(
     () =>
-      rightPaneSlot
+      rightPaneSlot || editBarSuppressed
         ? null
         : {
             ownerId: ownerIdRef.current,
@@ -99,6 +107,7 @@ export function InlineAdvancedWorkbenchShell({
           },
     [
       accent,
+      editBarSuppressed,
       floatingToolbar.dropActive,
       floatingToolbar.mode,
       rightPaneSlot,
@@ -474,7 +483,7 @@ export function InlineAdvancedWorkbenchShell({
     };
   }, [liveHeaderNode, rightPaneSlot]);
   useLayoutEffect(() => {
-    if (!rightPaneSlot) return;
+    if (!rightPaneSlot || editBarSuppressed) return;
     rightPaneSlot.setEditBarDockPresentation({
       ownerId: ownerIdRef.current,
       mode: floatingToolbar.mode,
@@ -485,6 +494,7 @@ export function InlineAdvancedWorkbenchShell({
       rightPaneSlot.clearEditBarDockPresentation(ownerIdRef.current);
   }, [
     accent,
+    editBarSuppressed,
     floatingToolbar.dropActive,
     floatingToolbar.mode,
     rightPaneSlot,
@@ -500,9 +510,11 @@ export function InlineAdvancedWorkbenchShell({
       : undefined;
   return (
     <AdvancedLayoutContext.Provider value={layoutState}>
-      <FloatingContextToolbar controller={floatingToolbar} accent={accent}>
-        {contextToolbar}
-      </FloatingContextToolbar>
+      {!editBarSuppressed && (
+        <FloatingContextToolbar controller={floatingToolbar} accent={accent}>
+          {contextToolbar}
+        </FloatingContextToolbar>
+      )}
       <div
         data-inline-editor
         data-editor-adapter={adapter.id}
@@ -545,10 +557,12 @@ export function InlineAdvancedWorkbenchShell({
               <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
                 {actionBar}
               </div>
-              <EditBarDockHost
-                hostRef={localEditBarDockRef}
-                presentation={localDockPresentation}
-              />
+              {!editBarSuppressed && (
+                <EditBarDockHost
+                  hostRef={localEditBarDockRef}
+                  presentation={localDockPresentation}
+                />
+              )}
             </>
           )}
           <div

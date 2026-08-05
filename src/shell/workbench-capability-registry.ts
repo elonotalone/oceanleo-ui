@@ -56,6 +56,21 @@ export interface EditorCapability {
   unavailableReason: string;
 }
 
+/**
+ * 编辑栏归谁。
+ *
+ * `shared` = 外壳渲染那条共享编辑栏；`native` = 交给外站编辑器自己的 chrome；
+ * `none` = **这一次挂载根本没有编辑栏**。
+ *
+ * 第三档是给非编辑类插件的：编辑栏是用来编辑一件素材的，而非编辑类插件没有素材
+ * 输入，自身即体验，所以它一律没有编辑栏。这一档**不是适配器的属性**，因此下面
+ * 15 个适配器一个都不写它：`grid` 一身二任（既是编辑类插件「表格编辑器」的内核，
+ * 又是台账/文献矩阵/三表模型的渲染内核），同一个适配器两种挂法。哪一次挂载落进
+ * `none`，由 `workbench-routes.ts` 的 `editBarOwnershipForItem()` 按挂的是插件
+ * 实例还是素材来判。
+ */
+export type ToolbarOwnership = "shared" | "native" | "none";
+
 export interface RegistryEntry {
   routeType: EditorRoute["type"];
   artifactCapabilities: readonly string[];
@@ -64,7 +79,7 @@ export interface RegistryEntry {
   roundTrip: readonly EditorCapabilityName[];
   projectSchema: string;
   viewportOwnership: "content" | "native";
-  toolbarOwnership: "shared" | "native";
+  toolbarOwnership: ToolbarOwnership;
   persistence: "project" | "native-callback";
 }
 

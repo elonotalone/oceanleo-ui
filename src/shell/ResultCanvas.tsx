@@ -33,7 +33,7 @@ import {
   normalizeAdvancedFeatureLaunch,
   type AdvancedFeatureLaunchEnvelope,
 } from "./advanced-feature-launch";
-import { blankDraftLibraryItem } from "./blank-draft-items";
+import { pluginInstanceLibraryItem } from "./plugin-initial-state";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import {
@@ -215,32 +215,42 @@ export function ResultCanvas({
     [],
   );
   /**
-   * 空手起手。宿主只递来「要开哪个功能」，右栏自己造一份空白草稿再走**同一条**
-   * 挂载路径 —— 没有第二套挂载逻辑，也没有绕过 `editorCapabilityFor()`：造出来的
-   * 草稿照样要被判 `available` 才挂得起来，判不了就把理由说出来，不静默吞掉。
+   * 点开一枚按键。宿主只递来「点的是哪一个」，右栏按这个身份取它自己的第一屏
+   * （`plugin-initial-state.ts` 的注册表），再走**同一条**挂载路径 —— 没有第二套
+   * 挂载逻辑，也没有绕过 `editorCapabilityFor()`：取出来的实例照样要被判
+   * `available` 才挂得起来。
+   *
+   * **fail-closed**：查不到第一屏就把理由显示出来，不退回任何通用模板。以前这里
+   * 是按载体类型反查 5 份通用空白起手件之一，于是所有按键打开的都是同一份骨架；
+   * 那条路已经整条拆掉。
    */
   const startFeatureLaunch = useCallback(
     (envelope: AdvancedFeatureLaunchEnvelope) => {
       const launch = normalizeAdvancedFeatureLaunch(envelope.launch);
       if (!launch) {
-        setFeatureLaunchError("这个功能不在可空手起手的名单里，已拒绝打开。");
+        setFeatureLaunchError("这次打开请求缺少功能身份，已拒绝打开。");
         return;
       }
-      const draft = blankDraftLibraryItem(launch.featureId, {
+      const instance = pluginInstanceLibraryItem(launch.pluginId, {
         siteId: materialSiteId,
         appId: materialAppId,
         title: launch.title,
         nonce: envelope.nonce,
       });
-      const capability = draft ? editorCapabilityFor(draft) : null;
-      if (!draft || !capability?.available) {
+      if (!instance) {
         setFeatureLaunchError(
-          capability?.unavailableReason ||
-            "这个功能还没有可空手起手的编辑器路由。",
+          `「${launch.title || launch.pluginId}」还没有定义打开后的第一屏，暂时不能使用。`,
         );
         return;
       }
-      openCanvasItem(draft);
+      const capability = editorCapabilityFor(instance);
+      if (!capability.available) {
+        setFeatureLaunchError(
+          capability.unavailableReason || "这个功能没有可用的运行时。",
+        );
+        return;
+      }
+      openCanvasItem(instance);
     },
     [materialAppId, materialSiteId, openCanvasItem],
   );
