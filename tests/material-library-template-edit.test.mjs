@@ -12,13 +12,8 @@
 //   ④ canFork 为假 / 未登录时编辑被拒绝并给出可读原因，绝不猜、绝不放行。
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import test from "node:test";
-
-import ts from "typescript";
 
 import {
   normalizeTemplateMaterial,
@@ -26,31 +21,9 @@ import {
 } from "../src/shell/material-library-template-source.ts";
 import { isDurableLibraryItem } from "../src/shell/library-data.ts";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 const require = createRequire(import.meta.url);
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileModule(relativePath, replacements, { jsx = false } = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries(replacements)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      ...(jsx ? { jsx: ts.JsxEmit.ReactJSX } : {}),
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 const authStubUrl = dataModule(`
   export async function accessToken() {
@@ -63,10 +36,6 @@ const configStubUrl = dataModule(`
 const artifactClientUrl = await compileModule("src/shell/artifact-client.ts", {
   "../lib/auth/client": authStubUrl,
   "../lib/auth/config": configStubUrl,
-  "./artifact-contract": pathToFileURL(
-    resolve("src/shell/artifact-contract.ts"),
-  ).href,
-  "./library-data": pathToFileURL(resolve("src/shell/library-data.ts")).href,
 });
 const {
   getArtifactEditDecision,
@@ -75,8 +44,6 @@ const {
   resetCurrentPrincipalId,
 } = await import(artifactClientUrl);
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value) => value;
@@ -121,37 +88,14 @@ const routesStubUrl = dataModule(`
     };
   }
 `);
-const actionsSource = await readFile(
-  resolve("src/shell/ArtifactActions.tsx"),
-  "utf8",
-);
-const actionsCompiled = ts.transpileModule(
-  Object.entries({
-    react: reactUrl,
+const { artifactActionMatrix } = await import(
+  await compileModule("src/shell/ArtifactActions.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-contract": contractStubUrl,
     "./artifact-client": clientStubUrl,
     "./library-data": libraryDataStubUrl,
     "./workbench-routes": routesStubUrl,
-  }).reduce(
-    (text, [specifier, replacement]) =>
-      text.replaceAll(JSON.stringify(specifier), JSON.stringify(replacement)),
-    actionsSource,
-  ),
-  {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: resolve("src/shell/ArtifactActions.tsx"),
-  },
-).outputText.replaceAll(
-  'from "react/jsx-runtime";',
-  `from ${JSON.stringify(jsxRuntimeUrl)};`,
-);
-const { artifactActionMatrix } = await import(
-  `${dataModule(actionsCompiled)}#ArtifactActions`
+  })
 );
 
 const CURRENT_PRINCIPAL = "oceanleo:user:me";

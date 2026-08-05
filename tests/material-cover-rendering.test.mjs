@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
 
 import {
   ARTIFACT_TYPES,
@@ -17,45 +15,9 @@ import {
   artifactProjectionToLibraryItem,
 } from "../src/shell/library-data.ts";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileModule(relativePath, replacements = {}) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react";',
-      `from ${JSON.stringify(reactUrl)};`,
-    )
-    .replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 const coverModuleUrl = await compileModule(
   "src/shell/workspace-library-cover.tsx",

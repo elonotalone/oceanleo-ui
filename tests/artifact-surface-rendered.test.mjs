@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import {
   ARTIFACT_TYPES,
@@ -17,6 +16,8 @@ import {
 } from "../src/shell/library-data.ts";
 import { advancedEditorSourceFor } from "../src/shell/advanced-features.ts";
 import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const authoritativeLibraryPages = JSON.parse(
   await readFile(
@@ -72,7 +73,6 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 const contractUrl = pathToFileURL(
   resolve("src/shell/artifact-contract.ts"),
 ).href;
@@ -93,52 +93,6 @@ const workspaceActionsUrl = pathToFileURL(
 const pluginExportContractUrl = pathToFileURL(
   resolve("src/shell/plugin-export/plugin-export-contract.ts"),
 ).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  // 编出来的模块是 data: URL，没有路径身份，任何**留在产物里**的相对 specifier 都会在
-  // 运行期炸成 `ERR_UNSUPPORTED_RESOLVE_REQUEST`，而 node 报错时把 280KB 的 data URL
-  // 整个当 base 打出来，根本看不出是哪份桩表漏了哪条边。所以在这里当场拦下并点名。
-  // 判的是**产物**不是源码：`import type` 已被 transpile 抹掉，不会误报。
-  const unmapped = [
-    ...compiled.matchAll(/(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g),
-  ].map((match) => match[1]);
-  if (unmapped.length) {
-    throw new Error(
-      `${relativePath} 的模块桩表漏了这些相对 specifier：${[
-        ...new Set(unmapped),
-      ].sort().join("、")}`,
-    );
-  }
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
 
 const authStubUrl = dataModule(`
   export async function accessToken() {

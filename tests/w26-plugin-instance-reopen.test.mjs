@@ -20,14 +20,10 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-
-import ts from "typescript";
 
 import {
   inlineEditorItemsFromSession,
@@ -44,6 +40,8 @@ import {
   saveTargetForItem,
 } from "../src/shell/plugin-initial-state.ts";
 
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
 /* ------------------------------ grid 的取用 ------------------------------ */
 /**
  * `use-grid-editor.ts` 直接 import 会经 i18n 链拖进一份 `.tsx`，本仓的 loader
@@ -51,12 +49,6 @@ import {
  * 其余一律用真模块。本文件只取它两个纯函数，不挂 React。
  */
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-
-const dataModule = (source) =>
-  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const realModule = (relativePath) =>
-  pathToFileURL(resolve(relativePath)).href;
 
 /**
  * 相对 specifier 一律换成绝对 file URL。
@@ -67,42 +59,6 @@ const realModule = (relativePath) =>
  * `tests/rendition-callback-identity.test.mjs` 就是这么整份哑掉的，W22 `3946fa9` 修的）。
  * 这里改成全量重写，只有真的加载不进来的那几个才落到显式桩上。
  */
-function resolveRelative(fromFile, specifier) {
-  const base = resolve(dirname(fromFile), specifier);
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`]) {
-    if (existsSync(candidate)) return pathToFileURL(candidate).href;
-  }
-  return null;
-}
-
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  const stubs = { react: reactUrl, ...replacements };
-  for (const specifier of new Set(
-    [...source.matchAll(/from\s+"(\.[^"]*)"/g)].map((match) => match[1]),
-  )) {
-    if (stubs[specifier]) continue;
-    const resolved = resolveRelative(sourcePath, specifier);
-    assert.ok(resolved, `${relativePath} 的 import ${specifier} 解析不到文件`);
-    stubs[specifier] = resolved;
-  }
-  for (const [specifier, replacement] of Object.entries(stubs)) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 const { gridPluginInstanceVersion, gridSavedItemForHandoff } = await import(
   await compileModule("src/shell/doc-editors/use-grid-editor.ts", {
     "../../i18n/ui/useUI": dataModule(

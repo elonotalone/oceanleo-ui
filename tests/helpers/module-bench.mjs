@@ -198,6 +198,25 @@ function specifierNodesIn(path, text) {
   return nodes;
 }
 
+/** 编译产物里所有 `import("字面量")` 调用。整个调用一起改写，形参也要跟着换。 */
+function dynamicImportsIn(path, text) {
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+  const calls = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      calls.push({ call: node, specifier: node.arguments[0].text });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return calls;
+}
+
 class ModuleBenchError extends Error {
   constructor(message) {
     super(message);
@@ -212,8 +231,12 @@ function chainText(chain) {
 }
 
 /** 一套桩表对应一个上下文：桩表、依赖图判定、编译产物缓存、缺包策略。 */
+let contextSeq = 0;
+
 function createContext(stubs, options) {
+  contextSeq += 1;
   return {
+    id: `ctx-${contextSeq}`,
     stubs,
     stubsByPath: new Map(),
     missingPackageStub: options.missingPackageStub ?? null,
@@ -221,7 +244,8 @@ function createContext(stubs, options) {
     sources: new Map(),
     outputs: new Map(),
     dependents: new Map(),
-    needsCompile: new Map(),
+    walked: new Set(),
+    forced: new Set(),
     compiling: new Set(),
   };
 }
@@ -236,6 +260,18 @@ function registerEntry(ctx, entry) {
     if (target) ctx.stubsByPath.set(target, replacement);
   }
   analyzeGraph(ctx, entry);
+  // 入口自己被打了桩就必须编译——桩只有在编译产物里才换得进去。
+  if (
+    staticSpecifiers(entry, sourceOf(ctx, entry)).some(
+      (specifier) => stubFor(ctx, entry, specifier) !== undefined,
+    ) ||
+    dynamicImportsIn(entry, sourceOf(ctx, entry)).some(
+      ({ specifier }) => stubFor(ctx, entry, specifier) !== undefined,
+    )
+  ) {
+    ctx.forced.add(entry);
+  }
+  propagate(ctx);
 }
 
 function sourceOf(ctx, file) {
@@ -270,42 +306,39 @@ function stubFor(ctx, file, specifier) {
  * 身份比较、模块级状态都不会分叉。
  */
 function analyzeGraph(ctx, entry) {
-  const dependents = ctx.dependents;
-  const verdict = ctx.needsCompile;
   const queue = [entry];
-  const seen = new Set(queue);
+  const seen = new Set([entry]);
 
   while (queue.length) {
     const file = queue.shift();
-    if (verdict.has(file)) continue;
-    let forced = !nativelyLoadable(file);
+    if (ctx.walked.has(file)) continue;
+    ctx.walked.add(file);
+    if (!nativelyLoadable(file)) ctx.forced.add(file);
     for (const specifier of staticSpecifiers(file, sourceOf(ctx, file))) {
-      if (stubFor(ctx, file, specifier) !== undefined) {
-        forced = true; // 桩只有在这份文件被编译时才进得去
-        continue;
-      }
       if (!specifier.startsWith(".")) continue;
       const target = resolveRelativeSpecifier(file, specifier);
       if (!target) {
-        forced = true; // 解析不到：走编译路径，那里会点名报出来
+        ctx.forced.add(file); // 解析不到：走编译路径，那里会点名报出来
         continue;
       }
-      if (!dependents.has(target)) dependents.set(target, new Set());
-      dependents.get(target).add(file);
+      if (!ctx.dependents.has(target)) ctx.dependents.set(target, new Set());
+      ctx.dependents.get(target).add(file);
       if (!seen.has(target)) {
         seen.add(target);
         queue.push(target);
       }
     }
-    verdict.set(file, forced);
   }
+}
 
-  const pending = [...verdict].filter(([, forced]) => forced).map(([file]) => file);
+/** 必须编译的会往上传染：真加载一个导入了编译产物的模块，那条相对路径会当场炸掉。 */
+function propagate(ctx) {
+  const pending = [...ctx.forced];
   while (pending.length) {
     const file = pending.pop();
-    for (const importer of dependents.get(file) ?? []) {
-      if (verdict.get(importer)) continue;
-      verdict.set(importer, true);
+    for (const importer of ctx.dependents.get(file) ?? []) {
+      if (ctx.forced.has(importer)) continue;
+      ctx.forced.add(importer);
       pending.push(importer);
     }
   }
@@ -313,7 +346,7 @@ function analyzeGraph(ctx, entry) {
 
 function mustCompile(ctx, file) {
   // 图外的文件（桩里指过来的真模块之类）保守按「能加载就加载」处理。
-  return ctx.needsCompile.get(file) ?? !nativelyLoadable(file);
+  return ctx.forced.has(file) || (!ctx.walked.has(file) && !nativelyLoadable(file));
 }
 
 function packageUrl(ctx, file, specifier, chain) {
@@ -369,15 +402,48 @@ async function compileFile(ctx, file, chain) {
         replacement = packageUrl(ctx, file, specifier, [...chain, file]);
       }
     }
-    edits.push({ start: node.getStart(), end: node.getEnd(), replacement });
+    edits.push({
+      start: node.getStart(),
+      end: node.getEnd(),
+      text: JSON.stringify(replacement),
+    });
   }
 
+  // 动态 `import()`：懒加载路由、`await import("pptx-preview")` 这类。
+  // 编译产物没有仓里的路径身份，裸包名与相对路径在运行期都解析不了，桩也就进不去
+  // （`library-ppt-preview-adapter` 实测：`import("pptx-preview")` 漏改之后
+  // 走进了 catch 分支，断言看到的是降级态而不是真解析出来的幻灯片）。
+  // 需要就地编译的那些不在这里编：懒加载路由整棵拖进来太贵，改成运行期真按到了才编。
+  let needsLazyRuntime = false;
+  for (const { call, specifier } of dynamicImportsIn(file, output)) {
+    const stub = stubFor(ctx, file, specifier);
+    let text = null;
+    if (stub !== undefined) {
+      text = `import(${JSON.stringify(stub)})`;
+    } else if (!specifier.startsWith(".")) {
+      text = `import(${JSON.stringify(packageUrl(ctx, file, specifier, [...chain, file]))})`;
+    } else {
+      const target = resolveRelativeSpecifier(file, specifier);
+      if (!target) continue; // 动态 import 解析不到不该拖垮加载，运行期自己报
+      if (mustCompile(ctx, target)) {
+        needsLazyRuntime = true;
+        text = `__benchImport(${JSON.stringify(ctx.id)}, ${JSON.stringify(target)})`;
+      } else {
+        text = `import(${JSON.stringify(pathToFileURL(target).href)})`;
+      }
+    }
+    edits.push({ start: call.getStart(), end: call.getEnd(), text });
+  }
+
+  edits.sort((a, b) => a.start - b.start);
   let rewritten = output;
   for (const edit of edits.reverse()) {
-    rewritten =
-      rewritten.slice(0, edit.start) +
-      JSON.stringify(edit.replacement) +
-      rewritten.slice(edit.end);
+    rewritten = rewritten.slice(0, edit.start) + edit.text + rewritten.slice(edit.end);
+  }
+  if (needsLazyRuntime) {
+    rewritten = `import { __benchImport } from ${JSON.stringify(
+      pathToFileURL(fileURLToPath(import.meta.url)).href,
+    )};\n${rewritten}`;
   }
 
   const leftover = specifierNodesIn(file, rewritten)
@@ -431,6 +497,7 @@ export async function compileModule(entryPath, stubs = {}, options = {}) {
  * 桩表不同则必须分开——那本来就是「换一套替身再看一遍」的意思。
  */
 const contexts = new Map();
+const contextsById = new Map();
 
 function contextFor(stubs, options) {
   const key = JSON.stringify([
@@ -441,8 +508,24 @@ function contextFor(stubs, options) {
   if (!ctx) {
     ctx = createContext(stubs, options);
     contexts.set(key, ctx);
+    contextsById.set(ctx.id, ctx);
   }
   return ctx;
+}
+
+/**
+ * 编译产物里那些「必须编译才加载得了」的动态 `import()` 的落点。
+ * 真被 `await` 到时才编译，懒加载路由因此不会在建台时整棵拖进来。
+ * 只给编译产物用，测试不该直接调它。
+ */
+export async function __benchImport(contextId, file) {
+  const ctx = contextsById.get(contextId);
+  if (!ctx) {
+    throw new ModuleBenchError(
+      `动态 import 找不到编译上下文 ${contextId}（${repoRelative(file)}）`,
+    );
+  }
+  return import(await compileFile(ctx, file, []));
 }
 
 /**

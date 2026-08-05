@@ -16,14 +16,12 @@
 // `normalizeArtifactProjection`）全部是真实实现。
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import {
   artifactDownloadPlanFor,
@@ -36,6 +34,12 @@ import {
   libraryEntryIsRuntimeSurface,
 } from "../src/shell/plugin-export/plugin-export-contract.ts";
 import { LEDGER_RENDERABLE_EXPORT_FORMS } from "../src/shell/plugin-export/ledger-export.ts";
+
+import {
+  compileModule,
+  dataModule,
+  realModule,
+} from "./helpers/module-bench.mjs";
 
 /* ------------------------------- jsdom ---------------------------------- */
 
@@ -86,59 +90,10 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 /* ---------------------------- 模块编译 ------------------------------------ */
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function fileUrl(relativePath) {
-  return pathToFileURL(resolve(relativePath)).href;
-}
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
 /**
  * 只有 `.tsx` 需要在这里编译（扩展名 loader 解析不了它），`.ts` 一律走磁盘真文件：
  * 桩得越少，这份用例证明的东西越接近线上那条链。
  */
-async function compileModule(relativePath, replacements) {
-  const sourcePath = resolve(relativePath);
-  let source = await readFile(sourcePath, "utf8");
-  for (const [specifier, replacement] of Object.entries({
-    react: reactUrl,
-    ...replacements,
-  })) {
-    source = source.replaceAll(
-      JSON.stringify(specifier),
-      JSON.stringify(replacement),
-    );
-  }
-  const compiled = ts
-    .transpileModule(source, {
-      compilerOptions: {
-        jsx: ts.JsxEmit.ReactJSX,
-        module: ts.ModuleKind.ESNext,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: sourcePath,
-    })
-    .outputText.replaceAll(
-      'from "react/jsx-runtime";',
-      `from ${JSON.stringify(jsxRuntimeUrl)};`,
-    );
-  const unmapped = [
-    ...compiled.matchAll(/(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g),
-  ]
-    .map((match) => match[1])
-    .filter((specifier) => !specifier.startsWith("./src/"));
-  if (unmapped.length) {
-    throw new Error(
-      `${relativePath} 的模块桩表漏了：${[...new Set(unmapped)].sort().join("、")}`,
-    );
-  }
-  return `${dataModule(compiled)}#${encodeURIComponent(relativePath)}`;
-}
-
 /* ------------------------------ 假网关 ----------------------------------- */
 
 const MEDIA_BY_FORMAT = {
@@ -187,10 +142,10 @@ const databaseStubUrl = dataModule(`
 
 const artifactClientStubUrl = dataModule(`
   import { normalizeArtifactProjection } from ${JSON.stringify(
-    fileUrl("src/shell/artifact-contract.ts"),
+    realModule("src/shell/artifact-contract.ts"),
   )};
   import { artifactProjectionToLibraryItem } from ${JSON.stringify(
-    fileUrl("src/shell/library-data.ts"),
+    realModule("src/shell/library-data.ts"),
   )};
 
   export const ARTIFACT_LIBRARY_CHANGE_EVENT = "oceanleo:artifact-library-change";
@@ -265,13 +220,6 @@ const wiringUrl = await compileModule(
   {
     "../../lib/database": databaseStubUrl,
     "../artifact-client": artifactClientStubUrl,
-    "../library-data": fileUrl("src/shell/library-data.ts"),
-    "./plugin-export-runtime": fileUrl(
-      "src/shell/plugin-export/plugin-export-runtime.ts",
-    ),
-    "./plugin-export-contract": fileUrl(
-      "src/shell/plugin-export/plugin-export-contract.ts",
-    ),
   },
 );
 
@@ -285,39 +233,13 @@ const gridEditorUrl = await compileModule(
   "src/shell/doc-editors/use-grid-editor.ts",
   {
     "../../i18n/ui/useUI": uiStubUrl,
-    "../library-data": fileUrl("src/shell/library-data.ts"),
-    "../plugin-initial-state": fileUrl("src/shell/plugin-initial-state.ts"),
-    "../plugin-export/ledger-export": fileUrl(
-      "src/shell/plugin-export/ledger-export.ts",
-    ),
-    "../plugin-export/plugin-export-contract": fileUrl(
-      "src/shell/plugin-export/plugin-export-contract.ts",
-    ),
     "../plugin-export/plugin-export-wiring": wiringUrl,
-    "./doc-io": fileUrl("src/shell/doc-editors/doc-io.ts"),
-    "./artifact-save-contract": fileUrl(
-      "src/shell/doc-editors/artifact-save-contract.ts",
-    ),
-    "./editor-preview-raster": fileUrl(
-      "src/shell/doc-editors/editor-preview-raster.ts",
-    ),
-    "./grid-model": fileUrl("src/shell/doc-editors/grid-model.ts"),
-    "./grid-sheet-identity": fileUrl(
-      "src/shell/doc-editors/grid-sheet-identity.ts",
-    ),
-    "./office-file": fileUrl("src/shell/doc-editors/office-file.ts"),
-    "./grid-structure": fileUrl("src/shell/doc-editors/grid-structure.ts"),
   },
 );
 const { useGridEditor } = await import(gridEditorUrl);
 
 const gridStageUrl = await compileModule("src/shell/doc-editors/GridStage.tsx", {
   "../../i18n/ui/useUI": uiStubUrl,
-  "./grid-model": fileUrl("src/shell/doc-editors/grid-model.ts"),
-  "./grid-structure": fileUrl("src/shell/doc-editors/grid-structure.ts"),
-  "../plugin-export/plugin-export-contract": fileUrl(
-    "src/shell/plugin-export/plugin-export-contract.ts",
-  ),
   "./use-grid-editor": gridEditorUrl,
 });
 const { GridStage } = await import(gridStageUrl);
