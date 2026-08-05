@@ -345,6 +345,24 @@ export { MaterialLibrary } from "./MaterialLibrary";
 export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 export { MyLibrary } from "./MyLibrary";
 export type { MyLibraryProps } from "./MyLibrary";
+// 应用内功能件的导出链（W15 建链、W21 归一 id、W24 接到站点侧）。
+// 产物是一件素材、落进「我的库」、可下载；功能件本身永不进库（`_COMMON.md` §3.3）。
+//
+// 站点侧画「导出成 …」那排按钮要三样东西，都从这里拿：形态清单
+// （`renderableExportKindsForPlugin()`）、形态的中文名（`pluginExportForm()`）、
+// 执行导出（`exportToMyLibrary()`）。**包内做好了却不从这条 barrel 出去等于没做**——
+// 36 个消费站 import 不到任何一个符号，这正是本波已经发生过一次的静默失效
+// （`signals/W21-request.md` 第 1 条）。
+//
+// 这里刻意用 `export *`：导出链自己的 `plugin-export/index.ts` 已经是一份挑过的
+// 公共面，再抄一份名单出来就是第二个真相，新增符号漏抄的那天没人会发现。
+// `tests/plugin-export-public-surface.test.mjs` 盯着这一条与接线层那一条。
+export * from "./plugin-export";
+// 接线层单独一行：它连带拉起网关客户端，`plugin-export/index.ts` 因此不收它。
+export {
+  exportToMyLibrary,
+  liveExportDependencies,
+} from "./plugin-export/plugin-export-wiring";
 export {
   FIXED_WORKSPACE_SLOTS,
   WORKSPACE_ACTION_EVENT,
