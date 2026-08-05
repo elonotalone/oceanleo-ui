@@ -315,6 +315,13 @@ function analyzeGraph(ctx, entry) {
     ctx.walked.add(file);
     if (!nativelyLoadable(file)) ctx.forced.add(file);
     for (const specifier of staticSpecifiers(file, sourceOf(ctx, file))) {
+      // 打了桩的边不要走进真模块：否则图会把被替身挡住的整棵子树编进来，
+      // 运行期入口虽走桩，模块级缓存（素材库检索之类）却与真实现串台——
+      // `explore-scene-axis` 在 2a75fba 之后两条 D5 空态断言就是这样假红的。
+      if (stubFor(ctx, file, specifier) !== undefined) {
+        ctx.forced.add(file); // 桩只有在这份文件被编译时才进得去
+        continue;
+      }
       if (!specifier.startsWith(".")) continue;
       const target = resolveRelativeSpecifier(file, specifier);
       if (!target) {
