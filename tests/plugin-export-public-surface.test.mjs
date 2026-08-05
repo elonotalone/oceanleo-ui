@@ -23,10 +23,31 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
+/**
+ * 活跃源码行：去掉整行 `//` 注释与行尾 `//` 注释。
+ * VF2 攻击：把 `export * from "./plugin-export";` 改成注释后子串仍在、旧闸仍绿。
+ * 匹配必须只认还在跑的那一行，不许认注释里的尸骸。
+ */
+function activeSourceLines(text) {
+  return text.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//")) return [];
+    // 行尾注释：只剥 ` // ...`，不动字符串里偶然出现的 `https://`（本闸匹配的都是 export 行）。
+    const withoutTrailing = trimmed.replace(/\s+\/\/.*$/, "");
+    return withoutTrailing ? [withoutTrailing] : [];
+  });
+}
+
+function activeSource(text) {
+  return activeSourceLines(text).join("\n");
+}
+
 const shellBarrel = source("../src/shell/index.ts");
 const packageBarrel = source("../src/index.ts");
 const chainBarrel = source("../src/shell/plugin-export/index.ts");
 const wiring = source("../src/shell/plugin-export/plugin-export-wiring.ts");
+const shellBarrelActive = activeSource(shellBarrel);
+const packageBarrelActive = activeSource(packageBarrel);
 
 /**
  * 站点侧真正要用到的那一组。分三类，每一类少一个都会让站点侧做不成一件事：
@@ -146,21 +167,41 @@ test("字形数据只许动态 import：静态引用会让 36 个站的主包都
 
 test("共享包 barrel 把整条链带出去，36 个消费站 import 得到", () => {
   // 用 `export *` 而不是抄一份名单：名单会漏，`export *` 不会。
+  // 只在活跃源码上匹配：注释掉这一行必须红（VF2 P1）。
   assert.match(
-    shellBarrel,
+    shellBarrelActive,
     /export \* from "\.\/plugin-export";/,
     "src/shell/index.ts 没有 re-export 导出链——包里做好了、站点拿不到",
   );
   // 接线层是站点侧唯一需要调的那个函数，它不在链的 barrel 里，必须单独出去。
   assert.match(
-    shellBarrel,
+    shellBarrelActive,
     /export \{[\s\S]*?\bexportToMyLibrary\b[\s\S]*?\} from "\.\/plugin-export\/plugin-export-wiring";/,
     "src/shell/index.ts 没有 re-export exportToMyLibrary()，站点侧无从发起导出",
   );
   assert.match(wiring, /export function exportToMyLibrary\(/);
   assert.match(wiring, /export const liveExportDependencies/);
   // 包根 barrel：`@oceanleo/ui` 与 `@oceanleo/ui/shell` 两条路径都要拿得到。
-  assert.match(packageBarrel, /export \* from "\.\/shell";/);
+  assert.match(packageBarrelActive, /export \* from "\.\/shell";/);
+});
+
+test("反面：注释掉 barrel 的 export * 必须红（子串留在注释里不算数）", () => {
+  // 复现 VF2 那一刀：整行改成 `// export * from "./plugin-export";` 之后，
+  // 活跃源码里不许再认到这条 re-export。
+  const commented = shellBarrel.replace(
+    /^(\s*)export \* from "\.\/plugin-export";/m,
+    '$1// export * from "./plugin-export";',
+  );
+  assert.match(
+    commented,
+    /\/\/ export \* from "\.\/plugin-export";/,
+    "夹具自己没造出「注释掉」这一刀，下面的断言会空转",
+  );
+  assert.equal(
+    /export \* from "\.\/plugin-export";/.test(activeSource(commented)),
+    false,
+    "注释里的 export * 尸骸被当成活跃 re-export 了",
+  );
 });
 
 test("导出的形态清单在包外可用：一枚按键点下去，形态与中文名都查得到", () => {

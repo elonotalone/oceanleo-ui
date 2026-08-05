@@ -43,6 +43,7 @@ import {
   BLANK_DRAFT_FEATURE_IDS,
   blankDraftLibraryItem,
 } from "../src/shell/blank-draft-items.ts";
+import { DISHONEST_FIRST_SCREEN_VALUES } from "./fixtures/plugin-initial-state-dishonest-values.mjs";
 
 const REQUIRED_SIX = [
   "annotatable-city-map",
@@ -123,6 +124,17 @@ for (const [id, meta] of Object.entries(REGISTRY?.plugins ?? {})) {
 }
 
 const IMPLEMENTED = new Set(PLUGIN_INITIAL_STATE_IDS);
+
+/**
+ * 第一屏计算节点给出的值是否诚实：要么如实空着（null），要么是有限数。
+ * NaN / Infinity / 非数字占位一律不许。
+ *
+ * 抽成具名函数是为了和反面夹具拴死同一条谓词（VF2）：改成恒 true 时，
+ * 下面「反面夹具」那条必须当场红，不能只靠活数据扫描（活数据今天本来就没有 NaN）。
+ */
+function isHonestFirstScreenValue(value) {
+  return value === null || (typeof value === "number" && Number.isFinite(value));
+}
 
 /**
  * 归一时废掉的四个旧短 id 加两个同源的。这是一个**封闭的历史集合**，不是会变的名单：
@@ -573,10 +585,8 @@ test("每一份可算文档的第一屏都连得通，算不出的地方如实�
       // 零数据的第一屏有两种诚实的样子：默认值算得出数（月供 4 890.17），
       // 或者还没有数据可算（体重没填，BMI 就是空）。**第三种不许有**：
       // 0 ÷ 0 冒出来的 NaN / Infinity、或者一串占位文本被摆到用户面前。
-      const honest =
-        value === null || (typeof value === "number" && Number.isFinite(value));
       assert.ok(
-        honest,
+        isHonestFirstScreenValue(value),
         `${pluginId}.${node.id} 第一屏给出了 ${String(value)}：` +
           "零数据处要么算出数、要么如实空着",
       );
@@ -881,4 +891,24 @@ test("反面用例：任一侧多出一个 id，对账当场红（上面那几�
     Object.entries(today).filter(([, ids]) => ids.length > 0),
     [],
   );
+});
+
+test("反面夹具：含 NaN/Infinity 的值必须被诚实谓词拒掉（改松谓词当场红）", () => {
+  // VF2：活数据扫描 alone 挡不住「把 honest 改成 true」——今天的第一屏本来就没有 NaN。
+  // 固定夹具与 `isHonestFirstScreenValue` 拴死：改松谓词时本条红，活数据那条也一起失守。
+  assert.ok(
+    DISHONEST_FIRST_SCREEN_VALUES.length >= 3,
+    "夹具被掏空等于这条没测",
+  );
+  for (const value of DISHONEST_FIRST_SCREEN_VALUES) {
+    assert.equal(
+      isHonestFirstScreenValue(value),
+      false,
+      `诚实谓词放过了 ${String(value)}：改松谓词或夹具与谓词脱钩了`,
+    );
+  }
+  // 对照：合法的两种第一屏样子仍绿，免得有人把谓词改成恒 false 蒙混。
+  assert.equal(isHonestFirstScreenValue(null), true);
+  assert.equal(isHonestFirstScreenValue(0), true);
+  assert.equal(isHonestFirstScreenValue(4890.17), true);
 });
