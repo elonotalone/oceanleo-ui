@@ -72,6 +72,9 @@ const contractUrl = pathToFileURL(
   resolve("src/shell/artifact-contract.ts"),
 ).href;
 const libraryDataUrl = pathToFileURL(resolve("src/shell/library-data.ts")).href;
+const pluginInitialStateUrl = pathToFileURL(
+  resolve("src/shell/plugin-initial-state.ts"),
+).href;
 
 function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -190,6 +193,16 @@ const gridModelStubUrl = dataModule(`
   export function sanitizeSheetName(name) {
     return String(name || "Sheet");
   }
+  // 保存那条路（W19 的面）不在本文件的判据里，但 import 必须解析得开。
+  export function gridCarrierProjectToIr(input) {
+    return input;
+  }
+  export function serializeGridIrProject(project) {
+    return JSON.stringify(project);
+  }
+  export function validateGridIrProject(project) {
+    return { ok: true, project, errors: [] };
+  }
 `);
 const gridSheetIdentityStubUrl = dataModule(`
   export function resolveGridActiveSheetId(sheets, requested) {
@@ -250,6 +263,8 @@ const gridEditorUrl = await compileModule(
     "./grid-sheet-identity": gridSheetIdentityStubUrl,
     "./office-file": officeFileStubUrl,
     "./grid-structure": gridStructureStubUrl,
+    // 真模块，不打桩：保存对象的判据是产品口径，桩一打就可能悄悄判反。
+    "../plugin-initial-state": pluginInitialStateUrl,
   },
 );
 const { useGridEditor } = await import(gridEditorUrl);
