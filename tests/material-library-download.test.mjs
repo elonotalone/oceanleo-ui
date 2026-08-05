@@ -9,74 +9,16 @@
 // 所以可以直接 `node --test tests/material-library-download.test.mjs`。
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiledModules = new Map();
-const inFlight = new Set();
-
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖：${relativePath}`);
-  inFlight.add(sourcePath);
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(
-        relative(process.cwd(), target),
-        overrides,
-      );
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-  inFlight.delete(sourcePath);
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiledModules.set(sourcePath, url);
-  return url;
-}
 
 // 下载闸门与下载动作都来自 artifact-client（W4 的文件，本用例只打桩不改动）。
 let downloadEvidence = {

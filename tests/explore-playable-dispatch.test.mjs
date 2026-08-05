@@ -11,17 +11,14 @@
 //   ⑥ feed 封面走 W1 的三态判据，`unknown-metadata` **不许**写「不可用」。
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
 
 import { normalizeArtifactProjection } from "../src/shell/artifact-contract.ts";
 import { isAdvancedEditableShelfItem } from "../src/shell/advanced-features.ts";
@@ -45,6 +42,8 @@ import {
   materialLibraryPageLimit,
   materialLibraryRequestKey,
 } from "../src/shell/material-library-cache.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 // ── 夹具：一行真实形状的 view_only artifact 游戏 ────────────────────────────
 
@@ -381,63 +380,6 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-const compiledDir = mkdtempSync(join(tmpdir(), "oceanleo-w8-feed-"));
-process.on("exit", () => rmSync(compiledDir, { recursive: true, force: true }));
-const compiled = new Map();
-let seq = 0;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-async function compileModule(relativePath, overrides) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiled.get(sourcePath);
-  if (cached) return cached;
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-  seq += 1;
-  const file = join(
-    compiledDir,
-    `${String(seq).padStart(3, "0")}-${basename(relativePath).replace(/\.tsx?$/, "")}.mjs`,
-  );
-  writeFileSync(file, output);
-  const url = pathToFileURL(file).href;
-  compiled.set(sourcePath, url);
-  return url;
-}
-
 /** 封面渲染器是 W1 那条链；这里只按它公布的三态接口给桩。 */
 const coverStub = dataModule(`
   import { createElement } from ${JSON.stringify(reactUrl)};

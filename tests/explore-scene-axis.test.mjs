@@ -15,22 +15,13 @@
 // （写法与 `tests/artifact-surface-rendered.test.mjs` 一致）。
 
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
 
 import { normalizeArtifactProjection } from "../src/shell/artifact-contract.ts";
 import { artifactProjectionToLibraryItem } from "../src/shell/library-data.ts";
@@ -43,6 +34,8 @@ import {
   resetSiteAppDirectories,
 } from "../src/shell/material-scene-axis.ts";
 import { templateMaterialEntry } from "../src/shell/material-library-template-source.ts";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 function durableItem({
   id = "artifact-1",
@@ -166,7 +159,6 @@ function templateRow({
     height: 800,
   };
 }
-
 
 // ---------------------------------------------------------------------------
 // ① 站点 app 目录的归一化
@@ -378,81 +370,6 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-// 编好的模块落成真文件再用 `file://` 引用（理由见 explore-sections.test.mjs：
-// 内联 data: URL 在这一族的菱形依赖上是指数级膨胀）。
-const compiledModules = new Map();
-const inFlight = new Set();
-const compiledDir = mkdtempSync(join(tmpdir(), "oceanleo-site-app-axis-"));
-process.on("exit", () => {
-  rmSync(compiledDir, { recursive: true, force: true });
-});
-let compiledSeq = 0;
-
-function fileModule(relativePath, source) {
-  compiledSeq += 1;
-  const name = `${String(compiledSeq).padStart(3, "0")}-${basename(
-    relativePath,
-  ).replace(/\.tsx?$/, "")}.mjs`;
-  const file = join(compiledDir, name);
-  writeFileSync(file, source);
-  return pathToFileURL(file).href;
-}
-
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖：${relativePath}`);
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(
-        relative(process.cwd(), target),
-        overrides,
-      );
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = fileModule(relativePath, output);
-  compiledModules.set(sourcePath, url);
-  return url;
-}
 
 const OVERRIDES = {
   "../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),

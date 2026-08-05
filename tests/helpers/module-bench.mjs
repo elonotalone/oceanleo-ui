@@ -41,9 +41,17 @@
 // —— 不是一个 280 KB 的 data URL base（node 原生报错就是那样，读不出是谁漏了）。
 // ============================================================================
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
@@ -76,6 +84,32 @@ const TRANSPILE_OPTIONS = {
 /** 一段 JS 源码 → 可 `import()` 的 `data:` 模块。桩就是拿它造的。 */
 export function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+}
+
+/**
+ * 编译产物落成**临时真文件**，用 `file://` 引用，不把依赖的 URL 内联进导入者的源码。
+ *
+ * 内联在菱形依赖上是指数级的：素材库那一族里 view / effects / presentation 各自都拉
+ * controller 与 template-source，每多一层 base64 再放大 4/3，`explore-sections`
+ * 实测 `ExplorePage` 一个模块的 URL 就长到 197 MB，整份测试被 OOM killer 杀掉。
+ * 落成文件后每个依赖只是一段短路径，体积不再叠加，栈回溯里也看得见是哪份模块。
+ */
+let scratchDir = null;
+let scratchSeq = 0;
+
+function scratchModule(sourceFile, code) {
+  if (!scratchDir) {
+    scratchDir = mkdtempSync(join(tmpdir(), "oceanleo-module-bench-"));
+    process.on("exit", () => rmSync(scratchDir, { recursive: true, force: true }));
+  }
+  scratchSeq += 1;
+  const name = `${String(scratchSeq).padStart(4, "0")}-${basename(sourceFile).replace(
+    /\.tsx?$/,
+    "",
+  )}.mjs`;
+  const target = join(scratchDir, name);
+  writeFileSync(target, code, "utf8");
+  return pathToFileURL(target).href;
 }
 
 /** 仓内路径 → `file://` URL。要把某个 specifier 钉死到真模块时用。 */
@@ -177,24 +211,31 @@ function chainText(chain) {
     : `\n  引用链：${chain.map(repoRelative).join(" → ")}`;
 }
 
-/** 一次 `compileModule()` 调用的上下文：桩表、缓存、缺包策略。 */
-function createContext(entry, stubs, options) {
-  const byPath = new Map();
-  for (const [specifier, replacement] of Object.entries(stubs)) {
-    if (!specifier.startsWith(".")) continue;
-    const target = resolveRelativeSpecifier(entry, specifier);
-    if (target) byPath.set(target, replacement);
-  }
+/** 一套桩表对应一个上下文：桩表、依赖图判定、编译产物缓存、缺包策略。 */
+function createContext(stubs, options) {
   return {
-    entry,
     stubs,
-    stubsByPath: byPath,
+    stubsByPath: new Map(),
     missingPackageStub: options.missingPackageStub ?? null,
+    entries: [],
     sources: new Map(),
     outputs: new Map(),
-    needsCompile: null,
+    dependents: new Map(),
+    needsCompile: new Map(),
     compiling: new Set(),
   };
+}
+
+/** 相对写法的桩 key 按入口目录解析一次，图里别处用另一条相对路径引到它时也认得出。 */
+function registerEntry(ctx, entry) {
+  if (ctx.entries.includes(entry)) return;
+  ctx.entries.push(entry);
+  for (const [specifier, replacement] of Object.entries(ctx.stubs)) {
+    if (!specifier.startsWith(".")) continue;
+    const target = resolveRelativeSpecifier(entry, specifier);
+    if (target) ctx.stubsByPath.set(target, replacement);
+  }
+  analyzeGraph(ctx, entry);
 }
 
 function sourceOf(ctx, file) {
@@ -228,14 +269,15 @@ function stubFor(ctx, file, specifier) {
  * 能真加载的一律真加载：测试里直接 import 的真模块与被编译文件拿到的是**同一份实例**，
  * 身份比较、模块级状态都不会分叉。
  */
-function analyzeGraph(ctx) {
-  const dependents = new Map();
-  const verdict = new Map();
-  const queue = [ctx.entry];
+function analyzeGraph(ctx, entry) {
+  const dependents = ctx.dependents;
+  const verdict = ctx.needsCompile;
+  const queue = [entry];
   const seen = new Set(queue);
 
   while (queue.length) {
     const file = queue.shift();
+    if (verdict.has(file)) continue;
     let forced = !nativelyLoadable(file);
     for (const specifier of staticSpecifiers(file, sourceOf(ctx, file))) {
       if (stubFor(ctx, file, specifier) !== undefined) {
@@ -267,12 +309,9 @@ function analyzeGraph(ctx) {
       pending.push(importer);
     }
   }
-
-  ctx.needsCompile = verdict;
 }
 
 function mustCompile(ctx, file) {
-  if (!ctx.needsCompile) analyzeGraph(ctx);
   // 图外的文件（桩里指过来的真模块之类）保守按「能加载就加载」处理。
   return ctx.needsCompile.get(file) ?? !nativelyLoadable(file);
 }
@@ -352,7 +391,7 @@ async function compileFile(ctx, file, chain) {
     );
   }
 
-  const url = `${dataModule(rewritten)}#${encodeURIComponent(repoRelative(file))}`;
+  const url = scratchModule(file, rewritten);
   ctx.compiling.delete(file);
   ctx.outputs.set(file, url);
   return url;
@@ -376,8 +415,34 @@ export async function compileModule(entryPath, stubs = {}, options = {}) {
       `编译台拿到的入口 ${repoRelative(file)} 不存在（路径相对仓根 ${REPO}）`,
     );
   }
-  const ctx = createContext(file, stubs, options);
-  return compileFile(ctx, file, []);
+  const ctx = contextFor(stubs, options);
+  registerEntry(ctx, file);
+  // 入口自己也能被 node 直接加载时就别编：测试拿到的与图里链过去的是同一份实例。
+  return mustCompile(ctx, file)
+    ? compileFile(ctx, file, [])
+    : pathToFileURL(file).href;
+}
+
+/**
+ * 桩表一样的多次调用共用同一个上下文，因而共用同一份编译产物。
+ * 这不是省时间：一份测试常常先编入口、再单独编图里的某个模块去取它的登记函数
+ * （`explore-sections` 就是先编 `ExplorePage.tsx` 再编 `material-scene-axis.ts`），
+ * 两次各编一份的话模块级状态会分叉，注册进去的东西在另一份里查不到。
+ * 桩表不同则必须分开——那本来就是「换一套替身再看一遍」的意思。
+ */
+const contexts = new Map();
+
+function contextFor(stubs, options) {
+  const key = JSON.stringify([
+    Object.entries(stubs).sort(([a], [b]) => (a < b ? -1 : 1)),
+    options.missingPackageStub ?? null,
+  ]);
+  let ctx = contexts.get(key);
+  if (!ctx) {
+    ctx = createContext(stubs, options);
+    contexts.set(key, ctx);
+  }
+  return ctx;
 }
 
 /**

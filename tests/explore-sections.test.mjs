@@ -6,111 +6,22 @@
 //   · 未 settle 只画骨架，整段 HTML 里一个「暂无」都没有（D5）；
 //   · 网格卡不挂下载（D4，下载只在详情浮层里）；
 //   · 缺 site key 时 fail-closed，不渲染货架。
-// 组件源码经 typescript.transpileModule 编译成真文件后导入，所以可以直接
-// `node --test tests/explore-sections.test.mjs`。
+// 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiledModules = new Map();
-const inFlight = new Set();
-
-// 编好的模块落成**真文件**，用 `file://` 引用，而不是把依赖的 data: URL 内联进
-// 导入者的源码里。
-//
-// 内联那种写法在菱形依赖上是指数级的：素材库这一族里 view / effects / presentation
-// 各自都拉 controller 与 template-source，每多一层 base64 再放大 4/3，实测
-// `ExplorePage` 一个模块的 URL 就长到 **197 MB**（controller 4.5 MB → presentation
-// 17 MB → effects 41 MB → view 103 MB），本文件因此被 cgroup OOM killer 杀在
-// anon-rss 5.7 GB。落成文件后每个依赖只是一段短路径，体积不再叠加，node 也能按路径
-// 给模块身份（data: URL 没有路径、不去重）。
-const compiledDir = mkdtempSync(join(tmpdir(), "oceanleo-explore-sections-"));
-process.on("exit", () => {
-  rmSync(compiledDir, { recursive: true, force: true });
-});
-let compiledSeq = 0;
-
-function fileModule(relativePath, source) {
-  compiledSeq += 1;
-  const name = `${String(compiledSeq).padStart(3, "0")}-${basename(relativePath).replace(/\.tsx?$/, "")}.mjs`;
-  const file = join(compiledDir, name);
-  writeFileSync(file, source);
-  return pathToFileURL(file).href;
-}
-
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖：${relativePath}`);
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") {
-      replacement = jsxRuntimeUrl;
-    }
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(
-        relative(process.cwd(), target),
-        overrides,
-      );
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = fileModule(relativePath, output);
-  compiledModules.set(sourcePath, url);
-  return url;
-}
 
 const OVERRIDES = {
   "../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),
@@ -173,7 +84,6 @@ const { ExplorePage, resetExploreSiteKeyWarnings } = await import(
 const { registerSiteAppDirectory, resetSiteAppDirectories } = await import(
   await compileModule("src/shell/material-scene-axis.ts", OVERRIDES)
 );
-
 
 /** word 站工作台的真分区（`WORD_SCENES`），外加一个没有场景词的 app 与一个 agent。 */
 const WORD_APPS = [

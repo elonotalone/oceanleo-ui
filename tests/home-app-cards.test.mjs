@@ -9,42 +9,24 @@
 //      ⑧ 大卡片（W2 的 TemplateShowcase）的接线：模板集合、切换条、三按钮目标；
 //      ⑨ 用户自建卡仍从 localStorage 读出并以无图 emoji 版式与 app 卡混排；
 //      ⑩ 首页两段废文案（intro 段渲染、BillingNotice）在共享包零残留 + 栏宽拆列。
-// 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以本文件可以直接
-// `node --test tests/home-app-cards.test.mjs` 跑，不需要仓库的 ts-extension-loader。
+// 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
 // 大卡片（`ImageLightbox.tsx`）走条件 portal，所以它 import 了 `react-dom`。这里必须接
 // **真**包：portal 出去的节点得和 `react-dom/client` 建的 root 属于同一个实例，替身给不了。
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiledModules = new Map();
-const inFlight = new Set();
 
 /**
  * 把一个 TS 源文件及其**全部相对依赖**递归编译成 data: 模块。
@@ -56,44 +38,6 @@ const inFlight = new Set();
  * 改成递归解析后，别的 owner 再往自己文件里加 import 不会再打断本文件。
  * `overrides` 只留给**必须**换替身的模块（tt() 词典、portal 弹窗、supabase 客户端）。
  */
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖，data: 模块无法表达：${relativePath}`);
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  // 只有**值** import 会活到这一步，`import type` 已被 transpile 抹掉。
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") replacement = jsxRuntimeUrl;
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiledModules.set(sourcePath, url);
-  return url;
-}
-
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
 // 两个弹窗（AddPromptModal / PromptCardModal）由 HomePromptModals 独立测试面负责，

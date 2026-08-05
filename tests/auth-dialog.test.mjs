@@ -21,68 +21,18 @@
 // `node --test tests/auth-dialog.test.mjs` 跑。
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiled = new Map();
-
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiled.get(sourcePath);
-  if (cached) return cached;
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") replacement = jsxRuntimeUrl;
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiled.set(sourcePath, url);
-  return url;
-}
 
 // tt() 替身：未命中词典时回退中文原文 + 做插值，与真 useUI 的回退语义一致。
 const uiStubUrl = dataModule(`

@@ -7,78 +7,23 @@
 //   ④ 没有功能图、没有代表 prompt 的 app 不得变成死卡（主动作按钮照常在）；
 //   ⑤ 卡片根不是 role=button、外壳里没有 onKeyDown（ARIA 嵌套 + 键盘双触发的老坑）；
 //   ⑥ 点主按钮不得顺带触发「点卡片主体」。
-// 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以可以直接
-// `node --test tests/app-card-shell.test.mjs`，不需要仓库的 ts-extension-loader。
+// 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-
-function dataModule(source) {
-  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-}
-
-function resolveRelative(fromPath, specifier) {
-  for (const suffix of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const candidate = resolve(dirname(fromPath), specifier + suffix);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const compiledModules = new Map();
-const inFlight = new Set();
 
 /** 把一个 TS 源文件及其全部相对依赖递归编译成 data: 模块（同 home-app-cards.test.mjs）。 */
-async function compileModule(relativePath, overrides = {}) {
-  const sourcePath = resolve(relativePath);
-  const cached = compiledModules.get(sourcePath);
-  if (cached) return cached;
-  assert.ok(!inFlight.has(sourcePath), `循环依赖，data: 模块无法表达：${relativePath}`);
-  inFlight.add(sourcePath);
-
-  let output = ts.transpileModule(await readFile(sourcePath, "utf8"), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
-
-  for (const specifier of new Set(
-    [...output.matchAll(/from\s+"([^"]+)"/g)].map(([, spec]) => spec),
-  )) {
-    let replacement = overrides[specifier];
-    if (!replacement && specifier === "react") replacement = reactUrl;
-    if (!replacement && specifier === "react/jsx-runtime") replacement = jsxRuntimeUrl;
-    if (!replacement && specifier.startsWith(".")) {
-      const target = resolveRelative(sourcePath, specifier);
-      assert.ok(target, `${relativePath} 里解析不到 ${specifier}`);
-      replacement = await compileModule(relative(process.cwd(), target), overrides);
-    }
-    assert.ok(replacement, `${relativePath} 依赖了无法在 data: 模块里解析的 ${specifier}`);
-    output = output.replaceAll(`from "${specifier}"`, `from "${replacement}"`);
-  }
-
-  inFlight.delete(sourcePath);
-  const url = `${dataModule(output)}#${encodeURIComponent(relativePath)}`;
-  compiledModules.set(sourcePath, url);
-  return url;
-}
-
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const OVERRIDES = {
   "../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),
