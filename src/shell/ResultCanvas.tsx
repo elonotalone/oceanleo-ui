@@ -33,7 +33,10 @@ import {
   normalizeAdvancedFeatureLaunch,
   type AdvancedFeatureLaunchEnvelope,
 } from "./advanced-feature-launch";
-import { pluginInstanceLibraryItem } from "./plugin-initial-state";
+import {
+  pluginInitialStateAvailable,
+  pluginInstanceLibraryItem,
+} from "./plugin-initial-state";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import {
@@ -220,15 +223,33 @@ export function ResultCanvas({
    * 挂载逻辑，也没有绕过 `editorCapabilityFor()`：取出来的实例照样要被判
    * `available` 才挂得起来。
    *
-   * **fail-closed**：查不到第一屏就把理由显示出来，不退回任何通用模板。以前这里
-   * 是按载体类型反查 5 份通用空白起手件之一，于是所有按键打开的都是同一份骨架；
-   * 那条路已经整条拆掉。
+   * **fail-closed，而且是运行期这一道**：查不到第一屏就把理由显示出来，不退回任何
+   * 通用模板。以前这里是按载体类型反查 5 份通用空白起手件之一，于是所有按键打开的
+   * 都是同一份骨架；那条路已经整条拆掉。
+   *
+   * 「哪些功能发按键」由生成期决定（清册只给做出了第一屏的功能发），构建期还有一道
+   * 测试闸复核。但这两道都在**发布之前**：一旦发布副本与第一屏再次不同步、而红掉的
+   * 测试被谁忽略过去，用户手上那枚按键仍然点得下去。所以这里再判一次
+   * `pluginInitialStateAvailable()`——宁可显示一句读得懂的话，也不挂一个空壳。
+   *
+   * 反过来，**路由层（`workbench-routes.ts`）刻意不加这道判定**：那里流过的还有用户
+   * 自己存下来的功能实例，它们的字节是用户的数据，不是第一屏。哪天某个功能的第一屏
+   * 被撤掉，用它存过的东西必须照样打得开；在路由层拿「有没有第一屏」当门槛，等于把
+   * 用户已有的数据一起锁死。
    */
   const startFeatureLaunch = useCallback(
     (envelope: AdvancedFeatureLaunchEnvelope) => {
       const launch = normalizeAdvancedFeatureLaunch(envelope.launch);
       if (!launch) {
         setFeatureLaunchError("这次打开请求缺少功能身份，已拒绝打开。");
+        return;
+      }
+      const launchName = launch.title || launch.pluginId;
+      if (!pluginInitialStateAvailable(launch.pluginId)) {
+        setFeatureLaunchError(
+          `「${launchName}」还没有做出打开后的第一屏，现在打开只会是一块空白，所以没有打开它。` +
+            "请先用这个 app 里的其它功能；这枚按键是错发的，可以反馈给站点维护者撤下。",
+        );
         return;
       }
       const instance = pluginInstanceLibraryItem(launch.pluginId, {
@@ -239,7 +260,8 @@ export function ResultCanvas({
       });
       if (!instance) {
         setFeatureLaunchError(
-          `「${launch.title || launch.pluginId}」还没有定义打开后的第一屏，暂时不能使用。`,
+          `「${launchName}」的第一屏取到了，却装不成一份可用的内容，所以没有打开它。` +
+            "这是数据本身的问题，重试不会有变化；请反馈给站点维护者。",
         );
         return;
       }

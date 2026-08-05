@@ -7,9 +7,9 @@
  * 现在派发的是**插件身份**（`pluginId`），第一屏由这枚插件自己的初始态给。
  *
  * **fail-closed**：查不到就返回 `null`，调用方不许退回通用模板，也不许猜一个
- * 回退编辑器。没有第一屏的插件就是不可用的插件——入口层应当用
- * `pluginInitialStateAvailable()` 把它的按键过滤掉；万一漏过来，承载层把理由
- * 显示出来，而不是打开一份骨架。
+ * 回退编辑器。没有第一屏的插件就是不可用的插件——按键在生成期就不该发出来；
+ * 万一漏过来，承载层 `ResultCanvas.startFeatureLaunch()` 会先问一次
+ * `pluginInitialStateAvailable()`，把理由显示出来，而不是打开一份骨架。
  *
  * 分工：初始态本身（`plugin-initial-states/`，逐插件的第一屏与内置数据）不归本
  * 文件管；本文件只做三件事——查表、把初始态包成承载层认得的 `LibraryItem`、
@@ -97,7 +97,13 @@ export function pluginInitialStateIds(): readonly string[] {
   );
 }
 
-/** 这枚插件能不能打开。**查不到就是不可用**，不许退回通用模板。 */
+/**
+ * 这枚插件能不能打开。**查不到就是不可用**，不许退回通用模板。
+ *
+ * 产品侧调用方是 `ResultCanvas.startFeatureLaunch()`：生成期与构建期那两道闸都在
+ * 发布之前，这一道是运行期的兜底。路由层不调它 —— 用户存下来的功能实例即使第一屏
+ * 后来被撤掉也必须打得开，理由写在 `startFeatureLaunch()` 的注释里。
+ */
 export function pluginInitialStateAvailable(pluginId: unknown): boolean {
   const id = normalizePluginId(pluginId);
   return Boolean(id) && hasPluginInitialState(id);
