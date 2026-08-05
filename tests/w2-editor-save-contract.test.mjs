@@ -6,14 +6,23 @@ import test from "node:test";
 
 import { ARTIFACT_TYPES } from "../src/shell/artifact-contract.ts";
 import {
+  ARTIFACT_PLUGIN_INSTANCE_TYPES,
   ARTIFACT_SAVE_NATIVE_COVER_TYPES,
   ARTIFACT_SAVE_STEPS,
   ARTIFACT_SAVE_STEP_LABEL,
+  PLUGIN_INSTANCE_SAVE_RULE,
   artifactSaveContractFor,
   artifactSaveStepMessage,
+  artifactSaveTargetAllowed,
+  artifactSaveTargetsFor,
   isArtifactSaveStepMessage,
   planArtifactSaveRenditions,
+  pluginInstanceSaveRuleFor,
 } from "../src/shell/doc-editors/artifact-save-contract.ts";
+import {
+  pluginInitialStateIds,
+  pluginInstanceLibraryItem,
+} from "../src/shell/plugin-initial-state.ts";
 import { saveFileToLibraryWithDependencies } from "../src/shell/doc-editors/doc-io.ts";
 import {
   renderDeckPreviewPng,
@@ -49,13 +58,165 @@ test("every registered artifact type has one save contract entry", () => {
 });
 
 test("native-cover types match matrix §3.2 exactly", () => {
-  assert.deepEqual([...ARTIFACT_SAVE_NATIVE_COVER_TYPES].sort(), [
+  // 矩阵那 14 行的判据一个字没动。
+  const matrixTypes = [...ARTIFACT_SAVE_NATIVE_COVER_TYPES]
+    .filter((artifactType) => artifactType !== "interactive_doc")
+    .sort();
+  assert.deepEqual(matrixTypes, [
     "deck",
     "document",
     "grid",
     "website",
     "workflow",
   ]);
+  // `interactive_doc` 不在矩阵里——矩阵写于 2026-07-2x，这一类是 `7bee5da`
+  // (07-30) 才进 ARTIFACT_TYPES 的。它算原生 cover 的出处是自己的提交路径：
+  // preview 位图可选，缺位图时返回 nativeCover=true
+  // (interactive-doc-persistence.ts:509-521,592)。
+  assert.deepEqual([...ARTIFACT_SAVE_NATIVE_COVER_TYPES].sort(), [
+    "deck",
+    "document",
+    "grid",
+    "interactive_doc",
+    "website",
+    "workflow",
+  ]);
+});
+
+test("geo_map publishes the three renditions its commit path actually sends", () => {
+  // geo-map-persistence.ts:640-690 发 preview + full + editor_manifest 三件，
+  // 且 :472-489 缺 PNG 封面就判 geo-map-commit-rejected（C37 短边 ≥ 128 px）。
+  // 所以 preview 是必需，不是「有就带上」。
+  const contract = artifactSaveContractFor("geo_map");
+  assert.deepEqual(contract.required, ["preview", "full", "editor_manifest"]);
+  assert.equal(contract.displayablePrimary, "bitmap");
+  // full 装工程 JSON 而不是位图：_SAVE_CONTRACT[GEO_MAP].full_media =
+  // "application/json"（该文件 :654-660）。
+  assert.equal(contract.fullSource, "delivery");
+
+  const complete = planArtifactSaveRenditions("geo_map", {
+    delivery: DELIVERY,
+    editorManifest: MANIFEST,
+    previewBitmap: BITMAP,
+  });
+  assert.equal(complete.ok, true);
+  assert.deepEqual(purposes(complete), ["preview", "full", "editor_manifest"]);
+  assert.equal(
+    complete.renditions.find((entry) => entry.purpose === "full").url,
+    DELIVERY.url,
+  );
+  assert.equal(complete.nativeCover, false);
+
+  const withoutCover = planArtifactSaveRenditions("geo_map", {
+    delivery: DELIVERY,
+    editorManifest: MANIFEST,
+  });
+  assert.equal(withoutCover.ok, false, "geo_map 缺封面必须在本地就拒绝");
+  assert.deepEqual(withoutCover.missing, ["preview"]);
+});
+
+test("interactive_doc keeps its cover optional and falls back to native bytes", () => {
+  // interactive-doc-persistence.ts:523-529：editor_manifest + full 恒发，
+  // preview 只在调用方给得出 previewBlob 时才带。把 preview 写成必需，
+  // 这一类在没有 canvas 的环境里就永远提交不了 revision。
+  const contract = artifactSaveContractFor("interactive_doc");
+  assert.deepEqual(contract.required, ["full", "editor_manifest"]);
+  assert.deepEqual(contract.optional, ["preview"]);
+  assert.equal(contract.displayablePrimary, "native");
+
+  const withoutCover = planArtifactSaveRenditions("interactive_doc", {
+    delivery: DELIVERY,
+    editorManifest: MANIFEST,
+  });
+  assert.equal(withoutCover.ok, true);
+  assert.deepEqual(purposes(withoutCover), ["full", "editor_manifest"]);
+  assert.equal(withoutCover.nativeCover, true);
+
+  const withCover = planArtifactSaveRenditions("interactive_doc", {
+    delivery: DELIVERY,
+    editorManifest: MANIFEST,
+    previewBitmap: BITMAP,
+  });
+  assert.deepEqual(purposes(withCover), ["preview", "full", "editor_manifest"]);
+  assert.equal(withCover.displayablePrimary, "bitmap");
+  assert.equal(withCover.nativeCover, false);
+
+  const manifestOnly = planArtifactSaveRenditions("interactive_doc", {
+    editorManifest: MANIFEST,
+  });
+  assert.equal(manifestOnly.ok, false);
+  assert.deepEqual(manifestOnly.missing, ["full"]);
+});
+
+test("the contract declares which carriers may hold a plugin instance", () => {
+  // 派生对账，不手抄名单：今天真有第一屏的插件（plugin-initial-states/，W23 定稿）
+  // 落在哪些载体类型上，本表就必须给哪些类型开 plugin-instance 那一档。
+  const carriers = new Set();
+  for (const pluginId of pluginInitialStateIds()) {
+    const instance = pluginInstanceLibraryItem(pluginId, { siteId: "test" });
+    assert.ok(instance, `${pluginId} 造不出实例`);
+    carriers.add(String(instance.meta.content_type));
+  }
+  assert.ok(carriers.size > 0, "一个第一屏都没有，这条会假绿");
+  assert.deepEqual(
+    [...ARTIFACT_PLUGIN_INSTANCE_TYPES].sort(),
+    [...carriers].sort(),
+    "契约表允许承载功能数据的载体，与真有第一屏的载体对不上",
+  );
+
+  for (const artifactType of ARTIFACT_TYPES) {
+    const allowed = artifactSaveTargetAllowed(artifactType, "plugin-instance");
+    assert.equal(
+      allowed,
+      carriers.has(artifactType),
+      `${artifactType} 的 plugin-instance 一档判错了`,
+    );
+    // 素材那一档每种类型都有：编辑器编辑真素材的路一条都没关。
+    assert.ok(artifactSaveTargetsFor(artifactType).includes("material"));
+    assert.equal(
+      pluginInstanceSaveRuleFor(artifactType),
+      allowed ? PLUGIN_INSTANCE_SAVE_RULE : null,
+    );
+  }
+  // 反面：不许把这条对账写成恒真。
+  assert.equal(artifactSaveTargetAllowed("deck", "plugin-instance"), false);
+  assert.equal(artifactSaveTargetAllowed("not-a-type", "material"), false);
+  assert.deepEqual(artifactSaveTargetsFor("not-a-type"), []);
+});
+
+test("the plugin-instance tier never plans a revision", () => {
+  // 这一档不发 revision（插件永不进货架）。走到 rendition 计划就是有人把用户填的
+  // 东西当成了一件待发布的素材——返回一份「合法的空计划」只会让它安静地发出去。
+  for (const artifactType of ARTIFACT_PLUGIN_INSTANCE_TYPES) {
+    const plan = planArtifactSaveRenditions(
+      artifactType,
+      { delivery: DELIVERY, editorManifest: MANIFEST, previewBitmap: BITMAP },
+      { saveTarget: "plugin-instance" },
+    );
+    assert.equal(plan.ok, false, artifactType);
+    assert.deepEqual(plan.renditions, [], artifactType);
+    assert.match(plan.error, /不发 revision/, artifactType);
+  }
+  // 不允许承载功能数据的类型，报的是另一件事：这种载体压根没有这一档。
+  const refused = planArtifactSaveRenditions(
+    "deck",
+    { delivery: DELIVERY, editorManifest: MANIFEST },
+    { saveTarget: "plugin-instance" },
+  );
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /不允许承载功能数据/);
+  // 缺省仍然是素材那一档：既有调用方一个字都不用改。
+  assert.equal(
+    planArtifactSaveRenditions("deck", {
+      delivery: DELIVERY,
+      editorManifest: MANIFEST,
+    }).ok,
+    true,
+  );
+  assert.equal(PLUGIN_INSTANCE_SAVE_RULE.publishesRevision, false);
+  assert.equal(PLUGIN_INSTANCE_SAVE_RULE.buildsDeliverable, false);
+  assert.equal(PLUGIN_INSTANCE_SAVE_RULE.rendersPreview, false);
+  assert.equal(PLUGIN_INSTANCE_SAVE_RULE.bytesGoTo, "session-snapshot");
 });
 
 test("office saves never publish an editor-manifest-only payload", () => {

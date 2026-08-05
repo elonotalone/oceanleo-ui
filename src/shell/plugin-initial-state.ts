@@ -158,7 +158,7 @@ export function pluginInstanceFromInitialState(
   const appId = String(options.appId || "").trim();
   const nonce = String(options.nonce || "").trim() || "1";
   const carrier = RUNTIME_CARRIER[state.runtime];
-  const key = `plugin:${id}:${nonce}`;
+  const key = pluginInstanceKey(id, nonce);
   return {
     key,
     source: "creation",
@@ -189,11 +189,54 @@ export function pluginInstanceLibraryItem(
   return state ? pluginInstanceFromInitialState(id, state, options) : null;
 }
 
-/** 这件东西是不是一份插件实例；不是就返回空串。 */
+/** 认插件身份时会读到的那几格；`meta` 之外的都是可选的证据。 */
+export type PluginIdentityFields = Pick<LibraryItem, "meta"> &
+  Partial<
+    Pick<LibraryItem, "key" | "artifactId" | "revisionId" | "artifact">
+  >;
+
+/** 实例键的唯一形状。造与认都走这里，别在别处拼第二种写法。 */
+export function pluginInstanceKey(pluginId: string, nonce: string): string {
+  return `plugin:${pluginId}:${nonce}`;
+}
+
+/** 从实例键里认回插件 id。不是这个形状就返回空串。 */
+export function pluginIdFromInstanceKey(value: unknown): string {
+  const key = String(value || "").trim();
+  if (!key.startsWith("plugin:")) return "";
+  const rest = key.slice("plugin:".length);
+  const separator = rest.indexOf(":");
+  return normalizePluginId(separator < 0 ? rest : rest.slice(0, separator));
+}
+
+/**
+ * 这件东西是不是一份插件实例；不是就返回空串。
+ *
+ * 认两处证据，都是 `pluginInstanceFromInitialState()` 自己写下的，不是第二套词汇：
+ *
+ * 1. `meta.plugin_id` —— 首选，一直如此；
+ * 2. `key` 的 `plugin:<插件id>:<nonce>` 形状 —— 兜底，**且只在这件东西身上一点
+ *    artifact 身份都没有的时候才认**。
+ *
+ * 第 2 条不是冗余：功能实例每存一次，工作台就把它写进会话快照
+ * （`InlineAdvancedWorkbenchShell` → `advanced-persistence-controller` →
+ * `advanced-session.withInlineEditorHistoryHead`），而那一层的 `META_KEYS` 白名单
+ * 里**没有** `plugin_id`（`advanced-session.ts:72-139`），于是从会话里捡回来的实例
+ * 会被判成一件素材：下一次保存就把用户记的账当成 xlsx 发进库，正是 W19 在保存入口
+ * 堵掉的那个洞在下一跳原样复现。`key` 在那一层是原样保留的，所以拿它认得回来。
+ * 白名单本身该不该补，写在 `signals/W26-request.md`（不在本人独占面上）。
+ *
+ * 「没有 artifact 身份」这一条是 fail-closed 的关键：真素材的 key 是
+ * `artifact:<root>:<rev>`，根本不长这样；万一有人造出一件既有 artifact 身份、
+ * key 又是 `plugin:` 开头的东西，按素材处理才是安全的那一侧。
+ */
 export function pluginIdForItem(
-  item: Pick<LibraryItem, "meta"> | null | undefined,
+  item: PluginIdentityFields | null | undefined,
 ): string {
-  return normalizePluginId(item?.meta?.plugin_id);
+  const declared = normalizePluginId(item?.meta?.plugin_id);
+  if (declared) return declared;
+  if (!item || item.artifactId || item.revisionId || item.artifact) return "";
+  return pluginIdFromInstanceKey(item.key);
 }
 
 /**
@@ -215,7 +258,7 @@ export function pluginIdForItem(
 export type PluginSaveTarget = "material" | "plugin-instance";
 
 export function saveTargetForItem(
-  item: Pick<LibraryItem, "meta"> | null | undefined,
+  item: PluginIdentityFields | null | undefined,
 ): PluginSaveTarget {
   return pluginIdForItem(item) ? "plugin-instance" : "material";
 }
@@ -225,7 +268,7 @@ export function saveTargetForItem(
  * 再缺就回注册表现查 —— 认不出的一律返回 `null`（fail-closed）。
  */
 export function pluginRuntimeForItem(
-  item: Pick<LibraryItem, "meta"> | null | undefined,
+  item: PluginIdentityFields | null | undefined,
 ): PluginRuntimeId | null {
   const pluginId = pluginIdForItem(item);
   if (!pluginId) return null;
