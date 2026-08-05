@@ -13,6 +13,7 @@
 
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import { pluginIdForItem } from "../plugin-initial-state";
 import { uploadFile } from "../../lib/database";
 import {
   INTERACTIVE_DOC_ARTIFACT_TYPE,
@@ -37,6 +38,32 @@ import {
   type EvaluateComputeGraphOptions,
 } from "./interactive-doc-source";
 
+/**
+ * 这一次保存的是**一件素材**，还是**一个功能里用户自己的数据**。
+ *
+ * 两者的判据不是同一套，这一格就是把它们分开的地方：
+ *
+ * - `material`：用户在编辑器里改一件真素材（PPT、图表、可算文档成品……）。
+ *   §8 的完备判据、§8.1 的字节下限、F6 孪生判定全部照旧，**一个字都不放宽**：
+ *   这些东西要进货架、要有份数与许可，不达标的半成品不许落库。
+ * - `plugin-instance`：用户在一个功能里输入的数据（间隔排程里加的第一张卡、
+ *   换算器里改的那组单位……）。这类数据**不是素材**：不进货架、没有份数、
+ *   没有许可与上游。把素材完备判据套上去，后果是用户加完第一张卡一保存就被拒，
+ *   其中 `attribution.entries ≥ 1` 那条等于要求用户给自己手写的卡片填一个
+ *   许可证 URL —— 这就是本轮 A-5 要根除的那份拷贝。
+ *
+ * 判据落在**保存的对象**上（`meta.plugin_id`），不落在编辑器上：同一个
+ * interactive-doc 内核既渲染插件，也编辑真素材。
+ */
+export type InteractiveDocSaveTarget = "material" | "plugin-instance";
+
+/** 手上这件东西该按哪套判据存。插件实例认 `meta.plugin_id`，其余一律按素材。 */
+export function interactiveDocSaveTargetForItem(
+  item: Pick<LibraryItem, "meta"> | null | undefined,
+): InteractiveDocSaveTarget {
+  return pluginIdForItem(item) ? "plugin-instance" : "material";
+}
+
 export type InteractiveDocCommitErrorCode =
   | "html-source-rejected"
   | "invalid-schema"
@@ -44,6 +71,7 @@ export type InteractiveDocCommitErrorCode =
   | "graph-cyclic"
   | "graph-invalid"
   | "degraded-not-saveable"
+  | "plugin-not-material"
   | "incomplete"
   | "source-too-small"
   | "roundtrip-mismatch"
@@ -130,11 +158,15 @@ export interface InteractiveDocCommitArgs {
   computeOptions?: EvaluateComputeGraphOptions;
   /** F6:同族既有产物,用于孪生判定。 */
   familyProjects?: InteractiveDocProject[];
+  /** 缺省按 `item` 自己的身份判（`interactiveDocSaveTargetForItem`）。 */
+  saveTarget?: InteractiveDocSaveTarget;
   dependencies?: InteractiveDocPersistenceDependencies;
 }
 
 export interface InteractiveDocCommitResult {
   ok: true;
+  /** 这一版按哪套判据存的；插件数据不进 artifact 链，下面几格身份为空。 */
+  saveTarget: InteractiveDocSaveTarget;
   json: string;
   project: InteractiveDocProject;
   byteSize: number;
@@ -244,6 +276,15 @@ function assertSourceContract(item: LibraryItem): void {
 /**
  * 保存前的全部闸门。视口层(W7)也可以单独调用它做「能不能存」的判断,
  * 不必先把字节传上去。
+ *
+ * 闸门分两段：
+ *   · **正确性**（schema、计算图有没有环 / 悬空引用 / degraded、结构化 roundtrip
+ *     确不确定）—— 两种保存对象都要过。存一份自己都解析不回来的字节，对谁都是坏的。
+ *   · **素材完备**（§8.1 字节下限、§8.2 blocks / prose / attribution / docKind 专项、
+ *     F6 孪生）—— **只有 `material` 要过**。这些判据回答的是「这件产物够不够格上货架」，
+ *     而插件里的用户数据根本不上货架（`_COMMON.md` §3.1 / §3.3）。
+ *
+ * 默认是 `material`：调用方不显式说明保存的是插件数据，就按最严那套走。
  */
 export function assertInteractiveDocSaveable(
   project: InteractiveDocProject,
@@ -251,8 +292,10 @@ export function assertInteractiveDocSaveable(
     compute?: ComputeGraphResult;
     computeOptions?: EvaluateComputeGraphOptions;
     familyProjects?: InteractiveDocProject[];
+    saveTarget?: InteractiveDocSaveTarget;
   } = {},
 ): { json: string; byteSize: number; project: InteractiveDocProject } {
+  const saveTarget: InteractiveDocSaveTarget = options.saveTarget || "material";
   const validated = validateInteractiveDocProject(project);
   if (!validated.ok) {
     throw new InteractiveDocCommitError(
@@ -285,20 +328,22 @@ export function assertInteractiveDocSaveable(
       "缺依赖件或重算超时的 degraded 态 MUST NOT 保存,否则制造第二个残缺产物(§3.3 / F7)。",
     );
   }
-  const completeness = assessInteractiveDocCompleteness(canonical, {
-    ...options.computeOptions,
-  });
-  if (!completeness.ok) {
-    const tooSmall = completeness.failures.some(
-      (failure) => failure.code === "source-too-small",
-    );
-    throw new InteractiveDocCommitError(
-      tooSmall ? "source-too-small" : "incomplete",
-      `工程未达 §8 完备判据:${completeness.failures
-        .map((failure) => `${failure.code} ${failure.message}`)
-        .join("; ")}`,
-      { failures: completeness.failures },
-    );
+  if (saveTarget === "material") {
+    const completeness = assessInteractiveDocCompleteness(canonical, {
+      ...options.computeOptions,
+    });
+    if (!completeness.ok) {
+      const tooSmall = completeness.failures.some(
+        (failure) => failure.code === "source-too-small",
+      );
+      throw new InteractiveDocCommitError(
+        tooSmall ? "source-too-small" : "incomplete",
+        `工程未达 §8 完备判据:${completeness.failures
+          .map((failure) => `${failure.code} ${failure.message}`)
+          .join("; ")}`,
+        { failures: completeness.failures },
+      );
+    }
   }
   const json = serializeInteractiveDocProject(canonical);
   const reopened = parseInteractiveDocSource(json);
@@ -308,7 +353,11 @@ export function assertInteractiveDocSaveable(
       "保存前结构化 roundtrip 不确定:serialize(parse(serialize(p))) 与 serialize(p) 不一致。",
     );
   }
-  for (const sibling of options.familyProjects || []) {
+  // F6 孪生也是货架判据：两个用户各自建的空排程表本来就该长得一样，
+  // 拿「与同族既有产物太像」去拒绝用户自己的数据是没有道理的。
+  for (const sibling of saveTarget === "material"
+    ? options.familyProjects || []
+    : []) {
     const similarity = interactiveDocSimilarity(canonical, sibling);
     if (similarity.twin) {
       throw new InteractiveDocCommitError(
@@ -361,6 +410,54 @@ async function uploadedBlob(
 }
 
 /**
+ * 保存一个功能里**用户自己的数据**。
+ *
+ * 与素材那条路的差别不只是判据松一档，是**根本不走同一条链**：
+ *   · 不上传、不发 revision、不碰 `artifact_revisions` —— 插件永不进货架，
+ *     用户在换算器里改的一组单位不是一件可下载的成品（`_COMMON.md` §3.1）。
+ *     字节回给调用方，由工作台把它记进本次会话的快照；要变成素材得走导出链，
+ *     导出物才是素材（§3.3）。
+ *   · 不套 §8 完备判据与 F6 孪生 —— 正确性仍然全查（见
+ *     `assertInteractiveDocSaveable`）。
+ *
+ * 一道反向闸：**带着 artifact 身份的东西不许从这条路走**。否则给一件真素材挂上
+ * `meta.plugin_id` 就能绕开完备判据落库，那正是本轮要堵的洞的镜像。
+ */
+async function commitPluginInstanceData(
+  args: InteractiveDocCommitArgs,
+): Promise<InteractiveDocCommitResult> {
+  if (isDurableLibraryItem(args.item) || args.item.artifactId) {
+    throw new InteractiveDocCommitError(
+      "plugin-not-material",
+      "这件内容带着 artifact 身份,不能按功能数据保存;真素材一律走素材那条路与它的完备判据。",
+    );
+  }
+  const { json, byteSize, project } = assertInteractiveDocSaveable(args.project, {
+    compute: args.compute,
+    computeOptions: args.computeOptions,
+    saveTarget: "plugin-instance",
+  });
+  return {
+    ok: true,
+    saveTarget: "plugin-instance",
+    json,
+    project,
+    byteSize,
+    sourceDigest: "",
+    previewDigest: "",
+    projectUrl: "",
+    projectSchema: INTERACTIVE_DOC_PROJECT_SCHEMA,
+    artifactType: INTERACTIVE_DOC_ARTIFACT_TYPE,
+    editorCapability: INTERACTIVE_DOC_EDITOR_CAPABILITY,
+    artifactId: "",
+    revisionId: "",
+    previousRevisionId: "",
+    nativeCover: true,
+    item: { ...args.item, content: json },
+  };
+}
+
+/**
  * 提交一版 interactive_doc。`full` 装 JSON 交付字节(§1.1 preview_purposes
  * 含 "full"),`editor_manifest` 装同一份可重开工程,`preview` 装位图(如有)。
  */
@@ -368,11 +465,17 @@ export async function commitInteractiveDocProject(
   args: InteractiveDocCommitArgs,
 ): Promise<InteractiveDocCommitResult> {
   const dependencies = args.dependencies || defaultDependencies;
+  const saveTarget =
+    args.saveTarget || interactiveDocSaveTargetForItem(args.item);
+  if (saveTarget === "plugin-instance") {
+    return commitPluginInstanceData(args);
+  }
   assertSourceContract(args.item);
   const { json, byteSize, project } = assertInteractiveDocSaveable(args.project, {
     compute: args.compute,
     computeOptions: args.computeOptions,
     familyProjects: args.familyProjects,
+    saveTarget,
   });
 
   let item = args.item;
@@ -483,6 +586,7 @@ export async function commitInteractiveDocProject(
 
   return {
     ok: true,
+    saveTarget: "material",
     json,
     project,
     byteSize,
