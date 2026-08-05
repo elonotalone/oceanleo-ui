@@ -17,6 +17,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
+import { inflateSync } from "node:zlib";
 
 import { strFromU8, unzipSync } from "fflate";
 
@@ -50,6 +51,7 @@ import {
   pluginExportForm,
 } from "../src/shell/plugin-export/plugin-export-contract.ts";
 import { renderPluginExport } from "../src/shell/plugin-export/plugin-export-render.ts";
+import { parseTrueType } from "../src/shell/plugin-export/truetype-subset.ts";
 import {
   auditPluginExportCatalog,
   formatPluginExportAudit,
@@ -981,6 +983,248 @@ test("「我的库」在两处收口都过了准入判据", () => {
   assert.match(
     source,
     /from "\.\/plugin-export\/plugin-export-contract"/,
+  );
+});
+
+/* ------------------------- PDF：中文是真字形，不是空白方块 ------------------------- */
+
+/**
+ * 从 PDF 字节里把对象抓出来。**刻意不引任何 PDF 库**：这条用例要证的就是
+ * 「我们自己写出去的那串字节里到底有什么」，用第三方解析器等于换个人复述一遍。
+ */
+function pdfObjects(bytes) {
+  const buffer = Buffer.from(bytes);
+  const text = buffer.toString("latin1");
+  const found = new Map();
+  const re = /(\d+) 0 obj([\s\S]*?)endobj/g;
+  let match;
+  while ((match = re.exec(text))) {
+    const body = match[2];
+    const bodyAt = match.index + match[1].length + " 0 obj".length;
+    const streamAt = body.indexOf("stream");
+    let stream = null;
+    if (streamAt >= 0) {
+      let start = streamAt + "stream".length;
+      // stream 关键字后面是 CRLF 或 LF，两种都要认。
+      if (body[start] === "\r") start += 1;
+      if (body[start] === "\n") start += 1;
+      stream = buffer.subarray(
+        bodyAt + start,
+        bodyAt + body.lastIndexOf("endstream"),
+      );
+    }
+    found.set(match[1] * 1, {
+      dict: streamAt < 0 ? body : body.slice(0, streamAt),
+      stream,
+    });
+  }
+  return { text, objects: found };
+}
+
+function pdfStream(parsed, id) {
+  const object = parsed.objects.get(id);
+  assert.ok(object?.stream, `${id} 号对象里没有 stream`);
+  return object.dict.includes("/FlateDecode")
+    ? inflateSync(object.stream)
+    : object.stream;
+}
+
+/** `/FontFile2` 指向的每一份嵌入字体，已解压并重新解析成 TrueType。 */
+function embeddedFonts(bytes) {
+  const parsed = pdfObjects(bytes);
+  return [...parsed.text.matchAll(/\/FontFile2 (\d+) 0 R/g)].map((match) => {
+    const file = pdfStream(parsed, Number(match[1]));
+    // 解析得动，就说明写进去的是一份结构完整的字体，不是一段占位字节。
+    return { bytes: file, font: parseTrueType(new Uint8Array(file)) };
+  });
+}
+
+/** ToUnicode CMap 反过来读：unicode 码位 → PDF 里那个字用的字形号。 */
+function pdfGlyphIdByCodePoint(bytes) {
+  const parsed = pdfObjects(bytes);
+  const map = new Map();
+  for (const match of parsed.text.matchAll(/\/ToUnicode (\d+) 0 R/g)) {
+    const cmap = pdfStream(parsed, Number(match[1])).toString("latin1");
+    for (const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
+      for (const pair of block[1].matchAll(
+        /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g,
+      )) {
+        map.set(parseInt(pair[2], 16), parseInt(pair[1], 16));
+      }
+    }
+    for (const block of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
+      for (const row of block[1].matchAll(
+        /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g,
+      )) {
+        const lo = parseInt(row[1], 16);
+        const hi = parseInt(row[2], 16);
+        const unicode = parseInt(row[3], 16);
+        for (let i = 0; i <= hi - lo; i += 1) map.set(unicode + i, lo + i);
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * 一个字形到底有没有轮廓。DroidSansFallback 的汉字绝大多数是**复合字形**：
+ * 它自己只有 24 字节的引用头，真正的笔画在被引用的部件里。所以「非空」必须
+ * 递归看到底——只看外层字节数会把「部件没被子集带进来」这种正好渲成空白方块的
+ * 情况判成绿。
+ */
+function glyphOutlineBytes(font, gid, seen = new Set()) {
+  if (seen.has(gid)) return 0;
+  seen.add(gid);
+  const range = font.glyphRange(gid);
+  if (range.end <= range.start) return 0;
+  const dv = new DataView(
+    font.bytes.buffer,
+    font.bytes.byteOffset,
+    font.bytes.byteLength,
+  );
+  const contours = dv.getInt16(range.start);
+  if (contours >= 0) return range.end - range.start;
+  let total = 0;
+  let cursor = range.start + 10;
+  for (;;) {
+    const flags = dv.getUint16(cursor);
+    total += glyphOutlineBytes(font, dv.getUint16(cursor + 2), seen);
+    cursor += 4 + (flags & 1 ? 4 : 2);
+    if (flags & 8) cursor += 2;
+    else if (flags & 0x40) cursor += 4;
+    else if (flags & 0x80) cursor += 8;
+    if (!(flags & 0x20)) break;
+  }
+  return total;
+}
+
+async function renderLedgerPdf(snapshot) {
+  const request = normalizePluginExportRequest(
+    ledgerExportRequest(snapshot, "pdf", {
+      siteId: "home",
+      appId: "personal-ledger",
+      exportedAt: "2026-08-05T04:00:00.000Z",
+    }),
+  );
+  assert.equal(request.ok, true, request.ok ? "" : request.error);
+  return renderPluginExport(request.request);
+}
+
+function ledgerOf(title, rows) {
+  return {
+    title,
+    currency: "¥",
+    entries: rows.map((row, index) => ({
+      date: `2026-08-0${index + 1}`,
+      category: row[0],
+      counterparty: row[1],
+      direction: index % 2 === 0 ? "out" : "in",
+      amount: 100 + index,
+      note: row[2],
+    })),
+  };
+}
+
+test("PDF 里的中文是真嵌进去的字形，逐个字形都有轮廓", async () => {
+  const rendered = await renderLedgerPdf(
+    ledgerOf("八月记账", [
+      ["餐饮", "楼下面馆", "午饭"],
+      ["工资", "公司", "七月薪资"],
+      ["交通", "地铁", "通勤"],
+    ]),
+  );
+  assert.equal(
+    Buffer.from(rendered.bytes.subarray(0, 8)).toString("latin1"),
+    "%PDF-1.7",
+  );
+  const fonts = embeddedFonts(rendered.bytes);
+  assert.equal(fonts.length, 2, "拉丁与中日韩两份字体都要嵌进去");
+  const byCodePoint = pdfGlyphIdByCodePoint(rendered.bytes);
+  // 文档里出现过的每一个汉字都必须在 ToUnicode 里查得到，并且那个字形有笔画。
+  // 少一条就说明它在页面上是个空白方块，而这正是不带字形的手写 PDF 的样子。
+  const cjk = fonts[1].font;
+  for (const character of "八月记账餐饮楼下面馆午饭工资公司七薪交通地铁勤日期分类对方向金额备注") {
+    const codePoint = character.codePointAt(0);
+    const gid = byCodePoint.get(codePoint);
+    assert.ok(
+      gid !== undefined,
+      `「${character}」U+${codePoint.toString(16).toUpperCase()} 没进 ToUnicode，选中与检索都拿不到它`,
+    );
+    assert.ok(
+      glyphOutlineBytes(cjk, gid) > 0,
+      `「${character}」的字形是空的——页面上就是一个空白方块`,
+    );
+  }
+  // 反面：字体表本身不许是「整包塞进去」的。随包那份 cjk 有界字集是 7096 个码位，
+  // 一份三行的台账用不到其中的百分之二。
+  assert.ok(
+    cjk.numGlyphs < 1000,
+    `嵌进去的中日韩字形有 ${cjk.numGlyphs} 个，不像是按文档切的子集`,
+  );
+  assert.ok(rendered.bytes.byteLength < 200_000, "一份三行台账的 PDF 不该这么大");
+});
+
+test("字形子集按文档现切：换一份文档，嵌进去的字形跟着换", async () => {
+  const a = await renderLedgerPdf(
+    ledgerOf("八月记账", [
+      ["餐饮", "楼下面馆", "午饭"],
+      ["工资", "公司", "七月薪资"],
+    ]),
+  );
+  const b = await renderLedgerPdf(
+    ledgerOf("旅行开销", [
+      ["医疗", "协和医院", "体检费用"],
+      ["旅行", "航空公司", "机票改签"],
+    ]),
+  );
+  const inA = pdfGlyphIdByCodePoint(a.bytes);
+  const inB = pdfGlyphIdByCodePoint(b.bytes);
+  // 两份文档各自独有的字，只许出现在自己那一份里。恒切全字库的话这四条全会红。
+  for (const character of "餐饮楼馆午") {
+    const codePoint = character.codePointAt(0);
+    assert.ok(inA.has(codePoint), `A 少了「${character}」`);
+    assert.equal(inB.has(codePoint), false, `B 白带了「${character}」`);
+  }
+  for (const character of "医协旅票") {
+    const codePoint = character.codePointAt(0);
+    assert.ok(inB.has(codePoint), `B 少了「${character}」`);
+    assert.equal(inA.has(codePoint), false, `A 白带了「${character}」`);
+  }
+  const fontsA = embeddedFonts(a.bytes);
+  const fontsB = embeddedFonts(b.bytes);
+  assert.notEqual(
+    fontsA[1].font.numGlyphs,
+    fontsB[1].font.numGlyphs,
+    "两份用字不同的文档切出了字形数完全相同的子集，八成没在切",
+  );
+  // 子集前缀是 PDF 规范要求的，而且必须随内容变：两份用字不同的子集自称同一个
+  // BaseFont 时，阅读器会把先看到的那一份缓存下来当成后一份，第二份文档的汉字
+  // 就会渲成别的字或空白。
+  //
+  // 只比中日韩那一份：两份文档的拉丁用字（数字、`-`、`.`）本来就一样，
+  // 它的前缀相同才是对的，拿它来比会把一条真判据变成必然红。
+  const subsetTagFor = (bytes, baseFont) => {
+    const match = new RegExp(`/BaseFont /([A-Z]{6})\\+${baseFont}\\b`).exec(
+      Buffer.from(bytes).toString("latin1"),
+    );
+    assert.ok(match, `${baseFont} 没有带六字母子集前缀`);
+    return match[1];
+  };
+  const cjkFontName = "DroidSansFallback";
+  assert.notEqual(
+    subsetTagFor(a.bytes, cjkFontName),
+    subsetTagFor(b.bytes, cjkFontName),
+  );
+  // 同一份文档两次导出必须给出同一个前缀，否则「同样的输入同样的字节」那条就破了。
+  const again = await renderLedgerPdf(
+    ledgerOf("旅行开销", [
+      ["医疗", "协和医院", "体检费用"],
+      ["旅行", "航空公司", "机票改签"],
+    ]),
+  );
+  assert.equal(
+    subsetTagFor(again.bytes, cjkFontName),
+    subsetTagFor(b.bytes, cjkFontName),
   );
 });
 
