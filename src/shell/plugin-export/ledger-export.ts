@@ -1,5 +1,6 @@
 /**
  * 台账（`ledger-register`，`grid` 内核的非编辑类功能件）的导出适配。
+ * 这是本波两条端到端链的第一条：台账 → Excel，见 `tests/plugin-export.test.mjs`。
  *
  * 操作员点名的场景就是这一条：「记账，可以导出记账记录并支持转为小红书或
  * htm 风格」。所以这里只做一件事——把台账的记账记录翻译成通用导出载荷，
@@ -19,11 +20,11 @@ import {
 } from "./plugin-export-contract";
 
 /**
- * 台账在 W10 清册里的 id 是 `ledger`（族 id 才是 `ledger-register`）。
- * 形态清单必须按清册那个 id 去查，抄一份到这里就等于让两处口径各走各的。
+ * 台账的 id 是 `ledger-register` —— 清册、第一屏、导出链共用的那一个 L3 族 id。
+ * R-1 之后短 id 已废除，没有别名也没有映射表；形态清单必须拿这个 id 去清册里查，
+ * 抄一份到这里就等于让两处口径各走各的。
  */
-export const LEDGER_SOURCE_ID = "ledger";
-export const LEDGER_FAMILY_ID = "ledger-register";
+export const LEDGER_SOURCE_ID = "ledger-register";
 export const LEDGER_SOURCE_LABEL = "台账";
 
 /** 清册声明的全部形态：xlsx / csv / pdf / long-image / html。 */

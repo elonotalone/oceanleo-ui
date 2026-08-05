@@ -46,6 +46,13 @@ export {
 } from "./plugin-export-render";
 
 export {
+  auditPluginExportCatalog,
+  formatPluginExportAudit,
+  type PluginExportAuditCode,
+  type PluginExportAuditIssue,
+} from "./plugin-export-audit";
+
+export {
   exportToLibrary,
   type PluginExportDependencies,
   type PluginExportPath,
@@ -55,7 +62,6 @@ export {
 
 export {
   LEDGER_EXPORT_FORMS,
-  LEDGER_FAMILY_ID,
   LEDGER_RENDERABLE_EXPORT_FORMS,
   LEDGER_SOURCE_ID,
   LEDGER_SOURCE_LABEL,

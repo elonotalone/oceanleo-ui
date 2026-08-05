@@ -25,6 +25,7 @@
 
 import type { ArtifactType } from "../artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import { pluginIdForItem } from "../plugin-initial-state";
 import { PLUGIN_EXPORT_CATALOG } from "./export-catalog";
 
 export const PLUGIN_EXPORT_SCHEMA = "oceanleo.plugin-export.v1";
@@ -234,9 +235,15 @@ export function isMaterialArtifactType(value: unknown): boolean {
 /**
  * 条目声称自己是「应用里打开来用的那个东西」而不是成品的全部信号。
  * 命中任意一条即不进库、不可下载。
+ *
+ * 第一条信号是 `meta.plugin_id`，判别直接借 `plugin-initial-state.ts` 的
+ * `pluginIdForItem()` —— 那是承载层造运行时实例时写进去的同一个字段，
+ * 也是保存守门人分档用的同一个判别（`saveTargetForItem()`）。在这里另写一套
+ * 「像不像运行时态」的启发式，等于让准入与保存两侧各认各的。
  */
 export function libraryEntryIsRuntimeSurface(item: LibraryItem): boolean {
   const meta = (item.meta || {}) as Record<string, unknown>;
+  if (pluginIdForItem(item)) return true;
   if (meta.oceanleo_surface === "runtime") return true;
   if (meta.library_source === "runtime") return true;
   if (meta.downloadable === false) return true;
