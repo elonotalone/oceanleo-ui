@@ -23,8 +23,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -878,11 +878,13 @@ const RETIRED_COPY = ["编辑模板", "高级编辑"];
  * 且要同时钉「源码里那个调用点还活着」：词条补了而调用点改了串，等于白补。
  */
 const V1_GAP_COPY = {
-  "素材分区": "src/shell/material-library-view.tsx",
+  // 2026-08-05（W25）：路径从 `material-library-view.tsx` 更正过来。`7fb8325`
+  // （2026-07-28）把那排分区 tab 整段搬进了工具条，词条表没跟着改，于是
+  // 「调用点还活着」每次全量都红了 8 天（`verdicts/W22-red-list.md` 第 9 条）。
+  // 调用点是活的（`material-library-toolbar.tsx:131` 的 `tt("素材分区")`），只是搬了家。
+  "素材分区": "src/shell/material-library-toolbar.tsx",
   "搜索本站素材": "src/shell/material-library-presentation.ts",
   "本站暂无可编辑素材": "src/shell/material-library-presentation.ts",
-  "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。":
-    "src/shell/material-library-presentation.ts",
   "正在准备预览…": "src/shell/library-viewer-first-paint.tsx",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。":
     "src/shell/artifact-client.ts",
@@ -890,6 +892,55 @@ const V1_GAP_COPY = {
     "src/shell/artifact-client.ts",
   "高级编辑已融入 App 的生成与库，正在返回工作台…": "src/shell/AdvancedFeaturePages.tsx",
 };
+
+/**
+ * 2026-08-05（W25）从 `V1_GAP_COPY` 摘出来的一格，**这是本轮查红时新翻出来的第二处**
+ * ——`assert.ok` 在第一条就抛，所以「素材分区」那条红一直挡着它，没人看见。
+ *
+ * `2ce8a49` 把这句提示改了后半句（「更多素材」那一层按 D1 下线了）：
+ *   旧：这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。
+ *   新：这里只显示本站已登记的素材；可换一个分区或关键词。
+ * **17 份词典全部只有旧串、一份都没有新串**（实测）。也就是说这句提示今天在 16 个
+ * 非中文 locale 上静默回退中文原文 —— 正是这一族测试要抓的那种失败。
+ *
+ * 为什么不在这里改绿：补译文要动 `src/i18n/ui/messages/` 那 17 份词典，
+ * 不在 W25 独占面里（`_COMMON.md` 红线 §2.3：越界修改即作废，哪怕改得对）。
+ * 已写进 `signals/W25-request.md`。**这张表只减不增**：下面的预算锁住它，
+ * 补完译文就把这一格挪回 `V1_GAP_COPY` 并把预算改小。
+ */
+const PENDING_I18N = [
+  {
+    live: "这里只显示本站已登记的素材；可换一个分区或关键词。",
+    retired: "这里只显示本站已登记的素材；可前往「更多素材」查看全平台模板。",
+    file: "src/shell/material-library-presentation.ts",
+    reason:
+      "2ce8a49 改了提示后半句（「更多素材」按 D1 下线），17 份词典只有旧串；补译文要动 i18n 词典，不在 W25 面上",
+  },
+];
+
+/** 今天真实欠着的 i18n 缺口数。只许改小。 */
+const PENDING_I18N_BUDGET = 1;
+
+/**
+ * 一条源串今天在 `src/` 里的实际落点（词典目录不算 —— 那是译文，不是调用点）。
+ * 只在断言失败时调用，用来把「搬家了」和「彻底没了」当场区分开。
+ */
+async function locateCopy(key) {
+  const entries = await readdir(resolve("src"), {
+    recursive: true,
+    withFileTypes: true,
+  });
+  const hits = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
+    const path = join(entry.parentPath ?? entry.path, entry.name);
+    if (path.includes(join("i18n", "ui", "messages"))) continue;
+    if ((await readFile(path, "utf8")).includes(key)) {
+      hits.push(path.slice(path.indexOf("src")));
+    }
+  }
+  return hits;
+}
 
 /** zh-TW 必须真本地化而不是逐字转繁的那几条。 */
 const ZH_TW_MUST_DIFFER = {
@@ -978,7 +1029,7 @@ test("已废除的两个旧按钮名：17 份词典里一条都不剩", () => {
   }
 });
 
-test("V1 判据 21/10 的 8 条补课词条：17 语逐格齐备（136 格）", () => {
+test("V1 判据 21/10 的 7 条补课词条：17 语逐格齐备（119 格）", () => {
   const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
   const cjkOk = new Set(["zh", "zh-TW", "ja", "ko"]);
   const zh = uiDictionaries.get("zh");
@@ -1004,15 +1055,52 @@ test("V1 判据 21/10 的 8 条补课词条：17 语逐格齐备（136 格）", 
       `zh-TW 的 "${key}" 照抄了简体`,
     );
   }
-  assert.equal(cells, 8 * 17, "应当覆盖 136 格");
+  assert.equal(cells, 7 * 17, "应当覆盖 119 格");
 });
 
-test("那 8 条词条的调用点还活着（词条补了而源串改了 = 白补）", async () => {
+/**
+ * 逐格判，不在第一条就抛 —— 原来这里用 `assert.ok` 一条一条抛，
+ * 「素材分区」那条红把后面「更多素材」那条红整整挡了 8 天没人看见。
+ * 失败消息里直接把源串今天在 `src/` 的实际落点报出来，搬了家的下次是一行改完的事，
+ * 不用再从头查一遍 git 历史。
+ */
+test("那 7 条词条的调用点还活着（词条补了而源串改了 = 白补）", async () => {
+  const broken = [];
   for (const [key, file] of Object.entries(V1_GAP_COPY)) {
     const source = await readFile(resolve(file), "utf8");
+    if (source.includes(key)) continue;
+    broken.push(`${file} 里找不到源串 "${key.slice(0, 24)}…"，实际落点：${
+      (await locateCopy(key)).join(" / ") || "src/ 里已经完全没有这个串（文案被改写或下线）"
+    }`);
+  }
+  assert.deepEqual(broken, [], "词条与调用点已经对不上");
+});
+
+test("欠着的 i18n 缺口：只减不增，且每一条都还真的欠着", async () => {
+  assert.equal(
+    PENDING_I18N.length,
+    PENDING_I18N_BUDGET,
+    "PENDING_I18N 与预算对不上：补完译文要把两边一起改小，新增缺口不许往这张表里塞",
+  );
+  const zh = uiDictionaries.get("zh");
+  for (const gap of PENDING_I18N) {
+    assert.ok(gap.reason.length >= 10, `"${gap.live.slice(0, 16)}…" 的登记理由太短`);
+    // 登记必须是真的：源码里那句新文案还在，且词典里确实还没有它。
+    const source = await readFile(resolve(gap.file), "utf8");
     assert.ok(
-      source.includes(key),
-      `${file} 里找不到源串 "${key.slice(0, 24)}…"，词条与调用点已经对不上`,
+      source.includes(gap.live),
+      `${gap.file} 里已经没有 "${gap.live.slice(0, 20)}…"：这条登记过期了，该删或该改`,
+    );
+    assert.equal(
+      typeof zh[gap.live],
+      "undefined",
+      `词典已经补上 "${gap.live.slice(0, 20)}…" 了：把它挪回 V1_GAP_COPY 并把预算改小`,
+    );
+    // 旧串确实已经从源码里退役 —— 否则这就不是「改了文案」，是两句并存。
+    assert.equal(
+      source.includes(gap.retired),
+      false,
+      `${gap.file} 里旧串还在，新旧两句并存，这条登记的定性不成立`,
     );
   }
 });

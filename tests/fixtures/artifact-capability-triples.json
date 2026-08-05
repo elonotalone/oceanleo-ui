@@ -1,0 +1,399 @@
+{
+  "note": "artifact_revisions 里今天真实存在的每一种 (artifact_type, source_format, editor_capability) 组合，\n以及 advancedCapabilityForArtifactFields() 对它解出的适配器。\n这份夹具取代了 /tmp/w7-aclass-rebuild/db-triples.json —— 那是 2026-07-27 落在 /tmp 的一次性导出，\n/tmp 早已清空，测试从此每次全量都红。仓外路径不许再当夹具，见 tests/w25-tests-out-of-repo-paths.test.mjs。\nliveRows 是采证当时的行数，仅作规模参考，不参与断言（库存每天在变，钉住行数只会制造假红）。",
+  "source": "supabase-sql oceanleo: select artifact_type, source_format, editor_capability, count(*) from artifact_revisions group by 1,2,3",
+  "capturedAt": "2026-08-05",
+  "triples": [
+    {
+      "artifactType": "audio",
+      "sourceFormat": "mp3",
+      "editorCapability": "",
+      "liveRows": 331,
+      "expect": null
+    },
+    {
+      "artifactType": "audio",
+      "sourceFormat": "mp3",
+      "editorCapability": "audio-editor",
+      "liveRows": 448,
+      "expect": {
+        "featureId": "audio_editing",
+        "adapter": "audio"
+      }
+    },
+    {
+      "artifactType": "audio",
+      "sourceFormat": "oceanleo.audio-project.v1",
+      "editorCapability": "audio-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "audio_editing",
+        "adapter": "audio"
+      }
+    },
+    {
+      "artifactType": "audio",
+      "sourceFormat": "ogg",
+      "editorCapability": "audio-editor",
+      "liveRows": 812,
+      "expect": {
+        "featureId": "audio_editing",
+        "adapter": "audio"
+      }
+    },
+    {
+      "artifactType": "chart",
+      "sourceFormat": "html",
+      "editorCapability": "",
+      "liveRows": 44,
+      "expect": null
+    },
+    {
+      "artifactType": "chart",
+      "sourceFormat": "oceanleo.chart.v1",
+      "editorCapability": "chart-editor",
+      "liveRows": 91,
+      "expect": {
+        "featureId": "chart_editing",
+        "adapter": "chart-editor@1"
+      }
+    },
+    {
+      "artifactType": "composite_image",
+      "sourceFormat": "oceanleo-scene+json",
+      "editorCapability": "composite-image-editor",
+      "liveRows": 13,
+      "expect": {
+        "featureId": "image_editing",
+        "adapter": "image"
+      }
+    },
+    {
+      "artifactType": "composite_image",
+      "sourceFormat": "oceanleo.design-document.v1",
+      "editorCapability": "design-canvas",
+      "liveRows": 234,
+      "expect": {
+        "featureId": "design_canvas",
+        "adapter": "design-canvas"
+      }
+    },
+    {
+      "artifactType": "deck",
+      "sourceFormat": "oceanleo.deck.v1",
+      "editorCapability": "deck-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "presentation_editing",
+        "adapter": "deck"
+      }
+    },
+    {
+      "artifactType": "deck",
+      "sourceFormat": "pptx",
+      "editorCapability": "",
+      "liveRows": 243,
+      "expect": null
+    },
+    {
+      "artifactType": "deck",
+      "sourceFormat": "pptx",
+      "editorCapability": "deck-editor",
+      "liveRows": 844,
+      "expect": {
+        "featureId": "presentation_editing",
+        "adapter": "deck"
+      }
+    },
+    {
+      "artifactType": "document",
+      "sourceFormat": "docx",
+      "editorCapability": "",
+      "liveRows": 6,
+      "expect": null
+    },
+    {
+      "artifactType": "document",
+      "sourceFormat": "docx",
+      "editorCapability": "richdoc-editor",
+      "liveRows": 1498,
+      "expect": {
+        "featureId": "document_editing",
+        "adapter": "richdoc"
+      }
+    },
+    {
+      "artifactType": "document",
+      "sourceFormat": "json",
+      "editorCapability": "",
+      "liveRows": 508,
+      "expect": null
+    },
+    {
+      "artifactType": "document",
+      "sourceFormat": "tiptap-json@1",
+      "editorCapability": "richdoc-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "document_editing",
+        "adapter": "richdoc"
+      }
+    },
+    {
+      "artifactType": "document",
+      "sourceFormat": "txt",
+      "editorCapability": "richdoc-editor",
+      "liveRows": 1,
+      "expect": {
+        "featureId": "document_editing",
+        "adapter": "richdoc"
+      }
+    },
+    {
+      "artifactType": "game",
+      "sourceFormat": "oceanleo.game-bundle.v1",
+      "editorCapability": "game-editor",
+      "liveRows": 212,
+      "expect": {
+        "featureId": "game_editing",
+        "adapter": "game"
+      }
+    },
+    {
+      "artifactType": "grid",
+      "sourceFormat": "oceanleo.grid.v1",
+      "editorCapability": "grid-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "spreadsheet_editing",
+        "adapter": "grid"
+      }
+    },
+    {
+      "artifactType": "grid",
+      "sourceFormat": "xlsx",
+      "editorCapability": "",
+      "liveRows": 6,
+      "expect": null
+    },
+    {
+      "artifactType": "grid",
+      "sourceFormat": "xlsx",
+      "editorCapability": "grid-editor",
+      "liveRows": 588,
+      "expect": {
+        "featureId": "spreadsheet_editing",
+        "adapter": "grid"
+      }
+    },
+    {
+      "artifactType": "interactive_doc",
+      "sourceFormat": "oceanleo.interactive-doc.v1",
+      "editorCapability": "interactive-doc-editor",
+      "liveRows": 1,
+      "expect": {
+        "featureId": "interactive_doc_editing",
+        "adapter": "interactive-doc"
+      }
+    },
+    {
+      "artifactType": "model_3d",
+      "sourceFormat": "glb",
+      "editorCapability": "model-3d-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "model_3d",
+        "adapter": "threed"
+      }
+    },
+    {
+      "artifactType": "model_3d",
+      "sourceFormat": "gltf",
+      "editorCapability": "",
+      "liveRows": 60,
+      "expect": null
+    },
+    {
+      "artifactType": "model_3d",
+      "sourceFormat": "gltf",
+      "editorCapability": "model-3d-editor",
+      "liveRows": 170,
+      "expect": {
+        "featureId": "model_3d",
+        "adapter": "threed"
+      }
+    },
+    {
+      "artifactType": "model_3d",
+      "sourceFormat": "hdr",
+      "editorCapability": "",
+      "liveRows": 80,
+      "expect": null
+    },
+    {
+      "artifactType": "model_3d",
+      "sourceFormat": "jpg",
+      "editorCapability": "",
+      "liveRows": 80,
+      "expect": null
+    },
+    {
+      "artifactType": "pdf",
+      "sourceFormat": "pdf",
+      "editorCapability": "",
+      "liveRows": 8,
+      "expect": null
+    },
+    {
+      "artifactType": "pdf",
+      "sourceFormat": "pdf",
+      "editorCapability": "pdf-editor",
+      "liveRows": 238,
+      "expect": {
+        "featureId": "pdf_editing",
+        "adapter": "pdf"
+      }
+    },
+    {
+      "artifactType": "single_file_image",
+      "sourceFormat": "png",
+      "editorCapability": "",
+      "liveRows": 22,
+      "expect": null
+    },
+    {
+      "artifactType": "single_file_image",
+      "sourceFormat": "png",
+      "editorCapability": "image-editor",
+      "liveRows": 50321,
+      "expect": {
+        "featureId": "image_editing",
+        "adapter": "image"
+      }
+    },
+    {
+      "artifactType": "single_file_image",
+      "sourceFormat": "webp",
+      "editorCapability": "",
+      "liveRows": 7013,
+      "expect": null
+    },
+    {
+      "artifactType": "single_file_image",
+      "sourceFormat": "webp",
+      "editorCapability": "image-editor",
+      "liveRows": 8933,
+      "expect": {
+        "featureId": "image_editing",
+        "adapter": "image"
+      }
+    },
+    {
+      "artifactType": "vector_image",
+      "sourceFormat": "svg",
+      "editorCapability": "",
+      "liveRows": 46487,
+      "expect": null
+    },
+    {
+      "artifactType": "vector_image",
+      "sourceFormat": "svg",
+      "editorCapability": "vector-editor",
+      "liveRows": 50416,
+      "expect": {
+        "featureId": "design_canvas",
+        "adapter": "design-canvas"
+      }
+    },
+    {
+      "artifactType": "video",
+      "sourceFormat": "mp4",
+      "editorCapability": "",
+      "liveRows": 1224,
+      "expect": null
+    },
+    {
+      "artifactType": "video",
+      "sourceFormat": "mp4",
+      "editorCapability": "video-timeline",
+      "liveRows": 1398,
+      "expect": {
+        "featureId": "video_editing",
+        "adapter": "video-timeline"
+      }
+    },
+    {
+      "artifactType": "video",
+      "sourceFormat": "oceanleo.timeline.v1",
+      "editorCapability": "video-timeline",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "video_editing",
+        "adapter": "video-timeline"
+      }
+    },
+    {
+      "artifactType": "website",
+      "sourceFormat": "html",
+      "editorCapability": "",
+      "liveRows": 9,
+      "expect": null
+    },
+    {
+      "artifactType": "website",
+      "sourceFormat": "oceanleo.website-project.v1",
+      "editorCapability": "website-editor",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "website_finetuning",
+        "adapter": "website"
+      }
+    },
+    {
+      "artifactType": "website",
+      "sourceFormat": "website-source@1",
+      "editorCapability": "website-editor",
+      "liveRows": 413,
+      "expect": {
+        "featureId": "website_finetuning",
+        "adapter": "website"
+      }
+    },
+    {
+      "artifactType": "workflow",
+      "sourceFormat": "oceanleo.video-canvas.v1",
+      "editorCapability": "video-canvas",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "video_canvas",
+        "adapter": "video-canvas"
+      }
+    },
+    {
+      "artifactType": "workflow",
+      "sourceFormat": "oceanleo.video.project.v2",
+      "editorCapability": "video-canvas",
+      "liveRows": 63,
+      "expect": {
+        "featureId": "video_canvas",
+        "adapter": "video-canvas"
+      }
+    },
+    {
+      "artifactType": "workflow",
+      "sourceFormat": "oceanleo.workflow.v1",
+      "editorCapability": "design-canvas",
+      "liveRows": 73,
+      "expect": {
+        "featureId": "design_canvas",
+        "adapter": "design-canvas"
+      }
+    },
+    {
+      "artifactType": "workflow",
+      "sourceFormat": "url",
+      "editorCapability": "",
+      "liveRows": 2,
+      "expect": null
+    }
+  ]
+}

@@ -286,20 +286,27 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
   );
 });
 
+// 2026-08-05（W25）：这一格原来还读
+// `/opt/cursor-workspaces/oceandino/scratch/advanced-editors-hardening-2026-07-24/V7-advanced/live_acceptance.py`
+// 并对它断言四条（`arg=value`、`arg=str(expected).lower()`、`arg=before + 1`、
+// `data-pdf-page-count`）。那个 scratch 目录已不存在（`ce7e3bf`，2026-07-24 加的行），
+// 于是整份文件 `ENOENT`（`verdicts/W22-red-list.md` 第 10 条）。
+//
+// 判断结果是**删掉那四条，不搬进仓**，理由逐条：
+//   · `data-pdf-page-count` —— 同一个 test 里下面就直接对 `PdfStage.tsx` 断言了两遍，
+//     真正罩着产品行为的是那两条，读 harness 只是绕道抄了一遍；
+//   · 另外三条判的是那个 Python 验收脚本自己怎么传参，罩的是 harness 的内部形状，
+//     在本仓里没有对应物，搬进来也只是把一份死脚本供起来；
+//   · 它本来的用法是真浏览器验收，而红线 §2.6 已明令禁止浏览器验证，这条路不会再走。
+// 下面五条对仓内源码的断言是这一格的实际价值，原样保留。
 test("W13 V7 product gates: PDF page count, audio project key, mute chrome, richdoc source", async () => {
-  const [pdfStage, pdfWorkbench, audio, toolbar, richdoc, harness] =
+  const [pdfStage, pdfWorkbench, audio, toolbar, richdoc] =
     await Promise.all([
       source("src/shell/media-editors/PdfStage.tsx"),
       source("src/shell/media-editors/use-pdf-workbench.ts"),
       source("src/shell/media-editors/AudioWorkbench.tsx"),
       source("src/shell/video-editor/VideoTimelineContextToolbar.tsx"),
       source("src/shell/doc-editors/rich-doc-model.ts"),
-      readFile(
-        resolve(
-          "/opt/cursor-workspaces/oceandino/scratch/advanced-editors-hardening-2026-07-24/V7-advanced/live_acceptance.py",
-        ),
-        "utf8",
-      ),
     ]);
 
   assert.match(pdfStage, /data-pdf-page-count=\{editor\.pageCount > 0/);
@@ -320,8 +327,4 @@ test("W13 V7 product gates: PDF page count, audio project key, mute chrome, rich
     richdoc,
     /item\.meta\.editor_source_url \|\| ""\)\.trim\(\) \|\| item\.url/,
   );
-  assert.match(harness, /arg=value/);
-  assert.match(harness, /arg=str\(expected\)\.lower\(\)/);
-  assert.match(harness, /arg=before \+ 1/);
-  assert.match(harness, /data-pdf-page-count/);
 });
