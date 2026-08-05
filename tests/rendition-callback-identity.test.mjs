@@ -513,9 +513,10 @@ test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象
   }
 });
 
-/* ------------------- 失败文案不许承诺不存在的按钮 ------------------------- */
+/* ---------------- 失败文案承诺的动作，界面必须真的允许 -------------------- */
 
-function exportedFunctionBody(relativePath, name, sourceText) {
+/** 取出失败文案函数里 `tail` 那句 —— 承诺出路的就是它，`head` 只描述现状。 */
+function failureMessageTail(relativePath, functionName, sourceText) {
   const file = ts.createSourceFile(
     relativePath,
     sourceText,
@@ -523,59 +524,173 @@ function exportedFunctionBody(relativePath, name, sourceText) {
     true,
     ts.ScriptKind.TS,
   );
-  let body = null;
+  let tail = null;
   const visit = (node) => {
     if (
       ts.isFunctionDeclaration(node) &&
       node.name &&
-      node.name.text === name
+      node.name.text === functionName
     ) {
-      body = node.getText();
+      const collect = (inner) => {
+        if (
+          ts.isVariableDeclaration(inner) &&
+          ts.isIdentifier(inner.name) &&
+          inner.name.text === "tail" &&
+          inner.initializer
+        ) {
+          const literals = [];
+          const walk = (child) => {
+            if (
+              ts.isStringLiteral(child) ||
+              ts.isNoSubstitutionTemplateLiteral(child)
+            ) {
+              literals.push(child.text);
+            }
+            ts.forEachChild(child, walk);
+          };
+          walk(inner.initializer);
+          tail = literals.join("");
+        }
+        ts.forEachChild(inner, collect);
+      };
+      collect(node);
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
-  assert.ok(body, `${relativePath} 里找不到 ${name}`);
-  return body;
+  assert.ok(tail, `${relativePath} 的 ${functionName} 里找不到 tail 那句文案`);
+  return tail;
 }
 
-test("失败文案里指出的重试入口，必须真的有外壳在渲染", async () => {
+/** 上传口能不能真的吃下一份文档源，而不是只收图片。 */
+function routeTakesDocumentUpload(route) {
+  const accept = route.match(/upload:\s*\{[\s\S]*?accept:\s*"([^"]*)"/);
+  if (!accept) return false;
+  // `image/*` 的选择器压根让用户选不到 PPTX/DOCX，选了也会被静默跳过。
+  if (/^\s*image\/\*\s*$/.test(accept[1])) return false;
+  return /editor\.importSource/.test(route);
+}
+
+/**
+ * 文案里允许出现的承诺，**每一条都要有对应的界面能力做后盾**。
+ * 只按字面匹配某几个字挡不住这类缺陷：上一轮「点「重新载入」」被换成
+ * 「上传本地 PPTX」，按钮换成了动作，缺陷是同一个。所以这里反过来做：
+ * 尾句里的每一小句都必须命中下表的某一条，并且那一条的 `available` 成立；
+ * **命中不了任何一条就判红**，逼下一个改文案的人把新承诺登记进来。
+ */
+const PROMISED_WAYS_OUT = [
+  {
+    id: "reload-button",
+    matches: /重新载入/,
+    available: ({ stage, route }) =>
+      /editor\.reload/.test(stage) || /editor\.reload/.test(route),
+    missing: "文案让用户点「重新载入」，但 stage / route 都没渲染 editor.reload",
+  },
+  {
+    id: "local-upload",
+    matches: /上传本地/,
+    available: ({ route }) => routeTakesDocumentUpload(route),
+    missing:
+      "文案让用户上传本地文件，但这条路由的上传口收不了文档源" +
+      "（accept 只有 image/*，或没接到 editor.importSource）",
+  },
+  {
+    id: "reopen",
+    matches: /关掉.*重新打开/,
+    // 卸载再挂载必定重跑加载 effect，这条不依赖任何外壳实现，永远成立。
+    available: () => true,
+    missing: "",
+  },
+];
+
+test("失败文案里承诺的每一条出路，界面都必须真的支持", async () => {
   const cases = [
-    [
+    {
+      hookPath: "src/shell/doc-editors/use-grid-editor.ts",
+      fn: "gridSourceFailureMessage",
+      stagePath: "src/shell/doc-editors/GridStage.tsx",
+      routePath: "src/shell/advanced-routes/GridRoute.tsx",
+    },
+    {
+      hookPath: "src/shell/doc-editors/use-deck-editor.ts",
+      fn: "deckSourceFailureMessage",
+      stagePath: "src/shell/doc-editors/DeckStage.tsx",
+      routePath: "src/shell/advanced-routes/DeckRoute.tsx",
+    },
+    {
+      hookPath: "src/shell/doc-editors/use-rich-doc-editor.ts",
+      fn: "richDocSourceFailureMessage",
+      stagePath: "src/shell/doc-editors/RichDocStage.tsx",
+      routePath: "src/shell/advanced-routes/RichDocRoute.tsx",
+    },
+  ];
+
+  for (const { hookPath, fn, stagePath, routePath } of cases) {
+    const [hook, stage, route] = await Promise.all([
+      readFile(resolve(hookPath), "utf8"),
+      readFile(resolve(stagePath), "utf8"),
+      readFile(resolve(routePath), "utf8"),
+    ]);
+    const tail = failureMessageTail(hookPath, fn, hook);
+    const clauses = tail
+      .split(/[，。；]/)
+      .map((clause) => clause.replace(/^或者?/, "").trim())
+      .filter(Boolean);
+    assert.ok(clauses.length > 0, `${fn} 的尾句是空的`);
+
+    for (const clause of clauses) {
+      const way = PROMISED_WAYS_OUT.find((entry) => entry.matches.test(clause));
+      assert.ok(
+        way,
+        `${fn} 的「${clause}」不在已登记的出路里 —— ` +
+          "新承诺必须先登记并给出界面能力的证据，否则又会变成一句空话",
+      );
+      assert.ok(
+        way.available({ stage, route, hook }),
+        `${fn} 的「${clause}」：${way.missing}`,
+      );
+    }
+  }
+});
+
+test("grid 的失败态是本波真正交付的那一份：文案与按钮两边都在", async () => {
+  const [hook, stage] = await Promise.all([
+    readFile(resolve("src/shell/doc-editors/use-grid-editor.ts"), "utf8"),
+    readFile(resolve("src/shell/doc-editors/GridStage.tsx"), "utf8"),
+  ]);
+  assert.match(
+    failureMessageTail(
       "src/shell/doc-editors/use-grid-editor.ts",
       "gridSourceFailureMessage",
-      "src/shell/doc-editors/GridStage.tsx",
-    ],
-    [
+      hook,
+    ),
+    /重新载入/,
+  );
+  assert.match(stage, /editor\.reload/);
+  assert.match(stage, /重新载入/);
+});
+
+test("deck 不许再承诺它的上传口根本不收的文件", async () => {
+  const route = await readFile(
+    resolve("src/shell/advanced-routes/DeckRoute.tsx"),
+    "utf8",
+  );
+  // 这条是黄一复发的具体形状：DeckRoute 的上传口只收图片，非图片会被静默跳过。
+  assert.equal(
+    routeTakesDocumentUpload(route),
+    false,
+    "DeckRoute 的上传口如果真的能收 PPTX 了，请连同 deckSourceFailureMessage 的尾句一起更新",
+  );
+  const hook = await readFile(
+    resolve("src/shell/doc-editors/use-deck-editor.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    failureMessageTail(
       "src/shell/doc-editors/use-deck-editor.ts",
       "deckSourceFailureMessage",
-      "src/shell/doc-editors/DeckStage.tsx",
-    ],
-    [
-      "src/shell/doc-editors/use-rich-doc-editor.ts",
-      "richDocSourceFailureMessage",
-      "src/shell/doc-editors/RichDocStage.tsx",
-    ],
-  ];
-  const rendered = [];
-  for (const [hookPath, name, stagePath] of cases) {
-    const hook = await readFile(resolve(hookPath), "utf8");
-    const stage = await readFile(resolve(stagePath), "utf8");
-    const promises = exportedFunctionBody(hookPath, name, hook).includes(
-      "重新载入",
-    );
-    const renders = /editor\.reload/.test(stage);
-    rendered.push(renders);
-    assert.ok(
-      !promises || renders,
-      `${name} 让用户去点「重新载入」，但 ${stagePath} 根本没渲染这颗按钮 —— ` +
-        "承诺一颗不存在的按钮比不提它更糟",
-    );
-  }
-  // grid 是本波真正交付出去的失败态：文案与按钮两边都必须在。
-  assert.ok(rendered[0], "GridStage 必须渲染「重新载入」按钮");
-  assert.match(
-    await readFile(resolve("src/shell/doc-editors/GridStage.tsx"), "utf8"),
-    /重新载入/,
+      hook,
+    ),
+    /上传本地/,
   );
 });
