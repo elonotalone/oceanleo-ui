@@ -218,6 +218,7 @@ const inertComponentStubUrl = dataModule(`
   }
   export function resolveActiveMaterialAction() { return undefined; }
   export function resolveInlineAdvancedDrawers() { return []; }
+  export async function flushAdvancedWorkBeforeLeave() { return { ok: true }; }
   export function useInlineAdvancedWorkbenchDrop() {
     return { dropMessage: "", performUpload() {}, handleDrop() {} };
   }

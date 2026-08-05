@@ -21,6 +21,7 @@ import {
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import {
+  flushAdvancedWorkBeforeLeave,
   resolveActiveMaterialAction,
   resolveInlineAdvancedDrawers,
 } from "./inline-advanced-shell-helpers";
@@ -348,22 +349,7 @@ export function InlineAdvancedWorkbenchShell({
     closingRef.current = true;
     void (async () => {
       if (editorDirty || autoSave.state !== "saved") {
-        const flushed =
-          autoSave.state === "error"
-            ? { ok: false as const, error: "自动保存仍未同步" }
-            : await Promise.race([
-                autoSave.flushLatest(),
-                new Promise<{ ok: false; error: string }>((resolve) =>
-                  window.setTimeout(
-                    () =>
-                      resolve({
-                        ok: false,
-                        error: "离开前保存等待超时",
-                      }),
-                    3_000,
-                  ),
-                ),
-              ]);
+        const flushed = await flushAdvancedWorkBeforeLeave(autoSave);
         if (
           !flushed.ok &&
           !window.confirm(
