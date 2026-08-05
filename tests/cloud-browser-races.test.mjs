@@ -23,7 +23,7 @@ import {
 } from "../src/shell/cloud-browser-wire.ts";
 import { buildCloudBrowserV3Fixture } from "./cloud-browser-wire-fixture.ts";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -67,6 +67,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
+const liveRealUrl = realModule("src/shell/cloud-browser-live.ts");
 const browserStubUrl = dataModule(`
   export function cloudBrowserLiveUrl(sessionId) {
     return "wss://browser.test/" + encodeURIComponent(sessionId);
@@ -75,7 +76,10 @@ const browserStubUrl = dataModule(`
     return globalThis.__cloudBrowserRaceRuntime.createTicket(sessionId);
   }
 `);
+// 真模块全量转出再覆盖画家：transport-model 等图内兄弟也从同一路径取
+// `normalizeCloudBrowserLease`，桩不齐会把整份文件在加载期打哑。
 const liveStubUrl = dataModule(`
+  export * from ${JSON.stringify(liveRealUrl)};
   import { useCallback, useRef } from ${JSON.stringify(reactUrl)};
 
   export function useCloudBrowserFramePainter(options = {}) {

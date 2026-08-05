@@ -40,7 +40,7 @@ import {
   saveTargetForItem,
 } from "../src/shell/plugin-initial-state.ts";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 
 /* ------------------------------ grid 的取用 ------------------------------ */
 /**
@@ -58,6 +58,9 @@ const require = createRequire(import.meta.url);
  * `ERR_UNSUPPORTED_RESOLVE_REQUEST`、一条断言都不执行**（W19 加 import 时
  * `tests/rendition-callback-identity.test.mjs` 就是这么整份哑掉的，W22 `3946fa9` 修的）。
  * 这里改成全量重写，只有真的加载不进来的那几个才落到显式桩上。
+ *
+ * `doc-io` 桩必须 `export *` 再覆盖：图里 `grid-model` 等同级也从同一路径取
+ * `urlExtension`，只列四个函数会把整份文件在加载期打哑。
  */
 const { gridPluginInstanceVersion, gridSavedItemForHandoff } = await import(
   await compileModule("src/shell/doc-editors/use-grid-editor.ts", {
@@ -65,8 +68,7 @@ const { gridPluginInstanceVersion, gridSavedItemForHandoff } = await import(
       "export function useUI() { return (value) => value; }",
     ),
     "./doc-io": dataModule(`
-      export function downloadBlob() {}
-      export function downloadText() {}
+      export * from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))};
       export async function loadEditorProject() {
         throw new Error("测试里没有可编辑工程 sidecar");
       }
