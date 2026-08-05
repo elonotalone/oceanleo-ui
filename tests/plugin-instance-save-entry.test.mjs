@@ -258,6 +258,18 @@ const GRID_REPLACEMENTS = {
   "./office-file": realModule("src/shell/doc-editors/office-file.ts"),
   "./grid-structure": realModule("src/shell/doc-editors/grid-structure.ts"),
   "../plugin-initial-state": realModule("src/shell/plugin-initial-state.ts"),
+  // 台账的导出入口（W24 P3）。本文件判的是**保存**那一支，与导出无关；
+  // 但没进替换表的相对 specifier 会在实例化时炸掉整份文件，所以一条都不能少。
+  // 三份都用真模块：都是纯 `.ts`，从磁盘加载即可，不需要桩。
+  "../plugin-export/ledger-export": realModule(
+    "src/shell/plugin-export/ledger-export.ts",
+  ),
+  "../plugin-export/plugin-export-contract": realModule(
+    "src/shell/plugin-export/plugin-export-contract.ts",
+  ),
+  "../plugin-export/plugin-export-wiring": realModule(
+    "src/shell/plugin-export/plugin-export-wiring.ts",
+  ),
 };
 
 const { useGridEditor } = await import(

@@ -75,6 +75,15 @@ const libraryDataUrl = pathToFileURL(resolve("src/shell/library-data.ts")).href;
 const pluginInitialStateUrl = pathToFileURL(
   resolve("src/shell/plugin-initial-state.ts"),
 ).href;
+const ledgerExportUrl = pathToFileURL(
+  resolve("src/shell/plugin-export/ledger-export.ts"),
+).href;
+const pluginExportContractUrl = pathToFileURL(
+  resolve("src/shell/plugin-export/plugin-export-contract.ts"),
+).href;
+const pluginExportWiringUrl = pathToFileURL(
+  resolve("src/shell/plugin-export/plugin-export-wiring.ts"),
+).href;
 
 function dataModule(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -265,6 +274,12 @@ const gridEditorUrl = await compileModule(
     "./grid-structure": gridStructureStubUrl,
     // 真模块，不打桩：保存对象的判据是产品口径，桩一打就可能悄悄判反。
     "../plugin-initial-state": pluginInitialStateUrl,
+    // 台账的导出入口（W24 P3）。本文件判的是加载 effect 会不会自激，与导出无关；
+    // 但没进替换表的相对 specifier 会在实例化时炸掉整份文件，所以一条都不能少。
+    // 三份都用真模块：都是纯 `.ts`，从磁盘加载即可，不需要桩。
+    "../plugin-export/ledger-export": ledgerExportUrl,
+    "../plugin-export/plugin-export-contract": pluginExportContractUrl,
+    "../plugin-export/plugin-export-wiring": pluginExportWiringUrl,
   },
 );
 const { useGridEditor } = await import(gridEditorUrl);
