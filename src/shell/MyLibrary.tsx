@@ -36,6 +36,7 @@ import {
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
+import { libraryEntryIsDownloadableMaterial } from "./plugin-export/plugin-export-contract";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
@@ -59,10 +60,14 @@ const KIND_CATEGORY: Record<LibraryKind, string> = {
   file: "文件",
 };
 
+// 我的库只显示可下载的成品。应用里打开来用的那些东西（地图、可算文档一类的
+// 运行时工程态）没有下载物，摆在库里等于给用户一张点不动的卡片；判据与出处
+// 都在 `plugin-export/plugin-export-contract.ts`，这里只负责在唯一的收口处调它。
 function dedupeDurableItems(items: readonly LibraryItem[]): LibraryItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     if (!isDurableLibraryItem(item)) return false;
+    if (!libraryEntryIsDownloadableMaterial(item)) return false;
     const identity = libraryItemIdentityKey(item);
     if (seen.has(identity)) return false;
     seen.add(identity);
@@ -78,6 +83,7 @@ function dedupeWorkspaceEntries(
     if (!entry.libraryItem || !isDurableLibraryItem(entry.libraryItem)) {
       return false;
     }
+    if (!libraryEntryIsDownloadableMaterial(entry.libraryItem)) return false;
     const identity = libraryItemIdentityKey(entry.libraryItem);
     if (seen.has(identity)) return false;
     seen.add(identity);
