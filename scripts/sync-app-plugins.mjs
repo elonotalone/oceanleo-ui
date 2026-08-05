@@ -106,8 +106,51 @@ if (!container || typeof container !== "object") {
 }
 const flat = flatten(container);
 
+/**
+ * 「登记为留空（hold）」的工具 —— 清册里认了它、但它今天没有可用的第一屏。
+ *
+ * 这类工具**不许随包发按键**：按键点开却没有初始态,就是一枚死按钮
+ * （V4 实测：278 枚按键里只有 42 枚点得开）。fail-closed 的口径是
+ * 「没有可用初始态就不发按键」,W10 自己在 A-7 的 hold 理由里也是这么写的。
+ *
+ * 三种登记写法都认（W10 侧怎么记都行,但必须记）:
+ *   · 顶层 `pluginsWithoutApps: [{id, reason|ruling}]`（今天在用的那种）;
+ *   · `plugins[<id>].hold = {reason}` 或 `= true`（有 app 名单但第一屏没做的那种）;
+ *   · 顶层 `hold` 数组或 `{id: reason}` 对象。
+ * 「查不到初始态又没登记」由 `tests/app-capability-entry.test.mjs` 判红 —— 那道闸
+ * 在本脚本里判不了：初始态表是 TS 模块,本脚本是纯 node 脚本,读不到它。
+ */
+function collectHeld() {
+  const held = new Map();
+  const note = (id, reason) => {
+    const key = String(id || "").trim();
+    if (!key) return;
+    held.set(key, String(reason || "").trim());
+  };
+  if (Array.isArray(raw.pluginsWithoutApps)) {
+    for (const item of raw.pluginsWithoutApps) {
+      note(item?.id, item?.reason || item?.ruling);
+    }
+  }
+  if (raw.plugins && typeof raw.plugins === "object") {
+    for (const [id, meta] of Object.entries(raw.plugins)) {
+      if (!meta?.hold) continue;
+      note(id, meta.hold?.reason || meta.hold?.ruling || meta.hold);
+    }
+  }
+  if (Array.isArray(raw.hold)) for (const id of raw.hold) note(id, "");
+  else if (raw.hold && typeof raw.hold === "object") {
+    for (const [id, reason] of Object.entries(raw.hold)) note(id, reason);
+  }
+  return held;
+}
+
+const held = collectHeld();
+
 const problems = [];
 let rowCount = 0;
+let heldRowCount = 0;
+const heldSeen = new Set();
 
 for (const [key, rows] of flat) {
   if (rows.length === 0) {
@@ -138,7 +181,18 @@ for (const [key, rows] of flat) {
           "编辑类工具没有按键，不许进清册",
       );
     }
+    if (id && held.has(id)) {
+      heldRowCount += 1;
+      heldSeen.add(id);
+    }
   }
+}
+
+/** 发布副本 = 派生视图减去登记为留空的那些行；减完变空的 app 整个不写进去。 */
+const published = new Map();
+for (const [key, rows] of flat) {
+  const keep = rows.filter((row) => !held.has(String(row?.id || "").trim()));
+  if (keep.length) published.set(key, keep);
 }
 
 if (problems.length) {
@@ -147,13 +201,25 @@ if (problems.length) {
   );
 }
 
-const appKeys = [...flat.keys()].sort();
+const appKeys = [...published.keys()].sort();
+const publishedRowCount = appKeys.reduce(
+  (sum, key) => sum + published.get(key).length,
+  0,
+);
 const lines = [];
 lines.push("// ============================================================================");
 lines.push("// GENERATED FILE — 不要手改。");
 lines.push("// 由 `node scripts/sync-app-plugins.mjs` 从 W10 的清册派生视图生成：");
 lines.push(`//   ${sourcePath}`);
 lines.push("// 清册与生成器都在 oceandino 仓；本文件只是它在共享包里的发布副本。");
+if (heldSeen.size) {
+  lines.push("//");
+  lines.push(
+    `// 登记为留空（hold）而**未发按键**的工具 ${heldSeen.size} 件、共 ${heldRowCount} 枚：`,
+  );
+  for (const id of [...heldSeen].sort()) lines.push(`//   · ${id}`);
+  lines.push("// 它们今天没有可用的第一屏，发出去就是点开没反应的死按键。");
+}
 lines.push("// ============================================================================");
 lines.push("");
 lines.push('import type { AppCapabilityMap } from "./app-capability-entry";');
@@ -165,7 +231,7 @@ if (raw.source) lines.push(`  source: ${JSON.stringify(raw.source)},`);
 lines.push("  apps: {");
 for (const key of appKeys) {
   lines.push(`    ${JSON.stringify(key)}: [`);
-  for (const row of flat.get(key)) {
+  for (const row of published.get(key)) {
     const parts = FIELDS.map(
       (field) => `${field}: ${JSON.stringify(row[field].trim())}`,
     );
@@ -187,15 +253,20 @@ if (checkOnly) {
     fail(`${TARGET} 不存在，请先跑一次同步`);
   }
   if (current !== output) {
-    fail("生成文件与清册不一致，请重跑 `node scripts/sync-app-plugins.mjs`");
+    fail(
+      "生成文件与清册不一致，请重跑 `node scripts/sync-app-plugins.mjs`。\n" +
+        `  清册 ${rowCount} 枚 / 发布副本应为 ${publishedRowCount} 枚（${appKeys.length} 个 app）。`,
+    );
   }
-  process.stdout.write(
-    `sync-app-plugins: 已同步（${appKeys.length} 个 app / ${rowCount} 枚按钮）\n`,
-  );
+  process.stdout.write(`sync-app-plugins: 已同步（${summary()}）\n`);
   process.exit(0);
 }
 
 writeFileSync(TARGET, output, "utf8");
-process.stdout.write(
-  `sync-app-plugins: 写入 ${TARGET}（${appKeys.length} 个 app / ${rowCount} 枚按钮）\n`,
-);
+process.stdout.write(`sync-app-plugins: 写入 ${TARGET}（${summary()}）\n`);
+
+function summary() {
+  const base = `${appKeys.length} 个 app / ${publishedRowCount} 枚按钮`;
+  if (!heldRowCount) return base;
+  return `${base}；另有 ${heldRowCount} 枚属 ${heldSeen.size} 件登记留空的工具，未发布`;
+}
