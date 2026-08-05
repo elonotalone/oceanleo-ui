@@ -5,11 +5,24 @@
  * 没有初始态的插件按键不出现，这是设计好的行为，不是缺陷。回退到
  * `blank-draft-items.ts` 的五份通用模板恰恰是本波要根除的东西 —— 那是 2 177 枚
  * 按钮共用 5 份空白模板的来源。
+ *
+ * ## 清册今天覆盖到哪
+ *
+ * 非编辑类插件一共 21 个（`_COMMON.md` §4.3）。这张表登记 **19** 个：
+ * 地图三件 + 表格三件 + 可算文档三件（第一轮）+ 计算器两件、写作五件、工作台三件（第二轮）。
+ *
+ * 缺的两个是 `concept-knowledge-graph` 与 `relationship-graph`，**不是没做**：
+ * 仲裁 A-7 已经把这两个族的按键整体撤掉了，理由是 `interactive-doc` 运行时
+ * 没有节点连线图块类型，发了按键点开渲不出主体。按键都没有，初始态自然不该有；
+ * 什么时候补一个图块类型进载体，什么时候再谈它们。
  */
 
 import { GEO_MAP_INITIAL_STATES } from "./geo-plugins";
 import { GRID_INITIAL_STATES } from "./grid-plugins";
 import { INTERACTIVE_DOC_INITIAL_STATES } from "./doc-plugins";
+import { CALCULATOR_INITIAL_STATES } from "./calculator-plugins";
+import { AUTHORING_INITIAL_STATES } from "./authoring-plugins";
+import { WORKBENCH_INITIAL_STATES } from "./workbench-plugins";
 import { loadBuiltInGeoFeatures, loadBuiltInGeoPayload } from "./data/index";
 import type {
   PluginGeoMapInitialState,
@@ -49,11 +62,30 @@ export {
   SPACED_REPETITION_INITIAL_STATE,
   UNIT_CONVERTER_INITIAL_STATE,
 } from "./doc-plugins";
+export {
+  LEGAL_CALCULATOR_INITIAL_STATE,
+  MEDICAL_CALCULATOR_INITIAL_STATE,
+} from "./calculator-plugins";
+export {
+  CONTRACT_ASSEMBLY_INITIAL_STATE,
+  DIALOGUE_BRANCH_INITIAL_STATE,
+  SEARCH_QUERY_BUILDER_INITIAL_STATE,
+  SELF_TEST_QUIZ_INITIAL_STATE,
+  VOICEOVER_SCRIPT_INITIAL_STATE,
+} from "./authoring-plugins";
+export {
+  EXECUTABLE_NOTEBOOK_INITIAL_STATE,
+  FORMULA_WALKTHROUGH_INITIAL_STATE,
+  METRICS_DASHBOARD_INITIAL_STATE,
+} from "./workbench-plugins";
 
 const ALL_STATES: readonly PluginInitialState[] = Object.freeze([
   ...GEO_MAP_INITIAL_STATES,
   ...GRID_INITIAL_STATES,
   ...INTERACTIVE_DOC_INITIAL_STATES,
+  ...CALCULATOR_INITIAL_STATES,
+  ...AUTHORING_INITIAL_STATES,
+  ...WORKBENCH_INITIAL_STATES,
 ]);
 
 const BY_PLUGIN_ID: ReadonlyMap<string, PluginInitialState> = new Map(
