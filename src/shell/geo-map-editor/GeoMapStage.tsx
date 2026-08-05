@@ -11,8 +11,10 @@ import {
 import { useUI } from "../../i18n/ui/useUI";
 import {
   renderGeoMapToCanvas,
+  type GeoMapFeatureCollection,
   type GeoMapRenderResult,
 } from "./geo-map-render";
+import { loadBuiltInGeoFeatures } from "../plugin-initial-states/data/index";
 import {
   GEO_MAP_CONSTANTS,
   GEO_MAP_LAYOUT,
@@ -100,14 +102,42 @@ export function GeoMapStage({ editor }: { editor: GeoMapWorkbenchState }) {
   const [renderError, setRenderError] = useState("");
   const { project, state } = editor;
   const renderable = state === "ready" || state === "dirty" || state === "degraded";
+  const [features, setFeatures] = useState<Record<
+    string,
+    GeoMapFeatureCollection
+  > | null>(null);
+
+  // 每个 source 的字节从哪来，只由它的 `dependencyPath` 决定；编辑相机、图层配色
+  // 不该重取一遍底图，所以 effect 只盯这串路径，不盯 project 本身。
+  const dependencyKey = project
+    ? Object.entries(project.sources)
+        .map(([key, source]) => `${key}=${source.dependencyPath}`)
+        .sort()
+        .join("|")
+    : "";
+
+  useEffect(() => {
+    if (!dependencyKey) {
+      setFeatures(null);
+      return undefined;
+    }
+    let alive = true;
+    setFeatures(null);
+    // 内置底图随包发布，取字节不走网络，与沙箱的 `connect-src 'none'` 不冲突。
+    // 取不到的 source 不会被补一个空要素集：渲染器照实把它记进 missingSourceKeys。
+    void loadBuiltInGeoFeatures(project?.sources).then((next) => {
+      if (alive) setFeatures(next);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上：只跟依赖路径走
+  }, [dependencyKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !project || !renderable) return;
     try {
-      // No `features` are handed in: the sandbox runs under `connect-src
-      // 'none'`, so the renderer draws the basemap and reports the data layers
-      // it could not resolve instead of faking them.
       setRender(
         renderGeoMapToCanvas({
           project,
@@ -115,6 +145,7 @@ export function GeoMapStage({ editor }: { editor: GeoMapWorkbenchState }) {
           width: GEO_MAP_LAYOUT.canvasWidthPx,
           height: GEO_MAP_LAYOUT.canvasHeightPx,
           chrome: true,
+          ...(features ? { features } : {}),
         }),
       );
       setRenderError("");
@@ -125,7 +156,7 @@ export function GeoMapStage({ editor }: { editor: GeoMapWorkbenchState }) {
         caught instanceof Error ? caught.message : String(caught),
       );
     }
-  }, [project, renderable]);
+  }, [project, renderable, features]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -239,8 +270,16 @@ export function GeoMapStage({ editor }: { editor: GeoMapWorkbenchState }) {
           hint={tt("降级态不可保存，否则会把缺依赖的状态写成新 revision。")}
         />
       )}
+      {!features && !renderError && (
+        <p
+          role="status"
+          className="rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-[var(--muted,#78716c)]"
+        >
+          {tt("正在载入底图要素…")}
+        </p>
+      )}
       {(renderError ||
-        (render && (render.missingSourceKeys.length > 0 || !render.ok))) && (
+        (features && render && (render.missingSourceKeys.length > 0 || !render.ok))) && (
         <p
           role="alert"
           className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"

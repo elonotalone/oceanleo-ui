@@ -858,9 +858,22 @@ test("A5/A8: deliverables are full 1600x1000 frames that keep attribution", () =
 });
 
 test("A9: a new project or dependency swap re-renders instead of going stale", () => {
+  // W14/R-3: the stage now also resolves the built-in basemap bytes, so the
+  // render effect has to re-run when those arrive — a project-only dependency
+  // list would paint the background once and never draw the land that lands a
+  // tick later. Both dependencies are required; neither may be dropped.
   assert.ok(
-    STAGE_SOURCE.includes("}, [project, renderable]);"),
-    "the render effect must depend on the project it draws",
+    STAGE_SOURCE.includes("}, [project, renderable, features]);"),
+    "the render effect must depend on the project it draws and on the features it draws from",
+  );
+  assert.ok(
+    STAGE_SOURCE.includes("loadBuiltInGeoFeatures"),
+    "the stage must resolve the features it hands to the renderer",
+  );
+  assert.match(
+    STAGE_SOURCE,
+    /renderGeoMapToCanvas\(\{[^}]*features/s,
+    "the renderer must be called with features, not with the basemap alone",
   );
   assert.ok(HOOK_SOURCE.includes("geoMapArtifactInputIdentity"));
   assert.ok(HOOK_SOURCE.includes("importProject"));

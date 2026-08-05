@@ -10,7 +10,7 @@
 import { GEO_MAP_INITIAL_STATES } from "./geo-plugins";
 import { GRID_INITIAL_STATES } from "./grid-plugins";
 import { INTERACTIVE_DOC_INITIAL_STATES } from "./doc-plugins";
-import { loadBuiltInGeoPayload } from "./data/index";
+import { loadBuiltInGeoFeatures, loadBuiltInGeoPayload } from "./data/index";
 import type {
   PluginGeoMapInitialState,
   PluginInitialItemInput,
@@ -27,8 +27,13 @@ export type {
   PluginInteractiveDocInitialState,
   PluginKernelId,
 } from "./types";
-export { BUILT_IN_GEO_ASSETS, builtInGeoAsset, loadBuiltInGeoPayload } from "./data/index";
-export type { BuiltInGeoAsset } from "./data/index";
+export {
+  BUILT_IN_GEO_ASSETS,
+  builtInGeoAsset,
+  loadBuiltInGeoFeatures,
+  loadBuiltInGeoPayload,
+} from "./data/index";
+export type { BuiltInFeatureCollection, BuiltInGeoAsset } from "./data/index";
 export {
   ANNOTATABLE_CITY_MAP_INITIAL_STATE,
   FLOORPLAN_ANNOTATION_INITIAL_STATE,
@@ -153,4 +158,17 @@ export async function loadPluginGeoFeatures(
     features[sourceKey] = JSON.parse(payload) as PluginGeoFeatureCollection;
   }
   return features;
+}
+
+/**
+ * 渲染层实际走的口子：**按工程自己的 `sources` 取要素，不认插件 id**。
+ *
+ * 用 `dependencyPath` 而不是 `plugin_id` 当键，是因为一份地图存过之后仍然指着同一
+ * 份内置底图，但它已经不是「某个插件的初始态」了；按路径取，存过的图与刚打开的图
+ * 走同一条路。
+ */
+export async function loadGeoMapBuiltInFeatures(
+  project: { sources?: Readonly<Record<string, { dependencyPath: string }>> } | null,
+): Promise<Record<string, PluginGeoFeatureCollection>> {
+  return loadBuiltInGeoFeatures(project?.sources);
 }

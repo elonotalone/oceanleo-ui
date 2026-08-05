@@ -17,6 +17,7 @@ import {
   builtInGeoAsset,
   hasPluginInitialState,
   loadBuiltInGeoPayload,
+  loadGeoMapBuiltInFeatures,
   loadPluginGeoFeatures,
   pluginInitialItemInput,
   pluginInitialState,
@@ -257,6 +258,81 @@ test("地图与地球仪第一屏真的画得出陆地，而不是一个空矩�
     );
     const fills = context.ops.filter((op) => op[0] === "fill");
     assert.ok(fills.length >= 100, `${pluginId} 应当逐个面填色，实际 ${fills.length}`);
+  }
+});
+
+test("底图要素真的落到画布上：接通与不接通两次渲染必须判然不同", async () => {
+  const state = pluginInitialState("annotatable-city-map");
+  const project = parseGeoMapSource(JSON.stringify(state.project));
+
+  // 渲染层实际走的那条路：按工程自己的 sources 取要素，不认插件 id。
+  const features = await loadGeoMapBuiltInFeatures(project);
+  assert.deepEqual(Object.keys(features), ["land"]);
+
+  const wired = stubContext();
+  const wiredResult = renderGeoMapToCanvas({
+    project,
+    context: wired,
+    width: 1600,
+    height: 1000,
+    features,
+  });
+
+  // 「画到了画布上」的判据是画布上的笔画，不是依赖存不存在：
+  // 陆地是上万个顶点连出来的折线，只画一块底色的话一笔都不会有。
+  const strokesOf = (context, op) => context.ops.filter((entry) => entry[0] === op);
+  const wiredLineTo = strokesOf(wired, "lineTo").length;
+  const wiredLandFills = strokesOf(wired, "fill").filter(
+    (entry) => entry[1] === GEO_MAP_PALETTE["map.land"],
+  ).length;
+  assert.ok(
+    wiredLineTo >= 5000,
+    `底图顶点没进画布：lineTo 只有 ${wiredLineTo} 笔`,
+  );
+  assert.ok(
+    wiredLandFills >= 100,
+    `陆地面没被填色：只填了 ${wiredLandFills} 个面`,
+  );
+  assert.ok(wiredResult.drawnLayerIds.includes("land-fill"));
+  assert.deepEqual(wiredResult.missingSourceKeys, []);
+  assert.equal(wiredResult.degraded, false);
+
+  // 反面：这正是接通之前的样子 —— 一块淡蓝底色，别的什么都没有。
+  // 这一对断言保证上面那几条不是恒真的。
+  const bare = stubContext();
+  const bareResult = renderGeoMapToCanvas({
+    project,
+    context: bare,
+    width: 1600,
+    height: 1000,
+  });
+  assert.deepEqual(bareResult.missingSourceKeys, ["land"]);
+  assert.equal(bareResult.degraded, true);
+  assert.deepEqual(bareResult.drawnLayerIds, ["ocean-base"]);
+  assert.equal(
+    strokesOf(bare, "lineTo").length,
+    0,
+    "不传 features 时画布上不该有任何地理笔画",
+  );
+});
+
+test("两个渲染调用点都把要素传进去了", () => {
+  const read = (relative) =>
+    readFileSync(new URL(`../src/${relative}`, import.meta.url), "utf8");
+  for (const file of [
+    "shell/geo-map-editor/GeoMapStage.tsx",
+    "shell/advanced-routes/GeoMapRoute.tsx",
+  ]) {
+    const source = read(file);
+    assert.ok(
+      source.includes("loadBuiltInGeoFeatures"),
+      `${file} 必须去取内置底图要素`,
+    );
+    assert.match(
+      source,
+      /renderGeoMapToCanvas\(\{[^}]*features/s,
+      `${file} 调渲染器时必须带上 features`,
+    );
   }
 });
 

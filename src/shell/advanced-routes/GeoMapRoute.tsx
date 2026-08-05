@@ -21,6 +21,7 @@ import {
   useGeoMapWorkbench,
   type GeoMapCommitSuccess,
 } from "../geo-map-editor/use-geo-map-workbench";
+import { loadBuiltInGeoFeatures } from "../plugin-initial-states/data/index";
 import { downloadText } from "../doc-editors/doc-io";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
@@ -132,12 +133,15 @@ export function GeoMapRoute({
       const canvas = document.createElement("canvas");
       canvas.width = GEO_MAP_LAYOUT.canvasWidthPx;
       canvas.height = GEO_MAP_LAYOUT.canvasHeightPx;
+      // 导出走的是与舞台同一条取要素的路：少了它，导出的 PNG 只有一块底色。
+      const features = await loadBuiltInGeoFeatures(project.sources);
       const result = renderGeoMapToCanvas({
         project,
         canvas,
         width: GEO_MAP_LAYOUT.canvasWidthPx,
         height: GEO_MAP_LAYOUT.canvasHeightPx,
         chrome: true,
+        features,
       });
       if (!result.ok) {
         throw new Error(
