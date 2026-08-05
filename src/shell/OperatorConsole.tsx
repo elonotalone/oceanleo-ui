@@ -22,10 +22,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { OperatorRemarkProvider } from "./OperatorRemark";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { appCapabilityEntries } from "./app-capability-entry";
-import {
-  AppCapabilityBar,
-  APP_CAPABILITY_BAR_HEIGHT,
-} from "./AppCapabilityBar";
+import { AppCapabilityBar } from "./AppCapabilityBar";
 import { AppCapabilityEntryProvider } from "./app-capability-context";
 
 export interface ConsoleFunction {
@@ -245,9 +242,10 @@ export function OperatorConsole({
     onChange?.(id);
   };
 
-  // ── 功能按键条的选中态（H 波 W2） ──────────────────────────────────────────
-  // 「这个 app 该有哪几枚功能按钮」全部来自 W4 的映射，本组件不认识任何站点或族。
-  // 映射里没有这个 app（701 个 app 里 169 个本来就一枚都没有）→ 空数组 → 不渲染按键条。
+  // ── 工具按键条的选中态 ────────────────────────────────────────────────────
+  // 「这个 app 配了哪几件工具」全部来自 W10 的清册，本组件不认识任何站点或工具。
+  // 清册里没有这个 app（701 个 app 里 487 个一件都不配，这是正常且常见的结论）
+  // → 空数组 → 连按键条的壳都不渲染。
   const activeAppId = active?.id ?? "";
   const capabilityEntries = useMemo(
     () => appCapabilityEntries(siteId, activeAppId),
@@ -263,10 +261,10 @@ export function OperatorConsole({
   const rawCapability = capabilityControlled
     ? capabilityFamily
     : internalCapability;
-  // 选中态 fail-closed：`?cap=` 指到本 app 没有的族（换了 app 的旧书签、映射里被删掉
+  // 选中态 fail-closed：`?cap=` 指到本 app 没有的工具（换了 app 的旧书签、清册里被删掉
   // 的行）一律当作未选中，界面回到 app 自己的流程，而不是留一枚点不开的高亮按钮。
   const selectedCapability = capabilityEntries.some(
-    (entry) => entry.family === rawCapability,
+    (entry) => entry.id === rawCapability,
   )
     ? rawCapability
     : "";
@@ -437,7 +435,25 @@ export function OperatorConsole({
   // key here only caused a redundant nested remount.
   // h-full：让 agent/chat 形态（FunctionAgentChat 的 `flex h-full flex-col`）能撑满
   // 左栏整高、把输入框压到最底（操作员 2026-06-24：输入框原来浮在半空）。
-  const ops = <div className="h-full">{active?.ops}</div>;
+  //
+  // 操作员 2026-08-05：工具按键条**在操控台里面**，所以它是左栏正文的第一块，
+  // 排在 app 自己的操作流之上；操作流仍拿到剩余整高（`min-h-0 flex-1`），
+  // agent 形态的输入框不会因为多了这一条而浮起来。清册里没有这个 app 时
+  // `capabilityEntries` 是空数组，这里连壳都不渲染，左栏与从前逐字一致。
+  const capabilityBarVisible = capabilityEntries.length > 0;
+  const ops = capabilityBarVisible ? (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <AppCapabilityBar
+        entries={capabilityEntries}
+        activeFamily={selectedCapability}
+        onSelect={changeCapability}
+        accent={accent}
+      />
+      <div className="min-h-0 flex-1">{active?.ops}</div>
+    </div>
+  ) : (
+    <div className="h-full">{active?.ops}</div>
+  );
 
   // 宗旨 v11（2026-06-28）：进入某功能区时整块「从上到下」阶梯淡入。
   // AppShell keeps its route surface mounted, so this is the only entrance
@@ -448,11 +464,9 @@ export function OperatorConsole({
   // 额外扣除一条横跨双栏的 app row。保留 headerHeight prop 仅作调用端类型兼容。
   void headerHeight;
   const appShellHeader = 0;
-  // 功能按键条横跨双栏挂在 Studio 之上，它那 40px 必须从可视高度里扣掉，否则两栏被顶
-  // 出一屏（旧按键条当年同样按自身高度扣，见 `c96dd28` 的 headerHeight 注释）。
-  const capabilityBarVisible = capabilityEntries.length > 0;
-  const studioHeaderHeight =
-    appShellHeader + (capabilityBarVisible ? APP_CAPABILITY_BAR_HEIGHT : 0);
+  // 工具按键条搬进左栏内部之后，双栏之上不再有任何东西，可视高度**一分不扣**
+  // （旧代码在这里减 `APP_CAPABILITY_BAR_HEIGHT = 40`，那是按键条跨两栏时代的账）。
+  const studioHeaderHeight = appShellHeader;
 
   // 宗旨 v12.1/v12.2：每个功能页右栏首屏都要有「导航」——功能自带 guide 优先；没给的
   // 功能，按 siteId 从内置 prompt 库**自动兜底**一份（教学一句话 + 前几张卡片当示例，
@@ -472,8 +486,8 @@ export function OperatorConsole({
             （左栏填充器注册 / 右栏 ResultCanvas 读取加「使用指南」标签）。 */}
         <OperatorRemarkProvider value={operatorRemarkValue}>
           <GuideProvider guide={effectiveGuide} siteId={siteId} activeKey={active?.id ?? ""}>
-            {/* 功能直入（目标形态 §7(a)）：入口在这条按键条上，挂载归 W3 的承载层。
-                Provider 包住整个 Studio，所以右栏 canvas 也读得到选中态。 */}
+            {/* 入口在左栏那条按键条上（它随 `ops` 一起进操控台），挂载归承载层。
+                Provider 仍包住整个 Studio，所以右栏 canvas 也读得到选中态。 */}
             <AppCapabilityEntryProvider
               siteKey={siteId}
               appId={activeAppId}
@@ -481,16 +495,6 @@ export function OperatorConsole({
               family={selectedCapability}
               onFamilyChange={changeCapability}
             >
-              {capabilityBarVisible && (
-                <AppCapabilityBar
-                  appLabel={activeTitle}
-                  appIcon={active?.icon}
-                  entries={capabilityEntries}
-                  activeFamily={selectedCapability}
-                  onSelect={changeCapability}
-                  accent={accent}
-                />
-              )}
               <Studio
                 ops={ops}
                 canvas={active?.canvas ?? canvas ?? null}

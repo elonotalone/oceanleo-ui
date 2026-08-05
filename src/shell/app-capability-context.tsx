@@ -43,13 +43,13 @@ export interface ActiveAppCapability extends AppCapabilityEntry {
 export interface AppCapabilityContextValue {
   siteKey: string;
   appId: string;
-  /** 这个 app 的全部功能按钮（顺序即按键条顺序）。 */
+  /** 这个 app 配的全部工具（顺序即按键条顺序）。 */
   entries: AppCapabilityEntry[];
-  /** 当前选中的功能；`null` = 没开功能，右栏保持 app 自己的形态。 */
+  /** 当前打开的工具；`null` = 没开，右栏保持 app 自己的形态。 */
   active: ActiveAppCapability | null;
-  /** 打开某枚功能（传映射里的族 id）。不在本 app 映射里的 id 会被忽略。 */
+  /** 打开某件工具（传清册里的工具 id）。不在本 app 清册里的 id 会被忽略。 */
   open: (family: string) => void;
-  /** 关掉当前功能，回到 app 本身。 */
+  /** 关掉当前工具，回到 app 本身。 */
   close: () => void;
 }
 
@@ -63,7 +63,7 @@ export interface AppCapabilityEntryProviderProps {
   siteKey: string;
   appId: string;
   entries: AppCapabilityEntry[];
-  /** 当前选中的族 id（空串 = 未选）。由 URL `?cap=` 或组件内部状态驱动。 */
+  /** 当前选中的工具 id（空串 = 未选）。由 URL `?cap=` 或组件内部状态驱动。 */
   family: string;
   onFamilyChange: (family: string) => void;
   children: ReactNode;
@@ -78,16 +78,16 @@ export function AppCapabilityEntryProvider({
   children,
 }: AppCapabilityEntryProviderProps) {
   const value = useMemo<AppCapabilityContextValue>(() => {
-    const selected = entries.find((entry) => entry.family === family) ?? null;
+    const selected = entries.find((entry) => entry.id === family) ?? null;
     return {
       siteKey,
       appId,
       entries,
       active: selected ? { ...selected, siteKey, appId } : null,
       open: (next: string) => {
-        // 只认这个 app 映射里真有的族：外来 `?cap=` 或过期书签不得把界面带进一个
-        // 解析不出适配器的状态（fail-closed，判据 H1-a 删行即消失也靠这一句）。
-        if (!entries.some((entry) => entry.family === next)) return;
+        // 只认这个 app 清册里真有的那件工具：外来 `?cap=` 或过期书签不得把界面带进一个
+        // 解析不出承载层的状态（fail-closed，「删掉清册一行按钮就消失」也靠这一句）。
+        if (!entries.some((entry) => entry.id === next)) return;
         onFamilyChange(next);
       },
       close: () => onFamilyChange(""),
@@ -96,7 +96,27 @@ export function AppCapabilityEntryProvider({
 
   // 入口 → 承载的那一跳。逻辑在 `app-capability-launch.ts` 里(那是个不含 JSX 的
   // `.ts`,缝本身才测得到);这里只负责把选中态喂给它。
-  useAdvancedFeatureLaunchBridge(value.active);
+  //
+  // 载荷**刻意不带 `artifactType`**:承载层今天用它反推 5 份通用空白起手件,于是所有
+  // 按钮在运行时只对应那 5 份模板 —— 这正是操作员说的「显示的极其简陋」。这条反推路
+  // 在本轮被堵死,载荷改带工具身份(`pluginId`),承载层按工具 id 找它自己的初始态;
+  // 找不到就什么都不派发(fail-closed),而不是退回通用模板。承载侧接上 `pluginId`
+  // 之前,点按钮不会启动任何编辑器 —— 那是**正确的中间态**,不是回归。
+  const launchTarget = useMemo(
+    () =>
+      value.active
+        ? {
+            siteKey,
+            appId,
+            family: value.active.id,
+            pluginId: value.active.id,
+            runtime: value.active.runtime,
+            label: value.active.label,
+          }
+        : null,
+    [appId, siteKey, value.active],
+  );
+  useAdvancedFeatureLaunchBridge(launchTarget);
 
   return (
     <AppCapabilityContext.Provider value={value}>
