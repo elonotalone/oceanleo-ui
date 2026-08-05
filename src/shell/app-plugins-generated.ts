@@ -9,7 +9,7 @@ import type { AppCapabilityMap } from "./app-capability-entry";
 
 export const GENERATED_APP_PLUGIN_MAP: AppCapabilityMap = {
   schema: "oceanleo.app-plugins.v1",
-  generatedAt: "2026-08-05T06:51:00Z",
+  generatedAt: "2026-08-05T07:25:32Z",
   source: "scripts/data/oceanleo-plugin-registry.json",
   apps: {
     "aihuman/app-tutorial": [
@@ -653,5 +653,142 @@ export const GENERATED_APP_PLUGIN_MAP: AppCapabilityMap = {
     "word/short-video-script": [
       { id: "voiceover-script", label: "口播脚本", runtime: "interactive-doc", doc: "docs/specs/oceanleo-plugins-v1/plugins/voiceover-script.md" },
     ],
+  },
+};
+
+/**
+ * 逐工具的导出形态清单（派生视图的 `plugins` 段）。
+ *
+ * **键就是 L3 族 id**，与按键表、第一屏、导出链逐字同一套。族 id 不再单列一个
+ * 字段：键与字段各存一份就是两个真相，改一处漏一处必然漂移。
+ *
+ * `exportKinds` 是字符串数组而不是形态闭集：闭集在共享包的
+ * `plugin-export/plugin-export-contract.ts` 里，本文件是数据不是判据。
+ * 清册声明了一个导出链没实现的形态，由那边的对账闸判红。
+ */
+export interface GeneratedPluginExportEntry {
+  /** 面向用户的中文名。 */
+  label: string;
+  runtime: "geo-map" | "grid" | "interactive-doc";
+  exportKinds: readonly string[];
+}
+
+export interface GeneratedPluginExportCatalog {
+  schema: string;
+  generatedAt: string;
+  source: string;
+  plugins: Readonly<Record<string, GeneratedPluginExportEntry>>;
+}
+
+export const GENERATED_PLUGIN_EXPORT_CATALOG: GeneratedPluginExportCatalog = {
+  schema: "oceanleo.app-plugins.v1",
+  generatedAt: "2026-08-05T07:25:32Z",
+  source: "scripts/data/oceanleo-plugin-registry.json",
+  plugins: {
+    "annotatable-city-map": {
+      label: "地图",
+      runtime: "geo-map",
+      exportKinds: ["long-image", "pdf", "xlsx"],
+    },
+    "concept-knowledge-graph": {
+      label: "概念图谱",
+      runtime: "interactive-doc",
+      exportKinds: ["long-image", "html", "pdf", "xlsx"],
+    },
+    "contract-assembly": {
+      label: "合同装配",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "html", "docx"],
+    },
+    "dialogue-branch-script": {
+      label: "话术分支",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "long-image", "html", "xlsx"],
+    },
+    "executable-notebook": {
+      label: "可执行笔记",
+      runtime: "interactive-doc",
+      exportKinds: ["xlsx", "pdf", "long-image"],
+    },
+    "financial-calculator": {
+      label: "金融计算器",
+      runtime: "interactive-doc",
+      exportKinds: ["xlsx", "pdf", "long-image"],
+    },
+    "floorplan-annotation": {
+      label: "户型标注",
+      runtime: "geo-map",
+      exportKinds: ["pdf", "xlsx", "long-image"],
+    },
+    "formula-derivation-walkthrough": {
+      label: "公式展开",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "long-image", "xlsx"],
+    },
+    "interactive-globe": {
+      label: "地球仪",
+      runtime: "geo-map",
+      exportKinds: ["long-image", "pdf", "xlsx"],
+    },
+    "ledger-register": {
+      label: "台账",
+      runtime: "grid",
+      exportKinds: ["xlsx", "csv", "pdf", "long-image", "html"],
+    },
+    "legal-calculator": {
+      label: "法律计算器",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "xlsx"],
+    },
+    "literature-matrix": {
+      label: "文献矩阵",
+      runtime: "grid",
+      exportKinds: ["xlsx", "csv", "pdf", "html"],
+    },
+    "medical-calculator": {
+      label: "医疗计算器",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "xlsx", "long-image"],
+    },
+    "metrics-dashboard": {
+      label: "看板",
+      runtime: "interactive-doc",
+      exportKinds: ["long-image", "pdf", "html", "xlsx"],
+    },
+    "relationship-graph": {
+      label: "关系图",
+      runtime: "interactive-doc",
+      exportKinds: ["long-image", "html", "pdf", "xlsx"],
+    },
+    "search-query-builder": {
+      label: "检索式构造",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "html", "xlsx"],
+    },
+    "self-test-quiz": {
+      label: "自测卷",
+      runtime: "interactive-doc",
+      exportKinds: ["xlsx", "pdf", "long-image"],
+    },
+    "spaced-repetition-scheduler": {
+      label: "间隔排程",
+      runtime: "interactive-doc",
+      exportKinds: ["xlsx", "pdf", "long-image"],
+    },
+    "three-statement-model": {
+      label: "三表模型",
+      runtime: "grid",
+      exportKinds: ["xlsx", "pdf", "html"],
+    },
+    "unit-converter": {
+      label: "换算器",
+      runtime: "interactive-doc",
+      exportKinds: ["xlsx", "long-image"],
+    },
+    "voiceover-script": {
+      label: "口播脚本",
+      runtime: "interactive-doc",
+      exportKinds: ["pdf", "long-image", "html", "xlsx"],
+    },
   },
 };

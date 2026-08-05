@@ -33,9 +33,14 @@ import {
   pluginInitialStateIds,
   pluginInstanceLibraryItem,
 } from "../src/shell/plugin-initial-state.ts";
-import { GENERATED_APP_PLUGIN_MAP } from "../src/shell/app-plugins-generated.ts";
+import {
+  GENERATED_APP_PLUGIN_MAP,
+  GENERATED_PLUGIN_EXPORT_CATALOG,
+} from "../src/shell/app-plugins-generated.ts";
 import {
   MATERIAL_ARTIFACT_TYPES,
+  PLUGIN_EXPORT_CATALOG,
+  PLUGIN_EXPORT_CATALOG_GENERATED_AT,
   PLUGIN_EXPORT_FORMS,
   exportKindsForPlugin,
   isMaterialArtifactType,
@@ -44,10 +49,6 @@ import {
   normalizePluginExportRequest,
   pluginExportForm,
 } from "../src/shell/plugin-export/plugin-export-contract.ts";
-import {
-  PLUGIN_EXPORT_CATALOG,
-  PLUGIN_EXPORT_CATALOG_GENERATED_AT,
-} from "../src/shell/plugin-export/export-catalog.ts";
 import { renderPluginExport } from "../src/shell/plugin-export/plugin-export-render.ts";
 import {
   auditPluginExportCatalog,
@@ -298,7 +299,7 @@ function exportLedger(form, deps, overrides = {}) {
  * 临时改一处清册或形态表，跑一遍对账闸，再原样改回来。
  * 用来证明那道闸真的会红，不是恒返回空数组。
  */
-function auditWith(catalogPatch = {}, formPatch = {}) {
+async function auditWith(catalogPatch = {}, formPatch = {}) {
   const catalogBackup = new Map();
   const formBackup = new Map();
   for (const [id, patch] of Object.entries(catalogPatch)) {
@@ -314,7 +315,7 @@ function auditWith(catalogPatch = {}, formPatch = {}) {
     Object.assign(form, patch);
   }
   try {
-    return auditPluginExportCatalog();
+    return await auditPluginExportCatalog();
   } finally {
     for (const [id, kinds] of catalogBackup) {
       PLUGIN_EXPORT_CATALOG[id].exportKinds = kinds;
@@ -330,14 +331,14 @@ function auditWith(catalogPatch = {}, formPatch = {}) {
 test("形态闭集与 W10 清册逐字一致，每一种都落在可下载的成品载体上", () => {
   assert.deepEqual(
     PLUGIN_EXPORT_FORMS.map((form) => form.id),
-    ["xlsx", "csv", "html", "long-image", "docx", "pdf", "srt", "vtt"],
+    ["xlsx", "csv", "html", "long-image", "docx", "pdf"],
   );
   const declared = new Set(
     Object.values(PLUGIN_EXPORT_CATALOG).flatMap((entry) => entry.exportKinds),
   );
   assert.deepEqual(
     [...declared].sort(),
-    ["csv", "docx", "html", "long-image", "pdf", "srt", "vtt", "xlsx"],
+    ["csv", "docx", "html", "long-image", "pdf", "xlsx"],
     "清册用到的形态必须全在形态表里，形态表也不许多出没人用的取值",
   );
   for (const form of PLUGIN_EXPORT_FORMS) {
@@ -365,10 +366,19 @@ test("形态闭集与 W10 清册逐字一致，每一种都落在可下载的成
   }
 });
 
-test("逐工具的形态清单是清册的发布副本，没有漂移", { skip: !existsSync(REGISTRY_VIEW) }, () => {
+test("逐工具的形态清单走生成物，与清册没有漂移", { skip: !existsSync(REGISTRY_VIEW) }, () => {
   const view = JSON.parse(readFileSync(REGISTRY_VIEW, "utf8"));
   assert.equal(view.schema, "oceanleo.app-plugins.v1");
-  // 清册重算不必然改内容，所以判据是逐条内容一致；`generatedAt` 只作出处记录。
+  // W24 P2 之后这份清单不再是手抄的发布副本，而是 `scripts/sync-app-plugins.mjs`
+  // 同步进来的生成物。判据因此有两层：形态清单读的确实是那份生成物，
+  // 生成物又与清册逐条一致。
+  assert.equal(
+    PLUGIN_EXPORT_CATALOG,
+    GENERATED_PLUGIN_EXPORT_CATALOG.plugins,
+    "形态清单必须直接读生成物，不许在包里另存一份副本",
+  );
+  assert.equal(GENERATED_PLUGIN_EXPORT_CATALOG.schema, view.schema);
+  assert.equal(GENERATED_PLUGIN_EXPORT_CATALOG.generatedAt, view.generatedAt);
   assert.match(PLUGIN_EXPORT_CATALOG_GENERATED_AT, /^\d{4}-\d{2}-\d{2}T/);
   assert.deepEqual(
     Object.keys(PLUGIN_EXPORT_CATALOG).sort(),
@@ -382,7 +392,7 @@ test("逐工具的形态清单是清册的发布副本，没有漂移", { skip: 
     );
     assert.equal(PLUGIN_EXPORT_CATALOG[id].label, entry.label);
     assert.equal(PLUGIN_EXPORT_CATALOG[id].runtime, entry.runtime);
-    // 键就是族 id。清册那一列只用来确认这件事，本地不再另存一份 `family`：
+    // 键就是族 id。清册那一列只用来确认这件事，生成物里不再另存一份 `family`：
     // 键与字段各存一份就是两个真相，改一处漏一处必然漂移。
     assert.equal(entry.family, id, `${id} 的键必须就是它的族 id`);
     assert.equal(
@@ -390,7 +400,27 @@ test("逐工具的形态清单是清册的发布副本，没有漂移", { skip: 
       false,
       `${id} 不许再单存一个 family 字段`,
     );
+    assert.equal(
+      "doc" in PLUGIN_EXPORT_CATALOG[id],
+      false,
+      `${id} 的文档路径与导出无关，不该同步进共享包`,
+    );
   }
+});
+
+test("发布副本已删除：包里不许再有第二份手抄的形态清单", () => {
+  const directory = new URL("../src/shell/plugin-export/", import.meta.url);
+  assert.equal(
+    readdirSync(directory).includes("export-catalog.ts"),
+    false,
+    "export-catalog.ts 还在——那是清册之外的第二个真相",
+  );
+  // 反过来也要成立：判据真的接在生成物上，而不是在别处又硬编码了一份。
+  const contract = readFileSync(
+    new URL("plugin-export-contract.ts", directory),
+    "utf8",
+  );
+  assert.match(contract, /from "\.\.\/app-plugins-generated"/);
 });
 
 test("全工程一套 id：短 id 在导出链里绝迹，键都是第一屏认得的族 id", () => {
@@ -449,8 +479,8 @@ test("全工程一套 id：短 id 在导出链里绝迹，键都是第一屏认�
   }
 });
 
-test("清册声明的每一种形态，导出链都有确定结果——不许「文档说能导出、点下去没反应」", () => {
-  const issues = auditPluginExportCatalog();
+test("清册声明的每一种形态，导出链都有确定结果——不许「文档说能导出、点下去没反应」", async () => {
+  const issues = await auditPluginExportCatalog();
   assert.deepEqual(
     issues,
     [],
@@ -458,10 +488,10 @@ test("清册声明的每一种形态，导出链都有确定结果——不许�
   );
 });
 
-test("那道闸真的会红：形态表少一种、或缺口不说原因，都当场判红", () => {
+test("那道闸真的会红：形态表少一种、或缺口不说原因，都当场判红", async () => {
   // 闸门自己也要有反面用例，否则它可能只是恒返回空数组。
   // ① 清册声明了一个形态表里没有的取值。
-  const unknown = auditWith(
+  const unknown = await auditWith(
     { "ledger-register": { exportKinds: ["xlsx", "tiff"] } },
   );
   assert.ok(
@@ -471,19 +501,22 @@ test("那道闸真的会红：形态表少一种、或缺口不说原因，都�
     "形态表里没有的取值必须判红",
   );
   // ② 缺口不给用户任何原因。
-  const silent = auditWith({}, { pdf: { unavailableReason: "" } });
+  const silent = await auditWith(
+    {},
+    { pdf: { renderable: false, unavailableReason: "" } },
+  );
   assert.ok(
     silent.some((issue) => issue.code === "silent-rejection"),
     "渲不出却不说缺什么，必须判红",
   );
   // ③ 渲染器其实已经实现了，形态表却还标着渲不出。
-  const stale = auditWith({}, { html: { renderable: false } });
+  const stale = await auditWith({}, { html: { renderable: false } });
   assert.ok(
     stale.some((issue) => issue.code === "stale-gap"),
     "形态表陈旧把用户白挡在门外，必须判红",
   );
   // ④ 实现了却没人声明。
-  const orphan = auditWith(
+  const orphan = await auditWith(
     Object.fromEntries(
       Object.keys(PLUGIN_EXPORT_CATALOG).map((id) => [
         id,
@@ -506,24 +539,24 @@ test("台账的形态清单来自清册，不是抄的", () => {
     "html",
   ]);
   assert.deepEqual(LEDGER_EXPORT_FORMS, exportKindsForPlugin(LEDGER_SOURCE_ID));
-  assert.deepEqual(LEDGER_RENDERABLE_EXPORT_FORMS, [
-    "xlsx",
-    "csv",
-    "long-image",
-    "html",
-  ]);
+  // W24 P3 之后 pdf 也渲得出来，台账声明的五种形态全通。
+  assert.deepEqual(
+    LEDGER_RENDERABLE_EXPORT_FORMS,
+    exportKindsForPlugin(LEDGER_SOURCE_ID),
+  );
 });
 
 test("清册没给这个工具声明的形态，一律拒绝", () => {
+  // 台账声明的是 xlsx / csv / pdf / long-image / html，docx 越界。
   const rejected = normalizePluginExportRequest(
-    ledgerExportRequest(LEDGER, "srt", { siteId: "home" }),
+    ledgerExportRequest(LEDGER, "docx", { siteId: "home" }),
   );
   assert.equal(rejected.ok, false);
   assert.equal(rejected.code, "form-not-declared");
   assert.match(rejected.error, /台账没有声明/);
-  // 换算器只有 xlsx / long-image，docx 同样越界。
+  // 换算器只有 xlsx / long-image，csv 同样越界——哪怕它与 xlsx 同属 `grid` 载体。
   const converter = normalizePluginExportRequest({
-    ...ledgerExportRequest(LEDGER, "docx", { siteId: "home" }),
+    ...ledgerExportRequest(LEDGER, "csv", { siteId: "home" }),
     sourceId: "unit-converter",
     sourceLabel: "换算器",
   });
@@ -531,17 +564,31 @@ test("清册没给这个工具声明的形态，一律拒绝", () => {
   assert.equal(converter.code, "form-not-declared");
 });
 
-test("PDF 与字幕形态明确拒绝，并说清缺什么", () => {
-  assert.equal(pluginExportForm("pdf").renderable, false);
-  const rejected = normalizePluginExportRequest(
-    ledgerExportRequest(LEDGER, "pdf", { siteId: "home" }),
-  );
-  assert.equal(rejected.ok, false);
-  assert.equal(rejected.code, "form-not-renderable");
-  assert.match(rejected.error, /中文字形/);
+test("字幕形态的声明已撤销：形态表与清册两侧同时绝迹", () => {
+  // W24 P4：口播脚本第一屏只有「已写段落」与「已写字数」两个计数，没有任何一段
+  // 台词、没有任何一条时间码。按段数均分或按字数折算都是假字幕，所以声明撤销，
+  // 而不是留一条「声明了但渲不出」的缺口挂在那里。
   for (const id of ["srt", "vtt"]) {
-    assert.equal(pluginExportForm(id).renderable, false);
-    assert.match(pluginExportForm(id).unavailableReason, /时间轴/);
+    assert.equal(pluginExportForm(id), null, `${id} 还留在形态表里`);
+    for (const [pluginId, entry] of Object.entries(PLUGIN_EXPORT_CATALOG)) {
+      assert.equal(
+        entry.exportKinds.includes(id),
+        false,
+        `${pluginId} 还声明着 ${id}`,
+      );
+    }
+  }
+  // 撤销的理由必须落在清册里，不能只活在某个人的交付摘要中。
+  const registry = new URL(
+    "file:///opt/cursor-workspaces/oceandino/scripts/data/oceanleo-plugin-registry.json",
+  );
+  if (existsSync(registry)) {
+    const plugins = JSON.parse(readFileSync(registry, "utf8")).plugins;
+    const voiceover = plugins.find((row) => row.id === "voiceover-script");
+    assert.ok(voiceover.exportKindsWithdrawn, "清册里没记下这次撤销");
+    assert.deepEqual(voiceover.exportKindsWithdrawn.kinds, ["srt", "vtt"]);
+    assert.ok(voiceover.exportKindsWithdrawn.reason.length > 60);
+    assert.ok(voiceover.exportKindsWithdrawn.restoreWhen.length > 20);
   }
 });
 
@@ -593,7 +640,7 @@ test("台账 → Excel：产出一件合法的 xlsx 素材，落进我的库并�
   assert.equal(provenance.app_id, "personal-ledger");
 });
 
-test("导出的 xlsx 是一个部件齐全、数值真的在里面的工作簿", () => {
+test("导出的 xlsx 是一个部件齐全、数值真的在里面的工作簿", async () => {
   const normalized = normalizePluginExportRequest(
     ledgerExportRequest(LEDGER, "xlsx", {
       siteId: "home",
@@ -601,7 +648,7 @@ test("导出的 xlsx 是一个部件齐全、数值真的在里面的工作簿",
     }),
   );
   assert.equal(normalized.ok, true);
-  const rendered = renderPluginExport(normalized.request);
+  const rendered = await renderPluginExport(normalized.request);
   assert.equal(rendered.bytes[0], 0x50);
   assert.equal(rendered.bytes[1], 0x4b);
   const parts = unzipSync(rendered.bytes);
@@ -723,7 +770,7 @@ test("两条端到端链：台账 → Excel 与 台账 → 图文长图，都落
   );
 });
 
-function render(form) {
+async function render(form) {
   const normalized = normalizePluginExportRequest(
     ledgerExportRequest(LEDGER, form, {
       siteId: "home",
@@ -734,9 +781,9 @@ function render(form) {
   return renderPluginExport(normalized.request);
 }
 
-test("网页与图文长图是自包含的成品文件，标记语言里的用户数据一律转义", () => {
+test("网页与图文长图是自包含的成品文件，标记语言里的用户数据一律转义", async () => {
   for (const form of ["html", "long-image"]) {
-    const rendered = render(form);
+    const rendered = await render(form);
     const text = strFromU8(rendered.bytes);
     assert.match(text, /八月记账/);
     assert.match(text, /楼下面馆/);
@@ -744,15 +791,15 @@ test("网页与图文长图是自包含的成品文件，标记语言里的用�
     assert.doesNotMatch(text, /<含补贴>/);
     assert.ok(rendered.bytes.length > 500);
   }
-  const poster = render("long-image");
+  const poster = await render("long-image");
   const svg = strFromU8(poster.bytes);
   assert.match(svg, /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<svg /);
   assert.match(svg, /width="1080"/);
   assert.equal(poster.mediaType, "image/svg+xml");
 });
 
-test("CSV 带 BOM 与 CRLF，Excel 双击不乱码；含分隔符的字段加引号", () => {
-  const rendered = render("csv");
+test("CSV 带 BOM 与 CRLF，Excel 双击不乱码；含分隔符的字段加引号", async () => {
+  const rendered = await render("csv");
   // BOM 要在字节里看：TextDecoder 解码时会把它吃掉。
   assert.deepEqual([...rendered.bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
   const text = strFromU8(rendered.bytes);
@@ -772,12 +819,12 @@ test("CSV 带 BOM 与 CRLF，Excel 双击不乱码；含分隔符的字段加引
   });
   assert.equal(tricky.ok, true);
   assert.match(
-    strFromU8(renderPluginExport(tricky.request).bytes),
+    strFromU8((await renderPluginExport(tricky.request)).bytes),
     /"他说 ""买菜, 顺便"""/,
   );
 });
 
-test("docx 是部件齐全的 Word 包，正文里有表格与合计", () => {
+test("docx 是部件齐全的 Word 包，正文里有表格与合计", async () => {
   // 台账没有声明 docx；合同装配声明了 pdf/html/docx，所以这一条走它。
   const normalized = normalizePluginExportRequest({
     ...ledgerExportRequest(LEDGER, "docx", {
@@ -788,7 +835,7 @@ test("docx 是部件齐全的 Word 包，正文里有表格与合计", () => {
     sourceLabel: "合同装配",
   });
   assert.equal(normalized.ok, true, normalized.ok ? "" : normalized.error);
-  const rendered = renderPluginExport(normalized.request);
+  const rendered = await renderPluginExport(normalized.request);
   assert.equal(rendered.bytes[0], 0x50);
   assert.equal(rendered.bytes[1], 0x4b);
   const parts = unzipSync(rendered.bytes);

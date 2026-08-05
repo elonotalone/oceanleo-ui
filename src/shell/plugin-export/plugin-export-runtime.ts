@@ -175,7 +175,7 @@ export async function exportToLibrary(
   const normalized = normalizePluginExportRequest(request);
   if (!normalized.ok) return normalized;
   const input = normalized.request;
-  const rendered = renderPluginExport(input);
+  const rendered = await renderPluginExport(input);
   const digest = await (dependencies.digest || sha256Hex)(rendered.bytes);
   const idempotencyKey = [
     "plugin-export-v1",

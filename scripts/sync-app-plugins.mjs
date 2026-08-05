@@ -18,6 +18,18 @@
 //
 //   清册改了 → 跑本脚本 → 提交生成文件 → bump 共享包 → 36 站零代码改动跟着变。
 //
+// 生成物里有**两张表**，来自派生视图的两个段：
+//
+//   `GENERATED_APP_PLUGIN_MAP`        `sites` 段 → 哪个 app 上发哪几枚按键。
+//   `GENERATED_PLUGIN_EXPORT_CATALOG` `plugins` 段 → 每件工具能导出成哪几种形态。
+//
+// 第二张是 W24 P2 加的。在那之前它是共享包里一份手抄的发布副本
+// （`src/shell/plugin-export/export-catalog.ts`），清册改了它不会跟着改；
+// 现在那份副本已删除，导出链的判据直接读本生成物。
+//
+// **`family` 那一列刻意不同步**：R-1 归一之后键就是 L3 族 id，再存一个同值的字段
+// 就是两个真相，改一处漏一处必然漂移（`signals/W21-request.md` 第 3 条）。
+//
 // 为什么是 .ts 而不是直接 import .json：本仓 focused test 走
 // `node --experimental-strip-types`，ESM 下 import JSON 必须带 import attributes，
 // 而 tsc 的 resolveJsonModule 不认那种写法。生成 .ts 两边都能直接 import。
@@ -47,6 +59,8 @@ const TARGET = resolve(REPO_ROOT, "src/shell/app-plugins-generated.ts");
 // 生成器负责让错误数据进不来，消费侧负责让错误数据即使进来了也长不出按钮。
 const RUNTIMES = new Set(["geo-map", "grid", "interactive-doc"]);
 const FIELDS = ["id", "label", "runtime", "doc"];
+/** 导出形态那张表要同步的字段。`family` 与 `doc` 不进：一个是同值重复，一个导出链用不上。 */
+const PLUGIN_EXPORT_FIELDS = ["label", "runtime", "exportKinds"];
 
 const argv = process.argv.slice(2);
 const checkOnly = argv.includes("--check");
@@ -188,6 +202,62 @@ for (const [key, rows] of flat) {
   }
 }
 
+/**
+ * 导出形态那张表（派生视图的 `plugins` 段）。
+ *
+ * 与按键那张表的取舍不同：**登记为留空的工具照样进这张表**。留空说的是
+ * 「今天不发按键」，不是「这件工具不存在」；它的第一屏一旦补上，导出形态
+ * 立刻要查得到。反过来把它漏掉，导出链的对账闸会判「有第一屏却查不到形态」。
+ */
+function collectExportCatalog() {
+  const catalog = new Map();
+  const source = raw.plugins;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    fail("派生视图缺少 plugins 段，导出形态清单无从同步");
+  }
+  for (const [id, meta] of Object.entries(source)) {
+    const where = `plugins/${id}`;
+    if (!meta || typeof meta !== "object") {
+      problems.push(`${where} 不是一个对象`);
+      continue;
+    }
+    for (const field of ["label", "runtime"]) {
+      if (typeof meta[field] !== "string" || meta[field].trim() === "") {
+        problems.push(`${where} 缺 ${field}`);
+      }
+    }
+    if (typeof meta.label === "string" && meta.label.includes("插件")) {
+      problems.push(`${where} 的中文名含「插件」：${meta.label}`);
+    }
+    if (typeof meta.runtime === "string" && !RUNTIMES.has(meta.runtime.trim())) {
+      problems.push(
+        `${where} 的 runtime=${meta.runtime} 不是三个非编辑类内核之一`,
+      );
+    }
+    const kinds = meta.exportKinds;
+    if (!Array.isArray(kinds) || kinds.length === 0) {
+      // 一种形态都不声明的工具，导出入口没有落点。清册那一侧已有同名的闸
+      //（ERR_UNKNOWN_EXPORT_KIND），这里再判一次是因为发布副本一旦漏掉，
+      // 红会落在共享包里而不是清册里，排查方向整个偏掉。
+      problems.push(`${where} 没有 exportKinds，导出入口没有可渲染的落点`);
+    } else if (
+      kinds.some((kind) => typeof kind !== "string" || kind.trim() === "")
+    ) {
+      problems.push(`${where} 的 exportKinds 里有空值`);
+    } else if (new Set(kinds).size !== kinds.length) {
+      problems.push(`${where} 的 exportKinds 有重复项：${kinds.join(" ")}`);
+    }
+    catalog.set(id, {
+      label: String(meta.label || "").trim(),
+      runtime: String(meta.runtime || "").trim(),
+      exportKinds: Array.isArray(kinds) ? kinds.map((k) => String(k).trim()) : [],
+    });
+  }
+  return catalog;
+}
+
+const exportCatalog = collectExportCatalog();
+
 /** 发布副本 = 派生视图减去登记为留空的那些行；减完变空的 app 整个不写进去。 */
 const published = new Map();
 for (const [key, rows] of flat) {
@@ -242,6 +312,52 @@ for (const key of appKeys) {
 lines.push("  },");
 lines.push("};");
 lines.push("");
+lines.push("/**");
+lines.push(" * 逐工具的导出形态清单（派生视图的 `plugins` 段）。");
+lines.push(" *");
+lines.push(" * **键就是 L3 族 id**，与按键表、第一屏、导出链逐字同一套。族 id 不再单列一个");
+lines.push(" * 字段：键与字段各存一份就是两个真相，改一处漏一处必然漂移。");
+lines.push(" *");
+lines.push(" * `exportKinds` 是字符串数组而不是形态闭集：闭集在共享包的");
+lines.push(" * `plugin-export/plugin-export-contract.ts` 里，本文件是数据不是判据。");
+lines.push(" * 清册声明了一个导出链没实现的形态，由那边的对账闸判红。");
+lines.push(" */");
+lines.push("export interface GeneratedPluginExportEntry {");
+lines.push("  /** 面向用户的中文名。 */");
+lines.push("  label: string;");
+lines.push('  runtime: "geo-map" | "grid" | "interactive-doc";');
+lines.push("  exportKinds: readonly string[];");
+lines.push("}");
+lines.push("");
+lines.push("export interface GeneratedPluginExportCatalog {");
+lines.push("  schema: string;");
+lines.push("  generatedAt: string;");
+lines.push("  source: string;");
+lines.push("  plugins: Readonly<Record<string, GeneratedPluginExportEntry>>;");
+lines.push("}");
+lines.push("");
+lines.push(
+  "export const GENERATED_PLUGIN_EXPORT_CATALOG: GeneratedPluginExportCatalog = {",
+);
+lines.push(`  schema: ${JSON.stringify(raw.schema)},`);
+lines.push(`  generatedAt: ${JSON.stringify(raw.generatedAt || "")},`);
+lines.push(`  source: ${JSON.stringify(raw.source || "")},`);
+lines.push("  plugins: {");
+for (const id of [...exportCatalog.keys()].sort()) {
+  const entry = exportCatalog.get(id);
+  lines.push(`    ${JSON.stringify(id)}: {`);
+  lines.push(`      label: ${JSON.stringify(entry.label)},`);
+  lines.push(`      runtime: ${JSON.stringify(entry.runtime)},`);
+  lines.push(
+    `      exportKinds: [${entry.exportKinds
+      .map((kind) => JSON.stringify(kind))
+      .join(", ")}],`,
+  );
+  lines.push("    },");
+}
+lines.push("  },");
+lines.push("};");
+lines.push("");
 
 const output = lines.join("\n");
 
@@ -266,7 +382,9 @@ writeFileSync(TARGET, output, "utf8");
 process.stdout.write(`sync-app-plugins: 写入 ${TARGET}（${summary()}）\n`);
 
 function summary() {
-  const base = `${appKeys.length} 个 app / ${publishedRowCount} 枚按钮`;
+  const base =
+    `${appKeys.length} 个 app / ${publishedRowCount} 枚按钮 / ` +
+    `${exportCatalog.size} 件工具的导出形态`;
   if (!heldRowCount) return base;
   return `${base}；另有 ${heldRowCount} 枚属 ${heldSeen.size} 件登记留空的工具，未发布`;
 }

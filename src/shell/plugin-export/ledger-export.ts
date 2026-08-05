@@ -31,7 +31,7 @@ export const LEDGER_SOURCE_LABEL = "台账";
 export const LEDGER_EXPORT_FORMS: readonly PluginExportFormId[] =
   exportKindsForPlugin(LEDGER_SOURCE_ID);
 
-/** 其中本波真的渲得出字节的那几种（去掉 pdf）。 */
+/** 其中真的渲得出字节的那几种。W24 P3 之后 pdf 也在里面，五种全通。 */
 export const LEDGER_RENDERABLE_EXPORT_FORMS: readonly PluginExportFormId[] =
   renderableExportKindsForPlugin(LEDGER_SOURCE_ID);
 

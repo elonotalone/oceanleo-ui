@@ -101,7 +101,14 @@ test("目录里的每一个模块都被那份公共面收进去，新加的渲�
   const modules = readdirSync(directory)
     .filter((name) => name.endsWith(".ts"))
     .map((name) => name.replace(/\.ts$/, ""))
-    .filter((name) => name !== "index" && name !== "plugin-export-wiring");
+    .filter(
+      (name) =>
+        name !== "index" &&
+        // 接线层由 `src/shell/index.ts` 单独一行导出（见下一条用例）。
+        name !== "plugin-export-wiring" &&
+        // 字形数据**故意**不进 barrel，见下一条用例。
+        name !== "pdf-font-data-generated",
+    );
   assert.ok(modules.length >= 6, "导出链的模块一个都不许漏扫");
   for (const name of modules) {
     assert.ok(
@@ -109,6 +116,32 @@ test("目录里的每一个模块都被那份公共面收进去，新加的渲�
       `${name}.ts 没有从 plugin-export/index.ts 出去，站点侧够不着它`,
     );
   }
+});
+
+test("字形数据只许动态 import：静态引用会让 36 个站的主包都背上它", () => {
+  const directory = new URL("../src/shell/plugin-export/", import.meta.url);
+  const asset = readFileSync(
+    new URL("pdf-font-data-generated.ts", directory),
+    "utf8",
+  );
+  // 这份数据本身就是本包最大的一块，判据先确认它确实大到值得单独切分块，
+  // 否则下面那条限制只是一句空话。
+  assert.ok(asset.length > 300_000, "字形数据小得反常，先确认它是不是切坏了");
+  assert.equal(
+    chainBarrel.includes("pdf-font-data-generated"),
+    false,
+    "字形数据被 barrel 静态带出去了，代码分割白做",
+  );
+  const importers = readdirSync(directory)
+    .filter((name) => name.endsWith(".ts") && name !== "pdf-font-data-generated.ts")
+    .filter((name) =>
+      readFileSync(new URL(name, directory), "utf8").includes(
+        'from "./pdf-font-data-generated"',
+      ),
+    );
+  assert.deepEqual(importers, [], "只许 `await import()`，不许静态 import");
+  const loader = readFileSync(new URL("pdf-cjk-font.ts", directory), "utf8");
+  assert.match(loader, /import\("\.\/pdf-font-data-generated"\)/);
 });
 
 test("共享包 barrel 把整条链带出去，36 个消费站 import 得到", () => {

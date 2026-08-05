@@ -8,9 +8,9 @@
  *   1. 谁能导出：两类功能件都能导出（`PluginSurfaceKind` 的两个取值都合法）。
  *   2. 导出什么：当前的用户数据 + 一个形态选择（`PluginExportForm`）。
  *      形态是一个闭集，取值与 W10 清册的 `exportKinds` 逐字一致：
- *      xlsx / csv / pdf / long-image / html / docx / srt / vtt
+ *      xlsx / csv / pdf / long-image / html / docx
  *      （`scripts/data/oceanleo-plugin-registry.json`，派生视图的 `plugins` 目录）。
- *      逐工具支持哪几种，也由清册说了算，见 `export-catalog.ts`。
+ *      逐工具支持哪几种，也由清册说了算，见本文件的 `PLUGIN_EXPORT_CATALOG`。
  *   3. 产物是什么：一件素材，进「我的库」，可下载。每种形态都必须映射到
  *      13 类可下载载体之一（`MATERIAL_ARTIFACT_TYPES`）。
  *   4. 软件本身：永不出现在库里、永不可下载。这条不是注释，是
@@ -23,12 +23,49 @@
  * 编辑类），所以它们永远不是可下载成品。
  */
 
+import { GENERATED_PLUGIN_EXPORT_CATALOG } from "../app-plugins-generated";
 import type { ArtifactType } from "../artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { pluginIdForItem } from "../plugin-initial-state";
-import { PLUGIN_EXPORT_CATALOG } from "./export-catalog";
 
 export const PLUGIN_EXPORT_SCHEMA = "oceanleo.plugin-export.v1";
+
+/* -------------------------------------------------------------------------- *
+ * 逐工具的形态清单
+ * -------------------------------------------------------------------------- */
+
+export interface PluginExportCatalogEntry {
+  /** 面向用户的中文名。 */
+  label: string;
+  runtime: "geo-map" | "grid" | "interactive-doc";
+  /**
+   * 清册声明的形态。类型是字符串而不是下面那个闭集，这是有意的：清册**可以**
+   * 声明导出链还没实现的形态，那是一条要被对账闸看见并判红的缺口
+   * （`plugin-export-audit.ts` 的 `unknown-form`），不是靠类型系统假装不存在的东西。
+   */
+  exportKinds: readonly string[];
+}
+
+/**
+ * 逐工具的导出形态清单。
+ *
+ * **这是生成物，不是发布副本。** 单一事实源是 oceandino 仓手写的
+ * `scripts/data/oceanleo-plugin-registry.json`，经 W10 的生成器算出派生视图，
+ * 再由本仓 `scripts/sync-app-plugins.mjs` 同步进 `app-plugins-generated.ts`。
+ *
+ * W24 之前这里是一份手抄在 `export-catalog.ts` 里的副本：清册改了它不跟着改，
+ * 短 id 归一那一波就是靠人工逐条改过来的。那份副本已删除。
+ *
+ * 键就是 L3 族 id，与按键表、第一屏逐字同一套；族 id 不再单存一个字段。
+ */
+export const PLUGIN_EXPORT_CATALOG: Readonly<
+  Record<string, PluginExportCatalogEntry>
+> = GENERATED_PLUGIN_EXPORT_CATALOG.plugins;
+
+export const PLUGIN_EXPORT_CATALOG_SOURCE =
+  GENERATED_PLUGIN_EXPORT_CATALOG.source;
+export const PLUGIN_EXPORT_CATALOG_GENERATED_AT =
+  GENERATED_PLUGIN_EXPORT_CATALOG.generatedAt;
 
 /** 两类功能件都可以导出（§3.2 的表格两列）。 */
 export type PluginSurfaceKind = "editor" | "standalone";
@@ -40,9 +77,7 @@ export type PluginExportFormId =
   | "pdf"
   | "long-image"
   | "html"
-  | "docx"
-  | "srt"
-  | "vtt";
+  | "docx";
 
 export interface PluginExportForm {
   id: PluginExportFormId;
@@ -123,39 +158,35 @@ export const PLUGIN_EXPORT_FORMS: readonly PluginExportForm[] = [
     mediaType: "application/pdf",
     extension: "pdf",
     sourceFormat: "pdf",
-    renderable: false,
-    // 手写 PDF 只能用 WinAnsi 的十四款标准字体，中文一律渲成空白方块。
-    // 交一份看不见中文的 PDF 比不交更糟，所以这一档明确拒绝；补齐条件
-    // （一份可嵌入的中文字形子集）写在 signals/W15-request.md。
-    // docx 与网页没有这个问题：字形由 Word 与浏览器自己选。
-    unavailableReason:
-      "PDF 形态还不能导出：缺少可嵌入的中文字形，现在生成的 PDF 会把中文渲成空白。",
-  },
-  {
-    id: "srt",
-    label: "SRT 字幕",
-    artifactType: "document",
-    mediaType: "application/x-subrip",
-    extension: "srt",
-    sourceFormat: "srt",
-    renderable: false,
-    // 字幕要的是时间轴（起止时间 + 台词），本文件的通用载荷只有列与行，
-    // 没有时间轴；十三类载体里也没有字幕这一类，落哪个载体要先裁定。
-    unavailableReason:
-      "字幕形态还不能导出：口播脚本的时间轴还没有落盘，字幕文件归哪一类载体也未裁定。",
-  },
-  {
-    id: "vtt",
-    label: "WebVTT 字幕",
-    artifactType: "document",
-    mediaType: "text/vtt",
-    extension: "vtt",
-    sourceFormat: "vtt",
-    renderable: false,
-    unavailableReason:
-      "字幕形态还不能导出：口播脚本的时间轴还没有落盘，字幕文件归哪一类载体也未裁定。",
+    // 中文能不能渲出来，取决于随包那份字形子集在不在
+    //（`pdf-cjk-font.ts`：按本份文档实际用到的字符现切一份子集嵌进 PDF）。
+    // 拿不到字形时这一档会带原因拒绝，不会交一份中文渲成空白方块的 PDF。
+    renderable: true,
+    unavailableReason: "",
   },
 ];
+
+/*
+ * ── 字幕（`.srt` / `.vtt`）为什么不在这张表里（W24 P4，2026-08-05）─────────
+ *
+ * 曾经在：口播脚本的清册里声明过这两种形态，形态表里也留着两条
+ * `renderable: false` 的缺口条目。**声明已经撤销**，理由是拿不到真数据：
+ *
+ *   字幕要的是「每条 cue 的起止时间 + 那条 cue 的台词」。口播脚本今天的第一屏
+ *   （`plugin-initial-states/authoring-plugins.ts` 的 `VOICEOVER_SCRIPT_INITIAL_STATE`）
+ *   是一份**时长预算计算器**：只有「已写段落」与「已写字数」两个计数，
+ *   没有任何一段台词文本，也没有任何一条起止时间码。承载它的运行时十种块类型
+ *   （`interactive-doc-schema.ts:151-162`）里也没有能放分段台词的那一种。
+ *
+ *   用段数去均分总时长就是按行数均分，用总字数折算就是现编——两种都会产出
+ *   对不上片子的假字幕，比不导出更糟。
+ *
+ * 工具文档 §9 的时间码模型本身是查证过、可直接实现的（每段口播时长 = 该段字数 /
+ * 语速，累加段后停顿，全部对齐到帧，相邻 cue 间隙不小于 2 帧）。缺的只是
+ * **分段台词**这一份输入。运行时能存下逐段台词之后，把 `srt` / `vtt` 加回清册
+ * （`scripts/data/oceanleo-plugin-registry.json` 的 `exportKindsWithdrawn` 里
+ * 记着恢复条件），再在这里补两条形态即可，落 `document` 载体，不新增第十四类载体。
+ */
 
 const FORM_BY_ID = new Map<PluginExportFormId, PluginExportForm>(
   PLUGIN_EXPORT_FORMS.map((form) => [form.id, form]),
@@ -174,7 +205,11 @@ export function pluginExportForm(
 export function exportKindsForPlugin(
   pluginId: string,
 ): readonly PluginExportFormId[] {
-  return PLUGIN_EXPORT_CATALOG[pluginId]?.exportKinds || [];
+  // 生成物里是字符串：清册可以声明一个形态表里没有的取值，那是对账闸要判红的
+  // 缺口。这里照原样交出去，由 `pluginExportForm()` 与对账闸各自判断，
+  // 不在这一层悄悄过滤掉——过滤掉就等于把缺口藏起来。
+  return (PLUGIN_EXPORT_CATALOG[pluginId]?.exportKinds ||
+    []) as readonly PluginExportFormId[];
 }
 
 export function pluginSupportsForm(

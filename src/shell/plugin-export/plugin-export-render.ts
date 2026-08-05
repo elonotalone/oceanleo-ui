@@ -1,14 +1,18 @@
 /**
  * 把一份导出载荷渲成字节。
  *
- * 五种可渲染形态各自是一件独立的成品文件，互不派生：
+ * 六种形态各自是一件独立的成品文件，互不派生：
  *   xlsx       → 最小合法 SpreadsheetML 包（`grid` 载体）
  *   csv        → 带 BOM 的 UTF-8 文本，Excel 双击不乱码（`grid` 载体）
  *   html       → 自包含单文件网页（`website` 载体）
  *   long-image → 1080 宽的 SVG 长图（`vector_image` 载体）
  *   docx       → 最小合法 WordprocessingML 包（`document` 载体）
+ *   pdf        → A4 版式，随包字形子集，中文可选中可检索（`pdf` 载体）
  *
- * pdf / srt / vtt 在形态表里已声明为本波不可渲染，走不到这里。
+ * **本函数是异步的，只为了 pdf 这一种。** 前五种是纯计算，pdf 要先把随包那份
+ * 字形子集取回来（`pdf-cjk-font.ts` 里唯一一处 `await import()`，为的是不让
+ * 36 个站的主包都背上 583 KB 字形）。与其留一个「pdf 要先 preload」的暗坑，
+ * 不如整条入口都是异步的：调用方只有一种写法。
  *
  * 同一份输入必须产出同一串字节：zip 时间戳固定，所有拼装都不读当前时间，
  * 需要时间的地方只用请求里带的 `exportedAt`。幂等键因此稳定，重复导出
@@ -16,6 +20,8 @@
  */
 
 import { strToU8, zipSync } from "fflate";
+import { loadPdfFonts } from "./pdf-cjk-font";
+import { renderPdf } from "./pdf-render";
 import {
   pluginExportFilename,
   type NormalizedPluginExportRequest,
@@ -461,9 +467,9 @@ ${parts.join("\n")}
  * 所以这里见到的形态一定是可渲染的；`default` 分支只在形态表新增了
  * 没接渲染器的取值时才会触发，那时宁可抛错也不许交一个空文件。
  */
-export function renderPluginExport(
+export async function renderPluginExport(
   request: NormalizedPluginExportRequest,
-): RenderedPluginExport {
+): Promise<RenderedPluginExport> {
   const common = {
     mediaType: request.form.mediaType,
     filename: pluginExportFilename(request),
@@ -480,6 +486,9 @@ export function renderPluginExport(
       return { ...common, bytes: strToU8(renderPoster(request)) };
     case "docx":
       return { ...common, bytes: renderDocx(request) };
+    case "pdf":
+      // 字形取不回来就让这一轮失败：一份中文渲成空白方块的 PDF 比不给更糟。
+      return { ...common, bytes: renderPdf(request, await loadPdfFonts()) };
     default:
       throw new Error(
         `${request.form.label}还没有接上渲染器，已拒绝产出空文件。`,

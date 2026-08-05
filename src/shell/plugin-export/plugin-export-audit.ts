@@ -15,12 +15,13 @@
  * 声明为 `renderable: false` 的形态还要再核一次「真的没实现」：渲染器若其实
  * 渲得出来，说明形态表写陈旧了，用户被白挡在门外，同样判红。
  *
- * 本文件不读任何外部文件，所以既能在测试里跑，也能在运行时自检；与 oceandino
- * 仓那份派生视图的逐条比对在 `tests/plugin-export.test.mjs` 里。
+ * 对账是**真的渲一遍**，不是查表：每一种声明可导出的形态都要当场产出字节。
+ * 因此本函数是异步的（pdf 那一档要先取回随包字形子集），与 oceandino 仓那份
+ * 派生视图的逐条比对在 `tests/plugin-export.test.mjs` 里。
  */
 
-import { PLUGIN_EXPORT_CATALOG } from "./export-catalog";
 import {
+  PLUGIN_EXPORT_CATALOG,
   PLUGIN_EXPORT_FORMS,
   exportKindsForPlugin,
   normalizePluginExportRequest,
@@ -95,10 +96,10 @@ function forcedNormalized(
   return { ...request, form: resolved, exportedAt: request.exportedAt || "" };
 }
 
-function auditDeclaredForm(
+async function auditDeclaredForm(
   pluginId: string,
   form: PluginExportFormId,
-): PluginExportAuditIssue[] {
+): Promise<PluginExportAuditIssue[]> {
   const issues: PluginExportAuditIssue[] = [];
   const resolved = pluginExportForm(form);
   if (!resolved) {
@@ -123,7 +124,7 @@ function auditDeclaredForm(
     }
     let byteLength = 0;
     try {
-      byteLength = renderPluginExport(normalized.request).bytes.length;
+      byteLength = (await renderPluginExport(normalized.request)).bytes.length;
     } catch (error) {
       issues.push({
         pluginId,
@@ -176,7 +177,7 @@ function auditDeclaredForm(
   const forced = forcedNormalized(pluginId, form);
   if (forced) {
     try {
-      const bytes = renderPluginExport(forced).bytes;
+      const bytes = (await renderPluginExport(forced)).bytes;
       if (bytes.length > 0) {
         issues.push({
           pluginId,
@@ -195,8 +196,12 @@ function auditDeclaredForm(
 /**
  * 跑一遍全清册。返回空数组即两边对得上；任何一条都足以判红，
  * 机检在 `tests/plugin-export.test.mjs`。
+ *
+ * 异步是因为它真的把每一种形态都渲一遍，pdf 那一档要先载入字形子集。
  */
-export function auditPluginExportCatalog(): readonly PluginExportAuditIssue[] {
+export async function auditPluginExportCatalog(): Promise<
+  readonly PluginExportAuditIssue[]
+> {
   const issues: PluginExportAuditIssue[] = [];
   const declaredForms = new Set<string>();
   for (const pluginId of Object.keys(PLUGIN_EXPORT_CATALOG)) {
@@ -212,7 +217,7 @@ export function auditPluginExportCatalog(): readonly PluginExportAuditIssue[] {
     }
     for (const form of kinds) {
       declaredForms.add(form);
-      issues.push(...auditDeclaredForm(pluginId, form));
+      issues.push(...(await auditDeclaredForm(pluginId, form)));
     }
   }
   for (const form of PLUGIN_EXPORT_FORMS) {

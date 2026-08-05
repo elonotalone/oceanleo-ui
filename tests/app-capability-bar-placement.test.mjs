@@ -224,12 +224,18 @@ function plugin(id, label, runtime = "interactive-doc") {
   };
 }
 
-/** 截图里那个 app：行程定制方案 + 地图 / 地球仪 / 台账 / 间隔排程。 */
+/**
+ * 截图里那个 app：行程定制方案 + 地图 / 地球仪 / 台账 / 间隔排程。
+ *
+ * 四个 id 都是 L3 族 id。夹具是自造数据、写成什么都跑得通，但 R-1 归一之后
+ * 短 id 已经废除且不留别名，夹具里还写着 `city-map` / `ledger` 会让
+ * 「短 id 已绝迹」这个结论在仓里看起来是假的（`signals/W21-request.md` 第 3 条）。
+ */
 const TRIP_PLUGINS = [
-  plugin("city-map", "地图", "geo-map"),
-  plugin("globe", "地球仪", "geo-map"),
-  plugin("ledger", "台账", "grid"),
-  plugin("spaced-repetition", "间隔排程"),
+  plugin("annotatable-city-map", "地图", "geo-map"),
+  plugin("interactive-globe", "地球仪", "geo-map"),
+  plugin("ledger-register", "台账", "grid"),
+  plugin("spaced-repetition-scheduler", "间隔排程"),
 ];
 
 function mountConsole(fixture, props = {}) {
@@ -335,10 +341,10 @@ test("按键逐枚来自清册，文案是工具自己的中文名，点选与�
     await click(ledger);
     const pressed = mounted.container.querySelectorAll('[aria-pressed="true"]');
     assert.equal(pressed.length, 1);
-    assert.equal(pressed[0].dataset.capabilityPlugin, "ledger");
+    assert.equal(pressed[0].dataset.capabilityPlugin, "ledger-register");
     // 再点一次回到 app 自己的流程（没有 app 按钮，取消靠再点同一枚）。
     await click(
-      mounted.container.querySelector('[data-capability-plugin="ledger"]'),
+      mounted.container.querySelector('[data-capability-plugin="ledger-register"]'),
     );
     assert.equal(
       mounted.container.querySelectorAll('[aria-pressed="true"]').length,

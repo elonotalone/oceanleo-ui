@@ -6,14 +6,10 @@
  */
 
 export {
+  MATERIAL_ARTIFACT_TYPES,
   PLUGIN_EXPORT_CATALOG,
   PLUGIN_EXPORT_CATALOG_GENERATED_AT,
   PLUGIN_EXPORT_CATALOG_SOURCE,
-  type PluginExportCatalogEntry,
-} from "./export-catalog";
-
-export {
-  MATERIAL_ARTIFACT_TYPES,
   PLUGIN_EXPORT_FORMS,
   PLUGIN_EXPORT_SCHEMA,
   RUNTIME_STATE_ARTIFACT_TYPES,
@@ -29,6 +25,7 @@ export {
   pluginExportProvenance,
   pluginExportTitle,
   type NormalizedPluginExportRequest,
+  type PluginExportCatalogEntry,
   type PluginExportCell,
   type PluginExportColumn,
   type PluginExportData,
@@ -44,6 +41,24 @@ export {
   renderPluginExport,
   type RenderedPluginExport,
 } from "./plugin-export-render";
+
+// PDF 的两块零件。站点侧一般用不到它们（走 `renderPluginExport()` 就够了），
+// 但 `loadPdfFonts()` 可以在打开导出菜单时先预热，省掉点下去那一刻的等待。
+export {
+  loadPdfFonts,
+  resetPdfFontsForTest,
+  type LoadedPdfFont,
+  type PdfFontSet,
+} from "./pdf-cjk-font";
+
+export { renderPdf } from "./pdf-render";
+
+export {
+  parseTrueType,
+  subsetTrueType,
+  type TrueTypeFont,
+  type TrueTypeSubset,
+} from "./truetype-subset";
 
 export {
   auditPluginExportCatalog,
