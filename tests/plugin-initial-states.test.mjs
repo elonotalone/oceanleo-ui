@@ -1,15 +1,18 @@
 // 插件初始态 —— 锁住「第一屏是什么」。
 //
-// 三条判据，缺一条这一波就白做：
+// 四条判据，缺一条这一波就白做：
 //   1. 每个登记在册的初始态都能被真正的内核校验器接住（形状合法，不是看起来像）。
 //   2. 地图三件的每一条依赖都**实际存在**，字节数与 sha256 与内容对得上 ——
 //      直接把缺陷二（sha256 全 0、byteSize 写 1、文件不存在）锁死。
 //   3. 没做初始态的插件查表返回空，**不是**通用模板。
+//   4. 清册、发出去的按键、做出来的第一屏三份名单必须对得上；对不上时当场红，
+//      而且红在具体是哪一种对不上。名单一律派生（见下面「两份名单从哪来」），
+//      手抄名单过期正是这份文件上一次变红的原因。
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import {
   BUILT_IN_GEO_ASSETS,
@@ -22,6 +25,7 @@ import {
   pluginInitialItemInput,
   pluginInitialState,
 } from "../src/shell/plugin-initial-states/index.ts";
+import { GENERATED_APP_PLUGIN_MAP } from "../src/shell/app-plugins-generated.ts";
 import {
   GEO_MAP_PALETTE,
   parseGeoMapSource,
@@ -35,7 +39,10 @@ import {
   linkInteractiveDocProject,
 } from "../src/shell/interactive-doc-editor/interactive-doc-source.ts";
 import { normalizeGridProjectSheets } from "../src/shell/doc-editors/grid-model.ts";
-import { blankDraftLibraryItem } from "../src/shell/blank-draft-items.ts";
+import {
+  BLANK_DRAFT_FEATURE_IDS,
+  blankDraftLibraryItem,
+} from "../src/shell/blank-draft-items.ts";
 
 const REQUIRED_SIX = [
   "annotatable-city-map",
@@ -46,27 +53,145 @@ const REQUIRED_SIX = [
   "financial-calculator",
 ];
 
-const GEO_PLUGINS = [
-  "annotatable-city-map",
-  "interactive-globe",
-  "floorplan-annotation",
-];
+/**
+ * 按内核取插件。**不要在测试里手抄内核名单** —— 这份文件上一次变红就是因为手抄的
+ * 名单跟不上新补的第一屏；一份新地图加进来，下面那几条地图断言必须自动罩住它。
+ */
+function kernelPlugins(kernel) {
+  return PLUGIN_INITIAL_STATE_IDS.filter(
+    (pluginId) => pluginInitialState(pluginId).kernel === kernel,
+  );
+}
 
-/** 本波明确留空的插件：查表必须回空，绝不允许悄悄回退成通用模板。 */
-const DELIBERATELY_EMPTY = [
-  "concept-knowledge-graph",
-  "relationship-graph",
-  "search-query-builder",
-  "contract-assembly",
-  "dialogue-branch-script",
-  "voiceover-script",
-  "medical-calculator",
-  "legal-calculator",
-  "metrics-dashboard",
-  "self-test-quiz",
-  "formula-derivation-walkthrough",
-  "executable-notebook",
-];
+const GEO_PLUGINS = kernelPlugins("geo-map");
+
+// ---------------------------------------------------------------------------
+// 两份名单从哪来：派生，不手抄
+// ---------------------------------------------------------------------------
+// 这份文件原来有两份手抄名单 —— 「本波明确留空的 12 件」与「清册登记的 9 个 id」。
+// 补完十份第一屏之后两份同时过期，两条断言当场变红。过期的是**数据**不是判据，
+// 所以名单换成派生的，两条断言的意图一个字没动：留空的必须回空、清册与实现一一对应。
+//
+// 三个源都用，因为「两侧对不上」本身就是要抓的缺陷，不是要绕开的麻烦：
+//
+//   1. `GENERATED_APP_PLUGIN_MAP` —— 清册在本仓的发布副本，随包，永远读得到。
+//      它给出「今天真发了按键的是哪些 id」。
+//   2. `PLUGIN_INITIAL_STATE_IDS` —— 实现这一侧，今天真有第一屏的 id。
+//   3. 清册的派生视图（在 oceandino 仓，`existsSync` 软判）。它给出前两个源给不出的
+//      两格：**册子上有、却一枚按键都没发的族**，以及那个族留空的裁定与理由。
+//
+// 单拿第 2 源派生是不够的：拿实现去对实现恒真，什么都锁不住。交叉对账才抓得住这一波
+// 真发生过的两种事故 —— 清册发了按键没人补第一屏（上一轮 236 枚死按键），
+// 以及补了第一屏清册没跟上（做完了没人用，或 hold 登记过期）。
+
+/** 发布副本里出现过的插件 id：发了按键的那一侧。 */
+const SHIPPED_PLUGIN_IDS = Object.freeze(
+  [
+    ...new Set(
+      Object.values(GENERATED_APP_PLUGIN_MAP.apps).flatMap((rows) =>
+        rows.map((entry) => String(entry?.id || "").trim()).filter(Boolean),
+      ),
+    ),
+  ].sort(),
+);
+
+/** 清册派生视图。路径与环境变量与 `app-capability-entry.test.mjs` 同一条。 */
+const REGISTRY_SOURCE =
+  process.env.OCEANLEO_APP_PLUGINS ||
+  "/opt/cursor-workspaces/oceandino/scripts/data/oceanleo-app-plugins.json";
+const REGISTRY = existsSync(REGISTRY_SOURCE)
+  ? JSON.parse(readFileSync(REGISTRY_SOURCE, "utf8"))
+  : null;
+
+/** 册子：非编辑类插件的全集。清册不在本仓，读不到时是 `null` —— **不是空集**。 */
+const ROSTER_IDS = REGISTRY
+  ? Object.freeze(Object.keys(REGISTRY.plugins ?? {}).sort())
+  : null;
+
+/** 登记为留空的族 → 裁定与理由。今天是仲裁 A-7 撤掉的概念图谱与关系图。 */
+const HELD = new Map();
+for (const entry of REGISTRY?.pluginsWithoutApps ?? []) {
+  const id = String(entry?.id || "").trim();
+  if (id) HELD.set(id, { ruling: String(entry?.ruling || ""), reason: String(entry?.reason || "") });
+}
+for (const [id, meta] of Object.entries(REGISTRY?.plugins ?? {})) {
+  if (!meta?.hold) continue;
+  HELD.set(id, {
+    ruling: String(meta.hold.ruling || ""),
+    reason: String(meta.hold.reason || ""),
+  });
+}
+
+const IMPLEMENTED = new Set(PLUGIN_INITIAL_STATE_IDS);
+
+/**
+ * 归一时废掉的四个旧短 id 加两个同源的。这是一个**封闭的历史集合**，不是会变的名单：
+ * canonical id 已裁定为 L3 族 id，不留别名、不留映射表，所以这六个只会一直是废的。
+ */
+const RETIRED_SHORT_IDS = Object.freeze([
+  "city-map",
+  "concept-graph",
+  "floorplan",
+  "geo-map",
+  "ledger",
+  "spaced-repetition",
+]);
+
+/**
+ * 查表必须回空的 id。三段都是派生的：
+ *   · 册子上有、没有第一屏的族（今天 = 登记为留空的那两个）；
+ *   · 五个通用起手件 featureId —— 「查不到就回退成通用模板」正是本条要防的事；
+ *   · 归一时废掉的短 id。
+ * 后两段与清册在不在本机无关，所以这份名单**任何时候都非空**，断言不会退化成空转。
+ */
+const EMPTY_LOOKUP_IDS = Object.freeze([
+  ...(ROSTER_IDS ?? []).filter((id) => !IMPLEMENTED.has(id)),
+  ...BLANK_DRAFT_FEATURE_IDS,
+  ...RETIRED_SHORT_IDS,
+]);
+
+/**
+ * 三份名单的对账。返回的每一格都是「一种具体的不一致」，全空才算对得上。
+ *
+ * 抽成纯函数是为了让反面用例能喂**同一段逻辑**：真数据判绿的这段代码，
+ * 换上「清册多一个 id」「第一屏多一个 id」的假局面必须当场判红，
+ * 否则上面那几条 `deepEqual([])` 只是恒真。
+ */
+function reconcileInitialStateRoster({ roster, held, shipped, implemented }) {
+  const heldSet = new Set(held ?? []);
+  const shippedSet = new Set(shipped ?? []);
+  const implementedSet = new Set(implemented ?? []);
+  const rosterSet = roster ? new Set(roster) : null;
+  const sorted = (values) => [...values].sort();
+  return {
+    /** 发了按键、却没有第一屏 —— 用户点下去是死按键。 */
+    deadButtons: sorted([...shippedSet].filter((id) => !implementedSet.has(id))),
+    /** 有第一屏、却没发按键，也没登记为留空 —— 做完了没人用，或漏了登记。 */
+    unshipped: sorted(
+      [...implementedSet].filter((id) => !shippedSet.has(id) && !heldSet.has(id)),
+    ),
+    /** 登记为留空、却又有了第一屏或按键 —— 登记过期。 */
+    staleHold: sorted(
+      [...heldSet].filter((id) => implementedSet.has(id) || shippedSet.has(id)),
+    ),
+    /** 册子上有、既没第一屏也没登记留空 —— 「没人知道它没做完」。 */
+    unresolved: rosterSet
+      ? sorted(
+          [...rosterSet].filter(
+            (id) => !implementedSet.has(id) && !heldSet.has(id),
+          ),
+        )
+      : [],
+    /** 册子上没有、却发了按键或做了第一屏 —— 发布副本与清册漂移。 */
+    offRoster: rosterSet
+      ? sorted(
+          [...new Set([...shippedSet, ...implementedSet])].filter(
+            (id) => !rosterSet.has(id),
+          ),
+        )
+      : [],
+  };
+}
 
 // `use-geo-map-workbench.ts` 拖 React 与 i18n 的 .tsx 进来，node 的 strip-types
 // 载不了，所以这里按 `geo-map-workbench.test.mjs` 的既有做法读源文本对键名，
@@ -123,12 +248,16 @@ test("必做的六个插件都有初始态，且都不是通用起手件", () =>
 });
 
 test("没有初始态的插件查表回空，不许回退到通用模板", () => {
-  for (const pluginId of DELIBERATELY_EMPTY) {
+  assert.ok(
+    EMPTY_LOOKUP_IDS.length >= BLANK_DRAFT_FEATURE_IDS.length,
+    "这条断言的名单是派生的；派生成空集等于这条没测",
+  );
+  for (const pluginId of EMPTY_LOOKUP_IDS) {
     assert.equal(pluginInitialState(pluginId), null, `${pluginId} 应当留空`);
     assert.equal(hasPluginInitialState(pluginId), false);
     assert.equal(pluginInitialItemInput(pluginId), null);
   }
-  for (const bogus of ["", "   ", "不存在的插件", "interactive_doc_editing", null, undefined, 42]) {
+  for (const bogus of ["", "   ", "不存在的插件", null, undefined, 42]) {
     assert.equal(pluginInitialState(bogus), null);
     assert.equal(pluginInitialItemInput(bogus), null);
   }
@@ -178,6 +307,7 @@ test("Natural Earth 底图标 PDM，不是 CC0", () => {
 });
 
 test("地图三件的工程能过 geo-map 校验，依赖闭包判 ready", () => {
+  assert.ok(GEO_PLUGINS.length >= 3, "地图内核至少三件：地图 / 地球仪 / 户型标注");
   for (const pluginId of GEO_PLUGINS) {
     const state = pluginInitialState(pluginId);
     assert.ok(state, pluginId);
@@ -418,7 +548,52 @@ test("文献矩阵与三表模型：列头与科目行齐全，数字格全空",
   }
 });
 
-test("三个可算文档插件的工程能过 interactive-doc 校验并连得通", () => {
+test("每一份可算文档的第一屏都连得通，算不出的地方如实空着而不是 NaN", () => {
+  // 这一条罩的是**全部**可算文档，名单按内核派生：新补一份第一屏，它自动进来。
+  // 上面那条只罩「打开就有数」的三件，是设计取值的判据，不是名单。
+  const docPlugins = kernelPlugins("interactive-doc");
+  assert.ok(docPlugins.length >= 3, "可算文档内核一件都没有？名单派生错了");
+  for (const pluginId of docPlugins) {
+    const project = parseInteractiveDocSource(
+      JSON.stringify(pluginInitialState(pluginId).project),
+    );
+    const linked = linkInteractiveDocProject(project);
+    assert.deepEqual(linked.errors, [], `${pluginId} 的表达式图连不通`);
+    assert.equal(linked.state, "ready", pluginId);
+    assert.deepEqual(linked.cycle, [], `${pluginId} 有循环引用`);
+    assert.deepEqual(
+      linked.deadComputationIds,
+      [],
+      `${pluginId} 有算了但没人显示的结果`,
+    );
+    const evaluated = evaluateComputeGraph(project, {});
+    assert.equal(evaluated.ok, true, `${pluginId}: ${JSON.stringify(evaluated.graphErrors)}`);
+    for (const node of project.computations) {
+      const value = evaluated.values[node.id];
+      // 零数据的第一屏有两种诚实的样子：默认值算得出数（月供 4 890.17），
+      // 或者还没有数据可算（体重没填，BMI 就是空）。**第三种不许有**：
+      // 0 ÷ 0 冒出来的 NaN / Infinity、或者一串占位文本被摆到用户面前。
+      const honest =
+        value === null || (typeof value === "number" && Number.isFinite(value));
+      assert.ok(
+        honest,
+        `${pluginId}.${node.id} 第一屏给出了 ${String(value)}：` +
+          "零数据处要么算出数、要么如实空着",
+      );
+    }
+    for (const parameter of project.parameters) {
+      assert.ok(
+        !/^输入\s*[A-Z]$/.test(parameter.label) && parameter.label !== "比例",
+        `${pluginId} 还留着通用模板的参数名 ${parameter.label}`,
+      );
+    }
+  }
+});
+
+test("「打开就有数」的三件：工程连得通，默认值真跑得出结果", () => {
+  // 这三件是刻意设计成打开即有真实数字的（月供、换算、SM-2 间隔），所以这里逐个
+  // 计算节点都要求落地成有限数。**这是设计取值，不是名单** —— 别的可算文档零数据时
+  // 空着才是对的，它们由上面那条派生的断言罩着。
   for (const pluginId of [
     "spaced-repetition-scheduler",
     "unit-converter",
@@ -547,21 +722,63 @@ test("三个可算文档第一屏的数字是对的，不是占位", () => {
   assert.equal(srs.due_today, 0, "零张卡");
 });
 
-test("清册只登记做过的插件，形状统一", () => {
+test("清册、按键与第一屏三份名单对得上（名单派生，不是手抄的）", () => {
+  // 名单空了这条就成了空转，所以先证明两侧都真有东西可比。
+  assert.ok(SHIPPED_PLUGIN_IDS.length >= 1, "发布副本一枚按键都没有，对账无从谈起");
+  assert.ok(PLUGIN_INITIAL_STATE_IDS.length >= 1, "初始态表是空的");
+
+  const report = reconcileInitialStateRoster({
+    roster: ROSTER_IDS,
+    held: [...HELD.keys()],
+    shipped: SHIPPED_PLUGIN_IDS,
+    implemented: PLUGIN_INITIAL_STATE_IDS,
+  });
   assert.deepEqual(
-    [...PLUGIN_INITIAL_STATE_IDS].sort(),
-    [
-      "annotatable-city-map",
-      "financial-calculator",
-      "floorplan-annotation",
-      "interactive-globe",
-      "ledger-register",
-      "literature-matrix",
-      "spaced-repetition-scheduler",
-      "three-statement-model",
-      "unit-converter",
-    ],
+    report.deadButtons,
+    [],
+    "这些 id 发了按键却查不到第一屏，用户点下去是死按键：" +
+      "补 plugin-initial-states/，或在清册里登记为留空",
   );
+  assert.deepEqual(
+    report.unshipped,
+    [],
+    "这些 id 有第一屏，清册却没发按键、也没登记为留空 —— " +
+      "要么跑一次 scripts/sync-app-plugins.mjs，要么在清册里说清为什么不发",
+  );
+  assert.deepEqual(
+    report.staleHold,
+    [],
+    "这些 id 在清册里登记为留空，却已经有第一屏或按键了：hold 登记过期",
+  );
+  assert.deepEqual(
+    report.unresolved,
+    [],
+    "清册认了这些族，却既没有第一屏、也没有留空登记 —— 「没做完」可以，「没人知道它没做完」不行",
+  );
+  assert.deepEqual(
+    report.offRoster,
+    [],
+    "这些 id 不在清册册子上，却发了按键或做了第一屏：发布副本与清册漂移了",
+  );
+
+  // 留空那一侧同样是派生的：册子减去实现，必须逐条对上 hold 登记，理由不许含糊。
+  if (ROSTER_IDS) {
+    const withoutFirstScreen = ROSTER_IDS.filter((id) => !IMPLEMENTED.has(id));
+    assert.deepEqual(
+      withoutFirstScreen,
+      [...HELD.keys()].sort(),
+      "「该留空的」这份名单只能从清册的 hold 登记来，不许在测试里手抄",
+    );
+    for (const id of withoutFirstScreen) {
+      const { ruling, reason } = HELD.get(id);
+      assert.ok(ruling.trim().length >= 2, `${id} 留空要写清是哪一条裁定`);
+      assert.ok(
+        reason.trim().length >= 10,
+        `${id} 留空要写清理由，否则 hold 就成了万能静音开关`,
+      );
+    }
+  }
+
   for (const pluginId of PLUGIN_INITIAL_STATE_IDS) {
     const state = pluginInitialState(pluginId);
     assert.ok(["geo-map", "grid", "interactive-doc"].includes(state.kernel));
@@ -574,4 +791,94 @@ test("清册只登记做过的插件，形状统一", () => {
       assert.equal(input.meta[forbidden], undefined, `${pluginId} 不许带货架字段 ${forbidden}`);
     }
   }
+});
+
+test("运行期兜底：起手路径先问一次「有没有第一屏」，路由层刻意不问", () => {
+  const read = (relative) =>
+    readFileSync(new URL(`../src/${relative}`, import.meta.url), "utf8");
+
+  // 生成期（清册只给做出了第一屏的功能发按键）与构建期（上面那条对账）两道闸都在
+  // 发布之前。它们被忽略过去的时候，用户手上那枚按键还是点得下去 —— 所以起手路径
+  // 必须自己再判一次，判不过就给一句读得懂的话，而不是挂一个空壳。
+  const canvas = read("shell/ResultCanvas.tsx");
+  assert.match(
+    canvas,
+    /pluginInitialStateAvailable/,
+    "ResultCanvas 的起手路径必须自己判一次有没有第一屏",
+  );
+  assert.match(
+    canvas,
+    /if \(!pluginInitialStateAvailable\(launch\.pluginId\)\) \{[\s\S]{0,400}?setFeatureLaunchError\(/,
+    "判不过要给出失败态文案，不许静默 return",
+  );
+  // 失败态要说清缺什么、下一步做什么（形状对齐 GridStage 的取源失败态）。
+  const message = canvas.slice(
+    canvas.indexOf("if (!pluginInitialStateAvailable(launch.pluginId))"),
+  );
+  const panel = message.slice(0, message.indexOf("return;"));
+  assert.match(panel, /还没有做出打开后的第一屏/, "要说清缺的是什么");
+  assert.match(panel, /请先用|可以反馈/, "要说清用户下一步能做什么");
+  // 用户看得见的文案里不许出现「插件」二字（既有红线）。
+  assert.doesNotMatch(panel, /插件/, "面向用户的失败态文案不许出现「插件」");
+
+  // 路由层不加这道判定：那里还流过用户自己存下来的功能实例，它们的字节是用户数据，
+  // 不是第一屏。第一屏被撤掉之后，用它存过的东西必须照样打得开。
+  assert.doesNotMatch(
+    read("shell/workbench-routes.ts"),
+    /pluginInitialStateAvailable/,
+    "路由层拿「有没有第一屏」当门槛，会把用户已经存下来的数据一起锁死",
+  );
+});
+
+test("反面用例：任一侧多出一个 id，对账当场红（上面那几条不是恒真的）", () => {
+  const base = {
+    roster: ROSTER_IDS,
+    held: [...HELD.keys()],
+    shipped: SHIPPED_PLUGIN_IDS,
+    implemented: PLUGIN_INITIAL_STATE_IDS,
+  };
+  const [sample] = [...PLUGIN_INITIAL_STATE_IDS].sort();
+  assert.ok(sample, "初始态表是空的，反面用例无从造起");
+
+  // ① 清册里多了一件工具、按键也发了，第一屏没人补 —— 上一轮 236 枚死按键的形状。
+  const added = reconcileInitialStateRoster({
+    ...base,
+    roster: ROSTER_IDS ? [...ROSTER_IDS, "brand-new-plugin"] : null,
+    shipped: [...SHIPPED_PLUGIN_IDS, "brand-new-plugin"],
+  });
+  assert.deepEqual(added.deadButtons, ["brand-new-plugin"]);
+  assert.deepEqual(added.unresolved, ROSTER_IDS ? ["brand-new-plugin"] : []);
+
+  // ①b 清册加了一件、连按键都还没发：没有死按键，但「没人知道它没做完」要红。
+  if (ROSTER_IDS) {
+    const silent = reconcileInitialStateRoster({
+      ...base,
+      roster: [...ROSTER_IDS, "brand-new-plugin"],
+    });
+    assert.deepEqual(silent.deadButtons, []);
+    assert.deepEqual(silent.unresolved, ["brand-new-plugin"]);
+  }
+
+  // ② 反向：第一屏做了，清册这一侧没有它 —— 做完了没人用，两条同时红。
+  const dropped = reconcileInitialStateRoster({
+    ...base,
+    shipped: SHIPPED_PLUGIN_IDS.filter((id) => id !== sample),
+    roster: ROSTER_IDS ? ROSTER_IDS.filter((id) => id !== sample) : null,
+  });
+  assert.deepEqual(dropped.unshipped, [sample]);
+  assert.deepEqual(dropped.offRoster, ROSTER_IDS ? [sample] : []);
+
+  // ③ hold 登记过期：登记为留空的族后来做了第一屏，却没人撤登记。
+  const stale = reconcileInitialStateRoster({
+    ...base,
+    held: [...base.held, sample],
+  });
+  assert.deepEqual(stale.staleHold, [sample]);
+
+  // ④ 今天这份真数据五格全空 —— 与上面三个假局面用的是同一段逻辑。
+  const today = reconcileInitialStateRoster(base);
+  assert.deepEqual(
+    Object.entries(today).filter(([, ids]) => ids.length > 0),
+    [],
+  );
 });
