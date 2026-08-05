@@ -176,6 +176,15 @@ export function useCloudBrowserInteraction({
   setError,
   tt,
 }: InteractionOptions) {
+  // `tt` 由调用方从 `useUI()` 直接透传，是 provider 所有的函数。它进 effect 依赖会让
+  // 下面那个全屏 effect 每换一次语言就把 `fullscreenchange` / `fullscreenerror` 监听
+  // 拆了重挂——纯浪费，而且全屏状态与语言无关，这里的答案明确是「语言切换不该重跑」。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:410-419` 定下的 ref + 恒定包装。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+
   const [immersive, setImmersive] = useState(false);
   const [fullscreenMode, setFullscreenMode] =
     useState<"native" | "fallback" | null>(null);
@@ -303,7 +312,9 @@ export function useCloudBrowserInteraction({
     const failed = () => {
       setImmersive(true);
       setFullscreenMode("fallback");
-      setError(tt("浏览器拒绝原生全屏，已使用沉浸式覆盖模式"));
+      setError(
+        translateRef.current("浏览器拒绝原生全屏，已使用沉浸式覆盖模式"),
+      );
     };
     document.addEventListener("fullscreenchange", update);
     document.addEventListener("fullscreenerror", failed);
@@ -311,7 +322,7 @@ export function useCloudBrowserInteraction({
       document.removeEventListener("fullscreenchange", update);
       document.removeEventListener("fullscreenerror", failed);
     };
-  }, [fullscreenMode, setError, tt]);
+  }, [fullscreenMode, setError]);
 
   useEffect(() => {
     if (!immersive) return;

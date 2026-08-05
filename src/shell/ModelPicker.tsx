@@ -73,6 +73,9 @@ export function ModelGroupPicker({
     || groups.find((group) => group.key === "preset:pro")
     || groups[0];
 
+  // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`，
+  // 也不该把 `MODEL_GROUP_CHANGED_EVENT` 监听拆了重挂。错误串只存中文原文（词典 key），
+  // 渲染处本来就是 `tt(error)`，翻译在那里发生。
   useEffect(() => {
     let alive = true;
     void getModelGroups().then((result) => {
@@ -81,7 +84,7 @@ export function ModelGroupPicker({
         setPayload(result.data);
         setError("");
       } else if (result.status !== 401) {
-        setError(result.error || tt("模型组合加载失败"));
+        setError(result.error || "模型组合加载失败");
       }
       setLoading(false);
     });
@@ -97,7 +100,7 @@ export function ModelGroupPicker({
       alive = false;
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     };
-  }, [tt]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -130,7 +133,7 @@ export function ModelGroupPicker({
       setPayload(result.data);
       setOpen(false);
     } else {
-      setError(result.error || tt("切换模型组合失败"));
+      setError(result.error || "切换模型组合失败");
     }
   }
 

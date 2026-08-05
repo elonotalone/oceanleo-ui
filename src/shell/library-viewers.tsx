@@ -511,6 +511,10 @@ function PptViewer({
   const [renderedSlides, setRenderedSlides] = useState<PptxRenderedSlide[]>([]);
   const [activeSlideId, setActiveSlideId] = useState("");
 
+  // 依赖里刻意没有 `tt`：这个 effect 会下载并重新解析整份 pptx（最大 64MB），语言换一次
+  // 就重下重解一次，还会把已渲好的幻灯片清空。`tt` 在这里只用于失败文案，所以一律只存
+  // 中文原文（词典 key），翻译推迟到渲染（下面两处 `tt(error)`）；抛出的 Error 也照此
+  // 办理，它的 message 最终就落进同一个 `error`。
   useEffect(() => {
     const node = host.current;
     if (!node) return;
@@ -519,7 +523,7 @@ function PptViewer({
     setLogicalSize(deckPreviewLogicalSize());
     setActiveSlideId("");
     if (!item.url) {
-      setError(tt("没有可解析的 PPT 地址。"));
+      setError("没有可解析的 PPT 地址。");
       setState("error");
       return;
     }
@@ -550,7 +554,7 @@ function PptViewer({
         const model = await activePreviewer.load(arrayBuffer);
         if (cancelled) return;
         if (!model.slides.length) {
-          throw new Error(tt("PPT 中没有可显示的幻灯片。"));
+          throw new Error("PPT 中没有可显示的幻灯片。");
         }
         const nextLogicalSize = deckPreviewLogicalSize(
           model.width / model.height,
@@ -573,7 +577,9 @@ function PptViewer({
             `.pptx-preview-slide-wrapper-${index}`,
           );
           if (!rendered) {
-            throw new Error(tt(`无法渲染第 ${index + 1} 页幻灯片。`));
+            // 这句原本套着 `tt(...)`，但 key 是拼出来的动态串，词典永远命不中，
+            // 等同于原样返回；去掉包装不改行为，只是不再假装它被翻译过。
+            throw new Error(`无法渲染第 ${index + 1} 页幻灯片。`);
           }
           const metadata = structuredSlides[index];
           return {
@@ -608,7 +614,7 @@ function PptViewer({
       previewer?.destroy();
       node.replaceChildren();
     };
-  }, [attempt, item.url, onResourceError, structuredSlides, tt]);
+  }, [attempt, item.url, onResourceError, structuredSlides]);
 
   const layoutSlides = useMemo<DeckPreviewLayoutSlide[]>(() => {
     if (state === "ready") {
@@ -696,7 +702,7 @@ function PptViewer({
             >
               <span>
                 {tt("PPT 在线解析失败，正在显示结构化幻灯片快照。")}
-                {error ? `（${error}）` : ""}
+                {error ? `（${tt(error)}）` : ""}
               </span>
               <button
                 type="button"
@@ -710,7 +716,7 @@ function PptViewer({
           {state === "error" && !hasStructuredFallback && (
             <div className="absolute inset-0 z-40 bg-white">
               <ErrorView
-                message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${error}）` : ""}`}
+                message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${tt(error)}）` : ""}`}
                 url={item.url}
                 onRetry={retry}
               />
@@ -1042,6 +1048,9 @@ function ThreeDViewer({
       alive = false;
     };
   }, [modelFormat, ready, subtype]);
+  // 依赖里刻意没有 `tt`：这个 effect 每次重跑都会 `setLoadError("")` 并把 model-viewer
+  // 的 error/load 监听拆了重挂——语言换一次就把已经报出来的失败擦掉一次。文案只存中文
+  // 原文（词典 key），或 model-viewer 自己给的英文 detail，翻译推迟到渲染（`tt(loadError)`）。
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || subtype !== "model") return;
@@ -1051,7 +1060,7 @@ function ThreeDViewer({
         detail?: { message?: string; type?: string };
       }).detail;
       setLoadError(
-        detail?.message || detail?.type || tt("模型文件或其依赖资源加载失败"),
+        detail?.message || detail?.type || "模型文件或其依赖资源加载失败",
       );
       onResourceError?.();
     };
@@ -1062,7 +1071,7 @@ function ThreeDViewer({
       viewer.removeEventListener("error", failed);
       viewer.removeEventListener("load", loaded);
     };
-  }, [modelUrl, onResourceError, subtype, tt, ready]);
+  }, [modelUrl, onResourceError, subtype, ready]);
   if (subtype === "hdri" || subtype === "texture") {
     const label =
       subtype === "hdri"
@@ -1130,7 +1139,7 @@ function ThreeDViewer({
   if (loadError)
     return (
       <ErrorView
-        message={`${tt("3D 查看器加载失败。")}（${loadError}）`}
+        message={`${tt("3D 查看器加载失败。")}（${tt(loadError)}）`}
         url={modelUrl}
       />
     );

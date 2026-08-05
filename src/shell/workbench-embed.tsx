@@ -99,6 +99,15 @@ export function EmbedEditorPane({
       }>
     >(),
   );
+  // `tt` 是 provider 所有的函数，不能进下面那个 selection-command effect 的依赖：
+  // 它一换身份，effect 就会**把同一条选区命令再发一遍**给 iframe 里的编辑器。
+  // 语言切换与「这条选区还作不作数」无关，答案明确是不该重跑。
+  // 沿用 W13 在 `doc-editors/use-grid-editor.ts:410-419` 定下的 ref + 恒定包装。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+
   const [phase, setPhase] = useState<"connecting" | "ready" | "error">("connecting");
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -421,7 +430,7 @@ export function EmbedEditorPane({
       )
     ) {
       setStatus({
-        message: tt("选择已变化，请重新选择后再编辑。"),
+        message: translateRef.current("选择已变化，请重新选择后再编辑。"),
         severity: "warning",
         retryable: true,
       });
@@ -433,7 +442,7 @@ export function EmbedEditorPane({
       return;
     }
     sendToEditor({ type: "selection-command", command: selectionCommand });
-  }, [onSelectionResult, phase, selectionCommand, sendToEditor, tt]);
+  }, [onSelectionResult, phase, selectionCommand, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready" || !viewportCommand) return;

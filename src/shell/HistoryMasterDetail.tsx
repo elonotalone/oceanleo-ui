@@ -586,6 +586,9 @@ export function HistoryDetail({
   const [detailError, setDetailError] = useState<string | null>(null);
 
   // 新后端优先按 app_session 读取；404/旧后端再把同一个 id 当 legacy task 读取。
+  // 依赖里刻意没有 `tt`：换语言不该重新拉一遍会话与任务详情。effect 里只存中文原文
+  //（词典 key）或后端原样返回的错误串，翻译推迟到渲染（见下方 `tt(detailError)`），
+  // 后端串在词典里查不到会原样回落，不会被吞。
   useEffect(() => {
     let alive = true;
     setLoaded(null);
@@ -608,7 +611,7 @@ export function HistoryDetail({
         const session = sessionResult.data;
         if (siteId && session.site_id !== siteId) {
           setDetailLoading(false);
-          setDetailError(tt("这条工作会话不属于当前网站。"));
+          setDetailError("这条工作会话不属于当前网站。");
           return;
         }
         let fallbackTask: TaskDetail | undefined;
@@ -638,8 +641,8 @@ export function HistoryDetail({
         setDetailLoading(false);
         setDetailError(
           sessionResult.status === 401
-            ? tt("登录后即可查看我的任务。")
-            : sessionResult.error || tt("加载失败"),
+            ? "登录后即可查看我的任务。"
+            : sessionResult.error || "加载失败",
         );
         return;
       }
@@ -652,7 +655,7 @@ export function HistoryDetail({
           taskResult.data.task.site_id &&
           taskResult.data.task.site_id !== siteId
         ) {
-          setDetailError(tt("这条旧记录不属于当前网站。"));
+          setDetailError("这条旧记录不属于当前网站。");
           return;
         }
         setLoaded({ kind: "task", detail: taskResult.data });
@@ -662,14 +665,14 @@ export function HistoryDetail({
         sessionResult.status === 401 || taskResult.status === 401;
       setDetailError(
         signedOut
-          ? tt("登录后即可查看我的任务。")
-          : taskResult.error || sessionResult.error || tt("加载失败"),
+          ? "登录后即可查看我的任务。"
+          : taskResult.error || sessionResult.error || "加载失败",
       );
     })();
     return () => {
       alive = false;
     };
-  }, [router, sel, siteId, tt]);
+  }, [router, sel, siteId]);
 
   // 仅用于 legacy task / 不完整 session 的明确降级。完整 session 的右栏完全由站点 runtime
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。
@@ -700,7 +703,7 @@ export function HistoryDetail({
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-rose-500">
-          {detailError || tt("这个任务不存在或已无权访问。")}
+          {detailError ? tt(detailError) : tt("这个任务不存在或已无权访问。")}
         </div>
       </div>
     );

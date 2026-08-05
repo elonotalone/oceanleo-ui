@@ -24,7 +24,7 @@ import {
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
-import { useUI } from "../../i18n/ui/useUI";
+import { useUI, type UITranslate } from "../../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -365,6 +365,23 @@ export function useVideoTimeline(
   const sourceProbeKeysRef = useRef(new Set<string>());
   const mountedRef = useRef(true);
 
+  // `tt` 是 provider 所有的函数。今天 I18nProvider 已 useMemo，所以它身份稳定；但只要
+  // 有一个站不记忆化 messages，把它放进 effect 依赖就会重新点燃 W13 修掉的那条加载死
+  // 循环（effect 里 setState → 重渲染 → tt 换身份 → effect 再跑）。
+  // 这个文件里改用 W13 在 `doc-editors/use-grid-editor.ts:410-419` 定下的写法：
+  // ref 存最新的 `tt`，effect 只依赖一个身份恒定的包装。
+  // 代价说清楚：错误文案会停在报错当时那个语言，不随语言切换重译。这一处刻意选它，
+  // 因为 `error` 里混着解码器/网络给的原文，且渲染方 `VideoTimelineStage` 是直接原样
+  // 显示的（不在本 owner 的独占面里，不能改成渲染时再翻）。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   const markSourceReady = useCallback((value: boolean) => {
     sourceReadyRef.current = value;
     setSourceReady(value);
@@ -427,7 +444,7 @@ export function useVideoTimeline(
             if (!mountedRef.current) return;
             if (!probe) {
               setError(
-                tt(
+                translate(
                   track.kind === "video"
                     ? "时间线中的视频源无法解码或没有真实视频轨"
                     : "时间线中的音频源无法解码",
@@ -476,12 +493,12 @@ export function useVideoTimeline(
             setError(
               caught instanceof Error
                 ? caught.message
-                : tt("时间线媒体源探测失败"),
+                : translate("时间线媒体源探测失败"),
             );
           });
       }
     }
-  }, [doc, tt]);
+  }, [doc, translate]);
 
   useEffect(() => {
     workingHeadUrlRef.current = String(
@@ -503,7 +520,7 @@ export function useVideoTimeline(
       markSourceReady(false);
       setLoadingSource(false);
       setError(
-        tt("当前时间线 revision 缺少工程源；已阻止用空时间线替代"),
+        translate("当前时间线 revision 缺少工程源；已阻止用空时间线替代"),
       );
       return;
     }
@@ -563,7 +580,7 @@ export function useVideoTimeline(
     item.url,
     markSourceReady,
     siteId,
-    tt,
+    translate,
   ]);
 
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {

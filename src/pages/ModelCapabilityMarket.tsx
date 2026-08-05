@@ -97,6 +97,9 @@ export function ModelGroupManager({
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState("");
 
+  // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`
+  //（还会把 `viewKey` 打回服务端的 active 组，丢掉用户当前正在看的那一组）。
+  // 错误串只存中文原文（词典 key），渲染处本来就是 `tt(error)`。
   useEffect(() => {
     if (!user) {
       setPayload(null);
@@ -109,7 +112,7 @@ export function ModelGroupManager({
         setPayload(result.data);
         setViewKey(result.data.active_group_key);
       } else {
-        setError(result.error || tt("模型组合加载失败"));
+        setError(result.error || "模型组合加载失败");
       }
     });
     const onChanged = (event: Event) => {
@@ -121,7 +124,7 @@ export function ModelGroupManager({
       alive = false;
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     };
-  }, [user, tt]);
+  }, [user]);
 
   const groups = useMemo(
     () => payload?.groups?.length ? payload.groups : presetGroups(catalog),

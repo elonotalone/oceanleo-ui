@@ -71,6 +71,8 @@ function TeamRosterModalInner({
   } | null>(null);
 
   // 首次打开时加载 team 详情 + agent 市场。
+  // 依赖里刻意没有 `tt`：专家团名册与 agent 市场都与语言无关，换语言不该重发这两个请求。
+  // 三句错误文案只存中文原文（词典 key），翻译推迟到渲染，换语言时照样跟着变。
   useEffect(() => {
     // teamId 为空时不加载（渲染阶段会显示「空专家团」友好态，见下）；避免带空 id
     // 去请求 / 报错。
@@ -95,10 +97,10 @@ function TeamRosterModalInner({
             const ids = Array.isArray(t.member_ids) ? t.member_ids : [];
             setMemberIds(ids.filter((id): id is string => typeof id === "string" && !!id));
           } else {
-            setError(tt("找不到这个专家团"));
+            setError("找不到这个专家团");
           }
         } else {
-          setError(tt("加载失败"));
+          setError("加载失败");
         }
         if (agentsRes.ok) {
           setAllAgents(Array.isArray(agentsRes.data?.items) ? agentsRes.data!.items : []);
@@ -106,7 +108,7 @@ function TeamRosterModalInner({
       } catch {
         // listTeams/listAgents 内部已吞掉 fetch 错误，这里兜住任何意料外的抛出
         //（如 accessToken 抛错），保证不会卡在「加载中…」永远转圈，也不冒泡崩页。
-        if (alive) setError(tt("加载失败"));
+        if (alive) setError("加载失败");
       } finally {
         if (alive) setLoading(false);
       }
@@ -114,7 +116,7 @@ function TeamRosterModalInner({
     return () => {
       alive = false;
     };
-  }, [open, teamId, siteId, tt]);
+  }, [open, teamId, siteId]);
 
   const agentById = useMemo(() => {
     const m = new Map<string, AgentDef>();
@@ -310,7 +312,7 @@ function TeamRosterModalInner({
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-stone-100 bg-stone-50/60 px-6 py-3">
           <p className="min-w-0 flex-1 text-[12px] text-stone-500">
-            {error || tt("对官方团的改动会自动保存为「我的专家团」。")}
+            {error ? tt(error) : tt("对官方团的改动会自动保存为「我的专家团」。")}
           </p>
           <div className="flex items-center gap-2">
             <button

@@ -245,6 +245,10 @@ function ArtifactLibraryLegacy({
     return () => clearTimeout(t);
   }, [search]);
 
+  // 只按 `filter` 起跑。`tt` 曾经也在依赖里，于是每次 locale provider 换身份就重新向
+  // Supabase 拉 500 行 `agent_artifacts`——而 `tt` 在这里只用来拼一句未登录提示。
+  // 语言切换**不应该**重新拉库存：库存与语言无关。所以提示只存中文原文（= 词典 key），
+  // 渲染时才翻译；换语言时这句话照样跟着变，但一次网络请求都不会多发。
   useEffect(() => {
     const supabase = browserClient();
     if (!supabase) {
@@ -257,7 +261,7 @@ function ArtifactLibraryLegacy({
       const { data: sess } = await supabase.auth.getSession();
       if (cancelled) return;
       if (!sess.session) {
-        setAuthMsg(tt("登录后即可查看我的库。"));
+        setAuthMsg("登录后即可查看我的库。");
         setLoading(false);
         return;
       }
@@ -278,7 +282,7 @@ function ArtifactLibraryLegacy({
     return () => {
       cancelled = true;
     };
-  }, [filter, tt]);
+  }, [filter]);
 
   async function toggleFavorite(id: string, cur: boolean) {
     const supabase = browserClient();
@@ -507,7 +511,7 @@ function ArtifactLibraryLegacy({
       )}
 
       {authMsg ? (
-        <p className="py-16 text-center text-[13px] text-neutral-400">{authMsg}</p>
+        <p className="py-16 text-center text-[13px] text-neutral-400">{tt(authMsg)}</p>
       ) : loading ? (
         // 卡片保持原来的小尺寸（固定列，随容器宽自然多列）——操作员 2026-07-07 明确：**不许
         // 靠放大卡片填满右侧空白**。右侧空白的真因是双滚动条（已在根容器去掉本层 overflow 修

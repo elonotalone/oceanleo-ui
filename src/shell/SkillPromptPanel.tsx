@@ -22,7 +22,7 @@
 //   - skill 站（agent.oceanleo.com）的对话栏。
 // ============================================================================
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchManifest } from "../lib/manifest-fetch";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { Modal } from "../ui";
@@ -126,6 +126,24 @@ export function SkillPromptPanel({
   const [showSave, setShowSave] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  // `tt` 是 provider 所有的函数，不能进下面那个 effect 的依赖：
+  //  1) 它会重新拉一次 manifest；
+  //  2) 更要命的是它会 `setEditing(false)` + `setDraft(...)` —— **把用户正在编辑的
+  //     prompt 草稿整段冲掉**。
+  // 所以这一处的答案明确是「语言切换不该重跑」：合成身份文本是给用户当编辑起点的正文，
+  // 不是界面文案；宁可它停在打开时那个语言，也不能替用户丢改动。
+  // 写法沿用 W13 在 `doc-editors/use-grid-editor.ts:410-419` 定下的 ref + 恒定包装。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  // 必须把 `vars` 一起转发：`synthIdentity` 用的是插值形（`tt("你是「{name}」。", { name })`），
+  // 包装少接一个参数，用户看到的就会是没替换的 `{name}`。
+  const translate = useCallback<UITranslate>(
+    (zh, vars) => translateRef.current(zh, vars),
+    [],
+  );
+
   // 拉取 manifest prompt（未直接提供时）。换 agent 时重置编辑态 / prompt 草稿。
   // 注意：modal 形态 open 受父级控制，这里不动它（避免 onClose 回环）；inline/panel
   // 形态收起浮层。
@@ -149,14 +167,19 @@ export function SkillPromptPanel({
         // manifest.prompt 优先；为空则用身份信息合成（绝不显示「暂未填写」）。
         const p =
           (m?.prompt || "").trim() ||
-          synthIdentity(tt, m?.name || name, m?.tagline || tagline, m?.capabilities);
+          synthIdentity(
+            translate,
+            m?.name || name,
+            m?.tagline || tagline,
+            m?.capabilities,
+          );
         setBasePrompt(p);
         setDraft(p);
       })
       .catch(() => {
         // 拉取异常也要落地一段兜底 prompt，绝不空白。
         if (!alive) return;
-        const p = synthIdentity(tt, name, tagline);
+        const p = synthIdentity(translate, name, tagline);
         setBasePrompt(p);
         setDraft(p);
       })
@@ -166,7 +189,7 @@ export function SkillPromptPanel({
     return () => {
       alive = false;
     };
-  }, [agentId, promptProp, name, tagline, tt]);
+  }, [agentId, promptProp, name, tagline, translate]);
 
   // inline 形态现在用居中 Modal（自带 Esc / 点遮罩关闭），不再需要手写「点外面关闭」。
 

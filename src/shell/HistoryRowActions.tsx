@@ -148,11 +148,13 @@ export function MoveTaskProjectDialog({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // 无依赖：项目列表与语言无关，换语言不该重新查一次 `agent_projects`。
+  // 这里只存中文原文（词典 key）或 Supabase 原样返回的错误串，翻译推迟到渲染。
   useEffect(() => {
     const client = browserClient();
     if (!client) {
       setLoading(false);
-      setError(tt("项目列表不可用。"));
+      setError("项目列表不可用。");
       return;
     }
     let alive = true;
@@ -170,7 +172,7 @@ export function MoveTaskProjectDialog({
     return () => {
       alive = false;
     };
-  }, [tt]);
+  }, []);
 
   const row = (
     label: string,
@@ -230,7 +232,7 @@ export function MoveTaskProjectDialog({
               {tt("加载…")}
             </p>
           ) : error ? (
-            <p className="py-8 text-center text-[12px] text-rose-500">{error}</p>
+            <p className="py-8 text-center text-[12px] text-rose-500">{tt(error)}</p>
           ) : (
             <>
               {row(tt("不属于任何项目"), null)}
