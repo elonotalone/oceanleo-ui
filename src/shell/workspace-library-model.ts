@@ -53,6 +53,9 @@ export const WORKSPACE_KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   audio: "音频",
   xhs: "小红书",
   threed: "3D",
+  // 缺这一条时游戏详情的类型标签会退回 tt("内容")，而 `game` 是独立的 viewer kind
+  // （`library-data.ts` 里刻意没并进 `website`），标签面也该跟着独立。
+  game: "游戏",
   // 第 15 / 16 类载体的卡片标签。缺项会让缩略图与卡片头都退回 tt("内容")
   // 那句兜底文案，`geo-map.md` §10.3 的枚举面要求每类都有自己的显式标签。
   geo_map: "地图",

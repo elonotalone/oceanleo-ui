@@ -294,6 +294,25 @@ test("游戏详情落到「开玩」通路，不落到图片查看器", async ()
   }
 });
 
+// V1-2 改后验收在生产站实拍到的残留（`V1-2-verdict.md` §6 R3）：三类里只剩游戏详情
+// 那颗「全屏」仍然亮着，而那一屏唯一能放大的是 640×360 的封面图——点下去还是
+// 「把封面放大」，正是操作员点名的那一幕。真东西在隔离域的播放页上，不在这一屏。
+test("游戏详情的封面不算可放大内容：全屏不许为了放大一张封面而亮", async () => {
+  const mounted = await mount(
+    React.createElement(GamePlayDetail, { item: durableItem("game", "game") }),
+  );
+  try {
+    const cover = mounted.container.querySelector("img");
+    assert.ok(cover, "这一屏确实摆着封面图，判据不是被架空的");
+    assert.ok(
+      cover.closest("[data-fullscreen-exempt]"),
+      "封面图必须落在 data-fullscreen-exempt 子树里，动作条的 DOM 探针才不会把它算成可放大内容",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("算不出可玩落点就如实说，不假装能玩", async () => {
   const orphan = durableItem("game", "game");
   orphan.artifact.integrity = { ok: false };

@@ -2,6 +2,7 @@
 
 import {
   createElement,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -493,6 +494,18 @@ function StructuredSlidePreview({
   );
 }
 
+/**
+ * pptx 模型里的 `slide.name` 是**包内部件路径**（`ppt/slides/slide1.xml`），
+ * 不是给人看的名字。它被当成页轨按钮的无障碍名，屏幕阅读器会把这串原样念出来。
+ * 认出这种形态就当作没有名字，让调用方退回「第 N 页」。
+ */
+function readableSlideName(name: string | undefined): string {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "";
+  if (trimmed.includes("/") || /\.[a-z0-9]+$/i.test(trimmed)) return "";
+  return trimmed;
+}
+
 function PptViewer({
   item,
   onResourceError,
@@ -501,8 +514,25 @@ function PptViewer({
   onResourceError?: () => void;
 }) {
   const tt = useUI();
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLDivElement | null>(null);
   const previewerRef = useRef<PptxPreviewInstance | null>(null);
+  /**
+   * `DeckPreviewLayout` 在舞台的逻辑页上挂着 `key={activeSlideId}`，所以**换一次页，
+   * 整棵 children 就被卸载重建一次**，这个宿主 div 会换成一个全新的空节点。
+   * 而 pptx-preview 只在 `init()` 那一刻往宿主里塞一个 wrapper，之后所有渲染都进
+   * wrapper（`this.wrapper.append(slide)`），再也不碰宿主——于是 wrapper 连同已渲好的
+   * 那一页一起留在被丢弃的旧节点上，用户看到的舞台是一片白。
+   *
+   * 解析完成那一次同样会踩到：`activeSlideId` 从空串变成第一页的 id。
+   * 所以每次拿到新宿主都要把 wrapper 收养过来，不能只在挂载时做一次。
+   */
+  const attachStageHost = useCallback((node: HTMLDivElement | null) => {
+    host.current = node;
+    const previewer = previewerRef.current;
+    if (node && previewer && previewer.wrapper.parentNode !== node) {
+      node.append(previewer.wrapper);
+    }
+  }, []);
   const structuredSlides = useMemo(
     () => asRecords(item.meta.slides),
     [item.meta.slides],
@@ -595,7 +625,7 @@ function PptViewer({
             label:
               stringValue(metadata?.title) ||
               stringValue(metadata?.label) ||
-              slide.name ||
+              readableSlideName(slide.name) ||
               `第 ${index + 1} 页`,
             thumbnail: clonePptxSlideSurface(rendered, index),
           };
@@ -610,7 +640,9 @@ function PptViewer({
         if (cancelled) return;
         if (previewerRef.current === previewer) previewerRef.current = null;
         previewer?.destroy();
-        node.replaceChildren();
+        // 清的是**当下挂着的**宿主，不是 effect 起跑时那个：中途换过页的话
+        // wrapper 已经被收养到新节点上，清旧节点等于把残页留在屏幕上。
+        host.current?.replaceChildren();
         setError(reason instanceof Error ? reason.message : String(reason));
         setState("error");
       }
@@ -619,7 +651,7 @@ function PptViewer({
       cancelled = true;
       if (previewerRef.current === previewer) previewerRef.current = null;
       previewer?.destroy();
-      node.replaceChildren();
+      host.current?.replaceChildren();
     };
   }, [attempt, item.url, onResourceError, structuredSlides]);
 
@@ -734,7 +766,7 @@ function PptViewer({
     >
       <div className="relative h-full w-full overflow-hidden bg-white">
         <div
-          ref={host}
+          ref={attachStageHost}
           className={`absolute inset-0 h-full w-full overflow-hidden ${
             state === "ready" ? "" : "invisible"
           }`}

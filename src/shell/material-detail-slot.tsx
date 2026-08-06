@@ -260,13 +260,17 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
   return (
     <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-5 bg-stone-50 p-6">
       {cover && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cover}
-          alt={item.title}
-          referrerPolicy="no-referrer"
-          className="max-h-[46vh] max-w-full rounded-xl object-contain shadow-sm"
-        />
+        // 这张是封面，不是游戏本身——真东西在隔离域的播放页上。标成 exempt，
+        // 动作条那颗「全屏」就不会为了放大一张封面而亮起来。
+        <div data-fullscreen-exempt>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cover}
+            alt={item.title}
+            referrerPolicy="no-referrer"
+            className="max-h-[46vh] max-w-full rounded-xl object-contain shadow-sm"
+          />
+        </div>
       )}
       <div className="flex flex-col items-center gap-2">
         <p className="text-[15px] font-semibold text-stone-800">{item.title}</p>

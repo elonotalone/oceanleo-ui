@@ -373,12 +373,17 @@ const viewStubUrl = dataModule(`
       props.entry.libraryItem?.previewUrl ||
       props.entry.externalUrl ||
       "";
+    // 标题带 "exempt" 的复刻「这张图不是素材本身」那一档：游戏详情摆的是封面加
+    // 一颗「开始游玩」，真东西在隔离域的播放页上，放大封面没有意义。
+    const image = source
+      ? createElement("img", { src: source, alt: props.entry.title })
+      : createElement("svg", { "data-empty-icon": "true" });
     return createElement(
       "div",
       { "data-library-viewer": props.entry.title },
-      source
-        ? createElement("img", { src: source, alt: props.entry.title })
-        : createElement("svg", { "data-empty-icon": "true" }),
+      props.entry.title.includes("exempt")
+        ? createElement("div", { "data-fullscreen-exempt": "" }, image)
+        : image,
     );
   }
 `);
@@ -665,6 +670,34 @@ test("全屏只在详情里真有可放大内容时出现，不许恒亮", async
     );
   } finally {
     await withoutMounted.unmount();
+  }
+});
+
+// V1-2 改后验收在生产站实拍到的残留（`V1-2-verdict.md` §6 R3）：PPT、网站、失败态
+// 三处全屏都不亮了，只剩游戏详情那一处还亮着——那一屏摆的是封面加一颗「开始游玩」，
+// 真东西在隔离域的播放页上。查看器因此需要一个反向开口，声明「这张图不是素材本身」。
+test("查看器声明 exempt 的图不算可放大内容：全屏不为一张站位封面而亮", async () => {
+  globalThis.__identityReads = [];
+  globalThis.__identityResolutions = {};
+  const exempt = durableItem("Cover exempt stand-in");
+  const mounted = await createMounted({
+    entries: [entryFor(exempt)],
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, exempt);
+    // 防判据被架空：这一态查看器**确实**渲染了一张图，全屏的消失才是规则在起作用。
+    assert.ok(
+      mounted.container.querySelector("[data-library-viewer] img"),
+      "这一态查看器仍然摆着图，判据不是被架空的",
+    );
+    assert.equal(
+      action(mounted.container, "全屏"),
+      undefined,
+      "标了 exempt 的站位封面不许把全屏点亮",
+    );
+  } finally {
+    await mounted.unmount();
   }
 });
 

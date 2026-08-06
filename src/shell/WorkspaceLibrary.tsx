@@ -444,6 +444,10 @@ export function WorkspaceLibrary({
    * 元素。`svg` 刻意不算：空态与「暂时无法预览」自己就带一个图标，把它算进去等于
    * 恒亮照旧。查看器异步换内容（图片加载、W3 的预览承载挂上 iframe）也要跟上，
    * 所以挂一个 MutationObserver 而不是只在挂载时看一眼。
+   *
+   * `[data-fullscreen-exempt]` 是给查看器的反向开口：有些面摆的图**不是这份素材本身**
+   * ——游戏详情摆的是封面加一颗「开始游玩」，真东西在隔离域的播放页上。放大这种图
+   * 就是操作员点名的那一幕，所以标了这个属性的子树一律不算数。
    */
   useEffect(() => {
     const node = viewerRef.current;
@@ -453,11 +457,11 @@ export function WorkspaceLibrary({
     }
     const probe = () =>
       setViewerHasZoomableContent(
-        Boolean(
-          node.querySelector(
+        [
+          ...node.querySelectorAll(
             "img, iframe, canvas, video, model-viewer, [data-fullscreen-content]",
           ),
-        ),
+        ].some((candidate) => !candidate.closest("[data-fullscreen-exempt]")),
       );
     probe();
     if (typeof MutationObserver !== "function") return;
@@ -579,6 +583,12 @@ export function WorkspaceLibrary({
 
   if (selected) {
     const kind = selected.kind || selected.libraryItem?.kind;
+    // 官方模板目录行的 `kind` 是**刻意**钉死的 `image`（卡片必须是图，这条是红线）。
+    // 详情的类型标签不能照抄它：详情已经按真实类型分派过了，游戏摆的是开玩面板、
+    // PPT 摆的是翻页外壳，头上却挂着「图片」，用户看到的是系统在自相矛盾。
+    // 详情插槽解析出来的 durable 投影带的才是真类型，有就用它。
+    // 只换这枚标签：下面的 `refreshable` 仍用 `kind`，那是另一条判据，不在本条范围内。
+    const detailKind = detailAppPlan.item?.kind || kind;
     const externalUrl =
       selected.externalUrl ||
       selected.libraryItem?.url ||
@@ -638,9 +648,9 @@ export function WorkspaceLibrary({
               <h3 className="truncate text-[13px] font-semibold text-[var(--fg,#1c1917)]">
                 {selected.title}
               </h3>
-              {kind && (
+              {detailKind && (
                 <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {tt(WORKSPACE_KIND_LABELS[kind] || "内容")}
+                  {tt(WORKSPACE_KIND_LABELS[detailKind] || "内容")}
                 </span>
               )}
             </div>

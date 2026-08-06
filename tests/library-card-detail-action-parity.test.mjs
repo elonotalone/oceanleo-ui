@@ -184,7 +184,7 @@ const layoutStubUrl = dataModule(`
   }
 `);
 const modelStubUrl = dataModule(`
-  export const WORKSPACE_KIND_LABELS = { image: "图片", file: "文件" };
+  export const WORKSPACE_KIND_LABELS = { image: "图片", file: "文件", game: "游戏" };
   export function filterWorkspaceLibraryEntries(entries) {
     return entries;
   }
@@ -731,6 +731,56 @@ test("官方模板目录行先取回 durable 投影，五项动作才都是真�
       .map((node) => node.textContent.trim())
       .filter((label) => expectedDetailActionOrder.includes(label));
     assert.deepEqual(labels, expectedDetailActionOrder);
+  } finally {
+    globalThis.__currentArtifactItems = {};
+    await mounted.unmount();
+  }
+});
+
+// V1-2 改后验收在生产站撞见的一件事（`V1-2-verdict.md` §7.1）：详情已经按真实类型
+// 分派过了——游戏摆的是开玩面板、PPT 摆的是翻页外壳——可右上角的类型标签三类都写
+// 「图片」。因为目录行的 `kind` 是**刻意**钉死的 `image`（卡片必须是图，那是红线），
+// 而详情标签一直照抄它。用户看到的是系统在自相矛盾。
+test("详情的类型标签跟着真实类型走，不照抄卡片那枚刻意钉死的 image", async () => {
+  globalThis.__currentArtifactReads = [];
+  const durable = libraryItem("Playable game");
+  durable.kind = "game";
+  durable.artifactType = "game";
+  const catalogRow = {
+    key: "template-material:tpl-game",
+    source: "artifact",
+    id: "template-material:tpl-game",
+    title: "Playable game",
+    // 卡片这一侧仍然是图，且必须保持是图。
+    kind: "image",
+    siteId: "game",
+    url: "https://asset.test/game-cover.png",
+    previewUrl: "https://asset.test/game-cover.png",
+    favorite: false,
+    meta: {
+      workspace_library_surface: "materials",
+      template_material_id: "tpl-game",
+      template_material_site_key: "game",
+      template_material_app_id: "game-studio",
+      template_material_artifact_id: durable.artifactId,
+    },
+  };
+  globalThis.__currentArtifactItems = { [durable.artifactId]: durable };
+  const mounted = await createMounted({
+    entries: [entryFor(catalogRow)],
+    siteId: "game",
+    appId: "game-studio",
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, catalogRow);
+    const text = mounted.container.textContent;
+    assert.match(text, /游戏/, "详情头上的类型标签应当是「游戏」");
+    assert.doesNotMatch(
+      text,
+      /图片/,
+      "详情里不该还挂着「图片」——那是卡片那一侧的口径",
+    );
   } finally {
     globalThis.__currentArtifactItems = {};
     await mounted.unmount();
