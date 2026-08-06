@@ -1195,15 +1195,9 @@ export function deckIrCompleteness(project: DeckIrDocument): DeckIrCompleteness 
         "prose and numbers on one page — a deck without either tends to read as a list of lists.",
     );
   }
-  if (slidesWithoutImages > 0) {
-    const share = Math.round((slidesWithoutImages / Math.max(1, slideCount)) * 100);
-    notes.push(
-      `${slidesWithoutImages} of ${slideCount} pages carry no picture (${share} %). ` +
-        (share >= 50
-          ? "Past half, the deck reads as a document. image-left, image-right, image-grid and mixed-triptych all take pictures."
-          : "Data and agenda pages have no business carrying a photograph, so this number is reported rather than judged."),
-    );
-  }
+  // `slidesWithoutImages` is returned but not narrated here: the package-side
+  // reading counts `<p:pic>` in the bytes that were actually written, which is
+  // the truthful number when a declared picture had no bytes to go with it.
   if (chartCount < 1) {
     notes.push(
       "No chart. Numbers shown as a real chart object stay readable and stay editable; " +

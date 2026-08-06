@@ -52,6 +52,8 @@ export const DECK_RELATIONSHIP_TYPES = {
   slideMaster: `${NS.r}/slideMaster`,
   slideLayout: `${NS.r}/slideLayout`,
   slide: `${NS.r}/slide`,
+  notesSlide: `${NS.r}/notesSlide`,
+  notesMaster: `${NS.r}/notesMaster`,
   theme: `${NS.r}/theme`,
   image: `${NS.r}/image`,
   chart: `${NS.r}/chart`,
@@ -71,6 +73,10 @@ export const DECK_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml",
   slideLayout:
     "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml",
+  notesSlide:
+    "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
+  notesMaster:
+    "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml",
   theme: "application/vnd.openxmlformats-officedocument.theme+xml",
   chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
   /** §3.2a.3 gap 1 — missing today, which orphans `docProps/core.xml`. */
@@ -1060,8 +1066,13 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
   }
 
   // §3.2a.4 — attribution must survive "save as PDF", so the last page carries
-  // the same credit string as a visible `note`-sized text box (C51).
-  if (context.slideNumber === context.slideCount) {
+  // the same credit string as a visible `note`-sized text box (C51). A caller
+  // who is placing the credits themselves can turn this one off; the machine
+  // readable copy in `docProps/custom.xml` is written either way.
+  if (
+    context.slideNumber === context.slideCount &&
+    context.project.master?.creditsBar !== false
+  ) {
     shapes.push(
       textBox(
         allocator.next(),
@@ -1102,6 +1113,59 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     pictureCount,
     chartFrameCount,
   };
+}
+
+/**
+ * `notesSlide{n}.xml` — the speaker's script for one page.
+ *
+ * `slide.note` used to reach the file only on the three grammars that draw a
+ * conclusion strip; on the other thirteen it was read, validated, and then
+ * dropped. That is the one thing a presenter cannot work around, because the
+ * text is nowhere in the package to recover. It now always lands here, and the
+ * grammars that draw a strip still draw it, so nothing that used to be visible
+ * stops being visible.
+ */
+export function deckNotesSlideXml(note: string, slideNumber: number): string {
+  return (
+    `${XML_DECLARATION}\n` +
+    `<p:notes xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}">` +
+    "<p:cSld><p:spTree>" +
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
+    '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>' +
+    '<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>' +
+    "<p:sp><p:nvSpPr>" +
+    `<p:cNvPr id="2" name="Notes Placeholder ${slideNumber}"/>` +
+    '<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>' +
+    "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>" +
+    `<a:p><a:r><a:rPr lang="zh-CN" altLang="en-US" dirty="0"/>` +
+    `<a:t>${escapeXml(note)}</a:t></a:r></a:p>` +
+    "</p:txBody></p:sp>" +
+    "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>"
+  );
+}
+
+/** The notes master a `notesSlide` must point at for PowerPoint to accept it. */
+export function deckNotesMasterXml(): string {
+  return (
+    `${XML_DECLARATION}\n` +
+    `<p:notesMaster xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}">` +
+    "<p:cSld><p:spTree>" +
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
+    '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>' +
+    '<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>' +
+    "<p:sp><p:nvSpPr>" +
+    '<p:cNvPr id="2" name="Notes Placeholder"/>' +
+    '<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>' +
+    "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>" +
+    '<a:p><a:endParaRPr lang="zh-CN"/></a:p></p:txBody></p:sp>' +
+    "</p:spTree></p:cSld>" +
+    '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" ' +
+    'accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" ' +
+    'accent6="accent6" hlink="hlink" folHlink="folHlink"/>' +
+    "</p:notesMaster>"
+  );
 }
 
 function relationshipsXml(entries: readonly SlideRelationship[]): string {
@@ -1268,15 +1332,23 @@ export function deckSlideLayoutXml(layout: DeckIrLayout): string {
  * §3.2 — `p:presentation` children must run
  * `p:sldMasterIdLst` → `p:sldIdLst` → `p:sldSz` → `p:notesSz`.
  */
-export function deckPresentationXml(slideCount: number, masterRelId: string): string {
+export function deckPresentationXml(
+  slideCount: number,
+  masterRelId: string,
+  notesMasterRelId?: string,
+): string {
   const slideIds = Array.from(
     { length: slideCount },
     (_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`,
   ).join("");
+  const notesMasterIdLst = notesMasterRelId
+    ? `<p:notesMasterIdLst><p:notesMasterId r:id="${notesMasterRelId}"/></p:notesMasterIdLst>`
+    : "";
   return (
     `${XML_DECLARATION}\n` +
     `<p:presentation xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}" saveSubsetFonts="1">` +
     `<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="${masterRelId}"/></p:sldMasterIdLst>` +
+    notesMasterIdLst +
     `<p:sldIdLst>${slideIds}</p:sldIdLst>` +
     `<p:sldSz cx="${DECK_GRID.pageWidth}" cy="${DECK_GRID.pageHeight}"/>` +
     `<p:notesSz cx="${DECK_GRID.pageHeight}" cy="${DECK_GRID.pageWidth}"/>` +
@@ -1305,16 +1377,37 @@ export function deckCorePropertiesXml(project: DeckIrDocument, timestamp: string
   );
 }
 
-/** §3.2a.2 — the credits live here, as a `vt:lpwstr` custom property. */
-export function deckCustomPropertiesXml(credits: string): string {
+/**
+ * §3.2a.2 — the credits live here, as a `vt:lpwstr` custom property.
+ *
+ * The three supply keys ride along in the same part. The visible credit line on
+ * the last slide is a shape: copy the page elsewhere and it comes with it,
+ * delete it and it is gone. This part travels with the whole package, so it is
+ * the copy that survives. Both are written, because either one alone can be
+ * lost in a way the other cannot.
+ */
+export function deckCustomPropertiesXml(
+  credits: string,
+  license: Readonly<Record<string, string>> = {},
+): string {
+  const entries: [string, string][] = [[DECK_CREDITS_PROPERTY, credits]];
+  for (const key of ["usage_scope", "license_family", "supply_tier"] as const) {
+    const value = license[key];
+    if (value) entries.push([key, value]);
+  }
+  const body = entries
+    .map(
+      ([name, value], index) =>
+        `<property fmtid="${DECK_CUSTOM_PROPERTY_FMTID}" ` +
+        `pid="${DECK_CUSTOM_PROPERTY_FIRST_PID + index}" name="${escapeXml(name)}">` +
+        `<vt:lpwstr>${escapeXml(value)}</vt:lpwstr></property>`,
+    )
+    .join("");
   return (
     `${XML_DECLARATION}\n` +
     '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ' +
     'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
-    `<property fmtid="${DECK_CUSTOM_PROPERTY_FMTID}" pid="${DECK_CUSTOM_PROPERTY_FIRST_PID}" ` +
-    `name="${DECK_CREDITS_PROPERTY}">` +
-    `<vt:lpwstr>${escapeXml(credits)}</vt:lpwstr></property>` +
-    "</Properties>"
+    `${body}</Properties>`
   );
 }
 
@@ -1333,9 +1426,13 @@ export interface DeckOoxmlBuild {
   themeCount: number;
   chartCount: number;
   pictureCount: number;
+  notesSlideCount: number;
   shapeCounts: number[];
   credits: string;
+  license: Record<string, string>;
   missingAssetIds: string[];
+  /** What the writer noticed while laying the deck out. Never fatal. */
+  notes: string[];
 }
 
 const MEDIA_EXTENSIONS: Record<string, string> = {
@@ -1353,6 +1450,12 @@ export function buildDeckOoxmlParts(
   const timestamp = options.timestamp || "2026-07-29T00:00:00Z";
   const fontMajor = project.theme.fontMajor || DEFAULT_MAJOR_FONT;
   const fontMinor = project.theme.fontMinor || fontMajor;
+  const fontEastAsian = project.theme.fontEastAsian || DEFAULT_EAST_ASIAN_FONT;
+  const askedScale = project.theme.fontScale;
+  const fontScale =
+    typeof askedScale === "number" && Number.isFinite(askedScale) && askedScale >= 0.5 && askedScale <= 2
+      ? askedScale
+      : 1;
   const supplied = new Map(
     (options.assets || []).map((asset) => [asset.id, asset]),
   );
@@ -1381,7 +1484,9 @@ export function buildDeckOoxmlParts(
   const chartCounter = { value: 0 };
   const parts: Record<string, string> = {};
   const shapeCounts: number[] = [];
+  const notes: string[] = [];
   let pictureCount = 0;
+  let notesSlideCount = 0;
 
   project.slides.forEach((slide, index) => {
     const build = buildSlide(slide, {
@@ -1392,11 +1497,38 @@ export function buildDeckOoxmlParts(
       media: mediaIndex,
       chartCounter,
       fontMajor,
-      fontEastAsian: DEFAULT_EAST_ASIAN_FONT,
+      fontEastAsian,
+      fontScale,
+      notes,
     });
     parts[`ppt/slides/slide${index + 1}.xml`] = build.xml;
+
+    const slideRelationships = [...build.relationships];
+    const note = typeof slide.note === "string" ? slide.note.trim() : "";
+    if (note) {
+      notesSlideCount += 1;
+      const number = index + 1;
+      slideRelationships.push({
+        id: `rId${slideRelationships.length + 1}`,
+        type: DECK_RELATIONSHIP_TYPES.notesSlide,
+        target: `../notesSlides/notesSlide${number}.xml`,
+      });
+      parts[`ppt/notesSlides/notesSlide${number}.xml`] = deckNotesSlideXml(note, number);
+      parts[`ppt/notesSlides/_rels/notesSlide${number}.xml.rels`] = relationshipsXml([
+        {
+          id: "rId1",
+          type: DECK_RELATIONSHIP_TYPES.notesMaster,
+          target: "../notesMasters/notesMaster1.xml",
+        },
+        {
+          id: "rId2",
+          type: DECK_RELATIONSHIP_TYPES.slide,
+          target: `../slides/slide${number}.xml`,
+        },
+      ]);
+    }
     parts[`ppt/slides/_rels/slide${index + 1}.xml.rels`] = relationshipsXml(
-      build.relationships,
+      slideRelationships,
     );
     build.chartXml.forEach((xml, chartIndex) => {
       const number = chartCounter.value - build.chartXml.length + chartIndex + 1;
@@ -1412,7 +1544,7 @@ export function buildDeckOoxmlParts(
   parts["ppt/theme/theme1.xml"] = deckThemeXml(palette, {
     major: fontMajor,
     minor: fontMinor,
-    eastAsian: DEFAULT_EAST_ASIAN_FONT,
+    eastAsian: fontEastAsian,
   });
   parts["ppt/slideMasters/slideMaster1.xml"] = deckSlideMasterXml(palette);
   parts["ppt/slideMasters/_rels/slideMaster1.xml.rels"] = relationshipsXml([
@@ -1441,7 +1573,20 @@ export function buildDeckOoxmlParts(
   }
 
   const slideCount = project.slides.length;
-  parts["ppt/presentation.xml"] = deckPresentationXml(slideCount, "rId1");
+  // The notes master exists only when at least one page carries a script; a
+  // deck with no notes keeps exactly the part list it had before.
+  const notesMasterRelId = notesSlideCount > 0 ? `rId${slideCount + 3}` : undefined;
+  if (notesSlideCount > 0) {
+    parts["ppt/notesMasters/notesMaster1.xml"] = deckNotesMasterXml();
+    parts["ppt/notesMasters/_rels/notesMaster1.xml.rels"] = relationshipsXml([
+      {
+        id: "rId1",
+        type: DECK_RELATIONSHIP_TYPES.theme,
+        target: "../theme/theme1.xml",
+      },
+    ]);
+  }
+  parts["ppt/presentation.xml"] = deckPresentationXml(slideCount, "rId1", notesMasterRelId);
   parts["ppt/_rels/presentation.xml.rels"] = relationshipsXml([
     {
       id: "rId1",
@@ -1458,11 +1603,25 @@ export function buildDeckOoxmlParts(
       type: DECK_RELATIONSHIP_TYPES.theme,
       target: "theme/theme1.xml",
     },
+    ...(notesMasterRelId
+      ? [
+          {
+            id: notesMasterRelId,
+            type: DECK_RELATIONSHIP_TYPES.notesMaster,
+            target: "notesMasters/notesMaster1.xml",
+          },
+        ]
+      : []),
   ]);
 
   const credits = deckCreditsText(project);
+  const license: Record<string, string> = {};
+  for (const key of ["usage_scope", "license_family", "supply_tier"] as const) {
+    const value = project.license?.[key];
+    if (typeof value === "string" && value) license[key] = value;
+  }
   parts["docProps/core.xml"] = deckCorePropertiesXml(project, timestamp);
-  parts["docProps/custom.xml"] = deckCustomPropertiesXml(credits);
+  parts["docProps/custom.xml"] = deckCustomPropertiesXml(credits, license);
 
   // §3.2a.3 gap 1 — `docProps/core.xml` gets both an Override and a package
   // relationship, otherwise its `dc:title` is invisible to a conforming
@@ -1515,6 +1674,19 @@ export function buildDeckOoxmlParts(
       (_, index) =>
         `<Override PartName="/ppt/charts/chart${index + 1}.xml" ContentType="${DECK_CONTENT_TYPES.chart}"/>`,
     ),
+    ...Object.keys(parts)
+      .filter((path) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(path))
+      .sort()
+      .map(
+        (path) =>
+          `<Override PartName="/${path}" ContentType="${DECK_CONTENT_TYPES.notesSlide}"/>`,
+      ),
+    ...(notesSlideCount > 0
+      ? [
+          `<Override PartName="/ppt/notesMasters/notesMaster1.xml" ` +
+            `ContentType="${DECK_CONTENT_TYPES.notesMaster}"/>`,
+        ]
+      : []),
     `<Override PartName="/docProps/core.xml" ContentType="${DECK_CONTENT_TYPES.coreProperties}"/>`,
     `<Override PartName="/docProps/custom.xml" ContentType="${DECK_CONTENT_TYPES.customProperties}"/>`,
   ].join("");
@@ -1531,9 +1703,12 @@ export function buildDeckOoxmlParts(
     themeCount: 1,
     chartCount: chartCounter.value,
     pictureCount,
+    notesSlideCount,
     shapeCounts,
     credits,
+    license,
     missingAssetIds,
+    notes,
   };
 }
 
@@ -1555,9 +1730,15 @@ export function zipDeckOoxmlParts(build: DeckOoxmlBuild): Uint8Array {
 }
 
 export interface DeckPackageConformance {
+  /** False only when the package would not open or would open wrong. */
   ok: boolean;
+  /** Things that make the file broken. These still refuse. */
   failures: string[];
+  /** Things that make the deck weaker. These are said, not enforced. */
+  notes: string[];
   slideCount: number;
+  notesSlideCount: number;
+  slidesWithoutPictures: number;
   slideMasterCount: number;
   slideLayoutCount: number;
   themeCount: number;
@@ -1577,14 +1758,26 @@ export interface DeckPackageConformance {
 }
 
 /**
- * §8.2 / §9 C-3 / C-6 — judge a built package. Also enforces §6.2's 60-shape
- * per-slide ceiling and the §3.2a.4 "metadata alone is not attribution" rule.
+ * §8.2 / §9 C-3 / C-6 — measure a built package.
+ *
+ * Two buckets, and the split is the whole point. `failures` is for a package a
+ * consumer cannot read: a missing master, a chart whose cache never got
+ * written, a picture reference with no namespace to resolve it. Those are not
+ * matters of taste and they still refuse, by name, with the part path in the
+ * message.
+ *
+ * `notes` is for everything else that used to sit in the same list — page
+ * count, picture count, how many grammars were used, how busy the busiest page
+ * is. Those describe a deck someone may not like. Handing them back as a
+ * refusal told the caller only that something was wrong somewhere; handing them
+ * back as numbers lets them decide whether it matters.
  */
 export function assertDeckPackageConformance(
   project: DeckIrDocument,
   build: DeckOoxmlBuild,
 ): DeckPackageConformance {
   const failures: string[] = [];
+  const notes: string[] = [...build.notes];
   const contentTypes = build.parts["[Content_Types].xml"] || "";
   const packageRels = build.parts["_rels/.rels"] || "";
   const slideCount = project.slides.length;
@@ -1622,51 +1815,132 @@ export function assertDeckPackageConformance(
     lastSlideXml.includes('name="oceanleo-credits"') &&
     lastSlideXml.includes(`sz="${DECK_CONSTANTS.C51}"`);
 
-  if (slideCount < DECK_CONSTANTS.C17) failures.push(`slides ${slideCount} < ${DECK_CONSTANTS.C17}`);
-  if (slideCount > DECK_CONSTANTS.C18) failures.push(`slides ${slideCount} > ${DECK_CONSTANTS.C18}`);
-  if (build.slideMasterCount !== 1) failures.push("slideMaster part count is not 1");
+  const slidesWithoutPictures = Object.entries(build.parts)
+    .filter(([path]) => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+    .filter(([, xml]) => !xml.includes("<p:pic>")).length;
+
+  // ── broken: the package would not open, or would open missing something a
+  //    consumer needs to render it. These refuse. ────────────────────────────
+  if (build.slideMasterCount !== 1) {
+    failures.push(
+      "there is no slideMaster part; without it PowerPoint has nothing to inherit from and refuses the file",
+    );
+  }
   if (build.slideLayoutCount !== DECK_CONSTANTS.C33) {
-    failures.push(`slideLayout part count ${build.slideLayoutCount} != ${DECK_CONSTANTS.C33}`);
+    failures.push(
+      `${build.slideLayoutCount} slideLayout parts were written instead of ${DECK_CONSTANTS.C33}; ` +
+        "slides reference layouts by number, so a missing one is a dangling reference",
+    );
   }
-  if (build.themeCount !== 1) failures.push("theme1.xml part count is not 1");
-  if (pictureCount < 3) failures.push(`p:pic count ${pictureCount} < 3`);
-  if (graphicFrameCount + chartPartCount < 1) failures.push("no chart part");
-  if (layouts.size < 5) failures.push(`distinct layouts ${layouts.size} < 5`);
-  if (denseSlides < 1) failures.push("no mixed-triptych or chart-with-notes slide");
-  if (averageShapesPerSlide < 4) {
-    failures.push(`average shapes per slide ${averageShapesPerSlide.toFixed(2)} < 4`);
+  if (build.themeCount !== 1) {
+    failures.push("there is no theme part; the colour and font scheme every part refers to would be missing");
   }
-  if (maxShapesPerSlide > 60) failures.push(`a slide holds ${maxShapesPerSlide} shapes > 60`);
-  if (!hasCorePropertiesOverride) failures.push("[Content_Types].xml lacks the core.xml Override");
-  if (!hasCorePropertiesRelationship) failures.push("_rels/.rels lacks the core-properties relationship");
-  if (!hasCustomPropertiesOverride) failures.push("[Content_Types].xml lacks the custom.xml Override");
-  if (!hasCustomPropertiesRelationship) failures.push("_rels/.rels lacks the custom-properties relationship");
-  if (build.credits.length < DECK_CONSTANTS.C49) {
-    failures.push(`OceanLeoCredits ${build.credits.length} < ${DECK_CONSTANTS.C49} characters`);
+  if (!hasCorePropertiesOverride) {
+    failures.push(
+      "[Content_Types].xml has no Override for docProps/core.xml, which makes the part invisible to a conforming reader",
+    );
+  }
+  if (!hasCorePropertiesRelationship) {
+    failures.push("_rels/.rels has no core-properties relationship, which orphans docProps/core.xml");
+  }
+  if (!hasCustomPropertiesOverride) {
+    failures.push(
+      "[Content_Types].xml has no Override for docProps/custom.xml — that part carries the credits, and without the Override it does not exist as far as a reader is concerned",
+    );
+  }
+  if (!hasCustomPropertiesRelationship) {
+    failures.push("_rels/.rels has no custom-properties relationship, which orphans the credits part");
   }
   if (build.credits.length > DECK_CONSTANTS.C48) {
-    failures.push(`OceanLeoCredits exceeds ${DECK_CONSTANTS.C48} characters`);
+    failures.push(
+      `the credits string is ${build.credits.length} characters, past the ${DECK_CONSTANTS.C48} a vt:lpwstr holds; it would be truncated mid-entry, leaving a credit that points nowhere`,
+    );
   }
-  if (!hasVisibleCreditsBar) failures.push("last slide lacks the visible credits bar");
+
+  // ── opinions: the deck still opens and still reads. These are measured. ────
+  if (slideCount < DECK_CONSTANTS.C17) {
+    notes.push(`${slideCount} pages, which is short for a deck meant to stand on its own.`);
+  }
+  if (slideCount > DECK_CONSTANTS.C18) {
+    notes.push(`${slideCount} pages, past the ${DECK_CONSTANTS.C18} the carrier was sized for.`);
+  }
+  if (pictureCount < 3) {
+    notes.push(
+      `${pictureCount} pictures in the whole deck. Pages carry better with something to look at, ` +
+        "though data and agenda pages are fine without.",
+    );
+  }
+  if (slidesWithoutPictures > 0) {
+    const share = Math.round((slidesWithoutPictures / Math.max(1, slideCount)) * 100);
+    notes.push(
+      `${slidesWithoutPictures} of ${slideCount} pages have no picture (${share} %).` +
+        (share >= 50 ? " Past half the deck starts reading as a document rather than a presentation." : ""),
+    );
+  }
+  if (graphicFrameCount + chartPartCount < 1) {
+    notes.push("No chart object. Figures shown as a chart stay readable and stay editable; figures typed into bullets do neither.");
+  }
+  if (layouts.size < 5) {
+    notes.push(`${layouts.size} distinct grammars across ${slideCount} pages, so the pages will look alike.`);
+  }
+  if (denseSlides < 1) {
+    notes.push("No mixed-triptych or chart-with-notes page, so nothing puts a picture, prose and numbers together.");
+  }
+  if (averageShapesPerSlide < 4) {
+    notes.push(
+      `${averageShapesPerSlide.toFixed(2)} shapes per page on average. Sparse pages are often unfinished pages.`,
+    );
+  }
+  if (maxShapesPerSlide > 60) {
+    notes.push(
+      `The busiest page holds ${maxShapesPerSlide} shapes. Past about 60 the page gets slow to render and hard to read.`,
+    );
+  }
+  if (build.credits.length < DECK_CONSTANTS.C49) {
+    notes.push(
+      `The credits string is ${build.credits.length} characters. If anything in this deck came from ` +
+        "somewhere else, that is an attribution obligation which is currently unmet.",
+    );
+  }
+  if (!hasVisibleCreditsBar) {
+    notes.push(
+      "The last page carries no visible credit line, so the attribution survives only as metadata — " +
+        'which is lost the moment someone does "save as PDF".',
+    );
+  }
   if (build.missingAssetIds.length > 0) {
-    failures.push(`unresolved assets: ${build.missingAssetIds.join(", ")}`);
+    notes.push(
+      `No bytes were supplied for ${build.missingAssetIds.length} declared picture(s) ` +
+        `(${build.missingAssetIds.join(", ")}), so those frames ship empty.`,
+    );
   }
   for (const [path, xml] of Object.entries(build.parts)) {
     if (!/^ppt\/slides\/slide\d+\.xml$/.test(path)) continue;
     if (xml.includes("r:embed") && !xml.includes(`xmlns:r="${NS.r}"`)) {
-      failures.push(`${path} uses r:embed without declaring xmlns:r`);
+      failures.push(
+        `${path} references a picture through r:embed but never declares the r namespace, so the reference cannot resolve`,
+      );
     }
   }
   for (const [path, xml] of Object.entries(build.parts)) {
     if (!/^ppt\/charts\/chart\d+\.xml$/.test(path)) continue;
-    if (!xml.includes("<c:numCache>")) failures.push(`${path} has no c:numCache`);
-    if (!xml.includes("<c:strCache>")) failures.push(`${path} has no c:strCache`);
+    // Without the caches LibreOffice paints an empty plot on first render —
+    // the chart is there, the numbers are not. That is a broken artifact.
+    if (!xml.includes("<c:numCache>")) {
+      failures.push(`${path} carries no c:numCache, so the plot renders empty until someone opens the data source`);
+    }
+    if (!xml.includes("<c:strCache>")) {
+      failures.push(`${path} carries no c:strCache, so the categories render blank`);
+    }
   }
 
   return {
     ok: failures.length === 0,
     failures,
+    notes,
     slideCount,
+    notesSlideCount: build.notesSlideCount,
+    slidesWithoutPictures,
     slideMasterCount: build.slideMasterCount,
     slideLayoutCount: build.slideLayoutCount,
     themeCount: build.themeCount,
@@ -1705,34 +1979,37 @@ export class DeckPackageError extends Error {
 }
 
 /**
- * §3.6 — the whole generation run. Byte floors are checked after zipping, so
- * `empty → ready` (the 233 B hollow path) is unreachable.
+ * §3.6 — the whole generation run.
+ *
+ * This throws when the package would be broken and returns when it would not.
+ * A picture with no bytes, a five-page deck and a deck with no chart all used
+ * to throw here; none of them produce a file that fails to open, so all three
+ * now come back as readings on `conformance.notes` with the bytes attached.
  */
 export function buildDeckPptx(
   project: DeckIrDocument,
   options: DeckOoxmlBuildOptions = {},
 ): DeckPptxResult {
   const build = buildDeckOoxmlParts(project, options);
-  if (build.missingAssetIds.length > 0) {
-    throw new DeckPackageError(
-      "deck-assets-missing",
-      `deck generation is degraded: ${build.missingAssetIds.length} asset(s) unresolved`,
-      build.missingAssetIds,
-    );
-  }
   const conformance = assertDeckPackageConformance(project, build);
   if (!conformance.ok) {
     throw new DeckPackageError(
-      "deck-hollow",
-      `deck package fails §8.2: ${conformance.failures.join("; ")}`,
+      "deck-package-broken",
+      `the package would not open as written:\n${conformance.failures.map((f) => `  ${f}`).join("\n")}`,
       conformance.failures,
     );
   }
   const bytes = zipDeckOoxmlParts(build);
-  if (bytes.length < DECK_PPTX_MIN_BYTES || bytes.length > DECK_PPTX_MAX_BYTES) {
-    throw new DeckPackageError(
-      "deck-hollow",
-      `pptx is ${bytes.length} B, outside [${DECK_PPTX_MIN_BYTES}, ${DECK_PPTX_MAX_BYTES}]`,
+  if (bytes.length < DECK_PPTX_MIN_BYTES) {
+    conformance.notes.push(
+      `The package is ${bytes.length} bytes, under the ${DECK_PPTX_MIN_BYTES} floor. ` +
+        "A deck this small has historically meant the content never made it in.",
+    );
+  }
+  if (bytes.length > DECK_PPTX_MAX_BYTES) {
+    conformance.notes.push(
+      `The package is ${bytes.length} bytes, over the ${DECK_PPTX_MAX_BYTES} ceiling. ` +
+        "It opens; it is awkward to mail.",
     );
   }
   return { bytes, build, conformance };
