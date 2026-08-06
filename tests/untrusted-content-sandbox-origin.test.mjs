@@ -140,6 +140,9 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
   const surfaces = {
     "workbench-embed.tsx": source("../src/shell/workbench-embed.tsx"),
     "library-viewers.tsx": source("../src/shell/library-viewers.tsx"),
+    "WebsiteArtifactViewer.tsx": source(
+      "../src/shell/WebsiteArtifactViewer.tsx",
+    ),
     "workspace-library-cover.tsx": source(
       "../src/shell/workspace-library-cover.tsx",
     ),
@@ -156,6 +159,13 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
       iframes: 2,
       exemptions: 1,
       sandbox: ["{webViewerFrameSandbox(trustedInteractive)}"],
+    },
+    // 网站素材的就地预览承载（W3）：只允许最严的那一档，`false` 是写死的，
+    // 因此它永远拿不到 TRUSTED_INTERACTIVE_VIEWER_SANDBOX 那条 same-origin 分支。
+    "WebsiteArtifactViewer.tsx": {
+      iframes: 1,
+      exemptions: 0,
+      sandbox: ["{webViewerFrameSandbox(false)}"],
     },
     // 该模块被渲染测试以 data: URL 加载，无法引入相对运行时依赖，因此保留
     // 与 COVER_FRAME_SANDBOX 等值的字面量，由本断言锁住取值。
@@ -195,7 +205,11 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
       source("../src/shell/editor-sandbox-origin.ts").includes("crbug 413851"),
     "PDF 豁免必须保留其浏览器约束依据",
   );
-  for (const name of ["library-viewers.tsx", "workspace-library-cover.tsx"]) {
+  for (const name of [
+    "library-viewers.tsx",
+    "WebsiteArtifactViewer.tsx",
+    "workspace-library-cover.tsx",
+  ]) {
     assert.ok(
       surfaces[name].includes('referrerPolicy="no-referrer"'),
       `${name}: 免沙箱的 PDF frame 至少要阻断 Referer 外泄`,

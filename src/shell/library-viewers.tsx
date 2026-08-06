@@ -45,6 +45,13 @@ import {
   libraryViewerIsHeavy,
   useVisibleViewerGate,
 } from "./library-viewer-first-paint";
+import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
+import {
+  GamePlayDetail,
+  MaterialDetailUnavailable,
+  gamePlayEmbedHref,
+  useMaterialDetailTarget,
+} from "./material-detail-slot";
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -1288,7 +1295,39 @@ export function LibraryItemViewer({
   if (!gate.ready) {
     return <ViewerThumbPoster item={item} containerRef={gate.ref} />;
   }
-  return <LibraryItemViewerBody item={item} accent={accent} />;
+  return <LibraryItemDetailTarget item={item} accent={accent} />;
+}
+
+/**
+ * 官方模板目录行在**详情**里先换成 durable 投影，再进下面的类型分派。
+ *
+ * 卡片不经过这里：卡片读的是目录行自己的封面图（`material-library-template-source`
+ * 的 `kind: "image"` + OSS 预览图），那是既定产品决定，本改动一个字节没动它。
+ * 其余条目 `passthrough`，一步取数都不发。
+ */
+function LibraryItemDetailTarget({
+  item,
+  accent,
+}: {
+  item: LibraryItem;
+  accent?: string;
+}) {
+  const tt = useUI();
+  const target = useMaterialDetailTarget(item);
+  if (target.status === "resolving") {
+    return <LoadingView label={tt("正在打开这份素材…")} />;
+  }
+  if (target.status === "unavailable") {
+    return (
+      <MaterialDetailUnavailable
+        item={target.item}
+        message={target.message}
+        needsSignIn={target.needsSignIn}
+        onRetry={target.retry}
+      />
+    );
+  }
+  return <LibraryItemViewerBody item={target.item} accent={accent} />;
 }
 
 function LibraryItemViewerBody({
@@ -1335,12 +1374,27 @@ function LibraryItemViewerBody({
       />
     );
   }
-  if (resolvedItem.kind === "website") {
-    return url ? (
-      <SandboxedWebViewer url={url} title={resolvedItem.title} />
+  /**
+   * 游戏走独立的「开玩」通路，不进任何文档/图片查看器：它的 `full` rendition 是
+   * game-bundle JSON，喂给下面任何一支都只会渲出一坨源码或一句失败。
+   *
+   * 默认给落点面板（跳 W7 的 `/play/artifact/…`）；只有 game 站显式声明了可内嵌的
+   * 播放地址时才就地内嵌，沙箱一律走 `SandboxedWebViewer` 的不可信档
+   * （`webViewerFrameSandbox(false)`，不含同源授权）——用户自制游戏的隔离域判定在
+   * 播放页自己那一层，这里不新增也不放松任何一项授权。
+   */
+  if (resolvedItem.kind === "game") {
+    const embed = gamePlayEmbedHref(resolvedItem);
+    return embed ? (
+      <SandboxedWebViewer url={embed} title={resolvedItem.title} />
     ) : (
-      <ErrorView message="没有可打开的网站预览地址。" />
+      <GamePlayDetail item={resolvedItem} />
     );
+  }
+  if (resolvedItem.kind === "website") {
+    // 网站详情要的是页面本身，不是卡片那张封面 webp，所以承载自己按
+    // `["full","preview"]` 取 rendition（W3；接入约定见 tasks/W1-viewer-slot.md §4.3）。
+    return <WebsiteArtifactViewer item={resolvedItem} />;
   }
   if (resolvedItem.kind === "canvas") {
     return url ? (
