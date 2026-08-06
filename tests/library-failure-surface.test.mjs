@@ -668,6 +668,49 @@ test("全屏只在详情里真有可放大内容时出现，不许恒亮", async
   }
 });
 
+// 2026-08-06 在实时预览站上实拍到的一幕（`W4-evidence/preview-law-02-detail-offline.png`）：
+// 取当前版本失败时，查看器仍会摆一张封面图垫着（并自己写明「以上只是这份素材的封面图」）。
+// 上一版判据只问「这块 DOM 里有没有 img」，于是那张垫底的封面把全屏又点亮了，
+// 点下去放大的正是封面——正是操作员点名的那一幕，绕了一圈回到原点。
+test("只剩一张垫底封面时全屏也不许亮：那不是这份素材本身", async () => {
+  globalThis.__identityReads = [];
+  globalThis.__identityResolutions = {};
+  const durable = durableItem("Cover only");
+  const row = catalogRow("Cover fallback", durable.artifactId);
+  const mounted = await createMounted({
+    entries: [entryFor(row)],
+    siteId: "game",
+    appId: "game-studio",
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, row);
+    // 这条断言防的是「判据被架空」：查看器**确实**渲染了一张图，
+    // 全屏的消失才是判据在起作用，而不是这一态压根没图。
+    assert.ok(
+      mounted.container.querySelector("[data-library-viewer] img"),
+      "这一态查看器仍然摆着封面图，判据不是被架空的",
+    );
+    assert.equal(
+      action(mounted.container, "全屏"),
+      undefined,
+      "只剩封面垫底时全屏不许亮着",
+    );
+
+    // 取回当前版本之后，屏幕上是这份素材本身了，全屏照常回来。
+    globalThis.__identityResolutions[durable.artifactId] = durable;
+    await click(action(mounted.container, "重试"));
+    await settle();
+    assert.ok(
+      action(mounted.container, "全屏"),
+      "取回本体之后全屏要回来，不能一刀切",
+    );
+  } finally {
+    globalThis.__identityResolutions = {};
+    await mounted.unmount();
+  }
+});
+
 test("全屏被浏览器拒掉时说人话，不摆 Permissions check failed", async () => {
   // `requestFullscreen()` 被拒时抛的是 Chromium 的英文原话：嵌在没开
   // `allowfullscreen` 的 iframe 里、或手势判定没过时每次都是这一句。动作条那一排

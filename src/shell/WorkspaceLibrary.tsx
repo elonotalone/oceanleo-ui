@@ -544,8 +544,15 @@ export function WorkspaceLibrary({
             document.querySelector<HTMLElement>("[data-workspace-split]");
           await requestFullscreenFor(target);
         }}
+        // 取不到本体时查看器仍会摆出封面图垫着（并自己写明「以上只是这份素材的
+        // 封面图」）。那张图会让上面那个 DOM 探针判成「有可放大内容」，于是全屏
+        // 照旧亮着，点下去放大的正是那张封面——操作员点名的就是这一幕。
+        // 2026-08-06 在实时预览站上实拍到（`W4-evidence/preview-law-02-*`）。
+        // 所以这一态直接不给全屏：此刻屏幕上没有一样东西是这份素材本身。
         fullscreenContentPresent={
-          fullscreenNode ? viewerHasZoomableContent : undefined
+          fullscreenNode
+            ? viewerHasZoomableContent && !detailIdentityFailed
+            : undefined
         }
         identity={
           identityExpected
