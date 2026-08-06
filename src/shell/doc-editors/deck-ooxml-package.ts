@@ -89,8 +89,15 @@ export const DECK_CREDITS_PROPERTY = "OceanLeoCredits";
 export const DECK_CUSTOM_PROPERTY_FIRST_PID = DECK_CONSTANTS.C50;
 
 const DEFAULT_MAJOR_FONT = "Aptos";
-/** §3.5 — `a:ea` must name a CJK face or the fallback glyphs drift per machine. */
+/**
+ * §3.5 — `a:ea` must name a CJK face or the fallback glyphs drift per machine.
+ * This is the default, not the rule: `theme.fontEastAsian` overrides it.
+ */
 const DEFAULT_EAST_ASIAN_FONT = "Microsoft YaHei";
+/** The shipped scrim opacity over a full-bleed photograph, in percent. */
+const DEFAULT_SCRIM_ALPHA = 60;
+/** The shipped image-grid width, in cells. */
+const DEFAULT_GRID_COLUMNS = 3;
 
 export function escapeXml(value: string): string {
   return value
@@ -186,6 +193,7 @@ interface TextRunStyle {
   bullet?: boolean;
   fontMajor?: string;
   fontEastAsian?: string;
+  fontScale?: number;
   lineSpacing?: number;
 }
 
@@ -196,7 +204,11 @@ interface TextRunStyle {
 const EMU_PER_HUNDREDTH_POINT = 127;
 
 function paragraph(text: string, style: TextRunStyle): string {
-  const size = DECK_FONT_SIZES[style.role];
+  const scale = style.fontScale ?? 1;
+  const size =
+    scale === 1
+      ? DECK_FONT_SIZES[style.role]
+      : Math.round(DECK_FONT_SIZES[style.role] * scale);
   const spacing = style.lineSpacing
     ? `<a:lnSpc><a:spcPts val="${Math.round(style.lineSpacing / EMU_PER_HUNDREDTH_POINT)}"/></a:lnSpc>`
     : "";
@@ -348,7 +360,14 @@ const VALUE_AXIS_ID = 222_222_222;
 export function deckChartXml(chart: DeckIrChart, palette: Record<DeckThemeSlot, string>): string {
   const categories = chart.categories;
   const lastRow = categories.length + 1;
-  const showLabels = chart.showDataLabels === true || chart.series.length >= 3;
+  // Three or more series told apart by colour alone are unreadable to a
+  // colour-blind viewer, so labels are on by default once the chart gets that
+  // busy. `showDataLabels: false` used to be quietly reversed here; an explicit
+  // answer is now obeyed, and the IR readings say what the trade-off was.
+  const showLabels =
+    chart.showDataLabels === undefined
+      ? chart.series.length >= 3
+      : chart.showDataLabels === true;
   const dataLabels = showLabels
     ? '<c:dLbls><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/>' +
       '<c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>'
@@ -462,6 +481,13 @@ interface SlideContext {
   chartCounter: { value: number };
   fontMajor: string;
   fontEastAsian: string;
+  fontScale: number;
+  /**
+   * Anything the writer noticed while laying this page out that the caller
+   * would want to know — a picture handed to a grammar with no frame for it,
+   * a count clamped to what the grid holds. Never fatal.
+   */
+  notes: string[];
 }
 
 /**
@@ -487,6 +513,7 @@ function bulletParagraphs(
       lineSpacing: pitch,
       fontMajor: context.fontMajor,
       fontEastAsian: context.fontEastAsian,
+      fontScale: context.fontScale,
     }),
   );
 }
@@ -503,8 +530,27 @@ function plain(
     color,
     fontMajor: context.fontMajor,
     fontEastAsian: context.fontEastAsian,
+    fontScale: context.fontScale,
     ...extra,
   });
+}
+
+/** The caller's scrim opacity if they gave a usable one, otherwise the default. */
+function scrimAlphaFor(slide: DeckIrSlide): number {
+  const asked = slide.scrimAlpha;
+  if (typeof asked !== "number" || !Number.isFinite(asked) || asked < 0 || asked > 100) {
+    return DEFAULT_SCRIM_ALPHA;
+  }
+  return asked;
+}
+
+/** The caller's grid width if they gave a usable one, otherwise the default. */
+function gridColumnsFor(slide: DeckIrSlide): number {
+  const asked = slide.gridColumns;
+  if (typeof asked !== "number" || !Number.isInteger(asked) || asked < 1 || asked > 6) {
+    return DEFAULT_GRID_COLUMNS;
+  }
+  return asked;
 }
 
 function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
@@ -519,7 +565,13 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
 
   const addPicture = (image: DeckIrImage, target: DeckBox) => {
     const media = context.media.get(image.assetId);
-    if (!media) return false;
+    if (!media) {
+      context.notes.push(
+        `Page ${context.slideNumber}: no bytes were supplied for picture "${image.assetId}", ` +
+          "so the page ships with an empty picture frame.",
+      );
+      return false;
+    }
     const relationshipId = `rId${relationships.length + 2}`;
     relationships.push({
       id: relationshipId,
@@ -699,11 +751,16 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     }
     case "image-full": {
       const image = slide.images?.[0];
-      if (image) addPicture({ ...image, fit: "cover" }, boxes.image);
-      // §2.4 SC 1.4.3: the 60 % dk1 scrim is what lets `section`-sized white
-      // text clear 3.0:1 over an arbitrary photograph.
+      // The fit used to be forced to "cover" here, which silently discarded a
+      // caller who had asked for "contain". Full-bleed still defaults to cover.
+      if (image) addPicture({ ...image, fit: image.fit || "cover" }, boxes.image);
+      // §2.4 SC 1.4.3: the dk1 scrim is what lets `section`-sized white text
+      // clear 3.0:1 over an arbitrary photograph. 60 % is the default, and a
+      // caller who knows their photograph is already dark can ask for less.
       shapes.push(
-        shapeBlock(allocator.next(), "scrim", boxes.scrim, palette.dk1, { alpha: 60 }),
+        shapeBlock(allocator.next(), "scrim", boxes.scrim, palette.dk1, {
+          alpha: scrimAlphaFor(slide),
+        }),
       );
       shapes.push(
         textBox(
@@ -734,7 +791,13 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     case "image-grid": {
       heading(boxes.title, "heading", slide.title || "");
       const images = slide.images || [];
-      const cells = deckImageGridCells(images.length);
+      const cells = deckImageGridCells(images.length, gridColumnsFor(slide));
+      if (images.length > cells.length) {
+        context.notes.push(
+          `Page ${context.slideNumber}: the grid holds ${cells.length} pictures and ` +
+            `${images.length} were given, so the last ${images.length - cells.length} do not appear.`,
+        );
+      }
       images.forEach((image, index) => {
         const cell = cells[index];
         if (!cell) return;
@@ -913,7 +976,7 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     }
     case "quote": {
       const background = slide.images?.[0];
-      if (background) addPicture({ ...background, fit: "cover" }, boxes.background);
+      if (background) addPicture({ ...background, fit: background.fit || "cover" }, boxes.background);
       shapes.push(shapeBlock(allocator.next(), "quote-mark", boxes.mark, palette.accent1));
       shapes.push(
         textBox(allocator.next(), "quote", boxes.quote, [

@@ -570,21 +570,37 @@ export function deckLayoutDefinition(
  * 291,600, so the caption occupies the bottom 300,000 of each cover-fit cell
  * instead of an extra band underneath. Reported in the W9 marker.
  */
-export function deckImageGridCells(count: number): {
+export function deckImageGridCells(
+  count: number,
+  /**
+   * How many cells across. §4 L9 draws three; the width of a cell is derived
+   * from the column count so the row still closes on the content right edge,
+   * which means asking for two or four is a real choice rather than a broken
+   * layout. Three keeps the shipped geometry byte for byte.
+   */
+  columns = 3,
+): {
   image: DeckBox;
   caption: DeckBox;
 }[] {
   const total = Math.min(6, Math.max(3, Math.trunc(count)));
+  const across = Math.min(6, Math.max(1, Math.trunc(columns)));
   const cell = deckLayoutDefinition("image-grid").boxes.cell;
+  const width =
+    across === 3
+      ? cell.cx
+      : Math.round(
+          (DECK_GRID.contentWidth - (across - 1) * DECK_GRID.gutter) / across,
+        );
   const rowPitch = cell.cy + 200_000;
   return Array.from({ length: total }, (_, index) => {
-    const column = index % 3;
-    const row = Math.floor(index / 3);
-    const x = DECK_GRID.margin + column * (cell.cx + DECK_GRID.gutter);
+    const column = index % across;
+    const row = Math.floor(index / across);
+    const x = DECK_GRID.margin + column * (width + DECK_GRID.gutter);
     const y = cell.y + row * rowPitch;
     return {
-      image: box(x, y, cell.cx, cell.cy),
-      caption: box(x, y + cell.cy - 300_000, cell.cx, 300_000),
+      image: box(x, y, width, cell.cy),
+      caption: box(x, y + cell.cy - 300_000, width, 300_000),
     };
   });
 }
