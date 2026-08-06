@@ -25,6 +25,7 @@ import {
   artifactActionMatrix,
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
+import { humanErrorMessage } from "./human-error-message";
 import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
@@ -237,8 +238,12 @@ export function WorkspaceLibrary({
       }
       setMaterialActionState(tt("已通过编辑器历史应用素材"));
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : tt("素材应用失败");
+      // 宿主编辑器抛什么都有可能，包括运行时的英文异常。摆给用户的必须是人话，
+      // 但**往上抛的仍是原异常**：调用方要靠它做机器判断，排障也要靠它。
+      const message = humanErrorMessage(
+        caught,
+        tt("这份素材没能应用到编辑器里，请重试。"),
+      );
       setMaterialActionState(message);
       throw caught instanceof Error ? caught : new Error(message);
     } finally {
@@ -415,9 +420,10 @@ export function WorkspaceLibrary({
       setMaterialActionState(tt("编辑器已打开。"));
     } catch (caught) {
       setMaterialActionState(
-        caught instanceof Error
-          ? caught.message
-          : tt(`在「${materialAppLabel(app)}」里打开编辑器失败。`),
+        humanErrorMessage(
+          caught,
+          tt(`在「${materialAppLabel(app)}」里没能打开编辑器，请重试。`),
+        ),
       );
     }
   };

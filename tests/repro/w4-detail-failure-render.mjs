@@ -57,9 +57,16 @@ Object.defineProperty(document, "exitFullscreen", {
     fullscreenElement = null;
   },
 });
+// `FULLSCREEN=deny`：让 `requestFullscreen()` 像被浏览器拒掉时那样抛。抛的是
+// Chromium 的原话——嵌在没开 `allowfullscreen` 的 iframe 里、或手势判定没过时，
+// 每一次都是这句英文。它同样不许摆到用户面前。
+const FULLSCREEN_DENIED = process.env.FULLSCREEN === "deny";
 Object.defineProperty(window.HTMLElement.prototype, "requestFullscreen", {
   configurable: true,
   value: async function requestFullscreen() {
+    if (FULLSCREEN_DENIED) {
+      throw new TypeError("Permissions check failed");
+    }
     fullscreenElement = this;
   },
 });
@@ -132,6 +139,21 @@ globalThis.fetch = async (url) => {
       ok: true,
       status: 200,
       json: async () => OK_PROJECTION,
+    };
+  }
+  // `MODE=gateway-404`：网关**真实**的错误体（2026-08-06 curl 实测
+  // `GET /v1/library/items/<不存在>`）。它给得出 `message`，而那句 message 是英文
+  // 技术原文——传输层失败之外的第二条英文出口就在这里。
+  if (MODE === "gateway-404") {
+    return {
+      ok: false,
+      status: 404,
+      json: async () => ({
+        code: "not-found",
+        message: "invalid artifact identity",
+        details: {},
+        requestId: "9c53c4b9e4c84d41926eaa1499672242",
+      }),
     };
   }
   throw new TypeError("Failed to fetch");
@@ -259,6 +281,12 @@ console.log(
       statusBanner,
       bannerShowsRawEnglish: statusBanner.some((text) =>
         text.includes("Failed to fetch"),
+      ),
+      // 只盯 `Failed to fetch` 一句是不够的：网关 404 摆出来的是
+      // `invalid artifact identity`，同样是英文原文，却躲得过上面那条。
+      // 界面上的话都是中文源串，所以「一句里一个汉字都没有」就是技术原文露面了。
+      bannerLinesWithoutChinese: statusBanner.filter(
+        (text) => !/[\u3400-\u9fff\uf900-\ufaff]/.test(text),
       ),
       downloadPresent: buttons.some((b) => b.label === "下载"),
       favoritePresent: buttons.some((b) => b.label === "收藏"),

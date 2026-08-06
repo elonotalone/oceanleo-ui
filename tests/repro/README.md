@@ -21,6 +21,7 @@ node --experimental-strip-types --experimental-loader ./tests/ts-extension-loade
 | `w4-client-error-passthrough.mjs` | `artifact-client` 拿到那个异常后往上交什么字符串？ |
 | `w4-detail-failure-render.mjs` | 用户在详情里到底看到什么？带 `MODE=ok` 对照组 |
 | `w4-before-tree.mjs` | 搭一棵「改前」的影子树（符号链接 + 旧版本的那四份文件），不动工作区 |
+| `w4-human-message-criterion.mjs` | 「有汉字就是人话」这个判据拦得住什么、拦不住什么（实测语料，不用编译台） |
 
 改前改后同一幕对着看（`W4_SRC_ROOT` 对后两个脚本都有效）：
 
@@ -30,7 +31,9 @@ W4_SRC_ROOT=$(node tests/repro/w4-before-tree.mjs) \
   tests/repro/w4-detail-failure-render.mjs
 ```
 
-`w4-detail-failure-render.mjs` 的两个开关：`MODE=ok` 换成成功的对照组；
-`HOLD_DOWNLOAD=1` 把下载那一次请求停在半路，用来看下载在跑时收藏还按不按得动。
+`w4-detail-failure-render.mjs` 的四个开关：`MODE=ok` 换成成功的对照组；
+`MODE=gateway-404` 换成网关那条**给得出 message 的**英文错误体（当天 curl 实测原文）；
+`HOLD_DOWNLOAD=1` 把下载那一次请求停在半路，用来看下载在跑时收藏还按不按得动；
+`FULLSCREEN=deny` 让 `requestFullscreen()` 像被浏览器拒掉时那样抛。
 
 `w4-browser-fetch-message.mjs` 直接用 `playwright-core`，跑法是普通的 `node <脚本>`。

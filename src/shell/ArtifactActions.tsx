@@ -12,6 +12,7 @@ import {
   prepareArtifactForAction,
   setArtifactFavorite,
 } from "./artifact-client";
+import { humanErrorMessage } from "./human-error-message";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -463,10 +464,10 @@ export function ArtifactActionButtons({
       await handler(prepared.data);
       report(ACTION_SUCCESS_STATUS[action]);
     } catch (error) {
+      // 抛上来的可能是我们自己那句中文，也可能是宿主编辑器里冒出来的运行时异常
+      // （`Cannot read properties of undefined` 之类）。后者不许摆给读者。
       report(
-        error instanceof Error
-          ? error.message
-          : `${ACTION_LABEL[action]}失败，请重试。`,
+        humanErrorMessage(error, `${ACTION_LABEL[action]}失败，请重试。`),
       );
     } finally {
       endBusy(action);
@@ -542,7 +543,7 @@ export function ArtifactActionButtons({
       link.remove();
       report("下载已开始。");
     } catch (error) {
-      report(error instanceof Error ? error.message : "下载失败。");
+      report(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
     } finally {
       endBusy("download");
     }
@@ -571,7 +572,7 @@ export function ArtifactActionButtons({
       setFavorite(next);
       report(next ? "已收藏。" : "已取消收藏。");
     } catch (error) {
-      report(error instanceof Error ? error.message : "收藏失败。");
+      report(humanErrorMessage(error, "收藏没能保存，请稍后重试。"));
     } finally {
       endBusy("favorite");
     }
@@ -584,7 +585,12 @@ export function ArtifactActionButtons({
       await onFullscreen?.();
       report("已进入全屏。");
     } catch (error) {
-      report(error instanceof Error ? error.message : "全屏失败。");
+      // 这一条最常踩：`requestFullscreen()` 被拒时浏览器抛的是
+      // `TypeError: Permissions check failed` 这种英文原文——嵌在没开
+      // `allowfullscreen` 的 iframe 里、或者手势判定没通过时每次都会走到这儿。
+      report(
+        humanErrorMessage(error, "浏览器没有允许进入全屏，可以改用整页浏览。"),
+      );
     } finally {
       endBusy("fullscreen");
     }

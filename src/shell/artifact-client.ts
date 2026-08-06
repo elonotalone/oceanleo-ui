@@ -26,6 +26,7 @@ import {
   type ArtifactType,
   type TransientGenerationResult,
 } from "./artifact-contract";
+import { isHumanReadableMessage } from "./human-error-message";
 import {
   artifactProjectionToLibraryItem,
   isDurableLibraryItem,
@@ -616,8 +617,21 @@ function httpFailureMessage(status: number): string {
   return "素材请求没能完成，请稍后重试。";
 }
 
-function errorMessage(value: unknown, fallback: string): string {
-  if (!value || typeof value !== "object") return fallback;
+/**
+ * 服务端那条错误里，有没有一句能直接给用户看的话。
+ *
+ * 网关的错误体是**英文技术原文**，2026-08-06 实测：
+ * `GET /v1/library/items/<不存在>` → `{"code":"not-found","message":"invalid
+ * artifact identity"}`；匿名取下载授权 → `{"code":"unauthorized","message":
+ * "missing bearer token"}`。上一轮只换掉了「响应体给不出 message」时的兜底，
+ * 而这两条恰恰给得出 message，于是「素材已经不在了」被换成了
+ * `invalid artifact identity` ——照旧是英文摆在用户面前。
+ *
+ * 所以这里改成：服务端的话只有**写给人看的**才用，其余按状态码说我们自己的中文，
+ * 原文交给 `diagnostic`。
+ */
+function serverMessage(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
   const raw = value as Record<string, unknown>;
   const detail =
     raw.detail && typeof raw.detail === "object" && !Array.isArray(raw.detail)
@@ -637,7 +651,12 @@ function errorMessage(value: unknown, fallback: string): string {
       return String(candidate).trim();
     }
   }
-  return fallback;
+  return "";
+}
+
+function errorMessage(value: unknown, fallback: string): string {
+  const message = serverMessage(value);
+  return isHumanReadableMessage(message) ? message : fallback;
 }
 
 async function artifactRequest<T>(
@@ -708,9 +727,14 @@ async function artifactRequest<T>(
     }
     if (!response.ok) {
       const code = apiErrorCode(payload, response.status);
+      const fromServer = serverMessage(payload);
       return {
         ok: false,
         error: errorMessage(payload, httpFailureMessage(response.status)),
+        // 服务端那句英文原文不丢，只是不渲染：排障要靠它认出是哪一条网关规则。
+        diagnostic: isHumanReadableMessage(fromServer)
+          ? undefined
+          : `HTTP ${response.status}${fromServer ? `: ${fromServer}` : ""}`,
         code,
         status: response.status,
         retryable:

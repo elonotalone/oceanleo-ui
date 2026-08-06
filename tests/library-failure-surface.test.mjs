@@ -160,6 +160,71 @@ test("HTTP 失败在响应体没有 message 时也说人话，不摆 HTTP 404", 
   }
 });
 
+test("网关自己那句英文 message 也不许摆给用户", async () => {
+  // 2026-08-06 curl 实测的真实错误体：网关**给得出** message，而那句 message 是
+  // 英文技术原文。上一轮只换掉了「给不出 message」时的兜底，于是这一条照旧漏出去。
+  const bodies = [
+    {
+      status: 404,
+      body: {
+        code: "not-found",
+        message: "invalid artifact identity",
+        details: {},
+        requestId: "9c53c4b9",
+      },
+      expect: /已经不在了/,
+    },
+    {
+      status: 401,
+      body: { code: "unauthorized", message: "missing bearer token" },
+      expect: /登录/,
+    },
+    // 服务端如果说的是人话，就照用——这一层不是要盖掉服务端，是要挡技术原文。
+    {
+      status: 409,
+      body: { message: "这份素材刚被别人改过，请刷新后再试。" },
+      expect: /刚被别人改过/,
+    },
+  ];
+  const previousFetch = globalThis.fetch;
+  try {
+    for (const { status, body, expect } of bodies) {
+      globalThis.fetch = async () => ({
+        ok: false,
+        status,
+        json: async () => body,
+      });
+      const client = await import(
+        await compileModule("src/shell/artifact-client.ts", {
+          "../lib/auth/client": dataModule(
+            `export async function accessToken(){ return "token"; }`,
+          ),
+          "../lib/auth/config": dataModule(
+            `export const GATEWAY_BASE = "https://api.oceanleo.com";`,
+          ),
+        })
+      );
+      const result = await client.getCurrentArtifactItem("artifact-1");
+      assert.equal(result.ok, false);
+      assert.match(result.error || "", expect, `HTTP ${status} 的文案`);
+      assert.doesNotMatch(
+        result.error || "",
+        /invalid artifact identity|missing bearer token/,
+        `HTTP ${status}：网关英文原文不许出现在用户面前`,
+      );
+      if (!/[\u4e00-\u9fa5]/.test(String(body.message))) {
+        assert.match(
+          result.diagnostic || "",
+          new RegExp(String(body.message)),
+          `HTTP ${status}：原文要留给控制台，不许丢`,
+        );
+      }
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 // ── ②③ 详情动作条 ────────────────────────────────────────────────────────────
 
 const uiStubUrl = dataModule(`
@@ -181,6 +246,20 @@ const libraryDataStubUrl = dataModule(`
     );
   }
 `);
+/**
+ * 网络那几条换成替身。**「异常 → 给人看的一句话」不在这份替身里**：它住在
+ * `src/shell/human-error-message.ts`，没有依赖也就没人给它做替身，编译台会自动
+ * 解析成真件——这一层正是「不许把英文技术原文摆给用户」的判据落点，抄一份到
+ * 替身里等于自己考自己。
+ */
+const realClientUrl = await compileModule("src/shell/artifact-client.ts", {
+  "../lib/auth/client": dataModule(
+    `export async function accessToken(){ return "token"; }`,
+  ),
+  "../lib/auth/config": dataModule(
+    `export const GATEWAY_BASE = "https://api.oceanleo.com";`,
+  ),
+});
 const clientStubUrl = dataModule(`
   export function artifactDownloadEvidence(item) {
     const artifact = item?.artifact;
@@ -324,6 +403,7 @@ const detailAppActionsUrl = await compileModule(
 const { WorkspaceLibrary } = await import(
   await compileModule("src/shell/WorkspaceLibrary.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
+    "./artifact-client": clientStubUrl,
     "./library-data": libraryDataStubUrl,
     "./LibraryLayout": layoutStubUrl,
     "./ArtifactActions": actionModuleUrl,
@@ -585,5 +665,89 @@ test("全屏只在详情里真有可放大内容时出现，不许恒亮", async
     );
   } finally {
     await withoutMounted.unmount();
+  }
+});
+
+test("全屏被浏览器拒掉时说人话，不摆 Permissions check failed", async () => {
+  // `requestFullscreen()` 被拒时抛的是 Chromium 的英文原话：嵌在没开
+  // `allowfullscreen` 的 iframe 里、或手势判定没过时每次都是这一句。动作条那一排
+  // `catch` 过去直接 `report(error.message)`，于是它和 `Failed to fetch` 一样
+  // 摆到用户面前。
+  globalThis.__identityReads = [];
+  globalThis.__identityResolutions = {};
+  const item = durableItem("Fullscreen denied");
+  const previous = window.HTMLElement.prototype.requestFullscreen;
+  Object.defineProperty(window.HTMLElement.prototype, "requestFullscreen", {
+    configurable: true,
+    value: async function requestFullscreen() {
+      throw new TypeError("Permissions check failed");
+    },
+  });
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, item);
+    await click(action(mounted.container, "全屏"));
+    await settle();
+    const banner = mounted.container.textContent || "";
+    assert.doesNotMatch(
+      banner,
+      /Permissions check failed|TypeError/,
+      "浏览器的英文原文不许摆给用户",
+    );
+    assert.match(banner, /浏览器没有允许进入全屏/);
+    assert.match(banner, /整页浏览/, "失败文案要说清下一步");
+  } finally {
+    Object.defineProperty(window.HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: previous,
+    });
+    await mounted.unmount();
+  }
+});
+
+test("宿主抛的英文运行时异常不许进状态条，我们自己的中文照旧透传", async () => {
+  // `applyMaterialAction` 会把宿主编辑器抛的任何东西写进状态条。宿主抛的可能是
+  // 一句写好的中文，也可能是 `Cannot read properties of undefined` 这种运行时噪声。
+  // 状态条最后落在动作条自己那句上（宿主先写一句，`run()` 的 catch 再覆盖一次）。
+  // 两句都必须是人话：认不出来的异常退回「插入失败，请重试。」，
+  // 宿主写好的中文则原样透传——不能为了挡英文把有用的话一起挡掉。
+  const item = durableItem("Host throws");
+  for (const [thrown, expected, forbidden] of [
+    [
+      new TypeError("Cannot read properties of undefined (reading 'id')"),
+      /插入失败，请重试/,
+      /Cannot read properties/,
+    ],
+    [
+      new Error("这个编辑器暂时不支持替换背景图。"),
+      /暂时不支持替换背景图/,
+      /Cannot read properties/,
+    ],
+  ]) {
+    globalThis.__identityReads = [];
+    globalThis.__identityResolutions = {};
+    const mounted = await createMounted({
+      entries: [entryFor(item)],
+      onOpenItem: () => {},
+      materialActions: ["insert"],
+      onMaterialAction: async () => {
+        throw thrown;
+      },
+    });
+    try {
+      await openDetail(mounted, item);
+      const insert = action(mounted.container, "插入");
+      assert.ok(insert, "插入入口要在");
+      await click(insert);
+      await settle();
+      const banner = mounted.container.textContent || "";
+      assert.match(banner, expected);
+      assert.doesNotMatch(banner, forbidden);
+    } finally {
+      await mounted.unmount();
+    }
   }
 });

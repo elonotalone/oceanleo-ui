@@ -2145,6 +2145,13 @@ test("revision publish records the exact previous pin for ResultCanvas handoff",
   assert.equal(calls[0].init.headers["If-Match"], "r1");
 });
 
+// 这条原本还断言 `result.error === "status-401"`，也就是「服务端那句话原样上交」。
+// W4（2026-08-06）把它换掉了：`status-401` 这种技术原文一路走到详情面板顶部的
+// 横幅，就是操作员点名要治的「英文摆给用户看」。改后 `error` 是我们自己的中文，
+// 原文降级进 `diagnostic`。
+//
+// 判据没有放松，反而收紧了：状态码与 `ok` 照旧逐条核；另加「给用户的那句必须是
+// 中文」「服务端原文一个字都不许丢」两条。
 test("library clients preserve 401, 403 and 503 service states", async () => {
   const statuses = [401, 403, 503];
   globalThis.fetch = async () => {
@@ -2155,7 +2162,17 @@ test("library clients preserve 401, 403 and 503 service states", async () => {
     const result = await searchArtifactLibrary();
     assert.equal(result.ok, false);
     assert.equal(result.status, status);
-    assert.equal(result.error, `status-${status}`);
+    assert.match(result.error || "", /[\u4e00-\u9fa5]/, `HTTP ${status} 的文案要说人话`);
+    assert.doesNotMatch(
+      result.error || "",
+      /status-\d+/,
+      `HTTP ${status}：服务端技术原文不许摆给用户`,
+    );
+    assert.equal(
+      result.diagnostic,
+      `HTTP ${status}: status-${status}`,
+      `HTTP ${status}：原文要留给控制台，不许丢`,
+    );
   }
 });
 
