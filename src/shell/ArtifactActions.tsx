@@ -32,6 +32,51 @@ export interface ArtifactTargetActionEvidence {
   reason: string;
 }
 
+/**
+ * 这份素材的耐久身份取到了没有。
+ *
+ * 「下载」与「收藏」都要先有 `artifactId + revisionId`；官方模板目录行身上没有，
+ * 得先向服务端要一次当前版本。那一次要是失败了，过去两颗按钮**整个消失**——读者
+ * 看到的是一个少了两项的动作条，既不知道少了什么，也没有任何办法把它们要回来，
+ * 只能刷新整页碰运气。
+ *
+ * 所以宿主要把这件事说出来：按钮**留在原地**，标注为什么现在按不动，并给一颗「重试」。
+ * 不传这个字段时行为与过去逐字相同（身份从别处来，或本来就不该有这两项）。
+ */
+export interface ArtifactIdentityState {
+  /** 正在取当前版本。 */
+  resolving: boolean;
+  /** 取失败了。 */
+  failed: boolean;
+  /** 给用户看的一句中文；必须说清下一步。 */
+  reason: string;
+  /** 重试这一次取数，免得读者只能刷新整页。 */
+  onRetry?: () => void;
+}
+
+/**
+ * 「全屏」到底有没有东西可放大。
+ *
+ * 过去这颗按钮的可见性只看宿主传没传回调（`typeof onFullscreen === "function"`），
+ * 而宿主是无条件传的，于是它**对任何素材恒亮**：详情里明明只有一句「暂时无法预览」，
+ * 按钮照样亮，点下去把一屏文字连同一排工具条送进原生全屏。
+ *
+ * 现在它要两个前提同时成立：宿主给了落点，**且**这份素材确实有可显示的本体或预览。
+ * 判据直接复用「预览」那一套证据，避免同一件事在两处各写一遍、各自漂移。
+ */
+function fullscreenContentEvidence(item: LibraryItem): {
+  visible: boolean;
+  reason: string;
+} {
+  const preview = previewEvidence(item);
+  return preview.available
+    ? { visible: true, reason: "" }
+    : {
+        visible: false,
+        reason: preview.reason || "这份素材现在没有可放大的内容。",
+      };
+}
+
 export interface ArtifactActionMatrixOptions {
   canOpenPreview?: boolean;
   canOpenEdit?: boolean;
@@ -331,6 +376,8 @@ export function ArtifactActionButtons({
   onInsert,
   onReplace,
   onFullscreen,
+  fullscreenContentPresent,
+  identity,
   linkUrl,
   onStatus,
   accent = "#4f46e5",
@@ -343,6 +390,13 @@ export function ArtifactActionButtons({
   onInsert?: (item: LibraryItem) => void | Promise<void>;
   onReplace?: (item: LibraryItem) => void | Promise<void>;
   onFullscreen?: () => void | Promise<void>;
+  /**
+   * 宿主已经渲染出来的那块详情里，**当下**有没有可放大的东西。素材本身的证据
+   * （`fullscreenContentEvidence`）只知道「应该有」，知道「真的有」的只有宿主。
+   * 不传就只按素材证据判断。
+   */
+  fullscreenContentPresent?: boolean;
+  identity?: ArtifactIdentityState;
   linkUrl?: string;
   onStatus?: (message: string) => void;
   accent?: string;
@@ -350,9 +404,25 @@ export function ArtifactActionButtons({
 }) {
   const tt = useUI();
   const reasonId = useId();
-  const [pending, setPending] = useState<
-    ArtifactCardAction | "download" | "favorite" | "fullscreen" | null
-  >(null);
+  /**
+   * **每个入口各自记自己在不在忙**。过去这里是一个单值 `pending`：任何一颗按钮一动，
+   * 其余全部 `disabled`——「下载」在跑的十几秒里「收藏」是死的，一次失败的请求还没
+   * 落地之前整条动作条都按不动。合同 §4「这两个入口应各自独立可用」说的就是这件事。
+   * 真正需要互斥的是插入/替换那种会改编辑器历史的命令，那道闸在宿主的
+   * `applyMaterialAction` 里，不该由这排按钮代劳。
+   */
+  const [busy, setBusy] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const isBusy = (key: string) => busy.has(key);
+  const beginBusy = (key: string) =>
+    setBusy((previous) => new Set(previous).add(key));
+  const endBusy = (key: string) =>
+    setBusy((previous) => {
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
   const [favorite, setFavorite] = useState(item.favorite);
   const [liveStatus, setLiveStatus] = useState("");
   useEffect(() => {
@@ -375,11 +445,11 @@ export function ArtifactActionButtons({
   const run = async (action: ArtifactCardAction) => {
     const state = matrix[action];
     const handler = handlers[action];
-    if (!state.available || !handler || pending) {
+    if (!state.available || !handler || isBusy(action)) {
       if (state.reason) report(state.reason);
       return;
     }
-    setPending(action);
+    beginBusy(action);
     report(
       state.requiresEnsure
         ? ACTION_ENSURE_PENDING_STATUS[action]
@@ -399,33 +469,55 @@ export function ArtifactActionButtons({
           : `${ACTION_LABEL[action]}失败，请重试。`,
       );
     } finally {
-      setPending(null);
+      endBusy(action);
     }
   };
   const durableItem = isDurableLibraryItem(item) ? item : null;
   const downloadEvidence = artifactDownloadEvidence(item);
-  const downloadVisible = downloadEvidence.visible;
-  const downloadReason = downloadEvidence.reason;
-  const downloadAvailable = downloadEvidence.available;
-  const favoriteVisible = Boolean(
-    durableItem && durableItem.artifact.access.canRead,
-  );
+  /**
+   * 身份还在路上、或者刚刚没取回来时，「下载」与「收藏」**留在原地**，
+   * 只是按不动并写清为什么。消失掉才是最坏的一种：读者既看不出少了什么，也没有
+   * 任何办法把它们要回来（复现见 W4-journal J3）。
+   */
+  const identityPending = identity?.resolving === true;
+  const identityFailed = identity?.failed === true;
+  const identityBlocked = identityPending || identityFailed;
+  const identityReason = identityPending
+    ? "正在取这份素材的当前版本…"
+    : identity?.reason || "没取到这份素材的当前版本，重试一次即可。";
+  const downloadVisible = downloadEvidence.visible || identityBlocked;
+  const downloadReason = identityBlocked
+    ? identityReason
+    : downloadEvidence.reason;
+  const downloadAvailable = downloadEvidence.available && !identityBlocked;
+  const favoriteVisible =
+    Boolean(durableItem && durableItem.artifact.access.canRead) ||
+    identityBlocked;
   const favoriteAvailable = Boolean(
-    durableItem &&
+    !identityBlocked &&
+      durableItem &&
       durableItem.artifact.access.canRead &&
       durableItem.artifact.integrity.ok &&
       durableItem.artifact.access.canFavorite,
   );
-  const fullscreenVisible = typeof onFullscreen === "function";
+  const favoriteReason = identityBlocked
+    ? identityReason
+    : "当前主体没有收藏这个 artifact 的权限。";
+  const fullscreenEvidence = fullscreenContentEvidence(item);
+  const fullscreenVisible =
+    typeof onFullscreen === "function" &&
+    fullscreenEvidence.visible &&
+    fullscreenContentPresent !== false;
+  const retryVisible = identityFailed && typeof identity?.onRetry === "function";
   const linkVisible = Boolean(linkUrl);
   const runDownload = async () => {
-    if (!downloadAvailable || pending) {
+    if (!downloadAvailable || isBusy("download")) {
       if (!downloadAvailable) {
         report(downloadReason);
       }
       return;
     }
-    setPending("download");
+    beginBusy("download");
     report("正在准备固定 revision 的下载…");
     try {
       const result = await getArtifactDownload(item);
@@ -452,17 +544,17 @@ export function ArtifactActionButtons({
     } catch (error) {
       report(error instanceof Error ? error.message : "下载失败。");
     } finally {
-      setPending(null);
+      endBusy("download");
     }
   };
   const toggleFavorite = async () => {
-    if (!favoriteAvailable || pending) {
+    if (!favoriteAvailable || isBusy("favorite")) {
       if (!favoriteAvailable) {
-        report("当前主体没有收藏这个 artifact 的权限。");
+        report(favoriteReason);
       }
       return;
     }
-    setPending("favorite");
+    beginBusy("favorite");
     const next = !favorite;
     report(next ? "正在收藏…" : "正在取消收藏…");
     try {
@@ -481,12 +573,12 @@ export function ArtifactActionButtons({
     } catch (error) {
       report(error instanceof Error ? error.message : "收藏失败。");
     } finally {
-      setPending(null);
+      endBusy("favorite");
     }
   };
   const runFullscreen = async () => {
-    if (!fullscreenVisible || pending) return;
-    setPending("fullscreen");
+    if (!fullscreenVisible || isBusy("fullscreen")) return;
+    beginBusy("fullscreen");
     report("正在进入全屏…");
     try {
       await onFullscreen?.();
@@ -494,8 +586,12 @@ export function ArtifactActionButtons({
     } catch (error) {
       report(error instanceof Error ? error.message : "全屏失败。");
     } finally {
-      setPending(null);
+      endBusy("fullscreen");
     }
+  };
+  const runIdentityRetry = () => {
+    report("正在重新取这份素材的当前版本…");
+    identity?.onRetry?.();
   };
   // Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接.
   // Insert/Replace follow when an editor host registers them.
@@ -507,15 +603,22 @@ export function ArtifactActionButtons({
     ["insert", "replace"] as ArtifactCardAction[]
   ).filter((action) => matrix[action].visible);
   const visible = [...primaryActions, ...mutationActions];
+  // 「下载」「收藏」也要进这条理由行：它们现在会以**按不动但仍在原地**的形态出现，
+  // 而一颗灰着的按钮如果不写为什么，比消失好不了多少。
   const unavailableReason = [
     ...new Set(
-      visible
-        .map((action) => matrix[action])
-        .filter((state) => !state.available && state.reason)
-        .map(
-          (state) =>
-            `${ACTION_LABEL[state.action]}：${state.reason}`,
-        ),
+      [
+        ...visible
+          .map((action) => matrix[action])
+          .filter((state) => !state.available && state.reason)
+          .map((state) => `${ACTION_LABEL[state.action]}：${state.reason}`),
+        ...(downloadVisible && !downloadAvailable && downloadReason
+          ? [`下载：${downloadReason}`]
+          : []),
+        ...(favoriteVisible && !favoriteAvailable && favoriteReason
+          ? [`收藏：${favoriteReason}`]
+          : []),
+      ],
     ),
   ].join(" · ");
   const chipClass = `inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
@@ -529,7 +632,7 @@ export function ArtifactActionButtons({
   const renderAction = (action: ArtifactCardAction) => {
     const state = matrix[action];
     const disabled =
-      !state.available || !handlers[action] || pending !== null;
+      !state.available || !handlers[action] || isBusy(action);
     return (
       <button
         key={action}
@@ -549,7 +652,7 @@ export function ArtifactActionButtons({
         className={chipClass}
         style={chipStyle(state.available)}
       >
-        {pending === action ? tt("处理中…") : tt(ACTION_LABEL[action])}
+        {isBusy(action) ? tt("处理中…") : tt(ACTION_LABEL[action])}
       </button>
     );
   };
@@ -565,8 +668,9 @@ export function ArtifactActionButtons({
           <button
             type="button"
             onClick={() => void runDownload()}
-            disabled={!downloadAvailable || pending !== null}
-            aria-disabled={!downloadAvailable || pending !== null}
+            disabled={!downloadAvailable || isBusy("download")}
+            aria-disabled={!downloadAvailable || isBusy("download")}
+            aria-describedby={!downloadAvailable ? reasonId : undefined}
             aria-label={tt(
               `下载「${item.title}」revision ${durableItem?.revisionId || ""}`,
             )}
@@ -578,15 +682,16 @@ export function ArtifactActionButtons({
             className={chipClass}
             style={chipStyle(downloadAvailable)}
           >
-            {pending === "download" ? tt("处理中…") : tt("下载")}
+            {isBusy("download") ? tt("处理中…") : tt("下载")}
           </button>
         )}
         {favoriteVisible && (
           <button
             type="button"
             onClick={() => void toggleFavorite()}
-            disabled={!favoriteAvailable || pending !== null}
-            aria-disabled={!favoriteAvailable || pending !== null}
+            disabled={!favoriteAvailable || isBusy("favorite")}
+            aria-disabled={!favoriteAvailable || isBusy("favorite")}
+            aria-describedby={!favoriteAvailable ? reasonId : undefined}
             aria-pressed={favorite}
             aria-label={tt(
               `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
@@ -596,12 +701,12 @@ export function ArtifactActionButtons({
                 ? favorite
                   ? "已收藏"
                   : "收藏"
-                : "当前主体没有收藏这个 artifact 的权限。",
+                : favoriteReason,
             )}
             className={chipClass}
             style={chipStyle(favoriteAvailable)}
           >
-            {pending === "favorite"
+            {isBusy("favorite")
               ? tt("处理中…")
               : tt(favorite ? "已收藏" : "收藏")}
           </button>
@@ -610,14 +715,27 @@ export function ArtifactActionButtons({
           <button
             type="button"
             onClick={() => void runFullscreen()}
-            disabled={pending !== null}
-            aria-disabled={pending !== null}
+            disabled={isBusy("fullscreen")}
+            aria-disabled={isBusy("fullscreen")}
             aria-label={tt(`全屏「${item.title}」`)}
             title={tt("全屏")}
             className={chipClass}
             style={chipStyle(true)}
           >
-            {pending === "fullscreen" ? tt("处理中…") : tt("全屏")}
+            {isBusy("fullscreen") ? tt("处理中…") : tt("全屏")}
+          </button>
+        )}
+        {retryVisible && (
+          <button
+            type="button"
+            onClick={runIdentityRetry}
+            aria-label={tt(`重新取「${item.title}」的当前版本`)}
+            title={tt("重试")}
+            data-artifact-identity-retry="true"
+            className={chipClass}
+            style={chipStyle(true)}
+          >
+            {tt("重试")}
           </button>
         )}
         {linkVisible && (

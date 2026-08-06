@@ -203,6 +203,16 @@ export function safeCompleteLibraryHref(value: string | undefined): string {
   }
 }
 
+/**
+ * 货架整屏失败时那两行字。
+ *
+ * `_message` **故意不用**：它来自 `artifact-client`，虽然那一层已经把浏览器的
+ * `TypeError: Failed to fetch` 换成了中文，但整屏空态要的是「按成因分类的一句人话
+ * 加一个下一步」，不是把逐条请求的措辞原样搬到屏幕中央。
+ *
+ * `status === 0` 这一支是本轮补的：传输层失败过去落进最后那条兜底，于是网络断了
+ * 也会告诉读者「素材数据未通过安全检查」——把一次断网说成安全事故，既吓人又指错方向。
+ */
 export function materialFailureCopy(
   status: number | undefined,
   _message: string,
@@ -210,6 +220,12 @@ export function materialFailureCopy(
   title: string;
   description: string;
 } {
+  if (status === 0) {
+    return {
+      title: "连不上素材服务",
+      description: "网络似乎断开了，检查网络后重试即可，素材没有丢。",
+    };
+  }
   if (status === 401) {
     return {
       title: "登录后访问素材库",
@@ -222,12 +238,27 @@ export function materialFailureCopy(
       description: "当前账号无法查看这组素材。",
     };
   }
-  if (status === 503) {
+  if (status === 404) {
+    return {
+      title: "这组素材已经不在了",
+      description: "它可能已被删除或改版，换一个分区或关键词试试。",
+    };
+  }
+  if (status === 429) {
+    return {
+      title: "请求太频繁了",
+      description: "稍等一下再刷新，素材没有丢。",
+    };
+  }
+  if (typeof status === "number" && status >= 500) {
     return {
       title: "素材库服务暂时不可用",
       description: "服务端正在维护或过载，请稍后重试。",
     };
   }
+  // 兜底这一支是**真的安全事件**：服务端回的内容与请求的上下文对不上，客户端主动
+  // 丢弃（`artifact-surface-rendered` 的 mismatched-context 用例守着它）。所以这句
+  // 话必须留着——本轮做的是把「网络断了」从这一支里摘出去，不是把它换掉。
   return {
     title: "素材暂时无法显示",
     description: "素材数据未通过安全检查，请重试。",

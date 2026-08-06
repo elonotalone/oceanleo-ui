@@ -35,7 +35,13 @@ import {
 export interface ArtifactApiResult<T> {
   ok: boolean;
   data?: T;
+  /** 直接给用户看的一句话，必须是中文且说清下一步。 */
   error?: string;
+  /**
+   * 给控制台与日志的技术原文（例如浏览器的 `TypeError: Failed to fetch`）。
+   * **不许渲染**：它是写给开发者的，读者拿它没有任何办法。
+   */
+  diagnostic?: string;
   code?: ArtifactApiErrorCode;
   status?: number;
   retryable?: boolean;
@@ -583,6 +589,33 @@ function apiErrorCode(value: unknown, status?: number): ArtifactApiErrorCode {
   return "unknown";
 }
 
+/**
+ * 传输层失败时用户看到的那句话。
+ *
+ * 浏览器对 fetch 的传输层失败一律抛 `TypeError: Failed to fetch`——拒连、DNS 解析
+ * 失败、CORS 被拦，三种成因在 Chromium 里一字不差（2026-08-06 实测）。那句英文是
+ * 写给开发者的：它既不说发生了什么，也不说下一步怎么办。**它不许出现在界面上**，
+ * 所以这里把它整句换掉，只留 `code: "network-error"` 给调用方做机器判断。
+ */
+const NETWORK_FAILURE_MESSAGE = "连不上素材服务，请检查网络后重试。";
+
+/**
+ * HTTP 失败在响应体给不出 message 时说什么。
+ *
+ * 兜底过去是 `HTTP 404` 这样的字面量——同样是技术原文，读者拿它没有任何办法。
+ * 每一条都要说清**下一步**，这是失败面的最低要求。
+ */
+function httpFailureMessage(status: number): string {
+  if (status === 401) return "登录后才能访问这份素材。";
+  if (status === 403) return "当前账号没有访问这份素材的权限。";
+  if (status === 404) return "这份素材已经不在了，可能已被删除或改版。";
+  if (status === 409) return "这份素材刚被改过，请刷新后再试。";
+  if (status === 413) return "内容超出了单次请求的上限，请拆小后重试。";
+  if (status === 429) return "请求太频繁了，缓一下再试。";
+  if (status >= 500) return "素材服务暂时不可用，请稍后重试。";
+  return "素材请求没能完成，请稍后重试。";
+}
+
 function errorMessage(value: unknown, fallback: string): string {
   if (!value || typeof value !== "object") return fallback;
   const raw = value as Record<string, unknown>;
@@ -624,12 +657,12 @@ async function artifactRequest<T>(
     if (auth === "optional") {
       token = null;
     } else {
+      // 读凭据失败的原文来自 Supabase SDK，同样是英文技术原文。
       return {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "无法读取当前登录凭据。",
+        error: "读不到当前的登录状态，请重新登录后再试。",
+        diagnostic:
+          error instanceof Error ? `${error.name}: ${error.message}` : undefined,
         code: "network-error",
         status: 0,
         retryable: true,
@@ -677,7 +710,7 @@ async function artifactRequest<T>(
       const code = apiErrorCode(payload, response.status);
       return {
         ok: false,
-        error: errorMessage(payload, `HTTP ${response.status}`),
+        error: errorMessage(payload, httpFailureMessage(response.status)),
         code,
         status: response.status,
         retryable:
@@ -696,9 +729,10 @@ async function artifactRequest<T>(
         ? "素材请求已取消。"
         : timedOut
           ? "素材请求超时，请重试。"
-          : error instanceof Error
-            ? error.message
-            : "无法连接素材服务。",
+          : NETWORK_FAILURE_MESSAGE,
+      // 原始异常只进 `diagnostic`（控制台/日志用），永远不进 `error`。
+      diagnostic:
+        error instanceof Error ? `${error.name}: ${error.message}` : undefined,
       code: "network-error",
       status: 0,
       retryable: !callerAborted,
@@ -1873,6 +1907,7 @@ export async function getArtifactEditDecision(
     return {
       ok: false,
       error: durable.error,
+      diagnostic: durable.diagnostic,
       code: durable.code,
       status: durable.status,
       retryable: durable.retryable,
@@ -2313,6 +2348,7 @@ export async function getArtifactDownload(
     return {
       ok: false,
       error: durable.error,
+      diagnostic: durable.diagnostic,
       code: durable.code,
       status: durable.status,
       retryable: durable.retryable,

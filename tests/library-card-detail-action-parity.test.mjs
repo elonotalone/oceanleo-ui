@@ -243,10 +243,23 @@ const viewStubUrl = dataModule(`
   export function WorkspaceLibraryEmpty() {
     return null;
   }
+  // 真 WorkspaceLibraryEntryViewer 会把有本体的条目交给 LibraryItemViewer（渲染出
+  // 真图），没有本体的才落到 WorkspaceLibraryEmpty（只有一个 svg 图标和两行字）。
+  // 替身过去一律渲染空 div，与真件对不上；「全屏只在真有可放大内容时出现」这条判据
+  // 正是看查看器里到底有没有可放大的元素，所以替身必须把这个差别复刻出来。
   export function WorkspaceLibraryEntryViewer(props) {
-    return createElement("div", {
-      "data-library-viewer": props.entry.title,
-    });
+    const source =
+      props.entry.libraryItem?.url ||
+      props.entry.libraryItem?.previewUrl ||
+      props.entry.externalUrl ||
+      "";
+    return createElement(
+      "div",
+      { "data-library-viewer": props.entry.title },
+      source
+        ? createElement("img", { src: source, alt: props.entry.title })
+        : null,
+    );
   }
 `);
 // 归属 app 入口本身是被测对象，所以这里编的是**真模块**，只把它的四个依赖换成 stub。

@@ -29,6 +29,7 @@ import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
   visibleWorkspaceLibraryCategories,
+  materialDeepLinkArtifactId,
   workspaceEntryFromLibraryItem,
   workspaceLibraryCategories,
   type WorkspaceLibraryEntry,
@@ -189,7 +190,22 @@ export function WorkspaceLibrary({
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [materialActionState, setMaterialActionState] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   const materialActionPendingRef = useRef(false);
+  /**
+   * 详情要先向服务端取一次这份素材的当前版本，「下载」与「收藏」都等它。
+   * 这两个状态存在的唯一理由：那一次失败时，读者要看得见发生了什么，并且**不用刷新
+   * 整页**就能再试一次（改前的实况见 W4-journal J3：两颗按钮直接消失，没有出口）。
+   */
+  const [detailIdentityFailed, setDetailIdentityFailed] = useState(false);
+  const [detailIdentityNonce, setDetailIdentityNonce] = useState(0);
+  /**
+   * 详情里此刻**真的**有没有可放大的东西。「全屏」过去只看宿主传没传回调，于是对任何
+   * 素材恒亮；而查看器完全可能只渲染一句「暂时无法预览」或「登录后可预览」——那时候
+   * 全屏放大的只是一屏文字加一排工具条。
+   */
+  const [viewerHasZoomableContent, setViewerHasZoomableContent] =
+    useState(false);
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
@@ -371,12 +387,17 @@ export function WorkspaceLibrary({
   // 一份素材可以同时绑在多个 app 上（image 站已核实 9 组）。「编辑」要进的是**那个
   // app 的工作台**，并且落在该 app 库里这份素材的预览上——不是就地弹一个与归属无关
   // 的编辑器。落点与归属解析都在 `library-detail-app-actions`。
+  // `useMaterialDetailAppPlan` 只在**取数失败**这一条分支上报状态，所以这个回调
+  // 同时就是「身份没取到」的信号；`selectionKey` 带上 nonce，改它即重取一次。
   const detailAppPlan = useMaterialDetailAppPlan({
     entry: selected,
-    selectionKey: selectedId,
+    selectionKey: `${selectedId}#${detailIdentityNonce}`,
     siteKey: siteId,
     appId,
-    onStatus: setMaterialActionState,
+    onStatus: (message) => {
+      setDetailIdentityFailed(true);
+      setMaterialActionState(message);
+    },
   });
 
   /**
@@ -408,7 +429,36 @@ export function WorkspaceLibrary({
 
   useEffect(() => {
     setMaterialActionState("");
+    setDetailIdentityFailed(false);
+    setDetailIdentityNonce(0);
   }, [selectedId]);
+
+  /**
+   * 「真有可放大内容」只有渲染出来才知道，所以直接看查看器那块 DOM 里有没有可放大的
+   * 元素。`svg` 刻意不算：空态与「暂时无法预览」自己就带一个图标，把它算进去等于
+   * 恒亮照旧。查看器异步换内容（图片加载、W3 的预览承载挂上 iframe）也要跟上，
+   * 所以挂一个 MutationObserver 而不是只在挂载时看一眼。
+   */
+  useEffect(() => {
+    const node = viewerRef.current;
+    if (!node) {
+      setViewerHasZoomableContent(false);
+      return;
+    }
+    const probe = () =>
+      setViewerHasZoomableContent(
+        Boolean(
+          node.querySelector(
+            "img, iframe, canvas, video, model-viewer, [data-fullscreen-content]",
+          ),
+        ),
+      );
+    probe();
+    if (typeof MutationObserver !== "function") return;
+    const observer = new MutationObserver(probe);
+    observer.observe(node, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [selectedId, viewerNonce, detailAppPlan.item]);
 
   useEffect(() => {
     if (!action) return;
@@ -460,6 +510,10 @@ export function WorkspaceLibrary({
     if (!item) return null;
     const linkUrl = entryLinkUrl(entry);
     const matrix = matrixFor(item);
+    // 只有「本该解析出耐久身份、但现在还没有」的条目才需要这套说明与重试：
+    // 已经是 durable 的、以及压根没有可解析身份的（临时结果），都与过去逐字相同。
+    const identityExpected =
+      Boolean(materialDeepLinkArtifactId(item)) && !isDurableLibraryItem(item);
     return (
       <ArtifactActionButtons
         item={item}
@@ -484,6 +538,24 @@ export function WorkspaceLibrary({
             document.querySelector<HTMLElement>("[data-workspace-split]");
           await requestFullscreenFor(target);
         }}
+        fullscreenContentPresent={
+          fullscreenNode ? viewerHasZoomableContent : undefined
+        }
+        identity={
+          identityExpected
+            ? {
+                resolving: !detailIdentityFailed,
+                failed: detailIdentityFailed,
+                reason:
+                  "没取到这份素材的当前版本，所以下载与收藏暂时按不动；重试一次通常就好了。",
+                onRetry: () => {
+                  setDetailIdentityFailed(false);
+                  setMaterialActionState("");
+                  setDetailIdentityNonce((value) => value + 1);
+                },
+              }
+            : undefined
+        }
         linkUrl={linkUrl || undefined}
         onStatus={setMaterialActionState}
         accent={accent}
@@ -603,7 +675,10 @@ export function WorkspaceLibrary({
             {materialActionState}
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
+        <div
+          ref={viewerRef}
+          className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]"
+        >
           <WorkspaceLibraryEntryViewer
             entry={selected}
             accent={accent}
