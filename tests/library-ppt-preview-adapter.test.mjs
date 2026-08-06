@@ -220,6 +220,16 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
   const artifactContractStubUrl = dataModule(`
     export function isArtifactSourceTreeUrl() { return false; }
   `);
+  // 详情插槽只在官方模板目录行上动作；本用例喂的是普通 durable deck，插槽照定义
+  // 直接 passthrough。桩在这里，是为了让本用例继续只测 PptViewer 一件事。
+  const detailSlotStubUrl = dataModule(`
+    export function useMaterialDetailTarget(item) {
+      return { status: "passthrough", item };
+    }
+    export function MaterialDetailUnavailable() { return null; }
+    export function GamePlayDetail() { return null; }
+    export function gamePlayEmbedHref() { return ""; }
+  `);
   const sandboxOriginStubUrl = dataModule(`
     export function isTrustedInteractiveViewerUrl() { return false; }
     export function webViewerFrameSandbox() {
@@ -314,6 +324,7 @@ test("PPT adapter runtime selects real parsed slides through the shared layout",
     "./doc-editors/office-file": officeStubUrl,
     "./doc-editors/DeckPreviewLayout": layoutStubUrl,
     "./library-viewer-first-paint": firstPaintUrl,
+    "./material-detail-slot": detailSlotStubUrl,
     "pptx-preview": pptxStubUrl,
   });
   const { LibraryItemViewer } = await import(moduleUrl);
