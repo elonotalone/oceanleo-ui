@@ -114,8 +114,19 @@ const OK_PROJECTION = {
   integrity: { ok: true, code: "ok", reason: "" },
 };
 const fetchCalls = [];
+// `HOLD_DOWNLOAD=1`：让下载那一次授权请求**停在半路**不返回。合同 §4.3 要的是
+// 「下载与收藏各自独立可用」，而这一点只有在下载真的在跑的那几秒里才看得出来——
+// 改前那排按钮共用一个 pending，下载一动收藏就死。
+const HOLD_DOWNLOAD = process.env.HOLD_DOWNLOAD === "1";
+let releaseHeldDownload = () => {};
 globalThis.fetch = async (url) => {
-  fetchCalls.push(String(url));
+  const href = String(url);
+  fetchCalls.push(href);
+  if (HOLD_DOWNLOAD && href.includes("/renditions/")) {
+    await new Promise((resolve) => {
+      releaseHeldDownload = resolve;
+    });
+  }
   if (MODE === "ok") {
     return {
       ok: true,
@@ -153,8 +164,11 @@ const authConfigStub = dataModule(`
   export function configured(){ return true; }
 `);
 
+// `W4_SRC_ROOT` 指向 `w4-before-tree.mjs` 搭的影子树时，同一幕跑的是**改前**的代码；
+// 不给就是工作区里的当前版本。改前改后的差就是这一轮到底改动了用户看到的什么。
+const SRC_ROOT = process.env.W4_SRC_ROOT || "src";
 const { WorkspaceLibrary } = await import(
-  await compileModule("src/shell/WorkspaceLibrary.tsx", {
+  await compileModule(`${SRC_ROOT}/shell/WorkspaceLibrary.tsx`, {
     "../i18n/ui/useUI": uiStubUrl,
     "../lib/auth/client": authClientStub,
     "../lib/auth/config": authConfigStub,
@@ -233,6 +247,8 @@ const statusBanner = [...container.querySelectorAll("[role='status']")]
 console.log(
   JSON.stringify(
     {
+      srcRoot: SRC_ROOT,
+      mode: MODE,
       fetchCalls,
       visibleButtonLabels: buttons
         .map((b) => b.label)
@@ -295,4 +311,93 @@ if (fullscreenButton) {
       2,
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// R3: 失败之后，读者手上还有没有出路。
+//
+// 「消失」最坏的地方不是少两颗按钮，而是**没有下一步**——改前唯一的出路是刷新整页。
+// 所以这里量两件事：那颗「重试」按不按得动，按下去是不是真的又发了一次请求。
+// ---------------------------------------------------------------------------
+const findButton = (label) =>
+  [...container.querySelectorAll("button")].find(
+    (node) => (node.textContent || "").trim() === label,
+  );
+
+const retryButton = findButton("重试");
+const callsBeforeRetry = fetchCalls.length;
+if (retryButton) {
+  await act(async () => {
+    retryButton.dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+    await Promise.resolve();
+  });
+  await act(async () => {
+    await new Promise((r) => window.setTimeout(r, 30));
+  });
+}
+console.log(
+  JSON.stringify(
+    {
+      retryPresent: Boolean(retryButton),
+      retryDisabled: retryButton?.disabled ?? null,
+      fetchCallsBeforeRetry: callsBeforeRetry,
+      fetchCallsAfterRetry: fetchCalls.length,
+      retryReallyRefetched: fetchCalls.length > callsBeforeRetry,
+      // 重试之后两颗按钮还在不在（失败依旧时不该又消失一次）
+      downloadStillPresent: Boolean(findButton("下载")),
+      favoriteStillPresent: Boolean(findButton("收藏")),
+    },
+    null,
+    2,
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// R4: 「下载」在跑的时候，「收藏」还按得动吗（`HOLD_DOWNLOAD=1` 才有意义）。
+//
+// 合同 §4.3「这两个入口应各自独立可用」。改前整排按钮共用一个 `pending`，
+// 下载一按，收藏、全屏、编辑全部 `disabled`。
+// ---------------------------------------------------------------------------
+if (HOLD_DOWNLOAD) {
+  const downloadButton = findButton("下载");
+  if (downloadButton && !downloadButton.disabled) {
+    await act(async () => {
+      downloadButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await new Promise((r) => window.setTimeout(r, 20));
+    });
+    // 按钮的可见文字在忙时会变成「处理中…」，所以按 `aria-label` 认人。
+    const snapshot = () =>
+      [...container.querySelectorAll("button")].map((node) => ({
+        text: (node.textContent || "").trim(),
+        aria: node.getAttribute("aria-label"),
+        disabled: node.disabled,
+      }));
+    console.log(
+      JSON.stringify(
+        {
+          whileDownloadInFlight: snapshot(),
+          heldDownloadRequest: fetchCalls.filter((url) =>
+            url.includes("/renditions/"),
+          ),
+        },
+        null,
+        2,
+      ),
+    );
+    releaseHeldDownload({ ok: true, status: 200, json: async () => OK_PROJECTION });
+    await act(async () => {
+      await new Promise((r) => window.setTimeout(r, 20));
+    });
+  } else {
+    console.log(
+      JSON.stringify({ whileDownloadInFlight: "下载按不动，这一项无从量" }, null, 2),
+    );
+  }
 }

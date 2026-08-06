@@ -9,8 +9,10 @@ globalThis.fetch = async (url) => {
   throw new TypeError("Failed to fetch");
 };
 
+// `W4_SRC_ROOT` 指向 `w4-before-tree.mjs` 搭的影子树时跑的是**改前**的这一层。
+const SRC_ROOT = process.env.W4_SRC_ROOT || "src";
 const client = await import(
-  await compileModule("src/shell/artifact-client.ts", {
+  await compileModule(`${SRC_ROOT}/shell/artifact-client.ts`, {
     "../lib/auth/client": dataModule(
       `export async function accessToken(){ return "token-for-repro"; }`,
     ),
