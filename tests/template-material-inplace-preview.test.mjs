@@ -22,6 +22,7 @@ import {
   officeViewerRenditionPurposes,
 } from "../src/shell/doc-editors/office-file.ts";
 import {
+  isCoverImageMediaType,
   isWebsitePageMediaType,
   websiteInlineOutline,
   websitePaintMode,
@@ -206,6 +207,11 @@ test("W3/2 网站默认查看顺序会给出封面图，所以承载必须自己
   assert.equal(page?.mediaType, "text/html");
   assert.equal(isWebsitePageMediaType(page?.mediaType), true);
   assert.equal(page.url.includes("/source-tree/"), false);
+  // 承载只拒绝位图：老的非 durable 条目没有 rendition 元数据，一刀切会把它们从
+  // 「本来能打开」退化成「打不开」。
+  assert.equal(isCoverImageMediaType("image/webp"), true);
+  assert.equal(isCoverImageMediaType("text/html; charset=utf-8"), false);
+  assert.equal(isCoverImageMediaType(undefined), false);
 });
 
 test("W3/3 判读脚本引导型网站：空容器 + 内联脚本", () => {

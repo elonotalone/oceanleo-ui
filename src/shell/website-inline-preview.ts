@@ -129,10 +129,22 @@ export function websiteInlineOutline(html: string): WebsiteInlineOutline | null 
   return { siteName: text(site.siteName) || text(site.title), pages: entries };
 }
 
+function normalizedMediaType(mediaType: string | undefined): string {
+  return String(mediaType || "").split(";", 1)[0].trim().toLowerCase();
+}
+
 /** 该 rendition 是不是一份能当页面打开的 HTML。 */
 export function isWebsitePageMediaType(mediaType: string | undefined): boolean {
-  return String(mediaType || "")
-    .split(";", 1)[0]
-    .trim()
-    .toLowerCase() === "text/html";
+  return normalizedMediaType(mediaType) === "text/html";
+}
+
+/**
+ * 该 rendition 是不是封面位图。
+ *
+ * 详情面用它来兜底而不是「必须等于 text/html」：老的非 durable 网站条目根本没有
+ * rendition 元数据（`mediaType` 是空的），一刀切会把它们从「本来能打开」退化成
+ * 「打不开」。位图是唯一必须拒绝的形态——把 webp 塞进 iframe 就是「点开还是一张图」。
+ */
+export function isCoverImageMediaType(mediaType: string | undefined): boolean {
+  return normalizedMediaType(mediaType).startsWith("image/");
 }

@@ -8,7 +8,7 @@ import { fetchMediaBlob } from "../lib/media-proxy";
 import type { ArtifactRenditionPurpose } from "./artifact-contract";
 import { webViewerFrameSandbox } from "./editor-sandbox-origin";
 import {
-  isWebsitePageMediaType,
+  isCoverImageMediaType,
   websiteInlineOutline,
   websitePaintMode,
   type WebsiteInlineOutline,
@@ -42,15 +42,24 @@ interface PageProbe {
   outline: WebsiteInlineOutline | null;
 }
 
+/**
+ * `DOMParser` 不执行脚本，但 `textContent` **会**把 `<script>` 的源码算进去
+ * ——整站内联 HTML 的脚本有 25 万字，直接读就会把空白引导页误判成有内容的页面。
+ * 所以先把 script/style/template 从副本里摘掉再量文字。
+ */
 function documentShape(html: string) {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   const body = parsed.body;
+  if (!body) return { elementCount: 0, textLength: 0, scriptCount: 0 };
+  const scriptCount = parsed.querySelectorAll("script").length;
+  const visible = body.cloneNode(true) as HTMLElement;
+  for (const node of visible.querySelectorAll("script, style, template")) {
+    node.remove();
+  }
   return {
-    elementCount: body
-      ? body.querySelectorAll("*:not(script):not(style):not(template)").length
-      : 0,
-    textLength: (body?.textContent || "").trim().length,
-    scriptCount: body ? body.querySelectorAll("script").length : 0,
+    elementCount: visible.querySelectorAll("*").length,
+    textLength: (visible.textContent || "").trim().length,
+    scriptCount,
   };
 }
 
@@ -139,11 +148,9 @@ function PageOutline({ outline }: { outline: WebsiteInlineOutline }) {
 export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const rendition = useArtifactRendition(item, WEBSITE_PAGE_PURPOSES);
-  const pageUrl =
-    rendition.purpose === "full" &&
-    isWebsitePageMediaType(rendition.rendition?.mediaType)
-      ? rendition.url
-      : "";
+  const pageUrl = isCoverImageMediaType(rendition.rendition?.mediaType)
+    ? ""
+    : rendition.url;
   const probe = usePagePaintProbe(pageUrl, rendition.version);
 
   if (rendition.loading && !rendition.url) {
