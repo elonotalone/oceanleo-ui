@@ -386,13 +386,27 @@ test("§3.1 a conformant oceanleo.deck.v1 project validates and round-trips", ()
   assert.equal(reparsed.version, 1);
 });
 
-test("§3.1 additionalProperties, byte-shape and enum violations are all rejected", () => {
+test("§3.1 input the writer cannot render is still refused, by name", () => {
+  // These four are not matters of taste. An unknown top-level key means the
+  // caller believes something is taking effect that is not; a wrong schema tag
+  // means we are reading a different format; a chart cache that disagrees with
+  // its own categories renders a plot with the wrong numbers in it.
   const cases = [
     [{ ...baseProject(), extra: 1 }, "additionalProperties"],
     [{ ...baseProject(), schema: "oceanleo.deck.v2" }, "const"],
-    [{ ...baseProject(), title: "短" }, "minLength"],
-    [{ ...baseProject(), theme: { accent: "#1F6FEB" } }, "pattern"],
-    [{ ...baseProject(), slides: allLayoutSlides().slice(0, 5) }, "minItems"],
+    [{ ...baseProject(), slides: [{ layout: "no-such-grammar" }] }, "enum"],
+    [
+      (() => {
+        const slides = allLayoutSlides();
+        const index = slides.findIndex((slide) => slide.layout === "chart-focus");
+        slides[index] = {
+          ...slides[index],
+          chart: { ...CHART, series: [{ name: "A", values: [1, 2] }] },
+        };
+        return baseProject({ slides });
+      })(),
+      "cache-arity",
+    ],
   ];
   for (const [candidate, code] of cases) {
     const result = validateDeckIr(candidate);
@@ -404,7 +418,25 @@ test("§3.1 additionalProperties, byte-shape and enum violations are all rejecte
   }
 });
 
-test("§3.1 allOf — every layout-conditional required field is enforced", () => {
+test("§3.1 taste is measured and handed back, not refused", () => {
+  // Each of these used to stop the run. None of them describes a file that
+  // fails to open, so each now comes back as an advisory carrying both the
+  // reading and the repair, and the document still validates.
+  const cases = [
+    [{ ...baseProject(), title: "短" }, "minLength"],
+    [{ ...baseProject(), theme: { accent: "#1F6FEB" } }, "pattern"],
+    [{ ...baseProject(), slides: allLayoutSlides().slice(0, 5) }, "minItems"],
+  ];
+  for (const [candidate, code] of cases) {
+    const result = validateDeckIr(candidate);
+    assert.equal(result.ok, true, `${code} must no longer stop the document`);
+    const advisory = result.advisories.find((entry) => entry.code === code);
+    assert.ok(advisory, `expected a "${code}" advisory, got ${JSON.stringify(result.advisories.slice(0, 3))}`);
+    assert.ok(advisory.advice.length > 20, `"${code}" must say what to do, not just what is wrong`);
+  }
+});
+
+test("§3.1 allOf — an empty layout region is reported with its repair, not rejected", () => {
   const conditional = {
     "image-full": "images",
     "image-left": "images",
@@ -427,33 +459,39 @@ test("§3.1 allOf — every layout-conditional required field is enforced", () =
     delete stripped[field];
     slides[index] = stripped;
     const result = validateDeckIr(baseProject({ slides }));
-    assert.equal(result.ok, false, `${layout} without ${field} must be rejected`);
+    assert.equal(result.ok, true, `${layout} without ${field} still produces a file`);
     assert.ok(
-      result.errors.some(
-        (error) => error.code === "required" && error.path.endsWith(`.${field}`),
+      result.advisories.some(
+        (entry) => entry.code === "required" && entry.path.endsWith(`.${field}`),
       ),
-      `${layout} must report a missing "${field}"`,
+      `${layout} must report the empty "${field}" region`,
     );
   }
 });
 
-test("§2.4 SC 1.1.1 — a picture without usable alt text is rejected", () => {
+test("§2.4 SC 1.1.1 — thin alt text is reported as the accessibility loss it is", () => {
   const slides = allLayoutSlides();
   const index = slides.findIndex((slide) => slide.layout === "image-full");
   slides[index] = { ...slides[index], images: [{ assetId: "photo-a", alt: "图" }] };
   const result = validateDeckIr(baseProject({ slides }));
-  assert.equal(result.ok, false);
-  assert.ok(result.errors.some((error) => error.code === "minLength"));
+  assert.equal(result.ok, true);
+  const advisory = result.advisories.find(
+    (entry) => entry.code === "minLength" && entry.path.endsWith(".alt"),
+  );
+  assert.ok(advisory);
+  assert.match(advisory.advice, /screen reader/);
   assert.equal(DECK_CONSTANTS.C40, 4);
 });
 
-test("§3.1 unresolved assetId references are rejected", () => {
+test("§3.1 an assetId with nothing behind it is reported as a page with no picture", () => {
   const slides = allLayoutSlides();
   const index = slides.findIndex((slide) => slide.layout === "image-full");
   slides[index] = { ...slides[index], images: [{ assetId: "ghost", alt: "不存在的图片" }] };
   const result = validateDeckIr(baseProject({ slides }));
-  assert.equal(result.ok, false);
-  assert.ok(result.errors.some((error) => error.code === "unresolved-asset"));
+  assert.equal(result.ok, true);
+  const advisory = result.advisories.find((entry) => entry.code === "unresolved-asset");
+  assert.ok(advisory);
+  assert.match(advisory.advice, /no picture/);
 });
 
 // ---------------------------------------------------------------- §4 the 16 grammars
@@ -789,24 +827,38 @@ test("§3.4 p:graphicFrame uses the p: prefixed xfrm", () => {
   assert.ok(/<c:chart[^>]*r:id="rId\d+"/.test(frame));
 });
 
-test("§2.4 a chart with 3+ series may not rely on colour alone", () => {
+test("§2.4 three series without data labels is reported, and the caller's answer is obeyed", () => {
   const slides = allLayoutSlides();
   const index = slides.findIndex((slide) => slide.layout === "chart-focus");
+  const threeSeries = [
+    { name: "A", values: [1, 2, 3, 4] },
+    { name: "B", values: [2, 3, 4, 5] },
+    { name: "C", values: [3, 4, 5, 6] },
+  ];
   slides[index] = {
     ...slides[index],
-    chart: {
-      ...CHART,
-      showDataLabels: false,
-      series: [
-        { name: "A", values: [1, 2, 3, 4] },
-        { name: "B", values: [2, 3, 4, 5] },
-        { name: "C", values: [3, 4, 5, 6] },
-      ],
-    },
+    chart: { ...CHART, showDataLabels: false, series: threeSeries },
   };
-  const result = validateDeckIr(baseProject({ slides }));
-  assert.equal(result.ok, false);
-  assert.ok(result.errors.some((error) => error.code === "wcag-1.4.1"));
+  const project = baseProject({ slides });
+  const result = validateDeckIr(project);
+  assert.equal(result.ok, true);
+  const advisory = result.advisories.find((entry) => entry.code === "wcag-1.4.1");
+  assert.ok(advisory, "the accessibility finding must still be said out loud");
+  assert.match(advisory.advice, /colour-blind/);
+
+  // The writer used to turn the labels back on regardless. An explicit "no" is
+  // now an answer, not a suggestion — which is the whole point of reporting it
+  // rather than enforcing it.
+  const off = buildDeckOoxmlParts(project, { assets: ASSET_BYTES });
+  assert.ok(!off.parts["ppt/charts/chart1.xml"].includes("<c:dLbls>"));
+
+  // Saying nothing still gets the safe default.
+  const silent = allLayoutSlides();
+  silent[index] = { ...silent[index], chart: { ...CHART, series: threeSeries } };
+  const defaulted = buildDeckOoxmlParts(baseProject({ slides: silent }), {
+    assets: ASSET_BYTES,
+  });
+  assert.ok(defaulted.parts["ppt/charts/chart1.xml"].includes("<c:dLbls>"));
 });
 
 // ---------------------------------------------------------------- §3.5 master / theme
@@ -875,10 +927,18 @@ test("§3.6 the legal transitions run empty → ready and the illegal ones throw
   assert.throws(() => advanceDeckGeneration("empty", "accept-bytes"), /§3.6/);
 });
 
-test("§3.6 a deck whose pictures cannot be resolved never reaches ready", () => {
-  assert.throws(
-    () => buildDeckPptx(baseProject(), { assets: ASSET_BYTES.slice(0, 1) }),
-    (error) => error.code === "deck-assets-missing",
+test("§3.6 a deck whose pictures have no bytes still ships, with the empty frames named", () => {
+  // A picture that never arrived leaves an empty frame on the page. That is a
+  // page someone needs to look at, not a package a reader chokes on, so the
+  // bytes are produced and the missing ids are handed back.
+  const { bytes, build: parts, conformance } = buildDeckPptx(baseProject(), {
+    assets: ASSET_BYTES.slice(0, 1),
+  });
+  assert.ok(bytes.length > 0);
+  assert.ok(parts.missingAssetIds.length > 0);
+  assert.ok(
+    conformance.notes.some((note) => note.includes(parts.missingAssetIds[0])),
+    `the missing ids must be named in the readings, got ${JSON.stringify(conformance.notes)}`,
   );
 });
 
@@ -897,7 +957,7 @@ test("§8.1 the pptx clears 48 KiB and the IR clears 4 KiB", () => {
   assert.deepEqual(conformance.failures, []);
 
   const completeness = deckIrCompleteness(project);
-  assert.equal(completeness.ok, true, completeness.failures.join("; "));
+  assert.deepEqual(completeness.notes, [], "a conformant deck should draw no remarks at all");
   assert.ok(completeness.irBytes >= DECK_IR_MIN_BYTES);
   // §8.3 A4 — the IR also has an upper bound.
   assert.ok(completeness.irBytes <= 2_097_152);
@@ -927,21 +987,31 @@ test("§7 F1 / §8.2 the 233 B hollow deck is rejected on every predicate", () =
   };
   assert.ok(new TextEncoder().encode(serializeDeckIr(hollow)).length < DECK_IR_MIN_BYTES);
   const completeness = deckIrCompleteness(hollow);
-  assert.equal(completeness.ok, false);
-  assert.equal(completeness.code, "deck-hollow");
+
+  // The 233 B hollow deck is still caught — it is just caught as six sentences
+  // naming six different things instead of one `deck-hollow` code. That
+  // distinction is the point: "your deck has no chart" and "your deck has 40
+  // characters in it" need different repairs, and the old code said neither.
+  assert.equal(completeness.textCharacters < DECK_CONSTANTS.C44, true);
+  assert.equal(completeness.distinctLayouts, 1);
+  assert.equal(completeness.denseSlides, 0);
+  assert.equal(completeness.imageCount, 0);
+  assert.equal(completeness.chartCount, 0);
+  assert.ok(completeness.irBytes < DECK_IR_MIN_BYTES);
   for (const expected of [
-    /textCharacters \d+ < 100/,
-    /distinct layouts 1 < 5/,
-    /no mixed-triptych or chart-with-notes slide/,
-    /p:pic sources 0 < 3/,
-    /chart parts 0 < 1/,
-    /IR bytes \d+ < 4096/,
+    /characters of text in the whole deck/,
+    /distinct layouts/,
+    /No mixed-triptych or chart-with-notes page/,
+    /No chart\./,
+    /under the 4096 floor/,
   ]) {
     assert.ok(
-      completeness.failures.some((failure) => expected.test(failure)),
-      `expected a failure matching ${expected}, got ${completeness.failures.join("; ")}`,
+      completeness.notes.some((note) => expected.test(note)),
+      `expected a reading matching ${expected}, got ${JSON.stringify(completeness.notes)}`,
     );
   }
+  // Every sentence has to be worth reading, not a restated field name.
+  for (const note of completeness.notes) assert.ok(note.length > 40, note);
 });
 
 test("§8.2 every completeness predicate holds for a conformant deck", () => {
@@ -964,16 +1034,18 @@ test("§8.2 every completeness predicate holds for a conformant deck", () => {
   assert.ok(project.title.length >= 8);
 });
 
-test("§7 F6 / §8.2 a deck reusing only the five old grammars is rejected", () => {
+test("§7 F6 / §8.2 a deck reusing only the five old grammars ships, and is told why it is thin", () => {
   const slides = allLayoutSlides()
     .filter((slide) => ["title", "section", "bullets", "two-column", "data-table"].includes(slide.layout))
     .flatMap((slide) => [slide, slide]);
   const project = baseProject({ slides });
   const report = assertDeckPackageConformance(project, build(project));
-  assert.equal(report.ok, false);
-  assert.ok(report.failures.some((failure) => /mixed-triptych or chart-with-notes/.test(failure)));
-  assert.ok(report.failures.some((failure) => /p:pic count 0 < 3/.test(failure)));
-  assert.ok(report.failures.some((failure) => /no chart part/.test(failure)));
+  assert.equal(report.ok, true, "a plain deck is a thin deck, not a broken one");
+  assert.deepEqual(report.failures, []);
+  assert.ok(report.notes.some((note) => /mixed-triptych or chart-with-notes/.test(note)));
+  assert.ok(report.notes.some((note) => /0 pictures in the whole deck/.test(note)));
+  assert.ok(report.notes.some((note) => /No chart object/.test(note)));
+  assert.equal(report.slidesWithoutPictures, report.slideCount);
 });
 
 test("§8.3 A12 — a package missing the custom.xml Override fails the attribution check", () => {
@@ -983,13 +1055,16 @@ test("§8.3 A12 — a package missing the custom.xml Override fails the attribut
     `<Override PartName="/docProps/custom.xml" ContentType="${DECK_CONTENT_TYPES.customProperties}"/>`,
     "",
   );
+  // An orphaned part is a broken package, not a matter of taste: the credits
+  // are physically in the zip and invisible to every conforming reader. This
+  // one still refuses.
   const report = assertDeckPackageConformance(project, result);
   assert.equal(report.ok, false);
   assert.equal(report.hasCustomPropertiesOverride, false);
-  assert.ok(report.failures.some((failure) => /custom.xml Override/.test(failure)));
+  assert.ok(report.failures.some((failure) => /Override for docProps\/custom\.xml/.test(failure)));
 });
 
-test("§8.3 A13 — credits only in metadata do not satisfy the attribution obligation", () => {
+test("§8.3 A13 — credits only in metadata is reported as the obligation gap it is", () => {
   const project = baseProject();
   const result = build(project);
   const lastPath = `ppt/slides/slide${project.slides.length}.xml`;
@@ -997,10 +1072,13 @@ test("§8.3 A13 — credits only in metadata do not satisfy the attribution obli
     'name="oceanleo-credits"',
     'name="removed"',
   );
+  // The package is well formed and the machine-readable credits are intact, so
+  // this is not a broken file. It is a deck whose attribution disappears the
+  // moment somebody exports it to PDF, and that is worth saying in those words.
   const report = assertDeckPackageConformance(project, result);
-  assert.equal(report.ok, false);
+  assert.equal(report.ok, true);
   assert.equal(report.hasVisibleCreditsBar, false);
-  assert.ok(report.failures.some((failure) => /visible credits bar/.test(failure)));
+  assert.ok(report.notes.some((note) => /save as PDF/.test(note)));
 });
 
 test("§8.3 A10 — changing theme.accent relays through the whole deck", () => {
