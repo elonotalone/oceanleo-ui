@@ -333,8 +333,14 @@ export function ExplorePage(props: ExplorePageProps) {
           )}
         </section>
       ) : (
+      /*
+        这层分区外壳**不带边框、不带底色**：卡片自己已经是卡片，外面再套一个
+        `rounded-2xl border bg-card` 的大盒子，宽屏上就是操作员看到的那一大片空底板。
+        外壳只保留布局职责（撑高、占满剩余高度、把内部滚动关在里面）。
+      */
       <section
-        className="min-h-[20rem] flex-1 overflow-hidden rounded-2xl border border-[var(--border,#e5e5e5)] bg-[var(--card,#fff)]"
+        className="min-h-[20rem] flex-1 overflow-hidden"
+        data-explore-shelf-shell="plain"
         aria-label={tt("授权公共素材库")}
       >
         <MaterialLibrary

@@ -784,7 +784,21 @@ export function WorkspaceLibrary({
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
+          // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
+          // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
+          // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
+          // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
+          // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
+          // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
+          // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
+          <div
+            className="grid gap-2.5"
+            data-workspace-card-grid="auto-fill"
+            style={{
+              gridTemplateColumns:
+                "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
+            }}
+          >
             {filtered.map((entry) => (
               <WorkspaceCard
                 key={entry.id}

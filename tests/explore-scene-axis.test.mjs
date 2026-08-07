@@ -568,15 +568,27 @@ async function mountShelf(props = {}) {
   return mounted;
 }
 
-test("本站货架挂出场景分区轴：每个分区一颗 chip、带计数，原始 appId chips 不存在", async () => {
+test("本站货架挂出场景分区轴：每个分区一颗 chip、chip 上不带数字，原始 appId chips 不存在", async () => {
   const mounted = await mountShelf();
   try {
+    // 操作员点名删掉「全部149 营销物料44」那串数字：轴还是这四颗，但 chip 上
+    // 一个数字都不许上屏。`MaterialSceneChip.count` 仍在模型里（上面第 4 条用例
+    // 仍然钉死它的算法），只是呈现层不再渲染。
     assert.deepEqual(chips(mounted.container), [
-      { id: "all", pressed: true, count: "5" },
-      { id: "营销物料", pressed: false, count: "2" },
-      { id: "站点装饰", pressed: false, count: "2" },
-      { id: "other", pressed: false, count: "1" },
+      { id: "all", pressed: true, count: "" },
+      { id: "营销物料", pressed: false, count: "" },
+      { id: "站点装饰", pressed: false, count: "" },
+      { id: "other", pressed: false, count: "" },
     ]);
+    for (const chip of mounted.container.querySelectorAll(
+      "[data-material-scene-chip]",
+    )) {
+      assert.doesNotMatch(
+        chip.textContent || "",
+        /\d/,
+        `分区 chip「${chip.getAttribute("data-material-scene-chip")}」上仍有数字`,
+      );
+    }
     // D2：那排 appId chips 整排下线；「智能体」分区不出现。
     assert.equal(mounted.container.querySelector("[data-material-app-chip]"), null);
     assert.doesNotMatch(mounted.container.innerHTML, /智能体/);
@@ -640,7 +652,7 @@ test("类型筛选是次级筛选：与分区叠加", async () => {
     assert.deepEqual(cardTitles(mounted.container), ["海报模板二 · 海报生成"]);
     assert.deepEqual(
       chips(mounted.container).filter((chip) => chip.pressed),
-      [{ id: "营销物料", pressed: true, count: "1" }],
+      [{ id: "营销物料", pressed: true, count: "" }],
     );
   } finally {
     await mounted.unmount();

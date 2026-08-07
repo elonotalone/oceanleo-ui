@@ -48,6 +48,10 @@ function selectionToChipId(selected: SceneSelection): string {
  *
  * `null` 是「全部」，`""` 是「其它」，两者必须区分得开，所以选中态不是空字符串哨兵。
  * 场景词是站点自己的分类文案，不是共享包 UI 文案，所以不过 `tt`。
+ *
+ * chip 上**不渲染 `chip.count`**：操作员点名要删掉「全部149 营销物料44」那串数字。
+ * `MaterialSceneChip.count` 本身保留（`material-scene-axis.ts` 仍在算，也仍有测试
+ * 断言它），只是不再上屏；本轴与下面的探索分类轴两处都同此办理。
  */
 export function MaterialSceneFilter({
   chips,
@@ -82,7 +86,6 @@ export function MaterialSceneFilter({
             className={`${CHIP_BASE} ${pressed ? CHIP_ON : CHIP_OFF}`}
           >
             {builtin ? tt(chip.label) : chip.label}
-            <span className="ml-1 opacity-60">{chip.count}</span>
           </button>
         );
       })}
@@ -129,7 +132,6 @@ export function ExploreClassFilter({
             className={`${CHIP_BASE} ${current ? CHIP_ON : CHIP_OFF}`}
           >
             {tt(chip.label)}
-            <span className="ml-1 opacity-60">{chip.count}</span>
           </button>
         );
       })}
