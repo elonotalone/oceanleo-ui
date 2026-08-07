@@ -56,6 +56,7 @@ import {
   subscribeSiteAppDirectories,
   type SceneSelection,
 } from "./material-scene-axis";
+import { useMaterialPackLanding } from "./material-pack-landing";
 import { MaterialShelfSkeleton } from "./material-library-skeleton";
 import {
   useMaterialLibraryChangeEvents,
@@ -234,8 +235,7 @@ export function MaterialLibrary({
   const [deepLinkedEntry, setDeepLinkedEntry] =
     useState<WorkspaceLibraryEntry | null>(null);
   const [deepLinkError, setDeepLinkError] = useState("");
-  const [deepLinkStatus, setDeepLinkStatus] =
-    useState<number | undefined>();
+  const [deepLinkStatus, setDeepLinkStatus] = useState<number | undefined>();
   const [retryNonce, setRetryNonce] = useState(0);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
@@ -565,6 +565,8 @@ export function MaterialLibrary({
         : null,
     [anchoredAppId, directory, entries, level, scene, siteId],
   );
+  // 素材包三层：这里算、下发，并回落点解析器（`material-pack-landing.ts` 说明理由）。
+  const packAppIdForEntry = useMaterialPackLanding(level === "site" ? { entries, siteKey: siteId, directory, scene, anchoredAppId } : null, sceneView);
   const visibleEntries = useMemo(
     () => (sceneView ? sceneView.cards.map((card) => card.entry) : entries),
     [entries, sceneView],
@@ -765,6 +767,7 @@ export function MaterialLibrary({
   return (
     <WorkspaceLibrary
       entries={shelfEntries}
+      packAppIdForEntry={packAppIdForEntry}
       accent={accent}
       action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
       taskId={taskId}
