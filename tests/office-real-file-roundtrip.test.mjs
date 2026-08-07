@@ -194,7 +194,15 @@ test("Office rendition selection excludes PNG preview and signed 403 requests re
     globalThis.fetch = originalFetch;
   }
   assert.equal(refreshes, 1);
-  assert.equal(requestCache, "no-store");
+  // 2026-08-07 改判：由 `no-store` 改成 `default`（`office-file.ts` 的
+  // `OFFICE_PACKAGE_CACHE_MODE`，那里逐条论证了为什么不串味）。服务端对两种
+  // rendition 地址发的缓存头本来就是相反的，客户端没有理由单方面否决；
+  // `default` 是「照服务端说的办」，而对 opaque grant 那种地址服务端回的正是
+  // `private, no-store`，所以这一档的实际行为没有放松。
+  //
+  // 刻意不写成 `assert.notEqual(requestCache, "force-cache")` 之类的宽松断言：
+  // 这一位是安全相关的，钉死才能在有人顺手改成 force-cache 时立刻响。
+  assert.equal(requestCache, "default");
 });
 
 test("preview and native Office routes consume only refreshable source/full inputs", () => {

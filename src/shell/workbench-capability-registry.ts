@@ -1,9 +1,11 @@
 import type { MediaType } from "../lib/database";
 import {
   ADVANCED_CAPABILITY_MATRIX,
+  ARTIFACT_EDITOR_CAPABILITIES,
   advancedCapabilityForFeatureId,
   type AdvancedEditorAdapterId,
   type AdvancedFeatureId,
+  type ArtifactType,
 } from "./artifact-contract";
 import type { EditorCapabilityName, EditorManifestV1 } from "./library-data";
 
@@ -396,4 +398,34 @@ export function editorRouteHintForArtifactCapability(
   const adapter = editorAdapterForArtifactCapability(capability);
   const route = adapter ? TRUSTED_EDITOR_REGISTRY[adapter].routeType : "none";
   return route === "none" ? "" : route;
+}
+
+/**
+ * 这一类 artifact 有没有一个**到得了的**编辑器。
+ *
+ * 存在的理由是一次真实的误答。素材站要回答「这件素材该不该出编辑按钮」，手里没有
+ * 这个函数，于是抄了后端的 `RELEASED_EDITOR_FEATURE_IDS`（六个 feature id）当判据，
+ * 结果 `website`、`composite_image`、`vector_image`、`model_3d`、`deck`、`video`
+ * 这些**编辑器早就存在并且可路由**的类型全被判成「这一类还没有已发布的编辑器」，
+ * 一颗编辑按钮都不出。
+ *
+ * 那份名单本身没错，错在被拿去回答另一个问题：它钉的是 `ADVANCED_FEATURE_PACKS`，
+ * 也就是**哪些能力被打包成了高级功能包**——一个产品与计费的划分。
+ * 「用户能不能编辑这件东西」是另一件事，答案在这里：适配器注册表里
+ * `routable` 为真、且承接了这一类声明的某个编辑能力。
+ *
+ * 注意 `route: "embed"` 同样算数。`website` / `design-canvas` / `video-canvas`
+ * 走的是嵌入路由——共享工作台把站点自己的编辑器嵌进来——那是**一种落点，不是没有
+ * 落点**。把 embed 排除掉会重蹈这个函数要修的那个错。
+ *
+ * 判据是推导出来的，不是又一份手抄清单：新增一个可路由适配器，这里自动跟上。
+ */
+export function artifactTypeHasRoutableEditor(artifactType: unknown): boolean {
+  const key = String(artifactType || "").trim().toLowerCase() as ArtifactType;
+  const capabilities = ARTIFACT_EDITOR_CAPABILITIES[key];
+  if (!capabilities) return false;
+  for (const capability of capabilities) {
+    if (editorRouteHintForArtifactCapability(capability)) return true;
+  }
+  return false;
 }

@@ -1,13 +1,41 @@
 // R1a: 谁发出 "Failed to fetch"？在真 Chromium 里让 fetch 在传输层失败，读它的异常。
 import { chromium } from "playwright-core";
 
-const exePaths = [
-  "/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell",
-  "/root/.cache/ms-playwright/chromium-1228/chrome-linux/chrome",
-  "/root/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell",
-];
-const { existsSync } = await import("node:fs");
-const executablePath = exePaths.find((p) => existsSync(p));
+// 运行时解析 chromium，不写死路径。
+//
+// 这里原先钉着三条 `/root/.cache/ms-playwright/chromium-1228/...` 的绝对路径。
+// 那是**上一次会话装的那个版本号**：换台机器、换个 playwright 版本，三条全是
+// ENOENT，脚本还没跑到正题就死在第 11 行。`w25-tests-out-of-repo-paths` 那道闸
+// 拦的就是这个，它拦对了。
+//
+// 先问 playwright 自己（它知道自己装在哪），问不出来再扫一遍缓存目录挑最新的。
+const { existsSync, readdirSync } = await import("node:fs");
+const { join } = await import("node:path");
+const { homedir } = await import("node:os");
+
+function discoverChromium() {
+  try {
+    const declared = chromium.executablePath();
+    if (declared && existsSync(declared)) return declared;
+  } catch {
+    /* 未注册浏览器时会抛，落到下面扫目录 */
+  }
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), ".cache", "ms-playwright");
+  if (!existsSync(root)) return "";
+  // 版本号降序，优先拿最新的一份；headless shell 与完整 chrome 都收。
+  const dirs = readdirSync(root)
+    .filter((name) => name.startsWith("chromium"))
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  for (const dir of dirs) {
+    for (const leaf of ["headless_shell", "chrome"]) {
+      const candidate = join(root, dir, "chrome-linux", leaf);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return "";
+}
+
+const executablePath = discoverChromium();
 if (!executablePath) throw new Error("no chromium found");
 const browser = await chromium.launch({
   executablePath,

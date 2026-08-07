@@ -3654,14 +3654,38 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     );
     await settle();
     assert.equal(opened.length, 0, "card click only opens preview detail");
-    const edit = [...mounted.container.querySelectorAll("button")].find(
+
+    // 2026-08-07 改判：宿主就锚在这份素材自己的 app 上时，**也没有**那颗就地
+    // 「编辑」了。本用例原先钉的是相反的行为（同 app 就地打开 typed 编辑器），
+    // 那一档在操作员拍板之后作废：他把落点定成「右栏是这份素材的预览，用户看到的
+    // 不是 agent 面板」，并且点名不许把人一脚踹进编辑器——点「编辑」常常只是想看看
+    // 会出现什么。所以同 app 这一档也走预览深链，`libraryMode=preview` 是纯读不 fork。
+    //
+    // 实现改了、用例没跟上，于是它红着过了一整轮验收（父 agent 给 A4 判 PASS 时
+    // 只跑了 A4 点名的四个文件，没跑全量套件）。这次连同判据一起补上。
+    const plainEdit = [...mounted.container.querySelectorAll("button")].find(
       (button) => button.textContent.trim() === "编辑",
     );
-    await click(edit);
-    await settle();
-    assert.deepEqual(globalThis.__artifactPreparedActions, ["edit"]);
-    assert.equal(opened.length, 1);
-    assert.equal(opened[0].preparedAction, "edit");
+    assert.equal(plainEdit, undefined, "同 app 也不许再出就地「编辑」按钮");
+    assert.deepEqual(
+      globalThis.__artifactPreparedActions,
+      [],
+      "没有人被交接进编辑器",
+    );
+    assert.equal(opened.length, 0);
+
+    // 该出的是那唯一一颗按归属 app 走的深链，而且落在预览态。
+    const singles = [
+      ...mounted.container.querySelectorAll('[data-material-edit-single="true"]'),
+    ];
+    assert.equal(singles.length, 1, "一件素材只出一颗编辑入口");
+    assert.equal(singles[0].getAttribute("data-material-edit-app"), "poster");
+    // 键名以 `site-catalog-controller.ts` 的常量为准（`tab` / `item` / `mode` / `app`），
+    // 不是这些常量的变量名。
+    const href = singles[0].getAttribute("href") || "";
+    assert.ok(href.includes("mode=preview"), `落点必须是预览态：${href}`);
+    assert.ok(href.includes("app=poster"), `落点必须指名归属 app：${href}`);
+    assert.ok(href.includes("tab=materials"), `落点必须是素材库标签页：${href}`);
   } finally {
     await mounted.unmount();
   }

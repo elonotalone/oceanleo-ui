@@ -4,6 +4,7 @@ export {
   editorCapabilityFor,
   editorRouteFor,
   editorRouteHintForArtifactCapability,
+  artifactTypeHasRoutableEditor,
   editorToolLabel,
   officeExtensionForItem,
 } from "../shell/workbench-routes";

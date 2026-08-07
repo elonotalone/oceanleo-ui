@@ -50,6 +50,7 @@ export {
   editorAdapterForArtifactCapability,
   registryEntryForAdvancedFeature,
   editorRouteHintForArtifactCapability,
+  artifactTypeHasRoutableEditor,
 } from "./workbench-capability-registry";
 export type {
   EditorAdapterId,

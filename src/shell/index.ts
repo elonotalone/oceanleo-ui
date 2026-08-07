@@ -252,6 +252,9 @@ export type {
   WorkbenchMaterialPlacement,
   WorkbenchMaterialRuntimeValue,
 } from "./workbench-material-provider";
+// 「这一类素材有没有一个到得了的编辑器」。素材站要靠它决定画不画编辑按钮，
+// 在此之前它只能手抄一份清单，而那份清单抄错了问题（见函数自身的注释）。
+export { artifactTypeHasRoutableEditor } from "./workbench-capability-registry";
 // 固定五槽位中「预览 / 素材库 / 我的库」共用的搜索、分类和 master/detail 原语。
 export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
