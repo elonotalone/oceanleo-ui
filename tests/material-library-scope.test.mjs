@@ -39,6 +39,13 @@ import {
   mergeMaterialEntries,
 } from "../src/shell/material-library-dedupe.ts";
 import { materialShelfSettleNext } from "../src/shell/material-library-effects.ts";
+import { materialPackAppIdResolver } from "../src/shell/material-pack-landing.ts";
+import { materialPackView } from "../src/shell/material-pack-model.ts";
+import {
+  materialSceneView,
+  registerSiteAppDirectory,
+  resetSiteAppDirectories,
+} from "../src/shell/material-scene-axis.ts";
 
 const IMAGE_CONTEXT = {
   contextId: "olctx:v1:image:app:poster",
@@ -481,6 +488,74 @@ test("首帧 settled 可被呈现层区分（D5）", () => {
     }).settled,
     false,
   );
+});
+
+// 详情那一颗编辑按钮的落点按素材包走。这条行为的**渲染侧**验收原本挂在
+// `library-card-detail-action-parity.test.mjs` 上，那份测试已被 I/O 守卫隔离
+// （单进程读 45 GB），所以核心那句改由这里的便宜替身守住：它只碰纯函数，
+// 不建 jsdom、不编译模块图、不渲染 React。
+test("同一件素材在两个不同素材包里被点开，落点是两个不同的 app", () => {
+  resetSiteAppDirectories();
+  const directory = registerSiteAppDirectory("image", [
+    { id: "poster", name: "海报生成", scenes: ["营销物料"] },
+    { id: "inpaint", name: "局部重绘", scenes: ["设计素材"] },
+  ]);
+  // 同一个 artifact 被两个 app 的目录行各引一次 —— image 站的真实形态。
+  const packed = (catalogId, appId) => {
+    const item = templateItem({ catalogId, artifactId: "shared", appId });
+    item.meta.template_material_artifact_type = "composite_image";
+    return entryOf(item);
+  };
+  const entries = mergeMaterialEntries(
+    [[packed("poster-1", "poster"), packed("inpaint-9", "inpaint")]],
+    { siteKey: "image" },
+  );
+
+  const landingIn = (anchoredAppId) => {
+    const input = { entries, siteKey: "image", directory, scene: null, anchoredAppId };
+    const sceneView = materialSceneView(input);
+    const entry = sceneView.cards.find(
+      (card) => card.artifactKey === "artifact:shared",
+    )?.entry;
+    return {
+      entry,
+      appId: materialPackAppIdResolver(materialPackView(input), sceneView)(entry),
+    };
+  };
+
+  const fromPoster = landingIn("poster");
+  const fromInpaint = landingIn("inpaint");
+  assert.equal(fromPoster.appId, "poster");
+  assert.equal(fromInpaint.appId, "inpaint");
+  // 素材没变，包变了，落点跟着变——操作员选这条路的全部理由（上下文自洽）。
+  assert.notEqual(fromPoster.appId, fromInpaint.appId);
+
+  // 包定出来的 app 必须**真是这份素材的归属**：`library-detail-app-actions.tsx`
+  // 的 `resolveEditApp` 第一级是 `apps.find(app => app.appId === packAppId)`，
+  // 这条不成立就会静默退回兜底顺序，整个素材包机制在生产里空转——而空转与生效
+  // 在界面上看不出差别，正是这条链子过去断了半年没人发现的原因。
+  const owners = materialEntryAppAttributions(fromPoster.entry).map(
+    (app) => app.appId,
+  );
+  assert.deepEqual(owners, ["inpaint", "poster"]);
+  assert.ok(owners.includes(fromPoster.appId));
+  assert.ok(owners.includes(fromInpaint.appId));
+
+  // 这份素材的**主 app 是 `inpaint`**（归属已排序，`[0]` 即主 app），所以从「海报」
+  // 包点开时兜底会落到 inpaint。包机制生效与空转在这里是可分辨的：上面
+  // `fromPoster.appId === "poster"` 只有走通了包这一级才成立。
+  assert.equal(materialEntryPrimaryAppId(fromPoster.entry), "inpaint");
+  assert.notEqual(fromPoster.appId, materialEntryPrimaryAppId(fromPoster.entry));
+
+  // 进了多个包又说不清用户点的是哪一个时回空串，交回兜底顺序，不随手挑一个。
+  const ambiguous = { entries, siteKey: "image", directory, scene: null };
+  assert.equal(
+    materialPackAppIdResolver(materialPackView(ambiguous), null)(
+      fromPoster.entry,
+    ),
+    "",
+  );
+  resetSiteAppDirectories();
 });
 
 test("素材库文件全部守住 800 行硬顶", () => {
