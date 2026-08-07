@@ -26,14 +26,71 @@ import {
   artifactPlayHref,
   safeArtifactPlayHref,
 } from "./explore-artifact-class";
-import { isDurableLibraryItem, type LibraryItem } from "./library-data";
+import {
+  isDurableLibraryItem,
+  libraryItemPosterUrl,
+  type LibraryItem,
+} from "./library-data";
 
 const RESOLVE_TTL_MS = 5 * 60_000;
+/** 与 `renditionNeedsRefresh` 同一档的时钟余量。 */
+const RENDITION_SKEW_MS = 60_000;
 
 const resolvedCache = new Map<
   string,
-  { item: LibraryItem; storedAt: number }
+  { item: LibraryItem; usableUntil: number }
 >();
+
+/**
+ * 这份投影还能安全复用到什么时候。
+ *
+ * 原来是「取回后 5 分钟」。`[实测 2026-08-07]` 投影里每个 rendition 的 `expiresAt`
+ * 也正好是取回后约 5 分钟，两者一样长意味着**缓存快到期时命中，等于把省下的那一跳
+ * 换成下游一次 rendition 刷新**，还可能把已经过期的 `full` grant 交给查看器。
+ * 所以上限改成跟着投影自己的最早过期时间走，并留同样的 60 秒余量。
+ */
+function resolvedUsableUntil(item: LibraryItem, now: number): number {
+  const ceiling = now + RESOLVE_TTL_MS;
+  if (!isDurableLibraryItem(item)) return ceiling;
+  let earliest = Number.POSITIVE_INFINITY;
+  for (const rendition of Object.values(item.artifact.renditions)) {
+    const expiresAt = rendition?.expiresAt;
+    if (!expiresAt) continue;
+    const parsed = Date.parse(expiresAt);
+    if (Number.isFinite(parsed)) earliest = Math.min(earliest, parsed);
+  }
+  if (!Number.isFinite(earliest)) return ceiling;
+  return Math.min(ceiling, earliest - RENDITION_SKEW_MS);
+}
+
+function cachedResolvedItem(
+  artifactId: string,
+  now = Date.now(),
+): LibraryItem | null {
+  const cached = artifactId ? resolvedCache.get(artifactId) : undefined;
+  if (!cached) return null;
+  if (now >= cached.usableUntil) {
+    resolvedCache.delete(artifactId);
+    return null;
+  }
+  return cached.item;
+}
+
+/**
+ * 把目录行手里那张现成的 OSS 封面留在 durable 投影上。
+ *
+ * `[R1 实测]` 货架上 154/161 件 deck 没有可当海报的缩略图，而目录行自己带的
+ * `preview_key` 封面只有 13,716 B / TTFB 237 ms —— 它在换成 durable 投影时被整件
+ * 丢掉，于是从点开到首帧全程白屏。这里只补一个**保证是图片**的 `posterUrl`，
+ * 不碰投影自己的任何 rendition 字段：投影有真图时以投影为准。
+ */
+function withCatalogPoster(
+  resolved: LibraryItem,
+  catalogPoster: string,
+): LibraryItem {
+  if (!catalogPoster || libraryItemPosterUrl(resolved)) return resolved;
+  return { ...resolved, posterUrl: catalogPoster };
+}
 
 function metaText(item: LibraryItem, key: string): string {
   const value = item.meta?.[key];
@@ -92,6 +149,11 @@ export function useMaterialDetailTarget(item: LibraryItem): MaterialDetailTarget
   const artifactId = isTemplateMaterialDetailItem(item)
     ? templateMaterialArtifactId(item)
     : "";
+  /**
+   * 只取字符串，不把整个 `item` 放进 effect 依赖：目录行每次渲染都是新对象，
+   * 依赖它会让这一跳取数在每次父组件重渲时重跑。
+   */
+  const catalogPoster = libraryItemPosterUrl(item);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{
     resolved: LibraryItem | null;
@@ -99,15 +161,12 @@ export function useMaterialDetailTarget(item: LibraryItem): MaterialDetailTarget
     needsSignIn: boolean;
     loading: boolean;
   }>(() => {
-    const cached = artifactId ? resolvedCache.get(artifactId) : undefined;
+    const cached = cachedResolvedItem(artifactId);
     return {
-      resolved:
-        cached && Date.now() - cached.storedAt < RESOLVE_TTL_MS
-          ? cached.item
-          : null,
+      resolved: cached,
       message: "",
       needsSignIn: false,
-      loading: Boolean(artifactId),
+      loading: Boolean(artifactId) && !cached,
     };
   });
 
@@ -121,10 +180,10 @@ export function useMaterialDetailTarget(item: LibraryItem): MaterialDetailTarget
       setState({ resolved: null, message: "", needsSignIn: false, loading: false });
       return;
     }
-    const cached = resolvedCache.get(artifactId);
-    if (cached && Date.now() - cached.storedAt < RESOLVE_TTL_MS) {
+    const cached = cachedResolvedItem(artifactId);
+    if (cached) {
       setState({
-        resolved: cached.item,
+        resolved: cached,
         message: "",
         needsSignIn: false,
         loading: false,
@@ -138,12 +197,13 @@ export function useMaterialDetailTarget(item: LibraryItem): MaterialDetailTarget
       const result = await getCurrentArtifactItem(artifactId, controller.signal);
       if (cancelled) return;
       if (result.ok && result.data && isDurableLibraryItem(result.data)) {
+        const resolved = withCatalogPoster(result.data, catalogPoster);
         resolvedCache.set(artifactId, {
-          item: result.data,
-          storedAt: Date.now(),
+          item: resolved,
+          usableUntil: resolvedUsableUntil(resolved, Date.now()),
         });
         setState({
-          resolved: result.data,
+          resolved,
           message: "",
           needsSignIn: false,
           loading: false,
@@ -168,7 +228,7 @@ export function useMaterialDetailTarget(item: LibraryItem): MaterialDetailTarget
       cancelled = true;
       controller.abort();
     };
-  }, [artifactId, attempt]);
+  }, [artifactId, attempt, catalogPoster]);
 
   if (!artifactId) return { status: "passthrough", item };
   if (state.resolved) return { status: "resolved", item: state.resolved };
@@ -200,7 +260,9 @@ export function MaterialDetailUnavailable({
   onRetry: () => void;
 }) {
   const tt = useUI();
-  const cover = item.previewUrl || item.thumbUrl || "";
+  // `previewUrl` / `thumbUrl` 都可能就是 pptx / docx 本体（货架上是常态），
+  // 直接喂 `<img>` 只会得到一个碎图标。只认保证是图片的那一个。
+  const cover = libraryItemPosterUrl(item);
   return (
     <div role="status" className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 p-6">
       {cover && (
@@ -256,7 +318,7 @@ export function gamePlayEmbedHref(item: LibraryItem): string {
 export function GamePlayDetail({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const href = artifactPlayHref(item);
-  const cover = item.previewUrl || item.thumbUrl || "";
+  const cover = libraryItemPosterUrl(item);
   return (
     <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-5 bg-stone-50 p-6">
       {cover && (

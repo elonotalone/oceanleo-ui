@@ -5,7 +5,7 @@ import {
   isArtifactSourceTreeUrl,
   type ArtifactRenditionPurpose,
 } from "../artifact-contract";
-import type { LibraryItem } from "../library-data";
+import { cacheableRenditionTwin, type LibraryItem } from "../library-data";
 
 export type OfficePackageKind = "pptx" | "xlsx" | "docx";
 
@@ -217,12 +217,39 @@ export function officeRenditionPurposes(
   return full?.url ? ["full"] : ["full", "preview"];
 }
 
+/**
+ * 只读查看器要的取用顺序。**与 `officeRenditionPurposes` 刻意分家**：后者服务编辑
+ * 链（`office-editor/useOfficeArtifactSource.ts`），要的是权威可写源，不许动。
+ *
+ * 这里多做一件事：当首选落在 `full` 上，而同 revision 的 `preview` 是**同一媒体
+ * 类型的内容寻址地址**时，改选 `preview`。
+ *
+ * `[实测 2026-08-07]` 截图那件 deck 的 `full`/`preview`/`thumbnail` 三个端点回的
+ * 字节 sha256 完全相同（`9b9645d1…`，各 331,877 B），但缓存语义相反：
+ *   · `full` = `/…/access/<opaque grant>`，grant 里带 `exp`/`nonce`/`sub`，
+ *     **每次签发地址都不同**，服务端回 `cache-control: private, no-store`；
+ *   · `preview` = `/…/access/public?artifactId=&revisionId=&purpose=preview`，
+ *     服务端回 `cache-control: public, max-age=31536000, immutable` + sha256 `etag`。
+ * 所以「关掉再打开重下整包」的根因不是客户端那行 `cache: "no-store"`，而是
+ * **查看器要的那个地址天生不可缓存**。改选之后重复打开是一次浏览器缓存命中。
+ */
 export function officeViewerRenditionPurposes(
   item: LibraryItem,
 ): readonly ArtifactRenditionPurpose[] | undefined {
-  return officePackageKindForItem(item)
-    ? officeRenditionPurposes(item)
-    : undefined;
+  const kind = officePackageKindForItem(item);
+  if (!kind) return undefined;
+  const purposes = officeRenditionPurposes(item);
+  const artifact = item.artifact;
+  if (!artifact) return purposes;
+  const chosen = purposes.find(
+    (purpose) => artifact.renditions[purpose]?.url,
+  );
+  // 只替换 `full`。`source` 一旦可浏览器直取就是编辑级权威源，查看器沿用它没有
+  // 坏处，替掉反而多一层「查看与编辑看到的不是同一份」的解释成本。
+  if (chosen !== "full") return purposes;
+  const twin = cacheableRenditionTwin(artifact, artifact.renditions.full);
+  if (!twin || kindForHint(twin.mediaType) !== kind) return purposes;
+  return ["preview", ...purposes];
 }
 
 function hasZipMagic(bytes: Uint8Array): boolean {
@@ -364,6 +391,27 @@ export function notifyOfficeAccessDenied(
   if (isOfficeAccessDeniedError(reason)) onAccessDenied?.();
 }
 
+/**
+ * office 包的取字节缓存语义。
+ *
+ * 原来这里写死 `no-store`。`[实测 2026-08-07]` 服务端自己对两种 rendition 地址发
+ * 的缓存头是相反的（见 `officeViewerRenditionPurposes` 的注释），所以客户端**没有
+ * 理由单方面否决**：`"default"` 就是「照服务端说的办」。
+ *
+ * 为什么这样不会串味，逐条：
+ *   · 缓存键是完整 URL。内容寻址地址里写死了 `artifactId` + `revisionId` +
+ *     `purpose`，**换一个 revision 就是换一个键**，物理上命中不了旧包。
+ *   · 不可缓存的那种地址是 opaque grant，token 内容是
+ *     `{"artifact":…,"revision":…,"purpose":…,"sub":"oceanleo:anonymous","exp":…,"nonce":…}`
+ *     —— **`sub`（主体）在键里面**，A 用户命中 B 用户的包同样不可能；而且服务端
+ *     对它回 `private, no-store`，`"default"` 会照办、根本不存。
+ *   · 过期签名：grant 过期后服务端换发的是**另一个** URL（`exp`/`nonce` 都变），
+ *     旧键从此无人请求，不存在「拿着过期地址去命中缓存」这回事。
+ * 刻意**不用** `force-cache`：那会连服务端标短命的响应也强行复用，正是上面第二条
+ * 要避免的。`"default"` 把新鲜度判断留给服务端。
+ */
+const OFFICE_PACKAGE_CACHE_MODE: RequestCache = "default";
+
 export async function fetchValidatedOfficePackage(
   url: string,
   kind: OfficePackageKind,
@@ -375,7 +423,7 @@ export async function fetchValidatedOfficePackage(
 ): Promise<{ blob: Blob; arrayBuffer: ArrayBuffer }> {
   try {
     const blob = await fetchMediaBlob(url, {
-      cache: "no-store",
+      cache: OFFICE_PACKAGE_CACHE_MODE,
       maxBytes: options.maxBytes,
       signal: options.signal,
     });
@@ -412,7 +460,7 @@ export async function fetchValidatedSpreadsheetSource(
   }
   try {
     const blob = await fetchMediaBlob(url, {
-      cache: "no-store",
+      cache: OFFICE_PACKAGE_CACHE_MODE,
       maxBytes: options.maxBytes,
       signal: options.signal,
     });

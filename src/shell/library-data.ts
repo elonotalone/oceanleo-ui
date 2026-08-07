@@ -1,6 +1,7 @@
 import type { Creation } from "../lib/database";
 import type {
   ArtifactProjection,
+  ArtifactRendition,
   ArtifactType,
   PopularityMetrics,
   TransientGenerationResult,
@@ -94,6 +95,16 @@ export interface LibraryItem {
   meta: Record<string, unknown>;
   /** Viewer semantics stay in `kind`; editability lives in this descriptor. */
   descriptor?: LibraryContentDescriptor;
+  /**
+   * 可以直接放进 `<img>` 的画面地址。
+   *
+   * 与 `thumbUrl` / `previewUrl` 的区别是**保证**：这两个字段是「某个 rendition 的
+   * 地址」，货架上 154/161 件 deck、842/900 件 document 的 `thumbnail` 其实就是
+   * 原 pptx / docx 本体，喂给 `<img>` 只会得到一个碎图标。`posterUrl` 只在媒体
+   * 类型确实是图片时才有值，没有真图就是缺席——**缺席是有意义的信号**，
+   * 调用方应当据此画占位而不是硬塞一个地址。
+   */
+  posterUrl?: string;
   /** Durable identity. URLs below are only refreshable renditions. */
   artifactId?: string;
   revisionId?: string;
@@ -219,6 +230,101 @@ export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
   } as Record<LibraryKind, ArtifactType>)[kind];
 }
 
+/** 只有这一族媒体类型能进 `<img>`。 */
+export function isImageMediaType(value: unknown): boolean {
+  return /^image\//i.test(
+    String(value ?? "").split(";", 1)[0].trim().toLowerCase(),
+  );
+}
+
+/**
+ * 明显不是图片的地址形状。
+ *
+ * 只当**兜底**用：rendition 声明了 `mediaType` 时一律以声明为准，这条正则服务的是
+ * 老的、非 durable 的行（`normalizeWork` / `material-library-controller` 那几条），
+ * 它们手里只有一个地址、没有类型元数据。
+ * ⚠️ 它挡不住 `/v1/artifact-renditions/access/public?...&purpose=preview` 这种不带
+ * 扩展名的地址——那种情况**必须**靠 `mediaType`，所以下面的取值顺序是「先看声明」。
+ */
+const NON_IMAGE_URL_RE =
+  /\.(?:pptx?|potx?|ppsx?|xlsx?|xlsm|xlsb|docx?|dotx|odt|ods|odp|pdf|zip|json|csv|tsv|mp4|webm|mov|mp3|wav|m4a|glb|gltf)(?:$|[?#])/i;
+
+/**
+ * 这个 rendition 能不能当图片用。
+ *
+ * 声明了媒体类型就照声明判；**没声明才**退回地址形状。反过来（先看地址）会把
+ * `access/public?...&purpose=thumbnail` 这类不带扩展名的 pptx 地址判成图片，
+ * 那正是今天的缺陷。
+ */
+function imageRenditionUrl(rendition: ArtifactRendition | undefined): string {
+  const url = rendition?.url?.trim();
+  if (!url) return "";
+  const declared = String(rendition?.mediaType ?? "").trim();
+  if (declared) return isImageMediaType(declared) ? url : "";
+  return NON_IMAGE_URL_RE.test(url) ? "" : url;
+}
+
+/**
+ * 一件素材现在就能画出来的那张图；没有就是空串。
+ *
+ * 「没有」是正常且常见的答案（货架上 office 三类基本都没有真缩略图），调用方
+ * 拿到空串应当画占位或进度，**不许**退回 `thumbUrl` / `previewUrl` 自行凑一个——
+ * 那两个字段没有「是图片」这条保证。
+ */
+export function libraryItemPosterUrl(item: LibraryItem): string {
+  const declared = item.posterUrl?.trim();
+  if (declared) return declared;
+  // 老的非 durable 条目没有 rendition 元数据，只能按地址形状兜底。
+  for (const candidate of [item.thumbUrl, item.previewUrl]) {
+    const url = candidate?.trim();
+    if (url && !NON_IMAGE_URL_RE.test(url)) return url;
+  }
+  return "";
+}
+
+/**
+ * 与 `full` 同 revision、同媒体类型，但地址是**内容寻址**的那个 rendition。
+ *
+ * `[实测 2026-08-07]` 网关对两种地址发的缓存头完全相反：
+ *   · `/v1/artifact-renditions/access/public?artifactId=&revisionId=&purpose=`
+ *     → `cache-control: public, max-age=31536000, immutable` + sha256 `etag`；
+ *   · `/v1/artifact-renditions/access/<opaque grant>`（内含 `exp`/`nonce`/`sub`）
+ *     → `cache-control: private, no-store`，且**每次签发地址都不同**。
+ * 两者对截图那件 deck 回的字节 sha256 相同（`9b9645d1…`）。所以只读查看走前者，
+ * 关掉再打开就是一次浏览器缓存命中；走后者则永远重下。
+ */
+function contentPinnedRenditionUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  const [path, query = ""] = url.split("?", 2);
+  return (
+    path.endsWith("/artifact-renditions/access/public") &&
+    query.includes("artifactId=") &&
+    query.includes("revisionId=") &&
+    query.includes("purpose=")
+  );
+}
+
+/**
+ * 同一份字节的可缓存替身。找不到就返回 `undefined`，调用方保持原选择。
+ *
+ * 判据刻意收得很紧：同 revision、媒体类型逐字相同、且替身地址确实是内容寻址的。
+ * 媒体类型不同（例如 preview 是渲出来的 webp 封面）时**绝不**替换——那会把位图
+ * 送进 office 解析器。
+ */
+export function cacheableRenditionTwin(
+  artifact: ArtifactProjection,
+  chosen: ArtifactRendition | null | undefined,
+): ArtifactRendition | undefined {
+  if (!chosen?.url || contentPinnedRenditionUrl(chosen.url)) return undefined;
+  const twin = artifact.renditions.preview;
+  if (!twin?.url || !contentPinnedRenditionUrl(twin.url)) return undefined;
+  if (twin.revisionId !== artifact.revisionId) return undefined;
+  const chosenType = String(chosen.mediaType ?? "").trim().toLowerCase();
+  const twinType = String(twin.mediaType ?? "").trim().toLowerCase();
+  if (!chosenType || chosenType !== twinType) return undefined;
+  return twin;
+}
+
 /**
  * Convert one server-authoritative projection. No type, ACL or editability is
  * inferred from a filename, site or tag.
@@ -255,11 +361,19 @@ export function artifactProjectionToLibraryItem(
     artifact.artifactType === "document" ||
     artifact.artifactType === "grid" ||
     artifact.artifactType === "pdf";
-  const selectedRendition = prefersBinarySource
+  const baseRendition = prefersBinarySource
     ? browserSafeSource || full || viewer
     : options.forEdit
       ? browserSafeSource || full || viewer
       : full || viewer;
+  /**
+   * 只读查看优先走可缓存的同字节替身；编辑（`forEdit`）永远走 `full`/`source`，
+   * 因为编辑要的是权威可写源，不是「够看就行」的那一份。
+   */
+  const selectedRendition =
+    !options.forEdit && prefersBinarySource
+      ? cacheableRenditionTwin(artifact, baseRendition) || baseRendition
+      : baseRendition;
   const rawUrl = selectedRendition?.url;
   const url =
     rawUrl && !isArtifactSourceTreeUrl(rawUrl) ? rawUrl : undefined;
@@ -324,7 +438,15 @@ export function artifactProjectionToLibraryItem(
     siteId: artifact.owner.originSiteKey || "",
     url: url || undefined,
     previewUrl: preview?.url || viewer?.url || undefined,
-    thumbUrl: thumbnail?.url || preview?.url || undefined,
+    // 媒体类型过滤：`thumbnail` 在货架上大多就是原文件本体（154/161 件 deck、
+    // 842/900 件 document），不过滤等于把 pptx 地址交出去当图片地址用。
+    thumbUrl:
+      imageRenditionUrl(thumbnail) || imageRenditionUrl(preview) || undefined,
+    posterUrl:
+      imageRenditionUrl(thumbnail) ||
+      imageRenditionUrl(preview) ||
+      imageRenditionUrl(full) ||
+      undefined,
     favorite: artifact.favorite,
     createdAt: artifact.createdAt || undefined,
     meta,

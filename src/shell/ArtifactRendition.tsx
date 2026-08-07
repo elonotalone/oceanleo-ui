@@ -14,6 +14,7 @@ import {
   refreshArtifactRendition,
   type ArtifactApiResult,
 } from "./artifact-client";
+import { officePackageKindForItem } from "./doc-editors/office-file";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -315,6 +316,15 @@ export function withResolvedRendition(
     return { ...item, thumbUrl: state.url };
   }
   if (state.purpose === "preview") {
+    /**
+     * office 三支查看器（PPT / 表格 / 文档）读的是 `item.url`，不是 `previewUrl`。
+     * `officeViewerRenditionPurposes` 会在同字节可缓存时把首选换成 `preview`，
+     * 若这里只写 `previewUrl`，那次改选就落不到查看器手上——`url` 仍是旧的
+     * 不可缓存地址，等于白改。所以 office 包的 `preview` 两个字段都写。
+     */
+    if (officePackageKindForItem(item)) {
+      return { ...item, url: state.url, previewUrl: state.url };
+    }
     return { ...item, previewUrl: state.url };
   }
   return { ...item, url: state.url };
