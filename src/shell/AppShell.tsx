@@ -42,6 +42,20 @@ import { usePresenceHeartbeat } from "../lib/presence";
  *    用于「单页操作台」站（侧栏只有一个功能按键，没有真正的站级导航需要）。 */
 export type AppShellLayout = "sidebar" | "topbar";
 
+/**
+ * 侧栏里**哪一段跟着手指走**（操作员 2026-08-07 定的三类行为）。
+ *
+ * - `"history"`（默认）：导航键一个都不动，只有下方的历史 / 最近区滚动。
+ *   这是除主站与 asset / aitools 之外所有 OceanLeo 系列站要的行为。
+ * - `"whole"`：整条侧栏当成一整块一起滚（品牌、搜索、导航、余额全都跟着走），
+ *   **只有左下角的账户按钮固定**。asset 与 aitools 要的是这一种：
+ *   它们的左栏是一条很长的类型轴，分段滚反而让人找不到自己在哪。
+ *
+ * 第三类行为（`oceanleo.com` 主站）不在这里：主站走自己的
+ * `app/_components/clone-shell.tsx`，根本不吃这个外壳，所以本开关碰不到它。
+ */
+export type ShellSidebarScroll = "history" | "whole";
+
 /** @deprecated v5 不再允许覆盖式子栏；仅为旧消费端类型兼容保留。 */
 export interface ShellSubNav {
   /** 子栏顶部标题（返回键右侧）。 */
@@ -210,7 +224,16 @@ export interface AppShellProps {
   searchPlaceholder?: string;
   /** 侧栏中部「最近列表」插槽（聊天历史 / 最近生成等，各站自填；无则不渲染） */
   recentSlot?: ReactNode;
-  /** 永远固定在滚动区上方的导航项数量。全家桶标准为 3。 */
+  /** 侧栏滚动范围，默认 `"history"`（导航键不动，只滚历史区）。见 `ShellSidebarScroll`。 */
+  sidebarScroll?: ShellSidebarScroll;
+  /**
+   * @deprecated 2026-08-07 起忽略。
+   *
+   * 「钉住前 N 个导航项、其余跟着历史一起滚」这个形状表达不了操作员要的两类行为：
+   * 一类要**全部**导航键都不动，另一类要**整条**侧栏一起动。滚动范围因此换成
+   * `sidebarScroll`，一个数字旋钮换成一个说得清的枚举。字段保留只为旧消费端不必锁步
+   * 发布 —— 实测本波三个仓没有任何一个站显式传过它。
+   */
   pinnedNavCount?: number;
   /** 账户区点击退出 */
   onSignOut?: () => void;
@@ -276,7 +299,7 @@ function AppShellInner({
   onSearch,
   searchPlaceholder,
   recentSlot,
-  pinnedNavCount = 3,
+  sidebarScroll = "history",
   onSignOut,
   accountHref = "/account",
   onAccountClick,
@@ -301,17 +324,7 @@ function AppShellInner({
   const sourceNavGroups: ShellNavGroup[] = navGroups?.length
     ? navGroups
     : [{ items: nav ?? [] }];
-  const flatNav = sourceNavGroups.flatMap((group) => group.items);
-  const pinCount = Math.max(0, Math.min(pinnedNavCount, flatNav.length));
-  const pinnedNav = flatNav.slice(0, pinCount);
-  let remainingPinned = pinCount;
-  const scrollNavGroups = sourceNavGroups
-    .map((group) => {
-      const skipped = Math.min(remainingPinned, group.items.length);
-      remainingPinned -= skipped;
-      return { ...group, items: group.items.slice(skipped) };
-    })
-    .filter((group) => group.items.length > 0);
+  const wholeSidebarScrolls = sidebarScroll === "whole";
   // v5：展开状态属于持久 AppShell，本身不跟 pathname 重置。layout 路由切换时
   // 侧栏 DOM 不卸载，所以任务展开状态与滚动位置都原样保留。
   const [openDisclosures, setOpenDisclosures] = useState<Record<string, boolean>>({});
@@ -541,140 +554,184 @@ function AppShellInner({
   const showHeaderTools =
     !hideHeader && (showModelPicker || Boolean(headerRight));
 
-  const sidebarBody = (
-    <>
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        {onBrandClick ? (
+  const brandHeader = (
+    <div className="flex items-center justify-between px-4 pb-2 pt-4">
+      {onBrandClick ? (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileOpen(false);
+            onBrandClick();
+          }}
+          className="flex items-center gap-2 text-neutral-900"
+        >
+          <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+            {brand.logo}
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
+        </button>
+      ) : (
+        <Link href="/" className="flex items-center gap-2 text-neutral-900">
+          <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+            {brand.logo}
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
+        </Link>
+      )}
+      <div className="flex items-center gap-1 text-neutral-600">
+        {onSearch && (
           <button
             type="button"
-            onClick={() => {
-              setMobileOpen(false);
-              onBrandClick();
-            }}
-            className="flex items-center gap-2 text-neutral-900"
-          >
-            <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
-              {brand.logo}
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-          </button>
-        ) : (
-          <Link href="/" className="flex items-center gap-2 text-neutral-900">
-            <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
-              {brand.logo}
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-          </Link>
-        )}
-        <div className="flex items-center gap-1 text-neutral-600">
-          {onSearch && (
-            <button
-              type="button"
-              onClick={() => setSearchOpen((v) => !v)}
-              className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
-              title={tt("搜索")}
-            >
-              <IconSearch />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              toggleCollapsed(true);
-              setMobileOpen(false);
-            }}
+            onClick={() => setSearchOpen((v) => !v)}
             className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
-            title={tt("收起侧栏")}
+            title={tt("搜索")}
           >
-            <IconPanel />
+            <IconSearch />
           </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            toggleCollapsed(true);
+            setMobileOpen(false);
+          }}
+          className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
+          title={tt("收起侧栏")}
+        >
+          <IconPanel />
+        </button>
+      </div>
+    </div>
+  );
+
+  const searchPanel = onSearch ? (
+    <div
+      className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+        searchOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      }`}
+    >
+      <div className="overflow-hidden">
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 focus-within:border-neutral-400">
+            <IconSearch className="h-3.5 w-3.5 text-neutral-400" />
+            <input
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
+              placeholder={searchPlaceholder ?? tt("搜索...")}
+              value={term}
+              onChange={(e) => {
+                setTerm(e.target.value);
+                onSearch(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setTerm("");
+                  onSearch("");
+                  setSearchOpen(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  /** 整份导航（含分组小标题）。两种滚动范围放的位置不同，内容逐字相同。 */
+  const navSection = (
+    <nav className="px-2 pb-1 pt-1">
+      {sourceNavGroups.map((group, gi) => (
+        <div key={group.heading ?? gi} className="mb-1">
+          {group.heading && (
+            <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
+              {group.heading}
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {group.items.map((item, ii) => renderNavItem(item, gi * 1000 + ii))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+
+  /** 「最近 / 历史」区：`"history"` 模式下唯一会跟着手指走的那一段。 */
+  const historySection = recentSlot ? (
+    <div className="mt-3 px-2 pb-1">{recentSlot}</div>
+  ) : null;
+
+  /* token 余额 —— 只读展示，不可点击（实时余额由各站传入）。 */
+  const creditsCapsule = (
+    <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2">
+      <span className="flex items-center gap-2 text-[12px] text-neutral-600">
+        <span style={{ color: brand.accent }}>
+          <IconGift className="h-3.5 w-3.5" />
+        </span>
+        {tt("token 余额")}
+      </span>
+      <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
+        {credits != null ? `¥${credits.toFixed(2)}` : "…"}
+      </span>
+    </div>
+  );
+
+  /* 账户按钮 —— 进入账户管理页。退出登录统一移到 /account 页内，侧栏不放
+     独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
+     i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/
+  const accountRow = (
+    <div className="[&>a]:w-full [&>button]:w-full">{renderAccountButton()}</div>
+  );
+
+  const sidebarBody = wholeSidebarScrolls ? (
+    /* "whole"：品牌、搜索、导航、最近区、余额全在同一个滚动容器里一起走，
+       左下角账户按钮留在容器外，因此滚多远它都不动（操作员点名的那一颗）。 */
+    <>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        data-oceanleo-scroll-nav
+        data-oceanleo-sidebar-scroll="whole"
+      >
+        {brandHeader}
+        {searchPanel}
+        {navSection}
+        {historySection}
+        <div className="space-y-3 px-3 pb-3 pt-3">
+          {renderSwitchers()}
+          {creditsCapsule}
         </div>
       </div>
 
-      {onSearch && (
-        <div
-          className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-            searchOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-          }`}
-        >
-          <div className="overflow-hidden">
-            <div className="px-3 pb-2">
-              <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 focus-within:border-neutral-400">
-                <IconSearch className="h-3.5 w-3.5 text-neutral-400" />
-                <input
-                  className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
-                  placeholder={searchPlaceholder ?? tt("搜索...")}
-                  value={term}
-                  onChange={(e) => {
-                    setTerm(e.target.value);
-                    onSearch(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setTerm("");
-                      onSearch("");
-                      setSearchOpen(false);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div
+        className="shrink-0 border-t border-neutral-200/70 px-3 pb-4 pt-3"
+        data-oceanleo-pinned-account
+      >
+        {accountRow}
+      </div>
+    </>
+  ) : (
+    /* "history"：导航键一个都不动，唯一的滚动区是下方的最近 / 历史区。 */
+    <>
+      {brandHeader}
+      {searchPanel}
 
-      {/* v5：只有前三项固定。品牌/搜索在上方、账户区在下方也固定；其余导航与
-          「我的任务」展开列表共用中间唯一滚动区。 */}
-      {pinnedNav.length > 0 && (
-        <nav className="mt-1 shrink-0 px-2" data-oceanleo-pinned-nav>
-          <div className="space-y-0.5">
-            {pinnedNav.map((item, ii) => renderNavItem(item, ii))}
-          </div>
-        </nav>
-      )}
+      {/* 导航按自然高度铺开，不参与滚动。留 `overflow-y-auto` 只是兜底：视口矮到
+          连导航都放不下时，宁可让它自己能滚，也不要把导航项裁掉变成点不到。 */}
+      <div
+        className="mt-1 min-h-0 shrink overflow-y-auto"
+        data-oceanleo-pinned-nav
+        data-oceanleo-sidebar-scroll="history"
+      >
+        {navSection}
+      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-oceanleo-scroll-nav>
-        <nav className="px-2 pb-1 pt-1">
-          {scrollNavGroups.map((group, gi) => (
-            <div key={group.heading ?? gi} className="mb-1">
-              {group.heading && (
-                <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
-                  {group.heading}
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {group.items.map((item, ii) =>
-                  renderNavItem(item, pinCount + gi * 1000 + ii),
-                )}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        {recentSlot && <div className="mt-3 px-2 pb-1">{recentSlot}</div>}
+        {historySection}
       </div>
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}
         {renderSwitchers()}
-
-        {/* token 余额 —— 只读展示，不可点击（实时余额由各站传入） */}
-        <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2">
-          <span className="flex items-center gap-2 text-[12px] text-neutral-600">
-            <span style={{ color: brand.accent }}>
-              <IconGift className="h-3.5 w-3.5" />
-            </span>
-            {tt("token 余额")}
-          </span>
-          <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
-            {credits != null ? `¥${credits.toFixed(2)}` : "…"}
-          </span>
-        </div>
-
-        {/* 账户按钮 —— 进入账户管理页。退出登录统一移到 /account 页内，侧栏不放
-            独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
-            i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/}
-        <div className="[&>a]:w-full [&>button]:w-full">{renderAccountButton()}</div>
+        {creditsCapsule}
+        {accountRow}
       </div>
     </>
   );

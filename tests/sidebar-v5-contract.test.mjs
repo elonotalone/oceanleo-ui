@@ -19,10 +19,20 @@ const fileLibrary = readFileSync(
   "utf8",
 );
 
-test("AppShell keeps the first three entries outside the only scroll region", () => {
-  assert.match(appShell, /pinnedNavCount = 3/);
+// 2026-08-07：这条原本钉的是「前三项固定、其余跟着历史一起滚」（`pinnedNavCount = 3`）。
+// 操作员把侧栏行为改成了两类 —— 一类要**全部**导航键都不动，一类要**整条**侧栏一起动 ——
+// 数字旋钮表达不了，换成 `sidebarScroll` 枚举。断言跟着换成新行为，**没有放宽**：
+// 「固定区与滚动区各自存在」这件事仍然钉着，包含关系由
+// `tests/sidebar-scroll-scope.test.mjs` 真渲一遍来判。
+test("AppShell 的滚动范围是一个说得清的枚举，默认导航键不动", () => {
+  assert.match(appShell, /sidebarScroll = "history"/);
+  assert.match(appShell, /export type ShellSidebarScroll = "history" \| "whole"/);
   assert.match(appShell, /data-oceanleo-pinned-nav/);
   assert.match(appShell, /data-oceanleo-scroll-nav/);
+  assert.match(appShell, /data-oceanleo-pinned-account/);
+  // 旧旋钮不许还在起作用：留着字段是为了旧消费端不必锁步发布，取值一律忽略。
+  assert.doesNotMatch(appShell, /pinnedNavCount = 3/);
+  assert.doesNotMatch(appShell, /pinnedNav\.slice|Math\.min\(pinnedNavCount/);
   assert.doesNotMatch(appShell, /activeSubItem|setSubNavOverride|closeSubNav/);
 });
 
