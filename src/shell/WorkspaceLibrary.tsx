@@ -38,9 +38,7 @@ import {
 import {
   MaterialOwningAppEdit,
   MaterialOwningAppList,
-  materialAppLabel,
   useMaterialDetailAppPlan,
-  type MaterialAppAttribution,
 } from "./library-detail-app-actions";
 import {
   WorkspaceCard,
@@ -127,6 +125,16 @@ export interface WorkspaceLibraryProps {
   className?: string;
   /** Full-page libraries render directly on the page instead of inside a white panel. */
   plain?: boolean;
+  /**
+   * 这张卡坐在**哪个素材包**里（`MaterialPackCard.appId`，`W5-pack-model.md` §2）。
+   *
+   * 素材包 = 一个 app，所以它就是详情里那一颗编辑按钮的落点：素材在哪个包的上下文里
+   * 被点开，就落到那个包的 app，上下文自洽（同上 §5.1）。
+   *
+   * **可选**。不传（或返回空串）时详情按「当前锚定 app → 主归属」兜底挑落点，
+   * 行为仍然是一颗按钮；缺包上下文绝不退回过去那一排按钮。
+   */
+  packAppIdForEntry?: (entry: WorkspaceLibraryEntry) => string;
 }
 
 /**
@@ -170,6 +178,7 @@ export function WorkspaceLibrary({
   emptyCta,
   className = "",
   plain = false,
+  packAppIdForEntry,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
   const [internalSearch, setInternalSearch] = useState("");
@@ -389,9 +398,9 @@ export function WorkspaceLibrary({
     [entries, selectedId],
   );
 
-  // 一份素材可以同时绑在多个 app 上（image 站已核实 9 组）。「编辑」要进的是**那个
-  // app 的工作台**，并且落在该 app 库里这份素材的预览上——不是就地弹一个与归属无关
-  // 的编辑器。落点与归属解析都在 `library-detail-app-actions`。
+  // 一份素材可以同时绑在多个 app 上（image 站已核实 9 组），但详情里**只出一颗**
+  // 编辑按钮：落哪个 app 由素材包回答（素材在哪个包里被点开就落哪个包），解析与落点
+  // 都在 `library-detail-app-actions`，本文件只负责把包上下文递进去。
   // `useMaterialDetailAppPlan` 只在**取数失败**这一条分支上报状态，所以这个回调
   // 同时就是「身份没取到」的信号；`selectionKey` 带上 nonce，改它即重取一次。
   const detailAppPlan = useMaterialDetailAppPlan({
@@ -399,34 +408,12 @@ export function WorkspaceLibrary({
     selectionKey: `${selectedId}#${detailIdentityNonce}`,
     siteKey: siteId,
     appId,
+    packAppId: (selected && packAppIdForEntry?.(selected)) || "",
     onStatus: (message) => {
       setDetailIdentityFailed(true);
       setMaterialActionState(message);
     },
   });
-
-  /**
-   * 素材就在当前 app 名下：深链会落回这一页，没有意义——直接进 typed 编辑器。
-   * 这条路上的素材必然是 durable / 已解析成 durable 的官方模板行（transient 结果
-   * 没有 app 绑定），所以不需要 `prepareArtifactForAction` 的 ensure 步骤。
-   */
-  const editInCurrentApp = async (
-    app: MaterialAppAttribution,
-    item: LibraryItem,
-  ) => {
-    setMaterialActionState(tt("正在打开编辑器…"));
-    try {
-      await editItem(item);
-      setMaterialActionState(tt("编辑器已打开。"));
-    } catch (caught) {
-      setMaterialActionState(
-        humanErrorMessage(
-          caught,
-          tt(`在「${materialAppLabel(app)}」里没能打开编辑器，请重试。`),
-        ),
-      );
-    }
-  };
 
   useEffect(() => {
     if (!selectedId) return;
@@ -659,17 +646,16 @@ export function WorkspaceLibrary({
                 {tt(selected.description)}
               </p>
             )}
-            {/* 跨 app 素材必须把**全部**归属摆在明面上：下面每个归属各有一颗编辑
-                键，不写出来的话那排「编辑 · xxx」看上去像是凭空多出来的。 */}
+            {/* 编辑按钮收成一颗之后，「这份素材还挂在别的 app 名下」这件事屏幕上
+                就没有别的地方讲了。这一行归属名单是那个说法的唯一出处，也是用户
+                理解「同一件素材为什么会在别的素材包里再出现一次」的依据。 */}
             <MaterialOwningAppList plan={detailAppPlan} />
           </div>
           <MaterialOwningAppEdit
             plan={detailAppPlan}
             item={workbenchItem}
-            appId={appId}
             accent={accent}
             compact
-            onEditHere={(app, item) => void editInCurrentApp(app, item)}
           />
           {actionButtonsFor(
             {
