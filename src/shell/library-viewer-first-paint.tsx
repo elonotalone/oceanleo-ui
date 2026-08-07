@@ -34,6 +34,29 @@ export function libraryViewerIsHeavy(item: LibraryItem): boolean {
 }
 
 /**
+ * 只有真的是图片的地址才配当海报。
+ *
+ * 为什么要这道过滤：货架上 154/161 件 deck 的 `thumbnail` rendition 就是 pptx 本体
+ * （截图那件的 full/preview/source/thumbnail 四个 rendition 指向同一个 sha），
+ * 而 `library-data.ts` 挑 `thumbUrl` 时不看媒体类型。把 pptx 地址喂给 `<img>` 只会得到
+ * 一个碎图标——比没有海报更糟。这里按扩展名 fail closed：认不出来的一律不当海报。
+ *
+ * 这只是消费侧的兜底。真正的修法是让 `thumbUrl` 一开始就不指向 office 包，那一行在
+ * `library-data.ts`，不在本文件的施工面上。
+ */
+const POSTER_IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)(?:$|[?#])/i;
+
+export function libraryPosterImageUrl(item: LibraryItem): string {
+  for (const candidate of [item.thumbUrl, item.previewUrl]) {
+    const url = (candidate || "").trim();
+    if (!url) continue;
+    if (url.startsWith("data:image/") || url.startsWith("blob:")) return url;
+    if (POSTER_IMAGE_EXTENSIONS.test(url)) return url;
+  }
+  return "";
+}
+
+/**
  * 「容器可见了吗」闸门。
  *
  * `IntersectionObserver` 缺席（SSR / 测试环境 / 老浏览器）时不许把预览卡死：
@@ -72,7 +95,7 @@ export function ViewerThumbPoster({
   containerRef: (node: HTMLDivElement | null) => void;
 }) {
   const tt = useUI();
-  const poster = item.thumbUrl || "";
+  const poster = libraryPosterImageUrl(item);
   return (
     <div
       ref={containerRef}
@@ -92,6 +115,46 @@ export function ViewerThumbPoster({
       ) : (
         <p className="text-[13px] text-stone-400">{tt("正在准备预览…")}</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * 解析期间的画面。
+ *
+ * 之前 office 三类在货架详情里从点开到首帧**全程没有任何画面**：重型闸门放行后
+ * 直接进查看器，而查看器在下载 + 解析完成前只画一个 spinner 覆盖层。这里把那段空白
+ * 换成海报（有真图就用真图）或骨架，spinner 收到底部条里，不再糊住整块。
+ */
+export function ViewerParsingPoster({
+  item,
+  label,
+}: {
+  item: LibraryItem;
+  label: string;
+}) {
+  const poster = libraryPosterImageUrl(item);
+  return (
+    <div
+      data-library-viewer-parsing={poster ? "poster" : "skeleton"}
+      className="absolute inset-0 overflow-hidden bg-white"
+    >
+      {poster ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={poster}
+          alt={item.title}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 h-full w-full object-contain opacity-70"
+        />
+      ) : (
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-stone-100 via-white to-stone-100" />
+      )}
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 border-t border-stone-100 bg-white/85 px-3 py-2">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-stone-200 border-t-stone-500" />
+        <p className="text-[12px] text-stone-500">{label}</p>
+      </div>
     </div>
   );
 }

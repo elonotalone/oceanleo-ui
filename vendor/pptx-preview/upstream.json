@@ -1,0 +1,10 @@
+{
+  "package": "pptx-preview",
+  "version": "1.0.7",
+  "upstreamFile": "dist/pptx-preview.es.js",
+  "upstreamSha256": "03090ed5000d89b5756b1ae9f3466d6f8ab855ffe521f49b22b2d2f1ee7b2f59",
+  "patch": {
+    "from": "import*as h from\"echarts\";",
+    "to": "import*as h from\"./chart-engine.js\";"
+  }
+}

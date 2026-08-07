@@ -42,6 +42,7 @@ import {
 } from "./doc-editors/DeckPreviewLayout";
 import {
   ProgressiveArtifactImage,
+  ViewerParsingPoster,
   ViewerThumbPoster,
   libraryViewerIsHeavy,
   useVisibleViewerGate,
@@ -344,7 +345,153 @@ interface PptxRenderedSlide {
   id: string;
   index: number;
   label: string;
-  thumbnail: HTMLElement;
+  /**
+   * 首帧那一刻**故意**是 `null`：页轨缩略图由 `startPptxThumbnailPass` 在首帧之后
+   * 一页一页补上，在此之前页轨画的是页码占位。见 `PptViewer` 里的取舍说明。
+   */
+  thumbnail: HTMLElement | null;
+}
+
+type PptxPreviewInit = (
+  node: HTMLElement,
+  options: { mode: string; width: number; height: number },
+) => unknown;
+
+/**
+ * 上游产物的本地副本，不是 `pptx-preview` 这个包。
+ *
+ * 上游 ESM 第一行 `import*as h from"echarts"` 把整份 echarts@5 焊进了 PPT 预览的依赖
+ * 闭包（实测 23 chunk / 5,565,729 B 未压缩，占闭包 6,061,093 B 的 91.8%），首帧一个字节
+ * 都用不上。这一行只能在产物上改，而 `pnpm.patchedDependencies` 只有工作区根认，
+ * 36 个消费站装的是它们自己那份 `pptx-preview` —— 补丁到不了。所以副本随本包一起发。
+ * 生成器与读数：`scripts/vendor-pptx-preview.mjs`、`vendor/pptx-preview/chart-engine.js`。
+ */
+async function loadPptxPreview(): Promise<{ init: PptxPreviewInit }> {
+  return (await import(
+    "../../vendor/pptx-preview/pptx-preview.es.js"
+  )) as unknown as { init: PptxPreviewInit };
+}
+
+/** pptx 自带的页面尺寸要同时写进三处，否则舞台与缩略图会各画各的。 */
+function applyPptxLogicalSize(
+  previewer: PptxPreviewInstance,
+  logicalSize: DeckPreviewLogicalSize,
+) {
+  previewer.options.width = logicalSize.width;
+  previewer.options.height = logicalSize.height;
+  const viewPort = previewer.htmlRender.options.viewPort ?? {};
+  viewPort.width = logicalSize.width;
+  viewPort.height = logicalSize.height;
+  previewer.htmlRender.options.viewPort = viewPort;
+  previewer.wrapper.style.width = `${logicalSize.width}px`;
+  previewer.wrapper.style.height = `${logicalSize.height}px`;
+  previewer.wrapper.style.margin = "0";
+  previewer.wrapper.style.overflow = "hidden";
+  previewer.wrapper.style.background = "transparent";
+}
+
+/** 一格空闲时间；没有 `requestIdleCallback` 就退到宏任务，但**绝不**退到同步。 */
+function scheduleAfterPaint(run: () => void): () => void {
+  if (typeof requestIdleCallback === "function") {
+    const handle = requestIdleCallback(run, { timeout: 400 });
+    return () => cancelIdleCallback(handle);
+  }
+  const handle = setTimeout(run, 16);
+  return () => clearTimeout(handle);
+}
+
+/**
+ * 页轨缩略图的后台补渲。
+ *
+ * 为什么必须是**第二个** previewer 实例：上游的
+ * `renderSingleSlide(i)` = `removeCurrentSlide(); renderSlide(i)` —— 它会先把上一页从
+ * wrapper 里摘掉。在舞台那个实例上补渲，等于把用户正在看的那一页一页页换走。
+ *
+ * 为什么可以渲到屏幕外：全 bundle 里 `getBoundingClientRect` / `clientWidth` /
+ * `clientHeight` / `offsetWidth` 零命中，渲染尺寸全部来自 pptx 自带的 width/height ×
+ * scale，不读布局。宿主仍然挂进 document（只是移到视口外），这样 `<canvas>` 的
+ * `drawImage` 与图片解码走的还是正常路径。
+ *
+ * 返回值是取消函数。整轮失败只让页轨停在占位，**不影响舞台**。
+ */
+function startPptxThumbnailPass({
+  init,
+  arrayBuffer,
+  logicalSize,
+  onSlide,
+  onSettled,
+}: {
+  init: PptxPreviewInit;
+  arrayBuffer: ArrayBuffer;
+  logicalSize: DeckPreviewLogicalSize;
+  onSlide: (index: number, thumbnail: HTMLElement) => void;
+  onSettled: (status: "done" | "failed") => void;
+}): () => void {
+  let cancelled = false;
+  let cancelScheduled = () => {};
+  let previewer: PptxPreviewInstance | null = null;
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.setAttribute("data-pptx-thumbnail-workshop", "");
+  // 图表引擎在这里一律不取：页轨缩略图今天本来就没有图表（上游把 echarts 的 init 包在
+  // setTimeout 里，补渲下一页会先把上一页摘掉，回调落空）。理由见 chart-engine.js。
+  host.setAttribute("data-pptx-chart-engine", "off");
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${logicalSize.width}px;height:${logicalSize.height}px;pointer-events:none;opacity:0;`;
+
+  const teardown = () => {
+    cancelScheduled();
+    try {
+      previewer?.destroy();
+    } catch {
+      // 拆一个屏幕外的工场失败没有用户可见后果，不值得把它抛进 UI。
+    }
+    previewer = null;
+    host.remove();
+  };
+
+  document.body.append(host);
+  void (async () => {
+    try {
+      const activePreviewer = init(host, {
+        mode: "slide",
+        width: logicalSize.width,
+        height: logicalSize.height,
+      }) as PptxPreviewInstance;
+      previewer = activePreviewer;
+      const model = await activePreviewer.load(arrayBuffer);
+      if (cancelled) return;
+      applyPptxLogicalSize(activePreviewer, logicalSize);
+      let index = 0;
+      const step = () => {
+        if (cancelled || !previewer) return;
+        try {
+          activePreviewer.renderSingleSlide(index);
+          const rendered = activePreviewer.wrapper.querySelector<HTMLElement>(
+            `.pptx-preview-slide-wrapper-${index}`,
+          );
+          if (rendered) onSlide(index, clonePptxSlideSurface(rendered, index));
+        } catch {
+          // 单页渲不出来只让那一格保持占位，不中断整轮。
+        }
+        index += 1;
+        if (index >= model.slides.length) {
+          onSettled("done");
+          teardown();
+          return;
+        }
+        cancelScheduled = scheduleAfterPaint(step);
+      };
+      cancelScheduled = scheduleAfterPaint(step);
+    } catch {
+      if (!cancelled) onSettled("failed");
+      teardown();
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    teardown();
+  };
 }
 
 function namespacePptxSurfaceIds(surface: HTMLElement, prefix: string) {
@@ -495,6 +642,42 @@ function StructuredSlidePreview({
 }
 
 /**
+ * 页轨占位：真缩略图补上之前（以及解析期间）画的那一格。
+ *
+ * 有结构化元数据就画标题与要点，没有就只画页码 —— 两种都比空白格更能让人定位到页。
+ */
+function PendingSlideThumbnail({
+  slide,
+  index,
+  count,
+}: {
+  slide?: Record<string, unknown>;
+  index: number;
+  count: number;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      data-deck-thumbnail-pending=""
+      className="aspect-video animate-pulse overflow-hidden rounded bg-white shadow-sm"
+    >
+      {slide ? (
+        <StructuredSlidePreview
+          slide={slide}
+          index={index}
+          count={count}
+          thumbnail
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[7px] text-stone-300">
+          {index + 1} / {count}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * pptx 模型里的 `slide.name` 是**包内部件路径**（`ppt/slides/slide1.xml`），
  * 不是给人看的名字。它被当成页轨按钮的无障碍名，屏幕阅读器会把这串原样念出来。
  * 认出这种形态就当作没有名字，让调用方退回「第 N 页」。
@@ -547,6 +730,13 @@ function PptViewer({
   );
   const [renderedSlides, setRenderedSlides] = useState<PptxRenderedSlide[]>([]);
   const [activeSlideId, setActiveSlideId] = useState("");
+  /**
+   * 代理指标，替代拿不到的浏览器计时（`_COMMON.md` §2.4 禁止浏览器验证）。
+   * `firstPaintRenders` = `setState("ready")` 之前舞台实例被要求渲了几页。
+   * 它必须**恒为 1**，与页数无关；这就是「首帧不再等全部页渲完」的可测形式，
+   * 也是 `tests/library-ppt-preview-adapter.test.mjs` 里 8 页 / 40 页两组的断言对象。
+   */
+  const [firstPaintRenders, setFirstPaintRenders] = useState(0);
 
   // 依赖里刻意没有 `tt`：这个 effect 会下载并重新解析整份 pptx（最大 64MB），语言换一次
   // 就重下重解一次，还会把已渲好的幻灯片清空。`tt` 在这里只用于失败文案，所以一律只存
@@ -559,6 +749,7 @@ function PptViewer({
     setRenderedSlides([]);
     setLogicalSize(deckPreviewLogicalSize());
     setActiveSlideId("");
+    setFirstPaintRenders(0);
     if (!item.url) {
       setError("没有可解析的 PPT 地址。");
       setState("error");
@@ -566,6 +757,7 @@ function PptViewer({
     }
     let cancelled = false;
     let previewer: PptxPreviewInstance | null = null;
+    let stopThumbnailPass: (() => void) | null = null;
     setState("loading");
     setError("");
     void (async () => {
@@ -579,13 +771,13 @@ function PptViewer({
           },
         );
         if (cancelled) return;
-        const { init } = await import("pptx-preview");
+        const { init } = await loadPptxPreview();
         if (cancelled) return;
         const activePreviewer = init(node, {
           mode: "slide",
           width: 960,
           height: 540,
-        }) as unknown as PptxPreviewInstance;
+        }) as PptxPreviewInstance;
         previewer = activePreviewer;
         previewerRef.current = activePreviewer;
         const model = await activePreviewer.load(arrayBuffer);
@@ -596,46 +788,68 @@ function PptViewer({
         const nextLogicalSize = deckPreviewLogicalSize(
           model.width / model.height,
         );
-        activePreviewer.options.width = nextLogicalSize.width;
-        activePreviewer.options.height = nextLogicalSize.height;
-        const viewPort = activePreviewer.htmlRender.options.viewPort ?? {};
-        viewPort.width = nextLogicalSize.width;
-        viewPort.height = nextLogicalSize.height;
-        activePreviewer.htmlRender.options.viewPort = viewPort;
-        activePreviewer.wrapper.style.width = `${nextLogicalSize.width}px`;
-        activePreviewer.wrapper.style.height = `${nextLogicalSize.height}px`;
-        activePreviewer.wrapper.style.margin = "0";
-        activePreviewer.wrapper.style.overflow = "hidden";
-        activePreviewer.wrapper.style.background = "transparent";
+        applyPptxLogicalSize(activePreviewer, nextLogicalSize);
 
-        const nextSlides = model.slides.map((slide, index) => {
-          activePreviewer.renderSingleSlide(index);
-          const rendered = activePreviewer.wrapper.querySelector<HTMLElement>(
-            `.pptx-preview-slide-wrapper-${index}`,
-          );
-          if (!rendered) {
-            // 这句原本套着 `tt(...)`，但 key 是拼出来的动态串，词典永远命不中，
-            // 等同于原样返回；去掉包装不改行为，只是不再假装它被翻译过。
-            throw new Error(`无法渲染第 ${index + 1} 页幻灯片。`);
-          }
-          const metadata = structuredSlides[index];
-          return {
-            id: `pptx-slide-${index + 1}`,
-            index,
-            label:
-              stringValue(metadata?.title) ||
-              stringValue(metadata?.label) ||
-              readableSlideName(slide.name) ||
-              `第 ${index + 1} 页`,
-            thumbnail: clonePptxSlideSurface(rendered, index),
-          };
-        });
+        /**
+         * 首帧只做**一页**的活。
+         *
+         * 这里原来是 `model.slides.map(...)`：一个同步 `map`，每页真渲一整页 DOM、
+         * 深拷贝一次整页、再对每个元素的每个属性做一遍 id 重写，跑完才 `setState("ready")`
+         * ——外加末尾多渲一次第 1 页，所以第 1 页被渲了两遍。
+         * 页轨缩略图是这轮活的唯一消费方，而页轨在首帧那一刻还没人看
+         * （`renderedSlides` 的下游已被穷举：只有本组件的 `layoutSlides` 与 `selectSlide`）。
+         * 所以先把第 1 页交出去，缩略图交给下面的后台补渲。
+         */
         activePreviewer.renderSingleSlide(0);
+        if (
+          !activePreviewer.wrapper.querySelector(
+            ".pptx-preview-slide-wrapper-0",
+          )
+        ) {
+          // 这句原本套着 `tt(...)`，但 key 是拼出来的动态串，词典永远命不中，
+          // 等同于原样返回；去掉包装不改行为，只是不再假装它被翻译过。
+          throw new Error("无法渲染第 1 页幻灯片。");
+        }
+        const outline: PptxRenderedSlide[] = model.slides.map(
+          (slide, index) => {
+            const metadata = structuredSlides[index];
+            return {
+              id: `pptx-slide-${index + 1}`,
+              index,
+              label:
+                stringValue(metadata?.title) ||
+                stringValue(metadata?.label) ||
+                readableSlideName(slide.name) ||
+                `第 ${index + 1} 页`,
+              thumbnail: null,
+            };
+          },
+        );
         if (cancelled) return;
         setLogicalSize(nextLogicalSize);
-        setRenderedSlides(nextSlides);
-        setActiveSlideId(nextSlides[0].id);
+        setRenderedSlides(outline);
+        setActiveSlideId(outline[0].id);
+        setFirstPaintRenders(1);
         setState("ready");
+
+        if (outline.length > 0) {
+          stopThumbnailPass = startPptxThumbnailPass({
+            init,
+            arrayBuffer,
+            logicalSize: nextLogicalSize,
+            onSlide: (index, thumbnail) => {
+              if (cancelled) return;
+              setRenderedSlides((slides) =>
+                slides.map((slide) =>
+                  slide.index === index ? { ...slide, thumbnail } : slide,
+                ),
+              );
+            },
+            onSettled: () => {
+              stopThumbnailPass = null;
+            },
+          });
+        }
       } catch (reason) {
         if (cancelled) return;
         if (previewerRef.current === previewer) previewerRef.current = null;
@@ -649,6 +863,7 @@ function PptViewer({
     })();
     return () => {
       cancelled = true;
+      stopThumbnailPass?.();
       if (previewerRef.current === previewer) previewerRef.current = null;
       previewer?.destroy();
       host.current?.replaceChildren();
@@ -660,10 +875,33 @@ function PptViewer({
       return renderedSlides.map((slide) => ({
         id: slide.id,
         label: slide.label,
-        thumbnail: (
+        thumbnail: slide.thumbnail ? (
           <PptxSlideThumbnail
             surface={slide.thumbnail}
             logicalSize={logicalSize}
+          />
+        ) : (
+          <PendingSlideThumbnail
+            slide={structuredSlides[slide.index]}
+            index={slide.index}
+            count={renderedSlides.length}
+          />
+        ),
+      }));
+    }
+    /**
+     * 解析期间也给页轨一份占位，前提是目录行带了结构化幻灯片元数据。
+     * 没有元数据就仍然是空页轨——那不算「白屏」，白屏那半边由舞台上的海报兜底。
+     */
+    if (state === "loading") {
+      return structuredSlides.map((slide, index) => ({
+        id: `pending-slide-${index + 1}`,
+        label: stringValue(slide.title) || `第 ${index + 1} 页`,
+        thumbnail: (
+          <PendingSlideThumbnail
+            slide={slide}
+            index={index}
+            count={structuredSlides.length}
           />
         ),
       }));
@@ -730,8 +968,8 @@ function PptViewer({
       stageOverlay={
         <>
           {state === "loading" && (
-            <div className="absolute inset-0 z-40 bg-white/90">
-              <LoadingView label={tt("正在解析 PPT…")} />
+            <div className="absolute inset-0 z-40">
+              <ViewerParsingPoster item={item} label={tt("正在解析 PPT…")} />
             </div>
           )}
           {state === "error" && hasStructuredFallback && (
@@ -764,7 +1002,11 @@ function PptViewer({
         </>
       }
     >
-      <div className="relative h-full w-full overflow-hidden bg-white">
+      <div
+        className="relative h-full w-full overflow-hidden bg-white"
+        data-pptx-first-paint-renders={firstPaintRenders}
+        data-pptx-thumbnail-progress={`${renderedSlides.filter((slide) => slide.thumbnail).length}/${renderedSlides.length}`}
+      >
         <div
           ref={attachStageHost}
           className={`absolute inset-0 h-full w-full overflow-hidden ${
