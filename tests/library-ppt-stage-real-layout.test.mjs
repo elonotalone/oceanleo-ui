@@ -202,7 +202,8 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     "./doc-editors/office-file": officeStubUrl,
     "./library-viewer-first-paint": firstPaintUrl,
     "./material-detail-slot": detailSlotStubUrl,
-    "pptx-preview": pptxStubUrl,
+    // 解析库现在走随包发的副本（echarts 改成用到才取），不再是 `pptx-preview` 这个包。
+    "../../vendor/pptx-preview/pptx-preview.es.js": pptxStubUrl,
   });
   const { LibraryItemViewer } = await import(moduleUrl);
   const { createRoot } = await import("react-dom/client");
