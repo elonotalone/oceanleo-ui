@@ -20,16 +20,24 @@ export function MaterialShelfSkeleton({
   toolbar,
   className = "",
   cards = SKELETON_CARDS,
+  plain = false,
 }: {
   /** 分区轴与次级筛选照常渲染：它们不依赖请求结果，闪掉反而更晃眼。 */
   toolbar?: ReactNode;
   className?: string;
   cards?: number;
+  /**
+   * 与 `WorkspaceLibrary` 的同名开关逐字同义：整页货架不套白底板。
+   * 骨架与货架必须吃同一个值 —— 只改货架的话，底板会在首帧闪一下再消失。
+   */
+  plain?: boolean;
 }) {
   const tt = useUI();
   return (
     <div
-      className={`flex h-full min-h-0 flex-col bg-[var(--card,#fff)] px-3 pb-3 pt-5 ${className}`}
+      className={`flex h-full min-h-0 flex-col ${
+        plain ? "bg-transparent" : "bg-[var(--card,#fff)] px-3 pb-3 pt-5"
+      } ${className}`}
       data-material-shelf-skeleton="true"
       role="status"
       aria-busy="true"

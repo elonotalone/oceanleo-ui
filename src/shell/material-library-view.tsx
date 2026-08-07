@@ -97,6 +97,7 @@ export function MaterialLibrary({
   accent = "#4f46e5",
   emptyHint,
   className = "",
+  plain = false,
   onSeeAll,
   seeAllHref,
   hideSeeAll = false,
@@ -278,14 +279,7 @@ export function MaterialLibrary({
   useEffect(() => {
     setLevel(lockLevel || initialLevel);
     setQuery("");
-  }, [
-    contextId,
-    functionId,
-    initialLevel,
-    lockLevel,
-    runtimeAppId,
-    siteId,
-  ]);
+  }, [contextId, functionId, initialLevel, lockLevel, runtimeAppId, siteId]);
 
   useEffect(() => {
     if (controlledTypes) return;
@@ -735,7 +729,7 @@ export function MaterialLibrary({
         className={`h-full min-h-0 ${className}`}
         data-material-shelf-state="loading"
       >
-        <MaterialShelfSkeleton toolbar={toolbar} />
+        <MaterialShelfSkeleton toolbar={toolbar} plain={plain} />
       </div>
     );
   }
@@ -769,6 +763,7 @@ export function MaterialLibrary({
       entries={shelfEntries}
       packAppIdForEntry={packAppIdForEntry}
       accent={accent}
+      plain={plain}
       action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
       taskId={taskId}
       siteId={siteId}

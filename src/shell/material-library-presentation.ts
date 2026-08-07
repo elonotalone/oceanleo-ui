@@ -30,6 +30,11 @@ export interface MaterialLibraryProps {
   accent?: string;
   emptyHint?: string;
   className?: string;
+  /**
+   * 整页货架：直接画在页面上，不套白底板。透给 `WorkspaceLibrary` 的同名开关，
+   * 首帧骨架也吃同一个值 —— 否则底板只是从常驻变成闪一下。
+   */
+  plain?: boolean;
   onSeeAll?: () => void;
   seeAllHref?: string;
   hideSeeAll?: boolean;
