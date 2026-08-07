@@ -563,7 +563,18 @@ async function openDetail(mounted, item) {
   await settle();
 }
 
-test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪个进哪个", async () => {
+/** 详情里的编辑入口节点，一颗也没有时返回 []。 */
+function editEntries(container) {
+  return [...container.querySelectorAll("[data-material-edit-app]")];
+}
+
+function previewHref(artifactId, appId) {
+  return `/workspace?tab=materials&item=${encodeURIComponent(
+    artifactId,
+  )}&mode=preview&app=${appId}`;
+}
+
+test("跨 app 素材的浮层只出一颗编辑入口，不是一排", async () => {
   globalThis.__previewHrefCalls = [];
   const item = materialItem("Cross app material", [
     attribution("avatar-removebg", "人像去背", 0),
@@ -579,7 +590,7 @@ test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪�
   try {
     await openDetail(mounted, item);
 
-    // 全部归属都摆在明面上，不是只显示主 app。
+    // 归属名单照旧摆在明面上：按钮收成一颗之后，这一行是「它也在别的包里」的唯一出处。
     assert.equal(
       mounted.container
         .querySelector("[data-material-owning-apps]")
@@ -587,17 +598,16 @@ test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪�
       "avatar-removebg,inpaint",
     );
 
-    const entries = [
-      ...mounted.container.querySelectorAll("[data-material-edit-app]"),
-    ];
-    assert.deepEqual(
-      entries.map((node) => node.getAttribute("data-material-edit-app")),
-      ["avatar-removebg", "inpaint"],
+    // 绑了两个 app，但入口只有一颗。这是操作员点名的那件事（「太杂了」）。
+    const entries = editEntries(mounted.container);
+    assert.equal(entries.length, 1, "一件素材只许有一颗编辑入口");
+    // 当前锚定的 `expand` 不是这份素材的归属，所以落点退到主归属。
+    assert.equal(
+      entries[0].getAttribute("data-material-edit-app"),
+      "avatar-removebg",
     );
-    assert.deepEqual(
-      entries.map((node) => node.textContent.trim()),
-      ["编辑 · 人像去背", "编辑 · 局部重绘"],
-    );
+    // 按钮上不再挂 app 名：落哪个 app 已由素材包答完，不需要用户再选一次。
+    assert.equal(entries[0].textContent.trim(), "编辑");
     // 归属自己出入口时，不再另挂一颗不指名 app 的「编辑」。
     assert.equal(action(mounted.container, "编辑"), undefined);
     // 另外四项照旧齐全。
@@ -605,22 +615,15 @@ test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪�
       assert.ok(action(mounted.container, label), label);
     }
 
-    // 每颗入口都指向**自己那个 app** 的工作台 + 该 app 库里的这份预览。
-    assert.deepEqual(
-      entries.map((node) => node.getAttribute("href")),
-      [
-        `/workspace?tab=materials&item=${encodeURIComponent(
-          item.artifactId,
-        )}&mode=preview&app=avatar-removebg`,
-        `/workspace?tab=materials&item=${encodeURIComponent(
-          item.artifactId,
-        )}&mode=preview&app=inpaint`,
-      ],
+    // 落点 = 那个 app 的工作台 + 它库里这份素材的**预览**。
+    assert.equal(
+      entries[0].getAttribute("href"),
+      previewHref(item.artifactId, "avatar-removebg"),
     );
     // href 在 render 里算，重渲染会重复调用；断言看的是**问过哪些 app**。
     assert.deepEqual(
       [...new Set(globalThis.__previewHrefCalls.map((call) => call.appId))],
-      ["avatar-removebg", "inpaint"],
+      ["avatar-removebg"],
     );
     assert.ok(
       globalThis.__previewHrefCalls.every(
@@ -633,7 +636,61 @@ test("跨 app 素材的浮层给每个归属 app 各一个编辑入口，点哪�
   }
 });
 
-test("素材属于当前 app 时就地进编辑器，不做一次原地跳转", async () => {
+test("素材在哪个素材包里被点开，那一颗编辑就落哪个包的 app", async () => {
+  globalThis.__previewHrefCalls = [];
+  const item = materialItem("Packed material", [
+    attribution("avatar-removebg", "人像去背", 0),
+    attribution("inpaint", "局部重绘", 1),
+  ]);
+  const opened = [];
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    siteId: "image",
+    appId: "expand",
+    // W5 的素材包上下文：这张卡坐在「局部重绘」这个包里。
+    packAppIdForEntry: () => "inpaint",
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await openDetail(mounted, item);
+    const entries = editEntries(mounted.container);
+    assert.equal(entries.length, 1);
+    // 主归属是 avatar-removebg，但包上下文优先：上下文自洽正是这条路的理由。
+    assert.equal(entries[0].getAttribute("data-material-edit-app"), "inpaint");
+    assert.equal(
+      entries[0].getAttribute("href"),
+      previewHref(item.artifactId, "inpaint"),
+    );
+    assert.equal(opened.length, 0);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("包上下文给的 app 不是这份素材的归属时，落点退回主归属而不是送去空工作台", async () => {
+  globalThis.__previewHrefCalls = [];
+  const item = materialItem("Mismatched pack", [
+    attribution("avatar-removebg", "人像去背", 0),
+  ]);
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    siteId: "image",
+    packAppIdForEntry: () => "not-an-owner",
+  });
+  try {
+    await openDetail(mounted, item);
+    const entries = editEntries(mounted.container);
+    assert.equal(entries.length, 1);
+    assert.equal(
+      entries[0].getAttribute("data-material-edit-app"),
+      "avatar-removebg",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("素材就在当前 app 名下时，编辑也是落到预览深链，不把用户踹进编辑器", async () => {
   globalThis.__previewHrefCalls = [];
   const item = materialItem("Same app material", [
     attribution("inpaint", "局部重绘", 0),
@@ -647,19 +704,23 @@ test("素材属于当前 app 时就地进编辑器，不做一次原地跳转", 
   });
   try {
     await openDetail(mounted, item);
-    // 单归属不摆一排 app 名，也不把按钮改名。
+    // 单归属不摆归属名单。
     assert.equal(
       mounted.container.querySelector("[data-material-owning-apps]"),
       null,
     );
-    const edit = action(mounted.container, "编辑");
-    assert.ok(edit);
-    assert.equal(edit.tagName, "BUTTON", "本 app 的入口不该是一条跳走的链接");
-    await click(edit);
-    await settle();
-    assert.deepEqual(globalThis.__previewHrefCalls, []);
-    assert.equal(opened.length, 1);
-    assert.equal(opened[0].artifactId, item.artifactId);
+    // 过去这一档走的是「就地进 typed 编辑器」。操作员把它否了：点「编辑」往往只是
+    // 想看看会出现什么，落点必须是这份素材的预览（`mode=preview` 是纯读，不 fork）。
+    const entries = editEntries(mounted.container);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].tagName, "A", "落点是深链，不是就地动作");
+    assert.equal(
+      entries[0].getAttribute("href"),
+      previewHref(item.artifactId, "inpaint"),
+    );
+    // 素材货架上不再另挂那颗不指名 app 的「编辑」。
+    assert.equal(action(mounted.container, "编辑"), undefined);
+    assert.equal(opened.length, 0, "不许把用户一脚踹进编辑器");
   } finally {
     await mounted.unmount();
   }
