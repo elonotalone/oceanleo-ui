@@ -2643,6 +2643,12 @@
         },
         {
           "kind": "named",
+          "name": "artifactTypeHasRoutableEditor",
+          "importedName": "artifactTypeHasRoutableEditor",
+          "source": "./workbench-capability-registry"
+        },
+        {
+          "kind": "named",
           "name": "BackButton",
           "importedName": "BackButton",
           "source": "./Playground"
@@ -2928,6 +2934,12 @@
           "name": "ExplorePlayableSurface",
           "importedName": "ExplorePlayableSurface",
           "source": "./explore-shelf-dispatch"
+        },
+        {
+          "kind": "named",
+          "name": "exportToMyLibrary",
+          "importedName": "exportToMyLibrary",
+          "source": "./plugin-export/plugin-export-wiring"
         },
         {
           "kind": "named",
@@ -3480,6 +3492,12 @@
           "name": "listPrimaryArtifacts",
           "importedName": "listPrimaryArtifacts",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "liveExportDependencies",
+          "importedName": "liveExportDependencies",
+          "source": "./plugin-export/plugin-export-wiring"
         },
         {
           "kind": "named",
@@ -4969,6 +4987,10 @@
         },
         {
           "kind": "star",
+          "source": "./plugin-export"
+        },
+        {
+          "kind": "star",
           "source": "./video-editor/capabilities"
         }
       ]
@@ -4998,6 +5020,11 @@
         },
         {
           "kind": "type",
+          "name": "ArtifactIdentityState",
+          "source": ""
+        },
+        {
+          "kind": "type",
           "name": "ArtifactTargetActionEvidence",
           "source": ""
         }
@@ -5023,12 +5050,22 @@
         },
         {
           "kind": "named",
+          "name": "cacheableRenditionTwin",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "inferLibraryKind",
           "source": ""
         },
         {
           "kind": "named",
           "name": "isDurableLibraryItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isImageMediaType",
           "source": ""
         },
         {
@@ -5044,6 +5081,11 @@
         {
           "kind": "named",
           "name": "libraryItemMatches",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemPosterUrl",
           "source": ""
         },
         {
@@ -5605,6 +5647,12 @@
           "name": "AdvancedContentWorkbenchProps",
           "importedName": "AdvancedContentWorkbenchProps",
           "source": "../shell/AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "artifactTypeHasRoutableEditor",
+          "importedName": "artifactTypeHasRoutableEditor",
+          "source": "../shell/workbench-routes"
         },
         {
           "kind": "named",
