@@ -25,8 +25,12 @@ const fileLibrary = readFileSync(
 // 「固定区与滚动区各自存在」这件事仍然钉着，包含关系由
 // `tests/sidebar-scroll-scope.test.mjs` 真渲一遍来判。
 test("AppShell 的滚动范围是一个说得清的枚举，默认导航键不动", () => {
-  assert.match(appShell, /sidebarScroll = "history"/);
   assert.match(appShell, /export type ShellSidebarScroll = "history" \| "whole"/);
+  assert.match(
+    appShell,
+    /WHOLE_SCROLL_SIDEBAR_SITES = new Set\(\["asset", "aitools"\]\)/,
+  );
+  assert.match(appShell, /\? "whole"\s*:\s*"history"\)/);
   assert.match(appShell, /data-oceanleo-pinned-nav/);
   assert.match(appShell, /data-oceanleo-scroll-nav/);
   assert.match(appShell, /data-oceanleo-pinned-account/);

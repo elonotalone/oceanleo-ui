@@ -166,7 +166,7 @@ test("第 2 类（默认）：导航键一个都不动，只有下方历史区�
 });
 
 test("第 3 类：整条侧栏一起滚，只有左下角账户按钮不动", () => {
-  const html = renderShell({ sidebarScroll: "whole", onSearch: () => {} });
+  const html = renderShell({ siteId: "asset", onSearch: () => {} });
   const scrollArea = elementHtml(html, 'data-oceanleo-sidebar-scroll="whole"');
 
   // 品牌、搜索、全部导航、历史、余额 —— 一整块一起走。
@@ -190,8 +190,34 @@ test("第 3 类：整条侧栏一起滚，只有左下角账户按钮不动", ()
   assert.ok(!html.includes("data-oceanleo-pinned-nav"));
 });
 
+// asset / aitools 现在 pin 的是已发布的 v0.210.0，那个包里没有 `sidebarScroll`；
+// 在它们自己的仓里传这个 prop，它们下一次构建就会红。所以整体滚动是**共享包按 siteId
+// 给的默认值**，两个站点仓一行不改，开发版立刻是对的。
+test("asset / aitools 不用改自己的接线就拿到整体滚动，其余站不受影响", () => {
+  for (const siteId of ["asset", "aitools"]) {
+    const html = renderShell({ siteId });
+    assert.ok(
+      html.includes('data-oceanleo-sidebar-scroll="whole"'),
+      `${siteId} 没有拿到整体滚动`,
+    );
+  }
+  for (const siteId of ["word", "image", "default"]) {
+    const html = renderShell({ siteId });
+    assert.ok(
+      html.includes('data-oceanleo-sidebar-scroll="history"'),
+      `${siteId} 的侧栏被误判成整体滚动`,
+    );
+  }
+  // 站点显式声明时以站点为准（发布之后 asset 想把这件事写在自己的接线里）。
+  assert.ok(
+    renderShell({ siteId: "asset", sidebarScroll: "history" }).includes(
+      'data-oceanleo-sidebar-scroll="history"',
+    ),
+  );
+});
+
 test("两类站的账户按钮都还在，退出登录仍然只在账户页里", () => {
-  for (const props of [{}, { sidebarScroll: "whole" }]) {
+  for (const props of [{}, { siteId: "asset" }]) {
     const html = renderShell(props);
     assert.ok(html.includes(ACCOUNT_NAME));
     assert.ok(!html.includes("退出登录"));

@@ -56,6 +56,17 @@ export type AppShellLayout = "sidebar" | "topbar";
  */
 export type ShellSidebarScroll = "history" | "whole";
 
+/**
+ * 默认整体滚动的站（操作员点名的 asset 与 aitools）。
+ *
+ * 为什么是共享包里的一张默认表，而不是站点侧传 prop：这两个站现在 pin 的是已发布的
+ * `@oceanleo/ui` v0.210.0，那个包里还没有 `sidebarScroll`。在它们自己的仓里传这个
+ * prop，它们下一次构建就会当场红掉——而本轮的边界是**只到开发版**，不发布新版本。
+ * 默认值放在这里，开发版立刻是对的，两个站点仓一行不用改；将来真发布之后，
+ * 站点想把这件事写在自己的接线里，传 prop 就能覆盖这张表。
+ */
+const WHOLE_SCROLL_SIDEBAR_SITES = new Set(["asset", "aitools"]);
+
 /** @deprecated v5 不再允许覆盖式子栏；仅为旧消费端类型兼容保留。 */
 export interface ShellSubNav {
   /** 子栏顶部标题（返回键右侧）。 */
@@ -224,7 +235,10 @@ export interface AppShellProps {
   searchPlaceholder?: string;
   /** 侧栏中部「最近列表」插槽（聊天历史 / 最近生成等，各站自填；无则不渲染） */
   recentSlot?: ReactNode;
-  /** 侧栏滚动范围，默认 `"history"`（导航键不动，只滚历史区）。见 `ShellSidebarScroll`。 */
+  /**
+   * 侧栏滚动范围。不传时按 `siteId` 取默认：asset / aitools 整体滚，其余只滚历史区。
+   * 见 `ShellSidebarScroll` 与 `WHOLE_SCROLL_SIDEBAR_SITES`。
+   */
   sidebarScroll?: ShellSidebarScroll;
   /**
    * @deprecated 2026-08-07 起忽略。
@@ -299,7 +313,7 @@ function AppShellInner({
   onSearch,
   searchPlaceholder,
   recentSlot,
-  sidebarScroll = "history",
+  sidebarScroll,
   onSignOut,
   accountHref = "/account",
   onAccountClick,
@@ -324,7 +338,10 @@ function AppShellInner({
   const sourceNavGroups: ShellNavGroup[] = navGroups?.length
     ? navGroups
     : [{ items: nav ?? [] }];
-  const wholeSidebarScrolls = sidebarScroll === "whole";
+  const scrollScope: ShellSidebarScroll =
+    sidebarScroll ??
+    (WHOLE_SCROLL_SIDEBAR_SITES.has(siteId) ? "whole" : "history");
+  const wholeSidebarScrolls = scrollScope === "whole";
   // v5：展开状态属于持久 AppShell，本身不跟 pathname 重置。layout 路由切换时
   // 侧栏 DOM 不卸载，所以任务展开状态与滚动位置都原样保留。
   const [openDisclosures, setOpenDisclosures] = useState<Record<string, boolean>>({});
