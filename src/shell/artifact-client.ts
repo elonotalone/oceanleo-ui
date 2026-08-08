@@ -2,6 +2,7 @@
 
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
+import { currentDomainProfile } from "../contracts/domain-family";
 import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
@@ -1010,7 +1011,7 @@ function artifactItemFromProjection(
   options: { forEdit?: boolean } = {},
 ): LibraryItem {
   const item = artifactProjectionToLibraryItem(projection, options);
-  const href = new URL("https://asset.oceanleo.com/materials");
+  const href = new URL(`${currentDomainProfile().assetOrigin}/materials`);
   href.searchParams.set("artifactId", projection.artifactId);
   href.searchParams.set("revisionId", projection.revisionId);
   href.searchParams.set("taxonomy", projection.artifactType);

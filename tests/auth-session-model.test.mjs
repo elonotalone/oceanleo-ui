@@ -112,7 +112,7 @@ test("env 覆盖也不能把共享 cookie 域挪到 oceanleo.com 之外", () => 
       [
         "--experimental-strip-types",
         "--no-warnings",
-        // config.ts 引了 lib/domain-family.ts（家族表）。子进程和父进程一样要带
+        // config.ts 引了 contracts/domain-family.ts（家族表）。子进程和父进程一样要带
         // 扩展名解析 loader，否则那条相对 import 会 ERR_MODULE_NOT_FOUND，
         // 整条 env 探针变成「进程起不来」而不是「断言不成立」。
         "--experimental-loader",
@@ -331,7 +331,7 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：家族表是这条红线的唯一事实源；有人在别处再写一份 host 判定或让家族由任意域名字符串拼出来，隔离就只剩这份测试在纸上成立。
 test("C5 家族表是写死的两行，且不接受任意域名字符串", async () => {
-  const familyModule = await import("../src/lib/domain-family.ts");
+  const familyModule = await import("../src/contracts/domain-family.ts");
   const {
     DOMAIN_FAMILIES,
     DEFAULT_DOMAIN_FAMILY,
@@ -374,7 +374,7 @@ test("C5 家族表是写死的两行，且不接受任意域名字符串", async
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：主题/语言 cookie 若比会话 cookie 铺得更宽（例如仍写死 .oceanleo.com），境内站就会往境外可注册域上写 cookie；而写死的那份一旦被当成「反正不是会话，无所谓」，下一个人就会照抄这份判定去写会话。
 test("C5 非会话 cookie（主题/语言）与会话走同一条家族边界", async () => {
-  const { sharedCookieDomainFor } = await import("../src/lib/domain-family.ts");
+  const { sharedCookieDomainFor } = await import("../src/contracts/domain-family.ts");
   for (const host of ["oceanleo.com", "ppt.oceanleo.com", "PPT.OCEANLEO.COM"]) {
     assert.equal(sharedCookieDomainFor(host), ".oceanleo.com", host);
   }
@@ -413,8 +413,8 @@ test("C5 四个 cookie 写入点都从家族表取域，没有写死的 domain �
     const source = await readFile(new URL(`../src/${relative}`, import.meta.url), "utf8");
     assert.match(
       source,
-      new RegExp(`import \\{[^}]*${helper}[^}]*\\} from "\\.\\.?/(\\.\\./)?lib/domain-family"`),
-      `${relative} 必须从 lib/domain-family 取域，不得自己写一份判定`,
+      new RegExp(`import \\{[^}]*${helper}[^}]*\\} from "\\.\\.?/(\\.\\./)?contracts/domain-family"`),
+      `${relative} 必须从 contracts/domain-family 取域，不得自己写一份判定`,
     );
     assert.doesNotMatch(
       source,
@@ -433,7 +433,7 @@ test("C5 四个 cookie 写入点都从家族表取域，没有写死的 domain �
 // 违反后果：这段脚本是唯一一处「安全相关的域名判定被写进内联 HTML」的地方。它拿的是注入的常量表，若有人在这里手写第二份后缀判定（历史上是 slice(-13)），家族表就不再是唯一事实源，两边会各自漂移。
 test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不只读源码）", async () => {
   // `.tsx` 进不了 node 的 type-stripping，走仓里的编译台（它会自动解析
-  // ThemeScript 对 lib/domain-family 的那条 import，所以测的是真表、不是替身）。
+  // ThemeScript 对 contracts/domain-family 的那条 import，所以测的是真表、不是替身）。
   const [{ ThemeScript }, { THEME_COOKIE }, React, { renderToStaticMarkup }] =
     await Promise.all([
       import(await compileModule("src/theme/ThemeScript.tsx")),

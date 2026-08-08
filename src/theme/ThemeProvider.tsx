@@ -27,7 +27,7 @@ import {
   type ThemeMode,
   type ThemeAppearance,
 } from "./theme-config";
-import { sharedCookieDomainFor } from "../lib/domain-family";
+import { sharedCookieDomainFor } from "../contracts/domain-family";
 
 interface ThemeContextValue {
   /** 用户选择的模式（light/dark/auto + 7 个特色主题）。 */
@@ -90,7 +90,7 @@ function readCookieMode(): string | null {
 // host-only 影子（含 v0.67/v0.68 用户浏览器里的存量）；host-only 仅在拿不到家族的
 // 域（localhost / *.vercel.app 预览 / 用户内容域）使用。localStorage 永远写（同源兜底）。
 //
-// 域从写死的 `.oceanleo.com` 改成按家族解析（lib/domain-family.ts）：`.com` 站仍然
+// 域从写死的 `.oceanleo.com` 改成按家族解析（contracts/domain-family.ts）：`.com` 站仍然
 // 逐字得到 `.oceanleo.com`，`.cn` 站得到 `.oceanleo.cn`。两族的主题 cookie 各写各的，
 // 与会话同一条边界 —— 不会出现「境内站读到海外站主题」这种跨族串门。
 // 返回值：cookie 是否成功落地（读回校验）。

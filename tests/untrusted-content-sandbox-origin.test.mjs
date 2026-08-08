@@ -43,6 +43,8 @@ import {
   sandboxTokens,
   webViewerFrameSandbox,
 } from "../src/shell/editor-sandbox-origin.ts";
+import { currentDomainProfile } from "../src/contracts/domain-family.ts";
+import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
 
 import { compileModule, realModule } from "./helpers/module-bench.mjs";
 
@@ -114,12 +116,25 @@ test("W8/1 workbench 嵌入：白名单 base 保留同源，任何其他 URL 立
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：§8.3 只允许「URL 恒来自写死白名单」的可信来源保留该组合；两侧漂移就意味着有一条嵌入路由不在证明范围内。
-test("W8/1 白名单 base 与 workbench-routes.ts 的写死字面量保持一一对应", () => {
+// C5：域名不再写死（`.com` / `.cn` 按家族解析），但「路由表写死 + 两侧一一对应」这条
+// 性质一个字都没松：现在锁的是 subsite + path 这张表，且额外禁止任何 base 字面量 ——
+// 留一条写死的 base 就等于留一条在境内仍指向 `.com` 主机的嵌入路由。
+test("W8/1 白名单 base 与 workbench-routes.ts 的路由表保持一一对应", () => {
   const routes = source("../src/shell/workbench-routes.ts");
+  assert.deepEqual(
+    [...routes.matchAll(/base:\s*"(https:\/\/[^"]+)"/g)].map((m) => m[1]),
+    [],
+    "workbench-routes.ts 不得再写死 embed base：域名必须按家族解析",
+  );
+  const { registrableDomain } = currentDomainProfile();
   const declared = [
-    ...routes.matchAll(/base:\s*"(https:\/\/[^"]+)"/g),
-  ].map((match) => match[1]);
-  assert.ok(declared.length >= 3, "workbench-routes.ts 必须写死 embed base");
+    ...routes.matchAll(/subsite:\s*"([a-z0-9-]+)",\s*path:\s*"(\/[^"]*)"/g),
+  ].map(([, subsite, path]) => `https://${subsite}.${registrableDomain}${path}`);
+  assert.equal(
+    declared.length,
+    3,
+    "workbench-routes.ts 必须写死三条嵌入路由（子站标签 + 路径）",
+  );
   for (const base of declared) {
     assert.equal(
       isTrustedEmbedEditorBase(base),
@@ -133,6 +148,35 @@ test("W8/1 白名单 base 与 workbench-routes.ts 的写死字面量保持一一
       `${base} 已从 workbench-routes.ts 消失，白名单必须收窄`,
     );
   }
+  // 源码比对之外再走一次真路由：三类内嵌产物**实际解析出来**的 base 也必须命中白名单。
+  const item = (kind, meta) => ({
+    key: "k",
+    source: "creation",
+    id: "i",
+    title: "t",
+    siteId: "study",
+    favorite: false,
+    kind,
+    meta,
+  });
+  const routed = [
+    item("website", { draft: true }),
+    item("canvas", { blank: true }),
+    item("video_canvas", {}),
+  ].map((value) => editorCapabilityFor(value));
+  for (const capability of routed) {
+    assert.equal(capability.route.type, "embed", capability.unavailableReason);
+    assert.equal(
+      isTrustedEmbedEditorBase(capability.route.base),
+      true,
+      capability.route.base,
+    );
+  }
+  assert.deepEqual(
+    [...new Set(routed.map((c) => c.route.base))].sort(),
+    [...declared].sort(),
+    "解析出来的 base 集合必须与路由表逐字相等",
+  );
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）

@@ -1,3 +1,5 @@
+import { currentDomainProfile } from "./domain-family";
+
 export const OCEANLEO_SITE_MANIFEST_SCHEMA =
   "oceanleo.site-manifest.v1" as const;
 
@@ -117,14 +119,18 @@ function routePath(value: unknown, fallback: string): string {
   return clean || "/";
 }
 
+// 兜底网关按**当前家族**取（contracts/domain-family.ts）：`.com` 与本地开发解析出来的
+// 仍是 https://api.oceanleo.com（逐字不变），`.cn` 站兜底到 https://api.oceanleo.cn，
+// 而不是让一份没配好的 manifest 把境内请求指回境外网关。
 function httpOrigin(value: unknown): string {
+  const fallback = currentDomainProfile().gatewayOrigin;
   try {
     const parsed = new URL(String(value ?? ""));
     return parsed.protocol === "https:" || parsed.protocol === "http:"
       ? parsed.origin
-      : "https://api.oceanleo.com";
+      : fallback;
   } catch {
-    return "https://api.oceanleo.com";
+    return fallback;
   }
 }
 
@@ -196,7 +202,7 @@ export function defineOceanLeoSiteManifest<TEntry>(
       strategy: input.auth?.strategy || "oceanleo-sso",
       required: input.auth?.required === true,
       gatewayOrigin: httpOrigin(
-        input.auth?.gatewayOrigin || "https://api.oceanleo.com",
+        input.auth?.gatewayOrigin || currentDomainProfile().gatewayOrigin,
       ),
     }),
     credits: Object.freeze({

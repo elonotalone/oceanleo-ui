@@ -1,4 +1,5 @@
 import type { AppSession } from "../lib/app-session";
+import { currentDomainProfile } from "../contracts/domain-family";
 import {
   lightweightOfficeRouteForExtension,
   type LightweightOfficeRoute,
@@ -916,7 +917,7 @@ export function advancedSnapshotFromSession(
     const legacyTemplate = /^site:tpl-([a-z0-9-]+)$/i.exec(rootId);
     if (legacyTemplate) {
       meta.template_doc_url =
-        `https://asset.oceanleo.com/design-templates/doc/${legacyTemplate[1]}.json`;
+        `${currentDomainProfile().assetOrigin}/design-templates/doc/${legacyTemplate[1]}.json`;
     }
   }
   // v2 snapshots written before blank/draft became allowlisted lost the

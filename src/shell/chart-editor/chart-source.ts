@@ -1,5 +1,6 @@
 import type { EditorManifestV1, LibraryItem } from "../library-data";
 import { refreshArtifactRendition } from "../artifact-client";
+import { currentDomainProfile } from "../../contracts/domain-family";
 import {
   CHART_DOCUMENT_SCHEMA,
   CHART_SOURCE_MAX_BYTES,
@@ -11,11 +12,13 @@ import {
   type ChartStructuredSourceKind,
 } from "./chart-schema";
 
+// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
+// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变）。
 const GATEWAY =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
       process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  "https://api.oceanleo.com";
+  currentDomainProfile().gatewayOrigin;
 
 export const CHART_EDITOR_ID = "chart-editor";
 export const CHART_EDITOR_ADAPTER = "chart-editor@1";
@@ -27,8 +30,12 @@ export const CHART_SOURCE_REPAIR =
 const ROUND_TRIP = ["load", "mutate", "save", "reopen"] as const;
 const LEGACY_SOURCE_PATH =
   /^\/v1\/assets\/library\/[a-z0-9-]{3,128}\/editor-source$/i;
+// 取**当前家族**的网关主机，而不是两族都列：这是一条「可以去 fetch 它」的授信
+// 判定，境内页面没有理由信任境外网关签发的源地址（反之亦然）。`.com` 站解析出来
+// 的仍是 api.oceanleo.com，与本轮改动前逐字相同。
+// 素材桶是阿里云广州 OSS，本来就在境内，两族共用同一个桶（台账 §E）。
 const LEGACY_SOURCE_HOSTS = new Set([
-  "api.oceanleo.com",
+  new URL(currentDomainProfile().gatewayOrigin).hostname,
   "oceanleo-assets.oss-cn-guangzhou.aliyuncs.com",
 ]);
 
@@ -390,7 +397,7 @@ export function chartSourceExpiry(
   }
   let parsed: URL;
   try {
-    parsed = new URL(url, "https://api.oceanleo.com");
+    parsed = new URL(url, GATEWAY);
   } catch {
     return null;
   }
@@ -431,7 +438,7 @@ export function assertFreshChartSourceUrl(
   const expires = chartSourceExpiry(url, declaredExpiresAt);
   if (expires === null) {
     try {
-      const keys = [...new URL(url, "https://api.oceanleo.com").searchParams.keys()]
+      const keys = [...new URL(url, GATEWAY).searchParams.keys()]
         .map((key) => key.toLowerCase());
       if (
         keys.some((key) =>

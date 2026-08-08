@@ -30,7 +30,7 @@
 // ---------------------------------------------------------------------------
 // 同一份代码要同时服务 oceanleo.com（海外）与 oceanleo.cn（境内），而两边的
 // 登录态必须永不串门。做法不是在这里加一个 `.cn` 分支，而是把「共享会话的
-// 可注册域」从一个字面量换成 lib/domain-family.ts 里的一张写死的家族表：
+// 可注册域」从一个字面量换成 contracts/domain-family.ts 里的一张写死的家族表：
 // 每次判定先由请求 host 定出**至多一个**家族，再在那一行里取 cookie 域。
 // 家族之间没有回落分支，所以「.com 的会话落到 .cn」在实现层面无法表达。
 // 用户内容域（oceanleo.app / leoapp.cn）不属于任何家族，一律 host-only。
@@ -39,7 +39,7 @@ import {
   currentDomainProfile,
   domainProfileForHost,
   familyForHost,
-} from "../domain-family";
+} from "../../contracts/domain-family";
 
 export const SUPABASE_URL =
   process.env.NEXT_PUBLIC_OCEANLEO_SUPABASE_URL ||

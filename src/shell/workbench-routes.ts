@@ -10,6 +10,10 @@ import {
   type LibraryItem,
 } from "./library-data";
 import {
+  currentDomainProfile,
+  currentFamilySubsiteOrigin,
+} from "../contracts/domain-family";
+import {
   advancedCapabilityForArtifactFields,
   artifactEditorCapabilityIsCompatible,
   artifactSourceFormatIsCompatible,
@@ -142,7 +146,10 @@ function trustedChartSourceUrl(url: string): boolean {
     const host = parsed.hostname.toLowerCase();
     return (
       parsed.protocol === "https:" &&
-      (host === "api.oceanleo.com" ||
+      // 网关主机取**当前家族**的那一个（`.com` 站解析出来的仍是 api.oceanleo.com，
+      // 逐字不变）：境内页面没有理由去信境外网关签发的源地址。
+      // 素材桶是阿里云广州 OSS，本来就在境内，两族共用（台账 §E）。
+      (host === new URL(currentDomainProfile().gatewayOrigin).hostname ||
         host === "oceanleo-assets.oss-cn-guangzhou.aliyuncs.com") &&
       (parsed.pathname.endsWith(".json") ||
         /\/v1\/assets\/library\/[a-z0-9-]+\/editor-source$/i.test(
@@ -234,6 +241,76 @@ function unavailable(reason: string): EditorCapability {
     manifest: null,
     unavailableReason: reason,
   };
+}
+
+/**
+ * 三个内嵌编辑器子站的路由。子站标签与路径写死，域名按**当前家族**拼
+ * （contracts/domain-family.ts），拼出来的 base 与
+ * `editor-sandbox-origin.ts` 的 `TRUSTED_EMBED_EDITOR_BASES` 逐字对应 ——
+ * 那张表是「谁能拿 allow-same-origin」的白名单，两边必须同源同规则。
+ *
+ * 境内 v1 三个子站一个都不存在，`currentFamilySubsiteOrigin()` 给 undefined，
+ * 这里就返回 unavailable。**不许回落到 `.com` 的 base**：那会把境内用户的
+ * 产物送进境外编辑器，既是数据出境，也拿不到白名单（白名单在境内是空的），
+ * 结果只会是一个加载不出来的 iframe。给一句说得清的「暂未开放」更诚实。
+ */
+const EMBED_EDITOR_SUBSITES = {
+  website: {
+    subsite: "website",
+    path: "/embed/site-editor",
+    mediaType: "website",
+  },
+  "design-canvas": {
+    subsite: "design",
+    path: "/embed/editor",
+    mediaType: "canvas",
+  },
+  "video-canvas": {
+    subsite: "video",
+    path: "/canvas-board",
+    mediaType: "video_canvas",
+  },
+} as const;
+
+const DESIGN_TEMPLATE_DOC_PATH =
+  /^\/design-templates\/doc\/[a-z0-9-]+\.json$/i;
+
+/**
+ * 当前家族素材域上的 design 模板文档地址。域外一律不认（fail closed）。
+ *
+ * 判定与它取代的那条写死正则**逐字等价**，所以查询串、片段与内嵌凭据都要显式
+ * 拒掉：原正则以 `$` 收尾且从 `https://asset.…` 起头，这三种形状本来就进不来，
+ * 只比对 origin + pathname 会把它们放进来，那是放宽不是搬家。
+ */
+function isFamilyDesignTemplateDocUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.origin === currentDomainProfile().assetOrigin &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      DESIGN_TEMPLATE_DOC_PATH.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function embedEditor(
+  adapter: keyof typeof EMBED_EDITOR_SUBSITES,
+): EditorCapability {
+  const { subsite, path, mediaType } = EMBED_EDITOR_SUBSITES[adapter];
+  const origin = currentFamilySubsiteOrigin(subsite);
+  if (!origin) {
+    return unavailable(`${subsite} 编辑器在当前版本暂未开放。`);
+  }
+  return available(adapter, {
+    type: "embed",
+    base: `${origin}${path}`,
+    mediaType,
+  });
 }
 
 function hasInlineText(item: LibraryItem): boolean {
@@ -374,23 +451,11 @@ function durableEditorCapabilityFor(
     case "interactive-doc":
       return available(adapter, { type: "interactive-doc" });
     case "website":
-      return available(adapter, {
-        type: "embed",
-        base: "https://website.oceanleo.com/embed/site-editor",
-        mediaType: "website",
-      });
+      return embedEditor(adapter);
     case "design-canvas":
-      return available(adapter, {
-        type: "embed",
-        base: "https://design.oceanleo.com/embed/editor",
-        mediaType: "canvas",
-      });
+      return embedEditor(adapter);
     case "video-canvas":
-      return available(adapter, {
-        type: "embed",
-        base: "https://video.oceanleo.com/canvas-board",
-        mediaType: "video_canvas",
-      });
+      return embedEditor(adapter);
   }
   return unavailable("没有匹配的受信任 typed editor adapter。");
 }
@@ -536,44 +601,25 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   if (pinnedRoute === "embed") {
     const pinnedEditor = String(item.meta.editor || "").toLowerCase();
     if (item.kind === "website" || pinnedEditor === "website") {
-      return available("website", {
-        type: "embed",
-        base: "https://website.oceanleo.com/embed/site-editor",
-        mediaType: "website",
-      });
+      return embedEditor("website");
     }
     if (
       item.kind === "video_canvas" ||
       pinnedEditor === "video-canvas"
     ) {
-      return available("video-canvas", {
-        type: "embed",
-        base: "https://video.oceanleo.com/canvas-board",
-        mediaType: "video_canvas",
-      });
+      return embedEditor("video-canvas");
     }
     if (
       templateDocumentUrl ||
       item.kind === "canvas" ||
       pinnedEditor === "design-canvas"
     ) {
-      return available("design-canvas", {
-        type: "embed",
-        base: "https://design.oceanleo.com/embed/editor",
-        mediaType: "canvas",
-      });
+      return embedEditor("design-canvas");
     }
   }
-  if (
-    /^https:\/\/asset\.oceanleo\.com\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(
-      templateDocumentUrl,
-    )
-  ) {
-    return available("design-canvas", {
-      type: "embed",
-      base: "https://design.oceanleo.com/embed/editor",
-      mediaType: "canvas",
-    });
+  // 素材域按**当前家族**取，正则不再写死 `.com`。`.com` 站的判定逐字不变。
+  if (isFamilyDesignTemplateDocUrl(templateDocumentUrl)) {
+    return embedEditor("design-canvas");
   }
 
   if (item.kind === "website" || contentType === "website") {
@@ -584,11 +630,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       !item.url &&
       !item.previewUrl
     ) {
-      return available("website", {
-        type: "embed",
-        base: "https://website.oceanleo.com/embed/site-editor",
-        mediaType: "website",
-      });
+      return embedEditor("website");
     }
     const projectId =
       item.meta.website_id ||
@@ -602,31 +644,19 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
         "这个网站条目只有预览，没有可恢复的项目、模板或 GitHub 源码。",
       );
     }
-    return available("website", {
-        type: "embed",
-        base: "https://website.oceanleo.com/embed/site-editor",
-        mediaType: "website",
-      });
+    return embedEditor("website");
   }
 
   if (
     item.kind === "video_canvas" ||
     (item.kind === "canvas" && item.meta.editor === "video-canvas")
   ) {
-    return available("video-canvas", {
-        type: "embed",
-        base: "https://video.oceanleo.com/canvas-board",
-        mediaType: "video_canvas",
-      });
+    return embedEditor("video-canvas");
   }
   // A canvas is an editable project capability in its own right. Blank drafts
   // intentionally have no URL/nodes yet and must work from every hosting site.
   if (item.kind === "canvas") {
-    return available("design-canvas", {
-      type: "embed",
-      base: "https://design.oceanleo.com/embed/editor",
-      mediaType: "canvas",
-    });
+    return embedEditor("design-canvas");
   }
 
   /**

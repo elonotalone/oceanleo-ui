@@ -12,7 +12,7 @@
 // 家族之间同样不互信：`.com` 页面不把 `.cn` 主机当第一方，反之亦然。境内页面去嵌
 // 一个 `.com` 主机不只是信任问题，它把境内用户的请求送出境。
 //
-// 依赖只有 lib/domain-family（本身零依赖、纯常量表）：iframe 渲染面含以 data: URL
+// 依赖只有 contracts/domain-family（本身零依赖、纯常量表）：iframe 渲染面含以 data: URL
 // 编译加载的模块，走 tests/helpers/module-bench.mjs 时相对依赖会被自动解析。
 // **不要**在这里再加别的依赖。
 
@@ -22,14 +22,14 @@ import {
   currentFamilyHasSubsite,
   isCurrentFamilyFirstPartyHost,
   registrableDomainsOfAllFamilies,
-} from "../lib/domain-family";
+} from "../contracts/domain-family";
 
 export const SANDBOX_ORIGIN_CONTRACT = "oceanleo.sandbox-origin.v1";
 
 /**
  * 用户生成内容的独立可注册域。永远不得视为第一方。
  * **两个家族的都在里面**：`.com` 页面要挡 leoapp.cn，`.cn` 页面要挡 oceanleo.app。
- * 与 lib/domain-family 同一事实源，不在这里另抄一份。
+ * 与 contracts/domain-family 同一事实源，不在这里另抄一份。
  */
 export const UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS = UNTRUSTED_CONTENT_DOMAINS;
 

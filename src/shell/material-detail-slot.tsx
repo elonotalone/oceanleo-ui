@@ -300,6 +300,10 @@ export function MaterialDetailUnavailable({
  * 本模块不新增也不放松任何 sandbox 授权。
  */
 export function gamePlayEmbedHref(item: LibraryItem): string {
+  // 境内 v1 没有 game 子站，`ARTIFACT_PLAY_ORIGIN` 是空串。这一句不是多余的：
+  // 少了它，下面的 `startsWith(`${""}/`)` 会退化成「任何根相对路径都算数」，
+  // 把本站的 /play/... 当成可内嵌的绝对落点。
+  if (!ARTIFACT_PLAY_ORIGIN) return "";
   for (const key of ["play_embed_href", "playEmbedHref"]) {
     const declared = safeArtifactPlayHref(item.meta?.[key]);
     if (declared && declared.startsWith(`${ARTIFACT_PLAY_ORIGIN}/`)) {

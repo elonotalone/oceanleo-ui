@@ -22,6 +22,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { browserClient, oceanleoConfigured, getUserEmail } from "../lib/auth";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
+import { currentDomainProfile } from "../contracts/domain-family";
 
 export interface SettingsPageProps {
   /** 站点特有的额外区块（如主站的「知识库」增删改查）。排在个人资料之后。 */
@@ -108,7 +109,7 @@ export function SettingsPage({ extraSections, knowledgeBaseLink = true }: Settin
                 {tt("在 OceanLeo 主站可添加跨任务记忆的偏好与背景信息，所有 AI 应用共享。")}
               </p>
               <a
-                href="https://oceanleo.com/settings"
+                href={`${currentDomainProfile().portalOrigin}/settings`}
                 className="mt-3 inline-block rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
               >
                 {tt("前往主站管理知识库 →")}

@@ -48,12 +48,18 @@ import {
   workspaceEntryFromLibraryItem,
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
+import {
+  currentDomainProfile,
+  currentFamilySubsiteOrigin,
+} from "../contracts/domain-family";
 
+// env 仍然优先；没给时按**当前家族**取网关与素材域（contracts/domain-family.ts）。
+// `.com` 与本地开发解析出来的仍是 api./asset.oceanleo.com（逐字不变）。
 const GATEWAY =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
       process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  "https://api.oceanleo.com";
+  currentDomainProfile().gatewayOrigin;
 
 export {
   MATERIAL_APP_BINDINGS_META_KEY,
@@ -206,11 +212,18 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
 };
 
 function designTemplateDocumentUrl(value = ""): string {
+  // design 子站与素材域都按**当前家族**取。境内 v1 没有 design 子站，
+  // `currentFamilySubsiteOrigin()` 给 undefined → 这里直接返回空串（fail closed），
+  // 而不是回落去信一个 `.com` 主机。
+  const designOrigin = currentFamilySubsiteOrigin("design");
+  if (!designOrigin) return "";
+  const designHost = new URL(designOrigin).hostname;
+  const assetHost = new URL(currentDomainProfile().assetOrigin).hostname;
   try {
     const actionUrl = new URL(value);
-    if (actionUrl.hostname !== "design.oceanleo.com") return "";
+    if (actionUrl.hostname !== designHost) return "";
     const documentUrl = new URL(actionUrl.searchParams.get("tplDoc") || "");
-    return documentUrl.hostname === "asset.oceanleo.com" &&
+    return documentUrl.hostname === assetHost &&
       /^\/design-templates\/doc\/[a-z0-9-]+\.json$/i.test(documentUrl.pathname)
       ? documentUrl.toString()
       : "";
@@ -391,7 +404,7 @@ export function platformToEntry(
       source_url: asset.source_url || "",
       template_doc_url: designTemplateDoc,
       starter_id: starterId,
-      asset_page_url: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
+      asset_page_url: `${currentDomainProfile().assetOrigin}/materials?asset=${encodeURIComponent(rawId)}`,
       // 平台素材这条路径不经 artifact 投影（`asset.*` 是另一套字段），所以热度要在这里
       // 单独放行一次，否则同一份 ambientCG 素材从这个入口进来就没有下载量、排序与
       // artifact 入口不一致。判据与放行名单同源（`artifact-contract.ts`）。
@@ -421,7 +434,7 @@ export function platformToEntry(
       ...(asset.tags || []),
       ...(asset.scene_tags || []),
     ],
-    linkUrl: `https://asset.oceanleo.com/materials?asset=${encodeURIComponent(rawId)}`,
+    linkUrl: `${currentDomainProfile().assetOrigin}/materials?asset=${encodeURIComponent(rawId)}`,
   });
 }
 

@@ -12,6 +12,7 @@ import {
   type WalletInfo,
 } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
+import { currentDomainProfile } from "../contracts/domain-family";
 import { ByokKeys } from "./ByokKeys";
 import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
@@ -39,7 +40,9 @@ export interface ApiPageProps {
 /** Shared AI-model market page used by the main site and every subsite. */
 export function ApiPage({
   onLogin,
-  billingHref = "https://oceanleo.com/billing",
+  // 门户在两个家族里都存在，所以这里按家族拼即可，不需要「暂未开放」态。
+  // `.com` 站解析出来的仍是 https://oceanleo.com/billing（逐字不变）。
+  billingHref = `${currentDomainProfile().portalOrigin}/billing`,
 }: ApiPageProps = {}) {
   const tt = useUI();
   const [user, setUser] = useState<User | null>(null);

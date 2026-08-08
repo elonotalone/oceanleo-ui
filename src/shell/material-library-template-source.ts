@@ -23,12 +23,15 @@ import type { LibraryItem } from "./library-data";
 import { MATERIAL_TAXONOMY_LABEL } from "./material-library-controller";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
+import { currentDomainProfile } from "../contracts/domain-family";
 
+// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
+// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变）。
 const GATEWAY =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
       process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  "https://api.oceanleo.com";
+  currentDomainProfile().gatewayOrigin;
 // ============================================================================
 
 export interface TemplateMaterialListing {

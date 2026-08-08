@@ -22,8 +22,11 @@ import type { SceneSelection } from "./material-scene-axis";
 import type { WorkspaceLibraryEntry, WorkspaceLibraryProps } from "./WorkspaceLibrary";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { currentDomainProfile } from "../contracts/domain-family";
 
-export const MATERIAL_LIBRARY_BASE = "https://asset.oceanleo.com/materials";
+// 素材域按**当前家族**取（contracts/domain-family.ts）：`.com` 站解析出来的仍是
+// https://asset.oceanleo.com/materials（逐字不变），`.cn` 站解析成 asset.oceanleo.cn。
+export const MATERIAL_LIBRARY_BASE = `${currentDomainProfile().assetOrigin}/materials`;
 
 export interface MaterialLibraryProps {
   materials: MaterialItem[];
@@ -199,7 +202,7 @@ export function safeCompleteLibraryHref(value: string | undefined): string {
   try {
     const url = new URL(value, MATERIAL_LIBRARY_BASE);
     return url.protocol === "https:" &&
-      url.hostname === "asset.oceanleo.com" &&
+      url.hostname === new URL(currentDomainProfile().assetOrigin).hostname &&
       url.pathname === "/materials"
       ? url.toString()
       : "";

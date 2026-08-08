@@ -8,7 +8,7 @@ import {
   type EditorToHostMessage,
   type HostToEditorMessage,
 } from "./editor-protocol-types.mjs";
-import { isCurrentFamilyFirstPartyHost } from "../lib/domain-family";
+import { isCurrentFamilyFirstPartyHost } from "../contracts/domain-family";
 import {
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,

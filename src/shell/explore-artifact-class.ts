@@ -28,6 +28,7 @@ import {
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
+import { currentFamilySubsiteOrigin } from "../contracts/domain-family";
 
 export type ExploreArtifactClass = "playable" | "material";
 
@@ -404,8 +405,14 @@ export const ARTIFACT_PLAY_ROUTE_PREFIX = "/play/artifact/";
  * `play_href` 需要能给绝对 URL。放行名单只有这一个 first-party host：
  * 用户产物本身住在 `*.oceanleo.app` 的沙箱里、由播放页 iframe 装载
  * （UC-1…UC-7），**顶层导航不许直奔沙箱 host**，否则就绕过了播放页那一层。
+ *
+ * 域名按**当前家族**拼（contracts/domain-family.ts）：`.com` 站解析出来的仍是
+ * `https://game.oceanleo.com`（逐字不变）。境内 v1 没有 game 子站，于是这里是
+ * **空串** —— 绝对播放地址一律不放行，回落到推导出来的站内路由，
+ * 而不是把用户顶层导航到 `.com`。
  */
-export const ARTIFACT_PLAY_ORIGIN = "https://game.oceanleo.com";
+export const ARTIFACT_PLAY_ORIGIN: string =
+  currentFamilySubsiteOrigin("game") ?? "";
 
 /** 落库的播放地址读这两个键（后端下划线 / 前端驼峰各一份）。 */
 const PLAY_HREF_META_KEYS = ["play_href", "playHref"] as const;

@@ -19,11 +19,12 @@ import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { listAgents, type AgentDef } from "../lib/agent";
 import { relatedSkillCategories } from "../lib/taxonomy";
 import { useUI } from "../i18n/ui/useUI";
+import { currentFamilySubsiteOrigin } from "../contracts/domain-family";
 
 const SKILL_SITE_ID = "agent";
-// canonical 主域已切到 agent.oceanleo.com（旧域 skill.* 301 跳转过来）。直接用新域，
-// 省一次 301 hop。
-const LEOSKILL_ORIGIN = "https://agent.oceanleo.com";
+// canonical 主域已切到 agent.<家族域>（旧域 skill.* 301 跳转过来）。直接用新域，
+// 省一次 301 hop。域名按**当前家族**拼（contracts/domain-family.ts）：`.com` 站解析
+// 出来的仍是 https://agent.oceanleo.com（逐字不变）。
 
 export interface SiteSkillDirectoryProps {
   /** 当前产品站 site_id（决定展示哪些 agent 分类）。 */
@@ -79,13 +80,20 @@ export function SiteSkillDirectory({
     [filtered, accent],
   );
 
+  // 境内 v1 没有 agent 子站，这里会拿到 undefined。**不许回落到 .com** ——
+  // 那等于把境内用户的请求和数据送出境。拿不到落点时不展示可点卡片，改为给一句
+  // 明确的「暂未开放」，而不是让用户点了没反应。父站自带 onOpenSkill 时不受影响。
+  const skillOrigin = currentFamilySubsiteOrigin(SKILL_SITE_ID);
+  const skillUnavailable = !skillOrigin && !onOpenSkill;
+
   const openSkill = (agentId: string) => {
     if (onOpenSkill) {
       onOpenSkill(agentId);
       return;
     }
+    if (!skillOrigin) return;
     window.open(
-      `${LEOSKILL_ORIGIN}/workspace?agent=${encodeURIComponent(agentId)}`,
+      `${skillOrigin}/workspace?agent=${encodeURIComponent(agentId)}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -93,11 +101,15 @@ export function SiteSkillDirectory({
 
   return (
     <AppDirectory
-      items={items}
+      items={skillUnavailable ? [] : items}
       accent={accent}
-      loading={loading}
+      loading={skillUnavailable ? false : loading}
       openLabel={tt("开聊")}
-      emptyText={tt("暂无与本站相关的 agent。")}
+      emptyText={
+        skillUnavailable
+          ? tt("agent 在境内版暂未开放。")
+          : tt("暂无与本站相关的 agent。")
+      }
       onOpen={(it) => openSkill(it.id)}
       nativeFirst
       nativeLabel={tt("按技能")}

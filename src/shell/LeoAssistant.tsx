@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { currentDomainProfile } from "../contracts/domain-family";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
@@ -57,11 +58,14 @@ import { useUI } from "../i18n/ui/useUI";
 // `oceanleo:leo-enabled`，关闭时输入框按钮 / 划词气泡 / 面板全部不出现。
 // ============================================================================
 
+// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
+// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变），
+// `.cn` 站解析成 https://api.oceanleo.cn —— 境内页面不会把请求发到境外网关。
 const GATEWAY_BASE =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_GATEWAY_URL ||
       process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY)) ||
-  "https://api.oceanleo.com";
+  currentDomainProfile().gatewayOrigin;
 
 /** 触发打开 leo 助手浮窗的全局事件名。LeoComposer 的「leo」按钮派发它。 */
 export const OPEN_LEO_EVENT = "oceanleo:open-leo";

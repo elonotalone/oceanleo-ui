@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { UITranslate } from "../i18n/ui/useUI";
+import { isCurrentFamilyFirstPartyHost } from "../contracts/domain-family";
 import { saveCreations, type MediaType } from "../lib/database";
 import { getArtifactItem } from "./artifact-client";
 import { importMediaUrl, isFirstPartyMediaUrl } from "../lib/media-proxy";
@@ -107,10 +108,12 @@ function isDurableArtifactUrl(url: string, mediaType: MediaType): boolean {
   if (mediaType !== "website") return false;
   try {
     const parsed = new URL(url);
+    // 「这个产物地址是否耐久」按**当前家族**判：`.com` 页面对 `.com` 主机的结论
+    // 逐字不变，而 `.cn` 页面不再把一个 `.com` 主机当成自家的耐久地址。
+    // isCurrentFamilyFirstPartyHost 同时把两个用户内容域挡在外面。
     return (
       parsed.protocol === "https:" &&
-      (parsed.hostname === "oceanleo.com" ||
-        parsed.hostname.endsWith(".oceanleo.com"))
+      isCurrentFamilyFirstPartyHost(parsed.hostname)
     );
   } catch {
     return false;
