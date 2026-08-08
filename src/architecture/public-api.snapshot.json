@@ -522,15 +522,117 @@
         },
         {
           "kind": "named",
+          "name": "CONFIGURED_DOMAIN_FAMILY",
+          "importedName": "CONFIGURED_DOMAIN_FAMILY",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
           "name": "createOceanLeoAppContext",
           "importedName": "createOceanLeoAppContext",
           "source": "./site-manifest"
         },
         {
           "kind": "named",
+          "name": "currentDomainFamily",
+          "importedName": "currentDomainFamily",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "currentDomainProfile",
+          "importedName": "currentDomainProfile",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "currentFamilyHasSubsite",
+          "importedName": "currentFamilyHasSubsite",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "currentFamilySubsiteOrigin",
+          "importedName": "currentFamilySubsiteOrigin",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "DEFAULT_DOMAIN_FAMILY",
+          "importedName": "DEFAULT_DOMAIN_FAMILY",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
           "name": "defineOceanLeoSiteManifest",
           "importedName": "defineOceanLeoSiteManifest",
           "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "DOMAIN_FAMILIES",
+          "importedName": "DOMAIN_FAMILIES",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "DomainFamily",
+          "importedName": "DomainFamily",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "domainFamilyProfile",
+          "importedName": "domainFamilyProfile",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "DomainFamilyProfile",
+          "importedName": "DomainFamilyProfile",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "domainProfileForHost",
+          "importedName": "domainProfileForHost",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "familyForHost",
+          "importedName": "familyForHost",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "familyHasSubsite",
+          "importedName": "familyHasSubsite",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "isCurrentFamilyFirstPartyHost",
+          "importedName": "isCurrentFamilyFirstPartyHost",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "isFirstPartyHostOf",
+          "importedName": "isFirstPartyHostOf",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "isUntrustedContentDomainHost",
+          "importedName": "isUntrustedContentDomainHost",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeHost",
+          "importedName": "normalizeHost",
+          "source": "./domain-family"
         },
         {
           "kind": "named",
@@ -606,9 +708,21 @@
         },
         {
           "kind": "named",
+          "name": "registrableDomainsOfAllFamilies",
+          "importedName": "registrableDomainsOfAllFamilies",
+          "source": "./domain-family"
+        },
+        {
+          "kind": "named",
           "name": "resolveCatalogAlias",
           "importedName": "resolveCatalogAlias",
           "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "sharedCookieDomainFor",
+          "importedName": "sharedCookieDomainFor",
+          "source": "./domain-family"
         },
         {
           "kind": "named",
