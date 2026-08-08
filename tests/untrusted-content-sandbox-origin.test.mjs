@@ -8,6 +8,7 @@
 //   5. 来自 frame 的消息限定为白名单指令集。
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -226,7 +227,11 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：依据域名后缀授信会把未来任何新开的子域自动纳入可信集合（§7.5），预览/UGC 域首当其冲。
 test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
-  assert.deepEqual([...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS], ["oceanleo.app"]);
+  // C5：不可信集合只增不减 —— 境内用户内容域 leoapp.cn 与海外的 oceanleo.app 同级。
+  assert.deepEqual(
+    [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
+    ["oceanleo.app", "leoapp.cn"],
+  );
   for (const host of [
     "oceanleo.app",
     "www.oceanleo.app",
@@ -235,6 +240,14 @@ test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
     "anything.website.oceanleo.com",
     "preview.oceanleo.com",
     "x.sandbox.oceanleo.com",
+    // C5：境内家族的同款主机，在 `.com` 页面上也必须是不可信的。
+    "leoapp.cn",
+    "www.leoapp.cn",
+    "p1-abc.leoapp.cn",
+    `p8080-${"a".repeat(32)}.website.oceanleo.cn`,
+    "preview.oceanleo.cn",
+    "x.sandbox.oceanleo.cn",
+    "x.usercontent.oceanleo.cn",
   ]) {
     assert.equal(isUntrustedContentHostname(host), true, host);
     assert.equal(isTrustedEditorOrigin(`https://${host}`), false, host);
@@ -260,6 +273,26 @@ test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
       host,
     );
   }
+  // C5/3 跨族不互信：本进程是默认家族（com），因此 `.cn` 的第一方主机在这里
+  // 一律不可信。境内页面去嵌一个 .com 主机（或反过来）不只是信任问题 ——
+  // 它把境内用户的请求送出境。注意这些 host 都**不是** UGC 域，挡住它们的是
+  // 家族判定本身，不是不可信集合。
+  for (const host of [
+    "oceanleo.cn",
+    "api.oceanleo.cn",
+    "asset.oceanleo.cn",
+    "design.oceanleo.cn",
+  ]) {
+    assert.equal(isUntrustedContentHostname(host), false, host);
+    assert.equal(isTrustedEditorOrigin(`https://${host}`), false, host);
+    assert.equal(isValidEditorTargetOrigin(`https://${host}`), false, host);
+    assert.equal(
+      isTrustedInteractiveViewerUrl(`https://${host}/workflow.html`),
+      false,
+      host,
+    );
+  }
+
   // W7 契约 §2 点名的两个「朴素后缀匹配」陷阱：都必须落在不可信一侧。
   for (const host of [
     "evil-oceanleo.app",
@@ -294,6 +327,87 @@ test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
     ),
     UNTRUSTED_FRAME_SANDBOX,
   );
+});
+
+// UC-3 §8.3 + UC-6 §8.6（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：境内家族若还能拿到 .com 的内嵌白名单，境内页面就会给一个境外主机
+// allow-same-origin，并把 postMessage 投过去 —— 既是跨族身份事故，也是数据出境事故
+// （_COMMON.md §1b.2）。反过来，白名单为空必须表现为「整条嵌入路径不可用」，
+// 而不是「降级成不可信沙箱后照样加载那个 .com 地址」。
+test("C5 境内家族：内嵌编辑器白名单为空，整条嵌入路径 fail closed", () => {
+  const probe = `
+    const sandbox = await import(${JSON.stringify(
+      new URL("../src/shell/editor-sandbox-origin.ts", import.meta.url).href,
+    )});
+    const protocol = await import(${JSON.stringify(
+      new URL("../src/shell/editor-protocol.ts", import.meta.url).href,
+    )});
+    const comBase = "https://website.oceanleo.com/embed/site-editor";
+    let buildThrew = false;
+    try {
+      protocol.buildEditorEmbedUrl(comBase, {
+        instanceId: "i1",
+        hostOrigin: "https://oceanleo.cn",
+      });
+    } catch {
+      buildThrew = true;
+    }
+    process.stdout.write(JSON.stringify({
+      bases: [...sandbox.TRUSTED_EMBED_EDITOR_BASES],
+      origins: [...sandbox.TRUSTED_EMBED_EDITOR_ORIGINS],
+      comBaseTrusted: sandbox.isTrustedEmbedEditorBase(comBase),
+      comBaseSandbox: sandbox.embedEditorFrameSandbox(comBase),
+      comBaseGrantsSameOrigin: sandbox.sandboxGrantsScriptedSameOrigin(
+        sandbox.embedEditorFrameSandbox(comBase),
+      ),
+      buildThrew,
+      comViewer: sandbox.isTrustedInteractiveViewerUrl("https://asset.oceanleo.com/a.html"),
+      cnViewer: sandbox.isTrustedInteractiveViewerUrl("https://asset.oceanleo.cn/a.html"),
+      comEditorOrigin: protocol.isTrustedEditorOrigin("https://design.oceanleo.com"),
+      cnEditorOrigin: protocol.isTrustedEditorOrigin("https://design.oceanleo.cn"),
+      appUntrusted: sandbox.isUntrustedContentHostname("oceanleo.app"),
+      leoappUntrusted: sandbox.isUntrustedContentHostname("leoapp.cn"),
+      cnPreviewUntrusted: sandbox.isUntrustedContentHostname(
+        "p8080-" + "a".repeat(32) + ".website.oceanleo.cn",
+      ),
+    }));
+  `;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      "--no-warnings",
+      "--experimental-loader",
+      new URL("./ts-extension-loader.mjs", import.meta.url).href,
+      "--input-type=module",
+      "-e",
+      probe,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "cn" },
+    },
+  );
+  assert.equal(child.status, 0, child.stderr);
+  const cn = JSON.parse(child.stdout);
+
+  // 境内 v1 没有 website/design/video 三个子站 → 白名单是空的，不是「换成 .cn 的」。
+  assert.deepEqual(cn.bases, []);
+  assert.deepEqual(cn.origins, []);
+  // .com 的 base 在境内既不可信，也拿不到 same-origin，且构造器直接拒绝。
+  assert.equal(cn.comBaseTrusted, false);
+  assert.equal(cn.comBaseSandbox, UNTRUSTED_FRAME_SANDBOX);
+  assert.equal(cn.comBaseGrantsSameOrigin, false);
+  assert.equal(cn.buildThrew, true, "境内不得构造出指向 .com 编辑器的 embed URL");
+  // 第一方判定整体换族：境内只信 .cn，不信 .com。
+  assert.equal(cn.comViewer, false, "境内页面不得把 .com 主机当第一方");
+  assert.equal(cn.cnViewer, true);
+  assert.equal(cn.comEditorOrigin, false);
+  assert.equal(cn.cnEditorOrigin, true);
+  // 两个家族的 UGC 域在境内同样都不可信（只增不减）。
+  assert.equal(cn.appUntrusted, true);
+  assert.equal(cn.leoappUntrusted, true);
+  assert.equal(cn.cnPreviewUntrusted, true);
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）

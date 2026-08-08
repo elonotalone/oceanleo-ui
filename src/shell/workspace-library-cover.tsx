@@ -367,17 +367,30 @@ function supportsPdfCover(
  * rendition 网关（响应带 `Content-Security-Policy: sandbox`，落在 opaque origin），
  * 域外的对象存储主机本就读不到会话 cookie，用户内容域 `oceanleo.app` 一律挡掉。
  */
-const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = ["api.oceanleo.com"];
+// 两个家族的网关都写在这里，判定按「落在哪个 cookie 域里」逐个 host 走，不按页面
+// 当前属于哪个家族 —— 这一层是**降权**判定，多覆盖一个家族只会更严：
+//   * `.oceanleo.cn` 下的主机以前落在「cookie 域外」，被当成对象存储放行；
+//     现在它落在 cn 家族的 cookie 域内，于是只有 cn 网关能放行，其余一律拒。
+//   * leoapp.cn 以前完全没被排除，现在与 oceanleo.app 同等挡掉。
+// 对 `.com` 主机的结论与本轮改动前逐字相同（`api.oceanleo.com` 放行，其余 cookie
+// 域内主机拒，域外对象存储放行）。
+const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
+  "api.oceanleo.com",
+  "api.oceanleo.cn",
+];
 const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
   "oceanleo.app",
+  "leoapp.cn",
 ];
-const SSO_COOKIE_REGISTRABLE_DOMAIN = "oceanleo.com";
+const SSO_COOKIE_REGISTRABLE_DOMAINS: readonly string[] = [
+  "oceanleo.com",
+  "oceanleo.cn",
+];
 
-/** 判定 host 是否落在共享 cookie 域内。这是降权判定，不是授信判定。 */
+/** 判定 host 是否落在**任一家族**的共享 cookie 域内。这是降权判定，不是授信判定。 */
 function isUnderSsoCookieDomain(host: string): boolean {
-  return (
-    host === SSO_COOKIE_REGISTRABLE_DOMAIN ||
-    host.endsWith(`.${SSO_COOKIE_REGISTRABLE_DOMAIN}`)
+  return SSO_COOKIE_REGISTRABLE_DOMAINS.some(
+    (domain) => host === domain || host.endsWith(`.${domain}`),
   );
 }
 

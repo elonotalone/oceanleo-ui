@@ -58,7 +58,9 @@ const ALLOWED_PDF_URLS = [
   // （backend/app/routers/artifacts_router.py:1265），落在 opaque origin。
   "https://api.oceanleo.com/v1/artifact-renditions/access/abc123",
   "https://api.oceanleo.com/v1/media/proxy?url=x",
-  // cookie 域外的对象存储主机：读不到 Domain=.oceanleo.com 的会话 cookie。
+  // C5：境内家族的 rendition 网关，与 .com 那条同一档。
+  "https://api.oceanleo.cn/v1/artifact-renditions/access/abc123",
+  // cookie 域外的对象存储主机：读不到会话 cookie。
   "https://kvrtcumcmhyqhmawpzyc.supabase.co/storage/v1/object/public/media-uploads/u/a/b.pdf",
   "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/a/b.pdf",
 ];
@@ -77,6 +79,14 @@ const BLOCKED_PDF_URLS = [
   // 用户内容可注册域：即使在 cookie 域外，免沙箱 frame 仍可顶层导航/弹窗/下载。
   "https://oceanleo.app/x.pdf",
   "https://game-42.oceanleo.app/x.pdf",
+  // C5 收紧：境内家族的同款主机。leoapp.cn 是境内用户内容域；`.oceanleo.cn` 下的
+  // 非网关主机以前被当成「cookie 域外的对象存储」放行，现在落在 cn 的 cookie 域内。
+  "https://leoapp.cn/x.pdf",
+  "https://game-42.leoapp.cn/x.pdf",
+  "https://oceanleo.cn/x.pdf",
+  "https://asset.oceanleo.cn/x.pdf",
+  "https://website.oceanleo.cn/x.pdf",
+  "http://api.oceanleo.cn/x.pdf",
   // 协议 / 端口 / 凭据 / 相对地址一律 fail closed。
   "http://api.oceanleo.com/x.pdf",
   "https://api.oceanleo.com:8443/x.pdf",
@@ -188,8 +198,15 @@ test("W19/2 两处 PDF frame 都在渲染前过白名单，且两份实现逐字
       /PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string\[\] = \[([^\]]*)\]/g,
     ),
   ].map((match) => match[1]);
-  assert.deepEqual(gatewayHosts, ['"api.oceanleo.com"']);
-  assert.deepEqual([...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS], ["oceanleo.app"]);
+  // C5：两个家族的网关都在表内。这不是放宽 —— `api.oceanleo.cn` 本来就因为
+  // 「不在 .com 的 cookie 域内」而被放行（当对象存储处理），现在它改为按 cn 家族
+  // 的 cookie 域内网关放行，而 `.oceanleo.cn` 下的**其余**主机从「放行」变成「拒绝」。
+  assert.deepEqual(gatewayHosts, ['\n  "api.oceanleo.com",\n  "api.oceanleo.cn",\n']);
+  assert.deepEqual(
+    [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
+    ["oceanleo.app", "leoapp.cn"],
+    "两个家族的用户内容域都必须在不可信集合里（只增不减）",
+  );
   for (const [name, text] of [
     ["library-viewers.tsx", viewers],
     ["workspace-library-cover.tsx", cover],

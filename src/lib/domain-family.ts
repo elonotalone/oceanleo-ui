@@ -44,6 +44,17 @@ export interface DomainFamilyProfile {
   assetOrigin: string;
   /** 本家族的用户生成内容域。永远不属于本家族，永远不可信。 */
   untrustedContentDomain: string;
+  /**
+   * 本家族**确实存在**的子站（子域标签 / 站 key）。
+   *
+   * `"all"` = 该家族是产品全集（海外版就是全集，所以它的解析结果与本轮改动前
+   * 逐字相同）。数组 = 显式清单，**不在清单里就是不存在**。
+   *
+   * 这是 fail closed 的那一侧：境内 v1 是空数组，于是境内既拿不到子站链接，也
+   * 拿不到内嵌编辑器白名单。将来某个子站境内上线，必须**显式**把它的 key 加进
+   * 这里才会出现 —— 不会因为「忘了配」而自动指回海外站，把境内用户送出境。
+   */
+  availableSubsites: "all" | readonly string[];
 }
 
 /**
@@ -59,6 +70,8 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     gatewayOrigin: "https://api.oceanleo.com",
     assetOrigin: "https://asset.oceanleo.com",
     untrustedContentDomain: "oceanleo.app",
+    // 海外版是产品全集：35 个子站都在，链接与内嵌白名单与改动前逐字相同。
+    availableSubsites: "all",
   },
   cn: {
     family: "cn",
@@ -68,6 +81,10 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     gatewayOrigin: "https://api.oceanleo.cn",
     assetOrigin: "https://asset.oceanleo.cn",
     untrustedContentDomain: "leoapp.cn",
+    // 境内 v1 只有门户：一个子站都还没部署过（台账 §B2 广州机零个业务站容器、
+    // §C4 门户连 standalone 产物都还没有）。空清单 = 子站链接不展示为可点、
+    // 内嵌编辑器白名单为空。**不要**为了「看起来完整」在这里填上还不存在的站。
+    availableSubsites: [],
   },
 };
 
@@ -89,6 +106,16 @@ export const REGISTRABLE_DOMAINS: readonly string[] = Object.freeze(
  * 认不出来的 host（localhost、*.vercel.app、预览域）解析结果与本轮改动前逐字相同。
  */
 export const DEFAULT_DOMAIN_FAMILY: DomainFamily = "com";
+
+/**
+ * 所有家族的可注册域。给「要对**每个**家族都成立」的判定用 —— 典型是不可信集合：
+ * 预览/沙箱子域这类标记要在两族同时生效，`.com` 页面也得挡住 `.cn` 的预览主机。
+ * 想要「当前家族的那一个」时用 `currentDomainProfile().registrableDomain`，
+ * 别拿这张表在别处手写后缀判定。
+ */
+export function registrableDomainsOfAllFamilies(): readonly string[] {
+  return REGISTRABLE_DOMAINS;
+}
 
 /**
  * 用户生成内容的独立可注册域，**两个家族的都在这里**。
@@ -230,6 +257,37 @@ export function currentDomainFamily(): DomainFamily {
 /** 当前家族的档案。运行时 URL（网关、素材、门户链接）从这里取。 */
 export function currentDomainProfile(): DomainFamilyProfile {
   return domainFamilyProfile(currentDomainFamily());
+}
+
+/**
+ * `family` 里是否**确实存在** `subsite` 这个子站。
+ *
+ * 缺省是「不存在」：清单里没有就是没有。调用方不得在拿到 false 之后回落到别的
+ * 家族的同名子站 —— 那正是「境内点一下就被送出境」的那条路。
+ */
+export function familyHasSubsite(
+  family: DomainFamily | undefined,
+  subsite: string,
+): boolean {
+  const { availableSubsites } = domainFamilyProfile(family);
+  if (availableSubsites === "all") return true;
+  return availableSubsites.includes(subsite);
+}
+
+/** 当前家族里是否存在该子站。 */
+export function currentFamilyHasSubsite(subsite: string): boolean {
+  return familyHasSubsite(currentDomainFamily(), subsite);
+}
+
+/**
+ * 当前家族里该子站的 origin；该家族没有这个子站时 `undefined`。
+ * 拿到 `undefined` 的正确处理是「不给链接」，不是「换个家族再拼一个」。
+ */
+export function currentFamilySubsiteOrigin(
+  subsite: string,
+): string | undefined {
+  if (!currentFamilyHasSubsite(subsite)) return undefined;
+  return `https://${subsite}.${currentDomainProfile().registrableDomain}`;
 }
 
 /** 当前家族下的第一方判定。授信面用这一个，不要各自再写 host 判断。 */

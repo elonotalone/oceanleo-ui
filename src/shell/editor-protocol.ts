@@ -8,6 +8,7 @@ import {
   type EditorToHostMessage,
   type HostToEditorMessage,
 } from "./editor-protocol-types.mjs";
+import { isCurrentFamilyFirstPartyHost } from "../lib/domain-family";
 import {
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,
@@ -147,9 +148,10 @@ export function isTrustedEditorOrigin(origin: string): boolean {
       return protocol === "http:" || protocol === "https:";
     }
     if (protocol !== "https:" || parsed.port) return false;
-    return (
-      hostname === "oceanleo.com" || hostname.endsWith(".oceanleo.com")
-    );
+    // 按**当前家族**判第一方，不再写死 `.oceanleo.com`：`.com` 页面对 `.com`
+    // origin 的结论与改动前逐字相同，而 `.cn` 页面只信 `.cn` origin。
+    // postMessage 是双向的，跨族互信一旦成立，境内页面就会把消息投给境外 frame。
+    return isCurrentFamilyFirstPartyHost(hostname);
   } catch {
     return false;
   }
