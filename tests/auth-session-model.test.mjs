@@ -329,6 +329,77 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
 });
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：cookieOptions() 是会话客户端真正消费的 API；只锁 cookieDomainFor 不锁它，
+// 两族各自只下发本族 domain 这条性质在消费端就没有直接证据。
+test("C5/1+2 cookieOptions 层：两族各自只下发本族 domain，其余属性不变", () => {
+  const com = cookieOptions("www.oceanleo.com");
+  assert.equal(com.domain, ".oceanleo.com");
+  const cn = cookieOptions("ppt.oceanleo.cn");
+  assert.equal(cn.domain, ".oceanleo.cn");
+  // 会话模型的其余部分两族一致、且与改动前一致。
+  for (const opts of [com, cn]) {
+    assert.equal(opts.path, "/");
+    assert.equal(opts.sameSite, "lax");
+    assert.equal(opts.secure, true);
+    assert.equal(opts.httpOnly, false);
+  }
+  // 两个用户内容域与形似域：连 domain 键都不能出现。
+  for (const host of [
+    "oceanleo.app",
+    "x.oceanleo.app",
+    "leoapp.cn",
+    "x.leoapp.cn",
+    "notoceanleo.com",
+    "evil-oceanleo.cn",
+    "oceanleo.cn.evil.com",
+  ]) {
+    assert.equal("domain" in cookieOptions(host), false, host);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：性质 3 是「没有任何一条**路径**」。只测两个取域函数，将来新增一个写死
+// domain 字面量或裸后缀判定的写入点，上面所有用例照样全绿 —— 那条新路径就是家族
+// 串门的入口。这里扫全包源码（去整行注释），把「第二条路径」本身判红。
+test("C5/3 全包扫描：除家族表外不存在第二条 cookie 域产出路径", async () => {
+  // 自己扫，不读本文件底部那份 packageSources：node 的测试回调会在模块顶层
+  // await 悬置期间就开始执行，那时 packageSources 还是空 Map —— 扫它等于
+  // 零迭代假绿（变异验证抓到过这个形态）。
+  const sources = new Map();
+  for (const url of await sourceFilesUnder(SRC_ROOT)) {
+    sources.set(url.href.slice(SRC_ROOT.href.length), await readFile(url, "utf8"));
+  }
+  assert.ok(sources.size > 500, `扫描集异常（${sources.size}），空扫=假绿`);
+  assert.ok(
+    sources.has("pages/ApiPage.tsx") && sources.has("lib/auth/config.ts"),
+    "扫描集必须覆盖 pages/ 与 lib/auth/",
+  );
+  for (const [path, source] of sources) {
+    // 注释允许谈论这些字符串（domain-family.ts 的注释就在解释历史写法）；
+    // 只把整行注释剥掉再扫，行尾注释里的代码仍受约束。
+    const code = source
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join("\n");
+    assert.doesNotMatch(
+      code,
+      /domain\s*=\s*["'`]?\.oceanleo\.(com|cn)/i,
+      `${path}: 出现写死的 cookie domain 下发`,
+    );
+    assert.doesNotMatch(
+      code,
+      /endsWith\(\s*["'`]\.oceanleo\.(com|cn)["'`]\s*\)/,
+      `${path}: 出现裸后缀判定`,
+    );
+    assert.doesNotMatch(
+      code,
+      /slice\(-\d+\)\s*===?\s*["'`]\.oceanleo\.(com|cn)["'`]/,
+      `${path}: 出现定长切片后缀判定（历史上 ThemeScript 的写法）`,
+    );
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：家族表是这条红线的唯一事实源；有人在别处再写一份 host 判定或让家族由任意域名字符串拼出来，隔离就只剩这份测试在纸上成立。
 test("C5 家族表是写死的两行，且不接受任意域名字符串", async () => {
   const familyModule = await import("../src/contracts/domain-family.ts");
