@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
+import { sharedCookieDomainFor } from "../lib/domain-family";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 import { useTheme } from "../theme/ThemeProvider";
@@ -51,11 +52,13 @@ export interface GeneralPageProps {
 }
 
 function setLocaleCookie(locale: Locale) {
+  // 语言 cookie 跟着**请求 host 所属家族**走同一条边界：`.com` 站写 `.oceanleo.com`，
+  // `.cn` 站写 `.oceanleo.cn`。家族判定与会话 cookie 同一事实源
+  // （lib/domain-family.ts），所以语言 cookie 不可能比会话铺得更宽。
+  // 本地 / 预览域与用户内容域拿不到家族 → 不写 domain（host-only）。
   const host = typeof window !== "undefined" ? window.location.hostname : "";
-  const domainAttr =
-    host.endsWith(".oceanleo.com") || host === "oceanleo.com"
-      ? "; domain=.oceanleo.com"
-      : "";
+  const cookieDomain = sharedCookieDomainFor(host);
+  const domainAttr = cookieDomain ? `; domain=${cookieDomain}` : "";
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${domainAttr}`;
 }
 

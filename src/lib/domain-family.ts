@@ -74,6 +74,17 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
 export const DOMAIN_FAMILIES = Object.keys(FAMILIES) as readonly DomainFamily[];
 
 /**
+ * 每个家族的可注册域。给**必须内联进 HTML 的脚本**用（`<ThemeScript>` 在首帧
+ * 同步执行，引不了运行时模块），其余地方一律走 `familyForHost()`，
+ * 不要拿这张表在别处再手写一遍后缀判定。
+ */
+export const REGISTRABLE_DOMAINS: readonly string[] = Object.freeze(
+  (Object.keys(FAMILIES) as DomainFamily[]).map(
+    (family) => FAMILIES[family].registrableDomain,
+  ),
+);
+
+/**
  * 缺省家族。海外版是既有行为，境内版是新增行为，所以缺省必须是 `com`：
  * 认不出来的 host（localhost、*.vercel.app、预览域）解析结果与本轮改动前逐字相同。
  */

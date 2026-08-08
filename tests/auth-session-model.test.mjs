@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 import { cookieDomainFor, cookieOptions } from "../src/lib/auth/config.ts";
+import { compileModule } from "./helpers/module-bench.mjs";
 
 const CONFIG_URL = new URL("../src/lib/auth/config.ts", import.meta.url);
 const LOADER_URL = new URL("./ts-extension-loader.mjs", import.meta.url).href;
@@ -367,6 +369,135 @@ test("C5 家族表是写死的两行，且不接受任意域名字符串", async
     /endsWith\(`?\.?oceanleo\.(com|cn)/,
     "config.ts 不得再出现裸后缀判定",
   );
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：主题/语言 cookie 若比会话 cookie 铺得更宽（例如仍写死 .oceanleo.com），境内站就会往境外可注册域上写 cookie；而写死的那份一旦被当成「反正不是会话，无所谓」，下一个人就会照抄这份判定去写会话。
+test("C5 非会话 cookie（主题/语言）与会话走同一条家族边界", async () => {
+  const { sharedCookieDomainFor } = await import("../src/lib/domain-family.ts");
+  for (const host of ["oceanleo.com", "ppt.oceanleo.com", "PPT.OCEANLEO.COM"]) {
+    assert.equal(sharedCookieDomainFor(host), ".oceanleo.com", host);
+  }
+  for (const host of ["oceanleo.cn", "ppt.oceanleo.cn", "PPT.OCEANLEO.CN"]) {
+    assert.equal(sharedCookieDomainFor(host), ".oceanleo.cn", host);
+  }
+  // 用户内容域与形似域：非会话 cookie 也一样 host-only，不许因为「只是主题」而放宽。
+  for (const host of [
+    "oceanleo.app",
+    "x.oceanleo.app",
+    "leoapp.cn",
+    "x.leoapp.cn",
+    "notoceanleo.com",
+    "evil-oceanleo.cn",
+    "oceanleo.cn.evil.com",
+    "localhost",
+    "oceanleo-ppt.vercel.app",
+    "",
+    null,
+  ]) {
+    assert.equal(sharedCookieDomainFor(host), undefined, `${host} 必须 host-only`);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：只要还剩一处写死 `domain=.oceanleo.com`，境内站在那一处就会退回往境外域写 cookie，而且这类回潮不会报错、只会静默生效。
+test("C5 四个 cookie 写入点都从家族表取域，没有写死的 domain 字面量", async () => {
+  const writers = {
+    "pages/GeneralPage.tsx": "sharedCookieDomainFor",
+    "i18n/LanguageSwitcher.tsx": "sharedCookieDomainFor",
+    "theme/ThemeProvider.tsx": "sharedCookieDomainFor",
+    // 首帧同步执行，引不了运行时模块，只能注入常量表。
+    "theme/ThemeScript.tsx": "REGISTRABLE_DOMAINS",
+  };
+  for (const [relative, helper] of Object.entries(writers)) {
+    const source = await readFile(new URL(`../src/${relative}`, import.meta.url), "utf8");
+    assert.match(
+      source,
+      new RegExp(`import \\{[^}]*${helper}[^}]*\\} from "\\.\\.?/(\\.\\./)?lib/domain-family"`),
+      `${relative} 必须从 lib/domain-family 取域，不得自己写一份判定`,
+    );
+    assert.doesNotMatch(
+      source,
+      /domain=\.oceanleo\.(com|cn)/,
+      `${relative} 不得写死 cookie domain`,
+    );
+    assert.doesNotMatch(
+      source,
+      /endsWith\("\.oceanleo\.(com|cn)"\)/,
+      `${relative} 不得再写裸后缀判定`,
+    );
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：这段脚本是唯一一处「安全相关的域名判定被写进内联 HTML」的地方。它拿的是注入的常量表，若有人在这里手写第二份后缀判定（历史上是 slice(-13)），家族表就不再是唯一事实源，两边会各自漂移。
+test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不只读源码）", async () => {
+  // `.tsx` 进不了 node 的 type-stripping，走仓里的编译台（它会自动解析
+  // ThemeScript 对 lib/domain-family 的那条 import，所以测的是真表、不是替身）。
+  const [{ ThemeScript }, { THEME_COOKIE }, React, { renderToStaticMarkup }] =
+    await Promise.all([
+      import(await compileModule("src/theme/ThemeScript.tsx")),
+      import("../src/theme/theme-config.ts"),
+      import("react"),
+      import("react-dom/server"),
+    ]);
+
+  const markup = renderToStaticMarkup(React.createElement(ThemeScript));
+  const inline = markup
+    .replace(/^<script[^>]*>/, "")
+    .replace(/<\/script>$/, "");
+  assert.ok(inline.includes("oceanleo.com"), "内联脚本必须带上 .com 可注册域");
+  assert.ok(inline.includes("oceanleo.cn"), "内联脚本必须带上 .cn 可注册域");
+  // 历史写法：写死长度 13 的 slice。它一旦回来，加第三个家族时就会静默失效。
+  assert.equal(inline.includes("slice(-13)"), false, "不得写死后缀长度");
+
+  const runFor = (hostname) => {
+    const writes = [];
+    const context = {
+      location: { hostname },
+      localStorage: { getItem: () => null, setItem: () => {} },
+      document: {
+        get cookie() {
+          return "";
+        },
+        set cookie(value) {
+          writes.push(value);
+        },
+        documentElement: {
+          classList: { add: () => {}, remove: () => {} },
+          style: {},
+        },
+      },
+      window: { matchMedia: () => ({ matches: false }) },
+    };
+    vm.createContext(context);
+    vm.runInContext(inline, context);
+    return writes;
+  };
+
+  const clearsShadow = (hostname) =>
+    runFor(hostname).some(
+      (value) => value.startsWith(`${THEME_COOKIE}=;`) && value.includes("max-age=0"),
+    );
+
+  // 两族的第一方 host 都要清影子（境内站也需要这条跨站跟随的修复）。
+  for (const host of ["oceanleo.com", "ppt.oceanleo.com", "oceanleo.cn", "ppt.oceanleo.cn"]) {
+    assert.equal(clearsShadow(host), true, `${host} 应当清 host-only 影子 cookie`);
+  }
+  // 拿不到家族的 host 一律不动 cookie：那里的 host-only cookie 就是唯一事实源。
+  for (const host of [
+    "oceanleo.app",
+    "x.oceanleo.app",
+    "leoapp.cn",
+    "x.leoapp.cn",
+    "notoceanleo.com",
+    "evil-oceanleo.cn",
+    "oceanleo.cn.evil.com",
+    "localhost",
+    "oceanleo-ppt.vercel.app",
+  ]) {
+    assert.equal(clearsShadow(host), false, `${host} 不属于任何家族，不得改它的 cookie`);
+  }
 });
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）

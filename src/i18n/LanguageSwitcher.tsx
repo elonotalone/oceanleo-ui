@@ -10,6 +10,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useLocale } from "next-intl";
+import { sharedCookieDomainFor } from "../lib/domain-family";
 import {
   LOCALES,
   LOCALE_COOKIE,
@@ -29,11 +30,13 @@ export interface LanguageSwitcherProps {
 }
 
 function setLocaleCookie(locale: Locale) {
-  // 顶级域 cookie，和 SSO / 主题一样跨 *.oceanleo.com 子域共享语言选择。本地/预览域名
-  // (localhost / *.vercel.app) 不写 domain，避免无效 cookie。
+  // 顶级域 cookie，和 SSO / 主题一样跨同一家族的子域共享语言选择：
+  // `.com` 站写 `.oceanleo.com`，`.cn` 站写 `.oceanleo.cn`。家族判定与会话
+  // cookie 同一事实源（lib/domain-family.ts），所以语言 cookie 不可能比会话
+  // 铺得更宽。本地/预览域与用户内容域拿不到家族 → 不写 domain（host-only）。
   const host = typeof window !== "undefined" ? window.location.hostname : "";
-  const domainAttr =
-    host.endsWith(".oceanleo.com") || host === "oceanleo.com" ? "; domain=.oceanleo.com" : "";
+  const cookieDomain = sharedCookieDomainFor(host);
+  const domainAttr = cookieDomain ? `; domain=${cookieDomain}` : "";
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${domainAttr}`;
 }
 

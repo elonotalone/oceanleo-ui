@@ -12,12 +12,17 @@ import {
   DARK_VARIANT_THEMES,
   LIGHT_VARIANT_THEMES,
 } from "./theme-config";
+import { REGISTRABLE_DOMAINS } from "../lib/domain-family";
 
 // 客户端内联脚本源码。同步执行（无 async），在 <head> 里先于任何绘制运行：
-//   0. *.oceanleo.com 上先清掉 host-only「影子」cookie（v0.67/v0.68 存量）：影子创建
-//      更早会排在请求头/document.cookie 最前，遮住跨站共享的 `.oceanleo.com` 域 cookie，
+//   0. 认得出家族的 host 上先清掉 host-only「影子」cookie（v0.67/v0.68 存量）：影子创建
+//      更早会排在请求头/document.cookie 最前，遮住跨站共享的域 cookie，
 //      导致「站 B 改了主题、站 A 不跟随」。清掉后 domain cookie 成为唯一事实源，
 //      本次即按它应用类名，下次请求头也干净了（SSR 首帧同步跟随）。
+//      家族表由 lib/domain-family.ts 以 JSON 注入（本脚本首帧同步执行，引不了运行时
+//      模块，所以只能注入常量；**不要**在这里手写第二份域名后缀判定）。
+//      判定与 familyForHost() 逐字同构：等于该可注册域，或以 `.该域` 结尾 ——
+//      不是裸 endsWith，否则 notoceanleo.com 会被当成自己人。
 //   1. 读 cookie → 没有则读 localStorage → 都没有则用默认（auto）。
 //   2. auto 时用 matchMedia 取系统偏好。
 //   3. 在 documentElement 上加类名（class 策略，配合 @custom-variant）：
@@ -28,7 +33,9 @@ const INLINE = `(function(){try{
 var C=${JSON.stringify(THEME_COOKIE)},L=${JSON.stringify(THEME_STORAGE_KEY)},D=${JSON.stringify(DEFAULT_THEME_MODE)};
 var DV=${JSON.stringify(DARK_VARIANT_THEMES)},LV=${JSON.stringify(LIGHT_VARIANT_THEMES)};
 var h=location.hostname;
-if(h==="oceanleo.com"||h.slice(-13)===".oceanleo.com"){try{document.cookie=C+"=; path=/; max-age=0; samesite=lax";}catch(e){}}
+var RD=${JSON.stringify(REGISTRABLE_DOMAINS)},fam=false;
+for(var ri=0;ri<RD.length;ri++){var rd=RD[ri];if(h===rd||h.slice(-(rd.length+1))==="."+rd){fam=true;break;}}
+if(fam){try{document.cookie=C+"=; path=/; max-age=0; samesite=lax";}catch(e){}}
 var m=null;
 try{var mt=document.cookie.match(new RegExp("(?:^|; )"+C+"=([^;]*)"));if(mt)m=decodeURIComponent(mt[1]);}catch(e){}
 if(!m){try{m=localStorage.getItem(L);}catch(e){}}

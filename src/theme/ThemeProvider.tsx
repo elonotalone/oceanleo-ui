@@ -27,6 +27,7 @@ import {
   type ThemeMode,
   type ThemeAppearance,
 } from "./theme-config";
+import { sharedCookieDomainFor } from "../lib/domain-family";
 
 interface ThemeContextValue {
   /** 用户选择的模式（light/dark/auto + 7 个特色主题）。 */
@@ -85,14 +86,18 @@ function readCookieMode(): string | null {
 // 与客户端正则都取第一个 → 站 A 永远读到旧值、不跟随；站 A 的自愈回写还会把旧值
 // 写回 domain cookie，反向污染全家桶。
 //
-// 现在：*.oceanleo.com 上【只写 domain cookie】（单一跨站事实源），并主动清除
-// host-only 影子（含 v0.67/v0.68 用户浏览器里的存量）；host-only 仅在非 oceanleo
-// 域（localhost / *.vercel.app 预览）使用。localStorage 永远写（同源兜底）。
+// 现在：认得出家族的 host 上【只写 domain cookie】（单一跨站事实源），并主动清除
+// host-only 影子（含 v0.67/v0.68 用户浏览器里的存量）；host-only 仅在拿不到家族的
+// 域（localhost / *.vercel.app 预览 / 用户内容域）使用。localStorage 永远写（同源兜底）。
+//
+// 域从写死的 `.oceanleo.com` 改成按家族解析（lib/domain-family.ts）：`.com` 站仍然
+// 逐字得到 `.oceanleo.com`，`.cn` 站得到 `.oceanleo.cn`。两族的主题 cookie 各写各的，
+// 与会话同一条边界 —— 不会出现「境内站读到海外站主题」这种跨族串门。
 // 返回值：cookie 是否成功落地（读回校验）。
 function writeCookie(mode: ThemeMode): boolean {
   if (typeof document === "undefined") return false;
   const host = window.location.hostname;
-  const onOceanleo = host.endsWith(".oceanleo.com") || host === "oceanleo.com";
+  const cookieDomain = sharedCookieDomainFor(host);
   const secure =
     typeof location !== "undefined" && location.protocol === "https:" ? "; secure" : "";
   const base = `${THEME_COOKIE}=${mode}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax`;
@@ -104,12 +109,12 @@ function writeCookie(mode: ThemeMode): boolean {
     /* ignore */
   }
 
-  if (onOceanleo) {
+  if (cookieDomain) {
     // 顶级域 cookie = 唯一跨站事实源；同时清掉本站 host-only 影子（若有）。
     clearHostOnlyThemeCookie();
-    document.cookie = `${base}; domain=.oceanleo.com${secure}`;
+    document.cookie = `${base}; domain=${cookieDomain}${secure}`;
   } else {
-    // 本地 / 预览域：domain=.oceanleo.com 不匹配会被拒，写 host-only。
+    // 本地 / 预览域：写任何家族的 domain 都不匹配、会被浏览器拒，直接写 host-only。
     document.cookie = `${base}${secure}`;
   }
 
