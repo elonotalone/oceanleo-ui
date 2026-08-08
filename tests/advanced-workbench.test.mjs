@@ -326,7 +326,10 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   );
   assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
   assert.match(protocol, /record\.instanceId !== instanceId/);
-  assert.match(protocol, /hostname\.endsWith\("\.oceanleo\.com"\)/);
+  // C5 家族化：授信判定不再裸 endsWith(".oceanleo.com")，而是走共享家族判定
+  //（含 .cn 家族；形似域与 UGC 域在判定层 fail closed）。
+  assert.match(protocol, /isCurrentFamilyFirstPartyHost\(hostname\)/);
+  assert.doesNotMatch(protocol, /endsWith\(["'`]\.oceanleo\.(com|cn)["'`]\)/);
   assert.match(embed, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(embed, /event\.origin !== editorOrigin/);
   assert.match(embed, /\{ \.\.\.message, protocol: EDITOR_PROTOCOL, instanceId \}/);

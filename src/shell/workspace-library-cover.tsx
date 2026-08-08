@@ -353,19 +353,15 @@ function supportsPdfCover(
 
 /**
  * UC-1 / UC-3 —— 免沙箱 PDF 封面 frame 的第一方主机白名单。
- * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1、
- * §7.5、§8.1、§8.3。
+ * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1/§7.5/§8.1/§8.3。
  *
- * 与 `library-viewers.tsx` 的同名判定逐字保持一致（本模块被渲染测试以 data: URL
- * 加载，不能引入相对运行时依赖，因此只能复制而不能 import；两份实现的一致性由
- * tests/untrusted-content-pdf-frame-host.test.mjs 的源码对账断言锁死）。
+ * 与 `library-viewers.tsx` 同名判定逐字一致：本模块被渲染测试以 data: URL 加载，不能
+ * 引入相对运行时依赖，只能复制；一致性由 untrusted-content-pdf-frame-host.test.mjs 锁死。
  *
- * Chromium 内建 PDF 查看器加**任何** sandbox 属性都不渲染（crbug 413851），所以
- * PDF 封面只能免沙箱。免沙箱 frame 读不到宿主 DOM，但读得到**它自己 origin** 的
- * cookie，而 `Domain=.oceanleo.com` 的会话 cookie 不是 httpOnly，对任意
- * `*.oceanleo.com` 主机都是「自己的 cookie」。因此 cookie 域内只放行写死的第一方
- * rendition 网关（响应带 `Content-Security-Policy: sandbox`，落在 opaque origin），
- * 域外的对象存储主机本就读不到会话 cookie，用户内容域 `oceanleo.app` 一律挡掉。
+ * Chromium 内建 PDF 查看器加任何 sandbox 属性都不渲染（crbug 413851），PDF 封面只能免
+ * 沙箱。免沙箱 frame 读不到宿主 DOM，但读得到自己 origin 的 cookie，而会话 cookie 非
+ * httpOnly，对 cookie 域内任意主机都是「自己的 cookie」。因此域内只放行写死的第一方
+ * rendition 网关（响应带 CSP sandbox，落 opaque origin），域外主机与 UGC 域一律挡掉。
  */
 // 两个家族的网关都写在这里，判定按「落在哪个 cookie 域里」逐个 host 走，不按页面
 // 当前属于哪个家族 —— 这一层是**降权**判定，多覆盖一个家族只会更严：

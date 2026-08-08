@@ -141,9 +141,10 @@ test("Design template series keeps its layered document for Advanced editing", (
   assert.match(source, /siteId: designTemplateDoc \? "design" : "asset"/);
   assert.match(source, /siteId: templateDocUrl \? "design" : ""/);
   assert.match(routesSource, /item\.meta\.template_doc_url/);
+  // C5 家族化：design 内嵌编辑器的 origin 按当前家族拼，写死的是子站标签与路径。
   assert.match(
     routesSource,
-    /design\.oceanleo\.com\/embed\/editor[\s\S]*?mediaType: "canvas"/,
+    /subsite: "design",\s*path: "\/embed\/editor",\s*mediaType: "canvas"/,
   );
 });
 

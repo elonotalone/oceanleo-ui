@@ -54,13 +54,15 @@ test("advanced Design sessions preserve and recover their layered editor route",
   );
   assert.match(source, /"template_doc_url"/);
   assert.match(source, /\^site:tpl-\(\[a-z0-9-\]\+\)\$/);
+  // C5 家族化：素材域与 design 内嵌 origin 都按当前家族解析，写死的是路径与
+  // 子站标签；这里锁拼接模板与 pinned 路由落点。
   assert.match(
     source,
-    /asset\.oceanleo\.com\/design-templates\/doc\/\$\{legacyTemplate\[1\]\}\.json/,
+    /assetOrigin\}\/design-templates\/doc\/\$\{legacyTemplate\[1\]\}\.json/,
   );
   assert.match(
     routes,
-    /pinnedRoute === "embed"[\s\S]*?const pinnedEditor[\s\S]*?item\.kind === "canvas"[\s\S]*?pinnedEditor === "design-canvas"[\s\S]*?design\.oceanleo\.com\/embed\/editor/,
+    /pinnedRoute === "embed"[\s\S]*?const pinnedEditor[\s\S]*?item\.kind === "canvas"[\s\S]*?pinnedEditor === "design-canvas"[\s\S]*?embedEditor\("design-canvas"\)/,
   );
 });
 
