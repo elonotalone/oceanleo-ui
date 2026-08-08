@@ -24,6 +24,22 @@
 // 不要「为了更安全」在这里把 httpOnly 打开：那会让浏览器客户端读不到
 // session，31 个站一起变成登不上的状态，而不是变安全。
 // 本模型由 tests/auth-session-model.test.mjs 锁死。
+//
+// ---------------------------------------------------------------------------
+// 域名家族（2026-08-08，境内版落地）
+// ---------------------------------------------------------------------------
+// 同一份代码要同时服务 oceanleo.com（海外）与 oceanleo.cn（境内），而两边的
+// 登录态必须永不串门。做法不是在这里加一个 `.cn` 分支，而是把「共享会话的
+// 可注册域」从一个字面量换成 lib/domain-family.ts 里的一张写死的家族表：
+// 每次判定先由请求 host 定出**至多一个**家族，再在那一行里取 cookie 域。
+// 家族之间没有回落分支，所以「.com 的会话落到 .cn」在实现层面无法表达。
+// 用户内容域（oceanleo.app / leoapp.cn）不属于任何家族，一律 host-only。
+
+import {
+  currentDomainProfile,
+  domainProfileForHost,
+  familyForHost,
+} from "../domain-family";
 
 export const SUPABASE_URL =
   process.env.NEXT_PUBLIC_OCEANLEO_SUPABASE_URL ||
@@ -35,46 +51,49 @@ export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "";
 
+// 网关 origin。env 仍然优先；没给时按**当前家族**取，海外与本地开发解析出来
+// 的仍然是 https://api.oceanleo.com（与本轮改动前逐字相同）。
 export const GATEWAY_BASE =
   process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
   process.env.NEXT_PUBLIC_GATEWAY_URL ||
-  "https://api.oceanleo.com";
+  currentDomainProfile().gatewayOrigin;
 
-// The parent domain that all *.oceanleo.com subdomains share. Setting the auth
-// cookie's Domain to this makes one login on ANY subdomain visible to ALL of
-// them — the whole point of the OceanLeo "全家桶" SSO.
-// 注意：留空并**不会**得到 host-only —— 空值会回落到默认 `.oceanleo.com`。
-// localhost / 预览域之所以是 host-only，靠的是 cookieDomainFor() 的 host 判定。
-const RAW_COOKIE_DOMAIN = (
-  process.env.NEXT_PUBLIC_OCEANLEO_COOKIE_DOMAIN || ".oceanleo.com"
-).trim();
-
-// 共享会话的唯一可注册域（eTLD+1）。写死是刻意的：它是信任边界，不是可调参数。
-// 尤其不得改成 / 扩展到 `oceanleo.app` —— 那是用户生成内容域，把它纳入共享
-// cookie 域等于把全家桶身份直接交给不可信页面。
-const SSO_REGISTRABLE_DOMAIN = "oceanleo.com";
-
-function isUnderSsoDomain(host: string): boolean {
-  return host === SSO_REGISTRABLE_DOMAIN || host.endsWith(`.${SSO_REGISTRABLE_DOMAIN}`);
-}
-
-// Only apply a cross-subdomain Domain on real oceanleo.com hosts. On localhost
-// / vercel preview hosts we must NOT send Domain=.oceanleo.com (the browser
-// would silently drop the cookie), so we fall back to host-only there.
+// 跨子站 cookie 的 Domain。缺省不再是一个写死的字面量，而是**请求 host 所属
+// 家族**那一行的 cookieDomain：`.com` host 得到 `.oceanleo.com`，
+// `.cn` host 得到 `.oceanleo.cn`，别的 host 什么都得不到。
 //
-// 判定必须是「等于 oceanleo.com 或以 .oceanleo.com 结尾」——不能用裸
-// `endsWith("oceanleo.com")`，那会把 `notoceanleo.com` / `evil-oceanleo.com`
-// 这类不同注册域也算进来。任何拿不准的 host 一律 fail closed 到 host-only。
+// env 覆盖是运维口子，不是信任边界的口子：它只能在**同一个家族内**改写
+// （例如收窄到某个子域），指到别的家族或用户内容域一律 fail closed。
+// 注意 env 存在但只有空白 = 显式关掉共享域（host-only），与改动前一致。
+const COOKIE_DOMAIN_ENV = process.env.NEXT_PUBLIC_OCEANLEO_COOKIE_DOMAIN;
+const COOKIE_DOMAIN_OVERRIDE = (COOKIE_DOMAIN_ENV || "").trim();
+const COOKIE_DOMAIN_ENV_PRESENT = Boolean(COOKIE_DOMAIN_ENV);
+
+/**
+ * 该 host 应当拿到的 cookie Domain；拿不准一律 `undefined`（host-only）。
+ *
+ * 必须成立的性质（tests/auth-session-model.test.mjs 逐条锁死）：
+ *   1. `.com` 家族的 host 只可能拿到 `.oceanleo.com`；
+ *   2. `.cn` 家族的 host 只可能拿到 `.oceanleo.cn`；
+ *   3. 两个家族之间没有任何一条互相拿到对方 cookie 域的路径；
+ *   4. 用户内容域 `oceanleo.app` 与 `leoapp.cn` 都拿 host-only；
+ *   5. 形似域（notoceanleo.com / evil-oceanleo.cn / oceanleo.cn.evil.com）
+ *      与 localhost / 预览域一律 host-only。
+ *
+ * 判定入口只有 familyForHost() 一个，它对每个 host 至多给出一个家族，
+ * 且没有「认不出来就当 .com」的回落 —— 那个回落正是家族串门的唯一可能来源。
+ */
 export function cookieDomainFor(host: string | null | undefined): string | undefined {
-  const h = (host || "").split(":")[0].toLowerCase().replace(/\.$/, "");
-  if (!RAW_COOKIE_DOMAIN) return undefined;
-  // localhost、*.vercel.app、*.oceanleo.app（用户内容域）与各种形似域：host-only。
-  if (!isUnderSsoDomain(h)) return undefined;
-  // 纵深防御：env 覆盖也必须落在同一个可注册域内。指到别的域时浏览器本就会丢弃
-  // 该 cookie；而指到用户内容域则是把会话送给不可信页面。两种都 fail closed。
-  const parent = RAW_COOKIE_DOMAIN.replace(/^\./, "").toLowerCase();
-  if (!isUnderSsoDomain(parent)) return undefined;
-  return RAW_COOKIE_DOMAIN;
+  const family = familyForHost(host);
+  if (!family) return undefined;
+  if (COOKIE_DOMAIN_ENV_PRESENT && !COOKIE_DOMAIN_OVERRIDE) return undefined;
+  if (!COOKIE_DOMAIN_OVERRIDE) return domainProfileForHost(host).cookieDomain;
+  // 纵深防御：env 覆盖必须落在**这个 host 自己的家族**里。指到别的家族时浏览器
+  // 本就会丢弃该 cookie；指到用户内容域则是把会话送给不可信页面。两种都 fail closed。
+  if (familyForHost(COOKIE_DOMAIN_OVERRIDE.replace(/^\./, "")) !== family) {
+    return undefined;
+  }
+  return COOKIE_DOMAIN_OVERRIDE;
 }
 
 // Shared cookie options. `domain` is filled in per-request from the Host header

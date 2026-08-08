@@ -13,6 +13,7 @@ import test from "node:test";
 import { cookieDomainFor, cookieOptions } from "../src/lib/auth/config.ts";
 
 const CONFIG_URL = new URL("../src/lib/auth/config.ts", import.meta.url);
+const LOADER_URL = new URL("./ts-extension-loader.mjs", import.meta.url).href;
 const MIDDLEWARE_URL = new URL("../src/lib/auth/middleware.ts", import.meta.url);
 const CLIENT_URL = new URL("../src/lib/auth/client.ts", import.meta.url);
 
@@ -106,7 +107,18 @@ test("env 覆盖也不能把共享 cookie 域挪到 oceanleo.com 之外", () => 
   const run = (cookieDomain) => {
     const child = spawnSync(
       process.execPath,
-      ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", probe],
+      [
+        "--experimental-strip-types",
+        "--no-warnings",
+        // config.ts 引了 lib/domain-family.ts（家族表）。子进程和父进程一样要带
+        // 扩展名解析 loader，否则那条相对 import 会 ERR_MODULE_NOT_FOUND，
+        // 整条 env 探针变成「进程起不来」而不是「断言不成立」。
+        "--experimental-loader",
+        LOADER_URL,
+        "--input-type=module",
+        "-e",
+        probe,
+      ],
       {
         encoding: "utf8",
         env: { ...process.env, NEXT_PUBLIC_OCEANLEO_COOKIE_DOMAIN: cookieDomain },
@@ -123,6 +135,238 @@ test("env 覆盖也不能把共享 cookie 域挪到 oceanleo.com 之外", () => 
   assert.deepEqual(run(""), { com: ".oceanleo.com", app: null });
   // 正常生产配置仍然工作（零回归）。
   assert.deepEqual(run(".oceanleo.com"), { com: ".oceanleo.com", app: null });
+});
+
+// —————————————————————————————————————————————————————————————————————
+// 域名家族隔离（C5，2026-08-08）—— 一套代码同时服务 .com 与 .cn
+//
+// 下面 5 条对应 C5 任务书列出的 5 条必须成立的性质。它们守的是同一件事：
+// 会话 cookie 不是 HttpOnly，Domain 是唯一的保护边界，所以「.com 的身份在 .cn
+// 上生效」与「用户内容域拿到共享身份」是同一类事故，只是域名不同。
+// —————————————————————————————————————————————————————————————————————
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：境内站拿不到共享 cookie 域，跨子站 SSO 不成立；或更糟——拿到 .com 的域，境内会话被写到境外可注册域上。
+test("C5/1+2 家族内：.com host 只拿 .oceanleo.com，.cn host 只拿 .oceanleo.cn", () => {
+  for (const host of [
+    "oceanleo.com",
+    "ppt.oceanleo.com",
+    "p8080-deadbeef.website.oceanleo.com",
+    "PPT.OCEANLEO.COM",
+    "ppt.oceanleo.com:3000",
+    "ppt.oceanleo.com.",
+  ]) {
+    assert.equal(cookieDomainFor(host), ".oceanleo.com", host);
+  }
+  for (const host of [
+    "oceanleo.cn",
+    "ppt.oceanleo.cn",
+    "p8080-deadbeef.website.oceanleo.cn",
+    "PPT.OCEANLEO.CN",
+    "ppt.oceanleo.cn:3000",
+    "ppt.oceanleo.cn.",
+  ]) {
+    assert.equal(cookieDomainFor(host), ".oceanleo.cn", host);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：两个家族互相拿得到对方的 cookie 域，就等于在 .com 登录的身份在 .cn 上生效——境内会话与境外会话合流，既是身份事故也是数据出境事故。
+test("C5/3 家族之间没有任何一条互相拿到对方 cookie 域的路径", () => {
+  // 穷举两族的代表 host：每个 host 的结果只能是自己那一族的 cookie 域。
+  const byFamily = {
+    ".oceanleo.com": ["oceanleo.com", "a.oceanleo.com", "a.b.oceanleo.com"],
+    ".oceanleo.cn": ["oceanleo.cn", "a.oceanleo.cn", "a.b.oceanleo.cn"],
+  };
+  for (const [expected, hosts] of Object.entries(byFamily)) {
+    for (const host of hosts) {
+      const got = cookieDomainFor(host);
+      assert.equal(got, expected, host);
+      // 反向断言：结果里绝不能出现另一族的可注册域。
+      const other = expected === ".oceanleo.com" ? "oceanleo.cn" : "oceanleo.com";
+      assert.equal(String(got).includes(other), false, `${host} 串到了 ${other}`);
+    }
+  }
+  // 同一个字符串里同时含两族片段的 host 不属于任何一族。
+  for (const host of [
+    "oceanleo.cn.oceanleo.com.evil.test",
+    "oceanleo.com.oceanleo.cn.evil.test",
+  ]) {
+    assert.equal(cookieDomainFor(host), undefined, host);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：用户内容域上跑的是用户自己的代码；把它纳入共享 cookie 域，那段代码就能直接读走 access token 和 refresh token（§7.5）。leoapp.cn 是境内版的同一个角色，漏掉它等于境内重演一次同样的事故。
+test("C5/4 两个用户内容域 oceanleo.app 与 leoapp.cn 都必须是 host-only", () => {
+  for (const host of [
+    "oceanleo.app",
+    "www.oceanleo.app",
+    "p8080-deadbeef.oceanleo.app",
+    "preview.website.oceanleo.app",
+    "leoapp.cn",
+    "www.leoapp.cn",
+    "p8080-deadbeef.leoapp.cn",
+    "preview.website.leoapp.cn",
+  ]) {
+    assert.equal(
+      cookieDomainFor(host),
+      undefined,
+      `${host} 是用户生成内容域，绝不能进入任何共享 SSO 域`,
+    );
+    assert.equal("domain" in cookieOptions(host), false, host);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：形似域一旦被判成自己人，攻击者只要注册 evil-oceanleo.cn 就能收到本该发给境内站的会话 cookie。
+test("C5/5 形似域与本地/预览域一律 fail closed 到 host-only", () => {
+  for (const host of [
+    // .com 侧的形似域（裸 endsWith 会误判）
+    "notoceanleo.com",
+    "evil-oceanleo.com",
+    "myoceanleo.com",
+    // .cn 侧的同款陷阱
+    "notoceanleo.cn",
+    "evil-oceanleo.cn",
+    "myoceanleo.cn",
+    "oceanleocn",
+    // 后缀在别处的攻击者域
+    "oceanleo.com.attacker.net",
+    "oceanleo.cn.evil.com",
+    "oceanleo.cn.attacker.net",
+    "x.oceanleo.app.attacker.com",
+    // 别的 .cn 可注册域
+    "oceanleo.com.cn",
+    "leo.cn",
+    "cn",
+    // 本地与预览
+    "localhost",
+    "localhost:3000",
+    "127.0.0.1",
+    "oceanleo-ppt.vercel.app",
+    // 空值
+    "",
+    "   ",
+    null,
+    undefined,
+  ]) {
+    assert.equal(cookieDomainFor(host), undefined, `${host} 必须 host-only`);
+  }
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：红线若能被一条环境变量跨族改写，家族隔离就只是默认值而不是边界——一次部署配置写错就能把境内会话写到 .com 上。
+test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 fail closed", () => {
+  const probe = `
+    const m = await import(${JSON.stringify(CONFIG_URL.href)});
+    process.stdout.write(JSON.stringify({
+      com: m.cookieDomainFor("ppt.oceanleo.com") ?? null,
+      cn: m.cookieDomainFor("ppt.oceanleo.cn") ?? null,
+      app: m.cookieDomainFor("x.oceanleo.app") ?? null,
+      leoapp: m.cookieDomainFor("x.leoapp.cn") ?? null,
+    }));
+  `;
+  const run = (cookieDomain) => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        "--no-warnings",
+        "--experimental-loader",
+        LOADER_URL,
+        "--input-type=module",
+        "-e",
+        probe,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, NEXT_PUBLIC_OCEANLEO_COOKIE_DOMAIN: cookieDomain },
+      },
+    );
+    assert.equal(child.status, 0, child.stderr);
+    return JSON.parse(child.stdout);
+  };
+
+  // 没设 env：每族各自拿到自己的缺省，用户内容域两个都空。
+  assert.deepEqual(run(""), {
+    com: ".oceanleo.com",
+    cn: ".oceanleo.cn",
+    app: null,
+    leoapp: null,
+  });
+  // env 指向 .com：.com host 照旧，.cn host **拿不到任何东西**（不是回落到 .com）。
+  assert.deepEqual(run(".oceanleo.com"), {
+    com: ".oceanleo.com",
+    cn: null,
+    app: null,
+    leoapp: null,
+  });
+  // env 指向 .cn：镜像成立。
+  assert.deepEqual(run(".oceanleo.cn"), {
+    com: null,
+    cn: ".oceanleo.cn",
+    app: null,
+    leoapp: null,
+  });
+  // env 指向任一用户内容域：全线 fail closed。
+  for (const bad of [".oceanleo.app", "oceanleo.app", ".leoapp.cn", "leoapp.cn"]) {
+    assert.deepEqual(
+      run(bad),
+      { com: null, cn: null, app: null, leoapp: null },
+      bad,
+    );
+  }
+  // env 只有空白 = 显式关掉共享域（改动前的行为，不得回潮成「当没设」）。
+  assert.deepEqual(run("   "), {
+    com: null,
+    cn: null,
+    app: null,
+    leoapp: null,
+  });
+});
+
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：家族表是这条红线的唯一事实源；有人在别处再写一份 host 判定或让家族由任意域名字符串拼出来，隔离就只剩这份测试在纸上成立。
+test("C5 家族表是写死的两行，且不接受任意域名字符串", async () => {
+  const familyModule = await import("../src/lib/domain-family.ts");
+  const {
+    DOMAIN_FAMILIES,
+    DEFAULT_DOMAIN_FAMILY,
+    UNTRUSTED_CONTENT_DOMAINS,
+    familyForHost,
+    isFirstPartyHostOf,
+  } = familyModule;
+  assert.deepEqual([...DOMAIN_FAMILIES], ["com", "cn"]);
+  // 缺省必须是 com：认不出来的 host 解析结果要与境内版落地之前逐字相同。
+  assert.equal(DEFAULT_DOMAIN_FAMILY, "com");
+  assert.deepEqual([...UNTRUSTED_CONTENT_DOMAINS], ["oceanleo.app", "leoapp.cn"]);
+  assert.equal(familyForHost("ppt.oceanleo.com"), "com");
+  assert.equal(familyForHost("ppt.oceanleo.cn"), "cn");
+  for (const host of ["oceanleo.app", "leoapp.cn", "evil-oceanleo.cn", ""]) {
+    assert.equal(familyForHost(host), undefined, host);
+  }
+  // 第一方判定按族分：.com 页面不信 .cn 主机，反之亦然。
+  assert.equal(isFirstPartyHostOf("api.oceanleo.com", "com"), true);
+  assert.equal(isFirstPartyHostOf("api.oceanleo.cn", "com"), false);
+  assert.equal(isFirstPartyHostOf("api.oceanleo.cn", "cn"), true);
+  assert.equal(isFirstPartyHostOf("api.oceanleo.com", "cn"), false);
+  for (const family of ["com", "cn"]) {
+    for (const host of ["oceanleo.app", "leoapp.cn", "x.oceanleo.app", "x.leoapp.cn"]) {
+      assert.equal(isFirstPartyHostOf(host, family), false, `${host}@${family}`);
+    }
+  }
+  // 家族名写错 = 当没写（fail closed 到缺省），不得让 env 拼出第三个家族。
+  assert.match(
+    configSource,
+    /familyForHost\(/,
+    "config.ts 必须走家族表判定，不得再写死一个可注册域",
+  );
+  assert.doesNotMatch(
+    configSource,
+    /endsWith\(`?\.?oceanleo\.(com|cn)/,
+    "config.ts 不得再出现裸后缀判定",
+  );
 });
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
