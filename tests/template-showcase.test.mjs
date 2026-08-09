@@ -663,8 +663,9 @@ test("主预览：不再硬写 16/10，图片走 object-contain（缩略图条�
   const source = await readFile(resolve("src/shell/ImageLightbox.tsx"), "utf8");
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(code, /"16 \/ 10"[\s\S]{0,80}object-cover/);
-  // 硬比例只剩「没有图、纯 emoji 兜底」那一支可以用（没有内容可裁）。
-  assert.equal((code.match(/16 \/ 10/g) ?? []).length, 1);
+  // 连「没有图、纯 emoji 兜底」那一支也不再用硬比例：兜底与主预览共用固定舞台高度，
+  // 这样有图没图两条路的容器尺寸都不随加载状态变。
+  assert.equal((code.match(/16 \/ 10/g) ?? []).length, 0);
 });
 
 test("主预览按素材真实宽高比自适应：元数据里的 width/height 直接生效", () => {
@@ -689,12 +690,25 @@ test("主预览按素材真实宽高比自适应：元数据里的 width/height 
   }
 });
 
-test("主预览：没有元数据时先按 object-contain 渲染，图片 onLoad 报出比例后再定高", async () => {
-  // 没有 width/height → 首帧不设 aspect-ratio（宁可让图自己撑高，也不硬摆一个比例）。
-  assert.match(markup({ templates: [TPL_A] }), /data-preview-fit="contain"/);
+// 用户报的缺陷：卡片点开后预览框先矮一截，图片加载完才撑开，看着像卡住。根因是容器
+// 高度等图片 `onLoad` 报出 naturalWidth/naturalHeight 才定得下来。所以判据不是「最后
+// 高度对不对」，而是**图片到达前后容器尺寸一个字节都不许变**。
+test("主预览：没有元数据时用固定舞台高度，图片到达前后容器尺寸零变化", async () => {
+  // 没有 width/height → 不设 aspect-ratio，改用固定舞台高度，首帧就是最终高度。
+  const first = markup({ templates: [TPL_A] });
+  assert.match(first, /data-preview-fit="contain"/);
+  assert.match(first, /height:\s*52vh/, "未知比例时应给固定舞台高度");
 
   await withDom(async ({ window, render, click, find }) => {
     await render({ templates: [TPL_A] });
+    const box = find("[data-template-showcase-preview]");
+    const before = {
+      fit: box.getAttribute("data-preview-fit"),
+      height: box.style.height,
+      aspectRatio: box.style.aspectRatio,
+      minHeight: box.style.minHeight,
+    };
+
     const img = find("[data-template-showcase-preview] img");
     assert.ok(img);
     // jsdom 不真下载图片，直接伪造 naturalWidth/naturalHeight 再触发 load。
@@ -702,19 +716,19 @@ test("主预览：没有元数据时先按 object-contain 渲染，图片 onLoad
     Object.defineProperty(img, "naturalHeight", { configurable: true, value: 1600 });
     await act(async () => img.dispatchEvent(new window.Event("load")));
 
-    const box = find("[data-template-showcase-preview]");
-    assert.equal(box.getAttribute("data-preview-fit"), "intrinsic");
-    assert.ok(
-      Math.abs(Number(box.style.aspectRatio) - 900 / 1600) < 1e-6,
-      `aspect-ratio 应为 900/1600，实际 ${box.style.aspectRatio}`,
-    );
-    // 切到另一份素材（真点缩略图）：上一份的自然比例必须作废，不能拿旧比例摆新图。
+    const after = find("[data-template-showcase-preview]");
+    assert.equal(after.getAttribute("data-preview-fit"), before.fit, "图片到达后 fit 变了");
+    assert.equal(after.style.height, before.height, "图片到达后容器高度变了 —— 这就是那一跳");
+    assert.equal(after.style.aspectRatio, before.aspectRatio, "图片到达后容器比例变了");
+    assert.equal(after.style.minHeight, before.minHeight);
+
+    // 切到另一份素材（真点缩略图）：仍旧是固定舞台，不会残留上一份的任何尺寸。
     await render({ templates: [TPL_A, TPL_B] });
-    assert.equal(find("[data-template-showcase-preview]").getAttribute("data-preview-fit"), "intrinsic");
     await click('[data-template-thumb][data-template-id="poster-b"]');
     const next = find("[data-template-showcase-preview]");
     assert.match(next.querySelector("img").getAttribute("src"), /image-poster-2\.webp$/);
     assert.equal(next.getAttribute("data-preview-fit"), "contain");
+    assert.equal(next.style.height, before.height);
   });
 });
 

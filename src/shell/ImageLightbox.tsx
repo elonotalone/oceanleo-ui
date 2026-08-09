@@ -126,12 +126,14 @@ export interface TemplateShowcaseProps {
  */
 const PREVIEW_MAX_HEIGHT = "60vh";
 
+/** 元数据没有宽高比时使用的稳定舞台高度；低于主预览现有的 60vh 上限。 */
+const PREVIEW_FALLBACK_HEIGHT = "52vh";
+
 /**
  * 素材元数据里的宽高比（`width` / `height`，由官方模板端点透出）。
  *
  * 刻意用宽松读法而不是给 `TemplateMaterial` 加字段：那个接口在 `app-catalog.ts` 里，
- * 不在本组件 owner 的边界内；字段正式落地前先按可选属性取，取不到就回落图片
- * onLoad 报的 naturalWidth/naturalHeight。
+ * 不在本组件 owner 的边界内；字段正式落地前先按可选属性取。
  */
 function metaAspectRatio(item: TemplateMaterial | null): number | null {
   const meta = item as (TemplateMaterial & { width?: unknown; height?: unknown }) | null;
@@ -184,9 +186,6 @@ export function TemplateShowcase({
     setMounted(true);
   }, []);
 
-  // 图片自己报的自然宽高比，带 src 一起存：切换模板后不能拿上一份的比例摆新素材。
-  const [loadedRatio, setLoadedRatio] = useState<{ src: string; ratio: number } | null>(null);
-
   // 打开即聚焦关闭键。依赖 `mounted` 是必须的：内联首帧那棵树在 portal 接上时会被
   // 卸载重挂，焦点随着旧节点一起消失，只跑一次的话浮层打开后焦点会停在 body 上。
   useEffect(() => {
@@ -217,11 +216,9 @@ export function TemplateShowcase({
       ? assetPreviewUrl(imageKey)
       : "";
 
-  // 主预览的宽高比：素材元数据优先，其次图片自然尺寸；两者都没有时不设 aspect-ratio，
-  // 高度由图片自身撑开（配合 object-contain，任一分支都不会裁切）。
-  const previewRatio =
-    metaAspectRatio(selected) ??
-    (loadedRatio && loadedRatio.src === bigImage ? loadedRatio.ratio : null);
+  // 只有打开时已经拿到素材元数据才按真实比例定高；未知比例固定使用 52vh 舞台，
+  // 图片到达后只在舞台内 object-contain，不再用自然尺寸改变容器高度。
+  const previewRatio = metaAspectRatio(selected);
 
   // 「预览&编辑」按 **artifactId** 定位（库预览页按 artifact 取数，不是 templateId）。
   // 选中项缺 artifactId 时这条深链拼不出只读落点，宁可退回调用方给的兜底，也不产出
@@ -273,15 +270,16 @@ export function TemplateShowcase({
           <div className="min-w-0">
             {/* 主预览**不许裁切**：document / grid 这两类素材的全部价值就是让用户看清
                 版面结构，`aspectRatio: 16/10` + `object-cover` 那套硬比例会把 84% 的素材
-                切掉一圈（问题 3）。所以容器跟着素材真实比例走（元数据 → 图片自然尺寸），
-                图片一律 `object-contain`，比例未知时干脆不设 aspect-ratio 让图自己撑高。
+                切掉一圈（问题 3）。所以有元数据时容器跟着素材真实比例走；比例未知时
+                不设 aspect-ratio，改用固定高度舞台。图片一律 `object-contain`。
                 只有下方缩略图条保留 object-cover —— 那里等比塞进小方块，裁切是合理的。 */}
             <div
               data-template-showcase-preview
               data-preview-fit={previewRatio ? "intrinsic" : "contain"}
               className="relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-stone-100"
               style={{
-                aspectRatio: previewRatio ?? (bigImage ? undefined : "16 / 10"),
+                aspectRatio: previewRatio ?? undefined,
+                height: previewRatio ? undefined : PREVIEW_FALLBACK_HEIGHT,
                 maxHeight: PREVIEW_MAX_HEIGHT,
                 minHeight: "180px",
               }}
@@ -291,12 +289,7 @@ export function TemplateShowcase({
                 <img
                   src={bigImage}
                   alt={paneTitle}
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    if (!img.naturalWidth || !img.naturalHeight) return;
-                    setLoadedRatio({ src: bigImage, ratio: img.naturalWidth / img.naturalHeight });
-                  }}
-                  className="h-auto w-full object-contain"
+                  className="h-full w-full object-contain"
                   style={{ maxHeight: PREVIEW_MAX_HEIGHT }}
                 />
               ) : (
