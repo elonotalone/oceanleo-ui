@@ -38,9 +38,11 @@ function oldDeckIr(extra = {}) {
 }
 
 test("既有稿子不带 packId/sequenceId 仍通过", () => {
-  const validation = validateDeckIr(oldDeckIr());
+  const draft = oldDeckIr();
+  const validation = validateDeckIr(draft);
 
   assert.equal(validation.ok, true, JSON.stringify(validation.errors));
+  assert.equal(validation.project, draft, "校验不得改写既有稿子对象");
   assert.equal(validation.project.packId, undefined);
   assert.equal(validation.project.sequenceId, undefined);
   assert.ok(!DECK_IR_JSON_SCHEMA.required.includes("packId"));
@@ -67,7 +69,7 @@ test("packId/sequenceId 写了就必须是字符串", () => {
 
     assert.equal(validation.ok, false, `${field}=${JSON.stringify(value)} 不该通过`);
     assert.ok(
-      validation.errors.some((error) => error.path === `$.${field}` && error.code === "type"),
+      validation.errors.some((error) => error.path === field && error.code === "type"),
       JSON.stringify(validation.errors),
     );
   }
