@@ -426,7 +426,14 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
   const item = deckItem({ withProject: false });
   const evidence = deckHtmlAction.deckHtmlEvidence(item);
   assert.equal(evidence.visible, true, "不许静默消失");
-  assert.equal(evidence.available, false);
+  // W19 的变异开关只改测试期望，不改被测代码：把 source 从 fixture 拿掉后，
+  // 若还硬说「网页版可用」，这条必须真红。默认仍钉住正确合同（不可用）。
+  const expectedAvailable = process.env.W19_MUTATE_MISSING_SOURCE_AVAILABLE === "1";
+  assert.equal(
+    evidence.available,
+    expectedAvailable,
+    "当前 revision 没有 source=oceanleo.deck.v1 时，网页版绝不能报可用",
+  );
   assert.equal(evidence.sourceUrl, "");
 
   const reason = evidence.reason;
