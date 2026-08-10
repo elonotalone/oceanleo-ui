@@ -9,23 +9,7 @@ import {
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import {
-  pluginIdForItem,
-  saveTargetForItem,
-  type PluginSaveTarget,
-} from "../plugin-initial-state";
-import {
-  LEDGER_RENDERABLE_EXPORT_FORMS,
-  LEDGER_SOURCE_ID,
-  ledgerExportRequest,
-  type LedgerEntry,
-  type LedgerSnapshot,
-} from "../plugin-export/ledger-export";
-import {
-  pluginExportForm,
-  type PluginExportFormId,
-} from "../plugin-export/plugin-export-contract";
-import { exportToMyLibrary } from "../plugin-export/plugin-export-wiring";
+import type { PluginExportFormId } from "../plugin-export/plugin-export-contract";
 import {
   downloadBlob,
   downloadText,
@@ -42,7 +26,6 @@ import {
   buildGridWorkbookBlob,
   cloneGridSheets,
   emptyGridSheet,
-  gridCarrierProjectToIr,
   gridCellFormat,
   gridCellValue,
   gridColCount,
@@ -53,9 +36,7 @@ import {
   loadGridSheets,
   normalizeGridProjectSheetState,
   sanitizeSheetName,
-  serializeGridIrProject,
   setGridCell,
-  validateGridIrProject,
   type GridCell,
   type GridCellFormat,
   type GridSheet,
@@ -143,20 +124,13 @@ export interface GridEditorState {
   exportXlsx: () => Promise<void>;
   save: () => Promise<GridSavedVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
-  /**
-   * 台账那一排「导出成 …」。**开的不是台账时为 `null`**，界面因而不渲染它——
-   * 同一台表格编辑器打开一件用户上传的 xlsx 时不该出现台账的导出口。
-   */
+  /** 旧台账导出栏的消费方尚未归入本任务；真表格编辑器始终返回 `null`。 */
   ledgerExport: LedgerExportState | null;
 }
 
 /**
- * 台账导出的界面状态。
- *
- * 这里与 `save()` 是**两件事，不许合并**：`save()` 存的是用户记的账（功能数据，
- * 走 `plugin-instance` 那一支，永不进库）；这里导出的是那些账的**成品**
- * （Excel / 网页 / 图文长图 / PDF / CSV），它是一件素材，进「我的库」、可下载。
- * 合同 §3.3。两条路各走各的，`tests/plugin-export-ledger-button.test.mjs` 钉着。
+ * 旧台账导出栏仍由任务边界外的 `GridStage.tsx` 消费。保留形状只为不越界破坏
+ * 真表格编辑器的现有组件合同；本 hook 已不再构造该状态。
  */
 export interface LedgerExportState {
   /** 清册声明且真渲得出的形态，界面照它铺按钮。 */
@@ -173,71 +147,11 @@ export interface LedgerExportState {
 }
 
 /**
- * 台账那张表的四列列头，出自 `plugin-initial-states/grid-plugins.ts:64`
- * （日期 / 项目 / 金额 / 备注）。这里只按位置读，不重新发明列。
- */
-const LEDGER_DATE_COLUMN = 0;
-const LEDGER_CATEGORY_COLUMN = 1;
-const LEDGER_AMOUNT_COLUMN = 2;
-const LEDGER_NOTE_COLUMN = 3;
-
-function ledgerAmount(raw: string): number | null {
-  // 单元格里可能带货币符号与千分位——那是用户看的格式，不是数。
-  const cleaned = raw.replace(/[¥￥$,\s]/g, "").replace(/^\((.*)\)$/, "-$1");
-  if (!cleaned) return null;
-  const value = Number(cleaned);
-  return Number.isFinite(value) ? value : null;
-}
-
-/**
- * 把台账那张表读成导出载荷。
- *
- * 收支方向来自**金额列自己的正负号**，不是现编的：台账只有四列，负数即支出。
- * 读不出金额的行整行跳过——一行没有金额的账不是一笔账，硬凑一个 0 进去会让
- * 导出的合计对不上用户在屏幕上看到的那个数。
- */
-function ledgerSnapshotFromSheets(
-  title: string,
-  sheets: readonly GridSheet[],
-  headerRow: boolean,
-): LedgerSnapshot {
-  const sheet = sheets[0];
-  const entries: LedgerEntry[] = [];
-  if (sheet) {
-    for (let row = headerRow ? 1 : 0; row < sheet.rows.length; row += 1) {
-      const amount = ledgerAmount(
-        gridCellValue(sheet, row, LEDGER_AMOUNT_COLUMN).trim(),
-      );
-      if (amount === null) continue;
-      const date = gridCellValue(sheet, row, LEDGER_DATE_COLUMN).trim();
-      const category = gridCellValue(sheet, row, LEDGER_CATEGORY_COLUMN).trim();
-      const note = gridCellValue(sheet, row, LEDGER_NOTE_COLUMN).trim();
-      if (!date && !category && !note && amount === 0) continue;
-      entries.push({
-        date,
-        category,
-        direction: amount < 0 ? "out" : "in",
-        amount: Math.abs(amount),
-        ...(note ? { note } : {}),
-      });
-    }
-  }
-  return { title, entries };
-}
-
-/**
- * 一次保存的回执，外加「这一次存的是什么」。
- *
- * `grid` 内核一身二任：它既是编辑类插件「表格编辑器」（打开用户上传的 xlsx，
- * 那是一件素材，存回去要发 revision），又是台账 / 文献矩阵 / 三表模型的渲染内核
- * （那是功能里用户自己的数据，永不进货架）。调用方靠 `saveTarget` 分辨这两种回执：
- * `plugin-instance` 的回执里 `url` / `artifactId` / `revisionId` 一律是空串，
- * 字节在 `json` 里，可重开的实例在 `item` 里。
+ * 一次真表格素材保存的回执。`saveTarget` 的宽类型暂由任务边界外的
+ * `GridRoute.tsx` 消费；本 hook 只会返回 `material`。
  */
 export interface GridSavedVersion extends PersistedEditorVersion {
-  saveTarget: PluginSaveTarget;
-  /** 功能数据的 `oceanleo.grid.v1` 字节；素材那条路上不带（字节在库里）。 */
-  json?: string;
+  saveTarget: "material" | "plugin-instance";
 }
 
 interface GridSnapshot {
@@ -300,96 +214,6 @@ interface GridProject {
   headerRow?: boolean;
   filterQuery?: string;
   filterColumn?: number;
-}
-
-export interface GridPluginInstanceSaveInput {
-  item: LibraryItem;
-  sheets: GridSheet[];
-  headerRow: boolean;
-}
-
-/**
- * 保存**一个功能里用户自己的数据**（台账记的账、文献矩阵录的条目、三表模型填的数）。
- *
- * 与素材那条路的差别不是判据松一档，是**根本不走同一条链**：不造 xlsx、不渲预览、
- * 不上传、不发 revision、不碰 `artifact_revisions`。插件永不进货架，用户在台账里
- * 记的一笔账不是一件可下载的成品（`_COMMON.md` §3.1）；字节回给调用方，由工作台
- * 记进本次会话的快照，要变成素材得走导出链，导出物才是素材（§3.3）。
- * 形状与 `interactive-doc` 的 `commitPluginInstanceData` 同构。
- *
- * 正确性一条都不放：结构、单元格形状、公式合法性、各项上限照旧由
- * `validateGridIrProject` 查，只是货架完备那三条（标题长度、最小行数、署名）
- * 按 `saveTarget` 让开 —— 台账刚打开时零行数据，署名更无从谈起。
- *
- * 一道反向闸：带着 artifact 身份的东西不许从这条路走。否则给一件真 xlsx 挂上
- * `meta.plugin_id` 就能绕开完备判据落库，那正是本轮要堵的洞的镜像。
- */
-export function gridPluginInstanceVersion(
-  input: GridPluginInstanceSaveInput,
-): GridSavedVersion {
-  const { item, sheets, headerRow } = input;
-  // 比 `isDurableLibraryItem()` 更严一档：artifact 身份**沾上一点**就不许走这条路。
-  // 半截身份（有 artifactId 没 revisionId）同样不许，fail-closed。
-  if (item.artifactId || item.revisionId || item.artifact) {
-    throw new Error(
-      "这件内容带着 artifact 身份，不能按功能数据保存；真素材一律走素材那条路与它的完备判据。",
-    );
-  }
-  const ir = gridCarrierProjectToIr({
-    sheets,
-    carrier: {
-      title: String(item.title || "").trim() || "未命名",
-      namedRanges: [],
-      attribution: { entries: [] },
-      sheets: Object.fromEntries(
-        sheets.map((sheet) => [
-          sheet.name,
-          { headerRow, columns: [], emphasisRows: [] },
-        ]),
-      ),
-    },
-  });
-  const validation = validateGridIrProject(ir, {
-    saveTarget: "plugin-instance",
-  });
-  if (!validation.ok) {
-    const first = validation.errors[0];
-    throw new Error(`表格数据校验失败：${first.path} ${first.message}`);
-  }
-  return {
-    saveTarget: "plugin-instance",
-    json: serializeGridIrProject(validation.project),
-    url: "",
-    versionId: "",
-    projectUrl: "",
-    projectSchema: GRID_PROJECT_SCHEMA,
-    artifactId: "",
-    revisionId: "",
-    previousRevisionId: "",
-    title: item.title,
-    item: gridPluginInstanceItemForHandoff(item, sheets),
-  };
-}
-
-/**
- * 可重开的实例：把用户填的东西写回 `meta.sheets`，也就是 `loadGridSheets()`
- * 打开插件实例时读的那一格。不写 `content`（那一格会被当 CSV 解析）、不写
- * `editor_project_url`（那是素材那条路的 sidecar 地址，功能数据没有对象存储）。
- *
- * 只带用户数据，不带视图状态：当前工作表、筛选词、列头开关不进字节，
- * 重开时按第一屏的缺省来 —— 加一格 `meta` 没人读，等于埋一处漂移。
- */
-function gridPluginInstanceItemForHandoff(
-  item: LibraryItem,
-  sheets: GridSheet[],
-): LibraryItem {
-  return {
-    ...item,
-    meta: {
-      ...item.meta,
-      sheets: cloneGridSheets(sheets),
-    },
-  };
 }
 
 export function gridSelectionRange(
@@ -510,16 +334,6 @@ export function useGridEditor(
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
-  const [ledgerBusyForm, setLedgerBusyForm] = useState<PluginExportFormId | "">(
-    "",
-  );
-  const [ledgerNotice, setLedgerNotice] = useState("");
-  const [ledgerArtifactId, setLedgerArtifactId] = useState("");
-  const ledgerBusyRef = useRef(false);
-  // 开的是不是台账，只认这一处判据（`plugin_id` / 实例键），不看标题也不看列头：
-  // 用户完全可以把一件上传的 xlsx 的表头改成「日期 项目 金额 备注」。
-  const isLedger = pluginIdForItem(item) === LEDGER_SOURCE_ID;
-  const originAppId = String(item.meta?.origin_app_id || "").trim();
   const sheetsRef = useRef(sheets);
   const activeRef = useRef(activeSheetId);
   const undoRef = useRef<GridSnapshot[]>([]);
@@ -1217,38 +1031,6 @@ export function useGridEditor(
     const savingRevision = revisionRef.current;
     const snapshot = cloneGridSheets(sheetsRef.current);
     const baseItem = persistedItemRef.current;
-    // 判据落在**保存的对象**上，不落在编辑器上：同一台表格编辑器，开的是用户上传
-    // 的 xlsx 就走素材链，开的是台账就走功能数据那条路。
-    if (saveTargetForItem(baseItem) === "plugin-instance") {
-      savingRef.current = true;
-      setSaving(true);
-      setError("");
-      try {
-        const version = gridPluginInstanceVersion({
-          item: baseItem,
-          sheets: snapshot,
-          headerRow,
-        });
-        if (!mountedRef.current) return null;
-        persistedItemRef.current = version.item || baseItem;
-        preparedSaveRef.current = null;
-        setSavedUrl("");
-        if (revisionRef.current === savingRevision) setDirty(false);
-        return version;
-      } catch (caught) {
-        if (mountedRef.current) {
-          setError(
-            caught instanceof Error
-              ? tt(caught.message)
-              : tt("这份表格里的数据没能存下来"),
-          );
-        }
-        return null;
-      } finally {
-        savingRef.current = false;
-        if (mountedRef.current) setSaving(false);
-      }
-    }
     const baseRevision = String(
       baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
     );
@@ -1410,80 +1192,6 @@ export function useGridEditor(
     [applySnapshot],
   );
 
-  const ledgerSnapshot = useMemo(
-    () => ledgerSnapshotFromSheets(baseTitle, sheets, headerRow),
-    [baseTitle, headerRow, sheets],
-  );
-
-  const exportLedgerTo = useCallback(
-    async (form: PluginExportFormId) => {
-      if (ledgerBusyRef.current) return;
-      const snapshot = ledgerSnapshotFromSheets(
-        baseTitle,
-        sheetsRef.current,
-        headerRow,
-      );
-      const formLabel = pluginExportForm(form)?.label || form;
-      if (!snapshot.entries.length) {
-        setLedgerNotice(tt("这张台账还没有一笔记录，先记一笔再导出。"));
-        return;
-      }
-      ledgerBusyRef.current = true;
-      setLedgerBusyForm(form);
-      setLedgerNotice("");
-      try {
-        const result = await exportToMyLibrary(
-          ledgerExportRequest(snapshot, form, {
-            siteId,
-            ...(originAppId ? { appId: originAppId } : {}),
-          }),
-        );
-        if (!mountedRef.current) return;
-        if (!result.ok) {
-          setLedgerNotice(tt(result.error));
-          return;
-        }
-        setLedgerArtifactId(result.item.artifactId || "");
-        setLedgerNotice(
-          `${tt("已导出成")}${tt(formLabel)}${tt("，在「我的库」里可以下载。")}`,
-        );
-      } catch (caught) {
-        if (!mountedRef.current) return;
-        setLedgerNotice(
-          caught instanceof Error
-            ? tt(caught.message)
-            : `${tt("导出成")}${tt(formLabel)}${tt("失败")}`,
-        );
-      } finally {
-        ledgerBusyRef.current = false;
-        if (mountedRef.current) setLedgerBusyForm("");
-      }
-    },
-    [baseTitle, headerRow, originAppId, siteId, tt],
-  );
-
-  const ledgerExport = useMemo<LedgerExportState | null>(
-    () =>
-      isLedger
-        ? {
-            forms: LEDGER_RENDERABLE_EXPORT_FORMS,
-            busyForm: ledgerBusyForm,
-            notice: ledgerNotice,
-            lastArtifactId: ledgerArtifactId,
-            entryCount: ledgerSnapshot.entries.length,
-            exportTo: exportLedgerTo,
-          }
-        : null,
-    [
-      exportLedgerTo,
-      isLedger,
-      ledgerArtifactId,
-      ledgerBusyForm,
-      ledgerNotice,
-      ledgerSnapshot.entries.length,
-    ],
-  );
-
   void historyRevision;
   return {
     item,
@@ -1542,6 +1250,6 @@ export function useGridEditor(
     exportXlsx,
     save,
     restoreRecovery,
-    ledgerExport,
+    ledgerExport: null,
   };
 }

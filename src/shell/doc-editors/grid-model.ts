@@ -1,7 +1,6 @@
 "use client";
 
 import type { LibraryItem } from "../library-data";
-import type { PluginSaveTarget } from "../plugin-initial-state";
 import { urlExtension } from "./doc-io";
 import { evaluateGridCell, type GridFormulaValue } from "./grid-formula";
 import { normalizeGridSheetIdentities } from "./grid-sheet-identity";
@@ -942,7 +941,6 @@ function validateSheet(
   value: unknown,
   path: string,
   errors: GridIrValidationError[],
-  saveTarget: PluginSaveTarget = "material",
 ): void {
   const sheet = record(value);
   if (!sheet) {
@@ -1008,10 +1006,7 @@ function validateSheet(
     }
   }
   const columns = Array.isArray(sheet.columns) ? sheet.columns : null;
-  // 下限「单列不构成表」是货架判据：一件要上架的表格素材单列确实不成立，但用户在
-  // 功能里就是可以只记一列。上限任何时候都查 —— 它是安全边界，不是完备判据。
-  const minColumns =
-    saveTarget === "material" ? GRID_CONSTANTS.C4_minColumns : 1;
+  const minColumns = GRID_CONSTANTS.C4_minColumns;
   if (
     !columns ||
     columns.length < minColumns ||
@@ -1096,9 +1091,7 @@ function validateSheet(
     }
   });
   const rows = Array.isArray(sheet.rows) ? sheet.rows : null;
-  // 同理：**零行数据正是功能的正常初始态**（台账刚打开时只有列头）。
-  // 拿「至少 4 行」去拒绝它，与「零张卡的间隔排程是不合格品」是同一个错误。
-  const minRows = saveTarget === "material" ? GRID_CONSTANTS.C6_minDataRows : 0;
+  const minRows = GRID_CONSTANTS.C6_minDataRows;
   if (
     !rows ||
     rows.length < minRows ||
@@ -1180,19 +1173,12 @@ function validateSheet(
 /**
  * §3.1 structural validation. Rejects unknown keys (`additionalProperties`).
  *
- * 判据分两段（与 `interactive-doc` 的保存守门人同构，见
- * `plugin-initial-state.ts` 的 `PluginSaveTarget`）：
- *   · **结构与正确性** —— schema、版本、未知字段、工作表与单元格形状、公式合法性、
- *     命名区域、各项上限。两种保存对象都查。
- *   · **货架完备** —— 标题长度、最小行列数、署名条目。**只有 `material` 查**。
- *     台账刚打开时是零行数据加一行列头，署名更是无从谈起：拿这三条去拒绝用户自己
- *     记的账，和「零张卡的间隔排程是不合格品」是同一个错误。
+ * 校验编辑器可保存、可重开的表格工程：schema、版本、未知字段、工作表与单元格
+ * 形状、公式合法性、命名区域、各项上限与署名信息都在这一处检查。
  */
 export function validateGridIrProject(
   value: unknown,
-  options: { saveTarget?: PluginSaveTarget } = {},
 ): GridIrValidation {
-  const saveTarget: PluginSaveTarget = options.saveTarget || "material";
   const errors: GridIrValidationError[] = [];
   const document = record(value);
   if (!document) {
@@ -1222,7 +1208,7 @@ export function validateGridIrProject(
       message: `version 必须是 ${GRID_IR_VERSION}`,
     });
   }
-  const minTitleLength = saveTarget === "material" ? 8 : 1;
+  const minTitleLength = 8;
   if (
     typeof document.title !== "string" ||
     document.title.length < minTitleLength ||
@@ -1247,7 +1233,7 @@ export function validateGridIrProject(
     });
   }
   (sheets || []).forEach((sheet, index) =>
-    validateSheet(sheet, `/sheets/${index}`, errors, saveTarget),
+    validateSheet(sheet, `/sheets/${index}`, errors),
   );
   if (document.namedRanges !== undefined) {
     const named = Array.isArray(document.namedRanges) ? document.namedRanges : null;
@@ -1294,15 +1280,11 @@ export function validateGridIrProject(
   }
   const attribution = record(document.attribution);
   if (!attribution) {
-    // 署名随**产物**走。功能里用户自己敲的表不是产物，没有上游也没有许可可署；
-    // 要求它填一条 licenseUrl 就是要用户给自己手打的记账表办一张许可证。
-    if (saveTarget === "material") {
-      errors.push({
-        path: "/attribution",
-        code: "attribution-missing",
-        message: "attribution 必须存在（§7 A8/A9 署名随产物）",
-      });
-    }
+    errors.push({
+      path: "/attribution",
+      code: "attribution-missing",
+      message: "attribution 必须存在（§7 A8/A9 署名随产物）",
+    });
   } else {
     for (const key of extraKeys(attribution, new Set(["entries"]))) {
       errors.push({
@@ -1312,7 +1294,7 @@ export function validateGridIrProject(
       });
     }
     const entries = Array.isArray(attribution.entries) ? attribution.entries : null;
-    const minEntries = saveTarget === "material" ? 1 : 0;
+    const minEntries = 1;
     if (!entries || entries.length < minEntries || entries.length > 12) {
       errors.push({
         path: "/attribution/entries",
@@ -1455,13 +1437,9 @@ export function gridIrByteLength(project: GridIrProject): number {
 
 /**
  * Load the JSON IR byte form (§1.2). Failure is a coded error, never silent.
- *
- * `saveTarget` 与校验器同义：读一份功能里存下来的表时，货架完备判据不适用 ——
- * 否则用户存得进去、下次却打不开。
  */
 export function parseGridIrSource(
   input: string | Uint8Array | ArrayBuffer,
-  options: { saveTarget?: PluginSaveTarget } = {},
 ): GridIrProject {
   const text =
     typeof input === "string"
@@ -1478,7 +1456,7 @@ export function parseGridIrSource(
       `oceanleo.grid.v1 不是合法 JSON：${caught instanceof Error ? caught.message : caught}`,
     );
   }
-  const validation = validateGridIrProject(parsed, options);
+  const validation = validateGridIrProject(parsed);
   if (!validation.ok) {
     throw new GridIrParseError(
       "grid-ir-invalid",

@@ -122,21 +122,6 @@ const GameRoute = dynamic(
     ),
   { ssr: false, loading: WorkbenchRouteLoading },
 );
-const GeoMapRoute = dynamic(
-  () =>
-    import("./advanced-routes/GeoMapRoute").then(
-      (module) => module.GeoMapRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
-);
-const InteractiveDocRoute = dynamic(
-  () =>
-    import("./advanced-routes/InteractiveDocRoute").then(
-      (module) => module.InteractiveDocRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
-);
-
 export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchProps,
 ) {
@@ -497,12 +482,6 @@ function AdvancedContentWorkbenchRuntime(
       break;
     case "game":
       editor = <GameRoute {...activeProps} />;
-      break;
-    case "geo-map":
-      editor = <GeoMapRoute {...activeProps} />;
-      break;
-    case "interactive-doc":
-      editor = <InteractiveDocRoute {...activeProps} />;
       break;
     case "embed":
       editor = <EmbeddedRoute {...activeProps} />;
