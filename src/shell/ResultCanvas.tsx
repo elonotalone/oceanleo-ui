@@ -162,9 +162,7 @@ function PluginModuleMount({
   module: PluginModule;
   host: PluginHost;
 }) {
-  void module;
-  void host;
-  return null;
+  return module.render(host);
 }
 
 /**

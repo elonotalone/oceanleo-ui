@@ -103,17 +103,22 @@ function projection(overrides = {}) {
 }
 
 test("artifact type is an open self-reported transport label", () => {
-  const artifact = normalizeArtifactProjection(
-    projection({
-      artifact_type: "agent_created_luminous_forest",
-      source_format: "agent/luminous-pack@2026-08",
-      editor_capability: "agent.luminous-workbench",
-    }),
-  );
+  const raw = projection({
+    artifact_type: "agent_created_luminous_forest",
+    source_format: "agent/luminous-pack@2026-08",
+    editor_capability: "agent.luminous-workbench",
+    integrity: {
+      ok: false,
+      code: "source-format-mismatch",
+      reason: "legacy registry did not know this self-reported format",
+    },
+  });
+  const artifact = normalizeArtifactProjection(raw);
   assert.ok(artifact);
   assert.equal(artifact.integrity.ok, true);
   assert.equal(artifact.artifactType, "agent_created_luminous_forest");
   assert.equal(artifact.sourceFormat, "agent/luminous-pack@2026-08");
+  assert.equal(normalizeArtifactProjectionResult(raw).ok, true);
 });
 
 test("one normalized item pins identity, scene and every rendition to one revision", () => {
