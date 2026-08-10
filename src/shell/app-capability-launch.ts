@@ -43,7 +43,7 @@ export function useAdvancedFeatureLaunchBridge(
 ): void {
   const launchedKeyRef = useRef<string>("");
   const seqRef = useRef(0);
-  const pluginId = target?.pluginId || target?.family || "";
+  const pluginId = target?.pluginId || "";
   const key = target
     ? `${target.siteKey || ""}/${target.appId || ""}/${pluginId}`
     : "";

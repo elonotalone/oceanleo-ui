@@ -31,10 +31,6 @@ import {
   type ToolbarOwnership,
 } from "./workbench-capability-registry";
 import {
-  pluginIdForItem,
-  pluginRuntimeForItem,
-} from "./plugin-initial-state";
-import {
   AUDIO_EXT,
   IMAGE_EXT,
   MODEL_EXT,
@@ -444,12 +440,6 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "threed" });
     case "game":
       return available(adapter, { type: "game" });
-    // 两个新载体各走自己的 route，不复用 grid 宿主视口
-    // （`geo-map.md` §10.3 / `interactive-doc.md` §10.3 末的 MUST NOT）。
-    case "geo-map":
-      return available(adapter, { type: "geo-map" });
-    case "interactive-doc":
-      return available(adapter, { type: "interactive-doc" });
     case "website":
       return embedEditor(adapter);
     case "design-canvas":
@@ -460,47 +450,10 @@ function durableEditorCapabilityFor(
   return unavailable("没有匹配的受信任 typed editor adapter。");
 }
 
-/**
- * 插件实例的路由。
- *
- * 取代的是原来那条「空手起手件」分支：它按 `meta.draft`/`meta.blank` + 载体类型
- * 把按键换成 5 份通用空白模板之一，于是所有按键在运行时只对应 5 份骨架。现在
- * 认的是 `meta.plugin_id`（`plugin-initial-state.ts` 造实例时写的），字节来自
- * 这枚插件自己的第一屏，路由只负责把它送进对应内核。
- *
- * 三个内核对三条 route，与 `_COMMON.md` §4.3 的内核划分逐条对齐；名单之外的
- * 内核一律不认（fail-closed），不许在这里长出第四条通用回退。
- *
- * 必须留在 `contentType === "chart"` 分支之前：那条分支对「没有 option 源」的
- * 内容一律判 `legacy-render-only`，会把插件实例当成一张渲染残片挡下来。
- *
- * 门槛刻意窄：插件实例永远没有 URL（插件不可下载）。带了 URL 的一律不是插件实例，
- * 交回既有判定 —— 在架素材一件都不受影响。
- */
-function pluginCapabilityFor(item: LibraryItem): EditorCapability | null {
-  if (!pluginIdForItem(item)) return null;
-  if (item.url || item.previewUrl) {
-    return unavailable("插件实例不该带下载地址；这件内容的身份不可信。");
-  }
-  const runtime = pluginRuntimeForItem(item);
-  switch (runtime) {
-    case "geo-map":
-      return available("geo-map", { type: "geo-map" });
-    case "interactive-doc":
-      return available("interactive-doc", { type: "interactive-doc" });
-    case "grid":
-      return available("grid", { type: "grid" });
-    default:
-      return unavailable("这个功能没有可识别的运行时内核，已拒绝打开。");
-  }
-}
-
 /** 素材 → 受信任 editor capability；viewer kind 本身不授予编辑能力。 */
 export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   const durable = durableEditorCapabilityFor(item);
   if (durable) return durable;
-  const plugin = pluginCapabilityFor(item);
-  if (plugin) return plugin;
   const templateDocumentUrl = String(item.meta.template_doc_url || "");
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);
@@ -569,14 +522,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   // 落到那个分支就会被送进 Next 源码工作台（`01-decisions.md` D7 明令禁止）。
   if (pinnedRoute === "game") {
     return available("game", { type: "game" });
-  }
-  // 两个新载体的 pinned route：同样必须留在 `item.kind === "website"` 之前，
-  // 否则交互文档的渲出 HTML 预览会被当成站点源码送进 Next 工作台。
-  if (pinnedRoute === "geo-map") {
-    return available("geo-map", { type: "geo-map" });
-  }
-  if (pinnedRoute === "interactive-doc") {
-    return available("interactive-doc", { type: "interactive-doc" });
   }
   if (pinnedRoute === "none") {
     return unavailable(
@@ -659,19 +604,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     return embedEditor("design-canvas");
   }
 
-  /**
-   * 两个新载体的非 durable 回退。必须留在下面「有内联文本就送 richdoc」与
-   * 「image/*」两条之前：两者的 source 都是 JSON 文本，落到 richdoc 会被当成
-   * 富文本打开（`interactive-doc.md` §1.1 明令 MUST NOT 复用 `document`），
-   * 落到 image 会把地图当成一张位图。
-   */
-  if (item.kind === "geo_map" || contentType === "geo_map") {
-    return available("geo-map", { type: "geo-map" });
-  }
-  if (item.kind === "interactive_doc" || contentType === "interactive_doc") {
-    return available("interactive-doc", { type: "interactive-doc" });
-  }
-
   if (NATIVE_DECK_EXT.has(officeExt)) {
     return available("deck", { type: "deck" });
   }
@@ -746,18 +678,8 @@ export function editorRouteFor(item: LibraryItem): EditorRoute {
   return editorCapabilityFor(item).route;
 }
 
-/**
- * 这一次挂载有没有编辑栏，以及归谁。
- *
- * **插件实例一律 `none`**：编辑栏是用来编辑一件素材的，非编辑类插件没有素材输入
- * （`_COMMON.md` §3.2），所以地图、地球仪、台账这些打开之后上方不该有那条栏。
- * 判据落在**挂的是什么**而不是**用了哪个适配器**：`grid` 同时是编辑类插件
- * 「表格编辑器」的内核和台账的渲染内核，按适配器判会把两者一起误伤。
- *
- * 素材照旧按适配器在注册表里的登记走，13 个编辑类适配器一个字都没动。
- */
+/** 这一次素材挂载有没有编辑栏，以及归谁。插件模块不经过素材编辑器路由。 */
 export function editBarOwnershipForItem(item: LibraryItem): ToolbarOwnership {
-  if (pluginIdForItem(item)) return "none";
   const capability = editorCapabilityFor(item);
   if (!capability.available || capability.adapter === "none") return "none";
   return TRUSTED_EDITOR_REGISTRY[capability.adapter].toolbarOwnership;
@@ -784,10 +706,6 @@ export function editorToolLabel(route: EditorRoute): string {
       return "3D 场景与视图";
     case "game":
       return "游戏编辑";
-    case "geo-map":
-      return "地图编辑";
-    case "interactive-doc":
-      return "交互文档编辑";
     case "embed":
       return route.mediaType === "website"
         ? "网站编辑"

@@ -19,7 +19,7 @@
 // 左栏宽度只有整屏的三成上下，所以按钮**换行排布**而不是横向滚动：一个 app 上的按键
 // 最多 6 枚，换行看得全，横向滚动会把后面几枚藏起来。
 //
-// 按钮文案取工具自己的中文名，数据来自 W10 的清册（`app-capability-entry.ts`）。
+// 按钮文案取模块自己的中文名，名单来自模块自己的 placements 声明。
 // 本文件里没有任何站点名、app 名或工具名的硬编码。
 // ============================================================================
 
@@ -103,7 +103,6 @@ export function AppCapabilityBar({
             type="button"
             data-console-function-kind="capability"
             data-capability-plugin={entry.id}
-            data-capability-runtime={entry.runtime}
             aria-pressed={active}
             onClick={() => onSelect(active ? "" : entry.id)}
             className={`${BASE_BUTTON} border ${

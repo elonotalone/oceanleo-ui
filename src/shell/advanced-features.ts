@@ -130,24 +130,6 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Playable · Canvas",
   },
-  // 第 15 类 `geo_map`（`geo-map.md` §10.3 注册 4）。文案不点名 maplibre：
-  // 它不在依赖树里，v1 的渲染路径是 SVG / Canvas 2D（规格 §5.4）。
-  geo_map_editing: {
-    title: "地图编辑",
-    eyebrow: "Geo map editing",
-    description: "编排底图、数据图层、图例与标注，保存为可重开的地图工程。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "GeoJSON · Natural Earth",
-  },
-  // 第 16 类 `interactive_doc`（`interactive-doc.md` §10.3 注册 4）。文案强调
-  // 「可重算」而不是「可排版」：排版无计算的需求归 `document`（规格 §1.3）。
-  interactive_doc_editing: {
-    title: "交互文档",
-    eyebrow: "Interactive doc editing",
-    description: "用参数驱动计算图，改一处全篇重算并保存新版本。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "Calculator · Worksheet",
-  },
 };
 
 export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] =
@@ -203,10 +185,6 @@ function advancedFeatureForAdapterId(
       return advancedFeatureById("video_canvas");
     case "game":
       return advancedFeatureById("game_editing");
-    case "geo-map":
-      return advancedFeatureById("geo_map_editing");
-    case "interactive-doc":
-      return advancedFeatureById("interactive_doc_editing");
     default:
       return null;
   }

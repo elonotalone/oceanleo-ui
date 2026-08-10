@@ -20,6 +20,8 @@ export const ARTIFACT_TYPES = [
   "model_3d",
   "workflow",
   "game",
+  "geo_map",
+  "interactive_doc",
 ] as const;
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
@@ -561,11 +563,10 @@ for (const entry of ADVANCED_CAPABILITY_MATRIX) {
   }
 }
 
-if (
-  ADVANCED_CAPABILITY_MATRIX.length !== 15 ||
-  ADVANCED_CAPABILITY_MATRIX.length !== ADVANCED_EDITOR_ADAPTER_IDS.length
-) {
-  throw new Error("The shared advanced capability plane must contain 15 rows");
+if (ADVANCED_CAPABILITY_MATRIX.length !== ADVANCED_EDITOR_ADAPTER_IDS.length) {
+  throw new Error(
+    "The shared advanced capability matrix and adapter list must have equal lengths",
+  );
 }
 
 export function advancedCapabilityContractPayload(): {
@@ -1142,6 +1143,12 @@ const SOURCE_FORMAT_EXACT: Readonly<Record<ArtifactType, ReadonlySet<string>>> =
    * `_validate_upload_media_type` 拒掉，正是 B12 那条死形状。
    */
   game: new Set(["oceanleo.game-bundle.v1"]),
+  /**
+   * 这两类仍是后端可能返回的素材类型，但本波不再给它们接平台编辑器。
+   * 保留 source format 识别只用于读取既有 artifact 投影，不构成插件路由。
+   */
+  geo_map: new Set(["oceanleo.geo-map.v1"]),
+  interactive_doc: new Set(["oceanleo.interactive-doc.v1"]),
 };
 
 const SOURCE_FORMAT_PREFIXES: Readonly<
@@ -1167,6 +1174,8 @@ const SOURCE_FORMAT_PREFIXES: Readonly<
   model_3d: ["model/", "model-", "3d-"],
   workflow: ["workflow-", "oceanleo.workflow."],
   game: ["game-", "oceanleo.game-"],
+  geo_map: ["geo-map-", "oceanleo.geo-map."],
+  interactive_doc: ["interactive-doc-", "oceanleo.interactive-doc."],
 };
 
 const artifactEditorCapabilities = Object.fromEntries(
@@ -1179,14 +1188,6 @@ for (const entry of ADVANCED_CAPABILITY_MATRIX) {
       artifactEditorCapabilities[binding.artifactType].add(editorCapability);
     }
   }
-}
-
-if (
-  ARTIFACT_TYPES.some(
-    (artifactType) => artifactEditorCapabilities[artifactType].size === 0,
-  )
-) {
-  throw new Error("Every typed artifact must resolve through the shared matrix");
 }
 
 export const ARTIFACT_EDITOR_CAPABILITIES: Readonly<
@@ -1944,6 +1945,24 @@ export function artifactIntegrityFor(input: {
       }
     }
   }
+  if (
+    input.editability !== "view_only" &&
+    (input.artifactType === "geo_map" ||
+      input.artifactType === "interactive_doc") &&
+    input.sourceClosure &&
+    (input.sourceClosure.revisionId !== input.revisionId ||
+      input.sourceClosure.status !== "complete" ||
+      !input.sourceClosure.digest)
+  ) {
+    return {
+      ok: false,
+      code: "incomplete-dependency-closure",
+      reason:
+        input.artifactType === "geo_map"
+          ? "地图工程的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。"
+          : "交互文档的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。",
+    };
+  }
   return { ok: true, code: "ok", reason: "" };
 }
 
@@ -2264,7 +2283,10 @@ export function viewerRenditionOrder(
     artifactType === "website" ||
     artifactType === "workflow" ||
     // `full` 是可玩 bundle（text/html），卡片位图只能来自封面 `preview`。
-    artifactType === "game"
+    artifactType === "game" ||
+    // 这两类没有平台编辑路由，但读取旧投影时仍优先展示渲染预览而非 JSON。
+    artifactType === "geo_map" ||
+    artifactType === "interactive_doc"
   ) {
     return ["preview", "full"];
   }

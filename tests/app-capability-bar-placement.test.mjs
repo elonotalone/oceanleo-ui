@@ -45,7 +45,7 @@ else delete require.cache[canvasEntry];
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
-  url: "https://travel.oceanleo.com/workspace/trip-plan",
+  url: "https://travel.oceanleo.com/workspace/trip-planner",
 });
 const { window } = dom;
 const { document } = window;
@@ -147,13 +147,16 @@ const hydrationStubUrl = dataModule(`
 const capabilityContextStubUrl = dataModule(`
   export function AppCapabilityEntryProvider({ children }) { return children; }
 `);
-// 清册换成夹具：本文件判的是版式，不是数据。「这个 app 配了哪几件工具」由夹具给。
-const capabilityEntryStubUrl = dataModule(`
-  export function appCapabilityEntries(siteKey, appId) {
-    const table = globalThis.__pluginFixture || {};
-    return table[siteKey + "/" + appId] || [];
+// pluginModules() 换成夹具，位置筛选仍走真 `app-capability-entry.ts`。
+const pluginModuleStubUrl = dataModule(`
+  export function pluginModules() {
+    return globalThis.__pluginFixture || [];
   }
 `);
+const capabilityEntryUrl = await compileModule(
+  "src/shell/app-capability-entry.ts",
+  { "./plugin-module": pluginModuleStubUrl },
+);
 
 const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
   "./icons": iconsStubUrl,
@@ -176,18 +179,18 @@ const operatorUrl = await compileModule("src/shell/OperatorConsole.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "./OperatorRemark": identityProviderStubUrl,
   "./workspace-runtime-hydration": hydrationStubUrl,
-  "./app-capability-entry": capabilityEntryStubUrl,
+  "./app-capability-entry": capabilityEntryUrl,
   "./AppCapabilityBar": barUrl,
   "./app-capability-context": capabilityContextStubUrl,
 });
 const { OperatorConsole } = await import(operatorUrl);
 
-function plugin(id, label, runtime = "interactive-doc") {
+function plugin(id, label, placements = [{ site: "travel", app: "trip-planner" }]) {
   return {
     id,
     label,
-    runtime,
-    doc: `docs/specs/oceanleo-plugins-v1/plugins/${id}.md`,
+    placements,
+    render: () => null,
   };
 }
 
@@ -199,25 +202,25 @@ function plugin(id, label, runtime = "interactive-doc") {
  * 「短 id 已绝迹」这个结论在仓里看起来是假的（`signals/W21-request.md` 第 3 条）。
  */
 const TRIP_PLUGINS = [
-  plugin("annotatable-city-map", "地图", "geo-map"),
-  plugin("interactive-globe", "地球仪", "geo-map"),
-  plugin("ledger-register", "台账", "grid"),
+  plugin("annotatable-city-map", "地图"),
+  plugin("interactive-globe", "地球仪"),
+  plugin("ledger-register", "台账"),
   plugin("spaced-repetition-scheduler", "间隔排程"),
 ];
 
-function mountConsole(fixture, props = {}) {
-  globalThis.__pluginFixture = fixture;
+function mountConsole(modules, props = {}) {
+  globalThis.__pluginFixture = modules;
   return createMounted(OperatorConsole, {
     functions: [
       {
-        id: "trip-plan",
+        id: "trip-planner",
         label: "行程定制方案",
         icon: "🗺️",
         ops: React.createElement("div", { "data-ops": true }, "操作流"),
         canvas: React.createElement("div", { "data-canvas": true }),
       },
     ],
-    value: "trip-plan",
+    value: "trip-planner",
     siteId: "travel",
     directory: true,
     defaultRatio: 3 / 7,
@@ -226,7 +229,7 @@ function mountConsole(fixture, props = {}) {
 }
 
 test("按键条长在操控台（左栏）里面，不在双栏之上、不在右栏", async () => {
-  const mounted = await mountConsole({ "travel/trip-plan": TRIP_PLUGINS });
+  const mounted = await mountConsole(TRIP_PLUGINS);
   try {
     const root = mounted.container.querySelector("[data-workspace-split]");
     assert.ok(root, "没渲染出双栏骨架");
@@ -256,7 +259,7 @@ test("按键条长在操控台（左栏）里面，不在双栏之上、不在�
 });
 
 test("工作区可视高度不再为按键条扣 40px", async () => {
-  const withBar = await mountConsole({ "travel/trip-plan": TRIP_PLUGINS });
+  const withBar = await mountConsole(TRIP_PLUGINS);
   let heightWithBar;
   try {
     heightWithBar = withBar.container.querySelector("[data-workspace-split]")
@@ -264,7 +267,7 @@ test("工作区可视高度不再为按键条扣 40px", async () => {
   } finally {
     await withBar.unmount();
   }
-  const withoutBar = await mountConsole({});
+  const withoutBar = await mountConsole([]);
   let heightWithoutBar;
   try {
     heightWithoutBar = withoutBar.container.querySelector(
@@ -282,8 +285,8 @@ test("工作区可视高度不再为按键条扣 40px", async () => {
   assert.equal(heightWithBar, "calc(100dvh - 0px)");
 });
 
-test("按键逐枚来自清册，文案是工具自己的中文名，点选与取消都走同一枚", async () => {
-  const mounted = await mountConsole({ "travel/trip-plan": TRIP_PLUGINS });
+test("按键逐枚来自模块 placements，文案是工具自己的中文名，点选与取消都走同一枚", async () => {
+  const mounted = await mountConsole(TRIP_PLUGINS);
   try {
     const bar = mounted.container.querySelector("[data-console-function-bar]");
     const buttons = [
@@ -323,13 +326,17 @@ test("按键逐枚来自清册，文案是工具自己的中文名，点选与�
   }
 });
 
-test("清册里没有这个 app：零枚按键、连壳都不渲染，操控台照旧", async () => {
-  const mounted = await mountConsole({ "travel/other-app": TRIP_PLUGINS });
+test("placements 指向不存在的 app：零枚按键、不抛错、操控台照旧", async () => {
+  const mounted = await mountConsole([
+    plugin("elsewhere", "别处工具", [
+      { site: "does-not-exist", app: "missing-app" },
+    ]),
+  ]);
   try {
     assert.equal(
       mounted.container.querySelectorAll("[data-console-function-bar]").length,
       0,
-      "清册里没有的 app 不许长出按键条",
+      "没有模块声明当前 app 时不该长出按键条",
     );
     const leftPane = mounted.container.querySelector(
       '[data-workspace-pane="left"]',
@@ -341,8 +348,21 @@ test("清册里没有这个 app：零枚按键、连壳都不渲染，操控台�
   }
 });
 
+test("含「插件」的 label 不渲染", async () => {
+  const mounted = await mountConsole([plugin("bad-label", "路线插件")]);
+  try {
+    assert.equal(
+      mounted.container.querySelectorAll("[data-console-function-bar]").length,
+      0,
+    );
+  } finally {
+    await mounted.unmount();
+    delete globalThis.__pluginFixture;
+  }
+});
+
 test("左栏原有的 app 身份、返回键与操作流没被按键条挤掉", async () => {
-  const mounted = await mountConsole({ "travel/trip-plan": TRIP_PLUGINS });
+  const mounted = await mountConsole(TRIP_PLUGINS);
   try {
     const leftPane = mounted.container.querySelector(
       '[data-workspace-pane="left"]',

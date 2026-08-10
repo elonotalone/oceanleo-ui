@@ -33,10 +33,7 @@ import {
   normalizeAdvancedFeatureLaunch,
   type AdvancedFeatureLaunchEnvelope,
 } from "./advanced-feature-launch";
-import {
-  pluginInitialStateAvailable,
-  pluginInstanceLibraryItem,
-} from "./plugin-initial-state";
+import { pluginModules } from "./plugin-module";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import {
@@ -218,24 +215,8 @@ export function ResultCanvas({
     [],
   );
   /**
-   * 点开一枚按键。宿主只递来「点的是哪一个」，右栏按这个身份取它自己的第一屏
-   * （`plugin-initial-state.ts` 的注册表），再走**同一条**挂载路径 —— 没有第二套
-   * 挂载逻辑，也没有绕过 `editorCapabilityFor()`：取出来的实例照样要被判
-   * `available` 才挂得起来。
-   *
-   * **fail-closed，而且是运行期这一道**：查不到第一屏就把理由显示出来，不退回任何
-   * 通用模板。以前这里是按载体类型反查 5 份通用空白起手件之一，于是所有按键打开的
-   * 都是同一份骨架；那条路已经整条拆掉。
-   *
-   * 「哪些功能发按键」由生成期决定（清册只给做出了第一屏的功能发），构建期还有一道
-   * 测试闸复核。但这两道都在**发布之前**：一旦发布副本与第一屏再次不同步、而红掉的
-   * 测试被谁忽略过去，用户手上那枚按键仍然点得下去。所以这里再判一次
-   * `pluginInitialStateAvailable()`——宁可显示一句读得懂的话，也不挂一个空壳。
-   *
-   * 反过来，**路由层（`workbench-routes.ts`）刻意不加这道判定**：那里流过的还有用户
-   * 自己存下来的功能实例，它们的字节是用户的数据，不是第一屏。哪天某个功能的第一屏
-   * 被撤掉，用它存过的东西必须照样打得开；在路由层拿「有没有第一屏」当门槛，等于把
-   * 用户已有的数据一起锁死。
+   * 旧启动总线的兜底。新位置层直接从 `pluginModules()` 取模块并显示；如果旧调用仍
+   * 抵达这里，只认模块自己的 id，不再造 LibraryItem，也不再按五种内核挂空壳。
    */
   const startFeatureLaunch = useCallback(
     (envelope: AdvancedFeatureLaunchEnvelope) => {
@@ -245,36 +226,22 @@ export function ResultCanvas({
         return;
       }
       const launchName = launch.title || launch.pluginId;
-      if (!pluginInitialStateAvailable(launch.pluginId)) {
+      const pluginModule = pluginModules().find(
+        (module) => module.id === launch.pluginId,
+      );
+      if (!pluginModule) {
         setFeatureLaunchError(
-          `「${launchName}」还没有做出打开后的第一屏，现在打开只会是一块空白，所以没有打开它。` +
-            "请先用这个 app 里的其它功能；这枚按键是错发的，可以反馈给站点维护者撤下。",
+          `「${launchName}」没有可自洽运行的模块，现在打开只会是一块空白，所以没有打开它。` +
+            "请从这个 app 的功能栏选择当前存在的功能；若那里仍有这枚按键，可以反馈给站点维护者撤下。",
         );
         return;
       }
-      const instance = pluginInstanceLibraryItem(launch.pluginId, {
-        siteId: materialSiteId,
-        appId: materialAppId,
-        title: launch.title,
-        nonce: envelope.nonce,
-      });
-      if (!instance) {
-        setFeatureLaunchError(
-          `「${launchName}」的第一屏取到了，却装不成一份可用的内容，所以没有打开它。` +
-            "这是数据本身的问题，重试不会有变化；请反馈给站点维护者。",
-        );
-        return;
-      }
-      const capability = editorCapabilityFor(instance);
-      if (!capability.available) {
-        setFeatureLaunchError(
-          capability.unavailableReason || "这个功能没有可用的运行时。",
-        );
-        return;
-      }
-      openCanvasItem(instance);
+      setFeatureLaunchError(
+        `「${pluginModule.label}」已经改由功能栏直接显示；这次请求来自已拆除的旧启动路径。` +
+          "请返回功能栏重新打开它。",
+      );
     },
-    [materialAppId, materialSiteId, openCanvasItem],
+    [],
   );
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
     const source = activeCanvasEntry?.libraryItem;
@@ -641,11 +608,8 @@ export function ResultCanvas({
    * 编辑器挂不挂，取决于**手上有没有一份判得了 `available` 的素材**——不再取决于
    * 「这份素材是不是从库里点开的」。
    *
-   * 改动前这里额外要求 `activeCanvasEntry.libraryItem` 来自一次库内打开，于是「库为空
-   * 但指定了一个功能」这条路径永远拿不到 `libraryItem`，`activeEditorItem` 恒为 `null`，
-   * 编辑器挂不起来（H 波判据 `H1-c`）。空手起手件由 `startFeatureLaunch()` 造好后走
-   * `openCanvasItem()` 进到同一个 `activeCanvasEntry`，所以这里只剩一条挂载路径：
-   * **判定仍然在 `editorCapabilityFor()`，一个字都没放宽**，放开的只是素材的来路。
+   * 改动前这里额外要求 `activeCanvasEntry.libraryItem` 来自一次库内打开；现在素材仍走
+   * 同一条挂载路径，而插件模块由位置层直接显示，不再伪装成一件素材进入编辑器路由。
    */
   const activeEditorItem =
     activeCanvasMode === "edit" &&
