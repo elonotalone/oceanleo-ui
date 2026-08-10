@@ -372,11 +372,16 @@ test("有稿子时网页版可用，交付的字节与直接调用 deck-html-pac
 
     // 直接调用出口：宿主没给图片字节，动作那一侧传的就是「一张都没有」。
     const direct = await buildDeckHtml(deckIr(), { assets: [] });
+    const deliveredBytes = await savedBytes(0);
     assert.deepEqual(
-      await savedBytes(0),
+      deliveredBytes,
       new TextEncoder().encode(direct.html),
       "这一层不许在出口的字节之上再加工",
     );
+    const deliveredHtml = new TextDecoder().decode(deliveredBytes);
+    assert.match(deliveredHtml, /近岸观测网年度汇报/);
+    assert.match(deliveredHtml, /新增站点 12 个/);
+    assert.match(deliveredHtml, /回传时延下降 41%/);
   } finally {
     server.restore();
     await mounted.unmount();
@@ -409,7 +414,24 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
 
   const reason = evidence.reason;
   assert.ok(reason.trim().length > 0, "按不动就必须写清为什么");
+  assert.equal(reason, "这份素材还没有可用来生成网页版的源。");
   assert.equal(reason, deckHtmlAction.DECK_HTML_NO_SOURCE_REASON);
+
+  // 父级已实测今天线上 152 份 deck 全是 pptx、没有 IR 稿子；这里把同一个现实批次
+  // 明确铺成 152 个无稿条目，钉死它们全都走这条灰分支，而不是只验证一个偶然样本。
+  const currentShelf = Array.from({ length: 152 }, () =>
+    deckHtmlAction.deckHtmlEvidence(deckItem({ withProject: false })),
+  );
+  assert.equal(currentShelf.length, 152);
+  assert.equal(
+    currentShelf.filter(
+      (entry) =>
+        entry.visible === true &&
+        entry.available === false &&
+        entry.reason === "这份素材还没有可用来生成网页版的源。",
+    ).length,
+    152,
+  );
   // 面向用户，不是技术堆栈：没有异常类名、栈帧、URL、undefined/null 这类东西。
   for (const forbidden of [
     /Error\b/,
@@ -499,6 +521,74 @@ test("稿子读不回来时给的是人话，不是 HTTP 原文", async () => {
   }
 });
 
+test("schema 同名的编辑器模型会被拒绝，校验时按钮灰着且不交付", async () => {
+  // 编辑器存盘信封也会写 oceanleo.deck.v1，但 data 里是 DeckDocument：version=2、
+  // aspect/theme/masters/elements。它不是产线 DeckIrDocument，绝不能只看 schema 就放行。
+  const disguisedEditorProject = {
+    schema: "oceanleo.deck.v1",
+    version: 1,
+    data: {
+      version: 2,
+      title: "伪装成 deck IR 的编辑器模型",
+      aspect: "16:9",
+      theme: "ocean",
+      masters: [],
+      slides: [
+        {
+          id: "slide-1",
+          title: "这不是产线 IR",
+          body: "",
+          bullets: [],
+          notes: "",
+          layout: "title-body",
+          background: "#ffffff",
+          elements: [],
+        },
+      ],
+    },
+  };
+  const previous = globalThis.fetch;
+  let releaseResponse;
+  let reads = 0;
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), DECK_SOURCE_URL);
+    reads += 1;
+    return new Promise((resolve) => {
+      releaseResponse = () =>
+        resolve({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify(disguisedEditorProject),
+        });
+    });
+  };
+
+  savedBlobs.length = 0;
+  const mounted = await mount(deckItem());
+  try {
+    const webAction = button(mounted.container, "网页版");
+    assert.ok(webAction, "声明有稿子时动作先可见");
+    await click(webAction);
+    assert.equal(reads, 1, "必须真把伪装稿取回来验，不能只看 metadata");
+    assert.equal(webAction.disabled, true, "校验中的按钮必须灰着，不能重复放行");
+    assert.equal(webAction.textContent.trim(), "处理中…");
+
+    assert.equal(typeof releaseResponse, "function");
+    releaseResponse();
+    await settle();
+
+    assert.equal(savedBlobs.length, 0, "结构不合法时不许落下任何网页字节");
+    assert.match(
+      mounted.container.textContent || "",
+      /这份稿子的格式不受支持，暂时生成不了网页版。/,
+    );
+    assert.doesNotMatch(mounted.container.textContent || "", /网页版已生成/);
+  } finally {
+    globalThis.fetch = previous;
+    await mounted.unmount();
+  }
+});
+
 // ── ④ 原有的下载与收藏没被碰坏 ──────────────────────────────────────────────
 
 test("下载与收藏在加了网页版之后行为不变", async () => {
@@ -510,6 +600,8 @@ test("下载与收藏在加了网页版之后行为不变", async () => {
     const download = button(mounted.container, "下载");
     assert.ok(download, "下载必须还在");
     assert.equal(download.disabled, false);
+    assert.equal(download.getAttribute("aria-disabled"), "false");
+    assert.equal(download.getAttribute("title"), "下载");
     await click(download);
     await settle();
     assert.equal(downloadCalls, 1);
@@ -517,6 +609,9 @@ test("下载与收藏在加了网页版之后行为不变", async () => {
 
     const favorite = button(mounted.container, "收藏");
     assert.ok(favorite, "收藏必须还在");
+    assert.equal(favorite.disabled, false);
+    assert.equal(favorite.getAttribute("aria-disabled"), "false");
+    assert.equal(favorite.getAttribute("title"), "收藏");
     assert.equal(favorite.getAttribute("aria-pressed"), "false");
     await click(favorite);
     await settle();
@@ -530,17 +625,37 @@ test("下载与收藏在加了网页版之后行为不变", async () => {
   }
 });
 
-test("没有交付 rendition 时下载仍然留在原地并说清原因", async () => {
+test("下载与收藏不可用时仍可见、灰着，并各自保留原有理由", async () => {
   const item = deckItem();
   delete item.artifact.renditions.full;
+  item.artifact.access.canFavorite = false;
   const mounted = await mount(item);
   try {
     const download = button(mounted.container, "下载");
     assert.ok(download, "不可下载不等于让按钮消失");
     assert.equal(download.disabled, true);
+    assert.equal(download.getAttribute("aria-disabled"), "true");
+    assert.equal(
+      download.getAttribute("title"),
+      "当前 revision 缺少符合能力合同的真实交付 rendition。",
+    );
+
+    const favorite = button(mounted.container, "收藏");
+    assert.ok(favorite, "不可收藏不等于让按钮消失");
+    assert.equal(favorite.disabled, true);
+    assert.equal(favorite.getAttribute("aria-disabled"), "true");
+    assert.equal(
+      favorite.getAttribute("title"),
+      "当前主体没有收藏这个 artifact 的权限。",
+    );
+
     assert.match(
       mounted.container.textContent || "",
       /下载：当前 revision 缺少符合能力合同的真实交付 rendition。/,
+    );
+    assert.match(
+      mounted.container.textContent || "",
+      /收藏：当前主体没有收藏这个 artifact 的权限。/,
     );
   } finally {
     await mounted.unmount();
