@@ -35,6 +35,7 @@ import {
   type DeckIrImage,
   type DeckIrSlide,
 } from "./deck-ir";
+import { packById, type DeckPack } from "./deck-packs";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -121,10 +122,20 @@ function hex6(value: string | undefined, fallback: string): string {
   return /^[0-9A-Fa-f]{6}$/.test(candidate) ? candidate.toUpperCase() : fallback;
 }
 
+function deckPackFor(project: DeckIrDocument): Readonly<DeckPack> | undefined {
+  const packId = (project as DeckIrDocument & { packId?: unknown }).packId;
+  return typeof packId === "string" ? packById(packId) : undefined;
+}
+
 /** §2.1 — the resolved 12-slot palette after `theme.accent*` overrides. */
 export function deckResolvedPalette(
   project: DeckIrDocument,
 ): Record<DeckThemeSlot, string> {
+  const pack = deckPackFor(project);
+  if (pack) {
+    const { key: _key, label: _label, ...palette } = pack.palette;
+    return { ...DECK_THEME_PALETTE, ...palette };
+  }
   const theme = project.theme;
   return {
     ...DECK_THEME_PALETTE,
@@ -480,6 +491,7 @@ interface SlideBuild {
 
 interface SlideContext {
   project: DeckIrDocument;
+  pack?: Readonly<DeckPack>;
   palette: Record<DeckThemeSlot, string>;
   slideNumber: number;
   slideCount: number;
@@ -548,6 +560,25 @@ function scrimAlphaFor(slide: DeckIrSlide): number {
     return DEFAULT_SCRIM_ALPHA;
   }
   return asked;
+}
+
+function packScrimShapes(
+  pack: Readonly<DeckPack>,
+  target: DeckBox,
+  allocator: ShapeAllocator,
+): string[] {
+  const bands = pack.scrim.verticalBands;
+  return bands.map((alpha, index) => {
+    const left = Math.round((target.cx * index) / bands.length);
+    const right = Math.round((target.cx * (index + 1)) / bands.length);
+    return shapeBlock(
+      allocator.next(),
+      `scrim-band-${index + 1}`,
+      { x: target.x + left, y: target.y, cx: right - left, cy: target.cy },
+      pack.scrim.color,
+      { alpha },
+    );
+  });
 }
 
 /** The caller's grid width if they gave a usable one, otherwise the default. */
@@ -759,15 +790,24 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
       const image = slide.images?.[0];
       // The fit used to be forced to "cover" here, which silently discarded a
       // caller who had asked for "contain". Full-bleed still defaults to cover.
-      if (image) addPicture({ ...image, fit: image.fit || "cover" }, boxes.image);
+      if (image) {
+        const fit = context.pack?.surface.fullBleedImage === "cover"
+          ? "cover"
+          : image.fit || "cover";
+        addPicture({ ...image, fit }, boxes.image);
+      }
       // §2.4 SC 1.4.3: the dk1 scrim is what lets `section`-sized white text
       // clear 3.0:1 over an arbitrary photograph. 60 % is the default, and a
       // caller who knows their photograph is already dark can ask for less.
-      shapes.push(
-        shapeBlock(allocator.next(), "scrim", boxes.scrim, palette.dk1, {
-          alpha: scrimAlphaFor(slide),
-        }),
-      );
+      if (context.pack) {
+        shapes.push(...packScrimShapes(context.pack, boxes.scrim, allocator));
+      } else {
+        shapes.push(
+          shapeBlock(allocator.next(), "scrim", boxes.scrim, palette.dk1, {
+            alpha: scrimAlphaFor(slide),
+          }),
+        );
+      }
       shapes.push(
         textBox(
           allocator.next(),
@@ -982,7 +1022,12 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     }
     case "quote": {
       const background = slide.images?.[0];
-      if (background) addPicture({ ...background, fit: background.fit || "cover" }, boxes.background);
+      if (background) {
+        const fit = context.pack?.surface.fullBleedImage === "cover"
+          ? "cover"
+          : background.fit || "cover";
+        addPicture({ ...background, fit }, boxes.background);
+      }
       shapes.push(shapeBlock(allocator.next(), "quote-mark", boxes.mark, palette.accent1));
       shapes.push(
         textBox(allocator.next(), "quote", boxes.quote, [
@@ -1098,7 +1143,11 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
   const xml =
     `${XML_DECLARATION}\n` +
     `<p:sld xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}">` +
-    "<p:cSld><p:spTree>" +
+    "<p:cSld>" +
+    (context.pack
+      ? `<p:bg><p:bgPr>${solidFill(context.pack.surface.color)}<a:effectLst/></p:bgPr></p:bg>`
+      : "") +
+    "<p:spTree>" +
     '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
     '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>' +
     '<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>' +
@@ -1446,12 +1495,13 @@ export function buildDeckOoxmlParts(
   project: DeckIrDocument,
   options: DeckOoxmlBuildOptions = {},
 ): DeckOoxmlBuild {
+  const pack = deckPackFor(project);
   const palette = deckResolvedPalette(project);
   const timestamp = options.timestamp || "2026-07-29T00:00:00Z";
-  const fontMajor = project.theme.fontMajor || DEFAULT_MAJOR_FONT;
-  const fontMinor = project.theme.fontMinor || fontMajor;
-  const fontEastAsian = project.theme.fontEastAsian || DEFAULT_EAST_ASIAN_FONT;
-  const askedScale = project.theme.fontScale;
+  const fontMajor = pack?.fonts.major || project.theme.fontMajor || DEFAULT_MAJOR_FONT;
+  const fontMinor = pack?.fonts.minor || project.theme.fontMinor || fontMajor;
+  const fontEastAsian = pack?.fonts.eastAsian || project.theme.fontEastAsian || DEFAULT_EAST_ASIAN_FONT;
+  const askedScale = pack?.fonts.fontScale ?? project.theme.fontScale;
   const fontScale =
     typeof askedScale === "number" && Number.isFinite(askedScale) && askedScale >= 0.5 && askedScale <= 2
       ? askedScale
@@ -1491,6 +1541,7 @@ export function buildDeckOoxmlParts(
   project.slides.forEach((slide, index) => {
     const build = buildSlide(slide, {
       project,
+      pack,
       palette,
       slideNumber: index + 1,
       slideCount: project.slides.length,
