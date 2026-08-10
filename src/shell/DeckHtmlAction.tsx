@@ -15,7 +15,6 @@ import { useId, useState, type CSSProperties } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
   buildDeckHtml,
-  zipDeckHtmlPackage,
   type DeckHtmlAsset,
   type DeckHtmlBuild,
 } from "./doc-editors/deck-html-package";
@@ -46,8 +45,7 @@ export interface DeckHtmlEvidence {
 }
 
 export interface DeckHtmlDelivery {
-  /** 只有图片字节齐了才是 zip 闭包，否则是一份自包含的单页 HTML。 */
-  kind: "html" | "zip";
+  kind: "html";
   filename: string;
   mediaType: string;
   bytes: Uint8Array;
@@ -59,8 +57,8 @@ export interface DeckHtmlDeliveryOptions {
    * 图片字节，键是 IR `assets[].id`。
    *
    * IR 自己**不带图片地址**（`DeckIrAsset` 只有 `sha256`/`mediaType`/尺寸），
-   * 所以这一层没有办法自己去取图，只能由宿主喂进来。传空数组是明确的「一张都没有」，
-   * 出口会据此省掉对应的 `<img>` 而不是留下一堆取不到的相对地址。
+   * 所以这一层没有办法自己去取图，只能由宿主喂进来。声明过的图片缺少任何一份字节，
+   * 出口都会明确失败，不会交付带裂图或擅自删图的网页。
    */
   assets?: readonly DeckHtmlAsset[];
   packId?: string;
@@ -177,8 +175,7 @@ function deckFileStem(title: string): string {
 /**
  * 稿子 → 用户拿到手的那串字节。
  *
- * 这里**只做选择，不做加工**：字节要么是 `buildDeckHtml()` 出的那份 HTML 原文，
- * 要么是 `zipDeckHtmlPackage()` 出的那个闭包，两者都与直接调用出口的结果逐字节相同。
+ * 这里不做二次加工：交付字节就是 `buildDeckHtml()` 出的那份自包含 HTML 原文。
  */
 export async function buildDeckHtmlDelivery(
   project: DeckIrDocument,
@@ -190,18 +187,6 @@ export async function buildDeckHtmlDelivery(
     aspect: options.aspect,
   });
   const stem = deckFileStem(project.title);
-  const zippable =
-    build.assets.length > 0 &&
-    build.assets.every((asset) => build.assetBytes[asset.path] !== undefined);
-  if (zippable) {
-    return {
-      kind: "zip",
-      filename: `${stem}.html.zip`,
-      mediaType: "application/zip",
-      bytes: zipDeckHtmlPackage(build),
-      build,
-    };
-  }
   return {
     kind: "html",
     filename: `${stem}.html`,
@@ -284,7 +269,7 @@ export interface DeckHtmlActionButtonProps {
   style?: CSSProperties;
   /** 按不动时指向宿主那条理由行，读屏才连得起来。 */
   reasonId?: string;
-  /** 图片字节的来源。IR 不带图片地址，宿主不给就只出无图的网页版。 */
+  /** 图片字节的来源。IR 不带图片地址；有图片的稿子必须由宿主提供。 */
   resolveAssets?: (
     project: DeckIrDocument,
     item: LibraryItem,
@@ -343,22 +328,14 @@ export function DeckHtmlActionButton({
       const project = await loadDeckHtmlProject(evidence.sourceUrl, {
         fetchImpl,
       });
-      const declared = (project.assets || []).length;
       const assets = resolveAssets
         ? await resolveAssets(project, item)
-        : declared
-          ? []
-          : undefined;
+        : undefined;
       const delivery = await buildDeckHtmlDelivery(project, { assets });
       if (onDelivery) await onDelivery(delivery, item);
       else saveDelivery(delivery);
       setRejection(null);
-      const dropped = delivery.build.missingAssetIds.length;
-      report(
-        dropped
-          ? `网页版已生成，但其中 ${dropped} 张图片没能取回来，这一份不含图片。`
-          : "网页版已生成。",
-      );
+      report("网页版已生成。");
     } catch (error) {
       const message = humanErrorMessage(
         error,

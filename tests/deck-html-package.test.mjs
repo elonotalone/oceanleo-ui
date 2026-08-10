@@ -1,13 +1,30 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { strFromU8, unzipSync } from "fflate";
-
-import {
-  buildDeckHtml,
-  buildDeckHtmlZip,
-} from "../src/shell/doc-editors/deck-html-package.ts";
+import { buildDeckHtml } from "../src/shell/doc-editors/deck-html-package.ts";
 import { DECK_IR_LAYOUTS } from "../src/shell/doc-editors/deck-layout-grid.ts";
+
+const require = createRequire(import.meta.url);
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
 
 const PIXEL = Uint8Array.from(
   Buffer.from(
@@ -27,7 +44,6 @@ const ASSETS = ["photo-a", "photo-b", "photo-c"].map((id, index) => ({
 
 const HTML_ASSETS = ASSETS.map((asset, index) => ({
   id: asset.id,
-  path: `assets/photo-${index + 1}.png`,
   bytes: PIXEL,
   width: asset.width,
   height: asset.height,
@@ -192,21 +208,86 @@ test("static output stays inside the PPTX-expressible visual subset", async () =
   assert.match(html, /ArrowRight/);
 });
 
-test("the same IR and bytes produce byte-identical HTML and zip closures", async () => {
-  const first = await buildDeckHtmlZip(project(), { assets: HTML_ASSETS });
-  const second = await buildDeckHtmlZip(project(), { assets: HTML_ASSETS });
+test("the single HTML file has no external refs and restores every image byte", async () => {
+  const { html } = await buildDeckHtml(project(), { assets: HTML_ASSETS });
+  const directory = await mkdtemp(join(tmpdir(), "oceanleo-deck-html-"));
+  const filename = join(directory, "index.html");
+  try {
+    await writeFile(filename, html);
+    assert.deepEqual(await readdir(directory), ["index.html"]);
 
-  assert.equal(first.build.html, second.build.html);
-  assert.deepEqual(first.bytes, second.bytes);
+    const standalone = await readFile(filename, "utf8");
+    const document = new JSDOM(standalone).window.document;
+    const references = [...document.querySelectorAll("[src], [href]")].flatMap(
+      (element) =>
+        ["src", "href"]
+          .filter((attribute) => element.hasAttribute(attribute))
+          .map((attribute) => ({
+            attribute,
+            value: element.getAttribute(attribute) || "",
+          })),
+    );
+    assert.ok(references.length > 0, "fixture must exercise URL-bearing elements");
+    for (const reference of references) {
+      assert.match(
+        reference.value,
+        /^data:image\/(?:png|jpeg|webp);base64,/,
+        `${reference.attribute} must be an embedded image, got ${reference.value.slice(0, 80)}`,
+      );
+      assert.doesNotMatch(reference.value, /^https?:/i);
+    }
 
-  const archive = unzipSync(first.bytes);
-  assert.equal(strFromU8(archive["index.html"]), first.build.html);
-  assert.deepEqual(Object.keys(archive).sort(), [
-    "assets/photo-1.png",
-    "assets/photo-2.png",
-    "assets/photo-3.png",
-    "index.html",
-  ]);
+    for (const asset of ASSETS) {
+      const images = [
+        ...document.querySelectorAll(`img[data-asset-id="${asset.id}"]`),
+      ];
+      assert.ok(images.length > 0, `${asset.id} must be present in the standalone file`);
+      for (const image of images) {
+        const match = image
+          .getAttribute("src")
+          ?.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+=*)$/);
+        assert.ok(match, `${asset.id} must have a parseable data URI`);
+        assert.equal(match[1], asset.mediaType);
+        const restored = Buffer.from(match[2], "base64");
+        assert.equal(
+          createHash("sha256").update(restored).digest("hex"),
+          createHash("sha256").update(PIXEL).digest("hex"),
+          `${asset.id} bytes must round-trip from HTML alone`,
+        );
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("a missing image byte fails explicitly and produces no HTML", async () => {
+  let output;
+  let failure;
+  try {
+    output = await buildDeckHtml(project(), {
+      assets: HTML_ASSETS.filter((asset) => asset.id !== "photo-c"),
+    });
+  } catch (error) {
+    failure = error;
+  }
+  assert.equal(output, undefined, "failure must not return a partial build");
+  assert.ok(failure instanceof Error);
+  assert.equal(
+    failure.message,
+    "网页版缺少图片字节，不能生成自包含文件：photo-c。",
+  );
+});
+
+test("the same IR and image bytes produce byte-identical single-file HTML", async () => {
+  const first = await buildDeckHtml(project(), { assets: HTML_ASSETS });
+  const second = await buildDeckHtml(project(), { assets: HTML_ASSETS });
+
+  assert.equal(first.html, second.html);
+  assert.deepEqual(
+    new TextEncoder().encode(first.html),
+    new TextEncoder().encode(second.html),
+  );
 });
 
 test("4:3 is a fixed canvas option and an unavailable pack uses the IR theme", async () => {

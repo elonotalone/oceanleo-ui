@@ -6,8 +6,6 @@
  * OOXML writer projects them into `a:xfrm` / `p:xfrm` coordinates.
  */
 
-import { strToU8, zipSync } from "fflate";
-
 import type {
   DeckIrChart,
   DeckIrDocument,
@@ -33,10 +31,8 @@ export type DeckHtmlAspect = "16:9" | "4:3";
 
 export interface DeckHtmlAsset {
   id: string;
-  /** Relative URL inside the HTML closure. Defaults to assets/imageN.ext. */
-  path?: string;
-  /** Required only when the closure is zipped. */
-  bytes?: Uint8Array;
+  /** Required: every image is embedded into the single HTML file. */
+  bytes: Uint8Array;
   width?: number;
   height?: number;
 }
@@ -47,8 +43,6 @@ export interface DeckHtmlBuildOptions {
   packId?: string;
   /** The carrier currently supplies this beside the IR, not as a second IR. */
   aspect?: DeckHtmlAspect;
-  /** Relative entry path used by `zipDeckHtmlPackage`. */
-  entryPath?: string;
 }
 
 export interface DeckHtmlBuild {
@@ -56,12 +50,8 @@ export interface DeckHtmlBuild {
   aspect: DeckHtmlAspect;
   pageWidth: number;
   pageHeight: number;
-  entryPath: string;
   packId: string | null;
   packApplied: boolean;
-  assets: readonly Required<Pick<DeckHtmlAsset, "id" | "path">>[];
-  assetBytes: Readonly<Record<string, Uint8Array>>;
-  missingAssetIds: readonly string[];
   notes: readonly string[];
 }
 
@@ -109,8 +99,7 @@ interface ResolvedDeckStyle {
 
 interface AssetReference {
   id: string;
-  path: string;
-  bytes?: Uint8Array;
+  dataUri: string;
   width?: number;
   height?: number;
 }
@@ -119,7 +108,8 @@ const DEFAULT_MAJOR_FONT = "Aptos";
 const DEFAULT_EAST_ASIAN_FONT = "Microsoft YaHei";
 const DEFAULT_SCRIM_ALPHA = 60;
 const DEFAULT_GRID_COLUMNS = 3;
-const ZIP_MTIME = new Date(Date.UTC(1980, 0, 1, 0, 0, 0));
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 function escapeHtml(value: string): string {
   return value
@@ -218,49 +208,51 @@ async function resolveStyle(
   };
 }
 
-function mediaExtension(mediaType: string): string {
-  return mediaType === "image/jpeg" ? "jpeg" : mediaType === "image/webp" ? "webp" : "png";
-}
-
-function safeRelativePath(value: string): string {
-  const path = value.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (
-    !path ||
-    path.startsWith("/") ||
-    path.split("/").includes("..") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(path) ||
-    /[?#]/.test(path)
-  ) {
-    throw new Error(`deck html asset path must be relative and stay inside the closure: ${value}`);
+function bytesToBase64(bytes: Uint8Array): string {
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const hasSecond = index + 1 < bytes.length;
+    const hasThird = index + 2 < bytes.length;
+    const second = hasSecond ? bytes[index + 1] : 0;
+    const third = hasThird ? bytes[index + 2] : 0;
+    encoded +=
+      BASE64_ALPHABET[first >> 2] +
+      BASE64_ALPHABET[((first & 0x03) << 4) | (second >> 4)] +
+      (hasSecond
+        ? BASE64_ALPHABET[((second & 0x0f) << 2) | (third >> 6)]
+        : "=") +
+      (hasThird ? BASE64_ALPHABET[third & 0x3f] : "=");
   }
-  return path;
+  return encoded;
 }
 
 function resolveAssets(
   project: DeckIrDocument,
   supplied: readonly DeckHtmlAsset[] | undefined,
-): { references: Map<string, AssetReference>; missing: string[] } {
+): Map<string, AssetReference> {
   const byId = new Map((supplied || []).map((asset) => [asset.id, asset]));
   const references = new Map<string, AssetReference>();
   const missing: string[] = [];
-  (project.assets || []).forEach((declared, index) => {
+  (project.assets || []).forEach((declared) => {
     const asset = byId.get(declared.id);
-    if (supplied && !asset) {
+    if (!(asset?.bytes instanceof Uint8Array) || asset.bytes.byteLength === 0) {
       missing.push(declared.id);
       return;
     }
-    const path = safeRelativePath(
-      asset?.path || `assets/image${index + 1}.${mediaExtension(declared.mediaType)}`,
-    );
     references.set(declared.id, {
       id: declared.id,
-      path,
-      bytes: asset?.bytes,
+      dataUri: `data:${declared.mediaType};base64,${bytesToBase64(asset.bytes)}`,
       width: asset?.width ?? declared.width,
       height: asset?.height ?? declared.height,
     });
   });
-  return { references, missing };
+  if (missing.length > 0) {
+    throw new Error(
+      `网页版缺少图片字节，不能生成自包含文件：${missing.join(", ")}。`,
+    );
+  }
+  return references;
 }
 
 function pct(value: number, total: number): string {
@@ -373,9 +365,14 @@ function imageElement(
   assets: Map<string, AssetReference>,
 ): string {
   const asset = assets.get(image.assetId);
-  if (!asset) return "";
+  if (!asset) {
+    throw new Error(
+      `网页版图片没有对应的资源声明，不能生成自包含文件：${image.assetId}。`,
+    );
+  }
   return (
-    `<img class="deck-object deck-image" src="${escapeHtml(asset.path)}" ` +
+    `<img class="deck-object deck-image" data-asset-id="${escapeHtml(asset.id)}" ` +
+    `src="${asset.dataUri}" ` +
     `alt="${escapeHtml(image.alt)}" style="${boxStyle(box)}` +
     `object-fit:${image.fit === "contain" ? "contain" : "cover"};" />`
   );
@@ -899,7 +896,7 @@ show(0);fit();
 }());`;
 }
 
-/** Build one deterministic HTML file. Images remain relative references. */
+/** Build one deterministic, self-contained HTML file. */
 export async function buildDeckHtml(
   project: DeckIrDocument,
   options: DeckHtmlBuildOptions = {},
@@ -909,12 +906,11 @@ export async function buildDeckHtml(
     options.aspect === "4:3" || extended.aspect === "4:3" ? "4:3" : "16:9";
   const packId = options.packId || extended.packId;
   const style = await resolveStyle(project, packId);
-  const { references, missing } = resolveAssets(project, options.assets);
+  const references = resolveAssets(project, options.assets);
   const pageWidth = Number((DECK_GRID.pageWidth / 10_000).toFixed(3));
   const pageHeight = Number(
     (aspect === "4:3" ? pageWidth * 0.75 : DECK_GRID.pageHeight / 10_000).toFixed(3),
   );
-  const entryPath = safeRelativePath(options.entryPath || "index.html");
   const slides = project.slides
     .map(
       (slide, index) =>
@@ -940,17 +936,7 @@ export async function buildDeckHtml(
     `<button id="deck-fullscreen" type="button">全屏</button></nav></main>` +
     `<script>${runtimeScript()}</script></body></html>\n`;
 
-  const assets = [...references.values()]
-    .map((asset) => ({ id: asset.id, path: asset.path }))
-    .sort((first, second) => first.path.localeCompare(second.path));
-  const assetBytes = Object.fromEntries(
-    [...references.values()]
-      .filter((asset): asset is AssetReference & { bytes: Uint8Array } => asset.bytes !== undefined)
-      .map((asset) => [asset.path, asset.bytes]),
-  );
-  const notes = missing.map(
-    (id) => `No bytes/path were supplied for picture "${id}", so matching img elements were omitted.`,
-  );
+  const notes: string[] = [];
   if (packId && !style.packApplied) {
     notes.push(`Pack "${packId}" was unavailable, so the IR theme fallback was used.`);
   }
@@ -959,39 +945,8 @@ export async function buildDeckHtml(
     aspect,
     pageWidth,
     pageHeight,
-    entryPath,
     packId: packId || null,
     packApplied: style.packApplied,
-    assets,
-    assetBytes,
-    missingAssetIds: missing,
     notes,
   };
-}
-
-/** Zip the HTML and every supplied image byte with a fixed epoch timestamp. */
-export function zipDeckHtmlPackage(build: DeckHtmlBuild): Uint8Array {
-  const archive: Record<string, Uint8Array> = {
-    [build.entryPath]: strToU8(build.html),
-  };
-  for (const asset of build.assets) {
-    const bytes = build.assetBytes[asset.path];
-    if (!bytes) {
-      throw new Error(`deck html zip is missing bytes for asset "${asset.id}" (${asset.path})`);
-    }
-    if (archive[asset.path]) {
-      throw new Error(`deck html zip has a duplicate entry path: ${asset.path}`);
-    }
-    archive[asset.path] = bytes;
-  }
-  return Uint8Array.from(zipSync(archive, { level: 6, mtime: ZIP_MTIME }));
-}
-
-/** Convenience wrapper for callers that want the closure in one operation. */
-export async function buildDeckHtmlZip(
-  project: DeckIrDocument,
-  options: DeckHtmlBuildOptions = {},
-): Promise<{ bytes: Uint8Array; build: DeckHtmlBuild }> {
-  const build = await buildDeckHtml(project, options);
-  return { bytes: zipDeckHtmlPackage(build), build };
 }

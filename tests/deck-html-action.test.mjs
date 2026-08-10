@@ -23,10 +23,7 @@ import test from "node:test";
 
 import React, { act } from "react";
 
-import {
-  buildDeckHtml,
-  zipDeckHtmlPackage,
-} from "../src/shell/doc-editors/deck-html-package.ts";
+import { buildDeckHtml } from "../src/shell/doc-editors/deck-html-package.ts";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -96,7 +93,7 @@ const PIXEL = Uint8Array.from(
   ),
 );
 
-function deckIr() {
+function deckIr({ withImage = false } = {}) {
   return {
     schema: "oceanleo.deck.v1",
     version: 1,
@@ -110,22 +107,28 @@ function deckIr() {
     slides: [
       { layout: "title", title: "近岸观测网年度汇报", subtitle: "同一份稿子的网页孪生件" },
       { layout: "bullets", title: "年度要点", bullets: ["新增站点 12 个", "回传时延下降 41%"] },
-      {
-        layout: "image-full",
-        title: "东南近岸断面",
-        images: [{ assetId: "photo-a", alt: "近岸航拍" }],
-      },
+      ...(withImage
+        ? [
+            {
+              layout: "image-full",
+              title: "东南近岸断面",
+              images: [{ assetId: "photo-a", alt: "近岸航拍" }],
+            },
+          ]
+        : []),
     ],
-    assets: [
-      {
-        id: "photo-a",
-        sha256: "1".repeat(64),
-        mediaType: "image/png",
-        byteSize: PIXEL.length,
-        width: 1600,
-        height: 900,
-      },
-    ],
+    assets: withImage
+      ? [
+          {
+            id: "photo-a",
+            sha256: "1".repeat(64),
+            mediaType: "image/png",
+            byteSize: PIXEL.length,
+            width: 1600,
+            height: 900,
+          },
+        ]
+      : [],
     attribution: {
       entries: [
         {
@@ -383,7 +386,7 @@ test("有稿子时网页版可用，交付的字节与直接调用 deck-html-pac
     assert.equal(server.reads(), 1, "稿子必须真去取一次");
     assert.match(mounted.container.textContent || "", /网页版已生成/);
 
-    // 直接调用出口：宿主没给图片字节，动作那一侧传的就是「一张都没有」。
+    // 直接调用出口：这个行为夹具没有声明图片，交付仍须逐字节相同。
     const direct = await buildDeckHtml(deckIr(), { assets: [] });
     const deliveredBytes = await savedBytes(0);
     assert.deepEqual(
@@ -401,19 +404,20 @@ test("有稿子时网页版可用，交付的字节与直接调用 deck-html-pac
   }
 });
 
-test("图片字节齐了就交 zip 闭包，字节等于 zipDeckHtmlPackage 的产物", async () => {
-  const project = deckIr();
+test("图片字节齐了也只交自包含的单文件 HTML", async () => {
+  const project = deckIr({ withImage: true });
   const assets = [
-    { id: "photo-a", path: "assets/photo-1.png", bytes: PIXEL, width: 1600, height: 900 },
+    { id: "photo-a", bytes: PIXEL, width: 1600, height: 900 },
   ];
   const delivery = await deckHtmlAction.buildDeckHtmlDelivery(project, { assets });
-  assert.equal(delivery.kind, "zip");
-  assert.equal(delivery.mediaType, "application/zip");
-  assert.match(delivery.filename, /\.html\.zip$/);
+  assert.equal(delivery.kind, "html");
+  assert.equal(delivery.mediaType, "text/html;charset=utf-8");
+  assert.match(delivery.filename, /\.html$/);
+  assert.doesNotMatch(delivery.filename, /\.zip$/);
 
-  const direct = await buildDeckHtml(deckIr(), { assets });
-  assert.deepEqual(delivery.bytes, zipDeckHtmlPackage(direct));
-  assert.deepEqual(delivery.build.missingAssetIds, []);
+  const direct = await buildDeckHtml(project, { assets });
+  assert.deepEqual(delivery.bytes, new TextEncoder().encode(direct.html));
+  assert.match(new TextDecoder().decode(delivery.bytes), /src="data:image\/png;base64,/);
 });
 
 // ── ② 没稿子 ⇒ 不可用，但按钮留在原地并说人话 ───────────────────────────────
