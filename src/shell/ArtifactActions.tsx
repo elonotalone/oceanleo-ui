@@ -12,6 +12,7 @@ import {
   prepareArtifactForAction,
   setArtifactFavorite,
 } from "./artifact-client";
+import { DeckHtmlActionButton, deckHtmlEvidence } from "./DeckHtmlAction";
 import { humanErrorMessage } from "./human-error-message";
 import {
   isDurableLibraryItem,
@@ -504,6 +505,17 @@ export function ArtifactActionButtons({
   const favoriteReason = identityBlocked
     ? identityReason
     : "当前主体没有收藏这个 artifact 的权限。";
+  /**
+   * 「网页版」是从稿子当场渲的，所以它跟着**稿子**在不在，而不是跟着 rendition 走。
+   * 身份还没取回来时它与下载同口径：留在原地、按不动、说同一句话——那一刻我们连
+   * 当前 revision 是哪个都还不知道，渲出来的很可能不是用户看的这一版。
+   */
+  const deckHtmlSource = deckHtmlEvidence(item);
+  const deckHtml = {
+    ...deckHtmlSource,
+    available: deckHtmlSource.available && !identityBlocked,
+    reason: identityBlocked ? identityReason : deckHtmlSource.reason,
+  };
   const fullscreenEvidence = fullscreenContentEvidence(item);
   const fullscreenVisible =
     typeof onFullscreen === "function" &&
@@ -600,6 +612,7 @@ export function ArtifactActionButtons({
     identity?.onRetry?.();
   };
   // Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接.
+  // 「网页版」紧跟在下载后面，只在 deck 条目上出现（`deckHtmlEvidence` 自己判可见性）。
   // Insert/Replace follow when an editor host registers them.
   // Preview is hidden for library materials via matrix.hidePreview.
   const primaryActions = (
@@ -623,6 +636,9 @@ export function ArtifactActionButtons({
           : []),
         ...(favoriteVisible && !favoriteAvailable && favoriteReason
           ? [`收藏：${favoriteReason}`]
+          : []),
+        ...(deckHtml.visible && !deckHtml.available && deckHtml.reason
+          ? [`网页版：${deckHtml.reason}`]
           : []),
       ],
     ),
@@ -691,6 +707,14 @@ export function ArtifactActionButtons({
             {isBusy("download") ? tt("处理中…") : tt("下载")}
           </button>
         )}
+        <DeckHtmlActionButton
+          item={item}
+          evidence={deckHtml}
+          report={report}
+          reasonId={reasonId}
+          className={chipClass}
+          style={chipStyle(deckHtml.available)}
+        />
         {favoriteVisible && (
           <button
             type="button"
