@@ -384,6 +384,7 @@ export function ArtifactActionButtons({
   onStatus,
   accent = "#4f46e5",
   compact = false,
+  editLabel = ACTION_LABEL.edit,
 }: {
   item: LibraryItem;
   matrix: Record<ArtifactCardAction, ArtifactActionState>;
@@ -403,6 +404,11 @@ export function ArtifactActionButtons({
   onStatus?: (message: string) => void;
   accent?: string;
   compact?: boolean;
+  /**
+   * 宿主可以把同一条 typed Edit 链说成更具体的用户动作；只换屏幕文案，
+   * `prepareArtifactForAction("edit")`、权限裁决与 fork 行为一字不变。
+   */
+  editLabel?: string;
 }) {
   const tt = useUI();
   const reasonId = useId();
@@ -435,6 +441,8 @@ export function ArtifactActionButtons({
     setLiveStatus(translated);
     onStatus?.(translated);
   };
+  const actionLabel = (action: ArtifactCardAction) =>
+    action === "edit" ? editLabel : ACTION_LABEL[action];
   const handlers = useMemo(
     () => ({
       preview: onPreview,
@@ -460,7 +468,7 @@ export function ArtifactActionButtons({
     try {
       const prepared = await prepareArtifactForAction(action, item);
       if (!prepared.ok || !prepared.data) {
-        throw new Error(prepared.error || `${ACTION_LABEL[action]}失败。`);
+        throw new Error(prepared.error || `${actionLabel(action)}失败。`);
       }
       await handler(prepared.data);
       report(ACTION_SUCCESS_STATUS[action]);
@@ -468,7 +476,7 @@ export function ArtifactActionButtons({
       // 抛上来的可能是我们自己那句中文，也可能是宿主编辑器里冒出来的运行时异常
       // （`Cannot read properties of undefined` 之类）。后者不许摆给读者。
       report(
-        humanErrorMessage(error, `${ACTION_LABEL[action]}失败，请重试。`),
+        humanErrorMessage(error, `${actionLabel(action)}失败，请重试。`),
       );
     } finally {
       endBusy(action);
@@ -630,7 +638,7 @@ export function ArtifactActionButtons({
         ...visible
           .map((action) => matrix[action])
           .filter((state) => !state.available && state.reason)
-          .map((state) => `${ACTION_LABEL[state.action]}：${state.reason}`),
+          .map((state) => `${actionLabel(state.action)}：${state.reason}`),
         ...(downloadVisible && !downloadAvailable && downloadReason
           ? [`下载：${downloadReason}`]
           : []),
@@ -653,6 +661,7 @@ export function ArtifactActionButtons({
   });
   const renderAction = (action: ArtifactCardAction) => {
     const state = matrix[action];
+    const label = actionLabel(action);
     const disabled =
       !state.available || !handlers[action] || isBusy(action);
     return (
@@ -666,15 +675,15 @@ export function ArtifactActionButtons({
           !state.available && state.reason ? reasonId : undefined
         }
         aria-label={tt(
-          `${ACTION_LABEL[action]}「${item.title}」${
+          `${label}「${item.title}」${
             state.reason ? `：${state.reason}` : ""
           }`,
         )}
-        title={tt(state.reason || ACTION_LABEL[action])}
+        title={tt(state.reason || label)}
         className={chipClass}
         style={chipStyle(state.available)}
       >
-        {isBusy(action) ? tt("处理中…") : tt(ACTION_LABEL[action])}
+        {isBusy(action) ? tt("处理中…") : tt(label)}
       </button>
     );
   };
