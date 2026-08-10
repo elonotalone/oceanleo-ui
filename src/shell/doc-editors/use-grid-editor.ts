@@ -9,7 +9,6 @@ import {
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import type { PluginExportFormId } from "../plugin-export/plugin-export-contract";
 import {
   downloadBlob,
   downloadText,
@@ -124,26 +123,6 @@ export interface GridEditorState {
   exportXlsx: () => Promise<void>;
   save: () => Promise<GridSavedVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
-  /** 旧台账导出栏的消费方尚未归入本任务；真表格编辑器始终返回 `null`。 */
-  ledgerExport: LedgerExportState | null;
-}
-
-/**
- * 旧台账导出栏仍由任务边界外的 `GridStage.tsx` 消费。保留形状只为不越界破坏
- * 真表格编辑器的现有组件合同；本 hook 已不再构造该状态。
- */
-export interface LedgerExportState {
-  /** 清册声明且真渲得出的形态，界面照它铺按钮。 */
-  forms: readonly PluginExportFormId[];
-  /** 正在导出的那一种；空串表示闲着。 */
-  busyForm: PluginExportFormId | "";
-  /** 上一次导出的结果文案（成功或失败原因），可直接展示。 */
-  notice: string;
-  /** 上一次成功导出的库条目 id，给调用方做跳转用；失败或没导过时为空串。 */
-  lastArtifactId: string;
-  /** 这张台账现在有几笔记录；0 时按钮该禁用（导不出空文件）。 */
-  entryCount: number;
-  exportTo: (form: PluginExportFormId) => Promise<void>;
 }
 
 /**
@@ -1250,6 +1229,5 @@ export function useGridEditor(
     exportXlsx,
     save,
     restoreRecovery,
-    ledgerExport: null,
   };
 }
