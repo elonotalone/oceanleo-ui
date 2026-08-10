@@ -20,8 +20,6 @@ export const ARTIFACT_TYPES = [
   "model_3d",
   "workflow",
   "game",
-  "geo_map",
-  "interactive_doc",
 ] as const;
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
@@ -40,8 +38,6 @@ export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "video-canvas",
   "threed",
   "game",
-  "geo-map",
-  "interactive-doc",
 ] as const;
 
 export type AdvancedEditorAdapterId =
@@ -441,69 +437,6 @@ const ADVANCED_CAPABILITY_ROWS = [
       schema: "oceanleo.game-bundle.v1",
       requiredPaths: ["prompt", "engineApiVersion"],
       dependencyClosure: "not_required",
-    },
-  },
-  {
-    /**
-     * 第 15 类 `geo_map`。字段逐字取 `L1-carriers/geo-map.md` §1.1 的四元组表，
-     * 后端 `ADVANCED_CAPABILITY_CONTRACT` 读同一份规格，两侧逐字段对账。
-     *
-     * `sourceIntegrity` 是 `complete_dependency_closure` 而不是
-     * `content_addressed`：底图瓦片与 geojson 数据件在 `dependencies[]` 里，
-     * 缺件的产物只能渲底图（规格 §3.3 的 `degraded`），不是一份可保存的工程。
-     */
-    featureId: "geo_map_editing",
-    artifactType: "geo_map",
-    sourceFormat: "oceanleo.geo-map.v1",
-    sourceMediaType: "application/json",
-    editorCapability: "geo-map-editor",
-    artifactBindings: [
-      { artifactType: "geo_map", editorCapabilities: ["geo-map-editor"] },
-    ],
-    adapter: "geo-map",
-    projectSchema: "oceanleo.geo-map.v1",
-    editability: "native",
-    sourceIntegrity: "complete_dependency_closure",
-    openMode: "structured-project",
-    previewPurposes: ["preview", "full"],
-    requirement: {
-      kind: "manifest",
-      schema: "oceanleo.geo-map.v1",
-      requiredPaths: ["sources", "layers"],
-      dependencyClosure: "complete",
-    },
-  },
-  {
-    /**
-     * 第 16 类 `interactive_doc`。字段逐字取 `L1-carriers/interactive-doc.md` §1.1。
-     *
-     * 刻意**不**复用 `document`：`tiptap-json@1` 是富文本树，没有参数、没有计算图、
-     * 不能重算，把可算文档塞进去只会得到又一份纯文本空壳（规格 §1.1）。
-     * `source_format` 的 `-doc` 段不得省略，写成 `oceanleo.interactive.v1`
-     * 会被后端 `_source_format_matches` 拒收。
-     */
-    featureId: "interactive_doc_editing",
-    artifactType: "interactive_doc",
-    sourceFormat: "oceanleo.interactive-doc.v1",
-    sourceMediaType: "application/json",
-    editorCapability: "interactive-doc-editor",
-    artifactBindings: [
-      {
-        artifactType: "interactive_doc",
-        editorCapabilities: ["interactive-doc-editor"],
-      },
-    ],
-    adapter: "interactive-doc",
-    projectSchema: "oceanleo.interactive-doc.v1",
-    editability: "native",
-    sourceIntegrity: "complete_dependency_closure",
-    openMode: "structured-project",
-    previewPurposes: ["preview", "full"],
-    requirement: {
-      kind: "manifest",
-      schema: "oceanleo.interactive-doc.v1",
-      requiredPaths: ["blocks", "computations"],
-      dependencyClosure: "complete",
     },
   },
 ] as const;
@@ -1209,14 +1142,6 @@ const SOURCE_FORMAT_EXACT: Readonly<Record<ArtifactType, ReadonlySet<string>>> =
    * `_validate_upload_media_type` 拒掉，正是 B12 那条死形状。
    */
   game: new Set(["oceanleo.game-bundle.v1"]),
-  /**
-   * 只有结构化工程信封是 source format。`geo-map.md` §1.1 明令 `html` 与
-   * `geo-map`（连字符）都不得出现；`application/geo+json` 描述的是
-   * `dependencies[]` 里的数据件，不是 artifact 自己的 source format。
-   */
-  geo_map: new Set(["oceanleo.geo-map.v1"]),
-  /** 同上：`interactive-doc.md` §1.1，`-doc` 段不得省略，`html` 不得落库。 */
-  interactive_doc: new Set(["oceanleo.interactive-doc.v1"]),
 };
 
 const SOURCE_FORMAT_PREFIXES: Readonly<
@@ -1242,8 +1167,6 @@ const SOURCE_FORMAT_PREFIXES: Readonly<
   model_3d: ["model/", "model-", "3d-"],
   workflow: ["workflow-", "oceanleo.workflow."],
   game: ["game-", "oceanleo.game-"],
-  geo_map: ["geo-map-", "oceanleo.geo-map."],
-  interactive_doc: ["interactive-doc-", "oceanleo.interactive-doc."],
 };
 
 const artifactEditorCapabilities = Object.fromEntries(
@@ -2021,31 +1944,6 @@ export function artifactIntegrityFor(input: {
       }
     }
   }
-  /**
-   * 两个结构化工程载体的 `source_integrity` 都是 `complete_dependency_closure`
-   * （`geo-map.md` §1.1 / `interactive-doc.md` §1.1）。依赖缺件时规格只允许进
-   * `degraded`，而 `degraded` **MUST NOT** 保存（两份 §3.3 的非法迁移表），
-   * 所以闭包一旦声明就必须完整且钉在当前 revision；闭包未声明时由后端
-   * `ArtifactContentInput` 那道 `source_manifest` 闸门兜底（geo-map.md §6 F3）。
-   */
-  if (
-    input.editability !== "view_only" &&
-    (input.artifactType === "geo_map" ||
-      input.artifactType === "interactive_doc") &&
-    input.sourceClosure &&
-    (input.sourceClosure.revisionId !== input.revisionId ||
-      input.sourceClosure.status !== "complete" ||
-      !input.sourceClosure.digest)
-  ) {
-    return {
-      ok: false,
-      code: "incomplete-dependency-closure",
-      reason:
-        input.artifactType === "geo_map"
-          ? "地图工程的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。"
-          : "交互文档的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。",
-    };
-  }
   return { ok: true, code: "ok", reason: "" };
 }
 
@@ -2366,11 +2264,7 @@ export function viewerRenditionOrder(
     artifactType === "website" ||
     artifactType === "workflow" ||
     // `full` 是可玩 bundle（text/html），卡片位图只能来自封面 `preview`。
-    artifactType === "game" ||
-    // 两个结构化工程载体的 `full` 是 JSON 信封，卡片位图只能来自渲出的
-    // `preview`（`geo-map.md` / `interactive-doc.md` §1.1 `preview_purposes`）。
-    artifactType === "geo_map" ||
-    artifactType === "interactive_doc"
+    artifactType === "game"
   ) {
     return ["preview", "full"];
   }
