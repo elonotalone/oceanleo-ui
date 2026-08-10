@@ -38,6 +38,7 @@ import {
   type MaterialLibraryLevel,
 } from "./material-library-controller";
 import { templateDeepLinkAction } from "./material-library-template-source";
+import { useMaterialLibraryFacets } from "./material-library-facet-filter";
 import { MaterialCompleteLibraryLink, MaterialShelfToolbar } from "./material-library-toolbar";
 import {
   entriesFromRemoteResult,
@@ -538,6 +539,10 @@ export function MaterialLibrary({
       remote,
     ],
   );
+  const facetShelf = useMaterialLibraryFacets(entries, {
+    enabled: siteId === "website",
+    scopeKey: `${level}:${runtimeAppId}`,
+  });
   // 本站素材的主分区轴 = 站点 app 目录的场景词（D2）。原来那排原始 appId chips 已下线；
   // 类型筛选降为次级筛选，与分区叠加。
   const directory = useSyncExternalStore(
@@ -550,20 +555,20 @@ export function MaterialLibrary({
     () =>
       level === "site"
         ? materialSceneView({
-            entries,
+            entries: facetShelf.entries,
             siteKey: siteId,
             directory,
             scene,
             anchoredAppId,
           })
         : null,
-    [anchoredAppId, directory, entries, level, scene, siteId],
+    [anchoredAppId, directory, facetShelf.entries, level, scene, siteId],
   );
   // 素材包三层：这里算、下发，并回落点解析器（`material-pack-landing.ts` 说明理由）。
   const packAppIdForEntry = useMaterialPackLanding(level === "site" ? { entries, siteKey: siteId, directory, scene, anchoredAppId } : null, sceneView);
   const visibleEntries = useMemo(
-    () => (sceneView ? sceneView.cards.map((card) => card.entry) : entries),
-    [entries, sceneView],
+    () => (sceneView ? sceneView.cards.map((card) => card.entry) : facetShelf.entries),
+    [facetShelf.entries, sceneView],
   );
   // 按 artifact 类型分派呈现模式（P2）。探索页之外 `exploreClassDispatch` 不传，
   // `dispatch.entries === visibleEntries` 的顺序与内容都与今天逐字相同。
@@ -680,6 +685,7 @@ export function MaterialLibrary({
       selectedTypes={selectedTypes}
       availableTypes={availableTypes}
       onApplyTypes={applyTypes}
+      facetControl={facetShelf.control}
       canLoadMore={Boolean(
         nextCursor && level !== "primary" && levelFetchEnabled,
       )}
@@ -773,8 +779,8 @@ export function MaterialLibrary({
       hideCategoryChips
       toolbarActions={toolbar}
       searchPlaceholder={materialLevelSearchPlaceholder(level)}
-      emptyTitle={emptyCopy.title}
-      emptyDescription={emptyCopy.description}
+      emptyTitle={facetShelf.active ? "没有匹配模板" : emptyCopy.title}
+      emptyDescription={facetShelf.active ? "清除一项筛选再看看。" : emptyCopy.description}
       emptyCta={emptyCopy.showCta ? emptyCta : undefined}
       materialActions={materialActions}
       onMaterialAction={onMaterialAction}
