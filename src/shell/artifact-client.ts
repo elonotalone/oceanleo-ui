@@ -1923,6 +1923,43 @@ async function durableEditDecisionItem(
   return ensureDurableArtifactItem(item, signal);
 }
 
+// `edit-capability` currently performs several independent control-plane reads.
+// A fork response already proves that its root/revision was committed and fully
+// projected, but any one of those later reads can still fail transiently with a
+// retryable 503. Retry only this read: repeating the larger edit decision would
+// also repeat owner resolution and the fork request.
+const EDIT_CAPABILITY_RETRY_DELAYS_MS = [250, 750] as const;
+
+async function waitForEditCapabilityRetry(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return false;
+  return new Promise<boolean>((resolve) => {
+    const finish = (ready: boolean) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      resolve(ready);
+    };
+    const abort = () => finish(false);
+    const timer = setTimeout(() => finish(true), delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function requestArtifactEditCapability(
+  path: string,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<unknown>> {
+  let result = await artifactRequest<unknown>(path, { signal });
+  for (const delayMs of EDIT_CAPABILITY_RETRY_DELAYS_MS) {
+    if (result.ok || !result.retryable) return result;
+    if (!(await waitForEditCapabilityRetry(delayMs, signal))) return result;
+    result = await artifactRequest<unknown>(path, { signal });
+  }
+  return result;
+}
+
 export async function getArtifactEditDecision(
   item: LibraryItem,
   signal?: AbortSignal,
@@ -1982,11 +2019,11 @@ export async function getArtifactEditDecision(
   const params = new URLSearchParams({
     revisionId: canonical.revisionId || "",
   });
-  const result = await artifactRequest<unknown>(
+  const result = await requestArtifactEditCapability(
     `/v1/artifacts/${encodeURIComponent(
       canonical.artifactId || "",
     )}/edit-capability?${params}`,
-    { signal },
+    signal,
   );
   if (!result.ok) return result as ArtifactApiResult<ArtifactEditDecision>;
   const raw =

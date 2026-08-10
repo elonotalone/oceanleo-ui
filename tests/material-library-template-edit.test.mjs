@@ -205,6 +205,7 @@ function jsonResponse(payload, status = 200) {
 function mockGateway({
   original,
   forked = null,
+  capabilityStatuses = [],
   /** ensure 入库后服务端回的 artifact，连同与请求一致的 receipt。 */
   ensured = null,
   minePayload = {
@@ -223,6 +224,7 @@ function mockGateway({
   if (forked) store.set(forked.artifact_id, structuredClone(forked));
   if (ensured) store.set(ensured.artifact_id, structuredClone(ensured));
   const calls = [];
+  const pendingCapabilityStatuses = [...capabilityStatuses];
   const previous = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -261,6 +263,17 @@ function mockGateway({
       url.pathname,
     );
     if (capabilityMatch) {
+      const status = pendingCapabilityStatuses.shift() || 200;
+      if (status !== 200) {
+        return jsonResponse(
+          {
+            code: "control-plane-unavailable",
+            message: "artifact control plane is unavailable",
+            details: {},
+          },
+          status,
+        );
+      }
       const target = store.get(capabilityMatch[1]);
       return jsonResponse({
         available: true,
@@ -364,6 +377,40 @@ test("官方模板条目点「编辑」：解析当前 head → fork 用户副�
         .filter(({ pathname }) => pathname.endsWith("/edit-capability"))
         .map(({ pathname }) => pathname),
       [`/v1/artifacts/${COPY_ID}/edit-capability`],
+    );
+  } finally {
+    gateway.restore();
+  }
+});
+
+test("fork 后首次能力查询 503：同一副本自动恢复并进入编辑器，不重复 fork", async () => {
+  const original = projection({ canEdit: true, canFork: true });
+  const forked = projection({
+    id: COPY_ID,
+    title: "官方模板素材 副本",
+    ownerPrincipalId: CURRENT_PRINCIPAL,
+    visibility: "private",
+  });
+  const gateway = mockGateway({
+    original,
+    forked,
+    capabilityStatuses: [503, 200],
+  });
+  try {
+    const prepared = await prepareArtifactForAction("edit", templateShelfItem());
+
+    assert.equal(prepared.ok, true, prepared.error);
+    assert.equal(prepared.data.artifactId, COPY_ID);
+    assert.equal(prepared.data.revisionId, "r1");
+    assert.equal(gateway.forkCalls().length, 1);
+    assert.deepEqual(
+      gateway.calls
+        .filter(({ pathname }) => pathname.endsWith("/edit-capability"))
+        .map(({ pathname, search }) => `${pathname}${search}`),
+      [
+        `/v1/artifacts/${COPY_ID}/edit-capability?revisionId=r1`,
+        `/v1/artifacts/${COPY_ID}/edit-capability?revisionId=r1`,
+      ],
     );
   } finally {
     gateway.restore();
