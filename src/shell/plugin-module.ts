@@ -29,6 +29,103 @@ export type PluginModule = {
   render: (host: PluginHost) => ReactNode;
 };
 
+export interface PluginStateAccess {
+  save: PluginHost["save"];
+  load: PluginHost["load"];
+}
+
+const PLUGIN_STATE_DATABASE = "oceanleo-plugin-host";
+const PLUGIN_STATE_STORE = "states";
+const pluginStateMemory = new Map<string, unknown>();
+let pluginStateDatabasePromise: Promise<IDBDatabase | null> | null = null;
+
+function pluginStateKey(siteKey: string, appId: string, pluginId: string): string {
+  return JSON.stringify([siteKey, appId, pluginId]);
+}
+
+function openPluginStateDatabase(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  if (pluginStateDatabasePromise) return pluginStateDatabasePromise;
+  pluginStateDatabasePromise = new Promise((resolve) => {
+    const request = indexedDB.open(PLUGIN_STATE_DATABASE, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PLUGIN_STATE_STORE)) {
+        request.result.createObjectStore(PLUGIN_STATE_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return pluginStateDatabasePromise;
+}
+
+/**
+ * 一件模块在一个 app 里的不透明状态槽。浏览器持久层使用 structured clone；
+ * 平台不解析、不规范化，也不要求状态属于某种 schema。
+ */
+export function createPluginStateAccess(
+  siteKey: string,
+  appId: string,
+  pluginId: string,
+): PluginStateAccess {
+  const key = pluginStateKey(siteKey, appId, pluginId);
+  return {
+    save: async (state) => {
+      pluginStateMemory.set(key, state);
+      const database = await openPluginStateDatabase();
+      if (!database) return;
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(PLUGIN_STATE_STORE, "readwrite");
+        transaction.objectStore(PLUGIN_STATE_STORE).put(state, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+    },
+    load: async () => {
+      if (pluginStateMemory.has(key)) return pluginStateMemory.get(key) ?? null;
+      const database = await openPluginStateDatabase();
+      if (!database) return null;
+      const state = await new Promise<unknown>((resolve, reject) => {
+        const request = database
+          .transaction(PLUGIN_STATE_STORE, "readonly")
+          .objectStore(PLUGIN_STATE_STORE)
+          .get(key);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      if (state === undefined) return null;
+      pluginStateMemory.set(key, state);
+      return state;
+    },
+  };
+}
+
+/** 把模块给出的原始 Blob 交给现有文件库；`kind` 原样作为文件内容类型。 */
+export async function exportPluginArtifact(
+  siteKey: string,
+  bytes: Blob,
+  kind: string,
+  filename: string,
+): Promise<void> {
+  const { uploadFile } = await import("../lib/database");
+  const result = await uploadFile(
+    new File([bytes], filename, { type: kind }),
+    { siteId: siteKey, title: filename },
+  );
+  if (!result.ok || !result.data?.file) {
+    throw new Error(result.error || "导出物写入我的库失败。");
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("oceanleo:artifact-library-change", {
+        detail: { action: "upload", file: result.data.file },
+      }),
+    );
+  }
+}
+
 /** 本波之后返回空数组：平台上一件插件都没有，这是预期状态。 */
 export function pluginModules(): PluginModule[] {
   return [];

@@ -152,20 +152,9 @@ const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
 const { SplitWorkspace, useRightPaneSlot, useWorkspacePane } =
   await import(splitUrl);
 
-// ---------------------------------------------------------------------------
-// 非编辑类插件没有编辑栏（`_COMMON.md` §3.2）。
-// 操作员：「地图和地球仪上方的 edit bar 是怎么回事？？不应该有吧？？」
-// 判据必须落在**真 DOM** 上：外壳挂一份插件实例时，编辑栏与它的停靠带一个都不许
-// 出现；挂一件素材时两者原样保留。下面这批替身只覆盖与编辑栏无关的叶子（头部、
-// 素材面板、自动保存……），编辑栏本体（FloatingContextToolbar / EditBarDockHost）
-// 与判据来源（workbench-routes）都是真模块。
-// ---------------------------------------------------------------------------
 const workbenchRoutesUrl = pathToFileURL(
   resolve("src/shell/workbench-routes.ts"),
 ).href;
-const { pluginInstanceFromInitialState } = await import(
-  pathToFileURL(resolve("src/shell/plugin-initial-state.ts")).href
-);
 const layoutContextStubUrl = dataModule(`
   import { createContext } from ${JSON.stringify(reactUrl)};
   export const AdvancedLayoutContext = createContext(null);
@@ -1387,48 +1376,7 @@ const materialItem = {
   meta: {},
 };
 
-test("非编辑类插件挂载后 DOM 里没有编辑栏，素材照旧有", async () => {
-  const ledger = pluginInstanceFromInitialState(
-    "ledger-register",
-    { runtime: "grid", title: "台账" },
-    { siteId: "travel", appId: "trip", nonce: "n1" },
-  );
-  assert.ok(ledger, "造不出插件实例");
-
-  const pluginMount = await createMounted(InlineAdvancedWorkbenchShell, {
-    item: ledger,
-    adapter: shellAdapter(),
-    onClose() {},
-  });
-  try {
-    assert.ok(
-      pluginMount.container.querySelector("[data-inline-editor]"),
-      "插件本体必须照常挂起来",
-    );
-    assert.equal(
-      pluginMount.container.querySelector("[data-workspace-edit-bar-dock]"),
-      null,
-      "插件不该有编辑栏停靠带",
-    );
-    assert.equal(
-      pluginMount.container.querySelector("[data-workspace-edit-bar-toolbar]"),
-      null,
-      "插件不该有编辑栏",
-    );
-    assert.equal(
-      pluginMount.container.querySelector("[data-test-context-toolbar]"),
-      null,
-      "编辑栏里的控件也不许漏出来",
-    );
-    assert.equal(
-      document.querySelector("[data-workspace-floating-toolbar-overlay]"),
-      null,
-      "浮动层整层都不该存在",
-    );
-  } finally {
-    await pluginMount.unmount();
-  }
-
+test("素材挂载后 DOM 里照旧有编辑栏", async () => {
   const materialMount = await createMounted(InlineAdvancedWorkbenchShell, {
     item: materialItem,
     adapter: shellAdapter(),

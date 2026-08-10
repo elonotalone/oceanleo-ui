@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   ADVANCED_CAPABILITY_MATRIX,
   ARTIFACT_EDITOR_CAPABILITIES,
-  ARTIFACT_TYPES,
   advancedCapabilityForArtifactFields,
   advancedCapabilityForFeatureId,
   artifactUserFacingDownloadHint,
@@ -150,7 +149,6 @@ test("矢量下载仍交付 svg 源文件，不退化成 png", () => {
 });
 
 test("deck / website / image / composite 四行未被这次修正碰到", () => {
-  assert.equal(ADVANCED_CAPABILITY_MATRIX.length, 15);
   for (const [featureId, adapter, sourceFormat, projectSchema] of [
     ["presentation_editing", "deck", "pptx", "oceanleo.deck.v1"],
     ["website_finetuning", "website", "website-source@1", "website-source@1"],
@@ -176,16 +174,37 @@ test("deck / website / image / composite 四行未被这次修正碰到", () => 
   });
   assert.equal(raster?.adapter, "image");
   assert.equal(raster?.editability, "bounded");
+  assert.ok(ADVANCED_CAPABILITY_MATRIX.length >= 4);
 });
 
-test("每种 typed artifact 仍能在 matrix 里找到编辑能力", () => {
-  for (const artifactType of ARTIFACT_TYPES) {
+test("已有编辑器仍有路由能力，未知类型无需先登记 matrix", () => {
+  for (const artifactType of [
+    "deck",
+    "grid",
+    "chart",
+    "video",
+    "audio",
+    "pdf",
+    "model_3d",
+  ]) {
     assert.ok(
-      ARTIFACT_EDITOR_CAPABILITIES[artifactType].size > 0,
+      ARTIFACT_EDITOR_CAPABILITIES[artifactType]?.size > 0,
       artifactType,
     );
   }
   assert.deepEqual([...ARTIFACT_EDITOR_CAPABILITIES.vector_image].sort(), [
     "vector-editor",
   ]);
+  assert.equal(
+    ARTIFACT_EDITOR_CAPABILITIES.luminous_forest_simulation,
+    undefined,
+  );
+  assert.equal(
+    advancedCapabilityForArtifactFields({
+      artifactType: "luminous_forest_simulation",
+      sourceFormat: "agent/luminous-pack@2026-08",
+      editorCapability: "agent.luminous-workbench",
+    }),
+    null,
+  );
 });

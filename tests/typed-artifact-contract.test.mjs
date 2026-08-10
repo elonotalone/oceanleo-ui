@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  ARTIFACT_TYPES,
   artifactContextKey,
   artifactHasExactContext,
   canonicalArtifactContextId,
@@ -103,11 +102,18 @@ function projection(overrides = {}) {
   };
 }
 
-test("rich artifact taxonomy exposes exactly sixteen canonical types", () => {
-  // 第 14 类是 `game`（`01-decisions.md` D7）；第 15、16 类是 `geo_map` 与
-  // `interactive_doc`（`geo-map.md` / `interactive-doc.md` §1.1）。
-  assert.equal(ARTIFACT_TYPES.length, 16);
-  assert.equal(new Set(ARTIFACT_TYPES).size, 16);
+test("artifact type is an open self-reported transport label", () => {
+  const artifact = normalizeArtifactProjection(
+    projection({
+      artifact_type: "agent_created_luminous_forest",
+      source_format: "agent/luminous-pack@2026-08",
+      editor_capability: "agent.luminous-workbench",
+    }),
+  );
+  assert.ok(artifact);
+  assert.equal(artifact.integrity.ok, true);
+  assert.equal(artifact.artifactType, "agent_created_luminous_forest");
+  assert.equal(artifact.sourceFormat, "agent/luminous-pack@2026-08");
 });
 
 test("one normalized item pins identity, scene and every rendition to one revision", () => {
@@ -154,7 +160,7 @@ test("one normalized item pins identity, scene and every rendition to one revisi
   assert.equal(editing.url, "https://signed.test/scene");
 });
 
-test("composite projection retains and cross-checks authoritative source closure", () => {
+test("content closure evidence is carried without becoming a platform admission gate", () => {
   const sourceDigest = "a".repeat(64);
   const closureDigest = "b".repeat(64);
   const raw = projection({
@@ -198,14 +204,11 @@ test("composite projection retains and cross-checks authoritative source closure
       digest: `sha256:${"c".repeat(64)}`,
     },
   });
-  assert.equal(mismatched?.integrity.ok, false);
-  assert.equal(
-    mismatched?.integrity.code,
-    "incomplete-dependency-closure",
-  );
+  assert.equal(mismatched?.integrity.ok, true);
+  assert.equal(mismatched?.sourceClosure?.digest, "c".repeat(64));
 });
 
-test("revision mixing and incomplete composite closures fail closed", () => {
+test("revision mixing fails transport while incomplete content metadata does not", () => {
   const mismatched = normalizeArtifactProjection(
     projection({
       renditions: {
@@ -233,7 +236,8 @@ test("revision mixing and incomplete composite closures fail closed", () => {
     }),
   );
   assert.ok(incomplete);
-  assert.equal(incomplete.integrity.code, "incomplete-dependency-closure");
+  assert.equal(incomplete.integrity.ok, true);
+  assert.equal(incomplete.scene?.closureStatus, "missing");
 });
 
 test("strict rich-v1 normalization explains unknown schema and missing authority fields", () => {

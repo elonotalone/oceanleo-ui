@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Component,
   useCallback,
   useEffect,
   useId,
@@ -8,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ErrorInfo,
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
@@ -29,11 +31,16 @@ import {
 } from "./workspace-actions";
 import { useWorkspaceSlotState } from "./result-canvas-slot-state";
 import {
-  ADVANCED_FEATURE_LAUNCH_EVENT,
-  normalizeAdvancedFeatureLaunch,
-  type AdvancedFeatureLaunchEnvelope,
-} from "./advanced-feature-launch";
-import { pluginModules } from "./plugin-module";
+  useActiveAppCapability,
+  useAppCapabilityControls,
+} from "./app-capability-context";
+import {
+  createPluginStateAccess,
+  exportPluginArtifact,
+  type PluginHost,
+  type PluginModule,
+} from "./plugin-module";
+import { createPluginAppDataReader } from "./plugin-app-data";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import {
@@ -107,16 +114,57 @@ export interface ResultCanvasProps {
   /** Server-issued exact binding context for the Primary material shelf. */
   materialContext?: ArtifactContextRef;
   /**
-   * 空手启动：不选任何素材，直接点开一个功能。与 `action` 同形（一枚 nonce + 一份
-   * 已规范化的请求），也同样可以改走 `oceanleo:advanced-feature-launch` 总线。
-   * **可选**——不传时右栏行为与今天逐字相同。
-   */
-  featureLaunch?: AdvancedFeatureLaunchEnvelope | null;
-  /**
    * 素材库空态下方的 CTA 插槽。宿主用它把「这个 app 能做什么」指回功能按钮；
    * **可选**，不传时空态仍然是既有的图标 + 两行灰字，一个字都不改。
    */
   materialsEmptyCta?: ReactNode;
+}
+
+class PluginModuleErrorBoundary extends Component<
+  { label: string; onClose: () => void; children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    // The fallback below is the user-visible report. A module failure must not
+    // escape into the app workspace tree.
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <CanvasEmpty
+        title={`「${this.props.label}」暂时无法显示`}
+        description={this.state.error.message || "模块渲染时发生错误。"}
+        action={
+          <button
+            type="button"
+            onClick={this.props.onClose}
+            className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
+          >
+            返回
+          </button>
+        }
+      />
+    );
+  }
+}
+
+function PluginModuleMount({
+  module,
+  host,
+}: {
+  module: PluginModule;
+  host: PluginHost;
+}) {
+  void module;
+  void host;
+  return null;
 }
 
 /**
@@ -138,11 +186,14 @@ export function ResultCanvas({
   taskId,
   siteId = "",
   materialContext,
-  featureLaunch,
   materialsEmptyCta,
 }: ResultCanvasProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
+  const workspaceSessionRef = useRef(workspaceSession);
+  workspaceSessionRef.current = workspaceSession;
+  const activeCapability = useActiveAppCapability();
+  const capabilityControls = useAppCapabilityControls();
   const effectiveTaskId = taskId || workspaceSession?.taskId || null;
   const effectiveSiteId = siteId || workspaceSession?.siteId || "";
   const guideContext = useFunctionGuide();
@@ -165,7 +216,6 @@ export function ResultCanvas({
   const [activeCanvasMode, setActiveCanvasMode] =
     useState<"preview" | "edit">("preview");
   const [artifactSaveError, setArtifactSaveError] = useState("");
-  const [featureLaunchError, setFeatureLaunchError] = useState("");
   const activeCanvasRevisionKey = activeCanvasEntry?.libraryItem
     ? libraryItemIdentityKey(activeCanvasEntry.libraryItem)
     : "";
@@ -209,37 +259,7 @@ export function ResultCanvas({
     (item: LibraryItem) => {
       setActiveCanvasMode("edit");
       setArtifactSaveError("");
-      setFeatureLaunchError("");
       setActiveCanvasEntry(workspaceEntryFromLibraryItem(item));
-    },
-    [],
-  );
-  /**
-   * 旧启动总线的兜底。新位置层直接从 `pluginModules()` 取模块并显示；如果旧调用仍
-   * 抵达这里，只认模块自己的 id，不再造 LibraryItem，也不再按五种内核挂空壳。
-   */
-  const startFeatureLaunch = useCallback(
-    (envelope: AdvancedFeatureLaunchEnvelope) => {
-      const launch = normalizeAdvancedFeatureLaunch(envelope.launch);
-      if (!launch) {
-        setFeatureLaunchError("这次打开请求缺少功能身份，已拒绝打开。");
-        return;
-      }
-      const launchName = launch.title || launch.pluginId;
-      const pluginModule = pluginModules().find(
-        (module) => module.id === launch.pluginId,
-      );
-      if (!pluginModule) {
-        setFeatureLaunchError(
-          `「${launchName}」没有可自洽运行的模块，现在打开只会是一块空白，所以没有打开它。` +
-            "请从这个 app 的功能栏选择当前存在的功能；若那里仍有这枚按键，可以反馈给站点维护者撤下。",
-        );
-        return;
-      }
-      setFeatureLaunchError(
-        `「${pluginModule.label}」已经改由功能栏直接显示；这次请求来自已拆除的旧启动路径。` +
-          "请返回功能栏重新打开它。",
-      );
     },
     [],
   );
@@ -409,26 +429,6 @@ export function ResultCanvas({
     callerIdForSlot,
     onChange,
   });
-
-  useEffect(() => {
-    const receive = (event: Event) => {
-      const detail = (event as CustomEvent<AdvancedFeatureLaunchEnvelope>)
-        .detail;
-      if (!detail?.launch) return;
-      startFeatureLaunch({
-        nonce: String(detail.nonce || Date.now()),
-        launch: detail.launch,
-      });
-    };
-    window.addEventListener(ADVANCED_FEATURE_LAUNCH_EVENT, receive);
-    return () =>
-      window.removeEventListener(ADVANCED_FEATURE_LAUNCH_EVENT, receive);
-  }, [startFeatureLaunch]);
-
-  useEffect(() => {
-    if (!featureLaunch) return;
-    startFeatureLaunch(featureLaunch);
-  }, [featureLaunch?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -644,23 +644,39 @@ export function ResultCanvas({
         }}
       />
     ) : null;
-  // 起手失败必须看得见，也必须退得出去：不留一块空白前景，也不静默回到槽位堆。
-  const launchFailureContent = featureLaunchError ? (
-    <CanvasEmpty
-      title="这个功能暂时打不开"
-      description={featureLaunchError}
-      action={
-        <button
-          type="button"
-          onClick={() => setFeatureLaunchError("")}
-          className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
-        >
-          返回
-        </button>
-      }
-    />
+  const pluginHost = useMemo<PluginHost | null>(() => {
+    if (!activeCapability) return null;
+    const { siteKey, appId, id } = activeCapability;
+    const state = createPluginStateAccess(siteKey, appId, id);
+    return {
+      siteKey,
+      appId,
+      appData: createPluginAppDataReader({
+        siteKey,
+        appId,
+        session: () => workspaceSessionRef.current?.session,
+      }),
+      save: state.save,
+      load: state.load,
+      exportArtifact: (bytes, kind, filename) =>
+        exportPluginArtifact(siteKey, bytes, kind, filename),
+    };
+  }, [activeCapability]);
+  const pluginContent = activeCapability && pluginHost ? (
+    <div
+      data-plugin-module-host={activeCapability.id}
+      className="h-full min-h-0 w-full overflow-hidden"
+    >
+      <PluginModuleErrorBoundary
+        key={`${activeCapability.siteKey}/${activeCapability.appId}/${activeCapability.id}`}
+        label={activeCapability.label}
+        onClose={capabilityControls.close}
+      >
+        <PluginModuleMount module={activeCapability} host={pluginHost} />
+      </PluginModuleErrorBoundary>
+    </div>
   ) : null;
-  const foregroundContent = artifactSaveError ? (
+  const foregroundContent = pluginContent || (artifactSaveError ? (
       <div className="flex h-full min-h-0 flex-col">
         <div
           role="alert"
@@ -671,8 +687,8 @@ export function ResultCanvas({
         <div className="min-h-0 flex-1">{editorContent}</div>
       </div>
     ) : (
-      editorContent || viewerContent || launchFailureContent
-    );
+      editorContent || viewerContent
+    ));
   const foregroundVisible = Boolean(foregroundContent);
   const rightMainContent = (
     <div className="relative h-full min-h-0 overflow-hidden">
@@ -716,6 +732,14 @@ export function ResultCanvas({
   // bar opens them on the left. The right library itself never moves.
   useLayoutEffect(() => {
     if (!rightSlot) return;
+    if (activeCapability) {
+      rightSlot.setRightLabel(null);
+      rightSlot.setRightEditorHeader(false);
+      rightSlot.setRightFrameless(true);
+      return () => {
+        rightSlot.setRightFrameless(false);
+      };
+    }
     rightSlot.setRightFrameless(false);
     if (activeCanvasEntry) return;
     rightSlot.setRightEditorHeader(false);
@@ -733,6 +757,7 @@ export function ResultCanvas({
     };
   }, [
     accent,
+    activeCapability,
     activeCanvasEntry,
     rightSlot,
     select,

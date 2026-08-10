@@ -125,13 +125,8 @@ export interface GridEditorState {
   restoreRecovery: (payload: unknown) => boolean;
 }
 
-/**
- * 一次真表格素材保存的回执。`saveTarget` 的宽类型暂由任务边界外的
- * `GridRoute.tsx` 消费；本 hook 只会返回 `material`。
- */
-export interface GridSavedVersion extends PersistedEditorVersion {
-  saveTarget: "material" | "plugin-instance";
-}
+/** 一次真表格素材保存的回执。 */
+export type GridSavedVersion = PersistedEditorVersion;
 
 interface GridSnapshot {
   sheets: GridSheet[];
@@ -1107,7 +1102,6 @@ export function useGridEditor(
       }
       preparedSaveRef.current = null;
       const version: GridSavedVersion = {
-        saveTarget: "material",
         url: result.url,
         versionId: result.versionId,
         projectUrl: result.projectUrl,

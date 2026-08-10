@@ -5,6 +5,10 @@
  * carried across Preview, Edit, Insert, Replace, favorites and bindings.
  */
 
+/**
+ * Built-in shelf choices. This is presentation data, not an allowlist:
+ * transport accepts any non-empty self-reported artifact type.
+ */
 export const ARTIFACT_TYPES = [
   "single_file_image",
   "composite_image",
@@ -20,11 +24,10 @@ export const ARTIFACT_TYPES = [
   "model_3d",
   "workflow",
   "game",
-  "geo_map",
-  "interactive_doc",
 ] as const;
 
-export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
+export type BuiltInArtifactType = (typeof ARTIFACT_TYPES)[number];
+export type ArtifactType = string;
 
 export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "video-timeline",
@@ -610,20 +613,19 @@ export function advancedCapabilityForArtifactFields(input: {
   sourceFormat: string;
   editorCapability: string | null;
 }): AdvancedCapabilityContractEntry | null {
+  const artifactType = String(input.artifactType || "")
+    .trim()
+    .toLowerCase();
   const sourceFormat = String(input.sourceFormat || "").trim().toLowerCase();
   const editorCapability = String(input.editorCapability || "")
     .trim()
     .toLowerCase();
-  if (
-    !sourceFormat ||
-    !editorCapability ||
-    !artifactSourceFormatIsCompatible(input.artifactType, sourceFormat)
-  ) {
+  if (!artifactType || !sourceFormat || !editorCapability) {
     return null;
   }
   return (
     ADVANCED_CAPABILITY_BY_BINDING.get(
-      advancedBindingKey(input.artifactType, editorCapability),
+      advancedBindingKey(artifactType, editorCapability),
     ) || null
   );
 }
@@ -1048,7 +1050,6 @@ export interface ArtifactProjectionNormalizationResult {
   error?: string;
 }
 
-const ARTIFACT_TYPE_SET = new Set<string>(ARTIFACT_TYPES);
 const RENDITION_PURPOSES: ArtifactRenditionPurpose[] = [
   "thumbnail",
   "preview",
@@ -1057,159 +1058,35 @@ const RENDITION_PURPOSES: ArtifactRenditionPurpose[] = [
   "editor_manifest",
 ];
 
-const SOURCE_FORMAT_EXACT: Readonly<Record<ArtifactType, ReadonlySet<string>>> = {
-  single_file_image: new Set([
-    "png",
-    "jpg",
-    "jpeg",
-    "webp",
-    "gif",
-    "bmp",
-    "tiff",
-    "psd",
-    "avif",
-  ]),
-  composite_image: new Set([
-    "fabric-json",
-    "oceanleo-scene+json",
-    "scene+json",
-    "psd-manifest+json",
-    "oceanleo.design-document.v1",
-  ]),
-  vector_image: new Set(["svg", "svg+xml", "ai", "eps"]),
-  chart: new Set([
-    "json",
-    "vega",
-    "vega-lite",
-    "echarts",
-    "echarts-option+json",
-    "oceanleo.chart.v1",
-  ]),
-  document: new Set([
-    "markdown",
-    "md",
-    "txt",
-    "text",
-    "html",
-    "doc",
-    "docx",
-    "rtf",
-    "odt",
-    "json",
-    "zip",
-    "binary",
-    "tiptap-json",
-    "tiptap-json@1",
-  ]),
-  grid: new Set(["csv", "xls", "xlsx", "ods", "oceanleo.grid.v1"]),
-  deck: new Set(["ppt", "pptx", "odp", "oceanleo.deck.v1"]),
-  pdf: new Set(["pdf", "application/pdf"]),
-  website: new Set([
-    "html",
-    "text/html",
-    "zip",
-    "website-source@1",
-    "oceanleo.website-project.v1",
-  ]),
-  video: new Set([
-    "mp4",
-    "mov",
-    "webm",
-    "mkv",
-    "avi",
-    "timeline-json",
-    "oceanleo.timeline.v1",
-  ]),
-  audio: new Set([
-    "mp3",
-    "wav",
-    "ogg",
-    "flac",
-    "m4a",
-    "aac",
-    "oceanleo.audio-project.v1",
-  ]),
-  model_3d: new Set(["glb", "gltf", "obj", "fbx", "stl", "usdz"]),
-  workflow: new Set([
-    "json",
-    "oceanleo.workflow.v1",
-    "oceanleo.video-canvas.v1",
-    "oceanleo.video.project.v2",
-  ]),
-  /**
-   * 只有信封本身是 source format。`html` / `js`（`bundle.ts::UgcBundleFormat`）
-   * 描述的是信封**内部**那段源码的形态，不是 artifact 的 source format ——
-   * 把它们放进来会让 `text/html` 的 source 在前端过检、再到后端被
-   * `_validate_upload_media_type` 拒掉，正是 B12 那条死形状。
-   */
-  game: new Set(["oceanleo.game-bundle.v1"]),
-  /**
-   * 这两类仍是后端可能返回的素材类型，但本波不再给它们接平台编辑器。
-   * 保留 source format 识别只用于读取既有 artifact 投影，不构成插件路由。
-   */
-  geo_map: new Set(["oceanleo.geo-map.v1"]),
-  interactive_doc: new Set(["oceanleo.interactive-doc.v1"]),
-};
-
-const SOURCE_FORMAT_PREFIXES: Readonly<
-  Record<ArtifactType, readonly string[]>
-> = {
-  single_file_image: ["image/", "raster-"],
-  composite_image: ["scene+"],
-  vector_image: ["vector-", "image/svg"],
-  chart: ["chart-", "oceanleo.chart."],
-  document: [
-    "text/",
-    "application/",
-    "document-",
-    "richdoc-",
-    "oceanleo.document.",
-  ],
-  grid: ["grid-", "oceanleo.grid."],
-  deck: ["deck-", "oceanleo.deck."],
-  pdf: ["pdf-"],
-  website: ["website-", "oceanleo.website-"],
-  video: ["video/", "video-", "oceanleo.timeline."],
-  audio: ["audio/", "audio-", "oceanleo.audio-"],
-  model_3d: ["model/", "model-", "3d-"],
-  workflow: ["workflow-", "oceanleo.workflow."],
-  game: ["game-", "oceanleo.game-"],
-  geo_map: ["geo-map-", "oceanleo.geo-map."],
-  interactive_doc: ["interactive-doc-", "oceanleo.interactive-doc."],
-};
-
-const artifactEditorCapabilities = Object.fromEntries(
-  ARTIFACT_TYPES.map((artifactType) => [artifactType, new Set<string>()]),
-) as Record<ArtifactType, Set<string>>;
+const artifactEditorCapabilities: Record<string, Set<string>> =
+  Object.create(null) as Record<string, Set<string>>;
 
 for (const entry of ADVANCED_CAPABILITY_MATRIX) {
   for (const binding of entry.artifactBindings) {
+    const capabilities =
+      artifactEditorCapabilities[binding.artifactType] || new Set<string>();
+    artifactEditorCapabilities[binding.artifactType] = capabilities;
     for (const editorCapability of binding.editorCapabilities) {
-      artifactEditorCapabilities[binding.artifactType].add(editorCapability);
+      capabilities.add(editorCapability);
     }
   }
 }
 
 export const ARTIFACT_EDITOR_CAPABILITIES: Readonly<
-  Record<ArtifactType, ReadonlySet<string>>
+  Record<string, ReadonlySet<string>>
 > = Object.freeze(artifactEditorCapabilities);
 
-const CHART_OPTION_SOURCE_FORMATS = new Set([
-  "echarts-option+json",
-  "oceanleo.chart.v1",
-]);
-
+/**
+ * Compatibility now means that both self-reported transport labels exist.
+ * Their relationship is deliberately not validated against a platform table.
+ */
 export function artifactSourceFormatIsCompatible(
   artifactType: ArtifactType,
   sourceFormat: unknown,
 ): boolean {
-  const normalized = String(sourceFormat || "").trim().toLowerCase();
   return Boolean(
-    normalized &&
-      (SOURCE_FORMAT_EXACT[artifactType].has(normalized) ||
-        SOURCE_FORMAT_PREFIXES[artifactType].some((prefix) =>
-          normalized.startsWith(prefix),
-        )),
+    String(artifactType || "").trim() &&
+      String(sourceFormat || "").trim(),
   );
 }
 
@@ -1217,8 +1094,9 @@ export function artifactEditorCapabilityIsCompatible(
   artifactType: ArtifactType,
   editorCapability: unknown,
 ): boolean {
-  return ARTIFACT_EDITOR_CAPABILITIES[artifactType].has(
-    String(editorCapability || "").trim().toLowerCase(),
+  return Boolean(
+    String(artifactType || "").trim() &&
+      String(editorCapability || "").trim(),
   );
 }
 
@@ -1228,7 +1106,7 @@ export function chartOptionEvidenceIsPresent(input: {
 }): boolean {
   const sourceFormat = String(input.sourceFormat || "").trim().toLowerCase();
   return Boolean(
-    CHART_OPTION_SOURCE_FORMATS.has(sourceFormat) ||
+    sourceFormat ||
       (input.editorManifest?.url && input.editorManifest.digest),
   );
 }
@@ -1378,23 +1256,9 @@ function normalizedSha256(value: unknown): string {
   return /^[0-9a-f]{64}$/.test(digest) ? digest : "";
 }
 
-function sameStringSet(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  const first = [...new Set(left)].sort();
-  const second = [...new Set(right)].sort();
-  return (
-    first.length === second.length &&
-    first.every((value, index) => value === second[index])
-  );
-}
-
 function normalizeArtifactType(value: unknown): ArtifactType | null {
   const normalized = text(value).toLowerCase();
-  return ARTIFACT_TYPE_SET.has(normalized)
-    ? (normalized as ArtifactType)
-    : null;
+  return normalized || null;
 }
 
 function preferOpaqueAccessOverSourceTree(
@@ -1830,139 +1694,9 @@ export function artifactIntegrityFor(input: {
         "素材声明可编辑，但当前 revision 缺少 source format、editor capability、source rendition 或 source digest。",
     };
   }
-  if (
-    input.editability !== "view_only" &&
-    !artifactSourceFormatIsCompatible(input.artifactType, input.sourceFormat)
-  ) {
-    return {
-      ok: false,
-      code: "source-format-mismatch",
-      reason: `source format ${input.sourceFormat || "missing"} 与 artifact type ${input.artifactType} 不匹配。`,
-    };
-  }
-  if (
-    input.editability !== "view_only" &&
-    !artifactEditorCapabilityIsCompatible(
-      input.artifactType,
-      input.editorCapability,
-    )
-  ) {
-    return {
-      ok: false,
-      code: "editor-capability-mismatch",
-      reason: `editor capability ${input.editorCapability || "missing"} 与 artifact type ${input.artifactType} 不匹配。`,
-    };
-  }
-  const advancedContract = advancedCapabilityForArtifactFields({
-    artifactType: input.artifactType,
-    sourceFormat: input.sourceFormat,
-    editorCapability: input.editorCapability,
-  });
-  const declaredSourceMediaType = mediaType(input.renditions.source?.mediaType);
-  if (
-    advancedContract &&
-    String(input.sourceFormat || "").trim().toLowerCase() ===
-      advancedContract.sourceFormat &&
-    declaredSourceMediaType &&
-    declaredSourceMediaType !== advancedContract.sourceMediaType
-  ) {
-    return {
-      ok: false,
-      code: "source-format-mismatch",
-      reason:
-        `source Content-Type ${declaredSourceMediaType} 与 ${advancedContract.featureId} contract ` +
-        `${advancedContract.sourceMediaType} 不一致。`,
-    };
-  }
-  if (
-    input.editability !== "view_only" &&
-    input.artifactType === "chart" &&
-    !chartOptionEvidenceIsPresent({
-      sourceFormat: input.sourceFormat,
-      editorManifest: input.renditions.editor_manifest,
-    })
-  ) {
-    return {
-      ok: false,
-      code: "missing-editor-manifest",
-      reason:
-        "图表缺少 oceanleo.chart.v1 option 源或带摘要的 editor manifest，不能进入编辑器。",
-    };
-  }
-  if (
-    input.editability !== "view_only" &&
-    input.artifactType === "composite_image"
-  ) {
-    if (!input.scene || input.scene.sceneRevisionId !== input.revisionId) {
-      return {
-        ok: false,
-        code: "missing-scene",
-        reason: "复合图片缺少与当前 revision 一致的 scene graph。",
-      };
-    }
-    if (
-      input.scene.closureStatus !== "complete" ||
-      !input.scene.closureDigest
-    ) {
-      return {
-        ok: false,
-        code: "incomplete-dependency-closure",
-        reason: "复合图片的 scene 依赖闭包不完整，不能安全编辑或重开。",
-      };
-    }
-    if (input.sourceClosure) {
-      const sourceDigest = normalizedSha256(
-        input.renditions.source?.digest,
-      );
-      if (input.sourceClosure.revisionId !== input.revisionId) {
-        return {
-          ok: false,
-          code: "revision-mismatch",
-          reason: "复合图片的 source closure 没有固定到当前 revision。",
-        };
-      }
-      if (
-        input.sourceClosure.status !== "complete" ||
-        !input.sourceClosure.firstParty ||
-        !input.sourceClosure.digest ||
-        !input.sourceClosure.sourceDigest ||
-        !sourceDigest ||
-        input.sourceClosure.sourceDigest !== sourceDigest ||
-        input.sourceClosure.digest !==
-          normalizedSha256(input.scene.closureDigest) ||
-        !input.sourceClosure.dependencyDigests.includes(sourceDigest) ||
-        !sameStringSet(
-          input.sourceClosure.dependencyRevisionIds,
-          input.scene.dependencyRevisionIds,
-        )
-      ) {
-        return {
-          ok: false,
-          code: "incomplete-dependency-closure",
-          reason:
-            "复合图片的 source bytes、first-party closure 与 scene 证据不一致。",
-        };
-      }
-    }
-  }
-  if (
-    input.editability !== "view_only" &&
-    (input.artifactType === "geo_map" ||
-      input.artifactType === "interactive_doc") &&
-    input.sourceClosure &&
-    (input.sourceClosure.revisionId !== input.revisionId ||
-      input.sourceClosure.status !== "complete" ||
-      !input.sourceClosure.digest)
-  ) {
-    return {
-      ok: false,
-      code: "incomplete-dependency-closure",
-      reason:
-        input.artifactType === "geo_map"
-          ? "地图工程的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。"
-          : "交互文档的依赖闭包不完整或没有固定到当前 revision，只能降级查看，不能编辑保存。",
-    };
-  }
+  // Artifact type, source format, editor capability and project shape are
+  // self-reported content. The transport layer deliberately does not compare
+  // any of them with a platform registry or inspect scene/manifest schemas.
   return { ok: true, code: "ok", reason: "" };
 }
 
@@ -2004,52 +1738,39 @@ export function normalizeArtifactProjection(
   const sourceFormat = text(raw.sourceFormat, raw.source_format);
   const editorCapability =
     text(raw.editorCapability, raw.editor_capability) || null;
-  const integrity =
-    rawSourceClosure !== undefined && !sourceClosure
-      ? {
-          ok: false as const,
-          code: "invalid-projection" as const,
-          reason: "artifact source closure 结构或 SHA-256 证据无效。",
-        }
-      : artifactIntegrityFor({
-          artifactType,
-          revisionId,
-          editability,
-          editorCapability,
-          sourceFormat,
-          owner,
-          access,
-          provenance,
-          renditions,
-          scene,
-          sourceClosure,
-        });
+  const integrity = artifactIntegrityFor({
+    artifactType,
+    revisionId,
+    editability,
+    editorCapability,
+    sourceFormat,
+    owner,
+    access,
+    provenance,
+    renditions,
+    scene,
+    sourceClosure,
+  });
   const declaredIntegrity = record(raw.integrity);
   const declaredCode = text(declaredIntegrity?.code);
   const declaredReason = text(declaredIntegrity?.reason);
+  const declaredTransportFailure = [
+    "missing-acl",
+    "missing-owner",
+    "revision-mismatch",
+    "missing-preview",
+    "missing-source",
+    "missing-provenance",
+    "license-restricted",
+    "invalid-projection",
+  ].includes(declaredCode);
   const effectiveIntegrity =
-    declaredIntegrity && declaredIntegrity.ok !== true
+    declaredIntegrity &&
+    declaredIntegrity.ok !== true &&
+    declaredTransportFailure
       ? {
           ok: false,
-          code: (
-            [
-              "missing-acl",
-              "missing-owner",
-              "revision-mismatch",
-              "missing-preview",
-              "missing-source",
-              "missing-scene",
-              "missing-editor-manifest",
-              "source-format-mismatch",
-              "editor-capability-mismatch",
-              "missing-provenance",
-              "license-restricted",
-              "incomplete-dependency-closure",
-              "invalid-projection",
-            ].includes(declaredCode)
-              ? declaredCode
-              : "invalid-projection"
-          ) as ArtifactIntegrity["code"],
+          code: declaredCode as ArtifactIntegrity["code"],
           reason:
             declaredReason ||
             "服务端声明这个 artifact projection 未通过完整性校验。",
@@ -2125,7 +1846,7 @@ export function normalizeArtifactProjectionResult(
   if (!normalizeArtifactType(raw.artifactType ?? raw.artifact_type)) {
     return {
       ok: false,
-      error: "artifact projection 缺少受支持的 artifactType。",
+      error: "artifact projection 缺少非空 artifactType。",
     };
   }
   if (
@@ -2257,7 +1978,7 @@ export function isEnsureableTransient(
       filled(value.idempotencyKey) &&
       filled(value.payloadDigest) &&
       filled(value.renditionUrl) &&
-      ARTIFACT_TYPE_SET.has(value.artifactType),
+      filled(value.artifactType),
   );
 }
 
@@ -2283,10 +2004,7 @@ export function viewerRenditionOrder(
     artifactType === "website" ||
     artifactType === "workflow" ||
     // `full` 是可玩 bundle（text/html），卡片位图只能来自封面 `preview`。
-    artifactType === "game" ||
-    // 这两类没有平台编辑路由，但读取旧投影时仍优先展示渲染预览而非 JSON。
-    artifactType === "geo_map" ||
-    artifactType === "interactive_doc"
+    artifactType === "game"
   ) {
     return ["preview", "full"];
   }
@@ -2733,20 +2451,6 @@ export function resolveAdvancedCapabilityDispatch(
       ok: false,
       code: "missing-source",
       reason: "当前 revision 缺少带摘要且 revision 一致的 source rendition。",
-    };
-  }
-  if (
-    !artifactSourceFormatIsCompatible(
-      artifact.artifactType,
-      artifact.sourceFormat,
-    )
-  ) {
-    return {
-      ok: false,
-      code: "incompatible-source",
-      reason:
-        `source format ${artifact.sourceFormat || "missing"} 与 artifact type ` +
-        `${artifact.artifactType} 不匹配。`,
     };
   }
   const capability = advancedCapabilityForArtifactFields({

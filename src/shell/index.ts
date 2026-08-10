@@ -129,6 +129,19 @@ export type {
   AppCapabilityEntry,
 } from "./app-capability-entry";
 export {
+  createPluginStateAccess,
+  exportPluginArtifact,
+  pluginModuleProblem,
+  pluginModules,
+  pluginModulesForPlacement,
+} from "./plugin-module";
+export type {
+  PluginHost,
+  PluginModule,
+  PluginPlacement,
+  PluginStateAccess,
+} from "./plugin-module";
+export {
   AppCapabilityEntryProvider,
   useActiveAppCapability,
   useAppCapabilityControls,
