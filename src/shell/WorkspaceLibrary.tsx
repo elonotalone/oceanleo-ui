@@ -138,6 +138,23 @@ export interface WorkspaceLibraryProps {
 }
 
 /**
+ * 只有 website 官方模板需要在“归属 app 的只读预览”旁边再出现一颗建站动作。
+ * 目录行故意把 `kind` 固定成 image，所以必须读目录自己携带的真实 artifact type；
+ * 四个键一起核，避免普通图片、别站的 website artifact 或半截目录身份误入 fork 链。
+ */
+function isOfficialWebsiteTemplate(item: LibraryItem): boolean {
+  const meta = item.meta || {};
+  return (
+    meta.workspace_library_surface === "materials" &&
+    String(meta.template_material_id || "").trim().length > 0 &&
+    String(meta.template_material_artifact_id || "").trim().length > 0 &&
+    String(meta.template_material_artifact_type || "").trim() === "website" &&
+    String(meta.template_material_site_key || item.siteId || "").trim() ===
+      "website"
+  );
+}
+
+/**
  * Shared list/detail shell for Preview, Materials and My Library.
  * Those three areas intentionally share the exact same search, categories,
  * card density, detail header and viewer dispatch. Shelf cards show thumbnail,
@@ -507,6 +524,7 @@ export function WorkspaceLibrary({
     if (!item) return null;
     const linkUrl = entryLinkUrl(entry);
     const matrix = matrixFor(item);
+    const websiteTemplate = isOfficialWebsiteTemplate(item);
     // 只有「本该解析出耐久身份、但现在还没有」的条目才需要这套说明与重试：
     // 已经是 durable 的、以及压根没有可解析身份的（临时结果），都与过去逐字相同。
     const identityExpected =
@@ -517,8 +535,10 @@ export function WorkspaceLibrary({
         matrix={
           // 归属 app 自己出编辑入口时，这里再渲染一颗无归属的「编辑」就成了第二个
           // 说法不一样的入口。隐藏而不是禁用：禁用会连带渲染一条「为什么不能编辑」
-          // 的理由，而它此刻明明是能编辑的。
-          detailAppPlan.routeEditByApp
+          // 的理由，而它此刻明明是能编辑的。website 官方模板是唯一例外：归属入口
+          // 仍保持纯读预览，旁边新增的明确建站动作复用 typed Edit → owner fork 链，
+          // 两颗按钮承担不同职责，不把原预览合同偷换成写操作。
+          detailAppPlan.routeEditByApp && !websiteTemplate
             ? { ...matrix, edit: { ...matrix.edit, visible: false } }
             : matrix
         }
@@ -564,6 +584,7 @@ export function WorkspaceLibrary({
         onStatus={setMaterialActionState}
         accent={accent}
         compact={compact}
+        editLabel={websiteTemplate ? "用这个模板建站" : undefined}
       />
     );
   };
