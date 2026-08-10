@@ -89,6 +89,8 @@ export interface MaterialShelfToolbarProps {
   selectedTypes: readonly ArtifactType[];
   availableTypes?: readonly ArtifactType[];
   onApplyTypes: (types: ArtifactType[]) => void;
+  /** Website 官方模板的增量 facet 控件；其它站不传，工具条逐字不变。 */
+  facetControl?: ReactNode;
   canLoadMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -117,6 +119,7 @@ export function MaterialShelfToolbar({
   selectedTypes,
   availableTypes,
   onApplyTypes,
+  facetControl,
   canLoadMore,
   loadingMore,
   onLoadMore,
@@ -200,6 +203,7 @@ export function MaterialShelfToolbar({
           availableTypes={availableTypes}
         />
       )}
+      {facetControl}
       {canLoadMore && (
         <button
           type="button"
