@@ -139,6 +139,8 @@ function deckIr() {
 }
 
 const DECK_SOURCE_URL = "https://signed.test/deck-1/project.json";
+const DECK_REPLACEMENT_SOURCE_URL =
+  "https://signed.test/deck-1/project-r2.json";
 
 // ── 被测模块（动作条与动作本体）────────────────────────────────────────────
 
@@ -208,9 +210,14 @@ const deckHtmlAction = await import(
 // ── 条目 ────────────────────────────────────────────────────────────────────
 
 /** 补货之后的形态：交付位是 pptx，稿子在 `source` 上，格式声明为 oceanleo.deck.v1。 */
-function deckItem({ withProject = true, artifactType = "deck" } = {}) {
+function deckItem({
+  withProject = true,
+  artifactType = "deck",
+  revisionId = "r1",
+  sourceUrl = DECK_SOURCE_URL,
+} = {}) {
   return {
-    key: "artifact:deck-1:r1",
+    key: `artifact:deck-1:${revisionId}`,
     source: "artifact",
     id: "deck-1",
     title: "近岸观测网年度汇报",
@@ -218,13 +225,13 @@ function deckItem({ withProject = true, artifactType = "deck" } = {}) {
     siteId: "ppt",
     favorite: false,
     artifactId: "deck-1",
-    revisionId: "r1",
+    revisionId,
     artifactType,
     meta: { workspace_library_surface: "materials" },
     artifact: {
       schema: "oceanleo.artifact.v1",
       artifactId: "deck-1",
-      revisionId: "r1",
+      revisionId,
       artifactType,
       roles: [],
       owner: { originSiteKey: "ppt", visibility: "public" },
@@ -246,13 +253,13 @@ function deckItem({ withProject = true, artifactType = "deck" } = {}) {
       renditions: {
         preview: {
           purpose: "preview",
-          revisionId: "r1",
+          revisionId,
           url: "https://signed.test/deck-1-cover.png",
           format: "png",
         },
         full: {
           purpose: "full",
-          revisionId: "r1",
+          revisionId,
           url: "https://signed.test/deck-1.pptx",
           format: "pptx",
         },
@@ -260,8 +267,8 @@ function deckItem({ withProject = true, artifactType = "deck" } = {}) {
           ? {
               source: {
                 purpose: "source",
-                revisionId: "r1",
-                url: DECK_SOURCE_URL,
+                revisionId,
+                url: sourceUrl,
                 format: "oceanleo.deck.v1",
                 mediaType: "application/json",
               },
@@ -286,17 +293,23 @@ async function mount(item) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      React.createElement(actions.ArtifactActionButtons, {
-        item,
-        matrix: matrixFor(item),
-        onEdit: () => undefined,
-      }),
-    );
-  });
+  const render = async (nextItem) => {
+    await act(async () => {
+      root.render(
+        React.createElement(actions.ArtifactActionButtons, {
+          item: nextItem,
+          matrix: matrixFor(nextItem),
+          onEdit: () => undefined,
+        }),
+      );
+    });
+  };
+  await render(item);
   return {
     container,
+    async update(nextItem) {
+      await render(nextItem);
+    },
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -414,7 +427,10 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
 
   const reason = evidence.reason;
   assert.ok(reason.trim().length > 0, "按不动就必须写清为什么");
-  assert.equal(reason, "这份素材还没有可用来生成网页版的源。");
+  assert.equal(
+    reason,
+    "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。",
+  );
   assert.equal(reason, deckHtmlAction.DECK_HTML_NO_SOURCE_REASON);
 
   // 父级已实测今天线上 152 份 deck 全是 pptx、没有 IR 稿子；这里把同一个现实批次
@@ -428,7 +444,8 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
       (entry) =>
         entry.visible === true &&
         entry.available === false &&
-        entry.reason === "这份素材还没有可用来生成网页版的源。",
+        entry.reason ===
+          "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。",
     ).length,
     152,
   );
@@ -439,7 +456,7 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
     /undefined|null|NaN/,
     /https?:\/\//,
     /[{}[\]<>]/,
-    /rendition|artifact|schema|json/i,
+    /源|稿|IR|rendition|artifact|schema|json/i,
   ]) {
     assert.doesNotMatch(reason, forbidden, `理由里不许出现 ${forbidden}`);
   }
@@ -460,7 +477,10 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
       mounted.container.querySelector(`#${described}`)?.textContent?.includes(reason),
       true,
     );
-    assert.match(mounted.container.textContent || "", /网页版：这份素材还没有/);
+    assert.match(
+      mounted.container.textContent || "",
+      /网页版：这份素材制作得较早/,
+    );
 
     await click(webAction);
     await settle();
@@ -521,7 +541,7 @@ test("稿子读不回来时给的是人话，不是 HTTP 原文", async () => {
   }
 });
 
-test("schema 同名的编辑器模型会被拒绝，校验时按钮灰着且不交付", async () => {
+test("schema 同名的编辑器模型被拒后保持灰着，换合格稿后恢复可点", async () => {
   // 编辑器存盘信封也会写 oceanleo.deck.v1，但 data 里是 DeckDocument：version=2、
   // aspect/theme/masters/elements。它不是产线 DeckIrDocument，绝不能只看 schema 就放行。
   const disguisedEditorProject = {
@@ -551,8 +571,15 @@ test("schema 同名的编辑器模型会被拒绝，校验时按钮灰着且不�
   let releaseResponse;
   let reads = 0;
   globalThis.fetch = async (url) => {
-    assert.equal(String(url), DECK_SOURCE_URL);
     reads += 1;
+    if (String(url) === DECK_REPLACEMENT_SOURCE_URL) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(deckIr()),
+      };
+    }
+    assert.equal(String(url), DECK_SOURCE_URL);
     return new Promise((resolve) => {
       releaseResponse = () =>
         resolve({
@@ -583,6 +610,56 @@ test("schema 同名的编辑器模型会被拒绝，校验时按钮灰着且不�
       /这份稿子的格式不受支持，暂时生成不了网页版。/,
     );
     assert.doesNotMatch(mounted.container.textContent || "", /网页版已生成/);
+
+    const rejectedAction = button(mounted.container, "网页版");
+    const rejectionReason =
+      "这份稿子的格式不受支持，暂时生成不了网页版。";
+    assert.equal(
+      rejectedAction.disabled,
+      true,
+      "失败流程完成、处理中状态结束后仍必须灰着",
+    );
+    assert.equal(rejectedAction.getAttribute("aria-disabled"), "true");
+    assert.equal(rejectedAction.textContent.trim(), "网页版");
+    assert.equal(rejectedAction.getAttribute("title"), rejectionReason);
+    const described = rejectedAction.getAttribute("aria-describedby");
+    assert.ok(described, "已拒绝的按钮必须指向拒绝理由");
+    assert.equal(
+      mounted.container.querySelector(`#${described}`)?.textContent?.trim(),
+      `网页版：${rejectionReason}`,
+    );
+    assert.equal(
+      mounted.container.querySelector("[data-deck-html-rejection]")?.textContent?.trim(),
+      `网页版：${rejectionReason}`,
+      "拒绝理由必须留在可见说明行",
+    );
+
+    await click(rejectedAction);
+    await settle();
+    assert.equal(reads, 1, "已拒绝的同一份稿子不许反复取回、反复失败");
+
+    await mounted.update(
+      deckItem({
+        revisionId: "r2",
+        sourceUrl: DECK_REPLACEMENT_SOURCE_URL,
+      }),
+    );
+    const recoveredAction = button(mounted.container, "网页版");
+    assert.equal(recoveredAction.disabled, false, "换成合格稿后必须恢复可点");
+    assert.equal(recoveredAction.getAttribute("aria-disabled"), "false");
+    assert.equal(recoveredAction.getAttribute("title"), "网页版");
+    assert.equal(recoveredAction.hasAttribute("aria-describedby"), false);
+    assert.equal(
+      mounted.container.querySelector("[data-deck-html-rejection]"),
+      null,
+      "旧稿的拒绝理由不能粘到新稿上",
+    );
+
+    await click(recoveredAction);
+    await settle();
+    assert.equal(reads, 2, "恢复后必须真取回合格稿");
+    assert.equal(savedBlobs.length, 1, "恢复后必须能交付网页版");
+    assert.match(mounted.container.textContent || "", /网页版已生成/);
   } finally {
     globalThis.fetch = previous;
     await mounted.unmount();

@@ -11,7 +11,7 @@
  * 对同一份稿子产出的字节逐字节相同，否则「按需渲染」就等于每次刷新看到的都不一样。
  */
 
-import { useState, type CSSProperties } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
   buildDeckHtml,
@@ -35,7 +35,7 @@ import { isDurableLibraryItem, type LibraryItem } from "./library-data";
  * 而不是异常。按钮因此不许静默消失：灰着并写清为什么，比什么都不显示要好。
  */
 export const DECK_HTML_NO_SOURCE_REASON =
-  "这份素材还没有可用来生成网页版的源。";
+  "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。";
 
 export interface DeckHtmlEvidence {
   visible: boolean;
@@ -211,6 +211,13 @@ export async function buildDeckHtmlDelivery(
   };
 }
 
+class DeckHtmlProjectRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeckHtmlProjectRejectedError";
+  }
+}
+
 /** 稿子取回来并验一遍。信封形态与裸 IR 都认（历史上两种都发布过）。 */
 export async function loadDeckHtmlProject(
   url: string,
@@ -227,16 +234,16 @@ export async function loadDeckHtmlProject(
   }
   const text = await response.text();
   if (!text.trim()) {
-    throw new Error("这份稿子是空的。");
+    throw new DeckHtmlProjectRejectedError("这份稿子是空的。");
   }
   if (new TextEncoder().encode(text).byteLength > DECK_IR_MAX_BYTES) {
-    throw new Error("这份稿子超过了 2MB 安全上限。");
+    throw new DeckHtmlProjectRejectedError("这份稿子超过了 2MB 安全上限。");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("这份稿子不是可读的 JSON。");
+    throw new DeckHtmlProjectRejectedError("这份稿子不是可读的 JSON。");
   }
   const envelope = record(parsed);
   const candidate =
@@ -245,7 +252,9 @@ export async function loadDeckHtmlProject(
       : parsed;
   const validation = validateDeckIr(candidate);
   if (!validation.ok) {
-    throw new Error("这份稿子的格式不受支持，暂时生成不了网页版。");
+    throw new DeckHtmlProjectRejectedError(
+      "这份稿子的格式不受支持，暂时生成不了网页版。",
+    );
   }
   return validation.project;
 }
@@ -299,10 +308,31 @@ export function DeckHtmlActionButton({
 }: DeckHtmlActionButtonProps) {
   const tt = useUI();
   const [busy, setBusy] = useState(false);
+  const [rejection, setRejection] = useState<{
+    projectKey: string;
+    reason: string;
+  } | null>(null);
+  const generatedReasonId = useId();
   if (!evidence.visible) return null;
-  const disabled = !evidence.available || busy;
+  const projectKey = JSON.stringify([
+    item.artifact?.artifactId || item.artifactId || "",
+    item.artifact?.revisionId || item.revisionId || "",
+    evidence.sourceUrl,
+  ]);
+  const rejectionReason =
+    evidence.available && rejection?.projectKey === projectKey
+      ? rejection.reason
+      : "";
+  const unavailableReason = evidence.available
+    ? rejectionReason
+    : evidence.reason;
+  const rejectionReasonId = reasonId || generatedReasonId;
+  const disabled = !evidence.available || busy || Boolean(rejectionReason);
   const run = async () => {
-    if (busy) return;
+    if (busy || rejectionReason) {
+      if (rejectionReason) report(rejectionReason);
+      return;
+    }
     if (!evidence.available) {
       report(evidence.reason);
       return;
@@ -322,6 +352,7 @@ export function DeckHtmlActionButton({
       const delivery = await buildDeckHtmlDelivery(project, { assets });
       if (onDelivery) await onDelivery(delivery, item);
       else saveDelivery(delivery);
+      setRejection(null);
       const dropped = delivery.build.missingAssetIds.length;
       report(
         dropped
@@ -329,27 +360,60 @@ export function DeckHtmlActionButton({
           : "网页版已生成。",
       );
     } catch (error) {
-      report(humanErrorMessage(error, "网页版没能生成，请稍后重试。"));
+      const message = humanErrorMessage(
+        error,
+        "网页版没能生成，请稍后重试。",
+      );
+      if (error instanceof DeckHtmlProjectRejectedError) {
+        setRejection({ projectKey, reason: message });
+      }
+      report(message);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <button
-      type="button"
-      onClick={() => void run()}
-      disabled={disabled}
-      aria-disabled={disabled}
-      aria-describedby={!evidence.available && reasonId ? reasonId : undefined}
-      data-deck-html-action="true"
-      aria-label={tt(
-        `网页版「${item.title}」${evidence.reason ? `：${evidence.reason}` : ""}`,
+    <>
+      <button
+        type="button"
+        onClick={() => void run()}
+        disabled={disabled}
+        aria-disabled={disabled}
+        aria-describedby={
+          rejectionReason
+            ? rejectionReasonId
+            : !evidence.available && reasonId
+              ? reasonId
+              : undefined
+        }
+        data-deck-html-action="true"
+        aria-label={tt(
+          `网页版「${item.title}」${unavailableReason ? `：${unavailableReason}` : ""}`,
+        )}
+        title={tt(unavailableReason || "网页版")}
+        className={className}
+        style={
+          rejectionReason
+            ? {
+                ...style,
+                borderColor: "var(--border,#e7e5e4)",
+                color: "var(--muted,#a8a29e)",
+              }
+            : style
+        }
+      >
+        {busy ? tt("处理中…") : tt("网页版")}
+      </button>
+      {rejectionReason && (
+        <span
+          id={rejectionReasonId}
+          className="basis-full text-[9px] leading-snug text-[var(--muted,#a8a29e)]"
+          role="note"
+          data-deck-html-rejection="true"
+        >
+          {tt(`网页版：${rejectionReason}`)}
+        </span>
       )}
-      title={tt(evidence.available ? "网页版" : evidence.reason)}
-      className={className}
-      style={style}
-    >
-      {busy ? tt("处理中…") : tt("网页版")}
-    </button>
+    </>
   );
 }
