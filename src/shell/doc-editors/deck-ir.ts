@@ -167,6 +167,8 @@ export interface DeckIrDocument {
   schema: typeof DECK_IR_SCHEMA;
   version: 1;
   title: string;
+  packId?: string;
+  sequenceId?: string;
   theme: DeckIrTheme;
   master?: DeckIrMaster;
   slides: DeckIrSlide[];
@@ -207,6 +209,8 @@ export const DECK_IR_JSON_SCHEMA = {
     schema: { const: DECK_IR_SCHEMA },
     version: { type: "integer", const: 1 },
     title: { type: "string", minLength: 8, maxLength: 300 },
+    packId: { type: "string" },
+    sequenceId: { type: "string" },
     theme: {
       type: "object",
       additionalProperties: false,
@@ -892,6 +896,8 @@ export function validateDeckIr(value: unknown): DeckIrValidation {
       "schema",
       "version",
       "title",
+      "packId",
+      "sequenceId",
       "theme",
       "master",
       "slides",
@@ -916,6 +922,12 @@ export function validateDeckIr(value: unknown): DeckIrValidation {
     advice:
       "the title becomes dc:title and the first thing a reader sees in a file listing; a very short one is hard to tell apart from other decks",
   });
+  if (root.packId !== undefined) {
+    collector.string("packId", root.packId);
+  }
+  if (root.sequenceId !== undefined) {
+    collector.string("sequenceId", root.sequenceId);
+  }
 
   const theme = collector.object("theme", root.theme, THEME_KEYS);
   if (theme) {
