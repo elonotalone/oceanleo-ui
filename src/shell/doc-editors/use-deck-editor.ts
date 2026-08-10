@@ -15,6 +15,7 @@ import {
   cloneDeckDocument,
   createDeckMaster,
   deckCarrierPlacement,
+  deckFontPoints,
   deckId,
   deckLayoutIsCarrierGrammar,
   deckMasterFor,
@@ -27,9 +28,17 @@ import {
   type DeckLayout,
   type DeckLegacyLayout,
   type DeckMaster,
+  type DeckPercentBox,
   type DeckSlide,
   type DeckThemeId,
 } from "./deck-schema";
+import {
+  DECK_IR_SCHEMA,
+  validateDeckIr,
+  type DeckIrAsset,
+  type DeckIrDocument,
+} from "./deck-ir";
+import { buildDeckPptx, type DeckAssetBytes } from "./deck-ooxml-package";
 import {
   blobToDataUrl,
   downloadBlob,
@@ -234,13 +243,26 @@ export async function loadDeckEditorHead(
   title: string,
   signal?: AbortSignal,
 ): Promise<DeckDocument> {
+  return normalizeDeckDocument(
+    await loadDeckEditorPayload(url, signal),
+    title || "演示文稿",
+  );
+}
+
+/**
+ * The same fetch as `loadDeckEditorHead`, stopping one step earlier.
+ *
+ * Normalizing straight into the editor's own model is lossy by design, and a
+ * production draft cannot survive it: everything the writer needs — the layout
+ * grammar per page, the declared pictures, the credits — is dropped on the way
+ * in. So the raw payload is read first, and the caller decides what it is.
+ */
+export async function loadDeckEditorPayload(
+  url: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
   try {
-    const project = await loadEditorProject<unknown>(
-      url,
-      DECK_PROJECT_SCHEMA,
-      signal,
-    );
-    return normalizeDeckDocument(project, title || "演示文稿");
+    return await loadEditorProject<unknown>(url, DECK_PROJECT_SCHEMA, signal);
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === "AbortError") {
       throw caught;
@@ -261,7 +283,7 @@ export async function loadDeckEditorHead(
         ? caught
         : new Error("可编辑工程为空或超过 20MB 安全上限");
     }
-    return normalizeDeckDocument(JSON.parse(text), title || "演示文稿");
+    return JSON.parse(text);
   }
 }
 
@@ -458,21 +480,34 @@ function initialSource(
   );
 }
 
+interface DeckLoad {
+  deck: DeckDocument;
+  draft: DeckDraftState | null;
+}
+
 async function loadDeck(
   item: LibraryItem,
   previewContent?: unknown,
   signal?: AbortSignal,
   onSourceAccessError?: () => void,
-): Promise<DeckDocument> {
+): Promise<DeckLoad> {
   const projectUrl = deckProjectUrlFor(item);
   let projectError: unknown;
   if (projectUrl) {
     try {
-      return await loadDeckEditorHead(
-        projectUrl,
-        item.title || "演示文稿",
-        signal,
-      );
+      const payload = await loadDeckEditorPayload(projectUrl, signal);
+      const project = deckDraftFrom(payload);
+      if (project) {
+        const assetUrls = deckDraftAssetUrlsFor(item, payload);
+        return {
+          deck: deckDocumentFromDraft(project, assetUrls),
+          draft: { project, assetUrls },
+        };
+      }
+      return {
+        deck: normalizeDeckDocument(payload, item.title || "演示文稿"),
+        draft: null,
+      };
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         throw caught;
@@ -490,7 +525,7 @@ async function loadDeck(
       notifyOfficeAccessDenied(projectError, onSourceAccessError);
       throw projectError;
     }
-    return fallback;
+    return { deck: fallback, draft: null };
   }
   const extension = (
     officeExtensionForItem(item) ||
@@ -515,11 +550,14 @@ async function loadDeck(
       },
     );
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    return await importPptxDeck(
-      arrayBuffer,
-      item.title || "演示文稿",
-      extension === "ppt" ? "pptx" : extension || "pptx",
-    );
+    return {
+      deck: await importPptxDeck(
+        arrayBuffer,
+        item.title || "演示文稿",
+        extension === "ppt" ? "pptx" : extension || "pptx",
+      ),
+      draft: null,
+    };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     notifyOfficeAccessDenied(error, onSourceAccessError);
@@ -941,6 +979,483 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   return delivery;
 }
 
+/* ───────────────────────── editing the draft, not the file ─────────────────
+ *
+ * A deck on the shelf is one of two things.
+ *
+ * Almost every one of them today is a PPTX file and nothing else. The only way
+ * in is to unpack the OOXML into this editor's own model, and the only way out
+ * is `buildDeckPptxBlob` writing a fresh file with `pptxgenjs` — which is why
+ * changing one character in a title hands the user a wholly regenerated deck,
+ * with the master, the theme, the real chart objects and the credit line gone.
+ * That path is untouched below; those files have nothing else to offer.
+ *
+ * The other kind carries the document the production line built it from. For
+ * those the editor edits that document and hands it to the same writer the line
+ * uses, so what the user downloads and what the line produces are one thing.
+ *
+ * `DECK_PROJECT_SCHEMA` and `DECK_IR_SCHEMA` are the same string, so the schema
+ * id cannot tell the two apart. The shape decides.
+ * ──────────────────────────────────────────────────────────────────────────*/
+
+export type DeckDraftPathSegment = string | number;
+
+export interface DeckDraftAssetUrls {
+  readonly [assetId: string]: string;
+}
+
+export interface DeckDraftState {
+  project: DeckIrDocument;
+  assetUrls: DeckDraftAssetUrls;
+}
+
+const DRAFT_ELEMENT_PREFIX = "draft:";
+/** Keys whose string value is a machine identifier or an enum, never prose. */
+const DRAFT_OPAQUE_KEYS = new Set(["layout", "assetId", "fit", "chartType"]);
+const DRAFT_TITLE_BOX: DeckPercentBox = { x: 6, y: 7, width: 88, height: 14 };
+const DRAFT_CONTENT_BOX: DeckPercentBox = { x: 6, y: 26, width: 88, height: 58 };
+const DRAFT_IMAGE_BOX: DeckPercentBox = { x: 56, y: 26, width: 38, height: 52 };
+const DRAFT_MIN_ROW_HEIGHT = 4;
+
+/** Read a production draft out of an editor project payload, wrapped or not. */
+export function deckDraftFrom(value: unknown): DeckIrDocument | null {
+  const outer = record(value);
+  const wrapped = outer ? record(outer.data) : null;
+  const candidate =
+    wrapped && wrapped.schema === DECK_IR_SCHEMA ? wrapped : outer;
+  if (!candidate || candidate.schema !== DECK_IR_SCHEMA) return null;
+  if (!Array.isArray(candidate.slides)) return null;
+  const validation = validateDeckIr(candidate);
+  return validation.ok ? validation.project : null;
+}
+
+/**
+ * Where a picture's bytes can be fetched from.
+ *
+ * The draft declares its pictures by id, digest and size and deliberately
+ * carries no address — the same document has to stay valid wherever it is
+ * stored. So the addresses travel beside it, on the library record.
+ */
+export function deckDraftAssetUrlsFor(
+  item: LibraryItem,
+  payload?: unknown,
+): DeckDraftAssetUrls {
+  const urls: Record<string, string> = {};
+  const absorb = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const asset = record(entry);
+        const id = typeof asset?.id === "string" ? asset.id : "";
+        const url = httpUrl(asset?.url);
+        if (id && url) urls[id] = url;
+      }
+      return;
+    }
+    const map = record(value);
+    if (!map) return;
+    for (const [id, candidate] of Object.entries(map)) {
+      const url = httpUrl(candidate);
+      if (id && url) urls[id] = url;
+    }
+  };
+  const envelope = record(payload);
+  absorb(item.meta.deck_asset_urls);
+  absorb(item.meta.asset_urls);
+  absorb(envelope?.assetUrls);
+  absorb(envelope?.asset_urls);
+  return urls;
+}
+
+export function deckDraftElementId(
+  slideIndex: number,
+  path: readonly DeckDraftPathSegment[],
+): string {
+  return `${DRAFT_ELEMENT_PREFIX}${slideIndex}/${path.join("/")}`;
+}
+
+export function deckDraftElementPath(
+  id: string,
+): { slideIndex: number; path: DeckDraftPathSegment[] } | null {
+  if (!id.startsWith(DRAFT_ELEMENT_PREFIX)) return null;
+  const [head, ...rest] = id.slice(DRAFT_ELEMENT_PREFIX.length).split("/");
+  const slideIndex = Number(head);
+  if (!Number.isInteger(slideIndex) || slideIndex < 0 || !rest.length) {
+    return null;
+  }
+  return {
+    slideIndex,
+    path: rest.map((part) => (/^\d+$/.test(part) ? Number(part) : part)),
+  };
+}
+
+interface DeckDraftTextLeaf {
+  path: DeckDraftPathSegment[];
+  value: string;
+}
+
+/**
+ * Every piece of prose in one page of the draft, each with the exact place it
+ * came from. Addressing the text by where it lives — rather than by matching it
+ * back up afterwards — is what makes the return trip exact.
+ */
+function draftTextLeaves(
+  value: unknown,
+  path: DeckDraftPathSegment[] = [],
+): DeckDraftTextLeaf[] {
+  if (typeof value === "string") return [{ path, value }];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      draftTextLeaves(entry, [...path, index]),
+    );
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(
+      ([key, entry]) =>
+        DRAFT_OPAQUE_KEYS.has(key) ? [] : draftTextLeaves(entry, [...path, key]),
+    );
+  }
+  return [];
+}
+
+function draftTextAt(
+  slide: unknown,
+  path: readonly DeckDraftPathSegment[],
+): string | null {
+  let cursor: unknown = slide;
+  for (const part of path) {
+    if (!cursor || typeof cursor !== "object") return null;
+    cursor = (cursor as Record<DeckDraftPathSegment, unknown>)[part];
+  }
+  return typeof cursor === "string" ? cursor : null;
+}
+
+/** Write prose back where it came from. Refuses anything that is not prose. */
+function setDraftTextAt(
+  slide: unknown,
+  path: readonly DeckDraftPathSegment[],
+  value: string,
+): boolean {
+  if (!path.length) return false;
+  let cursor: unknown = slide;
+  for (const part of path.slice(0, -1)) {
+    if (!cursor || typeof cursor !== "object") return false;
+    cursor = (cursor as Record<DeckDraftPathSegment, unknown>)[part];
+  }
+  if (!cursor || typeof cursor !== "object") return false;
+  const holder = cursor as Record<DeckDraftPathSegment, unknown>;
+  const last = path[path.length - 1];
+  if (typeof holder[last] !== "string") return false;
+  holder[last] = value;
+  return true;
+}
+
+function draftBox(
+  box: DeckPercentBox | undefined,
+  fallback: DeckPercentBox,
+): DeckPercentBox {
+  return box || fallback;
+}
+
+function draftStackedBox(
+  box: DeckPercentBox,
+  index: number,
+  count: number,
+): DeckPercentBox {
+  const height = Math.max(DRAFT_MIN_ROW_HEIGHT, box.height / Math.max(1, count));
+  return {
+    x: box.x,
+    y: box.y + index * height,
+    width: box.width,
+    height,
+  };
+}
+
+/**
+ * One page of the draft as stage elements.
+ *
+ * The picture and the two text regions sit on the §4 grid the writer itself
+ * uses, so the stage and the exported file agree on the big shapes. The rest of
+ * the page's prose — table cells, KPI labels, milestone dates — is stacked
+ * inside the body region: the writer decides where each of those really lands,
+ * and pretending otherwise on the stage would be a promise this path cannot
+ * keep.
+ */
+function draftSlideElements(
+  slide: DeckIrDocument["slides"][number],
+  slideIndex: number,
+  assetUrls: DeckDraftAssetUrls,
+): DeckElement[] {
+  const placement = deckLayoutIsCarrierGrammar(slide.layout)
+    ? deckCarrierPlacement(slide.layout)
+    : {};
+  const titleBox = draftBox(placement.title, DRAFT_TITLE_BOX);
+  const contentBox = draftBox(placement.content, DRAFT_CONTENT_BOX);
+  const imageBox = draftBox(placement.image, DRAFT_IMAGE_BOX);
+  const leaves = draftTextLeaves(slide).filter(
+    (leaf) => leaf.path[0] !== "layout",
+  );
+  const titlePath = leaves.some((leaf) => leaf.path.join("/") === "title")
+    ? ["title"]
+    : slide.layout === "quote" &&
+        leaves.some((leaf) => leaf.path.join("/") === "quote/text")
+      ? ["quote", "text"]
+      : null;
+  const titleKey = titlePath?.join("/") || "";
+  const body = leaves.filter((leaf) => leaf.path.join("/") !== titleKey);
+  const elements: DeckElement[] = [];
+  let order = 0;
+
+  (slide.images || []).forEach((image, index) => {
+    const url = assetUrls[image.assetId];
+    if (!url) return;
+    const box =
+      index === 0
+        ? imageBox
+        : draftStackedBox(imageBox, index, (slide.images || []).length);
+    elements.push({
+      id: `${deckDraftElementId(slideIndex, ["images", index])}/#picture`,
+      type: "image",
+      ...box,
+      rotation: 0,
+      order: (order += 1),
+      src: url,
+      alt: image.alt,
+      imageFit: image.fit === "contain" ? "contain" : "cover",
+      opacity: 1,
+    });
+  });
+
+  if (titlePath) {
+    elements.push({
+      id: deckDraftElementId(slideIndex, titlePath),
+      type: "text",
+      ...titleBox,
+      rotation: 0,
+      order: (order += 1),
+      text: draftTextAt(slide, titlePath) || "",
+      fontSize: deckFontPoints("heading"),
+      bold: true,
+      align: placement.title?.align || "left",
+      lineHeight: 1.12,
+      opacity: 1,
+      label: "标题",
+    });
+  }
+
+  body.forEach((leaf, index) => {
+    elements.push({
+      id: deckDraftElementId(slideIndex, leaf.path),
+      type: "text",
+      ...draftStackedBox(contentBox, index, body.length),
+      rotation: 0,
+      order: (order += 1),
+      text: leaf.value,
+      fontSize: deckFontPoints("body-sm"),
+      align: placement.content?.align || "left",
+      lineHeight: 1.3,
+      opacity: 1,
+    });
+  });
+
+  return elements;
+}
+
+/** Load a draft into the editor's working model without touching any PPTX. */
+export function deckDocumentFromDraft(
+  project: DeckIrDocument,
+  assetUrls: DeckDraftAssetUrls = {},
+): DeckDocument {
+  const master = createDeckMaster("ocean", "默认母版", "master-default");
+  const slides: DeckSlide[] = project.slides.map((slide, index) => ({
+    id: `draft-slide-${index + 1}`,
+    title: slide.title || slide.quote?.attribution || `第 ${index + 1} 页`,
+    body: slide.body || slide.subtitle || "",
+    bullets: [...(slide.bullets || [])],
+    notes: slide.note || "",
+    layout: slide.layout,
+    background: "",
+    masterId: master.id,
+    elements: draftSlideElements(slide, index, assetUrls),
+  }));
+  return {
+    version: 2,
+    title: project.title,
+    aspect: "16:9",
+    theme: "ocean",
+    masters: [
+      { ...master, accentColor: `#${project.theme.accent.toUpperCase()}` },
+    ],
+    slides: slides.length
+      ? slides
+      : [{ ...emptyDeckSlide(), masterId: master.id }],
+  };
+}
+
+/**
+ * Fold the edits back into the draft.
+ *
+ * Only text that came out of the draft goes back in, and only into the exact
+ * field it came from. Anything the user added on the stage that the draft has
+ * no room for is left where it is rather than guessed at — see
+ * `deckDraftUnexpressibleEdits`, which is what tells the user about it.
+ */
+export function applyDeckDocumentToDraft(
+  project: DeckIrDocument,
+  deck: DeckDocument,
+): DeckIrDocument {
+  const next = structuredClone(project) as DeckIrDocument;
+  const title = deck.title.trim();
+  if (title && title !== next.title) next.title = title;
+  for (const slide of deck.slides) {
+    for (const element of slide.elements) {
+      if (typeof element.text !== "string") continue;
+      const address = deckDraftElementPath(element.id);
+      if (!address) continue;
+      const target = next.slides[address.slideIndex];
+      if (!target) continue;
+      setDraftTextAt(target, address.path, element.text);
+    }
+  }
+  return next;
+}
+
+/**
+ * Edits the stage accepted that the draft cannot hold, in plain language.
+ *
+ * The stage is a free canvas and the draft is a set of named regions, so the
+ * two do not cover the same ground. Saying which edits fall through is the only
+ * honest option: the alternative is a download that quietly differs from what
+ * the user just spent ten minutes arranging.
+ */
+export function deckDraftUnexpressibleEdits(
+  project: DeckIrDocument,
+  deck: DeckDocument,
+): string[] {
+  const notes: string[] = [];
+  const added = deck.slides.reduce(
+    (total, slide) =>
+      total +
+      slide.elements.filter((element) => !deckDraftElementPath(element.id))
+        .length,
+    0,
+  );
+  if (added > 0) {
+    notes.push(
+      `这一版里有 ${added} 个自己加上去的元素（文字框、形状、图片等）。` +
+        "这份演示文稿是按版式生成的，加上去的元素没有对应的位置，不会出现在下载到的文件里。",
+    );
+  }
+  if (deck.slides.length !== project.slides.length) {
+    notes.push(
+      `编辑器里有 ${deck.slides.length} 页，这份演示文稿原本是 ${project.slides.length} 页。` +
+        "增删页面暂时不会带到下载的文件里。",
+    );
+  }
+  return notes;
+}
+
+export class DeckDraftAssetError extends Error {
+  readonly code = "deck-draft-assets-missing";
+  readonly assetIds: string[];
+
+  constructor(assetIds: string[], detail = "") {
+    super(
+      `导出已中止：这份演示文稿里有 ${assetIds.length} 张图片取不回原图` +
+        `（${assetIds.join("、")}）。` +
+        "继续导出只会得到一份缺图的文件，所以没有生成。" +
+        (detail ? `原因：${detail}。` : "") +
+        "请重新打开这份素材再试一次，或先把图片重新上传。",
+    );
+    this.name = "DeckDraftAssetError";
+    this.assetIds = assetIds;
+  }
+}
+
+export type DeckDraftAssetLoader = (
+  asset: DeckIrAsset,
+  url: string,
+) => Promise<Uint8Array>;
+
+export interface DeckDraftExportOptions {
+  assetUrls?: DeckDraftAssetUrls;
+  loadAsset?: DeckDraftAssetLoader;
+  timestamp?: string;
+}
+
+async function fetchDraftAssetBytes(
+  _asset: DeckIrAsset,
+  url: string,
+): Promise<Uint8Array> {
+  const blob = await fetchMediaBlob(url, { maxBytes: 24 * 1024 * 1024 });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * The declared pictures, as bytes. Every one of them or none: the writer treats
+ * a picture it was given no bytes for as an empty frame and carries on, which
+ * is right for a batch run and wrong for someone who just pressed download.
+ */
+export async function resolveDeckDraftAssets(
+  project: DeckIrDocument,
+  options: DeckDraftExportOptions = {},
+): Promise<DeckAssetBytes[]> {
+  const declared = project.assets || [];
+  if (!declared.length) return [];
+  const urls = options.assetUrls || {};
+  const load = options.loadAsset || fetchDraftAssetBytes;
+  const resolved: DeckAssetBytes[] = [];
+  const missing: string[] = [];
+  const reasons: string[] = [];
+  for (const asset of declared) {
+    const url = urls[asset.id] || "";
+    if (!url) {
+      missing.push(asset.id);
+      reasons.push(`${asset.id} 没有可用的图片地址`);
+      continue;
+    }
+    try {
+      const bytes = await load(asset, url);
+      if (!bytes?.length) throw new Error("取回 0 字节");
+      resolved.push({
+        id: asset.id,
+        bytes,
+        width: asset.width,
+        height: asset.height,
+      });
+    } catch (caught) {
+      missing.push(asset.id);
+      reasons.push(
+        `${asset.id} ${caught instanceof Error ? caught.message : "取图失败"}`,
+      );
+    }
+  }
+  if (missing.length) throw new DeckDraftAssetError(missing, reasons.join("；"));
+  return resolved;
+}
+
+/** The production writer, called with exactly what the production line calls it with. */
+export async function buildDeckDraftPptxBytes(
+  project: DeckIrDocument,
+  options: DeckDraftExportOptions = {},
+): Promise<Uint8Array> {
+  const assets = await resolveDeckDraftAssets(project, options);
+  const { bytes } = buildDeckPptx(project, {
+    assets,
+    ...(options.timestamp ? { timestamp: options.timestamp } : {}),
+  });
+  return bytes;
+}
+
+export async function buildDeckDraftPptxBlob(
+  project: DeckIrDocument,
+  options: DeckDraftExportOptions = {},
+): Promise<Blob> {
+  const bytes = await buildDeckDraftPptxBytes(project, options);
+  return new Blob([bytes as unknown as BlobPart], {
+    type: DECK_SOURCE_MEDIA_TYPE,
+  });
+}
+
 function boundedLoadKey(parts: readonly unknown[]): string {
   let serialized: string;
   try {
@@ -1046,6 +1561,12 @@ export function useDeckEditor(
   const workingHeadUrlRef = useRef(
     deckProjectUrlFor(item) || item.previewUrl || "",
   );
+  /**
+   * The draft this deck was built from, when it has one. Pinned rather than
+   * kept in state: nothing on screen depends on it, and the user is never told
+   * it exists.
+   */
+  const draftRef = useRef<DeckDraftState | null>(null);
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
   /**
@@ -1093,11 +1614,14 @@ export function useDeckEditor(
     revisionRef.current = 0;
     persistedItemRef.current = source;
     preparedSaveRef.current = null;
+    draftRef.current = null;
     workingHeadUrlRef.current =
       deckProjectUrlFor(source) || source.previewUrl || "";
     void loadDeck(source, sourcePreview, abort.signal, notifySourceAccessError)
-      .then((next) => {
+      .then((loaded) => {
         if (abort.signal.aborted) return;
+        const next = loaded.deck;
+        draftRef.current = loaded.draft;
         deckRef.current = next;
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
@@ -1761,20 +2285,50 @@ export function useDeckEditor(
     setSavedUrl("");
   }, [applySnapshot, snapshot]);
 
+  /**
+   * One PPTX out of the current edit.
+   *
+   * A deck with a draft behind it goes out through the writer the production
+   * line uses, so the file the user gets is the file the line would have made.
+   * Everything else keeps the old route, which is all a bare PPTX has.
+   */
+  const buildDelivery = useCallback(
+    async (
+      snapshot: DeckDocument,
+    ): Promise<{ blob: Blob; notes: string[] }> => {
+      const draft = draftRef.current;
+      if (!draft) {
+        return { blob: await buildDeckPptxBlob(snapshot), notes: [] };
+      }
+      const project = applyDeckDocumentToDraft(draft.project, snapshot);
+      return {
+        blob: await buildDeckDraftPptxBlob(project, {
+          assetUrls: draft.assetUrls,
+        }),
+        notes: deckDraftUnexpressibleEdits(draft.project, snapshot),
+      };
+    },
+    [],
+  );
+
   const exportPptx = useCallback(async () => {
     if (exporting) return;
     setExporting(true);
     setError("");
     try {
-      const blob = await buildDeckPptxBlob(deckRef.current);
+      const { blob, notes } = await buildDelivery(deckRef.current);
       downloadBlob(`${deckRef.current.title || "演示文稿"}.pptx`, blob);
-      setNotice(tt("PPTX 已导出，可在 PowerPoint 或兼容软件中继续使用"));
+      setNotice(
+        [tt("PPTX 已导出，可在 PowerPoint 或兼容软件中继续使用"), ...notes].join(
+          "；",
+        ),
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("PPTX 导出失败"));
     } finally {
       if (mountedRef.current) setExporting(false);
     }
-  }, [exporting, tt]);
+  }, [buildDelivery, exporting, tt]);
 
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current) return null;
@@ -1807,13 +2361,17 @@ export function useDeckEditor(
       const fileStem =
         title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) ||
         tt("演示文稿");
+      const draft = draftRef.current;
+      const savedProject = draft
+        ? applyDeckDocumentToDraft(draft.project, snapshot)
+        : null;
       const result = await saveFileToLibrary({
         item: baseItem,
         siteId,
         fallbackSite: "ppt",
         createFile: async () => {
-          const delivery = await buildDeckPptxBlob(snapshot);
-          return new File([delivery], `${fileStem}.pptx`, {
+          const { blob } = await buildDelivery(snapshot);
+          return new File([blob], `${fileStem}.pptx`, {
             type: DECK_SOURCE_MEDIA_TYPE,
           });
         },
@@ -1839,10 +2397,14 @@ export function useDeckEditor(
           aspect: snapshot.aspect,
           theme: snapshot.theme,
           deck_version: snapshot.version,
+          // The draft declares its pictures by id and carries no address, so
+          // the addresses have to be kept beside it or the next person to open
+          // this deck cannot export it.
+          ...(draft ? { deck_asset_urls: draft.assetUrls } : {}),
         },
         project: {
           schema: DECK_PROJECT_SCHEMA,
-          data: snapshot,
+          data: savedProject || snapshot,
         },
         editorManifest: {
           id: "deck-editor",
@@ -1873,6 +2435,9 @@ export function useDeckEditor(
         );
       }
       preparedSaveRef.current = null;
+      if (draft && savedProject) {
+        draftRef.current = { ...draft, project: savedProject };
+      }
       const handoff = deckSavedItemForHandoff(
         result.item || baseItem,
         result,
@@ -1919,7 +2484,7 @@ export function useDeckEditor(
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
     }
-  }, [siteId, tt]);
+  }, [buildDelivery, siteId, tt]);
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
