@@ -69,6 +69,15 @@ function historyHrefFor(entry: HistoryListEntry): string {
     : `/history?task=${encodeURIComponent(entry.id)}`;
 }
 
+function safeProjectHref(
+  basePath: string | undefined,
+  projectId: string,
+): string | null {
+  const base = (basePath || "").trim().replace(/\/+$/, "");
+  if (!base || !base.startsWith("/") || base.startsWith("//")) return null;
+  return `${base}/${encodeURIComponent(projectId)}`;
+}
+
 const STATUS_DOT: Record<string, string> = {
   running: "bg-amber-400",
   active: "bg-amber-400",
@@ -141,15 +150,22 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         siteId,
         includeArchived: true,
         surface: "all",
+        projectScope: "unassigned",
       }),
       listTasks(100, siteId, pending, "all"),
     ]).then(([sessionsResult, tasksResult]) => {
       if (generation !== reloadGenerationRef.current) return;
       if (!silent) setLoading(false);
       const sessions = sessionsResult.ok
-        ? sessionsResult.data?.items || []
+        ? (sessionsResult.data?.items || []).filter(
+            (session) => session.project_id == null,
+          )
         : null;
-      const tasks = tasksResult.ok ? tasksResult.data?.items || [] : null;
+      const tasks = tasksResult.ok
+        ? (tasksResult.data?.items || []).filter(
+            (task) => task.project_id == null,
+          )
+        : null;
       if (sessions === null && tasks === null) {
         // 静默轮询失败不打断已有列表（只在首次加载时报错）。
         if (!silent) {
@@ -248,15 +264,20 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       const id = entry.id;
       const prev = items;
       // 乐观：就地改标题/pinned/favorite（record 是 session 或 task）。
-      setItems((list) =>
-        list.map((it) => {
+      setItems((list) => {
+        if (patch.project_id) {
+          return list.filter(
+            (it) => it.kind !== entry.kind || it.id !== id,
+          );
+        }
+        return list.map((it) => {
           if (it.kind !== entry.kind || it.id !== id) return it;
           if (it.kind === "session") {
             return { ...it, session: { ...it.session, ...patch } };
           }
           return { ...it, task: { ...it.task, ...patch } };
-        }),
-      );
+        });
+      });
       let mutationError = "";
       if (entry.kind === "session") {
         const result = await updateAppSessionMetadata(
@@ -542,6 +563,8 @@ export type HistoryWorkspaceRenderer = (
 export interface HistoryDetailProps {
   siteId?: string;
   accent?: string;
+  /** Portal-owned relative base used when an old deep link resolves to a project record. */
+  projectBasePath?: string;
   /** site_id → app 展示名（回看时在 agent 界面显示「所属 app」）。 */
   appNames?: Record<string, string>;
   /**
@@ -563,11 +586,13 @@ export interface HistoryDetailProps {
 
 type LoadedHistoryDetail =
   | { kind: "session"; session: AppSession; fallbackTask?: TaskDetail }
-  | { kind: "task"; detail: TaskDetail };
+  | { kind: "task"; detail: TaskDetail }
+  | { kind: "project"; projectId: string };
 
 export function HistoryDetail({
   siteId = "",
   accent = "#0ea5e9",
+  projectBasePath,
   appNames,
   libraryTabs,
   renderArtifact,
@@ -609,6 +634,11 @@ export function HistoryDetail({
       if (!alive) return;
       if (sessionResult.ok && sessionResult.data) {
         const session = sessionResult.data;
+        if (session.project_id) {
+          setLoaded({ kind: "project", projectId: session.project_id });
+          setDetailLoading(false);
+          return;
+        }
         if (siteId && session.site_id !== siteId) {
           setDetailLoading(false);
           setDetailError("这条工作会话不属于当前网站。");
@@ -650,6 +680,13 @@ export function HistoryDetail({
       if (!alive) return;
       setDetailLoading(false);
       if (taskResult.ok && taskResult.data) {
+        if (taskResult.data.task.project_id) {
+          setLoaded({
+            kind: "project",
+            projectId: taskResult.data.task.project_id,
+          });
+          return;
+        }
         if (
           siteId &&
           taskResult.data.task.site_id &&
@@ -704,6 +741,45 @@ export function HistoryDetail({
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-rose-500">
           {detailError ? tt(detailError) : tt("这个任务不存在或已无权访问。")}
+        </div>
+      </div>
+    );
+  }
+
+  if (loaded.kind === "project") {
+    const projectHref = safeProjectHref(
+      projectBasePath,
+      loaded.projectId,
+    );
+    return (
+      <div className="grid h-[calc(100dvh-1px)] place-items-center bg-stone-50/60 p-8">
+        <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-[15px] font-semibold text-stone-900">
+            {tt("这条记录已归属项目")}
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-stone-500">
+            {tt("项目记录不会显示在普通历史中，请从项目工作空间继续查看。")}
+          </p>
+          {projectHref ? (
+            <a
+              href={projectHref}
+              className="mt-4 inline-flex rounded-lg px-4 py-2 text-[13px] font-medium text-white"
+              style={{ background: accent }}
+            >
+              {tt("进入项目")}
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(null);
+                router.replace("/history");
+              }}
+              className="mt-4 rounded-lg border border-stone-200 px-4 py-2 text-[13px] font-medium text-stone-700"
+            >
+              {tt("返回普通历史")}
+            </button>
+          )}
         </div>
       </div>
     );

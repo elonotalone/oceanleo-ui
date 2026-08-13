@@ -8,7 +8,11 @@
 // session UUID，也不把 localStorage 草稿冒充成历史。
 // ============================================================================
 
-import { authed, type AgentApiResult } from "./agent";
+import {
+  authed,
+  type AgentApiResult,
+  type ProjectScope,
+} from "./agent";
 import { appSessionBodySupportsKeepalive } from "./app-session-transport";
 import { notifyHistoryChanged } from "./history-events";
 
@@ -69,6 +73,8 @@ export interface ListAppSessionsOptions {
   appId?: string;
   status?: AppSessionStatus;
   surface?: AppSessionListSurface;
+  /** Omitted/unassigned accepts the server default; only all adds a query override. */
+  projectScope?: ProjectScope;
   /** 「我的任务」需要包含 archived（已保存）会话；live 查活跃缓存时传 false。 */
   includeArchived?: boolean;
 }
@@ -201,6 +207,7 @@ export async function listAppSessions(
   if (app) params.set("app_id", app);
   if (options.status) params.set("status", options.status);
   else if (options.includeArchived === false) params.set("status", "active");
+  if (options.projectScope === "all") params.set("project_scope", "all");
   const result = await sessionRequest<SessionListEnvelope>(
     `?${params.toString()}`,
     undefined,

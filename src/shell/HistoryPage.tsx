@@ -9,8 +9,8 @@
 // 真实后端：GET /v1/agent/tasks（列表）。详情由 AgentChat(taskId=...) 回看。
 //
 // 2026-06-21（操作员）：
-//   1. 每站只看自己的历史 —— 传 `siteId` → 后端按 site_id 过滤。主站
-//      oceanleo.com 是 hub，不传 siteId → 列全部站的历史。
+//   1. 每站只看自己的历史 —— 传 `siteId` → 后端按 site_id 过滤；不传时由消费方
+//      决定站点范围。普通历史始终只接收未归属项目的记录。
 //   2. 每条历史可删除 —— 行尾加「删除」按键（确认弹窗），调
 //      DELETE /v1/agent/tasks/{id}（连带消息 / 产出级联删除）。
 // ============================================================================
@@ -26,7 +26,7 @@ export interface HistoryPageProps {
   /**
    * 站点 id（驱动 per-site 过滤）。
    * - 子站传自身 id（如 "image"）→ 只列该站历史。
-   * - 主站 oceanleo.com hub 省略 / 传空 → 列全部站历史。
+   * - 省略 / 传空 → 列项目范围内全部站历史；门户消费方应显式传自己的 id。
    */
   siteId?: string;
   /** 点击某条历史 → 打开该会话（消费端通常用它进入 AgentChat 回看）。 */
@@ -72,14 +72,15 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
     let alive = true;
     setLoading(true);
     setError(null);
-    listTasks(100, siteId).then((r) => {
+    listTasks(100, siteId, false, "app", "unassigned").then((r) => {
       if (!alive) return;
       setLoading(false);
       if (!r.ok || !r.data) {
         setError(r.status === 401 ? tt("登录后即可查看我的任务。") : r.error || tt("加载失败"));
         return;
       }
-      setItems(r.data.items || []);
+      // 旧后端可能忽略项目范围；普通历史仍须在 UI 侧 fail closed。
+      setItems((r.data.items || []).filter((task) => task.project_id == null));
     });
     return () => {
       alive = false;

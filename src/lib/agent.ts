@@ -38,6 +38,9 @@ export type AgentApiResult<T> = {
   retryAfterSeconds?: number;
 };
 
+/** Ordinary history is unassigned-only; project-aware callers must opt into all. */
+export type ProjectScope = "unassigned" | "all";
+
 const AGENT_API_PUBLIC_DIAGNOSTIC_KEYS = new Set([
   "component",
   "reason",
@@ -746,19 +749,22 @@ export function getTask(taskId: string) {
 /**
  * 历史列表（按时间倒序）。
  * - `siteId` 给了 → 只列该站的会话（每站「历史记录」用）。
- * - `siteId` 省略 / 空 → 列全部站的会话（主站 oceanleo.com hub 用）。
+ * - `siteId` 省略 / 空 → 列项目范围内全部站的会话。
+ * - 普通历史依赖后端默认的 `unassigned`；只有项目感知调用方显式传 `all`。
  */
 export function listTasks(
   limit = 50,
   siteId?: string,
   pending = false,
   surface: "app" | "advanced" | "all" = "app",
+  projectScope: ProjectScope = "unassigned",
 ) {
   const params = new URLSearchParams({ limit: String(limit) });
   const site = (siteId || "").trim();
   if (site) params.set("site_id", site);
   if (pending) params.set("pending", "true");
   params.set("surface", surface);
+  if (projectScope === "all") params.set("project_scope", "all");
   return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`);
 }
 
