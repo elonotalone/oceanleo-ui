@@ -209,7 +209,9 @@ export function ProjectWorkspaceFrame({
               role={isDesktop ? "complementary" : "dialog"}
               aria-modal={isDesktop ? undefined : true}
               aria-label={configAriaLabel}
-              aria-hidden={!isDesktop && !resolvedConfigOpen}
+              aria-hidden={
+                !isDesktop && !resolvedConfigOpen ? true : undefined
+              }
               inert={!isDesktop && !resolvedConfigOpen ? true : undefined}
               tabIndex={-1}
               data-project-workspace-config

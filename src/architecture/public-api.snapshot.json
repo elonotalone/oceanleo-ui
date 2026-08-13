@@ -4047,6 +4047,90 @@
         },
         {
           "kind": "named",
+          "name": "ProjectConfigCard",
+          "importedName": "ProjectConfigCard",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectConfigCardAction",
+          "importedName": "ProjectConfigCardAction",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectConfigCardProps",
+          "importedName": "ProjectConfigCardProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectEmptyState",
+          "importedName": "ProjectEmptyState",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectEmptyStateProps",
+          "importedName": "ProjectEmptyStateProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectModal",
+          "importedName": "ProjectModal",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectModalProps",
+          "importedName": "ProjectModalProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectTabItem",
+          "importedName": "ProjectTabItem",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectTabNav",
+          "importedName": "ProjectTabNav",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectTabNavProps",
+          "importedName": "ProjectTabNavProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectToolbar",
+          "importedName": "ProjectToolbar",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectToolbarProps",
+          "importedName": "ProjectToolbarProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectWorkspaceFrame",
+          "importedName": "ProjectWorkspaceFrame",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectWorkspaceFrameProps",
+          "importedName": "ProjectWorkspaceFrameProps",
+          "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
           "name": "PromptCard",
           "importedName": "PromptCard",
           "source": "./home-cards"
