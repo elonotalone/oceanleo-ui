@@ -223,12 +223,83 @@ test("W3/2 打包字节永远进不了 frame —— 操作员截图那一屏的�
   assert.equal(looksLikeHtmlDocument('{"schema":"oceanleo.design-document.v1"}'), false);
   assert.equal(looksLikeHtmlDocument(SELF_PAINTING_HTML), true);
 
-  // 没有 rendition 元数据的老条目不许被这条新判据误伤成「打不开」。
+  // 没有 rendition 元数据的老条目不许被这条新判据误伤成「打不开」：正文读回来
+  // 确实是一份网页，就照常进 frame。
   assert.equal(websiteFrameAdmission(undefined), "unknown");
   assert.deepEqual(
-    websiteViewerPlan({ hasUrl: true, body: { status: "unread" } }),
+    websiteViewerPlan({
+      hasUrl: true,
+      body: {
+        status: "read",
+        html: SELF_PAINTING_HTML,
+        shape: { elementCount: 240, textLength: 3800, scriptCount: 0 },
+      },
+    }),
     { surface: "page", reason: "self-painting" },
   );
+});
+
+/**
+ * 编号按加入先后走，不按文件位置：W3/1–W3/6 在别处的判词里已被引用，重编会让
+ * 那些引用指向别的用例。
+ *
+ * 缺口的原形（`V1-signals.md` S1）：`unread` 那一支曾经无视 `admission` 直接回
+ * `surface: "page"`，注释写的是「媒体类型已经说了它是网页」——可 `admission` 是
+ * `unknown` 时它什么都没说。触发条件是真的：判读要先把字节取回来，上限
+ * `MAX_PROBE_BYTES = 8 MB`，超限或网络抖动都会抛错并落成 `unread`；一份大于 8 MB
+ * 的整站包 URL 完全正常，旧判读会让 iframe 把它照常渲成一屏乱码。
+ */
+test("W3/7 没有媒体类型、正文又读不回来时不许赌一把", () => {
+  for (const mediaType of [undefined, "", "   "]) {
+    assert.deepEqual(
+      websiteViewerPlan({ hasUrl: true, mediaType, body: { status: "unread" } }),
+      { surface: "unavailable", reason: "unverified" },
+      `mediaType=${JSON.stringify(mediaType)}：没有证据就不许放行`,
+    );
+  }
+
+  // 媒体类型自己声明过是网页，那是站得住的证据：判读跑不成也照常进 frame，
+  // 不因为判读器的问题就先斩后奏。
+  for (const mediaType of ["text/html", "text/html; charset=utf-8"]) {
+    assert.deepEqual(
+      websiteViewerPlan({ hasUrl: true, mediaType, body: { status: "unread" } }),
+      { surface: "page", reason: "self-painting" },
+      mediaType,
+    );
+  }
+
+  // 整张判读表：只有这两格进 frame，其余一格都不许。
+  const surfaceOf = (mediaType, body) =>
+    websiteViewerPlan({ hasUrl: true, mediaType, body }).surface;
+  const readHtml = {
+    status: "read",
+    html: SELF_PAINTING_HTML,
+    shape: { elementCount: 240, textLength: 3800, scriptCount: 0 },
+  };
+  const readBytes = {
+    status: "read",
+    html: ZIP_TEXT,
+    shape: { elementCount: 0, textLength: ZIP_TEXT.length, scriptCount: 0 },
+  };
+  const unread = { status: "unread" };
+  for (const [mediaType, body, expected] of [
+    ["text/html", readHtml, "page"],
+    ["text/html", readBytes, "unavailable"],
+    ["text/html", unread, "page"],
+    ["", readHtml, "page"],
+    ["", readBytes, "unavailable"],
+    ["", unread, "unavailable"],
+    ["application/zip", readHtml, "unavailable"],
+    ["application/zip", unread, "unavailable"],
+    ["image/webp", readHtml, "unavailable"],
+    ["image/webp", unread, "unavailable"],
+  ]) {
+    assert.equal(
+      surfaceOf(mediaType, body),
+      expected,
+      `mediaType=${mediaType || "(空)"} body=${body.status}`,
+    );
+  }
 });
 
 // ── 承载层：真组件渲染，三档各看一遍 DOM ────────────────────────────────────
@@ -475,4 +546,82 @@ test("W3/6 查看器源码里没有 atob / 字符串化二进制，隔离面也�
     sources.get("src/shell/WebsiteArtifactViewer.tsx"),
     /dangerouslySetInnerHTML/,
   );
+});
+
+// ── 承载层：`unknown` + 判读失败那一格（V1-signals S1 的复现条件） ────────────
+
+test("W3/8 老条目判读失败时走空状态，不把未知字节塞进 frame", async () => {
+  // 老的非 durable 条目：`rendition` 元数据整个是空的。判读取字节抛错
+  //（>8 MB 的整站包、网络抖动）——两头都没有证据，不许放行。
+  for (const renditionMeta of [null, { mediaType: "" }]) {
+    const mounted = await mountViewer({
+      rendition: { url: PAGE_URL, rendition: renditionMeta },
+      body: null,
+    });
+    try {
+      const label = `mediaType=${renditionMeta ? "(空串)" : "(无元数据)"}`;
+      assert.equal(
+        mounted.container.querySelector("iframe"),
+        null,
+        `${label}：未知字节被塞进了 frame`,
+      );
+      assert.deepEqual(
+        globalThis.__probeUrls,
+        [PAGE_URL],
+        `${label}：该取的字节还是要取，取不回来才落到空状态`,
+      );
+      const text = mounted.container.textContent;
+      assert.match(text, /没有登记文件类型|没能读回来核对/, `${label}：要说清是哪种情况`);
+      assert.match(text, /下载|编辑/, `${label}：要给出用户现在能做什么`);
+      assert.doesNotMatch(text, /暂时|抱歉|制作得较早|敬请谅解/);
+      assertNoRawBytes(mounted.container, label);
+    } finally {
+      await mounted.unmount();
+    }
+  }
+
+  // 不许误伤：同样没有元数据，正文读回来确实是一份网页，就照常渲染。
+  const legacyPage = await mountViewer({
+    rendition: { url: PAGE_URL, rendition: null },
+    body: SELF_PAINTING_HTML,
+  });
+  try {
+    const frame = legacyPage.container.querySelector("iframe");
+    assert.ok(frame, "老条目只要正文是网页就该照常打开");
+    assert.equal(frame.getAttribute("src"), PAGE_URL);
+    assert.equal(
+      frame.getAttribute("sandbox").includes("allow-same-origin"),
+      false,
+    );
+  } finally {
+    await legacyPage.unmount();
+  }
+});
+
+test("W3/9 空状态那颗「重试」对老条目也真的重跑判读", async () => {
+  /**
+   * 非 durable 条目拿到的 `rendition.retry` 是空动作（`ArtifactRendition.tsx:276`），
+   * 而判读失败最常见的来路正是取字节这一步。查看器不自己重跑一次判读的话，
+   * 这颗按钮按下去什么都不会发生 —— 那是另一种形式的不诚实。
+   * 替身里的 `retry` 本来就是空动作，所以这条只能靠查看器自己重跑判读来过。
+   */
+  const mounted = await mountViewer({
+    rendition: { url: PAGE_URL, rendition: null },
+    body: null,
+  });
+  try {
+    assert.deepEqual(globalThis.__probeUrls, [PAGE_URL]);
+    const button = mounted.container.querySelector("button");
+    assert.ok(button, "空状态要留一个重试入口");
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.deepEqual(
+      globalThis.__probeUrls,
+      [PAGE_URL, PAGE_URL],
+      "重试没有重新取字节：这颗按钮对老条目是空的",
+    );
+  } finally {
+    await mounted.unmount();
+  }
 });

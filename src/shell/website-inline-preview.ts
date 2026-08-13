@@ -200,6 +200,9 @@ const FRAMEABLE_PAGE_MEDIA_TYPES: readonly string[] = [
  *
  * 空媒体类型必须留成 `unknown` 而不是拒绝：老的非 durable 网站条目根本没有
  * rendition 元数据，一刀切会把它们从「本来能打开」退化成「打不开」。
+ *
+ * `unknown` 是「还没有证据」，不是「可以放行」：它到底能不能进 frame，由
+ * `websiteViewerPlan` 按正文判读的结果定；正文也没读回来时一律不放行。
  */
 export function websiteFrameAdmission(
   mediaType: string | undefined,
@@ -229,6 +232,8 @@ export type WebsiteViewerReason =
   | "script-bootstrapped"
   | "cover-image-only"
   | "opaque-bytes"
+  /** 媒体类型没说、正文也没读到：没有任何证据支持「它是网页」。 */
+  | "unverified"
   | "no-body";
 
 export interface WebsiteViewerPlan {
@@ -254,9 +259,15 @@ export function websiteViewerPlan(input: {
     return { surface: "unavailable", reason: "opaque-bytes" };
   }
   if (input.body.status === "unread") {
-    // 判读跑不成不构成「看不了」的证据：媒体类型已经说了它是网页，宁可把真页面
-    // 放进 frame 让用户自己看，也不要因为判读器的问题就先斩后奏。
-    return { surface: "page", reason: "self-painting" };
+    // 判读跑不成时，唯一还站得住的证据是媒体类型自己声明过 `text/html`：那种情况
+    // 宁可把真页面放进 frame，也不要因为判读器的问题就先斩后奏。
+    //
+    // `unknown`（老的非 durable 条目根本没有 rendition 元数据）什么都没声明过，
+    // 正文又没读回来 —— 两头都没有证据却放行，就是拿一屏乱码赌一把。判读读不回来
+    // 不是小概率：`MAX_PROBE_BYTES` 是 8 MB，超限的整站包会让取字节直接抛错。
+    return admission === "page"
+      ? { surface: "page", reason: "self-painting" }
+      : { surface: "unavailable", reason: "unverified" };
   }
   const { html, shape } = input.body;
   if (!isDisplayableText(html) || !looksLikeHtmlDocument(html)) {

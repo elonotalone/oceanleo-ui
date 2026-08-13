@@ -160,6 +160,8 @@ const SURFACE_COPY: Record<WebsiteViewerReason, string> = {
     "这一件在素材库里只存了一张封面图，没有随附可打开的页面文件。",
   "opaque-bytes":
     "这一件存的是打包后的网站源码，不是可以直接打开的网页；要看到页面需要先把它构建出来。",
+  unverified:
+    "这一件在素材库里没有登记文件类型，内容也没能读回来核对；在确认它是一份能直接打开的网页之前，预览通道不会把它的内容放上屏幕。",
   "no-body": "这一件在素材库里没有可打开的文件。",
 };
 
@@ -192,7 +194,14 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
    */
   const pageUrl =
     admission === "page" || admission === "unknown" ? rendition.url : "";
-  const probe = usePagePaintProbe(pageUrl, rendition.version);
+  /**
+   * 判读自己也要能重来。非 durable 的老条目拿到的 `retry` 是空动作
+   * （`ArtifactRendition.tsx:276`），而判读失败最常见的来路恰恰是取字节这一步
+   * （超 `MAX_PROBE_BYTES` 或网络抖动）——不带上这个计数，「重试」对老条目就是
+   * 一颗按下去什么都不会发生的按钮。
+   */
+  const [probeNonce, setProbeNonce] = useState(0);
+  const probe = usePagePaintProbe(pageUrl, rendition.version + probeNonce);
   const plan = websiteViewerPlan({
     hasUrl: Boolean(rendition.url),
     mediaType,
@@ -245,7 +254,10 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
       )}
       <button
         type="button"
-        onClick={rendition.retry}
+        onClick={() => {
+          rendition.retry();
+          setProbeNonce((value) => value + 1);
+        }}
         className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
       >
         {tt("重试")}
