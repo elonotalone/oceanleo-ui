@@ -435,9 +435,25 @@ test("C5 境内家族：内嵌编辑器白名单为空，整条嵌入路径 fail
   assert.equal(child.status, 0, child.stderr);
   const cn = JSON.parse(child.stdout);
 
-  // 境内 v1 没有 website/design/video 三个子站 → 白名单是空的，不是「换成 .cn 的」。
-  assert.deepEqual(cn.bases, []);
-  assert.deepEqual(cn.origins, []);
+  // 境内三个编辑器子站 2026-08-13 全量上线后，白名单是**三条 .cn**，
+  // 而且只可能是 .cn：域名由当前家族的可注册域拼出来，不存在跨族回落。
+  assert.deepEqual([...cn.bases].sort(), [
+    "https://design.oceanleo.cn/embed/editor",
+    "https://video.oceanleo.cn/canvas-board",
+    "https://website.oceanleo.cn/embed/site-editor",
+  ]);
+  assert.deepEqual([...cn.origins].sort(), [
+    "https://design.oceanleo.cn",
+    "https://video.oceanleo.cn",
+    "https://website.oceanleo.cn",
+  ]);
+  for (const base of cn.bases) {
+    assert.equal(
+      new URL(base).hostname.endsWith(".oceanleo.cn"),
+      true,
+      `境内白名单出现了非 .cn 主机：${base}`,
+    );
+  }
   // .com 的 base 在境内既不可信，也拿不到 same-origin，且构造器直接拒绝。
   assert.equal(cn.comBaseTrusted, false);
   assert.equal(cn.comBaseSandbox, UNTRUSTED_FRAME_SANDBOX);

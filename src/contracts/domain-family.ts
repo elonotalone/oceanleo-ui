@@ -50,9 +50,9 @@ export interface DomainFamilyProfile {
    * `"all"` = 该家族是产品全集（海外版就是全集，所以它的解析结果与本轮改动前
    * 逐字相同）。数组 = 显式清单，**不在清单里就是不存在**。
    *
-   * 这是 fail closed 的那一侧：境内 v1 是空数组，于是境内既拿不到子站链接，也
-   * 拿不到内嵌编辑器白名单。将来某个子站境内上线，必须**显式**把它的 key 加进
-   * 这里才会出现 —— 不会因为「忘了配」而自动指回海外站，把境内用户送出境。
+   * 这是 fail closed 的那一侧：不在清单里的子站既拿不到链接，也拿不到内嵌编辑器
+   * 白名单。某个子站境内上线，必须**显式**把它的标签加进这里才会出现 —— 不会
+   * 因为「忘了配」而自动指回海外站，把境内用户送出境。
    */
   availableSubsites: "all" | readonly string[];
 }
@@ -81,10 +81,51 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     gatewayOrigin: "https://api.oceanleo.cn",
     assetOrigin: "https://asset.oceanleo.cn",
     untrustedContentDomain: "leoapp.cn",
-    // 境内 v1 只有门户：一个子站都还没部署过（台账 §B2 广州机零个业务站容器、
-    // §C4 门户连 standalone 产物都还没有）。空清单 = 子站链接不展示为可点、
-    // 内嵌编辑器白名单为空。**不要**为了「看起来完整」在这里填上还不存在的站。
-    availableSubsites: [],
+    // 境内子站清单。**这张表的每一行都必须对应广州机上一个真在跑的容器**：
+    // 它同时驱动子站链接和内嵌编辑器白名单，填一个没部署的站等于给用户一个
+    // 打不开的链接，并给一个不存在的主机发第一方信任。
+    //
+    // 唯一事实源是 oceandino 的 `scripts/oceanleo-cn-sites.tsv`（cn_status=live
+    // 的行），由 `scripts/tests/test_oceanleo_cn_registry.py` 逐字比对本数组 ——
+    // 手改这里而不改清册，或反过来，门禁都会红。新站上线的顺序永远是
+    // 「先部署 → 实测 200 → 再改清册 → 再改这里」，不能反过来。
+    availableSubsites: [
+      "3d",
+      "agent",
+      "aihuman",
+      "aitools",
+      "asset",
+      "bizdev",
+      "chat",
+      "converter",
+      "design",
+      "e-commerce",
+      "edu",
+      "excel",
+      "finance",
+      "game",
+      "image",
+      "interior",
+      "law",
+      "logo",
+      "make",
+      "med",
+      "meeting",
+      "music",
+      "notebook",
+      "novel",
+      "paper",
+      "prompt",
+      "resume",
+      "script",
+      "search",
+      "slide",
+      "study",
+      "travel",
+      "video",
+      "website",
+      "word",
+    ],
   },
 };
 

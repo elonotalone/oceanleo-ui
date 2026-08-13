@@ -2415,12 +2415,6 @@
         },
         {
           "kind": "named",
-          "name": "APP_CAPABILITY_MAP_SCHEMA",
-          "importedName": "APP_CAPABILITY_MAP_SCHEMA",
-          "source": "./app-capability-entry"
-        },
-        {
-          "kind": "named",
           "name": "APP_CAPABILITY_QUERY_KEY",
           "importedName": "APP_CAPABILITY_QUERY_KEY",
           "source": "./app-capability-entry"
@@ -2501,18 +2495,6 @@
           "kind": "named",
           "name": "appCapabilityFromSearch",
           "importedName": "appCapabilityFromSearch",
-          "source": "./app-capability-entry"
-        },
-        {
-          "kind": "named",
-          "name": "AppCapabilityMap",
-          "importedName": "AppCapabilityMap",
-          "source": "./app-capability-entry"
-        },
-        {
-          "kind": "named",
-          "name": "appCapabilityMapKey",
-          "importedName": "appCapabilityMapKey",
           "source": "./app-capability-entry"
         },
         {
@@ -2913,6 +2895,12 @@
         },
         {
           "kind": "named",
+          "name": "createPluginStateAccess",
+          "importedName": "createPluginStateAccess",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
           "name": "CreateSkillModal",
           "importedName": "CreateSkillModal",
           "source": "./CreateSkillModal"
@@ -3051,9 +3039,9 @@
         },
         {
           "kind": "named",
-          "name": "exportToMyLibrary",
-          "importedName": "exportToMyLibrary",
-          "source": "./plugin-export/plugin-export-wiring"
+          "name": "exportPluginArtifact",
+          "importedName": "exportPluginArtifact",
+          "source": "./plugin-module"
         },
         {
           "kind": "named",
@@ -3300,6 +3288,12 @@
           "name": "HomePromptCards",
           "importedName": "HomePromptCards",
           "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "IcpBeianFooter",
+          "importedName": "IcpBeianFooter",
+          "source": "./IcpBeianFooter"
         },
         {
           "kind": "named",
@@ -3606,12 +3600,6 @@
           "name": "listPrimaryArtifacts",
           "importedName": "listPrimaryArtifacts",
           "source": "./artifact-client"
-        },
-        {
-          "kind": "named",
-          "name": "liveExportDependencies",
-          "importedName": "liveExportDependencies",
-          "source": "./plugin-export/plugin-export-wiring"
         },
         {
           "kind": "named",
@@ -4005,6 +3993,48 @@
         },
         {
           "kind": "named",
+          "name": "PluginHost",
+          "importedName": "PluginHost",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "PluginModule",
+          "importedName": "PluginModule",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "pluginModuleProblem",
+          "importedName": "pluginModuleProblem",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "pluginModules",
+          "importedName": "pluginModules",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "pluginModulesForPlacement",
+          "importedName": "pluginModulesForPlacement",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "PluginPlacement",
+          "importedName": "PluginPlacement",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
+          "name": "PluginStateAccess",
+          "importedName": "PluginStateAccess",
+          "source": "./plugin-module"
+        },
+        {
+          "kind": "named",
           "name": "prepareArtifactForAction",
           "importedName": "prepareArtifactForAction",
           "source": "./artifact-client"
@@ -4059,12 +4089,6 @@
         },
         {
           "kind": "named",
-          "name": "readAppCapabilityMap",
-          "importedName": "readAppCapabilityMap",
-          "source": "./app-capability-entry"
-        },
-        {
-          "kind": "named",
           "name": "readSiteAppDirectory",
           "importedName": "readSiteAppDirectory",
           "source": "./material-scene-axis"
@@ -4074,12 +4098,6 @@
           "name": "refreshArtifactRendition",
           "importedName": "refreshArtifactRendition",
           "source": "./artifact-client"
-        },
-        {
-          "kind": "named",
-          "name": "registerAppCapabilityMap",
-          "importedName": "registerAppCapabilityMap",
-          "source": "./app-capability-entry"
         },
         {
           "kind": "named",
@@ -5098,10 +5116,6 @@
         {
           "kind": "star",
           "source": "./media-editors/model3d-capabilities"
-        },
-        {
-          "kind": "star",
-          "source": "./plugin-export"
         },
         {
           "kind": "star",

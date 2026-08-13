@@ -1,6 +1,8 @@
 export { AppShell, PageTitle } from "./AppShell";
 // 工作台 iframe 内嵌「外壳闪屏」pre-paint 杀手（root layout 放一次）。
 export { EmbedChrome } from "./EmbedChrome";
+// 境内合规页脚（root layout 放一次）。海外构建里变量为空 → 渲染 null。
+export { IcpBeianFooter } from "./IcpBeianFooter";
 export type {
   AppShellProps,
   AppShellBrand,
