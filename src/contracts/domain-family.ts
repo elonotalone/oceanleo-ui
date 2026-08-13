@@ -93,7 +93,8 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
       "3d",
       "agent",
       "aihuman",
-      "aitools",
+      // aitools 不在境内：整站内容在 Supabase 里，境内库没有那批数据，
+      // 上线也只是个空目录；且它是一份指向境外 AI 服务的导航，内容合规待定。
       "asset",
       "bizdev",
       "chat",
