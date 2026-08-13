@@ -6,11 +6,13 @@
  * OOXML writer projects them into `a:xfrm` / `p:xfrm` coordinates.
  */
 
+import { validateDeckIr } from "./deck-ir";
 import type {
   DeckIrChart,
   DeckIrDocument,
   DeckIrImage,
   DeckIrSlide,
+  DeckIrThemeSurfaceImage,
 } from "./deck-ir";
 import {
   DECK_CONSTANTS,
@@ -90,6 +92,7 @@ interface ResolvedDeckStyle {
   fontEastAsian: string;
   fontScale: number;
   pageColor: string;
+  surfaceImage?: DeckIrThemeSurfaceImage;
   fullBleedImage: "cover" | "none";
   scrimColor: string;
   scrimBands: readonly number[] | null;
@@ -173,17 +176,22 @@ async function resolveStyle(
     }
   }
 
-  const fontMajor = pack?.fonts?.major || project.theme.fontMajor || DEFAULT_MAJOR_FONT;
-  const fontMinor = pack?.fonts?.minor || project.theme.fontMinor || fontMajor;
+  const fontMajor = project.theme.fontMajor || pack?.fonts?.major || DEFAULT_MAJOR_FONT;
+  const fontMinor = project.theme.fontMinor || pack?.fonts?.minor || fontMajor;
   const fontEastAsian =
-    pack?.fonts?.eastAsian || project.theme.fontEastAsian || DEFAULT_EAST_ASIAN_FONT;
+    project.theme.fontEastAsian || pack?.fonts?.eastAsian || DEFAULT_EAST_ASIAN_FONT;
   const fontScale = finiteScale(
-    pack?.fonts?.fontScale ?? pack?.fonts?.scale,
-    finiteScale(project.theme.fontScale),
+    project.theme.fontScale,
+    finiteScale(pack?.fonts?.fontScale ?? pack?.fonts?.scale),
   );
-  const surface = pack?.surface;
+  const packSurface = pack?.surface;
+  const sourceSurface = project.theme.surface;
   const pageColor = hex6(
-    surface?.pageColor ?? surface?.backgroundColor ?? surface?.color ?? surface?.background,
+    sourceSurface?.color ??
+      packSurface?.pageColor ??
+      packSurface?.backgroundColor ??
+      packSurface?.color ??
+      packSurface?.background,
     palette.lt1,
   );
   const scrim = pack?.scrim;
@@ -200,7 +208,8 @@ async function resolveStyle(
     fontEastAsian,
     fontScale,
     pageColor,
-    fullBleedImage: surface?.fullBleedImage === "cover" ? "cover" : "none",
+    ...(sourceSurface?.image ? { surfaceImage: sourceSurface.image } : {}),
+    fullBleedImage: packSurface?.fullBleedImage === "cover" ? "cover" : "none",
     scrimColor: hex6(scrim?.color, palette.dk1),
     scrimBands: bands.length ? bands : null,
     scrimAlpha: alphaPercent(scrim?.alpha ?? scrim?.opacity),
@@ -269,8 +278,11 @@ function boxStyle(box: DeckBox, extra = ""): string {
   );
 }
 
-function fontFamily(style: ResolvedDeckStyle): string {
-  const families = [style.fontMajor, style.fontEastAsian]
+function fontFamily(style: ResolvedDeckStyle, role: DeckFontRole): string {
+  const primary = ["display", "section", "heading", "subheading", "kpi"].includes(role)
+    ? style.fontMajor
+    : style.fontMinor;
+  const families = [primary, style.fontEastAsian]
     .filter((value, index, all) => value && all.indexOf(value) === index)
     .map((value) => JSON.stringify(value));
   return `${families.join(",")},sans-serif`;
@@ -308,7 +320,7 @@ function textBox(
   return (
     `<div class="deck-object deck-text ${escapeHtml(options.className || "")}" ` +
     `style="${boxStyle(box)}` +
-    `font-family:${escapeHtml(fontFamily(style))};font-size:${fontPixels(role, style)}px;` +
+    `font-family:${escapeHtml(fontFamily(style, role))};font-size:${fontPixels(role, style)}px;` +
     `color:#${hex6(color, style.palette.dk1)};text-align:${options.align || "left"};` +
     `justify-content:${justify};font-weight:${options.bold ? 700 : 400};${fill}">` +
     textRun(text) +
@@ -334,7 +346,7 @@ function bulletBox(
     .join("");
   return (
     `<div class="deck-object deck-text deck-bullets" style="${boxStyle(box)}` +
-    `font-family:${escapeHtml(fontFamily(style))};font-size:${fontPixels(role, style)}px;` +
+    `font-family:${escapeHtml(fontFamily(style, role))};font-size:${fontPixels(role, style)}px;` +
     `color:#${hex6(color, style.palette.dk1)}">${rows}</div>`
   );
 }
@@ -374,6 +386,30 @@ function imageElement(
     `<img class="deck-object deck-image" data-asset-id="${escapeHtml(asset.id)}" ` +
     `src="${asset.dataUri}" ` +
     `alt="${escapeHtml(image.alt)}" style="${boxStyle(box)}` +
+    `object-fit:${image.fit === "contain" ? "contain" : "cover"};" />`
+  );
+}
+
+function surfaceImageElement(
+  image: DeckIrThemeSurfaceImage,
+  assets: Map<string, AssetReference>,
+): string {
+  const asset = assets.get(image.assetId);
+  if (!asset) {
+    throw new Error(
+      `网页版 surface 图片没有对应的资源声明，不能生成自包含文件：${image.assetId}。`,
+    );
+  }
+  const page: DeckBox = {
+    x: 0,
+    y: 0,
+    cx: DECK_GRID.pageWidth,
+    cy: DECK_GRID.pageHeight,
+  };
+  return (
+    `<img class="deck-object deck-image deck-surface-image" ` +
+    `data-asset-id="${escapeHtml(asset.id)}" data-deck-surface-image="1" ` +
+    `src="${asset.dataUri}" alt="${escapeHtml(image.alt)}" style="${boxStyle(page)}` +
     `object-fit:${image.fit === "contain" ? "contain" : "cover"};" />`
   );
 }
@@ -457,7 +493,7 @@ function chartBox(
   style: ResolvedDeckStyle,
 ): string {
   const axis = chart.axisLabel
-    ? `<div class="deck-chart-axis" style="font-family:${escapeHtml(fontFamily(style))};` +
+    ? `<div class="deck-chart-axis" style="font-family:${escapeHtml(fontFamily(style, "caption"))};` +
       `font-size:${fontPixels("caption", style)}px;color:#${style.palette.dk1}">` +
       textRun(chart.axisLabel) +
       `</div>`
@@ -530,6 +566,10 @@ function renderSlideBody(
     value: string,
     align: "left" | "center" | "right" = "left",
   ) => out.push(textBox(box, value, role, palette.dk1, style, { align, bold: true }));
+
+  if (style.surfaceImage) {
+    out.push(surfaceImageElement(style.surfaceImage, assets));
+  }
 
   switch (slide.layout) {
     case "title":
@@ -833,7 +873,7 @@ html,body{margin:0;min-height:100%;background:#111;color:#fff}
 body{overflow:hidden;font-family:system-ui,sans-serif}
 .deck-app{min-height:100vh;display:grid;grid-template-rows:1fr auto;place-items:center;padding:16px;gap:12px}
 .deck-frame{position:relative;overflow:visible}
-.deck-stage{position:absolute;left:0;top:0;transform-origin:top left;overflow:hidden;background:#fff;cursor:pointer}
+.deck-stage{position:absolute;left:0;top:0;transform-origin:top left;overflow:hidden;background:#fff;cursor:pointer;touch-action:manipulation}
 .deck-slide{position:absolute;inset:0;overflow:hidden}
 .deck-slide[hidden]{display:none}
 .deck-object{position:absolute}
@@ -848,6 +888,7 @@ body{overflow:hidden;font-family:system-ui,sans-serif}
 .deck-controls{display:flex;align-items:center;gap:10px;font:14px/1.2 system-ui,sans-serif}
 .deck-controls button{border:1px solid #777;background:#222;color:#fff;border-radius:4px;padding:7px 12px;cursor:pointer}
 .deck-counter{min-width:72px;text-align:center;font-variant-numeric:tabular-nums}
+.deck-progress{width:120px;accent-color:#fff}
 `;
 }
 
@@ -858,14 +899,21 @@ var slides=Array.prototype.slice.call(document.querySelectorAll("[data-deck-slid
 var stage=document.getElementById("deck-stage");
 var frame=document.getElementById("deck-frame");
 var counter=document.getElementById("deck-counter");
+var progress=document.getElementById("deck-progress");
 var index=0;
+var pointerStartX=null;
 var width=Number(stage.getAttribute("data-page-width"));
 var height=Number(stage.getAttribute("data-page-height"));
 function show(next){
   if(!slides.length)return;
   index=(next+slides.length)%slides.length;
-  slides.forEach(function(slide,i){slide.hidden=i!==index;});
+  slides.forEach(function(slide,i){
+    var inactive=i!==index;
+    slide.hidden=inactive;
+    slide.setAttribute("aria-hidden",inactive?"true":"false");
+  });
   counter.textContent=String(index+1)+" / "+String(slides.length);
+  progress.value=index+1;
 }
 function fit(){
   var scale=Math.min((window.innerWidth-32)/width,(window.innerHeight-76)/height,1);
@@ -886,6 +934,21 @@ stage.addEventListener("click",function(event){
   var rect=stage.getBoundingClientRect();
   show(index+(event.clientX-rect.left<rect.width/2?-1:1));
 });
+stage.addEventListener("pointerdown",function(event){
+  if(event.pointerType==="touch"||event.pointerType==="pen"){
+    pointerStartX=event.clientX;
+  }
+});
+stage.addEventListener("pointerup",function(event){
+  if((event.pointerType==="touch"||event.pointerType==="pen")&&pointerStartX!==null){
+    var rect=stage.getBoundingClientRect();
+    var delta=event.clientX-pointerStartX;
+    event.preventDefault();
+    show(index+(Math.abs(delta)>=32?(delta<0?1:-1):(event.clientX-rect.left<rect.width/2?-1:1)));
+    pointerStartX=null;
+  }
+});
+stage.addEventListener("pointercancel",function(){pointerStartX=null;});
 document.addEventListener("keydown",function(event){
   if(event.key==="ArrowLeft"){event.preventDefault();show(index-1);}
   if(event.key==="ArrowRight"){event.preventDefault();show(index+1);}
@@ -901,37 +964,57 @@ export async function buildDeckHtml(
   project: DeckIrDocument,
   options: DeckHtmlBuildOptions = {},
 ): Promise<DeckHtmlBuild> {
-  const extended = project as DeckIrDocument & { aspect?: DeckHtmlAspect; packId?: string };
+  const validation = validateDeckIr(project);
+  if (!validation.ok) {
+    throw new Error(
+      `网页版 deck source 不合 oceanleo.deck.v1：\n` +
+        validation.errors
+          .map((error) => `  ${error.path} [${error.code}] ${error.message}`)
+          .join("\n"),
+    );
+  }
+  const source = validation.project;
+  const extended = source as DeckIrDocument & { aspect?: DeckHtmlAspect; packId?: string };
   const aspect: DeckHtmlAspect =
     options.aspect === "4:3" || extended.aspect === "4:3" ? "4:3" : "16:9";
   const packId = options.packId || extended.packId;
-  const style = await resolveStyle(project, packId);
-  const references = resolveAssets(project, options.assets);
+  const style = await resolveStyle(source, packId);
+  const references = resolveAssets(source, options.assets);
   const pageWidth = Number((DECK_GRID.pageWidth / 10_000).toFixed(3));
   const pageHeight = Number(
     (aspect === "4:3" ? pageWidth * 0.75 : DECK_GRID.pageHeight / 10_000).toFixed(3),
   );
-  const slides = project.slides
+  const slides = source.slides
     .map(
       (slide, index) =>
         `<section class="deck-slide" data-deck-slide="${index + 1}" ` +
         `data-layout="${escapeHtml(slide.layout)}" ` +
+        `role="group" aria-roledescription="slide" ` +
+        `aria-label="${index + 1} / ${source.slides.length}" ` +
+        `aria-hidden="${index === 0 ? "false" : "true"}" ` +
         `style="background:#${style.pageColor};"${index === 0 ? "" : " hidden"}>` +
-        renderSlideBody(slide, index + 1, project.slides.length, project, style, references) +
+        renderSlideBody(slide, index + 1, source.slides.length, source, style, references) +
         `</section>`,
     )
     .join("");
   const html =
     `<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${escapeHtml(project.title)}</title><style>${stylesheet()}</style></head>` +
-    `<body><main class="deck-app" data-deck-html="1" data-aspect="${aspect}">` +
+    `<title>${escapeHtml(source.title)}</title><style>${stylesheet()}</style></head>` +
+    `<body><main class="deck-app" data-deck-html="1" data-aspect="${aspect}" ` +
+    `data-theme-surface="#${style.pageColor}" ` +
+    `data-theme-font-major="${escapeHtml(style.fontMajor)}" ` +
+    `data-theme-font-minor="${escapeHtml(style.fontMinor)}" ` +
+    `data-theme-font-east-asian="${escapeHtml(style.fontEastAsian)}">` +
     `<div id="deck-frame" class="deck-frame" style="width:${pageWidth}px;height:${pageHeight}px;">` +
     `<div id="deck-stage" class="deck-stage" style="width:${pageWidth}px;height:${pageHeight}px;" ` +
     `data-page-width="${pageWidth}" data-page-height="${pageHeight}">${slides}</div></div>` +
     `<nav class="deck-controls" aria-label="幻灯片控制">` +
     `<button id="deck-prev" type="button" aria-label="上一页">上一页</button>` +
-    `<span id="deck-counter" class="deck-counter"></span>` +
+    `<span id="deck-counter" class="deck-counter" role="status" aria-live="polite" ` +
+    `aria-atomic="true">1 / ${source.slides.length}</span>` +
+    `<progress id="deck-progress" class="deck-progress" max="${source.slides.length}" ` +
+    `value="1" aria-label="幻灯片进度"></progress>` +
     `<button id="deck-next" type="button" aria-label="下一页">下一页</button>` +
     `<button id="deck-fullscreen" type="button">全屏</button></nav></main>` +
     `<script>${runtimeScript()}</script></body></html>\n`;

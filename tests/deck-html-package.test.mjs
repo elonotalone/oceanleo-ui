@@ -306,7 +306,11 @@ test("4:3 is a fixed canvas option and an unavailable pack uses the IR theme", a
 });
 
 test("a W1 pack id applies that registry's surface, fonts, palette, and solid scrim bands", async () => {
-  const build = await buildDeckHtml(project(), {
+  const source = project();
+  delete source.theme.fontMajor;
+  delete source.theme.fontMinor;
+  delete source.theme.fontEastAsian;
+  const build = await buildDeckHtml(source, {
     packId: "paper-cut-amber",
     assets: HTML_ASSETS,
   });
