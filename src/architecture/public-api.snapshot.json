@@ -3291,12 +3291,6 @@
         },
         {
           "kind": "named",
-          "name": "IcpBeianFooter",
-          "importedName": "IcpBeianFooter",
-          "source": "./IcpBeianFooter"
-        },
-        {
-          "kind": "named",
           "name": "ImageLightbox",
           "importedName": "ImageLightbox",
           "source": "./ImageLightbox"
