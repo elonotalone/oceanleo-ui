@@ -7,8 +7,9 @@
 //
 //   ① 有稿子 ⇒ 动作可用，且用户拿到的字节与直接调用出口对同一份稿子产出的
 //      **逐字节相同**（这一层不许再加工，否则「按需渲染」就不是同一份东西了）；
-//   ② 没稿子（今天货架上 275 个位全部如此）⇒ 动作不可用，但**按钮留在原地**，
-//      并带一句面向用户的中文理由，不是技术堆栈；
+//   ② 没稿子（今天货架上 275 个位全部如此）⇒ **按钮根本不出现**。上一轮这里是
+//      「灰着并写清为什么」，操作员把它否了：那句话是在替产品的空缺道歉，用户
+//      看不到入口就没有需要被解释的失败（W1）；
 //   ③ 同一份稿子点两次，字节相同（按需渲染每次都要重算，不确定就等于用户每次
 //      刷新看到的都不一样）；
 //   ④ `ArtifactActions.tsx` 上原有的下载与收藏没被碰坏：能下、能收、
@@ -422,10 +423,14 @@ test("图片字节齐了也只交自包含的单文件 HTML", async () => {
 
 // ── ② 没稿子 ⇒ 不可用，但按钮留在原地并说人话 ───────────────────────────────
 
-test("没稿子时网页版留在原地、按不动，并带一句面向用户的理由", async () => {
+test("没稿子时网页版这颗按钮根本不出现，也不留下那句替产品道歉的话", async () => {
   const item = deckItem({ withProject: false });
   const evidence = deckHtmlAction.deckHtmlEvidence(item);
-  assert.equal(evidence.visible, true, "不许静默消失");
+  // 改判：过去这里留一颗灰按钮，外加一句「这份素材制作得较早…」。操作员裁定这种
+  // 文案不许出现，且正确做法不是换一句更委婉的话，而是让按钮在没有可编辑内容时
+  // 根本不出现——用户看不到入口，就没有需要被解释的失败。老 deck 只做 pptx，
+  // 网页版从新产的那批开始（那批带 oceanleo.deck.v1 稿子，按钮照常长出来）。
+  assert.equal(evidence.visible, false, "没有可编辑内容就不许摆出这个入口");
   // W19 的变异开关只改测试期望，不改被测代码：把 source 从 fixture 拿掉后，
   // 若还硬说「网页版可用」，这条必须真红。默认仍钉住正确合同（不可用）。
   const expectedAvailable = process.env.W19_MUTATE_MISSING_SOURCE_AVAILABLE === "1";
@@ -435,17 +440,10 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
     "当前 revision 没有 source=oceanleo.deck.v1 时，网页版绝不能报可用",
   );
   assert.equal(evidence.sourceUrl, "");
-
-  const reason = evidence.reason;
-  assert.ok(reason.trim().length > 0, "按不动就必须写清为什么");
-  assert.equal(
-    reason,
-    "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。",
-  );
-  assert.equal(reason, deckHtmlAction.DECK_HTML_NO_SOURCE_REASON);
+  assert.equal(evidence.reason, "", "按钮都不出现了，就没有需要解释的失败");
 
   // 父级已实测今天线上 152 份 deck 全是 pptx、没有 IR 稿子；这里把同一个现实批次
-  // 明确铺成 152 个无稿条目，钉死它们全都走这条灰分支，而不是只验证一个偶然样本。
+  // 明确铺成 152 个无稿条目，钉死它们全都不长这颗按钮，而不是只验证一个偶然样本。
   const currentShelf = Array.from({ length: 152 }, () =>
     deckHtmlAction.deckHtmlEvidence(deckItem({ withProject: false })),
   );
@@ -453,52 +451,54 @@ test("没稿子时网页版留在原地、按不动，并带一句面向用户�
   assert.equal(
     currentShelf.filter(
       (entry) =>
-        entry.visible === true &&
+        entry.visible === false &&
         entry.available === false &&
-        entry.reason ===
-          "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。",
+        entry.reason === "",
     ).length,
     152,
   );
-  // 面向用户，不是技术堆栈：没有异常类名、栈帧、URL、undefined/null 这类东西。
-  for (const forbidden of [
-    /Error\b/,
-    /TypeError|DOMException|at\s+\w+\s*\(/,
-    /undefined|null|NaN/,
-    /https?:\/\//,
-    /[{}[\]<>]/,
-    /源|稿|IR|rendition|artifact|schema|json/i,
-  ]) {
-    assert.doesNotMatch(reason, forbidden, `理由里不许出现 ${forbidden}`);
-  }
-  assert.match(reason, /[\u4e00-\u9fa5]/, "理由必须是中文人话");
 
   savedBlobs.length = 0;
   const mounted = await mount(item);
   try {
-    const webAction = button(mounted.container, "网页版");
-    assert.ok(webAction, "没稿子也不许让按钮消失");
-    assert.equal(webAction.disabled, true);
-    assert.equal(webAction.getAttribute("aria-disabled"), "true");
-    assert.equal(webAction.getAttribute("title"), reason);
-    // 理由要进那条读得见的说明行，读屏也连得上。
-    const described = webAction.getAttribute("aria-describedby");
-    assert.ok(described, "按不动的按钮必须指向理由行");
     assert.equal(
-      mounted.container.querySelector(`#${described}`)?.textContent?.includes(reason),
-      true,
+      button(mounted.container, "网页版"),
+      undefined,
+      "没稿子就不许长出这颗按钮",
     );
-    assert.match(
+    // 那句道歉文案连一个字都不许留在屏幕上。
+    assert.doesNotMatch(
       mounted.container.textContent || "",
-      /网页版：这份素材制作得较早/,
+      /制作得较早|不是你这次操作出了问题/,
     );
-
-    await click(webAction);
-    await settle();
-    assert.equal(savedBlobs.length, 0, "按不动的按钮不许产出任何东西");
+    assert.equal(savedBlobs.length, 0);
   } finally {
     await mounted.unmount();
   }
+});
+
+test("那句替产品空缺道歉的文案在源码里已经没有出处", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  for (const relativePath of [
+    "src/shell/DeckHtmlAction.tsx",
+    "src/shell/ArtifactActions.tsx",
+    "src/shell/WorkspaceLibrary.tsx",
+    "src/shell/library-detail-app-actions.tsx",
+  ]) {
+    const source = await readFile(resolve(relativePath), "utf8");
+    assert.doesNotMatch(source, /DECK_HTML_NO_SOURCE_REASON/, relativePath);
+    assert.doesNotMatch(
+      source,
+      /这份素材制作得较早/,
+      `${relativePath}：不许换一句更委婉的话，做法是按钮不出现`,
+    );
+  }
+  assert.equal(
+    deckHtmlAction.DECK_HTML_NO_SOURCE_REASON,
+    undefined,
+    "常量本身也要消失，不能留个没人用的出处等着被再引一次",
+  );
 });
 
 test("不是演示文稿的条目根本不长出这个动作", async () => {

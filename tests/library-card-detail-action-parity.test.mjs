@@ -155,13 +155,19 @@ const clientStubUrl = dataModule(`
       : { ok: false, error: "取不到当前版本。", status: 404 };
   }
 `);
+// 「哪一类打得开」的唯一判据是 `editorCapabilityFor`。默认打得开；
+// 个别用例要验「打不开的类型不出按钮」，把这个开关翻过去。
+globalThis.__editorCapabilityAvailable = true;
 const routesStubUrl = dataModule(`
   export function editorCapabilityFor() {
-    return {
-      available: true,
-      unavailableReason: "",
-      route: { type: "image" },
-    };
+    return globalThis.__editorCapabilityAvailable
+      ? { available: true, unavailableReason: "", route: { type: "image" } }
+      : {
+          available: false,
+          unavailableReason:
+            "此内容目前只有预览，没有通过 load → mutate → save → reopen 验证的编辑器。",
+          route: { type: "none" },
+        };
   }
 `);
 const actionModuleUrl = await compileModule(
@@ -690,8 +696,16 @@ test("包上下文给的 app 不是这份素材的归属时，落点退回主归
   }
 });
 
-test("素材就在当前 app 名下时，编辑也是落到预览深链，不把用户踹进编辑器", async () => {
+// ── W1：站内编辑要真的打开编辑插件 ─────────────────────────────────────────
+//
+// 操作员在 slide 站实拍：点「编辑」重复跳到同一个页面。因为这一档也走了深链，
+// 而 `?app=<归属>` 指的正是用户此刻站着的那个 app —— 按钮点得动，什么都没发生。
+// 「explore 页点编辑跳到各个 app 里、只能预览，这是对的；但在各个 app 里点编辑，
+// 就应该打开编辑插件。」所以同 app 这一档改判：就地开插件，不深链。
+
+test("素材就在当前 app 名下时，编辑就地打开编辑插件，不再深链回同一个页面", async () => {
   globalThis.__previewHrefCalls = [];
+  globalThis.__libraryPreparedActions = [];
   const item = materialItem("Same app material", [
     attribution("inpaint", "局部重绘", 0),
   ]);
@@ -709,19 +723,63 @@ test("素材就在当前 app 名下时，编辑也是落到预览深链，不把
       mounted.container.querySelector("[data-material-owning-apps]"),
       null,
     );
-    // 过去这一档走的是「就地进 typed 编辑器」。操作员把它否了：点「编辑」往往只是
-    // 想看看会出现什么，落点必须是这份素材的预览（`mode=preview` 是纯读，不 fork）。
-    const entries = editEntries(mounted.container);
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].tagName, "A", "落点是深链，不是就地动作");
-    assert.equal(
-      entries[0].getAttribute("href"),
-      previewHref(item.artifactId, "inpaint"),
+    // 归属就是当前 app：一颗深链入口都不许出现，那正是原地打转的那颗。
+    assert.deepEqual(editEntries(mounted.container), []);
+    assert.deepEqual(
+      globalThis.__previewHrefCalls,
+      [],
+      "同 app 不许再算一次深链地址",
     );
-    // 素材货架上不再另挂那颗不指名 app 的「编辑」。
-    assert.equal(action(mounted.container, "编辑"), undefined);
-    assert.equal(opened.length, 0, "不许把用户一脚踹进编辑器");
+
+    const edit = action(mounted.container, "编辑");
+    assert.ok(edit, "同 app 且这一类打得开时，编辑必须在");
+    assert.equal(edit.tagName, "BUTTON", "就地动作，不是一次「去别处」");
+    assert.equal(edit.disabled, false);
+
+    await click(edit);
+    await settle();
+    assert.deepEqual(globalThis.__libraryPreparedActions, ["edit"]);
+    assert.equal(opened.length, 1, "点下去要真的把素材交给编辑插件");
+    assert.equal(opened[0].preparedAction, "edit");
+    assert.deepEqual(globalThis.__previewHrefCalls, []);
   } finally {
+    await mounted.unmount();
+  }
+});
+
+test("同 app 但这一类打不开时，编辑这颗按钮根本不出现", async () => {
+  globalThis.__previewHrefCalls = [];
+  globalThis.__libraryPreparedActions = [];
+  globalThis.__editorCapabilityAvailable = false;
+  const item = materialItem("Same app unopenable", [
+    attribution("inpaint", "局部重绘", 0),
+  ]);
+  const opened = [];
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    siteId: "image",
+    appId: "inpaint",
+    onOpenItem: (prepared) => opened.push(prepared),
+  });
+  try {
+    await openDetail(mounted, item);
+    // 深链那颗是原地打转，就地那颗按下去只会吐一句技术理由。两颗都不出现：
+    // 用户看不到入口，就没有需要被解释的失败。
+    assert.deepEqual(editEntries(mounted.container), []);
+    assert.equal(action(mounted.container, "编辑"), undefined);
+    assert.deepEqual(globalThis.__previewHrefCalls, []);
+    assert.doesNotMatch(
+      mounted.container.textContent || "",
+      /编辑：/,
+      "按钮都不出现了，就不该再挂一条「为什么不能编辑」的理由",
+    );
+    // 其余动作一个不少：不能编辑不等于这份素材没用。
+    for (const label of ["下载", "收藏", "链接"]) {
+      assert.ok(action(mounted.container, label), label);
+    }
+    assert.equal(opened.length, 0);
+  } finally {
+    globalThis.__editorCapabilityAvailable = true;
     await mounted.unmount();
   }
 });
