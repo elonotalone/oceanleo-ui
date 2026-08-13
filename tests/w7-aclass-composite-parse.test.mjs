@@ -17,7 +17,10 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { advancedCapabilityForArtifactFields } from "../src/shell/artifact-contract.ts";
+import {
+  advancedCapabilityForArtifactFields,
+  gameSourceFormatAccess,
+} from "../src/shell/artifact-contract.ts";
 
 const FIXTURE = fileURLToPath(
   new URL("./fixtures/artifact-capability-triples.json", import.meta.url),
@@ -70,21 +73,33 @@ test("A 类 composite_image 三元组解析出 design_canvas，不为 null", () 
 
 /**
  * 这一条不抄夹具里的 `expect`，判的是一条结构规律：**`editor_capability` 这一列
- * 就是解析链的开关**。库里 16 种三元组该列为空，28 种非空；空的必须解析为 null，
- * 非空的必须解析得出东西。真出现「登记了类型却没人声明谁来编辑」的行，这里当场红。
+ * 通常就是解析链的开关。唯一的显式例外是退役 game bundle：库中旧行仍带历史
+ * `editor_capability`，但它现在只可读/下载，绝不能再解析成新写入适配器。
  */
-test("editor_capability 非空 ⟺ 解析得出适配器", () => {
+test("editor_capability 非空会解析适配器，退役 game bundle 除外", () => {
   const wrongEmpty = [];
   const wrongPresent = [];
+  const legacyReadOnly = [];
   for (const triple of triples) {
     const entry = resolve(triple);
     const label = `${triple.artifactType}|${triple.sourceFormat}|${triple.editorCapability || "∅"}`;
     if (triple.editorCapability) {
-      if (!entry) wrongPresent.push(label);
+      if (
+        triple.artifactType === "game" &&
+        gameSourceFormatAccess(triple.sourceFormat) === "legacy-read-only"
+      ) {
+        legacyReadOnly.push(label);
+        if (entry) wrongPresent.push(`${label}（退役载体仍可编辑）`);
+      } else if (!entry) {
+        wrongPresent.push(label);
+      }
     } else if (entry) {
       wrongEmpty.push(label);
     }
   }
+  assert.deepEqual(legacyReadOnly, [
+    "game|oceanleo.game-bundle.v1|game-editor",
+  ]);
   assert.deepEqual(
     wrongPresent,
     [],

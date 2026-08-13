@@ -21,6 +21,7 @@ import {
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
+import { GAME_DOCUMENT_SOURCE_FORMAT } from "../artifact-contract";
 import {
   advancedSavedItem,
   commitAdvancedSavedRevision,
@@ -31,26 +32,24 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 
-export const GAME_PROJECT_SCHEMA = "oceanleo.game-bundle.v1";
+export const GAME_PROJECT_SCHEMA = GAME_DOCUMENT_SOURCE_FORMAT;
 export const GAME_EDITOR_CAPABILITY = "game-editor";
 
 /**
- * 信封**内部**那段源码的形态，`game/lib/ugc/bundle.ts::UgcBundleFormat` 的两个既有值。
- *
- * 注意它**不是** artifact 的 source format —— artifact 那一层永远是
- * `oceanleo.game-bundle.v1` 信封（见下）。
+ * 宿主桥仍保留旧的二值类型，但新载体只会交出 `html`：`source` 已是一份完整文档，
+ * 不再允许把当前格式误归成需要平台补骨架的 JS 槽位。
  */
 export type GameBundleFormat = "html" | "js";
 
 /**
  * artifact 的 source format 与 media type。
  *
- * 可玩产物以 `oceanleo.game-bundle.v1` JSON 信封落库，**绝不是**裸 `text/html`：
+ * 可玩产物以 `oceanleo.game-document.v1` JSON 信封落库，**绝不是**裸 `text/html`：
  * `media_rehost._BLOCKED_MIME` 与 `_validate_upload_media_type` 两道黑名单都拒收
  * text/html，而它们是 `policy:security.untrusted-content-domain` 的落点。
- * 单文件 HTML 由沙箱域在开玩时从信封合成。
+ * 信封的 `source` 是完整 HTML，由沙箱域原样装载。
  */
-export const GAME_SOURCE_FORMAT = "oceanleo.game-bundle.v1";
+export const GAME_SOURCE_FORMAT = GAME_DOCUMENT_SOURCE_FORMAT;
 export const GAME_SOURCE_MEDIA_TYPE = "application/json";
 
 /**
@@ -71,7 +70,7 @@ export function isAllowedGameRevisionOrigin(
 /** 一条可玩产物的完整证据。URL 全部由生成链上传后给出，前端不自己产字节。 */
 export interface GameBundleDocument {
   /**
-   * `oceanleo.game-bundle.v1` JSON 信封的签名 URL。
+   * `oceanleo.game-document.v1` JSON 信封的签名 URL。
    * 同一份字节同时充当 `source` 与 `full` 两个 rendition —— 后端
    * `_SAVE_CONTRACT[GAME].full_media` 只接受 `application/json`。
    */
@@ -97,8 +96,8 @@ export interface GamePreviewHostProps {
   artifactId: string;
   revisionId: string;
   /**
-   * `oceanleo.game-bundle.v1` 信封的签名 URL（`full` rendition，application/json）。
-   * 宿主必须让沙箱域去取它并在那边合成文档，**不得**塞进 iframe 的 `srcdoc`
+   * `oceanleo.game-document.v1` 信封的签名 URL（`full` rendition，application/json）。
+   * 宿主必须让沙箱域去取它并在那边装载完整文档，**不得**塞进 iframe 的 `srcdoc`
    * —— `srcdoc` 文档继承父页面 origin，会让整个域隔离方案失效。
    */
   envelopeUrl: string;
@@ -159,13 +158,12 @@ function documentFromItem(item: LibraryItem): GameBundleDocument | null {
   const cover = renditions.preview;
   const manifest = renditions.editor_manifest;
   if (!envelope?.url || !envelope.digest) return null;
-  // 信封内部的形态只能从 meta 读：artifact 的 sourceFormat 恒为信封 id，
-  // 拿它去判 html/js 只会永远得到 html。
-  const format = String(item.meta.bundle_format || "").trim().toLowerCase();
   return {
     envelopeUrl: envelope.url,
     envelopeDigest: envelope.digest,
-    bundleFormat: format === "js" ? "js" : "html",
+    // 当前格式的 source 本身就是完整 HTML。忽略旧 metadata 里的 js 槽位提示，
+    // 否则新文档会被旧宿主解析器静默误归。
+    bundleFormat: "html",
     coverUrl: cover?.url || "",
     coverDigest: cover?.digest || "",
     manifestUrl: manifest?.url || "",

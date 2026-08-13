@@ -29,6 +29,26 @@ export const ARTIFACT_TYPES = [
 export type BuiltInArtifactType = (typeof ARTIFACT_TYPES)[number];
 export type ArtifactType = string;
 
+/** New game revisions carry one complete, self-contained HTML document. */
+export const GAME_DOCUMENT_SOURCE_FORMAT = "oceanleo.game-document.v1";
+/** Retired five-slot carriers remain identifiable for stored-row reads/downloads only. */
+export const LEGACY_GAME_BUNDLE_SOURCE_FORMAT = "oceanleo.game-bundle.v1";
+
+export type GameSourceFormatAccess =
+  | "current"
+  | "legacy-read-only";
+
+export function gameSourceFormatAccess(
+  sourceFormat: unknown,
+): GameSourceFormatAccess | null {
+  const normalized = String(sourceFormat || "").trim().toLowerCase();
+  if (normalized === GAME_DOCUMENT_SOURCE_FORMAT) return "current";
+  if (normalized === LEGACY_GAME_BUNDLE_SOURCE_FORMAT) {
+    return "legacy-read-only";
+  }
+  return null;
+}
+
 export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "video-timeline",
   "website",
@@ -410,12 +430,12 @@ const ADVANCED_CAPABILITY_ROWS = [
      * `reviewed_material_catalog.EXPECTED_CLASS_CONTRACT` 与 catalog-release
      * `expected_contracts` 的连接键，两处都已按这个拼写落地。
      *
-     * 产物是 `oceanleo.game-bundle.v1` **JSON 信封**，不是裸 `text/html`：
+     * 产物是 `oceanleo.game-document.v1` **JSON 信封**，不是裸 `text/html`：
      * `media_rehost._BLOCKED_MIME` 与
      * `typed_artifact_repository._validate_upload_media_type` 都拒收 text/html
      * （`<!doctype html` 正文另有 active-content 拒收），而那两份名单正是
      * `policy:security.untrusted-content-domain` 的落点，所以是契约让路而不是名单让路。
-     * 单文件 HTML 由沙箱域在开玩时从信封合成。
+     * `source` 是完整 HTML 文档；沙箱域原样装载，不再补骨架或固定槽位。
      *
      * 刻意**不**复用 `website` 的 capability：`website-editor` 背后是 Next 源码
      * 工作台（CAS 源码树 + dev preview），把它接到一份自包含 bundle 上是错的
@@ -423,14 +443,14 @@ const ADVANCED_CAPABILITY_ROWS = [
      */
     featureId: "game_editing",
     artifactType: "game",
-    sourceFormat: "oceanleo.game-bundle.v1",
+    sourceFormat: GAME_DOCUMENT_SOURCE_FORMAT,
     sourceMediaType: "application/json",
     editorCapability: "game-editor",
     artifactBindings: [
       { artifactType: "game", editorCapabilities: ["game-editor"] },
     ],
     adapter: "game",
-    projectSchema: "oceanleo.game-bundle.v1",
+    projectSchema: GAME_DOCUMENT_SOURCE_FORMAT,
     editability: "bounded",
     sourceIntegrity: "content_addressed",
     // 与其他 JSON 信封能力（website / chart / design canvas / video canvas）一致：
@@ -438,9 +458,9 @@ const ADVANCED_CAPABILITY_ROWS = [
     openMode: "structured-project",
     previewPurposes: ["preview", "full"],
     requirement: {
-      kind: "manifest",
-      schema: "oceanleo.game-bundle.v1",
-      requiredPaths: ["prompt", "engineApiVersion"],
+      kind: "none",
+      schema: null,
+      requiredPaths: [],
       dependencyClosure: "not_required",
     },
   },
@@ -623,11 +643,19 @@ export function advancedCapabilityForArtifactFields(input: {
   if (!artifactType || !sourceFormat || !editorCapability) {
     return null;
   }
-  return (
+  const capability =
     ADVANCED_CAPABILITY_BY_BINDING.get(
       advancedBindingKey(artifactType, editorCapability),
-    ) || null
-  );
+    ) || null;
+  // The retired five-slot game carrier is a stored-row compatibility format,
+  // never an alias for creating or editing a complete-document revision.
+  if (
+    capability?.artifactType === "game" &&
+    sourceFormat !== capability.sourceFormat
+  ) {
+    return null;
+  }
+  return capability;
 }
 
 export type ArtifactEditability = "native" | "bounded" | "view_only";
@@ -1076,14 +1104,13 @@ export const ARTIFACT_EDITOR_CAPABILITIES: Readonly<
   Record<string, ReadonlySet<string>>
 > = Object.freeze(artifactEditorCapabilities);
 
-/**
- * Compatibility now means that both self-reported transport labels exist.
- * Their relationship is deliberately not validated against a platform table.
- */
 export function artifactSourceFormatIsCompatible(
   artifactType: ArtifactType,
   sourceFormat: unknown,
 ): boolean {
+  if (String(artifactType || "").trim().toLowerCase() === "game") {
+    return gameSourceFormatAccess(sourceFormat) === "current";
+  }
   return Boolean(
     String(artifactType || "").trim() &&
       String(sourceFormat || "").trim(),
@@ -1094,9 +1121,15 @@ export function artifactEditorCapabilityIsCompatible(
   artifactType: ArtifactType,
   editorCapability: unknown,
 ): boolean {
+  const normalizedType = String(artifactType || "").trim().toLowerCase();
+  const normalizedCapability = String(editorCapability || "")
+    .trim()
+    .toLowerCase();
+  if (normalizedType === "game" || normalizedCapability === "game-editor") {
+    return normalizedType === "game" && normalizedCapability === "game-editor";
+  }
   return Boolean(
-    String(artifactType || "").trim() &&
-      String(editorCapability || "").trim(),
+    normalizedType && normalizedCapability,
   );
 }
 
@@ -2233,6 +2266,10 @@ export function artifactDownloadPlanFor(
   artifact: ArtifactProjection,
 ): ArtifactDownloadCandidate[] {
   if (!artifact.access.canRead || !artifact.integrity.ok) return [];
+  const gameFormatAccess =
+    artifact.artifactType === "game"
+      ? gameSourceFormatAccess(artifact.sourceFormat)
+      : null;
 
   const capability =
     advancedCapabilityForArtifactFields({
@@ -2277,7 +2314,10 @@ export function artifactDownloadPlanFor(
         artifact.sourceFormat.trim().toLowerCase() !==
           capability.sourceFormat)
     ) {
-      if (isEditorProjectDownloadMedia(rendition.format, rendition.mediaType)) {
+      if (
+        gameFormatAccess !== "legacy-read-only" &&
+        isEditorProjectDownloadMedia(rendition.format, rendition.mediaType)
+      ) {
         return null;
       }
     }

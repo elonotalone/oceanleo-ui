@@ -153,10 +153,7 @@
       "sourceFormat": "oceanleo.game-bundle.v1",
       "editorCapability": "game-editor",
       "liveRows": 212,
-      "expect": {
-        "featureId": "game_editing",
-        "adapter": "game"
-      }
+      "expect": null
     },
     {
       "artifactType": "grid",

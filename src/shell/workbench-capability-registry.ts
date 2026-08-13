@@ -181,12 +181,12 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
   },
   /**
    * 游戏走本地 route 而不是 `embed`：`embed` 会把整块视口交给一个外站编辑器
-   * （website/design/video 三家），而游戏的可玩预览必须留在受控沙箱宿主里。
+   * （website/design/video 三家），而完整游戏文档的可玩预览必须留在受控沙箱宿主里。
    */
   game: {
     routeType: "game",
     roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.game-bundle.v1",
+    projectSchema: "oceanleo.game-document.v1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

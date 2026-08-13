@@ -62,12 +62,12 @@ function wireRow(extra = {}, { artifactType = "game", id = "a1" } = {}) {
       can_export_source: true,
     },
     editability: "bounded",
-    // 逐字照 `ADVANCED_FEATURE_CONTRACTS` 的 game 行：产物是 `oceanleo.game-bundle.v1`
+    // 逐字照 `ADVANCED_FEATURE_CONTRACTS` 的 game 行：产物是 `oceanleo.game-document.v1`
     // JSON 信封，不是裸 text/html。写错这两个字段投影会被判 source-format-mismatch，
     // 那时测的就不是热度放行了。
     editor_capability: artifactType === "game" ? "game-editor" : "image-editor",
     source_format:
-      artifactType === "game" ? "oceanleo.game-bundle.v1" : "png",
+      artifactType === "game" ? "oceanleo.game-document.v1" : "png",
     renditions: {
       preview: {
         purpose: "preview",
@@ -336,6 +336,6 @@ test("热度不参与完整性判定：缺热度的投影照样可预览可编�
   // 白名单里原有的键一个都没被挤掉。
   assert.equal(item.meta.artifact_type, "game");
   assert.equal(item.meta.editor_capability, "game-editor");
-  assert.equal(item.meta.source_format, "oceanleo.game-bundle.v1");
+  assert.equal(item.meta.source_format, "oceanleo.game-document.v1");
   assert.ok(item.meta.access);
 });

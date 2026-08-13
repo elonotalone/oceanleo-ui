@@ -13,9 +13,13 @@ import {
   ADVANCED_EDITOR_ADAPTER_IDS,
   ARTIFACT_EDITOR_CAPABILITIES,
   ARTIFACT_TYPES,
+  GAME_DOCUMENT_SOURCE_FORMAT,
+  LEGACY_GAME_BUNDLE_SOURCE_FORMAT,
   advancedCapabilityForArtifactFields,
+  artifactDownloadPlanFor,
   artifactEditorCapabilityIsCompatible,
   artifactSourceFormatIsCompatible,
+  gameSourceFormatAccess,
   viewerRenditionOrder,
 } from "../src/shell/artifact-contract.ts";
 import {
@@ -46,8 +50,7 @@ const gameRouteCode = gameRouteSource
   .join("\n");
 
 test("game is the fourteenth artifact type and owns its own adapter", () => {
-  assert.equal(ARTIFACT_TYPES.length, 16);
-  assert.ok(ARTIFACT_TYPES.includes("game"));
+  assert.equal(ARTIFACT_TYPES.indexOf("game"), 13);
   assert.equal(
     ADVANCED_CAPABILITY_MATRIX.length,
     ADVANCED_EDITOR_ADAPTER_IDS.length,
@@ -63,7 +66,7 @@ test("game is the fourteenth artifact type and owns its own adapter", () => {
   assert.equal(row.featureId, "game_editing");
   assert.equal(row.editorCapability, "game-editor");
   assert.equal(row.adapter, "game");
-  assert.equal(row.projectSchema, "oceanleo.game-bundle.v1");
+  assert.equal(row.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
   assert.equal(row.editability, "bounded");
 });
 
@@ -75,9 +78,15 @@ test("the game row stays byte-for-byte aligned with the backend contract", () =>
     (entry) => entry.artifactType === "game",
   );
   assert.equal(row.featureId, "game_editing");
-  assert.equal(row.sourceFormat, "oceanleo.game-bundle.v1");
+  assert.equal(row.sourceFormat, GAME_DOCUMENT_SOURCE_FORMAT);
   assert.equal(row.sourceMediaType, "application/json");
   assert.equal(row.openMode, "structured-project");
+  assert.deepEqual(row.requirement, {
+    kind: "none",
+    schema: null,
+    requiredPaths: [],
+    dependencyClosure: "not_required",
+  });
   assert.deepEqual(
     {
       preferredPurpose: row.download.preferredPurpose,
@@ -110,31 +119,107 @@ test("game never borrows the website source-code capability", () => {
   const website = ADVANCED_CAPABILITY_MATRIX.find(
     (entry) => entry.artifactType === "website",
   );
-  assert.notEqual(website.projectSchema, "oceanleo.game-bundle.v1");
+  assert.notEqual(website.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
   assert.equal(
     advancedCapabilityForArtifactFields({
       artifactType: "game",
-      sourceFormat: "oceanleo.game-bundle.v1",
+      sourceFormat: GAME_DOCUMENT_SOURCE_FORMAT,
       editorCapability: "website-editor",
     }),
     null,
   );
 });
 
-test("only the JSON envelope is a game source format", () => {
+test("only the complete-document carrier is editable; legacy is identified read-only", () => {
   assert.equal(
-    artifactSourceFormatIsCompatible("game", "oceanleo.game-bundle.v1"),
+    artifactSourceFormatIsCompatible("game", GAME_DOCUMENT_SOURCE_FORMAT),
     true,
   );
-  // `html` / `js` 描述的是信封**内部**那段源码，不是 artifact 的 source format。
-  // 让它们过检，等于放行一个后端 `_validate_upload_media_type` 必拒的 payload（B12）。
-  for (const format of ["html", "js", "text/html", "website-source@1", "docx", ""]) {
+  assert.equal(
+    gameSourceFormatAccess(LEGACY_GAME_BUNDLE_SOURCE_FORMAT),
+    "legacy-read-only",
+  );
+  assert.equal(
+    artifactSourceFormatIsCompatible(
+      "game",
+      LEGACY_GAME_BUNDLE_SOURCE_FORMAT,
+    ),
+    false,
+  );
+  assert.equal(
+    advancedCapabilityForArtifactFields({
+      artifactType: "game",
+      sourceFormat: LEGACY_GAME_BUNDLE_SOURCE_FORMAT,
+      editorCapability: "game-editor",
+    }),
+    null,
+  );
+  // Raw html/js and unknown envelopes are neither current nor legacy.
+  for (const format of [
+    "html",
+    "js",
+    "text/html",
+    "oceanleo.game-document.v2",
+    "website-source@1",
+    "docx",
+    "",
+  ]) {
     assert.equal(
       artifactSourceFormatIsCompatible("game", format),
       false,
       format || "empty",
     );
+    assert.equal(gameSourceFormatAccess(format), null, format || "empty");
   }
+});
+
+function downloadableGame(sourceFormat) {
+  const revisionId = "game-r1";
+  return {
+    artifactId: "game-a1",
+    revisionId,
+    artifactType: "game",
+    sourceFormat,
+    editorCapability: "game-editor",
+    access: {
+      canRead: true,
+      canPreview: true,
+      canEdit: false,
+      canFork: false,
+      canInsert: false,
+      canReplace: false,
+      canFavorite: false,
+      canBind: false,
+      canExportSource: true,
+    },
+    integrity: { ok: true, code: "ok", reason: "" },
+    renditions: {
+      source: {
+        purpose: "source",
+        revisionId,
+        url: "https://signed.test/game.json",
+        format: sourceFormat,
+        mediaType: "application/json",
+        digest: "sha256:game",
+      },
+    },
+  };
+}
+
+test("legacy five-slot rows remain downloadable while unknown game formats fail closed", () => {
+  const legacy = artifactDownloadPlanFor(
+    downloadableGame(LEGACY_GAME_BUNDLE_SOURCE_FORMAT),
+  );
+  assert.deepEqual(
+    legacy.map(({ purpose, mode }) => ({ purpose, mode })),
+    [{ purpose: "source", mode: "source" }],
+  );
+  assert.deepEqual(
+    artifactDownloadPlanFor(
+      downloadableGame("oceanleo.game-unknown.v9"),
+    ),
+    [],
+  );
 });
 
 test("game cards read the cover bitmap, never the playable bundle", () => {
@@ -148,7 +233,7 @@ test("game routes to its own local route, not to an external embed", () => {
   assert.equal(registry.routeType, "game");
   assert.equal(registry.routable, true);
   assert.equal(registry.featureId, "game_editing");
-  assert.equal(registry.projectSchema, "oceanleo.game-bundle.v1");
+  assert.equal(registry.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
   assert.deepEqual(
     [...registry.roundTrip],
     ["load", "mutate", "save", "reopen"],
