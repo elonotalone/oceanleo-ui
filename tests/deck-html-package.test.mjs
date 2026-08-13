@@ -320,3 +320,131 @@ test("a W1 pack id applies that registry's surface, fonts, palette, and solid sc
   }
   assert.equal((build.html.match(/class="deck-object deck-shape deck-scrim"/g) || []).length, 3);
 });
+
+test("source surface and project fonts win over a selected pack in final HTML", async () => {
+  const source = project();
+  source.packId = "paper-cut-amber";
+  source.theme = {
+    ...source.theme,
+    fontMajor: "Source Display",
+    fontMinor: "Source Text",
+    fontEastAsian: "Source CJK",
+    surface: {
+      color: "213547",
+      image: {
+        assetId: "photo-b",
+        alt: "Portrait paper texture",
+        fit: "contain",
+      },
+    },
+  };
+
+  const { html } = await buildDeckHtml(source, { assets: HTML_ASSETS });
+  const firstPage = html.match(/<section\b[^>]*data-deck-slide="1"[\s\S]*?<\/section>/)?.[0] || "";
+
+  assert.match(html, /data-theme-font-major="Source Display"/);
+  assert.match(html, /data-theme-font-minor="Source Text"/);
+  assert.match(html, /data-theme-font-east-asian="Source CJK"/);
+  assert.match(firstPage, /style="background:#213547;"/);
+  assert.match(
+    firstPage,
+    /class="deck-object deck-image deck-surface-image"[^>]*data-asset-id="photo-b"[^>]*object-fit:contain/,
+  );
+  assert.ok(
+    firstPage.indexOf("deck-surface-image") < firstPage.indexOf("data-deck-text"),
+    "the source surface image must be emitted behind page content",
+  );
+  assert.match(html, /font-family:&quot;Source Display&quot;,&quot;Source CJK&quot;,sans-serif/);
+  assert.match(html, /font-family:&quot;Source Text&quot;,&quot;Source CJK&quot;,sans-serif/);
+});
+
+test("legacy sources without surface or font fields keep their established fallback", async () => {
+  const source = project();
+  delete source.theme.fontMajor;
+  delete source.theme.fontMinor;
+  delete source.theme.fontEastAsian;
+  delete source.theme.surface;
+
+  const first = await buildDeckHtml(source, { assets: HTML_ASSETS });
+  const second = await buildDeckHtml(source, { assets: HTML_ASSETS });
+
+  assert.equal(first.html, second.html);
+  assert.match(first.html, /style="background:#FFFFFF;"/);
+  assert.match(first.html, /font-family:&quot;Aptos&quot;,&quot;Microsoft YaHei&quot;,sans-serif/);
+});
+
+test("surface images reject executable addresses, uncontrolled fit, undeclared ids, and missing bytes", async () => {
+  const withSurface = (image) => {
+    const source = project();
+    source.theme = {
+      ...source.theme,
+      surface: { color: "213547", image },
+    };
+    return source;
+  };
+
+  await assert.rejects(
+    buildDeckHtml(
+      withSurface({
+        assetId: "photo-a",
+        alt: "Unsafe",
+        fit: "cover",
+        url: "javascript:alert(document.cookie)",
+      }),
+      { assets: HTML_ASSETS },
+    ),
+    /theme\.surface\.image\.url/,
+  );
+  await assert.rejects(
+    buildDeckHtml(
+      withSurface({ assetId: "photo-a", alt: "Unsafe fit", fit: "stretch" }),
+      { assets: HTML_ASSETS },
+    ),
+    /theme\.surface\.image\.fit/,
+  );
+  await assert.rejects(
+    buildDeckHtml(
+      withSurface({ assetId: "not-declared", alt: "Unknown asset", fit: "cover" }),
+      { assets: HTML_ASSETS },
+    ),
+    /theme\.surface\.image\.assetId|not-declared/,
+  );
+  await assert.rejects(
+    buildDeckHtml(
+      withSurface({ assetId: "photo-a", alt: "Missing bytes", fit: "cover" }),
+      { assets: HTML_ASSETS.filter((asset) => asset.id !== "photo-a") },
+    ),
+    /photo-a/,
+  );
+});
+
+test("final controls expose matching page semantics and keyboard, click, and touch paths", async () => {
+  const { html } = await buildDeckHtml(project(), { assets: HTML_ASSETS });
+  const pageCount = DECK_IR_LAYOUTS.length;
+
+  assert.match(html, new RegExp(`<span id="deck-counter"[^>]*>1 / ${pageCount}</span>`));
+  assert.match(
+    html,
+    new RegExp(`<progress id="deck-progress"[^>]*max="${pageCount}"[^>]*value="1"`),
+  );
+  assert.equal((html.match(/role="group" aria-roledescription="slide"/g) || []).length, pageCount);
+  assert.match(html, new RegExp(`aria-label="${pageCount} / ${pageCount}"`));
+  assert.match(html, /addEventListener\("keydown"/);
+  assert.match(html, /ArrowLeft/);
+  assert.match(html, /ArrowRight/);
+  assert.match(html, /addEventListener\("click"/);
+  assert.match(html, /addEventListener\("pointerdown"/);
+  assert.match(html, /addEventListener\("pointerup"/);
+  assert.match(html, /pointerType==="touch"/);
+
+  for (const forbidden of [
+    /\bfetch\s*\(/,
+    /\bXMLHttpRequest\b/,
+    /\bWebSocket\b/,
+    /\b(?:localStorage|sessionStorage|indexedDB)\b/,
+    /document\.cookie/,
+    /\.innerHTML\b/,
+  ]) {
+    assert.doesNotMatch(html, forbidden);
+  }
+});
