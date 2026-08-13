@@ -13,6 +13,7 @@ import {
   setArtifactFavorite,
 } from "./artifact-client";
 import { DeckHtmlActionButton, deckHtmlEvidence } from "./DeckHtmlAction";
+import { deckHtmlOpenPlan } from "./deck-delivery-family";
 import { humanErrorMessage } from "./human-error-message";
 import {
   isDurableLibraryItem,
@@ -140,6 +141,18 @@ function editEvidence(item: LibraryItem): {
   reason: string;
   requiresEnsure: boolean;
 } {
+  // HTML 网页版演示的编辑源**只能**是那份 `oceanleo.deck.v1` 结构稿。拿不到稿子时
+  // 按钮不出现：绝不把 HTML 成品当编辑源塞给 deck editor，也不留一颗按下去只会
+  // 吐技术理由的灰按钮。这一档与「查看」互不牵连（`deck-delivery-family.ts`）。
+  const deckHtml = deckHtmlOpenPlan(item);
+  if (deckHtml.family === "html" && !deckHtml.edit.visible) {
+    return {
+      visible: false,
+      available: false,
+      reason: deckHtml.edit.reason,
+      requiresEnsure: false,
+    };
+  }
   const localCapability = editorCapabilityFor(item);
   if (isDurableLibraryItem(item)) {
     if (!item.artifact.access.canRead) {
@@ -536,11 +549,26 @@ export function ArtifactActionButtons({
    * 身份还没取回来时它与下载同口径：留在原地、按不动、说同一句话——那一刻我们连
    * 当前 revision 是哪个都还不知道，渲出来的很可能不是用户看的这一版。
    */
+  const deckHtmlPlan = deckHtmlOpenPlan(item);
   const deckHtmlSource = deckHtmlEvidence(item);
   const deckHtml = {
     ...deckHtmlSource,
+    // 已经是 HTML 交付的那三件不需要「临时导出一份网页版」：它们本身就是网页版，
+    // 播放入口是隔离域的「查看」。这颗按钮仍然只服务于带结构稿的 PPTX 条目。
+    visible: deckHtmlSource.visible && deckHtmlPlan.family !== "html",
     available: deckHtmlSource.available && !identityBlocked,
     reason: identityBlocked ? identityReason : deckHtmlSource.reason,
+  };
+  /**
+   * HTML 演示的「查看」= 在**新窗口**打开隔离域播放页。
+   *
+   * 只用经 `safeDeckHtmlRuntimeUrl()` 验过的 `s-<32hex>.oceanleo.app[/embed]`，
+   * 并且**绝不 iframe**：用户产物住在不可信域里，站内套一层框等于把它请进本域的
+   * 视口（UC-1…UC-7）。算不出可信 runtime 时这颗入口不出现，「编辑」不受影响。
+   */
+  const deckHtmlView = {
+    ...deckHtmlPlan.view,
+    visible: deckHtmlPlan.view.visible && !identityBlocked,
   };
   const fullscreenEvidence = fullscreenContentEvidence(item);
   const fullscreenVisible =
@@ -713,6 +741,21 @@ export function ArtifactActionButtons({
         aria-label={tt("素材操作")}
       >
         {primaryActions.map(renderAction)}
+        {deckHtmlView.visible && (
+          <a
+            href={deckHtmlView.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerPolicy="no-referrer"
+            data-deck-html-view="true"
+            aria-label={tt(`查看「${item.title}」（新窗口打开网页版）`)}
+            title={tt("查看")}
+            className={chipClass}
+            style={chipStyle(true)}
+          >
+            {tt("查看")}
+          </a>
+        )}
         {downloadVisible && (
           <button
             type="button"

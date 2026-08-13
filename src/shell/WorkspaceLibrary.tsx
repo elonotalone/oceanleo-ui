@@ -40,6 +40,7 @@ import {
   MaterialOwningAppList,
   useMaterialDetailAppPlan,
 } from "./library-detail-app-actions";
+import type { LibraryEntrySection } from "./deck-delivery-family";
 import {
   WorkspaceCard,
   WorkspaceLibraryEmpty,
@@ -135,6 +136,16 @@ export interface WorkspaceLibraryProps {
    * 行为仍然是一颗按钮；缺包上下文绝不退回过去那一排按钮。
    */
   packAppIdForEntry?: (entry: WorkspaceLibraryEntry) => string;
+  /**
+   * 把当前这一屏分成带标题与真实件数的几节（演示区的 `PPTX 演示` /
+   * `HTML 网页版演示` 就是这么来的，判据在 `deck-delivery-family.ts`）。
+   *
+   * **可选**，返回 `null` 时货架与今天逐字相同：一张平铺网格、没有小标题。
+   * 分节只改排布，不改卡片行为——点卡片仍然先进共享详情。
+   */
+  sectionsFor?: (
+    entries: WorkspaceLibraryEntry[],
+  ) => LibraryEntrySection[] | null;
 }
 
 /**
@@ -196,6 +207,7 @@ export function WorkspaceLibrary({
   className = "",
   plain = false,
   packAppIdForEntry,
+  sectionsFor,
 }: WorkspaceLibraryProps) {
   const tt = useUI();
   const [internalSearch, setInternalSearch] = useState("");
@@ -389,6 +401,52 @@ export function WorkspaceLibrary({
     };
   };
 
+  /**
+   * 一组条目的排布。分节与不分节共用它，所以「有小标题」与「没有小标题」两种货架
+   * 的卡片密度、列宽与动作插槽逐字相同。
+   */
+  const renderEntries = (list: readonly WorkspaceLibraryEntry[]) =>
+    view === "list" ? (
+      <div className="space-y-1.5">
+        {list.map((entry) => (
+          <WorkspaceListRow
+            key={entry.id}
+            entry={entry}
+            onOpen={() => activateEntry(entry)}
+            dragProps={dragPropsFor(entry)}
+            actions={entryActions?.(entry)}
+          />
+        ))}
+      </div>
+    ) : (
+      // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
+      // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
+      // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
+      // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
+      // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
+      // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
+      // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
+      <div
+        className="grid gap-2.5"
+        data-workspace-card-grid="auto-fill"
+        style={{
+          gridTemplateColumns:
+            "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
+        }}
+      >
+        {list.map((entry) => (
+          <WorkspaceCard
+            key={entry.id}
+            entry={entry}
+            onOpen={() => activateEntry(entry)}
+            dragProps={dragPropsFor(entry)}
+            accent={accent}
+            actions={entryActions?.(entry)}
+          />
+        ))}
+      </div>
+    );
+
   const categories = useMemo(
     () => workspaceLibraryCategories(entries),
     [entries],
@@ -412,6 +470,12 @@ export function WorkspaceLibrary({
   const filtered = useMemo(
     () => filterWorkspaceLibraryEntries(entries, search, category),
     [entries, search, category],
+  );
+  // 分节按**这一屏实际要渲染的条目**算，不按服务端总数：小标题旁边那个数字必须
+  // 与它底下的卡片一一对上，否则搜索一收窄就变成谎报。
+  const sections = useMemo(
+    () => sectionsFor?.(filtered) || null,
+    [filtered, sectionsFor],
   );
 
   const selected = useMemo(
@@ -779,45 +843,32 @@ export function WorkspaceLibrary({
             )}
             cta={search ? undefined : emptyCta}
           />
-        ) : view === "list" ? (
-          <div className="space-y-1.5">
-            {filtered.map((entry) => (
-              <WorkspaceListRow
-                key={entry.id}
-                entry={entry}
-                onOpen={() => activateEntry(entry)}
-                dragProps={dragPropsFor(entry)}
-                actions={entryActions?.(entry)}
-              />
+        ) : sections ? (
+          <div className="space-y-6">
+            {sections.map((section) => (
+              <section
+                key={section.id}
+                data-library-section={section.id}
+                data-library-section-count={String(section.count)}
+                aria-label={tt(section.label)}
+              >
+                <header className="mb-2 flex items-baseline gap-2">
+                  <h3 className="text-[13px] font-semibold text-[var(--fg,#1c1917)]">
+                    {tt(section.label)}
+                  </h3>
+                  <span
+                    data-library-section-count-text="true"
+                    className="text-[11px] text-[var(--muted,#a8a29e)]"
+                  >
+                    {section.count}
+                  </span>
+                </header>
+                {renderEntries(section.entries)}
+              </section>
             ))}
           </div>
         ) : (
-          // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
-          // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
-          // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
-          // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
-          // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
-          // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
-          // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
-          <div
-            className="grid gap-2.5"
-            data-workspace-card-grid="auto-fill"
-            style={{
-              gridTemplateColumns:
-                "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
-            }}
-          >
-            {filtered.map((entry) => (
-              <WorkspaceCard
-                key={entry.id}
-                entry={entry}
-                onOpen={() => activateEntry(entry)}
-                dragProps={dragPropsFor(entry)}
-                accent={accent}
-                actions={entryActions?.(entry)}
-              />
-            ))}
-          </div>
+          renderEntries(filtered)
         )}
       </div>
     </div>

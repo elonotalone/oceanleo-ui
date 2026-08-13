@@ -16,6 +16,7 @@ import {
   type ArtifactType,
 } from "./artifact-contract";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
+import { deckDeliverySections } from "./deck-delivery-family";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import { openArtifactPlay } from "./explore-artifact-class";
@@ -772,6 +773,9 @@ export function MaterialLibrary({
   return (
     <WorkspaceLibrary
       entries={shelfEntries}
+      // 演示区的两个板块（`PPTX 演示` / `HTML 网页版演示`）。判据只认受控交付家族，
+      // 这一屏没有 HTML 交付时返回 null，货架与今天逐字相同。
+      sectionsFor={deckDeliverySections}
       packAppIdForEntry={packAppIdForEntry}
       accent={accent}
       plain={plain}
