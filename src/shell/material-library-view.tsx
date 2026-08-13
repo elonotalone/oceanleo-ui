@@ -9,13 +9,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import {
-  artifactHasExactContext,
-  artifactIsVisible,
-  type ArtifactContextRef,
-  type ArtifactType,
-} from "./artifact-contract";
-import { isDurableLibraryItem, type LibraryItem } from "./library-data";
+import type { ArtifactContextRef, ArtifactType } from "./artifact-contract";
+import type { LibraryItem } from "./library-data";
 import { deckDeliverySections } from "./deck-delivery-family";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
@@ -44,6 +39,7 @@ import { useMaterialLibraryFacets } from "./material-library-facet-filter";
 import { MaterialCompleteLibraryLink, MaterialShelfToolbar } from "./material-library-toolbar";
 import {
   entriesFromRemoteResult,
+  exactLocalShelfEntries,
   materialFailureCopy,
   materialShelfEmptyCopy,
   materialLevelSearchPlaceholder,
@@ -505,25 +501,16 @@ export function MaterialLibrary({
     () => materials.map(materialToEntry),
     [materials],
   );
+  // I3 的判据整段搬到 `material-library-presentation.ts`（本文件吃 800 行硬顶），
+  // 内容逐字不变：durable + 可见 + 可编辑 + taxonomy + exact revision-pinned context。
   const exactLocalEntries = useMemo(
     () =>
-      [...featuredEntries, ...localEntries].filter((entry) => {
-        const item = entry.libraryItem;
-        // The host already supplied these local/featured rows. Keep the same
-        // durable, revision-pinned context boundary as remote rows without
-        // reinterpreting a host-specific binding role as the API's `primary`
-        // query role. Remote results and deep links remain exact-primary.
-        return Boolean(
-          item &&
-            isDurableLibraryItem(item) &&
-            contextId &&
-            artifactIsVisible(item.artifact) &&
-            isAdvancedEditableShelfItem(item) &&
-            (!taxonomy || item.artifactType === taxonomy) &&
-            artifactHasExactContext(item.artifact, context),
-        );
+      exactLocalShelfEntries([...featuredEntries, ...localEntries], {
+        contextId,
+        context,
+        taxonomy,
       }),
-    [context, featuredEntries, localEntries, taxonomy],
+    [context, contextId, featuredEntries, localEntries, taxonomy],
   );
   const entries = useMemo(
     () =>

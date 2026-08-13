@@ -5,7 +5,12 @@
  */
 
 import type { ReactNode } from "react";
-import { artifactIsVisible, type ArtifactContextRef, type ArtifactType } from "./artifact-contract";
+import {
+  artifactHasExactContext,
+  artifactIsVisible,
+  type ArtifactContextRef,
+  type ArtifactType,
+} from "./artifact-contract";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import { isPlayableGameShelfEntry } from "./explore-artifact-class";
 import type { ExploreClassDispatchInput } from "./explore-shelf-dispatch";
@@ -300,6 +305,36 @@ export function isTrustedEditableMaterialEntry(
  * 本站层的归属 app 与分区**不在这里算**：那是 `material-scene-axis.ts` 的活
  * （D2/D3 要的是「按 artifact 去重后再挂归属 app」，不是逐条目贴标签）。
  */
+/**
+ * 宿主直接给的 local/featured 条目里，哪些真的属于**这个** app 的耐久货架（I3）。
+ *
+ * The host already supplied these local/featured rows. Keep the same durable,
+ * revision-pinned context boundary as remote rows without reinterpreting a
+ * host-specific binding role as the API's `primary` query role. Remote results
+ * and deep links remain exact-primary.
+ */
+export function exactLocalShelfEntries(
+  entries: readonly WorkspaceLibraryEntry[],
+  scope: {
+    contextId: string;
+    context: ArtifactContextRef;
+    taxonomy: ArtifactType | "";
+  },
+): WorkspaceLibraryEntry[] {
+  return entries.filter((entry) => {
+    const item = entry.libraryItem;
+    return Boolean(
+      item &&
+        isDurableLibraryItem(item) &&
+        scope.contextId &&
+        artifactIsVisible(item.artifact) &&
+        isAdvancedEditableShelfItem(item) &&
+        (!scope.taxonomy || item.artifactType === scope.taxonomy) &&
+        artifactHasExactContext(item.artifact, scope.context),
+    );
+  });
+}
+
 export function materialShelfEntries(options: {
   level: MaterialLibraryLevel;
   siteKey?: string;

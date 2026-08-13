@@ -401,52 +401,6 @@ export function WorkspaceLibrary({
     };
   };
 
-  /**
-   * 一组条目的排布。分节与不分节共用它，所以「有小标题」与「没有小标题」两种货架
-   * 的卡片密度、列宽与动作插槽逐字相同。
-   */
-  const renderEntries = (list: readonly WorkspaceLibraryEntry[]) =>
-    view === "list" ? (
-      <div className="space-y-1.5">
-        {list.map((entry) => (
-          <WorkspaceListRow
-            key={entry.id}
-            entry={entry}
-            onOpen={() => activateEntry(entry)}
-            dragProps={dragPropsFor(entry)}
-            actions={entryActions?.(entry)}
-          />
-        ))}
-      </div>
-    ) : (
-      // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
-      // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
-      // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
-      // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
-      // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
-      // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
-      // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
-      <div
-        className="grid gap-2.5"
-        data-workspace-card-grid="auto-fill"
-        style={{
-          gridTemplateColumns:
-            "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
-        }}
-      >
-        {list.map((entry) => (
-          <WorkspaceCard
-            key={entry.id}
-            entry={entry}
-            onOpen={() => activateEntry(entry)}
-            dragProps={dragPropsFor(entry)}
-            accent={accent}
-            actions={entryActions?.(entry)}
-          />
-        ))}
-      </div>
-    );
-
   const categories = useMemo(
     () => workspaceLibraryCategories(entries),
     [entries],
@@ -785,21 +739,73 @@ export function WorkspaceLibrary({
     );
   }
 
+  // 工具条先成型再排卡片：这样「卡片区」在源码里仍然是整份文件的最后一段，
+  // shelf-quiet 门禁（`typed-artifact-contract.test.mjs`）扫的正是那一段。
+  const shelfToolbar = (
+    <LibraryToolbar
+      search={search}
+      setSearch={setSearch}
+      view={view}
+      setView={setView}
+      actions={toolbarActions}
+      placeholder={tt(searchPlaceholder)}
+      tt={tt}
+    />
+  );
+
+  /**
+   * 一组条目的排布。分节与不分节共用它，所以「有小标题」与「没有小标题」两种货架
+   * 的卡片密度、列宽与动作插槽逐字相同。
+   */
+  const renderEntries = (list: readonly WorkspaceLibraryEntry[]) =>
+    view === "list" ? (
+      <div className="space-y-1.5">
+        {list.map((entry) => (
+          <WorkspaceListRow
+            key={entry.id}
+            entry={entry}
+            onOpen={() => activateEntry(entry)}
+            dragProps={dragPropsFor(entry)}
+            actions={entryActions?.(entry)}
+          />
+        ))}
+      </div>
+    ) : (
+      // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
+      // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
+      // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
+      // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
+      // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
+      // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
+      // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
+      <div
+        className="grid gap-2.5"
+        data-workspace-card-grid="auto-fill"
+        style={{
+          gridTemplateColumns:
+            "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
+        }}
+      >
+        {list.map((entry) => (
+          <WorkspaceCard
+            key={entry.id}
+            entry={entry}
+            onOpen={() => activateEntry(entry)}
+            dragProps={dragPropsFor(entry)}
+            accent={accent}
+            actions={entryActions?.(entry)}
+          />
+        ))}
+      </div>
+    );
+
   return (
     <div
       className={`flex h-full min-h-0 flex-col ${
         plain ? "bg-transparent" : "bg-[var(--card,#fff)] px-3 pb-3 pt-5"
       } ${className}`}
     >
-      <LibraryToolbar
-        search={search}
-        setSearch={setSearch}
-        view={view}
-        setView={setView}
-        actions={toolbarActions}
-        placeholder={tt(searchPlaceholder)}
-        tt={tt}
-      />
+      {shelfToolbar}
       {materialActionState && (
         <p
           className="mt-2 shrink-0 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700"
