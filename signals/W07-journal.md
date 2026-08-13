@@ -24,3 +24,12 @@
 - `ProjectTabNav` 使用原生 button tabs、roving tabIndex，并支持 Left/Right/Home/End 且跳过 disabled tab。
 - `ProjectConfigCard` 的 add/open 都由原语输出原生 button，避免调用方伪造点击语义；空态和工具条保持纯 slot。
 - `ProjectModal` 仅包装共享 `Modal` 的结构化 title/close/body/footer，未复制 portal 或焦点逻辑。
+
+## 2026-08-13 · Focused test
+
+- 首跑 7 项中 5 项通过；两项失败均被保留并定位：一项测试错误假定 JSX 属性输出顺序，另一项发现打开 drawer 时 React 会输出 `aria-hidden="false"` 而不是移除属性。
+- 修正方式没有放宽产品判据：测试改为先提取目标 element tag 再逐属性断言；产品在可见状态改为不输出 `aria-hidden`。
+- 重跑命令：
+  `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --test tests/project-workspace-primitives.test.mjs`
+- 结果：7 tests passed，0 failed，耗时约 1.7s；覆盖导出/snapshot、四 slot、320–360px 右栏、移动 drawer、键盘 tabs、原生按钮、Modal Esc/backdrop、无网络/路由。
+- 测试与 snapshot 提交：`b3fa4ab`。

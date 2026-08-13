@@ -10,15 +10,16 @@
 - `package.json` 已公开 `./shell`；只需从 `src/shell/index.ts` 导出，不新增深层 package export。
 - public API snapshot 由 `pnpm api:snapshot` 确定性生成。
 - 产品实现已提交为 `abb59ed`：六个原语及其 props/types 已从 shell 入口导出。
+- focused contract、public API snapshot 与显式 `aria-hidden` 修正已提交为 `b3fa4ab`。
+- guarded focused test 当前 7/7 通过。
 
 ## 正在做
 
-- 编写 focused test，锁定渲染、导出、ARIA/键盘、移动配置可达、共享 Modal 复用和无网络调用。
+- 通过 heavy IO guard 运行仓库 `pnpm typecheck`，处理真实类型错误。
 
 ## 下一步
 
-- 更新 public API snapshot 和 focused test。
-- 通过 IO guard 运行 focused test 与 `pnpm typecheck`。
+- 若 typecheck 通过，重跑 focused test 与 public API check，确认独占路径干净并写 delivery。
 
 ## 精确复现命令
 
