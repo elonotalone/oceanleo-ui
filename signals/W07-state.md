@@ -9,10 +9,11 @@
 - 既有 `src/ui/index.tsx` Modal 已提供 portal、Esc、backdrop、焦点圈定与焦点恢复，`ProjectModal` 复用它而不再造一套。
 - `package.json` 已公开 `./shell`；只需从 `src/shell/index.ts` 导出，不新增深层 package export。
 - public API snapshot 由 `pnpm api:snapshot` 确定性生成。
+- 产品实现已提交为 `abb59ed`：六个原语及其 props/types 已从 shell 入口导出。
 
 ## 正在做
 
-- 实现六个无业务状态原语；窄屏右栏使用有触发器、可关闭且可恢复焦点的 drawer，桌面宽度限定为 320–360px。
+- 编写 focused test，锁定渲染、导出、ARIA/键盘、移动配置可达、共享 Modal 复用和无网络调用。
 
 ## 下一步
 

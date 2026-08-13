@@ -16,3 +16,11 @@
 - 既有主题以 `--bg`、`--card`、`--fg`、`--muted`、`--border`、`--accent` token 配合 utility class；新原语沿用同一组 token。
 - public API snapshot 由 `scripts/public-api-snapshot.mjs` 从 package exports 和入口 AST 确定性生成，导出完成后运行既有 `api:snapshot`。
 - 响应式右栏使用单份 children：移动端是有触发器的 drawer，桌面端进入 320–360px 栅格列，避免复制配置表单及其状态。
+
+## 2026-08-13 · 产品实现
+
+- 提交 `abb59ed` 新增六个共享原语及全部公开 props/types；shell 入口已显式导出。
+- `ProjectWorkspaceFrame` 用受控/非受控移动 drawer 保持配置可达，支持 Esc、backdrop、打开聚焦和关闭恢复；桌面栅格列以 `clamp(20rem,24vw,22.5rem)` 固定在 320–360px。
+- `ProjectTabNav` 使用原生 button tabs、roving tabIndex，并支持 Left/Right/Home/End 且跳过 disabled tab。
+- `ProjectConfigCard` 的 add/open 都由原语输出原生 button，避免调用方伪造点击语义；空态和工具条保持纯 slot。
+- `ProjectModal` 仅包装共享 `Modal` 的结构化 title/close/body/footer，未复制 portal 或焦点逻辑。
