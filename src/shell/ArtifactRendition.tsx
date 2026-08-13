@@ -19,6 +19,7 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+import { isDisplayableText } from "./website-inline-preview";
 
 const renditionRefreshCache = new Map<
   string,
@@ -330,6 +331,24 @@ export function withResolvedRendition(
   return { ...item, url: state.url };
 }
 
+/**
+ * 失败面上摆的必须是一句话，不是一段响应体。
+ *
+ * 这里的 `message` 有一条来路是网关响应，它可能带着原始字节；把它原样摆出去就是
+ * 「拿不到本体时把字节当文字给用户看」的同一种死法。判据与网站查看器共用
+ * `isDisplayableText`。
+ */
+const FAILURE_MESSAGE_MAX_CHARS = 300;
+
+function displayableFailureMessage(message: string): string {
+  if (!isDisplayableText(message)) {
+    return "这一件现在没有可显示的内容。";
+  }
+  return message.length > FAILURE_MESSAGE_MAX_CHARS
+    ? `${message.slice(0, FAILURE_MESSAGE_MAX_CHARS)}…`
+    : message;
+}
+
 export function ArtifactRenditionFailure({
   message,
   loading,
@@ -346,7 +365,7 @@ export function ArtifactRenditionFailure({
       aria-live="polite"
     >
       <p className="max-w-sm text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-        {loading ? "正在刷新安全访问地址…" : message}
+        {loading ? "正在刷新安全访问地址…" : displayableFailureMessage(message)}
       </p>
       {!loading && (
         <button

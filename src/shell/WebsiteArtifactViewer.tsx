@@ -8,11 +8,13 @@ import { fetchMediaBlob } from "../lib/media-proxy";
 import type { ArtifactRenditionPurpose } from "./artifact-contract";
 import { webViewerFrameSandbox } from "./editor-sandbox-origin";
 import {
-  isCoverImageMediaType,
+  isDisplayableText,
+  websiteFrameAdmission,
   websiteInlineOutline,
-  websitePaintMode,
+  websiteViewerPlan,
+  type WebsiteBodyProbe,
   type WebsiteInlineOutline,
-  type WebsitePaintMode,
+  type WebsiteViewerReason,
 } from "./website-inline-preview";
 
 /**
@@ -38,7 +40,7 @@ const MAX_PROBE_BYTES = 8 * 1024 * 1024;
 
 interface PageProbe {
   status: "probing" | "done";
-  mode: WebsitePaintMode;
+  body: WebsiteBodyProbe;
   outline: WebsiteInlineOutline | null;
 }
 
@@ -63,25 +65,27 @@ function documentShape(html: string) {
   };
 }
 
+const UNREAD_BODY: WebsiteBodyProbe = { status: "unread" };
+
 /**
- * 取回页面字节并判读它是不是「靠脚本才画得出来」。
+ * 取回页面字节，交给 `websiteViewerPlan` 判读。
  *
- * 判读失败（网络错、解析错）一律当自绘型：宁可把真页面放进 frame 让用户自己看，
- * 也不要因为判读器的问题就先斩后奏说「看不了」。
+ * 判读失败（网络错、超限）留成 `unread`，由判读器决定怎么解释；这里不自己下结论，
+ * 也不把取回来的字节带进 UI —— 它只用于判读，判完就留在这个 hook 里。
  */
 function usePagePaintProbe(url: string, version: number): PageProbe {
   const [probe, setProbe] = useState<PageProbe>({
     status: url ? "probing" : "done",
-    mode: "self-painting",
+    body: UNREAD_BODY,
     outline: null,
   });
   useEffect(() => {
     if (!url) {
-      setProbe({ status: "done", mode: "self-painting", outline: null });
+      setProbe({ status: "done", body: UNREAD_BODY, outline: null });
       return;
     }
     let cancelled = false;
-    setProbe({ status: "probing", mode: "self-painting", outline: null });
+    setProbe({ status: "probing", body: UNREAD_BODY, outline: null });
     void (async () => {
       try {
         const blob = await fetchMediaBlob(url, {
@@ -90,15 +94,14 @@ function usePagePaintProbe(url: string, version: number): PageProbe {
         });
         const html = await blob.text();
         if (cancelled) return;
-        const mode = websitePaintMode(documentShape(html));
         setProbe({
           status: "done",
-          mode,
-          outline: mode === "script-bootstrapped" ? websiteInlineOutline(html) : null,
+          body: { status: "read", html, shape: documentShape(html) },
+          outline: websiteInlineOutline(html),
         });
       } catch {
         if (!cancelled) {
-          setProbe({ status: "done", mode: "self-painting", outline: null });
+          setProbe({ status: "done", body: UNREAD_BODY, outline: null });
         }
       }
     })();
@@ -145,13 +148,61 @@ function PageOutline({ outline }: { outline: WebsiteInlineOutline }) {
   );
 }
 
+/**
+ * 每一档说的都是**这一件是什么**，不是替产品的空缺道歉。
+ * 判据：文案里不出现「暂时」「抱歉」「制作得较早」这类替缺陷开脱的说法。
+ */
+const SURFACE_COPY: Record<WebsiteViewerReason, string> = {
+  "self-painting": "",
+  "script-bootstrapped":
+    "这是一份要在浏览器里跑起来才成型的网站：页面结构由它自带的脚本在打开时现画。素材预览通道按平台隔离规则不执行脚本，所以这里给出它的封面与页面清单。",
+  "cover-image-only":
+    "这一件在素材库里只存了一张封面图，没有随附可打开的页面文件。",
+  "opaque-bytes":
+    "这一件存的是打包后的网站源码，不是可以直接打开的网页；要看到页面需要先把它构建出来。",
+  "no-body": "这一件在素材库里没有可打开的文件。",
+};
+
+/** 出口本身在详情工具条上（那是动作条的面），这里只把它们指出来。 */
+const EXIT_HINT = "可用的出口：详情工具条上的「下载」拿到源文件，「编辑」在网站编辑器里打开它。";
+
+function StaticCover({ url, title }: { url: string; title: string }) {
+  return (
+    <div className="w-full max-w-xl overflow-hidden rounded-xl border border-stone-200 bg-white">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={title}
+        referrerPolicy="no-referrer"
+        className="max-h-[42vh] w-full object-contain"
+      />
+    </div>
+  );
+}
+
 export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const rendition = useArtifactRendition(item, WEBSITE_PAGE_PURPOSES);
-  const pageUrl = isCoverImageMediaType(rendition.rendition?.mediaType)
-    ? ""
-    : rendition.url;
+  const mediaType = rendition.rendition?.mediaType;
+  const admission = websiteFrameAdmission(mediaType);
+  /**
+   * 只有「声明自己是网页」的 rendition 才值得取回来判读。zip / octet-stream /
+   * JSON 信封一律不取也不进 frame —— 用户看到的那一屏乱码就是这类字节被
+   * 按 UTF-8 读出来直接摆进 frame 的结果。
+   */
+  const pageUrl =
+    admission === "page" || admission === "unknown" ? rendition.url : "";
   const probe = usePagePaintProbe(pageUrl, rendition.version);
+  const plan = websiteViewerPlan({
+    hasUrl: Boolean(rendition.url),
+    mediaType,
+    body: probe.body,
+  });
+  const cover =
+    (admission === "cover-image" ? rendition.url : "") ||
+    item.previewUrl ||
+    item.thumbUrl ||
+    "";
 
   if (rendition.loading && !rendition.url) {
     return (
@@ -162,25 +213,7 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     );
   }
 
-  if (!pageUrl) {
-    return (
-      <Panel>
-        <p className="max-w-md text-center text-[13px] leading-relaxed text-stone-600">
-          {rendition.error ||
-            tt("这份网站素材还没有可直接打开的页面文件，只有一张封面图。")}
-        </p>
-        <button
-          type="button"
-          onClick={rendition.retry}
-          className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-        >
-          {tt("重试")}
-        </button>
-      </Panel>
-    );
-  }
-
-  if (probe.status === "probing") {
+  if (pageUrl && probe.status === "probing") {
     return (
       <Panel>
         <span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-200 border-t-stone-500" />
@@ -189,27 +222,36 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     );
   }
 
-  if (probe.mode === "script-bootstrapped") {
-    return (
-      <Panel>
-        <p className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
-          {tt(
-            "这份网站素材的页面是打开时由脚本现画出来的，而素材预览通道按平台隔离规则不执行脚本，所以这里暂时显示不出页面本身。",
-          )}
-        </p>
-        {probe.outline && <PageOutline outline={probe.outline} />}
-        <button
-          type="button"
-          onClick={rendition.retry}
-          className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-        >
-          {tt("重试")}
-        </button>
-      </Panel>
-    );
+  if (plan.surface === "page") {
+    return <SandboxedPage url={pageUrl} title={item.title} />;
   }
 
-  return <SandboxedPage url={pageUrl} title={item.title} />;
+  return (
+    <Panel>
+      {cover && <StaticCover url={cover} title={item.title} />}
+      <p className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
+        {tt(SURFACE_COPY[plan.reason])}
+      </p>
+      {plan.surface === "script-explainer" && probe.outline && (
+        <PageOutline outline={probe.outline} />
+      )}
+      <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-500">
+        {tt(EXIT_HINT)}
+      </p>
+      {isDisplayableText(rendition.error) && (
+        <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-400">
+          {rendition.error}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={rendition.retry}
+        className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
+      >
+        {tt("重试")}
+      </button>
+    </Panel>
+  );
 }
 
 /**

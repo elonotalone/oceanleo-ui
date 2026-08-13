@@ -138,6 +138,136 @@ export function isWebsitePageMediaType(mediaType: string | undefined): boolean {
   return normalizedMediaType(mediaType) === "text/html";
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+ * 查看器诚实法：拿不到可安全显示的本体时，绝不把原始字节当文字摆出来。
+ *
+ * 这一段是纯判读，住在这里而不是各查看器里，是因为三支查看器
+ * （`WebsiteArtifactViewer` / `library-viewers` / `ArtifactRendition`）要共用同一条
+ * 判据；判据分散过一次的后果就是「网站详情一屏乱码」——那一屏是
+ * `website_source_zip` 的字节被按 UTF-8 读出来直接进了 frame。
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** 判读只看前 4 KB：够认出形状，且不为了判一句话去遍历整份 300 KB 的正文。 */
+const TEXT_SAMPLE_CHARS = 4096;
+
+/**
+ * 允许出现在正文里的控制字符只有制表与换行；其余 C0 控制字符与 U+FFFD
+ * （二进制被按 UTF-8 解码后的替换符）都是「这不是文字」的直接证据。
+ */
+const UNDISPLAYABLE_CHARACTER = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g;
+
+/** 千分之十：正常文本里一个这样的字符都不该有，留出的余量只为容忍偶发脏字符。 */
+const UNDISPLAYABLE_RATIO_LIMIT = 0.01;
+
+/**
+ * 这段字符串能不能当文字摆给用户看。
+ *
+ * 不判「好不好看」，只判「它是不是文字」：二进制（zip / docx / pptx / 位图）被
+ * 按文本读出来一定带 NUL、C0 控制字符或成片的 U+FFFD，纯文本一个都不带。
+ */
+export function isDisplayableText(value: string): boolean {
+  if (!value) return false;
+  if (value.includes("\u0000")) return false;
+  const sample = value.slice(0, TEXT_SAMPLE_CHARS);
+  const undisplayable = sample.match(UNDISPLAYABLE_CHARACTER)?.length ?? 0;
+  return undisplayable / sample.length <= UNDISPLAYABLE_RATIO_LIMIT;
+}
+
+/** 这段文字是不是一份 HTML 文档（而不是 JSON 信封、纯文本或别的什么）。 */
+export function looksLikeHtmlDocument(value: string): boolean {
+  const head = value.slice(0, TEXT_SAMPLE_CHARS);
+  if (/<(?:!doctype\s+html|html|head|body)[\s>]/i.test(head)) return true;
+  return /^\s*</.test(head) && /<\/[a-z][\w-]*>/i.test(head);
+}
+
+export type WebsiteFrameAdmission =
+  /** 一份网页，可以进受限 frame。 */
+  | "page"
+  /** 一张封面位图：进 frame 就是「点开还是一张图」。 */
+  | "cover-image"
+  /** 打包字节（zip / octet-stream / JSON 信封…）：进 frame 就是一屏乱码。 */
+  | "opaque-bytes"
+  /** 没有 rendition 元数据的老条目，只能靠正文本身判。 */
+  | "unknown";
+
+const FRAMEABLE_PAGE_MEDIA_TYPES: readonly string[] = [
+  "text/html",
+  "application/xhtml+xml",
+];
+
+/**
+ * 只按 rendition 声明的媒体类型判「能不能进 frame」。
+ *
+ * 空媒体类型必须留成 `unknown` 而不是拒绝：老的非 durable 网站条目根本没有
+ * rendition 元数据，一刀切会把它们从「本来能打开」退化成「打不开」。
+ */
+export function websiteFrameAdmission(
+  mediaType: string | undefined,
+): WebsiteFrameAdmission {
+  const normalized = normalizedMediaType(mediaType);
+  if (!normalized) return "unknown";
+  if (normalized.startsWith("image/")) return "cover-image";
+  if (FRAMEABLE_PAGE_MEDIA_TYPES.includes(normalized)) return "page";
+  return "opaque-bytes";
+}
+
+/** 正文判读的结果：`unread` 表示判读没跑成（网络错、超限），不是「读到了空」。 */
+export type WebsiteBodyProbe =
+  | { status: "unread" }
+  | { status: "read"; html: string; shape: WebsiteDocumentShape };
+
+export type WebsiteViewerSurface =
+  /** 照常在受限 iframe 里渲染。 */
+  | "page"
+  /** 不硬渲染：说明这一件的性质，配静态封面与出口。 */
+  | "script-explainer"
+  /** 拿不到任何可显示物：空状态 + 出口。 */
+  | "unavailable";
+
+export type WebsiteViewerReason =
+  | "self-painting"
+  | "script-bootstrapped"
+  | "cover-image-only"
+  | "opaque-bytes"
+  | "no-body";
+
+export interface WebsiteViewerPlan {
+  surface: WebsiteViewerSurface;
+  reason: WebsiteViewerReason;
+}
+
+/**
+ * 三档判读的唯一出口。查看器只按这里给的 `surface` 分支，不许自己再兜一次底
+ * ——「兜底时把字节当文字摆出来」就是这样长出来的。
+ */
+export function websiteViewerPlan(input: {
+  hasUrl: boolean;
+  mediaType?: string;
+  body: WebsiteBodyProbe;
+}): WebsiteViewerPlan {
+  if (!input.hasUrl) return { surface: "unavailable", reason: "no-body" };
+  const admission = websiteFrameAdmission(input.mediaType);
+  if (admission === "cover-image") {
+    return { surface: "unavailable", reason: "cover-image-only" };
+  }
+  if (admission === "opaque-bytes") {
+    return { surface: "unavailable", reason: "opaque-bytes" };
+  }
+  if (input.body.status === "unread") {
+    // 判读跑不成不构成「看不了」的证据：媒体类型已经说了它是网页，宁可把真页面
+    // 放进 frame 让用户自己看，也不要因为判读器的问题就先斩后奏。
+    return { surface: "page", reason: "self-painting" };
+  }
+  const { html, shape } = input.body;
+  if (!isDisplayableText(html) || !looksLikeHtmlDocument(html)) {
+    return { surface: "unavailable", reason: "opaque-bytes" };
+  }
+  if (websitePaintMode(shape) === "script-bootstrapped") {
+    return { surface: "script-explainer", reason: "script-bootstrapped" };
+  }
+  return { surface: "page", reason: "self-painting" };
+}
+
 /**
  * 该 rendition 是不是封面位图。
  *

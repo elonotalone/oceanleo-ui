@@ -49,6 +49,10 @@ import {
 } from "./library-viewer-first-paint";
 import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
 import {
+  isDisplayableText,
+  websiteFrameAdmission,
+} from "./website-inline-preview";
+import {
   GamePlayDetail,
   MaterialDetailUnavailable,
   gamePlayEmbedHref,
@@ -1276,11 +1280,25 @@ function DocumentViewer({
       />
     );
   }
-  if (item.content && !isDocx) {
+  /**
+   * `item.content` 是「正文」的最后一条来路，而它也可能是被按文本读出来的二进制
+   * （docx/pdf 字节）。那种内容进 `Markdown` 就是一屏乱码，所以先判它是不是文字。
+   */
+  if (item.content && !isDocx && isDisplayableText(item.content)) {
     return (
       <article className="mx-auto min-h-[520px] max-w-3xl bg-white px-8 py-10 shadow-sm">
         <Markdown>{item.content}</Markdown>
       </article>
+    );
+  }
+  if (item.content && !isDocx) {
+    return (
+      <ErrorView
+        message={tt(
+          "这一件存的是文件字节，没有可直接显示的正文；下载原文件可以用对应的软件打开。",
+        )}
+        url={item.url}
+      />
     );
   }
   return (
@@ -1461,11 +1479,13 @@ function XiaohongshuViewer({ item }: { item: LibraryItem }) {
     ...((Array.isArray(item.meta.images) ? item.meta.images : []) as unknown[]),
     item.url,
   ].filter((value): value is string => typeof value === "string" && Boolean(value));
-  const body =
+  const candidateBody =
     item.content ||
     stringValue(item.meta.body) ||
     stringValue(item.meta.content) ||
     stringValue(item.meta.caption);
+  // 正文位同样只收文字：读不成文字的内容一个字都不摆，宁可让这块留白。
+  const body = isDisplayableText(candidateBody) ? candidateBody : "";
   return (
     <div className="flex min-h-[540px] justify-center bg-stone-100 p-5">
       <article className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-sm">
@@ -1684,7 +1704,14 @@ function LibraryItemViewerBody({
     return <WebsiteArtifactViewer item={resolvedItem} />;
   }
   if (resolvedItem.kind === "canvas") {
-    return url ? (
+    /**
+     * 画布的 rendition 也可能是 JSON 工程信封或打包字节。把它塞进 frame，浏览器
+     * 会把它当纯文本铺满一屏——那就是「拿不到可显示本体时摆原始字节」。这一档改走
+     * 结构化快照，读不出快照时由它自己落到空状态。
+     */
+    const framable =
+      websiteFrameAdmission(rendition.rendition?.mediaType) !== "opaque-bytes";
+    return url && framable ? (
       <SandboxedWebViewer url={url} title={resolvedItem.title} />
     ) : (
       <StructuredCanvas item={resolvedItem} />
