@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  artifactHasExactContext,
   artifactIsVisible,
   type ArtifactContextRef,
   type ArtifactType,
@@ -507,6 +508,10 @@ export function MaterialLibrary({
     () =>
       [...featuredEntries, ...localEntries].filter((entry) => {
         const item = entry.libraryItem;
+        // The host already supplied these local/featured rows. Keep the same
+        // durable, revision-pinned context boundary as remote rows without
+        // reinterpreting a host-specific binding role as the API's `primary`
+        // query role. Remote results and deep links remain exact-primary.
         return Boolean(
           item &&
             isDurableLibraryItem(item) &&
@@ -514,7 +519,7 @@ export function MaterialLibrary({
             artifactIsVisible(item.artifact) &&
             isAdvancedEditableShelfItem(item) &&
             (!taxonomy || item.artifactType === taxonomy) &&
-            libraryItemHasExactPrimaryContext(item, context),
+            artifactHasExactContext(item.artifact, context),
         );
       }),
     [context, featuredEntries, localEntries, taxonomy],
