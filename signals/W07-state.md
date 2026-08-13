@@ -12,14 +12,16 @@
 - 产品实现已提交为 `abb59ed`：六个原语及其 props/types 已从 shell 入口导出。
 - focused contract、public API snapshot 与显式 `aria-hidden` 修正已提交为 `b3fa4ab`。
 - guarded focused test 当前 7/7 通过。
+- guarded `pnpm typecheck` 通过；public API snapshot check 通过。
+- W07 全部独占路径在写 delivery 前为空。
 
 ## 正在做
 
-- 通过 heavy IO guard 运行仓库 `pnpm typecheck`，处理真实类型错误。
+- 写入并提交 `verdicts/W07-delivery.md`，随后回填交卷提交号。
 
 ## 下一步
 
-- 若 typecheck 通过，重跑 focused test 与 public API check，确认独占路径干净并写 delivery。
+- 确认 W07 独占路径最终为空；不 bump、不 tag、不 push。
 
 ## 精确复现命令
 

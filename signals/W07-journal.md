@@ -33,3 +33,16 @@
   `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --test tests/project-workspace-primitives.test.mjs`
 - 结果：7 tests passed，0 failed，耗时约 1.7s；覆盖导出/snapshot、四 slot、320–360px 右栏、移动 drawer、键盘 tabs、原生按钮、Modal Esc/backdrop、无网络/路由。
 - 测试与 snapshot 提交：`b3fa4ab`。
+
+## 2026-08-13 · 最终验证
+
+- heavy guard 命令：
+  `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-heavy -- pnpm typecheck`
+- 结果：`tsc --noEmit` 通过，exit 0；disk exclusive lane 正常获取并释放。
+- final focused test：7 passed / 0 failed，exit 0。
+- public API check：
+  `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node scripts/public-api-snapshot.mjs --check`
+  通过，exit 0。
+- W07 独占产品、测试、journal/state/delivery 路径在写交卷文件前均无未提交改动。
+- 未执行浏览器、Playwright、截图或真机验证；未 bump、tag、install、deploy 或 push。
+- 真实阻塞：无。
