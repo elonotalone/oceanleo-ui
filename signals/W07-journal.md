@@ -46,3 +46,8 @@
 - W07 独占产品、测试、journal/state/delivery 路径在写交卷文件前均无未提交改动。
 - 未执行浏览器、Playwright、截图或真机验证；未 bump、tag、install、deploy 或 push。
 - 真实阻塞：无。
+
+## 2026-08-13 · 交卷
+
+- 最终验证、state 与 `verdicts/W07-delivery.md` 首次提交为 `7367714`。
+- 当前收尾只回填该提交号并把 state 标记为完成；不改产品代码。

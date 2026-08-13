@@ -17,11 +17,11 @@
 
 ## 正在做
 
-- 写入并提交 `verdicts/W07-delivery.md`，随后回填交卷提交号。
+- W07 已完成；`verdicts/W07-delivery.md` 已提交并回填提交号。
 
 ## 下一步
 
-- 确认 W07 独占路径最终为空；不 bump、不 tag、不 push。
+- 由父任务/V owner 做独立聚合裁决；W07 不执行发布动作。
 
 ## 精确复现命令
 
