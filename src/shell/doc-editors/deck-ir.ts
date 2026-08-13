@@ -30,6 +30,20 @@ export type DeckIrChartType = "bar" | "line" | "pie" | "area" | "scatter";
 export type DeckIrImageFit = "cover" | "contain";
 export type DeckIrMediaType = "image/png" | "image/jpeg" | "image/webp";
 
+export interface DeckIrThemeSurfaceImage {
+  /** References `assets[].id`; source documents never carry image addresses. */
+  assetId: string;
+  alt: string;
+  fit?: DeckIrImageFit;
+}
+
+export interface DeckIrThemeSurface {
+  /** Six-digit RGB page surface. A selected pack supplies this only when absent. */
+  color?: string;
+  /** Optional full-page picture, resolved through the same declared asset set as slide images. */
+  image?: DeckIrThemeSurfaceImage;
+}
+
 export interface DeckIrTheme {
   accent: string;
   accent2?: string;
@@ -50,6 +64,11 @@ export interface DeckIrTheme {
    * is what every existing document gets.
    */
   fontScale?: number;
+  /**
+   * Source-owned page treatment. Keeping it on the source rather than the pack
+   * lets two registered styles share layout defaults without becoming one look.
+   */
+  surface?: DeckIrThemeSurface;
 }
 
 export interface DeckIrMaster {
@@ -226,6 +245,23 @@ export const DECK_IR_JSON_SCHEMA = {
         fontMinor: { type: "string", maxLength: 64 },
         fontEastAsian: { type: "string", maxLength: 64 },
         fontScale: { type: "number", minimum: 0.5, maximum: 2, default: 1 },
+        surface: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            color: { type: "string", pattern: "^[0-9A-Fa-f]{6}$" },
+            image: {
+              type: "object",
+              additionalProperties: false,
+              required: ["assetId", "alt"],
+              properties: {
+                assetId: { type: "string", minLength: 1, maxLength: 64 },
+                alt: { type: "string", maxLength: 300 },
+                fit: { type: "string", enum: ["cover", "contain"] },
+              },
+            },
+          },
+        },
       },
     },
     master: {
@@ -294,7 +330,10 @@ const THEME_KEYS = new Set([
   "fontMinor",
   "fontEastAsian",
   "fontScale",
+  "surface",
 ]);
+const SURFACE_KEYS = new Set(["color", "image"]);
+const SURFACE_IMAGE_KEYS = new Set(["assetId", "alt", "fit"]);
 const MASTER_KEYS = new Set(["footerText", "showPageNumber", "creditsBar", "logoAssetId"]);
 const ASSET_KEYS = new Set([
   "id",
@@ -886,6 +925,37 @@ function validateAttribution(collector: Collector, value: unknown): void {
   });
 }
 
+function validateThemeSurface(collector: Collector, value: unknown): void {
+  const surface = collector.object("theme.surface", value, SURFACE_KEYS);
+  if (!surface) return;
+  if (surface.color !== undefined) {
+    collector.string("theme.surface.color", surface.color, { pattern: HEX6 });
+  }
+  if (surface.image === undefined) return;
+  const image = collector.object(
+    "theme.surface.image",
+    surface.image,
+    SURFACE_IMAGE_KEYS,
+  );
+  if (!image) return;
+  collector.string("theme.surface.image.assetId", image.assetId, {
+    min: 1,
+    max: 64,
+  });
+  collector.string("theme.surface.image.alt", image.alt, { max: 300 });
+  if (
+    image.fit !== undefined &&
+    image.fit !== "cover" &&
+    image.fit !== "contain"
+  ) {
+    collector.add(
+      "theme.surface.image.fit",
+      "enum",
+      'theme.surface.image.fit must be "cover" or "contain"',
+    );
+  }
+}
+
 /** §3.1 — full Draft 2020-12 validation of an `oceanleo.deck.v1` document. */
 export function validateDeckIr(value: unknown): DeckIrValidation {
   const collector = new Collector();
@@ -959,6 +1029,9 @@ export function validateDeckIr(value: unknown): DeckIrValidation {
         );
       }
     }
+    if (theme.surface !== undefined) {
+      validateThemeSurface(collector, theme.surface);
+    }
   }
 
   if (root.license !== undefined) {
@@ -1025,6 +1098,21 @@ export function validateDeckIr(value: unknown): DeckIrValidation {
       }
     });
   });
+  const surface = root.theme && typeof root.theme === "object"
+    ? (root.theme as DeckIrTheme).surface
+    : undefined;
+  const surfaceAssetId = surface?.image?.assetId;
+  if (
+    typeof surfaceAssetId === "string" &&
+    surfaceAssetId &&
+    !declared.has(surfaceAssetId)
+  ) {
+    collector.add(
+      "theme.surface.image.assetId",
+      "unresolved-asset",
+      `assetId "${surfaceAssetId}" is not declared in assets[]`,
+    );
+  }
 
   if (collector.errors.length > 0) {
     return { ok: false, project: null, errors: collector.errors, advisories: collector.advisories };
@@ -1041,6 +1129,8 @@ const TOP_LEVEL_ORDER: readonly (keyof DeckIrDocument)[] = [
   "schema",
   "version",
   "title",
+  "packId",
+  "sequenceId",
   "theme",
   "master",
   "slides",

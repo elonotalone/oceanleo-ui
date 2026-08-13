@@ -37,8 +37,10 @@ import {
   validateDeckIr,
   type DeckIrAsset,
   type DeckIrDocument,
+  type DeckIrThemeSurfaceImage,
 } from "./deck-ir";
 import { buildDeckPptx, type DeckAssetBytes } from "./deck-ooxml-package";
+import { packById } from "./deck-packs";
 import {
   blobToDataUrl,
   downloadBlob,
@@ -1184,6 +1186,7 @@ function draftSlideElements(
   slide: DeckIrDocument["slides"][number],
   slideIndex: number,
   assetUrls: DeckDraftAssetUrls,
+  surfaceImage?: DeckIrThemeSurfaceImage,
 ): DeckElement[] {
   const placement = deckLayoutIsCarrierGrammar(slide.layout)
     ? deckCarrierPlacement(slide.layout)
@@ -1204,6 +1207,27 @@ function draftSlideElements(
   const body = leaves.filter((leaf) => leaf.path.join("/") !== titleKey);
   const elements: DeckElement[] = [];
   let order = 0;
+
+  if (surfaceImage) {
+    const url = assetUrls[surfaceImage.assetId];
+    if (url) {
+      elements.push({
+        id: `${deckDraftElementId(slideIndex, ["theme", "surface", "image"])}/#picture`,
+        type: "image",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        order: (order += 1),
+        src: url,
+        alt: surfaceImage.alt,
+        imageFit: surfaceImage.fit === "contain" ? "contain" : "cover",
+        opacity: 1,
+        locked: true,
+      });
+    }
+  }
 
   (slide.images || []).forEach((image, index) => {
     const url = assetUrls[image.assetId];
@@ -1266,6 +1290,14 @@ export function deckDocumentFromDraft(
   assetUrls: DeckDraftAssetUrls = {},
 ): DeckDocument {
   const master = createDeckMaster("ocean", "默认母版", "master-default");
+  const pack = project.packId ? packById(project.packId) : undefined;
+  const sourceSurface = project.theme.surface?.color;
+  const surfaceColor =
+    typeof sourceSurface === "string" && /^[0-9A-Fa-f]{6}$/.test(sourceSurface)
+      ? sourceSurface.toUpperCase()
+      : pack?.surface.color;
+  const fontFamily =
+    project.theme.fontMajor || pack?.fonts.major || master.fontFamily;
   const slides: DeckSlide[] = project.slides.map((slide, index) => ({
     id: `draft-slide-${index + 1}`,
     title: slide.title || slide.quote?.attribution || `第 ${index + 1} 页`,
@@ -1275,7 +1307,12 @@ export function deckDocumentFromDraft(
     layout: slide.layout,
     background: "",
     masterId: master.id,
-    elements: draftSlideElements(slide, index, assetUrls),
+    elements: draftSlideElements(
+      slide,
+      index,
+      assetUrls,
+      project.theme.surface?.image,
+    ),
   }));
   return {
     version: 2,
@@ -1283,7 +1320,12 @@ export function deckDocumentFromDraft(
     aspect: "16:9",
     theme: "ocean",
     masters: [
-      { ...master, accentColor: `#${project.theme.accent.toUpperCase()}` },
+      {
+        ...master,
+        ...(surfaceColor ? { background: `#${surfaceColor}` } : {}),
+        accentColor: `#${project.theme.accent.toUpperCase()}`,
+        fontFamily,
+      },
     ],
     slides: slides.length
       ? slides

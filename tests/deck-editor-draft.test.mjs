@@ -85,7 +85,7 @@ registerHooks({
 const { buildDeckPptx } = await import(
   "../src/shell/doc-editors/deck-ooxml-package.ts"
 );
-const { validateDeckIr } = await import(
+const { serializeDeckIr, validateDeckIr } = await import(
   "../src/shell/doc-editors/deck-ir.ts"
 );
 const { normalizeDeckDocument } = await import(
@@ -350,4 +350,37 @@ test("packId remains enumerable and valid after JSON persistence", () => {
     validation.ok ? "" : JSON.stringify(validation.errors),
   );
   assert.equal(deckDraftFrom(persisted)?.packId, "paper-cut-amber");
+});
+
+test("editor state and deterministic save-reopen preserve source surface and fonts", () => {
+  const source = productionDraft({
+    packId: "riso-crimson",
+    theme: {
+      accent: "E11D48",
+      fontMajor: "IBM Plex Mono",
+      fontMinor: "IBM Plex Sans",
+      surface: { color: "213547" },
+    },
+  });
+  const validation = validateDeckIr(source);
+  assert.equal(
+    validation.ok,
+    true,
+    validation.ok ? "" : JSON.stringify(validation.errors),
+  );
+
+  const deck = deckDocumentFromDraft(validation.project);
+  assert.equal(deck.masters[0].background, "#213547");
+  assert.equal(deck.masters[0].fontFamily, "IBM Plex Mono");
+
+  const saved = applyDeckDocumentToDraft(validation.project, deck);
+  const reopened = deckDraftFrom(JSON.parse(serializeDeckIr(saved)));
+  assert.ok(reopened);
+  assert.equal(reopened.packId, "riso-crimson");
+  assert.deepEqual(reopened.theme.surface, source.theme.surface);
+  assert.equal(reopened.theme.fontMajor, "IBM Plex Mono");
+
+  const reopenedDeck = deckDocumentFromDraft(reopened);
+  assert.equal(reopenedDeck.masters[0].background, "#213547");
+  assert.equal(reopenedDeck.masters[0].fontFamily, "IBM Plex Mono");
 });

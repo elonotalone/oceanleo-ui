@@ -34,6 +34,7 @@ import {
   type DeckIrDocument,
   type DeckIrImage,
   type DeckIrSlide,
+  type DeckIrThemeSurfaceImage,
 } from "./deck-ir";
 import { packById, type DeckPack } from "./deck-packs";
 
@@ -125,6 +126,27 @@ function hex6(value: string | undefined, fallback: string): string {
 function deckPackFor(project: DeckIrDocument): Readonly<DeckPack> | undefined {
   const packId = (project as DeckIrDocument & { packId?: unknown }).packId;
   return typeof packId === "string" ? packById(packId) : undefined;
+}
+
+interface ResolvedDeckSurface {
+  color?: string;
+  image?: DeckIrThemeSurfaceImage;
+}
+
+function deckResolvedSurface(
+  project: DeckIrDocument,
+  pack: Readonly<DeckPack> | undefined,
+  palette: Record<DeckThemeSlot, string>,
+): ResolvedDeckSurface {
+  const source = project.theme.surface;
+  const fallback = pack?.surface.color || palette.lt1;
+  const color = source?.color
+    ? hex6(source.color, fallback)
+    : pack?.surface.color || (source?.image ? fallback : undefined);
+  return {
+    ...(color ? { color } : {}),
+    ...(source?.image ? { image: source.image } : {}),
+  };
 }
 
 /** §2.1 — the resolved 12-slot palette after `theme.accent*` overrides. */
@@ -320,6 +342,38 @@ export function deckPictureXml(
   );
 }
 
+function containPictureBox(
+  target: DeckBox,
+  natural: { width?: number; height?: number } | undefined,
+): DeckBox {
+  if (
+    !natural?.width ||
+    !natural.height ||
+    natural.width <= 0 ||
+    natural.height <= 0
+  ) {
+    return target;
+  }
+  const frameRatio = target.cx / target.cy;
+  const imageRatio = natural.width / natural.height;
+  if (imageRatio > frameRatio) {
+    const cy = Math.round(target.cx / imageRatio);
+    return {
+      x: target.x,
+      y: target.y + Math.round((target.cy - cy) / 2),
+      cx: target.cx,
+      cy,
+    };
+  }
+  const cx = Math.round(target.cy * imageRatio);
+  return {
+    x: target.x + Math.round((target.cx - cx) / 2),
+    y: target.y,
+    cx,
+    cy: target.cy,
+  };
+}
+
 /** §3.4 — the frame uses `p:xfrm`, not `a:xfrm`; the wrong prefix breaks the package. */
 export function deckGraphicFrameXml(
   id: number,
@@ -492,6 +546,7 @@ interface SlideBuild {
 interface SlideContext {
   project: DeckIrDocument;
   pack?: Readonly<DeckPack>;
+  surface: ResolvedDeckSurface;
   palette: Record<DeckThemeSlot, string>;
   slideNumber: number;
   slideCount: number;
@@ -653,6 +708,22 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
   };
 
   const boxes = definition.boxes;
+  const surfaceImage = context.surface.image;
+  if (surfaceImage) {
+    const media = context.media.get(surfaceImage.assetId);
+    const page: DeckBox = {
+      x: 0,
+      y: 0,
+      cx: DECK_GRID.pageWidth,
+      cy: DECK_GRID.pageHeight,
+    };
+    addPicture(
+      surfaceImage,
+      surfaceImage.fit === "contain"
+        ? containPictureBox(page, media)
+        : page,
+    );
+  }
 
   switch (slide.layout) {
     case "title": {
@@ -1144,8 +1215,8 @@ function buildSlide(slide: DeckIrSlide, context: SlideContext): SlideBuild {
     `${XML_DECLARATION}\n` +
     `<p:sld xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}">` +
     "<p:cSld>" +
-    (context.pack
-      ? `<p:bg><p:bgPr>${solidFill(context.pack.surface.color)}<a:effectLst/></p:bgPr></p:bg>`
+    (context.surface.color
+      ? `<p:bg><p:bgPr>${solidFill(context.surface.color)}<a:effectLst/></p:bgPr></p:bg>`
       : "") +
     "<p:spTree>" +
     '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
@@ -1497,11 +1568,15 @@ export function buildDeckOoxmlParts(
 ): DeckOoxmlBuild {
   const pack = deckPackFor(project);
   const palette = deckResolvedPalette(project);
+  const surface = deckResolvedSurface(project, pack, palette);
   const timestamp = options.timestamp || "2026-07-29T00:00:00Z";
-  const fontMajor = pack?.fonts.major || project.theme.fontMajor || DEFAULT_MAJOR_FONT;
-  const fontMinor = pack?.fonts.minor || project.theme.fontMinor || fontMajor;
-  const fontEastAsian = pack?.fonts.eastAsian || project.theme.fontEastAsian || DEFAULT_EAST_ASIAN_FONT;
-  const askedScale = pack?.fonts.fontScale ?? project.theme.fontScale;
+  const fontMajor = project.theme.fontMajor || pack?.fonts.major || DEFAULT_MAJOR_FONT;
+  const fontMinor = project.theme.fontMinor || pack?.fonts.minor || fontMajor;
+  const fontEastAsian =
+    project.theme.fontEastAsian ||
+    pack?.fonts.eastAsian ||
+    DEFAULT_EAST_ASIAN_FONT;
+  const askedScale = project.theme.fontScale ?? pack?.fonts.fontScale;
   const fontScale =
     typeof askedScale === "number" && Number.isFinite(askedScale) && askedScale >= 0.5 && askedScale <= 2
       ? askedScale
@@ -1542,6 +1617,7 @@ export function buildDeckOoxmlParts(
     const build = buildSlide(slide, {
       project,
       pack,
+      surface,
       palette,
       slideNumber: index + 1,
       slideCount: project.slides.length,

@@ -122,7 +122,9 @@ test("omitting or missing packId preserves the pre-change PPTX bytes exactly", (
 });
 
 test("a named pack writes a valid package with solid alpha bands and no shape gradients", () => {
-  const bytes = pptx(baselineProject("cyber-neon"));
+  const source = baselineProject("cyber-neon");
+  delete source.theme.fontMajor;
+  const bytes = pptx(source);
   const zip = unzipSync(bytes);
   for (const part of [
     "[Content_Types].xml",

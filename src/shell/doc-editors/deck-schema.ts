@@ -9,6 +9,7 @@ import {
   type DeckIrLayout,
 } from "./deck-layout-grid";
 import type { DeckIrDocument } from "./deck-ir";
+import { packById } from "./deck-packs";
 
 export type DeckAspect = "16:9" | "4:3";
 
@@ -954,6 +955,18 @@ export function deckDocumentFromIr(
   resolveAsset: (assetId: string) => string | undefined = () => undefined,
 ): DeckDocument {
   const master = createDeckMaster("ocean", "默认母版", "master-default");
+  const pack = project.packId ? packById(project.packId) : undefined;
+  const sourceSurface = project.theme.surface?.color;
+  const surfaceColor =
+    typeof sourceSurface === "string" && /^[0-9A-Fa-f]{6}$/.test(sourceSurface)
+      ? sourceSurface.toUpperCase()
+      : pack?.surface.color;
+  const surfaceImage = project.theme.surface?.image;
+  const surfaceUrl = surfaceImage
+    ? resolveAsset(surfaceImage.assetId)
+    : undefined;
+  const fontFamily =
+    project.theme.fontMajor || pack?.fonts.major || master.fontFamily;
   return {
     version: 2,
     title: project.title,
@@ -962,7 +975,9 @@ export function deckDocumentFromIr(
     masters: [
       {
         ...master,
+        ...(surfaceColor ? { background: `#${surfaceColor}` } : {}),
         accentColor: `#${project.theme.accent.toUpperCase()}`,
+        fontFamily,
       },
     ],
     slides: project.slides.map((slide, index) => {
@@ -990,6 +1005,27 @@ export function deckDocumentFromIr(
               .join("\n")
           : "");
       const title = slide.title || slide.quote?.attribution || `第 ${index + 1} 页`;
+      const surfaceElement: DeckElement[] =
+        surfaceUrl && surfaceImage
+          ? [
+              {
+                id: deckId("element"),
+                type: "image",
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+                rotation: 0,
+                order: 0,
+                src: surfaceUrl,
+                alt: surfaceImage.alt,
+                imageFit:
+                  surfaceImage.fit === "contain" ? "contain" : "cover",
+                opacity: 1,
+                locked: true,
+              },
+            ]
+          : [];
       return {
         id: deckId(),
         title,
@@ -1000,13 +1036,16 @@ export function deckDocumentFromIr(
         background: "",
         masterId: master.id,
         image,
-        elements: carrierSlideElements({
-          title,
-          body,
-          bullets,
-          layout: slide.layout,
-          image,
-        }),
+        elements: [
+          ...surfaceElement,
+          ...carrierSlideElements({
+            title,
+            body,
+            bullets,
+            layout: slide.layout,
+            image,
+          }),
+        ],
       };
     }),
   };
