@@ -86,6 +86,17 @@ export interface ArtifactActionMatrixOptions {
   hidePreview?: boolean;
   insert?: ArtifactTargetActionEvidence;
   replace?: ArtifactTargetActionEvidence;
+  /**
+   * 素材货架上「编辑」这一颗的落点（`useMaterialDetailAppPlan().editRoute`）。
+   *
+   * - `deep-link`：归属 app 不是当前 app，归属入口自己出那颗按钮，这里就不能再出
+   *   第二颗说法不一样的；隐藏而不是禁用——它此刻明明是能编辑的。
+   * - `in-place`：归属就是当前 app，就地打开编辑插件。**打不开的类型不出按钮**：
+   *   一颗按下去原地打转、或者只吐一句技术理由的按钮，比没有按钮更坏。
+   *   「哪一类打得开」的判据仍是 `editorCapabilityFor`，这里只决定看不看得见。
+   * - 不传或 `none`：不是素材货架（我的库里的作品等），既有行为一字不变。
+   */
+  materialEditRoute?: "deep-link" | "in-place" | "none";
 }
 
 function previewEvidence(item: LibraryItem): {
@@ -294,6 +305,13 @@ export function artifactActionMatrix(
   const insertTarget = options.insert;
   const replaceTarget = options.replace;
   const hidePreview = options.hidePreview === true;
+  const editAvailable = edit.available && options.canOpenEdit !== false;
+  const editVisible =
+    options.materialEditRoute === "deep-link"
+      ? false
+      : options.materialEditRoute === "in-place"
+        ? edit.visible && editAvailable
+        : edit.visible;
   return {
     preview: {
       action: "preview",
@@ -312,8 +330,8 @@ export function artifactActionMatrix(
     },
     edit: {
       action: "edit",
-      visible: edit.visible,
-      available: edit.available && options.canOpenEdit !== false,
+      visible: editVisible,
+      available: editAvailable,
       reason:
         edit.reason ||
         (options.canOpenEdit === false

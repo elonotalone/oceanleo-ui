@@ -301,7 +301,10 @@ export function WorkspaceLibrary({
     };
   };
 
-  const matrixFor = (item: LibraryItem) =>
+  const matrixFor = (
+    item: LibraryItem,
+    materialEditRoute: "deep-link" | "in-place" | "none" = "none",
+  ) =>
     artifactActionMatrix(item, {
       hidePreview: true,
       canOpenPreview: false,
@@ -309,6 +312,7 @@ export function WorkspaceLibrary({
         allowAdvanced && openAdvancedOnSelect && Boolean(onOpenItem),
       insert: targetEvidence("insert", item),
       replace: targetEvidence("replace", item),
+      materialEditRoute,
     });
 
   const editItem = async (item: LibraryItem) => {
@@ -523,8 +527,14 @@ export function WorkspaceLibrary({
     const item = entry.libraryItem;
     if (!item) return null;
     const linkUrl = entryLinkUrl(entry);
-    const matrix = matrixFor(item);
     const websiteTemplate = isOfficialWebsiteTemplate(item);
+    // website 官方模板是唯一例外：归属入口仍保持纯读预览，旁边这颗明确的建站动作
+    // 复用 typed Edit → owner fork 链，两颗按钮承担不同职责，不把原预览合同偷换成
+    // 写操作。所以它不受落点判据管，永远按既有规则出现。
+    const matrix = matrixFor(
+      item,
+      websiteTemplate ? "none" : detailAppPlan.editRoute,
+    );
     // 只有「本该解析出耐久身份、但现在还没有」的条目才需要这套说明与重试：
     // 已经是 durable 的、以及压根没有可解析身份的（临时结果），都与过去逐字相同。
     const identityExpected =
@@ -532,16 +542,7 @@ export function WorkspaceLibrary({
     return (
       <ArtifactActionButtons
         item={item}
-        matrix={
-          // 归属 app 自己出编辑入口时，这里再渲染一颗无归属的「编辑」就成了第二个
-          // 说法不一样的入口。隐藏而不是禁用：禁用会连带渲染一条「为什么不能编辑」
-          // 的理由，而它此刻明明是能编辑的。website 官方模板是唯一例外：归属入口
-          // 仍保持纯读预览，旁边新增的明确建站动作复用 typed Edit → owner fork 链，
-          // 两颗按钮承担不同职责，不把原预览合同偷换成写操作。
-          detailAppPlan.routeEditByApp && !websiteTemplate
-            ? { ...matrix, edit: { ...matrix.edit, visible: false } }
-            : matrix
-        }
+        matrix={matrix}
         onEdit={editItem}
         onInsert={(prepared) =>
           applyMaterialAction("insert", prepared)

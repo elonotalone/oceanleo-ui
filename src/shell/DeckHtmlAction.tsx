@@ -27,15 +27,6 @@ import {
 import { humanErrorMessage } from "./human-error-message";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 
-/**
- * 没有稿子时给用户看的那一句。
- *
- * 今天货架上 275 个 deck 位全部 `source=pptx`，一份稿子都没有，所以这一句是**常态**
- * 而不是异常。按钮因此不许静默消失：灰着并写清为什么，比什么都不显示要好。
- */
-export const DECK_HTML_NO_SOURCE_REASON =
-  "这份素材制作得较早，当时没有保留生成网页版所需的可编辑内容；不是你这次操作出了问题。";
-
 export interface DeckHtmlEvidence {
   visible: boolean;
   available: boolean;
@@ -153,10 +144,15 @@ export function deckHtmlEvidence(item: LibraryItem): DeckHtmlEvidence {
   }
   const sourceUrl = deckHtmlSourceUrl(item);
   if (!sourceUrl) {
+    // 拿不到稿子就渲不出网页版，这不是这一次操作的失败，而是这份素材根本没有那样
+    // 东西——货架上 275 个老 deck 全是 pptx，永远补不出来。过去这里留一颗灰按钮
+    // 外加一句替产品空缺道歉的话（「这份素材制作得较早…」）；操作员裁定那种话不
+    // 许出现，正确做法是**按钮不出现**：用户看不到入口，就没有需要被解释的失败。
+    // 新产的 deck 带 `oceanleo.deck.v1` 稿子，按钮照常长出来。
     return {
-      visible: true,
+      visible: false,
       available: false,
-      reason: DECK_HTML_NO_SOURCE_REASON,
+      reason: "",
       sourceUrl: "",
     };
   }

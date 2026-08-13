@@ -48,8 +48,18 @@ export interface MaterialDetailAppPlan {
   /** 深链指名的 artifact id；空串表示这份素材没有可深链的身份。 */
   artifactId: string;
   /**
-   * 归属自己出编辑入口。为 true 时调用方必须把动作条上那颗**不指名 app** 的
-   * 「编辑」藏掉，否则同一个浮层里会有两个说法不一样的编辑入口。
+   * 「编辑」这一颗该往哪走。动作条按它决定谁出按钮，是这条判据的唯一出口。
+   *
+   * - `deep-link`：这份素材归属的 app **不是**当前 app。去那边，落在只读预览。
+   * - `in-place`：归属就是当前 app。**不许深链**——深链回同一个页面就是原地打转，
+   *   用户点了「编辑」什么都没发生。这一档要就地打开这个类型的编辑插件。
+   * - `none`：不是素材货架的条目（我的库里的作品），既有行为一字不变。
+   */
+  editRoute: "deep-link" | "in-place" | "none";
+  /**
+   * 归属自己出编辑入口（= `editRoute === "deep-link"`）。为 true 时调用方必须把
+   * 动作条上那颗**不指名 app** 的「编辑」藏掉，否则同一个浮层里会有两个说法
+   * 不一样的编辑入口。
    */
   routeEditByApp: boolean;
 }
@@ -59,6 +69,7 @@ const EMPTY_PLAN: MaterialDetailAppPlan = {
   apps: [],
   editApp: null,
   artifactId: "",
+  editRoute: "none",
   routeEditByApp: false,
 };
 
@@ -172,17 +183,26 @@ export function useMaterialDetailAppPlan({
     // 「编辑」换成整页跳转只会打断用户；那条路保持既有的内联 typed 编辑器。
     const onMaterialShelf =
       shelfItem.meta?.workspace_library_surface === "materials";
+    const editApp = resolveEditApp(apps, packAppId, appId);
+    // 深链只在**真的要去别处**时才成立。过去这里对「归属就是当前 app」那一档也
+    // 返回 true，于是 `?app=<归属>` 指回了用户此刻就站着的页面——操作员报的
+    // 「在 slide 站点编辑会重复跳到同一个页面」就是这一幕：按钮点得动，什么都没发生。
+    // 归属就是当前 app 时改走 `in-place`：就地打开这个类型的编辑插件。
+    // 跨 app（以及页面本身没锚定任何 app，例如 explore）一字未改，仍是纯读深链。
+    const crossApp = Boolean(editApp) && (!appId || editApp!.appId !== appId);
+    const editRoute: MaterialDetailAppPlan["editRoute"] =
+      onMaterialShelf && Boolean(artifactId) && apps.length > 0
+        ? crossApp
+          ? "deep-link"
+          : "in-place"
+        : "none";
     return {
       item,
       apps,
-      editApp: resolveEditApp(apps, packAppId, appId),
+      editApp,
       artifactId,
-      // 素材货架上的「编辑」**一律**走归属 app 的预览深链，包括归属就是当前 app 的
-      // 那一档。过去那一档留给了就地打开 typed 编辑器（「深链等于原地打转」），但
-      // 操作员把落点拍死成「右栏是这份素材的预览，用户看到的不是 agent 面板」，
-      // 并且点名「不许把他一脚踹进编辑器」——点「编辑」往往只是想看看会出现什么。
-      // 所以这一档也归深链：`?app=<归属>` + `libraryMode=preview` 是纯读，不 fork。
-      routeEditByApp: onMaterialShelf && Boolean(artifactId) && apps.length > 0,
+      editRoute,
+      routeEditByApp: editRoute === "deep-link",
     };
   }, [appId, packAppId, resolved, shelfItem, siteKey]);
 }
