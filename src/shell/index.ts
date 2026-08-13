@@ -10,6 +10,24 @@ export type {
   ShellNavDisclosure,
   ShellSubNav,
 } from "./AppShell";
+export {
+  ProjectWorkspaceFrame,
+  ProjectTabNav,
+  ProjectToolbar,
+  ProjectEmptyState,
+  ProjectConfigCard,
+  ProjectModal,
+} from "./project-workspace";
+export type {
+  ProjectWorkspaceFrameProps,
+  ProjectTabItem,
+  ProjectTabNavProps,
+  ProjectToolbarProps,
+  ProjectEmptyStateProps,
+  ProjectConfigCardAction,
+  ProjectConfigCardProps,
+  ProjectModalProps,
+} from "./project-workspace";
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
 export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
 export type { SelectionNamespace } from "./WorkspaceSelection";
