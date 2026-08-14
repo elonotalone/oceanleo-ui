@@ -615,7 +615,30 @@ test("跨 app 素材的浮层只出一颗编辑入口，不是一排", async () 
     // 按钮上不再挂 app 名：落哪个 app 已由素材包答完，不需要用户再选一次。
     assert.equal(entries[0].textContent.trim(), "编辑");
     // 归属自己出入口时，不再另挂一颗不指名 app 的「编辑」。
-    assert.equal(action(mounted.container, "编辑"), undefined);
+    //
+    // 这一档（宿主锚在 `expand`，素材归属 avatar-removebg/inpaint）是**跨 app**，
+    // `40e191e`（2026-08-13）只改了同 app 那一档，跨 app 一字未动：仍是纯读深链。
+    // 但同一笔提交把按钮上的 app 名去掉了，深链那一颗自己的文案从此就是「编辑」，
+    // 于是旧写法 `assert.equal(action(container, "编辑"), undefined)` 变成了在要求
+    // 「按文案取不到那颗唯一的编辑入口」——它取到的正是入口自己。按父 agent 本波裁定
+    // 改判据（实现是对的、判据钉着「按钮挂 app 名」那个时代的形状）：比数量与标签名。
+    const editLabelled = [
+      ...mounted.container.querySelectorAll("button, a"),
+    ].filter((node) => node.textContent.trim() === "编辑");
+    assert.equal(editLabelled.length, 1, "「编辑」这个文案在浮层里只许出现一次");
+    assert.equal(editLabelled[0].tagName, "A", "跨 app 那一颗是一次「去别处」");
+    assert.equal(
+      editLabelled[0].getAttribute("data-material-edit-single"),
+      "true",
+    );
+    // 就地开插件那颗 <button> 只属于同 app 那一档（见本文件 706 行那条）。
+    assert.equal(
+      [...mounted.container.querySelectorAll("button")].filter(
+        (node) => node.textContent.trim() === "编辑",
+      ).length,
+      0,
+      "跨 app 不许出就地编辑那颗按钮",
+    );
     // 另外四项照旧齐全。
     for (const label of ["下载", "收藏", "全屏", "链接"]) {
       assert.ok(action(mounted.container, label), label);

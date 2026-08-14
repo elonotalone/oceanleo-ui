@@ -187,10 +187,8 @@
       "sourceFormat": "oceanleo.interactive-doc.v1",
       "editorCapability": "interactive-doc-editor",
       "liveRows": 1,
-      "expect": {
-        "featureId": "interactive_doc_editing",
-        "adapter": "interactive-doc"
-      }
+      "note": "库里真实存在的一行（2026-08-14 复核仍是 1 行）声明了 interactive-doc-editor，但树里从来没有这个编辑器：7bee5da（2026-07-30 保护性提交）提交了契约，实现从未落地。交互文档当前只有浏览侧，所以解析链如实给 null；数据侧那行在对用户承诺一个不存在的能力，由父 agent 裁决怎么改。编辑器落地时这一格连同 tests/w7-aclass-composite-parse.test.mjs 的例外名单一起翻回来。",
+      "expect": null
     },
     {
       "artifactType": "model_3d",

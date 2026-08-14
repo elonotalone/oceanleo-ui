@@ -20,7 +20,11 @@ import test from "node:test";
 import {
   advancedCapabilityForArtifactFields,
   gameSourceFormatAccess,
+  VIEW_ONLY_ARTIFACT_TYPES,
 } from "../src/shell/artifact-contract.ts";
+
+/** 只有浏览侧、至今没有编辑器的目录类型（`artifact-contract.ts` 是唯一出处）。 */
+const VIEW_ONLY_TYPES = new Set(VIEW_ONLY_ARTIFACT_TYPES);
 
 const FIXTURE = fileURLToPath(
   new URL("./fixtures/artifact-capability-triples.json", import.meta.url),
@@ -73,13 +77,26 @@ test("A 类 composite_image 三元组解析出 design_canvas，不为 null", () 
 
 /**
  * 这一条不抄夹具里的 `expect`，判的是一条结构规律：**`editor_capability` 这一列
- * 通常就是解析链的开关。唯一的显式例外是退役 game bundle：库中旧行仍带历史
- * `editor_capability`，但它现在只可读/下载，绝不能再解析成新写入适配器。
+ * 通常就是解析链的开关。两个显式例外，两张名单各自钉死，别的行一律照常适用：
+ *
+ * 1. 退役 game bundle：库中旧行仍带历史 `editor_capability`，但它现在只可读/下载，
+ *    绝不能再解析成新写入适配器。
+ * 2. **声明了一个从未发货的编辑器**：`interactive_doc` 的那一行（库里真实存在，
+ *    2026-08-14 复核仍是 1 行，`created_by = platform` 的模板素材）声明
+ *    `interactive-doc-editor`，可树里没有这个编辑器 —— `7bee5da`（2026-07-30 的
+ *    保护性提交）提交了「两个新工作台」的契约，实现从未落地：
+ *    `src/shell/advanced-routes/` 下没有它们的 Route，`TRUSTED_EDITOR_REGISTRY`
+ *    至今 14 条。交互文档与地图当前**只有浏览侧**（viewer、封面、类型筛选、explore
+ *    分派都齐），所以解析链如实给 null 才是对的：把一颗打不开的「编辑」按钮亮给
+ *    用户，比不给更糟。数据侧那行在对用户承诺一个不存在的能力，属于另一档缺陷，
+ *    已交父 agent 裁决（见 tasks10/UA-journal.md）。
+ *    **编辑器落地时把这一格翻回来**：那一行要回到上面的正常分支。
  */
-test("editor_capability 非空会解析适配器，退役 game bundle 除外", () => {
+test("editor_capability 非空会解析适配器，退役 game bundle 与未发货编辑器除外", () => {
   const wrongEmpty = [];
   const wrongPresent = [];
   const legacyReadOnly = [];
+  const unshippedEditor = [];
   for (const triple of triples) {
     const entry = resolve(triple);
     const label = `${triple.artifactType}|${triple.sourceFormat}|${triple.editorCapability || "∅"}`;
@@ -90,6 +107,9 @@ test("editor_capability 非空会解析适配器，退役 game bundle 除外", (
       ) {
         legacyReadOnly.push(label);
         if (entry) wrongPresent.push(`${label}（退役载体仍可编辑）`);
+      } else if (VIEW_ONLY_TYPES.has(triple.artifactType)) {
+        unshippedEditor.push(label);
+        if (entry) wrongPresent.push(`${label}（浏览侧类型却解析出了编辑器）`);
       } else if (!entry) {
         wrongPresent.push(label);
       }
@@ -99,6 +119,9 @@ test("editor_capability 非空会解析适配器，退役 game bundle 除外", (
   }
   assert.deepEqual(legacyReadOnly, [
     "game|oceanleo.game-bundle.v1|game-editor",
+  ]);
+  assert.deepEqual(unshippedEditor, [
+    "interactive_doc|oceanleo.interactive-doc.v1|interactive-doc-editor",
   ]);
   assert.deepEqual(
     wrongPresent,

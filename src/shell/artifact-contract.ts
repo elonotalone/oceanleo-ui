@@ -29,6 +29,31 @@ export const ARTIFACT_TYPES = [
 export type BuiltInArtifactType = (typeof ARTIFACT_TYPES)[number];
 export type ArtifactType = string;
 
+/**
+ * 目录里**只有浏览侧**的两类：地图工程与交互文档。
+ *
+ * 它们不是"还没做"的占位：viewer kind、封面判据、板块 tab、类型标签、explore 分派
+ * 都已发货（`material-catalog.tsx` 的第 15/16 个板块、`library-data.ts` 的 kind 表、
+ * `workspace-library-cover.tsx` 的整幅保留分支），库里也真的躺着这一类的 artifact。
+ * 缺的只有**编辑器**：`src/shell/advanced-routes/` 下没有它们的 Route，
+ * `TRUSTED_EDITOR_REGISTRY` 至今 14 条。`7bee5da`（2026-07-30 的保护性提交）
+ * 提交了"两个新工作台"的契约与文案，实现从未落地。
+ *
+ * 所以它们不进 `ARTIFACT_TYPES`（那是有编辑/上传链路的 typed artifact 名单），
+ * 而是单独在这里说清楚"这两类当前 view-only"。**编辑器落地时把它们移进
+ * `ARTIFACT_TYPES` 并删掉这份名单**，钉着这条结论的判据会一起变红提醒改回来。
+ */
+export const VIEW_ONLY_ARTIFACT_TYPES = [
+  "geo_map",
+  "interactive_doc",
+] as const;
+
+/** 素材目录今天呈现的 16 类：14 类可编辑 typed artifact + 2 类只读浏览类型。 */
+export const MATERIAL_CATALOG_TYPES: readonly ArtifactType[] = Object.freeze([
+  ...ARTIFACT_TYPES,
+  ...VIEW_ONLY_ARTIFACT_TYPES,
+]);
+
 /** New game revisions carry one complete, self-contained HTML document. */
 export const GAME_DOCUMENT_SOURCE_FORMAT = "oceanleo.game-document.v1";
 /** Retired five-slot carriers remain identifiable for stored-row reads/downloads only. */
@@ -628,6 +653,74 @@ export function advancedCapabilityForAdapter(
   );
 }
 
+/**
+ * 已经压平的成品格式：位图、渲染成页的 HTML、成片音视频、印刷版 PDF。
+ *
+ * 这些字节里没有图层、没有节点、没有 option —— 它们是**渲染结果**，不是可回写的
+ * 工程源。对 `openMode: "native-file"` 的能力它们恰恰就是源（一张 webp 正是图片
+ * 编辑器要打开的东西），所以下面那道闸只对结构化工程能力生效。
+ *
+ * 这不是新规矩，是把契约里早就写着的 `previewSource.renderedSourceSubstitution:
+ * "forbidden"` 真的执行起来：`workbench-routes.ts` 的图表分支已经在按这条口径
+ * 说话（「此历史图表只有渲染 HTML/封面……不能编辑」），共享解析链却没跟上。
+ *
+ * 名单是**枚举的成品族**而不是「schema id 形状」白名单：库里真实的工程源写法
+ * 五花八门（`oceanleo.chart.v1` / `workflow-json` / `echarts-option+json` /
+ * `website-source@1` / `svg`），按形状收会把它们一起判死。
+ */
+const FLATTENED_RENDER_SOURCE_FORMATS: ReadonlySet<string> = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "avif",
+  "bmp",
+  "tif",
+  "tiff",
+  "heic",
+  "heif",
+  "ico",
+  "html",
+  "htm",
+  "mp4",
+  "webm",
+  "mov",
+  "m4v",
+  "mp3",
+  "wav",
+  "ogg",
+  "m4a",
+  "aac",
+  "flac",
+  "pdf",
+]);
+
+/**
+ * 这一列 `source_format` 能不能当这条能力的**可回写编辑源**。
+ *
+ * 两档 fail-closed：
+ *   1. 退役的五槽 game bundle 只许读/下载，绝不能当新写入适配器的别名（原地保留）；
+ *   2. 结构化工程能力（设计画布、网站、图表、视频画布、游戏文档）拿不到压平的成品。
+ *      一件 `composite_image` 声明 `editor_capability = design-canvas`、而落库的
+ *      source 是一张 webp，图层工程编辑器打开它只会失败——把「编辑」按钮亮给用户
+ *      比不给更糟，所以这里解析成 null。
+ */
+export function capabilitySourceFormatIsAcceptable(
+  capability: AdvancedCapabilityContractEntry,
+  sourceFormat: unknown,
+): boolean {
+  const normalized = String(sourceFormat || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (capability.artifactType === "game") {
+    return normalized === capability.sourceFormat;
+  }
+  if (capability.openMode === "structured-project") {
+    return !FLATTENED_RENDER_SOURCE_FORMATS.has(normalized);
+  }
+  return true;
+}
+
 export function advancedCapabilityForArtifactFields(input: {
   artifactType: ArtifactType;
   sourceFormat: string;
@@ -647,15 +740,10 @@ export function advancedCapabilityForArtifactFields(input: {
     ADVANCED_CAPABILITY_BY_BINDING.get(
       advancedBindingKey(artifactType, editorCapability),
     ) || null;
-  // The retired five-slot game carrier is a stored-row compatibility format,
-  // never an alias for creating or editing a complete-document revision.
-  if (
-    capability?.artifactType === "game" &&
-    sourceFormat !== capability.sourceFormat
-  ) {
-    return null;
-  }
-  return capability;
+  if (!capability) return null;
+  return capabilitySourceFormatIsAcceptable(capability, sourceFormat)
+    ? capability
+    : null;
 }
 
 export type ArtifactEditability = "native" | "bounded" | "view_only";
