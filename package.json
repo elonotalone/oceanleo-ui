@@ -17,7 +17,7 @@
     "consumers:scan": "node scripts/scan-consumer-imports.mjs",
     "consumers:check": "node scripts/scan-consumer-imports.mjs --summary --check-exports",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/*.test.mjs",
+    "test": "node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test --test-concurrency=2 --test-timeout=180000 tests/*.test.mjs",
     "build": "npm run build:css && npm run typecheck"
   },
   "exports": {

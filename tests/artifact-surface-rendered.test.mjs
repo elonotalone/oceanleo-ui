@@ -9,6 +9,7 @@ import React, { act } from "react";
 
 import {
   ARTIFACT_TYPES,
+  GAME_DOCUMENT_SOURCE_FORMAT,
   normalizeArtifactProjection,
 } from "../src/shell/artifact-contract.ts";
 import {
@@ -754,7 +755,11 @@ const TEST_SOURCE_FORMAT = {
   audio: "audio-project+json",
   model_3d: "glb",
   workflow: "workflow-json",
-  game: "game-bundle",
+  // 钉在常量上而不是写字面量：可玩产物的 source format 是
+  // `oceanleo.game-document.v1`，而 `advancedCapabilityForArtifactFields()` 对 game
+  // 这一类**逐字**比较 source format（退役的五槽 bundle 只许读，不许当编辑别名）。
+  // 夹具里原来那个 "game-bundle" 两边都对不上，于是这一类的路由永远解析不出来。
+  game: GAME_DOCUMENT_SOURCE_FORMAT,
   geo_map: "oceanleo.geo-map.v1",
   interactive_doc: "oceanleo.interactive-doc.v1",
 };
@@ -3655,37 +3660,41 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     await settle();
     assert.equal(opened.length, 0, "card click only opens preview detail");
 
-    // 2026-08-07 改判：宿主就锚在这份素材自己的 app 上时，**也没有**那颗就地
-    // 「编辑」了。本用例原先钉的是相反的行为（同 app 就地打开 typed 编辑器），
-    // 那一档在操作员拍板之后作废：他把落点定成「右栏是这份素材的预览，用户看到的
-    // 不是 agent 面板」，并且点名不许把人一脚踹进编辑器——点「编辑」常常只是想看看
-    // 会出现什么。所以同 app 这一档也走预览深链，`libraryMode=preview` 是纯读不 fork。
+    // 2026-08-13 改判回来（`40e191e`）。8-07 那一版把同 app 也定成预览深链，操作员
+    // 在 slide 站实地报回来的结果是「点编辑重复跳到同一个页面，什么都没发生」——
+    // `?app=<归属>` 指回的正是用户此刻就站着的页面。所以现在按落点分两档：同 app
+    // 就地打开这个类型的编辑插件，跨 app 才是纯读深链（下面单独钉）。
     //
-    // 实现改了、用例没跟上，于是它红着过了一整轮验收（父 agent 给 A4 判 PASS 时
-    // 只跑了 A4 点名的四个文件，没跑全量套件）。这次连同判据一起补上。
-    const plainEdit = [...mounted.container.querySelectorAll("button")].find(
-      (button) => button.textContent.trim() === "编辑",
+    // 本用例钉的东西一字未动：卡片点击只开预览，编辑必须走 prepared 交接。变的只是
+    // 同 app 这一档该出哪颗按钮。
+    const editButtons = [
+      ...mounted.container.querySelectorAll("button"),
+    ].filter((button) => button.textContent.trim() === "编辑");
+    // 断言只拿数量和字符串，永远不把 DOM 节点交给 assert：这一行原先是
+    // `assert.equal(plainEdit, undefined)`，红的时候 assert 会用 depth:1000 展开那颗
+    // jsdom 按钮，顺着 ownerDocument / parentNode 把整张文档图铺开，几秒钟吃掉数 GiB。
+    // 2026-08-13 整台机器就是这样被一个红用例的**失败信息**拖进 swap 并卡死数小时的。
+    assert.equal(editButtons.length, 1, "同 app 就地编辑只出一颗「编辑」");
+    // 深链是跨 app 才有的东西；同 app 再出一颗就又是原地打转。
+    assert.equal(
+      mounted.container.querySelectorAll('[data-material-edit-single="true"]')
+        .length,
+      0,
+      "同 app 不该再出归属深链",
     );
-    assert.equal(plainEdit, undefined, "同 app 也不许再出就地「编辑」按钮");
     assert.deepEqual(
       globalThis.__artifactPreparedActions,
       [],
-      "没有人被交接进编辑器",
+      "点开卡片没有把任何人交接进编辑器",
     );
     assert.equal(opened.length, 0);
 
-    // 该出的是那唯一一颗按归属 app 走的深链，而且落在预览态。
-    const singles = [
-      ...mounted.container.querySelectorAll('[data-material-edit-single="true"]'),
-    ];
-    assert.equal(singles.length, 1, "一件素材只出一颗编辑入口");
-    assert.equal(singles[0].getAttribute("data-material-edit-app"), "poster");
-    // 键名以 `site-catalog-controller.ts` 的常量为准（`tab` / `item` / `mode` / `app`），
-    // 不是这些常量的变量名。
-    const href = singles[0].getAttribute("href") || "";
-    assert.ok(href.includes("mode=preview"), `落点必须是预览态：${href}`);
-    assert.ok(href.includes("app=poster"), `落点必须指名归属 app：${href}`);
-    assert.ok(href.includes("tab=materials"), `落点必须是素材库标签页：${href}`);
+    // 那颗「编辑」必须经 prepared 交接才把素材递给宿主，不许把货架上的原始行直接塞过去。
+    await click(editButtons[0]);
+    await settle();
+    assert.deepEqual(globalThis.__artifactPreparedActions, ["edit"]);
+    assert.equal(opened.length, 1, "编辑走的是 typed Edit 交接");
+    assert.equal(opened[0]?.preparedAction, "edit");
   } finally {
     await mounted.unmount();
   }
@@ -3711,6 +3720,20 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
       false,
       "跨 app 时还留着一颗不指名 app 的「编辑」",
     );
+    // 该出的是那唯一一颗按归属 app 走的深链，而且落在预览态。
+    const singles = [
+      ...crossApp.container.querySelectorAll(
+        '[data-material-edit-single="true"]',
+      ),
+    ];
+    assert.equal(singles.length, 1, "一件素材只出一颗编辑入口");
+    assert.equal(singles[0].getAttribute("data-material-edit-app"), "poster");
+    // 键名以 `site-catalog-controller.ts` 的常量为准（`tab` / `item` / `mode` / `app`），
+    // 不是这些常量的变量名。
+    const href = singles[0].getAttribute("href") || "";
+    assert.ok(href.includes("mode=preview"), `落点必须是预览态：${href}`);
+    assert.ok(href.includes("app=poster"), `落点必须指名归属 app：${href}`);
+    assert.ok(href.includes("tab=materials"), `落点必须是素材库标签页：${href}`);
   } finally {
     await crossApp.unmount();
   }
