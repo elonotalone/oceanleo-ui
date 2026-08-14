@@ -41,6 +41,17 @@ const libraryDataStubUrl = dataModule(`
       item?.artifact?.revisionId === item.revisionId
     );
   }
+  // 动作条要问「这一行是不是官方模板目录行」——「查看」不欠耐久身份。判据与
+  // library-data 同源，替身只是把同一句话说一遍。
+  export function templateMaterialArtifactId(item) {
+    const id = item?.meta?.template_material_id;
+    if (typeof id !== "string" || !id.trim()) return "";
+    const artifactId = item?.meta?.template_material_artifact_id;
+    return typeof artifactId === "string" ? artifactId.trim() : "";
+  }
+  export function isTemplateMaterialDetailItem(item) {
+    return Boolean(templateMaterialArtifactId(item)) && !isDurableLibraryItem(item);
+  }
 `);
 const contractStubUrl = dataModule(`
   export function isEnsureableTransient(value) {

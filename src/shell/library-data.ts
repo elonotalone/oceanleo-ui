@@ -486,6 +486,30 @@ export function isDurableLibraryItem(
   );
 }
 
+function libraryItemMetaText(item: LibraryItem, key: string): string {
+  const value = item.meta?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** 目录行携带的官方 artifact root id；不是模板行就是空串。 */
+export function templateMaterialArtifactId(item: LibraryItem): string {
+  if (!libraryItemMetaText(item, "template_material_id")) return "";
+  return libraryItemMetaText(item, "template_material_artifact_id");
+}
+
+/**
+ * 这一条是不是「需要在详情里解析成真素材」的官方模板行。
+ *
+ * 已经是 durable 的条目不走这条路：它自己就带着 renditions，今天的分派已经对了。
+ *
+ * 住在这一层而不是 `material-detail-slot`：它是一个只看 `meta` 的纯判据，而动作条
+ * 也要问同一个问题（「查看」不欠耐久身份）。留在那边就得让 `ArtifactActions`
+ * 去 import 一个连着 `artifact-client` 的模块，把网络与缓存拖进一条只读的判断里。
+ */
+export function isTemplateMaterialDetailItem(item: LibraryItem): boolean {
+  return Boolean(templateMaterialArtifactId(item)) && !isDurableLibraryItem(item);
+}
+
 function isCanonicalArtifactProjection(
   value: unknown,
 ): value is ArtifactProjection {

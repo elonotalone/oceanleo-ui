@@ -28,7 +28,9 @@ import {
 } from "./explore-artifact-class";
 import {
   isDurableLibraryItem,
+  isTemplateMaterialDetailItem,
   libraryItemPosterUrl,
+  templateMaterialArtifactId,
   type LibraryItem,
 } from "./library-data";
 
@@ -92,25 +94,10 @@ function withCatalogPoster(
   return { ...resolved, posterUrl: catalogPoster };
 }
 
-function metaText(item: LibraryItem, key: string): string {
-  const value = item.meta?.[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-/** 目录行携带的官方 artifact root id；不是模板行就是空串。 */
-export function templateMaterialArtifactId(item: LibraryItem): string {
-  if (!metaText(item, "template_material_id")) return "";
-  return metaText(item, "template_material_artifact_id");
-}
-
-/**
- * 这一条是不是「需要在详情里解析成真素材」的官方模板行。
- *
- * 已经是 durable 的条目不走这条路：它自己就带着 renditions，今天的分派已经对了。
- */
-export function isTemplateMaterialDetailItem(item: LibraryItem): boolean {
-  return Boolean(templateMaterialArtifactId(item)) && !isDurableLibraryItem(item);
-}
+// 这两个判据已经下沉到 `library-data`：动作条也要问同一个问题，而它不该为了一句
+// 只读判断把这个模块（连着 `artifact-client`）拖进依赖里。这里继续导出，
+// 既有调用方与判据文件一个字都不用改。
+export { isTemplateMaterialDetailItem, templateMaterialArtifactId };
 
 export type MaterialDetailTarget =
   | { status: "passthrough"; item: LibraryItem }

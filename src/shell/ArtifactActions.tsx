@@ -17,9 +17,9 @@ import { deckHtmlOpenPlan } from "./deck-delivery-family";
 import { humanErrorMessage } from "./human-error-message";
 import {
   isDurableLibraryItem,
+  isTemplateMaterialDetailItem,
   type LibraryItem,
 } from "./library-data";
-import { isTemplateMaterialDetailItem } from "./material-detail-slot";
 import { editorCapabilityFor } from "./workbench-routes";
 
 export interface ArtifactActionState {
