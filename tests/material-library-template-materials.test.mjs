@@ -134,6 +134,119 @@ test("列表响应透出 artifact 的 width/height，供自适应主预览排版
   }
 });
 
+// ---------------------------------------------------------------------------
+// W11 · 目录多出两个**可选**字段（`deliveryFamily` / `activeRuntimeUrl`），让匿名
+// 访客那一屏也分得出「HTML 网页版演示」并且打得开。取值取自这一行 pinned revision
+// 的 metadata，拿不到就整个键不出现——与 `width`/`height` 同一条纪律。
+// ---------------------------------------------------------------------------
+
+const RUNTIME_URL = "https://s-b15b61eb08dfb478236383d2408a7507.oceanleo.app/embed";
+
+function deckRow(overrides = {}) {
+  return wireRow({
+    id: "ppt-year-summary-1",
+    artifactType: "deck",
+    siteKey: "ppt",
+    appId: "year-summary",
+    previewUrl: "tpl-material/ppt-year-summary-1",
+    ...overrides,
+  });
+}
+
+test("服务端出具这两个字段时，逐字落进分类器读的那两个 meta 键", () => {
+  const material = normalizeTemplateMaterial(
+    deckRow({ deliveryFamily: "html", activeRuntimeUrl: RUNTIME_URL }),
+  );
+  assert.equal(material.deliveryFamily, "html");
+  assert.equal(material.activeRuntimeUrl, RUNTIME_URL);
+
+  const { meta } = templateMaterialEntry(material).libraryItem;
+  // 键名必须是 `deck-delivery-family.ts` 已经在读的那两个，改名等于这条链断掉。
+  assert.equal(meta.deliveryFamily, "html");
+  assert.equal(meta.activeRuntimeUrl, RUNTIME_URL);
+  // 红线：新字段一律走 meta，绝不提到条目本体上冒充 durable。
+  assert.equal(isDurableLibraryItem(templateMaterialEntry(material).libraryItem), false);
+  assert.equal("deliveryFamily" in templateMaterialEntry(material).libraryItem, false);
+
+  // PPTX 一侧同样透传。
+  const pptx = normalizeTemplateMaterial(deckRow({ deliveryFamily: "PPTX" }));
+  assert.equal(pptx.deliveryFamily, "pptx");
+  assert.equal(templateMaterialEntry(pptx).libraryItem.meta.deliveryFamily, "pptx");
+});
+
+test("字段缺席是常态：整个键不出现，而不是落一个空串", () => {
+  const material = normalizeTemplateMaterial(deckRow());
+  assert.equal(material.deliveryFamily, "");
+  assert.equal(material.activeRuntimeUrl, "");
+
+  const { meta } = templateMaterialEntry(material).libraryItem;
+  // 空串会让「没声明」和「声明了空」混成一件事，分类器就分不出来了。
+  assert.equal("deliveryFamily" in meta, false);
+  assert.equal("activeRuntimeUrl" in meta, false);
+  // 同一屏里的 PPTX 老件两个键都不许长出来——本波最容易出的错。
+  assert.equal(Object.keys(meta).some((key) => key.toLowerCase().includes("runtime")), false);
+});
+
+test("垃圾值一个都不落进 meta，且不牵连这一行本身", () => {
+  for (const deliveryFamily of [
+    "",
+    "  ",
+    "html-deck",
+    "web",
+    "HTML5",
+    "pptx-ish",
+    null,
+    123,
+    ["html"],
+    { family: "html" },
+  ]) {
+    const material = normalizeTemplateMaterial(deckRow({ deliveryFamily }));
+    assert.ok(material, `不合格的 deliveryFamily 不该丢掉整行：${JSON.stringify(deliveryFamily)}`);
+    assert.equal(material.deliveryFamily, "");
+    assert.equal(
+      "deliveryFamily" in templateMaterialEntry(material).libraryItem.meta,
+      false,
+      `不该落进 meta：${JSON.stringify(deliveryFamily)}`,
+    );
+  }
+
+  const hex = "b15b61eb08dfb478236383d2408a7507";
+  for (const activeRuntimeUrl of [
+    `http://s-${hex}.oceanleo.app/embed`,
+    `https://s-${hex}.oceanleo.com/embed`,
+    `https://s-${hex}.oceanleo.app.evil.example/embed`,
+    `https://s-${hex}.oceanleo.app:8443/embed`,
+    `https://s-${hex}.oceanleo.app/embed?token=1`,
+    `https://s-${hex}.oceanleo.app/embed#p2`,
+    `https://user:pass@s-${hex}.oceanleo.app/embed`,
+    `https://s-${hex}.oceanleo.app/other`,
+    `https://s-${hex.toUpperCase()}.oceanleo.app/embed`,
+    "javascript:alert(1)",
+    "",
+    null,
+    42,
+  ]) {
+    const material = normalizeTemplateMaterial(deckRow({ activeRuntimeUrl }));
+    assert.ok(material, `不合格的 runtime 不该丢掉整行：${activeRuntimeUrl}`);
+    assert.equal(
+      material.activeRuntimeUrl,
+      "",
+      `这个 runtime 不该被放行：${activeRuntimeUrl}`,
+    );
+    assert.equal(
+      "activeRuntimeUrl" in templateMaterialEntry(material).libraryItem.meta,
+      false,
+    );
+  }
+
+  // 两个字段互不牵连：家族歪了不该顺手把合格的 runtime 一起扔掉，反之亦然。
+  const halfBad = normalizeTemplateMaterial(
+    deckRow({ deliveryFamily: "html-deck", activeRuntimeUrl: RUNTIME_URL }),
+  );
+  assert.equal(halfBad.deliveryFamily, "");
+  assert.equal(halfBad.activeRuntimeUrl, RUNTIME_URL);
+});
+
 test("拿不到宽高时按 0 落地，不臆造一个比例", () => {
   const material = normalizeTemplateMaterial(
     wireRow({ width: undefined, height: "not-a-number" }),

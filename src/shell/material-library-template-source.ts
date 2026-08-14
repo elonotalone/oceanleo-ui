@@ -19,6 +19,10 @@
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
 import { ARTIFACT_TYPES, type ArtifactType } from "./artifact-contract";
 import type { ArtifactApiResult } from "./artifact-client";
+import {
+  safeDeckHtmlRuntimeUrl,
+  type DeckDeliveryFamily,
+} from "./deck-delivery-family";
 import type { LibraryItem } from "./library-data";
 import { MATERIAL_TAXONOMY_LABEL } from "./material-library-controller";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -49,6 +53,13 @@ export interface TemplateMaterialListing {
   /** Pinned-revision geometry; 0 when the catalog could not resolve it. */
   width: number;
   height: number;
+  /**
+   * 服务端为这一行 pinned revision 出具的交付家族；目录解析不出来时是空串。
+   * 与 `width`/`height` 同一条纪律：补充项，永不成为前提。
+   */
+  deliveryFamily: DeckDeliveryFamily | "";
+  /** 隔离域播放地址；缺席或形状不合格时是空串。 */
+  activeRuntimeUrl: string;
 }
 
 export const TEMPLATE_MATERIAL_ENTRY_PREFIX = "template-material:";
@@ -71,6 +82,16 @@ function templateText(value: unknown): string {
 function templateDimension(value: unknown): number {
   const size = typeof value === "number" ? value : Number(value);
   return Number.isFinite(size) && size > 0 ? Math.floor(size) : 0;
+}
+
+/**
+ * 服务端出具的交付家族。只认 `"pptx"` / `"html"` 两个字面量（大小写与空白无所谓），
+ * 其余取值、空串、缺失一律当没声明——这是分类器唯一肯采信的家族证据，
+ * 放宽它等于把货架上的老件凭空搬进 HTML 板块。
+ */
+function templateDeliveryFamily(value: unknown): DeckDeliveryFamily | "" {
+  const family = templateText(value).toLowerCase();
+  return family === "pptx" || family === "html" ? family : "";
 }
 
 /**
@@ -162,6 +183,11 @@ export function normalizeTemplateMaterial(
     appId: templateText(raw.appId),
     width: templateDimension(raw.width),
     height: templateDimension(raw.height),
+    deliveryFamily: templateDeliveryFamily(raw.deliveryFamily),
+    // URL 的形状不在这里判：`safeDeckHtmlRuntimeUrl()` 是唯一那道闸（精确
+    // `s-<32hex>.oceanleo.app[/embed]`，不许 userinfo / 端口 / query / fragment）。
+    // 这是导航 sink，判据只能有一处，多一处就会两处慢慢走偏。
+    activeRuntimeUrl: safeDeckHtmlRuntimeUrl(raw.activeRuntimeUrl),
   };
 }
 
@@ -205,6 +231,16 @@ export function templateMaterialLibraryItem(
       // W1 的自适应主预览按真实宽高排版；解析不出来时留 0，由调用方退化。
       width: material.width,
       height: material.height,
+      // 这两个键的名字是 `deck-delivery-family.ts` 已经在读的那两个
+      // （`DELIVERY_FAMILY_META_KEYS` / `DECK_HTML_RUNTIME_META_KEYS`）。
+      // 不够格就**整个键不出现**：分类器只在键真的在的时候才据它归类，
+      // 一个空串会让「没声明」和「声明了空」混成一件事。
+      ...(material.deliveryFamily
+        ? { deliveryFamily: material.deliveryFamily }
+        : {}),
+      ...(material.activeRuntimeUrl
+        ? { activeRuntimeUrl: material.activeRuntimeUrl }
+        : {}),
     },
   };
 }

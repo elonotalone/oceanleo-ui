@@ -78,6 +78,7 @@ const {
   deckDeliveryFamilyOf,
   deckDeliverySections,
   deckHtmlOpenPlan,
+  deckHtmlRuntimeUrl,
   safeDeckHtmlRuntimeUrl,
 } = await import(
   await compileModule("src/shell/deck-delivery-family.ts", SHELL_OVERRIDES)
@@ -621,6 +622,208 @@ test("没有 HTML 交付时布局不变：不分板块，仍是今天那张平�
     ),
   ];
   assert.equal(deckDeliverySections(images), null);
+});
+
+// ---------------------------------------------------------------------------
+// W11 · 匿名访客拿到的是官方模板目录行（`GET /v1/template-materials`），不是 durable
+// 库行：没有 revision 身份，也就永远没有 renditions。它的家族证据是服务端对这一行
+// pinned revision 的声明。下面这几格钉住那条**窄**分支的三个条件，以及「条件不齐时
+// 逐字维持今天的行为」——后者防的是「一改就把 35 个站的货架布局改了」。
+// ---------------------------------------------------------------------------
+
+/** 逐字照 `templateMaterialLibraryItem()` 铸出来的形状：不是 durable，类型在 meta 里。 */
+function templateRow(
+  id,
+  { artifactType = "deck", family, runtime, extraMeta = {} } = {},
+) {
+  const key = `template-material:${id}`;
+  return {
+    key,
+    source: "artifact",
+    id: key,
+    kind: "image",
+    title: `官方模板 ${id}`,
+    siteId: "ppt",
+    url: `https://asset.oceanleo.com/${id}.webp`,
+    previewUrl: `https://asset.oceanleo.com/${id}.webp`,
+    thumbUrl: `https://asset.oceanleo.com/${id}.webp`,
+    favorite: false,
+    meta: {
+      workspace_library_surface: "materials",
+      template_material_id: id,
+      template_material_site_key: "ppt",
+      template_material_app_id: "year-summary",
+      template_material_artifact_id: `${id}-artifact`,
+      template_material_artifact_type: artifactType,
+      template_material_download_path: `/v1/template-materials/${id}/download`,
+      width: 1920,
+      height: 1080,
+      ...(family ? { deliveryFamily: family } : {}),
+      ...(runtime ? { activeRuntimeUrl: runtime } : {}),
+      ...extraMeta,
+    },
+  };
+}
+
+test("判据 8 · 模板行 + 受控 html + 合格 runtime：进 HTML 节，「查看」拿得到地址", () => {
+  const runtime = H1_RUNTIME["deck-html-nocturne-01"];
+  const row = templateRow("ppt-year-summary-1", { family: "html", runtime });
+
+  assert.equal(deckDeliveryFamilyOf(row), "html");
+  assert.equal(deckHtmlRuntimeUrl(row), runtime);
+
+  // 没有 artifact projection 也不许炸：`deckHtmlOpenPlan()` 被动作条无条件调用。
+  const plan = deckHtmlOpenPlan(row);
+  assert.equal(plan.family, "html");
+  assert.equal(plan.view.visible, true);
+  assert.equal(plan.view.available, true);
+  assert.equal(plan.view.url, runtime);
+  // 目录行没有结构稿，「编辑」照旧不出现——两条链互不牵连。
+  assert.equal(plan.edit.visible, false);
+  assert.equal(plan.edit.sourceUrl, "");
+
+  // 这才是用户看得见的修复：匿名那一屏终于分得出板块。
+  const shelf = [...LEGACY_ITEMS.slice(0, 5), row].map(entryOf);
+  const counts = deckDeliveryCounts(shelf);
+  assert.equal(counts.pptx, 5);
+  assert.equal(counts.html, 1);
+  assert.equal(counts.unknown, 0);
+  const sections = deckDeliverySections(shelf);
+  assert.ok(sections, "有 HTML 模板行时必须分板块");
+  const byId = Object.fromEntries(
+    sections.map((section) => [section.id, section]),
+  );
+  assert.equal(byId["deck-html"].count, 1);
+  assert.equal(byId["deck-html"].label, DECK_DELIVERY_SECTION_LABEL.html);
+  assert.equal(byId["deck-html"].entries[0].id, row.key);
+  assert.equal(byId["deck-pptx"].count, 5);
+});
+
+test("判据 9 · 模板行 + 受控 pptx：进 PPTX 节，runtime 为空串", () => {
+  const row = templateRow("ppt-year-summary-2", {
+    family: "pptx",
+    // 给一件 PPTX 挂上合格 runtime 也拿不到地址：伪造一个字段不该多出播放入口。
+    runtime: H1_RUNTIME["deck-html-monotype-01"],
+  });
+  assert.equal(deckDeliveryFamilyOf(row), "pptx");
+  assert.equal(deckHtmlRuntimeUrl(row), "");
+  assert.equal(deckHtmlOpenPlan(row).view.visible, false);
+
+  const sections = deckDeliverySections([row].map(entryOf));
+  // 一屏里没有 HTML 件就不分节，布局逐字不变。
+  assert.equal(sections, null);
+  assert.equal(deckDeliveryCounts([row].map(entryOf)).pptx, 1);
+});
+
+test("判据 10 · 模板行没有受控家族：不进任何演示节，与今天逐字一致", () => {
+  // 今天绝大多数官方 PPTX 老件就是这样：目录里既没有 deliveryFamily 也没有 runtime。
+  const bare = templateRow("ppt-year-summary-legacy");
+  assert.equal(deckDeliveryFamilyOf(bare), "none");
+  assert.equal(deckHtmlRuntimeUrl(bare), "");
+  assert.equal(deckHtmlOpenPlan(bare).view.visible, false);
+
+  // 空串、垃圾值、大小写以外的取值都不算声明。
+  for (const family of ["", "  ", "HTML5", "web", "html-deck", "pptx-ish"]) {
+    assert.equal(
+      deckDeliveryFamilyOf(templateRow("x", { extraMeta: { deliveryFamily: family } })),
+      "none",
+      `不该被当成家族声明：${JSON.stringify(family)}`,
+    );
+  }
+  // 大小写与空白无所谓，字面量本身才算数。
+  assert.equal(
+    deckDeliveryFamilyOf(templateRow("x", { extraMeta: { deliveryFamily: " HTML " } })),
+    "html",
+  );
+
+  // 三个条件缺一不可：不是目录行、或者目录行的类型不是 deck，都不走这条分支。
+  const notCatalog = templateRow("x", { family: "html" });
+  delete notCatalog.meta.template_material_id;
+  assert.equal(deckDeliveryFamilyOf(notCatalog), "none");
+  assert.equal(
+    deckDeliveryFamilyOf(
+      templateRow("an-image", { artifactType: "single_file_image", family: "html" }),
+    ),
+    "none",
+  );
+
+  // 一屏全是无家族的模板行 + 旧 PPTX：仍然不分节，仍是今天那张平铺网格。
+  const shelf = [
+    ...LEGACY_ITEMS.slice(0, 4),
+    bare,
+    templateRow("ppt-year-summary-legacy-2"),
+  ].map(entryOf);
+  assert.equal(deckDeliverySections(shelf), null);
+  const counts = deckDeliveryCounts(shelf);
+  assert.equal(counts.pptx, 4);
+  assert.equal(counts.html, 0);
+  // `none` 不计入 unknown：模板行照旧只是一张普通卡片，不是「判不出家族的 deck」。
+  assert.equal(counts.unknown, 0);
+});
+
+test("判据 11 · 模板行家族是 html 但 runtime 歪掉：进 HTML 节，没有「查看」地址", () => {
+  const hex = "b15b61eb08dfb478236383d2408a7507";
+  for (const runtime of [
+    `https://s-${hex}.oceanleo.com/embed`,
+    `https://s-${hex}.oceanleo.app.evil.example/embed`,
+    `http://s-${hex}.oceanleo.app/embed`,
+    `https://s-${hex}.oceanleo.app/embed?token=1`,
+    `https://s-${hex}.oceanleo.app:8443/embed`,
+    "javascript:alert(1)",
+  ]) {
+    const row = templateRow("ppt-year-summary-3", { family: "html", runtime });
+    // 家族是服务端声明的，歪 URL 不改家族——它只让导航入口消失。
+    assert.equal(deckDeliveryFamilyOf(row), "html", runtime);
+    assert.equal(deckHtmlRuntimeUrl(row), "", `这个 runtime 不该被放行：${runtime}`);
+    const plan = deckHtmlOpenPlan(row);
+    assert.equal(plan.view.visible, false);
+    assert.equal(plan.view.url, "");
+  }
+});
+
+test("判据 12 · durable 行一步都不走这条分支：真交付物仍是唯一说话的人", () => {
+  // 往一件真 PPTX 的 meta 里塞满目录行的键，也不许把它搬进 HTML 板块。
+  const spoofed = deckItem({
+    id: "legacy-with-catalog-meta",
+    title: "旧演示",
+    sourceFormat: "pptx",
+    full: {
+      url: "https://signed.example/legacy.pptx",
+      mediaType: PPTX_MEDIA_TYPE,
+      format: "pptx",
+    },
+    source: null,
+    meta: {
+      template_material_id: "ppt-year-summary-9",
+      template_material_artifact_type: "deck",
+      deliveryFamily: "html",
+      activeRuntimeUrl: H1_RUNTIME["deck-html-manual-01"],
+    },
+  });
+  // 结果是既有那条冲突判据给的 `unknown`（声明与交付表示打架 → 不归任何一边），
+  // 不是新分支给的 `html`：durable 行的判法逐字没动。
+  assert.equal(deckDeliveryFamilyOf(spoofed), "unknown");
+  assert.equal(deckHtmlRuntimeUrl(spoofed), "");
+  assert.equal(deckHtmlOpenPlan(spoofed).view.visible, false);
+
+  // 声明与交付表示一致时也仍然由交付表示说话，走的是原来那条路。
+  const honest = deckItem({
+    id: "legacy-honest",
+    title: "旧演示",
+    sourceFormat: "pptx",
+    full: {
+      url: "https://signed.example/legacy2.pptx",
+      mediaType: PPTX_MEDIA_TYPE,
+      format: "pptx",
+    },
+    source: null,
+    meta: {
+      template_material_id: "ppt-year-summary-10",
+      template_material_artifact_type: "deck",
+      deliveryFamily: "pptx",
+    },
+  });
+  assert.equal(deckDeliveryFamilyOf(honest), "pptx");
 });
 
 test("探索页把分板块函数接到货架上，未接线会当场红", () => {

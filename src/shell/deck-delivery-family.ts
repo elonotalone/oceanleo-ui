@@ -148,6 +148,30 @@ function artifactTypeOf(item: LibraryItem): string {
 }
 
 /**
+ * 官方模板目录行（`GET /v1/template-materials`）的受控家族，三条同时成立才算数：
+ *
+ *   1. `meta.template_material_id` 存在——这个键只有
+ *      `templateMaterialLibraryItem()` 铸得出来，认它等于认「这一行来自官方目录」，
+ *      而不是认响应里的任何自由文本；
+ *   2. `meta.template_material_artifact_type` 是 `deck`——目录行的类型不在条目本体上
+ *      （提上去会让所有 `isDurableLibraryItem()` 调用者误判），所以在这里读；
+ *   3. meta 里的受控家族是 `"html"` / `"pptx"` 字面量。
+ *
+ * 少一条就返回空串，落回下面那条既有判据——今天绝大多数官方 PPTX 老件取不到家族，
+ * 它们照旧一个演示板块都不进，35 个站的货架布局逐字不动。
+ */
+function templateCatalogFamily(item: LibraryItem): DeckDeliveryFamily | "" {
+  const meta = record(item.meta) || {};
+  const catalogId =
+    typeof meta.template_material_id === "string"
+      ? meta.template_material_id.trim()
+      : "";
+  if (!catalogId) return "";
+  if (lower(meta.template_material_artifact_type) !== "deck") return "";
+  return declaredFamily(item);
+}
+
+/**
  * 这件素材属于哪个演示交付家族。
  *
  * 主证据是 `renditions.full` 这份**交付表示**：HTML 件的 full 是
@@ -155,11 +179,25 @@ function artifactTypeOf(item: LibraryItem): string {
  * 旧件里有一部分只登记了 source（就是那份 .pptx 本体），所以 full 读不到时允许
  * 回落到 source 的表示——**但只回落到 PPTX**：HTML 成员资格必须由真正的 HTML
  * 交付物给出，否则「在隔离域播放」这个动作就会长在没有 runtime 的素材上。
+ *
+ * 官方模板目录行走前面那条**窄**分支，理由是证据强度而不是方便：目录行按设计
+ * 拿不到 revision 身份，也就永远没有 `renditions`，用交付表示去问它等于问一个
+ * 它答不了的问题（今天的结果是匿名那一屏 HTML 件恒为 0）。它能给的证据是**服务端
+ * 对这一行 pinned revision 的声明**——那份声明就是服务端照着同一份交付物算出来的，
+ * 与登录用户拿到的 `renditions.full` 同源、同强度，区别只在它是被转述的。
+ * 这与「不许拿标题或 tag 猜家族」不矛盾：标题和 tag 是自由文本，谁都能写；
+ * `deliveryFamily` 是受控字段，只有服务端出得了。
  */
 export function deckDeliveryFamilyOf(
   item: LibraryItem | null | undefined,
 ): DeckDeliveryClassification {
-  if (!item || artifactTypeOf(item) !== "deck") return "none";
+  if (!item) return "none";
+  // durable 行**一步都不走这条分支**：它们有真交付物，就必须由真交付物说话。
+  if (!isDurableLibraryItem(item)) {
+    const catalog = templateCatalogFamily(item);
+    if (catalog) return catalog;
+  }
+  if (artifactTypeOf(item) !== "deck") return "none";
   if (!isDurableLibraryItem(item)) return "unknown";
   const artifact = item.artifact;
   const full = renditionSignal(artifact.renditions.full);
@@ -330,8 +368,12 @@ export function deckHtmlOpenPlan(
   if (!item || family !== "html") {
     return { family, view: HIDDEN_VIEW, edit: HIDDEN_EDIT };
   }
-  const artifact = item.artifact!;
-  if (!artifact.access.canRead || !artifact.integrity.ok) {
+  // 官方模板目录行没有 revision projection，这道闸也就没有可问的对象：它问的是
+  // 「这一版我们读得到吗、校验过吗」，而目录行的字节本来就是匿名公开的产品内容。
+  // 缺 projection 时不拦也不放宽——两条链照旧各自按自己的证据决定（runtime 在不在、
+  // 结构稿在不在），目录行没有结构稿，所以「编辑」自然不出现。
+  const artifact = item.artifact;
+  if (artifact && (!artifact.access.canRead || !artifact.integrity.ok)) {
     const reason = !artifact.access.canRead
       ? "当前主体没有读取这个 revision 的权限。"
       : artifact.integrity.reason || "当前 revision 未通过完整性校验。";
