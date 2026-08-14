@@ -24,6 +24,7 @@ import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
 import { PromptCardModal, AddPromptModal } from "./HomeCards";
+import { AppMarket } from "./AppMarket";
 import {
   GENERIC_PROMPTS,
   PROMPT_LIBRARY,
@@ -33,6 +34,11 @@ import {
   type PromptCard,
 } from "./home-cards";
 import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
+import {
+  listMarketApps,
+  listMarketScenes,
+  type MarketApp,
+} from "../lib/app-market";
 import { brandColorFor, tintOf } from "../lib/brand-color";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import type { ItemRecommendation } from "../lib/recommend";
@@ -145,6 +151,113 @@ function useAgents(refreshKey = 0): { agents: AgentDef[]; loading: boolean } {
   return { agents, loading };
 }
 
+type MarketController = {
+  items: MarketApp[];
+  total: number;
+  scenes: { scene: string; count: number }[];
+  siteIds: string[];
+  loading: boolean;
+  error: string | null;
+  query: string;
+  scene: string;
+  siteId: string;
+  setQuery: (query: string) => void;
+  setScene: (scene: string) => void;
+  setSiteId: (siteId: string) => void;
+  setInstalled: (appId: string, installed: boolean) => void;
+  retry: () => void;
+};
+
+/** app 市场与旧 useAgents 平行：公开列表不依赖登录，输入约 250ms 后才请求网关。 */
+function useMarketApps(): MarketController {
+  const [items, setItems] = useState<MarketApp[]>([]);
+  const [total, setTotal] = useState(0);
+  const [scenes, setScenes] = useState<{ scene: string; count: number }[]>([]);
+  const [siteIds, setSiteIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [scene, setScene] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    let alive = true;
+    void listMarketScenes()
+      .then((nextScenes) => {
+        if (alive) setScenes(nextScenes);
+      })
+      .catch(() => {
+        // 场景轴是增强项；列表仍可搜索、按站点看，不能因它单独失败而藏掉市场。
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    void listMarketApps({
+      q: debouncedQuery || undefined,
+      scene: scene || undefined,
+      siteId: siteId || undefined,
+      limit: 200,
+      offset: 0,
+    })
+      .then((result) => {
+        if (!alive) return;
+        setItems(result.items);
+        setTotal(result.total);
+        setSiteIds((known) =>
+          [...new Set([...known, ...result.items.map((app) => app.site_id).filter(Boolean)])]
+            .sort((a, b) => a.localeCompare(b)),
+        );
+      })
+      .catch(() => {
+        if (alive) setError("应用市场暂时没加载出来，请稍后再试。");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [debouncedQuery, scene, siteId, refreshKey]);
+
+  const setInstalled = useCallback((appId: string, installed: boolean) => {
+    setItems((current) =>
+      current.map((app) => (app.app_id === appId ? { ...app, installed } : app)),
+    );
+  }, []);
+
+  const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  return {
+    items,
+    total,
+    scenes,
+    siteIds,
+    loading,
+    error,
+    query,
+    scene,
+    siteId,
+    setQuery,
+    setScene,
+    setSiteId,
+    setInstalled,
+    retry,
+  };
+}
+
 // doctrine v8（2026-06-24）：playground 在 app / agent 之外新增两个「编排」分区——
 //   organization：可视化搭 agent 团队 / 公司架构图（节点=agent，边=关系如「汇报」）。
 //   workflow    ：流程编排图（可导入 organization、可直接导入单个 agent）。
@@ -183,6 +296,7 @@ export function PlaygroundDetail({
   renderBoard,
   renderSites,
   renderClientApps,
+  onRequestLogin,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
@@ -203,10 +317,13 @@ export function PlaygroundDetail({
    * 不传 → 不显示「客户端app」tab。
    */
   renderClientApps?: () => ReactNode;
+  /** 市场里未登录用户点「装到我的」时打开消费端自己的登录入口。 */
+  onRequestLogin?: () => void;
 }) {
   const tt = useUI();
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
+  const market = useMarketApps();
   // 有「网站」分区时默认落在它（它是第一个 tab）；否则落 app。
   const [tab, setTab] = useState<Tab>(renderSites ? "site" : "app");
   const [activeId, setActiveId] = useState<string>("");
@@ -492,6 +609,44 @@ export function PlaygroundDetail({
         <div key={`board-${tab}`} className={boardEditing ? "h-full" : ""}>
           {renderBoard({ kind: tab, onEditingChange: setBoardEditing })}
         </div>
+      </div>
+    );
+  }
+
+  // ── app 市场：跨站成品 app，不再把三十几个功能站 agent 当成 app 清单。 ──
+  if (tab === "app") {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-5">
+          <PlaygroundHeader />
+        </div>
+        <div className="mb-6">
+          <PlaygroundTabs
+            tab={tab}
+            setTab={setTab}
+            hasSites={!!renderSites}
+            hasBoard={!!renderBoard}
+            hasClientApps={!!renderClientApps}
+          />
+        </div>
+        <AppMarket
+          items={market.items}
+          total={market.total}
+          scenes={market.scenes}
+          siteIds={market.siteIds}
+          loading={market.loading}
+          error={market.error}
+          query={market.query}
+          scene={market.scene}
+          siteId={market.siteId}
+          accent={accent}
+          onQueryChange={market.setQuery}
+          onSceneChange={market.setScene}
+          onSiteChange={market.setSiteId}
+          onInstalledChange={market.setInstalled}
+          onRetry={market.retry}
+          onRequestLogin={onRequestLogin}
+        />
       </div>
     );
   }
