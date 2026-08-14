@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
@@ -211,6 +212,15 @@ test("未登录整块不渲染；登录后的首帧是骨架", () => {
   );
   assert.match(loading, /data-my-apps-loading/);
   assert.match(loading, /aria-busy="true"/);
+});
+
+test("首页把我的应用放在原有分类与卡片之前", async () => {
+  const source = await readFile("src/shell/HomeAppCards.tsx", "utf8");
+  assert.match(source, /import \{ MyAppsRail \} from "\.\/MyAppsRail"/);
+  const railAt = source.indexOf('<MyAppsRail variant="home" />');
+  const tabsAt = source.indexOf("{/* 分类 tab");
+  assert.ok(railAt >= 0, "HomeAppCards 没有挂 MyAppsRail");
+  assert.ok(tabsAt > railAt, "我的应用必须排在既有分类 tab 与卡片之前");
 });
 
 test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生效并二次确认", async () => {

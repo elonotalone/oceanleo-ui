@@ -52,6 +52,7 @@ import {
 } from "./home-cards";
 import { AddPromptModal, PromptCardModal } from "./HomePromptModals";
 import { TemplateShowcase } from "./ImageLightbox";
+import { MyAppsRail } from "./MyAppsRail";
 import { capabilityImageThumbSrc } from "../lib/app-capability-image";
 import { brandColorFor } from "../lib/brand-color";
 import { useUI } from "../i18n/ui/useUI";
@@ -294,6 +295,8 @@ export function HomeAppCards({
 
   return (
     <section className="w-full" data-home-app-cards>
+      <MyAppsRail variant="home" />
+
       {/* 分类 tab（按 app.group；无 group 的只在「全部」出现） */}
       <div className="flex flex-wrap items-center gap-1 border-b border-stone-200/70 pb-0">
         {[HOME_APP_ALL_GROUP, ...groups].map((g) => {
