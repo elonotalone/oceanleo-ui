@@ -6,7 +6,6 @@ import { currentDomainProfile } from "../contracts/domain-family";
 import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
-  advancedCapabilityForArtifactFields,
   artifactContextsEqual,
   artifactDownloadPlanFor,
   artifactUserFacingDownloadHint,
@@ -19,6 +18,8 @@ import {
   isArtifactSourceTreeUrl,
   normalizeArtifactProjection,
   normalizeArtifactProjectionResult,
+  typedSourceMediaTypeConflict,
+  UNLABELLED_BINARY_MEDIA_TYPES,
   type ArtifactApiErrorCode,
   type ArtifactCardAction,
   type ArtifactContextRef,
@@ -321,13 +322,7 @@ const EXTENSION_MEDIA_TYPES: Readonly<Record<string, string>> = Object.freeze(
   ),
 );
 
-const GENERIC_BINARY_MEDIA_TYPES = new Set([
-  "",
-  "application/download",
-  "application/octet-stream",
-  "application/x-download",
-  "binary/octet-stream",
-]);
+const GENERIC_BINARY_MEDIA_TYPES = UNLABELLED_BINARY_MEDIA_TYPES;
 
 const FORMAT_EXTENSION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   jpeg: "jpg",
@@ -2261,21 +2256,16 @@ interface ArtifactDownloadPlan extends ArtifactDownloadEvidence {
 function typedSourceMediaMismatch(artifact: ArtifactProjection): string {
   const source = artifact.renditions.source;
   if (!source) return "";
-  const declaredFormat = artifact.sourceFormat.trim().toLowerCase();
-  const capability = advancedCapabilityForArtifactFields({
+  const conflict = typedSourceMediaTypeConflict({
     artifactType: artifact.artifactType,
     sourceFormat: artifact.sourceFormat,
     editorCapability: artifact.editorCapability,
+    sourceMediaType: source.mediaType,
   });
-  if (!capability || declaredFormat !== capability.sourceFormat) return "";
-  const declaredMedia = normalizedMediaType(source.mediaType);
-  if (
-    declaredMedia === capability.sourceMediaType ||
-    GENERIC_BINARY_MEDIA_TYPES.has(declaredMedia)
-  ) {
-    return "";
-  }
-  return `素材声明 source 格式为 ${declaredFormat}，同一份 source rendition 又声明 Content-Type ${declaredMedia}，两者不可能同真，已在申请下载凭据之前拒绝。`;
+  if (!conflict) return "";
+  return `素材声明 source 格式为 ${conflict.declaredFormat}，同一份 source rendition 又声明 Content-Type ${
+    conflict.declaredMediaType || "（空）"
+  }，两者不可能同真，已在申请下载凭据之前拒绝。`;
 }
 
 function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {

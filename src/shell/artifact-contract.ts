@@ -824,23 +824,26 @@ export interface ArtifactSourceClosureEvidence {
   firstParty: boolean;
 }
 
+export const ARTIFACT_INTEGRITY_CODES = [
+  "ok",
+  "missing-acl",
+  "missing-owner",
+  "revision-mismatch",
+  "missing-preview",
+  "missing-source",
+  "missing-scene",
+  "missing-editor-manifest",
+  "source-format-mismatch",
+  "editor-capability-mismatch",
+  "missing-provenance",
+  "license-restricted",
+  "incomplete-dependency-closure",
+  "invalid-projection",
+] as const;
+
 export interface ArtifactIntegrity {
   ok: boolean;
-  code:
-    | "ok"
-    | "missing-acl"
-    | "missing-owner"
-    | "revision-mismatch"
-    | "missing-preview"
-    | "missing-source"
-    | "missing-scene"
-    | "missing-editor-manifest"
-    | "source-format-mismatch"
-    | "editor-capability-mismatch"
-    | "missing-provenance"
-    | "license-restricted"
-    | "incomplete-dependency-closure"
-    | "invalid-projection";
+  code: (typeof ARTIFACT_INTEGRITY_CODES)[number];
   reason: string;
 }
 
@@ -1728,6 +1731,60 @@ function provenanceLacksReuseEvidence(provenance: ArtifactProvenance): boolean {
   );
 }
 
+/**
+ * 未贴标签的二进制。存储桶默认就发这些，一份真 pptx 天天这样躺着，所以它与任何
+ * 具体格式都不构成矛盾 —— 只有换成**另一个具体且不相容**的类型才是两句话不可能同真。
+ */
+export const UNLABELLED_BINARY_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  "",
+  "application/download",
+  "application/octet-stream",
+  "application/x-download",
+  "binary/octet-stream",
+]);
+
+/**
+ * 「类型化 source 与它自己的 Content-Type 自相矛盾」。
+ *
+ * 一份投影说 `source_format` 是 docx，同一份 source rendition 又说 Content-Type 是
+ * image/png：两句话不可能同真，也无法判断哪句为真。
+ *
+ * 这**不是**拿平台注册表去准入自报格式（那条刻意不做，见 `artifactIntegrityFor`
+ * 末尾的注释与 `tests/typed-artifact-contract.test.mjs:105`「artifact type is an open
+ * self-reported transport label」）：能力矩阵不认得这个格式时这里一律放行，只在矩阵
+ * 认得、且这份 rendition 自己标了另一个具体类型时才判矛盾。
+ *
+ * 判据写在这一层、由完整性与下载两侧共用，是为了不出现两套同名规则各判一次。
+ */
+export function typedSourceMediaTypeConflict(input: {
+  artifactType: ArtifactType;
+  sourceFormat: string;
+  editorCapability: string | null;
+  sourceMediaType: unknown;
+}): { declaredFormat: string; declaredMediaType: string } | null {
+  const declaredFormat = input.sourceFormat.trim().toLowerCase();
+  const capability = advancedCapabilityForArtifactFields({
+    artifactType: input.artifactType,
+    sourceFormat: input.sourceFormat,
+    editorCapability: input.editorCapability,
+  });
+  if (!capability || declaredFormat !== capability.sourceFormat) return null;
+  const candidate = mediaType(input.sourceMediaType);
+  // 形状不成立的标注（`png`、`}`、乱码）等于没贴标签，不是另一个类型。
+  const declaredMediaType = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(
+    candidate,
+  )
+    ? candidate
+    : "";
+  if (
+    declaredMediaType === capability.sourceMediaType ||
+    UNLABELLED_BINARY_MEDIA_TYPES.has(declaredMediaType)
+  ) {
+    return null;
+  }
+  return { declaredFormat, declaredMediaType };
+}
+
 export function artifactIntegrityFor(input: {
   artifactType: ArtifactType;
   revisionId: string;
@@ -1815,9 +1872,29 @@ export function artifactIntegrityFor(input: {
         "素材声明可编辑，但当前 revision 缺少 source format、editor capability、source rendition 或 source digest。",
     };
   }
+  const typedSource = input.renditions.source;
+  const mediaConflict = typedSource
+    ? typedSourceMediaTypeConflict({
+        artifactType: input.artifactType,
+        sourceFormat: input.sourceFormat,
+        editorCapability: input.editorCapability,
+        sourceMediaType: typedSource.mediaType,
+      })
+    : null;
+  if (mediaConflict) {
+    return {
+      ok: false,
+      code: "source-format-mismatch",
+      reason: `素材声明 source 格式为 ${mediaConflict.declaredFormat}，同一份 source rendition 又声明 Content-Type ${
+        mediaConflict.declaredMediaType || "（空）"
+      }，两者不可能同真。`,
+    };
+  }
   // Artifact type, source format, editor capability and project shape are
   // self-reported content. The transport layer deliberately does not compare
   // any of them with a platform registry or inspect scene/manifest schemas.
+  // The one exception is right above, and it compares the projection with
+  // itself rather than with a registry: two of its own labels cannot both hold.
   return { ok: true, code: "ok", reason: "" };
 }
 
@@ -1875,28 +1952,42 @@ export function normalizeArtifactProjection(
   const declaredIntegrity = record(raw.integrity);
   const declaredCode = text(declaredIntegrity?.code);
   const declaredReason = text(declaredIntegrity?.reason);
-  const declaredTransportFailure = [
-    "missing-acl",
-    "missing-owner",
-    "revision-mismatch",
-    "missing-preview",
-    "missing-source",
-    "missing-provenance",
-    "license-restricted",
-    "invalid-projection",
-  ].includes(declaredCode);
-  const effectiveIntegrity =
-    declaredIntegrity &&
-    declaredIntegrity.ok !== true &&
-    declaredTransportFailure
-      ? {
-          ok: false,
-          code: declaredCode as ArtifactIntegrity["code"],
-          reason:
-            declaredReason ||
-            "服务端声明这个 artifact projection 未通过完整性校验。",
-        }
-      : integrity;
+  // 服务端说「这份投影没过完整性校验」时，客户端默认**采信**。
+  //
+  // 这里原先是一张 8 项白名单，而 code 的全集有 13 项：服务端声明
+  // `missing-scene` / `missing-editor-manifest` / `incomplete-dependency-closure`
+  // 或任何客户端没见过的 code 时，这一行会被静默升级成「完整性正常」，随后通过
+  // `artifactIsVisible`、被当作可播放的行送进沙箱 —— 方向是 fail-open。那三个 code
+  // 说的都是**客户端无从复算的事实**（依赖闭包在服务端到底齐不齐，客户端看不见）。
+  //
+  // 只留两个刻意不采信的例外，它们都是「拿平台注册表去判自报标签」那一类口径，
+  // 不采信是为了让 agent 新造的类型能照常流转（`tests/typed-artifact-contract.test.mjs:105`
+  // 「artifact type is an open self-reported transport label」钉着这条）。投影内部
+  // 两个标签自相矛盾那一档由 `typedSourceMediaTypeConflict()` 自己算，不靠服务端声明。
+  const registryOpinionCodes = [
+    "source-format-mismatch",
+    "editor-capability-mismatch",
+  ];
+  const declaredFailureIsBelieved =
+    Boolean(declaredIntegrity) &&
+    declaredIntegrity?.ok !== true &&
+    !registryOpinionCodes.includes(declaredCode);
+  const declaredFailureCode: ArtifactIntegrity["code"] = ARTIFACT_INTEGRITY_CODES.includes(
+    declaredCode as ArtifactIntegrity["code"],
+  )
+    ? (declaredCode as ArtifactIntegrity["code"])
+    : // 没给 code、或给了一个本端不认得的 code：仍然采信「失败」，只是失败理由
+      // 只能说到「这份投影不可用」为止，不许把它伪装成某个具体已知档位。
+      "invalid-projection";
+  const effectiveIntegrity = declaredFailureIsBelieved
+    ? {
+        ok: false,
+        code: declaredFailureCode,
+        reason:
+          declaredReason ||
+          "服务端声明这个 artifact projection 未通过完整性校验。",
+      }
+    : integrity;
   return {
     schema: "oceanleo.artifact.v1",
     artifactId,
