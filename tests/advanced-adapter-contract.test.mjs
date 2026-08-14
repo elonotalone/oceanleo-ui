@@ -7,8 +7,25 @@ import { TRUSTED_EDITOR_REGISTRY } from "../src/shell/workbench-routes.ts";
 const source = (path) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
+// 已发货的适配器实得 14 条：13 个可路由适配器 + `office` 拒收哨兵。
+//
+// 这两个数原来钉的是 16 / 15，多出来的那两条是 `geo-map` 与 `interactive-doc`：
+// `7bee5da`（2026-07-30 的保护性提交「13 份载体契约的编辑器与 geo-map/interactive-doc
+// 工作台」）连同「两个新工作台」的说法一起提交了这份契约，**实现从未落地** ——
+// `src/shell/advanced-routes/` 下没有它们的 Route，运行时注册表也从来只有 14 条。
+// 地图与交互文档当前只有浏览侧（viewer、封面、板块 tab、类型标签、explore 分派都齐），
+// 是 view-only。判据在此陈述已发货的真相，而不是继续替一个不存在的工作台背书。
+//
+// **编辑器落地时把 14 / 13 翻回 16 / 15**：下面那条缺席断言会先红出来提醒。
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
-  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 16);
+  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 14);
+  for (const unshipped of ["geo-map", "interactive-doc"]) {
+    assert.equal(
+      Object.hasOwn(TRUSTED_EDITOR_REGISTRY, unshipped),
+      false,
+      `${unshipped} 有注册项了，说明编辑器落地：本组判据要翻回 16 / 15`,
+    );
+  }
   assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office, {
     routeType: "none",
     artifactCapabilities: [],
@@ -23,7 +40,7 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
   assert.equal(
     Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
       .length,
-    15,
+    13,
   );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
     if (!contract.routable) continue;

@@ -31,6 +31,12 @@ const {
 );
 
 test("advanced editor routing covers every durable material family", () => {
+  // 清单里原来还有 `geo-map` 与 `interactive-doc` 两条，注明是「H 波新增的两条本地
+  // 路由（可算文档、地图工程）」。那两条从未存在：`7bee5da`（2026-07-30 的保护性
+  // 提交）提交了两个新工作台的契约，实现从未落地，`src/shell/advanced-routes/` 下
+  // 没有它们的 Route。地图与交互文档当前**只有浏览侧**，是 view-only；
+  // **编辑器落地时把这两条加回来**（`advanced-adapter-contract.test.mjs` 的缺席
+  // 断言会先红出来提醒）。
   assert.deepEqual(
     Object.keys(TRUSTED_EDITOR_REGISTRY).sort(),
     [
@@ -39,11 +45,8 @@ test("advanced editor routing covers every durable material family", () => {
       "deck",
       "design-canvas",
       "game",
-      // H 波新增的两条本地路由（可算文档、地图工程）。
-      "geo-map",
       "grid",
       "image",
-      "interactive-doc",
       "office",
       "pdf",
       "richdoc",

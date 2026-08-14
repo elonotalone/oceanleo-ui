@@ -8,6 +8,7 @@ import {
 import {
   ARTIFACT_TYPES,
   ARTIFACT_EDITOR_CAPABILITIES,
+  VIEW_ONLY_ARTIFACT_TYPES,
 } from "../src/shell/artifact-contract.ts";
 
 // 这一组用例存在的理由是一次真实的误答，不是为了覆盖率。
@@ -39,8 +40,28 @@ test("每一种 artifact 类型都有一个到得了的编辑器", () => {
 });
 
 test("旧的六项清单是真子集，说明这次是放宽而不是改判", () => {
+  // 六项里有四项是 typed artifact（grid / single_file_image / pdf / chart），它们
+  // 确实各有一个到得了的编辑器 —— 这就是「真子集」。
+  //
+  // 另外两项 `geo_map` / `interactive_doc` 连 artifact 类型名单都不在：它们是**只有
+  // 浏览侧**的目录类型，至今没有编辑器。`7bee5da`（2026-07-30 的保护性提交）提交了
+  // 「两个新工作台」的契约，实现从未落地，`TRUSTED_EDITOR_REGISTRY` 至今 14 条。
+  // 所以这两项钉死 false：那份六项清单错得比原判还多一层 —— 它把两个没有编辑器的
+  // 浏览类也一起数了进来。**编辑器落地时这两项会自动变 true 并让这一格红**，
+  // 那时把它们移出 `VIEW_ONLY_ARTIFACT_TYPES` 即可。
   for (const artifactType of PACKS_NOT_EDITORS) {
-    assert.equal(artifactTypeHasRoutableEditor(artifactType), true);
+    assert.equal(
+      artifactTypeHasRoutableEditor(artifactType),
+      !VIEW_ONLY_ARTIFACT_TYPES.includes(artifactType),
+      artifactType,
+    );
+  }
+  for (const viewOnly of VIEW_ONLY_ARTIFACT_TYPES) {
+    assert.equal(
+      ARTIFACT_TYPES.includes(viewOnly),
+      false,
+      `${viewOnly} 进了 ARTIFACT_TYPES：它已经有编辑/上传链路了，本组判据要跟着翻`,
+    );
   }
   const gained = ARTIFACT_TYPES.filter((t) => !PACKS_NOT_EDITORS.includes(t));
   assert.equal(gained.length, 10, "应当恰好恢复 10 类");
