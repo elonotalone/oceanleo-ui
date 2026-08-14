@@ -102,7 +102,16 @@ function stateWritesIn(node) {
   return [...writes].sort();
 }
 
-/** 扫一份源码，返回 { violations, memoSites }。 */
+/**
+ * 扫一份源码，返回 { violations, memoSites, stableMemoSites }。
+ *
+ * `stableMemoSites` 是**依赖里带着翻译函数、但那个名字是空依赖 `useCallback` 包出来的
+ * 恒定身份**的 memo/callback。它们与 `memoSites` 合起来才是「带 tt 的 memo/callback」
+ * 这一整群现场：W25 把 10 个文件改成 ref + 恒定包装之后，这一群里有一部分从
+ * `memoSites` 挪到了这里（2026-08-14 实测 106 + 8 = 114 处，其中 86 处体内写 state）。
+ * 分开报是为了让下限判据能对着**整群**断言，而不是对着「还没被恒定包装的那一部分」——
+ * 后者会被每一次正当的修复推低，逼人反复调小下限，下限也就不再证明任何事。
+ */
 function scanSource(absolutePath) {
   const text = readFileSync(absolutePath, "utf8");
   const sourceFile = ts.createSourceFile(
@@ -116,6 +125,7 @@ function scanSource(absolutePath) {
   const file = relative(REPO, absolutePath).split("\\").join("/");
   const violations = [];
   const memoSites = [];
+  const stableMemoSites = [];
 
   const visit = (node) => {
     if (ts.isCallExpression(node)) {
@@ -128,25 +138,27 @@ function scanSource(absolutePath) {
         ts.isArrayLiteralExpression(node.arguments[1])
       ) {
         const deps = node.arguments[1].elements.map((el) => el.getText(sourceFile));
-        const providerDeps = deps.filter(
-          (dep) => PROVIDER_TRANSLATE_NAMES.has(dep) && !stable.has(dep),
+        const translateDeps = deps.filter((dep) =>
+          PROVIDER_TRANSLATE_NAMES.has(dep),
         );
-        if (providerDeps.length) {
+        const providerDeps = translateDeps.filter((dep) => !stable.has(dep));
+        if (translateDeps.length) {
           const writes = stateWritesIn(node.arguments[0]);
           const line =
             sourceFile.getLineAndCharacterOfPosition(
               node.arguments[1].getStart(sourceFile),
             ).line + 1;
           const site = { file, line, hook, providerDeps, deps, writes };
-          if (isMemo) memoSites.push(site);
-          else if (writes.length) violations.push(site);
+          if (isMemo && providerDeps.length) memoSites.push(site);
+          else if (isMemo) stableMemoSites.push({ ...site, translateDeps });
+          else if (providerDeps.length && writes.length) violations.push(site);
         }
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return { violations, memoSites };
+  return { violations, memoSites, stableMemoSites };
 }
 
 function typeScriptFilesUnder(dir, out = []) {
@@ -161,12 +173,14 @@ function typeScriptFilesUnder(dir, out = []) {
 function scanTree(dir) {
   const violations = [];
   const memoSites = [];
+  const stableMemoSites = [];
   for (const file of typeScriptFilesUnder(dir).sort()) {
     const found = scanSource(file);
     violations.push(...found.violations);
     memoSites.push(...found.memoSites);
+    stableMemoSites.push(...found.stableMemoSites);
   }
-  return { violations, memoSites };
+  return { violations, memoSites, stableMemoSites };
 }
 
 /** 登记键：文件 + 命中的 provider 依赖名。对行号漂移与改名重构免疫。 */
@@ -320,12 +334,32 @@ test("正面用例：fixture 里 useMemo / useCallback 带 tt 一处都不许误
 });
 
 test("正面用例：真实仓里那批 useMemo / useCallback 带 tt 全过", () => {
-  const writing = srcScan.memoSites.filter((site) => site.writes.length > 0);
-  // 实数下限（W20 实测：memo/callback 119 处，其中 89 处体内写 state）。
+  // 「带翻译函数的 memo/callback」这一整群 = 依赖里还写着 tt 的（`memoSites`）
+  // ＋ 依赖里那个名字已经是空依赖 `useCallback` 包出的恒定身份的（`stableMemoSites`）。
+  const allMemoSites = [...srcScan.memoSites, ...srcScan.stableMemoSites];
+  const writing = allMemoSites.filter((site) => site.writes.length > 0);
+  // 实数下限（W20 实测：memo/callback 119 处，其中 89 处体内写 state；
+  // 2026-08-14 实测 114 / 86，其中 8 处已被恒定包装）。
   // 写成下限而不是等号，是为了不让无关重构天天来改这个数；但它足以证明扫描器
   // 确实看见了这批现场——看不见的话下限过不去，「不误伤」就成了空话。
-  assert.ok(srcScan.memoSites.length >= 110, `memo/callback 带 tt 只扫到 ${srcScan.memoSites.length} 处`);
+  //
+  // 这两个数原本是对着 `memoSites` 单独写的，于是 W25 把 10 个文件改成
+  // ref ＋ 恒定包装（那正是本机检推荐的修法）之后，其中 8 处从 `memoSites` 移出，
+  // 实测掉到 106 < 110，判据当场红——被推低的原因是**正当修复**，不是扫描器失明。
+  // 按 `_COMMON10.md` §红线 1(a) 改判据的取值口径（对整群断言，两个数一个字没改小），
+  // 而不是把下限调小：下限要证明的是「这批现场扫描器都看见了」，
+  // 不是「还有多少处没被修好」。
+  assert.ok(
+    allMemoSites.length >= 110,
+    `memo/callback 带 tt 只扫到 ${allMemoSites.length} 处`,
+  );
   assert.ok(writing.length >= 80, `其中体内写 state 的只扫到 ${writing.length} 处`);
+  // 恒定包装那一部分必须真的在：它既是 W13/W25 修法仍然活着的实证，也证明上面那条
+  // 下限不是靠「把口径放宽到一个空集合」凑过去的。
+  assert.ok(
+    srcScan.stableMemoSites.length > 0,
+    "一处恒定包装都没扫到：要么修法被回退了，要么 stable 判定失灵了",
+  );
   const leaked = srcScan.violations.filter((site) => MEMO_HOOKS.has(site.hook));
   assert.deepEqual(leaked, [], "useMemo / useCallback 被当成 effect 判红了");
 });
