@@ -8,6 +8,9 @@ import { strFromU8, unzipSync } from "fflate";
 import { DECK_PACKS, packById } from "../src/shell/doc-editors/deck-packs.ts";
 import { buildDeckPptx } from "../src/shell/doc-editors/deck-ooxml-package.ts";
 
+// 跨仓对账：套装调色板的权威在 asset 仓，副本只会两边一起漂移，所以这里读原件而不是
+// 抄进 tests/fixtures/。这条路径按 `w25-tests-out-of-repo-paths.test.mjs` 的闸显式登记在
+// 那份 `REGISTERED` 里（与后端仓那两条同一档）；缺仓时下面那条用例自己 skip。
 const DNA_PATH = "/root/projects/asset/lib/template-dna.ts";
 /**
  * What the writer produced for `baselineProject()` before named packs existed,
@@ -155,8 +158,21 @@ test("a named pack writes a valid package with solid alpha bands and no shape gr
   assert.doesNotMatch(slideXml, /<a:gradFill\b/);
 });
 
+/**
+ * 样张生成器的图片来源由调用方给：`W1_SAMPLE_SOURCE=<某份真实 pptx>`。
+ *
+ * 原来这里写死了一份 2026-07-27 验收会话的 `scratch/` blob。那正是
+ * `w25-tests-out-of-repo-paths.test.mjs` 这道闸要根除的形状：那份文件在写测试的人手边
+ * 活着，在别人的会话里、在明天都不活着；而 `scratch/` 里的东西从不进版本库，所以它既
+ * 不能登记（不是长期存在），也不值得把 500 KB 二进制搬进 `tests/fixtures/`（样张生成
+ * 不是套件的一部分，`W1_SAMPLE_DIR` 不设就一行都不跑）。改成由调用方指名。
+ */
 function sampleAssets() {
-  const source = "/opt/cursor-workspaces/oceandino/scratch/oceanleo-material-supply-v2-accept-2026-07-27/_blobs/src-annual-amber.pptx";
+  const source = process.env.W1_SAMPLE_SOURCE || "";
+  assert.ok(
+    source,
+    "生成样张要指名图片来源：W1_SAMPLE_SOURCE=<一份带三张以上真实图片的 pptx>",
+  );
   const zip = unzipSync(readFileSync(source));
   const media = Object.entries(zip)
     .filter(([name]) => /^ppt\/media\/.*\.(?:png|jpe?g)$/i.test(name))

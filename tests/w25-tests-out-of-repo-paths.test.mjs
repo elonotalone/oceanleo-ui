@@ -64,14 +64,12 @@ const SCRATCH = /(^|\/)scratch\//;
  * 是 → 可以登记；只是「我这台机器上现在有」→ 不许登记，搬进 `tests/fixtures/`。
  */
 const REGISTERED = {
-  "/opt/cursor-workspaces/oceandino/scripts/data/oceanleo-app-plugins.json":
-    "插件授权清册的生成物，由 scripts/ 生成并随 oceandino 仓提交；测试要对着它验按键授权，是长期存在不是临时文件",
-  "/root/projects/oceanleo/backend/app/typed_artifact_models.py":
-    "后端仓的载体类型定义，跨仓对账用；两仓都在 main 上长期存在，抄一份进来反而会两边漂移",
+  "/root/projects/asset/lib/template-dna.ts":
+    "asset 仓的套装 DNA（调色板 key/label/十个色位的权威），deck-packs.test.mjs 拿它验套装有没有对着权威漂移；asset 仓在 main 上长期存在，抄副本进来两边会一起漂移，那条用例本来就在缺仓时自己 skip",
   "/root/projects/oceanleo/backend/app/routers/template_materials_router.py":
     "后端仓的模板素材路由，深链契约要跟它对账；同上，跨仓对账不能抄副本",
   "/root/projects/oceanleo/backend":
-    "上面两条的仓根，测试用它拼路径并在缺仓时优雅跳过，不是夹具本体",
+    "上面那条后端路由的仓根，测试用它拼路径并在缺仓时优雅跳过，不是夹具本体",
   "/root/projects":
     "同上，探测同级仓是否存在用的目录前缀",
   "/tmp/oceanleo-ui-ffmpeg-probe.mp4":
