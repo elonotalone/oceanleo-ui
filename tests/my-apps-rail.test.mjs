@@ -223,6 +223,44 @@ test("首页把我的应用放在原有分类与卡片之前", async () => {
   assert.ok(tabsAt > railAt, "我的应用必须排在既有分类 tab 与卡片之前");
 });
 
+test("AppShell 两种滚动范围都只为登录用户把我的应用接在导航与历史之间", async () => {
+  const source = await readFile("src/shell/AppShell.tsx", "utf8");
+  assert.match(source, /import \{ MyAppsRail \} from "\.\/MyAppsRail"/);
+
+  const mount =
+    '{userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}';
+  assert.equal(
+    source.split(mount).length - 1,
+    2,
+    "whole 与 history 两条支路应各有一个受 userEmail 保护的侧栏入口",
+  );
+  assert.equal(
+    source.split('<MyAppsRail variant="sidebar" signedIn />').length - 1,
+    2,
+    "侧栏 MyAppsRail 不应出现在登录保护之外",
+  );
+
+  const wholeBranch = source.slice(
+    source.indexOf('data-oceanleo-sidebar-scroll="whole"'),
+    source.indexOf("data-oceanleo-pinned-account"),
+  );
+  assert.ok(
+    wholeBranch.indexOf("{navSection}") < wholeBranch.indexOf(mount) &&
+      wholeBranch.indexOf(mount) < wholeBranch.indexOf("{historySection}"),
+    "whole 支路必须按导航、我的应用、历史排列",
+  );
+
+  const historyBranch = source.slice(
+    source.indexOf('data-oceanleo-sidebar-scroll="history"'),
+    source.indexOf("// ── topbar 布局"),
+  );
+  assert.ok(
+    historyBranch.indexOf("{navSection}") < historyBranch.indexOf(mount) &&
+      historyBranch.indexOf(mount) < historyBranch.indexOf("{historySection}"),
+    "history 支路必须按导航、我的应用、历史排列",
+  );
+});
+
 test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生效并二次确认", async () => {
   const { window, restore } = await installDom();
   const { createRoot } = await import("react-dom/client");
