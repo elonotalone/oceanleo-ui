@@ -144,14 +144,36 @@ test("可玩判据只认 game，且要求 durable + 可见", () => {
     }),
     false,
   );
-  // 不可见（integrity 坏）的游戏不许进货架。
-  const invisible = normalizeArtifactProjection(
-    gameWireRow({ extra: { integrity: { ok: false, code: "bad", reason: "x" } } }),
-  );
-  if (invisible) {
+  // 不可见（integrity 坏）的游戏不许进货架——这一条钉的是隔离面：谁能被送进沙箱播放。
+  //
+  // 判据的意思一字不改，改的是夹具造得不对：原来写 `code: "bad"`，而 `bad` 不是
+  // `ArtifactIntegrity["code"]` 的成员。`normalizeArtifactProjection` 只在服务端声明的
+  // code 落在它那张传输失败名单里时才采信 `ok: false`，于是那份夹具产出的其实是一份
+  // **integrity 正常**的投影，这条判据实际在断「可见的游戏不可玩」，必红。
+  // 实现（`isPlayableGameLibraryItem` → `artifactIsVisible`）本来就是紧的，
+  // 所以按 `_COMMON10.md` §红线 1(a) 改判据，且只许改严不许改松：
+  //   ① 服务端声明的失败：换成真实的 code（`missing-provenance`）；
+  //   ② 客户端自己算出的失败：抽掉 renditions，integrity 落到 `missing-preview`。
+  // 两条都先断言「这行投影真的不可见」，再断言它不可玩——原来的 `if (invisible)`
+  // 会在夹具造不出投影时把整条判据悄悄跳过，那是假绿的形状。
+  for (const [label, extra] of [
+    [
+      "服务端声明 integrity 失败",
+      { integrity: { ok: false, code: "missing-provenance", reason: "缺 provenance 证据" } },
+    ],
+    ["投影自己算出 integrity 失败", { renditions: {} }],
+  ]) {
+    const invisible = normalizeArtifactProjection(gameWireRow({ extra }));
+    assert.ok(invisible, `${label}：夹具连投影都没造出来`);
+    assert.equal(
+      invisible.integrity.ok,
+      false,
+      `${label}：夹具造出来的这行其实是可见的，判据等于没验`,
+    );
     assert.equal(
       isPlayableGameLibraryItem(artifactProjectionToLibraryItem(invisible)),
       false,
+      `${label}：不可见的游戏被判成可玩，会被送进沙箱播放`,
     );
   }
 });
