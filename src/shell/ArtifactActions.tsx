@@ -19,6 +19,7 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+import { isTemplateMaterialDetailItem } from "./material-detail-slot";
 import { editorCapabilityFor } from "./workbench-routes";
 
 export interface ArtifactActionState {
@@ -566,9 +567,22 @@ export function ArtifactActionButtons({
    * 并且**绝不 iframe**：用户产物住在不可信域里，站内套一层框等于把它请进本域的
    * 视口（UC-1…UC-7）。算不出可信 runtime 时这颗入口不出现，「编辑」不受影响。
    */
+  /**
+   * 官方模板目录行是这条闸的例外，理由是它根本不欠这份身份。
+   *
+   * 匿名访客拿到的目录行必然解析不出耐久身份（那个端点要登录），所以
+   * `identityBlocked` 对它恒为真。「下载」「收藏」被连坐是对的——那两件事真的
+   * 要先知道是哪一版；「查看」要的只是一个地址，而这个地址是服务端照着**这一行
+   * 自己钉住的那一版**出具、又过了 `safeDeckHtmlRuntimeUrl()` 的隔离域判据，
+   * 不会因为身份解析结果而指向别的东西。连坐它的后果是三件网页版演示对未登录
+   * 访客永远打不开，而它们的字节本来就是公开的产品内容。
+   */
+  const deckHtmlViewNeedsIdentity = !isTemplateMaterialDetailItem(item);
   const deckHtmlView = {
     ...deckHtmlPlan.view,
-    visible: deckHtmlPlan.view.visible && !identityBlocked,
+    visible:
+      deckHtmlPlan.view.visible &&
+      (!identityBlocked || !deckHtmlViewNeedsIdentity),
   };
   const fullscreenEvidence = fullscreenContentEvidence(item);
   const fullscreenVisible =
