@@ -20,6 +20,25 @@ function section(path, start, end) {
   return contents.slice(first, last);
 }
 
+const DECK_EDITOR = "../src/shell/doc-editors/use-deck-editor.ts";
+
+/**
+ * 2026-08-10 `f2d7b11` 给 deck 交付分了两条路：带编辑稿的演示文稿走产线写出器
+ * `buildDeckDraftPptxBlob`，裸 pptx 保持旧的 `buildDeckPptxBlob`，两条都收在一个
+ * `buildDelivery` 回调里。所以 deck 的 save / exportPptx 现在是两跳才到渲染器：
+ * 判据按裁定跟着改成两跳都验，而不是放宽成只验一跳——`buildDelivery` 自己必须落在
+ * 两个真实渲染器上，任何一条掉了都算交付渲染器从动作上脱开。
+ */
+function assertDeckDeliveryReachesRenderers() {
+  const buildDelivery = section(
+    DECK_EDITOR,
+    "const buildDelivery = useCallback",
+    "const exportPptx = useCallback",
+  );
+  assert.match(buildDelivery, /await buildDeckPptxBlob\(snapshot\)/);
+  assert.match(buildDelivery, /await buildDeckDraftPptxBlob\(project, \{/);
+}
+
 function libraryItem(overrides = {}) {
   return {
     key: "artifact:working-head",
@@ -208,11 +227,12 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
 });
 
 test("Office saves persist a real delivery package plus exact project sidecar", () => {
+  assertDeckDeliveryReachesRenderers();
   for (const [path, end, exporter, extension] of [
     [
-      "../src/shell/doc-editors/use-deck-editor.ts",
+      DECK_EDITOR,
       "const restoreRecovery = useCallback",
-      "buildDeckPptxBlob",
+      "buildDelivery",
       "pptx",
     ],
     [
@@ -261,13 +281,14 @@ test("delivery renderers remain attached to explicit export and download actions
     ),
     /makeExportBlob\("png"/,
   );
+  assertDeckDeliveryReachesRenderers();
   assert.match(
     section(
-      "../src/shell/doc-editors/use-deck-editor.ts",
+      DECK_EDITOR,
       "const exportPptx = useCallback",
       "const save = useCallback",
     ),
-    /buildDeckPptxBlob/,
+    /await buildDelivery\(deckRef\.current\)/,
   );
   assert.match(
     section(

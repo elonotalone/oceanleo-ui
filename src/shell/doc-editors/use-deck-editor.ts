@@ -2412,8 +2412,8 @@ export function useDeckEditor(
         siteId,
         fallbackSite: "ppt",
         createFile: async () => {
-          const { blob } = await buildDelivery(snapshot);
-          return new File([blob], `${fileStem}.pptx`, {
+          const { blob: delivery } = await buildDelivery(snapshot);
+          return new File([delivery], `${fileStem}.pptx`, {
             type: DECK_SOURCE_MEDIA_TYPE,
           });
         },
