@@ -34,6 +34,7 @@ import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { LOCALES } from "../i18n/config";
 import { useUI } from "../i18n/ui/useUI";
 import { usePresenceHeartbeat } from "../lib/presence";
+import { MyAppsRail } from "./MyAppsRail";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -710,6 +711,7 @@ function AppShellInner({
         {brandHeader}
         {searchPanel}
         {navSection}
+        {userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}
         {historySection}
         <div className="space-y-3 px-3 pb-3 pt-3">
           {renderSwitchers()}
@@ -739,6 +741,8 @@ function AppShellInner({
       >
         {navSection}
       </div>
+
+      {userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-oceanleo-scroll-nav>
         {historySection}
