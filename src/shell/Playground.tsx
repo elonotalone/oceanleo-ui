@@ -671,17 +671,9 @@ export function PlaygroundDetail({
           capabilities: it.capabilities,
           category: it.category,
         }))}
-        kindLabel={tab === "app" ? "app" : "agent"}
-        placeholder={
-          tab === "app"
-            ? tt("说说你想做什么，AI 帮你推荐最合适的 app…  例如：帮我做一份简历")
-            : tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")
-        }
-        examples={
-          tab === "app"
-            ? [tt("帮我做一份求职简历"), tt("给商品做主图和卖点"), tt("把录音整理成纪要")]
-            : [tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]
-        }
+        kindLabel="agent"
+        placeholder={tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")}
+        examples={[tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]}
         accent={accent}
         onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
         onClear={() => setRecIds(null)}
@@ -693,7 +685,7 @@ export function PlaygroundDetail({
         accent={accent}
         loading={loading}
         openLabel={tt("试玩")}
-        emptyText={tab === "app" ? tt("暂无可试玩的 app。") : tt("暂无可试玩的 agent。")}
+        emptyText={tt("暂无可试玩的 agent。")}
         onOpen={(it) => {
           if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
           else setDetailId(it.id); // 先弹详情弹窗，点「召唤」才进入内嵌功能区
@@ -737,7 +729,7 @@ export function PlaygroundDetail({
           icon={detailAgent.icon}
           tagline={detailAgent.tagline}
           capabilities={detailAgent.capabilities || detailAgent.tagline}
-          tags={[tab === "app" ? "app" : "agent", detailAgent.category || ""].filter(Boolean)}
+          tags={["agent", detailAgent.category || ""].filter(Boolean)}
           strengths={(detailAgent.capabilities || "")
             .split(/[、,，;；]/)
             .map((s) => s.trim())
