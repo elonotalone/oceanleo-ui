@@ -2254,9 +2254,9 @@ interface ArtifactDownloadPlan extends ArtifactDownloadEvidence {
  * 下载凭据请求之前**失败，而不是先换来一张 signed URL 再让用户下载到一个说不清是
  * 什么的文件。
  *
- * 判据与 `artifactDownloadPlanFor` 里那条是同一条（能力矩阵认得的类型化原生文件，
- * 声明格式与矩阵一致时 Content-Type 也必须一致），那条已经不给候选；这里只把已经
- * 拒下的这一档说清楚：错在服务端投影自相矛盾，不是没有权限、也不是缺文件。
+ * 矛盾要判得准：`application/octet-stream` 这类未贴标签的二进制**不算**矛盾（存储桶
+ * 默认就发这个，一份真 pptx 天天这样躺着），只有换成另一个具体且不相容的类型
+ * （docx 说自己是 image/png）才是两句话不可能同真。
  */
 function typedSourceMediaMismatch(artifact: ArtifactProjection): string {
   const source = artifact.renditions.source;
@@ -2269,10 +2269,13 @@ function typedSourceMediaMismatch(artifact: ArtifactProjection): string {
   });
   if (!capability || declaredFormat !== capability.sourceFormat) return "";
   const declaredMedia = normalizedMediaType(source.mediaType);
-  if (declaredMedia === capability.sourceMediaType) return "";
-  return `素材声明 source 格式为 ${declaredFormat}，同一份 source rendition 又声明 Content-Type ${
-    declaredMedia || "（空）"
-  }，两者不可能同真，已在申请下载凭据之前拒绝。`;
+  if (
+    declaredMedia === capability.sourceMediaType ||
+    GENERIC_BINARY_MEDIA_TYPES.has(declaredMedia)
+  ) {
+    return "";
+  }
+  return `素材声明 source 格式为 ${declaredFormat}，同一份 source rendition 又声明 Content-Type ${declaredMedia}，两者不可能同真，已在申请下载凭据之前拒绝。`;
 }
 
 function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
