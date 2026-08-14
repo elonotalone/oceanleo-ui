@@ -6,6 +6,7 @@ import { currentDomainProfile } from "../contracts/domain-family";
 import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
+  advancedCapabilityForArtifactFields,
   artifactContextsEqual,
   artifactDownloadPlanFor,
   artifactUserFacingDownloadHint,
@@ -2245,6 +2246,35 @@ interface ArtifactDownloadPlan extends ArtifactDownloadEvidence {
   status: number;
 }
 
+/**
+ * 「类型化 source 与它自己的 Content-Type 自相矛盾」。
+ *
+ * 一份投影说 `source_format` 是 docx，又说同一份 source rendition 的 Content-Type
+ * 是 image/png：两句话不可能同真，也无法判断哪句是真的，所以这一档必须在**发出
+ * 下载凭据请求之前**失败，而不是先换来一张 signed URL 再让用户下载到一个说不清是
+ * 什么的文件。
+ *
+ * 判据与 `artifactDownloadPlanFor` 里那条是同一条（能力矩阵认得的类型化原生文件，
+ * 声明格式与矩阵一致时 Content-Type 也必须一致），那条已经不给候选；这里只把已经
+ * 拒下的这一档说清楚：错在服务端投影自相矛盾，不是没有权限、也不是缺文件。
+ */
+function typedSourceMediaMismatch(artifact: ArtifactProjection): string {
+  const source = artifact.renditions.source;
+  if (!source) return "";
+  const declaredFormat = artifact.sourceFormat.trim().toLowerCase();
+  const capability = advancedCapabilityForArtifactFields({
+    artifactType: artifact.artifactType,
+    sourceFormat: artifact.sourceFormat,
+    editorCapability: artifact.editorCapability,
+  });
+  if (!capability || declaredFormat !== capability.sourceFormat) return "";
+  const declaredMedia = normalizedMediaType(source.mediaType);
+  if (declaredMedia === capability.sourceMediaType) return "";
+  return `素材声明 source 格式为 ${declaredFormat}，同一份 source rendition 又声明 Content-Type ${
+    declaredMedia || "（空）"
+  }，两者不可能同真，已在申请下载凭据之前拒绝。`;
+}
+
 function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
   if (!isDurableLibraryItem(item)) {
     return {
@@ -2271,6 +2301,23 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
       status: 403,
     };
   }
+  const [candidate] = artifactDownloadPlanFor(artifact);
+  // 自相矛盾的类型化 source 标注要先说清楚：它既不是权限问题也不是缺文件，
+  // 说成「未通过完整性校验」会把读者带到错的方向。只在这份投影本来就拿不出任何
+  // 可下载候选时才顶掉后面的判断，能正常导出渲染物的素材不受影响。
+  const mediaMismatch = candidate ? "" : typedSourceMediaMismatch(artifact);
+  if (mediaMismatch) {
+    return {
+      visible: true,
+      available: false,
+      reason: mediaMismatch,
+      purpose: null,
+      mode: null,
+      rendition: null,
+      code: "invalid-response",
+      status: 422,
+    };
+  }
   if (!artifact.integrity.ok) {
     return {
       visible: true,
@@ -2284,7 +2331,6 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
       status: 422,
     };
   }
-  const [candidate] = artifactDownloadPlanFor(artifact);
   if (!candidate) {
     const declaredProjectState =
       artifact.renditions.source ||
