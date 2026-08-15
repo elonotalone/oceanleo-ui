@@ -83,8 +83,27 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
   return { ok: true, data: data as T };
 }
 
-export function listDevices(): Promise<DeviceApiResult<Device[]>> {
-  return authed<Device[]>("/v1/devices");
+export async function listDevices(): Promise<DeviceApiResult<Device[]>> {
+  const response = await authed<{ devices: Device[] }>("/v1/devices");
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: response.error,
+      status: response.status,
+    };
+  }
+  if (!response.data || !Array.isArray(response.data.devices)) {
+    return {
+      ok: false,
+      error: "设备列表响应格式错误",
+      status: response.status,
+    };
+  }
+  return {
+    ok: true,
+    data: response.data.devices,
+    status: response.status,
+  };
 }
 
 export function pairDevice(code: string): Promise<DeviceApiResult<unknown>> {

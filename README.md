@@ -1,6 +1,6 @@
 # @oceanleo/ui
 
-OceanLeo 全家桶**统一前端外壳**——单一事实源。所有 `*.oceanleo.com` 产品站
+OceanLeo **统一前端外壳**——单一事实源。所有 `*.oceanleo.com` 产品站
 （**除 crm**）共享这一个包，获得完全一致的：
 
 - 左侧边栏 + 右上**模型选择**（text / image / video / threed / audio 全分类）
@@ -81,7 +81,7 @@ import { ApiPage, AccountPage, SettingsPage } from "@oceanleo/ui/pages";
 
 ## i18n（中英双语，v0.23.0+）
 
-全家桶统一 **next-intl**，**cookie(`NEXT_LOCALE`) 选语言、不加 URL 前缀**、默认 `zh`。
+OceanLeo 统一使用 **next-intl**，**cookie(`NEXT_LOCALE`) 选语言、不加 URL 前缀**、默认 `zh`。
 provider + 切换器 + helper 都在本包，各站 3 步接入（决策与 runbook 见 oceandino repo
 `docs/architecture/oceanleo-i18n.md`）：
 

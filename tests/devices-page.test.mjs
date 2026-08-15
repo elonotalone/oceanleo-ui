@@ -265,6 +265,39 @@ test("页面安全说明只承诺设备侧能改的三项权限", async () => {
   view.cleanup();
 });
 
+test("真实包装响应在 HTTP 边界解包为数组并供设备页渲染", async () => {
+  const authStubUrl = dataModule(`export async function accessToken() { return "user-token"; }`);
+  const configStubUrl = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com";`);
+  const api = await import(
+    await compileModule("src/api/devices.ts", {
+      "../lib/auth/client": authStubUrl,
+      "../lib/auth/config": configStubUrl,
+    })
+  );
+  const fixture = { devices: [makeDevice({ device_name: "真实响应电脑" })] };
+  const previousFetch = globalThis.fetch;
+  let view;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(fixture), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  try {
+    const result = await api.listDevices();
+    assert.equal(result.ok, true);
+    assert.ok(Array.isArray(result.data));
+    assert.deepEqual(result.data, fixture.devices);
+
+    view = await render(api);
+    assert.ok(view.text().includes("真实响应电脑"));
+    assert.ok(view.text().includes("1 台在线"));
+  } finally {
+    view?.cleanup();
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("devices API 使用协议端点、用户 Bearer 凭据和字段名", async () => {
   const authStubUrl = dataModule(`export async function accessToken() { return "user-token"; }`);
   const configStubUrl = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com";`);
