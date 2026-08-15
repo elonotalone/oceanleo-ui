@@ -20,9 +20,23 @@ export async function listLibraryDevices(): Promise<readonly LibraryDevice[]> {
   return result.data;
 }
 
-function terminalFailure(task: LocalTask): Error {
+export function normalizeAbsoluteLibraryPath(value: string): string | null {
+  const path = value.trim();
+  if (!path) return null;
+  const posixAbsolute = path.startsWith("/");
+  const driveAbsolute = /^[A-Za-z]:[\\/]/.test(path);
+  const uncAbsolute = /^\\\\[^\\]+\\[^\\]+(?:\\|$)/.test(path);
+  return posixAbsolute || driveAbsolute || uncAbsolute ? path : null;
+}
+
+function terminalFailure(task: LocalTask, device: LibraryDevice): Error {
   switch (task.status) {
     case "denied":
+      if (task.denyReason === "path_outside_grant") {
+        return new Error(
+          `这个路径不在${device.device_name}已授权的目录范围内。`,
+        );
+      }
       return new Error("这台电脑拒绝了本地库列表请求，请在那台电脑上检查授权。");
     case "expired":
       return new Error("本地库列表请求已过期，请确认这台电脑在线后重试。");
@@ -35,13 +49,20 @@ function terminalFailure(task: LocalTask): Error {
 
 /**
  * Compose W7's task client; this module intentionally contains no fetch or
- * polling implementation of its own. An empty payload asks the device to list
- * its locally configured library grants without exposing their paths here.
+ * polling implementation of its own. Protocol §4.1 requires the user-selected
+ * absolute grant path to be sent as the fs.list payload.
  */
 export async function refreshDeviceLocalLibrary(
   device: LibraryDevice,
+  path: string,
 ): Promise<LocalLibrarySnapshot> {
-  const created = await createLocalTask(device.device_id, "fs.list", {});
+  const absolutePath = normalizeAbsoluteLibraryPath(path);
+  if (!absolutePath) {
+    throw new Error("请输入这台设备已授权目录的绝对路径。");
+  }
+  const created = await createLocalTask(device.device_id, "fs.list", {
+    path: absolutePath,
+  });
   return new Promise<LocalLibrarySnapshot>((resolve, reject) => {
     let settled = false;
     let stop = () => {};
@@ -69,7 +90,7 @@ export async function refreshDeviceLocalLibrary(
           task.status === "expired" ||
           task.status === "cancelled"
         ) {
-          finish(() => reject(terminalFailure(task)));
+          finish(() => reject(terminalFailure(task, device)));
         }
       },
       {

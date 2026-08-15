@@ -59,6 +59,37 @@ const { LibraryScope, cloudReferenceForLocalFile, formatLibraryUpdatedAt } =
     })
   );
 
+async function loadLibraryAdapter() {
+  return import(
+    await compileModule("src/shell/library-scope-client.ts", {
+      "../facades/devices": dataModule(`
+        export const devicesFacade = {
+          listDevices: async () => ({ ok: true, data: [{
+            device_id: "office-windows",
+            platform: "windows",
+            device_name: "公司 Windows",
+            online: true,
+            local_exec_enabled: true,
+            granted_kinds: ["read"],
+            last_seen_at: null,
+          }] }),
+        };
+      `),
+      "./local-task-client": dataModule(`
+        export async function createLocalTask(...args) {
+          globalThis.__w6TaskCalls.push(args);
+          return { taskId: "task-fs-list", offline: false };
+        }
+        export function watchLocalTask(taskId, onUpdate) {
+          globalThis.__w6WatchedTask = taskId;
+          queueMicrotask(() => onUpdate(globalThis.__w6TaskUpdate));
+          return () => {};
+        }
+      `),
+    })
+  );
+}
+
 const office = {
   device_id: "office-windows",
   platform: "windows",
@@ -101,6 +132,23 @@ async function mount(props = {}) {
       assert.ok(button, `missing button: ${label}`);
       await act(async () => {
         button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    },
+    async setPath(value) {
+      const input = host.querySelector('input[placeholder="输入绝对路径"]');
+      assert.ok(input, "missing absolute path input");
+      const setter = Object.getOwnPropertyDescriptor(
+        dom.window.HTMLInputElement.prototype,
+        "value",
+      ).set;
+      await act(async () => {
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    },
+    async flush() {
+      await act(async () => {
+        await new Promise((resolve) => queueMicrotask(resolve));
       });
     },
     async close() {
@@ -201,6 +249,7 @@ test("本地副本有标记，点击会切回并打开对应云端条目", async
 
 test("本地库显示相对更新时间、手动刷新和不上传正文提示", async () => {
   let refreshes = 0;
+  let refreshPath = "";
   const view = await mount({
     devices: [office],
     snapshots: {
@@ -210,8 +259,9 @@ test("本地库显示相对更新时间、手动刷新和不上传正文提示",
       },
     },
     now: () => Date.parse("2026-08-15T12:00:00Z"),
-    refreshLocalLibrary: async () => {
+    refreshLocalLibrary: async (_device, path) => {
       refreshes += 1;
+      refreshPath = path;
       return { files: [], updatedAt: "2026-08-15T12:00:00Z" };
     },
   });
@@ -220,8 +270,10 @@ test("本地库显示相对更新时间、手动刷新和不上传正文提示",
     assert.match(view.host.textContent, /更新于 5 分钟前/);
     assert.match(view.host.textContent, /本地文件的内容不会上传/);
     assert.match(view.host.textContent, /预览需要在 公司 Windows 上打开/);
+    await view.setPath("/已授权/发票");
     await view.click("手动刷新");
     assert.equal(refreshes, 1);
+    assert.equal(refreshPath, "/已授权/发票");
   } finally {
     await view.close();
   }
@@ -247,59 +299,103 @@ test("副本关联按规范化文件名和可用字节数匹配", () => {
   );
 });
 
-test("默认适配器只组合 W5 facade 与 W7 fs.list 客户端，不复制网络或轮询", async () => {
+test("跨层刷新按 §4.1 发送绝对 path，设备 files 摘要最终渲染", async () => {
   const source = readFileSync(
     new URL("../src/shell/library-scope-client.ts", import.meta.url),
     "utf8",
   );
   assert.match(source, /devicesFacade\.listDevices\(\)/);
-  assert.match(source, /createLocalTask\(device\.device_id, "fs\.list", \{\}\)/);
+  assert.match(source, /createLocalTask\(device\.device_id, "fs\.list", \{\s*path: absolutePath,/);
+  assert.doesNotMatch(source, /"fs\.list", \{\s*\}\)/);
   assert.match(source, /watchLocalTask\(/);
   assert.doesNotMatch(source, /fetch\s*\(/);
   assert.doesNotMatch(source, /setInterval|setTimeout/);
 
   globalThis.__w6TaskCalls = [];
   globalThis.__w6WatchedTask = "";
-  const adapter = await import(
-    await compileModule("src/shell/library-scope-client.ts", {
-      "../facades/devices": dataModule(`
-        export const devicesFacade = {
-          listDevices: async () => ({ ok: true, data: [{
-            device_id: "office-windows",
-            platform: "windows",
-            device_name: "公司 Windows",
-            online: true,
-            local_exec_enabled: true,
-            granted_kinds: ["read"],
-            last_seen_at: null,
-          }] }),
-        };
-      `),
-      "./local-task-client": dataModule(`
-        export async function createLocalTask(...args) {
-          globalThis.__w6TaskCalls.push(args);
-          return { taskId: "task-fs-list", offline: false };
-        }
-        export function watchLocalTask(taskId, onUpdate) {
-          globalThis.__w6WatchedTask = taskId;
-          queueMicrotask(() => onUpdate({
-            status: "succeeded",
-            resultSummary: { files: [{ name: "发票.xlsx", bytes: 8, kind: "sheet" }] },
-          }));
-          return () => {};
-        }
-      `),
-    })
-  );
+  globalThis.__w6TaskUpdate = {
+    status: "succeeded",
+    resultSummary: {
+      files: [{ name: "发票.xlsx", bytes: 8, kind: "sheet" }],
+    },
+  };
+  const adapter = await loadLibraryAdapter();
   const devices = await adapter.listLibraryDevices();
-  const snapshot = await adapter.refreshDeviceLocalLibrary(devices[0]);
-  assert.deepEqual(globalThis.__w6TaskCalls, [
-    ["office-windows", "fs.list", {}],
-  ]);
-  assert.equal(globalThis.__w6WatchedTask, "task-fs-list");
-  assert.deepEqual(snapshot.files, [
-    { name: "发票.xlsx", bytes: 8, kind: "sheet" },
-  ]);
+  const view = await mount({
+    devices,
+    refreshLocalLibrary: adapter.refreshDeviceLocalLibrary,
+  });
+  try {
+    await view.click("公司 Windows");
+    await view.setPath("  /已授权/发票  ");
+    await view.click("手动刷新");
+    await view.flush();
+    assert.deepEqual(globalThis.__w6TaskCalls, [
+      ["office-windows", "fs.list", { path: "/已授权/发票" }],
+    ]);
+    assert.equal(globalThis.__w6WatchedTask, "task-fs-list");
+    assert.match(view.host.textContent, /发票\.xlsx/);
+    assert.equal(
+      view.host.querySelector("[data-library-state]").dataset.libraryState,
+      "ready",
+    );
+  } finally {
+    await view.close();
+  }
   delete globalThis.__w6TaskCalls;
   delete globalThis.__w6WatchedTask;
+  delete globalThis.__w6TaskUpdate;
+});
+
+test("空 path 与相对 path 在前端拦截，不创建 fs.list 任务", async () => {
+  globalThis.__w6TaskCalls = [];
+  globalThis.__w6TaskUpdate = { status: "succeeded", resultSummary: { files: [] } };
+  const adapter = await loadLibraryAdapter();
+  await assert.rejects(
+    adapter.refreshDeviceLocalLibrary(office, "   "),
+    /请输入这台设备已授权目录的绝对路径/,
+  );
+  await assert.rejects(
+    adapter.refreshDeviceLocalLibrary(office, "桌面/发票"),
+    /请输入这台设备已授权目录的绝对路径/,
+  );
+  assert.deepEqual(globalThis.__w6TaskCalls, []);
+  assert.equal(
+    adapter.normalizeAbsoluteLibraryPath("C:\\Users\\Ada\\Documents"),
+    "C:\\Users\\Ada\\Documents",
+  );
+  delete globalThis.__w6TaskCalls;
+  delete globalThis.__w6TaskUpdate;
+});
+
+test("path_outside_grant 在刷新界面显示设备名相关中文文案", async () => {
+  globalThis.__w6TaskCalls = [];
+  globalThis.__w6WatchedTask = "";
+  globalThis.__w6TaskUpdate = {
+    status: "denied",
+    denyReason: "path_outside_grant",
+  };
+  const adapter = await loadLibraryAdapter();
+  const view = await mount({
+    devices: [office],
+    refreshLocalLibrary: adapter.refreshDeviceLocalLibrary,
+  });
+  try {
+    await view.click("公司 Windows");
+    await view.setPath("/未授权/发票");
+    await view.click("手动刷新");
+    await view.flush();
+    const alert = view.host.querySelector('[role="alert"]');
+    assert.ok(alert);
+    assert.match(
+      alert.textContent,
+      /这个路径不在公司 Windows已授权的目录范围内。/,
+    );
+    assert.doesNotMatch(alert.textContent, /path_outside_grant/);
+  } finally {
+    await view.close();
+  }
+  delete globalThis.__w6TaskCalls;
+  delete globalThis.__w6WatchedTask;
+  delete globalThis.__w6TaskUpdate;
 });

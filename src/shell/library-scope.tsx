@@ -7,7 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { defaultLibraryScopeAdapter } from "./library-scope-client";
+import {
+  defaultLibraryScopeAdapter,
+  normalizeAbsoluteLibraryPath,
+} from "./library-scope-client";
 
 /** Read-only projection of GET /v1/devices used by the library surface. */
 export interface LibraryDevice {
@@ -48,6 +51,7 @@ export interface LibraryScopeAdapter {
   listDevices?: () => Promise<readonly LibraryDevice[]>;
   refreshLocalLibrary?: (
     device: LibraryDevice,
+    path: string,
   ) => Promise<LocalLibrarySnapshot>;
 }
 
@@ -122,20 +126,24 @@ function LocalLibraryPanel({
   snapshot,
   loading,
   error,
+  path,
   cloudItems,
   now,
   canRefresh,
   onRefresh,
+  onPathChange,
   onOpenCloudItem,
 }: {
   device: LibraryDevice;
   snapshot?: LocalLibrarySnapshot;
   loading: boolean;
   error?: string;
+  path: string;
   cloudItems: readonly CloudLibraryReference[];
   now: number;
   canRefresh: boolean;
   onRefresh: () => void;
+  onPathChange: (path: string) => void;
   onOpenCloudItem?: (itemId: string) => void;
 }) {
   if (!device.online) {
@@ -168,14 +176,37 @@ function LocalLibraryPanel({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={!canRefresh || loading}
-          className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
-        >
-          {loading ? "正在刷新…" : "手动刷新"}
-        </button>
+        <div className="min-w-[min(100%,22rem)] space-y-2">
+          <label
+            htmlFor={`local-library-path-${device.device_id}`}
+            className="block text-xs font-medium text-stone-700"
+          >
+            已授权目录的绝对路径
+          </label>
+          <div className="flex gap-2">
+            <input
+              id={`local-library-path-${device.device_id}`}
+              type="text"
+              value={path}
+              onChange={(event) => onPathChange(event.target.value)}
+              placeholder="输入绝对路径"
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-800 outline-none focus:border-sky-400"
+            />
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={!canRefresh || loading}
+              className="shrink-0 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+            >
+              {loading ? "正在刷新…" : "手动刷新"}
+            </button>
+          </div>
+          <p className="text-xs leading-relaxed text-stone-500">
+            请填写你已经在 {device.device_name} 上授权过的目录；路径只用于向这台设备下发列表请求。
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -251,6 +282,7 @@ export function LibraryScope({
   const [loadedSnapshots, setLoadedSnapshots] = useState<Record<string, LocalLibrarySnapshot>>({});
   const [loadingDeviceId, setLoadingDeviceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [paths, setPaths] = useState<Record<string, string>>({});
   const devices = controlledDevices ?? loadedDevices;
   const snapshots = controlledSnapshots ?? loadedSnapshots;
 
@@ -285,10 +317,18 @@ export function LibraryScope({
   const refresh = useCallback(
     async (device: LibraryDevice) => {
       if (!refreshLocalLibrary || !device.online) return;
+      const path = normalizeAbsoluteLibraryPath(paths[device.device_id] || "");
+      if (!path) {
+        setErrors((current) => ({
+          ...current,
+          [device.device_id]: "请输入这台设备已授权目录的绝对路径。",
+        }));
+        return;
+      }
       setLoadingDeviceId(device.device_id);
       setErrors((current) => ({ ...current, [device.device_id]: "" }));
       try {
-        const next = await refreshLocalLibrary(device);
+        const next = await refreshLocalLibrary(device, path);
         if (controlledSnapshots === undefined) {
           setLoadedSnapshots((current) => ({
             ...current,
@@ -307,7 +347,7 @@ export function LibraryScope({
         setLoadingDeviceId(null);
       }
     },
-    [controlledSnapshots, refreshLocalLibrary],
+    [controlledSnapshots, paths, refreshLocalLibrary],
   );
 
   return (
@@ -379,10 +419,21 @@ export function LibraryScope({
             snapshot={snapshots[selectedDevice.device_id]}
             loading={loadingDeviceId === selectedDevice.device_id}
             error={errors[selectedDevice.device_id]}
+            path={paths[selectedDevice.device_id] || ""}
             cloudItems={cloudItems}
             now={now()}
             canRefresh={Boolean(refreshLocalLibrary)}
             onRefresh={() => void refresh(selectedDevice)}
+            onPathChange={(path) => {
+              setPaths((current) => ({
+                ...current,
+                [selectedDevice.device_id]: path,
+              }));
+              setErrors((current) => ({
+                ...current,
+                [selectedDevice.device_id]: "",
+              }));
+            }}
             onOpenCloudItem={(itemId) => {
               setActiveScope("cloud");
               onOpenCloudItem?.(itemId);
