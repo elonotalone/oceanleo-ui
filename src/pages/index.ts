@@ -21,3 +21,4 @@ export { MyDatabasePage, MyDatabasePanel } from "./MyDatabasePage";
 export type { MyDatabasePageProps, MyDatabasePanelProps } from "./MyDatabasePage";
 export { PluginsPage } from "./PluginsPage";
 export type { PluginsPageProps } from "./PluginsPage";
+export { DevicesPage, type DevicesPageProps } from "./DevicesPage";
