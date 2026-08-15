@@ -2955,6 +2955,12 @@
         },
         {
           "kind": "named",
+          "name": "detectNativeHost",
+          "importedName": "detectNativeHost",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "DirectoryItem",
           "importedName": "DirectoryItem",
           "source": "./AppDirectory"
@@ -3585,6 +3591,12 @@
         },
         {
           "kind": "named",
+          "name": "LibraryLocalScopeProvider",
+          "importedName": "LibraryLocalScopeProvider",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
           "name": "LibraryPreviewIntent",
           "importedName": "LibraryPreviewIntent",
           "source": "./library-edit-intent"
@@ -3689,6 +3701,12 @@
           "kind": "named",
           "name": "LocalLibrarySnapshot",
           "importedName": "LocalLibrarySnapshot",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LocalScopeExtraRender",
+          "importedName": "LocalScopeExtraRender",
           "source": "./library-scope"
         },
         {
@@ -3861,6 +3879,60 @@
         },
         {
           "kind": "named",
+          "name": "MOBILE_BRIDGE_GLOBAL",
+          "importedName": "MOBILE_BRIDGE_GLOBAL",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MOBILE_DEGRADATION",
+          "importedName": "MOBILE_DEGRADATION",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MOBILE_NOTICE_EVENT",
+          "importedName": "MOBILE_NOTICE_EVENT",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MOBILE_SHARE_EVENT",
+          "importedName": "MOBILE_SHARE_EVENT",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MOBILE_TRUSTED_ORIGIN",
+          "importedName": "TRUSTED_ORIGIN",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MobileBridgeHandle",
+          "importedName": "MobileBridgeHandle",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MobileBridgeOptions",
+          "importedName": "MobileBridgeOptions",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MobileCapability",
+          "importedName": "MobileCapability",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "MobileResult",
+          "importedName": "MobileResult",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "ModelCategory",
           "importedName": "ModelCategory",
           "source": "./ModelPicker"
@@ -3903,6 +3975,12 @@
         },
         {
           "kind": "named",
+          "name": "NativeHost",
+          "importedName": "NativeHost",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "navigateToArtifactPlay",
           "importedName": "navigateToArtifactPlay",
           "source": "./explore-artifact-class"
@@ -3936,6 +4014,12 @@
           "name": "normalizeSelectionContext",
           "importedName": "normalizeSelectionContext",
           "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeTrustedDeepLink",
+          "importedName": "normalizeTrustedDeepLink",
+          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4056,6 +4140,18 @@
           "name": "partitionSelectionInspectorControls",
           "importedName": "partitionSelectionInspectorControls",
           "source": "./selection-inspector-groups"
+        },
+        {
+          "kind": "named",
+          "name": "pickFilesWithSystemPicker",
+          "importedName": "pickFilesWithSystemPicker",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "pickPhotosWithSystemPicker",
+          "importedName": "pickPhotosWithSystemPicker",
+          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4263,6 +4359,12 @@
         },
         {
           "kind": "named",
+          "name": "queuedDeviceTaskMessage",
+          "importedName": "queuedDeviceTaskMessage",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "readSiteAppDirectory",
           "importedName": "readSiteAppDirectory",
           "source": "./material-scene-axis"
@@ -4404,6 +4506,12 @@
           "name": "SavedWorkflow",
           "importedName": "SavedWorkflow",
           "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "scanWithSystemCamera",
+          "importedName": "scanWithSystemCamera",
+          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4587,6 +4695,18 @@
         },
         {
           "kind": "named",
+          "name": "SHARE_EVENT_NAME",
+          "importedName": "SHARE_EVENT_NAME",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "SHARE_LANDING_PATH",
+          "importedName": "SHARE_LANDING_PATH",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "ShellChromeProvider",
           "importedName": "ShellChromeProvider",
           "source": "./ShellChrome"
@@ -4614,6 +4734,12 @@
           "name": "ShellSubNav",
           "importedName": "ShellSubNav",
           "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "showTaskNotification",
+          "importedName": "showTaskNotification",
+          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4719,6 +4845,12 @@
         },
         {
           "kind": "named",
+          "name": "startMobileBridge",
+          "importedName": "startMobileBridge",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "Studio",
           "importedName": "Studio",
           "source": "./Studio"
@@ -4746,6 +4878,12 @@
           "name": "subscribeSiteAppDirectories",
           "importedName": "subscribeSiteAppDirectories",
           "source": "./material-scene-axis"
+        },
+        {
+          "kind": "named",
+          "name": "TaskNotification",
+          "importedName": "TaskNotification",
+          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
