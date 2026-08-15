@@ -178,12 +178,12 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
               inputMode="text"
               maxLength={8}
               value={pairCode}
-              onChange={(event) => {
-                setPairCode(event.target.value.replace(/\s/g, "").toUpperCase());
+              onInput={(event) => {
+                setPairCode(event.currentTarget.value.replace(/\s/g, ""));
                 setPairError(null);
               }}
               placeholder={tt("输入 8 位配对码")}
-              className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 font-mono text-[15px] uppercase tracking-[0.18em] text-neutral-900 outline-none transition focus:border-neutral-400"
+              className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 font-mono text-[15px] tracking-[0.18em] text-neutral-900 outline-none transition focus:border-neutral-400"
             />
             <button
               type="submit"

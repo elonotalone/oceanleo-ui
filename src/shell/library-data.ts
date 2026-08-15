@@ -114,6 +114,36 @@ export interface LibraryItem {
   transient?: TransientGenerationResult;
 }
 
+export interface LibraryCloudReference {
+  id: string;
+  name: string;
+  bytes?: number;
+}
+
+/**
+ * A local fs.list summary has no cloud identity, so duplicate recognition is
+ * deliberately limited to stable metadata already present in the cloud row:
+ * normalized filename plus bytes when the cloud projection supplies it.
+ */
+export function libraryItemCloudReference(
+  item: LibraryItem,
+): LibraryCloudReference {
+  const filename =
+    typeof item.meta.filename === "string" && item.meta.filename.trim()
+      ? item.meta.filename.trim()
+      : item.title;
+  const rawBytes = item.meta.bytes ?? item.meta.size;
+  const bytes =
+    typeof rawBytes === "number" && Number.isFinite(rawBytes) && rawBytes >= 0
+      ? rawBytes
+      : undefined;
+  return {
+    id: item.artifactId || item.id,
+    name: filename,
+    ...(bytes === undefined ? {} : { bytes }),
+  };
+}
+
 export interface LibraryArtifactRow {
   id: string;
   title?: string | null;

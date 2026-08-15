@@ -13,10 +13,15 @@ import {
   artifactTypeForLibraryKind,
   inferLibraryKind,
   isDurableLibraryItem,
+  libraryItemCloudReference,
   libraryItemIdentityKey,
   type LibraryItem,
   type LibraryKind,
 } from "./library-data";
+import {
+  LibraryScope,
+  type LibraryScopeIntegration,
+} from "./library-scope";
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   ensureArtifact,
@@ -368,6 +373,8 @@ export interface MyLibraryProps {
   draggableMaterials?: boolean;
   onMaterialDragStart?: (item: LibraryItem) => void;
   onMaterialDragEnd?: () => void;
+  /** W5 device facade + W7 fs.list task adapter for device-bound libraries. */
+  libraryScope?: LibraryScopeIntegration;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -394,6 +401,7 @@ export function MyLibrary({
   draggableMaterials,
   onMaterialDragStart,
   onMaterialDragEnd,
+  libraryScope,
 }: MyLibraryProps) {
   const tt = useUI();
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
@@ -1026,6 +1034,23 @@ export function MyLibrary({
       removeItem,
     ],
   );
+  const cloudItems = useMemo(
+    () => items.map(libraryItemCloudReference),
+    [items],
+  );
+  const openCloudCopy = useCallback(
+    (itemId: string) => {
+      if (libraryScope?.onOpenCloudItem) {
+        libraryScope.onOpenCloudItem(itemId);
+        return;
+      }
+      const item = items.find(
+        (candidate) => (candidate.artifactId || candidate.id) === itemId,
+      );
+      if (item) (onOpenItem || setStandaloneEditorItem)(item);
+    },
+    [items, libraryScope, onOpenItem],
+  );
   const failureCopy = myLibraryFailure(failureStatus, failureMessage);
   const toolbar = (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1090,67 +1115,73 @@ export function MyLibrary({
   }
 
   return (
-    <div className="relative h-full min-h-0">
-      <WorkspaceLibrary
-        entries={entries}
-        accent={accent}
-        action={action}
-        category={category}
-        onCategoryChange={onCategoryChange}
-        taskId={taskId}
-        siteId={siteId}
-        onOpenItem={onOpenItem || setStandaloneEditorItem}
-        openAdvancedOnSelect={openAdvancedOnSelect}
-        materialActions={materialActions}
-        onMaterialAction={onMaterialAction}
-        materialActionAvailable={materialActionAvailable}
-        materialActionEvidence={materialActionEvidence}
-        primaryMaterialAction={primaryMaterialAction}
-        draggableMaterials={draggableMaterials}
-        onMaterialDragStart={onMaterialDragStart}
-        onMaterialDragEnd={onMaterialDragEnd}
-        toolbarActions={toolbar}
-        searchPlaceholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
-        emptyTitle={
-          loading
-            ? "正在加载我的库…"
-            : authRequired || failed
-              ? failureCopy.title
-              : "我的库还是空的"
-        }
-        emptyDescription={
-          authRequired || failed
-            ? failureCopy.description
-            : "生成作品、收藏公共素材或上传文件后，它们会自动出现在这里。"
-        }
-        className={className}
-        plain={plain}
-      />
-      {failed && entries.length > 0 && (
-        <div
-          role="alert"
-          className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
-        >
-          {tt(failureCopy.title)}：{tt(failureCopy.description)}
-        </div>
-      )}
-      {favoriteWarning && !authRequired && !failed && (
-        <div
-          role="alert"
-          className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
-        >
-          {tt(favoriteWarning)}
-        </div>
-      )}
-      {(uploadProgress || uploadError) && (
-        <div
-          role={uploadError ? "alert" : "status"}
-          aria-live="polite"
-          className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg"
-        >
-          {uploadError || uploadProgress}
-        </div>
-      )}
-    </div>
+    <LibraryScope
+      {...libraryScope}
+      cloudItems={libraryScope?.cloudItems || cloudItems}
+      onOpenCloudItem={openCloudCopy}
+    >
+      <div className="relative h-full min-h-0">
+        <WorkspaceLibrary
+          entries={entries}
+          accent={accent}
+          action={action}
+          category={category}
+          onCategoryChange={onCategoryChange}
+          taskId={taskId}
+          siteId={siteId}
+          onOpenItem={onOpenItem || setStandaloneEditorItem}
+          openAdvancedOnSelect={openAdvancedOnSelect}
+          materialActions={materialActions}
+          onMaterialAction={onMaterialAction}
+          materialActionAvailable={materialActionAvailable}
+          materialActionEvidence={materialActionEvidence}
+          primaryMaterialAction={primaryMaterialAction}
+          draggableMaterials={draggableMaterials}
+          onMaterialDragStart={onMaterialDragStart}
+          onMaterialDragEnd={onMaterialDragEnd}
+          toolbarActions={toolbar}
+          searchPlaceholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
+          emptyTitle={
+            loading
+              ? "正在加载我的库…"
+              : authRequired || failed
+                ? failureCopy.title
+                : "我的库还是空的"
+          }
+          emptyDescription={
+            authRequired || failed
+              ? failureCopy.description
+              : "生成作品、收藏公共素材或上传文件后，它们会自动出现在这里。"
+          }
+          className={className}
+          plain={plain}
+        />
+        {failed && entries.length > 0 && (
+          <div
+            role="alert"
+            className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
+          >
+            {tt(failureCopy.title)}：{tt(failureCopy.description)}
+          </div>
+        )}
+        {favoriteWarning && !authRequired && !failed && (
+          <div
+            role="alert"
+            className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
+          >
+            {tt(favoriteWarning)}
+          </div>
+        )}
+        {(uploadProgress || uploadError) && (
+          <div
+            role={uploadError ? "alert" : "status"}
+            aria-live="polite"
+            className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg"
+          >
+            {uploadError || uploadProgress}
+          </div>
+        )}
+      </div>
+    </LibraryScope>
   );
 }

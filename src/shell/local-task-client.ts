@@ -210,7 +210,9 @@ export async function createLocalTask(
   const hint =
     stringField(response.code) ||
     stringField(response.error_code) ||
-    stringField(response.warning);
+    stringField(response.warning) ||
+    stringField(response.error) ||
+    stringField(response.detail);
   return {
     taskId,
     offline: response.offline === true || hint === "device_offline",

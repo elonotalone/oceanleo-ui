@@ -30,6 +30,10 @@ import {
   type AssetItem,
   type KnowledgeItem,
 } from "../lib/database";
+import {
+  LibraryScope,
+  type LibraryScopeIntegration,
+} from "./library-scope";
 
 export type LibraryTab = "files" | "works" | "assets" | "knowledge";
 type Tab = LibraryTab;
@@ -65,6 +69,8 @@ export interface FileLibraryProps {
   /** 操作员 2026-07-01：true 时用 h-full 填满父容器（供 SplitWorkspace 右栏内嵌），
    *  而非默认的 h-[calc(100dvh-1px)] 视口高度（那会在分栏 body 里撑破）。 */
   fill?: boolean;
+  /** W5 device facade + W7 fs.list task adapter for device-bound libraries. */
+  libraryScope?: LibraryScopeIntegration;
 }
 
 export function FileLibrary({
@@ -78,6 +84,7 @@ export function FileLibrary({
   onTabChange,
   hideHeader = false,
   fill = false,
+  libraryScope,
 }: FileLibraryProps) {
   const tt = useUI();
   const [internalTab, setInternalTab] = useState<Tab>(defaultTab);
@@ -90,7 +97,11 @@ export function FileLibrary({
   const [scopeSite, setScopeSite] = useState<string>(siteId);
 
   return (
-    <div className={`flex flex-col ${fill ? "h-full" : "h-[calc(100dvh-1px)]"} ${hideHeader ? "px-4 py-4" : "px-8 pb-6 pt-16"}`}>
+    <LibraryScope
+      {...libraryScope}
+      className={fill ? "h-full" : "h-[calc(100dvh-1px)]"}
+    >
+      <div className={`flex h-full flex-col ${hideHeader ? "px-4 py-4" : "px-8 pb-6 pt-16"}`}>
       {!hideHeader && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -138,7 +149,8 @@ export function FileLibrary({
         {tab === "assets" && <AssetsPanel accent={accent} />}
         {tab === "knowledge" && <KnowledgePanel accent={accent} />}
       </div>
-    </div>
+      </div>
+    </LibraryScope>
   );
 }
 

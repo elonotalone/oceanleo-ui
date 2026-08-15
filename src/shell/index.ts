@@ -370,6 +370,25 @@ export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 export { MyLibrary } from "./MyLibrary";
 export type { MyLibraryProps } from "./MyLibrary";
 export {
+  LibraryScope,
+  cloudReferenceForLocalFile,
+  formatLibraryUpdatedAt,
+} from "./library-scope";
+export {
+  defaultLibraryScopeAdapter,
+  listLibraryDevices,
+  refreshDeviceLocalLibrary,
+} from "./library-scope-client";
+export type {
+  CloudLibraryReference,
+  LibraryDevice,
+  LibraryScopeAdapter,
+  LibraryScopeIntegration,
+  LibraryScopeProps,
+  LocalLibraryFile,
+  LocalLibrarySnapshot,
+} from "./library-scope";
+export {
   FIXED_WORKSPACE_SLOTS,
   WORKSPACE_ACTION_EVENT,
   dispatchWorkspaceAction,
@@ -636,6 +655,9 @@ export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
 export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";
 export type { FileLibraryProps, SiteOption, LibraryTab } from "./FileLibrary";
+export { LocalTaskLauncher } from './LocalTaskLauncher';
+export { LocalTaskProgress } from './LocalTaskProgress';
+export * from './local-task-client';
 // 统一文件库（2026-07-02）：主站 + 全部子站同一套「全部/图片/文档/幻灯片/视频/
 // 音频/3D/收藏」分区，agent_artifacts 全系列打通。
 export { ArtifactLibrary, ARTIFACT_FILTERS } from "./ArtifactLibrary";
