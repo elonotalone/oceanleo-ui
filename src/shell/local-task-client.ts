@@ -14,6 +14,18 @@ export const LOCAL_ACTION_KINDS = [
 
 export type LocalActionKind = (typeof LOCAL_ACTION_KINDS)[number];
 
+export interface LocalActionPayloadByKind {
+  "fs.list": { path: string };
+  "fs.read_summary": { path: string };
+  "file.write": { path: string; content_b64: string };
+  "python.run": { cwd: string; code: string };
+  "shell.run": { cwd: string; command: string };
+  "app.open": { path: string };
+}
+
+export type LocalActionPayload<K extends LocalActionKind> =
+  LocalActionPayloadByKind[K];
+
 export const LOCAL_TASK_STATUSES = [
   "queued",
   "claimed",
@@ -48,12 +60,14 @@ export interface LocalTaskResultSummary {
   rows?: number;
   files?: LocalTaskSummaryFile[];
   exit_code?: number;
+  output_bytes?: number;
   stdout_tail?: string;
   stderr_tail?: string;
 }
 
 export interface LocalTask {
   status: LocalTaskStatus;
+  actionKind?: LocalActionKind;
   resultSummary?: LocalTaskResultSummary;
   denyReason?: LocalTaskDenyReason;
 }
@@ -136,6 +150,10 @@ function isStatus(value: unknown): value is LocalTaskStatus {
   return LOCAL_TASK_STATUSES.some((status) => status === value);
 }
 
+function isActionKind(value: unknown): value is LocalActionKind {
+  return LOCAL_ACTION_KINDS.some((actionKind) => actionKind === value);
+}
+
 function isDenyReason(value: unknown): value is LocalTaskDenyReason {
   return [
     "local_exec_disabled",
@@ -152,6 +170,7 @@ function isDenyReason(value: unknown): value is LocalTaskDenyReason {
  */
 export function sanitizeLocalTaskSummary(
   value: unknown,
+  actionKind?: LocalActionKind,
 ): LocalTaskResultSummary | undefined {
   if (!isObject(value)) return undefined;
   const summary: LocalTaskResultSummary = {};
@@ -159,10 +178,17 @@ export function sanitizeLocalTaskSummary(
   const bytes = numberField(value.bytes);
   const rows = numberField(value.rows);
   const exitCode = numberField(value.exit_code);
+  const outputBytes = numberField(value.output_bytes);
+  if (actionKind === "shell.run") {
+    if (exitCode !== undefined) summary.exit_code = exitCode;
+    if (outputBytes !== undefined) summary.output_bytes = outputBytes;
+    return Object.keys(summary).length > 0 ? summary : undefined;
+  }
   if (entries !== undefined) summary.entries = entries;
   if (bytes !== undefined) summary.bytes = bytes;
   if (rows !== undefined) summary.rows = rows;
   if (exitCode !== undefined) summary.exit_code = exitCode;
+  if (outputBytes !== undefined) summary.output_bytes = outputBytes;
 
   if (Array.isArray(value.columns)) {
     summary.columns = value.columns.filter(
@@ -189,10 +215,10 @@ export function sanitizeLocalTaskSummary(
   return Object.keys(summary).length > 0 ? summary : undefined;
 }
 
-export async function createLocalTask(
+export async function createLocalTask<K extends LocalActionKind>(
   deviceId: string,
-  actionKind: LocalActionKind,
-  payload: Record<string, unknown>,
+  actionKind: K,
+  payload: LocalActionPayloadByKind[NoInfer<K>],
 ): Promise<CreatedLocalTask> {
   const response = await request(
     `/v1/devices/${encodeURIComponent(deviceId)}/tasks`,
@@ -215,7 +241,10 @@ export async function createLocalTask(
     stringField(response.detail);
   return {
     taskId,
-    offline: response.offline === true || hint === "device_offline",
+    offline:
+      response.device_offline === true ||
+      response.offline === true ||
+      hint === "device_offline",
   };
 }
 
@@ -227,12 +256,16 @@ export async function getLocalTask(taskId: string): Promise<LocalTask> {
   if (!isObject(raw) || !isStatus(raw.status)) {
     throw new LocalTaskApiError("invalid_response", 200);
   }
+  const rawActionKind = raw.action_kind ?? raw.actionKind;
+  const actionKind = isActionKind(rawActionKind) ? rawActionKind : undefined;
   const resultSummary = sanitizeLocalTaskSummary(
     raw.result_summary ?? raw.resultSummary,
+    actionKind,
   );
   const rawDenyReason = raw.deny_reason ?? raw.denyReason;
   return {
     status: raw.status,
+    ...(actionKind ? { actionKind } : {}),
     ...(resultSummary ? { resultSummary } : {}),
     ...(isDenyReason(rawDenyReason) ? { denyReason: rawDenyReason } : {}),
   };

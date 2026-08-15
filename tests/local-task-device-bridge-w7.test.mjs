@@ -71,6 +71,19 @@ test("Launcher renders online, offline, and no-device states", () => {
   assert.match(missing, /去连接一台电脑/);
 });
 
+test("shell launcher warns that every command needs confirmation on that computer", () => {
+  const markup = render(LocalTaskLauncher, {
+    deviceId: "device-1",
+    deviceName: "那台电脑",
+    actionKind: "shell.run",
+    payload: { cwd: "/allowed", command: "pwd" },
+    label: "运行命令",
+    onCreated() {},
+  });
+  assert.match(markup, /每次都要在那台电脑上单独确认/);
+  assert.match(markup, /不能一次授权长期生效/);
+});
+
 test("all five deny reasons render a human action on 那台电脑", () => {
   const expectations = new Map([
     ["local_exec_disabled", /开关只能在那台电脑上打开/],
@@ -146,6 +159,34 @@ test("summary sanitizer exposes only protocol §5.3 fields and clamps output tai
   assert.equal("file_content" in summary, false);
 });
 
+test("shell success shows only exit code and output bytes, with output kept in local audit", () => {
+  const sanitized = client.sanitizeLocalTaskSummary({
+    exit_code: 7,
+    output_bytes: 321,
+    stdout_tail: "must stay on device",
+    stderr_tail: "must also stay on device",
+  }, "shell.run");
+  assert.deepEqual(sanitized, { exit_code: 7, output_bytes: 321 });
+
+  const markup = render(LocalTaskProgress, {
+    taskId: "task-shell",
+    deviceName: "书房电脑",
+    initialTask: {
+      status: "succeeded",
+      actionKind: "shell.run",
+      resultSummary: {
+        ...sanitized,
+        stdout_tail: "malicious server leakage",
+      },
+    },
+  });
+  assert.match(markup, /退出码<\/dt><dd>7/);
+  assert.match(markup, /输出<\/dt><dd>321 字节/);
+  assert.match(markup, /命令输出只保存在书房电脑上/);
+  assert.match(markup, /客户端的本地审计里查看/);
+  assert.doesNotMatch(markup, /must stay|malicious server leakage|程序标准输出/);
+});
+
 test("client maps cloud task endpoints and preserves protocol error codes", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
@@ -155,13 +196,23 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
       return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     return new Response(
-      JSON.stringify({ task_id: "task-7", status: "queued", code: "device_offline" }),
+      JSON.stringify({ task_id: "task-7", status: "queued", device_offline: true }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
   try {
     const created = await client.createLocalTask("device/a", "fs.list", { path: "/allowed" });
     assert.deepEqual(created, { taskId: "task-7", offline: true });
+    const queuedMarkup = render(LocalTaskLauncher, {
+      deviceId: "device/a",
+      deviceName: "书房电脑",
+      deviceOnline: !created.offline,
+      actionKind: "fs.list",
+      payload: { path: "/allowed" },
+      label: "列出目录",
+      onCreated() {},
+    });
+    assert.match(queuedMarkup, /等书房电脑上线/);
     assert.equal(requests[0].url, "https://api.example.test/v1/devices/device%2Fa/tasks");
     assert.deepEqual(JSON.parse(requests[0].init.body), {
       action_kind: "fs.list",

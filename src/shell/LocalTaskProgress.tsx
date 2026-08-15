@@ -6,6 +6,7 @@ import {
   cancelLocalTask,
   watchLocalTask,
   type LocalTask,
+  type LocalActionKind,
   type LocalTaskDenyReason,
   type LocalTaskResultSummary,
   type LocalTaskStatus,
@@ -14,6 +15,7 @@ import {
 export interface LocalTaskProgressProps {
   taskId: string;
   deviceName?: string;
+  actionKind?: LocalActionKind;
   initialTask?: LocalTask;
   onUpdate?: (task: LocalTask) => void;
   className?: string;
@@ -50,7 +52,33 @@ export function localTaskDeniedMessage(
   }
 }
 
-function Summary({ summary }: { summary: LocalTaskResultSummary }) {
+function Summary({
+  summary,
+  actionKind,
+  deviceName,
+}: {
+  summary: LocalTaskResultSummary;
+  actionKind?: LocalActionKind;
+  deviceName: string;
+}) {
+  if (actionKind === "shell.run") {
+    return (
+      <div className="mt-3 rounded-lg border border-slate-200 p-3" data-local-task-summary>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+          {summary.exit_code !== undefined ? (
+            <><dt>退出码</dt><dd>{summary.exit_code}</dd></>
+          ) : null}
+          {summary.output_bytes !== undefined ? (
+            <><dt>输出</dt><dd>{summary.output_bytes} 字节</dd></>
+          ) : null}
+        </dl>
+        <p className="mt-2 text-sm text-slate-600">
+          命令输出只保存在{deviceName}上，可以在客户端的本地审计里查看。
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3 rounded-lg border border-slate-200 p-3" data-local-task-summary>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -96,6 +124,7 @@ function Summary({ summary }: { summary: LocalTaskResultSummary }) {
 export function LocalTaskProgress({
   taskId,
   deviceName = "这台电脑",
+  actionKind,
   initialTask,
   onUpdate,
   className,
@@ -143,6 +172,7 @@ export function LocalTaskProgress({
   }
 
   const canCancel = task.status === "queued" || task.status === "claimed";
+  const effectiveActionKind = task.actionKind ?? actionKind;
   const statusMessage =
     task.status === "denied"
       ? localTaskDeniedMessage(task.denyReason, deviceName)
@@ -158,7 +188,13 @@ export function LocalTaskProgress({
           如果{deviceName}离线，它上线后这一步会自动继续。
         </p>
       ) : null}
-      {task.resultSummary ? <Summary summary={task.resultSummary} /> : null}
+      {task.resultSummary ? (
+        <Summary
+          summary={task.resultSummary}
+          actionKind={effectiveActionKind}
+          deviceName={deviceName}
+        />
+      ) : null}
       {canCancel ? (
         <button
           type="button"

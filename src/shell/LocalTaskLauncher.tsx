@@ -7,14 +7,15 @@ import {
   LocalTaskApiError,
   type CreatedLocalTask,
   type LocalActionKind,
+  type LocalActionPayloadByKind,
 } from "./local-task-client";
 
-export interface LocalTaskLauncherProps {
+export interface LocalTaskLauncherProps<K extends LocalActionKind = LocalActionKind> {
   deviceId: string | null | undefined;
   deviceName?: string;
   deviceOnline?: boolean;
-  actionKind: LocalActionKind;
-  payload: Record<string, unknown>;
+  actionKind: K;
+  payload: LocalActionPayloadByKind[NoInfer<K>];
   label: string;
   onCreated: (task: CreatedLocalTask) => void;
   devicesHref?: string;
@@ -35,7 +36,7 @@ function launcherErrorMessage(error: unknown, deviceName: string): string {
   }
 }
 
-export function LocalTaskLauncher({
+export function LocalTaskLauncher<K extends LocalActionKind>({
   deviceId,
   deviceName = "这台电脑",
   deviceOnline = true,
@@ -45,7 +46,7 @@ export function LocalTaskLauncher({
   onCreated,
   devicesHref = "/devices",
   className,
-}: LocalTaskLauncherProps) {
+}: LocalTaskLauncherProps<K>) {
   const [submitting, setSubmitting] = useState(false);
   const [queuedOffline, setQueuedOffline] = useState(false);
   const [error, setError] = useState("");
@@ -91,6 +92,11 @@ export function LocalTaskLauncher({
       >
         {submitting ? "正在排队…" : label}
       </button>
+      {actionKind === "shell.run" ? (
+        <p className="mt-2 text-sm text-amber-700" data-shell-confirmation-notice>
+          命令执行每次都要在{deviceName}上单独确认，不能一次授权长期生效。
+        </p>
+      ) : null}
       {!deviceOnline && !queuedOffline ? (
         <p className="mt-2 text-sm text-amber-700" role="status">
           {deviceName}现在离线。点下后任务会排队；它上线后这一步会自动继续。
@@ -98,7 +104,7 @@ export function LocalTaskLauncher({
       ) : null}
       {queuedOffline ? (
         <p className="mt-2 text-sm text-amber-700" role="status">
-          {deviceName}现在离线。它上线后这一步会自动继续。
+          任务已排队，等{deviceName}上线后这一步会自动继续。
         </p>
       ) : null}
       {error ? (
