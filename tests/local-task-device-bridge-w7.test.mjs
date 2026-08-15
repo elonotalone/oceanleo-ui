@@ -325,6 +325,85 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
   }
 });
 
+test("拒绝响应把上限带回来：detail.code + detail.limit，字符串 detail 仍然认", async () => {
+  const originalFetch = globalThis.fetch;
+  const respond = (body, status = 429) => {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+  };
+  // 下单一次并把真客户端解出来的 (code, limit) 交给下单口的文案函数。
+  // 转成 StubApiError 是因为 launcher 在测试里绑的是桩客户端，
+  // `instanceof` 认的是桩那个类；搬过去的是这两个值本身，没有换掉判据。
+  const orderAndRender = async () => {
+    let captured;
+    await assert.rejects(
+      () => client.createLocalTask("device-1", "fs.list", { path: "/allowed" }),
+      (error) => {
+        assert.ok(error instanceof client.LocalTaskApiError);
+        captured = error;
+        return true;
+      },
+    );
+    return {
+      code: captured.code,
+      limit: captured.limit,
+      message: launcherModule.launcherErrorMessage(
+        new StubApiError(captured.code, captured.status, captured.limit),
+        "书房电脑",
+      ),
+    };
+  };
+  try {
+    // 契约 §1.2b 的新形状：码与上限都从 detail 里取，一路带到用户看见的那句话。
+    respond({ detail: { code: "quota_unfinished_tasks", limit: 100 } });
+    assert.deepEqual(await orderAndRender(), {
+      code: "quota_unfinished_tasks",
+      limit: 100,
+      message: "还有100个任务没跑完，等它们结束再下单。",
+    });
+
+    // 上限可省的码：省了就是没有，网站不许自己补一个。
+    respond({ detail: { code: "quota_rate" } });
+    assert.deepEqual(await orderAndRender(), {
+      code: "quota_rate",
+      limit: undefined,
+      message: "下单太频繁了，过一会儿再试。",
+    });
+
+    // 旧网关仍在回字符串 detail：码照样解得出来，只是没有上限可用。
+    respond({ detail: "quota_unfinished_tasks" });
+    const stale = await orderAndRender();
+    assert.deepEqual(stale, {
+      code: "quota_unfinished_tasks",
+      limit: undefined,
+      message: "还有任务没跑完，等它们结束再下单。",
+    });
+    assert.doesNotMatch(stale.message, /\d/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("配对码太频繁与未配对电脑太多，给出的是两条不同的建议", () => {
+  const { launcherErrorMessage } = launcherModule;
+  const fail = (code, limit) =>
+    launcherErrorMessage(new StubApiError(code, 429, limit), "书房电脑");
+
+  const frequency = fail("quota_pair_codes");
+  const unpaired = fail("quota_unpaired_devices", 5);
+  assert.equal(frequency, "配对码请求太频繁了，过一会儿再试。");
+  assert.equal(unpaired, "有 5 台电脑还没完成连接。先在其中一台上连完，或撤销它们。");
+  // 频率那条等一会儿有用；存量那条等下去永远不会好，所以不许出现等待话术。
+  assert.match(frequency, /过一会儿/);
+  assert.doesNotMatch(unpaired, /过一会儿|再试|重试/);
+  assert.match(unpaired, /连完|撤销/);
+  // 没带上限时同样不许编一个数。
+  assert.doesNotMatch(fail("quota_unpaired_devices"), /\d/);
+});
+
 test("管道、串联、命令替换在网页上就被拦下，一个请求都不发", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
@@ -398,6 +477,9 @@ test("配额与参数错误显示契约文案，绝不诱导用户再点一次",
   assert.equal(fail("quota_rate"), "下单太频繁了，过一会儿再试。");
   assert.equal(fail("quota_unfinished_tasks", 100), "还有100个任务没跑完，等它们结束再下单。");
   assert.equal(fail("quota_unfinished_tasks", 3), "还有3个任务没跑完，等它们结束再下单。");
+  // 后端没带上限，就一个数字都不许出现：编一个数比不显示更坏（契约 §1.2b）。
+  assert.equal(fail("quota_unfinished_tasks"), "还有任务没跑完，等它们结束再下单。");
+  assert.doesNotMatch(fail("quota_unfinished_tasks"), /\d/);
   assert.equal(fail("payload_field_missing"), "这一步缺少必要参数，请刷新页面后重试。");
   assert.equal(
     fail("command_unsupported"),

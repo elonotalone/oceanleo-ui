@@ -361,10 +361,15 @@ const CONTRACT_COPY = [
   ["action_kind_unknown", "这个本机操作暂不受支持，请刷新页面后再试。"],
   ["user_denied", "你在书房电脑上拒绝了这一步。"],
   ["command_unsupported", "这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。"],
-  ["quota_paired_devices", "已连接的电脑达到上限（20台）。撤销一台再连新的。"],
-  ["quota_unfinished_tasks", "还有100个任务没跑完，等它们结束再下单。"],
+  ["quota_paired_devices", "已连接的电脑达到上限（20台）。撤销一台再连新的。", 20],
+  ["quota_unfinished_tasks", "还有100个任务没跑完，等它们结束再下单。", 100],
   ["quota_rate", "下单太频繁了，过一会儿再试。"],
   ["quota_pair_codes", "配对码请求太频繁了，过一会儿再试。"],
+  [
+    "quota_unpaired_devices",
+    "有 5 台电脑还没完成连接。先在其中一台上连完，或撤销它们。",
+    5,
+  ],
   ["payload_field_missing", "这一步缺少必要参数，请刷新页面后重试。"],
   ["payload_field_unknown", "这一步的参数不被支持，请刷新页面后重试。"],
   ["payload_field_type_invalid", "这一步的参数格式不对，请刷新页面后重试。"],
@@ -374,27 +379,32 @@ const CONTRACT_COPY = [
   ],
 ];
 
-test("协议 §7 的 18 个码逐个有契约规定的中文，一个英文 token 都不外泄", () => {
-  assert.equal(CONTRACT_COPY.length, 18);
+/** 文案里带 `{上限}` 的三个码（契约 §1.2b）。 */
+const LIMIT_BEARING_CODES = [
+  "quota_paired_devices",
+  "quota_unfinished_tasks",
+  "quota_unpaired_devices",
+];
+
+test("协议 §7 的 19 个码逐个有契约规定的中文，一个英文 token 都不外泄", () => {
+  assert.equal(CONTRACT_COPY.length, 19);
   assert.deepEqual(
     CONTRACT_COPY.map(([code]) => code).sort(),
     [...copy.DEVICE_ERROR_CODES].sort(),
   );
-  for (const [code, expected] of CONTRACT_COPY) {
-    assert.equal(
-      copy.deviceErrorCopy(code, { deviceName: "书房电脑" }),
-      expected,
-      `${code} 的文案必须与 06-code-contract.md §1 逐字一致`,
-    );
+  for (const [code, expected, limit] of CONTRACT_COPY) {
+    const rendered = copy.deviceErrorCopy(code, { deviceName: "书房电脑", limit });
+    assert.equal(rendered, expected, `${code} 的文案必须与 06-code-contract.md §1 逐字一致`);
     assert.doesNotMatch(
-      copy.deviceErrorCopy(code, { deviceName: "书房电脑" }),
+      rendered,
       /[a-z]+_[a-z_]+/,
       `${code} 的文案里不许出现下划线英文 token`,
     );
   }
 });
 
-test("配额上限由后端说了算，后端不说才退回 0179 里的数", () => {
+test("上限只能来自后端：给了就显示那个数，没给就一个数字都不出现", async () => {
+  // 后端说了数（契约 §1.2b 的 detail.limit），文案里就是那个数。
   assert.equal(
     copy.deviceErrorCopy("quota_paired_devices", { limit: 3 }),
     "已连接的电脑达到上限（3台）。撤销一台再连新的。",
@@ -403,8 +413,106 @@ test("配额上限由后端说了算，后端不说才退回 0179 里的数", ()
     copy.deviceErrorCopy("quota_unfinished_tasks", { limit: 7 }),
     "还有7个任务没跑完，等它们结束再下单。",
   );
-  assert.equal(copy.DEVICE_QUOTA_FALLBACK_LIMITS.quota_paired_devices, 20);
-  assert.equal(copy.DEVICE_QUOTA_FALLBACK_LIMITS.quota_unfinished_tasks, 100);
+  assert.equal(
+    copy.deviceErrorCopy("quota_unpaired_devices", { limit: 2 }),
+    "有 2 台电脑还没完成连接。先在其中一台上连完，或撤销它们。",
+  );
+
+  // 后端没说，就不许编一个数：显示一个错的上限比不显示更坏。
+  for (const code of LIMIT_BEARING_CODES) {
+    const rendered = copy.deviceErrorCopy(code);
+    assert.doesNotMatch(rendered, /\d/, `${code} 拿不到 limit 时不许出现任何数字`);
+    assert.ok(rendered.length > 0);
+  }
+  assert.equal(
+    copy.deviceErrorCopy("quota_paired_devices"),
+    "已连接的电脑达到上限。撤销一台再连新的。",
+  );
+  assert.equal(
+    copy.deviceErrorCopy("quota_unfinished_tasks"),
+    "还有任务没跑完，等它们结束再下单。",
+  );
+  assert.equal(
+    copy.deviceErrorCopy("quota_unpaired_devices"),
+    "有电脑还没完成连接。先在其中一台上连完，或撤销它们。",
+  );
+
+  // 从 0179 迁移文件推断 20 / 100 的那条回退整条不许再存在。
+  assert.equal(copy.DEVICE_QUOTA_FALLBACK_LIMITS, undefined);
+  const source = await readFile(resolve("src/api/device-error-copy.ts"), "utf8");
+  assert.doesNotMatch(source, /FALLBACK_LIMITS/);
+  assert.doesNotMatch(source, /0179/, "不许再拿迁移文件当上限来源");
+  assert.doesNotMatch(
+    source,
+    /quota_\w+\s*[:=]\s*\d/,
+    "不许把某个配额码的上限写死在网站里",
+  );
+});
+
+test("配对码太频繁与未配对电脑太多给的是两条不同的建议", () => {
+  const frequency = copy.deviceErrorCopy("quota_pair_codes");
+  const unpaired = copy.deviceErrorCopy("quota_unpaired_devices", { limit: 5 });
+  assert.equal(frequency, "配对码请求太频繁了，过一会儿再试。");
+  assert.equal(unpaired, "有 5 台电脑还没完成连接。先在其中一台上连完，或撤销它们。");
+  assert.notEqual(frequency, unpaired);
+  // 等下去永远不会好，所以这一条不许出现「过一会儿」这类等待话术。
+  assert.ok(!unpaired.includes("过一会儿"));
+  assert.ok(!unpaired.includes("再试"));
+  assert.ok(!unpaired.includes("重试"));
+  // 反过来，频率那条不许叫人去撤销设备。
+  assert.ok(!frequency.includes("撤销"));
+});
+
+test("拒绝响应的 detail 是对象时读 detail.code 与 detail.limit，字符串旧形状仍然认", async () => {
+  const authStubUrl = dataModule(`export async function accessToken() { return "user-token"; }`);
+  const configStubUrl = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com";`);
+  const api = await import(
+    await compileModule("src/api/devices.ts", {
+      "../lib/auth/client": authStubUrl,
+      "../lib/auth/config": configStubUrl,
+    })
+  );
+  const previousFetch = globalThis.fetch;
+  const respond = (body) => {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify(body), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      });
+  };
+  try {
+    respond({ detail: { code: "quota_paired_devices", limit: 20 } });
+    let result = await api.pairDevice("abcd1234");
+    assert.equal(result.error, "quota_paired_devices");
+    assert.equal(result.limit, 20);
+    assert.equal(
+      copy.deviceErrorCopy(result.error, { limit: result.limit }),
+      "已连接的电脑达到上限（20台）。撤销一台再连新的。",
+    );
+
+    respond({ detail: { code: "quota_unpaired_devices", limit: 5 } });
+    result = await api.pairDevice("abcd1234");
+    assert.equal(result.error, "quota_unpaired_devices");
+    assert.equal(result.limit, 5);
+
+    // limit 可省的码：省了就是省了，不许伪造一个。
+    respond({ detail: { code: "quota_rate" } });
+    result = await api.pairDevice("abcd1234");
+    assert.equal(result.error, "quota_rate");
+    assert.equal(result.limit, undefined);
+
+    // 旧网关还在回字符串 detail：仍然认得出码，只是没有上限。
+    respond({ detail: "pair_code_invalid" });
+    result = await api.pairDevice("abcd1234");
+    assert.equal(result.error, "pair_code_invalid");
+    assert.equal(result.limit, undefined);
+    assert.equal(
+      copy.deviceErrorCopy(result.error),
+      "配对码无效或已过期，请在客户端里重新获取",
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test("未知码在页面上落到兜底文案，不会把英文原文摆给用户", async () => {
