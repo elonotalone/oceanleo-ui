@@ -55,6 +55,11 @@ const { LibraryScope, cloudReferenceForLocalFile, formatLibraryUpdatedAt } =
           listDevices: async () => [],
           refreshLocalLibrary: async () => ({ files: [], updatedAt: Date.now() }),
         };
+        export const normalizeAbsoluteLibraryPath = (value) => {
+          const path = String(value || "").trim();
+          if (!path) return null;
+          return path.startsWith("/") || /^[A-Za-z]:[\\\\/]/.test(path) ? path : null;
+        };
       `),
     })
   );
@@ -62,18 +67,18 @@ const { LibraryScope, cloudReferenceForLocalFile, formatLibraryUpdatedAt } =
 async function loadLibraryAdapter() {
   return import(
     await compileModule("src/shell/library-scope-client.ts", {
-      "../facades/devices": dataModule(`
-        export const devicesFacade = {
-          listDevices: async () => ({ ok: true, data: [{
-            device_id: "office-windows",
-            platform: "windows",
-            device_name: "公司 Windows",
-            online: true,
-            local_exec_enabled: true,
-            granted_kinds: ["read"],
-            last_seen_at: null,
-          }] }),
-        };
+      // 实现层直连 api/devices，不许经过 facades/devices ——
+      // 那是 architecture:check 的域边界规则（实现模块不得依赖公开门面）。
+      "../api/devices": dataModule(`
+        export const listDevices = async () => ({ ok: true, data: [{
+          device_id: "office-windows",
+          platform: "windows",
+          device_name: "公司 Windows",
+          online: true,
+          local_exec_enabled: true,
+          granted_kinds: ["read"],
+          last_seen_at: null,
+        }] });
       `),
       "./local-task-client": dataModule(`
         export async function createLocalTask(...args) {
@@ -134,16 +139,21 @@ async function mount(props = {}) {
         button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
     },
+    // 这里不能走「原生 setter + 派发 input 事件」那套常见写法。
+    // 在本文件的 jsdom + React 18 组合里实测过：click 能通，input 事件也确实
+    // 冒泡到了容器，但 React 的 onChange 仍然一次都不触发（被它自己的
+    // 「值没变」判断吞掉），结果是 DOM 上有值、组件 state 还是空 ——
+    // 于是「手动刷新」读到空路径，测试红得像是组件的错，其实是 harness 的错。
+    // 所以直接取 React 挂在 DOM 节点上的 props 调 onChange，不碰它的事件系统。
     async setPath(value) {
       const input = host.querySelector('input[placeholder="输入绝对路径"]');
       assert.ok(input, "missing absolute path input");
-      const setter = Object.getOwnPropertyDescriptor(
-        dom.window.HTMLInputElement.prototype,
-        "value",
-      ).set;
+      const propsKey = Object.keys(input).find((key) =>
+        key.startsWith("__reactProps$"),
+      );
+      assert.ok(propsKey, "missing React props on the path input");
       await act(async () => {
-        setter.call(input, value);
-        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input[propsKey].onChange({ target: { value } });
       });
     },
     async flush() {
@@ -304,7 +314,8 @@ test("跨层刷新按 §4.1 发送绝对 path，设备 files 摘要最终渲染"
     new URL("../src/shell/library-scope-client.ts", import.meta.url),
     "utf8",
   );
-  assert.match(source, /devicesFacade\.listDevices\(\)/);
+  assert.match(source, /await listDevices\(\)/);
+  assert.doesNotMatch(source, /facades\//);
   assert.match(source, /createLocalTask\(device\.device_id, "fs\.list", \{\s*path: absolutePath,/);
   assert.doesNotMatch(source, /"fs\.list", \{\s*\}\)/);
   assert.match(source, /watchLocalTask\(/);

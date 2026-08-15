@@ -212,7 +212,9 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
       label: "列出目录",
       onCreated() {},
     });
-    assert.match(queuedMarkup, /等书房电脑上线/);
+    assert.equal(/data-local-task-device-state="offline"/.test(queuedMarkup), true);
+    assert.match(queuedMarkup, /书房电脑现在离线/);
+    assert.match(queuedMarkup, /上线后这一步会自动继续/);
     assert.equal(requests[0].url, "https://api.example.test/v1/devices/device%2Fa/tasks");
     assert.deepEqual(JSON.parse(requests[0].init.body), {
       action_kind: "fs.list",

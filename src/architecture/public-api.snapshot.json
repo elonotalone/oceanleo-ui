@@ -1961,6 +1961,12 @@
         },
         {
           "kind": "named",
+          "name": "DevicesPage",
+          "importedName": "DevicesPage",
+          "source": "./DevicesPage"
+        },
+        {
+          "kind": "named",
           "name": "GeneralPage",
           "importedName": "GeneralPage",
           "source": "./GeneralPage"
@@ -2036,6 +2042,12 @@
           "name": "wechatRedirectTarget",
           "importedName": "wechatRedirectTarget",
           "source": "./AuthDialog"
+        },
+        {
+          "kind": "type",
+          "name": "DevicesPageProps",
+          "importedName": "DevicesPageProps",
+          "source": "./DevicesPage"
         }
       ]
     },
@@ -2811,6 +2823,18 @@
         },
         {
           "kind": "named",
+          "name": "CloudLibraryReference",
+          "importedName": "CloudLibraryReference",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "cloudReferenceForLocalFile",
+          "importedName": "cloudReferenceForLocalFile",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
           "name": "CollapsibleSection",
           "importedName": "CollapsibleSection",
           "source": "./StudioSection"
@@ -2922,6 +2946,12 @@
           "name": "CreateSkillTeamModalProps",
           "importedName": "CreateSkillTeamModalProps",
           "source": "./CreateSkillModal"
+        },
+        {
+          "kind": "named",
+          "name": "defaultLibraryScopeAdapter",
+          "importedName": "defaultLibraryScopeAdapter",
+          "source": "./library-scope-client"
         },
         {
           "kind": "named",
@@ -3078,6 +3108,12 @@
           "name": "forkArtifact",
           "importedName": "forkArtifact",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "formatLibraryUpdatedAt",
+          "importedName": "formatLibraryUpdatedAt",
+          "source": "./library-scope"
         },
         {
           "kind": "named",
@@ -3501,6 +3537,12 @@
         },
         {
           "kind": "named",
+          "name": "LibraryDevice",
+          "importedName": "LibraryDevice",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
           "name": "LibraryItem",
           "importedName": "LibraryItem",
           "source": "./library-data"
@@ -3567,6 +3609,30 @@
         },
         {
           "kind": "named",
+          "name": "LibraryScope",
+          "importedName": "LibraryScope",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryScopeAdapter",
+          "importedName": "LibraryScopeAdapter",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryScopeIntegration",
+          "importedName": "LibraryScopeIntegration",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LibraryScopeProps",
+          "importedName": "LibraryScopeProps",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
           "name": "LibrarySubNav",
           "importedName": "LibrarySubNav",
           "source": "./LibraryMasterDetail"
@@ -3591,6 +3657,12 @@
         },
         {
           "kind": "named",
+          "name": "listLibraryDevices",
+          "importedName": "listLibraryDevices",
+          "source": "./library-scope-client"
+        },
+        {
+          "kind": "named",
           "name": "listPrimaryArtifacts",
           "importedName": "listPrimaryArtifacts",
           "source": "./artifact-client"
@@ -3606,6 +3678,30 @@
           "name": "loadCustomPromptCards",
           "importedName": "loadCustomPromptCards",
           "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "LocalLibraryFile",
+          "importedName": "LocalLibraryFile",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LocalLibrarySnapshot",
+          "importedName": "LocalLibrarySnapshot",
+          "source": "./library-scope"
+        },
+        {
+          "kind": "named",
+          "name": "LocalTaskLauncher",
+          "importedName": "LocalTaskLauncher",
+          "source": "./LocalTaskLauncher"
+        },
+        {
+          "kind": "named",
+          "name": "LocalTaskProgress",
+          "importedName": "LocalTaskProgress",
+          "source": "./LocalTaskProgress"
         },
         {
           "kind": "named",
@@ -4176,6 +4272,12 @@
           "name": "refreshArtifactRendition",
           "importedName": "refreshArtifactRendition",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "refreshDeviceLocalLibrary",
+          "importedName": "refreshDeviceLocalLibrary",
+          "source": "./library-scope-client"
         },
         {
           "kind": "named",
@@ -5193,6 +5295,10 @@
         },
         {
           "kind": "star",
+          "source": "./local-task-client"
+        },
+        {
+          "kind": "star",
           "source": "./media-editors/model3d-capabilities"
         },
         {
@@ -5276,7 +5382,17 @@
         },
         {
           "kind": "named",
+          "name": "isTemplateMaterialDetailItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "libraryContentDescriptor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemCloudReference",
           "source": ""
         },
         {
@@ -5316,6 +5432,11 @@
         },
         {
           "kind": "named",
+          "name": "templateMaterialArtifactId",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "threeDSubtypeFor",
           "source": ""
         },
@@ -5337,6 +5458,11 @@
         {
           "kind": "type",
           "name": "LibraryArtifactRow",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibraryCloudReference",
           "source": ""
         },
         {

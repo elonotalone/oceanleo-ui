@@ -1,6 +1,6 @@
 "use client";
 
-import { devicesFacade } from "../facades/devices";
+import { listDevices } from "../api/devices";
 import {
   createLocalTask,
   watchLocalTask,
@@ -13,7 +13,7 @@ import type {
 } from "./library-scope";
 
 export async function listLibraryDevices(): Promise<readonly LibraryDevice[]> {
-  const result = await devicesFacade.listDevices();
+  const result = await listDevices();
   if (!result.ok || !result.data) {
     throw new Error(result.error || "设备列表加载失败，请稍后重试。");
   }
