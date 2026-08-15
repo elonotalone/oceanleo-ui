@@ -19,7 +19,7 @@
  *    registering a single listener. Importing this module must stay free of
  *    observable effects, including during SSR where `window` does not exist.
  * 2. A phone is a remote control, never an execution device. There is no
- *    pairing, no local execution, and no call to `/v1/devices/register` here.
+ *    pairing here, no local execution, and no device-registration call.
  *
  * The policy (degradation reasons, trusted origin, permission handling) is
  * kept verbatim in step with the phone-side module. The duplication is
