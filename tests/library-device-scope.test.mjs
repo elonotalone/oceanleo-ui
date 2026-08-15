@@ -47,8 +47,12 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { LibraryScope, cloudReferenceForLocalFile, formatLibraryUpdatedAt } =
-  await import(
+const {
+  LibraryScope,
+  LibraryLocalScopeProvider,
+  cloudReferenceForLocalFile,
+  formatLibraryUpdatedAt,
+} = await import(
     await compileModule("src/shell/library-scope.tsx", {
       "./library-scope-client": dataModule(`
         export const defaultLibraryScopeAdapter = {
@@ -114,22 +118,30 @@ const home = {
   last_seen_at: "2026-08-14T08:00:00Z",
 };
 
-async function mount(props = {}) {
+async function mount(props = {}, wrap = (element) => element) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
     root.render(
-      React.createElement(
-        LibraryScope,
-        props,
-        React.createElement("div", { "data-cloud-item": true }, "云端作品甲"),
+      wrap(
+        React.createElement(
+          LibraryScope,
+          props,
+          React.createElement("div", { "data-cloud-item": true }, "云端作品甲"),
+        ),
       ),
     );
   });
   return {
     host,
     root,
+    pathInputs() {
+      return host.querySelectorAll('input[placeholder="输入绝对路径"]');
+    },
+    slot() {
+      return host.querySelector("[data-local-scope-extra]");
+    },
     async click(label) {
       const button = [...host.querySelectorAll("button")].find((candidate) =>
         candidate.textContent.includes(label),
@@ -287,6 +299,192 @@ test("本地库显示相对更新时间、手动刷新和不上传正文提示",
   } finally {
     await view.close();
   }
+});
+
+// C7（2026-08-15）：同一个绝对路径不许让用户填两遍。本地库面板开了一个插槽，
+// 主站把「用这台电脑处理」塞进去，路径由 LibraryScope 这一个输入框提供。
+
+/** 记录插槽每次拿到的 (device, path)，并渲染一个可点的假下单按钮。 */
+function recordingExtra(calls) {
+  return (device, path) => {
+    calls.push({ deviceId: device ? device.device_id : null, path });
+    return React.createElement(
+      "button",
+      { type: "button", "data-fake-launcher": true },
+      device ? `用${device.device_name}处理` : "去连接一台电脑",
+    );
+  };
+}
+
+test("在线设备：插槽长在本地库面板里，整页只有一个绝对路径输入框", async () => {
+  const calls = [];
+  const view = await mount({
+    devices: [office],
+    localScopeExtra: recordingExtra(calls),
+  });
+  try {
+    await view.click("公司 Windows");
+    await view.setPath("/已授权/发票");
+
+    assert.equal(view.pathInputs().length, 1);
+    const slot = view.slot();
+    assert.ok(slot, "本地库面板里没有插槽");
+    // 插槽必须在本地库面板内部，而不是与它并列（这正是 W11 报的那处别扭）。
+    assert.ok(view.host.querySelector("[data-library-state]").contains(slot));
+    assert.match(slot.textContent, /用公司 Windows处理/);
+    assert.deepEqual(calls.at(-1), {
+      deviceId: "office-windows",
+      path: "/已授权/发票",
+    });
+  } finally {
+    await view.close();
+  }
+});
+
+test("不传 localScopeExtra 时本地库面板与以前完全一致", async () => {
+  const view = await mount({ devices: [office, home] });
+  try {
+    await view.click("公司 Windows");
+    assert.equal(view.slot(), null);
+    assert.equal(view.pathInputs().length, 1);
+    await view.click("家里 Mac");
+    assert.equal(view.slot(), null);
+    // 离线面板在没有插槽时不长出输入框，仍然只是一句离线说明。
+    assert.equal(view.pathInputs().length, 0);
+    assert.equal(
+      view.host.querySelector("[data-library-state]").dataset.libraryState,
+      "offline",
+    );
+  } finally {
+    await view.close();
+  }
+});
+
+test("用户显式选离线那台：仍能填路径就地排队，不被换成在线的那台", async () => {
+  const calls = [];
+  const view = await mount({
+    devices: [office, home],
+    localScopeExtra: recordingExtra(calls),
+  });
+  try {
+    await view.click("家里 Mac");
+    assert.equal(
+      view.host.querySelector("[data-library-state]").dataset.libraryState,
+      "offline",
+    );
+    await view.setPath("D:\\发票");
+    assert.equal(view.pathInputs().length, 1);
+    assert.deepEqual(calls.at(-1), { deviceId: "home-mac", path: "D:\\发票" });
+    // 排队的说明必须指名这台离线机器，不许静默改到在线的那台。
+    assert.match(view.host.textContent, /等它上线后自动继续/);
+    assert.doesNotMatch(view.slot().textContent, /公司 Windows/);
+  } finally {
+    await view.close();
+  }
+});
+
+test("一台电脑都没有：插槽拿到 null 设备，落在「还没有连接任何电脑」那一屏里", async () => {
+  const calls = [];
+  const view = await mount({
+    devices: [],
+    localScopeExtra: recordingExtra(calls),
+  });
+  try {
+    await view.click("本地库");
+    assert.equal(
+      view.host.querySelector("[data-library-state]").dataset.libraryState,
+      "no-device",
+    );
+    const slot = view.slot();
+    assert.ok(slot);
+    assert.match(slot.textContent, /去连接一台电脑/);
+    assert.deepEqual(calls.at(-1), { deviceId: null, path: "" });
+    // 没有设备就没有可填的路径，绝不许留一个输入框骗用户填。
+    assert.equal(view.pathInputs().length, 0);
+  } finally {
+    await view.close();
+  }
+});
+
+test("宿主够不到 LibraryScope 时可以用 provider 注入，prop 优先于 provider", async () => {
+  const fromContext = [];
+  const fromProp = [];
+  const provider = (element) =>
+    React.createElement(
+      LibraryLocalScopeProvider,
+      { render: recordingExtra(fromContext) },
+      element,
+    );
+
+  const contextOnly = await mount({ devices: [office] }, provider);
+  try {
+    await contextOnly.click("公司 Windows");
+    await contextOnly.setPath("/来自 context");
+    assert.deepEqual(fromContext.at(-1), {
+      deviceId: "office-windows",
+      path: "/来自 context",
+    });
+    assert.equal(contextOnly.pathInputs().length, 1);
+  } finally {
+    await contextOnly.close();
+  }
+
+  const both = await mount(
+    { devices: [office], localScopeExtra: recordingExtra(fromProp) },
+    provider,
+  );
+  try {
+    await both.click("公司 Windows");
+    await both.setPath("/来自 prop");
+    assert.deepEqual(fromProp.at(-1), {
+      deviceId: "office-windows",
+      path: "/来自 prop",
+    });
+    assert.notEqual(fromContext.at(-1).path, "/来自 prop");
+  } finally {
+    await both.close();
+  }
+});
+
+test("插槽拿到的路径就是 fs.list 会发出去的那一个，空 path 仍被前端拦下", async () => {
+  globalThis.__w6TaskCalls = [];
+  globalThis.__w6WatchedTask = "";
+  globalThis.__w6TaskUpdate = {
+    status: "succeeded",
+    resultSummary: { files: [] },
+  };
+  const adapter = await loadLibraryAdapter();
+  const calls = [];
+  const view = await mount({
+    devices: [office],
+    refreshLocalLibrary: adapter.refreshDeviceLocalLibrary,
+    localScopeExtra: recordingExtra(calls),
+  });
+  try {
+    await view.click("公司 Windows");
+    await view.setPath("  /已授权/发票  ");
+    await view.click("手动刷新");
+    await view.flush();
+    // 协议 §4.1：发出去的是绝对 path，插槽看到的是同一个用户输入。
+    assert.deepEqual(globalThis.__w6TaskCalls, [
+      ["office-windows", "fs.list", { path: "/已授权/发票" }],
+    ]);
+    assert.equal(calls.at(-1).path, "  /已授权/发票  ");
+
+    await view.setPath("");
+    await view.click("手动刷新");
+    await view.flush();
+    assert.equal(globalThis.__w6TaskCalls.length, 1);
+    assert.match(
+      view.host.querySelector('[role="alert"]').textContent,
+      /请输入这台设备已授权目录的绝对路径/,
+    );
+  } finally {
+    await view.close();
+  }
+  delete globalThis.__w6TaskCalls;
+  delete globalThis.__w6WatchedTask;
+  delete globalThis.__w6TaskUpdate;
 });
 
 test("副本关联按规范化文件名和可用字节数匹配", () => {

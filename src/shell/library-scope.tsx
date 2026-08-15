@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useState,
@@ -55,12 +57,47 @@ export interface LibraryScopeAdapter {
   ) => Promise<LocalLibrarySnapshot>;
 }
 
+/**
+ * Slot rendered inside the local-library panel, right under the single absolute
+ * path field, so the host can place its own "run this on that computer" control
+ * next to the path the user already typed. `device` is null in the
+ * no-computer-connected state, where the host still needs somewhere to put the
+ * link to /devices.
+ */
+export type LocalScopeExtraRender = (
+  device: LibraryDevice | null,
+  path: string,
+) => ReactNode;
+
 export interface LibraryScopeIntegration extends LibraryScopeAdapter {
   devices?: readonly LibraryDevice[];
   snapshots?: Readonly<Record<string, LocalLibrarySnapshot | undefined>>;
   cloudItems?: readonly CloudLibraryReference[];
   now?: () => number;
   onOpenCloudItem?: (itemId: string) => void;
+  localScopeExtra?: LocalScopeExtraRender;
+}
+
+const LocalScopeExtraContext = createContext<LocalScopeExtraRender | undefined>(
+  undefined,
+);
+
+/**
+ * Hosts that render the library through `ArtifactLibrary` cannot reach
+ * `LibraryScope` by props, so the slot is also injectable from above.
+ */
+export function LibraryLocalScopeProvider({
+  render,
+  children,
+}: {
+  render: LocalScopeExtraRender;
+  children: ReactNode;
+}) {
+  return (
+    <LocalScopeExtraContext.Provider value={render}>
+      {children}
+    </LocalScopeExtraContext.Provider>
+  );
 }
 
 export interface LibraryScopeProps extends LibraryScopeIntegration {
@@ -121,6 +158,45 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function LocalLibraryPathField({
+  device,
+  path,
+  hint,
+  onPathChange,
+  trailing,
+}: {
+  device: LibraryDevice;
+  path: string;
+  hint: ReactNode;
+  onPathChange: (path: string) => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="min-w-[min(100%,22rem)] space-y-2">
+      <label
+        htmlFor={`local-library-path-${device.device_id}`}
+        className="block text-xs font-medium text-stone-700"
+      >
+        已授权目录的绝对路径
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={`local-library-path-${device.device_id}`}
+          type="text"
+          value={path}
+          onChange={(event) => onPathChange(event.target.value)}
+          placeholder="输入绝对路径"
+          autoComplete="off"
+          spellCheck={false}
+          className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-800 outline-none focus:border-sky-400"
+        />
+        {trailing}
+      </div>
+      <p className="text-xs leading-relaxed text-stone-500">{hint}</p>
+    </div>
+  );
+}
+
 function LocalLibraryPanel({
   device,
   snapshot,
@@ -133,6 +209,7 @@ function LocalLibraryPanel({
   onRefresh,
   onPathChange,
   onOpenCloudItem,
+  localScopeExtra,
 }: {
   device: LibraryDevice;
   snapshot?: LocalLibrarySnapshot;
@@ -145,14 +222,28 @@ function LocalLibraryPanel({
   onRefresh: () => void;
   onPathChange: (path: string) => void;
   onOpenCloudItem?: (itemId: string) => void;
+  localScopeExtra?: LocalScopeExtraRender;
 }) {
   if (!device.online) {
     return (
-      <div data-library-state="offline" className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
-        <h2 className="text-base font-semibold text-amber-950">{device.device_name} · 本地库</h2>
-        <p className="mt-2 text-sm text-amber-800">
-          {device.device_name} 现在离线，看不到它的本地库。它上线后这里会恢复。
-        </p>
+      <div data-library-state="offline" className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8">
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-amber-950">{device.device_name} · 本地库</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            {device.device_name} 现在离线，看不到它的本地库。它上线后这里会恢复。
+          </p>
+        </div>
+        {localScopeExtra && (
+          <div className="mx-auto mt-5 max-w-xl space-y-3 rounded-xl border border-amber-200 bg-white p-4 text-left">
+            <LocalLibraryPathField
+              device={device}
+              path={path}
+              onPathChange={onPathChange}
+              hint={`填你已经在 ${device.device_name} 上授权过的目录；现在下单会排队，等它上线后自动继续。`}
+            />
+            <div data-local-scope-extra>{localScopeExtra(device, path)}</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -176,24 +267,12 @@ function LocalLibraryPanel({
             </p>
           )}
         </div>
-        <div className="min-w-[min(100%,22rem)] space-y-2">
-          <label
-            htmlFor={`local-library-path-${device.device_id}`}
-            className="block text-xs font-medium text-stone-700"
-          >
-            已授权目录的绝对路径
-          </label>
-          <div className="flex gap-2">
-            <input
-              id={`local-library-path-${device.device_id}`}
-              type="text"
-              value={path}
-              onChange={(event) => onPathChange(event.target.value)}
-              placeholder="输入绝对路径"
-              autoComplete="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-800 outline-none focus:border-sky-400"
-            />
+        <LocalLibraryPathField
+          device={device}
+          path={path}
+          onPathChange={onPathChange}
+          hint={`请填写你已经在 ${device.device_name} 上授权过的目录；路径只用于向这台设备下发列表请求。`}
+          trailing={
             <button
               type="button"
               onClick={onRefresh}
@@ -202,12 +281,18 @@ function LocalLibraryPanel({
             >
               {loading ? "正在刷新…" : "手动刷新"}
             </button>
-          </div>
-          <p className="text-xs leading-relaxed text-stone-500">
-            请填写你已经在 {device.device_name} 上授权过的目录；路径只用于向这台设备下发列表请求。
-          </p>
-        </div>
+          }
+        />
       </div>
+
+      {localScopeExtra && (
+        <div
+          data-local-scope-extra
+          className="rounded-2xl border border-stone-200 bg-white p-4"
+        >
+          {localScopeExtra(device, path)}
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -276,7 +361,10 @@ export function LibraryScope({
   refreshLocalLibrary = defaultLibraryScopeAdapter.refreshLocalLibrary,
   now = Date.now,
   onOpenCloudItem,
+  localScopeExtra,
 }: LibraryScopeProps) {
+  const inheritedScopeExtra = useContext(LocalScopeExtraContext);
+  const scopeExtra = localScopeExtra ?? inheritedScopeExtra;
   const [activeScope, setActiveScope] = useState<LibraryScopeId>("cloud");
   const [loadedDevices, setLoadedDevices] = useState<readonly LibraryDevice[]>([]);
   const [loadedSnapshots, setLoadedSnapshots] = useState<Record<string, LocalLibrarySnapshot>>({});
@@ -412,6 +500,11 @@ export function LibraryScope({
           <div data-library-state="no-device" className="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-10 text-center">
             <p className="text-sm font-medium text-stone-800">还没有连接任何电脑。</p>
             <p className="mt-1 text-xs text-stone-500">本地库属于某一台电脑；连接后，每台电脑会分别显示自己的本地库。</p>
+            {scopeExtra && (
+              <div data-local-scope-extra className="mt-4 flex justify-center">
+                {scopeExtra(null, "")}
+              </div>
+            )}
           </div>
         ) : selectedDevice ? (
           <LocalLibraryPanel
@@ -438,6 +531,7 @@ export function LibraryScope({
               setActiveScope("cloud");
               onOpenCloudItem?.(itemId);
             }}
+            localScopeExtra={scopeExtra}
           />
         ) : null}
       </div>

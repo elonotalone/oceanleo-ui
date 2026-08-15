@@ -370,6 +370,7 @@ export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
 export { MyLibrary } from "./MyLibrary";
 export type { MyLibraryProps } from "./MyLibrary";
 export {
+  LibraryLocalScopeProvider,
   LibraryScope,
   cloudReferenceForLocalFile,
   formatLibraryUpdatedAt,
@@ -387,6 +388,7 @@ export type {
   LibraryScopeProps,
   LocalLibraryFile,
   LocalLibrarySnapshot,
+  LocalScopeExtraRender,
 } from "./library-scope";
 export {
   FIXED_WORKSPACE_SLOTS,
