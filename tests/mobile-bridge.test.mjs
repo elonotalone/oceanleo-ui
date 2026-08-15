@@ -19,6 +19,7 @@ import {
   TRUSTED_ORIGIN,
   detectNativeHost,
   normalizeTrustedDeepLink,
+  resolvePlugin,
   queuedDeviceTaskMessage,
   receiveSharedContent,
   registerMobileAsExecutionDevice,
@@ -223,6 +224,17 @@ test("a throwing isNativePlatform is treated as a browser, not as a host", async
 
   assert.equal(detectNativeHost(win), null);
   assert.equal(await startMobileBridge({ windowRef: win }), null);
+});
+
+test("no host means plugin resolution stops before it starts", async () => {
+  let attempts = 0;
+  const loadPlugin = () => {
+    attempts += 1;
+    return {};
+  };
+
+  assert.equal(await resolvePlugin("Camera", null, loadPlugin), undefined);
+  assert.equal(attempts, 0, "resolution must short-circuit on a null host");
 });
 
 test("SSR: the module imports in a process with no window and no document", () => {
