@@ -15,13 +15,17 @@ const clientUrl = await compileModule("src/shell/local-task-client.ts", {
 const client = await import(clientUrl);
 
 const launcherClientStub = dataModule(`
-  export class LocalTaskApiError extends Error { constructor(code, status){ super(code); this.code=code; this.status=status; } }
+  export class LocalTaskApiError extends Error {
+    constructor(code, status, limit){ super(code); this.code=code; this.status=status; this.limit=limit; }
+  }
   export async function createLocalTask(){ return {taskId:"task-1",offline:false}; }
 `);
+const { LocalTaskApiError: StubApiError } = await import(launcherClientStub);
 const launcherUrl = await compileModule("src/shell/LocalTaskLauncher.tsx", {
   "./local-task-client": launcherClientStub,
 });
-const { LocalTaskLauncher } = await import(launcherUrl);
+const launcherModule = await import(launcherUrl);
+const { LocalTaskLauncher } = launcherModule;
 
 const progressClientStub = dataModule(`
   export async function cancelLocalTask(){}
@@ -84,12 +88,94 @@ test("shell launcher warns that every command needs confirmation on that compute
   assert.match(markup, /不能一次授权长期生效/);
 });
 
-test("all five deny reasons render a human action on 那台电脑", () => {
+test("当面点了拒绝显示的是「你拒绝了」，不是「没人在 90 秒内确认」", () => {
+  const denied = render(LocalTaskProgress, {
+    taskId: "task-user-denied",
+    deviceName: "书房电脑",
+    initialTask: { status: "denied", denyReason: "user_denied" },
+  });
+  assert.match(denied, /你在书房电脑上拒绝了这一步。/);
+  assert.doesNotMatch(denied, /90 秒/);
+  assert.doesNotMatch(denied, /没有人/);
+
+  const timeout = render(LocalTaskProgress, {
+    taskId: "task-confirm-timeout",
+    deviceName: "书房电脑",
+    initialTask: { status: "denied", denyReason: "confirm_timeout" },
+  });
+  assert.match(timeout, /书房电脑上没有人在 90 秒内确认/);
+  assert.doesNotMatch(timeout, /你在书房电脑上拒绝了/);
+
+  assert.notEqual(denied, timeout);
+});
+
+test("设备端拒掉的命令形状在进度里也说得清是命令的问题", () => {
+  const markup = render(LocalTaskProgress, {
+    taskId: "task-command-unsupported",
+    deviceName: "书房电脑",
+    initialTask: { status: "denied", denyReason: "command_unsupported" },
+  });
+  assert.match(markup, /这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。/);
+  assert.doesNotMatch(markup, /command_unsupported/);
+});
+
+test("fs.read_summary 的 kind 要让人看出读到的是文件还是文件夹", () => {
+  const file = render(LocalTaskProgress, {
+    taskId: "task-kind-file",
+    initialTask: {
+      status: "succeeded",
+      actionKind: "fs.read_summary",
+      resultSummary: { kind: "file", bytes: 12 },
+    },
+  });
+  assert.match(file, /类型<\/dt><dd[^>]*>文件</);
+  assert.doesNotMatch(file, />file</);
+
+  const directory = render(LocalTaskProgress, {
+    taskId: "task-kind-directory",
+    initialTask: {
+      status: "succeeded",
+      actionKind: "fs.read_summary",
+      resultSummary: { kind: "directory", entries: 3 },
+    },
+  });
+  assert.match(directory, /类型<\/dt><dd[^>]*>文件夹</);
+  assert.doesNotMatch(directory, />directory</);
+
+  const other = render(LocalTaskProgress, {
+    taskId: "task-kind-other",
+    initialTask: {
+      status: "succeeded",
+      actionKind: "fs.read_summary",
+      resultSummary: { kind: "symlink" },
+    },
+  });
+  assert.match(other, /类型<\/dt><dd[^>]*>symlink</);
+});
+
+test("sanitizer 保留 fs.read_summary 的顶层 kind 并截到 64 字符", () => {
+  assert.equal(
+    client.sanitizeLocalTaskSummary({ kind: "directory", entries: 2 }, "fs.read_summary").kind,
+    "directory",
+  );
+  assert.equal(
+    client.sanitizeLocalTaskSummary({ kind: "x".repeat(200) }, "fs.read_summary").kind.length,
+    64,
+  );
+  assert.equal(
+    client.sanitizeLocalTaskSummary({ kind: "file", exit_code: 0 }, "shell.run").kind,
+    undefined,
+  );
+});
+
+test("all deny reasons render a human action on 那台电脑", () => {
   const expectations = new Map([
     ["local_exec_disabled", /开关只能在那台电脑上打开/],
     ["grant_missing", /需要在那台电脑上授权/],
     ["path_outside_grant", /请在那台电脑上选择已授权目录/],
     ["confirm_timeout", /90 秒.*那台电脑上重新发起/],
+    ["user_denied", /你在书房电脑上拒绝了这一步。/],
+    ["command_unsupported", /请拆成单条命令/],
     ["revoked", /在那台电脑上重新配对/],
   ]);
   for (const [denyReason, expected] of expectations) {
@@ -237,6 +323,102 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("管道、串联、命令替换在网页上就被拦下，一个请求都不发", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init });
+    return new Response(JSON.stringify({ task_id: "task-should-not-exist" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    for (const command of ["cat a | grep b", "a && b", "echo $(id)"]) {
+      await assert.rejects(
+        () => client.createLocalTask("device-1", "shell.run", { cwd: "/allowed", command }),
+        (error) =>
+          error instanceof client.LocalTaskApiError && error.code === "command_unsupported",
+        `${command} 不该被下发`,
+      );
+      const markup = render(LocalTaskLauncher, {
+        deviceId: "device-1",
+        deviceName: "书房电脑",
+        actionKind: "shell.run",
+        payload: { cwd: "/allowed", command },
+        label: "运行命令",
+        onCreated() {},
+      });
+      assert.match(markup, /这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。/);
+      assert.match(markup, /disabled=""/);
+    }
+    assert.deepEqual(requests, [], "被拦下的命令不许产生任何 HTTP 请求");
+
+    // 单条命令照常放行，拦的是形状不是动作。
+    await client.createLocalTask("device-1", "shell.run", {
+      cwd: "/allowed",
+      command: "python --version",
+    });
+    assert.equal(requests.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("shell.run 的下单入口写明只能写一条命令，且按钮仍然可用", () => {
+  const markup = render(LocalTaskLauncher, {
+    deviceId: "device-1",
+    deviceName: "书房电脑",
+    actionKind: "shell.run",
+    payload: { cwd: "/allowed", command: "ls -l" },
+    label: "运行命令",
+    onCreated() {},
+  });
+  assert.match(markup, /这里只能写一条命令，不经过 shell/);
+  assert.match(markup, /管道 \|、重定向 &gt; &lt;、串联 ; &amp;&amp;、反引号和 \$\(\) 都不支持/);
+  // shell.run 靠每次单独确认授权，不靠 grant 类别：下单口绝不许被 granted_kinds 关掉。
+  assert.doesNotMatch(markup, /disabled=""/);
+  assert.match(markup, /每次都要在书房电脑上单独确认/);
+});
+
+test("下单入口不认识 granted_kinds，所以永远关不掉 shell.run", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/shell/LocalTaskLauncher.tsx", import.meta.url), "utf8");
+  assert.ok(!source.includes("granted_kinds"));
+  assert.ok(!source.includes("grantedKinds"));
+});
+
+test("配额与参数错误显示契约文案，绝不诱导用户再点一次", () => {
+  const { launcherErrorMessage } = launcherModule;
+  const fail = (code, limit) =>
+    launcherErrorMessage(new StubApiError(code, 429, limit), "书房电脑");
+
+  assert.equal(fail("quota_rate"), "下单太频繁了，过一会儿再试。");
+  assert.equal(fail("quota_unfinished_tasks", 100), "还有100个任务没跑完，等它们结束再下单。");
+  assert.equal(fail("quota_unfinished_tasks", 3), "还有3个任务没跑完，等它们结束再下单。");
+  assert.equal(fail("payload_field_missing"), "这一步缺少必要参数，请刷新页面后重试。");
+  assert.equal(
+    fail("command_unsupported"),
+    "这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。",
+  );
+  for (const code of ["quota_rate", "quota_unfinished_tasks", "quota_pair_codes"]) {
+    assert.ok(
+      !fail(code).includes("重试"),
+      `${code} 不许出现「重试」话术：每次重试都再吃一次配额`,
+    );
+    assert.ok(!fail(code).includes("请检查网络"));
+  }
+
+  // 未知码：绝不把英文原文摆到用户面前。
+  for (const unknown of ["device_quota_rate_exceeded", "http_500", "boom"]) {
+    assert.equal(fail(unknown), "这一步没有完成，请稍后重试。");
+    assert.doesNotMatch(fail(unknown), /[a-z]+_[a-z_]+/);
+  }
+  // 真的是网络断了才允许说「检查网络」。
+  assert.equal(fail("network_error"), "任务暂时没有排上，请检查网络后重试。");
+  assert.equal(fail("unauthorized"), "登录后才能给你的电脑下发任务。");
 });
 
 async function flush() {

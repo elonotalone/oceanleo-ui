@@ -483,6 +483,47 @@ test("shell 不再是可授权类别：类型与标签里都没有它", async ()
   view.cleanup();
 });
 
+test("下单被配额挡住时，页面上换成的是契约中文而不是「请检查网络后重试」", async () => {
+  const { LocalTaskLauncher } = await import(
+    await compileModule("src/shell/LocalTaskLauncher.tsx", {
+      "./local-task-client": dataModule(`
+        export class LocalTaskApiError extends Error {
+          constructor(code, status, limit){ super(code); this.code=code; this.status=status; this.limit=limit; }
+        }
+        export async function createLocalTask(){
+          throw new LocalTaskApiError("quota_unfinished_tasks", 429, 100);
+        }
+      `),
+    })
+  );
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      React.createElement(LocalTaskLauncher, {
+        deviceId: "device-1",
+        deviceName: "书房电脑",
+        actionKind: "fs.list",
+        payload: { path: "/allowed" },
+        label: "列出目录",
+        onCreated() {},
+      }),
+    );
+  });
+  await act(async () => {
+    host
+      .querySelector("button")
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  assert.ok(host.textContent.includes("还有100个任务没跑完，等它们结束再下单。"));
+  assert.ok(!host.textContent.includes("请检查网络后重试"));
+  assert.doesNotMatch(host.textContent, /[a-z]+_[a-z_]+/);
+  act(() => root.unmount());
+  host.remove();
+});
+
 test("源码没有生成配对码、远程改总开关或请求设备密钥的路径", async () => {
   const files = [
     "src/api/devices.ts",
