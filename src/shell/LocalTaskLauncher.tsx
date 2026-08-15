@@ -27,7 +27,7 @@ export interface LocalTaskLauncherProps<K extends LocalActionKind = LocalActionK
   className?: string;
 }
 
-function launcherErrorMessage(error: unknown, deviceName: string): string {
+export function launcherErrorMessage(error: unknown, deviceName: string): string {
   const code = error instanceof LocalTaskApiError ? error.code : "network_error";
   const limit =
     error instanceof LocalTaskApiError && error.limit !== undefined

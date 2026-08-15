@@ -481,6 +481,12 @@ test("shell 不再是可授权类别：类型与标签里都没有它", async ()
   assert.ok(view.text().includes("读取、Python"));
   assert.ok(!view.text().includes("Shell"));
   view.cleanup();
+
+  // 旧镜像里可能还留着 shell：丢掉，不许让它读起来像一项已生效的授权。
+  const stale = await render(makeClient([makeDevice({ granted_kinds: ["shell"] })]));
+  assert.ok(stale.text().includes("已授权类别无"));
+  assert.ok(!stale.text().toLowerCase().includes("shell"));
+  stale.cleanup();
 });
 
 test("下单被配额挡住时，页面上换成的是契约中文而不是「请检查网络后重试」", async () => {

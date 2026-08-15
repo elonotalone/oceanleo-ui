@@ -34,6 +34,16 @@ const GRANT_LABELS: Record<DeviceGrantKind, string> = {
 };
 
 /**
+ * A category the site does not recognise is dropped rather than printed: a
+ * device mirror that still carries `shell` must not read as an authorisation.
+ */
+function grantLabels(device: Device): string[] {
+  return device.granted_kinds
+    .map((kind) => GRANT_LABELS[kind] as string | undefined)
+    .filter((label): label is string => Boolean(label));
+}
+
+/**
  * Never hand an error code back as its own message: an unrecognised code used
  * to surface as `device_quota_paired_devices_per_user_exceeded` on the page.
  */
@@ -310,8 +320,8 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
                     <div className="rounded-xl bg-neutral-50 px-3 py-2.5">
                       <dt className="text-neutral-400">{tt("已授权类别")}</dt>
                       <dd className="mt-0.5 font-medium text-neutral-800">
-                        {device.granted_kinds.length > 0
-                          ? device.granted_kinds.map((kind) => tt(GRANT_LABELS[kind])).join("、")
+                        {grantLabels(device).length > 0
+                          ? grantLabels(device).map((label) => tt(label)).join("、")
                           : tt("无")}
                       </dd>
                     </div>
