@@ -341,6 +341,148 @@ test("devices API 使用协议端点、用户 Bearer 凭据和字段名", async 
   assert.deepEqual(JSON.parse(requests[2].init.body), { device_name: "书房电脑" });
 });
 
+const copy = await import(await compileModule("src/api/device-error-copy.ts"));
+
+/** 06-code-contract.md §1 全表，逐字照抄；改一个字这条就红。 */
+const CONTRACT_COPY = [
+  ["device_offline", "任务已排队，等书房电脑上线后这一步会自动继续。"],
+  [
+    "local_exec_disabled",
+    "书房电脑还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。",
+  ],
+  ["grant_missing", "书房电脑还没授权这类操作。需要在那台电脑上授权后重新发起。"],
+  [
+    "path_outside_grant",
+    "这个路径不在书房电脑已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。",
+  ],
+  ["confirm_timeout", "书房电脑上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。"],
+  ["revoked", "书房电脑已被撤销，需要在那台电脑上重新配对。"],
+  ["pair_code_invalid", "配对码无效或已过期，请在客户端里重新获取"],
+  ["action_kind_unknown", "这个本机操作暂不受支持，请刷新页面后再试。"],
+  ["user_denied", "你在书房电脑上拒绝了这一步。"],
+  ["command_unsupported", "这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。"],
+  ["quota_paired_devices", "已连接的电脑达到上限（20台）。撤销一台再连新的。"],
+  ["quota_unfinished_tasks", "还有100个任务没跑完，等它们结束再下单。"],
+  ["quota_rate", "下单太频繁了，过一会儿再试。"],
+  ["quota_pair_codes", "配对码请求太频繁了，过一会儿再试。"],
+  ["payload_field_missing", "这一步缺少必要参数，请刷新页面后重试。"],
+  ["payload_field_unknown", "这一步的参数不被支持，请刷新页面后重试。"],
+  ["payload_field_type_invalid", "这一步的参数格式不对，请刷新页面后重试。"],
+  [
+    "payload_path_not_absolute",
+    "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。",
+  ],
+];
+
+test("协议 §7 的 18 个码逐个有契约规定的中文，一个英文 token 都不外泄", () => {
+  assert.equal(CONTRACT_COPY.length, 18);
+  assert.deepEqual(
+    CONTRACT_COPY.map(([code]) => code).sort(),
+    [...copy.DEVICE_ERROR_CODES].sort(),
+  );
+  for (const [code, expected] of CONTRACT_COPY) {
+    assert.equal(
+      copy.deviceErrorCopy(code, { deviceName: "书房电脑" }),
+      expected,
+      `${code} 的文案必须与 06-code-contract.md §1 逐字一致`,
+    );
+    assert.doesNotMatch(
+      copy.deviceErrorCopy(code, { deviceName: "书房电脑" }),
+      /[a-z]+_[a-z_]+/,
+      `${code} 的文案里不许出现下划线英文 token`,
+    );
+  }
+});
+
+test("配额上限由后端说了算，后端不说才退回 0179 里的数", () => {
+  assert.equal(
+    copy.deviceErrorCopy("quota_paired_devices", { limit: 3 }),
+    "已连接的电脑达到上限（3台）。撤销一台再连新的。",
+  );
+  assert.equal(
+    copy.deviceErrorCopy("quota_unfinished_tasks", { limit: 7 }),
+    "还有7个任务没跑完，等它们结束再下单。",
+  );
+  assert.equal(copy.DEVICE_QUOTA_FALLBACK_LIMITS.quota_paired_devices, 20);
+  assert.equal(copy.DEVICE_QUOTA_FALLBACK_LIMITS.quota_unfinished_tasks, 100);
+});
+
+test("未知码在页面上落到兜底文案，不会把英文原文摆给用户", async () => {
+  for (const unknown of [
+    "device_quota_paired_devices_per_user_exceeded",
+    "device_quota_rate_exceeded",
+    "internal_server_error",
+    "HTTP 500",
+  ]) {
+    assert.equal(copy.deviceErrorCopy(unknown), "这一步没有完成，请稍后重试。");
+    const client = makeClient([], {
+      async pairDevice(code) {
+        client.calls.pair.push(code);
+        return { ok: false, error: unknown, status: 429 };
+      },
+    });
+    const view = await render(client);
+    const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+    await view.setInput(input, "abcd1234");
+    await view.submit(view.host.querySelector("form"));
+    assert.ok(view.text().includes("这一步没有完成，请稍后重试。"));
+    assert.doesNotMatch(view.text(), /[a-z]+_[a-z_]+/);
+    assert.ok(!view.text().includes(unknown));
+    view.cleanup();
+  }
+});
+
+test("第 21 台电脑配对失败时页面上是中文上限提示，不是数据库 token", async () => {
+  const client = makeClient([], {
+    async pairDevice(code) {
+      client.calls.pair.push(code);
+      return { ok: false, error: "quota_paired_devices", status: 429, limit: 20 };
+    },
+  });
+  const view = await render(client);
+  const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+  await view.setInput(input, "abcd1234");
+  await view.submit(view.host.querySelector("form"));
+  assert.ok(view.text().includes("已连接的电脑达到上限（20台）。撤销一台再连新的。"));
+  assert.doesNotMatch(view.text(), /[a-z]+_[a-z_]+/);
+  view.cleanup();
+});
+
+test("配对码请求太频繁时不说「重试」，因为重试再吃一次配额", async () => {
+  const client = makeClient([], {
+    async pairDevice(code) {
+      client.calls.pair.push(code);
+      return { ok: false, error: "quota_pair_codes", status: 429 };
+    },
+  });
+  const view = await render(client);
+  const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+  await view.setInput(input, "abcd1234");
+  await view.submit(view.host.querySelector("form"));
+  assert.ok(view.text().includes("配对码请求太频繁了，过一会儿再试。"));
+  assert.ok(!view.text().includes("请检查网络后重试"));
+  view.cleanup();
+});
+
+test("shell 不再是可授权类别：类型与标签里都没有它", async () => {
+  const [api, page] = await Promise.all([
+    readFile(resolve("src/api/devices.ts"), "utf8"),
+    readFile(resolve("src/pages/DevicesPage.tsx"), "utf8"),
+  ]);
+  const grantKind = api.match(/export type DeviceGrantKind =[^;]*;/);
+  assert.ok(grantKind, "DeviceGrantKind 应当仍然存在");
+  assert.ok(!grantKind[0].includes("shell"));
+  const labels = page.match(/const GRANT_LABELS[\s\S]*?\n};/);
+  assert.ok(labels, "GRANT_LABELS 应当仍然存在");
+  assert.ok(!labels[0].includes("shell"));
+  assert.ok(!labels[0].includes("Shell"));
+
+  const view = await render(makeClient([makeDevice({ granted_kinds: ["read", "python"] })]));
+  assert.ok(view.text().includes("读取、Python"));
+  assert.ok(!view.text().includes("Shell"));
+  view.cleanup();
+});
+
 test("源码没有生成配对码、远程改总开关或请求设备密钥的路径", async () => {
   const files = [
     "src/api/devices.ts",
