@@ -1,5 +1,6 @@
 "use client";
 
+import { isUnsupportedShellCommand } from "../api/device-error-copy";
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 
@@ -44,6 +45,8 @@ export type LocalTaskDenyReason =
   | "grant_missing"
   | "path_outside_grant"
   | "confirm_timeout"
+  | "user_denied"
+  | "command_unsupported"
   | "revoked";
 
 export interface LocalTaskSummaryFile {
@@ -58,6 +61,8 @@ export interface LocalTaskResultSummary {
   bytes?: number;
   columns?: string[];
   rows?: number;
+  /** `fs.read_summary` only: `"file"` or `"directory"` (contract §2). */
+  kind?: string;
   files?: LocalTaskSummaryFile[];
   exit_code?: number;
   output_bytes?: number;
@@ -80,12 +85,15 @@ export interface CreatedLocalTask {
 export class LocalTaskApiError extends Error {
   readonly code: string;
   readonly status: number;
+  /** Quota ceiling named by the server, when it names one. */
+  readonly limit?: number;
 
-  constructor(code: string, status: number) {
+  constructor(code: string, status: number, limit?: number) {
     super(code);
     this.name = "LocalTaskApiError";
     this.code = code;
     this.status = status;
+    if (limit !== undefined) this.limit = limit;
   }
 }
 
@@ -119,6 +127,16 @@ function errorCode(payload: unknown, status: number): string {
   return status === 401 ? "unauthorized" : `http_${status}`;
 }
 
+function errorLimit(payload: unknown): number | undefined {
+  if (!isObject(payload)) return undefined;
+  const nested = isObject(payload.detail) ? payload.detail.limit : undefined;
+  for (const candidate of [payload.limit, nested]) {
+    const parsed = numberField(candidate);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   const token = await accessToken();
   if (!token) throw new LocalTaskApiError("unauthorized", 401);
@@ -141,7 +159,11 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
 
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new LocalTaskApiError(errorCode(payload, response.status), response.status);
+    throw new LocalTaskApiError(
+      errorCode(payload, response.status),
+      response.status,
+      errorLimit(payload),
+    );
   }
   return payload;
 }
@@ -160,6 +182,8 @@ function isDenyReason(value: unknown): value is LocalTaskDenyReason {
     "grant_missing",
     "path_outside_grant",
     "confirm_timeout",
+    "user_denied",
+    "command_unsupported",
     "revoked",
   ].some((reason) => reason === value);
 }
@@ -187,6 +211,10 @@ export function sanitizeLocalTaskSummary(
   if (entries !== undefined) summary.entries = entries;
   if (bytes !== undefined) summary.bytes = bytes;
   if (rows !== undefined) summary.rows = rows;
+  if (actionKind === undefined || actionKind === "fs.read_summary") {
+    const kind = stringField(value.kind);
+    if (kind !== undefined) summary.kind = kind.slice(0, 64);
+  }
   if (exitCode !== undefined) summary.exit_code = exitCode;
   if (outputBytes !== undefined) summary.output_bytes = outputBytes;
 
@@ -220,6 +248,14 @@ export async function createLocalTask<K extends LocalActionKind>(
   actionKind: K,
   payload: LocalActionPayloadByKind[NoInfer<K>],
 ): Promise<CreatedLocalTask> {
+  // Refuse the shapes the device cannot run before spending a rate-limit slot
+  // on a task that is certain to come back as a bare "执行失败" (contract §4).
+  if (actionKind === "shell.run") {
+    const command = (payload as { command?: unknown }).command;
+    if (typeof command === "string" && isUnsupportedShellCommand(command)) {
+      throw new LocalTaskApiError("command_unsupported", 400);
+    }
+  }
   const response = await request(
     `/v1/devices/${encodeURIComponent(deviceId)}/tasks`,
     {

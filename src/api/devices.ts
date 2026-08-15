@@ -11,7 +11,12 @@ export type DevicePlatform =
   | "ios"
   | "harmony";
 
-export type DeviceGrantKind = "read" | "write" | "python" | "shell";
+/**
+ * `shell` is deliberately absent: it is not, and never will be, a grantable
+ * category (contract §3). Every `shell.run` is authorised by its own
+ * confirmation on the device itself.
+ */
+export type DeviceGrantKind = "read" | "write" | "python";
 
 export interface Device {
   device_id: string;
@@ -28,6 +33,20 @@ export interface DeviceApiResult<T> {
   data?: T;
   error?: string;
   status?: number;
+  /** Quota ceiling named by the server, when it names one. */
+  limit?: number;
+}
+
+function errorLimit(data: unknown): number | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const body = data as { limit?: unknown; detail?: unknown };
+  const detail = body.detail && typeof body.detail === "object"
+    ? (body.detail as { limit?: unknown }).limit
+    : undefined;
+  for (const candidate of [body.limit, detail]) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 function errorCode(data: unknown, status: number): string {
@@ -74,10 +93,12 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
     // Some successful mutation endpoints may return an empty body.
   }
   if (!response.ok) {
+    const limit = errorLimit(data);
     return {
       ok: false,
       error: errorCode(data, response.status),
       status: response.status,
+      ...(limit === undefined ? {} : { limit }),
     };
   }
   return { ok: true, data: data as T };
@@ -90,6 +111,7 @@ export async function listDevices(): Promise<DeviceApiResult<Device[]>> {
       ok: false,
       error: response.error,
       status: response.status,
+      ...(response.limit === undefined ? {} : { limit: response.limit }),
     };
   }
   if (!response.data || !Array.isArray(response.data.devices)) {

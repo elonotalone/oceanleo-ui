@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { deviceErrorCopy } from "../api/device-error-copy";
 import {
   cancelLocalTask,
   watchLocalTask,
@@ -36,20 +37,17 @@ export function localTaskDeniedMessage(
   reason: LocalTaskDenyReason | undefined,
   deviceName: string,
 ): string {
-  switch (reason) {
-    case "local_exec_disabled":
-      return `${deviceName}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。`;
-    case "grant_missing":
-      return `${deviceName}还没授权这类操作。需要在那台电脑上授权后重新发起。`;
-    case "path_outside_grant":
-      return `这个路径不在${deviceName}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。`;
-    case "confirm_timeout":
-      return `${deviceName}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。`;
-    case "revoked":
-      return `${deviceName}已被撤销，需要在那台电脑上重新配对。`;
-    default:
-      return `${deviceName}拒绝了这一步。请到那台电脑上查看本地审计记录。`;
+  if (reason === undefined) {
+    return `${deviceName}拒绝了这一步。请到那台电脑上查看本地审计记录。`;
   }
+  return deviceErrorCopy(reason, { deviceName });
+}
+
+/** Contract §2: a read summary must say whether it read a file or a folder. */
+function summaryKindLabel(kind: string): string {
+  if (kind === "file") return "文件";
+  if (kind === "directory") return "文件夹";
+  return kind;
 }
 
 function Summary({
@@ -82,6 +80,9 @@ function Summary({
   return (
     <div className="mt-3 rounded-lg border border-slate-200 p-3" data-local-task-summary>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+        {summary.kind !== undefined ? (
+          <><dt>类型</dt><dd data-summary-kind={summary.kind}>{summaryKindLabel(summary.kind)}</dd></>
+        ) : null}
         {summary.entries !== undefined ? (
           <><dt>条目数</dt><dd>{summary.entries}</dd></>
         ) : null}

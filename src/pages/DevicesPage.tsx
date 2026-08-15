@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { deviceErrorCopy } from "../api/device-error-copy";
 import {
   devicesFacade,
   type Device,
@@ -25,24 +26,24 @@ const PLATFORM_LABELS: Record<DevicePlatform, string> = {
   harmony: "HarmonyOS",
 };
 
+/** `shell` is absent on purpose: it is not a grantable category (contract §3). */
 const GRANT_LABELS: Record<DeviceGrantKind, string> = {
   read: "读取",
   write: "写入",
   python: "Python",
-  shell: "Shell",
 };
 
-function pairErrorCopy(code?: string): string {
-  if (code === "pair_code_invalid") {
-    return "配对码无效或已过期，请在客户端里重新获取";
-  }
-  return code || "配对失败，请稍后重试";
+/**
+ * Never hand an error code back as its own message: an unrecognised code used
+ * to surface as `device_quota_paired_devices_per_user_exceeded` on the page.
+ */
+function pairErrorCopy(code?: string, limit?: number): string {
+  return deviceErrorCopy(code, { limit });
 }
 
-function actionErrorCopy(code?: string): string {
-  if (!code) return "操作失败，请稍后重试";
+function actionErrorCopy(code?: string, limit?: number): string {
   if (code === "revoked") return "这台设备已被撤销";
-  return code;
+  return deviceErrorCopy(code, { limit });
 }
 
 export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
@@ -64,7 +65,7 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
       setDevices(result.data);
       setPageError(null);
     } else {
-      setPageError(actionErrorCopy(result.error));
+      setPageError(actionErrorCopy(result.error, result.limit));
     }
     return result;
   }
@@ -78,7 +79,7 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
         setDevices(result.data);
         setPageError(null);
       } else {
-        setPageError(actionErrorCopy(result.error));
+        setPageError(actionErrorCopy(result.error, result.limit));
       }
       setLoading(false);
     });
@@ -98,7 +99,7 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
     setPairError(null);
     const result = await client.pairDevice(code);
     if (!result.ok) {
-      setPairError(tt(pairErrorCopy(result.error)));
+      setPairError(tt(pairErrorCopy(result.error, result.limit)));
       setPairing(false);
       return;
     }
@@ -133,7 +134,7 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
             : item,
         ),
       );
-      setPageError(actionErrorCopy(result.error));
+      setPageError(actionErrorCopy(result.error, result.limit));
     }
     await refreshDevices();
     setSavingName(false);
@@ -144,7 +145,7 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
     setPageError(null);
     setDevices((current) => current.filter((item) => item.device_id !== device.device_id));
     const result = await client.revokeDevice(device.device_id);
-    if (!result.ok) setPageError(actionErrorCopy(result.error));
+    if (!result.ok) setPageError(actionErrorCopy(result.error, result.limit));
     await refreshDevices();
   }
 
