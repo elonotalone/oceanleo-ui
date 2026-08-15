@@ -325,12 +325,39 @@ function normalizedDigest(value: unknown): string {
     .replace(/^sha256:/, "");
 }
 
-function trustedArtifactMediaUrl(value: string): boolean {
+// [loopback-dev-gate:begin] 网页永远不许直连本机。
+// 两道条件同时成立才放行本机地址，缺一即拒：
+//  1. 构建期常量：打包器把 `process.env.NODE_ENV` 换成字面量 `"production"`，
+//     生产 bundle 里这里收敛成 `return false`，下面的 loopback 分支构建期不可达；
+//  2. 页面自身的 origin 也必须在 loopback 上。这一条与任何 flag 无关：
+//     `oceanleo.com` 上的脚本（含 XSS）永远不满足它，所以即使 NODE_ENV 被翻掉，
+//     线上页面也拿不到通往用户本机的地址。
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLoopbackHostname(value: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(
+    String(value || "")
+      .toLowerCase()
+      .replace(/^\[|\]$/g, ""),
+  );
+}
+
+function localDevLoopbackOpen(): boolean {
+  if (typeof process === "undefined" || process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return isLoopbackHostname(globalThis.location?.hostname || "");
+}
+// [loopback-dev-gate:end]
+
+/** 上传回执 URL 是否可信。导出只为让 loopback 硬门可被断言，不是给业务用的。 */
+export function trustedArtifactMediaUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     const local =
       parsed.protocol === "http:" &&
-      ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+      isLoopbackHostname(parsed.hostname) &&
+      localDevLoopbackOpen();
     return (
       (parsed.protocol === "https:" || local) &&
       !parsed.username &&

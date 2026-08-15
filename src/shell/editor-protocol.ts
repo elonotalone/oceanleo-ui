@@ -50,6 +50,30 @@ export { isEditorRecoverySnapshot } from "./editor-protocol-validation.mjs";
 export * from "./editor-sandbox-origin";
 
 export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
+// [loopback-dev-gate:begin] 网页永远不许直连本机。
+// 两道条件同时成立才放行本机地址，缺一即拒：
+//  1. 构建期常量：打包器把 `process.env.NODE_ENV` 换成字面量 `"production"`，
+//     生产 bundle 里这里收敛成 `return false`，下面的 loopback 分支构建期不可达；
+//  2. 页面自身的 origin 也必须在 loopback 上。这一条与任何 flag 无关：
+//     `oceanleo.com` 上的脚本（含 XSS）永远不满足它，所以即使 NODE_ENV 被翻掉，
+//     线上页面也拿不到通往用户本机的地址。
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLoopbackHostname(value: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(
+    String(value || "")
+      .toLowerCase()
+      .replace(/^\[|\]$/g, ""),
+  );
+}
+
+function localDevLoopbackOpen(): boolean {
+  if (typeof process === "undefined" || process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return isLoopbackHostname(globalThis.location?.hostname || "");
+}
+// [loopback-dev-gate:end]
 const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
 const EDITOR_MESSAGE_SEVERITIES = new Set(["fatal", "warning", "info"]);
 
@@ -144,8 +168,11 @@ export function isTrustedEditorOrigin(origin: string): boolean {
       return false;
     }
     if (isUntrustedContentHostname(hostname)) return false;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return protocol === "http:" || protocol === "https:";
+    if (isLoopbackHostname(hostname)) {
+      return (
+        localDevLoopbackOpen() &&
+        (protocol === "http:" || protocol === "https:")
+      );
     }
     if (protocol !== "https:" || parsed.port) return false;
     // 按**当前家族**判第一方，不再写死 `.oceanleo.com`：`.com` 页面对 `.com`
