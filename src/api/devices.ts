@@ -43,7 +43,9 @@ function errorLimit(data: unknown): number | undefined {
   const detail = body.detail && typeof body.detail === "object"
     ? (body.detail as { limit?: unknown }).limit
     : undefined;
-  for (const candidate of [body.limit, detail]) {
+  // Contract §1.2b puts the ceiling on `detail`; a top-level `limit` is only
+  // tolerated so an older or proxied shape still reaches the same sentence.
+  for (const candidate of [detail, body.limit]) {
     if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
   }
   return undefined;
@@ -57,11 +59,13 @@ function errorCode(data: unknown, status: number): string {
     error?: unknown;
     detail?: unknown;
   };
-  if (typeof body.detail === "string" && body.detail) return body.detail;
+  // Contract §1.2b makes `detail` an object; a plain string is the older shape
+  // and still has to resolve, or a stale gateway turns every refusal unknown.
   if (body.detail && typeof body.detail === "object") {
     const detailCode = (body.detail as { code?: unknown }).code;
     if (typeof detailCode === "string" && detailCode) return detailCode;
   }
+  if (typeof body.detail === "string" && body.detail) return body.detail;
   if (typeof body.code === "string" && body.code) return body.code;
   if (typeof body.error === "string" && body.error) return body.error;
   return `HTTP ${status}`;

@@ -117,12 +117,15 @@ function errorCode(payload: unknown, status: number): string {
   if (isObject(payload)) {
     const direct = stringField(payload.code) || stringField(payload.error_code);
     if (direct) return direct;
-    if (typeof payload.detail === "string" && payload.detail) return payload.detail;
+    // Contract §1.2b makes `detail` an object; a plain string is the older
+    // shape and still has to resolve, or a stale gateway turns every refusal
+    // into an unknown code.
     if (isObject(payload.detail)) {
       const nested =
         stringField(payload.detail.code) || stringField(payload.detail.error_code);
       if (nested) return nested;
     }
+    if (typeof payload.detail === "string" && payload.detail) return payload.detail;
   }
   return status === 401 ? "unauthorized" : `http_${status}`;
 }
@@ -130,7 +133,9 @@ function errorCode(payload: unknown, status: number): string {
 function errorLimit(payload: unknown): number | undefined {
   if (!isObject(payload)) return undefined;
   const nested = isObject(payload.detail) ? payload.detail.limit : undefined;
-  for (const candidate of [payload.limit, nested]) {
+  // Contract §1.2b puts the ceiling on `detail`; a top-level `limit` is only
+  // tolerated so an older or proxied shape still reaches the same sentence.
+  for (const candidate of [nested, payload.limit]) {
     const parsed = numberField(candidate);
     if (parsed !== undefined) return parsed;
   }

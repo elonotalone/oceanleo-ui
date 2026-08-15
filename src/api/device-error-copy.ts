@@ -24,6 +24,7 @@ export const DEVICE_ERROR_CODES = [
   "quota_unfinished_tasks",
   "quota_rate",
   "quota_pair_codes",
+  "quota_unpaired_devices",
   "payload_field_missing",
   "payload_field_unknown",
   "payload_field_type_invalid",
@@ -35,18 +36,9 @@ export type DeviceErrorCode = (typeof DEVICE_ERROR_CODES)[number];
 /** Contract §1.3: every unrecognised code collapses to this one sentence. */
 export const DEVICE_ERROR_UNKNOWN_COPY = "这一步没有完成，请稍后重试。";
 
-/**
- * The `{上限}` placeholder has no carrier on the wire yet, so the numbers from
- * migration `0179_device_bridge_quotas.sql` are used whenever the response does
- * not name a limit.
- */
-export const DEVICE_QUOTA_FALLBACK_LIMITS: Readonly<Record<string, number>> = {
-  quota_paired_devices: 20,
-  quota_unfinished_tasks: 100,
-};
-
 export interface DeviceErrorCopyContext {
   deviceName?: string;
+  /** `detail.limit` from the refusal, and only that (contract §1.2b). */
   limit?: number | string;
 }
 
@@ -54,10 +46,15 @@ export function isDeviceErrorCode(value: unknown): value is DeviceErrorCode {
   return DEVICE_ERROR_CODES.some((code) => code === value);
 }
 
-function limitFor(code: DeviceErrorCode, context: DeviceErrorCopyContext): string {
-  if (context.limit !== undefined && context.limit !== "") return String(context.limit);
-  const fallback = DEVICE_QUOTA_FALLBACK_LIMITS[code];
-  return fallback === undefined ? "" : String(fallback);
+/**
+ * Contract §1.2b: the ceiling may only ever come off the wire. Guessing one
+ * from the migration file means the page starts lying the day a quota changes,
+ * and no test goes red — so a missing `limit` drops the number instead, and
+ * the advice, which is the part the user acts on, is kept word for word.
+ */
+function limitText(context: DeviceErrorCopyContext): string | null {
+  if (context.limit === undefined || context.limit === "") return null;
+  return String(context.limit);
 }
 
 /**
@@ -91,14 +88,30 @@ export function deviceErrorCopy(
       return `你在${deviceName}上拒绝了这一步。`;
     case "command_unsupported":
       return "这条命令包含管道或重定向，本机执行不支持；请拆成单条命令。";
-    case "quota_paired_devices":
-      return `已连接的电脑达到上限（${limitFor(code, context)}台）。撤销一台再连新的。`;
-    case "quota_unfinished_tasks":
-      return `还有${limitFor(code, context)}个任务没跑完，等它们结束再下单。`;
+    case "quota_paired_devices": {
+      const limit = limitText(context);
+      return limit === null
+        ? "已连接的电脑达到上限。撤销一台再连新的。"
+        : `已连接的电脑达到上限（${limit}台）。撤销一台再连新的。`;
+    }
+    case "quota_unfinished_tasks": {
+      const limit = limitText(context);
+      return limit === null
+        ? "还有任务没跑完，等它们结束再下单。"
+        : `还有${limit}个任务没跑完，等它们结束再下单。`;
+    }
     case "quota_rate":
       return "下单太频繁了，过一会儿再试。";
     case "quota_pair_codes":
       return "配对码请求太频繁了，过一会儿再试。";
+    // Not a frequency problem: waiting never clears it, so the advice differs
+    // from `quota_pair_codes` (contract §1.2c).
+    case "quota_unpaired_devices": {
+      const limit = limitText(context);
+      return limit === null
+        ? "有电脑还没完成连接。先在其中一台上连完，或撤销它们。"
+        : `有 ${limit} 台电脑还没完成连接。先在其中一台上连完，或撤销它们。`;
+    }
     case "payload_field_missing":
       return "这一步缺少必要参数，请刷新页面后重试。";
     case "payload_field_unknown":
