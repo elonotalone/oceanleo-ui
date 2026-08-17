@@ -2373,6 +2373,18 @@
         },
         {
           "kind": "named",
+          "name": "AgentHiringPolicyPanel",
+          "importedName": "AgentHiringPolicyPanel",
+          "source": "./AgentHiringPolicyPanel"
+        },
+        {
+          "kind": "named",
+          "name": "AgentHiringPolicyPanelProps",
+          "importedName": "AgentHiringPolicyPanelProps",
+          "source": "./AgentHiringPolicyPanel"
+        },
+        {
+          "kind": "named",
           "name": "AgentLibraryTabs",
           "importedName": "AgentLibraryTabs",
           "source": "./AgentChat"
@@ -3225,6 +3237,18 @@
         },
         {
           "kind": "named",
+          "name": "HandoffContextCandidate",
+          "importedName": "HandoffContextCandidate",
+          "source": "./HumanHandoffDialog"
+        },
+        {
+          "kind": "named",
+          "name": "handoffContextCandidates",
+          "importedName": "handoffContextCandidates",
+          "source": "./HumanHandoffButton"
+        },
+        {
+          "kind": "named",
           "name": "HistoryDetail",
           "importedName": "HistoryDetail",
           "source": "./HistoryMasterDetail"
@@ -3330,6 +3354,42 @@
           "name": "HomePromptCards",
           "importedName": "HomePromptCards",
           "source": "./HomeCards"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffButton",
+          "importedName": "HumanHandoffButton",
+          "source": "./HumanHandoffButton"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffButtonProps",
+          "importedName": "HumanHandoffButtonProps",
+          "source": "./HumanHandoffButton"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffDialog",
+          "importedName": "HumanHandoffDialog",
+          "source": "./HumanHandoffDialog"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffDialogProps",
+          "importedName": "HumanHandoffDialogProps",
+          "source": "./HumanHandoffDialog"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffStatus",
+          "importedName": "HumanHandoffStatus",
+          "source": "./HumanHandoffStatus"
+        },
+        {
+          "kind": "named",
+          "name": "HumanHandoffStatusProps",
+          "importedName": "HumanHandoffStatusProps",
+          "source": "./HumanHandoffStatus"
         },
         {
           "kind": "named",
