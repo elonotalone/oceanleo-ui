@@ -424,7 +424,11 @@ export function formatFen(fen: number): string {
 
 /** 界面里用户填的是元；空 / 脏值一律 0 = 面议。 */
 export function fenFromYuanInput(input: string): number {
-  const parsed = Number.parseFloat(String(input || "").replace(/[^\d.]/g, ""));
+  const raw = String(input || "").trim();
+  // 负号是脏值，不是「负预算」。先剥非数字再 parse 会把 "-3" 变成 ¥3 ——
+  // 那是给出一个用户没打算给的价，比认成面议糟得多。
+  if (raw.includes("-")) return 0;
+  const parsed = Number.parseFloat(raw.replace(/[^\d.]/g, ""));
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
   return Math.round(parsed * 100);
 }
