@@ -41,6 +41,8 @@ import {
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
+import { HumanHandoffButton } from "./HumanHandoffButton";
+import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import {
   createTask,
   branchTask,
@@ -1123,6 +1125,8 @@ function AgentChatInner({
               ))}
             </div>
           )}
+          {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
+          <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
       </div>
@@ -1141,6 +1145,15 @@ function AgentChatInner({
               >
                 {tt("取消")}
               </button>
+            </div>
+          )}
+          {!readOnly && (
+            <div className="flex justify-end">
+              <HumanHandoffButton
+                originRef={taskId || ""}
+                messages={messages}
+                accent={accent}
+              />
             </div>
           )}
           <LeoComposer

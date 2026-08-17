@@ -478,6 +478,20 @@ export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
 export { AgentChat, orgStatusFromMessages } from "./AgentChat";
 export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
+// 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
+// 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
+// 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。
+export { HumanHandoffButton, handoffContextCandidates } from "./HumanHandoffButton";
+export type { HumanHandoffButtonProps } from "./HumanHandoffButton";
+export { HumanHandoffDialog } from "./HumanHandoffDialog";
+export type {
+  HumanHandoffDialogProps,
+  HandoffContextCandidate,
+} from "./HumanHandoffDialog";
+export { HumanHandoffStatus } from "./HumanHandoffStatus";
+export type { HumanHandoffStatusProps } from "./HumanHandoffStatus";
+export { AgentHiringPolicyPanel } from "./AgentHiringPolicyPanel";
+export type { AgentHiringPolicyPanelProps } from "./AgentHiringPolicyPanel";
 export { CloudBrowserPanel } from "./CloudBrowserPanel";
 // doctrine 2026-07-09：组织节点图画布（团队≡组织）的本体 + 类型都在独立子路径
 // `@oceanleo/ui/org-canvas`（peer dep @xyflow/react，只主站/agent 站装，其余 29 站不受累）。
