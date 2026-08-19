@@ -77,10 +77,8 @@ export { LibrarySubNav, LibraryDetail } from "./LibraryMasterDetail";
 export { PlaygroundSubNav, PlaygroundDetail, BackButton } from "./Playground";
 export type { PlaygroundBoardKind, PlaygroundBoardCtx } from "./Playground";
 // doctrine v11：通用 AI 智能推荐输入框（四分区共用）+ 卡片详情弹窗（WorkBuddy 式）。
-export { AiRecommendBox } from "./AiRecommendBox";
-export type { AiRecommendBoxProps } from "./AiRecommendBox";
-export { ItemDetailModal } from "./ItemDetailModal";
-export type { ItemDetailModalProps } from "./ItemDetailModal";
+export { AiRecommendBox, type AiRecommendBoxProps } from "./AiRecommendBox";
+export { ItemDetailModal, type ItemDetailModalProps } from "./ItemDetailModal";
 export { ModelGroupPicker, ModelPicker } from "./ModelPicker";
 export type {
   ModelGroupPickerProps,
@@ -118,11 +116,9 @@ export type {
   TemplateFillAreaHandle,
 } from "./PromptHighlightArea";
 // 标准输入卡片（= image 站「① 输入」规范：文字 + 上传/拖拽参考，二合一）。
-export { InputCard } from "./InputCard";
-export type { InputCardProps, InputAttachment } from "./InputCard";
+export { InputCard, type InputCardProps, type InputAttachment } from "./InputCard";
 // 三栏工作台模板（= image 站版式，全站统一）。
-export { Studio } from "./Studio";
-export type { StudioProps } from "./Studio";
+export { Studio, type StudioProps } from "./Studio";
 // 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
 export { OperatorConsole } from "./OperatorConsole";
 export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
@@ -209,12 +205,10 @@ export type {
   RepresentativeFill,
   TemplateMaterial,
 } from "./app-catalog";
-export { StudioSection, CollapsibleSection } from "./StudioSection";
-export type { StudioSectionProps } from "./StudioSection";
+export { StudioSection, CollapsibleSection, type StudioSectionProps } from "./StudioSection";
 // 宗旨 v18（2026-07-07）：操作台「选项按键组」（单选点已选=取消；多选切换）。全家桶
 // 操作台的比例/画质/风格/数量档等选项统一用它，自动获得「再点一次取消选择」。
-export { OptionRow } from "./OptionRow";
-export type { OptionRowProps, OptionItem } from "./OptionRow";
+export { OptionRow, type OptionRowProps, type OptionItem } from "./OptionRow";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
 export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
 // v0.179 canonical artifact control-plane surface. Consumers must not fork
@@ -283,34 +277,33 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
-// 空件挂载（收口合同 §3.2）：`item` 可以先不给，工作台先给一个空框，
-// 第一件落进来的素材由它自己落成、再挂编辑器。素材站的「所有编辑器试验场」靠这条。
+// 空件挂载（合同 §3.2）：`item` 可以先不给，工作台先给空框，第一件素材落成后再挂编辑器。
 export type { AdvancedContentWorkbenchMountProps } from "./AdvancedContentWorkbench";
 export { AdvancedWorkbenchBlankStage } from "./AdvancedWorkbenchStage";
-// 本地文件第一次落进工作台时的判型（「这个后缀该去哪条编辑器、要不要先转一道」）。
+// 本地文件第一次落进工作台时的判型：该去哪条编辑器、要不要先转一道、转不了时那句能
+// 照做的话。（同模块的 `*_EXT` 表是路由内部用的，不上公开面。）
 export {
   uploadEditorTargetForExtension,
   uploadEditorTargetForFileName,
   uploadSupportedExtensions,
   uploadSupportedExtensionsByTarget,
   uploadUnavailableReason,
+  type UploadEditorTarget,
 } from "./workbench-route-formats";
-export type { UploadEditorTarget } from "./workbench-route-formats";
 // 上传归一化（合同 §3.3）：机制在共享包，映射表由各编辑器路由自己声明。
 export {
   editorImportExtensions,
   editorImportPlan,
   normalizeForEditor,
   registerEditorImportPlan,
+  type EditorConvertEndpoint,
+  type EditorImportPlan,
+  type EditorImportResult,
+  type EditorImportRule,
 } from "./import-normalize";
-export type {
-  EditorConvertEndpoint,
-  EditorImportPlan,
-  EditorImportResult,
-  EditorImportRule,
-} from "./import-normalize";
-// 编辑器指令面（合同 §3.1）：右栏编辑器第一次有一个机器可调用的面，
-// 左栏 agent 用它问「现在能做什么」、下一步指令。校验强制在注册表里，绕不过去。
+// 编辑器指令面（合同 §3.1）：右栏编辑器第一次有一个机器可调用的面，左栏 agent 用它问
+// 「现在能做什么」、下指令；校验强制在注册表里，绕不过去。这几个类型的**唯一出处**是
+// `./plugin-command/types.ts` —— 抄第二份就是 TS2308「名字有歧义」，整个包编不过。
 export {
   PLUGIN_COMMAND_PARAM_MAX_BYTES,
   PLUGIN_COMMAND_STATE_MAX_BYTES,
@@ -322,19 +315,12 @@ export {
   runPluginCommand,
   subscribePluginCommandSurface,
   usePluginCommandSurface,
-} from "./plugin-command";
-// 这四个名字一度导不出来：`src/lib/fn-agent.ts` 曾自己再声明一份同名类型，而顶层
-// barrel 同时 `export *` 了 `./shell` 与 `./lib`，两边同名就是 TS2308「名字有歧义」。
-// W4 在 `verdicts/W4-delivery.md` §2 把那份重复声明删了、改成 `import type` 本文件，
-// 歧义随之消失，四行补回。**类型的唯一出处是 `./plugin-command/types.ts`**，
-// 谁要用都从那里 import，不许再抄一份。
-export type {
-  PluginCommandParam,
-  PluginCommandResult,
-  PluginCommandSpec,
-  PluginCommandStateSnapshot,
-  PluginCommandSurface,
-  PluginCommandSurfaceInput,
+  type PluginCommandParam,
+  type PluginCommandResult,
+  type PluginCommandSpec,
+  type PluginCommandStateSnapshot,
+  type PluginCommandSurface,
+  type PluginCommandSurfaceInput,
 } from "./plugin-command";
 // LeoPlay 沙箱宿主与生成链的注入面（`advanced-routes/GameRoute`）。
 //
@@ -362,8 +348,7 @@ export type {
 // owner-maintained public barrels so implementation modules remain private.
 export * from "./video-editor/capabilities";
 export * from "./media-editors/model3d-capabilities";
-export { SelectionToolbar } from "./SelectionToolbar";
-export type { SelectionToolbarProps } from "./SelectionToolbar";
+export { SelectionToolbar, type SelectionToolbarProps } from "./SelectionToolbar";
 export { SelectionInspectorPanel } from "./SelectionInspectorPanel";
 export {
   isCompactSelectionControl,
@@ -418,10 +403,8 @@ export type {
   AdvancedFeatureId,
 } from "./advanced-features";
 export * from "./editor-protocol";
-export { MaterialLibrary } from "./MaterialLibrary";
-export type { MaterialLibraryProps, MaterialItem } from "./MaterialLibrary";
-export { MyLibrary } from "./MyLibrary";
-export type { MyLibraryProps } from "./MyLibrary";
+export { MaterialLibrary, type MaterialLibraryProps, type MaterialItem } from "./MaterialLibrary";
+export { MyLibrary, type MyLibraryProps } from "./MyLibrary";
 export {
   LibraryLocalScopeProvider,
   LibraryScope,
@@ -457,8 +440,7 @@ export type {
 } from "./workspace-actions";
 // 宗旨 v22.1（2026-07-13）：可复用成品渲染器 + 真内容 viewer。Office 文件在浏览器本地
 // 解析（PPT/Excel/Word），不再依赖已废弃的 Office 公共 iframe。
-export { ArtifactRenderer } from "./ArtifactRenderer";
-export type { ArtifactRendererProps } from "./ArtifactRenderer";
+export { ArtifactRenderer, type ArtifactRendererProps } from "./ArtifactRenderer";
 export {
   buildLibraryItems,
   inferLibraryKind,
@@ -541,10 +523,8 @@ export type {
   HumanHandoffDialogProps,
   HandoffContextCandidate,
 } from "./HumanHandoffDialog";
-export { HumanHandoffStatus } from "./HumanHandoffStatus";
-export type { HumanHandoffStatusProps } from "./HumanHandoffStatus";
-export { AgentHiringPolicyPanel } from "./AgentHiringPolicyPanel";
-export type { AgentHiringPolicyPanelProps } from "./AgentHiringPolicyPanel";
+export { HumanHandoffStatus, type HumanHandoffStatusProps } from "./HumanHandoffStatus";
+export { AgentHiringPolicyPanel, type AgentHiringPolicyPanelProps } from "./AgentHiringPolicyPanel";
 export { CloudBrowserPanel } from "./CloudBrowserPanel";
 // doctrine 2026-07-09：组织节点图画布（团队≡组织）的本体 + 类型都在独立子路径
 // `@oceanleo/ui/org-canvas`（peer dep @xyflow/react，只主站/agent 站装，其余 29 站不受累）。
@@ -556,9 +536,9 @@ export type { AgentAttachment } from "../lib/agent";
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
-// 左栏 agent ↔ 右栏编辑器的指令桥（W4，`verdicts/W4-delivery.md` §5.2）。
-// 站点侧自写左栏时用这三个就能接上：hook 返回的 `card` 是「要我改吗」确认卡、
-// `notes` 是执行结果那几行。会改内容的指令**必须**经确认卡，别绕过去自己调 `run()`。
+// 左栏 agent ↔ 右栏编辑器的指令桥（W4 交付 §5.2）。站点侧自写左栏时用这三个接上：
+// hook 返回的 `card` 是「要我改吗」确认卡，`notes` 是执行结果那几行。
+// 会改内容的指令**必须**经确认卡，不许绕过去自己调 `run()`。
 export {
   EditorCommandCard,
   EditorCommandNotes,
@@ -567,8 +547,7 @@ export {
 // session-first 操作台自动恢复/保存；旧后端与未登录状态兼容本地草稿。
 export { useConsoleDraft } from "./useConsoleDraft";
 export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";
-export { RestartDraftButton } from "./RestartDraftButton";
-export type { RestartDraftButtonProps } from "./RestartDraftButton";
+export { RestartDraftButton, type RestartDraftButtonProps } from "./RestartDraftButton";
 // 操作台 run 持久化为 task，并聚合到同一个 AppSession 历史。
 export { useConsoleRun } from "./useConsoleRun";
 export type {
@@ -578,28 +557,22 @@ export type {
   ConsoleRunFinishArgs,
 } from "./useConsoleRun";
 // doctrine v6/v7：skill prompt 开源面板（输入框里的 prompt 小图标 + 浮层）。
-export { SkillPromptPanel } from "./SkillPromptPanel";
-export type { SkillPromptPanelProps } from "./SkillPromptPanel";
+export { SkillPromptPanel, type SkillPromptPanelProps } from "./SkillPromptPanel";
 // doctrine v7：统一应用目录（二元分类器 + ce335cef 卡片 + 加入工作台）。
-export { AppDirectory } from "./AppDirectory";
-export type { AppDirectoryProps, DirectoryItem } from "./AppDirectory";
+export { AppDirectory, type AppDirectoryProps, type DirectoryItem } from "./AppDirectory";
 // 操作员 2026-06-24：站内「相关 skill」目录（按 relatedSkillCategories 过滤 LeoSkill）。
-export { SiteSkillDirectory } from "./SiteSkillDirectory";
-export type { SiteSkillDirectoryProps } from "./SiteSkillDirectory";
+export { SiteSkillDirectory, type SiteSkillDirectoryProps } from "./SiteSkillDirectory";
 // doctrine v6：创建 / 保存 skill 的统一弹窗（「创建 skill」+「保存为我的 skill」共用）。
 export { CreateSkillModal, CreateSkillTeamModal } from "./CreateSkillModal";
 export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateSkillModal";
 // 宗旨 v4：由 manifest 渲染的通用操作台（可迁移核心）。任何站点同一组件渲染同一份
 // manifest → 显示一致、零代码搬迁。
-export { AgentConsole } from "./AgentConsole";
-export type { AgentConsoleProps, RunCapabilityFn } from "./AgentConsole";
+export { AgentConsole, type AgentConsoleProps, type RunCapabilityFn } from "./AgentConsole";
 // 主站「工作台」母页面壳（iframe 内嵌子站功能区 + 选/加 agent）。
-export { WorkspaceShell } from "./WorkspaceShell";
-export type { WorkspaceShellProps } from "./WorkspaceShell";
+export { WorkspaceShell, type WorkspaceShellProps } from "./WorkspaceShell";
 // 站点首页（大输入框 → 进入 agent + 卡片区）。2026-07-25：那张收费 / BYOK 说明卡与
 // `intro` 介绍段已从共享包硬删，首页不再以任何形式保留它们。
-export { HomeIntro } from "./HomeIntro";
-export type { HomeIntroProps } from "./HomeIntro";
+export { HomeIntro, type HomeIntroProps } from "./HomeIntro";
 // app 卡片外壳（合同 2026-07-27 §0.3 / §3.1 决策 D3，W1 产出）：**首页卡与工作台卡的
 // 唯一一份版式实现**。操作员要求两者「完完全全一样的格式」，所以尺寸/圆角/hover 放大/
 // 铺满层/触屏常驻主按钮/栅格全部只在这里定义；`variant` 只决定落点语义与既有的
@@ -725,8 +698,7 @@ export type { TemplateDownloadErrorCode } from "./template-download";
 // 导出但首页不再渲染）。「添加 prompt」= 预制库选择 + 新建（AddPromptModal）。
 export { HomePromptCards } from "./HomeCards";
 export { PromptCardModal, AddPromptModal } from "./HomePromptModals";
-export { HomeAgentCards } from "./HomeAgentCards";
-export type { HomeAgentPick } from "./HomeAgentCards";
+export { HomeAgentCards, type HomeAgentPick } from "./HomeAgentCards";
 export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards, loadAllCustomPromptCards } from "./home-cards";
 export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
@@ -740,8 +712,7 @@ export * from './local-task-client';
 export { ArtifactLibrary, ARTIFACT_FILTERS } from "./ArtifactLibrary";
 export type { ArtifactLibraryProps, ArtifactFilter, ArtifactItem } from "./ArtifactLibrary";
 // 历史记录页。
-export { HistoryPage } from "./HistoryPage";
-export type { HistoryPageProps } from "./HistoryPage";
+export { HistoryPage, type HistoryPageProps } from "./HistoryPage";
 // 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
 export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
@@ -752,8 +723,7 @@ export { SITE_ICONS, SITE_BRAND_COLOR, siteIconFor, siteBrandColorFor } from "./
 // 宗旨 v13（2026-07-02）：从 shell 也 re-export brand-color，让消费站不用另导 lib。
 export { brandColorFor, tintOf, BRAND_PALETTE } from "../lib/brand-color";
 // 宗旨 v13：专家团成员管理弹窗（agent 站输入框「专家团」小图标 → 弹本 modal）。
-export { TeamRosterModal } from "./TeamRosterModal";
-export type { TeamRosterModalProps } from "./TeamRosterModal";
+export { TeamRosterModal, type TeamRosterModalProps } from "./TeamRosterModal";
 // 封面判据三态（2026-07-29 合同 §3.2，W1 产出）。**不再是布尔**：`real` 照常显示、
 // `unknown-metadata` 是「元数据没写全的真图」（弱化呈现，**不得**写「封面不可用」）、
 // 只有 `proven-placeholder` 才是被证实的占位图。字节数不是质量代理——旧的 4096 字节
