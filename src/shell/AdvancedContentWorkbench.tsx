@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
+import { AdvancedWorkbenchBlankStage } from "./AdvancedWorkbenchStage";
 import { UnsupportedRoute } from "./advanced-routes/UnsupportedRoute";
 import { WorkbenchRouteLoading } from "./advanced-routes/WorkbenchRouteLoading";
 import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
@@ -122,20 +123,49 @@ const GameRoute = dynamic(
     ),
   { ssr: false, loading: WorkbenchRouteLoading },
 );
+/**
+ * 空件挂载（合同 §3.2）用的入参形态：`item` 可以先不给。
+ *
+ * 刻意**不改** `advanced-workbench-types.ts` 里的原类型——那份类型是全仓共用的入口
+ * 契约，放宽它等于让每一个调用方都可以不给素材。这里只是本组件多认一种入参：
+ * 没有素材时先给一个空框，第一件素材落成之后再走原来那条路。
+ */
+export type AdvancedContentWorkbenchMountProps = Omit<
+  AdvancedContentWorkbenchProps,
+  "item"
+> & {
+  item?: LibraryItem | null;
+  /** W9 的「上传整个文件夹 / zip」入口，只在空框上出现。 */
+  projectImportSlot?: ReactNode;
+};
+
 export function AdvancedContentWorkbench(
-  props: AdvancedContentWorkbenchProps,
+  props: AdvancedContentWorkbenchMountProps,
 ) {
   const [mounted, setMounted] = useState(false);
+  const [droppedItem, setDroppedItem] = useState<LibraryItem | null>(null);
   const inheritedWorkspace = useOptionalWorkspaceSession();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
-  const route = editorRouteFor(props.item);
-  const siteId = props.siteId || props.item.siteId || "oceanleo";
+  const item = props.item || droppedItem;
+  if (!item) {
+    return (
+      <AdvancedWorkbenchBlankStage
+        accent={props.accent}
+        siteId={props.siteId}
+        projectImportSlot={props.projectImportSlot}
+        onItemReady={setDroppedItem}
+      />
+    );
+  }
+  const itemProps: AdvancedContentWorkbenchProps = { ...props, item };
+
+  const route = editorRouteFor(item);
+  const siteId = props.siteId || item.siteId || "oceanleo";
   const appId =
-    props.initialSession?.app_id ||
-    advancedSessionAppId(props.item, route.type);
-  const feature = advancedFeatureForItem(props.item);
+    props.initialSession?.app_id || advancedSessionAppId(item, route.type);
+  const feature = advancedFeatureForItem(item);
   const materialAppId = props.embedded
     ? inheritedWorkspace?.appId || props.appId || siteId
     : feature
@@ -149,7 +179,7 @@ export function AdvancedContentWorkbench(
       }}
     >
       <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
-        <AdvancedContentWorkbenchRuntime {...props} />
+        <AdvancedContentWorkbenchRuntime {...itemProps} />
       </WorkbenchMaterialProvider>
     </AdvancedEditorHostProvider>
   );
@@ -172,7 +202,7 @@ export function AdvancedContentWorkbench(
       siteId={siteId}
       appId={appId}
       surface="advanced"
-      title={props.item.title}
+      title={item.title}
       sessionId={props.sessionId || undefined}
       initialSession={props.initialSession}
       mode={props.mode || (props.sessionId ? "history" : "workspace")}
