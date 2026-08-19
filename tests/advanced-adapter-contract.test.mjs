@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { DOC_FAMILY_DOWNLOAD_FORMATS } from "../src/shell/doc-editors/doc-family-formats.ts";
 import { TRUSTED_EDITOR_REGISTRY } from "../src/shell/workbench-routes.ts";
 
 const source = (path) =>
@@ -123,23 +124,42 @@ test("fixed workspace row owns semantic actions outside the object edit bar", ()
   assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
 });
 
+// 2026-08-19（W2）：下载菜单从 `DOC_FAMILY_DOWNLOAD_FORMATS` 一张表派生，条目 id 统一成
+// `richdoc-export-<落地后缀>`，源码里不再有逐字的 id 文本（Markdown 那条因此从
+// `richdoc-export-markdown` 变成 `richdoc-export-md`，与其余三条路由同一套命名）。
+// 判据随之从「在源码里逐字找三个 id」换成「从同一张表算出全部六条 id 并逐条钉死」。
+// 这是换判据不是松判据：条目丢失照样红（旧判据只盯 3 条，新判据盯全部 6 条，
+// 顺序、后缀、条数任一变动都红），另外还多钉了两条旧判据管不到的事——
+// 路由必须真的按这张表派生（而不是另抄一份），且除主交付物外不许再手写任何导出 id。
 test("RichDoc groups DOCX Markdown HTML and JSON behind one download contract", () => {
   const route = source("../src/shell/advanced-routes/RichDocRoute.tsx");
+  assert.deepEqual(
+    DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.map(
+      (format) => `richdoc-export-${format.extension}`,
+    ),
+    [
+      "richdoc-export-docx",
+      "richdoc-export-md",
+      "richdoc-export-html",
+      "richdoc-export-pdf",
+      "richdoc-export-txt",
+      "richdoc-export-json",
+    ],
+  );
   assert.match(
     route,
     /directDownload:\s*\{[\s\S]*?id:\s*"richdoc-export-docx"/,
   );
-  for (const id of [
-    "richdoc-export-markdown",
-    "richdoc-export-html",
-    "richdoc-export-json",
-  ]) {
-    assert.match(
-      route,
-      new RegExp(`id: "${id}"[\\s\\S]*?group: "download"`),
-      id,
-    );
-  }
+  assert.match(
+    route,
+    /DOC_FAMILY_DOWNLOAD_FORMATS\.richdoc\.slice\(1\)[\s\S]{0,120}?id: `richdoc-export-\$\{format\.extension\}`[\s\S]{0,160}?group: "download" as const/,
+  );
+  assert.deepEqual(
+    [...route.matchAll(/id: "(richdoc-export-[a-z0-9]+)"/g)].map(
+      (match) => match[1],
+    ),
+    ["richdoc-export-docx"],
+  );
   const retry = route.match(
     /id: "richdoc-refresh-office-source"[\s\S]*?\}/,
   )?.[0];
