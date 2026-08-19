@@ -82,6 +82,7 @@ import { importPptxDeck } from "./pptx-deck-import";
 import {
   fetchValidatedOfficePackage,
   notifyOfficeAccessDenied,
+  validateOfficePackageBlob,
 } from "./office-file";
 
 interface Snapshot {
@@ -160,6 +161,8 @@ export interface DeckEditorState {
   redo: () => void;
   /** Re-run the source load for the same item after a failure. */
   reload: () => void;
+  /** 用本地上传的 PPTX 顶掉当前演示文稿（.ppt/.odp 由调用方先归一化成 pptx）。 */
+  importSource: (file: File) => Promise<void>;
   downloadJson: () => void;
   exportPptx: () => Promise<void>;
   save: () => Promise<PersistedEditorVersion | null>;
@@ -2528,6 +2531,36 @@ export function useDeckEditor(
     }
   }, [buildDelivery, siteId, tt]);
 
+  /**
+   * 本地上传的演示文稿接进编辑器。
+   *
+   * 只认 PPTX 包：`.ppt`/`.odp` 这些先由路由走后端转换端点归一化成 pptx 再进来，
+   * 前端不加第二个解析器。包坏了、根本不是 OOXML 包，`validateOfficePackageBlob`
+   * 会带着诊断码抛出来，用户看到的是原因而不是一个空白编辑器。
+   */
+  const importSource = useCallback(
+    async (file: File) => {
+      setError("");
+      try {
+        const bytes = await validateOfficePackageBlob(file, "pptx");
+        const fallbackTitle =
+          file.name.replace(/\.[^.]+$/, "") || item.title || "演示文稿";
+        const next = await importPptxDeck(bytes, fallbackTitle, "pptx");
+        if (!mountedRef.current) return;
+        commit(() => next, next.slides[0].id);
+        setNotice(tt("已把上传的演示文稿接进编辑器，可以直接改了"));
+      } catch (caught) {
+        if (!mountedRef.current) return;
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : tt("这份演示文稿没能打开"),
+        );
+      }
+    },
+    [commit, item.title, tt],
+  );
+
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
       if (
@@ -2659,6 +2692,7 @@ export function useDeckEditor(
     undo,
     redo,
     reload,
+    importSource,
     downloadJson: () =>
       downloadText(
         `${deckRef.current.title || "演示文稿"}.oceanleo-deck.v1.json`,
