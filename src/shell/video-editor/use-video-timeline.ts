@@ -47,6 +47,7 @@ import {
   availableTimelineDurationMs,
   changeClipSpeed,
   createEmptyDoc,
+  cutTimelineRange,
   docDurationMs,
   duplicateClipIn,
   findClip,
@@ -134,6 +135,10 @@ export interface VideoTimelineState {
   trimClip: (clipId: string, edge: "start" | "end", desiredMs: number) => void;
   splitAtPlayhead: () => void;
   deleteSelectedClip: () => void;
+  /** 按明确 id 删片段；给 agent 用，不依赖「当前选中」。 */
+  deleteClip: (clipId: string) => boolean;
+  /** 剪掉一段时间，后面的内容左移补上；所有轨道一起剪。 */
+  cutRange: (startMs: number, endMs: number) => boolean;
   duplicateSelectedClip: () => void;
   patchClip: (clipId: string, patch: Partial<TimelineClip>) => void;
   /** 拖滑杆等连续修改用：不入 undo 栈，配合 beginGesture/endGesture。 */
@@ -153,7 +158,8 @@ export interface VideoTimelineState {
   // persistence
   captureCover: () => Promise<void>;
   saveDraft: () => Promise<PersistResult | null>;
-  exportVideo: () => Promise<void>;
+  /** 渲染成 mp4 并存进我的库；返回产物地址，失败或取消是空串。 */
+  exportVideo: () => Promise<string>;
   cancelExport: () => void;
   restoreRecovery: (payload: unknown) => boolean;
 }
@@ -864,6 +870,22 @@ export function useVideoTimeline(
     setSelectedClipId("");
   }, [applyEdit, selectedClipId]);
 
+  const deleteClip = useCallback(
+    (clipId: string) => {
+      if (!findClip(docRef.current, clipId)) return false;
+      const removed = applyEdit((current) => removeClipFrom(current, clipId));
+      if (removed && selectedClipId === clipId) setSelectedClipId("");
+      return removed;
+    },
+    [applyEdit, selectedClipId],
+  );
+
+  const cutRange = useCallback(
+    (startMs: number, endMs: number) =>
+      applyEdit((current) => cutTimelineRange(current, startMs, endMs)),
+    [applyEdit],
+  );
+
   const duplicateSelectedClip = useCallback(() => {
     if (!selectedClipId) return;
     let newId = "";
@@ -1239,16 +1261,18 @@ export function useVideoTimeline(
     }
   }, [item, previewReady, siteId, tt]);
 
-  const exportVideo = useCallback(async () => {
-    if (exporting) return;
+  // 返回渲染出来的 mp4 地址（失败/取消是空串）：要转成别的容器格式的调用方，
+  // 拿不到这个地址就只能去猜 state 什么时候更新，那是必错的一步。
+  const exportVideo = useCallback(async (): Promise<string> => {
+    if (exporting) return "";
     if (!sourceReadyRef.current) {
       setError(tt("时间线源尚未成功载入；已阻止导出空回退工程"));
-      return;
+      return "";
     }
     let docToRender = normalizeTimelineDoc(docRef.current);
     if (docDurationMs(docToRender) <= 0) {
       setError(tt("时间线是空的，没有可导出的内容"));
-      return;
+      return "";
     }
     setExporting(true);
     setExportStatus("queued");
@@ -1316,19 +1340,21 @@ export function useVideoTimeline(
         2000,
         abortController.signal,
       );
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return url;
       setExportedUrl(url);
       setNotice(tt("导出完成，已保存到我的库"));
       onSaved?.(url);
+      return url;
     } catch (caught) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return "";
       if (caught instanceof DOMException && caught.name === "AbortError") {
         setExportStatus("canceled");
         setNotice(tt("导出已取消"));
-        return;
+        return "";
       }
       setExportStatus("error");
       setError(caught instanceof Error ? caught.message : tt("导出失败"));
+      return "";
     } finally {
       if (exportAbortRef.current === abortController) {
         exportAbortRef.current = null;
@@ -1421,6 +1447,8 @@ export function useVideoTimeline(
     trimClip,
     splitAtPlayhead,
     deleteSelectedClip,
+    deleteClip,
+    cutRange,
     duplicateSelectedClip,
     patchClip,
     patchClipTransient,

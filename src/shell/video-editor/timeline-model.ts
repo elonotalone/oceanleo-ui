@@ -348,6 +348,67 @@ export function splitClipAt(
   }));
 }
 
+/**
+ * 剪掉 [startMs, endMs) 这一段，后面的内容整体左移补上（ripple 删除）。
+ *
+ * 所有轨道一起剪：只剪视频轨会让声音和字幕跟画面错位，那是比不剪更糟的结果。
+ * 剪完不足 `MIN_CLIP_MS` 的碎片直接丢掉——留下一个 3 帧的残片，用户既看不见
+ * 也删不掉。
+ */
+export function cutTimelineRange(
+  doc: TimelineDoc,
+  startMs: number,
+  endMs: number,
+): TimelineDoc {
+  const from = Math.max(0, Math.round(Math.min(startMs, endMs)));
+  const to = Math.max(0, Math.round(Math.max(startMs, endMs)));
+  const span = to - from;
+  if (span < MIN_CLIP_MS) return doc;
+  let changed = false;
+  const tracks = doc.tracks.map((track) => {
+    const next: TimelineClip[] = [];
+    for (const clip of track.clips) {
+      const clipStart = clip.start_ms;
+      const clipEnd = clipEndMs(clip);
+      if (clipEnd <= from) {
+        next.push(clip);
+        continue;
+      }
+      if (clipStart >= to) {
+        changed = true;
+        next.push({ ...clip, start_ms: Math.max(0, clipStart - span) });
+        continue;
+      }
+      changed = true;
+      const speed = clip.speed ?? 1;
+      const headMs = Math.max(0, from - clipStart);
+      const tailMs = Math.max(0, clipEnd - to);
+      if (headMs >= MIN_CLIP_MS) {
+        next.push({ ...clip, duration_ms: Math.round(headMs) });
+      }
+      if (tailMs >= MIN_CLIP_MS) {
+        const consumed = Math.max(0, to - clipStart);
+        const tail: TimelineClip = {
+          ...clip,
+          id: headMs >= MIN_CLIP_MS ? makeId("clip") : clip.id,
+          start_ms: Math.round(headMs >= MIN_CLIP_MS ? from : clipStart),
+          duration_ms: Math.round(tailMs),
+          ...(clip.source_url
+            ? { in_ms: Math.round((clip.in_ms ?? 0) + consumed * speed) }
+            : {}),
+        };
+        if (headMs >= MIN_CLIP_MS) delete tail.transition_in;
+        next.push(tail);
+      }
+    }
+    return {
+      ...track,
+      clips: next.sort((left, right) => left.start_ms - right.start_ms),
+    };
+  });
+  return changed ? { ...doc, tracks } : doc;
+}
+
 /** 复制 clip，副本落在原 clip 结束处（重叠消解）。返回新 clip id。 */
 export function duplicateClipIn(
   doc: TimelineDoc,
