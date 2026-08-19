@@ -85,39 +85,58 @@ export const MODEL_EXT = new Set(["glb", "gltf"]);
 // 打包票。
 // ============================================================================
 
-/** 文档家族入口：LibreOffice 读得进来的文本/文档格式。 */
-export const RICHDOC_IMPORT_EXT = new Set([
+/**
+ * 每一条都要有人真跑过。
+ *
+ * 这几张表的取舍**逐条对着 W10 在活体转换服务上的实测**（`signals/W10-journal.md` P1/P2）
+ * 与 LibreOffice 的源格式白名单（`oceanleo/convert/office.py:27` `_OFFICE_EXTS`）：
+ * 转不了的一律不列。列一个转不了的后缀，等于让用户传完整个文件、等完整段上传，
+ * 才被告知打不开——那比一开始就说「这里还打不开它」糟得多。
+ */
+
+/**
+ * 文档路由直接吃得下的纯文本入口。
+ *
+ * 它们**不需要**后端转（LibreOffice 白名单里根本没有 md/html，W10 实测 400），
+ * 文档编辑器自己读文本，`editorCapabilityFor()` 今天就把它们判到 richdoc。
+ */
+export const RICHDOC_TEXT_EXT = new Set([
   "md",
   "markdown",
   "txt",
   "html",
   "htm",
-  "wps",
-  "pages",
 ]);
-/** 表格家族入口。 */
-export const GRID_IMPORT_EXT = new Set(["csv", "tsv", "numbers", "et"]);
-/** 演示家族入口。 */
-export const DECK_IMPORT_EXT = new Set(["key", "dps"]);
-/** 图片家族入口：浏览器解不了、要后端转一道的那些。 */
-export const IMAGE_IMPORT_EXT = new Set([
-  "heic",
-  "heif",
-  "tif",
-  "tiff",
-  "ico",
-  "jfif",
-]);
-/** 视频家族入口。 */
-export const VIDEO_IMPORT_EXT = new Set(["3gp", "wmv", "flv", "ts", "m2ts"]);
-/** 音频家族入口。 */
-export const AUDIO_IMPORT_EXT = new Set(["amr", "aiff", "aif", "ac3"]);
 /**
- * 3D 家族入口。
+ * 表格入口：`csv` LibreOffice 直转 xlsx（W10 实测 4958B）；
+ * `tsv` 白名单里没有，由网关先按制表符改写成 csv 再转（W10 本波新增，已单测）。
+ */
+export const GRID_IMPORT_EXT = new Set(["csv", "tsv"]);
+/**
+ * 演示入口：**空**。LibreOffice 只收 ppt/pptx/odp，而这三个已经在原生集里；
+ * keynote/dps 之类没有任何解析路径。
+ */
+export const DECK_IMPORT_EXT = new Set<string>([]);
+/**
+ * 图片入口：浏览器解不了、后端 PIL 能转的那些（W10 实测 bmp/tiff/gif/ico/ppm/tga 全 200）。
  *
- * **刻意为空**：obj/stl/fbx 能不能真转成 glb 在本机还没有人证过（合同 §1 的 `[待核]`，
- * 由 W10 去证）。没证之前把它们列进来，等于让用户传一个 obj 上来、看着它上传完、
- * 再告诉他打不开——那比一开始就说「这里还打不开 OBJ」更糟。
+ * **heic/heif 刻意不在这里**：转换容器与网关的 PIL 都没注册 `.heic`/`.heif`，
+ * ffmpeg 也没有 heif 解封装器（W10 实测），少的是 `pillow-heif`/`libheif`，
+ * 而那要改镜像，不在本波任何人的路径里。手机照片这条今天就是打不开，明说。
+ */
+export const IMAGE_IMPORT_EXT = new Set(["tif", "tiff", "ico", "ppm", "tga", "jfif"]);
+/** 视频入口：`wmv → mp4` 已实测（14523B）。avi/mkv/webm 本来就在原生集里。 */
+export const VIDEO_IMPORT_EXT = new Set(["wmv"]);
+/**
+ * 音频入口：**空**。W10 实测能转的 flac/ogg/wav/m4a/aac/wma 全部已在原生集，
+ * 3gp/amr 本机造不出样片、**未证**，不进表。
+ */
+export const AUDIO_IMPORT_EXT = new Set<string>([]);
+/**
+ * 3D 入口：等 W10 的 `verdicts/W10-delivery.md` 落盘后按它的实际结论补。
+ *
+ * 它的流水已实测 obj/stl → glb 能转（网关纯 Python，只留形状不留材质）、
+ * fbx 转不了（FBX SDK / Blender 都不在机器上）；交付说明落盘前不改这里。
  */
 export const MODEL_IMPORT_EXT = new Set<string>([]);
 
@@ -139,7 +158,11 @@ const UPLOAD_TARGETS: readonly {
 }[] = [
   { target: "deck", native: SLIDE_EXT, imported: DECK_IMPORT_EXT },
   { target: "grid", native: CELL_EXT, imported: GRID_IMPORT_EXT },
-  { target: "richdoc", native: WORD_EXT, imported: RICHDOC_IMPORT_EXT },
+  {
+    target: "richdoc",
+    native: new Set([...WORD_EXT, ...RICHDOC_TEXT_EXT]),
+    imported: new Set<string>([]),
+  },
   { target: "pdf", native: new Set(["pdf"]), imported: new Set<string>() },
   { target: "image", native: IMAGE_EXT, imported: IMAGE_IMPORT_EXT },
   {
