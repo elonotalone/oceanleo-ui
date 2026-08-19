@@ -1,5 +1,16 @@
+// W1 的自测：指令面（合同 §3.1）与空件挂载（§3.2）。
+//
+// 两件事放一份文件，是因为 W1 在本波只有这一份自测文件；文件下半段用 JSDOM 真渲染
+// 空框，走的是「拖进来 → 判型 → 上传 → 落成素材 → 交给工作台挂编辑器」那条真链，
+// 不是文本断言。
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
+
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 import {
   PLUGIN_COMMAND_PARAM_MAX_BYTES,
@@ -291,4 +302,274 @@ test("state 抛异常或不是键值时按空摘要处理，并说明", () => {
   const wrongShape = readPluginCommandState();
   assert.deepEqual(wrongShape.state, {});
   assert.match(wrongShape.message, /不是一组键值/);
+});
+
+// ============================================================================
+// 空件挂载（合同 §3.2）：没有任何 item 时，第一件素材是怎么落成的
+// ============================================================================
+
+const require = createRequire(import.meta.url);
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://word.oceanleo.com/",
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  MouseEvent: window.MouseEvent,
+  File: window.File,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+
+globalThis.__blankStageCalls = {
+  uploads: [],
+  canonical: 0,
+  legacy: 0,
+  ensure: 0,
+  uploadResponse: null,
+};
+
+const { AdvancedWorkbenchBlankStage } = await import(
+  await compileModule("src/shell/AdvancedWorkbenchStage.tsx", {
+    "../i18n/ui/useUI": dataModule(`
+      export function useUI() {
+        return (text, vars) =>
+          vars
+            ? String(text).replace(/\\{(\\w+)\\}/g, (match, key) =>
+                key in vars ? String(vars[key]) : match,
+              )
+            : text;
+      }
+    `),
+    "./AdvancedEditorIcon": dataModule(
+      `export function AdvancedEditorIcon() { return null; }`,
+    ),
+    "./library-viewers": dataModule(
+      `export function LibraryItemViewer() { return null; }`,
+    ),
+    "./workbench-material-provider": dataModule(
+      `export const WORKBENCH_MATERIAL_MIME = "application/x-oceanleo-material";`,
+    ),
+    "../lib/database": dataModule(`
+      export async function uploadFile(file, options) {
+        globalThis.__blankStageCalls.uploads.push({
+          name: file.name,
+          options,
+        });
+        return globalThis.__blankStageCalls.uploadResponse;
+      }
+    `),
+    "./MyLibrary": dataModule(`
+      export function canonicalUploadLibraryItem(record) {
+        globalThis.__blankStageCalls.canonical += 1;
+        return {
+          ok: true,
+          item: { id: "canonical", artifactId: record.artifact_id, title: "已上传" },
+        };
+      }
+      export function legacyUploadTransient(record, file) {
+        globalThis.__blankStageCalls.legacy += 1;
+        return { ok: true, transient: { resultId: record.id, name: file.name } };
+      }
+    `),
+    "./artifact-client": dataModule(`
+      export async function ensureArtifact(transient) {
+        globalThis.__blankStageCalls.ensure += 1;
+        return {
+          ok: true,
+          data: { id: "ensured", title: transient.name },
+        };
+      }
+    `),
+  })
+);
+
+const { createRoot } = await import("react-dom/client");
+
+function mountBlankStage() {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const received = [];
+  act(() => {
+    root.render(
+      React.createElement(AdvancedWorkbenchBlankStage, {
+        siteId: "word",
+        onItemReady: (item) => received.push(item),
+      }),
+    );
+  });
+  return {
+    host,
+    received,
+    unmount: () => act(() => root.unmount()),
+  };
+}
+
+/**
+ * 上传链里有 `await import()`（`MyLibrary` / `artifact-client` 都是用到才加载），
+ * 它比 act 的微任务刷新晚若干个 tick 才落地。转起来直到落定，不然断言会看到
+ * 一个还没走完的中间态——而那一步的结果会掉进**下一条**用例里，红得莫名其妙。
+ */
+async function settle(done) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (done()) return;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    });
+  }
+}
+
+async function dropFile(host, name, bytes = "hello") {
+  const input = host.querySelector('input[type="file"]');
+  assert.ok(input, "空框必须有一个上传入口");
+  const file = new window.File([bytes], name, { type: "" });
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () => {
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  await settle(
+    () =>
+      Boolean(host.querySelector('[role="alert"]')) ||
+      globalThis.__blankStageCalls.canonical > 0 ||
+      globalThis.__blankStageCalls.ensure > 0,
+  );
+}
+
+test.beforeEach(() => {
+  globalThis.__blankStageCalls = {
+    uploads: [],
+    canonical: 0,
+    legacy: 0,
+    ensure: 0,
+    uploadResponse: null,
+  };
+});
+
+test("空框先给提示与上传入口，不需要任何素材就能挂出来", () => {
+  const mounted = mountBlankStage();
+  assert.match(mounted.host.textContent, /把文件拖进来，或点上传/);
+  assert.ok(mounted.host.querySelector("[data-workbench-blank-stage]"));
+  assert.ok(mounted.host.querySelector('input[type="file"]'));
+  mounted.unmount();
+});
+
+test("认不出的后缀在上传之前就被挡住，并写清后缀与支持范围", async () => {
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "怪东西.xyz");
+  const alert = mounted.host.querySelector('[role="alert"]');
+  assert.ok(alert, "认不出类型必须有话说，不许静默不动");
+  assert.match(alert.textContent, /XYZ/);
+  assert.match(alert.textContent, /文档|表格|图片/);
+  assert.equal(globalThis.__blankStageCalls.uploads.length, 0);
+  assert.deepEqual(mounted.received, []);
+  mounted.unmount();
+});
+
+test("网关直接给 canonical artifact 时，第一件素材落成并交回工作台", async () => {
+  globalThis.__blankStageCalls.uploadResponse = {
+    ok: true,
+    data: {
+      file: {
+        id: "file-1",
+        url: "https://cdn.invalid/a.docx",
+        artifact_id: "artifact-1",
+        revision_id: "revision-1",
+        artifact: {},
+      },
+    },
+  };
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "季度报告.docx");
+  assert.equal(globalThis.__blankStageCalls.uploads.length, 1);
+  assert.equal(globalThis.__blankStageCalls.uploads[0].options.siteId, "word");
+  assert.equal(globalThis.__blankStageCalls.canonical, 1);
+  assert.equal(globalThis.__blankStageCalls.ensure, 0);
+  assert.deepEqual(mounted.received, [
+    { id: "canonical", artifactId: "artifact-1", title: "已上传" },
+  ]);
+  mounted.unmount();
+});
+
+test("旧网关只给文件行时走 ensure 入库，同样落成真素材", async () => {
+  globalThis.__blankStageCalls.uploadResponse = {
+    ok: true,
+    data: {
+      file: { id: "file-2", url: "https://cdn.invalid/b.png", meta: {} },
+    },
+  };
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "封面.png");
+  assert.equal(globalThis.__blankStageCalls.canonical, 0);
+  assert.equal(globalThis.__blankStageCalls.legacy, 1);
+  assert.equal(globalThis.__blankStageCalls.ensure, 1);
+  assert.deepEqual(mounted.received, [{ id: "ensured", title: "封面.png" }]);
+  mounted.unmount();
+});
+
+test("要先转一道的后缀（tiff）照样收下，不当成不支持", async () => {
+  globalThis.__blankStageCalls.uploadResponse = {
+    ok: true,
+    data: { file: { id: "file-3", url: "https://cdn.invalid/c.tiff", meta: {} } },
+  };
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "扫描件.tiff");
+  assert.equal(mounted.host.querySelector('[role="alert"]'), null);
+  assert.equal(globalThis.__blankStageCalls.uploads.length, 1);
+  assert.equal(mounted.received.length, 1);
+  mounted.unmount();
+});
+
+test("3D 的 obj 在 W10 证明能转之前一律明说打不开，不假装能收", async () => {
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "模型.obj");
+  const alert = mounted.host.querySelector('[role="alert"]');
+  assert.ok(alert);
+  assert.match(alert.textContent, /OBJ/);
+  assert.equal(globalThis.__blankStageCalls.uploads.length, 0);
+  mounted.unmount();
+});
+
+test("上传失败时把原因摆出来，不静默吞掉", async () => {
+  globalThis.__blankStageCalls.uploadResponse = {
+    ok: false,
+    error: "存储空间暂时不可用。",
+  };
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "季度报告.docx");
+  const alert = mounted.host.querySelector('[role="alert"]');
+  assert.ok(alert);
+  assert.match(alert.textContent, /存储空间暂时不可用/);
+  assert.deepEqual(mounted.received, []);
+  mounted.unmount();
 });
