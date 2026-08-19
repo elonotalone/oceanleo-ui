@@ -162,6 +162,9 @@ export function useEditorCommandBridge(opts: {
   });
   // 用户刚发过话 → 下一个会话里的回答是新鲜的，不走「历史一律当读过」那条路。
   const adoptRef = useRef(false);
+  // 连着被拒几次就不再把拒绝理由喂回给模型：每喂一次都是一轮真实花费，
+  // 不能让「模型乱下 id → 我告诉它不行 → 它再乱下」自己转起来。
+  const rejectReportsRef = useRef(0);
   const liveRef = useRef({ enabled, surfaceReader, taskId, readOnly });
   useEffect(() => {
     liveRef.current = { enabled, surfaceReader, taskId, readOnly };
@@ -192,6 +195,11 @@ export function useEditorCommandBridge(opts: {
       if (offer.kind === "none") return;
       if (offer.kind === "reject") {
         pushNote(offer.note, false);
+        // 把「为什么不行 + 它现在能做什么」告诉模型，让它改口而不是重复同一个错。
+        if (rejectReportsRef.current < 2) {
+          rejectReportsRef.current += 1;
+          report(offer.note, { ok: false, rejected: true });
+        }
         return;
       }
       if (offer.kind === "confirm") {
@@ -199,6 +207,7 @@ export function useEditorCommandBridge(opts: {
         setPending(offer.pending);
         return;
       }
+      rejectReportsRef.current = 0;
       pushNote(offer.outcome.note, offer.outcome.result.ok);
       report(offer.outcome.note, {
         id: offer.outcome.spec.id,
@@ -221,11 +230,13 @@ export function useEditorCommandBridge(opts: {
             taskKey,
             ids: new Set(messages.map((m) => m.id)),
           };
+          setNotes([]);
           return;
         }
         adoptRef.current = false;
         seen = { taskKey, ids: new Set() };
         seenRef.current = seen;
+        setNotes([]);
       }
       for (const message of messages) {
         if (message.role !== "assistant") continue;
@@ -249,6 +260,7 @@ export function useEditorCommandBridge(opts: {
       setBusy(false);
       setPending(null);
       if (!outcome) return;
+      rejectReportsRef.current = 0;
       pushNote(outcome.note, outcome.result.ok);
       report(outcome.note, {
         id: outcome.spec.id,
@@ -282,6 +294,7 @@ export function useEditorCommandBridge(opts: {
   const noteUserTurn = useCallback(() => {
     sessionRef.current.resume();
     adoptRef.current = true;
+    rejectReportsRef.current = 0;
   }, []);
 
   const card = pending ? (

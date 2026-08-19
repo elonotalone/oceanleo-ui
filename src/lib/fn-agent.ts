@@ -11,6 +11,14 @@
 // （mergeOpsBlock / opsStateToPromptText / OPS_BLOCK_*）已随操作台不再进浮窗而移除。
 // ============================================================================
 
+// 右栏编辑器指令面的类型事实源（合同 §3.1）；只取类型，不产生运行时依赖。
+import type {
+  PluginCommandParam,
+  PluginCommandResult,
+  PluginCommandSpec,
+  PluginCommandSurface,
+} from "../shell/plugin-command/types";
+
 export type OpsFieldType =
   | "text"
   | "longtext"
@@ -148,48 +156,11 @@ export function opsSnapshot(
 //
 // 会改内容的指令（mutates:true）**执行前必须由用户点确认**；用户可选「以后这类不用问我」，
 // 该授权只活在当前会话的内存里，刷新即失效（不落库、不进快照）。
+//
+// 指令面的类型只有一份事实源：`src/shell/plugin-command/types.ts`（合同 §3.1）。这里
+// 只 import type（见文件顶部）、不重复声明、也不往外导出，免得 `@oceanleo/ui` 顶层
+// 出现两个同名类型。
 // ============================================================================
-
-/** 指令面参数声明（形状 = `src/shell/plugin-command/types.ts`，派活合同 §3.1）。 */
-export interface PluginCommandParam {
-  key: string;
-  label: string;
-  type: "string" | "number" | "boolean" | "enum";
-  enumValues?: readonly { value: string; label: string }[];
-  required?: boolean;
-  hint?: string;
-}
-
-/** 一条指令的声明（形状 = 派活合同 §3.1）。 */
-export interface PluginCommandSpec {
-  /** "richdoc.insert-heading"——前缀必须等于 editorId。 */
-  id: string;
-  /** 用户看得懂的中文名。 */
-  label: string;
-  /** 一句话说清这条指令会改什么。 */
-  summary: string;
-  params?: readonly PluginCommandParam[];
-  /** true = 会改文档，执行前必须由用户确认。 */
-  mutates: boolean;
-}
-
-export interface PluginCommandResult {
-  ok: boolean;
-  message: string;
-  revision?: number;
-}
-
-/** 右栏编辑器对外的指令面（形状 = 派活合同 §3.1）。 */
-export interface PluginCommandSurface {
-  /** 与适配器 id 逐字相同（richdoc/grid/deck/pdf/image/…）。 */
-  editorId: string;
-  describe(): PluginCommandSpec[];
-  state(): Record<string, unknown>;
-  run(
-    id: string,
-    params?: Record<string, unknown>,
-  ): Promise<PluginCommandResult>;
-}
 
 /** 取「当前 active 指令面」的读取器（合同 §3.1 的 `currentPluginCommandSurface`）。 */
 export type EditorCommandSurfaceReader = () => PluginCommandSurface | null;
