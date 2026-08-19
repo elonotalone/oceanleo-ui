@@ -2283,6 +2283,12 @@
         },
         {
           "kind": "named",
+          "name": "AdvancedContentWorkbenchMountProps",
+          "importedName": "AdvancedContentWorkbenchMountProps",
+          "source": "./AdvancedContentWorkbench"
+        },
+        {
+          "kind": "named",
           "name": "AdvancedContentWorkbenchProps",
           "importedName": "AdvancedContentWorkbenchProps",
           "source": "./AdvancedContentWorkbench"
@@ -2334,6 +2340,12 @@
           "name": "AdvancedFeatureRoute",
           "importedName": "AdvancedFeatureRoute",
           "source": "./AdvancedFeaturePages"
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedWorkbenchBlankStage",
+          "importedName": "AdvancedWorkbenchBlankStage",
+          "source": "./AdvancedWorkbenchStage"
         },
         {
           "kind": "named",
@@ -2961,9 +2973,21 @@
         },
         {
           "kind": "named",
+          "name": "currentPluginCommandSurface",
+          "importedName": "currentPluginCommandSurface",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
           "name": "defaultLibraryScopeAdapter",
           "importedName": "defaultLibraryScopeAdapter",
           "source": "./library-scope-client"
+        },
+        {
+          "kind": "named",
+          "name": "describePluginCommands",
+          "importedName": "describePluginCommands",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -2988,6 +3012,42 @@
           "name": "downloadTemplateMaterial",
           "importedName": "downloadTemplateMaterial",
           "source": "./template-download"
+        },
+        {
+          "kind": "named",
+          "name": "EditorConvertEndpoint",
+          "importedName": "EditorConvertEndpoint",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
+          "name": "editorImportExtensions",
+          "importedName": "editorImportExtensions",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
+          "name": "editorImportPlan",
+          "importedName": "editorImportPlan",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
+          "name": "EditorImportPlan",
+          "importedName": "EditorImportPlan",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
+          "name": "EditorImportResult",
+          "importedName": "EditorImportResult",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
+          "name": "EditorImportRule",
+          "importedName": "EditorImportRule",
+          "source": "./import-normalize"
         },
         {
           "kind": "named",
@@ -4065,6 +4125,12 @@
         },
         {
           "kind": "named",
+          "name": "normalizeForEditor",
+          "importedName": "normalizeForEditor",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
           "name": "normalizeSelectionCommand",
           "importedName": "normalizeSelectionCommand",
           "source": "./selection-context"
@@ -4236,6 +4302,30 @@
           "name": "PlaygroundSubNav",
           "importedName": "PlaygroundSubNav",
           "source": "./Playground"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
+          "importedName": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_COMMAND_STATE_MAX_BYTES",
+          "importedName": "PLUGIN_COMMAND_STATE_MAX_BYTES",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandStateSnapshot",
+          "importedName": "PluginCommandStateSnapshot",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSurfaceInput",
+          "importedName": "PluginCommandSurfaceInput",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -4425,6 +4515,12 @@
         },
         {
           "kind": "named",
+          "name": "readPluginCommandState",
+          "importedName": "readPluginCommandState",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
           "name": "readSiteAppDirectory",
           "importedName": "readSiteAppDirectory",
           "source": "./material-scene-axis"
@@ -4443,6 +4539,12 @@
         },
         {
           "kind": "named",
+          "name": "registerEditorImportPlan",
+          "importedName": "registerEditorImportPlan",
+          "source": "./import-normalize"
+        },
+        {
+          "kind": "named",
           "name": "registerGameIterationRunner",
           "importedName": "registerGameIterationRunner",
           "source": "./advanced-routes/GameRoute"
@@ -4452,6 +4554,12 @@
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
           "source": "./advanced-routes/GameRoute"
+        },
+        {
+          "kind": "named",
+          "name": "registerPluginCommandSurface",
+          "importedName": "registerPluginCommandSurface",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -4482,6 +4590,12 @@
           "name": "resetCurrentPrincipalId",
           "importedName": "resetCurrentPrincipalId",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "resetPluginCommandSurface",
+          "importedName": "resetPluginCommandSurface",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -4542,6 +4656,12 @@
           "name": "runLeoQuickSuggest",
           "importedName": "runLeoQuickSuggest",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "runPluginCommand",
+          "importedName": "runPluginCommand",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -4935,6 +5055,12 @@
         },
         {
           "kind": "named",
+          "name": "subscribePluginCommandSurface",
+          "importedName": "subscribePluginCommandSurface",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
           "name": "subscribeSiteAppDirectories",
           "importedName": "subscribeSiteAppDirectories",
           "source": "./material-scene-axis"
@@ -5028,6 +5154,36 @@
           "name": "tintOf",
           "importedName": "tintOf",
           "source": "../lib/brand-color"
+        },
+        {
+          "kind": "named",
+          "name": "UploadEditorTarget",
+          "importedName": "UploadEditorTarget",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
+          "name": "uploadEditorTargetForExtension",
+          "importedName": "uploadEditorTargetForExtension",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
+          "name": "uploadEditorTargetForFileName",
+          "importedName": "uploadEditorTargetForFileName",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
+          "name": "uploadSupportedExtensions",
+          "importedName": "uploadSupportedExtensions",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
+          "name": "uploadSupportedExtensionsByTarget",
+          "importedName": "uploadSupportedExtensionsByTarget",
+          "source": "./workbench-route-formats"
         },
         {
           "kind": "named",
@@ -5136,6 +5292,12 @@
           "name": "useOptionalWorkspaceSession",
           "importedName": "useOptionalWorkspaceSession",
           "source": "./WorkspaceSession"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginCommandSurface",
+          "importedName": "usePluginCommandSurface",
+          "source": "./plugin-command"
         },
         {
           "kind": "named",

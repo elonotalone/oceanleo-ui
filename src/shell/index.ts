@@ -283,6 +283,59 @@ export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibr
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+// 空件挂载（收口合同 §3.2）：`item` 可以先不给，工作台先给一个空框，
+// 第一件落进来的素材由它自己落成、再挂编辑器。素材站的「所有编辑器试验场」靠这条。
+export type { AdvancedContentWorkbenchMountProps } from "./AdvancedContentWorkbench";
+export { AdvancedWorkbenchBlankStage } from "./AdvancedWorkbenchStage";
+// 本地文件第一次落进工作台时的判型（「这个后缀该去哪条编辑器、要不要先转一道」）。
+export {
+  uploadEditorTargetForExtension,
+  uploadEditorTargetForFileName,
+  uploadSupportedExtensions,
+  uploadSupportedExtensionsByTarget,
+} from "./workbench-route-formats";
+export type { UploadEditorTarget } from "./workbench-route-formats";
+// 上传归一化（合同 §3.3）：机制在共享包，映射表由各编辑器路由自己声明。
+export {
+  editorImportExtensions,
+  editorImportPlan,
+  normalizeForEditor,
+  registerEditorImportPlan,
+} from "./import-normalize";
+export type {
+  EditorConvertEndpoint,
+  EditorImportPlan,
+  EditorImportResult,
+  EditorImportRule,
+} from "./import-normalize";
+// 编辑器指令面（合同 §3.1）：右栏编辑器第一次有一个机器可调用的面，
+// 左栏 agent 用它问「现在能做什么」、下一步指令。校验强制在注册表里，绕不过去。
+export {
+  PLUGIN_COMMAND_PARAM_MAX_BYTES,
+  PLUGIN_COMMAND_STATE_MAX_BYTES,
+  currentPluginCommandSurface,
+  describePluginCommands,
+  readPluginCommandState,
+  registerPluginCommandSurface,
+  resetPluginCommandSurface,
+  runPluginCommand,
+  subscribePluginCommandSurface,
+  usePluginCommandSurface,
+} from "./plugin-command";
+// `PluginCommandParam / Result / Spec / Surface` 这四个名字**暂时不从这里导出**。
+//
+// 不是不该导出，是导不出来：`src/lib/fn-agent.ts` 现在自己又声明了一份同名类型
+// （字段与合同 §3.1 逐字相同，但是两份定义），顶层 barrel `src/index.ts` 同时
+// `export *` 了 `./shell` 与 `./lib`，两边同名就是 TS2308「名字有歧义」——整个包
+// 编不过。歧义只能由**去掉其中一份**来解，而 `src/lib/` 不是本份活的路径。
+//
+// 落法写在 `verdicts/W1-delivery.md` §5：`fn-agent.ts` 删掉自己那份声明、改成从
+// `../shell/plugin-command/types` import，这四行随即补上。类型本身在
+// `./plugin-command/types.ts` 里，仓内代码现在就能直接 import，不受这条阻塞。
+export type {
+  PluginCommandStateSnapshot,
+  PluginCommandSurfaceInput,
+} from "./plugin-command";
 // LeoPlay 沙箱宿主与生成链的注入面（`advanced-routes/GameRoute`）。
 //
 // 这两个注册函数在共享包里存在很久了，但 `GameRoute` 只被 `AdvancedContentWorkbench`
