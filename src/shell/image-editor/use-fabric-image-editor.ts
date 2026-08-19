@@ -16,6 +16,7 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { advancedEditorSourceFor } from "../advanced-features";
+import { DEFAULT_LOSSY_QUALITY } from "../media-editors/visual-formats";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { refreshArtifactRendition } from "../artifact-client";
 import {
@@ -63,6 +64,7 @@ import {
 import {
   INITIAL_FILTERS,
   type CanvasClientPoint,
+  type ExportFormat,
   type FabricImageEditorOptions,
   type FabricImageSaveResult,
   type FabricImageEditorState,
@@ -518,7 +520,9 @@ export function useFabricImageEditor(
   const [dirty, setDirty] = useState(false);
   const [exportFormat, setExportFormat] =
     useState<FabricImageEditorState["exportFormat"]>("png");
-  const [exportQuality, setExportQualityState] = useState(92);
+  // 有损格式的默认画质：和下载菜单里那条 JPG/WebP 条目用的是同一个数
+  // （`media-editors/visual-formats.ts` 的 DEFAULT_LOSSY_QUALITY）。
+  const [exportQuality, setExportQualityState] = useState(DEFAULT_LOSSY_QUALITY);
   const [exportScale, setExportScaleState] = useState(1);
   const [aiPrompt, setAiPrompt] = useState("");
 
@@ -1006,6 +1010,26 @@ export function useFabricImageEditor(
         setError(caught instanceof Error ? caught.message : "图片下载失败"),
       );
   }, [exportFormat, item.title, makeExportBlob]);
+  /**
+   * 按指定格式与画质交付一次，不动用户在导出面板里选的那一套。
+   *
+   * 下载菜单里的每个格式条目走的都是这条：菜单点一下就该拿到那个格式，
+   * 不该顺手把面板设置改掉。
+   */
+  const downloadAs = useCallback(
+    async (format: ExportFormat, quality = exportQuality) => {
+      try {
+        const blob = await makeExportBlob(format, quality, exportScale);
+        downloadImageBlob(blob, item.title, format);
+      } catch (caught) {
+        const message =
+          caught instanceof Error ? caught.message : "图片下载失败";
+        setError(message);
+        throw new Error(message);
+      }
+    },
+    [exportQuality, exportScale, item.title, makeExportBlob],
+  );
   const downloadDefaultPng = useCallback(async () => {
     try {
       const blob = await makeExportBlob("png", 100, exportScale);
@@ -1270,6 +1294,7 @@ export function useFabricImageEditor(
     setExportScale: (scale) =>
       setExportScaleState(Math.max(0.25, Math.min(4, scale))),
     download,
+    downloadAs,
     downloadDefaultPng,
     save,
     aiAvailable: true,

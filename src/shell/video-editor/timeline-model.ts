@@ -391,7 +391,8 @@ export function cutTimelineRange(
         const tail: TimelineClip = {
           ...clip,
           id: headMs >= MIN_CLIP_MS ? makeId("clip") : clip.id,
-          start_ms: Math.round(headMs >= MIN_CLIP_MS ? from : clipStart),
+          // 幸存的后半段原本从 max(片段起点, 剪口末端) 开始，整体左移一个剪口宽度。
+          start_ms: Math.round(Math.max(clipStart, to) - span),
           duration_ms: Math.round(tailMs),
           ...(clip.source_url
             ? { in_ms: Math.round((clip.in_ms ?? 0) + consumed * speed) }

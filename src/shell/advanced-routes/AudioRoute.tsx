@@ -1,11 +1,23 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { usePluginCommandSurface } from "../plugin-command";
+import { createAudioCommandSurface } from "../media-editors/audio-command-surface";
+import {
+  convertMediaBlob,
+  downloadVisualBlob,
+  withExtension,
+} from "../media-editors/visual-convert-client";
+import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
+import {
+  visualDownloadFormats,
+  visualUploadAccept,
+} from "../media-editors/visual-formats";
 import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
 import {
   AudioControls,
@@ -28,6 +40,43 @@ export function AudioRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useAudioWorkbench(item, siteId);
+  const [deliverBusy, setDeliverBusy] = useState(false);
+  const [deliverNotice, setDeliverNotice] = useState("");
+  /** wav 本地出；mp3 / m4a 拿同一份 wav 去后端转一道再下载。 */
+  const deliver = useCallback(
+    async (format: string) => {
+      if (format === "wav") {
+        editor.download();
+        return;
+      }
+      const source = editor.wavBlob();
+      if (!source) throw new Error("音频还没载入，导不出来。");
+      setDeliverBusy(true);
+      setDeliverNotice(`正在转成 ${format.toUpperCase()}…`);
+      try {
+        const converted = await convertMediaBlob(
+          source,
+          withExtension(item.title || "audio", "wav"),
+          format,
+        );
+        downloadVisualBlob(
+          converted,
+          withExtension(`${item.title || "oceanleo-audio"}-edited`, format),
+        );
+        setDeliverNotice("");
+      } catch (caught) {
+        const message =
+          caught instanceof Error && caught.message.trim()
+            ? caught.message.trim()
+            : `转成 ${format.toUpperCase()} 失败。`;
+        setDeliverNotice(message);
+        throw new Error(message);
+      } finally {
+        setDeliverBusy(false);
+      }
+    },
+    [editor.download, editor.wavBlob, item.title],
+  );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "audio-materials@2",
@@ -58,6 +107,12 @@ export function AudioRoute({
     [editor.importSource],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  usePluginCommandSurface(
+    useMemo(
+      () => createAudioCommandSurface({ editor, deliver }),
+      [deliver, editor],
+    ),
+  );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
     return saved
@@ -76,8 +131,12 @@ export function AudioRoute({
   }, [editor.save, item]);
   const importLocalAudio = useCallback(
     async (files: File[]) => {
-      const file = files[0];
+      setDeliverNotice("");
+      // flac / ogg / wma 浏览器多半解不了；先在后端转成 mp3 再交给波形解码器。
+      const batch = await normalizeVisualUploads(files.slice(0, 1), "audio");
+      const file = batch.files[0];
       if (file) await editor.importSource(file);
+      setDeliverNotice(batch.notes.join(" "));
     },
     [editor.importSource],
   );
@@ -114,17 +173,32 @@ export function AudioRoute({
         },
         directDownload: {
           id: "audio-download-wav",
-          label: "直接下载 WAV",
+          label: visualDownloadFormats("audio")[0].label,
           icon: "download",
-          disabled: editor.loading,
+          disabled: editor.loading || deliverBusy,
           onTrigger: editor.download,
         },
+        actions: visualDownloadFormats("audio")
+          .slice(1)
+          .map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            icon: "download" as const,
+            group: "download" as const,
+            busy: deliverBusy,
+            busyLabel: "转换中…",
+            disabled: editor.loading || deliverBusy,
+            onTrigger: () => deliver(entry.format).catch(() => undefined),
+          })),
         upload: {
-          accept: "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac",
+          accept: visualUploadAccept("audio"),
           onFiles: importLocalAudio,
         },
         stage: <AudioStage editor={editor} accent={accent} />,
-        status: editor.error || (editor.loading ? "正在载入音频" : ""),
+        status:
+          editor.error ||
+          deliverNotice ||
+          (editor.loading ? "正在载入音频" : ""),
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,

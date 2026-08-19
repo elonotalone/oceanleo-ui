@@ -1,11 +1,19 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
+import { usePluginCommandSurface } from "../plugin-command";
+import { createVideoCommandSurface } from "../video-editor/video-command-surface";
+import { downloadConvertedFromUrl } from "../media-editors/visual-convert-client";
+import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
+import {
+  visualDownloadFormats,
+  visualUploadAccept,
+} from "../media-editors/visual-formats";
 import {
   VideoTimelineControls,
   VideoTimelineContextToolbar,
@@ -65,6 +73,44 @@ export function VideoTimelineRoute({
   const editor = useVideoTimeline(item, siteId);
   const sourceStopped = !editor.loadingSource && !editor.sourceReady;
   const sourcePending = editor.loadingSource && !editor.sourceReady;
+  const [deliverNotice, setDeliverNotice] = useState("");
+  const [convertingWebm, setConvertingWebm] = useState(false);
+  /**
+   * mp4 = 既有的渲染路径，产物同时进我的库。
+   * webm = 同一份渲染结果再转一道容器，转完直接下载到本机（后端不留副本）。
+   */
+  const deliver = useCallback(
+    async (format: string) => {
+      setDeliverNotice("");
+      const rendered = editor.exportedUrl || (await editor.exportVideo());
+      if (format === "mp4") {
+        if (!rendered) throw new Error(editor.error || "渲染没有成功。");
+        return;
+      }
+      if (!rendered) throw new Error(editor.error || "渲染没有成功，无法转格式。");
+      setConvertingWebm(true);
+      setDeliverNotice("正在转成 WebM…");
+      try {
+        await downloadConvertedFromUrl({
+          url: rendered,
+          title: item.title || "video",
+          target: format,
+          kind: "media",
+        });
+        setDeliverNotice("");
+      } catch (caught) {
+        const message =
+          caught instanceof Error && caught.message.trim()
+            ? caught.message.trim()
+            : `转成 ${format.toUpperCase()} 失败。`;
+        setDeliverNotice(message);
+        throw new Error(message);
+      } finally {
+        setConvertingWebm(false);
+      }
+    },
+    [editor.error, editor.exportVideo, editor.exportedUrl, item.title],
+  );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "video-timeline-materials@2",
@@ -98,6 +144,12 @@ export function VideoTimelineRoute({
     [editor.addMediaUrl, editor.loadingSource, editor.playheadMs],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  usePluginCommandSurface(
+    useMemo(
+      () => createVideoCommandSurface({ editor, deliver }),
+      [deliver, editor],
+    ),
+  );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.saveDraft();
     return saved?.url
@@ -123,7 +175,11 @@ export function VideoTimelineRoute({
   }, [editor.error, editor.saveDraft, editor.sourceReady, item]);
   const addLocalMedia = useCallback(
     async (files: File[]) => {
-      for (const file of files) await editor.addMediaFile(file);
+      setDeliverNotice("");
+      // 手机录的 mov、下载来的 mkv 先转成 mp4 再进时间线。
+      const batch = await normalizeVisualUploads(files, "video-timeline");
+      for (const file of batch.files) await editor.addMediaFile(file);
+      setDeliverNotice(batch.notes.join(" "));
     },
     [editor.addMediaFile],
   );
@@ -157,29 +213,52 @@ export function VideoTimelineRoute({
           },
         },
         directDownload: {
-          id: "video-export",
-          label: "直接导出视频",
+          id: "video-download-mp4",
+          label: visualDownloadFormats("video-timeline")[0].label,
           icon: "download",
           busyLabel: "渲染中…",
           busy: editor.exporting,
           disabled:
-            editor.exporting || editor.loadingSource || !editor.sourceReady,
-          onTrigger: editor.exportVideo,
+            editor.exporting ||
+            convertingWebm ||
+            editor.loadingSource ||
+            !editor.sourceReady,
+          onTrigger: async () => {
+            await editor.exportVideo();
+          },
         },
-        actions: editor.exporting
-          ? [
-              {
-                id: "video-cancel-export",
-                label: "取消渲染",
-                variant: "danger",
-                onTrigger: editor.cancelExport,
-              },
-            ]
-          : [],
+        actions: [
+          ...visualDownloadFormats("video-timeline")
+            .slice(1)
+            .map((entry) => ({
+              id: entry.id,
+              label: entry.label,
+              icon: "download" as const,
+              group: "download" as const,
+              busy: convertingWebm || editor.exporting,
+              busyLabel: editor.exporting ? "渲染中…" : "转换中…",
+              disabled:
+                editor.exporting ||
+                convertingWebm ||
+                editor.loadingSource ||
+                !editor.sourceReady,
+              onTrigger: () => deliver(entry.format).catch(() => undefined),
+            })),
+          ...(editor.exporting
+            ? [
+                {
+                  id: "video-cancel-export",
+                  label: "取消渲染",
+                  variant: "danger" as const,
+                  onTrigger: editor.cancelExport,
+                },
+              ]
+            : []),
+        ],
         upload: editor.loadingSource
           ? undefined
           : {
-              accept: "video/*,audio/*,image/*",
+              accept: visualUploadAccept("video-timeline"),
               multiple: true,
               onFiles: addLocalMedia,
             },
@@ -203,6 +282,7 @@ export function VideoTimelineRoute({
         ),
         status:
           editor.error ||
+          deliverNotice ||
           editor.notice ||
           (sourcePending ? "正在验证时间线工程与媒体源…" : ""),
         persistence: {

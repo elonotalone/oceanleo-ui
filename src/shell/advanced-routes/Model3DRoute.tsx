@@ -24,6 +24,9 @@ import {
   Model3DRouteHistory,
 } from "../media-editors/Model3DRouteHistory";
 import { isModel3DSourceItem } from "../media-editors/model3d-workbench-defaults";
+import { usePluginCommandSurface } from "../plugin-command";
+import { createModel3DCommandSurface } from "../media-editors/model3d-command-surface";
+import { visualImportPlan } from "../media-editors/visual-formats";
 import { assertBlobSource } from "../media-editors/source-integrity.mjs";
 import { editorToolLabel } from "../workbench-routes";
 import {
@@ -225,6 +228,22 @@ function Model3DModelRoute({
     [editor.importModel, editor.openModelUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  const deliver = useCallback(
+    async (format: string) => {
+      if (format === "png") {
+        await editor.downloadScreenshot();
+        return;
+      }
+      await editor.downloadModel();
+    },
+    [editor.downloadModel, editor.downloadScreenshot],
+  );
+  usePluginCommandSurface(
+    useMemo(
+      () => createModel3DCommandSurface({ editor, deliver }),
+      [deliver, editor],
+    ),
+  );
   const buildSavedItem = useCallback(
     (saved: {
       url: string;
@@ -316,10 +335,21 @@ function Model3DModelRoute({
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
   }, [buildSavedItem, editor.saveCopy]);
+  const [importRejection, setImportRejection] = useState("");
   const importLocalModel = useCallback(
     async (files: File[]) => {
       const file = files[0];
-      if (file) await editor.importModel(file);
+      if (!file) return;
+      setImportRejection("");
+      // obj / stl / fbx 今天没有可用的转换通道；照实说，不让用户干等。
+      const plan = visualImportPlan("threed", file.name);
+      if (plan.action !== "accept") {
+        setImportRejection(
+          plan.message || `打不开 .${plan.extension} 这种模型文件。`,
+        );
+        return;
+      }
+      await editor.importModel(file);
     },
     [editor.importModel],
   );
@@ -362,7 +392,7 @@ function Model3DModelRoute({
         },
         directDownload: {
           id: "model3d-glb",
-          label: "导出修改后 GLB",
+          label: "GLB 模型 (.glb)",
           icon: "download",
           disabled: !editor.modelLoaded || deliveryBusy,
           busy: editor.downloading,
@@ -371,7 +401,8 @@ function Model3DModelRoute({
         actions: [
           {
             id: "model3d-download-screenshot",
-            label: "下载 PNG 截图",
+            label: "PNG 截图 (.png)",
+            icon: "download",
             group: "download",
             disabled: !editor.modelLoaded || deliveryBusy,
             busy: editor.capturing,
@@ -386,11 +417,13 @@ function Model3DModelRoute({
           },
         ],
         upload: {
+          // 只收真能打开的两种；别的格式在 importLocalModel 里给一句人话。
           accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
           onFiles: importLocalModel,
         },
         stage: <Model3DStage editor={editor} showNativeControls={false} />,
         status:
+          importRejection ||
           history.error ||
           editor.error ||
           editor.notice ||

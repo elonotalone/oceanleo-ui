@@ -352,6 +352,8 @@ export interface FabricImageEditorState {
   exportScale: number;
   setExportScale: (scale: number) => void;
   download: () => void;
+  /** 按指定格式与画质交付一次，不改导出面板里的设置。 */
+  downloadAs: (format: ExportFormat, quality?: number) => Promise<void>;
   downloadDefaultPng: () => Promise<void>;
   save: () => Promise<FabricImageSaveResult | null>;
   // ---- AI 编辑 ----

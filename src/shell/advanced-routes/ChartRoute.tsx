@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -18,6 +18,9 @@ import {
 import { downloadText } from "../doc-editors/doc-io";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
+import { usePluginCommandSurface } from "../plugin-command";
+import { createChartCommandSurface } from "../chart-editor/chart-command-surface";
+import { visualImportPlan } from "../media-editors/visual-formats";
 
 export function ChartRoute({
   item,
@@ -110,6 +113,12 @@ export function ChartRoute({
       const file = files[0];
       if (!file) return;
       setExportError("");
+      // 图表只读 CSV / TSV。丢进 xlsx 或别的东西时，说清该怎么办，别静默失败。
+      const plan = visualImportPlan("chart-editor@1", file.name);
+      if (plan.action !== "accept") {
+        setExportError(plan.message || `图表读不了 .${plan.extension} 文件。`);
+        return;
+      }
       try {
         editor.importCsv(await file.text());
       } catch (caught) {
@@ -183,6 +192,22 @@ export function ChartRoute({
       );
     }
   }, [editor.document, item.title]);
+  const deliver = useCallback(
+    async (format: string) => {
+      if (format === "json") {
+        exportJson();
+        return;
+      }
+      await exportImage(format === "svg" ? "svg" : "png");
+    },
+    [exportImage, exportJson],
+  );
+  usePluginCommandSurface(
+    useMemo(
+      () => createChartCommandSurface({ editor, deliver }),
+      [deliver, editor],
+    ),
+  );
 
   return (
     <AdvancedWorkbenchShell
@@ -212,7 +237,7 @@ export function ChartRoute({
         },
         directDownload: {
           id: "chart-download-png",
-          label: "直接下载 PNG",
+          label: "PNG 图片 (.png)",
           icon: "download",
           busy: exporting,
           busyLabel: "导出中…",
@@ -222,7 +247,8 @@ export function ChartRoute({
         actions: [
           {
             id: "chart-download-svg",
-            label: "导出 SVG",
+            label: "SVG 矢量图 (.svg)",
+            icon: "download",
             group: "download",
             busy: exporting,
             disabled: exporting || exportUnavailable,
@@ -230,7 +256,8 @@ export function ChartRoute({
           },
           {
             id: "chart-download-json",
-            label: "导出结构化 JSON",
+            label: "图表数据 (.json)",
+            icon: "download",
             group: "download",
             disabled: exporting || exportUnavailable,
             onTrigger: exportJson,

@@ -1,12 +1,21 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   advancedCommittedRevisionItem,
   advancedSavedItem,
 } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { usePluginCommandSurface } from "../plugin-command";
+import { createImageCommandSurface } from "../image-editor/image-command-surface";
+import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
+import {
+  DEFAULT_LOSSY_QUALITY,
+  visualDownloadFormats,
+  visualUploadAccept,
+} from "../media-editors/visual-formats";
+import type { ExportFormat } from "../image-editor/types";
 import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
 import {
   FabricImageControls,
@@ -41,6 +50,23 @@ export function ImageRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const editor = useFabricImageEditor(item, siteId);
+  const [importNotice, setImportNotice] = useState("");
+  // 菜单里的 jpg 与画布导出器的 "jpeg" 是同一件事；对用户只说 JPG。
+  const deliver = useCallback(
+    async (format: string, quality: number = editor.exportQuality) => {
+      const canvasFormat: ExportFormat =
+        format === "jpg" || format === "jpeg"
+          ? "jpeg"
+          : format === "webp"
+            ? "webp"
+            : "png";
+      await editor.downloadAs(
+        canvasFormat,
+        canvasFormat === "png" ? 100 : quality,
+      );
+    },
+    [editor.downloadAs, editor.exportQuality],
+  );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "fabric-image-materials@3",
@@ -92,6 +118,12 @@ export function ImageRoute({
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  usePluginCommandSurface(
+    useMemo(
+      () => createImageCommandSurface({ editor, deliver }),
+      [deliver, editor],
+    ),
+  );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
     if (!saved) {
@@ -134,11 +166,14 @@ export function ImageRoute({
   }, [editor.error, editor.save, item]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
-      for (const file of files) {
-        if (file.type.startsWith("image/")) {
-          await editor.addImageFromFile(file);
-        }
+      setImportNotice("");
+      // heic / bmp / tiff / raw 先转成画布吃得下的格式；转不了的说清为什么，
+      // 不像以前那样按 MIME 一言不发地丢掉。
+      const batch = await normalizeVisualUploads(files, "image");
+      for (const file of batch.files) {
+        await editor.addImageFromFile(file);
       }
+      setImportNotice(batch.notes.join(" "));
     },
     [editor.addImageFromFile],
   );
@@ -258,15 +293,29 @@ export function ImageRoute({
         },
         directDownload: {
           id: "image-download-png",
-          label: "直接下载 PNG",
+          label: visualDownloadFormats("image")[0].label,
           icon: "download",
           disabled: editor.loading,
           onTrigger: editor.downloadDefaultPng,
         },
         actions: [
+          ...visualDownloadFormats("image")
+            .slice(1)
+            .map((entry) => ({
+              id: entry.id,
+              label: entry.label,
+              icon: "download" as const,
+              group: "download" as const,
+              disabled: editor.loading,
+              onTrigger: () =>
+                deliver(
+                  entry.format,
+                  entry.lossy ? editor.exportQuality : DEFAULT_LOSSY_QUALITY,
+                ),
+            })),
           {
             id: "image-export",
-            label: "导出图片",
+            label: "更多导出设置（画质、倍数）",
             icon: "download",
             group: "download",
             panelId: "image-export",
@@ -274,13 +323,14 @@ export function ImageRoute({
           },
         ],
         upload: {
-          accept: "image/png,image/jpeg,image/webp,image/svg+xml",
+          accept: visualUploadAccept("image"),
           multiple: true,
           onFiles: addLocalImages,
         },
         stage: <FabricImageStage editor={editor} accent={accent} />,
         status:
           editor.error ||
+          importNotice ||
           editor.notice ||
           (editor.loading ? "正在载入图片编辑器" : ""),
         persistence: {
