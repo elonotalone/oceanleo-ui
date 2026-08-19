@@ -596,6 +596,33 @@ test("3D 的 fbx 明说收不了，并告诉用户导出成 GLB", async () => {
   mounted.unmount();
 });
 
+// W2 交付 §5 的原话：「请 W1 从 `DOC_FAMILY_IMPORT_PLANS` 取，不要再手抄一份，
+// 否则两边又会各说一套」。判型表是纯查表层，从编辑器模块反向 import 会把整条文档族
+// 拖进来（还可能成环），所以这里换成**把「各说一套」钉成红**：W2 那边加一个后缀而
+// 判型表没跟上，这条就红，不会等到用户拖进来才发现空框说「打不开」。
+test("文档族四条路由收的后缀，空框判型表一个不漏", async () => {
+  const [{ DOC_FAMILY_IMPORT_PLANS }, formats] = await Promise.all([
+    import("../src/shell/doc-editors/doc-family-formats.ts"),
+    import("../src/shell/workbench-route-formats.ts"),
+  ]);
+  const missing = [];
+  for (const plan of DOC_FAMILY_IMPORT_PLANS) {
+    const wanted = [
+      ...plan.accept,
+      ...plan.rules.flatMap((rule) => rule.from),
+    ];
+    for (const extension of wanted) {
+      const judged = formats.uploadEditorTargetForExtension(extension);
+      if (!judged.target) missing.push(`${plan.editorId}:${extension}`);
+    }
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `这些后缀文档族路由收得下，但拖进空框会被判成「打不开」：${missing.join("、")}`,
+  );
+});
+
 test("空框给出「把整个项目搬上来」这条路，点开就是导入面板", async () => {
   const mounted = mountBlankStage();
   const entry = [...mounted.host.querySelectorAll("button")].find((node) =>
