@@ -23,6 +23,8 @@ import test from "node:test";
 import React, { act } from "react";
 import ts from "typescript";
 
+import { docFamilyAcceptAttribute } from "../src/shell/doc-editors/doc-family-formats.ts";
+
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -533,12 +535,48 @@ function failureMessageTail(relativePath, functionName, sourceText) {
   return tail;
 }
 
+/**
+ * 取出上传口真正生效的 `accept`。
+ *
+ * 两种写法都要认得，**并且都要拿到那串真值**，不许只看源码文本像不像：
+ *   1. 字面量：`accept: ".csv,.xlsx"`；
+ *   2. 从格式表派生：`accept: docFamilyAcceptAttribute("grid")` —— 这里把 helper
+ *      真调一次，用它当场算出来的字符串判，路由换了表、表少了后缀都瞒不过去。
+ * 认不出来的第三种写法一律返回 `null`（判红），免得下一种派生写法又被静默放行。
+ */
+function resolveUploadAccept(route) {
+  const literal = route.match(/upload:\s*\{[\s\S]*?accept:\s*"([^"]*)"/);
+  if (literal) return literal[1];
+  const derived = route.match(
+    /upload:\s*\{[\s\S]*?accept:\s*docFamilyAcceptAttribute\(\s*"([a-z0-9-]+)"\s*\)/,
+  );
+  if (derived) return docFamilyAcceptAttribute(derived[1]);
+  return null;
+}
+
+const IMAGE_ONLY_ACCEPT_TOKENS = new Set([
+  "image/*",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".svg",
+  ".avif",
+]);
+
 /** 上传口能不能真的吃下一份文档源，而不是只收图片。 */
 function routeTakesDocumentUpload(route) {
-  const accept = route.match(/upload:\s*\{[\s\S]*?accept:\s*"([^"]*)"/);
+  const accept = resolveUploadAccept(route);
   if (!accept) return false;
   // `image/*` 的选择器压根让用户选不到 PPTX/DOCX，选了也会被静默跳过。
-  if (/^\s*image\/\*\s*$/.test(accept[1])) return false;
+  // 逐条看：只要一条非图片条目都没有，这个上传口对文档源就是关着的。
+  const takesNonImage = accept
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .some((token) => token && !IMAGE_ONLY_ACCEPT_TOKENS.has(token));
+  if (!takesNonImage) return false;
   return /editor\.importSource/.test(route);
 }
 
@@ -641,16 +679,39 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
   assert.match(stage, /重新载入/);
 });
 
+// 上面那句「文案让用户上传本地表格」的后盾，落到最实的一层：
+// 不看源码长什么样，直接问格式表算出来的 accept 里到底有没有这几个后缀。
+// 表里少一个、或者 `docFamilyAcceptAttribute` 哪天不再把可转后缀算进去，这条就红。
+test("grid 上传口的 accept 真算得出表格后缀，不是一句空承诺", () => {
+  const tokens = docFamilyAcceptAttribute("grid")
+    .split(",")
+    .map((token) => token.trim().toLowerCase());
+  for (const extension of [".csv", ".xlsx", ".tsv"]) {
+    assert.ok(
+      tokens.includes(extension),
+      `grid 的上传 accept 里没有 ${extension}（现有：${tokens.join("、")}）`,
+    );
+  }
+});
+
 test("deck 不许再承诺它的上传口根本不收的文件", async () => {
   const route = await readFile(
     resolve("src/shell/advanced-routes/DeckRoute.tsx"),
     "utf8",
   );
-  // 这条是黄一复发的具体形状：DeckRoute 的上传口只收图片，非图片会被静默跳过。
+  // 这条原本钉的是黄一的具体形状：DeckRoute 的上传口只收图片，非图片被静默跳过，
+  // 所以当时要求「上传口收不了文档」与「文案不许提上传」两件事同时成立。
+  //
+  // 2026-08-19（W2 第 1 轮，V1 已判绿）：DeckRoute 的上传口真的收 PPTX 了
+  // （`accept` 由 `docFamilyAcceptAttribute("deck")` 派生出 `.pptx,.ppt,.odp,image/*`，
+  // 并接到 `editor.importSource`）。这正是本条失败信息当年写好的交接指示。
+  // 于是这半条判据按指示翻面：**从「上传口收不了」翻成「上传口必须真收得下」**。
+  // 这不是放宽——退回只收图片会立刻红（探针实测），而「文案不许承诺办不到的事」
+  // 这条不变量本身没松：它由上面第 5 条（deck 也在用例表里）逐句盯着。
   assert.equal(
     routeTakesDocumentUpload(route),
-    false,
-    "DeckRoute 的上传口如果真的能收 PPTX 了，请连同 deckSourceFailureMessage 的尾句一起更新",
+    true,
+    "DeckRoute 的上传口退回只收图片了：请修路由，不要改这条断言",
   );
   const hook = await readFile(
     resolve("src/shell/doc-editors/use-deck-editor.ts"),
