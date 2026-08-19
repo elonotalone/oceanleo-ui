@@ -523,3 +523,126 @@ test("确认卡文案对布尔与枚举也说人话", () => {
   assert.match(prompt, /比例：宽屏 16:9/);
   assert.match(prompt, /保留原图：否/);
 });
+
+// ── 第 2 轮回归：新开一段对话，用户第一句话就让它改文件 ─────────────────────────
+//
+// V1 实测的红：这时候确认卡不弹、编辑器没动、也没有任何解释，用户得再说一遍。
+// 根因不在确认闸，而在「哪些消息算新说的」这本账：换会话记完账之后还要再吞一整轮，
+// 而宿主的 ingest 只在消息内容真变时才被调用，被吞掉的那一轮正好是模型的第一条回答。
+//
+// 下面这个小宿主逐字照搬 `FunctionAgentChat` 的开场次序（每次 ingest = 一次真实的消息变化），
+// 不引用 V1 的探针，也不依赖 W2/W3 的真实现。
+function replayHost(surface) {
+  const intake = createEditorCommandIntake();
+  const session = createEditorCommandSession();
+  const offers = [];
+  return {
+    session,
+    offers,
+    /** 一次真实的消息变化。`ownTask` = 宿主刚用 createTask 建出这段对话。 */
+    async tick(messages, taskKey, opts) {
+      const { fresh } = takeFreshCommandMessages(intake, messages, taskKey, opts);
+      for (const message of fresh) {
+        offers.push(
+          await session.offer({
+            messageId: message.id,
+            content: message.content || "",
+            surface,
+          }),
+        );
+      }
+      return fresh;
+    },
+  };
+}
+
+const userSaid = { id: 900, role: "user", kind: "text", content: "把标题改成第一章" };
+const modelAnswered = {
+  id: 901,
+  role: "assistant",
+  kind: "text",
+  content: block({ id: "richdoc.insert-heading", params: { text: "第一章" } }),
+};
+
+test("新会话第一条就是改动指令：确认卡照样要弹，用户不用再说一遍", async () => {
+  const { surface, calls } = stubSurface();
+  const host = replayHost(surface);
+  // 1. 用户点发送：本地乐观插入用户气泡，这时还没有 taskId。
+  await host.tick([userSaid], "");
+  // 2. 任务建好、第一次 refresh 回来：taskKey 变成真 id，消息换成服务端那份。
+  await host.tick([userSaid], "task-1", { ownTask: true });
+  // 3. 模型的回答到达——这一条不许被当成历史吞掉。
+  const fresh = await host.tick([userSaid, modelAnswered], "task-1");
+
+  assert.deepEqual(fresh.map((m) => m.id), [901], "新会话的第一条回答被当历史吞了");
+  assert.equal(host.offers.length, 1);
+  assert.equal(host.offers[0].kind, "confirm", "第一条改动指令没有走到确认卡");
+  assert.match(host.offers[0].pending.prompt, /要我在文档里「插入标题」吗/);
+  assert.equal(calls.length, 0, "还没确认就动了编辑器");
+  assert.equal(host.session.runCount(), 0);
+});
+
+test("模型回答跟第一份快照一起到达时，也不会被当历史吞掉", async () => {
+  const { surface, calls } = stubSurface();
+  const host = replayHost(surface);
+  await host.tick([userSaid], "");
+  // 后端答得快：第一次 refresh 就把用户那句话和模型的回答一起给了。
+  const fresh = await host.tick([userSaid, modelAnswered], "task-1", { ownTask: true });
+
+  assert.deepEqual(fresh.map((m) => m.id), [901]);
+  assert.equal(host.offers[0].kind, "confirm");
+  assert.equal(calls.length, 0, "还没确认就动了编辑器");
+});
+
+test("回看旧对话仍然一条都不执行（防重放没有被这次修改削弱）", async () => {
+  const { surface, calls } = stubSurface();
+  const host = replayHost(surface);
+  // 打开一段已经存在的对话：整段历史在换会话那一轮到达，且没有 ownTask 标记。
+  const fresh = await host.tick([userSaid, modelAnswered], "old-task");
+
+  assert.deepEqual(fresh, [], "回看旧对话把里面的旧指令又交出来了");
+  assert.equal(host.offers.length, 0);
+  assert.equal(calls.length, 0);
+});
+
+test("宿主先清空再送来历史：那一整段仍然不执行", async () => {
+  const { surface } = stubSurface();
+  const host = replayHost(surface);
+  // 换会话那一轮拿到的是空列表 → 真正的历史还在路上，必须等它到齐再记账。
+  await host.tick([], "old-task");
+  const fresh = await host.tick([userSaid, modelAnswered], "old-task");
+
+  assert.deepEqual(fresh, [], "历史整段到达那一轮被当成新消息了");
+  assert.equal(host.offers.length, 0);
+});
+
+test("刷新页面后接着聊：这一轮的第一条改动指令也要弹卡", async () => {
+  const { surface } = stubSurface();
+  const host = replayHost(surface);
+  // 刷新后重新挂载：账本是全新的，第一次 ingest 拿到的是服务端的完整历史。
+  await host.tick([userSaid, modelAnswered], "task-1");
+  // 用户接着说一句 → 乐观气泡；然后模型回一条新的改动指令。
+  const next = { id: 902, role: "user", kind: "text", content: "再改一下" };
+  await host.tick([userSaid, modelAnswered, next], "task-1");
+  const answer = {
+    id: 903,
+    role: "assistant",
+    kind: "text",
+    content: block({ id: "richdoc.insert-heading", params: { text: "第二章" } }),
+  };
+  const fresh = await host.tick([userSaid, modelAnswered, next, answer], "task-1");
+
+  assert.deepEqual(fresh.map((m) => m.id), [903]);
+  assert.equal(host.offers.at(-1).kind, "confirm");
+});
+
+test("换编辑器/换素材导致组件重挂：既有对话的下一条指令不被吞", async () => {
+  const { surface } = stubSurface();
+  const host = replayHost(surface);
+  // 重挂：账本全新，第一次 ingest 就是这段对话当时的全部消息（非空）。
+  await host.tick([userSaid], "task-1");
+  const fresh = await host.tick([userSaid, modelAnswered], "task-1");
+
+  assert.deepEqual(fresh.map((m) => m.id), [901], "重挂之后第一条指令被吞了");
+  assert.equal(host.offers[0].kind, "confirm");
+});

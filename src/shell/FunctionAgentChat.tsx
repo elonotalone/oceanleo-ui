@@ -129,6 +129,10 @@ export interface EditorCommandBridge {
   ingest: (messages: AgentMessage[], taskKey: string) => void;
   /** 用户刚发出一句话 → 解除「上一条被拒就停」，拒绝回喂计数归零。 */
   noteUserTurn: () => void;
+  /**
+   * 刚替用户新建了一段对话（`createTask` 回来的那个 id）。
+   * 这段对话里不可能躺着历史，所以它的第一份消息里如果已经带了指令，也照样算数。 */
+  noteOwnTask: (taskKey: string) => void;
   pending: EditorCommandPending | null;
   notes: EditorCommandNote[];
   busy: boolean;
@@ -155,8 +159,10 @@ export function useEditorCommandBridge(opts: {
   const [notes, setNotes] = useState<EditorCommandNote[]>([]);
   const [busy, setBusy] = useState(false);
   const noteSeqRef = useRef(0);
-  // 「哪些消息已经看过」的账本（换会话时先整整吃掉一轮，绝不重放历史里的指令）。
+  // 「哪些消息已经看过」的账本（接手一段对话时先把在场消息全记下，绝不重放历史里的指令）。
   const intakeRef = useRef(createEditorCommandIntake());
+  // 刚由本组件替用户建起来的那段对话：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
+  const ownTaskKeyRef = useRef("");
   // 连着被拒几次就不再把拒绝理由喂回给模型：每喂一次都是一轮真实花费，
   // 不能让「模型乱下 id → 我告诉它不行 → 它再乱下」自己转起来。
   const rejectReportsRef = useRef(0);
@@ -218,10 +224,13 @@ export function useEditorCommandBridge(opts: {
   const ingest = useCallback(
     (messages: AgentMessage[], taskKey: string) => {
       if (!liveRef.current.enabled || liveRef.current.readOnly) return;
+      const ownTask = !!taskKey && ownTaskKeyRef.current === taskKey;
+      if (ownTask) ownTaskKeyRef.current = "";
       const { fresh, switched } = takeFreshCommandMessages(
         intakeRef.current,
         messages,
         taskKey,
+        { ownTask },
       );
       if (switched) setNotes([]);
       for (const message of fresh) {
@@ -276,6 +285,10 @@ export function useEditorCommandBridge(opts: {
     rejectReportsRef.current = 0;
   }, []);
 
+  const noteOwnTask = useCallback((taskKey: string) => {
+    ownTaskKeyRef.current = taskKey || "";
+  }, []);
+
   const card = pending ? (
     <EditorCommandCard
       pending={pending}
@@ -285,7 +298,7 @@ export function useEditorCommandBridge(opts: {
     />
   ) : null;
 
-  return { contextFor, ingest, noteUserTurn, pending, notes, busy, card };
+  return { contextFor, ingest, noteUserTurn, noteOwnTask, pending, notes, busy, card };
 }
 
 /** 改动前的确认卡：人话写清要做什么、改哪里、填了什么。不显示 id，也不显示 JSON。 */
@@ -1379,6 +1392,8 @@ export function FunctionAgentChat({
         setError(r.status === 401 ? tt("登录后即可使用 agent。") : r.error || tt("创建失败"));
         return;
       }
+      // 这段对话是刚建起来的：模型的回答哪怕跟第一份消息一起到，也不能被当成历史吞掉。
+      editorCommands.noteOwnTask(r.data.task_id);
       setLocalTaskId(r.data.task_id);
       onTaskIdChange?.(r.data.task_id);
       if (workspace) {

@@ -698,22 +698,40 @@ export function createEditorCommandIntake(): EditorCommandIntake {
   return { taskKey: "", ids: new Set(), primed: false };
 }
 
+/** 只有模型正式说出来的那种消息才可能带指令：用户自己说的、过程条、思考条一律不算。 */
+function carriesCommand(message: CommandCarryingMessage): boolean {
+  if (message.role !== "assistant") return false;
+  if (message.kind && message.kind !== "text" && message.kind !== "report") return false;
+  return message.meta?.interim !== true;
+}
+
 /**
  * 从一轮轮询结果里挑出「真正是新说的、且可能带指令」的 assistant 消息。
  *
- * 换会话时**整整吃掉一轮**只记账不返回：宿主清空旧消息与这里拿到新消息之间隔着一次渲染，
- * 只看一眼很容易把整段历史当成新消息——回看一段旧对话就会把里面的指令再执行一遍。
- * 宁可漏掉一条刚好与首轮同时到达的回答，也不许重放历史。
+ * 换会话那一轮只记账不返回：那一份消息是我们接手这段对话时**已经躺在里面**的，
+ * 不管它是不是历史，都不该被当成刚说的话执行一遍。
+ * 换会话时若拿到的是空列表，说明宿主刚清空、真正的那份还在路上，
+ * 于是**再吃一轮**等它到齐——否则整段历史会在下一轮被当成新消息重放。
+ * 反过来，换会话那一轮已经拿到非空列表时就不能再多吃一轮：
+ * 多吃的那一轮正好是每段新对话里模型的第一条回答，用户第一句话会白说。
+ *
+ * `opts.ownTask` = 这段对话是宿主刚刚替用户建起来的（`createTask` 返回的那个 id），
+ * 里面不可能躺着历史，所以哪怕模型的回答已经跟着第一份快照一起到了，也照样交出来。
  */
 export function takeFreshCommandMessages(
   intake: EditorCommandIntake,
   messages: readonly CommandCarryingMessage[],
   taskKey: string,
+  opts?: { ownTask?: boolean },
 ): { fresh: CommandCarryingMessage[]; switched: boolean } {
   if (intake.taskKey !== taskKey) {
     intake.taskKey = taskKey;
     intake.ids = new Set(messages.map((m) => m.id));
-    intake.primed = false;
+    if (opts?.ownTask && taskKey) {
+      intake.primed = true;
+      return { fresh: messages.filter(carriesCommand), switched: true };
+    }
+    intake.primed = messages.length > 0;
     return { fresh: [], switched: true };
   }
   if (!intake.primed) {
@@ -725,10 +743,7 @@ export function takeFreshCommandMessages(
   for (const message of messages) {
     if (intake.ids.has(message.id)) continue;
     intake.ids.add(message.id);
-    if (message.role !== "assistant") continue;
-    if (message.kind && message.kind !== "text" && message.kind !== "report") continue;
-    if (message.meta?.interim === true) continue;
-    fresh.push(message);
+    if (carriesCommand(message)) fresh.push(message);
   }
   return { fresh, switched: false };
 }
