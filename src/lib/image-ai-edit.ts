@@ -606,7 +606,12 @@ async function defaultGridSplitter(
                 width: outputWidth,
                 height: outputHeight,
               });
-        const context = canvas.getContext("2d");
+        // getContext("2d") over the OffscreenCanvas|HTMLCanvasElement union widens
+        // to RenderingContext, which has no drawImage; the "2d" id rules that out.
+        const context = canvas.getContext("2d") as
+          | OffscreenCanvasRenderingContext2D
+          | CanvasRenderingContext2D
+          | null;
         if (!context) {
           throw new ImageGatewayError(
             "grid-split-canvas-unavailable",
