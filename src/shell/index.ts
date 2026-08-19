@@ -293,6 +293,7 @@ export {
   uploadEditorTargetForFileName,
   uploadSupportedExtensions,
   uploadSupportedExtensionsByTarget,
+  uploadUnavailableReason,
 } from "./workbench-route-formats";
 export type { UploadEditorTarget } from "./workbench-route-formats";
 // 上传归一化（合同 §3.3）：机制在共享包，映射表由各编辑器路由自己声明。

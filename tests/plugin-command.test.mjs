@@ -560,6 +560,53 @@ test("3D 的 obj 在 W10 证明能转之前一律明说打不开，不假装能�
   mounted.unmount();
 });
 
+test("手机照片（heic）给的是能照做的一句话，不是那串通用清单", async () => {
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "IMG_0421.heic");
+  const alert = mounted.host.querySelector('[role="alert"]');
+  assert.ok(alert, "heic 必须有话说");
+  assert.match(alert.textContent, /HEIC/);
+  assert.match(alert.textContent, /JPG/, "只说打不开、不说怎么办，等于没说");
+  assert.doesNotMatch(
+    alert.textContent,
+    /现在支持：/,
+    "手机照片掉进那串通用后缀清单里了，用户读完还是不知道下一步干什么",
+  );
+  assert.equal(
+    globalThis.__blankStageCalls.uploads.length,
+    0,
+    "明知这台服务器转不了 heic，还是让用户白传了一趟",
+  );
+  mounted.unmount();
+});
+
+test("要转一道的文件在传的过程中有进度提示，不是一个不动的界面", async () => {
+  let release = () => {};
+  globalThis.__blankStageCalls.uploadResponse = new Promise((resolve) => {
+    release = () => resolve({ ok: false, error: "先停在这里。" });
+  });
+  const mounted = mountBlankStage();
+  const input = mounted.host.querySelector('input[type="file"]');
+  const file = new window.File(["x"], "扫描件.tiff", { type: "" });
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () => {
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+
+  const status = mounted.host.querySelector('[role="status"]');
+  assert.ok(status, "要转格式的文件在传的时候一句提示都没有，用户只能盯着不动的界面");
+  assert.match(status.textContent, /转成能编辑的格式|正在上传/);
+
+  release();
+  await settle(() => Boolean(mounted.host.querySelector('[role="alert"]')));
+  assert.equal(
+    mounted.host.querySelector('[role="status"]'),
+    null,
+    "已经出结果了，进度提示还挂在那里",
+  );
+  mounted.unmount();
+});
+
 test("上传失败时把原因摆出来，不静默吞掉", async () => {
   globalThis.__blankStageCalls.uploadResponse = {
     ok: false,

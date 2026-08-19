@@ -140,6 +140,41 @@ export const AUDIO_IMPORT_EXT = new Set<string>([]);
  */
 export const MODEL_IMPORT_EXT = new Set<string>([]);
 
+/**
+ * 用户真会拖进来、但**这台服务器已经实测转不了**的那几个后缀，各自配一句能照做的话。
+ *
+ * 不写这张表的话，手机照片会掉进「现在支持：AVIF、BMP、CSV…」那一长串里，用户读完
+ * 只知道「不支持」，不知道下一步该干什么。能转不能转是后端的事，但**告诉用户怎么绕过去**
+ * 是这里的事。
+ *
+ * 只收 `[实测]` 过的：没证过的后缀一律走那串通用清单，不许在这里替后端打包票。
+ * 哪天后端把缺的装上（heic 要 `pillow-heif`/`libheif`，fbx 要 FBX SDK 或 Blender），
+ * 从这里删掉、加进上面对应的 `*_IMPORT_EXT` 即可，界面不用改。
+ */
+const UPLOAD_UNAVAILABLE = new Map<string, string>([
+  [
+    "heic",
+    "这里还打不开 iPhone 的 HEIC 照片。在手机上打开「设置 → 相机 → 格式」选「兼容性最佳」，" +
+      "之后拍的就是 JPG；已经拍好的照片，用相册的「拷贝并保留原始文件」导出成 JPG 再拖进来。",
+  ],
+  [
+    "heif",
+    "这里还打不开 HEIF 照片。先在手机或看图软件里导出成 JPG、PNG，再拖进来。",
+  ],
+  [
+    "fbx",
+    "这里还打不开 FBX 模型。FBX 是 Autodesk 的私有格式，得用建模软件（Blender 等）" +
+      "导出成 GLB 或 glTF 再拖进来。",
+  ],
+]);
+
+/**
+ * 这个后缀有没有一句专门的原因；没有就返回空串，由调用方给那串通用清单。
+ */
+export function uploadUnavailableReason(value: string): string {
+  return UPLOAD_UNAVAILABLE.get(normalizedUploadExtension(value)) || "";
+}
+
 /** 本地文件第一次落进工作台时，它该去哪条编辑器路由。 */
 export type UploadEditorTarget =
   | "richdoc"

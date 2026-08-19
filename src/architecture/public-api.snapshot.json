@@ -5187,6 +5187,12 @@
         },
         {
           "kind": "named",
+          "name": "uploadUnavailableReason",
+          "importedName": "uploadUnavailableReason",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
           "name": "useActiveAppCapability",
           "importedName": "useActiveAppCapability",
           "source": "./app-capability-context"

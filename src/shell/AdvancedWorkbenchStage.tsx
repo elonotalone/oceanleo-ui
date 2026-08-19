@@ -16,6 +16,7 @@ import { WORKBENCH_MATERIAL_MIME } from "./workbench-material-provider";
 import {
   uploadEditorTargetForFileName,
   uploadSupportedExtensionsByTarget,
+  uploadUnavailableReason,
   type UploadEditorTarget,
 } from "./workbench-route-formats";
 
@@ -241,15 +242,20 @@ export function AdvancedWorkbenchBlankStage({
       setError("");
       const judged = uploadEditorTargetForFileName(file.name);
       if (!judged.target) {
+        // 手机照片、FBX 模型这类「用户真会拖、但确实转不了」的，给一句能照做的话；
+        // 其余的才落到那串通用清单上。
+        const named = uploadUnavailableReason(judged.extension);
         setError(
-          judged.extension
-            ? tt("这里还打不开 {ext} 文件。现在支持：{list}。", {
-                ext: judged.extension.toUpperCase(),
-                list: supportedFormatsText(),
-              })
-            : tt("这个文件没有扩展名，认不出是什么格式。现在支持：{list}。", {
-                list: supportedFormatsText(),
-              }),
+          named
+            ? tt(named)
+            : judged.extension
+              ? tt("这里还打不开 {ext} 文件。现在支持：{list}。", {
+                  ext: judged.extension.toUpperCase(),
+                  list: supportedFormatsText(),
+                })
+              : tt("这个文件没有扩展名，认不出是什么格式。现在支持：{list}。", {
+                  list: supportedFormatsText(),
+                }),
         );
         return;
       }
