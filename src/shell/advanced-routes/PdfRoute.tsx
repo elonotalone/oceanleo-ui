@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -15,6 +15,13 @@ import {
   PDF_MIN_ZOOM,
 } from "../media-editors/pdf-workbench-utils";
 import { editorToolLabel } from "../workbench-routes";
+import { buildPdfCommandSurface } from "../doc-editors/doc-family-commands";
+import {
+  DOC_FAMILY_DOWNLOAD_FORMATS,
+  docFamilyAcceptAttribute,
+} from "../doc-editors/doc-family-formats";
+import { importDocFamilyFile } from "../doc-editors/doc-family-import";
+import { usePluginCommandSurface } from "../plugin-command";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -76,13 +83,37 @@ export function PdfRoute({
         }
       : { ok: false as const };
   }, [editor.saveCopy, item]);
-  const mergeLocalPdfs = useCallback(
+  const [importError, setImportError] = useState("");
+  /**
+   * 拖进来的不只是 PDF：Word / 表格 / 演示 / 图片先由后端转成 PDF（合同 §3.3），
+   * 再作为页码接到当前页后面。转不了的报出一句能看懂的原因，不静默丢掉文件。
+   */
+  const mergeLocalFiles = useCallback(
     async (files: File[]) => {
+      setImportError("");
       for (const file of files) {
-        await editor.mergePdf(file, "after-current");
+        const outcome = await importDocFamilyFile(file, "pdf");
+        if (!outcome.ok) {
+          setImportError(outcome.message);
+          continue;
+        }
+        await editor.mergePdf(outcome.file, "after-current");
       }
     },
     [editor.mergePdf],
+  );
+  const downloadAs = useCallback(
+    async (extension: string): Promise<string> => {
+      if (extension !== "pdf") {
+        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
+      }
+      editor.download();
+      return "";
+    },
+    [editor.download],
+  );
+  usePluginCommandSurface(
+    buildPdfCommandSurface(editor, { download: downloadAs }),
   );
   return (
     <AdvancedWorkbenchShell
@@ -119,20 +150,21 @@ export function PdfRoute({
         },
         directDownload: {
           id: "pdf-download",
-          label: "直接下载 PDF",
+          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.pdf[0].label}`,
           icon: "download",
           disabled: editor.loading || editor.processing,
           onTrigger: editor.download,
         },
         upload: {
-          accept: ".pdf,application/pdf",
+          accept: docFamilyAcceptAttribute("pdf"),
           multiple: true,
-          onFiles: mergeLocalPdfs,
+          onFiles: mergeLocalFiles,
         },
         stage: <PdfStage editor={editor} accent={accent} />,
         // §6: a failed load reaches the shell status bar with its code, so the
         // route never presents an empty stage with no stated reason.
         status:
+          importError ||
           editor.error ||
           editor.failure?.message ||
           editor.notice ||

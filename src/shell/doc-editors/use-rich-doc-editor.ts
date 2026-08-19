@@ -17,7 +17,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { Image } from "@tiptap/extension-image";
 import { TextAlign } from "@tiptap/extension-text-align";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Highlight } from "@tiptap/extension-highlight";
 import type { LibraryItem } from "../library-data";
 import { uploadFile } from "../../lib/database";
@@ -238,6 +238,9 @@ export function useRichDocEditor(
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
       Color,
+      // 字号是指令面里 agent 能下的一条命令（`richdoc.set-font-size`），
+      // 没有这条扩展 `textStyle` 上就没有 fontSize 属性，改字号会静默丢掉。
+      FontSize,
       Highlight.configure({ multicolor: true }),
     ],
     [],

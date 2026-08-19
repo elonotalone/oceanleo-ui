@@ -11,6 +11,15 @@ import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePane
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
+import { tiptapJsonToDocxBlob } from "../doc-editors/docx-export";
+import { buildRichDocCommandSurface } from "../doc-editors/doc-family-commands";
+import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
+import {
+  DOC_FAMILY_DOWNLOAD_FORMATS,
+  docFamilyAcceptAttribute,
+} from "../doc-editors/doc-family-formats";
+import { importDocFamilyFile } from "../doc-editors/doc-family-import";
+import { usePluginCommandSurface } from "../plugin-command";
 import {
   richDocSavedItemForHandoff,
   useRichDocEditor,
@@ -152,11 +161,26 @@ export function RichDocRoute({
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
   }, [editor.error, editor.save, item]);
+  const [importError, setImportError] = useState("");
+  /**
+   * 上传/拖进来的文件先归一化：`.doc`/`.rtf`/`.odt` 这类先转成 DOCX 再进编辑器
+   * （转换在后端，合同 §3.3）。转不了的一律报出**一句能看懂的原因**，
+   * 不再像过去那样把二进制 `.doc` 当纯文本塞进去、留一个乱码或空白文档。
+   */
   const importLocalFiles = useCallback(
     async (files: File[]) => {
+      setImportError("");
       for (const file of files) {
-        if (file.type.startsWith("image/")) await editor.uploadImage(file);
-        else await editor.importSource(file);
+        const outcome = await importDocFamilyFile(file, "richdoc");
+        if (outcome.image) {
+          await editor.uploadImage(outcome.file);
+          continue;
+        }
+        if (!outcome.ok) {
+          setImportError(outcome.message);
+          continue;
+        }
+        await editor.importSource(outcome.file);
       }
     },
     [editor.importSource, editor.uploadImage],
@@ -179,6 +203,79 @@ export function RichDocRoute({
       );
     }
   }, [editor.editor, item.title]);
+  /**
+   * PDF 浏览器本地出不来，交给后端 `/v1/convert/office`：先用编辑器已有的 DOCX
+   * 写入器出一份字节，再转一次。这样下载的 PDF 与下载的 DOCX 是同一份内容。
+   */
+  const exportPdf = useCallback(async (): Promise<string> => {
+    if (!editor.editor) return "文档尚未载入，不能导出 PDF。";
+    const title = item.title || "document";
+    try {
+      const docx = await tiptapJsonToDocxBlob(title, editor.editor.getJSON());
+      return await downloadConvertedCopy({
+        source: docx,
+        sourceName: `${title}.docx`,
+        target: "pdf",
+        baseName: title,
+      });
+    } catch (caught) {
+      return caught instanceof Error && caught.message
+        ? caught.message
+        : "导出 PDF 失败。";
+    }
+  }, [editor.editor, item.title]);
+  /** 一个后缀 → 一次下载。返回空串表示成功，非空是要显示的原因。 */
+  const downloadAs = useCallback(
+    async (extension: string): Promise<string> => {
+      setExportError("");
+      try {
+        switch (extension) {
+          case "docx":
+            await editor.exportDoc();
+            return "";
+          case "md":
+            await editor.exportMarkdown();
+            return "";
+          case "html":
+            await editor.exportHtml();
+            return "";
+          case "txt":
+            editor.exportText();
+            return "";
+          case "json":
+            exportStructuredJson();
+            return "";
+          case "pdf": {
+            const failure = await exportPdf();
+            if (failure) setExportError(failure);
+            return failure;
+          }
+          default:
+            return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
+        }
+      } catch (caught) {
+        const message =
+          caught instanceof Error && caught.message
+            ? caught.message
+            : `导出 ${extension.toUpperCase()} 失败。`;
+        setExportError(message);
+        return message;
+      }
+    },
+    [
+      editor.exportDoc,
+      editor.exportHtml,
+      editor.exportMarkdown,
+      editor.exportText,
+      exportPdf,
+      exportStructuredJson,
+    ],
+  );
+  usePluginCommandSurface(
+    buildRichDocCommandSurface(editor, { download: downloadAs }),
+  );
+  const downloadDisabled =
+    !editor.editor || editor.loading || !editor.sourceReady;
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -208,11 +305,12 @@ export function RichDocRoute({
         },
         directDownload: {
           id: "richdoc-export-docx",
-          label: "直接下载 DOCX",
+          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label}`,
           icon: "download",
-          disabled: !editor.editor || editor.loading || !editor.sourceReady,
+          disabled: downloadDisabled,
           onTrigger: editor.exportDoc,
         },
+        // 第一条格式是主交付物，已经由 directDownload 呈现；其余每个格式一条菜单项。
         actions: [
           ...(officeSource.error && !editor.dirty
             ? [
@@ -223,31 +321,18 @@ export function RichDocRoute({
                 },
               ]
             : []),
-          {
-            id: "richdoc-export-markdown",
-            label: "导出 Markdown",
-            group: "download",
-            disabled: !editor.editor || editor.loading || !editor.sourceReady,
-            onTrigger: editor.exportMarkdown,
-          },
-          {
-            id: "richdoc-export-html",
-            label: "导出 HTML",
-            group: "download",
-            disabled: !editor.editor || editor.loading || !editor.sourceReady,
-            onTrigger: editor.exportHtml,
-          },
-          {
-            id: "richdoc-export-json",
-            label: "导出可编辑 JSON",
-            group: "download",
-            disabled: !editor.editor || editor.loading || !editor.sourceReady,
-            onTrigger: exportStructuredJson,
-          },
+          ...DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.slice(1).map((format) => ({
+            id: `richdoc-export-${format.extension}`,
+            label: `下载 ${format.label}`,
+            group: "download" as const,
+            disabled: downloadDisabled,
+            onTrigger: () => {
+              void downloadAs(format.extension);
+            },
+          })),
         ],
         upload: {
-          accept:
-            ".doc,.docx,.md,.markdown,.txt,.html,.htm,image/*,text/plain,text/markdown,text/html",
+          accept: docFamilyAcceptAttribute("richdoc"),
           multiple: true,
           onFiles: importLocalFiles,
         },
@@ -265,6 +350,7 @@ export function RichDocRoute({
             <RichDocStage editor={editor} accent={accent} />
           ),
         status:
+          importError ||
           exportError ||
           (!item.meta.editor_project_url &&
             Boolean(item.url || item.artifactId) &&

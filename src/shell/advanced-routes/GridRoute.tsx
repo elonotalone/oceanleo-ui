@@ -29,6 +29,14 @@ import {
 } from "../doc-editors/use-grid-editor";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
+import { buildGridCommandSurface } from "../doc-editors/doc-family-commands";
+import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
+import {
+  DOC_FAMILY_DOWNLOAD_FORMATS,
+  docFamilyAcceptAttribute,
+} from "../doc-editors/doc-family-formats";
+import { importDocFamilyFile } from "../doc-editors/doc-family-import";
+import { usePluginCommandSurface } from "../plugin-command";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -207,12 +215,31 @@ export function GridRoute({
       item: gridSavedItemForHandoff(saved.item || receipt || item, saved),
     };
   }, [editor.error, editor.save, item]);
+  const [importError, setImportError] = useState("");
+  /**
+   * `.tsv` 过去在上传框里选得中、`loadGridFile` 当场拒（P1 实测）。现在先归一化
+   * 成 XLSX 再进编辑器，转不了的报出一句能看懂的原因，不留空白工作簿。
+   */
   const importLocalFile = useCallback(
     async (files: File[]) => {
       const file = files[0];
-      if (file) await editor.importSource(file);
+      if (!file) return;
+      setImportError("");
+      const outcome = await importDocFamilyFile(file, "grid");
+      if (!outcome.ok) {
+        setImportError(outcome.message);
+        return;
+      }
+      await editor.importSource(outcome.file);
     },
     [editor.importSource],
+  );
+  const workbookBlob = useCallback(
+    () =>
+      buildGridRouteWorkbookBlob(structuredClone(editor.sheets), {
+        headerRow: editor.headerRow,
+      }),
+    [editor.headerRow, editor.sheets],
   );
   const exportXlsx = useCallback(async () => {
     if (xlsxExportBusyRef.current) return;
@@ -220,13 +247,7 @@ export function GridRoute({
     setXlsxExporting(true);
     setXlsxExportError("");
     try {
-      const snapshot = structuredClone(editor.sheets);
-      downloadBlob(
-        `${item.title || "workbook"}.xlsx`,
-        await buildGridRouteWorkbookBlob(snapshot, {
-          headerRow: editor.headerRow,
-        }),
-      );
+      downloadBlob(`${item.title || "workbook"}.xlsx`, await workbookBlob());
     } catch (caught) {
       setXlsxExportError(
         caught instanceof Error ? caught.message : "导出 XLSX 失败",
@@ -235,7 +256,46 @@ export function GridRoute({
       xlsxExportBusyRef.current = false;
       setXlsxExporting(false);
     }
-  }, [editor.headerRow, editor.sheets, item.title]);
+  }, [item.title, workbookBlob]);
+  /** 一个后缀 → 一次下载。PDF 走后端转换（本地出不来）。 */
+  const downloadAs = useCallback(
+    async (extension: string): Promise<string> => {
+      setXlsxExportError("");
+      try {
+        if (extension === "xlsx") {
+          await exportXlsx();
+          return xlsxExportBusyRef.current ? "上一次导出还没结束，请稍等。" : "";
+        }
+        if (extension === "csv") {
+          editor.exportCsv();
+          return "";
+        }
+        if (extension === "pdf") {
+          const title = item.title || "workbook";
+          const failure = await downloadConvertedCopy({
+            source: await workbookBlob(),
+            sourceName: `${title}.xlsx`,
+            target: "pdf",
+            baseName: title,
+          });
+          if (failure) setXlsxExportError(failure);
+          return failure;
+        }
+        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
+      } catch (caught) {
+        const message =
+          caught instanceof Error && caught.message
+            ? caught.message
+            : `导出 ${extension.toUpperCase()} 失败。`;
+        setXlsxExportError(message);
+        return message;
+      }
+    },
+    [editor.exportCsv, exportXlsx, item.title, workbookBlob],
+  );
+  usePluginCommandSurface(
+    buildGridCommandSurface(editor, { download: downloadAs }),
+  );
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -256,7 +316,7 @@ export function GridRoute({
         },
         directDownload: {
           id: "grid-export-xlsx",
-          label: "直接下载 XLSX",
+          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label}`,
           icon: "download",
           busyLabel: "导出中…",
           busy: xlsxExporting,
@@ -282,21 +342,23 @@ export function GridRoute({
                 },
               ]
             : []),
-          {
-            id: "grid-export-csv",
-            label: "导出 CSV",
-            group: "download",
+          ...DOC_FAMILY_DOWNLOAD_FORMATS.grid.slice(1).map((format) => ({
+            id: `grid-export-${format.extension}`,
+            label: `下载 ${format.label}`,
+            group: "download" as const,
             disabled: editor.loading || xlsxExporting,
-            onTrigger: editor.exportCsv,
-          },
+            onTrigger: () => {
+              void downloadAs(format.extension);
+            },
+          })),
         ],
         upload: {
-          accept:
-            ".csv,.tsv,.xls,.xlsx,.xlsm,.ods,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          accept: docFamilyAcceptAttribute("grid"),
           onFiles: importLocalFile,
         },
         stage: <GridStage editor={editor} accent={accent} />,
         status:
+          importError ||
           xlsxExportError ||
           history.error ||
           (!item.meta.editor_project_url &&

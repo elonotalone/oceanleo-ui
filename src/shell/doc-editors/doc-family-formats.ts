@@ -275,6 +275,15 @@ export function docFamilyImportPlan(
   };
 }
 
+/**
+ * 四条路由的声明表一次给全。
+ *
+ * 空件挂载那条路（拖一个文件进空框，还没有任何编辑器挂载）需要在编辑器之前就知道
+ * 这些映射，所以这里给出一份**无副作用**的数组，由工作台入口在启动时注册。
+ */
+export const DOC_FAMILY_IMPORT_PLANS: readonly EditorImportPlan[] =
+  DOC_FAMILY_EDITOR_IDS.map((editorId) => docFamilyImportPlan(editorId));
+
 /** 转换失败时对用户说的话：带上后端给的原因，不许只说「失败」。 */
 export function docFamilyConvertFailureMessage(
   fileName: string,

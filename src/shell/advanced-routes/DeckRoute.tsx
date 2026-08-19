@@ -27,11 +27,20 @@ import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
 import {
+  buildDeckPptxBlob,
   deckSavedItemForHandoff,
   useDeckEditor,
 } from "../doc-editors/use-deck-editor";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
+import { buildDeckCommandSurface } from "../doc-editors/doc-family-commands";
+import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
+import {
+  DOC_FAMILY_DOWNLOAD_FORMATS,
+  docFamilyAcceptAttribute,
+} from "../doc-editors/doc-family-formats";
+import { importDocFamilyFile } from "../doc-editors/doc-family-import";
+import { usePluginCommandSurface } from "../plugin-command";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -129,7 +138,12 @@ export function DeckRoute({
       item: deckSavedItemForHandoff(receipt || item, saved),
     };
   }, [editor.save, item]);
-  const addLocalImages = useCallback(
+  const [importError, setImportError] = useState("");
+  /**
+   * 图片当插图插进当前页；演示文稿（pptx，以及先转成 pptx 的 ppt/odp/pot…）顶掉
+   * 整份内容。过去非图片一律 `continue`，把 pptx 拖进来什么也不发生也不说一句话。
+   */
+  const addLocalFiles = useCallback(
     async (files: File[]) => {
       const read = (file: File) =>
         new Promise<string>((resolve, reject) => {
@@ -141,12 +155,61 @@ export function DeckRoute({
               : reject(new Error("图片读取失败"));
           reader.readAsDataURL(file);
         });
+      setImportError("");
       for (const file of files) {
-        if (!file.type.startsWith("image/")) continue;
-        editor.insertImageElement(await read(file), file.name);
+        const outcome = await importDocFamilyFile(file, "deck");
+        if (outcome.image) {
+          editor.insertImageElement(await read(outcome.file), outcome.file.name);
+          continue;
+        }
+        if (!outcome.ok) {
+          setImportError(outcome.message);
+          continue;
+        }
+        await editor.importSource(outcome.file);
       }
     },
-    [editor.insertImageElement],
+    [editor.importSource, editor.insertImageElement],
+  );
+  /** PPTX 本地出；PDF 交给后端转一次，内容与下载的 PPTX 同源。 */
+  const downloadAs = useCallback(
+    async (extension: string): Promise<string> => {
+      setImportError("");
+      try {
+        if (extension === "pptx") {
+          await editor.exportPptx();
+          return editor.error || "";
+        }
+        if (extension === "json") {
+          editor.downloadJson();
+          return "";
+        }
+        if (extension === "pdf") {
+          const title = editor.deck.title || item.title || "presentation";
+          return await downloadConvertedCopy({
+            source: await buildDeckPptxBlob(editor.deck),
+            sourceName: `${title}.pptx`,
+            target: "pdf",
+            baseName: title,
+          });
+        }
+        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
+      } catch (caught) {
+        return caught instanceof Error && caught.message
+          ? caught.message
+          : `导出 ${extension.toUpperCase()} 失败。`;
+      }
+    },
+    [
+      editor.deck,
+      editor.downloadJson,
+      editor.error,
+      editor.exportPptx,
+      item.title,
+    ],
+  );
+  usePluginCommandSurface(
+    buildDeckCommandSurface(editor, { download: downloadAs }),
   );
   return (
     <AdvancedWorkbenchShell
@@ -266,7 +329,7 @@ export function DeckRoute({
         },
         directDownload: {
           id: "deck-export-pptx",
-          label: "直接下载 PPTX",
+          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label}`,
           icon: "download",
           busyLabel: "导出 PPTX…",
           busy: editor.exporting,
@@ -282,19 +345,20 @@ export function DeckRoute({
                 },
               ]
             : []),
-          {
-            id: "deck-download-project",
-            label: "下载编辑工程 JSON",
-            icon: "download",
-            variant: "icon",
-            group: "download",
-            onTrigger: editor.downloadJson,
-          },
+          ...DOC_FAMILY_DOWNLOAD_FORMATS.deck.slice(1).map((format) => ({
+            id: `deck-export-${format.extension}`,
+            label: `下载 ${format.label}`,
+            group: "download" as const,
+            disabled: editor.loading || editor.exporting,
+            onTrigger: () => {
+              void downloadAs(format.extension);
+            },
+          })),
         ],
         upload: {
-          accept: "image/*",
+          accept: docFamilyAcceptAttribute("deck"),
           multiple: true,
-          onFiles: addLocalImages,
+          onFiles: addLocalFiles,
         },
         stage: (
           <DeckStage
@@ -307,6 +371,7 @@ export function DeckRoute({
           />
         ),
         status:
+          importError ||
           (!item.meta.editor_project_url &&
             Boolean(item.url || item.artifactId) &&
             officeSource.error) ||
