@@ -184,6 +184,19 @@ export function visualDownloadFormat(
   );
 }
 
+/**
+ * 菜单里的格式 → 画布导出器认识的格式。
+ *
+ * 用户看到的是 JPG，canvas 认的是 `image/jpeg`；这一处换算只允许有一个出处，
+ * 否则菜单点 JPG、出来 PNG 这种事迟早发生。
+ */
+export function imageCanvasFormat(format: string): "png" | "jpeg" | "webp" {
+  const wanted = format.trim().toLowerCase();
+  if (wanted === "jpg" || wanted === "jpeg") return "jpeg";
+  if (wanted === "webp") return "webp";
+  return "png";
+}
+
 export function clampLossyQuality(value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_LOSSY_QUALITY;

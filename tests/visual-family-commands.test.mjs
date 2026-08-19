@@ -18,10 +18,12 @@ import { PLUGIN_COMMAND_STATE_MAX_BYTES } from "../src/shell/plugin-command/type
 import {
   DEFAULT_LOSSY_QUALITY,
   clampLossyQuality,
+  imageCanvasFormat,
   visualDownloadFormats,
   visualImportPlan,
   visualUploadAccept,
 } from "../src/shell/media-editors/visual-formats.ts";
+import { exportFrozenImageDocument } from "../src/shell/image-editor/image-document-contract.ts";
 import { visualCommandIdErrors } from "../src/shell/media-editors/visual-command-kit.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
@@ -651,6 +653,78 @@ test("有损格式的默认画质是 90，越界值被夹回区间", () => {
     ["jpg", "webp"],
     "png 不该被当成有损格式",
   );
+});
+
+test("图片本地导出：菜单选什么格式，画布就按什么 MIME 与画质出", async () => {
+  const seen = [];
+  const fakeCanvas = {
+    viewportTransform: [2, 0, 0, 2, 30, 40],
+    setViewportTransform(transform) {
+      seen.push(["viewport", [...transform]]);
+      this.viewportTransform = [...transform];
+    },
+    requestRenderAll() {
+      seen.push(["render"]);
+    },
+    toCanvasElement(multiplier, region) {
+      seen.push(["raster", multiplier, region]);
+      return {
+        toBlob(callback, mimeType, quality) {
+          seen.push(["toBlob", mimeType, quality]);
+          callback({ type: mimeType, size: 1024 });
+        },
+      };
+    },
+  };
+  assert.equal(imageCanvasFormat("jpg"), "jpeg");
+  assert.equal(imageCanvasFormat("webp"), "webp");
+  assert.equal(imageCanvasFormat("png"), "png");
+  assert.equal(imageCanvasFormat("bmp"), "png", "认不出的格式退回 PNG，不许猜");
+
+  const jpg = await exportFrozenImageDocument(
+    fakeCanvas,
+    { width: 1080, height: 720 },
+    {
+      format: imageCanvasFormat("jpg"),
+      // makeExportBlob 把百分比换算成 0–1，这里跟它逐字一致。
+      quality: DEFAULT_LOSSY_QUALITY / 100,
+      multiplier: 1,
+    },
+  );
+  assert.equal(jpg.type, "image/jpeg");
+  assert.deepEqual(
+    seen.find((entry) => entry[0] === "toBlob"),
+    ["toBlob", "image/jpeg", 0.9],
+    "JPG 必须按 90 出，不许悄悄按 100",
+  );
+  assert.deepEqual(
+    seen[0],
+    ["viewport", [1, 0, 0, 1, 0, 0]],
+    "导出前要把视口归一，否则导出的是当前缩放后的画面",
+  );
+  assert.deepEqual(
+    seen.filter((entry) => entry[0] === "viewport")[1],
+    ["viewport", [2, 0, 0, 2, 30, 40]],
+    "导出后要把用户的视口还回去",
+  );
+  assert.deepEqual(
+    seen.find((entry) => entry[0] === "raster"),
+    ["raster", 1, { left: 0, top: 0, width: 1080, height: 720 }],
+  );
+
+  const webp = await exportFrozenImageDocument(
+    fakeCanvas,
+    { width: 800, height: 800 },
+    { format: imageCanvasFormat("webp"), quality: 0.9, multiplier: 2 },
+  );
+  assert.equal(webp.type, "image/webp");
+
+  const png = await exportFrozenImageDocument(
+    fakeCanvas,
+    { width: 800, height: 800 },
+    { format: imageCanvasFormat("png"), quality: 1, multiplier: 1 },
+  );
+  assert.equal(png.type, "image/png");
 });
 
 // --------------------------------------------------------------------------

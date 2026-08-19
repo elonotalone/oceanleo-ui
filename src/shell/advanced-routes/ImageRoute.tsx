@@ -12,6 +12,7 @@ import { createImageCommandSurface } from "../image-editor/image-command-surface
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
   DEFAULT_LOSSY_QUALITY,
+  imageCanvasFormat,
   visualDownloadFormats,
   visualUploadAccept,
 } from "../media-editors/visual-formats";
@@ -54,12 +55,7 @@ export function ImageRoute({
   // 菜单里的 jpg 与画布导出器的 "jpeg" 是同一件事；对用户只说 JPG。
   const deliver = useCallback(
     async (format: string, quality: number = editor.exportQuality) => {
-      const canvasFormat: ExportFormat =
-        format === "jpg" || format === "jpeg"
-          ? "jpeg"
-          : format === "webp"
-            ? "webp"
-            : "png";
+      const canvasFormat: ExportFormat = imageCanvasFormat(format);
       await editor.downloadAs(
         canvasFormat,
         canvasFormat === "png" ? 100 : quality,
