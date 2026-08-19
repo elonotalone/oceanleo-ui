@@ -403,6 +403,31 @@ test("指令面读取器：prop 注入优先于模块级注册，读不到就是
   assert.equal(readEditorCommandSurface(), null);
 });
 
+// 唯一一处跨面检查：agent 侧读的是 W1 的指令面单例（合同 §3.1）。
+// 只用 W1 的注册表挂一个假编辑器，不依赖 W2/W3 任何真实现。
+test("agent 侧能从 W1 的指令面单例上读到当前编辑器", async () => {
+  const { currentPluginCommandSurface, registerPluginCommandSurface, resetPluginCommandSurface } =
+    await import("../src/shell/plugin-command/registry.ts");
+  resetPluginCommandSurface();
+  assert.equal(currentPluginCommandSurface(), null);
+  assert.equal(buildEditorCommandContext(currentPluginCommandSurface()), "");
+  const { surface } = stubSurface();
+  const unregister = registerPluginCommandSurface(surface);
+  const ctx = buildEditorCommandContext(currentPluginCommandSurface(), {
+    query: "插入标题",
+  });
+  assert.match(ctx, /现在打开的是文档编辑器/);
+  assert.match(ctx, /richdoc\.insert-heading/);
+  const plan = planEditorCommand(currentPluginCommandSurface(), {
+    id: "richdoc.insert-heading",
+    params: { text: "概述" },
+  });
+  assert.equal(plan.kind, "confirm");
+  unregister();
+  assert.equal(currentPluginCommandSurface(), null);
+  assert.equal(buildEditorCommandContext(currentPluginCommandSurface()), "");
+});
+
 test("确认卡文案对布尔与枚举也说人话", () => {
   const prompt = describeEditorCommand(
     "image",

@@ -61,6 +61,8 @@ import {
   type OpsPatch,
   type OpsSchema,
 } from "../lib/fn-agent";
+// 只读 W1 的指令面单例（合同 §3.1）。这一面不实现指令、不注册指令，只调用。
+import { currentPluginCommandSurface } from "./plugin-command";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -138,7 +140,9 @@ export interface EditorCommandBridge {
 export function useEditorCommandBridge(opts: {
   /** 关掉就完全不看右边、也不解析指令（默认开）。 */
   enabled?: boolean;
-  /** 指令面读取器；不传则用 `registerEditorCommandSurfaceReader` 注册的那个。 */
+  /**
+   * 指令面读取器。不传就读 W1 的模块级单例 `currentPluginCommandSurface()`；
+   * `registerEditorCommandSurfaceReader()` 注册过的会更优先（测试/特殊宿主用）。 */
   surfaceReader?: EditorCommandSurfaceReader | null;
   /** 当前会话 id：执行结果会回报给它，好让 agent 接着走下一步。 */
   taskId?: string | null;
@@ -181,7 +185,9 @@ export function useEditorCommandBridge(opts: {
   const handleMessage = useCallback(
     async (messageId: number, content: string) => {
       const session = sessionRef.current;
-      const surface = readEditorCommandSurface(liveRef.current.surfaceReader);
+      const surface =
+        readEditorCommandSurface(liveRef.current.surfaceReader) ||
+        currentPluginCommandSurface();
       const offer = await session.offer({ messageId, content, surface });
       if (offer.kind === "none") return;
       if (offer.kind === "reject") {
@@ -265,7 +271,8 @@ export function useEditorCommandBridge(opts: {
     (prompt: string) => {
       if (!liveRef.current.enabled) return "";
       return buildEditorCommandContext(
-        readEditorCommandSurface(liveRef.current.surfaceReader),
+        readEditorCommandSurface(liveRef.current.surfaceReader) ||
+          currentPluginCommandSurface(),
         { query: prompt },
       );
     },
