@@ -88,6 +88,13 @@ const authStubUrl = dataModule(`
     return s().usage;
   }
   export async function signOutEverywhere() { s().signedOut = true; }
+  // 「登不上时说什么」的单一事实源（真身在 src/lib/auth/config.ts）。桩按场景给：
+  // 不给就退回真身在非 cn 家族下的那两句。
+  export function loginUnavailableNotice() {
+    return s().notice === undefined
+      ? { title: "登录服务尚未配置", detail: "本站还没有接入 OceanLeo 登录服务，请联系管理员。" }
+      : s().notice;
+  }
 `);
 
 const confirmStubUrl = dataModule(`
@@ -280,14 +287,36 @@ test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", asy
 
 /* ---------- 超集第 4 项：oceanleoConfigured() 为假 ---------- */
 
-test("未配置 Supabase 时说明原因，而不是渲染一个必然失败的登录入口", async () => {
+test("登不上时说明原因，而不是渲染一个必然失败的登录入口", async () => {
   const view = await render(
     React.createElement(AccountPage),
     signedInStub({ configured: false }),
   );
-  assert.ok(view.text().includes("登录服务尚未配置（缺少 Supabase 环境变量）。"));
+  assert.ok(view.text().includes("登录服务尚未配置"));
   assert.equal(view.buttonByText("登录"), undefined);
   assert.equal(view.host.querySelector('[data-testid="auth-dialog"]'), null);
+  view.cleanup();
+});
+
+// 2026-08-19 操作员截图 oceanleo.cn/account：页面上是「缺少 Supabase 环境变量」。
+// 境内登不上不是故障（境内版按「暂不开放注册」上线），所以文案由
+// loginUnavailableNotice() 按家族给，这一页只管照它渲染 —— 一个字都不许再提环境变量。
+test("境内版给的是「还没开放」这句人话，不提环境变量", async () => {
+  const view = await render(
+    React.createElement(AccountPage),
+    signedInStub({
+      configured: false,
+      notice: {
+        title: "境内版还没有开放注册和登录",
+        detail: "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。",
+      },
+    }),
+  );
+  const text = view.text();
+  assert.ok(text.includes("境内版还没有开放注册和登录"));
+  assert.ok(text.includes("现在可以照常浏览公开内容"));
+  assert.equal(text.includes("Supabase"), false);
+  assert.equal(text.includes("环境变量"), false);
   view.cleanup();
 });
 
@@ -358,12 +387,12 @@ test("退出登录走 signOutEverywhere（全家桶一起退），并回调 onSi
 
 /* ---------- SettingsPage 与 AccountSettings.tsx(121 行) 对齐 ---------- */
 
-test("SettingsPage 未配置 Supabase 时说明原因", async () => {
+test("SettingsPage 登不上时说明原因", async () => {
   const view = await render(
     React.createElement(SettingsPage),
     signedInStub({ configured: false }),
   );
-  assert.ok(view.text().includes("登录服务尚未配置（缺少 Supabase 环境变量）。"));
+  assert.ok(view.text().includes("登录服务尚未配置"));
   assert.ok(!view.text().includes("个人资料"));
   view.cleanup();
 });

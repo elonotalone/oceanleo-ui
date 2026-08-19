@@ -6374,6 +6374,8 @@ const es419: Record<string, string> = {
   "跳转中...": "Redirigiendo...",
   "目前仅开放被邀请的账号登录。": "Por ahora solo pueden iniciar sesión las cuentas invitadas.",
   "登录服务尚未配置": "Servicio de inicio de sesión sin configurar",
+  "境内版还没有开放注册和登录": "El registro y el inicio de sesión aún no están abiertos en la versión continental",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "Puedes seguir viendo el contenido público. El registro se abrirá cuando terminen los trámites y la revisión; lo anunciaremos en la página de inicio.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "Este sitio todavía no está conectado al servicio de inicio de sesión de OceanLeo. Comunícate con un administrador.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "El inicio de sesión por SMS todavía no está disponible: el servicio de SMS no está configurado. Ingresa con tu correo.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "El inicio de sesión con WeChat todavía no está disponible: la Plataforma Abierta de WeChat no está configurada. Ingresa con tu correo o con un número de celular.",

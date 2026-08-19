@@ -6374,6 +6374,8 @@ const vi: Record<string, string> = {
   "跳转中...": "Đang chuyển hướng...",
   "目前仅开放被邀请的账号登录。": "Hiện chỉ những tài khoản được mời mới đăng nhập được.",
   "登录服务尚未配置": "Dịch vụ đăng nhập chưa được cấu hình",
+  "境内版还没有开放注册和登录": "Bản Trung Quốc đại lục chưa mở đăng ký và đăng nhập",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "Bạn vẫn có thể xem nội dung công khai. Việc đăng ký sẽ mở sau khi hoàn tất thủ tục đăng ký và kiểm duyệt; khi mở chúng tôi sẽ nói rõ ở trang chủ.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "Trang này chưa kết nối với dịch vụ đăng nhập OceanLeo. Vui lòng liên hệ quản trị viên.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "Đăng nhập bằng SMS chưa mở: dịch vụ SMS chưa được cấu hình, vui lòng đăng nhập bằng email.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "Đăng nhập bằng WeChat chưa mở: WeChat Open Platform chưa được cấu hình, vui lòng đăng nhập bằng email hoặc số di động.",

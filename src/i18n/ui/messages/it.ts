@@ -6374,6 +6374,8 @@ const it: Record<string, string> = {
   "跳转中...": "Reindirizzamento...",
   "目前仅开放被邀请的账号登录。": "Al momento possono accedere solo gli account invitati.",
   "登录服务尚未配置": "Servizio di accesso non configurato",
+  "境内版还没有开放注册和登录": "La registrazione e l’accesso non sono ancora aperti nella versione continentale",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "Puoi continuare a consultare i contenuti pubblici. La registrazione aprirà al termine delle pratiche e della verifica; lo indicheremo in home page.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "Questo sito non è ancora collegato al servizio di accesso OceanLeo. Contatta un amministratore.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "L'accesso via SMS non è ancora disponibile: il servizio SMS non è configurato. Accedi invece con l'e-mail.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "L'accesso con WeChat non è ancora disponibile: la WeChat Open Platform non è configurata. Accedi invece con e-mail o numero di cellulare.",

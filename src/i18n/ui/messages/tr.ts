@@ -6374,6 +6374,8 @@ const tr: Record<string, string> = {
   "跳转中...": "Yönlendiriliyor...",
   "目前仅开放被邀请的账号登录。": "Şu anda yalnızca davet edilen hesaplar giriş yapabilir.",
   "登录服务尚未配置": "Giriş hizmeti yapılandırılmadı",
+  "境内版还没有开放注册和登录": "Anakara sürümünde kayıt ve giriş henüz açılmadı",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "Herkese açık içerikleri görmeye devam edebilirsiniz. Kayıt, resmi başvurular ve inceleme tamamlandığında açılacak; açıldığında ana sayfada belirteceğiz.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "Bu site henüz OceanLeo giriş hizmetine bağlı değil. Lütfen bir yöneticiye başvurun.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "SMS ile giriş henüz kullanılamıyor: SMS hizmeti yapılandırılmadı, lütfen e-posta ile giriş yapın.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "WeChat ile giriş henüz kullanılamıyor: WeChat Açık Platformu yapılandırılmadı, lütfen e-posta veya cep telefonu numarasıyla giriş yapın.",

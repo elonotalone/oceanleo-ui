@@ -6374,6 +6374,8 @@ const ptPT: Record<string, string> = {
   "跳转中...": "A redirecionar...",
   "目前仅开放被邀请的账号登录。": "De momento, apenas as contas convidadas podem iniciar sessão.",
   "登录服务尚未配置": "Serviço de início de sessão não configurado",
+  "境内版还没有开放注册和登录": "O registo e o início de sessão ainda não estão abertos na versão da China continental",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "Pode continuar a navegar pelo conteúdo público. O registo abre quando os registos oficiais e a análise terminarem; avisaremos na página inicial.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "Este site ainda não está ligado ao serviço de início de sessão do OceanLeo. Contacte um administrador.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "O início de sessão por SMS ainda não está disponível: o serviço de SMS não está configurado. Inicie sessão com o e-mail.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "O início de sessão com o WeChat ainda não está disponível: a WeChat Open Platform não está configurada. Inicie sessão com o e-mail ou com um número de telemóvel.",
