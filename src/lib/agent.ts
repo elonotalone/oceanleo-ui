@@ -707,6 +707,24 @@ export function followUp(
   });
 }
 
+/**
+ * 把「右边编辑器刚刚执行完的一条指令」的结果告诉 agent，让它接着走下一步。
+ * 可见文本就是给用户看的那句人话（对话里留一条真实记录），机器细节走 hiddenContext。
+ * 多步任务因此能一步一确认地往下走，而不是模型自己蒙着往下猜。
+ */
+export function reportEditorCommandResult(
+  taskId: string,
+  note: string,
+  detail?: Record<string, unknown>,
+) {
+  return followUp(
+    taskId,
+    `〔编辑器〕${note}`,
+    undefined,
+    detail ? `〔编辑器执行结果〕${JSON.stringify(detail)}` : "",
+  );
+}
+
 export function branchTask(
   taskId: string,
   fromMessageId: number,

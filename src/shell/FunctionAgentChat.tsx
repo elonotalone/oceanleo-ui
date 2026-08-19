@@ -32,6 +32,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
@@ -46,11 +47,20 @@ import {
   branchTask,
   followUp,
   getTask,
+  reportEditorCommandResult,
   stopTask,
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
-import { type OpsPatch, type OpsSchema } from "../lib/fn-agent";
+import {
+  buildEditorCommandContext,
+  createEditorCommandSession,
+  readEditorCommandSurface,
+  type EditorCommandPending,
+  type EditorCommandSurfaceReader,
+  type OpsPatch,
+  type OpsSchema,
+} from "../lib/fn-agent";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -91,6 +101,265 @@ const FnAgentBridgeCtx = createContext<FnAgentBridge | null>(null);
 /** 在自定义 opsContent 里拿到「把简报交给本功能区 agent」的提交器。 */
 export function useFnAgentBridge(): FnAgentBridge | null {
   return useContext(FnAgentBridgeCtx);
+}
+
+// ── 左边说话、右边动手：agent 调用右栏编辑器的指令面 ─────────────────────────
+// 用户在左边说「把这张图裁成 16:9 再存成 jpg」，模型不再只能回一段话：
+//   ① 发消息时，把「右边现在开着哪个编辑器、它现在能做什么」作为只给模型看的上下文带上；
+//   ② 模型在回答里附一条指令；
+//   ③ 会改内容的指令**先弹确认卡**，用户点了才执行，一次只执行一条；
+//   ④ 执行结果用人话回写进对话，并告诉 agent，让它接着走下一步。
+// 这不推翻「agent 不读写左边操作台 state」的教条——动的是右栏编辑器的指令面。
+// 同一套 hook 与确认卡被 AgentChat 复用（它 import 这两个导出），全家桶只有一份实现。
+
+export interface EditorCommandNote {
+  id: number;
+  text: string;
+  ok: boolean;
+}
+
+export interface EditorCommandBridge {
+  /** 发消息时塞进 hiddenContext 的那段「右边现在开着什么、能做什么」；没开编辑器时为空串。 */
+  contextFor: (prompt: string) => string;
+  /** 每次轮询拿到消息后调一次；同一条消息只会被处理一次，历史消息不会被重放。 */
+  ingest: (messages: AgentMessage[], taskKey: string) => void;
+  /**
+   * 用户刚发出一句话 → 解除「上一条被拒就停」，并声明「接下来这个会话里的回答是新的」，
+   * 免得刚建好的会话第一条回答被当成历史消息跳过。 */
+  noteUserTurn: () => void;
+  pending: EditorCommandPending | null;
+  notes: EditorCommandNote[];
+  busy: boolean;
+  /** 待确认时的确认卡（没有待确认的事就是 null）。 */
+  card: ReactNode;
+}
+
+/** agent 侧的指令执行器 + 确认卡。宿主只要把 `card` 渲染出来、发消息时带上 `contextFor()`。 */
+export function useEditorCommandBridge(opts: {
+  /** 关掉就完全不看右边、也不解析指令（默认开）。 */
+  enabled?: boolean;
+  /** 指令面读取器；不传则用 `registerEditorCommandSurfaceReader` 注册的那个。 */
+  surfaceReader?: EditorCommandSurfaceReader | null;
+  /** 当前会话 id：执行结果会回报给它，好让 agent 接着走下一步。 */
+  taskId?: string | null;
+  /** 只读会话不执行任何改动。 */
+  readOnly?: boolean;
+}): EditorCommandBridge {
+  const { enabled = true, surfaceReader, taskId, readOnly = false } = opts;
+  const sessionRef = useRef(createEditorCommandSession());
+  const [pending, setPending] = useState<EditorCommandPending | null>(null);
+  const [notes, setNotes] = useState<EditorCommandNote[]>([]);
+  const [busy, setBusy] = useState(false);
+  const noteSeqRef = useRef(0);
+  // 打开历史会话时，已经躺在里面的指令块一律当读过——不能因为回看旧对话就再改一次文件。
+  const seenRef = useRef<{ taskKey: string; ids: Set<number> }>({
+    taskKey: "",
+    ids: new Set(),
+  });
+  // 用户刚发过话 → 下一个会话里的回答是新鲜的，不走「历史一律当读过」那条路。
+  const adoptRef = useRef(false);
+  const liveRef = useRef({ enabled, surfaceReader, taskId, readOnly });
+  useEffect(() => {
+    liveRef.current = { enabled, surfaceReader, taskId, readOnly };
+  });
+
+  const pushNote = useCallback((text: string, ok: boolean) => {
+    noteSeqRef.current += 1;
+    const id = noteSeqRef.current;
+    setNotes((current) => [...current.slice(-5), { id, text, ok }]);
+  }, []);
+
+  const report = useCallback(
+    (note: string, detail: Record<string, unknown>) => {
+      const { taskId: liveTaskId, readOnly: liveReadOnly } = liveRef.current;
+      if (!liveTaskId || liveReadOnly) return;
+      void reportEditorCommandResult(liveTaskId, note, detail);
+    },
+    [],
+  );
+
+  const handleMessage = useCallback(
+    async (messageId: number, content: string) => {
+      const session = sessionRef.current;
+      const surface = readEditorCommandSurface(liveRef.current.surfaceReader);
+      const offer = await session.offer({ messageId, content, surface });
+      if (offer.kind === "none") return;
+      if (offer.kind === "reject") {
+        pushNote(offer.note, false);
+        return;
+      }
+      if (offer.kind === "confirm") {
+        if (offer.note) pushNote(offer.note, true);
+        setPending(offer.pending);
+        return;
+      }
+      pushNote(offer.outcome.note, offer.outcome.result.ok);
+      report(offer.outcome.note, {
+        id: offer.outcome.spec.id,
+        ok: offer.outcome.result.ok,
+        ...(offer.outcome.result.revision !== undefined
+          ? { revision: offer.outcome.result.revision }
+          : {}),
+      });
+    },
+    [pushNote, report],
+  );
+
+  const ingest = useCallback(
+    (messages: AgentMessage[], taskKey: string) => {
+      if (!liveRef.current.enabled || liveRef.current.readOnly) return;
+      let seen = seenRef.current;
+      if (seen.taskKey !== taskKey) {
+        if (!adoptRef.current) {
+          seenRef.current = {
+            taskKey,
+            ids: new Set(messages.map((m) => m.id)),
+          };
+          return;
+        }
+        adoptRef.current = false;
+        seen = { taskKey, ids: new Set() };
+        seenRef.current = seen;
+      }
+      for (const message of messages) {
+        if (message.role !== "assistant") continue;
+        if (message.kind && message.kind !== "text" && message.kind !== "report")
+          continue;
+        if (message.meta?.interim === true) continue;
+        if (seen.ids.has(message.id)) continue;
+        seen.ids.add(message.id);
+        void handleMessage(message.id, message.content || "");
+      }
+    },
+    [handleMessage],
+  );
+
+  const confirm = useCallback(
+    async (always: boolean) => {
+      const session = sessionRef.current;
+      if (always) session.allowAlways();
+      setBusy(true);
+      const outcome = await session.confirm();
+      setBusy(false);
+      setPending(null);
+      if (!outcome) return;
+      pushNote(outcome.note, outcome.result.ok);
+      report(outcome.note, {
+        id: outcome.spec.id,
+        ok: outcome.result.ok,
+        ...(outcome.result.revision !== undefined
+          ? { revision: outcome.result.revision }
+          : {}),
+      });
+    },
+    [pushNote, report],
+  );
+
+  const decline = useCallback(() => {
+    const declined = sessionRef.current.decline();
+    setPending(null);
+    if (declined) pushNote(declined.note, false);
+  }, [pushNote]);
+
+  const contextFor = useCallback(
+    (prompt: string) => {
+      if (!liveRef.current.enabled) return "";
+      return buildEditorCommandContext(
+        readEditorCommandSurface(liveRef.current.surfaceReader),
+        { query: prompt },
+      );
+    },
+    [],
+  );
+
+  const noteUserTurn = useCallback(() => {
+    sessionRef.current.resume();
+    adoptRef.current = true;
+  }, []);
+
+  const card = pending ? (
+    <EditorCommandCard
+      pending={pending}
+      busy={busy}
+      onConfirm={(always) => void confirm(always)}
+      onDecline={decline}
+    />
+  ) : null;
+
+  return { contextFor, ingest, noteUserTurn, pending, notes, busy, card };
+}
+
+/** 改动前的确认卡：人话写清要做什么、改哪里、填了什么。不显示 id，也不显示 JSON。 */
+export function EditorCommandCard({
+  pending,
+  busy,
+  onConfirm,
+  onDecline,
+}: {
+  pending: EditorCommandPending;
+  busy: boolean;
+  onConfirm: (always: boolean) => void;
+  onDecline: () => void;
+}) {
+  const tt = useUI();
+  const [always, setAlways] = useState(false);
+  return (
+    <div
+      data-editor-command-confirm
+      className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-[13px] text-stone-700"
+    >
+      <p className="font-medium text-amber-900">{tt("要我改吗？")}</p>
+      <p className="mt-1 leading-relaxed">{pending.prompt}</p>
+      <label className="mt-2 flex items-center gap-1.5 text-[12px] text-stone-500">
+        <input
+          type="checkbox"
+          checked={always}
+          onChange={(e) => setAlways(e.target.checked)}
+        />
+        {tt("以后这类不用问我（只在这次会话里有效，刷新就恢复询问）")}
+      </label>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          data-editor-command-action="confirm"
+          disabled={busy}
+          onClick={() => onConfirm(always)}
+          className="rounded-lg bg-amber-600 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-amber-700 disabled:opacity-60"
+        >
+          {busy ? tt("正在改…") : tt("就这么改")}
+        </button>
+        <button
+          type="button"
+          data-editor-command-action="decline"
+          disabled={busy}
+          onClick={onDecline}
+          className="rounded-lg border border-stone-300 px-3 py-1.5 text-[13px] text-stone-600 transition hover:bg-white disabled:opacity-60"
+        >
+          {tt("先别改")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 指令执行结果在对话里的那几行人话。 */
+export function EditorCommandNotes({ notes }: { notes: EditorCommandNote[] }) {
+  if (!notes.length) return null;
+  return (
+    <div data-editor-command-notes className="space-y-1">
+      {notes.map((note) => (
+        <p
+          key={note.id}
+          data-ok={note.ok ? "true" : "false"}
+          className={`rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed ${
+            note.ok ? "bg-stone-100 text-stone-600" : "bg-rose-50 text-rose-700"
+          }`}
+        >
+          {note.text}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 export interface FunctionAgentChatProps {
@@ -206,6 +475,15 @@ export interface FunctionAgentChatProps {
    * 43873e9b）。不给则操作台无恒定按钮（主按钮仍可内联写在 opsContent 里，旧行为）。
    */
   stickyAction?: React.ReactNode;
+  /**
+   * 「左边说话、右边动手」：agent 可以读右栏编辑器的指令面并下指令（改动前必须由用户
+   * 确认）。**默认开**——没有编辑器挂在指令面上时，给模型的上下文为空串、没有任何指令
+   * 可解析，行为与接线之前逐字一致。传 `false` 彻底关掉这条通道。 */
+  enableEditorCommands?: boolean;
+  /**
+   * 指令面读取器（合同 §3.1 的 `currentPluginCommandSurface`）。不传则读
+   * `registerEditorCommandSurfaceReader()` 注册的那个模块级单例。 */
+  editorCommandSurface?: EditorCommandSurfaceReader | null;
 }
 
 // 左栏双形态：操作台（表单 + 生成）/ agent（有能力、带工具，独立于操作台）。
@@ -238,6 +516,8 @@ export function FunctionAgentChat({
   onGuideExample,
   getWorkflowDraft,
   stickyAction,
+  enableEditorCommands = true,
+  editorCommandSurface,
 }: FunctionAgentChatProps) {
   void _onRunAction;
   const tt = useUI();
@@ -291,6 +571,14 @@ export function FunctionAgentChat({
   const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
+  // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
+  const editorCommands = useEditorCommandBridge({
+    enabled: enableEditorCommands,
+    surfaceReader: editorCommandSurface,
+    taskId,
+    readOnly: sessionReadOnly,
+  });
+  const ingestEditorCommands = editorCommands.ingest;
   // 与 HomeIntro / AgentChat 同名同义的开关（见 FunctionAgentChatProps）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
   const toolsOn = enableInputTools;
@@ -917,6 +1205,12 @@ export function FunctionAgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, tab]);
 
+  // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
+  useEffect(() => {
+    if (messagesTaskId !== (taskId || "")) return;
+    ingestEditorCommands(messages, taskId || "");
+  }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
+
   // 把 agent 线程里每个新 artifact（预览/图片/文档）按顺序回报给宿主 → 右侧结果画布显示。
   // 同一次轮询可能同时拿到 preview 和最终 markdown；不能只取 latest，否则预览会永久丢失。
   // 宗旨 v10：这是操作台与 agent 共用右栏结果区的机制（agent 不写操作台，但产物进
@@ -989,6 +1283,10 @@ export function FunctionAgentChat({
       prompt || tt("请分析我上传的文件。"),
       operatorRemark,
     );
+    // 让模型看见右边现在开着什么、能做什么（只给模型看，不进用户可见对话）。
+    // 右边没开编辑器时这段是空串。
+    editorCommands.noteUserTurn();
+    const editorContext = editorCommands.contextFor(effectivePrompt);
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
     if (taskId && branchFromMessageId) {
       setBusy(true);
@@ -1065,6 +1363,7 @@ export function FunctionAgentChat({
       }
       const r = await createTask({
         prompt: effectivePrompt,
+        hiddenContext: editorContext || undefined,
         mode: "agent",
         siteId,
         agentId,
@@ -1092,7 +1391,7 @@ export function FunctionAgentChat({
       return;
     }
     setBusy(true);
-    const r = await followUp(taskId, effectivePrompt, uploaded);
+    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext);
     setBusy(false);
     if (r.ok) setStatus("running");
     else {
@@ -1150,12 +1449,14 @@ export function FunctionAgentChat({
   async function sendSuggestion(text: string) {
     if (!taskId || busy || sessionReadOnly) return;
     const effectiveText = appendOperatorRemark(text, operatorRemark);
+    editorCommands.noteUserTurn();
+    const editorContext = editorCommands.contextFor(effectiveText);
     setBusy(true);
     setMessages((m) => [
       ...m,
       { id: Date.now(), role: "user", kind: "text", content: effectiveText },
     ]);
-    const r = await followUp(taskId, effectiveText);
+    const r = await followUp(taskId, effectiveText, undefined, editorContext);
     setBusy(false);
     if (r.ok) setStatus("running");
     else setError(r.error || tt("发送失败"));
@@ -1326,11 +1627,15 @@ export function FunctionAgentChat({
               ))}
             </div>
           )}
+          {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
+          <EditorCommandNotes notes={editorCommands.notes} />
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
       </div>
       <div className="shrink-0 pt-3">
         <div className="mx-auto w-full max-w-2xl space-y-2">
+          {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
+          {editorCommands.card}
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>

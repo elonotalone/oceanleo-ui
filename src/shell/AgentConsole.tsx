@@ -32,6 +32,7 @@ import {
   renderTemplate,
 } from "../lib/manifest";
 import { runCapability as defaultRunCapability } from "../lib/capabilities";
+import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import type { CapabilityResult } from "../lib/capabilities";
 import type { Capability } from "../lib/manifest";
 import { useUI } from "../i18n/ui/useUI";
@@ -66,6 +67,12 @@ export interface AgentConsoleProps {
    * oceanbizs 等无 OceanLeo 登录态的场景注入一个走自家服务端代理的实现。
    */
   runCapability?: RunCapabilityFn;
+  /**
+   * 「左边说话、右边动手」：agent 读右栏编辑器的指令面并下指令（改动前由用户确认）。
+   * 默认开；没有编辑器挂在指令面上时全程空转。传 false 关掉。 */
+  enableEditorCommands?: boolean;
+  /** 指令面读取器；不传则读模块级注册的那个（合同 §3.1）。 */
+  editorCommandSurface?: EditorCommandSurfaceReader | null;
 }
 
 // 顶部功能区按键条占用的竖向高度（px），与 OperatorConsole 一致，供 Studio 扣除。
@@ -81,6 +88,8 @@ export function AgentConsole({
   hideTabs = false,
   headerHeight = 56,
   runCapability,
+  enableEditorCommands = true,
+  editorCommandSurface,
 }: AgentConsoleProps) {
   const tt = useUI();
   const list = useMemo(
@@ -150,6 +159,8 @@ export function AgentConsole({
         accent={active.console.accent || accent}
         headerHeight={studioHeaderHeight}
         runCapability={runCapability}
+        enableEditorCommands={enableEditorCommands}
+        editorCommandSurface={editorCommandSurface}
       />
     </div>
   );
@@ -164,12 +175,16 @@ function ManifestPane({
   accent,
   headerHeight = 56,
   runCapability,
+  enableEditorCommands,
+  editorCommandSurface,
 }: {
   m: AgentManifest;
   siteId: string;
   accent: string;
   headerHeight?: number;
   runCapability?: RunCapabilityFn;
+  enableEditorCommands?: boolean;
+  editorCommandSurface?: EditorCommandSurfaceReader | null;
 }) {
   const tt = useUI();
   const runCap = runCapability ?? defaultRunCapability;
@@ -313,6 +328,8 @@ function ManifestPane({
       onArtifact={applyArtifact}
       appLabel={m.name}
       appIcon={typeof m.icon === "string" ? m.icon : undefined}
+      enableEditorCommands={enableEditorCommands}
+      editorCommandSurface={editorCommandSurface}
     />
   );
 

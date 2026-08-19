@@ -41,6 +41,13 @@ import {
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
+// 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
+// （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
+import {
+  EditorCommandNotes,
+  useEditorCommandBridge,
+} from "./FunctionAgentChat";
+import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import { HumanHandoffButton } from "./HumanHandoffButton";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import {
@@ -209,6 +216,15 @@ export interface AgentChatProps {
    * 云端浏览器均由共享 ResultCanvas 统一装配。
    */
   libraryTabs?: AgentLibraryTabs;
+  /**
+   * 「左边说话、右边动手」：agent 可以读右栏编辑器的指令面并下指令（改动前必须由用户
+   * 确认）。**默认开**——没有编辑器挂在指令面上时给模型的上下文为空串、也没有指令可解析，
+   * 行为与接线之前逐字一致。 */
+  enableEditorCommands?: boolean;
+  /**
+   * 指令面读取器（合同 §3.1 的 `currentPluginCommandSurface`）。不传则读
+   * `registerEditorCommandSurfaceReader()` 注册的那个模块级单例。 */
+  editorCommandSurface?: EditorCommandSurfaceReader | null;
 }
 
 /** agent 右栏多标签库配置（宗旨 v19）。 */
@@ -300,6 +316,8 @@ function AgentChatInner({
   mentionMembers,
   renderOrgPanel,
   startFreshSession = false,
+  enableEditorCommands = true,
+  editorCommandSurface,
 }: AgentChatInnerProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = agentArtifactLabels(tt);
@@ -352,6 +370,16 @@ function AgentChatInner({
   const seenActionRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atts = useAttachments(siteId, setError);
+  // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
+  const editorCommands = useEditorCommandBridge({
+    enabled: enableEditorCommands,
+    surfaceReader: editorCommandSurface,
+    taskId,
+    readOnly,
+  });
+  const editorContextFor = editorCommands.contextFor;
+  const noteUserTurn = editorCommands.noteUserTurn;
+  const ingestEditorCommands = editorCommands.ingest;
   // 与 HomeIntro 同名同义的开关（见 AgentChatProps.enableInputTools）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
   const toolsOn = enableInputTools;
@@ -455,6 +483,11 @@ function AgentChatInner({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
+  useEffect(() => {
+    ingestEditorCommands(messages, taskId || "");
+  }, [messages, taskId, ingestEditorCommands]);
+
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
       if (readOnly) {
@@ -463,6 +496,7 @@ function AgentChatInner({
       }
       setBusy(true);
       setError(null);
+      noteUserTurn();
       setMessages([
         {
           id: -1,
@@ -501,6 +535,8 @@ function AgentChatInner({
 
       const result = await createTask({
         prompt,
+        // 让模型看见右边现在开着什么、能做什么（只给模型看；没开编辑器时为空）。
+        hiddenContext: editorContextFor(prompt) || undefined,
         mode,
         siteId,
         agentId,
@@ -537,7 +573,9 @@ function AgentChatInner({
     },
     [
       agentId,
+      editorContextFor,
       mode,
+      noteUserTurn,
       onTaskCreated,
       promptOverride,
       readOnly,
@@ -562,6 +600,8 @@ function AgentChatInner({
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
       const optimisticMessageId = Date.now();
+      noteUserTurn();
+      const editorContext = editorContextFor(effectivePrompt);
       setBusy(true);
       setError(null);
       setMessages((current) => [
@@ -577,7 +617,7 @@ function AgentChatInner({
               : undefined,
         },
       ]);
-      const result = await followUp(id, effectivePrompt, uploaded);
+      const result = await followUp(id, effectivePrompt, uploaded, editorContext);
       setBusy(false);
       if (!result.ok) {
         setMessages((current) =>
@@ -592,7 +632,7 @@ function AgentChatInner({
       onTaskCreated?.(id);
       void refresh(id);
     },
-    [onTaskCreated, readOnly, refresh, tt],
+    [editorContextFor, noteUserTurn, onTaskCreated, readOnly, refresh, tt],
   );
 
   // initialPrompt 只能在 Provider 查完最近 session/task 后触发，避免加载中的空 task
@@ -646,6 +686,8 @@ function AgentChatInner({
     setInput("");
     atts.clear();
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
+    noteUserTurn();
+    const editorContext = editorContextFor(effectivePrompt);
     if (!taskId) {
       const started = await start(effectivePrompt, uploaded);
       if (!started) restoreSubmission();
@@ -708,7 +750,7 @@ function AgentChatInner({
       { id: optimisticMessageId, role: "user", kind: "text", content: effectivePrompt,
         meta: uploaded.length ? { attachments: uploaded } : undefined },
     ]);
-    const r = await followUp(taskId, effectivePrompt, uploaded);
+    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext);
     setBusy(false);
     if (r.ok) setStatus("running");
     else {
@@ -760,17 +802,19 @@ function AgentChatInner({
   const sendSuggestion = useCallback(
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
+      noteUserTurn();
+      const editorContext = editorContextFor(text);
       setBusy(true);
       setMessages((m) => [
         ...m,
         { id: Date.now(), role: "user", kind: "text", content: text },
       ]);
-      const r = await followUp(taskId, text);
+      const r = await followUp(taskId, text, undefined, editorContext);
       setBusy(false);
       if (r.ok) setStatus("running");
       else setError(r.error || tt("发送失败"));
     },
-    [taskId, busy, readOnly, tt],
+    [taskId, busy, readOnly, tt, editorContextFor, noteUserTurn],
   );
 
   const artifactMessages = useMemo(
@@ -1125,6 +1169,8 @@ function AgentChatInner({
               ))}
             </div>
           )}
+          {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
+          <EditorCommandNotes notes={editorCommands.notes} />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
           <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
@@ -1135,6 +1181,8 @@ function AgentChatInner({
             与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。 */}
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {composerHeader}
+          {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
+          {editorCommands.card}
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>
