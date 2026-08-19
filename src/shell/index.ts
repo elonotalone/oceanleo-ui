@@ -323,18 +323,17 @@ export {
   subscribePluginCommandSurface,
   usePluginCommandSurface,
 } from "./plugin-command";
-// `PluginCommandParam / Result / Spec / Surface` 这四个名字**暂时不从这里导出**。
-//
-// 不是不该导出，是导不出来：`src/lib/fn-agent.ts` 现在自己又声明了一份同名类型
-// （字段与合同 §3.1 逐字相同，但是两份定义），顶层 barrel `src/index.ts` 同时
-// `export *` 了 `./shell` 与 `./lib`，两边同名就是 TS2308「名字有歧义」——整个包
-// 编不过。歧义只能由**去掉其中一份**来解，而 `src/lib/` 不是本份活的路径。
-//
-// 落法写在 `verdicts/W1-delivery.md` §5：`fn-agent.ts` 删掉自己那份声明、改成从
-// `../shell/plugin-command/types` import，这四行随即补上。类型本身在
-// `./plugin-command/types.ts` 里，仓内代码现在就能直接 import，不受这条阻塞。
+// 这四个名字一度导不出来：`src/lib/fn-agent.ts` 曾自己再声明一份同名类型，而顶层
+// barrel 同时 `export *` 了 `./shell` 与 `./lib`，两边同名就是 TS2308「名字有歧义」。
+// W4 在 `verdicts/W4-delivery.md` §2 把那份重复声明删了、改成 `import type` 本文件，
+// 歧义随之消失，四行补回。**类型的唯一出处是 `./plugin-command/types.ts`**，
+// 谁要用都从那里 import，不许再抄一份。
 export type {
+  PluginCommandParam,
+  PluginCommandResult,
+  PluginCommandSpec,
   PluginCommandStateSnapshot,
+  PluginCommandSurface,
   PluginCommandSurfaceInput,
 } from "./plugin-command";
 // LeoPlay 沙箱宿主与生成链的注入面（`advanced-routes/GameRoute`）。
@@ -557,6 +556,14 @@ export type { AgentAttachment } from "../lib/agent";
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
 export type { FunctionAgentChatProps } from "./FunctionAgentChat";
+// 左栏 agent ↔ 右栏编辑器的指令桥（W4，`verdicts/W4-delivery.md` §5.2）。
+// 站点侧自写左栏时用这三个就能接上：hook 返回的 `card` 是「要我改吗」确认卡、
+// `notes` 是执行结果那几行。会改内容的指令**必须**经确认卡，别绕过去自己调 `run()`。
+export {
+  EditorCommandCard,
+  EditorCommandNotes,
+  useEditorCommandBridge,
+} from "./FunctionAgentChat";
 // session-first 操作台自动恢复/保存；旧后端与未登录状态兼容本地草稿。
 export { useConsoleDraft } from "./useConsoleDraft";
 export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";

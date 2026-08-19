@@ -3015,6 +3015,18 @@
         },
         {
           "kind": "named",
+          "name": "EditorCommandCard",
+          "importedName": "EditorCommandCard",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "named",
+          "name": "EditorCommandNotes",
+          "importedName": "EditorCommandNotes",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "named",
           "name": "EditorConvertEndpoint",
           "importedName": "EditorConvertEndpoint",
           "source": "./import-normalize"
@@ -4317,8 +4329,32 @@
         },
         {
           "kind": "named",
+          "name": "PluginCommandParam",
+          "importedName": "PluginCommandParam",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandResult",
+          "importedName": "PluginCommandResult",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSpec",
+          "importedName": "PluginCommandSpec",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
           "name": "PluginCommandStateSnapshot",
           "importedName": "PluginCommandStateSnapshot",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSurface",
+          "importedName": "PluginCommandSurface",
           "source": "./plugin-command"
         },
         {
@@ -5250,6 +5286,12 @@
           "name": "UseConsoleRunReturn",
           "importedName": "UseConsoleRunReturn",
           "source": "./useConsoleRun"
+        },
+        {
+          "kind": "named",
+          "name": "useEditorCommandBridge",
+          "importedName": "useEditorCommandBridge",
+          "source": "./FunctionAgentChat"
         },
         {
           "kind": "named",
